@@ -30,7 +30,7 @@ mod size;
 mod stack;
 mod style;
 
-pub(crate) use grid::TEMPLATE_KEY as GRID_TEMPLATE_KEY;
+pub(crate) use grid::{PLACEHOLDER_KEY as GRID_PLACEHOLDER_KEY, TEMPLATE_KEY as GRID_TEMPLATE_KEY};
 pub use measure::MeasureCache;
 pub(crate) use reuse::Output;
 
@@ -564,6 +564,11 @@ fn place_subtree<'a>(
     if let Some(reuse) = ctx.reuse.as_mut().filter(|_| inspects) {
         reuse.inspected += 1;
     }
+    // A grid standing in placeholders reports which cells it shows, for its next bind to build.
+    let placeholders = grid::is_grid(control)
+        .then(|| control.children.iter().find_map(grid::placeholder_of))
+        .flatten();
+    let mut in_view: Option<std::ops::Range<usize>> = None;
     for (child, mut child_rect) in placed {
         let child_shown = !ctx.hidden_names.contains(&child.name)
             && !priority
@@ -620,6 +625,16 @@ fn place_subtree<'a>(
         {
             child_rect = frame.place_box(child_rect);
         }
+        if placeholders.is_some()
+            && child_shown
+            && !disjoint(child_rect, clip_for_child)
+            && let Some(index) =
+                collection_index(child).and_then(|index| usize::try_from(index).ok())
+        {
+            in_view = Some(in_view.map_or(index..index + 1, |seen| {
+                seen.start.min(index)..seen.end.max(index + 1)
+            }));
+        }
         // Scroll content wholly outside its viewport neither draws nor takes input.
         if ctx.cull
             && ctx
@@ -656,6 +671,11 @@ fn place_subtree<'a>(
             }
         }
         children.push(laid);
+    }
+    if let Some(grid) = placeholders {
+        ctx.report
+            .grid_cells
+            .insert(grid, in_view.unwrap_or_default());
     }
     if let (Some(reuse), Some((_, _, (hits, emitting)))) = (ctx.reuse.as_mut(), inherit_reuse) {
         reuse.hits = hits;

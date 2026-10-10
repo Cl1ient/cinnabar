@@ -37,6 +37,8 @@ pub(super) enum Data {
     Defaults,
     Control,
     Feed,
+    /// The cells a virtualized grid builds.
+    Window,
 }
 
 fn data_hash(kind: Data, name: &str, index: Option<usize>) -> u64 {
@@ -47,6 +49,11 @@ fn data_hash(kind: Data, name: &str, index: Option<usize>) -> u64 {
     }
 }
 
+/// The key naming the built cells of the grid at bind key `grid`.
+fn window_hash(grid: u64) -> u64 {
+    key_hash(KEY_ROOT ^ Data::Window as u64, &grid.to_le_bytes())
+}
+
 /// The two filter bits a key hash sets.
 fn bits(hash: u64) -> [(usize, u64); 2] {
     let bit = |value: u64| ((value as usize / 64) % 8, 1 << (value % 64));
@@ -55,7 +62,16 @@ fn bits(hash: u64) -> [(usize, u64); 2] {
 
 impl Reads {
     pub(super) fn add(&mut self, kind: Data, name: &str, index: Option<usize>) {
-        for (word, bit) in bits(data_hash(kind, name, index)) {
+        self.insert(data_hash(kind, name, index));
+    }
+
+    /// Reads which cells the grid at bind key `grid` builds.
+    pub(super) fn add_window(&mut self, grid: u64) {
+        self.insert(window_hash(grid));
+    }
+
+    fn insert(&mut self, hash: u64) {
+        for (word, bit) in bits(hash) {
             self.0[word] |= bit;
         }
     }
@@ -79,6 +95,11 @@ impl Reads {
 impl Changes {
     fn add(&mut self, kind: Data, name: &str, index: Option<usize>) {
         self.0.push(data_hash(kind, name, index));
+    }
+
+    /// Notes that the grid at bind key `grid` builds other cells.
+    pub(super) fn add_window(&mut self, grid: u64) {
+        self.0.push(window_hash(grid));
     }
 
     /// Whether any of `names`, read as screen-controller globals, may have changed.

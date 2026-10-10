@@ -325,6 +325,21 @@ impl UiPresentationRuntime {
     }
 }
 
+/// Binds a layout may run to build the grid cells it newly shows.
+const GRID_PASSES: usize = 2;
+
+/// `catalog` in `context`, answering from the screen's kept `resolutions`.
+fn library<'a>(
+    catalog: &'a json_ui::Catalog,
+    context: &'a json_ui::Context,
+    resolutions: &'a json_ui::ResolveCache,
+) -> json_ui::CachedLibrary<'a> {
+    json_ui::CachedLibrary {
+        library: json_ui::CatalogLibrary { catalog, context },
+        cache: resolutions,
+    }
+}
+
 /// The last container screen's resolved tree, its binding and its layout, each
 /// kept while its inputs stay the same: a hover, press or focus change only
 /// filters the laid-out nodes, and a screen sitting open reuses it all.
@@ -342,6 +357,8 @@ pub(super) struct ScreenCache {
     laid: Option<(ViewState, [f64; 2], Arc<json_ui::FormRender>)>,
     /// The open screen's live bindings across data refreshes.
     binding: json_ui::BindState,
+    /// Grid and factory templates kept across binds, so their unchanged instances stand.
+    resolutions: json_ui::ResolveCache,
     /// Font scale and language tables used by the retained measurements.
     text: (f32, [usize; 3]),
     /// Layouts run for this screen, for cache tests.
@@ -368,10 +385,13 @@ impl ScreenCache {
             return Some(tree);
         }
         let (_, _, render) = self.laid.take()?;
-        Some(
-            Arc::try_unwrap(render)
-                .map_or_else(|shared| shared.bound.clone(), |render| render.bound),
-        )
+        Some(Arc::try_unwrap(render).map_or_else(
+            |shared| {
+                self.measures = json_ui::MeasureCache::default();
+                shared.bound.clone()
+            },
+            |render| render.bound,
+        ))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -401,7 +421,12 @@ impl ScreenCache {
                 tree: None,
                 measures: json_ui::MeasureCache::default(),
                 laid: None,
-                binding: json_ui::BindState::new(),
+                binding: {
+                    let mut binding = json_ui::BindState::new();
+                    binding.virtualize_grids();
+                    binding
+                },
+                resolutions: json_ui::ResolveCache::default(),
                 text,
                 layouts: 0,
             });
@@ -420,8 +445,7 @@ impl ScreenCache {
                 Some(mut tree) => {
                     json_ui::rebind_screen(
                         &cached.resolved,
-                        catalog,
-                        context,
+                        &library(&cached.catalog, &cached.context, &cached.resolutions),
                         &data,
                         &mut cached.binding,
                         &mut tree,
@@ -432,8 +456,7 @@ impl ScreenCache {
                 None => {
                     cached.tree = Some(json_ui::bind_screen_incremental(
                         &cached.resolved,
-                        catalog,
-                        context,
+                        &library(&cached.catalog, &cached.context, &cached.resolutions),
                         &data,
                         &mut cached.binding,
                     ));
@@ -455,15 +478,30 @@ impl ScreenCache {
             {
                 cached.measures = json_ui::MeasureCache::default();
             }
-            let tree = match cached.tree.take() {
-                Some(tree) => tree,
-                None => {
-                    let (_, _, render) = cached.laid.take()?;
-                    Arc::try_unwrap(render)
-                        .map_or_else(|shared| shared.bound.clone(), |render| render.bound)
-                }
-            };
-            let render = json_ui::render_bound_gated(tree, root, env, view, &mut cached.measures);
+            let tree = cached.bound_tree()?;
+            let mut render =
+                json_ui::render_bound_gated(tree, root, env, view, &mut cached.measures);
+            // Long grids build only the cells around those in view: bind what this layout
+            // newly shows and lay out again, before anything draws.
+            for _ in 0..GRID_PASSES {
+                let Some(data) = cached
+                    .data
+                    .clone()
+                    .filter(|_| cached.binding.show_grid_cells(&render.report))
+                else {
+                    break;
+                };
+                let mut tree = render.bound;
+                json_ui::rebind_screen(
+                    &cached.resolved,
+                    &library(&cached.catalog, &cached.context, &cached.resolutions),
+                    &data,
+                    &mut cached.binding,
+                    &mut tree,
+                    &mut cached.measures,
+                );
+                render = json_ui::render_bound_gated(tree, root, env, view, &mut cached.measures);
+            }
             // Scroll views publish their end state; views reading it rebind next frame.
             if cached.binding.publish_scrolls(&render.report) && cached.binding.observes_scroll() {
                 cached.data = None;

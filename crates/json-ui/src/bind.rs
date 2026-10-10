@@ -175,7 +175,7 @@ fn bind_with(
     state.node_budget_exceeded = false;
     state.built.clear();
     state.views_run = 0;
-    let changes = match &state.data {
+    let mut changes = match &state.data {
         Some(previous)
             if incremental && state.published.is_empty() && data.components.is_empty() =>
         {
@@ -183,6 +183,11 @@ fn bind_with(
         }
         _ => None,
     };
+    for grid in std::mem::take(&mut state.moved_windows) {
+        if let Some(changes) = &mut changes {
+            changes.add_window(grid);
+        }
+    }
     let mut pool = state::KeyMap::default();
     if let Some(previous) = state.tree.take() {
         pool.insert(previous.key, *previous);
@@ -472,6 +477,9 @@ impl<'a> Binder<'a> {
         if let Some(scoped) = selection {
             // Which list this item reads, and how much of it, follows its item's own list.
             reads.add(reuse::Data::Length, &scoped, None);
+        }
+        if self.state.virtual_grids && grid_template(control).is_some() {
+            reads.add_window(key);
         }
         let origin = GRID_BOUNDS
             .iter()

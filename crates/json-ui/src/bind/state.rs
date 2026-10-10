@@ -4,6 +4,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{BuildHasherDefault, Hasher};
+use std::ops::Range;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
@@ -75,6 +77,14 @@ pub struct BindState {
     pub(super) views_settled: bool,
     /// View notifications the last bind ran.
     pub(super) views_run: usize,
+    /// Whether large collection grids build only the cells around those layout shows.
+    pub(super) virtual_grids: bool,
+    /// The cells each virtualized grid builds, by its key; the rest bind as placeholders.
+    pub(super) grid_windows: KeyMap<Range<usize>>,
+    /// Grids whose built cells moved since the last bind, which it rebuilds.
+    pub(super) moved_windows: Vec<u64>,
+    /// Each grid's cell template with its placeholder, so standing placeholders are reused.
+    pub(super) placeholders: Vec<(u64, Arc<ResolvedControl>, Arc<ResolvedControl>)>,
 }
 
 /// Allocate an opaque lifetime identity only when a custom control is created.
@@ -158,6 +168,36 @@ impl BindState {
             }
         }
         changed
+    }
+
+    /// Lets each large collection grid build only the cells around those in view, binding the
+    /// rest as empty placeholders of its cell template's size. After each layout, pass its
+    /// report to [`Self::show_grid_cells`] and bind and lay out again while that returns `true`.
+    pub fn virtualize_grids(&mut self) {
+        self.virtual_grids = true;
+    }
+
+    /// Moves each virtualized grid's built cells over the cells `report` laid out in view, with
+    /// a quarter view of margin on either side; `true` when a grid must bind and lay out again.
+    pub fn show_grid_cells(&mut self, report: &LayoutReport) -> bool {
+        let mut moved = false;
+        for (grid, view) in &report.grid_cells {
+            if view.is_empty() {
+                continue;
+            }
+            // A range left far wider than the view, as after a longer tab, shrinks back.
+            if self.grid_windows.get(grid).is_some_and(|built| {
+                built.start <= view.start && view.end <= built.end && built.len() <= 4 * view.len()
+            }) {
+                continue;
+            }
+            let margin = view.len() / 4 + 1;
+            self.grid_windows
+                .insert(*grid, view.start.saturating_sub(margin)..view.end + margin);
+            self.moved_windows.push(*grid);
+            moved = true;
+        }
+        moved
     }
 
     /// Whether scroll feedback can affect a bound property or view.

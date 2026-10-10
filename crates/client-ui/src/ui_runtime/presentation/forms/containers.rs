@@ -332,9 +332,9 @@ pub(super) struct ScreenCache {
     catalog: Arc<json_ui::Catalog>,
     reference: &'static str,
     context: json_ui::Context,
-    resolved: json_ui::ResolvedControl,
+    resolved: Arc<json_ui::ResolvedControl>,
     /// The data `tree` or the layout's `FormRender::bound` was bound against.
-    data: Option<DataSource>,
+    data: Option<Arc<DataSource>>,
     /// The bound tree while no layout holds it, so a relayout never clones it.
     tree: Option<json_ui::ResolvedControl>,
     /// The tree's measurements at the laid root size, reused while scrolling.
@@ -362,6 +362,18 @@ impl ScreenCache {
         self.measures = json_ui::MeasureCache::default();
     }
 
+    /// The tree the last bind produced, taken back from the layout that holds it.
+    fn bound_tree(&mut self) -> Option<json_ui::ResolvedControl> {
+        if let Some(tree) = self.tree.take() {
+            return Some(tree);
+        }
+        let (_, _, render) = self.laid.take()?;
+        Some(
+            Arc::try_unwrap(render)
+                .map_or_else(|shared| shared.bound.clone(), |render| render.bound),
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn render(
         cache: &mut Option<Self>,
@@ -384,7 +396,7 @@ impl ScreenCache {
                 catalog: Arc::clone(catalog),
                 reference,
                 context: context.clone(),
-                resolved: json_ui::resolve_screen(reference, catalog, context)?,
+                resolved: Arc::new(json_ui::resolve_screen(reference, catalog, context)?),
                 data: None,
                 tree: None,
                 measures: json_ui::MeasureCache::default(),
@@ -400,16 +412,35 @@ impl ScreenCache {
             cached.text = text;
             cached.measures = json_ui::MeasureCache::default();
         }
-        if cached.data.as_ref() != Some(data) {
-            cached.tree = Some(json_ui::bind_screen(
-                &cached.resolved,
-                catalog,
-                context,
-                data,
-                &mut cached.binding,
-            ));
-            cached.data = Some(data.clone());
-            cached.measures = json_ui::MeasureCache::default();
+        if cached.data.as_deref() != Some(data) {
+            let data = Arc::new(data.clone());
+            // A refresh rebuilds only the controls it changed and keeps their measurements, so
+            // moving one item or switching a tab no longer rebinds and remeasures the screen.
+            match cached.bound_tree() {
+                Some(mut tree) => {
+                    json_ui::rebind_screen(
+                        &cached.resolved,
+                        catalog,
+                        context,
+                        &data,
+                        &mut cached.binding,
+                        &mut tree,
+                        &mut cached.measures,
+                    );
+                    cached.tree = Some(tree);
+                }
+                None => {
+                    cached.tree = Some(json_ui::bind_screen_incremental(
+                        &cached.resolved,
+                        catalog,
+                        context,
+                        &data,
+                        &mut cached.binding,
+                    ));
+                    cached.measures = json_ui::MeasureCache::default();
+                }
+            }
+            cached.data = Some(data);
             cached.laid = None;
         }
         // Hover, press and focus only filter the gated nodes; scroll lays out again.
@@ -574,22 +605,27 @@ fn screen_data(
     let mut data = DataSource::new();
     // Bindings the controller does not answer read as false, as in vanilla.
     data.set_strict(true);
+    // The survival defaults go first, so the recipe book's layout globals override them.
+    survival_globals(&mut data, title);
+    // The recipe book's icons go first: its rows name icons by table index, so behind the
+    // inventory's icons a moved item would shift every row and rebind the whole book.
+    if let ScreenLayout::Personal { book } | ScreenLayout::Workbench { book } = layout {
+        super::recipe_book::book_data(
+            player_runtime,
+            &mut data,
+            runtime,
+            frame,
+            icons,
+            book,
+            book_cache,
+        );
+    }
     let [inventory, hotbar] = player_rows(player_runtime, runtime, frame, icons);
     data.set_collection("inventory_items", inventory);
     data.set_collection("hotbar_items", hotbar);
     let mut cells = Cells { frame, icons };
-    survival_globals(&mut data, title);
     match layout {
-        ScreenLayout::Personal { book } | ScreenLayout::Workbench { book } => {
-            super::recipe_book::book_data(
-                player_runtime,
-                &mut data,
-                runtime,
-                frame,
-                cells.icons,
-                book,
-                book_cache,
-            );
+        ScreenLayout::Personal { .. } | ScreenLayout::Workbench { .. } => {
             let width = if matches!(layout, ScreenLayout::Workbench { .. }) {
                 3
             } else {
@@ -708,6 +744,9 @@ mod tooltip_tests;
 
 #[cfg(test)]
 mod empty_cells_tests;
+
+#[cfg(test)]
+mod book_order_tests;
 
 /// The stack, icon, and durability a station cell shows.
 fn station_cell<'a>(

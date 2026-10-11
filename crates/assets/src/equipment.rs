@@ -807,9 +807,10 @@ mod tests {
         bytes[last] ^= 0xff;
         assert!(RuntimeEquipmentCatalog::decode(&bytes).is_err());
 
-        let mut truncated = encode_equipment_catalog([1; 32], [2; 32], &sample()).unwrap();
-        truncated[8] = 0x03; // unsupported version
-        assert!(RuntimeEquipmentCatalog::decode(&truncated).is_err());
+        let mut unsupported = encode_equipment_catalog([1; 32], [2; 32], &sample()).unwrap();
+        let next_version = EQUIPMENT_CARRIER_VERSION.checked_add(1).unwrap();
+        unsupported[8..12].copy_from_slice(&next_version.to_le_bytes());
+        assert!(RuntimeEquipmentCatalog::decode(&unsupported).is_err());
     }
 
     #[test]

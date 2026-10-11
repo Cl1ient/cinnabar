@@ -237,7 +237,10 @@ mod tests {
         let expected: [u8; 32] = Sha256::digest(lf.as_bytes()).into();
         assert_eq!(destroy_source_sha256(&lf), expected);
         assert_eq!(destroy_source_sha256(&crlf), expected);
-        assert_eq!(destroy_source_sha256(&lf.replacen('\n', "\r\n", 1)), expected);
+        assert_eq!(
+            destroy_source_sha256(&lf.replacen('\n', "\r\n", 1)),
+            expected
+        );
         assert_ne!(destroy_source_sha256(&format!("{lf}changed")), expected);
     }
 

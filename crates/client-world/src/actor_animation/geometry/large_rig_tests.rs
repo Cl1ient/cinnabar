@@ -13,6 +13,7 @@ fn compiled_display(bone_count: usize) -> assets::CompiledEntityAssets {
     let template = compiled.geometries[0].bones[0].clone();
     compiled.geometries[0].bones = (0..bone_count)
         .map(|index| EntityGeometryBone {
+            locators: Box::default(),
             name: format!("part{index}").into(),
             parent: (index != 0).then(|| "part0".into()),
             pivot: Some(

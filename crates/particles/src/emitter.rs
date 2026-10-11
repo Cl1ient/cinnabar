@@ -37,6 +37,8 @@ pub struct SpawnRequest {
     /// Molang variables (`variable.` prefix already stripped, lowercase).
     pub variables: Vec<(String, f32)>,
     pub queries: Queries,
+    /// Compiled controller initialization, run once after the emitter has its own context.
+    pub initialization: Option<Arc<crate::actor::ActorInitialization>>,
     pub tile: Option<TileRequest>,
     pub inherit_velocity: Option<[f32; 3]>,
     /// Emit exactly this many particles from a manual-rate emitter.
@@ -44,6 +46,7 @@ pub struct SpawnRequest {
     /// Follows an actor (`runtime_id`, offset from its feet); the host moves the emitter each
     /// frame from [`ParticleSystem::bound_emitters`].
     pub bound: Option<(u64, [f32; 3])>,
+    pub actor_attachment: Option<crate::actor::ActorAttachment>,
     pub depth: u8,
     pub seed: u64,
 }
@@ -78,6 +81,7 @@ pub struct Emitter {
     pub depth: u8,
     pub done: bool,
     pub bound: Option<(u64, [f32; 3])>,
+    pub actor_attachment: Option<crate::actor::ActorAttachment>,
     active_time: f32,
     sleep_time: f32,
     cycle: u64,
@@ -124,7 +128,7 @@ impl Emitter {
             let value = rng.unit();
             set_var(&mut vars, V_EMITTER_RANDOM + index, value);
         }
-        let mut queries = request.queries;
+        let mut queries = request.queries.clone();
         queries.frame_alpha = 1.0;
         if let Some(creation) = &def.emitter.creation {
             creation.eval(&mut vars, &mut rng, &queries);
@@ -139,6 +143,10 @@ impl Emitter {
         };
         set_var(&mut vars, V_EMITTER_LIFETIME, active_time);
         set_var(&mut vars, V_EMITTER_AGE, 0.0);
+        if let Some(initialization) = &request.initialization {
+            queries.frame_alpha = request.queries.frame_alpha;
+            initialization.apply(&def.interner, &mut vars, &mut rng, &queries);
+        }
         let pos = std::array::from_fn(|i| {
             let spread = request.position_spread[i];
             request.position[i]
@@ -165,6 +173,7 @@ impl Emitter {
             depth: request.depth,
             done: false,
             bound: request.bound,
+            actor_attachment: request.actor_attachment.clone(),
             active_time: active_time.max(0.0),
             sleep_time: sleep_time.max(0.0),
             cycle: u64::MAX,
@@ -202,7 +211,10 @@ impl Emitter {
                 let period = (self.active_time + self.sleep_time).max(1e-3);
                 // Repeating lifetime resets require a live actor binding. Unbound effects
                 // finish their first active/sleep cycle while existing particles drain.
-                if self.bound.is_none() && self.age >= self.active_time + self.sleep_time {
+                if self.bound.is_none()
+                    && self.actor_attachment.is_none()
+                    && self.age >= self.active_time + self.sleep_time
+                {
                     self.done = true;
                 }
                 let cycle = (self.age / period) as u64;
@@ -498,7 +510,17 @@ impl Emitter {
                     position,
                     bound,
                     basis: Some(self.basis),
-                    queries: self.queries,
+                    queries: self.queries.clone(),
+                    actor_attachment: if matches!(kind, SpawnKind::EmitterBound) {
+                        self.actor_attachment.clone().map(|mut attachment| {
+                            attachment.world_offset = std::array::from_fn(|axis| {
+                                attachment.world_offset[axis] + position[axis] - self.pos[axis]
+                            });
+                            attachment
+                        })
+                    } else {
+                        None
+                    },
                     inherit_velocity: matches!(kind, SpawnKind::ParticleWithVelocity)
                         .then_some(velocity),
                     depth: self.depth + 1,

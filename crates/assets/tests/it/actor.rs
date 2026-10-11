@@ -15,6 +15,7 @@ fn geometry(size: [f32; 3], uv: assets::EntityGeometryUv) -> assets::EntityGeome
         texture_width: 8,
         texture_height: 8,
         bones: vec![EntityGeometryBone {
+            locators: Box::default(),
             name: "body".into(),
             parent: None,
             binding: None,

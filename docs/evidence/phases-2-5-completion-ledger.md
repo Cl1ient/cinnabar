@@ -249,3 +249,10 @@ Block overlays use the shared pack compiler to resolve legacy geometry inheritan
 ## Session biome climate and environment
 
 Admitted live biome identifiers and climate now travel with the session tint registry. Weather, fog precipitation, camera temperature and environment routes read that registry, including custom biome routes. Registry replacement clears removed routes. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Controller particle attachments
+
+Typed locator and initialization contracts are implemented. Independent pinned
+controller coverage and focused emitter/placement regressions are added. The
+unsupported query grammar, skin locator, child-event placement, fallback and
+animated gallery checks in `plan.md` remain open. No completion entry advances.

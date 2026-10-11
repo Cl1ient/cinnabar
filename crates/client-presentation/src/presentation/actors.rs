@@ -14,6 +14,8 @@ use render_model::{
     default_actor_skin_rgba8,
 };
 
+mod locator;
+pub use locator::actor_emitter_transform;
 mod admission;
 pub use admission::within_actor_candidate_cube;
 pub(crate) use admission::{actor_within_render_distance, sample_candidate_scale};

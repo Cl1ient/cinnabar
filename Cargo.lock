@@ -5771,6 +5771,7 @@ version = "0.1.12"
 dependencies = [
  "assets",
  "bytemuck",
+ "render-model",
  "serde_json",
 ]
 

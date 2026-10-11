@@ -359,6 +359,7 @@ fn bones(value: Option<&Value>) -> Vec<EntityGeometryBone> {
                 })
                 .unwrap_or_default();
             Some(EntityGeometryBone {
+                locators: Box::default(),
                 name: name.into(),
                 parent: bone
                     .get("parent")

@@ -17,7 +17,9 @@ mod server_animation;
 pub use molang_program::MolangProgram;
 #[path = "entity/inherited_cubes.rs"]
 mod inherited_cubes;
+mod locator;
 pub use geometry::{EntityGeometry, EntityGeometryBounds, EntityGeometryInheritance};
+pub use locator::{EntityGeometryLocator, EntityGeometryLocatorBinding, MAX_GEOMETRY_LOCATORS};
 mod source_paths;
 #[path = "entity/texture_mesh.rs"]
 mod texture_mesh;
@@ -56,8 +58,8 @@ pub use v4::{
 };
 
 pub const ENTITY_BLOB_MAGIC: [u8; 8] = *b"MCBEENT3";
-/// Includes authored clip clocks; invalidates catalogs compiled before `anim_time_update` support.
-pub const ENTITY_BLOB_VERSION: u32 = 8;
+/// Includes compiled geometry locators, so older carriers must be rebuilt.
+pub const ENTITY_BLOB_VERSION: u32 = 9;
 /// Actor rig id ranges (a rig id is a `u32`):
 /// - `0..PACK_RIG_ID_BASE`: vanilla catalog rig-geometry bindings, and from `0x2000_0000`
 ///   the catalog geometries render controllers draw beside the rig (`0x2000_0000 + index`).
@@ -235,6 +237,8 @@ pub struct EntityGeometryFaceUvs {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntityGeometryBone {
+    #[serde(default, skip_serializing_if = "<[EntityGeometryLocator]>::is_empty")]
+    pub locators: Box<[EntityGeometryLocator]>,
     pub name: Box<str>,
     pub parent: Option<Box<str>>,
     pub pivot: Option<[EntityGeometryScalar; 3]>,
@@ -324,6 +328,7 @@ pub struct RuntimeEntityAssets {
     symbols: Arc<[EntityAssetSymbol]>,
     geometries: Arc<[EntityGeometry]>,
     geometry_parents: Arc<[Option<usize>]>,
+    locator_catalog: Arc<[std::collections::BTreeMap<Box<str>, EntityGeometryLocatorBinding>]>,
     animation_clips: Arc<[EntityAnimationClip]>,
     animation_channels: Arc<[EntityAnimationChannel]>,
     animation_keyframes: Arc<[EntityAnimationKeyframe]>,
@@ -460,6 +465,7 @@ impl RuntimeEntityAssets {
     /// Validates a compiled catalog and wraps it without a blob round trip.
     pub fn from_compiled(compiled: CompiledEntityAssets) -> Result<Self, AssetError> {
         let geometry_parents = validate_compiled(&compiled)?;
+        let locator_catalog = locator::compile(&compiled.geometries, &geometry_parents)?;
         Ok(Self {
             carrier_identity: None,
             source_manifest_sha256: compiled.source_manifest_sha256,
@@ -468,6 +474,7 @@ impl RuntimeEntityAssets {
             symbols: Arc::from(compiled.symbols),
             geometries: Arc::from(compiled.geometries),
             geometry_parents: Arc::from(geometry_parents),
+            locator_catalog: locator_catalog.into(),
             animation_clips: Arc::from(compiled.animation_clips),
             animation_channels: Arc::from(compiled.animation_channels),
             animation_keyframes: Arc::from(compiled.animation_keyframes),
@@ -822,6 +829,7 @@ fn validate_geometry_bones(
     bones: &[EntityGeometryBone],
     allow_inherited_parent: bool,
 ) -> Result<(), AssetError> {
+    locator::validate_total(bones)?;
     let mut total_cubes = 0usize;
     let mut total_texture_meshes = 0usize;
     for bone in bones {
@@ -830,6 +838,7 @@ fn validate_geometry_bones(
             .filter(|count| *count <= MAX_ENTITY_GEOMETRY_TEXTURE_MESHES)
             .ok_or_else(|| invalid("entity geometry texture mesh count exceeds bound"))?;
         texture_mesh::validate(bone)?;
+        locator::validate(bone)?;
         validate_geometry_name(&bone.name)?;
         if let Some(parent) = &bone.parent {
             validate_geometry_name(parent)?;

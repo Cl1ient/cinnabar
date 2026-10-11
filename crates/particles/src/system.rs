@@ -259,6 +259,34 @@ impl ParticleSystem {
         }
     }
 
+    /// Samples each controller attachment once; missing or replaced actor lifetimes stop emission.
+    pub fn update_actor_attachments(
+        &mut self,
+        mut transform: impl FnMut(
+            &super::actor::ActorAttachment,
+        ) -> Option<(
+            super::actor::ActorEmitterTransform,
+            super::molang::Queries,
+        )>,
+    ) {
+        for emitter in &mut self.emitters {
+            if emitter.done {
+                continue;
+            }
+            let Some(attachment) = &emitter.actor_attachment else {
+                continue;
+            };
+            match transform(attachment) {
+                Some((transform, queries)) => {
+                    emitter.pos = transform.position;
+                    emitter.basis = transform.basis;
+                    emitter.queries = queries;
+                }
+                None => emitter.done = true,
+            }
+        }
+    }
+
     /// Moves an attached emitter; ignored once the emitter is gone.
     pub fn set_transform(&mut self, id: u64, position: [f32; 3], basis: [[f32; 3]; 3]) {
         if let Some(emitter) = self.emitters.iter_mut().find(|e| e.id == id) {

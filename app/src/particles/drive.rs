@@ -20,7 +20,9 @@ use render::{
     ParticleGpuFrame, ParticleSimulation, RainSplashQueue, particle_view, update_particle_frame,
 };
 
-use super::actors::{ActorParticleCommand, queue_actor_particles, route_actor_particles};
+use super::actors::{
+    ActorParticleCommand, follow_actor_particles, queue_actor_particles, route_actor_particles,
+};
 use super::{ambient::AmbientParticles, tiles::block_tile, world_adapter::StreamParticleWorld};
 use {
     crate::{
@@ -360,7 +362,10 @@ fn follow_bound_emitters(system: &mut ParticleSystem, stream: &WorldStream) {
 
 #[allow(clippy::too_many_arguments)]
 fn drive_particles(
-    time: Res<Time>,
+    frame_time: (
+        Res<Time>,
+        Option<Res<client_presentation::actor_publication::ActorFramePartialTick>>,
+    ),
     mut inbox: ResMut<ParticleInbox>,
     mut system: ResMut<ParticleSimulation>,
     mut frame: ResMut<ParticleGpuFrame>,
@@ -377,6 +382,7 @@ fn drive_particles(
     mut ambient: Local<AmbientParticles>,
     profiler: Option<Res<render::RuntimeStageProfiler>>,
 ) {
+    let (time, actor_alpha) = frame_time;
     // Timed inside the system: a span around it would also count systems ordered in between.
     let _timer = profiler
         .as_deref()
@@ -503,9 +509,19 @@ fn drive_particles(
             .and_then(|mining| mining.destroying_target());
         spawn_mining_cracks(&mut system, &routing, local_target, view.position);
     }
-    queue_actor_particles(stream, &mut system, &mut inbox.actor_commands);
+    queue_actor_particles(
+        stream,
+        &mut system,
+        &mut inbox.actor_commands,
+        actor_alpha.as_ref().map_or(0.0, |alpha| alpha.0),
+    );
     route_actor_particles(&mut system, &mut inbox.actor_commands);
     follow_bound_emitters(&mut system, stream);
+    follow_actor_particles(
+        &mut system,
+        stream,
+        actor_alpha.as_ref().map_or(0.0, |alpha| alpha.0),
+    );
     update_particle_frame(&mut system, &mut frame, time.delta_secs(), &view, &world);
 }
 

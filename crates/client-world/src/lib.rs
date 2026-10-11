@@ -18,14 +18,14 @@ pub use action::{
 };
 pub use actor_animation::{
     ACTOR_SWING_TICKS, ActorAnimationStats, ActorAnimationVariables, ActorAnimationView,
-    ActorLifetimeId, ActorParticleController, ActorRenderFrame, ActorRenderLayers,
-    ActorRigSnapshot, AttachableAnimationInput, AttachableBoneParent, AttachableRigSnapshot,
-    AttachablesRuntime, BoneTransform, EntityRigId, HandPhase, ItemAnimationState, JavaHeldItem,
-    JavaMotion, JavaRetargetCache, LocalSwingMotionSample, LocalSwingProgress,
-    MAX_ACTOR_ACTION_HISTORY, MAX_CONTROLLER_TRANSITIONS_PER_TICK, MAX_MOLANG_OPS_PER_ACTOR_TICK,
-    MAX_MOLANG_OPS_PER_RENDER_FRAME, MAX_MOLANG_OPS_PER_WORLD_TICK, MAX_RUNTIME_BONES_PER_RIG,
-    MODEL_PART_ORIGIN_Y, RenderTextureLayer, ServerAnimationCompiler, SkinRenderLayer,
-    java_mounted_body_yaw, java_walked_distance,
+    ActorLifetimeId, ActorParticleController, ActorParticleQueries, ActorRenderFrame,
+    ActorRenderLayers, ActorRigSnapshot, AttachableAnimationInput, AttachableBoneParent,
+    AttachableRigSnapshot, AttachablesRuntime, BoneTransform, EntityRigId, HandPhase,
+    ItemAnimationState, JavaHeldItem, JavaMotion, JavaRetargetCache, LocalSwingMotionSample,
+    LocalSwingProgress, MAX_ACTOR_ACTION_HISTORY, MAX_CONTROLLER_TRANSITIONS_PER_TICK,
+    MAX_MOLANG_OPS_PER_ACTOR_TICK, MAX_MOLANG_OPS_PER_RENDER_FRAME, MAX_MOLANG_OPS_PER_WORLD_TICK,
+    MAX_RUNTIME_BONES_PER_RIG, MODEL_PART_ORIGIN_Y, RenderTextureLayer, ServerAnimationCompiler,
+    SkinRenderLayer, java_mounted_body_yaw, java_walked_distance,
 };
 pub use actor_store::{
     ActorDamageState, ActorFluidProbe, ActorHitBoxes, ActorPickup, ActorPose, ActorShadowCaster,

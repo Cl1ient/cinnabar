@@ -24,16 +24,22 @@ const EFFECT: &str = r##"{"particle_effect":{"description":{"identifier":"test:o
  "minecraft:particle_appearance_billboard":{"size":[0.1,0.1]},
  "minecraft:particle_appearance_tinting":{"color":"#FFFF9200"}}}}"##;
 
+/// Creates the authored actor and its default controller fixture.
 fn stream() -> WorldStream {
+    stream_with_controller(CONTROLLER)
+}
+
+/// Compiles an authored actor with an alternate controller and a fixed root locator.
+fn stream_with_controller(controller: &str) -> WorldStream {
     let mut png = Vec::new();
     image::RgbaImage::from_pixel(1, 1, image::Rgba([255; 4]))
         .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .unwrap();
     let compiled = pack_compiler::compile_actor_pack(vec![
         ("entity/test.json".into(), ENTITY.as_bytes().to_vec()),
-        ("animation_controllers/test.json".into(), CONTROLLER.as_bytes().to_vec()),
+        ("animation_controllers/test.json".into(), controller.as_bytes().to_vec()),
         ("animations/test.json".into(), br#"{"format_version":"1.8.0","animations":{"animation.test.idle":{"loop":true,"bones":{"root":{"rotation":[0,0,0]}}}}}"#.to_vec()),
-        ("models/entity/test.json".into(), br#"{"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":"geometry.particle_actor","texture_width":16,"texture_height":16},"bones":[{"name":"root","pivot":[0,0,0],"cubes":[{"origin":[-4,0,-4],"size":[8,16,8],"uv":[0,0]}]}]}]}"#.to_vec()),
+        ("models/entity/test.json".into(), br#"{"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":"geometry.particle_actor","texture_width":16,"texture_height":16},"bones":[{"name":"root","pivot":[0,0,0],"locators":{"tip":[16,16,0]},"cubes":[{"origin":[-4,0,-4],"size":[8,16,8],"uv":[0,0]}]}]}]}"#.to_vec()),
         ("render_controllers/test.json".into(), br#"{"format_version":"1.8.0","render_controllers":{"controller.render.test.particle":{"geometry":"Geometry.default","materials":[{"*":"Material.default"}],"textures":["Texture.default"]}}}"#.to_vec()),
         ("textures/entity/particle_actor.png".into(), png),
     ]).unwrap().unwrap();
@@ -90,6 +96,7 @@ fn stream() -> WorldStream {
     stream
 }
 
+/// Publishes a variant update and completes its animation evaluation.
 fn variant(stream: &mut WorldStream, sequence: u64, value: i32) {
     stream
         .submit(
@@ -121,7 +128,7 @@ fn authored_controller_particles_reach_draws_once_and_stop_on_state_exit() {
         .actor_bindings
         .insert_controllers(&serde_json::from_str(CONTROLLER).unwrap());
     let mut queue = Vec::new();
-    queue_actor_particles(&stream, &mut system, &mut queue);
+    queue_actor_particles(&stream, &mut system, &mut queue, 0.0);
     route_actor_particles(&mut system, &mut queue);
     assert_eq!(system.emitter_count(), 1);
     system.tick(0.2, &EmptyWorld);
@@ -135,10 +142,10 @@ fn authored_controller_particles_reach_draws_once_and_stop_on_state_exit() {
     let draws = system.build_draw(&view, &EmptyWorld);
     assert!(!draws.opaque.is_empty());
     assert_eq!(draws.opaque[0].color, [1.0, 146.0 / 255.0, 0.0, 1.0]);
-    queue_actor_particles(&stream, &mut system, &mut queue);
+    queue_actor_particles(&stream, &mut system, &mut queue, 0.0);
     assert!(queue.is_empty(), "holding a state starts no extra emitter");
     variant(&mut stream, 2, 1);
-    queue_actor_particles(&stream, &mut system, &mut queue);
+    queue_actor_particles(&stream, &mut system, &mut queue, 0.0);
     assert!(matches!(queue.as_slice(), [ActorParticleCommand::Stop(_)]));
     route_actor_particles(&mut system, &mut queue);
     let count = system.live_particles();
@@ -149,7 +156,7 @@ fn authored_controller_particles_reach_draws_once_and_stop_on_state_exit() {
         "state exit stops new emission"
     );
     variant(&mut stream, 3, 0);
-    queue_actor_particles(&stream, &mut system, &mut queue);
+    queue_actor_particles(&stream, &mut system, &mut queue, 0.0);
     assert!(matches!(
         queue.as_slice(),
         [ActorParticleCommand::Start(_, _)]
@@ -160,4 +167,88 @@ fn authored_controller_particles_reach_draws_once_and_stop_on_state_exit() {
         2,
         "reentry starts a new emitter while prior particles expire"
     );
+}
+
+#[test]
+fn controller_annotations_spawn_at_the_sampled_locator_and_initialize_billboard_size() {
+    let controller = CONTROLLER.replace(
+        r#"{"effect":"idle"}"#,
+        r#"{"effect":"idle","locator":"tip","pre_effect_script":"v.size = query.variant + 2;"}"#,
+    );
+    let controller = controller.replace("query.variant != 0", "query.variant < 0");
+    let mut stream = stream_with_controller(&controller);
+    variant(&mut stream, 2, 4);
+    let mut system = ParticleSystem::default();
+    let effect = EFFECT.replace("[0.1,0.1]", r#"["v.size",0.1]"#);
+    assert!(system.register_effect(effect.as_bytes()));
+    system
+        .actor_bindings
+        .insert_entity(&serde_json::from_str(ENTITY).unwrap());
+    system
+        .actor_bindings
+        .insert_controllers(&serde_json::from_str(&controller).unwrap());
+    let mut queue = Vec::new();
+    queue_actor_particles(&stream, &mut system, &mut queue, 0.5);
+    let [ActorParticleCommand::Start(_, request)] = queue.as_slice() else {
+        panic!("annotated controller effect must be admitted");
+    };
+    assert_eq!(request.position, [1.0, 1.0, 0.0]);
+    assert!(request.initialization.is_some());
+    assert!(request.actor_attachment.is_some());
+    route_actor_particles(&mut system, &mut queue);
+    system.tick(0.2, &EmptyWorld);
+    let view = ParticleView {
+        position: [0.0, 0.0, 4.0],
+        right: [1.0, 0.0, 0.0],
+        up: [0.0, 1.0, 0.0],
+        forward: [0.0, 0.0, -1.0],
+        half_diagonal: 1.0,
+    };
+    let draws = system.build_draw(&view, &EmptyWorld);
+    assert!(!draws.opaque.is_empty());
+    assert_eq!(&draws.opaque[0].center_light[..3], &[1.0, 1.0, 0.0]);
+    assert!(
+        draws.opaque[0].axis_x[0] > 2.9,
+        "initialization must feed the particle size expression"
+    );
+}
+
+#[test]
+fn unbound_controller_initialization_uses_the_locator_without_actor_query_context() {
+    let controller = CONTROLLER.replace(
+        r#"{"effect":"idle"}"#,
+        r#"{"effect":"idle","locator":"tip","bind_to_actor":false,"pre_effect_script":"v.size = query.variant + 2;"}"#,
+    ).replace("query.variant != 0", "query.variant < 0");
+    let mut stream = stream_with_controller(&controller);
+    variant(&mut stream, 2, 4);
+    let mut system = ParticleSystem::default();
+    let effect = EFFECT.replace("[0.1,0.1]", r#"["v.size",0.1]"#);
+    assert!(system.register_effect(effect.as_bytes()));
+    system
+        .actor_bindings
+        .insert_entity(&serde_json::from_str(ENTITY).unwrap());
+    system
+        .actor_bindings
+        .insert_controllers(&serde_json::from_str(&controller).unwrap());
+    let mut queue = Vec::new();
+    queue_actor_particles(&stream, &mut system, &mut queue, 0.5);
+    let [ActorParticleCommand::Start(_, request)] = queue.as_slice() else {
+        panic!("unbound annotated effect must be admitted");
+    };
+    assert_eq!(request.position, [1.0, 1.0, 0.0]);
+    assert!(request.basis.is_none());
+    assert!(request.actor_attachment.is_none());
+    assert!(request.queries.actor.is_none());
+    route_actor_particles(&mut system, &mut queue);
+    system.tick(0.2, &EmptyWorld);
+    let view = ParticleView {
+        position: [0.0, 0.0, 4.0],
+        right: [1.0, 0.0, 0.0],
+        up: [0.0, 1.0, 0.0],
+        forward: [0.0, 0.0, -1.0],
+        half_diagonal: 1.0,
+    };
+    let draws = system.build_draw(&view, &EmptyWorld);
+    assert!(!draws.opaque.is_empty());
+    assert!((draws.opaque[0].axis_x[0] - 1.0).abs() < 1e-5);
 }

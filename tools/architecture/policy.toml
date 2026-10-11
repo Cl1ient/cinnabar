@@ -251,7 +251,7 @@ forbidden_transitive_dependencies = ["app", "bedrock-client", "render", "protoco
 [[crates]]
 name = "particles"
 path = "crates/particles"
-allowed_dependencies = ["assets"]
+allowed_dependencies = ["assets", "render-model"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "render", "protocol", "client-world", "chunk-pipeline", "bevy", "bevy_*", "wgpu*"]
 

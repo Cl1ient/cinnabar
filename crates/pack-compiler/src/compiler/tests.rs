@@ -8,6 +8,8 @@ use assets::{RegistryRecord, TILE_SIZE, VisualKind, VisualSupport};
 
 #[path = "tests/anvil.rs"]
 mod anvil;
+#[path = "tests/brewing_stand.rs"]
+mod brewing_stand;
 #[path = "tests/candle_cake.rs"]
 mod candle_cake;
 #[path = "tests/coral.rs"]

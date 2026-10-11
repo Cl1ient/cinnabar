@@ -167,7 +167,13 @@ impl CullSlots {
 
     fn adjust_bounds(&mut self, draws: [u32; STREAM_COUNT], add: bool) {
         for (bound, draws) in self.draw_bounds.iter_mut().zip(draws) {
-            *bound = if add { *bound + draws } else { *bound - draws };
+            debug_assert!(add || *bound >= draws, "cull draw bounds lost a record");
+            // A wrapped bound would become a near-`u32::MAX` indirect draw count.
+            *bound = if add {
+                bound.saturating_add(draws)
+            } else {
+                bound.saturating_sub(draws)
+            };
         }
     }
 

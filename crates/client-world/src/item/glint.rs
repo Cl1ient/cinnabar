@@ -48,10 +48,10 @@ mod tests {
         entry.network_id = id;
         entry.identifier = Arc::from("custom:shared_icon");
         entry.component_based = true;
-        entry.components = Some(protocol::ItemComponents {
+        entry.components = Some(Arc::new(protocol::ItemComponents {
             glint: enabled,
             ..Default::default()
-        });
+        }));
         entry
     }
 
@@ -69,7 +69,7 @@ mod tests {
         assert_eq!(store.item_glint(10_001).enabled(), Some(false));
         assert_eq!(store.item_glint(10_002), ItemGlint::Unresolved);
         let mut malformed = entry(10_001, None);
-        malformed.components.as_mut().unwrap().glint_declared = true;
+        Arc::make_mut(malformed.components.as_mut().unwrap()).glint_declared = true;
         assert!(store.apply_registry(protocol::ItemRegistryEvent {
             entries: vec![malformed].into()
         }));

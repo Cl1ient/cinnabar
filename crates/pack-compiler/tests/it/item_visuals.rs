@@ -45,7 +45,7 @@ fn independent_retail_inventory_has_explicit_compiled_glint_facts() {
     );
     let decoded =
         assets::RuntimeEntityAssets::decode(&encode_entity_blob(&compiled).unwrap()).unwrap();
-    assert_eq!(decoded.item_visuals(), &compiled.item_visuals);
+    assert_eq!(decoded.item_visuals(), compiled.item_visuals.as_ref());
 }
 
 #[test]

@@ -200,7 +200,7 @@ pub(crate) fn advance_actor_frame(
                 client_presentation::actor_sampling::sample_actor_world_state(stream, collisions);
             }
         },
-        |stream, partial_tick| {
+        |stream, _partial_tick| {
             let consume = ui.as_deref().and_then(|_| {
                 client_interaction::item_use::selection::consume_ticks(&player, stream)
             });
@@ -215,7 +215,7 @@ pub(crate) fn advance_actor_frame(
                         movement
                             .as_deref()
                             .map_or(0, |movement| movement.completed_tick()),
-                        partial_tick,
+                        physics.tick_alpha(),
                     )
                 });
             (consume, animation)

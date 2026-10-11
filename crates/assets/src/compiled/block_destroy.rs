@@ -2,10 +2,17 @@
 
 use std::{collections::BTreeMap, sync::OnceLock};
 
+use sha2::{Digest, Sha256};
+
 /// The fingerprint input for the generated destroy source.
 pub const DESTROY_SOURCE_PATH: &str = "crates/assets/data/block-destroy-v2193.tsv";
 /// The single generated hardness and provisional tool source.
 pub const DESTROY_SOURCE: &str = include_str!("../../data/block-destroy-v2193.tsv");
+
+/// Hashes destroy source text with LF endings for carrier encoding and admission.
+pub(crate) fn destroy_source_sha256(source: &str) -> [u8; 32] {
+    Sha256::digest(source.replace("\r\n", "\n").as_bytes()).into()
+}
 
 /// Tool families that change destroy speed or harvestability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,6 +229,17 @@ fn tool_set(value: &str) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn destroy_source_identity_ignores_checkout_line_endings() {
+        let lf = DESTROY_SOURCE.replace("\r\n", "\n");
+        let crlf = lf.replace('\n', "\r\n");
+        let expected: [u8; 32] = Sha256::digest(lf.as_bytes()).into();
+        assert_eq!(destroy_source_sha256(&lf), expected);
+        assert_eq!(destroy_source_sha256(&crlf), expected);
+        assert_eq!(destroy_source_sha256(&lf.replacen('\n', "\r\n", 1)), expected);
+        assert_ne!(destroy_source_sha256(&format!("{lf}changed")), expected);
+    }
 
     #[test]
     fn destroy_records_keep_unknown_distinct_and_reject_invalid_facts() {

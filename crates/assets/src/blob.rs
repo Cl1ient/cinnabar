@@ -143,8 +143,8 @@ pub fn encode_blob(compiled: &CompiledAssets) -> Result<Box<[u8]>, AssetError> {
     for offset in offsets {
         push_offset(&mut bytes, offset, "section offset")?;
     }
-    bytes.extend_from_slice(&Sha256::digest(
-        crate::compiled::block_destroy::DESTROY_SOURCE.as_bytes(),
+    bytes.extend_from_slice(&crate::compiled::block_destroy::destroy_source_sha256(
+        crate::compiled::block_destroy::DESTROY_SOURCE,
     ));
     debug_assert_eq!(bytes.len(), HEADER_BYTES);
 

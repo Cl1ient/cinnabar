@@ -123,7 +123,6 @@ mod tests {
             animation: assets::NO_ANIMATION,
             variant: 0,
             destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
-            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 

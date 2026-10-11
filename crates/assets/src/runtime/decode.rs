@@ -1,5 +1,3 @@
-use sha2::{Digest, Sha256};
-
 use super::RuntimeAssets;
 use crate::model::{
     MODEL_QUAD_FLAG_TWO_SIDED, covered_grass_variant_is_valid, model_template_flags_are_valid,
@@ -86,7 +84,9 @@ fn decode_provenance(bytes: &[u8]) -> Result<BlobProvenance, AssetError> {
             .expect("fixed identity slice within the validated header")
     };
     if bytes[crate::blob::DESTROY_SHA_OFFSET..HEADER_BYTES]
-        != Sha256::digest(crate::compiled::block_destroy::DESTROY_SOURCE.as_bytes())[..]
+        != crate::compiled::block_destroy::destroy_source_sha256(
+            crate::compiled::block_destroy::DESTROY_SOURCE,
+        )
     {
         return Err(invalid("compiled destroy source identity mismatch"));
     }

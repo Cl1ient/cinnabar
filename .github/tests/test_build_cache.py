@@ -4,6 +4,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -188,6 +190,75 @@ class RetentionTests(unittest.TestCase):
         ]
         self.assertEqual(cache.superseded(entries, "linux-current", "linux-", "refs/heads/dev"), [1])
         self.assertEqual(cache.superseded(entries, "linux-unsaved", "linux-", "refs/heads/dev"), [])
+
+    def test_saving_replaces_every_entry_in_its_bucket_first(self):
+        """Old and new entries never coexist, so a save cannot push the total over the limit."""
+        entries = [
+            {"id": 1, "key": "linux-old", "ref": "refs/heads/dev"},
+            {"id": 2, "key": "linux-older", "ref": "refs/heads/dev"},
+            {"id": 3, "key": "macos-old", "ref": "refs/heads/dev"},
+            {"id": 4, "key": "linux-old", "ref": "refs/pull/1/merge"},
+        ]
+        self.assertEqual(cache.replaced(entries, "linux-", "refs/heads/dev"), [1, 2])
+
+
+class BudgetTests(unittest.TestCase):
+    """Every saved bucket has a budget, and the GitHub cache budgets fit its limit together."""
+
+    def test_cache_budgets_fit_the_repository_limit(self):
+        budgets = json.loads(cache.BUDGETS.read_text())
+        self.assertLessEqual(sum(budgets["cache"].values()), cache.CACHE_LIMIT)
+        for store in ("cache", "artifact"):
+            for bucket, size in budgets[store].items():
+                self.assertTrue(bucket.startswith("build-v1-") and bucket.endswith("-"), bucket)
+                self.assertGreater(size, 0, bucket)
+
+    def test_release_caches_stay_out_of_the_shared_cache(self):
+        """Rarely used release entries would be the first evicted from the shared cache."""
+        budgets = json.loads(cache.BUDGETS.read_text())
+        self.assertTrue(all(bucket.endswith("-ci-") for bucket in budgets["cache"]))
+        self.assertTrue(all(bucket.endswith("-release-") for bucket in budgets["artifact"]))
+
+    def test_unbudgeted_buckets_cannot_be_saved(self):
+        with self.assertRaisesRegex(cache.BudgetError, "has no cache budget"):
+            cache.budget("cache", "build-v1-rust-Plan9-X64-ci-")
+
+
+class ArchiveTests(unittest.TestCase):
+    """Artifact caches must restore paths, timestamps and modes as the cache action does."""
+
+    def test_round_trip_restores_exact_timestamps_links_and_read_only_directories(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, archive = Path(temp) / "runner", Path(temp) / "cache.tar.gz"
+            target = source / "target/release"
+            (target / "deps").mkdir(parents=True)
+            (target / "deps/libdemo.rlib").write_bytes(b"rlib")
+            os.link(target / "deps/libdemo.rlib", target / "libdemo.rlib")
+            os.utime(target / "deps/libdemo.rlib", ns=(1_700_000_000_123_456_789,) * 2)
+            (source / "target/.ci-inputs.json").write_text("{}")
+            module = source / "home/registry/src/index/zstd-sys-2.0.0"
+            module.mkdir(parents=True)
+            (module / "build.rs").write_text("fn main() {}")
+            (source / "home/registry/src/index/serde-1.0.0").mkdir()
+            module.chmod(0o555)
+            paths = [str(target), str(source / "target/.ci-inputs.json"),
+                     str(source / "home/registry/src/*/*-sys-*")]
+            cache.pack(paths, archive)
+            module.chmod(0o755)
+            shutil.rmtree(source)
+
+            with open(archive, "rb") as stream:
+                cache.unpack(paths, stream)
+
+            restored = target / "deps/libdemo.rlib"
+            self.assertEqual(restored.read_bytes(), b"rlib")
+            self.assertAlmostEqual(restored.stat().st_mtime, 1_700_000_000.123456789, places=5)
+            self.assertEqual(restored.stat().st_ino, (target / "libdemo.rlib").stat().st_ino)
+            self.assertEqual((source / "target/.ci-inputs.json").read_text(), "{}")
+            self.assertEqual((module / "build.rs").read_text(), "fn main() {}")
+            self.assertEqual(stat.S_IMODE(module.stat().st_mode), 0o555)
+            self.assertFalse((source / "home/registry/src/index/serde-1.0.0").exists())
+            module.chmod(0o755)
 
 
 if __name__ == "__main__":

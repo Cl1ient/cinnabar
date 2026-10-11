@@ -323,9 +323,8 @@ fn route_notice(system: &mut ParticleSystem, routing: &Routing<'_>, notice: &Act
     }
 }
 
-/// How far ahead of and below the first-person camera the local player's crumbs scatter, so
-/// they show around the raised food as they do in vanilla's first person. Provisional: no
-/// version-matched witness of the native first-person spawn point is recorded yet.
+/// Provisional offsets place local eating crumbs ahead of and below the first-person camera.
+/// Exact visual parity remains incomplete.
 const FIRST_PERSON_BITE_AHEAD: f32 = 0.45;
 const FIRST_PERSON_BITE_BELOW: f32 = 0.15;
 

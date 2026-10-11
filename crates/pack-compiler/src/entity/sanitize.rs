@@ -107,7 +107,10 @@ fn sanitize_face(face: &mut Value) -> bool {
 /// Keeps 3-vector locators and object locators reduced to their known, well-typed fields.
 fn sanitize_locators(locators: &mut Map<String, Value>) {
     locators.retain(|name, locator| {
-        if name.is_empty() {
+        if name.is_empty()
+            || name.len() > assets::MAX_ENTITY_GEOMETRY_NAME_BYTES
+            || name.chars().any(char::is_control)
+        {
             return false;
         }
         if locator.is_array() {
@@ -324,10 +327,18 @@ mod tests {
                     "wing": [4, 5, 6],
                     "short": [1, 2],
                     "scalar": 3,
-                    "": [0, 0, 0]
+                    "": [0, 0, 0],
+                    "bad\u{7}name": [0, 0, 0]
                 }}]
             }]
         });
+        root["minecraft:geometry"][0]["bones"][0]["locators"]
+            .as_object_mut()
+            .unwrap()
+            .insert(
+                "x".repeat(assets::MAX_ENTITY_GEOMETRY_NAME_BYTES + 1),
+                json!([0, 0, 0]),
+            );
         assert!(sanitize_geometry(&mut root));
         let locators = &root["minecraft:geometry"][0]["bones"][0]["locators"];
         assert_eq!(

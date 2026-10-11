@@ -159,14 +159,7 @@ fn actor_queries(
     attachment: &particles::actor::ActorAttachment,
     alpha: f32,
 ) -> particles::Queries {
-    let context = rig.map(|rig| {
-        rig.particle_queries(
-            actor,
-            alpha,
-            (rig.completed_tick.saturating_sub(attachment.entered_tick) as f32 + alpha)
-                / world::TICKS_PER_SECOND as f32,
-        )
-    });
+    let context = rig.map(|rig| rig.particle_queries(actor, alpha, attachment.entered_tick));
     let query = |name| context.as_ref().map_or(0.0, |context| context.query(name));
     particles::Queries {
         is_in_water: query("is_in_water"),

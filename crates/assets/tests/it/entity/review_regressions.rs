@@ -524,3 +524,36 @@ fn review_molang_rejects_unbounded_backward_jumps() {
     compiled.molang_expressions[0].max_stack = 0;
     assert!(compiled.validate().is_err());
 }
+
+#[test]
+fn compiled_item_facts_admit_only_hash_checked_missing_retail_visuals() {
+    let mut compiled = carrier_v4_fixture();
+    let source = compiled.item_visuals[0].source as usize;
+    compiled.sources[source].path = assets::ITEM_ARMOUR_SOURCE_PATH.into();
+    compiled.sources[source].source_bytes = assets::ITEM_ARMOUR_SOURCE_BYTES.len() as u32;
+    compiled.sources[source].source_sha256 =
+        Sha256::digest(assets::ITEM_ARMOUR_SOURCE_BYTES).into();
+    compiled.item_visuals[0].route = item::ItemVisualDefinitionRoute::Missing;
+    let blob = entity::encode_entity_blob(&compiled).unwrap();
+    RuntimeEntityAssets::decode(&blob).unwrap();
+
+    for case in ["hash", "size", "custom", "metadata", "visual"] {
+        let mut invalid = compiled.clone();
+        match case {
+            "hash" => invalid.sources[source].source_sha256[0] ^= 1,
+            "size" => invalid.sources[source].source_bytes += 1,
+            "custom" => invalid.item_visuals[0].key.identifier = "fixture:unbound".into(),
+            "metadata" => invalid.item_visuals[0].key.metadata = 1,
+            "visual" => {
+                invalid.item_visuals[0].route = item::ItemVisualDefinitionRoute::BlockItem {
+                    block_visual: item::BlockVisualId(7),
+                };
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            invalid.validate().is_err(),
+            "accepted invalid facts source: {case}"
+        );
+    }
+}

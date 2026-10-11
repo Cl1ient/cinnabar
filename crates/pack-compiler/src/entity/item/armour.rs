@@ -23,9 +23,11 @@ struct ArmourEntry {
 /// Reads the single protection source once while compiling item definitions.
 pub(super) fn reviewed() -> Result<BTreeMap<Box<str>, ItemArmour>, AssetError> {
     let table: ArmourTable =
-        serde_json::from_slice(super::ARMOUR_SOURCE_BYTES).map_err(|source| AssetError::Json {
-            path: "crates/assets/data/item-armour-v2193.json".into(),
-            source,
+        serde_json::from_slice(assets::ITEM_ARMOUR_SOURCE_BYTES).map_err(|source| {
+            AssetError::Json {
+                path: "crates/assets/data/item-armour-v2193.json".into(),
+                source,
+            }
         })?;
     if table.schema != 1 || table.protocol != super::ROUTE_PROTOCOL {
         return Err(invalid(

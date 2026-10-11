@@ -206,11 +206,11 @@ pub use icon::{
     encode_icon_catalog, encode_icon_catalog_with_block_sheets, encode_icon_catalog_with_blocks,
 };
 pub use item::{
-    BlockVisualId, ItemActionPhase, ItemArmour, ItemArmourSlot, ItemDisplayScalar,
-    ItemDisplayTransform, ItemIconRef, ItemStackIdentity, ItemStackIdentityError,
-    ItemTextureReference, ItemVisualAlias, ItemVisualDefinition, ItemVisualDefinitionRoute,
-    ItemVisualId, ItemVisualKey, ItemVisualRoute, MAX_BLOCK_VISUALS, MAX_ITEM_IDENTIFIER_BYTES,
-    MAX_ITEM_VISUAL_ALIASES, MAX_ITEM_VISUALS,
+    BlockVisualId, ITEM_ARMOUR_SOURCE_BYTES, ITEM_ARMOUR_SOURCE_PATH, ItemActionPhase, ItemArmour,
+    ItemArmourSlot, ItemDisplayScalar, ItemDisplayTransform, ItemIconRef, ItemStackIdentity,
+    ItemStackIdentityError, ItemTextureReference, ItemVisualAlias, ItemVisualDefinition,
+    ItemVisualDefinitionRoute, ItemVisualId, ItemVisualKey, ItemVisualRoute, MAX_BLOCK_VISUALS,
+    MAX_ITEM_IDENTIFIER_BYTES, MAX_ITEM_VISUAL_ALIASES, MAX_ITEM_VISUALS,
 };
 pub use lang::{
     LANG_CARRIER_MAGIC, LANG_CARRIER_VERSION, LangCatalogError, LangEntry, MAX_LANG_CARRIER_BYTES,

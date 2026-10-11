@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+pub const ITEM_ARMOUR_SOURCE_PATH: &str = "registry/item-armour-v2193.json";
+pub const ITEM_ARMOUR_SOURCE_BYTES: &[u8] = include_bytes!("../../data/item-armour-v2193.json");
+
 /// Armour facts admitted for an item; unresolved data is never a zero-value claim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "support", deny_unknown_fields)]

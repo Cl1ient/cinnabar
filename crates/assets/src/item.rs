@@ -4,7 +4,7 @@ use thiserror::Error;
 use crate::AssetError;
 
 mod armour;
-pub use armour::{ItemArmour, ItemArmourSlot};
+pub use armour::{ITEM_ARMOUR_SOURCE_BYTES, ITEM_ARMOUR_SOURCE_PATH, ItemArmour, ItemArmourSlot};
 
 pub const MAX_ITEM_VISUALS: usize = 16_384;
 pub const MAX_ITEM_VISUAL_ALIASES: usize = 65_536;

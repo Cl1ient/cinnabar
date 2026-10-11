@@ -21,9 +21,7 @@ mod spawn_eggs;
 
 pub(super) const BLOCK_ITEM_ROUTES: &[u8] =
     include_bytes!("../../../assets/data/block-item-routes-v2193.json");
-pub(super) const ARMOUR_SOURCE_PATH: &str = "registry/item-armour-v2193.json";
-pub(super) const ARMOUR_SOURCE_BYTES: &[u8] =
-    include_bytes!("../../../assets/data/item-armour-v2193.json");
+
 const BLOCK_REGISTRY: &[u8] = include_bytes!("../../../assets/data/block-registry-v2193.bin");
 const ROUTE_SCHEMA: u32 = 1;
 const ROUTE_PROTOCOL: u32 = 2193;
@@ -270,7 +268,7 @@ pub(super) fn compile(
         )?;
     }
     let facts_source = *source_indices
-        .get(ARMOUR_SOURCE_PATH)
+        .get(assets::ITEM_ARMOUR_SOURCE_PATH)
         .ok_or_else(|| invalid("compiled item facts source is absent"))?;
     let retail = std::str::from_utf8(item_bindings::RETAIL_ITEMS)
         .map_err(|_| invalid("retail item list is not UTF-8"))?;

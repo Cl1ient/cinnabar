@@ -152,8 +152,8 @@ fn admitted_flower_material_emits_a_particle_draw_instance() {
         allowed,
         "the admitted flower material allows foliage particles"
     );
-    assert_eq!(draw.blend.len(), 1);
-    assert_eq!(draw.blend[0].color, [0.3, 0.7, 0.2, 1.0]);
+    assert_eq!(draw.opaque.len(), 1);
+    assert_eq!(draw.opaque[0].color, [0.3, 0.7, 0.2, 1.0]);
 }
 
 /// Saves production particle instances for the optional original-art CPU preview.

@@ -81,7 +81,7 @@ impl CiPlan {
         let tests = if self.selection == Selection::Workspace {
             "all()".into()
         } else {
-            filterset(affected.iter().map(|package| package.name.as_str()))
+            filterset(affected.iter().map(|package| package.name.as_str()), false)
         };
         let mut outputs = format!(
             "scope={scope}\nmacos={}\nwindows={}\nnames={}\ntests={tests}\n",
@@ -98,18 +98,19 @@ impl CiPlan {
                 .iter()
                 .filter(|package| package.platforms.iter().any(|name| name == platform))
                 .map(|package| package.name.as_str());
-            outputs.push_str(&format!("{platform}_tests={}\n", filterset(declared)));
+            outputs.push_str(&format!("{platform}_tests={}\n", filterset(declared, true)));
         }
         outputs
     }
 }
 
-/// Joins nextest `package(=name)` matchers, limiting the client to its library tests.
-/// Returns `none()` for no names, which keeps workflow expressions from treating it as unset.
-fn filterset<'a>(names: impl Iterator<Item = &'a str>) -> String {
+/// Joins nextest `package(=name)` matchers; `client_library` limits the client to its library
+/// tests, as platform jobs do. Returns `none()` for no names, which workflow expressions would
+/// otherwise treat as unset.
+fn filterset<'a>(names: impl Iterator<Item = &'a str>, client_library: bool) -> String {
     let matchers = names
         .map(|name| {
-            if name == CLIENT_PACKAGE {
+            if client_library && name == CLIENT_PACKAGE {
                 format!("(package(={name}) & kind(lib))")
             } else {
                 format!("package(={name})")
@@ -224,7 +225,7 @@ mod tests {
         assert_eq!(
             outputs,
             "scope=packages\nmacos=true\nwindows=true\nnames=render bedrock-client\n\
-             tests=package(=render) | (package(=bedrock-client) & kind(lib))\n\
+             tests=package(=render) | package(=bedrock-client)\n\
              macos_tests=package(=render) | (package(=bedrock-client) & kind(lib))\n\
              windows_tests=package(=render) | (package(=bedrock-client) & kind(lib))\n"
         );
@@ -242,6 +243,21 @@ mod tests {
                 "\nnames=devtool\ntests=package(=devtool)\nmacos_tests=none()\nwindows_tests=none()\n"
             ),
             "{leaf}"
+        );
+    }
+
+    /// The client's integration tests skip without carriers, so Linux still runs them.
+    #[test]
+    fn linux_tests_keep_client_integration_tests() {
+        let packages = workspace();
+        let outputs = plan_ci(&["app/tests/client_logging.rs"], &packages).outputs(&packages);
+        assert!(
+            outputs.contains("\ntests=package(=bedrock-client)\n"),
+            "{outputs}"
+        );
+        assert!(
+            outputs.contains("\nmacos_tests=(package(=bedrock-client) & kind(lib))\n"),
+            "{outputs}"
         );
     }
 

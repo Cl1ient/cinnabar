@@ -271,6 +271,7 @@ jobs:
           sudo apt-get install --yes libwayland-dev libxkbcommon-dev libasound2-dev libudev-dev
       # Builds the whole workspace, which the cache keeps fresh, and runs only affected tests.
       - name: Test affected Rust packages
+        shell: bash
         run: cargo nextest run --workspace -E "$TESTS" --locked --no-fail-fast --no-tests=warn ${{ runner.os == 'Linux' && '--timings' || '' }}
       - name: Upload Linux test build timings
         if: ${{ !cancelled() && runner.os == 'Linux' }}

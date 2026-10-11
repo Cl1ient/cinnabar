@@ -245,6 +245,7 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         rig_animations: Box::new([]),
         rig_controllers: Box::new([]),
         item_visuals: vec![ItemVisualDefinition {
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:apple"),
@@ -435,6 +436,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
     let base = compiled.item_visuals[0].clone();
     compiled.item_visuals = vec![
         ItemVisualDefinition {
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:air"),
@@ -443,6 +445,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
         },
         base.clone(),
         ItemVisualDefinition {
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:missing"),
@@ -450,6 +453,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
             ..base.clone()
         },
         ItemVisualDefinition {
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:stone"),
@@ -497,6 +501,7 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     let mut compiled = item_carrier_fixture();
     compiled.item_visuals = (0..MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key(format!("minecraft:item_{index:05}").into_boxed_str()),
@@ -507,6 +512,7 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     assert!(compiled.validate().is_ok());
     compiled.item_visuals = (0..=MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key(format!("minecraft:item_{index:05}").into_boxed_str()),

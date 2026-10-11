@@ -761,10 +761,11 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     .insert_resource(render_scene::ActorArtworkResource(actor_artwork))
     .insert_resource(ClientWorld::new_with_entity_assets(
         Arc::clone(&runtime_assets),
-        entity_runtime,
+        Arc::clone(&entity_runtime),
     ))
     .insert_resource({
         let mut ui_runtime = UiRuntime::new(0);
+        ui_runtime.set_item_fuel_catalog(Arc::clone(&entity_runtime));
         if let Some(address) = &args.address {
             ui_runtime.experiences.select_destination(address);
         }

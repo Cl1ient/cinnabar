@@ -26,6 +26,10 @@ pub struct ItemComponents {
     pub use_movement_modifier_bits: Option<u64>,
     /// Authored use-category timer, excluding attack cooldowns.
     pub use_cooldown: Option<ItemUseCooldown>,
+    /// Parsed fuel duration; missing or malformed declarations stay absent.
+    pub fuel_duration_ticks: Option<u32>,
+    /// Whether fuel was declared, including malformed component values.
+    pub fuel_declared: bool,
     /// Attack and kinetic presentation facts, when this item declares them.
     pub attack: Option<super::ItemAttackTiming>,
     /// `item_texture.json` key from `minecraft:icon`.
@@ -159,6 +163,11 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
                     .and_then(duration_ticks)?,
             })
         }),
+        fuel_duration_ticks: component("minecraft:fuel")
+            .and_then(|fuel| fuel.field("duration"))
+            .and_then(Nbt::number)
+            .and_then(duration_ticks),
+        fuel_declared: component("minecraft:fuel").is_some(),
         attack: super::attack::parse_attack(components),
         icon: super::icons::icon_key(bytes),
         display_name: text(
@@ -323,6 +332,42 @@ mod tests {
     }
 
     // Dragonfly's custom-item layout: properties nested under item_properties.
+    #[test]
+    fn fuel_duration_distinguishes_zero_missing_and_malformed_data() {
+        let missing = parse_components(&compound("", &[compound("components", &[])])).unwrap();
+        assert_eq!(missing.fuel_duration_ticks, None);
+        assert!(!missing.fuel_declared);
+        for (seconds, expected) in [
+            (2.0f32, Some(40)),
+            (0.0, Some(0)),
+            (-1.0, None),
+            (f32::NAN, None),
+        ] {
+            let mut duration = name(5, "duration");
+            duration.extend(seconds.to_le_bytes());
+            let components = parse_components(&compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound("minecraft:fuel", &[duration])],
+                )],
+            ))
+            .unwrap();
+            assert_eq!(components.fuel_duration_ticks, expected);
+            assert!(components.fuel_declared);
+        }
+        let malformed = parse_components(&compound(
+            "",
+            &[compound(
+                "components",
+                &[compound("minecraft:fuel", &[string("duration", "wrong")])],
+            )],
+        ))
+        .unwrap();
+        assert_eq!(malformed.fuel_duration_ticks, None);
+        assert!(malformed.fuel_declared);
+    }
+
     #[test]
     fn wearable_protection_retains_zero_and_rejects_invalid_or_missing_values() {
         for (value, expected) in [

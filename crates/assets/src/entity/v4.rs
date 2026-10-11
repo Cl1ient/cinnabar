@@ -518,6 +518,8 @@ pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Resu
         .map_err(|_| invalid("embedded default sprite bindings are invalid"))?;
     let binding_hash: [u8; 32] = Sha256::digest(DEFAULT_SPRITE_BINDINGS).into();
     let legacy_hash: [u8; 32] = Sha256::digest(LEGACY_ICON_ROUTES).into();
+    let durability_hash: [u8; 32] =
+        Sha256::digest(crate::item::durability::ITEM_DURABILITY_SOURCE_BYTES).into();
     let facts_hash: [u8; 32] = Sha256::digest(crate::item::armour::ITEM_ARMOUR_SOURCE_BYTES).into();
     let retail = include_str!("../../../protocol/data/retail_items_1_26_50.tsv")
         .lines()
@@ -535,6 +537,13 @@ pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Resu
                 || source.source_sha256 != facts_hash)
         {
             return Err(invalid("compiled item facts source identity mismatch"));
+        }
+        if source.path.as_ref() == crate::item::durability::ITEM_DURABILITY_SOURCE_PATH
+            && (source.source_bytes as usize
+                != crate::item::durability::ITEM_DURABILITY_SOURCE_BYTES.len()
+                || source.source_sha256 != durability_hash)
+        {
+            return Err(invalid("compiled durability source identity mismatch"));
         }
         if source.path.as_ref() == LEGACY_ICON_ROUTES_PATH
             && (source.source_bytes as usize != LEGACY_ICON_ROUTES.len()

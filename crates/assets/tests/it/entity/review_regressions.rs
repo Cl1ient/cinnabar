@@ -566,3 +566,22 @@ fn compiled_item_facts_admit_only_hash_checked_missing_retail_visuals() {
         );
     }
 }
+
+#[test]
+fn compiled_durability_source_rejects_forged_identity() {
+    let mut compiled = carrier_v4_fixture();
+    let mut sources = compiled.sources.to_vec();
+    sources.push(entity::EntityAssetSource {
+        path: assets::item::durability::ITEM_DURABILITY_SOURCE_PATH.into(),
+        source_bytes: assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES.len() as u32,
+        source_sha256: Sha256::digest(assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES)
+            .into(),
+    });
+    compiled.sources = sources.into_boxed_slice();
+    entity::encode_entity_blob(&compiled).unwrap();
+    let mut wrong_hash = compiled.clone();
+    wrong_hash.sources.last_mut().unwrap().source_sha256[0] ^= 1;
+    assert!(wrong_hash.validate().is_err());
+    compiled.sources.last_mut().unwrap().source_bytes += 1;
+    assert!(compiled.validate().is_err());
+}

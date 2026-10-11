@@ -233,7 +233,6 @@ fn effects_count_down_update_remove_and_keep_infinite_durations() {
 #[test]
 fn block_classification_uses_retained_identity_and_unknown_names_preserve_counts() {
     let authority = authority();
-    let player = player_state::PlayerState::new(SESSION);
     let mut block = stack("minecraft:stone", 64);
     block.block_runtime_id = 7;
     assert!(project_item(&authority, &block, None).unwrap().block);

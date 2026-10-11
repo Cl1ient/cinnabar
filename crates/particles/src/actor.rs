@@ -186,3 +186,13 @@ pub struct ActorAttachment {
 
 #[cfg(test)]
 mod coverage;
+
+/// Separates temporary placement failure from the end of an attached actor's lifetime.
+pub enum ActorAttachmentUpdate {
+    /// Retains the previous placement and keeps the emitter alive.
+    Pending,
+    /// Ends emission because the actor is missing or replaced.
+    Removed,
+    /// Refreshes placement and numeric queries for the same actor lifetime.
+    Placed(ActorEmitterTransform, crate::Queries),
+}

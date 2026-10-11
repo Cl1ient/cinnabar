@@ -253,6 +253,8 @@ Admitted live biome identifiers and climate now travel with the session tint reg
 ## Controller particle attachments
 
 Typed locator and initialization contracts are implemented. Independent pinned
-controller coverage and focused emitter/placement regressions are added. The
+controller coverage and focused emitter/placement regressions are added. Pending
+placement retries after temporary zero scale; existing attachments retain their
+actor lifetime. Particle placement samples each needed actor once per frame. The
 unsupported query grammar, skin locator, child-event placement, fallback and
 animated gallery checks in `plan.md` remain open. No completion entry advances.

@@ -21,7 +21,8 @@ use render::{
 };
 
 use super::actors::{
-    ActorParticleCommand, follow_actor_particles, queue_actor_particles, route_actor_particles,
+    ActorParticleCommand, ActorParticleFrame, follow_actor_particles, queue_actor_particles,
+    route_actor_particles,
 };
 use super::{ambient::AmbientParticles, tiles::block_tile, world_adapter::StreamParticleWorld};
 use {
@@ -509,19 +510,12 @@ fn drive_particles(
             .and_then(|mining| mining.destroying_target());
         spawn_mining_cracks(&mut system, &routing, local_target, view.position);
     }
-    queue_actor_particles(
-        stream,
-        &mut system,
-        &mut inbox.actor_commands,
-        actor_alpha.as_ref().map_or(0.0, |alpha| alpha.0),
-    );
+    let mut actor_frame =
+        ActorParticleFrame::new(stream, actor_alpha.as_ref().map_or(0.0, |alpha| alpha.0));
+    queue_actor_particles(&mut actor_frame, &mut system, &mut inbox.actor_commands);
     route_actor_particles(&mut system, &mut inbox.actor_commands);
     follow_bound_emitters(&mut system, stream);
-    follow_actor_particles(
-        &mut system,
-        stream,
-        actor_alpha.as_ref().map_or(0.0, |alpha| alpha.0),
-    );
+    follow_actor_particles(&mut system, &mut actor_frame);
     update_particle_frame(&mut system, &mut frame, time.delta_secs(), &view, &world);
 }
 

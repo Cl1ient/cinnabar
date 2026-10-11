@@ -7561,7 +7561,10 @@ Controller effects retain typed locator references and compiled initialization
 programs. Locator attachments follow the sampled actor placement and inherited
 skeleton; initialization reads the emitter's variables and, for bound effects, the actor's
 numeric query context before any particle is emitted. Bound effects retire with their
-actor lifetime. The annotation coverage guard reads the pinned controller files.
+actor lifetime. Temporary zero scale retains attachments and pending state entries
+retry placement when scale returns. Particle spawning and attachment updates share
+one lazy pose sample per actor per frame. The annotation coverage guard reads the
+pinned controller files.
 
 Incomplete parity: function-style actor queries outside the particle expression
 grammar, skin-authored locators, bound child-event offsets under rotation, fallback

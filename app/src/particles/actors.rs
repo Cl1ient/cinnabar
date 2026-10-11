@@ -1,4 +1,7 @@
+use std::{borrow::Cow, collections::HashMap};
+
 use chunk_pipeline::WorldStream;
+use client_world::{ActorRenderFrame, ActorRigSnapshot, RenderTextureLayer};
 use particles::{ParticleSystem, SpawnRequest, actor::ActorEffectKey};
 
 #[cfg(test)]
@@ -10,23 +13,57 @@ pub(super) enum ActorParticleCommand {
     Stop(u64),
 }
 
+/// Lazily shares each actor's sampled rig and layers across spawning and attachment updates.
+pub(super) struct ActorParticleFrame<'a> {
+    stream: &'a WorldStream,
+    alpha: f32,
+    render: ActorRenderFrame<'a>,
+    samples: HashMap<u64, ActorParticleSample<'a>>,
+}
+
+struct ActorParticleSample<'a> {
+    rig: Option<ActorRigSnapshot<'a>>,
+    layers: Cow<'a, [RenderTextureLayer]>,
+}
+
+impl<'a> ActorParticleFrame<'a> {
+    /// Starts an empty sampling cache for one particle frame at the supplied interpolation.
+    pub(super) fn new(stream: &'a WorldStream, alpha: f32) -> Self {
+        Self {
+            stream,
+            alpha,
+            render: stream.authority().actor_render_frame(alpha),
+            samples: HashMap::new(),
+        }
+    }
+
+    /// Evaluates an actor's placement inputs once, only when a particle needs them.
+    fn sample(&mut self, runtime_id: u64) -> &ActorParticleSample<'a> {
+        self.samples.entry(runtime_id).or_insert_with(|| {
+            let rig = self
+                .stream
+                .authority()
+                .actor_rig(runtime_id)
+                .map(|rig| self.render.sample_rig_scale(rig));
+            let layers = self.render.layers(runtime_id).unwrap_or_default();
+            ActorParticleSample { rig, layers }
+        })
+    }
+}
+
+/// Queues each pending state-entry occurrence only after its placement becomes available.
 pub(super) fn queue_actor_particles(
-    stream: &WorldStream,
+    frame: &mut ActorParticleFrame<'_>,
     system: &mut ParticleSystem,
     queue: &mut Vec<ActorParticleCommand>,
-    alpha: f32,
 ) {
+    let stream = frame.stream;
+    let alpha = frame.alpha;
     system.actor_emitters.begin_frame();
-    let mut frame = stream.authority().actor_render_frame(alpha);
     for state in stream.authority().actor_particle_controllers() {
         let Some(actor) = stream.authority().actor(state.actor.runtime_id) else {
             continue;
         };
-        let rig = stream
-            .authority()
-            .actor_rig(actor.runtime_id)
-            .map(|rig| frame.sample_rig_scale(rig));
-        let layers = frame.layers(actor.runtime_id).unwrap_or_default();
         for (index, effect) in system
             .actor_bindings
             .effects_for(state.entity, state.controller, state.state)
@@ -47,11 +84,12 @@ pub(super) fn queue_actor_particles(
                 effect_index: index as u16,
             };
             if system.actor_emitters.admit(key) {
+                let sample = frame.sample(actor.runtime_id);
                 let Some(transform) =
                     client_presentation::presentation::actors::actor_emitter_transform(
                         actor,
-                        rig.as_ref(),
-                        &layers,
+                        sample.rig.as_ref(),
+                        &sample.layers,
                         effect.locator,
                         alpha,
                     )
@@ -73,7 +111,7 @@ pub(super) fn queue_actor_particles(
                     world_offset: [0.0; 3],
                 };
                 let queries = if effect.bound {
-                    actor_queries(actor, rig.as_ref(), &attachment, alpha)
+                    actor_queries(actor, sample.rig.as_ref(), &attachment, alpha)
                 } else {
                     particles::Queries::default()
                 };
@@ -98,6 +136,7 @@ pub(super) fn queue_actor_particles(
         .finish_frame(|emitter| queue.push(ActorParticleCommand::Stop(emitter)));
 }
 
+/// Applies queued starts and stops and records each spawn attempt.
 pub(super) fn route_actor_particles(
     system: &mut ParticleSystem,
     queue: &mut Vec<ActorParticleCommand>,
@@ -151,32 +190,35 @@ fn actor_queries(
 /// Updates bound controller emitters from sampled actor poses, guarding actor replacement.
 pub(super) fn follow_actor_particles(
     system: &mut ParticleSystem,
-    stream: &WorldStream,
-    alpha: f32,
+    frame: &mut ActorParticleFrame<'_>,
 ) {
-    let mut frame = stream.authority().actor_render_frame(alpha);
+    use particles::actor::ActorAttachmentUpdate;
+    let stream = frame.stream;
+    let alpha = frame.alpha;
     system.update_actor_attachments(|attachment| {
-        let actor = stream.authority().actor(attachment.runtime_id)?;
+        let Some(actor) = stream.authority().actor(attachment.runtime_id) else {
+            return ActorAttachmentUpdate::Removed;
+        };
         if actor.spawn_revision != attachment.spawn_revision {
-            return None;
+            return ActorAttachmentUpdate::Removed;
         }
-        let rig = stream
-            .authority()
-            .actor_rig(actor.runtime_id)
-            .map(|rig| frame.sample_rig_scale(rig));
-        let layers = frame.layers(actor.runtime_id).unwrap_or_default();
-        let mut transform = client_presentation::presentation::actors::actor_emitter_transform(
-            actor,
-            rig.as_ref(),
-            &layers,
-            attachment.locator.as_deref(),
-            alpha,
-        )?;
+        let sample = frame.sample(actor.runtime_id);
+        let Some(mut transform) =
+            client_presentation::presentation::actors::actor_emitter_transform(
+                actor,
+                sample.rig.as_ref(),
+                &sample.layers,
+                attachment.locator.as_deref(),
+                alpha,
+            )
+        else {
+            return ActorAttachmentUpdate::Pending;
+        };
         transform.position =
             std::array::from_fn(|axis| transform.position[axis] + attachment.world_offset[axis]);
-        Some((
+        ActorAttachmentUpdate::Placed(
             transform,
-            actor_queries(actor, rig.as_ref(), attachment, alpha),
-        ))
+            actor_queries(actor, sample.rig.as_ref(), attachment, alpha),
+        )
     });
 }

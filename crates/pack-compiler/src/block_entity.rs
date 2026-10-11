@@ -26,6 +26,8 @@ const STRIP_TEXTURES: &[&str] = &[
 ];
 const MAX_STRIP_HEIGHT: u32 = 1024;
 const ATLAS_WIDTH: u32 = 1024;
+/// Pixel capacity shared by retained overlay tiles, including untouched base tiles.
+const MAX_OVERLAY_PIXELS: usize = ATLAS_WIDTH as usize * MAX_BLOCK_ENTITY_ATLAS_SIDE as usize;
 const GUTTER: u32 = 1;
 
 /// Whole directories whose textures (minus `_mers`) are packed.
@@ -479,6 +481,83 @@ mod tests {
     }
 
     #[test]
+    fn oversized_overlay_set_retains_base_tiles_after_the_pixel_budget() {
+        let placements: Vec<_> = (0..8)
+            .map(|index| BlockEntityPlacement {
+                name: format!("textures/entity/chest/tile_{index}").into(),
+                x: index,
+                y: 0,
+                width: 1,
+                height: 1,
+            })
+            .collect();
+        let bytes = encode_block_entity_catalog(
+            b"{}",
+            ATLAS_WIDTH,
+            1,
+            &vec![10; ATLAS_WIDTH as usize * 4],
+            &placements,
+        )
+        .unwrap();
+        let base = assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap();
+        let overlaid = overlay_block_entity_assets(&base, |_| {
+            Some(BlockEntityTexture {
+                width: ATLAS_WIDTH,
+                height: MAX_STRIP_HEIGHT,
+                rgba8: vec![200; (ATLAS_WIDTH * MAX_STRIP_HEIGHT * 4) as usize].into_boxed_slice(),
+            })
+        })
+        .unwrap();
+
+        // Three large replacements fit while reserving space for the remaining base tiles.
+        for (index, placement) in placements.iter().enumerate() {
+            let tile = overlaid.placement(&placement.name).unwrap();
+            let expected = if index < 3 {
+                [ATLAS_WIDTH, MAX_STRIP_HEIGHT]
+            } else {
+                [1, 1]
+            };
+            assert_eq!([tile.width, tile.height], expected);
+            assert_eq!(
+                tile_pixel(&overlaid, &placement.name),
+                [if index < 3 { 200 } else { 10 }; 4]
+            );
+        }
+    }
+
+    #[test]
+    fn over_budget_base_is_rejected_before_reading_replacements() {
+        let height = MAX_BLOCK_ENTITY_ATLAS_SIDE / 2;
+        let placements: Vec<_> = (0..3)
+            .map(|index| BlockEntityPlacement {
+                name: format!("tile_{index}").into(),
+                x: 0,
+                y: 0,
+                width: ATLAS_WIDTH,
+                height,
+            })
+            .collect();
+        let bytes = encode_block_entity_catalog(
+            b"{}",
+            ATLAS_WIDTH,
+            height,
+            &vec![0; (ATLAS_WIDTH * height * 4) as usize],
+            &placements,
+        )
+        .unwrap();
+        let base = assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap();
+        let mut reads = 0;
+        assert!(
+            overlay_block_entity_assets(&base, |_| {
+                reads += 1;
+                None
+            })
+            .is_err()
+        );
+        assert_eq!(reads, 0);
+    }
+
+    #[test]
     fn empty_pack_still_yields_a_valid_carrier() {
         let pack = tempfile::tempdir().unwrap();
         let compiled = compile_block_entity_assets(pack.path(), b"{}").unwrap();
@@ -495,14 +574,26 @@ pub struct BlockEntityTexture {
 }
 
 /// Rebuilds the carrier atlas from winning logical texture reads and its untouched base pixels.
-/// Missing or invalid replacements retain the base tile; removing a pack restores its pixels.
+/// Missing, invalid, or over-budget replacements retain the base tile; removing a pack restores it.
 pub fn overlay_block_entity_assets(
     base: &assets::RuntimeBlockEntityAssets,
     mut read: impl FnMut(&str) -> Option<BlockEntityTexture>,
 ) -> Result<assets::RuntimeBlockEntityAssets, AssetError> {
     let [atlas_width, _] = base.atlas_size();
     let mut textures = Vec::with_capacity(base.placements().len());
+    // Reserve every base tile so later fallbacks cannot exceed the retained pixel budget.
+    let mut retained_pixels: usize = base
+        .placements()
+        .iter()
+        .map(|tile| tile.width as usize * tile.height as usize)
+        .sum();
+    if retained_pixels > MAX_OVERLAY_PIXELS {
+        return Err(invalid(
+            "base block-entity textures exceed the pixel budget",
+        ));
+    }
     for placement in base.placements() {
+        let base_pixels = placement.width as usize * placement.height as usize;
         let texture = read(&placement.name)
             .filter(|texture| {
                 texture.width > 0
@@ -510,6 +601,9 @@ pub fn overlay_block_entity_assets(
                     && texture.width <= ATLAS_WIDTH
                     && texture.height <= MAX_STRIP_HEIGHT
                     && texture.rgba8.len() == texture.width as usize * texture.height as usize * 4
+                    && retained_pixels - base_pixels
+                        + texture.width as usize * texture.height as usize
+                        <= MAX_OVERLAY_PIXELS
             })
             .map(|texture| Texture {
                 width: texture.width,
@@ -531,6 +625,8 @@ pub fn overlay_block_entity_assets(
                     rgba8,
                 }
             });
+        retained_pixels =
+            retained_pixels - base_pixels + texture.width as usize * texture.height as usize;
         textures.push((placement.name.to_string(), texture));
     }
     let (width, height, pixels, placements) = pack_atlas(textures)?;

@@ -3,6 +3,8 @@
 CARGO ?= cargo
 # Cargo profile for `make play`; PROFILE=release keeps developer features with shipping optimizations.
 PROFILE ?= play
+# Capture reads the client executable from Cargo artifact messages.
+CLIENT_MESSAGE_FORMAT ?= human
 # Cargo names the dev profile output directory debug.
 PROFILE_DIR = $(if $(filter dev,$(PROFILE)),debug,$(PROFILE))
 EXE = $(if $(filter Windows_NT,$(OS)),.exe)
@@ -141,7 +143,7 @@ ifeq ($(CINNABAR_DEV_SERVER_EXPERIENCES),1)
 endif
 	$(GO) build -o "$(abspath target/$(PROFILE_DIR)/bedrock-core$(EXE))" ./core/cmd/bedrock-core
 	-cd tools/localserver && GOWORK=off $(GO) build -o "$(abspath target/$(PROFILE_DIR)/bedrock-local-server$(EXE))" .
-	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build --profile $(PROFILE) -p bedrock-client --locked $(CLIENT_FEATURES)
+	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build --profile $(PROFILE) -p bedrock-client --locked $(CLIENT_FEATURES) --message-format=$(CLIENT_MESSAGE_FORMAT)
 
 play: play-build
 	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) run --profile $(PROFILE) -p bedrock-client --locked $(CLIENT_FEATURES) -- $(if $(filter 1,$(NO_VSYNC)),--no-vsync)

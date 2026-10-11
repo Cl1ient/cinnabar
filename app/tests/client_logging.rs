@@ -18,7 +18,9 @@ const LOG_MARKERS: [&str; 4] = [
 
 extern crate self as launcher;
 extern crate self as launcher_host;
-mod lifecycle { pub(crate) use crate::crash; }
+mod lifecycle {
+    pub(crate) use crate::crash;
+}
 
 mod install_layout {
     use std::path::PathBuf;
@@ -34,12 +36,12 @@ mod install_layout {
         }
     }
 }
-#[allow(dead_code, reason = "exercises the production panic hook in isolation")]
-#[path = "../../../crates/launcher-host/src/lifecycle/crash.rs"]
-pub(crate) mod crash;
 #[allow(dead_code)]
 #[path = "../src/lifecycle/client_logs.rs"]
 mod client_logs;
+#[allow(dead_code, reason = "exercises the production panic hook in isolation")]
+#[path = "../../crates/launcher-host/src/lifecycle/crash.rs"]
+pub(crate) mod crash;
 #[path = "../src/particles/carrier.rs"]
 mod particle_carrier;
 

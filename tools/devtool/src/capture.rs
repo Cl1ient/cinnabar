@@ -58,16 +58,7 @@ pub(crate) fn run(args: &[String], summary_only: bool) -> Result<(), DevtoolErro
                 "install tracy-capture and tracy-csvexport before capturing".into(),
             ));
         }
-        checked(Command::new("make").args(["play-build", "TRACY=1"]))?;
-        let profile = std::env::var("PROFILE").unwrap_or_else(|_| "play".into());
-        let directory = if profile == "dev" { "debug" } else { &profile };
-        let executable = PathBuf::from("target")
-            .join(directory)
-            .join(if cfg!(windows) {
-                "bedrock-client.exe"
-            } else {
-                "bedrock-client"
-            });
+        let executable = build_client()?;
         let port = capture_port()?.to_string();
         let mut client = OwnedChild(
             Command::new(executable)
@@ -121,6 +112,54 @@ pub(crate) fn run(args: &[String], summary_only: bool) -> Result<(), DevtoolErro
     fs::write(&path, serde_json::to_vec_pretty(&summary)?).map_err(io_error)?;
     println!("summary: {}", path.display());
     Ok(())
+}
+
+/// Selects the client executable emitted by this successful build, including Cargo output overrides.
+fn build_client() -> Result<PathBuf, DevtoolError> {
+    use std::io::Write;
+    let output = Command::new("make")
+        .args([
+            "play-build",
+            "TRACY=1",
+            "CLIENT_MESSAGE_FORMAT=json-render-diagnostics",
+        ])
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .map_err(io_error)?;
+    let mut executable = None;
+    for line in output.stdout.split(|byte| *byte == b'\n') {
+        if let Ok(event) = serde_json::from_slice::<serde_json::Value>(line)
+            && event["reason"] == "compiler-artifact"
+        {
+            if event["target"]["name"] == "bedrock-client"
+                && event["target"]["kind"]
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin"))
+                && let Some(path) = event["executable"].as_str()
+            {
+                let path = PathBuf::from(path);
+                if executable
+                    .as_ref()
+                    .is_some_and(|previous| previous != &path)
+                {
+                    return Err(DevtoolError::Usage(
+                        "build emitted multiple client executables".into(),
+                    ));
+                }
+                executable = Some(path);
+            }
+        } else {
+            std::io::stdout().write_all(line).map_err(io_error)?;
+            std::io::stdout().write_all(b"\n").map_err(io_error)?;
+        }
+    }
+    if !output.status.success() {
+        return Err(DevtoolError::Usage(format!(
+            "capture build failed: {}",
+            output.status
+        )));
+    }
+    executable.ok_or_else(|| DevtoolError::Usage("build did not emit a client executable".into()))
 }
 
 impl Options {

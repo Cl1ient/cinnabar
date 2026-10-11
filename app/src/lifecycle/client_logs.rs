@@ -1,6 +1,9 @@
 //! Client diagnostics stay at the app boundary, outside engine-free launcher services.
 use launcher::install_layout::InstallLayout;
-use std::{backtrace::Backtrace, io::{IsTerminal, Write}};
+use std::{
+    backtrace::Backtrace,
+    io::{IsTerminal, Write},
+};
 
 const MAX_CLIENT_LOG_BYTES: u64 = 8 << 20;
 
@@ -11,7 +14,8 @@ pub(super) fn capture(layout: &InstallLayout) {
         return;
     }
     if let Err(error) = diagnostics::console::initialize_log(
-        &layout.log_dir().join("client.log"), MAX_CLIENT_LOG_BYTES,
+        &layout.log_dir().join("client.log"),
+        MAX_CLIENT_LOG_BYTES,
     ) {
         eprintln!("client file logging unavailable: {error}");
         return;
@@ -21,8 +25,10 @@ pub(super) fn capture(layout: &InstallLayout) {
         "CLIENT_SESSION_START version={} commit={} timestamp_ms={}",
         env!("CARGO_PKG_VERSION"),
         option_env!("RUST_MCBE_BUILD_COMMIT").unwrap_or("unknown"),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default().as_millis()
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
     );
 }
 

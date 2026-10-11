@@ -3,7 +3,7 @@
 use std::{
     backtrace::Backtrace,
     fs,
-    io::{IsTerminal, Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };

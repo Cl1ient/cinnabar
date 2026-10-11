@@ -18,7 +18,6 @@ pub(crate) struct Options {
 #[derive(Debug)]
 struct Worktree {
     path: PathBuf,
-    branch: Option<String>,
     protected: bool,
     unavailable: bool,
 }
@@ -36,6 +35,7 @@ enum Processes {
 }
 #[derive(Debug)]
 struct State {
+    branch: Option<String>,
     dirty: bool,
     unpushed: bool,
     pr: Option<String>,
@@ -105,7 +105,7 @@ pub(crate) fn run(options: &Options) -> Result<(), DevtoolError> {
         println!(
             "{} branch={} PR={} availability={} changes={} unpushed={} processes={:?} age_days={} pushed_days={} action={}",
             wt.path.display(),
-            wt.branch.as_deref().unwrap_or("detached"),
+            state.branch.as_deref().unwrap_or("detached"),
             state.pr.as_deref().unwrap_or("unknown"),
             if wt.unavailable || !wt.path.is_dir() {
                 "unavailable"
@@ -194,15 +194,11 @@ fn parse_worktrees(text: &str) -> Vec<Worktree> {
     let mut worktrees = Vec::new();
     for record in text.split("\0\0") {
         let mut path = None;
-        let mut branch = None;
         let mut protected = false;
         let mut unavailable = false;
         for field in record.split('\0') {
             if let Some(value) = field.strip_prefix("worktree ") {
                 path = Some(PathBuf::from(value));
-            }
-            if let Some(value) = field.strip_prefix("branch refs/heads/") {
-                branch = Some(value.into());
             }
             if field.starts_with("locked") || field == "bare" || field.starts_with("prunable") {
                 protected = true;
@@ -214,7 +210,6 @@ fn parse_worktrees(text: &str) -> Vec<Worktree> {
         if let Some(path) = path {
             worktrees.push(Worktree {
                 path,
-                branch,
                 protected,
                 unavailable,
             });
@@ -227,6 +222,7 @@ fn parse_worktrees(text: &str) -> Vec<Worktree> {
 fn inspect(wt: &Worktree) -> Result<State, DevtoolError> {
     if wt.unavailable || !wt.path.is_dir() {
         return Ok(State {
+            branch: None,
             dirty: true,
             unpushed: true,
             pr: None,
@@ -240,9 +236,11 @@ fn inspect(wt: &Worktree) -> Result<State, DevtoolError> {
         &["status", "--porcelain", "--untracked-files=all"],
     )?
     .is_empty();
-    let revision = wt.branch.as_deref().unwrap_or("HEAD");
-    let request = pull_request(wt);
-    let mut revisions = vec!["log", revision, "--not", "--remotes"];
+    let current = git(&wt.path, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let branch = (current.trim() != "HEAD").then(|| current.trim().to_owned());
+    let head = git(&wt.path, &["rev-parse", "HEAD"])?;
+    let request = pull_request(&wt.path, branch.as_deref());
+    let mut revisions = vec!["log", head.trim(), "--not", "--remotes"];
     if let Some(head) = request
         .as_ref()
         .filter(|pr| pr.state == "MERGED")
@@ -272,7 +270,7 @@ fn inspect(wt: &Worktree) -> Result<State, DevtoolError> {
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
         .map(|time| now.saturating_sub(time.as_secs()));
     // A remote commit date does not establish when it was pushed. Require a local push reflog.
-    let pushed_age = wt.branch.as_ref().and_then(|branch| {
+    let pushed_age = branch.as_ref().and_then(|branch| {
         let remote = git(
             &wt.path,
             &[
@@ -296,6 +294,7 @@ fn inspect(wt: &Worktree) -> Result<State, DevtoolError> {
         last_push_age(&entries, now)
     });
     Ok(State {
+        branch,
         dirty,
         unpushed,
         pr,
@@ -306,10 +305,10 @@ fn inspect(wt: &Worktree) -> Result<State, DevtoolError> {
 }
 
 /// Keeps open PRs protected and reads the published head even after a squash deletes its branch.
-fn pull_request(wt: &Worktree) -> Option<PullRequest> {
-    let branch = wt.branch.as_ref()?;
+fn pull_request(path: &Path, branch: Option<&str>) -> Option<PullRequest> {
+    let branch = branch?;
     let output = Command::new("gh")
-        .current_dir(&wt.path)
+        .current_dir(path)
         .args([
             "pr",
             "list",
@@ -441,6 +440,7 @@ mod tests {
     #[test]
     fn cleanup_requires_all_safety_conditions() {
         let mut state = State {
+            branch: None,
             dirty: false,
             unpushed: false,
             pr: Some("MERGED".into()),

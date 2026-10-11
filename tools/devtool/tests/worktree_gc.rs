@@ -252,6 +252,55 @@ mod unix {
         assert!(busy.exists());
     }
     #[test]
+    fn branch_switch_after_inventory_keeps_unpublished_worktree_and_target() {
+        let repo = Repo::new();
+        let path = repo.worktree("switched");
+        let run = |args: &[&str]| {
+            let result = Command::new("git")
+                .current_dir(&path)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        };
+        run(&["switch", "--quiet", "-c", "unpublished"]);
+        run(&[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "--allow-empty",
+            "--quiet",
+            "-m",
+            "unpublished",
+        ]);
+        run(&["switch", "--quiet", "switched"]);
+        fs::create_dir(path.join("target")).unwrap();
+        fs::write(path.join("target/keep"), "artifact").unwrap();
+        repo.script("gh", "#!/bin/sh\ncase \"$6\" in unpublished) printf '[]';; *) printf '[{\"state\":\"MERGED\"}]';; esac\n");
+        repo.script("lsof", &format!(
+            "#!/bin/sh\ncase \"$3\" in *switched) if [ ! -e '{}' ]; then git -C \"$3\" switch --quiet unpublished; touch '{}'; fi;; esac\nexit 1\n",
+            repo.bin.join("switched-once").display(), repo.bin.join("switched-once").display()));
+        let output = repo.gc(&["--apply"]);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            path.exists(),
+            "removed a newly checked-out unpublished branch"
+        );
+        assert!(path.join("target/keep").exists(), "removed its artifacts");
+        run(&["show-ref", "--verify", "refs/heads/unpublished"]);
+    }
+
+    #[test]
     fn process_recheck_prevents_removal_when_a_process_appears() {
         let repo = Repo::new();
         let path = repo.worktree("late-process");

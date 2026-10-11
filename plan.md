@@ -7701,3 +7701,11 @@ numerical defaults. No ordinary movement classification is inferred from absence
 rule. Complete native ordinary/special coverage, custom session movement components and
 all provisional rule values still require verification before this gate can close.
 Item-use descriptor admission is incomplete. The carrier records explicit unresolved items against the independently collected item-visual inventory. Gameplay, animation durations, consume audio, first-person consumption and cooldown publication read numerical admissions with session component overlays. A duration alone grants no use kind or movement penalty. The stock compatibility catalog, complete native use-kind census, authored cooldown timing, special appetite modes and conflicting component/class semantics remain provisional. Authored and session facts share whole-tick conversion. Cooldown quantization and component-version precedence remain provisional.
+
+
+## Compiled item armour
+
+- Protection and player slots live in the entity carrier; HUD capture reads numeric registry facts resolved at admission. Server wearable components replace protection without per-frame parsing.
+- Incomplete: the full armour identifier/class inventory, missing-member defaults, body slots and later component versions still need parity verification. Unverified items and malformed declarations retain explicit unresolved facts.
+
+Effective item durability is shared through required entity-carrier descriptors and session registry admission. Unknown entries and invalid declared maxima stay unresolved; UI and elytra gameplay read the admitted numeric-ID fact. This gate remains incomplete: the full damageable item inventory, native class bindings, numeric component bounds and all network replacement behavior still need verification. The pinned base table preserves the existing positive values and its coverage guard checks their membership in the independent retail inventory.

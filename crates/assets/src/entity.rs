@@ -57,8 +57,8 @@ pub use v4::{
 };
 
 pub const ENTITY_BLOB_MAGIC: [u8; 8] = *b"MCBEENT3";
-/// Requires explicit compiled item-use admissions; older carriers must be rebuilt.
-pub const ENTITY_BLOB_VERSION: u32 = 9;
+/// Includes required item-use profiles and current item facts; older carriers must be rebuilt.
+pub const ENTITY_BLOB_VERSION: u32 = 11;
 /// Actor rig id ranges (a rig id is a `u32`):
 /// - `0..PACK_RIG_ID_BASE`: vanilla catalog rig-geometry bindings, and from `0x2000_0000`
 ///   the catalog geometries render controllers draw beside the rig (`0x2000_0000 + index`).
@@ -318,8 +318,8 @@ struct EntityCatalogPayload {
 /// An encoded entity carrier payload.
 pub type EntityCarrierBlob = Box<[u8]>;
 
-mod runtime;
-pub use runtime::RuntimeEntityAssets;
+/// Includes required item-use profiles and current item facts; older carriers must be rebuilt.
+pub const ENTITY_BLOB_VERSION: u32 = 11;
 
 pub fn encode_entity_blob(compiled: &CompiledEntityAssets) -> Result<Box<[u8]>, AssetError> {
     v4::encode_compiled(compiled)

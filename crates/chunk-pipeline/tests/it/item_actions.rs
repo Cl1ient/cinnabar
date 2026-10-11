@@ -103,6 +103,8 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         rig_controllers: Box::new([]),
         item_visuals: vec![
             ItemVisualDefinition {
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:apple".into(),
                     metadata: 0,
@@ -119,6 +121,8 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
                 dropped: ItemDisplayTransform::identity(),
             },
             ItemVisualDefinition {
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:block_witness".into(),
                     metadata: 0,
@@ -213,6 +217,7 @@ fn spawn(runtime_id: u64, unique_id: i64, held_item: NetworkItemStack) -> WorldE
 fn registry(network_id: i32, identifier: &str) -> WorldEvent {
     WorldEvent::ItemActor(ItemActorEvent::Registry(ItemRegistryEvent {
         entries: Arc::from([ItemRegistryEntry {
+            components: None,
             identifier: Arc::from(identifier),
             network_id,
             component_based: false,
@@ -569,6 +574,7 @@ fn registry_record_bound_accepts_exact_limit_and_rejects_limit_plus_one_atomical
         WorldEvent::ItemActor(ItemActorEvent::Registry(ItemRegistryEvent {
             entries: (0..count)
                 .map(|index| ItemRegistryEntry {
+                    components: None,
                     identifier: if index == 0 {
                         Arc::from(first_identifier)
                     } else {

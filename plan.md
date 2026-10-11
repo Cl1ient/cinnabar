@@ -7300,3 +7300,11 @@ allocation-free retained index view.
 Incomplete parity: formatted-name cleanup, Unicode case folding and alternate
 name search modes remain unverified. Display-name projection and cache freshness
 do not close those search acceptance gates.
+
+### Recent status effects
+
+Status-effect retention and HUD icon/row lookup now share a versioned descriptor
+registry. The pinned pack's effects through ID 37 are covered, including the
+nonpersistent effects without HUD icons. A hash-checked independent effect
+inventory checks descriptor coverage when the named local fixture is available.
+The required HUD carrier includes the added icons; rebuild it with `make assets`.

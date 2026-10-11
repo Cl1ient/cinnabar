@@ -44,8 +44,8 @@ pub(super) struct PendingRequest {
     pub(super) requires_distinct_stack_ids: bool,
     /// A merge whose capacity came from the session item registry.
     pub(super) registry_bound_merge: bool,
-    /// A quick move whose destinations were chosen from fuel facts.
-    pub(super) fuel_routed: bool,
+    /// The furnace routing a quick move chose; retired when the same facts route elsewhere.
+    pub(super) furnace_route: Option<super::quick_move::FurnaceRoute>,
     pub(super) predicted: Vec<CellPrediction>,
     /// A mine-block request riding PlayerAuthInput rather than its own packet.
     pub(super) mining: Option<MiningPrediction>,
@@ -618,7 +618,7 @@ impl PlayerInventoryLedger {
                 storage_detached: false,
                 requires_distinct_stack_ids: false,
                 registry_bound_merge: false,
-                fuel_routed: false,
+                furnace_route: None,
                 predicted: Vec::new(),
                 mining: Some(MiningPrediction { slot, damage }),
             },

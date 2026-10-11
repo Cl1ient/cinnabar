@@ -68,17 +68,25 @@ fn fixture(window_type: i8) -> InventorySession {
         slots: stacks.into(),
         storage_item: NetworkItemStack::empty(),
     }));
-    let recipes = [
-        ("minecraft:oak_log", 3, "furnace"),
-        ("minecraft:birch_log", 3, "furnace"),
-        ("minecraft:raw_iron", 4, "furnace"),
-        ("minecraft:birch_log", 3, "smoker"),
-    ];
+    apply_recipes(&mut inventory, &FIXTURE_RECIPES, 1);
+    inventory
+}
+
+/// Ingredient, output network id and station tag of the fixture's furnace-family recipes.
+const FIXTURE_RECIPES: [(&str, i32, &str); 4] = [
+    ("minecraft:oak_log", 3, "furnace"),
+    ("minecraft:birch_log", 3, "furnace"),
+    ("minecraft:raw_iron", 4, "furnace"),
+    ("minecraft:birch_log", 3, "smoker"),
+];
+
+/// Commits a clearing recipe update carrying exactly `recipes` at `sequence`.
+fn apply_recipes(inventory: &mut InventorySession, recipes: &[(&str, i32, &str)], sequence: u64) {
     let packet = CraftingDataPacket {
         shapeless_recipes: recipes
-            .into_iter()
+            .iter()
             .enumerate()
-            .map(|(index, (name, output, tag))| ShapelessRecipePayload {
+            .map(|(index, &(name, output, tag))| ShapelessRecipePayload {
                 ingredients: vec![CerealizerRecipeIngredientSerializedData {
                     descriptor: vec![CerealizerRecipeIngredientSerializedDataDescriptorItem {
                         key: "name".into(),
@@ -109,13 +117,12 @@ fn fixture(window_type: i8) -> InventorySession {
     inventory
         .enqueue_inventory_event(
             1,
-            1,
+            sequence,
             InventoryEvent::Recipes(::protocol::decode_recipe_update(&bytes).unwrap()),
         )
         .unwrap();
-    inventory.synchronize_crafting_frontier(1, Some((1, 0, Some(1))));
+    inventory.synchronize_crafting_frontier(1, Some((1, 0, Some(sequence))));
     inventory.drain_pending_inventory();
-    inventory
 }
 
 #[test]
@@ -861,7 +868,31 @@ fn resend_with_fuel(inventory: &mut InventorySession, network_id: i32, ticks: u3
 }
 
 #[test]
-fn fuel_rule_changes_retire_only_fuel_routed_quick_moves() {
+fn fuel_changes_retire_only_quick_moves_they_reroute() {
+    let mut inventory = fuel_and_input_fixture();
+    inventory
+        .ledger_mut()
+        .begin_quick_move(InventoryTarget::Player(5))
+        .unwrap();
+    assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 8);
+    resend_with_fuel(&mut inventory, 2, 40);
+    assert_eq!(inventory.ledger().pending_request_count(), 1);
+
+    inventory
+        .ledger_mut()
+        .begin_quick_move(InventoryTarget::Player(7))
+        .unwrap();
+    assert_eq!(inventory.ledger().storage_stack(1).unwrap().count, 3);
+    assert_eq!(inventory.ledger().pending_request_count(), 2);
+    resend_with_fuel(&mut inventory, 4, 80);
+    assert_eq!(inventory.ledger().pending_request_count(), 2);
+    resend_with_fuel(&mut inventory, 4, 0);
+    assert_eq!(inventory.ledger().pending_request_count(), 1);
+    assert!(inventory.ledger().storage_stack(1).is_none());
+}
+
+/// Opens the fixture furnace with player slot 5 holding birch logs and slot 7 iron ingot fuel.
+fn fuel_and_input_fixture() -> InventorySession {
     let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
     resend_with_fuel(&mut inventory, 4, 40);
     let mut stacks =
@@ -886,21 +917,35 @@ fn fuel_rule_changes_retire_only_fuel_routed_quick_moves() {
             storage_item: NetworkItemStack::empty(),
         }));
     inventory
+}
+
+#[test]
+fn unrelated_recipe_changes_keep_pending_furnace_inputs() {
+    let mut inventory = fuel_and_input_fixture();
+    inventory
         .ledger_mut()
         .begin_quick_move(InventoryTarget::Player(5))
         .unwrap();
     assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 8);
-    resend_with_fuel(&mut inventory, 2, 40);
+    apply_recipes(&mut inventory, &FIXTURE_RECIPES[..3], 2);
+    let _ = inventory.ledger_mut();
     assert_eq!(inventory.ledger().pending_request_count(), 1);
+    assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 8);
+}
 
+#[test]
+fn recipe_admission_reroutes_a_pending_fuel_move() {
+    let mut inventory = fuel_and_input_fixture();
     inventory
         .ledger_mut()
         .begin_quick_move(InventoryTarget::Player(7))
         .unwrap();
     assert_eq!(inventory.ledger().storage_stack(1).unwrap().count, 3);
-    assert_eq!(inventory.ledger().pending_request_count(), 2);
-    resend_with_fuel(&mut inventory, 4, 80);
-    assert_eq!(inventory.ledger().pending_request_count(), 1);
+    let mut recipes = FIXTURE_RECIPES.to_vec();
+    recipes.push(("minecraft:iron_ingot", 5, "furnace"));
+    apply_recipes(&mut inventory, &recipes, 2);
+    let _ = inventory.ledger_mut();
+    assert_eq!(inventory.ledger().pending_request_count(), 0);
     assert!(inventory.ledger().storage_stack(1).is_none());
 }
 

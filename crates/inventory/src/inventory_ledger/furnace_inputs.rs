@@ -159,26 +159,41 @@ fn station(kind: ScreenRecipeKind) -> bool {
 }
 
 impl super::PlayerInventoryLedger {
-    /// Binds committed recipes and retires ingredient predictions when their admission changes.
+    /// Binds committed recipes; retires ingredient moves only where their item's admission changed.
     pub(crate) fn bind_furnace_inputs(&mut self, catalog: Option<Arc<RecipeCatalog>>) {
+        let previous = self.furnace_inputs.clone();
         if !self
             .furnace_inputs
             .refresh(catalog, self.item_registry_snapshot().cloned())
         {
             return;
         }
-        if self
+        let Some(window) = self
             .window_kind()
-            .and_then(crate::furnace_recipes::kind)
-            .is_none()
-        {
+            .filter(|window| crate::furnace_recipes::kind(*window).is_some())
+        else {
             return;
-        }
-        self.abandon_requests(|pending| {
-            pending.predicted.iter().any(|prediction| {
-                prediction.cell == super::Cell::Storage(0) && prediction.held.is_some()
+        };
+        let readmitted: Vec<i32> = self
+            .queue
+            .iter()
+            .filter(|pending| {
+                pending.furnace_route.is_none()
+                    && pending.predicted.iter().any(|prediction| {
+                        prediction.cell == super::Cell::Storage(0)
+                            && prediction.held.as_ref().is_some_and(|held| {
+                                let (id, metadata) = (held.stack.network_id, held.stack.metadata);
+                                previous.accepts(window, id, metadata)
+                                    != self.furnace_inputs.accepts(window, id, metadata)
+                            })
+                    })
             })
-        });
+            .map(|pending| pending.request_id)
+            .collect();
+        if !readmitted.is_empty() {
+            self.abandon_requests(|pending| readmitted.contains(&pending.request_id));
+        }
+        self.retire_rerouted_furnace_moves();
         self.refold();
     }
 

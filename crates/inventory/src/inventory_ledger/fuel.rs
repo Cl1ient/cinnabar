@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::PlayerInventoryLedger;
 
 impl PlayerInventoryLedger {
-    /// Installs checked assets once; changed facts retire predictions bound to old facts.
+    /// Installs checked assets once; quick moves the new facts route elsewhere are retired.
     pub fn set_item_fuel_catalog(&mut self, catalog: Arc<RuntimeEntityAssets>) {
         if self
             .fuel_catalog
@@ -16,26 +16,9 @@ impl PlayerInventoryLedger {
         {
             return;
         }
-        let previous = self.fuel_facts.clone();
         self.fuel_catalog = Some(catalog);
         self.refresh_fuel_facts();
-        let affected: Vec<i32> = self
-            .queue
-            .iter()
-            .filter(|pending| {
-                pending.fuel_routed
-                    && pending
-                        .predicted
-                        .iter()
-                        .filter_map(|prediction| prediction.held.as_ref())
-                        .any(|held| {
-                            previous.get(&held.stack.network_id)
-                                != self.fuel_facts.get(&held.stack.network_id)
-                        })
-            })
-            .map(|pending| pending.request_id)
-            .collect();
-        self.abandon_requests(|pending| affected.contains(&pending.request_id));
+        self.retire_rerouted_furnace_moves();
         self.refold();
     }
 

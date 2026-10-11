@@ -64,8 +64,6 @@ impl PlayerInventoryLedger {
                     .map(|held| held.stack.network_id)
                     .any(|network_id| {
                         registry_identity_changed(previous, &next, network_id)
-                            || (pending.fuel_routed
-                                && registry_fuel_rule_changed(previous, &next, network_id))
                             || (pending.registry_bound_merge
                                 && registry_merge_rule_changed(previous, &next, network_id))
                     })
@@ -78,6 +76,7 @@ impl PlayerInventoryLedger {
         }
         self.item_registry = Some(std::sync::Arc::new(next));
         self.refresh_fuel_facts();
+        self.retire_rerouted_furnace_moves();
         self.refold();
     }
 
@@ -191,22 +190,6 @@ fn registry_identity_changed(
         (Some(previous), Some(next)) => previous.identifier != next.identifier,
         (Some(_), None) => true,
         (None, Some(_)) | (None, None) => false,
-    }
-}
-
-/// Fuel declaration changes retire predictions without invalidating authoritative stack identity.
-fn registry_fuel_rule_changed(
-    previous: &BTreeMap<i32, ItemRegistryEntry>,
-    next: &BTreeMap<i32, ItemRegistryEntry>,
-    network_id: i32,
-) -> bool {
-    match (previous.get(&network_id), next.get(&network_id)) {
-        (Some(previous), Some(next)) => {
-            previous.component_based != next.component_based
-                || previous.version != next.version
-                || super::fuel::resolve(previous, None) != super::fuel::resolve(next, None)
-        }
-        _ => false,
     }
 }
 

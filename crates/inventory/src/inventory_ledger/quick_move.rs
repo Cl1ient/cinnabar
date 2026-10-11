@@ -11,6 +11,16 @@ use super::item_roles;
 use super::registry::{OccupiedStackRelation, entry_capacity};
 use super::{InventoryGestureError, PlayerInventoryLedger};
 
+/// A furnace quick-move decision and the item facts it was made from.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct FurnaceRoute {
+    window: WindowKind,
+    network_id: i32,
+    metadata: u32,
+    /// The furnace slot chosen; `None` returned the stack within the player inventory.
+    slot: Option<u8>,
+}
+
 /// Cells that hold one item however large the item's stack size is.
 fn slot_limit(cell: Cell) -> Option<u16> {
     matches!(cell, Cell::Craft(14 | 27)).then_some(1)
@@ -77,7 +87,10 @@ impl PlayerInventoryLedger {
             || self.quick_move_candidates(source, &from.stack),
             <[Cell]>::to_vec,
         );
-        let fuel_routed = destinations.is_none() && self.routes_by_fuel(source, &from.stack);
+        let furnace_route = destinations
+            .is_none()
+            .then(|| self.furnace_route(source, &from.stack))
+            .flatten();
         let item_capacity = self
             .negotiated_item_entry(from.stack.network_id)
             .and_then(entry_capacity)
@@ -164,7 +177,7 @@ impl PlayerInventoryLedger {
             .iter_mut()
             .find(|pending| pending.request_id == request_id)
         {
-            pending.fuel_routed = fuel_routed;
+            pending.furnace_route = furnace_route;
         }
         Ok(request_id)
     }
@@ -176,14 +189,46 @@ impl PlayerInventoryLedger {
         })
     }
 
-    /// Whether quick-move routing of `stack` out of `source` reads its fuel facts.
-    fn routes_by_fuel(&self, source: Cell, stack: &NetworkItemStack) -> bool {
-        matches!(source, Cell::Inventory(_))
-            && self.quick_move_window().is_some_and(|kind| {
-                crate::furnace_recipes::kind(kind).is_some()
-                    && self.furnace_input_accepts(kind, stack.network_id, stack.metadata)
-                        != Some(true)
+    /// The furnace routing a quick move of `stack` out of the player inventory reads.
+    fn furnace_route(&self, source: Cell, stack: &NetworkItemStack) -> Option<FurnaceRoute> {
+        let Cell::Inventory(_) = source else {
+            return None;
+        };
+        let window = self
+            .quick_move_window()
+            .filter(|kind| crate::furnace_recipes::kind(*kind).is_some())?;
+        Some(FurnaceRoute {
+            window,
+            network_id: stack.network_id,
+            metadata: stack.metadata,
+            slot: self.furnace_slot(window, stack.network_id, stack.metadata),
+        })
+    }
+
+    /// The furnace slot a player stack quick-moves into; `None` keeps it in the inventory.
+    fn furnace_slot(&self, window: WindowKind, network_id: i32, metadata: u32) -> Option<u8> {
+        if self.furnace_input_accepts(window, network_id, metadata) == Some(true) {
+            return Some(0);
+        }
+        let fuel = self.item_fuel(network_id);
+        (fuel.eligible() == Some(true)).then(|| u8::from(fuel.ingredient_first() != Some(true)))
+    }
+
+    /// Retires quick moves whose recipe or fuel facts now route them to another slot.
+    pub(super) fn retire_rerouted_furnace_moves(&mut self) {
+        let rerouted: Vec<i32> = self
+            .queue
+            .iter()
+            .filter(|pending| {
+                pending.furnace_route.is_some_and(|route| {
+                    self.furnace_slot(route.window, route.network_id, route.metadata) != route.slot
+                })
             })
+            .map(|pending| pending.request_id)
+            .collect();
+        if !rerouted.is_empty() {
+            self.abandon_requests(|pending| rerouted.contains(&pending.request_id));
+        }
     }
 
     /// Candidate destinations, in order, for a quick move out of `source`.
@@ -257,17 +302,9 @@ impl PlayerInventoryLedger {
             | WindowKind::Dropper
             | WindowKind::Hopper
             | WindowKind::Crafter => storage(0..u8::MAX),
-            WindowKind::Furnace | WindowKind::BlastFurnace | WindowKind::Smoker => {
-                if self.furnace_input_accepts(kind, network_id, metadata) == Some(true) {
-                    return storage(0..1);
-                }
-                let fuel = self.item_fuel(network_id);
-                if fuel.eligible() != Some(true) {
-                    return Vec::new();
-                }
-                let slot = u8::from(fuel.ingredient_first() != Some(true));
-                storage(slot..slot + 1)
-            }
+            WindowKind::Furnace | WindowKind::BlastFurnace | WindowKind::Smoker => self
+                .furnace_slot(kind, network_id, metadata)
+                .map_or_else(Vec::new, |slot| storage(slot..slot + 1)),
             WindowKind::Brewing => item_roles::brewing_slots(id)
                 .iter()
                 .map(|slot| Cell::Storage(*slot))

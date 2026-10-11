@@ -32,6 +32,8 @@ mod lightning_rod;
 mod sea_pickle;
 #[path = "tests/shelf_cake.rs"]
 mod shelf_cake;
+#[path = "tests/tripwire_hook.rs"]
+mod tripwire_hook;
 
 fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {
     let path = path.as_ref();

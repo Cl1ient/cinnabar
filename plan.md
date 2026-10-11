@@ -4714,6 +4714,9 @@ Scope: block registry + block-state → model/texture mapping (generated export 
     - [ ] Coral fans compile spreading floor sprites and four wall mounting
       directions with replacement-pack artwork. Native-server placement and
       rendered parity acceptance remain incomplete.
+    - [ ] Tripwire hooks compile separate mounts, pitched shafts, eyes and attached
+      string in every facing and signal state. Native-server placement and
+      rendered parity acceptance remain incomplete.
     - [x] Round two: night light floors lowered to the night sky transfer,
       biome tints blend on a 4-block lattice (four taps per axis; vertical axis
       unblended, needs measurement), chains route through crossed link planes.

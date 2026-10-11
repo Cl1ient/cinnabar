@@ -2999,8 +2999,11 @@ dependencies = [
 name = "devtool"
 version = "0.1.12"
 dependencies = [
+ "quick-xml",
+ "regex",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

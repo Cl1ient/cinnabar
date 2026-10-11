@@ -21,9 +21,8 @@ pub(in crate::compiler) fn compile_rule(
     if let Some(materials) = inputs.materials(record) {
         visual.faces = materials;
         visual.kind = VisualKind::Cube;
-        visual
-            .flags
-            .insert(BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE);
+        visual.flags.insert(BlockFlags::CUBE_GEOMETRY);
+        visual.flags.remove(BlockFlags::OCCLUDES_FULL_FACE);
     }
     CompileRuleResult::Compiled(visual)
 }

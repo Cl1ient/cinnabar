@@ -136,11 +136,8 @@ fn respawn_anchor_charge_faces_and_flipbooks_survive_the_world_carrier() {
         let block = world.resolve(NetworkIdMode::Sequential, record.sequential_id);
         assert_eq!(block.kind(), VisualKind::Cube, "charge {charge}");
         assert_eq!(block.support(), VisualSupport::Exact, "charge {charge}");
-        assert!(
-            block
-                .flags()
-                .contains(BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE)
-        );
+        assert!(block.flags().contains(BlockFlags::CUBE_GEOMETRY));
+        assert!(!block.flags().contains(BlockFlags::OCCLUDES_FULL_FACE));
         assert_eq!(
             block.light_properties().emission(),
             [0, 3, 7, 11, 15][charge as usize]
@@ -272,4 +269,27 @@ fn respawn_anchor_malformed_charge_states_do_not_gain_exact_cube_admission() {
         assert_eq!(visual.kind(), VisualKind::Diagnostic);
         assert_eq!(visual.support(), VisualSupport::Diagnostic);
     }
+}
+
+#[test]
+fn respawn_anchor_transparent_pack_faces_do_not_hide_adjacent_terrain() {
+    let (records, lights, protocol) = records();
+    let directory = fixture();
+    let side = directory.path().join("textures/blocks/side0.png");
+    let mut image = image::open(&side).unwrap().into_rgba8();
+    image.put_pixel(8, 8, image::Rgba([0; 4]));
+    image.save(side).unwrap();
+    let world = world(directory.path(), &records, &lights, protocol);
+    let record = records
+        .iter()
+        .find(|r| crate::respawn_anchor::is_record(r))
+        .unwrap();
+    let anchor = world.resolve(NetworkIdMode::Sequential, record.sequential_id);
+    assert_eq!(anchor.kind(), VisualKind::Cube);
+    assert!(
+        !anchor.flags().contains(BlockFlags::OCCLUDES_FULL_FACE),
+        "cutout texels must reveal the neighboring terrain face"
+    );
+    let material = world.materials()[anchor.face(BlockFace::North).material_id() as usize];
+    assert_ne!(material.flags & assets::MATERIAL_FLAG_ALPHA_CUTOUT, 0);
 }

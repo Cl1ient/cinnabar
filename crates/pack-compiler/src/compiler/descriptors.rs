@@ -31,7 +31,8 @@ pub(super) fn descriptor_for(
     {
         flags |= pack.blocks.isotropic_face_flags(record)[face as usize];
     }
-    if visuals::shelf::is_record(record)
+    if crate::respawn_anchor::is_record(record)
+        || visuals::shelf::is_record(record)
         || visuals::end_portal_frame::is_record(record)
         || visuals::end_rod::is_record(record)
         || visuals::lightning_rod::is_record(record)

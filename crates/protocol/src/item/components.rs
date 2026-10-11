@@ -49,6 +49,32 @@ pub struct ItemComponents {
     pub hover_text_color: Option<Arc<str>>,
 }
 
+impl ItemComponents {
+    /// Counts the retained component allocation and its owned text for admission budgets.
+    pub fn retained_bytes(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>().saturating_add(32);
+        for text in [
+            self.icon.as_deref(),
+            self.display_name.as_deref(),
+            self.use_animation.as_deref(),
+            self.wearable_slot.as_deref(),
+            self.block_placer.as_deref(),
+            self.rarity.as_deref(),
+            self.hover_text_color.as_deref(),
+            self.attack
+                .as_ref()
+                .and_then(|attack| attack.attack_cooldown.as_ref())
+                .map(|cooldown| &*cooldown.category),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            bytes = bytes.saturating_add(text.len()).saturating_add(32);
+        }
+        bytes
+    }
+}
+
 /// Components for every StartGame registry item whose component data is non-empty.
 #[must_use]
 pub fn item_components(game_data: &GameData) -> Box<[(Arc<str>, ItemComponents)]> {

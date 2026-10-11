@@ -53,6 +53,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn component_retention_refusal_reserves_before_sharing_the_registry() {
+        use super::super::projection::RegistryOwner;
+        let credits = Arc::new(Credits {
+            maximum: 512,
+            used: AtomicUsize::new(0),
+        });
+        let mut entry = protocol::vanilla_item_registry()[0].clone();
+        entry.components = Some(Arc::new(protocol::ItemComponents {
+            display_name: Some(Arc::from("x".repeat(512))),
+            ..Default::default()
+        }));
+        let event = protocol::ItemRegistryEvent {
+            entries: Arc::from([entry]),
+        };
+        let before = Arc::strong_count(&event.entries);
+        assert!(
+            RegistryOwner::with_credits(&event, std::num::NonZeroU64::new(1).unwrap(), &credits)
+                .is_none()
+        );
+        assert_eq!(credits.used.load(Ordering::Acquire), 0);
+        assert_eq!(Arc::strong_count(&event.entries), before);
+    }
+
+    #[test]
     fn transaction_credit_refusal_releases_all_cells_without_partial_publication() {
         use super::super::projection::StackOwner;
         use protocol::{

@@ -66,12 +66,12 @@ mod tests {
         entry.identifier = Arc::from(identifier);
         entry.network_id = network_id;
         entry.component_based = true;
-        entry.components = Some(protocol::ItemComponents {
+        entry.components = Some(Arc::new(protocol::ItemComponents {
             wearable_declared: true,
             wearable_slot: Some(Arc::from("slot.armor.chest")),
             wearable_protection: Some(protection),
             ..Default::default()
-        });
+        }));
         entry
     }
 
@@ -95,7 +95,7 @@ mod tests {
             );
         }
         let mut replacement = wearable("custom:cloth", 10_001, 0);
-        replacement.components = Some(protocol::ItemComponents::default());
+        replacement.components = Some(Arc::new(protocol::ItemComponents::default()));
         assert!(store.apply_registry(protocol::ItemRegistryEvent {
             entries: vec![replacement].into()
         }));
@@ -107,10 +107,11 @@ mod tests {
     fn missing_values_and_unsupported_slots_do_not_become_zero_protection() {
         let mut entry = wearable("custom:cloth", 10_001, 0);
         assert_eq!(resolve(&entry, None).protection(), Some(0));
-        entry.components.as_mut().unwrap().wearable_protection = None;
+        Arc::make_mut(entry.components.as_mut().unwrap()).wearable_protection = None;
         assert_eq!(resolve(&entry, None), ItemArmour::Unresolved);
-        entry.components.as_mut().unwrap().wearable_protection = Some(6);
-        entry.components.as_mut().unwrap().wearable_slot = Some(Arc::from("slot.armor.body"));
+        Arc::make_mut(entry.components.as_mut().unwrap()).wearable_protection = Some(6);
+        Arc::make_mut(entry.components.as_mut().unwrap()).wearable_slot =
+            Some(Arc::from("slot.armor.body"));
         assert_eq!(resolve(&entry, None), ItemArmour::Unresolved);
         entry.version = ItemRegistryVersion::Unknown(42);
         assert_eq!(resolve(&entry, None), ItemArmour::Unresolved);

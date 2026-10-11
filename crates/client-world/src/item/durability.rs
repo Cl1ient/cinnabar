@@ -57,11 +57,11 @@ mod tests {
         entry.identifier = "custom:tool".into();
         entry.network_id = 10_001;
         entry.component_based = true;
-        entry.components = Some(protocol::ItemComponents {
+        entry.components = Some(Arc::new(protocol::ItemComponents {
             durability_declared: true,
             max_durability: Some(50),
             ..Default::default()
-        });
+        }));
         let mut alias = entry.clone();
         alias.network_id = 10_002;
         let mut store = super::super::ItemStateStore::diagnostic();
@@ -71,7 +71,7 @@ mod tests {
         for id in [10_001, 10_002] {
             assert_eq!(store.item_durability(id).maximum(), Some(50));
         }
-        entry.components.as_mut().unwrap().max_durability = None;
+        Arc::make_mut(entry.components.as_mut().unwrap()).max_durability = None;
         assert!(store.apply_registry(protocol::ItemRegistryEvent {
             entries: vec![entry].into()
         }));
@@ -83,10 +83,10 @@ mod tests {
         let mut entry = protocol::vanilla_item_registry()[0].clone();
         entry.component_based = true;
         assert_eq!(resolve(&entry, None), ItemDurability::Unresolved);
-        entry.components = Some(protocol::ItemComponents::default());
+        entry.components = Some(Arc::new(protocol::ItemComponents::default()));
         assert_eq!(resolve(&entry, None), ItemDurability::NotDamageable);
         entry.version = ItemRegistryVersion::Unknown(99);
-        entry.components.as_mut().unwrap().max_durability = Some(50);
+        Arc::make_mut(entry.components.as_mut().unwrap()).max_durability = Some(50);
         assert_eq!(resolve(&entry, None), ItemDurability::Unresolved);
     }
 }

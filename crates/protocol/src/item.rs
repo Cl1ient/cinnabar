@@ -379,7 +379,7 @@ pub struct ItemRegistryEntry {
     pub version: ItemRegistryVersion,
     pub component_digest: [u8; 32],
     /// Parsed once from the admitted component payload, retained for session fact resolution.
-    pub components: Option<ItemComponents>,
+    pub components: Option<Arc<ItemComponents>>,
     /// Exact positive stack capacity retained from the negotiated component path.
     ///
     /// This is evidence only: it neither supplies a fallback nor binds a later
@@ -709,7 +709,7 @@ pub(crate) fn normalize_item_registry(
             registry_capacity::negotiated_max_stack_size(&component_bytes)
         };
         let entry = ItemRegistryEntry {
-            components: components::parse_components(&component_bytes),
+            components: components::parse_components(&component_bytes).map(Arc::new),
             identifier: Arc::from(item.item_name),
             network_id,
             component_based: item.is_component_based,

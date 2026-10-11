@@ -3,7 +3,7 @@
 use std::{
     backtrace::Backtrace,
     fs,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{IsTerminal, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -36,6 +36,7 @@ pub fn install_panic_hook(layout: &InstallLayout, flush_logs: fn()) {
         // Queued log lines precede the panic message.
         flush_logs();
         previous(info);
+        flush_logs();
     }));
 }
 

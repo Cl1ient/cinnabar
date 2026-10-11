@@ -72,7 +72,16 @@ fn interaction_traits_admission_checks_the_independent_entity_inventory() {
         .collect();
     assert!(RuntimeEntityAssets::from_compiled(omitted).is_err());
     let mut forged = compiled;
-    forged.interaction_traits[0].traits = interactions::EntityInteractionTraits::Unresolved;
+    let arrow = forged
+        .interaction_traits
+        .iter_mut()
+        .find(|entry| entry.identifier.as_ref() == "minecraft:arrow")
+        .unwrap();
+    assert_ne!(
+        arrow.traits,
+        interactions::EntityInteractionTraits::Unresolved
+    );
+    arrow.traits = interactions::EntityInteractionTraits::Unresolved;
     assert!(RuntimeEntityAssets::from_compiled(forged).is_err());
 }
 

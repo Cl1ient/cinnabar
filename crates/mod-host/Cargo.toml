@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+platform-specific = ["windows"]
+
 [features]
 default = ["execution"]
 # The Wasmtime component host (local mods and the server helper); clients spawning helpers opt out.

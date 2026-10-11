@@ -7,6 +7,8 @@ pub struct Package {
     pub(crate) root: String,
     pub(crate) dependencies: Vec<String>,
     pub(crate) doctest: bool,
+    /// `[package.metadata.cinnabar] platform-specific`, which the architecture gate enforces.
+    pub(crate) platforms: Vec<String>,
 }
 
 impl Package {
@@ -18,6 +20,7 @@ impl Package {
             root: normalize(root),
             dependencies: dependencies.iter().map(|name| (*name).into()).collect(),
             doctest: false,
+            platforms: Vec::new(),
         }
     }
 
@@ -34,7 +37,15 @@ impl Package {
             root: normalize(&root),
             dependencies,
             doctest,
+            platforms: Vec::new(),
         }
+    }
+
+    /// Sets the platforms whose code this package contains.
+    #[must_use]
+    pub fn with_platforms(mut self, platforms: Vec<String>) -> Self {
+        self.platforms = platforms;
+        self
     }
 }
 

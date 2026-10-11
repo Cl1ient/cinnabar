@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+platform-specific = ["macos", "windows"]
+
 [features]
 tracy = ["bevy/trace", "dep:tracy-client"]
 publication-test-support = []

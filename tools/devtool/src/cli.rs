@@ -4,9 +4,9 @@ use std::{
 };
 
 use crate::{
-    CommandSpec, DevtoolError, MACOS_MARKERS, Package, Selection, TestRunner, extra_commands,
-    go_modules, packages_from_metadata, plan_ci, select_extra_checks, select_packages,
-    selection::normalize, verification_commands,
+    CommandSpec, DevtoolError, Package, Selection, TestRunner, extra_commands, go_modules,
+    packages_from_metadata, plan_ci, select_extra_checks, select_packages, selection::normalize,
+    verification_commands,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +80,7 @@ pub fn run(options: &Options) -> Result<(), DevtoolError> {
     let changed_refs = changed.iter().map(String::as_str).collect::<Vec<_>>();
     match options.subcommand {
         Subcommand::VerifyAffected => verify_affected(options, &changed_refs, &packages),
-        Subcommand::CiPlan => ci_plan(&options.base, &changed_refs, &packages),
+        Subcommand::CiPlan => ci_plan(&changed_refs, &packages),
     }
 }
 
@@ -131,67 +131,12 @@ fn verify_affected(
     Ok(())
 }
 
-/// Prints the plan on stdout and the macOS-specific files that drove it on stderr.
-fn ci_plan(base: &str, changed_refs: &[&str], packages: &[Package]) -> Result<(), DevtoolError> {
-    let mut marked = macos_marked(None, changed_refs)?;
-    marked.extend(macos_marked(Some(base), changed_refs)?);
-    marked.sort();
-    marked.dedup();
-    for path in &marked {
-        eprintln!("mentions macOS-specific code: {path}");
-    }
-    let marked_refs = marked.iter().map(String::as_str).collect::<Vec<_>>();
-    let plan = plan_ci(changed_refs, &marked_refs, packages);
+/// Prints the plan on stdout, with the selection on stderr for the job log.
+fn ci_plan(changed_refs: &[&str], packages: &[Package]) -> Result<(), DevtoolError> {
+    let plan = plan_ci(changed_refs, packages);
     eprintln!("selection: {:?}", plan.selection);
     print!("{}", plan.outputs(packages));
     Ok(())
-}
-
-/// Returns the changed text files matching [`MACOS_MARKERS`] at `revision`, or in the working tree.
-fn macos_marked(revision: Option<&str>, changed: &[&str]) -> Result<Vec<String>, DevtoolError> {
-    if changed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let display = format!("git grep -E '{MACOS_MARKERS}'");
-    let output = Command::new("git")
-        .args([
-            "--literal-pathspecs",
-            "grep",
-            "-I",
-            "-i",
-            "-l",
-            "-z",
-            "-E",
-            MACOS_MARKERS,
-        ])
-        .args(revision)
-        .arg("--")
-        .args(changed)
-        .output()
-        .map_err(|source| DevtoolError::Spawn {
-            command: display.clone(),
-            source,
-        })?;
-    // `git grep` exits with 1 when nothing matches.
-    if !output.status.success() && output.status.code() != Some(1) {
-        return Err(DevtoolError::Command {
-            command: display,
-            status: output.status.to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).trim().into(),
-        });
-    }
-    let prefix = revision.map(|revision| format!("{revision}:"));
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(|path| {
-            prefix
-                .as_deref()
-                .and_then(|prefix| path.strip_prefix(prefix))
-                .unwrap_or(path)
-                .to_owned()
-        })
-        .collect())
 }
 
 /// Returns paths under `root` that differ from `base`, plus non-ignored untracked files, sorted.

@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+platform-specific = ["macos", "windows"]
+
 [dependencies]
 assets = { path = "../assets" }
 cap-fs-ext = "3.4.5"

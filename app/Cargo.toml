@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+platform-specific = ["macos", "windows"]
+
 # No doctests here; skipping rustdoc's pass over the crate saves a full re-parse.
 [lib]
 doctest = false

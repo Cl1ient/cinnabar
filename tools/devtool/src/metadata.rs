@@ -18,6 +18,20 @@ struct MetadataPackage {
     manifest_path: PathBuf,
     dependencies: Vec<MetadataDependency>,
     targets: Vec<MetadataTarget>,
+    #[serde(default)]
+    metadata: Option<PackageMetadata>,
+}
+
+#[derive(Default, Deserialize)]
+struct PackageMetadata {
+    #[serde(default)]
+    cinnabar: CinnabarMetadata,
+}
+
+#[derive(Default, Deserialize)]
+struct CinnabarMetadata {
+    #[serde(default, rename = "platform-specific")]
+    platform_specific: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -64,13 +78,18 @@ pub fn packages_from_metadata(json: &str) -> Result<Vec<Package>, DevtoolError> 
                 })
                 .map(|dependency| dependency.name)
                 .collect();
+            let platforms = package
+                .metadata
+                .map(|metadata| metadata.cinnabar.platform_specific)
+                .unwrap_or_default();
             Ok(Package::from_owned(
                 package.id,
                 package.name,
                 root.to_string_lossy().replace('\\', "/"),
                 dependencies,
                 package.targets.iter().any(|target| target.doctest),
-            ))
+            )
+            .with_platforms(platforms))
         })
         .collect()
 }
@@ -203,6 +222,22 @@ mod tests {
                 expected.into_iter().map(str::to_owned).collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn platform_declarations_come_from_package_metadata() {
+        let metadata = serde_json::json!({
+            "workspace_root": "/repo",
+            "workspace_members": ["portable", "native"],
+            "packages": [
+                {"id": "portable", "name": "portable", "manifest_path": "/repo/portable/Cargo.toml", "dependencies": [], "targets": [], "metadata": null},
+                {"id": "native", "name": "native", "manifest_path": "/repo/native/Cargo.toml", "dependencies": [], "targets": [],
+                 "metadata": {"cinnabar": {"platform-specific": ["macos", "windows"]}, "other": {}}},
+            ],
+        });
+        let packages = packages_from_metadata(&metadata.to_string()).unwrap();
+        assert!(packages[0].platforms.is_empty());
+        assert_eq!(packages[1].platforms, ["macos", "windows"]);
     }
 
     #[test]

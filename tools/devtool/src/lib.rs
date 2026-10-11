@@ -8,7 +8,7 @@ use std::{io, path::PathBuf};
 
 use thiserror::Error;
 
-pub use ci::{CiPlan, MACOS_MARKERS, PLATFORM_TEST_PACKAGES, plan_ci};
+pub use ci::{CiPlan, plan_ci};
 pub use cli::{Options, Subcommand, parse_args, run};
 pub use commands::{CommandSpec, TestRunner, extra_commands, verification_commands};
 pub use metadata::{go_modules, packages_from_metadata};

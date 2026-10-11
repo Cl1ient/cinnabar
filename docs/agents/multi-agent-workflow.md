@@ -37,11 +37,14 @@ cause, and report any validation that remains incomplete.
 Go tests on Linux. Rust jobs build and lint the whole workspace, so only changed crates and
 their reverse dependencies recompile, and `devtool ci-plan` limits Rust tests to those
 crates. Root Cargo files, `.cargo/`, toolchain files, workflows, `tools/architecture`, and
-paths it cannot classify run every test. Windows also tests the client library and the
-affected crates in `PLATFORM_TEST_PACKAGES` (`tools/devtool/src/ci.rs`); add a crate there
-when its tests exercise platform-specific code. macOS runs the same job only when a changed
-crate source matches `MACOS_MARKERS`, `render` or a shader changes, or every test runs; full
-runs catch macOS-only breakage reached through another crate's API. Packaging,
+paths it cannot classify run every test.
+
+Crates with macOS or Windows code declare it in `Cargo.toml` as
+`[package.metadata.cinnabar] platform-specific = ["macos", "windows"]`; the architecture
+gate rejects missing and stale declarations. A Windows or macOS job runs when a changed
+crate declares that platform, a shader or workflow changes, or every test runs. It tests
+the affected crates that declare the platform, with only the client's library tests. Full
+runs catch platform-only breakage reached through another crate's API. Packaging,
 physics-bootstrap, and PowerShell-harness jobs run when their inputs change.
 
 The full three-platform matrix runs on `dev` every six hours and can be requested

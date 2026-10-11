@@ -1,3 +1,4 @@
+mod ci;
 mod cli;
 mod commands;
 mod metadata;
@@ -7,7 +8,8 @@ use std::{io, path::PathBuf};
 
 use thiserror::Error;
 
-pub use cli::{Options, parse_args, run};
+pub use ci::{CiPlan, MACOS_MARKERS, PLATFORM_TEST_PACKAGES, plan_ci};
+pub use cli::{Options, Subcommand, parse_args, run};
 pub use commands::{CommandSpec, TestRunner, extra_commands, verification_commands};
 pub use metadata::{go_modules, packages_from_metadata};
 pub use selection::{
@@ -22,7 +24,9 @@ pub enum DevtoolError {
     ManifestOutsideWorkspace { manifest: PathBuf, root: PathBuf },
     #[error("workspace package manifest `{0}` has no parent directory")]
     ManifestWithoutParent(PathBuf),
-    #[error("{0}\nusage: devtool verify-affected --base <git-ref> [--dry-run]")]
+    #[error(
+        "{0}\nusage: devtool verify-affected --base <git-ref> [--dry-run]\n       devtool ci-plan --base <git-ref>"
+    )]
     Usage(String),
     #[error("failed to run `{command}`: {source}")]
     Spawn { command: String, source: io::Error },

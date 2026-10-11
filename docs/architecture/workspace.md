@@ -58,7 +58,7 @@ Mojang assets are never committed or embedded. `make assets` fetches Mojang's of
 | `tools/cxb` | Publisher tooling for server Experiences: seeds, `.cxb` bundles, cache seeding. |
 | `tools/jsonui-editor` | Browser JSON-UI editor on the client's own engine, live at <https://bedrock-mc.github.io/cinnabar/>. |
 | `tools/jsonui-mcp` | The same editor core as an MCP server: resolve, validate, lay out, render and export packs. |
-| `tools/devtool` | `verify-affected`, which tests only what a change touches. |
+| `tools/devtool` | `verify-affected`, which tests only what a change touches, and `ci-plan`, which scopes pull-request CI the same way. |
 | `tools/dist` | Stages distributable bundles. |
 
 The [modding spike](docs/modding-spike.md) is a disabled-by-default Cinnabar extension; its

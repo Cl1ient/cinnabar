@@ -15,6 +15,7 @@ struct Metadata {
 struct MetadataPackage {
     id: String,
     name: String,
+    version: String,
     manifest_path: PathBuf,
     dependencies: Vec<MetadataDependency>,
     targets: Vec<MetadataTarget>,
@@ -67,6 +68,7 @@ pub fn packages_from_metadata(json: &str) -> Result<Vec<Package>, DevtoolError> 
             Ok(Package::from_owned(
                 package.id,
                 package.name,
+                package.version,
                 root.to_string_lossy().replace('\\', "/"),
                 dependencies,
                 package.targets.iter().any(|target| target.doctest),
@@ -171,6 +173,7 @@ mod tests {
             "packages": packages.map(|(name, kind, doctest)| serde_json::json!({
                 "id": name,
                 "name": name,
+                "version": "0.1.0",
                 "manifest_path": format!("/repo/{name}/Cargo.toml"),
                 "dependencies": [],
                 "targets": [{"kind": [kind], "doctest": doctest}],
@@ -214,6 +217,7 @@ mod tests {
                 {
                     "id": "assets 0.1.0 (path+file:///repo/crates/assets)",
                     "name": "assets",
+                    "version": "0.1.0",
                     "manifest_path": "/repo/crates/assets/Cargo.toml",
                     "targets": [{"doctest": true}],
                     "dependencies": []
@@ -221,6 +225,7 @@ mod tests {
                 {
                     "id": "render 0.1.0 (path+file:///repo/crates/render)",
                     "name": "render",
+                    "version": "0.1.0",
                     "manifest_path": "/repo/crates/render/Cargo.toml",
                     "targets": [{"doctest": true}],
                     "dependencies": [{"name": "assets", "path": "/repo/crates/assets"}]
@@ -242,8 +247,8 @@ mod tests {
             "workspace_root": "/repo",
             "workspace_members": [workspace_id],
             "packages": [
-                {"id": workspace_id, "name": "inventory", "manifest_path": "/repo/crates/inventory/Cargo.toml", "dependencies": [], "targets": [{"doctest": true}]},
-                {"id": registry_id, "name": "inventory", "manifest_path": "/registry/inventory/Cargo.toml", "dependencies": [], "targets": [{"doctest": true}]},
+                {"id": workspace_id, "name": "inventory", "version": "0.1.0", "manifest_path": "/repo/crates/inventory/Cargo.toml", "dependencies": [], "targets": [{"doctest": true}]},
+                {"id": registry_id, "name": "inventory", "version": "0.3.24", "manifest_path": "/registry/inventory/Cargo.toml", "dependencies": [], "targets": [{"doctest": true}]},
             ],
         });
         let packages = packages_from_metadata(&metadata.to_string()).unwrap();

@@ -33,12 +33,16 @@ cause, and report any validation that remains incomplete.
 
 ## CI
 
-`ci-ok` is the required check. Pull requests run formatting, the architecture gate,
-clippy, and Rust and Go tests on Linux. Windows and macOS run
-`cargo check --workspace --all-targets`, client library tests, and the crates in
-`PLATFORM_TEST_PACKAGES` in `.github/workflows/ci.yml`. Add a crate there when its
-tests exercise platform-specific code. Packaging, physics-bootstrap, and
-PowerShell-harness jobs run when their inputs change.
+`ci-ok` is the required check. Pull requests run formatting, the architecture gate, and
+Go tests on Linux. `devtool ci-plan` then limits clippy, Rust tests, and doctests to the
+changed crates and their reverse dependencies. Root Cargo files, `.cargo/`, toolchain
+files, workflows, `tools/architecture`, and paths it cannot classify select the whole
+workspace. Windows lints the same set and runs the client library tests and the affected
+crates in `PLATFORM_TEST_PACKAGES` (`tools/devtool/src/ci.rs`). Add a crate there when its
+tests exercise platform-specific code. macOS runs the same jobs only when a changed crate
+source matches `MACOS_MARKERS`, `render` or a shader changes, or the whole workspace is
+selected; full runs catch macOS-only breakage reached through another crate's API.
+Packaging, physics-bootstrap, and PowerShell-harness jobs run when their inputs change.
 
 The full three-platform matrix runs on `dev` every six hours and can be requested
 with `gh workflow run ci.yml --ref <branch>`. `ci-cache.yml` tests `dev` on Linux

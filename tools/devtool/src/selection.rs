@@ -4,6 +4,7 @@ use std::collections::{BTreeSet, VecDeque};
 pub struct Package {
     pub(crate) name: String,
     pub(crate) cargo_id: String,
+    pub(crate) version: String,
     pub(crate) root: String,
     pub(crate) dependencies: Vec<String>,
     pub(crate) doctest: bool,
@@ -15,6 +16,7 @@ impl Package {
         Self {
             name: name.into(),
             cargo_id: name.into(),
+            version: "0.0.0".into(),
             root: normalize(root),
             dependencies: dependencies.iter().map(|name| (*name).into()).collect(),
             doctest: false,
@@ -24,6 +26,7 @@ impl Package {
     pub(crate) fn from_owned(
         cargo_id: String,
         name: String,
+        version: String,
         root: String,
         dependencies: Vec<String>,
         doctest: bool,
@@ -31,6 +34,7 @@ impl Package {
         Self {
             name,
             cargo_id,
+            version,
             root: normalize(&root),
             dependencies,
             doctest,
@@ -84,29 +88,9 @@ const EXTERNAL_TEST_INPUTS: &[(&str, &str)] = &[
 /// Selects Rust packages; paths no rule recognises fail safe to the whole workspace.
 #[must_use]
 pub fn select_packages(changed_paths: &[&str], packages: &[Package]) -> Selection {
-    if changed_paths.iter().any(|path| is_workspace_input(path)) {
+    let Some(mut selected) = changed_packages(changed_paths, packages) else {
         return Selection::Workspace;
-    }
-
-    let mut selected = BTreeSet::new();
-    for path in changed_paths {
-        let path = normalize(path);
-        if let Some(owner) = packages
-            .iter()
-            .filter(|package| is_within(&path, &package.root))
-            .max_by_key(|package| package.root.len())
-        {
-            selected.insert(owner.name.clone());
-        } else if let Some((_, reader)) = EXTERNAL_TEST_INPUTS
-            .iter()
-            .find(|(input, _)| is_within(&path, input))
-        {
-            selected.insert((*reader).to_owned());
-        } else if !is_rust_free(&path) {
-            return Selection::Workspace;
-        }
-    }
-
+    };
     if selected.is_empty() {
         return Selection::NoPackages;
     }
@@ -121,6 +105,40 @@ pub fn select_packages(changed_paths: &[&str], packages: &[Package]) -> Selectio
     }
 
     Selection::Packages(selected.into_iter().collect())
+}
+
+/// Returns the packages that own or read the changed paths, before adding reverse dependencies,
+/// or `None` when a path needs the whole workspace.
+pub(crate) fn changed_packages(
+    changed_paths: &[&str],
+    packages: &[Package],
+) -> Option<BTreeSet<String>> {
+    if changed_paths.iter().any(|path| is_workspace_input(path)) {
+        return None;
+    }
+    let mut selected = BTreeSet::new();
+    for path in changed_paths {
+        let path = normalize(path);
+        if let Some(owner) = owner(&path, packages) {
+            selected.insert(owner.name.clone());
+        } else if let Some((_, reader)) = EXTERNAL_TEST_INPUTS
+            .iter()
+            .find(|(input, _)| is_within(&path, input))
+        {
+            selected.insert((*reader).to_owned());
+        } else if !is_rust_free(&path) {
+            return None;
+        }
+    }
+    Some(selected)
+}
+
+/// Returns the package with the deepest root containing a normalized `path`.
+pub(crate) fn owner<'a>(path: &str, packages: &'a [Package]) -> Option<&'a Package> {
+    packages
+        .iter()
+        .filter(|package| is_within(path, &package.root))
+        .max_by_key(|package| package.root.len())
 }
 
 /// Returns the Go modules owning changed paths and whether the packaging tests apply.
@@ -170,7 +188,7 @@ pub(crate) fn normalize(path: &str) -> String {
     path.trim_start_matches("./").replace('\\', "/")
 }
 
-fn is_within(path: &str, root: &str) -> bool {
+pub(crate) fn is_within(path: &str, root: &str) -> bool {
     path == root
         || path
             .strip_prefix(root)

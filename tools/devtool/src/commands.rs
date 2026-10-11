@@ -251,6 +251,7 @@ mod tests {
             &[crate::Package::from_owned(
                 "world".into(),
                 "world".into(),
+                "0.1.0".into(),
                 "crates/world".into(),
                 vec![],
                 true,

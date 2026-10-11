@@ -48,7 +48,7 @@ mod potion;
 mod provenance;
 mod registry;
 mod runtime;
-mod seasonal_foliage;
+pub mod seasonal_foliage;
 mod server_lang;
 mod session_entities;
 mod skin_geometry;
@@ -265,10 +265,6 @@ pub use runtime::{
     BlockOverlay, MaterialOverride, NetworkIdMode, ResolvedBlock, ResolvedFace, RuntimeAssets,
     SequentialIdRemap, ServerDefinedBlock, server_defined_blocks,
     server_defined_blocks_for_registry,
-};
-pub use seasonal_foliage::{
-    SEASONAL_FOLIAGE_COLD_THRESHOLD, SEASONAL_FOLIAGE_COUNT, SEASONAL_FOLIAGE_EXPOSED_OFFSET,
-    SeasonalFoliageBlock, seasonal_foliage_cell_shelters, seasonal_foliage_palette_index,
 };
 pub use server_lang::{MAX_SERVER_LANG_INPUT_BYTES, ServerLangOverlay};
 pub use session_entities::SessionEntityPack;

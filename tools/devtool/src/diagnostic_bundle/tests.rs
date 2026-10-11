@@ -59,6 +59,40 @@ fn json_embedded_in_crash_strings_removes_every_private_array_element() {
 }
 
 #[test]
+fn windows_panic_locations_and_backtraces_keep_their_backslashes() {
+    let message = "panicked at crates\\client-runtime\\src\\net\\session.rs:212:17:\ncalled `Option::unwrap()` on a `None` value";
+    let backtrace = r"   0: std::backtrace_rs::backtrace::dbghelp64::trace
+             at /rustc/90b35a6239c3d8bdabc530a6a0816f7ff89a0aaf/library\std\src\..\..\backtrace\src\backtrace\dbghelp64.rs:91
+   1: bridge::frame::decode
+             at C:\work\cinnabar\crates\bridge\src\frame.rs:44:13
+   2: client_runtime::net::session::run
+             at C:\work\cinnabar\crates\client-runtime\src\net\session.rs:212:17
+";
+    let report = serde_json::json!({
+        "source": "client",
+        "message": message,
+        "backtrace": backtrace,
+        "os": "windows",
+    });
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("bundle.zip");
+    bundle(
+        &path,
+        &[("crashes/report-0.json".into(), report.to_string())],
+    )
+    .unwrap();
+    let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+    let mut text = String::new();
+    zip.by_name("crashes/report-0.json")
+        .unwrap()
+        .read_to_string(&mut text)
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value["message"], message);
+    assert_eq!(value["backtrace"], backtrace);
+}
+
+#[test]
 fn ansi_styled_tracing_fields_are_learned_and_redacted() {
     let styled = "\x1b[2m2026-10-12T12:34:56.789012Z\x1b[0m \x1b[32m INFO\x1b[0m \x1b[2mclient_session::login\x1b[0m\x1b[2m:\x1b[0m signed in \x1b[3mgamertag\x1b[0m\x1b[2m=\x1b[0m\"Private Player\" \x1b[3mtoken\x1b[0m\x1b[2m=\x1b[0m\"secret value\"\n";
     let all = bundled(&[

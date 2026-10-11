@@ -260,17 +260,28 @@ fn tail(path: &Path) -> std::io::Result<String> {
 }
 
 /// Scrubs learned values and contextual patterns from the raw text and every decoded layer.
+///
+/// Emits the shallowest layer that needed no further redaction, so literal backslashes such as
+/// Windows paths survive unless a deeper decode revealed something private.
 fn redact(text: &str, values: &[String]) -> Result<String, DevtoolError> {
-    let mut view = strip_ansi(text);
-    for _ in 0..=MAX_ESCAPE_DEPTH {
+    let scrub = |view: &str| redact_patterns(&redact_values(view, values));
+    let mut layer = scrub(&strip_ansi(text));
+    let mut emitted = layer.clone();
+    for _ in 0..MAX_ESCAPE_DEPTH {
+        let decoded = strip_ansi(&decode_escapes(&layer));
+        if decoded == layer {
+            return Ok(emitted);
+        }
         // A later decode can disguise a value, such as turning `\b` into a backspace.
-        let scrubbed = redact_patterns(&redact_values(&view, values));
-        view = strip_ansi(&decode_escapes(&scrubbed));
-        if view == scrubbed {
-            return Ok(scrubbed);
+        layer = scrub(&decoded);
+        if layer != decoded {
+            emitted = layer.clone();
         }
     }
-    Err(escape_depth_error())
+    if strip_ansi(&decode_escapes(&layer)) != layer {
+        return Err(escape_depth_error());
+    }
+    Ok(emitted)
 }
 
 /// Replaces every learned spelling before decoding can alter quote or backslash boundaries.

@@ -59,3 +59,5 @@ pub use authority::{
     PublisherViewGeometry, SPRINT_SPEED_MODIFIER_ID, SignEditRequest, ViewCohort, WorldAuthority,
 };
 pub use protocol::ItemAttackTiming;
+
+pub use actor_store::{DisplayActorStore, MAX_DISPLAY_ACTORS};

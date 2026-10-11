@@ -260,3 +260,15 @@ Block overlays use the shared pack compiler to resolve legacy geometry inheritan
 ## Session biome climate and environment
 
 Admitted live biome identifiers and climate now travel with the session tint registry. Weather, fog precipitation, camera temperature and environment routes read that registry, including custom biome routes. Registry replacement clears removed routes. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+
+## Spawner display actors
+
+Spawner displays now use client-owned actor lifetimes and the ordinary actor
+evaluator, render controllers, sampled poses and active pack artwork. Configured
+entities no longer depend on a fixed mob list. Displays retire when the block or
+world changes, and pack replacement rebinds existing lifetimes.
+
+Incomplete parity: display factory metadata defaults, exact native renderer bounds,
+activation edge cases and the full entity gallery are unverified. Frame and GPU
+budgets remain open; these changes do not close those acceptance gates.

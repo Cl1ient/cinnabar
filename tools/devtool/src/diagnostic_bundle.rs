@@ -262,7 +262,7 @@ fn redact_values(text: &str, values: &[String]) -> String {
 fn redact_patterns(text: &str) -> String {
     let mut result = text.to_owned();
     let contextual = format!(
-        r#"(?i)\b({PRIVATE_FIELDS})\b["']?\s*[:=]\s*("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|[^\s,}}\]]+)"#
+        r#"(?i)\b({PRIVATE_FIELDS})\b["']?\s*[:=]\s*("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|[^\s,}}\]:][^\s,}}\]]*)"#
     );
     let patterns = [
         contextual.as_str(),
@@ -270,12 +270,6 @@ fn redact_patterns(text: &str) -> String {
         r#"(?i)\b[a-z][a-z0-9+.-]*://[^\s"<>]+"#,
         r"\b[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]+\b",
         r#"\b[^\s@"<>]+@[^\s@"<>]+\b"#,
-        r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b",
-        r"(?i)\b[a-z][a-z0-9_.-]*:\d{2,5}\b",
-        r"(?i)(?:\[)?(?:[a-f0-9]{0,4}:){2,}[a-f0-9:.%]+(?:\])?(?::\d+)?",
-        r"\b\d{10,}\b",
-        r"(?i)\b[a-z0-9](?:[a-z0-9_-]*\.)+[a-z]{2,}(?::\d+)?\b",
-        r"(?i)(?:/Users/|/home/|[a-z]:\\Users\\)[^/\\\s]+",
     ];
     for pattern in patterns {
         result = Regex::new(pattern)
@@ -283,19 +277,110 @@ fn redact_patterns(text: &str) -> String {
             .replace_all(&result, "[redacted]")
             .into_owned();
     }
-    result
+    result = redact_ipv6(&result);
+    result = Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b")
+        .unwrap()
+        .replace_all(&result, "[redacted]")
+        .into_owned();
+    for pattern in [
+        r"(?i)\b[a-z][a-z0-9_.-]*:\d{2,5}\b",
+        r"\b\d{10,}\b",
+        r"(?i)\b[a-z0-9](?:[a-z0-9_-]*\.)+[a-z]{2,}(?::\d+)?\b",
+    ] {
+        let sources = source_locations(&result);
+        result = Regex::new(pattern)
+            .unwrap()
+            .replace_all(&result, |capture: &regex::Captures<'_>| {
+                let span = capture.get(0).unwrap().range();
+                if sources
+                    .iter()
+                    .any(|source| source.start <= span.start && span.end <= source.end)
+                {
+                    capture[0].to_owned()
+                } else {
+                    "[redacted]".to_owned()
+                }
+            })
+            .into_owned();
+    }
+    Regex::new(r"(?i)(?:/Users/|/home/|[a-z]:\\Users\\)[^/\\\s]+")
+        .unwrap()
+        .replace_all(&result, "[redacted]")
+        .into_owned()
+}
+
+/// Byte ranges of `<file>.rs:<line>` (or `.go`) source locations after a path separator or with a column.
+fn source_locations(text: &str) -> Vec<std::ops::Range<usize>> {
+    Regex::new(r"(?i)[\w.-]+\.(?:rs|go):\d+(:\d+)?")
+        .unwrap()
+        .captures_iter(text)
+        .filter(|capture| {
+            capture.get(1).is_some()
+                || text[..capture.get(0).unwrap().start()].ends_with(['/', '\\'])
+        })
+        .map(|capture| capture.get(0).unwrap().range())
+        .collect()
+}
+
+/// Redacts standalone IPv6 addresses, leaving `::`-joined symbols and `h:m:s` times intact.
+fn redact_ipv6(text: &str) -> String {
+    let candidate =
+        Regex::new(r"(?i)\[?(?:[0-9a-f]{0,4}:){2,}[0-9a-f.]*(?:%[0-9a-z]+)?\]?(?::\d{1,5})?")
+            .unwrap();
+    let identifier = |c: char| c.is_alphanumeric() || c == '_';
+    candidate
+        .replace_all(text, |capture: &regex::Captures<'_>| {
+            let span = capture.get(0).unwrap();
+            let address = span.as_str().trim_end_matches('.');
+            let standalone = !text[..span.start()].ends_with(identifier)
+                && !text[span.start() + address.len()..].starts_with(identifier);
+            if standalone && ipv6_address(address) {
+                format!("[redacted]{}", &span.as_str()[address.len()..])
+            } else {
+                span.as_str().to_owned()
+            }
+        })
+        .into_owned()
+}
+
+/// Whether a candidate, with optional brackets, zone, and port, has at least two hex groups.
+fn ipv6_address(candidate: &str) -> bool {
+    let mut addresses = Vec::new();
+    match candidate.strip_prefix('[') {
+        Some(rest) => addresses.push(rest.split_once(']').map_or(rest, |(address, _)| address)),
+        None => {
+            addresses.push(candidate);
+            if let Some((address, port)) = candidate.rsplit_once(':')
+                && !port.is_empty()
+                && port.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                addresses.push(address);
+            }
+        }
+    }
+    addresses.into_iter().any(|address| {
+        let address = address
+            .split_once('%')
+            .map_or(address, |(address, _)| address);
+        address.parse::<std::net::Ipv6Addr>().is_ok()
+            && address.split(':').filter(|group| !group.is_empty()).count() >= 2
+    })
 }
 
 /// Learns identity and credential values from every raw and decoded view for bundle-wide removal.
 fn sensitive_values(texts: &[String]) -> Vec<String> {
     let pattern = Regex::new(&format!(
-        r#"(?i)\b(?:{PRIVATE_FIELDS})\b["']?\s*[:=]\s*("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|[^\s,}}\]\[{{"']+)"#
+        r#"(?i)\b(?:{PRIVATE_FIELDS})\b["']?\s*[:=]\s*("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|[^\s,}}\]\[{{"':][^\s,}}\]\[{{"']*)"#
     )).unwrap();
     let bearer = Regex::new(r#"(?i)\bbearer\s+([^\s"']+)"#).unwrap();
     let mut values = Vec::new();
     for text in texts {
         for capture in pattern.captures_iter(text) {
             let raw = &capture[1];
+            // A trailing backslash is a cut escape; the decoded view learns the whole value.
+            if raw.ends_with('\\') {
+                continue;
+            }
             let value = serde_json::from_str::<String>(raw)
                 .unwrap_or_else(|_| raw.trim_matches(['"', '\'']).into());
             values.push(value);
@@ -303,7 +388,8 @@ fn sensitive_values(texts: &[String]) -> Vec<String> {
         values.extend(
             bearer
                 .captures_iter(text)
-                .map(|capture| capture[1].to_owned()),
+                .map(|capture| capture[1].to_owned())
+                .filter(|value| !value.ends_with('\\')),
         );
     }
     values
@@ -587,6 +673,100 @@ mod tests {
             .read_to_string(&mut text)
             .unwrap();
         assert!(!text.contains("Other Player"));
+    }
+
+    #[test]
+    fn escaped_crash_fields_never_strip_backslashes_from_unicode_escaped_identities() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bundle.zip");
+        let report = serde_json::json!({
+            "source": "client",
+            "message": "panicked at crates/client-runtime/src/session.rs:212:17:\nlogin rejected",
+            "log_tail": "time=2026-10-12T12:34:56.789Z level=INFO msg=\"upstream login\" gamertag=\"Private Player\"\n",
+        });
+        let unicode: String = "Private Player"
+            .chars()
+            .map(|c| format!("\\u{:04x}", c as u32))
+            .collect();
+        bundle(
+            &path,
+            &[
+                ("crashes/report-0.json".into(), report.to_string()),
+                (
+                    "core.log".into(),
+                    format!("level=INFO msg=\"player {unicode} connected\"\n"),
+                ),
+            ],
+        )
+        .unwrap();
+        let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+        let mut all = String::new();
+        for index in 0..zip.len() {
+            zip.by_index(index)
+                .unwrap()
+                .read_to_string(&mut all)
+                .unwrap();
+        }
+        assert!(all.contains("connected"));
+        for private in ["Private", "Player", "u0050", "u0072"] {
+            assert!(!all.contains(private), "leaked {private}: {all}");
+        }
+    }
+
+    #[test]
+    fn rust_backtraces_keep_symbols_and_source_locations_while_addresses_are_redacted() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bundle.zip");
+        let rustc = "/rustc/90b35a6239c3d8bdabc530a6a0816f7ff89a0aaf/library";
+        let message = "panicked at crates/launcher-host/src/lifecycle/crash.rs:65:9:\ncalled `Option::unwrap()` on a `None` value";
+        let backtrace = format!(
+            "   0: std::backtrace_rs::backtrace::libunwind::trace
+             at {rustc}/std/src/../../backtrace/src/backtrace/libunwind.rs:116:5
+   1: launcher_host::lifecycle::crash::install_panic_hook::{{{{closure}}}}
+             at ./crates/launcher-host/src/lifecycle/crash.rs:35:9
+   2: <alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call
+             at {rustc}/alloc/src/boxed.rs:1984:9
+   3: std::panicking::rust_panic_with_hook
+             at {rustc}/std/src/panicking.rs:841:13
+   4: core::panicking::panic_fmt
+             at {rustc}/core/src/panicking.rs:75:14
+   5: cpal::host::coreaudio::macos::audio_unit_from_device
+   6: client_audio::output::open
+             at ./crates/client-audio/src/output.rs:88:41
+"
+        );
+        let log_tail = "time=2026-10-12T12:34:56.789Z level=WARN msg=\"dial failed\" err=\"dial udp 203.0.113.7:19132 -> [2001:db8::7]:19132: i/o timeout; resolved play.example.invalid:19132 via fe80::1%en0\"\n";
+        let report = serde_json::json!({
+            "source": "client",
+            "message": message,
+            "backtrace": backtrace,
+            "log_tail": log_tail,
+            "release": "0.1.0",
+            "os": "macos",
+            "arch": "aarch64",
+        });
+        bundle(
+            &path,
+            &[("crashes/report-0.json".into(), report.to_string())],
+        )
+        .unwrap();
+        let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+        let mut text = String::new();
+        zip.by_name("crashes/report-0.json")
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["backtrace"], backtrace.as_str());
+        assert_eq!(value["message"], message);
+        let log_tail = value["log_tail"].as_str().unwrap();
+        assert!(
+            log_tail.contains("12:34:56.789Z"),
+            "time redacted: {log_tail}"
+        );
+        for private in ["203.0.113", "2001:db8", "fe80", "play.example"] {
+            assert!(!log_tail.contains(private), "leaked {private}: {log_tail}");
+        }
     }
 
     #[test]

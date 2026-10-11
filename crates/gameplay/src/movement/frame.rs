@@ -44,6 +44,8 @@ pub struct PhysicsFrameInput {
     pub delta: Duration,
     pub now: Duration,
     pub active: bool,
+    /// Cancels retained presses when the semantic router releases input ownership.
+    pub input_authority_released: bool,
     pub movement: [f32; 2],
     pub raw_movement: [f32; 2],
     pub analogue_movement: [f32; 2],
@@ -314,7 +316,7 @@ impl LocomotionState {
             .ride
             .and(frame.facts.mount_runtime_id)
             .filter(|mount| *mount != 0)
-            .filter(|_| frame.active && frame.hold.is_none())
+            .filter(|_| frame.active && !frame.input_authority_released && frame.hold.is_none())
             .map(|mount| (session, mount));
         if self.pending_dismount != mount {
             self.pending_dismount = None;

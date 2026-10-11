@@ -4,8 +4,8 @@ use render_model::{UiRenderBatch, UiRenderInput, UiRenderTextureArray, UiRenderV
 use std::sync::Arc;
 
 /// Admits an independent unknown registry item and its legacy resource duration.
-fn stream() -> client_world::WorldStream {
-    let mut stream = client_world::WorldStream::new(protocol::WorldBootstrap {
+fn stream() -> chunk_pipeline::WorldStream {
+    let mut stream = chunk_pipeline::WorldStream::new(protocol::WorldBootstrap {
         dimension: 0,
         local_player_runtime_id: 1,
         local_player_unique_id: 1,

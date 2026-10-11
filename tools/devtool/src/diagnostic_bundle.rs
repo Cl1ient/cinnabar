@@ -12,6 +12,17 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 const LOG_LIMIT: u64 = 8 << 20;
 const PRIVATE_FIELDS: &str = "authorization|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|secret|xuid|gamertag|display[_-]?name|player[_-]?name|user[_-]?name|username|server[_-]?(?:address|host)?|target|address|hostname|host|from|to|owner[_-]?id|user[_-]?id|email|identity|socket[_-]?dir|endpoint";
 const MAX_ESCAPE_DEPTH: usize = 4;
+/// A home folder prefix and its username; a name with spaces runs to the next separator or quote.
+const HOME_FOLDER: &str =
+    r#"(?i)(?:/Users/|/home/|[a-z]:\\Users\\)(?:([^/\\\r\n"'<>|:*?,=]+)([\\/"'])|([^/\\\s"']+))"#;
+
+/// Removes ANSI styling, which a terminal formatter can place between a field name and `=`.
+fn strip_ansi(text: &str) -> String {
+    static ANSI: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    ANSI.get_or_init(|| Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").unwrap())
+        .replace_all(text, "")
+        .into_owned()
+}
 
 /// Decodes JSON and common debug escapes without requiring the surrounding log to be JSON.
 fn decode_escapes(text: &str) -> String {
@@ -42,20 +53,23 @@ fn decode_escapes(text: &str) -> String {
 
 /// Retains raw and decoded views, rejecting bundles whose escape layers exceed the bound.
 fn decoded_views(text: &str) -> Result<Vec<String>, DevtoolError> {
-    let mut views = vec![text.to_owned()];
+    let mut views = vec![strip_ansi(text)];
     for _ in 0..MAX_ESCAPE_DEPTH {
-        let next = decode_escapes(views.last().unwrap());
+        let next = strip_ansi(&decode_escapes(views.last().unwrap()));
         if next == *views.last().unwrap() {
             return Ok(views);
         }
         views.push(next);
     }
     if decode_escapes(views.last().unwrap()) != *views.last().unwrap() {
-        return Err(DevtoolError::Usage(
-            "diagnostic escape depth exceeds the redaction limit".into(),
-        ));
+        return Err(escape_depth_error());
     }
     Ok(views)
+}
+
+/// Rejects text nested deeper than redaction decodes.
+fn escape_depth_error() -> DevtoolError {
+    DevtoolError::Usage("diagnostic escape depth exceeds the redaction limit".into())
 }
 
 /// Builds literal spellings for learned values, including quote-only and nested JSON escaping.
@@ -241,11 +255,18 @@ fn tail(path: &Path) -> std::io::Result<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Removes learned literal values before and after decoding, then scrubs contextual patterns.
+/// Scrubs learned values and contextual patterns from the raw text and every decoded layer.
 fn redact(text: &str, values: &[String]) -> Result<String, DevtoolError> {
-    let raw = redact_patterns(&redact_values(text, values));
-    let decoded = decoded_views(&raw)?.pop().unwrap();
-    Ok(redact_patterns(&redact_values(&decoded, values)))
+    let mut view = strip_ansi(text);
+    for _ in 0..=MAX_ESCAPE_DEPTH {
+        // A later decode can disguise a value, such as turning `\b` into a backspace.
+        let scrubbed = redact_patterns(&redact_values(&view, values));
+        view = strip_ansi(&decode_escapes(&scrubbed));
+        if view == scrubbed {
+            return Ok(scrubbed);
+        }
+    }
+    Err(escape_depth_error())
 }
 
 /// Replaces every learned spelling before decoding can alter quote or backslash boundaries.
@@ -303,9 +324,14 @@ fn redact_patterns(text: &str) -> String {
             })
             .into_owned();
     }
-    Regex::new(r"(?i)(?:/Users/|/home/|[a-z]:\\Users\\)[^/\\\s]+")
+    Regex::new(HOME_FOLDER)
         .unwrap()
-        .replace_all(&result, "[redacted]")
+        .replace_all(&result, |capture: &regex::Captures<'_>| {
+            format!(
+                "[redacted]{}",
+                capture.get(2).map_or("", |end| end.as_str())
+            )
+        })
         .into_owned()
 }
 
@@ -373,8 +399,15 @@ fn sensitive_values(texts: &[String]) -> Vec<String> {
         r#"(?i)\b(?:{PRIVATE_FIELDS})\b["']?\s*[:=]\s*("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|[^\s,}}\]\[{{"':][^\s,}}\]\[{{"']*)"#
     )).unwrap();
     let bearer = Regex::new(r#"(?i)\bbearer\s+([^\s"']+)"#).unwrap();
+    let home = Regex::new(HOME_FOLDER).unwrap();
     let mut values = Vec::new();
     for text in texts {
+        values.extend(home.captures_iter(text).filter_map(|capture| {
+            capture
+                .get(1)
+                .or(capture.get(3))
+                .map(|name| name.as_str().to_owned())
+        }));
         for capture in pattern.captures_iter(text) {
             let raw = &capture[1];
             // A trailing backslash is a cut escape; the decoded view learns the whole value.
@@ -562,6 +595,67 @@ fn system_summary() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Bundles `entries` and returns every archive member's text, concatenated.
+    fn bundled(entries: &[(String, String)]) -> String {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bundle.zip");
+        bundle(&path, entries).unwrap();
+        let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+        let mut all = String::new();
+        for index in 0..zip.len() {
+            zip.by_index(index)
+                .unwrap()
+                .read_to_string(&mut all)
+                .unwrap();
+        }
+        all
+    }
+
+    #[test]
+    fn ansi_styled_tracing_fields_are_learned_and_redacted() {
+        let styled = "\x1b[2m2026-10-12T12:34:56.789012Z\x1b[0m \x1b[32m INFO\x1b[0m \x1b[2mclient_session::login\x1b[0m\x1b[2m:\x1b[0m signed in \x1b[3mgamertag\x1b[0m\x1b[2m=\x1b[0m\"Private Player\" \x1b[3mtoken\x1b[0m\x1b[2m=\x1b[0m\"secret value\"\n";
+        let all = bundled(&[
+            ("client.log".into(), styled.into()),
+            ("core.log".into(), "Private Player connected\n".into()),
+        ]);
+        assert!(all.contains("signed in") && all.contains("connected"));
+        for private in ["Private", "Player", "secret", "value"] {
+            assert!(!all.contains(private), "leaked {private}: {all}");
+        }
+    }
+
+    #[test]
+    fn debug_quoted_windows_paths_are_scrubbed_before_a_second_decode() {
+        let all = bundled(&[(
+            "client.log".into(),
+            "INFO client::logs: opened path=\"C:\\\\Users\\\\bob\\\\logs\"\n".into(),
+        )]);
+        assert!(all.contains("logs"));
+        assert!(!all.contains("ob"), "leaked username: {all}");
+        let unlearned = redact(r#"path="C:\\Users\\bob\\logs""#, &[]).unwrap();
+        assert!(!unlearned.contains("ob"), "leaked username: {unlearned}");
+    }
+
+    #[test]
+    fn home_folders_with_spaces_are_redacted_whole_and_everywhere() {
+        let all = bundled(&[
+            (
+                "client.log".into(),
+                concat!(
+                    "INFO client::paths: data dir C:\\Users\\Fixture Person\\AppData\\Roaming\\cinnabar\n",
+                    "INFO client::paths: home=\"C:\\\\Users\\\\Fixture Person\"\n",
+                    "INFO client::paths: profile '/Users/Fixture Person'\n",
+                )
+                .into(),
+            ),
+            ("core.log".into(), "Fixture Person connected\n".into()),
+        ]);
+        assert!(all.contains("AppData") && all.contains("connected"));
+        for private in ["Fixture", "Person"] {
+            assert!(!all.contains(private), "leaked {private}: {all}");
+        }
+    }
     #[test]
     fn excessive_escape_depth_never_publishes_a_bundle() {
         let temp = tempfile::tempdir().unwrap();

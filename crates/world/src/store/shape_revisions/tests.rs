@@ -114,3 +114,106 @@ fn exhausted_revision_space_rejects_actor_geometry_before_mutation() {
     ));
     assert!(store.block_entity(key).is_none());
 }
+
+/// Decodes an unchanged inline air palette carrying the supplied actor snapshot.
+fn inline_actor(actor: &BlockEntityNbt) -> crate::DecodedLevelChunk {
+    let mut payload = vec![9, 1, 0, 1, 0, 1, 0, 0];
+    payload.extend_from_slice(actor.bytes());
+    crate::DecodedLevelChunk::decode_inline(
+        crate::ChunkKey::new(0, 0, 0),
+        crate::DimensionSlots {
+            base_sub_chunk_y: 0,
+            count: 1,
+        },
+        1,
+        &payload,
+        &crate::RawBlockIds { air: 0 },
+        &crate::RawBiomeIds { default_biome: 0 },
+    )
+}
+
+#[test]
+fn inline_actor_replacement_retires_snapshot_and_pick_revision() {
+    let mut store = ChunkStore::new();
+    let key = BlockEntityKey::new(0, 0, 0, 0);
+    store
+        .commit_level_chunk(key.chunk(), inline_actor(&actor("PistonArm", 0.0)))
+        .unwrap();
+    let old = store.collision_snapshot();
+    let revision = old.collision_revision(key.chunk());
+    store
+        .commit_level_chunk(key.chunk(), inline_actor(&actor("PistonArm", 0.5)))
+        .unwrap();
+    let current = store.collision_snapshot();
+    assert_ne!(revision, store.collision_revision(key.chunk()));
+    assert!(!Arc::ptr_eq(&old, &current));
+    assert_eq!(
+        old.block_entity(key).unwrap().shape_actor(),
+        &ShapeActor::Piston {
+            progress_bits: 0.0_f32.to_bits()
+        }
+    );
+    assert_eq!(
+        current.block_entity(key).unwrap().shape_actor(),
+        &ShapeActor::Piston {
+            progress_bits: 0.5_f32.to_bits()
+        }
+    );
+    let revision = store.collision_revision(key.chunk());
+    store
+        .commit_level_chunk(key.chunk(), inline_actor(&actor("PistonArm", 0.5)))
+        .unwrap();
+    assert_eq!(revision, store.collision_revision(key.chunk()));
+    assert!(Arc::ptr_eq(&current, &store.collision_snapshot()));
+}
+
+#[test]
+fn inline_actor_removal_retires_snapshot_without_palette_changes() {
+    let mut store = ChunkStore::new();
+    let key = BlockEntityKey::new(0, 0, 0, 0);
+    store
+        .commit_level_chunk(key.chunk(), inline_actor(&actor("PistonArm", 0.5)))
+        .unwrap();
+    let old = store.collision_snapshot();
+    let revision = store.collision_revision(key.chunk());
+    store
+        .commit_level_chunk(key.chunk(), inline_actor(&actor("Chest", 0.5)))
+        .unwrap();
+    assert_ne!(revision, store.collision_revision(key.chunk()));
+    let current = store.collision_snapshot();
+    assert_eq!(
+        current.block_entity(key).unwrap().shape_actor(),
+        &ShapeActor::None
+    );
+    assert!(matches!(
+        old.block_entity(key).unwrap().shape_actor(),
+        ShapeActor::Piston { .. }
+    ));
+}
+
+#[test]
+fn inline_actor_revision_exhaustion_preserves_the_previous_column() {
+    let mut store = ChunkStore::new();
+    let key = BlockEntityKey::new(0, 0, 0, 0);
+    store
+        .commit_level_chunk(key.chunk(), inline_actor(&actor("PistonArm", 0.0)))
+        .unwrap();
+    let old = store.collision_snapshot();
+    store.collision_revision_allocator =
+        Arc::new(crate::collision_revision::CollisionRevisionAllocator::with_next(0));
+    let result = store.commit_level_chunk(key.chunk(), inline_actor(&actor("PistonArm", 0.5)));
+    assert!(
+        matches!(
+            result,
+            Err(crate::DecodeError::CollisionRevision(
+                CollisionRevisionError::Exhausted
+            ))
+        ),
+        "{result:?}"
+    );
+    assert_eq!(
+        store.block_entity(key).unwrap().shape_actor(),
+        old.block_entity(key).unwrap().shape_actor()
+    );
+    assert!(Arc::ptr_eq(&old, &store.collision_snapshot()));
+}

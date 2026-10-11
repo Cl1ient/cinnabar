@@ -469,6 +469,35 @@ fn first_presentation_uses_the_rendered_body_heading_after_pending_motion() {
 
 const LOCAL_VIEW_RUNTIME_ID: u64 = 3;
 
+#[test]
+fn first_presentation_does_not_observe_rest_after_spawn_or_reset() {
+    for reset in [false, true] {
+        let (mut store, mut actors) = animation_fixture();
+        store.advance_tick(&actors, None, None, true, true, |_| Default::default());
+        assert_eq!(store.get(1).unwrap().rest_completed_tick, 1);
+        let runtime_id = if reset {
+            store.mark_reset(1);
+            1
+        } else {
+            let mut actor = actors[&1].clone();
+            actor.runtime_id = 2;
+            store.insert(1, 0, &actor);
+            actors.insert(2, actor);
+            2
+        };
+        assert_eq!(store.get(runtime_id).unwrap().rest_completed_tick, 0);
+        store.prepare_frame(&actors, None, Some(runtime_id), true, zero_time_context);
+        let rig = store.get(runtime_id).unwrap();
+        assert!(rig.pose_evaluated);
+        assert_eq!(
+            rig.rest_completed_tick, 0,
+            "a presentation frame cannot replace this lifetime's fixed-tick observation"
+        );
+        store.advance_tick(&actors, None, None, false, true, |_| Default::default());
+        assert_eq!(store.get(runtime_id).unwrap().rest_completed_tick, 2);
+    }
+}
+
 /// Gives the local rig a visible pose change when its view mode changes.
 fn local_view_fixture() -> (ActorAnimationStore, HashMap<u64, ActorSnapshot>) {
     let mut compiled = compiled_assets();

@@ -160,29 +160,31 @@ impl ActorAnimationStore {
             let Some(actor) = actors.get(&lifetime.runtime_id) else {
                 continue;
             };
-            // Observe ownership before any evaluation budget branch. A failed
-            // animation cannot starve static publication for this or later actors.
-            if actor.runtime_id == lifetime.runtime_id
-                && actor.spawn_revision == lifetime.spawn_revision
-                && runtime_to_lifetime.get(&lifetime.runtime_id) == Some(&lifetime)
-            {
-                if state.rest_reset_pending {
-                    if let Some(next) = next_rest_reset_generation.checked_add(1) {
-                        state.rest_reset_generation = *next_rest_reset_generation;
-                        *next_rest_reset_generation = next;
-                        state.rest_reset_pending = false;
-                    } else {
-                        state.rest_reset_generation = 0;
+            // Fixed ticks observe ownership before any evaluation budget branch.
+            // Failed animation cannot starve static publication for later actors.
+            if !refresh_view {
+                if actor.runtime_id == lifetime.runtime_id
+                    && actor.spawn_revision == lifetime.spawn_revision
+                    && runtime_to_lifetime.get(&lifetime.runtime_id) == Some(&lifetime)
+                {
+                    if state.rest_reset_pending {
+                        if let Some(next) = next_rest_reset_generation.checked_add(1) {
+                            state.rest_reset_generation = *next_rest_reset_generation;
+                            *next_rest_reset_generation = next;
+                            state.rest_reset_pending = false;
+                        } else {
+                            state.rest_reset_generation = 0;
+                        }
                     }
+                    state.rest_completed_tick =
+                        if state.rest_reset_generation != 0 && !state.rest_reset_pending {
+                            completed_tick
+                        } else {
+                            0
+                        };
+                } else {
+                    state.rest_completed_tick = 0;
                 }
-                state.rest_completed_tick =
-                    if state.rest_reset_generation != 0 && !state.rest_reset_pending {
-                        completed_tick
-                    } else {
-                        0
-                    };
-            } else {
-                state.rest_completed_tick = 0;
             }
             let context = context(actor);
             let initial = !state.initialized;

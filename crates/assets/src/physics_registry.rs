@@ -176,7 +176,7 @@ pub fn physics_registry_header_protocol(preg: &[u8]) -> Result<u32, AssetError> 
     reader.read_u32("protocol")
 }
 
-/// Decodes the current physics format or the retained legacy protocol-1001 format.
+/// Decodes compiled physics for either supported protocol or retained legacy protocol-1001 data.
 ///
 /// Only the reviewed protocol-1001 and protocol-2193 projections are
 /// accepted; every other value is rejected before any structural read. All
@@ -227,11 +227,6 @@ fn decode_physics_registry(
     }
 
     let mut reader = Reader::new(&preg[..body_len]);
-    let expected_magic = if seed || expected_protocol == LEGACY_PHYSICS_REGISTRY_PROTOCOL {
-        LEGACY_PHYSICS_REGISTRY_MAGIC
-    } else {
-        PHYSICS_REGISTRY_MAGIC
-    };
     let magic = reader.read_exact(8, "magic")?;
     if magic != PHYSICS_REGISTRY_MAGIC && magic != LEGACY_PHYSICS_REGISTRY_MAGIC {
         return invalid("invalid magic");
@@ -240,7 +235,9 @@ fn decode_physics_registry(
         return invalid(format!("protocol is not {expected_protocol}"));
     }
     let compiled = magic == PHYSICS_REGISTRY_MAGIC;
-    if magic != expected_magic {
+    if (seed && compiled)
+        || (!seed && expected_protocol != LEGACY_PHYSICS_REGISTRY_PROTOCOL && !compiled)
+    {
         return invalid("stale physics format; rebuild with make assets physics-assets");
     }
     let count = usize::try_from(reader.read_u32("record count")?)
@@ -281,16 +278,17 @@ fn decode_physics_registry(
             .ok_or_else(|| physics_error(format!("record {index} has unknown flag bits")))?;
         let surface_response = SurfaceResponse::read(reader.read_u8("surface response")?)?;
         let support = reader.read_u8("movement semantics")?;
-        let movement_semantics = if expected_protocol == LEGACY_PHYSICS_REGISTRY_PROTOCOL {
-            if support != 0 {
-                return invalid(format!("record {index} has non-zero reserved byte"));
-            }
-            MovementSemantics::Unresolved
-        } else {
-            MovementSemantics::read(support).map_err(|_| {
-                physics_error(format!("record {index} has unknown movement semantics"))
-            })?
-        };
+        let movement_semantics =
+            if !compiled && expected_protocol == LEGACY_PHYSICS_REGISTRY_PROTOCOL {
+                if support != 0 {
+                    return invalid(format!("record {index} has non-zero reserved byte"));
+                }
+                MovementSemantics::Unresolved
+            } else {
+                MovementSemantics::read(support).map_err(|_| {
+                    physics_error(format!("record {index} has unknown movement semantics"))
+                })?
+            };
         let friction_q1e8 = reader.read_u32("friction")?;
         let horizontal_speed_q1e8 = reader.read_u32("horizontal speed")?;
         let vertical_speed_q1e8 = reader.read_u32("vertical speed")?;

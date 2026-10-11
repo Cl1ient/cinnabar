@@ -488,3 +488,45 @@ fn compiled_physics_roundtrip_retains_movement_support_and_shapes() {
         assert_eq!(decoded.by_network_hash(record.network_hash), Some(record));
     }
 }
+
+#[test]
+fn compiled_legacy_protocol_retains_current_format_facts() {
+    use assets::block_shapes::{
+        CompiledBlockShapes, OutlineContext, PickRule, SelectionContext, ShapeFlags,
+    };
+    use assets::registry::MovementSemantics;
+
+    let states = read_registry(BREG).unwrap();
+    let protocol = registry_header_protocol(BREG).unwrap();
+    let seed = read_physics_registry(&valid_preg(&states), BREG, &states).unwrap();
+    let mut records: Vec<_> = states
+        .iter()
+        .map(|state| {
+            let mut fact = seed.by_sequential_id(state.sequential_id).unwrap().clone();
+            fact.shapes = Some(CompiledBlockShapes {
+                state_identity: [0; 32],
+                actor_facing: None,
+                actor_visual: None,
+                selection: Box::new([]),
+                selection_context: SelectionContext::Static,
+                contextual_selection: Box::new([]),
+                outline: None,
+                connected_outline: None,
+                outline_context: OutlineContext::Static,
+                pick_rule: PickRule::Never,
+                flags: ShapeFlags::empty(),
+                door: None,
+                flow: None,
+                tags: Box::new([]),
+            });
+            fact
+        })
+        .collect();
+    records[0].movement_semantics = MovementSemantics::Special;
+    records[1].movement_semantics = MovementSemantics::Ordinary;
+    let bytes = assets::encode_physics_registry(protocol, BREG, &states, &records).unwrap();
+    let decoded = read_physics_registry(&bytes, BREG, &states).unwrap();
+    for record in &records {
+        assert_eq!(decoded.by_sequential_id(record.sequential_id), Some(record));
+    }
+}

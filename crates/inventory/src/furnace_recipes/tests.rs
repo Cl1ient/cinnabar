@@ -794,3 +794,99 @@ fn furnace_recipe_selection_moves_matching_fuel_into_the_ingredient_role() {
     assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 8);
     assert!(inventory.ledger().storage_stack(1).is_none());
 }
+
+#[test]
+fn furnace_quick_move_keeps_admitted_recipe_inputs_out_of_the_fuel_role() {
+    let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
+    let ledger = inventory.ledger_mut();
+    let entries = ledger
+        .item_registry_snapshot()
+        .unwrap()
+        .values()
+        .cloned()
+        .map(|mut entry| {
+            if entry.network_id == 2 {
+                entry.component_based = true;
+                entry.version = ::protocol::ItemRegistryVersion::DataDriven;
+                entry.canonical_empty_component_data = false;
+                entry.component_digest = [40; 32];
+                entry.components = Some(Arc::new(::protocol::ItemComponents {
+                    fuel_duration_ticks: Some(40),
+                    ..Default::default()
+                }));
+            }
+            entry
+        })
+        .collect();
+    ledger.apply_registry(&::protocol::ItemRegistryEvent { entries });
+    inventory
+        .ledger_mut()
+        .begin_quick_move(InventoryTarget::Player(5))
+        .unwrap();
+    assert_eq!(
+        inventory
+            .ledger()
+            .storage_stack(0)
+            .map(|stack| (stack.network_id, stack.count)),
+        Some((2, 8))
+    );
+    assert!(inventory.ledger().storage_stack(1).is_none());
+}
+
+#[test]
+fn furnace_input_admission_tracks_station_metadata_registry_and_catalog_removal() {
+    let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
+    assert_eq!(
+        inventory
+            .ledger_mut()
+            .furnace_input_accepts(::protocol::WindowKind::Furnace, 2, 0),
+        Some(true)
+    );
+    assert_eq!(
+        inventory
+            .ledger_mut()
+            .furnace_input_accepts(::protocol::WindowKind::Furnace, 2, 1),
+        Some(false)
+    );
+    assert_eq!(
+        inventory
+            .ledger_mut()
+            .furnace_input_accepts(::protocol::WindowKind::Smoker, 2, 0),
+        Some(true)
+    );
+    assert_eq!(
+        inventory
+            .ledger_mut()
+            .furnace_input_accepts(::protocol::WindowKind::BlastFurnace, 2, 0),
+        Some(false)
+    );
+    let mut entries: Vec<_> = inventory
+        .ledger()
+        .item_registry_snapshot()
+        .unwrap()
+        .values()
+        .cloned()
+        .collect();
+    entries
+        .iter_mut()
+        .find(|entry| entry.network_id == 2)
+        .unwrap()
+        .identifier = Arc::from("custom:unrelated_icon");
+    inventory
+        .ledger_mut()
+        .apply_registry(&::protocol::ItemRegistryEvent {
+            entries: entries.into(),
+        });
+    assert_eq!(
+        inventory
+            .ledger_mut()
+            .furnace_input_accepts(::protocol::WindowKind::Furnace, 2, 0),
+        Some(false)
+    );
+    let ledger = inventory.ledger_mut();
+    ledger.bind_furnace_inputs(None);
+    assert_eq!(
+        ledger.furnace_input_accepts(::protocol::WindowKind::Furnace, 2, 0),
+        None
+    );
+}

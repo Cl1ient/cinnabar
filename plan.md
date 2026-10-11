@@ -7483,5 +7483,8 @@ Furnace quick-move fuel decisions use numeric registry facts and validated compi
 Retained retail compatibility eligibility and log ingredient preference remain provisional;
 the complete native fuel inventory and durations are unverified. Missing, malformed and
 unsupported component declarations stay unresolved. Unknown and explicitly nonfuel items
-are deferred to the player inventory rather than guessed into a furnace cell. Accepted recipe
-inputs and other container slot rules remain incomplete; this change does not close those gates.
+are deferred to the player inventory rather than guessed into a furnace cell. Committed furnace
+recipe inputs are bound by numeric IDs, tags and metadata during admission.
+Session duration conversion and complete native recipe precedence remain unverified.
+Other container slot rules remain incomplete; this change
+does not close those gates.

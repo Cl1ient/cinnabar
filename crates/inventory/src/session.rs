@@ -101,7 +101,10 @@ impl InventorySession {
 
     /// Issue synchronous inventory commands through the single ledger owner.
     pub fn ledger_mut(&mut self) -> &mut PlayerInventoryLedger {
-        Arc::make_mut(&mut self.inventory_ledger)
+        let catalog = self.crafting_authority.catalog_snapshot();
+        let ledger = Arc::make_mut(&mut self.inventory_ledger);
+        ledger.bind_furnace_inputs(catalog);
+        ledger
     }
 
     /// Expire outstanding requests; the caller updates its screen if a lifecycle expired.

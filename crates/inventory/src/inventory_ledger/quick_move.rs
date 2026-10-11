@@ -180,7 +180,7 @@ impl PlayerInventoryLedger {
             (storage.identity.is_some() || storage.kind.is_ui_backed()).then_some(storage.kind)
         });
         let cells = match window {
-            Some(kind) => self.window_destinations(kind, id, stack.network_id),
+            Some(kind) => self.window_destinations(kind, id, stack.network_id, stack.metadata),
             None => self.equipment_destinations(id),
         };
         if !cells.is_empty() {
@@ -208,7 +208,13 @@ impl PlayerInventoryLedger {
     }
 
     /// The window cells a stack of `id` shift-clicks into.
-    fn window_destinations(&self, kind: WindowKind, id: &str, network_id: i32) -> Vec<Cell> {
+    fn window_destinations(
+        &self,
+        kind: WindowKind,
+        id: &str,
+        network_id: i32,
+        metadata: u32,
+    ) -> Vec<Cell> {
         let storage = |range: std::ops::Range<u8>| -> Vec<Cell> {
             range
                 .map(Cell::Storage)
@@ -229,6 +235,9 @@ impl PlayerInventoryLedger {
             | WindowKind::Hopper
             | WindowKind::Crafter => storage(0..u8::MAX),
             WindowKind::Furnace | WindowKind::BlastFurnace | WindowKind::Smoker => {
+                if self.furnace_input_accepts(kind, network_id, metadata) == Some(true) {
+                    return storage(0..1);
+                }
                 let fuel = self.item_fuel(network_id);
                 if fuel.eligible() != Some(true) {
                     return Vec::new();
@@ -291,17 +300,17 @@ mod fuel_tests {
             .fuel_facts
             .insert(10_002, ItemFuel::Session { burn_ticks: 0 });
         assert_eq!(
-            ledger.window_destinations(WindowKind::Furnace, "custom:shared_icon", 10_001),
+            ledger.window_destinations(WindowKind::Furnace, "custom:shared_icon", 10_001, 0),
             vec![Cell::Storage(1)]
         );
         assert!(
             ledger
-                .window_destinations(WindowKind::Furnace, "custom:shared_icon", 10_002)
+                .window_destinations(WindowKind::Furnace, "custom:shared_icon", 10_002, 0)
                 .is_empty()
         );
         assert!(
             ledger
-                .window_destinations(WindowKind::Furnace, "custom:oak_planks", 10_003)
+                .window_destinations(WindowKind::Furnace, "custom:oak_planks", 10_003, 0)
                 .is_empty()
         );
         ledger.fuel_facts.insert(
@@ -309,7 +318,7 @@ mod fuel_tests {
             assets::item::fuel::builtin_item_fuel("minecraft:oak_log"),
         );
         assert_eq!(
-            ledger.window_destinations(WindowKind::Furnace, "unrelated:icon", 10_004),
+            ledger.window_destinations(WindowKind::Furnace, "unrelated:icon", 10_004, 0),
             vec![Cell::Storage(0)]
         );
         ledger.fuel_facts.insert(
@@ -318,7 +327,7 @@ mod fuel_tests {
         );
         assert!(
             ledger
-                .window_destinations(WindowKind::Furnace, "minecraft:coal", 10_005)
+                .window_destinations(WindowKind::Furnace, "minecraft:coal", 10_005, 0)
                 .is_empty()
         );
     }

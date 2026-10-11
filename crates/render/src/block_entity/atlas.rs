@@ -386,6 +386,13 @@ impl DynamicCells {
         }
     }
 
+    /// Clears all canvases while advancing the upload revision beyond the previous contents.
+    pub fn reset(&mut self, atlas_width: u32) {
+        let revision = self.revision().wrapping_add(1);
+        *self = Self::new(atlas_width);
+        self.text.revision = revision;
+    }
+
     /// Ends the frame whose rects were just submitted; their slots become evictable again and
     /// the next frame may rasterize its own budget of canvases.
     pub fn begin_frame(&mut self) {

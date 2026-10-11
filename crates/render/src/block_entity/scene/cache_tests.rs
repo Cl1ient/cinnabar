@@ -650,3 +650,39 @@ fn replaced_atlas_keeps_frame_revision_monotonic_and_refreshes_uvs() {
     assert_eq!(unchanged.revision, second.revision);
     assert!(Arc::ptr_eq(&unchanged.solid, &second.solid));
 }
+
+#[test]
+fn identical_atlas_reinstalls_publish_fresh_sign_and_map_pixels() {
+    let mut scene = scene();
+    let assets = assets_with_chest_offset(0);
+    let mut previous = None::<BlockEntityFrame>;
+    let [text_width, text_height] = super::super::atlas::TEXT_CELL;
+    let [map_width, map_height] = super::super::atlas::MAP_CELL;
+    let text_bytes = (text_width * text_height * 4) as usize;
+    let map_bytes = (map_width * map_height * 4) as usize;
+    for value in [64, 128, 192] {
+        scene.install_assets(&assets);
+        scene.text_rect(1, || vec![value; text_bytes]).unwrap();
+        scene.map_rect(1, || vec![value; map_bytes]).unwrap();
+        let frame = scene.update(SceneClock::default(), &[], &[]).clone();
+        if let Some(previous) = previous {
+            let atlas = frame.atlas.as_ref().unwrap();
+            let old_atlas = previous.atlas.as_ref().unwrap();
+            assert_eq!(atlas.identity, old_atlas.identity);
+            assert_eq!(atlas.size, old_atlas.size);
+            assert_ne!(frame.dynamic_rgba8, previous.dynamic_rgba8);
+            assert!(frame.dynamic_revision > previous.dynamic_revision);
+        }
+        previous = Some(frame);
+    }
+    // Resetting also clears an unpublished canvas and advances the upload identity.
+    scene.text_rect(2, || vec![255; text_bytes]).unwrap();
+    let revision = scene.text.as_ref().unwrap().revision();
+    scene.install_assets(&assets);
+    let empty = scene.update(SceneClock::default(), &[], &[]);
+    assert!(empty.dynamic_revision > revision);
+    assert!(empty.dynamic_rgba8.iter().all(|pixel| *pixel == 0));
+    let revision = empty.dynamic_revision;
+    let unchanged = scene.update(SceneClock::default(), &[], &[]);
+    assert_eq!(unchanged.dynamic_revision, revision);
+}

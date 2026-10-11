@@ -5,6 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+reads = [
+    "crates/diagnostics/src/console.rs",
+    "crates/diagnostics/src/console/raw_stderr.rs",
+]
+
 [dependencies]
 cfg-expr = "=0.20.10"
 clap = { version = "4", features = ["derive"] }

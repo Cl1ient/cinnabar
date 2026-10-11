@@ -27,7 +27,8 @@ pub(super) fn check_artifacts(
     }
 }
 
-fn wildcard_match(pattern: &[u8], value: &[u8]) -> bool {
+/// Matches `*` against any run of bytes, `/` included.
+pub(super) fn wildcard_match(pattern: &[u8], value: &[u8]) -> bool {
     let (mut pattern_index, mut value_index) = (0, 0);
     let (mut star_index, mut star_value_index) = (None, 0);
     while value_index < value.len() {

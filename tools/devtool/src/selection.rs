@@ -9,6 +9,8 @@ pub struct Package {
     pub(crate) doctest: bool,
     /// `[package.metadata.cinnabar] platform-specific`, which the architecture gate enforces.
     pub(crate) platforms: Vec<String>,
+    /// `[package.metadata.cinnabar] reads`: other crates' files this package reads.
+    pub(crate) reads: Vec<String>,
 }
 
 impl Package {
@@ -21,6 +23,7 @@ impl Package {
             dependencies: dependencies.iter().map(|name| (*name).into()).collect(),
             doctest: false,
             platforms: Vec::new(),
+            reads: Vec::new(),
         }
     }
 
@@ -38,6 +41,7 @@ impl Package {
             dependencies,
             doctest,
             platforms: Vec::new(),
+            reads: Vec::new(),
         }
     }
 
@@ -46,6 +50,20 @@ impl Package {
     pub fn with_platforms(mut self, platforms: Vec<String>) -> Self {
         self.platforms = platforms;
         self
+    }
+
+    /// Sets the repository paths, which may use `*`, of other crates' files this package reads.
+    #[must_use]
+    pub fn with_reads(mut self, reads: Vec<String>) -> Self {
+        self.reads = reads;
+        self
+    }
+
+    /// Whether this package declares reading `path`, a file or directory it names.
+    fn declares_read(&self, path: &str) -> bool {
+        self.reads
+            .iter()
+            .any(|pattern| wildcard_match(pattern, path) || is_within(path, pattern))
     }
 }
 
@@ -126,6 +144,14 @@ pub(crate) fn changed_packages(
     let mut selected = BTreeSet::new();
     for path in changed_paths {
         let path = normalize(path);
+        let mut read = false;
+        for reader in packages
+            .iter()
+            .filter(|package| package.declares_read(&path))
+        {
+            selected.insert(reader.name.clone());
+            read = true;
+        }
         if let Some(owner) = owner(&path, packages) {
             selected.insert(owner.name.clone());
         } else if let Some((_, reader)) = EXTERNAL_TEST_INPUTS
@@ -133,11 +159,37 @@ pub(crate) fn changed_packages(
             .find(|(input, _)| is_within(&path, input))
         {
             selected.insert((*reader).to_owned());
-        } else if !is_rust_free(&path) {
+        } else if !read && !is_rust_free(&path) {
             return None;
         }
     }
     Some(selected)
+}
+
+/// Matches `*` against any run of characters, `/` included, as the architecture gate does.
+fn wildcard_match(pattern: &str, value: &str) -> bool {
+    let (pattern, value) = (pattern.as_bytes(), value.as_bytes());
+    let (mut pattern_index, mut value_index) = (0, 0);
+    let (mut star_index, mut star_value_index) = (None, 0);
+    while value_index < value.len() {
+        if pattern_index < pattern.len() && pattern[pattern_index] == value[value_index] {
+            pattern_index += 1;
+            value_index += 1;
+        } else if pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
+            while pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
+                pattern_index += 1;
+            }
+            star_index = Some(pattern_index);
+            star_value_index = value_index;
+        } else if let Some(after_star) = star_index {
+            star_value_index += 1;
+            value_index = star_value_index;
+            pattern_index = after_star;
+        } else {
+            return false;
+        }
+    }
+    pattern[pattern_index..].iter().all(|byte| *byte == b'*')
 }
 
 /// Returns the package with the deepest root containing a normalized `path`.
@@ -541,6 +593,51 @@ mod tests {
         assert_eq!(
             select_packages(&["unexpected/build-input.txt"], &workspace()),
             Selection::Workspace
+        );
+    }
+
+    #[test]
+    fn declared_readers_and_their_dependents_are_affected() {
+        let mut packages = workspace();
+        packages.push(
+            Package::new("pack-compiler", "crates/pack-compiler", &[]).with_reads(vec![
+                "crates/protocol/data/retail_items_1_26_50.tsv".into(),
+                "crates/meshing/fixtures/*".into(),
+            ]),
+        );
+        packages.push(Package::new("protocol", "crates/protocol", &[]));
+        assert_eq!(
+            select_packages(
+                &["crates/protocol/data/retail_items_1_26_50.tsv"],
+                &packages
+            ),
+            Selection::Packages(vec!["pack-compiler".into(), "protocol".into()])
+        );
+        assert_eq!(
+            select_packages(&["crates/protocol/data/other.tsv"], &packages),
+            Selection::Packages(vec!["protocol".into()])
+        );
+        let mut readers = packages.clone();
+        readers[0] = Package::new("assets", "crates/assets", &[])
+            .with_reads(vec!["crates/protocol/data".into()]);
+        assert_eq!(
+            select_packages(&["crates/protocol/data/other.tsv"], &readers),
+            Selection::Packages(vec![
+                "assets".into(),
+                "bedrock-client".into(),
+                "meshing".into(),
+                "protocol".into(),
+                "render".into(),
+            ])
+        );
+        assert_eq!(
+            select_packages(&["crates/meshing/fixtures/deep/case.bin"], &packages),
+            Selection::Packages(vec![
+                "bedrock-client".into(),
+                "meshing".into(),
+                "pack-compiler".into(),
+                "render".into(),
+            ])
         );
     }
 

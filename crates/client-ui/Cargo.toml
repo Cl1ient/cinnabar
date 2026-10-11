@@ -7,6 +7,9 @@ publish = false
 
 [package.metadata.cinnabar]
 platform-specific = ["macos"]
+reads = [
+    "crates/protocol/fixtures/*",
+]
 
 [features]
 test-support = []

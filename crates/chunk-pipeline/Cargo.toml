@@ -7,6 +7,9 @@ publish = false
 
 [package.metadata.cinnabar]
 platform-specific = ["macos", "windows"]
+reads = [
+    "crates/world/fixtures/uniform_non_air.bin",
+]
 
 [features]
 tracy = []

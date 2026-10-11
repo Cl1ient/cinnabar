@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+reads = [
+    "crates/protocol/fixtures/*",
+]
+
 [dependencies]
 protocol = { path = "../protocol" }
 serde = { version = "1", features = ["derive"] }

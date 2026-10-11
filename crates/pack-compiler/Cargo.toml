@@ -7,6 +7,10 @@ publish = false
 
 [package.metadata.cinnabar]
 platform-specific = ["macos", "windows"]
+reads = [
+    "crates/assets/data/*",
+    "crates/protocol/data/retail_items_1_26_50.tsv",
+]
 
 [dependencies]
 assets = { path = "../assets" }

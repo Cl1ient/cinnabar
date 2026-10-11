@@ -7,6 +7,13 @@ publish = false
 
 [package.metadata.cinnabar]
 platform-specific = ["windows"]
+reads = [
+    "crates/experience-sdk/wit/client",
+    "crates/experience-sdk/wit/session",
+    "crates/mod-api/wit",
+    "crates/server-experience/src/media/testdata/fixture.webm",
+    "examples/mods/screen-probe",
+]
 
 [features]
 default = ["execution"]

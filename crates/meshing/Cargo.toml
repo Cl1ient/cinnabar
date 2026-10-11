@@ -5,6 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+reads = [
+    "crates/assets/data/*",
+    "crates/render/src/model.wesl",
+]
+
 [dependencies]
 block-transform = { path = "../block-transform" }
 assets = { path = "../assets" }

@@ -13,7 +13,7 @@ use syn::{
 use crate::{
     ArchitectureError,
     conditions::{confined_to, target_predicates},
-    paths::relative_slash,
+    paths::{cinnabar_list, crate_roots, owning_crate, relative_slash},
     policy::Policy,
     read,
 };
@@ -61,27 +61,14 @@ pub(super) fn check_platforms(
     files: &[PathBuf],
     diagnostics: &mut Vec<String>,
 ) -> Result<(), ArchitectureError> {
-    let roots = policy
-        .crate_rules
-        .iter()
-        .map(|rule| {
-            let path = rule.path.trim_start_matches("./").trim_end_matches('/');
-            (if path == "." { "" } else { path }, rule.name.as_str())
-        })
-        .collect::<Vec<_>>();
+    let roots = crate_roots(policy);
     let mut evidence = BTreeMap::<&str, BTreeMap<Platform, String>>::new();
     for path in files {
         if path.extension().and_then(|value| value.to_str()) != Some("rs") {
             continue;
         }
         let relative = relative_slash(root, path);
-        let Some((_, name)) = roots
-            .iter()
-            .filter(|(crate_root, _)| {
-                crate_root.is_empty() || relative.starts_with(&format!("{crate_root}/"))
-            })
-            .max_by_key(|(crate_root, _)| crate_root.len())
-        else {
+        let Some((_, name)) = owning_crate(&roots, &relative) else {
             continue;
         };
         // Unparseable sources are reported by the module checks.
@@ -92,7 +79,7 @@ pub(super) fn check_platforms(
         scan.visit_file(&file);
         for platform in scan.found {
             evidence
-                .entry(*name)
+                .entry(name)
                 .or_default()
                 .entry(platform)
                 .or_insert_with(|| relative.clone());
@@ -140,16 +127,8 @@ fn declared_platforms(
     manifest: &toml::Value,
     diagnostics: &mut Vec<String>,
 ) -> BTreeSet<Platform> {
-    let values = manifest
-        .get("package")
-        .and_then(|package| package.get("metadata"))
-        .and_then(|metadata| metadata.get("cinnabar"))
-        .and_then(|cinnabar| cinnabar.get("platform-specific"))
-        .and_then(toml::Value::as_array)
-        .into_iter()
-        .flatten();
     let mut declared = BTreeSet::new();
-    for value in values {
+    for value in cinnabar_list(manifest, "platform-specific") {
         match Platform::ALL
             .into_iter()
             .find(|platform| value.as_str() == Some(platform.name()))

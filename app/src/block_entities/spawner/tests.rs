@@ -173,14 +173,14 @@ fn signed(value: i32, bytes: &mut Vec<u8>) {
 
 /// Admits one spawner through normal terrain decoding in the stream's current dimension.
 fn admit_spawner(stream: &mut chunk_pipeline::WorldStream, position: [i32; 3], sequence: u64) {
-    admit_spawners(stream, position, &[position], sequence);
+    admit_spawners(stream, position, &[(position, "custom:display")], sequence);
 }
 
 /// Admits configured displays in one column with spawner backing in one section.
 fn admit_spawners(
     stream: &mut chunk_pipeline::WorldStream,
     position: [i32; 3],
-    displays: &[[i32; 3]],
+    displays: &[([i32; 3], &str)],
     sequence: u64,
 ) {
     use protocol::{LevelChunkEvent, LevelChunkMode, WorldEvent};
@@ -206,15 +206,15 @@ fn admit_spawners(
     signed(0, &mut payload);
     payload.extend(std::iter::repeat_n(0xff, range.sub_chunk_count - 1));
     payload.push(0);
-    for display in displays {
+    for &(display, identifier) in displays {
         let mut nbt = vec![10, 0];
-        for (name, value) in [("id", "MobSpawner"), ("EntityIdentifier", "custom:display")] {
+        for (name, value) in [("id", "MobSpawner"), ("EntityIdentifier", identifier)] {
             nbt.extend([8, name.len() as u8]);
             nbt.extend_from_slice(name.as_bytes());
             nbt.push(value.len() as u8);
             nbt.extend_from_slice(value.as_bytes());
         }
-        for (name, value) in ["x", "y", "z"].into_iter().zip(*display) {
+        for (name, value) in ["x", "y", "z"].into_iter().zip(display) {
             nbt.extend([3, 1, name.as_bytes()[0]]);
             signed(value, &mut nbt);
         }
@@ -472,6 +472,10 @@ fn regression_display_limit_follows_distance_and_backing_filters() {
         {
             let mut client = world.resource_mut::<ClientWorld>();
             let stream = client.stream.as_mut().unwrap();
+            let displays: Vec<_> = displays
+                .iter()
+                .map(|&display| (display, "custom:display"))
+                .collect();
             admit_spawners(stream, target, &displays, 2);
             let key =
                 BlockEntityKey::new(stream.current_dimension(), target[0], target[1], target[2]);
@@ -524,4 +528,73 @@ fn regression_display_limit_follows_distance_and_backing_filters() {
             assert_eq!(pool.spins.len(), client_world::MAX_DISPLAY_ACTORS);
         }
     }
+}
+
+/// Places one full actor budget of displays on the x plane of the backed section.
+fn display_plane(x: i32, identifier: &str) -> Vec<([i32; 3], &str)> {
+    let side = SUB_CHUNK_SIDE as i32;
+    (0..client_world::MAX_DISPLAY_ACTORS as i32)
+        .map(|index| ([x, 64 + index / side, 1024 + index % side], identifier))
+        .collect()
+}
+
+/// Returns this frame's published actor submissions.
+fn published(world: &bevy::prelude::World) -> usize {
+    world
+        .resource::<PreparedActorPublication>()
+        .submissions()
+        .unwrap()
+        .len()
+}
+
+#[test]
+fn regression_rejected_identifiers_do_not_consume_the_display_limit() {
+    let mut world = system_fixture(serde_json::json!({}), "1");
+    let target = [1039, 64, 1024];
+    let mut displays = display_plane(1024, "custom:\u{7}display");
+    displays.push((target, "custom:display"));
+    {
+        let mut client = world.resource_mut::<ClientWorld>();
+        admit_spawners(client.stream.as_mut().unwrap(), target, &displays, 2);
+    }
+    world.insert_resource(LocalViewPose::new(
+        Vec3::new(1039.0, 66.0, 1024.0),
+        bevy::prelude::Quat::IDENTITY,
+    ));
+    prepare_displays(&mut world, world::TICK_DURATION);
+    let pool = world
+        .resource::<SpawnerDisplayPublisher>()
+        .0
+        .as_ref()
+        .unwrap();
+    assert_eq!(pool.spins.keys().copied().collect::<Vec<_>>(), vec![target]);
+    assert_eq!(published(&world), 2, "the valid display must still publish");
+}
+
+#[test]
+fn regression_full_display_pool_admits_a_disjoint_set_in_one_frame() {
+    let mut world = system_fixture(serde_json::json!({}), "1");
+    world.insert_resource(LocalViewPose::new(
+        Vec3::new(1032.0, 66.0, 1032.0),
+        bevy::prelude::Quat::IDENTITY,
+    ));
+    let first = display_plane(1024, "custom:display");
+    {
+        let mut client = world.resource_mut::<ClientWorld>();
+        admit_spawners(client.stream.as_mut().unwrap(), first[1].0, &first, 2);
+    }
+    prepare_displays(&mut world, world::TICK_DURATION);
+    let full = published(&world);
+    assert!(full > 0, "the first display set must fill the pool");
+    let second = display_plane(1025, "custom:display");
+    {
+        let mut client = world.resource_mut::<ClientWorld>();
+        admit_spawners(client.stream.as_mut().unwrap(), second[1].0, &second, 3);
+    }
+    prepare_displays(&mut world, world::TICK_DURATION);
+    assert_eq!(
+        published(&world),
+        full,
+        "replacement displays must publish on the frame their predecessors retire"
+    );
 }

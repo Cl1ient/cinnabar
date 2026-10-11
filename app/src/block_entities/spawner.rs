@@ -62,7 +62,7 @@ fn column(source: Arc<EntityIndex>) -> Column {
                 return None;
             }
             let identifier = root.string("EntityIdentifier")?;
-            if identifier.is_empty() {
+            if !DisplayActorStore::admits_identifier(identifier) {
                 return None;
             }
             Some(Request {
@@ -167,7 +167,7 @@ pub(crate) fn prepare_spawner_actors(
     let side = SUB_CHUNK_SIDE as i32;
     let mut columns = BTreeSet::new();
     let mut visible = BTreeSet::new();
-    let mut displays = Vec::new();
+    let mut selected = Vec::new();
     for x in range(eye.x) {
         for z in range(eye.z) {
             let key = ChunkKey::new(session.1, x, z);
@@ -226,15 +226,25 @@ pub(crate) fn prepare_spawner_actors(
                             <= request.activation_range * request.activation_range
                     }),
                 );
-                if let Some(runtime) = pool.actors.resolve(request.position, &request.identifier) {
-                    displays.push((runtime, request.position, clock.spin));
-                }
+                selected.push((
+                    request.position,
+                    Arc::clone(&request.identifier),
+                    clock.spin,
+                ));
             }
         }
     }
     pool.columns.retain(|key, _| columns.contains(key));
     pool.spins.retain(|position, _| visible.contains(position));
+    // Retire first so a full pool admits a disjoint set in the same frame.
     pool.actors.retain(&visible);
+    let displays = selected
+        .into_iter()
+        .filter_map(|(position, identifier, spin)| {
+            let runtime = pool.actors.resolve(position, &identifier)?;
+            Some((runtime, position, spin))
+        })
+        .collect();
     pool.actors.advance(step.ticks);
     let artwork = state.actor_artwork(&artwork);
     pending.extend_entities(display_batch(

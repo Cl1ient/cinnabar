@@ -31,12 +31,16 @@ impl DisplayActorStore {
         self.store.set_pack_entities(pack);
     }
 
+    /// Reports whether `identifier` can name a display actor; callers skip others before admission.
+    pub fn admits_identifier(identifier: &str) -> bool {
+        !identifier.is_empty()
+            && identifier.len() <= protocol::MAX_ACTOR_IDENTIFIER_BYTES
+            && !identifier.chars().any(char::is_control)
+    }
+
     /// Reuses an unchanged display actor, replacing it when its configured entity changes.
     pub fn resolve(&mut self, position: [i32; 3], identifier: &str) -> Option<u64> {
-        if identifier.is_empty()
-            || identifier.len() > protocol::MAX_ACTOR_IDENTIFIER_BYTES
-            || identifier.chars().any(char::is_control)
-        {
+        if !Self::admits_identifier(identifier) {
             return None;
         }
         if let Some(&runtime) = self.positions.get(&position) {

@@ -578,7 +578,7 @@ fn batched_dispatch_allocations_are_bounded_by_jobs_and_queue_growth() {
             capture_mesh(&stream, key),
         );
         let done = done.clone();
-        batch.spawn(move || {
+        batch.spawn(false, move || {
             drop(black_box(inputs));
             let _ = done.send(());
         });

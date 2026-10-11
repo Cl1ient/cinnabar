@@ -175,7 +175,11 @@ impl WorldStream {
         }
         self.with_urgent_deadline(|stream| {
             let camera = stream.last_camera_position;
-            stream.dispatch_light_jobs(camera, URGENT_DISPATCH_BUDGET);
+            stream.dispatch_light_jobs_reserving(
+                camera,
+                URGENT_DISPATCH_BUDGET,
+                URGENT_JOB_RESERVE,
+            );
             let budget = stream
                 .publication_allowance
                 .as_ref()
@@ -185,7 +189,7 @@ impl WorldStream {
                 )
                 .min(URGENT_DISPATCH_BUDGET)
                 .min(MAX_PENDING_MESH_CHANGES.saturating_sub(stream.mesh_changes.len()));
-            stream.dispatch_mesh_jobs_with_limits(camera, budget, budget);
+            stream.dispatch_mesh_jobs_reserving(camera, budget, budget, URGENT_JOB_RESERVE);
         });
     }
 
@@ -220,14 +224,7 @@ impl WorldStream {
             return 0;
         }
         self.with_urgent_deadline(|stream| {
-            for _ in 0..URGENT_RESULTS_PER_PASS {
-                let Ok(completion) = stream.lighting.rx.try_recv() else {
-                    break;
-                };
-                stream.accept_light_completion(completion);
-                stream.urgent_work_due = true;
-            }
-            stream.dispatch_urgent_work();
+            stream.accept_light_and_dispatch_urgent();
             stream.retry_urgent_staged_mesh_completions(URGENT_RESULTS_PER_PASS);
             let mut accepted = 0;
             while accepted < URGENT_RESULTS_PER_PASS
@@ -241,6 +238,18 @@ impl WorldStream {
             }
             accepted
         })
+    }
+
+    /// Accepts finished light results and dispatches the urgent work they unblock.
+    fn accept_light_and_dispatch_urgent(&mut self) {
+        for _ in 0..URGENT_RESULTS_PER_PASS {
+            let Ok(completion) = self.lighting.rx.try_recv() else {
+                break;
+            };
+            self.accept_light_completion(completion);
+            self.urgent_work_due = true;
+        }
+        self.dispatch_urgent_work();
     }
 
     pub fn camera_medium(&self, position: [f32; 3]) -> CameraMedium {

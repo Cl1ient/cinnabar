@@ -134,6 +134,9 @@ const INLINE_BLOCK_MUTATION_SUB_CHUNKS: usize = 4;
 const INLINE_BLOCK_MUTATION_UPDATES: usize = 64;
 /// Jobs one urgent pass may dispatch outside the poll.
 const URGENT_DISPATCH_BUDGET: usize = 4;
+/// Jobs a local block change may queue beyond full light or mesh workers, so streaming backlog
+/// cannot hold it back: enough for its section and a few neighbours its relight reaches.
+const URGENT_JOB_RESERVE: usize = 4;
 /// Results one urgent pass may accept outside the poll.
 const URGENT_RESULTS_PER_PASS: usize = 16;
 /// Cooperative time for one urgent pass outside the poll, so it never sweeps a backlog.

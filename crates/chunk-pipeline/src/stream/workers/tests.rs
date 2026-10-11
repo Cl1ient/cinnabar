@@ -189,7 +189,7 @@ fn dispatch_batch_publishes_independent_jobs_together() {
     let mut batch = pool.batch(Lane::Mesh);
     for index in 0..16 {
         let done = done.clone();
-        batch.spawn(move || done.send(index).unwrap());
+        batch.spawn(false, move || done.send(index).unwrap());
     }
     assert!(pool.shared.lock().mesh.is_empty());
     drop(batch);
@@ -220,4 +220,40 @@ fn borrowed_world_cores_run_as_wide_as_the_world_pool_at_normal_priority() {
     assert_eq!(threads, PoolSize::for_cores(cores).threads());
     // A join compile must not wait behind unrelated background processes.
     assert!(lowered.iter().all(|lowered| !*lowered), "{lowered:?}");
+}
+
+/// Work for a block the local player just changed runs before every lane's backlog, on every worker thread.
+#[test]
+fn urgent_work_runs_before_every_lane_backlog() {
+    let queue = |order: &crossbeam_channel::Sender<&'static str>| {
+        let pool = WorldPool {
+            shared: Arc::default(),
+            size: PoolSize {
+                foreground: 0,
+                background: 0,
+            },
+        };
+        for (lane, urgent, name) in [
+            (Lane::Mesh, false, "mesh"),
+            (Lane::Light, false, "light"),
+            (Lane::Light, true, "urgent light"),
+            (Lane::Mesh, true, "urgent mesh"),
+        ] {
+            let order = order.clone();
+            pool.batch(lane)
+                .spawn(urgent, move || order.send(name).unwrap());
+        }
+        pool
+    };
+    let mut scratch = world::LightSolverScratch::default();
+    let (order, ran) = crossbeam_channel::unbounded();
+    let pool = queue(&order);
+    let mut queues = pool.shared.lock();
+    while let Some(job) = queues.take(false, Instant::now()) {
+        job(&mut scratch);
+    }
+    assert_eq!(
+        ran.try_iter().collect::<Vec<_>>(),
+        ["urgent light", "urgent mesh", "mesh"]
+    );
 }

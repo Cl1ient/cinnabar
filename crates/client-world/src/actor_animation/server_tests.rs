@@ -264,3 +264,62 @@ fn invalid_nonempty_server_stop_is_counted_once_and_skips_playback() {
     assert_eq!(store.animation_stats().invalid_server_stop_expressions, 1);
     assert_eq!(store.animation_stats().frozen_actors, 0);
 }
+
+#[test]
+fn display_actor_uses_custom_rig_and_keeps_a_separate_lifetime_namespace() {
+    let mut custom = compiled();
+    custom.symbols[0].identifier = "custom:display_actor".into();
+    let custom = Arc::new(RuntimeEntityAssets::from_compiled(custom).unwrap());
+    let mut displays = crate::DisplayActorStore::new(0, Arc::clone(&custom));
+    let mut second = crate::DisplayActorStore::new(0, Arc::clone(&custom));
+    let position = [1, 64, 2];
+    let runtime = displays.resolve(position, "custom:display_actor").unwrap();
+    assert_eq!(
+        displays.resolve(position, "custom:display_actor"),
+        Some(runtime)
+    );
+    displays.advance(1);
+    let first = displays
+        .rig(runtime)
+        .expect("custom entity must use its normal rig")
+        .actor;
+    let other = second.resolve(position, "custom:display_actor").unwrap();
+    second.advance(1);
+    assert_ne!(
+        first.session_id,
+        second.rig(other).unwrap().actor.session_id
+    );
+    assert_eq!(
+        first.runtime_id, other,
+        "identical runtime ids cannot alias across pools"
+    );
+    assert_eq!(displays.actor(runtime).unwrap().position, [1.0, 64.0, 2.0]);
+    let replacement = displays.resolve(position, "minecraft:test").unwrap();
+    assert_ne!(replacement, runtime);
+    assert!(displays.actor(runtime).is_none());
+    displays.retain(&Default::default());
+    assert!(displays.actor(replacement).is_none());
+    assert!(
+        second.actor(other).is_some(),
+        "retirement is local to one pool"
+    );
+}
+
+#[test]
+fn display_actor_rebinds_the_same_lifetime_to_replaced_pack_geometry() {
+    let base = assets();
+    let mut displays = crate::DisplayActorStore::new(0, Arc::clone(&base));
+    let runtime = displays.resolve([0; 3], "minecraft:test").unwrap();
+    displays.advance(1);
+    let identity = displays.rig(runtime).unwrap().actor;
+    displays.set_pack(Some((Arc::clone(&base), vec![0])));
+    displays.advance(1);
+    let overridden = displays.rig(runtime).unwrap();
+    assert_eq!(overridden.actor, identity);
+    assert!(overridden.rig.0 >= assets::PACK_RIG_ID_BASE);
+    displays.set_pack(None);
+    displays.advance(1);
+    let restored = displays.rig(runtime).unwrap();
+    assert_eq!(restored.actor, identity);
+    assert!(restored.rig.0 < assets::PACK_RIG_ID_BASE);
+}

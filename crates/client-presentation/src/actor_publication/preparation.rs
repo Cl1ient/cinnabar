@@ -37,6 +37,14 @@ pub struct ActorFrameState {
 }
 
 impl ActorFrameState {
+    /// Shares the exact accepted artwork snapshot with client-owned actor publishers.
+    pub fn actor_artwork<'a>(
+        &'a self,
+        startup: &'a render::ActorArtworkPages,
+    ) -> &'a render::ActorArtworkPages {
+        self.session_artwork.as_ref().unwrap_or(startup)
+    }
+
     /// Whether the current captured first-person source will pass hand-frame validation.
     pub fn hand_is_active(&self) -> bool {
         self.hand_ready

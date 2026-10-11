@@ -7,6 +7,17 @@ use render::{ActorRenderFrame, ActorRuntimeWitness};
 pub struct PreparedActorPublication(pub(super) Option<PendingActorPublication>);
 
 impl PreparedActorPublication {
+    /// Appends client-owned entities after their normal controller and artwork resolution.
+    pub fn extend_entities(&mut self, batch: ActorPresentationBatch) {
+        if let Some(pending) = &mut self.0 {
+            if !batch.skin_layers.is_empty() {
+                return;
+            }
+            pending.batch.submissions.extend(batch.submissions);
+            pending.batch.artwork.extend(batch.artwork);
+        }
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     pub fn submissions(&self) -> Option<&[render::ActorRigSubmission]> {
         self.0
@@ -17,6 +28,7 @@ impl PreparedActorPublication {
 
 pub(super) struct PendingActorPublication {
     pub(super) batch: ActorPresentationBatch,
+    pub(super) session_id: Option<u64>,
     pub(super) partial_tick: f32,
     pub(super) witness: ActorMainWitness,
 }
@@ -43,7 +55,10 @@ pub fn publish_actor_render_frame(
         .rig
         .manifest
         .iter()
-        .find(|entry| entry.identity.runtime_id == prepared.witness.expected_runtime_id)
+        .find(|entry| {
+            Some(entry.identity.session_id) == prepared.session_id
+                && entry.identity.runtime_id == prepared.witness.expected_runtime_id
+        })
         .map(|entry| entry.route);
     prepared.witness.frame_instances = frame.rig.instances.len();
     prepared.witness.frame_manifest = frame.rig.manifest.len();

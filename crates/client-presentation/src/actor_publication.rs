@@ -757,6 +757,10 @@ pub fn prepare_actor_render_frame(
         register_geometries(&mut hand_builder.0, &mut scene, new_geometries);
     }
     prepared.0 = Some(commit::PendingActorPublication {
+        session_id: client_world
+            .stream
+            .as_ref()
+            .map(|stream| stream.authority().actor_session_id()),
         batch,
         partial_tick: step.partial_tick,
         witness: ActorMainWitness {

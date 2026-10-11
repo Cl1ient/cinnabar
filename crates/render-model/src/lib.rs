@@ -131,3 +131,5 @@ pub fn enhanced_rendering_enabled() -> bool {
     }
     ENHANCED_RENDERING_ENABLED
 }
+
+pub mod spawner;

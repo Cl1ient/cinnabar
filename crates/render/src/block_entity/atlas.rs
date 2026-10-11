@@ -5,8 +5,6 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use assets::RuntimeBlockEntityAssets;
 
-use super::mob::MobTexture;
-
 /// Size of one text canvas cell in atlas pixels.
 pub const TEXT_CELL: [u32; 2] = [96, 48];
 const TEXT_COLUMNS: u32 = 10;
@@ -155,73 +153,6 @@ impl BlockEntityAtlas {
             width: MAP_CELL[0] as f32,
             height: MAP_CELL[1] as f32,
         })
-    }
-
-    /// Shelf-packs `textures` into new static rows below the packed ones, moving the dynamic
-    /// strips down; textures wider than the atlas or already present are skipped.
-    pub fn append_textures(&mut self, textures: &[MobTexture]) {
-        let previous_count = self.placements.len();
-        let width = self.size[0];
-        let mut pixels = self.static_rgba8.to_vec();
-        let (mut x, mut y, mut shelf) = (0u32, self.static_height, 0u32);
-        for texture in textures {
-            let expected = texture.width as usize * texture.height as usize * 4;
-            if texture.width == 0
-                || texture.width > width
-                || texture.height == 0
-                || texture.rgba8.len() != expected
-                || self.placements.contains_key(texture.name.as_str())
-            {
-                continue;
-            }
-            if x + texture.width > width {
-                x = 0;
-                y += shelf + 1;
-                shelf = 0;
-            }
-            let needed = (y + texture.height) as usize * width as usize * 4;
-            if pixels.len() < needed {
-                pixels.resize(needed, 0);
-            }
-            for row in 0..texture.height {
-                let target = ((y + row) as usize * width as usize + x as usize) * 4;
-                let source = row as usize * texture.width as usize * 4;
-                let length = texture.width as usize * 4;
-                pixels[target..target + length]
-                    .copy_from_slice(&texture.rgba8[source..source + length]);
-            }
-            self.placements.insert(
-                texture.name.as_str().into(),
-                AtlasRect {
-                    x: x as f32,
-                    y: y as f32,
-                    width: texture.width as f32,
-                    height: texture.height as f32,
-                },
-            );
-            x += texture.width + 1;
-            shelf = shelf.max(texture.height);
-        }
-        let height = (pixels.len() / (width as usize * 4)) as u32;
-        self.static_height = height;
-        self.size[1] = height + dynamic_height(self.text_pages);
-        self.static_rgba8 = Arc::from(pixels);
-        if self.placements.len() != previous_count {
-            use sha2::{Digest, Sha256};
-            let mut hash = Sha256::new();
-            hash.update(self.identity);
-            hash.update(width.to_le_bytes());
-            hash.update(height.to_le_bytes());
-            hash.update(&self.static_rgba8);
-            for (name, rect) in &self.placements {
-                hash.update((name.len() as u64).to_le_bytes());
-                hash.update(name.as_bytes());
-                for value in [rect.x, rect.y, rect.width, rect.height] {
-                    hash.update(value.to_bits().to_le_bytes());
-                }
-            }
-            self.identity = hash.finalize().into();
-        }
     }
 
     /// One RGBA8 texel of a packed texture, in the texture's own pixel coordinates.
@@ -575,33 +506,5 @@ mod tests {
         // The map strip opens the upload block so growing text pages never move it.
         assert_eq!(cells.pixels()[0], 5);
         assert_eq!(cells.pixels().len(), 1024 * dynamic_height(1) as usize * 4);
-    }
-
-    #[test]
-    fn appended_textures_extend_the_static_rows_and_shift_the_strips() {
-        let bytes =
-            assets::encode_block_entity_catalog(b"{}", 8, 2, &[0u8; 8 * 2 * 4], &[]).unwrap();
-        let mut atlas = BlockEntityAtlas::from_assets(
-            &assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap(),
-        );
-        let texture = MobTexture {
-            name: "mob/test".into(),
-            width: 4,
-            height: 3,
-            rgba8: Arc::from(vec![9u8; 4 * 3 * 4]),
-        };
-        atlas.append_textures(&[texture.clone(), texture]);
-        let rect = atlas.texture("mob/test", [4.0, 3.0]).unwrap().rect;
-        assert_eq!((rect.x, rect.y), (0.0, 2.0));
-        assert_eq!(atlas.static_height(), 5);
-        assert_eq!(atlas.size()[1], 5 + dynamic_height(1));
-        assert_eq!(atlas.texel("mob/test", 1, 1), Some([9, 9, 9, 9]));
-        assert_eq!(atlas.map_cell(0).unwrap().y, 5.0);
-        assert_eq!(atlas.text_cell(0).unwrap().y, (5 + MAP_STRIP_HEIGHT) as f32);
-        assert!(atlas.text_cell(TEXT_SLOT_COUNT).is_none());
-        atlas.set_text_pages(2);
-        assert_eq!(atlas.size()[1], 5 + dynamic_height(2));
-        assert_eq!(atlas.text_cell(0).unwrap().y, (5 + MAP_STRIP_HEIGHT) as f32);
-        assert!(atlas.text_cell(TEXT_SLOT_COUNT).is_some());
     }
 }

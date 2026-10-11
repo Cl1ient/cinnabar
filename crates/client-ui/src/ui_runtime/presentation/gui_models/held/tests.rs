@@ -64,6 +64,8 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
     compiled.item_visuals = (0..16)
         .map(|metadata| assets::ItemVisualDefinition {
             glint: assets::item::glint::ItemGlint::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: ItemVisualKey {
                 identifier: "minecraft:banner".into(),
                 metadata,

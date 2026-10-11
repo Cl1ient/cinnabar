@@ -103,6 +103,8 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         item_visuals: vec![
             ItemVisualDefinition {
                 glint: assets::item::glint::ItemGlint::Unresolved,
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:apple".into(),
                     metadata: 0,
@@ -120,6 +122,8 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
             },
             ItemVisualDefinition {
                 glint: assets::item::glint::ItemGlint::Unresolved,
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:block_witness".into(),
                     metadata: 0,

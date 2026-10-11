@@ -352,7 +352,9 @@ impl RuntimeEntityAssets {
             return Err(invalid("truncated MCBEENT4 blob"));
         }
         if bytes[..8] != ENTITY_BLOB_MAGIC || u32_at(bytes, 8)? != ENTITY_BLOB_VERSION {
-            return Err(invalid("unsupported MCBEENT4 header"));
+            return Err(invalid(
+                "unsupported MCBEENT4 header; rebuild with make assets",
+            ));
         }
         let source_count = u32_at(bytes, 12)? as usize;
         let symbol_count = u32_at(bytes, 16)? as usize;

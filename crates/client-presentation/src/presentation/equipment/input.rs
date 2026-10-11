@@ -193,6 +193,7 @@ mod tests {
     fn worn_glint_combines_intrinsic_dispositions_and_enchantment_facts() {
         let mut item = CanonicalItemStack {
             glint: assets::item::glint::builtin_item_glint("minecraft:enchanted_book"),
+            durability: assets::item::durability::ItemDurability::Unresolved,
             identity: assets::ItemStackIdentity {
                 network_id: 7,
                 metadata: 0,

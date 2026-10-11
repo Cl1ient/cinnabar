@@ -23,6 +23,8 @@ struct Binding {
 pub(crate) struct FogBindings {
     atmosphere: Option<Arc<RuntimeAtmosphereAssets>>,
     biome_generation: Option<[u8; 32]>,
+    /// Published atmosphere identity that owns these indices and routes.
+    pub(crate) atmosphere_generation: Option<[u8; 32]>,
     by_id: BTreeMap<u32, Option<Binding>>,
     defaults: [Option<Binding>; 3],
     pub default_fog: Option<FogProfileIndex>,
@@ -33,18 +35,26 @@ impl FogBindings {
     pub fn refresh(
         &mut self,
         world: &RuntimeAssets,
-        atmosphere: Option<&Arc<RuntimeAtmosphereAssets>>,
+        atmosphere_assets: Option<&render::AtmosphereTextureAssets>,
     ) {
+        let atmosphere = atmosphere_assets.and_then(|assets| assets.runtime());
+        let atmosphere_generation = atmosphere_assets
+            .filter(|assets| assets.runtime().is_some())
+            .map(|assets| assets.identity());
         let generation = world.provenance().biome_registry_sha256;
         let same = match (&self.atmosphere, atmosphere) {
             (Some(old), Some(new)) => Arc::ptr_eq(old, new),
             (None, None) => true,
             _ => false,
         };
-        if same && self.biome_generation == Some(generation) {
+        if same
+            && self.biome_generation == Some(generation)
+            && self.atmosphere_generation == atmosphere_generation
+        {
             return;
         }
         self.atmosphere = atmosphere.cloned();
+        self.atmosphere_generation = atmosphere_generation;
         self.biome_generation = Some(generation);
         self.by_id.clear();
         self.defaults = Default::default();
@@ -105,7 +115,10 @@ impl FogBindings {
         profiles: &[BiomeVisualProfile],
         fogs: &[FogProfile],
     ) -> Self {
-        let mut result = Self::default();
+        let mut result = Self {
+            atmosphere_generation: Some(Default::default()),
+            ..Default::default()
+        };
         result.compile(rules, profiles, fogs);
         result
     }

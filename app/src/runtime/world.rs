@@ -240,6 +240,7 @@ pub(crate) fn update_camera_medium(
         });
     *context = environment::EnvironmentContext {
         dimension: stream.current_dimension(),
+        fog_registry_generation: fog_bindings.atmosphere_generation,
         fog_biomes: Some(environment::fog_biome_samples(
             stream,
             position,

@@ -399,10 +399,7 @@ pub(crate) fn reload_resource_packs(
                     }
                 }
                 if let Some(bindings) = fog_bindings.as_mut() {
-                    bindings.refresh(
-                        &world.runtime_assets,
-                        atmosphere.as_deref().and_then(|assets| assets.runtime()),
-                    );
+                    bindings.refresh(&world.runtime_assets, atmosphere.as_deref());
                 }
                 let packs = prepared.application;
                 if let (Some(current), Some(next)) =

@@ -17,6 +17,7 @@ fn admitted_samples_and_route_handles_allocate_nothing() {
     let (profile, route, fog) = bindings.camera(None, 2);
     let context = crate::environment::EnvironmentContext {
         dimension: 2,
+        fog_registry_generation: bindings.atmosphere_generation,
         fog_biomes: Some(samples),
         camera_profile: profile,
         camera_fog: fog,
@@ -33,6 +34,7 @@ fn admitted_samples_and_route_handles_allocate_nothing() {
         &context,
         &profiles,
         &fogs,
+        bindings.atmosphere_generation.unwrap(),
         None,
         0.0,
     );
@@ -102,4 +104,78 @@ fn known_missing_profiles_remain_distinct_from_unknown_ids_and_rebinding_refresh
     assert_eq!(bindings.fog(None, 0), Some(FogProfileIndex(plains)));
     bindings.compile(&[rule(42, "minecraft:plains")], &profiles, &fogs);
     assert_eq!(bindings.fog(Some(42), 2), Some(FogProfileIndex(plains)));
+}
+
+#[test]
+fn atmosphere_rejects_indices_sampled_before_a_registry_reload() {
+    use crate::environment::{EnvironmentContext, atmosphere::derive_profiled_atmosphere_frame};
+
+    let mut profiles = crate::environment::tests::profiles();
+    let mut fogs = crate::environment::tests::fog_profiles();
+    let bindings = FogBindings::for_profiles(&[], &profiles, &fogs);
+    let sampled = [0, 2].map(|dimension| {
+        let (camera_profile, profile_route, camera_fog) = bindings.camera(None, dimension);
+        EnvironmentContext {
+            dimension,
+            fog_registry_generation: bindings.atmosphere_generation,
+            camera_biome_identifier: profile_route
+                .as_ref()
+                .and_then(|route| route.biome_identifier.clone()),
+            camera_profile,
+            camera_fog,
+            profile_route,
+            fog_biomes: Some(
+                [bindings.fog(None, dimension); render::PRECIPITATION_SAMPLE_OFFSETS.len()],
+            ),
+            default_fog: bindings.default_fog,
+            render_distance_blocks: Some(256.0),
+            ..Default::default()
+        }
+    });
+
+    // A pack inserts earlier entries after sampling and replaces the camera's route.
+    let mut inserted_fog = fogs[0].clone();
+    inserted_fog.identifier = "aaa:inserted_fog".into();
+    for distance in &mut inserted_fog.distances {
+        distance.rgb8 = 0xff0000;
+        distance.end_bits = 4.0_f32.to_bits();
+    }
+    fogs.insert(0, inserted_fog);
+    let mut inserted_profile = profiles[0].clone();
+    inserted_profile.biome_identifier = "aaa:inserted_biome".into();
+    profiles.insert(0, inserted_profile);
+    for profile in &mut profiles {
+        profile.atmosphere_identifier = "test:reloaded_atmosphere".into();
+    }
+
+    for mut context in sampled {
+        let expected = EnvironmentContext {
+            dimension: context.dimension,
+            camera_biome_identifier: context.camera_biome_identifier.clone(),
+            render_distance_blocks: context.render_distance_blocks,
+            ..Default::default()
+        };
+        for lattice in [true, false] {
+            if !lattice {
+                context.fog_biomes = None;
+            }
+            for medium in [meshing::CameraMedium::Air, meshing::CameraMedium::Water] {
+                let derive = |context: &EnvironmentContext| {
+                    derive_profiled_atmosphere_frame(
+                        Default::default(),
+                        Default::default(),
+                        0.0,
+                        medium,
+                        context,
+                        &profiles,
+                        &fogs,
+                        [1; 32],
+                        None,
+                        0.0,
+                    )
+                };
+                assert_eq!(derive(&context), derive(&expected));
+            }
+        }
+    }
 }

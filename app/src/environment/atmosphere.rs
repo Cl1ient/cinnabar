@@ -77,6 +77,7 @@ type AtmosphereOutputs<'w> = (
     ResMut<'w, render::AtmosphereViewInputs>,
 );
 
+/// Resolves sampled indices only in their owning registry, using camera names after a reload.
 #[must_use]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn derive_profiled_atmosphere_frame(
@@ -87,12 +88,16 @@ pub(crate) fn derive_profiled_atmosphere_frame(
     context: &EnvironmentContext,
     biome_profiles: &[BiomeVisualProfile],
     fog_profiles: &[FogProfile],
+    registry_generation: [u8; 32],
     transition_seconds: Option<f32>,
     fog_weather_level: f32,
 ) -> (AtmosphereFrame, EnvironmentProfileRoute) {
     let base = derive_base_frame(clock, weather, elapsed_seconds, medium, context);
+    // A pack can change after sampling. Use camera names until the next lattice sample.
+    let indexed = context.fog_registry_generation == Some(registry_generation);
     let profile = context
         .camera_profile
+        .filter(|_| indexed)
         .and_then(|index| biome_profiles.get(index.0))
         .or_else(|| {
             context
@@ -109,8 +114,9 @@ pub(crate) fn derive_profiled_atmosphere_frame(
     };
     let samples = context
         .fog_biomes
+        .filter(|_| indexed)
         .map(|samples| samples.map(|index| index.and_then(|index| fog_profiles.get(index.0))));
-    let (camera_fog, default_fog) = if context.profile_route.is_some() {
+    let (camera_fog, default_fog) = if indexed && context.profile_route.is_some() {
         (
             context
                 .camera_fog
@@ -162,6 +168,7 @@ pub(crate) fn derive_profiled_atmosphere_frame(
         context
             .profile_route
             .as_deref()
+            .filter(|_| indexed)
             .cloned()
             .unwrap_or_else(|| EnvironmentProfileRoute {
                 biome_identifier: Some(std::sync::Arc::from(profile.biome_identifier.as_ref())),
@@ -259,6 +266,7 @@ pub(crate) fn update_atmosphere_frame(
             &context,
             assets.biome_profiles(),
             assets.fog_profiles(),
+            atmosphere_assets.identity(),
             Some(submerged),
             display.fog_level(),
         ),

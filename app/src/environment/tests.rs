@@ -506,6 +506,7 @@ fn end_dimension_fallback_applies_exact_profile_and_exposes_provisional_lighting
     let context = EnvironmentContext {
         dimension: 2,
         fog_biomes: None,
+        fog_registry_generation: None,
         camera_profile: None,
         camera_fog: None,
         profile_route: None,
@@ -526,6 +527,7 @@ fn end_dimension_fallback_applies_exact_profile_and_exposes_provisional_lighting
         &context,
         &biomes,
         &fogs,
+        Default::default(),
         None,
         0.0,
     );
@@ -552,6 +554,7 @@ fn known_camera_biome_takes_precedence_over_dimension_fallback() {
     let context = EnvironmentContext {
         dimension: 1,
         fog_biomes: None,
+        fog_registry_generation: None,
         camera_profile: None,
         camera_fog: None,
         profile_route: None,
@@ -569,6 +572,7 @@ fn known_camera_biome_takes_precedence_over_dimension_fallback() {
         &context,
         &profiles(),
         &fog_profiles(),
+        Default::default(),
         None,
         0.0,
     );
@@ -580,6 +584,7 @@ fn pinned_shape_plains_air_falls_back_to_the_exact_default_fog_layer() {
     let context = EnvironmentContext {
         dimension: 0,
         fog_biomes: None,
+        fog_registry_generation: None,
         camera_profile: None,
         camera_fog: None,
         profile_route: None,
@@ -597,6 +602,7 @@ fn pinned_shape_plains_air_falls_back_to_the_exact_default_fog_layer() {
         &context,
         &profiles(),
         &fog_profiles(),
+        Default::default(),
         None,
         0.0,
     );
@@ -608,6 +614,7 @@ fn biome_specific_medium_takes_precedence_over_the_default_fog_layer() {
     let context = EnvironmentContext {
         dimension: 0,
         fog_biomes: None,
+        fog_registry_generation: None,
         camera_profile: None,
         camera_fog: None,
         profile_route: None,
@@ -636,6 +643,7 @@ fn biome_specific_medium_takes_precedence_over_the_default_fog_layer() {
         &context,
         &profiles(),
         &fogs,
+        Default::default(),
         None,
         0.0,
     );
@@ -654,6 +662,7 @@ fn active_rain_uses_the_exact_weather_fog_endpoint_from_the_default_layer() {
     let context = EnvironmentContext {
         dimension: 0,
         fog_biomes: None,
+        fog_registry_generation: None,
         camera_profile: None,
         camera_fog: None,
         profile_route: None,
@@ -671,6 +680,7 @@ fn active_rain_uses_the_exact_weather_fog_endpoint_from_the_default_layer() {
         &context,
         &profiles(),
         &fog_profiles(),
+        Default::default(),
         None,
         1.0,
     );

@@ -27,15 +27,6 @@ impl NativeMaterialFacts {
             }),
         }
     }
-
-    /// Whether the material admits a falling leaf; unresolved facts deny admission.
-    #[must_use]
-    pub const fn allows_leaf(self) -> bool {
-        matches!(
-            self,
-            Self::NonSolidNonLiquid | Self::ProvisionalNonSolidNonLiquid
-        )
-    }
 }
 
 /// The compiler's partial material source; unlisted identities remain unresolved.

@@ -451,7 +451,7 @@ fn station_triggered(
         Default::default(),
     );
     let runtime_id = world.primary_runtime_id(position).ok()?;
-    assets::pinned_block_presentation_states()
+    assets::block_presentation_state::pinned_block_presentation_states()
         .get(mode, runtime_id)
         .crafter_triggered
 }

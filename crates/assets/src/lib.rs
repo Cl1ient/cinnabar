@@ -11,9 +11,7 @@ mod blob;
 mod block_entity;
 pub mod block_entity_geometry;
 mod block_names;
-mod block_presentation_state;
-pub use block_presentation_state::pinned_block_presentation_states;
-pub use block_presentation_state::{BlockPresentationState, BlockPresentationStates, PortalAxis};
+pub mod block_presentation_state;
 pub mod block_shapes;
 pub mod carriers;
 mod compiled;
@@ -41,7 +39,7 @@ mod light_registry;
 mod material_keys;
 mod material_variations;
 mod model;
-mod native_material;
+pub mod native_material;
 mod ogg;
 mod particle;
 mod physics_registry;
@@ -237,7 +235,6 @@ pub use model::{
     SEASONAL_LEAF_EXPOSED_OFFSET, SEASONAL_LEAF_MATERIAL_COUNT, SNOWED_GRASS_SIDE_TEXTURE,
     TOP_SNOW_LAYER_COUNT, TexturePage, TextureRef, VisualKind, VisualSupport, model_template_parts,
 };
-pub use native_material::{NATIVE_MATERIAL_SOURCE_BYTES, NativeMaterialFacts};
 pub use ogg::{decode_ogg, decode_sound};
 pub use particle::{
     ACTOR_FLAME_TEXTURE, MAX_PARTICLE_CARRIER_BYTES, MAX_PARTICLE_EFFECT_BYTES,

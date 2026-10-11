@@ -20,12 +20,12 @@ const FIXTURE_PROVENANCE: BlobProvenance = BlobProvenance {
 #[test]
 fn native_material_dispositions_survive_checked_world_carrier_admission() {
     for facts in [
-        assets::NativeMaterialFacts::Unresolved,
-        assets::NativeMaterialFacts::NonSolidNonLiquid,
-        assets::NativeMaterialFacts::Solid,
-        assets::NativeMaterialFacts::Liquid,
-        assets::NativeMaterialFacts::SolidAndLiquid,
-        assets::NativeMaterialFacts::ProvisionalNonSolidNonLiquid,
+        assets::native_material::NativeMaterialFacts::Unresolved,
+        assets::native_material::NativeMaterialFacts::NonSolidNonLiquid,
+        assets::native_material::NativeMaterialFacts::Solid,
+        assets::native_material::NativeMaterialFacts::Liquid,
+        assets::native_material::NativeMaterialFacts::SolidAndLiquid,
+        assets::native_material::NativeMaterialFacts::ProvisionalNonSolidNonLiquid,
     ] {
         let mut compiled = valid_assets();
         compiled.visuals[0].native_material = facts;
@@ -41,9 +41,20 @@ fn native_material_dispositions_survive_checked_world_carrier_admission() {
             runtime
                 .resolve(assets::NetworkIdMode::Sequential, u32::MAX)
                 .native_material(),
-            assets::NativeMaterialFacts::Unresolved
+            assets::native_material::NativeMaterialFacts::Unresolved
         );
     }
+}
+
+#[test]
+fn world_carrier_rejects_undefined_material_dispositions() {
+    let mut bytes = encode_blob(&valid_assets()).unwrap().into_vec();
+    let visuals = read_u64(&bytes, 192) as usize;
+    bytes[visuals + 29] = u8::MAX;
+    let payload_end = bytes.len() - 32;
+    let digest = Sha256::digest(&bytes[..payload_end]);
+    bytes[payload_end..].copy_from_slice(&digest);
+    assert!(assets::RuntimeAssets::decode(&bytes).is_err());
 }
 
 #[test]
@@ -54,7 +65,7 @@ fn world_carrier_exact_bytes() {
     let mut fixture = valid_assets();
     fixture.visuals = vec![
         BlockVisual {
-            native_material: assets::NativeMaterialFacts::Unresolved,
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Diagnostic,
@@ -65,7 +76,7 @@ fn world_carrier_exact_bytes() {
             variant: 0,
         },
         BlockVisual {
-            native_material: assets::NativeMaterialFacts::Unresolved,
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [1; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Model,
@@ -136,7 +147,7 @@ fn world_carrier_exact_bytes() {
     assert_eq!(bytes.len(), 1_576_296);
     assert_eq!(
         format!("{:x}", Sha256::digest(&bytes)),
-        "505458f4a87bce9ebd69fd734996c19dec6babbccee97e36132fd67d2d55275a",
+        "d7ae8c7fe2a12e57e0428724193f4690da48795b1a358c06ef82d6545d386f64",
         "the complete every-table fixture is the byte-exact world carrier golden"
     );
     assert_eq!(read_u32(&bytes, 20), 2);
@@ -645,7 +656,7 @@ fn texture_array(layers: u32) -> TextureArray {
 fn valid_assets() -> CompiledAssets {
     CompiledAssets {
         visuals: vec![BlockVisual {
-            native_material: assets::NativeMaterialFacts::Unresolved,
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Diagnostic,

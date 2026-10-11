@@ -1,6 +1,6 @@
 //! Native ambient sampling, its shared random stream, and leaf/fire admission.
 
-use assets::NativeMaterialFacts;
+use assets::native_material::NativeMaterialFacts;
 
 mod fire;
 mod random;
@@ -18,5 +18,8 @@ pub const LEAF_CHANCE_DENOMINATOR: u32 = 100;
 /// Reads the admitted solid/liquid disposition without inspecting block names or geometry.
 #[must_use]
 pub const fn material_allows_leaf(material: NativeMaterialFacts) -> bool {
-    material.allows_leaf()
+    matches!(
+        material,
+        NativeMaterialFacts::NonSolidNonLiquid | NativeMaterialFacts::ProvisionalNonSolidNonLiquid
+    )
 }

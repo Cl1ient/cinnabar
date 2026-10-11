@@ -62,7 +62,7 @@ impl ResolvedBlock {
     }
     /// Returns the admitted material disposition, including unresolved support.
     #[must_use]
-    pub const fn native_material(self) -> crate::NativeMaterialFacts {
+    pub const fn native_material(self) -> crate::native_material::NativeMaterialFacts {
         self.visual.native_material
     }
     #[must_use]
@@ -115,7 +115,7 @@ impl ResolvedBlock {
 
 const fn diagnostic_visual() -> BlockVisual {
     BlockVisual {
-        native_material: crate::NativeMaterialFacts::Unresolved,
+        native_material: crate::native_material::NativeMaterialFacts::Unresolved,
         faces: [DIAGNOSTIC_MATERIAL; 6],
         flags: BlockFlags::empty(),
         kind: VisualKind::Diagnostic,

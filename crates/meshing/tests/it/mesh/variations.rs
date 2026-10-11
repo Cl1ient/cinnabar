@@ -9,7 +9,7 @@ fn positional_materials_keep_one_cell_per_quad_on_every_cube_face() {
     }
     let mut overlay = assets::BlockOverlay {
         visuals: vec![BlockVisual {
-            native_material: assets::NativeMaterialFacts::Unresolved,
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,
@@ -77,7 +77,7 @@ fn mixed_biome_option_keeps_tinted_faces_one_block_wide() {
     }
     let overlay = assets::BlockOverlay {
         visuals: vec![BlockVisual {
-            native_material: assets::NativeMaterialFacts::Unresolved,
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,

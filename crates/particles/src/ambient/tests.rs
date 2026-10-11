@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use assets::NativeMaterialFacts;
+use assets::native_material::NativeMaterialFacts;
 
 use super::{
     material_allows_leaf,

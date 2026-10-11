@@ -25,9 +25,9 @@ use crate::{
     model::{ANIMATION_FLAGS_MASK, model_quad_flags_are_valid},
 };
 
-// World leaves require native atlas mips, per-face isotropy and pack-authored
-// AO exponents. Reject earlier carriers that omit those material selectors.
-pub const BLOB_VERSION: u32 = 13;
+// World visuals retain solid/liquid material dispositions alongside their render facts.
+// Reject earlier carriers that lack those compiled material descriptors.
+pub const BLOB_VERSION: u32 = 14;
 pub const BLOB_MAGIC: [u8; 8] = {
     let mut magic = *b"MCBEAS00";
     magic[6] += (BLOB_VERSION / 10) as u8;

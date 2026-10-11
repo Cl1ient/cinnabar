@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use assets::{AssetError, NativeMaterialFacts, RegistryRecord};
+use assets::native_material::NativeMaterialFacts;
+use assets::{AssetError, RegistryRecord};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -18,8 +19,9 @@ pub(super) fn compile(
     if protocol != assets::active_content_registry_protocol() {
         return Ok(vec![NativeMaterialFacts::Unresolved; records.len()]);
     }
-    let source: Source = serde_json::from_slice(assets::NATIVE_MATERIAL_SOURCE_BYTES)
-        .map_err(|error| invalid(error.to_string()))?;
+    let source: Source =
+        serde_json::from_slice(assets::native_material::NATIVE_MATERIAL_SOURCE_BYTES)
+            .map_err(|error| invalid(error.to_string()))?;
     if source.format_version != 1 {
         return Err(invalid("unsupported native material source"));
     }
@@ -80,7 +82,8 @@ mod tests {
             .position(|record| record.name.as_ref() == "minecraft:stone")
             .unwrap();
         assert_eq!(facts[stone], NativeMaterialFacts::Unresolved);
-        let source: Source = serde_json::from_slice(assets::NATIVE_MATERIAL_SOURCE_BYTES).unwrap();
+        let source: Source =
+            serde_json::from_slice(assets::native_material::NATIVE_MATERIAL_SOURCE_BYTES).unwrap();
         for name in source.materials.keys() {
             let states: Vec<_> = records
                 .iter()

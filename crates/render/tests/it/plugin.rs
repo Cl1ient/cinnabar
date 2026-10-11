@@ -196,7 +196,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
     ASSETS.get_or_init(|| {
         let mut visuals = vec![
             BlockVisual {
-                native_material: assets::NativeMaterialFacts::Unresolved,
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 faces: [DIAGNOSTIC_MATERIAL; 6],
                 flags: BlockFlags::empty(),
                 kind: VisualKind::Diagnostic,
@@ -210,7 +210,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
         ];
         for material_id in 1..14_u32 {
             visuals[material_id as usize] = BlockVisual {
-                native_material: assets::NativeMaterialFacts::Unresolved,
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 support: assets::VisualSupport::Exact,
                 faces: [material_id; 6],
                 flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,

@@ -2274,8 +2274,9 @@ Evaluation uses current equipment, riding, skin and view context within the
 existing actor and world budgets. Repeated frames preserve authored state;
 simulation clocks continue on the next tick. Synthetic regressions cover custom
 packs, lifetime replacement, local view replay and budget exhaustion. Initial
-publication requires a successfully evaluated animated pose and uses a nonzero
-pose identity while preserving simulation tick zero.
+publication requires a complete animated pose, render-controller selection and
+selected geometry poses, using a nonzero pose identity at simulation tick zero.
+The Java animation option seeds current posture and riding flags without advancing motion.
 Pending first skins initialize once their prepared appearance is available,
 including when simulation ticks passed during preparation.
 Explicit rest artwork still requires a completed observation after admission or reset.

@@ -209,12 +209,7 @@ pub(super) fn advance_motion(
         held: &java_held,
         held_slot: context.main_hand_slot,
         riding: context.is_riding,
-        vanilla_posture: swim_amount > 0.0
-            || context.main_hand_is_spear
-            || query::actor_flag(actor, query::FLAG_GLIDING)
-            || query::actor_flag(actor, crate::actor_store::ACTOR_FLAG_CRAWLING)
-            || query::actor_flag(actor, query::FLAG_EMOTING)
-            || actor.is_sleeping(),
+        vanilla_posture: java_retains_native_posture(actor, context, swim_amount),
         position: actor.position,
         velocity: actor.native_velocity(),
         on_ground: actor.on_ground.unwrap_or(false),
@@ -282,12 +277,29 @@ pub(super) fn seed_presentation_input(
         attack_time: state.motion.attack_time(),
         ..Default::default()
     };
+    state.java.motion.riding = context.is_riding;
+    state.java.motion.vanilla_posture =
+        java_retains_native_posture(actor, context, input.swim_amount);
     if let Some(previous) = state.history.back_mut() {
         *previous = input;
     } else {
         state.history.push_back(input);
     }
     state.presentation_seeded = true;
+}
+
+/// Keeps authored postures that the Java option does not replace.
+fn java_retains_native_posture(
+    actor: &ActorSnapshot,
+    context: &ActorTickContext,
+    swim_amount: f32,
+) -> bool {
+    swim_amount > 0.0
+        || context.main_hand_is_spear
+        || query::actor_flag(actor, query::FLAG_GLIDING)
+        || query::actor_flag(actor, crate::actor_store::ACTOR_FLAG_CRAWLING)
+        || query::actor_flag(actor, query::FLAG_EMOTING)
+        || actor.is_sleeping()
 }
 
 /// Converts the local elapsed clock to the existing one-based hand and spear counter.

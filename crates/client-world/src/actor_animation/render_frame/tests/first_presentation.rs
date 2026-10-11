@@ -328,6 +328,60 @@ fn initial_render_alternate_pose_retries_after_layer_budget_exhaustion() {
 }
 
 #[test]
+fn first_presentation_seeds_java_posture_without_advancing_motion() {
+    for (flag, riding, spear) in [
+        (None, false, false),
+        (Some(query::FLAG_SWIMMING), false, false),
+        (Some(query::FLAG_GLIDING), false, false),
+        (Some(query::FLAG_EMOTING), false, false),
+        (Some(crate::actor_store::ACTOR_FLAG_CRAWLING), false, false),
+        (Some(crate::actor_store::ACTOR_FLAG_SLEEPING), false, false),
+        (None, true, false),
+        (None, false, true),
+    ] {
+        let mut compiled = compiled_assets();
+        compiled.symbols[0].identifier = "minecraft:player".into();
+        let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+        let mut actor = super::super::super::tests::actor_with_metadata(HashMap::new());
+        actor.kind = protocol::ActorKind::Player {
+            uuid: [1; 16],
+            username: "Player".into(),
+        };
+        if let Some(flag) = flag {
+            let (key, bit) = if flag < 64 {
+                (0, flag)
+            } else {
+                (crate::actor_store::EXTENDED_FLAGS_METADATA_KEY, flag - 64)
+            };
+            actor
+                .metadata
+                .insert(key, ActorMetadataValue::Flags(1 << bit));
+        }
+        let context = ActorTickContext {
+            is_riding: riding,
+            main_hand_is_spear: spear,
+            ..zero_time_context(&actor)
+        };
+        let mut store = ActorAnimationStore::with_assets(assets);
+        store.insert(1, 0, &actor);
+        let mut expected = store.get(1).unwrap().java;
+        expected.riding = riding;
+        expected.vanilla_posture = flag.is_some() || spear;
+        let actors = HashMap::from([(1, actor)]);
+        store.prepare_frame(&actors, None, None, false, |_| context.clone());
+        let rig = store.get(1).unwrap();
+        assert!(rig.pose_evaluated);
+        assert_eq!(rig.completed_tick, 0);
+        assert_eq!(
+            rig.java, expected,
+            "posture {flag:?}, riding {riding}, spear {spear}"
+        );
+        store.prepare_frame(&actors, None, None, false, |_| context.clone());
+        assert_eq!(store.get(1).unwrap().java, expected);
+    }
+}
+
+#[test]
 fn first_presentation_retry_refreshes_snapshot_inputs_without_a_motion_tick() {
     let (mut store, mut actors) = animation_fixture();
     store.schedule.world_budget = 1;

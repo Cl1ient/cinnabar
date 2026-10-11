@@ -7396,6 +7396,6 @@ verification. Typed dispatch does not close the actor animation parity gate.
 
 ## Inherited block overlay geometry
 
-Block overlays use the shared pack compiler to resolve legacy geometry inheritance before projecting faces. Parents may come from other model files or pack layers; missing parents and cycles are rejected.
+Block overlays use the shared pack compiler to resolve legacy geometry inheritance before projecting faces. Parents may come from other model files or pack layers; missing parents, cycles and chains beyond the depth limit are rejected. Budget-limited reads admit higher-priority definitions first.
 
 Incomplete parity: bone mirror, inflation and visibility projection, modern geometry composition and broader block geometry behavior remain open.

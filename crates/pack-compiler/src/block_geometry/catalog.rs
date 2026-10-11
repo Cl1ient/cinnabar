@@ -3,6 +3,9 @@ use super::{Geometry, MAX_BONES, MAX_CUBES, number, parse_bones};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
+/// Maximum definitions traversed in one geometry inheritance chain.
+const MAX_PARENT_DEPTH: usize = 256;
+
 #[derive(Clone)]
 struct Definition {
     parent: Option<String>,
@@ -60,6 +63,15 @@ impl BlockGeometryCatalog {
         }
     }
 
+    /// Adds lower-priority definitions without replacing models already admitted.
+    pub fn insert_fallback(&mut self, root: &Value) {
+        let mut fallback = Self::default();
+        fallback.insert(root);
+        for (identifier, definition) in fallback.definitions {
+            self.definitions.entry(identifier).or_insert(definition);
+        }
+    }
+
     /// Projects requested models after inheritance; missing parents and cycles are omitted.
     pub fn compile(&self, wanted: &HashSet<&str>) -> HashMap<String, Geometry> {
         wanted
@@ -79,16 +91,7 @@ impl BlockGeometryCatalog {
 
     /// Resolves an iterative bounded parent chain before allocating merged bone cubes.
     fn resolve(&self, identifier: &str) -> Option<Definition> {
-        let mut chain = Vec::new();
-        let mut current = Some(identifier);
-        while let Some(identifier) = current {
-            if chain.len() >= self.definitions.len() {
-                return None;
-            }
-            let definition = self.definitions.get(identifier)?;
-            chain.push(definition);
-            current = definition.parent.as_deref();
-        }
+        let chain = parent_chain(identifier, |identifier| self.definitions.get(identifier))?;
         let mut result = Definition {
             parent: None,
             size: [None; 2],
@@ -171,6 +174,25 @@ impl BlockGeometryCatalog {
     }
 }
 
+/// Collects each parent once, rejecting cycles and chains beyond the depth limit.
+fn parent_chain<'a>(
+    identifier: &str,
+    mut lookup: impl FnMut(&str) -> Option<&'a Definition>,
+) -> Option<Vec<&'a Definition>> {
+    let mut chain = Vec::new();
+    let mut visited = HashSet::new();
+    let mut current = Some(identifier);
+    while let Some(identifier) = current {
+        if chain.len() >= MAX_PARENT_DEPTH || !visited.insert(identifier) {
+            return None;
+        }
+        let definition = lookup(identifier)?;
+        chain.push(definition);
+        current = definition.parent.as_deref();
+    }
+    Some(chain)
+}
+
 /// Compiles the models in one normalized JSON document without requiring a pack reader.
 pub fn parse_geometry_file(bytes: &[u8]) -> Vec<(String, Geometry)> {
     let Ok(root) = serde_json::from_slice::<Value>(bytes) else {
@@ -190,6 +212,60 @@ mod tests {
     /// Produces a cube with a single top face and an independently observable position.
     fn cube(y: i32) -> Value {
         json!({"origin":[-8,y,-8],"size":[16,1,16],"uv":{"up":{"uv":[0,0],"uv_size":[16,16],"material_instance":"top"}}})
+    }
+
+    #[test]
+    fn cyclic_parent_lookup_work_does_not_grow_with_unrelated_definitions() {
+        let mut catalog = BlockGeometryCatalog::default();
+        catalog.insert(&json!({
+            "geometry.self:geometry.self":{"bones":[]},
+            "geometry.a:geometry.b":{"bones":[]},
+            "geometry.b:geometry.a":{"bones":[]}
+        }));
+        for index in 0..50_000 {
+            catalog.insert(&json!({format!("geometry.unrelated{index}"):{"bones":[]}}));
+        }
+        for (identifier, expected_lookups) in [("geometry.self", 1), ("geometry.a", 2)] {
+            let mut lookups = 0;
+            let chain = parent_chain(identifier, |identifier| {
+                lookups += 1;
+                catalog.definitions.get(identifier)
+            });
+            assert!(chain.is_none());
+            assert_eq!(lookups, expected_lookups);
+        }
+    }
+
+    #[test]
+    fn inheritance_depth_is_bounded_without_rejecting_the_limit() {
+        let mut catalog = BlockGeometryCatalog::default();
+        catalog.insert(&json!({"geometry.base":{"bones":[{"name":"root","cubes":[cube(8)]}]}}));
+        let mut parent = "geometry.base".to_owned();
+        for depth in 1..=MAX_PARENT_DEPTH {
+            let identifier = format!("geometry.depth{depth}");
+            catalog.insert(&json!({format!("{identifier}:{parent}"):{"bones":[]}}));
+            let compiled = catalog.compile(&HashSet::from([identifier.as_str()]));
+            if depth < MAX_PARENT_DEPTH {
+                assert_eq!(compiled[&identifier].cubes[0].min[1], 8.0);
+            } else {
+                assert!(compiled.is_empty());
+            }
+            parent = identifier;
+        }
+    }
+
+    #[test]
+    fn fallback_definitions_preserve_winners_and_document_order() {
+        let mut catalog = BlockGeometryCatalog::default();
+        catalog.insert(&json!({"geometry.model":{"bones":[{"name":"root","cubes":[cube(8)]}]}}));
+        catalog.insert_fallback(&json!({"minecraft:geometry":[
+            {"description":{"identifier":"geometry.model"},"bones":[{"name":"root","cubes":[cube(0)]}]},
+            {"description":{"identifier":"geometry.extra"},"bones":[{"name":"root","cubes":[cube(2)]}]},
+            {"description":{"identifier":"geometry.extra"},"bones":[{"name":"root","cubes":[cube(4)]}]}
+        ]}));
+        let compiled = catalog.compile(&HashSet::from(["geometry.model", "geometry.extra"]));
+        assert_eq!(compiled["geometry.model"].cubes[0].min[1], 8.0);
+        assert_eq!(compiled["geometry.extra"].cubes[0].min[1], 4.0);
     }
 
     #[test]

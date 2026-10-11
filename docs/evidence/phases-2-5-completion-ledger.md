@@ -211,4 +211,4 @@ Selection shape parity and displayed-frame performance gates remain open.
 
 ## Inherited block overlay geometry
 
-Block overlays use the shared pack compiler to resolve legacy geometry inheritance before projecting faces. Parents may come from other model files or pack layers; missing parents and cycles are rejected. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+Block overlays use the shared pack compiler to resolve legacy geometry inheritance before projecting faces. Parents may come from other model files or pack layers; missing parents, cycles and chains beyond the depth limit are rejected. Budget-limited reads admit higher-priority definitions first. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.

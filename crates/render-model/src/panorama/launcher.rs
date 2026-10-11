@@ -61,11 +61,14 @@ fn override_or_pack_faces(
         }
         faces
     });
+    // The title screen shows the alternate set when a pack carries one.
     overridden.or_else(|| {
-        decode_faces(|face| {
-            assets
-                .ui_file(&format!("textures/ui/panorama_{face}.png"))
-                .map(<[u8]>::to_vec)
+        ["panorama_alternate_", "panorama_"].iter().find_map(|set| {
+            decode_faces(|face| {
+                assets
+                    .ui_file(&format!("textures/ui/{set}{face}.png"))
+                    .map(<[u8]>::to_vec)
+            })
         })
     })
 }
@@ -128,9 +131,13 @@ mod tests {
     }
 
     fn write_faces(dir: &Path, side: u32, red: u8) {
+        write_face_set(dir, "panorama_", side, red);
+    }
+
+    fn write_face_set(dir: &Path, set: &str, side: u32, red: u8) {
         std::fs::create_dir_all(dir).unwrap();
         for face in 0..6u8 {
-            let path = dir.join(format!("panorama_{face}.png"));
+            let path = dir.join(format!("{set}{face}.png"));
             std::fs::write(path, png(side, [red, face, 0, 255])).unwrap();
         }
     }
@@ -138,6 +145,11 @@ mod tests {
     /// A UI carrier compiled from a pack holding only `textures/ui/white.png`, plus faces of
     /// `face_side` when given.
     fn ui_assets(face_side: Option<u32>) -> RuntimeUiAssets {
+        ui_assets_with(face_side, false)
+    }
+
+    /// Like `ui_assets`, optionally adding an alternate face set of the same side, red 90.
+    fn ui_assets_with(face_side: Option<u32>, alternate: bool) -> RuntimeUiAssets {
         let pack = tempfile::tempdir().unwrap();
         let ui = pack.path().join("textures/ui");
         std::fs::create_dir_all(&ui).unwrap();
@@ -145,6 +157,9 @@ mod tests {
         std::fs::write(ui.join("white.png"), png(1, [255; 4])).unwrap();
         if let Some(side) = face_side {
             write_faces(&ui, side, 200);
+            if alternate {
+                write_face_set(&ui, "panorama_alternate_", side, 90);
+            }
         }
         let compiled = pack_compiler::compile_ui_assets(pack.path(), br#"{"schema":1}"#).unwrap();
         RuntimeUiAssets::decode(&compiled.bytes).unwrap()
@@ -163,6 +178,12 @@ mod tests {
         for (face, pixels) in faces.layer_major().chunks_exact(face_bytes).enumerate() {
             assert_eq!(&pixels[..4], &[200, face as u8, 0, 255]);
         }
+    }
+
+    #[test]
+    fn the_alternate_set_is_preferred_when_the_pack_has_one() {
+        let faces = override_or_pack_faces(None, &ui_assets_with(Some(4), true)).unwrap();
+        assert_eq!(faces.layer_major()[0], 90);
     }
 
     #[test]

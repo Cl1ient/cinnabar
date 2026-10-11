@@ -27,6 +27,8 @@ pub struct ItemComponents {
     pub glint: bool,
     pub hand_equipped: bool,
     pub max_durability: Option<u32>,
+    /// Retains declaration presence when its maximum is absent or invalid.
+    pub durability_declared: bool,
     pub max_stack_size: Option<u8>,
     /// `use_animation` by name (`eat`, `drink`, `bow`...); the legacy enum maps 1 and 2.
     pub use_animation: Option<Arc<str>>,
@@ -97,6 +99,7 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         glint: flag(property("foil")) || flag(component("minecraft:glint")),
         hand_equipped: flag(property("hand_equipped"))
             || flag(component("minecraft:hand_equipped")),
+        durability_declared: component("minecraft:durability").is_some(),
         max_durability: count(
             component("minecraft:durability")
                 .and_then(|durability| durability.field("max_durability")),
@@ -184,6 +187,29 @@ mod tests {
         entries.iter().for_each(|entry| bytes.extend(entry));
         bytes.push(0);
         bytes
+    }
+
+    #[test]
+    fn durability_declaration_retains_absent_invalid_and_positive_maxima() {
+        for (fields, expected) in [
+            (vec![], None),
+            (vec![int("max_durability", 0)], None),
+            (vec![int("max_durability", -1)], None),
+            (vec![int("max_durability", 50)], Some(50)),
+        ] {
+            let root = compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound("minecraft:durability", &fields)],
+                )],
+            );
+            let facts = parse_components(&root).unwrap();
+            assert!(facts.durability_declared);
+            assert_eq!(facts.max_durability, expected);
+        }
+        let root = compound("", &[compound("components", &[])]);
+        assert!(!parse_components(&root).unwrap().durability_declared);
     }
 
     // Dragonfly's custom-item layout: properties nested under item_properties.

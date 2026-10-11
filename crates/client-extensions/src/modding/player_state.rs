@@ -108,7 +108,7 @@ fn project_slot(
             item: None,
         },
         PlayerInventorySlot::Present(stack) => {
-            let item = project_item(authority, ledger, stack, overlay);
+            let item = project_item(authority, stack, overlay);
             PlayerStateSlot {
                 known: item.is_some(),
                 item,
@@ -120,7 +120,6 @@ fn project_slot(
 /// Projects admitted item identity and durability into the bounded guest payload.
 fn project_item(
     authority: &WorldAuthority,
-    ledger: &inventory::PlayerInventoryLedger,
     stack: &protocol::NetworkItemStack,
     overlay: Option<&StackResponseOverlay>,
 ) -> Option<PlayerStateItem> {
@@ -129,15 +128,7 @@ fn project_item(
         identifier.len() <= mod_api::MAX_ITEM_IDENTIFIER_BYTES
             && !identifier.chars().any(char::is_control)
     });
-    let max_durability = ledger
-        .negotiated_item_entry(stack.network_id)
-        .is_none_or(|entry| !entry.component_based)
-        .then(|| {
-            identifier
-                .as_deref()
-                .and_then(client_world::vanilla_max_durability)
-        })
-        .flatten();
+    let max_durability = canonical.durability.maximum();
     let damage = overlay
         .and_then(|overlay| overlay.durability_correction)
         .and_then(|damage| u32::try_from(damage).ok())

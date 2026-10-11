@@ -134,7 +134,12 @@ pub fn capture_hud_frame(
         use inventory::inventory_ledger::InventoryTarget;
         let ledger = runtime.inventory_ledger(player_runtime);
         let fraction = |stack: &protocol::NetworkItemStack, correction: Option<i32>| {
-            let maximum = runtime.item_max_durability(resolve_identifier(stack).as_deref());
+            let maximum = stream.and_then(|stream| {
+                stream
+                    .authority()
+                    .item_durability(stack.network_id)
+                    .maximum()
+            });
             runtime.stack_durability(stack, maximum, correction)
         };
         for (slot, bar) in durability.player.iter_mut().enumerate() {
@@ -471,7 +476,12 @@ pub fn capture_hud_frame(
                 .presented_slot_overlay(slot);
             *durability = runtime.stack_durability(
                 stack,
-                runtime.item_max_durability(identifier.as_deref()),
+                stream.and_then(|stream| {
+                    stream
+                        .authority()
+                        .item_durability(stack.network_id)
+                        .maximum()
+                }),
                 overlay.and_then(|overlay| overlay.durability_correction),
             );
             hotbar_icons[usize::from(slot)] = identifier.as_deref().and_then(|id| {
@@ -487,7 +497,12 @@ pub fn capture_hud_frame(
     }
     presentation.note_hotbar(logged_hotbar);
     let offhand_durability = runtime.gameplay_hud().offhand_stack().and_then(|stack| {
-        let maximum = runtime.item_max_durability(resolve_identifier(stack).as_deref());
+        let maximum = stream.and_then(|stream| {
+            stream
+                .authority()
+                .item_durability(stack.network_id)
+                .maximum()
+        });
         runtime.stack_durability(stack, maximum, None)
     });
     let offhand_icon = runtime.gameplay_hud().offhand_stack().and_then(|stack| {

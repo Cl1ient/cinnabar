@@ -5,6 +5,7 @@ use assets::{
     encode_entity_blob,
 };
 use pack_compiler::{compile_entity_assets, compile_icon_assets};
+use sha2::Digest;
 use tempfile::TempDir;
 
 const MANIFEST: &[u8] = include_bytes!("../../../../assets/vanilla-source.json");
@@ -14,6 +15,40 @@ mod spawn_eggs;
 
 #[path = "item_visuals/beds.rs"]
 mod beds;
+
+#[test]
+fn durability_values_compile_by_identity_and_cover_the_retail_inventory() {
+    let pack = item_pack(false);
+    write(
+        pack.path(),
+        "textures/item_texture.json",
+        br#"{"texture_data":{"custom:diamond_chestplate":{"textures":"textures/items/cloth"}}}"#,
+    );
+    let compiled = compile_entity_assets(pack.path(), MANIFEST).unwrap();
+    assert_eq!(
+        visual(&compiled.item_visuals, "minecraft:diamond_chestplate", 0)
+            .durability
+            .maximum(),
+        Some(528)
+    );
+    assert_eq!(
+        visual(&compiled.item_visuals, "custom:diamond_chestplate", 0).durability,
+        assets::item::durability::ItemDurability::Unresolved
+    );
+    let inventory = include_str!("../../../protocol/data/retail_items_1_26_50.tsv");
+    for identifier in inventory.lines().filter_map(|line| line.split('\t').nth(1)) {
+        assert_eq!(
+            visual(&compiled.item_visuals, identifier, 0).durability,
+            assets::item::durability::builtin_item_durability(identifier)
+        );
+    }
+    assert!(compiled.sources.iter().any(|source| source.path.as_ref()
+        == assets::item::durability::ITEM_DURABILITY_SOURCE_PATH
+        && source.source_sha256
+            == <[u8; 32]>::from(sha2::Sha256::digest(
+                assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES
+            ))));
+}
 
 #[test]
 fn armour_values_compile_by_identity_with_unresolved_unknown_items() {

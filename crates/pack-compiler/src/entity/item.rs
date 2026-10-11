@@ -293,6 +293,7 @@ pub(super) fn compile(
                     .unwrap_or_else(ItemDisplayTransform::identity)
             };
             ItemVisualDefinition {
+                durability: assets::item::durability::builtin_item_durability(&key.identifier),
                 armour: armour
                     .get(&key.identifier)
                     .copied()

@@ -155,6 +155,14 @@ impl ActorStore {
         self.items.item_armour(network_id)
     }
 
+    /// Reads durability resolved for this numeric item registry entry.
+    pub(crate) fn item_durability(
+        &self,
+        network_id: i32,
+    ) -> assets::item::durability::ItemDurability {
+        self.items.item_durability(network_id)
+    }
+
     pub(crate) fn seed_item_registry(&mut self, registry: protocol::ItemRegistryEvent) -> bool {
         self.items.apply_registry(registry)
     }

@@ -102,6 +102,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         rig_controllers: Box::new([]),
         item_visuals: vec![
             ItemVisualDefinition {
+                durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:apple".into(),
@@ -119,6 +120,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
                 dropped: ItemDisplayTransform::identity(),
             },
             ItemVisualDefinition {
+                durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:block_witness".into(),

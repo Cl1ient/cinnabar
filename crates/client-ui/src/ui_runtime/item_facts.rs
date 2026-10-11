@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(fraction_from_damage(250, 0), None);
         assert_eq!(
             durability_fraction_for_damage(
-                client_world::vanilla_max_durability("minecraft:stick"),
+                assets::item::durability::builtin_item_durability("minecraft:stick").maximum(),
                 125
             ),
             None
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(
             durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             ),
             None
         );
@@ -242,7 +242,7 @@ mod tests {
         // A correction wins over conflicting damage carried by the local stack.
         let fraction = cell_durability_fraction(
             &stack_with_damage(125),
-            client_world::vanilla_max_durability("minecraft:iron_sword"),
+            assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
             Some(50),
         )
         .unwrap();
@@ -250,7 +250,7 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(9_999),
             ),
             Some(0.0),
@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(0)
             ),
             None
@@ -270,19 +270,19 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(-3)
             ),
             durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             )
         );
         // Unknown maxima stay hidden under correction too.
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:stick"),
+                assets::item::durability::builtin_item_durability("minecraft:stick").maximum(),
                 Some(5)
             ),
             None
@@ -291,12 +291,12 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 None
             ),
             durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             )
         );
         assert_eq!(
@@ -307,7 +307,7 @@ mod tests {
 
     // Component names translate as keys or show literally; custom maxima drive the bar.
     #[test]
-    fn session_components_name_and_bound_custom_items() {
+    fn session_components_name_custom_items() {
         let mut player_runtime = player_state::PlayerState::new(1);
 
         let mut runtime = crate::ui_runtime::UiRuntime::new(1);
@@ -330,12 +330,6 @@ mod tests {
         ]))));
         assert_eq!(runtime.localized_item_name("zeqa:blade"), "Zeqa Blade");
         assert_eq!(runtime.localized_item_name("zeqa:gem"), "Shiny Gem");
-        assert_eq!(runtime.item_max_durability(Some("zeqa:blade")), Some(100));
-        assert_eq!(runtime.item_max_durability(Some("zeqa:gem")), None);
-        assert_eq!(
-            runtime.item_max_durability(Some("minecraft:iron_sword")),
-            Some(250)
-        );
         player_runtime.begin_session(2);
         runtime.begin_session(2);
         assert_eq!(runtime.localized_item_name("zeqa:gem"), "Gem");

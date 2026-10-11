@@ -62,6 +62,11 @@ impl WorldAuthority {
     pub fn item_armour(&self, network_id: i32) -> assets::item::armour::ItemArmour {
         self.actors.item_armour(network_id)
     }
+
+    /// Reads durability resolved for this numeric item registry entry.
+    pub fn item_durability(&self, network_id: i32) -> assets::item::durability::ItemDurability {
+        self.actors.item_durability(network_id)
+    }
     /// Installs the StartGame item registry so server-defined item ids resolve
     /// before any play-time registry arrives. False when it is refused.
     pub fn seed_item_registry(&mut self, registry: protocol::ItemRegistryEvent) -> bool {

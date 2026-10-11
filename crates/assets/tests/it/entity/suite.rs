@@ -673,6 +673,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         }]
         .into_boxed_slice(),
         item_visuals: vec![ItemVisualDefinition {
+            durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: ItemVisualKey {
                 identifier: "minecraft:allay_spawn_egg".into(),

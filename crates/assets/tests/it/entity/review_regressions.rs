@@ -58,6 +58,10 @@ fn carrier_v4_rejects_every_extended_cross_index_relationship() {
     assert_mutation_rejected(|c| c.rig_animations[0].clip = u32::MAX);
     assert_mutation_rejected(|c| c.rig_controllers[0].name = u32::MAX);
     assert_mutation_rejected(|c| c.rig_controllers[0].controller = u32::MAX);
+    assert_mutation_rejected(|c| {
+        c.item_visuals[0].durability =
+            assets::item::durability::ItemDurability::Maximum { maximum: 0 }
+    });
     assert_mutation_rejected(|c| c.item_visuals[0].source = u32::MAX);
     assert_mutation_rejected(|c| {
         c.item_visuals[0].route = item::ItemVisualDefinitionRoute::BlockItem {

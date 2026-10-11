@@ -220,6 +220,10 @@ impl IconBlocks {
 }
 
 #[cfg(test)]
+#[path = "blocks/respawn_anchor_tests.rs"]
+mod respawn_anchor_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -78,6 +78,15 @@ material selection, carrier roundtrips and malformed states. Offline Metal frame
 cover every state beside supporting terrain; broader world-join and performance
 gates remain open.
 
+## Respawn anchor artwork
+
+Respawn anchors compile six cube faces for charge states zero through four. Terrain
+arrays and animated top materials retain the selected charge, while the shared
+carried-face sheet preserves pack overrides for inventory and held rendering.
+Original-art regressions cover carrier roundtrips, short arrays, scalar overrides
+and malformed states. Rendered charging and held-item acceptance remain incomplete;
+this change does not close broader block, animation or performance parity gates.
+
 ## End rod terrain geometry
 
 End rods compile a separate shaft and mounting plate for all six integer-facing states.

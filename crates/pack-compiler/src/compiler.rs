@@ -910,12 +910,18 @@ fn compile_materials(
             _ => Some(
                 candidates
                     .iter()
-                    .find(|(_, source)| source.atlas_index == 0 && source.atlas_tile_variant == 0)
+                    .find(|(_, source)| {
+                        source.atlas_index == descriptor.state_variant
+                            && source.atlas_tile_variant == descriptor.state_variant
+                    })
+                    .or_else(|| candidates.iter().find(|(_, source)| {
+                        source.atlas_index == 0 && source.atlas_tile_variant == 0
+                    }))
                     .map(|(index, _)| *index)
                     .ok_or_else(|| AssetError::InvalidCompiledAssets {
                         detail: format!(
-                            "texture {} has multiple flipbook selectors and no canonical selector (0, 0)",
-                            descriptor.path
+                            "texture {} has multiple flipbook selectors and no state selector ({}, {}) or canonical selector (0, 0)",
+                            descriptor.path, descriptor.state_variant, descriptor.state_variant
                         )
                         .into(),
                     })?,

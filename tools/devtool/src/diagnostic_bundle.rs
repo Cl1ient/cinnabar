@@ -12,8 +12,8 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 const LOG_LIMIT: u64 = 8 << 20;
 const PRIVATE_FIELDS: &str = "authorization|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|secret|xuid|gamertag|display[_-]?name|player[_-]?name|user[_-]?name|username|server[_-]?(?:address|host)?|target|address|hostname|host|from|to|owner[_-]?id|user[_-]?id|email|identity|socket[_-]?dir|endpoint";
 const MAX_ESCAPE_DEPTH: usize = 4;
-/// An unquoted authorization value of any scheme: the scheme or token plus one credential.
-const AUTHORIZATION: &str = r#"(?i)\b(?:proxy-)?authorization\b["']?\s*[:=]\s*([^\s"',}\]\[{:][^\s"',}\]]*(?:[ \t]+[^\s"',}\]]+)?)"#;
+/// An authorization value of any scheme: quoted whole, or unquoted as the scheme plus one credential.
+const AUTHORIZATION: &str = r#"(?i)\b(?:proxy-)?authorization\b["']?\s*[:=]\s*("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|[^\s"',}\]\[{:][^\s"',}\]]*(?:[ \t]+[^\s"',}\]]+)?)"#;
 /// An Xbox Live authorization value, which is sensitive even without a label.
 const XBL_TOKEN: &str = r#"XBL3\.0 (x=[^\s;"]+;[^\s"]+)"#;
 /// A home folder prefix and its username; a name with spaces runs to the next separator or quote.
@@ -360,11 +360,13 @@ fn redact_ipv6(text: &str) -> String {
         Regex::new(r"(?i)\[?(?:[0-9a-f]{0,4}:){2,}[0-9a-f.]*(?:%[0-9a-z]+)?\]?(?::\d{1,5})?")
             .unwrap();
     let identifier = |c: char| c.is_alphanumeric() || c == '_';
+    // `<u32 as Add>::add` and `{{closure}}::fade` are Rust paths that also parse as addresses.
+    let path = |c: char| identifier(c) || matches!(c, '>' | '}' | ')' | ':');
     candidate
         .replace_all(text, |capture: &regex::Captures<'_>| {
             let span = capture.get(0).unwrap();
             let address = span.as_str().trim_end_matches('.');
-            let standalone = !text[..span.start()].ends_with(identifier)
+            let standalone = !text[..span.start()].ends_with(path)
                 && !text[span.start() + address.len()..].starts_with(identifier);
             if standalone && ipv6_address(address) {
                 format!("[redacted]{}", &span.as_str()[address.len()..])
@@ -375,7 +377,7 @@ fn redact_ipv6(text: &str) -> String {
         .into_owned()
 }
 
-/// Whether a candidate, with optional brackets, zone, and port, has at least two hex groups.
+/// Whether a candidate, with optional brackets, zone, and port, is an address with a hex group.
 fn ipv6_address(candidate: &str) -> bool {
     let mut addresses = Vec::new();
     match candidate.strip_prefix('[') {
@@ -395,7 +397,7 @@ fn ipv6_address(candidate: &str) -> bool {
             .split_once('%')
             .map_or(address, |(address, _)| address);
         address.parse::<std::net::Ipv6Addr>().is_ok()
-            && address.split(':').filter(|group| !group.is_empty()).count() >= 2
+            && address.split(':').any(|group| !group.is_empty())
     })
 }
 
@@ -415,14 +417,16 @@ fn sensitive_values(texts: &[String]) -> Vec<String> {
             .captures_iter(text)
             .chain(xbl.captures_iter(text))
         {
-            let value = capture.get(1).unwrap().as_str();
-            if value.ends_with('\\') {
+            let raw = capture.get(1).unwrap().as_str();
+            if raw.ends_with('\\') {
                 continue;
             }
-            values.push(value.to_owned());
-            if let Some((_, credential)) = value.split_once([' ', '\t']) {
+            let value = serde_json::from_str::<String>(raw)
+                .unwrap_or_else(|_| raw.trim_matches(['"', '\'']).into());
+            if let Some((_, credential)) = value.trim().split_once([' ', '\t']) {
                 values.push(credential.trim().to_owned());
             }
+            values.push(value);
         }
         values.extend(home.captures_iter(text).filter_map(|capture| {
             capture

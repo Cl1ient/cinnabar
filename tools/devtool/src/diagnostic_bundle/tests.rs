@@ -23,18 +23,20 @@ fn authorization_values_of_any_scheme_are_removed_whole() {
                 "client.log".into(),
                 concat!(
                     "DEBUG http: request headers Authorization: Basic dXNlcjpzZWNyZXQ= accept=json\n",
+                    "DEBUG proxy: Authorization=\"Basic cGFzczp3b3Jk\"\n",
                     "DEBUG xsts: authorization=XBL3.0 x=2535412345678901;eyJhbGciOiJSUzI1NiJ9.eyJ4dWkiOltdfQ.c2ln\n",
                 )
                 .into(),
             ),
             (
                 "core.log".into(),
-                "retrying with dXNlcjpzZWNyZXQ= and XBL3.0 x=2535412345678901;eyJhbGciOiJSUzI1NiJ9.eyJ4dWkiOltdfQ.c2ln\n".into(),
+                "retrying with dXNlcjpzZWNyZXQ= and cGFzczp3b3Jk and XBL3.0 x=2535412345678901;eyJhbGciOiJSUzI1NiJ9.eyJ4dWkiOltdfQ.c2ln\n".into(),
             ),
         ]);
     assert!(all.contains("accept=json") && all.contains("retrying with"));
     for private in [
         "dXNlcjpzZWNyZXQ",
+        "cGFzczp3b3Jk",
         "2535412345678901",
         "eyJhbGciOiJSUzI1NiJ9",
     ] {
@@ -268,12 +270,14 @@ fn rust_backtraces_keep_symbols_and_source_locations_while_addresses_are_redacte
              at {rustc}/std/src/panicking.rs:841:13
    4: core::panicking::panic_fmt
              at {rustc}/core/src/panicking.rs:75:14
-   5: cpal::host::coreaudio::macos::audio_unit_from_device
-   6: client_audio::output::open
+   5: <u32 as core::ops::Add>::add
+   6: launcher_host::lifecycle::crash::write_report::{{{{closure}}}}::{{{{closure}}}}
+   7: cpal::host::coreaudio::macos::audio_unit_from_device
+   8: client_audio::output::open
              at ./crates/client-audio/src/output.rs:88:41
 "
     );
-    let log_tail = "time=2026-10-12T12:34:56.789Z level=WARN msg=\"dial failed\" err=\"dial udp 203.0.113.7:19132 -> [2001:db8::7]:19132: i/o timeout; resolved play.example.invalid:19132 via fe80::1%en0\"\n";
+    let log_tail = "time=2026-10-12T12:34:56.789Z level=WARN msg=\"dial failed\" err=\"dial udp 203.0.113.7:19132 -> [2001:db8::7]:19132: i/o timeout; resolved play.example.invalid:19132 via fe80::1%en0; fallback [fd00::]:19132 or ::1\"\n";
     let report = serde_json::json!({
         "source": "client",
         "message": message,
@@ -302,7 +306,14 @@ fn rust_backtraces_keep_symbols_and_source_locations_while_addresses_are_redacte
         log_tail.contains("12:34:56.789Z"),
         "time redacted: {log_tail}"
     );
-    for private in ["203.0.113", "2001:db8", "fe80", "play.example"] {
+    for private in [
+        "203.0.113",
+        "2001:db8",
+        "fe80",
+        "fd00",
+        "::1",
+        "play.example",
+    ] {
         assert!(!log_tail.contains(private), "leaked {private}: {log_tail}");
     }
 }

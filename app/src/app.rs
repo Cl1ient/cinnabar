@@ -47,13 +47,13 @@ mod logging;
 mod startup;
 use startup::bind_direct_session_directory;
 
+use crate::runtime::telemetry::AcceptanceRuntimeConfig;
 use client_presentation::{
     actor_publication::publish_actor_render_frame,
     camera::FlyCameraUpdateSet,
     local_player::{LocalPlayerFrameSet, publish_interaction_origin},
 };
 use client_ui::ui_runtime::{UiRuntime, oreui_fonts, presentation::UiPresentationRuntime};
-use crate::runtime::telemetry::AcceptanceRuntimeConfig;
 use diagnostics::markers::SHUTDOWN_COMPLETED;
 use diagnostics::metrics::MetricsCollector;
 use launcher::install_layout::InstallLayout;

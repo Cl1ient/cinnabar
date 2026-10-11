@@ -1,3 +1,4 @@
+use super::status::{MAX_MESSAGE_BYTES, WRITE_ID};
 use super::*;
 
 struct Scratch(PathBuf);

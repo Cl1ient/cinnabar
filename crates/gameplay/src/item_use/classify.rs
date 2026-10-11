@@ -1,9 +1,9 @@
 //! Item use reads numerical admissions; identifiers are resolved by the world owner.
 
 use assets::item_use::ItemUseKind;
-pub use assets::item_use::ItemUseRequirement as Needs;
+use assets::item_use::ItemUseRequirement as Needs;
 use client_world::EffectiveItemUse;
-pub use client_world::ResolvedUseCooldown as Cooldown;
+use client_world::ResolvedUseCooldown as Cooldown;
 
 /// The unloaded use retained even while a crossbow's current action is instant.
 #[derive(Debug, Clone, Copy, PartialEq)]

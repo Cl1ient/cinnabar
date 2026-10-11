@@ -1,7 +1,8 @@
 //! Item-use requirements and selected-stack classification.
+use assets::item_use::ItemUseRequirement as Needs;
 use chunk_pipeline::WorldStream;
 use client_ui::ui_runtime::UiRuntime;
-use gameplay::item_use::{AirUse, Needs, QUICK_CHARGE_ENCHANTMENT_ID, classify};
+use gameplay::item_use::{AirUse, QUICK_CHARGE_ENCHANTMENT_ID, classify};
 
 /// The selected stack's authoritative air use, if supported.
 pub fn selected_air_use(

@@ -9,7 +9,9 @@ mod admission;
 pub mod classify;
 mod crossbow;
 pub use admission::step_and_send;
-pub use classify::{AirUse, Cooldown, Needs, classify};
+use assets::item_use::ItemUseRequirement as Needs;
+pub use classify::{AirUse, classify};
+use client_world::ResolvedUseCooldown as Cooldown;
 
 pub const QUICK_CHARGE_ENCHANTMENT_ID: i16 = 35;
 /// Vanilla re-arms the next build action this long after an air use.

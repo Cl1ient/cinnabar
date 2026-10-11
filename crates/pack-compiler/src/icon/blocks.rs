@@ -187,7 +187,13 @@ impl IconBlocks {
             let Some((path, overlay)) = pack.terrain.get_clamped_carried(&key, variant) else {
                 return Ok(None);
             };
-            let Some(tile) = super::carried::tile(root, path, overlay)? else {
+            let Some(tile) = super::carried::tile(
+                root,
+                path,
+                overlay,
+                crate::respawn_anchor::is_record(record),
+            )?
+            else {
                 return Ok(None);
             };
             tiles.push(tile);
@@ -211,11 +217,33 @@ impl IconBlocks {
     }
 
     pub(super) fn sprite(root: &Path, path: &str) -> Result<Option<IconSprite>, AssetError> {
+        Self::sprite_with_strip_frame(root, path, false)
+    }
+
+    /// Loads a bounded sprite, optionally normalizing a carried strip's first square frame.
+    pub(super) fn sprite_with_strip_frame(
+        root: &Path,
+        path: &str,
+        first_strip_frame: bool,
+    ) -> Result<Option<IconSprite>, AssetError> {
         let file = static_texture_path(root, path, path)?;
         if !file.is_file() {
             return Ok(None);
         }
-        Ok(super::sprites::bounded_sprite(decode_texture(&file, path)?).map(|(sprite, _)| sprite))
+        let mut decoded = decode_texture(&file, path)?;
+        if first_strip_frame {
+            crate::image::retain_first_strip_frame(&mut decoded);
+            if decoded.width == decoded.height
+                && decoded.width >= assets::TILE_SIZE
+                && decoded.width.is_power_of_two()
+            {
+                decoded.rgba8 =
+                    crate::image::normalize_texture_tile(decoded.rgba8, decoded.width, path)?;
+                decoded.width = assets::TILE_SIZE;
+                decoded.height = assets::TILE_SIZE;
+            }
+        }
+        Ok(super::sprites::bounded_sprite(decoded).map(|(sprite, _)| sprite))
     }
 }
 

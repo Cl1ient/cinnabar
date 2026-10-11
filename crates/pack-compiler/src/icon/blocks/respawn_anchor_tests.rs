@@ -327,6 +327,7 @@ fn respawn_anchor_partial_flipbooks_keep_unanimated_charges_drawable() {
                 .collect();
             fs::write(&path, serde_json::to_vec(&selected).unwrap()).unwrap();
             let world = world(directory.path(), &records, &lights, protocol);
+            let blocks = IconBlocks::read(directory.path()).unwrap();
             for record in records
                 .iter()
                 .filter(|r| crate::respawn_anchor::is_record(r))
@@ -334,6 +335,17 @@ fn respawn_anchor_partial_flipbooks_keep_unanimated_charges_drawable() {
                 let charge = crate::respawn_anchor::charge(record).unwrap();
                 let anchor = world.resolve(NetworkIdMode::Sequential, record.sequential_id);
                 assert_eq!(anchor.kind(), VisualKind::Cube);
+                let faces = blocks
+                    .carried_cube_tiles(directory.path(), BlockVisualId(record.sequential_id))
+                    .unwrap()
+                    .expect("each anchor strip layout retains its carried cube sheet");
+                let expected_top = if charge == 0 {
+                    [79, 17, 139, 255]
+                } else {
+                    [229, 191, 53, 255]
+                };
+                assert_eq!(&faces[BlockFace::Up as usize].rgba8[..4], expected_top);
+                assert!(assets::compose_block_item_sheet(&faces).is_some());
                 let top = world.materials()[anchor.face(BlockFace::Up).material_id() as usize];
                 if charges.contains(&charge) {
                     assert_eq!(
@@ -352,6 +364,57 @@ fn respawn_anchor_partial_flipbooks_keep_unanimated_charges_drawable() {
                         [229, 191, 53, 255]
                     };
                     assert_eq!(&mip.rgba8[offset..offset + 4], expected);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn respawn_anchor_carried_strips_preserve_first_faces_at_pack_resolutions() {
+    let (records, lights, protocol) = records();
+    for frames in [2, 3, 4, 32] {
+        for side in [16, 32] {
+            for horizontal in [false, true] {
+                let directory = fixture();
+                for (name, color) in [("off", [79, 17, 139, 255]), ("on", [229, 191, 53, 255])] {
+                    let (width, height) = if horizontal {
+                        (side * frames, side)
+                    } else {
+                        (side, side * frames)
+                    };
+                    image::RgbaImage::from_fn(width, height, |x, y| {
+                        let frame = if horizontal { x / side } else { y / side };
+                        image::Rgba(if frame == 0 { color } else { [11, 37, 59, 255] })
+                    })
+                    .save(directory.path().join(format!("textures/blocks/{name}.png")))
+                    .unwrap();
+                }
+                let flipbooks = directory.path().join("textures/flipbook_textures.json");
+                let mut sources: Vec<Value> =
+                    serde_json::from_slice(&fs::read(&flipbooks).unwrap()).unwrap();
+                for source in &mut sources {
+                    source["frames"] = json!([0]);
+                }
+                fs::write(flipbooks, serde_json::to_vec(&sources).unwrap()).unwrap();
+                let world = world(directory.path(), &records, &lights, protocol);
+                let blocks = IconBlocks::read(directory.path()).unwrap();
+                for record in records
+                    .iter()
+                    .filter(|r| crate::respawn_anchor::is_record(r))
+                {
+                    assert!(blocks.is_carried_cube(&world, BlockVisualId(record.sequential_id)));
+                    let tiles = blocks
+                        .carried_cube_tiles(directory.path(), BlockVisualId(record.sequential_id))
+                        .unwrap()
+                        .expect("supported strip layouts retain their cube sheet");
+                    let expected = if crate::respawn_anchor::charge(record) == Some(0) {
+                        [79, 17, 139, 255]
+                    } else {
+                        [229, 191, 53, 255]
+                    };
+                    assert_eq!(&tiles[BlockFace::Up as usize].rgba8[..4], expected);
+                    assert!(assets::compose_block_item_sheet(&tiles).is_some());
                 }
             }
         }

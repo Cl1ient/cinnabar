@@ -7,14 +7,18 @@ use assets::{AssetError, BLOCK_ITEM_FACE_SIDE, IconSprite};
 
 use super::blocks::IconBlocks;
 
+/// Bakes a carried face, optionally selecting a strip's first frame before applying its mask.
 pub(super) fn tile(
     root: &Path,
     path: &str,
     overlay: Option<&str>,
+    first_strip_frame: bool,
 ) -> Result<Option<IconSprite>, AssetError> {
-    let Some(sprite) = IconBlocks::sprite(root, path)?.filter(|sprite| {
-        sprite.width == BLOCK_ITEM_FACE_SIDE && sprite.height == BLOCK_ITEM_FACE_SIDE
-    }) else {
+    let Some(sprite) =
+        IconBlocks::sprite_with_strip_frame(root, path, first_strip_frame)?.filter(|sprite| {
+            sprite.width == BLOCK_ITEM_FACE_SIDE && sprite.height == BLOCK_ITEM_FACE_SIDE
+        })
+    else {
         return Ok(None);
     };
     let Some(overlay) = overlay else {

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bevy::prelude::{Local, Message, MessageReader, Res, ResMut, Time};
+use bevy::prelude::{Local, Message, MessageReader, MessageWriter, Res, ResMut, Time};
 use client_world::ActorStatusNotice;
 use protocol::{ActorKind, ActorStatusKind};
 use sim::PaletteWorld;
@@ -23,52 +23,13 @@ const HIT_INTERVAL: f32 = 0.2;
 const CONSUME_INTERVAL: f32 = 0.25;
 const SECONDS_PER_TICK: f32 = world::TICK_DURATION.as_secs_f32();
 
-const DRINKS: [&str; 3] = [
-    "minecraft:potion",
-    "minecraft:milk_bucket",
-    "minecraft:ominous_bottle",
-];
-const FOODS: &[&str] = &[
-    "minecraft:apple",
-    "minecraft:golden_apple",
-    "minecraft:enchanted_golden_apple",
-    "minecraft:baked_potato",
-    "minecraft:potato",
-    "minecraft:poisonous_potato",
-    "minecraft:carrot",
-    "minecraft:golden_carrot",
-    "minecraft:beetroot",
-    "minecraft:beetroot_soup",
-    "minecraft:bread",
-    "minecraft:cookie",
-    "minecraft:melon_slice",
-    "minecraft:pumpkin_pie",
-    "minecraft:mushroom_stew",
-    "minecraft:rabbit_stew",
-    "minecraft:suspicious_stew",
-    "minecraft:beef",
-    "minecraft:cooked_beef",
-    "minecraft:porkchop",
-    "minecraft:cooked_porkchop",
-    "minecraft:chicken",
-    "minecraft:cooked_chicken",
-    "minecraft:mutton",
-    "minecraft:cooked_mutton",
-    "minecraft:rabbit",
-    "minecraft:cooked_rabbit",
-    "minecraft:cod",
-    "minecraft:cooked_cod",
-    "minecraft:salmon",
-    "minecraft:cooked_salmon",
-    "minecraft:tropical_fish",
-    "minecraft:pufferfish",
-    "minecraft:rotten_flesh",
-    "minecraft:spider_eye",
-    "minecraft:dried_kelp",
-    "minecraft:sweet_berries",
-    "minecraft:glow_berries",
-    "minecraft:chorus_fruit",
-];
+/// One bite of the local player's food, in step with its eating sound; particles scatter the
+/// item's crumbs from it.
+#[derive(Debug, Clone, PartialEq, Eq, Message)]
+pub struct LocalEatingCue {
+    pub identifier: Arc<str>,
+    pub metadata: u32,
+}
 
 /// A local block interaction the audio runtime should voice before the server confirms it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Message)]
@@ -97,14 +58,11 @@ fn center(cell: [i32; 3]) -> [f32; 3] {
 
 /// The player sound event voiced while `identifier` is being consumed.
 pub fn is_consumable(identifier: &str) -> Option<&'static str> {
-    if identifier == "minecraft:honey_bottle" {
-        Some("drink.honey")
-    } else if DRINKS.contains(&identifier) {
-        Some("drink")
-    } else if FOODS.contains(&identifier) {
-        Some("eat")
-    } else {
-        None
+    use client_world::consumables::{ConsumeAnimation, consume_animation};
+    match consume_animation(identifier)? {
+        _ if identifier == "minecraft:honey_bottle" => Some("drink.honey"),
+        ConsumeAnimation::Drink => Some("drink"),
+        ConsumeAnimation::Eat => Some("eat"),
     }
 }
 
@@ -250,7 +208,9 @@ impl ConsumeAudio {
 }
 
 /// Voices eating and drinking while the server admits the held consumable in use, finishing
-/// food with a burp once its pack use duration elapses.
+/// food with a burp once its pack use duration elapses; each bite of food is also an
+/// `eating` cue.
+#[allow(clippy::too_many_arguments)]
 pub fn drive_consume_audio(
     player_runtime: &player_state::PlayerState,
     time: Res<Time>,
@@ -259,6 +219,7 @@ pub fn drive_consume_audio(
     eye: bevy::prelude::Vec3,
     mut engine: ResMut<AudioEngine>,
     mut state: Local<ConsumeAudio>,
+    mut eating: MessageWriter<LocalEatingCue>,
 ) {
     let stream = world.stream.as_ref();
     let using = stream
@@ -277,9 +238,20 @@ pub fn drive_consume_audio(
         .and_then(|(stream, (identifier, _))| {
             Some(stream.authority().item_max_use_ticks(identifier)? as f32 * SECONDS_PER_TICK)
         });
+    let identifier = item.as_ref().map(|(identifier, _)| Arc::clone(identifier));
     let cues = state.advance(item, duration, time.delta_secs());
     if cues.is_empty() {
         return;
+    }
+    if let Some(identifier) = identifier
+        && cues.contains(&ConsumeCue::Step("eat"))
+    {
+        eating.write(LocalEatingCue {
+            identifier,
+            metadata: player_runtime
+                .selected_stack()
+                .map_or(0, |stack| stack.metadata),
+        });
     }
     let requests: Vec<SoundRequest> = {
         let Some(bank) = engine.bank() else { return };

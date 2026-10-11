@@ -868,6 +868,18 @@ these changes do not close the movement, camera, or actor parity gates.
 - Local prediction updates both cells immediately without an inventory transition animation or a server round trip.
 - Focused text fields retain input ownership. Installed Windows input acceptance is pending.
 
+## Eating and drinking presentation
+
+- While a player uses a food or drink (`client_world::consumables`, shared with the eating
+  sounds), the client sets `variable.use_item_startup_progress` and
+  `variable.use_item_interval_progress`, so the pack's third-person `use_item_progress` pose
+  raises the arm to the mouth and bobs it, for remote players and the local third-person body.
+- The local player's crumbs follow its own eating sound steps: in front of a first-person camera,
+  else from the mouth other players see. A server's eat event for the local player is skipped so
+  bites do not double; other players' crumbs still come from the server's eat events.
+- Provisional: the 4-tick rise, the 4-tick sine bob and the first-person crumb point (0.45 ahead,
+  0.15 below the camera) are approximations.
+
 ## Read-back terrain occlusion on direct-draw devices
 
 - Metal (any direct-draw device with compute) never draws indirectly. While the view holds

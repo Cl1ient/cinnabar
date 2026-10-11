@@ -293,12 +293,8 @@ function Get-SlabStairCoverageEvidence {
     $registryBytes = [IO.File]::ReadAllBytes($RegistryPath)
     $reader = [IO.BinaryReader]::new([IO.MemoryStream]::new($registryBytes, $false))
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
-    $schemaRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
-    $registrySchema = Get-Content -LiteralPath (Join-Path $schemaRoot 'crates/assets/data/registry-schema.json') -Raw | ConvertFrom-Json
-    $extensionBytes = @($registrySchema.record_header | Where-Object { $_.PSObject.Properties.Name -contains 'previous_default' } | ForEach-Object {
-        if ($_.type -cne 'u8') { throw 'unsupported registry record extension in gallery reader' }
-        1
-    } | Measure-Object -Sum).Sum
+    $registrySchema = Get-GalleryRegistrySchema
+    $extensionBytes = $registrySchema.extension_bytes
     try {
         if ($utf8.GetString($reader.ReadBytes(8)) -cne [string]$registrySchema.magic) {
             throw 'slab/stair coverage requires the active registry schema'

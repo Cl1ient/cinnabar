@@ -82,7 +82,8 @@ def effective_workspace_wrapper(arguments: list[str]) -> str:
     if not isinstance(value, str):
         raise ValueError("Cargo workspace wrapper must be a string")
     if value and ("/" in value or "\\" in value):
-        return str((origin / value).resolve())
+        # Wrappers may locate their files through the invoked path, so symlinks stay unresolved.
+        return str((origin / value).absolute())
     return value
 
 
@@ -107,7 +108,9 @@ def real_inner(inner: str | None) -> str:
     """Unwrap our recorded targets, rejecting cycles and obsolete wrappers."""
     seen = set()
     while inner:
-        path = Path(shutil.which(inner) or inner).resolve()
+        invoked = Path(shutil.which(inner) or inner).absolute()
+        # Canonical identities detect cycles; external wrappers still run through the invoked path.
+        path = invoked.resolve()
         if path in seen:
             raise ValueError("compiler wrapper cycle")
         seen.add(path)
@@ -125,7 +128,7 @@ def real_inner(inner: str | None) -> str:
         if record is None:
             if owned:
                 raise ValueError("obsolete compiler wrapper: remove it and retry")
-            return str(path)
+            return str(invoked)
         inner = json.loads(record)
         if not isinstance(inner, str):
             raise ValueError("invalid compiler wrapper target")

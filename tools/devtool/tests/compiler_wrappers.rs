@@ -121,3 +121,43 @@ assert effective_workspace_wrapper(arguments) == ''
         String::from_utf8_lossy(&result.stderr)
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn symlinked_external_wrappers_run_through_their_invoked_path() {
+    use std::process::Command;
+    let temp = tempfile::tempdir().unwrap();
+    let tools = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let result = support::bounded_output(Command::new("python3").args(["-c", r#"
+import json, os, pathlib, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+from compiler_workspace_wrapper import MARKER, effective_workspace_wrapper, workspace_wrapper
+root = pathlib.Path(sys.argv[2]).resolve()
+real = root / 'real/wrapper.py'
+real.parent.mkdir()
+real.write_text('#!/usr/bin/env python3\nimport pathlib, sys\nassert (pathlib.Path(sys.argv[0]).parent / "settings").exists(), sys.argv[0]\n')
+real.chmod(0o700)
+linked = root / 'linked'
+linked.mkdir()
+(linked / 'settings').write_text('')
+(linked / 'wrapper').symlink_to(real)
+config = root / '.cargo'
+config.mkdir()
+(config / 'config.toml').write_text("[build]\nrustc-workspace-wrapper='./linked/wrapper'\n")
+os.environ['CARGO_HOME'] = str(root / 'cargo-home')
+os.chdir(root)
+inner = effective_workspace_wrapper([])
+assert inner == str(linked / 'wrapper'), inner
+target = workspace_wrapper(root / 'output', inner)
+record = target.read_text().splitlines()[1].split(MARKER, 1)[1]
+assert json.loads(record) == str(linked / 'wrapper'), record
+subprocess.run([str(target)], check=True, timeout=3)
+"#]).arg(tools).arg(temp.path())
+        .env_remove("RUSTC_WORKSPACE_WRAPPER")
+        .env_remove("CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}

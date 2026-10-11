@@ -63,7 +63,7 @@ mod tests {
         }));
         assert_eq!(store.registry[&10_001].grip.upright(), Some(true));
         assert_eq!(store.registry[&10_002].grip.upright(), Some(true));
-        let lifetime = crate::ActorLifetimeId {
+        let lifetime = actor_animation::ActorLifetimeId {
             session_id: 1,
             dimension: 0,
             runtime_id: 1,

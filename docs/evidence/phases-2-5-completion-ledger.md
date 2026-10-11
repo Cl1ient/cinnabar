@@ -198,6 +198,6 @@ Exact heartbeat, platform configuration, server overrides, permission gates and
 friends-visible acceptance remain incomplete. No existing completion entry is
 advanced by this feature; see `docs/reference/xbox-presence.md` and `plan.md`.
 
-- Particle terrain ordering: individual depth ranges and adjacent-range batching are implemented;
-  focused composition and current-frame regression checks are pending. Native bucket composition
-  and the GPU/frame acceptance gates remain incomplete.
+- Particle terrain ordering: individual depth ranges and adjacent-range batching are implemented.
+  Renderer composition and current-frame regressions pass, and an offline Metal fixture measures
+  the GPU span. Native bucket composition and full-frame acceptance remain incomplete.

@@ -197,6 +197,7 @@ mod tests {
             .inventory_ledger_mut(&mut player)
             .apply_registry(&protocol::ItemRegistryEvent {
                 entries: Arc::from([protocol::ItemRegistryEntry {
+                    components: None,
                     network_id: 1,
                     identifier: "custom:blade".into(),
                     component_based: true,

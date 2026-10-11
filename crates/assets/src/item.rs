@@ -4,6 +4,8 @@ use thiserror::Error;
 use crate::AssetError;
 
 pub mod armour;
+pub mod fuel;
+pub mod retail;
 use armour::ItemArmour;
 pub mod durability;
 use durability::ItemDurability;
@@ -161,6 +163,8 @@ impl ItemDisplayTransform {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemVisualDefinition {
+    /// Fuel eligibility admitted from checked compilation inputs.
+    pub fuel: fuel::ItemFuel,
     pub key: ItemVisualKey,
     /// Source containing the canonical item definition or reviewed rule.
     pub source: u32,

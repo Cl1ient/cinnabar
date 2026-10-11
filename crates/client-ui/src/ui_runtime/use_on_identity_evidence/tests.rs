@@ -20,6 +20,7 @@ fn registry() -> InventoryAuthorityEvent {
             network_id: 2,
             component_based: false,
             version: ItemRegistryVersion::None,
+            components: None,
             component_digest: [7; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,

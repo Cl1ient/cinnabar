@@ -343,7 +343,6 @@ impl WorldAuthority {
         self.actors.set_server_animation_compiler(compiler);
     }
 
-    /// Item use durations (ticks by identifier) that drive `query.main_hand_item_max_duration`.
     /// Layers the session's server-pack entity catalog over the vanilla one; its entities
     /// win by identifier for actors spawned afterwards.
     pub fn set_pack_entities(
@@ -362,6 +361,16 @@ impl WorldAuthority {
         self.actors.seed_property_defaults(types);
     }
 
+    /// Installs compiled item-use overlays before numerical admission.
+    pub fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.actors.set_item_use_overlays(overlays)
+    }
+
     /// Installs resource-defined item use durations for actor animation.
     pub fn set_item_use_durations(
         &mut self,
@@ -369,7 +378,11 @@ impl WorldAuthority {
     ) {
         self.actors.set_item_use_durations(durations);
     }
-    /// Ticks the pack lets `identifier` be used for before its use completes.
+    /// Returns numerical use admission without resolving names or component data.
+    pub fn item_use_profile(&self, network_id: i32) -> crate::EffectiveItemUse {
+        self.actors.item_use_profile(network_id)
+    }
+    /// Returns the declared duration used by the item animation query.
     pub fn item_max_use_ticks(&self, identifier: &str) -> Option<u32> {
         self.actors.item_max_use_ticks(identifier)
     }

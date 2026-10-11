@@ -402,6 +402,7 @@ fn a_press_waiting_for_a_pick_is_not_resolved_as_item_use() {
                     network_id: snowball,
                     component_based: false,
                     version: protocol::ItemRegistryVersion::None,
+                    components: None,
                     component_digest: [0; 32],
                     negotiated_max_stack_size: Some(16),
                     canonical_empty_component_data: true,

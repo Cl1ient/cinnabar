@@ -28,7 +28,10 @@ fn full_charge_persists_until_another_press_fires_without_recharging() {
     let mut runtime = load();
     let idle = crossbow(36, true);
     assert_eq!(charged(&runtime, &idle), Some(Some("minecraft:arrow")));
-    assert_eq!(runtime.crossbows.air_use(&idle), Some(AirUse::Instant));
+    assert_eq!(
+        runtime.crossbows.air_use(&idle),
+        classify("minecraft:crossbow", true, 0, None)
+    );
     assert_eq!(
         crossbow_animation_frame(
             None,
@@ -86,7 +89,7 @@ fn an_authoritative_restatement_even_identical_rejects_a_load_prediction() {
 fn an_authoritative_loaded_state_wins_after_a_fire_correction() {
     let mut runtime = ItemUseRuntime::default();
     let authoritative_loaded = UseFrame {
-        air_use: Some(AirUse::Instant),
+        air_use: classify("minecraft:crossbow", true, 0, None),
         ..crossbow(10, true)
     };
     runtime.observe_press(true);
@@ -101,7 +104,10 @@ fn an_authoritative_loaded_state_wins_after_a_fire_correction() {
         ..authoritative_loaded
     };
     assert_eq!(charged(&runtime, &corrected), None);
-    assert_eq!(runtime.crossbows.air_use(&corrected), Some(AirUse::Instant));
+    assert_eq!(
+        runtime.crossbows.air_use(&corrected),
+        classify("minecraft:crossbow", true, 0, None)
+    );
 }
 
 #[test]

@@ -32,6 +32,7 @@ const WIRE_ENCODING_ITEM_ID: i32 = 25_000;
 
 fn item_assets() -> Arc<RuntimeEntityAssets> {
     let compiled = CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
         source_manifest_sha256: [0x31; 32],
         block_visual_count: 1,
         sources: vec![
@@ -141,7 +142,8 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         }]
         .into_boxed_slice(),
         render: Default::default(),
-    };
+    }
+    .with_unresolved_item_use();
     let bytes = encode_entity_blob(&compiled).unwrap();
     Arc::new(RuntimeEntityAssets::decode(&bytes).unwrap())
 }
@@ -215,6 +217,7 @@ fn registry(network_id: i32, identifier: &str) -> WorldEvent {
             network_id,
             component_based: false,
             version: ItemRegistryVersion::Legacy,
+            components: None,
             component_digest: [7; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -574,6 +577,7 @@ fn registry_record_bound_accepts_exact_limit_and_rejects_limit_plus_one_atomical
                     network_id: index as i32 + 1,
                     component_based: false,
                     version: ItemRegistryVersion::Legacy,
+                    components: None,
                     component_digest: [index as u8; 32],
                     negotiated_max_stack_size: None,
                     canonical_empty_component_data: true,

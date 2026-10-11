@@ -1042,3 +1042,5 @@ fn review_mesh_publication_waits_beyond_a_scheduler_spin_count() {
         Some(1)
     );
 }
+
+mod compiled_item_use;

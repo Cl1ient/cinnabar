@@ -1,6 +1,10 @@
+mod use_profile;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     sync::Arc,
+};
+pub use use_profile::{
+    EffectiveItemUse, ResolvedUseCooldown, UseCooldownCategory, resolve_item_use,
 };
 
 use assets::{
@@ -40,6 +44,8 @@ pub struct CanonicalItemRegistryRecord {
     pub component_based: bool,
     pub version: ItemRegistryVersion,
     pub component_digest: [u8; 32],
+    /// Immutable session evidence used only when the effective cache is rebuilt.
+    pub components: Option<Arc<protocol::ItemComponents>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +116,8 @@ pub(crate) struct ItemStateStore {
     armor: BTreeMap<u64, ActorArmorSnapshot>,
     persistent_armor_runtime: Option<u64>,
     use_durations: Option<Arc<BTreeMap<Box<str>, u32>>>,
+    use_profiles: BTreeMap<i32, EffectiveItemUse>,
+    use_overlays: Option<Arc<BTreeMap<Box<str>, assets::CompiledItemUseOverlay>>>,
     attack_timings: Option<Arc<BTreeMap<Box<str>, protocol::ItemAttackTiming>>>,
     notices: Vec<EquipmentNotice>,
 }
@@ -124,7 +132,7 @@ impl ItemStateStore {
     }
 
     fn new(assets: Option<Arc<RuntimeEntityAssets>>) -> Self {
-        Self {
+        let mut store = Self {
             assets,
             registry: built_in_registry(),
             equipment: BTreeMap::new(),
@@ -132,9 +140,13 @@ impl ItemStateStore {
             armor: BTreeMap::new(),
             persistent_armor_runtime: None,
             use_durations: None,
+            use_profiles: BTreeMap::new(),
+            use_overlays: None,
             attack_timings: None,
             notices: Vec::new(),
-        }
+        };
+        store.rebuild_use_profiles();
+        store
     }
 
     /// Records where an equipment event landed; the stacks are named through the registry.
@@ -172,6 +184,7 @@ impl ItemStateStore {
             .is_some_and(|current| Arc::ptr_eq(current, &durations))
         {
             self.use_durations = Some(durations);
+            self.rebuild_use_profiles();
         }
     }
 
@@ -352,6 +365,7 @@ impl ItemStateStore {
             next.insert(entry.network_id, registry_record(entry));
         }
         self.registry = next;
+        self.rebuild_use_profiles();
 
         let runtimes = self.armor.keys().copied().collect::<Vec<_>>();
         for runtime_id in runtimes {
@@ -599,6 +613,7 @@ fn registry_record(entry: &ItemRegistryEntry) -> CanonicalItemRegistryRecord {
         component_based: entry.component_based,
         version: entry.version,
         component_digest: entry.component_digest,
+        components: entry.components.clone(),
     }
 }
 
@@ -752,6 +767,7 @@ mod armor_tests {
             network_id,
             component_based: true,
             version: protocol::ItemRegistryVersion::DataDriven,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: Some(64),
             canonical_empty_component_data: true,

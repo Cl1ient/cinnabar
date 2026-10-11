@@ -325,6 +325,7 @@ fn snapshot_custom_display_name_search() {
                 identifier: "custom:blade".into(),
                 component_based: true,
                 version: protocol::ItemRegistryVersion::None,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: None,
                 canonical_empty_component_data: true,

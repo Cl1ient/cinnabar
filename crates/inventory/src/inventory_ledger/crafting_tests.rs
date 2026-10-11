@@ -129,6 +129,7 @@ fn registry() -> ItemRegistryEvent {
         network_id,
         component_based: false,
         version: ItemRegistryVersion::None,
+        components: None,
         component_digest: [0; 32],
         negotiated_max_stack_size: Some(64),
         canonical_empty_component_data: true,

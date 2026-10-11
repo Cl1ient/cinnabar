@@ -7,7 +7,7 @@
 
 use protocol::{NetworkItemStack, VerifiedNetworkItemStack};
 
-use super::{AirUse, Needs, UseFrame, classify};
+use super::{AirUse, Needs, UseFrame};
 use crate::mining::FrozenMiningSelection;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,17 +84,9 @@ impl CrossbowPredictions {
         let Some(projectile) = self.verified_projectile(selection, frame.inventory_revision) else {
             return frame.air_use;
         };
-        let quick_charge = protocol::item_enchantment_level(
-            selection.item.extra_data(),
-            super::QUICK_CHARGE_ENCHANTMENT_ID,
-        )
-        .unwrap_or(0);
-        classify(
-            "minecraft:crossbow",
-            projectile.is_some(),
-            quick_charge,
-            None,
-        )
+        frame
+            .air_use
+            .map(|action| action.with_crossbow_charge(projectile.is_some()))
     }
 }
 
@@ -110,7 +102,7 @@ fn matches_stack(item: &VerifiedNetworkItemStack, stack: &NetworkItemStack) -> b
 pub(super) const fn is_crossbow(air_use: Option<AirUse>) -> bool {
     matches!(
         air_use,
-        Some(AirUse::Instant)
+        Some(AirUse::Instant { .. })
             | Some(AirUse::Hold {
                 needs: Needs::ArrowOrOffhandRocket,
                 ..

@@ -473,7 +473,7 @@ fn third_person_bow_publication_tracks_use_frames_duration_and_release() {
         "an offhand bow must stay on frame zero while the main hand is using another item"
     );
     assert!(
-        (off_bone.translation_scale[1] - (inventory::LONG_WEAPON_USE_TICKS - 15) as f32 / 16.0)
+        (off_bone.translation_scale[1] - (protocol::LONG_WEAPON_USE_TICKS - 15) as f32 / 16.0)
             .abs()
             < 1e-3,
         "offhand models retain the owner's shared remaining-use query"

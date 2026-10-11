@@ -150,6 +150,11 @@ impl ActorStore {
         self.items.identifier_for_network_id(network_id)
     }
 
+    /// Reads protection resolved for this numeric item registry entry.
+    pub(crate) fn item_armour(&self, network_id: i32) -> assets::ItemArmour {
+        self.items.item_armour(network_id)
+    }
+
     pub(crate) fn seed_item_registry(&mut self, registry: protocol::ItemRegistryEvent) -> bool {
         self.items.apply_registry(registry)
     }

@@ -15,6 +15,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{ActorEventIdentity, ActorLifetimeId, ActorSourceTick};
 
+mod armour;
+
 pub const MAX_ITEM_REGISTRY_RECORDS: usize = 16_384;
 pub const MAX_PENDING_ITEM_RESOLUTIONS: usize = 1_024;
 /// Equipment notices kept between drains; later ones are dropped.
@@ -40,6 +42,8 @@ pub struct CanonicalItemRegistryRecord {
     pub component_based: bool,
     pub version: ItemRegistryVersion,
     pub component_digest: [u8; 32],
+    /// Compiled facts after applying the current registry's component payload.
+    pub armour: assets::ItemArmour,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,9 +128,10 @@ impl ItemStateStore {
     }
 
     fn new(assets: Option<Arc<RuntimeEntityAssets>>) -> Self {
+        let registry = built_in_registry(assets.as_deref());
         Self {
             assets,
-            registry: built_in_registry(),
+            registry,
             equipment: BTreeMap::new(),
             pending: VecDeque::new(),
             armor: BTreeMap::new(),
@@ -343,13 +348,16 @@ impl ItemStateStore {
         if registry.entries.len() > MAX_ITEM_REGISTRY_RECORDS {
             return false;
         }
-        let mut next = built_in_registry();
+        let mut next = built_in_registry(self.assets.as_deref());
         let mut network_ids = HashMap::with_capacity(registry.entries.len());
         for entry in registry.entries.iter() {
             if network_ids.insert(entry.network_id, ()).is_some() {
                 return false;
             }
-            next.insert(entry.network_id, registry_record(entry));
+            next.insert(
+                entry.network_id,
+                registry_record(entry, self.assets.as_deref()),
+            );
         }
         self.registry = next;
 
@@ -550,10 +558,13 @@ impl ItemStateStore {
     }
 }
 
-fn built_in_registry() -> BTreeMap<i32, CanonicalItemRegistryRecord> {
+/// Admits the retail registry through the same compiled facts as server entries.
+fn built_in_registry(
+    assets: Option<&RuntimeEntityAssets>,
+) -> BTreeMap<i32, CanonicalItemRegistryRecord> {
     protocol::vanilla_item_registry()
         .iter()
-        .map(|entry| (entry.network_id, registry_record(entry)))
+        .map(|entry| (entry.network_id, registry_record(entry, assets)))
         .collect()
 }
 
@@ -592,13 +603,18 @@ mod visual_route_tests {
     }
 }
 
-fn registry_record(entry: &ItemRegistryEntry) -> CanonicalItemRegistryRecord {
+/// Resolves item-owned facts once for this registry generation.
+fn registry_record(
+    entry: &ItemRegistryEntry,
+    assets: Option<&RuntimeEntityAssets>,
+) -> CanonicalItemRegistryRecord {
     CanonicalItemRegistryRecord {
         identifier: Arc::clone(&entry.identifier),
         network_id: entry.network_id,
         component_based: entry.component_based,
         version: entry.version,
         component_digest: entry.component_digest,
+        armour: armour::resolve(entry, assets),
     }
 }
 
@@ -748,6 +764,7 @@ mod armor_tests {
     #[test]
     fn registry_retains_every_numeric_alias_for_a_shared_item_identifier() {
         let entries = [101, 102, 103].map(|network_id| protocol::ItemRegistryEntry {
+            components: None,
             identifier: Arc::from("example:menu_icon"),
             network_id,
             component_based: true,

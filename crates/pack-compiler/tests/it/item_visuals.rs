@@ -16,6 +16,38 @@ mod spawn_eggs;
 mod beds;
 
 #[test]
+fn armour_values_compile_by_identity_with_unresolved_unknown_items() {
+    let pack = item_pack(false);
+    write(
+        pack.path(),
+        "textures/item_texture.json",
+        br#"{
+        "texture_data": {
+            "diamond_chestplate": {"textures": "textures/items/diamond_chestplate"},
+            "custom:cloth": {"textures": "textures/items/cloth"}
+        }
+    }"#,
+    );
+    let compiled = compile_entity_assets(pack.path(), MANIFEST).unwrap();
+    assert_eq!(
+        visual(&compiled.item_visuals, "minecraft:diamond_chestplate", 0).armour,
+        assets::ItemArmour::Wearable {
+            slot: assets::ItemArmourSlot::Chest,
+            protection: 8
+        }
+    );
+    assert_eq!(
+        visual(&compiled.item_visuals, "custom:cloth", 0).armour,
+        assets::ItemArmour::Unresolved
+    );
+    let inventory = include_str!("../../../../protocol/data/retail_items_1_26_50.tsv");
+    for identifier in inventory.lines().filter_map(|line| line.split('\t').nth(1)) {
+        let item = visual(&compiled.item_visuals, identifier, 0);
+        assert_eq!(item.key.identifier.as_ref(), identifier);
+    }
+}
+
+#[test]
 fn leather_tga_atlas_sources_keep_their_opaque_untinted_trim() {
     let pack = item_pack(false);
     write(

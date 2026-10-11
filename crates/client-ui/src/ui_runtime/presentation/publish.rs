@@ -19,14 +19,24 @@ pub fn capture_hud_frame(
     };
     let worn = runtime.local_armor(player_runtime);
     let worn = [&worn.helmet, &worn.chestplate, &worn.leggings, &worn.boots];
-    let identifiers = worn.map(|stack| {
-        (!stack.is_empty())
-            .then(|| resolve_identifier(stack))
-            .flatten()
+    let protection = worn.map(|stack| {
+        if stack.is_empty() {
+            Some(0)
+        } else {
+            stream.and_then(|stream| {
+                stream
+                    .authority()
+                    .item_armour(stack.network_id)
+                    .protection()
+            })
+        }
     });
-    runtime.set_derived_armor(Some(item_facts::total_armor_points(
-        identifiers.iter().map(|id| id.as_deref()),
-    )));
+    runtime.set_derived_armor(
+        protection
+            .into_iter()
+            .try_fold(0u32, |sum, points| Some(sum.saturating_add(points?)))
+            .map(|points| points.min(20) as u16),
+    );
     let mount_health = runtime.gameplay_hud().mount_unique_id().and_then(|unique| {
         stream.and_then(|stream| stream.authority().actor_health_by_unique(unique))
     });

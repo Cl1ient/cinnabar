@@ -214,6 +214,20 @@ pub fn compile_entity_assets_with_report(
         source_sha256: Sha256::digest(route_bytes).into(),
     });
     source_payloads.insert(route_path, route_bytes.into());
+    let armour_bytes = item::ARMOUR_SOURCE_BYTES;
+    total_source_bytes = total_source_bytes
+        .checked_add(armour_bytes.len())
+        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
+    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
+        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
+    {
+        return Err(invalid("entity source-byte total or count exceeds bound"));
+    }
+    sources.push(EntityAssetSource {
+        path: item::ARMOUR_SOURCE_PATH.into(),
+        source_bytes: armour_bytes.len() as u32,
+        source_sha256: Sha256::digest(armour_bytes).into(),
+    });
     let binding_bytes = item_bindings::SOURCE_BYTES;
     total_source_bytes = total_source_bytes
         .checked_add(binding_bytes.len())

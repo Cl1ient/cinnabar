@@ -35,6 +35,10 @@ pub struct ItemComponents {
     pub food: bool,
     /// `minecraft:wearable` slot, e.g. `slot.armor.head`.
     pub wearable_slot: Option<Arc<str>>,
+    /// Whether the payload declares `minecraft:wearable`, including malformed declarations.
+    pub wearable_declared: bool,
+    /// Exact non-negative integer protection; absent or invalid values stay unresolved.
+    pub wearable_protection: Option<u32>,
     /// Block `minecraft:block_placer` places.
     pub block_placer: Option<Arc<str>>,
     /// `minecraft:rarity`: `common`, `uncommon`, `rare` or `epic`.
@@ -119,6 +123,13 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         wearable_slot: text(
             component("minecraft:wearable").and_then(|wearable| wearable.field("slot")),
         ),
+        wearable_declared: component("minecraft:wearable").is_some(),
+        wearable_protection: component("minecraft:wearable")
+            .and_then(|wearable| wearable.field("protection"))
+            .and_then(|value| match value {
+                Nbt::Int(value) if (0..=i64::from(i32::MAX)).contains(value) => Some(*value as u32),
+                _ => None,
+            }),
         block_placer: component("minecraft:block_placer").and_then(|placer| {
             let block = placer.field("block")?;
             text(Some(block)).or_else(|| text(block.field("name")))
@@ -176,6 +187,33 @@ mod tests {
     }
 
     // Dragonfly's custom-item layout: properties nested under item_properties.
+    #[test]
+    fn wearable_protection_retains_zero_and_rejects_invalid_or_missing_values() {
+        for (value, expected) in [
+            (Some(int("protection", 6)), Some(6)),
+            (Some(int("protection", 0)), Some(0)),
+            (Some(int("protection", -1)), None),
+            (Some(string("protection", "6")), None),
+            (None, None),
+        ] {
+            let mut fields = vec![string("slot", "slot.armor.chest")];
+            fields.extend(value);
+            let payload = compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound("minecraft:wearable", &fields)],
+                )],
+            );
+            let facts = parse_components(&payload).unwrap();
+            assert!(facts.wearable_declared);
+            assert_eq!(facts.wearable_slot.as_deref(), Some("slot.armor.chest"));
+            assert_eq!(facts.wearable_protection, expected);
+        }
+        let absent = compound("", &[compound("components", &[])]);
+        assert!(!parse_components(&absent).unwrap().wearable_declared);
+    }
+
     #[test]
     fn food_classification_uses_the_food_component() {
         let food = compound(

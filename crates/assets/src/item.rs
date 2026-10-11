@@ -3,6 +3,9 @@ use thiserror::Error;
 
 use crate::AssetError;
 
+mod armour;
+pub use armour::{ItemArmour, ItemArmourSlot};
+
 pub const MAX_ITEM_VISUALS: usize = 16_384;
 pub const MAX_ITEM_VISUAL_ALIASES: usize = 65_536;
 pub const MAX_ITEM_IDENTIFIER_BYTES: usize = 256;
@@ -160,6 +163,8 @@ pub struct ItemVisualDefinition {
     /// Source containing the canonical item definition or reviewed rule.
     pub source: u32,
     pub route: ItemVisualDefinitionRoute,
+    /// Compiled protection and player slot, or an explicit unresolved disposition.
+    pub armour: ItemArmour,
     pub first_person: ItemDisplayTransform,
     pub third_person: ItemDisplayTransform,
     pub dropped: ItemDisplayTransform,

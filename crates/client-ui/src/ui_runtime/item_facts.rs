@@ -1,13 +1,4 @@
-//! Pinned vanilla item presentation facts: armor points, maximum durability,
-//! and mechanical display names.
-//!
-//! The vanilla client derives the armor bar and durability fractions from the
-//! item identity; the identity itself is authoritative (the server's own item
-//! registry maps network ids to identifiers). Values below are the vanilla
-//! Bedrock item stats cross-checked against PocketMine-MP and Dragonfly's
-//! item definitions; an identifier outside the table simply contributes
-//! nothing rather than guessing. Custom component-based items declare their
-//! own stats server-side and are intentionally not modeled here.
+//! Session item presentation facts and mechanical display names.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -63,43 +54,6 @@ impl FromIterator<(Arc<str>, ItemComponents)> for SessionItemComponents {
                 .collect(),
         )
     }
-}
-
-/// Armor points for one equipped vanilla armor identifier.
-#[must_use]
-pub fn armor_points(identifier: &str) -> u16 {
-    match identifier.strip_prefix("minecraft:").unwrap_or(identifier) {
-        "leather_helmet" | "golden_boots" | "chainmail_boots" => 1,
-        "leather_boots" => 1,
-        "leather_leggings" => 2,
-        "leather_chestplate" => 3,
-        "golden_helmet" | "chainmail_helmet" | "iron_helmet" | "iron_boots" | "turtle_helmet" => 2,
-        // The 1.26.30 copper set (base durability 11) protects between
-        // leather and chainmail: 2/4/3/1.
-        "copper_helmet" => 2,
-        "copper_chestplate" => 4,
-        "copper_leggings" | "golden_leggings" => 3,
-        "copper_boots" => 1,
-        "chainmail_leggings" => 4,
-        "golden_chestplate" | "chainmail_chestplate" => 5,
-        "iron_leggings" => 5,
-        "iron_chestplate" => 6,
-        "diamond_helmet" | "netherite_helmet" | "diamond_boots" | "netherite_boots" => 3,
-        "diamond_leggings" | "netherite_leggings" => 6,
-        "diamond_chestplate" | "netherite_chestplate" => 8,
-        _ => 0,
-    }
-}
-
-/// Total armor points across the local player's equipped armor identifiers,
-/// clamped to the reference 20-point bar.
-#[must_use]
-pub fn total_armor_points<'a>(identifiers: impl Iterator<Item = Option<&'a str>>) -> u16 {
-    identifiers
-        .flatten()
-        .map(armor_points)
-        .fold(0u16, u16::saturating_add)
-        .min(20)
 }
 
 /// Remaining durability in `0.0..=1.0` for a damageable stack, or `None` when
@@ -230,39 +184,6 @@ mod tests {
     use protocol::NetworkItemStack;
 
     use super::*;
-
-    #[test]
-    fn armor_points_follow_the_pinned_vanilla_table() {
-        assert_eq!(armor_points("minecraft:diamond_chestplate"), 8);
-        assert_eq!(armor_points("minecraft:leather_boots"), 1);
-        assert_eq!(armor_points("minecraft:turtle_helmet"), 2);
-        assert_eq!(armor_points("minecraft:elytra"), 0);
-        assert_eq!(armor_points("custom:armor"), 0);
-        // The 1.26.30 copper set sits between leather and chainmail.
-        assert_eq!(armor_points("minecraft:copper_helmet"), 2);
-        assert_eq!(armor_points("minecraft:copper_chestplate"), 4);
-        assert_eq!(armor_points("minecraft:copper_leggings"), 3);
-        assert_eq!(armor_points("minecraft:copper_boots"), 1);
-        let total = total_armor_points(
-            [
-                Some("minecraft:iron_helmet"),
-                Some("minecraft:iron_chestplate"),
-                Some("minecraft:iron_leggings"),
-                Some("minecraft:iron_boots"),
-                None,
-            ]
-            .into_iter(),
-        );
-        assert_eq!(total, 15);
-        // A pathological modded sum clamps to the reference bar.
-        let clamped = total_armor_points(
-            [Some("minecraft:diamond_chestplate"); 4]
-                .map(Some)
-                .map(|value| value.flatten())
-                .into_iter(),
-        );
-        assert_eq!(clamped, 20);
-    }
 
     #[test]
     fn durability_fractions_follow_the_pinned_maxima_and_hide_pristine_bars() {

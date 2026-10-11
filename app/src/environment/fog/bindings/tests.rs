@@ -95,14 +95,18 @@ fn known_missing_profiles_remain_distinct_from_unknown_ids_and_rebinding_refresh
     assert_eq!(bindings.fog(None, -1), None);
 
     fogs.remove(expected);
-    bindings.compile(&rules, &profiles, &fogs);
+    bindings.compile(
+        rules.iter().map(|rule| (rule.id, rule.name.as_ref())),
+        &profiles,
+        &fogs,
+    );
     assert_eq!(bindings.fog(Some(42), 0), None);
     let plains = fogs
         .iter()
         .position(|fog| fog.identifier.as_ref() == "minecraft:fog_plains")
         .unwrap();
     assert_eq!(bindings.fog(None, 0), Some(FogProfileIndex(plains)));
-    bindings.compile(&[rule(42, "minecraft:plains")], &profiles, &fogs);
+    bindings.compile([(42, "minecraft:plains")], &profiles, &fogs);
     assert_eq!(bindings.fog(Some(42), 2), Some(FogProfileIndex(plains)));
 }
 

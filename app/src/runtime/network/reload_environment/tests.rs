@@ -389,3 +389,30 @@ fn supplied_skybox_pack_fixture_survives_archive_admission_and_reload() {
         assert_eq!(face.rgba8.len(), (face.width * face.height * 4) as usize);
     }
 }
+
+#[test]
+fn custom_biome_profiles_apply_authored_routes_and_preserve_defaults() {
+    let base = BiomeVisualProfile {
+        biome_identifier: "minecraft:plains".into(),
+        fog_identifier: "test:base_fog".into(),
+        atmosphere_identifier: "test:base_atmosphere".into(),
+        lighting_identifier: "test:base_light".into(),
+        sky_rgb8: None,
+    };
+    let mut profiles = BTreeMap::from([(base.biome_identifier.clone(), base.clone())]);
+    overlay_biome_profile(
+        &serde_json::json!({"minecraft:client_biome": {
+            "description": {"identifier": "custom:wet"}, "components": {
+                "minecraft:fog_appearance": {"fog_identifier":"custom:fog"},
+                "minecraft:sky_color": {"sky_color":"#123456"}
+            }
+        }}),
+        &mut profiles,
+    );
+    let profile = profiles.get("custom:wet").unwrap();
+    assert_eq!(profile.fog_identifier.as_ref(), "custom:fog");
+    assert_eq!(profile.sky_rgb8, Some(0x123456));
+    assert_eq!(profile.atmosphere_identifier, base.atmosphere_identifier);
+    assert_eq!(profile.lighting_identifier, base.lighting_identifier);
+    assert_eq!(profiles.get("minecraft:plains"), Some(&base));
+}

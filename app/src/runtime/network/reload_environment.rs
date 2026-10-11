@@ -220,9 +220,20 @@ fn overlay_biome_profile(root: &Value, profiles: &mut BTreeMap<Box<str>, BiomeVi
     let Some(identifier) = biome["description"]["identifier"].as_str() else {
         return;
     };
-    let Some(profile) = profiles.get_mut(identifier) else {
+    if identifier.is_empty() || identifier.len() > assets::MAX_ENVIRONMENT_IDENTIFIER_BYTES {
         return;
-    };
+    }
+    if !profiles.contains_key(identifier) {
+        if profiles.len() >= assets::MAX_ENVIRONMENT_PROFILES {
+            return;
+        }
+        let Some(mut fallback) = profiles.get("minecraft:plains").cloned() else {
+            return;
+        };
+        fallback.biome_identifier = identifier.into();
+        profiles.insert(identifier.into(), fallback);
+    }
+    let profile = profiles.get_mut(identifier).expect("admitted profile");
     let components = &biome["components"];
     for (key, field, target) in [
         (

@@ -2,7 +2,12 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use assets::{BiomeRule, BiomeVisualProfile, FogProfile, RuntimeAssets, RuntimeAtmosphereAssets};
+use assets::{
+    BiomeVisualProfile, FogProfile, ResolvedBiomeTints, RuntimeAssets, RuntimeAtmosphereAssets,
+};
+
+#[cfg(test)]
+use assets::BiomeRule;
 
 use super::super::{EnvironmentProfileRoute, profile_lookup::dimension_fallback_biome};
 
@@ -18,14 +23,25 @@ struct Binding {
     route: Arc<EnvironmentProfileRoute>,
 }
 
+struct BiomeBinding {
+    identifier: Arc<str>,
+    profile: Option<Binding>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BiomeGeneration {
+    Startup([u8; 32]),
+    Session(meshing::ChunkBiomeTintIdentity),
+}
+
 /// Joins immutable registries once and retains their generation identity.
 #[derive(bevy::prelude::Resource, Default)]
 pub(crate) struct FogBindings {
     atmosphere: Option<Arc<RuntimeAtmosphereAssets>>,
-    biome_generation: Option<[u8; 32]>,
+    biome_generation: Option<BiomeGeneration>,
     /// Published atmosphere identity that owns these indices and routes.
     pub(crate) atmosphere_generation: Option<[u8; 32]>,
-    by_id: BTreeMap<u32, Option<Binding>>,
+    by_id: BTreeMap<u32, BiomeBinding>,
     defaults: [Option<Binding>; 3],
     pub default_fog: Option<FogProfileIndex>,
 }
@@ -37,11 +53,56 @@ impl FogBindings {
         world: &RuntimeAssets,
         atmosphere_assets: Option<&render::AtmosphereTextureAssets>,
     ) {
+        self.refresh_registry(
+            BiomeGeneration::Startup(world.provenance().biome_registry_sha256),
+            world
+                .biome_assets()
+                .rules
+                .iter()
+                .map(|rule| (rule.id, rule.name.as_ref())),
+            atmosphere_assets,
+        );
+    }
+
+    /// Rebinds admitted session names only when their registry or atmosphere changes.
+    pub fn refresh_session(
+        &mut self,
+        registry: &ResolvedBiomeTints,
+        generation: meshing::ChunkBiomeTintIdentity,
+        atmosphere_assets: Option<&render::AtmosphereTextureAssets>,
+    ) {
+        self.refresh_registry(
+            BiomeGeneration::Session(generation),
+            Self::registry_identifiers(registry),
+            atmosphere_assets,
+        );
+    }
+
+    /// Iterates admitted raw IDs and names without assigning an identity to fallback cells.
+    fn registry_identifiers(registry: &ResolvedBiomeTints) -> impl Iterator<Item = (u32, &str)> {
+        registry
+            .raw_id_to_dense
+            .iter()
+            .enumerate()
+            .filter_map(|(id, _)| {
+                let id = u32::try_from(id).ok()?;
+                registry
+                    .biome(id)
+                    .map(|biome| (id, biome.identifier.as_ref()))
+            })
+    }
+
+    /// Joins names and visual routes once for the supplied owning registry generation.
+    fn refresh_registry<'a>(
+        &mut self,
+        generation: BiomeGeneration,
+        names: impl IntoIterator<Item = (u32, &'a str)>,
+        atmosphere_assets: Option<&render::AtmosphereTextureAssets>,
+    ) {
         let atmosphere = atmosphere_assets.and_then(|assets| assets.runtime());
         let atmosphere_generation = atmosphere_assets
             .filter(|assets| assets.runtime().is_some())
             .map(|assets| assets.identity());
-        let generation = world.provenance().biome_registry_sha256;
         let same = match (&self.atmosphere, atmosphere) {
             (Some(old), Some(new)) => Arc::ptr_eq(old, new),
             (None, None) => true,
@@ -59,18 +120,17 @@ impl FogBindings {
         self.by_id.clear();
         self.defaults = Default::default();
         self.default_fog = None;
-        let Some(atmosphere) = atmosphere else { return };
         self.compile(
-            &world.biome_assets().rules,
-            atmosphere.biome_profiles(),
-            atmosphere.fog_profiles(),
+            names,
+            atmosphere.map_or(&[][..], |assets| assets.biome_profiles()),
+            atmosphere.map_or(&[][..], |assets| assets.fog_profiles()),
         );
     }
 
     /// Compiles palette bindings and shared diagnostic routes from one generation.
-    fn compile(
+    fn compile<'a>(
         &mut self,
-        rules: &[BiomeRule],
+        names: impl IntoIterator<Item = (u32, &'a str)>,
         profiles: &[BiomeVisualProfile],
         fogs: &[FogProfile],
     ) {
@@ -96,8 +156,19 @@ impl FogBindings {
                 }),
             })
         };
-        for rule in rules {
-            self.by_id.insert(rule.id, bind(&rule.name));
+        for (id, name) in names {
+            let profile = bind(name);
+            let identifier = profile
+                .as_ref()
+                .and_then(|binding| binding.route.biome_identifier.clone())
+                .unwrap_or_else(|| Arc::from(name));
+            self.by_id.insert(
+                id,
+                BiomeBinding {
+                    identifier,
+                    profile,
+                },
+            );
         }
         self.defaults = std::array::from_fn(|dimension| {
             dimension_fallback_biome(dimension as i32).and_then(bind)
@@ -119,14 +190,25 @@ impl FogBindings {
             atmosphere_generation: Some(Default::default()),
             ..Default::default()
         };
-        result.compile(rules, profiles, fogs);
+        result.compile(
+            rules.iter().map(|rule| (rule.id, rule.name.as_ref())),
+            profiles,
+            fogs,
+        );
         result
+    }
+
+    /// Shares the admitted biome name even when it has no visual profile.
+    pub fn identifier(&self, raw: Option<u32>) -> Option<Arc<str>> {
+        self.by_id
+            .get(&raw?)
+            .map(|binding| Arc::clone(&binding.identifier))
     }
 
     /// Returns the sample's prebound fog; only unknown biome IDs use the dimension fallback.
     pub fn fog(&self, raw: Option<u32>, dimension: i32) -> Option<FogProfileIndex> {
         match raw.and_then(|raw| self.by_id.get(&raw)) {
-            Some(binding) => binding.as_ref().and_then(|binding| binding.fog),
+            Some(binding) => binding.profile.as_ref().and_then(|binding| binding.fog),
             None => self.fallback(dimension).and_then(|binding| binding.fog),
         }
     }
@@ -143,7 +225,7 @@ impl FogBindings {
     ) {
         let binding = raw
             .and_then(|raw| self.by_id.get(&raw))
-            .and_then(|binding| binding.as_ref())
+            .and_then(|binding| binding.profile.as_ref())
             .or_else(|| self.fallback(dimension));
         (
             binding.map(|binding| binding.biome),

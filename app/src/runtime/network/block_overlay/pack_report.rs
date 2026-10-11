@@ -39,6 +39,9 @@ fn report_local_pack_blocks() {
             let Some(bytes) = view.read(file) else {
                 continue;
             };
+            let Some(bytes) = resource_pack::normalize_jsonc(&bytes) else {
+                continue;
+            };
             for (_, geometry) in parse_geometry_file(&bytes) {
                 geometries += 1;
                 cubes += geometry.cubes.len();

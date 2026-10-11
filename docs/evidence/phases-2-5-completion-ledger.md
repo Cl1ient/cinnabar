@@ -208,3 +208,7 @@ Highlight lookup uses admitted custom state identities and the pinned base regis
 Regression coverage includes both ID modes, palette replacement and session reset.
 The loaded-block highlight capture shows a custom block before and after admission.
 Selection shape parity and displayed-frame performance gates remain open.
+
+## Inherited block overlay geometry
+
+Block overlays use the shared pack compiler to resolve legacy geometry inheritance before projecting faces. Parents may come from other model files or pack layers; missing parents and cycles are rejected. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.

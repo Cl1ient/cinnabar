@@ -7393,3 +7393,9 @@ Admitted query symbols bind to typed handlers before evaluation. The query manif
 argument forms, output kinds and implementation support. Queries marked unimplemented
 retain their explicit idle behavior; provisional queries still need matched behavior
 verification. Typed dispatch does not close the actor animation parity gate.
+
+## Inherited block overlay geometry
+
+Block overlays use the shared pack compiler to resolve legacy geometry inheritance before projecting faces. Parents may come from other model files or pack layers; missing parents and cycles are rejected.
+
+Incomplete parity: bone mirror, inflation and visibility projection, modern geometry composition and broader block geometry behavior remain open.

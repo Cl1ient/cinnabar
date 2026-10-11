@@ -3,7 +3,8 @@
 //! diagnostic look for that block and is counted, never failing the session.
 
 mod condition;
-mod geometry;
+mod geometry_inputs;
+use pack_compiler::block_geometry as geometry;
 mod legacy;
 mod textures;
 
@@ -26,7 +27,8 @@ use resource_pack::LayeredPackView;
 
 use self::{
     condition::StateVisual,
-    geometry::{FACE_NAMES, FaceQuad, Geometry, geometry_catalog},
+    geometry::{FACE_NAMES, FaceQuad, Geometry},
+    geometry_inputs::geometry_catalog,
     textures::{
         DecodedTexture, TextureCatalog, admit_static_rectangle, flipbook_frames, shrink_to_max,
         source_mip_chain,

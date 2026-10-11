@@ -139,6 +139,7 @@ pub fn entity_rig_presentation_cached(
             current: rig.rest,
             completed_tick: rig.rest_completed_tick,
             reset_generation: rig.rest_reset_generation,
+            pose_evaluated: true,
             ..*rig
         }
     } else {
@@ -241,6 +242,7 @@ fn tick_presentation(
         || rig.actor.runtime_id == 0
         || rig.actor.spawn_revision == 0
         || rig.reset_generation == 0
+        || (!rig.pose_evaluated && rig.fallback != assets::EntityRigFallback::GeometryOnly)
         || (!rejected_pose && (rig.previous.is_empty() || rig.previous.len() != rig.current.len()))
     {
         return None;

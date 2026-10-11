@@ -18,6 +18,49 @@ const PLAYER: u64 = 2;
 const MOB: u64 = 3;
 
 #[test]
+fn unevaluated_animated_pose_is_not_published() {
+    let mut world = world();
+    let artwork = ActorArtworkPages::default();
+    let mut poses = PoseConversions::default();
+    for off_screen_tick in [false, true] {
+        if off_screen_tick {
+            world.set_actor_animation_view(Some(client_world::ActorAnimationView {
+                planes: [[-1.0, 0.0, 0.0, -10.0]; 6],
+                camera: [0.0, 64.0, 0.0],
+                player_distance: 100.0,
+                entity_radius: 72.0,
+            }));
+            world.advance_actor_interpolation_frame(1);
+        }
+        let rig = world.actor_rig(MOB).unwrap();
+        let actor = world.actor(MOB).unwrap();
+        assert!(entity_rig_presentation(&rig, actor, &artwork, 0.0).is_none());
+        let geometry_only = client_world::ActorRigSnapshot {
+            fallback: assets::EntityRigFallback::GeometryOnly,
+            ..rig
+        };
+        assert!(entity_rig_presentation(&geometry_only, actor, &artwork, 0.0).is_some());
+        poses.begin_frame();
+        assert!(
+            entity_rig_presentation_cached(&rig, actor, &artwork, 0.0, Some(&mut poses)).is_none()
+        );
+    }
+    world.set_actor_animation_view(None);
+    world.advance_actor_interpolation_frame(0);
+    let rig = world.actor_rig(MOB).unwrap();
+    assert!(
+        entity_rig_presentation_cached(
+            &rig,
+            world.actor(MOB).unwrap(),
+            &artwork,
+            0.0,
+            Some(&mut poses),
+        )
+        .is_some()
+    );
+}
+
+#[test]
 fn first_zero_tick_pose_produces_a_renderable_submission() {
     let mut world = world();
     world.advance_actor_interpolation_frame(0);

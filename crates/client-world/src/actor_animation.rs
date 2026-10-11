@@ -58,6 +58,8 @@ pub struct ActorRigSnapshot<'a> {
     pub rest_reset_generation: u64,
     pub completed_tick: u64,
     pub reset_generation: u64,
+    /// Whether authored pose and render-controller evaluation has succeeded for this lifetime.
+    pub pose_evaluated: bool,
     pub fallback: EntityRigFallback,
     /// Authored uniform model scale about the feet origin.
     pub scale: f32,
@@ -699,6 +701,7 @@ impl ActorAnimationStore {
             rest_reset_generation: state.rest_reset_generation,
             completed_tick: state.completed_tick,
             reset_generation: state.reset_generation,
+            pose_evaluated: state.initialized,
             fallback: state.fallback,
             scale: state.scale.map_or_else(
                 || {

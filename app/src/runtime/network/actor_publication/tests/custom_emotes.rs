@@ -16,7 +16,7 @@ use {
 };
 
 /// Supplies the detached production actor schedule with its required resources.
-pub(super) fn fixture() -> World {
+pub(crate) fn fixture() -> World {
     fixture_with_skin(false)
 }
 

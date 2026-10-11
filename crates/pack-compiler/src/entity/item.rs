@@ -269,7 +269,8 @@ pub(super) fn compile(
             &mut definitions,
         )?;
     }
-    let facts_source = *source_indices.get(ARMOUR_SOURCE_PATH)
+    let facts_source = *source_indices
+        .get(ARMOUR_SOURCE_PATH)
         .ok_or_else(|| invalid("compiled item facts source is absent"))?;
     let retail = std::str::from_utf8(item_bindings::RETAIL_ITEMS)
         .map_err(|_| invalid("retail item list is not UTF-8"))?;

@@ -38,17 +38,27 @@ pub(crate) fn ray_is_current(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BlockRayUnavailable;
 
+/// Observes the nearest selectable block using the caller's authoritative game mode.
 pub(crate) fn observe_block(
     origin: &InteractionOriginSnapshot,
     ui: &UiRuntime,
     client_world: &ClientWorld,
     collisions: &PhysicsCollisionRegistries,
     selection: FrozenMiningSelection,
+    game_mode: Option<protocol::PlayerGameMode>,
     input: (PlayerInputMode, f64, (NonZeroU64, u64), u64),
 ) -> Option<FrozenBlockObservation> {
-    observe_block_ray(origin, ui, client_world, collisions, selection, input)
-        .ok()
-        .flatten()
+    observe_block_ray(
+        origin,
+        ui,
+        client_world,
+        collisions,
+        selection,
+        game_mode,
+        input,
+    )
+    .ok()
+    .flatten()
 }
 
 /// The nearest block on the current ray; `Ok(None)` only for a verified clear ray.
@@ -58,6 +68,7 @@ pub(crate) fn observe_block_ray(
     client_world: &ClientWorld,
     collisions: &PhysicsCollisionRegistries,
     selection: FrozenMiningSelection,
+    game_mode: Option<protocol::PlayerGameMode>,
     input: (PlayerInputMode, f64, (NonZeroU64, u64), u64),
 ) -> Result<Option<FrozenBlockObservation>, BlockRayUnavailable> {
     observe_block_ray_using(
@@ -66,6 +77,7 @@ pub(crate) fn observe_block_ray(
         client_world,
         collisions,
         selection,
+        game_mode,
         input,
         |world, origin, direction, reach| {
             world.block_interaction_ray_current(origin, direction, reach)
@@ -74,12 +86,14 @@ pub(crate) fn observe_block_ray(
 }
 
 /// Freezes a current observation after the owning interaction chooses its support target.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn observe_block_ray_using(
     origin: &InteractionOriginSnapshot,
     ui: &UiRuntime,
     client_world: &ClientWorld,
     collisions: &PhysicsCollisionRegistries,
     selection: FrozenMiningSelection,
+    game_mode: Option<protocol::PlayerGameMode>,
     input: (PlayerInputMode, f64, (NonZeroU64, u64), u64),
     choose: impl FnOnce(
         &PaletteWorld<'_>,
@@ -106,7 +120,16 @@ pub(crate) fn observe_block_ray_using(
         stream.collision_store(),
         collisions.registry(stream.network_id_mode()),
         stream.current_dimension(),
-    );
+    )
+    .with_pick_context(assets::block_shapes::PickContext {
+        creative: game_mode == Some(protocol::PlayerGameMode::Creative),
+        liquids: false,
+        holding_light: gameplay::block_use::held_block_store_id(
+            &crate::movement::GameplayWorldView(stream),
+            selection.item.block_runtime_id(),
+        )
+        .is_some_and(|id| collisions.is_light_block(stream.network_id_mode(), id)),
+    });
     let Some(hit) = choose(&world, vector(ray.origin()), vector(ray.direction()), reach)
         .map_err(|_| BlockRayUnavailable)?
     else {

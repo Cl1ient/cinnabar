@@ -125,6 +125,18 @@ impl PaletteWorld<'_> {
                 runtime_id: id,
                 block,
             })?;
+        let context = assets::block_shapes::PickContext {
+            liquids,
+            ..self.pick_context
+        };
+        let admitted = match physics.pick_rule {
+            assets::block_shapes::PickRule::Liquid
+            | assets::block_shapes::PickRule::LiquidSource => liquids,
+            rule => rule.allows(context, physics.flow.and_then(|flow| flow.liquid_depth)),
+        };
+        if !admitted {
+            return Ok(None);
+        }
         let liquid = is_liquid(physics.flags);
         if liquid && !liquids {
             return Ok(None);
@@ -135,32 +147,12 @@ impl PaletteWorld<'_> {
             f64::from(block[2]),
         );
         let cube = Aabb::new(offset, offset + Vec3::ONE);
-        let door = if physics.pick_shapes.is_none() {
-            self.resolved_door_shape(block, physics)?
-        } else {
-            None
-        };
-        let shapes = physics.pick_shapes.as_deref().unwrap_or_else(|| {
-            if door.is_some() {
-                door.as_slice()
-            } else {
-                &physics.shapes
-            }
-        });
         let outline = if liquid {
             cube
         } else {
-            let Some((&first, rest)) = shapes.split_first() else {
+            let Some(outline) = self.block_outline_from_physics(block, physics)? else {
                 return Ok(None);
             };
-            let mut outline = first.translated(physics.shape_offset(block));
-            for shape in rest {
-                let shape = shape.translated(physics.shape_offset(block));
-                for axis in 0..3 {
-                    outline.min[axis] = outline.min[axis].min(shape.min[axis]);
-                    outline.max[axis] = outline.max[axis].max(shape.max[axis]);
-                }
-            }
             outline
         };
         if initial

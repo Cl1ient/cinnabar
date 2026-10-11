@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use world::{ChunkCollisionRevision, ChunkKey};
@@ -201,21 +200,7 @@ impl PaletteWorld<'_> {
         best: &mut Option<Candidate>,
     ) -> Result<(), WorldQueryError> {
         let chunk = ChunkKey::new(self.dimension, block[0] >> 4, block[2] >> 4);
-        let current = self
-            .store
-            .collision_revision(chunk)
-            .ok_or(WorldQueryError::UnloadedChunk(chunk))?;
-        if let Some(expected) = expected {
-            let expected_revision = expected
-                .chunks
-                .binary_search_by_key(&chunk, |revision| revision.chunk)
-                .ok()
-                .map(|index| expected.chunks[index]);
-            if expected_revision != Some(current) {
-                return Err(WorldQueryError::StaleCollisionIdentity { chunk });
-            }
-        }
-        revisions.insert(chunk, current);
+        self.inspect_pick_revision(chunk, expected, revisions)?;
 
         let offset = Vec3::new(
             f64::from(block[0]),
@@ -227,8 +212,18 @@ impl PaletteWorld<'_> {
                 .registry
                 .physics(runtime_id)
                 .ok_or(WorldQueryError::UnknownRuntimeId { runtime_id, block })?;
+            if !self.may_pick(physics) {
+                continue;
+            }
+            if let Some(owner) = self.actor_selection_owner(block, physics)? {
+                self.inspect_pick_revision(
+                    ChunkKey::new(self.dimension, owner[0] >> 4, owner[2] >> 4),
+                    expected,
+                    revisions,
+                )?;
+            }
             let pickable = match physics.pick_shapes.as_deref() {
-                Some(shapes) => Cow::Borrowed(shapes),
+                Some(_) => self.selection_shapes_at(block, physics)?,
                 None => self.block_collision_shapes(
                     block,
                     physics,
@@ -270,6 +265,31 @@ impl PaletteWorld<'_> {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Records and checks every column supplying palette or actor geometry to the ray.
+    fn inspect_pick_revision(
+        &self,
+        chunk: ChunkKey,
+        expected: Option<&WorldCollisionIdentity>,
+        revisions: &mut BTreeMap<ChunkKey, ChunkCollisionRevision>,
+    ) -> Result<(), WorldQueryError> {
+        let current = self
+            .store
+            .collision_revision(chunk)
+            .ok_or(WorldQueryError::UnloadedChunk(chunk))?;
+        if let Some(expected) = expected {
+            let expected_revision = expected
+                .chunks
+                .binary_search_by_key(&chunk, |revision| revision.chunk)
+                .ok()
+                .map(|index| expected.chunks[index]);
+            if expected_revision != Some(current) {
+                return Err(WorldQueryError::StaleCollisionIdentity { chunk });
+            }
+        }
+        revisions.insert(chunk, current);
         Ok(())
     }
 }

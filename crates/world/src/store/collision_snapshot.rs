@@ -19,6 +19,8 @@ impl ChunkStore {
                         key,
                         Chunk {
                             sub_chunks: Arc::clone(&chunk.sub_chunks),
+                            block_entities: Arc::clone(&chunk.block_entities),
+                            block_entity_bytes: chunk.block_entity_bytes,
                             ..Chunk::default()
                         },
                     )

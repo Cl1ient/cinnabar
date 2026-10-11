@@ -232,6 +232,7 @@ fn observe_destroy_target(
         &context.client_world,
         &context.collisions,
         selection,
+        player_runtime.facts.player_game_mode(),
         (
             input_mode,
             if caps.creative_reach {

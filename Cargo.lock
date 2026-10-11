@@ -433,6 +433,7 @@ name = "asset-compiler"
 version = "0.1.12"
 dependencies = [
  "assets",
+ "block-transform",
  "clap",
  "image",
  "pack-compiler",
@@ -6955,6 +6956,7 @@ dependencies = [
 name = "sim"
 version = "0.1.12"
 dependencies = [
+ "assets",
  "block-transform",
  "serde",
  "serde_json",
@@ -9453,6 +9455,7 @@ dependencies = [
 name = "world"
 version = "0.1.12"
 dependencies = [
+ "assets",
  "criterion",
  "hashbrown 0.16.1",
  "rayon",

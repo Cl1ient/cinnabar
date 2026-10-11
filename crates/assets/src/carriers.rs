@@ -36,6 +36,7 @@ pub fn physics_registry_basename() -> &'static str {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Recipe {
     World,
+    BlockPhysics,
     Atmosphere,
     Entity,
     Font,
@@ -127,6 +128,20 @@ pub const WORLD: Carrier = Carrier {
         "Compiling world assets",
         Recipe::World,
         "vanilla-v2193.mcbea",
+        None,
+        true,
+    )
+};
+pub const BLOCK_PHYSICS: Carrier = Carrier {
+    inputs: &[
+        Input::File(BLOCK_REGISTRY),
+        Input::File("crates/assets/data/block-physics-seed-v2193.bin"),
+    ],
+    ..carrier(
+        "physics",
+        "Compiling block geometry",
+        Recipe::BlockPhysics,
+        "block-physics-v2193.bin",
         None,
         true,
     )
@@ -421,6 +436,7 @@ pub const AUDIO_PCM: Carrier = Carrier {
 
 /// Every carrier, in the order progress reports them.
 pub const CARRIERS: &[Carrier] = &[
+    BLOCK_PHYSICS,
     WORLD,
     ATMOSPHERE,
     ENTITY,

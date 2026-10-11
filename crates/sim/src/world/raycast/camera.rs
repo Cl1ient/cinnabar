@@ -5,6 +5,7 @@ use super::{
     validate_ray,
 };
 use crate::{Aabb, PaletteWorld, Vec3, WorldQueryError};
+use std::borrow::Cow;
 use world::SubChunkKey;
 
 mod aim;
@@ -141,11 +142,15 @@ impl PaletteWorld<'_> {
         } else {
             None
         };
-        let shapes = physics.pick_shapes.as_deref().unwrap_or_else(|| {
-            door.as_slice()
-                .first()
-                .map_or(&*physics.shapes, |_| door.as_slice())
-        });
+        let shapes = if physics.pick_shapes.is_some() {
+            self.selection_shapes_at(block, physics)?
+        } else {
+            Cow::Borrowed(
+                door.as_slice()
+                    .first()
+                    .map_or(&*physics.shapes, |_| door.as_slice()),
+            )
+        };
         let offset = Vec3::new(
             f64::from(block[0]),
             f64::from(block[1]),

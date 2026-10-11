@@ -12,6 +12,7 @@ mod contracts;
 mod current;
 mod door;
 mod flow;
+mod selection;
 pub use contracts::CollisionWorld;
 pub use flow::FlowBlockFacts;
 mod liquid_probe;
@@ -276,12 +277,15 @@ impl BlockPhysicsSample {
 pub struct CollisionRegistry {
     identity: CollisionRegistryIdentity,
     blocks: Arc<BTreeMap<u32, BlockPhysics>>,
+    shape_state_ids: Arc<BTreeMap<[u8; 32], u32>>,
     air_runtime_id: u32,
     collision_halo: [(i32, i32); 3],
 }
 
 #[derive(Debug, Clone)]
 struct BlockPhysics {
+    actor_facing: Option<u8>,
+    actor_visual: Option<Aabb>,
     random_offset: Option<(
         block_transform::random_offset::RandomOffsetComponent,
         [f32; 3],
@@ -291,6 +295,13 @@ struct BlockPhysics {
     shapes: Box<[Aabb]>,
     /// Shapes the interaction ray targets instead of `shapes` (selection boxes).
     pick_shapes: Option<Box<[Aabb]>>,
+    pick_rule: assets::block_shapes::PickRule,
+    shape_flags: assets::block_shapes::ShapeFlags,
+    selection_context: assets::block_shapes::SelectionContext,
+    contextual_selection: Box<[Aabb]>,
+    outline: Option<Aabb>,
+    connected_outline: Option<Aabb>,
+    outline_context: assets::block_shapes::OutlineContext,
     friction: f64,
     horizontal_speed_factor: f64,
     vertical_speed_factor: f64,
@@ -341,6 +352,7 @@ impl CollisionRegistry {
         Self {
             identity,
             blocks: Arc::new(BTreeMap::new()),
+            shape_state_ids: Arc::new(BTreeMap::new()),
             air_runtime_id: 0,
             collision_halo: [(0, 0); 3],
         }
@@ -434,11 +446,20 @@ impl CollisionRegistry {
         Arc::make_mut(&mut self.blocks).insert(
             runtime_id,
             BlockPhysics {
+                actor_facing: None,
+                actor_visual: None,
                 random_offset: None,
                 door: None,
                 flow: None,
                 shapes: shapes.into_boxed_slice(),
                 pick_shapes: None,
+                pick_rule: assets::block_shapes::PickRule::Always,
+                shape_flags: assets::block_shapes::ShapeFlags::empty(),
+                selection_context: assets::block_shapes::SelectionContext::Static,
+                contextual_selection: Box::new([]),
+                outline: None,
+                connected_outline: None,
+                outline_context: assets::block_shapes::OutlineContext::Static,
                 friction,
                 horizontal_speed_factor,
                 vertical_speed_factor,
@@ -500,6 +521,15 @@ impl CollisionRegistry {
             return false;
         };
         block.pick_shapes = Some(boxes.into_iter().collect());
+        true
+    }
+
+    /// Attaches compiled pick eligibility to an existing runtime ID.
+    pub fn set_pick_rule(&mut self, runtime_id: u32, rule: assets::block_shapes::PickRule) -> bool {
+        let Some(block) = Arc::make_mut(&mut self.blocks).get_mut(&runtime_id) else {
+            return false;
+        };
+        block.pick_rule = rule;
         true
     }
 
@@ -605,6 +635,7 @@ pub struct LenientCollisionBoxes {
 
 /// Read-only collision adapter over the palette-packed world store.
 pub struct PaletteWorld<'a> {
+    pick_context: assets::block_shapes::PickContext,
     store: &'a ChunkStore,
     registry: &'a CollisionRegistry,
     dimension: i32,
@@ -626,6 +657,11 @@ impl<'a> PaletteWorld<'a> {
         dimension: i32,
     ) -> Self {
         Self {
+            pick_context: assets::block_shapes::PickContext {
+                creative: false,
+                liquids: false,
+                holding_light: false,
+            },
             store,
             registry,
             dimension,

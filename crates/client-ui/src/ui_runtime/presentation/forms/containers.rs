@@ -379,7 +379,8 @@ impl ScreenCache {
         self.measures = json_ui::MeasureCache::default();
     }
 
-    /// The tree the last bind produced, taken back from the layout that holds it.
+    /// The tree the last bind produced, taken back from the layout that holds it. Measurements
+    /// address its controls, so a copy taken from a still-shared layout starts them over.
     fn bound_tree(&mut self) -> Option<json_ui::ResolvedControl> {
         if let Some(tree) = self.tree.take() {
             return Some(tree);

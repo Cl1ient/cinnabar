@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 
 use crate::{BindState, DataSource, EmptyLibrary, ResolvedControl, Scalar};
 
+/// Builds a fixture control with its binding properties and children.
 fn control(
     name: &str,
     kind: &str,

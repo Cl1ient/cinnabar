@@ -12,6 +12,7 @@ use crate::{
 
 const CELLS: usize = 300;
 
+/// Builds a fixture control from its JSON properties.
 fn node(
     name: &str,
     kind: &str,
@@ -62,6 +63,7 @@ fn screen() -> Arc<ResolvedControl> {
 struct Cells(Arc<ResolvedControl>);
 
 impl Cells {
+    /// Creates a library containing one shared cell template.
     fn new() -> Self {
         let label = node(
             "label",
@@ -114,6 +116,7 @@ impl TextureSource for Fixed {
     }
 }
 
+/// Builds the full fixture collection with the supplied label prefix.
 fn items(prefix: &str) -> Arc<DataSource> {
     let mut data = DataSource::new();
     data.set_collection(
@@ -135,6 +138,7 @@ struct Session {
 }
 
 impl Session {
+    /// Creates a session with optional grid virtualization.
     fn new(virtualized: bool) -> Self {
         let mut state = BindState::new();
         if virtualized {
@@ -218,6 +222,7 @@ struct Drawn {
     built: usize,
 }
 
+/// Counts controls with the requested name in the bound tree.
 fn count(control: &ResolvedControl, name: &str) -> usize {
     usize::from(control.name == name)
         + control

@@ -157,8 +157,7 @@ impl UiPresentationRuntime {
         } else {
             "not in the vanilla icon catalog"
         };
-        // Debug level: opening the creative search can miss hundreds at once, and every line
-        // costs a synchronous console write in browsers.
+        // Debug level: opening the creative search can miss hundreds of icons at once.
         bevy::log::debug!(
             identifier,
             metadata,

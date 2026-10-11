@@ -9,6 +9,7 @@ use super::*;
 
 const BOOK: &str = "recipe_book";
 
+/// Builds a fixture panel with the supplied bindings and children.
 fn control(name: &str, properties: Value, children: Vec<ResolvedControl>) -> ResolvedControl {
     let Value::Object(properties) = properties else {
         unreachable!("control properties are an object");
@@ -46,6 +47,7 @@ fn screen_root() -> Arc<ResolvedControl> {
     ))
 }
 
+/// Makes one item stack for a fixture slot.
 fn stack(network_id: i32) -> NetworkItemStack {
     NetworkItemStack {
         network_id,

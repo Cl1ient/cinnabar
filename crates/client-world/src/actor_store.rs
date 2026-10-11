@@ -30,6 +30,8 @@ pub(crate) const MAX_TRACKED_PLAYER_SKIN_BYTES: usize = MAX_PLAYER_LIST_SKIN_BYT
 const PLAYER_FLAGS_METADATA_KEY: u32 = 26;
 /// Raw server actor scale, applied independently of the visual definition's scale.
 pub const SCALE_METADATA_KEY: u32 = 38;
+/// Packed RGB color supplied by the server for casting particles.
+pub const SPELL_COLOR_METADATA_KEY: u32 = 77;
 const NAMETAG_METADATA_KEY: u32 = 4;
 pub(crate) const VARIANT_METADATA_KEY: u32 = 2;
 /// Unscaled actor collision width supplied by the server.

@@ -17,3 +17,19 @@ pub(crate) fn default_render_color(actor: &ActorSnapshot) -> [f32; 4] {
     };
     assets::dye::actor_palette_color(index)
 }
+
+impl ActorSnapshot {
+    /// Reads the server's packed spell RGB color as an opaque particle tint.
+    pub fn spell_color(&self) -> [f32; 4] {
+        let rgb = match self.metadata.get(&super::SPELL_COLOR_METADATA_KEY) {
+            Some(ActorMetadataValue::Int(value)) => *value as u32,
+            _ => 0,
+        };
+        [
+            ((rgb >> 16) & 0xff) as f32 / 255.0,
+            ((rgb >> 8) & 0xff) as f32 / 255.0,
+            (rgb & 0xff) as f32 / 255.0,
+            1.0,
+        ]
+    }
+}

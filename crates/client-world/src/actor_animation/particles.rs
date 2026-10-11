@@ -55,7 +55,7 @@ pub struct ActorParticleQueries<'a> {
     input: super::ActorTickInput,
     context: super::ActorTickContext,
     life_tick: u64,
-    completed_tick: u64,
+    anim_tick: u64,
     bone_names: &'a [Box<str>],
     alpha: f32,
     state_time: f32,
@@ -77,7 +77,7 @@ impl<'a> super::ActorRigSnapshot<'a> {
             input: owner.input().unwrap_or_default(),
             context,
             life_tick: owner.life_tick(),
-            completed_tick: self.completed_tick,
+            anim_tick: owner.anim_tick(),
             bone_names: self.bone_names,
             alpha,
             state_time,
@@ -108,7 +108,7 @@ impl ActorParticleQueries<'_> {
             actor: self.actor,
             input: &self.input,
             context: &self.context,
-            anim_tick: self.completed_tick,
+            anim_tick: self.anim_tick,
             anim_time: None,
             swell_amount: None,
             life_tick: self.life_tick,
@@ -136,7 +136,7 @@ mod tests {
                 ..Default::default()
             },
             life_tick: 40,
-            completed_tick: 40,
+            anim_tick: 40,
             bone_names: &[],
             alpha: 0.5,
             state_time: 1.25,
@@ -153,5 +153,57 @@ mod tests {
             assert_eq!(queries.query(name), expected, "{name}");
             assert_eq!(queries.query(&format!("query.{name}")), expected, "{name}");
         }
+    }
+
+    #[test]
+    fn particle_anim_time_uses_elapsed_ticks_after_spawn_and_reset() {
+        use super::super::{ActorTickContext, render_frame::tests::counting_random_assets};
+        use std::collections::HashMap;
+
+        let actor = crate::actor_animation::tests::actor_with_metadata(Default::default());
+        let actors = HashMap::from([(actor.runtime_id, actor.clone())]);
+        let mut store = ActorAnimationStore::with_assets(counting_random_assets());
+        store.completed_tick = 100;
+        store.insert(1, 0, &actor);
+        let rig = store.get(actor.runtime_id).unwrap();
+        assert_eq!(rig.completed_tick, 100);
+        assert_eq!(
+            rig.particle_queries(&actor, 0.5, 0.0).query("anim_time"),
+            0.0
+        );
+        let advance = |store: &mut ActorAnimationStore| {
+            store.advance_tick(&actors, None, None, true, false, |_| {
+                ActorTickContext::default()
+            });
+        };
+        advance(&mut store);
+        let rig = store.get(actor.runtime_id).unwrap();
+        assert_eq!(rig.completed_tick, 101);
+        assert_eq!(
+            rig.particle_queries(&actor, 0.5, 0.0).query("anim_time"),
+            world::TICK_DURATION.as_secs_f32()
+        );
+        advance(&mut store);
+        let rig = store.get(actor.runtime_id).unwrap();
+        assert_eq!(
+            rig.particle_queries(&actor, 0.5, 0.0).query("anim_time"),
+            2.0 * world::TICK_DURATION.as_secs_f32()
+        );
+        store.mark_reset(actor.runtime_id);
+        advance(&mut store);
+        let rig = store.get(actor.runtime_id).unwrap();
+        assert_eq!(rig.completed_tick, 103);
+        let queries = rig.particle_queries(&actor, 0.5, 0.0);
+        assert_eq!(queries.query("query.anim_time"), 0.0);
+        assert_eq!(
+            queries.query("life_time"),
+            3.5 * world::TICK_DURATION.as_secs_f32()
+        );
+        advance(&mut store);
+        let rig = store.get(actor.runtime_id).unwrap();
+        assert_eq!(
+            rig.particle_queries(&actor, 0.5, 0.0).query("anim_time"),
+            world::TICK_DURATION.as_secs_f32()
+        );
     }
 }

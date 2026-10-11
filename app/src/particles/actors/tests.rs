@@ -510,3 +510,60 @@ fn multiple_controllers_and_attachments_reuse_one_actor_pose_sample() {
         "attachments share their actor's sample"
     );
 }
+
+#[test]
+fn bound_spell_particles_use_actor_color_at_spawn_and_after_metadata_updates() {
+    let mut stream = stream();
+    let effect = EFFECT.replace(
+        r##""#FFFF9200""##,
+        r#"["query.spellcolor.r", "query.spellcolor.g", "query.spellcolor.b", "query.spellcolor.a"]"#,
+    );
+    let mut system = particle_system(CONTROLLER);
+    assert!(system.register_effect(effect.as_bytes()));
+    let mut queue = Vec::new();
+    let view = ParticleView {
+        position: [0.0, 0.0, 4.0],
+        right: [1.0, 0.0, 0.0],
+        up: [0.0, 1.0, 0.0],
+        forward: [0.0, 0.0, -1.0],
+        half_diagonal: 1.0,
+    };
+    for (sequence, color, expected) in [
+        (2, 0x3399cc, [0.2, 0.6, 0.8, 1.0]),
+        (3, 0xcc6633, [0.8, 0.4, 0.2, 1.0]),
+    ] {
+        stream
+            .submit(
+                sequence,
+                WorldEvent::Actor(ActorEvent::Metadata(ActorMetadataUpdateEvent {
+                    dimension: 0,
+                    runtime_id: 42,
+                    tick: sequence,
+                    metadata: Arc::from([ActorMetadata {
+                        key: client_world::SPELL_COLOR_METADATA_KEY,
+                        value: ActorMetadataValue::Int(color),
+                    }]),
+                    properties: Arc::from([]),
+                })),
+            )
+            .unwrap();
+        stream.advance_actor_interpolation_ticks(1);
+        let mut frame = ActorParticleFrame::new(&stream, 0.5);
+        queue_actor_particles(&mut frame, &mut system, &mut queue);
+        if sequence == 2 {
+            let [ActorParticleCommand::Start(_, request)] = queue.as_slice() else {
+                panic!("bound spell effect must start");
+            };
+            assert_eq!(request.queries.spell_color, expected);
+            route_actor_particles(&mut system, &mut queue);
+        } else {
+            assert!(queue.is_empty(), "metadata refresh retains the emitter");
+            follow_actor_particles(&mut system, &mut frame);
+        }
+        assert_eq!(system.emitter_count(), 1);
+        system.tick(0.2, &EmptyWorld);
+        let draws = system.build_draw(&view, &EmptyWorld);
+        assert!(!draws.opaque.is_empty());
+        assert!(draws.opaque.iter().all(|draw| draw.color == expected));
+    }
+}

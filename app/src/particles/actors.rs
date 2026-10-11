@@ -174,6 +174,7 @@ fn actor_queries(
         is_baby: query("is_baby"),
         ground_speed: query("ground_speed"),
         frame_alpha: alpha,
+        spell_color: actor.spell_color(),
         actor: (!attachment.queries.is_empty()).then(|| {
             std::sync::Arc::new(
                 attachment

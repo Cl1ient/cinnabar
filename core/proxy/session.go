@@ -456,7 +456,7 @@ func newSessionDownstream(request sessionConnectRequest, claimed *device.Profile
 	}
 	if claimed != nil {
 		if clientData.DeviceID == "" {
-			return nil, fmt.Errorf("%w: core device ID is empty", errMalformedSessionMessage)
+			return nil, fmt.Errorf("%w: core device ID is empty", errMalformedSession)
 		}
 		clientData.SelfSignedID = initialSelfSignedID(clientData.ClientRandomID, string(clientData.DeviceID))
 		clientData.MarkClaims("SelfSignedId")

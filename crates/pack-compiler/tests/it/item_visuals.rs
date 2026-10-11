@@ -31,14 +31,14 @@ fn armour_values_compile_by_identity_with_unresolved_unknown_items() {
     let compiled = compile_entity_assets(pack.path(), MANIFEST).unwrap();
     assert_eq!(
         visual(&compiled.item_visuals, "minecraft:diamond_chestplate", 0).armour,
-        assets::ItemArmour::Wearable {
-            slot: assets::ItemArmourSlot::Chest,
+        assets::item::armour::ItemArmour::Wearable {
+            slot: assets::item::armour::ItemArmourSlot::Chest,
             protection: 8
         }
     );
     assert_eq!(
         visual(&compiled.item_visuals, "custom:cloth", 0).armour,
-        assets::ItemArmour::Unresolved
+        assets::item::armour::ItemArmour::Unresolved
     );
     let inventory = include_str!("../../../protocol/data/retail_items_1_26_50.tsv");
     for identifier in inventory.lines().filter_map(|line| line.split('\t').nth(1)) {

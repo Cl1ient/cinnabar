@@ -43,7 +43,7 @@ pub struct CanonicalItemRegistryRecord {
     pub version: ItemRegistryVersion,
     pub component_digest: [u8; 32],
     /// Compiled facts after applying the current registry's component payload.
-    pub armour: assets::ItemArmour,
+    pub armour: assets::item::armour::ItemArmour,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

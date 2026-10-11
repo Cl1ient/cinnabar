@@ -59,7 +59,7 @@ impl WorldAuthority {
     }
 
     /// Reads protection resolved for this numeric item registry entry.
-    pub fn item_armour(&self, network_id: i32) -> assets::ItemArmour {
+    pub fn item_armour(&self, network_id: i32) -> assets::item::armour::ItemArmour {
         self.actors.item_armour(network_id)
     }
     /// Installs the StartGame item registry so server-defined item ids resolve

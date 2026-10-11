@@ -1,4 +1,4 @@
-use assets::{ItemArmour, ItemArmourSlot, RuntimeEntityAssets};
+use assets::{RuntimeEntityAssets, item::armour::ItemArmour, item::armour::ItemArmourSlot};
 use protocol::{ItemRegistryEntry, ItemRegistryVersion};
 
 /// Resolves protection at registry admission; malformed or unsupported facts stay unresolved.

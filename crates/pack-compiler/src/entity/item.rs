@@ -268,7 +268,7 @@ pub(super) fn compile(
         )?;
     }
     let facts_source = *source_indices
-        .get(assets::ITEM_ARMOUR_SOURCE_PATH)
+        .get(assets::item::armour::ITEM_ARMOUR_SOURCE_PATH)
         .ok_or_else(|| invalid("compiled item facts source is absent"))?;
     let retail = std::str::from_utf8(item_bindings::RETAIL_ITEMS)
         .map_err(|_| invalid("retail item list is not UTF-8"))?;
@@ -296,7 +296,7 @@ pub(super) fn compile(
                 armour: armour
                     .get(&key.identifier)
                     .copied()
-                    .unwrap_or(assets::ItemArmour::Unresolved),
+                    .unwrap_or(assets::item::armour::ItemArmour::Unresolved),
                 first_person: display(|transforms| transforms.first_person),
                 third_person: display(|transforms| transforms.third_person),
                 dropped: display(|transforms| transforms.dropped),

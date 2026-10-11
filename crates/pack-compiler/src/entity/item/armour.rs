@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use assets::{AssetError, ItemArmour};
+use assets::{AssetError, item::armour::ItemArmour};
 use serde::Deserialize;
 
 use super::super::invalid;
@@ -22,12 +22,10 @@ struct ArmourEntry {
 
 /// Reads the single protection source once while compiling item definitions.
 pub(super) fn reviewed() -> Result<BTreeMap<Box<str>, ItemArmour>, AssetError> {
-    let table: ArmourTable =
-        serde_json::from_slice(assets::ITEM_ARMOUR_SOURCE_BYTES).map_err(|source| {
-            AssetError::Json {
-                path: "crates/assets/data/item-armour-v2193.json".into(),
-                source,
-            }
+    let table: ArmourTable = serde_json::from_slice(assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES)
+        .map_err(|source| AssetError::Json {
+            path: "crates/assets/data/item-armour-v2193.json".into(),
+            source,
         })?;
     if table.schema != 1 || table.protocol != super::ROUTE_PROTOCOL {
         return Err(invalid(

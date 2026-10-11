@@ -214,7 +214,7 @@ pub fn compile_entity_assets_with_report(
         source_sha256: Sha256::digest(route_bytes).into(),
     });
     source_payloads.insert(route_path, route_bytes.into());
-    let armour_bytes = assets::ITEM_ARMOUR_SOURCE_BYTES;
+    let armour_bytes = assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES;
     total_source_bytes = total_source_bytes
         .checked_add(armour_bytes.len())
         .ok_or_else(|| invalid("entity source-byte total overflow"))?;
@@ -224,7 +224,7 @@ pub fn compile_entity_assets_with_report(
         return Err(invalid("entity source-byte total or count exceeds bound"));
     }
     sources.push(EntityAssetSource {
-        path: assets::ITEM_ARMOUR_SOURCE_PATH.into(),
+        path: assets::item::armour::ITEM_ARMOUR_SOURCE_PATH.into(),
         source_bytes: armour_bytes.len() as u32,
         source_sha256: Sha256::digest(armour_bytes).into(),
     });

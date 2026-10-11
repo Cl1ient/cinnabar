@@ -151,7 +151,7 @@ impl ActorStore {
     }
 
     /// Reads protection resolved for this numeric item registry entry.
-    pub(crate) fn item_armour(&self, network_id: i32) -> assets::ItemArmour {
+    pub(crate) fn item_armour(&self, network_id: i32) -> assets::item::armour::ItemArmour {
         self.items.item_armour(network_id)
     }
 

@@ -531,9 +531,9 @@ fn compiled_item_facts_admit_only_hash_checked_missing_retail_visuals() {
     let mut sources = compiled.sources.to_vec();
     let source = sources.len();
     sources.push(entity::EntityAssetSource {
-        path: assets::ITEM_ARMOUR_SOURCE_PATH.into(),
-        source_bytes: assets::ITEM_ARMOUR_SOURCE_BYTES.len() as u32,
-        source_sha256: Sha256::digest(assets::ITEM_ARMOUR_SOURCE_BYTES).into(),
+        path: assets::item::armour::ITEM_ARMOUR_SOURCE_PATH.into(),
+        source_bytes: assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES.len() as u32,
+        source_sha256: Sha256::digest(assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES).into(),
     });
     compiled.sources = sources.into_boxed_slice();
     compiled.item_visuals = carrier_v4_fixture().item_visuals;

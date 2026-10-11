@@ -6,7 +6,7 @@ use crate::block_entity::{
 use bevy::ecs::system::RunSystemOnce;
 
 #[path = "../../../tests/it/support/gpu_snapshot.rs"]
-mod gpu_snapshot;
+pub(super) mod gpu_snapshot;
 
 /// Makes an original map canvas with a colored background and a session marker.
 fn canvas(second: bool) -> Vec<u8> {

@@ -579,6 +579,7 @@ fn swing_arm_packet_round_trips_with_its_swing_source() {
         (SwingSource::Build, "build"),
         (SwingSource::Interact, "interact"),
         (SwingSource::ThrowItem, "throwitem"),
+        (SwingSource::DropItem, "dropitem"),
     ] {
         let packet = swing_arm_packet(0x1_0000_0001, source);
         let bytes = encode(&packet, &session()).unwrap();

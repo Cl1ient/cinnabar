@@ -340,13 +340,13 @@ pub(crate) fn drive_world_inventory_keys(
     }
 }
 
-/// What dropping the held item needs to swing the arm, as vanilla does with a `dropitem` swing.
+/// Resources used to animate and publish a held-item drop swing.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct DropSwing<'w> {
-    swings: Option<ResMut<'w, crate::melee::SwingTracker>>,
-    movement: Option<Res<'w, crate::movement::MovementTicker>>,
-    effects: Option<Res<'w, crate::movement::LocalMovementEffectTimeline>>,
-    network: Option<Res<'w, crate::runtime::network::NetworkHandle>>,
+    swings: Option<ResMut<'w, client_interaction::melee::SwingTracker>>,
+    movement: Option<Res<'w, client_interaction::movement::MovementTicker>>,
+    effects: Option<Res<'w, client_interaction::movement::LocalMovementEffectTimeline>>,
+    network: Option<Res<'w, client_runtime::network::NetworkHandle<PackApplication>>>,
     client_world: Option<Res<'w, crate::runtime::world::ClientWorld>>,
 }
 

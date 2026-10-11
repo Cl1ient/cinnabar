@@ -137,3 +137,67 @@ fn closing_emote_wheel_consumes_book_use_and_allows_a_fresh_gameplay_use() {
     assert!(h.runtime().inventory_open());
     assert!(h.runtime().screen_state().book.is_some());
 }
+
+#[test]
+fn dropping_a_held_item_starts_a_drop_swing_only_when_the_drop_is_accepted() {
+    for held in [false, true] {
+        let mut h = inventory_harness("minecraft:stone");
+        if !held {
+            h.app
+                .world_mut()
+                .resource_scope(|world, mut ui: Mut<UiRuntime>| {
+                    let mut player = world.resource_mut::<PlayerRuntime>();
+                    ui.inventory_ledger_mut(&mut player)
+                        .apply(&InventoryEvent::Content(InventoryContentEvent {
+                            container: ContainerIdentity::window(0),
+                            slots: vec![NetworkItemStack::empty(); PLAYER_INVENTORY_SLOT_COUNT]
+                                .into(),
+                            storage_item: NetworkItemStack::empty(),
+                        }));
+                });
+        }
+        let mut movement = client_interaction::movement::MovementTicker::default();
+        movement.set_source(gameplay::movement::MovementSource::Physics);
+        movement.reset(1, 0, [0.0, 70.0, 0.0]);
+        let (network, mut packets) = client_runtime::network::NetworkHandle::<
+            crate::runtime::network::resource_packs::PackApplication,
+        >::stub_capturing_packets();
+        h.app
+            .insert_resource(crate::runtime::world::ClientWorld {
+                stream: Some(chunk_pipeline::WorldStream::new(protocol::WorldBootstrap {
+                    dimension: 0,
+                    local_player_runtime_id: 42,
+                    local_player_unique_id: 1,
+                    player_position: [0.0, 70.0, 0.0],
+                    world_spawn_position: [0, 70, 0],
+                    air_network_id: protocol::SEQUENTIAL_AIR_NETWORK_ID,
+                    block_network_ids_are_hashes: false,
+                })),
+                ..Default::default()
+            })
+            .insert_resource(movement)
+            .insert_resource(network)
+            .init_resource::<client_interaction::melee::SwingTracker>()
+            .init_resource::<client_interaction::movement::LocalMovementEffectTimeline>();
+        h.press(KeyCode::KeyQ);
+        let session = protocol::BedrockSession { shield_item_id: 0 };
+        let swings: Vec<_> = packets
+            .drain()
+            .into_iter()
+            .filter(|packet| format!("{:?}", packet.header.id) == "AnimatePacket")
+            .map(|packet| protocol::encode(&packet, &session).unwrap())
+            .collect();
+        let expected = if held {
+            vec![
+                protocol::encode(
+                    &protocol::swing_arm_packet(42, protocol::SwingSource::DropItem),
+                    &session,
+                )
+                .unwrap(),
+            ]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(swings, expected);
+    }
+}

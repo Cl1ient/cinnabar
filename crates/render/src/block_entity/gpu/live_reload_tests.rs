@@ -1,10 +1,7 @@
 use super::reinstall_tests::gpu_snapshot;
 use super::*;
-use crate::block_entity::{
-    atlas::TEXT_CELL,
-    scene::{BlockEntityScene, SceneClock},
-};
 use bevy::ecs::system::RunSystemOnce;
+use render_model::{BlockEntityScene, SceneClock, TEXT_CELL};
 
 const SIGN_COUNT: usize = 32;
 const PREVIEW_COLUMNS: u32 = 8;
@@ -102,8 +99,8 @@ fn live_artwork_reload_uploads_all_32_cached_sign_canvases_without_a_blank_frame
     let mut world = World::new();
     world.insert_resource(RenderDevice::from(gpu.device.clone()));
     world.insert_resource(RenderQueue::new(gpu.queue.clone()));
-    world.init_resource::<BlockEntityFrame>();
-    world.init_resource::<BlockSelectionFrame>();
+    world.init_resource::<render_scene::BlockEntityFrameResource>();
+    world.init_resource::<render_scene::BlockSelectionFrameResource>();
     world.run_system_once(init_gpu).unwrap();
     let mut system = IntoSystem::into_system(prepare_resources);
     system.initialize(&mut world);
@@ -113,7 +110,9 @@ fn live_artwork_reload_uploads_all_32_cached_sign_canvases_without_a_blank_frame
         }
         scene.update(SceneClock::default(), &[], &[]);
     }
-    world.insert_resource(scene.frame().clone());
+    world.insert_resource(render_scene::BlockEntityFrameResource(
+        scene.frame().clone(),
+    ));
     system.run((), &mut world).unwrap();
     let before = preview(&gpu, &world, &scene);
     assert!(before.chunks_exact(4).filter(|pixel| pixel[0] > 0).count() > 1_000);
@@ -122,7 +121,7 @@ fn live_artwork_reload_uploads_all_32_cached_sign_canvases_without_a_blank_frame
         for key in 0..SIGN_COUNT {
             let _ = scene.text_rect(key as u64, || canvas(key));
         }
-        world.insert_resource(
+        world.insert_resource(render_scene::BlockEntityFrameResource(
             scene
                 .update(
                     SceneClock {
@@ -132,7 +131,7 @@ fn live_artwork_reload_uploads_all_32_cached_sign_canvases_without_a_blank_frame
                     &[],
                 )
                 .clone(),
-        );
+        ));
         system.run((), &mut world).unwrap();
         let after = preview(&gpu, &world, &scene);
         if tick == 0 {

@@ -35,7 +35,9 @@ use bevy::{
 use chunk_pipeline::WorldStream;
 use client_world::SAFE_SERVER_HEIGHT;
 use protocol::WorldEvent;
-use render::{ChunkTextureAssets, ChunkUploadAcknowledgements, RuntimeStage, RuntimeStageProfiler};
+use render_scene::{
+    ChunkTextureAssets, ChunkUploadAcknowledgements, RuntimeStage, RuntimeStageProfiler,
+};
 
 use {
     crate::{
@@ -176,7 +178,7 @@ pub(crate) fn receive_network_events(
     mut resource_pack_admission: ResMut<ResourcePackAdmissionState>,
     mut pack_reload: Option<ResMut<PackReload>>,
     mut chunk_textures: Option<ResMut<ChunkTextureAssets>>,
-    mut block_entity_scene: Option<ResMut<render::BlockEntityScene>>,
+    mut block_entity_scene: Option<ResMut<render_scene::BlockEntitySceneResource>>,
     state: AppWorldState,
     #[cfg(feature = "acceptance")] mut acceptance: ResMut<AcceptanceRun>,
     #[cfg(feature = "acceptance")] metrics: Res<AppMetrics>,
@@ -655,7 +657,7 @@ pub(crate) fn receive_network_events(
         };
         // Every terminal event retires the same session-owned state.
         UiRuntime::retire_crafting_observation();
-        render::ViewmodelCompletionGate::retire_observation();
+        render_scene::ViewmodelCompletionGate::retire_observation();
         resource_pack_admission.clear_current();
         if let Some(reload) = pack_reload.as_mut() {
             reload.end_session();

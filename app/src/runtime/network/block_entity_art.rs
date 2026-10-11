@@ -1,7 +1,7 @@
 //! Worker-built block-entity artwork over the immutable startup carrier.
 
 use assets::RuntimeBlockEntityAssets;
-use render::{BlockEntityArtworkPreparer, BlockEntityScene, PreparedBlockEntityArtwork};
+use render_model::{BlockEntityArtworkPreparer, BlockEntityScene, PreparedBlockEntityArtwork};
 use resource_pack::LayeredPackView;
 use std::sync::{Arc, OnceLock};
 

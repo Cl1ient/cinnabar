@@ -609,7 +609,7 @@ fn the_same_blocks_share_the_extended_carrier_and_its_texture_identity() {
     let carrier = super::OverlaidCarrier::new();
     let first = carrier.extend(&base, first_id, &overlay).unwrap();
     assert!(!Arc::ptr_eq(&first, &base));
-    let mut textures = render::ChunkTextureAssets::with_revision(Arc::clone(&base), 0);
+    let mut textures = render_scene::ChunkTextureAssets::with_revision(Arc::clone(&base), 0);
     super::install_chunk_textures(&mut textures, &first);
     let identity = textures.identity();
     let again = carrier.extend(&base, first_id, &overlay).unwrap();
@@ -652,7 +652,7 @@ fn block_entity_art_reads_texture_sets_and_tracks_missing_overrides() {
     let changed = super::super::block_entity_art::prepare_over(
         &view,
         &base,
-        &render::BlockEntityArtworkPreparer::default(),
+        &render_model::BlockEntityArtworkPreparer::default(),
     )
     .unwrap();
     assert_eq!(changed.atlas().texel(name, 0, 0), Some([200, 100, 50, 255]));
@@ -665,7 +665,7 @@ fn block_entity_art_reads_texture_sets_and_tracks_missing_overrides() {
     let restored = super::super::block_entity_art::prepare_over(
         &empty,
         &base,
-        &render::BlockEntityArtworkPreparer::default(),
+        &render_model::BlockEntityArtworkPreparer::default(),
     )
     .unwrap();
     assert_eq!(restored.atlas().texel(name, 0, 0), Some([10, 20, 30, 255]));

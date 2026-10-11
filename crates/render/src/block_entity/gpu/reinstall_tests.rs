@@ -1,9 +1,6 @@
 use super::*;
-use crate::block_entity::{
-    atlas::MAP_CELL,
-    scene::{BlockEntityScene, SceneClock},
-};
 use bevy::ecs::system::RunSystemOnce;
+use render_model::{BlockEntityScene, MAP_CELL, SceneClock};
 
 #[path = "../../../tests/it/support/gpu_snapshot.rs"]
 pub(super) mod gpu_snapshot;
@@ -75,15 +72,17 @@ fn identical_atlas_reinstall_uploads_the_new_session_canvas_on_the_gpu() {
     let mut world = World::new();
     world.insert_resource(RenderDevice::from(gpu.device.clone()));
     world.insert_resource(RenderQueue::new(gpu.queue.clone()));
-    world.init_resource::<BlockEntityFrame>();
-    world.init_resource::<BlockSelectionFrame>();
+    world.init_resource::<render_scene::BlockEntityFrameResource>();
+    world.init_resource::<render_scene::BlockSelectionFrameResource>();
     world.run_system_once(init_gpu).unwrap();
     let mut system = IntoSystem::into_system(prepare_resources);
     system.initialize(&mut world);
 
     scene.install_assets(&assets);
     scene.map_rect(1, || canvas(false)).unwrap();
-    world.insert_resource(scene.update(SceneClock::default(), &[], &[]).clone());
+    world.insert_resource(render_scene::BlockEntityFrameResource(
+        scene.update(SceneClock::default(), &[], &[]).clone(),
+    ));
     system.run((), &mut world).unwrap();
     let first = preview(&gpu, &world);
     let texture = world
@@ -95,7 +94,9 @@ fn identical_atlas_reinstall_uploads_the_new_session_canvas_on_the_gpu() {
 
     scene.install_assets(&assets);
     scene.map_rect(1, || canvas(true)).unwrap();
-    world.insert_resource(scene.update(SceneClock::default(), &[], &[]).clone());
+    world.insert_resource(render_scene::BlockEntityFrameResource(
+        scene.update(SceneClock::default(), &[], &[]).clone(),
+    ));
     system.run((), &mut world).unwrap();
     assert_eq!(
         world

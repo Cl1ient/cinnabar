@@ -5,6 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+reads = [
+    "assets/bedrock-target.json",
+    "crates/assets/data/*",
+]
+
 [features]
 test-support = []
 
@@ -12,6 +18,7 @@ test-support = []
 block-transform = { path = "../block-transform" }
 assets = { path = "../assets" }
 client-world = { path = "../client-world" }
+actor-animation = { path = "../actor-animation" }
 inventory = { path = "../inventory" }
 player-state = { path = "../player-state" }
 protocol = { path = "../protocol" }

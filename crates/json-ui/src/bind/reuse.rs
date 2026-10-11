@@ -19,9 +19,16 @@ use super::{Binder, Node, Scope, output};
 use crate::component::Components;
 use crate::tree::{Properties, ResolvedControl};
 
-/// A bloom set of data keys a control or subtree reads.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(super) struct Reads([u64; 8]);
+#[cfg(test)]
+mod tests;
+
+/// The data keys a control reads, as sorted distinct hashes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct Reads(Vec<u64>);
+
+/// [`Reads`] across a subtree, exact so a change rebuilds only the subtrees that read it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct Below(Arc<[u64]>);
 
 /// The keys a refresh changed, as hashes.
 #[derive(Clone, Debug, Default)]
@@ -54,12 +61,6 @@ fn window_hash(grid: u64) -> u64 {
     key_hash(KEY_ROOT ^ Data::Window as u64, &grid.to_le_bytes())
 }
 
-/// The two filter bits a key hash sets.
-fn bits(hash: u64) -> [(usize, u64); 2] {
-    let bit = |value: u64| ((value as usize / 64) % 8, 1 << (value % 64));
-    [bit(hash % 512), bit((hash >> 32) % 512)]
-}
-
 impl Reads {
     pub(super) fn add(&mut self, kind: Data, name: &str, index: Option<usize>) {
         self.insert(data_hash(kind, name, index));
@@ -71,24 +72,27 @@ impl Reads {
     }
 
     fn insert(&mut self, hash: u64) {
-        for (word, bit) in bits(hash) {
-            self.0[word] |= bit;
+        if let Err(at) = self.0.binary_search(&hash) {
+            self.0.insert(at, hash);
         }
     }
 
-    fn union(&mut self, other: &Reads) {
-        for (word, other) in self.0.iter_mut().zip(other.0) {
-            *word |= other;
-        }
-    }
-
-    /// Whether any changed key may be among these reads.
+    /// Whether any changed key is among these reads.
     fn meets(&self, changes: &Changes) -> bool {
-        changes.0.iter().any(|hash| {
-            bits(*hash)
-                .iter()
-                .all(|(word, bit)| self.0[*word] & bit != 0)
-        })
+        changes
+            .0
+            .iter()
+            .any(|hash| self.0.binary_search(hash).is_ok())
+    }
+}
+
+impl Below {
+    /// Whether any control in the subtree reads a changed key.
+    fn meets(&self, changes: &Changes) -> bool {
+        changes
+            .0
+            .iter()
+            .any(|hash| self.0.binary_search(hash).is_ok())
     }
 }
 
@@ -118,7 +122,7 @@ pub(super) struct Track {
     /// What the control's own creation reads from the data source.
     reads: Reads,
     /// [`Self::reads`] across the subtree.
-    below: Reads,
+    below: Below,
     /// Controls in the subtree, counted against the creation budget.
     count: usize,
     observes_scroll: bool,
@@ -461,7 +465,7 @@ pub(super) fn finish(node: &mut Node) -> bool {
     }
     let track = &mut node.track;
     track.count = 1;
-    track.below = track.reads;
+    let mut below = track.reads.0.clone();
     track.scroll = track.observes_scroll;
     // A grid whose cell count a view sets expands only after views settle, so
     // it rebuilds every bind rather than keep cells for a stale count.
@@ -476,13 +480,16 @@ pub(super) fn finish(node: &mut Node) -> bool {
         .any(|binding| matches!(binding.kind, Kind::View { .. }));
     for child in &node.children {
         track.count += child.track.count;
-        track.below.union(&child.track.below);
+        below.extend_from_slice(&child.track.below.0);
         track.scroll |= child.track.scroll;
         track.stable &= child.track.stable;
         track.deferred_below |= child.track.deferred_below;
         track.views_below |= child.track.views_below;
         track.visibility_pending |= child.track.visibility_pending;
     }
+    below.sort_unstable();
+    below.dedup();
+    track.below = Below(below.into());
     true
 }
 

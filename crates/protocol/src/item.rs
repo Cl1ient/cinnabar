@@ -373,13 +373,13 @@ pub enum ItemRegistryVersion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemRegistryEntry {
+    /// Client-facing components parsed once from the validated registry payload.
+    pub components: Option<Arc<ItemComponents>>,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
     pub version: ItemRegistryVersion,
     pub component_digest: [u8; 32],
-    /// Parsed once from the admitted component payload, retained for session fact resolution.
-    pub components: Option<Arc<ItemComponents>>,
     /// Exact positive stack capacity retained from the negotiated component path.
     ///
     /// This is evidence only: it neither supplies a fallback nor binds a later

@@ -45,6 +45,7 @@ impl PlayerInventoryLedger {
         };
         let Some(previous) = self.item_registry.as_ref() else {
             self.item_registry = Some(std::sync::Arc::new(next));
+            self.refresh_fuel_facts();
             return;
         };
         if previous.as_ref() == &next {
@@ -74,6 +75,8 @@ impl PlayerInventoryLedger {
             self.mark_cell_recovery(cell);
         }
         self.item_registry = Some(std::sync::Arc::new(next));
+        self.refresh_fuel_facts();
+        self.retire_rerouted_furnace_moves();
         self.refold();
     }
 

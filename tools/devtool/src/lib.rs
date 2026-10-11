@@ -1,8 +1,11 @@
+mod baseline;
 mod capture;
+mod cargo_failures;
 mod cli;
 mod commands;
 mod metadata;
 mod selection;
+mod worktrees;
 
 use std::{io, path::PathBuf};
 
@@ -24,7 +27,7 @@ pub enum DevtoolError {
     #[error("workspace package manifest `{0}` has no parent directory")]
     ManifestWithoutParent(PathBuf),
     #[error(
-        "{0}\nusage: devtool verify-affected --base <git-ref> [--dry-run] | capture | trace-summary --trace <file>"
+        "{0}\nusage: devtool verify-affected --base <git-ref> [--dry-run] | capture | trace-summary --trace <file> | wt-gc"
     )]
     Usage(String),
     #[error("failed to run `{command}`: {source}")]
@@ -44,6 +47,7 @@ pub fn dispatch(args: Vec<String>) -> Result<(), DevtoolError> {
     match args.first().map(String::as_str) {
         Some("capture") => capture::run(&args[1..], false),
         Some("trace-summary") => capture::run(&args[1..], true),
+        Some("wt-gc") => worktrees::run(&args[1..]),
         _ => parse_args(args).and_then(|options| run(&options)),
     }
 }

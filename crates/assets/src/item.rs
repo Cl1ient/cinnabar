@@ -1,12 +1,12 @@
-pub mod glint;
-pub mod retail;
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::AssetError;
 
 pub mod armour;
+pub mod fuel;
+pub mod glint;
+pub mod retail;
 use armour::ItemArmour;
 pub mod durability;
 use durability::ItemDurability;
@@ -164,6 +164,8 @@ impl ItemDisplayTransform {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemVisualDefinition {
+    /// Fuel eligibility admitted from checked compilation inputs.
+    pub fuel: fuel::ItemFuel,
     /// Intrinsic shine admitted from checked compiler data.
     pub glint: glint::ItemGlint,
     pub key: ItemVisualKey,

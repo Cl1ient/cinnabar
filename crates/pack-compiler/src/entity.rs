@@ -216,6 +216,10 @@ pub fn compile_entity_assets_with_report(
     source_payloads.insert(route_path, route_bytes.into());
     for (path, bytes) in [
         (
+            assets::item::fuel::SOURCE_PATH,
+            assets::item::fuel::SOURCE_BYTES,
+        ),
+        (
             assets::item::glint::SOURCE_PATH,
             assets::item::glint::SOURCE_BYTES,
         ),

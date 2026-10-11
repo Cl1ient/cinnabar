@@ -674,6 +674,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         .into_boxed_slice(),
         item_visuals: vec![ItemVisualDefinition {
             glint: assets::item::glint::ItemGlint::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
             key: ItemVisualKey {

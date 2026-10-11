@@ -103,6 +103,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         item_visuals: vec![
             ItemVisualDefinition {
                 glint: assets::item::glint::ItemGlint::Unresolved,
+                fuel: assets::item::fuel::ItemFuel::Unresolved,
                 durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
@@ -122,6 +123,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
             },
             ItemVisualDefinition {
                 glint: assets::item::glint::ItemGlint::Unresolved,
+                fuel: assets::item::fuel::ItemFuel::Unresolved,
                 durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {

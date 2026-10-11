@@ -267,10 +267,21 @@ pub(super) fn compile(
             &mut definitions,
         )?;
     }
+    let fuel_source = *source_indices
+        .get(assets::item::fuel::SOURCE_PATH)
+        .ok_or_else(|| invalid("item fuel defining source is absent"))?;
+    for identifier in assets::item::retail::identifiers() {
+        definitions
+            .entry(ItemVisualKey {
+                identifier: (*identifier).into(),
+                metadata: 0,
+            })
+            .or_insert((fuel_source, ItemVisualDefinitionRoute::Missing));
+    }
     let facts_source = *source_indices
         .get(assets::item::armour::ITEM_ARMOUR_SOURCE_PATH)
         .ok_or_else(|| invalid("compiled item facts source is absent"))?;
-    let retail = std::str::from_utf8(item_bindings::RETAIL_ITEMS)
+    let retail = std::str::from_utf8(assets::item::retail::SOURCE_BYTES)
         .map_err(|_| invalid("retail item list is not UTF-8"))?;
     for identifier in retail.lines().filter_map(|line| line.split('\t').nth(1)) {
         definitions
@@ -294,6 +305,7 @@ pub(super) fn compile(
             };
             ItemVisualDefinition {
                 glint: assets::item::glint::builtin_item_glint(&key.identifier),
+                fuel: assets::item::fuel::builtin_item_fuel(&key.identifier),
                 durability: assets::item::durability::builtin_item_durability(&key.identifier),
                 armour: armour
                     .get(&key.identifier)

@@ -1,8 +1,9 @@
 //! Spawner contents use the actor evaluator, artwork pages and draw publication.
 use crate::runtime::world::ClientWorld;
-use bevy::prelude::{Mat4, Res, ResMut, Resource, Vec3};
+use bevy::prelude::{Mat4, Projection, Query, Res, ResMut, Resource, Transform, Vec3, With};
 use client_presentation::{
     actor_publication::{ActorFrameState, PreparedActorPublication},
+    camera::FlyCamera,
     local_player::LocalViewPose,
     presentation::{
         actors::{ActorPresentationBatch, PoseConversions, entity_rig_presentation_cached},
@@ -10,7 +11,7 @@ use client_presentation::{
     },
 };
 use client_world::DisplayActorStore;
-use render::{ActorArtworkPages, matrix_rows};
+use render::{ActorArtworkPages, ActorCullView, matrix_rows};
 use render_model::spawner::{SpawnerDisplayClock, spawner_actor_transform};
 use std::{
     collections::{BTreeSet, HashMap},
@@ -67,21 +68,27 @@ impl SpawnerDisplayPublisher {
     }
 }
 
-/// Parses all configured displays once for an immutable column NBT index.
-fn column(source: Arc<EntityIndex>) -> Column {
+/// Parses the spawners of a column NBT index, reusing requests whose snapshot is unchanged.
+fn column(source: Arc<EntityIndex>, previous: Option<&Column>) -> Column {
+    let previous = previous.map_or(&[][..], |column| column.displays.as_slice());
     let displays = source
         .iter()
+        .filter(|(_, nbt)| nbt.id() == Some("MobSpawner"))
         .filter_map(|(key, nbt)| {
-            let root = nbt.parse()?;
-            if root.string("id") != Some("MobSpawner") {
-                return None;
+            let position = key.position();
+            // Requests follow the index's key order, so the previous column is sorted by position.
+            if let Ok(index) = previous.binary_search_by(|request| request.position.cmp(&position))
+                && Arc::ptr_eq(&previous[index].nbt, nbt)
+            {
+                return Some(previous[index].clone());
             }
+            let root = nbt.parse()?;
             let identifier = root.string("EntityIdentifier")?;
             if !DisplayActorStore::admits_identifier(identifier) {
                 return None;
             }
             Some(Request {
-                position: key.position(),
+                position,
                 identifier: Arc::from(identifier),
                 delay: root
                     .integer("Delay")
@@ -107,6 +114,7 @@ pub(crate) fn prepare_spawner_actors(
     state: Res<ActorFrameState>,
     mut pending: ResMut<PreparedActorPublication>,
     mut publisher: ResMut<SpawnerDisplayPublisher>,
+    camera: Query<(&Transform, &Projection), With<FlyCamera>>,
 ) {
     let (Some(stream), Some(assets)) = (world.stream.as_ref(), world.entity_assets.as_ref()) else {
         publisher.0 = None;
@@ -193,7 +201,8 @@ pub(crate) fn prepare_spawner_actors(
                 .get(&key)
                 .is_none_or(|old| !Arc::ptr_eq(&old.source, &source))
             {
-                pool.columns.insert(key, column(source));
+                let column = column(source, pool.columns.get(&key));
+                pool.columns.insert(key, column);
             }
             for request in &pool.columns[&key].displays {
                 let [x, y, z] = request.position;
@@ -221,9 +230,24 @@ pub(crate) fn prepare_spawner_actors(
         }
     }
     pool.columns.retain(|key, _| columns.contains(key));
-    // Retire departed displays first so a full pool admits replacements in the same frame.
-    pool.actors
-        .retain(&candidates.iter().map(|request| request.position).collect());
+    let view = camera
+        .single()
+        .ok()
+        .map(|(transform, projection)| ActorCullView {
+            clip_from_world: projection.get_clip_from_view() * transform.to_matrix().inverse(),
+            camera_position: transform.translation,
+            max_distance: DISPLAY_SCAN_RADIUS * 2.0,
+        });
+    // Stable, so spawners in view keep their scan order ahead of those outside it.
+    candidates.sort_by_cached_key(|request| !block_in_view(view, request.position));
+    // Retire every lifetime outside the wanted set first so in-view newcomers find free slots.
+    let wanted = candidates
+        .iter()
+        .filter(|request| !pool.actors.known_rigless(&request.identifier))
+        .take(client_world::MAX_DISPLAY_ACTORS)
+        .map(|request| request.position)
+        .collect();
+    pool.actors.retain(&wanted);
     let mut visible = BTreeSet::new();
     let mut displays = Vec::new();
     for request in candidates {
@@ -267,6 +291,20 @@ pub(crate) fn prepare_spawner_actors(
         step.partial_tick,
         displays,
     ));
+}
+
+/// Whether any part of the spawner block at `position` lies in the view; fails open without one.
+fn block_in_view(view: Option<ActorCullView>, position: [i32; 3]) -> bool {
+    let [x, y, z] = position.map(|axis| axis as f32);
+    render::actor_bounds_are_visible(
+        [x + 0.5, y, z + 0.5],
+        1.0,
+        assets::SkinGeometryBounds {
+            center: [0.0, 0.5, 0.0],
+            half_extents: [0.5; 3],
+        },
+        view,
+    )
 }
 
 /// Returns the centre of the spawner block at `position`.

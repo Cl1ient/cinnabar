@@ -171,6 +171,23 @@ fn signed(value: i32, bytes: &mut Vec<u8>) {
     }
 }
 
+/// Encodes a network block-entity compound with an id, entity identifier and position.
+fn entity_nbt(id: &str, identifier: &str, position: [i32; 3]) -> Vec<u8> {
+    let mut nbt = vec![10, 0];
+    for (name, value) in [("id", id), ("EntityIdentifier", identifier)] {
+        nbt.extend([8, name.len() as u8]);
+        nbt.extend_from_slice(name.as_bytes());
+        nbt.push(value.len() as u8);
+        nbt.extend_from_slice(value.as_bytes());
+    }
+    for (name, value) in ["x", "y", "z"].into_iter().zip(position) {
+        nbt.extend([3, 1, name.as_bytes()[0]]);
+        signed(value, &mut nbt);
+    }
+    nbt.push(0);
+    nbt
+}
+
 /// Admits one spawner through normal terrain decoding in the stream's current dimension.
 fn admit_spawner(stream: &mut chunk_pipeline::WorldStream, position: [i32; 3], sequence: u64) {
     admit_spawners(stream, position, &[(position, "custom:display")], sequence);
@@ -207,19 +224,7 @@ fn admit_spawners(
     payload.extend(std::iter::repeat_n(0xff, range.sub_chunk_count - 1));
     payload.push(0);
     for &(display, identifier) in displays {
-        let mut nbt = vec![10, 0];
-        for (name, value) in [("id", "MobSpawner"), ("EntityIdentifier", identifier)] {
-            nbt.extend([8, name.len() as u8]);
-            nbt.extend_from_slice(name.as_bytes());
-            nbt.push(value.len() as u8);
-            nbt.extend_from_slice(value.as_bytes());
-        }
-        for (name, value) in ["x", "y", "z"].into_iter().zip(display) {
-            nbt.extend([3, 1, name.as_bytes()[0]]);
-            signed(value, &mut nbt);
-        }
-        nbt.push(0);
-        payload.extend(nbt);
+        payload.extend(entity_nbt("MobSpawner", identifier, display));
     }
     stream
         .submit(
@@ -645,4 +650,76 @@ fn regression_developer_control_inspection_keeps_display_and_network_lifetimes_a
             .is_none_or(|(_, display)| !display),
         "network lifetimes never resolve to display actors"
     );
+}
+
+#[test]
+fn regression_column_rebuild_reuses_unchanged_spawners_and_skips_other_entities() {
+    let decoded = |id, position| {
+        Arc::new(
+            BlockEntityNbt::decode_prefix(&entity_nbt(id, "custom:display", position))
+                .unwrap()
+                .0,
+        )
+    };
+    let mut index = EntityIndex::new();
+    index.insert(
+        BlockEntityKey::new(1, 0, 64, 0),
+        decoded("MobSpawner", [0, 64, 0]),
+    );
+    index.insert(
+        BlockEntityKey::new(1, 1, 64, 0),
+        decoded("Chest", [1, 64, 0]),
+    );
+    let first = column(Arc::new(index.clone()), None);
+    assert_eq!(
+        first.displays.len(),
+        1,
+        "only spawners become display requests"
+    );
+    index.insert(
+        BlockEntityKey::new(1, 1, 64, 0),
+        decoded("Chest", [1, 64, 0]),
+    );
+    let second = column(Arc::new(index), Some(&first));
+    assert_eq!(second.displays.len(), 1);
+    assert!(
+        Arc::ptr_eq(
+            &first.displays[0].identifier,
+            &second.displays[0].identifier
+        ),
+        "an unchanged spawner snapshot must not be parsed again"
+    );
+}
+
+#[test]
+fn regression_display_slots_prefer_spawners_in_camera_view() {
+    let mut world = system_fixture(serde_json::json!({}), "1");
+    let target = [1039, 64, 1031];
+    let mut displays = display_plane(1024, "custom:display");
+    displays.push((target, "custom:display"));
+    {
+        let mut client = world.resource_mut::<ClientWorld>();
+        admit_spawners(client.stream.as_mut().unwrap(), target, &displays, 2);
+    }
+    // The camera looks along +X, so the full plane at x = 1024 is behind it.
+    let eye = Vec3::new(1036.0, 65.0, 1031.5);
+    let facing = bevy::prelude::Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+    world.insert_resource(LocalViewPose::new(eye, facing));
+    let camera = world.query_filtered::<bevy::prelude::Entity, bevy::prelude::With<client_presentation::camera::FlyCamera>>().single(&world).unwrap();
+    *world.get_mut::<bevy::prelude::Transform>(camera).unwrap() = bevy::prelude::Transform {
+        translation: eye,
+        rotation: facing,
+        ..Default::default()
+    };
+    prepare_displays(&mut world, world::TICK_DURATION);
+    let pool = world
+        .resource::<SpawnerDisplayPublisher>()
+        .0
+        .as_ref()
+        .unwrap();
+    assert!(
+        pool.spins.contains_key(&target),
+        "an on-screen spawner must not be crowded out by displays behind the camera"
+    );
+    assert_eq!(pool.spins.len(), client_world::MAX_DISPLAY_ACTORS);
 }

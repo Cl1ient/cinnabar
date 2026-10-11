@@ -27,7 +27,7 @@ use item::{
     ItemVisualId as LeafItemVisualId, ItemVisualKey,
 };
 
-/// Builds a small entity catalog without local game assets.
+/// Builds an otherwise empty entity carrier with one admitted source and symbol.
 pub(super) fn fixture() -> CompiledEntityAssets {
     let source_bytes = br#"{"format_version":"1.10.0"}"#;
     CompiledEntityAssets {
@@ -679,6 +679,9 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         }]
         .into_boxed_slice(),
         item_visuals: vec![ItemVisualDefinition {
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: ItemVisualKey {
                 identifier: "minecraft:allay_spawn_egg".into(),
                 metadata: 0,

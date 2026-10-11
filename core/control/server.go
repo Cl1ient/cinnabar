@@ -14,7 +14,6 @@ import (
 
 	"github.com/hashimthearab/rust-mcbe/core/internal/bridgecontract"
 	"github.com/hashimthearab/rust-mcbe/core/internal/streamnet"
-	"github.com/hashimthearab/rust-mcbe/core/proxy"
 	"github.com/hashimthearab/rust-mcbe/core/xboxpresence"
 )
 
@@ -53,11 +52,11 @@ type responseError struct {
 type Server struct {
 	listener         net.Listener
 	store            *Store
-	worlds           Worlds      // nil disables the world_* methods; guarded by mu
+	worlds           Worlds      // nil disables the local world methods; guarded by mu
 	services         Services    // nil disables the launcher methods; guarded by mu
 	marketplace      Marketplace // nil disables the store_* methods; guarded by mu
 	presence         func(xboxpresence.State)
-	packetDelay      *proxy.PacketDelay
+	packetDelay      PacketDelay // nil disables packet_delay.v1; guarded by mu
 	done             chan struct{}
 	once             sync.Once
 	mu               sync.Mutex
@@ -74,7 +73,7 @@ func Start(socketDir string, store *Store) (*Server, error) {
 	return startWithRequestIOTimeout(socketDir, store, requestIOTimeout)
 }
 
-// StartWithWorlds is Start plus the versioned world_* methods backed by worlds.
+// StartWithWorlds is Start plus the local world methods backed by worlds.
 func StartWithWorlds(socketDir string, store *Store, worlds Worlds) (*Server, error) {
 	return startServer(socketDir, store, worlds, requestIOTimeout)
 }
@@ -143,7 +142,7 @@ func (server *Server) serve() {
 	}
 }
 
-// SetWorlds enables the world_* methods; safe to call while serving.
+// SetWorlds enables the local world methods; safe to call while serving.
 func (server *Server) SetWorlds(worlds Worlds) {
 	server.mu.Lock()
 	server.worlds = worlds

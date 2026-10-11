@@ -11,6 +11,10 @@ pub(super) enum ModelTextureSelector {
         block: &'static str,
     },
     LightningRod,
+    /// Charge-indexed anchor art; charges past the array fall back to its first entry.
+    RespawnAnchor {
+        count: usize,
+    },
     Door,
     Flower,
     Sapling,
@@ -61,9 +65,15 @@ impl ModelTextureSelector {
         }
     }
 
-    /// Binds a rod's powered selector to its pack texture key, including custom keys.
+    /// Binds rod and anchor selectors to their pack texture keys, including custom keys.
     pub(super) fn bind_record(self, record: &RegistryRecord, count: usize) -> Self {
-        if crate::lightning_rod::is_record(record) {
+        if crate::respawn_anchor::is_record(record) {
+            if count > 0 {
+                Self::RespawnAnchor { count }
+            } else {
+                Self::Unresolved
+            }
+        } else if crate::lightning_rod::is_record(record) {
             if count == Self::LightningRod.variant_count() {
                 Self::LightningRod
             } else {
@@ -98,7 +108,7 @@ impl ModelTextureSelector {
             Self::Flower => 11,
             Self::Sapling => 6,
             Self::LightningRod | Self::Powered | Self::Stem | Self::Torchflower => 2,
-            Self::Index { count, .. } => count,
+            Self::Index { count, .. } | Self::RespawnAnchor { count } => count,
             Self::CropStages => 4,
             Self::Single => 1,
             Self::Unresolved => 0,
@@ -120,6 +130,10 @@ impl ModelTextureSelector {
                 mushroom_variant_index(record)?
             }
             Self::LightningRod => crate::lightning_rod::state(record)?.1,
+            Self::RespawnAnchor { count } => {
+                let charge = crate::respawn_anchor::charge(record)?;
+                if charge < count { charge } else { 0 }
+            }
             Self::Door => match name {
                 "wooden_door" => 0,
                 "spruce_door" => 1,

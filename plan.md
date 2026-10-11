@@ -349,7 +349,7 @@ these changes do not close the movement, camera, or actor parity gates.
   120 Hz and an uncapped test bound tick flush delay and 20 Hz send jitter to 3 ms;
   manual recording clocks keep their requested steps. Live movement acceptance remains open.
 
-- Actor catch-up uses `world::MAX_TICKS_PER_FRAME`. Prediction and live per-tick actor
+- Actor catch-up uses `simulation_clock::MAX_TICKS_PER_FRAME`. Prediction and live per-tick actor
   advancement share one clock step, including server-defined interaction boxes after a stall.
   Deterministic regression coverage does not close live animation or movement acceptance.
 
@@ -7527,3 +7527,8 @@ This fixes duration quantization only. The complete typed use-kind, appetite,
 movement and cooldown descriptor and its independent coverage gate remain
 incomplete. Component-version precedence and malformed or extreme-duration
 parity remain unverified.
+
+The simulation clock values and finite component-duration conversion share the
+`simulation-clock` crate. Protocol consumers no longer depend on the world model
+for timing. Other native use-kind, appetite, movement and cooldown descriptors
+remain incomplete.

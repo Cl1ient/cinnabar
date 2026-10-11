@@ -11,7 +11,7 @@ pub(super) const MAX_TEXT_BYTES: usize = 256;
 /// Converts component seconds to the protocol's integral simulation duration.
 pub(super) fn duration_ticks(seconds: f64) -> Option<u32> {
     (seconds.is_finite() && seconds >= 0.0).then(|| {
-        (seconds * f64::from(world::TICKS_PER_SECOND))
+        (seconds * f64::from(simulation_clock::TICKS_PER_SECOND))
             .round()
             .min(f64::from(u32::MAX)) as u32
     })
@@ -86,7 +86,7 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
             .and_then(|modifiers| modifiers.field("use_duration"))
             .and_then(Nbt::number)
             .map(|seconds| seconds as f32)
-            .and_then(world::whole_ticks_from_seconds)
+            .and_then(simulation_clock::whole_ticks_from_seconds)
     });
     Some(ItemComponents {
         attack: super::attack::parse_attack(components),

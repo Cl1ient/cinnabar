@@ -1,4 +1,4 @@
-use {super::*, world::TICK_DURATION as ACTOR_TICK_DURATION};
+use {super::*, simulation_clock::TICK_DURATION as ACTOR_TICK_DURATION};
 
 #[test]
 fn swelling_uses_the_current_camera_for_both_pose_endpoints_after_a_tick() {

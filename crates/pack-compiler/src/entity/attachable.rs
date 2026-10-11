@@ -130,7 +130,9 @@ pub fn compile_item_use(behavior_pack: &Path) -> Result<Vec<ItemUseDuration>, As
             .pointer("/minecraft:use_modifiers/use_duration")
             .and_then(Value::as_f64);
         let ticks = match seconds {
-            Some(seconds) => world::whole_ticks_from_seconds(seconds as f32).map(f64::from),
+            Some(seconds) => {
+                simulation_clock::whole_ticks_from_seconds(seconds as f32).map(f64::from)
+            }
             None => components
                 .get("minecraft:use_duration")
                 .and_then(Value::as_f64),

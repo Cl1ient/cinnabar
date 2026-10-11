@@ -110,7 +110,7 @@ fn stalled_frame_caps_live_ticks_and_custom_hitbox_prediction_together() {
     );
     let (mut schedule, mut world) = production(&mut app);
     world.init_resource::<PredictedBox>();
-    let cap = world::MAX_TICKS_PER_FRAME;
+    let cap = simulation_clock::MAX_TICKS_PER_FRAME;
     let initial_tick = {
         let mut client = world.resource_mut::<ClientWorld>();
         let stream = client.stream.as_mut().unwrap();
@@ -153,7 +153,7 @@ fn stalled_frame_caps_live_ticks_and_custom_hitbox_prediction_together() {
         stream.poll([0.0, 64.0, 0.0], 0);
         stream.authority().actor_rig(2).unwrap().completed_tick
     };
-    let tick = world::TICK_DURATION;
+    let tick = simulation_clock::TICK_DURATION;
     world
         .resource_mut::<Time<Real>>()
         .advance_by(tick * (cap * 4) + tick / 2);

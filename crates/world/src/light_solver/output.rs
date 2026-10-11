@@ -117,6 +117,28 @@ impl<'a> MutableOutput<'a> {
         light_dense_index(self.bounds, self.y_len, self.z_len, position)
     }
 
+    /// The neighbour of the in-bounds cell at `position` and dense `index` one step along
+    /// `NEIGHBOURS[direction]`, with its dense index; `None` when that step leaves the bounds.
+    #[inline]
+    pub(super) fn neighbour(
+        &self,
+        position: BlockPos,
+        index: usize,
+        direction: usize,
+    ) -> Option<(BlockPos, usize)> {
+        let (min, max) = (self.bounds.min, self.bounds.max);
+        let BlockPos { x, y, z } = position;
+        let x_stride = self.y_len * self.z_len;
+        match direction {
+            0 => (x > min.x).then(|| (BlockPos::new(x - 1, y, z), index - x_stride)),
+            1 => (x < max.x).then(|| (BlockPos::new(x + 1, y, z), index + x_stride)),
+            2 => (y > min.y).then(|| (BlockPos::new(x, y - 1, z), index - self.z_len)),
+            3 => (y < max.y).then(|| (BlockPos::new(x, y + 1, z), index + self.z_len)),
+            4 => (z > min.z).then(|| (BlockPos::new(x, y, z - 1), index - 1)),
+            _ => (z < max.z).then(|| (BlockPos::new(x, y, z + 1), index + 1)),
+        }
+    }
+
     /// Reads zero outside the current solve region.
     #[cfg(test)]
     pub(super) fn get(&self, position: BlockPos, channel: LightChannel) -> u8 {

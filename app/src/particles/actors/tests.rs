@@ -207,9 +207,14 @@ fn controller_annotations_spawn_at_the_sampled_locator_and_initialize_billboard_
     let draws = system.build_draw(&view, &EmptyWorld);
     assert!(!draws.opaque.is_empty());
     assert_eq!(&draws.opaque[0].center_light[..3], &[1.0, 1.0, 0.0]);
+    let width = draws.opaque[0].axis_x[..3]
+        .iter()
+        .map(|value| value * value)
+        .sum::<f32>()
+        .sqrt();
     assert!(
-        draws.opaque[0].axis_x[0] > 2.9,
-        "initialization must feed the particle size expression"
+        (width - 6.0).abs() < 1e-5,
+        "bound initialization must read the actor variant"
     );
 }
 
@@ -250,5 +255,13 @@ fn unbound_controller_initialization_uses_the_locator_without_actor_query_contex
     };
     let draws = system.build_draw(&view, &EmptyWorld);
     assert!(!draws.opaque.is_empty());
-    assert!((draws.opaque[0].axis_x[0] - 1.0).abs() < 1e-5);
+    let width = draws.opaque[0].axis_x[..3]
+        .iter()
+        .map(|value| value * value)
+        .sum::<f32>()
+        .sqrt();
+    assert!(
+        (width - 2.0).abs() < 1e-5,
+        "unbound initialization must have no actor variant"
+    );
 }

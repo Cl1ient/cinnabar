@@ -3,6 +3,7 @@
 use super::{Aabb, BlockPhysics, CollisionRegistry, PaletteWorld, WorldQueryError};
 use std::borrow::Cow;
 mod actors;
+pub(super) mod halo;
 #[cfg(test)]
 mod tests;
 use assets::block_shapes::{
@@ -33,6 +34,7 @@ impl CollisionRegistry {
         block.outline = shapes.outline.map(box_to_aabb);
         block.connected_outline = shapes.connected_outline.map(box_to_aabb);
         block.outline_context = shapes.outline_context;
+        self.selection_halo.include(shapes);
         std::sync::Arc::make_mut(&mut self.shape_state_ids).insert(shapes.state_identity, id);
         true
     }
@@ -168,13 +170,32 @@ impl PaletteWorld<'_> {
         position: [i32; 3],
         physics: &'a BlockPhysics,
     ) -> Result<Cow<'a, [Aabb]>, WorldQueryError> {
+        self.selection_shapes_with_lookup(position, physics, |neighbour| {
+            self.primary_runtime_id(neighbour)
+        })
+    }
+
+    /// Resolves contextual boxes through the caller's palette lookup.
+    pub(super) fn selection_shapes_with_lookup<'a>(
+        &self,
+        position: [i32; 3],
+        physics: &'a BlockPhysics,
+        mut lookup: impl FnMut([i32; 3]) -> Result<u32, WorldQueryError>,
+    ) -> Result<Cow<'a, [Aabb]>, WorldQueryError> {
         match physics.selection_context {
             SelectionContext::PistonArm | SelectionContext::MovingBlock => {
                 return self.actor_selection(position, physics);
             }
             SelectionContext::VineSupport => {
-                let above = self.neighbour_has_flag(position, 1, 1, ShapeFlags::VINE_SUPPORT)?;
-                let below = self.neighbour_has_flag(position, 1, -1, ShapeFlags::VINE_SUPPORT)?;
+                let above =
+                    self.neighbour_has_flag(position, 1, 1, ShapeFlags::VINE_SUPPORT, &mut lookup)?;
+                let below = self.neighbour_has_flag(
+                    position,
+                    1,
+                    -1,
+                    ShapeFlags::VINE_SUPPORT,
+                    &mut lookup,
+                )?;
                 let index = match (above, below) {
                     (true, true) => Some(2),
                     (true, false) => Some(0),
@@ -186,7 +207,13 @@ impl PaletteWorld<'_> {
                 })));
             }
             SelectionContext::ScaffoldSupport => {
-                if !self.neighbour_has_flag(position, 1, -1, ShapeFlags::FULL_TOP_SUPPORT)? {
+                if !self.neighbour_has_flag(
+                    position,
+                    1,
+                    -1,
+                    ShapeFlags::FULL_TOP_SUPPORT,
+                    &mut lookup,
+                )? {
                     return Ok(Cow::Borrowed(&physics.contextual_selection));
                 }
             }
@@ -198,7 +225,7 @@ impl PaletteWorld<'_> {
                 neighbour[0] = neighbour[0]
                     .checked_add(direction)
                     .ok_or(WorldQueryError::CoordinateOutOfRange)?;
-                let id = self.primary_runtime_id(neighbour)?;
+                let id = lookup(neighbour)?;
                 if self
                     .registry
                     .physics(id)
@@ -220,12 +247,13 @@ impl PaletteWorld<'_> {
         axis: usize,
         direction: i32,
         flag: ShapeFlags,
+        lookup: &mut impl FnMut([i32; 3]) -> Result<u32, WorldQueryError>,
     ) -> Result<bool, WorldQueryError> {
         let mut neighbour = position;
         neighbour[axis] = neighbour[axis]
             .checked_add(direction)
             .ok_or(WorldQueryError::CoordinateOutOfRange)?;
-        let id = self.primary_runtime_id(neighbour)?;
+        let id = lookup(neighbour)?;
         Ok(self
             .registry
             .physics(id)

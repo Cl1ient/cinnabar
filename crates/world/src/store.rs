@@ -797,9 +797,15 @@ impl ChunkStore {
                 .map(|y| SubChunkKey::from_chunk(key, y))
                 .collect::<Vec<_>>();
         let collision_changed = !block_changed.is_empty();
-        let revision = (newly_loaded || collision_changed)
-            .then(|| self.collision_revision_allocator.allocate())
-            .transpose()?;
+        let revision = if newly_loaded || collision_changed {
+            Some(self.collision_revision_allocator.allocate()?)
+        } else {
+            self.reserve_actor_replacement(
+                key,
+                None,
+                block_entities.iter().map(|(&key, nbt)| (key, nbt.as_ref())),
+            )?
+        };
         let mut changed = block_changed;
         changed.extend(biome_changed.iter().copied());
         let changed = changed.into_iter().collect::<Vec<_>>();

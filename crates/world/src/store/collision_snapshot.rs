@@ -1,7 +1,7 @@
 use super::*;
 
 impl ChunkStore {
-    /// Shares collision indexes until block authority or a loaded palette changes.
+    /// Shares collision indexes until authority, palettes or geometry-bearing actors change.
     pub fn collision_snapshot(&self) -> Arc<Self> {
         let mut cached = self
             .collision_snapshot

@@ -10,8 +10,6 @@ mod placement;
 pub use camera::CameraBlockHit;
 pub use placement::{BLOCK_USE_SUPPORT_DEPTH, BLOCK_USE_SUPPORT_MAX_Y};
 
-const HALO_WIDTH: usize = 3;
-const HALO_CELLS: usize = HALO_WIDTH * HALO_WIDTH * HALO_WIDTH;
 // Normalization plus boundary subtraction/division can separate one exact
 // geometric event by several representable values. Eight ULPs covers those
 // operations while retaining a scale-relative, finite comparison window.
@@ -86,7 +84,11 @@ impl PaletteWorld<'_> {
         expected_identity: Option<&WorldCollisionIdentity>,
     ) -> Result<Option<BlockHit>, WorldQueryError> {
         let direction = validate_ray(origin, direction, max_distance)?;
-        let inspection_limit = inspection_limit(direction, max_distance)?;
+        let halo = self
+            .registry
+            .selection_halo
+            .combined(self.registry.collision_halo);
+        let inspection_limit = inspection_limit(direction, max_distance, halo)?;
         let mut state = TraversalState::new(origin, direction)?;
         let mut inspected = BTreeSet::new();
         let mut inspected_count = 0_usize;
@@ -160,7 +162,10 @@ impl PaletteWorld<'_> {
         revisions: &mut BTreeMap<ChunkKey, ChunkCollisionRevision>,
         best: &mut Option<Candidate>,
     ) -> Result<(), WorldQueryError> {
-        let halo = self.registry.collision_halo;
+        let halo = self
+            .registry
+            .selection_halo
+            .combined(self.registry.collision_halo);
         for x in halo[0].0..=halo[0].1 {
             for y in halo[1].0..=halo[1].1 {
                 for z in halo[2].0..=halo[2].1 {
@@ -223,7 +228,14 @@ impl PaletteWorld<'_> {
                 )?;
             }
             let pickable = match physics.pick_shapes.as_deref() {
-                Some(_) => self.selection_shapes_at(block, physics)?,
+                Some(_) => self.selection_shapes_with_lookup(block, physics, |neighbour| {
+                    self.inspect_pick_revision(
+                        ChunkKey::new(self.dimension, neighbour[0] >> 4, neighbour[2] >> 4),
+                        expected,
+                        revisions,
+                    )?;
+                    self.primary_runtime_id(neighbour)
+                })?,
                 None => self.block_collision_shapes(
                     block,
                     physics,
@@ -331,7 +343,18 @@ fn validate_ray(origin: Vec3, direction: Vec3, max_distance: f64) -> Result<Vec3
     Ok(normalized)
 }
 
-fn inspection_limit(direction: Vec3, max_distance: f64) -> Result<usize, WorldQueryError> {
+/// Bounds inspections by supercover traversal length and the registered owner-cell reach.
+fn inspection_limit(
+    direction: Vec3,
+    max_distance: f64,
+    halo: [(i32, i32); 3],
+) -> Result<usize, WorldQueryError> {
+    let halo_cells = halo
+        .into_iter()
+        .try_fold(1_usize, |count, (min, max)| {
+            count.checked_mul(usize::try_from(i64::from(max) - i64::from(min) + 1).ok()?)
+        })
+        .ok_or(WorldQueryError::RayInspectionLimitExceeded)?;
     let crossings = [direction.x, direction.y, direction.z]
         .into_iter()
         .try_fold(0_usize, |total, component| {
@@ -344,7 +367,7 @@ fn inspection_limit(direction: Vec3, max_distance: f64) -> Result<usize, WorldQu
         // three crossings, so three cells per crossing is a safe ceiling.
         .checked_mul(3)
         .and_then(|value| value.checked_add(1))
-        .and_then(|value| value.checked_mul(HALO_CELLS))
+        .and_then(|value| value.checked_mul(halo_cells))
         .ok_or(WorldQueryError::RayInspectionLimitExceeded)
 }
 

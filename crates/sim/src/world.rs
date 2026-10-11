@@ -280,6 +280,7 @@ pub struct CollisionRegistry {
     shape_state_ids: Arc<BTreeMap<[u8; 32], u32>>,
     air_runtime_id: u32,
     collision_halo: [(i32, i32); 3],
+    selection_halo: selection::halo::SelectionHalo,
 }
 
 #[derive(Debug, Clone)]
@@ -355,6 +356,7 @@ impl CollisionRegistry {
             shape_state_ids: Arc::new(BTreeMap::new()),
             air_runtime_id: 0,
             collision_halo: [(0, 0); 3],
+            selection_halo: selection::halo::SelectionHalo::default(),
         }
     }
 

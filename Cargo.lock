@@ -5703,6 +5703,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.18",
+ "world",
 ]
 
 [[package]]
@@ -6086,6 +6087,7 @@ dependencies = [
  "tokio",
  "uuid",
  "valentine",
+ "world",
  "xxhash-rust",
  "zeroize",
 ]

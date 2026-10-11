@@ -10,6 +10,7 @@ publish = false
 wire-test-support = []
 
 [dependencies]
+world = { path = "../world" }
 zeroize = "1"
 cap-std = "3.4.5"
 cap-fs-ext = "3.4.5"

@@ -24,8 +24,8 @@ pub use attack::{
 mod texture_tests;
 
 pub const EQUIPMENT_CARRIER_MAGIC: [u8; 8] = *b"MCBEEQP1";
-/// Includes the resolved material dye capability; older carriers must be rebuilt.
-pub const EQUIPMENT_CARRIER_VERSION: u32 = 3;
+/// Includes component-precision use durations; older carriers must be rebuilt.
+pub const EQUIPMENT_CARRIER_VERSION: u32 = 4;
 pub const MAX_EQUIPMENT_BINDINGS: usize = 1024;
 pub const MAX_EQUIPMENT_IDENTIFIER_BYTES: usize = 256;
 pub const MAX_EQUIPMENT_TEXTURES: usize = 256;

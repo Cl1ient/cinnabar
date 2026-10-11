@@ -7519,3 +7519,11 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+Compiled pack and admitted server use modifiers share one simulation-clock
+duration conversion: seconds use component float precision and
+discard fractional ticks. Equipment carriers require a rebuild for this change.
+This fixes duration quantization only. The complete typed use-kind, appetite,
+movement and cooldown descriptor and its independent coverage gate remain
+incomplete. Component-version precedence and malformed or extreme-duration
+parity remain unverified.

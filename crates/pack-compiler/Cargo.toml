@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+world = { path = "../world" }
 assets = { path = "../assets" }
 cap-fs-ext = "3.4.5"
 cap-std = "3.4.5"

@@ -10,8 +10,11 @@ pub(super) const MAX_TEXT_BYTES: usize = 256;
 
 /// Converts component seconds to the protocol's integral simulation duration.
 pub(super) fn duration_ticks(seconds: f64) -> Option<u32> {
-    (seconds.is_finite() && seconds >= 0.0)
-        .then(|| (seconds * 20.0).round().min(f64::from(u32::MAX)) as u32)
+    (seconds.is_finite() && seconds >= 0.0).then(|| {
+        (seconds * f64::from(world::TICKS_PER_SECOND))
+            .round()
+            .min(f64::from(u32::MAX)) as u32
+    })
 }
 
 /// What the client presents from one item's components; absent facts stay `None`/`false`.
@@ -82,7 +85,8 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         component("minecraft:use_modifiers")
             .and_then(|modifiers| modifiers.field("use_duration"))
             .and_then(Nbt::number)
-            .and_then(duration_ticks)
+            .map(|seconds| seconds as f32)
+            .and_then(world::whole_ticks_from_seconds)
     });
     Some(ItemComponents {
         attack: super::attack::parse_attack(components),
@@ -133,6 +137,42 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
 #[cfg(test)]
 mod tests {
     use super::parse_components;
+
+    /// Encodes an original floating-point component field in network NBT.
+    fn float(key: &str, value: f32) -> Vec<u8> {
+        let mut bytes = name(5, key);
+        bytes.extend(value.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn use_modifier_duration_discards_fractional_ticks() {
+        for (seconds, expected) in [
+            (0.049, Some(0)),
+            (1.049, Some(20)),
+            (1.6, Some(32)),
+            (f32::NAN, None),
+            (f32::INFINITY, None),
+            (-1.0, None),
+            (f32::MAX, None),
+        ] {
+            let nbt = compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound(
+                        "minecraft:use_modifiers",
+                        &[float("use_duration", seconds)],
+                    )],
+                )],
+            );
+            assert_eq!(
+                parse_components(&nbt).unwrap().use_duration_ticks,
+                expected,
+                "{seconds}"
+            );
+        }
+    }
 
     fn name(tag: u8, name: &str) -> Vec<u8> {
         let mut bytes = vec![tag, name.len() as u8];

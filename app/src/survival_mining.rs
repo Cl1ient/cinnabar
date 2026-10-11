@@ -270,6 +270,7 @@ fn observe_destroy_target(
         stream.collision_store(),
         context.collisions.registry(mode),
         stream.current_dimension(),
+        Default::default(),
     );
     let effects = context.effects.mining_effects();
     let helmet = ui.local_armor(player_runtime).helmet;

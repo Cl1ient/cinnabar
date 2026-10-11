@@ -79,25 +79,15 @@ fn target(
         stream.collision_store(),
         registry,
         stream.current_dimension(),
-    )
-    .with_pick_context(assets::block_shapes::PickContext {
-        creative: player_runtime.facts.player_game_mode()
-            == Some(protocol::PlayerGameMode::Creative),
-        liquids: false,
-        holding_light: player_runtime
-            .selected_stack()
-            .and_then(|item| {
-                gameplay::block_use::held_block_store_id(
-                    &crate::movement::GameplayWorldView(stream),
-                    item.block_runtime_id,
-                )
-            })
-            .is_some_and(|id| {
-                context
-                    .collisions
-                    .is_light_block(stream.network_id_mode(), id)
-            }),
-    });
+        crate::interaction_authority::pick_context(
+            stream,
+            &context.collisions,
+            player_runtime.facts.player_game_mode(),
+            player_runtime
+                .selected_stack()
+                .map(|item| item.block_runtime_id),
+        ),
+    );
     let vector = |value: Vec3| sim::Vec3::new(value.x as f64, value.y as f64, value.z as f64);
     let direct = world
         .block_interaction_ray_current(vector(ray.origin()), vector(ray.direction()), reach)

@@ -26,7 +26,7 @@ fn moving_pick_identity_includes_a_remote_piston_owner() {
         set_moving(&mut store, "minecraft:carried", owner, false);
         let origin = Vec3::new(0.75, 0.5, 2.0);
         let direction = Vec3::new(0.0, 0.0, -1.0);
-        let hit = PaletteWorld::new(&store, &registry, 0)
+        let hit = PaletteWorld::new(&store, &registry, 0, Default::default())
             .block_interaction_ray_current(origin, direction, 4.0)
             .unwrap()
             .unwrap();
@@ -39,18 +39,14 @@ fn moving_pick_identity_includes_a_remote_piston_owner() {
         );
         let historical = store.collision_snapshot();
         set_piston(&mut store, owner, 0.25);
-        let current = PaletteWorld::new(&store, &registry, 0).block_interaction_ray(
-            origin,
-            direction,
-            4.0,
-            &hit.identity,
-        );
+        let current = PaletteWorld::new(&store, &registry, 0, Default::default())
+            .block_interaction_ray(origin, direction, 4.0, &hit.identity);
         assert!(
             matches!(current, Err(WorldQueryError::StaleCollisionIdentity { chunk }) if chunk == owner_chunk),
             "{current:?}"
         );
         assert!(
-            PaletteWorld::new(&historical, &registry, 0)
+            PaletteWorld::new(&historical, &registry, 0, Default::default())
                 .block_interaction_ray(origin, direction, 4.0, &hit.identity)
                 .unwrap()
                 .is_some()
@@ -71,21 +67,21 @@ fn moving_blocks_resolve_carried_static_visuals_in_both_id_spaces() {
         registry.set_compiled_selection(9, &carried_state);
         let physics = registry.physics(id).unwrap();
         assert!(
-            PaletteWorld::new(&store, &registry, 0)
+            PaletteWorld::new(&store, &registry, 0, Default::default())
                 .selection_shapes_at([0; 3], physics)
                 .unwrap()
                 .is_empty()
         );
         set_moving(&mut store, "minecraft:unknown", [0, -1, 0], true);
         assert!(
-            PaletteWorld::new(&store, &registry, 0)
+            PaletteWorld::new(&store, &registry, 0, Default::default())
                 .selection_shapes_at([0; 3], physics)
                 .unwrap()
                 .is_empty()
         );
         set_moving(&mut store, "minecraft:carried", [0, -1, 0], true);
         assert_eq!(
-            PaletteWorld::new(&store, &registry, 0)
+            PaletteWorld::new(&store, &registry, 0, Default::default())
                 .selection_shapes_at([0; 3], physics)
                 .unwrap()
                 .as_ref(),
@@ -106,7 +102,7 @@ fn moving_blocks_resolve_carried_static_visuals_in_both_id_spaces() {
                     direction.map(|value| f64::from(value) * if expanding { -0.5 } else { 0.5 });
                 let expected =
                     box_to_aabb(carried).translated(Vec3::new(offset[0], offset[1], offset[2]));
-                let actual = PaletteWorld::new(&store, &registry, 0)
+                let actual = PaletteWorld::new(&store, &registry, 0, Default::default())
                     .selection_shapes_at([0; 3], registry.physics(id).unwrap())
                     .unwrap();
                 assert_eq!(actual.as_ref(), [expected]);
@@ -149,7 +145,7 @@ fn scaffold_and_unknown_portal_choose_only_their_compiled_alternates() {
                     base
                 };
                 assert_eq!(
-                    PaletteWorld::new(&store, &registry, 0)
+                    PaletteWorld::new(&store, &registry, 0, Default::default())
                         .selection_shapes_at([0; 3], registry.physics(id).unwrap())
                         .unwrap()
                         .as_ref(),
@@ -237,7 +233,7 @@ fn interaction_ray_enforces_pick_context_instead_of_movement_occupancy() {
                     },
                 );
             }
-            let view = PaletteWorld::new(&store, &registry, 0).with_pick_context(context);
+            let view = PaletteWorld::new(&store, &registry, 0, context);
             let hit = view
                 .block_interaction_ray_current(
                     Vec3::new(-2.0, 0.5, 0.5),
@@ -281,7 +277,7 @@ fn moving_ray_hits_geometry_outside_its_owner_cell() {
                 origin[ray_axis] = 2.0;
                 let mut ray = Vec3::ZERO;
                 ray[ray_axis] = -1.0;
-                let hit = PaletteWorld::new(&store, &registry, 0)
+                let hit = PaletteWorld::new(&store, &registry, 0, Default::default())
                     .block_interaction_ray_current(origin, ray, 4.0)
                     .unwrap()
                     .expect("translated moving box must be reachable from the adjacent cell");
@@ -308,13 +304,13 @@ fn portal_pick_identity_captures_untraversed_neighbour_column() {
         registry.set_compiled_selection(9, &neighbour);
         let origin = Vec3::new(15.5, 0.5, 2.0);
         let direction = Vec3::new(0.0, 0.0, -1.0);
-        let hit = PaletteWorld::new(&store, &registry, 0)
+        let hit = PaletteWorld::new(&store, &registry, 0, Default::default())
             .block_interaction_ray_current(origin, direction, 4.0)
             .unwrap()
             .unwrap();
         let historical = store.collision_snapshot();
         set_block(&mut store, [16, 0, 0], 9);
-        let view = PaletteWorld::new(&store, &registry, 0);
+        let view = PaletteWorld::new(&store, &registry, 0, Default::default());
         assert_ne!(
             view.block_interaction_ray_current(origin, direction, 4.0)
                 .unwrap()
@@ -335,7 +331,7 @@ fn portal_pick_identity_captures_untraversed_neighbour_column() {
                 .any(|revision| revision.chunk == neighbour_column)
         );
         assert_eq!(
-            PaletteWorld::new(&historical, &registry, 0)
+            PaletteWorld::new(&historical, &registry, 0, Default::default())
                 .block_interaction_ray(origin, direction, 4.0, &hit.identity)
                 .unwrap()
                 .unwrap()
@@ -351,7 +347,7 @@ fn ray_halo_includes_compiled_selection_without_movement_extent() {
         let extended = ShapeBox::new([0.0; 3], [1.5, 1.0, 1.0]);
         let target = shapes(SelectionContext::Static, vec![extended], vec![]);
         let (store, registry, _) = fixture(space, &target);
-        let hit = PaletteWorld::new(&store, &registry, 0)
+        let hit = PaletteWorld::new(&store, &registry, 0, Default::default())
             .block_interaction_ray_current(
                 Vec3::new(1.25, 0.5, 2.0),
                 Vec3::new(0.0, 0.0, -1.0),
@@ -382,7 +378,7 @@ fn moving_ray_includes_carried_visual_extent_registered_before_actor() {
         set_block(&mut store, [-2, 0, 0], 20);
         set_piston(&mut store, [-2, 0, 0], 0.5);
         set_moving(&mut store, "minecraft:carried", [-2, 0, 0], false);
-        let hit = PaletteWorld::new(&store, &registry, 0)
+        let hit = PaletteWorld::new(&store, &registry, 0, Default::default())
             .block_interaction_ray_current(
                 Vec3::new(2.125, 0.5, 2.0),
                 Vec3::new(0.0, 0.0, -1.0),

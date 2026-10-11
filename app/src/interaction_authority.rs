@@ -18,6 +18,27 @@ use {
 
 use gameplay::interaction_authority::FrozenBlockObservation;
 
+/// Maps current player facts or a frozen interaction selection into block-picking eligibility.
+pub(crate) fn pick_context(
+    stream: &chunk_pipeline::WorldStream,
+    collisions: &PhysicsCollisionRegistries,
+    game_mode: Option<protocol::PlayerGameMode>,
+    selected_block: Option<i32>,
+) -> assets::block_shapes::PickContext {
+    assets::block_shapes::PickContext {
+        creative: game_mode == Some(protocol::PlayerGameMode::Creative),
+        liquids: false,
+        holding_light: selected_block
+            .and_then(|id| {
+                gameplay::block_use::held_block_store_id(
+                    &crate::movement::GameplayWorldView(stream),
+                    id,
+                )
+            })
+            .is_some_and(|id| collisions.is_light_block(stream.network_id_mode(), id)),
+    }
+}
+
 /// Whether a frozen ray still belongs to the live network session.
 ///
 /// Events committed after the freeze (actor movement, chat) do not stale it: the ray is cast
@@ -120,16 +141,13 @@ pub(crate) fn observe_block_ray_using(
         stream.collision_store(),
         collisions.registry(stream.network_id_mode()),
         stream.current_dimension(),
-    )
-    .with_pick_context(assets::block_shapes::PickContext {
-        creative: game_mode == Some(protocol::PlayerGameMode::Creative),
-        liquids: false,
-        holding_light: gameplay::block_use::held_block_store_id(
-            &crate::movement::GameplayWorldView(stream),
-            selection.item.block_runtime_id(),
-        )
-        .is_some_and(|id| collisions.is_light_block(stream.network_id_mode(), id)),
-    });
+        pick_context(
+            stream,
+            collisions,
+            game_mode,
+            Some(selection.item.block_runtime_id()),
+        ),
+    );
     let Some(hit) = choose(&world, vector(ray.origin()), vector(ray.direction()), reach)
         .map_err(|_| BlockRayUnavailable)?
     else {

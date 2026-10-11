@@ -7,7 +7,7 @@ pub(super) mod halo;
 #[cfg(test)]
 mod tests;
 use assets::block_shapes::{
-    CompiledBlockShapes, OutlineContext, PickContext, SelectionContext, ShapeBox, ShapeFlags,
+    CompiledBlockShapes, OutlineContext, SelectionContext, ShapeBox, ShapeFlags,
 };
 
 impl CollisionRegistry {
@@ -58,12 +58,6 @@ impl CollisionRegistry {
 }
 
 impl PaletteWorld<'_> {
-    /// Supplies the game-mode and liquid-picking context for all rays on this view.
-    pub fn with_pick_context(mut self, context: PickContext) -> Self {
-        self.pick_context = context;
-        self
-    }
-
     /// Resolves the visible outline independently of movement and interaction clipping.
     pub fn block_outline(
         &self,

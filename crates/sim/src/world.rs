@@ -652,18 +652,24 @@ struct CollisionInstance {
 }
 
 impl<'a> PaletteWorld<'a> {
+    /// Borrows palette data with an explicit context for every picking query.
+    /// Callers that only query movement may supply the default context.
+    ///
+    /// Omitting the context is a compile error:
+    /// ```compile_fail,E0061
+    /// let store = world::ChunkStore::new();
+    /// let registry = sim::CollisionRegistry::new();
+    /// let view = sim::PaletteWorld::new(&store, &registry, 0);
+    /// ```
     #[must_use]
     pub const fn new(
         store: &'a ChunkStore,
         registry: &'a CollisionRegistry,
         dimension: i32,
+        pick_context: assets::block_shapes::PickContext,
     ) -> Self {
         Self {
-            pick_context: assets::block_shapes::PickContext {
-                creative: false,
-                liquids: false,
-                holding_light: false,
-            },
+            pick_context,
             store,
             registry,
             dimension,

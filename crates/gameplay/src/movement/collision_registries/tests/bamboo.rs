@@ -42,7 +42,7 @@ fn bamboo_registry_admits_displaced_picking_in_both_runtime_id_spaces() {
                     air,
                 )
                 .unwrap();
-            let hit = sim::PaletteWorld::new(&store, registry, 0)
+            let hit = sim::PaletteWorld::new(&store, registry, 0, Default::default())
                 .block_interaction_ray_current(
                     sim::Vec3::new(1.78, 8.5, 2.0),
                     sim::Vec3::new(0.0, 0.0, -1.0),

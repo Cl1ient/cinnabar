@@ -82,7 +82,7 @@ fn camera_visibility_respects_compiled_pick_context() {
             registry.register(9, [box_to_aabb(UNIT)]).unwrap();
             registry.set_compiled_selection(9, &behind);
             set_block(&mut store, [1, 0, 0], 9);
-            let world = PaletteWorld::new(&store, &registry, 0).with_pick_context(context);
+            let world = PaletteWorld::new(&store, &registry, 0, context);
             let origin = Vec3::new(-2.0, 0.5, 0.5);
             let direction = Vec3::new(1.0, 0.0, 0.0);
             let authority = world
@@ -134,7 +134,7 @@ fn camera_visibility_reaches_selection_only_extents() {
     for space in [CollisionIdSpace::Sequential, CollisionIdSpace::Hashed] {
         let target = shapes(SelectionContext::Static, vec![extent], vec![]);
         let (store, registry, _) = fixture(space, &target);
-        let world = PaletteWorld::new(&store, &registry, 0);
+        let world = PaletteWorld::new(&store, &registry, 0, Default::default());
         let origin = Vec3::new(1.25, 0.5, 2.0);
         let direction = Vec3::new(0.0, 0.0, -1.0);
         let authority = world
@@ -183,7 +183,7 @@ fn check_moving_rays(mut inspect: impl FnMut(&PaletteWorld<'_>, Vec3, Vec3) -> O
                 origin[ray_axis] = 2.0;
                 let mut ray = Vec3::ZERO;
                 ray[ray_axis] = -1.0;
-                let world = PaletteWorld::new(&store, &registry, 0);
+                let world = PaletteWorld::new(&store, &registry, 0, Default::default());
                 assert_eq!(
                     world
                         .block_interaction_ray_current(origin, ray, 4.0)
@@ -209,7 +209,7 @@ fn outline_aim_keeps_origin_inside_suppression_with_a_selection_halo() {
         let (store, mut registry, _) = fixture(space, &target);
         registry.register(9, []).unwrap();
         registry.set_compiled_selection(9, &shapes(SelectionContext::MovingBlock, vec![], vec![]));
-        let world = PaletteWorld::new(&store, &registry, 0);
+        let world = PaletteWorld::new(&store, &registry, 0, Default::default());
         assert!(
             world
                 .camera_aim_ray(
@@ -223,4 +223,87 @@ fn outline_aim_keeps_origin_inside_suppression_with_a_selection_halo() {
                 .is_none()
         );
     }
+}
+
+#[test]
+fn outline_aim_halo_keeps_neighbouring_extra_liquid_priority() {
+    for space in [CollisionIdSpace::Sequential, CollisionIdSpace::Hashed] {
+        let target = shapes(SelectionContext::Static, vec![UNIT], vec![]);
+        let (mut store, mut registry, _) = fixture(space, &target);
+        add_aim_liquid_halo(&mut registry);
+        store
+            .update_block(
+                SubChunkKey::new(0, 0, 0, 0),
+                BlockUpdate::new(0, 0, 0, 1, 9),
+                0,
+            )
+            .unwrap();
+        let world = PaletteWorld::new(&store, &registry, 0, Default::default());
+        let origin = Vec3::new(0.5, 0.5, -0.25);
+        let end = Vec3::new(0.5, 0.5, 2.0);
+        let cube = world
+            .camera_aim_ray(origin, end, 4, false, true)
+            .unwrap()
+            .unwrap();
+        let outline = world
+            .camera_aim_ray(origin, end, 4, true, true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cube.runtime_id, 9);
+        assert_eq!(outline.runtime_id, cube.runtime_id, "{space:?}");
+        assert_eq!(outline.distance, cube.distance);
+        assert!(outline.targetable);
+    }
+}
+
+#[test]
+fn outline_aim_halo_does_not_make_neighbouring_flow_targetable() {
+    for space in [CollisionIdSpace::Sequential, CollisionIdSpace::Hashed] {
+        let target = shapes(SelectionContext::Static, vec![UNIT], vec![]);
+        let (mut store, mut registry, _) = fixture(space, &target);
+        add_aim_liquid_halo(&mut registry);
+        set_block(&mut store, [0; 3], 9);
+        let world = PaletteWorld::new(&store, &registry, 0, Default::default());
+        let origin = Vec3::new(0.5, 0.5, -0.25);
+        let end = Vec3::new(0.5, 0.5, 2.0);
+        for outlines in [false, true] {
+            let hit = world
+                .camera_aim_ray(origin, end, 4, outlines, true)
+                .unwrap()
+                .unwrap();
+            assert_eq!(hit.runtime_id, 9);
+            assert!(!hit.targetable, "{space:?} outlines={outlines}");
+        }
+    }
+}
+
+/// Adds a flowing liquid and a displaced selection owner to exercise a nonzero halo.
+fn add_aim_liquid_halo(registry: &mut CollisionRegistry) {
+    registry
+        .register_physics(
+            9,
+            [],
+            0.6,
+            1.0,
+            1.0,
+            0.5,
+            crate::BlockPhysicsFlags::WATER,
+            crate::SurfaceResponse::None,
+        )
+        .unwrap();
+    registry.set_flow_facts(
+        9,
+        crate::FlowBlockFacts {
+            blocks_motion: false,
+            is_solid: false,
+            blocked_faces: 0,
+            allowed_faces: 63,
+            liquid_depth: Some(1),
+        },
+    );
+    let mut liquid = shapes(SelectionContext::Static, vec![UNIT], vec![]);
+    liquid.pick_rule = PickRule::Liquid;
+    registry.set_compiled_selection(9, &liquid);
+    registry.register(20, []).unwrap();
+    registry.set_compiled_selection(20, &shapes(SelectionContext::MovingBlock, vec![], vec![]));
 }

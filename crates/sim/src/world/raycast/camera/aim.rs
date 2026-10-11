@@ -18,7 +18,7 @@ impl PaletteWorld<'_> {
         let direction = validate_ray(origin, delta, distance)?;
         let mut state = TraversalState::new(origin, direction)?;
         if let Some(hit) =
-            self.camera_aim_halo(&state, origin, direction, distance, true, outlines, liquids)?
+            self.camera_aim_halo(&state, origin, direction, distance, outlines, liquids)?
         {
             return Ok(Some(hit));
         }
@@ -45,9 +45,9 @@ impl PaletteWorld<'_> {
                 .checked_add(state.step[axis])
                 .ok_or(WorldQueryError::CoordinateOutOfRange)?;
             state.next[axis] += state.delta[axis];
-            if let Some(hit) = self.camera_aim_halo(
-                &state, origin, direction, distance, false, outlines, liquids,
-            )? {
+            if let Some(hit) =
+                self.camera_aim_halo(&state, origin, direction, distance, outlines, liquids)?
+            {
                 return Ok(Some(hit));
             }
         }
@@ -55,21 +55,17 @@ impl PaletteWorld<'_> {
     }
 
     /// Outline visibility includes displaced owners; cube sampling keeps its cell budget.
-    #[allow(clippy::too_many_arguments)]
     fn camera_aim_halo(
         &self,
         state: &TraversalState,
         origin: Vec3,
         direction: Vec3,
         distance: f64,
-        initial: bool,
         outlines: bool,
         liquids: bool,
     ) -> Result<Option<CameraBlockHit>, WorldQueryError> {
         if !outlines {
-            return self.camera_aim_cell(
-                state.cell, origin, direction, distance, initial, false, liquids,
-            );
+            return self.camera_aim_cell(state.cell, origin, direction, distance, false, liquids);
         }
         let halo = self.registry.selection_ray_halo();
         // Only intercepts in this traversed cell can finish the step-bounded scan.
@@ -79,9 +75,8 @@ impl PaletteWorld<'_> {
             for y in halo[1].0..=halo[1].1 {
                 for z in halo[2].0..=halo[2].1 {
                     let block = checked_offset(state.cell, [x, y, z])?;
-                    let Some(hit) = self.camera_aim_cell(
-                        block, origin, direction, distance, initial, true, liquids,
-                    )?
+                    let Some(hit) =
+                        self.camera_aim_cell(block, origin, direction, distance, true, liquids)?
                     else {
                         continue;
                     };
@@ -140,17 +135,21 @@ impl PaletteWorld<'_> {
     }
 
     /// Extra liquid layers win after the origin cell; the initial cell only tests primary outline.
-    #[allow(clippy::too_many_arguments)]
     fn camera_aim_cell(
         &self,
         block: [i32; 3],
         origin: Vec3,
         direction: Vec3,
         distance: f64,
-        initial: bool,
         outlines: bool,
         liquids: bool,
     ) -> Result<Option<CameraBlockHit>, WorldQueryError> {
+        let origin_cell = [
+            origin.x.floor() as i32,
+            origin.y.floor() as i32,
+            origin.z.floor() as i32,
+        ];
+        let initial = block == origin_cell;
         let extra = if liquids && !initial {
             self.camera_aim_id(block, 1)?
         } else {

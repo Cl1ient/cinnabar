@@ -131,7 +131,7 @@ fn unattached_vines_resolve_compiled_support_choices_in_both_id_spaces() {
         ] {
             set_block(&mut store, [0, 1, 0], if above { 9 } else { 0 });
             set_block(&mut store, [0, -1, 0], if below { 9 } else { 0 });
-            let view = PaletteWorld::new(&store, &registry, 0);
+            let view = PaletteWorld::new(&store, &registry, 0, Default::default());
             let boxes = view
                 .selection_shapes_at([0; 3], registry.physics(id).unwrap())
                 .unwrap();
@@ -149,14 +149,14 @@ fn piston_arm_pieces_require_the_owner_actor_and_follow_all_six_directions() {
             target.actor_facing = Some(facing as u8);
             let (mut store, registry, id) = fixture(space, &target);
             assert!(
-                PaletteWorld::new(&store, &registry, 0)
+                PaletteWorld::new(&store, &registry, 0, Default::default())
                     .selection_shapes_at([0; 3], registry.physics(id).unwrap())
                     .unwrap()
                     .is_empty()
             );
             let owner = direction.map(|value| -value);
             set_piston(&mut store, owner, 0.5);
-            let view = PaletteWorld::new(&store, &registry, 0);
+            let view = PaletteWorld::new(&store, &registry, 0, Default::default());
             let boxes = view
                 .selection_shapes_at([0; 3], registry.physics(id).unwrap())
                 .unwrap();

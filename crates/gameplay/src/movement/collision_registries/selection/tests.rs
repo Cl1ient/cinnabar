@@ -120,7 +120,7 @@ fn every_snow_state_has_native_selection_height_in_both_id_spaces() {
             let id = runtime_id(record, mode);
             assert_eq!(registry.selection_shapes(id), Some([expected].as_slice()));
             let store = store(mode, record);
-            let hit = PaletteWorld::new(&store, registry, 0)
+            let hit = PaletteWorld::new(&store, registry, 0, Default::default())
                 .block_interaction_ray_current(
                     Vec3::new(8.5, 10.0, 8.5),
                     Vec3::new(0.0, -1.0, 0.0),
@@ -132,7 +132,7 @@ fn every_snow_state_has_native_selection_height_in_both_id_spaces() {
             assert_eq!(hit.block_pos, [8, 8, 8]);
             assert_eq!(hit.face, 1);
             assert_eq!(hit.hit_local.y, expected.max.y);
-            let side = PaletteWorld::new(&store, registry, 0)
+            let side = PaletteWorld::new(&store, registry, 0, Default::default())
                 .block_interaction_ray_current(
                     Vec3::new(8.5, 8.0 + expected.max.y / 2.0, 6.5),
                     Vec3::new(0.0, 0.0, 1.0),
@@ -206,7 +206,7 @@ fn flowers_grass_and_mushrooms_are_pickable_but_remain_passable() {
                 "{name} must not acquire a movement collider"
             );
             let store = store(mode, record);
-            let world = PaletteWorld::new(&store, registry, 0);
+            let world = PaletteWorld::new(&store, registry, 0, Default::default());
             let hit = world
                 .block_interaction_ray_current(
                     Vec3::new(8.5, 10.0, 8.5),
@@ -280,7 +280,7 @@ fn cobweb_and_all_signs_are_pickable_independently_of_movement_colliders() {
                 );
             }
             let store = store(mode, record);
-            let world = PaletteWorld::new(&store, registry, 0);
+            let world = PaletteWorld::new(&store, registry, 0, Default::default());
             let center = (expected.min + expected.max) * 0.5;
             let hit = world
                 .block_interaction_ray_current(
@@ -356,7 +356,7 @@ fn banners_are_pickable_without_movement_colliders() {
                 );
                 let store = store(mode, record);
                 let center = (expected.min + expected.max) * 0.5;
-                let hit = PaletteWorld::new(&store, registry, 0)
+                let hit = PaletteWorld::new(&store, registry, 0, Default::default())
                     .block_interaction_ray_current(
                         Vec3::new(8.0 + center.x, 10.0, 8.0 + center.z),
                         Vec3::new(0.0, -1.0, 0.0),
@@ -398,7 +398,7 @@ fn covered_snow_and_foliage_keep_separate_selection_bounds_in_both_layer_orders(
                     runtime_id(record("minecraft:air"), mode),
                 )
                 .unwrap();
-            let world = PaletteWorld::new(&store, registry, 0);
+            let world = PaletteWorld::new(&store, registry, 0, Default::default());
             for (x, z, target) in [(8.5, 8.5, grass), (8.01, 8.01, snow)] {
                 let hit = world
                     .block_interaction_ray_current(
@@ -426,7 +426,7 @@ fn barrier_selection_is_creative_only_without_removing_collision_or_the_pick() {
         let registry = fixture.registries.registry(mode);
         assert!(!registry.collision_shapes(id).unwrap().is_empty());
         let store = store(mode, barrier);
-        let world = PaletteWorld::new(&store, registry, 0);
+        let world = PaletteWorld::new(&store, registry, 0, Default::default());
         let hit = world
             .block_interaction_ray_current(
                 Vec3::new(8.5, 10.0, 8.5),
@@ -499,7 +499,7 @@ fn wall_and_fence_picks_stop_at_the_visible_post_without_shortening_collision() 
             assert_eq!(registry.selection_shapes(id), Some([expected].as_slice()));
             assert_eq!(registry.collision_shapes(id), Some([collider].as_slice()));
             let store = store(mode, record);
-            let world = PaletteWorld::new(&store, registry, 0);
+            let world = PaletteWorld::new(&store, registry, 0, Default::default());
             assert!(
                 world
                     .block_interaction_ray_current(
@@ -559,7 +559,7 @@ fn wall_straights_follow_the_visible_arm_width_and_height_in_both_id_spaces() {
                     .all(|collider| collider.max.y == 1.5)
             );
             let store = store(mode, record);
-            let world = PaletteWorld::new(&store, registry, 0);
+            let world = PaletteWorld::new(&store, registry, 0, Default::default());
             let top = world
                 .block_interaction_ray_current(
                     Vec3::new(8.5, 10.0, 8.5),

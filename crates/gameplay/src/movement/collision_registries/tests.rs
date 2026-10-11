@@ -221,10 +221,15 @@ fn noncolliding_plants_have_vanilla_pick_shapes_in_both_id_spaces() {
                     (shape.min.y + shape.max.y) * 0.5,
                     0.5,
                 );
-                let hit = sim::PaletteWorld::new(&store, registries.registry(mode), 0)
-                    .block_interaction_ray_current(origin, sim::Vec3::new(0.0, 0.0, 1.0), 3.0)
-                    .unwrap()
-                    .expect("a first punch can pick the plant");
+                let hit = sim::PaletteWorld::new(
+                    &store,
+                    registries.registry(mode),
+                    0,
+                    Default::default(),
+                )
+                .block_interaction_ray_current(origin, sim::Vec3::new(0.0, 0.0, 1.0), 3.0)
+                .unwrap()
+                .expect("a first punch can pick the plant");
                 assert_eq!((hit.block_pos, hit.runtime_id), ([0, 0, 2], id));
             }
         }

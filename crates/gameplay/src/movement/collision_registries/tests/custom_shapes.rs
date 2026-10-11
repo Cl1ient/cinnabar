@@ -239,7 +239,7 @@ fn random_offset_state_overrides_reach_selection_and_collision_in_both_id_spaces
                     air,
                 )
                 .unwrap();
-            let world = sim::PaletteWorld::new(&store, registry, 0);
+            let world = sim::PaletteWorld::new(&store, registry, 0, Default::default());
             let offset = registry.block_shape_offset(id, [1, 8, 0]).unwrap();
             let shape = registry.collision_shapes(id).unwrap()[0].translated(offset);
             use sim::CollisionWorld;

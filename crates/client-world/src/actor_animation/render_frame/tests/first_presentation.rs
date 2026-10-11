@@ -222,12 +222,12 @@ fn initial_presentation_respects_the_world_budget_and_retries_without_partial_ef
     assert_eq!(store.stats.evaluated_molang_ops, 1);
     assert_eq!(authored_state(&store), authored);
     assert!(!store.get(1).unwrap().pose_evaluated);
-    assert!(store.needs_initial_presentation(&actors, None, None));
+    assert!(store.needs_initial_presentation(&actors, None, None, |_| true));
     store.schedule.world_budget = MAX_MOLANG_OPS_PER_WORLD_TICK;
     store.prepare_frame(&actors, None, None, false, zero_time_context);
     assert_eq!(store.get(1).unwrap().render[0].color[0], 6.0);
     assert!(store.get(1).unwrap().pose_evaluated);
-    assert!(!store.needs_initial_presentation(&actors, None, None));
+    assert!(!store.needs_initial_presentation(&actors, None, None, |_| true));
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn off_screen_initial_rigs_do_not_build_frame_contexts() {
     };
     let contexts = std::cell::Cell::new(0);
     for _ in 0..2 {
-        assert!(!store.needs_initial_presentation(&actors, Some(&view), None));
+        assert!(!store.needs_initial_presentation(&actors, Some(&view), None, |_| true));
         store.prepare_frame(&actors, Some(&view), None, false, |actor| {
             contexts.set(contexts.get() + 1);
             zero_time_context(actor)
@@ -274,7 +274,7 @@ fn off_screen_initial_rigs_do_not_build_frame_contexts() {
     let actor = actors.get_mut(&1).unwrap();
     actor.position = [0.0; 3];
     actor.previous_pose.position = actor.position;
-    assert!(store.needs_initial_presentation(&actors, Some(&view), None));
+    assert!(store.needs_initial_presentation(&actors, Some(&view), None, |_| true));
     store.prepare_frame(&actors, Some(&view), None, false, zero_time_context);
     assert_eq!(store.get(1).unwrap().render[0].color[0], 6.0);
 }

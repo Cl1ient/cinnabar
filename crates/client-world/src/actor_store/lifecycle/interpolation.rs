@@ -124,6 +124,7 @@ impl ActorStore {
                     &self.actors,
                     self.animation_view.as_ref(),
                     self.remote_state_excluded_runtime_id,
+                    |actor| self.appearance_ready(actor),
                 ));
         for tick in 0..ticks.max(u32::from(prepare_frame)) {
             if !prepare_frame {
@@ -263,6 +264,9 @@ impl ActorStore {
                     .copied()
                     .unwrap_or_default();
                 crate::actor_animation::ActorTickContext {
+                    appearance_pending: !self.ready_appearances.admits(
+                        actor, prepared, &self.players, &self.unlisted_players,
+                    ),
                     frame_alpha: 0.0,
                     animation_elapsed_ticks: frame.then_some(ticks),
                     is_riding: rider_to_ridden.contains_key(&actor.unique_id),

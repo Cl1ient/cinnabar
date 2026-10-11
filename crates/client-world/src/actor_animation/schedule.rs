@@ -60,17 +60,19 @@ impl ActorAnimationStore {
         actors: &HashMap<u64, ActorSnapshot>,
         view: Option<&ActorAnimationView>,
         exempt: Option<u64>,
+        admit: impl Fn(&ActorSnapshot) -> bool,
     ) -> bool {
         self.rigs.iter().any(|(lifetime, state)| {
             actors.get(&lifetime.runtime_id).is_some_and(|actor| {
-                initially_admitted(
-                    state,
-                    actor,
-                    view,
-                    exempt,
-                    self.assets.as_deref(),
-                    self.pack.as_ref(),
-                )
+                admit(actor)
+                    && initially_admitted(
+                        state,
+                        actor,
+                        view,
+                        exempt,
+                        self.assets.as_deref(),
+                        self.pack.as_ref(),
+                    )
             })
         })
     }
@@ -193,7 +195,7 @@ impl ActorAnimationStore {
             let view_changed = state
                 .view_context
                 .is_some_and(|old| old != context.is_local_first_person);
-            let step = if !evaluate {
+            let step = if !evaluate || context.appearance_pending {
                 Step::Hold
             } else if state.fallback == EntityRigFallback::GeometryOnly {
                 Step::GeometryOnly

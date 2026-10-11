@@ -16,6 +16,8 @@ pub(crate) struct ActorTickContext {
     pub(crate) frame_alpha: f32,
     /// Full elapsed visual interval; absent for an explicit single-tick evaluation.
     pub(crate) animation_elapsed_ticks: Option<u32>,
+    /// A known first appearance is still awaiting its immutable model preparation.
+    pub(crate) appearance_pending: bool,
     pub(crate) is_riding: bool,
     /// Namespaced identifiers of the equipped main-hand and off-hand items.
     pub(crate) main_hand: Option<Arc<str>>,

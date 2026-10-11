@@ -148,3 +148,58 @@ fn declarations_outside_every_crate_go_stale_too() {
     );
     assert!(findings("fn plan() -> &'static str { \"plan.md\" }", declared).is_empty());
 }
+
+#[test]
+fn joins_from_the_manifest_directory_are_followed_through_bindings() {
+    // A source tree joined relative to another manifest-relative path, as render's shader check does.
+    let tree = "fn sources() { let source = std::path::PathBuf::from(env!(\"CARGO_MANIFEST_DIR\")).join(\"src\"); let other = source.join(\"../../beta/data\"); let _ = other; }";
+    assert_eq!(
+        findings(tree, ""),
+        [
+            "alpha: crates/alpha/src/lib.rs reads `crates/beta/data` outside the crate; list it in `reads` under [package.metadata.cinnabar]"
+        ]
+    );
+    assert_eq!(
+        findings(
+            tree,
+            "[package.metadata.cinnabar]\nreads=['crates/beta/data/table.tsv']"
+        )
+        .len(),
+        1,
+        "a file inside a read directory does not declare the directory"
+    );
+    assert!(
+        findings(
+            tree,
+            "[package.metadata.cinnabar]\nreads=['crates/beta/data']"
+        )
+        .is_empty()
+    );
+
+    // A repository root bound once and joined later, as pack-compiler's font test does.
+    let root = "fn manifest() -> Vec<u8> { let root = std::path::Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"../..\"); std::fs::read(root.join(\"assets/shared.json\")).unwrap() }";
+    assert_eq!(
+        findings(root, ""),
+        [
+            "alpha: crates/alpha/src/lib.rs reads `assets/shared.json` outside the crate; list it in `reads` under [package.metadata.cinnabar]"
+        ]
+    );
+    assert!(
+        findings(
+            root,
+            "[package.metadata.cinnabar]\nreads=['assets/shared.json']"
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn computed_joins_and_parent_steps_are_not_reads() {
+    for source in [
+        "fn path(name: &str) -> std::path::PathBuf { std::path::Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"../..\").join(name) }",
+        "fn parent() -> std::path::PathBuf { std::path::Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"..\") }",
+        "fn local() -> std::path::PathBuf { std::path::Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"../../.local/cache\") }",
+    ] {
+        assert!(findings(source, "").is_empty(), "{source}");
+    }
+}

@@ -8,7 +8,7 @@ publish = false
 [package.metadata.cinnabar]
 platform-specific = ["macos", "windows"]
 reads = [
-    "app/src/app/render_setup.rs",
+    "app/src",
     "assets/bedrock-target.json",
     "crates/assets/data/block-registry-v1001.bin",
     "crates/assets/data/block-registry-v2193.bin",

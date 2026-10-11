@@ -78,6 +78,17 @@ material selection, carrier roundtrips and malformed states. Offline Metal frame
 cover every state beside supporting terrain; broader world-join and performance
 gates remain open.
 
+## Respawn anchor artwork
+
+Respawn anchors compile six cube faces for charge states zero through four. Terrain
+arrays and animated top materials retain the selected charge, while the shared
+carried-face sheet preserves pack overrides for inventory and held rendering.
+Original-art regressions cover carrier roundtrips, short arrays, scalar overrides,
+transparent faces, partial animations and malformed states. Headless captures with
+checked world and icon carriers verify the held cube and all five charge textures
+through placement and charging input. Server-pack compilation, broader block and
+animation parity, and performance acceptance remain incomplete.
+
 ## End rod terrain geometry
 
 End rods compile a separate shaft and mounting plate for all six integer-facing states.
@@ -86,6 +97,18 @@ alpha testing and no full-face occlusion. The owning regression covers active re
 identities, carrier roundtrips, bounds, UVs and unsupported selectors. Offline GPU
 acceptance uses original fixture art and production terrain meshing and shaders;
 broader residual-family, world-join and performance gates remain open.
+
+## Grindstone terrain geometry
+
+Grindstones compile separate supports, pivots and wheel for floor, ceiling and
+wall mounts in all four directions, including the legacy multiple selector's
+floor pose. Each part retains its pack-resolved material and sprite rectangle.
+Original-art regressions cover every registered state, carrier roundtrips,
+malformed selectors and replacement sprites. Matched headless frames cover all
+16 registered states, and real input places a new grindstone through a local
+server. Acceptance uses externally compiled carriers with production terrain
+consumers; runtime server-pack compilation and reported server-version placement
+remain unverified. No broader parity gate closes.
 
 ## RakNet transport compatibility
 
@@ -2290,6 +2313,23 @@ materials, custom binding parents, full offhand cached-stack equivalence,
 nonuniform scale shear and the separate legacy/custom item paths. Changes are uncommitted;
 no complete first-person parity gate is closed. See
 [attachable rules](docs/reference/held-attachables.md).
+
+2026-10-11 initial actor presentation: newly bound animated rigs evaluate their
+initial pose and metadata-controlled visibility before a zero-tick frame draws.
+Evaluation uses current equipment, riding, skin and view context within the
+existing actor and world budgets. Repeated frames preserve authored state;
+simulation clocks continue on the next tick. Synthetic regressions cover custom
+packs, lifetime replacement, local view replay and budget exhaustion. Initial
+publication requires a complete animated pose, render-controller selection and
+selected geometry poses, using a nonzero pose identity at simulation tick zero.
+The Java animation option seeds current posture and riding flags without advancing motion.
+Pending first skins initialize once their prepared appearance is available,
+including when simulation ticks passed during preparation.
+Explicit rest artwork still requires a completed observation after admission or reset.
+Retries refresh current query inputs while retaining simulation history; local
+view refreshes keep priority over new rigs. Unchanged off-screen rigs allocate
+nothing between ticks. This does not close the broader actor animation or
+placement-latency parity gates.
 
 2026-10-04 end crystals and respawn anchors: crystal artwork now bakes native
 alpha-test coverage instead of dropping the whole rig over fractional texels;

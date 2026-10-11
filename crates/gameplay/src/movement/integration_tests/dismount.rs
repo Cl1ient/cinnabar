@@ -131,3 +131,19 @@ fn dismount_press_without_a_tick_survives_backpressure_but_loading_cancels_it() 
     assert!(locals.advance(frame, &mut physics, &mut ticker, &mut effects, &mut speed, &VersionedFloor(1)));
     locals.flush_dismount(physics.network_position().unwrap(), |_| panic!("loading invalidates the press"));
 }
+
+/// A transport pause retains the press even if its held phase ends before physics resumes.
+#[test]
+fn dismount_press_observed_during_transport_pause_survives_until_recovery() {
+    let mut locals = super::LocomotionState::default();
+    let mut frame = speed_frame(Default::default());
+    frame.facts.ride = Some(super::RideKind::Other);
+    frame.facts.mount_runtime_id = Some(20);
+    frame.sneak.pressed = true;
+    locals.observe_dismount(&frame, 7);
+    frame.sneak.pressed = false;
+    locals.observe_dismount(&frame, 7);
+    let mut requests = 0;
+    locals.flush_dismount([0.0; 3], |_| { requests += 1; Ok(()) });
+    assert_eq!(requests, 1);
+}

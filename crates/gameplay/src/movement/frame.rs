@@ -307,8 +307,8 @@ impl LocomotionState {
         true
     }
 
-    /// Resolves the native riding input context without altering authoritative links.
-    fn observe_dismount(&mut self, frame: &PhysicsFrameInput, session: u64) {
+    /// Retains riding input even when transport admission pauses physics, preserving server links.
+    pub fn observe_dismount(&mut self, frame: &PhysicsFrameInput, session: u64) {
         let mount = frame
             .facts
             .ride

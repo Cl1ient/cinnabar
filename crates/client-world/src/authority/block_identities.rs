@@ -22,24 +22,31 @@ impl WorldAuthority {
                     skipped = skipped.saturating_add(1);
                     continue;
                 }
+                self.block_names
+                    .custom
+                    .entry(Arc::clone(&block.name))
+                    .or_default()
+                    .extend(first..end);
             }
             let states = block.hashed_states();
             if states.len() != block.state_count as usize {
                 skipped = skipped.saturating_add(1);
                 continue;
             }
-            let mut named = Vec::with_capacity(states.len());
             for (offset, state) in states.into_iter().enumerate() {
                 let internal = match self.network_id_mode {
                     NetworkIdMode::Sequential => first + offset as u32,
                     NetworkIdMode::Hashed => state.hash,
                 };
                 identities.entry(state.hash).or_insert(internal);
-                named.push(internal);
+                if self.network_id_mode == NetworkIdMode::Hashed {
+                    self.block_names
+                        .custom
+                        .entry(Arc::clone(&block.name))
+                        .or_default()
+                        .push(internal);
+                }
             }
-            self.block_names
-                .custom
-                .insert(block.name.clone(), named.into());
         }
         eprintln!(
             "SESSION_CUSTOM_BLOCK_IDENTITIES session={} mode={:?} states={} skipped_definitions={skipped}",
@@ -51,11 +58,14 @@ impl WorldAuthority {
     }
 }
 
+type NameIndex = HashMap<Box<str>, Box<[u32]>>;
+type SharedNameIndex = Arc<OnceLock<NameIndex>>;
+
 /// Names resolve to internal store identities, including all admitted custom states.
 #[derive(Debug)]
 pub(super) struct BlockNames {
-    base: Arc<HashMap<Box<str>, Box<[u32]>>>,
-    custom: HashMap<Arc<str>, Box<[u32]>>,
+    base: SharedNameIndex,
+    custom: HashMap<Arc<str>, Vec<u32>>,
     revision: u64,
 }
 
@@ -68,13 +78,13 @@ impl BlockNames {
 
     /// Shares the immutable pinned registry index between sessions of the same ID mode.
     pub(super) fn new(mode: NetworkIdMode) -> Self {
-        static SEQUENTIAL: OnceLock<Arc<HashMap<Box<str>, Box<[u32]>>>> = OnceLock::new();
-        static HASHED: OnceLock<Arc<HashMap<Box<str>, Box<[u32]>>>> = OnceLock::new();
+        static SEQUENTIAL: OnceLock<SharedNameIndex> = OnceLock::new();
+        static HASHED: OnceLock<SharedNameIndex> = OnceLock::new();
         let cache = match mode {
             NetworkIdMode::Sequential => &SEQUENTIAL,
             NetworkIdMode::Hashed => &HASHED,
         };
-        let base = cache.get_or_init(|| {
+        Self::from_loader(cache, move || {
             let records = assets::read_registry_for_protocol(
                 assets::pinned_block_registry_bytes(),
                 assets::active_content_registry_protocol(),
@@ -91,12 +101,25 @@ impl BlockNames {
                 };
                 names.entry(record.name).or_default().push(id);
             }
-            Arc::new(
-                names
-                    .into_iter()
-                    .map(|(name, ids)| (name, ids.into()))
-                    .collect(),
-            )
+            names
+                .into_iter()
+                .map(|(name, ids)| (name, ids.into()))
+                .collect()
+        })
+    }
+
+    /// Starts one background registry load and shares its result without waiting for it.
+    fn from_loader(
+        cache: &OnceLock<SharedNameIndex>,
+        load: impl FnOnce() -> NameIndex + Send + 'static,
+    ) -> Self {
+        let base = cache.get_or_init(|| {
+            let base = Arc::new(OnceLock::new());
+            let pending = Arc::clone(&base);
+            std::thread::spawn(move || {
+                let _ = pending.set(load());
+            });
+            base
         });
         Self {
             base: Arc::clone(base),
@@ -104,20 +127,65 @@ impl BlockNames {
             revision: 0,
         }
     }
+
+    /// Borrows custom states first, then states from the shared pinned index.
+    fn ids(&self, name: &str) -> &[u32] {
+        self.custom
+            .get(name)
+            .map(Vec::as_slice)
+            .or_else(|| self.base.get()?.get(name).map(AsRef::as_ref))
+            .unwrap_or(&[])
+    }
+
+    /// Tracks changes that require consumers to resolve requested names again.
+    fn revision(&self) -> u64 {
+        self.revision
+            .wrapping_mul(2)
+            .wrapping_add(u64::from(self.base.get().is_some()))
+    }
 }
 
 impl WorldAuthority {
     /// Resolves a block identifier to the active session's internal store IDs.
     pub fn block_ids_for_name(&self, name: &str) -> &[u32] {
-        self.block_names
-            .custom
-            .get(name)
-            .or_else(|| self.block_names.base.get(name))
-            .map_or(&[], AsRef::as_ref)
+        self.block_names.ids(name)
     }
 
-    /// Changes whenever the admitted custom name-to-state mapping is replaced.
-    pub const fn block_name_revision(&self) -> u64 {
-        self.block_names.revision
+    /// Changes when custom names are replaced or the background pinned index becomes ready.
+    pub fn block_name_revision(&self) -> u64 {
+        self.block_names.revision()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cold_block_name_index_loads_off_join_thread_and_refreshes_consumers() {
+        let cache = OnceLock::new();
+        let joining_thread = std::thread::current().id();
+        let (release, pending) = std::sync::mpsc::channel();
+        let mut names = BlockNames::from_loader(&cache, move || {
+            assert_ne!(
+                std::thread::current().id(),
+                joining_thread,
+                "registry decoding ran on the join thread"
+            );
+            pending.recv().unwrap();
+            HashMap::from([("example:pinned".into(), Box::from([7, 8]))])
+        });
+        names.custom.insert("example:custom".into(), vec![12]);
+        let before = names.revision();
+        assert_eq!(names.ids("example:custom"), [12]);
+        assert!(names.ids("example:pinned").is_empty());
+        let shared = BlockNames::from_loader(&cache, || panic!("registry loaded twice"));
+        release.send(()).unwrap();
+        test_time::eventually("background block name index", || {
+            !names.ids("example:pinned").is_empty()
+        });
+        assert_eq!(names.ids("example:pinned"), [7, 8]);
+        assert_eq!(shared.ids("example:pinned"), [7, 8]);
+        assert_ne!(names.revision(), before);
     }
 }

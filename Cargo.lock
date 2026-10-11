@@ -2361,6 +2361,7 @@ dependencies = [
  "render-api",
  "render-model",
  "sha2",
+ "test-time",
  "thiserror 2.0.18",
  "tracing",
  "world",

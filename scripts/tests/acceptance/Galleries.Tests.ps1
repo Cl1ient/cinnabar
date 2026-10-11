@@ -526,7 +526,8 @@
     Assert-Equal 0 ([int]$crossCropPlan.Manifest.family_diagnostics.cross) 'cross family diagnostic contract changed'
     Assert-Equal 0 ([int]$crossCropPlan.Manifest.family_diagnostics.crop) 'crop family diagnostic contract changed'
     Assert-Equal $assetIdentity ([string]$crossCropPlan.Manifest.artifact_identity.assets_sha256) 'cross/crop plan lost asset identity'
-    Assert-Equal 416 $crossCropPlan.GalleryCommands.Count 'cross/crop gallery command coverage is not one command per tracked state plus bounded setup'
+    Assert-Equal ($crossStates.Count + $cropStates.Count) @($crossCropPlan.GalleryCommands | Where-Object { $_ -match '^setblock ' }).Count 'cross/crop gallery did not place one block per tracked state'
+    Assert-Equal 2 @($crossCropPlan.GalleryCommands | Where-Object { $_ -match '^fill ' }).Count 'cross/crop gallery lost its clear and support setup'
     Assert-True (-not (($crossCropPlan.GalleryCommands -join "`n") -match 'seagrass|kelp')) 'Task 9 gallery included Task 10 aquatic plants'
     $firstPlan = $crossCropPlan.Manifest | ConvertTo-Json -Compress -Depth 12
     $secondPlan = (New-CrossCropGalleryPlan -MutationCoordinate @(100, 64, 200) -Pose CrossCropGalleryFront -RegistryPath $BlockRegistry -AssetsPath $CrossCropAssets).Manifest | ConvertTo-Json -Compress -Depth 12

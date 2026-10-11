@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 const MANIFEST: &[u8] = include_bytes!("../../../../assets/vanilla-source.json");
+const SYNTHETIC_SOURCE_COUNT: usize = 11;
 
 #[path = "entity/legacy_controller_roots.rs"]
 mod legacy_controller_roots;
@@ -80,7 +81,18 @@ fn compiler_enumerates_entity_authority_and_dependencies_deterministically() {
     let first = compile_entity_assets(pack.path(), MANIFEST).expect("compile entity catalog");
     let second = compile_entity_assets(pack.path(), MANIFEST).expect("compile twice");
     assert_eq!(first, second);
-    assert_eq!(first.sources.len(), 10);
+    assert_eq!(first.sources.len(), SYNTHETIC_SOURCE_COUNT);
+    let mount_source = first
+        .sources
+        .iter()
+        .find(|source| source.path.as_ref() == assets::entity::mount::MOUNT_EQUIPMENT_SOURCE_PATH)
+        .expect("mount equipment catalog source");
+    let mount_bytes = assets::entity::mount::MOUNT_EQUIPMENT_SOURCE_BYTES;
+    assert_eq!(mount_source.source_bytes as usize, mount_bytes.len());
+    assert_eq!(
+        mount_source.source_sha256,
+        <[u8; 32]>::from(Sha256::digest(mount_bytes))
+    );
     assert!(
         first
             .sources
@@ -737,7 +749,7 @@ fn assetc_entity_assets_writes_deterministic_carrier_and_report() {
     assert_eq!(fs::read(&report).unwrap(), first_report);
 
     let decoded = assets::RuntimeEntityAssets::decode(&first_blob).unwrap();
-    assert_eq!(decoded.sources().len(), 10);
+    assert_eq!(decoded.sources().len(), SYNTHETIC_SOURCE_COUNT);
     let binding_source = decoded
         .sources()
         .iter()

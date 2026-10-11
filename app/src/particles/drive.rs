@@ -26,9 +26,9 @@ use super::actors::{
 };
 use super::{ambient::AmbientParticles, tiles::block_tile, world_adapter::StreamParticleWorld};
 use {
-    crate::{
-        movement::PhysicsCollisionRegistries, runtime::world::ClientWorld,
-        survival_mining::SurvivalMiningRuntime,
+    crate::runtime::world::ClientWorld,
+    client_interaction::{
+        movement::PhysicsCollisionRegistries, survival_mining::SurvivalMiningRuntime,
     },
     client_presentation::camera::FlyCamera,
 };

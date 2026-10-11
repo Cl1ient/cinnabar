@@ -130,5 +130,7 @@ fn mount_quick_move_returns_storage_items_to_the_player() {
     );
     let ledger = runtime.inventory_ledger(&player);
     assert!(ledger.target_stack(InventoryTarget::Storage(2)).is_none());
-    assert!(ledger.displayed_stack(9).is_some());
+    assert_eq!(ledger.displayed_stack(0).unwrap().count, 2);
+    assert!(ledger.displayed_stack(9).is_none());
+    assert_eq!(ledger.pending_request_count(), 1);
 }

@@ -5,15 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 )
 
-var beaconTints, beaconTintError = loadBeaconTints()
+var beaconTints, beaconTintError = loadBeaconTints(".")
 
-// loadBeaconTints validates the eligibility source before tests or commands change directories.
-func loadBeaconTints() (map[string]BeaconTint, error) {
-	data, err := os.ReadFile("../../crates/assets/data/beacon-tints.json")
+// loadBeaconTints validates the eligibility table found above start, before tests or commands change directories.
+func loadBeaconTints(start string) (map[string]BeaconTint, error) {
+	data, err := readAssetData(start, "beacon-tints.json")
 	if err != nil {
 		return nil, err
 	}

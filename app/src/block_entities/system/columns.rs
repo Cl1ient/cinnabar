@@ -17,6 +17,7 @@ pub(super) struct ColumnScan {
     pub(super) portals: Vec<PortalCell>,
     /// Block entities routed to a model or text overlay, in key order.
     pub(super) entities: Vec<ColumnEntity>,
+    pub(super) beacons: BTreeMap<BlockEntityKey, render::BeaconModel>,
     /// The frame that last used this scan; older scans are dropped after each frame.
     pub(super) seen_frame: u64,
 }
@@ -41,6 +42,7 @@ impl ColumnScan {
             block_entities: Arc::downgrade(&chunk.shared_block_entities()),
             portals,
             entities,
+            beacons: BTreeMap::new(),
             seen_frame: 0,
         }
     }

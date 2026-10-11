@@ -116,6 +116,7 @@ pub(crate) struct BlockEntityRuntime {
     map_requests: HashMap<i64, f64>,
     /// Session and dimension the runtime-id keyed caches were filled from.
     session: Option<(u64, i32)>,
+    beam_source: Option<(Arc<assets::RuntimeAssets>, Option<protocol::DimensionRange>)>,
 }
 
 impl BlockEntityRuntime {
@@ -132,6 +133,26 @@ impl BlockEntityRuntime {
             missing_maps: Vec::new(),
             map_requests: HashMap::new(),
             session: None,
+            beam_source: None,
+        }
+    }
+
+    /// Invalidates cached column rules when pack light data or dimension height changes.
+    fn bind_beam_source(
+        &mut self,
+        assets: &Arc<assets::RuntimeAssets>,
+        range: Option<protocol::DimensionRange>,
+    ) {
+        if !self
+            .beam_source
+            .as_ref()
+            .is_some_and(|(previous, previous_range)| {
+                Arc::ptr_eq(previous, assets) && *previous_range == range
+            })
+        {
+            self.beam_source = Some((Arc::clone(assets), range));
+            self.columns.clear();
+            self.blocks.clear();
         }
     }
 
@@ -142,6 +163,7 @@ impl BlockEntityRuntime {
             return;
         }
         self.session = session;
+        self.beam_source = None;
         self.lids = ContainerLids::default();
         self.missing_maps.clear();
         self.columns.clear();
@@ -304,6 +326,12 @@ pub(crate) fn update_block_entity_scene(
         stream.authority().actor_session_id(),
         stream.current_dimension(),
     )));
+    runtime.bind_beam_source(
+        stream.runtime_assets(),
+        stream
+            .authority()
+            .dimension_range(stream.current_dimension()),
+    );
     runtime.missing_maps.clear();
     let dimension = stream.current_dimension();
     let store = stream.collision_store();
@@ -378,7 +406,30 @@ pub(crate) fn update_block_entity_scene(
                                 describe(id, &info.name, &info.state, &root, position)
                             })
                     });
-                columns::ColumnScan::new(chunk, portals, entities)
+                let mut scan = columns::ColumnScan::new(chunk, portals, entities);
+                let range = stream.authority().dimension_range(dimension);
+                if let Some(range) = range {
+                    let top = (range.base_sub_chunk_y + range.sub_chunk_count as i32)
+                        * SUB_CHUNK_SIDE as i32;
+                    for entity in &scan.entities {
+                        if matches!(entity.template, Some(Template::Beacon)) {
+                            scan.beacons.insert(
+                                entity.key,
+                                beacon_model(
+                                    runtime,
+                                    &collisions,
+                                    stream.runtime_assets(),
+                                    store,
+                                    dimension,
+                                    mode,
+                                    entity.key.position(),
+                                    top,
+                                ),
+                            );
+                        }
+                    }
+                }
+                scan
             }) else {
                 continue;
             };
@@ -407,14 +458,10 @@ pub(crate) fn update_block_entity_scene(
                     font: &font.0,
                 };
                 let kind = if matches!(template, Template::Beacon) {
-                    beacon_kind(
-                        &mut *runtime,
-                        &collisions,
-                        store,
-                        dimension,
-                        mode,
-                        [x, y, z],
-                    )
+                    scan.beacons
+                        .get(&entity.key)
+                        .cloned()
+                        .map(BlockEntityKind::Beacon)
                 } else {
                     resolve(
                         template,
@@ -758,90 +805,46 @@ fn prune_bell_rings(
     });
 }
 
-/// Highest world Y a beacon beam is drawn to; the beam stops at the build limit.
-const BEAM_TOP: i32 = 320;
-
-/// The dye color of a stained-glass block name, as linear RGB.
-fn glass_tint(name: &str) -> Option<[f32; 3]> {
-    let color = name
-        .strip_prefix("minecraft:")?
-        .strip_suffix("_stained_glass_pane")
-        .or_else(|| {
-            name.strip_prefix("minecraft:")?
-                .strip_suffix("_stained_glass")
-        })?;
-    let java_id = match color {
-        "white" => 0,
-        "orange" => 1,
-        "magenta" => 2,
-        "light_blue" => 3,
-        "yellow" => 4,
-        "lime" => 5,
-        "pink" => 6,
-        "gray" => 7,
-        "light_gray" | "silver" => 8,
-        "cyan" => 9,
-        "purple" => 10,
-        "blue" => 11,
-        "brown" => 12,
-        "green" => 13,
-        "red" => 14,
-        "black" => 15,
-        _ => return None,
-    };
-    Some(assets::banner::color_linear(15 - java_id))
-}
-
-/// Blends the tint of each stained-glass block above the beacon, each new pane averaging
-/// with the color so far.
-fn beam_tint(glass: impl IntoIterator<Item = [f32; 3]>) -> [f32; 3] {
-    glass.into_iter().fold([1.0; 3], |tint, color| {
-        if tint == [1.0; 3] {
-            color
-        } else {
-            std::array::from_fn(|axis| (tint[axis] + color[axis]) * 0.5)
-        }
-    })
-}
-
-fn beacon_kind(
+/// Builds sections only when the owning column scan is replaced.
+#[allow(clippy::too_many_arguments)]
+fn beacon_model(
     runtime: &mut BlockEntityRuntime,
     collisions: &PhysicsCollisionRegistries,
+    assets: &assets::RuntimeAssets,
     store: &world::ChunkStore,
     dimension: i32,
     mode: assets::NetworkIdMode,
     position: [i32; 3],
-) -> Option<BlockEntityKind> {
-    let height = u32::try_from(BEAM_TOP - position[1] - 1)
-        .ok()
-        .filter(|height| *height > 0)?;
-    let mut glass = Vec::new();
-    for y in position[1] + 1..BEAM_TOP {
-        let runtime_id = store
+    top: i32,
+) -> BeaconModel {
+    let sections = assets::beacon::beacon_sections(position[1] + 1, top, |y| {
+        let id = store
             .sub_chunk(world::SubChunkKey::new(
                 dimension,
                 position[0].div_euclid(16),
                 y.div_euclid(16),
                 position[2].div_euclid(16),
             ))
-            .and_then(|sub_chunk| {
-                sub_chunk.runtime_id(
+            .and_then(|sub| {
+                sub.runtime_id(
                     0,
                     position[0].rem_euclid(16) as u8,
                     y.rem_euclid(16) as u8,
                     position[2].rem_euclid(16) as u8,
                 )
             });
-        if let Some(info) = runtime_id.and_then(|id| block_info(runtime, collisions, mode, id))
-            && let Some(color) = glass_tint(&info.name)
-        {
-            glass.push(color);
-        }
+        let Some(id) = id else {
+            return assets::beacon::BeaconMedium::Clear;
+        };
+        let info = block_info(runtime, collisions, mode, id);
+        assets::beacon::beacon_medium(
+            info.as_ref().map_or("", |info| &info.name),
+            assets.resolve(mode, id).light_properties().filter(),
+        )
+    });
+    BeaconModel {
+        sections: sections.into(),
     }
-    Some(BlockEntityKind::Beacon(BeaconModel {
-        height,
-        tint: beam_tint(glass),
-    }))
 }
 
 #[cfg(test)]
@@ -903,18 +906,6 @@ mod tests {
             model_light(&BlockEntityKind::EndPortal, 0, 15, 1.0),
             1.0.into()
         );
-    }
-
-    #[test]
-    fn beam_tint_averages_each_new_pane_with_the_color_so_far() {
-        assert_eq!(beam_tint([]), [1.0; 3]);
-        let red = [1.0, 0.0, 0.0];
-        let blue = [0.0, 0.0, 1.0];
-        assert_eq!(beam_tint([red]), red);
-        assert_eq!(beam_tint([red, blue]), [0.5, 0.0, 0.5]);
-        assert!(glass_tint("minecraft:red_stained_glass").is_some());
-        assert!(glass_tint("minecraft:silver_stained_glass_pane").is_some());
-        assert!(glass_tint("minecraft:glass").is_none());
     }
 
     #[test]

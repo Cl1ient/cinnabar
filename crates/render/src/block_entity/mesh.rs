@@ -219,6 +219,27 @@ impl MeshBuilder {
         target.extend_from_slice(&[second, third, first, first, third, fourth]);
     }
 
+    /// Repeats the beam tile in the shader, with a fixed six vertices for any height.
+    pub(super) fn repeating_beam_quad(
+        &mut self,
+        corners: [[f32; 3]; 4],
+        rect: AtlasRect,
+        color: [f32; 4],
+        scroll: f32,
+    ) {
+        let start = self.overlay.len();
+        self.textured_quad(Layer::Overlay, corners, rect, color);
+        for vertex in &mut self.overlay[start..] {
+            vertex.uv[1] = -vertex.position[1] + scroll;
+            vertex.normal = [
+                rect.y / self.atlas_size[1],
+                rect.height / self.atlas_size[1],
+                0.0,
+            ];
+            vertex.actor_light = u32::MAX;
+        }
+    }
+
     /// A box whose faces each show one whole atlas rect, in `[west, east, down, up, north,
     /// south]` order; `min`/`max` are authoring pixels mapped through `model`.
     pub fn tile_cuboid(

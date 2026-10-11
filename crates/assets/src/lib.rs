@@ -305,3 +305,5 @@ pub use weather_textures::{
     WEATHER_TEXTURES_VERSION, WeatherImage, WeatherTextures, WeatherTexturesError,
     decode_weather_textures, encode_weather_textures,
 };
+
+pub mod beacon;

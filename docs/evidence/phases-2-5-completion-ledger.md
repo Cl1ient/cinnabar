@@ -197,3 +197,7 @@ The account core publishes menu, world-default, Realm and generic featured/Exper
 Exact heartbeat, platform configuration, server overrides, permission gates and
 friends-visible acceptance remain incomplete. No existing completion entry is
 advanced by this feature; see `docs/reference/xbox-presence.md` and `plan.md`.
+
+## Cached beacon beam sections
+
+Beacon columns cache typed color sections when blocks, NBT, dimension bounds or block assets change. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.

@@ -72,8 +72,6 @@ pub struct ParticleGpuFrame {
     opaque: Arc<[ParticleInstance]>,
     blend: Arc<[ParticleInstance]>,
     add: Arc<[ParticleInstance]>,
-    blend_centroid: [f32; 3],
-    add_centroid: [f32; 3],
 }
 
 impl ParticleGpuFrame {
@@ -82,27 +80,12 @@ impl ParticleGpuFrame {
         self.opaque.len() + self.blend.len() + self.add.len()
     }
 
-    fn set_lists(&mut self, lists: DrawLists, camera: [f32; 3]) {
-        self.blend_centroid = draw_centroid(&lists.blend, camera);
-        self.add_centroid = draw_centroid(&lists.add, camera);
+    /// Publishes the current camera-sorted instance lists for extraction.
+    fn set_lists(&mut self, lists: DrawLists) {
         self.blend = lists.blend.into();
         self.add = lists.add.into();
         self.opaque = lists.opaque.into();
     }
-}
-
-/// Returns a draw list's centroid, falling back to the camera for an empty list.
-fn draw_centroid(instances: &[ParticleInstance], camera: [f32; 3]) -> [f32; 3] {
-    if instances.is_empty() {
-        return camera;
-    }
-    let mut sum = [0.0; 3];
-    for instance in instances {
-        for (axis, total) in sum.iter_mut().enumerate() {
-            *total += instance.center_light[axis];
-        }
-    }
-    sum.map(|total| total / instances.len() as f32)
 }
 
 /// Camera frustum basis from a Bevy camera transform and projection.
@@ -137,7 +120,7 @@ pub fn update_particle_frame(
     system.set_camera(view.position);
     system.tick(dt, world);
     let lists = system.build_draw(view, world);
-    frame.set_lists(lists, view.position);
+    frame.set_lists(lists);
     let base = system.atlas_base();
     if frame
         .base
@@ -186,6 +169,9 @@ impl Plugin for ParticleRenderPlugin {
                 (
                     prepare_particle_resources.in_set(RenderSystems::PrepareResources),
                     prepare_particle_bind_group.in_set(RenderSystems::PrepareBindGroups),
+                    coalesce_particle_ranges
+                        .after(RenderSystems::Prepare)
+                        .before(RenderSystems::Render),
                     queue_particles
                         .run_if(crate::panorama::world_passes_enabled)
                         .in_set(RenderSystems::Queue),
@@ -206,8 +192,6 @@ struct ParticleGpu {
     opaque_range: Range<u32>,
     blend_range: Range<u32>,
     add_range: Range<u32>,
-    blend_centroid: [f32; 3],
-    add_centroid: [f32; 3],
     bind_group: Option<BindGroup>,
     bound: (Option<BufferId>, Option<BufferId>, u64),
 }
@@ -234,8 +218,6 @@ fn init_particle_gpu(mut commands: Commands, render_device: Res<RenderDevice>) {
         opaque_range: 0..0,
         blend_range: 0..0,
         add_range: 0..0,
-        blend_centroid: [0.0; 3],
-        add_centroid: [0.0; 3],
         bind_group: None,
         bound: (None, None, 0),
     });
@@ -296,8 +278,6 @@ fn prepare_particle_resources(
     }
 
     let (opaque, blend, add) = (frame.opaque.len(), frame.blend.len(), frame.add.len());
-    gpu.blend_centroid = frame.blend_centroid;
-    gpu.add_centroid = frame.add_centroid;
     gpu.opaque_range = 0..opaque as u32;
     gpu.blend_range = opaque as u32..(opaque + blend) as u32;
     gpu.add_range = (opaque + blend) as u32..(opaque + blend + add) as u32;
@@ -574,42 +554,38 @@ fn prepare_particle_bind_group(
     gpu.bound = key;
 }
 
+/// Queues each translucent instance at its view depth using the current extracted frame.
 fn queue_particles(
     pipeline_cache: Res<PipelineCache>,
     mut pipeline: ResMut<ParticlePipeline>,
-    gpu: Res<ParticleGpu>,
+    frame: Res<ParticleGpuFrame>,
     mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     draw_functions: Res<DrawFunctions<Transparent3d>>,
     views: Query<(Entity, &MainEntity, &ExtractedView, &Msaa)>,
 ) {
-    if gpu.opaque_range.is_empty() && gpu.blend_range.is_empty() && gpu.add_range.is_empty() {
-        return;
-    }
-    let (opaque_draw, alpha_draw, add_draw) = {
-        let functions = draw_functions.read();
-        (
-            functions.id::<DrawParticles<{ ParticleMode::Opaque as u8 }>>(),
-            functions.id::<DrawParticles<{ ParticleMode::Blend as u8 }>>(),
-            functions.id::<DrawParticles<{ ParticleMode::Add as u8 }>>(),
-        )
-    };
+    let functions = draw_functions.read();
+    let draws = [
+        functions.id::<DrawParticles<{ ParticleMode::Opaque as u8 }>>(),
+        functions.id::<DrawParticles<{ ParticleMode::Blend as u8 }>>(),
+        functions.id::<DrawParticles<{ ParticleMode::Add as u8 }>>(),
+    ];
+    drop(functions);
     for (view_entity, main_entity, view, msaa) in &views {
         let Some(phase) = phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        for (material, draw_function, populated) in [
-            (
-                ParticleMode::Opaque,
-                opaque_draw,
-                !gpu.opaque_range.is_empty(),
-            ),
-            (ParticleMode::Blend, alpha_draw, !gpu.blend_range.is_empty()),
-            (ParticleMode::Add, add_draw, !gpu.add_range.is_empty()),
+        let mut offset = 0;
+        for (material, instances, draw_function) in [
+            (ParticleMode::Opaque, &frame.opaque, draws[0]),
+            (ParticleMode::Blend, &frame.blend, draws[1]),
+            (ParticleMode::Add, &frame.add, draws[2]),
         ] {
-            if !populated {
+            let first = offset;
+            offset += instances.len() as u32;
+            if instances.is_empty() {
                 continue;
             }
-            let Ok(pipeline_id) = pipeline.variants.specialize(
+            let Ok(pipeline) = pipeline.variants.specialize(
                 &pipeline_cache,
                 ParticlePipelineKey {
                     msaa: *msaa,
@@ -619,26 +595,93 @@ fn queue_particles(
             ) else {
                 continue;
             };
-            let distance = match material {
-                ParticleMode::Opaque => f32::NEG_INFINITY,
-                ParticleMode::Blend => view
-                    .rangefinder3d()
-                    .distance(&Vec3::from_array(gpu.blend_centroid)),
-                ParticleMode::Add => view
-                    .rangefinder3d()
-                    .distance(&Vec3::from_array(gpu.add_centroid)),
-            };
-            phase.add(Transparent3d {
+            let item = |distance, extra_index| Transparent3d {
                 entity: (view_entity, *main_entity),
-                pipeline: pipeline_id,
+                pipeline,
                 draw_function,
-                // Depth-writing sprites must precede translucent terrain and surface overlays.
                 distance,
                 batch_range: 0..1,
-                extra_index: PhaseItemExtraIndex::None,
+                extra_index,
                 indexed: false,
-            });
+            };
+            if material == ParticleMode::Opaque {
+                phase.add(item(f32::NEG_INFINITY, PhaseItemExtraIndex::None));
+                continue;
+            }
+            let rangefinder = view.rangefinder3d();
+            for (index, instance) in instances.iter().enumerate() {
+                let position = Vec3::from_slice(&instance.center_light[..3]);
+                let index = first + index as u32;
+                phase.add(item(
+                    rangefinder.distance(&position),
+                    PhaseItemExtraIndex::IndirectParametersIndex {
+                        range: index..index + 1,
+                        batch_set_index: None,
+                    },
+                ));
+            }
         }
+    }
+}
+
+/// Joins adjacent instance ranges after sorting, preserving every intervening terrain draw.
+fn coalesce_particle_ranges(
+    mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
+    draw_functions: Res<DrawFunctions<Transparent3d>>,
+) {
+    let functions = draw_functions.read();
+    let blend = functions.id::<DrawParticles<{ ParticleMode::Blend as u8 }>>();
+    let add = functions.id::<DrawParticles<{ ParticleMode::Add as u8 }>>();
+    for phase in phases.values_mut() {
+        coalesce_ranges(&mut phase.items, [blend, add]);
+    }
+}
+
+/// Batches contiguous particle instances without crossing a different phase item or pipeline.
+fn coalesce_ranges(
+    items: &mut [Transparent3d],
+    draws: [bevy::render::render_phase::DrawFunctionId; 2],
+) {
+    let mut start = 0;
+    while start < items.len() {
+        if !draws.contains(&items[start].draw_function) || items[start].batch_range.len() != 1 {
+            start += 1;
+            continue;
+        }
+        let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &items[start].extra_index
+        else {
+            start += 1;
+            continue;
+        };
+        let first = range.start;
+        let mut end = range.end;
+        let mut next = start + 1;
+        while next < items.len() {
+            let item = &items[next];
+            if item.entity != items[start].entity
+                || item.pipeline != items[start].pipeline
+                || item.draw_function != items[start].draw_function
+                || item.batch_range.len() != 1
+            {
+                break;
+            }
+            let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &item.extra_index
+            else {
+                break;
+            };
+            if range.start != end {
+                break;
+            }
+            end = range.end;
+            items[next].batch_range = 0..0;
+            next += 1;
+        }
+        items[start].extra_index = PhaseItemExtraIndex::IndirectParametersIndex {
+            range: first..end,
+            batch_set_index: None,
+        };
+        items[start].batch_range = 0..(next - start) as u32;
+        start = next;
     }
 }
 
@@ -682,19 +725,29 @@ impl<P: PhaseItem, const MATERIAL: u8> RenderCommand<P> for DrawParticleRange<MA
     type ItemQuery = ();
 
     fn render<'w>(
-        _item: &P,
+        item: &P,
         _view: ROQueryItem<'w, '_, Self::ViewQuery>,
         _item_query: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         gpu: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let gpu = gpu.into_inner();
-        let range = if MATERIAL == ParticleMode::Add as u8 {
-            gpu.add_range.clone()
-        } else if MATERIAL == ParticleMode::Opaque as u8 {
+        let range = if MATERIAL == ParticleMode::Opaque as u8 {
             gpu.opaque_range.clone()
         } else {
-            gpu.blend_range.clone()
+            let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = item.extra_index()
+            else {
+                return RenderCommandResult::Skip;
+            };
+            let admitted = if MATERIAL == ParticleMode::Add as u8 {
+                &gpu.add_range
+            } else {
+                &gpu.blend_range
+            };
+            if range.start < admitted.start || range.end > admitted.end {
+                return RenderCommandResult::Skip;
+            }
+            range.clone()
         };
         if range.is_empty() {
             return RenderCommandResult::Skip;

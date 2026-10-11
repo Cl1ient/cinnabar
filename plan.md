@@ -7223,3 +7223,14 @@ remain incomplete. These fixtures do not close the full parity gate.
 Crack surfaces now follow the admitted runtime asset identity as well as block
 identity, transform, and column displacement. Resource reload replaces cached
 surfaces in the current session; unchanged assets keep shared geometry.
+
+### Particle depth ranges
+
+Translucent particles enter the shared terrain phase at individual camera depths from the
+current extracted frame. Adjacent contiguous instances of the same material combine after
+phase preparation, while intervening terrain preserves the range boundaries. Cutout particles
+keep their depth-writing pass. The expression of depth matches the view sorting direction.
+
+An offline fixture verifies alpha and additive depth composition through the production shader
+and measures the GPU pass cost. Exact native composition across material buckets and full-frame
+performance acceptance remain incomplete.

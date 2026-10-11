@@ -197,3 +197,7 @@ The account core publishes menu, world-default, Realm and generic featured/Exper
 Exact heartbeat, platform configuration, server overrides, permission gates and
 friends-visible acceptance remain incomplete. No existing completion entry is
 advanced by this feature; see `docs/reference/xbox-presence.md` and `plan.md`.
+
+- Particle terrain ordering: individual depth ranges and adjacent-range batching are implemented;
+  focused composition and current-frame regression checks are pending. Native bucket composition
+  and the GPU/frame acceptance gates remain incomplete.

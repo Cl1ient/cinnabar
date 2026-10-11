@@ -191,12 +191,16 @@ impl WorldStream {
         &mut self,
         sources: impl IntoIterator<Item = SubChunkKey>,
     ) {
-        self.mark_light_changed_sources_with_priority(sources, false);
+        self.mark_light_changed_sources_reaching(sources, false, NeighbourReach::ALL);
     }
-    pub(in crate::stream) fn mark_light_changed_sources_with_priority(
+    /// Relights changed `sources` and the face neighbours their changed cells `reach`. A
+    /// neighbour reads a source only through the cells on their shared face; a source's relight
+    /// that changes light on a face relights the neighbour across it when it lands.
+    pub(in crate::stream) fn mark_light_changed_sources_reaching(
         &mut self,
         sources: impl IntoIterator<Item = SubChunkKey>,
         urgent: bool,
+        reach: NeighbourReach,
     ) {
         let sources = sources.into_iter().collect::<BTreeSet<_>>();
         for key in &sources {
@@ -240,7 +244,15 @@ impl WorldStream {
         let dependents = sources
             .iter()
             .copied()
-            .flat_map(SubChunkKey::mesh_dependents)
+            .flat_map(|source| {
+                source.mesh_dependents().filter(move |dependent| {
+                    reach.reaches([
+                        i64::from(dependent.x) - i64::from(source.x),
+                        i64::from(dependent.y) - i64::from(source.y),
+                        i64::from(dependent.z) - i64::from(source.z),
+                    ])
+                })
+            })
             .filter(|key| self.resident.contains(key))
             .filter(|key| !self.air_fixed_point_survives_sources(*key, &sources))
             .collect::<BTreeSet<_>>();

@@ -64,7 +64,7 @@ impl WorldStream {
     ) {
         let sources = sources.into_iter().collect::<BTreeSet<_>>();
         if relight {
-            self.mark_light_changed_sources_with_priority(sources.iter().copied(), urgent);
+            self.mark_light_changed_sources_reaching(sources.iter().copied(), urgent, reach);
         }
         let mut dirty = preexpanded_dirty.into_iter().collect::<BTreeSet<_>>();
         for &key in &sources {

@@ -39,6 +39,7 @@ fn base_carrier(count: usize) -> Arc<RuntimeAssets> {
                 animation: NO_ANIMATION,
                 variant: 0,
                 native_material: assets::native_material::NativeMaterialFacts::Unresolved,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             };
             count
         ]

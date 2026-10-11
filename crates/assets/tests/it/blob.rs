@@ -74,6 +74,7 @@ fn world_carrier_exact_bytes() {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
         BlockVisual {
             native_material: assets::native_material::NativeMaterialFacts::Unresolved,
@@ -85,6 +86,7 @@ fn world_carrier_exact_bytes() {
             model_template: 0,
             animation: 0,
             variant: 7,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
     ]
     .into_boxed_slice();
@@ -144,7 +146,7 @@ fn world_carrier_exact_bytes() {
     .into_boxed_slice();
 
     let bytes = encode_blob(&fixture).expect("encode every world carrier table");
-    assert_eq!(bytes.len(), 1_576_296);
+    assert_eq!(bytes.len(), 1_576_352);
     assert_eq!(
         format!("{:x}", Sha256::digest(&bytes)),
         "d7ae8c7fe2a12e57e0428724193f4690da48795b1a358c06ef82d6545d386f64",
@@ -159,14 +161,14 @@ fn world_carrier_exact_bytes() {
     assert_eq!(read_u32(&bytes, 48), 2);
     let visuals = read_u64(&bytes, 192) as usize;
     assert_eq!(bytes[visuals + 27], 0xf0);
-    assert_eq!(bytes[visuals + 44 + 27], 0x0c);
+    assert_eq!(bytes[visuals + assets::blob::VISUAL_BYTES + 27], 0x0c);
     let materials = read_u64(&bytes, 208) as usize;
     let templates = read_u64(&bytes, 216) as usize;
     let quads = read_u64(&bytes, 224) as usize;
     let animations = read_u64(&bytes, 232) as usize;
     let frames = read_u64(&bytes, 240) as usize;
     assert_eq!(
-        &bytes[visuals + 44..visuals + 68],
+        &bytes[visuals + assets::blob::VISUAL_BYTES..visuals + assets::blob::VISUAL_BYTES + 24],
         &[
             1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0
         ]
@@ -638,7 +640,7 @@ fn mcbeas04_accepts_only_canonical_referenced_connected_template_groups() {
     }
 }
 
-const HEADER_BYTES: usize = 296;
+use assets::blob::HEADER_BYTES;
 
 fn texture_array(layers: u32) -> TextureArray {
     let mips = [16_u32, 8, 4, 2, 1]
@@ -665,6 +667,7 @@ fn valid_assets() -> CompiledAssets {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }]
         .into_boxed_slice(),
         light_properties: vec![assets::LightProperties::default()].into_boxed_slice(),
@@ -872,7 +875,7 @@ fn blob_has_checked_little_endian_sections_and_trailing_sha256() {
     let biome_names_offset = read_u64(&bytes, 280) as usize;
     let payload_length = read_u64(&bytes, 288) as usize;
     assert_eq!(visuals_offset, HEADER_BYTES);
-    assert_eq!(hashes_offset, visuals_offset + 44);
+    assert_eq!(hashes_offset, visuals_offset + assets::blob::VISUAL_BYTES);
     assert_eq!(materials_offset, hashes_offset + 8);
     assert_eq!(pages_offset, materials_offset + assets::MATERIAL_BYTES);
     assert_eq!(textures_offset, pages_offset + 64);
@@ -1103,4 +1106,33 @@ fn blob_output_is_written_by_same_directory_atomic_rename() {
         .map(|entry| entry.expect("directory entry").path())
         .collect::<Vec<_>>();
     assert_eq!(siblings, [output]);
+}
+
+#[test]
+fn world_destroy_facts_roundtrip_and_reject_forged_source() {
+    use assets::compiled::block_destroy::{BlockDestroyFacts, builtin_destroy_facts};
+    let mut fixture = valid_assets();
+    for facts in [
+        BlockDestroyFacts::Unresolved,
+        builtin_destroy_facts("minecraft:stone"),
+        builtin_destroy_facts("minecraft:bedrock"),
+    ] {
+        fixture.visuals[0].destroy = facts;
+        let bytes = encode_blob(&fixture).unwrap();
+        let decoded = assets::RuntimeAssets::decode(&bytes).unwrap();
+        assert_eq!(
+            decoded
+                .resolve(assets::NetworkIdMode::Sequential, 0)
+                .destroy(),
+            facts
+        );
+        let mut forged = bytes.into_vec();
+        forged[assets::blob::DESTROY_SHA_OFFSET] ^= 1;
+        let end = forged.len() - 32;
+        let digest = Sha256::digest(&forged[..end]);
+        forged[end..].copy_from_slice(&digest);
+        assert!(
+            matches!(assets::RuntimeAssets::decode(&forged), Err(AssetError::InvalidCompiledAssets { detail }) if detail.contains("destroy source identity"))
+        );
+    }
 }

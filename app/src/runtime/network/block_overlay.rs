@@ -276,7 +276,7 @@ impl Builder<'_> {
             let uv_flags = if components.geometry.as_deref() == Some(FULL_BLOCK_V1)
                 && source == assets::BlockFace::Down as usize
             {
-                render::MATERIAL_UV_ROTATE_180
+                render_scene::MATERIAL_UV_ROTATE_180
             } else {
                 0
             };
@@ -315,6 +315,7 @@ impl Builder<'_> {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 
@@ -392,6 +393,7 @@ impl Builder<'_> {
             model_template: template,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 

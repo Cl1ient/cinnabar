@@ -65,6 +65,10 @@ impl ResolvedBlock {
     pub const fn native_material(self) -> crate::native_material::NativeMaterialFacts {
         self.visual.native_material
     }
+    /// Returns admitted destroy facts without resolving names or source text.
+    pub const fn destroy(self) -> crate::compiled::block_destroy::BlockDestroyFacts {
+        self.visual.destroy
+    }
     #[must_use]
     pub const fn flags(self) -> BlockFlags {
         self.visual.flags
@@ -124,6 +128,7 @@ const fn diagnostic_visual() -> BlockVisual {
         model_template: NO_MODEL_TEMPLATE,
         animation: NO_ANIMATION,
         variant: 0,
+        destroy: crate::compiled::block_destroy::BlockDestroyFacts::Unresolved,
     }
 }
 

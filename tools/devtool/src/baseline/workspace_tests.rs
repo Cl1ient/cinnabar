@@ -504,3 +504,54 @@ fn configured_workspace_wrappers_survive_both_isolation_paths() {
         }
     }
 }
+
+#[test]
+fn base_package_selectors_accept_a_different_workspace_version() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(temp.path()).unwrap();
+    let head = root.join("head space");
+    let base = root.join("base space");
+    for (root, version) in [(&head, "0.2.0"), (&base, "0.1.0")] {
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            format!(
+                "[package]\nname='architecture'\nversion='{version}'\nedition='2024'\n[workspace]\n"
+            ),
+        )
+        .unwrap();
+        fs::write(root.join("src/lib.rs"), "").unwrap();
+        assert!(
+            Command::new("cargo")
+                .current_dir(root)
+                .args(["generate-lockfile", "--offline"])
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let selector = format!("path+file://{}#architecture@0.2.0", url_path(&head));
+    for arguments in [
+        vec!["run", "-p", &selector],
+        vec!["clippy", "--package", &selector],
+        vec!["nextest", "run", "-p", &selector],
+    ] {
+        let remapped: Vec<_> = arguments
+            .iter()
+            .map(|argument| remap_argument(argument, &head, &base).unwrap())
+            .collect();
+        let selector = remapped.last().unwrap();
+        let result = Command::new("cargo")
+            .current_dir(&base)
+            .args(["pkgid", "--offline", "-p", selector])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}: {}",
+            remapped.join(" "),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(String::from_utf8_lossy(&result.stdout).contains("architecture@0.1.0"));
+    }
+}

@@ -233,7 +233,7 @@ impl Drop for Comparison {
     }
 }
 
-/// Remaps Cargo's file-URL package selectors as well as ordinary paths, including encoded spaces.
+/// Remaps workspace selectors without pinning base reruns to the head package version.
 fn remap_argument(argument: &str, head: &Path, base: &Path) -> Result<String, DevtoolError> {
     if argument.starts_with("path+file://") {
         let old = url_path(head);
@@ -244,7 +244,14 @@ fn remap_argument(argument: &str, head: &Path, base: &Path) -> Result<String, De
                 "cannot remap workspace package identity to base".into(),
             ));
         }
-        return Ok(remapped);
+        return Ok(match remapped.rsplit_once('#') {
+            Some((source, fragment)) => match fragment.split_once('@') {
+                Some((name, _)) => format!("{source}#{name}"),
+                None if fragment.starts_with(|c: char| c.is_ascii_digit()) => source.into(),
+                None => remapped,
+            },
+            None => remapped,
+        });
     }
     Ok(argument.replace(&*head.to_string_lossy(), &base.to_string_lossy()))
 }
@@ -602,7 +609,7 @@ mod tests {
                 Path::new("/base")
             )
             .unwrap(),
-            "path+file:///base/crate#1"
+            "path+file:///base/crate"
         );
         assert_eq!(
             remap_argument(
@@ -611,7 +618,7 @@ mod tests {
                 Path::new(r"D:\base")
             )
             .unwrap(),
-            "path+file:///D:/base/crate#1"
+            "path+file:///D:/base/crate"
         );
         assert!(
             remap_argument(
@@ -673,6 +680,15 @@ mod tests {
             "-m",
             "fixture",
         ]);
+        // The detached base keeps version 0.1.0; the head selector carries version 0.2.0.
+        for filename in ["Cargo.toml", "Cargo.lock"] {
+            let path = root.join(filename);
+            fs::write(
+                &path,
+                fs::read_to_string(&path).unwrap().replace("0.1.0", "0.2.0"),
+            )
+            .unwrap();
+        }
         let scratch = tempfile::tempdir().unwrap();
         let mut comparison = Comparison {
             architecture_selector: "architecture".into(),
@@ -682,8 +698,12 @@ mod tests {
             scratch,
             worktree: None,
         };
-        let command =
+        let mut command =
             CommandSpec::cargo(&["nextest", "run", "--locked", "--offline", "--no-fail-fast"]);
+        command.args.extend([
+            "-p".into(),
+            format!("path+file://{}#base-compare-fixture@0.2.0", url_path(&root)),
+        ]);
         assert!(comparison.verify(command.clone()).is_ok());
         fs::write(
             root.join("src/lib.rs"),

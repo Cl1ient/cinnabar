@@ -3,12 +3,12 @@
 //! Book part boxes and UV origins follow the enchanting-book texture unwrap; the hover height,
 //! tilt, spread and page-flip timing need native measurement.
 
-use assets::block_entity_geometry as geometry;
+use assets::block_entity_geometry::{self as geometry, BoxSpec};
 use bevy::math::Mat4;
 
 use super::{
     atlas::BlockEntityAtlas,
-    mesh::{BoxSpec, Layer, MeshBuilder, WHITE, model_matrix},
+    mesh::{Layer, MeshBuilder, WHITE, model_matrix},
     scene::SceneClock,
 };
 

@@ -217,6 +217,24 @@ impl IconBlocks {
         }
         Ok(super::sprites::bounded_sprite(decode_texture(&file, path)?).map(|(sprite, _)| sprite))
     }
+
+    /// A model texture to sample, as large as the block-entity carrier packs; `None` when absent
+    /// or larger.
+    pub(super) fn model_texture(root: &Path, path: &str) -> Result<Option<IconSprite>, AssetError> {
+        let file = static_texture_path(root, path, path)?;
+        if !file.is_file() {
+            return Ok(None);
+        }
+        let decoded = decode_texture(&file, path)?;
+        if decoded.width.max(decoded.height) > crate::block_entity::MAX_TEXTURE_SIDE {
+            return Ok(None);
+        }
+        Ok(Some(IconSprite {
+            width: decoded.width as u16,
+            height: decoded.height as u16,
+            rgba8: decoded.rgba8.into(),
+        }))
+    }
 }
 
 #[cfg(test)]

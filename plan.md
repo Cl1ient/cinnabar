@@ -6020,11 +6020,12 @@ bind to their block's first canonical state. `assetc icon-assets` reports the
 leftovers: block-entity items (chests, shulkers, beds, banners, pots, statues),
 world-diagnostic cubes, grass (overlay tint), and seeds without a sprite source.
 Shape classification, stair orientation and GUI shading are unverified against
-the retail GUI tessellator. Head items (provisional, incomplete): skeleton, wither
-skeleton, zombie, player and creeper heads draw their placed skull model (player
-heads with the default skin) turned to face south like other block items' fronts
-and scaled so the head fills the cube frame; vanilla's skull GUI transform and
-lighting are unmeasured. Dragon and piglin head items still have no icon.
+the retail GUI tessellator. Head items (provisional, incomplete): every head draws
+its placed skull model (player heads with the default skin; dragon and piglin heads
+the pack geometry's head bone tree, shared with the placed renderer through
+`assets::block_entity_geometry::heads`) turned to face south like other block items'
+fronts, its uninflated bounds scaled to fill the cube frame; vanilla's skull GUI
+transform and lighting are unmeasured.
 Server item components (StartGame registry) drive display names, rarity and
 hover colours, durability maxima, stack-merge capacity, held grip, wearable
 slots and use durations. Item glint (provisional): stacks vanilla

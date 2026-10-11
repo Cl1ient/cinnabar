@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use assets::block_entity_geometry::{
-    SKULL_HAT, SKULL_HAT_INFLATE, SKULL_HEAD, skull_has_hat, skull_texture,
+    BoxSpec, SKULL_HAT, SKULL_HAT_INFLATE, SKULL_HEAD, heads::skull_mob_head, skull_has_hat,
+    skull_texture,
 };
 use assets::{EntityGeometryCube, EntityGeometryScalar, EntityGeometryUv};
 use bevy::math::Mat4;
@@ -14,7 +15,7 @@ use render_model::{ActorRigGeometry, EntityRigId, append_entity_cube_vertices};
 use super::{
     atlas::{BlockEntityAtlas, TextureRef},
     heads::HeadModels,
-    mesh::{BoxSpec, Facing, Layer, MeshBuilder, WHITE, model_matrix},
+    mesh::{Facing, Layer, MeshBuilder, WHITE, model_matrix},
 };
 
 /// Discriminants are the legacy `SkullType` ordinals.
@@ -103,17 +104,16 @@ pub(super) fn emit(
         }
     };
     let geometry = match model.kind {
-        SkullKind::Piglin => heads
-            .piglin
-            .as_ref()
-            .zip(atlas.texture("textures/entity/piglin/piglin", [64.0, 64.0])),
-        SkullKind::Dragon => heads.dragon.as_ref().and_then(|head| {
-            atlas
-                .texture("textures/entity/dragon/dragon", head.texture)
-                .map(|texture| (head, texture))
-        }),
+        SkullKind::Piglin => heads.piglin.as_ref(),
+        SkullKind::Dragon => heads.dragon.as_ref(),
         _ => None,
-    };
+    }
+    .zip(skull_mob_head(model.kind as u8))
+    .and_then(|(head, source)| {
+        atlas
+            .texture(source.texture, head.texture)
+            .map(|texture| (head, texture))
+    });
     if let Some((head, texture)) = geometry {
         for head_box in &head.boxes {
             builder.cuboid(

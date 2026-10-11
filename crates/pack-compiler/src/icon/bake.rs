@@ -7,8 +7,8 @@ use std::{
 };
 
 use assets::{
-    AssetError, BlockVisualId, CompiledEntityAssets, IconBlockModel, IconBlockSheet, IconSprite,
-    NetworkIdMode, RuntimeAssets, compose_block_item_sheet,
+    AssetError, BlockVisualId, CompiledEntityAssets, EntityGeometry, IconBlockModel,
+    IconBlockSheet, IconSprite, NetworkIdMode, RuntimeAssets, compose_block_item_sheet,
 };
 use sha2::{Digest, Sha256};
 
@@ -96,7 +96,7 @@ pub(super) fn run(
             } else if plan.is_ok() {
                 continue;
             } else {
-                model_raster(root, world, blocks, visual, metadata)?
+                model_raster(root, world, blocks, &compiled.geometries, visual, metadata)?
             };
             if let Some((raster, state)) = raster {
                 let sprite = if let Some(state) = state {
@@ -259,6 +259,7 @@ fn model_raster(
     root: &Path,
     world: &RuntimeAssets,
     blocks: Option<&IconBlocks>,
+    geometries: &[EntityGeometry],
     visual: u32,
     metadata: u32,
 ) -> Result<Option<(IconSprite, Option<BlockVisualId>)>, AssetError> {
@@ -267,7 +268,10 @@ fn model_raster(
     if let Ok(model) = model::Model::read(world, state) {
         return Ok(Some((model.raster(), Some(state))));
     }
-    Ok(fallback_raster(root, world, blocks, visual, metadata)?.map(|raster| (raster, None)))
+    Ok(
+        fallback_raster(root, world, blocks, geometries, visual, metadata)?
+            .map(|raster| (raster, None)),
+    )
 }
 
 /// Explicit inventory or carried faces, or a block entity's model, for a block without geometry.
@@ -275,6 +279,7 @@ fn fallback_raster(
     root: &Path,
     world: &RuntimeAssets,
     blocks: Option<&IconBlocks>,
+    geometries: &[EntityGeometry],
     visual: BlockVisualId,
     metadata: u32,
 ) -> Result<Option<IconSprite>, AssetError> {
@@ -291,7 +296,7 @@ fn fallback_raster(
         ));
     }
     if let Some(name) = blocks.name(visual)
-        && let Some(raster) = super::block_entity::raster(root, name, metadata)?
+        && let Some(raster) = super::block_entity::raster(root, name, metadata, geometries)?
     {
         return Ok(Some(raster));
     }
@@ -467,7 +472,7 @@ mod block_entity_tests {
                 .find(|record| record.name.as_ref() == name)
                 .unwrap()
                 .sequential_id;
-            model_raster(root.path(), &world, Some(&blocks), visual, 0)
+            model_raster(root.path(), &world, Some(&blocks), &[], visual, 0)
                 .unwrap()
                 .map(|(icon, _)| icon)
         };
@@ -580,7 +585,7 @@ mod block_entity_tests {
                 .find(|record| record.name.as_ref() == name)
                 .unwrap()
                 .sequential_id;
-            model_raster(root.path(), &world, Some(&blocks), visual, 0)
+            model_raster(root.path(), &world, Some(&blocks), &[], visual, 0)
                 .unwrap()
                 .map(|(icon, state)| {
                     assert_eq!(state, None, "{name} is a thumbnail, not world quads");
@@ -675,7 +680,7 @@ mod block_entity_tests {
                 .find(|record| record.name.as_ref() == name)
                 .unwrap()
                 .sequential_id;
-            let (raster, state) = model_raster(root.path(), &world, Some(&blocks), visual, 0)
+            let (raster, state) = model_raster(root.path(), &world, Some(&blocks), &[], visual, 0)
                 .unwrap()
                 .expect("the inventory cube survives an entity-only placed visual");
             // Only template geometry is redrawn at runtime; these faces stay a thumbnail.

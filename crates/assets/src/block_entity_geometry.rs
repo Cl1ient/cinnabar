@@ -1,7 +1,49 @@
 //! Static authoring geometry shared by placed block entities and their inventory models.
 
+pub mod heads;
+
 pub type ModelBox = ([f32; 3], [f32; 3], [f32; 2]);
 pub type ModelFace = ([[f32; 3]; 4], [f32; 4]);
+
+/// A box in entity-geometry authoring space: pixels, front toward -Z, +Y up.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BoxSpec {
+    pub origin: [f32; 3],
+    pub size: [f32; 3],
+    /// Box-UV origin in texels of the logical texture.
+    pub uv: [f32; 2],
+    pub inflate: f32,
+}
+
+impl BoxSpec {
+    #[must_use]
+    pub const fn new(origin: [f32; 3], size: [f32; 3], uv: [f32; 2]) -> Self {
+        Self {
+            origin,
+            size,
+            uv,
+            inflate: 0.0,
+        }
+    }
+
+    #[must_use]
+    pub const fn inflated(mut self, inflate: f32) -> Self {
+        self.inflate = inflate;
+        self
+    }
+
+    /// The box's faces in [`box_faces`] order.
+    #[must_use]
+    pub fn faces(self) -> [ModelFace; 6] {
+        box_faces(self.origin, self.size, self.uv, self.inflate)
+    }
+}
+
+impl From<ModelBox> for BoxSpec {
+    fn from((origin, size, uv): ModelBox) -> Self {
+        Self::new(origin, size, uv)
+    }
+}
 
 pub const BANNER_TEXTURE: (&str, [f32; 2]) = ("textures/entity/banner/banner_base", [64.0; 2]);
 pub const BANNER_POLE: ModelBox = ([-1.0, -30.0, -1.0], [2.0, 42.0, 2.0], [44.0, 0.0]);

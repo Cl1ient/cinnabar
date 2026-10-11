@@ -454,6 +454,7 @@ dependencies = [
  "bitflags 2.13.0",
  "block-transform",
  "flate2",
+ "glam",
  "lewton",
  "rayon",
  "rustix 1.1.4",

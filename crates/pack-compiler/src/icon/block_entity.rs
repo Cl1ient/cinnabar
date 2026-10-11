@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use assets::{AssetError, IconSprite, block_entity_geometry as geometry};
+use assets::{AssetError, EntityGeometry, IconSprite, block_entity_geometry as geometry};
 
 use super::{blocks::IconBlocks, model::Model};
 
@@ -41,6 +41,7 @@ pub(super) fn raster(
     root: &Path,
     name: &str,
     metadata: u32,
+    geometries: &[EntityGeometry],
 ) -> Result<Option<IconSprite>, AssetError> {
     let mut projection: fn([f32; 3]) -> [f32; 3] = assets::gui_item::project_cube;
     let mut light = 1.0;
@@ -60,7 +61,7 @@ pub(super) fn raster(
         light = assets::gui_item::SHULKER_GUI_LIGHT;
         vec![part]
     } else if let Some(skull_type) = assets::vanilla_skull_type(name) {
-        let Some(part) = skull(skull_type) else {
+        let Some(part) = skull(skull_type, geometries) else {
             return Ok(None);
         };
         vec![part]
@@ -141,7 +142,7 @@ pub(super) fn raster(
     };
     let mut textures = Vec::with_capacity(parts.len());
     for part in &parts {
-        let Some(mut texture) = IconBlocks::sprite(root, &part.texture)? else {
+        let Some(mut texture) = IconBlocks::model_texture(root, &part.texture)? else {
             return Ok(None);
         };
         if part.color != [255; 3] {
@@ -179,30 +180,53 @@ pub(super) fn raster(
     ))
 }
 
-/// A box-model head in the ordinary cube frame, `None` for dragon and piglin heads. Like other
-/// block items' fronts, the face turns south; the 8-texel head fills the cube. Both are
-/// provisional until vanilla's skull GUI transform is measured.
-fn skull(skull_type: u8) -> Option<Part> {
-    let (texture, logical) = geometry::skull_texture(skull_type)?;
-    let mut part = boxes(texture, logical, &[geometry::SKULL_HEAD]);
-    if geometry::skull_has_hat(skull_type) {
-        let (origin, size, uv) = geometry::SKULL_HAT;
-        part.faces.extend(geometry::box_faces(
-            origin,
-            size,
-            uv,
-            geometry::SKULL_HAT_INFLATE,
-        ));
-    }
-    for (corners, _) in &mut part.faces {
-        // A half turn about Y, then 8 texels to one cube unit.
-        for [x, y, z] in corners {
-            *x = (4.0 - *x) / 8.0;
-            *y /= 8.0;
-            *z = (4.0 - *z) / 8.0;
+/// A head in the ordinary cube frame, from `geometries` for dragon and piglin heads. Like other
+/// block items' fronts, the face turns south, and the head's uninflated bounds fill the cube
+/// (an 8-texel head box spans it). Both are provisional until vanilla's skull GUI transform is
+/// measured.
+fn skull(skull_type: u8, geometries: &[EntityGeometry]) -> Option<Part> {
+    let (model, texture) = geometry::heads::skull_model(skull_type, geometries)?;
+    let mut bounds = [[f32::MAX; 3], [f32::MIN; 3]];
+    for head_box in &model.boxes {
+        let bare = geometry::heads::HeadBox {
+            matrix: head_box.matrix,
+            spec: head_box.spec.inflated(0.0),
+        };
+        for point in bare.faces().into_iter().flat_map(|(corners, _)| corners) {
+            for axis in 0..3 {
+                bounds[0][axis] = bounds[0][axis].min(point[axis]);
+                bounds[1][axis] = bounds[1][axis].max(point[axis]);
+            }
         }
     }
-    Some(part)
+    let [min, max] = bounds;
+    let extent = (0..3).map(|axis| max[axis] - min[axis]).fold(0.0, f32::max);
+    if !extent.is_finite() || extent <= 0.0 {
+        return None;
+    }
+    let center = [0, 2].map(|axis| (min[axis] + max[axis]) / 2.0);
+    let faces = model
+        .boxes
+        .iter()
+        .flat_map(geometry::heads::HeadBox::faces)
+        .map(|(corners, texels)| {
+            // A half turn about Y, centered, bottom on the floor.
+            let corners = corners.map(|[x, y, z]| {
+                [
+                    (center[0] - x) / extent + 0.5,
+                    (y - min[1]) / extent,
+                    (center[1] - z) / extent + 0.5,
+                ]
+            });
+            (corners, texels)
+        })
+        .collect();
+    Some(Part {
+        texture: texture.to_owned(),
+        logical: model.texture,
+        faces,
+        color: [255; 3],
+    })
 }
 
 /// Groups the authored lectern faces by their terrain texture.
@@ -227,3 +251,6 @@ fn lectern() -> Vec<Part> {
     }
     parts
 }
+
+#[cfg(test)]
+mod tests;

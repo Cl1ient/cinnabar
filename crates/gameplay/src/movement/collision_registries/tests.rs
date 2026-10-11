@@ -74,7 +74,7 @@ fn legacy_synthetic_preg(
     records: &[assets::RegistryRecord],
 ) -> Vec<u8> {
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(assets::LEGACY_PHYSICS_REGISTRY_MAGIC);
+    bytes.extend_from_slice(assets::registry::LEGACY_PHYSICS_REGISTRY_MAGIC);
     bytes.extend_from_slice(&protocol.to_le_bytes());
     bytes.extend_from_slice(&u32::try_from(records.len()).unwrap().to_le_bytes());
     bytes.extend_from_slice(&Sha256::digest(breg));
@@ -500,7 +500,8 @@ fn valid_wrong_protocol_preg_fails_with_typed_cross_carrier_mismatch() {
 #[test]
 fn legacy_fixture_keeps_decoding_with_unresolved_movement() {
     let records = assets::read_registry(BREG_V1001).unwrap();
-    let preg = synthetic_preg(1001, BREG_V1001, &records);
+    let protocol = assets::registry_header_protocol(BREG_V1001).unwrap();
+    let preg = synthetic_preg(protocol, BREG_V1001, &records);
     let physics = assets::read_physics_registry(&preg, BREG_V1001, &records).unwrap();
     assert_eq!(physics.len(), records.len());
     for record in &records {
@@ -508,7 +509,7 @@ fn legacy_fixture_keeps_decoding_with_unresolved_movement() {
         assert_eq!(fact.network_hash, record.network_hash);
         assert_eq!(
             fact.movement_semantics,
-            assets::MovementSemantics::Unresolved
+            assets::registry::MovementSemantics::Unresolved
         );
         assert!(fact.shapes.is_none());
     }
@@ -543,7 +544,11 @@ fn mutating_the_authority_flips_the_binding_decision() {
     let preg = synthetic_preg(protocol, BREG_V2193, &records);
     assert!(bind(BREG_V2193, &preg, protocol).is_ok());
     assert!(matches!(
-        bind(BREG_V2193, &preg, 1001),
+        bind(
+            BREG_V2193,
+            &preg,
+            assets::registry_header_protocol(BREG_V1001).unwrap()
+        ),
         Err(PhysicsCollisionRegistryError::ProtocolMismatch { .. })
     ));
 }

@@ -5,14 +5,14 @@ use sha2::{Digest, Sha256};
 
 use crate::{AssetError, CollisionBox, RegistryRecord, read_registry_for_protocol};
 
-use crate::MovementSemantics;
+use crate::registry::MovementSemantics;
 use crate::registry::{LEGACY_PHYSICS_REGISTRY_MAGIC, PHYSICS_REGISTRY_MAGIC};
 
 mod encode;
 mod shapes;
 pub use encode::encode_physics_registry;
 const LEGACY_PHYSICS_REGISTRY_PROTOCOL: u32 = 1001;
-const HEADER_BYTES: usize = crate::PHYSICS_REGISTRY_HEADER_BYTES;
+const HEADER_BYTES: usize = crate::registry::PHYSICS_REGISTRY_HEADER_BYTES;
 const TRAILER_BYTES: usize = 32;
 const MAX_RECORDS: usize = 65_536;
 const MAX_BOXES: usize = 32;

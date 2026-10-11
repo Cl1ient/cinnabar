@@ -11,7 +11,7 @@ const BREG: &[u8] = include_bytes!("../../data/block-registry-v1001.bin");
 
 fn valid_preg(records: &[RegistryRecord]) -> Vec<u8> {
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(assets::LEGACY_PHYSICS_REGISTRY_MAGIC);
+    bytes.extend_from_slice(assets::registry::LEGACY_PHYSICS_REGISTRY_MAGIC);
     bytes.extend_from_slice(&1001_u32.to_le_bytes());
     bytes.extend_from_slice(&u32::try_from(records.len()).unwrap().to_le_bytes());
     bytes.extend_from_slice(&Sha256::digest(BREG));
@@ -400,16 +400,16 @@ fn active_physics_retains_explicit_support_for_every_independent_registry_state(
         let record = physics.by_network_hash(state.network_hash).unwrap();
         assert_eq!(physics.by_sequential_id(state.sequential_id), Some(record));
         match record.movement_semantics {
-            assets::MovementSemantics::Unresolved => unresolved += 1,
-            assets::MovementSemantics::Special => special += 1,
-            assets::MovementSemantics::Ordinary => {
+            assets::registry::MovementSemantics::Unresolved => unresolved += 1,
+            assets::registry::MovementSemantics::Special => special += 1,
+            assets::registry::MovementSemantics::Ordinary => {
                 panic!("unreviewed ordinary movement: {}", state.name)
             }
         }
         if state.name.as_ref() == "minecraft:cobblestone" {
             assert_eq!(
                 record.movement_semantics,
-                assets::MovementSemantics::Unresolved
+                assets::registry::MovementSemantics::Unresolved
             );
         }
     }
@@ -422,7 +422,7 @@ fn current_physics_rejects_stale_formats_and_unknown_support_bytes() {
     let protocol = assets::active_content_registry_protocol();
     let states = read_registry_for_protocol(BREG_V2193, protocol).unwrap();
     let mut stale = PREG_V2193.to_vec();
-    stale[..8].copy_from_slice(assets::LEGACY_PHYSICS_REGISTRY_MAGIC);
+    stale[..8].copy_from_slice(assets::registry::LEGACY_PHYSICS_REGISTRY_MAGIC);
     resign(&mut stale);
     let error =
         read_physics_registry_for_protocol(&stale, BREG_V2193, &states, protocol).unwrap_err();
@@ -431,8 +431,8 @@ fn current_physics_rejects_stale_formats_and_unknown_support_bytes() {
         "stale physics format; rebuild with make assets physics-assets",
     );
     let mut unknown = PREG_V2193.to_vec();
-    unknown[assets::PHYSICS_REGISTRY_HEADER_BYTES + assets::PHYSICS_MOVEMENT_SEMANTICS_OFFSET] =
-        u8::MAX;
+    unknown[assets::registry::PHYSICS_REGISTRY_HEADER_BYTES
+        + assets::registry::PHYSICS_MOVEMENT_SEMANTICS_OFFSET] = u8::MAX;
     resign(&mut unknown);
     let error =
         read_physics_registry_for_protocol(&unknown, BREG_V2193, &states, protocol).unwrap_err();
@@ -454,7 +454,7 @@ fn compiler_seed_retains_movement_support_but_cannot_bind_at_runtime() {
     let record = physics.by_network_hash(special.network_hash).unwrap();
     assert_eq!(
         record.movement_semantics,
-        assets::MovementSemantics::Special
+        assets::registry::MovementSemantics::Special
     );
     assert!(record.shapes.is_none());
     let error =
@@ -477,9 +477,9 @@ fn compiled_physics_roundtrip_retains_movement_support_and_shapes() {
                 .clone()
         })
         .collect();
-    records[0].movement_semantics = assets::MovementSemantics::Special;
-    records[1].movement_semantics = assets::MovementSemantics::Ordinary;
-    records[2].movement_semantics = assets::MovementSemantics::Unresolved;
+    records[0].movement_semantics = assets::registry::MovementSemantics::Special;
+    records[1].movement_semantics = assets::registry::MovementSemantics::Ordinary;
+    records[2].movement_semantics = assets::registry::MovementSemantics::Unresolved;
     let bytes = assets::encode_physics_registry(protocol, BREG_V2193, &states, &records).unwrap();
     let decoded =
         read_physics_registry_for_protocol(&bytes, BREG_V2193, &states, protocol).unwrap();

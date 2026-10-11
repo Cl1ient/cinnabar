@@ -47,7 +47,7 @@ mod physics_registry;
 mod pinned_content;
 mod potion;
 mod provenance;
-mod registry;
+pub mod registry;
 mod runtime;
 mod seasonal_foliage;
 mod server_lang;
@@ -258,10 +258,8 @@ pub use provenance::{
     vanilla_source, vanilla_source_manifest_sha256,
 };
 pub use registry::{
-    BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole,
-    LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState, ModelStateField, MovementSemantics,
-    PHYSICS_MOVEMENT_SEMANTICS_OFFSET, PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES,
-    PHYSICS_REGISTRY_MAGIC, RegistryProvenance, RegistryRecord, read_registry,
+    BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole, ModelFamily,
+    ModelState, ModelStateField, RegistryProvenance, RegistryRecord, read_registry,
     read_registry_for_protocol, registry_header_protocol,
 };
 pub use runtime::{

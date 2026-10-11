@@ -330,7 +330,9 @@ fn respawn_anchor_partial_flipbooks_keep_unanimated_charges_drawable() {
                 );
             } else {
                 assert_eq!(top.animation, assets::NO_ANIMATION);
-                let mip = &world.texture_pages()[top.texture.page() as usize].texture.mips[0];
+                let mip = &world.texture_pages()[top.texture.page() as usize]
+                    .texture
+                    .mips[0];
                 let offset = top.texture.layer() as usize * (mip.size * mip.size * 4) as usize;
                 let expected = if charge == 0 {
                     [79, 17, 139, 255]

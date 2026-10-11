@@ -4195,6 +4195,9 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       strict Clippy/formatting, full 16,913-state ratchet, and independent review
       green). Deterministic gallery/native GPU evidence remains in the shared
       residual-family live gate.
+    - [ ] Barrel and adjacent trapdoor render parity: barrel facing/open artwork,
+      grain direction and material ownership have regression coverage. The reported
+      texture leakage and trapdoor edge UVs still need scoped rendered verification.
     - [x] Connected wall templates: all 5,184 states across 32 wall materials
       decode the exact 9-bit north/east/south/west none/short/tall selector and
       center-post bit into deterministic zero-to-30-quad packed models. Visible

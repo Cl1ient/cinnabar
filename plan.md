@@ -83,9 +83,11 @@ gates remain open.
 Respawn anchors compile six cube faces for charge states zero through four. Terrain
 arrays and animated top materials retain the selected charge, while the shared
 carried-face sheet preserves pack overrides for inventory and held rendering.
-Original-art regressions cover carrier roundtrips, short arrays, scalar overrides
-and malformed states. Rendered charging and held-item acceptance remain incomplete;
-this change does not close broader block, animation or performance parity gates.
+Original-art regressions cover carrier roundtrips, short arrays, scalar overrides,
+transparent faces, partial animations and malformed states. Headless captures with
+checked world and icon carriers verify the held cube and all five charge textures
+through placement and charging input. Server-pack compilation, broader block and
+animation parity, and performance acceptance remain incomplete.
 
 ## End rod terrain geometry
 

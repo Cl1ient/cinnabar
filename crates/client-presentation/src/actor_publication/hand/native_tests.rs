@@ -736,6 +736,7 @@ pub(super) fn player_feed() -> client_world::LocalPlayerFeed {
         pitch: 5.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_slot: 0,
         main_hand_stack_id: None,

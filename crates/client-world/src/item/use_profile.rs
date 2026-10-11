@@ -147,6 +147,22 @@ impl ItemStateStore {
         self.use_profiles = profiles;
     }
 
+    /// Reads animation duration from the selected numerical admission; local zero means empty.
+    pub(crate) fn held_use_ticks(
+        &self,
+        actor: ActorLifetimeId,
+        hand: ActorHandedness,
+        local_network_id: Option<i32>,
+    ) -> u32 {
+        let network_id = local_network_id
+            .or_else(|| {
+                self.get_in_hand(actor, hand)
+                    .map(|held| held.item.identity.network_id)
+            })
+            .unwrap_or(0);
+        self.item_use_profile(network_id).ticks.unwrap_or(0)
+    }
+
     /// Retrieves admitted facts without resolving names or parsing component data.
     pub(crate) fn item_use_profile(&self, network_id: i32) -> EffectiveItemUse {
         self.use_profiles
@@ -266,6 +282,69 @@ mod tests {
             canonical_empty_component_data: false,
             item_tags: Arc::from([]),
         }
+    }
+
+    #[test]
+    fn animation_duration_uses_numeric_admission_for_both_hands_and_replacements() {
+        let mut store = ItemStateStore::diagnostic();
+        let actor = ActorLifetimeId {
+            session_id: 1,
+            dimension: 0,
+            runtime_id: 7,
+            spawn_revision: 1,
+        };
+        let component = |ticks| protocol::ItemComponents {
+            use_duration_ticks: Some(ticks),
+            ..Default::default()
+        };
+        assert!(store.apply_registry(protocol::ItemRegistryEvent {
+            entries: Arc::from([
+                entry(15000, "fixture:main", component(17)),
+                entry(15001, "fixture:off", component(23))
+            ])
+        }));
+        for (hand, network_id, ticks) in [
+            (ActorHandedness::Right, 15000, 17),
+            (ActorHandedness::Left, 15001, 23),
+        ] {
+            let extra = Arc::<[u8]>::from([]);
+            let stack = NetworkItemStack {
+                network_id,
+                metadata: 0,
+                stack_network_id: -1,
+                count: 1,
+                nbt_digest: Sha256::digest(&extra).into(),
+                block_runtime_id: 0,
+                extra_data: extra,
+            };
+            assert!(store.apply_equipment(
+                actor,
+                1,
+                EquipmentEvent {
+                    actor_runtime_id: actor.runtime_id,
+                    stack,
+                    inventory_slot: 0,
+                    selected_slot: 0,
+                    window_id: 0,
+                    handedness: Some(hand),
+                }
+            ));
+            assert_eq!(store.held_use_ticks(actor, hand, None), ticks);
+            assert_eq!(store.held_use_ticks(actor, hand, Some(network_id)), ticks);
+            assert_eq!(store.held_use_ticks(actor, hand, Some(0)), 0);
+        }
+        assert!(store.apply_registry(protocol::ItemRegistryEvent {
+            entries: Arc::from([entry(15000, "fixture:renamed", component(31))])
+        }));
+        assert_eq!(
+            store.held_use_ticks(actor, ActorHandedness::Right, None),
+            31
+        );
+        assert_eq!(
+            store.held_use_ticks(actor, ActorHandedness::Right, Some(15000)),
+            31
+        );
+        assert_eq!(store.held_use_ticks(actor, ActorHandedness::Left, None), 0);
     }
 
     #[test]

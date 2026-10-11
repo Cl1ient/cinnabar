@@ -188,11 +188,6 @@ impl ItemStateStore {
         }
     }
 
-    /// Ticks the item can be used for, when the pack states it.
-    pub(crate) fn max_use_ticks(&self, identifier: &str) -> Option<u32> {
-        self.use_durations.as_ref()?.get(identifier).copied()
-    }
-
     /// Replaces the session's effective compiled and server-defined attack facts.
     pub(crate) fn set_attack_timings(
         &mut self,

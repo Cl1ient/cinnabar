@@ -117,6 +117,7 @@ impl ActorStore {
             local_view_bobbing: true,
             local_flying: false,
             local_hands: [None, None],
+            local_held_network_ids: [0; 2],
             local_main_metadata: 0,
             local_main_stack_id: None,
             local_main_slot: 0,
@@ -171,6 +172,7 @@ impl ActorStore {
         self.local_view_bobbing = feed.view_bobbing;
         self.local_flying = feed.flying;
         self.local_hands = [feed.main_hand.clone(), feed.off_hand.clone()];
+        self.local_held_network_ids = feed.held_network_ids;
         self.local_main_metadata = feed.main_hand_metadata;
         self.local_main_stack_id = feed.main_hand_stack_id.filter(|id| *id > 0);
         self.local_main_slot = feed.main_hand_slot;

@@ -382,10 +382,6 @@ impl WorldAuthority {
     pub fn item_use_profile(&self, network_id: i32) -> crate::EffectiveItemUse {
         self.actors.item_use_profile(network_id)
     }
-    /// Returns the declared duration used by the item animation query.
-    pub fn item_max_use_ticks(&self, identifier: &str) -> Option<u32> {
-        self.actors.item_max_use_ticks(identifier)
-    }
     /// Installs effective item-directed attack and kinetic presentation facts.
     pub fn set_item_attack_timings(
         &mut self,

@@ -582,7 +582,11 @@ mod tests {
                 "/home/dev",
             ),
         ] {
-            let layout = InstallLayout::resolve(platform, &environment(executable, home)).unwrap();
+            let mut env = environment(executable, home);
+            if platform == Platform::Windows {
+                env.local_app_data = Some(PathBuf::from("C:/Users/dev/AppData/Local"));
+            }
+            let layout = InstallLayout::resolve(platform, &env).unwrap();
             assert_eq!(
                 layout.physics_registry.file_name().unwrap(),
                 assets::carriers::physics_registry_basename()

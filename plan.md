@@ -7386,3 +7386,10 @@ sequential and hashed ID modes. Replacing the custom palette or starting another
 session invalidates highlight discovery. Unresolved identifiers are reported when
 that mapping is refreshed. This closes the custom-name lookup gap; wider selection
 shape and frame performance acceptance remain incomplete.
+
+### Typed Molang query contracts (incomplete query behavior)
+
+Admitted query symbols bind to typed handlers before evaluation. The query manifest owns
+argument forms, output kinds and implementation support. Queries marked unimplemented
+retain their explicit idle behavior; provisional queries still need matched behavior
+verification. Typed dispatch does not close the actor animation parity gate.

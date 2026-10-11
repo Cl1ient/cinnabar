@@ -320,6 +320,10 @@ impl VisualCompiler {
                 quads: &mut self.model_quads,
             },
         ));
+        match super::respawn_anchor::compile_rule(record, inputs) {
+            CompileRuleResult::NoMatch => {}
+            outcome => return Ok(outcome),
+        }
         ordered_rule!(super::fallback::compile_rule(
             record,
             inputs,

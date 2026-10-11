@@ -191,6 +191,7 @@ pub(crate) struct ActorAnimationStore {
     rigs: BTreeMap<ActorLifetimeId, ActorRigState>,
     skin_preparation: skin::SkinPreparationQueue,
     runtime_to_lifetime: HashMap<u64, ActorLifetimeId>,
+    mount_equipment: HashMap<u64, assets::entity::mount::MountEquipment>,
     /// First actor the world budget skipped last tick, where the next tick starts.
     first_starved: Option<ActorLifetimeId>,
     local_motion_authority: Option<(u64, (u64, u64))>,
@@ -426,6 +427,7 @@ impl ActorAnimationStore {
             rigs: BTreeMap::new(),
             skin_preparation: skin::SkinPreparationQueue::default(),
             runtime_to_lifetime: HashMap::new(),
+            mount_equipment: HashMap::new(),
             first_starved: None,
             local_motion_authority: None,
             completed_tick: 0,
@@ -458,11 +460,13 @@ impl ActorAnimationStore {
         self.prewarm_skin_catalog();
         self.local_motion_authority = None;
         self.runtime_to_lifetime.clear();
+        self.mount_equipment.clear();
         self.completed_tick = 0;
         self.bump_generation();
     }
 
     pub(crate) fn remove_runtime(&mut self, runtime_id: u64) {
+        self.mount_equipment.remove(&runtime_id);
         if let Some(lifetime) = self.runtime_to_lifetime.remove(&runtime_id) {
             self.rigs.remove(&lifetime);
         }
@@ -470,6 +474,8 @@ impl ActorAnimationStore {
 
     pub(crate) fn insert(&mut self, session_id: u64, dimension: i32, actor: &ActorSnapshot) {
         self.remove_runtime(actor.runtime_id);
+        self.mount_equipment
+            .insert(actor.runtime_id, self.resolve_mount_equipment(actor));
         let Some(assets) = self.assets.clone() else {
             return;
         };
@@ -782,6 +788,7 @@ mod geometry;
 mod horse;
 mod hud;
 mod java;
+mod mount;
 mod spear;
 pub use java::retarget::JavaRetargetCache;
 pub use java::{JavaHeldItem, JavaMotion, java_mounted_body_yaw, java_walked_distance};

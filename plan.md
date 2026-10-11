@@ -7589,3 +7589,14 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+Mount equipment admission is incomplete. Each compiled entity symbol carries a
+typed unresolved, empty, supported or provisional equipment disposition. The
+existing eleven mount layouts are retained as provisional facts in one
+hash-checked source; they do not prove active component groups or the full native
+inventory. Actor admission caches these facts, including unresolved pack
+replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
+fallback drawing or pointer handling. Active equippable components, accepted
+items, conditional activation, advertised custom bases and later mount layouts
+remain incomplete and do not close the entity parity gate. Entity carrier 11
+requires a `make assets` rebuild.

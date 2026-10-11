@@ -25,6 +25,7 @@ fn camera_compiled() -> assets::CompiledEntityAssets {
     symbols.insert(
         2,
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: title.identifier.clone(),
             source_index: title.source_index,
@@ -286,6 +287,7 @@ fn inactive_camera_compiled() -> assets::CompiledEntityAssets {
     symbols.insert(
         4,
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Animation,
             identifier: "animation.zz_camera".into(),
             source_index: 0,
@@ -521,6 +523,7 @@ fn server_camera_animation_outside_rig_bindings_samples_between_ticks() {
     symbols.insert(
         5,
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Animation,
             identifier: "animation.zz_server_camera".into(),
             source_index: 0,
@@ -824,6 +827,7 @@ fn local_swing_wrap_resamples_controller_weight_without_advancing_tick_state() {
     symbols.insert(
         4,
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::AnimationController,
             identifier: "controller.animation.test".into(),
             source_index: 0,

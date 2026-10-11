@@ -16,7 +16,9 @@ pub(in crate::actor_animation) fn counting_random_assets_for(
 }
 
 /// Builds a mutable counting rig for tests that add render-controller branches.
-fn counting_random_compiled(identifier: &str) -> assets::CompiledEntityAssets {
+pub(in crate::actor_animation) fn counting_random_compiled(
+    identifier: &str,
+) -> assets::CompiledEntityAssets {
     let mut compiled = super::super::attachable::tests::compiled_fixture();
     compiled.sources[1].path = "entity/item.json".into();
     compiled.symbols[4].kind = EntityAssetKind::Entity;
@@ -92,6 +94,7 @@ fn occluded_ordinary_rigs_preserve_the_budget_for_visible_frame_layers() {
     symbols.insert(
         1,
         assets::EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Entity,
             identifier: "minecraft:visible_marker".into(),
             source_index: 1,

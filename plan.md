@@ -7227,3 +7227,14 @@ remain incomplete. These fixtures do not close the full parity gate.
 Crack surfaces now follow the admitted runtime asset identity as well as block
 identity, transform, and column displacement. Resource reload replaces cached
 surfaces in the current session; unchanged assets keep shared geometry.
+
+### Creative search by displayed name
+
+Creative search uses the same component and localized item-name projection as
+item presentation. Retained matches follow component and language replacements
+as well as catalog, registry, tab, and query changes. Unchanged filters keep their
+allocation-free retained index view.
+
+Incomplete parity: formatted-name cleanup, Unicode case folding and alternate
+name search modes remain unverified. Display-name projection and cache freshness
+do not close those search acceptance gates.

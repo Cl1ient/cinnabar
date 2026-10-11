@@ -32,7 +32,7 @@ mod spawner;
 mod statue;
 
 pub use atlas::{AtlasRect, BlockEntityAtlas, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef};
-pub use banner::{BannerLayer, BannerModel, BannerMount, MAX_BANNER_LAYERS, pattern_texture};
+pub use banner::{BannerLayer, BannerModel, BannerMount};
 pub use beam::BeaconModel;
 pub use bed::{BedModel, bed_color};
 pub use bell::{BellAttachment, BellModel, swing_degrees};

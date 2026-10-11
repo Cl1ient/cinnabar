@@ -20,12 +20,14 @@ use crate::inventory::{InventoryPacketError, VerifiedNetworkItemStack};
 #[cfg(test)]
 mod animation_tests;
 mod attack;
+mod banner;
 mod components;
 mod display;
 mod icons;
 mod registry_capacity;
 
 pub use attack::{ItemAttackCooldown, ItemAttackTiming, KineticWeaponTiming};
+pub use banner::{ItemBannerPattern, item_banner_patterns};
 pub use components::{ItemComponents, item_components};
 pub use display::{
     ItemBook, ItemDisplay, MAX_BOOK_PAGES, item_book, item_bundle_id, item_display,

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use ui::UiVisual;
 
-use super::Painter;
+use super::{Painter, native_renderers::HudRenderer};
 use crate::ui_runtime::presentation::hud_layout::{HeartPaint, HungerPaint};
 
 mod hunger_animation;
@@ -19,6 +19,7 @@ pub(in crate::ui_runtime::presentation) use hunger_animation::HungerAnimation;
 
 const CROSSHAIR_TEXTURE: &str = "textures/ui/cross_hair";
 const CROSSHAIR_SIDE: f32 = 16.0;
+#[cfg(test)]
 pub(in super::super) const HUNGER_RENDERER: &str = "hunger_renderer";
 
 #[cfg(test)]
@@ -120,14 +121,14 @@ pub(super) fn paint(
     painter: &mut Painter<'_>,
     hud: &HudPaint,
     key: &str,
-    renderer: &str,
+    renderer: HudRenderer,
     data: &BTreeMap<String, Value>,
     dest: [f32; 4],
     alpha: &dyn Fn([u8; 4]) -> [u8; 4],
 ) -> bool {
     let top_left = [dest[0], dest[1]];
     let cells = match renderer {
-        "heart_renderer" => {
+        HudRenderer::Heart => {
             let visible = visible_bounds(painter);
             if visible[0] < visible[2] && visible[1] < visible[3] {
                 for cell in hud.hearts.visible_cells(top_left, painter.px, visible) {
@@ -136,8 +137,8 @@ pub(super) fn paint(
             }
             return true;
         }
-        "armor_renderer" => (&hud.armor, top_left),
-        HUNGER_RENDERER => {
+        HudRenderer::Armor => (&hud.armor, top_left),
+        HudRenderer::Hunger => {
             let updates = painter.art.hunger_update.map_or(1, |advance| {
                 advance(
                     key,
@@ -151,14 +152,14 @@ pub(super) fn paint(
             }
             return true;
         }
-        "bubbles_renderer" => (&hud.bubbles, top_left),
-        "horse_heart_renderer" => (&hud.mount_hearts, top_left),
-        "mob_effects_renderer" => (&hud.effects, [dest[2], dest[1]]),
-        "hotbar_renderer" => {
+        HudRenderer::Bubbles => (&hud.bubbles, top_left),
+        HudRenderer::HorseHeart => (&hud.mount_hearts, top_left),
+        HudRenderer::Effects => (&hud.effects, [dest[2], dest[1]]),
+        HudRenderer::Hotbar => {
             slot_art(painter, data, dest, alpha);
             return true;
         }
-        "horse_jump_renderer" => {
+        HudRenderer::HorseJump => {
             if let Some((background, fill, filled)) = hud.mount_jump {
                 let px = painter.px;
                 sheet(painter, background, dest, alpha);
@@ -179,7 +180,7 @@ pub(super) fn paint(
             return true;
         }
         // The built-in Java pack's notched boss-bar overlay.
-        "java_boss_notches" => {
+        HudRenderer::BossNotches => {
             let notches = data
                 .get("#bar_notches")
                 .and_then(Value::as_f64)
@@ -192,7 +193,7 @@ pub(super) fn paint(
             }
             return true;
         }
-        "cursor_renderer" => {
+        HudRenderer::Cursor => {
             if let Some(sprite) = hud.crosshair {
                 if let Some(spec) = &hud.custom_crosshair {
                     if !painter.mod_crosshair(spec, dest) {
@@ -204,7 +205,7 @@ pub(super) fn paint(
             }
             return true;
         }
-        "hotbar_cooldown_renderer" => {
+        HudRenderer::HotbarCooldown => {
             let index = data
                 .get("#collection_index")
                 .and_then(Value::as_f64)
@@ -233,16 +234,6 @@ pub(super) fn paint(
             }
             return true;
         }
-        // Renderers with no Cinnabar state draw nothing, as with no data.
-        "dash_renderer"
-        | "locator_bar"
-        | "vignette_renderer"
-        | "progress_indicator_renderer"
-        | "camera_renderer"
-        | "editor_gizmo_renderer"
-        | "editor_compass_renderer"
-        | "editor_volume_highlight_renderer" => return true,
-        _ => return false,
     };
     let (cells, origin) = cells;
     let visible = visible_bounds(painter);

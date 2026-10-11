@@ -52,6 +52,7 @@ fn button_frame(name: &str, size: [f64; 2]) -> EngineFrame {
         identity: None,
         hits: json_ui::hit_regions(&laid).into(),
         report,
+        unsupported_renderers: Vec::new(),
         cancel_target: None,
         origin: [0.0; 2],
         scale: 1.0,

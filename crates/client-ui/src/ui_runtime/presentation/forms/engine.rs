@@ -21,11 +21,14 @@ use {
     ui::{FONT_DESIGN_PIXEL_TEXELS, IconRef},
 };
 
+mod banner_renderer;
 pub(super) mod credits_renderer;
 mod fill_renderers;
 mod formatting_colors;
 pub mod hud_renderers;
 mod item_renderer;
+pub mod native_renderers;
+use native_renderers::NativeRenderer;
 mod menu_renderers;
 mod menu_title;
 mod mod_crosshair;
@@ -484,15 +487,20 @@ fn render_with<R: Borrow<FormRender>>(
         .iter()
         .chain(out.overlay)
         .filter(|node| !art.omits(node))
-        .filter_map(|node| match &node.draw {
-            Draw::Sprite { texture, .. } => Some(texture.as_str()),
+        .flat_map(|node| match &node.draw {
+            Draw::Sprite { texture, .. } => vec![texture.as_str()],
             Draw::Custom { renderer, .. } if renderer == tooltip::RENDERER => {
-                Some(tooltip::BACKGROUND_TEXTURE)
+                vec![tooltip::BACKGROUND_TEXTURE]
             }
             Draw::Custom { renderer, .. } if renderer == credits_renderer::RENDERER => {
-                Some(credits_renderer::TITLE_TEXTURE)
+                vec![credits_renderer::TITLE_TEXTURE]
             }
-            _ => None,
+            Draw::Custom { renderer, data }
+                if NativeRenderer::parse(renderer) == Some(NativeRenderer::BannerPattern) =>
+            {
+                banner_renderer::texture_paths(data)
+            }
+            _ => Vec::new(),
         })
         .chain(
             art.hud
@@ -554,6 +562,20 @@ fn render_with<R: Borrow<FormRender>>(
         identity,
         hits: render.hits.clone(),
         report: render.report.clone(),
+        unsupported_renderers: render
+            .nodes
+            .iter()
+            .chain(out.overlay)
+            .filter(|node| !art.omits(node))
+            .filter_map(|node| match &node.draw {
+                Draw::Custom { renderer, .. } if NativeRenderer::parse(renderer).is_none() => {
+                    Some(renderer.clone())
+                }
+                _ => None,
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect(),
         cancel_target: render.cancel_target.clone(),
         origin,
         scale: px,
@@ -723,67 +745,6 @@ impl Painter<'_> {
         );
         self.clip = Some((clip, id));
         Ok(id)
-    }
-
-    /// Bridge the custom renderers screens use: item icons, the durability bar, the
-    /// player preview, tooltips, and the HUD's native renderers. Others draw nothing yet.
-    fn custom(
-        &mut self,
-        key: &str,
-        renderer: &str,
-        data: &std::collections::BTreeMap<String, serde_json::Value>,
-        dest: [f32; 4],
-        alpha: impl Fn([u8; 4]) -> [u8; 4],
-    ) -> Option<(UiVisual, [f32; 4])> {
-        if let Some(hud) = self.art.hud
-            && hud_renderers::paint(self, hud, key, renderer, data, dest, &alpha)
-        {
-            return None;
-        }
-        match renderer {
-            "cinnabar_vector_icon" => Some((self.vector_icon(data, dest, &alpha)?, dest)),
-            "cinnabar_rounded_rectangle" => {
-                Some((self.rounded_rectangle(data, dest, &alpha)?, dest))
-            }
-            credits_renderer::RENDERER => {
-                self.credits(dest, &alpha);
-                None
-            }
-            "inventory_item_renderer" => {
-                let icon = item_renderer::icon(data, self.art.icons, self.art.id_aux)?;
-                Some((icon.visual(alpha([255; 4])), dest))
-            }
-            "progress_bar_renderer" => {
-                self.progress_bar(data, dest, &alpha);
-                None
-            }
-            "gradient_renderer" => Some((self.gradient(data, &alpha)?, dest)),
-            "animated_gif_renderer" => self.animated_gif(data, dest, &alpha),
-            "profile_image_renderer" => {
-                // A friend row names its own gamerpic; elsewhere it is the player's.
-                let portrait = match data.get("#profile_image_options") {
-                    Some(serde_json::Value::String(path)) => *self.art.images?.get(path)?,
-                    _ => self.art.portrait?,
-                };
-                Some((
-                    UiVisual::Sprite {
-                        texture_page: portrait.page,
-                        uv: portrait.uv,
-                        color: alpha([255; 4]),
-                    },
-                    dest,
-                ))
-            }
-            "live_player_renderer" | "paper_doll_renderer" | "hud_player_renderer" => {
-                self.player_preview(renderer, data, dest, &alpha)
-            }
-            "splash_text_renderer" => {
-                self.splash(dest, &alpha);
-                None
-            }
-            "name_tag_renderer" => self.name_tag(data, dest, &alpha),
-            _ => None,
-        }
     }
 
     /// A sprite of the texture at `path` (server pack first, then the carrier),

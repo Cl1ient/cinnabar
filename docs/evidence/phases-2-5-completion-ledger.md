@@ -197,3 +197,7 @@ The account core publishes menu, world-default, Realm and generic featured/Exper
 Exact heartbeat, platform configuration, server overrides, permission gates and
 friends-visible acceptance remain incomplete. No existing completion entry is
 advanced by this feature; see `docs/reference/xbox-presence.md` and `plan.md`.
+
+## Loom banner previews and renderer capabilities
+
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. The renderer registry reports unsupported native renderer names in the frame. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.

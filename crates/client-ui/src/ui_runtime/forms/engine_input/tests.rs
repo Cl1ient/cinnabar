@@ -627,6 +627,7 @@ fn unchecked_dropdown_options_leave_toggle_answers_unchanged() {
         identity: Some(runtime.server_forms().active().unwrap().identity),
         hits: std::sync::Arc::from([]),
         report: Default::default(),
+        unsupported_renderers: Vec::new(),
         cancel_target: None,
         origin: [0.0; 2],
         scale: 1.0,

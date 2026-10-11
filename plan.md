@@ -7223,3 +7223,9 @@ remain incomplete. These fixtures do not close the full parity gate.
 Crack surfaces now follow the admitted runtime asset identity as well as block
 identity, transform, and column displacement. Resource reload replaces cached
 surfaces in the current session; unchanged assets keep shared geometry.
+
+## Loom banner previews and renderer capabilities
+
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. The renderer registry reports unsupported native renderer names in the frame.
+
+Incomplete parity: recipe eligibility, exact pattern-choice styling and the remaining native renderers remain open.

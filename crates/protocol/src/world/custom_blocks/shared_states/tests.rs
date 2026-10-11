@@ -110,3 +110,31 @@ fn unsupported_definitions_share_an_empty_result_without_cache_admission() {
     assert!(first.is_empty() && next.is_empty());
     assert_eq!(allocations, 0);
 }
+
+#[test]
+fn reconnect_refills_a_full_cache_with_linear_eviction_work() {
+    let mut cache = Cache::default();
+    for _ in 0..MAX_CACHED_DEFINITIONS {
+        let mut definition = block();
+        definition.state_count = 1;
+        definition.visual = Arc::default();
+        assert_eq!(cache.resolve(&definition).len(), 1);
+    }
+    assert_eq!(cache.entries.len(), MAX_CACHED_DEFINITIONS);
+    assert_eq!(cache.eviction_visits, 0);
+    let retained = cache.entries.values().next().unwrap().states.clone();
+    for _ in 0..MAX_CACHED_DEFINITIONS {
+        let mut definition = block();
+        definition.state_count = 1;
+        definition.visual = Arc::default();
+        let states = cache.resolve(&definition);
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].hash, retained[0].hash);
+    }
+    assert_eq!(cache.eviction_visits, MAX_CACHED_DEFINITIONS);
+    assert_eq!(cache.entries.len(), MAX_CACHED_DEFINITIONS);
+    assert_eq!(cache.eviction_order.len(), MAX_CACHED_DEFINITIONS);
+    assert_eq!(cache.states, MAX_AGGREGATE_STATES);
+    assert!(cache.bytes <= MAX_AGGREGATE_STATE_BYTES);
+    assert_eq!(retained.len(), 1);
+}

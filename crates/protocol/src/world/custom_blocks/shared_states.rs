@@ -1,7 +1,7 @@
 //! Shared canonical state identities and aggregate admission work bounds.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     ops::Deref,
     sync::{Arc, Mutex, OnceLock, Weak},
 };
@@ -74,7 +74,6 @@ struct Entry {
     _name: Weak<str>,
     states: SharedStates,
     bytes: usize,
-    touched: u64,
 }
 
 #[derive(Default)]
@@ -82,7 +81,9 @@ struct Cache {
     entries: HashMap<(usize, usize), Entry>,
     states: usize,
     bytes: usize,
-    clock: u64,
+    eviction_order: VecDeque<(usize, usize)>,
+    #[cfg(test)]
+    eviction_visits: usize,
 }
 
 /// Computes a conservative bound on retained values and repeated canonical hashing work.
@@ -110,63 +111,66 @@ fn state_bytes(name: &str, visual: &CustomBlockVisuals, count: usize) -> Option<
 
 /// Resolves a source identity; weak handles prevent address reuse and force writes to detach.
 pub(super) fn resolve(block: &CustomBlock) -> SharedStates {
-    if block.visual.state_identity_incomplete {
+    if block.visual.state_identity_incomplete || block.visual.materialization_disabled {
         return SharedStates::empty();
     }
     static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
-    let key = (
-        Arc::as_ptr(&block.visual).addr(),
-        block.name.as_ptr().addr(),
-    );
     let mut cache = CACHE
         .get_or_init(Default::default)
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache.clock = cache.clock.wrapping_add(1);
-    let touched = cache.clock;
-    if let Some(entry) = cache.entries.get_mut(&key) {
-        entry.touched = touched;
-        return entry.states.clone();
-    }
-    let Some(count) = super::axis_combinations(&block.visual.state_axes) else {
-        return SharedStates::empty();
-    };
-    let Some(bytes) = state_bytes(&block.name, &block.visual, count as usize)
-        .filter(|bytes| *bytes <= MAX_AGGREGATE_STATE_BYTES)
-    else {
-        return SharedStates::empty();
-    };
-    let states = SharedStates(block.compile_states());
-    while cache.entries.len() >= MAX_CACHED_DEFINITIONS
-        || cache.states + states.len() > MAX_AGGREGATE_STATES
-        || cache.bytes + bytes > MAX_AGGREGATE_STATE_BYTES
-    {
-        let Some(oldest) = cache
-            .entries
-            .iter()
-            .min_by_key(|(_, entry)| entry.touched)
-            .map(|(key, _)| *key)
-        else {
-            break;
-        };
-        if let Some(entry) = cache.entries.remove(&oldest) {
-            cache.states -= entry.states.len();
-            cache.bytes -= entry.bytes;
+    cache.resolve(block)
+}
+
+impl Cache {
+    /// Shares cached identities and evicts oldest admissions in amortized constant time.
+    fn resolve(&mut self, block: &CustomBlock) -> SharedStates {
+        let key = (
+            Arc::as_ptr(&block.visual).addr(),
+            block.name.as_ptr().addr(),
+        );
+        if let Some(entry) = self.entries.get(&key) {
+            return entry.states.clone();
         }
+        let Some(count) = super::axis_combinations(&block.visual.state_axes) else {
+            return SharedStates::empty();
+        };
+        let Some(bytes) = state_bytes(&block.name, &block.visual, count as usize)
+            .filter(|bytes| *bytes <= MAX_AGGREGATE_STATE_BYTES)
+        else {
+            return SharedStates::empty();
+        };
+        let states = SharedStates(block.compile_states());
+        while self.entries.len() >= MAX_CACHED_DEFINITIONS
+            || self.states + states.len() > MAX_AGGREGATE_STATES
+            || self.bytes + bytes > MAX_AGGREGATE_STATE_BYTES
+        {
+            let Some(oldest) = self.eviction_order.pop_front() else {
+                break;
+            };
+            #[cfg(test)]
+            {
+                self.eviction_visits += 1;
+            }
+            if let Some(entry) = self.entries.remove(&oldest) {
+                self.states -= entry.states.len();
+                self.bytes -= entry.bytes;
+            }
+        }
+        self.states += states.len();
+        self.bytes += bytes;
+        self.entries.insert(
+            key,
+            Entry {
+                _visual: Arc::downgrade(&block.visual),
+                _name: Arc::downgrade(&block.name),
+                states: states.clone(),
+                bytes,
+            },
+        );
+        self.eviction_order.push_back(key);
+        states
     }
-    cache.states += states.len();
-    cache.bytes += bytes;
-    cache.entries.insert(
-        key,
-        Entry {
-            _visual: Arc::downgrade(&block.visual),
-            _name: Arc::downgrade(&block.name),
-            states: states.clone(),
-            bytes,
-            touched,
-        },
-    );
-    states
 }
 
 #[derive(Default)]

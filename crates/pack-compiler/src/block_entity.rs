@@ -26,8 +26,6 @@ const STRIP_TEXTURES: &[&str] = &[
 ];
 const MAX_STRIP_HEIGHT: u32 = 1024;
 const ATLAS_WIDTH: u32 = 1024;
-/// Pixel capacity shared by retained overlay tiles, including untouched base tiles.
-const MAX_OVERLAY_PIXELS: usize = ATLAS_WIDTH as usize * MAX_BLOCK_ENTITY_ATLAS_SIDE as usize;
 const GUTTER: u32 = 1;
 
 /// Whole directories whose textures (minus `_mers`) are packed.
@@ -300,51 +298,63 @@ fn decode(path: &Path, name: &str) -> Result<Outcome, AssetError> {
     }))
 }
 
-/// Shelf-packs textures tallest first into a fixed-width atlas.
-fn pack_atlas(
-    mut textures: Vec<(String, Texture)>,
-) -> Result<(u32, u32, Vec<u8>, Vec<BlockEntityPlacement>), AssetError> {
-    textures.sort_by(|left, right| {
+/// Computes the shelf placements and height, including gutters and unused shelf space.
+fn atlas_layout(
+    textures: &[(String, Texture)],
+) -> Result<(u32, Vec<BlockEntityPlacement>), AssetError> {
+    let mut ordered: Vec<_> = textures.iter().collect();
+    ordered.sort_by(|left, right| {
         right
             .1
             .height
             .cmp(&left.1.height)
             .then_with(|| left.0.cmp(&right.0))
     });
-    let mut placed = Vec::with_capacity(textures.len());
+    let mut placements = Vec::with_capacity(textures.len());
     let (mut x, mut y, mut shelf_height) = (0u32, 0u32, 0u32);
-    for (name, texture) in textures {
+    for (name, texture) in ordered {
+        if texture.width > ATLAS_WIDTH || texture.height > MAX_BLOCK_ENTITY_ATLAS_SIDE {
+            return Err(invalid("block-entity texture exceeds the atlas bounds"));
+        }
         if x + texture.width > ATLAS_WIDTH {
             x = 0;
             y += shelf_height + GUTTER;
             shelf_height = 0;
         }
-        placed.push((name, texture, x, y));
-        x += placed.last().map_or(0, |entry| entry.1.width) + GUTTER;
-        shelf_height = shelf_height.max(placed.last().map_or(0, |entry| entry.1.height));
-    }
-    let height = (y + shelf_height).max(1);
-    if height > MAX_BLOCK_ENTITY_ATLAS_SIDE {
-        return Err(invalid("block-entity atlas exceeds the height bound"));
-    }
-    let mut rgba8 = vec![0u8; ATLAS_WIDTH as usize * height as usize * 4];
-    let mut placements = Vec::with_capacity(placed.len());
-    for (name, texture, px, py) in placed {
-        for row in 0..texture.height {
-            let source = row as usize * texture.width as usize * 4;
-            let target = ((py + row) as usize * ATLAS_WIDTH as usize + px as usize) * 4;
-            let length = texture.width as usize * 4;
-            rgba8[target..target + length].copy_from_slice(&texture.rgba8[source..source + length]);
-        }
         placements.push(BlockEntityPlacement {
-            name: name.into(),
-            x: px,
-            y: py,
+            name: name.as_str().into(),
+            x,
+            y,
             width: texture.width,
             height: texture.height,
         });
+        x += texture.width + GUTTER;
+        shelf_height = shelf_height.max(texture.height);
+        if y + shelf_height > MAX_BLOCK_ENTITY_ATLAS_SIDE {
+            return Err(invalid("block-entity atlas exceeds the height bound"));
+        }
     }
+    let height = (y + shelf_height).max(1);
     placements.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok((height, placements))
+}
+
+/// Shelf-packs textures tallest first into a fixed-width atlas.
+fn pack_atlas(
+    mut textures: Vec<(String, Texture)>,
+) -> Result<(u32, u32, Vec<u8>, Vec<BlockEntityPlacement>), AssetError> {
+    let (height, placements) = atlas_layout(&textures)?;
+    textures.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut rgba8 = vec![0u8; ATLAS_WIDTH as usize * height as usize * 4];
+    for ((_, texture), placement) in textures.iter().zip(&placements) {
+        for row in 0..texture.height {
+            let source = row as usize * texture.width as usize * 4;
+            let target =
+                ((placement.y + row) as usize * ATLAS_WIDTH as usize + placement.x as usize) * 4;
+            let length = texture.width as usize * 4;
+            rgba8[target..target + length].copy_from_slice(&texture.rgba8[source..source + length]);
+        }
+    }
     Ok((ATLAS_WIDTH, height, rgba8, placements))
 }
 
@@ -481,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn oversized_overlay_set_retains_base_tiles_after_the_pixel_budget() {
+    fn oversized_overlay_set_retains_base_tiles_after_the_atlas_limit() {
         let placements: Vec<_> = (0..8)
             .map(|index| BlockEntityPlacement {
                 name: format!("textures/entity/chest/tile_{index}").into(),
@@ -526,7 +536,57 @@ mod tests {
     }
 
     #[test]
-    fn over_budget_base_is_rejected_before_reading_replacements() {
+    fn shelf_limited_overlays_keep_fitting_replacements_and_fall_back_per_tile() {
+        let placements: Vec<_> = (0..9)
+            .map(|index| BlockEntityPlacement {
+                name: format!("textures/entity/chest/tile_{index}").into(),
+                x: index,
+                y: 0,
+                width: 1,
+                height: 1,
+            })
+            .collect();
+        let bytes = encode_block_entity_catalog(
+            b"{}",
+            ATLAS_WIDTH,
+            1,
+            &vec![10; ATLAS_WIDTH as usize * 4],
+            &placements,
+        )
+        .unwrap();
+        let base = assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap();
+        let overlaid = overlay_block_entity_assets(&base, |name| {
+            let side = if name == placements[8].name.as_ref() {
+                16
+            } else {
+                512
+            };
+            Some(BlockEntityTexture {
+                width: side,
+                height: side,
+                rgba8: vec![200; (side * side * 4) as usize].into_boxed_slice(),
+            })
+        })
+        .unwrap();
+
+        assert!(overlaid.atlas_size()[1] <= MAX_BLOCK_ENTITY_ATLAS_SIDE);
+        for (index, placement) in placements.iter().enumerate() {
+            let tile = overlaid.placement(&placement.name).unwrap();
+            let expected_size = match index {
+                0..7 => [512, 512],
+                7 => [1, 1],
+                _ => [16, 16],
+            };
+            assert_eq!([tile.width, tile.height], expected_size);
+            assert_eq!(
+                tile_pixel(&overlaid, &placement.name),
+                [if index == 7 { 10 } else { 200 }; 4]
+            );
+        }
+    }
+
+    #[test]
+    fn unpackable_base_is_rejected_before_reading_replacements() {
         let height = MAX_BLOCK_ENTITY_ATLAS_SIDE / 2;
         let placements: Vec<_> = (0..3)
             .map(|index| BlockEntityPlacement {
@@ -574,60 +634,59 @@ pub struct BlockEntityTexture {
 }
 
 /// Rebuilds the carrier atlas from winning logical texture reads and its untouched base pixels.
-/// Missing, invalid, or over-budget replacements retain the base tile; removing a pack restores it.
+/// Missing, invalid, or unpackable replacements retain the base tile; removing a pack restores it.
 pub fn overlay_block_entity_assets(
     base: &assets::RuntimeBlockEntityAssets,
     mut read: impl FnMut(&str) -> Option<BlockEntityTexture>,
 ) -> Result<assets::RuntimeBlockEntityAssets, AssetError> {
     let [atlas_width, _] = base.atlas_size();
-    let mut textures = Vec::with_capacity(base.placements().len());
-    // Reserve every base tile so later fallbacks cannot exceed the retained pixel budget.
-    let mut retained_pixels: usize = base
+    // Reserve every base tile in the layout before admitting replacements in logical name order.
+    let mut textures: Vec<_> = base
         .placements()
         .iter()
-        .map(|tile| tile.width as usize * tile.height as usize)
-        .sum();
-    if retained_pixels > MAX_OVERLAY_PIXELS {
-        return Err(invalid(
-            "base block-entity textures exceed the pixel budget",
-        ));
-    }
-    for placement in base.placements() {
-        let base_pixels = placement.width as usize * placement.height as usize;
-        let texture = read(&placement.name)
-            .filter(|texture| {
-                texture.width > 0
-                    && texture.height > 0
-                    && texture.width <= ATLAS_WIDTH
-                    && texture.height <= MAX_STRIP_HEIGHT
-                    && texture.rgba8.len() == texture.width as usize * texture.height as usize * 4
-                    && retained_pixels - base_pixels
-                        + texture.width as usize * texture.height as usize
-                        <= MAX_OVERLAY_PIXELS
-            })
-            .map(|texture| Texture {
-                width: texture.width,
-                height: texture.height,
-                rgba8: texture.rgba8.into_vec(),
-            })
-            .unwrap_or_else(|| {
-                let mut rgba8 =
-                    Vec::with_capacity(placement.width as usize * placement.height as usize * 4);
-                for y in placement.y..placement.y + placement.height {
-                    let start = ((y * atlas_width + placement.x) * 4) as usize;
-                    rgba8.extend_from_slice(
-                        &base.atlas_rgba8()[start..start + placement.width as usize * 4],
-                    );
-                }
+        .map(|tile| {
+            (
+                tile.name.to_string(),
                 Texture {
-                    width: placement.width,
-                    height: placement.height,
-                    rgba8,
-                }
-            });
-        retained_pixels =
-            retained_pixels - base_pixels + texture.width as usize * texture.height as usize;
-        textures.push((placement.name.to_string(), texture));
+                    width: tile.width,
+                    height: tile.height,
+                    rgba8: Vec::new(),
+                },
+            )
+        })
+        .collect();
+    atlas_layout(&textures)?;
+    for (index, placement) in base.placements().iter().enumerate() {
+        if let Some(texture) = read(&placement.name).filter(|texture| {
+            texture.width > 0
+                && texture.height > 0
+                && texture.width <= ATLAS_WIDTH
+                && texture.height <= MAX_STRIP_HEIGHT
+                && texture.rgba8.len() == texture.width as usize * texture.height as usize * 4
+        }) {
+            let fallback = std::mem::replace(
+                &mut textures[index].1,
+                Texture {
+                    width: texture.width,
+                    height: texture.height,
+                    rgba8: texture.rgba8.into_vec(),
+                },
+            );
+            if atlas_layout(&textures).is_err() {
+                textures[index].1 = fallback;
+            }
+        }
+        if textures[index].1.rgba8.is_empty() {
+            let mut rgba8 =
+                Vec::with_capacity(placement.width as usize * placement.height as usize * 4);
+            for y in placement.y..placement.y + placement.height {
+                let start = ((y * atlas_width + placement.x) * 4) as usize;
+                rgba8.extend_from_slice(
+                    &base.atlas_rgba8()[start..start + placement.width as usize * 4],
+                );
+            }
+            textures[index].1.rgba8 = rgba8;
+        }
     }
     let (width, height, pixels, placements) = pack_atlas(textures)?;
     base.repack(width, height, &pixels, &placements)

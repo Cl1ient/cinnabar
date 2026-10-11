@@ -3,8 +3,7 @@ use crate::block_entity::{
     atlas::MAP_CELL,
     scene::{BlockEntityScene, SceneClock},
 };
-use bevy::{ecs::system::RunSystemOnce, render::renderer::WgpuWrapper};
-use std::sync::Arc;
+use bevy::ecs::system::RunSystemOnce;
 
 #[path = "../../../tests/it/support/gpu_snapshot.rs"]
 mod gpu_snapshot;
@@ -75,7 +74,7 @@ fn identical_atlas_reinstall_uploads_the_new_session_canvas_on_the_gpu() {
     let mut scene = BlockEntityScene::default();
     let mut world = World::new();
     world.insert_resource(RenderDevice::from(gpu.device.clone()));
-    world.insert_resource(RenderQueue(Arc::new(WgpuWrapper::new(gpu.queue.clone()))));
+    world.insert_resource(RenderQueue::new(gpu.queue.clone()));
     world.init_resource::<BlockEntityFrame>();
     world.init_resource::<BlockSelectionFrame>();
     world.run_system_once(init_gpu).unwrap();

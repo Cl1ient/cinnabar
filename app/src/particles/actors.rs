@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
+use actor_animation::{ActorRenderFrame, ActorRigSnapshot, RenderTextureLayer};
 use chunk_pipeline::WorldStream;
-use client_world::{ActorRenderFrame, ActorRigSnapshot, RenderTextureLayer};
 use particles::{ParticleSystem, SpawnRequest, actor::ActorEffectKey};
 
 #[cfg(test)]
@@ -155,7 +155,7 @@ pub(super) fn route_actor_particles(
 /// Provides emitter-local numeric query inputs from the retained actor context.
 fn actor_queries(
     actor: &client_world::ActorSnapshot,
-    rig: Option<&client_world::ActorRigSnapshot<'_>>,
+    rig: Option<&actor_animation::ActorRigSnapshot<'_>>,
     attachment: &particles::actor::ActorAttachment,
     alpha: f32,
 ) -> particles::Queries {

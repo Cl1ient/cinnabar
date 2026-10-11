@@ -6,7 +6,7 @@ use render_model::{ActorEmitterTransform, sampled_locator_transform};
 pub fn actor_emitter_transform(
     actor: &ActorSnapshot,
     rig: Option<&ActorRigSnapshot<'_>>,
-    layers: &[client_world::RenderTextureLayer],
+    layers: &[actor_animation::RenderTextureLayer],
     locator: Option<&str>,
     alpha: f32,
 ) -> Option<ActorEmitterTransform> {
@@ -50,7 +50,7 @@ pub fn actor_emitter_transform(
             Some(layer) if !layer.pose.is_empty() => (&*layer.previous_pose, &*layer.pose),
             _ => (rig.previous, rig.current),
         };
-        let convert = |bone: &client_world::BoneTransform| {
+        let convert = |bone: &actor_animation::BoneTransform| {
             RenderBoneTransform::from_model_space_scaled(
                 bone.rotation,
                 bone.translation_scale,

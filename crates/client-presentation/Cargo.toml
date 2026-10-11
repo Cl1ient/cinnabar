@@ -5,6 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+reads = [
+    "assets/bedrock-target.json",
+    "assets/vanilla-source.json",
+]
+
 [features]
 test-support = []
 
@@ -15,6 +21,7 @@ bevy.workspace = true
 glam.workspace = true
 chunk-pipeline = { path = "../chunk-pipeline" }
 client-world = { path = "../client-world" }
+actor-animation = { path = "../actor-animation" }
 client-ui = { path = "../client-ui" }
 inventory = { path = "../inventory" }
 launcher = { path = "../launcher" }

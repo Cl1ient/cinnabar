@@ -59,7 +59,7 @@ pub use v4::{
 
 pub const ENTITY_BLOB_MAGIC: [u8; 8] = *b"MCBEENT3";
 /// Includes compiled geometry locators, so older carriers must be rebuilt.
-pub const ENTITY_BLOB_VERSION: u32 = 11;
+pub const ENTITY_BLOB_VERSION: u32 = 16;
 /// Actor rig id ranges (a rig id is a `u32`):
 /// - `0..PACK_RIG_ID_BASE`: vanilla catalog rig-geometry bindings, and from `0x2000_0000`
 ///   the catalog geometries render controllers draw beside the rig (`0x2000_0000 + index`).

@@ -17,6 +17,39 @@ mod spawn_eggs;
 mod beds;
 
 #[test]
+fn independent_retail_inventory_has_explicit_compiled_fuel_facts() {
+    let pack = item_pack(false);
+    let compiled = compile_entity_assets(pack.path(), MANIFEST).unwrap();
+    for identifier in include_str!("../../../protocol/data/retail_items_1_26_50.tsv")
+        .lines()
+        .filter_map(|row| row.split('\t').nth(1))
+    {
+        assert!(
+            matches!(
+                visual(&compiled.item_visuals, identifier, 0).fuel,
+                assets::item::fuel::ItemFuel::Provisional { .. }
+            ),
+            "{identifier}"
+        );
+    }
+    assert_eq!(
+        visual(&compiled.item_visuals, "minecraft:coal", 0)
+            .fuel
+            .eligible(),
+        Some(true)
+    );
+    assert_eq!(
+        visual(&compiled.item_visuals, "minecraft:crimson_planks", 0)
+            .fuel
+            .eligible(),
+        Some(false)
+    );
+    let decoded =
+        assets::RuntimeEntityAssets::decode(&encode_entity_blob(&compiled).unwrap()).unwrap();
+    assert_eq!(decoded.item_visuals(), compiled.item_visuals.as_ref());
+}
+
+#[test]
 fn durability_values_compile_by_identity_and_cover_the_retail_inventory() {
     let pack = item_pack(false);
     write(

@@ -503,6 +503,7 @@ impl RuntimeEntityAssets {
 }
 
 pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Result<(), AssetError> {
+    crate::item::fuel::validate(&compiled.item_visuals, &compiled.sources)?;
     validate_animation_payload(compiled)?;
     validate_molang_payload(compiled)?;
     validate_controller_payload(compiled)?;
@@ -581,6 +582,15 @@ pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Resu
             {
                 return Err(invalid(
                     "item visual is outside reviewed legacy icon routes",
+                ));
+            }
+        } else if defining_path.as_ref() == crate::item::fuel::SOURCE_PATH {
+            if visual.key.metadata != 0
+                || visual.fuel == crate::item::fuel::ItemFuel::Unresolved
+                || visual.route != ItemVisualDefinitionRoute::Missing
+            {
+                return Err(invalid(
+                    "item fuel defining source has an invalid presentation route",
                 ));
             }
         } else if defining_path.as_ref() == crate::item::armour::ITEM_ARMOUR_SOURCE_PATH {

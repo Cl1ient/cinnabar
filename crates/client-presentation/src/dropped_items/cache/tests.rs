@@ -325,6 +325,25 @@ fn permanent_block_build_failures_are_attempted_once_until_sync_changes() {
     }
 }
 
+/// Unknown block IDs or unsupported visual kinds are estimated once, not on every frame.
+#[test]
+fn blocks_without_a_layer_estimate_are_estimated_once() {
+    let mut cache = ModelCache::default();
+    let costs = std::cell::Cell::new(0);
+    for _ in 0..3 {
+        frame(&mut cache, [901]);
+        for _ in 0..100 {
+            let estimate = || {
+                costs.set(costs.get() + 1);
+                None
+            };
+            assert_eq!(cache.model(key(901), estimate, || Some(sprite())), None);
+        }
+    }
+    assert_eq!(costs.get(), 1);
+    assert!(cache.models.is_empty());
+}
+
 #[test]
 fn permanent_block_failures_are_bounded_and_follow_demand() {
     let mut cache = ModelCache::default();

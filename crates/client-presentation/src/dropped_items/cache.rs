@@ -176,11 +176,17 @@ impl ModelCache {
         if self.available == 0 {
             return None;
         }
-        let cost = self
-            .rejected
-            .get(&key)
-            .map(|entry| entry.layers)
-            .unwrap_or_else(cost)?;
+        let estimate = match self.rejected.get(&key) {
+            Some(entry) => entry.layers,
+            None => {
+                let estimate = cost();
+                if estimate.is_none() && matches!(key, ModelKey::Block { .. }) {
+                    self.remember_rejection(key.clone(), None);
+                }
+                estimate
+            }
+        };
+        let cost = estimate?;
         if cost == 0 {
             return None;
         }

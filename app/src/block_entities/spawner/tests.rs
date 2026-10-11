@@ -173,6 +173,16 @@ fn signed(value: i32, bytes: &mut Vec<u8>) {
 
 /// Admits one spawner through normal terrain decoding in the stream's current dimension.
 fn admit_spawner(stream: &mut chunk_pipeline::WorldStream, position: [i32; 3], sequence: u64) {
+    admit_spawners(stream, position, &[position], sequence);
+}
+
+/// Admits configured displays in one column with spawner backing in one section.
+fn admit_spawners(
+    stream: &mut chunk_pipeline::WorldStream,
+    position: [i32; 3],
+    displays: &[[i32; 3]],
+    sequence: u64,
+) {
     use protocol::{LevelChunkEvent, LevelChunkMode, WorldEvent};
     let dimension = stream.current_dimension();
     let version = assets::active_content_registry_protocol();
@@ -196,19 +206,21 @@ fn admit_spawner(stream: &mut chunk_pipeline::WorldStream, position: [i32; 3], s
     signed(0, &mut payload);
     payload.extend(std::iter::repeat_n(0xff, range.sub_chunk_count - 1));
     payload.push(0);
-    let mut nbt = vec![10, 0];
-    for (name, value) in [("id", "MobSpawner"), ("EntityIdentifier", "custom:display")] {
-        nbt.extend([8, name.len() as u8]);
-        nbt.extend_from_slice(name.as_bytes());
-        nbt.push(value.len() as u8);
-        nbt.extend_from_slice(value.as_bytes());
+    for display in displays {
+        let mut nbt = vec![10, 0];
+        for (name, value) in [("id", "MobSpawner"), ("EntityIdentifier", "custom:display")] {
+            nbt.extend([8, name.len() as u8]);
+            nbt.extend_from_slice(name.as_bytes());
+            nbt.push(value.len() as u8);
+            nbt.extend_from_slice(value.as_bytes());
+        }
+        for (name, value) in ["x", "y", "z"].into_iter().zip(*display) {
+            nbt.extend([3, 1, name.as_bytes()[0]]);
+            signed(value, &mut nbt);
+        }
+        nbt.push(0);
+        payload.extend(nbt);
     }
-    for (name, value) in ["x", "y", "z"].into_iter().zip(position) {
-        nbt.extend([3, 1, name.as_bytes()[0]]);
-        signed(value, &mut nbt);
-    }
-    nbt.push(0);
-    payload.extend(nbt);
     stream
         .submit(
             sequence,
@@ -440,5 +452,76 @@ fn regression_cage_fit_includes_sampled_uniform_and_axis_scale() {
         }
         let extent = dimensions.into_iter().fold(0.1f32, f32::max);
         assert!((extent * fit.x_axis.truncate().length() - 1.0).abs() < 1e-5);
+    }
+}
+
+#[test]
+fn regression_display_limit_follows_distance_and_backing_filters() {
+    let side = SUB_CHUNK_SIDE as i32;
+    for stale_backing in [false, true] {
+        let mut world = system_fixture(serde_json::json!({}), "1");
+        let target = [1039, 64, 1024];
+        let prefix_y = if stale_backing { 32 } else { 64 };
+        let mut displays: Vec<_> = (0..client_world::MAX_DISPLAY_ACTORS)
+            .map(|index| {
+                let index = index as i32;
+                [1024, prefix_y + index / side, 1024 + index % side]
+            })
+            .collect();
+        displays.push(target);
+        {
+            let mut client = world.resource_mut::<ClientWorld>();
+            let stream = client.stream.as_mut().unwrap();
+            admit_spawners(stream, target, &displays, 2);
+            let key =
+                BlockEntityKey::new(stream.current_dimension(), target[0], target[1], target[2]);
+            assert_eq!(
+                stream
+                    .collision_store()
+                    .chunk(key.chunk())
+                    .unwrap()
+                    .shared_block_entities()
+                    .len(),
+                displays.len(),
+                "the column must contain more configured displays than the actor budget"
+            );
+        }
+        let eye = if stale_backing {
+            Vec3::new(1039.0, 66.0, 1024.0)
+        } else {
+            Vec3::new(1090.0, 66.0, 1024.0)
+        };
+        world.insert_resource(LocalViewPose::new(eye, bevy::prelude::Quat::IDENTITY));
+        for _ in 0..2 {
+            prepare_displays(&mut world, world::TICK_DURATION);
+            let pool = world
+                .resource::<SpawnerDisplayPublisher>()
+                .0
+                .as_ref()
+                .unwrap();
+            assert_eq!(pool.spins.keys().copied().collect::<Vec<_>>(), vec![target]);
+            assert_eq!(
+                world
+                    .resource::<PreparedActorPublication>()
+                    .submissions()
+                    .unwrap()
+                    .len(),
+                2,
+                "the eligible display must publish both controller layers"
+            );
+        }
+        if !stale_backing {
+            world.insert_resource(LocalViewPose::new(
+                Vec3::new(1039.0, 66.0, 1024.0),
+                bevy::prelude::Quat::IDENTITY,
+            ));
+            prepare_displays(&mut world, world::TICK_DURATION);
+            let pool = world
+                .resource::<SpawnerDisplayPublisher>()
+                .0
+                .as_ref()
+                .unwrap();
+            assert_eq!(pool.spins.len(), client_world::MAX_DISPLAY_ACTORS);
+        }
     }
 }

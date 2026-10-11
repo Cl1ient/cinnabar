@@ -142,7 +142,7 @@ fn fixture_with_skin(with_skin: bool) -> World {
     let version = assets::active_content_registry_protocol();
     let records = assets::read_registry_for_protocol(bytes, version).unwrap();
     world.insert_resource(
-        crate::movement::PhysicsCollisionRegistries::from_assets(
+        client_interaction::movement::PhysicsCollisionRegistries::from_assets(
             bytes,
             &records,
             include_bytes!("../../../../../../crates/assets/data/block-physics-v2193.bin"),

@@ -52,7 +52,7 @@ struct Pool {
 #[derive(Resource, Default)]
 pub(crate) struct SpawnerDisplayPublisher(Option<Pool>);
 
-/// Parses configured displays once for an immutable column NBT index.
+/// Parses all configured displays once for an immutable column NBT index.
 fn column(source: Arc<EntityIndex>) -> Column {
     let displays = source
         .iter()
@@ -79,7 +79,6 @@ fn column(source: Arc<EntityIndex>) -> Column {
                 nbt: Arc::clone(nbt),
             })
         })
-        .take(client_world::MAX_DISPLAY_ACTORS)
         .collect();
     Column { source, displays }
 }
@@ -88,7 +87,7 @@ fn column(source: Arc<EntityIndex>) -> Column {
 pub(crate) fn prepare_spawner_actors(
     world: Res<ClientWorld>,
     view: Res<LocalViewPose>,
-    collisions: Res<crate::movement::PhysicsCollisionRegistries>,
+    collisions: Res<client_interaction::movement::PhysicsCollisionRegistries>,
     artwork: Res<ActorArtworkPages>,
     state: Res<ActorFrameState>,
     mut pending: ResMut<PreparedActorPublication>,

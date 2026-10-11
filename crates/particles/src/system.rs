@@ -447,6 +447,40 @@ mod tests {
     }
 
     #[test]
+    fn actor_bound_emitters_keep_the_actor_water_query_across_steps() {
+        use crate::actor::{ActorAttachment, ActorAttachmentUpdate};
+        use render_model::ActorEmitterTransform;
+        let mut system = system();
+        system
+            .spawn(&SpawnRequest {
+                actor_attachment: Some(ActorAttachment {
+                    runtime_id: 42,
+                    spawn_revision: 1,
+                    locator: None,
+                    queries: Box::default(),
+                    entered_tick: 0,
+                    world_offset: [0.0; 3],
+                }),
+                ..request("burst", 0.0)
+            })
+            .unwrap();
+        system.update_actor_attachments(|_| {
+            ActorAttachmentUpdate::Placed(
+                ActorEmitterTransform {
+                    position: [2.0, 0.0, 0.0],
+                    basis: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                },
+                crate::Queries {
+                    is_in_water: 1.0,
+                    ..crate::Queries::default()
+                },
+            )
+        });
+        system.tick(0.1, &EmptyWorld);
+        assert_eq!(system.emitters[0].queries.is_in_water, 1.0);
+    }
+
+    #[test]
     fn unknown_and_distant_effects_are_dropped_and_counted() {
         let mut system = system();
         assert!(system.spawn(&request("missing", 0.0)).is_none());

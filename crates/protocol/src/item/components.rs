@@ -94,7 +94,10 @@ pub fn item_components(game_data: &GameData) -> Box<[(Arc<str>, ItemComponents)]
 /// data carries no components compound.
 pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
     let root = read_root(bytes)?;
-    let components = root.field("components")?;
+    // A non-compound payload carries no usable facts, not confirmed absence.
+    let components = root
+        .field("components")
+        .filter(|components| matches!(components, Nbt::Compound(_)))?;
     let properties = components.field("item_properties");
     let property = |name: &str| properties.and_then(|properties| properties.field(name));
     let component = |name: &str| components.field(name);
@@ -236,6 +239,12 @@ mod tests {
         }
         let root = compound("", &[compound("components", &[])]);
         assert!(!parse_components(&root).unwrap().durability_declared);
+    }
+
+    #[test]
+    fn scalar_components_payload_is_not_admitted_as_empty_facts() {
+        let root = compound("", &[int("components", 1)]);
+        assert!(parse_components(&root).is_none());
     }
 
     // Dragonfly's custom-item layout: properties nested under item_properties.

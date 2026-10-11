@@ -2297,8 +2297,9 @@ The Java animation option seeds current posture and riding flags without advanci
 Pending first skins initialize once their prepared appearance is available,
 including when simulation ticks passed during preparation.
 Explicit rest artwork still requires a completed observation after admission or reset.
-Retries refresh provisional inputs; unchanged off-screen rigs allocate nothing
-between ticks. This does not close the broader actor animation or
+Retries refresh current query inputs while retaining simulation history; local
+view refreshes keep priority over new rigs. Unchanged off-screen rigs allocate
+nothing between ticks. This does not close the broader actor animation or
 placement-latency parity gates.
 
 2026-10-04 end crystals and respawn anchors: crystal artwork now bakes native

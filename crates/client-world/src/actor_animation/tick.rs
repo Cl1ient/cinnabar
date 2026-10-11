@@ -253,10 +253,21 @@ pub(super) fn seed_presentation_input(
     actor: &ActorSnapshot,
     context: &ActorTickContext,
 ) {
-    if !state.history.is_empty() && !state.presentation_seeded {
-        return;
+    let retained = state
+        .history
+        .back()
+        .copied()
+        .filter(|_| !state.presentation_seeded);
+    if retained.is_none() {
+        state.equipped_main.clone_from(&context.main_hand);
     }
-    state.equipped_main.clone_from(&context.main_hand);
+    let counters = retained.unwrap_or_else(|| ActorTickInput {
+        swim_amount: f32::from(query::actor_flag(actor, query::FLAG_SWIMMING)),
+        arm_height: 1.0,
+        off_hand_arm_height: state.off_hand_animation[1].arm_height,
+        attack_time: state.motion.attack_time(),
+        ..Default::default()
+    });
     let input = ActorTickInput {
         position: actor.position,
         velocity: actor.velocity,
@@ -270,12 +281,8 @@ pub(super) fn seed_presentation_input(
         head_yaw: actor.head_yaw,
         pitch: actor.pitch,
         is_riding: context.is_riding,
-        item_use_ticks: local_use_counter(actor, context).unwrap_or(0),
-        swim_amount: f32::from(query::actor_flag(actor, query::FLAG_SWIMMING)),
-        arm_height: 1.0,
-        off_hand_arm_height: state.off_hand_animation[1].arm_height,
-        attack_time: state.motion.attack_time(),
-        ..Default::default()
+        item_use_ticks: local_use_counter(actor, context).unwrap_or(counters.item_use_ticks),
+        ..counters
     };
     state.java.motion.riding = context.is_riding;
     state.java.motion.vanilla_posture =
@@ -285,7 +292,7 @@ pub(super) fn seed_presentation_input(
     } else {
         state.history.push_back(input);
     }
-    state.presentation_seeded = true;
+    state.presentation_seeded = retained.is_none();
 }
 
 /// Keeps authored postures that the Java option does not replace.
@@ -295,6 +302,7 @@ fn java_retains_native_posture(
     swim_amount: f32,
 ) -> bool {
     swim_amount > 0.0
+        || query::actor_flag(actor, query::FLAG_SWIMMING)
         || context.main_hand_is_spear
         || query::actor_flag(actor, query::FLAG_GLIDING)
         || query::actor_flag(actor, crate::actor_store::ACTOR_FLAG_CRAWLING)

@@ -142,6 +142,14 @@ impl ActorAnimationStore {
                 .map(|(lifetime, state)| (*lifetime, state))
                 .collect()
         };
+        // A requested local draw refresh keeps its budget priority over new rigs.
+        if refresh_view
+            && let Some(index) = ordered
+                .iter()
+                .position(|(lifetime, _)| Some(lifetime.runtime_id) == refresh_local)
+        {
+            ordered[..=index].rotate_right(1);
+        }
         // Start where the world budget ran out last tick so no actor starves every tick.
         if !refresh_view && let Some(start) = evaluate.then(|| first_starved.take()).flatten() {
             let first = ordered.partition_point(|(lifetime, _)| *lifetime < start);

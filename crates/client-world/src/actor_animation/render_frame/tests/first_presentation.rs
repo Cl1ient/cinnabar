@@ -382,6 +382,147 @@ fn first_presentation_seeds_java_posture_without_advancing_motion() {
 }
 
 #[test]
+fn first_presentation_refreshes_current_queries_after_pending_simulation_history() {
+    let mut compiled = compiled_assets();
+    compiled.molang_symbols[3].identifier = "query.is_riding".into();
+    let expression = compiled.animation_keyframes[0].expressions[1].unwrap() as usize;
+    let op = compiled.molang_expressions[expression].first_op as usize;
+    compiled.molang_ops[op] = MolangOp::LoadQuery(3);
+    let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let (mut store, mut actors) = animation_fixture_with(assets);
+    store.advance_tick(&actors, None, None, true, true, |_| ActorTickContext {
+        appearance_pending: true,
+        ..Default::default()
+    });
+    let state = store.rigs.values().next().unwrap();
+    let motion = format!("{:?}", state.motion);
+    let observed = *state.history.back().unwrap();
+    let history_len = state.history.len();
+    assert!(!store.get(1).unwrap().pose_evaluated);
+    let actor = actors.get_mut(&1).unwrap();
+    actor.position = [4.0, 5.0, 6.0];
+    actor.yaw = 75.0;
+    actor.pitch = 30.0;
+    actor
+        .metadata
+        .insert(0, ActorMetadataValue::Flags(1 << query::FLAG_USING_ITEM));
+    store.prepare_frame(&actors, None, None, false, |_| ActorTickContext {
+        is_riding: true,
+        local_item_use_ticks: Some(3),
+        animation_elapsed_ticks: Some(0),
+        ..Default::default()
+    });
+    let rig = store.get(1).unwrap();
+    assert!(rig.pose_evaluated);
+    assert_eq!(rig.completed_tick, 1);
+    assert_eq!(
+        rig.current[0].translation_scale[1], 1.0,
+        "current riding query drives first pose"
+    );
+    let input = rig.animation_variables.input().unwrap();
+    assert_eq!(input.position, actors[&1].position);
+    assert_eq!(input.yaw, actors[&1].yaw);
+    assert_eq!(input.pitch, actors[&1].pitch);
+    assert!(input.is_riding);
+    assert_eq!(input.item_use_ticks, 4);
+    assert_eq!(input.position_delta, observed.position_delta);
+    assert_eq!(input.walk_distance, observed.walk_distance);
+    let state = store.rigs.values().next().unwrap();
+    assert_eq!(state.history.len(), history_len);
+    assert_eq!(format!("{:?}", state.motion), motion);
+}
+
+const LOCAL_VIEW_RUNTIME_ID: u64 = 3;
+
+/// Gives the local rig a visible pose change when its view mode changes.
+fn local_view_fixture() -> (ActorAnimationStore, HashMap<u64, ActorSnapshot>) {
+    let mut compiled = compiled_assets();
+    let mut symbols = compiled.molang_symbols.into_vec();
+    let slot = symbols.len() as u32;
+    symbols.push(MolangSymbol {
+        kind: MolangSymbolKind::Variable,
+        identifier: "variable.is_first_person".into(),
+    });
+    compiled.molang_symbols = symbols.into();
+    let expression = compiled.animation_keyframes[0].expressions[1].unwrap() as usize;
+    let op = compiled.molang_expressions[expression].first_op as usize;
+    compiled.molang_ops[op] = MolangOp::LoadVariable(slot);
+    let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let mut store = ActorAnimationStore::with_assets(assets);
+    let mut actor = super::super::super::tests::actor_with_metadata(HashMap::new());
+    actor.runtime_id = LOCAL_VIEW_RUNTIME_ID;
+    store.insert(1, 0, &actor);
+    let actors = HashMap::from([(LOCAL_VIEW_RUNTIME_ID, actor)]);
+    store.prepare_frame(
+        &actors,
+        None,
+        Some(LOCAL_VIEW_RUNTIME_ID),
+        false,
+        zero_time_context,
+    );
+    (store, actors)
+}
+
+#[test]
+fn local_view_refresh_keeps_its_budget_when_new_rigs_are_pending() {
+    let first_person = |actor: &ActorSnapshot| ActorTickContext {
+        is_local_first_person: actor.runtime_id == LOCAL_VIEW_RUNTIME_ID,
+        ..zero_time_context(actor)
+    };
+    let (mut reference, actors) = local_view_fixture();
+    let before = reference.stats.evaluated_molang_ops;
+    reference.prepare_frame(
+        &actors,
+        None,
+        Some(LOCAL_VIEW_RUNTIME_ID),
+        true,
+        first_person,
+    );
+    let refresh_cost = (reference.stats.evaluated_molang_ops - before) as usize;
+    let expected = reference
+        .get(LOCAL_VIEW_RUNTIME_ID)
+        .unwrap()
+        .current
+        .to_vec();
+    assert_eq!(expected[0].translation_scale[1], 1.0);
+    let (mut store, mut actors) = local_view_fixture();
+    for runtime_id in 1..LOCAL_VIEW_RUNTIME_ID {
+        let mut remote = super::super::super::tests::actor_with_metadata(HashMap::new());
+        remote.runtime_id = runtime_id;
+        store.insert(1, 0, &remote);
+        actors.insert(runtime_id, remote);
+    }
+    store.schedule.world_budget = refresh_cost;
+    store.prepare_frame(
+        &actors,
+        None,
+        Some(LOCAL_VIEW_RUNTIME_ID),
+        true,
+        first_person,
+    );
+    assert_eq!(
+        store.get(LOCAL_VIEW_RUNTIME_ID).unwrap().current,
+        expected,
+        "new actors must not consume a requested local refresh budget"
+    );
+    for runtime_id in 1..LOCAL_VIEW_RUNTIME_ID {
+        assert!(!store.get(runtime_id).unwrap().pose_evaluated);
+    }
+    store.schedule.world_budget = MAX_MOLANG_OPS_PER_WORLD_TICK;
+    store.prepare_frame(
+        &actors,
+        None,
+        Some(LOCAL_VIEW_RUNTIME_ID),
+        false,
+        first_person,
+    );
+    assert_eq!(store.get(LOCAL_VIEW_RUNTIME_ID).unwrap().current, expected);
+    for runtime_id in 1..LOCAL_VIEW_RUNTIME_ID {
+        assert!(store.get(runtime_id).unwrap().pose_evaluated);
+    }
+}
+
+#[test]
 fn first_presentation_retry_refreshes_snapshot_inputs_without_a_motion_tick() {
     let (mut store, mut actors) = animation_fixture();
     store.schedule.world_budget = 1;

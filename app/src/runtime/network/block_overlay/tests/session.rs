@@ -38,6 +38,7 @@ fn base_carrier(count: usize) -> Arc<RuntimeAssets> {
                 model_template: NO_MODEL_TEMPLATE,
                 animation: NO_ANIMATION,
                 variant: 0,
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             };
             count
         ]

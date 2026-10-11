@@ -231,7 +231,7 @@ impl<'a> FallbackInventory<'a> {
 
 /// Families with a dedicated exact compile rule, which supersede their inventory envelope.
 fn has_exact_family_route(record: &RegistryRecord) -> bool {
-crate::respawn_anchor::is_record(record)
+    crate::respawn_anchor::is_record(record)
         || super::hollow_containers::is_name(&record.name)
         || super::grindstone::is_record(record)
         || super::lily_pad::is_record(record)

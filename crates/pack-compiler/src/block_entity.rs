@@ -438,6 +438,47 @@ mod tests {
         assert!(runtime.placement(name).is_some());
     }
 
+    /// Reads the first pixel of one logical atlas tile.
+    fn tile_pixel(base: &assets::RuntimeBlockEntityAssets, name: &str) -> [u8; 4] {
+        let tile = base.placement(name).unwrap();
+        let offset = ((tile.y * base.atlas_size()[0] + tile.x) * 4) as usize;
+        base.atlas_rgba8()[offset..offset + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn overlays_repack_uvs_preserve_missing_tiles_and_restore_base() {
+        let pack = tempfile::tempdir().unwrap();
+        let chest = "textures/entity/chest/normal";
+        let sign = "textures/entity/sign_oak";
+        write_png(&pack.path().join(format!("{chest}.png")), 64, 64, 10);
+        write_png(&pack.path().join(format!("{sign}.png")), 64, 32, 20);
+        let compiled = compile_block_entity_assets(pack.path(), b"{}").unwrap();
+        let base = assets::RuntimeBlockEntityAssets::decode(&compiled.bytes).unwrap();
+        let changed = overlay_block_entity_assets(&base, |name| {
+            (name == sign).then(|| BlockEntityTexture {
+                width: 128,
+                height: 128,
+                rgba8: [200, 0, 0, 255].repeat(128 * 128).into_boxed_slice(),
+            })
+        })
+        .unwrap();
+        assert_eq!(tile_pixel(&changed, sign), [200, 0, 0, 255]);
+        assert_eq!(tile_pixel(&changed, chest), tile_pixel(&base, chest));
+        assert_eq!(changed.placement(sign).unwrap().width, 128);
+        assert!(changed.atlas_size()[1] > base.atlas_size()[1]);
+        let restored = overlay_block_entity_assets(&base, |_| None).unwrap();
+        assert_eq!(restored.identity(), base.identity());
+        let invalid = overlay_block_entity_assets(&base, |_| {
+            Some(BlockEntityTexture {
+                width: 64,
+                height: 64,
+                rgba8: Box::default(),
+            })
+        })
+        .unwrap();
+        assert_eq!(invalid.identity(), base.identity());
+    }
+
     #[test]
     fn frame_carriers_preserve_distinct_rim_and_backing_replacement_pixels() {
         let pack = tempfile::tempdir().unwrap();
@@ -474,4 +515,54 @@ mod tests {
         assert_eq!(compiled.report.textures_packed, 0);
         assert!(assets::RuntimeBlockEntityAssets::decode(&compiled.bytes).is_ok());
     }
+}
+
+/// Decoded color pixels supplied by the shared pack texture resolver.
+pub struct BlockEntityTexture {
+    pub width: u32,
+    pub height: u32,
+    pub rgba8: Box<[u8]>,
+}
+
+/// Rebuilds the carrier atlas from winning logical texture reads and its untouched base pixels.
+/// Missing or invalid replacements retain the base tile; removing a pack restores its pixels.
+pub fn overlay_block_entity_assets(
+    base: &assets::RuntimeBlockEntityAssets,
+    mut read: impl FnMut(&str) -> Option<BlockEntityTexture>,
+) -> Result<assets::RuntimeBlockEntityAssets, AssetError> {
+    let [atlas_width, _] = base.atlas_size();
+    let mut textures = Vec::with_capacity(base.placements().len());
+    for placement in base.placements() {
+        let texture = read(&placement.name)
+            .filter(|texture| {
+                texture.width > 0
+                    && texture.height > 0
+                    && texture.width <= ATLAS_WIDTH
+                    && texture.height <= MAX_STRIP_HEIGHT
+                    && texture.rgba8.len() == texture.width as usize * texture.height as usize * 4
+            })
+            .map(|texture| Texture {
+                width: texture.width,
+                height: texture.height,
+                rgba8: texture.rgba8.into_vec(),
+            })
+            .unwrap_or_else(|| {
+                let mut rgba8 =
+                    Vec::with_capacity(placement.width as usize * placement.height as usize * 4);
+                for y in placement.y..placement.y + placement.height {
+                    let start = ((y * atlas_width + placement.x) * 4) as usize;
+                    rgba8.extend_from_slice(
+                        &base.atlas_rgba8()[start..start + placement.width as usize * 4],
+                    );
+                }
+                Texture {
+                    width: placement.width,
+                    height: placement.height,
+                    rgba8,
+                }
+            });
+        textures.push((placement.name.to_string(), texture));
+    }
+    let (width, height, pixels, placements) = pack_atlas(textures)?;
+    base.repack(width, height, &pixels, &placements)
 }

@@ -260,3 +260,7 @@ Block overlays use the shared pack compiler to resolve legacy geometry inheritan
 ## Session biome climate and environment
 
 Admitted live biome identifiers and climate now travel with the session tint registry. Weather, fog precipitation, camera temperature and environment routes read that registry, including custom biome routes. Registry replacement clears removed routes. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.

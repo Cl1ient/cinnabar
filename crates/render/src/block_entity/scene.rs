@@ -177,12 +177,17 @@ pub struct BlockEntityScene {
 }
 
 impl BlockEntityScene {
+    /// Replaces static artwork and invalidates meshes while retaining appended display textures.
     pub fn install_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
-        let atlas = BlockEntityAtlas::from_assets(assets);
+        let mut atlas = BlockEntityAtlas::from_assets(assets);
+        atlas.append_textures(self.mobs.textures());
         self.image = Some(Arc::new(BlockEntityAtlasImage::of(&atlas)));
         self.text = Some(DynamicCells::new(atlas.size()[0]));
         self.atlas = Some(Arc::new(atlas));
-        self.frame = BlockEntityFrame::default();
+        self.frame = BlockEntityFrame {
+            revision: self.frame.revision,
+            ..Default::default()
+        };
         self.reusable = None;
         self.cached_submissions.clear();
     }

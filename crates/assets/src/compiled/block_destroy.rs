@@ -4,8 +4,6 @@ use std::{collections::BTreeMap, sync::OnceLock};
 
 use sha2::{Digest, Sha256};
 
-/// The fingerprint input for the generated destroy source.
-pub const DESTROY_SOURCE_PATH: &str = "crates/assets/data/block-destroy-v2193.tsv";
 /// The single generated hardness and provisional tool source.
 pub const DESTROY_SOURCE: &str = include_str!("../../data/block-destroy-v2193.tsv");
 

@@ -121,7 +121,6 @@ pub const WORLD: Carrier = Carrier {
         Input::Pack,
         Input::Manifest(VANILLA_MANIFEST),
         Input::File(BLOCK_REGISTRY),
-        Input::File(crate::compiled::block_destroy::DESTROY_SOURCE_PATH),
         Input::File(LIGHT_REGISTRY),
         Input::File(BIOME_REGISTRY),
     ],

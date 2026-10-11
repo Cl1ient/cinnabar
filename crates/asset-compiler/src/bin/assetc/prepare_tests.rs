@@ -116,7 +116,7 @@ fn unchanged_inputs_skip_every_carrier() {
 fn a_changed_input_rebuilds_its_carrier_and_the_carriers_reading_it() {
     let dir = checkout();
     build_all(dir.path());
-    fs::write(dir.path().join("assets/fonts/Font.ttf"), b"font-2").unwrap();
+    fs::write(dir.path().join("assets/fonts/Font.ttf"), b"font-22").unwrap();
     assert_eq!(stale(dir.path(), COMPILER), [FONT.name]);
     build_all(dir.path());
     let root = Sources::Checkout(dir.path().to_path_buf());

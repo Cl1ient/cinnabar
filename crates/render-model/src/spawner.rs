@@ -4,6 +4,7 @@ use glam::{Mat4, Vec3};
 const SPIN_NUMERATOR: f32 = 1000.0;
 const SPIN_DELAY_OFFSET: f32 = 200.0;
 const SPIN_DEGREES_PER_UNIT: f32 = 10.0;
+const SPIN_WRAP_UNITS: i32 = 360;
 const DISPLAY_CENTER_Y: f32 = 0.4;
 const MINIMUM_RENDER_EXTENT: f32 = 0.1;
 const HEIGHT_DIVISOR: f32 = 20.0;
@@ -23,7 +24,10 @@ impl SpawnerDisplayClock {
             self.previous = self.current;
             if activated {
                 let increment = SPIN_NUMERATOR / (self.delay.max(-1) as f32 + SPIN_DELAY_OFFSET);
-                self.current = ((self.current + increment) as i32 % 360) as f32;
+                let next = (self.current + increment) as i32;
+                self.current = (next % SPIN_WRAP_UNITS) as f32;
+                // Shift the old endpoint too, so wrapping preserves the forward interval.
+                self.previous -= (next - next % SPIN_WRAP_UNITS) as f32;
                 if self.delay > 0 {
                     self.delay -= 1;
                 }
@@ -79,6 +83,35 @@ mod tests {
         assert_eq!((clock.previous, clock.current, clock.delay), (8.0, 8.0, 0));
         clock.advance(1, true);
         assert_eq!(clock.current, 13.0);
+    }
+    #[test]
+    fn regression_wrapped_spin_interpolates_forward_and_keeps_bounded_endpoints() {
+        let mut clock = SpawnerDisplayClock {
+            previous: 350.0,
+            current: 355.0,
+            delay: 0,
+        };
+        for _ in 0..145 {
+            let start = clock.current;
+            clock.advance(1, true);
+            assert_eq!(clock.current - clock.previous, 5.0);
+            assert!(clock.current >= 0.0 && clock.current < SPIN_WRAP_UNITS as f32);
+            for alpha in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                let expected = SpawnerDisplayClock {
+                    previous: start,
+                    current: start + 5.0,
+                    delay: 0,
+                };
+                let actual = spawner_actor_transform([0; 3], [1.0; 3], clock, alpha).unwrap();
+                let expected = spawner_actor_transform([0; 3], [1.0; 3], expected, alpha).unwrap();
+                assert!(
+                    actual.abs_diff_eq(expected, 0.0001),
+                    "forward spin at alpha {alpha}"
+                );
+            }
+        }
+        clock.advance(1, false);
+        assert_eq!(clock.previous, clock.current);
     }
     #[test]
     fn large_display_actors_fit_the_cage_and_keep_tilted_axes() {

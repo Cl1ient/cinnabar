@@ -5,6 +5,7 @@ mod audio;
 mod audio_pcm;
 pub mod bamboo;
 pub mod banner;
+mod beacon;
 mod biome;
 mod biome_noise;
 mod blob;
@@ -63,6 +64,7 @@ mod ui;
 pub mod vanilla_pack;
 mod vanilla_refs;
 pub mod weather_textures;
+pub use beacon::BeaconTintCatalog;
 pub use actor::{
     ACTOR_CARRIER_MAGIC, ACTOR_CARRIER_VERSION, ActorArtworkBinding, ActorPoseMode, ActorTexture,
     MAX_ACTOR_BINDINGS, MAX_ACTOR_CARRIER_BYTES, MAX_ACTOR_PIXEL_BYTES, MAX_ACTOR_TEXTURE_SIDE,
@@ -258,7 +260,7 @@ pub use provenance::{
     vanilla_source, vanilla_source_manifest_sha256,
 };
 pub use registry::{
-    BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole, ModelFamily,
+    BeaconTint, BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole, ModelFamily,
     ModelState, ModelStateField, RegistryProvenance, RegistryRecord, read_registry,
     read_registry_for_protocol, registry_header_protocol,
 };

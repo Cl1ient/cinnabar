@@ -38,6 +38,7 @@ pub(super) fn compile_pack(
 /// [`with_canonical_air`] to satisfy the same compile-time contract.
 pub(super) fn canonical_air_record(sequential_id: u32, network_hash: u32) -> RegistryRecord {
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id,
         network_hash,
         name: "minecraft:air".into(),
@@ -236,6 +237,7 @@ pub(super) fn record(
         ModelFamily::Unknown
     };
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id,
         network_hash,
         name: name.into(),

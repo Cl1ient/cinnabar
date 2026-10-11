@@ -8,12 +8,12 @@ use super::terrain::read_terrain;
 /// Uses an independently admitted state identity with the supplied test properties.
 fn record(properties: &str) -> RegistryRecord {
     let protocol = assets::active_content_registry_protocol();
-    let mut records = assets::read_registry_for_protocol(
+    let records = assets::read_registry_for_protocol(
         include_bytes!("../../../assets/data/block-registry-v2193.bin"),
         protocol,
     )
     .unwrap();
-    let mut record = records.remove(0);
+    let mut record = records.first().unwrap().clone();
     record.name = "test:model".into();
     record.canonical_state = properties.into();
     record

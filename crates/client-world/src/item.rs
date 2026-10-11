@@ -13,6 +13,9 @@ use protocol::{
 };
 use sha2::{Digest, Sha256};
 
+#[path = "item/grip.rs"]
+mod grip;
+
 use crate::{ActorEventIdentity, ActorLifetimeId, ActorSourceTick};
 
 pub const MAX_ITEM_REGISTRY_RECORDS: usize = 16_384;
@@ -22,6 +25,8 @@ pub const MAX_EQUIPMENT_NOTICES: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalItemStack {
+    /// Grip resolved for the current numeric item registry generation.
+    pub grip: assets::item::grip::ItemGrip,
     pub identity: ItemStackIdentity,
     pub identifier: Option<Arc<str>>,
     pub visual: ItemVisualRoute,
@@ -35,6 +40,8 @@ pub struct CanonicalItemStack {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalItemRegistryRecord {
+    /// Descriptor after the current component payload has been admitted.
+    pub grip: assets::item::grip::ItemGrip,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
@@ -124,9 +131,10 @@ impl ItemStateStore {
     }
 
     fn new(assets: Option<Arc<RuntimeEntityAssets>>) -> Self {
+        let registry = built_in_registry(assets.as_deref());
         Self {
             assets,
-            registry: built_in_registry(),
+            registry,
             equipment: BTreeMap::new(),
             pending: VecDeque::new(),
             armor: BTreeMap::new(),
@@ -343,13 +351,16 @@ impl ItemStateStore {
         if registry.entries.len() > MAX_ITEM_REGISTRY_RECORDS {
             return false;
         }
-        let mut next = built_in_registry();
+        let mut next = built_in_registry(self.assets.as_deref());
         let mut network_ids = HashMap::with_capacity(registry.entries.len());
         for entry in registry.entries.iter() {
             if network_ids.insert(entry.network_id, ()).is_some() {
                 return false;
             }
-            next.insert(entry.network_id, registry_record(entry));
+            next.insert(
+                entry.network_id,
+                registry_record(entry, self.assets.as_deref()),
+            );
         }
         self.registry = next;
 
@@ -466,6 +477,7 @@ impl ItemStateStore {
     fn resolve_identity(&self, identity: ItemStackIdentity) -> CanonicalItemStack {
         if identity.is_empty() {
             return CanonicalItemStack {
+                grip: assets::item::grip::ItemGrip::Unresolved,
                 identity,
                 identifier: None,
                 visual: ItemVisualRoute::EmptyHand,
@@ -487,6 +499,10 @@ impl ItemStateStore {
             identity.block_runtime_id,
         );
         CanonicalItemStack {
+            grip: self
+                .registry
+                .get(&identity.network_id)
+                .map_or(Default::default(), |record| record.grip),
             identity,
             identifier,
             visual,
@@ -550,10 +566,12 @@ impl ItemStateStore {
     }
 }
 
-fn built_in_registry() -> BTreeMap<i32, CanonicalItemRegistryRecord> {
+fn built_in_registry(
+    assets: Option<&RuntimeEntityAssets>,
+) -> BTreeMap<i32, CanonicalItemRegistryRecord> {
     protocol::vanilla_item_registry()
         .iter()
-        .map(|entry| (entry.network_id, registry_record(entry)))
+        .map(|entry| (entry.network_id, registry_record(entry, assets)))
         .collect()
 }
 
@@ -592,8 +610,13 @@ mod visual_route_tests {
     }
 }
 
-fn registry_record(entry: &ItemRegistryEntry) -> CanonicalItemRegistryRecord {
+/// Resolves item-owned facts once for this registry generation.
+fn registry_record(
+    entry: &ItemRegistryEntry,
+    assets: Option<&RuntimeEntityAssets>,
+) -> CanonicalItemRegistryRecord {
     CanonicalItemRegistryRecord {
+        grip: grip::resolve(entry, assets),
         identifier: Arc::clone(&entry.identifier),
         network_id: entry.network_id,
         component_based: entry.component_based,
@@ -748,6 +771,7 @@ mod armor_tests {
     #[test]
     fn registry_retains_every_numeric_alias_for_a_shared_item_identifier() {
         let entries = [101, 102, 103].map(|network_id| protocol::ItemRegistryEntry {
+            components: None,
             identifier: Arc::from("example:menu_icon"),
             network_id,
             component_based: true,

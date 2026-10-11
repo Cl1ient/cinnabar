@@ -3,6 +3,8 @@ use thiserror::Error;
 
 use crate::AssetError;
 
+pub mod grip;
+
 pub const MAX_ITEM_VISUALS: usize = 16_384;
 pub const MAX_ITEM_VISUAL_ALIASES: usize = 65_536;
 pub const MAX_ITEM_IDENTIFIER_BYTES: usize = 256;
@@ -156,6 +158,8 @@ impl ItemDisplayTransform {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemVisualDefinition {
+    /// Checked grip facts; runtime component overlays are admitted separately.
+    pub grip: grip::ItemGrip,
     pub key: ItemVisualKey,
     /// Source containing the canonical item definition or reviewed rule.
     pub source: u32,

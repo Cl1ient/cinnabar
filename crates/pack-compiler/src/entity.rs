@@ -228,6 +228,30 @@ pub fn compile_entity_assets_with_report(
         source_bytes: binding_bytes.len() as u32,
         source_sha256: Sha256::digest(binding_bytes).into(),
     });
+    for (path, bytes) in [
+        (
+            assets::item::grip::GRIP_SOURCE_PATH,
+            assets::item::grip::GRIP_SOURCE_BYTES,
+        ),
+        (
+            assets::item::grip::RETAIL_SOURCE_PATH,
+            assets::item::grip::RETAIL_SOURCE_BYTES,
+        ),
+    ] {
+        total_source_bytes = total_source_bytes
+            .checked_add(bytes.len())
+            .ok_or_else(|| invalid("entity source-byte total overflow"))?;
+        if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
+            || sources.len() >= MAX_ENTITY_ASSET_SOURCES
+        {
+            return Err(invalid("entity source-byte total or count exceeds bound"));
+        }
+        sources.push(EntityAssetSource {
+            path: path.into(),
+            source_bytes: bytes.len() as u32,
+            source_sha256: Sha256::digest(bytes).into(),
+        });
+    }
     let legacy_bytes = legacy_icons::SOURCE_BYTES;
     total_source_bytes = total_source_bytes
         .checked_add(legacy_bytes.len())

@@ -16,6 +16,31 @@ mod spawn_eggs;
 mod beds;
 
 #[test]
+fn independent_retail_inventory_has_explicit_compiled_grips() {
+    let compiled = compile_entity_assets(item_pack(false).path(), MANIFEST).unwrap();
+    let retail = include_str!("../../../../protocol/data/retail_items_1_26_50.tsv");
+    for identifier in retail.lines().filter_map(|line| line.split('\t').nth(1)) {
+        let visual = compiled
+            .item_visuals
+            .iter()
+            .find(|visual| visual.key.identifier.as_ref() == identifier && visual.key.metadata == 0)
+            .unwrap_or_else(|| panic!("missing grip identity {identifier}"));
+        assert!(matches!(
+            visual.grip,
+            assets::item::grip::ItemGrip::Provisional { .. }
+        ));
+    }
+    assert!(
+        compiled
+            .item_visuals
+            .iter()
+            .filter(|visual| visual.key.identifier.starts_with("test:"))
+            .all(|visual| visual.grip == assets::item::grip::ItemGrip::Unresolved)
+    );
+    assets::read_entity_blob(&encode_entity_blob(&compiled).unwrap()).unwrap();
+}
+
+#[test]
 fn leather_tga_atlas_sources_keep_their_opaque_untinted_trim() {
     let pack = item_pack(false);
     write(
@@ -313,12 +338,10 @@ fn absent_binding_aliases_do_not_invent_routes_and_missing_pixels_stay_missing()
         visual(&compiled.item_visuals, "minecraft:blue_bundle", 0).route,
         ItemVisualDefinitionRoute::Missing
     ));
-    assert!(
-        !compiled
-            .item_visuals
-            .iter()
-            .any(|item| item.key.identifier.as_ref() == "minecraft:golden_spear")
-    );
+    assert!(matches!(
+        visual(&compiled.item_visuals, "minecraft:golden_spear", 0).route,
+        ItemVisualDefinitionRoute::Missing
+    ));
     assert!(matches!(
         visual(&compiled.item_visuals, "minecraft:stone", 0).route,
         ItemVisualDefinitionRoute::BlockItem { .. }
@@ -475,11 +498,9 @@ fn legacy_icon_routes_bind_identifiers_to_their_atlas_variants() {
         sprite("minecraft:compass"),
         "textures/items/compass_item.png"
     );
-    assert!(
-        !compiled
-            .item_visuals
-            .iter()
-            .any(|visual| visual.key.identifier.as_ref() == "minecraft:bow")
-    );
+    assert!(matches!(
+        visual(&compiled.item_visuals, "minecraft:bow", 0).route,
+        ItemVisualDefinitionRoute::Missing
+    ));
     assets::RuntimeEntityAssets::decode(&encode_entity_blob(&compiled).unwrap()).unwrap();
 }

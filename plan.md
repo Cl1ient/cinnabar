@@ -7621,3 +7621,14 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+## Held-item grip admission (incomplete parity)
+
+Item grip facts are compiled into entity carrier 12, checked against the separate
+retail identity inventory and copied through numeric item admission into equipment
+input. Unknown names cannot borrow a tool grip. Explicit session flags, including
+false, replace the compiled upright choice. The existing built-in grip and rod-art
+choices remain provisional compatibility data. Complete native, metadata, version
+and custom base-item coverage is incomplete. Optional Java animation name routing
+remains a separate incomplete admission path. This does not close the complete
+equipment parity gate. `make assets` rebuilds carriers that lack these records.

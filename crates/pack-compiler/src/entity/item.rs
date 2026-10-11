@@ -264,6 +264,21 @@ pub(super) fn compile(
             &mut definitions,
         )?;
     }
+    let grip_source = *source_indices
+        .get(assets::item::grip::GRIP_SOURCE_PATH)
+        .ok_or_else(|| invalid("item grip defining source is absent"))?;
+    for identifier in std::str::from_utf8(item_bindings::RETAIL_ITEMS)
+        .map_err(|_| invalid("retail item inventory is not UTF-8"))?
+        .lines()
+        .filter_map(|line| line.split('\t').nth(1))
+    {
+        definitions
+            .entry(ItemVisualKey {
+                identifier: identifier.into(),
+                metadata: 0,
+            })
+            .or_insert((grip_source, ItemVisualDefinitionRoute::Missing));
+    }
     let visuals = definitions
         .into_iter()
         .map(|(key, (source, route))| {
@@ -277,6 +292,7 @@ pub(super) fn compile(
                     .unwrap_or_else(ItemDisplayTransform::identity)
             };
             ItemVisualDefinition {
+                grip: assets::item::grip::builtin_item_grip(&key.identifier),
                 first_person: display(|transforms| transforms.first_person),
                 third_person: display(|transforms| transforms.third_person),
                 dropped: display(|transforms| transforms.dropped),

@@ -155,14 +155,22 @@ pub const ATMOSPHERE: Carrier = carrier(
     Some("atmosphere-assets.json"),
     true,
 );
-pub const ENTITY: Carrier = carrier(
-    "entity",
-    "Compiling entity assets",
-    Recipe::Entity,
-    "vanilla-v1.mcbeent",
-    Some("entity-assets.json"),
-    true,
-);
+pub const ENTITY: Carrier = Carrier {
+    inputs: &[
+        Input::Pack,
+        Input::Manifest(VANILLA_MANIFEST),
+        Input::File(crate::item::grip::GRIP_INPUT_PATH),
+        Input::File(crate::item::grip::RETAIL_INPUT_PATH),
+    ],
+    ..carrier(
+        "entity",
+        "Compiling entity assets",
+        Recipe::Entity,
+        "vanilla-v1.mcbeent",
+        Some("entity-assets.json"),
+        true,
+    )
+};
 pub const FONT: Carrier = Carrier {
     font_face: Some(FontFace {
         name: "Cinnangles Sans",

@@ -1,3 +1,5 @@
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 use client_state::PlayerRuntime;
 use std::sync::Arc;
 
@@ -15,18 +17,18 @@ use client_ui::ui_runtime::UiRuntime;
 use {
     crate::{
         app::{
-            ClientBlobCacheOwner, configure_acceptance_finish_system,
-            configure_client_frame_schedule, configure_client_production_frame_systems,
+            configure_acceptance_finish_system, configure_client_frame_schedule,
+            configure_client_production_frame_systems,
         },
-        menu::MenuRuntime,
-        runtime::{
-            network::{NetworkHandle, ResourcePackAdmissionState},
-            world::{ClientWorld, TransferNotice, reconcile_world_stream_before_physics},
-        },
+        runtime::world::{ClientWorld, TransferNotice, reconcile_world_stream_before_physics},
         session::{drive_session, follow_server_transfer, recover_session_failure},
         session_audio::drain_sequenced_audio_into_session,
     },
     client_audio::session_audio::{SessionAudio, SessionAudioCatalog},
+    client_runtime::{
+        blob_cache::ClientBlobCacheOwner, pack_admission::ResourcePackAdmissionState,
+    },
+    client_shell::menu::MenuRuntime,
     launcher::menu::MenuAction,
 };
 
@@ -117,7 +119,7 @@ fn live_playback_reader_consumes_commit_epoch_fences_without_diagnostic_ring() {
         .init_resource::<client_presentation::local_player_camera_receipt::CameraPublicationAttempt>()
         .init_resource::<client_presentation::local_player::LocalPlayerFrameCarrier>()
         .init_resource::<client_presentation::local_player::CameraPose>()
-        .init_resource::<crate::movement::LocalPhysicsController>()
+        .init_resource::<client_interaction::movement::LocalPhysicsController>()
         .init_resource::<client_audio::named_audio::NamedAudio>()
         .add_systems(Update, crate::named_audio::drain_live_named_audio);
     for event in events {
@@ -359,12 +361,12 @@ fn add_audio_teardown_resources(app: &mut App, client_world: ClientWorld, menu: 
         .insert_resource(client_world)
         .insert_resource(menu)
         .insert_resource(crate::session::SessionController::default())
-        .insert_resource(NetworkHandle::disconnected())
+        .insert_resource(NetworkHandle::<PackApplication>::disconnected())
         .insert_resource(ResourcePackAdmissionState::default())
         .insert_resource(UiRuntime::new(1))
         .insert_resource(PlayerRuntime(player_state::PlayerState::new(1)))
-        .insert_resource(crate::movement::MovementTicker::default())
-        .insert_resource(crate::movement::LocalPhysicsController::default())
+        .insert_resource(client_interaction::movement::MovementTicker::default())
+        .insert_resource(client_interaction::movement::LocalPhysicsController::default())
         .insert_resource(client_presentation::local_player::LocalPlayerFrameCarrier::default())
         .insert_resource(client_presentation::local_player::InteractionOriginSnapshot::default());
 }

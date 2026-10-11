@@ -1,5 +1,7 @@
 //! The per-frame system, carrier loading and the caches behind them.
 
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 use assets::{RuntimeBlockEntityAssets, RuntimeFontCatalog};
@@ -24,7 +26,8 @@ use super::{
 };
 use client_ui::ui_runtime::UiRuntime;
 use {
-    crate::{movement::PhysicsCollisionRegistries, runtime::world::ClientWorld},
+    crate::runtime::world::ClientWorld,
+    client_interaction::movement::PhysicsCollisionRegistries,
     client_presentation::{actor_publication::ActorFramePartialTick, local_player::LocalViewPose},
 };
 
@@ -54,7 +57,7 @@ pub(crate) fn load_block_entity_carrier(
     ) {
         Ok(bytes) => bytes,
         Err(error) => {
-            eprintln!(
+            diagnostics::log_stderr!(
                 "block-entity carrier {} unavailable ({error}); block-entity models, sign text, break cracks and worn heads are not drawn; rebuild with: make block-entity-assets",
                 path.display()
             );
@@ -63,7 +66,7 @@ pub(crate) fn load_block_entity_carrier(
     };
     match RuntimeBlockEntityAssets::decode(&bytes) {
         Ok(assets) => {
-            eprintln!(
+            diagnostics::log_stderr!(
                 "loaded block-entity carrier from {} ({} textures, atlas {:?})",
                 path.display(),
                 assets.placements().len(),
@@ -72,7 +75,7 @@ pub(crate) fn load_block_entity_carrier(
             Some(Arc::new(assets))
         }
         Err(error) => {
-            eprintln!(
+            diagnostics::log_stderr!(
                 "block-entity carrier {} is invalid ({error}); block-entity models, sign text, break cracks and worn heads are not drawn; rebuild with: make block-entity-assets",
                 path.display()
             );
@@ -533,7 +536,7 @@ const MAP_REQUEST_RETRY_SECONDS: f64 = 5.0;
 /// Asks the server for the pixels of framed maps whose images have not arrived.
 pub(crate) fn request_missing_maps(
     mut runtime: ResMut<BlockEntityRuntime>,
-    network: Option<Res<crate::runtime::network::NetworkHandle>>,
+    network: Option<Res<NetworkHandle<PackApplication>>>,
     time: Res<Time<Real>>,
 ) {
     let Some(network) = network else {

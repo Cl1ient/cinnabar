@@ -243,7 +243,17 @@ fn mcbeas04_rejects_overlapping_pages() {
 fn mcbeas04_rejects_bad_texture_ref() {
     assert!(assets::TextureRef::from_raw(0x0010_0000).is_err());
     assert!(assets::TextureRef::new(2, 0).is_err());
-    assert!(assets::TextureRef::new(0, 2_048).is_err());
+    let last = assets::MAX_TEXTURE_LAYERS as u32 - 1;
+    for page in 0..assets::MAX_TEXTURE_PAGES as u32 {
+        let reference = assets::TextureRef::new(page, last).unwrap();
+        assert_eq!(reference.layer(), last);
+        assert_eq!(reference.page(), page);
+        assert_eq!(
+            assets::TextureRef::from_raw(reference.raw()).unwrap(),
+            reference
+        );
+        assert!(assets::TextureRef::new(page, last + 1).is_err());
+    }
 }
 
 #[test]
@@ -925,6 +935,30 @@ fn blob_rejects_material_layer_visual_and_mip_invariants() {
         encode_blob(&blend).is_err(),
         "blend and cutout are mutually exclusive"
     );
+}
+
+#[test]
+fn cauldron_water_material_roundtrips_only_with_untinted_blending() {
+    let mut compiled = valid_assets();
+    let mut materials = compiled.materials.into_vec();
+    let mut water = materials[0];
+    water.flags = assets::MATERIAL_FLAG_CAULDRON_WATER | assets::MATERIAL_FLAG_ALPHA_BLEND;
+    materials.push(water);
+    compiled.materials = materials.into_boxed_slice();
+    let encoded = encode_blob(&compiled).unwrap();
+    let runtime = assets::RuntimeAssets::decode(&encoded).unwrap();
+    assert_eq!(runtime.material(1).flags, water.flags);
+    for flags in [
+        assets::MATERIAL_FLAG_CAULDRON_WATER,
+        water.flags | assets::MATERIAL_FLAG_WATER_TINT,
+        water.flags | assets::MATERIAL_FLAG_ALPHA_CUTOUT,
+    ] {
+        compiled.materials[1].flags = flags;
+        assert!(matches!(
+            encode_blob(&compiled),
+            Err(AssetError::InvalidCompiledAssets { .. })
+        ));
+    }
 }
 
 #[test]

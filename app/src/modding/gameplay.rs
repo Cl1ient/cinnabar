@@ -22,13 +22,44 @@ pub(super) struct GameplayContext<'w> {
     time: Option<Res<'w, Time>>,
     real_time: Option<Res<'w, Time<Real>>>,
     clock: Option<Res<'w, crate::environment::WorldClock>>,
-    physics: Option<ResMut<'w, crate::movement::LocalPhysicsController>>,
-    movement: Option<Res<'w, crate::movement::MovementTicker>>,
+    physics: Option<ResMut<'w, client_interaction::movement::LocalPhysicsController>>,
+    movement: Option<Res<'w, client_interaction::movement::MovementTicker>>,
     player: Option<Res<'w, client_state::PlayerRuntime>>,
     ui: Option<Res<'w, client_ui::ui_runtime::UiRuntime>>,
+    session: Option<Res<'w, crate::session::SessionController>>,
 }
 
 impl GameplayContext<'_> {
+    /// Read-only current world identity and feet pose, independent of input capture.
+    pub(super) fn world_observation(
+        &self,
+        ui: &client_ui::ui_runtime::UiRuntime,
+    ) -> Option<mod_host::WorldObservation> {
+        let world = self.world.as_ref()?;
+        let authority = world.stream.as_ref()?.authority();
+        let session = self.clock.as_ref()?.session_generation();
+        if session == 0 || session != ui.session_id() || world.dimension_transfer.active() {
+            return None;
+        }
+        let position = self.view.as_ref()?.feet_translation();
+        if !position.is_finite() {
+            return None;
+        }
+        let identity = self.session.as_ref()?.destination_identity()?;
+        if identity.len() > mod_api::MAX_WORLD_IDENTITY_BYTES
+            || identity.chars().any(char::is_control)
+        {
+            return None;
+        }
+        Some(mod_host::WorldObservation {
+            session,
+            world: identity.to_owned(),
+            dimension: authority.current_dimension(),
+            position: (position.x, position.y, position.z),
+            alive: ui.hud().health().is_none_or(|health| health.current() > 0),
+        })
+    }
+
     /// Layout editing requires the same current connected world as player presentation.
     pub(super) fn hud_editor_session(&self, ui: &client_ui::ui_runtime::UiRuntime) -> Option<u64> {
         self.world.as_ref()?.stream.as_ref()?;
@@ -52,7 +83,9 @@ impl GameplayContext<'_> {
         let now_millis = self.real_time.as_ref().map_or(0, |time| {
             u64::try_from(time.elapsed().as_millis()).unwrap_or(u64::MAX)
         });
-        super::player_state::snapshot(authority, session, player, ui, now_millis)
+        client_extensions::modding::player_state::snapshot(
+            authority, session, player, ui, now_millis,
+        )
     }
 
     /// Returns the current walking authority only while local movement can accept input.

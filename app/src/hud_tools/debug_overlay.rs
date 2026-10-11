@@ -1,6 +1,8 @@
 //! Java-style F3 diagnostics requested for Cinnabar. This is a developer tool,
 //! not a Bedrock parity screen; its visual reference is the supplied 19w05a image.
 
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 mod details;
 mod entities;
 mod lines;
@@ -27,8 +29,10 @@ use client_ui::ui_runtime::presentation::{DebugLines, UiPresentationRuntime};
 use {
     crate::{
         environment::{WeatherState, WorldClock},
-        movement::{LocalPhysicsController, MovementTicker, PhysicsCollisionRegistries},
-        runtime::{network::NetworkHandle, visibility::CaveVisibilityCache, world::ClientWorld},
+        runtime::{visibility::CaveVisibilityCache, world::ClientWorld},
+    },
+    client_interaction::movement::{
+        LocalPhysicsController, MovementTicker, PhysicsCollisionRegistries,
     },
     client_presentation::{
         camera::CameraSettingsAuthority,
@@ -155,15 +159,15 @@ struct DebugContext<'w, 's> {
     ui: Option<Res<'w, client_ui::ui_runtime::UiRuntime>>,
     clock: Option<Res<'w, WorldClock>>,
     weather: Option<Res<'w, WeatherState>>,
-    network: Option<Res<'w, NetworkHandle>>,
+    network: Option<Res<'w, NetworkHandle<PackApplication>>>,
     visibility: Option<Res<'w, CaveVisibilityCache>>,
     graphics: Option<Res<'w, VisibilityDiagnostics>>,
     queue: Option<Res<'w, ChunkRenderQueue>>,
     ui_stats: Option<Res<'w, UiRenderStatsResource>>,
     camera_settings: Option<Res<'w, CameraSettingsAuthority>>,
     profiler: Option<Res<'w, RuntimeStageProfiler>>,
-    focus: Option<Res<'w, client_presentation::camera::CursorFocus>>,
-    driven: Option<Res<'w, crate::camera::DrivenInput>>,
+    focus: Option<Res<'w, client_state::CursorFocus>>,
+    driven: Option<Res<'w, client_state::DrivenInput>>,
     window: Query<'w, 's, (&'static Window, &'static CursorOptions), With<PrimaryWindow>>,
 }
 

@@ -1,5 +1,7 @@
 //! Per-frame HUD observation and publication.
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::prelude::Transform;
+use client_runtime::network::NetworkHandle;
 use inventory::inventory_ledger::PlayerInventorySlot;
 use {super::*, client_presentation::camera::CameraSettingsAuthority};
 
@@ -40,9 +42,9 @@ fn hand_first_person(
 /// Resources beyond Bevy's sixteen-parameter limit.
 type PublishExtras<'w> = (
     Res<'w, WorldStreamFramePoll>,
-    Res<'w, crate::menu::MenuRuntime>,
+    Res<'w, client_shell::menu::MenuRuntime>,
     Res<'w, client_presentation::actor_publication::ActorFrameState>,
-    Option<Res<'w, crate::movement::PhysicsCollisionRegistries>>,
+    Option<Res<'w, client_interaction::movement::PhysicsCollisionRegistries>>,
     Option<Res<'w, render::RuntimeStageProfiler>>,
     Option<Res<'w, render::ActorPipelineReadiness>>,
     Option<Res<'w, render::PipelineWarmupReadiness>>,
@@ -52,11 +54,11 @@ type PublishExtras<'w> = (
         Res<'w, client_presentation::local_player::LocalPlayerFrameCarrier>,
         Res<'w, crate::environment::WorldClock>,
         Res<'w, crate::environment::WeatherState>,
-        Res<'w, crate::runtime::network::NetworkHandle>,
+        Res<'w, NetworkHandle<PackApplication>>,
         Option<ResMut<'w, render::UiGlintSettings>>,
-        Res<'w, crate::item_use::ItemUseRuntime>,
-        Res<'w, crate::movement::MovementTicker>,
-        Res<'w, crate::movement::LocalPhysicsController>,
+        Res<'w, client_interaction::item_use::ItemUseRuntime>,
+        Res<'w, client_interaction::movement::MovementTicker>,
+        Res<'w, client_interaction::movement::LocalPhysicsController>,
     ),
 );
 
@@ -362,7 +364,7 @@ pub(crate) fn prepare_ui_runtime(
                 camera,
                 &transform,
                 [logical_width, logical_height],
-                picked_nametag_actor(stream, &transform, collisions.as_deref()),
+                picked_nametag_actor(stream, &transform, collisions.as_deref(), &player_runtime),
                 actor_partial.0,
                 show_names,
             )
@@ -402,7 +404,7 @@ fn observe_paper_doll(
     stream: &chunk_pipeline::WorldStream,
     runtime: &client_ui::ui_runtime::UiRuntime,
     player_runtime: &client_state::PlayerRuntime,
-    physics: &crate::movement::LocalPhysicsController,
+    physics: &client_interaction::movement::LocalPhysicsController,
 ) -> Option<client_ui::ui_runtime::presentation::paper_doll::State> {
     use inventory::inventory_ledger::InventoryTarget;
     let actor = stream.authority().actor(stream.local_player_runtime_id())?;
@@ -438,7 +440,7 @@ fn observe_paper_doll(
 /// Resolves the crafter block's triggered state at the existing UI capture boundary.
 fn station_triggered(
     stream: &chunk_pipeline::WorldStream,
-    collisions: &crate::movement::PhysicsCollisionRegistries,
+    collisions: &client_interaction::movement::PhysicsCollisionRegistries,
     position: [i32; 3],
 ) -> Option<bool> {
     let mode = stream.network_id_mode();
@@ -446,6 +448,7 @@ fn station_triggered(
         stream.collision_store(),
         collisions.registry(mode),
         stream.current_dimension(),
+        Default::default(),
     );
     let runtime_id = world.primary_runtime_id(position).ok()?;
     assets::pinned_block_presentation_states()
@@ -457,7 +460,8 @@ fn station_triggered(
 fn picked_nametag_actor(
     stream: &chunk_pipeline::WorldStream,
     camera_transform: &GlobalTransform,
-    collisions: Option<&crate::movement::PhysicsCollisionRegistries>,
+    collisions: Option<&client_interaction::movement::PhysicsCollisionRegistries>,
+    player: &client_state::PlayerRuntime,
 ) -> Option<u64> {
     let eye = camera_transform.translation();
     let direction = *camera_transform.forward();
@@ -476,6 +480,12 @@ fn picked_nametag_actor(
             stream.collision_store(),
             collisions.registry(stream.network_id_mode()),
             stream.current_dimension(),
+            crate::interaction_authority::pick_context(
+                stream,
+                collisions,
+                player.facts.player_game_mode(),
+                player.selected_stack().map(|item| item.block_runtime_id),
+            ),
         );
         let vector =
             |v: bevy::math::Vec3| sim::Vec3::new(f64::from(v.x), f64::from(v.y), f64::from(v.z));

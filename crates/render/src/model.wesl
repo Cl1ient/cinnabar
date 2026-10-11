@@ -3,7 +3,7 @@ import render::chunk_bindings::{
     terrain_gamma_page_0, terrain_gamma_page_1, model_sampler, animations, animation_frames,
     clock, model_templates, geometry_streams, atmosphere,
 };
-import render::material::{MaterialGpu, materials, positional_material, material_uv_flags, texture_model_uv, texture_gradient_scale};
+import render::material::{MaterialGpu, materials, positional_material, texture_layer, material_uv_flags, texture_model_uv, texture_gradient_scale};
 @if(ENHANCED_SHADOW)
 import render::enhanced::caster::caster_clip;
 import render::world_projection::{section_camera_offset, camera_offset_clip};
@@ -350,7 +350,7 @@ fn tinted(sampled: vec4<f32>, flags: u32, record: u32, position: vec3<f32>, worl
 }
 
 fn sample_ref(texture_ref: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
-    let layer = i32(texture_ref & 0x7ffu);
+    let layer = texture_layer(texture_ref);
     @if(ENHANCED)
     if ((texture_ref >> 31u) == 0u) {
         let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_0, 0));
@@ -376,7 +376,7 @@ fn sample_model_ref(in: VertexOutput, texture_ref: u32, dx: vec2<f32>, dy: vec2<
     if ((in.visibility.x & MODEL_BOUNDED_TILE) != 0u) {
         return sample_ref(texture_ref, in.uv, dx, dy);
     }
-    let layer = i32(texture_ref & 0x7ffu);
+    let layer = texture_layer(texture_ref);
     @if(ENHANCED)
     if ((texture_ref >> 31u) == 0u) {
         let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_0, 0));
@@ -405,7 +405,7 @@ uv: vec2<f32>, @if(ALPHA_TO_COVERAGE)
 dx: vec2<f32>, @if(ALPHA_TO_COVERAGE)
 dy: vec2<f32>, @if(ALPHA_TO_COVERAGE)
 sampled: vec4<f32>) -> CutoutSample {
-    let layer = i32(texture_ref & 0x7ffu);
+    let layer = texture_layer(texture_ref);
     let coordinate = texture_model_uv(texture_ref, uv);
     @if(ENHANCED)
     if ((texture_ref >> 31u) == 0u) {
@@ -527,6 +527,12 @@ fn shade_blend(in: VertexOutput, front_facing: bool, dx: vec2<f32>, dy: vec2<f32
     var sampled = sample_model_ref(in, in.current_texture, dx, dy);
     if (in.frame_blend > 0.0) {
         sampled = mix(sampled, sample_model_ref(in, in.next_texture, dx, dy), in.frame_blend);
+    }
+    if ((in.material_flags & MATERIAL_CAULDRON_WATER_FLAG) != 0u) {
+        @if(ENHANCED)
+        sampled *= tint_to_linear(CAULDRON_WATER_COLOUR);
+        @if(!ENHANCED)
+        sampled *= CAULDRON_WATER_COLOUR;
     }
     // The background is fogged by the same transfer, so preserving source
     // alpha composes to one fog application instead of double-counting it.

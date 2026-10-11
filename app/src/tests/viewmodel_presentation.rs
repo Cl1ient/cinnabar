@@ -81,7 +81,7 @@ fn offhand_empty_provider_preserves_unknown_present_and_actual_authority_routes(
     );
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), Some(true));
     assert!(runtime.gameplay_hud().offhand_stack().is_none());
-    crate::session::begin_session(&mut runtime, &mut player_runtime, 2);
+    client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 2);
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), None);
     runtime
         .enqueue_inventory_event(
@@ -119,7 +119,7 @@ fn offhand_empty_provider_preserves_unknown_present_and_actual_authority_routes(
         .unwrap();
     runtime.drain_pending_inventory(&mut player_runtime);
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), Some(true));
-    crate::session::begin_session(&mut runtime, &mut player_runtime, 3);
+    client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 3);
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), None);
 }
 
@@ -464,18 +464,18 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         app.world().resource::<HandAdapter>().stats.skin_validations,
         1
     );
-    let mut menu = crate::menu::MenuRuntime::new(false, 2, "Tester".into());
+    let mut menu = client_shell::menu::MenuRuntime::new(false, 2, "Tester".into());
     menu.open_pause();
     app.insert_resource(menu);
     app.world_mut().run_system_once(observe).unwrap();
     assert!(app.world().resource::<HandAdapter>().stats.mode.is_some());
     app.world_mut()
-        .resource_mut::<crate::menu::MenuRuntime>()
+        .resource_mut::<client_shell::menu::MenuRuntime>()
         .activate(launcher::menu::MenuAction::PauseSettings);
     app.world_mut().run_system_once(observe).unwrap();
     assert!(app.world().resource::<HandAdapter>().stats.mode.is_some());
     app.world_mut()
-        .resource_mut::<crate::menu::MenuRuntime>()
+        .resource_mut::<client_shell::menu::MenuRuntime>()
         .activate(launcher::menu::MenuAction::Navigate(
             launcher::menu::MenuScreen::Home,
         ));
@@ -486,7 +486,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         Some(HandFallback::Hidden)
     );
     app.world_mut()
-        .resource_mut::<crate::menu::MenuRuntime>()
+        .resource_mut::<client_shell::menu::MenuRuntime>()
         .set_visible(false);
     app.world_mut()
         .run_system_once(
@@ -544,7 +544,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         Some(HandFallback::ItemsUnknownOrHeld)
     );
     crate::tests::with_ui_player(&mut app, |runtime, player_runtime| {
-        crate::session::begin_session(runtime, player_runtime, 2);
+        client_runtime::session::begin_session(runtime, player_runtime, 2);
     });
     app.world_mut().run_system_once(observe).unwrap();
     assert_eq!(app.world().resource::<HandAdapter>().stats.mode, None);
@@ -583,7 +583,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
     );
     assert_eq!(app.world().resource::<HandAdapter>().stats.mode, None);
     crate::tests::with_ui_player(&mut app, |runtime, player_runtime| {
-        crate::session::begin_session(runtime, player_runtime, 3);
+        client_runtime::session::begin_session(runtime, player_runtime, 3);
         runtime
             .publish_local_runtime_id(player_runtime, 3, 1)
             .unwrap();

@@ -358,8 +358,8 @@ pub(super) fn prepare_mod_input(
     menu: Option<Res<MenuRuntime>>,
     mut presentation: ResMut<UiPresentationRuntime>,
     time: Option<Res<Time>>,
-    mut focus: Option<ResMut<client_presentation::camera::CursorFocus>>,
-    driven: Option<Res<crate::camera::DrivenInput>>,
+    mut focus: Option<ResMut<client_state::CursorFocus>>,
+    driven: Option<Res<client_state::DrivenInput>>,
 ) {
     let PanelPointerInput {
         mouse_events,
@@ -456,8 +456,24 @@ pub(super) fn prepare_mod_input(
         absorbed,
     );
     let was_open = physical.panel_owned;
-    let owner = extension.panel_owner();
-    let mut open = extension.host(owner).panel_open() && presentation.mod_panel_open();
+    if focused && !absorbed {
+        let toggles: Vec<_> = panel_keys
+            .iter()
+            .filter(|(_, _, repeat)| !repeat)
+            .map(|(key, _, _)| key.clone())
+            .collect();
+        if extension.hosts.select_panel(&toggles) {
+            presentation.cancel_mod_panel_edit();
+            let owner = extension.hosts.panel_owner();
+            let _ = presentation.set_mod_panel_font(extension.panel_fonts[owner].clone());
+            if let Err(error) = presentation.set_mod_panel(extension.hosts.host(owner).panel()) {
+                eprintln!("Cinnabar extension panel rejected: {error}");
+            }
+            presentation.set_mod_panel_open(false);
+        }
+    }
+    let owner = extension.hosts.panel_owner();
+    let mut open = extension.hosts.host(owner).panel_open() && presentation.mod_panel_open();
     let had_panel = open;
     let editing = open && presentation.mod_panel_editing();
     let interrupt = editing
@@ -495,19 +511,21 @@ pub(super) fn prepare_mod_input(
     let close_requested = pressed.iter().any(|key| key == "Escape")
         && open
         && !extension
+            .hosts
             .host(owner)
             .panel()
             .is_some_and(|panel| panel.capture_key);
     let toggle_requested = extension
+        .hosts
         .host(owner)
         .panel()
         .is_some_and(|panel| pressed.contains(&panel.toggle_key));
-    if !extension.host(owner).is_active() || (focused && (absorbed || close_requested)) {
+    if !extension.hosts.host(owner).is_active() || (focused && (absorbed || close_requested)) {
         open = false;
     } else if toggle_requested {
         open = !open;
     }
-    extension.host_mut(owner).set_panel_open(open);
+    extension.hosts.host_mut(owner).set_panel_open(open);
     presentation.set_mod_panel_open(open);
     let before_pointer_open = open;
     let was_held = mouse
@@ -533,6 +551,14 @@ pub(super) fn prepare_mod_input(
         }
     }
     super::hud_editor::collect(&mut extension, &mut presentation);
+    if extension.hosts.hud_owner() == Some(owner) {
+        events.extend(
+            presentation
+                .take_chat_extension_actions()
+                .into_iter()
+                .map(|id| ui::mod_panel::Event { id, value: 1. }),
+        );
+    }
     let events = events
         .into_iter()
         .take(ui::mod_panel::MAX_PANEL_EVENTS)
@@ -546,7 +572,7 @@ pub(super) fn prepare_mod_input(
     if !open
         && focused
         && !absorbed
-        && extension.host(owner).is_active()
+        && extension.hosts.host(owner).is_active()
         && ((had_panel && (close_requested || toggle_requested))
             || pointer_closed
             || editor_closed_panel)
@@ -554,7 +580,7 @@ pub(super) fn prepare_mod_input(
     {
         focus.authorize_screen_return();
     }
-    extension.host_mut(owner).set_panel_open(open);
+    extension.hosts.host_mut(owner).set_panel_open(open);
     let restore = physical.finish_panel(
         open,
         focused,
@@ -598,7 +624,7 @@ pub(super) fn prepare_mod_input(
         keys.reset(KeyCode::Escape);
     }
     if open {
-        client_presentation::camera::release_cursor(&mut cursor);
+        client_ui::physical_input::release_cursor(&mut cursor);
         keys.clear();
         if let Some(motion) = motion.as_mut() {
             motion.delta = Vec2::ZERO;
@@ -613,8 +639,14 @@ pub(super) fn prepare_mod_input(
             // A close edge belongs to the panel, not the underlying pause menu.
             keys.reset(KeyCode::Escape);
         }
-        let reserved = extension.reserved_keys();
+        let mut reserved = extension.hosts.reserved_keys();
+        for index in 0..extension.hosts.host_count() {
+            if let Some(panel) = extension.hosts.host(index).panel() {
+                reserved.push(panel.toggle_key.clone());
+            }
+        }
         let toggle = extension
+            .hosts
             .host(owner)
             .panel()
             .map(|panel| panel.toggle_key.as_str());

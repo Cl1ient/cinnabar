@@ -1,5 +1,7 @@
 //! Packet-driven aim selection publishes a separate interaction ray.
 
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 use std::sync::Arc;
 
 use bevy::{ecs::system::SystemParam, prelude::*};
@@ -11,14 +13,11 @@ use protocol::CameraAimAssistPresetSettings;
 use semantic_input::PerspectiveMode;
 
 use {
-    crate::{
-        environment::WorldClock,
-        movement::{LocalPhysicsController, PhysicsCollisionRegistries},
-        runtime::{network::NetworkHandle, world::ClientWorld},
-    },
+    crate::{environment::WorldClock, runtime::world::ClientWorld},
+    client_interaction::movement::{LocalPhysicsController, PhysicsCollisionRegistries},
     client_presentation::{
         camera::{CameraSettingsAuthority, ServerCameraView},
-        local_player::{InteractionOriginSnapshot, LocalViewPose},
+        local_player::InteractionOriginSnapshot,
     },
     client_state::PlayerRuntime,
 };
@@ -42,7 +41,7 @@ pub(crate) struct AimContext<'w> {
     instructions: Res<'w, ServerCameraInstructions>,
     camera: Res<'w, ServerCameraView>,
     camera_settings: Res<'w, CameraSettingsAuthority>,
-    network: Res<'w, NetworkHandle>,
+    network: Res<'w, NetworkHandle<PackApplication>>,
     physics: Res<'w, LocalPhysicsController>,
 }
 
@@ -81,11 +80,7 @@ pub(crate) fn publish_assisted_interaction(
     };
     let tick = ray.physics_tick();
     let mode = stream.network_id_mode();
-    let world = sim::PaletteWorld::new(
-        stream.collision_store(),
-        context.collisions.registry(mode),
-        stream.current_dimension(),
-    );
+    let world = aim_world(stream, &context.collisions, &context.player);
     let item = context
         .player
         .selected_stack()
@@ -168,43 +163,24 @@ impl AimActivation {
     }
 }
 
-/// Applies the native action override to player facing and the same unsent movement tick.
-pub(crate) fn rotate_for_action(
-    frame: &AimAssistFrame,
-    camera: &ServerCameraView,
-    view: &mut LocalViewPose,
-    movement: &mut crate::movement::MovementTicker,
-    tick: u64,
-) {
-    if let Some(rotation) = action_rotation(frame, camera) {
-        apply_action_rotation(rotation, view, movement, tick);
-    }
+/// Supplies current player eligibility to native aim candidate and obstruction sampling.
+fn aim_world<'a>(
+    stream: &'a chunk_pipeline::WorldStream,
+    collisions: &'a PhysicsCollisionRegistries,
+    player: &PlayerRuntime,
+) -> sim::PaletteWorld<'a> {
+    sim::PaletteWorld::new(
+        stream.collision_store(),
+        collisions.registry(stream.network_id_mode()),
+        stream.current_dimension(),
+        crate::interaction_authority::pick_context(
+            stream,
+            collisions,
+            player.facts.player_game_mode(),
+            player.selected_stack().map(|item| item.block_runtime_id),
+        ),
+    )
 }
 
-/// The facing an attack or release turns the player to, when the camera and scheme allow it.
-pub(crate) fn action_rotation(frame: &AimAssistFrame, camera: &ServerCameraView) -> Option<Quat> {
-    use client_presentation::aim_assist::{AimAssistControlScheme, rotates_player_on_projectile};
-    let direction = frame.interaction_direction()?;
-    let scheme = AimAssistControlScheme::from_wire(camera.active_control_scheme().unwrap_or(0))?;
-    camera
-        .active_base_preset_name()
-        .is_some_and(|camera| rotates_player_on_projectile(camera, scheme))
-        .then(|| client_presentation::camera::look_at_target(Vec3::ZERO, direction))
-}
-
-/// Writes an action facing to the view and to `tick`'s unsent movement input.
-pub(crate) fn apply_action_rotation(
-    rotation: Quat,
-    view: &mut LocalViewPose,
-    movement: &mut crate::movement::MovementTicker,
-    tick: u64,
-) {
-    let (yaw, pitch, _) = rotation.to_euler(EulerRot::YXZ);
-    if movement.override_action_rotation(
-        tick,
-        -pitch.to_degrees(),
-        gameplay::movement::wire_yaw(180.0 - yaw.to_degrees()),
-    ) {
-        view.set_rotation(rotation);
-    }
-}
+#[cfg(test)]
+mod pick_tests;

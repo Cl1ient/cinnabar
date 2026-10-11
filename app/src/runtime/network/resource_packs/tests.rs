@@ -1,6 +1,6 @@
 use resource_pack::{AdmissionError, PackAdmission};
 
-use super::ResourcePackAdmissionState;
+use client_runtime::pack_admission::ResourcePackAdmissionState;
 
 /// Serializes tests that go through the process-wide block overlay cache.
 static OVERLAY_CACHE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -74,8 +74,7 @@ fn a_rejected_required_pack_refuses_the_join() {
         let outcome = super::required_packs_applied(required, &application.admission);
         assert_eq!(outcome.is_err(), required);
         if let Err(error) = outcome {
-            let failure =
-                crate::runtime::network::session_failure_display(&error.to_string(), None);
+            let failure = client_session::session_failure_display(&error.to_string(), None);
             assert_eq!(
                 launcher::menu::disconnect::describe(&failure).body,
                 launcher::menu::disconnect::DisconnectBody::Key("disconnectionScreen.resourcePack")
@@ -405,17 +404,46 @@ fn overlay_cache_reuses_the_previous_session_compile() {
     let fingerprint = super::stack_fingerprint(&stack);
     let view = resource_pack::LayeredPackView::tracked(stack);
     for _ in 0..2 {
-        super::cached_block_overlay(&fingerprint, &view, &blocks, false, || {
-            compiles += 1;
-            None
-        });
+        super::cached_block_overlay(
+            &fingerprint,
+            &view,
+            &blocks,
+            false,
+            super::overlay_texture_layer_limit(),
+            || {
+                compiles += 1;
+                None
+            },
+        );
     }
     assert_eq!(compiles, 1);
-    super::cached_block_overlay(&fingerprint, &view, &blocks, true, || {
-        compiles += 1;
-        None
-    });
+    super::cached_block_overlay(
+        &fingerprint,
+        &view,
+        &blocks,
+        true,
+        super::overlay_texture_layer_limit(),
+        || {
+            compiles += 1;
+            None
+        },
+    );
     assert_eq!(compiles, 2);
+    super::cached_block_overlay(
+        &fingerprint,
+        &view,
+        &blocks,
+        true,
+        super::overlay_texture_layer_limit() + 1,
+        || {
+            compiles += 1;
+            None
+        },
+    );
+    assert_eq!(
+        compiles, 3,
+        "a different device capacity cannot reuse the old overlay"
+    );
 }
 
 #[test]

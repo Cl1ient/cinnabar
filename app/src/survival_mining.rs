@@ -6,26 +6,28 @@
 //! as vanilla's local destroy does; inbound block updates stay authoritative and
 //! replace the prediction. Unknown blocks keep cracking until the server breaks them.
 
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::{
     ecs::system::SystemParam,
-    prelude::{Query, Real, Res, ResMut, Resource, Time, Window, With},
+    prelude::{Query, Real, Res, ResMut, Time, Window, With},
     window::PrimaryWindow,
 };
+use client_interaction::survival_mining::SurvivalMiningRuntime;
+use client_runtime::network::NetworkHandle;
 use semantic_input::Action;
 use sim::{DestroyConditions, HeldTool, PaletteWorld};
 
 use client_ui::ui_runtime::UiRuntime;
 use client_world::game_mode_capabilities::GameModeCapabilities;
 use {
-    crate::{
-        interaction_authority::observe_block,
+    crate::{interaction_authority::observe_block, runtime::world::ClientWorld},
+    client_interaction::{
         melee::{MeleeRuntime, SwingTracker},
         mining::hand_interaction_selection,
         movement::{
             LocalMovementEffectTimeline, LocalPhysicsController, MovementTicker,
             PhysicsCollisionRegistries,
         },
-        runtime::{network::NetworkHandle, world::ClientWorld},
     },
     client_presentation::local_player::InteractionOriginSnapshot,
     client_state::SemanticInputSnapshot,
@@ -42,22 +44,6 @@ use gameplay::survival_mining::{
     tool_break_damage, unbreaking_keeps_damage,
 };
 
-/// Bevy resource adapter for the gameplay survival_mining owner.
-#[derive(Resource, Debug, Default)]
-pub(crate) struct SurvivalMiningRuntime(gameplay::survival_mining::SurvivalMiningRuntime);
-impl std::ops::Deref for SurvivalMiningRuntime {
-    type Target = gameplay::survival_mining::SurvivalMiningRuntime;
-    /// Borrows the gameplay owner at the existing ordered system boundary.
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for SurvivalMiningRuntime {
-    /// Mutates the gameplay owner without duplicating its state.
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 #[derive(SystemParam)]
 pub(crate) struct SurvivalMiningContext<'w, 's> {
     input: Res<'w, SemanticInputSnapshot>,
@@ -70,7 +56,7 @@ pub(crate) struct SurvivalMiningContext<'w, 's> {
     effects: Res<'w, LocalMovementEffectTimeline>,
     physics: Option<Res<'w, LocalPhysicsController>>,
     melee: Res<'w, MeleeRuntime>,
-    network: Res<'w, NetworkHandle>,
+    network: Res<'w, NetworkHandle<PackApplication>>,
     time: Res<'w, Time<Real>>,
     block_cues: bevy::prelude::MessageWriter<'w, client_audio::audio::LocalBlockCue>,
 }
@@ -230,6 +216,7 @@ fn observe_destroy_target(
         &context.client_world,
         &context.collisions,
         selection,
+        player_runtime.facts.player_game_mode(),
         (
             input_mode,
             if caps.creative_reach {
@@ -267,6 +254,7 @@ fn observe_destroy_target(
         stream.collision_store(),
         context.collisions.registry(mode),
         stream.current_dimension(),
+        Default::default(),
     );
     let effects = context.effects.mining_effects();
     let helmet = ui.local_armor(player_runtime).helmet;
@@ -330,10 +318,3 @@ fn observe_destroy_target(
 const AQUA_AFFINITY_ENCHANTMENT_ID: i16 = 8;
 const EFFICIENCY_ENCHANTMENT_ID: i16 = 15;
 const UNBREAKING_ENCHANTMENT_ID: i16 = 17;
-
-impl SurvivalMiningRuntime {
-    /// Supplies existing audio and particle adapters with the current destroy target.
-    pub(crate) fn destroying_target(&self) -> Option<([i32; 3], u8)> {
-        self.0.destroying_target()
-    }
-}

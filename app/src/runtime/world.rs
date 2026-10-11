@@ -226,7 +226,7 @@ pub(crate) fn update_camera_medium(
         return;
     };
     let position = camera.translation.to_array();
-    fog_bindings.refresh_session(
+    fog_bindings.refresh(
         stream.authority().resolved_biome_tints(),
         stream.biome_tint_identity(),
         Some(&atmosphere),
@@ -235,9 +235,8 @@ pub(crate) fn update_camera_medium(
     let (camera_profile, profile_route, camera_fog) =
         fog_bindings.camera(raw_id, stream.current_dimension());
     medium.0 = stream.camera_medium(position);
-    let camera_biome = stream
-        .camera_biome_id(camera.translation.to_array())
-        .and_then(|raw_id| stream.authority().resolved_biome_tints().biome(raw_id));
+    let camera_biome =
+        raw_id.and_then(|raw_id| stream.authority().resolved_biome_tints().biome(raw_id));
     *context = environment::EnvironmentContext {
         dimension: stream.current_dimension(),
         fog_registry_generation: fog_bindings.atmosphere_generation,

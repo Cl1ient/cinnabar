@@ -689,7 +689,7 @@ fn validate_geometries(
     validate_entity_geometry_inheritance(&compiled.geometries)
 }
 
-/// Validates deterministic catalog inheritance selection and inherited bone parents.
+/// Validates catalog inheritance selection, inherited bone parents and locator limits.
 ///
 /// External inheritance overlays are retained, but an explicit bone parent must
 /// resolve within the retained local/catalog chain; unseen external bones are
@@ -707,8 +707,17 @@ pub fn validate_entity_geometry_inheritance(
     for start in 0..geometries.len() {
         let chain = selected_geometry_chain(&parents, start)?;
         let mut effective_parents = std::collections::BTreeMap::<String, Option<String>>::new();
+        let mut locator_names = std::collections::BTreeSet::new();
         for index in chain.into_iter().rev() {
             for bone in &geometries[index].bones {
+                for locator in &bone.locators {
+                    if locator_names.len() >= MAX_GEOMETRY_LOCATORS
+                        && !locator_names.contains(locator.name.as_ref())
+                    {
+                        return Err(invalid("inherited geometry locator count exceeds bound"));
+                    }
+                    locator_names.insert(locator.name.as_ref());
+                }
                 let name = bone.name.to_ascii_lowercase();
                 if let Some(parent) = &bone.parent {
                     effective_parents.insert(name, Some(parent.to_ascii_lowercase()));

@@ -34,15 +34,15 @@ cause, and report any validation that remains incomplete.
 ## CI
 
 `ci-ok` is the required check. Pull requests run formatting, the architecture gate, and
-Go tests on Linux. `devtool ci-plan` then limits clippy, Rust tests, and doctests to the
-changed crates and their reverse dependencies. Root Cargo files, `.cargo/`, toolchain
-files, workflows, `tools/architecture`, and paths it cannot classify select the whole
-workspace. Windows lints the same set and runs the client library tests and the affected
-crates in `PLATFORM_TEST_PACKAGES` (`tools/devtool/src/ci.rs`). Add a crate there when its
-tests exercise platform-specific code. macOS runs the same jobs only when a changed crate
-source matches `MACOS_MARKERS`, `render` or a shader changes, or the whole workspace is
-selected; full runs catch macOS-only breakage reached through another crate's API.
-Packaging, physics-bootstrap, and PowerShell-harness jobs run when their inputs change.
+Go tests on Linux. Rust jobs build and lint the whole workspace, so only changed crates and
+their reverse dependencies recompile, and `devtool ci-plan` limits Rust tests to those
+crates. Root Cargo files, `.cargo/`, toolchain files, workflows, `tools/architecture`, and
+paths it cannot classify run every test. Windows also tests the client library and the
+affected crates in `PLATFORM_TEST_PACKAGES` (`tools/devtool/src/ci.rs`); add a crate there
+when its tests exercise platform-specific code. macOS runs the same job only when a changed
+crate source matches `MACOS_MARKERS`, `render` or a shader changes, or every test runs; full
+runs catch macOS-only breakage reached through another crate's API. Packaging,
+physics-bootstrap, and PowerShell-harness jobs run when their inputs change.
 
 The full three-platform matrix runs on `dev` every six hours and can be requested
 with `gh workflow run ci.yml --ref <branch>`. `ci-cache.yml` tests `dev` on Linux
@@ -64,6 +64,9 @@ save caches; PR and tag runs restore them. After a successful save, older entrie
 in that platform/profile bucket are removed. Go workflows use `stable`, with the
 resolved compiler version included in cache keys. Go uses the same restore/save
 ownership, without timestamp restoration.
+
+CI builds with `--workspace` and selects tests with nextest filtersets: a `-p` subset
+unifies features differently and rebuilds cached dependencies.
 
 The first run after a cache format change is cold. Check the restored-source count,
 Cargo build durations, and cache sizes on subsequent runs before claiming a speedup.

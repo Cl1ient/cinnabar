@@ -1,10 +1,10 @@
 name: CI
 
 # Pull requests run preflight, then Linux checks and a Windows/macOS subset when runtime inputs
-# change. Preflight's `devtool ci-plan` limits Rust checks to the changed crates and their
-# dependents, and runs macOS only for macOS-specific changes. Scheduled and manual runs are full:
-# every test, clippy and Go check on all three OSes. `ci-ok` passes when every job succeeded or
-# was intentionally skipped.
+# change. Rust jobs build the whole workspace, so the cache leaves only changed crates and their
+# dependents to compile; preflight's `devtool ci-plan` limits tests to those crates and macOS to
+# macOS-specific changes. Scheduled and manual runs are full: every test, clippy and Go check on
+# all three OSes. `ci-ok` passes when every job succeeded or was intentionally skipped.
 on:
   pull_request:
   schedule:
@@ -137,10 +137,8 @@ jobs:
     outputs:
       scope: ${{ steps.affected.outputs.scope }}
       macos: ${{ steps.affected.outputs.macos }}
-      client: ${{ steps.affected.outputs.client }}
       names: ${{ steps.affected.outputs.names }}
-      packages: ${{ steps.affected.outputs.packages }}
-      doctests: ${{ steps.affected.outputs.doctests }}
+      tests: ${{ steps.affected.outputs.tests }}
       platform: ${{ steps.affected.outputs.platform }}
     steps:
       - uses: actions/checkout@v6
@@ -176,7 +174,6 @@ jobs:
     env:
       FULL: ${{ needs.changes.outputs.full }}
       AFFECTED: ${{ needs.preflight.outputs.names }}
-      PACKAGES: ${{ needs.changes.outputs.full == 'true' && '--workspace' || needs.preflight.outputs.packages }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.99.0
@@ -198,11 +195,10 @@ jobs:
           cargo tree -e features -p bedrock-client --target x86_64-unknown-linux-gnu --locked | grep -F 'bevy feature "wayland"'
           cargo tree -e features -p bedrock-client --target x86_64-unknown-linux-gnu --locked | grep -F 'bevy feature "x11"'
       # The checks below are independent, so each reports even when an earlier one fails.
-      - name: Lint affected Rust packages
+      # Whole-workspace builds match the cached features, so only affected crates are linted.
+      - name: Lint Rust workspace
         if: ${{ !cancelled() }}
-        run: |
-          # shellcheck disable=SC2086 # one filter per word
-          cargo clippy $PACKAGES --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Lint off-by-default features
         if: ${{ !cancelled() }}
         run: |
@@ -241,8 +237,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
-      PACKAGES: ${{ needs.changes.outputs.full == 'true' && '--workspace' || needs.preflight.outputs.packages }}
-      DOCTESTS: ${{ needs.changes.outputs.full == 'true' && '--workspace' || needs.preflight.outputs.doctests }}
+      TESTS: ${{ needs.changes.outputs.full == 'true' && 'all()' || needs.preflight.outputs.tests }}
     strategy:
       fail-fast: false
       matrix:
@@ -272,10 +267,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes libwayland-dev libxkbcommon-dev libasound2-dev libudev-dev
+      # Builds the whole workspace, which the cache keeps fresh, and runs only affected tests.
       - name: Test affected Rust packages
-        run: |
-          # shellcheck disable=SC2086 # one filter per word
-          cargo nextest run $PACKAGES --locked --no-fail-fast --no-tests=warn ${{ runner.os == 'Linux' && '--timings' || '' }}
+        run: cargo nextest run --workspace -E "$TESTS" --locked --no-fail-fast --no-tests=warn ${{ runner.os == 'Linux' && '--timings' || '' }}
       - name: Upload Linux test build timings
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         uses: actions/upload-artifact@v7
@@ -284,10 +278,8 @@ jobs:
           path: target/cargo-timings/cargo-timing.html
           if-no-files-found: warn
       - name: Test Rust doc examples
-        if: ${{ !cancelled() && env.DOCTESTS != '' }}
-        run: |
-          # shellcheck disable=SC2086 # one filter per word
-          cargo test --doc $DOCTESTS --locked
+        if: ${{ !cancelled() }}
+        run: cargo test --doc --workspace --locked
       # Linux lints in `verify`.
       - name: Lint Rust workspace
         if: ${{ !cancelled() && runner.os != 'Linux' }}
@@ -378,7 +370,7 @@ jobs:
 
   # Pull requests only; full runs cover Windows and macOS through rust-tests and go.
   platform:
-    name: Platform (${{ matrix.os == 'macos-latest' && 'macos' || 'windows' }}${{ matrix.part == 'client' && ' client' || '' }})
+    name: Platform (${{ matrix.os }})
     needs: [changes, preflight]
     if: >-
       !cancelled() && needs.changes.result == 'success'
@@ -386,22 +378,19 @@ jobs:
       && needs.changes.outputs.full != 'true'
       && needs.preflight.result == 'success' && needs.preflight.outputs.scope != 'none'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-        part: [crates, client]
         exclude:
           # macOS runners are scarce, so only macOS-specific changes use them.
           - os: ${{ needs.preflight.outputs.macos == 'true' && 'none' || 'macos-latest' }}
-          - part: ${{ needs.preflight.outputs.client == 'true' && 'none' || 'client' }}
     defaults:
       run:
         shell: bash
     env:
-      PACKAGES: ${{ needs.preflight.outputs.packages }}
-      # `devtool` owns the platform test crates; this is the affected subset.
+      # Affected crates from devtool's `PLATFORM_TEST_PACKAGES`, plus the client library.
       PLATFORM: ${{ needs.preflight.outputs.platform }}
       # These GPU witnesses exhaust the PR budget on the software WARP adapter.
       # macOS PRs and full Windows runs still cover every excluded case.
@@ -431,29 +420,20 @@ jobs:
         uses: ./.github/actions/build-cache
         with:
           language: go
-      # Clippy, as in full runs, so their cached workspace outputs are reused.
-      - name: Lint affected Rust packages
-        if: matrix.part == 'crates'
-        run: |
-          # shellcheck disable=SC2086 # one filter per word
-          cargo clippy $PACKAGES --all-targets --locked -- -D warnings
+      # The same whole-workspace commands as full runs, whose cache then leaves only affected
+      # crates to build. A package subset would unify features differently and rebuild dependencies.
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Build release Go core
-        if: matrix.part == 'crates'
         run: go build -trimpath -o "$RUNNER_TEMP/bedrock-core$(go env GOEXE)" ./core/cmd/bedrock-core
       - name: Test Go local transport and credential storage
-        if: matrix.part == 'crates'
         run: go test ./core/internal/streamnet ./core/internal/lockfile ./core/authcache
-      - name: Test affected platform crates
-        if: matrix.part == 'crates' && env.PLATFORM != ''
+      - name: Test affected platform crates and client library
+        if: env.PLATFORM != ''
         run: |
-          filter=()
-          if [ "$RUNNER_OS" = Windows ]; then filter=(-E "not ($WINDOWS_SKIP)"); fi
-          # shellcheck disable=SC2086 # one -p flag per word
-          cargo nextest run $PLATFORM "${filter[@]}" --locked --no-fail-fast --no-tests=warn
-      # The client's asset-carrier integration tests skip without local carriers, so only its library runs.
-      - name: Test client library
-        if: ${{ !cancelled() && matrix.part == 'client' }}
-        run: cargo nextest run -p bedrock-client --lib --locked --no-fail-fast
+          filter="$PLATFORM"
+          if [ "$RUNNER_OS" = Windows ]; then filter="($PLATFORM) & not ($WINDOWS_SKIP)"; fi
+          cargo nextest run --workspace -E "$filter" --locked --no-fail-fast --no-tests=warn
 
   packaging:
     name: Packaging tests

@@ -6,7 +6,7 @@ use crate::{
 /// Workflow definitions; a change to them can change what any job, macOS included, runs.
 const CI_INPUTS: &[&str] = &[".github/workflows", ".github/actions"];
 
-/// The workspace-wide architecture gate: every crate is checked, but only on Linux.
+/// The workspace-wide architecture gate: it runs every test but needs no macOS runner.
 const ARCHITECTURE_GATE: &str = "tools/architecture";
 
 /// Crates whose tests exercise OS-specific behaviour: cfg(windows)/cfg(target_os) code, paths and
@@ -35,7 +35,8 @@ pub const PLATFORM_TEST_PACKAGES: &[&str] = &[
 /// Crates whose GPU witnesses only macOS runs in full on pull requests.
 const MACOS_PACKAGES: &[&str] = &["render"];
 
-/// Its library tests run as separate Windows and macOS jobs.
+/// The client's asset-carrier integration tests skip without local carriers, so platform jobs
+/// run only its library tests.
 const CLIENT_PACKAGE: &str = "bedrock-client";
 
 /// Case-insensitive `git grep -E` pattern for code only macOS runners compile or exercise: macOS
@@ -81,64 +82,55 @@ pub fn plan_ci(changed_paths: &[&str], macos_marked: &[&str], packages: &[Packag
 }
 
 impl CiPlan {
-    /// Renders `key=value` lines for `$GITHUB_OUTPUT`. Filters name packages as `name@version`,
-    /// which, unlike Cargo's path-based IDs, stays valid on every runner.
+    /// Renders `key=value` lines for `$GITHUB_OUTPUT`. Tests are selected with nextest
+    /// filtersets rather than `-p`, because Cargo unifies features only across the selected
+    /// packages and a subset would miss the cache built for the whole workspace.
     #[must_use]
     pub fn outputs(&self, packages: &[Package]) -> String {
-        let affected: Vec<&str> = match &self.selection {
-            Selection::Workspace => packages
-                .iter()
-                .map(|package| package.name.as_str())
-                .collect(),
-            Selection::Packages(names) => names.iter().map(String::as_str).collect(),
-            Selection::NoPackages => Vec::new(),
-        };
-        let (scope, checked, doctested) = match &self.selection {
-            Selection::Workspace => ("workspace", "--workspace".into(), "--workspace".into()),
-            Selection::Packages(_) => (
-                "packages",
-                filters(affected.iter().copied(), packages),
-                filters(
-                    affected.iter().copied().filter(|name| {
-                        packages
-                            .iter()
-                            .any(|package| package.name == *name && package.doctest)
-                    }),
-                    packages,
-                ),
+        let (scope, affected): (_, Vec<&str>) = match &self.selection {
+            Selection::Workspace => (
+                "workspace",
+                packages
+                    .iter()
+                    .map(|package| package.name.as_str())
+                    .collect(),
             ),
-            Selection::NoPackages => ("none", String::new(), String::new()),
+            Selection::Packages(names) => ("packages", names.iter().map(String::as_str).collect()),
+            Selection::NoPackages => ("none", Vec::new()),
         };
-        let platform = filters(
+        let tests = if self.selection == Selection::Workspace {
+            "all()".into()
+        } else {
+            filterset(affected.iter().copied())
+        };
+        let mut platform = filterset(
             PLATFORM_TEST_PACKAGES
                 .iter()
                 .copied()
                 .filter(|name| affected.contains(name)),
-            packages,
         );
+        if affected.contains(&CLIENT_PACKAGE) {
+            let client = format!("(package(={CLIENT_PACKAGE}) & kind(lib))");
+            platform = if platform.is_empty() {
+                client
+            } else {
+                format!("{platform} | {client}")
+            };
+        }
         format!(
-            "scope={scope}\nmacos={}\nclient={}\nnames={}\npackages={checked}\ndoctests={doctested}\nplatform={platform}\n",
+            "scope={scope}\nmacos={}\nnames={}\ntests={tests}\nplatform={platform}\n",
             self.macos,
-            affected.contains(&CLIENT_PACKAGE),
             affected.join(" "),
         )
     }
 }
 
-/// Joins `-p name@version` filters; an unknown name stays bare so Cargo rejects it.
-fn filters<'a>(names: impl Iterator<Item = &'a str>, packages: &[Package]) -> String {
+/// Joins nextest `package(=name)` matchers; empty when there are no names.
+fn filterset<'a>(names: impl Iterator<Item = &'a str>) -> String {
     names
-        .map(|name| {
-            packages
-                .iter()
-                .find(|package| package.name == name)
-                .map_or_else(
-                    || format!("-p {name}"),
-                    |package| format!("-p {}@{}", package.name, package.version),
-                )
-        })
+        .map(|name| format!("package(={name})"))
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" | ")
 }
 
 #[cfg(test)]
@@ -226,20 +218,26 @@ mod tests {
     }
 
     #[test]
-    fn outputs_use_portable_filters_for_affected_packages() {
+    fn outputs_select_affected_tests_by_package() {
         let packages = workspace();
         let outputs = plan_ci(&["crates/render/src/lib.rs"], &[], &packages).outputs(&packages);
         assert_eq!(
             outputs,
-            "scope=packages\nmacos=true\nclient=true\nnames=bedrock-client render\n\
-             packages=-p bedrock-client@0.0.0 -p render@0.0.0\ndoctests=\nplatform=-p render@0.0.0\n"
+            "scope=packages\nmacos=true\nnames=bedrock-client render\n\
+             tests=package(=bedrock-client) | package(=render)\n\
+             platform=package(=render) | (package(=bedrock-client) & kind(lib))\n"
         );
         let full = plan_ci(&["Cargo.toml"], &[], &packages).outputs(&packages);
         assert!(
-            full.contains("\npackages=--workspace\ndoctests=--workspace\n"),
+            full.contains("\ntests=all()\nplatform=package(=render) | (package(=bedrock-client) & kind(lib))\n"),
             "{full}"
         );
         assert!(full.contains("\nnames=world render bedrock-client devtool architecture\n"));
+        let leaf = plan_ci(&["tools/devtool/src/ci.rs"], &[], &packages).outputs(&packages);
+        assert!(
+            leaf.ends_with("\nmacos=false\nnames=devtool\ntests=package(=devtool)\nplatform=\n"),
+            "{leaf}"
+        );
     }
 
     /// Named packages must exist, or a workspace plan would silently drop them.

@@ -4,7 +4,6 @@ use std::collections::{BTreeSet, VecDeque};
 pub struct Package {
     pub(crate) name: String,
     pub(crate) cargo_id: String,
-    pub(crate) version: String,
     pub(crate) root: String,
     pub(crate) dependencies: Vec<String>,
     pub(crate) doctest: bool,
@@ -16,7 +15,6 @@ impl Package {
         Self {
             name: name.into(),
             cargo_id: name.into(),
-            version: "0.0.0".into(),
             root: normalize(root),
             dependencies: dependencies.iter().map(|name| (*name).into()).collect(),
             doctest: false,
@@ -26,7 +24,6 @@ impl Package {
     pub(crate) fn from_owned(
         cargo_id: String,
         name: String,
-        version: String,
         root: String,
         dependencies: Vec<String>,
         doctest: bool,
@@ -34,7 +31,6 @@ impl Package {
         Self {
             name,
             cargo_id,
-            version,
             root: normalize(&root),
             dependencies,
             doctest,

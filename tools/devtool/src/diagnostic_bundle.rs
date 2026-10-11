@@ -16,9 +16,9 @@ const MAX_ESCAPE_DEPTH: usize = 4;
 const AUTHORIZATION: &str = r#"(?i)\b(?:proxy-)?authorization\b["']?\s*[:=]\s*("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|[^\s"',}\]\[{:][^\s"',}\]]*(?:[ \t]+[^\s"',}\]]+)?)"#;
 /// An Xbox Live authorization value, which is sensitive even without a label.
 const XBL_TOKEN: &str = r#"XBL3\.0 (x=[^\s;"]+;[^\s"]+)"#;
-/// A home folder prefix and its username; a name with spaces runs to the next separator or quote.
-const HOME_FOLDER: &str =
-    r#"(?i)(?:/Users/|/home/|[a-z]:\\Users\\)(?:([^/\\\r\n"'<>|:*?,=]+)([\\/"'])|([^/\\\s"']+))"#;
+/// A home folder prefix and its username; a name with spaces runs to the next separator or quote,
+/// and an apostrophe followed by a name character stays part of the name.
+const HOME_FOLDER: &str = r#"(?i)(?:/Users/|/home/|[a-z]:\\Users\\)(?:([^/\\\r\n"'<>|:*?,=]+(?:'[^/\\\s"'<>|:*?,=][^/\\\r\n"'<>|:*?,=]*)*)(?:[\\/"]|'(?:$|[/\\\s"'<>|:*?,=]))|([^/\\\s"']+(?:'[^/\\\s"']+)*))"#;
 
 /// Removes ANSI styling, which a terminal formatter can place between a field name and `=`.
 fn strip_ansi(text: &str) -> String {
@@ -344,9 +344,11 @@ fn redact_patterns(text: &str) -> String {
     Regex::new(HOME_FOLDER)
         .unwrap()
         .replace_all(&result, |capture: &regex::Captures<'_>| {
+            let whole = capture.get(0).unwrap();
+            let name = capture.get(1).or(capture.get(2)).unwrap();
             format!(
                 "[redacted]{}",
-                capture.get(2).map_or("", |end| end.as_str())
+                &whole.as_str()[name.end() - whole.start()..]
             )
         })
         .into_owned()
@@ -376,7 +378,11 @@ fn redact_ipv6(text: &str) -> String {
     candidate
         .replace_all(text, |capture: &regex::Captures<'_>| {
             let span = capture.get(0).unwrap();
-            let address = span.as_str().trim_end_matches('.');
+            let mut address = span.as_str().trim_end_matches('.');
+            // A prose colon after an address, as in `via ::1: timeout`, is not part of it.
+            if !ipv6_address(address) && address.ends_with(':') && !address.ends_with("::") {
+                address = &address[..address.len() - 1];
+            }
             let standalone = !text[..span.start()].ends_with(path)
                 && !text[span.start() + address.len()..].starts_with(identifier);
             if standalone && ipv6_address(address) {
@@ -442,7 +448,7 @@ fn sensitive_values(texts: &[String]) -> Vec<String> {
         values.extend(home.captures_iter(text).filter_map(|capture| {
             capture
                 .get(1)
-                .or(capture.get(3))
+                .or(capture.get(2))
                 .map(|name| name.as_str().to_owned())
         }));
         for capture in pattern.captures_iter(text) {

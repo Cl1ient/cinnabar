@@ -569,7 +569,7 @@ fn compiled_item_facts_admit_only_hash_checked_missing_retail_visuals() {
 
 #[test]
 fn compiled_durability_source_rejects_forged_identity() {
-    let mut compiled = carrier_v4_fixture();
+    let mut compiled = super::suite::fixture();
     let mut sources = compiled.sources.to_vec();
     sources.push(entity::EntityAssetSource {
         path: assets::item::durability::ITEM_DURABILITY_SOURCE_PATH.into(),

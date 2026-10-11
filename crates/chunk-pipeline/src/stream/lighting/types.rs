@@ -365,7 +365,7 @@ fn solve_prepared_light_job_with_scratch(
                     scratch,
                     changed,
                 ),
-                None => world::solve_light_with_scratch(
+                None => world::solve_light_full_with_scratch(
                     &job.blocks,
                     &job.prior,
                     job.bounds,
@@ -553,7 +553,7 @@ pub(in crate::stream) fn solve_prepared_light_batch_with_scratch(
             scratch,
             changed,
         ),
-        None => world::solve_light_with_scratch(
+        None => world::solve_light_full_with_scratch(
             &blocks,
             &prior,
             bounds,

@@ -159,6 +159,13 @@ fn scalar_fixed_point(
 
 #[test]
 fn queued_propagation_matches_scalar_relaxation_across_edits_and_profiles() {
+    for full in [false, true] {
+        matches_scalar_relaxation(full);
+    }
+}
+
+/// Checks the incremental solve, or with `full` the solve that ignores retained light.
+fn matches_scalar_relaxation(full: bool) {
     for profile in [
         DimensionLightProfile::Nether,
         DimensionLightProfile::Overworld {
@@ -186,7 +193,12 @@ fn queued_propagation_matches_scalar_relaxation_across_edits_and_profiles() {
                     fixture: &fixture,
                 };
                 let expected = scalar_fixed_point(&fixture, &prior, profile);
-                let output = solve_light_with_scratch(
+                let solve = if full {
+                    solve_light_full_with_scratch
+                } else {
+                    solve_light_with_scratch
+                };
+                let output = solve(
                     &fixture,
                     &prior,
                     bounds,

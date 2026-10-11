@@ -1,5 +1,6 @@
 mod cache;
 mod changes;
+mod full;
 mod output;
 mod queue;
 mod scratch;
@@ -7,6 +8,7 @@ mod solve;
 mod types;
 
 pub use changes::solve_light_changes_with_scratch;
+pub use full::solve_light_full_with_scratch;
 pub use output::LightSolveOutput;
 pub use scratch::LightSolverScratch;
 pub use solve::{solve_light, solve_light_with_scratch};

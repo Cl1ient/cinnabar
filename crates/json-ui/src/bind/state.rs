@@ -15,14 +15,14 @@ use crate::state::LayoutReport;
 use crate::tree::ResolvedControl;
 
 /// FNV-1a over a layout key, streamed so a child extends its parent's hash.
-pub(super) fn key_hash(seed: u64, bytes: &[u8]) -> u64 {
+pub(crate) fn key_hash(seed: u64, bytes: &[u8]) -> u64 {
     bytes.iter().fold(seed, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
     })
 }
 
 /// The hash of the empty key, where every layout key starts.
-pub(super) const KEY_ROOT: u64 = 0xcbf2_9ce4_8422_2325;
+pub(crate) const KEY_ROOT: u64 = 0xcbf2_9ce4_8422_2325;
 
 /// Properties that scroll layout publishes back into binding bags.
 pub(super) const SCROLL_PROPERTIES: [&str; 3] = [
@@ -33,7 +33,7 @@ pub(super) const SCROLL_PROPERTIES: [&str; 3] = [
 
 /// Hashes a map key that already is a key hash.
 #[derive(Default)]
-pub(super) struct Prehashed(u64);
+pub(crate) struct Prehashed(u64);
 
 impl Hasher for Prehashed {
     fn finish(&self) -> u64 {
@@ -49,7 +49,7 @@ impl Hasher for Prehashed {
     }
 }
 
-pub(super) type KeyMap<V> = HashMap<u64, V, BuildHasherDefault<Prehashed>>;
+pub(crate) type KeyMap<V> = HashMap<u64, V, BuildHasherDefault<Prehashed>>;
 
 /// A screen's live binding state, kept by the caller across binds of the same
 /// screen and dropped when the screen changes.

@@ -37,6 +37,7 @@ mod view;
 pub use data::{CollectionItem, DataSource, scoped_key};
 pub use feed::FactoryItem;
 pub use state::BindState;
+pub(crate) use state::{KEY_ROOT, KeyMap, key_hash};
 
 /// Reserved custom-renderer data key identifying the bound control lifetime.
 pub const CUSTOM_CONTROL_INSTANCE_KEY: &str = "_control_instance";

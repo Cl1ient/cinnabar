@@ -9,6 +9,7 @@ mod cache;
 use cache::{CachedSubmission, PreviousFragments};
 
 use super::{
+    artwork::{BlockEntityArtworkPreparer, PreparedBlockEntityArtwork},
     atlas::{AtlasRect, BlockEntityAtlas, DynamicCells},
     banner::BannerModel,
     beam::BeaconModel,
@@ -177,18 +178,44 @@ pub struct BlockEntityScene {
 }
 
 impl BlockEntityScene {
-    /// Installs artwork for a new session, clearing cached sign and map canvases.
-    pub fn install_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
-        if let Some(text) = self.text.as_mut() {
-            text.reset(assets.atlas_size()[0]);
-        }
-        self.reload_assets(assets);
+    /// Snapshots the static mob textures for preparation on a join or reload worker.
+    pub fn artwork_preparer(&self) -> BlockEntityArtworkPreparer {
+        BlockEntityArtworkPreparer::new(self.mobs.textures())
     }
 
-    /// Replaces in-world artwork and invalidates meshes while retaining all dynamic canvases.
+    /// Shares the installed static artwork as the startup fallback for pack workers.
+    pub fn prepared_artwork(&self) -> Option<PreparedBlockEntityArtwork> {
+        self.atlas
+            .as_deref()
+            .cloned()
+            .map(|atlas| PreparedBlockEntityArtwork { atlas })
+    }
+
+    /// Prepares and installs startup artwork; runtime workers use [`Self::install_prepared_assets`].
+    pub fn install_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
+        if let Some(prepared) = self.artwork_preparer().prepare(assets) {
+            self.install_prepared_assets(&prepared);
+        }
+    }
+
+    /// Installs worker-built artwork for a new session, clearing cached sign and map canvases.
+    pub fn install_prepared_assets(&mut self, artwork: &PreparedBlockEntityArtwork) {
+        if let Some(text) = self.text.as_mut() {
+            text.reset(artwork.atlas.size()[0]);
+        }
+        self.reload_prepared_assets(artwork);
+    }
+
+    /// Prepares artwork on the caller; runtime reloads use [`Self::reload_prepared_assets`].
     pub fn reload_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
-        let mut atlas = BlockEntityAtlas::from_assets(assets);
-        atlas.append_textures(self.mobs.textures());
+        if let Some(prepared) = self.artwork_preparer().prepare(assets) {
+            self.reload_prepared_assets(&prepared);
+        }
+    }
+
+    /// Publishes shared static pixels and invalidates meshes while retaining dynamic canvases.
+    pub fn reload_prepared_assets(&mut self, artwork: &PreparedBlockEntityArtwork) {
+        let mut atlas = artwork.atlas.clone();
         let text = self
             .text
             .get_or_insert_with(|| DynamicCells::new(atlas.size()[0]));
@@ -263,6 +290,17 @@ impl BlockEntityScene {
         catalog: &assets::RuntimeActorCatalog,
     ) {
         let mobs = MobModels::from_assets(entities, catalog);
+        let Some(current) = self.atlas.as_ref() else {
+            return;
+        };
+        if !BlockEntityArtworkPreparer::new(mobs.textures())
+            .accepts_size([current.size()[0], current.static_height()])
+        {
+            bevy::log::warn!(
+                "spawner artwork retained because appended textures exceed the atlas budget"
+            );
+            return;
+        }
         let Some(atlas) = self.atlas.as_mut().map(Arc::make_mut) else {
             return;
         };

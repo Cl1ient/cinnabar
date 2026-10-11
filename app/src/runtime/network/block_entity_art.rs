@@ -1,39 +1,55 @@
 //! Worker-built block-entity artwork over the immutable startup carrier.
 
 use assets::RuntimeBlockEntityAssets;
+use render::{BlockEntityArtworkPreparer, BlockEntityScene, PreparedBlockEntityArtwork};
 use resource_pack::LayeredPackView;
 use std::sync::{Arc, OnceLock};
 
-static BASE: OnceLock<Arc<RuntimeBlockEntityAssets>> = OnceLock::new();
+struct BaseArtwork {
+    assets: Arc<RuntimeBlockEntityAssets>,
+    preparer: BlockEntityArtworkPreparer,
+    prepared: Arc<PreparedBlockEntityArtwork>,
+}
 
-/// Retains the startup carrier so every stack is resolved against the same base.
-pub(crate) fn install_base(base: Option<Arc<RuntimeBlockEntityAssets>>) {
-    if let Some(base) = base {
-        let _ = BASE.set(base);
+static BASE: OnceLock<BaseArtwork> = OnceLock::new();
+
+/// Retains the startup carrier and appended artwork so every stack uses the same base.
+pub(crate) fn install_base(base: Option<Arc<RuntimeBlockEntityAssets>>, scene: &BlockEntityScene) {
+    if let Some((assets, prepared)) = base.zip(scene.prepared_artwork()) {
+        let _ = BASE.set(BaseArtwork {
+            assets,
+            preparer: scene.artwork_preparer(),
+            prepared: Arc::new(prepared),
+        });
     }
 }
 
-/// Returns the immutable carrier used by join and reload workers.
-pub(super) fn base() -> Option<&'static Arc<RuntimeBlockEntityAssets>> {
-    BASE.get()
+/// Returns the already prepared startup fallback used by join and reload workers.
+pub(super) fn base() -> Option<&'static Arc<PreparedBlockEntityArtwork>> {
+    BASE.get().map(|base| &base.prepared)
 }
 
-/// Reads each logical carrier binding from the winning layer before repacking on the worker.
-pub(super) fn prepare(view: &LayeredPackView) -> Option<Arc<RuntimeBlockEntityAssets>> {
-    let base = base()?;
-    Some(prepare_over(view, base.as_ref()).map_or_else(|| base.clone(), Arc::new))
+/// Resolves carrier tiles, appends mobs and hashes final static pixels on the worker.
+pub(super) fn prepare(view: &LayeredPackView) -> Option<Arc<PreparedBlockEntityArtwork>> {
+    let base = BASE.get()?;
+    Some(
+        prepare_over(view, &base.assets, &base.preparer)
+            .map_or_else(|| base.prepared.clone(), Arc::new),
+    )
 }
 
-/// Rebuilds one complete atlas; invalid overrides retain their original tile.
+/// Rebuilds one complete static atlas; overrides that exceed the final budget retain their tile.
 pub(super) fn prepare_over(
     view: &LayeredPackView,
     base: &RuntimeBlockEntityAssets,
-) -> Option<RuntimeBlockEntityAssets> {
-    pack_compiler::overlay_block_entity_assets(base, |name| {
+    preparer: &BlockEntityArtworkPreparer,
+) -> Option<PreparedBlockEntityArtwork> {
+    let assets = pack_compiler::overlay_block_entity_assets(base, |size| preparer.accepts_size(size), |name| {
         pack_runtime::pack_textures::decode_pack_texture(view, name).map(|texture| {
             pack_compiler::BlockEntityTexture {
                 width: texture.width, height: texture.height, rgba8: texture.rgba8,
             }
         })
-    }).map_err(|error| bevy::log::warn!(%error, "block-entity artwork retained after invalid atlas overlay")).ok()
+    }).map_err(|error| bevy::log::warn!(%error, "block-entity artwork retained after invalid atlas overlay")).ok()?;
+    preparer.prepare(&assets)
 }

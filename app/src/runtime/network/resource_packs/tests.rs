@@ -649,24 +649,24 @@ fn block_entity_art_reads_texture_sets_and_tracks_missing_overrides() {
         br#"{"minecraft:texture_set":{"color":[200,100,50]}}"#,
     )]);
     let view = resource_pack::LayeredPackView::tracked(view.shared_stack());
-    let changed = super::super::block_entity_art::prepare_over(&view, &base).unwrap();
-    let tile = changed.placement(name).unwrap();
-    let offset = ((tile.y * changed.atlas_size()[0] + tile.x) * 4) as usize;
-    assert_eq!(
-        &changed.atlas_rgba8()[offset..offset + 4],
-        &[200, 100, 50, 255]
-    );
+    let changed = super::super::block_entity_art::prepare_over(
+        &view,
+        &base,
+        &render::BlockEntityArtworkPreparer::default(),
+    )
+    .unwrap();
+    assert_eq!(changed.atlas().texel(name, 0, 0), Some([200, 100, 50, 255]));
     let inputs = view.dependencies().unwrap().snapshot();
     assert!(inputs.iter().any(|input| matches!(input,
         resource_pack::PackDependency::File { path, .. }
             if path == "textures/entity/chest/normal.png"
     )));
     let empty = files_pack(&[]);
-    let restored = super::super::block_entity_art::prepare_over(&empty, &base).unwrap();
-    let tile = restored.placement(name).unwrap();
-    let offset = ((tile.y * restored.atlas_size()[0] + tile.x) * 4) as usize;
-    assert_eq!(
-        &restored.atlas_rgba8()[offset..offset + 4],
-        &[10, 20, 30, 255]
-    );
+    let restored = super::super::block_entity_art::prepare_over(
+        &empty,
+        &base,
+        &render::BlockEntityArtworkPreparer::default(),
+    )
+    .unwrap();
+    assert_eq!(restored.atlas().texel(name, 0, 0), Some([10, 20, 30, 255]));
 }

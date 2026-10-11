@@ -32,7 +32,7 @@ pub struct PackApplication {
     pub(crate) item_components:
         Option<Arc<client_ui::ui_runtime::item_facts::SessionItemComponents>>,
     pub(crate) glyph_sheets: Option<Arc<SessionGlyphSheets>>,
-    pub(crate) block_entity_art: Option<Arc<assets::RuntimeBlockEntityAssets>>,
+    pub(crate) block_entity_art: Option<Arc<render::PreparedBlockEntityArtwork>>,
     pub(crate) entities: Option<Arc<assets::SessionEntityPack>>,
     pub(super) entity_artwork: Option<Arc<render::ActorArtworkPages>>,
     pub(crate) prepared_actor_artwork:

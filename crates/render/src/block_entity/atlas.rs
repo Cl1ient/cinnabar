@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use assets::RuntimeBlockEntityAssets;
 
-use super::mob::MobTexture;
+use super::{artwork::appended_layout, mob::MobTexture};
 
 /// Size of one text canvas cell in atlas pixels.
 pub const TEXT_CELL: [u32; 2] = [96, 48];
@@ -16,7 +16,7 @@ const TEXT_PAGE_HEIGHT: u32 = TEXT_CELL[1] * TEXT_PAGE_ROWS;
 /// Text cells per page.
 pub const TEXT_SLOT_COUNT: usize = (TEXT_COLUMNS * TEXT_PAGE_ROWS) as usize;
 /// Memory safety cap on text pages (800 distinct texts, about 16 MB at a 1024-wide atlas).
-const MAX_TEXT_PAGES: usize = 8;
+pub(super) const MAX_TEXT_PAGES: usize = 8;
 /// Size of one map image cell: a full 128x128 map.
 pub const MAP_CELL: [u32; 2] = [128, 128];
 const MAP_COLUMNS: u32 = 8;
@@ -27,7 +27,7 @@ const MAP_STRIP_HEIGHT: u32 = MAP_CELL[1] * MAP_ROWS;
 pub(crate) const MAX_NEW_CELLS_PER_FRAME: usize = 16;
 
 /// Height of the dynamic strips below the static atlas: maps, then `text_pages` text pages.
-const fn dynamic_height(text_pages: u32) -> u32 {
+pub(super) const fn dynamic_height(text_pages: u32) -> u32 {
     MAP_STRIP_HEIGHT + text_pages * TEXT_PAGE_HEIGHT
 }
 
@@ -160,68 +160,47 @@ impl BlockEntityAtlas {
     /// Shelf-packs `textures` into new static rows below the packed ones, moving the dynamic
     /// strips down; textures wider than the atlas or already present are skipped.
     pub fn append_textures(&mut self, textures: &[MobTexture]) {
-        let previous_count = self.placements.len();
+        let Some((added_height, placements)) = appended_layout(self.size[0], textures, |name| {
+            self.placements.contains_key(name)
+        }) else {
+            return;
+        };
+        if placements.is_empty() {
+            return;
+        }
         let width = self.size[0];
+        let height = self.static_height + added_height;
         let mut pixels = self.static_rgba8.to_vec();
-        let (mut x, mut y, mut shelf) = (0u32, self.static_height, 0u32);
-        for texture in textures {
-            let expected = texture.width as usize * texture.height as usize * 4;
-            if texture.width == 0
-                || texture.width > width
-                || texture.height == 0
-                || texture.rgba8.len() != expected
-                || self.placements.contains_key(texture.name.as_str())
-            {
-                continue;
-            }
-            if x + texture.width > width {
-                x = 0;
-                y += shelf + 1;
-                shelf = 0;
-            }
-            let needed = (y + texture.height) as usize * width as usize * 4;
-            if pixels.len() < needed {
-                pixels.resize(needed, 0);
-            }
+        pixels.resize(height as usize * width as usize * 4, 0);
+        for (texture, mut rect) in placements {
+            rect.y += self.static_height as f32;
             for row in 0..texture.height {
-                let target = ((y + row) as usize * width as usize + x as usize) * 4;
+                let target =
+                    ((rect.y as u32 + row) as usize * width as usize + rect.x as usize) * 4;
                 let source = row as usize * texture.width as usize * 4;
                 let length = texture.width as usize * 4;
                 pixels[target..target + length]
                     .copy_from_slice(&texture.rgba8[source..source + length]);
             }
-            self.placements.insert(
-                texture.name.as_str().into(),
-                AtlasRect {
-                    x: x as f32,
-                    y: y as f32,
-                    width: texture.width as f32,
-                    height: texture.height as f32,
-                },
-            );
-            x += texture.width + 1;
-            shelf = shelf.max(texture.height);
+            self.placements.insert(texture.name.as_str().into(), rect);
         }
-        let height = (pixels.len() / (width as usize * 4)) as u32;
         self.static_height = height;
         self.size[1] = height + dynamic_height(self.text_pages);
         self.static_rgba8 = Arc::from(pixels);
-        if self.placements.len() != previous_count {
-            use sha2::{Digest, Sha256};
-            let mut hash = Sha256::new();
-            hash.update(self.identity);
-            hash.update(width.to_le_bytes());
-            hash.update(height.to_le_bytes());
-            hash.update(&self.static_rgba8);
-            for (name, rect) in &self.placements {
-                hash.update((name.len() as u64).to_le_bytes());
-                hash.update(name.as_bytes());
-                for value in [rect.x, rect.y, rect.width, rect.height] {
-                    hash.update(value.to_bits().to_le_bytes());
-                }
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(self.identity);
+        hash.update(width.to_le_bytes());
+        hash.update(height.to_le_bytes());
+        hash.update(&self.static_rgba8);
+        for (name, rect) in &self.placements {
+            hash.update((name.len() as u64).to_le_bytes());
+            hash.update(name.as_bytes());
+            for value in [rect.x, rect.y, rect.width, rect.height] {
+                hash.update(value.to_bits().to_le_bytes());
             }
-            self.identity = hash.finalize().into();
         }
+        self.identity = hash.finalize().into();
     }
 
     /// One RGBA8 texel of a packed texture, in the texture's own pixel coordinates.

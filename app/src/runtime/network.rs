@@ -421,7 +421,7 @@ pub(crate) fn receive_network_events(
                 if let (Some(scene), Some(art)) =
                     (block_entity_scene.as_mut(), packs.block_entity_art.as_ref())
                 {
-                    scene.install_assets(art);
+                    scene.install_prepared_assets(art);
                 }
                 client_world.pack_entities = packs.entities.clone();
                 client_world.prepared_actor_artwork = packs.prepared_actor_artwork.clone();

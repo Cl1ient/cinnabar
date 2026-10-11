@@ -4,6 +4,7 @@
 //! sign text share the same vertex path. Geometry the pinned pack does not define is
 //! marked provisional in its module and needs native measurement.
 
+mod artwork;
 mod atlas;
 mod banner;
 mod beam;
@@ -31,6 +32,7 @@ mod skull;
 mod spawner;
 mod statue;
 
+pub use artwork::{BlockEntityArtworkPreparer, PreparedBlockEntityArtwork};
 pub use atlas::{AtlasRect, BlockEntityAtlas, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef};
 pub use banner::{BannerLayer, BannerModel, BannerMount, MAX_BANNER_LAYERS, pattern_texture};
 pub use beam::BeaconModel;

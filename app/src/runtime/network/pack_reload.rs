@@ -413,7 +413,7 @@ pub(crate) fn reload_resource_packs(
                     && let (Some(scene), Some(art)) =
                         (block_entity_scene.as_mut(), packs.block_entity_art.as_ref())
                 {
-                    scene.reload_assets(art);
+                    scene.reload_prepared_assets(art);
                 }
                 if let (Some(current), Some(next)) =
                     (entity_artwork.as_mut(), packs.entity_artwork.as_ref())

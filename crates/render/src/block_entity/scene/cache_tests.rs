@@ -710,8 +710,10 @@ fn live_chest_artwork_reload_keeps_every_cached_sign_visible() {
             .unwrap();
         let before = scene.update(SceneClock::default(), &[], &[]).clone();
         let pages = scene.atlas().unwrap().text_pages();
-        let replacement =
-            pack_compiler::overlay_block_entity_assets(&assets_with_chest_offset(0), |name| {
+        let replacement = pack_compiler::overlay_block_entity_assets(
+            &assets_with_chest_offset(0),
+            |_| true,
+            |name| {
                 (name == "textures/entity/chest/normal").then(|| {
                     pack_compiler::BlockEntityTexture {
                         width: 128,
@@ -719,8 +721,9 @@ fn live_chest_artwork_reload_keeps_every_cached_sign_visible() {
                         rgba8: vec![64; 128 * 512 * 4].into_boxed_slice(),
                     }
                 })
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
         scene.reload_assets(&replacement);
         assert_eq!(scene.atlas().unwrap().text_pages(), pages);
         let shift = scene.atlas().unwrap().static_height() as f32
@@ -789,4 +792,113 @@ fn live_chest_artwork_reload_keeps_every_cached_sign_visible() {
             );
         }
     }
+}
+
+/// Creates four base tiles that valid replacements can expand near the atlas height limit.
+fn replacement_base() -> assets::RuntimeBlockEntityAssets {
+    let placements: Vec<_> = (0..4)
+        .map(|index| assets::BlockEntityPlacement {
+            name: format!("textures/entity/chest/tile_{index}").into(),
+            x: index * 64,
+            y: 0,
+            width: 64,
+            height: 64,
+        })
+        .collect();
+    let bytes = assets::encode_block_entity_catalog(
+        b"{}",
+        1024,
+        64,
+        &vec![255; 1024 * 64 * 4],
+        &placements,
+    )
+    .unwrap();
+    assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap()
+}
+
+/// Snapshots one mob texture with enough appended rows to exercise the GPU height limit.
+fn mob_artwork_preparer() -> BlockEntityArtworkPreparer {
+    BlockEntityArtworkPreparer::new(&[super::super::mob::MobTexture {
+        name: "mob/test".into(),
+        width: 64,
+        height: 64,
+        rgba8: Arc::from(vec![7; 64 * 64 * 4]),
+    }])
+}
+
+#[test]
+fn replacement_admission_reserves_mobs_and_all_text_pages() {
+    use super::super::atlas::{MAX_TEXT_PAGES, dynamic_height};
+    let base = replacement_base();
+    let preparer = mob_artwork_preparer();
+    let limit = bevy::render::settings::WgpuLimits::default().max_texture_dimension_2d;
+    let last_admitted = limit - dynamic_height(MAX_TEXT_PAGES as u32) - 64;
+    for height in [last_admitted, last_admitted + 1, 4090] {
+        let replacement = pack_compiler::overlay_block_entity_assets(
+            &base,
+            |size| preparer.accepts_size(size),
+            |name| {
+                // Three full-width 1024-row shelves plus three gutters precede the last tile.
+                let height = if name.ends_with("tile_3") {
+                    height - 3 * (1024 + 1)
+                } else {
+                    1024
+                };
+                Some(pack_compiler::BlockEntityTexture {
+                    width: 1024,
+                    height,
+                    rgba8: vec![64; (1024 * height * 4) as usize].into_boxed_slice(),
+                })
+            },
+        )
+        .unwrap();
+        let prepared = preparer.prepare(&replacement).unwrap();
+        let mut scene = BlockEntityScene::default();
+        scene.install_prepared_assets(&prepared);
+        let atlas = Arc::make_mut(scene.atlas.as_mut().unwrap());
+        atlas.set_text_pages(MAX_TEXT_PAGES as u32);
+        assert!(atlas.size()[1] <= limit);
+        if height == last_admitted {
+            assert_eq!(atlas.size()[1], limit);
+            assert_eq!(
+                atlas.texel("textures/entity/chest/tile_3", 0, 0),
+                Some([64; 4])
+            );
+        } else {
+            assert_eq!(
+                atlas.texel("textures/entity/chest/tile_3", 0, 0),
+                Some([255; 4])
+            );
+        }
+        assert_eq!(atlas.texel("mob/test", 0, 0), Some([7; 4]));
+    }
+}
+
+#[test]
+fn artwork_publication_shares_prepared_static_pixels() {
+    let assets = replacement_base();
+    let preparer = mob_artwork_preparer();
+    let prepared = std::thread::spawn(move || preparer.prepare(&assets).unwrap())
+        .join()
+        .unwrap();
+    let mut scene = BlockEntityScene::default();
+    scene.install_prepared_assets(&prepared);
+    assert!(Arc::ptr_eq(
+        prepared.atlas().static_rgba8(),
+        scene.atlas().unwrap().static_rgba8()
+    ));
+    assert_eq!(
+        scene.atlas().unwrap().identity(),
+        prepared.atlas().identity()
+    );
+    scene.reload_prepared_assets(&prepared);
+    assert!(Arc::ptr_eq(
+        prepared.atlas().static_rgba8(),
+        scene.atlas().unwrap().static_rgba8()
+    ));
+    assert_eq!(
+        scene.atlas().unwrap().identity(),
+        prepared.atlas().identity()
+    );
+    assert_eq!(scene.atlas().unwrap().texel("mob/test", 0, 0), Some([7; 4]));
 }

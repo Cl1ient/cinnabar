@@ -466,27 +466,35 @@ mod tests {
         write_png(&pack.path().join(format!("{sign}.png")), 64, 32, 20);
         let compiled = compile_block_entity_assets(pack.path(), b"{}").unwrap();
         let base = assets::RuntimeBlockEntityAssets::decode(&compiled.bytes).unwrap();
-        let changed = overlay_block_entity_assets(&base, |name| {
-            (name == sign).then(|| BlockEntityTexture {
-                width: 128,
-                height: 128,
-                rgba8: [200, 0, 0, 255].repeat(128 * 128).into_boxed_slice(),
-            })
-        })
+        let changed = overlay_block_entity_assets(
+            &base,
+            |_| true,
+            |name| {
+                (name == sign).then(|| BlockEntityTexture {
+                    width: 128,
+                    height: 128,
+                    rgba8: [200, 0, 0, 255].repeat(128 * 128).into_boxed_slice(),
+                })
+            },
+        )
         .unwrap();
         assert_eq!(tile_pixel(&changed, sign), [200, 0, 0, 255]);
         assert_eq!(tile_pixel(&changed, chest), tile_pixel(&base, chest));
         assert_eq!(changed.placement(sign).unwrap().width, 128);
         assert!(changed.atlas_size()[1] > base.atlas_size()[1]);
-        let restored = overlay_block_entity_assets(&base, |_| None).unwrap();
+        let restored = overlay_block_entity_assets(&base, |_| true, |_| None).unwrap();
         assert_eq!(restored.identity(), base.identity());
-        let invalid = overlay_block_entity_assets(&base, |_| {
-            Some(BlockEntityTexture {
-                width: 64,
-                height: 64,
-                rgba8: Box::default(),
-            })
-        })
+        let invalid = overlay_block_entity_assets(
+            &base,
+            |_| true,
+            |_| {
+                Some(BlockEntityTexture {
+                    width: 64,
+                    height: 64,
+                    rgba8: Box::default(),
+                })
+            },
+        )
         .unwrap();
         assert_eq!(invalid.identity(), base.identity());
     }
@@ -540,13 +548,18 @@ mod tests {
         )
         .unwrap();
         let base = assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap();
-        let overlaid = overlay_block_entity_assets(&base, |_| {
-            Some(BlockEntityTexture {
-                width: ATLAS_WIDTH,
-                height: MAX_STRIP_HEIGHT,
-                rgba8: vec![200; (ATLAS_WIDTH * MAX_STRIP_HEIGHT * 4) as usize].into_boxed_slice(),
-            })
-        })
+        let overlaid = overlay_block_entity_assets(
+            &base,
+            |_| true,
+            |_| {
+                Some(BlockEntityTexture {
+                    width: ATLAS_WIDTH,
+                    height: MAX_STRIP_HEIGHT,
+                    rgba8: vec![200; (ATLAS_WIDTH * MAX_STRIP_HEIGHT * 4) as usize]
+                        .into_boxed_slice(),
+                })
+            },
+        )
         .unwrap();
 
         // Three large replacements fit while reserving space for the remaining base tiles.
@@ -585,18 +598,22 @@ mod tests {
         )
         .unwrap();
         let base = assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap();
-        let overlaid = overlay_block_entity_assets(&base, |name| {
-            let side = if name == placements[8].name.as_ref() {
-                16
-            } else {
-                512
-            };
-            Some(BlockEntityTexture {
-                width: side,
-                height: side,
-                rgba8: vec![200; (side * side * 4) as usize].into_boxed_slice(),
-            })
-        })
+        let overlaid = overlay_block_entity_assets(
+            &base,
+            |_| true,
+            |name| {
+                let side = if name == placements[8].name.as_ref() {
+                    16
+                } else {
+                    512
+                };
+                Some(BlockEntityTexture {
+                    width: side,
+                    height: side,
+                    rgba8: vec![200; (side * side * 4) as usize].into_boxed_slice(),
+                })
+            },
+        )
         .unwrap();
 
         assert!(overlaid.atlas_size()[1] <= MAX_BLOCK_ENTITY_ATLAS_SIDE);
@@ -638,10 +655,14 @@ mod tests {
         let base = assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap();
         let mut reads = 0;
         assert!(
-            overlay_block_entity_assets(&base, |_| {
-                reads += 1;
-                None
-            })
+            overlay_block_entity_assets(
+                &base,
+                |_| true,
+                |_| {
+                    reads += 1;
+                    None
+                }
+            )
             .is_err()
         );
         assert_eq!(reads, 0);
@@ -664,9 +685,11 @@ pub struct BlockEntityTexture {
 }
 
 /// Rebuilds the carrier atlas from winning logical texture reads and its untouched base pixels.
+/// The caller admits sizes against its complete render budget, including appended and dynamic rows.
 /// Missing, invalid, or unpackable replacements retain the base tile; removing a pack restores it.
 pub fn overlay_block_entity_assets(
     base: &assets::RuntimeBlockEntityAssets,
+    accepts_size: impl Fn([u32; 2]) -> bool,
     mut read: impl FnMut(&str) -> Option<BlockEntityTexture>,
 ) -> Result<assets::RuntimeBlockEntityAssets, AssetError> {
     let [atlas_width, _] = base.atlas_size();
@@ -685,7 +708,14 @@ pub fn overlay_block_entity_assets(
             )
         })
         .collect();
-    atlas_layout(&textures)?;
+    let fits = |textures: &[(String, Texture)]| -> Result<(), AssetError> {
+        let (height, _) = atlas_layout(textures)?;
+        if !accepts_size([ATLAS_WIDTH, height]) {
+            return Err(invalid("block-entity atlas exceeds the render budget"));
+        }
+        Ok(())
+    };
+    fits(&textures)?;
     for (index, placement) in base.placements().iter().enumerate() {
         if let Some(texture) = read(&placement.name).filter(|texture| {
             texture.width > 0
@@ -702,7 +732,7 @@ pub fn overlay_block_entity_assets(
                     rgba8: texture.rgba8.into_vec(),
                 },
             );
-            if atlas_layout(&textures).is_err() {
+            if fits(&textures).is_err() {
                 textures[index].1 = fallback;
             }
         }

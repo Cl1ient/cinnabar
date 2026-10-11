@@ -301,6 +301,7 @@ pub(crate) fn drive_world_inventory_keys(
     presentation: Option<Res<UiPresentationRuntime>>,
     mut runtime: ResMut<UiRuntime>,
     emote_input: Option<Res<super::emotes::EmoteInputConsumed>>,
+    swing: DropSwing,
 ) {
     if emote_input.is_some_and(|consumed| consumed.0) {
         return;
@@ -330,9 +331,51 @@ pub(crate) fn drive_world_inventory_keys(
         return;
     };
     let control = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
-    let _ = runtime
+    if runtime
         .inventory_ledger_mut(&mut player_runtime)
-        .begin_world_drop(slot, (!control).then_some(1));
+        .begin_world_drop(slot, (!control).then_some(1))
+        .is_ok()
+    {
+        swing.swing();
+    }
+}
+
+/// What dropping the held item needs to swing the arm, as vanilla does with a `dropitem` swing.
+#[derive(bevy::ecs::system::SystemParam)]
+pub(crate) struct DropSwing<'w> {
+    swings: Option<ResMut<'w, crate::melee::SwingTracker>>,
+    movement: Option<Res<'w, crate::movement::MovementTicker>>,
+    effects: Option<Res<'w, crate::movement::LocalMovementEffectTimeline>>,
+    network: Option<Res<'w, crate::runtime::network::NetworkHandle>>,
+    client_world: Option<Res<'w, crate::runtime::world::ClientWorld>>,
+}
+
+impl DropSwing<'_> {
+    /// Swings the local arm for the tick about to simulate and tells the server, unless a swing
+    /// is already running.
+    fn swing(mut self) {
+        let (Some(swings), Some(movement), Some(effects), Some(network), Some(client_world)) = (
+            self.swings.as_deref_mut(),
+            self.movement.as_deref(),
+            self.effects.as_deref(),
+            self.network.as_deref(),
+            self.client_world.as_deref(),
+        ) else {
+            return;
+        };
+        let (Some(state), Some(stream)) = (movement.build_action_state(), &client_world.stream)
+        else {
+            return;
+        };
+        let tick = state.tick.saturating_add(1);
+        let effects = effects.mining_tick(tick, movement.completed_tick()).0;
+        if swings.try_swing_before_tick(tick, effects) {
+            let _ = network.send_inventory_packet(protocol::swing_arm_packet(
+                stream.local_player_runtime_id(),
+                protocol::SwingSource::DropItem,
+            ));
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

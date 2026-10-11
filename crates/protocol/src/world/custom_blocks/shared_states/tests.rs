@@ -105,9 +105,8 @@ fn unsupported_definitions_share_an_empty_result_without_cache_admission() {
     let mut next = block();
     Arc::make_mut(&mut next.visual).state_identity_incomplete = true;
     let _ = SharedStates::empty();
-    let ((first, next), allocations) = crate::test_allocations::measure(|| {
-        (first.hashed_states(), next.hashed_states())
-    });
+    let ((first, next), allocations) =
+        crate::test_allocations::measure(|| (first.hashed_states(), next.hashed_states()));
     assert!(first.is_empty() && next.is_empty());
     assert_eq!(allocations, 0);
 }

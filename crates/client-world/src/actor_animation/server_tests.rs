@@ -328,6 +328,27 @@ fn display_actor_rigless_identifier_cache_evicts_its_oldest_entries() {
 }
 
 #[test]
+fn display_actor_retires_a_reused_lifetime_whose_pack_rig_was_removed() {
+    let mut custom = compiled();
+    custom.symbols[0].identifier = "custom:display_actor".into();
+    let custom = Arc::new(RuntimeEntityAssets::from_compiled(custom).unwrap());
+    let mut displays = crate::DisplayActorStore::new(0, assets());
+    displays.set_pack(Some((Arc::clone(&custom), vec![0])));
+    let position = [3, 64, 4];
+    let runtime = displays.resolve(position, "custom:display_actor").unwrap();
+    displays.set_pack(None);
+    assert_eq!(
+        displays.resolve(position, "custom:display_actor"),
+        None,
+        "a display whose rig left with its pack must not keep its slot"
+    );
+    assert!(displays.actor(runtime).is_none());
+    assert!(displays.caches_unrigged("custom:display_actor").is_some());
+    displays.set_pack(Some((custom, vec![0])));
+    assert!(displays.resolve(position, "custom:display_actor").is_some());
+}
+
+#[test]
 fn display_actor_rebinds_the_same_lifetime_to_replaced_pack_geometry() {
     let base = assets();
     let mut displays = crate::DisplayActorStore::new(0, Arc::clone(&base));

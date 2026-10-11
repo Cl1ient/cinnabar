@@ -79,13 +79,19 @@ impl DisplayActorStore {
             return None;
         }
         if let Some(&runtime) = self.positions.get(&position) {
-            if self.store.get(runtime).is_some_and(|actor| {
+            let unchanged = self.store.get(runtime).is_some_and(|actor| {
                 matches!(&actor.kind,
                 ActorKind::Entity { identifier: current } if current.as_ref() == identifier)
-            }) {
+            });
+            // A pack change can drop the rig of a lifetime that is otherwise unchanged.
+            if unchanged && self.store.actor_rig(runtime).is_some() {
                 return Some(runtime);
             }
             self.remove(position);
+            if unchanged {
+                self.remember_unrigged(identifier);
+                return None;
+            }
         }
         if self.positions.len() >= MAX_DISPLAY_ACTORS {
             return None;

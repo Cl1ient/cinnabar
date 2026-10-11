@@ -1,7 +1,7 @@
 use super::{
     BlockEntityKey, BlockEntityNbt, ChunkStore, CollisionIdSpace, NbtCompound, NbtValue,
     PISTON_DIRECTIONS, PaletteWorld, PickRule, SelectionContext, ShapeBox, ShapeFlags, UNIT, Vec3,
-    box_to_aabb, fixture, set_block, set_piston, shapes,
+    box_to_aabb, fixture, set_block, set_moving, set_piston, shapes,
 };
 use crate::WorldQueryError;
 use assets::block_shapes::PickContext;
@@ -57,29 +57,6 @@ fn moving_pick_identity_includes_a_remote_piston_owner() {
                 .is_some()
         );
     }
-}
-
-/// Ingests a moving-block snapshot with a typed carried-state reference.
-fn set_moving(store: &mut ChunkStore, name: &str, piston: [i32; 3], expanding: bool) {
-    let mut block = NbtCompound::default();
-    block.insert("name", NbtValue::String(name.into()));
-    block.insert("states", NbtValue::Compound(NbtCompound::default()));
-    let mut root = NbtCompound::default();
-    root.insert("id", NbtValue::String("MovingBlock".into()));
-    root.insert("movingBlock", NbtValue::Compound(block));
-    root.insert("expanding", NbtValue::Byte(i8::from(expanding)));
-    for (key, value) in ["pistonPosX", "pistonPosY", "pistonPosZ"]
-        .into_iter()
-        .zip(piston)
-    {
-        root.insert(key, NbtValue::Int(value));
-    }
-    let actor = BlockEntityNbt::decode_prefix(&root.encode_root().unwrap())
-        .unwrap()
-        .0;
-    store
-        .commit_block_entity_update(BlockEntityKey::new(0, 0, 0, 0), actor)
-        .unwrap();
 }
 
 #[test]

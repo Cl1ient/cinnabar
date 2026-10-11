@@ -9,6 +9,7 @@ use world::{
 };
 
 mod contextual;
+mod rays;
 
 const UNIT: ShapeBox = ShapeBox::new([0.0; 3], [1.0; 3]);
 
@@ -167,4 +168,27 @@ fn piston_arm_pieces_require_the_owner_actor_and_follow_all_six_directions() {
             assert_eq!(boxes.as_ref(), [box_to_aabb(piece).translated(offset); 3]);
         }
     }
+}
+
+/// Ingests a moving-block snapshot with a typed carried-state reference.
+fn set_moving(store: &mut ChunkStore, name: &str, piston: [i32; 3], expanding: bool) {
+    let mut block = NbtCompound::default();
+    block.insert("name", NbtValue::String(name.into()));
+    block.insert("states", NbtValue::Compound(NbtCompound::default()));
+    let mut root = NbtCompound::default();
+    root.insert("id", NbtValue::String("MovingBlock".into()));
+    root.insert("movingBlock", NbtValue::Compound(block));
+    root.insert("expanding", NbtValue::Byte(i8::from(expanding)));
+    for (key, value) in ["pistonPosX", "pistonPosY", "pistonPosZ"]
+        .into_iter()
+        .zip(piston)
+    {
+        root.insert(key, NbtValue::Int(value));
+    }
+    let actor = BlockEntityNbt::decode_prefix(&root.encode_root().unwrap())
+        .unwrap()
+        .0;
+    store
+        .commit_block_entity_update(BlockEntityKey::new(0, 0, 0, 0), actor)
+        .unwrap();
 }

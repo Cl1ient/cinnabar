@@ -104,7 +104,8 @@ pub(crate) fn parse(text: &str, root: &Path) -> BTreeSet<String> {
         {
             if let Some(mut failure) = current.clone() {
                 current_failed = true;
-                failure.test = test.into();
+                // libtest appends this display-only marker; the test's identity omits it.
+                failure.test = test.strip_suffix(" - should panic").unwrap_or(test).into();
                 failures.insert(serde_json::to_string(&failure).unwrap());
             } else {
                 return BTreeSet::new();
@@ -260,6 +261,18 @@ mod tests {
             artifact("abort")
         );
         assert!(parse(&mixed, Path::new("/repo")).is_empty());
+    }
+
+    #[test]
+    fn should_panic_failures_keep_the_rerunnable_test_name() {
+        let artifact = serde_json::json!({"reason":"compiler-artifact", "profile":{"test":true}, "manifest_path":"/repo/Cargo.toml", "executable":"/repo/target/old", "target":{"name":"old","kind":["test"]}});
+        let text = format!(
+            "{artifact}\nRunning tests/old.rs (/repo/target/old)\ntest existing - should panic ... FAILED\ntest result: FAILED. 0 passed; 1 failed;\nerror: test failed, to rerun pass `--test old`\n"
+        );
+        let failures = parse(&text, Path::new("/repo"));
+        assert_eq!(failures.len(), 1);
+        let command = rerun(failures.first().unwrap()).unwrap();
+        assert_eq!(command.args[command.args.len() - 2], "existing");
     }
 
     #[test]

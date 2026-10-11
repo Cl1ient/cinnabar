@@ -299,6 +299,8 @@ fn formatting(text: &str, root: &Path) -> Option<BTreeSet<String>> {
     let mut current = None::<String>;
     let header = Regex::new(r"^Diff in .+:\d+:$").unwrap();
     let number = Regex::new(r":\d+:$").unwrap();
+    // rustfmt colours diffs whenever TERM names a colour terminal, even when captured.
+    let text = Regex::new(r"\x1b\[[0-9;]*m").unwrap().replace_all(text, "");
     for line in text.lines() {
         if header.is_match(line) {
             if let Some(diff) = current.take() {
@@ -409,6 +411,16 @@ mod tests {
         ] {
             assert!(cargo_tests(&format!("{text}{unknown}\n"), Path::new("/repo")).is_none());
         }
+    }
+
+    #[test]
+    fn coloured_rustfmt_diffs_match_their_plain_signature() {
+        let plain = "Diff in /repo/src/lib.rs:1:\n-fn  f() {}\n+fn f() {}\n";
+        let coloured =
+            "Diff in /repo/src/lib.rs:1:\n\x1b[31m-fn  f() {}\x1b[0m\n\x1b[32m+fn f() {}\x1b[0m\n";
+        let expected = formatting(plain, Path::new("/repo"));
+        assert!(expected.is_some());
+        assert_eq!(formatting(coloured, Path::new("/repo")), expected);
     }
 
     #[test]

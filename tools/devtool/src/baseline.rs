@@ -217,6 +217,12 @@ impl Comparison {
             return Err(failed(&command, &result));
         }
         self.worktree = Some(path.clone());
+        // Tools report canonical paths, so diagnostics only normalize against the canonical root.
+        let path = fs::canonicalize(&path).map_err(|source| DevtoolError::Spawn {
+            command: "resolve base worktree path".into(),
+            source,
+        })?;
+        self.worktree = Some(path.clone());
         Ok(path)
     }
 }
@@ -628,6 +634,51 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn base_worktree_uses_the_canonical_path_tools_report() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("repo");
+        fs::create_dir(&root).unwrap();
+        for args in [
+            vec!["init", "--quiet"],
+            vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "--allow-empty",
+                "--quiet",
+                "-m",
+                "fixture",
+            ],
+        ] {
+            assert!(
+                Command::new("git")
+                    .current_dir(&root)
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let real = temp.path().join("scratch");
+        fs::create_dir(&real).unwrap();
+        let alias = temp.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let mut comparison = Comparison {
+            architecture_selector: "architecture".into(),
+            base: "HEAD".into(),
+            build_dir: temp.path().join("build").display().to_string(),
+            root,
+            scratch: tempfile::Builder::new().tempdir_in(&alias).unwrap(),
+            worktree: None,
+        };
+        let base = comparison.base_worktree().unwrap();
+        assert_eq!(base, fs::canonicalize(&base).unwrap());
     }
 
     #[test]

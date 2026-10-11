@@ -116,8 +116,8 @@ mod tests {
     fn fixture() -> (ItemVisualDefinition, Vec<EntityAssetSource>) {
         let visual = ItemVisualDefinition {
             glint: builtin_item_glint("minecraft:enchanted_book"),
-            armour: super::armour::ItemArmour::Unresolved,
-            durability: super::durability::ItemDurability::Unresolved,
+            armour: crate::item::armour::ItemArmour::Unresolved,
+            durability: crate::item::durability::ItemDurability::Unresolved,
             key: crate::ItemVisualKey {
                 identifier: "minecraft:enchanted_book".into(),
                 metadata: 0,

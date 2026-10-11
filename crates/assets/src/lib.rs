@@ -20,7 +20,7 @@ pub mod compiled;
 pub mod dye;
 mod effects;
 mod encoding;
-mod entity;
+pub mod entity;
 mod environment_settings;
 mod equipment;
 mod error;

@@ -5,6 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+platform-specific = ["macos"]
+reads = [
+    "assets/branding/title.png",
+    "assets/cinnangles-sans-source.json",
+    "assets/java-hud/ui/*",
+    "crates/protocol/fixtures/*",
+]
+
 [features]
 test-support = []
 tracy = []
@@ -18,6 +27,7 @@ assets = { path = "../assets" }
 bevy.workspace = true
 chunk-pipeline = { path = "../chunk-pipeline" }
 client-world = { path = "../client-world" }
+actor-animation = { path = "../actor-animation" }
 render-api = { path = "../render-api" }
 render-model = { path = "../render-model" }
 player-state = { path = "../player-state" }

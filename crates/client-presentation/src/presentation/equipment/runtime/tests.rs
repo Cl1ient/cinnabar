@@ -1,7 +1,7 @@
 //! Isolated camera-item routing tests; no optional installed carriers or native art.
 
+use actor_animation::ItemAnimationState;
 use bevy::math::Quat;
-use client_world::ItemAnimationState;
 use render_model::ActorRenderIdentity;
 use sha2::Digest;
 use sha2::Sha256;

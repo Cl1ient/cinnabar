@@ -33,7 +33,7 @@ pub mod gui_item;
 mod hud;
 mod hud_extras;
 mod icon;
-mod item;
+pub mod item;
 mod lang;
 mod light_registry;
 mod material_keys;

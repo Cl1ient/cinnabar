@@ -500,6 +500,7 @@ mod tests {
             float_properties: HashMap::new(),
             status: Default::default(),
             dragon_animation: None,
+            interaction_traits: assets::interactions::EntityInteractionTraits::Unresolved,
             hitboxes: None,
         }
     }

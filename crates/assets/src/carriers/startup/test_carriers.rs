@@ -12,7 +12,13 @@ fn manifest() -> [u8; 32] {
 
 /// An entity carrier with one source; `seed` varies its identity.
 pub fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
-    crate::encode_entity_blob(&CompiledEntityAssets {
+    crate::encode_entity_blob(&synthetic_entity_assets(seed)).unwrap()
+}
+
+/// Original collected entity facts without installed pack assets.
+pub fn synthetic_entity_assets(seed: u8) -> CompiledEntityAssets {
+    CompiledEntityAssets {
+        interaction_traits: Box::new([]),
         source_manifest_sha256: manifest(),
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -48,8 +54,24 @@ pub fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
         item_visuals: Box::new([]),
         item_visual_aliases: Box::new([]),
         render: Default::default(),
-    })
-    .unwrap()
+    }
+    .with_unresolved_interactions()
+}
+
+/// Binds an original independent entity inventory to the admitted compatibility interactions.
+pub fn synthetic_interaction_assets(identifier: &str) -> CompiledEntityAssets {
+    let mut compiled = synthetic_entity_assets(1);
+    compiled.symbols[0].identifier = identifier.into();
+    let (source_bytes, source_sha256) = crate::interactions::source_identity();
+    let mut sources = compiled.sources.into_vec();
+    sources.push(EntityAssetSource {
+        path: crate::interactions::SOURCE_PATH.into(),
+        source_bytes,
+        source_sha256,
+    });
+    compiled.sources = sources.into();
+    compiled.interaction_traits = crate::interactions::compile(&compiled.symbols);
+    compiled
 }
 
 /// An atmosphere carrier with flat sun, moon and cloud textures.

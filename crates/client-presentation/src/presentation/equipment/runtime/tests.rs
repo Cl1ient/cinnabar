@@ -45,7 +45,8 @@ fn unchanged_authored_pose_sampling_allocates_nothing_and_keeps_matrix_identity(
 /// The cube sheet is injected after atlas construction: these tests cover placement and
 /// routing, not block-carrier admission (which has separate asset tests).
 fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
-    let entities = RuntimeEntityAssets::from_compiled(assets::CompiledEntityAssets {
+    let compiled = assets::CompiledEntityAssets {
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 8,
         sources: vec![assets::EntityAssetSource {
@@ -81,8 +82,9 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
         item_visuals: Box::new([]),
         item_visual_aliases: Box::new([]),
         render: Default::default(),
-    })
-    .unwrap();
+    }
+    .with_unresolved_interactions();
+    let entities = RuntimeEntityAssets::from_compiled(compiled).unwrap();
     let icons =
         RuntimeIconCatalog::decode(&assets::encode_icon_catalog([1; 32], &[], &[]).unwrap())
             .unwrap();

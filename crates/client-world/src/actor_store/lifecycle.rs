@@ -64,6 +64,7 @@ impl ActorStore {
                 &entity_assets,
             )),
         );
+        store.entity_assets = Some(std::sync::Arc::clone(&entity_assets));
         store.items =
             crate::item::ItemStateStore::with_assets(std::sync::Arc::clone(&entity_assets));
         store.actions = crate::action::RemoteActionStore::with_assets(entity_assets);
@@ -89,7 +90,8 @@ impl ActorStore {
             actor_identifier_skips: 0,
             player_game_mode_skips: 0,
             world_default_game_mode: None,
-            aim_actor_classes: HashMap::new(),
+            entity_assets: None,
+            custom_actor_traits: HashMap::new(),
             actors: HashMap::new(),
             effect_members: Default::default(),
             unique_to_runtime: HashMap::new(),
@@ -310,7 +312,7 @@ impl ActorStore {
         self.picks_ahead = false;
         self.dimension = dimension;
         self.latest_sequence = 0;
-        self.aim_actor_classes.clear();
+        self.custom_actor_traits.clear();
         self.actor_identifier_skips = 0;
         self.player_game_mode_skips = 0;
         self.world_default_game_mode = None;
@@ -395,7 +397,7 @@ impl ActorStore {
             return ActorApplyResult::StaleDimension;
         }
         match event {
-            ActorEvent::Identifiers(registry) => self.apply_aim_actor_classes(registry),
+            ActorEvent::Identifiers(registry) => self.apply_actor_interactions(registry),
             ActorEvent::Spawn(spawn) => self.apply_spawn(sequence, spawn),
             ActorEvent::PlayerSpawn { spawn, game_mode } => {
                 let unique_id = spawn.unique_id;
@@ -699,8 +701,14 @@ impl ActorStore {
         let runtime_id = spawn.runtime_id;
         let unique_id = spawn.unique_id;
         let held_item = spawn.held_item.clone();
-        self.actors
-            .insert(runtime_id, ActorSnapshot::from_spawn(spawn, sequence));
+        let interaction_traits = Self::resolve_actor_interactions(
+            &spawn.kind,
+            self.entity_assets.as_deref(),
+            &self.custom_actor_traits,
+        );
+        let mut actor = ActorSnapshot::from_spawn(spawn, sequence);
+        actor.interaction_traits = interaction_traits;
+        self.actors.insert(runtime_id, actor);
         self.effect_members.update(&self.actors[&runtime_id]);
         if self.remote_state_excluded_runtime_id == Some(runtime_id) {
             if self.actors[&runtime_id]

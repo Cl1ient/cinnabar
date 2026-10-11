@@ -7726,3 +7726,13 @@ all provisional rule values still require verification before this gate can clos
 - Incomplete: the full armour identifier/class inventory, missing-member defaults, body slots and later component versions still need parity verification. Unverified items and malformed declarations retain explicit unresolved facts.
 
 Effective item durability is shared through required entity-carrier descriptors and session registry admission. Unknown entries and invalid declared maxima stay unresolved; UI and elytra gameplay read the admitted numeric-ID fact. This gate remains incomplete: the full damageable item inventory, native class bindings, numeric component bounds and all network replacement behavior still need verification. The pinned base table preserves the existing positive values and its coverage guard checks their membership in the independent retail inventory.
+
+Compiled entity interaction traits remain incomplete. The entity carrier admits separate
+pick, placement-obstruction and aim dispositions, checks every independently collected
+entity identity, and retains the existing class routes as provisional compatibility data.
+Actor admission resolves advertised bases once, preserves the first advertisement,
+refreshes earlier actors, and caches numeric dispositions for frame and ray consumers.
+Unadvertised identities and unadmitted nonempty bases remain unresolved. Empty
+advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
+mutable component, spectator pick/obstruction and class inventories are still open;
+the generic-mob disposition remains provisional and does not close a parity gate.

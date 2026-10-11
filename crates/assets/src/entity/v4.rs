@@ -508,6 +508,7 @@ pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Resu
     validate_molang_payload(compiled)?;
     validate_controller_payload(compiled)?;
     validate_rig_payload(compiled)?;
+    super::interactions::validate(compiled)?;
     validate_render_payload(compiled)?;
     validate_item_visuals(
         &compiled.item_visuals,

@@ -89,6 +89,7 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
     ]
     .into_boxed_slice();
     CompiledEntityAssets {
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [0x44; 32],
         block_visual_count: 1,
         sources,
@@ -278,6 +279,7 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
         item_visual_aliases: Box::new([]),
         render: Default::default(),
     }
+    .with_unresolved_interactions()
 }
 
 fn decode_entity_assets(compiled: &CompiledEntityAssets) -> Arc<RuntimeEntityAssets> {

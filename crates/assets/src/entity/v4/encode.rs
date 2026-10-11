@@ -22,6 +22,7 @@ use super::{
 #[derive(Serialize)]
 #[serde(deny_unknown_fields)]
 struct EntityCatalogPayloadRef<'a> {
+    interaction_traits: &'a [super::super::interactions::EntityInteractionDescriptor],
     block_visual_count: u32,
     sources: &'a [EntityAssetSource],
     symbols: &'a [EntityAssetSymbol],
@@ -53,6 +54,7 @@ pub(crate) fn encode_compiled(compiled: &CompiledEntityAssets) -> Result<Box<[u8
         compiled.source_manifest_sha256,
         EntityCatalogPayloadRef {
             block_visual_count: compiled.block_visual_count,
+            interaction_traits: &compiled.interaction_traits,
             sources: &compiled.sources,
             symbols: &compiled.symbols,
             geometries: &compiled.geometries,
@@ -84,6 +86,7 @@ pub(crate) fn encode_runtime(runtime: &RuntimeEntityAssets) -> Result<Box<[u8]>,
         runtime.source_manifest_sha256,
         EntityCatalogPayloadRef {
             block_visual_count: runtime.block_visual_count,
+            interaction_traits: &runtime.interaction_traits,
             sources: &runtime.sources,
             symbols: &runtime.symbols,
             geometries: &runtime.geometries,

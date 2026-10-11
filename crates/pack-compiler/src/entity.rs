@@ -318,6 +318,13 @@ fn assemble(
     include_items: bool,
 ) -> Result<EntityAssetCompilation, AssetError> {
     sources.sort_by(|left, right| left.path.cmp(&right.path));
+    let (length, hash) = assets::interactions::source_identity();
+    sources.push(EntityAssetSource {
+        path: assets::interactions::SOURCE_PATH.into(),
+        source_bytes: length,
+        source_sha256: hash,
+    });
+    sources.sort_by(|left, right| left.path.cmp(&right.path));
     if symbols.is_empty() || symbols.len() > MAX_ENTITY_ASSET_SYMBOLS {
         return Err(invalid("entity asset symbol count exceeds bound"));
     }
@@ -434,7 +441,9 @@ fn assemble(
         }
     };
     let reference_outcomes = animation.outcomes;
+    let interaction_traits = assets::interactions::compile(&symbols);
     let assets = CompiledEntityAssets {
+        interaction_traits,
         source_manifest_sha256,
         block_visual_count: items.block_visual_count,
         sources: sources.into_boxed_slice(),

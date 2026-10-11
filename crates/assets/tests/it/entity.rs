@@ -15,3 +15,6 @@ mod review_regressions;
 mod runtime_admission;
 #[path = "entity/suite.rs"]
 mod suite;
+
+#[path = "entity/interaction_traits.rs"]
+mod interaction_traits;

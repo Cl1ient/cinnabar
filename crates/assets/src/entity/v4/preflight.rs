@@ -20,6 +20,7 @@ use super::{
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EntityCatalogCountProbe {
+    interaction_traits: SequenceCount,
     #[serde(rename = "block_visual_count")]
     _block_visual_count: de::IgnoredAny,
     sources: SequenceCount,
@@ -292,6 +293,7 @@ impl<'de> Deserialize<'de> for GeometrySequenceCount {
 pub(crate) fn payload_counts(bytes: &[u8]) -> Result<[usize; 7], serde_json::Error> {
     let counts: EntityCatalogCountProbe = serde_json::from_slice(bytes)?;
     let bounded = [
+        (counts.interaction_traits.0, MAX_ENTITY_ASSET_SYMBOLS * 2),
         (counts.sources.0, MAX_ENTITY_ASSET_SOURCES),
         (counts.symbols.0, MAX_ENTITY_ASSET_SYMBOLS),
         (counts.geometries.0, MAX_ENTITY_GEOMETRIES),
@@ -352,6 +354,7 @@ mod review_tests {
         let mut root = serde_json::Map::new();
         root.insert("block_visual_count".into(), serde_json::json!(0));
         for field in [
+            "interaction_traits",
             "sources",
             "symbols",
             "geometries",

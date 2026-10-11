@@ -620,7 +620,7 @@ mod banner_tests {
         let mut empty = DataSource::new();
         loom_controls(&player, &mut empty, &runtime);
         for (banner, dye, shown) in [(1, 2, true), (3, 2, false), (1, 3, false), (0, 2, false)] {
-            let mut slots = vec![protocol::NetworkItemStack::empty(); 12];
+            let mut slots = vec![protocol::NetworkItemStack::empty(); protocol::UI_SLOT_COUNT];
             for (slot, network_id) in [(9, banner), (10, dye)] {
                 slots[slot] = protocol::NetworkItemStack {
                     network_id,
@@ -633,9 +633,11 @@ mod banner_tests {
                 .inventory_ledger_mut(&mut player)
                 .apply(&protocol::InventoryEvent::Content(
                     protocol::InventoryContentEvent {
-                        container: protocol::ContainerIdentity::window(
-                            protocol::UI_INVENTORY_WINDOW_ID,
-                        ),
+                        container: protocol::ContainerIdentity {
+                            window_id: Some(protocol::UI_INVENTORY_WINDOW_ID),
+                            slot_type: Some(0),
+                            dynamic_id: None,
+                        },
                         slots: slots.into(),
                         storage_item: protocol::NetworkItemStack::empty(),
                     },

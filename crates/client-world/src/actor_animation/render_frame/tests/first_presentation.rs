@@ -432,6 +432,41 @@ fn first_presentation_refreshes_current_queries_after_pending_simulation_history
     assert_eq!(format!("{:?}", state.motion), motion);
 }
 
+#[test]
+fn first_presentation_uses_the_rendered_body_heading_after_pending_motion() {
+    let mut compiled = compiled_assets();
+    compiled.molang_symbols[5].identifier = "query.target_y_rotation".into();
+    let expression = compiled.animation_keyframes[0].expressions[1].unwrap() as usize;
+    let op = compiled.molang_expressions[expression].first_op as usize;
+    compiled.molang_ops[op] = MolangOp::LoadQuery(5);
+    let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let (mut store, mut actors) = animation_fixture_with(assets);
+    let actor = actors.get_mut(&1).unwrap();
+    actor.yaw = 90.0;
+    actor.head_yaw = 100.0;
+    store.advance_tick(&actors, None, None, true, true, |_| ActorTickContext {
+        appearance_pending: true,
+        ..Default::default()
+    });
+    let state = store.rigs.values().next().unwrap();
+    let body_yaw = state.motion.body_yaw;
+    let motion = format!("{:?}", state.motion);
+    let history_len = state.history.len();
+    assert_ne!(body_yaw, actors[&1].body_yaw);
+    actors.get_mut(&1).unwrap().head_yaw = body_yaw + 20.0;
+    store.prepare_frame(&actors, None, None, false, zero_time_context);
+    let rig = store.get(1).unwrap();
+    assert!(rig.pose_evaluated);
+    assert_eq!(rig.body_yaw, body_yaw);
+    assert_eq!(
+        rig.current[0].translation_scale[1], 20.0,
+        "initial heading query must be relative to the rendered body"
+    );
+    let state = store.rigs.values().next().unwrap();
+    assert_eq!(state.history.len(), history_len);
+    assert_eq!(format!("{:?}", state.motion), motion);
+}
+
 const LOCAL_VIEW_RUNTIME_ID: u64 = 3;
 
 /// Gives the local rig a visible pose change when its view mode changes.

@@ -275,7 +275,7 @@ pub(super) fn seed_presentation_input(
         body_yaw: if query::is_arrow(actor) {
             0.0
         } else {
-            actor.body_yaw
+            state.motion.body_yaw
         },
         yaw: actor.yaw,
         head_yaw: actor.head_yaw,

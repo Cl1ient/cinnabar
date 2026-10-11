@@ -29,6 +29,11 @@ fn fixture() -> CompiledEntityAssets {
             item.source += 1;
         }
     }
+    for candidate in &mut compiled.render.candidates {
+        if candidate.source >= 4 {
+            candidate.source += 1;
+        }
+    }
     compiled.symbols[0].identifier = "fixture:unsupported".into();
     compiled.interaction_traits = interactions::compile(&compiled.symbols);
     compiled

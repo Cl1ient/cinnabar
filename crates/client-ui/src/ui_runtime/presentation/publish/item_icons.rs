@@ -22,10 +22,13 @@ pub(super) fn stack_icon(
     animation_frame: Option<u32>,
 ) -> Option<IconRef> {
     let facts = runtime.stack_facts(stack, Some(identifier));
+    let charged_projectile = (identifier == "minecraft:crossbow")
+        .then(|| facts.charged_projectile())
+        .flatten();
     let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
         identifier,
         stack.metadata,
-        facts.charged_projectile.as_deref(),
+        charged_projectile.as_deref(),
         animation_frame,
     );
     let icon = presentation.item_icon(icon_identifier, variant)?;

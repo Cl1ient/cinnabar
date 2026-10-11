@@ -264,6 +264,17 @@ pub(super) fn compile(
             &mut definitions,
         )?;
     }
+    let fuel_source = *source_indices
+        .get(assets::item::fuel::SOURCE_PATH)
+        .ok_or_else(|| invalid("item fuel defining source is absent"))?;
+    for identifier in assets::item::retail::identifiers() {
+        definitions
+            .entry(ItemVisualKey {
+                identifier: (*identifier).into(),
+                metadata: 0,
+            })
+            .or_insert((fuel_source, ItemVisualDefinitionRoute::Missing));
+    }
     let visuals = definitions
         .into_iter()
         .map(|(key, (source, route))| {
@@ -277,6 +288,7 @@ pub(super) fn compile(
                     .unwrap_or_else(ItemDisplayTransform::identity)
             };
             ItemVisualDefinition {
+                fuel: assets::item::fuel::builtin_item_fuel(&key.identifier),
                 first_person: display(|transforms| transforms.first_person),
                 third_person: display(|transforms| transforms.third_person),
                 dropped: display(|transforms| transforms.dropped),
@@ -357,7 +369,7 @@ fn add_retail_block_items(
             .entry(record.name.as_ref())
             .or_insert(record.sequential_id);
     }
-    let retail = std::str::from_utf8(item_bindings::RETAIL_ITEMS)
+    let retail = std::str::from_utf8(assets::item::retail::SOURCE_BYTES)
         .map_err(|_| invalid("retail item list is not UTF-8"))?;
     for identifier in retail.lines().filter_map(|line| line.split('\t').nth(1)) {
         let key = ItemVisualKey {

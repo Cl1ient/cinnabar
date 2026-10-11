@@ -4225,6 +4225,7 @@ dependencies = [
 name = "inventory"
 version = "0.1.12"
 dependencies = [
+ "assets",
  "bytes",
  "protocol",
  "serde",

@@ -7476,3 +7476,12 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+### Compiled furnace fuel admission (incomplete)
+
+Furnace quick-move fuel decisions use numeric registry facts and validated compiled inputs.
+Retained retail compatibility eligibility and log ingredient preference remain provisional;
+the complete native fuel inventory and durations are unverified. Missing, malformed and
+unsupported component declarations stay unresolved. Unknown and explicitly nonfuel items
+are deferred to the player inventory rather than guessed into a furnace cell. Accepted recipe
+inputs and other container slot rules remain incomplete; this change does not close those gates.

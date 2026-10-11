@@ -180,7 +180,7 @@ impl PlayerInventoryLedger {
             (storage.identity.is_some() || storage.kind.is_ui_backed()).then_some(storage.kind)
         });
         let cells = match window {
-            Some(kind) => self.window_destinations(kind, id),
+            Some(kind) => self.window_destinations(kind, id, stack.network_id),
             None => self.equipment_destinations(id),
         };
         if !cells.is_empty() {
@@ -208,7 +208,7 @@ impl PlayerInventoryLedger {
     }
 
     /// The window cells a stack of `id` shift-clicks into.
-    fn window_destinations(&self, kind: WindowKind, id: &str) -> Vec<Cell> {
+    fn window_destinations(&self, kind: WindowKind, id: &str, network_id: i32) -> Vec<Cell> {
         let storage = |range: std::ops::Range<u8>| -> Vec<Cell> {
             range
                 .map(Cell::Storage)
@@ -229,7 +229,11 @@ impl PlayerInventoryLedger {
             | WindowKind::Hopper
             | WindowKind::Crafter => storage(0..u8::MAX),
             WindowKind::Furnace | WindowKind::BlastFurnace | WindowKind::Smoker => {
-                let slot = item_roles::furnace_slot(id);
+                let fuel = self.item_fuel(network_id);
+                if fuel.eligible() != Some(true) {
+                    return Vec::new();
+                }
+                let slot = u8::from(fuel.ingredient_first() != Some(true));
                 storage(slot..slot + 1)
             }
             WindowKind::Brewing => item_roles::brewing_slots(id)
@@ -251,5 +255,71 @@ impl PlayerInventoryLedger {
             WindowKind::Smithing => ui(&[item_roles::smithing_slot(id)]),
             WindowKind::Beacon | WindowKind::Workbench | WindowKind::Lectern => Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod fuel_tests {
+    use super::*;
+    use assets::item::fuel::ItemFuel;
+
+    #[test]
+    fn furnace_destinations_follow_numeric_fuel_facts_and_defer_unknown_items() {
+        let mut ledger = PlayerInventoryLedger::default();
+        ledger.apply(&protocol::InventoryEvent::Authority(
+            protocol::InventoryAuthority::Server,
+        ));
+        ledger.apply(&protocol::InventoryEvent::Open(
+            protocol::ContainerOpenEvent {
+                container: protocol::ContainerIdentity::window(3),
+                window_type: protocol::WINDOW_TYPE_FURNACE,
+                position: [0, 64, 0],
+                runtime_entity_id: -1,
+            },
+        ));
+        ledger.apply(&protocol::InventoryEvent::Content(
+            protocol::InventoryContentEvent {
+                container: protocol::ContainerIdentity::window(3),
+                slots: vec![NetworkItemStack::default(); 3].into(),
+                storage_item: NetworkItemStack::default(),
+            },
+        ));
+        ledger
+            .fuel_facts
+            .insert(10_001, ItemFuel::Session { burn_ticks: 40 });
+        ledger
+            .fuel_facts
+            .insert(10_002, ItemFuel::Session { burn_ticks: 0 });
+        assert_eq!(
+            ledger.window_destinations(WindowKind::Furnace, "custom:shared_icon", 10_001),
+            vec![Cell::Storage(1)]
+        );
+        assert!(
+            ledger
+                .window_destinations(WindowKind::Furnace, "custom:shared_icon", 10_002)
+                .is_empty()
+        );
+        assert!(
+            ledger
+                .window_destinations(WindowKind::Furnace, "custom:oak_planks", 10_003)
+                .is_empty()
+        );
+        ledger.fuel_facts.insert(
+            10_004,
+            assets::item::fuel::builtin_item_fuel("minecraft:oak_log"),
+        );
+        assert_eq!(
+            ledger.window_destinations(WindowKind::Furnace, "unrelated:icon", 10_004),
+            vec![Cell::Storage(0)]
+        );
+        ledger.fuel_facts.insert(
+            10_005,
+            assets::item::fuel::builtin_item_fuel("minecraft:crimson_planks"),
+        );
+        assert!(
+            ledger
+                .window_destinations(WindowKind::Furnace, "minecraft:coal", 10_005)
+                .is_empty()
+        );
     }
 }

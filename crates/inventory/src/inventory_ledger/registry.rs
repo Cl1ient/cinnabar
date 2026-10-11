@@ -45,6 +45,7 @@ impl PlayerInventoryLedger {
         };
         let Some(previous) = self.item_registry.as_ref() else {
             self.item_registry = Some(std::sync::Arc::new(next));
+            self.refresh_fuel_facts();
             return;
         };
         if previous.as_ref() == &next {
@@ -74,6 +75,7 @@ impl PlayerInventoryLedger {
             self.mark_cell_recovery(cell);
         }
         self.item_registry = Some(std::sync::Arc::new(next));
+        self.refresh_fuel_facts();
         self.refold();
     }
 
@@ -184,7 +186,12 @@ fn registry_identity_changed(
     network_id: i32,
 ) -> bool {
     match (previous.get(&network_id), next.get(&network_id)) {
-        (Some(previous), Some(next)) => previous.identifier != next.identifier,
+        (Some(previous), Some(next)) => {
+            previous.identifier != next.identifier
+                || previous.component_based != next.component_based
+                || previous.version != next.version
+                || super::fuel::resolve(previous, None) != super::fuel::resolve(next, None)
+        }
         (Some(_), None) => true,
         (None, Some(_)) | (None, None) => false,
     }
@@ -245,6 +252,7 @@ mod tests {
 
     fn entry(identifier: &str, component_based: bool, declared: Option<u8>) -> ItemRegistryEntry {
         ItemRegistryEntry {
+            components: None,
             identifier: identifier.into(),
             network_id: 900,
             component_based,
@@ -273,6 +281,7 @@ mod tests {
     #[test]
     fn server_block_items_stack_to_the_item_default() {
         let block_item = |declared| ItemRegistryEntry {
+            components: None,
             version: ItemRegistryVersion::None,
             ..entry("benergistics:controller", false, declared)
         };

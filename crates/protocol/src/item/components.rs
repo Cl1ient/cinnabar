@@ -17,6 +17,10 @@ pub(super) fn duration_ticks(seconds: f64) -> Option<u32> {
 /// What the client presents from one item's components; absent facts stay `None`/`false`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ItemComponents {
+    /// Parsed fuel duration; missing or malformed declarations stay absent.
+    pub fuel_duration_ticks: Option<u32>,
+    /// Whether fuel was declared, including malformed component values.
+    pub fuel_declared: bool,
     /// Attack and kinetic presentation facts, when this item declares them.
     pub attack: Option<super::ItemAttackTiming>,
     /// `item_texture.json` key from `minecraft:icon`.
@@ -41,6 +45,32 @@ pub struct ItemComponents {
     pub rarity: Option<Arc<str>>,
     /// `minecraft:hover_text_color` format-code name, e.g. `gold`.
     pub hover_text_color: Option<Arc<str>>,
+}
+
+impl ItemComponents {
+    /// Counts the retained component allocation and its owned text for admission budgets.
+    pub fn retained_bytes(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>().saturating_add(32);
+        for text in [
+            self.icon.as_deref(),
+            self.display_name.as_deref(),
+            self.use_animation.as_deref(),
+            self.wearable_slot.as_deref(),
+            self.block_placer.as_deref(),
+            self.rarity.as_deref(),
+            self.hover_text_color.as_deref(),
+            self.attack
+                .as_ref()
+                .and_then(|attack| attack.attack_cooldown.as_ref())
+                .map(|cooldown| &*cooldown.category),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            bytes = bytes.saturating_add(text.len()).saturating_add(32);
+        }
+        bytes
+    }
 }
 
 /// Components for every StartGame registry item whose component data is non-empty.
@@ -85,6 +115,11 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
             .and_then(duration_ticks)
     });
     Some(ItemComponents {
+        fuel_duration_ticks: component("minecraft:fuel")
+            .and_then(|fuel| fuel.field("duration"))
+            .and_then(Nbt::number)
+            .and_then(duration_ticks),
+        fuel_declared: component("minecraft:fuel").is_some(),
         attack: super::attack::parse_attack(components),
         icon: super::icons::icon_key(bytes),
         display_name: text(
@@ -176,6 +211,42 @@ mod tests {
     }
 
     // Dragonfly's custom-item layout: properties nested under item_properties.
+    #[test]
+    fn fuel_duration_distinguishes_zero_missing_and_malformed_data() {
+        let missing = parse_components(&compound("", &[compound("components", &[])])).unwrap();
+        assert_eq!(missing.fuel_duration_ticks, None);
+        assert!(!missing.fuel_declared);
+        for (seconds, expected) in [
+            (2.0f32, Some(40)),
+            (0.0, Some(0)),
+            (-1.0, None),
+            (f32::NAN, None),
+        ] {
+            let mut duration = name(5, "duration");
+            duration.extend(seconds.to_le_bytes());
+            let components = parse_components(&compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound("minecraft:fuel", &[duration])],
+                )],
+            ))
+            .unwrap();
+            assert_eq!(components.fuel_duration_ticks, expected);
+            assert!(components.fuel_declared);
+        }
+        let malformed = parse_components(&compound(
+            "",
+            &[compound(
+                "components",
+                &[compound("minecraft:fuel", &[string("duration", "wrong")])],
+            )],
+        ))
+        .unwrap();
+        assert_eq!(malformed.fuel_duration_ticks, None);
+        assert!(malformed.fuel_declared);
+    }
+
     #[test]
     fn food_classification_uses_the_food_component() {
         let food = compound(

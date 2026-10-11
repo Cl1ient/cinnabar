@@ -113,9 +113,9 @@ forbidden_transitive_dependencies = ["app", "bedrock-client", "asset-compiler", 
 [[crates]]
 name = "inventory"
 path = "crates/inventory"
-allowed_dependencies = ["protocol"]
-forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
-forbidden_transitive_dependencies = ["app", "bedrock-client", "ui", "json-ui", "render", "bevy", "bevy_*", "wgpu*", "client-world", "world"]
+allowed_dependencies = ["assets", "protocol"]
+forbidden_dependencies = ["asset-compiler", "bevy", "wgpu", "world"]
+forbidden_transitive_dependencies = ["app", "bedrock-client", "ui", "json-ui", "render", "bevy", "bevy_*", "wgpu*", "client-world"]
 
 [[crates]]
 name = "player-state"

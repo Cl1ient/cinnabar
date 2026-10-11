@@ -3,6 +3,9 @@ use thiserror::Error;
 
 use crate::AssetError;
 
+pub mod fuel;
+pub mod retail;
+
 pub const MAX_ITEM_VISUALS: usize = 16_384;
 pub const MAX_ITEM_VISUAL_ALIASES: usize = 65_536;
 pub const MAX_ITEM_IDENTIFIER_BYTES: usize = 256;
@@ -156,6 +159,8 @@ impl ItemDisplayTransform {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemVisualDefinition {
+    /// Fuel eligibility admitted from checked compilation inputs.
+    pub fuel: fuel::ItemFuel,
     pub key: ItemVisualKey,
     /// Source containing the canonical item definition or reviewed rule.
     pub source: u32,

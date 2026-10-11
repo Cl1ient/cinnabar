@@ -748,6 +748,7 @@ mod armor_tests {
     #[test]
     fn registry_retains_every_numeric_alias_for_a_shared_item_identifier() {
         let entries = [101, 102, 103].map(|network_id| protocol::ItemRegistryEntry {
+            components: None,
             identifier: Arc::from("example:menu_icon"),
             network_id,
             component_based: true,

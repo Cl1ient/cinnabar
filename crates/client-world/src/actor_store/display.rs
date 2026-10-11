@@ -1,17 +1,19 @@
 //! Client-owned display actors share admission and rig evaluation without entering network state.
 use super::*;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashSet, VecDeque},
     sync::Arc,
 };
 
 pub const MAX_DISPLAY_ACTORS: usize = 256;
+const MAX_UNRIGGED_IDENTIFIERS: usize = MAX_DISPLAY_ACTORS;
 
 /// One bounded lifetime namespace for a dimension's displayed entities.
 pub struct DisplayActorStore {
     store: ActorStore,
     positions: BTreeMap<[i32; 3], u64>,
     unrigged: HashSet<Arc<str>>, // identifiers without a rig in the current catalogs
+    unrigged_order: VecDeque<Arc<str>>, // oldest first; bounds `unrigged`
     sequence: u64,
     next_runtime: u64,
 }
@@ -26,6 +28,7 @@ impl DisplayActorStore {
             store,
             positions: BTreeMap::new(),
             unrigged: HashSet::new(),
+            unrigged_order: VecDeque::new(),
             sequence: 0,
             next_runtime: 0,
         }
@@ -35,6 +38,31 @@ impl DisplayActorStore {
     pub fn set_pack(&mut self, pack: Option<(Arc<assets::RuntimeEntityAssets>, Vec<u32>)>) {
         self.store.set_pack_entities(pack);
         self.unrigged.clear();
+        self.unrigged_order.clear();
+    }
+
+    /// Lifetime namespace of every display actor this store publishes.
+    pub fn session_id(&self) -> u64 {
+        self.store.session_id
+    }
+
+    /// Remembers a rigless identifier, evicting the oldest once the cache is full.
+    fn remember_unrigged(&mut self, identifier: &str) {
+        if self.unrigged_order.len() >= MAX_UNRIGGED_IDENTIFIERS
+            && let Some(oldest) = self.unrigged_order.pop_front()
+        {
+            self.unrigged.remove(&oldest);
+        }
+        let identifier: Arc<str> = Arc::from(identifier);
+        self.unrigged.insert(Arc::clone(&identifier));
+        self.unrigged_order.push_back(identifier);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn caches_unrigged(&self, identifier: &str) -> Option<usize> {
+        self.unrigged
+            .contains(identifier)
+            .then_some(self.unrigged_order.len())
     }
 
     /// Reports whether `identifier` can name a display actor; callers skip others before admission.
@@ -95,7 +123,7 @@ impl DisplayActorStore {
         self.positions.insert(position, runtime_id);
         if self.store.actor_rig(runtime_id).is_none() {
             self.remove(position);
-            self.unrigged.insert(Arc::from(identifier));
+            self.remember_unrigged(identifier);
             return None;
         }
         Some(runtime_id)

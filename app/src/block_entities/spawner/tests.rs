@@ -606,3 +606,43 @@ fn regression_full_display_pool_admits_a_disjoint_set_in_one_frame() {
         "replacement displays must publish on the frame their predecessors retire"
     );
 }
+
+#[cfg(feature = "developer-control")]
+#[test]
+fn regression_developer_control_inspection_keeps_display_and_network_lifetimes_apart() {
+    let mut world = system_fixture(serde_json::json!({}), "1");
+    prepare_displays(&mut world, world::TICK_DURATION);
+    let display_session = world
+        .resource::<SpawnerDisplayPublisher>()
+        .0
+        .as_ref()
+        .unwrap()
+        .actors
+        .session_id();
+    let (network_session, colliding) = {
+        let authority = world
+            .resource::<ClientWorld>()
+            .stream
+            .as_ref()
+            .unwrap()
+            .authority();
+        (
+            authority.actor_session_id(),
+            authority.local_player_runtime_id(),
+        )
+    };
+    assert_ne!(display_session, network_session);
+    let (actor, display) =
+        crate::developer_control::actors::manifest_actor(&world, display_session, colliding)
+            .expect("a display sharing the local player's runtime id must stay inspectable");
+    assert!(display);
+    assert!(matches!(
+        &actor.kind,
+        protocol::ActorKind::Entity { identifier } if identifier.as_ref() == "custom:display"
+    ));
+    assert!(
+        crate::developer_control::actors::manifest_actor(&world, network_session, colliding)
+            .is_none_or(|(_, display)| !display),
+        "network lifetimes never resolve to display actors"
+    );
+}

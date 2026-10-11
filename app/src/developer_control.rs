@@ -1,7 +1,7 @@
 //! Bevy glue for the developer control endpoint: drains authenticated commands each frame
 //! and applies them through the same seams real input, chat and joins use.
 
-mod actors;
+pub(crate) mod actors;
 mod camera;
 mod cape;
 mod capture;

@@ -294,15 +294,37 @@ fn display_actor_uses_custom_rig_and_keeps_a_separate_lifetime_namespace() {
         "identical runtime ids cannot alias across pools"
     );
     assert_eq!(displays.actor(runtime).unwrap().position, [1.0, 64.0, 2.0]);
-    let replacement = displays.resolve(position, "minecraft:test").unwrap();
-    assert_ne!(replacement, runtime);
+    assert_eq!(
+        displays.resolve(position, "minecraft:test"),
+        None,
+        "an entity without a rig retains no display lifetime"
+    );
     assert!(displays.actor(runtime).is_none());
+    let replacement = displays.resolve(position, "custom:display_actor").unwrap();
+    assert_ne!(replacement, runtime);
     displays.retain(&Default::default());
     assert!(displays.actor(replacement).is_none());
     assert!(
         second.actor(other).is_some(),
         "retirement is local to one pool"
     );
+}
+
+#[test]
+fn display_actor_rigless_identifier_cache_evicts_its_oldest_entries() {
+    let mut displays = crate::DisplayActorStore::new(0, assets());
+    let limit = crate::MAX_DISPLAY_ACTORS;
+    for index in 0..limit * 4 {
+        let identifier = format!("custom:missing_{index}");
+        assert_eq!(displays.resolve([index as i32, 0, 0], &identifier), None);
+    }
+    assert_eq!(displays.caches_unrigged("custom:missing_0"), None);
+    assert_eq!(
+        displays.caches_unrigged(&format!("custom:missing_{}", limit * 4 - 1)),
+        Some(limit),
+        "distinct server identifiers must not grow the cache past its bound"
+    );
+    assert!(displays.resolve([0; 3], "minecraft:test").is_some());
 }
 
 #[test]

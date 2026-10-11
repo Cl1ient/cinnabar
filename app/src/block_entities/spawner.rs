@@ -53,6 +53,20 @@ struct Pool {
 #[derive(Resource, Default)]
 pub(crate) struct SpawnerDisplayPublisher(Option<Pool>);
 
+impl SpawnerDisplayPublisher {
+    /// Returns the display actor published under this lifetime, or `None` for another namespace.
+    pub(crate) fn actor(
+        &self,
+        session_id: u64,
+        runtime_id: u64,
+    ) -> Option<&client_world::ActorSnapshot> {
+        let pool = self.0.as_ref()?;
+        (pool.actors.session_id() == session_id)
+            .then(|| pool.actors.actor(runtime_id))
+            .flatten()
+    }
+}
+
 /// Parses all configured displays once for an immutable column NBT index.
 fn column(source: Arc<EntityIndex>) -> Column {
     let displays = source

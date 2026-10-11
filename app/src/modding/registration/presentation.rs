@@ -4,7 +4,11 @@ use super::*;
 
 /// Removes only the registered component; environment-loaded components retain their state.
 pub(super) fn clear_owned_state(world: &mut World) -> Option<ModHost> {
-    let index = world.get_resource::<ModRuntime>()?.registration_host?;
+    let Some(runtime) = world.get_resource::<ModRuntime>() else {
+        clear_presentation(world);
+        return None;
+    };
+    let index = runtime.registration_host?;
     if index > 0 {
         let mut runtime = world.resource_mut::<ModRuntime>();
         runtime.registration_host = None;

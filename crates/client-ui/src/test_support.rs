@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 pub use crate::ui_runtime::presentation::forms::pack_harness;
+pub use crate::ui_runtime::presentation::forms::snapshot::{rasterize, write as write_snapshot};
 
 /// Models the shipped atlas: ink 16 texels tall sitting 14 above the baseline
 /// with a 12-texel advance, so layout geometry in these tests matches what the

@@ -293,9 +293,15 @@ function Get-SlabStairCoverageEvidence {
     $registryBytes = [IO.File]::ReadAllBytes($RegistryPath)
     $reader = [IO.BinaryReader]::new([IO.MemoryStream]::new($registryBytes, $false))
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    $schemaRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+    $registrySchema = Get-Content -LiteralPath (Join-Path $schemaRoot 'crates/assets/data/registry-schema.json') -Raw | ConvertFrom-Json
+    $extensionBytes = @($registrySchema.record_header | Where-Object { $_.PSObject.Properties.Name -contains 'previous_default' } | ForEach-Object {
+        if ($_.type -cne 'u8') { throw 'unsupported registry record extension in gallery reader' }
+        1
+    } | Measure-Object -Sum).Sum
     try {
-        if ($utf8.GetString($reader.ReadBytes(8)) -cne 'BREG1003') {
-            throw 'slab/stair coverage requires a BREG1003 registry'
+        if ($utf8.GetString($reader.ReadBytes(8)) -cne [string]$registrySchema.magic) {
+            throw 'slab/stair coverage requires the active registry schema'
         }
         $registryProtocol = $reader.ReadUInt32()
         $null = $reader.ReadUInt32()
@@ -313,6 +319,7 @@ function Get-SlabStairCoverageEvidence {
             $boxCount = [int]$reader.ReadByte(); $null = $reader.ReadUInt16()
             $nameLength = [int]$reader.ReadUInt16(); $stateLength = [int]$reader.ReadUInt32()
             $values = @(for ($valueIndex = 0; $valueIndex -lt 8; $valueIndex++) { $reader.ReadUInt32() })
+            $null = $reader.ReadBytes([int]$extensionBytes)
             $null = $reader.ReadBytes(24 * $boxCount)
             $name = $utf8.GetString($reader.ReadBytes($nameLength))
             $canonicalState = $utf8.GetString($reader.ReadBytes($stateLength))
@@ -325,7 +332,7 @@ function Get-SlabStairCoverageEvidence {
                 })
             }
         }
-        if ($reader.BaseStream.Position -ne $reader.BaseStream.Length) { throw 'BREG1003 registry has trailing bytes' }
+        if ($reader.BaseStream.Position -ne $reader.BaseStream.Length) { throw 'block registry has trailing bytes' }
     }
     finally { $reader.Dispose() }
 

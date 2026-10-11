@@ -44,6 +44,9 @@ mod crystal_beams;
 mod dragon_death;
 mod portals;
 
+#[cfg(test)]
+mod beacon_tint_tests;
+
 /// Reads the optional block-entity carrier next to the world carrier, which the block-entity
 /// scene and worn heads share; on absence or corruption logs once and returns `None`.
 pub(crate) fn load_block_entity_carrier(

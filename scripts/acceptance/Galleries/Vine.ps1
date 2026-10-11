@@ -7,9 +7,15 @@ function Get-VineCoverageEvidence {
     $registryBytes = [IO.File]::ReadAllBytes($RegistryPath)
     $reader = [IO.BinaryReader]::new([IO.MemoryStream]::new($registryBytes, $false))
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    $schemaRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+    $registrySchema = Get-Content -LiteralPath (Join-Path $schemaRoot 'crates/assets/data/registry-schema.json') -Raw | ConvertFrom-Json
+    $extensionBytes = @($registrySchema.record_header | Where-Object { $_.PSObject.Properties.Name -contains 'previous_default' } | ForEach-Object {
+        if ($_.type -cne 'u8') { throw 'unsupported registry record extension in gallery reader' }
+        1
+    } | Measure-Object -Sum).Sum
     try {
-        if ($utf8.GetString($reader.ReadBytes(8)) -cne 'BREG1003') {
-            throw 'vine coverage requires a BREG1003 registry'
+        if ($utf8.GetString($reader.ReadBytes(8)) -cne [string]$registrySchema.magic) {
+            throw 'vine coverage requires the active registry schema'
         }
         $registryProtocol = $reader.ReadUInt32()
         $null = $reader.ReadUInt32()
@@ -25,7 +31,7 @@ function Get-VineCoverageEvidence {
             foreach ($ignored in 1..3) { $null = $reader.ReadByte() }
             $boxCount = [int]$reader.ReadByte(); $null = $reader.ReadUInt16()
             $nameLength = [int]$reader.ReadUInt16(); $stateLength = [int]$reader.ReadUInt32()
-            $null = $reader.ReadBytes(32 + 24 * $boxCount)
+            $null = $reader.ReadBytes(32 + [int]$extensionBytes + 24 * $boxCount)
             $name = $utf8.GetString($reader.ReadBytes($nameLength))
             $canonicalState = $utf8.GetString($reader.ReadBytes($stateLength))
             if ($name -ceq 'minecraft:vine') {
@@ -46,7 +52,7 @@ function Get-VineCoverageEvidence {
                 })
             }
         }
-        if ($reader.BaseStream.Position -ne $reader.BaseStream.Length) { throw 'BREG1003 registry has trailing bytes' }
+        if ($reader.BaseStream.Position -ne $reader.BaseStream.Length) { throw 'block registry has trailing bytes' }
     }
     finally { $reader.Dispose() }
 

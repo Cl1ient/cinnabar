@@ -5,7 +5,7 @@ mod audio;
 mod audio_pcm;
 pub mod bamboo;
 pub mod banner;
-mod beacon;
+mod beacon_tints;
 mod biome;
 mod biome_noise;
 mod blob;
@@ -64,7 +64,6 @@ mod ui;
 pub mod vanilla_pack;
 mod vanilla_refs;
 pub mod weather_textures;
-pub use beacon::BeaconTintCatalog;
 pub use actor::{
     ACTOR_CARRIER_MAGIC, ACTOR_CARRIER_VERSION, ActorArtworkBinding, ActorPoseMode, ActorTexture,
     MAX_ACTOR_BINDINGS, MAX_ACTOR_CARRIER_BYTES, MAX_ACTOR_PIXEL_BYTES, MAX_ACTOR_TEXTURE_SIDE,
@@ -92,6 +91,7 @@ pub use audio_pcm::{
     MAX_AUDIO_PCM_CARRIER_BYTES, MAX_AUDIO_PCM_SOURCE_BYTES, RuntimeAudioPcm, encode_audio_pcm,
     reviewed_audio_pcm_identity, validate_audio_pcm_catalog,
 };
+pub use beacon_tints::BeaconTintCatalog;
 pub use biome::{
     BIOME_REGISTRY_MAGIC, BIOME_RULE_FLAG_GRASS_SHADED, BIOME_TINT_FLAG_SEASONAL_FOLIAGE,
     BIOME_TINT_FLAG_SWAMP_GRASS, BiomeRegistryRecord, BiomeRule, CompiledBiomeAssets,
@@ -260,8 +260,8 @@ pub use provenance::{
     vanilla_source, vanilla_source_manifest_sha256,
 };
 pub use registry::{
-    BeaconTint, BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole, ModelFamily,
-    ModelState, ModelStateField, RegistryProvenance, RegistryRecord, read_registry,
+    BeaconTint, BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole,
+    ModelFamily, ModelState, ModelStateField, RegistryProvenance, RegistryRecord, read_registry,
     read_registry_for_protocol, registry_header_protocol,
 };
 pub use runtime::{

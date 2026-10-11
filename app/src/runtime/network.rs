@@ -67,7 +67,7 @@ use pack_runtime::{BootstrapGenerationDisposition, classify_bootstrap_generation
 pub(crate) use resource_packs::reuse::CompiledStacks;
 pub(crate) use resource_packs::ui_catalog::PackUiCatalog;
 pub(crate) use resource_packs::{
-    ResourcePackAdmissionState, await_overlay_texture_device, compiled_stacks,
+    await_overlay_texture_device, compiled_stacks,
     initialize_overlay_texture_limit, set_base_material_keys,
 };
 use {

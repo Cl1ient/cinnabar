@@ -158,34 +158,29 @@ print('\n'.join(sep.join(row) for row in rows))
 
 #[cfg(unix)]
 #[test]
-fn capture_launches_the_emitted_executable_under_cargo_output_overrides() {
+fn capture_launches_the_emitted_executable_and_refuses_cargo_output_overrides() {
     use std::{fs, os::unix::fs::PermissionsExt, process::Command};
-    for (profile, target_dir, triple) in [
-        ("dev", true, false),
-        ("play", false, true),
-        ("release", true, true),
-    ] {
+    let overrides = [
+        None,
+        Some("CARGO_TARGET_DIR"),
+        Some("CARGO_BUILD_TARGET_DIR"),
+        Some("CARGO_BUILD_TARGET"),
+    ];
+    for (profile, set) in ["dev", "play", "release"]
+        .into_iter()
+        .flat_map(|profile| overrides.map(|set| (profile, set)))
+    {
         let temp = tempfile::tempdir().unwrap();
         let bin = temp.path().join("bin");
         fs::create_dir(&bin).unwrap();
-        let directory = if profile == "dev" { "debug" } else { profile };
-        let stale = temp
-            .path()
-            .join("target")
-            .join(directory)
-            .join("bedrock-client");
-        fs::create_dir_all(stale.parent().unwrap()).unwrap();
         for (path, source) in [
-            (stale, "#!/bin/sh\nexit 99\n"),
             (
                 bin.join("make"),
                 r#"#!/usr/bin/env python3
 import json, os, pathlib
-root = pathlib.Path(os.environ.get('CARGO_TARGET_DIR', 'target'))
-if 'CARGO_BUILD_TARGET' in os.environ:
-    root /= os.environ['CARGO_BUILD_TARGET']
+pathlib.Path('built').touch()
 profile = os.environ['PROFILE']
-executable = (root / ('debug' if profile == 'dev' else profile) / 'bedrock-client').resolve()
+executable = (pathlib.Path('target') / ('debug' if profile == 'dev' else profile) / 'bedrock-client').resolve()
 executable.parent.mkdir(parents=True, exist_ok=True)
 executable.write_text('#!/bin/sh\nexit 37\n')
 executable.chmod(0o755)
@@ -207,24 +202,30 @@ print(json.dumps({'reason':'compiler-artifact','target':{'name':'bedrock-client'
             .current_dir(temp.path())
             .env("PROFILE", profile)
             .env_remove("CARGO_TARGET_DIR")
+            .env_remove("CARGO_BUILD_TARGET_DIR")
             .env_remove("CARGO_BUILD_TARGET")
             .env(
                 "PATH",
                 format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
             )
             .args(["capture", "--seconds", "1", "--out", "output"]);
-        if target_dir {
-            command.env("CARGO_TARGET_DIR", temp.path().join("custom-output"));
-        }
-        if triple {
-            command.env("CARGO_BUILD_TARGET", "fixture-target");
+        if let Some(name) = set {
+            command.env(name, temp.path().join("custom-output"));
         }
         let result = command.output().unwrap();
         assert!(!result.status.success());
         let error = String::from_utf8_lossy(&result.stderr);
-        assert!(
-            error.contains("client exited") && error.contains("37"),
-            "profile={profile}: {error}"
-        );
+        if let Some(name) = set {
+            assert!(error.contains(name), "profile={profile}: {error}");
+            assert!(
+                !temp.path().join("built").exists(),
+                "built before refusing {name}"
+            );
+        } else {
+            assert!(
+                error.contains("client exited") && error.contains("37"),
+                "profile={profile}: {error}"
+            );
+        }
     }
 }

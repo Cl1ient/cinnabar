@@ -93,8 +93,11 @@ Grindstones compile separate supports, pivots and wheel for floor, ceiling and
 wall mounts in all four directions, including the legacy multiple selector's
 floor pose. Each part retains its pack-resolved material and sprite rectangle.
 Original-art regressions cover every registered state, carrier roundtrips,
-malformed selectors and replacement sprites. Rendered acceptance and reported
-server-version placement remain incomplete; no broader parity gate closes.
+malformed selectors and replacement sprites. Matched headless frames cover all
+16 registered states, and real input places a new grindstone through a local
+server. Acceptance uses externally compiled carriers with production terrain
+consumers; runtime server-pack compilation and reported server-version placement
+remain unverified. No broader parity gate closes.
 
 ## RakNet transport compatibility
 

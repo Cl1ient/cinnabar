@@ -88,9 +88,22 @@ impl<'a> super::ActorRigSnapshot<'a> {
 impl ActorParticleQueries<'_> {
     /// Reads a numeric actor query; unknown facts retain the actor evaluator's idle value.
     pub fn query(&self, name: &str) -> f32 {
+        let name = name.strip_prefix("query.").unwrap_or(name);
         if name == "frame_alpha" {
             return self.alpha;
         }
+        let Some(binding) = assets::MOLANG_QUERIES
+            .binary_search_by(|candidate| {
+                candidate
+                    .strip_prefix("query.")
+                    .unwrap_or(candidate)
+                    .cmp(name)
+            })
+            .ok()
+            .and_then(|index| assets::MolangQuery::from_name(assets::MOLANG_QUERIES[index]))
+        else {
+            return 0.0;
+        };
         let inputs = super::query::QueryInputs {
             actor: self.actor,
             input: &self.input,
@@ -104,6 +117,41 @@ impl ActorParticleQueries<'_> {
             bones: &[],
             bone_names: self.bone_names,
         };
-        super::query::query(&inputs, name, &[]).number()
+        super::query::query(&inputs, binding, &[]).number()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn particle_query_names_keep_numeric_values_and_unknown_queries_idle() {
+        let actor = crate::actor_animation::tests::actor_with_metadata(Default::default());
+        let queries = ActorParticleQueries {
+            actor: &actor,
+            input: Default::default(),
+            context: super::super::ActorTickContext {
+                frame_alpha: 0.5,
+                ..Default::default()
+            },
+            life_tick: 40,
+            completed_tick: 40,
+            bone_names: &[],
+            alpha: 0.5,
+            state_time: 1.25,
+        };
+        for (name, expected) in [
+            ("frame_alpha", queries.alpha),
+            ("state_time", queries.state_time),
+            (
+                "life_time",
+                (queries.life_tick as f32 + queries.alpha) * world::TICK_DURATION.as_secs_f32(),
+            ),
+            ("not_admitted", 0.0),
+        ] {
+            assert_eq!(queries.query(name), expected, "{name}");
+            assert_eq!(queries.query(&format!("query.{name}")), expected, "{name}");
+        }
     }
 }

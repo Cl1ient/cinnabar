@@ -291,7 +291,7 @@ pub(super) fn encoded_model_record(
         mask |= 1 << index;
         values[index] = value;
     }
-    let mut bytes = assets::REGISTRY_MAGIC.to_vec();
+    let mut bytes = assets::registry::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&1001_u32.to_le_bytes());
     for count in [1_u32, 1, 0, 0, 1, 1] {
         bytes.extend_from_slice(&count.to_le_bytes());
@@ -473,7 +473,7 @@ pub(super) fn registry_bytes(records: &[RegistryRecord]) -> Vec<u8> {
 
 /// Encodes the same fixture registry for one explicit wire protocol.
 pub(super) fn registry_bytes_for_protocol(protocol: u32, records: &[RegistryRecord]) -> Vec<u8> {
-    let mut bytes = assets::REGISTRY_MAGIC.to_vec();
+    let mut bytes = assets::registry::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&protocol.to_le_bytes());
     bytes.extend_from_slice(
         &u32::try_from(records.len())

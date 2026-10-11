@@ -1,7 +1,7 @@
 //! Click-dependent numerical state keys; every output must select a compiled registered state.
 
 use crate::{block_use::BoxBounds, placement_state::PlacementInput};
-use assets::{BlockPlacementFacts as Facts, BlockPlacementRule as Rule};
+use assets::registry::{BlockPlacementFacts as Facts, BlockPlacementRule as Rule};
 
 /// Quantizes finite yaw to the compatibility quarter-turn convention.
 pub(crate) fn quadrant(yaw: f32) -> Option<u32> {

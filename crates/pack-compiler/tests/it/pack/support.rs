@@ -62,7 +62,7 @@ pub fn pack_with_flipbooks(flipbooks: &str) -> TempDir {
 }
 
 pub fn registry_bytes(records: &[RegistryFixture<'_>]) -> Vec<u8> {
-    let mut bytes = assets::REGISTRY_MAGIC.to_vec();
+    let mut bytes = assets::registry::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&1001_u32.to_le_bytes());
     bytes.extend_from_slice(&(records.len() as u32).to_le_bytes());
     bytes.extend_from_slice(&(records.len() as u32).to_le_bytes());

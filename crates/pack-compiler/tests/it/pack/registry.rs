@@ -348,7 +348,7 @@ fn registry_reader_rejects_duplicate_network_hashes() {
 
 #[test]
 fn registry_reader_rejects_oversized_counts_before_record_allocation() {
-    let mut bytes = assets::REGISTRY_MAGIC.to_vec();
+    let mut bytes = assets::registry::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&1001_u32.to_le_bytes());
     bytes.extend_from_slice(&1_u32.to_le_bytes());
     bytes.extend_from_slice(&65_537_u32.to_le_bytes());

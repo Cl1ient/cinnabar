@@ -16,7 +16,7 @@ const REPEAT_MAX_LAG_MILLIS: u64 = 180;
 const PLACEMENT_ACTOR_EPSILON: f64 = 1.0e-5;
 
 /// Blocks a placement replaces in place. Provisional list; needs independent measurement.
-use assets::COMPATIBILITY_REPLACEABLE_BLOCKS as REPLACEABLE_BLOCKS;
+use assets::registry::COMPATIBILITY_REPLACEABLE_BLOCKS as REPLACEABLE_BLOCKS;
 
 /// Which ability a block's own use needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -526,7 +526,7 @@ pub fn predicted_toggle(
     clicked: u32,
 ) -> Option<u32> {
     let mode = stream.network_id_mode();
-    use assets::{BlockPlacementFlags as Flags, BlockPlacementRule as Rule};
+    use assets::registry::{BlockPlacementFlags as Flags, BlockPlacementRule as Rule};
     let facts = collisions.block_placement_facts(mode, clicked);
     if !facts.flags.contains(Flags::HAND_TOGGLE) {
         return None;

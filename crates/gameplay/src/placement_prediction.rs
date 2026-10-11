@@ -6,9 +6,9 @@ use crate::{
     placement_state::PlacementInput,
     placement_support::{SupportRequirement, support_acceptance, support_requirement},
 };
-use assets::{
+use assets::NetworkIdMode;
+use assets::registry::{
     BlockPlacementFlags as Flags, BlockPlacementRule as Rule, BlockSupportKind as Kind,
-    NetworkIdMode,
 };
 use sim::PaletteWorld;
 use std::ops::Range;

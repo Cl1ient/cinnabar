@@ -1,17 +1,17 @@
 //! Numerical neighbour predicates for paired doors, connections and stair corners.
 
 use crate::{block_use::placement_cell, movement::PhysicsCollisionRegistries};
-use assets::{
+use assets::registry::{
     BlockPlacementFacts as Facts, BlockPlacementFlags as Flags, BlockPlacementRule as Rule,
-    ContributorRole, ModelFamily, NetworkIdMode,
 };
+use assets::{ContributorRole, ModelFamily, NetworkIdMode};
 use sim::PaletteWorld;
 
 /// Resolves an upper door state from the same bounded side facts used by the lower half.
 pub(crate) fn door_upper(
     lower: Facts,
     position: [i32; 3],
-    mut read: impl FnMut([i32; 3]) -> Option<(Facts, assets::BlockSupportKind)>,
+    mut read: impl FnMut([i32; 3]) -> Option<(Facts, assets::registry::BlockSupportKind)>,
 ) -> Option<u32> {
     let direction = lower.key & 3;
     let step = [[0, 0, 1], [-1, 0, 0], [0, 0, -1], [1, 0, 0]][direction as usize];
@@ -25,8 +25,8 @@ pub(crate) fn door_upper(
             ])?;
             let door = facts.rule == Rule::Door;
             let solid = match support {
-                assets::BlockSupportKind::Air => false,
-                assets::BlockSupportKind::Stone => true,
+                assets::registry::BlockSupportKind::Air => false,
+                assets::registry::BlockSupportKind::Stone => true,
                 _ if door => false,
                 _ => return None,
             };

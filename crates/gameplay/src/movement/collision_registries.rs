@@ -22,8 +22,8 @@ const RESERVED_RECORD_NAME: &str = "cinnabar:reserved";
 /// Interaction facts shared by both runtime identity spaces.
 #[derive(Debug, Clone)]
 struct InteractionBlock {
-    survival: assets::BlockSurvivalFacts,
-    placement: assets::BlockPlacementFacts,
+    survival: assets::registry::BlockSurvivalFacts,
+    placement: assets::registry::BlockPlacementFacts,
     identifier: Arc<str>,
     full_cube: bool,
     build_intention: bool,
@@ -216,7 +216,7 @@ impl PhysicsCollisionRegistries {
                     record.model_state.get(assets::ModelStateField::Orientation),
                 )),
             };
-            if binding.placement.rule != assets::BlockPlacementRule::Unresolved {
+            if binding.placement.rule != assets::registry::BlockPlacementRule::Unresolved {
                 placement_ids.insert(
                     (binding.placement.set, binding.placement.key),
                     (record.sequential_id, record.network_hash),
@@ -500,7 +500,7 @@ impl PhysicsCollisionRegistries {
         &self,
         mode: assets::NetworkIdMode,
         runtime_id: u32,
-    ) -> assets::BlockSurvivalFacts {
+    ) -> assets::registry::BlockSurvivalFacts {
         let records = match mode {
             assets::NetworkIdMode::Sequential => &self.interaction_blocks,
             assets::NetworkIdMode::Hashed => &self.hashed_interaction_blocks,
@@ -515,7 +515,7 @@ impl PhysicsCollisionRegistries {
         &self,
         mode: assets::NetworkIdMode,
         runtime_id: u32,
-    ) -> assets::BlockPlacementFacts {
+    ) -> assets::registry::BlockPlacementFacts {
         let records = match mode {
             assets::NetworkIdMode::Sequential => &self.interaction_blocks,
             assets::NetworkIdMode::Hashed => &self.hashed_interaction_blocks,

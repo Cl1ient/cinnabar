@@ -138,8 +138,8 @@ fn known_keys(states: &Map<String, Value>, allowed: &[&str]) -> bool {
 }
 
 /// Reads a compiled state disposition; unresolved states wait for the server.
-pub(crate) fn support_requirement(rule: assets::BlockSurvivalRule) -> SupportRequirement {
-    use assets::BlockSurvivalRule as Rule;
+pub(crate) fn support_requirement(rule: assets::registry::BlockSurvivalRule) -> SupportRequirement {
+    use assets::registry::BlockSurvivalRule as Rule;
     match rule {
         Rule::Unresolved => SupportRequirement::Unsupported,
         Rule::Independent => SupportRequirement::Independent,
@@ -151,11 +151,11 @@ pub(crate) fn support_requirement(rule: assets::BlockSurvivalRule) -> SupportReq
 
 /// Evaluates the admitted support policy independently from placement state or block names.
 pub(crate) fn support_acceptance(
-    policy: assets::BlockSupportPolicy,
-    support: assets::BlockSupportKind,
+    policy: assets::registry::BlockSupportPolicy,
+    support: assets::registry::BlockSupportKind,
     full_cube: bool,
 ) -> Option<bool> {
-    use assets::{BlockSupportKind as Kind, BlockSupportPolicy as Policy};
+    use assets::registry::{BlockSupportKind as Kind, BlockSupportPolicy as Policy};
     match policy {
         Policy::Unresolved => None,
         Policy::NonAir => match support {
@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn typed_support_policies_distinguish_unknown_air_and_partial_support() {
-        use assets::{BlockSupportKind as Kind, BlockSupportPolicy as Policy};
+        use assets::registry::{BlockSupportKind as Kind, BlockSupportPolicy as Policy};
         assert_eq!(
             support_acceptance(Policy::NonAir, Kind::Fluid, false),
             Some(true)
@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn unadmitted_survival_family_waits_for_the_server() {
         assert_eq!(
-            support_requirement(assets::BlockSurvivalRule::Unresolved),
+            support_requirement(assets::registry::BlockSurvivalRule::Unresolved),
             SupportRequirement::Unsupported
         );
     }

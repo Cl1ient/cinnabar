@@ -109,7 +109,7 @@ pub(crate) fn advance_local_physics(
             },
         ),
     };
-    locals.observe_dismount(&frame, movement_ticker.session_generation);
+    locals.observe_dismount(&frame, movement_ticker.session_generation());
     if !movement_ticker.can_advance_physics_frame() {
         // Retain presses and publish the pose while transport pauses simulation.
         publish_physics_view(&physics, &mut view);

@@ -49,6 +49,12 @@ Spectator regressions cover forced flight without MayFly, solid and unloaded
 terrain traversal, and embedded server anchors. The full native trajectory,
 platform, and performance gates remain open.
 
+Server-defined vehicle seats have deterministic coverage for actor-origin conversion,
+yaw, scale, link ordering, updates and removal. Dismount request coverage includes
+vehicle controls, queue retries and session/input boundaries. Authored seat fallbacks,
+special family placement, predictive exit placement and vehicle prediction remain
+incomplete; this work closes no movement parity or performance gate.
+
 | Field | Evidence |
 |---|---|
 | Owning plan/task | `docs/superpowers/plans/2026-07-17-phase-3-movement-controls-camera.md`, Tasks 8-14 |

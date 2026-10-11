@@ -117,8 +117,11 @@ the typed count and dead states. Bodies retain their side, top and inset cap spr
 replacement packs supply the sprite, and water remains a separate contributor.
 Original-art regressions cover all eight registry states, carrier roundtrips,
 material ownership and malformed selectors. Geometry uses the carrier's existing
-position and UV precision. Rendered/input acceptance and reported server-version
-placement remain incomplete; broader parity gates stay open.
+position and UV precision. Matched headless frames cover all eight states and
+separate water contributors; actual local input places and stacks a dry pickle.
+Acceptance uses externally compiled carriers with unchanged production consumers.
+Runtime server-pack compilation and reported server-version placement remain
+unverified; broader parity gates stay open.
 
 ## RakNet transport compatibility
 

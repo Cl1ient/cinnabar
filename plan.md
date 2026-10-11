@@ -7320,3 +7320,10 @@ registry. The pinned pack's effects through ID 37 are covered, including the
 nonpersistent effects without HUD icons. A hash-checked independent effect
 inventory checks descriptor coverage when the named local fixture is available.
 The required HUD carrier includes the added icons; rebuild it with `make assets`.
+
+
+Compiled equipment dye capabilities remain incomplete for material contracts the compiler cannot
+resolve. The equipment carrier stores Dye, NoMask or Unresolved; unknown parent chains no longer
+acquire dye from a material name. The existing undyed colour and legacy armour material defaults
+are retained. Complete native shader coverage and session item-component dye overrides remain
+open; this descriptor change does not close those parity gates.

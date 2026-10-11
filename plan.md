@@ -87,6 +87,15 @@ identities, carrier roundtrips, bounds, UVs and unsupported selectors. Offline G
 acceptance uses original fixture art and production terrain meshing and shaders;
 broader residual-family, world-join and performance gates remain open.
 
+## Grindstone terrain geometry
+
+Grindstones compile separate supports, pivots and wheel for floor, ceiling and
+wall mounts in all four directions, including the legacy multiple selector's
+floor pose. Each part retains its pack-resolved material and sprite rectangle.
+Original-art regressions cover every registered state, carrier roundtrips,
+malformed selectors and replacement sprites. Rendered acceptance and reported
+server-version placement remain incomplete; no broader parity gate closes.
+
 ## RakNet transport compatibility
 
 The Go core, local server, and fixture generator share a reviewed transport revision with

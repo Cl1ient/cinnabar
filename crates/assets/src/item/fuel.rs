@@ -148,10 +148,10 @@ mod tests {
     /// Builds one missing-art descriptor with exact checked input identities.
     fn fixture() -> (ItemVisualDefinition, Vec<EntityAssetSource>) {
         let visual = ItemVisualDefinition {
-            grip: super::super::grip::ItemGrip::Unresolved,
+            grip: crate::item::grip::ItemGrip::Unresolved,
             fuel: builtin_item_fuel("minecraft:coal"),
-            armour: super::super::armour::ItemArmour::Unresolved,
-            durability: super::super::durability::ItemDurability::Unresolved,
+            armour: crate::item::armour::ItemArmour::Unresolved,
+            durability: crate::item::durability::ItemDurability::Unresolved,
             key: crate::ItemVisualKey {
                 identifier: "minecraft:coal".into(),
                 metadata: 0,

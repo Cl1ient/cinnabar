@@ -2217,6 +2217,7 @@ publication requires a successfully evaluated animated pose and uses a nonzero
 pose identity while preserving simulation tick zero.
 Pending first skins initialize once their prepared appearance is available,
 including when simulation ticks passed during preparation.
+Explicit rest artwork still requires a completed observation after admission or reset.
 Retries refresh provisional inputs; unchanged off-screen rigs allocate nothing
 between ticks. This does not close the broader actor animation or
 placement-latency parity gates.

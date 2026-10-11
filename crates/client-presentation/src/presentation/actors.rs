@@ -133,6 +133,10 @@ pub fn entity_rig_presentation_cached(
         .flatten();
     let rest_mode =
         location.is_some_and(|location| location.pose_mode() == assets::ActorPoseMode::RestPose);
+    // Static artwork waits for a completed rest observation after admission or reset.
+    if rest_mode && rig.rest_completed_tick == 0 {
+        return None;
+    }
     let selected = if rest_mode {
         ActorRigSnapshot {
             previous: rig.rest,

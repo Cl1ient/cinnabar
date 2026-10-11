@@ -117,6 +117,7 @@ fn rig<'a>(
         rest_reset_generation: 5,
         completed_tick: 11,
         reset_generation: 5,
+        pose_evaluated: true,
         fallback: EntityRigFallback::GeometryOnly,
         scale: 1.0,
         axis_scale: [1.0; 3],

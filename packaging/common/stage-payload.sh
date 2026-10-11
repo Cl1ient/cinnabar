@@ -7,10 +7,12 @@ repo_root="$(CDPATH= cd -- "${CINNABAR_SOURCE_ROOT:-$(dirname -- "${BASH_SOURCE[
 
 # Shared with check-payload.sh; Windows copies the same set in build-installer.ps1.
 kit_registry_stems=(block-registry block-light-registry biome-registry block-physics-seed)
+# Extra tracked inputs shared with the Windows builder and the payload allowlist.
+kit_files="$(dirname -- "${BASH_SOURCE[0]}")/prep-kit-files.tsv"
 
 # stage_prep_kit <kit_dir> <assetc_binary>
 stage_prep_kit() {
-    local kit="$1" assetc="$2" name
+    local kit="$1" assetc="$2" name source destination
     rm -rf "$kit"
     mkdir -p "$kit/bin" "$kit/assets" "$kit/data"
     install -m 0755 "$assetc" "$kit/bin/$(basename "$assetc")"
@@ -19,6 +21,10 @@ stage_prep_kit() {
     for name in "${kit_registry_stems[@]}"; do
         cp "$repo_root/crates/assets/data/$name"-v2193.* "$kit/data/"
     done
+    while IFS=$'\t' read -r source destination; do
+        mkdir -p "$(dirname -- "$kit/$destination")"
+        install -m 0644 "$repo_root/$source" "$kit/$destination"
+    done < "$kit_files"
 }
 
 # stage_resources <resource_root> <assetc_binary>: physics registry, notices, licenses, UI font, prep kit.
@@ -50,7 +56,7 @@ ui_font_path() {
 # resource_manifest <macos|linux|windows>: every file stage_resources (or build-installer.ps1)
 # writes under the resource root, one relative path per line. Optional endpoint files excluded.
 resource_manifest() {
-    local platform="$1" exe='' file name
+    local platform="$1" exe='' file name source destination
     [[ "$platform" != windows ]] || exe=.exe
     file="$(ui_font_path)"
     printf '%s\n' licenses/Cinnabar-LICENSE.md assets/block-physics-v2193.bin assets/THIRD_PARTY_NOTICES.md "fonts/${file##*/}" "prep-kit/bin/assetc$exe"
@@ -60,6 +66,9 @@ resource_manifest() {
     for name in "${kit_registry_stems[@]}"; do
         for file in "$repo_root/crates/assets/data/$name"-v2193.*; do printf 'prep-kit/data/%s\n' "${file##*/}"; done
     done
+    while IFS=$'\t' read -r source destination; do
+        printf 'prep-kit/%s\n' "$destination"
+    done < "$kit_files"
 }
 
 # require_file <path> <hint>

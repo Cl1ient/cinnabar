@@ -37,6 +37,12 @@ Copy-Item $font (Join-Path $resources "fonts")
 Copy-Item (Join-Path $root "assets/*.json") (Join-Path $kit "assets")
 Copy-Item (Join-Path $root "assets/fonts/*") (Join-Path $kit "assets/fonts")
 foreach ($stem in "block-registry", "block-light-registry", "biome-registry", "block-physics-seed") { Copy-Item (Join-Path $root "crates/assets/data/$stem-v2193.*") (Join-Path $kit "data") }
+foreach ($line in Get-Content -LiteralPath (Join-Path $PSScriptRoot "../common/prep-kit-files.tsv")) {
+    $source, $destination = $line.Split("`t")
+    $target = Join-Path $kit $destination
+    New-Item -ItemType Directory -Force (Split-Path -Parent $target) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $root $source) -Destination $target
+}
 if ($env:CINNABAR_UPDATE_URL) { [System.IO.File]::WriteAllText((Join-Path $resources "update-url"), $env:CINNABAR_UPDATE_URL) }
 
 $icon = Join-Path $outPath "cinnabar.ico"

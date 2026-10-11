@@ -16,6 +16,7 @@ pub struct BoxSpec {
 }
 
 impl BoxSpec {
+    /// Creates an uninflated box with an authored origin, size and UV offset.
     #[must_use]
     pub const fn new(origin: [f32; 3], size: [f32; 3], uv: [f32; 2]) -> Self {
         Self {
@@ -26,6 +27,7 @@ impl BoxSpec {
         }
     }
 
+    /// Sets the extra thickness applied to every side of the authored box.
     #[must_use]
     pub const fn inflated(mut self, inflate: f32) -> Self {
         self.inflate = inflate;
@@ -40,6 +42,7 @@ impl BoxSpec {
 }
 
 impl From<ModelBox> for BoxSpec {
+    /// Converts the shared static box tuple without adding inflation.
     fn from((origin, size, uv): ModelBox) -> Self {
         Self::new(origin, size, uv)
     }

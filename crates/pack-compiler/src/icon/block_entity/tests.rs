@@ -5,10 +5,12 @@ use assets::{
 use super::*;
 use crate::icon::model::SIDE;
 
+/// Wraps a finite coordinate for the original geometry fixture.
 fn scalar(value: f32) -> EntityGeometryScalar {
     EntityGeometryScalar::new(value).unwrap()
 }
 
+/// Builds one authored bone and its box-UV cubes.
 fn bone(
     name: &str,
     parent: Option<&str>,
@@ -42,6 +44,7 @@ fn bone(
     }
 }
 
+/// Collects fixture bones under one geometry identifier.
 fn geometry(identifier: &str, side: u16, bones: Vec<EntityGeometryBone>) -> EntityGeometry {
     EntityGeometry {
         visible_bounds: None,

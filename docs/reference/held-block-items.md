@@ -13,5 +13,6 @@ Material selection remains independent: opaque and surviving cutout samples writ
 opaque color, while blended samples composite over the scene. Main and offhand
 use the same cached geometry and material classification. Cutout samples below
 half alpha discard and both sides render; opaque and blended cubes cull backfaces.
-Non-cube shape parity and animated or high-resolution carried sheets remain
-separate open work.
+Box-model heads are held as their skull, centred where a held cube sits; its size
+and facing are unconfirmed. Other non-cube shape parity and animated or
+high-resolution carried sheets remain separate open work.

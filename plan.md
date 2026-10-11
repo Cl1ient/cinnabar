@@ -1030,6 +1030,9 @@ these changes do not close the movement, camera, or actor parity gates.
 - First-person material modes preserve ice blending and cutout holes.
 - Regressions reproduce the previous gameplay-flag, alpha and missing-sheet failures.
 - Rebuilt macOS/Metal frames show cube geometry; the user confirmed the live fix.
+- Box-model heads are held as their skull, centred where a held cube sits (provisional,
+  incomplete: held transform and south facing unverified; dragon and piglin heads still draw
+  their icon).
 - Non-cube, animated and high-resolution carried geometry parity remains open.
 - Vanilla rules: [held block items](docs/reference/held-block-items.md).
 
@@ -7594,5 +7597,3 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
-
-Held box-model heads use skull geometry. The held transform and facing remain provisional; dragon and piglin held geometry remains incomplete.

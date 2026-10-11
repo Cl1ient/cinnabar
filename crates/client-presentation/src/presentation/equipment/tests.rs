@@ -413,7 +413,7 @@ fn real_carriers_hold_heads_as_skull_geometry() {
         arm_height: 1.0,
     };
     // Each axis's extent in held-item space: a flat icon is one texel deep.
-    let mut extents = |identifier: &str| {
+    let mut extent_of = |identifier: &str| {
         let held = runtime
             .first_person_item(&body, &item(identifier), hand)
             .unwrap_or_else(|| panic!("{identifier} is drawable"));
@@ -427,9 +427,9 @@ fn real_carriers_hold_heads_as_skull_geometry() {
             let values = geometry.vertices.iter().map(|vertex| vertex.position[axis]);
             values.clone().fold(f32::MIN, f32::max) - values.fold(f32::MAX, f32::min)
         };
-        ([0, 1, 2].map(extent), geometry.vertices.len())
+        [0, 1, 2].map(extent)
     };
-    let (extent, _) = extents("minecraft:player_head");
+    let extent = extent_of("minecraft:player_head");
     for side in extent {
         assert!(
             (0.45..=0.6).contains(&side),

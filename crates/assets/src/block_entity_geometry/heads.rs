@@ -109,10 +109,12 @@ fn pivoted(pivot: [f32; 3], rotation: [f32; 3]) -> Mat4 {
     Mat4::from_translation(pivot) * Mat4::from_quat(turn) * Mat4::from_translation(-pivot)
 }
 
+/// Reads finite scalar coordinates from the geometry carrier.
 fn values(scalars: [crate::EntityGeometryScalar; 3]) -> [f32; 3] {
     scalars.map(crate::EntityGeometryScalar::get)
 }
 
+/// Builds a bone rotation around its pivot, or identity when either is absent.
 fn bone_local(bone: &EntityGeometryBone) -> Mat4 {
     match (bone.rotation, bone.pivot) {
         (Some(rotation), Some(pivot)) => pivoted(values(pivot), values(rotation)),
@@ -138,6 +140,7 @@ fn chain(geometry: &EntityGeometry, bone: &EntityGeometryBone) -> Option<Mat4> {
     None
 }
 
+/// Checks a bone ancestry without following parent cycles indefinitely.
 fn descends_from(geometry: &EntityGeometry, bone: &EntityGeometryBone, root: &str) -> bool {
     let mut name = Some(bone.name.as_ref());
     for _ in 0..=geometry.bones.len() {
@@ -156,6 +159,7 @@ fn descends_from(geometry: &EntityGeometry, bone: &EntityGeometryBone, root: &st
     false
 }
 
+/// Converts a box-UV cube and its inflation into the mirrored rig frame.
 fn cube_box(cube: &EntityGeometryCube, bone_inflate: f32) -> Option<(BoxSpec, Mat4)> {
     let EntityGeometryUv::Box(uv) = &cube.uv else {
         return None;
@@ -280,10 +284,12 @@ mod tests {
 
     use super::*;
 
+    /// Wraps a finite coordinate for geometry tests.
     fn scalar(value: f32) -> EntityGeometryScalar {
         EntityGeometryScalar::new(value).unwrap()
     }
 
+    /// Builds an unrotated box-UV cube for geometry tests.
     fn cube(origin: [f32; 3], size: [f32; 3]) -> EntityGeometryCube {
         EntityGeometryCube {
             origin: origin.map(scalar),
@@ -296,6 +302,7 @@ mod tests {
         }
     }
 
+    /// Groups fixture cubes under an optional parent bone.
     fn bone(
         name: &str,
         parent: Option<&str>,
@@ -317,6 +324,7 @@ mod tests {
         }
     }
 
+    /// Builds a geometry fixture from authored bones.
     fn geometry(bones: Vec<EntityGeometryBone>) -> EntityGeometry {
         EntityGeometry {
             visible_bounds: None,

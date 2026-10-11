@@ -1,6 +1,9 @@
 //! Client-owned display actors share admission and rig evaluation without entering network state.
 use super::*;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 
 pub const MAX_DISPLAY_ACTORS: usize = 256;
 
@@ -8,6 +11,7 @@ pub const MAX_DISPLAY_ACTORS: usize = 256;
 pub struct DisplayActorStore {
     store: ActorStore,
     positions: BTreeMap<[i32; 3], u64>,
+    unrigged: HashSet<Arc<str>>, // identifiers without a rig in the current catalogs
     sequence: u64,
     next_runtime: u64,
 }
@@ -21,6 +25,7 @@ impl DisplayActorStore {
         Self {
             store,
             positions: BTreeMap::new(),
+            unrigged: HashSet::new(),
             sequence: 0,
             next_runtime: 0,
         }
@@ -29,6 +34,7 @@ impl DisplayActorStore {
     /// Rebinds the same displayed lifetimes when the active pack changes.
     pub fn set_pack(&mut self, pack: Option<(Arc<assets::RuntimeEntityAssets>, Vec<u32>)>) {
         self.store.set_pack_entities(pack);
+        self.unrigged.clear();
     }
 
     /// Reports whether `identifier` can name a display actor; callers skip others before admission.
@@ -39,8 +45,9 @@ impl DisplayActorStore {
     }
 
     /// Reuses an unchanged display actor, replacing it when its configured entity changes.
+    /// Returns `None` without retaining a lifetime when the current catalogs give it no rig.
     pub fn resolve(&mut self, position: [i32; 3], identifier: &str) -> Option<u64> {
-        if !Self::admits_identifier(identifier) {
+        if !Self::admits_identifier(identifier) || self.unrigged.contains(identifier) {
             return None;
         }
         if let Some(&runtime) = self.positions.get(&position) {
@@ -86,6 +93,11 @@ impl DisplayActorStore {
             return None;
         }
         self.positions.insert(position, runtime_id);
+        if self.store.actor_rig(runtime_id).is_none() {
+            self.remove(position);
+            self.unrigged.insert(Arc::from(identifier));
+            return None;
+        }
         Some(runtime_id)
     }
 

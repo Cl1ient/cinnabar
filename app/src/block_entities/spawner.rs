@@ -27,6 +27,7 @@ struct Column {
     source: Arc<EntityIndex>,
     displays: Vec<Request>,
 }
+#[derive(Clone)]
 struct Request {
     position: [i32; 3],
     identifier: Arc<str>,
@@ -148,10 +149,8 @@ pub(crate) fn prepare_spawner_actors(
     let authority = stream.authority();
     let local = authority.actor(authority.local_player_runtime_id());
     let mut players: Vec<Vec3> = authority
-        .render_players()
-        .into_iter()
-        .filter(|(actor, _)| authority.camera_aim_assist_eligible(actor) == Some(true))
-        .filter_map(|(actor, _)| {
+        .present_remote_players()
+        .filter_map(|actor| {
             actor
                 .interpolated_position(step.partial_tick)
                 .map(Vec3::from_array)
@@ -166,8 +165,7 @@ pub(crate) fn prepare_spawner_actors(
     };
     let side = SUB_CHUNK_SIDE as i32;
     let mut columns = BTreeSet::new();
-    let mut visible = BTreeSet::new();
-    let mut selected = Vec::new();
+    let mut candidates = Vec::new();
     for x in range(eye.x) {
         for z in range(eye.z) {
             let key = ChunkKey::new(session.1, x, z);
@@ -199,52 +197,53 @@ pub(crate) fn prepare_spawner_actors(
                 if backing != Some("minecraft:mob_spawner") {
                     continue;
                 }
-                let center =
-                    Vec3::from_array(request.position.map(|value| value as f32)) + Vec3::splat(0.5);
-                if center.distance_squared(eye) > DISPLAY_SCAN_RADIUS * DISPLAY_SCAN_RADIUS {
+                if display_center(request.position).distance_squared(eye)
+                    > DISPLAY_SCAN_RADIUS * DISPLAY_SCAN_RADIUS
+                {
                     continue;
                 }
-                if visible.len() >= client_world::MAX_DISPLAY_ACTORS {
-                    break;
-                }
-                visible.insert(request.position);
-                let clock = pool.spins.entry(request.position).or_insert_with(|| Clock {
-                    source: Arc::clone(&request.nbt),
-                    spin: SpawnerDisplayClock {
-                        delay: request.delay,
-                        ..Default::default()
-                    },
-                });
-                if !Arc::ptr_eq(&clock.source, &request.nbt) {
-                    clock.source = Arc::clone(&request.nbt);
-                    clock.spin.delay = request.delay;
-                }
-                clock.spin.advance(
-                    step.ticks,
-                    players.iter().any(|player| {
-                        center.distance_squared(*player)
-                            <= request.activation_range * request.activation_range
-                    }),
-                );
-                selected.push((
-                    request.position,
-                    Arc::clone(&request.identifier),
-                    clock.spin,
-                ));
+                candidates.push(request.clone());
             }
         }
     }
     pool.columns.retain(|key, _| columns.contains(key));
+    // Retire departed displays first so a full pool admits replacements in the same frame.
+    pool.actors
+        .retain(&candidates.iter().map(|request| request.position).collect());
+    let mut visible = BTreeSet::new();
+    let mut displays = Vec::new();
+    for request in candidates {
+        if displays.len() >= client_world::MAX_DISPLAY_ACTORS {
+            break;
+        }
+        // Only admitted displays count; rejected or unrigged entities leave the budget free.
+        let Some(runtime) = pool.actors.resolve(request.position, &request.identifier) else {
+            continue;
+        };
+        visible.insert(request.position);
+        let clock = pool.spins.entry(request.position).or_insert_with(|| Clock {
+            source: Arc::clone(&request.nbt),
+            spin: SpawnerDisplayClock {
+                delay: request.delay,
+                ..Default::default()
+            },
+        });
+        if !Arc::ptr_eq(&clock.source, &request.nbt) {
+            clock.source = Arc::clone(&request.nbt);
+            clock.spin.delay = request.delay;
+        }
+        let center = display_center(request.position);
+        clock.spin.advance(
+            step.ticks,
+            players.iter().any(|player| {
+                center.distance_squared(*player)
+                    <= request.activation_range * request.activation_range
+            }),
+        );
+        displays.push((runtime, request.position, clock.spin));
+    }
     pool.spins.retain(|position, _| visible.contains(position));
-    // Retire first so a full pool admits a disjoint set in the same frame.
     pool.actors.retain(&visible);
-    let displays = selected
-        .into_iter()
-        .filter_map(|(position, identifier, spin)| {
-            let runtime = pool.actors.resolve(position, &identifier)?;
-            Some((runtime, position, spin))
-        })
-        .collect();
     pool.actors.advance(step.ticks);
     let artwork = state.actor_artwork(&artwork);
     pending.extend_entities(display_batch(
@@ -254,6 +253,11 @@ pub(crate) fn prepare_spawner_actors(
         step.partial_tick,
         displays,
     ));
+}
+
+/// Returns the centre of the spawner block at `position`.
+fn display_center(position: [i32; 3]) -> Vec3 {
+    Vec3::from_array(position.map(|value| value as f32)) + Vec3::splat(0.5)
 }
 
 /// Converts and places display poses, then resolves their lighting and controller layers.

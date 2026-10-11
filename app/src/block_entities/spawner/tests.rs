@@ -548,27 +548,35 @@ fn published(world: &bevy::prelude::World) -> usize {
 }
 
 #[test]
-fn regression_rejected_identifiers_do_not_consume_the_display_limit() {
-    let mut world = system_fixture(serde_json::json!({}), "1");
-    let target = [1039, 64, 1024];
-    let mut displays = display_plane(1024, "custom:\u{7}display");
-    displays.push((target, "custom:display"));
-    {
-        let mut client = world.resource_mut::<ClientWorld>();
-        admit_spawners(client.stream.as_mut().unwrap(), target, &displays, 2);
+fn regression_rejected_or_unrigged_entities_do_not_consume_the_display_limit() {
+    for rejected in ["custom:\u{7}display", "custom:unknown"] {
+        let mut world = system_fixture(serde_json::json!({}), "1");
+        let target = [1039, 64, 1024];
+        let mut displays = display_plane(1024, rejected);
+        displays.push((target, "custom:display"));
+        {
+            let mut client = world.resource_mut::<ClientWorld>();
+            admit_spawners(client.stream.as_mut().unwrap(), target, &displays, 2);
+        }
+        world.insert_resource(LocalViewPose::new(
+            Vec3::new(1039.0, 66.0, 1024.0),
+            bevy::prelude::Quat::IDENTITY,
+        ));
+        for _ in 0..2 {
+            prepare_displays(&mut world, world::TICK_DURATION);
+            let pool = world
+                .resource::<SpawnerDisplayPublisher>()
+                .0
+                .as_ref()
+                .unwrap();
+            assert_eq!(pool.spins.keys().copied().collect::<Vec<_>>(), vec![target]);
+            assert_eq!(
+                published(&world),
+                2,
+                "{rejected:?} must not starve the valid display"
+            );
+        }
     }
-    world.insert_resource(LocalViewPose::new(
-        Vec3::new(1039.0, 66.0, 1024.0),
-        bevy::prelude::Quat::IDENTITY,
-    ));
-    prepare_displays(&mut world, world::TICK_DURATION);
-    let pool = world
-        .resource::<SpawnerDisplayPublisher>()
-        .0
-        .as_ref()
-        .unwrap();
-    assert_eq!(pool.spins.keys().copied().collect::<Vec<_>>(), vec![target]);
-    assert_eq!(published(&world), 2, "the valid display must still publish");
 }
 
 #[test]

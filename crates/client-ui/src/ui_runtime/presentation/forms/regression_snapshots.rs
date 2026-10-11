@@ -352,23 +352,22 @@ fn snapshot_custom_display_name_search() {
         ..Default::default()
     })));
     // Wait for the original fixture icon's asynchronous atlas admission.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while presentation.item_icon("custom:blade", 0).is_none() {
-        presentation
-            .build(
-                &player,
-                &runtime,
-                0,
-                [1280, 720],
-                ui::DpiScale::new(1.0).unwrap(),
-            )
-            .unwrap();
-        assert!(
-            std::time::Instant::now() < deadline,
-            "fixture icon must be admitted"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
+    test_time::eventually_within(
+        std::time::Duration::from_secs(5),
+        "fixture icon is admitted",
+        || {
+            presentation
+                .build(
+                    &player,
+                    &runtime,
+                    0,
+                    [1280, 720],
+                    ui::DpiScale::new(1.0).unwrap(),
+                )
+                .unwrap();
+            presentation.item_icon("custom:blade", 0).is_some()
+        },
+    );
     let icon = presentation.item_icon("custom:blade", 0).unwrap();
     presentation.hud_frame_mut().window_icons.book_entries = vec![Some(icon)];
     let first = runtime.screen_state().creative_row;

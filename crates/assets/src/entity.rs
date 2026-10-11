@@ -883,7 +883,7 @@ fn validate_geometry_bones(
             validate_scalars(&cube.size)?;
             validate_scalars(&cube.pivot)?;
             validate_scalars(&cube.rotation)?;
-            validate_geometry_uv(&cube.uv)?;
+            geometry::validate_uv(&cube.uv)?;
             validate_geometry_scalar(cube.inflate)?;
             if cube.size.iter().any(|value| value.get() < 0.0) {
                 return Err(invalid("entity geometry cube size is negative"));
@@ -908,32 +908,6 @@ fn validate_geometry_bones(
         }
     }
     Ok(())
-}
-
-fn validate_geometry_uv(uv: &EntityGeometryUv) -> Result<(), AssetError> {
-    match uv {
-        EntityGeometryUv::Box(uv) => validate_scalars(uv),
-        EntityGeometryUv::Faces(faces) => {
-            let faces = [
-                &faces.north,
-                &faces.south,
-                &faces.east,
-                &faces.west,
-                &faces.up,
-                &faces.down,
-            ];
-            if faces.iter().all(|face| face.is_none()) {
-                return Err(invalid("entity geometry per-face UV map is empty"));
-            }
-            for face in faces.into_iter().flatten() {
-                validate_scalars(&face.uv)?;
-                if let Some(uv_size) = &face.uv_size {
-                    validate_scalars(uv_size)?;
-                }
-            }
-            Ok(())
-        }
-    }
 }
 
 fn validate_geometry_name(name: &str) -> Result<(), AssetError> {

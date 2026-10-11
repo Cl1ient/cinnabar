@@ -4,8 +4,8 @@ use serde_json::Value;
 use crate::{AssetError, SkinGeometryBounds};
 
 use super::{
-    EntityDependencyResolution, EntityGeometryBone, EntityGeometryScalar, RuntimeEntityAssets,
-    invalid, validate_scalars,
+    EntityDependencyResolution, EntityGeometryBone, EntityGeometryScalar, EntityGeometryUv,
+    RuntimeEntityAssets, invalid, validate_scalars,
 };
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -82,5 +82,32 @@ impl RuntimeEntityAssets {
             current = *self.geometry_parents.get(current)?.as_ref()?;
         }
         None
+    }
+}
+
+/// Rejects empty face mappings and noncanonical UV scalar values.
+pub(super) fn validate_uv(uv: &EntityGeometryUv) -> Result<(), AssetError> {
+    match uv {
+        EntityGeometryUv::Box(uv) => validate_scalars(uv),
+        EntityGeometryUv::Faces(faces) => {
+            let faces = [
+                &faces.north,
+                &faces.south,
+                &faces.east,
+                &faces.west,
+                &faces.up,
+                &faces.down,
+            ];
+            if faces.iter().all(|face| face.is_none()) {
+                return Err(invalid("entity geometry per-face UV map is empty"));
+            }
+            for face in faces.into_iter().flatten() {
+                validate_scalars(&face.uv)?;
+                if let Some(uv_size) = &face.uv_size {
+                    validate_scalars(uv_size)?;
+                }
+            }
+            Ok(())
+        }
     }
 }

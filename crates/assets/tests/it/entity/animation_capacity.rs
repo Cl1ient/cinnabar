@@ -25,7 +25,7 @@ fn geometry_specialized_animation_instances_round_trip() {
         .map(|index| {
             let identifier: Box<str> = format!("geometry.capacity.{index:03}").into();
             symbols.push(entity::EntityAssetSymbol {
-                mount_equipment: crate::entity::mount::MountEquipment::Unresolved,
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: entity::EntityAssetKind::Geometry,
                 identifier: identifier.clone(),
                 source_index: geometry.source_index,
@@ -41,7 +41,7 @@ fn geometry_specialized_animation_instances_round_trip() {
         .map(|index| {
             let identifier: Box<str> = format!("animation.capacity.{index:03}").into();
             symbols.push(entity::EntityAssetSymbol {
-                mount_equipment: crate::entity::mount::MountEquipment::Unresolved,
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: entity::EntityAssetKind::Animation,
                 identifier: identifier.clone(),
                 source_index: clip.source,

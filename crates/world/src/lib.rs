@@ -56,5 +56,8 @@ pub use store::{
 };
 pub use sub_chunk::{BlockIds, MAX_PALETTE_ENTRIES, MAX_STORAGE_COUNT, RawBlockIds, SubChunk};
 
+/// Bedrock simulation ticks in one day-night cycle.
+pub const TICKS_PER_DAY: u32 = 24_000;
+
 /// Stable identities shared by decoded and compiled block states.
 pub mod block_state_identity;

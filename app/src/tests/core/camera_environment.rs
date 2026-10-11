@@ -87,7 +87,7 @@ fn camera_environment_samples_the_live_biome_for_atmosphere_profiles() {
     .init_resource::<CameraMediumState>()
     .init_resource::<EnvironmentContext>()
     .init_resource::<FogBindings>()
-    .insert_resource(render::AtmosphereTextureAssets::new(
+    .insert_resource(render_scene::AtmosphereTextureAssets::new(
         atmosphere.clone(),
         identity,
     ))

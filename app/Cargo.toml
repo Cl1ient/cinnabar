@@ -35,6 +35,7 @@ reports = []
 
 [dependencies]
 simulation-clock = { path = "../crates/simulation-clock" }
+render-scene = { path = "../crates/render-scene" }
 client-shell = { path = "../crates/client-shell" }
 client-interaction = { path = "../crates/client-interaction" }
 client-runtime = { path = "../crates/client-runtime" }

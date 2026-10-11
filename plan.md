@@ -1,3 +1,18 @@
+## Actor animation ownership
+
+`actor-animation` owns actor rigs, Molang evaluation, controllers, poses,
+attachables, custom skin models, Java 1.7 motion and the original emotes. It is
+Bevy-free and sits below `client-world`. Actor authority supplies each actor through
+the `AnimatedActor` trait and an `ActorTickContext` per tick, and drives the store
+at spawns, swings, hurts, server animations and fixed ticks. Synced property
+definitions and the wolf dye tint are animation inputs; `client-world` keeps the
+property registry and no longer depends on `render-model`.
+
+Tests that drive actor authority live in `client-world`'s `actor_store::animation_tests`,
+using fixtures from the `test-support` feature. Animation unit tests use a plain actor
+double. Compilation and execution of this move remain unverified, and no actor
+animation parity gate closes.
+
 ## Render geometry and scene ownership
 
 - `render-model` owns CPU block-model and selection geometry, dropped-item meshes,
@@ -4696,6 +4711,9 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       render Fancy. Wall-torch pivot, ladder/rail offsets, and rail curve
       sprite orientation need native measurement; the coverage baseline must
       be regenerated. Residual names: `docs/phase-2-family-inventory.md`.
+    - [ ] Coral fans compile spreading floor sprites and four wall mounting
+      directions with replacement-pack artwork. Native-server placement and
+      rendered parity acceptance remain incomplete.
     - [x] Round two: night light floors lowered to the night sky transfer,
       biome tints blend on a 4-block lattice (four taps per axis; vertical axis
       unblended, needs measurement), chains route through crossed link planes.
@@ -7672,6 +7690,18 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+### Compiled furnace fuel admission (incomplete)
+
+Furnace quick-move fuel decisions use numeric registry facts and validated compiled inputs.
+Retained retail compatibility eligibility and log ingredient preference remain provisional;
+the complete native fuel inventory and durations are unverified. Missing, malformed and
+unsupported component declarations stay unresolved. Unknown and explicitly nonfuel items
+are deferred to the player inventory rather than guessed into a furnace cell. Committed furnace
+recipe inputs are bound by numeric IDs, tags and metadata during admission.
+Session duration conversion and complete native recipe precedence remain unverified.
+Other container slot rules remain incomplete; this change
+does not close those gates.
 
 Block destroy facts are compiled into world carrier 15 and read by numeric runtime
 identity during mining. Every input state is checked against the independent pinned

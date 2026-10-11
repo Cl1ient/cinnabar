@@ -1,4 +1,6 @@
 //! Physical input and preference handoff for the native JSON-UI emote wheel.
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 mod controls;
 use bevy::{
     ecs::system::SystemParam,
@@ -51,7 +53,7 @@ pub(crate) struct EmoteInput<'w, 's> {
     keyboard: MessageReader<'w, 's, KeyboardInput>,
     pads: Query<'w, 's, &'static Gamepad>,
     menu: Option<ResMut<'w, MenuRuntime>>,
-    consent: Option<Res<'w, crate::server_experiences::input::ConsentInput>>,
+    consent: Option<Res<'w, client_state::ConsentInput>>,
     world: Option<Res<'w, ClientWorld>>,
     player: Res<'w, PlayerRuntime>,
     runtime: ResMut<'w, UiRuntime>,
@@ -60,7 +62,7 @@ pub(crate) struct EmoteInput<'w, 's> {
     consumed: ResMut<'w, EmoteInputConsumed>,
     focus: Option<ResMut<'w, client_presentation::camera::CursorFocus>>,
     driven: Option<Res<'w, crate::camera::DrivenInput>>,
-    network: Option<Res<'w, crate::runtime::network::NetworkHandle>>,
+    network: Option<Res<'w, NetworkHandle<PackApplication>>>,
 }
 
 /// Runs before chat/menu adapters and before semantic gameplay is finalized.

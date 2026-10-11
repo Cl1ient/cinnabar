@@ -1,5 +1,4 @@
 //! Bounded Bedrock resource-pack source readers.
-
 mod actor;
 mod atmosphere;
 mod audio;
@@ -15,6 +14,7 @@ mod block_names;
 mod block_presentation_state;
 pub use block_presentation_state::pinned_block_presentation_states;
 pub use block_presentation_state::{BlockPresentationState, BlockPresentationStates, PortalAxis};
+pub mod block_shapes;
 pub mod carriers;
 mod compiled;
 pub mod dye;
@@ -62,7 +62,7 @@ mod texture;
 mod ui;
 pub mod vanilla_pack;
 mod vanilla_refs;
-mod weather_textures;
+pub mod weather_textures;
 pub use actor::{
     ACTOR_CARRIER_MAGIC, ACTOR_CARRIER_VERSION, ActorArtworkBinding, ActorPoseMode, ActorTexture,
     MAX_ACTOR_BINDINGS, MAX_ACTOR_CARRIER_BYTES, MAX_ACTOR_PIXEL_BYTES, MAX_ACTOR_TEXTURE_SIDE,
@@ -96,15 +96,14 @@ pub use biome::{
     DEFAULT_WATER_APPEARANCE_OPACITY, DEFAULT_WATER_OPACITY, DEFAULT_WATER_RGB, LinearBiomeTints,
     LiveBiomeDefinition, MAX_BIOME_NAME_BYTES, MAX_BIOME_NAMES_BYTES, MAX_BIOME_RULES,
     MISSING_BIOME_DENSE_INDEX, RAW_BIOME_ID_COUNT, ResolvedBiomeTints, SessionBiome,
-    TINT_MAP_BYTES, TINT_MAP_COUNT, TINT_MAP_SIZE, TintMapId, TintSource,
-    colormap_coordinate, read_biome_registry,
+    TINT_MAP_BYTES, TINT_MAP_COUNT, TINT_MAP_SIZE, TintMapId, TintSource, colormap_coordinate,
+    read_biome_registry,
 };
 pub use biome_noise::{ClientRandom, GRASS_PERMUTATION_SIZE, grass_noise_permutation};
 pub use blob::{BLOB_MAGIC, BLOB_VERSION, MATERIAL_BYTES, encode_blob, write_blob_atomic};
 pub use block_entity::{
-    BLOCK_ENTITY_CARRIER_MAGIC, BLOCK_ENTITY_CARRIER_VERSION, BLOCK_ENTITY_ROUTES,
-    BlockEntityPlacement, BlockEntityRouteKind, CRYSTAL_BEAM_TEXTURE, MAX_BLOCK_ENTITY_ATLAS_SIDE,
-    MAX_BLOCK_ENTITY_CARRIER_BYTES, MAX_BLOCK_ENTITY_KEY_BYTES, MAX_BLOCK_ENTITY_PLACEMENTS,
+    BLOCK_ENTITY_ROUTES, BlockEntityPlacement, BlockEntityRouteKind, CRYSTAL_BEAM_TEXTURE,
+    MAX_BLOCK_ENTITY_ATLAS_SIDE, MAX_BLOCK_ENTITY_CARRIER_BYTES, MAX_BLOCK_ENTITY_PLACEMENTS,
     RuntimeBlockEntityAssets, block_entity_route, encode_block_entity_catalog,
 };
 pub use block_names::{legacy_resource_pack_block_alias, vanilla_skull_type};
@@ -246,7 +245,8 @@ pub use particle::{
 };
 pub use physics_registry::{
     BlockPhysicsFlags, BlockPhysicsRecord, PhysicsRegistry, SurfaceResponse,
-    physics_registry_header_protocol, read_physics_registry, read_physics_registry_for_protocol,
+    encode_physics_registry, physics_registry_header_protocol, read_physics_registry,
+    read_physics_registry_for_protocol,
 };
 pub use pinned_content::{
     active_content_registry_protocol, pinned_block_registry_bytes, pinned_block_sequential_id,
@@ -298,8 +298,3 @@ pub use ui::{
     UiSidecarEntry, UiTexturePlacement, UiTextureUv, encode_ui_catalog,
 };
 pub use vanilla_refs::{MAX_VANILLA_REFS_BYTES, VanillaEntityRefs, VanillaGeometryFile};
-pub use weather_textures::{
-    END_SKY_SIDE, MAX_WEATHER_TEXTURES_BYTES, WEATHER_SHEET_SIDE, WEATHER_TEXTURES_MAGIC,
-    WEATHER_TEXTURES_VERSION, WeatherImage, WeatherTextures, WeatherTexturesError,
-    decode_weather_textures, encode_weather_textures,
-};

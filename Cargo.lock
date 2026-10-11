@@ -433,6 +433,7 @@ name = "asset-compiler"
 version = "0.1.12"
 dependencies = [
  "assets",
+ "block-transform",
  "clap",
  "image",
  "pack-compiler",
@@ -443,6 +444,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "world",
 ]
 
 [[package]]
@@ -461,7 +463,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "windows-sys 0.61.2",
- "world",
  "zip",
 ]
 
@@ -680,7 +681,9 @@ dependencies = [
  "bytes",
  "chunk-pipeline",
  "client-audio",
+ "client-extensions",
  "client-presentation",
+ "client-runtime",
  "client-session",
  "client-state",
  "client-ui",
@@ -2277,6 +2280,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "client-extensions"
+version = "0.1.12"
+dependencies = [
+ "anyhow",
+ "assets",
+ "bevy",
+ "client-state",
+ "client-ui",
+ "client-world",
+ "fontdue",
+ "inventory 0.1.12",
+ "mod-api",
+ "mod-host",
+ "mod-render",
+ "player-state",
+ "protocol",
+ "render-model",
+ "serde",
+ "serde_json",
+ "server-experience",
+ "sha2",
+ "tempfile",
+ "ui",
+]
+
+[[package]]
 name = "client-presentation"
 version = "0.1.12"
 dependencies = [
@@ -2307,6 +2336,30 @@ dependencies = [
  "ui",
  "world",
  "zip",
+]
+
+[[package]]
+name = "client-runtime"
+version = "0.1.12"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "bridge",
+ "chunk-pipeline",
+ "client-session",
+ "client-state",
+ "client-ui",
+ "client-world",
+ "diagnostics",
+ "launcher",
+ "launcher-host",
+ "meshing",
+ "pack-runtime",
+ "protocol",
+ "render",
+ "render-api",
+ "rich-presence",
+ "tokio",
 ]
 
 [[package]]
@@ -6904,6 +6957,7 @@ dependencies = [
 name = "sim"
 version = "0.1.12"
 dependencies = [
+ "assets",
  "block-transform",
  "serde",
  "serde_json",
@@ -9407,6 +9461,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
 ]
 

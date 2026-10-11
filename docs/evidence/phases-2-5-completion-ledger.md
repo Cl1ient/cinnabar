@@ -52,12 +52,25 @@ platform, and performance gates remain open.
 | Performance/resource witness | Current tranche not run; bounded live JSON records remain required. |
 | Final status | Open -- deterministic integration advanced; normal Physics enable and binding live evidence remain gated. |
 
+Runtime queue ownership, publication budgeting, world-service schedules, shutdown,
+session helpers and pack geometry preparation now belong to `client-runtime`.
+App adapters retain menu, movement, presentation and audio integration. Existing
+regressions follow the moved owners or continue exercising app composition; this
+extraction is incomplete and adds no compiled, executed or live parity evidence.
+
 ## P3.4-INPUT-CAMERA
 
 Frame sets and shared player, settings and finalized-input resources now live in
 `client-state`. The shell publishes focus for gameplay and camera input; the input
 and cursor regressions retain their domain owners. This ownership change has not
 been compiled or executed, and does not close this gate.
+
+`client-extensions` now owns personal component collection and callback merging,
+permission grants, player snapshots, panel fonts, and server consent input and text.
+Consent state and ordering live in `client-state`. The coupled session, gameplay,
+menu, render and audio adapters remain in `app`; the extraction and its execution
+validation are incomplete. The moved tests retain their assertions, and this move
+closes no acceptance gate.
 
 Spectator hand suppression and no-clip inside-block overlays have owning
 behavioral regressions. Runtime skin controller visibility precedes equipment, and
@@ -165,7 +178,7 @@ camera-listener coverage. This ownership change adds no new parity evidence.
 
 | Field | Evidence |
 |---|---|
-| Owning plan/task | Partial local placement coverage; see the Local placement prediction section in plan.md. |
+| Owning plan/task | Partial local placement coverage and compiled movement/selection ownership; see Local placement prediction and Block selection outlines and visual bounds in plan.md. |
 | Deterministic tests | Gameplay direction, support, stacking and immediate-placement tables in both palette encodings; pipeline atomic pair, rollback and ordered publication tests. Item-use tests cover frame/tick slot changes, the native rearm boundary, category cooldowns, rejected-send rollback and hotbar cooldown publication. |
 | Review commit | Recorded by the placement follow-up PR. |
 | Live/native witness | Headless stair comparison and door pair before server confirmation; broader family visual parity remains open. |

@@ -1,3 +1,18 @@
+## Client runtime ownership
+
+`client-runtime` owns the Bevy transport handle and frame flush, bounded ingress,
+inventory ingress, publication budgeting, world-service schedules and resource,
+process shutdown, shared session helpers, admitted-pack resource and pack geometry
+preparation. `app` installs `ClientRuntimePlugin`; its frame adapters keep their
+existing order through `client-state`.
+
+The extraction remains incomplete: network bootstrap and world publication still
+borrow app-owned movement and presentation resources; join, transfer and teardown
+still borrow the menu; pack reload publication still applies presentation and audio
+state. These adapters remain in `app` until their shared contracts exist. The runtime
+crate has no presentation, audio or other sibling-plugin dependency. Compilation and
+execution of this move remain unverified, and no parity gate is closed by it.
+
 ## Client frame contract
 
 - `client-state` owns the shared frame sets, player authority wrapper, settings revision
@@ -8,6 +23,20 @@
   gameplay. Interaction and camera input consume these observations directly.
 - Focus and existing input/cursor regression coverage are retained. Compilation and execution
   of this ownership change remain unverified; movement and presentation parity gates stay open.
+
+## Extension crate ownership
+
+`client-extensions` owns local component loading and load-order merging, environment
+permission grants, bounded player snapshots, optional panel fonts, and trusted server
+experience consent text and input consumption. Its Bevy plugin uses the consent
+observation and input boundary in `client-state`, with no sibling plugin dependencies.
+The moved behavioral tests remain with their owners.
+
+The extraction is incomplete. Local mod registration and frame adapters still use
+app-owned network, world, movement, menu, and camera resources. Server experience
+session driving, helper supervision, and media playback also remain in `app` until
+shared session and presentation contracts are available. This ownership change has
+not been compiled or executed and closes no behavior or performance acceptance gate.
 
 ## Lightning rod terrain geometry
 
@@ -653,6 +682,20 @@ these changes do not close the movement, camera, or actor parity gates.
 
 ## Block selection outlines and visual bounds
 
+- Block shape compilation now belongs to `assets` and `asset-compiler`. The
+  physics carrier stores final movement boxes, independent selection boxes,
+  eligibility, outlines, tags, and typed context facts for both runtime ID spaces.
+  Gameplay indexes these facts; ray, collision and outline queries do not parse
+  canonical-state JSON or match block names.
+- Runtime exceptions are paired doors, neighbour support and portal axes, vine
+  and chorus outlines, deterministic column offsets, and piston actor inputs.
+  Geometry-bearing actor updates retire pick revisions and historical snapshots
+  retain their original facts, including remote piston-owner dependencies.
+- Incomplete parity: client piston animation timing, legacy moving-block state
+  migration, animated shulker outlines, remaining material/support bindings, and
+  newer block identifiers using compatibility recipes. These do not close the
+  interaction or rendering parity gates.
+
 - At the owner's request, untouched and older settings select the native black
   outline instead of the filled highlight. Explicit Outline Selection choices
   retain the native two-mode rendering contract.
@@ -665,9 +708,9 @@ these changes do not close the movement, camera, or actor parity gates.
   Cinnabar's FXAA; matching vanilla sample anti-aliasing and stroke coverage
   remains incomplete.
 - Fence and wall selection use visual bounds independently of taller movement
-  collision. Wall heights currently follow the pinned visible models.
-- Incomplete parity: exact wall selection insets, the matching-version material
-  depth offset, scaled deferred outlines and platform-specific factory defaults
+  collision. Wall selection retains its state-dependent visual height and insets.
+- Incomplete parity: the matching-version material depth offset, scaled deferred
+  outlines and platform-specific factory defaults
   remain unverified. The material witness is from the neighbouring installed client.
 - The visibility update's Rust client build passes. The production stroke shader
   renders on Metal and retains dark pixels through FXAA at horizontal, vertical

@@ -60,3 +60,18 @@ pub struct GameplayScreenControls {
     pub spyglass_mouse_damping: f32,
     pub spyglass_gamepad_damping: f32,
 }
+
+/// Runtime boundaries that app-owned ingress and world adapters order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RuntimeFrameSet {
+    /// Refills the shared publication allowance before ingress or world publication.
+    PublicationBudget,
+}
+
+/// Whether trusted experience consent owns physical input for the current frame.
+#[derive(Resource, Default)]
+pub struct ConsentInput(pub bool);
+
+/// Consumes consent input after the experience controller and before ordinary input.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExperienceInputSet;

@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn seats_retain_expression_rotation_and_reject_count_overflow() {
         let entity = serde_json::json!({"components": {"minecraft:rideable": {"seats": [
-            {"position": [0, 1, 0], "rotate_rider_by": "query.has_any_family('fixture') ? -90 : 90", "min_rider_count": 1, "max_rider_count": 2},
+            {"position": [0, 1, 0], "rotate_rider_by": "query.is_on_ground ? -90 : 90", "min_rider_count": 1, "max_rider_count": 2},
             {"position": [0, 2, 0], "rotate_rider_by": -90, "lock_rider_rotation": 90}
         ]}}});
         let mut compiler = molang::MolangCompiler::default();
@@ -185,6 +185,9 @@ mod tests {
         ));
         let program = compiler.finish().unwrap();
         assert!(!program.expressions.is_empty());
+        let unknown = serde_json::json!({"seats": {"position": [0, 1, 0], "rotate_rider_by": "query.fixture_unknown()"}});
+        let unknown = seats(&unknown, &mut molang::MolangCompiler::default()).unwrap();
+        assert_eq!(unknown[0].rotation, SeatRotation::Unresolved);
         let invalid = serde_json::json!({"seats": {"position": [0, 1, 0], "min_rider_count": 4294967296_u64}});
         assert!(seats(&invalid, &mut molang::MolangCompiler::default()).is_none());
         let invalid = serde_json::json!({"seats": {"position": [0, 1, 0], "min_rider_count": 3, "max_rider_count": 2}});

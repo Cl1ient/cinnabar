@@ -312,7 +312,7 @@ fn placement_frame_controls_target_rotation_independently_from_display_identity(
     let input = ActorTickInput {
         placement_frame: assets::placement::builtin_placement_frame("minecraft:arrow"),
         yaw: 150.0,
-        head_yaw: -20.0,
+        head_yaw: 10.0,
         body_yaw: 70.0,
         pitch: -35.0,
         ..ActorTickInput::default()
@@ -329,7 +329,7 @@ fn placement_frame_controls_target_rotation_independently_from_display_identity(
     };
     assert_eq!(
         read(&arrow, &unresolved, 0, "query.target_y_rotation"),
-        -90.0
+        -60.0
     );
 }
 

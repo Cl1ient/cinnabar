@@ -632,7 +632,7 @@ pub(super) fn evaluate_state(
         render_frame.as_mut().unwrap().retained_pose_effects = variables.finish_effects(capture);
     }
     let pose = state.compose(&local).ok_or(EvalError::Invalid)?;
-    // Render selection must not freeze the pose when it alone exceeds the budget.
+    // Initial publication needs a complete selection; later ticks can retain completed layers.
     let mut swell_layers = BTreeMap::new();
     let render = super::render::evaluate_render(
         &evaluator,
@@ -649,9 +649,8 @@ pub(super) fn evaluate_state(
         },
         budget,
     )
-    .ok()
-    .map(|mut layers| {
-        super::render::pose_layers(
+    .and_then(|mut layers| {
+        let posed = super::render::pose_layers(
             &evaluator,
             &variables,
             &state.layer_skeletons,
@@ -660,8 +659,16 @@ pub(super) fn evaluate_state(
             samples_swell.then_some(&mut swell_layers),
             budget,
         );
-        layers
+        if !state.initialized {
+            posed?;
+        }
+        Ok(layers)
     });
+    let render = match render {
+        Ok(layers) => Some(layers),
+        Err(error) if !state.initialized => return Err(error),
+        Err(_) => None,
+    };
     let skin_layers =
         super::skin_layers::evaluate(state, &evaluator, &variables, &local, render.as_deref());
     if samples_swell && let Some(frame) = render_frame.as_mut() {

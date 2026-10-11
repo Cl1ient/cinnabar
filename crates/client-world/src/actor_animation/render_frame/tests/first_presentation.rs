@@ -3,7 +3,7 @@ use crate::actor_store::ActorStore;
 use assets::{EntityRenderVisibility, MolangSymbol, MolangSymbolKind};
 
 /// A custom entity with initialized pose inputs and metadata-controlled part visibility.
-fn assets() -> Arc<RuntimeEntityAssets> {
+fn compiled_assets() -> assets::CompiledEntityAssets {
     let mut compiled = counting_random_compiled("minecraft:test");
     let mut symbols = compiled.molang_symbols.into_vec();
     let query = 5;
@@ -49,6 +49,47 @@ fn assets() -> Arc<RuntimeEntityAssets> {
     ]);
     compiled.molang_ops = ops.into_boxed_slice();
     compiled.molang_expressions = expressions.into_boxed_slice();
+    compiled
+}
+
+/// Loads the original initialized pose and visibility fixture.
+fn assets() -> Arc<RuntimeEntityAssets> {
+    Arc::new(RuntimeEntityAssets::from_compiled(compiled_assets()).unwrap())
+}
+
+/// Selects a second geometry with its own matching animation channel.
+fn alternate_geometry_assets() -> Arc<RuntimeEntityAssets> {
+    let mut compiled = compiled_assets();
+    let mut geometry = compiled.geometries[0].clone();
+    geometry.identifier = "geometry.layer".into();
+    let mut symbols = compiled.symbols.into_vec();
+    symbols.insert(
+        2,
+        assets::EntityAssetSymbol {
+            kind: EntityAssetKind::Geometry,
+            identifier: geometry.identifier.clone(),
+            source_index: geometry.source_index,
+            dependencies: Box::new([]),
+        },
+    );
+    compiled.symbols = symbols.into();
+    compiled.geometries = vec![compiled.geometries[0].clone(), geometry].into();
+    compiled.rig_bindings[0].render_controller += 1;
+    compiled.animation_clips[0].symbol += 1;
+    let mut clip = compiled.animation_clips[0];
+    clip.geometry = Some(1);
+    clip.first_channel = 1;
+    compiled.animation_clips = vec![compiled.animation_clips[0], clip].into();
+    let mut channel = compiled.animation_channels[0].clone();
+    channel.first_keyframe = 1;
+    compiled.animation_channels = vec![compiled.animation_channels[0].clone(), channel].into();
+    compiled.animation_keyframes = compiled.animation_keyframes.repeat(2).into();
+    compiled.render.layers[0].geometry_count = 1;
+    compiled.render.geometries = vec![assets::EntityRenderGeometry {
+        condition: None,
+        geometry: 1,
+    }]
+    .into();
     Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap())
 }
 
@@ -158,7 +199,14 @@ fn a_replaced_lifetime_initializes_its_own_pose_once() {
 
 /// A fresh rig with the complete zero-time presentation context.
 fn animation_fixture() -> (ActorAnimationStore, HashMap<u64, ActorSnapshot>) {
-    let mut store = ActorAnimationStore::with_assets(assets());
+    animation_fixture_with(assets())
+}
+
+/// Admits the original counting actor with the supplied geometry policy.
+fn animation_fixture_with(
+    assets: Arc<RuntimeEntityAssets>,
+) -> (ActorAnimationStore, HashMap<u64, ActorSnapshot>) {
+    let mut store = ActorAnimationStore::with_assets(assets);
     let actor = super::super::super::tests::actor_with_metadata(HashMap::new());
     store.insert(1, 0, &actor);
     (store, HashMap::from([(actor.runtime_id, actor)]))
@@ -228,6 +276,55 @@ fn initial_presentation_respects_the_world_budget_and_retries_without_partial_ef
     assert_eq!(store.get(1).unwrap().render[0].color[0], 6.0);
     assert!(store.get(1).unwrap().pose_evaluated);
     assert!(!store.needs_initial_presentation(&actors, None, None, |_| true));
+}
+
+#[test]
+fn initial_render_selection_retries_without_publishing_partial_effects() {
+    let (mut reference, actors) = animation_fixture();
+    reference.prepare_frame(&actors, None, None, false, zero_time_context);
+    let complete = authored_state(&reference);
+    let complete_cost = reference.stats.evaluated_molang_ops as usize;
+    assert!(complete_cost > 1);
+    for budget in 1..complete_cost {
+        let (mut store, actors) = animation_fixture();
+        let pending = authored_state(&store);
+        store.schedule.world_budget = budget;
+        store.prepare_frame(&actors, None, None, false, zero_time_context);
+        assert!(
+            !store.get(1).unwrap().pose_evaluated,
+            "incomplete initial evaluation with budget {budget} must remain pending"
+        );
+        assert!(store.needs_initial_presentation(&actors, None, None, |_| true));
+        assert_eq!(authored_state(&store), pending, "budget {budget}");
+        store.schedule.world_budget = MAX_MOLANG_OPS_PER_WORLD_TICK;
+        store.prepare_frame(&actors, None, None, false, zero_time_context);
+        assert_eq!(authored_state(&store), complete, "retry budget {budget}");
+        assert_eq!(store.get(1).unwrap().completed_tick, 0);
+    }
+}
+
+#[test]
+fn initial_render_alternate_pose_retries_after_layer_budget_exhaustion() {
+    let (mut reference, actors) = animation_fixture_with(alternate_geometry_assets());
+    reference.prepare_frame(&actors, None, None, false, zero_time_context);
+    let complete = authored_state(&reference);
+    let rig = reference.get(1).unwrap();
+    assert_eq!(rig.render[0].geometry, Some(1));
+    assert_eq!(rig.render[0].pose.as_ref(), rig.current);
+    let cost = reference.stats.evaluated_molang_ops as usize;
+    let (mut store, actors) = animation_fixture_with(alternate_geometry_assets());
+    let pending = authored_state(&store);
+    store.schedule.world_budget = cost - 1;
+    store.prepare_frame(&actors, None, None, false, zero_time_context);
+    assert!(!store.get(1).unwrap().pose_evaluated);
+    assert_eq!(authored_state(&store), pending);
+    store.schedule.world_budget = MAX_MOLANG_OPS_PER_WORLD_TICK;
+    store.prepare_frame(&actors, None, None, false, zero_time_context);
+    assert_eq!(authored_state(&store), complete);
+    assert_eq!(
+        store.get(1).unwrap().render,
+        reference.get(1).unwrap().render
+    );
 }
 
 #[test]

@@ -50,6 +50,7 @@ struct Grid {
 }
 
 impl Grid {
+    /// Adds one blocked padding cell around each side of the solve bounds.
     fn new(bounds: LightBounds) -> Self {
         let x_len = light_axis_len(bounds.min().x, bounds.max().x);
         let y_len = light_axis_len(bounds.min().y, bounds.max().y);
@@ -64,6 +65,7 @@ impl Grid {
         }
     }
 
+    /// Counts interior and padded cells in the retained grid.
     fn volume(self) -> usize {
         (self.x_len + 2) * self.x_step
     }

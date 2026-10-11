@@ -222,7 +222,7 @@ fn borrowed_world_cores_run_as_wide_as_the_world_pool_at_normal_priority() {
     assert!(lowered.iter().all(|lowered| !*lowered), "{lowered:?}");
 }
 
-/// Work for a block the local player just changed runs before every lane's backlog, on every worker thread.
+/// Urgent work runs before every lane's backlog on any worker thread.
 #[test]
 fn urgent_work_runs_before_every_lane_backlog() {
     let queue = |order: &crossbeam_channel::Sender<&'static str>| {

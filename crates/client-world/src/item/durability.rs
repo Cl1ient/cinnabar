@@ -50,6 +50,7 @@ impl super::ItemStateStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn durability_replacement_retains_aliases_and_missing_values_are_unresolved() {

@@ -376,8 +376,6 @@ pub enum ItemRegistryVersion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemRegistryEntry {
-    /// Parsed immutable component evidence retained for effective item admission.
-    pub components: Option<Arc<ItemComponents>>,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
@@ -414,7 +412,6 @@ pub fn vanilla_item_registry() -> Arc<[ItemRegistryEntry]> {
             .parse::<i32>()
             .expect("retail item ID must be an i32");
         entries.push(ItemRegistryEntry {
-            components: None,
             identifier: Arc::from(identifier),
             network_id,
             component_based: false,
@@ -715,7 +712,6 @@ pub(crate) fn normalize_item_registry(
             registry_capacity::negotiated_max_stack_size(&component_bytes)
         };
         let entry = ItemRegistryEntry {
-            components: components::parse_components(&component_bytes).map(Arc::new),
             identifier: Arc::from(item.item_name),
             network_id,
             component_based: item.is_component_based,

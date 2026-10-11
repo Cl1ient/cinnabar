@@ -21,7 +21,6 @@ fn entry(
     canonical_empty: bool,
 ) -> ItemRegistryEntry {
     ItemRegistryEntry {
-        components: None,
         identifier: Arc::from(identifier),
         network_id,
         component_based,

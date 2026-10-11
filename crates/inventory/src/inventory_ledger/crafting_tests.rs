@@ -125,7 +125,6 @@ fn catalog() -> RecipeCatalog {
 
 fn registry() -> ItemRegistryEvent {
     let entry = |network_id, identifier: &str| ItemRegistryEntry {
-        components: None,
         identifier: Arc::from(identifier),
         network_id,
         component_based: false,

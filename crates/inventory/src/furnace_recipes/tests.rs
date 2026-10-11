@@ -22,7 +22,6 @@ fn fixture(window_type: i8) -> InventorySession {
             .into_iter()
             .enumerate()
             .map(|(index, name)| ItemRegistryEntry {
-                components: None,
                 identifier: name.into(),
                 network_id: index as i32 + 1,
                 component_based: false,

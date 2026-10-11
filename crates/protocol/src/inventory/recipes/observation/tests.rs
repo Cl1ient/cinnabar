@@ -10,7 +10,6 @@ fn registry(capacity: Option<u8>) -> RecipeRegistrySnapshot {
     RecipeRegistrySnapshot::new(
         NonZeroU64::new(1).unwrap(),
         vec![ItemRegistryEntry {
-            components: None,
             identifier: Arc::from("minecraft:planks"),
             network_id: 7,
             component_based: false,

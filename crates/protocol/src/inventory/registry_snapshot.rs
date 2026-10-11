@@ -79,7 +79,6 @@ mod tests {
 
     fn entry(id: i32) -> ItemRegistryEntry {
         ItemRegistryEntry {
-            components: None,
             identifier: Arc::from("minecraft:oak_log"),
             network_id: id,
             component_based: false,

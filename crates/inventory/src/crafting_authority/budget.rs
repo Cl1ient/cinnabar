@@ -333,7 +333,6 @@ mod tests {
         });
         let event = protocol::ItemRegistryEvent {
             entries: Arc::from([protocol::ItemRegistryEntry {
-                components: None,
                 identifier: Arc::from("minecraft:oak_log"),
                 network_id: 6,
                 component_based: false,
@@ -420,7 +419,6 @@ mod tests {
         let registry = protocol::ItemRegistryEvent {
             entries: (1..=protocol::MAX_ITEM_REGISTRY_ENTRIES)
                 .map(|id| protocol::ItemRegistryEntry {
-                    components: None,
                     identifier: format!("test:{prefix}{id:05}").into(),
                     network_id: i32::try_from(id).unwrap(),
                     component_based: false,

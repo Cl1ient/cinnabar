@@ -284,6 +284,109 @@ fn new_session_icons_drop_cached_sprite_models() {
     assert!(cache.index.is_empty() && cache.models.is_empty());
 }
 
+#[test]
+fn permanent_block_build_failures_are_attempted_once_until_sync_changes() {
+    let mut cache = ModelCache::default();
+    let costs = std::cell::Cell::new(0);
+    let builds = std::cell::Cell::new(0);
+    let assets = Arc::new(assets::RuntimeAssets::diagnostic());
+    let first = render::ChunkTextureAssets::with_revision(Arc::clone(&assets), 1).identity();
+    let second = render::ChunkTextureAssets::with_revision(assets, 2).identity();
+    let generations = [
+        (1, first, 0),
+        (1, second, 0),
+        (1, second, 1),
+        (2, second, 1),
+    ];
+    for (generation, (session, assets, icons)) in generations.into_iter().enumerate() {
+        for _ in 0..3 {
+            cache.sync(session, Some(assets), icons);
+            frame(&mut cache, [900]);
+            for _ in 0..100 {
+                assert_eq!(
+                    cache.model(
+                        key(900),
+                        || {
+                            costs.set(costs.get() + 1);
+                            Some(1)
+                        },
+                        || {
+                            builds.set(builds.get() + 1);
+                            None
+                        }
+                    ),
+                    None
+                );
+            }
+        }
+        assert_eq!(costs.get(), generation + 1);
+        assert_eq!(builds.get(), generation + 1);
+        assert!(cache.models.is_empty());
+    }
+}
+
+#[test]
+fn permanent_block_failures_are_bounded_and_follow_demand() {
+    let mut cache = ModelCache::default();
+    frame(&mut cache, []);
+    for id in 0..60_000 {
+        assert_eq!(cache.model(key(id), || Some(1), || None), None);
+    }
+    assert_eq!(cache.rejected.len(), MAX_ITEM_LAYERS - 1);
+    assert!(cache.models.is_empty() && cache.index.is_empty());
+    frame(&mut cache, 0..(MAX_ITEM_LAYERS - 1) as u32);
+    assert_eq!(
+        cache.model(
+            key(0),
+            || panic!("known block failure skips layer counting"),
+            || panic!("known block failure skips construction")
+        ),
+        None
+    );
+    frame(&mut cache, []);
+    assert!(cache.rejected.is_empty());
+    let builds = std::cell::Cell::new(0);
+    assert_eq!(
+        cache.model(
+            key(0),
+            || Some(1),
+            || {
+                builds.set(builds.get() + 1);
+                None
+            }
+        ),
+        None
+    );
+    assert_eq!(builds.get(), 1, "unused negative entries are forgotten");
+}
+
+#[test]
+fn transient_icon_and_carried_block_build_failures_are_retried() {
+    for key in [
+        ModelKey::icon(
+            ui::IconRef {
+                page: 0,
+                uv: [0, 0, 1, 1],
+                glint: false,
+            },
+            true,
+        ),
+        ModelKey::CarriedBlock {
+            hashed: false,
+            id: 900,
+        },
+    ] {
+        let mut cache = ModelCache::default();
+        for succeeds in [false, true] {
+            cache.begin_frame();
+            cache.request(&key);
+            cache.finish_demand();
+            let result = cache.model(key.clone(), || Some(1), || succeeds.then(sprite));
+            assert_eq!(result, succeeds.then_some(0));
+        }
+    }
+}
+
 /// Installs two synthetic icon variants and an alias, without local game assets.
 fn icons() -> UiPresentationRuntime {
     use assets::{IconEntry, IconSprite, RuntimeIconCatalog, encode_icon_catalog};

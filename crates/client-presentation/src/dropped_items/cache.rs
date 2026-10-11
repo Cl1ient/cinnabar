@@ -42,8 +42,8 @@ pub(crate) struct ModelCache {
     layers: usize,
     pub(super) shared: Arc<[DroppedItemModel]>,
     index: HashMap<ModelKey, usize>,
-    /// Bounded layer estimates for demanded models that did not fit.
-    rejected: HashMap<ModelKey, RejectedCost>,
+    /// Bounded layer estimates and permanent block failures still demanded.
+    rejected: HashMap<ModelKey, RejectedModel>,
     residents: Vec<Option<Resident>>,
     free_slots: Vec<usize>,
     reclaimable: Vec<usize>,
@@ -63,8 +63,9 @@ struct Resident {
     layers: usize,
 }
 
-struct RejectedCost {
-    layers: usize,
+struct RejectedModel {
+    /// None marks a block that cannot be built from the current assets.
+    layers: Option<usize>,
     requested: u64,
 }
 
@@ -147,7 +148,20 @@ impl ModelCache {
         self.demand_ready = true;
     }
 
-    /// Builds a missing model only when its layer cost fits free or reclaimable capacity.
+    /// Remembers a demanded rejection; absent layers mean a permanent block failure.
+    fn remember_rejection(&mut self, key: ModelKey, layers: Option<usize>) {
+        if self.rejected.len() < MAX_ITEM_LAYERS - 1 || self.rejected.contains_key(&key) {
+            self.rejected.insert(
+                key,
+                RejectedModel {
+                    layers,
+                    requested: self.frame,
+                },
+            );
+        }
+    }
+
+    /// Builds missing models that fit, skipping remembered permanent block failures.
     pub(super) fn model(
         &mut self,
         key: ModelKey,
@@ -166,23 +180,20 @@ impl ModelCache {
             .rejected
             .get(&key)
             .map(|entry| entry.layers)
-            .or_else(cost)?;
+            .unwrap_or_else(cost)?;
         if cost == 0 {
             return None;
         }
         if cost > self.available {
-            if self.rejected.len() < MAX_ITEM_LAYERS - 1 {
-                self.rejected.insert(
-                    key,
-                    RejectedCost {
-                        layers: cost,
-                        requested: self.frame,
-                    },
-                );
-            }
+            self.remember_rejection(key, Some(cost));
             return None;
         }
-        let model = build()?;
+        let Some(model) = build() else {
+            if matches!(key, ModelKey::Block { .. }) {
+                self.remember_rejection(key, None);
+            }
+            return None;
+        };
         assert_eq!(
             layer_cost(&model),
             cost,

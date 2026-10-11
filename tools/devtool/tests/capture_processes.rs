@@ -31,6 +31,9 @@ print(json.dumps({'reason':'compiler-artifact','target':{'name':'bedrock-client'
     let result = Command::new(env!("CARGO_BIN_EXE_devtool"))
         .current_dir(temp.path())
         .env("PROFILE", "dev")
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET")
         .env(
             "PATH",
             format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
@@ -135,6 +138,9 @@ print('\n'.join(sep.join(row) for row in rows))
     let result = Command::new(env!("CARGO_BIN_EXE_devtool"))
         .current_dir(temp.path())
         .env("PROFILE", "dev")
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET")
         .env("TRACY_PORT", DEFAULT_TRACY_PORT.to_string())
         .env("UNRELATED_TRACY_PORT", DEFAULT_TRACY_PORT.to_string())
         .env(

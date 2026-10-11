@@ -31,7 +31,7 @@ use item::{
 pub(super) fn fixture() -> CompiledEntityAssets {
     let source_bytes = br#"{"format_version":"1.10.0"}"#;
     CompiledEntityAssets {
-seat_layouts: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [0x11; 32],
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -79,7 +79,8 @@ seat_layouts: Box::new([]),
         item_visuals: Box::new([]),
         item_visual_aliases: Box::new([]),
         render: Default::default(),
-    }.with_unresolved_seats()
+    }
+    .with_unresolved_seats()
 }
 
 fn scalar(value: f32) -> EntityGeometryScalar {
@@ -512,7 +513,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
     .into_boxed_slice();
 
     CompiledEntityAssetsV4 {
-seat_layouts: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [0x21; 32],
         block_visual_count: 8,
         sources,
@@ -733,7 +734,8 @@ seat_layouts: Box::new([]),
             }]),
             geometries: Box::new([]),
         },
-    }.with_unresolved_seats()
+    }
+    .with_unresolved_seats()
 }
 
 #[test]

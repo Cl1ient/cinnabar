@@ -1,3 +1,4 @@
+mod capture;
 mod ci;
 mod cli;
 mod commands;
@@ -25,7 +26,7 @@ pub enum DevtoolError {
     #[error("workspace package manifest `{0}` has no parent directory")]
     ManifestWithoutParent(PathBuf),
     #[error(
-        "{0}\nusage: devtool verify-affected --base <git-ref> [--dry-run]\n       devtool ci-plan --base <git-ref>"
+        "{0}\nusage: devtool verify-affected --base <git-ref> [--dry-run] | ci-plan --base <git-ref> | capture | trace-summary --trace <file>"
     )]
     Usage(String),
     #[error("failed to run `{command}`: {source}")]
@@ -38,4 +39,13 @@ pub enum DevtoolError {
     },
     #[error("`{command}` produced non-UTF-8 output")]
     NonUtf8 { command: String },
+}
+
+/// Dispatches repository commands without requiring a Git base for utility commands.
+pub fn dispatch(args: Vec<String>) -> Result<(), DevtoolError> {
+    match args.first().map(String::as_str) {
+        Some("capture") => capture::run(&args[1..], false),
+        Some("trace-summary") => capture::run(&args[1..], true),
+        _ => parse_args(args).and_then(|options| run(&options)),
+    }
 }

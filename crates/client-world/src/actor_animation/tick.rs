@@ -226,6 +226,7 @@ pub(super) fn advance_motion(
         state.history.pop_front();
     }
     let input = ActorTickInput {
+        placement_frame: state.placement_frame,
         position: actor.position,
         position_delta,
         velocity: actor.velocity,

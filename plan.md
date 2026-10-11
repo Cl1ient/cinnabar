@@ -7689,3 +7689,10 @@ numerical behavior; unclassified states remain unresolved and keep the previous 
 numerical defaults. No ordinary movement classification is inferred from absence of a special
 rule. Complete native ordinary/special coverage, custom session movement components and
 all provisional rule values still require verification before this gate can close.
+Rig placement and target-rotation frames are compiled and carried with the selected
+rig. Their compatibility source preserves existing absolute-frame routes, while
+other identities remain explicitly unresolved and retain the body-yaw fallback.
+Presentation and target-rotation queries consume cached frames. Complete native
+class coverage, custom advertised-base admission, active component overrides and
+ordinary-body frame classification remain incomplete. Camera-query presence does
+not establish a placement frame.

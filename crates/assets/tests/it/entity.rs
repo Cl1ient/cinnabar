@@ -15,3 +15,6 @@ mod review_regressions;
 mod runtime_admission;
 #[path = "entity/suite.rs"]
 mod suite;
+
+#[path = "entity/placement_frame.rs"]
+mod placement_frame;

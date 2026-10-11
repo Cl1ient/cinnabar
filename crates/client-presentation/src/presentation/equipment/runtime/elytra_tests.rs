@@ -128,6 +128,7 @@ pub(super) fn owner_rig<'a>(
     tick: u64,
 ) -> ActorRigSnapshot<'a> {
     ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         actor: ActorLifetimeId {
             session_id: 1,
             dimension: 0,

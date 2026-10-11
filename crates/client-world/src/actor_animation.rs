@@ -47,6 +47,8 @@ pub struct BoneTransform {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ActorRigSnapshot<'a> {
+    /// Coordinate frames cached with the selected rig.
+    pub placement_frame: assets::placement::EntityPlacementFrame,
     pub actor: ActorLifetimeId,
     pub rig: EntityRigId,
     pub previous: &'a [BoneTransform],
@@ -226,6 +228,7 @@ enum PoseStep {
 
 #[derive(Debug)]
 struct ActorRigState {
+    placement_frame: assets::placement::EntityPlacementFrame,
     /// Resolved from the session pack catalog rather than the vanilla one.
     pack: bool,
     rig: EntityRigId,
@@ -324,6 +327,7 @@ struct ControllerState {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct ActorTickInput {
+    placement_frame: assets::placement::EntityPlacementFrame,
     position: [f32; 3],
     position_delta: [f32; 3],
     velocity: [f32; 3],
@@ -688,6 +692,7 @@ impl ActorAnimationStore {
             return None;
         }
         Some(ActorRigSnapshot {
+            placement_frame: state.placement_frame,
             actor,
             rig: state.rig,
             previous: &state.previous,

@@ -304,12 +304,13 @@ fn head_target_yaw_is_relative_to_the_body_and_wrapped() {
 }
 
 #[test]
-fn arrow_target_rotation_is_absolute_and_does_not_follow_a_mob_body() {
+fn placement_frame_controls_target_rotation_independently_from_display_identity() {
     let mut arrow = actor_with_metadata(HashMap::new());
     arrow.kind = ActorKind::Entity {
         identifier: "minecraft:arrow".into(),
     };
     let input = ActorTickInput {
+        placement_frame: assets::placement::builtin_placement_frame("minecraft:arrow"),
         yaw: 150.0,
         head_yaw: -20.0,
         body_yaw: 70.0,
@@ -318,6 +319,18 @@ fn arrow_target_rotation_is_absolute_and_does_not_follow_a_mob_body() {
     };
     assert_eq!(read(&arrow, &input, 0, "query.target_y_rotation"), 150.0);
     assert_eq!(read(&arrow, &input, 0, "query.target_x_rotation"), -35.0);
+    arrow.kind = ActorKind::Entity {
+        identifier: "fixture:display".into(),
+    };
+    assert_eq!(read(&arrow, &input, 0, "query.target_y_rotation"), 150.0);
+    let unresolved = ActorTickInput {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
+        ..input
+    };
+    assert_eq!(
+        read(&arrow, &unresolved, 0, "query.target_y_rotation"),
+        -90.0
+    );
 }
 
 #[test]

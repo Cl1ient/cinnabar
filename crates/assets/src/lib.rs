@@ -21,6 +21,7 @@ pub mod dye;
 mod effects;
 mod encoding;
 mod entity;
+pub use entity::placement;
 mod environment_settings;
 mod equipment;
 mod error;

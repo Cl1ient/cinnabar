@@ -7,6 +7,7 @@ use crate::item::{ItemVisualAlias, ItemVisualDefinition};
 
 mod geometry;
 mod molang_program;
+pub mod placement;
 mod query_manifest;
 pub use query_manifest::{
     MOLANG_QUERIES, MOLANG_QUERY_DESCRIPTORS, MOLANG_QUERY_MANIFEST_VERSION, MolangQuery,
@@ -56,8 +57,8 @@ pub use v4::{
 };
 
 pub const ENTITY_BLOB_MAGIC: [u8; 8] = *b"MCBEENT3";
-/// Includes authored clip clocks; invalidates catalogs compiled before `anim_time_update` support.
-pub const ENTITY_BLOB_VERSION: u32 = 8;
+/// Includes rig placement frames; older carriers must be rebuilt.
+pub const ENTITY_BLOB_VERSION: u32 = 9;
 /// Actor rig id ranges (a rig id is a `u32`):
 /// - `0..PACK_RIG_ID_BASE`: vanilla catalog rig-geometry bindings, and from `0x2000_0000`
 ///   the catalog geometries render controllers draw beside the rig (`0x2000_0000 + index`).

@@ -151,6 +151,7 @@ pub(in crate::actor_animation) fn compiled_fixture() -> CompiledEntityAssets {
         controller_animations: Box::new([]),
         controller_transitions: Box::new([]),
         rig_bindings: vec![EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             entity_symbol: 4,
             render_controller: 2,
             first_geometry: 0,
@@ -223,6 +224,7 @@ fn fixture() -> Arc<RuntimeEntityAssets> {
 
 pub(super) fn owner_rig() -> ActorRigSnapshot<'static> {
     ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         actor: ActorLifetimeId {
             session_id: 1,
             dimension: 0,

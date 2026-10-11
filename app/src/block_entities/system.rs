@@ -36,6 +36,8 @@ const TICKS_PER_SECOND: f64 = 20.0;
 const TEXT_CACHE_ENTRIES: usize = 256;
 const TEXT_CACHE_BYTES: usize = 2 * 1024 * 1024;
 
+#[cfg(test)]
+mod beacon_tests;
 mod bed;
 mod columns;
 mod crystal_beams;
@@ -334,6 +336,9 @@ pub(crate) fn update_block_entity_scene(
     );
     runtime.missing_maps.clear();
     let dimension = stream.current_dimension();
+    let beam_top = stream.authority().dimension_range(dimension).map(|range| {
+        (range.base_sub_chunk_y + range.sub_chunk_count as i32) * SUB_CHUNK_SIDE as i32
+    });
     let store = stream.collision_store();
     let mode = stream.network_id_mode();
     let eye = view.eye_translation();
@@ -406,30 +411,7 @@ pub(crate) fn update_block_entity_scene(
                                 describe(id, &info.name, &info.state, &root, position)
                             })
                     });
-                let mut scan = columns::ColumnScan::new(chunk, portals, entities);
-                let range = stream.authority().dimension_range(dimension);
-                if let Some(range) = range {
-                    let top = (range.base_sub_chunk_y + range.sub_chunk_count as i32)
-                        * SUB_CHUNK_SIDE as i32;
-                    for entity in &scan.entities {
-                        if matches!(entity.template, Some(Template::Beacon)) {
-                            scan.beacons.insert(
-                                entity.key,
-                                beacon_model(
-                                    runtime,
-                                    &collisions,
-                                    stream.runtime_assets(),
-                                    store,
-                                    dimension,
-                                    mode,
-                                    entity.key.position(),
-                                    top,
-                                ),
-                            );
-                        }
-                    }
-                }
-                scan
+                columns::ColumnScan::new(chunk, portals, entities)
             }) else {
                 continue;
             };
@@ -458,10 +440,21 @@ pub(crate) fn update_block_entity_scene(
                     font: &font.0,
                 };
                 let kind = if matches!(template, Template::Beacon) {
-                    scan.beacons
-                        .get(&entity.key)
-                        .cloned()
-                        .map(BlockEntityKind::Beacon)
+                    beam_top.map(|top| {
+                        let model = scan.beacons.entry(entity.key).or_insert_with(|| {
+                            beacon_model(
+                                runtime,
+                                &collisions,
+                                stream.runtime_assets(),
+                                store,
+                                dimension,
+                                mode,
+                                [x, y, z],
+                                top,
+                            )
+                        });
+                        BlockEntityKind::Beacon(model.clone())
+                    })
                 } else {
                     resolve(
                         template,
@@ -805,7 +798,7 @@ fn prune_bell_rings(
     });
 }
 
-/// Builds sections only when the owning column scan is replaced.
+/// Builds an admitted beacon's sections for caching in its owning column scan.
 #[allow(clippy::too_many_arguments)]
 fn beacon_model(
     runtime: &mut BlockEntityRuntime,

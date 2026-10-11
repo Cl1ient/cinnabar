@@ -7331,6 +7331,6 @@ open; this descriptor change does not close those parity gates.
 
 ## Cached beacon beam sections
 
-Beacon columns cache typed color sections when blocks, NBT, dimension bounds or block assets change. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer.
+Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer.
 
 Incomplete parity: the full beacon geometry, animation, visibility and GPU performance gallery remains open.

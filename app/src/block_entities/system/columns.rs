@@ -17,6 +17,7 @@ pub(super) struct ColumnScan {
     pub(super) portals: Vec<PortalCell>,
     /// Block entities routed to a model or text overlay, in key order.
     pub(super) entities: Vec<ColumnEntity>,
+    /// Beam sections filled only after distance and submission admission.
     pub(super) beacons: BTreeMap<BlockEntityKey, render::BeaconModel>,
     /// The frame that last used this scan; older scans are dropped after each frame.
     pub(super) seen_frame: u64,

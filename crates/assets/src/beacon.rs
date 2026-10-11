@@ -196,7 +196,7 @@ pub fn beacon_sections(
     world_top_exclusive: i32,
     mut sample: impl FnMut(i32) -> BeaconMedium,
 ) -> Box<[BeaconBeamSection]> {
-    if first_y > BEACON_SKY_TOP_Y || first_y >= world_top_exclusive {
+    if first_y > BEACON_SKY_TOP_Y || first_y > world_top_exclusive {
         return Box::default();
     }
     let mut sections = Vec::new();
@@ -266,6 +266,32 @@ mod tests {
                 BeaconMedium::Obstruction
             } else {
                 BeaconMedium::Clear
+            })
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn top_layer_beacons_extend_to_sky_without_sampling_blocks() {
+        for world_top in [128, 256, 320] {
+            let sections = beacon_sections(world_top, world_top, |_| {
+                panic!("a top-layer beacon has no blocks above it to sample")
+            });
+            assert_eq!(
+                sections.as_ref(),
+                &[BeaconBeamSection {
+                    height: (BEACON_SKY_TOP_Y + 2 - world_top) as u32,
+                    tint: [1.0; 3],
+                }]
+            );
+        }
+    }
+
+    #[test]
+    fn beacons_above_the_sky_limit_remain_empty_without_sampling() {
+        assert!(
+            beacon_sections(BEACON_SKY_TOP_Y + 1, BEACON_SKY_TOP_Y + 2, |_| {
+                panic!("a beacon above the sky limit must not sample blocks")
             })
             .is_empty()
         );

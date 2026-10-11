@@ -1,3 +1,18 @@
+## Actor animation ownership
+
+`actor-animation` owns actor rigs, Molang evaluation, controllers, poses,
+attachables, custom skin models, Java 1.7 motion and the original emotes. It is
+Bevy-free and sits below `client-world`. Actor authority supplies each actor through
+the `AnimatedActor` trait and an `ActorTickContext` per tick, and drives the store
+at spawns, swings, hurts, server animations and fixed ticks. Synced property
+definitions and the wolf dye tint are animation inputs; `client-world` keeps the
+property registry and no longer depends on `render-model`.
+
+Tests that drive actor authority live in `client-world`'s `actor_store::animation_tests`,
+using fixtures from the `test-support` feature. Animation unit tests use a plain actor
+double. Compilation and execution of this move remain unverified, and no actor
+animation parity gate closes.
+
 ## Render geometry and scene ownership
 
 - `render-model` owns CPU block-model and selection geometry, dropped-item meshes,
@@ -7673,6 +7688,18 @@ Composters retain inward walls and a level-dependent floor. Cauldrons retain the
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
 
+### Compiled furnace fuel admission (incomplete)
+
+Furnace quick-move fuel decisions use numeric registry facts and validated compiled inputs.
+Retained retail compatibility eligibility and log ingredient preference remain provisional;
+the complete native fuel inventory and durations are unverified. Missing, malformed and
+unsupported component declarations stay unresolved. Unknown and explicitly nonfuel items
+are deferred to the player inventory rather than guessed into a furnace cell. Committed furnace
+recipe inputs are bound by numeric IDs, tags and metadata during admission.
+Session duration conversion and complete native recipe precedence remain unverified.
+Other container slot rules remain incomplete; this change
+does not close those gates.
+
 Block destroy facts are compiled into world carrier 15 and read by numeric runtime
 identity during mining. Every input state is checked against the independent pinned
 registry; changed or custom identities remain unresolved. The existing hardness and
@@ -7689,3 +7716,10 @@ numerical behavior; unclassified states remain unresolved and keep the previous 
 numerical defaults. No ordinary movement classification is inferred from absence of a special
 rule. Complete native ordinary/special coverage, custom session movement components and
 all provisional rule values still require verification before this gate can close.
+
+## Compiled item armour
+
+- Protection and player slots live in the entity carrier; HUD capture reads numeric registry facts resolved at admission. Server wearable components replace protection without per-frame parsing.
+- Incomplete: the full armour identifier/class inventory, missing-member defaults, body slots and later component versions still need parity verification. Unverified items and malformed declarations retain explicit unresolved facts.
+
+Effective item durability is shared through required entity-carrier descriptors and session registry admission. Unknown entries and invalid declared maxima stay unresolved; UI and elytra gameplay read the admitted numeric-ID fact. This gate remains incomplete: the full damageable item inventory, native class bindings, numeric component bounds and all network replacement behavior still need verification. The pinned base table preserves the existing positive values and its coverage guard checks their membership in the independent retail inventory.

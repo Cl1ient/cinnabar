@@ -3,17 +3,53 @@ use super::Reader;
 use crate::AssetError;
 use bitflags::bitflags;
 
-pub(super) const REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
 pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1002";
 pub const LEGACY_PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1001";
 pub const PHYSICS_REGISTRY_HEADER_BYTES: usize = 48;
 pub const PHYSICS_RECORD_HEADER_BYTES: usize = 28;
 pub const PHYSICS_MOVEMENT_SEMANTICS_OFFSET: usize = 11;
+/// The registry format version generated from the shared schema.
+pub const REGISTRY_MAGIC: &[u8; 8] = b"BREG1005";
 pub(super) const LEGACY_REGISTRY_PROTOCOL: u32 = 1001;
-pub(super) const RECORD_HEADER_BYTES: usize = 56;
+/// Provisional replacement admissions shared with the registry compiler.
+pub const COMPATIBILITY_REPLACEABLE_BLOCKS: &[&str] = &[
+    "minecraft:air",
+    "minecraft:short_grass",
+    "minecraft:red_shrub",
+    "minecraft:tall_grass",
+    "minecraft:fern",
+    "minecraft:large_fern",
+    "minecraft:deadbush",
+    "minecraft:vine",
+    "minecraft:glow_lichen",
+    "minecraft:seagrass",
+    "minecraft:water",
+    "minecraft:flowing_water",
+    "minecraft:lava",
+    "minecraft:flowing_lava",
+    "minecraft:fire",
+    "minecraft:soul_fire",
+    "minecraft:structure_void",
+    "minecraft:crimson_roots",
+    "minecraft:warped_roots",
+    "minecraft:nether_sprouts",
+    "minecraft:hanging_roots",
+];
+pub(super) const RECORD_HEADER_BYTES: usize = 73;
 pub(super) const MAX_REGISTRY_RECORDS: usize = 65536;
 pub(super) const MAX_REGISTRY_STATE_BYTES: usize = 1048576;
 pub(super) const MAX_COLLISION_BOXES: usize = 7;
+
+bitflags! {
+    /// Provisional compatibility flags compiled before placement.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+    pub struct BlockPlacementFlags: u8 {
+        const REPLACEABLE = 1 << 0;
+        const NETHER_FENCE = 1 << 1;
+        const CORNER_STATE = 1 << 2;
+        const HAND_TOGGLE = 1 << 3;
+    }
+}
 
 bitflags! {
     /// Geometry, occlusion and seasonal shelter facts.
@@ -213,11 +249,177 @@ impl CollisionConfidence {
     }
 }
 
-/// Presence-tagged model-state fields.
+/// A byte-sized registry discriminator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u8)]
+pub enum BlockPlacementRule {
+    #[default]
+    Unresolved = 0,
+    Identity = 1,
+    Axis = 2,
+    Loom = 3,
+    Glazed = 4,
+    Stair = 5,
+    Slab = 6,
+    DoubleSlab = 7,
+    Trapdoor = 8,
+    Hopper = 9,
+    Connections = 10,
+    Torch = 11,
+    Lever = 12,
+    Lantern = 13,
+    Snow = 14,
+    SeaPickle = 15,
+    Candle = 16,
+    Vine = 17,
+    Multiface = 18,
+    Door = 19,
+    StandingSign = 20,
+    WallSign = 21,
+    Dispenser = 22,
+    Piston = 23,
+    Button = 24,
+}
+
+impl BlockPlacementRule {
+    /// Decode a known discriminator and reject reserved values.
+    pub(super) fn read(raw: u8) -> Result<Self, AssetError> {
+        match raw {
+            0 => Ok(Self::Unresolved),
+            1 => Ok(Self::Identity),
+            2 => Ok(Self::Axis),
+            3 => Ok(Self::Loom),
+            4 => Ok(Self::Glazed),
+            5 => Ok(Self::Stair),
+            6 => Ok(Self::Slab),
+            7 => Ok(Self::DoubleSlab),
+            8 => Ok(Self::Trapdoor),
+            9 => Ok(Self::Hopper),
+            10 => Ok(Self::Connections),
+            11 => Ok(Self::Torch),
+            12 => Ok(Self::Lever),
+            13 => Ok(Self::Lantern),
+            14 => Ok(Self::Snow),
+            15 => Ok(Self::SeaPickle),
+            16 => Ok(Self::Candle),
+            17 => Ok(Self::Vine),
+            18 => Ok(Self::Multiface),
+            19 => Ok(Self::Door),
+            20 => Ok(Self::StandingSign),
+            21 => Ok(Self::WallSign),
+            22 => Ok(Self::Dispenser),
+            23 => Ok(Self::Piston),
+            24 => Ok(Self::Button),
+            _ => Err(AssetError::InvalidRegistryFlags(raw)),
+        }
+    }
+}
+
+/// A byte-sized registry discriminator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u8)]
+pub enum BlockSurvivalRule {
+    #[default]
+    Unresolved = 0,
+    Independent = 1,
+    Down = 2,
+    Up = 3,
+    North = 4,
+    South = 5,
+    West = 6,
+    East = 7,
+}
+
+impl BlockSurvivalRule {
+    /// Decode a known discriminator and reject reserved values.
+    pub(super) fn read(raw: u8) -> Result<Self, AssetError> {
+        match raw {
+            0 => Ok(Self::Unresolved),
+            1 => Ok(Self::Independent),
+            2 => Ok(Self::Down),
+            3 => Ok(Self::Up),
+            4 => Ok(Self::North),
+            5 => Ok(Self::South),
+            6 => Ok(Self::West),
+            7 => Ok(Self::East),
+            _ => Err(AssetError::InvalidRegistryFlags(raw)),
+        }
+    }
+}
+
+/// A byte-sized registry discriminator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u8)]
+pub enum BlockSupportPolicy {
+    #[default]
+    Unresolved = 0,
+    FullSolid = 1,
+    NonAir = 2,
+    Snow = 3,
+    Vine = 4,
+}
+
+impl BlockSupportPolicy {
+    /// Decode a known discriminator and reject reserved values.
+    pub(super) fn read(raw: u8) -> Result<Self, AssetError> {
+        match raw {
+            0 => Ok(Self::Unresolved),
+            1 => Ok(Self::FullSolid),
+            2 => Ok(Self::NonAir),
+            3 => Ok(Self::Snow),
+            4 => Ok(Self::Vine),
+            _ => Err(AssetError::InvalidRegistryFlags(raw)),
+        }
+    }
+}
+
+/// A byte-sized registry discriminator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u8)]
+pub enum BlockSupportKind {
+    #[default]
+    Unresolved = 0,
+    Air = 1,
+    Fluid = 2,
+    Leaves = 3,
+    PowderSnow = 4,
+    Stone = 5,
+    FullCube = 6,
+    Rejected = 7,
+    Snow = 8,
+}
+
+impl BlockSupportKind {
+    /// Decode a known discriminator and reject reserved values.
+    pub(super) fn read(raw: u8) -> Result<Self, AssetError> {
+        match raw {
+            0 => Ok(Self::Unresolved),
+            1 => Ok(Self::Air),
+            2 => Ok(Self::Fluid),
+            3 => Ok(Self::Leaves),
+            4 => Ok(Self::PowderSnow),
+            5 => Ok(Self::Stone),
+            6 => Ok(Self::FullCube),
+            7 => Ok(Self::Rejected),
+            8 => Ok(Self::Snow),
+            _ => Err(AssetError::InvalidRegistryFlags(raw)),
+        }
+    }
+}
+
+/// Presence-tagged state selectors and provisional survival facts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ModelState {
     pub(super) mask: u8,
     pub(super) values: [u32; 8],
+    pub(super) survival: BlockSurvivalRule,
+    pub(super) support_policy: BlockSupportPolicy,
+    pub(super) support_kind: BlockSupportKind,
+    pub(super) placement_rule: BlockPlacementRule,
+    pub(super) placement_set: u32,
+    pub(super) placement_key: u32,
+    pub(super) placement_alternate: u32,
+    pub(super) placement_flags: u8,
 }
 
 /// Signed 1/100,000,000-block coordinates from the pinned collision-shape source.
@@ -310,6 +512,14 @@ pub(super) struct RecordHeader {
     pub(super) name_len: u16,
     pub(super) state_len: u32,
     pub(super) values: [u32; 8],
+    pub(super) survival: u8,
+    pub(super) support_policy: u8,
+    pub(super) support_kind: u8,
+    pub(super) placement_rule: u8,
+    pub(super) placement_set: u32,
+    pub(super) placement_key: u32,
+    pub(super) placement_alternate: u32,
+    pub(super) placement_flags: u8,
 }
 
 /// Read the fixed header in schema order before validating its facts.
@@ -335,5 +545,13 @@ pub(super) fn read_record_header(reader: &mut Reader<'_>) -> Result<RecordHeader
             }
             values
         },
+        survival: reader.read_u8("record survival")?,
+        support_policy: reader.read_u8("record support_policy")?,
+        support_kind: reader.read_u8("record support_kind")?,
+        placement_rule: reader.read_u8("record placement_rule")?,
+        placement_set: reader.read_u32("record placement_set")?,
+        placement_key: reader.read_u32("record placement_key")?,
+        placement_alternate: reader.read_u32("record placement_alternate")?,
+        placement_flags: reader.read_u8("record placement_flags")?,
     })
 }

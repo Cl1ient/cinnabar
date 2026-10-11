@@ -1,19 +1,17 @@
-//! Click-dependent block states and placement validation before local world mutation.
-
-use std::ops::Range;
-
-use assets::NetworkIdMode;
-use sim::PaletteWorld;
+//! Click-dependent numerical state programs and placement validation before local mutation.
 
 use crate::{
     block_use::{BoxBounds, UseSurroundings, overlaps, placement_cell},
     movement::PhysicsCollisionRegistries,
-    placement_stacking::stacked_placement_canonical,
-    placement_state::{PlacementInput, merge_slab_state, resolve_placement_state},
-    placement_support::{
-        SupportRequirement, attachment_states, support_acceptance, support_requirement,
-    },
+    placement_state::PlacementInput,
+    placement_support::{SupportRequirement, support_acceptance, support_requirement},
 };
+use assets::{
+    BlockPlacementFlags as Flags, BlockPlacementRule as Rule, BlockSupportKind as Kind,
+    NetworkIdMode,
+};
+use sim::PaletteWorld;
+use std::ops::Range;
 
 /// Frozen click and collision facts used for one admitted placement.
 pub struct PlacementContext<'a> {
@@ -40,29 +38,36 @@ pub fn predicted_placement(
     world: &PaletteWorld<'_>,
     context: &PlacementContext<'_>,
 ) -> Option<PredictedPlacement> {
-    let identifier = collisions.block_identifier(mode, held)?;
-    let canonical = collisions.block_canonical_state(mode, held)?;
     if context.input.face > 5 {
         return None;
     }
-    let clicked = world.primary_runtime_id(context.clicked).ok()?;
-    if crate::placement_support::is_candle(identifier)
-        && context.input.face == 1
-        && collisions.block_identifier(mode, clicked)? == identifier
-    {
-        let states = serde_json::from_str(collisions.block_canonical_state(mode, clicked)?).ok()?;
-        if crate::placement_state::value(&states, "candles")?.as_u64()? >= 3 {
-            return None;
-        }
+    let held_facts = collisions.block_placement_facts(mode, held);
+    if held_facts.rule == Rule::Unresolved {
+        return None;
     }
-    if collisions.block_identifier(mode, clicked)
-        != context.surroundings.clicked_identifier.as_deref()
+    let clicked = world.primary_runtime_id(context.clicked).ok()?;
+    // A ray cannot select air; an air cell here means its observation changed.
+    if collisions.block_survival_facts(mode, clicked).support == Kind::Air {
+        return None;
+    }
+    let clicked_facts = collisions.block_placement_facts(mode, clicked);
+    if held_facts.rule == Rule::Candle
+        && context.input.face == 1
+        && held_facts.set == clicked_facts.set
+        && clicked_facts.key & 3 >= 3
     {
         return None;
     }
-    let (destination, free) = context
-        .surroundings
-        .destination(context.clicked, context.input.face);
+    let destination = if clicked_facts.flags.contains(Flags::REPLACEABLE) {
+        context.clicked
+    } else {
+        placement_cell(context.clicked, context.input.face)
+    };
+    let destination_block = world.primary_runtime_id(destination).ok()?;
+    let free = collisions
+        .block_placement_facts(mode, destination_block)
+        .flags
+        .contains(Flags::REPLACEABLE);
     let merged = [
         (context.clicked, Some(context.input.face)),
         (destination, None),
@@ -71,38 +76,16 @@ pub fn predicted_placement(
     .filter(|(position, face)| face.is_some() || *position != context.clicked)
     .find_map(|(position, face)| {
         let existing = world.primary_runtime_id(position).ok()?;
-        let name = collisions.block_identifier(mode, existing)?;
-        let state = collisions.block_canonical_state(mode, existing)?;
-        if let Some((name, state)) = merge_slab_state(identifier, canonical, name, state, face) {
-            return Some((position, name, state, false));
-        }
-        let stack_face = face.or_else(|| {
-            (crate::placement_support::is_candle(identifier)
-                || identifier == "minecraft:sea_pickle")
-                .then_some(context.input.face)
-        });
-        stack_face
-            .and_then(|face| stacked_placement_canonical(identifier, name, state, face))
-            .map(|state| {
-                (
-                    position,
-                    identifier.to_owned(),
-                    state,
-                    identifier == "minecraft:snow_layer",
-                )
-            })
+        let facts = collisions.block_placement_facts(mode, existing);
+        crate::placement_program::merged(held_facts, facts, face, context.input.face)
+            .map(|(set, key, full)| (position, set, key, full))
     });
-    let position = merged.as_ref().map_or(destination, |merged| merged.0);
+    let position = merged.map_or(destination, |merged| merged.0);
     if (merged.is_none() && !free) || !context.build_height.contains(&position[1]) {
         return None;
     }
-    // A retained click must still refer to readable world data when it is admitted.
     let existing = world.primary_runtime_id(position).ok()?;
-    if crate::placement_support::is_candle(identifier)
-        || identifier == "minecraft:sea_pickle"
-        || identifier == "minecraft:vine"
-        || crate::placement_multiface::is_multiface(identifier)
-    {
+    if crate::placement_program::water_sensitive(held_facts.rule) {
         use sim::CollisionWorld;
         let sample = world.block_physics(position).ok()?;
         if sample.layers.iter().any(|layer| {
@@ -112,120 +95,103 @@ pub fn predicted_placement(
             return None;
         }
     }
-    if merged.is_none() && collisions.block_identifier(mode, existing)? != "minecraft:air" {
+    if merged.is_none() && collisions.block_survival_facts(mode, existing).support != Kind::Air {
         return None;
     }
     let support = std::array::from_fn(|face| {
         let block = world
             .primary_runtime_id(placement_cell(position, face as u8))
             .ok()?;
-        let support_identifier = collisions.block_identifier(mode, block)?;
         support_acceptance(
-            identifier,
-            support_identifier,
+            collisions.block_survival_facts(mode, held).policy,
+            collisions.block_survival_facts(mode, block).support,
             collisions.block_is_full_cube(mode, block),
         )
     });
-    let door_pair = crate::placement_doors::door_states(
-        identifier,
-        canonical,
-        position,
-        context.input.yaw,
-        |cell| {
-            let block = world.primary_runtime_id(cell).ok()?;
-            Some(collisions.block_identifier(mode, block)?.to_owned())
-        },
-    );
-    let (placed_identifier, mut states, full_cell) =
-        if let Some((_, name, states, full_cell)) = merged {
-            (name, states, full_cell)
-        } else if let Some((name, states)) =
-            crate::placement_signs::sign_states(identifier, canonical, context.input)
-        {
-            (name, states, false)
-        } else {
-            let original = serde_json::from_str(canonical).ok()?;
-            let states = attachment_states(identifier, &original, context.input, support)
-                .or_else(|| {
-                    crate::placement_facing::facing_states(
-                        identifier,
-                        canonical,
-                        position,
-                        context.surroundings.player_box,
-                        context.input.yaw,
-                    )
-                })
-                .or_else(|| door_pair.as_ref().map(|pair| pair.0.clone()))
-                .or_else(|| resolve_placement_state(identifier, canonical, context.input))?;
-            (identifier.to_owned(), states, false)
-        };
-    // Stacking existing snow skips the first-placement support check.
+    let (set, key, full_cell) = if let Some((_, set, key, full)) = merged {
+        (set, key, full)
+    } else {
+        let (set, key) = crate::placement_program::placed(
+            held_facts,
+            context.input,
+            position,
+            context.surroundings.player_box,
+            support,
+        )?;
+        (set, key, false)
+    };
+    let mut block = collisions.placement_state_id(mode, set, key)?;
+    let mut placed = collisions.block_placement_facts(mode, block);
+    if placed.rule == Rule::Connections {
+        placed.key =
+            crate::placement_neighbours::connection_key(collisions, mode, world, position, block)?;
+        block = collisions.placement_state_id(mode, placed.set, placed.key)?;
+    }
+    let read = |position| {
+        let id = world.primary_runtime_id(position).ok()?;
+        Some(collisions.block_placement_facts(mode, id))
+    };
+    placed.key = crate::placement_neighbours::stair_key(placed, position, read)?;
+    block = collisions.placement_state_id(mode, placed.set, placed.key)?;
     let requirement = if full_cell {
         SupportRequirement::Independent
     } else {
-        support_requirement(&placed_identifier, &states)
+        support_requirement(collisions.block_survival_facts(mode, block).rule)
     };
     match requirement {
         SupportRequirement::Independent => {}
         SupportRequirement::Face(face) if support[usize::from(face)] == Some(true) => {}
         SupportRequirement::Face(_) | SupportRequirement::Unsupported => return None,
     }
-    crate::placement_connections::states_for_neighbours(
-        collisions,
-        mode,
-        world,
-        position,
-        &placed_identifier,
-        &mut states,
-    )?;
-    let read = |position| {
-        let block = world.primary_runtime_id(position).ok()?;
-        Some((
-            collisions.block_identifier(mode, block)?.to_owned(),
-            serde_json::from_str(collisions.block_canonical_state(mode, block)?).ok()?,
-        ))
-    };
-    crate::placement_stairs::corner_states(&placed_identifier, &mut states, position, read)?;
-    let block = collisions.block_state_runtime_id(mode, &placed_identifier, &states)?;
-    let mut neighbors = Vec::new();
-    let door = crate::placement_doors::is_door(&placed_identifier);
+    let mut neighbours = Vec::new();
+    let door = placed.rule == Rule::Door;
     if door {
         if context.input.face != 1 {
             return None;
         }
         let upper_position = placement_cell(position, 1);
+        let upper_existing = world.primary_runtime_id(upper_position).ok()?;
         if !context.build_height.contains(&upper_position[1])
-            || collisions.block_identifier(mode, world.primary_runtime_id(upper_position).ok()?)?
-                != "minecraft:air"
+            || collisions
+                .block_survival_facts(mode, upper_existing)
+                .support
+                != Kind::Air
         {
             return None;
         }
-        let (_, upper) = door_pair?;
-        let upper_block = collisions.block_state_runtime_id(mode, &placed_identifier, &upper)?;
-        neighbors.push((upper_position, upper_block));
+        let key = crate::placement_neighbours::door_upper(placed, position, |position| {
+            let id = world.primary_runtime_id(position).ok()?;
+            Some((
+                collisions.block_placement_facts(mode, id),
+                collisions.block_survival_facts(mode, id).support,
+            ))
+        })?;
+        neighbours.push((
+            upper_position,
+            collisions.placement_state_id(mode, placed.set, key)?,
+        ));
     }
-    if placed_identifier.ends_with("_stairs") {
+    if placed.rule == Rule::Stair {
         for face in 2..=5 {
-            let neighbor_position = placement_cell(position, face);
-            let (name, mut neighbor) = read(neighbor_position)?;
-            if !name.ends_with("_stairs") {
+            let neighbour_position = placement_cell(position, face);
+            let neighbour = read(neighbour_position)?;
+            if neighbour.rule == Rule::Unresolved {
+                return None;
+            }
+            if neighbour.rule != Rule::Stair {
                 continue;
             }
-            crate::placement_stairs::corner_states(
-                &name,
-                &mut neighbor,
-                neighbor_position,
-                |cell| {
+            let key =
+                crate::placement_neighbours::stair_key(neighbour, neighbour_position, |cell| {
                     if cell == position {
-                        Some((placed_identifier.clone(), states.clone()))
+                        Some(placed)
                     } else {
                         read(cell)
                     }
-                },
-            )?;
-            let neighbor_block = collisions.block_state_runtime_id(mode, &name, &neighbor)?;
-            if world.primary_runtime_id(neighbor_position).ok()? != neighbor_block {
-                neighbors.push((neighbor_position, neighbor_block));
+                })?;
+            let id = collisions.placement_state_id(mode, neighbour.set, key)?;
+            if world.primary_runtime_id(neighbour_position).ok()? != id {
+                neighbours.push((neighbour_position, id));
             }
         }
     }
@@ -237,13 +203,13 @@ pub fn predicted_placement(
     if full_cell && actor_overlap(position, ([0.0; 3], [1.0; 3])) {
         return None;
     }
-    neighbors.push((position, block));
-    for &(cell, runtime_id) in &neighbors {
+    neighbours.push((position, block));
+    for &(cell, id) in &neighbours {
         if cell != position && !door {
             continue;
         }
         let shapes = world
-            .collision_shapes_with_updates(cell, runtime_id, &neighbors)
+            .collision_shapes_with_updates(cell, id, &neighbours)
             .ok()?;
         if shapes.iter().any(|shape| {
             let local: BoxBounds = (
@@ -255,10 +221,13 @@ pub fn predicted_placement(
             return None;
         }
     }
-    neighbors.pop();
+    neighbours.pop();
     Some(PredictedPlacement {
         position,
         block,
-        additional: neighbors,
+        additional: neighbours,
     })
 }
+
+#[cfg(test)]
+mod tests;

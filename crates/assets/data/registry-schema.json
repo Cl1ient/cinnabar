@@ -1,11 +1,12 @@
 {
-  "magic": "BREG1003",
+  "magic": "BREG1005",
   "legacy_protocol": 1001,
   "physics_magic": "PREG1002",
   "physics_legacy_magic": "PREG1001",
   "physics_header_bytes": 48,
   "physics_record_header_bytes": 28,
   "physics_movement_semantics_offset": 11,
+  "compatibility_replaceable": ["minecraft:air", "minecraft:short_grass", "minecraft:red_shrub", "minecraft:tall_grass", "minecraft:fern", "minecraft:large_fern", "minecraft:deadbush", "minecraft:vine", "minecraft:glow_lichen", "minecraft:seagrass", "minecraft:water", "minecraft:flowing_water", "minecraft:lava", "minecraft:flowing_lava", "minecraft:fire", "minecraft:soul_fire", "minecraft:structure_void", "minecraft:crimson_roots", "minecraft:warped_roots", "minecraft:nether_sprouts", "minecraft:hanging_roots"],
   "limits": [
     {"rust_name": "MAX_REGISTRY_RECORDS", "go_name": "maxRecordCount", "value": 65536},
     {"rust_name": "MAX_REGISTRY_STATE_BYTES", "go_name": "maxStateBytes", "value": 1048576},
@@ -117,9 +118,107 @@
       ],
       "read": true,
       "read_visibility": "pub(super)"
+    },
+    {
+      "name": "BlockPlacementRule",
+      "default": "Unresolved",
+      "go_prefix": "BlockPlacementRule",
+      "go_max": "maxBlockPlacementRule",
+      "values": [
+        {"name": "Unresolved", "value": 0},
+        {"name": "Identity", "value": 1},
+        {"name": "Axis", "value": 2},
+        {"name": "Loom", "value": 3},
+        {"name": "Glazed", "value": 4},
+        {"name": "Stair", "value": 5},
+        {"name": "Slab", "value": 6},
+        {"name": "DoubleSlab", "value": 7},
+        {"name": "Trapdoor", "value": 8},
+        {"name": "Hopper", "value": 9},
+        {"name": "Connections", "value": 10},
+        {"name": "Torch", "value": 11},
+        {"name": "Lever", "value": 12},
+        {"name": "Lantern", "value": 13},
+        {"name": "Snow", "value": 14},
+        {"name": "SeaPickle", "value": 15},
+        {"name": "Candle", "value": 16},
+        {"name": "Vine", "value": 17},
+        {"name": "Multiface", "value": 18},
+        {"name": "Door", "value": 19},
+        {"name": "StandingSign", "value": 20},
+        {"name": "WallSign", "value": 21},
+        {"name": "Dispenser", "value": 22},
+        {"name": "Piston", "value": 23},
+        {"name": "Button", "value": 24}
+      ],
+      "read": true,
+      "read_visibility": "pub(super)"
+    },
+    {
+      "name": "BlockSurvivalRule",
+      "default": "Unresolved",
+      "go_prefix": "BlockSurvivalRule",
+      "go_max": "maxBlockSurvivalRule",
+      "values": [
+        {"name": "Unresolved", "value": 0},
+        {"name": "Independent", "value": 1},
+        {"name": "Down", "value": 2},
+        {"name": "Up", "value": 3},
+        {"name": "North", "value": 4},
+        {"name": "South", "value": 5},
+        {"name": "West", "value": 6},
+        {"name": "East", "value": 7}
+      ],
+      "read": true,
+      "read_visibility": "pub(super)"
+    },
+    {
+      "name": "BlockSupportPolicy",
+      "default": "Unresolved",
+      "go_prefix": "BlockSupportPolicy",
+      "go_max": "maxBlockSupportPolicy",
+      "values": [
+        {"name": "Unresolved", "value": 0},
+        {"name": "FullSolid", "value": 1},
+        {"name": "NonAir", "value": 2},
+        {"name": "Snow", "value": 3},
+        {"name": "Vine", "value": 4}
+      ],
+      "read": true,
+      "read_visibility": "pub(super)"
+    },
+    {
+      "name": "BlockSupportKind",
+      "default": "Unresolved",
+      "go_prefix": "BlockSupportKind",
+      "go_max": "maxBlockSupportKind",
+      "values": [
+        {"name": "Unresolved", "value": 0},
+        {"name": "Air", "value": 1},
+        {"name": "Fluid", "value": 2},
+        {"name": "Leaves", "value": 3},
+        {"name": "PowderSnow", "value": 4},
+        {"name": "Stone", "value": 5},
+        {"name": "FullCube", "value": 6},
+        {"name": "Rejected", "value": 7},
+        {"name": "Snow", "value": 8}
+      ],
+      "read": true,
+      "read_visibility": "pub(super)"
     }
   ],
   "flags": [
+    {
+      "name": "BlockPlacementFlags",
+      "go_all": "allPlacementFlags",
+      "values": [
+        {"name": "REPLACEABLE", "bit": 0, "go_name": "placementReplaceable", "source": true},
+        {"name": "NETHER_FENCE", "bit": 1, "go_name": "placementNetherFence", "source": true},
+        {"name": "CORNER_STATE", "bit": 2, "go_name": "placementCornerState", "source": true},
+        {"name": "HAND_TOGGLE", "bit": 3, "go_name": "placementHandToggle", "source": true}
+      ],
+      "doc": "Provisional compatibility flags compiled before placement."
+    },
     {
       "name": "BlockFlags",
       "go_all": "allBlockFlags",
@@ -153,9 +252,17 @@
       "derive": "Debug, Clone, Copy, Default, PartialEq, Eq, Hash",
       "fields": [
         {"rust_name": "mask", "go_name": "Mask", "rust_type": "u8", "go_type": "uint8", "public": false},
-        {"rust_name": "values", "go_name": "Values", "rust_type": "[u32; 8]", "go_type": "[8]uint32", "public": false}
+        {"rust_name": "values", "go_name": "Values", "rust_type": "[u32; 8]", "go_type": "[8]uint32", "public": false},
+        {"rust_name": "survival", "go_name": "Survival", "rust_type": "BlockSurvivalRule", "go_type": "BlockSurvivalRule", "public": false},
+        {"rust_name": "support_policy", "go_name": "SupportPolicy", "rust_type": "BlockSupportPolicy", "go_type": "BlockSupportPolicy", "public": false},
+        {"rust_name": "support_kind", "go_name": "SupportKind", "rust_type": "BlockSupportKind", "go_type": "BlockSupportKind", "public": false},
+        {"rust_name": "placement_rule", "go_name": "PlacementRule", "rust_type": "BlockPlacementRule", "go_type": "BlockPlacementRule", "public": false},
+        {"rust_name": "placement_set", "go_name": "PlacementSet", "rust_type": "u32", "go_type": "uint32", "public": false},
+        {"rust_name": "placement_key", "go_name": "PlacementKey", "rust_type": "u32", "go_type": "uint32", "public": false},
+        {"rust_name": "placement_alternate", "go_name": "PlacementAlternate", "rust_type": "u32", "go_type": "uint32", "public": false},
+        {"rust_name": "placement_flags", "go_name": "PlacementFlags", "rust_type": "u8", "go_type": "uint8", "public": false}
       ],
-      "doc": "Presence-tagged model-state fields."
+      "doc": "Presence-tagged state selectors and provisional survival facts."
     },
     {
       "rust_name": "CollisionBox",
@@ -231,6 +338,14 @@
     {"name": "shape_id", "type": "u16", "go_value": "record.CollisionSeed.ShapeID"},
     {"name": "name_len", "type": "u16", "go_value": "uint16(len(record.Name))"},
     {"name": "state_len", "type": "u32", "go_value": "uint32(len(record.StateJSON))"},
-    {"name": "values", "type": "u32[8]", "go_value": "record.ModelState.Values"}
+    {"name": "values", "type": "u32[8]", "go_value": "record.ModelState.Values"},
+    {"name": "survival", "type": "u8", "go_value": "uint8(record.ModelState.Survival)"},
+    {"name": "support_policy", "type": "u8", "go_value": "uint8(record.ModelState.SupportPolicy)"},
+    {"name": "support_kind", "type": "u8", "go_value": "uint8(record.ModelState.SupportKind)"},
+    {"name": "placement_rule", "type": "u8", "go_value": "uint8(record.ModelState.PlacementRule)"},
+    {"name": "placement_set", "type": "u32", "go_value": "record.ModelState.PlacementSet"},
+    {"name": "placement_key", "type": "u32", "go_value": "record.ModelState.PlacementKey"},
+    {"name": "placement_alternate", "type": "u32", "go_value": "record.ModelState.PlacementAlternate"},
+    {"name": "placement_flags", "type": "u8", "go_value": "record.ModelState.PlacementFlags"}
   ]
 }

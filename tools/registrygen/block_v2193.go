@@ -383,7 +383,7 @@ func decodeBREGRecords(data []byte, expectedProtocol uint32) (RegistryMetadata, 
 	const headerBytes = registryHeaderBytes
 	const prefixBytes = recordHeaderBytes
 	if len(data) < headerBytes || string(data[:8]) != registryHeader || binary.LittleEndian.Uint32(data[8:12]) != expectedProtocol {
-		return RegistryMetadata{}, nil, fmt.Errorf("input is not protocol-%d BREG1003", expectedProtocol)
+		return RegistryMetadata{}, nil, fmt.Errorf("input is not protocol-%d %s", expectedProtocol, registryHeader)
 	}
 	metadata := decodeRegistryMetadata(data[len(registryHeader):headerBytes])
 	if metadata.CanonicalStates > maxRecordCount {
@@ -396,6 +396,9 @@ func decodeBREGRecords(data []byte, expectedProtocol uint32) (RegistryMetadata, 
 			return RegistryMetadata{}, nil, fmt.Errorf("BREG record %d is truncated", index)
 		}
 		p := decodeRecordHeader(data[cursor : cursor+prefixBytes])
+		if p.PlacementRule > uint8(maxBlockPlacementRule) || p.PlacementFlags & ^uint8(allPlacementFlags) != 0 || p.Survival > uint8(maxBlockSurvivalRule) || p.SupportPolicy > uint8(maxBlockSupportPolicy) || p.SupportKind > uint8(maxBlockSupportKind) {
+			return RegistryMetadata{}, nil, fmt.Errorf("BREG record %d has invalid survival facts", index)
+		}
 		boxCount := int(p.BoxCount)
 		nameLen, stateLen := int(p.NameLen), int(p.StateLen)
 		if boxCount > maxCollisionBoxesPerRecord || stateLen > maxStateBytes {
@@ -409,7 +412,7 @@ func decodeBREGRecords(data []byte, expectedProtocol uint32) (RegistryMetadata, 
 		record := Record{
 			SequentialID: p.SequentialID, NetworkHash: p.NetworkHash, Flags: p.RawFlags,
 			ModelFamily: ModelFamily(p.ModelFamily), ContributorRole: ContributorRole(p.ContributorRole),
-			ModelState: ModelState{Mask: p.ModelMask, Values: p.Values}, FaceCoverage: p.FaceCoverage,
+			ModelState: ModelState{Mask: p.ModelMask, Values: p.Values, Survival: BlockSurvivalRule(p.Survival), SupportPolicy: BlockSupportPolicy(p.SupportPolicy), SupportKind: BlockSupportKind(p.SupportKind), PlacementRule: BlockPlacementRule(p.PlacementRule), PlacementSet: p.PlacementSet, PlacementKey: p.PlacementKey, PlacementAlternate: p.PlacementAlternate, PlacementFlags: p.PlacementFlags}, FaceCoverage: p.FaceCoverage,
 			CollisionSeed: CollisionSeed{Confidence: CollisionConfidence(p.Confidence), ShapeID: p.ShapeID},
 			Provenance:    p.RawProvenance, Name: string(data[payload : payload+nameLen]),
 			StateJSON: append([]byte(nil), data[payload+nameLen:end]...),

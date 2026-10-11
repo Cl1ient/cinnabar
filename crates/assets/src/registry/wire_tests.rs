@@ -32,6 +32,14 @@ fn reads_the_go_wire_contract_without_reinterpreting_fields() {
     assert_eq!(leaf.model_family, ModelFamily::Leaves);
     assert_eq!(leaf.contributor_role, ContributorRole::Primary);
     assert_eq!(leaf.model_state.mask(), 0xff);
+    assert_eq!(
+        leaf.model_state.survival_facts(),
+        BlockSurvivalFacts {
+            rule: BlockSurvivalRule::Unresolved,
+            policy: BlockSupportPolicy::Unresolved,
+            support: BlockSupportKind::Leaves,
+        }
+    );
     for (field, value) in [
         (ModelStateField::Orientation, 1),
         (ModelStateField::Half, 2),
@@ -84,6 +92,11 @@ fn rejects_reserved_discriminants_bits_and_inconsistent_lengths() {
         (49, 0xff),
         (50, 0x80),
         (51, 8),
+        (92, 0xff),
+        (93, 0xff),
+        (94, 0xff),
+        (95, 0xff),
+        (108, 0x80),
     ] {
         let mut bytes = fixture();
         bytes[offset] = value;
@@ -118,4 +131,21 @@ fn accepts_compiled_enrichment_flags_without_using_source_only_mask() {
     assert!(records[0].flags.contains(BlockFlags::SEASONAL_REPLACEABLE));
     assert!(records[0].flags.contains(BlockFlags::FIRE_FLAMMABLE));
     assert!(records[0].flags.contains(BlockFlags::FIRE_TOP_SUPPORT));
+}
+
+#[test]
+fn placement_inventory_rejects_missing_identity_out_of_range_keys_and_wrong_alternates() {
+    let mut bytes = fixture();
+    // Fixture:leaf is independently the first sorted identity; Identity has only key zero.
+    bytes[95] = BlockPlacementRule::Identity as u8;
+    bytes[96..100].copy_from_slice(&1_u32.to_le_bytes());
+    let admitted = read_registry_for_protocol(&bytes, 2193).unwrap();
+    assert_eq!(admitted[0].model_state.placement_facts().set, 1);
+    for (offset, value) in [(96, 0_u32), (96, 2), (100, 1), (104, 3)] {
+        let mut forged = bytes.clone();
+        forged[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        assert!(read_registry_for_protocol(&forged, 2193).is_err());
+    }
+    bytes[95] = BlockPlacementRule::Unresolved as u8;
+    assert!(read_registry_for_protocol(&bytes, 2193).is_err());
 }

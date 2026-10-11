@@ -8,7 +8,7 @@ use assets::{
 /// Decoded block records paired with their header-declared wire protocol.
 pub(super) type BlockRegistryInput = (Box<[RegistryRecord]>, u32);
 
-const BLOCK_REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
+use assets::REGISTRY_MAGIC as BLOCK_REGISTRY_MAGIC;
 const LIGHT_REGISTRY_MAGIC: &[u8; 8] = b"LREG1001";
 /// The protocol assumed only when a header is too malformed to name one; the
 /// strict readers then reject it with their canonical legacy decode error.
@@ -147,10 +147,10 @@ mod tests {
         network_hash: u32,
     }
 
-    /// Encodes one-record BREG1003 bytes carrying a synthetic canonical air.
+    /// Encodes one-record block registry bytes carrying a synthetic canonical air.
     fn encode_block_registry(protocol: u32, air: &SyntheticAir) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"BREG1003");
+        bytes.extend_from_slice(assets::REGISTRY_MAGIC);
         bytes.extend_from_slice(&protocol.to_le_bytes());
         // One unique name and state, fully provenanced outside Valentine, so
         // no Valentine overlap bookkeeping is required.
@@ -173,6 +173,7 @@ mod tests {
         for _ in 0..8 {
             bytes.extend_from_slice(&0_u32.to_le_bytes());
         }
+        bytes.extend_from_slice(&[0; 17]); // Explicit unresolved descriptor fields.
         bytes.extend_from_slice(b"minecraft:air");
         bytes.extend_from_slice(b"{}");
         bytes

@@ -1,6 +1,8 @@
 //! Click-dependent block states, resolved without world or rendering dependencies.
+#[cfg(test)]
 use serde_json::{Map, Value};
 
+#[cfg(test)]
 const CONNECTION_STATES: &[&str] = &[
     "minecraft:connection_north",
     "minecraft:connection_south",
@@ -18,6 +20,7 @@ pub struct PlacementInput {
 }
 
 /// Resolve a registered held state; unsupported state families wait for the server.
+#[cfg(test)]
 pub fn resolve_placement_state(
     identifier: &str,
     canonical_state: &str,
@@ -141,6 +144,7 @@ pub fn resolve_placement_state(
 
 /// Merge a matching slab; a clicked slab exposes only its empty vertical half.
 /// `clicked_face` is absent when the existing slab is in the neighboring destination.
+#[cfg(test)]
 pub fn merge_slab_state(
     held_identifier: &str,
     held_canonical_state: &str,
@@ -181,6 +185,7 @@ pub fn merge_slab_state(
 }
 
 /// Whether the identifier names a single vanilla slab.
+#[cfg(test)]
 fn single_slab(identifier: &str) -> bool {
     identifier.starts_with("minecraft:")
         && identifier.ends_with("_slab")
@@ -188,6 +193,7 @@ fn single_slab(identifier: &str) -> bool {
 }
 
 /// Map modern slab identifiers to their registered double counterparts.
+#[cfg(test)]
 fn double_slab_identifier(identifier: &str) -> Option<String> {
     if let Some(prefix) = identifier.strip_suffix("cut_copper_slab") {
         return Some(format!("{prefix}double_cut_copper_slab"));
@@ -196,11 +202,13 @@ fn double_slab_identifier(identifier: &str) -> Option<String> {
 }
 
 /// Reject state keys whose placement behavior has not been modeled.
+#[cfg(test)]
 pub(crate) fn only_keys(states: &Map<String, Value>, allowed: &[&str]) -> bool {
     states.len() == allowed.len() && states.keys().all(|key| allowed.contains(&key.as_str()))
 }
 
 /// Read a state value in either canonical typed form or plain test form.
+#[cfg(test)]
 pub(crate) fn value<'a>(states: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
     let entry = states.get(key)?;
     match entry {
@@ -221,6 +229,7 @@ pub(crate) fn value<'a>(states: &'a Map<String, Value>, key: &str) -> Option<&'a
 }
 
 /// Require a string state to belong to its modeled domain.
+#[cfg(test)]
 fn string_in(states: &Map<String, Value>, key: &str, allowed: &[&str]) -> Option<()> {
     allowed
         .contains(&value(states, key)?.as_str()?)
@@ -228,6 +237,7 @@ fn string_in(states: &Map<String, Value>, key: &str, allowed: &[&str]) -> Option
 }
 
 /// Require an integer state to belong to its modeled domain.
+#[cfg(test)]
 pub(crate) fn integer_in(states: &Map<String, Value>, key: &str, allowed: &[u64]) -> Option<()> {
     allowed
         .contains(&value(states, key)?.as_u64()?)
@@ -235,6 +245,7 @@ pub(crate) fn integer_in(states: &Map<String, Value>, key: &str, allowed: &[u64]
 }
 
 /// Validate both accepted bit representations before changing a state.
+#[cfg(test)]
 fn bit(states: &Map<String, Value>, key: &str) -> Option<()> {
     match value(states, key)? {
         Value::Bool(_) => Some(()),
@@ -244,6 +255,7 @@ fn bit(states: &Map<String, Value>, key: &str) -> Option<()> {
 }
 
 /// Replace a state value while preserving the registry's type wrapper.
+#[cfg(test)]
 pub(crate) fn set_value(
     states: &mut Map<String, Value>,
     key: &str,
@@ -266,6 +278,7 @@ pub(crate) fn set_value(
 }
 
 /// Preserve boolean and byte representations when setting a state bit.
+#[cfg(test)]
 pub(crate) fn set_bit(states: &mut Map<String, Value>, key: &str, enabled: bool) -> Option<()> {
     bit(states, key)?;
     let replacement = match value(states, key)? {
@@ -277,6 +290,7 @@ pub(crate) fn set_bit(states: &mut Map<String, Value>, key: &str, enabled: bool)
 }
 
 /// Top and bottom faces decide the half; side clicks use a strict midpoint test.
+#[cfg(test)]
 fn upper_half(input: PlacementInput) -> Option<bool> {
     match input.face {
         0 => Some(true),
@@ -287,6 +301,7 @@ fn upper_half(input: PlacementInput) -> Option<bool> {
 }
 
 /// Quantize yaw to the nearest quarter turn, wrapping negative and repeated turns.
+#[cfg(test)]
 pub(crate) fn yaw_quadrant(yaw: f32) -> Option<usize> {
     yaw.is_finite()
         .then(|| (yaw / 90.0 + 0.5).floor().rem_euclid(4.0) as usize)
@@ -295,6 +310,7 @@ pub(crate) fn yaw_quadrant(yaw: f32) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(test)]
     use serde_json::json;
 
     /// Build a click with the inputs changed by each table row.

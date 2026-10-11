@@ -6,16 +6,26 @@ pub mod item_use;
 pub mod melee;
 pub mod mining;
 pub mod movement;
+#[cfg(test)]
 mod placement_connections;
+#[cfg(test)]
 mod placement_doors;
+#[cfg(test)]
 mod placement_facing;
+#[cfg(test)]
 mod placement_multiface;
+mod placement_neighbours;
 mod placement_prediction;
+mod placement_program;
+#[cfg(test)]
 mod placement_signs;
+#[cfg(test)]
 mod placement_stacking;
+#[cfg(test)]
 mod placement_stairs;
 pub mod placement_state;
 mod placement_support;
+#[cfg(test)]
 mod placement_vines;
 pub mod survival_mining;
 

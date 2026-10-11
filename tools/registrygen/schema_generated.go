@@ -4,7 +4,7 @@ package main
 import "encoding/binary"
 
 const (
-	registryHeader                 = "BREG1003"
+	registryHeader                 = "BREG1005"
 	physicsRegistryHeader          = "PREG1001"
 	physicsRegistryActiveHeader    = "PREG1002"
 	physicsRegistryHeaderBytes     = 48
@@ -16,8 +16,18 @@ const (
 	maxCollisionBoxesPerRecord     = 7
 	maxNameBytes                   = 65535
 	registryHeaderBytes            = 36
-	recordHeaderBytes              = 56
+	recordHeaderBytes              = 73
 	collisionBoxBytes              = 24
+)
+
+var compatibilityReplaceable = map[string]bool{"minecraft:air": true, "minecraft:short_grass": true, "minecraft:red_shrub": true, "minecraft:tall_grass": true, "minecraft:fern": true, "minecraft:large_fern": true, "minecraft:deadbush": true, "minecraft:vine": true, "minecraft:glow_lichen": true, "minecraft:seagrass": true, "minecraft:water": true, "minecraft:flowing_water": true, "minecraft:lava": true, "minecraft:flowing_lava": true, "minecraft:fire": true, "minecraft:soul_fire": true, "minecraft:structure_void": true, "minecraft:crimson_roots": true, "minecraft:warped_roots": true, "minecraft:nether_sprouts": true, "minecraft:hanging_roots": true}
+
+const (
+	placementReplaceable uint8 = 1 << 0
+	placementNetherFence uint8 = 1 << 1
+	placementCornerState uint8 = 1 << 2
+	placementHandToggle  uint8 = 1 << 3
+	allPlacementFlags          = placementReplaceable | placementNetherFence | placementCornerState | placementHandToggle
 )
 
 const (
@@ -125,10 +135,93 @@ const (
 )
 const maxCollisionConfidence = CollisionConfidenceReviewedVisibleBounds
 
+// BlockPlacementRule is a byte-sized registry discriminator.
+type BlockPlacementRule uint8
+
+const (
+	BlockPlacementRuleUnresolved   BlockPlacementRule = 0
+	BlockPlacementRuleIdentity     BlockPlacementRule = 1
+	BlockPlacementRuleAxis         BlockPlacementRule = 2
+	BlockPlacementRuleLoom         BlockPlacementRule = 3
+	BlockPlacementRuleGlazed       BlockPlacementRule = 4
+	BlockPlacementRuleStair        BlockPlacementRule = 5
+	BlockPlacementRuleSlab         BlockPlacementRule = 6
+	BlockPlacementRuleDoubleSlab   BlockPlacementRule = 7
+	BlockPlacementRuleTrapdoor     BlockPlacementRule = 8
+	BlockPlacementRuleHopper       BlockPlacementRule = 9
+	BlockPlacementRuleConnections  BlockPlacementRule = 10
+	BlockPlacementRuleTorch        BlockPlacementRule = 11
+	BlockPlacementRuleLever        BlockPlacementRule = 12
+	BlockPlacementRuleLantern      BlockPlacementRule = 13
+	BlockPlacementRuleSnow         BlockPlacementRule = 14
+	BlockPlacementRuleSeaPickle    BlockPlacementRule = 15
+	BlockPlacementRuleCandle       BlockPlacementRule = 16
+	BlockPlacementRuleVine         BlockPlacementRule = 17
+	BlockPlacementRuleMultiface    BlockPlacementRule = 18
+	BlockPlacementRuleDoor         BlockPlacementRule = 19
+	BlockPlacementRuleStandingSign BlockPlacementRule = 20
+	BlockPlacementRuleWallSign     BlockPlacementRule = 21
+	BlockPlacementRuleDispenser    BlockPlacementRule = 22
+	BlockPlacementRulePiston       BlockPlacementRule = 23
+	BlockPlacementRuleButton       BlockPlacementRule = 24
+)
+const maxBlockPlacementRule = BlockPlacementRuleButton
+
+// BlockSurvivalRule is a byte-sized registry discriminator.
+type BlockSurvivalRule uint8
+
+const (
+	BlockSurvivalRuleUnresolved  BlockSurvivalRule = 0
+	BlockSurvivalRuleIndependent BlockSurvivalRule = 1
+	BlockSurvivalRuleDown        BlockSurvivalRule = 2
+	BlockSurvivalRuleUp          BlockSurvivalRule = 3
+	BlockSurvivalRuleNorth       BlockSurvivalRule = 4
+	BlockSurvivalRuleSouth       BlockSurvivalRule = 5
+	BlockSurvivalRuleWest        BlockSurvivalRule = 6
+	BlockSurvivalRuleEast        BlockSurvivalRule = 7
+)
+const maxBlockSurvivalRule = BlockSurvivalRuleEast
+
+// BlockSupportPolicy is a byte-sized registry discriminator.
+type BlockSupportPolicy uint8
+
+const (
+	BlockSupportPolicyUnresolved BlockSupportPolicy = 0
+	BlockSupportPolicyFullSolid  BlockSupportPolicy = 1
+	BlockSupportPolicyNonAir     BlockSupportPolicy = 2
+	BlockSupportPolicySnow       BlockSupportPolicy = 3
+	BlockSupportPolicyVine       BlockSupportPolicy = 4
+)
+const maxBlockSupportPolicy = BlockSupportPolicyVine
+
+// BlockSupportKind is a byte-sized registry discriminator.
+type BlockSupportKind uint8
+
+const (
+	BlockSupportKindUnresolved BlockSupportKind = 0
+	BlockSupportKindAir        BlockSupportKind = 1
+	BlockSupportKindFluid      BlockSupportKind = 2
+	BlockSupportKindLeaves     BlockSupportKind = 3
+	BlockSupportKindPowderSnow BlockSupportKind = 4
+	BlockSupportKindStone      BlockSupportKind = 5
+	BlockSupportKindFullCube   BlockSupportKind = 6
+	BlockSupportKindRejected   BlockSupportKind = 7
+	BlockSupportKindSnow       BlockSupportKind = 8
+)
+const maxBlockSupportKind = BlockSupportKindSnow
+
 // ModelState is a typed block-registry value.
 type ModelState struct {
-	Mask   uint8
-	Values [8]uint32
+	Mask               uint8
+	Values             [8]uint32
+	Survival           BlockSurvivalRule
+	SupportPolicy      BlockSupportPolicy
+	SupportKind        BlockSupportKind
+	PlacementRule      BlockPlacementRule
+	PlacementSet       uint32
+	PlacementKey       uint32
+	PlacementAlternate uint32
+	PlacementFlags     uint8
 }
 
 // CollisionBox is a typed block-registry value.
@@ -225,20 +318,28 @@ func decodeCollisionBox(data []byte) CollisionBox {
 
 // RecordHeader is the fixed-size portion of a little-endian record.
 type RecordHeader struct {
-	SequentialID    uint32
-	NetworkHash     uint32
-	RawFlags        uint8
-	ModelFamily     uint8
-	ContributorRole uint8
-	ModelMask       uint8
-	FaceCoverage    uint8
-	Confidence      uint8
-	RawProvenance   uint8
-	BoxCount        uint8
-	ShapeID         uint16
-	NameLen         uint16
-	StateLen        uint32
-	Values          [8]uint32
+	SequentialID       uint32
+	NetworkHash        uint32
+	RawFlags           uint8
+	ModelFamily        uint8
+	ContributorRole    uint8
+	ModelMask          uint8
+	FaceCoverage       uint8
+	Confidence         uint8
+	RawProvenance      uint8
+	BoxCount           uint8
+	ShapeID            uint16
+	NameLen            uint16
+	StateLen           uint32
+	Values             [8]uint32
+	Survival           uint8
+	SupportPolicy      uint8
+	SupportKind        uint8
+	PlacementRule      uint8
+	PlacementSet       uint32
+	PlacementKey       uint32
+	PlacementAlternate uint32
+	PlacementFlags     uint8
 }
 
 // decodeRecordHeader reads a previously length-checked record prefix.
@@ -260,6 +361,14 @@ func decodeRecordHeader(data []byte) RecordHeader {
 	for index := range value.Values {
 		value.Values[index] = binary.LittleEndian.Uint32(data[24+index*4 : 28+index*4])
 	}
+	value.Survival = data[56]
+	value.SupportPolicy = data[57]
+	value.SupportKind = data[58]
+	value.PlacementRule = data[59]
+	value.PlacementSet = binary.LittleEndian.Uint32(data[60:64])
+	value.PlacementKey = binary.LittleEndian.Uint32(data[64:68])
+	value.PlacementAlternate = binary.LittleEndian.Uint32(data[68:72])
+	value.PlacementFlags = data[72]
 	return value
 }
 
@@ -281,5 +390,13 @@ func appendRecordHeader(encoded []byte, record Record) []byte {
 	for _, value := range record.ModelState.Values {
 		encoded = binary.LittleEndian.AppendUint32(encoded, value)
 	}
+	encoded = append(encoded, uint8(record.ModelState.Survival))
+	encoded = append(encoded, uint8(record.ModelState.SupportPolicy))
+	encoded = append(encoded, uint8(record.ModelState.SupportKind))
+	encoded = append(encoded, uint8(record.ModelState.PlacementRule))
+	encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementSet)
+	encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementKey)
+	encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementAlternate)
+	encoded = append(encoded, record.ModelState.PlacementFlags)
 	return encoded
 }

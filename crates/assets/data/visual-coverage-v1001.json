@@ -1,7 +1,7 @@
 {
   "schema": "cinnabar-visual-coverage-baseline-v1",
   "protocol": 1001,
-  "registry_sha256": "2247b37058ac42a65a601dbc246da6f215caf80b79b4aaf439cc3361911d2f1b",
+  "registry_sha256": "fc863ea4bf9af8893ce19da33d1b7398971b11f49bf4d20aeae68d77a44294a1",
   "counts": {
     "names": 1188,
     "states": 16913,

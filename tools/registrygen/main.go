@@ -183,13 +183,13 @@ type BiomeRecord struct {
 func main() {
 	out := flag.String("out", "", "path to write the block registry")
 	lightOut := flag.String("light-out", "", "path to write the BREG-bound block light registry")
-	lightBREG := flag.String("light-breg", "", "existing reviewed BREG1003 whose exact bytes the light registry binds")
+	lightBREG := flag.String("light-breg", "", "existing reviewed block registry whose exact bytes the light registry binds")
 	physicsOut := flag.String("physics-out", "", "optional path to write the BREG-bound block physics registry")
 	physicsSHAOut := flag.String("physics-sha-out", "", "optional path to write the physics registry SHA-256")
-	physicsBREG := flag.String("physics-breg", "", "existing reviewed BREG1003 whose exact bytes the physics registry binds")
+	physicsBREG := flag.String("physics-breg", "", "existing reviewed block registry whose exact bytes the physics registry binds")
 	physicsV2193Out := flag.String("physics-v2193-out", "", "path to write the projected protocol-2193 block physics registry")
 	physicsV2193SHAOut := flag.String("physics-v2193-sha-out", "", "optional path to write the v2193 physics registry SHA-256")
-	physicsV2193BREG := flag.String("physics-v2193-breg", "", "checked-in protocol-2193 BREG1003 whose exact bytes the physics projection binds")
+	physicsV2193BREG := flag.String("physics-v2193-breg", "", "checked-in protocol-2193 block registry whose exact bytes the physics projection binds")
 	physicsV2193Manifest := flag.String("physics-v2193-manifest", "", "reviewed v2193 block-projection manifest cross-checked against the projection")
 	biomeOut := flag.String("biome-out", "", "optional path to write the biome registry")
 	biomeCoverage := flag.String("biome-coverage", "", "reviewed numeric biome coverage manifest")
@@ -202,13 +202,13 @@ func main() {
 	prismarineRoot := flag.String("prismarine", "", "pinned Prismarine minecraft-data directory")
 	coverageManifest := flag.String("coverage", "", "reviewed numeric canonical-state coverage manifest")
 	blockItemOut := flag.String("block-item-out", "", "optional reviewed block-item route JSON output")
-	blockItemBREG := flag.String("block-item-breg", "", "existing reviewed BREG1003 used for block-item routes")
+	blockItemBREG := flag.String("block-item-breg", "", "existing reviewed block registry used for block-item routes")
 	fallbackIn := flag.String("fallback-in", "", "existing CVFB1001 inventory to filter")
 	fallbackOut := flag.String("fallback-out", "", "path to write the filtered CVFB1001 inventory")
-	fallbackBREG := flag.String("fallback-breg", "", "projected BREG1003 used to select fallback exclusions")
+	fallbackBREG := flag.String("fallback-breg", "", "projected block registry used to select fallback exclusions")
 	fallbackRekeyIn := flag.String("fallback-rekey-in", "", "existing protocol-1001-keyed CVFB1001 inventory to rekey")
-	rekeyLegacyBREG := flag.String("legacy-breg", "", "checked-in protocol-1001 BREG1003 naming the rekey input identities")
-	rekeyNewBREG := flag.String("new-breg", "", "checked-in protocol-2193 BREG1003 supplying the rekeyed network hashes")
+	rekeyLegacyBREG := flag.String("legacy-breg", "", "checked-in protocol-1001 block registry naming the rekey input identities")
+	rekeyNewBREG := flag.String("new-breg", "", "checked-in protocol-2193 block registry supplying the rekeyed network hashes")
 	fallbackRekeyOut := flag.String("fallback-rekey-out", "", "path to write the rekeyed CVFB1001 inventory")
 	fallbackRekeyManifest := flag.String("fallback-rekey-manifest", "", "optional path to write the rekeyed source manifest")
 	refreshBindings := flag.Bool("refresh-bindings", false, "bind derived registries to the newly generated BREG")
@@ -3187,6 +3187,14 @@ func encodeWithMetadata(metadata RegistryMetadata, records []Record) ([]byte, er
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].SequentialID < sorted[j].SequentialID
 	})
+
+	if err := compilePlacementPrograms(sorted); err != nil {
+		return nil, err
+	}
+
+	for index := range sorted {
+		sorted[index].ModelState.Survival, sorted[index].ModelState.SupportPolicy, sorted[index].ModelState.SupportKind = compiledSurvival(sorted[index])
+	}
 
 	seenSequentialIDs := make(map[uint32]struct{}, len(sorted))
 	seenNetworkHashes := make(map[uint32]struct{}, len(sorted))

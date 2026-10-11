@@ -145,7 +145,7 @@ func validate(value manifest) error {
 	if value.GameVersion != "1.26.50" || value.Protocol != 2193 {
 		return errors.New("foundation must target game 1.26.50 and protocol 2193")
 	}
-	if value.Formats != (formats{Block: "BREG1003", Light: "LREG1001", Biome: "BIOREG01"}) {
+	if value.Formats != (formats{Block: registryHeader, Light: "LREG1001", Biome: "BIOREG01"}) {
 		return errors.New("unexpected stable format labels")
 	}
 	wantOutputs := outputs{

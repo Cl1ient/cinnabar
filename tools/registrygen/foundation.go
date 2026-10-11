@@ -131,7 +131,7 @@ func validateFoundationFields(foundation registryFoundation) error {
 	if foundation.GameVersion != "1.26.50" || foundation.Protocol != 2193 {
 		return errors.New("registry foundation must target game 1.26.50 and protocol 2193")
 	}
-	if foundation.Formats != (foundationFormats{Block: "BREG1003", Light: "LREG1001", Biome: "BIOREG01"}) {
+	if foundation.Formats != (foundationFormats{Block: registryHeader, Light: "LREG1001", Biome: "BIOREG01"}) {
 		return errors.New("registry foundation format labels do not match the stable formats")
 	}
 	wantOutputs := foundationOutputs{

@@ -7726,3 +7726,17 @@ all provisional rule values still require verification before this gate can clos
 - Incomplete: the full armour identifier/class inventory, missing-member defaults, body slots and later component versions still need parity verification. Unverified items and malformed declarations retain explicit unresolved facts.
 
 Effective item durability is shared through required entity-carrier descriptors and session registry admission. Unknown entries and invalid declared maxima stay unresolved; UI and elytra gameplay read the admitted numeric-ID fact. This gate remains incomplete: the full damageable item inventory, native class bindings, numeric component bounds and all network replacement behavior still need verification. The pinned base table preserves the existing positive values and its coverage guard checks their membership in the independent retail inventory.
+
+Placement uses compiled numerical state programs and support dispositions. Every
+collected canonical state has an explicit admission, including unresolved rules.
+Set IDs come from the independent sorted identity inventory; packed selectors
+select existing registered states. Runtime placement and switch prediction do
+not parse canonical JSON or classify block names. The required BREG1005 fields
+invalidate stale carriers and their digest bindings.
+
+Incomplete parity: these programs retain provisional compatibility transformations;
+complete block-specific survival and component coverage remain unverified. An empty
+state map does not establish independent survival. Missing targets, unsupported
+custom states and unresolved support defer prediction to the server. Full native
+placement, replacement, mutable component and neighbor behavior acceptance remains
+open. The legacy pure JSON behavior matrices are test oracles only.

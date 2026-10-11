@@ -291,7 +291,7 @@ pub(super) fn encoded_model_record(
         mask |= 1 << index;
         values[index] = value;
     }
-    let mut bytes = b"BREG1003".to_vec();
+    let mut bytes = assets::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&1001_u32.to_le_bytes());
     for count in [1_u32, 1, 0, 0, 1, 1] {
         bytes.extend_from_slice(&count.to_le_bytes());
@@ -312,6 +312,7 @@ pub(super) fn encoded_model_record(
     for value in values {
         bytes.extend_from_slice(&value.to_le_bytes());
     }
+    bytes.extend_from_slice(&[0; 17]); // Explicit unresolved survival and placement facts.
     bytes.extend_from_slice(name.as_bytes());
     bytes.extend_from_slice(state);
     read_registry(&bytes)
@@ -472,7 +473,7 @@ pub(super) fn registry_bytes(records: &[RegistryRecord]) -> Vec<u8> {
 
 /// Encodes the same fixture registry for one explicit wire protocol.
 pub(super) fn registry_bytes_for_protocol(protocol: u32, records: &[RegistryRecord]) -> Vec<u8> {
-    let mut bytes = b"BREG1003".to_vec();
+    let mut bytes = assets::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&protocol.to_le_bytes());
     bytes.extend_from_slice(
         &u32::try_from(records.len())
@@ -530,6 +531,18 @@ pub(super) fn registry_bytes_for_protocol(protocol: u32, records: &[RegistryReco
         ] {
             bytes.extend_from_slice(&record.model_state.get(field).unwrap_or(0).to_le_bytes());
         }
+        let survival = record.model_state.survival_facts();
+        bytes.extend_from_slice(&[
+            survival.rule as u8,
+            survival.policy as u8,
+            survival.support as u8,
+        ]);
+        let placement = record.model_state.placement_facts();
+        bytes.push(placement.rule as u8);
+        bytes.extend_from_slice(&placement.set.to_le_bytes());
+        bytes.extend_from_slice(&placement.key.to_le_bytes());
+        bytes.extend_from_slice(&placement.alternate.unwrap_or(0).to_le_bytes());
+        bytes.push(placement.flags.bits());
         for collision_box in &record.collision_seed.boxes {
             for coordinate in [
                 collision_box.min_x,

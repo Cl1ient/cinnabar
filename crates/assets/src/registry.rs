@@ -2,22 +2,34 @@ use std::{collections::HashSet, str};
 
 use crate::AssetError;
 
+mod placement;
 mod schema;
+pub use placement::BlockPlacementFacts;
 
 #[cfg(test)]
 mod wire_tests;
 
 pub use schema::{
-    BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole,
-    LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState, ModelStateField, MovementSemantics,
-    PHYSICS_MOVEMENT_SEMANTICS_OFFSET, PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES,
-    PHYSICS_REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
+    BlockFlags, BlockPlacementFlags, BlockPlacementRule, BlockSupportKind, BlockSupportPolicy,
+    BlockSurvivalRule, COMPATIBILITY_REPLACEABLE_BLOCKS, CollisionBox, CollisionConfidence,
+    CollisionSeed, ContributorRole, LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState,
+    ModelStateField, MovementSemantics, PHYSICS_MOVEMENT_SEMANTICS_OFFSET,
+    PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES, PHYSICS_REGISTRY_MAGIC,
+    REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
 };
 use schema::{
     LEGACY_REGISTRY_PROTOCOL, MAX_COLLISION_BOXES, MAX_REGISTRY_RECORDS, MAX_REGISTRY_STATE_BYTES,
-    RECORD_HEADER_BYTES, REGISTRY_MAGIC, RecordHeader, read_collision_box, read_record_header,
+    RECORD_HEADER_BYTES, RecordHeader, read_collision_box, read_record_header,
     read_registry_metadata,
 };
+
+/// Provisional compiled survival and support facts read by numerical state identity.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct BlockSurvivalFacts {
+    pub rule: BlockSurvivalRule,
+    pub policy: BlockSupportPolicy,
+    pub support: BlockSupportKind,
+}
 
 impl BlockFlags {
     #[must_use]
@@ -31,6 +43,15 @@ impl BlockFlags {
 }
 
 impl ModelState {
+    /// Returns the compiled survival disposition without inspecting state names or JSON.
+    pub const fn survival_facts(self) -> BlockSurvivalFacts {
+        BlockSurvivalFacts {
+            rule: self.survival,
+            policy: self.support_policy,
+            support: self.support_kind,
+        }
+    }
+
     #[must_use]
     pub fn get(self, field: ModelStateField) -> Option<u32> {
         let index = usize::from(field as u8 - 1);
@@ -43,12 +64,12 @@ impl ModelState {
     }
 }
 
-/// Reads the bounded protocol-1001 BREG1003 block registry.
+/// Reads the bounded protocol-1001 block registry.
 pub fn read_registry(bytes: &[u8]) -> Result<Box<[RegistryRecord]>, AssetError> {
     read_registry_for_protocol(bytes, LEGACY_REGISTRY_PROTOCOL)
 }
 
-/// Reads the wire protocol stamped in a `BREG1003` header without decoding
+/// Reads the wire protocol stamped in a block-registry header without decoding
 /// any record payload.
 ///
 /// Startup cross-carrier coherence checks use this cheap reader ahead of the
@@ -62,7 +83,7 @@ pub fn registry_header_protocol(bytes: &[u8]) -> Result<u32, AssetError> {
     reader.read_u32("registry protocol")
 }
 
-/// Reads a bounded `BREG1003` registry for one explicit wire protocol.
+/// Reads a bounded block registry for one explicit wire protocol.
 pub fn read_registry_for_protocol(
     bytes: &[u8],
     expected_protocol: u32,
@@ -135,7 +156,21 @@ pub fn read_registry_for_protocol(
             name_len,
             state_len,
             values,
+            survival,
+            support_policy,
+            support_kind,
+            placement_rule,
+            placement_set,
+            placement_key,
+            placement_alternate,
+            placement_flags,
         } = read_record_header(&mut reader)?;
+        let placement_rule = BlockPlacementRule::read(placement_rule)?;
+        BlockPlacementFlags::from_bits(placement_flags)
+            .ok_or(AssetError::InvalidRegistryFlags(placement_flags))?;
+        let survival = BlockSurvivalRule::read(survival)?;
+        let support_policy = BlockSupportPolicy::read(support_policy)?;
+        let support_kind = BlockSupportKind::read(support_kind)?;
         let model_family = ModelFamily::read(model_family)?;
         let contributor_role = ContributorRole::read(contributor_role)?;
         let confidence = CollisionConfidence::read(confidence)?;
@@ -221,6 +256,14 @@ pub fn read_registry_for_protocol(
             model_state: ModelState {
                 mask: model_mask,
                 values,
+                survival,
+                support_policy,
+                support_kind,
+                placement_rule,
+                placement_set,
+                placement_key,
+                placement_alternate,
+                placement_flags,
             },
             face_coverage,
             collision_seed: CollisionSeed {
@@ -231,6 +274,7 @@ pub fn read_registry_for_protocol(
             provenance,
         });
     }
+    placement::validate(&records, name_count)?;
     if names.len() != name_count
         || valentine_overlap != valentine_states
         || valentine_name_set.len() != valentine_names

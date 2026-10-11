@@ -16,29 +16,7 @@ const REPEAT_MAX_LAG_MILLIS: u64 = 180;
 const PLACEMENT_ACTOR_EPSILON: f64 = 1.0e-5;
 
 /// Blocks a placement replaces in place. Provisional list; needs independent measurement.
-const REPLACEABLE_BLOCKS: &[&str] = &[
-    "minecraft:air",
-    "minecraft:short_grass",
-    "minecraft:red_shrub",
-    "minecraft:tall_grass",
-    "minecraft:fern",
-    "minecraft:large_fern",
-    "minecraft:deadbush",
-    "minecraft:vine",
-    "minecraft:glow_lichen",
-    "minecraft:seagrass",
-    "minecraft:water",
-    "minecraft:flowing_water",
-    "minecraft:lava",
-    "minecraft:flowing_lava",
-    "minecraft:fire",
-    "minecraft:soul_fire",
-    "minecraft:structure_void",
-    "minecraft:crimson_roots",
-    "minecraft:warped_roots",
-    "minecraft:nether_sprouts",
-    "minecraft:hanging_roots",
-];
+use assets::COMPATIBILITY_REPLACEABLE_BLOCKS as REPLACEABLE_BLOCKS;
 
 /// Which ability a block's own use needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -548,14 +526,24 @@ pub fn predicted_toggle(
     clicked: u32,
 ) -> Option<u32> {
     let mode = stream.network_id_mode();
-    let identifier = collisions.block_identifier(mode, clicked)?;
-    let states = toggled_states(identifier, collisions.block_canonical_state(mode, clicked)?)?;
-    collisions.block_state_runtime_id(mode, identifier, &states)
+    use assets::{BlockPlacementFlags as Flags, BlockPlacementRule as Rule};
+    let facts = collisions.block_placement_facts(mode, clicked);
+    if !facts.flags.contains(Flags::HAND_TOGGLE) {
+        return None;
+    }
+    let key = match facts.rule {
+        Rule::Lever => facts.key ^ 8,
+        Rule::Trapdoor => facts.key ^ 4,
+        Rule::Button if facts.key & 8 == 0 => facts.key | 8,
+        _ => return None,
+    };
+    collisions.placement_state_id(mode, facts.set, key)
 }
 
 /// Trapdoors and levers flip `open_bit`; an
 /// unpressed button presses. Doors and fence gates also change their other
 /// half or facing, which is not modelled, so they wait for the server.
+#[cfg(test)]
 pub fn toggled_states(
     identifier: &str,
     canonical_state: &str,

@@ -80,9 +80,28 @@ func TestCheckedInV1001BlockItemRoutesStayFrozen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
-	if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != "671fa269312135a605170251b7d85b4c9a2864e678678d63a0a65e7570ad04b8" {
-		t.Fatalf("frozen protocol-1001 block item routes changed: %s", got)
+	var table map[string]json.RawMessage
+	if err := json.Unmarshal(data, &table); err != nil {
+		t.Fatal(err)
+	}
+	var binding string
+	if err := json.Unmarshal(table["breg_sha256"], &binding); err != nil {
+		t.Fatal(err)
+	}
+	breg, err := os.ReadFile("../../crates/assets/data/block-registry-v1001.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding != fmt.Sprintf("%x", sha256.Sum256(breg)) {
+		t.Fatal("frozen routes have a stale BREG binding")
+	}
+	delete(table, "breg_sha256")
+	data, err = json.Marshal(table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != "572c83cc4897ba9c91d4816cd74eea66d8c614fd0ea9da7f1dc86561a24126ab" {
+		t.Fatalf("frozen protocol-1001 route facts changed: %s", got)
 	}
 }
 
@@ -897,9 +916,9 @@ func TestEncodeSortsRecordsAndMatchesExactBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	want, err := hex.DecodeString("4252454731303033e90300000200000002000000000000000000000002000000020000000100000044332211010000000000020000000500070000000000000000000000000000000000000000000000000000000000000000000000616c7068617b2261223a317d02000000ddccbbaa0600000000000200000004000200000000000000000000000000000000000000000000000000000000000000000000007a6574617b7d")
+	want, err := hex.DecodeString("4252454731303035e903000002000000020000000000000000000000020000000200000001000000443322110100000000000200000005000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000616c7068617b2261223a317d02000000ddccbbaa06000000000002000000040002000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000007a6574617b7d")
 	if err != nil {
-		t.Fatalf("decode expected BREG1003 fixture: %v", err)
+		t.Fatalf("decode expected block registry fixture: %v", err)
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("encoded bytes:\n got: %x\nwant: %x", got, want)
@@ -2874,7 +2893,7 @@ func TestFlowerBedCanonicalStateCoverage(t *testing.T) {
 	}
 }
 
-func TestEncodeBREG1003Canonical(t *testing.T) {
+func TestEncodeBlockRegistryCanonical(t *testing.T) {
 	record, err := classifyRecord(sourceState("minecraft:stone"))
 	if err != nil {
 		t.Fatalf("classify record: %v", err)
@@ -2907,9 +2926,9 @@ func TestEncodeBREG1003Canonical(t *testing.T) {
 		t.Fatalf("encode repeat: %v", err)
 	}
 	if !bytes.Equal(first, second) {
-		t.Fatal("BREG1003 encoding is not deterministic")
+		t.Fatal("block registry encoding is not deterministic")
 	}
-	if got := string(first[:8]); got != "BREG1003" {
+	if got := string(first[:8]); got != registryHeader {
 		t.Fatalf("magic = %q", got)
 	}
 	if got := binary.LittleEndian.Uint32(first[8:12]); got != 1001 {
@@ -2921,7 +2940,7 @@ func TestEncodeBREG1003Canonical(t *testing.T) {
 	}
 }
 
-func TestEncodeBREG1003AcceptsAquaticFamily(t *testing.T) {
+func TestEncodeBlockRegistryAcceptsAquaticFamily(t *testing.T) {
 	record := testRecord(0, 1)
 	record.ModelFamily = ModelFamilyAquatic
 	record.Provenance = ProvenancePMMP | ProvenanceDragonfly | ProvenancePrismarine
@@ -2930,7 +2949,7 @@ func TestEncodeBREG1003AcceptsAquaticFamily(t *testing.T) {
 	}
 }
 
-func TestEncodeBREG1003RejectsValentineProvenanceMetadataMismatch(t *testing.T) {
+func TestEncodeBlockRegistryRejectsValentineProvenanceMetadataMismatch(t *testing.T) {
 	records := []Record{testRecord(0, 1), testRecord(1, 2)}
 	records[0].Name = "minecraft:first"
 	records[1].Name = "minecraft:second"

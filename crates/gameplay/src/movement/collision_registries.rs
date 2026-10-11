@@ -22,6 +22,8 @@ const RESERVED_RECORD_NAME: &str = "cinnabar:reserved";
 /// Interaction facts shared by both runtime identity spaces.
 #[derive(Debug, Clone)]
 struct InteractionBlock {
+    survival: assets::BlockSurvivalFacts,
+    placement: assets::BlockPlacementFacts,
     identifier: Arc<str>,
     full_cube: bool,
     build_intention: bool,
@@ -58,7 +60,9 @@ pub struct PhysicsCollisionRegistries {
     interleave_supported: bool,
     canonical_states: BTreeMap<u32, Arc<str>>,
     hashed_canonical_states: BTreeMap<u32, Arc<str>>,
+    #[cfg(test)]
     state_ids: BTreeMap<Arc<str>, BTreeMap<String, (u32, u32)>>,
+    placement_ids: BTreeMap<(u32, u32), (u32, u32)>,
     max_vanilla_sort_key: u64,
     custom_block_physics: Option<CustomBlockPhysics>,
     /// Hashes this session added to `hashed`, dropped when the next session begins.
@@ -164,7 +168,9 @@ impl PhysicsCollisionRegistries {
         let mut hashed_interaction_blocks = BTreeMap::new();
         let mut canonical_states = BTreeMap::new();
         let mut hashed_canonical_states = BTreeMap::new();
+        #[cfg(test)]
         let mut state_ids: BTreeMap<Arc<str>, BTreeMap<String, (u32, u32)>> = BTreeMap::new();
+        let mut placement_ids = BTreeMap::new();
         let mut max_vanilla_sort_key = 0;
         let mut vanilla_runs: Vec<(u64, Arc<str>, u32)> = Vec::new();
         let mut custom_block_physics = None;
@@ -188,6 +194,8 @@ impl PhysicsCollisionRegistries {
                 .flags
                 .contains(assets::block_shapes::ShapeFlags::FULL_CUBE);
             let binding = InteractionBlock {
+                survival: record.model_state.survival_facts(),
+                placement: record.model_state.placement_facts(),
                 identifier: Arc::from(record.name.as_ref()),
                 full_cube,
                 build_intention: shapes
@@ -208,11 +216,18 @@ impl PhysicsCollisionRegistries {
                     record.model_state.get(assets::ModelStateField::Orientation),
                 )),
             };
+            if binding.placement.rule != assets::BlockPlacementRule::Unresolved {
+                placement_ids.insert(
+                    (binding.placement.set, binding.placement.key),
+                    (record.sequential_id, record.network_hash),
+                );
+            }
             interaction_blocks.insert(record.sequential_id, binding.clone());
             hashed_interaction_blocks.insert(record.network_hash, binding);
             let state: Arc<str> = Arc::from(record.canonical_state.as_ref());
             canonical_states.insert(record.sequential_id, Arc::clone(&state));
             hashed_canonical_states.insert(record.network_hash, state);
+            #[cfg(test)]
             if let Ok(states) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
                 &record.canonical_state,
             ) {
@@ -332,7 +347,9 @@ impl PhysicsCollisionRegistries {
             vanilla_runs,
             canonical_states,
             hashed_canonical_states,
+            #[cfg(test)]
             state_ids,
+            placement_ids,
             max_vanilla_sort_key,
             custom_block_physics,
             session_hashes: Vec::new(),
@@ -385,6 +402,8 @@ impl PhysicsCollisionRegistries {
                 self.interaction_blocks.insert(
                     next,
                     InteractionBlock {
+                        survival: Default::default(),
+                        placement: Default::default(),
                         identifier: Arc::clone(&block.name),
                         full_cube: effective.collides && effective.collision_boxes.is_none(),
                         build_intention: false,
@@ -455,6 +474,8 @@ impl PhysicsCollisionRegistries {
                     self.hashed_interaction_blocks.insert(
                         state.hash,
                         InteractionBlock {
+                            survival: Default::default(),
+                            placement: Default::default(),
                             identifier: Arc::clone(&block.name),
                             full_cube: effective.collides && effective.collision_boxes.is_none(),
                             build_intention: false,
@@ -474,6 +495,50 @@ impl PhysicsCollisionRegistries {
         Some(self.session_hashes.len())
     }
 
+    /// Reads compiled state dispositions without parsing JSON or classifying a name.
+    pub fn block_survival_facts(
+        &self,
+        mode: assets::NetworkIdMode,
+        runtime_id: u32,
+    ) -> assets::BlockSurvivalFacts {
+        let records = match mode {
+            assets::NetworkIdMode::Sequential => &self.interaction_blocks,
+            assets::NetworkIdMode::Hashed => &self.hashed_interaction_blocks,
+        };
+        records
+            .get(&runtime_id)
+            .map_or_else(Default::default, |record| record.survival)
+    }
+
+    /// Reads a compiled numerical placement program, retaining unknown session definitions.
+    pub fn block_placement_facts(
+        &self,
+        mode: assets::NetworkIdMode,
+        runtime_id: u32,
+    ) -> assets::BlockPlacementFacts {
+        let records = match mode {
+            assets::NetworkIdMode::Sequential => &self.interaction_blocks,
+            assets::NetworkIdMode::Hashed => &self.hashed_interaction_blocks,
+        };
+        records
+            .get(&runtime_id)
+            .map_or_else(Default::default, |record| record.placement)
+    }
+
+    /// Selects an already registered state from a compiled set and key, without constructing JSON.
+    pub fn placement_state_id(
+        &self,
+        mode: assets::NetworkIdMode,
+        set: u32,
+        key: u32,
+    ) -> Option<u32> {
+        let &(sequential, hashed) = self.placement_ids.get(&(set, key))?;
+        Some(match mode {
+            assets::NetworkIdMode::Sequential => sequential,
+            assets::NetworkIdMode::Hashed => hashed,
+        })
+    }
+
     pub fn block_identifier(&self, mode: assets::NetworkIdMode, runtime_id: u32) -> Option<&str> {
         let map = match mode {
             assets::NetworkIdMode::Sequential => &self.interaction_blocks,
@@ -483,6 +548,7 @@ impl PhysicsCollisionRegistries {
     }
 
     /// The runtime id of `identifier` in exactly `states`, compared as parsed JSON.
+    #[cfg(test)]
     pub fn block_state_runtime_id(
         &self,
         mode: assets::NetworkIdMode,

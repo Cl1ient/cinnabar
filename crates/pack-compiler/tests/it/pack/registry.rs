@@ -69,7 +69,7 @@ fn registry_reader_exposes_typed_model_state() {
     bytes[record_start + 11] = 1 << ((ModelStateField::Growth as u8) - 1);
     let values_start = record_start + 24;
     bytes[values_start + 5 * 4..values_start + 6 * 4].copy_from_slice(&7_u32.to_le_bytes());
-    let records = read_registry(&bytes).expect("typed BREG1003 registry");
+    let records = read_registry(&bytes).expect("typed block registry registry");
     assert_eq!(records[0].model_state.get(ModelStateField::Growth), Some(7));
 }
 
@@ -94,7 +94,7 @@ fn registry_reader_decodes_fixed_collision_seed() {
     }
     bytes.splice(record_start + 56..record_start + 56, encoded_box);
 
-    let records = read_registry(&bytes).expect("collision BREG1003 registry");
+    let records = read_registry(&bytes).expect("collision block registry registry");
     assert_eq!(records[0].collision_seed.shape_id, 7);
     assert_eq!(
         records[0].collision_seed.confidence,
@@ -141,8 +141,8 @@ fn registry_reader_rejects_false_valentine_name_overlap_metadata() {
 fn registry_reader_decodes_checked_in_canonical_projection() {
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/data/block-registry-v1001.bin");
-    let bytes = fs::read(path).expect("read checked-in BREG1003");
-    let records = read_registry(&bytes).expect("decode checked-in BREG1003");
+    let bytes = fs::read(path).expect("read checked-in block registry");
+    let records = read_registry(&bytes).expect("decode checked-in block registry");
     assert_eq!(records.len(), 16_913);
     let names = records
         .iter()
@@ -221,7 +221,7 @@ fn checked_in_registry_has_one_canonical_air_network_identity() {
     let records = read_registry(include_bytes!(
         "../../../../assets/data/block-registry-v1001.bin"
     ))
-    .expect("decode checked-in BREG1003");
+    .expect("decode checked-in block registry");
     let air = records
         .iter()
         .filter(|record| {
@@ -241,7 +241,7 @@ fn checked_in_registry_has_one_canonical_air_network_identity() {
 fn registry_reader_decodes_all_pressure_plate_pressed_selectors() {
     const PRESSED: u32 = 1 << 1;
     let bytes = include_bytes!("../../../../assets/data/block-registry-v1001.bin");
-    let records = read_registry(bytes).expect("decode checked-in BREG1003");
+    let records = read_registry(bytes).expect("decode checked-in block registry");
     let plates = records
         .iter()
         .filter(|record| record.model_family == ModelFamily::PressurePlate)
@@ -348,7 +348,7 @@ fn registry_reader_rejects_duplicate_network_hashes() {
 
 #[test]
 fn registry_reader_rejects_oversized_counts_before_record_allocation() {
-    let mut bytes = b"BREG1003".to_vec();
+    let mut bytes = assets::REGISTRY_MAGIC.to_vec();
     bytes.extend_from_slice(&1001_u32.to_le_bytes());
     bytes.extend_from_slice(&1_u32.to_le_bytes());
     bytes.extend_from_slice(&65_537_u32.to_le_bytes());

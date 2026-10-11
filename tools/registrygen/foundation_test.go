@@ -15,12 +15,12 @@ import (
 	"github.com/hashimthearab/rust-mcbe/tools/registrygen/internal/targetpin"
 )
 
-const validBlockedFoundation = `{
+var validBlockedFoundation = strings.ReplaceAll(`{
   "schema": "cinnabar.registry-foundation.v1",
   "status": "blocked",
   "game_version": "1.26.50",
   "protocol": 2193,
-  "formats": {"block": "BREG1003", "light": "LREG1001", "biome": "BIOREG01"},
+  "formats": {"block": "@BLOCK_FORMAT@", "light": "LREG1001", "biome": "BIOREG01"},
   "outputs": {
     "block": "crates/assets/data/block-registry-v2193.bin",
     "light": "crates/assets/data/block-light-registry-v2193.bin",
@@ -29,7 +29,7 @@ const validBlockedFoundation = `{
   "sources": {
     "protocolgen": {
       "module": "github.com/bedrock-mc/protocolgen/generated/data",
-      "source_lock_sha256": "` + shared.SourceLockSHA256 + `",
+      "source_lock_sha256": "`, "@BLOCK_FORMAT@", registryHeader) + shared.SourceLockSHA256 + `",
       "cloudburst_ref": "` + shared.CloudburstRef + `"
     },
     "bds": {
@@ -84,7 +84,7 @@ func TestRegistryFoundationRejectsVersionHashMagicAndLegacyOutputs(t *testing.T)
 		"protocol":       strings.Replace(validBlockedFoundation, `2193`, `2192`, 1),
 		"uppercase hash": strings.Replace(validBlockedFoundation, shared.SourceLockSHA256, strings.ToUpper(shared.SourceLockSHA256), 1),
 		"short hash":     strings.Replace(validBlockedFoundation, shared.SourceLockSHA256, `abcd`, 1),
-		"block magic":    strings.Replace(validBlockedFoundation, `BREG1003`, `BREG1002`, 1),
+		"block magic":    strings.Replace(validBlockedFoundation, registryHeader, `BREG1002`, 1),
 		"light magic":    strings.Replace(validBlockedFoundation, `LREG1001`, `LREG1002`, 1),
 		"biome magic":    strings.Replace(validBlockedFoundation, `BIOREG01`, `BIOREG02`, 1),
 		"legacy output":  strings.Replace(validBlockedFoundation, `block-registry-v2193.bin`, `block-registry-v1001.bin`, 1),
@@ -100,7 +100,7 @@ func TestRegistryFoundationRejectsVersionHashMagicAndLegacyOutputs(t *testing.T)
 
 func TestRegistryFoundationRejectsForbiddenRegistrySurface(t *testing.T) {
 	forbidden := "P" + "REG"
-	input := strings.Replace(validBlockedFoundation, `"block": "BREG1003"`, `"block": "BREG1003", "`+forbidden+`": "`+forbidden+`1001"`, 1)
+	input := strings.Replace(validBlockedFoundation, `"block": "`+registryHeader+`"`, `"block": "`+registryHeader+`", "`+forbidden+`": "`+forbidden+`1001"`, 1)
 	if _, err := ValidateRegistryFoundation(strings.NewReader(input)); err == nil {
 		t.Fatal("accepted forbidden registry field")
 	}

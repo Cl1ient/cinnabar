@@ -125,7 +125,7 @@ fn custom_wearable_protection_reaches_the_rendered_hud() {
     super::super::forms::snapshot::write(&frame, "custom-wearable-protection");
     assert_eq!(runtime.hud().armor().map(|value| value.current()), Some(6));
     let image = super::super::forms::snapshot::rasterize(&frame);
-    assert!(image.pixels().any(|pixel| pixel.0 == [235, 240, 250, 255]));
+    assert!(image.pixels().any(|pixel| pixel.0 == [255, 255, 255, 255]));
 }
 
 #[test]

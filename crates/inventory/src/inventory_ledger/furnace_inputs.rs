@@ -37,6 +37,15 @@ impl FurnaceInputs {
         changed
     }
 
+    /// Whether admission is already bound to these exact catalog and registry allocations.
+    pub(super) fn is_bound(
+        &self,
+        catalog: &Option<Arc<RecipeCatalog>>,
+        registry: &Option<Arc<BTreeMap<i32, ItemRegistryEntry>>>,
+    ) -> bool {
+        same(&self.catalog, catalog) && same(&self.registry, registry)
+    }
+
     /// Reads only numeric IDs and metadata; unavailable admission remains unknown.
     pub(super) fn accepts(
         &self,
@@ -181,7 +190,7 @@ impl super::PlayerInventoryLedger {
                 pending.furnace_route.is_none()
                     && pending.predicted.iter().any(|prediction| {
                         prediction.cell == super::Cell::Storage(0)
-                            && prediction.held.as_ref().is_some_and(|held| {
+                            && placed_into(prediction).is_some_and(|held| {
                                 let (id, metadata) = (held.stack.network_id, held.stack.metadata);
                                 previous.accepts(window, id, metadata)
                                     != self.furnace_inputs.accepts(window, id, metadata)
@@ -197,6 +206,11 @@ impl super::PlayerInventoryLedger {
         self.refold();
     }
 
+    /// Whether admission already reflects `catalog` and the current item registry.
+    pub(crate) fn furnace_inputs_bound(&self, catalog: &Option<Arc<RecipeCatalog>>) -> bool {
+        self.furnace_inputs.is_bound(catalog, &self.item_registry)
+    }
+
     /// Reads cached station input acceptance without names or recipe iteration.
     pub(crate) fn furnace_input_accepts(
         &self,
@@ -205,6 +219,20 @@ impl super::PlayerInventoryLedger {
         metadata: u32,
     ) -> Option<bool> {
         self.furnace_inputs.accepts(window, network_id, metadata)
+    }
+}
+
+/// The stack a prediction adds to its cell; takes that leave part of a stack add nothing.
+fn placed_into(prediction: &super::queue::CellPrediction) -> Option<&super::cells::Held> {
+    let held = prediction.held.as_ref()?;
+    match &prediction.before {
+        Some(before)
+            if super::PlayerInventoryLedger::same_item(&before.stack, &held.stack)
+                && held.stack.count <= before.stack.count =>
+        {
+            None
+        }
+        _ => Some(held),
     }
 }
 

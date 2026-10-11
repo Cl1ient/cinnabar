@@ -1053,3 +1053,52 @@ fn furnace_input_admission_tracks_station_metadata_registry_and_catalog_removal(
         None
     );
 }
+
+#[test]
+fn idle_flushes_keep_a_shared_ledger_snapshot() {
+    let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
+    let _ = inventory.ledger_mut();
+    let snapshot = inventory.ledger_snapshot();
+    let admitted = inventory.flush_pending_inventory_send(1, |_| Ok::<_, ()>(()));
+    assert_eq!(admitted, Ok(false));
+    assert!(Arc::ptr_eq(&snapshot, &inventory.ledger_snapshot()));
+}
+
+#[test]
+fn recipe_changes_keep_partial_takes_from_the_ingredient_slot() {
+    let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
+    let ledger = inventory.ledger_mut();
+    ledger.apply(&InventoryEvent::Content(InventoryContentEvent {
+        container: ContainerIdentity {
+            window_id: Some(-1),
+            slot_type: Some(::protocol::CONTAINER_NAME_CURSOR),
+            dynamic_id: None,
+        },
+        slots: Arc::from([NetworkItemStack::empty()]),
+        storage_item: NetworkItemStack::empty(),
+    }));
+    let mut slots = vec![NetworkItemStack::empty(); 3];
+    slots[0] = NetworkItemStack {
+        network_id: 2,
+        count: 8,
+        stack_network_id: 30,
+        ..NetworkItemStack::empty()
+    };
+    ledger.apply(&InventoryEvent::Content(InventoryContentEvent {
+        container: ContainerIdentity::window(7),
+        slots: slots.into(),
+        storage_item: NetworkItemStack::empty(),
+    }));
+    ledger.begin_storage_take_count(0, 1).unwrap();
+    assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 7);
+    apply_recipes(&mut inventory, &FIXTURE_RECIPES[2..3], 2);
+    let _ = inventory.ledger_mut();
+    assert_eq!(
+        inventory
+            .ledger_mut()
+            .furnace_input_accepts(::protocol::WindowKind::Furnace, 2, 0),
+        Some(false)
+    );
+    assert_eq!(inventory.ledger().pending_request_count(), 1);
+    assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 7);
+}

@@ -107,7 +107,7 @@ fn world_carrier_exact_bytes() {
     assert_eq!(bytes.len(), 1_576_352);
     assert_eq!(
         format!("{:x}", Sha256::digest(&bytes)),
-        "a26e9817f3d46f262b1fa7588d085daef3da16f81fdb57a2c89de0b05d59d7e6",
+        "ecd33e841b0c4a132e3c1b607ed49deeb713832021742b690f6124422c51858a",
         "the complete every-table fixture is the byte-exact world carrier golden"
     );
     assert_eq!(read_u32(&bytes, 20), 2);
@@ -119,14 +119,14 @@ fn world_carrier_exact_bytes() {
     assert_eq!(read_u32(&bytes, 48), 2);
     let visuals = read_u64(&bytes, 192) as usize;
     assert_eq!(bytes[visuals + 27], 0xf0);
-    assert_eq!(bytes[visuals + 44 + 27], 0x0c);
+    assert_eq!(bytes[visuals + assets::blob::VISUAL_BYTES + 27], 0x0c);
     let materials = read_u64(&bytes, 208) as usize;
     let templates = read_u64(&bytes, 216) as usize;
     let quads = read_u64(&bytes, 224) as usize;
     let animations = read_u64(&bytes, 232) as usize;
     let frames = read_u64(&bytes, 240) as usize;
     assert_eq!(
-        &bytes[visuals + 44..visuals + 68],
+        &bytes[visuals + assets::blob::VISUAL_BYTES..visuals + assets::blob::VISUAL_BYTES + 24],
         &[
             1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0
         ]

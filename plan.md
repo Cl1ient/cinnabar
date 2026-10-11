@@ -7595,4 +7595,6 @@ registry; changed or custom identities remain unresolved. The existing hardness 
 tool source is retained as explicitly provisional prediction data. Full native tool,
 state-dependent hardness, legacy protocol and session destroy-component coverage is
 incomplete; this does not close the complete destroy parity gate. `make assets`
-regenerates the carrier and stale envelopes fail admission.
+regenerates the carrier and stale envelopes fail admission. Held-item tool and
+creative-break classification still use item names and need separate admission
+facts before the complete mining path can be considered name-free.

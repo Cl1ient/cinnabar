@@ -24,7 +24,7 @@ impl ToolKind {
         1 << self as u8
     }
 
-    /// Reads supported tool family names only during descriptor or item admission.
+    /// Reads a supported tool family name.
     pub fn parse(value: &str) -> Option<Self> {
         Some(match value {
             "pickaxe" => Self::Pickaxe,

@@ -226,6 +226,26 @@ fn matches_scalar_relaxation(full: bool) {
                         "provenance at {position:?}, generation {generation}, profile {profile:?}"
                     );
                 }
+                // A section's direct sky read in one walk matches the per-cell reports.
+                let mut walked = std::collections::BTreeSet::new();
+                for key in bounds
+                    .positions()
+                    .map(|position| types::split_position(0, position).0)
+                    .collect::<std::collections::BTreeSet<_>>()
+                {
+                    output.for_each_direct_sky_in(key, |local| {
+                        walked.insert((key, local));
+                    });
+                }
+                let reported = bounds
+                    .positions()
+                    .filter(|position| output.has_direct_sky_provenance(0, *position))
+                    .map(|position| types::split_position(0, position))
+                    .collect::<std::collections::BTreeSet<_>>();
+                assert_eq!(
+                    walked, reported,
+                    "generation {generation}, profile {profile:?}"
+                );
                 previous = Some(output);
             }
         }

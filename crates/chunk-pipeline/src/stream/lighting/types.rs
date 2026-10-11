@@ -51,22 +51,11 @@ impl DirectSkyMask {
     pub(in crate::stream) fn from_output(output: &LightSolveOutput, key: SubChunkKey) -> Self {
         let mut words = Box::new([0_u64; 64]);
         let mut count = 0_usize;
-        for x in 0_u8..16 {
-            for z in 0_u8..16 {
-                for y in 0_u8..16 {
-                    let position = BlockPos::new(
-                        key.x.saturating_mul(16).saturating_add(i32::from(x)),
-                        key.y.saturating_mul(16).saturating_add(i32::from(y)),
-                        key.z.saturating_mul(16).saturating_add(i32::from(z)),
-                    );
-                    if output.has_direct_sky_provenance(key.dimension, position) {
-                        let index = light_local_index(x, y, z);
-                        words[index / 64] |= 1_u64 << (index % 64);
-                        count += 1;
-                    }
-                }
-            }
-        }
+        output.for_each_direct_sky_in(key, |[x, y, z]| {
+            let index = light_local_index(x, y, z);
+            words[index / 64] |= 1_u64 << (index % 64);
+            count += 1;
+        });
         match count {
             0 => Self::Uniform(false),
             4_096 => Self::Uniform(true),

@@ -35,6 +35,21 @@ impl LightSolveOutput {
     pub const fn sub_chunks(&self) -> &BTreeMap<SubChunkKey, Arc<SubChunkLight>> {
         &self.sub_chunks
     }
+
+    /// Calls `visit` with the section-local `[x, y, z]` of every cell of `key` that
+    /// [`LightReadAccess::has_direct_sky_provenance`] reports, without a lookup per cell.
+    pub fn for_each_direct_sky_in(&self, key: SubChunkKey, mut visit: impl FnMut([u8; 3])) {
+        if key.dimension != self.dimension {
+            return;
+        }
+        let side = SUB_CHUNK_SIDE as i64;
+        let origin = [key.x, key.y, key.z].map(|axis| i64::from(axis) * side);
+        let end = origin.map(|axis| axis + side - 1);
+        self.direct_sky.for_each_within(origin, end, |position| {
+            let (_, local) = split_position(self.dimension, position);
+            visit(local);
+        });
+    }
 }
 
 impl LightReadAccess for LightSolveOutput {

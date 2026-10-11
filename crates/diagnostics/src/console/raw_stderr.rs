@@ -5,7 +5,7 @@ use std::{
     io::{self, Read},
     sync::{
         Arc, Mutex, TryLockError,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{SyncSender, TrySendError},
     },
     time::{Duration, Instant},
@@ -17,15 +17,20 @@ const POLL_INTERVAL: Duration = Duration::from_millis(5);
 pub(super) struct RawStderr {
     reader: Mutex<File>,
     cancelled: AtomicBool,
+    dropped: Arc<AtomicU64>, // Shared with the console so overflow is reported once, in order.
 }
 
 impl RawStderr {
     /// Installs a process-lifetime pipe only after its drain thread has started successfully.
-    pub(super) fn start(queue: SyncSender<Message>) -> io::Result<Arc<Self>> {
+    pub(super) fn start(
+        queue: SyncSender<Message>,
+        dropped: Arc<AtomicU64>,
+    ) -> io::Result<Arc<Self>> {
         let (reader, writer) = pipe()?;
         let capture = Arc::new(Self {
             reader: Mutex::new(reader),
             cancelled: AtomicBool::new(false),
+            dropped,
         });
         let thread = Arc::clone(&capture);
         std::thread::Builder::new()
@@ -45,7 +50,8 @@ impl RawStderr {
         Ok(capture)
     }
 
-    /// Queues all bytes currently in the pipe before a console flush, respecting exit deadlines.
+    /// Queues all bytes currently in the pipe. Without a deadline a full queue drops and counts the
+    /// chunk, so a stalled console never backs up the pipe into `eprintln!` callers.
     pub(super) fn drain(&self, queue: &SyncSender<Message>, deadline: Option<Instant>) -> bool {
         let mut reader = loop {
             match self.reader.try_lock() {
@@ -81,10 +87,14 @@ impl RawStderr {
                     Ok(()) => break,
                     Err(TrySendError::Disconnected(_)) => return false,
                     Err(TrySendError::Full(returned)) => {
-                        message = returned;
-                        if deadline.is_some_and(|end| Instant::now() >= end) {
+                        let Some(end) = deadline else {
+                            self.dropped.fetch_add(1, Ordering::Relaxed);
+                            break;
+                        };
+                        if Instant::now() >= end {
                             return false;
                         }
+                        message = returned;
                         std::thread::sleep(FULL_QUEUE_RETRY);
                     }
                 }
@@ -208,4 +218,29 @@ fn available(reader: &File) -> io::Result<usize> {
         return Err(io::Error::last_os_error());
     }
     Ok(count as usize)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{io::Write, sync::mpsc::sync_channel};
+
+    /// A stalled console must not stop the pipe draining, or raw stderr writers block.
+    #[test]
+    fn a_full_queue_drops_pipe_bytes_instead_of_waiting() {
+        let (reader, mut writer) = pipe().unwrap();
+        let capture = RawStderr {
+            reader: Mutex::new(reader),
+            cancelled: AtomicBool::new(false),
+            dropped: Arc::new(AtomicU64::new(0)),
+        };
+        let (queue, _pending) = sync_channel(1);
+        queue
+            .try_send(Message::Write(Stream::Stderr, b"queued".to_vec()))
+            .unwrap();
+        writer.write_all(b"stalled console output").unwrap();
+        assert!(capture.drain(&queue, None));
+        assert_eq!(capture.dropped.load(Ordering::Relaxed), 1);
+        assert_eq!(available(&capture.reader.lock().unwrap()).unwrap(), 0);
+    }
 }

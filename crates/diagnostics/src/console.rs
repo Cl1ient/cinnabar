@@ -259,7 +259,10 @@ pub fn initialize_log(path: &std::path::Path, limit: u64) -> std::io::Result<()>
             .queue
             .as_ref()
             .ok_or_else(|| std::io::Error::other("console writer unavailable"))?;
-        console.raw_stderr = Some(raw_stderr::RawStderr::start(queue.clone())?);
+        console.raw_stderr = Some(raw_stderr::RawStderr::start(
+            queue.clone(),
+            Arc::clone(&console.dropped),
+        )?);
     }
     CONSOLE.set(console).map_err(|_| {
         std::io::Error::new(

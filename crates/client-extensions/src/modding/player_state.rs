@@ -30,12 +30,7 @@ pub fn snapshot(
                     || ledger.slot_state(slot as u8).unwrap(),
                     |selected| selected.state,
                 );
-            project_slot(
-                authority,
-                ledger,
-                state,
-                ledger.presented_slot_overlay(slot as u8),
-            )
+            project_slot(authority, state, ledger.presented_slot_overlay(slot as u8))
         })
         .collect();
     let armor = (0..4)
@@ -43,7 +38,6 @@ pub fn snapshot(
             let target = InventoryTarget::Armor(slot);
             project_slot(
                 authority,
-                ledger,
                 ledger.gear_slot_state(target).unwrap(),
                 ledger.presented_target_overlay(target),
             )
@@ -60,7 +54,6 @@ pub fn snapshot(
     };
     let offhand = project_slot(
         authority,
-        ledger,
         offhand_state,
         ledger.presented_target_overlay(InventoryTarget::Offhand),
     );
@@ -94,7 +87,6 @@ pub fn snapshot(
 /// Keeps unknown slots distinct from empty and validated item observations.
 fn project_slot(
     authority: &WorldAuthority,
-    ledger: &inventory::PlayerInventoryLedger,
     state: PlayerInventorySlot<'_>,
     overlay: Option<&StackResponseOverlay>,
 ) -> PlayerStateSlot {

@@ -150,12 +150,7 @@ fn durability_corrections_win_and_custom_or_invalid_data_is_not_invented() {
         None
     );
     helmet.nbt_digest = [0; 32];
-    let invalid = project_slot(
-        &authority,
-        player.inventory.ledger(),
-        PlayerInventorySlot::Present(&helmet),
-        None,
-    );
+    let invalid = project_slot(&authority, PlayerInventorySlot::Present(&helmet), None);
     assert!(!invalid.known);
     assert!(invalid.item.is_none());
 }

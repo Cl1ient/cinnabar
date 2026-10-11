@@ -1,5 +1,4 @@
 mod shared_states;
-pub use shared_states::SharedStates;
 use std::sync::Arc;
 
 use jolyne::GameData;

@@ -110,6 +110,8 @@ fn clippy(text: &str, root: &Path) -> Option<BTreeSet<String>> {
             }
         } else if let Some(capture) = summary.captures(line) {
             summarized += capture[1].parse::<usize>().ok()?;
+        } else if line == "warning: build failed, waiting for other jobs to finish..." {
+            // Parallel targets keep compiling after one fails; the counted errors still decide.
         } else if !cargo_progress(line) {
             return None;
         }
@@ -411,6 +413,22 @@ mod tests {
         ] {
             assert!(cargo_tests(&format!("{text}{unknown}\n"), Path::new("/repo")).is_none());
         }
+    }
+
+    #[test]
+    fn clippy_accepts_cargo_waiting_for_parallel_jobs() {
+        let lint = serde_json::json!({"reason":"compiler-message", "message":{"level":"error", "code":{"code":"clippy::fixture"}, "message":"existing lint", "spans":[], "children":[], "rendered":null}});
+        let text = format!(
+            "{lint}\nwarning: build failed, waiting for other jobs to finish...\nerror: could not compile `fixture` (lib) due to 1 previous error\n"
+        );
+        assert!(clippy(&text, Path::new("/repo")).is_some());
+        assert!(
+            clippy(
+                &format!("{text}error: unknown failure\n"),
+                Path::new("/repo")
+            )
+            .is_none()
+        );
     }
 
     #[test]

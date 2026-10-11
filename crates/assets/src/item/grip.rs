@@ -1,9 +1,7 @@
 //! Checked item grip facts, resolved before equipment rendering.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::OnceLock,
-};
+use super::retail;
+use std::{collections::BTreeMap, sync::OnceLock};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -14,16 +12,8 @@ use crate::{AssetError, EntityAssetSource, ItemVisualDefinition};
 pub const GRIP_SOURCE_PATH: &str = "registry/item-grips-v2193.tsv";
 /// Checkout input used by the entity carrier recipe.
 pub const GRIP_INPUT_PATH: &str = "crates/assets/data/item-grips-v2193.tsv";
-/// Checkout input for the independently admitted retail identity inventory.
-pub const RETAIL_INPUT_PATH: &str = "crates/protocol/data/retail_items_1_26_50.tsv";
 /// The single positive compatibility catalog used by compilation and validation.
 pub const GRIP_SOURCE_BYTES: &[u8] = include_bytes!("../../data/item-grips-v2193.tsv");
-/// Independent admitted retail identities, shared with the protocol registry.
-pub const RETAIL_SOURCE_PATH: &str = "registry/retail-items-v2193.tsv";
-/// The protocol registry's existing identity inventory, rather than a second list.
-pub const RETAIL_SOURCE_BYTES: &[u8] =
-    include_bytes!("../../../protocol/data/retail_items_1_26_50.tsv");
-
 /// Unresolved grip is separate from an admitted flat or upright placement.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "support", deny_unknown_fields)]
@@ -64,20 +54,10 @@ impl ItemGrip {
     }
 }
 
-struct Catalog {
-    retail: BTreeSet<&'static str>,
-    positive: BTreeMap<&'static str, bool>,
-}
-
 /// Builds the two independently owned admission inputs once, outside frame paths.
-fn catalog() -> &'static Catalog {
-    static CATALOG: OnceLock<Catalog> = OnceLock::new();
+fn catalog() -> &'static BTreeMap<&'static str, bool> {
+    static CATALOG: OnceLock<BTreeMap<&'static str, bool>> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        let retail = std::str::from_utf8(RETAIL_SOURCE_BYTES)
-            .expect("retail inventory is UTF-8")
-            .lines()
-            .filter_map(|line| line.split('\t').nth(1))
-            .collect::<BTreeSet<_>>();
         let mut positive = BTreeMap::new();
         for line in std::str::from_utf8(GRIP_SOURCE_BYTES)
             .expect("grip inventory is UTF-8")
@@ -85,7 +65,10 @@ fn catalog() -> &'static Catalog {
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
         {
             let (identifier, mirrored) = line.split_once('\t').expect("grip row has two fields");
-            assert!(retail.contains(identifier), "unadmitted grip {identifier}");
+            assert!(
+                retail::identifiers().contains(identifier),
+                "unadmitted grip {identifier}"
+            );
             let mirrored = match mirrored {
                 "0" => false,
                 "1" => true,
@@ -96,19 +79,19 @@ fn catalog() -> &'static Catalog {
                 "duplicate grip {identifier}"
             );
         }
-        Catalog { retail, positive }
+        positive
     })
 }
 
 /// Resolves a compatibility fact during compilation or cold fixture admission.
 pub fn builtin_item_grip(identifier: &str) -> ItemGrip {
     let catalog = catalog();
-    if !catalog.retail.contains(identifier) {
+    if !retail::identifiers().contains(identifier) {
         return ItemGrip::Unresolved;
     }
     ItemGrip::Provisional {
-        upright: catalog.positive.contains_key(identifier),
-        mirrored_art: catalog.positive.get(identifier).copied().unwrap_or(false),
+        upright: catalog.contains_key(identifier),
+        mirrored_art: catalog.get(identifier).copied().unwrap_or(false),
     }
 }
 
@@ -120,7 +103,7 @@ pub(crate) fn validate(
     let mut checked = [false; 2];
     for (index, (path, bytes)) in [
         (GRIP_SOURCE_PATH, GRIP_SOURCE_BYTES),
-        (RETAIL_SOURCE_PATH, RETAIL_SOURCE_BYTES),
+        (retail::SOURCE_PATH, retail::SOURCE_BYTES),
     ]
     .into_iter()
     .enumerate()
@@ -161,7 +144,7 @@ mod tests {
     fn sources() -> Vec<EntityAssetSource> {
         [
             (GRIP_SOURCE_PATH, GRIP_SOURCE_BYTES),
-            (RETAIL_SOURCE_PATH, RETAIL_SOURCE_BYTES),
+            (retail::SOURCE_PATH, retail::SOURCE_BYTES),
         ]
         .into_iter()
         .map(|(path, bytes)| EntityAssetSource {
@@ -229,8 +212,8 @@ mod tests {
         );
         assert!(builtin_item_grip("minecraft:fishing_rod").mirrored_art());
         assert_eq!(
-            catalog().retail.len(),
-            std::str::from_utf8(RETAIL_SOURCE_BYTES)
+            retail::identifiers().len(),
+            std::str::from_utf8(retail::SOURCE_BYTES)
                 .unwrap()
                 .lines()
                 .count()

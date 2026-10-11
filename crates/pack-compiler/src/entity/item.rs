@@ -267,7 +267,7 @@ pub(super) fn compile(
     let grip_source = *source_indices
         .get(assets::item::grip::GRIP_SOURCE_PATH)
         .ok_or_else(|| invalid("item grip defining source is absent"))?;
-    for identifier in std::str::from_utf8(item_bindings::RETAIL_ITEMS)
+    for identifier in std::str::from_utf8(assets::item::retail::SOURCE_BYTES)
         .map_err(|_| invalid("retail item inventory is not UTF-8"))?
         .lines()
         .filter_map(|line| line.split('\t').nth(1))
@@ -373,7 +373,7 @@ fn add_retail_block_items(
             .entry(record.name.as_ref())
             .or_insert(record.sequential_id);
     }
-    let retail = std::str::from_utf8(item_bindings::RETAIL_ITEMS)
+    let retail = std::str::from_utf8(assets::item::retail::SOURCE_BYTES)
         .map_err(|_| invalid("retail item list is not UTF-8"))?;
     for identifier in retail.lines().filter_map(|line| line.split('\t').nth(1)) {
         let key = ItemVisualKey {

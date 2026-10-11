@@ -234,8 +234,8 @@ pub fn compile_entity_assets_with_report(
             assets::item::grip::GRIP_SOURCE_BYTES,
         ),
         (
-            assets::item::grip::RETAIL_SOURCE_PATH,
-            assets::item::grip::RETAIL_SOURCE_BYTES,
+            assets::item::retail::SOURCE_PATH,
+            assets::item::retail::SOURCE_BYTES,
         ),
     ] {
         total_source_bytes = total_source_bytes

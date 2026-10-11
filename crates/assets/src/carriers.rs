@@ -160,7 +160,7 @@ pub const ENTITY: Carrier = Carrier {
         Input::Pack,
         Input::Manifest(VANILLA_MANIFEST),
         Input::File(crate::item::grip::GRIP_INPUT_PATH),
-        Input::File(crate::item::grip::RETAIL_INPUT_PATH),
+        Input::File(crate::item::retail::INPUT_PATH),
     ],
     ..carrier(
         "entity",

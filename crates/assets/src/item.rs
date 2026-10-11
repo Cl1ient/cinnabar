@@ -4,6 +4,7 @@ use thiserror::Error;
 use crate::AssetError;
 
 pub mod grip;
+pub mod retail;
 
 pub const MAX_ITEM_VISUALS: usize = 16_384;
 pub const MAX_ITEM_VISUAL_ALIASES: usize = 65_536;

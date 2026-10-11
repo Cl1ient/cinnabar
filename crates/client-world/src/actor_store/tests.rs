@@ -1192,3 +1192,40 @@ fn brightness_sample_uses_interpolated_feet_and_body_height() {
         assert!((sample[1] - (feet[1] + 0.66 * height)).abs() < 1e-6);
     }
 }
+
+#[test]
+fn falling_block_network_offsets_follow_their_scaled_box() {
+    let metadata = |height: f32, scale: f32| -> Arc<[ActorMetadata]> {
+        Arc::from([
+            ActorMetadata {
+                key: super::BOUNDING_BOX_HEIGHT_METADATA_KEY,
+                value: ActorMetadataValue::Float(height),
+            },
+            ActorMetadata {
+                key: super::SCALE_METADATA_KEY,
+                value: ActorMetadataValue::Float(scale),
+            },
+        ])
+    };
+    // The vanilla box keeps its half-block offset; text hosts stay where the server put them.
+    for (height, scale, sent, feet) in [
+        (0.98, 1.0, 64.5, 64.0),
+        (0.98, 0.000_000_1, 64.0, 64.0),
+        (0.0, 1.0, 64.0, 64.0),
+    ] {
+        let mut store = ActorStore::new(1, 0);
+        let ActorEvent::Spawn(mut event) =
+            entity_spawn(40, -40, "minecraft:falling_block", metadata(height, scale))
+        else {
+            unreachable!()
+        };
+        event.position[1] = sent;
+        store.apply(1, 1, ActorEvent::Spawn(event));
+        assert!(
+            (store.get(40).unwrap().position[1] - feet).abs() < 1e-5,
+            "height {height} at scale {scale}"
+        );
+        store.apply(1, 2, network_move(40, sent, true));
+        assert!((store.get(40).unwrap().position[1] - feet).abs() < 1e-5);
+    }
+}

@@ -1033,6 +1033,13 @@ these changes do not close the movement, camera, or actor parity gates.
 - Non-cube, animated and high-resolution carried geometry parity remains open.
 - Vanilla rules: [held block items](docs/reference/held-block-items.md).
 
+## Scaled name tags, end rods and invisible bedrock picking
+
+- Name-tag offsets (box height plus head clearance) follow the actor's Scale, a published zero
+  box height counts, and a falling block's network offset follows its scaled box, so
+  falling-block text hosts sit where their server puts them. Provisional: the user's vanilla
+  observation and Dragonfly's zero-offset text entity are the witnesses, not a client trace.
+
 ## Flower-pot floor and lily-pad atlas tint
 
 - Flower pots now add the dirt surface four pixels above the block base, below the rim.

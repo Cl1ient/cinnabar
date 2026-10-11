@@ -78,19 +78,19 @@ fn scene(anchors: &[NametagAnchor]) -> NametagScene {
 }
 
 #[test]
-fn metadata_scale_multiplies_the_box_height_but_not_the_head_clearance() {
+fn metadata_scale_multiplies_the_box_height_and_the_head_clearance() {
     let mut actor = actor();
     actor.metadata.insert(38, ActorMetadataValue::Float(2.0));
-    assert_eq!(tag_height(&actor), 2.0 * DEFAULT_HEIGHT + HEAD_CLEARANCE);
+    assert_eq!(tag_height(&actor), 2.0 * (DEFAULT_HEIGHT + HEAD_CLEARANCE));
     actor
         .metadata
         .insert(METADATA_HEIGHT, ActorMetadataValue::Float(3.6));
-    assert_eq!(tag_height(&actor), 2.0 * 3.6 + HEAD_CLEARANCE);
+    assert_eq!(tag_height(&actor), 2.0 * (3.6 + HEAD_CLEARANCE));
     actor
         .metadata
         .insert(0, ActorMetadataValue::Flags(1 << ACTOR_FLAG_SNEAKING));
     actor.metadata.remove(&METADATA_HEIGHT);
-    assert_eq!(tag_height(&actor), 2.0 * SNEAKING_HEIGHT + HEAD_CLEARANCE);
+    assert_eq!(tag_height(&actor), 2.0 * (SNEAKING_HEIGHT + HEAD_CLEARANCE));
 }
 
 #[test]
@@ -102,10 +102,15 @@ fn near_zero_scale_floating_text_tags_sit_at_the_hosts_feet() {
     actor
         .metadata
         .insert(METADATA_ALWAYS_SHOW_NAMETAG, ActorMetadataValue::Byte(1));
-    actor
-        .metadata
-        .insert(METADATA_HEIGHT, ActorMetadataValue::Float(0.98));
-    for scale in [0.000_000_1, 0.0] {
+    for (height, scale, expected) in [
+        (0.98, 0.000_000_1, 0.0),
+        (0.98, 0.0, 0.0),
+        // An empty published box is a size, not a missing one.
+        (0.0, 1.0, HEAD_CLEARANCE),
+    ] {
+        actor
+            .metadata
+            .insert(METADATA_HEIGHT, ActorMetadataValue::Float(height));
         actor.metadata.insert(38, ActorMetadataValue::Float(scale));
         let anchor = extract_nametag(
             &actor,
@@ -120,8 +125,8 @@ fn near_zero_scale_floating_text_tags_sit_at_the_hosts_feet() {
         let lift = anchor.position - feet;
         assert!(lift.is_finite());
         assert!(
-            (lift.y - HEAD_CLEARANCE).abs() < 1e-5,
-            "scale {scale} lifted the tag {lift}"
+            (lift.y - expected).abs() < 1e-5,
+            "height {height} at scale {scale} lifted the tag {lift}"
         );
     }
 }

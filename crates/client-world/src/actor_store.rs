@@ -58,7 +58,9 @@ const ACTOR_FLAG_HAS_GRAVITY: u32 = 49;
 const ACTOR_FLAG_USES_UNIFORM_AIR_DRAG: u32 = 128;
 
 const SLEEPING_PLAYER_NETWORK_OFFSET: f32 = 0.2;
+/// A vanilla falling block's network offset, for its vanilla box height.
 const FALLING_BLOCK_NETWORK_OFFSET: f32 = 0.5;
+const FALLING_BLOCK_HEIGHT: f32 = 0.98;
 const MINECART_NETWORK_OFFSET: f32 = 0.5;
 const BOAT_NETWORK_OFFSET: f32 = 0.375;
 const DEFAULT_PRIMED_TNT_NETWORK_OFFSET: f32 = 0.49;
@@ -176,11 +178,7 @@ impl ActorSnapshot {
     fn from_spawn(spawn: ActorSpawnEvent, spawn_revision: u64) -> Self {
         let terrain_interlock =
             terrain_interlock::TerrainInterlock::attached(&spawn.kind, std::time::Instant::now());
-        let mut position = spawn.position;
-        if matches!(&spawn.kind, ActorKind::Entity { identifier } if identifier.as_ref() == "minecraft:falling_block")
-        {
-            position[1] -= FALLING_BLOCK_NETWORK_OFFSET;
-        }
+        let position = spawn.position;
         let pose = ActorPose {
             position,
             pitch: spawn.pitch,
@@ -220,6 +218,18 @@ impl ActorSnapshot {
             hitboxes: None,
         };
         snapshot.apply_metadata(&spawn.metadata);
+        // A falling block's spawn position carries its network offset, which its box sets.
+        if matches!(&snapshot.kind, ActorKind::Entity { identifier } if identifier.as_ref() == "minecraft:falling_block")
+        {
+            let offset = snapshot.falling_block_network_offset();
+            for position in [
+                &mut snapshot.position,
+                &mut snapshot.previous_pose.position,
+                &mut snapshot.received_pose.position,
+            ] {
+                position[1] -= offset;
+            }
+        }
         snapshot.apply_attributes(&spawn.attributes);
         snapshot.sync_status_from_health();
         snapshot.apply_properties(&spawn.properties);
@@ -428,7 +438,7 @@ impl ActorSnapshot {
                 };
                 match path {
                     "item" => ITEM_ACTOR_NETWORK_OFFSET,
-                    "falling_block" => FALLING_BLOCK_NETWORK_OFFSET,
+                    "falling_block" => self.falling_block_network_offset(),
                     "tnt" => self.primed_tnt_network_offset(),
                     "minecart"
                     | "hopper_minecart"
@@ -498,6 +508,25 @@ impl ActorSnapshot {
                 flags & (1_u64 << bit) != 0
             }
             _ => false,
+        }
+    }
+
+    /// A falling block's network offset follows its box as the Scale metadata sizes it: half a
+    /// block for the vanilla box, none for an empty box or a near-zero scale, so a text host
+    /// built on a falling block stays at the position its server sends.
+    fn falling_block_network_offset(&self) -> f32 {
+        let height = match self.metadata.get(&BOUNDING_BOX_HEIGHT_METADATA_KEY) {
+            Some(ActorMetadataValue::Float(height)) if height.is_finite() && *height >= 0.0 => {
+                *height
+            }
+            _ => FALLING_BLOCK_HEIGHT,
+        };
+        let offset =
+            FALLING_BLOCK_NETWORK_OFFSET * height * self.render_scale() / FALLING_BLOCK_HEIGHT;
+        if offset.is_finite() {
+            offset
+        } else {
+            FALLING_BLOCK_NETWORK_OFFSET
         }
     }
 

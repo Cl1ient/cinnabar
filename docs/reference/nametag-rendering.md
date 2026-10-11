@@ -24,7 +24,7 @@ glyphs do. Sneak tags additionally test world depth, while ordinary tags use Alw
 | Rule | Behaviour |
 | --- | --- |
 | Ordinary black background | RGBA `(0, 0, 0, 0.25)` |
-| Head clearance above the scaled AABB height | `0.7` blocks |
+| Head clearance above adjusted AABB height | `0.7` blocks |
 | Font world scale | `1.6 * (1/60)` blocks/design pixel |
 | Line pitch | `10` design pixels |
 | Background top and horizontal padding | `-1`, `1` design pixels |
@@ -33,16 +33,6 @@ glyphs do. Sneak tags additionally test world depth, while ordinary tags use Alw
 | Billboard zero-horizontal fallback | `0.0001` |
 | Cubic acos coefficients | `0.87266463`, `-0.69813168` |
 | Below-name score distance squared | `<100` blocks squared |
-
-The tag anchor sits at the feet plus the published box height (data 54) times the Scale data
-(38), plus the clearance. The client applies Scale to the published box, as it does for
-collision: PocketMine-MP's `Entity::syncNetworkData` publishes its box divided by its scale, and
-GeyserMC's `ArmorStandEntity#getBoundingBoxHeight` leaves the published height unscaled because
-"the SCALE entity data handles that for us". Both are servers written against the client, not
-client witnesses. The clearance stays unscaled, consistent with Geyser lowering its zero-scale,
-zero-height text hosts by `0.6` less `0.1414` per line; no client witness fixes it yet. A
-floating-text host at near-zero scale therefore shows its tag just above its feet. Without a published height, `1.8` (`1.5` sneaking) times Scale stands in
-provisionally.
 
 For each nonempty LF-separated line the native font width is halved with integer truncation.
 Every line starts at its own negative half-width. The plate uses the maximum half-width,

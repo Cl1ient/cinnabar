@@ -102,7 +102,7 @@ remain unverified. No broader parity gate closes.
 ## Sea pickle terrain geometry
 
 Sea pickles compile one to four separate bodies and crossed live tips selected by
-the typed count and dead states. Bodies retain their side and cap sprite regions;
+the typed count and dead states. Bodies retain their side, top and inset cap sprite regions;
 replacement packs supply the sprite, and water remains a separate contributor.
 Original-art regressions cover all eight registry states, carrier roundtrips,
 material ownership and malformed selectors. Geometry uses the carrier's existing

@@ -37,7 +37,20 @@ fn compile_pickles(state: Option<&str>, color: u8) -> (RuntimeAssets, Vec<Regist
     }
     let directory = tempfile::tempdir().unwrap();
     let pixels: Vec<_> = (0..TILE_SIZE)
-        .flat_map(|y| (0..TILE_SIZE).flat_map(move |x| [color, x as u8 * 8, y as u8 * 8, 255]))
+        .flat_map(|y| {
+            (0..TILE_SIZE).flat_map(move |x| {
+                [
+                    color,
+                    x as u8 * 8,
+                    y as u8 * 8,
+                    if (5..=6).contains(&x) && (2..=3).contains(&y) {
+                        0
+                    } else {
+                        255
+                    },
+                ]
+            })
+        })
         .collect();
     write_png(
         directory.path().join("textures/pickle.png"),
@@ -105,12 +118,22 @@ fn sea_pickle_clusters_keep_individual_bodies_and_only_live_tips() {
                 .flags()
                 .intersects(BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE)
         );
-        let template = runtime.model_templates()[visual.model_template().unwrap() as usize];
-        let quads =
-            &runtime.model_quads()[template.quad_start as usize..][..template.quad_count as usize];
+        let parts = assets::model_template_parts(
+            runtime.model_templates(),
+            visual.model_template().unwrap(),
+        )
+        .unwrap();
+        assert!(
+            parts
+                .iter()
+                .all(|p| p.quad_count as usize <= assets::MAX_MODEL_TEMPLATE_QUADS)
+        );
+        let template = parts[0];
+        let quad_count: usize = parts.iter().map(|p| p.quad_count as usize).sum();
+        let quads = &runtime.model_quads()[template.quad_start as usize..][..quad_count];
         assert_eq!(
             quads.len(),
-            count * if dry { 6 } else { 8 },
+            count * if dry { 7 } else { 9 },
             "{count}/{dry}"
         );
         assert_eq!(
@@ -122,6 +145,17 @@ fn sea_pickle_clusters_keep_individual_bodies_and_only_live_tips() {
         );
         let material = visual.face(BlockFace::Up).material_id();
         assert!(quads.iter().all(|q| q.material == material));
+        let texture = runtime.material(material).texture;
+        let pixels = &runtime.texture_array().mips[0].rgba8;
+        let alpha = |x: usize, y: usize| {
+            pixels[(texture.layer() as usize * TILE_SIZE as usize * TILE_SIZE as usize
+                + y * TILE_SIZE as usize
+                + x)
+                * 4
+                + 3]
+        };
+        assert_eq!(alpha(6, 3), 0, "upper cap has a transparent opening");
+        assert_eq!(alpha(10, 3), 255, "inset cap samples the opaque interior");
         assert_ne!(
             runtime.material(material).flags & assets::MATERIAL_FLAG_ALPHA_CUTOUT,
             0
@@ -130,7 +164,7 @@ fn sea_pickle_clusters_keep_individual_bodies_and_only_live_tips() {
             runtime.material(material).flags & assets::MATERIAL_FLAG_ALPHA_BLEND,
             0
         );
-        for body in quads.chunks(if dry { 6 } else { 8 }) {
+        for body in quads.chunks(if dry { 7 } else { 9 }) {
             let bounds: [[i16; 2]; 3] = std::array::from_fn(|axis| {
                 [
                     body[..6]
@@ -186,14 +220,21 @@ fn sea_pickle_clusters_keep_individual_bodies_and_only_live_tips() {
                     .max(),
                 Some(3072)
             );
+            let cap = &body[6];
+            let inset_y = cap.positions[0][1];
+            assert!(cap.positions.iter().all(|p| p[1] == inset_y));
+            assert!((12..=13).contains(&(bounds[1][1] - inset_y)));
+            assert_eq!(cap.flags & assets::MODEL_QUAD_FLAG_FACE_MASK, 2);
+            assert_eq!(cap.uvs.iter().map(|uv| uv[0]).min(), Some(2048));
+            assert_eq!(cap.uvs.iter().map(|uv| uv[0]).max(), Some(3072));
             if !dry {
                 assert!(
-                    body[6..]
+                    body[7..]
                         .iter()
                         .flat_map(|q| q.positions)
                         .any(|p| p[1] > bounds[1][1])
                 );
-                assert!(body[6..].iter().flat_map(|q| q.uvs).all(|uv| uv[1] <= 1280));
+                assert!(body[7..].iter().flat_map(|q| q.uvs).all(|uv| uv[1] <= 1280));
             }
         }
     }

@@ -47,12 +47,24 @@ pub(in crate::compiler) fn compile_rule(
     let template = if let Some(&template) = templates.get(&key) {
         template
     } else {
-        let template = push_model_template(
-            quads(material, count, dead),
-            0,
-            storage.templates,
-            storage.quads,
-        )?;
+        let quads = quads(material, count, dead);
+        let chunks = quads.chunks(assets::MAX_MODEL_TEMPLATE_QUADS);
+        let parts = chunks.len();
+        let mut template = None;
+        for (index, chunk) in chunks.enumerate() {
+            let part = push_model_template(
+                chunk.to_vec(),
+                if index + 1 < parts {
+                    MODEL_TEMPLATE_FLAG_COMPOUND_NEXT
+                } else {
+                    0
+                },
+                storage.templates,
+                storage.quads,
+            )?;
+            template.get_or_insert(part);
+        }
+        let template = template.expect("sea pickle cluster has bodies");
         templates.insert(key, template);
         template
     };
@@ -95,7 +107,7 @@ fn region(quad: &mut ModelQuad, rect: [u16; 4]) {
 
 /// Emits closed bodies plus two double-sided crossed tips for each live pickle.
 fn quads(material: u32, count: u8, dead: bool) -> Vec<ModelQuad> {
-    let mut result = Vec::with_capacity((usize::from(count) + 1) * if dead { 6 } else { 8 });
+    let mut result = Vec::with_capacity((usize::from(count) + 1) * if dead { 7 } else { 9 });
     for &[x, z, height] in bodies(count) {
         let min = [position(x - 0.125), 0, position(z - 0.125)];
         let max = [position(x + 0.125), position(height), position(z + 0.125)];
@@ -115,10 +127,17 @@ fn quads(material: u32, count: u8, dead: bool) -> Vec<ModelQuad> {
             region(&mut quad, rect);
             result.push(quad);
         }
+        let low = position(height - 0.05);
+        let mut cap =
+            super::geometry::vanilla_cuboid_quads([material; 6], min, max)[BlockFace::Up as usize];
+        for vertex in &mut cap.positions {
+            vertex[1] = low;
+        }
+        region(&mut cap, [2048, 1280, 3072, 256]);
+        result.push(cap);
         if dead {
             continue;
         }
-        let low = position(height - 0.05);
         let high = position(height + 0.15);
         let [west, east, north, south] = [x - 0.04, x + 0.04, z - 0.04, z + 0.04].map(position);
         for (positions, u) in [

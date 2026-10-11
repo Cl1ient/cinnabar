@@ -1,5 +1,7 @@
 use client_state::PlayerRuntime;
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
+
+use super::publication::schedule_precedes;
 
 use bevy::{
     ecs::schedule::{IntoSystemSet, NodeId, ScheduleGraph, Schedules, SystemSet},
@@ -102,7 +104,7 @@ fn production_schedule_drains_content_before_click_and_admits_only_in_network_se
     // Window hotkeys and live settings may run between these input owners.
     // The authority contract requires their order, including indirect edges.
     assert!(
-        dependency_path_exists(
+        schedule_precedes(
             graph,
             system_node(
                 graph,
@@ -114,7 +116,7 @@ fn production_schedule_drains_content_before_click_and_admits_only_in_network_se
         "chat keyboard input must finish before menu input",
     );
     assert!(
-        dependency_path_exists(
+        schedule_precedes(
             graph,
             system_node(graph, drive_menu_input, "drive_menu_input"),
             system_node(

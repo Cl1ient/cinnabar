@@ -8,24 +8,6 @@ pub(super) fn stage_node(graph: &ScheduleGraph, stage: ClientFrameSet) -> NodeId
     NodeId::Set(key)
 }
 
-pub(super) fn dependency_path_exists(graph: &ScheduleGraph, before: NodeId, after: NodeId) -> bool {
-    let dependencies = graph.dependency().graph();
-    let mut pending = vec![before];
-    let mut visited = HashSet::new();
-    while let Some(node) = pending.pop() {
-        if !visited.insert(node) {
-            continue;
-        }
-        for successor in dependencies.neighbors(node) {
-            if successor == after {
-                return true;
-            }
-            pending.push(successor);
-        }
-    }
-    false
-}
-
 pub(super) fn assert_system_in_stage<M>(
     graph: &ScheduleGraph,
     system: impl IntoSystemSet<M>,

@@ -376,7 +376,7 @@ fn acceptance_terminal_runs_after_the_authoritative_network_send_stage() {
 }
 
 /// Checks ordering inherited from containing sets without treating shared membership as order.
-fn schedule_precedes(graph: &ScheduleGraph, from: NodeId, target: NodeId) -> bool {
+pub(super) fn schedule_precedes(graph: &ScheduleGraph, from: NodeId, target: NodeId) -> bool {
     let ancestors = |node| {
         let mut pending = vec![node];
         let mut found = Vec::new();

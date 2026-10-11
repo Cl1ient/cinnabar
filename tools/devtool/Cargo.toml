@@ -9,6 +9,7 @@ publish = false
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 csv = "1"
+ctrlc = { version = "3.4", features = ["termination"] }
 thiserror.workspace = true
 
 [dev-dependencies]

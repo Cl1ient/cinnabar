@@ -3141,6 +3141,7 @@ name = "devtool"
 version = "0.1.12"
 dependencies = [
  "csv",
+ "ctrlc",
  "serde",
  "serde_json",
  "tempfile",

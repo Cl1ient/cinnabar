@@ -235,3 +235,87 @@ print(json.dumps({'reason':'compiler-artifact','target':{'name':'bedrock-client'
         }
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn supervisor_only_sigterm_stops_the_client_and_collector() {
+    use std::{
+        fs,
+        io::{BufRead, BufReader},
+        os::unix::fs::PermissionsExt,
+        process::{Command, Stdio},
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let bin = temp.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    fs::create_dir_all(temp.path().join("target/debug")).unwrap();
+    // Each fixture announces its PID on the supervisor's inherited stdout, then waits for a signal.
+    let waiter = |role: &str| {
+        format!(
+            "#!/usr/bin/env python3\nimport os, signal, sys\nif '--help' in sys.argv: sys.exit(0)\nprint('{role}-ready', os.getpid(), flush=True)\nsignal.pause()\n"
+        )
+    };
+    for (path, source) in [
+        (
+            bin.join("make"),
+            r#"#!/usr/bin/env python3
+import json, pathlib
+print(json.dumps({'reason':'compiler-artifact','target':{'name':'bedrock-client','kind':['bin']},'executable':str(pathlib.Path('target/debug/bedrock-client').resolve())}))
+"#
+            .to_owned(),
+        ),
+        (temp.path().join("target/debug/bedrock-client"), waiter("client")),
+        (bin.join("tracy-capture"), waiter("collector")),
+        (bin.join("tracy-csvexport"), "#!/bin/sh\nexit 0\n".to_owned()),
+    ] {
+        fs::write(&path, source).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut supervisor = Command::new(env!("CARGO_BIN_EXE_devtool"))
+        .current_dir(temp.path())
+        .env("PROFILE", "dev")
+        .env_remove("CARGO_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET_DIR")
+        .env_remove("CARGO_BUILD_TARGET")
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .args(["capture", "--seconds", "600", "--out", "output"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut fixtures = Vec::new();
+    for line in BufReader::new(supervisor.stdout.take().unwrap()).lines() {
+        let line = line.unwrap();
+        if let Some(pid) = line
+            .strip_prefix("client-ready ")
+            .or_else(|| line.strip_prefix("collector-ready "))
+        {
+            fixtures.push(pid.to_owned());
+            if fixtures.len() == 2 {
+                break;
+            }
+        }
+    }
+    assert!(
+        Command::new("kill")
+            .args(["-TERM", &supervisor.id().to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let output = supervisor.wait_with_output().unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("cancelled"));
+    for pid in fixtures {
+        let alive = Command::new("kill")
+            .args(["-0", &pid])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success();
+        assert!(!alive, "fixture {pid} outlived its supervisor");
+    }
+}

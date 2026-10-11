@@ -6,6 +6,7 @@ use std::{
     net::TcpListener,
     path::{Path, PathBuf},
     process::{Child, Command},
+    sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -25,6 +26,7 @@ struct Summary {
     p50_ms: f64,
     p90_ms: f64,
     p99_ms: f64,
+    max_ms: f64,
     hitches: usize,
     zones: Vec<Zone>,
 }
@@ -46,6 +48,10 @@ pub(crate) fn run(args: &[String], summary_only: bool) -> Result<(), DevtoolErro
         trace
     } else {
         refuse_output_overrides(|name| std::env::var_os(name))?;
+        // A supervisor-only SIGINT or SIGTERM must still stop the client and collector.
+        ctrlc::set_handler(|| CANCELLED.store(true, Ordering::SeqCst)).map_err(|error| {
+            DevtoolError::Usage(format!("cannot handle capture cancellation: {error}"))
+        })?;
         // Check tools before a costly build or client launch.
         if Command::new("tracy-capture")
             .arg("--help")
@@ -61,6 +67,9 @@ pub(crate) fn run(args: &[String], summary_only: bool) -> Result<(), DevtoolErro
             ));
         }
         let executable = build_client()?;
+        if CANCELLED.load(Ordering::SeqCst) {
+            return Err(cancelled_error());
+        }
         let port = capture_port()?.to_string();
         let mut client = OwnedChild(
             client_command(&executable, &port, &options)
@@ -87,6 +96,7 @@ pub(crate) fn run(args: &[String], summary_only: bool) -> Result<(), DevtoolErro
             &mut client,
             &mut collector,
             Duration::from_secs(u64::from(options.seconds)) + CONNECTION_ALLOWANCE,
+            &CANCELLED,
         );
         client.stop()?;
         collector.stop()?;
@@ -364,6 +374,7 @@ fn summarize(
         p50_ms: percentile(&intervals, 0.5),
         p90_ms: percentile(&intervals, 0.9),
         p99_ms: percentile(&intervals, 0.99),
+        max_ms: intervals[intervals.len() - 1],
         hitches: intervals
             .iter()
             .filter(|interval| **interval > 1500.0 / refresh_hz)
@@ -411,12 +422,13 @@ fn csv_error(error: csv::Error) -> DevtoolError {
 /// Reports percentiles, deadline misses, and inclusive zones without adding overlapping time.
 fn print_summary(summary: &Summary) {
     println!(
-        "frames={} refresh_hz={} interval_ms p50={:.3} p90={:.3} p99={:.3} over_1.5_refresh={}",
+        "frames={} refresh_hz={} interval_ms p50={:.3} p90={:.3} p99={:.3} max={:.3} over_1.5_refresh={}",
         summary.frames,
         summary.refresh_hz,
         summary.p50_ms,
         summary.p90_ms,
         summary.p99_ms,
+        summary.max_ms,
         summary.hitches
     );
     for (label, by_max) in [("total", false), ("max", true)] {
@@ -446,10 +458,11 @@ fn print_diff(base: &Summary, head: &Summary) -> Result<(), DevtoolError> {
         ));
     }
     println!(
-        "baseline delta_ms p50={:+.3} p90={:+.3} p99={:+.3} hitch_delta={:+} hitch_rate_delta={:+.4}",
+        "baseline delta_ms p50={:+.3} p90={:+.3} p99={:+.3} max={:+.3} hitch_delta={:+} hitch_rate_delta={:+.4}",
         head.p50_ms - base.p50_ms,
         head.p90_ms - base.p90_ms,
         head.p99_ms - base.p99_ms,
+        head.max_ms - base.max_ms,
         head.hitches as i64 - base.hitches as i64,
         head.hitches as f64 / head.frames as f64 - base.hitches as f64 / base.frames as f64
     );
@@ -489,6 +502,8 @@ fn baseline_zone<'a>(base: &'a [Zone], head: &[Zone], zone: &Zone) -> Option<&'a
 }
 
 const CAPTURE_ADDRESS: &str = "127.0.0.1";
+/// Set by SIGINT or SIGTERM so the supervisor stops its owned processes before exiting.
+static CANCELLED: AtomicBool = AtomicBool::new(false);
 /// Environment overrides that move the client executable out of `target/<profile>`.
 const CARGO_OUTPUT_OVERRIDES: [&str; 3] = [
     "CARGO_TARGET_DIR",
@@ -509,14 +524,19 @@ fn capture_port() -> Result<u16, DevtoolError> {
         .map_err(io_error)
 }
 
-/// Polls both owned processes, bounding connection wait plus the requested capture duration.
+/// Polls both owned processes, bounding connection wait plus the requested capture duration and
+/// returning early once `cancelled` is set.
 fn wait_for_capture(
     client: &mut OwnedChild,
     collector: &mut OwnedChild,
     limit: Duration,
+    cancelled: &AtomicBool,
 ) -> Result<(), DevtoolError> {
     let deadline = Instant::now() + limit;
     loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(cancelled_error());
+        }
         let captured = collector.0.try_wait().map_err(io_error)?;
         if let Some(status) = client.0.try_wait().map_err(io_error)?
             && (captured.is_none() || !status.success())
@@ -585,6 +605,11 @@ fn checked(command: &mut Command) -> Result<(), DevtoolError> {
     }
 }
 
+/// Reports a capture stopped by SIGINT or SIGTERM.
+fn cancelled_error() -> DevtoolError {
+    DevtoolError::Usage("capture cancelled".into())
+}
+
 /// Wraps file and process failures without hiding their causes.
 fn io_error(source: std::io::Error) -> DevtoolError {
     DevtoolError::Spawn {
@@ -621,8 +646,22 @@ mod tests {
         };
         let mut client = spawn();
         let mut collector = spawn();
-        let error = wait_for_capture(&mut client, &mut collector, Duration::ZERO).unwrap_err();
+        let error = wait_for_capture(
+            &mut client,
+            &mut collector,
+            Duration::ZERO,
+            &AtomicBool::new(false),
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("connection allowance"));
+        let error = wait_for_capture(
+            &mut client,
+            &mut collector,
+            Duration::from_secs(600),
+            &AtomicBool::new(true),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("cancelled"));
         client.stop().unwrap();
         collector.stop().unwrap();
         assert!(client.0.try_wait().unwrap().is_some());
@@ -647,6 +686,7 @@ mesh_chunks<Opaque, Cutout>\tcrates/render/src/mesh, legacy.rs\t42\t4000000\t0.0
             (10.0, 30.0, 30.0)
         );
         assert_eq!(summary.hitches, 1);
+        assert_eq!(summary.max_ms, 30.0);
         assert_eq!(summary.zones[0].name, "mesh_chunks<Opaque, Cutout>");
         assert_eq!(
             summary.zones[0].source,

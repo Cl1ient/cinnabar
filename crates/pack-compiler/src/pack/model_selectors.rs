@@ -10,6 +10,7 @@ pub(super) enum ModelTextureSelector {
     Mushroom {
         block: &'static str,
     },
+    LightningRod,
     Door,
     Flower,
     Sapling,
@@ -60,6 +61,19 @@ impl ModelTextureSelector {
         }
     }
 
+    /// Binds a rod's powered selector to its pack texture key, including custom keys.
+    pub(super) fn bind_record(self, record: &RegistryRecord, count: usize) -> Self {
+        if crate::lightning_rod::is_record(record) {
+            if count == Self::LightningRod.variant_count() {
+                Self::LightningRod
+            } else {
+                Self::Unresolved
+            }
+        } else {
+            self
+        }
+    }
+
     /// Identifies only the retained huge-mushroom face bindings.
     pub(super) fn mushroom_block(key: &str) -> Option<&'static str> {
         for (prefix, block) in [
@@ -83,7 +97,7 @@ impl ModelTextureSelector {
             Self::Door => 7,
             Self::Flower => 11,
             Self::Sapling => 6,
-            Self::Powered | Self::Stem | Self::Torchflower => 2,
+            Self::LightningRod | Self::Powered | Self::Stem | Self::Torchflower => 2,
             Self::Index { count, .. } => count,
             Self::CropStages => 4,
             Self::Single => 1,
@@ -105,6 +119,7 @@ impl ModelTextureSelector {
                 }
                 mushroom_variant_index(record)?
             }
+            Self::LightningRod => crate::lightning_rod::state(record)?.1,
             Self::Door => match name {
                 "wooden_door" => 0,
                 "spruce_door" => 1,

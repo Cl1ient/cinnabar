@@ -142,3 +142,63 @@ fn model_array_ranges_are_declared_and_checked() {
         None
     );
 }
+
+#[test]
+fn lightning_rod_model_arrays_keep_powered_selection_with_custom_keys() {
+    let root = fixture();
+    let terrain = read_terrain(&root.path().join("terrain.json")).unwrap();
+    let records = assets::read_registry_for_protocol(
+        include_bytes!("../../../assets/data/block-registry-v2193.bin"),
+        assets::active_content_registry_protocol(),
+    )
+    .unwrap();
+    let mut selected = std::collections::BTreeSet::new();
+    for record in records
+        .iter()
+        .filter(|record| crate::lightning_rod::is_record(record))
+    {
+        let (_, powered) = crate::lightning_rod::state(record).unwrap();
+        assert_eq!(
+            terrain.get_for_model_record("test:array", record),
+            Some((
+                if powered == 0 {
+                    "textures/first"
+                } else {
+                    "textures/second"
+                },
+                powered as u32
+            ))
+        );
+        selected.insert((record.name.as_ref(), powered));
+    }
+    assert_eq!(
+        selected.len(),
+        16,
+        "every rod variant retains both powered states"
+    );
+}
+
+#[test]
+fn lightning_rod_model_arrays_reject_incompatible_ranges() {
+    let root = fixture();
+    let records = assets::read_registry_for_protocol(
+        include_bytes!("../../../assets/data/block-registry-v2193.bin"),
+        assets::active_content_registry_protocol(),
+    )
+    .unwrap();
+    for count in [1, 3] {
+        let source = serde_json::json!({"texture_data":{"test:array":{"textures":vec!["textures/first"; count]}}});
+        std::fs::write(
+            root.path().join("terrain.json"),
+            serde_json::to_vec(&source).unwrap(),
+        )
+        .unwrap();
+        let terrain = read_terrain(&root.path().join("terrain.json")).unwrap();
+        for record in records
+            .iter()
+            .filter(|record| crate::lightning_rod::is_record(record))
+        {
+            assert_eq!(terrain.get_for_model_record("test:array", record), None);
+        }
+    }
+}

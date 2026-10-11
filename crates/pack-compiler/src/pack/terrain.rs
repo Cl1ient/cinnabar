@@ -193,7 +193,7 @@ impl TerrainTextureMap {
             TerrainPaths::Variants {
                 paths, selector, ..
             } => {
-                let selected = selector.select(record)?;
+                let selected = selector.bind_record(record, paths.len()).select(record)?;
                 paths
                     .get(selected)
                     .map(|path| (path.as_ref(), selected as u32))

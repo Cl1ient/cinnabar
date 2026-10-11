@@ -1,3 +1,5 @@
+use sha2::{Digest, Sha256};
+
 use super::RuntimeAssets;
 use crate::model::{
     MODEL_QUAD_FLAG_TWO_SIDED, covered_grass_variant_is_valid, model_template_flags_are_valid,
@@ -83,6 +85,11 @@ fn decode_provenance(bytes: &[u8]) -> Result<BlobProvenance, AssetError> {
             .try_into()
             .expect("fixed identity slice within the validated header")
     };
+    if bytes[crate::blob::DESTROY_SHA_OFFSET..HEADER_BYTES]
+        != Sha256::digest(crate::compiled::block_destroy::DESTROY_SOURCE.as_bytes())[..]
+    {
+        return Err(invalid("compiled destroy source identity mismatch"));
+    }
     let provenance = BlobProvenance {
         source_manifest_sha256: read(MANIFEST_SHA_OFFSET),
         block_registry_sha256: read(REGISTRY_SHA_OFFSETS[0]),
@@ -273,6 +280,7 @@ fn validate_fixed(
     let connected_bases = runtime_connected_bases(sections[3])?;
     let mut referenced_connected_bases = vec![false; connected_bases.len()];
     for (index, record) in sections[0].as_chunks::<VISUAL_BYTES>().0.iter().enumerate() {
+        crate::compiled::block_destroy::BlockDestroyFacts::read(&record[44..56])?;
         for face in 0..6 {
             if u32_at(record, face * 4) as usize >= header.counts[2] {
                 return Err(invalid(format!("visual {index} has invalid material")));
@@ -691,6 +699,7 @@ fn decode_visuals(bytes: &[u8]) -> Result<Box<[BlockVisual]>, AssetError> {
                 model_template: u32_at(r, 32),
                 animation: u32_at(r, 36),
                 variant: u32_at(r, 40),
+                destroy: crate::compiled::block_destroy::BlockDestroyFacts::read(&r[44..56])?,
             })
         })
         .collect::<Result<Vec<_>, _>>()

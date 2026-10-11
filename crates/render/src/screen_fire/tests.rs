@@ -19,6 +19,7 @@ fn pack() -> RuntimeAssets {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }]
         .into_boxed_slice(),
         light_properties: vec![LightProperties::default()].into_boxed_slice(),

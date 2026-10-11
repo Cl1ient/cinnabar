@@ -272,6 +272,7 @@ fn carried_cube_alpha_mode_follows_world_materials_for_both_hands() {
                 model_template: assets::NO_MODEL_TEMPLATE,
                 animation: assets::NO_ANIMATION,
                 variant: 0,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             })
             .collect(),
         light_properties: vec![LightProperties::OPAQUE_DARK; flags.len()],

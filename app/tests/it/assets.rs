@@ -82,6 +82,7 @@ fn synthetic_blob() -> Box<[u8]> {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }]
         .into_boxed_slice(),
         light_properties: vec![::assets::LightProperties::new(0, 15).unwrap()].into_boxed_slice(),

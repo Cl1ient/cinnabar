@@ -75,6 +75,7 @@ fn compiled_assets() -> CompiledAssets {
                 model_template: NO_MODEL_TEMPLATE,
                 animation: NO_ANIMATION,
                 variant: 0,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             },
             BlockVisual {
                 faces: [1, 1, 1, 1, 1, 1],
@@ -85,6 +86,7 @@ fn compiled_assets() -> CompiledAssets {
                 model_template: NO_MODEL_TEMPLATE,
                 animation: NO_ANIMATION,
                 variant: 0,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             },
         ]
         .into_boxed_slice(),
@@ -165,6 +167,7 @@ fn synthetic_air_visual() -> BlockVisual {
         model_template: NO_MODEL_TEMPLATE,
         animation: NO_ANIMATION,
         variant: 0,
+        destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
     }
 }
 

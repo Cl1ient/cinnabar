@@ -223,6 +223,7 @@ fn overridden_assets(
             model_template: index as u32,
             animation: assets::NO_ANIMATION,
             variant: visual.variant(),
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         });
         overlay.light_properties.push(visual.light_properties());
     }

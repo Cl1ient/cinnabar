@@ -314,6 +314,7 @@ impl Builder<'_> {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 
@@ -390,6 +391,7 @@ impl Builder<'_> {
             model_template: template,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 

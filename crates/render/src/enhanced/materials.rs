@@ -122,6 +122,8 @@ mod tests {
             model_template: assets::NO_MODEL_TEMPLATE,
             animation: assets::NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 
@@ -137,6 +139,7 @@ mod tests {
             model_template: assets::NO_MODEL_TEMPLATE,
             animation: assets::NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         };
         let light = |emission| assets::LightProperties::new(emission, 0).expect("light");
         let material = |flags| assets::Material {

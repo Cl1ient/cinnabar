@@ -99,9 +99,11 @@ fn fixture() -> tempfile::TempDir {
     .into_iter()
     .chain((0..5).map(|i| (format!("side{i}"), [30 + 40 * i, 83, 127, 255], 1)))
     {
-        image::RgbaImage::from_pixel(16, 16 * frames, image::Rgba(color))
-            .save(root.join(format!("textures/blocks/{name}.png")))
-            .unwrap();
+        image::RgbaImage::from_fn(16, 16 * frames, |_, y| {
+            image::Rgba(if y < 16 { color } else { [11, 37, 59, 255] })
+        })
+        .save(root.join(format!("textures/blocks/{name}.png")))
+        .unwrap();
     }
     directory
 }
@@ -297,7 +299,13 @@ fn respawn_anchor_transparent_pack_faces_do_not_hide_adjacent_terrain() {
 #[test]
 fn respawn_anchor_partial_flipbooks_keep_unanimated_charges_drawable() {
     let (records, lights, protocol) = records();
-    for charges in [&[0, 2, 3, 4][..], &[0, 4][..]] {
+    for charges in [
+        &[0, 2, 3, 4][..],
+        &[0, 4][..],
+        &[0][..],
+        &[1, 4][..],
+        &[][..],
+    ] {
         let directory = fixture();
         let path = directory.path().join("textures/flipbook_textures.json");
         let sources: Vec<Value> = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -322,6 +330,14 @@ fn respawn_anchor_partial_flipbooks_keep_unanimated_charges_drawable() {
                 );
             } else {
                 assert_eq!(top.animation, assets::NO_ANIMATION);
+                let mip = &world.texture_pages()[top.texture.page() as usize].texture.mips[0];
+                let offset = top.texture.layer() as usize * (mip.size * mip.size * 4) as usize;
+                let expected = if charge == 0 {
+                    [79, 17, 139, 255]
+                } else {
+                    [229, 191, 53, 255]
+                };
+                assert_eq!(&mip.rgba8[offset..offset + 4], expected);
             }
         }
     }

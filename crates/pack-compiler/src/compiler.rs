@@ -699,7 +699,22 @@ fn compile_runtime_animation_plan(
             .filter(|candidate| candidate.path == source_path)
             .all(|candidate| fallback_descriptors.contains(candidate));
         let path = static_texture_path(root, &source_path, key)?;
-        let decoded = decode_texture(&path, key)?;
+        let mut decoded = decode_texture(&path, key)?;
+        let explicit_selectors_only = descriptor_keys
+            .keys()
+            .filter(|candidate| candidate.path == source_path)
+            .all(|candidate| candidate.flipbook_selector.is_some());
+        if decoded.height > decoded.width
+            && decoded.width >= assets::TILE_SIZE
+            && decoded.width.is_power_of_two()
+            && decoded.height.is_multiple_of(decoded.width)
+            && explicit_selectors_only
+        {
+            // Missing state animations retain the first square frame of their source strip.
+            let frame_bytes = (u64::from(decoded.width).pow(2) * 4) as usize;
+            decoded.rgba8 = decoded.rgba8[..frame_bytes].into();
+            decoded.height = decoded.width;
+        }
         if decoded.width != decoded.height {
             if fallback_only {
                 continue;

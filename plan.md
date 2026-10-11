@@ -7476,3 +7476,9 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together.
+
+Incomplete parity: full pack-reload galleries and streaming frame budgets remain open.

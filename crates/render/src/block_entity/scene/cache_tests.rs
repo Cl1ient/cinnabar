@@ -628,3 +628,25 @@ fn lobby_block_entity_frame_cost() {
         );
     }
 }
+
+#[test]
+fn replaced_atlas_keeps_frame_revision_monotonic_and_refreshes_uvs() {
+    let mut scene = scene();
+    let submissions = [chest(0, 1.0)];
+    let first = scene
+        .update(SceneClock::default(), &[], &submissions)
+        .clone();
+    scene.install_assets(&assets_with_chest_offset(384));
+    let second = scene
+        .update(SceneClock::default(), &[], &submissions)
+        .clone();
+    assert_ne!(first.revision, second.revision);
+    assert_ne!(first.solid, second.solid);
+    assert_ne!(
+        first.atlas.unwrap().identity,
+        second.atlas.unwrap().identity
+    );
+    let unchanged = scene.update(SceneClock::default(), &[], &submissions);
+    assert_eq!(unchanged.revision, second.revision);
+    assert!(Arc::ptr_eq(&unchanged.solid, &second.solid));
+}

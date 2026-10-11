@@ -116,6 +116,12 @@ impl DisplayActorStore {
         }
     }
 
+    /// Feeds the resolved camera's degrees and world position before evaluating display poses.
+    pub fn set_camera(&mut self, rotation: [f32; 2], position: [f32; 3]) {
+        self.store.set_camera_rotation(rotation);
+        self.store.set_camera_position(position);
+    }
+
     /// Advances ordinary actor visual state once for the elapsed simulation ticks.
     pub fn advance(&mut self, ticks: u32) {
         self.store.advance_interpolation_frame(ticks);

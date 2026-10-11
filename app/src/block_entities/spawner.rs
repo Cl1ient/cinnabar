@@ -1,8 +1,7 @@
 //! Spawner contents use the actor evaluator, artwork pages and draw publication.
 use crate::runtime::world::ClientWorld;
-use bevy::prelude::{Mat4, Real, Res, ResMut, Resource, Time, Vec3};
+use bevy::prelude::{Mat4, Res, ResMut, Resource, Vec3};
 use client_presentation::{
-    actor_clock::ActorFrameClock,
     actor_publication::{ActorFrameState, PreparedActorPublication},
     local_player::LocalViewPose,
     presentation::{
@@ -44,7 +43,6 @@ struct Pool {
     session: (u64, i32),
     pack: Option<Arc<assets::SessionEntityPack>>,
     actors: DisplayActorStore,
-    clock: ActorFrameClock,
     columns: HashMap<ChunkKey, Column>,
     spins: HashMap<[i32; 3], Clock>,
     poses: PoseConversions,
@@ -90,7 +88,6 @@ fn column(source: Arc<EntityIndex>) -> Column {
 pub(crate) fn prepare_spawner_actors(
     world: Res<ClientWorld>,
     view: Res<LocalViewPose>,
-    time: Res<Time<Real>>,
     collisions: Res<crate::movement::PhysicsCollisionRegistries>,
     artwork: Res<ActorArtworkPages>,
     state: Res<ActorFrameState>,
@@ -115,7 +112,6 @@ pub(crate) fn prepare_spawner_actors(
             session,
             pack: None,
             actors: DisplayActorStore::new(session.1, Arc::clone(assets)),
-            clock: Default::default(),
             columns: Default::default(),
             spins: Default::default(),
             poses: Default::default(),
@@ -143,7 +139,12 @@ pub(crate) fn prepare_spawner_actors(
         pool.poses = Default::default();
         pool.layers = Default::default();
     }
-    let step = pool.clock.advance(time.delta());
+    let Some(step) = state.frame_step() else {
+        return;
+    };
+    if let Some((rotation, position)) = state.sampling_camera() {
+        pool.actors.set_camera(rotation, position);
+    }
     let eye = view.eye_translation();
     let authority = stream.authority();
     let local = authority.actor(authority.local_player_runtime_id());
@@ -281,6 +282,9 @@ fn display_batch(
             .culling_bounds
             .half_extents
             .map(|axis| axis * 2.0);
+        let dimensions = std::array::from_fn(|axis| {
+            dimensions[axis] * rig.scale * actor.render_scale() * rig.axis_scale[axis].abs()
+        });
         let Some(placement) = spawner_actor_transform(position, dimensions, spin, partial_tick)
         else {
             continue;

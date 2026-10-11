@@ -306,6 +306,28 @@ impl CellPool {
         self.last_used.resize(self.keys.len(), 0);
     }
 
+    /// Changes each page's row stride while retaining its slots, pixels and usage history.
+    fn resize_width(&mut self, width: usize) {
+        if self.width == width {
+            return;
+        }
+        let old_stride = self.width * 4;
+        let new_stride = width * 4;
+        let copied = old_stride.min(new_stride);
+        for page in &mut self.pages {
+            let mut resized = vec![0; new_stride * self.cell[1] * self.rows_per_page];
+            for (source, target) in page
+                .chunks_exact(old_stride)
+                .zip(resized.chunks_exact_mut(new_stride))
+            {
+                target[..copied].copy_from_slice(&source[..copied]);
+            }
+            *page = resized;
+        }
+        self.width = width;
+        self.revision = self.revision.wrapping_add(1);
+    }
+
     /// Returns the slot for key, rasterizing make on a miss with bounded per-frame work.
     /// Evicts only unused slots; returns None for invalid canvases or exhausted page/raster budgets.
     fn slot(&mut self, key: u64, make: impl FnOnce() -> Vec<u8>) -> Option<usize> {
@@ -391,6 +413,12 @@ impl DynamicCells {
         let revision = self.revision().wrapping_add(1);
         *self = Self::new(atlas_width);
         self.text.revision = revision;
+    }
+
+    /// Fits retained sign and map pages to a replacement atlas without rasterizing them again.
+    pub fn resize_width(&mut self, atlas_width: u32) {
+        self.text.resize_width(atlas_width as usize);
+        self.maps.resize_width(atlas_width as usize);
     }
 
     /// Ends the frame whose rects were just submitted; their slots become evictable again and
@@ -582,6 +610,40 @@ mod tests {
         // The map strip opens the upload block so growing text pages never move it.
         assert_eq!(cells.pixels()[0], 5);
         assert_eq!(cells.pixels().len(), 1024 * dynamic_height(1) as usize * 4);
+    }
+
+    #[test]
+    fn changed_atlas_width_preserves_cached_signs_maps_and_page_rows() {
+        let mut cells = DynamicCells::new(1024);
+        let keys: Vec<_> = (0..32).collect();
+        let slots = settle(&mut cells, &keys, 128);
+        cells
+            .map_slot(1, || vec![64; (MAP_CELL[0] * MAP_CELL[1] * 4) as usize])
+            .unwrap();
+        let before = cells.pixels();
+        let revision = cells.revision();
+        cells.resize_width(2048);
+        assert_ne!(cells.revision(), revision);
+        let wide = cells.pixels();
+        for (source, target) in before
+            .chunks_exact(1024 * 4)
+            .zip(wide.chunks_exact(2048 * 4))
+        {
+            assert_eq!(&target[..source.len()], source);
+            assert!(target[source.len()..].iter().all(|pixel| *pixel == 0));
+        }
+        cells.resize_width(1024);
+        assert_eq!(cells.pixels(), before);
+        for (key, slot) in keys.into_iter().zip(slots) {
+            assert_eq!(
+                cells.text_slot(key, || panic!("retained signs must not rasterize")),
+                Some(slot)
+            );
+        }
+        assert_eq!(
+            cells.map_slot(1, || panic!("retained maps must not rasterize")),
+            Some(0)
+        );
     }
 
     #[test]

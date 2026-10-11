@@ -177,19 +177,29 @@ pub struct BlockEntityScene {
 }
 
 impl BlockEntityScene {
-    /// Replaces static artwork and invalidates meshes while retaining appended display textures.
+    /// Installs artwork for a new session, clearing cached sign and map canvases.
     pub fn install_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
+        if let Some(text) = self.text.as_mut() {
+            text.reset(assets.atlas_size()[0]);
+        }
+        self.reload_assets(assets);
+    }
+
+    /// Replaces in-world artwork and invalidates meshes while retaining all dynamic canvases.
+    pub fn reload_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
         let mut atlas = BlockEntityAtlas::from_assets(assets);
         atlas.append_textures(self.mobs.textures());
+        let text = self
+            .text
+            .get_or_insert_with(|| DynamicCells::new(atlas.size()[0]));
+        text.resize_width(atlas.size()[0]);
+        atlas.set_text_pages(text.text_pages());
         self.image = Some(Arc::new(BlockEntityAtlasImage::of(&atlas)));
-        if let Some(text) = self.text.as_mut() {
-            text.reset(atlas.size()[0]);
-        } else {
-            self.text = Some(DynamicCells::new(atlas.size()[0]));
-        }
         self.atlas = Some(Arc::new(atlas));
         self.frame = BlockEntityFrame {
             revision: self.frame.revision,
+            dynamic_revision: self.frame.dynamic_revision,
+            dynamic_rgba8: Arc::clone(&self.frame.dynamic_rgba8),
             ..Default::default()
         };
         self.reusable = None;

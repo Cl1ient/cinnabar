@@ -817,3 +817,7 @@ mod prewarm_tests;
 #[cfg(test)]
 #[path = "gpu/reinstall_tests.rs"]
 mod reinstall_tests;
+
+#[cfg(test)]
+#[path = "gpu/live_reload_tests.rs"]
+mod live_reload_tests;

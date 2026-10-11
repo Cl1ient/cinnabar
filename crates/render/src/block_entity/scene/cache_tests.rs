@@ -686,3 +686,107 @@ fn identical_atlas_reinstalls_publish_fresh_sign_and_map_pixels() {
     let unchanged = scene.update(SceneClock::default(), &[], &[]);
     assert_eq!(unchanged.dynamic_revision, revision);
 }
+
+#[test]
+fn live_chest_artwork_reload_keeps_every_cached_sign_visible() {
+    use super::super::atlas::{MAP_CELL, MAX_NEW_CELLS_PER_FRAME, TEXT_CELL, TEXT_SLOT_COUNT};
+
+    // Cover both the reported burst and a scene whose text spans multiple pages.
+    for count in [32, TEXT_SLOT_COUNT + 32] {
+        let mut scene = scene();
+        let mut rects = vec![AtlasRect::default(); count];
+        for _ in 0..count.div_ceil(MAX_NEW_CELLS_PER_FRAME) {
+            for (key, rect) in rects.iter_mut().enumerate() {
+                if let Some(cached) = scene.text_rect(key as u64, || {
+                    vec![key as u8 + 1; (TEXT_CELL[0] * TEXT_CELL[1] * 4) as usize]
+                }) {
+                    *rect = cached;
+                }
+            }
+            scene.update(SceneClock::default(), &[], &[]);
+        }
+        let map_rect = scene
+            .map_rect(1, || vec![240; (MAP_CELL[0] * MAP_CELL[1] * 4) as usize])
+            .unwrap();
+        let before = scene.update(SceneClock::default(), &[], &[]).clone();
+        let pages = scene.atlas().unwrap().text_pages();
+        let replacement =
+            pack_compiler::overlay_block_entity_assets(&assets_with_chest_offset(0), |name| {
+                (name == "textures/entity/chest/normal").then(|| {
+                    pack_compiler::BlockEntityTexture {
+                        width: 128,
+                        height: 512,
+                        rgba8: vec![64; 128 * 512 * 4].into_boxed_slice(),
+                    }
+                })
+            })
+            .unwrap();
+        scene.reload_assets(&replacement);
+        assert_eq!(scene.atlas().unwrap().text_pages(), pages);
+        let shift = scene.atlas().unwrap().static_height() as f32
+            - before.atlas.as_ref().unwrap().static_height as f32;
+        assert_ne!(shift, 0.0, "the replacement moves the dynamic strips");
+        for tick in 0..3 {
+            let mut rasterized = 0;
+            let submissions: Vec<_> = rects
+                .iter()
+                .enumerate()
+                .filter_map(|(key, previous)| {
+                    let rect = scene.text_rect(key as u64, || {
+                        rasterized += 1;
+                        vec![key as u8 + 1; (TEXT_CELL[0] * TEXT_CELL[1] * 4) as usize]
+                    })?;
+                    assert_eq!(
+                        rect,
+                        AtlasRect {
+                            y: previous.y + shift,
+                            ..*previous
+                        }
+                    );
+                    Some(BlockEntitySubmission {
+                        block: [key as i32, 64, 0],
+                        light: 1.0.into(),
+                        kind: BlockEntityKind::Sign(SignModel {
+                            mount: SignMount::Wall(Facing::North),
+                            front: Some(SignFace {
+                                rect,
+                                glowing: true,
+                            }),
+                            back: None,
+                        }),
+                    })
+                })
+                .collect();
+            assert_eq!(
+                submissions.len(),
+                count,
+                "every cached sign must draw on frame {tick}"
+            );
+            assert_eq!(
+                rasterized, 0,
+                "cached signs must not consume the raster budget"
+            );
+            assert_eq!(
+                scene.map_rect(1, || panic!("cached maps must survive")),
+                Some(AtlasRect {
+                    y: map_rect.y + shift,
+                    ..map_rect
+                })
+            );
+            let frame = scene.update(
+                SceneClock {
+                    ticks: f64::from(tick),
+                },
+                &[],
+                &submissions,
+            );
+            assert_eq!(frame.solid.len(), count * 6);
+            assert_eq!(frame.dynamic_rgba8, before.dynamic_rgba8);
+            assert_eq!(frame.dynamic_revision, before.dynamic_revision);
+            assert_ne!(
+                frame.atlas.as_ref().unwrap().identity,
+                before.atlas.as_ref().unwrap().identity
+            );
+        }
+    }
+}

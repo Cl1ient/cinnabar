@@ -361,6 +361,83 @@ fn real_carriers_draw_armor_and_report_each_held_item() {
     assert_eq!(held[0].1, 1);
 }
 
+// Local-only: a held head keeps its skull geometry.
+#[test]
+fn real_carriers_hold_heads_as_skull_geometry() {
+    use super::runtime::{EquipmentRuntime, HeldKind, WornItem};
+    let (Some(world), Some(entities), Some(icons), Some(block_entities)) = (
+        local_carrier(assets::carriers::WORLD.output),
+        local_carrier(assets::carriers::ENTITY.output),
+        local_carrier(assets::carriers::ICON.output),
+        local_carrier(assets::carriers::BLOCK_ENTITY.output),
+    ) else {
+        return;
+    };
+    let world = Arc::new(assets::RuntimeAssets::decode(&world).unwrap());
+    let entities = Arc::new(assets::RuntimeEntityAssets::decode(&entities).unwrap());
+    let icons = Arc::new(assets::RuntimeIconCatalog::decode(&icons).unwrap());
+    let block_entities =
+        Arc::new(assets::RuntimeBlockEntityAssets::decode(&block_entities).unwrap());
+    let item = |identifier: &str| {
+        let kind = entities
+            .item_visuals()
+            .iter()
+            .find(|visual| visual.key.identifier.as_ref() == identifier)
+            .map_or(HeldKind::Sprite, |visual| match visual.route {
+                assets::ItemVisualDefinitionRoute::BlockItem { block_visual } => {
+                    HeldKind::Block(block_visual.0)
+                }
+                _ => HeldKind::Sprite,
+            });
+        WornItem {
+            identifier: Arc::from(identifier),
+            metadata: 0,
+            damage: None,
+            kind,
+            dye_rgb: None,
+            enchanted: false,
+        }
+    };
+    let (mut runtime, _, _) = EquipmentRuntime::build(
+        Arc::clone(&entities),
+        None,
+        icons,
+        Some(world),
+        Some(block_entities),
+        ActorArtworkPages::default(),
+    );
+    let mut geometries = runtime.take_pending_geometries();
+    let body = player_body(&mut runtime);
+    let hand = client_world::ItemAnimationState {
+        attack_time: 0.0,
+        arm_height: 1.0,
+    };
+    // Each axis's extent in held-item space: a flat icon is one texel deep.
+    let mut extents = |identifier: &str| {
+        let held = runtime
+            .first_person_item(&body, &item(identifier), hand)
+            .unwrap_or_else(|| panic!("{identifier} is drawable"));
+        geometries.extend(runtime.take_pending_geometries());
+        let rig = held.presentation.submission.input.rig;
+        let geometry = geometries
+            .iter()
+            .find(|geometry| geometry.id == rig)
+            .unwrap();
+        let extent = |axis: usize| {
+            let values = geometry.vertices.iter().map(|vertex| vertex.position[axis]);
+            values.clone().fold(f32::MIN, f32::max) - values.fold(f32::MAX, f32::min)
+        };
+        ([0, 1, 2].map(extent), geometry.vertices.len())
+    };
+    let (extent, _) = extents("minecraft:player_head");
+    for side in extent {
+        assert!(
+            (0.45..=0.6).contains(&side),
+            "a held head is its 8-texel skull: {extent:?}"
+        );
+    }
+}
+
 fn png(side: u32) -> Vec<u8> {
     let image = image::RgbaImage::from_pixel(side, side, image::Rgba([200, 40, 40, 255]));
     let mut bytes = std::io::Cursor::new(Vec::new());

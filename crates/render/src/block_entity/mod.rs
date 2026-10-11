@@ -60,6 +60,8 @@ pub use scene::{
 pub use selection::{BLOCK_SELECTION_VERTICES_PER_EDGE, BlockSelectionFrame, BlockSelectionTarget};
 pub use shulker::ShulkerModel;
 pub use sign::{SignFace, SignModel, SignMount};
-pub use skull::{SkullKind, SkullModel, SkullMount, floor_yaw_degrees, skull_geometry};
+pub use skull::{
+    SkullKind, SkullModel, SkullMount, floor_yaw_degrees, held_skull_geometry, skull_geometry,
+};
 pub use spawner::SpawnerModel;
 pub use statue::{Oxidation, StatueModel, StatuePose};

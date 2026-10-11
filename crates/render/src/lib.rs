@@ -164,7 +164,7 @@ pub use block_entity::{
     Oxidation, SPAWNER_MOBS, SceneClock, ShulkerModel, SignFace, SignModel, SignMount, SkullKind,
     SkullModel, SkullMount, SpawnerModel, StaticItemPlacement, StaticItemPlacements, StatueModel,
     StatuePose, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef, bed_color, block_matrix,
-    crack_shape_from_template, crack_texture_name, floor_yaw_degrees, item_frame_item_transform,
+    crack_shape_from_template, crack_texture_name, floor_yaw_degrees, held_skull_geometry, item_frame_item_transform,
     lid_angle_radians, matrix_rows, pattern_texture, sherd_pattern, skull_geometry, swing_degrees,
 };
 pub use celestial::{

@@ -9,7 +9,8 @@ use assets::{
 use bevy::prelude::Resource;
 use render::{
     ACTOR_LAYER_BODY, ActorArtworkLocation, ActorArtworkPages, ActorRigRenderInput, ActorRigRoute,
-    ActorRigSubmission, BlockEntityAtlas, EquipmentRaster, SkullKind, skull_geometry,
+    ActorRigSubmission, BlockEntityAtlas, EquipmentRaster, SkullKind, held_skull_geometry,
+    skull_geometry,
 };
 use render_model::{
     ActorRigGeometry, EntityRigId, RenderBoneTransform, equipment_rig_id, find_geometry_index,
@@ -67,6 +68,8 @@ fn body_bones(names: Vec<Box<str>>) -> BodyBones {
 
 /// Equipment geometry index space reserved for worn skulls (above any entity geometry index).
 const SKULL_RIG_INDEX_BASE: u32 = 0x00ff_0000;
+/// Equipment geometry index space of held skulls, after the worn ones.
+const HELD_SKULL_RIG_INDEX_BASE: u32 = SKULL_RIG_INDEX_BASE + SKULL_KINDS.len() as u32;
 const SKULL_KINDS: [SkullKind; 5] = [
     SkullKind::Skeleton,
     SkullKind::WitherSkeleton,
@@ -114,6 +117,8 @@ pub struct EquipmentRuntime {
     pending: Vec<ActorRigGeometry>,
     /// Worn head geometry and texture location per skull kind.
     skulls: BTreeMap<u8, (EntityRigId, ActorArtworkLocation)>,
+    /// Held skull meshes by kind index; they share the worn skulls' artwork.
+    held_skulls: BTreeMap<u8, EntityRigId>,
     item_use: Arc<BTreeMap<Box<str>, u32>>,
     /// The startup catalog's use durations, before session items join them.
     base_item_use: Arc<BTreeMap<Box<str>, u32>>,
@@ -234,12 +239,18 @@ impl EquipmentRuntime {
         let skull_location = skull_raster_index.and_then(|index| locations[index]);
         let mut pending = Vec::new();
         let mut skulls = BTreeMap::new();
+        let mut held_skulls = BTreeMap::new();
         if let (Some(atlas), Some(location)) = (&skull_atlas, skull_location) {
             for (index, kind) in SKULL_KINDS.into_iter().enumerate() {
                 let id = equipment_rig_id(SKULL_RIG_INDEX_BASE + index as u32);
                 if let Some(geometry) = skull_geometry(id, atlas, kind) {
                     pending.push(geometry);
                     skulls.insert(kind_index(kind), (id, location));
+                }
+                let held = equipment_rig_id(HELD_SKULL_RIG_INDEX_BASE + index as u32);
+                if let Some(geometry) = held_skull_geometry(held, atlas, kind) {
+                    pending.push(geometry);
+                    held_skulls.insert(kind_index(kind), held);
                 }
             }
         }
@@ -304,6 +315,7 @@ impl EquipmentRuntime {
             catalog,
             pending,
             skulls,
+            held_skulls,
             pack: None,
             logged_misses: Default::default(),
             poses: PoseMemo::default(),

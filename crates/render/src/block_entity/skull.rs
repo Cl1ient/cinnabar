@@ -159,6 +159,38 @@ pub fn skull_geometry(
     atlas: &BlockEntityAtlas,
     kind: SkullKind,
 ) -> Option<ActorRigGeometry> {
+    // Worn on the head bone, 24 texels up.
+    let vertices = skull_vertices(atlas, kind, 24.0)?;
+    ActorRigGeometry::new(id, Arc::from(vertices), Arc::from(vec![[0.0, 1.5, 0.0]])).ok()
+}
+
+/// A held skull: the skull centred where a held block's cube sits, its face to the south like an
+/// unrotated placed skull. UVs and the `None` case match [`skull_geometry`].
+#[must_use]
+pub fn held_skull_geometry(
+    id: EntityRigId,
+    atlas: &BlockEntityAtlas,
+    kind: SkullKind,
+) -> Option<ActorRigGeometry> {
+    // The 8-texel head cube spans four texels either side of the held block's centre.
+    let mut vertices = skull_vertices(atlas, kind, -4.0)?;
+    for vertex in &mut vertices {
+        // A half turn about the vertical axis keeps the winding and turns the face south.
+        for vector in [&mut vertex.position, &mut vertex.normal] {
+            vector[0] = -vector[0];
+            vector[2] = -vector[2];
+        }
+    }
+    ActorRigGeometry::new(id, Arc::from(vertices), Arc::from(vec![[0.0; 3]])).ok()
+}
+
+/// The skull's head cube and any hat layer `lift` texels above the origin, in block units with
+/// atlas UVs.
+fn skull_vertices(
+    atlas: &BlockEntityAtlas,
+    kind: SkullKind,
+    lift: f32,
+) -> Option<Vec<render_model::ActorRigVertex>> {
     let texture = kind.texture(atlas)?;
     let [atlas_width, _] = atlas.size();
     let static_height = atlas.static_height();
@@ -172,10 +204,9 @@ pub fn skull_geometry(
     let logical = (texture.logical[0] as u16, texture.logical[1] as u16);
     let scalar =
         |value: f32| EntityGeometryScalar::new(value).unwrap_or(EntityGeometryScalar::ZERO);
-    // Worn on the head bone, 24 texels up.
     let cube =
         |(origin, size, uv): ([f32; 3], [f32; 3], [f32; 2]), inflate: f32| EntityGeometryCube {
-            origin: [origin[0], origin[1] + 24.0, origin[2]].map(scalar),
+            origin: [origin[0], origin[1] + lift, origin[2]].map(scalar),
             size: size.map(scalar),
             pivot: [EntityGeometryScalar::ZERO; 3],
             rotation: [EntityGeometryScalar::ZERO; 3],
@@ -197,7 +228,7 @@ pub fn skull_geometry(
             uv[1] = region[1] + uv[1] * (region[3] - region[1]);
         }
     }
-    ActorRigGeometry::new(id, Arc::from(vertices), Arc::from(vec![[0.0, 1.5, 0.0]])).ok()
+    Some(vertices)
 }
 
 #[cfg(test)]

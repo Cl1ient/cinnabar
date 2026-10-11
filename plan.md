@@ -7594,3 +7594,5 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+Held box-model heads use skull geometry. The held transform and facing remain provisional; dragon and piglin held geometry remains incomplete.

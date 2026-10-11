@@ -121,6 +121,13 @@ impl EquipmentRuntime {
         item: &WornItem,
         icon_fallback: bool,
     ) -> Option<(EntityRigId, ActorArtworkLocation, bool)> {
+        // A head is held as its placed skull, which the block-entity renderer draws in the world.
+        if let Some(kind) = skull_kind(&item.identifier).map(kind_index)
+            && let (Some(mesh), Some((_, location))) =
+                (self.held_skulls.get(&kind), self.skulls.get(&kind))
+        {
+            return Some((*mesh, *location, true));
+        }
         let session = match item.kind {
             HeldKind::Sprite | HeldKind::Other => {
                 self.session_held(&item.identifier, item.metadata)

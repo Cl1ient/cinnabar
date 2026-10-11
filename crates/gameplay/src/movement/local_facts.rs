@@ -194,6 +194,7 @@ mod tests {
     #[test]
     fn elytra_flies_until_one_damage_below_its_maximum() {
         let elytra = |identifier: &str, damage| client_world::CanonicalItemStack {
+            glint: assets::item::glint::ItemGlint::Unresolved,
             identity: assets::ItemStackIdentity {
                 network_id: 1,
                 metadata: 0,
@@ -226,6 +227,7 @@ mod tests {
     fn corrected_elytra_damage_overrides_the_stale_tag() {
         let maximum = client_world::vanilla_max_durability(ELYTRA_IDENTIFIER).unwrap();
         let elytra = |damage| client_world::CanonicalItemStack {
+            glint: assets::item::glint::ItemGlint::Unresolved,
             identity: assets::ItemStackIdentity {
                 network_id: 1,
                 metadata: 0,

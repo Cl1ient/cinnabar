@@ -20,6 +20,7 @@ pub(super) fn stack_icon(
     stack: &protocol::NetworkItemStack,
     identifier: &str,
     animation_frame: Option<u32>,
+    authority: Option<&client_world::WorldAuthority>,
 ) -> Option<IconRef> {
     let facts = runtime.stack_facts(stack, Some(identifier));
     let charged_projectile = (identifier == "minecraft:crossbow")
@@ -32,7 +33,15 @@ pub(super) fn stack_icon(
         animation_frame,
     );
     let icon = presentation.item_icon(icon_identifier, variant)?;
-    Some(icon.with_glint(runtime.item_glint(stack, identifier)))
+    let intrinsic = authority.map_or(Default::default(), |world| {
+        world.item_glint(stack.network_id)
+    });
+    Some(
+        icon.with_glint(crate::ui_runtime::item_facts::glint_for_facts(
+            facts.has_enchantment_list,
+            intrinsic,
+        )),
+    )
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -46,6 +55,13 @@ pub mod test_support {
         identifier: &str,
         animation_frame: Option<u32>,
     ) -> Option<IconRef> {
-        super::stack_icon(runtime, presentation, stack, identifier, animation_frame)
+        super::stack_icon(
+            runtime,
+            presentation,
+            stack,
+            identifier,
+            animation_frame,
+            None,
+        )
     }
 }

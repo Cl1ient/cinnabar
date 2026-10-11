@@ -41,6 +41,8 @@ impl PreviewTexture {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PreviewEquipment {
     pub armor: [Option<PreviewTexture>; 4],
+    /// Effective shine already resolved for each worn stack.
+    pub armor_glint: [bool; 4],
     /// Small compatibility raster only; GPU previews use `hands` and real models.
     pub held: Option<PreviewTexture>,
     pub hands: [Option<PreviewHandItem>; 2],
@@ -49,6 +51,8 @@ pub struct PreviewEquipment {
 /// Identity and authoritative item state used to select each hand's native model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewHandItem {
+    /// Live stack shine; absent context retains the compiled model choice.
+    pub glint: Option<bool>,
     pub identifier: Arc<str>,
     pub metadata: u32,
     pub charged_projectile: Option<Arc<str>>,
@@ -62,6 +66,17 @@ pub struct PreviewHeldModel {
     pub placements: [PreviewHeldPlacement; 2],
     /// Native player `rightItem`/`leftItem` bind origins in mirrored rig blocks.
     pub hand_pivots: [[f32; 3]; 2],
+}
+
+impl PreviewHeldModel {
+    /// Applies admitted stack shine while sharing the cached geometry and placements.
+    pub(in crate::ui_runtime::presentation) fn with_glint(&self, glint: Option<bool>) -> Self {
+        let mut model = self.clone();
+        if let Some(glint) = glint {
+            model.source = model.source.with_glint(glint);
+        }
+        model
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

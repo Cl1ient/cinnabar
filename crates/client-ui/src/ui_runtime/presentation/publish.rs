@@ -14,6 +14,7 @@ pub fn capture_hud_frame(
     now_millis: u64,
     icon_frames: ItemIconFrames,
 ) -> (Option<IconRef>, Option<IconRef>) {
+    let authority = stream.map(|stream| stream.authority());
     let resolve_identifier = |stack: &protocol::NetworkItemStack| {
         stream.and_then(|stream| stream.authority().canonical_item_stack(stack)?.identifier)
     };
@@ -47,6 +48,7 @@ pub fn capture_hud_frame(
                     stack,
                     id,
                     icon_frames.slot(slot as u8),
+                    authority,
                 )
             });
         }
@@ -59,7 +61,7 @@ pub fn capture_hud_frame(
         {
             *icon = resolve_identifier(stack)
                 .as_deref()
-                .and_then(|id| stack_icon(runtime, presentation, stack, id, None));
+                .and_then(|id| stack_icon(runtime, presentation, stack, id, None, authority));
         }
     }
     let mut crafting = super::hud_layout::CraftingFrame::default();
@@ -74,7 +76,7 @@ pub fn capture_hud_frame(
             if let Some(stack) = ledger.target_stack(target) {
                 *icon = resolve_identifier(stack)
                     .as_deref()
-                    .and_then(|id| stack_icon(runtime, presentation, stack, id, None));
+                    .and_then(|id| stack_icon(runtime, presentation, stack, id, None, authority));
             }
         }
         if let inventory::CraftGridMatch::Unique(recipe) = runtime.crafting_match(player_runtime) {
@@ -88,7 +90,7 @@ pub fn capture_hud_frame(
             };
             let icon = resolve_identifier(&stack)
                 .as_deref()
-                .and_then(|id| stack_icon(runtime, presentation, &stack, id, None));
+                .and_then(|id| stack_icon(runtime, presentation, &stack, id, None, authority));
             crafting.output = Some((icon, stack));
         }
     }
@@ -152,7 +154,7 @@ pub fn capture_hud_frame(
                 durability.ui[usize::from(slot)] = fraction(stack, None);
                 window_icons.ui[usize::from(slot)] = resolve_identifier(stack)
                     .as_deref()
-                    .and_then(|id| stack_icon(runtime, presentation, stack, id, None));
+                    .and_then(|id| stack_icon(runtime, presentation, stack, id, None, authority));
             }
         }
     }
@@ -318,9 +320,10 @@ pub fn capture_hud_frame(
                 .take(super::screens::GRID_CELLS)
                 .enumerate()
             {
-                window_icons.creative[cell] = resolve_identifier(&item.stack)
-                    .as_deref()
-                    .and_then(|id| stack_icon(runtime, presentation, &item.stack, id, None));
+                window_icons.creative[cell] =
+                    resolve_identifier(&item.stack).as_deref().and_then(|id| {
+                        stack_icon(runtime, presentation, &item.stack, id, None, authority)
+                    });
             }
             for (tab, id) in [
                 "minecraft:brick",
@@ -353,9 +356,10 @@ pub fn capture_hud_frame(
                 for (cell, output) in outputs.into_iter().enumerate() {
                     if let Some(output) = output {
                         let stack = output_stack(output);
-                        window_icons.recipe[cell] = resolve_identifier(&stack)
-                            .as_deref()
-                            .and_then(|id| stack_icon(runtime, presentation, &stack, id, None));
+                        window_icons.recipe[cell] =
+                            resolve_identifier(&stack).as_deref().and_then(|id| {
+                                stack_icon(runtime, presentation, &stack, id, None, authority)
+                            });
                     }
                 }
             }
@@ -368,7 +372,7 @@ pub fn capture_hud_frame(
                 let stack = output_stack(output);
                 let icon = resolve_identifier(&stack)
                     .as_deref()
-                    .and_then(|id| stack_icon(runtime, presentation, &stack, id, None));
+                    .and_then(|id| stack_icon(runtime, presentation, &stack, id, None, authority));
                 window_icons.recipe_output = Some((icon, stack));
             }
         }
@@ -395,9 +399,10 @@ pub fn capture_hud_frame(
                         block_runtime_id: i32::try_from(output.block_runtime_id).unwrap_or(0),
                         ..protocol::NetworkItemStack::empty()
                     };
-                    window_icons.book[cell] = resolve_identifier(&stack)
-                        .as_deref()
-                        .and_then(|id| stack_icon(runtime, presentation, &stack, id, None));
+                    window_icons.book[cell] =
+                        resolve_identifier(&stack).as_deref().and_then(|id| {
+                            stack_icon(runtime, presentation, &stack, id, None, authority)
+                        });
                 }
             }
         }
@@ -431,7 +436,7 @@ pub fn capture_hud_frame(
         .and_then(|stack| {
             resolve_identifier(stack)
                 .as_deref()
-                .and_then(|id| stack_icon(runtime, presentation, stack, id, None))
+                .and_then(|id| stack_icon(runtime, presentation, stack, id, None, authority))
         });
     let selected_snapshot = player_runtime.selected_stack_snapshot();
     let selected_slot = selected_snapshot.map(|snapshot| snapshot.slot);
@@ -465,7 +470,14 @@ pub fn capture_hud_frame(
                 overlay.and_then(|overlay| overlay.durability_correction),
             );
             hotbar_icons[usize::from(slot)] = identifier.as_deref().and_then(|id| {
-                stack_icon(runtime, presentation, stack, id, icon_frames.slot(slot))
+                stack_icon(
+                    runtime,
+                    presentation,
+                    stack,
+                    id,
+                    icon_frames.slot(slot),
+                    authority,
+                )
             });
             hotbar_stacks[usize::from(slot)] = Some(stack.clone());
             logged_hotbar[usize::from(slot)] = Some((
@@ -484,7 +496,7 @@ pub fn capture_hud_frame(
         let identifier = resolve_identifier(stack);
         identifier
             .as_deref()
-            .and_then(|id| stack_icon(runtime, presentation, stack, id, None))
+            .and_then(|id| stack_icon(runtime, presentation, stack, id, None, authority))
     });
     let armor_icons = {
         let armor = runtime.local_armor(player_runtime);
@@ -497,7 +509,7 @@ pub fn capture_hud_frame(
         .map(|stack| {
             resolve_identifier(stack)
                 .as_deref()
-                .and_then(|id| stack_icon(runtime, presentation, stack, id, None))
+                .and_then(|id| stack_icon(runtime, presentation, stack, id, None, authority))
         })
     };
     let held_item_icon = selected_stack.and_then(|stack| {
@@ -508,6 +520,7 @@ pub fn capture_hud_frame(
                 stack,
                 id,
                 selected_slot.and_then(|slot| icon_frames.slot(slot)),
+                authority,
             )
         })
     });

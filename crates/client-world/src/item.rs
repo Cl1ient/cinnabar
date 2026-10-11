@@ -13,6 +13,9 @@ use protocol::{
 };
 use sha2::{Digest, Sha256};
 
+#[path = "item/glint.rs"]
+mod glint;
+
 use crate::{ActorEventIdentity, ActorLifetimeId, ActorSourceTick};
 
 pub const MAX_ITEM_REGISTRY_RECORDS: usize = 16_384;
@@ -22,6 +25,8 @@ pub const MAX_EQUIPMENT_NOTICES: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalItemStack {
+    /// Intrinsic shine resolved for the current numeric registry generation.
+    pub glint: assets::item::glint::ItemGlint,
     pub identity: ItemStackIdentity,
     pub identifier: Option<Arc<str>>,
     pub visual: ItemVisualRoute,
@@ -35,6 +40,8 @@ pub struct CanonicalItemStack {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalItemRegistryRecord {
+    /// Intrinsic shine resolved for the current numeric registry generation.
+    pub glint: assets::item::glint::ItemGlint,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
@@ -124,9 +131,10 @@ impl ItemStateStore {
     }
 
     fn new(assets: Option<Arc<RuntimeEntityAssets>>) -> Self {
+        let registry = built_in_registry(assets.as_deref());
         Self {
             assets,
-            registry: built_in_registry(),
+            registry,
             equipment: BTreeMap::new(),
             pending: VecDeque::new(),
             armor: BTreeMap::new(),
@@ -343,13 +351,16 @@ impl ItemStateStore {
         if registry.entries.len() > MAX_ITEM_REGISTRY_RECORDS {
             return false;
         }
-        let mut next = built_in_registry();
+        let mut next = built_in_registry(self.assets.as_deref());
         let mut network_ids = HashMap::with_capacity(registry.entries.len());
         for entry in registry.entries.iter() {
             if network_ids.insert(entry.network_id, ()).is_some() {
                 return false;
             }
-            next.insert(entry.network_id, registry_record(entry));
+            next.insert(
+                entry.network_id,
+                registry_record(entry, self.assets.as_deref()),
+            );
         }
         self.registry = next;
 
@@ -456,6 +467,12 @@ impl ItemStateStore {
         Some(item)
     }
 
+    /// Reads a retained intrinsic disposition; missing numeric aliases stay unresolved.
+    pub(crate) fn item_glint(&self, network_id: i32) -> assets::item::glint::ItemGlint {
+        self.registry
+            .get(&network_id)
+            .map_or(Default::default(), |record| record.glint)
+    }
     /// The registry identifier for an item network id.
     pub(crate) fn identifier_for_network_id(&self, network_id: i32) -> Option<Arc<str>> {
         self.registry
@@ -466,6 +483,7 @@ impl ItemStateStore {
     fn resolve_identity(&self, identity: ItemStackIdentity) -> CanonicalItemStack {
         if identity.is_empty() {
             return CanonicalItemStack {
+                glint: assets::item::glint::ItemGlint::Unresolved,
                 identity,
                 identifier: None,
                 visual: ItemVisualRoute::EmptyHand,
@@ -487,6 +505,10 @@ impl ItemStateStore {
             identity.block_runtime_id,
         );
         CanonicalItemStack {
+            glint: self
+                .registry
+                .get(&identity.network_id)
+                .map_or(Default::default(), |record| record.glint),
             identity,
             identifier,
             visual,
@@ -550,10 +572,13 @@ impl ItemStateStore {
     }
 }
 
-fn built_in_registry() -> BTreeMap<i32, CanonicalItemRegistryRecord> {
+/// Admits the built-in numeric registry against the loaded descriptor carrier.
+fn built_in_registry(
+    assets: Option<&RuntimeEntityAssets>,
+) -> BTreeMap<i32, CanonicalItemRegistryRecord> {
     protocol::vanilla_item_registry()
         .iter()
-        .map(|entry| (entry.network_id, registry_record(entry)))
+        .map(|entry| (entry.network_id, registry_record(entry, assets)))
         .collect()
 }
 
@@ -592,8 +617,13 @@ mod visual_route_tests {
     }
 }
 
-fn registry_record(entry: &ItemRegistryEntry) -> CanonicalItemRegistryRecord {
+/// Copies item-owned facts into this registry generation.
+fn registry_record(
+    entry: &ItemRegistryEntry,
+    assets: Option<&RuntimeEntityAssets>,
+) -> CanonicalItemRegistryRecord {
     CanonicalItemRegistryRecord {
+        glint: glint::resolve(entry, assets),
         identifier: Arc::clone(&entry.identifier),
         network_id: entry.network_id,
         component_based: entry.component_based,
@@ -748,6 +778,7 @@ mod armor_tests {
     #[test]
     fn registry_retains_every_numeric_alias_for_a_shared_item_identifier() {
         let entries = [101, 102, 103].map(|network_id| protocol::ItemRegistryEntry {
+            components: None,
             identifier: Arc::from("example:menu_icon"),
             network_id,
             component_based: true,

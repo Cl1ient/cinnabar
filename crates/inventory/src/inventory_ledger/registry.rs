@@ -245,6 +245,7 @@ mod tests {
 
     fn entry(identifier: &str, component_based: bool, declared: Option<u8>) -> ItemRegistryEntry {
         ItemRegistryEntry {
+            components: None,
             identifier: identifier.into(),
             network_id: 900,
             component_based,
@@ -273,6 +274,7 @@ mod tests {
     #[test]
     fn server_block_items_stack_to_the_item_default() {
         let block_item = |declared| ItemRegistryEntry {
+            components: None,
             version: ItemRegistryVersion::None,
             ..entry("benergistics:controller", false, declared)
         };

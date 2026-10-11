@@ -508,12 +508,15 @@ impl UiRuntime {
         self.session_items.as_ref()?.name_color(identifier)
     }
 
-    pub fn item_glint(&self, stack: &protocol::NetworkItemStack, identifier: &str) -> bool {
+    /// Combines cached enchantments with the current numeric registry's shine fact.
+    pub fn item_glint(
+        &self,
+        stack: &protocol::NetworkItemStack,
+        intrinsic: assets::item::glint::ItemGlint,
+    ) -> bool {
         super::item_facts::glint_for_facts(
-            self.stack_facts(stack, Some(identifier))
-                .has_enchantment_list,
-            identifier,
-            self.item_components(identifier),
+            self.stack_facts(stack, None).has_enchantment_list,
+            intrinsic,
         )
     }
 

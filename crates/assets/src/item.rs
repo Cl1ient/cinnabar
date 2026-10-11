@@ -1,3 +1,6 @@
+pub mod glint;
+pub mod retail;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -156,6 +159,8 @@ impl ItemDisplayTransform {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemVisualDefinition {
+    /// Intrinsic shine admitted from checked compiler data.
+    pub glint: glint::ItemGlint,
     pub key: ItemVisualKey,
     /// Source containing the canonical item definition or reviewed rule.
     pub source: u32,

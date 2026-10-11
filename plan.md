@@ -7519,3 +7519,13 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+### Compiled intrinsic shine (incomplete)
+
+Intrinsic shine admission remains incomplete. The versioned item descriptor retains the existing
+four admitted positive choices as provisional compatibility data and gives each independently
+admitted retail identity an explicit disposition. Written books are absent from this inventory
+and remain unresolved until their admission is independently established. Unsupported identities remain unresolved. Full native class,
+metadata and component-version coverage remains open; compiler facts alone do not close these
+parity gates. Numeric session admission and shared world/UI consumers are implemented; their
+focused tests pass. Full visible rendering, metadata and native coverage verification remain open.

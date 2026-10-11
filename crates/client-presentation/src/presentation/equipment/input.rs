@@ -39,7 +39,7 @@ pub(super) fn worn_item(item: &CanonicalItemStack, dye_rgb: Option<u32>) -> Opti
             _ => HeldKind::Other,
         },
         dye_rgb,
-        enchanted: item.enchanted,
+        enchanted: item.enchanted || item.glint.enabled().unwrap_or(false),
     })
 }
 
@@ -188,5 +188,31 @@ mod tests {
         assert!(input.first_person && input.off_hand);
         assert_eq!(input.frame_alpha, 0.75);
         assert_eq!(input.use_elapsed_ticks, Some(2));
+    }
+    #[test]
+    fn worn_glint_combines_intrinsic_dispositions_and_enchantment_facts() {
+        let mut item = CanonicalItemStack {
+            glint: assets::item::glint::builtin_item_glint("minecraft:enchanted_book"),
+            identity: assets::ItemStackIdentity {
+                network_id: 7,
+                metadata: 0,
+                stack_network_id: -1,
+                count: 1,
+                nbt_digest: [0; 32],
+                block_runtime_id: 0,
+            },
+            identifier: Some(std::sync::Arc::from("minecraft:enchanted_book")),
+            visual: ItemVisualRoute::Missing,
+            charged_projectile: None,
+            damage: None,
+            enchanted: false,
+        };
+        assert!(worn_item(&item, None).unwrap().enchanted);
+        item.glint = assets::item::glint::ItemGlint::Unresolved;
+        assert!(!worn_item(&item, None).unwrap().enchanted);
+        item.enchanted = true;
+        assert!(worn_item(&item, None).unwrap().enchanted);
+        item.glint = assets::item::glint::ItemGlint::Session { enabled: false };
+        assert!(worn_item(&item, None).unwrap().enchanted);
     }
 }

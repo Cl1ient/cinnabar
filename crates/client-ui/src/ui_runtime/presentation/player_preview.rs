@@ -78,18 +78,17 @@ impl UiPresentationRuntime {
         self.equipment_catalog = catalog;
     }
 
-    /// Dresses the model in the local player's armor and held item, naming each
-    /// stack's item through `identify`.
+    /// Dresses the model using each stack's admitted identity and intrinsic shine.
     pub fn dress_player_preview(
         &mut self,
         player_runtime: &player_state::PlayerState,
         runtime: &crate::ui_runtime::UiRuntime,
-        identify: impl Fn(&protocol::NetworkItemStack) -> Option<Arc<str>>,
+        resolve: impl Fn(&protocol::NetworkItemStack) -> Option<client_world::CanonicalItemStack>,
     ) {
         use inventory::inventory_ledger::InventoryTarget;
         let ledger = runtime.inventory_ledger(player_runtime);
         let named = |stack: Option<&protocol::NetworkItemStack>| {
-            stack.and_then(|stack| Some((identify(stack)?, stack.clone())))
+            stack.and_then(|stack| Some((resolve(stack)?, stack.clone())))
         };
         let armor: [_; 4] = std::array::from_fn(|slot| {
             named(ledger.target_stack(InventoryTarget::Armor(slot as u8)))
@@ -101,19 +100,31 @@ impl UiPresentationRuntime {
         );
         self.set_player_preview_gear(
             armor.each_ref().map(|worn| {
-                worn.as_ref()
-                    .map(|(id, stack)| (&**id, runtime.stack_facts(stack, Some(id)).custom_color))
+                worn.as_ref().and_then(|(item, stack)| {
+                    let id = item.identifier.as_deref()?;
+                    Some((id, runtime.stack_facts(stack, Some(id)).custom_color))
+                })
             }),
-            held.as_ref().map(|(id, stack)| (&**id, stack.metadata)),
+            held.as_ref()
+                .and_then(|(item, stack)| Some((item.identifier.as_deref()?, stack.metadata))),
         );
+        self.player_preview_gear.armor_glint = armor.each_ref().map(|worn| {
+            worn.as_ref()
+                .is_some_and(|(item, stack)| runtime.item_glint(stack, item.glint))
+        });
         let off_hand = named(ledger.target_stack(InventoryTarget::Offhand));
         self.player_preview_gear.hands = [held, off_hand].map(|item| {
-            let (identifier, stack) = item?;
+            let (item, stack) = item?;
+            let identifier = item.identifier?;
             let facts = runtime.stack_facts(&stack, Some(&identifier));
             let charged_projectile = (identifier.as_ref() == "minecraft:crossbow")
                 .then(|| facts.charged_projectile())
                 .flatten();
             Some(PreviewHandItem {
+                glint: Some(crate::ui_runtime::item_facts::glint_for_facts(
+                    facts.has_enchantment_list,
+                    item.glint,
+                )),
                 identifier,
                 metadata: stack.metadata,
                 charged_projectile,
@@ -157,6 +168,7 @@ impl UiPresentationRuntime {
         });
         let hands = [
             held.map(|(identifier, metadata)| PreviewHandItem {
+                glint: None,
                 identifier: Arc::from(identifier),
                 metadata,
                 charged_projectile: None,
@@ -172,7 +184,12 @@ impl UiPresentationRuntime {
                 tint: None,
             })
         });
-        self.player_preview_gear = PreviewEquipment { armor, held, hands };
+        self.player_preview_gear = PreviewEquipment {
+            armor,
+            armor_glint: [false; 4],
+            held,
+            hands,
+        };
     }
 
     /// The current model raster's RGBA pixels, empty before the first.

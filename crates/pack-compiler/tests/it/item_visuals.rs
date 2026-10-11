@@ -40,7 +40,7 @@ fn armour_values_compile_by_identity_with_unresolved_unknown_items() {
         visual(&compiled.item_visuals, "custom:cloth", 0).armour,
         assets::ItemArmour::Unresolved
     );
-    let inventory = include_str!("../../../../protocol/data/retail_items_1_26_50.tsv");
+    let inventory = include_str!("../../../protocol/data/retail_items_1_26_50.tsv");
     for identifier in inventory.lines().filter_map(|line| line.split('\t').nth(1)) {
         let item = visual(&compiled.item_visuals, identifier, 0);
         assert_eq!(item.key.identifier.as_ref(), identifier);

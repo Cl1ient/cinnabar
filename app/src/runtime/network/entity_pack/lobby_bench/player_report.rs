@@ -5,7 +5,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use bevy::{math::Mat4, prelude::Entity};
+use bevy::prelude::Entity;
 use protocol::{ActorEvent, PlayerListEntry, PlayerSkin};
 use serde_json::{Value, json};
 

@@ -118,12 +118,12 @@ pub(super) fn read(reader: &mut Reader<'_>) -> Result<CompiledBlockShapes, Asset
     let outline = read_outline(reader)?;
     let connected_outline = read_outline(reader)?;
     let count = usize::from(reader.read_u8("tag count")?);
-    let mut tags = Vec::with_capacity(count);
+    let mut tags: Vec<Box<str>> = Vec::with_capacity(count);
     for _ in 0..count {
         let len = usize::from(reader.read_u8("tag length")?);
         let value = std::str::from_utf8(reader.read_exact(len, "tag")?)
             .map_err(|_| physics_error("invalid tag UTF-8"))?;
-        if value.is_empty() || tags.iter().any(|tag: &Box<str>| tag.as_ref() == value) {
+        if value.is_empty() || tags.iter().any(|tag| tag.as_ref() == value) {
             return invalid("empty or duplicate tag");
         }
         tags.push(value.into());

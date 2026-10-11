@@ -18,7 +18,7 @@ impl ActorStore {
         &mut self,
         runtime_id: u64,
         authority: (u64, u64),
-        samples: impl IntoIterator<Item = crate::LocalSwingMotionSample>,
+        samples: impl IntoIterator<Item = actor_animation::LocalSwingMotionSample>,
     ) {
         self.local_view_dirty |= self
             .animation
@@ -29,7 +29,7 @@ impl ActorStore {
     pub(crate) fn sync_local_swing(
         &mut self,
         runtime_id: u64,
-        progress: crate::LocalSwingProgress,
+        progress: actor_animation::LocalSwingProgress,
     ) {
         self.local_view_dirty |= self.animation.sync_local_swing(runtime_id, progress);
     }
@@ -117,15 +117,24 @@ impl ActorStore {
         self.prepare_appearances(ticks > 0);
         // The live actors now reach the positions picks were reading.
         self.picks_ahead = false;
-        for tick in 0..ticks.max(u32::from(refresh_view)) {
-            if !refresh_view {
+        let prepare_frame = frame
+            && ticks == 0
+            && (refresh_view
+                || self.animation.needs_initial_presentation(
+                    &self.actors,
+                    self.animation_view.as_ref(),
+                    self.remote_state_excluded_runtime_id,
+                    |actor| self.appearance_ready(actor),
+                ));
+        for tick in 0..ticks.max(u32::from(prepare_frame)) {
+            if !prepare_frame {
                 if let Some(pending) = &mut self.pending_local_damage {
                     pending.tick();
                 }
                 self.step_motion();
                 self.seat_riders();
             }
-            if !refresh_view {
+            if !prepare_frame {
                 self.advance_pickup_visuals();
                 self.advance_dragon_animation();
                 self.advance_dragon_beams();
@@ -254,7 +263,10 @@ impl ActorStore {
                     .get(&actor.unique_id)
                     .copied()
                     .unwrap_or_default();
-                crate::actor_animation::ActorTickContext {
+                actor_animation::ActorTickContext {
+                    appearance_pending: !self.ready_appearances.admits(
+                        actor, prepared, &self.players, &self.unlisted_players,
+                    ),
                     frame_alpha: 0.0,
                     animation_elapsed_ticks: frame.then_some(ticks),
                     is_riding: rider_to_ridden.contains_key(&actor.unique_id),
@@ -277,7 +289,7 @@ impl ActorStore {
                     java_swing_ticks: if is_local {
                         local_java_swing_ticks
                     } else {
-                        crate::ACTOR_SWING_TICKS
+                        actor_animation::ACTOR_SWING_TICKS
                     },
                     main_hand_slot: if is_local {
                         local_main_slot
@@ -331,11 +343,9 @@ impl ActorStore {
                     },
                 }
             };
-            if refresh_view {
-                if let Some(runtime_id) = local_runtime {
-                    self.animation
-                        .refresh_local_view(actors, runtime_id, context);
-                }
+            if prepare_frame {
+                self.animation
+                    .prepare_frame(actors, view, local_runtime, refresh_view, context);
             } else {
                 self.animation.advance_tick(
                     actors,
@@ -354,9 +364,9 @@ impl ActorStore {
 /// Worn stacks in helmet, chestplate, leggings, boots, body order.
 fn worn_armor(
     snapshot: Option<&crate::item::ActorArmorSnapshot>,
-) -> [Option<crate::actor_animation::WornArmor>; 5] {
+) -> [Option<actor_animation::WornArmor>; 5] {
     let piece = |piece: &crate::item::ActorArmorPiece| {
-        Some(crate::actor_animation::WornArmor {
+        Some(actor_animation::WornArmor {
             item: piece.item.identifier.clone()?,
             dye_rgb: piece.dye_rgb,
         })

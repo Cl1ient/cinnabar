@@ -138,6 +138,9 @@ struct VisualCompiler {
     flower_pot_soil: Option<u32>,
     chiseled_bookshelf_templates: BTreeMap<[u32; 5], u32>,
     shelf_templates: BTreeMap<([u32; 6], u8, u8), u32>,
+    grindstone_templates: BTreeMap<([u32; 6], u8, u8), u32>,
+    sea_pickle_templates: BTreeMap<(u32, u8, bool), u32>,
+    coral_templates: BTreeMap<(u32, super::coral::Shape), u32>,
     candle_cake_templates: BTreeMap<[u32; 4], u32>,
     hollow_container_templates: BTreeMap<(super::hollow_containers::VesselState, Vec<u32>), u32>,
 }
@@ -165,6 +168,15 @@ impl VisualCompiler {
             return Ok(CompileRuleResult::Compiled(visual));
         }
 
+        ordered_rule!(super::coral::compile_rule(
+            record,
+            inputs,
+            &mut self.coral_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
         ordered_rule!(super::bamboo::compile_rule(
             record,
             inputs,
@@ -246,6 +258,24 @@ impl VisualCompiler {
                 quads: &mut self.model_quads,
             },
         ));
+        ordered_rule!(super::grindstone::compile_rule(
+            record,
+            inputs,
+            &mut self.grindstone_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::sea_pickle::compile_rule(
+            record,
+            inputs,
+            &mut self.sea_pickle_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
         ordered_rule!(super::end_rod::compile_rule(
             record,
             inputs,
@@ -310,6 +340,10 @@ impl VisualCompiler {
                 quads: &mut self.model_quads,
             },
         ));
+        match super::respawn_anchor::compile_rule(record, inputs) {
+            CompileRuleResult::NoMatch => {}
+            outcome => return Ok(outcome),
+        }
         ordered_rule!(super::fallback::compile_rule(
             record,
             inputs,

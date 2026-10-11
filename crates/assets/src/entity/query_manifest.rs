@@ -207,7 +207,7 @@ query_manifest! {
     IsTamed => ("query.is_tamed", MolangQueryHandler::Flag(28), 0, 0, Number, Implemented),
     IsUsingItem => ("query.is_using_item", MolangQueryHandler::Flag(4), 0, 0, Number, Implemented),
     ItemIsCharged => ("query.item_is_charged", MolangQueryHandler::Evaluator, 0, 0, Number, Implemented),
-    ItemRemainingUseDuration => ("query.item_remaining_use_duration", MolangQueryHandler::Evaluator, 0, 0, Number, Implemented),
+    ItemRemainingUseDuration => ("query.item_remaining_use_duration", MolangQueryHandler::Evaluator, 0, 2, Number, Implemented),
     ItemSlotToBoneName => ("query.item_slot_to_bone_name", MolangQueryHandler::Evaluator, 1, 1, String, Implemented),
     KeyFrameLerpTime => ("query.key_frame_lerp_time", MolangQueryHandler::Unimplemented, 0, 0, Number, Unimplemented),
     KineticWeaponDamageDuration => ("query.kinetic_weapon_damage_duration", MolangQueryHandler::Evaluator, 0, 0, Number, Implemented),
@@ -283,6 +283,21 @@ pub fn bind_molang_queries(symbols: &[MolangSymbol]) -> Box<[Option<MolangQuery>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn item_remaining_use_duration_contract_accepts_optional_slot_and_range() {
+        let descriptor = MolangQuery::ItemRemainingUseDuration.descriptor();
+        assert_eq!(
+            descriptor.arguments,
+            MolangQueryArguments {
+                minimum: 0,
+                maximum: 2,
+            }
+        );
+        assert_eq!(descriptor.handler, MolangQueryHandler::Evaluator);
+        assert_eq!(descriptor.output, MolangQueryOutput::Number);
+        assert_eq!(descriptor.support, MolangQuerySupport::Implemented);
+    }
 
     #[test]
     fn query_bindings_keep_nonquery_slots_and_unimplemented_queries_distinct() {

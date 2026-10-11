@@ -163,6 +163,8 @@ platforms. These limits and the unresolved server-routing behavior remain open g
   `bridge`; shared skin data lives in `render-api`.
 - `launcher-host` owns authentication and core processes, account and artwork workers,
   server-list storage, storage scans, persistent login IDs, video persistence and process lifecycle services.
+  It also runs local worlds: the world store, the BDS download and the local server processes; the core
+  only receives the open world's address over `local_world.v1`. This move is not yet compiled or run.
   `client-shell` supplies the menu resources and drivers; `app` adapts session and network state.
 - `first-run` owns the standalone setup window and asset preparation flow. Shared OreUI styles
   live in `ui`, and panorama preparation lives in `render-model`. Both new crates are Bevy-free.
@@ -7691,6 +7693,17 @@ Composters retain inward walls and a level-dependent floor. Cauldrons retain the
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
 
+Mount equipment admission is incomplete. Each compiled entity symbol carries a
+typed unresolved, empty, supported or provisional equipment disposition. The
+existing eleven mount layouts are retained as provisional facts in one
+hash-checked source; they do not prove active component groups or the full native
+inventory. Actor admission caches these facts, including unresolved pack
+replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
+fallback drawing, pointer handling and quick-move routing. Active equippable
+components, accepted items, conditional activation, advertised custom bases and
+later mount layouts remain incomplete and do not close the entity parity gate.
+Entity carrier 16 requires a `make assets` rebuild.
+
 ### Compiled furnace fuel admission (incomplete)
 
 Furnace quick-move fuel decisions use numeric registry facts and validated compiled inputs.
@@ -7729,7 +7742,7 @@ Effective item durability is shared through required entity-carrier descriptors 
 
 ## Held-item grip admission (incomplete parity)
 
-Item grip facts are compiled into entity carrier 16, checked against the separate
+Item grip facts are compiled into entity carrier 17, checked against the separate
 retail identity inventory and copied through numeric item admission into equipment
 input. Unknown names cannot borrow a tool grip. Explicit session flags, including
 false, replace the compiled upright choice. The existing built-in grip and rod-art

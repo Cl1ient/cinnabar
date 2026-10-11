@@ -55,6 +55,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
         }]
         .into(),
         symbols: vec![assets::EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: assets::EntityAssetKind::Entity,
             identifier: "test:fixture".into(),
             source_index: 0,

@@ -7378,3 +7378,11 @@ Crossed-plane routing now comes from the shared family catalog and is retained
 in current registry records. Historical records resolve that catalog at
 admission. Broader native material and movement descriptors remain incomplete;
 this routing cleanup does not close their parity gates.
+
+### Session block highlights
+
+Mod block identifiers resolve to every admitted state in the active session, in
+sequential and hashed ID modes. Replacing the custom palette or starting another
+session invalidates highlight discovery. Unresolved identifiers are reported when
+that mapping is refreshed. This closes the custom-name lookup gap; wider selection
+shape and frame performance acceptance remain incomplete.

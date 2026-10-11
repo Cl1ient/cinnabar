@@ -201,3 +201,10 @@ The account core publishes menu, world-default, Realm and generic featured/Exper
 Exact heartbeat, platform configuration, server overrides, permission gates and
 friends-visible acceptance remain incomplete. No existing completion entry is
 advanced by this feature; see `docs/reference/xbox-presence.md` and `plan.md`.
+
+## Session block highlight follow-up
+
+Highlight lookup uses admitted custom state identities and the pinned base registry.
+Regression coverage includes both ID modes, palette replacement and session reset.
+The loaded-block highlight capture shows a custom block before and after admission.
+Selection shape parity and displayed-frame performance gates remain open.

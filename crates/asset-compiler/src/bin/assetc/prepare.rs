@@ -284,6 +284,7 @@ pub(super) fn command(carrier: &Carrier, context: &Context) -> Result<Command, B
         },
         Recipe::Entity => Command::EntityAssets {
             pack,
+            behavior_pack: context.seat_behavior_pack(),
             source_manifest: manifest(),
             out,
             report: report(),

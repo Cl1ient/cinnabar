@@ -298,3 +298,5 @@ pub use ui::{
     UiSidecarEntry, UiTexturePlacement, UiTextureUv, encode_ui_catalog,
 };
 pub use vanilla_refs::{MAX_VANILLA_REFS_BYTES, VanillaEntityRefs, VanillaGeometryFile};
+
+pub use entity::seats as entity_seats;

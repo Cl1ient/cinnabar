@@ -7,6 +7,7 @@ use {
 };
 
 mod camera_environment;
+mod compiled_seats;
 mod publication_markers;
 
 const WORLD_STREAM_COMPLETION_TIMEOUT: Duration = Duration::from_secs(30);

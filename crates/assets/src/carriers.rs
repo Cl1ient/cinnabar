@@ -63,7 +63,7 @@ pub enum Recipe {
 pub enum Input {
     /// The pinned sample `resource_pack`, identified by [`VANILLA_MANIFEST`].
     Pack,
-    /// The pinned sample `behavior_pack`, passed only when it ships item definitions.
+    /// The pinned behavior-pack source used by authored entity and item facts.
     BehaviorPack,
     /// The source manifest the compiler embeds.
     Manifest(&'static str),
@@ -161,6 +161,7 @@ pub const ENTITY: Carrier = Carrier {
         Input::Manifest(VANILLA_MANIFEST),
         Input::File(crate::item::fuel::INPUT_PATH),
         Input::File(crate::item::retail::INPUT_PATH),
+        Input::BehaviorPack,
     ],
     ..carrier(
         "entity",

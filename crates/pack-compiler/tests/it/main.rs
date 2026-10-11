@@ -3,6 +3,7 @@ mod attachable_animation;
 mod biome;
 mod entity_animation;
 mod entity_versions;
+mod entity_seats;
 mod equipment;
 mod font;
 mod font_fallback;

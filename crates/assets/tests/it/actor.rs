@@ -148,6 +148,7 @@ fn omitted_face_uv_size_uses_cube_dimensions_for_bounds() {
 
 fn entities() -> Box<[u8]> {
     encode_entity_blob(&CompiledEntityAssets {
+seat_layouts: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -183,7 +184,7 @@ fn entities() -> Box<[u8]> {
         item_visuals: Box::new([]),
         item_visual_aliases: Box::new([]),
         render: Default::default(),
-    })
+    }.with_unresolved_seats())
     .unwrap()
 }
 

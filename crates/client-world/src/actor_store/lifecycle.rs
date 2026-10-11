@@ -66,6 +66,7 @@ impl ActorStore {
         );
         store.items =
             crate::item::ItemStateStore::with_assets(std::sync::Arc::clone(&entity_assets));
+        store.seat_assets = Some(std::sync::Arc::clone(&entity_assets));
         store.actions = crate::action::RemoteActionStore::with_assets(entity_assets);
         store
     }
@@ -126,7 +127,9 @@ impl ActorStore {
             camera_rotation: [0.0; 2],
             camera_position: [0.0; 3],
             animation_view: None,
-            seat_defaults: Default::default(),
+            seat_assets: None,
+            seat_bindings: HashMap::new(),
+            seat_bases: HashMap::new(),
             property_registry: Default::default(),
             local_knockback: None,
             status_notices: Vec::new(),
@@ -227,6 +230,7 @@ impl ActorStore {
         actor.player_game_mode = feed.game_mode.map(protocol::GameModeUpdate::Explicit);
         self.unique_to_runtime.insert(unique_id, runtime_id);
         self.effect_members.update(&actor);
+        self.bind_actor_seat(&actor);
         self.actors.insert(runtime_id, actor);
         self.apply_pending_local_health(runtime_id);
         if let Some(actor) = self.actors.get(&runtime_id) {
@@ -315,6 +319,8 @@ impl ActorStore {
         self.player_game_mode_skips = 0;
         self.world_default_game_mode = None;
         self.actors.clear();
+        self.seat_bindings.clear();
+        self.seat_bases.clear();
         self.effect_members = Default::default();
         self.unique_to_runtime.clear();
         self.rider_to_ridden.clear();
@@ -360,6 +366,7 @@ impl ActorStore {
             })
             .or_else(|| self.pending_local_damage.take());
         self.actors.clear();
+        self.seat_bindings.clear();
         self.effect_members = Default::default();
         self.unique_to_runtime.clear();
         self.rider_to_ridden.clear();
@@ -395,7 +402,10 @@ impl ActorStore {
             return ActorApplyResult::StaleDimension;
         }
         match event {
-            ActorEvent::Identifiers(registry) => self.apply_aim_actor_classes(registry),
+            ActorEvent::Identifiers(registry) => {
+                self.apply_seat_bases(&registry);
+                self.apply_aim_actor_classes(registry)
+            }
             ActorEvent::Spawn(spawn) => self.apply_spawn(sequence, spawn),
             ActorEvent::PlayerSpawn { spawn, game_mode } => {
                 let unique_id = spawn.unique_id;
@@ -740,6 +750,7 @@ impl ActorStore {
             self.remove_links_for(unique_id);
             return ActorApplyResult::MissingActor;
         };
+        self.seat_bindings.remove(&runtime_id);
         if let Some(actor) = self.actors.remove(&runtime_id) {
             self.effect_members.remove(runtime_id);
             self.synchronized_audio.remove_runtime(runtime_id);

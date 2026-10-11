@@ -780,7 +780,9 @@ pub(crate) struct ActorStore {
     /// Rigs outside this view hold their pose instead of animating.
     animation_view: Option<actor_animation::ActorAnimationView>,
     /// Seat layouts for mounts whose riders stream no seat offset.
-    seat_defaults: std::sync::Arc<SeatDefaults>,
+    seat_assets: Option<std::sync::Arc<assets::RuntimeEntityAssets>>,
+    seat_bindings: HashMap<u64, Option<u32>>,
+    seat_bases: HashMap<std::sync::Arc<str>, Option<u32>>,
     property_registry: properties::PropertyRegistry,
     /// Latest local-player knockback `(sequence, [x, z])`, for hurt direction inference.
     local_knockback: Option<(u64, [f32; 2])>,
@@ -832,7 +834,7 @@ pub use hurt::{
 };
 pub use lightning::LightningBoltView;
 pub(crate) use placement::FLAG_BABY;
-pub use placement::{ActorFluidProbe, RideSeat, SeatDefaults, SeatRequirement};
+pub use placement::{ActorFluidProbe, RideSeat};
 pub use properties::PropertyDefault;
 pub use shadow::ActorShadowCaster;
 

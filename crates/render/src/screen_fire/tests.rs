@@ -11,6 +11,7 @@ fn pack() -> RuntimeAssets {
     let down = TextureRef::new(1, 1).unwrap();
     let compiled = CompiledAssets {
         visuals: vec![BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces,
             flags: BlockFlags::CUBE_GEOMETRY,
             kind: VisualKind::Cube,

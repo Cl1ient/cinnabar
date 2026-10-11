@@ -93,6 +93,7 @@ fn runtime_with_block_identity(
         BlockFlags::empty()
     };
     let visual = BlockVisual {
+        native_material: assets::NativeMaterialFacts::Unresolved,
         support: if kind == VisualKind::Diagnostic {
             assets::VisualSupport::Diagnostic
         } else {

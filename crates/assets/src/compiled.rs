@@ -183,6 +183,8 @@ const _: () = assert!(std::mem::size_of::<Material>() == 24);
 pub struct BlockVisual {
     pub faces: [u32; 6],
     pub flags: BlockFlags,
+    /// Resolved solid/liquid material facts, independent of visual support.
+    pub native_material: crate::NativeMaterialFacts,
     pub kind: VisualKind,
     pub support: VisualSupport,
     pub contributor_role: ContributorRole,
@@ -195,6 +197,7 @@ impl BlockVisual {
     #[must_use]
     pub fn diagnostic(flags: BlockFlags, contributor_role: ContributorRole) -> Self {
         Self {
+            native_material: crate::NativeMaterialFacts::Unresolved,
             faces: [DIAGNOSTIC_MATERIAL; 6],
             flags,
             kind: VisualKind::Diagnostic,

@@ -160,6 +160,7 @@ fn runtime_assets_with_model_geometry(
     };
     let mut visuals = vec![
         BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [DIAGNOSTIC_MATERIAL; 6],
             flags: BlockFlags::AIR,
             kind: VisualKind::Invisible,
@@ -170,6 +171,7 @@ fn runtime_assets_with_model_geometry(
             variant: 0,
         },
         BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,
@@ -180,6 +182,7 @@ fn runtime_assets_with_model_geometry(
             variant: 0,
         },
         BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Model,
@@ -190,6 +193,7 @@ fn runtime_assets_with_model_geometry(
             variant: 0,
         },
         BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Liquid,

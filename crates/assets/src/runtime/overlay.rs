@@ -475,6 +475,7 @@ mod tests {
     fn cube_overlay(texture: TextureArray) -> BlockOverlay {
         BlockOverlay {
             visuals: vec![BlockVisual {
+                native_material: crate::NativeMaterialFacts::Unresolved,
                 faces: [0; 6],
                 flags: BlockFlags::CUBE_GEOMETRY,
                 kind: VisualKind::Cube,

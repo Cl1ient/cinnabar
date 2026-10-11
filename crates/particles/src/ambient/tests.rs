@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use assets::BlockFlags;
+use assets::NativeMaterialFacts;
 
 use super::{
     material_allows_leaf,
@@ -86,31 +86,17 @@ fn gaussian_samples_consume_native_z_y_x_order_and_split_near_far_loops() {
 }
 
 #[test]
-fn native_under_material_is_not_inferred_from_passability_or_cross_geometry() {
-    assert!(material_allows_leaf(BlockFlags::AIR, Some("minecraft:air")));
-    for name in [
-        "short_grass",
-        "fern",
-        "poppy",
-        "dandelion",
-        "brown_mushroom",
-        "red_mushroom",
+fn leaf_admission_reads_material_facts_and_denies_unresolved_support() {
+    assert!(material_allows_leaf(NativeMaterialFacts::NonSolidNonLiquid));
+    assert!(material_allows_leaf(
+        NativeMaterialFacts::ProvisionalNonSolidNonLiquid
+    ));
+    for material in [
+        NativeMaterialFacts::Unresolved,
+        NativeMaterialFacts::Solid,
+        NativeMaterialFacts::Liquid,
+        NativeMaterialFacts::SolidAndLiquid,
     ] {
-        assert!(material_allows_leaf(
-            BlockFlags::empty(),
-            Some(&format!("minecraft:{name}"))
-        ));
+        assert!(!material_allows_leaf(material));
     }
-    for name in [
-        "water",
-        "flowing_water",
-        "lava",
-        "oak_leaves",
-        "snow_layer",
-        "stone",
-        "custom:plant",
-    ] {
-        assert!(!material_allows_leaf(BlockFlags::empty(), Some(name)));
-    }
-    assert!(!material_allows_leaf(BlockFlags::empty(), None));
 }

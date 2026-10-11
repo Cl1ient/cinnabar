@@ -536,6 +536,7 @@ fn custom_identity_authority(mode: NetworkIdMode) -> WorldAuthority {
     let diagnostic = RuntimeAssets::diagnostic();
     let compiled = CompiledAssets {
         visuals: Box::new([BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::AIR,
             kind: VisualKind::Invisible,

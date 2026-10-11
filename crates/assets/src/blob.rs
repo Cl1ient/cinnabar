@@ -27,7 +27,7 @@ use crate::{
 
 // World leaves require native atlas mips, per-face isotropy and pack-authored
 // AO exponents. Reject earlier carriers that omit those material selectors.
-pub const BLOB_VERSION: u32 = 12;
+pub const BLOB_VERSION: u32 = 13;
 pub const BLOB_MAGIC: [u8; 8] = {
     let mut magic = *b"MCBEAS00";
     magic[6] += (BLOB_VERSION / 10) as u8;
@@ -150,7 +150,8 @@ pub fn encode_blob(compiled: &CompiledAssets) -> Result<Box<[u8]>, AssetError> {
         bytes.push(visual.contributor_role as u8);
         bytes.push(light.packed());
         bytes.push(visual.support as u8);
-        bytes.extend_from_slice(&[0; 3]);
+        bytes.push(visual.native_material as u8);
+        bytes.extend_from_slice(&[0; 2]);
         push_u32(&mut bytes, visual.model_template);
         push_u32(&mut bytes, visual.animation);
         push_u32(&mut bytes, visual.variant);

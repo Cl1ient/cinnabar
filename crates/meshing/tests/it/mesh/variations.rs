@@ -9,6 +9,7 @@ fn positional_materials_keep_one_cell_per_quad_on_every_cube_face() {
     }
     let mut overlay = assets::BlockOverlay {
         visuals: vec![BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,
@@ -56,7 +57,11 @@ fn positional_materials_keep_one_cell_per_quad_on_every_cube_face() {
         );
         assert_eq!(mesh.quad_count(), if positional { 6 * 16 * 16 } else { 6 });
         if positional {
-            assert!(mesh.quads().iter().all(|q| q.width() == 1 && q.height() == 1));
+            assert!(
+                mesh.quads()
+                    .iter()
+                    .all(|q| q.width() == 1 && q.height() == 1)
+            );
         }
     }
 }
@@ -72,6 +77,7 @@ fn mixed_biome_option_keeps_tinted_faces_one_block_wide() {
     }
     let overlay = assets::BlockOverlay {
         visuals: vec![BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,
@@ -105,9 +111,17 @@ fn mixed_biome_option_keeps_tinted_faces_one_block_wide() {
         );
         if split {
             assert_eq!(mesh.quad_count(), 6 * 16 * 16);
-            assert!(mesh.quads().iter().all(|q| q.width() == 1 && q.height() == 1));
+            assert!(
+                mesh.quads()
+                    .iter()
+                    .all(|q| q.width() == 1 && q.height() == 1)
+            );
         } else {
-            assert_eq!(mesh.quad_count(), 6, "uniform biomes keep merged tinted faces");
+            assert_eq!(
+                mesh.quad_count(),
+                6,
+                "uniform biomes keep merged tinted faces"
+            );
         }
     }
 }

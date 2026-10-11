@@ -96,6 +96,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
     ASSETS.get_or_init(|| {
         let mut visuals = vec![
             BlockVisual {
+                native_material: assets::NativeMaterialFacts::Unresolved,
                 faces: [DIAGNOSTIC_MATERIAL; 6],
                 flags: BlockFlags::empty(),
                 kind: VisualKind::Diagnostic,
@@ -117,6 +118,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             visuals[runtime_id].flags = BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE;
         }
         visuals[53] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [61, 62, 63, 64, 65, 66],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
@@ -129,6 +131,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
         // A non-full-cube record intentionally carries non-zero face IDs. The
         // mesher must still route it to the diagnostic material.
         visuals[54] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Diagnostic,
             faces: [66; 6],
             flags: BlockFlags::empty(),
@@ -139,6 +142,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 0,
         };
         visuals[LEAF_A as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [LEAF_A; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::LEAF_MODEL,
@@ -149,6 +153,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 0,
         };
         visuals[LEAF_B as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [LEAF_B; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::LEAF_MODEL,
@@ -159,6 +164,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 0,
         };
         visuals[CROSS as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [1; 6],
             flags: BlockFlags::empty(),
@@ -169,6 +175,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 2,
         };
         visuals[ZERO_QUAD_CROSS as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [1; 6],
             flags: BlockFlags::empty(),
@@ -180,6 +187,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
         };
         for runtime_id in [LIQUID_A, LIQUID_B] {
             visuals[runtime_id as usize] = BlockVisual {
+                native_material: assets::NativeMaterialFacts::Unresolved,
                 support: assets::VisualSupport::Exact,
                 faces: [DIAGNOSTIC_MATERIAL; 6],
                 flags: BlockFlags::empty(),
@@ -191,6 +199,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             };
         }
         visuals[UNSUPPORTED_ADDITIONAL as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Diagnostic,
             faces: [DIAGNOSTIC_MATERIAL; 6],
             flags: BlockFlags::empty(),
@@ -201,6 +210,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 0,
         };
         visuals[KELP as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [1; 6],
             flags: BlockFlags::empty(),
@@ -211,6 +221,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 0,
         };
         visuals[MODEL_32 as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [1; 6],
             flags: BlockFlags::empty(),
@@ -221,6 +232,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 0,
         };
         visuals[COMPOUND_40 as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [1; 6],
             flags: BlockFlags::empty(),
@@ -231,6 +243,7 @@ fn runtime_assets() -> &'static RuntimeAssets {
             variant: 0,
         };
         visuals[MIXED_ALPHA_MODEL as usize] = BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             support: assets::VisualSupport::Exact,
             faces: [1; 6],
             flags: BlockFlags::empty(),
@@ -694,6 +707,7 @@ fn compound_model_chain_meshes_every_visibility_part() {
     };
     let overlay = assets::BlockOverlay {
         visuals: vec![BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Model,

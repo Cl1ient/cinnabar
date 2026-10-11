@@ -18,6 +18,35 @@ const FIXTURE_PROVENANCE: BlobProvenance = BlobProvenance {
 };
 
 #[test]
+fn native_material_dispositions_survive_checked_world_carrier_admission() {
+    for facts in [
+        assets::NativeMaterialFacts::Unresolved,
+        assets::NativeMaterialFacts::NonSolidNonLiquid,
+        assets::NativeMaterialFacts::Solid,
+        assets::NativeMaterialFacts::Liquid,
+        assets::NativeMaterialFacts::SolidAndLiquid,
+        assets::NativeMaterialFacts::ProvisionalNonSolidNonLiquid,
+    ] {
+        let mut compiled = valid_assets();
+        compiled.visuals[0].native_material = facts;
+        let bytes = encode_blob(&compiled).unwrap();
+        let runtime = assets::RuntimeAssets::decode(&bytes).unwrap();
+        assert_eq!(
+            runtime
+                .resolve(assets::NetworkIdMode::Sequential, 0)
+                .native_material(),
+            facts
+        );
+        assert_eq!(
+            runtime
+                .resolve(assets::NetworkIdMode::Sequential, u32::MAX)
+                .native_material(),
+            assets::NativeMaterialFacts::Unresolved
+        );
+    }
+}
+
+#[test]
 fn world_carrier_exact_bytes() {
     let texture = assets::TextureRef::new(1, 17).expect("bounded texture ref");
     assert_eq!(texture.raw(), 0x8000_0011);
@@ -25,6 +54,7 @@ fn world_carrier_exact_bytes() {
     let mut fixture = valid_assets();
     fixture.visuals = vec![
         BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Diagnostic,
@@ -35,6 +65,7 @@ fn world_carrier_exact_bytes() {
             variant: 0,
         },
         BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [1; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Model,
@@ -105,7 +136,7 @@ fn world_carrier_exact_bytes() {
     assert_eq!(bytes.len(), 1_576_296);
     assert_eq!(
         format!("{:x}", Sha256::digest(&bytes)),
-        "a26e9817f3d46f262b1fa7588d085daef3da16f81fdb57a2c89de0b05d59d7e6",
+        "505458f4a87bce9ebd69fd734996c19dec6babbccee97e36132fd67d2d55275a",
         "the complete every-table fixture is the byte-exact world carrier golden"
     );
     assert_eq!(read_u32(&bytes, 20), 2);
@@ -614,6 +645,7 @@ fn texture_array(layers: u32) -> TextureArray {
 fn valid_assets() -> CompiledAssets {
     CompiledAssets {
         visuals: vec![BlockVisual {
+            native_material: assets::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Diagnostic,

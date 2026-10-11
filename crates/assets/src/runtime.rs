@@ -60,6 +60,11 @@ impl ResolvedBlock {
     pub const fn is_known(self) -> bool {
         self.known
     }
+    /// Returns the admitted material disposition, including unresolved support.
+    #[must_use]
+    pub const fn native_material(self) -> crate::NativeMaterialFacts {
+        self.visual.native_material
+    }
     #[must_use]
     pub const fn flags(self) -> BlockFlags {
         self.visual.flags
@@ -110,6 +115,7 @@ impl ResolvedBlock {
 
 const fn diagnostic_visual() -> BlockVisual {
     BlockVisual {
+        native_material: crate::NativeMaterialFacts::Unresolved,
         faces: [DIAGNOSTIC_MATERIAL; 6],
         flags: BlockFlags::empty(),
         kind: VisualKind::Diagnostic,

@@ -35,6 +35,7 @@ fn opaque_runtime_assets() -> &'static RuntimeAssets {
         let compiled = CompiledAssets {
             visuals: vec![
                 BlockVisual {
+                    native_material: assets::NativeMaterialFacts::Unresolved,
                     faces: [0; 6],
                     flags: BlockFlags::AIR,
                     kind: VisualKind::Invisible,
@@ -45,6 +46,7 @@ fn opaque_runtime_assets() -> &'static RuntimeAssets {
                     variant: 0,
                 },
                 BlockVisual {
+                    native_material: assets::NativeMaterialFacts::Unresolved,
                     faces: [1; 6],
                     flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
                     kind: VisualKind::Cube,

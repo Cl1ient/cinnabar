@@ -25,6 +25,8 @@ fn findings(source: &str, alpha_metadata: &str) -> Vec<String> {
         "[package]\nname='beta'\nversion='0.1.0'\n",
     );
     write(&root.join("crates/beta/data/table.tsv"), "id\n");
+    write(&root.join("assets/shared.json"), "{}\n");
+    write(&root.join("plan.md"), "# Plan\n");
     write(
         &root.join("policy.toml"),
         "production_rust_max=1000\nmodule_root_max=300\npowershell_max=800\ntest_max=1200\n\
@@ -37,7 +39,7 @@ fn findings(source: &str, alpha_metadata: &str) -> Vec<String> {
         .collect()
 }
 
-const MISSING: &str = "alpha: crates/alpha/src/lib.rs reads `crates/beta/data/table.tsv` from another crate; list it in `reads` under [package.metadata.cinnabar]";
+const MISSING: &str = "alpha: crates/alpha/src/lib.rs reads `crates/beta/data/table.tsv` outside the crate; list it in `reads` under [package.metadata.cinnabar]";
 
 #[test]
 fn undeclared_reads_of_another_crate_fail() {
@@ -72,7 +74,7 @@ fn directory_reads_need_a_covering_declaration() {
     assert_eq!(
         findings(source, ""),
         [
-            "alpha: crates/alpha/src/lib.rs reads `crates/beta/data` from another crate; list it in `reads` under [package.metadata.cinnabar]"
+            "alpha: crates/alpha/src/lib.rs reads `crates/beta/data` outside the crate; list it in `reads` under [package.metadata.cinnabar]"
         ]
     );
     assert!(
@@ -109,4 +111,40 @@ fn stale_declarations_fail_unless_a_source_still_names_the_path() {
         )
         .is_empty()
     );
+}
+
+#[test]
+fn reads_of_existing_paths_outside_every_crate_need_declarations() {
+    let source = "const SHARED: &str = include_str!(\"../../../assets/shared.json\");";
+    assert_eq!(
+        findings(source, ""),
+        [
+            "alpha: crates/alpha/src/lib.rs reads `assets/shared.json` outside the crate; list it in `reads` under [package.metadata.cinnabar]"
+        ]
+    );
+    for declaration in ["assets/shared.json", "assets", "assets/*"] {
+        assert!(
+            findings(
+                source,
+                &format!("[package.metadata.cinnabar]\nreads=['{declaration}']")
+            )
+            .is_empty(),
+            "{declaration}"
+        );
+    }
+    assert!(
+        findings("const GONE: &str = \"../../assets/missing.json\";", "").is_empty(),
+        "paths that do not exist are not reads"
+    );
+    assert!(findings("const PARENT: &str = \"../\";", "").is_empty());
+}
+
+#[test]
+fn declarations_outside_every_crate_go_stale_too() {
+    let declared = "[package.metadata.cinnabar]\nreads=['plan.md']";
+    assert_eq!(
+        findings("fn portable() {}", declared),
+        ["alpha: declared read `plan.md` matches nothing its sources read"]
+    );
+    assert!(findings("fn plan() -> &'static str { \"plan.md\" }", declared).is_empty());
 }

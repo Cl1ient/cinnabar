@@ -60,6 +60,7 @@ Mojang assets are never committed or embedded. `make assets` fetches Mojang's of
 | `tools/jsonui-mcp` | The same editor core as an MCP server: resolve, validate, lay out, render and export packs. |
 | `tools/devtool` | `verify-affected`, which tests only what a change touches, and `ci-plan`, which scopes pull-request CI the same way. |
 | `tools/dist` | Stages distributable bundles. |
+| `tools/workspace-declarations` | The `[package.metadata.cinnabar]` keys and path matching shared by the architecture gate and `devtool`. |
 
 The [modding spike](docs/modding-spike.md) is a disabled-by-default Cinnabar extension; its
 samples are `examples/mods/hello` and `examples/mods/time-changer`, and `examples/experiences/probe`

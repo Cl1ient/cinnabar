@@ -7,6 +7,10 @@ publish = false
 
 [package.metadata.cinnabar]
 platform-specific = ["windows"]
+reads = [
+    "assets/fonts/CinnanglesSans.ttf",
+    "assets/panorama/*",
+]
 
 [dependencies]
 anyhow.workspace = true

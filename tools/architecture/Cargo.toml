@@ -9,6 +9,8 @@ publish = false
 reads = [
     "crates/diagnostics/src/console.rs",
     "crates/diagnostics/src/console/raw_stderr.rs",
+    "docs/evidence",
+    "plan.md",
 ]
 
 [dependencies]
@@ -17,6 +19,7 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true
 toml = "0.9"
+workspace-declarations = { path = "../workspace-declarations" }
 
 proc-macro2 = { version = "1", features = ["span-locations"] }
 syn = { version = "2", features = ["full", "visit"] }

@@ -7,7 +7,12 @@ publish = false
 
 [package.metadata.cinnabar]
 reads = [
+    "assets/block-projection-v2193.json",
     "crates/assets/data/block-physics-v2193.bin",
+    "tools/bedsimtrace-controls/*",
+    "tools/bedsimtrace-v0.1.4/*",
+    "tools/bedsimtrace-v0.1.5/*",
+    "tools/bedsimtrace/*",
 ]
 
 [dependencies]

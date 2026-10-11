@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use workspace_declarations::{TABLE, within};
+
 use super::Policy;
 
 pub(super) fn ignored_directory(relative: &str) -> bool {
@@ -63,13 +65,7 @@ pub(super) fn owning_crate<'a>(
         .copied()
 }
 
-/// Whether `path` is `root` or lies below it.
-pub(super) fn within(path: &str, root: &str) -> bool {
-    path.strip_prefix(root)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-}
-
-/// Reads the `[package.metadata.cinnabar]` array named `key`.
+/// Reads the declaration array `key` from a manifest's `[package.metadata.cinnabar]`.
 pub(super) fn cinnabar_list<'a>(
     manifest: &'a toml::Value,
     key: &str,
@@ -77,8 +73,8 @@ pub(super) fn cinnabar_list<'a>(
     manifest
         .get("package")
         .and_then(|package| package.get("metadata"))
-        .and_then(|metadata| metadata.get("cinnabar"))
-        .and_then(|cinnabar| cinnabar.get(key))
+        .and_then(|metadata| metadata.get(TABLE))
+        .and_then(|table| table.get(key))
         .and_then(toml::Value::as_array)
         .into_iter()
         .flatten()

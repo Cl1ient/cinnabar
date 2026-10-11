@@ -388,6 +388,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "toml 0.9.12+spec-1.1.0",
+ "workspace-declarations",
 ]
 
 [[package]]
@@ -3148,6 +3149,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "workspace-declarations",
 ]
 
 [[package]]
@@ -9573,6 +9575,10 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
 ]
+
+[[package]]
+name = "workspace-declarations"
+version = "0.1.12"
 
 [[package]]
 name = "world"

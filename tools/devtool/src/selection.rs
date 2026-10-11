@@ -1,5 +1,7 @@
 use std::collections::{BTreeSet, VecDeque};
 
+use workspace_declarations::within;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Package {
     pub(crate) name: String,
@@ -63,7 +65,7 @@ impl Package {
     fn declares_read(&self, path: &str) -> bool {
         self.reads
             .iter()
-            .any(|pattern| wildcard_match(pattern, path) || is_within(path, pattern))
+            .any(|pattern| workspace_declarations::read_names(pattern, path))
     }
 }
 
@@ -100,15 +102,6 @@ pub struct ExtraChecks {
 
 /// Shared carrier identity input read by the Rust runtime and registry validators.
 const TARGET_MANIFEST: &str = "assets/bedrock-target.json";
-
-/// Paths outside crate roots read by production code or tests.
-const EXTERNAL_TEST_INPUTS: &[(&str, &str)] = &[
-    ("assets/java-hud", "json-ui"),
-    (TARGET_MANIFEST, "assets"),
-    ("tools/registrygen/cmd/hashcheck/main.go", "bedrock-client"),
-    ("plan.md", "architecture"),
-    ("docs/evidence", "architecture"),
-];
 
 /// Selects Rust packages; paths no rule recognises fail safe to the whole workspace.
 #[must_use]
@@ -154,49 +147,28 @@ pub(crate) fn changed_packages(
         }
         if let Some(owner) = owner(&path, packages) {
             selected.insert(owner.name.clone());
-        } else if let Some((_, reader)) = EXTERNAL_TEST_INPUTS
-            .iter()
-            .find(|(input, _)| is_within(&path, input))
-        {
-            selected.insert((*reader).to_owned());
-        } else if !read && !is_rust_free(&path) {
+        } else if (!read || is_go_input(&path)) && !is_rust_free(&path) {
             return None;
         }
     }
     Some(selected)
 }
 
-/// Matches `*` against any run of characters, `/` included, as the architecture gate does.
-fn wildcard_match(pattern: &str, value: &str) -> bool {
-    let (pattern, value) = (pattern.as_bytes(), value.as_bytes());
-    let (mut pattern_index, mut value_index) = (0, 0);
-    let (mut star_index, mut star_value_index) = (None, 0);
-    while value_index < value.len() {
-        if pattern_index < pattern.len() && pattern[pattern_index] == value[value_index] {
-            pattern_index += 1;
-            value_index += 1;
-        } else if pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-            while pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-                pattern_index += 1;
-            }
-            star_index = Some(pattern_index);
-            star_value_index = value_index;
-        } else if let Some(after_star) = star_index {
-            star_value_index += 1;
-            value_index = star_value_index;
-            pattern_index = after_star;
-        } else {
-            return false;
-        }
-    }
-    pattern[pattern_index..].iter().all(|byte| *byte == b'*')
+/// Go sources run everything even when declared: Rust tests also reach them through the Go
+/// toolchain, which `reads` declarations cannot see.
+fn is_go_input(path: &str) -> bool {
+    path.ends_with(".go")
+        || matches!(
+            path.rsplit('/').next(),
+            Some("go.mod" | "go.sum" | "go.work" | "go.work.sum")
+        )
 }
 
 /// Returns the package with the deepest root containing a normalized `path`.
 pub(crate) fn owner<'a>(path: &str, packages: &'a [Package]) -> Option<&'a Package> {
     packages
         .iter()
-        .filter(|package| is_within(path, &package.root))
+        .filter(|package| within(path, &package.root))
         .max_by_key(|package| package.root.len())
 }
 
@@ -209,7 +181,7 @@ pub fn select_extra_checks(changed_paths: &[&str], go_modules: &[GoModule]) -> E
     let mut packaging = false;
     for path in changed_paths {
         let path = normalize(path);
-        packaging |= is_within(&path, "packaging");
+        packaging |= within(&path, "packaging");
         if path == TARGET_MANIFEST || is_registry_manifest(&path) {
             selected.extend(
                 go_modules
@@ -219,7 +191,7 @@ pub fn select_extra_checks(changed_paths: &[&str], go_modules: &[GoModule]) -> E
         }
         let owner = go_modules
             .iter()
-            .filter(|module| module.dir.is_empty() || is_within(&path, &module.dir))
+            .filter(|module| module.dir.is_empty() || within(&path, &module.dir))
             .max_by_key(|module| module.dir.len());
         let workspace_manifest = owner.is_some_and(|module| {
             module.in_workspace
@@ -247,19 +219,12 @@ pub(crate) fn normalize(path: &str) -> String {
     path.trim_start_matches("./").replace('\\', "/")
 }
 
-pub(crate) fn is_within(path: &str, root: &str) -> bool {
-    path == root
-        || path
-            .strip_prefix(root)
-            .is_some_and(|suffix| suffix.starts_with('/'))
-}
-
 fn is_workspace_input(path: &str) -> bool {
     let path = normalize(path);
     matches!(
         path.as_str(),
         "Cargo.toml" | "Cargo.lock" | "rust-toolchain.toml" | "rust-toolchain"
-    ) || is_within(&path, ".cargo")
+    ) || within(&path, ".cargo")
 }
 
 /// Recognizes the versioned metadata files consumed only by registrygen.
@@ -281,7 +246,7 @@ fn is_registry_manifest(path: &str) -> bool {
 
 /// Generator source affects Rust only through separately selected generated artifacts.
 fn is_generator_source(path: &str) -> bool {
-    (is_within(path, "tools/registrygen") && path.ends_with(".go"))
+    (within(path, "tools/registrygen") && path.ends_with(".go"))
         || matches!(
             path,
             "tools/registrygen/update_bindings.py"
@@ -302,7 +267,7 @@ fn is_rust_free(path: &str) -> bool {
         || path == "LICENSE"
         || ["docs", ".github", "packaging"]
             .iter()
-            .any(|root| is_within(path, root))
+            .any(|root| within(path, root))
 }
 
 #[cfg(test)]
@@ -345,7 +310,8 @@ mod tests {
     #[test]
     fn builtin_hud_changes_select_the_ui_owner_and_its_consumers() {
         let packages = vec![
-            Package::new("json-ui", "crates/json-ui", &[]),
+            Package::new("json-ui", "crates/json-ui", &[])
+                .with_reads(vec!["assets/java-hud".into()]),
             Package::new("client-ui", "crates/client-ui", &["json-ui"]),
             Package::new("bedrock-client", "app", &["client-ui"]),
             Package::new("sim", "crates/sim", &[]),
@@ -363,6 +329,7 @@ mod tests {
     #[test]
     fn target_manifest_selects_carrier_owner_and_reverse_consumers() {
         let mut packages = workspace();
+        packages[0] = packages[0].clone().with_reads(vec![TARGET_MANIFEST.into()]);
         packages.push(Package::new("inventory", "crates/inventory", &[]));
         assert_eq!(
             select_packages(&[TARGET_MANIFEST], &packages),
@@ -433,14 +400,6 @@ mod tests {
     }
 
     #[test]
-    fn hashcheck_source_selects_its_rust_installer_consumer() {
-        assert_eq!(
-            select_packages(&["tools/registrygen/cmd/hashcheck/main.go"], &workspace()),
-            Selection::Packages(vec!["bedrock-client".into()])
-        );
-    }
-
-    #[test]
     fn unknown_generator_and_carrier_inputs_still_require_the_full_gate() {
         for path in [
             "assets/new-carrier.json",
@@ -498,13 +457,36 @@ mod tests {
     }
 
     #[test]
-    fn plan_and_evidence_ledger_select_the_architecture_tests() {
+    fn plan_and_evidence_ledger_select_their_declared_reader() {
+        let mut packages = workspace();
+        packages.push(
+            Package::new("architecture", "tools/architecture", &[])
+                .with_reads(vec!["plan.md".into(), "docs/evidence".into()]),
+        );
         for path in ["plan.md", "docs/evidence/ledger.md"] {
             assert_eq!(
-                select_packages(&[path], &workspace()),
+                select_packages(&[path], &packages),
                 Selection::Packages(vec!["architecture".into()])
             );
         }
+        assert_eq!(
+            select_packages(&["plan.md"], &workspace()),
+            Selection::NoPackages
+        );
+    }
+
+    #[test]
+    fn declared_reads_of_go_sources_still_run_everything() {
+        let mut packages = workspace();
+        packages.push(Package::new("bridge", "crates/bridge", &[]).with_reads(vec!["core".into()]));
+        assert_eq!(
+            select_packages(&["core/session/relay.go"], &packages),
+            Selection::Workspace
+        );
+        assert_eq!(
+            select_packages(&["core/catalog/artwork_limit.txt"], &packages),
+            Selection::Packages(vec!["bridge".into()])
+        );
     }
 
     #[test]

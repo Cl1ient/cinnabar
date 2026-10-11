@@ -8,6 +8,11 @@ publish = false
 [package.metadata.cinnabar]
 platform-specific = ["windows"]
 reads = [
+    "Cargo.lock",
+    "assets/hud-source-v2193.json",
+    "assets/licenses/NotoSansCJK-OFL-1.1.txt",
+    "assets/ui-font-source.json",
+    "assets/vanilla-source.json",
     "crates/assets/data/*",
 ]
 

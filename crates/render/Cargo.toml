@@ -9,6 +9,7 @@ publish = false
 platform-specific = ["macos", "windows"]
 reads = [
     "app/src/app/render_setup.rs",
+    "assets/bedrock-target.json",
     "crates/assets/data/block-registry-v1001.bin",
     "crates/assets/data/block-registry-v2193.bin",
     "crates/render-scene/src/chunk/*",

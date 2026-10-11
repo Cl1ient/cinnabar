@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, path::PathBuf};
 
 use serde::Deserialize;
+use workspace_declarations::{PLATFORM_SPECIFIC, READS, TABLE};
 
 use crate::{DevtoolError, GoModule, Package, selection::normalize};
 
@@ -19,21 +20,20 @@ struct MetadataPackage {
     dependencies: Vec<MetadataDependency>,
     targets: Vec<MetadataTarget>,
     #[serde(default)]
-    metadata: Option<PackageMetadata>,
+    metadata: serde_json::Value,
 }
 
-#[derive(Default, Deserialize)]
-struct PackageMetadata {
-    #[serde(default)]
-    cinnabar: CinnabarMetadata,
-}
-
-#[derive(Default, Deserialize)]
-struct CinnabarMetadata {
-    #[serde(default, rename = "platform-specific")]
-    platform_specific: Vec<String>,
-    #[serde(default)]
-    reads: Vec<String>,
+/// Reads the declaration array `key` from a package's `[package.metadata.cinnabar]`.
+fn declarations(metadata: &serde_json::Value, key: &str) -> Vec<String> {
+    metadata
+        .get(TABLE)
+        .and_then(|table| table.get(key))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -80,7 +80,8 @@ pub fn packages_from_metadata(json: &str) -> Result<Vec<Package>, DevtoolError> 
                 })
                 .map(|dependency| dependency.name)
                 .collect();
-            let cinnabar = package.metadata.unwrap_or_default().cinnabar;
+            let platforms = declarations(&package.metadata, PLATFORM_SPECIFIC);
+            let reads = declarations(&package.metadata, READS);
             Ok(Package::from_owned(
                 package.id,
                 package.name,
@@ -88,8 +89,8 @@ pub fn packages_from_metadata(json: &str) -> Result<Vec<Package>, DevtoolError> 
                 dependencies,
                 package.targets.iter().any(|target| target.doctest),
             )
-            .with_platforms(cinnabar.platform_specific)
-            .with_reads(cinnabar.reads))
+            .with_platforms(platforms)
+            .with_reads(reads))
         })
         .collect()
 }

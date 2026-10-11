@@ -1,6 +1,8 @@
+use workspace_declarations::{MACOS, PLATFORMS, WINDOWS, within};
+
 use crate::{
     Package, Selection,
-    selection::{changed_packages, is_within, normalize, select_packages},
+    selection::{changed_packages, normalize, select_packages},
 };
 
 /// Workflow definitions; a change to them can change what any job runs on any platform.
@@ -8,10 +10,6 @@ const CI_INPUTS: &[&str] = &[".github/workflows", ".github/actions"];
 
 /// The workspace-wide architecture gate: it runs every test but needs no platform runner.
 const ARCHITECTURE_GATE: &str = "tools/architecture";
-
-/// Platforms that crates declare in `[package.metadata.cinnabar] platform-specific`, each with
-/// its own pull-request runner.
-const PLATFORMS: [&str; 2] = ["macos", "windows"];
 
 /// The client's asset-carrier integration tests skip without local carriers, so platform jobs
 /// run only its library tests.
@@ -34,7 +32,7 @@ pub fn plan_ci(changed_paths: &[&str], packages: &[Package]) -> CiPlan {
     let touches = |root: &str| {
         changed_paths
             .iter()
-            .any(|path| is_within(&normalize(path), root))
+            .any(|path| within(&normalize(path), root))
     };
     let ci_input = CI_INPUTS.iter().any(|&root| touches(root));
     let selection = if ci_input || touches(ARCHITECTURE_GATE) {
@@ -55,8 +53,8 @@ pub fn plan_ci(changed_paths: &[&str], packages: &[Package]) -> CiPlan {
                 }))
     };
     CiPlan {
-        macos: needs("macos"),
-        windows: needs("windows"),
+        macos: needs(MACOS),
+        windows: needs(WINDOWS),
         selection,
     }
 }

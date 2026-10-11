@@ -130,7 +130,9 @@ fn stale_and_unknown_declarations_fail() {
             "fn portable() {}",
             "[package.metadata.cinnabar]\nplatform-specific=['linux']"
         ),
-        ["sample: unknown platform-specific value \"linux\"; expected \"macos\" or \"windows\""]
+        [
+            "sample: unknown platform-specific value \"linux\"; expected one of [\"macos\", \"windows\"]"
+        ]
     );
 }
 

@@ -8,6 +8,9 @@ publish = false
 [package.metadata.cinnabar]
 platform-specific = ["macos", "windows"]
 reads = [
+    "assets/bedrock-target.json",
+    "assets/fonts",
+    "assets/vanilla-source.json",
     "crates/assets/data/*",
     "crates/protocol/data/retail_items_1_26_50.tsv",
 ]

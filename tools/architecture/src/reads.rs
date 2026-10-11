@@ -8,22 +8,23 @@ use syn::{
     LitStr, Macro,
     visit::{self, Visit},
 };
+use workspace_declarations::{READS, read_names, within};
 
 use crate::{
     ArchitectureError,
-    paths::{cinnabar_list, crate_roots, owning_crate, relative_slash, within},
+    paths::{cinnabar_list, crate_roots, owning_crate, relative_slash},
     policy::Policy,
     read,
-    sources::wildcard_match,
 };
 
-/// Requires `[package.metadata.cinnabar] reads` to list every file a crate reads from another
-/// crate, so CI selects the reader when that file changes.
+/// Requires `[package.metadata.cinnabar] reads` to list every repository path outside a crate
+/// that it reads, in another crate or in no crate, so CI selects the reader when it changes.
 ///
 /// A read is an `include_str!`/`include_bytes!` path, resolved from the source file, or a
 /// literal starting with `../` or `/../`, resolved from the crate root as
-/// `env!("CARGO_MANIFEST_DIR")` paths are. A bare repository-relative literal such as
-/// `"crates/assets/data"` only keeps a declaration current: tests name such paths as data.
+/// `env!("CARGO_MANIFEST_DIR")` paths are. Paths in no crate count only if they exist. A bare
+/// repository-relative literal such as `"plan.md"` only keeps a declaration current: tests name
+/// such paths as data.
 pub(super) fn check_reads(
     root: &Path,
     policy: &Policy,
@@ -31,6 +32,13 @@ pub(super) fn check_reads(
     diagnostics: &mut Vec<String>,
 ) -> Result<(), ArchitectureError> {
     let roots = crate_roots(policy);
+    let mut existing = BTreeSet::new();
+    for path in files {
+        let mut relative = relative_slash(root, path);
+        while !relative.is_empty() && existing.insert(relative.clone()) {
+            relative.truncate(relative.rfind('/').unwrap_or(0));
+        }
+    }
     let mut required = BTreeMap::<&str, BTreeMap<String, String>>::new();
     let mut mentioned = BTreeMap::<&str, BTreeSet<String>>::new();
     for path in files {
@@ -51,8 +59,9 @@ pub(super) fn check_reads(
             .rsplit_once('/')
             .map_or("", |(directory, _)| directory);
         let foreign = |target: Option<String>| {
-            target.filter(|target| {
-                owning_crate(&roots, target).is_some_and(|(owner, _)| owner != crate_root)
+            target.filter(|target| match owning_crate(&roots, target) {
+                Some((owner, _)) => owner != crate_root,
+                None => existing.contains(target),
             })
         };
         for literal in &scan.included {
@@ -65,10 +74,14 @@ pub(super) fn check_reads(
             }
         }
         for literal in &scan.literals {
+            // A bare `..` names no path of its own.
             let relative_to_crate = literal
                 .strip_prefix('/')
                 .unwrap_or(literal)
-                .starts_with("../");
+                .starts_with("../")
+                && literal
+                    .split('/')
+                    .any(|part| !matches!(part, "" | "." | ".."));
             if relative_to_crate {
                 if let Some(target) = foreign(resolve(crate_root, literal.trim_start_matches('/')))
                 {
@@ -91,14 +104,14 @@ pub(super) fn check_reads(
                 source,
             }
         })?;
-        let declared = cinnabar_list(&manifest, "reads")
+        let declared = cinnabar_list(&manifest, READS)
             .filter_map(toml::Value::as_str)
             .collect::<Vec<_>>();
         let reads = required.remove(name).unwrap_or_default();
         for (target, source) in &reads {
             if !declared.iter().any(|pattern| covers(pattern, target)) {
                 diagnostics.push(format!(
-                    "{name}: {source} reads `{target}` from another crate; list it in `reads` under [package.metadata.cinnabar]"
+                    "{name}: {source} reads `{target}` outside the crate; list it in `reads` under [package.metadata.cinnabar]"
                 ));
             }
         }
@@ -120,9 +133,7 @@ pub(super) fn check_reads(
 
 /// Whether a declared pattern names `target`, a directory containing it, or a file inside it.
 fn covers(pattern: &str, target: &str) -> bool {
-    wildcard_match(pattern.as_bytes(), target.as_bytes())
-        || within(target, pattern)
-        || within(pattern, target)
+    read_names(pattern, target) || within(pattern, target)
 }
 
 /// Joins `path` to a repository-relative `base`, returning `None` when it leaves the repository.

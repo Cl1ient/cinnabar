@@ -8,6 +8,8 @@ publish = false
 [package.metadata.cinnabar]
 platform-specific = ["macos", "windows"]
 reads = [
+    "assets/cinnangles-sans-source.json",
+    "assets/vanilla-source.json",
     "crates/assets/data/*",
     "crates/client-presentation/src/local_player.rs",
     "crates/mod-api/wit/extension.wit",

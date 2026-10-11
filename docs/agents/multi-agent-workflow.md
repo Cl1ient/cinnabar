@@ -37,9 +37,10 @@ cause, and report any validation that remains incomplete.
 Go tests on Linux. Rust jobs build and lint the whole workspace, so only changed crates and
 their reverse dependencies recompile, and `devtool ci-plan` limits Rust tests to those
 crates. Root Cargo files, `.cargo/`, toolchain files, workflows, `tools/architecture`, and
-paths it cannot classify run every test. A crate that reads another crate's files lists them
-under `[package.metadata.cinnabar]` as `reads = ["crates/<crate>/data/*"]`, so changing one
-selects the reader too; the architecture gate rejects undeclared and stale reads.
+paths it cannot classify run every test. A crate that reads files outside its own directory lists
+them under `[package.metadata.cinnabar]` as `reads = ["crates/<crate>/data/*"]`, so changing
+one selects the reader too; the architecture gate rejects undeclared and stale reads. Go
+sources still run every test.
 
 Crates with macOS or Windows code declare it in `Cargo.toml` as
 `[package.metadata.cinnabar] platform-specific = ["macos", "windows"]`; the architecture

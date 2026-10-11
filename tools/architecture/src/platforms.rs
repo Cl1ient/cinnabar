@@ -9,6 +9,7 @@ use syn::{
     ext::IdentExt,
     visit::{self, Visit},
 };
+use workspace_declarations::{MACOS, PLATFORM_SPECIFIC, PLATFORMS, WINDOWS};
 
 use crate::{
     ArchitectureError,
@@ -26,13 +27,16 @@ enum Platform {
     Windows,
 }
 
+// Every declarable platform has a variant.
+const _: () = assert!(Platform::ALL.len() == PLATFORMS.len());
+
 impl Platform {
     const ALL: [Self; 2] = [Self::Macos, Self::Windows];
 
     fn name(self) -> &'static str {
         match self {
-            Self::Macos => "macos",
-            Self::Windows => "windows",
+            Self::Macos => MACOS,
+            Self::Windows => WINDOWS,
         }
     }
 
@@ -128,7 +132,7 @@ fn declared_platforms(
     diagnostics: &mut Vec<String>,
 ) -> BTreeSet<Platform> {
     let mut declared = BTreeSet::new();
-    for value in cinnabar_list(manifest, "platform-specific") {
+    for value in cinnabar_list(manifest, PLATFORM_SPECIFIC) {
         match Platform::ALL
             .into_iter()
             .find(|platform| value.as_str() == Some(platform.name()))
@@ -137,7 +141,7 @@ fn declared_platforms(
                 declared.insert(platform);
             }
             None => diagnostics.push(format!(
-                "{name}: unknown platform-specific value {value}; expected \"macos\" or \"windows\""
+                "{name}: unknown platform-specific value {value}; expected one of {PLATFORMS:?}"
             )),
         }
     }

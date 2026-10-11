@@ -149,6 +149,8 @@ mod tests {
     fn fixture() -> (ItemVisualDefinition, Vec<EntityAssetSource>) {
         let visual = ItemVisualDefinition {
             fuel: builtin_item_fuel("minecraft:coal"),
+            armour: crate::item::armour::ItemArmour::Unresolved,
+            durability: crate::item::durability::ItemDurability::Unresolved,
             key: crate::ItemVisualKey {
                 identifier: "minecraft:coal".into(),
                 metadata: 0,

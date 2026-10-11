@@ -1,4 +1,5 @@
-use super::{CameraBlockHit, TraversalState, ray_box, validate_ray};
+use super::super::crossing_order;
+use super::{CameraBlockHit, TraversalState, checked_offset, ray_box, validate_ray};
 use crate::{Aabb, BlockPhysicsFlags, PaletteWorld, Vec3, WorldQueryError};
 use world::SubChunkKey;
 
@@ -16,9 +17,9 @@ impl PaletteWorld<'_> {
         let distance = delta.length_squared().sqrt();
         let direction = validate_ray(origin, delta, distance)?;
         let mut state = TraversalState::new(origin, direction)?;
-        if let Some(hit) = self.camera_aim_cell(
-            state.cell, origin, direction, distance, true, false, liquids,
-        )? {
+        if let Some(hit) =
+            self.camera_aim_halo(&state, origin, direction, distance, true, outlines, liquids)?
+        {
             return Ok(Some(hit));
         }
         let end_cell = [
@@ -44,13 +45,59 @@ impl PaletteWorld<'_> {
                 .checked_add(state.step[axis])
                 .ok_or(WorldQueryError::CoordinateOutOfRange)?;
             state.next[axis] += state.delta[axis];
-            if let Some(hit) = self.camera_aim_cell(
-                state.cell, origin, direction, distance, false, outlines, liquids,
+            if let Some(hit) = self.camera_aim_halo(
+                &state, origin, direction, distance, false, outlines, liquids,
             )? {
                 return Ok(Some(hit));
             }
         }
         Ok(None)
+    }
+
+    /// Outline visibility includes displaced owners; cube sampling keeps its cell budget.
+    #[allow(clippy::too_many_arguments)]
+    fn camera_aim_halo(
+        &self,
+        state: &TraversalState,
+        origin: Vec3,
+        direction: Vec3,
+        distance: f64,
+        initial: bool,
+        outlines: bool,
+        liquids: bool,
+    ) -> Result<Option<CameraBlockHit>, WorldQueryError> {
+        if !outlines {
+            return self.camera_aim_cell(
+                state.cell, origin, direction, distance, initial, false, liquids,
+            );
+        }
+        let halo = self.registry.selection_ray_halo();
+        // Only intercepts in this traversed cell can finish the step-bounded scan.
+        let distance = distance.min(state.next_crossing());
+        let mut best: Option<CameraBlockHit> = None;
+        for x in halo[0].0..=halo[0].1 {
+            for y in halo[1].0..=halo[1].1 {
+                for z in halo[2].0..=halo[2].1 {
+                    let block = checked_offset(state.cell, [x, y, z])?;
+                    let Some(hit) = self.camera_aim_cell(
+                        block, origin, direction, distance, initial, true, liquids,
+                    )?
+                    else {
+                        continue;
+                    };
+                    if best.as_ref().is_none_or(|old| {
+                        crossing_order(hit.distance, old.distance)
+                            .then_with(|| hit.block_pos.cmp(&old.block_pos))
+                            .then_with(|| hit.runtime_id.cmp(&old.runtime_id))
+                            .then_with(|| hit.face.cmp(&old.face))
+                            .is_lt()
+                    }) {
+                        best = Some(hit);
+                    }
+                }
+            }
+        }
+        Ok(best)
     }
 
     /// Liquid targeting is disabled when the cached eye occupies a primary liquid block.
@@ -155,7 +202,7 @@ impl PaletteWorld<'_> {
             };
             outline
         };
-        if initial
+        if (initial || outlines)
             && (0..3)
                 .all(|axis| origin[axis] >= outline.min[axis] && origin[axis] <= outline.max[axis])
         {

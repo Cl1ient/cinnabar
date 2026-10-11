@@ -84,10 +84,7 @@ impl PaletteWorld<'_> {
         expected_identity: Option<&WorldCollisionIdentity>,
     ) -> Result<Option<BlockHit>, WorldQueryError> {
         let direction = validate_ray(origin, direction, max_distance)?;
-        let halo = self
-            .registry
-            .selection_halo
-            .combined(self.registry.collision_halo);
+        let halo = self.registry.selection_ray_halo();
         let inspection_limit = inspection_limit(direction, max_distance, halo)?;
         let mut state = TraversalState::new(origin, direction)?;
         let mut inspected = BTreeSet::new();
@@ -162,10 +159,7 @@ impl PaletteWorld<'_> {
         revisions: &mut BTreeMap<ChunkKey, ChunkCollisionRevision>,
         best: &mut Option<Candidate>,
     ) -> Result<(), WorldQueryError> {
-        let halo = self
-            .registry
-            .selection_halo
-            .combined(self.registry.collision_halo);
+        let halo = self.registry.selection_ray_halo();
         for x in halo[0].0..=halo[0].1 {
             for y in halo[1].0..=halo[1].1 {
                 for z in halo[2].0..=halo[2].1 {

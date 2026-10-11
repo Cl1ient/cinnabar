@@ -201,3 +201,26 @@ fn check_moving_rays(mut inspect: impl FnMut(&PaletteWorld<'_>, Vec3, Vec3) -> O
         }
     }
 }
+
+#[test]
+fn outline_aim_keeps_origin_inside_suppression_with_a_selection_halo() {
+    let target = shapes(SelectionContext::Static, vec![UNIT], vec![]);
+    for space in [CollisionIdSpace::Sequential, CollisionIdSpace::Hashed] {
+        let (store, mut registry, _) = fixture(space, &target);
+        registry.register(9, []).unwrap();
+        registry.set_compiled_selection(9, &shapes(SelectionContext::MovingBlock, vec![], vec![]));
+        let world = PaletteWorld::new(&store, &registry, 0);
+        assert!(
+            world
+                .camera_aim_ray(
+                    Vec3::new(0.5, 0.5, 0.5),
+                    Vec3::new(0.5, 0.5, 3.5),
+                    6,
+                    true,
+                    false,
+                )
+                .unwrap()
+                .is_none()
+        );
+    }
+}

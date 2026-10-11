@@ -85,7 +85,7 @@ impl PaletteWorld<'_> {
         best: &mut Option<Candidate>,
         bounds: &mut Aabb,
     ) -> Result<(), WorldQueryError> {
-        let halo = self.registry.collision_halo;
+        let halo = self.registry.selection_ray_halo();
         for x in halo[0].0..=halo[0].1 {
             for y in halo[1].0..=halo[1].1 {
                 for z in halo[2].0..=halo[2].1 {
@@ -137,6 +137,9 @@ impl PaletteWorld<'_> {
             .registry
             .physics(runtime_id)
             .ok_or(WorldQueryError::UnknownRuntimeId { runtime_id, block })?;
+        if !self.may_pick(physics) {
+            return Ok(());
+        }
         let door = if physics.pick_shapes.is_none() {
             self.resolved_door_shape(block, physics)?
         } else {

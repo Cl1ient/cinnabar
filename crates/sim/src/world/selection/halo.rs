@@ -1,5 +1,6 @@
 //! Owner-cell reach for compiled interaction geometry, independent of movement.
 
+use super::super::CollisionRegistry;
 use assets::block_shapes::{CompiledBlockShapes, PISTON_DIRECTIONS, SelectionContext};
 
 /// Accumulates admitted selection bounds and possible carried-actor translations.
@@ -64,5 +65,12 @@ fn include_bounds(halo: &mut [(i32, i32); 3], min: [f64; 3], max: [f64; 3]) {
     for axis in 0..3 {
         halo[axis].0 = halo[axis].0.min(1 - max[axis].ceil() as i32);
         halo[axis].1 = halo[axis].1.max(-(min[axis].floor() as i32));
+    }
+}
+
+impl CollisionRegistry {
+    /// Covers every owner whose movement or admitted selection geometry can meet a ray cell.
+    pub(in crate::world) fn selection_ray_halo(&self) -> [(i32, i32); 3] {
+        self.selection_halo.combined(self.collision_halo)
     }
 }

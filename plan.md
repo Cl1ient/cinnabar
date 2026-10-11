@@ -7589,3 +7589,10 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+Movement descriptor coverage remains incomplete. The current physics carrier requires a typed
+movement disposition for every admitted state. Existing declared special rules retain their
+numerical behavior; unclassified states remain unresolved and keep the previous conservative
+numerical defaults. No ordinary movement classification is inferred from absence of a special
+rule. Complete native ordinary/special coverage, custom session movement components and
+all provisional rule values still require verification before this gate can close.

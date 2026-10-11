@@ -34,6 +34,7 @@ tracy = ["bevy/trace", "bevy/debug", "dep:tracing-tracy", "dep:profiling", "chun
 reports = []
 
 [dependencies]
+client-interaction = { path = "../crates/client-interaction" }
 client-runtime = { path = "../crates/client-runtime" }
 client-extensions = { path = "../crates/client-extensions" }
 client-state = { path = "../crates/client-state" }
@@ -113,6 +114,8 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
+client-interaction = { path = "../crates/client-interaction", features = ["test-support"] }
+assets = { path = "../crates/assets", features = ["test-support"] }
 client-runtime = { path = "../crates/client-runtime", features = ["test-support"] }
 client-audio = { path = "../crates/client-audio", features = ["test-support"] }
 pack-runtime = { path = "../crates/pack-runtime", features = ["test-support"] }

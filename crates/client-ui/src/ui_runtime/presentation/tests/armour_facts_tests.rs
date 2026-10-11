@@ -65,12 +65,12 @@ fn custom_wearable_protection_reaches_the_rendered_hud() {
     entry.identifier = Arc::from("fixture:coat");
     entry.network_id = 10_001;
     entry.component_based = true;
-    entry.components = Some(protocol::ItemComponents {
+    entry.components = Some(std::sync::Arc::new(protocol::ItemComponents {
         wearable_declared: true,
         wearable_slot: Some(Arc::from("slot.armor.chest")),
         wearable_protection: Some(6),
         ..Default::default()
-    });
+    }));
     let registry = protocol::ItemRegistryEvent {
         entries: vec![entry].into(),
     };

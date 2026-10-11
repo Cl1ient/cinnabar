@@ -274,11 +274,11 @@ mod tests {
             .find(|entry| entry.identifier.as_ref() == ELYTRA_IDENTIFIER)
             .unwrap()
             .clone();
-        entry.components = Some(protocol::ItemComponents {
+        entry.components = Some(std::sync::Arc::new(protocol::ItemComponents {
             durability_declared: true,
             max_durability: Some(50),
             ..Default::default()
-        });
+        }));
         assert!(authority.seed_item_registry(protocol::ItemRegistryEvent {
             entries: vec![entry.clone()].into()
         }));
@@ -290,7 +290,7 @@ mod tests {
         let canonical = authority.canonical_item_stack(&stack).unwrap();
         assert!(elytra_flies(&canonical, Some(48)));
         assert!(!elytra_flies(&canonical, Some(49)));
-        entry.components.as_mut().unwrap().max_durability = None;
+        std::sync::Arc::make_mut(entry.components.as_mut().unwrap()).max_durability = None;
         assert!(authority.seed_item_registry(protocol::ItemRegistryEvent {
             entries: vec![entry].into()
         }));

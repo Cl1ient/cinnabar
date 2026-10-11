@@ -705,6 +705,13 @@ pub(super) fn apply_engine_variables(
         engine.damage_nearby_mobs,
         flag(query::FLAG_DAMAGE_NEARBY_MOBS),
     );
+    let (startup, interval) = context
+        .main_hand
+        .as_deref()
+        .and_then(crate::consumables::consume_animation)
+        .map_or((0.0, 0.0), |_| use_item_progress(input.item_use_ticks));
+    variables.set(engine.use_item_startup_progress, startup);
+    variables.set(engine.use_item_interval_progress, interval);
     variables.set(engine.swim_amount, input.swim_amount);
     variables.set(engine.left_arm_swim_amount, input.swim_amount);
     variables.set(engine.right_arm_swim_amount, input.swim_amount);
@@ -751,6 +758,29 @@ pub(super) fn apply_engine_variables(
             variables.set(Some(slot), state.historical_frame(offset, dead)[axis]);
         }
     }
+}
+
+/// Ticks the arm takes to rise to the mouth once eating or drinking starts. Provisional: the
+/// engine sets this variable natively and no version-matched witness is recorded yet.
+const USE_ITEM_STARTUP_TICKS: f32 = 4.0;
+/// Ticks of one eating or drinking bob, matching the four-tick cadence of the eat events servers
+/// send; provisional like [`USE_ITEM_STARTUP_TICKS`].
+const USE_ITEM_INTERVAL_TICKS: f32 = 4.0;
+
+/// The `variable.use_item_startup_progress` and `variable.use_item_interval_progress` an
+/// eat or drink use of `use_ticks` consecutive ticks publishes: the arm rises over the startup,
+/// then bobs once per interval. Both are zero while nothing is in use.
+pub(super) fn use_item_progress(use_ticks: u32) -> (f32, f32) {
+    if use_ticks == 0 {
+        return (0.0, 0.0);
+    }
+    let ticks = use_ticks as f32;
+    let startup = (ticks / USE_ITEM_STARTUP_TICKS).min(1.0);
+    let bobbing = (ticks - USE_ITEM_STARTUP_TICKS).max(0.0);
+    let interval = (std::f32::consts::PI * (bobbing % USE_ITEM_INTERVAL_TICKS)
+        / USE_ITEM_INTERVAL_TICKS)
+        .sin();
+    (startup, interval)
 }
 
 /// Uses the authored rotation factor when the pack leaves its item-specific factor unassigned.

@@ -2,6 +2,7 @@ mod action;
 mod actor_animation;
 mod actor_store;
 mod block_entity_visuals;
+pub mod consumables;
 pub mod custom_emotes;
 pub mod game_mode_capabilities;
 pub mod ingestion;

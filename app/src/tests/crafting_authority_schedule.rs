@@ -434,6 +434,7 @@ fn named_registry(name: &str) -> ItemRegistryEvent {
         entries: [(6, name), (7, "minecraft:oak_planks")]
             .into_iter()
             .map(|(network_id, identifier)| protocol::ItemRegistryEntry {
+                components: None,
                 identifier: identifier.into(),
                 network_id,
                 component_based: false,
@@ -914,6 +915,7 @@ fn ordinary_transfer_bytes_and_conservation_are_identical_after_craft_only_overf
         let mut app = app();
         let registry = ItemRegistryEvent {
             entries: std::sync::Arc::from([protocol::ItemRegistryEntry {
+                components: None,
                 identifier: "minecraft:apple".into(),
                 network_id: 878,
                 component_based: true,

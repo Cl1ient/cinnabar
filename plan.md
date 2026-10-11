@@ -7321,6 +7321,7 @@ nonpersistent effects without HUD icons. A hash-checked independent effect
 inventory checks descriptor coverage when the named local fixture is available.
 The required HUD carrier includes the added icons; rebuild it with `make assets`.
 
+### Compiled equipment dye capability
 
 Compiled equipment dye capabilities remain incomplete for material contracts the compiler cannot
 resolve. The equipment carrier stores Dye, NoMask or Unresolved; unknown parent chains no longer

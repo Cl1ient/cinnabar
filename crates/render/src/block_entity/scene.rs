@@ -182,7 +182,11 @@ impl BlockEntityScene {
         let mut atlas = BlockEntityAtlas::from_assets(assets);
         atlas.append_textures(self.mobs.textures());
         self.image = Some(Arc::new(BlockEntityAtlasImage::of(&atlas)));
-        self.text = Some(DynamicCells::new(atlas.size()[0]));
+        if let Some(text) = self.text.as_mut() {
+            text.reset(atlas.size()[0]);
+        } else {
+            self.text = Some(DynamicCells::new(atlas.size()[0]));
+        }
         self.atlas = Some(Arc::new(atlas));
         self.frame = BlockEntityFrame {
             revision: self.frame.revision,

@@ -59,6 +59,11 @@ pub(super) fn raster(
         }
         light = assets::gui_item::SHULKER_GUI_LIGHT;
         vec![part]
+    } else if let Some(skull_type) = assets::vanilla_skull_type(name) {
+        let Some(part) = skull(skull_type) else {
+            return Ok(None);
+        };
+        vec![part]
     } else {
         match name {
             "minecraft:conduit" => {
@@ -172,6 +177,32 @@ pub(super) fn raster(
         }
         .raster(),
     ))
+}
+
+/// A box-model head in the ordinary cube frame, `None` for dragon and piglin heads. Like other
+/// block items' fronts, the face turns south; the 8-texel head fills the cube. Both are
+/// provisional until vanilla's skull GUI transform is measured.
+fn skull(skull_type: u8) -> Option<Part> {
+    let (texture, logical) = geometry::skull_texture(skull_type)?;
+    let mut part = boxes(texture, logical, &[geometry::SKULL_HEAD]);
+    if geometry::skull_has_hat(skull_type) {
+        let (origin, size, uv) = geometry::SKULL_HAT;
+        part.faces.extend(geometry::box_faces(
+            origin,
+            size,
+            uv,
+            geometry::SKULL_HAT_INFLATE,
+        ));
+    }
+    for (corners, _) in &mut part.faces {
+        // A half turn about Y, then 8 texels to one cube unit.
+        for [x, y, z] in corners {
+            *x = (4.0 - *x) / 8.0;
+            *y /= 8.0;
+            *z = (4.0 - *z) / 8.0;
+        }
+    }
+    Some(part)
 }
 
 /// Groups the authored lectern faces by their terrain texture.

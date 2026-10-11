@@ -511,6 +511,120 @@ mod block_entity_tests {
     }
 
     #[test]
+    fn box_model_heads_have_inventory_models_facing_the_south_side() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("textures")).unwrap();
+        std::fs::write(root.path().join("textures/flipbook_textures.json"), "[]").unwrap();
+        std::fs::write(
+            root.path().join("blocks.json"),
+            r#"{"format_version":[1,1,0]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join("textures/terrain_texture.json"),
+            r#"{"texture_data":{}}"#,
+        )
+        .unwrap();
+        // Each head's texture has its own base color, a red face, and a clear hat region.
+        const FACE: [u8; 4] = [255, 0, 0, 255];
+        let heads = [
+            (
+                "minecraft:skeleton_skull",
+                "skulls/skeleton",
+                32,
+                [200, 200, 190, 255],
+            ),
+            (
+                "minecraft:wither_skeleton_skull",
+                "skulls/wither_skeleton",
+                32,
+                [40, 40, 40, 255],
+            ),
+            (
+                "minecraft:zombie_head",
+                "skulls/zombie",
+                32,
+                [60, 140, 80, 255],
+            ),
+            ("minecraft:player_head", "steve", 64, [150, 110, 80, 255]),
+            (
+                "minecraft:creeper_head",
+                "skulls/creeper",
+                32,
+                [80, 200, 60, 255],
+            ),
+        ];
+        for (_, path, height, color) in heads {
+            let mut texture = image::RgbaImage::from_pixel(64, height, image::Rgba(color));
+            for (x, y, pixel) in texture.enumerate_pixels_mut() {
+                if x >= 32 && y < 16 {
+                    *pixel = image::Rgba([0; 4]);
+                } else if (8..16).contains(&x) && (8..16).contains(&y) {
+                    *pixel = image::Rgba(FACE);
+                }
+            }
+            let file = root.path().join(format!("textures/entity/{path}.png"));
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            texture.save(file).unwrap();
+        }
+        let blocks = IconBlocks::read(root.path()).unwrap();
+        let records = assets::read_registry_for_protocol(
+            include_bytes!("../../../assets/data/block-registry-v2193.bin"),
+            assets::active_content_registry_protocol(),
+        )
+        .unwrap();
+        let world = RuntimeAssets::diagnostic();
+        let raster = |name: &str| {
+            let visual = records
+                .iter()
+                .find(|record| record.name.as_ref() == name)
+                .unwrap()
+                .sequential_id;
+            model_raster(root.path(), &world, Some(&blocks), visual, 0)
+                .unwrap()
+                .map(|(icon, state)| {
+                    assert_eq!(state, None, "{name} is a thumbnail, not world quads");
+                    icon
+                })
+        };
+        let mut icons = Vec::new();
+        for (name, ..) in heads {
+            let icon = raster(name).expect("a placed-only head still has an inventory model");
+            let pixels = icon.rgba8.as_chunks::<4>().0;
+            let covered = pixels.iter().filter(|pixel| pixel[3] != 0).count();
+            assert!(
+                covered > model::SIDE * model::SIDE / 3,
+                "{name}: the head fills the slot, {covered} pixels"
+            );
+            let face: Vec<usize> = (0..pixels.len())
+                .filter(|&index| {
+                    let [red, green, blue, alpha] = pixels[index];
+                    red > 0 && green == 0 && blue == 0 && alpha == 255
+                })
+                .collect();
+            assert!(face.len() > 20, "{name}: its face is drawn");
+            assert!(
+                face.iter()
+                    .all(|index| index % model::SIDE >= model::SIDE / 2),
+                "{name}: the face is on the south (right) side, like other block items' fronts"
+            );
+            icons.push(icon);
+        }
+        for (index, icon) in icons.iter().enumerate() {
+            assert!(
+                !icons[..index].contains(icon),
+                "{}: each head draws its own texture",
+                heads[index].0
+            );
+        }
+        std::fs::remove_file(root.path().join("textures/entity/skulls/creeper.png")).unwrap();
+        assert!(
+            raster("minecraft:creeper_head").is_none(),
+            "a missing head texture leaves the icon unresolved"
+        );
+    }
+
+    #[test]
     fn placed_chest_visibility_does_not_remove_its_inventory_faces() {
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(root.path().join("textures/blocks")).unwrap();

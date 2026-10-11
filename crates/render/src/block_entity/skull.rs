@@ -4,6 +4,9 @@
 
 use std::sync::Arc;
 
+use assets::block_entity_geometry::{
+    SKULL_HAT, SKULL_HAT_INFLATE, SKULL_HEAD, skull_has_hat, skull_texture,
+};
 use assets::{EntityGeometryCube, EntityGeometryScalar, EntityGeometryUv};
 use bevy::math::Mat4;
 use render_model::{ActorRigGeometry, EntityRigId, append_entity_cube_vertices};
@@ -14,15 +17,16 @@ use super::{
     mesh::{BoxSpec, Facing, Layer, MeshBuilder, WHITE, model_matrix},
 };
 
+/// Discriminants are the legacy `SkullType` ordinals.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SkullKind {
-    Skeleton,
-    WitherSkeleton,
-    Zombie,
-    Player,
-    Creeper,
-    Dragon,
-    Piglin,
+    Skeleton = 0,
+    WitherSkeleton = 1,
+    Zombie = 2,
+    Player = 3,
+    Creeper = 4,
+    Dragon = 5,
+    Piglin = 6,
 }
 
 impl SkullKind {
@@ -50,22 +54,14 @@ impl SkullKind {
     /// The head's packed texture and the size its UVs were authored against.
     #[must_use]
     pub fn texture(self, atlas: &BlockEntityAtlas) -> Option<TextureRef> {
-        match self {
-            Self::Skeleton => atlas.texture("textures/entity/skulls/skeleton", [64.0, 32.0]),
-            Self::WitherSkeleton => {
-                atlas.texture("textures/entity/skulls/wither_skeleton", [64.0, 32.0])
-            }
-            Self::Zombie => atlas.texture("textures/entity/skulls/zombie", [64.0, 32.0]),
-            Self::Creeper => atlas.texture("textures/entity/skulls/creeper", [64.0, 32.0]),
-            Self::Player => atlas.texture("textures/entity/steve", [64.0, 64.0]),
-            Self::Dragon | Self::Piglin => None,
-        }
+        let (name, logical) = skull_texture(self as u8)?;
+        atlas.texture(name, logical)
     }
 
     /// Whether the head carries a second, slightly larger hat layer.
     #[must_use]
     pub const fn has_hat_layer(self) -> bool {
-        matches!(self, Self::Zombie | Self::Player)
+        skull_has_hat(self as u8)
     }
 }
 
@@ -133,20 +129,22 @@ pub(super) fn emit(
     let Some(texture) = model.kind.texture(atlas) else {
         return;
     };
+    let (origin, size, uv) = SKULL_HEAD;
     builder.cuboid(
         Layer::Solid,
         &texture,
         matrix,
-        BoxSpec::new([-4.0, 0.0, -4.0], [8.0; 3], [0.0, 0.0]),
+        BoxSpec::new(origin, size, uv),
         WHITE,
     );
     if model.kind.has_hat_layer() {
         // Hat inflation needs native measurement.
+        let (origin, size, uv) = SKULL_HAT;
         builder.cuboid(
             Layer::Solid,
             &texture,
             matrix,
-            BoxSpec::new([-4.0, 0.0, -4.0], [8.0; 3], [32.0, 0.0]).inflated(0.25),
+            BoxSpec::new(origin, size, uv).inflated(SKULL_HAT_INFLATE),
             WHITE,
         );
     }
@@ -174,19 +172,21 @@ pub fn skull_geometry(
     let logical = (texture.logical[0] as u16, texture.logical[1] as u16);
     let scalar =
         |value: f32| EntityGeometryScalar::new(value).unwrap_or(EntityGeometryScalar::ZERO);
-    let cube = |uv: [f32; 2], inflate: f32| EntityGeometryCube {
-        origin: [-4.0, 24.0, -4.0].map(scalar),
-        size: [8.0; 3].map(scalar),
-        pivot: [EntityGeometryScalar::ZERO; 3],
-        rotation: [EntityGeometryScalar::ZERO; 3],
-        uv: EntityGeometryUv::Box(uv.map(scalar)),
-        inflate: scalar(inflate),
-        mirror: false,
-    };
+    // Worn on the head bone, 24 texels up.
+    let cube =
+        |(origin, size, uv): ([f32; 3], [f32; 3], [f32; 2]), inflate: f32| EntityGeometryCube {
+            origin: [origin[0], origin[1] + 24.0, origin[2]].map(scalar),
+            size: size.map(scalar),
+            pivot: [EntityGeometryScalar::ZERO; 3],
+            rotation: [EntityGeometryScalar::ZERO; 3],
+            uv: EntityGeometryUv::Box(uv.map(scalar)),
+            inflate: scalar(inflate),
+            mirror: false,
+        };
     let mut vertices = Vec::new();
-    let mut layers = vec![cube([0.0, 0.0], 0.0)];
+    let mut layers = vec![cube(SKULL_HEAD, 0.0)];
     if kind.has_hat_layer() {
-        layers.push(cube([32.0, 0.0], 0.25));
+        layers.push(cube(SKULL_HAT, SKULL_HAT_INFLATE));
     }
     for layer in &layers {
         append_entity_cube_vertices(&mut vertices, layer, 0, logical, false, 0.0).ok()?;

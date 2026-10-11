@@ -26,6 +26,34 @@ pub const ITEM_FRAME_TEXTURES: [&str; 3] = [
     "textures/blocks/glow_item_frame",
 ];
 
+/// The 8-texel head cube of a box-model skull, bottom on the floor and front toward -Z.
+pub const SKULL_HEAD: ModelBox = ([-4.0, 0.0, -4.0], [8.0; 3], [0.0, 0.0]);
+/// The hat layer over [`SKULL_HEAD`] that humanoid heads draw, inflated by [`SKULL_HAT_INFLATE`].
+pub const SKULL_HAT: ModelBox = ([-4.0, 0.0, -4.0], [8.0; 3], [32.0, 0.0]);
+pub const SKULL_HAT_INFLATE: f32 = 0.25;
+
+/// The pack texture of a box-model head and the size its UVs were authored against, by legacy
+/// `SkullType` ordinal (see [`crate::vanilla_skull_type`]). Dragon and piglin heads draw their
+/// mob geometry instead and have none here.
+#[must_use]
+pub const fn skull_texture(skull_type: u8) -> Option<(&'static str, [f32; 2])> {
+    Some(match skull_type {
+        0 => ("textures/entity/skulls/skeleton", [64.0, 32.0]),
+        1 => ("textures/entity/skulls/wither_skeleton", [64.0, 32.0]),
+        2 => ("textures/entity/skulls/zombie", [64.0, 32.0]),
+        3 => ("textures/entity/steve", [64.0, 64.0]),
+        4 => ("textures/entity/skulls/creeper", [64.0, 32.0]),
+        _ => return None,
+    })
+}
+
+/// Whether a head of legacy `SkullType` ordinal `skull_type` draws [`SKULL_HAT`]: zombie and
+/// player heads do.
+#[must_use]
+pub const fn skull_has_hat(skull_type: u8) -> bool {
+    matches!(skull_type, 2 | 3)
+}
+
 pub const SHULKER_BASE: ModelBox = ([-8.0, 0.0, -8.0], [16.0, 8.0, 16.0], [0.0, 28.0]);
 pub const SHULKER_LID: ModelBox = ([-8.0, 4.0, -8.0], [16.0, 12.0, 16.0], [0.0, 0.0]);
 pub const CONDUIT_SHELL: ModelBox = ([-3.0; 3], [6.0; 3], [0.0; 2]);

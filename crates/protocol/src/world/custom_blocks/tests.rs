@@ -624,7 +624,7 @@ fn experience_blocks_fit_the_client_bounds() {
 }
 
 #[test]
-fn aggregate_admission_keeps_a_sorted_prefix_without_reassigning_later_states() {
+fn aggregate_admission_retains_rejected_palette_runs_without_expanding_states() {
     let mut large = named(10, "");
     large.extend(named(9, "properties"));
     large.extend([10, 32]);
@@ -645,8 +645,19 @@ fn aggregate_admission_keeps_a_sorted_prefix_without_reassigning_later_states() 
         (names[1], large.as_slice()),
         (names[0], empty.as_slice()),
     ]);
-    assert_eq!(admitted.blocks.len(), 1);
+    assert_eq!(admitted.blocks.len(), 3);
     assert_eq!(admitted.blocks[0].name.as_ref(), names[0]);
     assert_eq!(admitted.blocks[0].state_count, 1);
+    assert_eq!(admitted.blocks[1].name.as_ref(), names[1]);
+    assert_eq!(
+        admitted.blocks[1].state_count,
+        super::MAX_STATES_PER_BLOCK as u32
+    );
+    assert_eq!(admitted.blocks[2].name.as_ref(), names[2]);
+    assert_eq!(admitted.blocks[2].state_count, 1);
+    for block in &admitted.blocks[1..] {
+        assert!(block.hashed_states().is_empty());
+        assert!(block.state_physics.is_empty());
+    }
     assert_eq!(admitted.skipped, 2);
 }

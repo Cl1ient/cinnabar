@@ -109,7 +109,11 @@ pub(super) fn compile_block_overlay(
         animation: NO_ANIMATION,
         ..assets::Material::unvaried()
     });
-    for block in blocks.blocks.iter() {
+    for (block_index, block) in blocks.blocks.iter().enumerate() {
+        if block.visual.materialization_disabled {
+            builder.gaps.incomplete_state_identities += (blocks.blocks.len() - block_index) as u32;
+            break;
+        }
         let expressions = condition::BlockExpressions::new(block);
         let states = block.hashed_states();
         let identities_complete = states.len() == block.state_count as usize;

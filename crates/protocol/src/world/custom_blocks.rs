@@ -66,6 +66,8 @@ pub struct CustomBlockVisuals {
     pub state_axes: Box<[CustomStateAxis]>,
     /// A declared state could not be represented by the named axes.
     pub state_identity_incomplete: bool,
+    /// The palette run is retained for wire offsets, but its states must not be expanded.
+    pub materialization_disabled: bool,
 }
 
 /// Visual components present in one component set; `None` means absent.
@@ -202,7 +204,7 @@ impl CustomBlock {
     /// Compiles the canonical palette identities for one immutable definition.
     fn compile_states(&self) -> Arc<[CustomHashedState]> {
         let axes = &self.visual.state_axes;
-        if self.visual.state_identity_incomplete {
+        if self.visual.state_identity_incomplete || self.visual.materialization_disabled {
             return Arc::default();
         }
         let Some(total) = axis_combinations(axes) else {
@@ -229,7 +231,7 @@ impl CustomBlock {
     #[must_use]
     pub fn state_values(&self, index: u32) -> Option<Arc<[CustomStateValue]>> {
         let axes = &self.visual.state_axes;
-        if self.visual.state_identity_incomplete {
+        if self.visual.state_identity_incomplete || self.visual.materialization_disabled {
             return None;
         }
         if axis_combinations(axes)? != u64::from(self.state_count) {
@@ -323,8 +325,10 @@ pub fn block_state_network_hash<'a>(
 }
 
 /// StartGame custom blocks in sequential palette order; malformed definitions are skipped.
+/// Budget-rejected runs retain their names and counts without materialized states.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CustomBlocks {
+    /// Materialized definitions form a prefix; budget-rejected runs follow it.
     pub blocks: Arc<[CustomBlock]>,
     /// Vanilla data-driven types admitted by the server's definitions.
     pub vanilla_blocks: Arc<[Arc<str>]>,
@@ -391,16 +395,21 @@ impl CustomBlocks {
         });
         let mut state_budget = shared_states::AdmissionBudget::default();
         let mut exhausted = false;
-        blocks.retain(|block| {
-            // Keep a palette prefix so rejected states cannot shift later sequential IDs.
+        for block in &mut blocks {
             let admitted =
                 !exhausted && state_budget.admit(&block.name, &block.visual, block.state_count);
             if !admitted {
                 exhausted = true;
                 skipped += 1;
+                block.tags = Arc::default();
+                block.collision_boxes = None;
+                block.visual = Arc::new(CustomBlockVisuals {
+                    state_identity_incomplete: true,
+                    materialization_disabled: true,
+                    ..Default::default()
+                });
             }
-            admitted
-        });
+        }
         for block in &blocks {
             let _ = block.hashed_states();
         }
@@ -553,6 +562,7 @@ fn parse_definition(root: &Nbt) -> Option<Definition> {
             permutations,
             state_axes: state_axes.into_boxed_slice(),
             state_identity_incomplete,
+            materialization_disabled: false,
         },
     })
 }

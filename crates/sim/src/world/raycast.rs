@@ -243,11 +243,13 @@ impl PaletteWorld<'_> {
                 {
                     continue;
                 }
-                let Some((distance, face, point)) = ray_box(
+                let Some((distance, face, point)) = ray_union_box(
                     origin,
                     direction,
                     max_distance,
                     shape.translated(physics.shape_offset(block)),
+                    &pickable,
+                    physics.shape_offset(block),
                 ) else {
                     continue;
                 };
@@ -414,11 +416,31 @@ fn simultaneous_crossing(left: f64, right: f64) -> bool {
     left.to_bits().abs_diff(right.to_bits()) <= SIMULTANEOUS_CROSSING_ULPS
 }
 
+/// Clips a single box while rejecting rays parallel to an exposed face.
 fn ray_box(
     origin: Vec3,
     direction: Vec3,
     max_distance: f64,
     bounds: Aabb,
+) -> Option<(f64, u8, Vec3)> {
+    ray_union_box(
+        origin,
+        direction,
+        max_distance,
+        bounds,
+        std::slice::from_ref(&bounds),
+        Vec3::ZERO,
+    )
+}
+
+/// Clips one piece, admitting parallel faces only where the surrounding union is solid.
+fn ray_union_box(
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f64,
+    bounds: Aabb,
+    pieces: &[Aabb],
+    offset: Vec3,
 ) -> Option<(f64, u8, Vec3)> {
     if strictly_inside(origin, bounds) {
         return Some((0.0, opposite_dominant_face(direction), origin));
@@ -426,12 +448,15 @@ fn ray_box(
     let mut entry = 0.0_f64;
     let mut exit = max_distance;
     let mut face = None;
+    let mut entry_faces = 0_u8;
+    let mut parallel_face = false;
     for axis in 0..3 {
         let component = direction[axis];
         if component == 0.0 {
-            if origin[axis] <= bounds.min[axis] || origin[axis] >= bounds.max[axis] {
+            if origin[axis] < bounds.min[axis] || origin[axis] > bounds.max[axis] {
                 return None;
             }
+            parallel_face |= origin[axis] == bounds.min[axis] || origin[axis] == bounds.max[axis];
             continue;
         }
         let (near, far, near_face) = if component > 0.0 {
@@ -451,9 +476,11 @@ fn ray_box(
             std::cmp::Ordering::Greater => {
                 entry = near;
                 face = Some(near_face);
+                entry_faces = 1 << near_face;
             }
             std::cmp::Ordering::Equal => {
                 entry = entry.max(near);
+                entry_faces |= 1 << near_face;
                 if face.is_none_or(|current| near_face < current) {
                     face = Some(near_face);
                 }
@@ -469,8 +496,99 @@ fn ray_box(
         return None;
     }
     let distance = entry.max(0.0);
-    let face = face.unwrap_or_else(|| surface_face(origin, bounds, direction));
-    Some((distance, face, origin + direction * distance))
+    let point = origin + direction * distance;
+    // Membership uses slab coordinates; Vec3 arithmetic rounds the returned point to f32.
+    let clipped = std::array::from_fn::<_, 3, _>(|axis| {
+        (origin[axis] + direction[axis] * distance).clamp(bounds.min[axis], bounds.max[axis])
+    });
+    let geometric_point = Vec3::new(clipped[0], clipped[1], clipped[2]);
+    if distance == 0.0 && union_covers_parallel_neighbourhood(origin, Vec3::ZERO, pieces, offset) {
+        return Some((0.0, opposite_dominant_face(direction), origin));
+    }
+    if parallel_face
+        && !union_covers_parallel_neighbourhood(geometric_point, direction, pieces, offset)
+    {
+        return None;
+    }
+    let face = if pieces.len() > 1 && entry_faces.count_ones() > 1 {
+        exposed_entry_face(
+            geometric_point,
+            bounds,
+            direction,
+            pieces,
+            offset,
+            entry_faces,
+        )
+        .or(face)
+    } else {
+        face
+    };
+    let face = match face {
+        Some(face) => face,
+        None if parallel_face => opposite_dominant_face(direction),
+        None => surface_face(origin, bounds, direction),
+    };
+    Some((distance, face, point))
+}
+
+/// Prefers an exposed entry face when a ray also crosses an internal piece plane.
+fn exposed_entry_face(
+    point: Vec3,
+    bounds: Aabb,
+    direction: Vec3,
+    pieces: &[Aabb],
+    offset: Vec3,
+    entry_faces: u8,
+) -> Option<u8> {
+    let mut exposed = None;
+    for axis in 0..3 {
+        if direction[axis] == 0.0 {
+            continue;
+        }
+        let (face, surface) = if direction[axis] > 0.0 {
+            (min_face(axis), bounds.min[axis])
+        } else {
+            (max_face(axis), bounds.max[axis])
+        };
+        if entry_faces & (1 << face) == 0 {
+            continue;
+        }
+        let mut face_point = point;
+        face_point[axis] = surface;
+        let mut normal_neighbourhood = Vec3::ONE;
+        normal_neighbourhood[axis] = 0.0;
+        if !union_covers_parallel_neighbourhood(face_point, normal_neighbourhood, pieces, offset) {
+            exposed = Some(exposed.map_or(face, |current: u8| current.min(face)));
+        }
+    }
+    exposed
+}
+
+/// Checks transverse quadrants exactly; a zero direction checks every volume octant.
+/// Exposed edges stay outside the union without adding an epsilon.
+fn union_covers_parallel_neighbourhood(
+    point: Vec3,
+    direction: Vec3,
+    pieces: &[Aabb],
+    offset: Vec3,
+) -> bool {
+    (0..8)
+        .filter(|bits| (0..3).all(|axis| direction[axis] == 0.0 || bits & (1 << axis) == 0))
+        .all(|bits| {
+            pieces.iter().any(|piece| {
+                let piece = piece.translated(offset);
+                (0..3).all(|axis| piece.min[axis] < piece.max[axis])
+                    && (0..3).all(|axis| {
+                        if direction[axis] != 0.0 {
+                            piece.min[axis] <= point[axis] && point[axis] <= piece.max[axis]
+                        } else if bits & (1 << axis) == 0 {
+                            piece.min[axis] < point[axis] && point[axis] <= piece.max[axis]
+                        } else {
+                            piece.min[axis] <= point[axis] && point[axis] < piece.max[axis]
+                        }
+                    })
+            })
+        })
 }
 
 fn strictly_inside(point: Vec3, bounds: Aabb) -> bool {

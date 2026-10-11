@@ -1,5 +1,6 @@
 use super::*;
-use assets::block_shapes::{PickContext, state_identity::state_identity};
+use assets::block_shapes::PickContext;
+use world::block_state_identity::state_identity;
 
 #[test]
 fn camera_visibility_respects_compiled_pick_context() {

@@ -9,7 +9,7 @@ fn half(registry: &mut CollisionRegistry, id: u32, upper: bool, hinge_right: boo
     assert!(registry.set_door_state(
         id,
         DoorState {
-            family: assets::block_shapes::state_identity::state_identity("minecraft:oak_door", []),
+            family: world::block_state_identity::state_identity("minecraft:oak_door", []),
             facing: if upper {
                 DoorFacing::North
             } else {

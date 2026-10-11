@@ -637,6 +637,7 @@ pub struct LenientCollisionBoxes {
 
 /// Read-only collision adapter over the palette-packed world store.
 pub struct PaletteWorld<'a> {
+    unsupported_actor_selections: std::sync::atomic::AtomicU32,
     pick_context: assets::block_shapes::PickContext,
     store: &'a ChunkStore,
     registry: &'a CollisionRegistry,
@@ -669,6 +670,7 @@ impl<'a> PaletteWorld<'a> {
         pick_context: assets::block_shapes::PickContext,
     ) -> Self {
         Self {
+            unsupported_actor_selections: std::sync::atomic::AtomicU32::new(0),
             pick_context,
             store,
             registry,

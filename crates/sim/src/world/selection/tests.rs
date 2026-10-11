@@ -10,6 +10,7 @@ use world::{
 
 mod contextual;
 mod rays;
+mod seams;
 
 const UNIT: ShapeBox = ShapeBox::new([0.0; 3], [1.0; 3]);
 

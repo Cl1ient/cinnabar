@@ -1,37 +1,32 @@
 use assets::RegistryRecord;
 use assets::block_shapes::ShapeBox;
 
-/// Compiles six half-cell pick pieces; movement corner state does not affect clipping.
+/// Compiles a full-width slab and its step without artificial half-cell seams.
 pub(super) fn selection(record: &RegistryRecord) -> Option<Box<[ShapeBox]>> {
     if record.model_family != assets::ModelFamily::Stair {
         return None;
     }
     let state = super::state::State::read(record)?;
-    let direction = usize::try_from(state.number("weirdo_direction")?).ok()?;
-    if direction >= 4 {
-        return None;
+    let direction = state.number("weirdo_direction")?;
+    let upper = state.bit("upside_down_bit")?;
+    let (slab_min, slab_max, step_min, step_max) = if upper {
+        (0.5, 1.0, 0.0, 0.5)
+    } else {
+        (0.0, 0.5, 0.5, 1.0)
+    };
+    let mut min = [0.0, step_min, 0.0];
+    let mut max = [1.0, step_max, 1.0];
+    match direction {
+        0 => min[0] = 0.5,
+        1 => max[0] = 0.5,
+        2 => min[2] = 0.5,
+        3 => max[2] = 0.5,
+        _ => return None,
     }
-    let upper = usize::from(state.bit("upside_down_bit")?);
-    let empty = [
-        [2, 6],
-        [3, 7],
-        [2, 3],
-        [6, 7],
-        [0, 4],
-        [1, 5],
-        [0, 1],
-        [4, 5],
-    ][direction + upper * 4];
-    Some(
-        (0..8)
-            .filter(|index| !empty.contains(index))
-            .map(|index| {
-                let min = [index & 1, (index >> 1) & 1, (index >> 2) & 1]
-                    .map(|value| f64::from(value) * 0.5);
-                ShapeBox::new(min, min.map(|value| value + 0.5))
-            })
-            .collect(),
-    )
+    Some(Box::new([
+        ShapeBox::new([0.0, slab_min, 0.0], [1.0, slab_max, 1.0]),
+        ShapeBox::new(min, max),
+    ]))
 }
 
 /// Builds native stair pieces from the registry's direction, half and corner state.

@@ -6,7 +6,7 @@ pub(super) struct State(serde_json::Value);
 impl State {
     /// Builds the same typed state identity that actor NBT receives during ingestion.
     pub(super) fn identity(record: &RegistryRecord) -> [u8; 32] {
-        use assets::block_shapes::state_identity::{StateValue, state_identity};
+        use world::block_state_identity::{StateValue, state_identity};
         let state = Self::read(record).expect("validated canonical state");
         let values = state.0.as_object().expect("canonical state object");
         let entries: std::collections::BTreeMap<_, _> = values

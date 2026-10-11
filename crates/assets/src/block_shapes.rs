@@ -1,7 +1,6 @@
 //! Compiled block interaction geometry and state facts.
 
 use bitflags::bitflags;
-pub mod state_identity;
 
 /// Fixed-point units in one block for compiled movement coordinates and scalars.
 pub const COLLISION_UNITS_PER_BLOCK: u32 = 100_000_000;

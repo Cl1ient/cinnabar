@@ -461,7 +461,7 @@ fn picked_nametag_actor(
     stream: &chunk_pipeline::WorldStream,
     camera_transform: &GlobalTransform,
     collisions: Option<&crate::movement::PhysicsCollisionRegistries>,
-    player: &crate::player_runtime::PlayerRuntime,
+    player: &client_state::PlayerRuntime,
 ) -> Option<u64> {
     let eye = camera_transform.translation();
     let direction = *camera_transform.forward();

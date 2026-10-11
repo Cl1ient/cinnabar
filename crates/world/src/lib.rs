@@ -69,3 +69,6 @@ pub const MAX_FRAME_ELAPSED: std::time::Duration = std::time::Duration::from_mil
 pub const TICK_DURATION: std::time::Duration = std::time::Duration::from_nanos(
     std::time::Duration::from_secs(1).as_nanos() as u64 / TICKS_PER_SECOND as u64,
 );
+
+/// Stable identities shared by decoded and compiled block states.
+pub mod block_state_identity;

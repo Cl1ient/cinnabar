@@ -23,7 +23,6 @@ const LIGHT_REGISTRY: &str = "crates/assets/data/block-light-registry-v2193.bin"
 const BIOME_REGISTRY: &str = "crates/assets/data/biome-registry-v2193.bin";
 
 /// The physics carrier filename shared by packaged and development installs.
-/// The checked-in registry is copied directly rather than compiled from a pack.
 #[must_use]
 pub fn physics_registry_basename() -> &'static str {
     Path::new(crate::pinned_content::physics_registry_source())

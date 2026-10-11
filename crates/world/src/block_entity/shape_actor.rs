@@ -1,7 +1,7 @@
 //! Actor inputs decoded once, before collision and interaction queries.
 
+use crate::block_state_identity::{StateValue, state_identity};
 use crate::{BlockEntityNbt, NbtValue};
-use assets::block_shapes::state_identity::{StateValue, state_identity};
 
 #[cfg(test)]
 mod tests;

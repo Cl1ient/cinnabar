@@ -119,7 +119,7 @@ fn check_player_pick_context(rule: PickRule) {
                 stream.poll([8.5, 8.5, 6.5], 0);
                 stream.committed_sequence() == 2
             });
-            let mut player = PlayerRuntime::new(1);
+            let mut player = PlayerRuntime(player_state::PlayerState::new(1));
             player.facts.publish_player_game_mode(game_mode);
             let mut stack = protocol::NetworkItemStack::empty();
             if let Some(held) = held {

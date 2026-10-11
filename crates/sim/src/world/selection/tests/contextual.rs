@@ -3,8 +3,71 @@ use super::{
     ShapeFlags, UNIT, Vec3, box_to_aabb, fixture, set_block, set_moving, set_piston, shapes,
 };
 use crate::WorldQueryError;
+use assets::block_shapes::CompiledFlow;
 use assets::block_shapes::PickContext;
-use assets::block_shapes::{CompiledFlow, state_identity::state_identity};
+use world::block_state_identity::state_identity;
+
+#[test]
+fn unsupported_moving_states_do_not_require_an_unloaded_piston_column() {
+    check_unsupported_moving_ray(0.5);
+}
+
+#[test]
+fn unsupported_moving_states_in_the_halo_do_not_block_valid_rays() {
+    check_unsupported_moving_ray(1.5);
+}
+
+/// Checks unknown and geometry-free carried states against an unloaded remote owner.
+fn check_unsupported_moving_ray(z: f64) {
+    for space in [CollisionIdSpace::Sequential, CollisionIdSpace::Hashed] {
+        for known_without_visual in [false, true] {
+            let mut target = shapes(SelectionContext::MovingBlock, vec![], vec![]);
+            target.actor_visual = None;
+            let (mut store, mut registry, _) = fixture(space, &target);
+            let mut carried = shapes(SelectionContext::Static, vec![], vec![]);
+            carried.state_identity = state_identity("minecraft:unsupported", []);
+            carried.actor_visual = None;
+            if known_without_visual {
+                registry.register(9, []).unwrap();
+                registry.set_compiled_selection(9, &carried);
+            }
+            let mut behind = shapes(SelectionContext::Static, vec![UNIT], vec![]);
+            behind.state_identity = [21; 32];
+            registry.register(21, [box_to_aabb(UNIT)]).unwrap();
+            registry.set_compiled_selection(21, &behind);
+            let expected = [1, 0, z.floor() as i32];
+            set_block(&mut store, expected, 21);
+            let owner = [48, 0, 0];
+            set_moving(&mut store, "minecraft:unsupported", owner, true);
+            let view = PaletteWorld::new(&store, &registry, 0, Default::default());
+            let origin = Vec3::new(-2.0, 0.5, z);
+            let direction = Vec3::new(1.0, 0.0, 0.0);
+            let hit = view
+                .block_interaction_ray_current(origin, direction, 4.0)
+                .unwrap()
+                .unwrap();
+            assert_eq!(hit.block_pos, expected);
+            assert!(
+                !hit.identity
+                    .chunks
+                    .iter()
+                    .any(|revision| revision.chunk.x == 3)
+            );
+            assert!(
+                view.block_interaction_ray(origin, direction, 4.0, &hit.identity)
+                    .unwrap()
+                    .is_some()
+            );
+            assert_eq!(
+                view.camera_visibility_ray(origin, direction, 4.0)
+                    .unwrap()
+                    .map(|hit| hit.block_pos),
+                Some(expected)
+            );
+            assert!(view.unsupported_actor_selection_count() > 0);
+        }
+    }
+}
 
 #[test]
 fn moving_pick_identity_includes_a_remote_piston_owner() {

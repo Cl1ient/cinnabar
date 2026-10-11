@@ -22,7 +22,7 @@ pub(super) fn state(record: &RegistryRecord) -> Option<CompiledDoor> {
         },
     };
     Some(CompiledDoor {
-        family: assets::block_shapes::state_identity::state_identity(&record.name, []),
+        family: world::block_state_identity::state_identity(&record.name, []),
         facing,
         upper: value("upper_block_bit")?.as_i64()? != 0,
         open: value("open_bit")?.as_i64()? != 0,

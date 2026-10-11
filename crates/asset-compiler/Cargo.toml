@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+world = { path = "../world" }
 assets = { path = "../assets" }
 block-transform = { path = "../block-transform" }
 pack-compiler = { path = "../pack-compiler" }

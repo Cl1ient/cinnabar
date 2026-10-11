@@ -1,8 +1,8 @@
 //! Borrowed visibility queries share interaction geometry without allocating hit provenance.
 
 use super::{
-    Candidate, TraversalState, candidate_precedes, checked_offset, ray_box, strictly_precedes,
-    validate_ray,
+    Candidate, TraversalState, candidate_precedes, checked_offset, ray_box, ray_union_box,
+    strictly_precedes, validate_ray,
 };
 use crate::{Aabb, PaletteWorld, Vec3, WorldQueryError};
 use std::borrow::Cow;
@@ -167,8 +167,14 @@ impl PaletteWorld<'_> {
                 continue;
             }
             let shape = shape.translated(physics.shape_offset(block));
-            let Some((distance, face, point)) = ray_box(origin, direction, max_distance, shape)
-            else {
+            let Some((distance, face, point)) = ray_union_box(
+                origin,
+                direction,
+                max_distance,
+                shape,
+                &shapes,
+                physics.shape_offset(block),
+            ) else {
                 continue;
             };
             let candidate = Candidate {

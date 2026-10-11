@@ -212,13 +212,13 @@ fn stair_picking_ignores_corner_collision_state() {
         )
         .shapes
         .unwrap();
-        assert_eq!(shapes.selection.len(), 6);
+        assert_eq!(shapes.selection.len(), 2);
         let low = shapes
             .selection
             .iter()
             .filter(|shape| shape.min[1] == 0.0)
             .count();
-        assert_eq!(low, if top { 2 } else { 4 });
+        assert_eq!(low, 1);
         let absent = match direction {
             0 => [0.25, if top { 0.25 } else { 0.75 }, 0.25],
             1 => [0.75, if top { 0.25 } else { 0.75 }, 0.25],

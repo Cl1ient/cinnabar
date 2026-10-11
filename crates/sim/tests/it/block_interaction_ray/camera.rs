@@ -44,7 +44,7 @@ fn camera_visibility_uses_paired_door_shape_without_allocations() {
         registry.set_door_state(
             id,
             sim::DoorState {
-                family: assets::block_shapes::state_identity::state_identity("test:door", []),
+                family: world::block_state_identity::state_identity("test:door", []),
                 facing: sim::DoorFacing::South,
                 upper,
                 open: false,

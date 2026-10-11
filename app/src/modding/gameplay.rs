@@ -22,8 +22,8 @@ pub(super) struct GameplayContext<'w> {
     time: Option<Res<'w, Time>>,
     real_time: Option<Res<'w, Time<Real>>>,
     clock: Option<Res<'w, crate::environment::WorldClock>>,
-    physics: Option<ResMut<'w, crate::movement::LocalPhysicsController>>,
-    movement: Option<Res<'w, crate::movement::MovementTicker>>,
+    physics: Option<ResMut<'w, client_interaction::movement::LocalPhysicsController>>,
+    movement: Option<Res<'w, client_interaction::movement::MovementTicker>>,
     player: Option<Res<'w, client_state::PlayerRuntime>>,
     ui: Option<Res<'w, client_ui::ui_runtime::UiRuntime>>,
     session: Option<Res<'w, crate::session::SessionController>>,
@@ -83,7 +83,9 @@ impl GameplayContext<'_> {
         let now_millis = self.real_time.as_ref().map_or(0, |time| {
             u64::try_from(time.elapsed().as_millis()).unwrap_or(u64::MAX)
         });
-        super::player_state::snapshot(authority, session, player, ui, now_millis)
+        client_extensions::modding::player_state::snapshot(
+            authority, session, player, ui, now_millis,
+        )
     }
 
     /// Returns the current walking authority only while local movement can accept input.

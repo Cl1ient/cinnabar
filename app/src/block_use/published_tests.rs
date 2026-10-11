@@ -1,9 +1,11 @@
 //! Published-tick block admission through the production producer and bounded session queue.
 #[cfg(not(feature = "acceptance"))]
 use crate::acceptance::AcceptanceRun;
+use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
 use ::acceptance::AcceptanceRun;
 use bevy::prelude::*;
+use client_runtime::network::NetworkHandle;
 use client_ui::ui_runtime::UiRuntime;
 use protocol::{ContainerIdentity, InventoryEvent, InventorySlotEvent, SlotIdentity};
 use std::time::{Duration, Instant};
@@ -94,8 +96,10 @@ fn fixture() -> (World, client_session::CapturedPackets) {
     }
     let mut sample = gameplay::test_support::survival_mining::completed(101);
     sample.position = position;
-    let (network, captured) = NetworkHandle::stub_capturing_packets();
-    let mut movement = network.movement_ticker();
+    let (network, captured) = NetworkHandle::<PackApplication>::stub_capturing_packets();
+    let mut movement = client_interaction::movement::MovementTicker::with_epoch_publisher(
+        network.physics_epoch_publisher(),
+    );
     movement.reset(7, 100, position);
     movement.set_source(gameplay::movement::MovementSource::Physics);
     movement.enqueue_completed_physics(sample.clone()).unwrap();
@@ -158,7 +162,7 @@ fn fixture() -> (World, client_session::CapturedPackets) {
     world.insert_resource(LocalViewPose::new(eye, Quat::IDENTITY));
     world.insert_resource(input);
     world.insert_resource(ui);
-    world.insert_resource(crate::menu::MenuRuntime::new(
+    world.insert_resource(client_shell::menu::MenuRuntime::new(
         false,
         2,
         "block fixture".into(),
@@ -180,7 +184,7 @@ fn fixture() -> (World, client_session::CapturedPackets) {
     world.insert_resource(player);
     world.insert_resource(block_use);
     world.init_resource::<SwingTracker>();
-    world.init_resource::<crate::item_use::ItemUseRuntime>();
+    world.init_resource::<client_interaction::item_use::ItemUseRuntime>();
     world.insert_resource(movement);
     world.spawn((
         Window {
@@ -449,7 +453,7 @@ fn a_press_waiting_for_a_pick_is_not_resolved_as_item_use() {
     for _ in 0..2 {
         world.run_system_cached(produce_block_use).unwrap();
         world
-            .run_system_cached(crate::block_use::retain_block_use_pick)
+            .run_system_cached(client_interaction::block_use::retain_block_use_pick)
             .unwrap();
         world
             .run_system_cached(crate::item_use::produce_item_use)
@@ -522,7 +526,7 @@ fn floor_fixture(start: [f32; 3], pick: Quat) -> (World, client_session::Capture
     let mut movement = world.resource_mut::<MovementTicker>();
     movement.reset(7, 100, start);
     let authority = movement.interaction_authority_identity();
-    let mut physics = crate::movement::LocalPhysicsController::default();
+    let mut physics = client_interaction::movement::LocalPhysicsController::default();
     physics.reanchor_network_position(start, 100, true);
     world.insert_resource(physics);
     let eye = Vec3::from_array(start);
@@ -539,7 +543,7 @@ fn floor_fixture(start: [f32; 3], pick: Quat) -> (World, client_session::Capture
     world.insert_resource(AcceptanceRun::new(None, None, false, false));
     #[cfg(not(feature = "acceptance"))]
     world.init_resource::<AcceptanceRun>();
-    world.init_resource::<crate::movement::LocalMovementSpeedAuthority>();
+    world.init_resource::<client_interaction::movement::LocalMovementSpeedAuthority>();
     (world, captured)
 }
 
@@ -686,7 +690,7 @@ fn attack_tap_then_use(crosshair: gameplay::melee::Crosshair) -> Vec<[i32; 3]> {
     ));
     world.run_system_cached(produce_block_use).unwrap();
     // Melee runs later in the frame and resolves the same tap.
-    let mut melee = world.resource_mut::<crate::melee::MeleeRuntime>();
+    let mut melee = world.resource_mut::<client_interaction::melee::MeleeRuntime>();
     assert!(melee.observe_input(true, false));
     melee.resolve(
         crosshair,
@@ -894,7 +898,7 @@ fn denied_nonblock_repeat_keeps_the_last_admitted_placement_schedule() {
         .newest_unsent_sample()
         .unwrap()
         .position;
-    let mut physics = crate::movement::LocalPhysicsController::default();
+    let mut physics = client_interaction::movement::LocalPhysicsController::default();
     physics.reanchor_network_position(position, 101, true);
     world.insert_resource(physics);
     world

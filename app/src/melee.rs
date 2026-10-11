@@ -3,11 +3,14 @@
 //! One attack per press; a held button never re-attacks. Swings obey the
 //! half-swing guard shared with survival mining.
 
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::{
     ecs::system::SystemParam,
-    prelude::{Query, Real, Res, ResMut, Resource, Time, Window, With},
+    prelude::{Query, Real, Res, ResMut, Time, Window, With},
     window::PrimaryWindow,
 };
+use client_interaction::melee::{MeleeRuntime, SwingTracker};
+use client_runtime::network::NetworkHandle;
 use semantic_input::Action;
 
 mod crosshair;
@@ -18,10 +21,10 @@ use crate::modding::interaction::{ModInteraction, effective_reach};
 use client_ui::ui_runtime::UiRuntime;
 use client_world::game_mode_capabilities::SURVIVAL_ATTACK_REACH;
 use {
-    crate::{
+    crate::runtime::world::ClientWorld,
+    client_interaction::{
         mining::hand_interaction_selection,
         movement::{LocalMovementEffectTimeline, MovementTicker, PhysicsCollisionRegistries},
-        runtime::{network::NetworkHandle, world::ClientWorld},
     },
     client_presentation::local_player::InteractionOriginSnapshot,
     client_state::SemanticInputSnapshot,
@@ -30,38 +33,6 @@ use {
 
 use gameplay::melee::{Crosshair, PressContext, press_admission, resolve_and_send, swing_duration};
 
-/// Bevy resource adapter for the gameplay melee owner.
-#[derive(Resource, Debug, Default, Clone)]
-pub(crate) struct SwingTracker(gameplay::melee::SwingTracker);
-impl std::ops::Deref for SwingTracker {
-    type Target = gameplay::melee::SwingTracker;
-    /// Borrows the gameplay owner at the existing ordered system boundary.
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for SwingTracker {
-    /// Mutates the gameplay owner without duplicating its state.
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-/// Bevy resource adapter for the gameplay melee owner.
-#[derive(Resource, Debug, Default, Clone)]
-pub(crate) struct MeleeRuntime(gameplay::melee::MeleeRuntime);
-impl std::ops::Deref for MeleeRuntime {
-    type Target = gameplay::melee::MeleeRuntime;
-    /// Borrows the gameplay owner at the existing ordered system boundary.
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for MeleeRuntime {
-    /// Mutates the gameplay owner without duplicating its state.
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 #[derive(SystemParam)]
 pub(crate) struct MeleeContext<'w, 's> {
     input: Res<'w, SemanticInputSnapshot>,
@@ -72,7 +43,7 @@ pub(crate) struct MeleeContext<'w, 's> {
     client_world: Res<'w, ClientWorld>,
     collisions: Res<'w, PhysicsCollisionRegistries>,
     effects: Res<'w, LocalMovementEffectTimeline>,
-    network: Res<'w, NetworkHandle>,
+    network: Res<'w, NetworkHandle<PackApplication>>,
     time: Res<'w, Time<Real>>,
     aim: Res<'w, client_presentation::aim_assist::AimAssistFrame>,
     camera: Res<'w, client_presentation::camera::ServerCameraView>,
@@ -160,10 +131,11 @@ pub(crate) fn produce_melee(
         item_timing.is_some_and(|timing| timing.piercing_weapon),
     );
     // A press leaves in its own frame; an aim-assist facing needs an unsent tick to carry it.
-    let between_ticks = crate::camera::aim_assist::action_rotation(&context.aim, &context.camera)
-        .is_none()
-        .then(|| runtime.between_ticks_press(&movement))
-        .flatten();
+    let between_ticks =
+        client_interaction::camera::aim_assist::action_rotation(&context.aim, &context.camera)
+            .is_none()
+            .then(|| runtime.between_ticks_press(&movement))
+            .flatten();
     // Fresh block presses wait for a tick committed in this frame.
     let sample = between_ticks.or_else(|| {
         runtime
@@ -241,7 +213,7 @@ pub(crate) fn produce_melee(
         },
     );
     if rotate_action {
-        crate::camera::aim_assist::rotate_for_action(
+        client_interaction::camera::aim_assist::rotate_for_action(
             &context.aim,
             &context.camera,
             &mut view,

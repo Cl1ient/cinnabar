@@ -164,6 +164,7 @@ pub(crate) fn prepare_spawner_actors(
         ((center - DISPLAY_SCAN_RADIUS) / SUB_CHUNK_SIDE as f32).floor() as i32
             ..=((center + DISPLAY_SCAN_RADIUS) / SUB_CHUNK_SIDE as f32).floor() as i32
     };
+    let side = SUB_CHUNK_SIDE as i32;
     let mut columns = BTreeSet::new();
     let mut visible = BTreeSet::new();
     let mut displays = Vec::new();
@@ -185,13 +186,13 @@ pub(crate) fn prepare_spawner_actors(
             for request in &pool.columns[&key].displays {
                 let [x, y, z] = request.position;
                 let backing = chunk
-                    .sub_chunk(y.div_euclid(SUB_CHUNK_SIDE))
+                    .sub_chunk(y.div_euclid(side))
                     .and_then(|part| {
                         part.runtime_id(
                             0,
-                            x.rem_euclid(SUB_CHUNK_SIDE) as u8,
-                            y.rem_euclid(SUB_CHUNK_SIDE) as u8,
-                            z.rem_euclid(SUB_CHUNK_SIDE) as u8,
+                            x.rem_euclid(side) as u8,
+                            y.rem_euclid(side) as u8,
+                            z.rem_euclid(side) as u8,
                         )
                     })
                     .and_then(|id| collisions.block_identifier(stream.network_id_mode(), id));

@@ -834,6 +834,53 @@ fn furnace_quick_move_keeps_admitted_recipe_inputs_out_of_the_fuel_role() {
 }
 
 #[test]
+fn furnace_recipe_replacement_retires_unsent_input_before_transport() {
+    for poll_timeouts in [false, true] {
+        let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
+        inventory
+            .ledger_mut()
+            .begin_quick_move(InventoryTarget::Player(5))
+            .unwrap();
+        assert_eq!(inventory.ledger().pending_request_count(), 1);
+        assert!(inventory.ledger().displayed_stack(5).is_none());
+        assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 8);
+
+        let packet = CraftingDataPacket {
+            clear_recipes: true,
+            ..Default::default()
+        };
+        let mut bytes = Vec::new();
+        packet.encode(&mut bytes).unwrap();
+        inventory
+            .enqueue_inventory_event(
+                1,
+                2,
+                InventoryEvent::Recipes(::protocol::decode_recipe_update(&bytes).unwrap()),
+            )
+            .unwrap();
+        inventory.synchronize_crafting_frontier(1, Some((1, 0, Some(2))));
+        inventory.drain_pending_inventory();
+        assert!(inventory.furnace_recipes(false).is_empty());
+
+        let mut sent = Vec::new();
+        let send = |packet| {
+            sent.push(packet);
+            Ok::<_, ()>(())
+        };
+        let admitted = if poll_timeouts {
+            inventory.flush_inventory_send(1, send)
+        } else {
+            inventory.flush_pending_inventory_send(1, send)
+        };
+        assert_eq!(admitted, Ok(false));
+        assert!(sent.is_empty());
+        assert_eq!(inventory.ledger().pending_request_count(), 0);
+        assert_eq!(inventory.ledger().displayed_stack(5).unwrap().count, 8);
+        assert!(inventory.ledger().storage_stack(0).is_none());
+    }
+}
+
+#[test]
 fn furnace_input_admission_tracks_station_metadata_registry_and_catalog_removal() {
     let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
     assert_eq!(

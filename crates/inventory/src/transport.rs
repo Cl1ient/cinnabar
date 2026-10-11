@@ -16,7 +16,7 @@ impl InventorySession {
         self.flush_pending_inventory_send(now_millis, send)
     }
 
-    /// Sends ready commands after the caller has polled timeouts and projected any screen change.
+    /// Refreshes admission and sends ready commands after the caller has polled timeouts.
     pub fn flush_pending_inventory_send<E>(
         &mut self,
         now_millis: u64,
@@ -25,7 +25,7 @@ impl InventorySession {
         let mut admitted_any = false;
         for _ in 0..MAX_INVENTORY_PACKETS_PER_FLUSH {
             let Some((packet, entries)) = self
-                .ledger()
+                .ledger_mut()
                 .pending_batch()
                 .expect("the ledger retains only validated protocol requests")
             else {

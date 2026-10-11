@@ -10,7 +10,7 @@ use crate::{
     BiomeStorage, BlockEntityError, BlockEntityKey, BlockEntityNbt, BlockIds, BlockUpdate, Chunk,
     ChunkKey, CollisionRevisionError, DecodeError, DecodedBiomeColumn, DecodedBlockEntities,
     DecodedSubChunk, MAX_BLOCK_ENTITIES_PER_CHUNK, MAX_BLOCK_ENTITY_BYTES_PER_CHUNK, MutationError,
-    SubChunk, SubChunkKey,
+    NeighbourReach, SubChunk, SubChunkKey,
     collision_revision::{CollisionRevisionAllocator, process_collision_revisions},
 };
 
@@ -51,6 +51,7 @@ pub struct PreparedSubChunkMutation {
     key: SubChunkKey,
     replacement: Option<SubChunk>,
     changed: bool,
+    reach: NeighbourReach,
 }
 
 impl PreparedSubChunkMutation {
@@ -67,6 +68,12 @@ impl PreparedSubChunkMutation {
     #[must_use]
     pub const fn changed(&self) -> bool {
         self.changed
+    }
+
+    /// The neighbouring sub-chunks whose meshes the changed cells can affect.
+    #[must_use]
+    pub const fn reach(&self) -> NeighbourReach {
+        self.reach
     }
 }
 
@@ -426,6 +433,7 @@ impl ChunkStore {
                 key,
                 replacement: previous.cloned(),
                 changed: false,
+                reach: NeighbourReach::of_updates(updates),
             });
         }
 
@@ -443,6 +451,7 @@ impl ChunkStore {
             key,
             replacement,
             changed,
+            reach: NeighbourReach::of_updates(updates),
         })
     }
 

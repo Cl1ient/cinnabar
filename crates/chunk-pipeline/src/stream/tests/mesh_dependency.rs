@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use protocol::WorldBootstrap;
-use world::{DecodedLevelChunk, MeshDependencyMask, SubChunkKey};
+use world::{DecodedLevelChunk, MeshDependencyMask, NeighbourReach, SubChunkKey};
 
 use super::WorldStream;
 
@@ -413,4 +413,25 @@ fn private_snapshot_populates_the_shared_liquid_neighbourhood() {
         );
     }
     assert!(neighbourhood.sub_chunk([1, -1, 1]).is_none());
+}
+
+/// A block change remeshes a neighbour only when a changed cell borders it.
+#[test]
+fn block_changes_remesh_only_the_neighbours_their_cells_border() {
+    let mut stream = stream();
+    let source = SubChunkKey::new(0, 0, 0, 0);
+    let east = SubChunkKey::new(0, 1, 0, 0);
+    let diagonal = SubChunkKey::new(0, 1, 1, 0);
+    for key in [source, east, diagonal] {
+        stream.resident.insert(key);
+    }
+    let now = Instant::now();
+    stream.mark_block_mutation_changed(source, now, false, NeighbourReach::of_cell(8, 8, 8));
+    assert!(stream.mesh_jobs.pending.contains_key(&source));
+    assert!(!stream.mesh_jobs.pending.contains_key(&east));
+    assert!(!stream.mesh_jobs.pending.contains_key(&diagonal));
+
+    stream.mark_block_mutation_changed(source, now, false, NeighbourReach::of_cell(15, 8, 8));
+    assert!(stream.mesh_jobs.pending.contains_key(&east));
+    assert!(!stream.mesh_jobs.pending.contains_key(&diagonal));
 }

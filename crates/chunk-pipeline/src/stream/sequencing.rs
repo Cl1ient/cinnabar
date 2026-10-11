@@ -38,6 +38,13 @@ impl WorldStream {
         relight: &BTreeSet<SubChunkKey>,
     ) -> bool {
         self.diagnose_light_mutations(&prepared, relight);
+        let mut reach = BTreeMap::<SubChunkKey, NeighbourReach>::new();
+        for mutation in &prepared {
+            reach
+                .entry(mutation.key())
+                .and_modify(|reach| *reach = reach.union(mutation.reach()))
+                .or_insert(mutation.reach());
+        }
         let Ok(changed) = self.authority.commit_prepared_block_updates(prepared) else {
             return false;
         };
@@ -46,7 +53,12 @@ impl WorldStream {
             self.reconcile_block_crack_column(key.chunk());
             self.refresh_block_entity_visuals_for_sub_chunk(key);
             self.sync_resident(key);
-            self.mark_live_mutation_changed(key, now, relight.contains(&key));
+            self.mark_block_mutation_changed(
+                key,
+                now,
+                relight.contains(&key),
+                reach.get(&key).copied().unwrap_or(NeighbourReach::ALL),
+            );
         }
         true
     }

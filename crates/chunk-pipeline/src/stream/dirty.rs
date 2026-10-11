@@ -10,12 +10,24 @@ impl WorldStream {
         now: Instant,
         relight: bool,
     ) {
+        self.mark_block_mutation_changed(key, now, relight, NeighbourReach::ALL);
+    }
+    /// Marks a block change urgent, remeshing only the neighbours its changed cells `reach`;
+    /// neighbours whose light it changes are remeshed when the relight lands.
+    pub(super) fn mark_block_mutation_changed(
+        &mut self,
+        key: SubChunkKey,
+        now: Instant,
+        relight: bool,
+        reach: NeighbourReach,
+    ) {
         self.mark_changed_sources_with_mesh_dirty_priority(
             std::iter::once(key),
             std::iter::empty(),
             now,
             true,
             relight,
+            reach,
         );
         self.urgent_work_due = true;
     }
@@ -38,6 +50,7 @@ impl WorldStream {
             now,
             false,
             true,
+            NeighbourReach::ALL,
         );
     }
     fn mark_changed_sources_with_mesh_dirty_priority(
@@ -47,6 +60,7 @@ impl WorldStream {
         now: Instant,
         urgent: bool,
         relight: bool,
+        reach: NeighbourReach,
     ) {
         let sources = sources.into_iter().collect::<BTreeSet<_>>();
         if relight {
@@ -54,7 +68,14 @@ impl WorldStream {
         }
         let mut dirty = preexpanded_dirty.into_iter().collect::<BTreeSet<_>>();
         for &key in &sources {
-            dirty.extend(key.mesh_dependents());
+            let reached = |dependent: &SubChunkKey| {
+                reach.reaches([
+                    i64::from(dependent.x) - i64::from(key.x),
+                    i64::from(dependent.y) - i64::from(key.y),
+                    i64::from(dependent.z) - i64::from(key.z),
+                ])
+            };
+            dirty.extend(key.mesh_dependents().filter(reached));
             // A roof/log several sub-chunks above a seasonal leaf can change
             // its tint. Restrict the extra dependency to the same X/Z column,
             // resident lower chunks, and meshes whose palette actually has leaves.
@@ -73,7 +94,7 @@ impl WorldStream {
                     }
                 }
             }
-            for dependent in key.mesh_neighbourhood_dependents() {
+            for dependent in key.mesh_neighbourhood_dependents().filter(reached) {
                 let ao_needed = self.resident.contains(&dependent)
                     && self
                         .current_mesh_dependency_mask(dependent)
@@ -82,7 +103,7 @@ impl WorldStream {
                     dirty.insert(dependent);
                 }
             }
-            for dependent in key.liquid_mesh_dependents() {
+            for dependent in key.liquid_mesh_dependents().filter(reached) {
                 let liquid_needed = self.resident.contains(&dependent)
                     && self
                         .current_mesh_dependency_mask(dependent)

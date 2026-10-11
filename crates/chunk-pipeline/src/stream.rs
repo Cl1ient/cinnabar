@@ -33,8 +33,8 @@ use world::{
     LightBlockAccess, LightBlockSample, LightBounds, LightChannel,
     LightProperties as SolverLightProperties, LightReadAccess, LightSolveError, LightSolveOutput,
     LightStore, LightStoreSnapshot, LightSubChunkKind, MeshDependencyMask, MeshNeighbourhood,
-    PreparedSubChunkMutation, SectionSnapshot, SolverLimits, SubChunk, SubChunkKey, SubChunkLight,
-    chunk_in_view,
+    NeighbourReach, PreparedSubChunkMutation, SectionSnapshot, SolverLimits, SubChunk, SubChunkKey,
+    SubChunkLight, chunk_in_view,
 };
 
 #[cfg(test)]

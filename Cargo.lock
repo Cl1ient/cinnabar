@@ -7902,6 +7902,7 @@ name = "ui"
 version = "0.1.12"
 dependencies = [
  "assets",
+ "json-ui",
  "render-api",
  "semantic-input",
  "serde",

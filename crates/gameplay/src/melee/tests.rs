@@ -682,6 +682,11 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
         },
     ));
     assert_eq!(swings.take_started(), None);
+    assert_eq!(
+        runtime.admitted_attack(),
+        None,
+        "a refused FIFO admits no combat evidence"
+    );
     assert_eq!(swings.published_progress(press.tick).bedrock, [0.0; 2]);
     swings.sync_ticks((1, 1), press.tick, &effects);
     let mut admitted_packets = Vec::new();
@@ -717,6 +722,14 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
         admitted_packets, initial_packets,
         "the retry keeps its admitted swing and packet order"
     );
+    if let Crosshair::Actor(hit) = crosshair {
+        assert_eq!(
+            runtime.admitted_attack().map(|attack| attack.hit),
+            Some(hit)
+        );
+    } else {
+        assert_eq!(runtime.admitted_attack(), None);
+    }
     assert_eq!(missed, crosshair == Crosshair::Miss);
     assert_eq!(swings.take_started(), Some(press.swing_duration));
     assert!(

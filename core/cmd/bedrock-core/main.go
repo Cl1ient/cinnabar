@@ -362,6 +362,7 @@ func runWithResourcePackCacheFactory(
 	transfers := new(proxy.TransferState)
 	selector := new(proxy.UpstreamSelector)
 	var onDisconnect func(proxy.DisconnectInfo)
+	var networkObservation func(proxy.NetworkObservation)
 	var sessionTarget func(context.Context, string, string) (string, error)
 	var serverTrust minecraft.ServerTrust
 	if statusStore != nil {
@@ -419,6 +420,10 @@ func runWithResourcePackCacheFactory(
 		}
 		transfers.OnTransfer = func(target proxy.TransferTarget) { statusStore.ObserveTransfer(target.Host, target.Port) }
 		onDisconnect = func(info proxy.DisconnectInfo) { statusStore.ObserveDisconnect(info.Reason, info.Message) }
+		networkObservation = func(observation proxy.NetworkObservation) {
+			statusStore.ObserveNetwork(control.NetworkObservation{AttemptID: observation.AttemptID, LocalRuntimeID: observation.LocalRuntimeID, RoundTripMillis: observation.RoundTripMillis})
+		}
+
 		if opts.serverTrustFile != "" {
 			prompts := proxy.NewServerTrustPrompts(func(prompt proxy.ServerTrustPrompt, pending bool) {
 				statusStore.ObserveServerTrust(control.ServerTrustPrompt(prompt), pending)
@@ -446,6 +451,7 @@ func runWithResourcePackCacheFactory(
 		Transfers:           transfers,
 		Selector:            selector,
 		OnDisconnect:        onDisconnect,
+		NetworkObservation:  networkObservation,
 		LocalTarget:         localTarget,
 		ResourcePackCache:   resourcePackCache,
 		ResourcePackAdmission: func(snapshot proxy.ResourcePackAdmissionSnapshot) {

@@ -39,6 +39,8 @@ pub struct ItemComponents {
     pub use_duration_ticks: Option<u32>,
     /// Whether `minecraft:food` is declared.
     pub food: bool,
+    /// Present only when a food component declares finite numeric nutrition facts.
+    pub food_properties: Option<FoodProperties>,
     /// `minecraft:wearable` slot, e.g. `slot.armor.head`.
     pub wearable_slot: Option<Arc<str>>,
     /// Whether the payload declares `minecraft:wearable`, including malformed declarations.
@@ -77,6 +79,47 @@ impl ItemComponents {
         }
         bytes
     }
+}
+/// Retained finite component-defined food values, with no guessed vanilla catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoodProperties {
+    nutrition: u32,
+    saturation_modifier_bits: u32,
+}
+impl FoodProperties {
+    /// Constructs validated component or version-pinned carrier values.
+    pub fn new(nutrition: u32, saturation_modifier: f32) -> Option<Self> {
+        (saturation_modifier.is_finite() && saturation_modifier >= 0.0).then_some(Self {
+            nutrition,
+            saturation_modifier_bits: saturation_modifier.to_bits(),
+        })
+    }
+    /// Nutrition points granted when consuming this item.
+    pub const fn nutrition(&self) -> u32 {
+        self.nutrition
+    }
+    /// Component multiplier; saturation gained is nutrition × multiplier × 2.
+    pub fn saturation_modifier(&self) -> f32 {
+        f32::from_bits(self.saturation_modifier_bits)
+    }
+}
+/// Reads only explicit component values; absent or malformed fields remain unavailable.
+fn food_properties(component: Option<&Nbt>) -> Option<FoodProperties> {
+    let component = component?;
+    let nutrition = component.field("nutrition")?.number()?;
+    let modifier = component.field("saturation_modifier")?.number()? as f32;
+    if !nutrition.is_finite()
+        || !(0.0..=u32::MAX as f64).contains(&nutrition)
+        || nutrition.fract() != 0.0
+        || !modifier.is_finite()
+        || modifier < 0.0
+    {
+        return None;
+    }
+    Some(FoodProperties {
+        nutrition: nutrition as u32,
+        saturation_modifier_bits: modifier.to_bits(),
+    })
 }
 
 /// Components for every StartGame registry item whose component data is non-empty.
@@ -161,6 +204,7 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         }),
         use_duration_ticks,
         food: component("minecraft:food").is_some(),
+        food_properties: food_properties(component("minecraft:food")),
         wearable_slot: text(
             component("minecraft:wearable").and_then(|wearable| wearable.field("slot")),
         ),
@@ -218,6 +262,37 @@ mod tests {
         let mut bytes = name(1, key);
         bytes.push(value);
         bytes
+    }
+
+    fn float(key: &str, value: f32) -> Vec<u8> {
+        let mut bytes = name(5, key);
+        bytes.extend(value.to_le_bytes());
+        bytes
+    }
+    #[test]
+    fn explicit_food_values_are_retained_without_guessing_missing_or_nonfinite_values() {
+        let food = |modifier| {
+            compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound(
+                        "minecraft:food",
+                        &[int("nutrition", 4), float("saturation_modifier", modifier)],
+                    )],
+                )],
+            )
+        };
+        let components = parse_components(&food(0.6)).unwrap();
+        let values = components.food_properties.unwrap();
+        assert_eq!(values.nutrition(), 4);
+        assert_eq!(values.saturation_modifier(), 0.6);
+        assert!(
+            parse_components(&food(f32::NAN))
+                .unwrap()
+                .food_properties
+                .is_none()
+        );
     }
 
     fn compound(key: &str, entries: &[Vec<u8>]) -> Vec<u8> {

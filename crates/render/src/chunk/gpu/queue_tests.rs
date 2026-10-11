@@ -317,6 +317,42 @@ fn recurring_near_replacements_do_not_starve_an_older_far_gpu_update() {
 }
 
 #[test]
+fn an_overdue_backlog_uploads_nearest_first_until_one_starves() {
+    let mut world = World::new();
+    let near = world.spawn_empty().id();
+    let far = world.spawn_empty().id();
+    let tint = ChunkBiomeTintIdentity::default();
+    let candidates = || {
+        [
+            (near, SubChunkKey::new(0, 0, 4, 0)),
+            (far, SubChunkKey::new(0, 0, 4, 5)),
+        ]
+        .map(|(entity, key)| GpuUpdateCandidate {
+            entity,
+            key,
+            generation: 1,
+            tint_identity: tint,
+            priority: ChunkUploadPriority::new(0.0),
+        })
+        .to_vec()
+    };
+    let mut fairness = GpuUpdateFairness::default();
+    // Both overdue, the far one longer: the nearer upload still goes first.
+    fairness.wait_ages.insert(near, GPU_UPDATE_OVERDUE_FRAMES);
+    fairness
+        .wait_ages
+        .insert(far, GPU_UPDATE_STARVED_FRAMES - 1);
+    let selected =
+        plan_gpu_chunk_updates(candidates(), &HashMap::new(), Vec3::ZERO, tint, &fairness);
+    assert_eq!(selected, [near, far]);
+    // Once the far one starves it goes first.
+    fairness.wait_ages.insert(far, GPU_UPDATE_STARVED_FRAMES);
+    let selected =
+        plan_gpu_chunk_updates(candidates(), &HashMap::new(), Vec3::ZERO, tint, &fairness);
+    assert_eq!(selected, [far, near]);
+}
+
+#[test]
 fn gpu_update_fairness_is_bounded_prunes_inactive_and_clears_success_or_reset() {
     let mut world = World::new();
     let a = world.spawn_empty().id();

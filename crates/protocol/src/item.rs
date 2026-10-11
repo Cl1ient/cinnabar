@@ -374,7 +374,7 @@ pub enum ItemRegistryVersion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemRegistryEntry {
     /// Parsed once from the admitted component payload, retained for session fact resolution.
-    pub components: Option<ItemComponents>,
+    pub components: Option<Arc<ItemComponents>>,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
@@ -709,7 +709,7 @@ pub(crate) fn normalize_item_registry(
             registry_capacity::negotiated_max_stack_size(&component_bytes)
         };
         let entry = ItemRegistryEntry {
-            components: components::parse_components(&component_bytes),
+            components: components::parse_components(&component_bytes).map(Arc::new),
             identifier: Arc::from(item.item_name),
             network_id,
             component_based: item.is_component_based,

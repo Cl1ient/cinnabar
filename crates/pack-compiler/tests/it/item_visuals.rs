@@ -18,7 +18,7 @@ mod beds;
 #[test]
 fn independent_retail_inventory_has_explicit_compiled_grips() {
     let compiled = compile_entity_assets(item_pack(false).path(), MANIFEST).unwrap();
-    let retail = include_str!("../../../../protocol/data/retail_items_1_26_50.tsv");
+    let retail = include_str!("../../../protocol/data/retail_items_1_26_50.tsv");
     for identifier in retail.lines().filter_map(|line| line.split('\t').nth(1)) {
         let visual = compiled
             .item_visuals
@@ -37,7 +37,7 @@ fn independent_retail_inventory_has_explicit_compiled_grips() {
             .filter(|visual| visual.key.identifier.starts_with("test:"))
             .all(|visual| visual.grip == assets::item::grip::ItemGrip::Unresolved)
     );
-    assets::read_entity_blob(&encode_entity_blob(&compiled).unwrap()).unwrap();
+    assets::RuntimeEntityAssets::decode(&encode_entity_blob(&compiled).unwrap()).unwrap();
 }
 
 #[test]

@@ -48,10 +48,10 @@ mod tests {
         entry.network_id = id;
         entry.identifier = Arc::from("custom:diamond_sword");
         entry.component_based = true;
-        entry.components = Some(protocol::ItemComponents {
+        entry.components = Some(Arc::new(protocol::ItemComponents {
             hand_equipped: upright,
             ..Default::default()
-        });
+        }));
         entry
     }
 

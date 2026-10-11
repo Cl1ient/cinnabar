@@ -112,6 +112,7 @@ fn rig<'a>(
             spawn_revision: 3,
         },
         rig: EntityRigId(9),
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         previous,
         current,
         rest: previous,

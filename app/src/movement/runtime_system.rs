@@ -40,6 +40,7 @@ pub(crate) fn advance_local_physics(
     player: Option<Res<PlayerRuntime>>,
     item_use: Option<Res<client_interaction::item_use::ItemUseRuntime>>,
     mut locals: Local<LocomotionLocals>,
+    network: Res<client_runtime::network::NetworkHandle>,
 ) {
     if acceptance.deadline_reached(Instant::now()) {
         movement_ticker.begin_terminal_drain();
@@ -125,6 +126,11 @@ pub(crate) fn advance_local_physics(
     );
     if !advanced {
         return;
+    }
+    if let Some(position) = physics.network_position() {
+        locals.flush_dismount(position, |packet| {
+            network.send_inventory_packets(vec![packet])
+        });
     }
     publish_physics_view(&physics, &mut view);
 }

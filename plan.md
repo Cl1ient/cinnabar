@@ -5602,9 +5602,13 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
   budget. Land movement speed is not clamped.
   Honey jump/slide, soul speed and depth
   strider coefficients are provisional (honey and soul speed have no public value). Riding
-  suspends player physics and streams steering input with boat paddle flags; rider seat
-  following, client-predicted vehicles (`IsInClientPredictedVehicle`), horse jump wire
-  signalling are not implemented. Sweet berry bush slowdown is written in `tools/registrygen`
+  suspends player physics and streams steering input with boat paddle flags. Server-defined
+  seat offsets follow the mount's actor origin and yaw for local and remote riders without
+  multiplying the offset by entity scale. Boat jump and other vehicle sneak presses send a
+  vehicle-targeted dismount request; the server's removal link releases the rider.
+  Incomplete: authored seat fallbacks and special horse/camel/parrot placement, predictive
+  dismount exit placement, client-predicted vehicles (`IsInClientPredictedVehicle`) and
+  horse jump wire signalling remain open. Sweet berry bush slowdown is written in `tools/registrygen`
   (unverified state count and coefficients) and the sim, but the physics carrier is not
   regenerated: at reconcile run `go -C tools/registrygen run . -physics-v2168-out
   crates/assets/data/block-physics-v2168.bin -physics-v2168-sha-out

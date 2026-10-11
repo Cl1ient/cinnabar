@@ -170,7 +170,7 @@ impl ActorEffectBindings {
     }
 }
 
-pub use render_model::ActorEmitterTransform;
+use render_model::ActorEmitterTransform;
 
 /// A controller attachment belongs to this exact actor lifetime and authored locator.
 #[derive(Clone, Debug)]

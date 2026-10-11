@@ -398,7 +398,8 @@ mod tests {
 
     #[test]
     fn pending_actor_placement_retains_emission_until_the_lifetime_is_removed() {
-        use crate::actor::{ActorAttachment, ActorAttachmentUpdate, ActorEmitterTransform};
+        use crate::actor::{ActorAttachment, ActorAttachmentUpdate};
+        use render_model::ActorEmitterTransform;
         let mut system = ParticleSystem::default();
         let steady = EFFECT.replace(
             "\"minecraft:emitter_rate_instant\":{\"num_particles\":4}",

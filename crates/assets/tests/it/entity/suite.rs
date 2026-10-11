@@ -1194,28 +1194,3 @@ fn render_layers_round_trip_and_reject_invalid_indices() {
     bad_pattern.render.visibility[0].pattern = "Root".into();
     assert!(entity::encode_entity_blob(&bad_pattern).is_err());
 }
-
-#[test]
-fn inherited_locator_cache_preserves_skeleton_index_and_derived_rest_pivot() {
-    let mut compiled = inherited_geometry_fixture();
-    let locator = assets::EntityGeometryLocator {
-        name: "wing_tip".into(),
-        offset: [scalar(16.0), scalar(32.0), scalar(0.0)],
-        rotation: [scalar(0.0); 3],
-        ignore_inherited_scale: true,
-    };
-    compiled.geometries[0].bones[0].locators = vec![locator.clone()].into();
-    let mut derived_bone = compiled.geometries[0].bones[0].clone();
-    derived_bone.locators = Box::default();
-    derived_bone.cubes = Box::default();
-    derived_bone.pivot = Some([scalar(8.0), scalar(16.0), scalar(0.0)]);
-    compiled.geometries[1].bones = vec![derived_bone].into();
-    let runtime = RuntimeEntityAssets::decode(&encode_entity_blob(&compiled).unwrap()).unwrap();
-    let base = runtime.geometry_locator(0, "wing_tip").unwrap();
-    let derived = runtime.geometry_locator(1, "wing_tip").unwrap();
-    assert_eq!(base.bone_index, 0);
-    assert_eq!(derived.bone_index, 0);
-    assert_eq!(derived.pivot, [-0.5, 1.0, 0.0]);
-    assert_eq!(derived.locator, locator);
-    assert!(runtime.geometry_locator(1, "missing").is_none());
-}

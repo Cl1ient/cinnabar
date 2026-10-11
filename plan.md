@@ -868,6 +868,16 @@ these changes do not close the movement, camera, or actor parity gates.
 - Local prediction updates both cells immediately without an inventory transition animation or a server round trip.
 - Focused text fields retain input ownership. Installed Windows input acceptance is pending.
 
+## Inventory close buttons and quick-move
+
+- Engine-drawn container screens, the personal and creative inventory included, set
+  `#close_button_visible`, so the pack's own close button shows (`common_panel`'s, or the
+  inventory top bar's `close_button_panel`). Pressing it (`button.menu_exit`) closes the screen as
+  the inventory key does.
+- Shift with either mouse button quick-moves whole inventory stacks.
+- Provisional: whether desktop vanilla shows the close button on every container screen is
+  unconfirmed by capture.
+
 ## Read-back terrain occlusion on direct-draw devices
 
 - Metal (any direct-draw device with compute) never draws indirectly. While the view holds

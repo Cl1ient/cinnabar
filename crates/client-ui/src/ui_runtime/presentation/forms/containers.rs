@@ -26,7 +26,10 @@ use {
     crate::ui_runtime::{
         UiRuntime,
         forms::EngineFrame,
-        presentation::inventory_pointer::{InventoryCellHit, InventoryScreen},
+        presentation::{
+            inventory_pointer::{InventoryCellHit, InventoryScreen},
+            screens::Widget,
+        },
     },
     inventory::inventory_ledger::InventoryTarget,
 };
@@ -285,6 +288,10 @@ impl UiPresentationRuntime {
     pub fn engine_container_hit(&self, gui: [f32; 2]) -> Option<InventoryCellHit> {
         let (frame, layout) = self.form_presentation.container.as_ref()?;
         let region = hit_test(&frame.hits, [f64::from(gui[0]), f64::from(gui[1])])?;
+        if !matches!(layout, ScreenLayout::Book) && region.pressed.as_deref() == Some(CLOSE_BUTTON)
+        {
+            return Some(InventoryCellHit::Widget(Widget::Close));
+        }
         let widget = || match *layout {
             ScreenLayout::Station(kind) => {
                 super::furnace_book::hit(kind.screen, region).or_else(|| {
@@ -324,6 +331,9 @@ impl UiPresentationRuntime {
         })
     }
 }
+
+/// The button pressed by the pack's close controls.
+const CLOSE_BUTTON: &str = "button.menu_exit";
 
 /// The last container screen's resolved tree, its binding and its layout, each
 /// kept while its inputs stay the same: a hover, press or focus change only
@@ -757,6 +767,8 @@ fn survival_globals(data: &mut DataSource, title: &str) {
         ("#needs_crafting_table", false),
         ("#show_persistent_bundle_hover_text", true),
         ("#gamepad_helper_visible", false),
+        // Desktop screens show their close (X) button; it presses `CLOSE_BUTTON`.
+        ("#close_button_visible", true),
         ("#filtering_enabled", false),
     ] {
         data.set_global(name, Scalar::Bool(value));

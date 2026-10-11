@@ -677,6 +677,12 @@ impl UiRuntime {
                 self.reader_button(player_runtime, button);
                 Ok(0)
             }
+            Widget::Close => {
+                if self.inventory_open() {
+                    self.toggle_inventory(player_runtime);
+                }
+                Ok(0)
+            }
             Widget::BookToggle => {
                 let state = self.screen_state_mut();
                 state.book_open = !state.book_open;

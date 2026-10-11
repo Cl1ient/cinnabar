@@ -425,10 +425,13 @@ fn every_container_screen_draws_through_the_engine() {
                 presentation.engine_container_hit(center)
             })
             .collect();
-        // Every screen but the book shows the player's inventory.
-        let player_cells = if name.starts_with("book") { 0 } else { 36 };
-        let player = (0..player_cells).map(InventoryCellHit::Player);
-        for hit in expected.into_iter().chain(player) {
+        // Every screen but the book shows the player's inventory and a close button.
+        let book = name.starts_with("book");
+        let player = (0..if book { 0 } else { 36 }).map(InventoryCellHit::Player);
+        let close = (!book).then_some(InventoryCellHit::Widget(
+            crate::ui_runtime::presentation::screens::Widget::Close,
+        ));
+        for hit in expected.into_iter().chain(player).chain(close) {
             assert!(reached.contains(&hit), "{name}: {hit:?} unreachable");
         }
     }

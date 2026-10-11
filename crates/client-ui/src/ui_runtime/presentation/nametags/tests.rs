@@ -78,14 +78,52 @@ fn scene(anchors: &[NametagAnchor]) -> NametagScene {
 }
 
 #[test]
-fn metadata_scale_raises_the_tag_without_rescaling_a_published_box() {
+fn metadata_scale_multiplies_the_box_height_but_not_the_head_clearance() {
     let mut actor = actor();
     actor.metadata.insert(38, ActorMetadataValue::Float(2.0));
     assert_eq!(tag_height(&actor), 2.0 * DEFAULT_HEIGHT + HEAD_CLEARANCE);
     actor
         .metadata
         .insert(METADATA_HEIGHT, ActorMetadataValue::Float(3.6));
-    assert_eq!(tag_height(&actor), 3.6 + HEAD_CLEARANCE);
+    assert_eq!(tag_height(&actor), 2.0 * 3.6 + HEAD_CLEARANCE);
+    actor
+        .metadata
+        .insert(0, ActorMetadataValue::Flags(1 << ACTOR_FLAG_SNEAKING));
+    actor.metadata.remove(&METADATA_HEIGHT);
+    assert_eq!(tag_height(&actor), 2.0 * SNEAKING_HEIGHT + HEAD_CLEARANCE);
+}
+
+#[test]
+fn near_zero_scale_floating_text_tags_sit_at_the_hosts_feet() {
+    let mut actor = actor();
+    actor.kind = ActorKind::Entity {
+        identifier: "minecraft:falling_block".into(),
+    };
+    actor
+        .metadata
+        .insert(METADATA_ALWAYS_SHOW_NAMETAG, ActorMetadataValue::Byte(1));
+    actor
+        .metadata
+        .insert(METADATA_HEIGHT, ActorMetadataValue::Float(0.98));
+    for scale in [0.000_000_1, 0.0] {
+        actor.metadata.insert(38, ActorMetadataValue::Float(scale));
+        let anchor = extract_nametag(
+            &actor,
+            Vec3::new(0.0, 1.62, 5.0),
+            None,
+            "Floating text".into(),
+            &ui::ScoreboardStore::default(),
+            0.5,
+        )
+        .expect("an always-shown tag at any scale");
+        let feet = Vec3::from_array(actor.interpolated_position(0.5).unwrap());
+        let lift = anchor.position - feet;
+        assert!(lift.is_finite());
+        assert!(
+            (lift.y - HEAD_CLEARANCE).abs() < 1e-5,
+            "scale {scale} lifted the tag {lift}"
+        );
+    }
 }
 
 #[test]

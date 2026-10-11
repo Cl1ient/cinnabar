@@ -52,13 +52,16 @@ fn actor_flag(actor: &ActorSnapshot, bit: u32) -> bool {
             if flags & (1_u64 << bit) != 0)
 }
 
+/// The tag's height above the feet: the box height, which the Scale metadata multiplies as it
+/// does the actor's collision box, plus a head clearance that does not scale. A text host at
+/// near-zero scale therefore shows its tag just above its feet.
 fn tag_height(actor: &ActorSnapshot) -> f32 {
     let height = match actor.metadata.get(&METADATA_HEIGHT) {
         Some(ActorMetadataValue::Float(height)) if height.is_finite() && *height > 0.0 => *height,
-        _ if actor_flag(actor, ACTOR_FLAG_SNEAKING) => SNEAKING_HEIGHT * actor.render_scale(),
-        _ => DEFAULT_HEIGHT * actor.render_scale(),
+        _ if actor_flag(actor, ACTOR_FLAG_SNEAKING) => SNEAKING_HEIGHT,
+        _ => DEFAULT_HEIGHT,
     };
-    height + HEAD_CLEARANCE
+    height * actor.render_scale() + HEAD_CLEARANCE
 }
 
 fn tag_world_position(actor: &ActorSnapshot, partial_tick: f32) -> Option<Vec3> {

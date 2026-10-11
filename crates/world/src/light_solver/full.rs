@@ -6,7 +6,7 @@
 //! no bounds checks. Direct sky is one top-down pass per column; the rest of each channel spreads
 //! from 15 down through per-level buckets, so a cell spreads once, at its final level.
 
-use crate::LightChannel;
+use crate::{BLOCKS_PER_SUB_CHUNK, LightChannel, SUB_CHUNK_SIDE, SubChunkKey};
 
 use super::{
     cache::DensePositionSet,
@@ -14,8 +14,8 @@ use super::{
     scratch::LightSolverScratch,
     solve::enqueue_counted,
     types::{
-        BlockPos, DimensionLightProfile, LightBlockAccess, LightBounds, LightReadAccess,
-        LightSolveError, LightSolveStats, SolverLimits, light_axis_len,
+        BlockPos, DimensionLightProfile, LightBlockAccess, LightBlockSample, LightBounds,
+        LightReadAccess, LightSolveError, LightSolveStats, SolverLimits, light_axis_len,
     },
 };
 
@@ -35,6 +35,8 @@ pub(super) struct FullSolveScratch {
     /// Per column of the top face: trusted direct sky enters it from above.
     direct_above: Vec<bool>,
     buckets: [Vec<u32>; LEVELS],
+    /// One section's samples, from a source's whole-section read.
+    section: Vec<LightBlockSample>,
 }
 
 /// The padded grid's shape: in-bounds extents and the index steps along each axis.
@@ -185,7 +187,8 @@ fn reset<T: Copy>(values: &mut Vec<T>, volume: usize, fill: T) {
     values.resize(volume, fill);
 }
 
-/// Copies each known cell's filter, emission and sky seed less its filter into the grid.
+/// Copies each known cell's filter, emission and sky seed less its filter into the grid, a
+/// section at a time through the source's whole-section read where it has one.
 fn read_blocks<A: LightBlockAccess>(
     blocks: &A,
     bounds: LightBounds,
@@ -193,23 +196,64 @@ fn read_blocks<A: LightBlockAccess>(
     profile: DimensionLightProfile,
     full: &mut FullSolveScratch,
 ) -> Result<(), LightSolveError> {
-    for x in 0..grid.x_len {
-        for y in 0..grid.y_len {
-            let row = grid.index(x, y, 0);
-            for (z, cell) in (row..row + grid.z_len).enumerate() {
-                let position = grid.position(bounds, x, y, z);
-                let sample = blocks.sample(position);
-                let Some(filter) = sample.filter() else {
-                    continue;
+    let side = SUB_CHUNK_SIDE as i64;
+    let (min, max) = (bounds.min(), bounds.max());
+    let lower = |value: i32| i64::from(value).div_euclid(side);
+    full.section.clear();
+    full.section
+        .resize(BLOCKS_PER_SUB_CHUNK, LightBlockSample::Unknown);
+    let section: &mut [LightBlockSample; BLOCKS_PER_SUB_CHUNK] = (&mut full.section[..])
+        .try_into()
+        .expect("the section buffer holds one sub-chunk");
+    for section_x in lower(min.x)..=lower(max.x) {
+        for section_y in lower(min.y)..=lower(max.y) {
+            for section_z in lower(min.z)..=lower(max.z) {
+                // Section indices of in-bounds blocks fit an i32 sub-chunk coordinate.
+                let key = SubChunkKey::new(
+                    bounds.dimension(),
+                    section_x as i32,
+                    section_y as i32,
+                    section_z as i32,
+                );
+                let bulk = blocks.sample_section(key, section);
+                let origin = [section_x * side, section_y * side, section_z * side];
+                let clip = |axis: usize, low: i32, high: i32| {
+                    i64::from(low).max(origin[axis])..=i64::from(high).min(origin[axis] + side - 1)
                 };
-                full.filter[cell] = filter;
-                full.block[cell] = sample.emission();
-                let seed = blocks.sky_seed(position);
-                if seed > 15 {
-                    return Err(LightSolveError::LightValueOutOfRange { value: seed });
-                }
-                if profile.allows_sky() {
-                    full.sky[cell] = seed.saturating_sub(filter);
+                for world_x in clip(0, min.x, max.x) {
+                    for world_y in clip(1, min.y, max.y) {
+                        for world_z in clip(2, min.z, max.z) {
+                            // Every clipped coordinate lies within the bounds.
+                            let position =
+                                BlockPos::new(world_x as i32, world_y as i32, world_z as i32);
+                            let sample = if bulk {
+                                let local =
+                                    |value: i64, axis: usize| (value - origin[axis]) as usize;
+                                section[local(world_x, 0) << 8
+                                    | local(world_z, 2) << 4
+                                    | local(world_y, 1)]
+                            } else {
+                                blocks.sample(position)
+                            };
+                            let Some(filter) = sample.filter() else {
+                                continue;
+                            };
+                            let cell = grid.index(
+                                (world_x - i64::from(min.x)) as usize,
+                                (world_y - i64::from(min.y)) as usize,
+                                (world_z - i64::from(min.z)) as usize,
+                            );
+                            full.filter[cell] = filter;
+                            full.block[cell] = sample.emission();
+                            let seed = blocks.sky_seed(position);
+                            if seed > 15 {
+                                return Err(LightSolveError::LightValueOutOfRange { value: seed });
+                            }
+                            if profile.allows_sky() {
+                                full.sky[cell] = seed.saturating_sub(filter);
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -175,6 +175,51 @@ pub(in crate::stream) fn sample_resident_light(
     }
 }
 
+/// [`sample_resident_light`] for every block of `sub_chunk` at once, into `out` indexed
+/// `x << 8 | z << 4 | y`: each layer's palette is resolved once rather than per block.
+pub(in crate::stream) fn fill_resident_light(
+    sub_chunk: &SubChunk,
+    classifier: BlockClassifier,
+    mut resolve: impl FnMut(u32) -> SolverLightProperties,
+    out: &mut [LightBlockSample; world::BLOCKS_PER_SUB_CHUNK],
+) {
+    let mut emission = [0_u8; world::BLOCKS_PER_SUB_CHUNK];
+    let mut filter = [0_u8; world::BLOCKS_PER_SUB_CHUNK];
+    let mut found = [false; world::BLOCKS_PER_SUB_CHUNK];
+    let mut indices = [0_u32; world::BLOCKS_PER_SUB_CHUNK];
+    let mut palette_light = Vec::new();
+    for storage in sub_chunk.storages() {
+        storage.palette_indices(&mut indices);
+        palette_light.clear();
+        palette_light.extend(
+            storage
+                .palette()
+                .values()
+                .iter()
+                .map(|&runtime_id| (!classifier.is_air(runtime_id)).then(|| resolve(runtime_id))),
+        );
+        for (linear, &index) in indices.iter().enumerate() {
+            // A missing word or an index past the palette has no runtime ID, as one block's read.
+            let Some(Some(properties)) = palette_light.get(index as usize) else {
+                continue;
+            };
+            emission[linear] = emission[linear].max(properties.emission());
+            filter[linear] = filter[linear].max(properties.filter());
+            found[linear] = true;
+        }
+    }
+    for (linear, sample) in out.iter_mut().enumerate() {
+        *sample = if found[linear] {
+            LightBlockSample::Resident(
+                SolverLightProperties::new(emission[linear], filter[linear])
+                    .expect("resolved light properties are nibble-bounded"),
+            )
+        } else {
+            LightBlockSample::KnownAir
+        };
+    }
+}
+
 #[cfg(test)]
 mod covered_emission_tests {
     use super::*;
@@ -195,6 +240,41 @@ mod covered_emission_tests {
             );
         }
     }
+
+    #[test]
+    fn a_whole_section_read_matches_every_block_read() {
+        // Layer 0: a two-bit network palette [air, 1, 2, 3] in a varied pattern; layer 1: 2.
+        let mut bytes = vec![8, 2, (2 << 1) | 1];
+        let mut words = [0_u32; world::BLOCKS_PER_SUB_CHUNK / 16];
+        for linear in 0..world::BLOCKS_PER_SUB_CHUNK {
+            let value = (linear * 7 + linear / 13) % 4;
+            words[linear / 16] |= (value as u32) << ((linear % 16) * 2);
+        }
+        for word in words {
+            bytes.extend(word.to_le_bytes());
+        }
+        bytes.extend([4 << 1, 0, 1 << 1, 2 << 1, 3 << 1, 1, 2 << 1]);
+        let chunk = SubChunk::decode(&bytes, &world::RawBlockIds { air: 0 });
+        assert_eq!(chunk.storages().len(), 2);
+        let classifier = BlockClassifier::new(0);
+        let resolve =
+            |id: u32| SolverLightProperties::new((id * 5 % 16) as u8, (id * 3 % 16) as u8).unwrap();
+        let mut whole = [LightBlockSample::Unknown; world::BLOCKS_PER_SUB_CHUNK];
+        fill_resident_light(&chunk, classifier, resolve, &mut whole);
+        for (linear, sample) in whole.iter().enumerate() {
+            let position = [
+                (linear >> 8) as u8,
+                (linear & 15) as u8,
+                ((linear >> 4) & 15) as u8,
+            ];
+            assert_eq!(
+                *sample,
+                sample_resident_light(&chunk, position, classifier, resolve),
+                "{position:?}"
+            );
+        }
+        assert!(whole.iter().any(|sample| *sample != whole[0]));
+    }
 }
 
 impl LightBlockAccess for LightBlockSnapshot {
@@ -214,6 +294,37 @@ impl LightBlockAccess for LightBlockSnapshot {
                 })
             }
         }
+    }
+
+    fn sample_section(
+        &self,
+        key: SubChunkKey,
+        out: &mut [LightBlockSample; world::BLOCKS_PER_SUB_CHUNK],
+    ) -> bool {
+        if key.dimension != self.dimension {
+            return false;
+        }
+        match self.blocks.get(&key) {
+            None => out.fill(LightBlockSample::Unknown),
+            Some(SnapshotBlock::KnownAir) => out.fill(LightBlockSample::KnownAir),
+            Some(SnapshotBlock::Resident(sub_chunk)) => {
+                fill_resident_light(
+                    sub_chunk,
+                    self.classifier,
+                    |runtime_id| {
+                        self.resolved_light
+                            .get(&runtime_id)
+                            .copied()
+                            .unwrap_or_else(|| {
+                                SolverLightProperties::new(0, 15)
+                                    .expect("constant nibbles are valid")
+                            })
+                    },
+                    out,
+                );
+            }
+        }
+        true
     }
 
     fn sky_seed(&self, position: BlockPos) -> u8 {

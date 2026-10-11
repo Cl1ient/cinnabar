@@ -1,6 +1,8 @@
 use thiserror::Error;
 
-use crate::{LightChannel, LightStorageError, LightStoreSnapshot, SubChunkKey};
+use crate::{
+    BLOCKS_PER_SUB_CHUNK, LightChannel, LightStorageError, LightStoreSnapshot, SubChunkKey,
+};
 
 #[cfg(test)]
 thread_local! {
@@ -104,6 +106,17 @@ pub trait LightBlockAccess {
     /// Explicit sky seed at this coordinate. Unknown cells are always ignored.
     fn sky_seed(&self, _position: BlockPos) -> u8 {
         0
+    }
+
+    /// Writes the samples of every block in sub-chunk `key` into `out`, indexed
+    /// `x << 8 | z << 4 | y` in section coordinates, as [`Self::sample`] would return them, and
+    /// returns true. Sources with no faster whole-section read return false and leave `out`.
+    fn sample_section(
+        &self,
+        _key: SubChunkKey,
+        _out: &mut [LightBlockSample; BLOCKS_PER_SUB_CHUNK],
+    ) -> bool {
+        false
     }
 }
 

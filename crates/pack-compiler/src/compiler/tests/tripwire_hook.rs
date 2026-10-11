@@ -128,6 +128,29 @@ fn tripwire_hooks_keep_mount_shaft_eye_and_attached_wire_in_every_state() {
         let wire = visual.face(BlockFace::South).material_id();
         assert!(quads[..6].iter().all(|q| q.material == base));
         assert!(quads[6..18].iter().all(|q| q.material == hook));
+        for part in quads[6..18].chunks_exact(6) {
+            let center: [f64; 3] = std::array::from_fn(|axis| {
+                part.iter()
+                    .flat_map(|q| q.positions)
+                    .map(|p| f64::from(p[axis]))
+                    .sum::<f64>()
+                    / 24.0
+            });
+            for quad in part {
+                let [a, b, c, _] = quad.positions.map(|p| p.map(f64::from));
+                let ab: [f64; 3] = std::array::from_fn(|axis| b[axis] - a[axis]);
+                let ac: [f64; 3] = std::array::from_fn(|axis| c[axis] - a[axis]);
+                let normal = [
+                    ab[1] * ac[2] - ab[2] * ac[1],
+                    ab[2] * ac[0] - ab[0] * ac[2],
+                    ab[0] * ac[1] - ab[1] * ac[0],
+                ];
+                let outward: f64 = (0..3)
+                    .map(|axis| normal[axis] * (a[axis] - center[axis]))
+                    .sum();
+                assert!(outward > 0.0, "inward cap or side: {quad:?}");
+            }
+        }
         assert!(quads[18..].iter().all(|q| q.material == wire));
         assert_eq!(
             runtime

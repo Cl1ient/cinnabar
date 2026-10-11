@@ -179,7 +179,7 @@ fn pitched_part(
     .map(transform);
     for (index, corners) in [
         [1, 0, 3, 2],
-        [5, 4, 7, 6],
+        [6, 7, 4, 5],
         [0, 1, 5, 4],
         [3, 0, 4, 7],
         [2, 3, 7, 6],

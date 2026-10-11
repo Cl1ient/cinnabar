@@ -124,9 +124,14 @@ fn cargo_tests(text: &str, root: &Path) -> Option<BTreeSet<String>> {
         return None;
     }
     let mut body = false;
+    let mut in_doctest = false;
+    let mut passing_doctest = false;
     let result = Regex::new(r"^test result: (?:ok|FAILED)\. \d+ passed; \d+ failed; \d+ ignored; \d+ measured; \d+ filtered out; finished in [\d.]+s$").unwrap();
     let target = Regex::new(r"^`?(?:-p \S+ )?--(?:lib|test \S+|bin \S+|example \S+)`?$").unwrap();
     let doctests = Regex::new(r"^Doc-tests [A-Za-z0-9_]+$").unwrap();
+    let doctest_timing =
+        Regex::new(r"^all doctests ran in [0-9.]+s; merged doctests compilation took [0-9.]+s$")
+            .unwrap();
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -148,15 +153,32 @@ fn cargo_tests(text: &str, root: &Path) -> Option<BTreeSet<String>> {
             body = true;
             continue;
         }
-        if trimmed == "failures:" || result.is_match(trimmed) {
+        if trimmed == "failures:" {
             body = false;
+            continue;
+        }
+        if result.is_match(trimmed) {
+            body = false;
+            passing_doctest = in_doctest && trimmed.starts_with("test result: ok.");
             continue;
         }
         if trimmed.starts_with("test result:") {
             return None;
         }
-        if doctests.is_match(trimmed)
-            || cargo_progress(trimmed)
+        if !body && doctests.is_match(trimmed) {
+            in_doctest = true;
+            passing_doctest = false;
+            continue;
+        }
+        if passing_doctest && doctest_timing.is_match(trimmed) {
+            passing_doctest = false;
+            continue;
+        }
+        if trimmed.starts_with("Running ") || trimmed.starts_with("error:") {
+            in_doctest = false;
+            passing_doctest = false;
+        }
+        if cargo_progress(trimmed)
             || trimmed.starts_with("running ")
                 && (trimmed.ends_with(" test") || trimmed.ends_with(" tests"))
             || trimmed.starts_with("test ")
@@ -382,6 +404,7 @@ mod tests {
             "error[E9999]: compiler failure",
             "error: failed to run custom build command",
             "process aborted",
+            "all doctests ran in 0.09s; merged doctests compilation took 0.09s",
             "{\"reason\":\"unrecognized-failure\"}",
         ] {
             assert!(cargo_tests(&format!("{text}{unknown}\n"), Path::new("/repo")).is_none());

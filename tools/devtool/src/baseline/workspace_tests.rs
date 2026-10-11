@@ -376,7 +376,13 @@ fn passing_doctest_sections_preserve_unit_failure_comparison() {
         assert!(String::from_utf8_lossy(&result.stdout).contains("Doc-tests"));
         let failures = signatures(&command, &result, None, root.path(), "architecture")
             .unwrap()
-            .expect("passing doctests blocked comparison");
+            .unwrap_or_else(|| {
+                panic!(
+                    "passing doctests blocked comparison: {}\n{}",
+                    String::from_utf8_lossy(&result.stdout),
+                    String::from_utf8_lossy(&result.stderr)
+                )
+            });
         assert_eq!(failures.len(), 1);
     }
     let (root, command, result) = failed_libtest_fixture(
@@ -451,38 +457,50 @@ fn configured_workspace_wrappers_survive_both_isolation_paths() {
     fs::write(&inner, "#!/usr/bin/env python3\nimport pathlib,sys,os\nwith pathlib.Path(__file__).with_name('calls').open('a') as calls: calls.write(' '.join(sys.argv[1:]) + '\\n')\nos.execvp(sys.argv[1], sys.argv[1:])\n").unwrap();
     fs::set_permissions(&inner, fs::Permissions::from_mode(0o755)).unwrap();
     let launcher = Path::new(env!("CARGO_MANIFEST_DIR")).join("../cargo-free");
-    for mode in ["normal", "free", "comparison"] {
-        let calls = root.join("calls");
-        fs::remove_file(&calls).ok();
-        let mut command = CommandSpec::cargo(&["check", "--offline"]);
-        command.env.push((
-            "CARGO_BUILD_BUILD_DIR".into(),
-            root.join(mode).display().to_string(),
-        ));
-        command.env.push((
-            "CARGO_TARGET_DIR".into(),
-            root.join(format!("target-{mode}")).display().to_string(),
-        ));
-        if mode == "comparison" {
-            isolate_workspace_artifacts(&mut command, root).unwrap();
-        } else if mode == "free" {
-            command.program = launcher.display().to_string();
-            command.env.push((
-                "CARGO_FREE_BUILD_ROOT".into(),
-                root.join("free-build").display().to_string(),
-            ));
+    for layout in ["file", "symlink"] {
+        if layout == "symlink" {
+            let shared = root.join("shared/settings/config.toml");
+            fs::create_dir_all(shared.parent().unwrap()).unwrap();
+            fs::rename(root.join(".cargo/config.toml"), &shared).unwrap();
+            std::os::unix::fs::symlink(&shared, root.join(".cargo/config.toml")).unwrap();
         }
-        let result = output(&command, root).unwrap();
-        assert!(
-            result.status.success(),
-            "{mode}: {}",
-            String::from_utf8_lossy(&result.stderr)
-        );
-        assert!(
-            fs::read_to_string(&calls)
-                .unwrap_or_default()
-                .contains("src/main.rs"),
-            "{mode} bypassed the configured workspace wrapper"
-        );
+        for mode in ["normal", "free", "comparison"] {
+            let calls = root.join("calls");
+            fs::remove_file(&calls).ok();
+            let mut command = CommandSpec::cargo(&["check", "--offline"]);
+            command.env.push((
+                "CARGO_BUILD_BUILD_DIR".into(),
+                root.join(format!("{layout}-{mode}")).display().to_string(),
+            ));
+            command.env.push((
+                "CARGO_TARGET_DIR".into(),
+                root.join(format!("target-{layout}-{mode}"))
+                    .display()
+                    .to_string(),
+            ));
+            if mode == "comparison" {
+                isolate_workspace_artifacts(&mut command, root).unwrap();
+            } else if mode == "free" {
+                command.program = launcher.display().to_string();
+                command.env.push((
+                    "CARGO_FREE_BUILD_ROOT".into(),
+                    root.join(format!("free-build-{layout}"))
+                        .display()
+                        .to_string(),
+                ));
+            }
+            let result = output(&command, root).unwrap();
+            assert!(
+                result.status.success(),
+                "{mode}: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert!(
+                fs::read_to_string(&calls)
+                    .unwrap_or_default()
+                    .contains("src/main.rs"),
+                "{mode} bypassed the configured workspace wrapper"
+            );
+        }
     }
 }

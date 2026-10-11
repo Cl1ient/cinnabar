@@ -15,8 +15,9 @@ DIGEST_LENGTH = 16
 def configured_wrapper(path: Path, seen: frozenset[Path] = frozenset()) -> tuple[str, Path] | None:
     """Read a wrapper from a Cargo config, preserving the origin of included values."""
     import tomllib
-    path = path.resolve()
-    if path in seen:
+    path = path.absolute()
+    identity = path.resolve()
+    if identity in seen:
         raise ValueError("Cargo config include cycle")
     with path.open("rb") as source:
         config = tomllib.load(source)
@@ -26,7 +27,7 @@ def configured_wrapper(path: Path, seen: frozenset[Path] = frozenset()) -> tuple
         included = path.parent / name
         if isinstance(entry, dict) and entry.get("optional") and not included.exists():
             continue
-        value = configured_wrapper(included, seen | {path})
+        value = configured_wrapper(included, seen | {identity})
         if value is not None:
             selected = value
     value = config.get("build", {}).get("rustc-workspace-wrapper")
@@ -53,7 +54,7 @@ def effective_workspace_wrapper(arguments: list[str]) -> str:
     import tomllib
     cwd = Path.cwd().resolve()
     selected = None
-    home = Path(os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))).resolve()
+    home = Path(os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))).absolute()
     directories = [home, *(directory / ".cargo" for directory in reversed((cwd, *cwd.parents)))]
     for directory in directories:
         legacy = directory / "config"

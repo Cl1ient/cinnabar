@@ -23,7 +23,18 @@ pub(crate) fn parse(text: &str, root: &Path) -> BTreeSet<String> {
     let mut current_failed = false;
     let mut current_completed = true;
     let mut completed_failures = 0;
+    let mut captured = false;
     for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("---- ") && trimmed.ends_with(" stdout ----") {
+            captured = true;
+            continue;
+        }
+        if trimmed == "failures:" {
+            captured = false;
+        } else if captured {
+            continue;
+        }
         if let Some((executable, artifact)) = test_artifact(line, &root) {
             artifacts.insert(executable, artifact);
         }
@@ -249,6 +260,22 @@ mod tests {
             artifact("abort")
         );
         assert!(parse(&mixed, Path::new("/repo")).is_empty());
+    }
+
+    #[test]
+    fn captured_artifacts_cannot_replace_another_test_targets_identity() {
+        let artifact = |name: &str, executable: &str| serde_json::json!({"reason":"compiler-artifact", "profile":{"test":true}, "manifest_path":"/repo/Cargo.toml", "executable":executable, "target":{"name":name,"kind":["test"]}});
+        let text = format!(
+            "{}\n{}\nRunning tests/first.rs (/repo/target/first)\ntest existing ... FAILED\nfailures:\n---- existing stdout ----\n{}\nfailures:\n    existing\ntest result: FAILED. 0 passed; 1 failed;\nerror: test failed, to rerun pass `--test first`\nRunning tests/second.rs (/repo/target/second)\ntest existing ... FAILED\ntest result: FAILED. 0 passed; 1 failed;\nerror: test failed, to rerun pass `--test second`\nerror: 2 targets failed:\n",
+            artifact("first", "/repo/target/first"),
+            artifact("second", "/repo/target/second"),
+            artifact("impostor", "/repo/target/second")
+        );
+        let targets: BTreeSet<String> = parse(&text, Path::new("/repo"))
+            .iter()
+            .map(|signature| serde_json::from_str::<Failure>(signature).unwrap().target)
+            .collect();
+        assert_eq!(targets, BTreeSet::from(["first".into(), "second".into()]));
     }
 
     #[test]

@@ -93,6 +93,13 @@ config.mkdir()
 assert effective_workspace_wrapper([]) == str(root / 'local-wrapper')
 (config / 'config').write_text("[build]\nrustc-workspace-wrapper='./legacy-wrapper'\n")
 assert effective_workspace_wrapper([]) == str(root / 'legacy-wrapper')
+shared = root / 'shared/settings'
+shared.mkdir(parents=True)
+shared_config = shared / 'config.toml'
+shared_config.write_text("[build]\nrustc-workspace-wrapper='./symlink-wrapper'\n")
+(config / 'config').unlink()
+(config / 'config').symlink_to(shared_config)
+assert effective_workspace_wrapper([]) == str(root / 'symlink-wrapper')
 os.environ['CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER'] = './environment-wrapper'
 assert effective_workspace_wrapper([]) == str(root / 'environment-wrapper')
 arguments = ['check', '--config', "build.rustc-workspace-wrapper='./argument-wrapper'"]

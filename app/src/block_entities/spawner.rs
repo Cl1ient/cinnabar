@@ -237,12 +237,30 @@ pub(crate) fn prepare_spawner_actors(
     pool.actors.retain(&visible);
     pool.actors.advance(step.ticks);
     let artwork = state.actor_artwork(&artwork);
+    pending.extend_entities(display_batch(
+        pool,
+        stream,
+        artwork,
+        step.partial_tick,
+        displays,
+    ));
+}
+
+/// Converts and places display poses, then resolves their lighting and controller layers.
+fn display_batch(
+    pool: &mut Pool,
+    stream: &chunk_pipeline::WorldStream,
+    artwork: &ActorArtworkPages,
+    partial_tick: f32,
+    displays: Vec<(u64, [i32; 3], SpawnerDisplayClock)>,
+) -> ActorPresentationBatch {
     let mut batch = ActorPresentationBatch {
         submissions: Vec::new(),
         skin_layers: Vec::new(),
         artwork: HashMap::new(),
     };
-    let mut sampled = pool.actors.frame(step.partial_tick);
+    pool.poses.begin_frame();
+    let mut sampled = pool.actors.frame(partial_tick);
     for (runtime, position, spin) in displays {
         let (Some(actor), Some(rig)) = (pool.actors.actor(runtime), pool.actors.rig(runtime))
         else {
@@ -253,7 +271,7 @@ pub(crate) fn prepare_spawner_actors(
             &rig,
             actor,
             artwork,
-            step.partial_tick,
+            partial_tick,
             Some(&mut pool.poses),
         ) else {
             continue;
@@ -263,8 +281,7 @@ pub(crate) fn prepare_spawner_actors(
             .culling_bounds
             .half_extents
             .map(|axis| axis * 2.0);
-        let Some(placement) =
-            spawner_actor_transform(position, dimensions, spin, step.partial_tick)
+        let Some(placement) = spawner_actor_transform(position, dimensions, spin, partial_tick)
         else {
             continue;
         };
@@ -279,13 +296,6 @@ pub(crate) fn prepare_spawner_actors(
         }
         batch.submissions.push(presentation.submission);
     }
-    pool.layers.begin_frame();
-    apply_render_layers_cached(
-        &mut batch,
-        |runtime| sampled.layers(runtime),
-        artwork,
-        &mut pool.layers,
-    );
     for body in &mut batch.submissions {
         let feet = body.world_from_actor.map(|row| row[3]);
         let position = pool
@@ -296,5 +306,15 @@ pub(crate) fn prepare_spawner_actors(
             body.light = render::pack_actor_light(block, sky);
         }
     }
-    pending.extend_entities(batch);
+    pool.layers.begin_frame();
+    apply_render_layers_cached(
+        &mut batch,
+        |runtime| sampled.layers(runtime),
+        artwork,
+        &mut pool.layers,
+    );
+    batch
 }
+
+#[cfg(test)]
+mod tests;

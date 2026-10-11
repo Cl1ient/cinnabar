@@ -29,6 +29,11 @@ fn fixture(identifier: &str) -> CompiledEntityAssets {
             item.source += 1;
         }
     }
+    for candidate in &mut compiled.render.candidates {
+        if candidate.source >= 4 {
+            candidate.source += 1;
+        }
+    }
     compiled.symbols[0].identifier = identifier.into();
     compiled.rig_bindings[0].placement_frame = placement::builtin_placement_frame(identifier);
     compiled

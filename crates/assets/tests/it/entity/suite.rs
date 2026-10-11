@@ -27,7 +27,8 @@ use item::{
     ItemVisualId as LeafItemVisualId, ItemVisualKey,
 };
 
-fn fixture() -> CompiledEntityAssets {
+/// Builds an otherwise empty entity carrier with one admitted source and symbol.
+pub(super) fn fixture() -> CompiledEntityAssets {
     let source_bytes = br#"{"format_version":"1.10.0"}"#;
     CompiledEntityAssets {
         source_manifest_sha256: [0x11; 32],

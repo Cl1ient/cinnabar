@@ -527,12 +527,17 @@ fn review_molang_rejects_unbounded_backward_jumps() {
 
 #[test]
 fn compiled_item_facts_admit_only_hash_checked_missing_retail_visuals() {
-    let mut compiled = carrier_v4_fixture();
-    let source = compiled.item_visuals[0].source as usize;
-    compiled.sources[source].path = assets::ITEM_ARMOUR_SOURCE_PATH.into();
-    compiled.sources[source].source_bytes = assets::ITEM_ARMOUR_SOURCE_BYTES.len() as u32;
-    compiled.sources[source].source_sha256 =
-        Sha256::digest(assets::ITEM_ARMOUR_SOURCE_BYTES).into();
+    let mut compiled = super::suite::fixture();
+    let mut sources = compiled.sources.to_vec();
+    let source = sources.len();
+    sources.push(entity::EntityAssetSource {
+        path: assets::ITEM_ARMOUR_SOURCE_PATH.into(),
+        source_bytes: assets::ITEM_ARMOUR_SOURCE_BYTES.len() as u32,
+        source_sha256: Sha256::digest(assets::ITEM_ARMOUR_SOURCE_BYTES).into(),
+    });
+    compiled.sources = sources.into_boxed_slice();
+    compiled.item_visuals = carrier_v4_fixture().item_visuals;
+    compiled.item_visuals[0].source = source as u32;
     compiled.item_visuals[0].route = item::ItemVisualDefinitionRoute::Missing;
     let blob = entity::encode_entity_blob(&compiled).unwrap();
     RuntimeEntityAssets::decode(&blob).unwrap();

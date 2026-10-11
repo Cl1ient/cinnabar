@@ -7519,3 +7519,11 @@ Incomplete parity: exact custom-biome fallback profiles and regional or height-a
 Composters retain inward walls and a level-dependent floor. Cauldrons retain their rim, inner floor, walls and feet, with separate water, lava and powder-snow surfaces at each fill level. These models do not occlude full neighbor faces.
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
+
+### Model texture-array selector coverage
+
+Model texture-array selector coverage is incomplete. Compilation retains typed
+selectors and output ranges for the existing explicit model bindings. Unrecognized
+model arrays stay unresolved instead of guessing from growth or selecting index zero.
+The generic terrain accessor, complete native binding inventory and custom selector
+expressions still need their own admission and coverage work.

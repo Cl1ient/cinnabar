@@ -65,7 +65,7 @@ pub(in crate::compiler) fn compile_rule(
 /// Emits the post and three feet, followed by double-sided panels facing each bottle slot.
 fn quads(materials: [u32; 6], bottles: [bool; 3]) -> Vec<ModelQuad> {
     let mut quads =
-        super::geometry::vanilla_cuboid_quads(materials, [112, 0, 112], [144, 144, 144]).to_vec();
+        super::geometry::vanilla_cuboid_quads(materials, [112, 0, 112], [144, 224, 144]).to_vec();
     let base = materials[BlockFace::Down as usize];
     for (min, max) in [
         ([144, 0, 80], [240, 32, 176]),

@@ -251,7 +251,7 @@ fn first_presentation_preserves_motion_and_clip_time_and_replays_local_view() {
             .unwrap()
             .clip_clocks
             .values()
-            .all(|clock| clock.time == world::TICK_DURATION.as_secs_f32())
+            .all(|clock| clock.time == simulation_clock::TICK_DURATION.as_secs_f32())
     );
     store.clear();
     store.insert(2, 0, actors.get(&1).unwrap());

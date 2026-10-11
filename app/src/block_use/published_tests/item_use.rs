@@ -14,6 +14,7 @@ pub(super) fn hold_snowball(world: &mut World) -> (u64, i32) {
                     network_id,
                     component_based: false,
                     version: protocol::ItemRegistryVersion::None,
+                    components: None,
                     component_digest: [0; 32],
                     negotiated_max_stack_size: Some(16),
                     canonical_empty_component_data: true,

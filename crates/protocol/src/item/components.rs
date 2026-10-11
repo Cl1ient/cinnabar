@@ -20,6 +20,12 @@ pub(super) fn duration_ticks(seconds: f64) -> Option<u32> {
 /// What the client presents from one item's components; absent facts stay `None`/`false`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ItemComponents {
+    /// Food permission retained independently from use duration.
+    pub food_can_always_eat: Option<bool>,
+    /// Finite nonnegative movement multiplier, retained by its IEEE bits.
+    pub use_movement_modifier_bits: Option<u64>,
+    /// Authored use-category timer, excluding attack cooldowns.
+    pub use_cooldown: Option<ItemUseCooldown>,
     /// Attack and kinetic presentation facts, when this item declares them.
     pub attack: Option<super::ItemAttackTiming>,
     /// `item_texture.json` key from `minecraft:icon`.
@@ -44,6 +50,13 @@ pub struct ItemComponents {
     pub rarity: Option<Arc<str>>,
     /// `minecraft:hover_text_color` format-code name, e.g. `gold`.
     pub hover_text_color: Option<Arc<str>>,
+}
+
+/// One authored use cooldown with bounded owned category text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemUseCooldown {
+    pub category: Arc<str>,
+    pub ticks: u32,
 }
 
 /// Components for every StartGame registry item whose component data is non-empty.
@@ -89,6 +102,25 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
             .and_then(simulation_clock::whole_ticks_from_seconds)
     });
     Some(ItemComponents {
+        food_can_always_eat: component("minecraft:food")
+            .map(|food| flag(food.field("can_always_eat"))),
+        use_movement_modifier_bits: component("minecraft:use_modifiers")
+            .and_then(|modifiers| modifiers.field("movement_modifier"))
+            .and_then(Nbt::number)
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .map(f64::to_bits),
+        use_cooldown: component("minecraft:cooldown").and_then(|cooldown| {
+            if cooldown.field("type").and_then(Nbt::as_str) == Some("attack") {
+                return None;
+            }
+            Some(ItemUseCooldown {
+                category: text(cooldown.field("category"))?,
+                ticks: cooldown
+                    .field("duration")
+                    .and_then(Nbt::number)
+                    .and_then(duration_ticks)?,
+            })
+        }),
         attack: super::attack::parse_attack(components),
         icon: super::icons::icon_key(bytes),
         display_name: text(

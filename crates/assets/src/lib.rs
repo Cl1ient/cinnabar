@@ -165,14 +165,14 @@ pub use entity::{PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE};
 pub use environment_settings::{CloudQuality, EnvironmentQualitySettings, PrecipitationQuality};
 pub use equipment::{
     ArmorSlot, AttachablePose, AttachablePoseBone, CompiledItemAttackCooldown,
-    CompiledItemAttackTiming, CompiledKineticWeaponTiming, DEFAULT_LEATHER_RGB,
-    EQUIPMENT_CARRIER_MAGIC, EQUIPMENT_CARRIER_VERSION, EquipmentBinding, EquipmentCategory,
-    EquipmentColorMask, EquipmentReference, EquipmentTexture, EquipmentTransform, ItemUseDuration,
-    MAX_EQUIPMENT_BINDINGS, MAX_EQUIPMENT_CARRIER_BYTES, MAX_EQUIPMENT_IDENTIFIER_BYTES,
-    MAX_EQUIPMENT_PIXEL_BYTES, MAX_EQUIPMENT_TEXTURE_SIDE, MAX_EQUIPMENT_TEXTURES,
-    RuntimeEquipmentCatalog, color_mask_texel, encode_equipment_catalog,
+    CompiledItemAttackTiming, CompiledItemUseOverlay, CompiledKineticWeaponTiming,
+    DEFAULT_LEATHER_RGB, EQUIPMENT_CARRIER_MAGIC, EQUIPMENT_CARRIER_VERSION, EquipmentBinding,
+    EquipmentCategory, EquipmentColorMask, EquipmentReference, EquipmentTexture,
+    EquipmentTransform, ItemUseDuration, MAX_EQUIPMENT_BINDINGS, MAX_EQUIPMENT_CARRIER_BYTES,
+    MAX_EQUIPMENT_IDENTIFIER_BYTES, MAX_EQUIPMENT_PIXEL_BYTES, MAX_EQUIPMENT_TEXTURE_SIDE,
+    MAX_EQUIPMENT_TEXTURES, RuntimeEquipmentCatalog, color_mask_texel, encode_equipment_catalog,
     encode_equipment_catalog_full, encode_equipment_catalog_with_attack_timings,
-    encode_equipment_catalog_with_textures,
+    encode_equipment_catalog_with_textures, encode_equipment_catalog_with_use_profiles,
 };
 pub use error::AssetError;
 pub use fire::{FIRE_ATTACHMENT_MASK_COUNT, FIRE_SUPPORTED_QUAD_COUNT, FIRE_TEMPLATE_COUNT};
@@ -298,3 +298,5 @@ pub use ui::{
     UiSidecarEntry, UiTexturePlacement, UiTextureUv, encode_ui_catalog,
 };
 pub use vanilla_refs::{MAX_VANILLA_REFS_BYTES, VanillaEntityRefs, VanillaGeometryFile};
+
+pub use entity::item_use;

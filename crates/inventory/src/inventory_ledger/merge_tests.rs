@@ -25,6 +25,7 @@ fn entry(
         network_id,
         component_based,
         version: ItemRegistryVersion::DataDriven,
+        components: None,
         component_digest: [network_id as u8; 32],
         negotiated_max_stack_size: negotiated,
         canonical_empty_component_data: canonical_empty,

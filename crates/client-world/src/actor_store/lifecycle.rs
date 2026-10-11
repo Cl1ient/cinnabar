@@ -806,6 +806,16 @@ impl ActorStore {
         }
     }
 
+    /// Installs compiled item-use overlays before numerical admission.
+    pub(crate) fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.items.set_use_overlays(overlays)
+    }
+
     pub(crate) fn set_item_use_durations(
         &mut self,
         durations: std::sync::Arc<std::collections::BTreeMap<Box<str>, u32>>,

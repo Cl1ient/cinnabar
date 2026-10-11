@@ -24,6 +24,7 @@ fn furnace_recipe_panel_lists_outputs_and_routes_filter_tabs_and_search() {
                 network_id: index as i32 + 1,
                 component_based: false,
                 version: ::protocol::ItemRegistryVersion::None,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: true,

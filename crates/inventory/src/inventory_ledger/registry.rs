@@ -249,6 +249,7 @@ mod tests {
             network_id: 900,
             component_based,
             version: ItemRegistryVersion::DataDriven,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: declared,
             canonical_empty_component_data: declared.is_none(),

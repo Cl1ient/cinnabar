@@ -503,6 +503,7 @@ impl RuntimeEntityAssets {
 }
 
 pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Result<(), AssetError> {
+    super::item_use::validate(compiled)?;
     validate_animation_payload(compiled)?;
     validate_molang_payload(compiled)?;
     validate_controller_payload(compiled)?;

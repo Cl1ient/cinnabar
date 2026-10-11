@@ -139,7 +139,7 @@ impl ItemUseRuntime {
             stream,
             self.selected_projectile(player_runtime, ui),
         ) {
-            Some(AirUse::Hold { .. } | AirUse::Instant) => LocalItemUse::Idle,
+            Some(AirUse::Hold { .. } | AirUse::Instant { .. }) => LocalItemUse::Idle,
             Some(AirUse::Throw { .. }) | None => LocalItemUse::Unpredicted,
         }
     }

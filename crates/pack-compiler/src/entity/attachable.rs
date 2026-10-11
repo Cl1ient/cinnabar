@@ -8,6 +8,9 @@
 //! keyframes in the exact `wield_first_person`/`wield_third_person` base clips;
 //! anything Molang/query-derived is left `NeedsMeasurement`.
 
+mod use_profiles;
+pub use use_profiles::compile_item_use_profiles;
+
 use std::{collections::BTreeMap, path::Path};
 
 use assets::{

@@ -54,7 +54,7 @@ pub(crate) use source::{open_source_handle, read_bounded_source};
 pub use animation::{CompileReferenceOutcome, FallbackReason, RejectReason};
 pub use attachable::{
     compile_item_attack_timings, compile_item_use as compile_item_use_durations,
-    compile_textures as compile_equipment_textures,
+    compile_item_use_profiles, compile_textures as compile_equipment_textures,
     compile_textures_for_assets as compile_equipment_textures_for_assets,
     compile_textures_for_assets_with as compile_equipment_textures_for_assets_with,
     compile_textures_with as compile_equipment_textures_with,
@@ -227,6 +227,20 @@ pub fn compile_entity_assets_with_report(
         path: item_bindings::SOURCE_PATH.into(),
         source_bytes: binding_bytes.len() as u32,
         source_sha256: Sha256::digest(binding_bytes).into(),
+    });
+    let (use_bytes, use_hash) = assets::item_use::source_identity();
+    total_source_bytes = total_source_bytes
+        .checked_add(use_bytes as usize)
+        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
+    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
+        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
+    {
+        return Err(invalid("entity source-byte total or count exceeds bound"));
+    }
+    sources.push(EntityAssetSource {
+        path: assets::item_use::SOURCE_PATH.into(),
+        source_bytes: use_bytes,
+        source_sha256: use_hash,
     });
     let legacy_bytes = legacy_icons::SOURCE_BYTES;
     total_source_bytes = total_source_bytes
@@ -404,6 +418,7 @@ fn assemble(
         rig_geometries: animation.rig_geometries,
         rig_animations: animation.rig_animations,
         rig_controllers: animation.rig_controllers,
+        item_use_profiles: assets::item_use::compile(&items.visuals),
         item_visuals: items.visuals,
         item_visual_aliases: items.aliases,
         render: animation.render,

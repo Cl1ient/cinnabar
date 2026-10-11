@@ -240,7 +240,7 @@ fn hotbar_inventory_and_held_icons_share_charge_fire_and_authoritative_correctio
     player_runtime.inventory.set_local_selected_slot(2);
     item_use.observe_press(true);
     let mut fire = charge_frame(&player_runtime, &ui, 40);
-    fire.air_use = Some(AirUse::Instant);
+    fire.air_use = fire.air_use.map(|action| action.with_crossbow_charge(true));
     assert!(!item_use.step(&fire).started);
     assert_eq!(capture(&player_runtime, &mut ui, &item_use, 40), corrected);
     assert_eq!(

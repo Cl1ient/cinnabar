@@ -60,6 +60,7 @@ pub(in crate::actor_animation) fn compiled_fixture() -> CompiledEntityAssets {
     .collect::<Vec<_>>()
     .into_boxed_slice();
     CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 1,
         sources,
@@ -215,6 +216,7 @@ pub(in crate::actor_animation) fn compiled_fixture() -> CompiledEntityAssets {
             ..EntityRenderData::default()
         },
     }
+    .with_unresolved_item_use()
 }
 
 fn fixture() -> Arc<RuntimeEntityAssets> {

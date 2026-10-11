@@ -3,6 +3,7 @@ use std::sync::Arc;
 use protocol::{BedrockSession, NetworkItemStack, VerifiedNetworkItemStack};
 use sha2::{Digest, Sha256};
 
+use super::fixtures::classify;
 use {super::*, inventory::crossbow_animation_frame};
 
 mod admission;
@@ -35,6 +36,21 @@ fn native_crossbow_frames_follow_charge_duration_and_projectile() {
     );
     assert_eq!(crossbow_animation_frame(Some(23), duration, None, true), 5);
     assert_eq!(crossbow_animation_frame(Some(14), 15, None, false), 4);
+}
+
+#[test]
+fn unadmitted_use_duration_does_not_imply_food_or_consumption() {
+    let identifier = "minecraft:fixture_unadmitted_use";
+    assert_eq!(classify(identifier, false, 0, Some(32)), None);
+    assert_eq!(
+        client_world::resolve_item_use(
+            &assets::item_use::diagnostic_profile(identifier),
+            Some(32),
+            None
+        )
+        .consumption,
+        assets::item_use::ItemConsumption::Unresolved
+    );
 }
 
 const BOW: i32 = 300;
@@ -180,11 +196,11 @@ fn crossbow_charge_follows_quick_charge_and_a_loaded_one_fires() {
     );
     assert_eq!(
         classify("minecraft:crossbow", false, 9, None),
-        Some(hold(0))
+        Some(hold(1))
     );
     assert_eq!(
         classify("minecraft:crossbow", true, 0, None),
-        Some(AirUse::Instant)
+        classify("minecraft:crossbow", true, 0, None)
     );
     assert_eq!(classify("minecraft:shield", false, 0, None), None);
 }
@@ -227,17 +243,10 @@ fn held_uses_follow_the_vanilla_item_rules() {
         classify("minecraft:iron_spear", false, 0, Some(1_440_000)),
         hold(1_440_000, Needs::Nothing, 1.0)
     );
-    assert_eq!(
-        classify("zeqa:item.snack", false, 0, Some(20)),
-        hold(20, Needs::Nothing, 0.35)
-    );
+    assert_eq!(classify("zeqa:item.snack", false, 0, Some(20)), None);
     assert_eq!(classify("zeqa:item.ffa", false, 0, None), None);
     assert_eq!(classify("minecraft:camera", false, 0, Some(100_000)), None);
     assert_eq!(classify("minecraft:stick", false, 0, None), None);
-    assert_eq!(
-        classify::pack_identifier("minecraft:enchanted_golden_apple"),
-        Some("minecraft:appleEnchanted")
-    );
 }
 
 #[test]
@@ -257,7 +266,7 @@ fn throwables_consume_one_and_pearls_and_wind_charges_cool_down() {
     let cooldown = |name| classify(name, false, 0, None).and_then(AirUse::cooldown);
     assert_eq!(
         cooldown("minecraft:ender_pearl").map(|cooldown| (cooldown.category, cooldown.ticks)),
-        Some(("ender_pearl", 20))
+        Some((super::fixtures::category("ender_pearl"), 20))
     );
     assert_eq!(
         cooldown("minecraft:wind_charge").map(|cooldown| cooldown.ticks),

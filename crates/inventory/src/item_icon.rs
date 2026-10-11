@@ -1,7 +1,7 @@
 //! Item-state projection shared by gameplay and UI.
 
 /// Maximum held-use duration for native bows and tridents.
-pub const LONG_WEAPON_USE_TICKS: u32 = 72_000;
+use protocol::LONG_WEAPON_USE_TICKS;
 
 /// The main-hand bow frame follows draw power while its use counter remains nonzero.
 /// Other items keep frame zero; crossbows use their separate projectile-aware rule.

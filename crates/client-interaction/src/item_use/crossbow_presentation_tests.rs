@@ -11,8 +11,10 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use {
     super::*,
-    gameplay::item_use::{AirUse, UseFrame, classify},
+    gameplay::item_use::{AirUse, UseFrame},
 };
+
+use gameplay::item_use::fixtures::classify;
 
 const BOW: i32 = 300;
 
@@ -106,6 +108,7 @@ fn fixture(
                 network_id,
                 component_based: false,
                 version: ItemRegistryVersion::Legacy,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: None,
                 canonical_empty_component_data: true,

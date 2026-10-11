@@ -7676,15 +7676,14 @@ Incomplete parity: cauldron block-actor potion and dyed-water colours require ru
 Compiled pack and admitted server use modifiers share one simulation-clock
 duration conversion: seconds use component float precision and
 discard fractional ticks. Equipment carriers require a rebuild for this change.
-This fixes duration quantization only. The complete typed use-kind, appetite,
-movement and cooldown descriptor and its independent coverage gate remain
-incomplete. Component-version precedence and malformed or extreme-duration
+Use-kind, appetite, movement and cooldown admission is compiled against an
+independent item inventory; its complete native coverage remains incomplete. Component-version precedence and malformed or extreme-duration
 parity remain unverified.
 
 The simulation clock values and finite component-duration conversion share the
 `simulation-clock` crate. Protocol consumers no longer depend on the world model
-for timing. Other native use-kind, appetite, movement and cooldown descriptors
-remain incomplete.
+for timing. Complete native use-kind, appetite, movement and cooldown coverage
+remains incomplete.
 Block destroy facts are compiled into world carrier 15 and read by numeric runtime
 identity during mining. Every input state is checked against the independent pinned
 registry; changed or custom identities remain unresolved. The existing hardness and
@@ -7701,3 +7700,4 @@ numerical behavior; unclassified states remain unresolved and keep the previous 
 numerical defaults. No ordinary movement classification is inferred from absence of a special
 rule. Complete native ordinary/special coverage, custom session movement components and
 all provisional rule values still require verification before this gate can close.
+Item-use descriptor admission is incomplete. The carrier records explicit unresolved items against the independently collected item-visual inventory. Gameplay, consume audio, first-person consumption and cooldown publication read numerical admissions with session component overlays. A duration alone grants no use kind or movement penalty. The stock compatibility catalog, complete native use-kind census, authored cooldown timing, special appetite modes and conflicting component/class semantics remain provisional. Authored and session facts share whole-tick conversion. Cooldown quantization and component-version precedence remain provisional.

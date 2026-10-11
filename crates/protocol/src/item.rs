@@ -1,3 +1,6 @@
+/// Compatibility maximum duration shared by long-held weapon actions and animation.
+pub const LONG_WEAPON_USE_TICKS: u32 = 72_000;
+
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -28,7 +31,7 @@ pub use facts::{ItemStackFacts, ItemStackFactsCache};
 mod registry_capacity;
 
 pub use attack::{ItemAttackCooldown, ItemAttackTiming, KineticWeaponTiming};
-pub use components::{ItemComponents, item_components};
+pub use components::{ItemComponents, ItemUseCooldown, item_components};
 pub use display::{
     ItemBook, ItemDisplay, MAX_BOOK_PAGES, item_book, item_bundle_id, item_display,
     item_has_enchantment_list,
@@ -373,6 +376,8 @@ pub enum ItemRegistryVersion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemRegistryEntry {
+    /// Parsed immutable component evidence retained for effective item admission.
+    pub components: Option<Arc<ItemComponents>>,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
@@ -411,6 +416,7 @@ pub fn vanilla_item_registry() -> Arc<[ItemRegistryEntry]> {
             network_id,
             component_based: false,
             version: ItemRegistryVersion::Legacy,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -710,6 +716,7 @@ pub(crate) fn normalize_item_registry(
             network_id,
             component_based: item.is_component_based,
             version,
+            components: components::parse_components(&component_bytes).map(Arc::new),
             component_digest: Sha256::digest(&component_bytes).into(),
             negotiated_max_stack_size,
             canonical_empty_component_data,

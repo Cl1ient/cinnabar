@@ -75,7 +75,7 @@ pub struct ItemUseRuntime {
     session: Option<u64>,
     rearm_millis: Option<u64>,
     /// Cooldown category and the tick it ends.
-    cooldowns: Vec<(&'static str, u64)>,
+    cooldowns: Vec<(client_world::UseCooldownCategory, u64)>,
     predicted: Option<PredictedStack>,
     /// A throw's emptied slot and the authoritative revision it consumed, until the ledger takes it.
     emptied_slot: Option<(u8, u64)>,
@@ -393,7 +393,7 @@ impl ItemUseRuntime {
             if emptied_slot.is_some() {
                 self.emptied_slot = emptied_slot;
             }
-            if air_use == Some(AirUse::Instant) {
+            if matches!(air_use, Some(AirUse::Instant { .. })) {
                 self.crossbows
                     .predict(&selection, frame.inventory_revision, None);
             }
@@ -433,7 +433,7 @@ impl ItemUseRuntime {
         (!selection.item.is_empty()).then_some(selection)
     }
 
-    fn on_cooldown(&self, category: &str) -> bool {
+    fn on_cooldown(&self, category: client_world::UseCooldownCategory) -> bool {
         self.cooldowns.iter().any(|(active, _)| *active == category)
     }
 
@@ -480,5 +480,7 @@ pub fn admit_on_tick(
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixtures;
 #[cfg(test)]
 mod tests;

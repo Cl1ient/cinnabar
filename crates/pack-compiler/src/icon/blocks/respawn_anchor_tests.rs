@@ -420,3 +420,31 @@ fn respawn_anchor_carried_strips_preserve_first_faces_at_pack_resolutions() {
         }
     }
 }
+
+#[test]
+fn respawn_anchor_carried_overlay_masks_keep_rgb_when_resized() {
+    let directory = tempfile::tempdir().unwrap();
+    image::RgbaImage::from_fn(32, 32, |x, _| {
+        image::Rgba(if x < 16 {
+            [101, 131, 163, 0]
+        } else {
+            [255, 255, 255, 255]
+        })
+    })
+    .save(directory.path().join("masked.png"))
+    .unwrap();
+    let tile = crate::icon::carried::tile(directory.path(), "masked", Some("#804020"), true)
+        .unwrap()
+        .expect("masked carried anchor face remains drawable");
+    assert_eq!([tile.width, tile.height], [assets::BLOCK_ITEM_FACE_SIDE; 2]);
+    assert_eq!(&tile.rgba8[..4], &[101, 131, 163, 255]);
+    let last_pixel = (usize::from(tile.width) - 1) * 4;
+    assert_eq!(&tile.rgba8[last_pixel..last_pixel + 4], &[128, 64, 32, 255]);
+    assert!(
+        tile.rgba8
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| pixel[3] == 255)
+    );
+}

@@ -5,7 +5,7 @@
 //! its shape, and then shows the carried texture, down face, at the
 //! block's variant.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use assets::{
     AssetError, BlockFace, BlockFlags, BlockVisualId, IconSprite, ModelFamily, NetworkIdMode,
@@ -220,7 +220,7 @@ impl IconBlocks {
         Self::sprite_with_strip_frame(root, path, false)
     }
 
-    /// Loads a bounded sprite, optionally normalizing a carried strip's first square frame.
+    /// Loads a bounded sprite or an unresized square frame for carried-face baking.
     pub(super) fn sprite_with_strip_frame(
         root: &Path,
         path: &str,
@@ -237,11 +237,13 @@ impl IconBlocks {
                 && decoded.width >= assets::TILE_SIZE
                 && decoded.width.is_power_of_two()
             {
-                decoded.rgba8 =
-                    crate::image::normalize_texture_tile(decoded.rgba8, decoded.width, path)?;
-                decoded.width = assets::TILE_SIZE;
-                decoded.height = assets::TILE_SIZE;
+                return Ok(Some(IconSprite {
+                    width: decoded.width as u16,
+                    height: decoded.height as u16,
+                    rgba8: Arc::from(decoded.rgba8),
+                }));
             }
+            return Ok(None);
         }
         Ok(super::sprites::bounded_sprite(decoded).map(|(sprite, _)| sprite))
     }

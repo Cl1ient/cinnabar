@@ -13,7 +13,9 @@ mod unix {
         let temp = tempfile::tempdir().unwrap();
         let fake = temp.path().join("fake-cargo");
         fs::write(&fake, r#"#!/usr/bin/env python3
-import os, subprocess, sys
+import os, subprocess, sys, json
+if 'metadata' in sys.argv:
+    print(json.dumps({'workspace_root':os.getcwd()})); sys.exit(0)
 assert os.environ.get('CARGO_BIN_EXE_test-client') == 'kept', 'launcher lost variable'
 subprocess.run([os.environ['RUSTC_WORKSPACE_WRAPPER'], sys.executable, '-c', "import os; assert os.environ.get('CARGO_BIN_EXE_test-client') == 'kept', 'compiler lost variable'"], check=True)
 "#).unwrap();
@@ -192,8 +194,26 @@ subprocess.run([os.environ['RUSTC_WORKSPACE_WRAPPER'], sys.executable, '-c', "im
 
     #[test]
     fn manifest_paths_isolate_workspaces_built_from_one_directory() {
+        assert_workspace_isolation(true);
+    }
+
+    #[test]
+    fn implicit_workspaces_inside_one_git_checkout_do_not_reuse_binaries() {
+        assert_workspace_isolation(false);
+    }
+
+    /// Checks executable identity and Clippy artifacts for explicitly or implicitly selected workspaces.
+    fn assert_workspace_isolation(explicit_manifest: bool) {
         let temp = tempfile::tempdir().unwrap();
         let launcher = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../cargo-free");
+        assert!(
+            Command::new("git")
+                .args(["init", "--quiet"])
+                .arg(temp.path())
+                .status()
+                .unwrap()
+                .success()
+        );
         let mut binaries = Vec::new();
         let mut clippy_artifacts = Vec::new();
         for (name, equals_form) in [("first", false), ("other", true)] {
@@ -214,7 +234,11 @@ subprocess.run([os.environ['RUSTC_WORKSPACE_WRAPPER'], sys.executable, '-c', "im
             for subcommand in ["build", "clippy"] {
                 let mut command = Command::new(&launcher);
                 command
-                    .current_dir(temp.path())
+                    .current_dir(if explicit_manifest {
+                        temp.path()
+                    } else {
+                        &root
+                    })
                     .env_remove("CARGO_TARGET_DIR")
                     .env_remove("CARGO_BUILD_TARGET_DIR")
                     .env_remove("RUSTC_WORKSPACE_WRAPPER")
@@ -222,10 +246,12 @@ subprocess.run([os.environ['RUSTC_WORKSPACE_WRAPPER'], sys.executable, '-c', "im
                     .env("CARGO_FREE_BUILD_ROOT", temp.path().join("build"))
                     .args([subcommand, "--offline", "--message-format=json"]);
                 let manifest = root.join("Cargo.toml");
-                if equals_form {
-                    command.arg(format!("--manifest-path={}", manifest.display()));
-                } else {
-                    command.arg("--manifest-path").arg(manifest);
+                if explicit_manifest {
+                    if equals_form {
+                        command.arg(format!("--manifest-path={}", manifest.display()));
+                    } else {
+                        command.arg("--manifest-path").arg(manifest);
+                    }
                 }
                 let result = command.output().unwrap();
                 assert!(
@@ -260,7 +286,7 @@ subprocess.run([os.environ['RUSTC_WORKSPACE_WRAPPER'], sys.executable, '-c', "im
         let fake = temp.path().join("fake-cargo");
         fs::write(
             &fake,
-            "#!/bin/sh\nprintf '%s\\n' \"$CARGO_BUILD_BUILD_DIR\"\nread reply\n",
+            "#!/bin/sh\nif [ \"$1\" = metadata ]; then exec python3 -c 'import json,os; print(json.dumps({\"workspace_root\":os.getcwd()}))'; fi\nprintf '%s\\n' \"$CARGO_BUILD_BUILD_DIR\"\nread reply\n",
         )
         .unwrap();
         fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
@@ -328,7 +354,9 @@ fn cargo_free_unwraps_two_and_three_levels() {
             );
             let fake = temp.path().join("fake-cargo");
             fs::write(&fake, r#"#!/usr/bin/env python3
-import os, pathlib, subprocess, sys
+import os, pathlib, subprocess, sys, json
+if 'metadata' in sys.argv:
+    print(json.dumps({'workspace_root':os.getcwd()})); sys.exit(0)
 level = int(os.environ.get('FIXTURE_LEVEL', '1'))
 if level < int(os.environ['FIXTURE_LEVELS']):
     os.environ['FIXTURE_LEVEL'] = str(level + 1)

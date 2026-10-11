@@ -350,22 +350,14 @@ fn isolate_workspace_artifacts(command: &mut CommandSpec, root: &Path) -> Result
     } else {
         "rustc.py"
     });
-    let previous = command
-        .env
-        .iter()
-        .rev()
-        .find(|(key, _)| {
-            key == "RUSTC_WORKSPACE_WRAPPER" || key == "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"
-        })
-        .map(|(_, value)| value.clone())
-        .or_else(|| std::env::var("RUSTC_WORKSPACE_WRAPPER").ok())
-        .or_else(|| std::env::var("CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER").ok())
-        .unwrap_or_default();
     let generator = Path::new(env!("CARGO_MANIFEST_DIR")).join("../compiler_workspace_wrapper.py");
     let result = Command::new(if cfg!(windows) { "python" } else { "python3" })
         .arg(generator)
         .arg(&wrapper)
-        .arg(previous)
+        .arg("--cargo-config")
+        .args(&command.args)
+        .current_dir(root)
+        .envs(command.env.iter().map(|(key, value)| (key, value)))
         .output()
         .map_err(|source| DevtoolError::Spawn {
             command: "create comparison compiler wrapper".into(),

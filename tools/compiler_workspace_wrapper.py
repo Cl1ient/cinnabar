@@ -12,6 +12,79 @@ MARKER = "cinnabar-workspace-wrapper: "
 DIGEST_LENGTH = 16
 
 
+def configured_wrapper(path: Path, seen: frozenset[Path] = frozenset()) -> tuple[str, Path] | None:
+    """Read a wrapper from a Cargo config, preserving the origin of included values."""
+    import tomllib
+    path = path.resolve()
+    if path in seen:
+        raise ValueError("Cargo config include cycle")
+    with path.open("rb") as source:
+        config = tomllib.load(source)
+    selected = None
+    for entry in config.get("include", []):
+        name = entry if isinstance(entry, str) else entry["path"]
+        included = path.parent / name
+        if isinstance(entry, dict) and entry.get("optional") and not included.exists():
+            continue
+        value = configured_wrapper(included, seen | {path})
+        if value is not None:
+            selected = value
+    value = config.get("build", {}).get("rustc-workspace-wrapper")
+    return (value, path.parent.parent) if value is not None else selected
+
+
+def cargo_configs(arguments: list[str]):
+    """Yield explicit Cargo config overrides before the command's argument separator."""
+    options = iter(arguments)
+    for argument in options:
+        if argument == "--":
+            break
+        if argument == "--config":
+            value = next(options, None)
+            if value is None:
+                raise ValueError("--config requires a value")
+            yield value
+        elif argument.startswith("--config="):
+            yield argument.split("=", 1)[1]
+
+
+def effective_workspace_wrapper(arguments: list[str]) -> str:
+    """Resolve Cargo's wrapper precedence and relative paths before adding isolation."""
+    import tomllib
+    cwd = Path.cwd().resolve()
+    selected = None
+    home = Path(os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))).resolve()
+    directories = [home, *(directory / ".cargo" for directory in reversed((cwd, *cwd.parents)))]
+    for directory in directories:
+        legacy = directory / "config"
+        path = legacy if legacy.exists() else directory / "config.toml"
+        if path.exists():
+            value = configured_wrapper(path)
+            if value is not None:
+                selected = value
+    if "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER" in os.environ:
+        selected = (os.environ["CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"], cwd)
+    for override in cargo_configs(arguments):
+        if "=" in override:
+            config = tomllib.loads(override)
+            value = config.get("build", {}).get("rustc-workspace-wrapper")
+            if value is not None:
+                selected = (value, cwd)
+        else:
+            value = configured_wrapper(Path(override))
+            if value is not None:
+                selected = value
+    # Cargo's dedicated wrapper variable takes priority over the build config key.
+    if "RUSTC_WORKSPACE_WRAPPER" in os.environ:
+        selected = (os.environ["RUSTC_WORKSPACE_WRAPPER"], cwd)
+    value, origin = selected or ("", cwd)
+    if not isinstance(value, str):
+        raise ValueError("Cargo workspace wrapper must be a string")
+    if value and ("/" in value or "\\" in value):
+        return str((origin / value).resolve())
+    return value
+
+
 def owned_path(path: Path) -> bool:
     """Recognize reserved wrapper filenames without rejecting custom external wrappers."""
     stem, separator, digest = path.stem.rpartition("-")
@@ -95,6 +168,7 @@ def workspace_wrapper(wrapper: Path, inner: str | None) -> Path:
 
 if __name__ == "__main__":
     try:
-        print(workspace_wrapper(Path(sys.argv[1]), sys.argv[2]))
+        inner = effective_workspace_wrapper(sys.argv[3:]) if sys.argv[2] == "--cargo-config" else sys.argv[2]
+        print(workspace_wrapper(Path(sys.argv[1]), inner))
     except (OSError, ValueError) as error:
         sys.exit(str(error))

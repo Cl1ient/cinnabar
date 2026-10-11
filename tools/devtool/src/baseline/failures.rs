@@ -71,6 +71,7 @@ fn cargo_progress(line: &str) -> bool {
 /// Classifies every Clippy error event and requires matching Cargo failure summaries.
 fn clippy(text: &str, root: &Path) -> Option<BTreeSet<String>> {
     let summary = Regex::new(r"^error: could not compile `[^`]+`(?: \([^)]*\))? due to (\d+) previous errors?(?:; .*warnings? emitted)?$").unwrap();
+    let lint = Regex::new(r"^(?:clippy::)?[a-z][a-z0-9_]*$").unwrap();
     let mut errors = Vec::new();
     let mut summarized = 0;
     for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
@@ -80,6 +81,9 @@ fn clippy(text: &str, root: &Path) -> Option<BTreeSet<String>> {
                     let message = &value["message"];
                     match message["level"].as_str()? {
                         "error" => {
+                            if !lint.is_match(message["code"]["code"].as_str()?) {
+                                return None;
+                            }
                             message["message"].as_str()?;
                             message["spans"].as_array()?;
                             let mut diagnostic = message.clone();
@@ -122,18 +126,11 @@ fn cargo_tests(text: &str, root: &Path) -> Option<BTreeSet<String>> {
     let mut body = false;
     let result = Regex::new(r"^test result: (?:ok|FAILED)\. \d+ passed; \d+ failed; \d+ ignored; \d+ measured; \d+ filtered out; finished in [\d.]+s$").unwrap();
     let target = Regex::new(r"^`?(?:-p \S+ )?--(?:lib|test \S+|bin \S+|example \S+)`?$").unwrap();
+    let doctests = Regex::new(r"^Doc-tests [A-Za-z0-9_]+$").unwrap();
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
-        }
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            match value["reason"].as_str()? {
-                "compiler-artifact" | "build-script-executed" => continue,
-                "build-finished" if value["success"] == true => continue,
-                "compiler-message" if value["message"]["level"] == "warning" => continue,
-                _ => return None,
-            }
         }
         if trimmed.starts_with("---- ") && trimmed.ends_with(" stdout ----") {
             let name = trimmed
@@ -158,7 +155,8 @@ fn cargo_tests(text: &str, root: &Path) -> Option<BTreeSet<String>> {
         if trimmed.starts_with("test result:") {
             return None;
         }
-        if cargo_progress(trimmed)
+        if doctests.is_match(trimmed)
+            || cargo_progress(trimmed)
             || trimmed.starts_with("running ")
                 && (trimmed.ends_with(" test") || trimmed.ends_with(" tests"))
             || trimmed.starts_with("test ")
@@ -174,6 +172,14 @@ fn cargo_tests(text: &str, root: &Path) -> Option<BTreeSet<String>> {
         }
         if body && !trimmed.starts_with("error:") {
             continue;
+        }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            match value["reason"].as_str()? {
+                "compiler-artifact" | "build-script-executed" => continue,
+                "build-finished" if value["success"] == true => continue,
+                "compiler-message" if value["message"]["level"] == "warning" => continue,
+                _ => return None,
+            }
         }
         if line.starts_with("    ")
             && failures.iter().any(|signature| {

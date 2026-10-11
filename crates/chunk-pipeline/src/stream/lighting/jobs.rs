@@ -345,6 +345,25 @@ impl WorldStream {
         let blocks = self.light_block_snapshot(key);
         self.register_untrusted_light_waiters(key, retained_batch);
         let prior = self.light_prior_snapshot(key);
+        // Changed cells stand for the whole key only while the light around it is settled: each
+        // neighbour outside the batch has current light or none yet, whose first solve relights
+        // this key whole.
+        let changed = self
+            .lighting
+            .changed_cells
+            .remove(&key)
+            .filter(|_| {
+                key.mesh_dependents()
+                    .filter(|neighbour| *neighbour != key)
+                    .all(|neighbour| {
+                        !retained_batch.contains(&neighbour)
+                            && !matches!(
+                                self.light_source_state(neighbour),
+                                LightSourceState::Stale
+                            )
+                    })
+            })
+            .map(Arc::from);
         let identity = LightJobIdentity {
             revision: pending.revision,
             block_generation,
@@ -366,6 +385,7 @@ impl WorldStream {
             prior,
             bounds,
             queued_at: pending.queued_at,
+            changed,
         }
     }
     pub(in crate::stream) fn accept_light_completion(&mut self, completion: LightCompletion) {

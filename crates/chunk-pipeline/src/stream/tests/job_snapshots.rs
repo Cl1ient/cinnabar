@@ -461,6 +461,7 @@ fn edits_while_jobs_wait_preserve_inputs_and_requeue_stale_completions() {
         prior: stream.light_prior_snapshot(key),
         bounds,
         queued_at: Instant::now(),
+        changed: None,
     };
     let revision = stream.mark_dirty_exact(key, Instant::now());
     stream.mesh_jobs.pending.remove(&key);

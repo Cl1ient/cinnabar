@@ -162,6 +162,8 @@ fn initial_light_job_cap() -> usize {
 }
 pub const LIGHT_DISPATCH_BUDGET_PER_POLL: usize = MAX_IN_FLIGHT_LIGHT_JOBS;
 const LIGHT_RESULT_CAPACITY: usize = MAX_IN_FLIGHT_LIGHT_JOBS * MAX_LIGHT_COLUMN_BATCH_SUB_CHUNKS;
+/// Changed cells a relight revisits on its own; more than this solve the whole sub-chunk.
+const MAX_SEEDED_LIGHT_CELLS: usize = 64;
 const LIGHT_SOLVE_LIMITS: SolverLimits = SolverLimits::new(4_096, 1_000_000);
 const LIGHT_COLUMN_SOLVE_LIMITS: SolverLimits = SolverLimits::new(
     4_096 * MAX_LIGHT_COLUMN_BATCH_SUB_CHUNKS,

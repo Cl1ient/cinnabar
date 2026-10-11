@@ -43,7 +43,7 @@ pub use light_solver::{
     BlockPos, BoundaryLightSample, DimensionLightProfile, EmptyLight, LightBlockAccess,
     LightBlockSample, LightBounds, LightProperties, LightReadAccess, LightSolveError,
     LightSolveOutput, LightSolveStats, LightSolverScratch, SolverLimits, solve_light,
-    solve_light_with_scratch,
+    solve_light_changes_with_scratch, solve_light_with_scratch,
 };
 pub use mesh_neighbourhood::{MeshDependencyMask, MeshNeighbourhood, MeshSample};
 pub use mutation::{BlockUpdate, NeighbourReach};

@@ -314,6 +314,9 @@ pub(in crate::stream) struct PreparedLightJob {
     pub(in crate::stream) prior: LightPriorSnapshot,
     pub(in crate::stream) bounds: LightBounds,
     pub(in crate::stream) queued_at: Instant,
+    /// The only cells whose blocks changed since `prior` was solved around the same light, or
+    /// `None` to solve every cell.
+    pub(in crate::stream) changed: Option<Arc<[BlockPos]>>,
 }
 
 pub(in crate::stream) struct SolvedLightBatchEntry {
@@ -351,15 +354,27 @@ fn solve_prepared_light_job_with_scratch(
         } else {
             job.blocks.resolve_palette_light();
             let profile = job.blocks.profile;
-            let output = world::solve_light_with_scratch(
-                &job.blocks,
-                &job.prior,
-                job.bounds,
-                job.identity.revision,
-                profile,
-                LIGHT_SOLVE_LIMITS,
-                scratch,
-            )
+            let output = match &job.changed {
+                Some(changed) => world::solve_light_changes_with_scratch(
+                    &job.blocks,
+                    &job.prior,
+                    job.bounds,
+                    job.identity.revision,
+                    profile,
+                    LIGHT_SOLVE_LIMITS,
+                    scratch,
+                    changed,
+                ),
+                None => world::solve_light_with_scratch(
+                    &job.blocks,
+                    &job.prior,
+                    job.bounds,
+                    job.identity.revision,
+                    profile,
+                    LIGHT_SOLVE_LIMITS,
+                    scratch,
+                ),
+            }
             .map_err(LightJobError::Solve)?;
             let light = output
                 .sub_chunks()
@@ -459,6 +474,12 @@ pub(in crate::stream) fn solve_prepared_light_batch_with_scratch(
     if remaining.is_empty() {
         return solved_prefix;
     }
+    // A section solved above in this batch changed the light around the rest.
+    if !solved_prefix.is_empty() {
+        for job in &mut remaining {
+            job.changed = None;
+        }
+    }
     if remaining.len() == 1 {
         let job = remaining.pop().expect("single remaining light job exists");
         let key = job.key;
@@ -480,6 +501,8 @@ pub(in crate::stream) fn solve_prepared_light_batch_with_scratch(
     let mut min = first.bounds.min();
     let mut max = first.bounds.max();
     let mut targets = vec![light_batch_target(&first)];
+    // The batch solves together, so it revisits only changed cells when every member knows them.
+    let mut changed = first.changed.as_deref().map(<[BlockPos]>::to_vec);
     let mut blocks = first.blocks;
     let mut prior = first.prior;
     for job in jobs {
@@ -496,6 +519,10 @@ pub(in crate::stream) fn solve_prepared_light_batch_with_scratch(
             max.z.max(job_max.z),
         );
         targets.push(light_batch_target(&job));
+        changed = changed.zip(job.changed.as_deref()).map(|(mut all, cells)| {
+            all.extend_from_slice(cells);
+            all
+        });
         blocks.blocks.extend(job.blocks.blocks);
         blocks.resolved_light.extend(job.blocks.resolved_light);
         prior.light.extend(job.prior.light);
@@ -515,15 +542,27 @@ pub(in crate::stream) fn solve_prepared_light_batch_with_scratch(
     blocks.resolve_palette_light();
     let profile = blocks.profile;
     let generation = targets[0].identity.revision;
-    let output = match world::solve_light_with_scratch(
-        &blocks,
-        &prior,
-        bounds,
-        generation,
-        profile,
-        LIGHT_COLUMN_SOLVE_LIMITS,
-        scratch,
-    ) {
+    let output = match match &changed {
+        Some(changed) => world::solve_light_changes_with_scratch(
+            &blocks,
+            &prior,
+            bounds,
+            generation,
+            profile,
+            LIGHT_COLUMN_SOLVE_LIMITS,
+            scratch,
+            changed,
+        ),
+        None => world::solve_light_with_scratch(
+            &blocks,
+            &prior,
+            bounds,
+            generation,
+            profile,
+            LIGHT_COLUMN_SOLVE_LIMITS,
+            scratch,
+        ),
+    } {
         Ok(output) => output,
         Err(error) => {
             solved_prefix.extend(failed_light_batch(targets, LightJobError::Solve(error)));

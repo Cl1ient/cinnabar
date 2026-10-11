@@ -426,12 +426,12 @@ fn block_changes_remesh_only_the_neighbours_their_cells_border() {
         stream.resident.insert(key);
     }
     let now = Instant::now();
-    stream.mark_block_mutation_changed(source, now, false, NeighbourReach::of_cell(8, 8, 8));
+    stream.mark_block_mutation_changed(source, now, false, NeighbourReach::of_cell(8, 8, 8), &[]);
     assert!(stream.mesh_jobs.pending.contains_key(&source));
     assert!(!stream.mesh_jobs.pending.contains_key(&east));
     assert!(!stream.mesh_jobs.pending.contains_key(&diagonal));
 
-    stream.mark_block_mutation_changed(source, now, false, NeighbourReach::of_cell(15, 8, 8));
+    stream.mark_block_mutation_changed(source, now, false, NeighbourReach::of_cell(15, 8, 8), &[]);
     assert!(stream.mesh_jobs.pending.contains_key(&east));
     assert!(!stream.mesh_jobs.pending.contains_key(&diagonal));
 }

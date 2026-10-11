@@ -22,9 +22,9 @@ pub(super) struct IncreaseEntry {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct DarkenEntry {
     pub(super) position: BlockPos,
-    channel: LightChannel,
-    old_level: u8,
-    direct_sky: bool,
+    pub(super) channel: LightChannel,
+    pub(super) old_level: u8,
+    pub(super) direct_sky: bool,
 }
 
 pub(super) const NEIGHBOURS: [[i32; 3]; 6] = [
@@ -247,7 +247,7 @@ pub fn solve_light_with_scratch<A: LightBlockAccess, P: LightReadAccess>(
 }
 
 /// Validates a lazily cached raw prior value at an already mapped interior cell.
-fn read_prior<P: LightReadAccess>(
+pub(super) fn read_prior<P: LightReadAccess>(
     prior: &CachedLightReadAccess<'_, P>,
     index: usize,
     position: BlockPos,
@@ -262,7 +262,7 @@ fn read_prior<P: LightReadAccess>(
 }
 
 /// Reads local emission and validates sky seeds without remapping an interior cell.
-fn local_base<A: LightBlockAccess>(
+pub(super) fn local_base<A: LightBlockAccess>(
     blocks: &CachedLightBlockAccess<'_, A>,
     index: usize,
     channel: LightChannel,
@@ -290,7 +290,7 @@ fn local_base<A: LightBlockAccess>(
 
 /// Stops once cached neighbour support reaches the retained light level.
 #[allow(clippy::too_many_arguments)]
-fn prior_supports_level<A: LightBlockAccess, P: LightReadAccess>(
+pub(super) fn prior_supports_level<A: LightBlockAccess, P: LightReadAccess>(
     blocks: &CachedLightBlockAccess<'_, A>,
     prior: &CachedLightReadAccess<'_, P>,
     bounds: LightBounds,
@@ -385,7 +385,7 @@ fn incoming_level(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn propagate<A: LightBlockAccess, P: LightReadAccess>(
+pub(super) fn propagate<A: LightBlockAccess, P: LightReadAccess>(
     blocks: &CachedLightBlockAccess<'_, A>,
     prior: &P,
     bounds: LightBounds,

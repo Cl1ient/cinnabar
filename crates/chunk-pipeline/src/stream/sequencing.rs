@@ -38,12 +38,13 @@ impl WorldStream {
         relight: &BTreeSet<SubChunkKey>,
     ) -> bool {
         self.diagnose_light_mutations(&prepared, relight);
-        let mut reach = BTreeMap::<SubChunkKey, NeighbourReach>::new();
+        let mut reach = BTreeMap::<SubChunkKey, (NeighbourReach, Vec<BlockPos>)>::new();
         for mutation in &prepared {
-            reach
+            let (key_reach, cells) = reach
                 .entry(mutation.key())
-                .and_modify(|reach| *reach = reach.union(mutation.reach()))
-                .or_insert(mutation.reach());
+                .or_insert((mutation.reach(), Vec::new()));
+            *key_reach = key_reach.union(mutation.reach());
+            cells.extend(mutation.changed_positions());
         }
         let Ok(changed) = self.authority.commit_prepared_block_updates(prepared) else {
             return false;
@@ -53,12 +54,12 @@ impl WorldStream {
             self.reconcile_block_crack_column(key.chunk());
             self.refresh_block_entity_visuals_for_sub_chunk(key);
             self.sync_resident(key);
-            self.mark_block_mutation_changed(
-                key,
-                now,
-                relight.contains(&key),
-                reach.get(&key).copied().unwrap_or(NeighbourReach::ALL),
-            );
+            let (key_reach, cells) = reach
+                .get(&key)
+                .map_or((NeighbourReach::ALL, &[][..]), |(reach, cells)| {
+                    (*reach, cells.as_slice())
+                });
+            self.mark_block_mutation_changed(key, now, relight.contains(&key), key_reach, cells);
         }
         true
     }

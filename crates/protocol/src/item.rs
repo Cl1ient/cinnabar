@@ -373,6 +373,8 @@ pub enum ItemRegistryVersion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemRegistryEntry {
+    /// Client-facing components parsed once from the validated registry payload.
+    pub components: Option<Arc<ItemComponents>>,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
@@ -715,6 +717,7 @@ pub(crate) fn normalize_item_registry(
             component_based: item.is_component_based,
             version,
             component_digest: Sha256::digest(&component_bytes).into(),
+            components: components::parse_components(&component_bytes).map(Arc::new),
             negotiated_max_stack_size,
             canonical_empty_component_data,
             item_tags: if item.is_component_based {

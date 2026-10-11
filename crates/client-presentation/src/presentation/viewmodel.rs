@@ -76,7 +76,7 @@ pub struct HandAdapter {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum HandOwner {
-    Actor(client_world::ActorLifetimeId),
+    Actor(actor_animation::ActorLifetimeId),
     Local {
         session: u64,
         actor_session: u64,
@@ -171,7 +171,7 @@ mod local_owner_tests {
             assert_eq!(adapter.revision, revision);
         }
         adapter
-            .select_owner(HandOwner::Actor(client_world::ActorLifetimeId {
+            .select_owner(HandOwner::Actor(actor_animation::ActorLifetimeId {
                 session_id: 1,
                 dimension: 0,
                 runtime_id: 1,
@@ -206,7 +206,7 @@ mod local_owner_tests {
         adapter.revision = u64::MAX;
         assert!(
             adapter
-                .select_owner(HandOwner::Actor(client_world::ActorLifetimeId {
+                .select_owner(HandOwner::Actor(actor_animation::ActorLifetimeId {
                     session_id: 1,
                     dimension: 0,
                     runtime_id: 1,
@@ -828,7 +828,7 @@ impl ViewmodelPublish<'_, '_> {
         };
         let adapter = self.adapter.as_deref_mut().unwrap();
         let owner_identity =
-            local_owner.unwrap_or(HandOwner::Actor(client_world::ActorLifetimeId {
+            local_owner.unwrap_or(HandOwner::Actor(actor_animation::ActorLifetimeId {
                 session_id: stream.authority().actor_session_id(),
                 dimension: stream.current_dimension(),
                 runtime_id: actor.map_or(0, |actor| actor.runtime_id),
@@ -887,7 +887,7 @@ impl ViewmodelPublish<'_, '_> {
                 (
                     geometry,
                     skin,
-                    client_world::ActorLifetimeId {
+                    actor_animation::ActorLifetimeId {
                         session_id: actor_session,
                         dimension,
                         runtime_id: runtime,

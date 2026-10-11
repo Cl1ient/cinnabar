@@ -348,10 +348,7 @@ impl ActorStore {
         }
     }
 
-    pub(crate) fn set_animation_view(
-        &mut self,
-        view: Option<crate::actor_animation::ActorAnimationView>,
-    ) {
+    pub(crate) fn set_animation_view(&mut self, view: Option<actor_animation::ActorAnimationView>) {
         self.animation_view = view;
     }
 

@@ -316,8 +316,8 @@ struct EntityCatalogPayload {
 /// An encoded entity carrier payload.
 pub type EntityCarrierBlob = Box<[u8]>;
 
-/// Includes required interaction traits and current item facts; older carriers must be rebuilt.
-pub const ENTITY_BLOB_VERSION: u32 = 11;
+mod runtime;
+pub use runtime::RuntimeEntityAssets;
 
 pub fn encode_entity_blob(compiled: &CompiledEntityAssets) -> Result<Box<[u8]>, AssetError> {
     v4::encode_compiled(compiled)

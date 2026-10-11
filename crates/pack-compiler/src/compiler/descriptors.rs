@@ -88,6 +88,8 @@ pub(super) fn descriptor_for(
     Some((
         Descriptor {
             state_variant,
+            flipbook_selector: crate::respawn_anchor::is_record(record)
+                .then_some((state_variant, state_variant)),
             path: path.into(),
             texture_key: key.clone(),
             flags,

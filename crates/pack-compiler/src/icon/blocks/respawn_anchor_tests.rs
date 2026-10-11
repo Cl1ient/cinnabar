@@ -293,3 +293,36 @@ fn respawn_anchor_transparent_pack_faces_do_not_hide_adjacent_terrain() {
     let material = world.materials()[anchor.face(BlockFace::North).material_id() as usize];
     assert_ne!(material.flags & assets::MATERIAL_FLAG_ALPHA_CUTOUT, 0);
 }
+
+#[test]
+fn respawn_anchor_partial_flipbooks_keep_unanimated_charges_drawable() {
+    let (records, lights, protocol) = records();
+    for charges in [&[0, 2, 3, 4][..], &[0, 4][..]] {
+        let directory = fixture();
+        let path = directory.path().join("textures/flipbook_textures.json");
+        let sources: Vec<Value> = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let selected: Vec<_> = charges
+            .iter()
+            .map(|&charge| sources[charge].clone())
+            .collect();
+        fs::write(&path, serde_json::to_vec(&selected).unwrap()).unwrap();
+        let world = world(directory.path(), &records, &lights, protocol);
+        for record in records
+            .iter()
+            .filter(|r| crate::respawn_anchor::is_record(r))
+        {
+            let charge = crate::respawn_anchor::charge(record).unwrap();
+            let anchor = world.resolve(NetworkIdMode::Sequential, record.sequential_id);
+            assert_eq!(anchor.kind(), VisualKind::Cube);
+            let top = world.materials()[anchor.face(BlockFace::Up).material_id() as usize];
+            if charges.contains(&charge) {
+                assert_eq!(
+                    world.animations()[top.animation as usize].atlas_index,
+                    charge as u32
+                );
+            } else {
+                assert_eq!(top.animation, assets::NO_ANIMATION);
+            }
+        }
+    }
+}

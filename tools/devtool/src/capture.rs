@@ -438,11 +438,7 @@ fn print_diff(base: &Summary, head: &Summary) -> Result<(), DevtoolError> {
         head.hitches as f64 / head.frames as f64 - base.hitches as f64 / base.frames as f64
     );
     for zone in &head.zones {
-        if let Some(previous) = base
-            .zones
-            .iter()
-            .find(|previous| previous.name == zone.name && previous.source == zone.source)
-        {
+        if let Some(previous) = baseline_zone(&base.zones, &head.zones, zone) {
             println!(
                 "  {} total_ms_delta={:+.3} max_ms_delta={:+.3}",
                 zone.name,
@@ -452,6 +448,28 @@ fn print_diff(base: &Summary, head: &Summary) -> Result<(), DevtoolError> {
         }
     }
     Ok(())
+}
+
+/// Pairs a zone by name and source file, so moved lines keep their deltas; the line only
+/// separates zones that share both.
+fn baseline_zone<'a>(base: &'a [Zone], head: &[Zone], zone: &Zone) -> Option<&'a Zone> {
+    let file = |zone: &Zone| {
+        zone.source
+            .rsplit_once(':')
+            .filter(|(_, line)| !line.is_empty() && line.bytes().all(|byte| byte.is_ascii_digit()))
+            .map_or(zone.source.as_str(), |(file, _)| file)
+            .to_owned()
+    };
+    let same = |other: &Zone| other.name == zone.name && file(other) == file(zone);
+    let candidates: Vec<_> = base.iter().filter(|previous| same(*previous)).collect();
+    if let [previous] = candidates[..]
+        && head.iter().filter(|other| same(*other)).count() == 1
+    {
+        return Some(previous);
+    }
+    candidates
+        .into_iter()
+        .find(|previous| previous.source == zone.source)
 }
 
 const CAPTURE_ADDRESS: &str = "127.0.0.1";
@@ -636,6 +654,31 @@ mesh_chunks<Opaque, Cutout>\tcrates/render/src/mesh, legacy.rs\t42\t4000000\t0.0
             .is_err()
         );
     }
+    #[test]
+    fn moved_zone_lines_keep_baseline_deltas_and_duplicates_pair_by_line() {
+        let zone = |name: &str, source: &str, total_ms: f64| Zone {
+            name: name.into(),
+            source: source.into(),
+            total_ms,
+            max_ms: total_ms,
+        };
+        let base = [
+            zone("mesh_chunks", "crates/render/src/mesh.rs:42", 4.0),
+            zone("system", "crates/app/src/schedule.rs:10", 1.0),
+            zone("system", "crates/app/src/schedule.rs:20", 2.0),
+        ];
+        let head = [
+            zone("mesh_chunks", "crates/render/src/mesh.rs:57", 5.0),
+            zone("system", "crates/app/src/schedule.rs:20", 3.0),
+            zone("system", "crates/app/src/schedule.rs:31", 6.0),
+        ];
+        let paired =
+            |index: usize| baseline_zone(&base, &head, &head[index]).map(|zone| zone.total_ms);
+        assert_eq!(paired(0), Some(4.0));
+        assert_eq!(paired(1), Some(2.0));
+        assert_eq!(paired(2), None);
+    }
+
     #[test]
     fn missing_or_ambiguous_frames_and_mismatched_baselines_fail() {
         assert!(summarize("name\tthread\tns_since_start\n", "", 60.0, "present_frames").is_err());

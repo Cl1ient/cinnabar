@@ -21,7 +21,6 @@ pub mod dye;
 mod effects;
 mod encoding;
 mod entity;
-pub use entity::placement;
 mod environment_settings;
 mod equipment;
 mod error;
@@ -36,7 +35,7 @@ pub mod gui_item;
 mod hud;
 mod hud_extras;
 mod icon;
-mod item;
+pub mod item;
 mod lang;
 mod light_registry;
 mod material_keys;
@@ -162,7 +161,7 @@ pub use entity::{
     bind_molang_queries, encode_entity_blob, entity_render_pattern_matches, molang_call,
     molang_program_stack, validate_entity_geometry_inheritance,
 };
-pub use entity::{PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE};
+pub use entity::{PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE, placement};
 pub use environment_settings::{CloudQuality, EnvironmentQualitySettings, PrecipitationQuality};
 pub use equipment::{
     ArmorSlot, AttachablePose, AttachablePoseBone, CompiledItemAttackCooldown,

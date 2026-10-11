@@ -99,6 +99,16 @@ server. Acceptance uses externally compiled carriers with production terrain
 consumers; runtime server-pack compilation and reported server-version placement
 remain unverified. No broader parity gate closes.
 
+## Sea pickle terrain geometry
+
+Sea pickles compile one to four separate bodies and crossed live tips selected by
+the typed count and dead states. Bodies retain their side and cap sprite regions;
+replacement packs supply the sprite, and water remains a separate contributor.
+Original-art regressions cover all eight registry states, carrier roundtrips,
+material ownership and malformed selectors. Geometry uses the carrier's existing
+position and UV precision. Rendered/input acceptance and reported server-version
+placement remain incomplete; broader parity gates stay open.
+
 ## RakNet transport compatibility
 
 The Go core, local server, and fixture generator share a reviewed transport revision with

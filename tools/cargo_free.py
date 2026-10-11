@@ -3,6 +3,7 @@
 import fcntl
 import os
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 import sys
@@ -10,11 +11,38 @@ import sys
 from compiler_workspace_wrapper import workspace_wrapper
 
 
-def worktree_root() -> Path:
-    """Find the owning Git checkout, or use the invocation directory for standalone packages."""
+def workspace_root(cargo: str, arguments: list[str]) -> Path:
+    """Use an explicit manifest's workspace, otherwise the checkout or current directory."""
+    manifest = None
+    metadata_options = []
+    options = iter(arguments)
+    for argument in options:
+        if argument == "--":
+            break
+        if argument in {"--offline", "--locked", "--frozen"}:
+            metadata_options.append(argument)
+        if argument == "--manifest-path":
+            manifest = next(options, None)
+            if manifest is None:
+                sys.exit("--manifest-path requires a value")
+        elif argument.startswith("--manifest-path="):
+            manifest = argument.split("=", 1)[1]
+    if manifest is not None:
+        result = subprocess.run(
+            [cargo, "metadata", "--no-deps", "--format-version=1", "--manifest-path", manifest,
+             *metadata_options],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            sys.stderr.write(result.stderr)
+            sys.exit(result.returncode)
+        return Path(json.loads(result.stdout)["workspace_root"]).resolve()
     result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
     return Path(result.stdout.strip()).resolve() if result.returncode == 0 else Path.cwd().resolve()
 
+
+cargo = os.environ.get("CARGO_FREE_CARGO", "cargo")
+workspace = workspace_root(cargo, sys.argv[1:])
 
 # fcntl.flock is also available on macOS, where the flock command is not installed.
 root = Path(os.environ.get("CARGO_FREE_BUILD_ROOT", str(Path(os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))) / "build")))
@@ -34,12 +62,11 @@ for slot in range(1, count + 1):
     os.set_inheritable(lock, True)
     selected = root / name
     break
-# Clippy replaces the workspace wrapper, so its intermediates need their own checkout cache.
+# Clippy replaces the workspace wrapper, so its intermediates need their own workspace cache.
 if "clippy" in sys.argv[1:]:
-    checkout = hashlib.sha256(str(worktree_root()).encode()).hexdigest()
+    checkout = hashlib.sha256(str(workspace).encode()).hexdigest()
     selected = root / "clippy" / checkout
 os.environ["CARGO_BUILD_BUILD_DIR"] = str(selected)
 inner = os.environ.get("RUSTC_WORKSPACE_WRAPPER", os.environ.get("CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"))
-os.environ["RUSTC_WORKSPACE_WRAPPER"] = str(workspace_wrapper(worktree_root() / "target/cargo-free/rustc-workspace-wrapper", inner))
-cargo = os.environ.get("CARGO_FREE_CARGO", "cargo")
+os.environ["RUSTC_WORKSPACE_WRAPPER"] = str(workspace_wrapper(workspace / "target/cargo-free/rustc-workspace-wrapper", inner))
 os.execvp(cargo, [cargo, *sys.argv[1:]])

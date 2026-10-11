@@ -196,7 +196,7 @@ fn go_tests(text: &str) -> Option<BTreeSet<String>> {
     let mut accounted = BTreeSet::new();
     let mut running = BTreeSet::new();
     let summary = Regex::new(
-        r"^(?:FAIL(?:\t\S+\t[\d.]+s)?|ok\s+\S+\s+[\d.]+s|\?\s+\S+\s+\[no test files\])\n$",
+        r"^(?:PASS|FAIL(?:\t\S+\t[\d.]+s)?|ok\s+\S+\s+(?:[\d.]+s|\(cached\))|\?\s+\S+\s+\[no test files\])\n$",
     )
     .unwrap();
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
@@ -388,6 +388,8 @@ mod tests {
         assert!(go_tests(known).is_some());
         for unknown in [
             "unknown failure",
+            "{\"Action\":\"output\",\"Package\":\"fixture\",\"Output\":\"PASS unknown diagnostic\\n\"}",
+            "{\"Action\":\"output\",\"Package\":\"fixture\",\"Output\":\"ok fixture (cached) unknown diagnostic\\n\"}",
             "{\"Action\":\"build-fail\",\"Package\":\"fixture\"}",
             "{\"Action\":\"fail\",\"Package\":\"new\"}",
             "{\"Action\":\"output\",\"Package\":\"fixture\",\"Output\":\"new package-level failure\"}",

@@ -191,6 +191,70 @@ subprocess.run([os.environ['RUSTC_WORKSPACE_WRAPPER'], sys.executable, '-c', "im
     }
 
     #[test]
+    fn manifest_paths_isolate_workspaces_built_from_one_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let launcher = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../cargo-free");
+        let mut binaries = Vec::new();
+        let mut clippy_artifacts = Vec::new();
+        for (name, equals_form) in [("first", false), ("other", true)] {
+            let root = temp.path().join(name);
+            fs::create_dir_all(root.join("src")).unwrap();
+            fs::write(root.join("Cargo.toml"), "[package]\nname='manifest-fixture'\nversion='0.1.0'\nedition='2024'\n[workspace]\n").unwrap();
+            let source = root.join("src/main.rs");
+            fs::write(&source, format!("fn main() {{ println!(\"{name}\"); }}")).unwrap();
+            fs::File::options()
+                .write(true)
+                .open(&source)
+                .unwrap()
+                .set_times(
+                    fs::FileTimes::new()
+                        .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1)),
+                )
+                .unwrap();
+            for subcommand in ["build", "clippy"] {
+                let mut command = Command::new(&launcher);
+                command
+                    .current_dir(temp.path())
+                    .env_remove("CARGO_TARGET_DIR")
+                    .env_remove("CARGO_BUILD_TARGET_DIR")
+                    .env_remove("RUSTC_WORKSPACE_WRAPPER")
+                    .env_remove("CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER")
+                    .env("CARGO_FREE_BUILD_ROOT", temp.path().join("build"))
+                    .args([subcommand, "--offline", "--message-format=json"]);
+                let manifest = root.join("Cargo.toml");
+                if equals_form {
+                    command.arg(format!("--manifest-path={}", manifest.display()));
+                } else {
+                    command.arg("--manifest-path").arg(manifest);
+                }
+                let result = command.output().unwrap();
+                assert!(
+                    result.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&result.stderr)
+                );
+                let artifacts: Vec<serde_json::Value> = String::from_utf8_lossy(&result.stdout)
+                    .lines()
+                    .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                    .filter(|event| event["reason"] == "compiler-artifact")
+                    .collect();
+                assert_eq!(artifacts.len(), 1);
+                if subcommand == "build" {
+                    let executable = artifacts[0]["executable"].as_str().unwrap();
+                    let run = Command::new(executable).output().unwrap();
+                    assert!(run.status.success());
+                    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), name);
+                    binaries.push(executable.to_owned());
+                } else {
+                    clippy_artifacts.push(artifacts[0]["filenames"].clone());
+                }
+            }
+        }
+        assert_ne!(binaries[0], binaries[1]);
+        assert_ne!(clippy_artifacts[0], clippy_artifacts[1]);
+    }
+
+    #[test]
     fn occupied_slots_do_not_block_other_worktrees_and_locks_survive_exec() {
         let temp = tempfile::tempdir().unwrap();
         let fake = temp.path().join("fake-cargo");

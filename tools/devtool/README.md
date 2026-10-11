@@ -8,8 +8,10 @@ build failures and incomplete comparison evidence remain failures.
 
 `tools/cargo-free check -p <package>` chooses an available build cache on Unix
 hosts. It keeps the cache lock while Cargo runs, shares dependency artifacts,
-and isolates workspace artifacts by checkout. Clippy uses a separate cache per
-checkout. `CARGO_FREE_BUILD_ROOT`, `CARGO_FREE_SLOTS` and `CARGO_FREE_CARGO`
+and isolates workspace artifacts by checkout. With `--manifest-path`, it uses
+the selected Cargo workspace instead, even when multiple workspaces are built
+from one directory. Clippy uses a separate cache for each selected workspace.
+`CARGO_FREE_BUILD_ROOT`, `CARGO_FREE_SLOTS` and `CARGO_FREE_CARGO`
 configure the cache root, number of slots and Cargo executable.
 
 Both tools require Python 3.10 or newer. They retain Cargo's environment and an existing

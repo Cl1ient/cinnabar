@@ -19,14 +19,53 @@ fn actual_go_failure_has_complete_comparison_evidence() {
         "module fixture.invalid/evidence\n\ngo 1.23\n",
     )
     .unwrap();
-    fs::write(temp.path().join("failure_test.go"), "package evidence\nimport \"testing\"\nfunc TestOld(t *testing.T) { t.Fatal(\"existing failure\") }\n").unwrap();
-    let result = Command::new("go")
-        .args(["test", "-json", "./..."])
+    for package in ["failing", "passing", "cached"] {
+        let dir = temp.path().join(package);
+        fs::create_dir(&dir).unwrap();
+        let body = if package == "failing" {
+            "t.Fatal(\"existing failure\")"
+        } else {
+            ""
+        };
+        fs::write(
+            dir.join("fixture_test.go"),
+            format!(
+                "package evidence\nimport \"testing\"\nfunc TestOld(t *testing.T) {{ {body} }}\n"
+            ),
+        )
+        .unwrap();
+    }
+    let warm = Command::new("go")
+        .args(["test", "-p", "2", "-json", "./cached"])
         .current_dir(temp.path())
+        .env("GOCACHE", temp.path().join("go-cache"))
+        .env("GOMAXPROCS", "4")
+        .output()
+        .unwrap();
+    assert!(
+        warm.status.success(),
+        "{}",
+        String::from_utf8_lossy(&warm.stderr)
+    );
+    let result = Command::new("go")
+        .args(["test", "-p", "2", "-json", "./..."])
+        .current_dir(temp.path())
+        .env("GOCACHE", temp.path().join("go-cache"))
+        .env("GOMAXPROCS", "4")
         .output()
         .unwrap();
     assert!(!result.status.success());
-    assert!(
+    let events: Vec<serde_json::Value> = String::from_utf8_lossy(&result.stdout)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(events.iter().any(|event| event["Output"] == "PASS\n"));
+    assert!(events.iter().any(|event| {
+        event["Output"]
+            .as_str()
+            .is_some_and(|line| line.starts_with("ok") && line.contains("(cached)"))
+    }));
+    assert_eq!(
         signatures(
             &CommandSpec::new("go", vec!["test".into()]),
             &result,
@@ -34,8 +73,10 @@ fn actual_go_failure_has_complete_comparison_evidence() {
             temp.path(),
             "architecture"
         )
-        .unwrap()
-        .is_some(),
+        .unwrap(),
+        Some(BTreeSet::from([
+            "fixture.invalid/evidence/failing\tTestOld".to_owned()
+        ])),
         "unclassified real Go output: {}\n{}",
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)

@@ -49,7 +49,7 @@ impl Console {
         Self::spawn_with_log(stdout, stderr, None)
     }
 
-    /// Mirrors queued writes to disk on the writer thread before sending them to the terminal.
+    /// Mirrors queued writes to disk on the writer thread before sending them to their output streams.
     fn spawn_with_log(
         mut stdout: impl Write + Send + 'static,
         mut stderr: impl Write + Send + 'static,
@@ -250,8 +250,8 @@ pub fn initialize_log(path: &std::path::Path, limit: u64) -> std::io::Result<()>
     let stderr: Box<dyn Write + Send> = if terminal {
         Box::new(std::io::stderr())
     } else {
-        // Raw stderr arrives through the pipe; writing back to fd 2 would repeat it forever.
-        Box::new(std::io::sink())
+        // Keep the launch destination before fd 2 becomes the capture pipe.
+        Box::new(raw_stderr::original()?)
     };
     let mut console = Console::spawn_with_log(std::io::stdout(), stderr, Some(log));
     if !terminal {

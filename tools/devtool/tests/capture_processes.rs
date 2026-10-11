@@ -16,7 +16,7 @@ fn exited_client_reports_startup_failure_instead_of_waiting_for_the_collector() 
         (bin.join("tracy-csvexport"), "#!/bin/sh\nexit 0\n"),
         (
             bin.join("tracy-capture"),
-            "#!/usr/bin/env python3\nimport sys,time\nif '--help' not in sys.argv: time.sleep(0.25)\n",
+            "#!/usr/bin/env python3\nimport signal,sys\nif '--help' not in sys.argv: signal.pause()\n",
         ),
     ] {
         fs::write(&path, source).unwrap();
@@ -54,41 +54,45 @@ fn capture_connects_to_its_new_client_when_the_default_port_is_occupied() {
     let bin = temp.path().join("bin");
     fs::create_dir(&bin).unwrap();
     fs::create_dir_all(temp.path().join("target/debug")).unwrap();
+    assert!(
+        Command::new("python3")
+            .args(["-c", "import os; os.mkfifo('client-ready')"])
+            .current_dir(temp.path())
+            .status()
+            .unwrap()
+            .success()
+    );
     for (path, source) in [
         (bin.join("make"), "#!/bin/sh\nexit 0\n"),
         (
             temp.path().join("target/debug/bedrock-client"),
             r#"#!/usr/bin/env python3
-import os, socket, time
+import os, signal, socket
 port = int(os.environ['TRACY_PORT'])
 assert port != int(os.environ['UNRELATED_TRACY_PORT'])
 with socket.socket() as server:
     server.settimeout(10)
     server.bind(('127.0.0.1', port))
     server.listen(1)
+    with open('client-ready', 'w') as ready:
+        ready.write('ready')
     connection, _ = server.accept()
     with connection:
         connection.sendall(b'new-capture-client')
-        time.sleep(10)
+        signal.pause()
 "#,
         ),
         (
             bin.join("tracy-capture"),
             r#"#!/usr/bin/env python3
-import os, pathlib, socket, sys, time
+import os, pathlib, socket, sys
 if '--help' in sys.argv:
     sys.exit(0)
 port = int(sys.argv[sys.argv.index('-p') + 1])
 assert port != int(os.environ['UNRELATED_TRACY_PORT'])
-deadline = time.monotonic() + 5
-while True:
-    try:
-        connection = socket.create_connection(('127.0.0.1', port), timeout=1)
-        break
-    except ConnectionRefusedError:
-        if time.monotonic() >= deadline:
-            raise
-        time.sleep(0.01)
+with open('client-ready') as ready:
+    assert ready.read() == 'ready'
+connection = socket.create_connection(('127.0.0.1', port), timeout=5)
 with connection:
     identity = connection.recv(128)
 assert identity == b'new-capture-client'

@@ -6,6 +6,15 @@ use std::{
 };
 
 const FIXTURE_LOG_LIMIT: u64 = 8192;
+const RAW_STDERR_MARKER: &str = "unrelated integration crate raw stderr fixture";
+const QUEUED_STDERR_MARKER: &str = "queued tracing fixture";
+const PANIC_MARKER: &str = "client logging panic fixture";
+const LOG_MARKERS: [&str; 4] = [
+    RAW_STDERR_MARKER,
+    QUEUED_STDERR_MARKER,
+    "particle carrier not found",
+    PANIC_MARKER,
+];
 
 extern crate self as launcher;
 extern crate self as launcher_host;
@@ -46,7 +55,8 @@ fn client_logging_child() {
         FIXTURE_LOG_LIMIT * 4
     };
     diagnostics::console::initialize_log(&root.join("client.log"), limit).unwrap();
-    eprintln!("unrelated integration crate raw stderr fixture");
+    eprintln!("{RAW_STDERR_MARKER}");
+    diagnostics::log_stderr!("{QUEUED_STDERR_MARKER}");
     if std::env::var_os("CLIENT_LOGGING_ROTATE").is_some() {
         use std::io::Write;
         std::io::stderr()
@@ -58,33 +68,61 @@ fn client_logging_child() {
     }
     client_logs::install_panic_hook(&install_layout::InstallLayout(root.clone()));
     assert!(particle_carrier::load_optional_carrier(&root.join("missing-world")).is_none());
-    panic!("client logging panic fixture");
+    panic!("{PANIC_MARKER}");
 }
 
 #[test]
 fn startup_carrier_and_panic_diagnostics_reach_the_file_without_a_terminal() {
     let root = tempfile::tempdir().unwrap();
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "client_logging_child", "--nocapture"])
+        .env("CLIENT_LOGGING_FIXTURE", root.path())
+        .stdout(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let text = fs::read_to_string(root.path().join("client.log")).unwrap();
+    let original = String::from_utf8_lossy(&output.stderr);
+    for marker in LOG_MARKERS {
+        assert_eq!(
+            original.matches(marker).count(),
+            1,
+            "lost or repeated stderr: {original}"
+        );
+        assert_eq!(
+            text.matches(marker).count(),
+            1,
+            "lost or repeated file output: {text}"
+        );
+    }
+}
+
+#[test]
+fn redirected_stderr_file_retains_startup_and_panic_output() {
+    let root = tempfile::tempdir().unwrap();
+    let session = root.path().join("mcp-session.log");
     let status = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "client_logging_child", "--nocapture"])
         .env("CLIENT_LOGGING_FIXTURE", root.path())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(fs::File::create(&session).unwrap()))
         .status()
         .unwrap();
     assert!(!status.success());
-    let text = fs::read_to_string(root.path().join("client.log")).unwrap();
-    assert!(
-        text.contains("unrelated integration crate raw stderr fixture"),
-        "lost unrelated raw stderr: {text}"
-    );
-    assert!(
-        text.contains("particle carrier not found"),
-        "lost startup stderr: {text}"
-    );
-    assert!(
-        text.contains("client logging panic fixture"),
-        "lost panic stderr: {text}"
-    );
+    let original = fs::read_to_string(session).unwrap();
+    let rotating = fs::read_to_string(root.path().join("client.log")).unwrap();
+    for marker in LOG_MARKERS {
+        assert_eq!(
+            original.matches(marker).count(),
+            1,
+            "lost or repeated stderr: {original}"
+        );
+        assert_eq!(
+            rotating.matches(marker).count(),
+            1,
+            "lost or repeated file output: {rotating}"
+        );
+    }
 }
 
 #[test]
@@ -151,14 +189,10 @@ sys.exit(result.returncode)
         .unwrap();
     assert!(!output.status.success());
     let terminal = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        terminal.matches("client logging panic fixture").count(),
-        1,
-        "{terminal}"
-    );
+    assert_eq!(terminal.matches(PANIC_MARKER).count(), 1, "{terminal}");
     let log = fs::read_to_string(root.path().join("client.log")).unwrap();
     assert!(
-        log.contains("client logging panic fixture"),
+        log.contains(PANIC_MARKER),
         "lost terminal panic mirror: {log}"
     );
 }

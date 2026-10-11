@@ -1,29 +1,7 @@
 //! Neighbor-derived fence and pane states used by placement collision checks.
 
-use assets::{ContributorRole, ModelFamily, NetworkIdMode};
+use assets::{ContributorRole, ModelFamily};
 use serde_json::{Map, Value};
-use sim::PaletteWorld;
-
-use crate::{block_use::placement_cell, movement::PhysicsCollisionRegistries};
-
-/// Resolves the same connections as rendering before selecting a registered collision shape.
-pub(crate) fn states_for_neighbours(
-    collisions: &PhysicsCollisionRegistries,
-    mode: NetworkIdMode,
-    world: &PaletteWorld<'_>,
-    position: [i32; 3],
-    identifier: &str,
-    states: &mut Map<String, Value>,
-) -> Option<()> {
-    let block = collisions.block_state_runtime_id(mode, identifier, states)?;
-    let center = connection_facts(collisions, mode, block)?;
-    connected_states(states, center, |face| {
-        let neighbor = world
-            .primary_runtime_id(placement_cell(position, face))
-            .ok()?;
-        connection_facts(collisions, mode, neighbor)
-    })
-}
 
 /// Retains the palette facts that select connection templates, including the gate's axis.
 #[derive(Debug, Clone, Copy)]
@@ -33,23 +11,6 @@ struct ConnectionFacts {
     occludes_full_face: bool,
     orientation: Option<u32>,
     nether_fence: bool,
-}
-
-/// Unclassified server blocks cannot silently count as disconnected neighbors.
-fn connection_facts(
-    collisions: &PhysicsCollisionRegistries,
-    mode: NetworkIdMode,
-    block: u32,
-) -> Option<ConnectionFacts> {
-    let (family, role, occludes_full_face, orientation) =
-        collisions.block_connection_facts(mode, block)?;
-    Some(ConnectionFacts {
-        family,
-        role,
-        occludes_full_face,
-        orientation,
-        nether_fence: collisions.block_identifier(mode, block)? == "minecraft:nether_brick_fence",
-    })
 }
 
 /// Sets all four links while retaining the palette's typed state envelopes.

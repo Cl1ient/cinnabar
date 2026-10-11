@@ -120,19 +120,18 @@ pub fn predicted_placement(
         )?;
         (set, key, false)
     };
-    let mut block = collisions.placement_state_id(mode, set, key)?;
+    let block = collisions.placement_state_id(mode, set, key)?;
     let mut placed = collisions.block_placement_facts(mode, block);
     if placed.rule == Rule::Connections {
         placed.key =
             crate::placement_neighbours::connection_key(collisions, mode, world, position, block)?;
-        block = collisions.placement_state_id(mode, placed.set, placed.key)?;
     }
     let read = |position| {
         let id = world.primary_runtime_id(position).ok()?;
         Some(collisions.block_placement_facts(mode, id))
     };
     placed.key = crate::placement_neighbours::stair_key(placed, position, read)?;
-    block = collisions.placement_state_id(mode, placed.set, placed.key)?;
+    let block = collisions.placement_state_id(mode, placed.set, placed.key)?;
     let requirement = if full_cell {
         SupportRequirement::Independent
     } else {

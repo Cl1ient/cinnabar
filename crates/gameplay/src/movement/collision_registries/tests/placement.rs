@@ -327,7 +327,7 @@ fn replacing_non_air_destinations_waits_for_verified_replacement_rules() {
 #[test]
 fn unresolved_families_and_occupied_destinations_stay_server_confirmed() {
     let mode = NetworkIdMode::Sequential;
-    let store = store(mode);
+    let mut store = store(mode);
     let mut around = surroundings();
     for name in [
         "minecraft:observer",
@@ -340,6 +340,13 @@ fn unresolved_families_and_occupied_destinations_stay_server_confirmed() {
         );
     }
     around.neighbor_identifier = Some("minecraft:stone".to_owned());
+    store
+        .update_block(
+            SubChunkKey::new(0, 0, 0, 0),
+            BlockUpdate::new(8, 9, 8, 0, id(record("minecraft:stone", &[]), mode)),
+            id(record("minecraft:air", &[]), mode),
+        )
+        .unwrap();
     assert!(predict("minecraft:oak_log", &store, mode, &context(&around)).is_none());
 }
 

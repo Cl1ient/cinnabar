@@ -64,8 +64,8 @@ pub(crate) struct CompiledBlockOverlay {
     pub(crate) gaps: OverlayGaps,
 }
 
-/// Returns visuals for every custom block state (palette order, or
-/// `hashed_states` order for hashed ids), or `None` without custom blocks.
+/// Returns visuals for the admitted custom prefix in palette or hashed-state order.
+/// Rejected runs stay unbacked; vanilla overrides may produce an overlay without custom blocks.
 pub(super) fn compile_block_overlay(
     view: &LayeredPackView,
     blocks: &CustomBlocks,

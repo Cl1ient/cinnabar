@@ -269,6 +269,8 @@ pub(super) fn compile(
             &mut definitions,
         )?;
     }
+    let facts_source = *source_indices.get(ARMOUR_SOURCE_PATH)
+        .ok_or_else(|| invalid("compiled item facts source is absent"))?;
     let retail = std::str::from_utf8(item_bindings::RETAIL_ITEMS)
         .map_err(|_| invalid("retail item list is not UTF-8"))?;
     for identifier in retail.lines().filter_map(|line| line.split('\t').nth(1)) {
@@ -277,7 +279,7 @@ pub(super) fn compile(
                 identifier: identifier.into(),
                 metadata: 0,
             })
-            .or_insert((binding_source, ItemVisualDefinitionRoute::Missing));
+            .or_insert((facts_source, ItemVisualDefinitionRoute::Missing));
     }
     let visuals = definitions
         .into_iter()

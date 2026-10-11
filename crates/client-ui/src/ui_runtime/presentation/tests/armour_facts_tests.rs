@@ -24,11 +24,12 @@ fn armour_presentation() -> UiPresentationRuntime {
         }
     });
     let hud = assets::encode_hud_catalog(assets::HUD_SOURCE_MANIFEST_SHA256, &textures).unwrap();
-    let files = [
+    let mut files = [
         ("ui/_ui_defs.json", r#"{"ui_defs":["ui/hud_screen.json"]}"#),
         ("ui/_global_variables.json", "{}"),
         ("ui/hud_screen.json", r#"{"namespace":"hud","hud_screen":{"type":"screen","controls":[{"protection":{"type":"custom","renderer":"armor_renderer","size":[90,9],"offset":[20,20],"anchor_from":"top_left","anchor_to":"top_left"}}]}}"#),
     ].map(|(path, text)| UiFile { path: path.into(), bytes: text.as_bytes().into() });
+    files.sort_by(|a, b| a.path.cmp(&b.path));
     let pages = [UiAtlasPage {
         width: 1,
         height: 1,

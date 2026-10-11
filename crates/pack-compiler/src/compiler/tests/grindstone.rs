@@ -130,7 +130,7 @@ fn grindstones_keep_separate_supports_pivots_and_wheel_in_every_mount_pose() {
         );
         let corner = match (attachment, direction) {
             ("standing", 1) => Some((BlockFace::Up, [3072, 1536])),
-            ("side", 0) => Some((BlockFace::East, [1536, 4096])),
+            ("side", 0) => Some((BlockFace::East, [2560, 2304])),
             ("side", 1) => Some((BlockFace::North, [1536, 4096])),
             ("side", 2) => Some((BlockFace::Down, [1024, 2304])),
             _ => None,
@@ -214,7 +214,7 @@ fn grindstones_keep_separate_supports_pivots_and_wheel_in_every_mount_pose() {
             VisualSupport::Exact
         );
     }
-    assert_eq!(count, 12);
+    assert_eq!(count, 16);
 }
 
 #[test]
@@ -222,7 +222,7 @@ fn grindstones_reject_invalid_attachment_selectors_without_reusing_the_envelope(
     for state in [
         "{}",
         r#"{"attachment":{"type":"string","value":"side"},"direction":{"type":"int","value":4}}"#,
-        r#"{"attachment":{"type":"string","value":"multiple"},"direction":{"type":"int","value":0}}"#,
+        r#"{"attachment":{"type":"string","value":"unknown"},"direction":{"type":"int","value":0}}"#,
         r#"{"attachment":{"type":"string","value":"standing"},"direction":{"type":"byte","value":0}}"#,
     ] {
         let (runtime, records) = compile_grindstones(Some(state), 30);

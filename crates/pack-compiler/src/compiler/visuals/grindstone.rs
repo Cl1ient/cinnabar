@@ -13,7 +13,7 @@ pub(in crate::compiler) fn is_record(record: &RegistryRecord) -> bool {
         && !record.flags.contains(BlockFlags::AIR)
 }
 
-/// Admits only typed selectors for the twelve supported mounting poses.
+/// Admits typed mounting selectors, projecting the legacy multiple state to standing.
 fn pose(record: &RegistryRecord) -> Option<(u8, u8)> {
     let state: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(&record.canonical_state).ok()?;
@@ -21,7 +21,7 @@ fn pose(record: &RegistryRecord) -> Option<(u8, u8)> {
         return None;
     }
     let attachment = match super::state::exact_tagged_string(state.get("attachment")?)? {
-        "standing" => 0,
+        "standing" | "multiple" => 0,
         "hanging" => 1,
         "side" => 2,
         _ => return None,

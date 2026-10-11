@@ -35,6 +35,7 @@ struct Options {
     refresh_hz: f64,
     frame_zone: String,
     output: PathBuf,
+    no_vsync: bool,
 }
 
 /// Captures the developer client or exports an existing trace; never chooses a server to join.
@@ -61,8 +62,7 @@ pub(crate) fn run(args: &[String], summary_only: bool) -> Result<(), DevtoolErro
         let executable = build_client()?;
         let port = capture_port()?.to_string();
         let mut client = OwnedChild(
-            Command::new(executable)
-                .env("TRACY_PORT", &port)
+            client_command(&executable, &port, &options)
                 .spawn()
                 .map_err(io_error)?,
         );
@@ -162,6 +162,16 @@ fn build_client() -> Result<PathBuf, DevtoolError> {
     executable.ok_or_else(|| DevtoolError::Usage("build did not emit a client executable".into()))
 }
 
+/// Launches the client with Tracy on `port`, forwarding the Make `NO_VSYNC=1` override.
+fn client_command(executable: &Path, port: &str, options: &Options) -> Command {
+    let mut command = Command::new(executable);
+    command.env("TRACY_PORT", port);
+    if options.no_vsync {
+        command.arg("--no-vsync");
+    }
+    command
+}
+
 impl Options {
     /// Copies only export settings so a baseline cannot recursively compare itself.
     fn clone_for_export(&self) -> Self {
@@ -171,6 +181,7 @@ impl Options {
             refresh_hz: self.refresh_hz,
             frame_zone: self.frame_zone.clone(),
             output: self.output.clone(),
+            no_vsync: self.no_vsync,
         }
     }
 }
@@ -187,11 +198,16 @@ fn parse(args: &[String], summary_only: bool) -> Result<(Options, Option<PathBuf
         refresh_hz: 60.0,
         frame_zone: "present_frames".into(),
         output: PathBuf::from(format!(".local/captures/capture-{stamp}")),
+        no_vsync: false,
     };
     let mut trace = None;
     let mut explicit_hz = false;
     let mut arguments = args.iter();
     while let Some(flag) = arguments.next() {
+        if flag == "--no-vsync" && !summary_only {
+            options.no_vsync = true;
+            continue;
+        }
         let value = arguments
             .next()
             .ok_or_else(|| DevtoolError::Usage(format!("{flag} requires a value")))?;
@@ -239,15 +255,16 @@ fn export(trace: &Path, options: &Options) -> Result<Summary, DevtoolError> {
     let frames = csv_export(
         trace,
         &["-u", "-f", &options.frame_zone],
-        &options.output.join("frames.csv"),
+        &options.output.join("frames.tsv"),
     )?;
-    let zones = csv_export(trace, &[], &options.output.join("zones.csv"))?;
+    let zones = csv_export(trace, &[], &options.output.join("zones.tsv"))?;
     summarize(&frames, &zones, options.refresh_hz, &options.frame_zone)
 }
 
 /// Writes an export as a local artifact and reports incompatible traces as errors.
 fn csv_export(trace: &Path, args: &[&str], path: &Path) -> Result<String, DevtoolError> {
     let output = Command::new("tracy-csvexport")
+        .args(["-s", TRACY_SEPARATOR])
         .args(args)
         .arg(trace)
         .output()
@@ -270,7 +287,7 @@ fn summarize(
     refresh_hz: f64,
     frame_zone: &str,
 ) -> Result<Summary, DevtoolError> {
-    let mut reader = csv::Reader::from_reader(frames.as_bytes());
+    let mut reader = tracy_reader(frames);
     let headers = reader.headers().map_err(csv_error)?.clone();
     let name = column(&headers, "name")?;
     let thread = column(&headers, "thread")?;
@@ -303,7 +320,7 @@ fn summarize(
         ));
     }
     intervals.sort_by(f64::total_cmp);
-    let mut reader = csv::Reader::from_reader(zones.as_bytes());
+    let mut reader = tracy_reader(zones);
     let headers = reader.headers().map_err(csv_error)?.clone();
     let name = column(&headers, "name")?;
     let total = column(&headers, "total_ns")?;
@@ -337,6 +354,14 @@ fn summarize(
             .count(),
         zones,
     })
+}
+
+/// Reads tab-separated exporter output; Tracy never quotes, so names and text are taken verbatim.
+fn tracy_reader(text: &str) -> csv::Reader<&[u8]> {
+    csv::ReaderBuilder::new()
+        .delimiter(TRACY_SEPARATOR.as_bytes()[0])
+        .quoting(false)
+        .from_reader(text.as_bytes())
 }
 
 /// Selects a nearest-rank percentile from nonempty sorted intervals.
@@ -430,6 +455,8 @@ fn print_diff(base: &Summary, head: &Summary) -> Result<(), DevtoolError> {
 }
 
 const CAPTURE_ADDRESS: &str = "127.0.0.1";
+/// Exporter field separator; zone names, source paths, and zone text may contain commas.
+const TRACY_SEPARATOR: &str = "\t";
 const CONNECTION_ALLOWANCE: Duration = Duration::from_secs(30);
 const PROCESS_POLL: Duration = Duration::from_millis(20);
 const TERMINATION_GRACE: Duration = Duration::from_secs(1);
@@ -563,21 +590,55 @@ mod tests {
     }
 
     #[test]
-    fn intervals_use_presentation_starts_and_zones_support_quoted_names() {
-        let frames = "name,ns_since_start,exec_time_ns,thread\npresent_frames,0,1,1\npresent_frames,10000000,1,1\npresent_frames,20000000,1,1\npresent_frames,50000000,1,1\nother,1,9999999,2\n";
-        let zones = "name,total_ns,max_ns\n\"zone, quoted\",4000000,3000000\n";
+    fn intervals_use_presentation_starts_and_zones_keep_commas_in_tracy_fields() {
+        let frames = "name\tsrc_file\tsrc_line\tns_since_start\texec_time_ns\tthread\tvalue
+present_frames\tcrates/render/src/present.rs\t88\t0\t1\t1\t
+present_frames\tcrates/render/src/present.rs\t88\t10000000\t1\t1\tframe=1, late=false
+present_frames\tcrates/render/src/present.rs\t88\t20000000\t1\t1\t
+present_frames\tcrates/render/src/present.rs\t88\t50000000\t1\t1\t
+<Map<I, F> as Iterator>::fold\tlibrary/core/src/iter/adapters/map.rs\t128\t1\t9999999\t2\t
+";
+        let zones = "name\tsrc_file\tsrc_line\ttotal_ns\ttotal_perc\tcounts\tmean_ns\tmin_ns\tmax_ns\tstd_ns
+mesh_chunks<Opaque, Cutout>\tcrates/render/src/mesh, legacy.rs\t42\t4000000\t0.002222\t2\t2000000\t1000000\t3000000\t1414213.562373
+";
         let summary = summarize(frames, zones, 60.0, "present_frames").unwrap();
         assert_eq!(
             (summary.p50_ms, summary.p90_ms, summary.p99_ms),
             (10.0, 30.0, 30.0)
         );
         assert_eq!(summary.hitches, 1);
-        assert_eq!(summary.zones[0].name, "zone, quoted");
+        assert_eq!(summary.zones[0].name, "mesh_chunks<Opaque, Cutout>");
+        assert_eq!(
+            summary.zones[0].source,
+            "crates/render/src/mesh, legacy.rs:42"
+        );
         assert_eq!(summary.zones[0].total_ms, 4.0);
+        assert_eq!(summary.zones[0].max_ms, 3.0);
+    }
+
+    #[test]
+    fn no_vsync_is_forwarded_to_the_captured_client() {
+        let launched = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+            let (options, _) = parse(&args, false).unwrap();
+            client_command(Path::new("bedrock-client"), "8086", &options)
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(launched(&["--no-vsync", "--seconds", "5"]), ["--no-vsync"]);
+        assert!(launched(&["--seconds", "5"]).is_empty());
+        assert!(
+            parse(
+                &["--no-vsync".into(), "--trace".into(), "a.tracy".into()],
+                true
+            )
+            .is_err()
+        );
     }
     #[test]
     fn missing_or_ambiguous_frames_and_mismatched_baselines_fail() {
-        assert!(summarize("name,thread,ns_since_start\n", "", 60.0, "present_frames").is_err());
+        assert!(summarize("name\tthread\tns_since_start\n", "", 60.0, "present_frames").is_err());
         assert!(parse(&["--refresh-hz".into(), "NaN".into()], false).is_err());
     }
 }

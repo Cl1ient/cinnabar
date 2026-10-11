@@ -117,10 +117,15 @@ pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(identity)
 import sys
 if '--help' in sys.argv:
     sys.exit(0)
+sep = sys.argv[sys.argv.index('-s') + 1]
 if '-u' in sys.argv:
-    print('name,thread,ns_since_start\npresent_frames,1,0\npresent_frames,1,16666667')
+    rows = [['name', 'src_file', 'src_line', 'ns_since_start', 'exec_time_ns', 'thread', 'value'],
+            ['present_frames', 'present.rs', '9', '0', '1', '1', 'frame=0, late=false'],
+            ['present_frames', 'present.rs', '9', '16666667', '1', '1', '']]
 else:
-    print('name,total_ns,max_ns\nfixture,100,100')
+    rows = [['name', 'src_file', 'src_line', 'total_ns', 'total_perc', 'counts', 'mean_ns', 'min_ns', 'max_ns', 'std_ns'],
+            ['fixture<A, B>', 'fixture.rs', '3', '100', '0.1', '1', '100', '100', '100', '0']]
+print('\n'.join(sep.join(row) for row in rows))
 "#,
         ),
     ] {

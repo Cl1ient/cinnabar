@@ -168,4 +168,4 @@ package-linux: package-binaries $(FONT_SOURCE)
 SECONDS ?= 180
 .PHONY: capture play-build
 capture:
-	$(CARGO) run -p devtool --locked -- capture --seconds "$(SECONDS)" $(if $(BASELINE),--baseline "$(BASELINE)") $(if $(HZ),--refresh-hz "$(HZ)")
+	$(CARGO) run -p devtool --locked -- capture --seconds "$(SECONDS)" $(if $(BASELINE),--baseline "$(BASELINE)") $(if $(HZ),--refresh-hz "$(HZ)") $(if $(filter 1,$(NO_VSYNC)),--no-vsync)

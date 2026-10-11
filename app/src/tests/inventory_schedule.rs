@@ -1,7 +1,5 @@
 use client_state::PlayerRuntime;
-use std::sync::Arc;
-
-use super::publication::schedule_precedes;
+use std::{collections::HashSet, sync::Arc};
 
 use bevy::{
     ecs::schedule::{IntoSystemSet, NodeId, ScheduleGraph, Schedules, SystemSet},
@@ -104,7 +102,7 @@ fn production_schedule_drains_content_before_click_and_admits_only_in_network_se
     // Window hotkeys and live settings may run between these input owners.
     // The authority contract requires their order, including indirect edges.
     assert!(
-        schedule_precedes(
+        dependency_path_exists(
             graph,
             system_node(
                 graph,
@@ -116,7 +114,7 @@ fn production_schedule_drains_content_before_click_and_admits_only_in_network_se
         "chat keyboard input must finish before menu input",
     );
     assert!(
-        schedule_precedes(
+        dependency_path_exists(
             graph,
             system_node(graph, drive_menu_input, "drive_menu_input"),
             system_node(
@@ -870,6 +868,7 @@ fn same_frame_registry_and_inventory_authority_precede_occupied_merge_input() {
     let ingress = SameFrameMergeIngress {
         registry: Some(ItemRegistryEvent {
             entries: Arc::from([ItemRegistryEntry {
+                components: None,
                 identifier: Arc::from("minecraft:apple"),
                 network_id: 6,
                 component_based: true,

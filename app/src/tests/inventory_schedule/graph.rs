@@ -1,4 +1,5 @@
 use super::*;
+use bevy::ecs::schedule::graph::Direction;
 
 pub(super) fn stage_node(graph: &ScheduleGraph, stage: ClientFrameSet) -> NodeId {
     let key = graph
@@ -6,6 +7,44 @@ pub(super) fn stage_node(graph: &ScheduleGraph, stage: ClientFrameSet) -> NodeId
         .get_key(stage.intern())
         .expect("production stage");
     NodeId::Set(key)
+}
+
+/// Follows dependencies inherited from containing sets without ordering their siblings.
+pub(super) fn dependency_path_exists(graph: &ScheduleGraph, before: NodeId, after: NodeId) -> bool {
+    let dependencies = graph.dependency().graph();
+    let targets = containing_nodes(graph, after);
+    let mut pending = containing_nodes(graph, before);
+    let mut visited = HashSet::new();
+    while let Some(node) = pending.pop() {
+        if !visited.insert(node) {
+            continue;
+        }
+        for successor in dependencies.neighbors(node) {
+            if targets.contains(&successor) {
+                return true;
+            }
+            pending.push(successor);
+        }
+    }
+    false
+}
+
+/// Includes a node and every set whose ordering constraints apply to it.
+fn containing_nodes(graph: &ScheduleGraph, node: NodeId) -> Vec<NodeId> {
+    let mut pending = vec![node];
+    let mut found = Vec::new();
+    while let Some(node) = pending.pop() {
+        if !found.contains(&node) {
+            found.push(node);
+            pending.extend(
+                graph
+                    .hierarchy()
+                    .graph()
+                    .neighbors_directed(node, Direction::Incoming),
+            );
+        }
+    }
+    found
 }
 
 pub(super) fn assert_system_in_stage<M>(

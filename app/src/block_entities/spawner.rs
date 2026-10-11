@@ -11,8 +11,8 @@ use client_presentation::{
     },
 };
 use client_world::DisplayActorStore;
-use render::{ActorArtworkPages, ActorCullView, matrix_rows};
 use render_model::spawner::{SpawnerDisplayClock, spawner_actor_transform};
+use render_model::{ActorArtworkPages, ActorCullView, matrix_rows};
 use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,
@@ -110,7 +110,7 @@ pub(crate) fn prepare_spawner_actors(
     world: Res<ClientWorld>,
     view: Res<LocalViewPose>,
     collisions: Res<client_interaction::movement::PhysicsCollisionRegistries>,
-    artwork: Res<ActorArtworkPages>,
+    artwork: Res<render_scene::ActorArtworkResource>,
     state: Res<ActorFrameState>,
     mut pending: ResMut<PreparedActorPublication>,
     mut publisher: ResMut<SpawnerDisplayPublisher>,
@@ -283,7 +283,7 @@ pub(crate) fn prepare_spawner_actors(
     pool.spins.retain(|position, _| visible.contains(position));
     pool.actors.retain(&visible);
     pool.actors.advance(step.ticks);
-    let artwork = state.actor_artwork(&artwork);
+    let artwork = state.actor_artwork(&artwork.0);
     pending.extend_entities(display_batch(
         pool,
         stream,
@@ -296,7 +296,7 @@ pub(crate) fn prepare_spawner_actors(
 /// Whether any part of the spawner block at `position` lies in the view; fails open without one.
 fn block_in_view(view: Option<ActorCullView>, position: [i32; 3]) -> bool {
     let [x, y, z] = position.map(|axis| axis as f32);
-    render::actor_bounds_are_visible(
+    render_model::actor_bounds_are_visible(
         [x + 0.5, y, z + 0.5],
         1.0,
         assets::SkinGeometryBounds {
@@ -372,7 +372,7 @@ fn display_batch(
             .actor(body.input.identity.runtime_id)
             .map_or(feet, |actor| actor.brightness_sample_position(feet));
         if let Some((block, sky)) = stream.solved_light_at(position) {
-            body.light = render::pack_actor_light(block, sky);
+            body.light = render_model::pack_actor_light(block, sky);
         }
     }
     pool.layers.begin_frame();

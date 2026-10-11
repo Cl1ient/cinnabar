@@ -12,7 +12,7 @@ fn view() -> ActorCullView {
     ActorCullView {
         clip_from_world: clip_from_view * view_from_world,
         camera_position: camera,
-        max_distance: render::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
+        max_distance: render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
     }
 }
 
@@ -39,11 +39,16 @@ fn a_volume_reaching_into_view_is_kept() {
 
 #[test]
 fn entities_outside_the_candidate_cube_are_culled_but_players_are_not() {
-    let far = at(0.0, 64.0, -(render::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0));
+    let far = at(
+        0.0,
+        64.0,
+        -(render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0),
+    );
     assert!(!volume_may_be_visible(&far, false, view()));
     assert_eq!(
         volume_may_be_visible(&far, true, view()),
-        render::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0 <= render::MAX_ACTOR_RENDER_DISTANCE_BLOCKS
+        render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0
+            <= render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS
     );
 }
 
@@ -217,9 +222,13 @@ fn local_shadow_follows_body_visibility_without_hiding_other_casters() {
 }
 
 /// Builds a manifest entry whose actor namespace and layer are independently controlled.
-fn manifest_entry(session_id: u64, runtime_id: u64, layer: u8) -> render::ActorDrawManifestEntry {
-    render::ActorDrawManifestEntry {
-        identity: render::ActorRenderIdentity {
+fn manifest_entry(
+    session_id: u64,
+    runtime_id: u64,
+    layer: u8,
+) -> render_model::ActorDrawManifestEntry {
+    render_model::ActorDrawManifestEntry {
+        identity: render_model::ActorRenderIdentity {
             session_id,
             runtime_id,
             layer,
@@ -233,7 +242,7 @@ fn manifest_entry(session_id: u64, runtime_id: u64, layer: u8) -> render::ActorD
         rig: render_model::EntityRigId(0),
         completed_tick: 1,
         reset_generation: 1,
-        route: render::ActorRigRoute::Compiled,
+        route: render_model::ActorRigRoute::Compiled,
         instance_index: 0,
         previous_bone_base: 0,
         current_bone_base: 0,

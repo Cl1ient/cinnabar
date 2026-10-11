@@ -1,7 +1,7 @@
 //! Publishes the captured actor batch after authoritative input has been sent.
 use super::*;
 use crate::presentation::actors::{ActorPresentationBatch, update_actor_rig_scene};
-use render::{ActorRenderFrame, ActorRuntimeWitness};
+use render_scene::{ActorRenderFrame, ActorRuntimeWitness};
 
 #[derive(Resource, Default)]
 pub struct PreparedActorPublication(pub(super) Option<PendingActorPublication>);
@@ -19,7 +19,7 @@ impl PreparedActorPublication {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn submissions(&self) -> Option<&[render::ActorRigSubmission]> {
+    pub fn submissions(&self) -> Option<&[render_model::ActorRigSubmission]> {
         self.0
             .as_ref()
             .map(|pending| pending.batch.submissions.as_slice())
@@ -39,17 +39,17 @@ pub fn publish_actor_render_frame(
     mut scene: ResMut<ActorRenderScene>,
     mut frame: ResMut<ActorRenderFrame>,
     witness: Res<ActorRuntimeWitness>,
-    profiler: Option<Res<render::RuntimeStageProfiler>>,
+    profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
 ) {
     let Some(mut prepared) = prepared.0.take() else {
         return;
     };
     let _publication = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::ActorPublication));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::ActorPublication));
     let _timer = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::ActorRigBuild));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::ActorRigBuild));
     *frame = update_actor_rig_scene(&mut scene, prepared.partial_tick, prepared.batch).clone();
     prepared.witness.local_route = frame
         .rig

@@ -151,10 +151,13 @@ fn regression_display_controller_lighting_overrides_survive_solved_world_light()
     assert_eq!(stream.solved_light_at([0.5, 512.5, 0.5]), Some((0, 0)));
     let batch = draw(&mut pool, &stream, &artwork);
     assert_eq!(batch.submissions.len(), 2);
-    assert_eq!(batch.submissions[0].light, render::pack_actor_light(0, 0));
+    assert_eq!(
+        batch.submissions[0].light,
+        render_model::pack_actor_light(0, 0)
+    );
     assert_eq!(
         batch.submissions[1].light,
-        render::pack_actor_light_without_lightmap()
+        render_model::pack_actor_light_without_lightmap()
     );
 }
 
@@ -273,7 +276,7 @@ fn system_fixture(scripts: serde_json::Value, light_query: &str) -> bevy::prelud
         client.pack_entities = pool.pack;
         client.stream = Some(stream);
     }
-    world.insert_resource(artwork);
+    world.insert_resource(render_scene::ActorArtworkResource(artwork));
     let rotation = bevy::prelude::Quat::from_euler(
         bevy::prelude::EulerRot::YXZ,
         40f32.to_radians(),

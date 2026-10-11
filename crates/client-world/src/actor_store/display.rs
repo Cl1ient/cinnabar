@@ -23,7 +23,7 @@ impl DisplayActorStore {
     pub fn new(dimension: i32, assets: Arc<assets::RuntimeEntityAssets>) -> Self {
         let session = crate::authority::allocate_actor_session_id();
         let mut store = ActorStore::with_capacity(session, dimension, MAX_DISPLAY_ACTORS, 0);
-        store.animation = crate::actor_animation::ActorAnimationStore::with_assets(assets);
+        store.animation = actor_animation::ActorAnimationStore::with_assets(assets);
         Self {
             store,
             positions: BTreeMap::new(),
@@ -188,12 +188,12 @@ impl DisplayActorStore {
     }
 
     /// Borrows the normal rig, including its admitted render controllers.
-    pub fn rig(&self, runtime: u64) -> Option<crate::ActorRigSnapshot<'_>> {
+    pub fn rig(&self, runtime: u64) -> Option<actor_animation::ActorRigSnapshot<'_>> {
         self.store.actor_rig(runtime)
     }
 
     /// Gives display rendering the same bounded sampled expression context as world actors.
-    pub fn frame(&self, alpha: f32) -> crate::ActorRenderFrame<'_> {
-        crate::ActorRenderFrame::new(&self.store, alpha)
+    pub fn frame(&self, alpha: f32) -> actor_animation::ActorRenderFrame<'_> {
+        self.store.render_frame(alpha)
     }
 }

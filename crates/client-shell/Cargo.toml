@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+platform-specific = ["macos", "windows"]
+
 [features]
 developer-control = ["dep:developer-control"]
 test-support = ["launcher/test-support", "launcher-host/test-support"]
@@ -31,7 +34,7 @@ launcher = { path = "../launcher" }
 launcher-host = { path = "../launcher-host" }
 pack-runtime = { path = "../pack-runtime" }
 protocol = { path = "../protocol" }
-render = { path = "../render" }
+render-scene = { path = "../render-scene" }
 render-api = { path = "../render-api" }
 render-model = { path = "../render-model" }
 resource-pack = { path = "../resource-pack" }

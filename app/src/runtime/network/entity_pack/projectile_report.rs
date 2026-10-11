@@ -32,7 +32,7 @@ fn render_projectile_states() {
         .iter()
         .map(|binding| binding.geometry_candidate)
         .collect::<Vec<_>>();
-    let pages = render::ActorArtworkPages::default()
+    let pages = render_model::ActorArtworkPages::default()
         .with_pack_artwork(catalog.textures(), catalog.bindings());
     std::fs::create_dir_all(&out).unwrap();
     for (name, identifier, pitch, yaw) in [

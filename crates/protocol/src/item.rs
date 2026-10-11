@@ -373,7 +373,7 @@ pub enum ItemRegistryVersion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemRegistryEntry {
-    /// Parsed once from the admitted component payload, retained for session fact resolution.
+    /// Client-facing components parsed once from the validated registry payload.
     pub components: Option<Arc<ItemComponents>>,
     pub identifier: Arc<str>,
     pub network_id: i32,

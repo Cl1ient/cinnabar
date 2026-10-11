@@ -103,6 +103,9 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         item_visuals: vec![
             ItemVisualDefinition {
                 grip: assets::item::grip::ItemGrip::Unresolved,
+                fuel: assets::item::fuel::ItemFuel::Unresolved,
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:apple".into(),
                     metadata: 0,
@@ -120,6 +123,9 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
             },
             ItemVisualDefinition {
                 grip: assets::item::grip::ItemGrip::Unresolved,
+                fuel: assets::item::fuel::ItemFuel::Unresolved,
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:block_witness".into(),
                     metadata: 0,

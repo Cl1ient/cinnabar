@@ -159,6 +159,9 @@ mod tests {
     fn visual() -> ItemVisualDefinition {
         ItemVisualDefinition {
             grip: builtin_item_grip("minecraft:diamond_sword"),
+            fuel: super::super::fuel::ItemFuel::Unresolved,
+            armour: super::super::armour::ItemArmour::Unresolved,
+            durability: super::super::durability::ItemDurability::Unresolved,
             key: crate::ItemVisualKey {
                 identifier: "minecraft:diamond_sword".into(),
                 metadata: 0,

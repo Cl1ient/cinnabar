@@ -117,15 +117,17 @@ impl ActorStore {
         self.prepare_appearances(ticks > 0);
         // The live actors now reach the positions picks were reading.
         self.picks_ahead = false;
-        for tick in 0..ticks.max(u32::from(refresh_view)) {
-            if !refresh_view {
+        let prepare_frame =
+            frame && ticks == 0 && (refresh_view || self.animation.needs_initial_presentation());
+        for tick in 0..ticks.max(u32::from(prepare_frame)) {
+            if !prepare_frame {
                 if let Some(pending) = &mut self.pending_local_damage {
                     pending.tick();
                 }
                 self.step_motion();
                 self.seat_riders();
             }
-            if !refresh_view {
+            if !prepare_frame {
                 self.advance_pickup_visuals();
                 self.advance_dragon_animation();
                 self.advance_dragon_beams();
@@ -331,11 +333,9 @@ impl ActorStore {
                     },
                 }
             };
-            if refresh_view {
-                if let Some(runtime_id) = local_runtime {
-                    self.animation
-                        .refresh_local_view(actors, runtime_id, context);
-                }
+            if prepare_frame {
+                self.animation
+                    .prepare_frame(actors, view, local_runtime, refresh_view, context);
             } else {
                 self.animation.advance_tick(
                     actors,

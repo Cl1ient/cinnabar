@@ -211,10 +211,15 @@ struct PackCatalog {
 }
 
 #[derive(Debug)]
-struct PoseStep {
-    evaluate: bool,
-    reset_motion_history: bool,
-    refresh_view: bool,
+enum PoseStep {
+    Tick {
+        evaluate: bool,
+        reset_motion_history: bool,
+    },
+    Frame {
+        initialize_new: bool,
+        refresh_local: Option<u64>,
+    },
 }
 
 #[derive(Debug)]
@@ -596,16 +601,16 @@ impl ActorAnimationStore {
             actors,
             view,
             exempt,
-            PoseStep {
+            PoseStep::Tick {
                 evaluate,
                 reset_motion_history,
-                refresh_view: false,
             },
             context,
         );
     }
 
     /// Changes the local draw context without advancing motion or clip time.
+    #[cfg(test)]
     pub(crate) fn refresh_local_view(
         &mut self,
         actors: &HashMap<u64, ActorSnapshot>,
@@ -616,10 +621,37 @@ impl ActorAnimationStore {
             actors,
             None,
             Some(runtime_id),
-            PoseStep {
-                evaluate: true,
-                reset_motion_history: false,
-                refresh_view: true,
+            PoseStep::Frame {
+                initialize_new: false,
+                refresh_local: Some(runtime_id),
+            },
+            context,
+        );
+    }
+
+    /// Whether a newly bound animated rig still needs its first presentation.
+    pub(crate) fn needs_initial_presentation(&self) -> bool {
+        self.rigs
+            .values()
+            .any(|state| !state.initialized && state.fallback != EntityRigFallback::GeometryOnly)
+    }
+
+    /// Prepares newly bound rigs and an optional changed local view without advancing simulation.
+    pub(crate) fn prepare_frame(
+        &mut self,
+        actors: &HashMap<u64, ActorSnapshot>,
+        view: Option<&ActorAnimationView>,
+        exempt: Option<u64>,
+        refresh_local: bool,
+        context: impl Fn(&ActorSnapshot) -> ActorTickContext,
+    ) {
+        self.evaluate_tick(
+            actors,
+            view,
+            exempt,
+            PoseStep::Frame {
+                initialize_new: true,
+                refresh_local: exempt.filter(|_| refresh_local),
             },
             context,
         );

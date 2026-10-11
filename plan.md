@@ -2207,6 +2207,14 @@ nonuniform scale shear and the separate legacy/custom item paths. Changes are un
 no complete first-person parity gate is closed. See
 [attachable rules](docs/reference/held-attachables.md).
 
+2026-10-11 initial actor presentation: newly bound animated rigs evaluate their
+initial pose and metadata-controlled visibility before a zero-tick frame draws.
+Evaluation uses current equipment, riding, skin and view context within the
+existing actor and world budgets. Repeated frames preserve authored state;
+simulation clocks continue on the next tick. Synthetic regressions cover custom
+packs, lifetime replacement, local view replay and budget exhaustion. This does
+not close the broader actor animation or placement-latency parity gates.
+
 2026-10-04 end crystals and respawn anchors: crystal artwork now bakes native
 alpha-test coverage instead of dropping the whole rig over fractional texels;
 the pack supplies nested frame rotation, bobbing and base visibility. Native

@@ -249,6 +249,34 @@ pub(super) fn advance_motion(
     state.history.push_back(input);
 }
 
+/// Seeds current snapshot inputs for a first draw without advancing any motion clock.
+pub(super) fn seed_presentation_input(
+    state: &mut ActorRigState,
+    actor: &ActorSnapshot,
+    context: &ActorTickContext,
+) {
+    if !state.history.is_empty() {
+        return;
+    }
+    state.equipped_main.clone_from(&context.main_hand);
+    state.history.push_back(ActorTickInput {
+        position: actor.position,
+        velocity: actor.velocity,
+        on_ground: actor.on_ground.unwrap_or(false),
+        body_yaw: state.motion.body_yaw,
+        yaw: actor.yaw,
+        head_yaw: actor.head_yaw,
+        pitch: actor.pitch,
+        is_riding: context.is_riding,
+        item_use_ticks: local_use_counter(actor, context).unwrap_or(0),
+        swim_amount: f32::from(query::actor_flag(actor, query::FLAG_SWIMMING)),
+        arm_height: 1.0,
+        off_hand_arm_height: state.off_hand_animation[1].arm_height,
+        attack_time: state.motion.attack_time(),
+        ..Default::default()
+    });
+}
+
 /// Converts the local elapsed clock to the existing one-based hand and spear counter.
 pub(super) fn local_use_counter(actor: &ActorSnapshot, context: &ActorTickContext) -> Option<u32> {
     context.local_item_use_ticks.map(|elapsed| {

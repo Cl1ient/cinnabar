@@ -221,9 +221,58 @@ fn initial_presentation_respects_the_world_budget_and_retries_without_partial_ef
     assert_eq!(store.completed_tick, 0);
     assert_eq!(store.stats.evaluated_molang_ops, 1);
     assert_eq!(authored_state(&store), authored);
-    assert!(store.needs_initial_presentation());
+    assert!(store.needs_initial_presentation(&actors, None, None));
     store.schedule.world_budget = MAX_MOLANG_OPS_PER_WORLD_TICK;
     store.prepare_frame(&actors, None, None, false, zero_time_context);
     assert_eq!(store.get(1).unwrap().render[0].color[0], 6.0);
-    assert!(!store.needs_initial_presentation());
+    assert!(!store.needs_initial_presentation(&actors, None, None));
+}
+
+#[test]
+fn first_presentation_retry_refreshes_snapshot_inputs_without_a_motion_tick() {
+    let (mut store, mut actors) = animation_fixture();
+    store.schedule.world_budget = 1;
+    store.prepare_frame(&actors, None, None, false, zero_time_context);
+    let actor = actors.get_mut(&1).unwrap();
+    actor.position = [4.0, 5.0, 6.0];
+    actor.yaw = 75.0;
+    actor.pitch = 30.0;
+    store.schedule.world_budget = MAX_MOLANG_OPS_PER_WORLD_TICK;
+    store.prepare_frame(&actors, None, None, false, zero_time_context);
+    let state = store.rigs.values().next().unwrap();
+    let input = state.history.back().unwrap();
+    assert_eq!(input.position, actors[&1].position);
+    assert_eq!(input.yaw, actors[&1].yaw);
+    assert_eq!(input.pitch, actors[&1].pitch);
+    assert_eq!(state.history.len(), 1);
+    assert_eq!(store.completed_tick, 0);
+}
+
+#[test]
+fn off_screen_initial_rigs_do_not_build_frame_contexts() {
+    let (mut store, mut actors) = animation_fixture();
+    let actor = actors.get_mut(&1).unwrap();
+    actor.position[0] = 20.0;
+    actor.previous_pose.position = actor.position;
+    let view = ActorAnimationView {
+        planes: [[-1.0, 0.0, 0.0, 10.0]; 6],
+        camera: [0.0; 3],
+        player_distance: 100.0,
+        entity_radius: 72.0,
+    };
+    let contexts = std::cell::Cell::new(0);
+    for _ in 0..2 {
+        assert!(!store.needs_initial_presentation(&actors, Some(&view), None));
+        store.prepare_frame(&actors, Some(&view), None, false, |actor| {
+            contexts.set(contexts.get() + 1);
+            zero_time_context(actor)
+        });
+    }
+    assert_eq!(contexts.get(), 0);
+    let actor = actors.get_mut(&1).unwrap();
+    actor.position = [0.0; 3];
+    actor.previous_pose.position = actor.position;
+    assert!(store.needs_initial_presentation(&actors, Some(&view), None));
+    store.prepare_frame(&actors, Some(&view), None, false, zero_time_context);
+    assert_eq!(store.get(1).unwrap().render[0].color[0], 6.0);
 }

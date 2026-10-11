@@ -260,6 +260,8 @@ struct ActorRigState {
     completed_tick: u64,
     fallback: EntityRigFallback,
     history: VecDeque<ActorTickInput>,
+    /// The sole history sample is provisional until a real motion tick observes it.
+    presentation_seeded: bool,
     /// Latest owner query inputs, retained even when its pose does not need frame sampling.
     query_context: ActorTickContext,
     /// Main-hand item the arm has finished equipping.
@@ -627,13 +629,6 @@ impl ActorAnimationStore {
             },
             context,
         );
-    }
-
-    /// Whether a newly bound animated rig still needs its first presentation.
-    pub(crate) fn needs_initial_presentation(&self) -> bool {
-        self.rigs
-            .values()
-            .any(|state| !state.initialized && state.fallback != EntityRigFallback::GeometryOnly)
     }
 
     /// Prepares newly bound rigs and an optional changed local view without advancing simulation.

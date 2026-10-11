@@ -54,6 +54,27 @@ thread_local! {
 }
 
 impl ActorAnimationStore {
+    /// Checks admission before allocating jobs or constructing actor contexts for a frame.
+    pub(crate) fn needs_initial_presentation(
+        &self,
+        actors: &HashMap<u64, ActorSnapshot>,
+        view: Option<&ActorAnimationView>,
+        exempt: Option<u64>,
+    ) -> bool {
+        self.rigs.iter().any(|(lifetime, state)| {
+            actors.get(&lifetime.runtime_id).is_some_and(|actor| {
+                initially_admitted(
+                    state,
+                    actor,
+                    view,
+                    exempt,
+                    self.assets.as_deref(),
+                    self.pack.as_ref(),
+                )
+            })
+        })
+    }
+
     pub(super) fn evaluate_tick(
         &mut self,
         actors: &HashMap<u64, ActorSnapshot>,
@@ -101,8 +122,16 @@ impl ActorAnimationStore {
                 .filter(|(lifetime, state)| {
                     Some(**lifetime) == local
                         || (initialize_new
-                            && !state.initialized
-                            && state.fallback != EntityRigFallback::GeometryOnly)
+                            && actors.get(&lifetime.runtime_id).is_some_and(|actor| {
+                                initially_admitted(
+                                    state,
+                                    actor,
+                                    view,
+                                    exempt,
+                                    Some(&assets),
+                                    pack.as_ref(),
+                                )
+                            }))
                 })
                 .map(|(lifetime, state)| (*lifetime, state))
                 .collect()
@@ -286,6 +315,26 @@ impl TickJob<'_> {
     const fn evaluates(&self) -> bool {
         matches!(self.step, Step::Evaluate { .. })
     }
+}
+
+/// Selects only unresolved poses that the current animation view can admit.
+fn initially_admitted(
+    state: &ActorRigState,
+    actor: &ActorSnapshot,
+    view: Option<&ActorAnimationView>,
+    exempt: Option<u64>,
+    vanilla: Option<&RuntimeEntityAssets>,
+    pack: Option<&PackCatalog>,
+) -> bool {
+    if state.initialized || state.fallback == EntityRigFallback::GeometryOnly {
+        return false;
+    }
+    let catalog = if state.pack {
+        pack.map(|pack| &*pack.assets)
+    } else {
+        vanilla
+    };
+    catalog.is_some_and(|catalog| !culled(view, exempt, state, actor, catalog))
 }
 
 /// Whether the rig sits outside the animation view on both of its last two positions.

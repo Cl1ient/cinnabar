@@ -108,6 +108,7 @@ pub(super) fn advance_motion(
     context: &ActorTickContext,
     reset_history: bool,
 ) {
+    state.presentation_seeded = false;
     if reset_history && state.reset_pending {
         state.history.clear();
     }
@@ -255,15 +256,19 @@ pub(super) fn seed_presentation_input(
     actor: &ActorSnapshot,
     context: &ActorTickContext,
 ) {
-    if !state.history.is_empty() {
+    if !state.history.is_empty() && !state.presentation_seeded {
         return;
     }
     state.equipped_main.clone_from(&context.main_hand);
-    state.history.push_back(ActorTickInput {
+    let input = ActorTickInput {
         position: actor.position,
         velocity: actor.velocity,
         on_ground: actor.on_ground.unwrap_or(false),
-        body_yaw: state.motion.body_yaw,
+        body_yaw: if query::is_arrow(actor) {
+            0.0
+        } else {
+            actor.body_yaw
+        },
         yaw: actor.yaw,
         head_yaw: actor.head_yaw,
         pitch: actor.pitch,
@@ -274,7 +279,13 @@ pub(super) fn seed_presentation_input(
         off_hand_arm_height: state.off_hand_animation[1].arm_height,
         attack_time: state.motion.attack_time(),
         ..Default::default()
-    });
+    };
+    if let Some(previous) = state.history.back_mut() {
+        *previous = input;
+    } else {
+        state.history.push_back(input);
+    }
+    state.presentation_seeded = true;
 }
 
 /// Converts the local elapsed clock to the existing one-based hand and spear counter.

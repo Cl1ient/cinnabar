@@ -117,8 +117,14 @@ impl ActorStore {
         self.prepare_appearances(ticks > 0);
         // The live actors now reach the positions picks were reading.
         self.picks_ahead = false;
-        let prepare_frame =
-            frame && ticks == 0 && (refresh_view || self.animation.needs_initial_presentation());
+        let prepare_frame = frame
+            && ticks == 0
+            && (refresh_view
+                || self.animation.needs_initial_presentation(
+                    &self.actors,
+                    self.animation_view.as_ref(),
+                    self.remote_state_excluded_runtime_id,
+                ));
         for tick in 0..ticks.max(u32::from(prepare_frame)) {
             if !prepare_frame {
                 if let Some(pending) = &mut self.pending_local_damage {

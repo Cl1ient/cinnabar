@@ -2212,8 +2212,11 @@ initial pose and metadata-controlled visibility before a zero-tick frame draws.
 Evaluation uses current equipment, riding, skin and view context within the
 existing actor and world budgets. Repeated frames preserve authored state;
 simulation clocks continue on the next tick. Synthetic regressions cover custom
-packs, lifetime replacement, local view replay and budget exhaustion. This does
-not close the broader actor animation or placement-latency parity gates.
+packs, lifetime replacement, local view replay and budget exhaustion. Initial
+publication uses a nonzero pose identity while preserving simulation tick zero.
+Retries refresh provisional inputs; unchanged off-screen rigs allocate nothing
+between ticks. This does not close the broader actor animation or
+placement-latency parity gates.
 
 2026-10-04 end crystals and respawn anchors: crystal artwork now bakes native
 alpha-test coverage instead of dropping the whole rig over fractional texels;

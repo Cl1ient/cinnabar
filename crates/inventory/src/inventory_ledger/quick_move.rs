@@ -77,6 +77,7 @@ impl PlayerInventoryLedger {
             || self.quick_move_candidates(source, &from.stack),
             <[Cell]>::to_vec,
         );
+        let fuel_routed = destinations.is_none() && self.routes_by_fuel(source, &from.stack);
         let item_capacity = self
             .negotiated_item_entry(from.stack.network_id)
             .and_then(entry_capacity)
@@ -151,13 +152,38 @@ impl PlayerInventoryLedger {
         if actions.is_empty() {
             return Err(InventoryGestureError::InvalidRequest);
         }
-        self.submit(Submission {
+        let request_id = self.submit(Submission {
             actions,
             groups,
             personal_generation,
             requires_distinct_stack_ids: distinct,
             registry_bound_merge: registry_bound,
+        })?;
+        if let Some(pending) = self
+            .queue
+            .iter_mut()
+            .find(|pending| pending.request_id == request_id)
+        {
+            pending.fuel_routed = fuel_routed;
+        }
+        Ok(request_id)
+    }
+
+    /// The window a quick move out of the player inventory targets, if one is open.
+    fn quick_move_window(&self) -> Option<WindowKind> {
+        self.storage.as_ref().and_then(|storage| {
+            (storage.identity.is_some() || storage.kind.is_ui_backed()).then_some(storage.kind)
         })
+    }
+
+    /// Whether quick-move routing of `stack` out of `source` reads its fuel facts.
+    fn routes_by_fuel(&self, source: Cell, stack: &NetworkItemStack) -> bool {
+        matches!(source, Cell::Inventory(_))
+            && self.quick_move_window().is_some_and(|kind| {
+                crate::furnace_recipes::kind(kind).is_some()
+                    && self.furnace_input_accepts(kind, stack.network_id, stack.metadata)
+                        != Some(true)
+            })
     }
 
     /// Candidate destinations, in order, for a quick move out of `source`.
@@ -176,10 +202,7 @@ impl PlayerInventoryLedger {
             cells.extend(player(0..protocol::HOTBAR_SLOT_COUNT));
             return cells;
         };
-        let window = self.storage.as_ref().and_then(|storage| {
-            (storage.identity.is_some() || storage.kind.is_ui_backed()).then_some(storage.kind)
-        });
-        let cells = match window {
+        let cells = match self.quick_move_window() {
             Some(kind) => self.window_destinations(kind, id, stack.network_id, stack.metadata),
             None => self.equipment_destinations(id),
         };

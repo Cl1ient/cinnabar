@@ -23,14 +23,15 @@ impl PlayerInventoryLedger {
             .queue
             .iter()
             .filter(|pending| {
-                pending
-                    .predicted
-                    .iter()
-                    .filter_map(|prediction| prediction.held.as_ref())
-                    .any(|held| {
-                        previous.get(&held.stack.network_id)
-                            != self.fuel_facts.get(&held.stack.network_id)
-                    })
+                pending.fuel_routed
+                    && pending
+                        .predicted
+                        .iter()
+                        .filter_map(|prediction| prediction.held.as_ref())
+                        .any(|held| {
+                            previous.get(&held.stack.network_id)
+                                != self.fuel_facts.get(&held.stack.network_id)
+                        })
             })
             .map(|pending| pending.request_id)
             .collect();

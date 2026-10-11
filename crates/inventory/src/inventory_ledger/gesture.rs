@@ -508,6 +508,7 @@ impl PlayerInventoryLedger {
             storage_detached: false,
             requires_distinct_stack_ids: submission.requires_distinct_stack_ids,
             registry_bound_merge: submission.registry_bound_merge,
+            fuel_routed: false,
             predicted: Vec::new(),
             mining: None,
         });

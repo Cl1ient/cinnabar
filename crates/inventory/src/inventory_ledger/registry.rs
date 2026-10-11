@@ -64,7 +64,8 @@ impl PlayerInventoryLedger {
                     .map(|held| held.stack.network_id)
                     .any(|network_id| {
                         registry_identity_changed(previous, &next, network_id)
-                            || registry_fuel_rule_changed(previous, &next, network_id)
+                            || (pending.fuel_routed
+                                && registry_fuel_rule_changed(previous, &next, network_id))
                             || (pending.registry_bound_merge
                                 && registry_merge_rule_changed(previous, &next, network_id))
                     })

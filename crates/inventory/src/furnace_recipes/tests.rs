@@ -833,6 +833,77 @@ fn furnace_quick_move_keeps_admitted_recipe_inputs_out_of_the_fuel_role() {
     assert!(inventory.ledger().storage_stack(1).is_none());
 }
 
+/// Resends the registry with `network_id` as a component item burning for `ticks`.
+fn resend_with_fuel(inventory: &mut InventorySession, network_id: i32, ticks: u32) {
+    let entries = inventory
+        .ledger()
+        .item_registry_snapshot()
+        .unwrap()
+        .values()
+        .cloned()
+        .map(|mut entry| {
+            if entry.network_id == network_id {
+                entry.component_based = true;
+                entry.version = ::protocol::ItemRegistryVersion::DataDriven;
+                entry.canonical_empty_component_data = false;
+                entry.component_digest = [ticks as u8; 32];
+                entry.components = Some(Arc::new(::protocol::ItemComponents {
+                    fuel_duration_ticks: Some(ticks),
+                    ..Default::default()
+                }));
+            }
+            entry
+        })
+        .collect();
+    inventory
+        .ledger_mut()
+        .apply_registry(&::protocol::ItemRegistryEvent { entries });
+}
+
+#[test]
+fn fuel_rule_changes_retire_only_fuel_routed_quick_moves() {
+    let mut inventory = fixture(::protocol::WINDOW_TYPE_FURNACE);
+    resend_with_fuel(&mut inventory, 4, 40);
+    let mut stacks =
+        vec![NetworkItemStack::empty(); usize::from(::protocol::PLAYER_INVENTORY_SLOTS)];
+    stacks[5] = NetworkItemStack {
+        network_id: 2,
+        count: 8,
+        stack_network_id: 25,
+        ..NetworkItemStack::empty()
+    };
+    stacks[7] = NetworkItemStack {
+        network_id: 4,
+        count: 3,
+        stack_network_id: 27,
+        ..NetworkItemStack::empty()
+    };
+    inventory
+        .ledger_mut()
+        .apply(&InventoryEvent::Content(InventoryContentEvent {
+            container: ContainerIdentity::window(0),
+            slots: stacks.into(),
+            storage_item: NetworkItemStack::empty(),
+        }));
+    inventory
+        .ledger_mut()
+        .begin_quick_move(InventoryTarget::Player(5))
+        .unwrap();
+    assert_eq!(inventory.ledger().storage_stack(0).unwrap().count, 8);
+    resend_with_fuel(&mut inventory, 2, 40);
+    assert_eq!(inventory.ledger().pending_request_count(), 1);
+
+    inventory
+        .ledger_mut()
+        .begin_quick_move(InventoryTarget::Player(7))
+        .unwrap();
+    assert_eq!(inventory.ledger().storage_stack(1).unwrap().count, 3);
+    assert_eq!(inventory.ledger().pending_request_count(), 2);
+    resend_with_fuel(&mut inventory, 4, 80);
+    assert_eq!(inventory.ledger().pending_request_count(), 1);
+    assert!(inventory.ledger().storage_stack(1).is_none());
+}
+
 #[test]
 fn furnace_recipe_replacement_retires_unsent_input_before_transport() {
     for poll_timeouts in [false, true] {

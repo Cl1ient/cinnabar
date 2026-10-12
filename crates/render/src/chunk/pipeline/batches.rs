@@ -195,14 +195,31 @@ pub(in crate::chunk) struct ViewTerrainLists {
     indirect_built: bool,
     /// The view transform `cubes` was sorted for.
     cube_view: Option<Mat4>,
+    units: Option<Arc<super::units::sources::UnitSources>>,
 }
 
 impl ViewTerrainLists {
     fn invalidate(&mut self) {
+        self.units = None;
         self.visible_models = None;
         self.drawable_built = false;
         self.indirect_built = false;
         self.cube_view = None;
+    }
+
+    /// Shares allocation descriptors until the same tracker that owns the drawable lists stales.
+    pub(in crate::chunk) fn units(
+        &mut self,
+        allocations: &Query<&GpuChunkAllocation>,
+    ) -> Arc<super::units::sources::UnitSources> {
+        self.units
+            .get_or_insert_with(|| {
+                Arc::new(super::units::sources::UnitSources::build(
+                    &self.drawable,
+                    allocations,
+                ))
+            })
+            .clone()
     }
 
     /// The visible model workload, summarised from the visible set only after the lists staled.

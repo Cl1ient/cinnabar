@@ -79,6 +79,7 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
             texture_width: 16,
             texture_height: 16,
             bones: vec![EntityGeometryBone {
+                locators: Box::default(),
                 name: "rightitem".into(),
                 binding: None,
                 parent: None,

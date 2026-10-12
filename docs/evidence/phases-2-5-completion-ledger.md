@@ -14,6 +14,11 @@ Common farmland crops now retain four lowered rows with stage-specific artwork.
 Compiler regressions cover all eight growth states and both network-ID modes;
 full crop presentation parity and the broader phase gates remain open.
 
+Trapdoor compiler regressions cover edge sprite rows, facing/top-half artwork,
+opened cap texture ownership and malformed selectors across registered poses
+with 16/32 pixel textures. Rendered/input acceptance and broader graphics parity
+remain open.
+
 ## P2.5-NATIVE-BIOME
 
 | Field | Evidence |
@@ -58,6 +63,10 @@ yaw, scale, link ordering, updates and removal. Dismount request coverage includ
 vehicle controls, queue retries and session/input boundaries. Authored seat fallbacks,
 special family placement, predictive exit placement and vehicle prediction remain
 incomplete; this work closes no movement parity or performance gate.
+
+Custom block surface friction follows each state's `minecraft:friction` component, with
+protocol, permutation and registry regressions in both identity spaces. No live witness
+exists; complete ordinary/special block classification remains open.
 
 | Field | Evidence |
 |---|---|
@@ -291,6 +300,18 @@ Admitted live biome identifiers and climate now travel with the session tint reg
 the vendored client session crate is removed. Startup ordering, terminal transfers and
 disconnects, and the one-shot initialization keep their regression coverage through a scripted
 core; those tests have not been executed locally. No existing completion entry is advanced.
+## Controller particle attachments
+
+Typed locator and initialization contracts are implemented. Independent pinned
+controller coverage and focused emitter/placement regressions are added. Pending
+placement retries after temporary zero scale; existing attachments retain their
+actor lifetime. Particle placement samples each needed actor once per frame. The
+unsupported query grammar, skin locator, child-event placement, fallback and
+animated gallery checks in `plan.md` remain open. No completion entry advances.
+
+## Cached beacon beam sections
+
+Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
 
 ## Active block-entity artwork
 

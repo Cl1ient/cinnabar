@@ -10,6 +10,7 @@ fn block() -> CustomBlock {
         collides: true,
         collision_boxes: None,
         selection: CustomSelection::Default,
+        friction: None,
         state_physics: Arc::default(),
         visual: Arc::new(CustomBlockVisuals {
             state_axes: Box::new([CustomStateAxis {

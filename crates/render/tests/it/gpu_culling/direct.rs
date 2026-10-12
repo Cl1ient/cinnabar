@@ -417,6 +417,7 @@ fn replay(
                 }
             }
             terrain = Terrain {
+                alpha_cutout: edited.alpha_cutout,
                 quads: edited.quads.clone(),
                 origins: edited.origins.clone(),
                 records: edited.records.clone(),

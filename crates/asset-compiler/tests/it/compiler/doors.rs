@@ -225,7 +225,6 @@ fn compiler_routes_every_generated_door_and_trapdoor_selector_to_exact_cutout_cu
         8,
         "four spatial bounds times lower/upper materials"
     );
-    assert_eq!(compiled_trapdoors.model_templates.len(), 6);
     let door_collision_bounds = doors
         .iter()
         .map(pinned_collision_bounds)
@@ -331,10 +330,17 @@ fn compiler_routes_every_generated_door_and_trapdoor_selector_to_exact_cutout_cu
                 }
             })
             .unwrap();
-        assert_eq!(
-            compiled_trapdoors.visuals[id].model_template,
-            compiled_trapdoors.visuals[peer].model_template,
-            "inactive trapdoor selector must deduplicate"
+        let quads = compiled_model_quads(&compiled_trapdoors, id);
+        let peer_quads = compiled_model_quads(&compiled_trapdoors, peer);
+        for (quad, peer_quad) in quads.iter().zip(peer_quads) {
+            assert_eq!(quad.positions, peer_quad.positions);
+        }
+        assert!(
+            quads
+                .iter()
+                .zip(peer_quads)
+                .any(|(quad, peer_quad)| quad.uvs != peer_quad.uvs),
+            "trapdoor selectors with equal bounds still change artwork orientation"
         );
     }
 }
@@ -439,6 +445,18 @@ fn compiler_door_and_trapdoor_selectors_fail_closed_for_every_out_of_range_field
             ModelFamily::Trapdoor,
             &fields,
         ));
+    }
+    for record in records
+        .iter_mut()
+        .filter(|record| record.model_family == ModelFamily::Trapdoor)
+    {
+        record.canonical_state = serde_json::json!({
+            "direction": {"type": "int", "value": record.model_state.get(ModelStateField::Orientation).unwrap()},
+            "open_bit": {"type": "byte", "value": record.model_state.get(ModelStateField::Open).unwrap()},
+            "upside_down_bit": {"type": "byte", "value": record.model_state.get(ModelStateField::Half).unwrap()},
+        })
+        .to_string()
+        .into_boxed_str();
     }
     let compiled = compile_pack(directory.path(), &records).expect("compile bounded selectors");
     assert_eq!(compiled.visuals[0].kind, VisualKind::Model);

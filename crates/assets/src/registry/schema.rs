@@ -5,7 +5,7 @@ use bitflags::bitflags;
 
 pub(super) const REGISTRY_MAGIC: &[u8; 8] = b"BREG1004";
 pub(super) const PREVIOUS_REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
-pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1002";
+pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1003";
 pub const LEGACY_PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1001";
 pub const PHYSICS_REGISTRY_HEADER_BYTES: usize = 48;
 pub const PHYSICS_RECORD_HEADER_BYTES: usize = 28;
@@ -242,7 +242,7 @@ pub enum BeaconTint {
 
 impl BeaconTint {
     /// Decode a known discriminator and reject reserved values.
-    pub(super) fn read(raw: u8) -> Result<Self, AssetError> {
+    pub fn read(raw: u8) -> Result<Self, AssetError> {
         match raw {
             0 => Ok(Self::Unresolved),
             1 => Ok(Self::NoTinting),

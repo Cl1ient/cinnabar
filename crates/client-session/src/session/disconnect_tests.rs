@@ -161,7 +161,7 @@ async fn terminal_marker_includes_the_server_disconnect_only_when_present() {
     let marker: serde_json::Value = serde_json::from_str(
         payload
             .trim()
-            .strip_prefix("RUST_MCBE_NETWORK_PUMP_TERMINAL=")
+            .strip_prefix("CINNABAR_NETWORK_PUMP_TERMINAL=")
             .expect("marker prefix"),
     )
     .expect("marker JSON");
@@ -177,7 +177,7 @@ async fn terminal_marker_includes_the_server_disconnect_only_when_present() {
     let marker: serde_json::Value = serde_json::from_str(
         payload
             .trim()
-            .strip_prefix("RUST_MCBE_NETWORK_PUMP_TERMINAL=")
+            .strip_prefix("CINNABAR_NETWORK_PUMP_TERMINAL=")
             .expect("marker prefix"),
     )
     .expect("marker JSON");

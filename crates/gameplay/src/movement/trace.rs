@@ -1,6 +1,6 @@
 //! Opt-in single-line JSON trace of transmitted movement samples.
 //!
-//! Set `RUST_MCBE_MOVEMENT_TRACE=1` to emit one compact JSON object per
+//! Set `CINNABAR_MOVEMENT_TRACE=1` to emit one compact JSON object per
 //! PlayerAuthInput packet actually handed to the transport. Any other value,
 //! or an unset variable, keeps the send path byte-identical to the untraced
 //! build: the gate is a lazily initialized flag and short-circuits before any

@@ -5,7 +5,7 @@ use render_model::{
 };
 
 /// Projects the production beam mesh into the offline UI rasterizer with original white art.
-fn beam_snapshot(tint: [f32; 3]) -> UiRenderInput {
+fn beam_snapshot(model: BeaconModel) -> UiRenderInput {
     let placement = assets::BlockEntityPlacement {
         name: "textures/entity/beacon_beam".into(),
         x: 0,
@@ -24,7 +24,7 @@ fn beam_snapshot(tint: [f32; 3]) -> UiRenderInput {
         &[BlockEntitySubmission {
             block: [0; 3],
             light: 1.0.into(),
-            kind: BlockEntityKind::Beacon(BeaconModel { height: 4, tint }),
+            kind: BlockEntityKind::Beacon(model),
         }],
     );
     let vertices = frame
@@ -91,28 +91,23 @@ fn beam_snapshot(tint: [f32; 3]) -> UiRenderInput {
 fn hardened_glass_colours_the_emitted_beacon_mesh() {
     let id =
         protocol::block_state_network_hash("minecraft:hard_red_stained_glass", std::iter::empty());
-    let mut store = world::ChunkStore::new();
-    store
-        .update_block(
-            world::SubChunkKey::new(0, 0, 0, 0),
-            world::BlockUpdate::new(0, 2, 0, 0, id),
-            0,
-        )
-        .unwrap();
-    let mut runtime = BlockEntityRuntime::new();
-    let Some(BlockEntityKind::Beacon(model)) = beacon::kind(
-        &mut runtime,
-        &store,
-        0,
-        assets::NetworkIdMode::Hashed,
-        [0; 3],
-    ) else {
-        panic!("the fixture emits a beacon");
-    };
-    let frame = beam_snapshot(model.tint);
+    let tint = BlockEntityRuntime::new()
+        .beacon_tints
+        .get(assets::NetworkIdMode::Hashed, id);
+    let sections = assets::beacon::beacon_sections(1, 6, |y| {
+        if y == 2 {
+            assets::beacon::beacon_medium("minecraft:hard_red_stained_glass", tint, 0)
+        } else {
+            assets::beacon::BeaconMedium::Clear
+        }
+    });
+    assert_eq!(sections[0].tint, [1.0; 3]);
+    assert_eq!(sections[1].tint, assets::beacon::dye_tint(1));
+    let frame = beam_snapshot(BeaconModel {
+        sections: sections.into(),
+    });
     frame.validate().unwrap();
     client_ui::test_support::write_snapshot(&frame, "hardened-glass-beacon");
-    assert_eq!(model.tint, assets::banner::color_linear(1));
     let raster = client_ui::test_support::rasterize(&frame);
     assert!(
         raster

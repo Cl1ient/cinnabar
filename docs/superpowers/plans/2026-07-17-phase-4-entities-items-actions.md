@@ -1057,7 +1057,7 @@ Define request files under ignored `.local/acceptance/` and require two
 consecutive presented frames for one stable identity. The completion marker is:
 
 ```text
-RUST_MCBE_ACTOR_WITNESS_COMPLETE request_sha256=0000000000000000000000000000000000000000000000000000000000000000 session=1 dimension=0 lifetime=1 ingress=1 source_tick_kind=packet source_tick=1 completed_tick=1 pose_generation=1 draw_generation=1 item_visual=empty action_phase=idle feet_error_micros=0 consecutive=2
+CINNABAR_ACTOR_WITNESS_COMPLETE request_sha256=0000000000000000000000000000000000000000000000000000000000000000 session=1 dimension=0 lifetime=1 ingress=1 source_tick_kind=packet source_tick=1 completed_tick=1 pose_generation=1 draw_generation=1 item_visual=empty action_phase=idle feet_error_micros=0 consecutive=2
 ```
 
 Add parser failures for malformed hashes, zero identities, generation

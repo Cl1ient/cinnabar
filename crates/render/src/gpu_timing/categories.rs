@@ -30,7 +30,7 @@ pub(super) struct CategoryProfiling;
 
 /// Reads only the opt-in flag, without inspecting or recording other process settings.
 pub(super) fn requested() -> bool {
-    std::env::var_os("RUST_MCBE_GPU_CATEGORIES").is_some_and(|value| value == "1")
+    env_compat::var_os("CINNABAR_GPU_CATEGORIES").is_some_and(|value| value == "1")
 }
 
 /// Mesh, alpha-mask and skybox phases retain Bevy's complete original implementation.

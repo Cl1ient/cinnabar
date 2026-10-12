@@ -743,6 +743,16 @@ fn prepare_bind_group(
     gpu.view_buffer_id = Some(view_buffer.id());
 }
 
+/// The per-view state item queuing reads from each extracted camera.
+type ItemView = (
+    Entity,
+    &'static MainEntity,
+    &'static ExtractedView,
+    &'static bevy::render::camera::ExtractedCamera,
+    &'static Msaa,
+    Option<&'static bevy::render::camera::TemporalJitter>,
+);
+
 #[derive(SystemParam)]
 struct QueueItemParams<'w, 's> {
     pipeline_cache: Res<'w, PipelineCache>,
@@ -751,18 +761,7 @@ struct QueueItemParams<'w, 's> {
     terrain: Res<'w, TerrainItemMeshGenerations>,
     phases: ResMut<'w, ViewBinnedRenderPhases<Opaque3d>>,
     draw_functions: Res<'w, DrawFunctions<Opaque3d>>,
-    views: Query<
-        'w,
-        's,
-        (
-            Entity,
-            &'static MainEntity,
-            &'static ExtractedView,
-            &'static bevy::render::camera::ExtractedCamera,
-            &'static Msaa,
-            Option<&'static bevy::render::camera::TemporalJitter>,
-        ),
-    >,
+    views: Query<'w, 's, ItemView>,
 }
 
 fn queue_items(mut commands: Commands, mut params: QueueItemParams<'_, '_>) {

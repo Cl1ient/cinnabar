@@ -50,6 +50,7 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
             texture_width: 16,
             texture_height: 16,
             bones: vec![EntityGeometryBone {
+                locators: Box::default(),
                 name: "body".into(),
                 binding: None,
                 parent: None,

@@ -649,3 +649,167 @@ fn styling_reuses_layer_storage_and_distinguishes_damage_from_reach() {
         }
     }
 }
+
+/// A server pack that replaces only the player model still carries held items and armour.
+#[test]
+fn player_model_from_an_attachable_free_pack_keeps_held_items() {
+    let png = {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(64, 64, image::Rgba([90, 120, 200, 255]))
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        bytes.into_inner()
+    };
+    let entity = |identifier: &str, geometry: &str, item_bone: bool| -> Vec<(Box<str>, Vec<u8>)> {
+        let item_bone = if item_bone {
+            r#",{"name":"rightItem","parent":"rightArm","pivot":[-6,15,1]}"#
+        } else {
+            ""
+        };
+        vec![
+            (
+                format!("entity/{geometry}.json").into(),
+                format!(
+                    r#"{{"format_version":"1.10.0","minecraft:client_entity":{{"description":{{"identifier":"{identifier}","materials":{{"default":"entity"}},"textures":{{"default":"textures/entity/{geometry}"}},"geometry":{{"default":"geometry.{geometry}"}},"render_controllers":["controller.render.{geometry}"]}}}}}}"#
+                )
+                .into_bytes(),
+            ),
+            (
+                format!("models/entity/{geometry}.geo.json").into(),
+                format!(
+                    r#"{{"format_version":"1.12.0","minecraft:geometry":[{{"description":{{"identifier":"geometry.{geometry}","texture_width":64,"texture_height":64}},"bones":[{{"name":"body","pivot":[0,24,0],"cubes":[{{"origin":[-4,12,-2],"size":[8,12,4],"uv":[16,16]}}]}},{{"name":"rightArm","parent":"body","pivot":[-5,22,0],"cubes":[{{"origin":[-8,12,-2],"size":[4,12,4],"uv":[40,16]}}]}}{item_bone}]}}]}}"#
+                )
+                .into_bytes(),
+            ),
+            (
+                format!("render_controllers/{geometry}.json").into(),
+                format!(
+                    r#"{{"format_version":"1.8.0","render_controllers":{{"controller.render.{geometry}":{{"geometry":"Geometry.default","materials":[{{"*":"Material.default"}}],"textures":["Texture.default"]}}}}}}"#
+                )
+                .into_bytes(),
+            ),
+            (format!("textures/entity/{geometry}.png").into(), png.clone()),
+        ]
+    };
+    let compile = |files| {
+        pack_compiler::compile_actor_pack(files)
+            .unwrap()
+            .expect("pack compiles")
+    };
+    // Startup entities without the pack's bones, so only the pack's model can carry the item.
+    let startup = Arc::new(
+        assets::RuntimeEntityAssets::from_compiled(
+            compile(entity("test:startup", "startup", false)).entities,
+        )
+        .unwrap(),
+    );
+    let compiled = compile(entity("minecraft:player", "pack_player", true));
+    assert!(compiled.equipment_bindings.is_empty());
+    let pack = Arc::new(assets::SessionEntityPack {
+        assets: Arc::new(assets::RuntimeEntityAssets::from_compiled(compiled.entities).unwrap()),
+        textures: compiled.textures.into(),
+        bindings: compiled.bindings.into(),
+        equipment: None,
+    });
+    let sprite = assets::IconSprite {
+        width: 16,
+        height: 16,
+        rgba8: vec![255; 16 * 16 * 4].into(),
+    };
+    let icons = assets::RuntimeIconCatalog::decode(
+        &assets::encode_icon_catalog(
+            [1; 32],
+            &[sprite],
+            &[assets::IconEntry {
+                identifier: "minecraft:apple".into(),
+                metadata: 0,
+                sprite: 0,
+            }],
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let (mut equipment, startup_pages, _) = EquipmentRuntime::build(
+        startup,
+        None,
+        Arc::new(icons),
+        None,
+        None,
+        render_model::ActorArtworkPages::default(),
+    );
+    let resources =
+        crate::prepared_actor_artwork::session_resources(&startup_pages, Some(&pack), None);
+    let mut scene = render_scene::ActorRenderScene::default();
+    let mut ready = super::SessionGeometryReady::default();
+    super::apply_session_pack(
+        &mut scene,
+        &resources,
+        Some(&pack),
+        None,
+        &mut ready,
+        Some(&mut equipment),
+        None,
+    );
+    let binding = 0;
+    let geometry = pack.assets.rig_geometries()[binding].geometry;
+    let bones = render_model::geometry_bone_names(&pack.assets, geometry as usize).unwrap();
+    let pose: Arc<[render_model::RenderBoneTransform]> = bones
+        .iter()
+        .map(|_| render_model::RenderBoneTransform {
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            translation_scale: [0.0, 0.0, 0.0, 1.0],
+            axis_scale: render_model::UNIT_AXIS_SCALE,
+        })
+        .collect();
+    let body = render_model::ActorRigSubmission {
+        material: Default::default(),
+        culling_bounds: Default::default(),
+        input: render_model::ActorRigRenderInput {
+            identity: render_model::ActorRenderIdentity {
+                session_id: 1,
+                dimension: 0,
+                runtime_id: 42,
+                spawn_revision: 1,
+                ingress_sequence: 1,
+                source_tick: None,
+                movement_revision: 0,
+                pose_generation: 0,
+                layer: render_model::ACTOR_LAYER_BODY,
+            },
+            rig: render_model::pack_rig_id(binding as u32),
+            previous_bones: Arc::clone(&pose),
+            current_bones: pose,
+            completed_tick: 0,
+            reset_generation: 0,
+        },
+        world_from_actor: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ],
+        texture_layer: 0,
+        route: render_model::ActorRigRoute::Compiled,
+        tint: 0,
+        uv_anim: render_model::IDENTITY_UV_ANIM,
+        light: 0,
+        overlay_rgba8: 0,
+    };
+    let input = crate::presentation::equipment::ActorEquipmentInput {
+        main: Some(crate::presentation::equipment::WornItem {
+            use_facts: client_world::EffectiveItemUse::default(),
+            grip: assets::item::grip::builtin_item_grip("minecraft:apple"),
+            identifier: Arc::from("minecraft:apple"),
+            metadata: 0,
+            damage: None,
+            kind: crate::presentation::equipment::HeldKind::Sprite,
+            dye_rgb: None,
+            enchanted: false,
+        }),
+        ..Default::default()
+    };
+    assert_eq!(
+        equipment.layers_for(&body, &input, None).len(),
+        1,
+        "the pack's player model must carry the held item"
+    );
+}

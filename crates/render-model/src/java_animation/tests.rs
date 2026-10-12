@@ -619,3 +619,71 @@ fn cape_corners_land_where_java_draws_them() {
         assert!(ours.distance(java) < 1e-5, "{corner}: {ours} vs {java}");
     }
 }
+
+/// Java 1.7's swing progress at each quarter tick for swing requests on `requests` ticks: a
+/// request restarts only an idle swing, one not yet started or one past its first half; frames
+/// wrap forward from the last step to 1.
+fn java_swing_samples(requests: &[u32], ticks: u32) -> Vec<f32> {
+    const LENGTH: i32 = 6;
+    let (mut counter, mut previous, mut current) = (None::<i32>, 0.0_f32, 0.0_f32);
+    let mut samples = Vec::new();
+    for tick in 0..ticks {
+        if requests.contains(&tick) && counter.is_none_or(|c| c < 0 || c >= LENGTH / 2) {
+            counter = Some(-1);
+        }
+        counter = counter.map(|c| c + 1).filter(|c| *c < LENGTH);
+        previous = current;
+        current = counter.map_or(0.0, |c| c as f32 / LENGTH as f32);
+        let step = if current < previous {
+            current - previous + 1.0
+        } else {
+            current - previous
+        };
+        samples.extend((0..4).map(|quarter| previous + step * quarter as f32 / 4.0));
+    }
+    samples
+}
+
+/// A held sword stays blade-up through a lone swing and spam-click restarts; it never spins.
+#[test]
+fn third_person_sword_stays_upright_through_swing_restarts() {
+    let rig_pivot = Vec3::new(5.0, 22.0, 0.0);
+    let front = sprite_front_points();
+    let corner = |u: f64, v: f64| {
+        front
+            .iter()
+            .find(|(_, java)| {
+                (java.x - (1.0 - u)).abs() < 1e-6 && (java.y - (1.0 - v)).abs() < 1e-6
+            })
+            .map(|(ours, _)| *ours)
+            .unwrap()
+    };
+    // The sword icon runs from its hilt at the bottom left to its tip at the top right.
+    let (hilt, tip) = (corner(0.0, 1.0), corner(1.0, 0.0));
+    let placement = third_person_item(
+        JavaHeldItem::Tool {
+            rotate_around: false,
+            blocking: false,
+        },
+        JavaItemMesh::Sprite,
+    );
+    let lone = java_swing_samples(&[1], 10);
+    let spam = java_swing_samples(&(1..24).step_by(2).collect::<Vec<_>>(), 24);
+    for (sequence, samples) in [("lone", lone), ("10 cps", spam)] {
+        for (index, swing) in samples.into_iter().enumerate() {
+            let arm = java_biped(&JavaBipedInput {
+                swing,
+                held_right: 1,
+                ..Default::default()
+            })
+            .right_arm;
+            let (rotation, translation) = arm.rig_bone(JavaBiped::REST.right_arm, rig_pivot);
+            let world = Mat4::from_rotation_translation(rotation, translation / 16.0) * placement;
+            let blade = (world.transform_point3(tip) - world.transform_point3(hilt)).normalize();
+            assert!(
+                blade.y > 0.4,
+                "{sequence} sample {index} (swing {swing}): blade points {blade}"
+            );
+        }
+    }
+}

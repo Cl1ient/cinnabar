@@ -352,6 +352,7 @@ fn profile() -> assets::EntityGeometry {
             Vec::new()
         };
         EntityGeometryBone {
+            locators: Box::default(),
             name: name.into(),
             binding: None,
             texture_meshes: Box::new([]),

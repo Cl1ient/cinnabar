@@ -96,7 +96,7 @@ impl ActorRuntimeWitness {
     pub fn observe_main(&self, observation: ActorMainWitness) {
         if self.changed(|state| &mut state.main, 0, observation) && !cfg!(test) {
             eprintln!(
-                "RUST_MCBE_ACTOR_WITNESS stage=main local_snapshot={} local_visible={} expected_runtime_id={} visibility_runtime_id={} selected_count={} local_route={:?} frame_instances={} frame_manifest={} skin_bytes={} rejects={:?} unrigged_actors={}",
+                "CINNABAR_ACTOR_WITNESS stage=main local_snapshot={} local_visible={} expected_runtime_id={} visibility_runtime_id={} selected_count={} local_route={:?} frame_instances={} frame_manifest={} skin_bytes={} rejects={:?} unrigged_actors={}",
                 observation.local_snapshot,
                 observation.local_visible,
                 observation.expected_runtime_id,
@@ -115,7 +115,7 @@ impl ActorRuntimeWitness {
     pub fn observe_prepare(&self, observation: ActorPrepareWitness) {
         if self.changed(|state| &mut state.prepare, 1, observation) && !cfg!(test) {
             eprintln!(
-                "RUST_MCBE_ACTOR_WITNESS stage=prepare input_instances={} input_manifest={} skin_bytes={} skin_plan={} valid={} prepared_instances={} maximum_vertices={}",
+                "CINNABAR_ACTOR_WITNESS stage=prepare input_instances={} input_manifest={} skin_bytes={} skin_plan={} valid={} prepared_instances={} maximum_vertices={}",
                 observation.input_instances,
                 observation.input_manifest,
                 observation.skin_bytes,
@@ -130,7 +130,7 @@ impl ActorRuntimeWitness {
     pub fn observe_queue(&self, observation: ActorQueueWitness) {
         if self.changed(|state| &mut state.queue, 2, observation) && !cfg!(test) {
             eprintln!(
-                "RUST_MCBE_ACTOR_WITNESS stage=queue prepared_instances={} bind_group={} view_count={} queued={}",
+                "CINNABAR_ACTOR_WITNESS stage=queue prepared_instances={} bind_group={} view_count={} queued={}",
                 observation.prepared_instances,
                 observation.bind_group,
                 observation.view_count,
@@ -142,7 +142,7 @@ impl ActorRuntimeWitness {
     pub fn observe_draw(&self, observation: ActorDrawWitness) {
         if self.changed(|state| &mut state.draw, 3, observation) && !cfg!(test) {
             eprintln!(
-                "RUST_MCBE_ACTOR_WITNESS stage=draw executed={} instances={} maximum_vertices={}",
+                "CINNABAR_ACTOR_WITNESS stage=draw executed={} instances={} maximum_vertices={}",
                 observation.executed, observation.instances, observation.maximum_vertices,
             );
         }
@@ -151,7 +151,7 @@ impl ActorRuntimeWitness {
     pub fn observe_submit(&self, observation: ActorSubmitWitness) {
         if self.changed(|state| &mut state.submit, 4, observation) && !cfg!(test) {
             eprintln!(
-                "RUST_MCBE_ACTOR_WITNESS stage=submit drawn_frame={} exact={} reserved={} acknowledged={}",
+                "CINNABAR_ACTOR_WITNESS stage=submit drawn_frame={} exact={} reserved={} acknowledged={}",
                 observation.drawn_frame,
                 observation.exact,
                 observation.reserved,

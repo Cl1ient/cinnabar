@@ -16,13 +16,11 @@ import (
 // The physics seed combines shared state facts with client movement rules.
 
 const (
-	v2193PhysicsOutputPath    = "crates/assets/data/block-physics-seed-v2193.bin"
-	v2193PhysicsBREGInputPath = "crates/assets/data/block-registry-v2193.bin"
 	v2193PhysicsReservedCount = 662 - v2193EducationStateCount
 )
 
 // writeV2193PhysicsProjection binds shared physics facts to the selected block carrier.
-func writeV2193PhysicsProjection(bregPath, outputPath, shaOutputPath, manifestPath string) error {
+func writeV2193PhysicsProjectionOracle(bregPath, outputPath, shaOutputPath, manifestPath string) error {
 	if bregPath == "" || outputPath == "" {
 		return errors.New("v2193 physics projection requires a binding BREG and an output path")
 	}

@@ -187,6 +187,10 @@ fn a_still_direct_view_rebuilds_its_lists_only_for_visible_changes() {
         camera_transform(),
     );
     app.sub_app_mut(RenderApp)
+        .world_mut()
+        .resource_mut::<super::super::units::TerrainUnitBatches>()
+        .disabled = true;
+    app.sub_app_mut(RenderApp)
         .init_resource::<QueuedTerrain>()
         .add_systems(
             Render,

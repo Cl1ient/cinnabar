@@ -1,7 +1,7 @@
 function ConvertFrom-TransparentSortCommittedMarker {
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Line)
 
-    if ($Line -notmatch '^RUST_MCBE_TRANSPARENT_SORT_COMMITTED generation=(\d+) ref_count=(\d+)$') {
+    if ($Line -notmatch '^CINNABAR_TRANSPARENT_SORT_COMMITTED generation=(\d+) ref_count=(\d+)$') {
         throw "invalid transparent sort committed marker: $Line"
     }
     $generation = [uint64]0
@@ -20,7 +20,7 @@ function ConvertFrom-TransparentSortCommittedMarker {
 function ConvertFrom-TransparentWitnessCompleteMarker {
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Line)
 
-    if ($Line -notmatch '^RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE revision=(\d+) sequence=(\d+) generation=(\d+) key_count=(\d+) consecutive=(\d+)$') {
+    if ($Line -notmatch '^CINNABAR_TRANSPARENT_WITNESS_COMPLETE revision=(\d+) sequence=(\d+) generation=(\d+) key_count=(\d+) consecutive=(\d+)$') {
         throw "invalid transparent witness complete marker: $Line"
     }
     $values = [Collections.Generic.List[uint64]]::new()
@@ -330,7 +330,7 @@ function Get-ProtocolDependencyProvenanceMetadata {
 function ConvertFrom-GalleryAnchorReadyMarker {
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Line)
 
-    $pattern = '^RUST_MCBE_GALLERY_ANCHOR_READY coordinate=(-?\d+),(-?\d+),(-?\d+) rendered=true visible=(true|false) clean=true$'
+    $pattern = '^CINNABAR_GALLERY_ANCHOR_READY coordinate=(-?\d+),(-?\d+),(-?\d+) rendered=true visible=(true|false) clean=true$'
     if ($Line -notmatch $pattern) {
         throw "invalid gallery anchor ready marker: $Line"
     }
@@ -352,7 +352,7 @@ function ConvertFrom-CameraCommittedMarker {
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Line)
 
     $number = '[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
-    $pattern = "^RUST_MCBE_CAMERA_COMMITTED sequence=(\d+) position=($number),($number),($number) yaw=($number) pitch=($number)$"
+    $pattern = "^CINNABAR_CAMERA_COMMITTED sequence=(\d+) position=($number),($number),($number) yaw=($number) pitch=($number)$"
     if ($Line -notmatch $pattern) {
         throw "invalid camera committed marker: $Line"
     }
@@ -402,7 +402,7 @@ function Assert-ModelGalleryCommittedCamera {
 function ConvertFrom-ModelWitnessCompleteMarker {
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Line)
 
-    $pattern = '^RUST_MCBE_MODEL_WITNESS_COMPLETE revision=(\d+) request_sha256=([0-9a-f]{64}) sequence=(\d+) view_generation=(\d+) key_count=(\d+) model_ref_count=(\d+) manifest_count=(\d+) manifest_sha256=([0-9a-f]{64}) missing=(\d+) stale=(\d+) wrong_stream=(\d+) zero_ref=(\d+) draw_mismatch=(\d+) consecutive=(\d+)$'
+    $pattern = '^CINNABAR_MODEL_WITNESS_COMPLETE revision=(\d+) request_sha256=([0-9a-f]{64}) sequence=(\d+) view_generation=(\d+) key_count=(\d+) model_ref_count=(\d+) manifest_count=(\d+) manifest_sha256=([0-9a-f]{64}) missing=(\d+) stale=(\d+) wrong_stream=(\d+) zero_ref=(\d+) draw_mismatch=(\d+) consecutive=(\d+)$'
     if ($Line -notmatch $pattern) {
         throw "invalid model witness complete marker: $Line"
     }
@@ -487,7 +487,7 @@ function Assert-NewerTransparentSortCommit {
 function ConvertFrom-AcceptanceRuntimeMetadataMarker {
     param([Parameter(Mandatory = $true)][string]$Line)
 
-    $prefix = 'RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA='
+    $prefix = 'CINNABAR_ACCEPTANCE_RUNTIME_METADATA='
     if (-not $Line.StartsWith($prefix, [StringComparison]::Ordinal)) {
         throw 'invalid acceptance runtime metadata marker prefix'
     }
@@ -517,7 +517,7 @@ function Read-AcceptanceRuntimeMetadata {
 
     $lines = @(
         Get-Content -LiteralPath $Path |
-            Where-Object { $_.StartsWith('RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA=', [StringComparison]::Ordinal) }
+            Where-Object { $_.StartsWith('CINNABAR_ACCEPTANCE_RUNTIME_METADATA=', [StringComparison]::Ordinal) }
     )
     if ($lines.Count -ne 1) {
         throw "expected exactly one acceptance runtime metadata marker, found $($lines.Count)"
@@ -532,7 +532,7 @@ function ConvertFrom-WorldPublicationSnapshotMarker {
         [Parameter(Mandatory = $true)][ValidateSet('Fifo', 'Immediate')][string]$ExpectedPresentMode
     )
 
-    $prefix = 'RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT='
+    $prefix = 'CINNABAR_WORLD_PUBLICATION_SNAPSHOT='
     if (-not $Line.StartsWith($prefix, [StringComparison]::Ordinal)) {
         throw 'invalid world publication snapshot marker prefix'
     }
@@ -651,7 +651,7 @@ function Read-WorldPublicationSnapshots {
 
     $lines = @(
         Get-Content -LiteralPath $Path |
-            Where-Object { $_.StartsWith('RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT=', [StringComparison]::Ordinal) }
+            Where-Object { $_.StartsWith('CINNABAR_WORLD_PUBLICATION_SNAPSHOT=', [StringComparison]::Ordinal) }
     )
     if ($lines.Count -eq 0) {
         throw 'expected at least one world publication snapshot marker, found none'

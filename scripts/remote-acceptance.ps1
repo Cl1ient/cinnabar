@@ -134,12 +134,12 @@ try {
         -WorkingDirectory $ProjectRoot -StdoutPath (Join-Path $RunDirectory 'client.stdout.log') `
         -StderrPath (Join-Path $RunDirectory 'client.stderr.log')
     try {
-        $null = Wait-ProcessOutputMarker -Handle $clientHandle -Marker 'RUST_MCBE_WORLD_READY ' -TimeoutSeconds 180
+        $null = Wait-ProcessOutputMarker -Handle $clientHandle -Marker 'CINNABAR_WORLD_READY ' -TimeoutSeconds 180
     }
     catch {
         if ($Mode -cne 'Diagnostic') { throw }
         if ($clientHandle.Process.HasExited -or $coreHandle.Process.HasExited -or
-            -not $_.Exception.Message.StartsWith("timed out waiting for 'RUST_MCBE_WORLD_READY '", [StringComparison]::Ordinal)) {
+            -not $_.Exception.Message.StartsWith("timed out waiting for 'CINNABAR_WORLD_READY '", [StringComparison]::Ordinal)) {
             throw
         }
         $joinStopwatch.Stop()

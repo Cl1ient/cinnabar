@@ -150,8 +150,10 @@ fn mixed_scenes_build_static_models_once_and_preserve_every_draw_layer() {
             block: [3, 64, 0],
             light: 0.5.into(),
             kind: BlockEntityKind::Beacon(BeaconModel {
-                height: 24,
-                tint: [0.25, 0.5, 1.0],
+                sections: Arc::from([assets::beacon::BeaconBeamSection {
+                    height: 24,
+                    tint: [0.25, 0.5, 1.0],
+                }]),
             }),
         },
     ];

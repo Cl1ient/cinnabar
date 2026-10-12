@@ -17,21 +17,11 @@ pub use target::{
 
 /// Bedrock swing length in ticks, with the stronger Haste or Conduit Power taking priority.
 pub fn swing_duration(effects: MiningEffects) -> i32 {
-    // Server amplifiers are untrusted; saturate instead of overflowing.
-    let level = |amplifier: Option<i32>| {
-        amplifier
-            .filter(|value| *value >= 0)
-            .map(|value| value.saturating_add(1))
-    };
-    let haste = level(effects.haste).max(level(effects.conduit_power));
-    let duration = match (haste, level(effects.mining_fatigue)) {
-        (Some(haste), _) => actor_animation::ACTOR_SWING_TICKS.saturating_sub(haste),
-        (None, Some(fatigue)) => {
-            actor_animation::ACTOR_SWING_TICKS.saturating_add(fatigue.saturating_mul(2))
-        }
-        (None, None) => actor_animation::ACTOR_SWING_TICKS,
-    };
-    duration.max(1)
+    actor_animation::SwingEffects {
+        haste: effects.haste.max(effects.conduit_power),
+        mining_fatigue: effects.mining_fatigue,
+    }
+    .ticks()
 }
 
 /// Java 1.7 swing length in ticks; Conduit Power does not modify its animation.

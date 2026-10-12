@@ -188,8 +188,9 @@ impl ActorAnimationStore {
         }
     }
 
-    /// Restarts the arm swing whose progress feeds `variable.attack_time`.
-    pub fn start_swing(&mut self, runtime_id: u64, ticks: i32) {
+    /// Restarts the Bedrock swing behind `variable.attack_time` and the Java swing, each
+    /// unless still in the first half of its own current length.
+    pub fn start_swing(&mut self, runtime_id: u64, bedrock_ticks: i32, java_ticks: i32) {
         let Some(lifetime) = self.runtime_to_lifetime.get(&runtime_id) else {
             return;
         };
@@ -197,8 +198,8 @@ impl ActorAnimationStore {
             state.local_swing = None;
             state.java.motion.local_swing_alpha = None;
             state.motion.set_local_swing(None);
-            state.motion.start_swing(ticks);
-            state.java.start_swing(ticks);
+            state.motion.start_swing(bedrock_ticks);
+            state.java.start_swing(java_ticks);
         }
     }
 
@@ -377,6 +378,7 @@ impl ActorAnimationStore {
                 },
                 &state.variables,
                 state.completed_tick.saturating_sub(state.lifetime_epoch),
+                state.completed_tick.saturating_sub(state.animation_epoch),
             )
             .with_input(state.history.back().copied())
             .with_item_context(Some(&state.query_context), state.complete_spear_variables),

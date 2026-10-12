@@ -153,7 +153,7 @@ fn rig_snapshot_retains_java_equip_and_native_wing_inputs() {
 #[test]
 fn published_swing_progress_tracks_fatigue_expiry_in_both_modes() {
     let (actor, mut store) = fixture();
-    store.start_swing(actor.runtime_id, 8);
+    store.start_swing(actor.runtime_id, 8, 8);
     for expected in [0.0, 1.0 / 8.0, 2.0 / 8.0] {
         advance(
             &actor,
@@ -187,7 +187,7 @@ fn published_swing_progress_tracks_fatigue_expiry_in_both_modes() {
 fn published_swing_progress_matches_no_effects_haste_ii_and_fatigue_i() {
     for duration in [6, 4, 8] {
         let (actor, mut store) = fixture();
-        store.start_swing(actor.runtime_id, duration);
+        store.start_swing(actor.runtime_id, duration, duration);
         for counter in 0..=duration + 1 {
             advance(
                 &actor,
@@ -224,7 +224,7 @@ fn published_swing_progress_matches_no_effects_haste_ii_and_fatigue_i() {
 #[test]
 fn published_swing_progress_tracks_haste_expiry_in_both_modes() {
     let (actor, mut store) = fixture();
-    store.start_swing(actor.runtime_id, 4);
+    store.start_swing(actor.runtime_id, 4, 4);
     for _ in 0..4 {
         advance(
             &actor,

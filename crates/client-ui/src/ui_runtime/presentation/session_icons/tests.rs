@@ -253,6 +253,106 @@ fn a_large_icon_set_packs_off_the_frame() {
 }
 
 #[test]
+fn a_wide_short_hd_icon_packs_on_the_worker() {
+    let width = 2048;
+    let height = 16;
+    let icons = Arc::new(SessionIcons {
+        icons: vec![SessionIcon {
+            identifier: Arc::from("test:wide_hd"),
+            metadata: 0,
+            width,
+            height,
+            rgba8: vec![73; (width * height * 4) as usize].into(),
+        }],
+        ..Default::default()
+    });
+    assert!(packed_texels(&icons) < MAX_INLINE_PACK_TEXELS);
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    let packs = PACKS.with(std::cell::Cell::get);
+    observe(&mut presentation, Some(&icons));
+    assert_eq!(
+        PACKS.with(std::cell::Cell::get),
+        packs,
+        "no page is packed on the frame"
+    );
+    install_landed(&mut presentation, &icons);
+    assert_eq!(PACKS.with(std::cell::Cell::get), packs);
+    let icon = presentation.item_icon("test:wide_hd", 0).unwrap();
+    let page = &presentation.textures.pages()[usize::from(icon.page)];
+    let side = (width + GUTTER * 2).next_power_of_two();
+    assert_eq!(page.dimensions(), [side; 2]);
+    assert_eq!(
+        [
+            u32::from(icon.uv[2] - icon.uv[0]),
+            u32::from(icon.uv[3] - icon.uv[1])
+        ],
+        [width, height]
+    );
+    let pixel = ((u32::from(icon.uv[1]) * side + u32::from(icon.uv[0])) * 4) as usize;
+    assert_eq!(&page.pixels()[pixel..pixel + 4], &[73; 4]);
+    let generation = presentation.session_icon_generation();
+    let textures = Arc::clone(&presentation.textures);
+    observe(&mut presentation, Some(&icons));
+    assert_eq!(presentation.session_icon_generation(), generation);
+    assert!(Arc::ptr_eq(&presentation.textures, &textures));
+    assert_eq!(PACKS.with(std::cell::Cell::get), packs);
+}
+
+#[test]
+fn shelf_growth_beyond_the_inline_page_packs_on_the_worker() {
+    let icons = Arc::new(SessionIcons {
+        icons: (0..200).map(sprite).collect(),
+        ..Default::default()
+    });
+    assert!(packed_texels(&icons) <= MAX_INLINE_PACK_TEXELS);
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    let packs = PACKS.with(std::cell::Cell::get);
+    install_landed(&mut presentation, &icons);
+    assert_eq!(
+        PACKS.with(std::cell::Cell::get),
+        packs,
+        "page growth runs off the frame"
+    );
+    assert_eq!(
+        presentation
+            .session_icons
+            .page
+            .as_ref()
+            .unwrap()
+            .dimensions(),
+        [MIN_PAGE_SIDE * 2; 2]
+    );
+    assert_eq!(
+        presentation.session_icons.refs["test:variant"].len(),
+        icons.icons.len()
+    );
+}
+
+#[test]
+fn a_small_icon_still_packs_inline_within_the_allocated_page_limit() {
+    let icons = Arc::new(SessionIcons {
+        icons: vec![sprite(0)],
+        ..Default::default()
+    });
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    let packs = PACKS.with(std::cell::Cell::get);
+    observe(&mut presentation, Some(&icons));
+    assert_eq!(PACKS.with(std::cell::Cell::get), packs + 1);
+    assert_eq!(
+        presentation
+            .session_icons
+            .page
+            .as_ref()
+            .unwrap()
+            .dimensions(),
+        [MIN_PAGE_SIDE; 2]
+    );
+}
+
+#[test]
 fn review_duplicate_icon_selection_precedes_height_sorting() {
     let first = sprite(0);
     let mut second = sprite(0);

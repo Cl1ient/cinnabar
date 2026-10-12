@@ -65,7 +65,7 @@ fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces
     }))
     .unwrap();
     let declarations = format!(
-        "import render::enhanced::pbr::{{MaterialBasis,material_basis,material_normal,material_specular_aa,blend_material_sample,material_relief_weight,material_relief_ray,PBR_REF_LABPBR,authored_texture_slot,authored_layer}};\n@group(0) @binding({}) var enhanced_normal_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_normal_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_sampler:sampler;\n@group(0) @binding({}) var<storage,read> enhanced_texture_refs:array<u32>;\n",
+        "import render::enhanced::pbr::{{MaterialBasis,material_basis,material_normal,material_specular_aa,blend_material_sample,material_relief_weight,material_relief_ray,PBR_REF_LABPBR,PBR_REF_HEIGHT,AUTHORED_REFERENCE_BASE_WORDS,AUTHORED_REFERENCE_OVERRIDE_WORDS,authored_texture_slot,authored_layer}};\n@group(0) @binding({}) var enhanced_normal_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_normal_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_sampler:sampler;\n@group(0) @binding({}) var<storage,read> enhanced_texture_refs:array<u32>;\n",
         crate::material_shader::ENHANCED_NORMAL_TEXTURE_BINDINGS[0],
         crate::material_shader::ENHANCED_NORMAL_TEXTURE_BINDINGS[1],
         crate::material_shader::ENHANCED_MER_TEXTURE_BINDINGS[0],
@@ -75,17 +75,20 @@ fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces
     );
     let source = declarations
         + r#"
+// ENHANCED_PBR_LOOKUP
 // ENHANCED_PBR_SAMPLING
 @group(1) @binding(0) var<storage,read_write> results:array<vec4<f32>,5>;
 @compute @workgroup_size(1) fn regression(){
     let basis=material_basis(vec3(0.0,0.0,1.0),vec3(1.0,0.0,0.0),vec3(0.0,1.0,0.0),vec2(1.0,0.0),vec2(0.0,1.0));
     let view=normalize(vec3(1.0,0.0,1.0));let dx=vec2(0.001,0.0);let dy=vec2(0.0,0.001);let uv=vec2(0.5);
-    results[0]=vec4(parallax_material_uv(0u,uv,dx,dy,view,basis,2.0,true),parallax_material_uv(1u,uv,dx,dy,view,basis,2.0,true));
-    results[1]=vec4(parallax_material_uv(0u,uv,dx,dy,view,basis,2.0,false),parallax_material_uv(0u,uv,dx,dy,view,basis,30.0,true));
-    results[2]=vec4(parallax_direct_visibility(0u,uv,dx,dy,view,basis,2.0,true),
-        parallax_direct_visibility(0u,uv,dx,dy,-view,basis,2.0,true),1.0,1.0);
-    results[3]=sample_pbr_texture(false,2u,vec2(0.49,0.5),vec2(0.001,0.0),vec2(0.0,0.001));
-    results[4]=sample_pbr_texture(false,2u,vec2(0.51,0.5),vec2(0.001,0.0),vec2(0.0,0.001));
+    results[0]=vec4(parallax_material_uv(authored_material_ref(0u,0u),uv,dx,dy,view,basis,2.0,true),parallax_material_uv(authored_material_ref(0u,1u),uv,dx,dy,view,basis,2.0,true));
+    results[1]=vec4(parallax_material_uv(authored_material_ref(0u,0u),uv,dx,dy,view,basis,2.0,false),parallax_material_uv(authored_material_ref(0u,0u),uv,dx,dy,view,basis,30.0,true));
+    results[2]=vec4(parallax_direct_visibility(authored_material_ref(0u,0u),uv,dx,dy,view,basis,2.0,true),
+        parallax_direct_visibility(authored_material_ref(0u,0u),uv,dx,dy,-view,basis,2.0,true),
+        select(0.0,1.0,authored_material_ref(1u,0u)==0u),
+        select(0.0,1.0,authored_material_ref(0u,0x40000000u)==PBR_REF_HEIGHT));
+    results[3]=sample_pbr_texture(false,authored_material_ref(0u,2u),vec2(0.49,0.5),vec2(0.001,0.0),vec2(0.0,0.001));
+    results[4]=sample_pbr_texture(false,authored_material_ref(0u,2u),vec2(0.51,0.5),vec2(0.001,0.0),vec2(0.0,0.001));
 }
 "#;
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -160,7 +163,14 @@ fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces
     let sampler = device.create_sampler(&crate::material_shader::pbr_sampler_descriptor());
     let refs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: None,
-        contents: bytemuck::cast_slice(&[assets::PBR_REF_HEIGHT, 0u32, assets::PBR_REF_LABPBR]),
+        contents: bytemuck::cast_slice(&render_scene::EnhancedTextureAssets::material_references(
+            std::collections::BTreeMap::from([
+                ((0, 0), assets::PBR_REF_HEIGHT),
+                ((0, 1), 0),
+                ((0, 2), assets::PBR_REF_LABPBR),
+                ((1, 0), 0),
+            ]),
+        )),
         usage: wgpu::BufferUsages::STORAGE,
     });
     let mut entries = Vec::new();

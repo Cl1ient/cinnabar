@@ -95,8 +95,8 @@ pub struct PbrPack {
     group: Option<String>,
     normal_format: PbrNormalFormat,
     color_style: PbrColorStyle,
-    terrain_index: Result<BTreeMap<String, String>, String>,
-    terrain_aliases: BTreeMap<String, Vec<String>>,
+    terrain_index: Result<BTreeMap<String, sources::terrain::TerrainSource>, String>,
+    terrain_aliases: BTreeMap<String, Vec<sources::terrain::TerrainSource>>,
     prefer_complete_material: bool,
 }
 
@@ -183,8 +183,17 @@ impl PbrPack {
         self
     }
 
-    /// Conflicting overrides cannot share one compiled texture reference.
+    /// Returns the defining catalog path when its alias has one unambiguous source.
     pub fn terrain_path(&self, alias: &str) -> Result<Option<&str>, String> {
+        self.terrain_source(alias)
+            .map(|source| source.map(|source| source.path.as_str()))
+    }
+
+    /// Keeps the defining path and resolved tint together while checking alias conflicts.
+    fn terrain_source(
+        &self,
+        alias: &str,
+    ) -> Result<Option<&sources::terrain::TerrainSource>, String> {
         self.terrain_index.as_ref().map_err(Clone::clone)?;
         match self.terrain_aliases.get(alias).map(Vec::as_slice) {
             None | Some([]) => Ok(None),
@@ -194,6 +203,14 @@ impl PbrPack {
                 self.root.display(),
             )),
         }
+    }
+
+    /// Returns a catalog entry by its terrain key before any image aliases are collapsed.
+    fn terrain_key_source(
+        &self,
+        key: &str,
+    ) -> Result<Option<&sources::terrain::TerrainSource>, String> {
+        Ok(self.terrain_index.as_ref().map_err(Clone::clone)?.get(key))
     }
 
     #[must_use]
@@ -295,7 +312,16 @@ impl PbrTexture {
 
 /// Pack priority is first-to-last; a Bedrock texture set never borrows another pack's images.
 pub fn load_pbr_texture(packs: &[PbrPack], alias: &str) -> Result<Option<PbrTexture>, String> {
-    sources::load(packs, alias)
+    sources::load(packs, alias, None)
+}
+
+/// Resolves a terrain key in each pack, retaining its image alias when no override is declared.
+pub fn load_pbr_texture_for_key(
+    packs: &[PbrPack],
+    key: &str,
+    alias: &str,
+) -> Result<Option<PbrTexture>, String> {
+    sources::load(packs, alias, Some(key))
 }
 
 #[cfg(test)]

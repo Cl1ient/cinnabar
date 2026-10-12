@@ -563,7 +563,11 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
             },
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_TEXTURE_REF_BINDING,
-                visibility: ShaderStages::FRAGMENT,
+                visibility: if render_model::ENHANCED_RENDERING_ENABLED {
+                    ShaderStages::VERTEX
+                } else {
+                    ShaderStages::FRAGMENT
+                },
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,

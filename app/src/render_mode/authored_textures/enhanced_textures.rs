@@ -4,7 +4,9 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use assets::{MaterialKeys, NO_ANIMATION, RuntimeAssets, TextureArray, TextureMip, TextureRef};
 use image::{ImageBuffer, Rgba};
-use pack_compiler::pbr::{PbrMipLayer, PbrPack, PbrSurface, build_pbr_mips, load_pbr_texture};
+use pack_compiler::pbr::{
+    PbrMipLayer, PbrPack, PbrSurface, build_pbr_mips, load_pbr_texture_for_key,
+};
 
 mod audit;
 mod cache;
@@ -21,6 +23,7 @@ const LOW_PBR_TILE_SIZE: u32 = assets::TILE_SIZE * 2;
 
 #[derive(Clone, Copy)]
 struct Source {
+    material: u32,
     texture: u32,
     frame: usize,
     count: usize,
@@ -28,8 +31,12 @@ struct Source {
     overlay_mask: bool,
 }
 
-fn sources(runtime: &RuntimeAssets, keys: &MaterialKeys) -> BTreeMap<String, Vec<Source>> {
-    let mut references = BTreeMap::<u32, (String, Source)>::new();
+/// Keeps every alias and material owner until its authored image has been resolved.
+fn sources(
+    runtime: &RuntimeAssets,
+    keys: &MaterialKeys,
+) -> BTreeMap<(String, String), Vec<Source>> {
+    let mut references = BTreeMap::<(String, String, u32, u32), Source>::new();
     for (key, alias) in keys.aliases() {
         for &id in keys.materials(key) {
             let Some(material) = runtime.materials().get(id as usize) else {
@@ -42,22 +49,18 @@ fn sources(runtime: &RuntimeAssets, keys: &MaterialKeys) -> BTreeMap<String, Vec
                 .flatten();
             let count = animation.map_or(1, |animation| animation.frame_count as usize);
             references
-                .entry(material.texture.raw())
-                .and_modify(|(_, source)| {
+                .entry((key.to_owned(), alias.to_owned(), id, material.texture.raw()))
+                .and_modify(|source| {
                     source.cutout |= cutout;
                     source.overlay_mask |= overlay_mask;
                 })
-                .or_insert_with(|| {
-                    (
-                        alias.to_owned(),
-                        Source {
-                            texture: material.texture.raw(),
-                            frame: 0,
-                            count,
-                            cutout,
-                            overlay_mask,
-                        },
-                    )
+                .or_insert_with(|| Source {
+                    material: id,
+                    texture: material.texture.raw(),
+                    frame: 0,
+                    count,
+                    cutout,
+                    overlay_mask,
                 });
             if let Some(animation) = animation {
                 let start = animation.frame_start as usize;
@@ -70,8 +73,8 @@ fn sources(runtime: &RuntimeAssets, keys: &MaterialKeys) -> BTreeMap<String, Vec
                     .enumerate()
                 {
                     references
-                        .entry(frame.raw())
-                        .and_modify(|(_, source)| {
+                        .entry((key.to_owned(), alias.to_owned(), id, frame.raw()))
+                        .and_modify(|source| {
                             source.cutout |= cutout;
                             source.overlay_mask |= overlay_mask;
                             if source.count == 1 {
@@ -79,25 +82,21 @@ fn sources(runtime: &RuntimeAssets, keys: &MaterialKeys) -> BTreeMap<String, Vec
                                 source.count = count;
                             }
                         })
-                        .or_insert_with(|| {
-                            (
-                                alias.to_owned(),
-                                Source {
-                                    texture: frame.raw(),
-                                    frame: index,
-                                    count,
-                                    cutout,
-                                    overlay_mask,
-                                },
-                            )
+                        .or_insert_with(|| Source {
+                            material: id,
+                            texture: frame.raw(),
+                            frame: index,
+                            count,
+                            cutout,
+                            overlay_mask,
                         });
                 }
             }
         }
     }
-    let mut groups = BTreeMap::<String, Vec<Source>>::new();
-    for (_, (alias, source)) in references {
-        groups.entry(alias).or_default().push(source);
+    let mut groups = BTreeMap::<(String, String), Vec<Source>>::new();
+    for ((key, alias, _, _), source) in references {
+        groups.entry((key, alias)).or_default().push(source);
     }
     groups
 }
@@ -156,7 +155,7 @@ fn fallback(size: u32) -> PbrMipLayer {
 }
 
 fn load(
-    groups: BTreeMap<String, Vec<Source>>,
+    groups: BTreeMap<(String, String), Vec<Source>>,
     packs: &[PbrPack],
 ) -> (Option<cache::Payload>, Vec<audit::Alias>) {
     let pages = || {
@@ -168,11 +167,11 @@ fn load(
     let mut colors = pages();
     let mut normals = pages();
     let mut materials = pages();
-    let mut references = vec![REF_FALLBACK; assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS];
+    let mut references = BTreeMap::new();
     let mut audit_aliases = Vec::with_capacity(groups.len());
-    for (alias, sources) in groups {
-        let mut audit_alias = audit::Alias::new(alias.clone(), sources.len());
-        let texture = match load_pbr_texture(packs, &alias) {
+    for ((key, alias), sources) in groups {
+        let mut audit_alias = audit::Alias::new(format!("{key} ({alias})"), sources.len());
+        let texture = match load_pbr_texture_for_key(packs, &key, &alias) {
             Ok(Some(texture)) => texture,
             Ok(None) => {
                 audit_alias.missing = true;
@@ -230,8 +229,8 @@ fn load(
                 completed.insert(key, reference);
                 reference
             };
-            if let Some(slot) = reference_slot(source.texture) {
-                references[slot] = encoded;
+            if reference_slot(source.texture).is_some() {
+                references.insert((source.material, source.texture), encoded);
                 audit_alias.apply_reference(encoded);
             } else {
                 audit_alias.fallback = true;
@@ -256,7 +255,7 @@ fn load(
             color: colors.map(Page::finish),
             normal: normals.map(Page::finish),
             material: materials.map(Page::finish),
-            references: references.into_boxed_slice(),
+            references: render_scene::EnhancedTextureAssets::material_references(references),
         }),
         audit_aliases,
     )
@@ -294,17 +293,13 @@ pub(crate) fn load_optional_enhanced_textures(
         &fingerprint.unwrap_or([0; 32]),
         aliases,
         payload.as_ref().map_or(0, |payload| {
-            payload
-                .references
-                .iter()
-                .filter(|&&reference| reference != REF_FALLBACK)
+            render_scene::EnhancedTextureAssets::reference_values(&payload.references)
+                .filter(|&reference| reference != REF_FALLBACK)
                 .count()
         }),
         payload.as_ref().map_or(0, |payload| {
-            payload
-                .references
-                .iter()
-                .filter(|&&reference| reference != REF_FALLBACK)
+            render_scene::EnhancedTextureAssets::reference_values(&payload.references)
+                .filter(|&reference| reference != REF_FALLBACK)
                 .map(|reference| (reference >> 31, reference & AUTHORED_LAYER_MASK))
                 .collect::<std::collections::BTreeSet<_>>()
                 .len() as u32
@@ -326,6 +321,127 @@ pub(crate) fn load_optional_enhanced_textures(
 mod tests {
     use super::*;
 
+    /// Creates two distinct materials that share one carrier image.
+    fn shared_carrier() -> (RuntimeAssets, MaterialKeys) {
+        let base = RuntimeAssets::diagnostic();
+        let material = assets::Material {
+            texture: TextureRef::new(1, 0).unwrap(),
+            ..base.material(0)
+        };
+        let runtime = base
+            .with_block_overlay(
+                base.visual_count() as u32,
+                &assets::BlockOverlay {
+                    materials: vec![material; 2],
+                    texture: Some(base.texture_array().clone()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let keys = MaterialKeys::from_entries([(1, "cauldron_inner"), (2, "hopper_inside")])
+            .with_aliases([
+                ("cauldron_inner", "textures/blocks/cauldron_inner"),
+                ("hopper_inside", "textures/blocks/hopper_inside"),
+            ]);
+        (runtime, keys)
+    }
+
+    /// Reads an authored layer's first albedo texel through the production reference lookup.
+    fn albedo(
+        maps: &render_scene::EnhancedTextureAssets,
+        runtime: &RuntimeAssets,
+        id: u32,
+    ) -> Option<[u8; 4]> {
+        let reference = maps.material_reference(id, runtime.material(id).texture);
+        if reference == REF_FALLBACK {
+            return None;
+        }
+        let page = &maps.color_pages[(reference >> 31) as usize];
+        let mip = &page.mips[0];
+        let start =
+            (reference & AUTHORED_LAYER_MASK) as usize * mip.size as usize * mip.size as usize * 4;
+        Some(mip.rgba8[start..start + 4].try_into().unwrap())
+    }
+
+    #[test]
+    fn a_pack_supplying_only_the_second_shared_alias_is_used() {
+        let (runtime, keys) = shared_carrier();
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("textures/blocks")).unwrap();
+        ImageBuffer::from_pixel(2, 2, Rgba([20u8, 80, 140, 255]))
+            .save(root.path().join("textures/blocks/hopper_inside.png"))
+            .unwrap();
+        let pack = PbrPack::new(root.path(), None).with_terrain_aliases(keys.aliases());
+        let (payload, _) = load(sources(&runtime, &keys), &[pack]);
+        let maps = payload.unwrap().into_assets().unwrap();
+        assert_eq!(albedo(&maps, &runtime, 2), Some([20, 80, 140, 255]));
+        assert_eq!(albedo(&maps, &runtime, 1), None);
+    }
+
+    #[test]
+    fn distinct_authored_aliases_split_a_shared_carrier_reference() {
+        let (runtime, keys) = shared_carrier();
+        assert_eq!(runtime.material(1).texture, runtime.material(2).texture);
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("textures/blocks")).unwrap();
+        for (alias, pixel) in [
+            ("cauldron_inner", [20u8, 80, 140, 255]),
+            ("hopper_inside", [140, 80, 20, 255]),
+        ] {
+            ImageBuffer::from_pixel(2, 2, Rgba(pixel))
+                .save(root.path().join(format!("textures/blocks/{alias}.png")))
+                .unwrap();
+        }
+        let pack = PbrPack::new(root.path(), None).with_terrain_aliases(keys.aliases());
+        let (payload, _) = load(sources(&runtime, &keys), &[pack]);
+        let maps = payload.unwrap().into_assets().unwrap();
+        assert_eq!(albedo(&maps, &runtime, 1), Some([20, 80, 140, 255]));
+        assert_eq!(albedo(&maps, &runtime, 2), Some([140, 80, 20, 255]));
+        assert_ne!(
+            maps.material_reference(1, runtime.material(1).texture),
+            maps.material_reference(2, runtime.material(2).texture)
+        );
+        assert_eq!(
+            maps.material_reference(2, TextureRef::DIAGNOSTIC),
+            REF_FALLBACK
+        );
+        assert_eq!(maps.authored_layer_count(), 2);
+    }
+
+    #[test]
+    fn terrain_keys_with_one_image_alias_keep_distinct_pack_overrides() {
+        let (runtime, keys) = shared_carrier();
+        let keys = keys.with_aliases([
+            ("cauldron_inner", "textures/blocks/shared"),
+            ("hopper_inside", "textures/blocks/shared"),
+        ]);
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("textures/blocks")).unwrap();
+        for (alias, pixel) in [
+            ("cauldron", [20u8, 80, 140, 255]),
+            ("hopper", [140, 80, 20, 255]),
+        ] {
+            ImageBuffer::from_pixel(2, 2, Rgba(pixel))
+                .save(root.path().join(format!("textures/blocks/{alias}.png")))
+                .unwrap();
+        }
+        std::fs::write(
+            root.path().join("textures/terrain_texture.json"),
+            br#"{
+            "texture_data":{
+                "cauldron_inner":{"textures":"textures/blocks/cauldron"},
+                "hopper_inside":{"textures":"textures/blocks/hopper"}
+            }
+        }"#,
+        )
+        .unwrap();
+        let pack = PbrPack::new(root.path(), None).with_terrain_aliases(keys.aliases());
+        let (payload, _) = load(sources(&runtime, &keys), &[pack]);
+        let maps = payload.unwrap().into_assets().unwrap();
+        assert_eq!(albedo(&maps, &runtime, 1), Some([20, 80, 140, 255]));
+        assert_eq!(albedo(&maps, &runtime, 2), Some([140, 80, 20, 255]));
+    }
+
     #[test]
     fn catalog_references_are_sparse_and_keep_server_texture_slots_on_fallback() {
         let runtime = RuntimeAssets::diagnostic();
@@ -333,7 +449,7 @@ mod tests {
             .with_aliases([("stone", "textures/blocks/stone")]);
         let groups = sources(&runtime, &keys);
         assert_eq!(groups.len(), 1);
-        let matched = &groups["textures/blocks/stone"];
+        let matched = &groups[&("stone".to_owned(), "textures/blocks/stone".to_owned())];
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].texture, runtime.materials()[0].texture.raw());
         assert_eq!(matched[0].frame, 0);

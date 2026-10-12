@@ -336,7 +336,8 @@ const MIP_FIXTURE: &str = r#"
     let layer = select(0u, 1u, position.x >= 128.0);
     // A 4x4 base and .5 gradients choose mip1. Native point filtering selects
     // its opaque texel; the carried chain retains its authored alpha strength.
-    let sampled = sample_material_texture_ref(layer, vec2(.35,.25), vec2(.5,0.0), vec2(0.0,.5), NATIVE_LEAF_COLOUR);
+    var input: VertexOutput;
+    let sampled = sample_material_texture_ref(input, layer, vec2(.35,.25), vec2(.5,0.0), vec2(0.0,.5), NATIVE_LEAF_COLOUR);
     return vec4(sampled.aaa, 1.0);
 }
 "#;
@@ -353,8 +354,9 @@ struct FilterCase { refs_flags: vec4<u32>, uv_grad_blend: vec4<f32>, }
     let witness = filter_cases[index];
     let dx = vec2(witness.uv_grad_blend.z, 0.0);
     let dy = vec2(0.0, witness.uv_grad_blend.z);
-    let current = sample_material_texture_ref(witness.refs_flags.x, witness.uv_grad_blend.xy, dx, dy, witness.refs_flags.z);
-    let next = sample_material_texture_ref(witness.refs_flags.y, witness.uv_grad_blend.xy, dx, dy, witness.refs_flags.z);
+    var input: VertexOutput;
+    let current = sample_material_texture_ref(input, witness.refs_flags.x, witness.uv_grad_blend.xy, dx, dy, witness.refs_flags.z);
+    let next = sample_material_texture_ref(input, witness.refs_flags.y, witness.uv_grad_blend.xy, dx, dy, witness.refs_flags.z);
     let sampled = mix(current, next, witness.uv_grad_blend.w);
     if (material_uses_native_leaf_colour(witness.refs_flags.z)) {
         return vec4(native_leaf_colour(sampled.rgb, vec3(1.0), 1.0, vec3(1.0), vec3(0.0), 0.0), 1.0);

@@ -178,13 +178,16 @@ fn enhanced_models_receive_the_same_flat_biome_tint_as_vanilla() {
     }
 }
 
-/// Allows the output buffer in addition to the renderer's terrain storage buffers.
+/// Allows the output and authored lookup buffers even in a build without Enhanced enabled.
 fn fixture_gpu(name: &str) -> Option<Gpu> {
+    let authored_lookup = u32::from(!render_model::ENHANCED_RENDERING_ENABLED);
     Gpu::for_fixture_with_limits(
         name,
         wgpu::Features::empty(),
         wgpu::Limits {
-            max_storage_buffers_per_shader_stage: render::required_vertex_storage_buffers() + 1,
+            max_storage_buffers_per_shader_stage: render::required_vertex_storage_buffers()
+                + authored_lookup
+                + 1,
             ..Default::default()
         },
     )
@@ -363,7 +366,15 @@ fn read_vertices(
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
+    let authored_refs = gpu.words(
+        &vec![u32::MAX; render_scene::EnhancedTextureAssets::REFERENCE_BASE_WORDS],
+        storage,
+    );
     let all_bindings = [
+        (
+            crate::material_shader::ENHANCED_TEXTURE_REF_BINDING,
+            authored_refs.as_entire_binding(),
+        ),
         (0, view.as_entire_binding()),
         (2, origins.as_entire_binding()),
         (3, materials.as_entire_binding()),

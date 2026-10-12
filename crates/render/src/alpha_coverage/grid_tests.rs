@@ -160,16 +160,21 @@ fn grid_raster(gpu: &Gpu, model: bool, enhanced: bool, samples: u32) -> Vec<u8> 
     let mut source = crate::shader_source::standalone(production, definitions);
     let (sample, footprint, threshold) = if model {
         (
-            "var input: VertexOutput; input.uv = uv; input.visibility.x = select(1u, 1u | MODEL_BOUNDED_TILE, c.w != 0u); let sampled = sample_model_ref(input, c.x, dx, dy);",
+            "input.visibility.x = select(1u, 1u | MODEL_BOUNDED_TILE, c.w != 0u); let sampled = sample_model_ref(input, c.x, dx, dy);",
             "model_alpha_footprint(c.x, uv, dx, dy, sampled)",
             "MODEL_ALPHA_THRESHOLD",
         )
     } else {
         (
-            "let sampled = sample_material_texture_ref(c.x, uv, dx, dy, c.w);",
+            "let sampled = sample_material_texture_ref(input, c.x, uv, dx, dy, c.w);",
             "cube_alpha_footprint(c.x, uv, dx, dy, sampled, c.w)",
             "TERRAIN_ALPHA_THRESHOLD",
         )
+    };
+    let authored = if enhanced {
+        "input.authored_refs = vec2(authored_material_ref(0u, c.x));"
+    } else {
+        ""
     };
     let output = if samples == 1 {
         format!("if (sampled.a < {threshold}) {{ discard; }} return vec4(sampled.rgb, 1.0);")
@@ -189,6 +194,9 @@ fn grid_raster(gpu: &Gpu, model: bool, enhanced: bool, samples: u32) -> Vec<u8> 
     let uv = vec2(bitcast<f32>(c.y), 0.125);
     let dx = vec2(bitcast<f32>(c.z), 0.0);
     let dy = vec2(0.0);
+    var input: VertexOutput;
+    input.uv = uv; input.current_texture = c.x; input.next_texture = c.x;
+    {authored}
     {sample}
     {output}
 }}

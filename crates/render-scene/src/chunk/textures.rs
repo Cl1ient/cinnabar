@@ -8,7 +8,8 @@ use {
 };
 
 /// Authored Enhanced texture layers. The arrays are sparse: `texture_refs`
-/// maps the normal 16x16 atlas references to layers in these optional pages.
+/// maps carrier references to authored layers, with sorted material-specific overrides
+/// when deduplicated carrier images need different authored surfaces.
 /// Missing entries keep the generated material fallback, so a pack can ship
 /// PBR data for only the blocks it actually authors.
 #[derive(Clone, Debug)]
@@ -19,9 +20,36 @@ pub struct EnhancedTextureAssets {
     pub texture_refs: Box<[u32]>,
 }
 
+#[cfg(test)]
+mod authored_reference_tests {
+    use super::*;
+
+    #[test]
+    fn malformed_override_keys_cannot_enter_the_gpu_lookup_table() {
+        let entries = std::collections::BTreeMap::from([((1, 0), 0), ((2, 0), 1)]);
+        let mut words = EnhancedTextureAssets::material_references(entries).into_vec();
+        assert!(EnhancedTextureAssets::references_are_valid(&words));
+        words.pop();
+        assert!(!EnhancedTextureAssets::references_are_valid(&words));
+        words.push(1);
+        let start = EnhancedTextureAssets::REFERENCE_BASE_WORDS;
+        words[start + EnhancedTextureAssets::REFERENCE_OVERRIDE_WORDS] = 1;
+        assert!(
+            !EnhancedTextureAssets::references_are_valid(&words),
+            "duplicate keys are ambiguous"
+        );
+        words[start + EnhancedTextureAssets::REFERENCE_OVERRIDE_WORDS] = 2;
+        words[start + 1] = 1 << 30;
+        assert!(
+            !EnhancedTextureAssets::references_are_valid(&words),
+            "keys contain only carrier bits"
+        );
+    }
+}
+
 impl EnhancedTextureAssets {
-    /// Creates a sparse authored set. `texture_refs` is indexed by the packed
-    /// page/layer (page * 2048 + layer), with `u32::MAX` selecting fallback.
+    /// Validates carrier slots followed by sorted material/frame overrides.
+    /// `u32::MAX` selects the carrier fallback.
     #[must_use]
     pub fn new(
         color_pages: [TextureArray; 2],
@@ -29,7 +57,7 @@ impl EnhancedTextureAssets {
         mer_pages: [TextureArray; 2],
         texture_refs: Box<[u32]>,
     ) -> Option<Self> {
-        if texture_refs.len() != assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS
+        if !Self::references_are_valid(&texture_refs)
             || color_pages
                 .iter()
                 .zip(normal_pages.iter())
@@ -37,12 +65,12 @@ impl EnhancedTextureAssets {
                 .any(|((color, normal), mer)| {
                     color.layers != normal.layers || color.layers != mer.layers
                 })
-            || texture_refs.iter().any(|&texture_ref| {
+            || Self::reference_values(&texture_refs).any(|texture_ref| {
                 if texture_ref == u32::MAX {
                     return false;
                 }
                 let page = (texture_ref >> 31) as usize;
-                let layer = (texture_ref & 0x7ff) as usize;
+                let layer = (texture_ref & (assets::PBR_REF_COLOR - 1)) as usize;
                 page >= assets::MAX_TEXTURE_PAGES || layer >= color_pages[page].layers as usize
             })
         {
@@ -56,15 +84,87 @@ impl EnhancedTextureAssets {
         })
     }
 
+    /// Number of carrier slots before the optional material override triples.
+    pub const REFERENCE_BASE_WORDS: usize = assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS;
+    /// Each sorted override stores material id, carrier reference, and authored reference.
+    pub const REFERENCE_OVERRIDE_WORDS: usize = 3;
+
+    /// Encodes material-owned references while leaving unrelated carrier slots on fallback.
+    pub fn material_references(entries: std::collections::BTreeMap<(u32, u32), u32>) -> Box<[u32]> {
+        let mut words = vec![u32::MAX; Self::REFERENCE_BASE_WORDS];
+        words.extend(
+            entries
+                .into_iter()
+                .flat_map(|((material, texture), authored)| [material, texture, authored]),
+        );
+        words.into_boxed_slice()
+    }
+
+    /// Iterates authored values without treating override keys as texture references.
+    pub fn reference_values(words: &[u32]) -> impl Iterator<Item = u32> + '_ {
+        let (carrier, overrides) = words.split_at(words.len().min(Self::REFERENCE_BASE_WORDS));
+        carrier.iter().copied().chain(
+            overrides
+                .chunks_exact(Self::REFERENCE_OVERRIDE_WORDS)
+                .map(|entry| entry[2]),
+        )
+    }
+
+    /// Requires complete, strictly sorted overrides so CPU and shader searches agree.
+    fn references_are_valid(words: &[u32]) -> bool {
+        if words.len() < Self::REFERENCE_BASE_WORDS {
+            return false;
+        }
+        let overrides = &words[Self::REFERENCE_BASE_WORDS..];
+        if !overrides
+            .len()
+            .is_multiple_of(Self::REFERENCE_OVERRIDE_WORDS)
+        {
+            return false;
+        }
+        let mut previous = None;
+        for entry in overrides.chunks_exact(Self::REFERENCE_OVERRIDE_WORDS) {
+            let key = (entry[0], entry[1]);
+            if entry[0] as usize >= assets::MAX_MATERIALS
+                || TextureRef::from_raw(entry[1]).is_err()
+                || previous.is_some_and(|previous| previous >= key)
+            {
+                return false;
+            }
+            previous = Some(key);
+        }
+        true
+    }
+
+    /// Resolves one material's frame; changed server carrier references retain their fallback.
+    #[must_use]
+    pub fn material_reference(&self, material: u32, texture: TextureRef) -> u32 {
+        let key = (material, texture.raw());
+        let overrides = &self.texture_refs[Self::REFERENCE_BASE_WORDS..];
+        let mut lo = 0;
+        let mut hi = overrides.len() / Self::REFERENCE_OVERRIDE_WORDS;
+        while lo < hi {
+            let middle = lo + (hi - lo) / 2;
+            let start = middle * Self::REFERENCE_OVERRIDE_WORDS;
+            let entry = &overrides[start..start + Self::REFERENCE_OVERRIDE_WORDS];
+            match (entry[0], entry[1]).cmp(&key) {
+                std::cmp::Ordering::Less => lo = middle + 1,
+                std::cmp::Ordering::Greater => hi = middle,
+                std::cmp::Ordering::Equal => return entry[2],
+            }
+        }
+        self.texture_refs
+            [texture.page() as usize * assets::MAX_TEXTURE_LAYERS + texture.layer() as usize]
+    }
+
     #[must_use]
     pub fn authored_layer_count(&self) -> usize {
         self.color_pages
             .iter()
             .enumerate()
             .filter(|(page, _)| {
-                self.texture_refs
-                    .iter()
-                    .any(|&reference| reference != u32::MAX && (reference >> 31) as usize == *page)
+                Self::reference_values(&self.texture_refs)
+                    .any(|reference| reference != u32::MAX && (reference >> 31) as usize == *page)
             })
             .map(|(_, color)| color.layers as usize)
             .sum()

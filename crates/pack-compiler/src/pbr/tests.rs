@@ -18,6 +18,41 @@ fn rgba(pixel: [u8; 4]) -> RgbaImage {
     ImageBuffer::from_pixel(2, 2, Rgba(pixel))
 }
 
+#[test]
+fn terrain_atlas_tint_reaches_authored_albedo_before_mip_filtering() {
+    let root = tempfile::tempdir().unwrap();
+    save(
+        root.path(),
+        "textures/blocks/pad.png",
+        &rgba([200, 160, 120, 128]),
+    );
+    fs::write(
+        root.path().join("textures/terrain_texture.json"),
+        br##"{
+        "texture_data":{"waterlily":{"textures":[{
+            "path":"textures/blocks/pad", "tint_color":"#804020"
+        }]}}
+    }"##,
+    )
+    .unwrap();
+    let pack = PbrPack::new(root.path(), None)
+        .with_terrain_aliases([("waterlily", "textures/blocks/carrier_pad")]);
+    let texture = load_pbr_texture(&[pack], "textures/blocks/carrier_pad")
+        .unwrap()
+        .unwrap();
+    let frame = texture.frame(0, 1).unwrap();
+    assert_eq!(frame.color.get_pixel(0, 0).0, [100, 40, 15, 128]);
+    assert_eq!(frame.normal.get_pixel(0, 0).0, [128, 128, 255, 128]);
+    let mips = build_pbr_mips(&frame, 2, false, false).unwrap();
+    for mip in &mips.color {
+        assert!(
+            mip.rgba8
+                .chunks_exact(4)
+                .all(|pixel| pixel == [100, 40, 15, 128])
+        );
+    }
+}
+
 fn surface(color: RgbaImage, normal: RgbaImage, material: RgbaImage, flags: u32) -> PbrSurface {
     PbrSurface {
         color,

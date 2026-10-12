@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256};
 use super::{LOW_PBR_TILE_SIZE, Source};
 
 const CACHE_PATH: &str = ".local/enhanced-pbr.cache";
-// Includes overlay masks, animation timing, and resolved terrain aliases.
-const MAGIC: &[u8; 8] = b"CINPBR12";
+// Includes material-owned alias references and terrain atlas tints.
+const MAGIC: &[u8; 8] = b"CINPBR13";
 const MAX_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 pub(super) struct Payload {
@@ -71,7 +71,7 @@ fn files(root: &Path, result: &mut Vec<PathBuf>) -> Option<()> {
 
 pub(super) fn fingerprint(
     packs: &[PbrPack],
-    sources: &std::collections::BTreeMap<String, Vec<Source>>,
+    sources: &std::collections::BTreeMap<(String, String), Vec<Source>>,
 ) -> Option<[u8; 32]> {
     let mut digest = Sha256::new();
     digest.update(MAGIC);
@@ -100,7 +100,8 @@ pub(super) fn fingerprint(
             u8::from(pack.prefers_complete_material()),
         ]);
         digest.update(pack.material_group().unwrap_or("").as_bytes());
-        for alias in sources.keys() {
+        for (key, alias) in sources.keys() {
+            digest.update(key.as_bytes());
             digest.update(alias.as_bytes());
             match pack.terrain_path(alias) {
                 Ok(path) => digest.update(path.unwrap_or("").as_bytes()),
@@ -136,10 +137,13 @@ pub(super) fn fingerprint(
             }
         }
     }
-    for (alias, entries) in sources {
+    for ((key, alias), entries) in sources {
+        digest.update((key.len() as u64).to_le_bytes());
+        digest.update(key.as_bytes());
         digest.update((alias.len() as u64).to_le_bytes());
         digest.update(alias.as_bytes());
         for source in entries {
+            digest.update(source.material.to_le_bytes());
             digest.update(source.texture.to_le_bytes());
             digest.update((source.frame as u64).to_le_bytes());
             digest.update((source.count as u64).to_le_bytes());
@@ -204,11 +208,12 @@ fn decode(input: &mut impl Read, size: u64, key: &[u8; 32]) -> Option<Payload> {
     let color = [array(input, &mut remaining)?, array(input, &mut remaining)?];
     let normal = [array(input, &mut remaining)?, array(input, &mut remaining)?];
     let material = [array(input, &mut remaining)?, array(input, &mut remaining)?];
-    let reference_bytes = (assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS * 4) as u64;
-    if remaining != reference_bytes {
+    let reference_words = word(input)? as usize;
+    remaining = remaining.checked_sub(4)?;
+    if remaining != reference_words as u64 * 4 {
         return None;
     }
-    let references = (0..assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS)
+    let references = (0..reference_words)
         .map(|_| word(input))
         .collect::<Option<Vec<_>>>()?;
     Some(Payload {
@@ -242,6 +247,7 @@ fn encode(output: &mut impl Write, key: &[u8; 32], payload: &Payload) -> std::io
             output.write_all(&mip.rgba8)?;
         }
     }
+    output.write_all(&(payload.references.len() as u32).to_le_bytes())?;
     for reference in &payload.references {
         output.write_all(&reference.to_le_bytes())?;
     }
@@ -270,6 +276,41 @@ pub(super) fn save(key: &[u8; 32], payload: &Payload) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_material_references_keep_shared_carrier_surfaces_distinct() {
+        let array = TextureArray {
+            layers: 2,
+            mips: Box::new([TextureMip {
+                size: 1,
+                rgba8: vec![128; 8].into_boxed_slice(),
+            }]),
+        };
+        let payload = Payload {
+            color: [array.clone(), array.clone()],
+            normal: [array.clone(), array.clone()],
+            material: [array.clone(), array],
+            references: render_scene::EnhancedTextureAssets::material_references(
+                std::collections::BTreeMap::from([
+                    ((1, 0), assets::PBR_REF_COLOR),
+                    ((2, 0), assets::PBR_REF_COLOR | 1),
+                ]),
+            ),
+        };
+        let key = [17; 32];
+        let mut bytes = Vec::new();
+        encode(&mut bytes, &key, &payload).unwrap();
+        let restored = decode(&mut bytes.as_slice(), bytes.len() as u64, &key).unwrap();
+        assert_eq!(restored.references, payload.references);
+        let maps = restored.into_assets().unwrap();
+        let texture = assets::TextureRef::DIAGNOSTIC;
+        assert_eq!(maps.material_reference(1, texture), assets::PBR_REF_COLOR);
+        assert_eq!(
+            maps.material_reference(2, texture),
+            assets::PBR_REF_COLOR | 1
+        );
+        assert_eq!(maps.material_reference(3, texture), u32::MAX);
+    }
 
     #[test]
     fn cache_rejects_wrong_keys_truncation_and_oversized_allocation_claims() {

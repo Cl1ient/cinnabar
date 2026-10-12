@@ -102,21 +102,17 @@ pub(super) struct Reflectance {
 
 pub(super) fn palette(textures: &ChunkTextureAssets, output: &mut Vec<Reflectance>) {
     output.clear();
-    for material in textures.assets().materials() {
+    for (material_id, material) in textures.assets().materials().iter().enumerate() {
         let mut page = material.texture.page() as usize;
         let mut layer = material.texture.layer() as usize;
         let mut color = &textures.assets().texture_pages()[page].texture;
         let mut mer = None;
         let mut lab = false;
         if let Some(authored) = textures.enhanced() {
-            let address = page * assets::MAX_TEXTURE_LAYERS + layer;
-            if let Some(&reference) = authored
-                .texture_refs
-                .get(address)
-                .filter(|&&v| v != u32::MAX)
-            {
+            let reference = authored.material_reference(material_id as u32, material.texture);
+            if reference != u32::MAX {
                 page = (reference >> 31) as usize;
-                layer = (reference & 0x7ff) as usize;
+                layer = (reference & (assets::PBR_REF_COLOR - 1)) as usize;
                 color = &authored.color_pages[page];
                 mer = Some(&authored.mer_pages[page]);
                 lab = reference & assets::PBR_REF_LABPBR != 0;

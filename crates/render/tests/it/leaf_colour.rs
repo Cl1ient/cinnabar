@@ -292,7 +292,8 @@ struct LeafWitnessCase {
     let index = min(u32(position.y) / 64u * 4u + u32(position.x) / 64u, arrayLength(&leaf_witness_cases) - 1u);
     let witness = leaf_witness_cases[index];
     let flags = u32(witness.light_flags.w);
-    let sampled = sample_material_texture_ref(witness.route.y, vec2(0.5), vec2(0.0), vec2(0.0), flags);
+    var input: VertexOutput;
+    let sampled = sample_material_texture_ref(input, witness.route.y, vec2(0.5), vec2(0.0), vec2(0.0), flags);
     if (witness.route.x != 0u) {
         return native_cube_colour(sampled, flags, witness.tint_ao.rgb, witness.tint_ao.w, witness.light_flags.rgb, witness.fog_amount.rgb, witness.fog_amount.w);
     }

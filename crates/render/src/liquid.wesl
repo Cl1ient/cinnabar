@@ -7,7 +7,7 @@ import render::chunk_bindings::{
 };
 @if(ENHANCED)
 import render::chunk_bindings::{enhanced_color_page_0, enhanced_color_page_1, enhanced_sampler, enhanced_texture_refs};
-import render::material::{MaterialGpu, materials, positional_material, texture_layer, texture_uv_scale, texture_gradient_scale};
+import render::material::{MaterialGpu, materials, positional_material_id, texture_layer, texture_uv_scale, texture_gradient_scale};
 import render::world_projection::{section_camera_offset, camera_offset_clip};
 import render::biome_tint::{world_animation_clock, blended_biome_tint};
 import render::lighting::{light_ao_factor, light_colour, face_shade, tint_to_gamma, tint_to_linear, terrain_light_levels, terrain_light_colour};
@@ -18,7 +18,7 @@ import render::enhanced::radiance::block_illumination;
 @if(ENHANCED)
 import render::enhanced::view::{sky_illumination, material_class, shade_surface, shade_water, water_displacement, enhanced_physical_atmosphere};
 @if(ENHANCED)
-import render::enhanced::pbr::{authored_texture_slot, authored_layer};
+import render::enhanced::pbr::{authored_texture_slot, authored_layer, AUTHORED_REFERENCE_BASE_WORDS, AUTHORED_REFERENCE_OVERRIDE_WORDS};
 
 struct FrameSample { current: u32, next: u32, blend: f32 }
 
@@ -49,7 +49,11 @@ const FLOW_FACE: u32 = 3u;
 const SIDE_FACE_MASK: u32 = 51u;
 const LIQUID_MATERIAL_MASK: u32 = ~(LIQUID_DEPTH_WRITE_BIT | LIQUID_TOP_INSET_BIT | LIQUID_TWO_SIDED_BIT);
 
+// ENHANCED_PBR_LOOKUP
+
 struct VertexOutput {
+    @if(ENHANCED)
+    @location(15) @interpolate(flat) authored_refs: vec2<u32>,
     @builtin(position) @invariant clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) @interpolate(flat) current_texture: u32,
@@ -243,7 +247,8 @@ fn vertex_for_record(record_index: u32, vertex_index: u32) -> VertexOutput {
         (geometry >> 8u) & 15u,
     );
 
-    let material = positional_material(packed_material & LIQUID_MATERIAL_MASK, chunk_origin.value.xyz + vec3<i32>(block_coordinate));
+    let selected_material_id = positional_material_id(packed_material & LIQUID_MATERIAL_MASK, chunk_origin.value.xyz + vec3<i32>(block_coordinate));
+    let material = materials[selected_material_id];
     let frame = animation_sample(material);
 
     var out: VertexOutput;
@@ -257,6 +262,8 @@ fn vertex_for_record(record_index: u32, vertex_index: u32) -> VertexOutput {
     );
     out.current_texture = frame.current;
     out.next_texture = frame.next;
+    @if(ENHANCED)
+    out.authored_refs = vec2(authored_material_ref(selected_material_id, out.current_texture), authored_material_ref(selected_material_id, out.next_texture));
     out.frame_blend = frame.blend;
     out.water_tint = blended_biome_tint(
         0x30u,
@@ -297,9 +304,9 @@ fn vertex_for_record(record_index: u32, vertex_index: u32) -> VertexOutput {
     return out;
 }
 
-fn sample_texture_ref(texture_ref: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+fn sample_texture_ref(in: VertexOutput, texture_ref: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
     @if(ENHANCED)
-    let authored_ref = enhanced_texture_refs[authored_texture_slot(texture_ref)];
+    let authored_ref = select(in.authored_refs.x, in.authored_refs.y, texture_ref == in.next_texture);
     @if(ENHANCED)
     if (authored_ref != 0xffffffffu) {
         let authored_page = authored_ref >> 31u;
@@ -398,10 +405,10 @@ fn shade_liquid(in: VertexOutput, front_facing: bool, dx: vec2<f32>, dy: vec2<f3
     // Vanilla duplicates only faces marked by the liquid tessellator.
     // In particular, the bottom never has a reverse face at the ice surface.
     if (!front_facing && in.two_sided == 0u) { discard; }
-    let current_sample = sample_texture_ref(in.current_texture, in.uv, dx, dy);
+    let current_sample = sample_texture_ref(in, in.current_texture, in.uv, dx, dy);
     var sampled = current_sample;
     if (in.frame_blend > 0.0) {
-        let next_sample = sample_texture_ref(in.next_texture, in.uv, dx, dy);
+        let next_sample = sample_texture_ref(in, in.next_texture, in.uv, dx, dy);
         sampled = mix(current_sample, next_sample, in.frame_blend);
     }
     @if(ENHANCED)
@@ -442,10 +449,10 @@ fn fragment_depth(in: VertexOutput, @builtin(front_facing) front_facing: bool) -
     if (!front_facing && in.two_sided == 0u) { discard; }
     let dx = dpdx(in.uv);
     let dy = dpdy(in.uv);
-    let current_sample = sample_texture_ref(in.current_texture, in.uv, dx, dy);
+    let current_sample = sample_texture_ref(in, in.current_texture, in.uv, dx, dy);
     var sampled = current_sample;
     if (in.frame_blend > 0.0) {
-        let next_sample = sample_texture_ref(in.next_texture, in.uv, dx, dy);
+        let next_sample = sample_texture_ref(in, in.next_texture, in.uv, dx, dy);
         sampled = mix(current_sample, next_sample, in.frame_blend);
     }
     @if(ENHANCED)

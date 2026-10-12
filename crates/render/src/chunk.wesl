@@ -1,4 +1,4 @@
-import render::material::{MaterialGpu, materials, positional_material, texture_layer, texture_cube_uv, texture_gradient_scale, material_face_is_visible, material_uses_native_leaf_colour, material_uses_overlay_mask, material_uv_flags, material_leaf_shade};
+import render::material::{MaterialGpu, materials, positional_material_id, texture_layer, texture_cube_uv, texture_gradient_scale, material_face_is_visible, material_uses_native_leaf_colour, material_uses_overlay_mask, material_uv_flags, material_leaf_shade};
 @if(ENHANCED_SHADOW)
 import render::enhanced::caster::{caster_clip, caster_camera_clip, caster_previous_camera_clip, caster_history_valid, caster_excludes_emitter};
 @if(ENHANCED_MOTION)
@@ -18,7 +18,7 @@ import render::enhanced::radiance::block_illumination;
 @if(ENHANCED)
 import render::enhanced::pbr::{MaterialBasis, material_basis, material_normal, material_specular_aa, blend_material_sample, material_relief_weight, material_relief_ray, PBR_REF_LABPBR};
 @if(ENHANCED || ENHANCED_SHADOW)
-import render::enhanced::pbr::{authored_texture_slot, authored_layer};
+import render::enhanced::pbr::{authored_texture_slot, authored_layer, AUTHORED_REFERENCE_BASE_WORDS, AUTHORED_REFERENCE_OVERRIDE_WORDS};
 
 const TERRAIN_ALPHA_THRESHOLD: f32 = 0.5;
 
@@ -112,7 +112,11 @@ fn select_animation_frames_gpu(material: MaterialGpu) -> AnimationFrameSampleGpu
     return AnimationFrameSampleGpu(current_texture, next_texture, blend);
 }
 
+// ENHANCED_PBR_LOOKUP
+
 struct VertexOutput {
+    @if(ENHANCED || ENHANCED_SHADOW)
+    @location(15) @interpolate(flat) authored_refs: vec2<u32>,
     @builtin(position) @invariant clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) @interpolate(flat) current_texture: u32,
@@ -365,7 +369,8 @@ fn sealed_cube_vertex(vertex_index: u32, instance_index: u32, seal_pixels: f32) 
     let local_position = quad_corner(face, corner, local_origin, width, height);
     let world_position = vec3<f32>(chunk_origin.value.xyz) + local_position;
     let camera_offset = section_camera_offset(chunk_origin.value.xyz, local_position, view.world_position);
-    let material = positional_material(quad.material_id, chunk_origin.value.xyz + vec3<i32>(local_origin));
+    let selected_material_id = positional_material_id(quad.material_id, chunk_origin.value.xyz + vec3<i32>(local_origin));
+    let material = materials[selected_material_id];
     let animation_sample = select_animation_frames_gpu(material);
 
     var out: VertexOutput;
@@ -387,6 +392,8 @@ fn sealed_cube_vertex(vertex_index: u32, instance_index: u32, seal_pixels: f32) 
     out.local_position = local_position;
     out.biome_record = u32(chunk_origin.value.w);
     out.next_texture = animation_sample.next_texture;
+    @if(ENHANCED || ENHANCED_SHADOW)
+    out.authored_refs = vec2(authored_material_ref(selected_material_id, out.current_texture), authored_material_ref(selected_material_id, out.next_texture));
     out.world_position = world_position;
     let ao = material_ambient_occlusion(light_ao_factor((light_sample >> 8u) & 7u), material.flags);
     let dimming = material_face_shade(out.normal, (light_sample & 2048u) != 0u, material.flags);
@@ -499,6 +506,7 @@ fn sample_texture_ref(
 }
 
 fn sample_material_texture_ref(
+    in: VertexOutput,
     texture_ref: u32,
     uv: vec2<f32>,
     uv_dx: vec2<f32>,
@@ -506,7 +514,7 @@ fn sample_material_texture_ref(
     material_flags: u32,
 ) -> vec4<f32> {
     @if(ENHANCED || ENHANCED_SHADOW)
-    return sample_enhanced_colour(texture_ref, uv, uv_dx, uv_dy);
+    return sample_enhanced_colour(in, texture_ref, uv, uv_dx, uv_dy);
     @if(!ENHANCED && !ENHANCED_SHADOW)
     if (material_uses_native_leaf_colour(material_flags)) {
         let layer = texture_layer(texture_ref);
@@ -523,8 +531,8 @@ fn sample_material_texture_ref(
 
 // Camera and sunlight depth use the color pass's authored alpha coverage.
 @if(ENHANCED || ENHANCED_SHADOW)
-fn sample_enhanced_colour(texture_ref: u32, uv: vec2<f32>, uv_dx: vec2<f32>, uv_dy: vec2<f32>) -> vec4<f32> {
-    let authored_ref = enhanced_texture_refs[authored_texture_slot(texture_ref)];
+fn sample_enhanced_colour(in: VertexOutput, texture_ref: u32, uv: vec2<f32>, uv_dx: vec2<f32>, uv_dy: vec2<f32>) -> vec4<f32> {
+    let authored_ref = select(in.authored_refs.x, in.authored_refs.y, texture_ref == in.next_texture);
     if (authored_ref != 0xffffffffu) {
         let authored_page = authored_ref >> 31u;
         let authored_layer = authored_layer(authored_ref);
@@ -711,10 +719,10 @@ fn sample_cube_texture(in: VertexOutput, uv_dx: vec2<f32>, uv_dy: vec2<f32>) -> 
 
 fn sample_cube_colour(in: VertexOutput, material_uv: vec2<f32>, uv_dx: vec2<f32>, uv_dy: vec2<f32>) -> vec4<f32> {
     let frame_blend = in.frame_blend_uv_limit.x;
-    let current_sample = sample_material_texture_ref(in.current_texture, material_uv, uv_dx, uv_dy, in.material_flags);
+    let current_sample = sample_material_texture_ref(in, in.current_texture, material_uv, uv_dx, uv_dy, in.material_flags);
     var sampled = current_sample;
     if (frame_blend > 0.0) {
-        let next_sample = sample_material_texture_ref(in.next_texture, material_uv, uv_dx, uv_dy, in.material_flags);
+        let next_sample = sample_material_texture_ref(in, in.next_texture, material_uv, uv_dx, uv_dy, in.material_flags);
         sampled = mix(current_sample, next_sample, frame_blend);
     }
     return sampled;
@@ -732,7 +740,7 @@ fn sample_enhanced_cube(in: VertexOutput, uv_dx: vec2<f32>, uv_dy: vec2<f32>) ->
     let basis = material_basis(in.normal, dpdx(in.world_position), dpdy(in.world_position), uv_dx, uv_dy);
     let view_direction = normalize(view.world_position - in.world_position);
     let base_uv = clamp(in.uv, vec2(0.0), in.frame_blend_uv_limit.yz);
-    let material_uv = parallax_material_uv(in.current_texture, base_uv, uv_dx, uv_dy, view_direction, basis,
+    let material_uv = parallax_material_uv(in.authored_refs.x, base_uv, uv_dx, uv_dy, view_direction, basis,
         distance(view.world_position, in.world_position),
         enhanced_materials_enabled() && (in.material_flags & (1u << 8u)) == 0u && (in.surface_class & 48u) == 0u && in.frame_blend_uv_limit.x == 0.0);
     return EnhancedCubeSample(sample_cube_colour(in, material_uv, uv_dx, uv_dy), material_uv, basis);
@@ -764,16 +772,16 @@ fn shade_cube(
     @if(ENHANCED) uv_dy: vec2<f32>,
 ) -> vec4<f32> {
     @if(ENHANCED)
-    var pbr_normal_sample = sample_pbr_texture(true, in.current_texture, material_uv, uv_dx, uv_dy);
+    var pbr_normal_sample = sample_pbr_texture(true, in.authored_refs.x, material_uv, uv_dx, uv_dy);
     @if(ENHANCED)
-    var pbr_mer_sample = sample_pbr_texture(false, in.current_texture, material_uv, uv_dx, uv_dy);
+    var pbr_mer_sample = sample_pbr_texture(false, in.authored_refs.x, material_uv, uv_dx, uv_dy);
     @if(ENHANCED)
     if (in.frame_blend_uv_limit.x > 0.0) {
         pbr_normal_sample = mix(pbr_normal_sample,
-            sample_pbr_texture(true, in.next_texture, material_uv, uv_dx, uv_dy), in.frame_blend_uv_limit.x);
+            sample_pbr_texture(true, in.authored_refs.y, material_uv, uv_dx, uv_dy), in.frame_blend_uv_limit.x);
         pbr_mer_sample = blend_material_sample(pbr_mer_sample,
-            sample_pbr_texture(false, in.next_texture, material_uv, uv_dx, uv_dy), in.frame_blend_uv_limit.x,
-            select(0u, authored_material_ref(in.current_texture), authored_material_ref(in.current_texture) != 0xffffffffu));
+            sample_pbr_texture(false, in.authored_refs.y, material_uv, uv_dx, uv_dy), in.frame_blend_uv_limit.x,
+            select(0u, in.authored_refs.x, in.authored_refs.x != 0xffffffffu));
     }
     @if(ENHANCED)
     let shading_normal = material_normal(pbr_normal_sample, basis);
@@ -797,8 +805,8 @@ fn shade_cube(
         in.surface_class,
         shading_normal,
         pbr_mer_sample,
-        select(0u, authored_material_ref(in.current_texture), authored_material_ref(in.current_texture) != 0xffffffffu),
-        parallax_direct_visibility(in.current_texture, material_uv, uv_dx, uv_dy, enhanced_light_direction(), basis, distance(view.world_position, in.world_position),
+        select(0u, in.authored_refs.x, in.authored_refs.x != 0xffffffffu),
+        parallax_direct_visibility(in.authored_refs.x, material_uv, uv_dx, uv_dy, enhanced_light_direction(), basis, distance(view.world_position, in.world_position),
             enhanced_materials_enabled() && (in.material_flags & (1u << 8u)) == 0u && (in.surface_class & 48u) == 0u && in.frame_blend_uv_limit.x == 0.0),
     );
     @if(ENHANCED)
@@ -825,9 +833,9 @@ fn shadow_coverage(in: VertexOutput, front: bool) {
     let dx = dpdx(in.uv);
     let dy = dpdy(in.uv);
     if (!material_face_is_visible(in.material_flags, front)) { discard; }
-    var sampled = sample_material_texture_ref(in.current_texture, in.uv, dx, dy, in.material_flags);
+    var sampled = sample_material_texture_ref(in, in.current_texture, in.uv, dx, dy, in.material_flags);
     if (in.frame_blend_uv_limit.x > 0.0) {
-        sampled = mix(sampled, sample_material_texture_ref(in.next_texture, in.uv, dx, dy, in.material_flags), in.frame_blend_uv_limit.x);
+        sampled = mix(sampled, sample_material_texture_ref(in, in.next_texture, in.uv, dx, dy, in.material_flags), in.frame_blend_uv_limit.x);
     }
     if ((in.material_flags & (1u << 8u)) != 0u && sampled.a < TERRAIN_ALPHA_THRESHOLD) { discard; }
 }

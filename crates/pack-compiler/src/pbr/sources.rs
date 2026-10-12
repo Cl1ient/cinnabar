@@ -329,13 +329,30 @@ fn animation(path: &Path) -> Result<Vec<u32>, String> {
     Ok(timeline)
 }
 
-pub(super) fn load(packs: &[PbrPack], alias: &str) -> Result<Option<PbrTexture>, String> {
+/// Applies the shared atlas-space multiplier before frame extraction and mip filtering.
+fn tinted(mut texture: PbrTexture, tint: Option<[u8; 3]>) -> PbrTexture {
+    if let Some(tint) = tint {
+        crate::apply_atlas_tint(texture.surface.color.as_mut(), tint);
+    }
+    texture
+}
+
+pub(super) fn load(
+    packs: &[PbrPack],
+    alias: &str,
+    key: Option<&str>,
+) -> Result<Option<PbrTexture>, String> {
     let prefer_complete = packs.iter().any(PbrPack::prefers_complete_material);
     let mut fallback = None;
     for owner in packs {
-        let alias = owner.terrain_path(alias)?.unwrap_or(alias);
+        let terrain = match key {
+            Some(key) => owner.terrain_key_source(key)?,
+            None => owner.terrain_source(alias)?,
+        };
+        let tint = terrain.and_then(|source| source.tint);
+        let alias = terrain.map_or(alias, |source| source.path.as_str());
         if let Some(path) = json_path(owner, alias) {
-            let texture = texture_set(owner, &path)?;
+            let texture = tinted(texture_set(owner, &path)?, tint);
             if !prefer_complete || texture.has_complete_material() {
                 return Ok(Some(texture));
             }
@@ -429,17 +446,20 @@ pub(super) fn load(packs: &[PbrPack], alias: &str) -> Result<Option<PbrTexture>,
             native_material_size: [material.width(), material.height()],
             color_style: owner.color_style,
         };
-        let texture = PbrTexture {
-            surface: PbrSurface {
-                color,
-                normal,
-                material,
-                flags,
+        let texture = tinted(
+            PbrTexture {
+                surface: PbrSurface {
+                    color,
+                    normal,
+                    material,
+                    flags,
+                },
+                timeline: animation(&color_path)?,
+                height,
+                source,
             },
-            timeline: animation(&color_path)?,
-            height,
-            source,
-        };
+            tint,
+        );
         if !prefer_complete || texture.has_complete_material() {
             return Ok(Some(texture));
         }

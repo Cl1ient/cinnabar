@@ -1,8 +1,4 @@
 // Injected after the enhanced terrain bindings; importers bring in the pbr module symbols.
-@if(ENHANCED)
-fn authored_material_ref(texture_ref:u32)->u32 {
-    return enhanced_texture_refs[authored_texture_slot(texture_ref)];
-}
 // Metal identifiers and the porosity/SSS branch are categorical channels.
 @if(ENHANCED)
 fn sample_lab_categories(page:texture_2d_array<f32>,sampled:vec4<f32>,uv:vec2<f32>,layer:i32,dx:vec2<f32>,dy:vec2<f32>)->vec4<f32> {
@@ -15,8 +11,7 @@ fn sample_lab_categories(page:texture_2d_array<f32>,sampled:vec4<f32>,uv:vec2<f3
     return vec4(exact.x,sampled.yz,exact.w);
 }
 @if(ENHANCED)
-fn sample_pbr_texture(normal_map:bool,texture_ref:u32,uv:vec2<f32>,dx:vec2<f32>,dy:vec2<f32>)->vec4<f32> {
-    let authored_ref=authored_material_ref(texture_ref);
+fn sample_pbr_texture(normal_map:bool,authored_ref:u32,uv:vec2<f32>,dx:vec2<f32>,dy:vec2<f32>)->vec4<f32> {
     if (authored_ref!=0xffffffffu) {
         let layer=authored_layer(authored_ref);
         if (normal_map) {
@@ -36,14 +31,14 @@ fn sample_pbr_texture(normal_map:bool,texture_ref:u32,uv:vec2<f32>,dx:vec2<f32>,
 }
 
 @if(ENHANCED)
-fn parallax_material_uv(texture_ref:u32,uv:vec2<f32>,dx:vec2<f32>,dy:vec2<f32>,view:vec3<f32>,basis:MaterialBasis,distance:f32,allowed:bool)->vec2<f32> {
-    let weight=material_relief_weight(authored_material_ref(texture_ref),allowed,distance,max(length(dx),length(dy)),abs(dot(view,basis.normal)));
+fn parallax_material_uv(authored_ref:u32,uv:vec2<f32>,dx:vec2<f32>,dy:vec2<f32>,view:vec3<f32>,basis:MaterialBasis,distance:f32,allowed:bool)->vec2<f32> {
+    let weight=material_relief_weight(authored_ref,allowed,distance,max(length(dx),length(dy)),abs(dot(view,basis.normal)));
     if (weight<=0.001) {return uv;}
     let ray=material_relief_ray(view,basis,weight);
     let layers=12u;
     var depth=0.0;var sampled_uv=uv;var previous_uv=uv;var previous_difference=0.0;
     for (var step=0u;step<layers;step+=1u) {
-        let height=sample_pbr_texture(true,texture_ref,sampled_uv,dx,dy).a;
+        let height=sample_pbr_texture(true,authored_ref,sampled_uv,dx,dy).a;
         let difference=depth-(1.0-height);
         if (difference>=0.0) {
             let fraction=clamp(-previous_difference/max(difference-previous_difference,1.0e-6),0.0,1.0);
@@ -56,17 +51,17 @@ fn parallax_material_uv(texture_ref:u32,uv:vec2<f32>,dx:vec2<f32>,dy:vec2<f32>,v
 }
 
 @if(ENHANCED)
-fn parallax_direct_visibility(texture_ref:u32,uv:vec2<f32>,dx:vec2<f32>,dy:vec2<f32>,direction:vec3<f32>,basis:MaterialBasis,distance:f32,allowed:bool)->f32 {
-    let weight=material_relief_weight(authored_material_ref(texture_ref),allowed,distance,max(length(dx),length(dy)),abs(dot(direction,basis.normal)));
+fn parallax_direct_visibility(authored_ref:u32,uv:vec2<f32>,dx:vec2<f32>,dy:vec2<f32>,direction:vec3<f32>,basis:MaterialBasis,distance:f32,allowed:bool)->f32 {
+    let weight=material_relief_weight(authored_ref,allowed,distance,max(length(dx),length(dy)),abs(dot(direction,basis.normal)));
     if(weight<=0.001){return 1.0;}
     let above=dot(direction,basis.normal);
     if(above<=0.0){return 0.0;}
     let ray=-material_relief_ray(direction,basis,weight);
-    let height=sample_pbr_texture(true,texture_ref,uv,dx,dy).a;
+    let height=sample_pbr_texture(true,authored_ref,uv,dx,dy).a;
     var visibility=1.0;
     for(var step=1u;step<=5u;step+=1u){
         let rise=(1.0-height)*f32(step)/5.0;
-        let blocker=sample_pbr_texture(true,texture_ref,uv+ray*rise,dx,dy).a;
+        let blocker=sample_pbr_texture(true,authored_ref,uv+ray*rise,dx,dy).a;
         visibility=min(visibility,1.0-smoothstep(0.01,0.06,blocker-height-rise));
     }
     return mix(1.0,visibility,weight);

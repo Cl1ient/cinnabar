@@ -73,7 +73,9 @@ fn displaced_models_preserve_opaque_texels_and_cutout_thresholds() {
             VERTEX.replace(
                 "ALPHA_FLAG",
                 &format!("{}u", assets::MATERIAL_FLAG_ALPHA_CUTOUT)
-            )
+            ).replace("// AUTHORED_FRAME_REFERENCES", if enhanced || shadow {
+                "out.authored_refs = vec2(authored_material_ref(0u, out.current_texture), authored_material_ref(0u, out.next_texture));"
+            } else { "" })
         );
         let source = source.replace(
             "@group(2) @binding(0)",
@@ -124,10 +126,12 @@ fn displaced_models_preserve_opaque_texels_and_cutout_thresholds() {
     production.push_str("\nfn ordinary_world_model_colour(in: VertexOutput, sampled: vec4<f32>) -> vec4<f32> { return sampled; }\n");
     let source = format!(
         "{production}\n{}",
-        VERTEX.replace(
-            "ALPHA_FLAG",
-            &format!("{}u", assets::MATERIAL_FLAG_ALPHA_CUTOUT)
-        )
+        VERTEX
+            .replace(
+                "ALPHA_FLAG",
+                &format!("{}u", assets::MATERIAL_FLAG_ALPHA_CUTOUT)
+            )
+            .replace("// AUTHORED_FRAME_REFERENCES", "")
     );
     let bindings = used_alpha_resources(&source, "fragment", &resources);
     let actual = gpu.render(
@@ -237,6 +241,7 @@ const VERTEX: &str = r#"
     out.uv = vec2(0.5);
     out.current_texture = 0x80000000u | (cell % 4u);
     out.next_texture = out.current_texture;
+    // AUTHORED_FRAME_REFERENCES
     out.visibility.x = 1u;
     out.visibility.y = 1u;
     out.material_flags = select(0u, ALPHA_FLAG, cell >= 4u);
@@ -298,6 +303,9 @@ fn blended_enhanced_models_use_authored_albedo_and_animation_alpha() {
     ] {
         let sampling = blended_sampling_source(&source_text);
         for enhanced in [false, true] {
+            let vertex = vertex.replace("// AUTHORED_FRAME_REFERENCES", if enhanced {
+                "out.authored_refs = vec2(authored_material_ref(0u, out.current_texture), authored_material_ref(0u, out.next_texture));"
+            } else { "" });
             let source = format!(
                 "{}\n{vertex}",
                 shader_source::standalone(&sampling, if enhanced { &["ENHANCED"] } else { &[] })

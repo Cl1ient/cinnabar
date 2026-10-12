@@ -118,6 +118,7 @@ pub(crate) fn pbr_sampler_descriptor() -> wgpu::SamplerDescriptor<'static> {
 
 pub(crate) fn source(source: &str) -> String {
     source
+        .replace("// ENHANCED_PBR_LOOKUP", include_str!("enhanced/authored_lookup.wesl"))
         .replace("ACTOR_LIGHT_WORLD_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_WORLD))
         .replace("ACTOR_LIGHT_DIRECTIONAL_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_DIRECTIONAL))
         .replace("TEXTURE_LAYER_MASK", &format!("{}u", assets::TEXTURE_LAYER_MASK))
@@ -129,7 +130,8 @@ pub(crate) fn source(source: &str) -> String {
         .replace("BLOCK_OVERLAY_FACE_OFFSET", &format!("{:?}", render_api::BLOCK_OVERLAY_FACE_OFFSET))
         .replace("// ENHANCED_PBR_SAMPLING", include_str!("enhanced/pbr_sampling.wesl"))
         .replace("// ENHANCED_PBR_CONSTANTS", &format!(
-            "const PBR_REF_COLOR:u32={}u;\nconst PBR_REF_NORMAL:u32={}u;\nconst PBR_REF_HEIGHT:u32={}u;\nconst PBR_REF_MATERIAL:u32={}u;\nconst PBR_REF_LABPBR:u32={}u;\nconst PBR_REF_OCCLUSION:u32={}u;\nconst PBR_REF_SUBSURFACE:u32={}u;\nconst PBR_HEIGHT_SCALE:f32={:?};",
+            "const AUTHORED_REFERENCE_BASE_WORDS:u32={}u;\nconst AUTHORED_REFERENCE_OVERRIDE_WORDS:u32={}u;\nconst PBR_REF_COLOR:u32={}u;\nconst PBR_REF_NORMAL:u32={}u;\nconst PBR_REF_HEIGHT:u32={}u;\nconst PBR_REF_MATERIAL:u32={}u;\nconst PBR_REF_LABPBR:u32={}u;\nconst PBR_REF_OCCLUSION:u32={}u;\nconst PBR_REF_SUBSURFACE:u32={}u;\nconst PBR_HEIGHT_SCALE:f32={:?};",
+            render_scene::EnhancedTextureAssets::REFERENCE_BASE_WORDS, render_scene::EnhancedTextureAssets::REFERENCE_OVERRIDE_WORDS,
             assets::PBR_REF_COLOR, assets::PBR_REF_NORMAL, assets::PBR_REF_HEIGHT, assets::PBR_REF_MATERIAL,
             assets::PBR_REF_LABPBR, assets::PBR_REF_OCCLUSION, assets::PBR_REF_SUBSURFACE, assets::PBR_HEIGHT_SCALE))
         .replace("ACTOR_MATERIAL_GLINT", &format!("{}u", assets::EntityRenderMaterial::Glint as u32))

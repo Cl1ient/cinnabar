@@ -7916,7 +7916,7 @@ focused tests pass. Full visible rendering, metadata and native coverage verific
 
 ## Held-item grip admission (incomplete parity)
 
-Item grip facts are compiled into entity carrier 22, checked against the separate
+Item grip facts are compiled into entity carrier 21, checked against the separate
 retail identity inventory and copied through numeric item admission into equipment
 input. Unknown names cannot borrow a tool grip. Explicit session flags, including
 false, replace the compiled upright choice. The existing built-in grip and rod-art

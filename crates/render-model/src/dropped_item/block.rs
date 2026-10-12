@@ -2,6 +2,9 @@ use super::{ItemMeshVertex, MAX_ITEM_LAYERS};
 use crate::DroppedItemBlock;
 use glam::Vec3;
 
+/// Number of fixed-point UV units in one material tile.
+pub(super) const UV_TILE_UNITS: u16 = 4096;
+
 /// Expands the retained block templates into the ordinary lit item vertex format.
 pub fn block_mesh(
     model: &DroppedItemBlock,
@@ -31,9 +34,11 @@ pub fn block_mesh(
             vertices.push(ItemMeshVertex {
                 position: rotate(quad.positions[corner].map(|p| f32::from(p) / 256.0 - 0.5)),
                 uv: [
-                    f32::from(quad.uvs[corner][0]) / 4096.0 * texture.width as f32
+                    f32::from(quad.uvs[corner][0]) / f32::from(UV_TILE_UNITS)
+                        * texture.width as f32
                         / layer_side as f32,
-                    f32::from(quad.uvs[corner][1]) / 4096.0 * texture.height as f32
+                    f32::from(quad.uvs[corner][1]) / f32::from(UV_TILE_UNITS)
+                        * texture.height as f32
                         / layer_side as f32,
                 ],
                 normal: rotate(normal),
@@ -80,7 +85,12 @@ mod tests {
     fn quantized_collapsed_faces_do_not_hide_drawable_faces() {
         let drawable = assets::ModelQuad {
             positions: [[36, 64, 36], [220, 64, 220], [220, 256, 220], [36, 256, 36]],
-            uvs: [[0, 4096], [4096, 4096], [4096, 0], [0, 0]],
+            uvs: [
+                [0, UV_TILE_UNITS],
+                [UV_TILE_UNITS, UV_TILE_UNITS],
+                [UV_TILE_UNITS, 0],
+                [0, 0],
+            ],
             material: 0,
             flags: assets::MODEL_QUAD_FLAG_TWO_SIDED,
         };
@@ -129,7 +139,12 @@ mod tests {
             )]),
             quads: Arc::from([assets::ModelQuad {
                 positions: [[36, 64, 36], [220, 64, 220], [220, 256, 220], [36, 256, 36]],
-                uvs: [[0, 4096], [4096, 4096], [4096, 0], [0, 0]],
+                uvs: [
+                    [0, UV_TILE_UNITS],
+                    [UV_TILE_UNITS, UV_TILE_UNITS],
+                    [UV_TILE_UNITS, 0],
+                    [0, 0],
+                ],
                 material: 0,
                 flags: assets::MODEL_QUAD_FLAG_TWO_SIDED,
             }]),

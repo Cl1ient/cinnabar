@@ -34,7 +34,12 @@ fn block_cube() -> DroppedItemBlock {
             };
             assets::ModelQuad {
                 positions: indices.map(|i| face[i].position.map(|v| ((v + 0.5) * 256.0) as i16)),
-                uvs: [[0, 0], [4096, 0], [4096, 4096], [0, 4096]],
+                uvs: [
+                    [0, 0],
+                    [block::UV_TILE_UNITS, 0],
+                    [block::UV_TILE_UNITS, block::UV_TILE_UNITS],
+                    [0, block::UV_TILE_UNITS],
+                ],
                 material: 0,
                 flags,
             }
@@ -152,4 +157,55 @@ fn cube_cutouts_and_transparent_tints_keep_culling_off() {
     cube.tints[0] = OPAQUE_WHITE;
     cube.faces[0] = Arc::from([255, 255, 255, 0]);
     assert!(!DroppedItemModel::Cube(cube).can_cull_back_faces());
+}
+
+#[test]
+fn wrapped_block_uvs_keep_the_opaque_rear_face_available() {
+    let mut block = block_cube();
+    assert!(DroppedItemModel::Block(block.clone()).can_cull_back_faces());
+    let front = Arc::make_mut(&mut block.quads)
+        .iter_mut()
+        .find(|quad| quad.flags == 6)
+        .unwrap();
+    for uv in &mut front.uvs {
+        uv[0] += block::UV_TILE_UNITS;
+    }
+    assert!(!DroppedItemModel::Block(block.clone()).can_cull_back_faces());
+    let layer_side = 32;
+    let mesh = block_mesh(&block, 0, layer_side).unwrap();
+    for (normal, expected_texel) in [(1.0, 1), (-1.0, 0)] {
+        let face: Vec<_> = mesh.iter().filter(|v| v.normal[2] == normal).collect();
+        assert_eq!(face.len(), 6);
+        let u = face.iter().map(|v| v.uv[0]).sum::<f32>() / face.len() as f32;
+        assert_eq!((u * layer_side as f32).floor() as u32, expected_texel);
+    }
+}
+
+#[test]
+fn either_uv_axis_cannot_extend_into_atlas_padding() {
+    for axis in 0..2 {
+        for coordinate in [block::UV_TILE_UNITS + 1, block::UV_TILE_UNITS * 2, u16::MAX] {
+            let mut block = block_cube();
+            Arc::make_mut(&mut block.quads)[0].uvs[0][axis] = coordinate;
+            assert!(!DroppedItemModel::Block(block).can_cull_back_faces());
+        }
+    }
+}
+
+#[test]
+fn constant_upper_edge_uvs_keep_culling_off() {
+    for axis in 0..2 {
+        for lower_corners in 0..2 {
+            let mut block = block_cube();
+            let quad = &mut Arc::make_mut(&mut block.quads)[0];
+            for (corner, uv) in quad.uvs.iter_mut().enumerate() {
+                uv[axis] = if corner < lower_corners {
+                    0
+                } else {
+                    block::UV_TILE_UNITS
+                };
+            }
+            assert!(!DroppedItemModel::Block(block).can_cull_back_faces());
+        }
+    }
 }

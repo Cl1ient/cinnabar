@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 impl DroppedItemModel {
     /// Whether this model has a closed, opaque surface for alpha-tested drawing.
-    /// Open templates, two-sided planes and partial alpha retain two-sided rendering.
+    /// Open templates, two-sided planes, partial alpha and padded UVs retain two-sided rendering.
     #[must_use]
     pub fn can_cull_back_faces(&self) -> bool {
         match self {
@@ -64,6 +64,23 @@ fn opaque(pixels: &[u8]) -> bool {
             .all(|pixel| pixel[3] == 255)
 }
 
+/// Keeps each triangle's UV interior within the opaque tile, away from atlas padding.
+/// Two corners below the upper edge on each axis prevent any emitted triangle from
+/// sampling a constant coordinate at that edge, regardless of its winding.
+fn block_uvs_stay_in_tile(quad: &assets::ModelQuad) -> bool {
+    quad.uvs
+        .iter()
+        .flatten()
+        .all(|&uv| uv <= block::UV_TILE_UNITS)
+        && (0..2).all(|axis| {
+            quad.uvs
+                .iter()
+                .filter(|uv| uv[axis] < block::UV_TILE_UNITS)
+                .count()
+                >= 2
+        })
+}
+
 /// Proves closure from paired directed edges and outward planes enclosing all corners.
 /// Templates with unmatched edges, degenerate faces or non-convex surfaces conservatively fall back.
 fn closed_block(model: &DroppedItemBlock) -> bool {
@@ -72,7 +89,7 @@ fn closed_block(model: &DroppedItemBlock) -> bool {
     }
     let mut edges = BTreeMap::new();
     for quad in model.quads.iter() {
-        if quad.flags & assets::MODEL_QUAD_FLAG_TWO_SIDED != 0 {
+        if quad.flags & assets::MODEL_QUAD_FLAG_TWO_SIDED != 0 || !block_uvs_stay_in_tile(quad) {
             return false;
         }
         let Some(normal) = block::quad_normal(quad) else {

@@ -267,7 +267,7 @@ impl EquipmentRuntime {
                 let ticks = match duration {
                     assets::item_use::ItemUseDurationRule::Fixed(ticks) => *ticks,
                     assets::item_use::ItemUseDurationRule::LongWeapon => {
-                        protocol::LONG_WEAPON_USE_TICKS
+                        assets::item_use::LONG_WEAPON_USE_TICKS
                     }
                     assets::item_use::ItemUseDurationRule::Crossbow => {
                         assets::item_use::CROSSBOW_CHARGE_TICKS

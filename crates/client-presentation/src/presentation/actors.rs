@@ -1,3 +1,4 @@
+use render_api::PoseGeneration;
 use std::{collections::HashMap, sync::Arc};
 
 use actor_animation::ActorRigSnapshot;
@@ -282,7 +283,7 @@ fn tick_presentation(
                         source_tick: None,
                         movement_revision: 0,
                         // Tick zero is a valid initial pose; identity generations reserve zero.
-                        pose_generation: rig.completed_tick.saturating_add(1),
+                        pose_generation: PoseGeneration::new(rig.completed_tick.saturating_add(1)),
                         layer: render_model::ACTOR_LAYER_BODY,
                     },
                     rig: EntityRigId(rig.rig.0),
@@ -388,14 +389,14 @@ pub fn local_diagnostic_presentation(
     actor_session_id: u64,
     dimension: i32,
     runtime_id: u64,
-    pose_generation: u64,
+    pose_generation: PoseGeneration,
     position: [f32; 3],
     yaw_degrees: f32,
     pitch_degrees: f32,
 ) -> Option<ActorRigPresentation> {
     if actor_session_id == 0
         || runtime_id == 0
-        || pose_generation == 0
+        || pose_generation.get() == 0
         || position.iter().any(|value| !value.is_finite())
         || !yaw_degrees.is_finite()
         || !pitch_degrees.is_finite()

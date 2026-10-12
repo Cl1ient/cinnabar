@@ -1,5 +1,6 @@
 //! The per-session rig store actor authority drives through spawns, ticks and frames.
 use super::*;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 #[derive(Debug)]
 pub struct ActorAnimationStore {
@@ -14,7 +15,8 @@ pub struct ActorAnimationStore {
     pub(super) mount_equipment: HashMap<u64, assets::entity::mount::MountEquipment>,
     /// First actor the world budget skipped last tick, where the next tick starts.
     pub(super) first_starved: Option<ActorLifetimeId>,
-    pub(super) local_motion_authority: Option<(u64, (u64, u64))>,
+    pub(super) local_motion_authority:
+        Option<(u64, (SessionGeneration, PositionAuthorityGeneration))>,
     pub(super) completed_tick: u64,
     pub(super) next_reset_generation: u64,
     pub(super) next_rest_reset_generation: u64,

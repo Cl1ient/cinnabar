@@ -156,9 +156,9 @@ impl DebugContext<'_, '_> {
         if let Some(frame) = self.frame.snapshot() {
             lines.left.push(format_args!(
                 "Session: {} | tick: {} | FIFO: {}",
-                frame.session_generation(),
-                frame.physics_tick(),
-                frame.fifo_sequence()
+                frame.session_generation().get(),
+                frame.physics_tick().get(),
+                frame.fifo_sequence().get()
             ));
         }
         if let Some(movement) = self.movement.as_deref() {

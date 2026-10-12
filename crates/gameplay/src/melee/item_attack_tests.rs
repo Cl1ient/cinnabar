@@ -2,6 +2,7 @@ use super::*;
 use protocol::test_support::transactions::{
     ItemUseAction as Action, ItemUseObservation, observe_transaction,
 };
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Supplies verified selected-stack identity and a sampled item-directed attack.
 fn press(tick: u64) -> PressContext {
@@ -117,14 +118,23 @@ fn shared_attack_cooldown_expires_on_its_tick_and_full_queue_does_not_start_it()
         assert_eq!(transaction(&outcome).cooldown_active, cooldown_active);
         assert_eq!(outcome.packets.len(), packet_count);
     }
-    runtime.synchronize((1, 1));
-    runtime.synchronize((1, 2));
+    runtime.synchronize((
+        SessionGeneration::new(1),
+        PositionAuthorityGeneration::new(1),
+    ));
+    runtime.synchronize((
+        SessionGeneration::new(1),
+        PositionAuthorityGeneration::new(2),
+    ));
     assert_eq!(
         runtime.attack_cooldowns.len(),
         1,
         "teleport keeps item category timers"
     );
-    runtime.synchronize((2, 1));
+    runtime.synchronize((
+        SessionGeneration::new(2),
+        PositionAuthorityGeneration::new(1),
+    ));
     assert!(runtime.attack_cooldowns.is_empty());
 }
 

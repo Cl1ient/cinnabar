@@ -1,3 +1,4 @@
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::{collections::HashMap, sync::Arc};
 
 use client_world::{
@@ -418,9 +419,15 @@ fn misses_flag_the_tick_and_only_non_touch_misses_swing() {
 #[test]
 fn a_position_authority_change_drops_a_latched_press() {
     let mut runtime = MeleeRuntime::default();
-    runtime.synchronize((7, 0));
+    runtime.synchronize((
+        SessionGeneration::new(7),
+        PositionAuthorityGeneration::new(0),
+    ));
     runtime.observe_input(true, false);
-    runtime.synchronize((8, 0));
+    runtime.synchronize((
+        SessionGeneration::new(8),
+        PositionAuthorityGeneration::new(0),
+    ));
     let outcome = runtime.resolve(
         ZOMBIE,
         &press(PlayerInputMode::Mouse),
@@ -604,13 +611,34 @@ fn a_completed_short_swing_admits_after_effect_expiry() {
 fn movement_authority_change_resets_local_swing_samples() {
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 10, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        10,
+        &effects,
+    );
     assert!(swings.try_swing(10, 6));
     swings.published_progress(12);
-    swings.sync_ticks((1, 2), 2, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        2,
+        &effects,
+    );
     assert!(swings.try_swing(2, 6));
     assert_eq!(swings.published_progress(2).java, [0.0; 2]);
-    swings.sync_ticks((1, 3), 20, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(3),
+        ),
+        20,
+        &effects,
+    );
     assert!(swings.try_swing(20, 6));
     assert_eq!(swings.published_progress(20).bedrock, [0.0; 2]);
 }
@@ -697,7 +725,14 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
     let mut press = press(PlayerInputMode::Mouse);
     press.swing_duration = duration;
     runtime.observe_input(true, true);
-    swings.sync_ticks((1, 1), press.tick, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        press.tick,
+        &effects,
+    );
     let mut initial_packets = Vec::new();
     assert!(!resolve_and_send(
         &mut runtime,
@@ -717,7 +752,14 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
         "a refused FIFO admits no combat evidence"
     );
     assert_eq!(swings.published_progress(press.tick).bedrock, [0.0; 2]);
-    swings.sync_ticks((1, 1), press.tick, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        press.tick,
+        &effects,
+    );
     let mut admitted_packets = Vec::new();
     let missed = resolve_and_send(&mut runtime, &mut swings, crosshair, &press, 2, |packets| {
         admitted_packets = kinds(&packets);
@@ -807,7 +849,14 @@ fn a_backpressured_restart_keeps_the_published_tick_and_previous_sample() {
 fn only_the_current_unadmitted_tick_can_replay() {
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     let mut candidate = swings.clone();
     assert!(candidate.try_swing(100, 6));
     swings.defer_unadmitted_attempt(&candidate);
@@ -832,7 +881,14 @@ fn only_the_current_unadmitted_tick_can_replay() {
     );
 
     let mut other = SwingTracker::default();
-    other.sync_ticks((1, 2), 103, &effects);
+    other.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        103,
+        &effects,
+    );
     assert!(other.try_swing(103, 6));
     swings.defer_unadmitted_attempt(&other);
     swings.published_progress(103);
@@ -840,7 +896,14 @@ fn only_the_current_unadmitted_tick_can_replay() {
         !swings.try_swing(103, 6),
         "a different authority cannot reopen a tick"
     );
-    swings.sync_ticks((1, 2), 103, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        103,
+        &effects,
+    );
     assert!(
         swings.try_swing(103, 6),
         "new authority resets both counters and permission"
@@ -899,7 +962,14 @@ fn committed_swing_samples_are_bounded_across_large_tick_jumps_and_authority_res
     let mut effects = crate::movement::LocalMovementEffectTimeline::default();
     effects.begin_session(1);
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 1, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        1,
+        &effects,
+    );
     assert!(swings.try_swing(1, 6));
     swings.published_progress(1);
     swings.published_progress(u64::MAX);
@@ -914,7 +984,14 @@ fn committed_swing_samples_are_bounded_across_large_tick_jumps_and_authority_res
     swings.published_progress(u64::MAX);
     assert_eq!(swings.committed_samples().collect::<Vec<_>>(), samples);
     effects.begin_session(1);
-    swings.sync_ticks((1, 2), 2, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        2,
+        &effects,
+    );
     assert_eq!(swings.committed_samples().count(), 0);
     swings.published_progress(2);
     assert_eq!(
@@ -1021,7 +1098,10 @@ fn fresh_published_presses_expire_without_sending() {
 fn melee_retry_permission_clears_on_cancel_authority_change_and_expiry() {
     for reset in 0..3 {
         let mut runtime = MeleeRuntime::default();
-        runtime.synchronize((1, 1));
+        runtime.synchronize((
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ));
         let mut swings = SwingTracker::default();
         let press = press(PlayerInputMode::Mouse);
         runtime.observe_input(true, false);
@@ -1036,7 +1116,10 @@ fn melee_retry_permission_clears_on_cancel_authority_change_and_expiry() {
         swings.published_progress(press.tick);
         match reset {
             0 => runtime.cancel(),
-            1 => runtime.synchronize((1, 2)),
+            1 => runtime.synchronize((
+                SessionGeneration::new(1),
+                PositionAuthorityGeneration::new(2),
+            )),
             _ => runtime.defer(2 + MAX_PENDING_INTERACTION_MILLIS),
         }
         runtime.observe_input(true, false);
@@ -1082,40 +1165,4 @@ fn a_fresh_unpublished_press_still_obeys_the_half_duration_guard() {
     }
 }
 
-#[test]
-fn ordered_hitboxes_use_the_first_intersection_within_reach() {
-    let actor = actor(9, "minecraft:pig", [0.0; 3], None);
-    let boxes = [
-        ([5.0, 0.0, -2.0], [6.0, 3.0, -1.0]),
-        ([-0.5, 0.0, -9.0], [0.5, 3.0, -8.0]),
-        ([-0.5, 0.0, -4.0], [0.5, 3.0, -3.0]),
-        ([-0.5, 0.0, -2.0], [0.5, 3.0, -1.0]),
-    ];
-    let hit = pick_actor_by([&actor].into_iter(), |_| boxes, None, EYE, NORTH, 5.0).unwrap();
-    assert!((hit.distance - 2.9).abs() < 1e-6, "{}", hit.distance);
-}
-
-#[test]
-fn advertised_projectile_base_excludes_picking_and_placement_obstruction() {
-    let actor = actor_with_base(
-        80,
-        "fixture:projectile",
-        Some("minecraft:arrow"),
-        [0.0, 0.0, -2.0],
-        HashMap::from([
-            (
-                BOUNDING_BOX_WIDTH_METADATA_KEY,
-                ActorMetadataValue::Float(0.6),
-            ),
-            (
-                BOUNDING_BOX_HEIGHT_METADATA_KEY,
-                ActorMetadataValue::Float(2.0),
-            ),
-        ]),
-    );
-    assert_eq!(
-        pick_actor(std::iter::once(&actor), None, EYE, NORTH, 5.0),
-        None
-    );
-    assert!(!obstructs_placement(&actor));
-}
+mod picking;

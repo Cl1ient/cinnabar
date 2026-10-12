@@ -2,6 +2,7 @@
 
 use actor_animation::ItemAnimationState;
 use bevy::math::Quat;
+use render_api::PoseGeneration;
 use render_model::ActorRenderIdentity;
 use sha2::Digest;
 use sha2::Sha256;
@@ -134,7 +135,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: ACTOR_LAYER_BODY,
             },
             rig,

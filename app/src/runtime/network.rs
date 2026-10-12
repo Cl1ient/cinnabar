@@ -10,6 +10,8 @@ use client_runtime::inventory::{
 };
 use client_runtime::network::NetworkHandle;
 use client_runtime::pack_admission::ResourcePackAdmissionState;
+use protocol::identity::FifoSequence;
+use simulation_clock::identity::SessionGeneration;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 #[cfg(feature = "acceptance")]
@@ -128,11 +130,11 @@ pub(crate) fn route_equipment_ingress(
     runtime: &mut UiRuntime,
     sequenced: client_session::SequencedWorldEvent,
 ) -> Result<EquipmentIngress, InventoryRouterError> {
-    let session_id = sequenced.session_generation;
+    let session_id = sequenced.session_generation.get();
     let WorldEvent::Equipment(event) = sequenced.event else {
         unreachable!("equipment routing accepts only equipment world events")
     };
-    match runtime.route_equipment(player_runtime, session_id, sequenced.sequence, event)? {
+    match runtime.route_equipment(player_runtime, session_id, sequenced.sequence.get(), event)? {
         EquipmentRouteResult::Buffered => Ok(EquipmentIngress::Buffered),
         EquipmentRouteResult::Routed(route) => Ok(consume_equipment_route(
             player_runtime,
@@ -161,8 +163,8 @@ fn consume_equipment_route(
             fifo_sequence,
             event,
         } => EquipmentIngress::ActorPresentation(Box::new(client_session::SequencedWorldEvent {
-            session_generation,
-            sequence: fifo_sequence,
+            session_generation: SessionGeneration::new(session_generation),
+            sequence: FifoSequence::new(fifo_sequence),
             event: WorldEvent::Equipment(event),
         })),
     }
@@ -243,6 +245,7 @@ pub(crate) fn receive_network_events(
                 packs,
                 terrain_before_spawn,
             } => {
+                let session_generation = session_generation.get();
                 match classify_bootstrap_generation(
                     ui_runtime.session_id(),
                     clock.session_generation(),
@@ -446,7 +449,7 @@ pub(crate) fn receive_network_events(
                         .set_mutation_surface_anchor(acceptance_surface_anchor(resolved.position));
                 }
                 reset_local_player_session(
-                    session_generation,
+                    simulation_clock::identity::SessionGeneration::new(session_generation),
                     bootstrap.local_player_runtime_id,
                     resolved.position,
                     &mut settings,
@@ -496,10 +499,9 @@ pub(crate) fn receive_network_events(
                     let result = match route {
                         EquipmentIngress::ActorPresentation(sequenced) => {
                             let sequenced = *sequenced;
-                            client_world
-                                .stream
-                                .as_mut()
-                                .map(|stream| stream.submit(sequenced.sequence, sequenced.event))
+                            client_world.stream.as_mut().map(|stream| {
+                                stream.submit(sequenced.sequence.get(), sequenced.event)
+                            })
                         }
                         EquipmentIngress::CommitOnly { fifo_sequence } => client_world
                             .stream
@@ -602,10 +604,10 @@ pub(crate) fn receive_network_events(
             NetworkControlEvent::PhysicsPacketSent { identity } => {
                 if !movement.acknowledge_physics_send(identity) {
                     warn!(
-                        session_generation = identity.session_generation,
-                        tick = identity.tick,
+                        session_generation = identity.session_generation.get(),
+                        tick = identity.tick.get(),
                         admission_id = identity.admission_id,
-                        reanchor_epoch = identity.reanchor_epoch,
+                        reanchor_epoch = identity.reanchor_epoch.get(),
                         "ignored stale, duplicate, or out-of-order physics send acknowledgement"
                     );
                 }
@@ -617,10 +619,10 @@ pub(crate) fn receive_network_events(
             } => {
                 if !movement.resolve_cancelled_physics_send(identity, definitely_unsent) {
                     warn!(
-                        session_generation = identity.session_generation,
-                        tick = identity.tick,
+                        session_generation = identity.session_generation.get(),
+                        tick = identity.tick.get(),
                         admission_id = identity.admission_id,
-                        reanchor_epoch = identity.reanchor_epoch,
+                        reanchor_epoch = identity.reanchor_epoch.get(),
                         definitely_unsent,
                         "ignored stale, duplicate, or out-of-order physics cancellation"
                     );
@@ -730,6 +732,8 @@ pub(crate) fn receive_network_events(
                 payload,
             } => {
                 network.record_level_chunk_consumed();
+                let session_generation = session_generation.get();
+                let sequence = sequence.get();
                 if session_generation != ui_runtime.session_id() {
                     record_fatal_error(
                         &mut client_world.fatal_error,
@@ -778,6 +782,8 @@ pub(crate) fn receive_network_events(
                 sequence,
                 action_sequence,
             } => {
+                let session_generation = session_generation.get();
+                let sequence = sequence.get();
                 if session_generation != ui_runtime.session_id() {
                     record_fatal_error(
                         &mut client_world.fatal_error,
@@ -809,13 +815,13 @@ pub(crate) fn receive_network_events(
                 continue;
             }
         };
-        if sequenced.session_generation != ui_runtime.session_id() {
+        if sequenced.session_generation.get() != ui_runtime.session_id() {
             record_fatal_error(
                 &mut client_world.fatal_error,
                 format!(
                     "world ingress crossed a session boundary: expected {}, got {}",
                     ui_runtime.session_id(),
-                    sequenced.session_generation
+                    sequenced.session_generation.get()
                 ),
             );
             continue;
@@ -886,8 +892,8 @@ pub(crate) fn receive_network_events(
         {
             ui_runtime.retain_totem_snapshot(
                 &mut player_runtime,
-                sequenced.session_generation,
-                sequenced.sequence,
+                sequenced.session_generation.get(),
+                sequenced.sequence.get(),
             );
         }
         #[cfg(feature = "acceptance")]
@@ -895,7 +901,8 @@ pub(crate) fn receive_network_events(
         #[cfg(feature = "acceptance")]
         if model_witness_source.configured()
             && let protocol::WorldEvent::MovePlayer(movement) = &sequenced.event
-            && let Some(marker) = move_player_ingress_marker(sequenced.sequence, movement.position)
+            && let Some(marker) =
+                move_player_ingress_marker(sequenced.sequence.get(), movement.position)
         {
             let mut stdout = diagnostics::console::stdout();
             write_stdout_marker(&mut stdout, &marker);
@@ -905,7 +912,7 @@ pub(crate) fn receive_network_events(
         #[cfg(feature = "acceptance")]
         let accepted_binding_ingress = acceptance.observe_full_view_teleport_ingress(
             &sequenced.event,
-            sequenced.sequence,
+            sequenced.sequence.get(),
             observed_at,
             stream.current_dimension(),
             metrics.0.frame_count(),
@@ -914,20 +921,20 @@ pub(crate) fn receive_network_events(
         if accepted_binding_ingress {
             if let Some(ingress_marker) = accepted_move_player_ingress_marker(
                 accepted_binding_ingress,
-                sequenced.sequence,
+                sequenced.sequence.get(),
                 &sequenced.event,
             ) {
                 let mut stdout = diagnostics::console::stdout();
                 write_move_player_ingress_before_source_capture(
                     &mut stdout,
                     &ingress_marker,
-                    || stream.schedule_source_capture(sequenced.sequence),
+                    || stream.schedule_source_capture(sequenced.sequence.get()),
                 );
             } else {
-                stream.schedule_source_capture(sequenced.sequence);
+                stream.schedule_source_capture(sequenced.sequence.get());
             }
         }
-        let submitted = stream.submit(sequenced.sequence, sequenced.event);
+        let submitted = stream.submit(sequenced.sequence.get(), sequenced.event);
         stream.dispatch_ingress_decode();
         if let Err(error) = submitted {
             client_world.fatal_error = Some(format!("world FIFO rejected data: {error}"));

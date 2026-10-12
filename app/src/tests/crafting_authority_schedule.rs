@@ -6,6 +6,7 @@ use ::acceptance::AcceptanceRun;
 use bevy::ecs::system::RunSystemOnce;
 use client_shell::ui_resources::UiRuntimeResource;
 use client_state::PlayerRuntime;
+use simulation_clock::identity::SessionGeneration;
 #[path = "latency_fences.rs"]
 mod latency_fences;
 
@@ -119,7 +120,7 @@ fn ingress(app: &mut App, sequence: u64, event: InventoryEvent) {
             player_runtime,
             runtime,
             SequencedWorldEvent {
-                session_generation: 1,
+                session_generation: SessionGeneration::new(1),
                 sequence,
                 event: WorldEvent::Inventory(event),
             },
@@ -455,7 +456,7 @@ fn registry_ingress(app: &mut App, sequence: u64, registry: ItemRegistryEvent) {
             player_runtime,
             runtime,
             &SequencedWorldEvent {
-                session_generation: 1,
+                session_generation: SessionGeneration::new(1),
                 sequence,
                 event: WorldEvent::ItemActor(protocol::ItemActorEvent::Registry(registry)),
             },

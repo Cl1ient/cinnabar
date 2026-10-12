@@ -1,3 +1,5 @@
+use protocol::identity::FifoSequence;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::{
     collections::VecDeque,
     future,
@@ -62,7 +64,7 @@ fn readiness_ingress_counter_excludes_transport_only_events() {
     counter.record_consumed(&readiness_event);
     assert_eq!(counter.pending(), 0);
 
-    let mut sequencer = NetworkSequencer::new(7, 0, 42);
+    let mut sequencer = NetworkSequencer::new(SessionGeneration::new(7), 0, 42);
     let remote_move = wrap_readiness_tracked_event(
         &mut sequencer,
         &counter,
@@ -425,7 +427,7 @@ async fn cache_stats_are_forwarded_after_cached_world_ingress() {
             inbound: Some(WorldEvent::ChunkRadiusUpdated(16)),
             stats: initial_stats,
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -480,7 +482,7 @@ async fn final_cache_telemetry_flushes_after_shutdown_is_already_set() {
             inbound: None,
             stats,
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         events,
         world_events,
@@ -567,8 +569,8 @@ async fn saturated_world_event_channel_does_not_block_request_sent_control_event
     let (world_events, mut world_event_rx) = mpsc::channel(1);
     world_events
         .try_send(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(1),
             event: WorldEvent::ChunkRadiusUpdated(16),
         })
         .unwrap();
@@ -600,12 +602,12 @@ async fn saturated_world_event_channel_does_not_block_request_sent_control_event
         }) if chunk == world::ChunkKey::new(0, 4, -3) && observed == sent_at
     ));
     assert!(matches!(
-        world_event_rx.try_recv(),
-        Ok(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
-            event: WorldEvent::ChunkRadiusUpdated(16),
-        })
+            world_event_rx.try_recv(),
+            Ok(SequencedWorldEvent {
+                session_generation,
+                sequence,
+                event: WorldEvent::ChunkRadiusUpdated(16),
+            }) if session_generation.get() == 7 && sequence.get() == 1
     ));
 }
 
@@ -635,7 +637,7 @@ async fn chat_send_receipt_is_emitted_only_after_the_session_send_completes() {
             inbound: None,
             inbound_selected: Arc::new(AtomicBool::new(false)),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -659,8 +661,8 @@ async fn single_worker_acks_ready_command_while_ready_inbound_waits_on_full_worl
     for sequence in 1..=WORLD_EVENT_CAPACITY as u64 {
         world_event_tx
             .try_send(WorldIngress::Event(SequencedWorldEvent {
-                session_generation: 7,
-                sequence,
+                session_generation: SessionGeneration::new(7),
+                sequence: protocol::identity::FifoSequence::new(sequence),
                 event: WorldEvent::ChunkRadiusUpdated(sequence as i32),
             }))
             .unwrap();
@@ -697,7 +699,7 @@ async fn single_worker_acks_ready_command_while_ready_inbound_waits_on_full_worl
             inbound: Some(WorldEvent::ChunkRadiusUpdated(99)),
             inbound_selected: Arc::clone(&inbound_selected),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -760,7 +762,7 @@ async fn control_kinds_and_sequenced_world_data_use_only_their_own_channels() {
 
     for event in [
         NetworkControlEvent::Bootstrap {
-            session_generation: 7,
+            session_generation: simulation_clock::identity::SessionGeneration::new(7),
             world: bootstrap,
             environment,
             custom_blocks: protocol::CustomBlocks::default(),
@@ -794,8 +796,8 @@ async fn control_kinds_and_sequenced_world_data_use_only_their_own_channels() {
             &world_events,
             &mut shutdown_rx,
             SequencedWorldEvent {
-                session_generation: 7,
-                sequence: 9,
+                session_generation: SessionGeneration::new(7),
+                sequence: FifoSequence::new(9),
                 event: WorldEvent::ChunkRadiusUpdated(16),
             },
         )
@@ -807,13 +809,13 @@ async fn control_kinds_and_sequenced_world_data_use_only_their_own_channels() {
     assert!(matches!(
         control_event_rx.try_recv(),
         Ok(NetworkControlEvent::Bootstrap {
-            session_generation: 7,
+            session_generation,
             world,
             environment: value,
             inventory: InventoryEvent::Authority(InventoryAuthority::Server),
             player_game_mode: PlayerGameMode::Survival,
             ..
-        }) if world == bootstrap && value == environment
+        }) if session_generation.get() == 7 && world == bootstrap && value == environment
     ));
     assert!(matches!(
         control_event_rx.try_recv(),
@@ -831,12 +833,12 @@ async fn control_kinds_and_sequenced_world_data_use_only_their_own_channels() {
         })
     ));
     assert!(matches!(
-        world_event_rx.try_recv(),
-        Ok(WorldIngress::Event(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 9,
-            event: WorldEvent::ChunkRadiusUpdated(16),
-        }))
+            world_event_rx.try_recv(),
+            Ok(WorldIngress::Event(SequencedWorldEvent {
+                session_generation,
+                sequence,
+                event: WorldEvent::ChunkRadiusUpdated(16),
+            })) if session_generation.get() == 7 && sequence.get() == 9
     ));
 }
 
@@ -899,7 +901,8 @@ fn saturated_command_queue_preserves_packet_and_shutdown_does_not_join_on_ui_thr
     drop(control_event_tx);
     drop(world_event_tx);
     let (shutdown, _shutdown_rx) = watch::channel(false);
-    let (physics_reanchor, _physics_reanchor_rx) = watch::channel(0);
+    let (physics_reanchor, _physics_reanchor_rx) =
+        watch::channel(PositionAuthorityGeneration::default());
     let worker = thread::spawn(|| thread::sleep(Duration::from_millis(250)));
     let mut handle = NetworkHandle {
         session_generation: 0,

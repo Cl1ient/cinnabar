@@ -154,30 +154,30 @@ pub(super) async fn send_event_or_cancel<T>(
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NetworkSequencer {
-    session_generation: u64,
-    next_sequence: u64,
+    session_generation: simulation_clock::identity::SessionGeneration,
+    next_sequence: protocol::identity::FifoSequence,
     current_dimension: i32,
     local_player_runtime_id: u64,
 }
 
 impl NetworkSequencer {
-    pub(super) fn take_sequence(&mut self) -> u64 {
+    pub(super) fn take_sequence(&mut self) -> protocol::identity::FifoSequence {
         let sequence = self.next_sequence;
-        self.next_sequence = self.next_sequence.saturating_add(1);
+        self.next_sequence = self.next_sequence.next();
         sequence
     }
 
-    pub(super) const fn session_generation(&self) -> u64 {
+    pub(super) const fn session_generation(&self) -> simulation_clock::identity::SessionGeneration {
         self.session_generation
     }
     pub(super) const fn new(
-        session_generation: u64,
+        session_generation: simulation_clock::identity::SessionGeneration,
         current_dimension: i32,
         local_player_runtime_id: u64,
     ) -> Self {
         Self {
             session_generation,
-            next_sequence: 1,
+            next_sequence: protocol::identity::FifoSequence::new(1),
             current_dimension,
             local_player_runtime_id,
         }

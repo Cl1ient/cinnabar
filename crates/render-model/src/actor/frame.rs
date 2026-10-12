@@ -1,3 +1,4 @@
+use render_api::PoseGeneration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use assets::RuntimeEntityAssets;
@@ -44,7 +45,7 @@ pub struct ActorRenderIdentity {
     pub ingress_sequence: u64,
     pub source_tick: Option<u64>,
     pub movement_revision: u64,
-    pub pose_generation: u64,
+    pub pose_generation: PoseGeneration,
     /// `ACTOR_LAYER_BODY` for the body; equipment layers share the body's other fields.
     pub layer: u8,
 }
@@ -56,7 +57,7 @@ impl ActorRenderIdentity {
             && self.runtime_id != 0
             && self.spawn_revision != 0
             && self.ingress_sequence != 0
-            && self.pose_generation != 0
+            && self.pose_generation.get() != 0
     }
 }
 

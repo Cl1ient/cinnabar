@@ -3,6 +3,9 @@ use crate::runtime::network::resource_packs::PackApplication;
 use crate::ui_runtime::presentation::publish::PreparedUiPublication;
 use bevy::window::{PrimaryWindow, Window};
 use client_runtime::network::NetworkHandle;
+use protocol::identity::FifoSequence;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 use {
     super::*, client_presentation::actor_publication::HandRigBuilder,
     client_ui::test_support::mini_engine_presentation,
@@ -171,10 +174,10 @@ fn hud_coordinates_floor_player_feet_independently_of_camera_pose() {
         world
             .resource_mut::<LocalPlayerFrameCarrier>()
             .publish(LocalPlayerFrameSample {
-                session_generation: 1,
+                session_generation: SessionGeneration::new(1),
                 actor_session_id: 1,
-                fifo_sequence: 1,
-                physics_tick: 1,
+                fifo_sequence: FifoSequence::new(1),
+                physics_tick: PhysicsTick::new(1),
                 perspective,
                 world_collision_identity: sim::CollisionQuery::synthetic(()).identity,
                 pose,

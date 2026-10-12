@@ -10,7 +10,7 @@ fn frozen_local_player_frame_samples_pose_and_interaction_identity_atomically() 
     assert_eq!(frozen.session_generation(), expected.session_generation);
     assert_eq!(frozen.fifo_sequence(), expected.fifo_sequence);
     assert_eq!(frozen.physics_tick(), expected.physics_tick);
-    assert_eq!(frozen.pose_generation(), 1);
+    assert_eq!(frozen.pose_generation().get(), 1);
     assert_eq!(frozen.perspective(), expected.perspective);
     assert_eq!(
         frozen.world_collision_identity(),
@@ -42,9 +42,12 @@ fn correction_session_and_dimension_resets_invalidate_the_frozen_frame_generatio
 
         assert!(carrier.snapshot().is_none());
         let mut replacement = sample;
-        replacement.session_generation += u64::from(reset == LocalPlayerFrameReset::Session);
-        replacement.fifo_sequence += 1;
-        replacement.physics_tick += 1;
+        replacement.session_generation = SessionGeneration::new(
+            replacement.session_generation.get()
+                + u64::from(reset == LocalPlayerFrameReset::Session),
+        );
+        replacement.fifo_sequence = FifoSequence::new(replacement.fifo_sequence.get() + 1);
+        replacement.physics_tick = PhysicsTick::new(replacement.physics_tick.get() + 1);
         carrier.publish(replacement).unwrap();
         assert!(carrier.snapshot().unwrap().pose_generation() > stale_generation);
     }
@@ -203,7 +206,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
         assert!(
             interaction
                 .outbound_ray_for_authority(
-                    frozen.session_generation() + 1,
+                    SessionGeneration::new(frozen.session_generation().get() + 1),
                     frozen.fifo_sequence(),
                     frozen.physics_tick(),
                     frozen.pose_generation(),
@@ -215,7 +218,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
             interaction
                 .outbound_ray_for_authority(
                     frozen.session_generation(),
-                    frozen.fifo_sequence() + 1,
+                    FifoSequence::new(frozen.fifo_sequence().get() + 1),
                     frozen.physics_tick(),
                     frozen.pose_generation(),
                     frozen.world_collision_identity(),
@@ -227,7 +230,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
                 .outbound_ray_for_authority(
                     frozen.session_generation(),
                     frozen.fifo_sequence(),
-                    frozen.physics_tick() + 1,
+                    PhysicsTick::new(frozen.physics_tick().get() + 1),
                     frozen.pose_generation(),
                     frozen.world_collision_identity(),
                 )
@@ -239,7 +242,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
                     frozen.session_generation(),
                     frozen.fifo_sequence(),
                     frozen.physics_tick(),
-                    frozen.pose_generation() + 1,
+                    PoseGeneration::new(frozen.pose_generation().get() + 1),
                     frozen.world_collision_identity(),
                 )
                 .is_none()

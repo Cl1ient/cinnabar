@@ -1,3 +1,7 @@
+use protocol::identity::FifoSequence;
+use render_api::PoseGeneration;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 use std::sync::Arc;
 
 use actor_animation::{ActorLifetimeId, ActorRigSnapshot, BoneTransform, EntityRigId};
@@ -152,7 +156,7 @@ fn render_owned(runtime_id: u64, skin: u8) -> ActorRigPresentation {
                     ingress_sequence: 3,
                     source_tick: None,
                     movement_revision: 0,
-                    pose_generation: 11,
+                    pose_generation: PoseGeneration::new(11),
                     layer: 0,
                 },
                 rig: RenderEntityRigId(3),
@@ -394,7 +398,7 @@ fn third_person_local_fallback_reaches_the_render_manifest_without_a_physics_fra
     assert!(local_frame.snapshot().is_none());
 
     let mut no_identity = LocalAvatarPresentation::default();
-    no_identity.begin_session(7, 0);
+    no_identity.begin_session(SessionGeneration::new(7), 0);
     let mut visibility = LocalAvatarVisibilityCarrier::default();
     no_identity.publish_view_visibility(
         PerspectiveMode::ThirdPersonBack,
@@ -406,7 +410,7 @@ fn third_person_local_fallback_reaches_the_render_manifest_without_a_physics_fra
     assert!(visibility.snapshot().is_none());
 
     let mut avatar = LocalAvatarPresentation::default();
-    avatar.begin_session(7, 42);
+    avatar.begin_session(SessionGeneration::new(7), 42);
     for (perspective, expected_draws) in [
         (PerspectiveMode::FirstPerson, 0),
         (PerspectiveMode::ThirdPersonBack, 1),
@@ -479,10 +483,10 @@ fn f5_local_avatar_uses_authoritative_subject_when_view_eye_is_boomed() {
     )
     .unwrap();
     let stale_sample = LocalPlayerFrameSample {
-        session_generation: 7,
+        session_generation: SessionGeneration::new(7),
         actor_session_id: 3,
-        fifo_sequence: 41,
-        physics_tick: 900,
+        fifo_sequence: FifoSequence::new(41),
+        physics_tick: PhysicsTick::new(900),
         perspective: PerspectiveMode::ThirdPersonBack,
         world_collision_identity: collision_identity,
         pose: client_presentation::camera::perspective_pose(
@@ -497,7 +501,7 @@ fn f5_local_avatar_uses_authoritative_subject_when_view_eye_is_boomed() {
     stale_frame.publish(stale_sample).unwrap();
 
     let mut avatar = LocalAvatarPresentation::default();
-    avatar.begin_session(7, 42);
+    avatar.begin_session(SessionGeneration::new(7), 42);
     let mut visibility = LocalAvatarVisibilityCarrier::default();
     for perspective in [
         PerspectiveMode::ThirdPersonBack,

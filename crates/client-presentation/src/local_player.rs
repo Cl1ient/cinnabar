@@ -1,3 +1,8 @@
+use protocol::identity::FifoSequence;
+use render_api::PoseGeneration;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
+
 use bevy::prelude::{
     Entity, Quat, Res, ResMut, Resource, Single, SystemSet, Transform, Vec3, With,
 };
@@ -36,10 +41,10 @@ pub enum LocalPlayerFrameError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocalPlayerFrameSample {
-    pub session_generation: u64,
+    pub session_generation: SessionGeneration,
     pub actor_session_id: u64,
-    pub fifo_sequence: u64,
-    pub physics_tick: u64,
+    pub fifo_sequence: FifoSequence,
+    pub physics_tick: PhysicsTick,
     pub perspective: PerspectiveMode,
     pub world_collision_identity: WorldCollisionIdentity,
     pub pose: Transform,
@@ -50,11 +55,11 @@ pub struct LocalPlayerFrameSample {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrozenLocalPlayerFrame {
-    session_generation: u64,
+    session_generation: SessionGeneration,
     actor_session_id: u64,
-    fifo_sequence: u64,
-    physics_tick: u64,
-    pose_generation: u64,
+    fifo_sequence: FifoSequence,
+    physics_tick: PhysicsTick,
+    pose_generation: PoseGeneration,
     perspective: PerspectiveMode,
     world_collision_identity: WorldCollisionIdentity,
     pose: Transform,
@@ -66,7 +71,7 @@ pub struct FrozenLocalPlayerFrame {
 
 impl FrozenLocalPlayerFrame {
     #[must_use]
-    pub const fn session_generation(&self) -> u64 {
+    pub const fn session_generation(&self) -> SessionGeneration {
         self.session_generation
     }
 
@@ -76,17 +81,17 @@ impl FrozenLocalPlayerFrame {
     }
 
     #[must_use]
-    pub const fn fifo_sequence(&self) -> u64 {
+    pub const fn fifo_sequence(&self) -> FifoSequence {
         self.fifo_sequence
     }
 
     #[must_use]
-    pub const fn physics_tick(&self) -> u64 {
+    pub const fn physics_tick(&self) -> PhysicsTick {
         self.physics_tick
     }
 
     #[must_use]
-    pub const fn pose_generation(&self) -> u64 {
+    pub const fn pose_generation(&self) -> PoseGeneration {
         self.pose_generation
     }
 
@@ -131,7 +136,7 @@ impl FrozenLocalPlayerFrame {
 /// pose atomically; malformed samples leave the prior frame untouched.
 #[derive(Resource, Debug, Default, Clone, PartialEq)]
 pub struct LocalPlayerFrameCarrier {
-    pose_generation: u64,
+    pose_generation: PoseGeneration,
     snapshot: Option<FrozenLocalPlayerFrame>,
 }
 
@@ -155,7 +160,7 @@ impl LocalPlayerFrameCarrier {
         }
         let pose_generation = self
             .pose_generation
-            .checked_add(1)
+            .checked_next()
             .ok_or(LocalPlayerFrameError::PoseGenerationExhausted)?;
         let rotation = sample.rotation.normalize();
         let snapshot = FrozenLocalPlayerFrame {
@@ -179,7 +184,7 @@ impl LocalPlayerFrameCarrier {
 
     pub fn reset(&mut self, _reason: LocalPlayerFrameReset) {
         if self.snapshot.take().is_some() {
-            self.pose_generation = self.pose_generation.saturating_add(1);
+            self.pose_generation = self.pose_generation.saturating_next();
         }
     }
 
@@ -326,11 +331,11 @@ impl CameraPose {
 /// One immutable eye ray and its complete simulation/publication identity.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrozenInteractionOrigin {
-    session_generation: u64,
+    session_generation: SessionGeneration,
     actor_session_id: u64,
-    fifo_sequence: u64,
-    physics_tick: u64,
-    pose_generation: u64,
+    fifo_sequence: FifoSequence,
+    physics_tick: PhysicsTick,
+    pose_generation: PoseGeneration,
     perspective: PerspectiveMode,
     world_collision_identity: WorldCollisionIdentity,
     origin: Vec3,
@@ -339,7 +344,7 @@ pub struct FrozenInteractionOrigin {
 
 impl FrozenInteractionOrigin {
     #[must_use]
-    pub const fn session_generation(&self) -> u64 {
+    pub const fn session_generation(&self) -> SessionGeneration {
         self.session_generation
     }
 
@@ -349,17 +354,17 @@ impl FrozenInteractionOrigin {
     }
 
     #[must_use]
-    pub const fn fifo_sequence(&self) -> u64 {
+    pub const fn fifo_sequence(&self) -> FifoSequence {
         self.fifo_sequence
     }
 
     #[must_use]
-    pub const fn physics_tick(&self) -> u64 {
+    pub const fn physics_tick(&self) -> PhysicsTick {
         self.physics_tick
     }
 
     #[must_use]
-    pub const fn pose_generation(&self) -> u64 {
+    pub const fn pose_generation(&self) -> PoseGeneration {
         self.pose_generation
     }
 
@@ -423,10 +428,10 @@ impl InteractionOriginSnapshot {
     #[must_use]
     pub fn outbound_ray_for_authority(
         &self,
-        session_generation: u64,
-        fifo_sequence: u64,
-        physics_tick: u64,
-        pose_generation: u64,
+        session_generation: SessionGeneration,
+        fifo_sequence: FifoSequence,
+        physics_tick: PhysicsTick,
+        pose_generation: PoseGeneration,
         world_collision_identity: &WorldCollisionIdentity,
     ) -> Option<&FrozenInteractionOrigin> {
         self.0.as_ref().filter(|ray| {
@@ -445,9 +450,9 @@ impl InteractionOriginSnapshot {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrozenLocalAvatarVisibility {
-    session_generation: u64,
+    session_generation: SessionGeneration,
     runtime_id: u64,
-    pose_generation: u64,
+    pose_generation: PoseGeneration,
     visible: bool,
     eye: Vec3,
     feet: Vec3,
@@ -456,7 +461,7 @@ pub struct FrozenLocalAvatarVisibility {
 
 impl FrozenLocalAvatarVisibility {
     #[must_use]
-    pub const fn session_generation(self) -> u64 {
+    pub const fn session_generation(self) -> SessionGeneration {
         self.session_generation
     }
 
@@ -466,7 +471,7 @@ impl FrozenLocalAvatarVisibility {
     }
 
     #[must_use]
-    pub const fn pose_generation(self) -> u64 {
+    pub const fn pose_generation(self) -> PoseGeneration {
         self.pose_generation
     }
 
@@ -513,12 +518,12 @@ impl LocalAvatarVisibilityCarrier {
 /// visibility/pose handoff; the Phase 4 render arena owns culling and capacity.
 #[derive(Resource, Debug, Default)]
 pub struct LocalAvatarPresentation {
-    session_generation: u64,
+    session_generation: SessionGeneration,
     runtime_id: Option<u64>,
 }
 
 impl LocalAvatarPresentation {
-    pub fn begin_session(&mut self, session_generation: u64, runtime_id: u64) {
+    pub fn begin_session(&mut self, session_generation: SessionGeneration, runtime_id: u64) {
         self.session_generation = session_generation;
         self.runtime_id = (runtime_id != 0).then_some(runtime_id);
     }
@@ -567,7 +572,7 @@ impl LocalAvatarPresentation {
             return;
         };
         let rotation_length_squared = rotation.length_squared();
-        if self.session_generation == 0
+        if self.session_generation.get() == 0
             || !eye.is_finite()
             || !feet.is_finite()
             || !rotation.is_finite()
@@ -591,8 +596,9 @@ impl LocalAvatarPresentation {
         }) {
             return;
         }
-        let pose_generation =
-            prior.map_or(Some(1), |snapshot| snapshot.pose_generation.checked_add(1));
+        let pose_generation = prior.map_or(Some(PoseGeneration::new(1)), |snapshot| {
+            snapshot.pose_generation.checked_next()
+        });
         let Some(pose_generation) = pose_generation else {
             carrier.clear();
             return;
@@ -610,7 +616,7 @@ impl LocalAvatarPresentation {
 }
 
 pub fn reset_local_player_session(
-    session_generation: u64,
+    session_generation: SessionGeneration,
     runtime_id: u64,
     eye_position: [f32; 3],
     settings: &mut CameraSettingsAuthority,
@@ -696,7 +702,7 @@ pub fn resolve_camera_pose(
             camera_transform.0,
             transform,
             perspective,
-            state.tick,
+            PhysicsTick::new(state.tick),
             world.clone(),
         );
     }
@@ -733,7 +739,7 @@ pub fn publish_local_player_frame(
         ),
         *camera.transform(),
         settings.perspective(),
-        state.tick,
+        PhysicsTick::new(state.tick),
         world_collision_identity,
     ) else {
         carrier.reset(LocalPlayerFrameReset::Correction);
@@ -742,8 +748,8 @@ pub fn publish_local_player_frame(
     let sample = LocalPlayerFrameSample {
         session_generation: clock.session_generation(),
         actor_session_id: stream.authority().actor_session_id(),
-        fifo_sequence: stream.committed_sequence(),
-        physics_tick: state.tick,
+        fifo_sequence: FifoSequence::new(stream.committed_sequence()),
+        physics_tick: PhysicsTick::new(state.tick),
         perspective: settings.perspective(),
         world_collision_identity,
         pose: *camera.transform(),

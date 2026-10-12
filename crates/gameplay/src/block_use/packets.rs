@@ -142,18 +142,27 @@ mod tests {
     fn position_correction_preserves_admitted_inventory_until_slot_write_or_new_session() {
         let server = selected(3);
         let mut runtime = crate::block_use::BlockUseRuntime::default();
-        runtime.synchronize((7, 0));
+        runtime.synchronize((
+            simulation_clock::identity::SessionGeneration::new(7),
+            simulation_clock::identity::PositionAuthorityGeneration::new(0),
+        ));
         let change = runtime.inventory.prepare_change(&server, -4);
         let expected = change.to.clone();
         runtime.inventory.commit(server.clone(), 1, change);
-        runtime.synchronize((7, 1));
+        runtime.synchronize((
+            simulation_clock::identity::SessionGeneration::new(7),
+            simulation_clock::identity::PositionAuthorityGeneration::new(1),
+        ));
         let corrected = runtime.inventory.selection(&server, 1);
         let next = runtime.inventory.prepare_change(&corrected, -6);
         assert_eq!(next.from, expected);
         assert_eq!(next.to.count(), 1);
         assert_eq!(runtime.inventory.selection(&server, 2).item, server.item);
         runtime.inventory.commit(server.clone(), 2, next);
-        runtime.synchronize((8, 0));
+        runtime.synchronize((
+            simulation_clock::identity::SessionGeneration::new(8),
+            simulation_clock::identity::PositionAuthorityGeneration::new(0),
+        ));
         assert_eq!(runtime.inventory.selection(&server, 2).item, server.item);
     }
 

@@ -76,7 +76,15 @@ fn pick(
         collisions,
         FrozenMiningSelection { slot: 0, item },
         Some(protocol::PlayerGameMode::Survival),
-        (PlayerInputMode::Mouse, 5.7, (NonZeroU64::MIN, 1), 0),
+        (
+            PlayerInputMode::Mouse,
+            5.7,
+            (
+                semantic_input::identity::InputAuthorityGeneration::INITIAL,
+                semantic_input::identity::InputSequence::new(1),
+            ),
+            simulation_clock::identity::PositionAuthorityGeneration::new(0),
+        ),
     )
     .unwrap()
     .unwrap()

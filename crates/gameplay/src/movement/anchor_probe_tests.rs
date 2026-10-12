@@ -158,7 +158,7 @@ fn reanchor_into_solid_probes_before_first_sample() {
         8,
         Some(evidence_context()),
         |identity, _packet| {
-            sent.push(identity.tick);
+            sent.push(identity.tick.get());
             Ok::<_, ()>(())
         },
     )
@@ -203,7 +203,7 @@ fn unresolvable_embedment_streams_driftless_instead_of_freezing() {
         16,
         Some(evidence_context()),
         |identity, _packet| {
-            sent.push(identity.tick);
+            sent.push(identity.tick.get());
             Ok::<_, ()>(())
         },
     )

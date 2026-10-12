@@ -9,6 +9,7 @@ use protocol::{
     PlayerAuthInputInteractions,
 };
 use sim::{BlockDestroyInfo, DestroyConditions, HeldTool, PaletteWorld};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Local effects emitted after a destroy was attached to its movement tick.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -380,7 +381,7 @@ pub struct SurvivalMiningRuntime {
     machine: DestroyMachine,
     last_stepped_tick: Option<u64>,
     pub latched_press: bool,
-    position_authority: Option<(u64, u64)>,
+    position_authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     last_blocked_log_millis: Option<u64>,
     break_cues: Vec<BlockBreakCue>,
     /// A press that broke its block in its own frame, with the actions its tick carries.
@@ -528,7 +529,7 @@ impl SurvivalMiningRuntime {
     }
 
     /// Reanchors clear the outbox and may rewind tick numbers.
-    fn synchronize(&mut self, identity: (u64, u64)) {
+    fn synchronize(&mut self, identity: (SessionGeneration, PositionAuthorityGeneration)) {
         if let Some((session, _)) = self
             .position_authority
             .filter(|previous| *previous != identity)

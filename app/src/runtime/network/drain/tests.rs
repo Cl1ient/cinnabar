@@ -4,6 +4,7 @@ use protocol::{
     ActorEvent, ActorMetadata, ActorMetadataUpdateEvent, ActorMetadataValue, ActorMoveEvent,
     ActorPositionOrigin, LevelChunkEvent, LevelChunkMode, WorldEvent,
 };
+use simulation_clock::identity::SessionGeneration;
 use std::{sync::Arc, time::Instant};
 use {
     chunk_pipeline::WorldStream,
@@ -30,7 +31,7 @@ fn stream() -> WorldStream {
 
 fn event(sequence: u64, event: WorldEvent) -> WorldIngress {
     WorldIngress::Event(SequencedWorldEvent {
-        session_generation: 1,
+        session_generation: SessionGeneration::new(1),
         sequence,
         event,
     })
@@ -83,7 +84,7 @@ fn drain_frame(
 /// Produces one local metadata event that retains both a UI delta and a movement control.
 fn metadata(sequence: u64) -> WorldIngress {
     WorldIngress::Event(SequencedWorldEvent {
-        session_generation: 1,
+        session_generation: SessionGeneration::new(1),
         sequence,
         event: WorldEvent::Actor(ActorEvent::Metadata(ActorMetadataUpdateEvent {
             runtime_id: 1,

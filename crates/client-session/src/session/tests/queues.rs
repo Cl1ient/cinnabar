@@ -2,6 +2,8 @@ use super::{
     Arc, NetworkControlEvent, NetworkHandle, ReadinessIngressCounter, SequencedWorldEvent,
     WorldEvent, WorldIngress, mpsc, test_packet, watch,
 };
+use protocol::identity::FifoSequence;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 #[test]
 fn network_pending_counts_include_ingress_and_outbound_queues() {
@@ -9,7 +11,8 @@ fn network_pending_counts_include_ingress_and_outbound_queues() {
     let (world_event_tx, world_events) = mpsc::channel(2);
     let (commands, mut command_rx) = mpsc::channel(2);
     let (shutdown, _shutdown_rx) = watch::channel(false);
-    let (physics_reanchor, _physics_reanchor_rx) = watch::channel(0);
+    let (physics_reanchor, _physics_reanchor_rx) =
+        watch::channel(PositionAuthorityGeneration::default());
     let mut handle = NetworkHandle {
         session_generation: 0,
         control_events,
@@ -34,8 +37,8 @@ fn network_pending_counts_include_ingress_and_outbound_queues() {
     assert_eq!(handle.pending_event_count(), 1);
     world_event_tx
         .try_send(WorldIngress::Event(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(1),
             event: WorldEvent::ChunkRadiusUpdated(16),
         }))
         .unwrap();

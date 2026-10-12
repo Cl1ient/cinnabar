@@ -1,27 +1,31 @@
 //! Actual camera-writer proof, invalidated before every scheduled attempt.
 use bevy::prelude::{Entity, ResMut, Resource, Transform};
 use chunk_pipeline::WorldStream;
+use protocol::identity::FifoSequence;
+use render_api::PoseGeneration;
 use semantic_input::PerspectiveMode;
 use sim::WorldCollisionIdentity;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CameraOwner {
-    pub session: u64,
+    pub session: SessionGeneration,
     pub stream: u64,
     pub runtime: u64,
     pub dimension: i32,
     pub epoch: u64,
-    pub sequence: u64,
+    pub sequence: FifoSequence,
 }
 impl CameraOwner {
-    pub fn current(stream: &WorldStream, session: u64) -> Self {
+    pub fn current(stream: &WorldStream, session: SessionGeneration) -> Self {
         Self {
             session,
             stream: stream.authority().actor_session_id(),
             runtime: stream.local_player_runtime_id(),
             dimension: stream.current_dimension(),
             epoch: stream.form_dimension_epoch(),
-            sequence: stream.committed_sequence(),
+            sequence: FifoSequence::new(stream.committed_sequence()),
         }
     }
 }
@@ -31,7 +35,7 @@ struct Prepared {
     entity: Entity,
     transform: Transform,
     perspective: PerspectiveMode,
-    tick: u64,
+    tick: PhysicsTick,
     world: WorldCollisionIdentity,
 }
 #[derive(Debug, Clone, Copy)]
@@ -40,8 +44,8 @@ pub struct PublishedCamera {
     pub entity: Entity,
     pub transform: Transform,
     pub perspective: PerspectiveMode,
-    pub tick: u64,
-    pub frame_generation: u64,
+    pub tick: PhysicsTick,
+    pub frame_generation: PoseGeneration,
 }
 #[derive(Debug, Default, Resource)]
 pub struct CameraPublicationAttempt {
@@ -65,7 +69,7 @@ impl CameraPublicationAttempt {
         entity: Entity,
         transform: Transform,
         perspective: PerspectiveMode,
-        tick: u64,
+        tick: PhysicsTick,
         world: WorldCollisionIdentity,
     ) {
         self.prepared = None;
@@ -92,7 +96,7 @@ impl CameraPublicationAttempt {
         owner: CameraOwner,
         transform: Transform,
         perspective: PerspectiveMode,
-        tick: u64,
+        tick: PhysicsTick,
         world: &WorldCollisionIdentity,
     ) -> Option<(PublishedCamera, WorldCollisionIdentity)> {
         let value = self.prepared.take()?;
@@ -112,13 +116,13 @@ impl CameraPublicationAttempt {
                 transform,
                 perspective,
                 tick,
-                frame_generation: 0,
+                frame_generation: PoseGeneration::default(),
             },
             value.world,
         ))
     }
-    pub fn finish(&mut self, mut value: PublishedCamera, generation: u64) {
-        if self.exhausted || self.attempt == 0 || generation == 0 {
+    pub fn finish(&mut self, mut value: PublishedCamera, generation: PoseGeneration) {
+        if self.exhausted || self.attempt == 0 || generation.get() == 0 {
             return;
         }
         value.frame_generation = generation;
@@ -138,7 +142,7 @@ pub fn begin_camera_publication_attempt(mut receipt: ResMut<CameraPublicationAtt
 #[allow(clippy::too_many_arguments)]
 pub fn published_default_camera(
     world: crate::observations::WorldObservation<'_>,
-    session: u64,
+    session: SessionGeneration,
     receipt: &CameraPublicationAttempt,
     frame: &crate::local_player::LocalPlayerFrameCarrier,
     camera_pose: &crate::local_player::CameraPose,
@@ -156,7 +160,7 @@ pub fn published_default_camera(
         if proof.owner != CameraOwner::current(stream, session)
             || proof.frame_generation != frame.pose_generation()
             || proof.tick != frame.physics_tick()
-            || state.tick != proof.tick
+            || state.tick != proof.tick.get()
             || physics_world != frame.world_collision_identity()
             || proof.owner.session != frame.session_generation()
             || proof.transform != *frame.pose()

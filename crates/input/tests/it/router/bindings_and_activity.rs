@@ -489,7 +489,7 @@ fn changed_source_must_advance_past_global_watermark_without_mutating_state() {
         })
         .unwrap();
     let accepted = router.finalize().unwrap();
-    assert_eq!(accepted.frame_sequence, 2);
+    assert_eq!(accepted.frame_sequence.get(), 2);
     assert_eq!(accepted.input_mode, semantic_input::InputMode::GamePad);
 }
 

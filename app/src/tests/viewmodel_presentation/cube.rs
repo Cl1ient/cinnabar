@@ -209,7 +209,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
     let mut view = client_presentation::local_player::LocalViewPose::default();
     let mut settings = client_presentation::camera::CameraSettingsAuthority::default();
     client_presentation::local_player::reset_local_player_session(
-        1,
+        simulation_clock::identity::SessionGeneration::new(1),
         1,
         [0., 64., 0.],
         &mut settings,

@@ -145,7 +145,7 @@ forbidden_transitive_dependencies = ["app", "bedrock-client", "launcher", "clien
 [[crates]]
 name = "gameplay"
 path = "crates/gameplay"
-allowed_dependencies = ["simulation-clock", "actor-animation", "assets", "block-transform", "client-world", "inventory", "player-state", "protocol", "semantic-input", "sim", "world"]
+allowed_dependencies = ["simulation-clock", "actor-animation", "assets", "block-transform", "client-world", "inventory", "player-state", "protocol", "render-api", "semantic-input", "sim", "world"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "client-session", "client-presentation", "acceptance", "launcher", "client-ui", "chunk-pipeline", "ui", "json-ui", "render", "asset-compiler", "pack-compiler", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]
 
@@ -210,7 +210,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "client-interaction"
 path = "crates/client-interaction"
-allowed_dependencies = ["actor-animation", "assets", "chunk-pipeline", "client-audio", "client-presentation", "client-state", "client-ui", "client-world", "diagnostics", "gameplay", "inventory", "player-state", "protocol", "semantic-input", "sim", "ui", "world"]
+allowed_dependencies = ["simulation-clock", "actor-animation", "assets", "chunk-pipeline", "client-audio", "client-presentation", "client-state", "client-ui", "client-world", "diagnostics", "gameplay", "inventory", "player-state", "protocol", "semantic-input", "sim", "ui", "world"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "client-runtime", "client-shell", "client-extensions", "acceptance", "client-session", "asset-compiler", "pack-compiler", "pack-runtime"]
 test_support_features = ["test-support"]
 

@@ -2,6 +2,7 @@
 use crate::{interaction_authority::FrozenBlockObservation, movement::PhysicsCollisionRegistries};
 use client_world::game_mode_capabilities::GameModeCapabilities;
 use protocol::{BlockUseRequest, ItemUseTrigger, SwingSource, VerifiedNetworkItemStack};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 // Held repeats are checked on simulation ticks against a monotonic deadline.
 const SLOW_REPEAT_MILLIS: u64 = 300;
@@ -324,7 +325,7 @@ pub struct BlockUseRuntime {
     interacted_tick: Option<u64>,
     /// The latest press was resolved as a block interaction.
     press_interacted: bool,
-    position_authority: Option<(u64, u64)>,
+    position_authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     pub intention: BuildIntention,
     selected_item: Option<(u8, i32, i32)>,
     rejected_tick: Option<u64>,
@@ -451,7 +452,7 @@ impl BlockUseRuntime {
     }
 
     /// Position corrections revoke pending presses while retaining admitted holds and inventory.
-    pub fn synchronize(&mut self, authority: (u64, u64)) {
+    pub fn synchronize(&mut self, authority: (SessionGeneration, PositionAuthorityGeneration)) {
         if let Some(previous) = self.position_authority
             && previous != authority
         {

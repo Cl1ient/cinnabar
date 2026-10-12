@@ -9,7 +9,7 @@ use protocol::{
 };
 use sha2::{Digest, Sha256};
 
-/// The canonical empty network compound (`Networkempty_compound()` is a lone TAG_End).
+/// The canonical empty root compound; `NetworkNbt::default()` is a lone TAG_End instead.
 fn empty_compound() -> Nbt {
     Nbt(Bytes::from_static(&[COMPOUND, 0, 0]))
 }

@@ -262,7 +262,10 @@ impl PlaySession {
             self.packet_id_trace.observe(raw.id);
             if raw.id == PacketId::LevelChunk {
                 let raw = raw.into_retention_bounded();
-                let packet = raw.decode().map_err(|error| self.fail_session(error))?;
+                let packet = match self.decode_world_candidate(raw)? {
+                    Some(packet) => packet,
+                    None => continue,
+                };
                 let packets::Packet::LevelChunk(packet) = packet.data else {
                     unreachable!("LevelChunk packet ID decoded to another variant")
                 };
@@ -483,9 +486,9 @@ impl PlaySession {
                 packet_name,
                 PacketId::LevelChunk | PacketId::SubChunk | PacketId::ClientCacheMissResponse
             ) {
-                let packet = match raw.decode() {
-                    Ok(packet) => packet,
-                    Err(error) => return Err(self.fail_session(error)),
+                let packet = match self.decode_world_candidate(raw)? {
+                    Some(packet) => packet,
+                    None => continue,
                 };
                 if let packets::Packet::LevelChunk(view) = &packet.data
                     && !view.cache_enabled
@@ -592,6 +595,18 @@ impl PlaySession {
                 Err(ProtocolError::Session(error)) => return Err(self.fail_session(error)),
                 Err(error) => self.skip_or_fail_world(error)?,
             }
+        }
+    }
+
+    /// Decodes a chunk-lane packet: a body breaking only a schema or UI bound is skipped and
+    /// counted (`None`), while malformed wire ends the session.
+    fn decode_world_candidate(&mut self, raw: RawPacket) -> Result<Option<Packet>, ProtocolError> {
+        match raw.decode() {
+            Ok(packet) => Ok(Some(packet)),
+            Err(error) => match crate::codec::world_decode_error(error) {
+                ProtocolError::Session(error) => Err(self.fail_session(error)),
+                semantic => self.skip_or_fail_world(semantic).map(|()| None),
+            },
         }
     }
 

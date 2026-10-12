@@ -140,7 +140,7 @@ mod session {
             "first-registry",
             &[vec![
                 registry("minecraft:shield", 355),
-                Packet::new(ItemRegistryPacket::default()),
+                Packet::new(ItemRegistry::default()),
                 registry("minecraft:shield", 900),
                 radius(16),
                 player_spawn(),
@@ -150,7 +150,7 @@ mod session {
         let spawned = await_spawn(transport).await.expect("repeats stay nonfatal");
         assert_eq!(spawned.runtime_id, RUNTIME_ID);
         assert_eq!(spawned.item_registry.item_data.len(), 1);
-        assert_eq!(spawned.item_registry.item_data[0].item_id, 355);
+        assert_eq!(spawned.item_registry.item_data[0].item_id.0, 355);
     }
 
     /// Optional packets are deferred to play in order, ahead of a packet the spawning batch

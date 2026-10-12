@@ -201,6 +201,18 @@ fn raw_packet_batch(id: PacketId, body: &[u8]) -> Bytes {
     frame.into()
 }
 
+/// A LevelChunk body whose sub-chunk request limit, -3, is below the schema's -1 floor.
+fn negative_limit_level_chunk_body() -> Vec<u8> {
+    let mut body = chunk_pos(0, 0).encode_to_vec().unwrap();
+    body.extend(DimensionType(0).encode_to_vec().unwrap());
+    body.extend(wire::VarUInt(0).encode_to_vec().unwrap());
+    body.extend(Some(wire::ZigZag32(-3)).encode_to_vec().unwrap());
+    body.extend(false.encode_to_vec().unwrap());
+    body.extend(wire::VarUInt(0).encode_to_vec().unwrap());
+    body.extend(Bytes::new().encode_to_vec().unwrap());
+    body
+}
+
 /// The handoff ending at the `startup` packets, with no packs.
 fn handoff_frame(client_cache: bool, startup: &[Packet]) -> Bytes {
     let metadata = serde_json::to_vec(&serde_json::json!({
@@ -388,14 +400,11 @@ fn play_traffic(script: &Script) -> Vec<Bytes> {
             }
         }
     } else {
-        // A semantically invalid world packet (negative request limit) must be skipped, not
-        // end the session; the following SetTime still arrives in order. Latency probes ride
-        // the same batch: only the from-server probe is answered, scaled, with its flag kept.
+        // A well-framed LevelChunk outside its schema bounds (request limit -3) must be skipped,
+        // not end the session; the following SetTime still arrives in order. Latency probes
+        // ride the same batch: only the from-server probe is answered, scaled, with its flag
+        // kept.
         let mut traffic = vec![
-            Packet::new(LevelChunk {
-                client_request_sub_chunk_limit: Some(wire::ZigZag32(-3)),
-                ..Default::default()
-            }),
             level_chunk(7, -9, 0x5a, 1024 * 1024),
             Packet::new(NetworkStackLatency {
                 creation_time: wire::U64LE(777),
@@ -409,7 +418,10 @@ fn play_traffic(script: &Script) -> Vec<Bytes> {
         ];
         traffic.extend(boundary);
         traffic.extend(camera_instruction_epilogue_packets(script.epilogue));
-        frames.push(batch(&traffic));
+        let mut frame =
+            raw_packet_batch(PacketId::LevelChunk, &negative_limit_level_chunk_body()).to_vec();
+        frame.extend_from_slice(&batch(&traffic)[1..]);
+        frames.push(frame.into());
         frames.extend(terminal);
         if let Some((name, body)) = truncated_epilogue_wire(script.epilogue) {
             frames.push(raw_packet_batch(name, body));

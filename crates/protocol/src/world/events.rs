@@ -162,7 +162,7 @@ pub struct BlockEntityUpdateEvent {
     pub dimension: i32,
     /// Absolute block coordinates in X/Y/Z order.
     pub position: [i32; 3],
-    /// Exact validated-by-Valentine NetworkLittleEndian NBT bytes. The world
+    /// Exact codec-validated NetworkLittleEndian NBT bytes. The world
     /// worker applies the stricter client limits before storage.
     pub nbt: Vec<u8>,
 }

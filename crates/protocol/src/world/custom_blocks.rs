@@ -370,7 +370,7 @@ impl CustomBlocks {
             names
                 .iter()
                 .zip(properties)
-                .map(|(name, property)| (name.as_ref(), property.block_definition.0.as_ref())),
+                .map(|(name, property)| (&**name, &property.block_definition.0[..])),
         )
     }
 

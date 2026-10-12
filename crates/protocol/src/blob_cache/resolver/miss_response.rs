@@ -141,7 +141,13 @@ mod tests {
         insert_verified(&mut store, BlobCacheLimits::default(), 7, b"original").unwrap();
         let before_clock = store.clock;
         assert_eq!(
-            validate_delta(&store, &[(8, b"new".to_vec()), (7, b"different".to_vec())]),
+            validate_delta(
+                &store,
+                &[
+                    (8, bytes::Bytes::from_static(b"new")),
+                    (7, bytes::Bytes::from_static(b"different")),
+                ]
+            ),
             Err(BlobCacheError::ConflictingDuplicate(7))
         );
         assert_eq!(store.entries.len(), 1);
@@ -157,7 +163,13 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            validate_delta(&store, &[(1, vec![1]), (2, vec![2])]),
+            validate_delta(
+                &store,
+                &[
+                    (1, bytes::Bytes::from_static(&[1])),
+                    (2, bytes::Bytes::from_static(&[2])),
+                ]
+            ),
             Err(BlobCacheError::ByteCountOverflow)
         );
         assert!(store.entries.is_empty());

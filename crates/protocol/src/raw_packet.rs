@@ -118,7 +118,7 @@ pub(crate) fn decode_packet_raw(cursor: &mut Bytes) -> Result<RawPacket, Session
             needed: 1,
             remaining: 0,
         }))
-        .map_err(|error| framing_failure(cursor, error))?;
+        .map_err(|error| framing_failure(&cursor[..], error))?;
     let _ = cursor.split_to(frame.frame().len());
     raw_packet(frame, backing_len)
 }

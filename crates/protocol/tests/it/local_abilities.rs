@@ -93,16 +93,13 @@ fn empty_max_and_over_policy_are_distinct_correctly_framed_evidence() {
 
 #[test]
 fn owned_and_raw_paths_preserve_identical_unknown_values_and_layer_order() {
-    use bedrock_protocol_1_26_51::enums::{
-        CommandPermissionLevel as EnumsCommandPermissionLevel,
-        PlayerPermissionLevel as EnumsPlayerPermissionLevel,
-    };
+    use bedrock_protocol_1_26_51::enums::{CommandPermissionLevel, PlayerPermissionLevel};
     for count in [0, 32, 33] {
         let packet = UpdateAbilitiesPacket {
             data: SerializedAbilitiesData {
                 target_player_raw_id: wire::I64LE(-17),
-                player_permissions: EnumsPlayerPermissionLevel::Unknown(-1),
-                command_permissions: EnumsCommandPermissionLevel::Unknown(254),
+                player_permissions: PlayerPermissionLevel::Unknown(-1),
+                command_permissions: CommandPermissionLevel::Unknown(254),
                 layers: (0..count)
                     .map(|index| SerializedAbilitiesDataSerializedLayer {
                         serialized_layer: wire::U16LE(index),

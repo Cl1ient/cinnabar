@@ -403,8 +403,8 @@
     Assert-True ($source.Contains('pinned_axolotl_stack_commit')) 'acceptance metadata omits the Axolotl Stack revision'
     Assert-True ($source.Contains('pinned_protocolgen_commit')) 'acceptance metadata omits the protocolgen revision'
     Assert-True ($source.Contains('Assert-ProtocolDependencyProvenance')) 'acceptance metadata does not detect Cargo/provenance drift'
-    Assert-True (-not $source.Contains("'^RUST_MCBE_TELEPORT_SETTLED ms=")) 'live teleport path still assumes ms precedes target'
-    Assert-True (-not $source.Contains("'^RUST_MCBE_FORCED_FULL_VIEW_REMESH_SETTLED ms=")) 'live forced-remesh path still assumes ms precedes target'
+    Assert-True (-not $source.Contains("'^CINNABAR_TELEPORT_SETTLED ms=")) 'live teleport path still assumes ms precedes target'
+    Assert-True (-not $source.Contains("'^CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED ms=")) 'live forced-remesh path still assumes ms precedes target'
     Assert-True ($source.Contains('TeleportMarker = $teleportMarkerEvidence')) 'live metrics validation does not receive parsed teleport evidence'
     Assert-True ($source.Contains('ForcedRemeshMarker = $forcedRemeshMarkerEvidence')) 'live metrics validation does not receive parsed forced-remesh evidence'
     Assert-True ($source.Contains('ExpectedTargetCohort = $expectedTargetCohort')) 'live metrics validation does not receive the planned target cohort'
@@ -412,9 +412,9 @@
     Assert-True (([regex]::Matches($source, '-TeleportMarker \$teleportMarkerEvidence')).Count -ge 1) 'steady-resource sampler does not receive teleport trigger evidence'
     Assert-True (([regex]::Matches($source, '-ForcedRemeshMarker \$forcedRemeshMarkerEvidence')).Count -ge 1) 'steady-resource sampler does not receive forced-remesh trigger evidence'
     Assert-True ($source.Contains('if (-not $SkipClientBuild)')) 'prebuilt client mode does not skip the app build'
-    Assert-True ($source.Contains('RUST_MCBE_TARGET_MUTATION_ARMED ')) 'live harness does not wait for the target-mutation arming marker'
+    Assert-True ($source.Contains('CINNABAR_TARGET_MUTATION_ARMED ')) 'live harness does not wait for the target-mutation arming marker'
     Assert-True ($source.Contains('ConvertFrom-TargetMutationArmedMarker')) 'live harness does not parse target-mutation evidence'
-    Assert-True ($source.Contains('RUST_MCBE_MOVE_PLAYER_INGRESS ')) 'live harness does not wait for binding MovePlayer ingress evidence'
+    Assert-True ($source.Contains('CINNABAR_MOVE_PLAYER_INGRESS ')) 'live harness does not wait for binding MovePlayer ingress evidence'
     Assert-True ($source.Contains('ConvertFrom-MovePlayerIngressMarker')) 'live harness does not parse binding MovePlayer ingress evidence'
     Assert-True ($source.Contains('-PassThruEvidence')) 'binding marker waits do not retain stdout positions'
     Assert-True ($source.Contains('Write-AcceptanceEvent')) 'live harness does not persist ordered fixture/teleport events'
@@ -459,7 +459,7 @@
     Assert-True ($passedStatusIndex -gt $cleanupFailureThrowIndex) 'metadata could claim passed before required cleanup/source verification succeeded'
     Assert-True ($successArtifactOutputIndex -gt $cleanupFailureThrowIndex) 'acceptance success markers could be emitted before required cleanup/source verification succeeded'
 
-    $env:RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY = '1'
+    $env:CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY = '1'
     try {
         . $AcceptanceScript `
             -DryRun `
@@ -470,10 +470,10 @@
             -VisualFixturePose Front
     }
     finally {
-        Remove-Item Env:RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY -ErrorAction SilentlyContinue
+        Remove-Item Env:CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY -ErrorAction SilentlyContinue
     }
 
-    $runtimeMetadataMarker = ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"release","requested_present_mode":"Fifo","effective_present_mode":"Fifo","present_mode_proven":true,"backend":"Dx12","adapter":"Test Adapter","driver":"test-driver","driver_info":"1.2.3"}'
+    $runtimeMetadataMarker = ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'CINNABAR_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"release","requested_present_mode":"Fifo","effective_present_mode":"Fifo","present_mode_proven":true,"backend":"Dx12","adapter":"Test Adapter","driver":"test-driver","driver_info":"1.2.3"}'
     Assert-Equal 'release' $runtimeMetadataMarker.build_profile 'runtime metadata lost build profile'
     Assert-Equal 'Fifo' $runtimeMetadataMarker.effective_present_mode 'runtime metadata lost effective present mode'
     Assert-Equal 'Dx12' $runtimeMetadataMarker.backend 'runtime metadata lost backend'
@@ -481,13 +481,13 @@
     Assert-Equal 'test-driver' $runtimeMetadataMarker.driver 'runtime metadata lost driver'
     Assert-Equal $true $runtimeMetadataMarker.present_mode_proven 'runtime metadata lost authoritative present-mode proof'
     Assert-Throws {
-        ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"release","requested_present_mode":"Immediate","effective_present_mode":"Immediate","backend":"Dx12","adapter":"Test Adapter","driver":"test-driver","driver_info":"1.2.3"}'
+        ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'CINNABAR_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"release","requested_present_mode":"Immediate","effective_present_mode":"Immediate","backend":"Dx12","adapter":"Test Adapter","driver":"test-driver","driver_info":"1.2.3"}'
     } 'runtime metadata without present-mode proof was accepted'
     Assert-Throws {
-        ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"release","requested_present_mode":"Immediate","effective_present_mode":"Immediate","present_mode_proven":false,"backend":"Dx12","adapter":"Test Adapter","driver":"test-driver","driver_info":"1.2.3"}'
+        ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'CINNABAR_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"release","requested_present_mode":"Immediate","effective_present_mode":"Immediate","present_mode_proven":false,"backend":"Dx12","adapter":"Test Adapter","driver":"test-driver","driver_info":"1.2.3"}'
     } 'runtime metadata with unproven present mode was accepted'
     Assert-Throws {
-        ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"debug"}'
+        ConvertFrom-AcceptanceRuntimeMetadataMarker -Line 'CINNABAR_ACCEPTANCE_RUNTIME_METADATA={"build_profile":"debug"}'
     } 'incomplete runtime metadata was accepted'
 
     $publicationFields = [ordered]@{
@@ -526,7 +526,7 @@
         driver = 'test-driver'
         driver_info = '1.2.3'
     }
-    $publicationLine = 'RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT=' + ($publicationFields | ConvertTo-Json -Compress)
+    $publicationLine = 'CINNABAR_WORLD_PUBLICATION_SNAPSHOT=' + ($publicationFields | ConvertTo-Json -Compress)
     $publicationSnapshot = ConvertFrom-WorldPublicationSnapshotMarker `
         -Line $publicationLine `
         -ExpectedBuildProfile 'release' `
@@ -556,14 +556,14 @@
         }
     }
     Assert-ThrowsLike {
-        ConvertFrom-WorldPublicationSnapshotMarker -Line ('RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT=' + ($missingPublicationFields | ConvertTo-Json -Compress)) -ExpectedBuildProfile release -ExpectedPresentMode Fifo
+        ConvertFrom-WorldPublicationSnapshotMarker -Line ('CINNABAR_WORLD_PUBLICATION_SNAPSHOT=' + ($missingPublicationFields | ConvertTo-Json -Compress)) -ExpectedBuildProfile release -ExpectedPresentMode Fifo
     } '*missing=max_mesh_queue_wait_ms*' 'publication snapshot accepted a missing stage field'
     $duplicatePublicationLine = $publicationLine.Replace('"draw_mode":"Direct"', '"draw_mode":"Direct","draw_mode":"MultiDrawIndirect"')
     Assert-ThrowsLike {
         ConvertFrom-WorldPublicationSnapshotMarker -Line $duplicatePublicationLine -ExpectedBuildProfile release -ExpectedPresentMode Fifo
     } '*duplicate field*draw_mode*' 'publication snapshot accepted a duplicate draw identity'
     Assert-Throws {
-        ConvertFrom-WorldPublicationSnapshotMarker -Line 'RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT={' -ExpectedBuildProfile release -ExpectedPresentMode Fifo
+        ConvertFrom-WorldPublicationSnapshotMarker -Line 'CINNABAR_WORLD_PUBLICATION_SNAPSHOT={' -ExpectedBuildProfile release -ExpectedPresentMode Fifo
     } 'publication snapshot accepted malformed JSON'
     Assert-ThrowsLike {
         ConvertFrom-WorldPublicationSnapshotMarker -Line $publicationLine -ExpectedBuildProfile debug -ExpectedPresentMode Fifo

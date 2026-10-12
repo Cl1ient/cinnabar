@@ -71,7 +71,7 @@ excluded from timing; missing samples do not establish zero GPU cost.
 
 ## Diagnostics
 
-Use `RUST_MCBE_GPU_CATEGORIES=1` only in a separate profiling capture. It splits
+Use `CINNABAR_GPU_CATEGORIES=1` only in a separate profiling capture. It splits
 adjacent opaque bins into solid, cutout, model, depth-liquid and other passes,
 without reordering bins or entities. Each pass writes hardware timestamps.
 Native in-pass spans are disabled to avoid counting category work twice. Early
@@ -88,11 +88,11 @@ remain opt-in where supported. Metal readbacks wait for an asynchronous render
 completion callback before resolving counters; slots remain reserved until
 mapping completes. This prevents stale fragment samples without stalling rendering.
 
-Use `RUST_MCBE_OPAQUE_LAYERS=1` in a separate diagnostic capture. Every 120 frames,
+Use `CINNABAR_OPAQUE_LAYERS=1` in a separate diagnostic capture. Every 120 frames,
 a dedicated additive half-float target counts alpha-surviving solid, cutout and
 model layers with depth disabled. Original geometry, culling, texture sampling
 and alpha thresholds are retained; the normal image is unchanged. Asynchronous
-`RUST_MCBE_OPAQUE_LAYERS` log records contain viewport mean, maximum and histogram,
+`CINNABAR_OPAQUE_LAYERS` log records contain viewport mean, maximum and histogram,
 not image data. Counts describe submitted coverage, not fragment invocations or
 layers which pass the ordinary depth test. More than 2,048 layers per pixel loses
 unit precision; the report flags these pixels. Do not use these frames for timing.

@@ -38,6 +38,7 @@ pub(super) fn geometry_fixture() -> CompiledEntityAssets {
         texture_width: 32,
         texture_height: 32,
         bones: vec![EntityGeometryBone {
+            locators: Box::default(),
             name: "wing".into(),
             parent: None,
             pivot: Some([scalar(0.5), scalar(4.0), scalar(1.0)]),

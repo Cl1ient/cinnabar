@@ -15,6 +15,7 @@ reads = [
 test-support = []
 
 [dependencies]
+env-compat = { path = "../env-compat" }
 simulation-clock = { path = "../simulation-clock" }
 block-transform = { path = "../block-transform" }
 assets = { path = "../assets" }

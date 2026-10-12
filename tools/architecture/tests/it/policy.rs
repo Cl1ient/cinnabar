@@ -44,7 +44,7 @@ path = "crates/beta"
 allowed_dependencies = []
 
 [[markers]]
-literal = "RUST_MCBE_READY"
+literal = "CINNABAR_READY"
 kind = "parsed"
 producer = "app/src/acceptance/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
@@ -72,11 +72,11 @@ fn rejects_each_structural_policy_violation_with_sorted_diagnostics() {
     );
     write(
         &root.join("app/src/acceptance/markers.rs"),
-        "const A: &str = \"RUST_MCBE_READY\";\nconst B: &str = \"RUST_MCBE_READY\";\n",
+        "const A: &str = \"CINNABAR_READY\";\nconst B: &str = \"CINNABAR_READY\";\n",
     );
     write(
         &root.join("scripts/acceptance/Markers.ps1"),
-        "$marker = 'RUST_MCBE_READY'\n",
+        "$marker = 'CINNABAR_READY'\n",
     );
     write(&root.join("app/captured.png"), "not really an image");
     write(&root.join("art/sky.png"), "original art");
@@ -179,11 +179,11 @@ fn resolves_inherited_workspace_dependencies_before_enforcing_edges() {
     write(&root.join("crates/alpha/src/lib.rs"), "pub fn api() {}\n");
     write(
         &root.join("app/src/acceptance/markers.rs"),
-        "const A: &str = \"RUST_MCBE_READY\";\n",
+        "const A: &str = \"CINNABAR_READY\";\n",
     );
     write(
         &root.join("scripts/acceptance/Markers.ps1"),
-        "$marker = 'RUST_MCBE_READY'\n",
+        "$marker = 'CINNABAR_READY'\n",
     );
     write(
         &root.join("vendor/UPSTREAM.md"),
@@ -223,11 +223,11 @@ fn permits_declared_vendor_and_log_only_markers() {
     write(&root.join("crates/alpha/src/lib.rs"), "pub fn api() {}\n");
     write(
         &root.join("app/src/acceptance/markers.rs"),
-        "const A: &str = \"RUST_MCBE_READY\";\n",
+        "const A: &str = \"CINNABAR_READY\";\n",
     );
     write(
         &root.join("scripts/acceptance/Markers.ps1"),
-        "$marker = 'RUST_MCBE_READY'\n",
+        "$marker = 'CINNABAR_READY'\n",
     );
 
     assert_eq!(
@@ -261,11 +261,11 @@ fn grandfathered_line_baseline_allows_only_the_recorded_size() {
     );
     write(
         &root.join("app/src/acceptance/markers.rs"),
-        "const A: &str = \"RUST_MCBE_READY\";\n",
+        "const A: &str = \"CINNABAR_READY\";\n",
     );
     write(
         &root.join("scripts/acceptance/Markers.ps1"),
-        "$marker = 'RUST_MCBE_READY'\n",
+        "$marker = 'CINNABAR_READY'\n",
     );
     write(
         &root.join("vendor/UPSTREAM.md"),

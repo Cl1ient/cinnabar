@@ -452,6 +452,7 @@ fn persistent_custom_states_decode_before_visual_overlay_is_ready() {
                 collides: true,
                 collision_boxes: None,
                 selection: CustomSelection::Default,
+                friction: None,
                 visual: Arc::default(),
             },
             CustomBlock {
@@ -462,6 +463,7 @@ fn persistent_custom_states_decode_before_visual_overlay_is_ready() {
                 collides: true,
                 collision_boxes: None,
                 selection: CustomSelection::Default,
+                friction: None,
                 visual: Arc::new(CustomBlockVisuals {
                     state_axes: Box::new([CustomStateAxis {
                         name: "custom:powered".into(),
@@ -590,6 +592,7 @@ fn plain_identity_block(name: &str) -> CustomBlock {
         collides: true,
         collision_boxes: None,
         selection: CustomSelection::Default,
+        friction: None,
         visual: Arc::default(),
     }
 }
@@ -703,6 +706,7 @@ fn session_block_names_follow_replacement_and_range_reset_in_both_modes() {
                 collides: true,
                 collision_boxes: None,
                 selection: CustomSelection::Default,
+                friction: None,
                 state_physics: Default::default(),
                 tags: Default::default(),
                 visual: Arc::default(),

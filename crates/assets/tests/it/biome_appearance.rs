@@ -196,7 +196,7 @@ fn session_climate_and_routes_share_tint_admission_and_replacement() {
 }
 
 #[test]
-fn session_climate_preserves_sub_epsilon_downfall() {
+fn session_climate_admission_preserves_sub_epsilon_downfall() {
     let catalog = fixture(TintSource::map(TintMapId::Grass));
     for downfall in [0.0, f32::EPSILON * 0.5, f32::EPSILON] {
         let resolved = catalog

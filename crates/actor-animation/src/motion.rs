@@ -26,6 +26,41 @@ const STRIDE_READ_SCALE: f32 = 0.6;
 // Vanilla fish animation consumes actor velocity in blocks/tick.
 const FISH_PHASE_SPEED_GAIN: f32 = 0.1;
 
+/// Wire amplifiers of the effects that change how long an arm swing lasts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SwingEffects {
+    pub haste: Option<i32>,
+    pub mining_fatigue: Option<i32>,
+}
+
+impl SwingEffects {
+    /// Swing length in ticks: each Haste level takes one tick off and wins over Mining Fatigue,
+    /// whose levels add two each. Negative (untrusted) amplifiers count as absent.
+    #[must_use]
+    pub fn ticks(self) -> i32 {
+        let level = |amplifier: Option<i32>| {
+            amplifier
+                .filter(|value| *value >= 0)
+                .map(|value| value.saturating_add(1))
+        };
+        let ticks = match (level(self.haste), level(self.mining_fatigue)) {
+            (Some(haste), _) => ACTOR_SWING_TICKS.saturating_sub(haste),
+            (None, Some(fatigue)) => ACTOR_SWING_TICKS.saturating_add(fatigue.saturating_mul(2)),
+            (None, None) => ACTOR_SWING_TICKS,
+        };
+        ticks.max(1)
+    }
+
+    /// Applies one MobEffect change, ignoring effects that leave swings alone.
+    pub fn apply(&mut self, effect_id: i32, amplifier: Option<i32>) {
+        match effect_id {
+            protocol::HASTE_EFFECT_ID => self.haste = amplifier,
+            protocol::MINING_FATIGUE_EFFECT_ID => self.mining_fatigue = amplifier,
+            _ => {}
+        }
+    }
+}
+
 /// One tick of actor state the motion model consumes.
 pub(super) struct MotionInput {
     pub(super) delta: [f32; 3],
@@ -273,6 +308,53 @@ mod tests {
         assert!(lag <= 56.25 + 1.0e-3, "lag {lag}");
     }
 
+    /// Turning in place moves only the head until it passes 50 degrees, then the body follows
+    /// and its turn feeds the leg swing; any nonzero step replaces the turn term.
+    #[test]
+    fn player_turning_in_place_swings_limbs_by_body_turn() {
+        let mut head_only = MotionState::spawn(0.0, 0.0);
+        head_only.advance(&input([0.0; 3], true, 30.0));
+        assert_eq!((head_only.body_yaw, head_only.speed), (0.0, 0.0));
+
+        let mut turning = MotionState::spawn(0.0, 0.0);
+        let mut ticks = Vec::new();
+        for _ in 0..3 {
+            turning.advance(&input([0.0; 3], true, 90.0));
+            ticks.push((turning.body_yaw, turning.speed, turning.distance));
+        }
+        // Head offset clamps to 75, softens to 56.25 and then 51.5625; the body turn of
+        // 33.75 saturates the turn term at 0.2, then 4.6875 adds 0.09375.
+        let expected = [
+            (33.75, 0.2, 0.2),
+            (38.4375, 0.21375, 0.41375),
+            (39.609375, 0.1516875, 0.5654375),
+        ];
+        for ((body, speed, distance), (want_body, want_speed, want_distance)) in
+            ticks.into_iter().zip(expected)
+        {
+            assert!(
+                (body - want_body).abs() < 1.0e-4,
+                "body {body} vs {want_body}"
+            );
+            assert!(
+                (speed - want_speed).abs() < 1.0e-5,
+                "speed {speed} vs {want_speed}"
+            );
+            assert!(
+                (distance - want_distance).abs() < 1.0e-5,
+                "distance {distance}"
+            );
+        }
+
+        let mut creeping = MotionState::spawn(0.0, 0.0);
+        creeping.advance(&input([1.0e-4, 0.0, 0.0], true, 90.0));
+        assert!(
+            (creeping.speed - 1.6e-4).abs() < 1.0e-9,
+            "{}",
+            creeping.speed
+        );
+    }
+
     #[test]
     fn idle_mob_body_settles_onto_the_head() {
         let mut motion = MotionState::spawn(0.0, 60.0);
@@ -283,5 +365,23 @@ mod tests {
             });
         }
         assert!((motion.body_yaw - 60.0).abs() < 1.0e-3);
+    }
+
+    /// Haste takes a tick per level and wins over Mining Fatigue's two; removal restores six.
+    #[test]
+    fn swing_effects_set_the_swing_length() {
+        let mut effects = SwingEffects::default();
+        assert_eq!(effects.ticks(), 6);
+        effects.apply(protocol::MINING_FATIGUE_EFFECT_ID, Some(0));
+        assert_eq!(effects.ticks(), 8);
+        effects.apply(protocol::HASTE_EFFECT_ID, Some(1));
+        assert_eq!(effects.ticks(), 4);
+        effects.apply(protocol::HASTE_EFFECT_ID, Some(9));
+        assert_eq!(effects.ticks(), 1);
+        effects.apply(protocol::HASTE_EFFECT_ID, None);
+        effects.apply(8, Some(3));
+        assert_eq!(effects.ticks(), 8);
+        effects.apply(protocol::MINING_FATIGUE_EFFECT_ID, Some(-1));
+        assert_eq!(effects.ticks(), 6);
     }
 }

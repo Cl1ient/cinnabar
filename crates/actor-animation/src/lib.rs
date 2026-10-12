@@ -59,7 +59,7 @@ pub use java::{JavaHeldItem, JavaMotion, java_mounted_body_yaw, java_walked_dist
 mod motion;
 mod particles;
 mod pose;
-pub use particles::ActorParticleController;
+pub use particles::{ActorParticleController, ActorParticleQueries};
 mod query;
 mod render;
 mod render_frame;
@@ -79,7 +79,7 @@ pub use attachable::{
 pub use evaluation::ActorAnimationVariables;
 use evaluation::{EngineSlots, Evaluator, MolangValue, MolangVariables, VariableLayout};
 use geometry::{collect_controllers, resolve_binding, resolve_bones, skeleton};
-pub use motion::ACTOR_SWING_TICKS;
+pub use motion::{ACTOR_SWING_TICKS, SwingEffects};
 use motion::{MotionInput, MotionState};
 pub use pose::MODEL_PART_ORIGIN_Y;
 use pose::{compose_pose, sample_clips};

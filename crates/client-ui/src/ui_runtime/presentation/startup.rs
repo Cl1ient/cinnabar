@@ -550,7 +550,7 @@ mod tests {
             .expect("release milestone");
         assert_eq!(
             milestone.to_string(),
-            "RUST_MCBE_LOADING_MILESTONE phase=terrain_ready app_elapsed_ms=1125 loading_wait_ms=125 session_generation=7 diagnostics_frame_generation=11 readiness_frame_baseline=10 gpu_frame_generation=11 gpu_opaque_count=3 readiness=dense_opaque"
+            "CINNABAR_LOADING_MILESTONE phase=terrain_ready app_elapsed_ms=1125 loading_wait_ms=125 session_generation=7 diagnostics_frame_generation=11 readiness_frame_baseline=10 gpu_frame_generation=11 gpu_opaque_count=3 readiness=dense_opaque"
         );
     }
 }

@@ -26,6 +26,7 @@ struct VertexOutput {
     @location(2) native_lighting: vec3<f32>,
     @location(3) world_position: vec3<f32>,
     @location(4) @interpolate(flat) actor_light: u32,
+    @location(5) @interpolate(flat) beam_tile: vec2<f32>,
 }
 
 fn vertex_f32(index: u32) -> f32 { return bitcast<f32>(vertex_words[index]); }
@@ -52,7 +53,9 @@ fn block_vertex(vertex_index: u32, overlay_bias: bool) -> VertexOutput {
         vertex_f32(base + 8u),
     );
     out.world_position = position + lift;
-    out.actor_light = actor_light;
+    let beam = actor_light == 0xffffffffu;
+    out.actor_light = select(actor_light, 0u, beam);
+    out.beam_tile = select(vec2(0.0), normal.xy, beam);
     out.native_lighting = actor_lighting(out.actor_light, normal, 0.0);
     return out;
 }
@@ -148,7 +151,11 @@ fn block_entity_solid(input: VertexOutput) -> @location(0) vec4<f32> {
 @fragment
 fn block_entity_overlay(input: VertexOutput) -> @location(0) vec4<f32> {
     if (input.uv.x < 0.0) { return input.color; }
-    let texel = textureSample(atlas, atlas_sampler, input.uv);
+    var uv = input.uv;
+    if (input.beam_tile.y > 0.0) {
+        uv.y = input.beam_tile.x + fract(uv.y) * input.beam_tile.y;
+    }
+    let texel = textureSample(atlas, atlas_sampler, uv);
     let alpha = texel.a * input.color.a;
     if (alpha < 0.02) {
         discard;

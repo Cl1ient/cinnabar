@@ -110,8 +110,10 @@ fn anchored_models_stay_within_the_cull_reach_and_beams_leave_it() {
         }
     }
     let beacon = BlockEntityKind::Beacon(BeaconModel {
-        height: 24,
-        tint: [1.0; 3],
+        sections: std::sync::Arc::from([assets::beacon::BeaconBeamSection {
+            height: 24,
+            tint: [1.0; 3],
+        }]),
     });
     assert!(beacon.renders_globally());
     let submission = BlockEntitySubmission {

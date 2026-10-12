@@ -162,7 +162,7 @@ one recovery request was issued, and no recovery event became ready. Since
 abandoned SubChunk payloads were discarded with nothing requested to replace
 them. At `9a4ef4a` neither counter was published, so this was not observable.
 
-The run produced no `RUST_MCBE_WORLD_READY` marker, no violation markers, and
+The run produced no `CINNABAR_WORLD_READY` marker, no violation markers, and
 no `app-metrics.json`, so Phase 3 validation failed before the aggregator ran
 and no verdict was produced.
 

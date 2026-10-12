@@ -18,33 +18,22 @@ protocol-1001 generation remains available for reproducing that baseline.
 Run from the repository root:
 
 ```sh
-go -C tools/registrygen run . \
-  -block-v2193-legacy-breg ../../crates/assets/data/block-registry-v1001.bin \
-  -block-v2193-allowlist ../../crates/protocol/data/retail_items_1_26_50.tsv \
-  -out ../../crates/assets/data/block-registry-v2193.bin \
-  -light-out ../../crates/assets/data/block-light-registry-v2193.bin \
-  -block-v2193-manifest ../../assets/block-projection-v2193.json
-python3 tools/registrygen/update_bindings.py --out .
-go -C tools/registrygen run . \
-  -physics-v2193-breg ../../crates/assets/data/block-registry-v2193.bin \
-  -physics-v2193-out ../../crates/assets/data/block-physics-seed-v2193.bin \
-  -physics-v2193-manifest ../../assets/block-projection-v2193.json
-go -C tools/registrygen run . \
-  -block-item-breg ../../crates/assets/data/block-registry-v2193.bin \
-  -block-item-out ../../crates/assets/data/block-item-routes-v2193.json
-go -C tools/registrygen run . \
-  -biome-v2193-allowlist ../../crates/protocol/data/retail_biomes_1_26_50.txt \
-  -biome-out ../../crates/assets/data/biome-registry-v2193.bin \
-  -biome-v2193-manifest ../../assets/biome-projection-v2193.json
-cargo run --locked -p asset-compiler --bin assetc -- block-physics \
-  --registry crates/assets/data/block-registry-v2193.bin \
-  --seed crates/assets/data/block-physics-seed-v2193.bin \
-  --out crates/assets/data/block-physics-v2193.bin
-python3 tools/registrygen/update_bindings.py --out .
-go -C tools/registrygen test ./...
+mkdir -p .local/registry
+# Go exports library facts; registryc applies the client policy and constructs carriers.
+go -C tools/registrygen run . -facts-out ../../.local/registry/facts.json
+cargo run --locked -p asset-compiler --bin registryc -- \
+  --root . --facts .local/registry/facts.json --kind all \
+  --out .local/registry/regenerated --check
 ```
 
-The Go physics output is the movement seed. The asset compiler adds independent
+`--check` regenerates block, light, biome and movement-seed carriers, their checksum
+sidecars and projection manifests in the selected directory, then compares their
+exact bytes with the committed outputs. CI runs the same check through the
+asset compiler's integration suite. The existing Go generation flags delegate
+the active passes to Rust, preserving callers that use explicit output paths.
+Historical encoders and the independent projection fixtures remain available.
+
+The Rust registry pass writes the movement seed. The asset compiler adds independent
 selection geometry and final state facts. Update each physics file’s `.sha256`
 sidecar after changing it. `make assets` builds the final carrier into the local
 compiled asset directory.

@@ -227,6 +227,7 @@ mod tests {
                 collides: true,
                 collision_boxes: None,
                 selection: protocol::CustomSelection::Default,
+                friction: None,
                 state_physics: Default::default(),
                 tags: Default::default(),
                 visual: std::sync::Arc::default(),

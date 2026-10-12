@@ -56,7 +56,7 @@ try {
     )
     New-TestJunction -Path $SourceAlias -Target $SourceTarget
 
-    $env:RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY = '1'
+    $env:CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY = '1'
     try {
         . $AcceptanceScript `
             -DryRun `
@@ -65,7 +65,7 @@ try {
             -MetricsOut (Join-Path $TempRoot 'unused.json')
     }
     finally {
-        Remove-Item Env:RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY -ErrorAction SilentlyContinue
+        Remove-Item Env:CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY -ErrorAction SilentlyContinue
     }
 
     $cases = if ($Case -eq 'All') {

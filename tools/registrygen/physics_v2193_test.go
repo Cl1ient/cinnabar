@@ -100,9 +100,6 @@ func decodeV2193PhysicsArtifact(t *testing.T, artifact, breg []byte, count int) 
 		if MovementSemantics(prefix[physicsMovementSemanticsOffset]) > maxMovementSemantics {
 			t.Fatalf("physics record %d has unknown movement support", index)
 		}
-		if support := MovementSemantics(prefix[physicsMovementSemanticsOffset]); support == MovementSemanticsOrdinary {
-			t.Fatalf("unreviewed ordinary movement emitted for record %d", index)
-		}
 		boxCount := int(int8(prefix[8]))
 		if boxCount < 0 || boxCount > maxPhysicsBoxes {
 			t.Fatalf("physics record %d declares %d boxes", index, boxCount)

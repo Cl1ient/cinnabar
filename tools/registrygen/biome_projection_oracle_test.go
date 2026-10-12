@@ -20,10 +20,6 @@ import (
 const (
 	v2193RetailBiomeCount = 89
 	v2193BiomeAllowSHA256 = "6127c74c17455273bb5226f1e05e98709bc247c05a0137a8827cb97756c3b198"
-
-	v2193BiomeOutputPath     = "crates/assets/data/biome-registry-v2193.bin"
-	v2193BiomeAllowlistPath  = "crates/protocol/data/retail_biomes_1_26_50.txt"
-	v2193BiomeProjectionPath = "assets/biome-projection-v2193.json"
 )
 
 type v2193BiomeProjectionStats struct {
@@ -68,20 +64,6 @@ type v2193BiomeProjectionOutput struct {
 	Format string `json:"format"`
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
-}
-
-// validateSharedBiomeTarget binds numeric IDs to this carrier's release and source lock.
-func validateSharedBiomeTarget() error {
-	if shared.MinecraftVersion != v2193GameVersion || shared.ProtocolVersion != v2193BlockProtocol {
-		return fmt.Errorf("shared biome catalog target %s/%d does not match carrier %s/%d", shared.MinecraftVersion, shared.ProtocolVersion, v2193GameVersion, v2193BlockProtocol)
-	}
-	if shared.SourceLockSHA256 != shared.SemanticSourceLockSHA256 {
-		return errors.New("shared biome catalog and release have different source locks")
-	}
-	if len(sharedbiome.All()) != int(shared.GeneratedCounts.Biomes) {
-		return errors.New("shared biome catalog count does not match its metadata")
-	}
-	return nil
 }
 
 // parseV2193BiomeAllowlist accepts only the reviewed, sorted retail name set.
@@ -188,7 +170,7 @@ func encodeV2193BiomeProjection(records []BiomeRecord, stats v2193BiomeProjectio
 }
 
 // writeV2193BiomeProjection projects shared IDs into Cinnabar's allowlisted biome carrier.
-func writeV2193BiomeProjection(allowlistPath, outputPath, manifestPath string) error {
+func writeV2193BiomeProjectionOracle(allowlistPath, outputPath, manifestPath string) error {
 	if err := validateSharedBiomeTarget(); err != nil {
 		return err
 	}

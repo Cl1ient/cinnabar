@@ -5,7 +5,7 @@ developer-control client driven over client MCP, Tracy 0.14.1, 30 s each after a
 Windows 11, Ryzen 9800X3D, Radeon RX 6600 XT, DX12 (then the Windows default; it is now
 Vulkan). Before and after builds, on `a12bc668c`, ran back to back in one session, two captures
 each per resolution. Frame numbers come from captures without per-node GPU timing; GPU
-attribution comes from `RUST_MCBE_GPU_NODES=1` captures of the same builds.
+attribution comes from `CINNABAR_GPU_NODES=1` captures of the same builds.
 
 ## Before and after
 

@@ -85,7 +85,7 @@ fn budget_rejections_preserve_vanilla_ids_in_both_modes_and_admission_palettes()
                 .unwrap();
             assert_eq!(
                 registries.begin_session_hashed_custom_blocks(&definitions),
-                Some(1)
+                1
             );
             for record in records
                 .iter()

@@ -115,7 +115,7 @@ git commit -m "docs: plan architecture decomposition"
 - Create: `scripts/tests/acceptance/Orchestration.Tests.ps1`
 
 **Interfaces:**
-- Consumes: the existing parameter block, `RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY`, and all current function names.
+- Consumes: the existing parameter block, `CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY`, and all current function names.
 - Produces: `Get-AcceptanceCompositeSource -EntryPath [string]` returning entry plus libraries in canonical load order; `Invoke-CinnabarAcceptance` containing the former top-level runtime flow.
 
 - [x] **Step 1: Add a failing composite-source contract test**
@@ -464,7 +464,7 @@ Commit: `refactor: extract client world pipeline`
 **Interfaces:**
 - `cinnabar::run(ClientArgs) -> anyhow::Result<()>` is the library entry point.
 - `main()` parses args, calls `run`, reports fatal error, and returns the existing exit semantics.
-- All `RUST_MCBE_*` producer strings live in `acceptance::markers`.
+- All `CINNABAR_*` producer strings live in `acceptance::markers`.
 - A checked-in marker expectation table distinguishes parsed evidence from log-only diagnostics.
 
 - [x] **Step 1: Add the library entry and remove path-based test includes**
@@ -516,7 +516,7 @@ first-party handwritten tree meets the final budgets before implementing the str
 
 - [x] **Step 1: Write failing policy fixtures**
 
-Create temporary fixture trees proving rejection of an oversized handwritten Rust file, forbidden `client-world -> bevy`, `render -> asset-compiler`, `pub use module::*`, `_for_test` public function, and duplicate `RUST_MCBE_` producer.
+Create temporary fixture trees proving rejection of an oversized handwritten Rust file, forbidden `client-world -> bevy`, `render -> asset-compiler`, `pub use module::*`, `_for_test` public function, and duplicate `CINNABAR_` producer.
 
 - [x] **Step 2: Implement deterministic policy parsing and checks**
 

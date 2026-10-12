@@ -6,18 +6,18 @@
         $path = Join-Path $script:TempRoot $Name
         $lines = [Collections.Generic.List[string]]::new()
         $lines.Add('ordinary client log line')
-        $lines.Add('RUST_MCBE_PHASE3_IDENTITY=' + ($script:Identity | ConvertTo-Json -Depth 6 -Compress))
+        $lines.Add('CINNABAR_PHASE3_IDENTITY=' + ($script:Identity | ConvertTo-Json -Depth 6 -Compress))
         foreach ($frame in $script:Frames) {
-            $lines.Add('RUST_MCBE_PHASE3_FRAME=' + ($frame | ConvertTo-Json -Depth 6 -Compress))
+            $lines.Add('CINNABAR_PHASE3_FRAME=' + ($frame | ConvertTo-Json -Depth 6 -Compress))
         }
         foreach ($event in $script:Events) {
-            $lines.Add('RUST_MCBE_PHASE3_EVENT=' + ($event | ConvertTo-Json -Depth 6 -Compress))
+            $lines.Add('CINNABAR_PHASE3_EVENT=' + ($event | ConvertTo-Json -Depth 6 -Compress))
         }
         foreach ($violation in $script:Violations) {
-            $lines.Add('RUST_MCBE_PHASE3_VIOLATION=' + ($violation | ConvertTo-Json -Depth 6 -Compress))
+            $lines.Add('CINNABAR_PHASE3_VIOLATION=' + ($violation | ConvertTo-Json -Depth 6 -Compress))
         }
         foreach ($terminal in $script:Terminals) {
-            $lines.Add('RUST_MCBE_PHASE3_TERMINAL=' + ($terminal | ConvertTo-Json -Depth 6 -Compress))
+            $lines.Add('CINNABAR_PHASE3_TERMINAL=' + ($terminal | ConvertTo-Json -Depth 6 -Compress))
         }
         Set-Content -LiteralPath $path -Value $lines -Encoding utf8
         return $path

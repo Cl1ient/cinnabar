@@ -151,7 +151,28 @@ impl ActorStore {
 
     /// Starts an actor's arm swing from a local cause rather than a server action.
     pub(crate) fn start_swing(&mut self, runtime_id: u64, ticks: i32) {
-        self.animation.start_swing(runtime_id, ticks);
+        self.animation.start_swing(runtime_id, ticks, ticks);
+    }
+
+    /// Retains a remote actor's swing-length effects until the server removes them; the local
+    /// player's come from its own feed.
+    pub(crate) fn apply_effect(&mut self, event: &protocol::ActorEffectEvent) {
+        if event.dimension != self.dimension
+            || self.remote_state_excluded_runtime_id == Some(event.actor_runtime_id)
+        {
+            return;
+        }
+        let Some(actor) = self.actors.get_mut(&event.actor_runtime_id) else {
+            return;
+        };
+        let amplifier = match event.action {
+            protocol::ActorEffectAction::Add | protocol::ActorEffectAction::Update => {
+                Some(event.amplifier)
+            }
+            protocol::ActorEffectAction::Remove => None,
+            protocol::ActorEffectAction::Unknown(_) => return,
+        };
+        actor.status.swing_effects.apply(event.effect_id, amplifier);
     }
 
     pub(crate) fn reset_java_equip(&mut self, runtime_id: u64) {
@@ -907,8 +928,17 @@ impl ActorStore {
                         .actions
                         .apply(lifetime, rig, sequence, source_tick, &action);
                     if applied && matches!(action.kind, protocol::ActorActionKind::SwingArm) {
-                        self.animation
-                            .start_swing(lifetime.runtime_id, actor_animation::ACTOR_SWING_TICKS);
+                        let java_ticks = self
+                            .actors
+                            .get(&lifetime.runtime_id)
+                            .map_or(actor_animation::ACTOR_SWING_TICKS, |actor| {
+                                actor.status.swing_effects.ticks()
+                            });
+                        self.animation.start_swing(
+                            lifetime.runtime_id,
+                            actor_animation::ACTOR_SWING_TICKS,
+                            java_ticks,
+                        );
                     }
                     if applied && let Some(request) = prepared.as_ref() {
                         self.animation.start_server_animation(

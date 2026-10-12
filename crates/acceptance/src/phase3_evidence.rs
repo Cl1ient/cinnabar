@@ -177,7 +177,7 @@ impl Phase3EvidenceIdentitySource {
         preg_sha256: [u8; 32],
         breg_sha256: [u8; 32],
     ) -> Result<Self, Phase3EvidenceIdentityError> {
-        let build_commit = std::env::var(diagnostics::markers::BUILD_COMMIT).map_err(|_| {
+        let build_commit = env_compat::var(diagnostics::markers::BUILD_COMMIT).map_err(|_| {
             Phase3EvidenceIdentityError::MissingBuildCommit {
                 environment: diagnostics::markers::BUILD_COMMIT,
             }
@@ -191,7 +191,7 @@ impl Phase3EvidenceIdentitySource {
             candidate_physics,
         )?;
         validate_phase3_build_source(
-            std::env::var(diagnostics::markers::SOURCE_DIRTY)
+            env_compat::var(diagnostics::markers::SOURCE_DIRTY)
                 .ok()
                 .as_deref(),
         )?;
@@ -268,7 +268,7 @@ pub fn validate_phase3_build_source(
 fn required_run_environment(
     environment: &'static str,
 ) -> Result<String, Phase3EvidenceIdentityError> {
-    std::env::var(environment)
+    env_compat::var(environment)
         .ok()
         .filter(|value| !value.is_empty())
         .ok_or(Phase3EvidenceIdentityError::InvalidRunIdentity { environment })

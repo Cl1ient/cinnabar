@@ -322,7 +322,7 @@ fn stock_totem_keeps_capacity_one_with_unrelated_components() {
     declare(
         &mut ledger,
         protocol::ItemComponents {
-            glint: true,
+            glint: Some(true),
             ..Default::default()
         },
         false,

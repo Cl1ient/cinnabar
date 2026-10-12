@@ -640,7 +640,7 @@
 
 **Interfaces:**
 - New flag: `--assets <path-to-vanilla-v1001.mcbea>`.
-- Environment fallback: `RUST_MCBE_ASSETS`.
+- Environment fallback: `CINNABAR_ASSETS`.
 - Final fallback: ignored default `.local/assets/compiled/vanilla-v1001.mcbea`.
 - If no valid local blob exists, the app starts with the synthetic diagnostic texture and prints the exact fetch/compile commands; it never embeds or downloads Mojang content silently.
 

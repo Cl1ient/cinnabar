@@ -677,7 +677,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     );
     let diagnostics_enabled = args.acceptance_seconds.is_some() || args.metrics_out.is_some();
     let stage_profile_enabled =
-        std::env::var_os(diagnostics::markers::STAGE_PROFILE).as_deref() == Some(OsStr::new("1"));
+        env_compat::var_os(diagnostics::markers::STAGE_PROFILE).as_deref() == Some(OsStr::new("1"));
     #[cfg(feature = "developer-control")]
     let hidden_surface = crate::developer_control::hidden_window_requested();
     #[cfg(not(feature = "developer-control"))]
@@ -865,7 +865,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         const MAIN_FRAME: usize = render_scene::RuntimeStage::MainFrame as usize;
         app.insert_resource(RuntimeStageProfiler::for_gameplay(
             stage_profile_enabled,
-            std::env::var_os(diagnostics::markers::STAGE_PROFILE_FRAMES)
+            env_compat::var_os(diagnostics::markers::STAGE_PROFILE_FRAMES)
                 .map(std::path::PathBuf::from),
         ))
         .init_resource::<render_scene::RuntimeStageSpans>()

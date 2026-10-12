@@ -63,7 +63,7 @@ fn remote_closed_candidate_terminal_emits_no_outbox_violation() {
     assert!(
         !markers
             .iter()
-            .any(|marker| marker.starts_with("RUST_MCBE_PHASE3_VIOLATION="))
+            .any(|marker| marker.starts_with("CINNABAR_PHASE3_VIOLATION="))
     );
     assert!(
         markers
@@ -169,7 +169,7 @@ fn socket_ack_publishes_the_immutable_admission_evidence_context() {
     let mut emitter = crate::runtime::phase3_evidence::Phase3EvidenceEmitter::default();
     let markers = emitter.observe_completed_ticks(&published);
     let frame: serde_json::Value =
-        serde_json::from_str(markers[0].strip_prefix("RUST_MCBE_PHASE3_FRAME=").unwrap()).unwrap();
+        serde_json::from_str(markers[0].strip_prefix("CINNABAR_PHASE3_FRAME=").unwrap()).unwrap();
     assert_eq!(frame["fifo_sequence"], admitted.fifo_sequence);
     assert_eq!(frame["pose_generation"], admitted.pose_generation);
     assert_eq!(frame["dimension"], admitted.dimension);

@@ -163,6 +163,7 @@ fn block(name: &str, state_count: u32, visual: CustomBlockVisuals) -> CustomBloc
         collides: true,
         collision_boxes: None,
         selection: Default::default(),
+        friction: None,
         visual: Arc::new(visual),
     }
 }

@@ -5,7 +5,7 @@ use crate::item::{MAX_ITEM_VISUAL_ALIASES, MAX_ITEM_VISUALS};
 use super::super::{
     MAX_ENTITY_ASSET_SOURCES, MAX_ENTITY_ASSET_SYMBOLS, MAX_ENTITY_DEPENDENCIES,
     MAX_ENTITY_GEOMETRIES, MAX_ENTITY_GEOMETRY_BONES, MAX_ENTITY_GEOMETRY_CUBES,
-    MAX_ENTITY_GEOMETRY_TEXTURE_MESHES,
+    MAX_ENTITY_GEOMETRY_TEXTURE_MESHES, MAX_GEOMETRY_LOCATORS,
 };
 use super::{
     MAX_ENTITY_ANIMATION_CHANNELS, MAX_ENTITY_ANIMATION_CLIPS, MAX_ENTITY_ANIMATION_KEYFRAMES,
@@ -185,6 +185,8 @@ struct BoneProbe {
     #[serde(default)]
     texture_meshes: SequenceCount,
     cubes: SequenceCount,
+    #[serde(default)]
+    locators: SequenceCount,
 }
 
 struct BoneSequenceCount;
@@ -210,6 +212,7 @@ impl<'de> Deserialize<'de> for BoneSequenceCount {
                 let mut bones = 0usize;
                 let mut cubes = 0usize;
                 let mut texture_meshes = 0usize;
+                let mut locators = 0usize;
                 while let Some(bone) = sequence.next_element::<BoneProbe>()? {
                     let BoneProbe {
                         name: _,
@@ -224,6 +227,7 @@ impl<'de> Deserialize<'de> for BoneSequenceCount {
                         binding: _,
                         texture_meshes: bone_meshes,
                         cubes: bone_cubes,
+                        locators: bone_locators,
                     } = bone;
                     bones = bones
                         .checked_add(1)
@@ -234,9 +238,13 @@ impl<'de> Deserialize<'de> for BoneSequenceCount {
                     texture_meshes = texture_meshes
                         .checked_add(bone_meshes.0)
                         .ok_or_else(|| de::Error::custom("entity texture mesh count overflow"))?;
+                    locators = locators
+                        .checked_add(bone_locators.0)
+                        .ok_or_else(|| de::Error::custom("entity locator count overflow"))?;
                     if bones > MAX_ENTITY_GEOMETRY_BONES
                         || cubes > MAX_ENTITY_GEOMETRY_CUBES
                         || texture_meshes > MAX_ENTITY_GEOMETRY_TEXTURE_MESHES
+                        || locators > MAX_GEOMETRY_LOCATORS
                     {
                         return Err(de::Error::custom(
                             "entity geometry subarray count preflight exceeds bound",
@@ -355,6 +363,30 @@ pub(crate) fn payload_counts(bytes: &[u8]) -> Result<[usize; 7], serde_json::Err
 #[cfg(test)]
 mod review_tests {
     use super::*;
+    #[test]
+    fn locator_arrays_are_bounded_across_bones_before_payload_deserialization() {
+        let mut bone = serde_json::json!({
+            "name":"root", "parent":null, "pivot":null, "rotation":null,
+            "mirror":null, "inflate":null, "never_render":null, "reset":null,
+            "cubes":[], "locators":vec![serde_json::Value::Null; MAX_GEOMETRY_LOCATORS]
+        });
+        assert!(
+            serde_json::from_value::<BoneSequenceCount>(serde_json::json!([bone.clone()])).is_ok()
+        );
+        assert!(
+            serde_json::from_value::<BoneSequenceCount>(serde_json::json!([
+                bone.clone(),
+                bone.clone()
+            ]))
+            .is_err()
+        );
+        bone["locators"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::Value::Null);
+        assert!(serde_json::from_value::<BoneSequenceCount>(serde_json::json!([bone])).is_err());
+    }
+
     #[test]
     fn review_render_arrays_are_bounded_before_payload_deserialization() {
         let mut root = serde_json::Map::new();

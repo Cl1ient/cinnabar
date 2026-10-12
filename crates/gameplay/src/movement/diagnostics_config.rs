@@ -22,5 +22,5 @@ pub(super) fn value(
 ) -> Option<std::ffi::OsString> {
     DIAGNOSTICS
         .get()
-        .and_then(|config| std::env::var_os(name(config)))
+        .and_then(|config| env_compat::var_os(name(config)))
 }

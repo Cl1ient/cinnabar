@@ -1,0 +1,669 @@
+{
+  "twins": {
+    "minecraft:black_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:black_concrete_slab"
+    },
+    "minecraft:black_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:black_concrete_slab"
+    },
+    "minecraft:black_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:black_concrete_stairs"
+    },
+    "minecraft:black_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:black_wool_slab"
+    },
+    "minecraft:black_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:black_wool_slab"
+    },
+    "minecraft:black_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:black_wool_stairs"
+    },
+    "minecraft:blue_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:blue_concrete_slab"
+    },
+    "minecraft:blue_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:blue_concrete_slab"
+    },
+    "minecraft:blue_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:blue_concrete_stairs"
+    },
+    "minecraft:blue_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:blue_wool_slab"
+    },
+    "minecraft:blue_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:blue_wool_slab"
+    },
+    "minecraft:blue_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:blue_wool_stairs"
+    },
+    "minecraft:brown_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:brown_concrete_slab"
+    },
+    "minecraft:brown_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:brown_concrete_slab"
+    },
+    "minecraft:brown_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:brown_concrete_stairs"
+    },
+    "minecraft:brown_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:brown_wool_slab"
+    },
+    "minecraft:brown_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:brown_wool_slab"
+    },
+    "minecraft:brown_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:brown_wool_stairs"
+    },
+    "minecraft:cyan_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:cyan_concrete_slab"
+    },
+    "minecraft:cyan_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:cyan_concrete_slab"
+    },
+    "minecraft:cyan_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:cyan_concrete_stairs"
+    },
+    "minecraft:cyan_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:cyan_wool_slab"
+    },
+    "minecraft:cyan_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:cyan_wool_slab"
+    },
+    "minecraft:cyan_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:cyan_wool_stairs"
+    },
+    "minecraft:gray_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:gray_concrete_slab"
+    },
+    "minecraft:gray_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:gray_concrete_slab"
+    },
+    "minecraft:gray_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:gray_concrete_stairs"
+    },
+    "minecraft:gray_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:gray_wool_slab"
+    },
+    "minecraft:gray_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:gray_wool_slab"
+    },
+    "minecraft:gray_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:gray_wool_stairs"
+    },
+    "minecraft:green_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:green_concrete_slab"
+    },
+    "minecraft:green_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:green_concrete_slab"
+    },
+    "minecraft:green_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:green_concrete_stairs"
+    },
+    "minecraft:green_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:green_wool_slab"
+    },
+    "minecraft:green_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:green_wool_slab"
+    },
+    "minecraft:green_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:green_wool_stairs"
+    },
+    "minecraft:light_blue_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:light_blue_concrete_slab"
+    },
+    "minecraft:light_blue_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:light_blue_concrete_slab"
+    },
+    "minecraft:light_blue_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:light_blue_concrete_stairs"
+    },
+    "minecraft:light_blue_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:light_blue_wool_slab"
+    },
+    "minecraft:light_blue_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:light_blue_wool_slab"
+    },
+    "minecraft:light_blue_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:light_blue_wool_stairs"
+    },
+    "minecraft:light_gray_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:light_gray_concrete_slab"
+    },
+    "minecraft:light_gray_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:light_gray_concrete_slab"
+    },
+    "minecraft:light_gray_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:light_gray_concrete_stairs"
+    },
+    "minecraft:light_gray_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:light_gray_wool_slab"
+    },
+    "minecraft:light_gray_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:light_gray_wool_slab"
+    },
+    "minecraft:light_gray_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:light_gray_wool_stairs"
+    },
+    "minecraft:lime_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:lime_concrete_slab"
+    },
+    "minecraft:lime_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:lime_concrete_slab"
+    },
+    "minecraft:lime_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:lime_concrete_stairs"
+    },
+    "minecraft:lime_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:lime_wool_slab"
+    },
+    "minecraft:lime_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:lime_wool_slab"
+    },
+    "minecraft:lime_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:lime_wool_stairs"
+    },
+    "minecraft:magenta_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:magenta_concrete_slab"
+    },
+    "minecraft:magenta_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:magenta_concrete_slab"
+    },
+    "minecraft:magenta_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:magenta_concrete_stairs"
+    },
+    "minecraft:magenta_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:magenta_wool_slab"
+    },
+    "minecraft:magenta_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:magenta_wool_slab"
+    },
+    "minecraft:magenta_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:magenta_wool_stairs"
+    },
+    "minecraft:orange_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:orange_concrete_slab"
+    },
+    "minecraft:orange_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:orange_concrete_slab"
+    },
+    "minecraft:orange_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:orange_concrete_stairs"
+    },
+    "minecraft:orange_poplar_leaves": {
+      "twin": "minecraft:oak_leaves",
+      "item": "minecraft:orange_poplar_leaves"
+    },
+    "minecraft:orange_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:orange_wool_slab"
+    },
+    "minecraft:orange_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:orange_wool_slab"
+    },
+    "minecraft:orange_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:orange_wool_stairs"
+    },
+    "minecraft:pink_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:pink_concrete_slab"
+    },
+    "minecraft:pink_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:pink_concrete_slab"
+    },
+    "minecraft:pink_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:pink_concrete_stairs"
+    },
+    "minecraft:pink_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:pink_wool_slab"
+    },
+    "minecraft:pink_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:pink_wool_slab"
+    },
+    "minecraft:pink_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:pink_wool_stairs"
+    },
+    "minecraft:poplar_button": {
+      "twin": "minecraft:wooden_button",
+      "item": "minecraft:poplar_button"
+    },
+    "minecraft:poplar_door": {
+      "twin": "minecraft:wooden_door",
+      "item": "minecraft:poplar_door"
+    },
+    "minecraft:poplar_double_slab": {
+      "twin": "minecraft:oak_double_slab",
+      "item": "minecraft:poplar_slab"
+    },
+    "minecraft:poplar_fence": {
+      "twin": "minecraft:oak_fence",
+      "item": "minecraft:poplar_fence"
+    },
+    "minecraft:poplar_fence_gate": {
+      "twin": "minecraft:fence_gate",
+      "item": "minecraft:poplar_fence_gate"
+    },
+    "minecraft:poplar_hanging_sign": {
+      "twin": "minecraft:oak_hanging_sign",
+      "item": "minecraft:poplar_hanging_sign"
+    },
+    "minecraft:poplar_log": {
+      "twin": "minecraft:oak_log",
+      "item": "minecraft:poplar_log"
+    },
+    "minecraft:poplar_planks": {
+      "twin": "minecraft:oak_planks",
+      "item": "minecraft:poplar_planks"
+    },
+    "minecraft:poplar_pressure_plate": {
+      "twin": "minecraft:wooden_pressure_plate",
+      "item": "minecraft:poplar_pressure_plate"
+    },
+    "minecraft:poplar_sapling": {
+      "twin": "minecraft:oak_sapling",
+      "item": "minecraft:poplar_sapling"
+    },
+    "minecraft:poplar_shelf": {
+      "twin": "minecraft:oak_shelf",
+      "item": "minecraft:poplar_shelf"
+    },
+    "minecraft:poplar_slab": {
+      "twin": "minecraft:oak_slab",
+      "item": "minecraft:poplar_slab"
+    },
+    "minecraft:poplar_stairs": {
+      "twin": "minecraft:oak_stairs",
+      "item": "minecraft:poplar_stairs"
+    },
+    "minecraft:poplar_standing_sign": {
+      "twin": "minecraft:standing_sign",
+      "item": "minecraft:poplar_sign"
+    },
+    "minecraft:poplar_trapdoor": {
+      "twin": "minecraft:trapdoor",
+      "item": "minecraft:poplar_trapdoor"
+    },
+    "minecraft:poplar_wall_sign": {
+      "twin": "minecraft:wall_sign",
+      "item": "minecraft:poplar_sign"
+    },
+    "minecraft:poplar_wood": {
+      "twin": "minecraft:oak_wood",
+      "item": "minecraft:poplar_wood"
+    },
+    "minecraft:purple_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:purple_concrete_slab"
+    },
+    "minecraft:purple_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:purple_concrete_slab"
+    },
+    "minecraft:purple_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:purple_concrete_stairs"
+    },
+    "minecraft:purple_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:purple_wool_slab"
+    },
+    "minecraft:purple_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:purple_wool_slab"
+    },
+    "minecraft:purple_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:purple_wool_stairs"
+    },
+    "minecraft:red_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:red_concrete_slab"
+    },
+    "minecraft:red_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:red_concrete_slab"
+    },
+    "minecraft:red_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:red_concrete_stairs"
+    },
+    "minecraft:red_poplar_leaves": {
+      "twin": "minecraft:oak_leaves",
+      "item": "minecraft:red_poplar_leaves"
+    },
+    "minecraft:red_shrub": {
+      "twin": "minecraft:deadbush",
+      "item": "minecraft:red_shrub"
+    },
+    "minecraft:red_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:red_wool_slab"
+    },
+    "minecraft:red_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:red_wool_slab"
+    },
+    "minecraft:red_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:red_wool_stairs"
+    },
+    "minecraft:stripped_poplar_log": {
+      "twin": "minecraft:stripped_oak_log",
+      "item": "minecraft:stripped_poplar_log"
+    },
+    "minecraft:stripped_poplar_wood": {
+      "twin": "minecraft:stripped_oak_wood",
+      "item": "minecraft:stripped_poplar_wood"
+    },
+    "minecraft:white_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:white_concrete_slab"
+    },
+    "minecraft:white_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:white_concrete_slab"
+    },
+    "minecraft:white_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:white_concrete_stairs"
+    },
+    "minecraft:white_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:white_wool_slab"
+    },
+    "minecraft:white_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:white_wool_slab"
+    },
+    "minecraft:white_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:white_wool_stairs"
+    },
+    "minecraft:yellow_concrete_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:yellow_concrete_slab"
+    },
+    "minecraft:yellow_concrete_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:yellow_concrete_slab"
+    },
+    "minecraft:yellow_concrete_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:yellow_concrete_stairs"
+    },
+    "minecraft:yellow_poplar_leaves": {
+      "twin": "minecraft:oak_leaves",
+      "item": "minecraft:yellow_poplar_leaves"
+    },
+    "minecraft:yellow_wool_double_slab": {
+      "twin": "minecraft:smooth_stone_double_slab",
+      "item": "minecraft:yellow_wool_slab"
+    },
+    "minecraft:yellow_wool_slab": {
+      "twin": "minecraft:smooth_stone_slab",
+      "item": "minecraft:yellow_wool_slab"
+    },
+    "minecraft:yellow_wool_stairs": {
+      "twin": "minecraft:stone_stairs",
+      "item": "minecraft:yellow_wool_stairs"
+    }
+  },
+  "unresolved_retail": [
+    "minecraft:shelf_mushroom",
+    "minecraft:straw_bed"
+  ],
+  "movement": [
+    {
+      "name": "minecraft:bed",
+      "behavior": "Bed",
+      "states": 16
+    },
+    {
+      "name": "minecraft:bubble_column",
+      "behavior": "Bubble",
+      "states": 2
+    },
+    {
+      "name": "minecraft:cave_vines",
+      "behavior": "Climbable",
+      "states": 26
+    },
+    {
+      "name": "minecraft:cave_vines_body_with_berries",
+      "behavior": "Climbable",
+      "states": 26
+    },
+    {
+      "name": "minecraft:cave_vines_head_with_berries",
+      "behavior": "Climbable",
+      "states": 26
+    },
+    {
+      "name": "minecraft:flowing_lava",
+      "behavior": "Lava",
+      "states": 16
+    },
+    {
+      "name": "minecraft:flowing_water",
+      "behavior": "Water",
+      "states": 16
+    },
+    {
+      "name": "minecraft:honey_block",
+      "behavior": "Honey",
+      "states": 1
+    },
+    {
+      "name": "minecraft:ladder",
+      "behavior": "Climbable",
+      "states": 6
+    },
+    {
+      "name": "minecraft:lava",
+      "behavior": "Lava",
+      "states": 16
+    },
+    {
+      "name": "minecraft:powder_snow",
+      "behavior": "PowderSnow",
+      "states": 1
+    },
+    {
+      "name": "minecraft:scaffolding",
+      "behavior": "Scaffolding",
+      "states": 16
+    },
+    {
+      "name": "minecraft:slime",
+      "behavior": "Slime",
+      "states": 1
+    },
+    {
+      "name": "minecraft:soul_sand",
+      "behavior": "SoulSand",
+      "states": 1
+    },
+    {
+      "name": "minecraft:sweet_berry_bush",
+      "behavior": "InsideSlowdown",
+      "states": 8
+    },
+    {
+      "name": "minecraft:twisting_vines",
+      "behavior": "Climbable",
+      "states": 26
+    },
+    {
+      "name": "minecraft:vine",
+      "behavior": "Climbable",
+      "states": 16
+    },
+    {
+      "name": "minecraft:water",
+      "behavior": "Water",
+      "states": 16
+    },
+    {
+      "name": "minecraft:web",
+      "behavior": "Cobweb",
+      "states": 1
+    },
+    {
+      "name": "minecraft:weeping_vines",
+      "behavior": "Climbable",
+      "states": 26
+    }
+  ],
+  "movement_census": {
+    "identifiers_sha256": "6bb6de8a82c86457e0b54e59cb912509a2896efb675994f0d76d77b04b927390",
+    "unmodeled": [
+      "minecraft:acacia_door",
+      "minecraft:acacia_fence_gate",
+      "minecraft:acacia_trapdoor",
+      "minecraft:bamboo_door",
+      "minecraft:bamboo_fence_gate",
+      "minecraft:bamboo_trapdoor",
+      "minecraft:birch_door",
+      "minecraft:birch_fence_gate",
+      "minecraft:birch_trapdoor",
+      "minecraft:black_shulker_box",
+      "minecraft:blue_shulker_box",
+      "minecraft:brown_shulker_box",
+      "minecraft:cherry_door",
+      "minecraft:cherry_fence_gate",
+      "minecraft:cherry_trapdoor",
+      "minecraft:copper_door",
+      "minecraft:copper_trapdoor",
+      "minecraft:crimson_door",
+      "minecraft:crimson_fence_gate",
+      "minecraft:crimson_trapdoor",
+      "minecraft:cyan_shulker_box",
+      "minecraft:dark_oak_door",
+      "minecraft:dark_oak_fence_gate",
+      "minecraft:dark_oak_trapdoor",
+      "minecraft:exposed_copper_door",
+      "minecraft:exposed_copper_trapdoor",
+      "minecraft:fence_gate",
+      "minecraft:gray_shulker_box",
+      "minecraft:green_shulker_box",
+      "minecraft:iron_door",
+      "minecraft:iron_trapdoor",
+      "minecraft:jungle_door",
+      "minecraft:jungle_fence_gate",
+      "minecraft:jungle_trapdoor",
+      "minecraft:light_blue_shulker_box",
+      "minecraft:light_gray_shulker_box",
+      "minecraft:lime_shulker_box",
+      "minecraft:magenta_shulker_box",
+      "minecraft:mangrove_door",
+      "minecraft:mangrove_fence_gate",
+      "minecraft:mangrove_trapdoor",
+      "minecraft:moving_block",
+      "minecraft:orange_shulker_box",
+      "minecraft:oxidized_copper_door",
+      "minecraft:oxidized_copper_trapdoor",
+      "minecraft:pale_oak_door",
+      "minecraft:pale_oak_fence_gate",
+      "minecraft:pale_oak_trapdoor",
+      "minecraft:pink_shulker_box",
+      "minecraft:poplar_door",
+      "minecraft:poplar_fence_gate",
+      "minecraft:poplar_trapdoor",
+      "minecraft:purple_shulker_box",
+      "minecraft:red_shulker_box",
+      "minecraft:spruce_door",
+      "minecraft:spruce_fence_gate",
+      "minecraft:spruce_trapdoor",
+      "minecraft:trapdoor",
+      "minecraft:undyed_shulker_box",
+      "minecraft:warped_door",
+      "minecraft:warped_fence_gate",
+      "minecraft:warped_trapdoor",
+      "minecraft:waxed_copper_door",
+      "minecraft:waxed_copper_trapdoor",
+      "minecraft:waxed_exposed_copper_door",
+      "minecraft:waxed_exposed_copper_trapdoor",
+      "minecraft:waxed_oxidized_copper_door",
+      "minecraft:waxed_oxidized_copper_trapdoor",
+      "minecraft:waxed_weathered_copper_door",
+      "minecraft:waxed_weathered_copper_trapdoor",
+      "minecraft:weathered_copper_door",
+      "minecraft:weathered_copper_trapdoor",
+      "minecraft:white_shulker_box",
+      "minecraft:wooden_door",
+      "minecraft:yellow_shulker_box"
+    ],
+    "unresolved": [
+      "minecraft:soul_soil"
+    ]
+  }
+}

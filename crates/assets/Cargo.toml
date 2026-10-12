@@ -24,6 +24,7 @@ reads = [
 test-support = []
 
 [dependencies]
+env-compat = { path = "../env-compat" }
 block-transform = { path = "../block-transform" }
 bitflags = "2"
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }

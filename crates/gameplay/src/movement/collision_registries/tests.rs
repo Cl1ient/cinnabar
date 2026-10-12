@@ -133,6 +133,7 @@ fn custom_block(name: &str, state_count: u32) -> protocol::CustomBlock {
         collides: true,
         collision_boxes: None,
         selection: Default::default(),
+        friction: None,
         visual: Default::default(),
     }
 }
@@ -157,9 +158,7 @@ fn camera_block_tags_follow_both_identity_spaces_and_session_reset() {
     let (range, _) = registries
         .begin_session_custom_blocks(&definitions)
         .unwrap();
-    registries
-        .begin_session_hashed_custom_blocks(&definitions)
-        .unwrap();
+    registries.begin_session_hashed_custom_blocks(&definitions);
     for (mode, id) in [
         (assets::NetworkIdMode::Sequential, range.start),
         (assets::NetworkIdMode::Hashed, hash),
@@ -172,9 +171,7 @@ fn camera_block_tags_follow_both_identity_spaces_and_session_reset() {
     registries
         .begin_session_custom_blocks(&Default::default())
         .unwrap();
-    registries
-        .begin_session_hashed_custom_blocks(&Default::default())
-        .unwrap();
+    registries.begin_session_hashed_custom_blocks(&Default::default());
     assert!(
         registries
             .block_tags(assets::NetworkIdMode::Sequential, range.start)
@@ -444,14 +441,11 @@ fn session_hashed_custom_blocks_register_and_reset() {
         skipped: 0,
     };
     let hash = custom.blocks[0].hashed_states()[0].hash;
-    assert_eq!(
-        registries.begin_session_hashed_custom_blocks(&custom),
-        Some(1)
-    );
+    assert_eq!(registries.begin_session_hashed_custom_blocks(&custom), 1);
     assert!(registries.hashed.contains_runtime_id(hash));
     assert_eq!(
         registries.begin_session_hashed_custom_blocks(&protocol::CustomBlocks::default()),
-        Some(0)
+        0
     );
     assert!(!registries.hashed.contains_runtime_id(hash));
 }

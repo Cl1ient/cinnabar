@@ -19,6 +19,7 @@ fn geometry() -> EntityGeometry {
         texture_width: 32,
         texture_height: 32,
         bones: vec![EntityGeometryBone {
+            locators: Box::default(),
             name: ROOT_BONE.into(),
             parent: None,
             pivot: Some([2.0, 14.0, 1.0].map(scalar)),

@@ -273,6 +273,8 @@ class ArchiveTests(unittest.TestCase):
         for bad in [
             entry("0/../escape.txt"),
             entry("0//absolute.txt"),
+            entry("0//tmp/build-cache-outside", tarfile.DIRTYPE),
+            entry("0/nested/../../escape", tarfile.DIRTYPE),
             entry("7/unplanned.txt"),
             entry("0/link", tarfile.SYMTYPE, "/etc/passwd"),
             entry("0/device", tarfile.CHRTYPE),
@@ -286,7 +288,10 @@ class ArchiveTests(unittest.TestCase):
                 with open(archive, "rb") as stream, self.assertRaises(tarfile.FilterError, msg=bad.name):
                     cache.unpack([str(root), str(Path(temp) / "cache/other")], stream)
                 self.assertFalse((Path(temp) / "escape.txt").exists())
+                self.assertFalse((Path(temp) / "cache/escape").exists())
+                self.assertFalse(root.exists(), "nothing is extracted before the entry is refused")
                 self.assertFalse(Path("/absolute.txt").exists())
+                self.assertFalse(Path("/tmp/build-cache-outside").exists())
 
 
 class ProvenanceTests(unittest.TestCase):
@@ -324,6 +329,19 @@ class ProvenanceTests(unittest.TestCase):
             failure = subprocess.CalledProcessError(1, ["gh", "api"], stderr="HTTP 502")
             with patch.object(cache, "artifacts", side_effect=failure):
                 cache.restore_artifact(env)
+
+
+class ArtifactRetentionTests(unittest.TestCase):
+    """Concurrent nightly and release runs may both upload the same cache name."""
+
+    def test_only_artifacts_older_than_the_replacement_are_deleted(self):
+        found = [
+            {"id": 30, "created_at": "2026-01-03"},
+            {"id": 20, "created_at": "2026-01-02"},
+            {"id": 10, "created_at": "2026-01-01"},
+        ]
+        self.assertEqual(cache.superseded_artifacts(found, 20), [10])
+        self.assertEqual(cache.superseded_artifacts(found, 99), [])
 
 
 class DeletionTests(unittest.TestCase):

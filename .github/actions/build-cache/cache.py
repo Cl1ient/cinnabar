@@ -240,28 +240,45 @@ def cache_member(member, root):
     return tarfile.data_filter(member, root)
 
 
+def inside(root, name):
+    """Return where an archive name lands under `root`, or None if it is absolute or escapes.
+
+    Checked before extraction: tarfile's data filter strips a leading slash instead of refusing.
+    """
+    parts = name.split("/")
+    if (not name or name.startswith("/") or "\\" in name or ":" in parts[0]
+            or any(part == ".." for part in parts)):
+        return None
+    destination = root.joinpath(*(part for part in parts if part not in ("", ".")))
+    real_root = os.path.realpath(root)
+    real = os.path.realpath(destination)
+    return destination if os.path.commonpath([real_root, real]) == real_root else None
+
+
 def unpack(paths, stream):
     """Extract an archive from `pack` into this runner's planned locations.
 
-    Every entry must name a planned root and stay inside it; anything else aborts the restore.
+    Every entry must name a planned root and stay inside it; anything else aborts the restore
+    before it touches the file system.
     """
     roots = {str(index): root for index, root, _ in archive_roots(paths)}
     directories = []
     with tarfile.open(fileobj=stream, mode="r|gz") as tar:
         for member in tar:
             index, _, name = member.name.partition("/")
-            if index not in roots or not name:
+            root = roots.get(index)
+            destination = root and inside(root, name)
+            if not destination:
                 raise tarfile.OutsideDestinationError(member, member.name)
-            root = roots[index]
             member.name = name
             if member.islnk():
                 link_index, _, link_name = member.linkname.partition("/")
-                if link_index != index:
+                if link_index != index or not inside(root, link_name):
                     raise tarfile.LinkOutsideDestinationError(member, member.linkname)
                 member.linkname = link_name
             if member.isdir():
                 # Read-only directories, such as Go's module cache, get their mode last.
-                directories.append((root / name, member.mode & 0o755, member.mtime))
+                directories.append((destination, member.mode & 0o755, member.mtime))
                 member.mode |= 0o700
             tar.extract(member, root, filter=cache_member)
     for path, mode, mtime in reversed(directories):
@@ -345,13 +362,22 @@ def pack_artifact(env):
         output.write(f"archive={archive}\nname={name}\n")
 
 
+def superseded_artifacts(found, keep):
+    """Select artifacts older than the kept replacement, once it is listed; newer uploads from
+    concurrent runs stay."""
+    replacement = next((artifact for artifact in found if artifact["id"] == keep), None)
+    if replacement is None:
+        return []
+    return [artifact["id"] for artifact in found
+            if artifact["created_at"] < replacement["created_at"]]
+
+
 def prune_artifacts(env):
-    """Delete the uploaded archive and older artifacts of this name once the replacement exists."""
+    """Delete the uploaded archive, then artifacts of this name older than the new one."""
     Path(env["CACHE_ARCHIVE"]).unlink(missing_ok=True)
     name, keep = env["CACHE_PREFIX"].rstrip("-"), int(env["CACHE_ARTIFACT_ID"])
-    for artifact in artifacts(env, name):
-        if artifact["id"] != keep:
-            delete(f"repos/{env['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}")
+    for artifact_id in superseded_artifacts(artifacts(env, name), keep):
+        delete(f"repos/{env['GITHUB_REPOSITORY']}/actions/artifacts/{artifact_id}")
 
 
 def main():

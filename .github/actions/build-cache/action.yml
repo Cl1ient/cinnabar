@@ -126,6 +126,8 @@ runs:
         path: ${{ steps.archive.outputs.archive }}
         compression-level: 0
         retention-days: 3
+        # A rerun of the job replaces its earlier attempt's upload.
+        overwrite: true
         if-no-files-found: error
     - name: Retain the newest artifact cache
       if: inputs.phase == 'save' && inputs.store == 'artifact'

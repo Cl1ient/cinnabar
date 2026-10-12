@@ -270,7 +270,7 @@ dependency_free = true
 name = "render-model"
 path = "crates/render-model"
 test_support_features = ["test-support"]
-allowed_dependencies = ["block-transform", "mod-api", "assets", "render-api", "world"]
+allowed_dependencies = ["simulation-clock", "block-transform", "mod-api", "assets", "render-api", "world"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "render", "protocol", "client-world", "chunk-pipeline", "bevy", "bevy_*", "wgpu*"]
 

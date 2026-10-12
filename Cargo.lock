@@ -6612,6 +6612,7 @@ dependencies = [
  "render-api",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
  "tracing",
  "world",

@@ -19,33 +19,38 @@ struct CasterUniform {
 @group(2) @binding(0) var<uniform> caster: CasterUniform;
 @group(2) @binding(1) var caster_material_classes: texture_2d<u32>;
 
-// Projects a caster after applying the same material wave as the lit pass.
-// Apply the same foliage motion before the light projection.
-fn caster_clip(world: vec3<f32>, material_id: u32, weight: f32) -> vec4<f32> {
-    var position = world;
+// The lit pass's foliage wave at `seconds`, or zero when waving is off or the class is unknown.
+fn caster_wave(world: vec3<f32>, material_id: u32, weight: f32, seconds: f32) -> vec3<f32> {
     let dimensions = textureDimensions(caster_material_classes);
-    if ((caster.flags.x & FEATURE_WAVING) != 0u
-        && material_id < dimensions.x * dimensions.y) {
-        position += wave_offset(
-            world,
-            textureLoad(caster_material_classes, vec2<i32>(i32(material_id % dimensions.x), i32(material_id / dimensions.x)), 0).r,
-            weight,
-            caster.params.x,
-            caster.params.y,
-        );
+    if ((caster.flags.x & FEATURE_WAVING) == 0u || material_id >= dimensions.x * dimensions.y) {
+        return vec3(0.0);
     }
-    return caster.clip_from_world * vec4(position, 1.0);
+    return wave_offset(
+        world,
+        textureLoad(caster_material_classes, vec2<i32>(i32(material_id % dimensions.x), i32(material_id / dimensions.x)), 0).r,
+        weight,
+        seconds,
+        caster.params.y,
+    );
 }
 
-fn caster_previous_clip(world: vec3<f32>, material_id: u32, weight: f32) -> vec4<f32> {
-    var position = world;
-    let dimensions = textureDimensions(caster_material_classes);
-    if ((caster.flags.x & FEATURE_WAVING) != 0u && material_id < dimensions.x * dimensions.y) {
-        position += wave_offset(world,
-            textureLoad(caster_material_classes, vec2<i32>(i32(material_id % dimensions.x), i32(material_id / dimensions.x)), 0).r,
-            weight, caster.previous_params.x, caster.params.y);
-    }
-    return caster.previous_clip_from_world * vec4(position, 1.0);
+// Projects a caster after applying the same material wave as the lit pass.
+fn caster_clip(world: vec3<f32>, material_id: u32, weight: f32) -> vec4<f32> {
+    return caster.clip_from_world * vec4(world + caster_wave(world, material_id, weight, caster.params.x), 1.0);
+}
+
+// Camera-prepass projection of `offset` from `camera`, matching the main pass's
+// camera-relative precision far from the origin.
+fn caster_camera_clip(world: vec3<f32>, camera: vec3<f32>, offset: vec3<f32>, material_id: u32, weight: f32) -> vec4<f32> {
+    let wave = caster_wave(world, material_id, weight, caster.params.x);
+    return caster.clip_from_world * vec4(offset + wave, 0.0) + caster.clip_from_world * vec4(camera, 1.0);
+}
+
+// The previous-frame endpoint of `caster_camera_clip` for motion vectors.
+fn caster_previous_camera_clip(world: vec3<f32>, camera: vec3<f32>, offset: vec3<f32>, material_id: u32, weight: f32) -> vec4<f32> {
+    let wave = caster_wave(world, material_id, weight, caster.previous_params.x);
+    return caster.previous_clip_from_world * vec4(offset + wave, 0.0)
+        + caster.previous_clip_from_world * vec4(camera, 1.0);
 }
 
 fn caster_history_valid() -> bool {

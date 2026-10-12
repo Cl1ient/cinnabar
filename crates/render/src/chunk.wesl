@@ -1,6 +1,6 @@
 import render::material::{MaterialGpu, materials, positional_material, texture_layer, texture_cube_uv, texture_gradient_scale, material_face_is_visible, material_uses_native_leaf_colour, material_uses_overlay_mask, material_uv_flags, material_leaf_shade};
 @if(ENHANCED_SHADOW)
-import render::enhanced::caster::{caster_clip, caster_previous_clip, caster_history_valid, caster_excludes_emitter};
+import render::enhanced::caster::{caster_clip, caster_camera_clip, caster_previous_camera_clip, caster_history_valid, caster_excludes_emitter};
 @if(ENHANCED_MOTION)
 import render::enhanced::actor_motion::submitted_surface_motion;
 @if(ENHANCED_MOTION)
@@ -350,10 +350,13 @@ fn sealed_cube_vertex(vertex_index: u32, instance_index: u32, seal_pixels: f32) 
 
     var out: VertexOutput;
     out.clip_position = camera_offset_clip(view.clip_from_world, view.world_position, camera_offset);
-    @if(ENHANCED_SHADOW)
+    @if(ENHANCED_SHADOW && !ENHANCED_MOTION)
     out.clip_position = caster_clip(world_position, quad.material_id, 1.0);
+    // The camera prepass keeps the main pass's camera-relative precision for its coverage.
     @if(ENHANCED_MOTION)
-    out.previous_clip = caster_previous_clip(world_position, quad.material_id, 1.0);
+    out.clip_position = caster_camera_clip(world_position, view.world_position, camera_offset, quad.material_id, 1.0);
+    @if(ENHANCED_MOTION)
+    out.previous_clip = caster_previous_camera_clip(world_position, view.world_position, camera_offset, quad.material_id, 1.0);
     let uv_flags = material_uv_flags(material.flags, chunk_origin.value.xyz + vec3<i32>(local_origin));
     let corner_position = quad_position(face, local_position - local_origin);
     out.uv = greedy_uv(face, corner_position, width, height, uv_flags);

@@ -10,7 +10,7 @@ import render::chunk_bindings::{
 };
 import render::material::{MaterialGpu, materials, positional_material, texture_layer, material_uv_flags, texture_model_uv, texture_gradient_scale};
 @if(ENHANCED_SHADOW)
-import render::enhanced::caster::{caster_clip, caster_previous_clip, caster_history_valid, caster_excludes_emitter};
+import render::enhanced::caster::{caster_clip, caster_camera_clip, caster_previous_camera_clip, caster_history_valid, caster_excludes_emitter};
 @if(ENHANCED_MOTION)
 import render::enhanced::actor_motion::submitted_surface_motion;
 @if(ENHANCED_MOTION)
@@ -263,10 +263,13 @@ fn model_vertex(vertex_index: u32, instance_index: u32) -> VertexOutput {
     let world = vec3<f32>(origin.value.xyz) + local_position;
     let camera_offset = section_camera_offset(origin.value.xyz, local_position, view.world_position);
     out.clip_position = camera_offset_clip(view.clip_from_world, view.world_position, camera_offset);
-    @if(ENHANCED_SHADOW)
+    @if(ENHANCED_SHADOW && !ENHANCED_MOTION)
     out.clip_position = caster_clip(world, material_id, clamp(template_position.y, 0.0, 1.0));
+    // The camera prepass keeps the main pass's camera-relative precision for its coverage.
     @if(ENHANCED_MOTION)
-    out.previous_clip = caster_previous_clip(world, material_id, clamp(template_position.y, 0.0, 1.0));
+    out.clip_position = caster_camera_clip(world, view.world_position, camera_offset, material_id, clamp(template_position.y, 0.0, 1.0));
+    @if(ENHANCED_MOTION)
+    out.previous_clip = caster_previous_camera_clip(world, view.world_position, camera_offset, material_id, clamp(template_position.y, 0.0, 1.0));
     out.uv = vec2<f32>(
         f32(packed_u16(template_quad_base + 6u, uv_component)),
         f32(packed_u16(template_quad_base + 6u, uv_component + 1u)),

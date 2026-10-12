@@ -26,7 +26,7 @@ pub struct PackSummary {
 }
 
 /// Reads a local archive, unwrapping one nested ZIP and retaining the input file's report hash.
-pub fn read_pack(path: &Path) -> Result<Pack> {
+pub fn read_pack(path: &Path, content_key: &str) -> Result<Pack> {
     let mut bytes = std::fs::read(path)?;
     let sha256 = format!("{:x}", Sha256::digest(&bytes));
     let mut zip = zip::ZipArchive::new(Cursor::new(&bytes))?;
@@ -77,7 +77,7 @@ pub fn read_pack(path: &Path) -> Result<Pack> {
             uuid: uuid.clone(),
             version: version.clone(),
             sub_pack: String::new(),
-            content_key: PackContentKey::new(String::new()),
+            content_key: PackContentKey::new(content_key.to_owned()),
             size: bytes.len() as u64,
             cache: None,
         },

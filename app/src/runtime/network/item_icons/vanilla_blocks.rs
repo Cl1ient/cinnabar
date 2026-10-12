@@ -42,24 +42,36 @@ pub(in crate::runtime::network) fn append(
     let Some(routes) = ROUTES.get() else {
         return;
     };
+    append_routes(base, compiled, icons, routes);
+}
+
+/// Prepares the supplied carrier routes without changing the installed process-wide inventory.
+fn append_routes(
+    base: &RuntimeAssets,
+    compiled: &CompiledBlockOverlay,
+    icons: &mut BlockIcons,
+    routes: &[Route],
+) {
     for route in routes {
         if icons.icons.len() >= MAX_SESSION_ICONS {
             break;
         }
         let Ok(index) = compiled
             .vanilla_carried
-            .binary_search_by_key(&route.visual, |entry| entry.0)
+            .binary_search_by_key(&route.visual, |entry| entry.visual)
         else {
             continue;
         };
-        let faces = compiled.vanilla_carried[index].1;
+        let carried = &compiled.vanilla_carried[index];
+        let faces = carried.faces;
         let block = base.resolve(assets::NetworkIdMode::Sequential, route.visual);
         let cube = block.kind() == VisualKind::Cube
             || assets::gui_item::full_cube_model_quads(base, assets::BlockVisualId(route.visual))
                 .is_some();
+        let mut model = None;
         let sprite = if cube {
             pack_compiler::overlay_cube_icon(&compiled.overlay, faces)
-        } else {
+        } else if carried.flat {
             let id = faces[assets::BlockFace::Down as usize];
             let (pixels, side, _) =
                 assets::gui_item::material_tile(&compiled.overlay.materials, id, |_| {
@@ -72,14 +84,40 @@ pub(in crate::runtime::network) fn append(
                 height: side as u16,
                 rgba8: Arc::from(pixels),
             })
+        } else {
+            model = assets::gui_item::carried_block_quads(
+                base,
+                assets::BlockVisualId(route.visual),
+                faces,
+            )
+            .ok();
+            model
+                .as_deref()
+                .and_then(|quads| pack_compiler::overlay_model_icon(&compiled.overlay, quads))
         };
         if let Some(sprite) = sprite {
             icons.icons.push(session_icon(route, sprite));
         }
-        if cube
+        if (cube || model.is_some())
             && let Some(sheet) =
                 render_model::equipment::blocks::overlay_face_sheet(&compiled.overlay, faces)
         {
+            if let Some(mut quads) = model {
+                let rects = render_model::equipment::blocks::face_rects([0.0, 0.0, 1.0, 1.0]);
+                for quad in &mut quads {
+                    let face = assets::gui_item::quad_face(quad.corners);
+                    let rect = rects[face as usize];
+                    quad.uvs = quad.uvs.map(|uv| {
+                        std::array::from_fn(|axis| {
+                            rect[axis] + uv[axis] * (rect[axis + 2] - rect[axis])
+                        })
+                    });
+                }
+                icons.block_models.insert(
+                    (Arc::clone(&route.identifier), route.metadata),
+                    quads.into(),
+                );
+            }
             icons.block_sheets.push(session_icon(route, sheet));
             let flags = faces.iter().fold(0, |flags, &id| {
                 flags | compiled.overlay.materials[id as usize].flags
@@ -101,3 +139,6 @@ fn session_icon(route: &Route, sprite: assets::IconSprite) -> SessionIcon {
         rgba8: sprite.rgba8.to_vec().into_boxed_slice(),
     }
 }
+
+#[cfg(test)]
+mod tests;

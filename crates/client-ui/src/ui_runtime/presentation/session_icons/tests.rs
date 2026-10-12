@@ -283,3 +283,43 @@ fn review_oversized_icons_are_rejected_before_gutter_arithmetic() {
     assert!(refs["test:variant"].contains_key(&0));
     assert!(!refs["test:variant"].contains_key(&1));
 }
+
+#[test]
+fn a_session_model_sheet_keeps_its_non_cube_gui_geometry() {
+    let (mut corners, uvs) = assets::gui_item::cube_face(assets::BlockFace::Up);
+    for point in &mut corners {
+        point[1] = 0.5;
+    }
+    let quad = assets::gui_item::GuiBlockQuad {
+        corners,
+        uvs,
+        material: 0,
+    };
+    let identifier: Arc<str> = "test:variant".into();
+    let [width, height] = assets::BLOCK_ITEM_SHEET_SIZE.map(u32::from);
+    let icons = SessionIcons {
+        icons: vec![sprite(0)],
+        block_sheets: vec![SessionIcon {
+            identifier: Arc::clone(&identifier),
+            metadata: 0,
+            width,
+            height,
+            rgba8: vec![255; (width * height * 4) as usize].into(),
+        }],
+        block_models: BTreeMap::from([((identifier, 0), Arc::from([quad]))]),
+        ..Default::default()
+    };
+    let packed = pack(&icons, 0).unwrap();
+    let mesh = block_cubes(&icons, &packed).into_values().next().unwrap();
+    assert_eq!(mesh.vertices().len(), quad.corners.len());
+    for (vertex, corner) in mesh.vertices().iter().zip(quad.corners) {
+        let [x, y, _] = assets::gui_item::project_cube(corner);
+        assert_eq!(
+            vertex.position,
+            [
+                x / assets::gui_item::GUI_ITEM_SIDE,
+                y / assets::gui_item::GUI_ITEM_SIDE
+            ]
+        );
+    }
+}

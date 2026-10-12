@@ -65,7 +65,15 @@ pub(crate) struct OverlayGaps {
 pub(crate) struct CompiledBlockOverlay {
     pub(crate) overlay: BlockOverlay,
     pub(crate) gaps: OverlayGaps,
-    pub(crate) vanilla_carried: Vec<(u32, [u32; 6])>,
+    pub(crate) vanilla_carried: Vec<CarriedBlock>,
+}
+
+/// Carried textures and the existing item-shape classification for one vanilla visual.
+#[derive(Clone, Debug)]
+pub(crate) struct CarriedBlock {
+    pub(crate) visual: u32,
+    pub(crate) faces: [u32; 6],
+    pub(crate) flat: bool,
 }
 
 /// Returns visuals for the admitted custom prefix in palette or hashed-state order.
@@ -202,6 +210,7 @@ enum TextureRoute {
     },
     Path {
         key: String,
+        variant: u32,
         path: String,
     },
 }
@@ -218,7 +227,7 @@ impl TextureRoute {
 struct Builder<'a> {
     catalog: TextureCatalog<'a>,
     base_assets: Option<&'a assets::RuntimeAssets>,
-    vanilla_carried: Vec<(u32, [u32; 6])>,
+    vanilla_carried: Vec<CarriedBlock>,
     base_textures: HashMap<u32, TextureSlot>,
     terrain_materials: HashMap<(String, u32, u32), u32>,
     geometries: HashMap<String, Geometry>,
@@ -521,7 +530,9 @@ impl Builder<'_> {
             TextureRoute::Catalog {
                 variant, choice, ..
             } => self.catalog.decode_choice(key, *variant, *choice),
-            TextureRoute::Path { path, .. } => self.catalog.decode_path(key, path, None),
+            TextureRoute::Path { variant, path, .. } => {
+                self.catalog.decode_source(key, *variant, path)
+            }
         }?;
         let grid = self.catalog.grid(key);
         let animate = match route {

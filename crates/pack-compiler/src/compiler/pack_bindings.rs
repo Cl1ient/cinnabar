@@ -1,7 +1,7 @@
 //! Carrier source facts used by optional terrain catalogs and block bindings.
 
 use super::*;
-use assets::{BlockTextureSource, MaterialTextureSource};
+use assets::material_keys::{BlockTextureSource, MaterialTextureSource};
 
 /// Keeps state selectors, weighted leaves, and per-block identities in the sidecar.
 pub(super) fn retain(
@@ -9,10 +9,11 @@ pub(super) fn retain(
     pack: &PackSources,
     descriptors: &BTreeMap<Descriptor, u32>,
     materials: &[Material],
-    records: &[RegistryRecord],
+    blocks: (&[RegistryRecord], &[BlockVisual]),
     lily_pad_keys: &[(u32, Box<str>)],
     seasonal_copies: &[(u32, u32)],
 ) -> MaterialKeys {
+    let (records, visuals) = blocks;
     let mut sources = BTreeMap::new();
     for (descriptor, &id) in descriptors {
         sources.insert(
@@ -69,6 +70,10 @@ pub(super) fn retain(
                 name: record.name.clone(),
                 binding_name,
                 source_faces,
+                flat_item: assets::gui_item::block_item_is_flat(
+                    record,
+                    visuals[record.sequential_id as usize].kind,
+                ),
                 carried_fallback_keys: BlockFace::ALL.map(|face| {
                     crate::pack::resolve_carried_fallback_key(&pack.blocks, record, face)
                 }),

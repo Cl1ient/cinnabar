@@ -270,3 +270,14 @@ pub fn overlay_cube_icon(overlay: &assets::BlockOverlay, faces: [u32; 6]) -> Opt
         .ok()
         .map(|model| model.raster())
 }
+
+/// Draws the existing carried model using rebound overlay-local materials.
+#[must_use]
+pub fn overlay_model_icon(
+    overlay: &assets::BlockOverlay,
+    quads: &[assets::gui_item::GuiBlockQuad],
+) -> Option<IconSprite> {
+    model::Model::overlay_quads(overlay, quads)
+        .ok()
+        .map(|model| model.raster())
+}

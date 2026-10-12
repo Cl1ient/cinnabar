@@ -14,9 +14,10 @@ impl Builder<'_> {
             )
             .collect::<Vec<_>>();
         routes.sort_unstable();
-        routes.dedup_by_key(|route| route.0);
+        routes.dedup();
+        let mut claimed = HashSet::new();
         for (id, key) in routes {
-            if id == DIAGNOSTIC_MATERIAL {
+            if id == DIAGNOSTIC_MATERIAL || claimed.contains(&id) {
                 continue;
             }
             let source = keys.material_source(id);
@@ -33,6 +34,7 @@ impl Builder<'_> {
                 let flags = base.map_or(0, |material| material.flags);
                 if let Some(replacement) = self.terrain_material(keys, key, variant, flags) {
                     let replacement = self.overlay.materials[replacement as usize];
+                    claimed.insert(id);
                     self.overlay.material_overrides.push(MaterialOverride {
                         material: id,
                         texture: replacement.texture,
@@ -51,11 +53,13 @@ impl Builder<'_> {
                         choice: 0,
                     },
                     |source| TextureRoute::Path {
+                        variant: source.variant,
                         key: key.to_owned(),
                         path: source.path.to_string(),
                     },
                 );
                 if let Some(slot) = self.route_slot(route) {
+                    claimed.insert(id);
                     self.overlay.material_overrides.push(MaterialOverride {
                         material: id,
                         texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
@@ -108,7 +112,19 @@ impl Builder<'_> {
                         .texture(&source.name, &source.binding_name, index, true)
                         .is_some()
             });
-            if !affected {
+            let carried_changed = !affected
+                && assets::BlockFace::ALL.into_iter().any(|face| {
+                    let index = face as usize;
+                    let variant = keys
+                        .material_source(block.face(face).material_id())
+                        .map_or(0, |source| source.variant);
+                    source.carried_keys[index]
+                        .as_deref()
+                        .into_iter()
+                        .chain(source.carried_fallback_keys[index].as_deref())
+                        .any(|key| self.carried_changed(key, variant))
+                });
+            if !affected && !carried_changed {
                 continue;
             }
             let mut faces = [None; 6];
@@ -152,10 +168,32 @@ impl Builder<'_> {
                 self.overlay.face_overrides.push((source.visual, faces));
             }
             if carried.iter().all(Option::is_some) {
-                self.vanilla_carried
-                    .push((source.visual, carried.map(Option::unwrap)));
+                self.vanilla_carried.push(CarriedBlock {
+                    visual: source.visual,
+                    faces: carried.map(Option::unwrap),
+                    flat: source.flat_item,
+                });
             }
         }
+    }
+
+    /// Tests optional carried routes without copying unrelated carrier pixels into the overlay.
+    fn carried_changed(&mut self, key: &str, variant: u32) -> bool {
+        if self.catalog.redefined(key) {
+            return true;
+        }
+        let count = self
+            .catalog
+            .choices(key, variant)
+            .map_or(0, |choices| choices.len());
+        (0..count).any(|choice| {
+            self.route_slot(TextureRoute::Catalog {
+                key: key.to_owned(),
+                variant,
+                choice: choice as u32,
+            })
+            .is_some()
+        })
     }
 
     /// Builds one state selector with independent, normalized positional alternatives.

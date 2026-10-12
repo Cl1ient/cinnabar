@@ -19,6 +19,7 @@ pub struct BlockTextureSource {
     pub name: Box<str>,
     pub binding_name: Box<str>,
     pub source_faces: [u8; 6],
+    pub flat_item: bool,
     pub carried_keys: [Option<Box<str>>; 6],
     pub carried_fallback_keys: [Option<Box<str>>; 6],
 }

@@ -1,17 +1,33 @@
 //! Block-specific material rebinding preserves each carrier visual's geometry.
 
-use crate::{AssetError, BlockFace, BlockVisual, ModelQuad, ModelTemplate};
+use crate::{AssetError, BlockFace, BlockVisual, Material, ModelQuad, ModelTemplate};
+
+mod leaves;
+
+/// Mutable tables that own a visual's faces, world materials, and model geometry.
+pub(super) struct Tables<'a> {
+    pub visuals: &'a mut [BlockVisual],
+    pub materials: &'a mut Vec<Material>,
+    pub templates: &'a mut Vec<ModelTemplate>,
+    pub quads: &'a mut Vec<ModelQuad>,
+    pub offsets: &'a mut Vec<(u32, block_transform::random_offset::RandomOffsetComponent)>,
+}
 
 /// Replaces only named faces and clones shared model parts before changing their materials.
 pub(super) fn apply(
     replacements: &[(u32, [Option<u32>; 6])],
-    visuals: &mut [BlockVisual],
-    templates: &mut Vec<ModelTemplate>,
-    quads: &mut Vec<ModelQuad>,
-    offsets: &mut Vec<(u32, block_transform::random_offset::RandomOffsetComponent)>,
-    local_materials: usize,
-    material_base: u32,
+    tables: Tables<'_>,
+    material_range: std::ops::Range<u32>,
 ) -> Result<(), AssetError> {
+    let Tables {
+        visuals,
+        materials,
+        templates,
+        quads,
+        offsets,
+    } = tables;
+    let material_base = material_range.start;
+    let local_materials = (material_range.end - material_base) as usize;
     if replacements.is_empty() {
         return Ok(());
     }
@@ -35,6 +51,7 @@ pub(super) fn apply(
             (base, different.min(next))
         })
         .collect::<std::collections::HashMap<_, _>>();
+    let mut leaf_groups = leaves::Groups::default();
     let mut seen = std::collections::HashSet::new();
     let mut copied_models = std::collections::HashMap::new();
     for &(id, replacement) in replacements {
@@ -57,6 +74,7 @@ pub(super) fn apply(
                 visual.faces[face] = material_base + material;
             }
         }
+        leaf_groups.rebind(visual, replacement, materials, material_base)?;
         if visual.model_template == crate::NO_MODEL_TEMPLATE {
             continue;
         }
@@ -162,12 +180,14 @@ mod tests {
         faces[BlockFace::Up as usize] = Some(0);
         apply(
             &[(0, faces)],
-            &mut visuals,
-            &mut templates,
-            &mut quads,
-            &mut offsets,
-            1,
-            2,
+            Tables {
+                visuals: &mut visuals,
+                materials: &mut vec![Material::unvaried(); 3],
+                templates: &mut templates,
+                quads: &mut quads,
+                offsets: &mut offsets,
+            },
+            2..3,
         )
         .unwrap();
         assert_eq!(visuals[1].model_template, 0);

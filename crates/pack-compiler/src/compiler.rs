@@ -39,6 +39,8 @@ mod destroy_facts;
 mod leaf_mips;
 mod lily_pad_textures;
 mod material_facts;
+mod materials;
+use materials::compile_materials;
 mod pack_bindings;
 mod seasonal_leaves;
 mod variations;
@@ -546,7 +548,7 @@ fn compile_pack_inner(
         &pack,
         &material_by_descriptor,
         &materials,
-        records,
+        (records, &visuals),
         &lily_pad_keys,
         &seasonal_copies,
     );
@@ -889,99 +891,6 @@ pub(crate) fn static_texture_path(
         return Ok(tga);
     }
     Ok(png)
-}
-
-fn compile_materials(
-    descriptor_keys: &BTreeMap<Descriptor, Box<str>>,
-    plan: &AnimationPlan,
-    alpha_paths: &BTreeSet<Box<str>>,
-) -> Result<CompiledMaterials, AssetError> {
-    let mut materials = vec![Material {
-        texture: TextureRef::DIAGNOSTIC,
-        flags: 0,
-        animation: NO_ANIMATION,
-        ..assets::Material::unvaried()
-    }];
-    let mut material_by_value = BTreeMap::<(TextureRef, u32, u32), u32>::new();
-    material_by_value.insert(
-        (TextureRef::DIAGNOSTIC, 0, NO_ANIMATION),
-        DIAGNOSTIC_MATERIAL,
-    );
-    let mut material_by_descriptor = BTreeMap::new();
-
-    for descriptor in descriptor_keys.keys() {
-        if alpha_paths.contains(&descriptor.path) && !descriptor_supports_alpha(descriptor) {
-            continue;
-        }
-        let key = &descriptor.texture_key;
-        let candidates = plan
-            .animations
-            .iter()
-            .enumerate()
-            .filter(|(_, source)| {
-                source.atlas_tile.as_ref() == key.as_ref() && source.source_path == descriptor.path
-            })
-            .collect::<Vec<_>>();
-        let animation = if let Some((atlas_index, tile_variant)) = descriptor.flipbook_selector {
-            candidates.iter().find(|(_, source)| {
-                source.atlas_index == atlas_index && source.atlas_tile_variant == tile_variant
-            }).map(|(index, _)| *index)
-        } else {
-            match candidates.as_slice() {
-                [] => None,
-                [(index, _)] => Some(*index),
-                _ => Some(
-                    candidates.iter()
-                        .find(|(_, source)| source.atlas_index == 0 && source.atlas_tile_variant == 0)
-                        .map(|(index, _)| *index)
-                        .ok_or_else(|| AssetError::InvalidCompiledAssets {
-                            detail: format!(
-                                "texture {} has multiple flipbook selectors and no canonical selector (0, 0)",
-                                descriptor.path
-                            ).into(),
-                        })?,
-                ),
-            }
-        }.map(|index| u32::try_from(index).expect("bounded flipbook count"));
-        let texture = if let Some(animation) = animation {
-            let source = &plan.animations[animation as usize];
-            plan.frames[source.frame_start as usize]
-        } else if let Some(&texture) = plan
-            .static_refs
-            .get(&descriptor.path)
-            .or_else(|| plan.strip_first_refs.get(&descriptor.path))
-        {
-            texture
-        } else {
-            continue;
-        };
-        let animation = animation.unwrap_or(NO_ANIMATION);
-        let value = (texture, descriptor.flags, animation);
-        let material = if let Some(&material) = material_by_value.get(&value) {
-            material
-        } else {
-            if materials.len() >= MAX_MATERIALS {
-                return Err(AssetError::TooManyMaterials {
-                    count: materials.len() + 1,
-                    max: MAX_MATERIALS,
-                });
-            }
-            let material =
-                u32::try_from(materials.len()).map_err(|_| AssetError::BlobSizeOverflow {
-                    section: "material",
-                })?;
-            materials.push(Material {
-                texture,
-                flags: descriptor.flags,
-                animation,
-                ..assets::Material::unvaried()
-            });
-            material_by_value.insert(value, material);
-            material
-        };
-        material_by_descriptor.insert(descriptor.clone(), material);
-    }
-    Ok((materials.into_boxed_slice(), material_by_descriptor))
 }
 
 #[cfg(test)]

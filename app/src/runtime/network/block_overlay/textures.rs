@@ -8,7 +8,6 @@ use serde_json::Value;
 use pack_runtime::pack_textures::DecodedTexture;
 mod diagnostics;
 mod terrain;
-mod tint;
 use diagnostics::{FailureReason, TextureDiagnostics};
 use pack_runtime::pack_textures::{MAX_CATALOG_ENTRIES, decode_pack_texture, parse_pack_json};
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
@@ -24,7 +23,6 @@ pub(super) struct Flipbook {
 pub(super) struct TextureCatalog<'a> {
     view: &'a LayeredPackView,
     terrain: HashMap<String, pack_runtime::pack_textures::terrain::Entry>,
-    tints: HashMap<String, [u8; 3]>,
     server_keys: HashSet<String>,
     flipbooks: HashMap<String, Flipbook>,
     diagnostics: TextureDiagnostics,
@@ -42,11 +40,15 @@ impl<'a> TextureCatalog<'a> {
             })
             .collect::<HashMap<_, _>>();
         if let Some(base) = base {
+            let fixed_tints = base.fixed_tints().collect::<HashMap<_, _>>();
             for (key, path) in base.aliases() {
                 if let Some(entry) = pack_runtime::pack_textures::terrain::parse_entry(
                     &serde_json::json!({"textures":path}),
                 ) {
-                    terrain.insert(key.to_owned(), entry);
+                    terrain.insert(
+                        key.to_owned(),
+                        entry.with_base_tint(fixed_tints.get(key).copied()),
+                    );
                 }
             }
             for (key, value) in base.terrain_entries() {
@@ -96,7 +98,6 @@ impl<'a> TextureCatalog<'a> {
         Self {
             view,
             terrain,
-            tints: tint::catalog_tints(view, base),
             server_keys,
             flipbooks,
             diagnostics,
@@ -144,6 +145,21 @@ impl<'a> TextureCatalog<'a> {
         self.decode_path(key, &choice.path, choice.tint)
     }
 
+    /// Resolves a recorded raster's own variant tint; an untinted choice stays untinted.
+    pub(super) fn decode_source(
+        &self,
+        key: &str,
+        variant: u32,
+        path: &str,
+    ) -> Option<DecodedTexture> {
+        let tint = self
+            .choices(key, variant)?
+            .iter()
+            .find(|choice| choice.path == path)?
+            .tint;
+        self.decode_path(key, path, tint)
+    }
+
     /// Reads a recorded source path for raster-only replacements of weighted leaves.
     pub(super) fn decode_path(
         &self,
@@ -152,7 +168,7 @@ impl<'a> TextureCatalog<'a> {
         tint: Option<[u8; 3]>,
     ) -> Option<DecodedTexture> {
         let mut texture = decode_pack_texture(self.view, path);
-        if let Some(tint) = tint.or_else(|| self.tints.get(key).copied())
+        if let Some(tint) = tint
             && let Some(texture) = texture.as_mut()
         {
             pack_compiler::apply_atlas_tint(&mut texture.rgba8, tint);

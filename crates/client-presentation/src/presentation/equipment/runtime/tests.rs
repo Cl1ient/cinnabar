@@ -681,3 +681,78 @@ fn held_blocks_skip_the_hurt_overlay_in_both_views_and_hands() {
     assert_eq!(off.presentation.submission.overlay_rgba8, 0);
     assert_eq!(body.overlay_rgba8, 0x6600_00ff);
 }
+
+#[test]
+fn session_model_sheets_preserve_slab_height_in_both_hands() {
+    use client_ui::ui_runtime::presentation::{SessionIcon, SessionIcons};
+    let (mut runtime, body, mut item) = block_fixture();
+    item.identifier = "test:slab".into();
+    item.kind = HeldKind::Other;
+    let (mut corners, uvs) = assets::gui_item::cube_face(assets::BlockFace::Up);
+    for point in &mut corners {
+        point[1] = 0.5;
+    }
+    let quad = assets::gui_item::GuiBlockQuad {
+        corners,
+        uvs,
+        material: 0,
+    };
+    let [width, height] = assets::BLOCK_ITEM_SHEET_SIZE.map(u32::from);
+    let icons = SessionIcons {
+        block_sheets: vec![SessionIcon {
+            identifier: Arc::clone(&item.identifier),
+            metadata: 0,
+            width,
+            height,
+            rgba8: vec![255; (width * height * 4) as usize].into(),
+        }],
+        block_models: BTreeMap::from([((Arc::clone(&item.identifier), 0), Arc::from([quad]))]),
+        ..Default::default()
+    };
+    let items = crate::session_assets::SessionItems {
+        components: Arc::new(Default::default()),
+        icons: Some(Arc::new(icons)),
+    };
+    let staged = StagedSessionIcons::stage(Some(&items)).unwrap();
+    let (_, locations) = ActorArtworkPages::default().with_equipment_rasters(staged.rasters());
+    runtime.set_session_items(Some(&items), Some(staged), locations);
+    let mut rig = None;
+    for kind in [HeldKind::Other, HeldKind::Sprite, HeldKind::Block(7)] {
+        item.kind = kind;
+        let main = runtime
+            .first_person_item(&body, &item, ItemAnimationState::default())
+            .unwrap();
+        let off = runtime.first_person_offhand(&body, &item).unwrap();
+        assert_eq!(
+            main.presentation.submission.input.rig,
+            off.presentation.submission.input.rig
+        );
+        if let Some(previous) = rig {
+            assert_eq!(main.presentation.submission.input.rig, previous);
+        }
+        rig = Some(main.presentation.submission.input.rig);
+    }
+    let geometry = runtime
+        .take_pending_geometries()
+        .into_iter()
+        .find(|geometry| Some(geometry.id) == rig)
+        .unwrap();
+    assert!(
+        geometry
+            .vertices
+            .iter()
+            .all(|vertex| vertex.position[1] == 0.0)
+    );
+    assert!(
+        geometry
+            .vertices
+            .iter()
+            .any(|vertex| vertex.position[0] == -0.5)
+    );
+    assert!(
+        geometry
+            .vertices
+            .iter()
+            .any(|vertex| vertex.position[0] == 0.5)
+    );
+}

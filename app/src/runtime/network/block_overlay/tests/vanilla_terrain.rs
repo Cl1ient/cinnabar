@@ -1,5 +1,6 @@
 use super::*;
-use assets::{BlockTextureSource, Material, MaterialKeys, MaterialTextureSource};
+use assets::material_keys::{BlockTextureSource, MaterialTextureSource};
+use assets::{Material, MaterialKeys};
 use serde_json::{Value, json};
 
 /// Packs contain only original tiny catalogs and flat color rasters.
@@ -84,6 +85,7 @@ fn keys() -> MaterialKeys {
                     name: "minecraft:fixture".into(),
                     binding_name: "fixture".into(),
                     source_faces: [0, 1, 2, 3, 4, 5],
+                    flat_item: false,
                     carried_keys: std::array::from_fn(|_| None),
                     carried_fallback_keys: std::array::from_fn(|_| Some("state".into())),
                 },
@@ -92,6 +94,7 @@ fn keys() -> MaterialKeys {
                     name: "minecraft:other".into(),
                     binding_name: "other".into(),
                     source_faces: [0, 1, 2, 3, 4, 5],
+                    flat_item: false,
                     carried_keys: std::array::from_fn(|_| None),
                     carried_fallback_keys: std::array::from_fn(|_| Some("state".into())),
                 },
@@ -257,7 +260,7 @@ fn block_bindings_are_specific_to_the_visual_and_carried_faces() {
                 .material_id(),
             2
         );
-        let faces = overlay.vanilla_carried[0].1;
+        let faces = overlay.vanilla_carried[0].faces;
         let sheet =
             render_model::equipment::blocks::overlay_face_sheet(&overlay.overlay, faces).unwrap();
         assert!(
@@ -302,4 +305,85 @@ fn bindings_can_reference_carrier_textures_without_replacing_rasters() {
         .material_id();
     assert_eq!(material_color(&runtime, material), material_color(&base, 1));
     assert!(!overlay.vanilla_carried.is_empty());
+}
+
+#[test]
+fn a_shared_material_can_use_a_later_alias_after_an_earlier_route_misses() {
+    let base = base();
+    let keys = MaterialKeys::from_entries([(1, "first"), (1, "second")])
+        .with_aliases([("first", "textures/missing"), ("second", "textures/base")]);
+    let pixel = [40, 150, 30, 255];
+    let view = stack(&[(
+        json!({"texture_data":{"second":{"textures":"textures/changed"}}}),
+        json!({}),
+        vec![("textures/changed", pixel)],
+    )]);
+    let overlay = compile(&view, &base, &keys);
+    let runtime = base.with_block_overlay(2, &overlay.overlay).unwrap();
+    assert_eq!(material_color(&runtime, 1), pixel);
+}
+
+#[test]
+fn an_untinted_state_does_not_inherit_the_other_states_tint() {
+    let base = base();
+    let keys = keys();
+    let pixel = [200, 100, 50, 255];
+    let view = stack(&[(
+        json!({"texture_data":{"state":{"textures":[
+        {"path":"textures/a","tint_color":"#ff0000"},"textures/b"]}}}),
+        json!({}),
+        vec![("textures/a", pixel), ("textures/b", pixel)],
+    )]);
+    let overlay = compile(&view, &base, &keys);
+    let runtime = base.with_block_overlay(2, &overlay.overlay).unwrap();
+    assert_eq!(material_color(&runtime, 1), [200, 0, 0, 255]);
+    assert_eq!(material_color(&runtime, 2), pixel);
+}
+
+#[test]
+fn carried_only_keys_trigger_item_preparation_for_catalog_and_raster_changes() {
+    let base = base();
+    let keys = keys();
+    let mut terrain = keys
+        .terrain_entries()
+        .map(|(key, entry)| (key.into(), entry.clone()))
+        .collect::<Vec<_>>();
+    terrain.push(("carried".into(), json!({"textures":"textures/carried"})));
+    let materials = keys
+        .material_sources()
+        .map(|(id, source)| (id, source.clone()))
+        .collect::<Vec<_>>();
+    let mut blocks = keys.block_sources().to_vec();
+    blocks[0].carried_keys = std::array::from_fn(|_| Some("carried".into()));
+    let keys = keys.with_sources(terrain, materials, blocks);
+    let pixel = [30, 40, 200, 255];
+    for (catalog, path) in [
+        (json!({}), "textures/carried"),
+        (
+            json!({"texture_data":{"carried":{"textures":"textures/new_carried"}}}),
+            "textures/new_carried",
+        ),
+    ] {
+        let view = stack(&[(catalog, json!({}), vec![(path, pixel)])]);
+        let overlay = compile(&view, &base, &keys);
+        assert!(overlay.overlay.material_overrides.is_empty());
+        assert!(overlay.overlay.face_overrides.is_empty());
+        let faces = overlay
+            .vanilla_carried
+            .iter()
+            .find(|route| route.visual == 0)
+            .unwrap()
+            .faces;
+        let sheet =
+            render_model::equipment::blocks::overlay_face_sheet(&overlay.overlay, faces).unwrap();
+        assert!(
+            sheet
+                .rgba8
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|sample| *sample == pixel)
+        );
+        assert_eq!(base.material(1).texture.page(), 0);
+    }
 }

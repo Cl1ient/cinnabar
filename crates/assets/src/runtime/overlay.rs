@@ -336,13 +336,16 @@ impl RuntimeAssets {
         let mut visuals = self.visuals.to_vec();
         super::face_overrides::apply(
             &overlay.face_overrides,
-            &mut visuals,
-            &mut model_templates,
-            &mut model_quads,
-            &mut model_random_offsets,
-            overlay.materials.len(),
-            material_base,
+            super::face_overrides::Tables {
+                visuals: &mut visuals,
+                materials: &mut materials,
+                templates: &mut model_templates,
+                quads: &mut model_quads,
+                offsets: &mut model_random_offsets,
+            },
+            material_base..material_base + overlay.materials.len() as u32,
         )?;
+        crate::material_variations::validate(&materials)?;
         for visual in &overlay.visuals {
             if overlay
                 .model_templates
@@ -575,6 +578,68 @@ mod tests {
             variation: Some((0, 0)),
         }];
         assert!(base.with_block_overlay(1, &overlay).is_err());
+    }
+
+    #[test]
+    fn leaf_bindings_repoint_all_world_depth_and_exposure_materials_independently() {
+        for flag in [
+            crate::BLOCK_VISUAL_VARIANT_SEASONAL_LEAF,
+            crate::BLOCK_VISUAL_VARIANT_NONSEASONAL_LEAF,
+        ] {
+            let mut base = RuntimeAssets::diagnostic();
+            let mut leaf = base.visuals[0];
+            leaf.kind = VisualKind::Cube;
+            leaf.flags = BlockFlags::CUBE_GEOMETRY | BlockFlags::LEAF_MODEL;
+            leaf.support = crate::VisualSupport::Exact;
+            leaf.faces = [1; 6];
+            leaf.variant = flag | 2;
+            base.visuals = vec![leaf; 2].into();
+            base.light_properties = vec![LightProperties::OPAQUE_DARK; 2].into();
+            let mut materials = vec![Material::unvaried(); 2];
+            for index in 0..crate::SEASONAL_LEAF_MATERIAL_COUNT {
+                let deep = index >= crate::SEASONAL_LEAF_DEEP_OFFSET;
+                let mut flags = crate::MATERIAL_FLAG_NATIVE_LEAF_COLOUR;
+                if !deep {
+                    flags |= crate::MATERIAL_FLAG_ALPHA_CUTOUT | crate::MATERIAL_FLAG_TWO_SIDED;
+                }
+                materials.push(Material {
+                    flags,
+                    ..Material::unvaried()
+                });
+            }
+            base.materials = materials.into();
+            let mut overlay = cube_overlay(page(16));
+            overlay.visuals.clear();
+            overlay.light_properties.clear();
+            let mut faces = [None; 6];
+            faces[crate::BlockFace::Up as usize] = Some(0);
+            overlay.face_overrides = vec![(0, faces)];
+            let runtime = base.with_block_overlay(2, &overlay).unwrap();
+            let group = runtime
+                .resolve(crate::NetworkIdMode::Sequential, 0)
+                .variant()
+                & crate::BLOCK_VISUAL_VARIANT_MATERIAL_MASK;
+            assert_ne!(group, 2);
+            assert_eq!(
+                runtime
+                    .resolve(crate::NetworkIdMode::Sequential, 1)
+                    .variant(),
+                leaf.variant
+            );
+            for index in 0..crate::SEASONAL_LEAF_MATERIAL_COUNT {
+                let original = base.material(2 + index);
+                let rebound = runtime.material(group + index);
+                assert_eq!(rebound.flags, original.flags);
+                assert_eq!(
+                    rebound.texture.page(),
+                    u32::from(
+                        index as usize % crate::BlockFace::ALL.len()
+                            == crate::BlockFace::Up as usize
+                    )
+                );
+                assert_eq!(runtime.material(2 + index), original);
+            }
+        }
     }
 
     #[test]

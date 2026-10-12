@@ -21,6 +21,16 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Supplies a carrier multiplier only for aliases that have no full terrain entry.
+    pub fn with_base_tint(mut self, tint: Option<[u8; 3]>) -> Self {
+        for choices in &mut self.variants {
+            for choice in choices {
+                choice.tint = tint;
+            }
+        }
+        self
+    }
+
     /// Out-of-range state selectors use the default variant.
     pub fn variant(&self, variant: u32) -> &[Choice] {
         self.variants
@@ -57,7 +67,7 @@ pub fn parse_entry(value: &Value) -> Option<Entry> {
         Value::Array(values) => values.as_slice(),
         value => std::slice::from_ref(value),
     };
-    if values.is_empty() || values.len() > assets::MAX_TERRAIN_VARIANTS {
+    if values.is_empty() || values.len() > assets::material_keys::MAX_TERRAIN_VARIANTS {
         return None;
     }
     let variants = values
@@ -74,7 +84,9 @@ pub fn parse_entry(value: &Value) -> Option<Entry> {
 fn parse_variant(value: &Value) -> Option<Vec<Choice>> {
     if let Some(alternatives) = value.get("variations") {
         let alternatives = alternatives.as_array()?;
-        if alternatives.is_empty() || alternatives.len() > assets::MAX_TERRAIN_VARIANTS {
+        if alternatives.is_empty()
+            || alternatives.len() > assets::material_keys::MAX_TERRAIN_VARIANTS
+        {
             return None;
         }
         let mut choices = alternatives
@@ -94,7 +106,7 @@ fn parse_variant(value: &Value) -> Option<Vec<Choice>> {
             .iter()
             .map(|choice| choice.weight)
             .collect::<Vec<_>>();
-        if !assets::normalize_terrain_weights(&mut weights) {
+        if !assets::material_keys::normalize_terrain_weights(&mut weights) {
             return None;
         }
         for (choice, weight) in choices.iter_mut().zip(weights) {

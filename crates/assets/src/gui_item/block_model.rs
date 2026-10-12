@@ -156,16 +156,7 @@ pub fn cube_face(face: BlockFace) -> ([[f32; 3]; 4], [[f32; 2]; 4]) {
 /// The cube thumbnail's side shading, chosen by the face normal's dominant axis.
 #[must_use]
 pub fn face_brightness(corners: [[f32; 3]; 4]) -> f32 {
-    let [a, b, c] = [corners[0], corners[1], corners[2]];
-    let (u, v) = (
-        [b[0] - a[0], b[1] - a[1], b[2] - a[2]],
-        [c[0] - a[0], c[1] - a[1], c[2] - a[2]],
-    );
-    let normal = [
-        (u[1] * v[2] - u[2] * v[1]).abs(),
-        u[2] * v[0] - u[0] * v[2],
-        (u[0] * v[1] - u[1] * v[0]).abs(),
-    ];
+    let normal = face_normal(corners).map(f32::abs);
     if normal[1].abs() >= normal[0] && normal[1].abs() >= normal[2] {
         CUBE_FACES[0].3
     } else if normal[0] >= normal[2] {
@@ -175,10 +166,73 @@ pub fn face_brightness(corners: [[f32; 3]; 4]) -> f32 {
     }
 }
 
+/// The normalized outward normal of one accepted block-item quad.
+pub fn face_normal(corners: [[f32; 3]; 4]) -> [f32; 3] {
+    let [a, b, c] = [corners[0], corners[1], corners[2]];
+    let u = std::array::from_fn::<_, 3, _>(|axis| b[axis] - a[axis]);
+    let v = std::array::from_fn::<_, 3, _>(|axis| c[axis] - a[axis]);
+    let normal = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
+    let length = normal.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if length == 0.0 {
+        [0.0; 3]
+    } else {
+        normal.map(|value| value / length)
+    }
+}
+
+/// The dominant directional face, with ties resolved in the same order as face shading.
+pub fn quad_face(corners: [[f32; 3]; 4]) -> BlockFace {
+    let normal = face_normal(corners);
+    let magnitude = normal.map(f32::abs);
+    let axis = if magnitude[1] >= magnitude[0] && magnitude[1] >= magnitude[2] {
+        1
+    } else if magnitude[0] >= magnitude[2] {
+        0
+    } else {
+        2
+    };
+    BlockFace::ALL[axis * 2 + usize::from(normal[axis] > 0.0)]
+}
+
+/// Keeps a block item's model geometry while assigning its separate carried face materials.
+pub fn carried_block_quads(
+    world: &crate::RuntimeAssets,
+    visual: crate::BlockVisualId,
+    faces: [u32; 6],
+) -> Result<Vec<GuiBlockQuad>, GuiBlockReject> {
+    let block = world.resolve(crate::NetworkIdMode::Sequential, visual.0);
+    if !block.is_known() {
+        return Err(GuiBlockReject::Geometry);
+    }
+    let world_faces = BlockFace::ALL.map(|face| block.face(face).material_id());
+    let mut quads = block_item_quads(
+        block.kind(),
+        world_faces,
+        block.model_template(),
+        world.model_templates(),
+        world.model_quads(),
+    )?;
+    for quad in &mut quads {
+        quad.material = faces[quad_face(quad.corners) as usize];
+    }
+    Ok(quads)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{MATERIAL_FLAG_ISOTROPIC, MATERIAL_FLAG_ROTATE_UV, TextureMip, TextureRef};
+
+    #[test]
+    fn carried_face_selection_follows_each_cube_faces_winding() {
+        for face in BlockFace::ALL {
+            assert_eq!(quad_face(cube_face(face).0), face);
+        }
+    }
 
     #[test]
     fn gui_materials_preserve_tiles_and_alpha_modes() {

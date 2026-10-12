@@ -12,9 +12,7 @@ pub mod blob;
 mod block_entity;
 pub mod block_entity_geometry;
 mod block_names;
-mod block_presentation_state;
-pub use block_presentation_state::pinned_block_presentation_states;
-pub use block_presentation_state::{BlockPresentationState, BlockPresentationStates, PortalAxis};
+pub mod block_presentation_state;
 pub mod block_shapes;
 pub mod carriers;
 pub mod compiled;
@@ -42,6 +40,7 @@ mod light_registry;
 mod material_keys;
 mod material_variations;
 mod model;
+pub mod native_material;
 mod ogg;
 pub mod oreui_icons;
 mod particle;
@@ -51,7 +50,7 @@ mod potion;
 mod provenance;
 pub mod registry;
 mod runtime;
-mod seasonal_foliage;
+pub mod seasonal_foliage;
 mod server_lang;
 mod session_entities;
 mod skin_geometry;
@@ -193,7 +192,7 @@ pub use font::{
 };
 pub use fsb::{DecodedSound, FsbError, MAX_FSB_INPUT_BYTES, MAX_FSB_PCM_BYTES, decode_fsb5};
 pub use glyph_sheet::{CellGlyph, GlyphAtlas, GlyphSheet, SHEET_GRID, SheetGlyph};
-pub use glyph_sheet::{extract_cells, pack_cells, texel_size_64};
+pub use glyph_sheet::{extract_cells, is_private_use_glyph, pack_cells, texel_size_64};
 pub use hud::{
     HUD_CARRIER_MAGIC, HUD_CARRIER_VERSION, HUD_ICONS_SHEET_SIZE, HUD_SOURCE_MANIFEST_SHA256,
     HudCatalogError, HudTexture, HudTextureRole, MAX_HUD_TEXTURE_BYTES, RuntimeHudCatalog,
@@ -270,10 +269,6 @@ pub use runtime::{
     BlockOverlay, MaterialOverride, NetworkIdMode, ResolvedBlock, ResolvedFace, RuntimeAssets,
     SequentialIdRemap, ServerDefinedBlock, server_defined_blocks,
     server_defined_blocks_for_registry,
-};
-pub use seasonal_foliage::{
-    SEASONAL_FOLIAGE_COLD_THRESHOLD, SEASONAL_FOLIAGE_COUNT, SEASONAL_FOLIAGE_EXPOSED_OFFSET,
-    SeasonalFoliageBlock, seasonal_foliage_cell_shelters, seasonal_foliage_palette_index,
 };
 pub use server_lang::{MAX_SERVER_LANG_INPUT_BYTES, ServerLangOverlay};
 pub use session_entities::SessionEntityPack;

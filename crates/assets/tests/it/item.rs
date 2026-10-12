@@ -249,6 +249,7 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         rig_controllers: Box::new([]),
         item_visuals: vec![ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -301,6 +302,7 @@ fn reviewed_default_sprite_carrier_accepts_every_canonical_key_and_missing_route
             if missing {
                 compiled.item_visuals[0].route = ItemVisualDefinitionRoute::Missing;
             }
+            let compiled = compiled.with_unresolved_item_use();
             compiled.validate().unwrap();
             let blob = entity::encode_entity_blob(&compiled).unwrap();
             let runtime = RuntimeEntityAssets::decode(&blob).unwrap();
@@ -314,7 +316,10 @@ fn reject_default_binding_mutation(mutate: impl FnOnce(&mut CompiledEntityAssets
     let original_blob = entity::encode_entity_blob(&original).unwrap();
     let mut mutated = original.clone();
     mutate(&mut mutated);
+    // Item-use coverage follows the forged inventory, so the binding review owns the rejection.
+    let mutated = mutated.with_unresolved_item_use();
     let expected_error = mutated.validate().unwrap_err().to_string();
+    assert!(!expected_error.contains("item-use"), "{expected_error}");
     assert!(entity::encode_entity_blob(&mutated).is_err());
 
     // Preserve canonical field ordering while forging a valid checksum, so the
@@ -331,6 +336,11 @@ fn reject_default_binding_mutation(mutate: impl FnOnce(&mut CompiledEntityAssets
             "item_visuals",
             serde_json::to_string(&original.item_visuals).unwrap(),
             serde_json::to_string(&mutated.item_visuals).unwrap(),
+        ),
+        (
+            "item_use_profiles",
+            serde_json::to_string(&original.item_use_profiles).unwrap(),
+            serde_json::to_string(&mutated.item_use_profiles).unwrap(),
         ),
     ] {
         payload = payload.replacen(
@@ -443,6 +453,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
     compiled.item_visuals = vec![
         ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -453,6 +464,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
         base.clone(),
         ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -462,6 +474,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
         },
         ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -474,6 +487,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
     ]
     .into_boxed_slice();
     compiled.item_visual_aliases = Box::new([]);
+    let compiled = compiled.with_unresolved_item_use();
 
     let blob = entity::encode_entity_blob(&compiled).unwrap();
     let runtime = RuntimeEntityAssets::decode(&blob).unwrap();
@@ -511,6 +525,7 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     compiled.item_visuals = (0..MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -519,10 +534,12 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
         })
         .collect();
     compiled.item_visual_aliases = Box::new([]);
+    compiled = compiled.with_unresolved_item_use();
     assert!(compiled.validate().is_ok());
     compiled.item_visuals = (0..=MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -530,6 +547,7 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
             ..compiled.item_visuals[0].clone()
         })
         .collect();
+    compiled = compiled.with_unresolved_item_use();
     assert!(compiled.validate().is_err());
 
     let mut compiled = item_carrier_fixture();
@@ -551,9 +569,11 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     let mut compiled = item_carrier_fixture();
     compiled.item_visuals[0].key.identifier =
         "x".repeat(MAX_ITEM_IDENTIFIER_BYTES).into_boxed_str();
+    compiled = compiled.with_unresolved_item_use();
     assert!(compiled.validate().is_ok());
     compiled.item_visuals[0].key.identifier =
         "x".repeat(MAX_ITEM_IDENTIFIER_BYTES + 1).into_boxed_str();
+    compiled = compiled.with_unresolved_item_use();
     assert!(compiled.validate().is_err());
 }
 
@@ -565,6 +585,7 @@ fn item_carrier_requires_sorted_unique_identifiers_and_bounded_block_routes() {
         compiled.item_visuals[0].clone(),
     ]
     .into_boxed_slice();
+    compiled = compiled.with_unresolved_item_use();
     assert!(compiled.validate().is_err());
 
     let mut compiled = item_carrier_fixture();

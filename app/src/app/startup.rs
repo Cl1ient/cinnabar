@@ -212,7 +212,7 @@ fn load_collision_registries(
     // and this physics binding derive their protocol from it, so a partially flipped carrier set
     // fails closed instead of aliasing live block identities.
     let expected_protocol = assets::active_content_registry_protocol();
-    assets::pinned_block_presentation_states();
+    assets::block_presentation_state::pinned_block_presentation_states();
     let preg = read_verified_physics_registry(
         physics_registry,
         PHYSICS_REGISTRY_SHA256,
@@ -407,7 +407,7 @@ mod tests {
             ],
         ] {
             let ParseOutcome::Run(args) =
-                ClientArgs::parse_from(std::iter::once("bedrock-client").chain(flags)).unwrap()
+                ClientArgs::parse_from(std::iter::once("cinnabar").chain(flags)).unwrap()
             else {
                 panic!("expected runtime arguments")
             };

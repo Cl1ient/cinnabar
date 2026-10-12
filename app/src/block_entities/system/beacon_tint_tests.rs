@@ -1,6 +1,7 @@
 use super::*;
 use render_model::{
-    UiRenderBatch, UiRenderInput, UiRenderTextureArray, UiRenderVertex, UiScissor, UiTexturePage,
+    BeaconModel, UiRenderBatch, UiRenderInput, UiRenderTextureArray, UiRenderVertex, UiScissor,
+    UiTexturePage,
 };
 
 /// Projects the production beam mesh into the offline UI rasterizer with original white art.
@@ -99,7 +100,7 @@ fn hardened_glass_colours_the_emitted_beacon_mesh() {
         )
         .unwrap();
     let mut runtime = BlockEntityRuntime::new();
-    let Some(BlockEntityKind::Beacon(model)) = beacon_kind(
+    let Some(BlockEntityKind::Beacon(model)) = beacon::kind(
         &mut runtime,
         &store,
         0,

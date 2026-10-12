@@ -156,4 +156,5 @@ pub(super) fn compile_equipment_assets_command(
 }
 
 #[cfg(test)]
+#[path = "equipment_command/tests.rs"]
 mod tests;

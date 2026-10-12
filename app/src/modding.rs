@@ -267,6 +267,17 @@ type ModOutputs<'w> = (
     clippy::too_many_arguments,
     reason = "Player authority is borrowed separately from UI state."
 )]
+/// What a mod observes each frame beyond its inputs: hot reload, rendering, camera and timing.
+#[cfg(feature = "local-mods")]
+type ModObservation<'w, 's> = (
+    Option<Res<'w, registration::Watcher>>,
+    Option<ResMut<'w, render_scene::ModRenderScene>>,
+    Query<'w, 's, (&'static GlobalTransform, &'static Projection), With<client_presentation::camera::FlyCamera>>,
+    Local<'s, presentation_facts::FrameRate>,
+    Local<'s, module_observations::ModuleObserver>,
+    Option<ResMut<'w, client_presentation::actor_publication::ActorPresentationStyle>>,
+);
+
 #[cfg(feature = "local-mods")]
 fn drive_mod(
     player_runtime: bevy::prelude::Res<client_state::PlayerRuntime>,
@@ -284,14 +295,7 @@ fn drive_mod(
     mut outputs: ModOutputs,
     mut screen_input: screens::ScreenInput,
     time: Res<Time<Real>>,
-    observation: (
-        Option<Res<registration::Watcher>>,
-        Option<ResMut<render_scene::ModRenderScene>>,
-        Query<(&GlobalTransform, &Projection), With<client_presentation::camera::FlyCamera>>,
-        Local<presentation_facts::FrameRate>,
-        Local<module_observations::ModuleObserver>,
-        Option<ResMut<client_presentation::actor_publication::ActorPresentationStyle>>,
-    ),
+    observation: ModObservation,
 ) {
     let (watcher, render_scene, cameras, mut frame_rate, mut module_observer, mut actor_style) =
         observation;

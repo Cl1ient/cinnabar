@@ -300,6 +300,15 @@ pub(crate) fn mesh_change_has_publication_permit(change: &WorldMeshChange) -> bo
     }
 }
 
+/// Diagnostics, player state and correction history the world poll reads beside its stream.
+type WorldPollExtras<'w, 's> = (
+    Option<Res<'w, VisibilityDiagnosticsInput>>,
+    Option<Res<'w, RuntimeStageProfiler>>,
+    ResMut<'w, client_state::PlayerRuntime>,
+    Option<Res<'w, client_presentation::camera::ServerCameraView>>,
+    Local<'s, gameplay::movement::CorrectionContextLog>,
+);
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn reconcile_world_stream_before_physics(
     state: AppWorldState,
@@ -323,13 +332,7 @@ pub(crate) fn reconcile_world_stream_before_physics(
         mut player_runtime,
         server_camera_view,
         mut correction_log,
-    ): (
-        Option<Res<VisibilityDiagnosticsInput>>,
-        Option<Res<RuntimeStageProfiler>>,
-        ResMut<client_state::PlayerRuntime>,
-        Option<Res<client_presentation::camera::ServerCameraView>>,
-        Local<gameplay::movement::CorrectionContextLog>,
-    ),
+    ): WorldPollExtras,
 ) {
     let _timer = profiler
         .as_deref()

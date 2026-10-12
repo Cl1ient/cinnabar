@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use jolyne::GameData;
+use valentine::bedrock::version::v1_26_51::ItemRegistryPacket;
 
 use crate::nbt_tree::{Nbt, read_root};
 
@@ -127,9 +127,8 @@ fn food_properties(component: Option<&Nbt>) -> Option<FoodProperties> {
 
 /// Components for every StartGame registry item whose component data is non-empty.
 #[must_use]
-pub fn item_components(game_data: &GameData) -> Box<[(Arc<str>, ItemComponents)]> {
-    game_data
-        .item_registry
+pub(crate) fn item_components(registry: &ItemRegistryPacket) -> Box<[(Arc<str>, ItemComponents)]> {
+    registry
         .item_data
         .iter()
         .filter_map(|item| {

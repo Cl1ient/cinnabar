@@ -473,7 +473,6 @@ pub(crate) struct EnhancedViewGpu {
     pub(crate) local_lights: super::local_lights::LocalLightView,
     pub(crate) indirect: super::indirect::IndirectGridGpu,
     pub(crate) indirect_bind_group: Option<BindGroup>,
-    actor_shadow_signature: u64,
     point_shadow_seconds: f32,
     pub(crate) frame: Buffer,
     frame_data: EnhancedFrameGpu,
@@ -525,7 +524,6 @@ impl EnhancedViewGpu {
                 super::indirect::IndirectGridGpu::new(device)
             },
             indirect_bind_group: None,
-            actor_shadow_signature: 0,
             point_shadow_seconds: f32::NEG_INFINITY,
             frame: buffer("enhanced frame uniform", FRAME_BYTES),
             frame_data: bytemuck::Zeroable::zeroed(),

@@ -16,7 +16,7 @@ pub(crate) struct SunShadowHistory {
     pub history_view: TextureView,
     pub parameters: Buffer,
     uploaded: Option<[f32; 4]>,
-    source: Option<(Option<RenderedWorld>, u64, TextureViewId)>,
+    source: Option<(Option<RenderedWorld>, (u64, u64), TextureViewId)>,
     submitted: AtomicBool,
 }
 
@@ -59,16 +59,17 @@ impl SunShadowHistory {
         }
     }
 
+    /// Rejects retained visibility when terrain or actor caster inputs change.
     pub fn prepare(
         &mut self,
         queue: &RenderQueue,
         camera_valid: bool,
         world: Option<RenderedWorld>,
-        geometry_revision: u64,
+        caster_revisions: (u64, u64),
         materials: TextureViewId,
         delta: f32,
     ) {
-        let source = (world, geometry_revision, materials);
+        let source = (world, caster_revisions, materials);
         let valid = self.submitted.swap(false, Ordering::Relaxed)
             && camera_valid
             && self.source == Some(source);
@@ -99,9 +100,9 @@ impl SunShadowHistory {
 mod tests {
     use super::*;
 
-    /// Sunlight visibility resolved in another session or dimension is never blended in.
+    /// World transfers and actor cutout changes reject retained sunlight visibility.
     #[test]
-    fn another_world_rejects_sunlight_history() {
+    fn world_and_actor_coverage_changes_reject_sunlight_history() {
         let instance = crate::enhanced::validation::native_instance();
         let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default()))
         else {
@@ -115,9 +116,40 @@ mod tests {
         let materials = history.view.id();
         let retained = |history: &mut SunShadowHistory, world| {
             history.submitted.store(true, Ordering::Relaxed);
-            history.prepare(&queue, true, Some(world), 1, materials, 1.0 / 60.0);
+            history.prepare(&queue, true, Some(world), (1, 0), materials, 1.0 / 60.0);
             history.uploaded.unwrap()[0] == 1.0
         };
+        let mut frame = render_scene::ActorRenderFrame::default();
+        frame.rig.instances = std::sync::Arc::from([render_model::ActorGpuInstance {
+            uv_anim: render_model::IDENTITY_UV_ANIM,
+            dissolve_multiplier: 1.0,
+            ..Default::default()
+        }]);
+        let mut observe_actor = |frame: &render_scene::ActorRenderFrame| {
+            history.submitted.store(true, Ordering::Relaxed);
+            history.prepare(
+                &queue,
+                true,
+                None,
+                (1, crate::enhanced::actor_signature::frame_signature(frame)),
+                materials,
+                1.0 / 60.0,
+            );
+            history.uploaded.unwrap()[0] == 1.0
+        };
+        assert!(!observe_actor(&frame));
+        assert!(observe_actor(&frame));
+        std::sync::Arc::make_mut(&mut frame.rig.instances)[0].uv_anim[0] = 0.25;
+        assert!(
+            !observe_actor(&frame),
+            "UV coverage rejects old sunlight visibility"
+        );
+        assert!(observe_actor(&frame));
+        std::sync::Arc::make_mut(&mut frame.rig.instances)[0].dissolve_multiplier = 0.5;
+        assert!(
+            !observe_actor(&frame),
+            "dissolve coverage rejects old sunlight visibility"
+        );
         let overworld = RenderedWorld {
             session_generation: 1,
             dimension: 0,

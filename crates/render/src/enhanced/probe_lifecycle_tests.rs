@@ -1,5 +1,36 @@
 use super::*;
 #[test]
+fn packed_actor_coverage_and_appearance_changes_refresh_reflections() {
+    let mut frame = render_scene::ActorRenderFrame::default();
+    let original = render_model::ActorGpuInstance {
+        uv_anim: render_model::IDENTITY_UV_ANIM,
+        dissolve_multiplier: 1.0,
+        ..Default::default()
+    };
+    frame.rig.instances = Arc::from([original]);
+    let unchanged = actor_signature(&frame);
+    let changes: [fn(&mut render_model::ActorGpuInstance); 7] = [
+        |instance| instance.uv_anim[0] += 0.25,
+        |instance| instance.dissolve_multiplier = 0.5,
+        |instance| instance.texture_layer = 1,
+        |instance| instance.tint = 0x80ffffff,
+        |instance| instance.material = assets::EntityRenderMaterial::DissolveDepth as u32,
+        |instance| instance.multitexture_layers[0] = 1,
+        |instance| instance.light_color_multiplier = 0.5,
+    ];
+    for change in changes {
+        let instance = &mut Arc::make_mut(&mut frame.rig.instances)[0];
+        *instance = original;
+        change(instance);
+        assert_ne!(
+            actor_signature(&frame),
+            unchanged,
+            "every packed coverage or appearance change refreshes the capture"
+        );
+    }
+}
+
+#[test]
 fn actor_clock_stamps_do_not_refresh_a_stationary_reflection() {
     let mut frame = render_scene::ActorRenderFrame::default();
     frame.rig.instances = Arc::from([render_model::ActorGpuInstance::default()]);

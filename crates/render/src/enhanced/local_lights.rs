@@ -258,6 +258,7 @@ pub(crate) struct LocalLightView {
     shadow_owners: [Option<LightSource>; MAX_SHADOWED_LIGHTS],
     prepared: Option<PreparedInputs>,
     caster_textures: Option<([TextureViewId; 2], BufferId)>,
+    actor_signature: u64,
     pub dirty: bool,
     pub submitted: AtomicBool,
     revision: u64,
@@ -266,6 +267,18 @@ pub(crate) struct LocalLightView {
 }
 
 impl LocalLightView {
+    /// Marks point maps dirty when a nearby actor's pose or packed shader inputs change.
+    pub(crate) fn observe_actors(
+        &mut self,
+        frame: Option<&render_scene::ActorRenderFrame>,
+    ) -> bool {
+        let signature = frame.map_or(0, |frame| near_actor_signature(frame, &self.shadows));
+        let changed = signature != self.actor_signature;
+        self.actor_signature = signature;
+        self.dirty |= changed;
+        changed
+    }
+
     /// Refreshes point shadows when the GPU-visible cutout textures change.
     pub(crate) fn observe_caster_textures(&mut self, key: Option<([TextureViewId; 2], BufferId)>) {
         if self.caster_textures != key {
@@ -345,6 +358,7 @@ impl LocalLightView {
             shadow_owners: [None; MAX_SHADOWED_LIGHTS],
             prepared: None,
             caster_textures: None,
+            actor_signature: 0,
             dirty: true,
             submitted: AtomicBool::new(false),
             revision: u64::MAX,
@@ -534,8 +548,7 @@ pub(crate) fn near_actor_signature(
         {
             continue;
         }
-        instance.geometry_id.hash(&mut hash);
-        instance.texture_layer.hash(&mut hash);
+        super::actor_signature::hash_instance(instance, &mut hash);
         frame.skin_revision.hash(&mut hash);
         frame.artwork.identity().hash(&mut hash);
         frame
@@ -543,11 +556,6 @@ pub(crate) fn near_actor_signature(
             .get(entry.instance_index as usize)
             .hash(&mut hash);
         frame.rig.geometry_revision.hash(&mut hash);
-        for row in instance.world_from_actor {
-            for value in row {
-                value.to_bits().hash(&mut hash);
-            }
-        }
         let partial = instance.partial_tick.clamp(0.0, 1.0);
         for bone in 0..entry.bone_count as usize {
             let Some(previous) = frame

@@ -9,6 +9,7 @@ mod probe_cache;
 mod probe_filter;
 #[path = "probe_history.rs"]
 mod probe_history;
+use super::actor_signature::frame_signature as actor_signature;
 use bevy::{
     camera::{Camera3dDepthTextureUsage, Hdr, RenderTarget},
     core_pipeline::FullscreenShader,
@@ -350,28 +351,6 @@ fn capture_settings(mut settings: EnhancedRendering) -> EnhancedRendering {
     settings.water_reflections = false;
     settings.shadow_debug = super::EnhancedShadowDebug::Off;
     settings
-}
-
-// Clock stamps and interpolation fractions do not invalidate an otherwise unchanged pose.
-fn actor_signature(frame: &render_scene::ActorRenderFrame) -> u64 {
-    let mut hash = DefaultHasher::new();
-    frame.skin_revision.hash(&mut hash);
-    frame.artwork.identity().hash(&mut hash);
-    frame.instance_pages.hash(&mut hash);
-    frame.rig.geometry_revision.hash(&mut hash);
-    bytemuck::cast_slice::<_, u8>(&frame.rig.current_bones).hash(&mut hash);
-    bytemuck::cast_slice::<_, u8>(&frame.rig.previous_bones).hash(&mut hash);
-    for instance in frame.rig.instances.iter() {
-        bytemuck::bytes_of(&instance.world_from_actor).hash(&mut hash);
-        instance.geometry_id.hash(&mut hash);
-        instance.texture_layer.hash(&mut hash);
-        instance.tint.hash(&mut hash);
-        instance.overlay_rgba8.hash(&mut hash);
-        instance.light.hash(&mut hash);
-        instance.multitexture_layers.hash(&mut hash);
-        bytemuck::bytes_of(&instance.uv_anim).hash(&mut hash);
-    }
-    hash.finish()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

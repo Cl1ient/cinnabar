@@ -411,18 +411,10 @@ pub(crate) fn prepare_enhanced_views(
                     .submitted
                     .store(false, std::sync::atomic::Ordering::Relaxed);
             }
-            let actor_signature = local
-                .actors
-                .as_ref()
-                .filter(|_| !reflection_capture)
-                .map_or(0, |actors| {
-                    crate::enhanced::local_lights::near_actor_signature(
-                        actors,
-                        &state.local_lights.shadows,
-                    )
-                });
-            let actor_changed = actor_signature != state.actor_shadow_signature;
-            state.local_lights.dirty |= actor_changed || settings_changed;
+            let actor_changed = state
+                .local_lights
+                .observe_actors(local.actors.as_deref().filter(|_| !reflection_capture));
+            state.local_lights.dirty |= settings_changed;
             state.local_lights.dirty |= state.caster_material_key != Some(gpu.materials.id());
             state.local_lights.observe_caster_textures(
                 local
@@ -433,7 +425,6 @@ pub(crate) fn prepare_enhanced_views(
             if settings.waving && wind_shadow_update_due(seconds, state.point_shadow_seconds) {
                 state.local_lights.dirty = true;
             }
-            state.actor_shadow_signature = actor_signature;
             if state.local_lights.dirty && settings.shadows && !reflection_capture {
                 state.point_shadow_seconds = seconds;
                 for (index, light) in state.local_lights.shadows.iter().enumerate() {
@@ -600,7 +591,13 @@ pub(crate) fn prepare_enhanced_views(
                     &queue,
                     valid,
                     world,
-                    local.sources.revision,
+                    (
+                        local.sources.revision,
+                        local
+                            .actors
+                            .as_deref()
+                            .map_or(0, super::actor_signature::frame_signature),
+                    ),
                     gpu.materials.id(),
                     time.delta_secs(),
                 );

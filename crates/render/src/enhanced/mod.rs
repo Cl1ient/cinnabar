@@ -15,6 +15,8 @@ mod compiler;
 pub use compiler::configure_enhanced_shader_compiler;
 #[cfg(feature = "enhanced")]
 pub(crate) mod actor_motion;
+#[cfg(feature = "enhanced")]
+mod actor_signature;
 #[cfg(all(test, feature = "enhanced"))]
 mod cloud_fixture;
 #[cfg(feature = "enhanced")]

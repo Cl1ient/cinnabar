@@ -156,8 +156,8 @@ fn changing_a_nonemitting_wall_invalidates_point_shadow_geometry() {
     assert_eq!(sources.lights_revision, 1);
 }
 
-#[test]
-fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
+/// Builds a stationary cutout actor beside one six-face point shadow.
+fn stationary_actor_caster() -> (render_scene::ActorRenderFrame, Vec<PointShadowView>) {
     use std::sync::Arc;
     let mut frame = render_scene::ActorRenderFrame::default();
     let identity = [
@@ -167,6 +167,8 @@ fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
     ];
     frame.rig.instances = Arc::from([render_model::ActorGpuInstance {
         world_from_actor: identity,
+        uv_anim: render_model::IDENTITY_UV_ANIM,
+        dissolve_multiplier: 1.0,
         ..default()
     }]);
     frame.rig.previous_bones = Arc::from([identity]);
@@ -201,10 +203,31 @@ fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
             layer: face as u32,
         })
         .collect();
+    (frame, shadows)
+}
+
+#[test]
+fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
+    use std::sync::Arc;
+    let (mut frame, shadows) = stationary_actor_caster();
     let unchanged = near_actor_signature(&frame, &shadows);
     frame.rig.frame_generation += 1;
     Arc::make_mut(&mut frame.rig.instances)[0].partial_tick = 0.5;
     assert_eq!(near_actor_signature(&frame, &shadows), unchanged);
+    Arc::make_mut(&mut frame.rig.instances)[0].uv_anim[0] = 0.25;
+    assert_ne!(
+        near_actor_signature(&frame, &shadows),
+        unchanged,
+        "a stationary cutout's UV-only animation changes its coverage key"
+    );
+    Arc::make_mut(&mut frame.rig.instances)[0].uv_anim = render_model::IDENTITY_UV_ANIM;
+    Arc::make_mut(&mut frame.rig.instances)[0].dissolve_multiplier = 0.5;
+    assert_ne!(
+        near_actor_signature(&frame, &shadows),
+        unchanged,
+        "dissolve-only changes affect stationary shadow coverage"
+    );
+    Arc::make_mut(&mut frame.rig.instances)[0].dissolve_multiplier = 1.0;
     Arc::make_mut(&mut frame.rig.instances)[0].world_from_actor[0][3] = 0.001;
     assert_ne!(
         near_actor_signature(&frame, &shadows),
@@ -334,4 +357,40 @@ fn emitter_component_updates_lights_without_a_geometry_publication() {
     assert!(cache.chunks.is_empty());
     assert_ne!(cache.lights_revision, revision);
     assert_eq!(cache.revision, 0);
+}
+
+#[test]
+fn stationary_animated_cutout_marks_point_shadows_dirty_without_waving() {
+    use std::sync::Arc;
+    let instance = crate::enhanced::validation::native_instance();
+    let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
+        eprintln!("missing fixture: native GPU for animated actor point-shadow invalidation");
+        return;
+    };
+    let (device, _) = bevy::tasks::block_on(adapter.request_device(&Default::default())).unwrap();
+    let (mut frame, shadows) = stationary_actor_caster();
+    let mut view = LocalLightView::new(&RenderDevice::from(device));
+    view.shadows = shadows;
+    view.observe_actors(Some(&frame));
+    view.dirty = false;
+    assert!(!view.observe_actors(Some(&frame)));
+    assert!(!view.dirty);
+    Arc::make_mut(&mut frame.rig.instances)[0].uv_anim[0] = 0.25;
+    assert!(view.observe_actors(Some(&frame)));
+    assert!(
+        view.dirty,
+        "a UV-only change must dirty stationary point maps"
+    );
+    view.dirty = false;
+    assert!(!view.observe_actors(Some(&frame)));
+    assert!(
+        !view.dirty,
+        "an unchanged animated cutout can retain its shadow"
+    );
+    Arc::make_mut(&mut frame.rig.instances)[0].dissolve_multiplier = 0.5;
+    assert!(view.observe_actors(Some(&frame)));
+    assert!(
+        view.dirty,
+        "dissolve coverage must invalidate the same maps"
+    );
 }

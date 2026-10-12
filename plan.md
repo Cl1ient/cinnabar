@@ -7902,6 +7902,13 @@ and custom base-item coverage is incomplete. Optional Java animation name routin
 remains a separate incomplete admission path. This does not close the complete
 equipment parity gate. `make assets` rebuilds carriers that lack these records.
 
+Item-use animation routes and charged projectile drawing roles are typed admissions.
+Local and remote equipment read numerical registry facts, including generation replacements;
+item names do not select bow or crossbow use frames. Unsupported charged projectile metadata
+has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
+cache acceptance remain incomplete. Authored and session use cooldown fractions share the
+provisional component-precision conversion; native cooldown initialization is unverified.
+
 ## Compiled beacon tint eligibility
 
 The block registry carries a tint or an explicit non-tinting disposition for each
@@ -7913,10 +7920,3 @@ unrecognised custom identities remain unresolved. Stale active registries requir
 Incomplete: this descriptor does not establish beam sections, obstruction,
 activation, world height, custom block material overlays or end-to-end colour
 transfer. These remain separate acceptance gates.
-
-Item-use animation routes and charged projectile drawing roles are typed admissions.
-Local and remote equipment read numerical registry facts, including generation replacements;
-item names do not select bow or crossbow use frames. Unsupported charged projectile metadata
-has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
-cache acceptance remain incomplete. Authored and session use cooldown fractions share the
-provisional component-precision conversion; native cooldown initialization is unverified.

@@ -3,7 +3,8 @@ use super::*;
 use assets::*;
 use render_api::SkinGeometrySource;
 
-fn scalar(value: f32) -> EntityGeometryScalar {
+/// Build a bounded scalar for synthetic animation fixtures.
+pub(crate) fn scalar(value: f32) -> EntityGeometryScalar {
     EntityGeometryScalar::new(value).unwrap()
 }
 

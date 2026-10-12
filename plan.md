@@ -610,6 +610,11 @@ these changes do not close the movement, camera, or actor parity gates.
   See [pooled-upload evidence](docs/evidence/render-stall-pooling.md),
   [frame breakdown evidence](docs/evidence/frame-breakdown.md) and
   [Tracy attribution](docs/evidence/frame-breakdown-tracy.md).
+- Block entities whose reach lies only in sections the current cave result never reached
+  skip model and text preparation, under the actor camera and graph validity rule; lids,
+  bell rings and map requests still advance, and beacon beams are exempt. Regression tests
+  count prepared candidates and bound authored model reach. Incomplete: no hardware capture
+  yet measures the gain.
 
 ## Camera packets and aim assist
 
@@ -773,6 +778,16 @@ these changes do not close the movement, camera, or actor parity gates.
   Incomplete: live acceptance remains pending. The updated inspection client is
   running after the requested restart. Changes are local and uncommitted;
   nothing is pushed.
+
+## Status-effect column
+
+- Vanilla's `mob_effects_renderer` draws one column at the right edge, below the
+  top band. Effects run in id order, wrap leftward, and blink at vanilla's rate.
+- The built-in Java pack keeps its Java rows at the top-right through its own
+  `java_mob_effects_renderer`. Packs that place vanilla's control get the column.
+- Incomplete: there is no slide-in or slide-out animation. The safe-zone and
+  screen-position offsets are taken as zero. The top band ignores riding hearts and
+  pocket-profile rules.
 
 ## Worn server-pack armour textures
 
@@ -2861,6 +2876,19 @@ light at their feet through the shared light curve with daylight fixed at 1 (the
 texture, tint and sample point are unmatched), pack attachables (held/worn on player bodies) layer over the equipment runtime per session
 (pack bindings win by item identifier; pack property defaults seed only from `entities/` in
 resource packs), rigs depending on vanilla clips are attributed as fallbacks; pack precedence follows the Bedrock stack (last entry wins). No vanilla acceptance gate is closed by this change.
+
+2026-10-12 protocol codec: `protocol` decodes and encodes through protocolgen's generated
+contract crate (`bedrock-protocol-1-26-51`, contract 1), vendored byte for byte and pinned by
+`assets/bedrock-target.json`; Valentine and its normalization tool are removed, and the
+architecture gate keeps the vendored crate private to `protocol`. Play decodes only the packets
+world normalization routes, derived from the dispatch table, and UI budgets are field limits
+plus post-decode checks instead of a raw frame-ID list. An unknown union selector or a value
+outside the manifest's schema bounds is now a counted skip rather than a fatal decode error. The
+recipe string-selector scanner still bypasses the codec, so generated crafting-descriptor
+coverage stays open. The manifest bounds some fields Valentine left open (for example four Text
+parameters, empty Text messages, item aux above 32767); vanilla rejects those packets too, and
+the client now skips them. The ported tests are unexecuted until CI and the retail harness gate
+is open.
 
 2026-10-12 protocol session layer: `protocol::login` owns the play stream on the core's session
 endpoint. Its spawn sequence keeps the first item registry, defers every other packet to play in

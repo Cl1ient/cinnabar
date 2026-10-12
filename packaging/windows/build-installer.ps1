@@ -37,7 +37,10 @@ Copy-Item $font (Join-Path $resources "fonts")
 Copy-Item (Join-Path $root "assets/*.json") (Join-Path $kit "assets")
 Copy-Item (Join-Path $root "assets/fonts/*") (Join-Path $kit "assets/fonts")
 Copy-Item (Join-Path $root "assets/oreui-icons") (Join-Path $kit "assets") -Recurse
-foreach ($stem in "block-registry", "block-light-registry", "biome-registry", "block-physics-seed") { Copy-Item (Join-Path $root "crates/assets/data/$stem-v2193.*") (Join-Path $kit "data") }
+Copy-Item (Join-Path $root "crates/assets/data/*") (Join-Path $kit "data")
+# Inputs outside the kit layout resolve at their checkout path below the kit.
+New-Item -ItemType Directory -Force (Join-Path $kit "crates/protocol/data") | Out-Null
+Copy-Item (Join-Path $root "crates/protocol/data/retail_items_1_26_50.tsv") (Join-Path $kit "crates/protocol/data")
 if ($env:CINNABAR_UPDATE_URL) { [System.IO.File]::WriteAllText((Join-Path $resources "update-url"), $env:CINNABAR_UPDATE_URL) }
 
 $icon = Join-Path $outPath "cinnabar.ico"

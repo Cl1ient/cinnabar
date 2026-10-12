@@ -54,8 +54,8 @@ pub use mesh::{
 pub use mob::SPAWNER_MOBS;
 pub use pot::{DecoratedPotModel, sherd_pattern};
 pub use scene::{
-    BlockEntityAtlasImage, BlockEntityFrame, BlockEntityKind, BlockEntityLight, BlockEntityScene,
-    BlockEntitySubmission, CrackInstance, SceneClock,
+    BLOCK_ENTITY_REACH_BLOCKS, BlockEntityAtlasImage, BlockEntityFrame, BlockEntityKind,
+    BlockEntityLight, BlockEntityScene, BlockEntitySubmission, CrackInstance, SceneClock,
 };
 pub use selection::{BLOCK_SELECTION_VERTICES_PER_EDGE, BlockSelectionFrame, BlockSelectionTarget};
 pub use shulker::ShulkerModel;

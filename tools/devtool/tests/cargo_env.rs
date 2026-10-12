@@ -4,6 +4,8 @@ use std::{fs, process::Command};
 fn build_directory_environment_expands_workspace_templates() {
     let temp = tempfile::tempdir().unwrap();
     fs::create_dir(temp.path().join("src")).unwrap();
+    let build_directory = temp.path().join("target/ra-build");
+    fs::create_dir_all(&build_directory).unwrap();
     fs::write(temp.path().join("src/lib.rs"), "").unwrap();
     fs::write(
         temp.path().join("Cargo.toml"),
@@ -23,11 +25,7 @@ fn build_directory_environment_expands_workspace_templates() {
     );
     let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(
-        metadata["build_directory"].as_str().unwrap(),
-        std::fs::canonicalize(temp.path())
-            .unwrap()
-            .join("target/ra-build")
-            .to_str()
-            .unwrap()
+        fs::canonicalize(metadata["build_directory"].as_str().unwrap()).unwrap(),
+        fs::canonicalize(build_directory).unwrap()
     );
 }

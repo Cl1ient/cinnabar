@@ -64,6 +64,16 @@ pub const ANIMATION_CHOICES: &[SettingChoice] = &[
 pub const ANIMATIONS_OPTION: SettingDefinition =
     dropdown("animations", "Animations", ANIMATION_CHOICES, 1);
 
+/// Combat presentation stays independent of Java player and item poses.
+pub const LEGACY_112_COMBAT_OPTION: SettingDefinition = toggle(
+    "legacy_112_combat_visuals",
+    "Legacy 1.12 combat visuals",
+    render_api::BEDROCK_112.enabled_by_default,
+);
+
+/// Explains the ordering when both visual options are enabled.
+pub const LEGACY_112_COMBAT_HELP: &str = "Uses Bedrock 1.12 view bobbing, hurt visuals and armour glint. Takes precedence for bob, hurt and glint when Java 1.7 animations are also enabled.";
+
 /// Native placement is enabled; disabling it centers the authored cube.
 pub const NATIVE_SKYBOX_OFFSET_OPTION: SettingDefinition = toggle(
     "native_skybox_offset",
@@ -381,6 +391,7 @@ pub const SETTINGS_OPTIONS: &[SettingDefinition] = &[
     toggle("ingame_player_names", "options.ingamePlayerNames", true),
     toggle("view_bobbing", "options.viewBobbing", true),
     ANIMATIONS_OPTION,
+    LEGACY_112_COMBAT_OPTION,
     toggle("camera_shake", "options.screenShake", true),
     toggle("transparent_leaves", "options.transparentleaves", true),
     toggle("bubble_particles", "options.bubbleparticles", true),

@@ -48,6 +48,8 @@ pub struct CameraFeelSettings {
     pub damage_bob: f32,
     /// Java Edition 1.7 player animations, hand motion and view bob.
     pub java_animations: bool,
+    /// Overrides bob, hurt and glint while Java retains player and item poses.
+    pub legacy_112_combat_visuals: bool,
     pub gamepad_look_sensitivity: f32,
     pub touch_look_sensitivity: f32,
 }
@@ -70,6 +72,7 @@ impl CameraFeelSettings {
             camera_shake: settings.video.camera_shake,
             damage_bob: unit(settings.video.damage_bob),
             java_animations: settings.video.java_animations,
+            legacy_112_combat_visuals: settings.video.legacy_112_combat_visuals,
             gamepad_look_sensitivity: settings.controls.gamepad_look_sensitivity,
             touch_look_sensitivity: settings.controls.touch_look_sensitivity,
         }

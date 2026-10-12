@@ -196,6 +196,8 @@ pub struct VideoSettings {
     pub damage_bob: f32,
     /// Java Edition 1.7 player animations instead of vanilla Bedrock's.
     pub java_animations: bool,
+    /// Bedrock 1.12 bob, hurt and glint take precedence over Java combat motion.
+    pub legacy_112_combat_visuals: bool,
     /// Preserves Bedrock skybox placement; disabling it centers the cube.
     pub native_skybox_offset: bool,
 }
@@ -223,6 +225,7 @@ impl Default for VideoSettings {
             outline_selection: DEFAULT_OUTLINE_SELECTION,
             damage_bob: 1.0,
             java_animations: false,
+            legacy_112_combat_visuals: render_api::BEDROCK_112.enabled_by_default,
             native_skybox_offset: assets::DEFAULT_NATIVE_SKYBOX_OFFSET,
         }
     }

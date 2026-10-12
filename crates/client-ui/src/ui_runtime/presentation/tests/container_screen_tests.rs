@@ -22,7 +22,7 @@ fn unknown_mount_window_does_not_draw_or_hit_equipment_cells() {
     let mut player_runtime = player_state::PlayerState::new(1);
     let runtime = opened(&mut player_runtime, protocol::WINDOW_TYPE_HORSE, 2);
     let mut presentation = UiPresentationRuntime::with_hud(
-        crate::test_support::fixture_font(),
+        ui_engine::test_support::fixture_font(),
         crate::test_support::fixture_hud(),
     )
     .unwrap();

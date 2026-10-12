@@ -1,10 +1,11 @@
 use super::*;
-use crate::test_support::{fixture_font, mini_carrier};
+use crate::test_support::mini_carrier;
 use crate::ui_runtime::presentation::forms::screen_registry::registry;
 use json_ui::{Catalog, Context, ViewState};
 use ui::FONT_DESIGN_PIXEL_TEXELS;
 use ui::{DpiScale, SafeArea, TextLayoutCache, UiNode};
 use ui_engine::engine::{FormEngine, ScreenArt, screen::PaintFrame};
+use ui_engine::test_support::fixture_font;
 use ui_engine::text_metrics::TextMetrics;
 
 fn draw(progress: f32, index: usize, opacity: f32) -> (Vec<UiNode>, f32) {

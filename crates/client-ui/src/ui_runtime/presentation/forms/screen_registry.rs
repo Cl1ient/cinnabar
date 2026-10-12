@@ -38,6 +38,6 @@ fn compose() -> ScreenRegistry {
     catalog.layer_builtin(super::chat_position::install);
     super::chat_screen::register(&mut registry);
     super::death_screen::register(&mut registry);
-    super::oreui::OreUiScreen::register(&mut registry);
+    oreui::OreUiScreen::register(&mut registry);
     registry
 }

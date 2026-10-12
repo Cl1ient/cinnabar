@@ -691,6 +691,7 @@ dependencies = [
  "mod-render",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
+ "oreui",
  "pack-compiler",
  "pack-runtime",
  "particles",
@@ -2352,6 +2353,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "ui",
+ "ui-engine",
  "world",
  "zip",
 ]
@@ -2436,6 +2438,7 @@ dependencies = [
  "test-time",
  "tokio",
  "ui",
+ "ui-engine",
  "wgpu",
  "zip",
 ]
@@ -2470,6 +2473,7 @@ dependencies = [
  "launcher",
  "launcher-host",
  "mod-host",
+ "oreui",
  "pack-compiler",
  "player-state",
  "protocol",
@@ -5591,6 +5595,27 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "oreui"
+version = "0.1.12"
+dependencies = [
+ "assets",
+ "bridge",
+ "image",
+ "launcher",
+ "protocol",
+ "render-api",
+ "render-model",
+ "resource-pack",
+ "semantic-input",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ui",
+ "ui-engine",
 ]
 
 [[package]]

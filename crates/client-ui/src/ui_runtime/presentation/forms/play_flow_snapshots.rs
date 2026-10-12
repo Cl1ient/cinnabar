@@ -97,7 +97,7 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
         );
         return;
     };
-    let Some(images) = crate::ui_runtime::oreui_assets::load_optional_oreui_images()
+    let Some(images) = oreui::images::load_optional_oreui_images()
         .filter(|images| !images.loading_frames.is_empty())
     else {
         eprintln!(
@@ -138,21 +138,20 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
     };
     frame(&mut presentation, 0);
     let cycle_start = (1_000 / elapsed + 1) * elapsed;
-    let loader_bounds =
-        |presentation: &super::super::UiPresentationRuntime,
-         sprite: crate::ui_runtime::oreui_assets::OreUiSprite| {
-            super::pack_harness::menu_nodes(presentation)
-                .iter()
-                .find_map(|node| match node.visual() {
-                    UiVisual::Sprite {
-                        texture_page, uv, ..
-                    } if *texture_page == page + sprite.page && *uv == sprite.bounds => {
-                        Some(node.bounds())
-                    }
-                    _ => None,
-                })
-                .expect("the selected installed loader frame is painted")
-        };
+    let loader_bounds = |presentation: &super::super::UiPresentationRuntime,
+                         sprite: oreui::images::OreUiSprite| {
+        super::pack_harness::menu_nodes(presentation)
+            .iter()
+            .find_map(|node| match node.visual() {
+                UiVisual::Sprite {
+                    texture_page, uv, ..
+                } if *texture_page == page + sprite.page && *uv == sprite.bounds => {
+                    Some(node.bounds())
+                }
+                _ => None,
+            })
+            .expect("the selected installed loader frame is painted")
+    };
     let text_layouts = |presentation: &super::super::UiPresentationRuntime| {
         super::pack_harness::menu_nodes(presentation)
             .iter()

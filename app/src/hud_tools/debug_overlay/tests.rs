@@ -415,8 +415,9 @@ fn gpu_diagnostics_rank_passes_without_allocating_or_discarding_zero_samples() {
 
 #[test]
 fn covering_screens_skip_expensive_diagnostic_gathers() {
-    use client_ui::ui_runtime::{UiRuntime, presentation::LoadingStage};
+    use client_ui::ui_runtime::UiRuntime;
     use launcher::menu::{MenuScreen, MenuView};
+    use ui::LoadingStage;
     let mut app = App::new();
     app.insert_resource(ButtonInput::<KeyCode>::default())
         .insert_resource(Time::<Real>::default())

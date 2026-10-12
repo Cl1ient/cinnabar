@@ -238,7 +238,7 @@ fn dropped_barrel_models_use_authored_carried_faces_for_both_id_modes() {
     )
     .unwrap();
     let icons = UiPresentationRuntime::with_hud_and_icons(
-        client_ui::test_support::fixture_font(),
+        ui_engine::test_support::fixture_font(),
         client_ui::test_support::fixture_hud(),
         Arc::new(catalog),
     )

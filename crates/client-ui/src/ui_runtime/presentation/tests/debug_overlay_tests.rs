@@ -51,8 +51,8 @@ fn debug_lines_add_geometry_and_clearing_them_restores_the_frame() {
 
 #[test]
 fn menus_and_other_screens_hide_debug_until_gameplay_resumes() {
-    use crate::ui_runtime::presentation::LoadingStage;
     use launcher::menu::{MenuScreen, MenuView};
+    use ui::LoadingStage;
 
     let mut player = player_state::PlayerState::new(1);
     let mut runtime = UiRuntime::new(1);
@@ -226,11 +226,11 @@ fn swapping_the_font_relays_the_overlay() {
         right: vec!["GPU".to_owned()],
     };
     let mut cache = debug_overlay::OverlayCache::default();
-    let font = crate::test_support::fixture_font();
+    let font = ui_engine::test_support::fixture_font();
     for (font, relaid) in [
         (&font, true),
         (&font, false),
-        (&crate::test_support::fixture_font(), true),
+        (&ui_engine::test_support::fixture_font(), true),
     ] {
         cache.retain_font(font);
         let passes = cache.passes;
@@ -558,7 +558,7 @@ fn overlay_paint_refreshes_when_its_presentation_inputs_change() {
             )
             .unwrap();
         match change {
-            "font" => presentation.font = crate::test_support::fixture_font(),
+            "font" => presentation.font = ui_engine::test_support::fixture_font(),
             "viewport" => {
                 viewport[0] += 100;
                 content[0] += 100.0;
@@ -668,9 +668,9 @@ fn changes_outside_displayed_rows_keep_paint_and_glyphs() {
 
 #[test]
 fn diagnostic_eligibility_matches_the_rendered_stack_without_allocations() {
-    use crate::ui_runtime::presentation::LoadingStage;
     use crate::ui_runtime::scene_stack::Scene;
     use launcher::menu::{MenuScreen, MenuView};
+    use ui::LoadingStage;
     let mut player = player_state::PlayerState::new(1);
     let mut runtime = UiRuntime::new(1);
     runtime

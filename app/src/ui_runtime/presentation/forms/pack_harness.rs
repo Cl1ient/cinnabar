@@ -49,7 +49,7 @@ pub fn startup_presentation() -> Option<UiPresentationRuntime> {
         &entities,
         local(&launcher::install_layout::vanilla_pack_relative()),
     );
-    if let Some(images) = client_ui::ui_runtime::oreui_assets::load_optional_oreui_images() {
+    if let Some(images) = oreui::images::load_optional_oreui_images() {
         presentation.enable_oreui_originals(images).unwrap();
     }
     presentation

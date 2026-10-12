@@ -92,7 +92,7 @@ mod tests {
                 1,
             )))
             .insert_resource(UiPresentationResource(
-                UiPresentationRuntime::new(client_ui::test_support::fixture_font()).unwrap(),
+                UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap(),
             ))
             .add_systems(Update, prepare_mod_input);
         app.world_mut().spawn((

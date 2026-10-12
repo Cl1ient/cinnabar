@@ -26,6 +26,7 @@ members = [
     "crates/input",
     "crates/developer-control",
     "crates/json-ui",
+    "crates/oreui",
     "crates/meshing",
     "crates/mod-api",
     "crates/mod-host",

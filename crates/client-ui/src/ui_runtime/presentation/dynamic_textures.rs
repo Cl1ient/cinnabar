@@ -324,7 +324,8 @@ mod tests {
 
     #[test]
     fn rejected_rebuild_keeps_pending_artwork_and_preview_for_retry() {
-        let mut runtime = UiPresentationRuntime::new(crate::test_support::fixture_font()).unwrap();
+        let mut runtime =
+            UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
         let side = render_model::UI_ART_PAGE_SIDE;
         let pixels = vec![91; (side * side * 4) as usize];
         runtime.menu_artwork_loader.set_pending_fixture(

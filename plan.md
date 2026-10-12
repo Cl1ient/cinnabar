@@ -91,6 +91,16 @@ for UI authority and presentation, and maps Bevy device codes to semantic keys a
 prepared publication resource. `client-presentation` borrows UI state from those app systems.
 This move has not been compiled or executed and closes no parity gate.
 
+## OreUI crate
+
+`oreui` owns the OreUI screens, their presentation state, installed artwork and shipped fonts.
+It depends on `ui-engine` and lower crates, never on `client-ui` or a sibling screen crate.
+`client-ui` adapters project menu, loading and bed state into its typed inputs. Shared pieces
+moved down: menu schemas and view projections to `launcher`, `LoadingStage` to `ui`, and
+translation, caret spots, menu scroll views and the font fixture to `ui-engine`. Tests that
+drive the presentation runtime stay in `client-ui`. This move has not been compiled or executed
+and closes no parity gate.
+
 ## Extension crate ownership
 
 `client-extensions` owns local component loading and load-order merging, environment

@@ -15,8 +15,8 @@ reads = [
 ]
 
 [features]
-test-support = ["ui-engine/test-support"]
-tracy = []
+test-support = ["oreui/test-support", "ui-engine/test-support"]
+tracy = ["oreui/tracy"]
 
 [dependencies]
 simulation-clock = { path = "../simulation-clock" }
@@ -35,6 +35,7 @@ player-state = { path = "../player-state" }
 launcher = { path = "../launcher" }
 inventory = { path = "../inventory" }
 json-ui = { path = "../json-ui" }
+oreui = { path = "../oreui" }
 protocol = { path = "../protocol" }
 semantic-input = { path = "../input" }
 ui = { path = "../ui" }
@@ -55,6 +56,7 @@ tokio.workspace = true
 resource-pack = { path = "../resource-pack" }
 
 [dev-dependencies]
+oreui = { path = "../oreui", features = ["test-support"] }
 ui-engine = { path = "../ui-engine", features = ["test-support"] }
 launcher-host = { path = "../launcher-host", features = ["test-support"] }
 test-time = { path = "../test-time" }

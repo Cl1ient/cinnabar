@@ -1,11 +1,12 @@
 use super::super::hud_renderers::HudRenderer;
 use super::super::screen_registry::registry;
-use crate::test_support::{fixture_font, mini_carrier};
+use crate::test_support::mini_carrier;
 use crate::ui_runtime::SequencedLocalAttributes;
 use json_ui::Context;
 use ui::{DpiScale, SafeArea, TextLayoutCache};
 use ui_engine::atlas::ServerAtlas;
 use ui_engine::engine::{FormEngine, screen::PaintFrame};
+use ui_engine::test_support::fixture_font;
 use {super::*, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 /// A server pack placing independently visible hunger controls on separate rows.

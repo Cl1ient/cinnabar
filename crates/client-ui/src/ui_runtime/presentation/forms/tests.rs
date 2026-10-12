@@ -1,9 +1,10 @@
 //! Form presentation paths: the fallback without the carrier, and the engine's
 //! render caching over a minimal in-memory carrier.
-use super::super::{UiPresentationRuntime, tests::fixture_font};
+use super::super::UiPresentationRuntime;
 use crate::ui_runtime::UiRuntime;
 use protocol::{FormKind, FormRequestEvent, ModalDialogForm, ServerFormModel};
 use std::sync::Arc;
+use ui_engine::test_support::fixture_font;
 
 pub use crate::test_support::{mini_carrier, mini_engine_presentation};
 

@@ -30,7 +30,7 @@ pub(super) fn stack_icon(
         animation_frame,
     );
     let icon = presentation.item_icon(icon_identifier, variant)?;
-    Some(icon.with_glint(runtime.item_glint(stack, identifier)))
+    Some(icon.with_glint(runtime.item_glint(stack, item.glint)))
 }
 
 /// Borrows the authorities needed to resolve one frame's item visuals.

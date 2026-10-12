@@ -148,22 +148,20 @@ fn capture_tooltip(
             .mod_ui()
             .mod_hunger_overlay()
             .is_some_and(|style| style.tooltips)
-        {
-            if let Some(food) = identifier
+            && let Some(food) = identifier
                 .as_deref()
                 .and_then(|identifier| runtime.food_properties(identifier))
-            {
-                window_text
-                    .tooltip
-                    .push(presentation::hud_layout::TooltipLine {
-                        text: format!(
-                            "Nutrition: {}  Saturation: {:.1}",
-                            food.nutrition(),
-                            food.nutrition() as f32 * food.saturation_modifier() * 2.
-                        ),
-                        color: [255, 170, 0, 255],
-                    });
-            }
+        {
+            window_text
+                .tooltip
+                .push(presentation::hud_layout::TooltipLine {
+                    text: format!(
+                        "Nutrition: {}  Saturation: {:.1}",
+                        food.nutrition(),
+                        food.nutrition() as f32 * food.saturation_modifier() * 2.
+                    ),
+                    color: [255, 170, 0, 255],
+                });
         }
         if let Some(contents) = protocol::item_bundle_id(&stack.extra_data)
             .and_then(|id| runtime.inventory_ledger(player_runtime).bundle_contents(id))

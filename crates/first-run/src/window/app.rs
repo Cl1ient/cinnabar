@@ -90,6 +90,7 @@ impl SetupApp {
         let screen = if consented {
             Screen::Starting
         } else {
+            reporter(&layout, |_| {})(Status::awaiting_consent());
             Screen::Consent
         };
         let mut input = Input::default();

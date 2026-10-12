@@ -221,16 +221,18 @@ pub fn acknowledge_startup() {
     });
 }
 
-/// Runs `prepare`, relaying each change to its `progress` report to a waiting update helper.
+/// Runs `prepare`, relaying each change to its `progress` report to a waiting update helper;
+/// `awaiting_user` marks reports during which the helper must not time out.
 pub fn while_preparing<T>(
     layout: &InstallLayout,
     progress: &std::path::Path,
+    awaiting_user: fn(&[u8]) -> bool,
     prepare: impl FnOnce() -> T,
 ) -> T {
     let Some(marker) = startup_marker(layout) else {
         return prepare();
     };
-    let mut relay = startup::Relay::start(marker, progress.to_owned());
+    let mut relay = startup::Relay::start(marker, progress.to_owned(), awaiting_user);
     let (stop, stopped) = std::sync::mpsc::channel::<()>();
     let watcher = std::thread::spawn(move || {
         while stopped.recv_timeout(startup::PROGRESS_POLL)
@@ -238,10 +240,13 @@ pub fn while_preparing<T>(
         {
             relay.poll();
         }
+        relay
     });
     let result = prepare();
     drop(stop);
-    let _ = watcher.join();
+    if let Ok(relay) = watcher.join() {
+        relay.finish();
+    }
     result
 }
 

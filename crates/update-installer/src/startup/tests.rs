@@ -20,7 +20,7 @@ fn only_changed_setup_progress_restarts_the_deadline() {
     fs::write(&progress, "downloading 0").unwrap();
     let start = Instant::now();
     let mut monitor = Monitor::new(start);
-    let mut relay = Relay::start(marker(directory.path()), progress.clone());
+    let mut relay = Relay::start(marker(directory.path()), progress.clone(), awaiting);
     let mut now = start + STALL_TIMEOUT - Duration::from_secs(1);
     assert_eq!(monitor.poll(directory.path(), now), Progress::Waiting);
     // A setup that reports nothing new is hung, however often the client polls.
@@ -34,6 +34,58 @@ fn only_changed_setup_progress_restarts_the_deadline() {
     assert_eq!(monitor.poll(directory.path(), now), Progress::Waiting);
 }
 
+/// Fixture reports name their state directly.
+fn awaiting(report: &[u8]) -> bool {
+    report == b"consent"
+}
+
+#[test]
+fn awaiting_the_user_never_stalls_and_the_deadline_counts_from_the_answer() {
+    let directory = tempfile::tempdir().unwrap();
+    let progress = directory.path().join("status.json");
+    let start = Instant::now();
+    let mut monitor = Monitor::new(start);
+    let mut relay = Relay::start(marker(directory.path()), progress.clone(), awaiting);
+    fs::write(&progress, "consent").unwrap();
+    relay.poll();
+    // The prompt stays open far past the timeout, with repeated identical reports.
+    let mut now = start;
+    for _ in 0..10 {
+        now += STALL_TIMEOUT;
+        relay.poll();
+        assert_eq!(monitor.poll(directory.path(), now), Progress::Waiting);
+    }
+    fs::write(&progress, "downloading").unwrap();
+    relay.poll();
+    let answered = now;
+    assert_eq!(monitor.poll(directory.path(), answered), Progress::Waiting);
+    let before = answered + STALL_TIMEOUT - Duration::from_secs(1);
+    assert_eq!(monitor.poll(directory.path(), before), Progress::Waiting);
+    assert_eq!(
+        monitor.poll(directory.path(), answered + STALL_TIMEOUT),
+        Progress::Stalled
+    );
+}
+
+#[test]
+fn finishing_preparation_leaves_the_awaiting_state_with_a_fresh_deadline() {
+    let directory = tempfile::tempdir().unwrap();
+    let progress = directory.path().join("status.json");
+    let start = Instant::now();
+    let mut monitor = Monitor::new(start);
+    let mut relay = Relay::start(marker(directory.path()), progress.clone(), awaiting);
+    fs::write(&progress, "consent").unwrap();
+    relay.poll();
+    let ended = start + STALL_TIMEOUT * 3;
+    assert_eq!(monitor.poll(directory.path(), ended), Progress::Waiting);
+    relay.finish();
+    assert_eq!(monitor.poll(directory.path(), ended), Progress::Waiting);
+    assert_eq!(
+        monitor.poll(directory.path(), ended + STALL_TIMEOUT),
+        Progress::Stalled
+    );
+}
+
 #[test]
 fn preparation_heartbeats_restart_the_deadline_until_they_stop() {
     let directory = tempfile::tempdir().unwrap();
@@ -44,7 +96,7 @@ fn preparation_heartbeats_restart_the_deadline_until_they_stop() {
     let mut now = start;
     for count in 1..=4 {
         now += STALL_TIMEOUT - Duration::from_secs(1);
-        beat(&marker, count).unwrap();
+        beat(&marker, &count.to_string()).unwrap();
         assert_eq!(monitor.poll(directory.path(), now), Progress::Waiting);
     }
     // A repeated count is not progress, so a hung client still stalls.

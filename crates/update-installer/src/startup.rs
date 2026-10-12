@@ -11,11 +11,14 @@ use std::{
 pub const STARTUP_ENV: &str = "CINNABAR_UPDATE_STARTUP_FILE";
 /// The marker's filename; the client accepts no other path from the environment.
 pub const STARTED: &str = "started";
-/// Longest silence, before startup or since the last preparation heartbeat, that counts as stalled.
+/// Longest silence, before startup or since the last preparation heartbeat, that counts as stalled;
+/// time spent awaiting the user never counts.
 pub const STALL_TIMEOUT: Duration = Duration::from_secs(300);
 /// How often a preparing client looks for new progress; well under the stall timeout.
 pub const PROGRESS_POLL: Duration = Duration::from_secs(10);
 const PREPARING: &str = "preparing";
+/// Heartbeat content while setup waits on the user; counted heartbeats are digits, never this.
+const AWAITING_USER: &str = "awaiting-user";
 /// How long a stopped client may exit cleanly before the helper kills what remains.
 #[cfg(unix)]
 const STOP_GRACE: Duration = Duration::from_secs(10);
@@ -25,48 +28,68 @@ pub fn marker(directory: &Path) -> PathBuf {
     directory.join(STARTED)
 }
 
-/// Records heartbeat `count` beside `marker`; each new count restarts the helper's deadline.
-fn beat(marker: &Path, count: u64) -> io::Result<()> {
+/// Records heartbeat `content` beside `marker`; each new content restarts the helper's deadline.
+fn beat(marker: &Path, content: &str) -> io::Result<()> {
     let directory = marker
         .parent()
         .ok_or_else(|| io::Error::other("startup marker has no directory"))?;
-    fs::write(directory.join(PREPARING), count.to_string())
+    fs::write(directory.join(PREPARING), content)
 }
 
-/// Client side: one heartbeat per change to the setup's progress report, so a hung setup stalls.
+/// Client side: one heartbeat per change to the setup's progress report, so a hung setup stalls,
+/// and an awaiting-user state while the report says setup waits on the user.
 pub struct Relay {
     marker: PathBuf,
     progress: PathBuf,
+    awaiting_user: fn(&[u8]) -> bool,
     last: Option<Vec<u8>>,
+    waiting: bool,
     count: u64,
 }
 
 impl Relay {
     /// Starts relaying `progress`; entering preparation is itself progress.
-    pub fn start(marker: PathBuf, progress: PathBuf) -> Self {
+    pub fn start(marker: PathBuf, progress: PathBuf, awaiting_user: fn(&[u8]) -> bool) -> Self {
         let last = fs::read(&progress).ok();
         let mut relay = Self {
             marker,
             progress,
+            awaiting_user,
             last,
+            waiting: false,
             count: 0,
         };
         relay.beat();
         relay
     }
 
-    /// Beats only when the progress report differs from the one seen last.
+    /// Beats when the progress report changed or stopped awaiting the user.
     pub fn poll(&mut self) {
         let report = fs::read(&self.progress).ok();
-        if report.is_some() && report != self.last {
+        let waiting = report.as_deref().is_some_and(self.awaiting_user);
+        let changed = report.is_some() && report != self.last;
+        if report.is_some() {
             self.last = report;
+        }
+        if waiting {
+            if !self.waiting {
+                self.waiting = true;
+                let _ = beat(&self.marker, AWAITING_USER);
+            }
+        } else if changed || self.waiting {
             self.beat();
         }
     }
 
+    /// Ends preparation, giving the rest of startup a fresh deadline.
+    pub fn finish(mut self) {
+        self.beat();
+    }
+
     fn beat(&mut self) {
+        self.waiting = false;
         self.count += 1;
-        let _ = beat(&self.marker, self.count);
+        let _ = beat(&self.marker, &self.count.to_string());
     }
 }
 
@@ -101,6 +124,10 @@ impl Monitor {
         if beat.is_some() && beat != self.beat {
             self.beat = beat;
             self.deadline = now + STALL_TIMEOUT;
+        }
+        // Leaving this state is a new heartbeat, so the deadline restarts when the user answers.
+        if self.beat.as_deref() == Some(AWAITING_USER) {
+            return Progress::Waiting;
         }
         if now >= self.deadline {
             Progress::Stalled

@@ -33,11 +33,12 @@ pub(super) fn install(
     use std::{ffi::OsString, os::windows::ffi::OsStringExt};
     let installer =
         std::path::PathBuf::from(OsString::from_wide(&directory[..count])).join("msiexec.exe");
-    let status = Command::new(installer)
-        .arg("/i")
-        .arg(&msi)
-        .args(["/passive", "/norestart", "REBOOT=ReallySuppress"])
-        .status()?;
+    use std::os::windows::process::CommandExt;
+    let mut command = Command::new(installer);
+    for argument in super::msiexec_arguments(&msi, target) {
+        command.raw_arg(argument);
+    }
+    let status = command.status()?;
     ensure!(
         matches!(status.code(), Some(0 | 3010)),
         "Windows Installer failed: {status}"

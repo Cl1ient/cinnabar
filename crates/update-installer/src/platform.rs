@@ -6,7 +6,10 @@ mod macos;
 mod windows;
 
 use anyhow::{Result, bail};
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 /// Prepares a complete macOS bundle or an executable AppImage on the install filesystem.
 pub(crate) fn candidate(artifact: &Path, work: &Path, target: &Path) -> Result<PathBuf> {
@@ -28,6 +31,27 @@ pub(crate) fn candidate(artifact: &Path, work: &Path, target: &Path) -> Result<P
     }
 }
 
+/// The raw msiexec command line for a passive upgrade into the existing `target`, which may be a
+/// custom `INSTALLFOLDER`. msiexec parses its own command line, so values are quoted as
+/// `NAME="value"`; Windows paths never contain quotes.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn msiexec_arguments(msi: &Path, target: &Path) -> Vec<OsString> {
+    let quoted = |prefix: &str, path: &Path| {
+        let mut argument = OsString::from(format!("{prefix}\""));
+        argument.push(path.as_os_str());
+        argument.push("\"");
+        argument
+    };
+    vec![
+        "/i".into(),
+        quoted("", msi),
+        "/passive".into(),
+        "/norestart".into(),
+        "REBOOT=ReallySuppress".into(),
+        quoted("INSTALLFOLDER=", target),
+    ]
+}
+
 /// Runs Windows Installer passively without requesting elevation or forcing a reboot.
 pub(crate) fn install_windows(
     artifact: &Path,
@@ -45,3 +69,6 @@ pub(crate) fn install_windows(
         bail!("Windows installer cannot run on this platform")
     }
 }
+
+#[cfg(test)]
+mod tests;

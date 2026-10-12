@@ -1,5 +1,6 @@
 use super::status::{MAX_MESSAGE_BYTES, WRITE_ID};
 use super::*;
+use std::fs;
 
 struct Scratch(PathBuf);
 

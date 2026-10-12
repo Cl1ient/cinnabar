@@ -18,6 +18,7 @@ mod reads;
 mod reexports;
 mod sources;
 mod timing;
+mod workspace_docs;
 
 use dependencies::check_dependencies;
 use markers::check_markers;
@@ -71,6 +72,7 @@ pub fn check_repository(root: &Path, policy_path: &Path) -> Result<Vec<String>, 
     contracts::check_contracts(root, &policy, &files, &mut diagnostics)?;
     reexports::check_reexports(root, &policy, &files, &mut diagnostics)?;
     check_dependencies(root, &policy, &mut diagnostics)?;
+    workspace_docs::check_workspace_docs(root, &policy, &mut diagnostics)?;
     modules::check_modules(root, &policy, &files, &mut diagnostics)?;
     check_markers(root, &policy, &files, &mut diagnostics)?;
     platforms::check_platforms(root, &policy, &files, &mut diagnostics)?;

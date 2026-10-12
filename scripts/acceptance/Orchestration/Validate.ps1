@@ -131,7 +131,7 @@ $script:AcceptanceValidationPhase = {
         -ProjectRoot $ProjectRoot `
         -ExpectedAxolotlStackRevision $PinnedAxolotlStackCommit `
         -ExpectedProtocolgenRevision $PinnedProtocolgenCommit `
-        -ExpectedLicenseSha256 $PinnedValentineLicenseSha256
+        -ExpectedLicenseSha256 $PinnedJolyneLicenseSha256
     $BedrockTarget = Get-BedrockTargetManifest -ProjectRoot $ProjectRoot
     $BlockRegistryPath = Resolve-BedrockTargetArtifact -ProjectRoot $ProjectRoot -Target $BedrockTarget -Artifact block_registry
     $CrossCropCoverage = if ($isCrossCropGallery) {
@@ -186,7 +186,7 @@ $script:AcceptanceValidationPhase = {
         $ClientExecutable
     }
     else {
-        Join-Path $ProjectRoot 'target\release\bedrock-client.exe'
+        Join-Path $ProjectRoot 'target\release\cinnabar.exe'
     }
     if ($hasClientExecutable) {
         Assert-PrebuiltClientPathSafe `

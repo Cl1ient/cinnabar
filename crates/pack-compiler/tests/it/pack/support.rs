@@ -95,6 +95,7 @@ pub fn registry_bytes(records: &[RegistryFixture<'_>]) -> Vec<u8> {
 
 pub fn record(name: &str, canonical_state: &str) -> RegistryRecord {
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id: 7,
         network_hash: 0x8000_0007,
         name: name.into(),

@@ -19,171 +19,21 @@ pub enum BeaconMedium {
     Obstruction,
 }
 
-const TINTED_GLASS: [(i64, [&str; 4]); 16] = [
-    (
-        15,
-        [
-            "minecraft:white_stained_glass",
-            "minecraft:hard_white_stained_glass",
-            "minecraft:white_stained_glass_pane",
-            "minecraft:hard_white_stained_glass_pane",
-        ],
-    ),
-    (
-        14,
-        [
-            "minecraft:orange_stained_glass",
-            "minecraft:hard_orange_stained_glass",
-            "minecraft:orange_stained_glass_pane",
-            "minecraft:hard_orange_stained_glass_pane",
-        ],
-    ),
-    (
-        13,
-        [
-            "minecraft:magenta_stained_glass",
-            "minecraft:hard_magenta_stained_glass",
-            "minecraft:magenta_stained_glass_pane",
-            "minecraft:hard_magenta_stained_glass_pane",
-        ],
-    ),
-    (
-        12,
-        [
-            "minecraft:light_blue_stained_glass",
-            "minecraft:hard_light_blue_stained_glass",
-            "minecraft:light_blue_stained_glass_pane",
-            "minecraft:hard_light_blue_stained_glass_pane",
-        ],
-    ),
-    (
-        11,
-        [
-            "minecraft:yellow_stained_glass",
-            "minecraft:hard_yellow_stained_glass",
-            "minecraft:yellow_stained_glass_pane",
-            "minecraft:hard_yellow_stained_glass_pane",
-        ],
-    ),
-    (
-        10,
-        [
-            "minecraft:lime_stained_glass",
-            "minecraft:hard_lime_stained_glass",
-            "minecraft:lime_stained_glass_pane",
-            "minecraft:hard_lime_stained_glass_pane",
-        ],
-    ),
-    (
-        9,
-        [
-            "minecraft:pink_stained_glass",
-            "minecraft:hard_pink_stained_glass",
-            "minecraft:pink_stained_glass_pane",
-            "minecraft:hard_pink_stained_glass_pane",
-        ],
-    ),
-    (
-        8,
-        [
-            "minecraft:gray_stained_glass",
-            "minecraft:hard_gray_stained_glass",
-            "minecraft:gray_stained_glass_pane",
-            "minecraft:hard_gray_stained_glass_pane",
-        ],
-    ),
-    (
-        7,
-        [
-            "minecraft:light_gray_stained_glass",
-            "minecraft:hard_light_gray_stained_glass",
-            "minecraft:light_gray_stained_glass_pane",
-            "minecraft:hard_light_gray_stained_glass_pane",
-        ],
-    ),
-    (
-        6,
-        [
-            "minecraft:cyan_stained_glass",
-            "minecraft:hard_cyan_stained_glass",
-            "minecraft:cyan_stained_glass_pane",
-            "minecraft:hard_cyan_stained_glass_pane",
-        ],
-    ),
-    (
-        5,
-        [
-            "minecraft:purple_stained_glass",
-            "minecraft:hard_purple_stained_glass",
-            "minecraft:purple_stained_glass_pane",
-            "minecraft:hard_purple_stained_glass_pane",
-        ],
-    ),
-    (
-        4,
-        [
-            "minecraft:blue_stained_glass",
-            "minecraft:hard_blue_stained_glass",
-            "minecraft:blue_stained_glass_pane",
-            "minecraft:hard_blue_stained_glass_pane",
-        ],
-    ),
-    (
-        3,
-        [
-            "minecraft:brown_stained_glass",
-            "minecraft:hard_brown_stained_glass",
-            "minecraft:brown_stained_glass_pane",
-            "minecraft:hard_brown_stained_glass_pane",
-        ],
-    ),
-    (
-        2,
-        [
-            "minecraft:green_stained_glass",
-            "minecraft:hard_green_stained_glass",
-            "minecraft:green_stained_glass_pane",
-            "minecraft:hard_green_stained_glass_pane",
-        ],
-    ),
-    (
-        1,
-        [
-            "minecraft:red_stained_glass",
-            "minecraft:hard_red_stained_glass",
-            "minecraft:red_stained_glass_pane",
-            "minecraft:hard_red_stained_glass_pane",
-        ],
-    ),
-    (
-        0,
-        [
-            "minecraft:black_stained_glass",
-            "minecraft:hard_black_stained_glass",
-            "minecraft:black_stained_glass_pane",
-            "minecraft:hard_black_stained_glass_pane",
-        ],
-    ),
-];
-
-/// Resolves exact ordinary and hardened glass identities; other blocks never tint.
-pub fn beacon_glass_tint(identifier: &str) -> Option<[f32; 3]> {
-    let (dye, _) = TINTED_GLASS
-        .iter()
-        .find(|(_, names)| names.contains(&identifier))?;
-    Some(if *dye == 15 {
+/// Normalized dye channels of a beacon tint colour; white glass keeps the beam white.
+pub fn dye_tint(dye: i64) -> [f32; 3] {
+    if dye == 15 {
         [1.0; 3]
     } else {
-        crate::banner::color_rgb(*dye).map(|value| f32::from(value) / 255.0)
-    })
+        crate::banner::color_rgb(dye).map(|value| f32::from(value) / 255.0)
+    }
 }
 
-/// Classifies one block using block-owned tint eligibility and light filtering.
-pub fn beacon_medium(identifier: &str, light_filter: u8) -> BeaconMedium {
+/// Classifies one block from its compiled tint eligibility and light filtering.
+pub fn beacon_medium(identifier: &str, tint: crate::BeaconTint, light_filter: u8) -> BeaconMedium {
     if light_filter >= 15 && identifier != "minecraft:bedrock" {
         BeaconMedium::Obstruction
-    } else if let Some(tint) = beacon_glass_tint(identifier) {
-        BeaconMedium::Tint(tint)
+    } else if let Some(dye) = tint.dye_colour() {
+        BeaconMedium::Tint(dye_tint(dye))
     } else {
         BeaconMedium::Clear
     }
@@ -298,22 +148,26 @@ mod tests {
     }
 
     #[test]
-    fn hardened_glass_and_bedrock_use_exact_block_rules() {
+    fn compiled_tints_and_bedrock_use_exact_block_rules() {
+        use crate::BeaconTint;
         assert_eq!(
-            beacon_medium("minecraft:hard_red_stained_glass", 0),
-            beacon_medium("minecraft:red_stained_glass", 0)
+            beacon_medium("minecraft:hard_red_stained_glass", BeaconTint::Red, 0),
+            BeaconMedium::Tint(dye_tint(1))
         );
         assert_eq!(
-            beacon_medium("minecraft:hard_blue_stained_glass_pane", 0),
-            beacon_medium("minecraft:blue_stained_glass_pane", 0)
+            beacon_medium("minecraft:white_stained_glass", BeaconTint::White, 0),
+            BeaconMedium::Tint([1.0; 3])
         );
-        assert_eq!(beacon_medium("minecraft:bedrock", 15), BeaconMedium::Clear);
         assert_eq!(
-            beacon_medium("minecraft:stone", 15),
+            beacon_medium("minecraft:bedrock", BeaconTint::NoTinting, 15),
+            BeaconMedium::Clear
+        );
+        assert_eq!(
+            beacon_medium("minecraft:stone", BeaconTint::NoTinting, 15),
             BeaconMedium::Obstruction
         );
         assert_eq!(
-            beacon_medium("custom:red_stained_glass", 0),
+            beacon_medium("custom:red_stained_glass", BeaconTint::Unresolved, 0),
             BeaconMedium::Clear
         );
     }

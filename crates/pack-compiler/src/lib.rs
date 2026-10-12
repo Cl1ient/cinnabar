@@ -54,7 +54,8 @@ pub use audio_pcm::{
 };
 pub use biome::compile_biome_assets;
 pub use block_entity::{
-    BlockEntityCompileReport, CompiledBlockEntityCarrier, compile_block_entity_assets,
+    BlockEntityCompileReport, BlockEntityTexture, CompiledBlockEntityCarrier,
+    compile_block_entity_assets, overlay_block_entity_assets,
 };
 pub use compiler::{
     compile_pack, compile_pack_with_biomes, compile_pack_with_material_keys,
@@ -87,7 +88,7 @@ pub use lang::{
     CompiledLangCarrier, LangCompileError, LangCompileReport, compile_lang_assets,
     compile_language, vanilla_language_codes,
 };
-pub use oreui_icons::compile_oreui_icons_to_file;
+pub use oreui_icons::{compile_oreui_icons_to_file, oreui_icon_sources};
 pub use pack::{
     BlockTextureMap, DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES, MAX_FLIPBOOKS,
     PackSources, TerrainTextureMap, TextureKey, read_pack, resolve_texture_key,

@@ -1,6 +1,8 @@
 use bevy::prelude::DetectChanges;
 mod commit;
+mod occlusion;
 mod preparation;
+mod views;
 pub use preparation::{ActorFrameState, advance_actor_frame, advance_actor_motion};
 mod emote_geometry;
 mod equipment_layers;
@@ -249,7 +251,7 @@ pub struct ActorFramePublication<'w, 's> {
 pub fn prepare_actor_render_frame(
     mut client_world: ActorWorld<'_>,
     swing_progress: Option<actor_animation::LocalSwingProgress>,
-    hides_box: impl Fn(&WorldStream, [f32; 3], [f32; 3], [f32; 3]) -> bool,
+    hides_box: impl Fn(&WorldStream, ActorCullView, [f32; 3], [f32; 3]) -> bool,
     icons: Option<&client_ui::ui_runtime::presentation::UiPresentationRuntime>,
     params: ActorFramePublication,
 ) {
@@ -309,7 +311,7 @@ pub fn prepare_actor_render_frame(
         if let Some(progress) = swing_progress {
             stream.sync_local_swing(progress);
         }
-        stream.set_actor_camera_rotation(actor_camera_rotation(view.camera_rotation()));
+        stream.set_actor_camera_rotation(views::actor_camera_rotation(view.camera_rotation()));
         stream.advance_actor_interpolation_frame(0);
     }
     let authoritative_subject_eye = authoritative_local_actor_eye(
@@ -348,6 +350,8 @@ pub fn prepare_actor_render_frame(
         })
         .flatten();
     let mut native_body_sampled = false;
+    let mut occlusion_candidates = 0_u32;
+    let mut hidden_by_occlusion = 0_u32;
     let mut render_frame = client_world
         .stream
         .as_ref()
@@ -386,6 +390,8 @@ pub fn prepare_actor_render_frame(
                         rig
                     };
                     // Cull at the sampled frame scale; the local rig also drives the hand.
+                    let occluded = std::cell::Cell::new(false);
+                    occlusion_candidates += u32::from(rig.actor.runtime_id != local_runtime_id);
                     if rig.actor.runtime_id != local_runtime_id
                         && !crate::presentation::actors::rig_may_be_visible(
                             &rig,
@@ -395,11 +401,21 @@ pub fn prepare_actor_render_frame(
                             render_frame.as_mut(),
                             |low, high| {
                                 cull_view.is_some_and(|view| {
-                                    hides_box(stream, view.camera_position.to_array(), low, high)
+                                    let (low, high) = occlusion::body_and_shadow_bounds(
+                                        stream,
+                                        &rig,
+                                        step.partial_tick,
+                                        low,
+                                        high,
+                                    );
+                                    let hidden = hides_box(stream, view, low, high);
+                                    occluded.set(hidden);
+                                    hidden
                                 })
                             },
                         )
                     {
+                        hidden_by_occlusion += u32::from(occluded.get());
                         continue;
                     }
                     let profile = stream
@@ -487,6 +503,7 @@ pub fn prepare_actor_render_frame(
                 )
             })
             .unwrap_or((0, 0, 0, Vec::new(), None, 0));
+
     // First person draws the player's own rig near the camera: the visible arms with every other
     // bone hidden, and a drawable held item in its own first-person frame. Anything not covered
     // (an undrawable item) leaves the CPU viewmodel in charge.
@@ -638,6 +655,12 @@ pub fn prepare_actor_render_frame(
         crate::presentation::actors::light_bodies(&mut batch, stream);
     }
     let selected_count = batch.submissions.len();
+    occlusion::record_work(
+        occlusion_candidates,
+        hidden_by_occlusion,
+        &batch,
+        local_runtime_id,
+    );
     if let (Some(stream), Some(render_frame)) =
         (client_world.stream.as_ref(), render_frame.as_mut())
     {
@@ -903,52 +926,6 @@ pub fn prepare_actor_render_frame(
         hand_light,
         step.partial_tick,
     );
-}
-
-/// Rigs this far outside the view on every side still animate, so only a turn faster than this
-/// in one tick shows a rig its held pose for that tick.
-const ANIMATION_GUARD_DEGREES: f32 = 30.0;
-
-fn actor_camera_rotation(rotation: bevy::math::Quat) -> [f32; 2] {
-    let (yaw, pitch, _) = rotation.to_euler(bevy::math::EulerRot::YXZ);
-    [
-        -pitch.to_degrees(),
-        (180.0 - yaw.to_degrees()).rem_euclid(360.0),
-    ]
-}
-
-/// The camera's frustum widened by the guard band, with the render distances.
-fn animation_view(
-    transform: &bevy::prelude::Transform,
-    projection: &Projection,
-) -> Option<actor_animation::ActorAnimationView> {
-    let Projection::Perspective(perspective) = projection else {
-        return None;
-    };
-    let (guard, limit) = (ANIMATION_GUARD_DEGREES.to_radians(), 85f32.to_radians());
-    let half_vertical = perspective.fov * 0.5;
-    let half_horizontal = (half_vertical.tan() * perspective.aspect_ratio).atan();
-    let (half_vertical, half_horizontal) = (
-        (half_vertical + guard).min(limit),
-        (half_horizontal + guard).min(limit),
-    );
-    let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
-        half_vertical * 2.0,
-        half_horizontal.tan() / half_vertical.tan(),
-        perspective.near,
-    ) * transform.to_matrix().inverse();
-    let [x, y, z, w] = [0, 1, 2, 3].map(|row| clip.row(row));
-    let planes = [w + x, w - x, w + y, w - y, z, w - z].map(|plane| plane.to_array());
-    planes
-        .iter()
-        .flatten()
-        .all(|value| value.is_finite())
-        .then(|| actor_animation::ActorAnimationView {
-            planes,
-            camera: transform.translation.to_array(),
-            player_distance: MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
-            entity_radius: render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS,
-        })
 }
 
 /// Registers new skin models and item meshes in both rig catalogs with one rebuild each; if a

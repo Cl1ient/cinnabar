@@ -3,10 +3,13 @@
 use std::sync::Arc;
 
 mod block;
+mod bounds;
+mod culling;
 mod mesh;
 mod native;
 mod rope;
 pub use block::block_mesh;
+pub use bounds::{DroppedItemBounds, DroppedItemCullView};
 
 pub use mesh::{
     ITEM_MESH_VERTEX_BYTES, ItemMeshVertex, cube_mesh, extruded_sprite_mesh,

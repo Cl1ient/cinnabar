@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct BlockManifest {
     pub schema: String,
     pub game_version: String,
@@ -14,17 +15,20 @@ pub(super) struct BlockManifest {
     pub light: Output,
 }
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Source {
     pub module: String,
     pub source_lock_sha256: String,
     pub cloudburst_ref: String,
 }
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Allowlist {
     pub path: String,
     pub sha256: String,
 }
 #[derive(Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Projection {
     pub states: usize,
     pub legacy_exact_states: usize,
@@ -38,6 +42,7 @@ pub(super) struct Projection {
     pub education_states: usize,
 }
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Output {
     pub format: String,
     pub path: String,

@@ -8,6 +8,7 @@ use super::*;
 pub(super) fn init_ui_gpu(
     mut commands: Commands,
     render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
     tick: SystemChangeTick,
 ) {
     let viewport_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
@@ -51,6 +52,7 @@ pub(super) fn init_ui_gpu(
         textures: UiGpuTextures::default(),
         sampler,
         linear_sampler,
+        item_glint: item_glint::GpuItemGlint::new(&render_device, &render_queue),
         batches: Arc::from([]),
         accepted_revision: None,
         animated: false,
@@ -325,8 +327,11 @@ pub(crate) fn prepare_ui_resources(
         stats.vertex_arena_capacity = gpu.vertex_capacity as u32;
         stats.index_arena_capacity = gpu.index_capacity as u32;
         stats.per_node_gpu_allocations = 0;
-        stats.retained_gpu_bytes =
-            retained_gpu_bytes(gpu.vertex_capacity, gpu.index_capacity, gpu.textures.bytes);
+        stats.retained_gpu_bytes = retained_gpu_bytes(
+            gpu.vertex_capacity,
+            gpu.index_capacity,
+            gpu.textures.bytes + gpu.item_glint.bytes,
+        );
         stats.rejected_revision = None;
         stats.rejected_reason = None;
     });

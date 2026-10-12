@@ -15,6 +15,13 @@ pub(super) fn collect_server_ui(view: &LayeredPackView) -> Option<Arc<ServerUiPa
     let mut total = 0usize;
     let mut declared = BTreeSet::new();
     let mut pack = ServerUiPack::default();
+    pack.item_glint =
+        pack_runtime::pack_textures::decode_pack_texture(view, assets::ITEM_GLINT_TEXTURE_PATH)
+            .and_then(|image| {
+                render_model::UiTexturePage::owned([image.width, image.height], image.rgba8.into())
+                    .ok()
+            })
+            .map(Arc::new);
     for layer in view.layers() {
         let remaining = MAX_SERVER_UI_BYTES.saturating_sub(total) as u64;
         if let Some(index) = layer.read_file_with_limit(INDEX, remaining).ok().flatten()

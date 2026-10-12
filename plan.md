@@ -6335,10 +6335,11 @@ Shape classification, stair orientation and GUI shading are unverified against
 the retail GUI tessellator.
 Server item components (StartGame registry) drive display names, rarity and
 hover colours, durability maxima, stack-merge capacity, held grip, wearable
-slots and use durations. Item glint (provisional): stacks vanilla
-marks as glinting (an `ench` list, the glint component, always-glinting vanilla items)
-draw a procedural scrolling purple overlay in HUD and JSON-UI item cells, not
-the retail glint texture; held items and the item viewmodel do not glint.
+slots and use durations. Item glint: stacks marked as glinting (an `ench` list,
+the glint component, always-glinting items) sample the active pack's item glint
+raster in HUD and JSON-UI item cells. Removing the pack restores the startup
+UI carrier's image. UV scale, blend and scrolling periods remain provisional
+pending rendered acceptance; held items and the item viewmodel do not glint.
 `minecraft:render_offsets` is not applied.
 Initial negotiated item-registry binding for world item visuals is also separate
 from the inventory-ledger bootstrap fix. The visual resolver still starts from
@@ -6719,10 +6720,10 @@ Safe Zone, glint defaults, world Experiments and several unsupported subsystem
 controls remain open. JSON-UI engine changes remain on the separate branch.
 
 Glint accessibility factors now reach the existing UI item renderer: strength scales
-its additive RGB, and speed scales elapsed time before the procedural phases.
-The procedural glint appearance
-and phase periods remain provisional; this adapter does not establish texture,
-world-item, or entity-glint parity. Current vanilla option defaults/ranges remain open.
+its additive RGB, and speed scales elapsed time before the texture scrolling phases.
+The sampled glint appearance and phase periods remain provisional; rendered
+item, world-item, and entity-glint parity remain incomplete. Current option
+defaults/ranges remain open.
 
 ## Terrain particle texture repair (2026-10-01)
 

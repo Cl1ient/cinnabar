@@ -114,6 +114,25 @@ class RuntimeSummaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "all: missing run completion marker"):
             profile.summary(self.root)
 
+    def test_incomplete_report_records_each_failure(self):
+        """Report every failed command, even when it saved some Criterion estimates."""
+        path = self.root / "runtime-profile-all" / "runtime-profile.json"
+        data = json.loads(path.read_text())
+        del data["completed"]
+        failed = data["completed_benches"][:2]
+        data["completed_benches"] = data["completed_benches"][2:]
+        data["failed_benches"] = {bench: "exit code 101" for bench in failed}
+        path.write_text(json.dumps(data))
+        output = self.root / "summary.md"
+        with patch.object(sys, "argv", [str(MODULE), "summary", str(self.root), str(output)]):
+            with self.assertRaises(SystemExit):
+                profile.main()
+        report = output.read_text()
+        self.assertIn("Runtime measurements incomplete", report)
+        self.assertNotIn("median (ns)", report)
+        for bench in failed:
+            self.assertIn(f"all: failed {bench}: exit code 101", report)
+
     def test_missing_bench_fails(self):
         """Every requested bench target must emit estimates."""
         (self.case_directory("fat-lto") / "estimates.json").unlink()
@@ -186,6 +205,7 @@ class RuntimeCompletionTests(unittest.TestCase):
         self.assertTrue(metadata["completed"])
         self.assertEqual(metadata["completed_benches"], self.benches)
         self.assertEqual(command.call_count, len(self.benches))
+        self.assertEqual(metadata["failed_benches"], {})
 
     def test_metadata_failure_removes_previous_completion(self):
         """Discard a stale success marker even if runner metadata collection fails."""
@@ -202,11 +222,38 @@ class RuntimeCompletionTests(unittest.TestCase):
         self.metadata.write_text(json.dumps({"completed": True, "completed_benches": self.benches}))
         outcomes = [None] * (len(self.benches) - 1) + [subprocess.CalledProcessError(1, "bench")]
         with patch.object(profile.subprocess, "run", side_effect=outcomes):
-            with self.assertRaises(subprocess.CalledProcessError):
+            with self.assertRaises(SystemExit):
                 profile.run("baseline", self.root)
         metadata = json.loads(self.metadata.read_text())
         self.assertNotIn("completed", metadata)
         self.assertEqual(metadata["completed_benches"], self.benches[:-1])
+        self.assertEqual(metadata["failed_benches"], {self.benches[-1]: "exit code 1"})
+
+    def test_failed_benches_do_not_stop_later_targets(self):
+        """Attempt later targets after both an unsuccessful exit and a launch failure."""
+        failures = {
+            self.benches[1]: "exit code 101",
+            self.benches[3]: "could not start benchmark: missing executable",
+        }
+        outcomes = [None] * len(self.benches)
+        outcomes[1] = subprocess.CalledProcessError(101, "bench")
+        outcomes[3] = OSError("missing executable")
+        with patch.object(profile.subprocess, "run", side_effect=outcomes) as command:
+            with self.assertRaises(SystemExit):
+                profile.run("baseline", self.root)
+        metadata = json.loads(self.metadata.read_text())
+        self.assertNotIn("completed", metadata)
+        self.assertEqual(metadata["failed_benches"], failures)
+        self.assertEqual(
+            metadata["completed_benches"], [bench for bench in self.benches if bench not in failures],
+        )
+        attempted = []
+        for call in command.call_args_list:
+            arguments = call.args[0]
+            package = arguments[arguments.index("-p") + 1]
+            bench = arguments[arguments.index("--bench") + 1]
+            attempted.append(f"{package}/{bench}")
+        self.assertEqual(attempted, self.benches)
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ def save_metadata(path: Path, metadata: dict) -> None:
 
 
 def run(variant: str, root: Path) -> None:
-    """Measure each requested bench sequentially, using isolated result directories."""
+    """Attempt every bench sequentially, isolating results and recording command failures."""
     settings = VARIANTS[variant]
     env = dict(os.environ)
     env["RUSTFLAGS"] = settings.get("rustflags", "")
@@ -63,6 +63,7 @@ def run(variant: str, root: Path) -> None:
         "rustc": subprocess.check_output(["rustc", "--version", "--verbose"], text=True),
         "cpu": json.loads(subprocess.check_output(["lscpu", "--json"], text=True)),
         "completed_benches": [],
+        "failed_benches": {},
     }
     save_metadata(metadata_path, metadata)
     for package, benches in BENCHES.items():
@@ -83,9 +84,21 @@ def run(variant: str, root: Path) -> None:
             if features:
                 command += ["--features", ",".join(features)]
             command += ["--", "--sample-size", str(SAMPLE_SIZE), "--noplot"]
-            subprocess.run(command, cwd=root, env=env, check=True)
-            metadata["completed_benches"].append(f"{package}/{bench}")
+            identity = f"{package}/{bench}"
+            try:
+                subprocess.run(command, cwd=root, env=env, check=True)
+            except subprocess.CalledProcessError as error:
+                metadata["failed_benches"][identity] = f"exit code {error.returncode}"
+            except OSError as error:
+                metadata["failed_benches"][identity] = f"could not start benchmark: {error}"
+            else:
+                metadata["completed_benches"].append(identity)
             save_metadata(metadata_path, metadata)
+    if metadata["failed_benches"]:
+        failures = "; ".join(
+            f"{bench}: {reason}" for bench, reason in metadata["failed_benches"].items()
+        )
+        raise SystemExit(f"Benchmark failures: {failures}")
     metadata["completed"] = True
     save_metadata(metadata_path, metadata)
 
@@ -140,9 +153,13 @@ def summary(directory: Path) -> str:
         path = artifact / "runtime-profile.json"
         data = json.loads(path.read_text()) if path.is_file() else {}
         missing = sorted(expected_benches - set(data.get("completed_benches", [])))
-        if missing or data.get("completed") is not True:
+        failures = data.get("failed_benches", {})
+        if missing or failures or data.get("completed") is not True:
             detail = ", ".join(missing) if missing else "run completion marker"
             incomplete.append(f"{variant}: missing {detail}")
+            incomplete.extend(
+                f"{variant}: failed {bench}: {reason}" for bench, reason in failures.items()
+            )
         metadata[variant] = data
     if incomplete:
         raise ValueError("Incomplete results; " + "; ".join(incomplete))

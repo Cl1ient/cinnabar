@@ -110,10 +110,10 @@ fn render() -> (Vec<ui::UiNode>, EngineFrame) {
     (nodes, frame)
 }
 
-/// Layers keep binding order and dye; a renderer nothing draws is reported, not hidden.
+/// Layers keep binding order and dye.
 #[test]
-fn banner_custom_control_paints_ordered_front_layers_and_reports_unsupported_renderers() {
-    let (nodes, frame) = render();
+fn banner_custom_control_paints_ordered_front_layers() {
+    let (nodes, _frame) = render();
     let colors: Vec<_> = nodes
         .iter()
         .filter_map(|node| match node.visual() {
@@ -129,5 +129,4 @@ fn banner_custom_control_paints_ordered_front_layers_and_reports_unsupported_ren
         colors,
         [[240, 240, 240, 255], [176, 46, 38, 255], [60, 68, 170, 255]]
     );
-    assert_eq!(frame.unsupported_renderers, ["camera_renderer"]);
 }

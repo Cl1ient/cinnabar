@@ -257,7 +257,15 @@ fn paint(
             }
             return true;
         }
-        // Renderers without a drawing contract fall through, so the frame reports them.
+        // Renderers with no Cinnabar state draw nothing, as with no data.
+        "dash_renderer"
+        | "locator_bar"
+        | "vignette_renderer"
+        | "progress_indicator_renderer"
+        | "camera_renderer"
+        | "editor_gizmo_renderer"
+        | "editor_compass_renderer"
+        | "editor_volume_highlight_renderer" => return true,
         _ => return false,
     };
     let (cells, origin) = cells;

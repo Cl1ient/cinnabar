@@ -12,8 +12,6 @@ use ui::UiPoint;
 pub struct EngineFrame {
     pub hits: Arc<[HitRegion]>,
     pub report: LayoutReport,
-    /// Visible custom controls whose renderer has no implemented drawing contract.
-    pub unsupported_renderers: Vec<String>,
     /// Where `button.menu_cancel` (Escape) routes on this screen.
     pub cancel_target: Option<String>,
     /// Window-logical position of virtual `(0, 0)`.

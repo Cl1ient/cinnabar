@@ -292,9 +292,9 @@ the vendored client session crate is removed. Startup ordering, terminal transfe
 disconnects, and the one-shot initialization keep their regression coverage through a scripted
 core; those tests have not been executed locally. No existing completion entry is advanced.
 
-## Loom banner previews and renderer capabilities
+## Loom banner previews
 
-JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. Frames report custom renderer names that no renderer drew. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
 
 ## Protocol codec swap
 

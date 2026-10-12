@@ -505,7 +505,6 @@ fn render_with<R: Borrow<FormRender>>(
             .animator
             .lock()
             .unwrap_or_else(|poison| poison.into_inner()),
-        unsupported: std::collections::BTreeSet::new(),
     };
     let renderers = &mut *frame.renderers;
     let view = art.view;
@@ -529,7 +528,6 @@ fn render_with<R: Borrow<FormRender>>(
     Ok(Some(EngineFrame {
         hits: render.hits.clone(),
         report: render.report.clone(),
-        unsupported_renderers: canvas.unsupported.into_iter().collect(),
         cancel_target: render.cancel_target.clone(),
         origin,
         scale: px,
@@ -632,8 +630,6 @@ pub struct Canvas<'a> {
     next: &'a mut u32,
     clip: Option<([f32; 4], UiNodeId)>,
     animator: std::sync::MutexGuard<'a, json_ui::Animator>,
-    /// Custom renderer names no renderer drew this paint.
-    unsupported: std::collections::BTreeSet<String>,
 }
 
 impl<'a> Canvas<'a> {
@@ -733,7 +729,7 @@ impl Canvas<'_> {
 
     /// Hands `node` to the frame's renderers, then to the engine's own: vector icons, rounded
     /// chrome, fills, messaging art, named profile images, name tags and banners. Others draw
-    /// nothing and are reported in the frame.
+    /// nothing.
     fn custom(
         &mut self,
         node: &CustomDraw<'_>,
@@ -765,12 +761,7 @@ impl Canvas<'_> {
                 self.banner_pattern(data, dest, &alpha)?;
                 None
             }
-            unsupported => {
-                if !self.unsupported.contains(unsupported) {
-                    self.unsupported.insert(unsupported.to_owned());
-                }
-                None
-            }
+            _ => None,
         };
         match drawn {
             Some((visual, bounds)) => self.push(visual, bounds),

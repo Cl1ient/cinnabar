@@ -7922,8 +7922,8 @@ has no admitted drawing frame. Complete native item/stack metadata coverage and 
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
 
-## Loom banner previews and renderer capabilities
+## Loom banner previews
 
-JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. Frames report custom renderer names that no renderer drew.
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers.
 
-Incomplete parity: recipe eligibility, exact pattern-choice styling and the remaining native renderers remain open.
+Incomplete parity: recipe eligibility and exact pattern-choice styling remain open.

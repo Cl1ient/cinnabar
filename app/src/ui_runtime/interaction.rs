@@ -35,10 +35,9 @@ use client_shell::menu::settings_options::control_bindings::{
 };
 use ui::{ChatEditor, PointerPhase, UiAction, UiPoint};
 
-use client_ui::ui_runtime::presentation::{
-    UiPresentationRuntime, inventory_pointer::InventoryCellHit,
-};
+use client_ui::ui_runtime::presentation::UiPresentationRuntime;
 use client_ui::ui_runtime::{PlatformClipboard, UiRuntime};
+use ui_screens::container_actions::InventoryCellHit;
 
 use client_shell::{
     physical_input::{keyboard_key, keyboard_usage},

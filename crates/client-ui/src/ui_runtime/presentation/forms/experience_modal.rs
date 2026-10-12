@@ -226,8 +226,7 @@ impl UiPresentationRuntime {
             return;
         }
         let mut icons = Vec::new();
-        let rows =
-            super::containers::player_rows(player_runtime, runtime, &self.hud_frame, &mut icons);
+        let rows = super::containers::player_rows(player_runtime, &self.hud_frame, &mut icons);
         if modal.rows != rows || modal.icons != icons {
             modal.screen.set_player_rows(rows.clone());
             modal.rows = rows;

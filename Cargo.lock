@@ -721,6 +721,7 @@ dependencies = [
  "tracing-tracy",
  "ui",
  "ui-engine",
+ "ui-screens",
  "url",
  "wgpu",
  "windows-sys 0.61.2",
@@ -2490,6 +2491,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui-engine",
+ "ui-screens",
  "url",
  "world",
  "zip",
@@ -7583,6 +7585,20 @@ dependencies = [
  "test-time",
  "tracing",
  "ui",
+]
+
+[[package]]
+name = "ui-screens"
+version = "0.1.12"
+dependencies = [
+ "assets",
+ "inventory 0.1.12",
+ "json-ui",
+ "player-state",
+ "protocol",
+ "serde_json",
+ "ui",
+ "ui-engine",
 ]
 
 [[package]]

@@ -1,7 +1,8 @@
 use super::*;
-use json_ui::{Context, ViewState};
+use json_ui::{Context, DataSource, ViewState};
 use ui_engine::{
     atlas::ServerAtlas,
+    cached_screen::CachedScreen,
     textures::{TextureSet, Textures},
 };
 

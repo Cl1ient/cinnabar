@@ -178,7 +178,7 @@ mod tests {
         };
         ledger.apply(&InventoryEvent::Creative(catalog.clone()));
         let mut state = ScreenState {
-            creative_tab: crate::ui_runtime::presentation::screens::SEARCH_TAB,
+            creative_tab: ui_screens::container_actions::SEARCH_TAB,
             search: "stone".into(),
             ..Default::default()
         };
@@ -289,8 +289,7 @@ mod display_name_tests {
     fn custom_display_names_and_component_reload_change_search_results() {
         let ledger = catalog();
         let mut runtime = UiRuntime::new(1);
-        runtime.screen_state_mut().creative_tab =
-            crate::ui_runtime::presentation::screens::SEARCH_TAB;
+        runtime.screen_state_mut().creative_tab = ui_screens::container_actions::SEARCH_TAB;
         runtime.screen_state_mut().search = "crystal".into();
         display_name(&mut runtime, "Crystal Blade");
         assert_eq!(
@@ -314,8 +313,7 @@ mod display_name_tests {
     fn active_language_and_component_translation_invalidate_cached_names() {
         let ledger = catalog();
         let mut runtime = UiRuntime::new(1);
-        runtime.screen_state_mut().creative_tab =
-            crate::ui_runtime::presentation::screens::SEARCH_TAB;
+        runtime.screen_state_mut().creative_tab = ui_screens::container_actions::SEARCH_TAB;
         runtime.screen_state_mut().search = "pierre".into();
         runtime.set_active_language(Some(language("tile.stone.name", "Pierre")));
         assert_eq!(

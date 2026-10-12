@@ -6,21 +6,20 @@ use json_ui::{CollectionItem, Context, DataSource, HitKind, HitRegion, Scalar};
 use protocol::MAX_BOOK_PAGES;
 use serde_json::Value;
 
-use crate::ui_runtime::book_screen::BookState;
-use crate::ui_runtime::presentation::inventory_pointer::InventoryCellHit;
-use crate::ui_runtime::presentation::screens::{ReaderButton, Widget};
+use crate::container_actions::{InventoryCellHit, ReaderButton, Widget};
+use crate::container_source::BookView;
 
-pub(super) const SCREEN: &str = "book.book_screen";
+pub(crate) const SCREEN: &str = "book.book_screen";
 /// Characters a page takes, as the reader enforces.
 const MAX_PAGE_LENGTH: u64 = 256;
 
-pub(super) fn context(context: Context) -> Context {
+pub(crate) fn context(context: Context) -> Context {
     context.with_var("max_page_length", Value::from(MAX_PAGE_LENGTH))
 }
 
 /// The spread, its controls, and the signing cover's fields.
-pub(super) fn book_data(data: &mut DataSource, book: &BookState) {
-    let spread = book.spread();
+pub(crate) fn book_data(data: &mut DataSource, book: &BookView<'_>) {
+    let spread = book.spread;
     let editable = book.editable;
     for (name, value) in [
         ("#viewing", !book.signing),
@@ -53,11 +52,11 @@ pub(super) fn book_data(data: &mut DataSource, book: &BookState) {
     }
     data.set_global(
         "#title_text_box_item_name",
-        Scalar::Text(book.title.clone()),
+        Scalar::Text(book.title.to_owned()),
     );
     data.set_global(
         "#author_text_box_item_name",
-        Scalar::Text(book.author.clone()),
+        Scalar::Text(book.author.to_owned()),
     );
     let pages = (spread..spread + 2)
         .map(|index| {
@@ -88,7 +87,7 @@ pub(super) fn book_data(data: &mut DataSource, book: &BookState) {
 }
 
 /// The reader action a book control presses.
-pub(super) fn book_hit(region: &HitRegion) -> Option<InventoryCellHit> {
+pub(crate) fn book_hit(region: &HitRegion) -> Option<InventoryCellHit> {
     let side = u8::try_from(region.collection_index.unwrap_or(0))
         .ok()?
         .min(1);
@@ -113,11 +112,11 @@ pub(super) fn book_hit(region: &HitRegion) -> Option<InventoryCellHit> {
 }
 
 /// The text field typing reaches: the title while signing, else the current page.
-pub(super) fn focused(regions: &[HitRegion], book: &BookState) -> Option<String> {
+pub(crate) fn focused(regions: &[HitRegion], book: &BookView<'_>) -> Option<String> {
     if !book.editable {
         return None;
     }
-    let side = book.page - book.spread();
+    let side = book.page - book.spread;
     regions
         .iter()
         .filter(|region| region.kind == HitKind::EditBox)

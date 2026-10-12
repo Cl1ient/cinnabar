@@ -4,7 +4,7 @@ use json_ui::Catalog;
 
 /// Update history belongs to each custom control in the current session and pack catalog.
 #[derive(Default)]
-pub(in crate::ui_runtime::presentation) struct HungerAnimation {
+pub struct HungerAnimation {
     session: Option<u64>,
     catalog: Option<Arc<Catalog>>,
     updates: HashMap<String, (Option<u64>, u64)>,
@@ -12,11 +12,7 @@ pub(in crate::ui_runtime::presentation) struct HungerAnimation {
 
 impl HungerAnimation {
     /// A new session or catalog creates new native renderer instances.
-    pub(in crate::ui_runtime::presentation) fn begin(
-        &mut self,
-        session: u64,
-        catalog: &Arc<Catalog>,
-    ) {
+    pub fn begin(&mut self, session: u64, catalog: &Arc<Catalog>) {
         if self.session != Some(session)
             || self
                 .catalog
@@ -30,11 +26,7 @@ impl HungerAnimation {
     }
 
     /// Advance only the custom control that survived binding and paint visibility gates.
-    pub(in crate::ui_runtime::presentation) fn advance(
-        &mut self,
-        key: &str,
-        instance: Option<u64>,
-    ) -> u64 {
+    pub fn advance(&mut self, key: &str, instance: Option<u64>) -> u64 {
         let updates = &mut self.updates;
         if let Some(value) = updates.get_mut(key) {
             value.1 = if value.0 == instance {

@@ -15,7 +15,7 @@ reads = [
 ]
 
 [features]
-test-support = ["ui-engine/test-support"]
+test-support = ["ui-engine/test-support", "ui-screens/test-support"]
 tracy = []
 
 [dependencies]
@@ -39,6 +39,7 @@ protocol = { path = "../protocol" }
 semantic-input = { path = "../input" }
 ui = { path = "../ui" }
 ui-engine = { path = "../ui-engine" }
+ui-screens = { path = "../ui-screens" }
 world = { path = "../world" }
 server-experience = { path = "../server-experience" }
 image.workspace = true
@@ -56,6 +57,7 @@ resource-pack = { path = "../resource-pack" }
 
 [dev-dependencies]
 ui-engine = { path = "../ui-engine", features = ["test-support"] }
+ui-screens = { path = "../ui-screens", features = ["test-support"] }
 launcher-host = { path = "../launcher-host", features = ["test-support"] }
 test-time = { path = "../test-time" }
 tempfile = "3"

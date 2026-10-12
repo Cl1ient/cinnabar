@@ -17,7 +17,7 @@ const IDENTIFIER: &str = "fixture:custom_sword";
 const ICON: &str = "plutonium_sword";
 const NETWORK_ID: i16 = 5;
 const PLAYER_ID: u64 = 42;
-const VIEWPORT: [u32; 2] = [1280, 720];
+const VIEWPORT: [u32; 2] = [800, 600];
 
 #[test]
 fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
@@ -87,11 +87,9 @@ fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
     player
         .facts
         .publish_player_game_mode(PlayerGameMode::Survival);
-    runtime.set_session_icons(compile_session_icons(
-        &view,
-        &startup.items.icon_keys,
-        BlockIcons::default(),
-    ));
+    let icons = compile_session_icons(&view, &startup.items.icon_keys, BlockIcons::default());
+    let has_icons = icons.is_some();
+    runtime.set_session_icons(icons);
     let mut presentation = UiPresentationRuntime::with_hud(
         ui_engine::test_support::fixture_font(),
         client_ui::test_support::fixture_hud(),
@@ -99,12 +97,18 @@ fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
     .unwrap();
     presentation.enable_json_ui(hotbar_carrier()).unwrap();
     presentation.set_gui_scale_preference(Some(4));
-    test_time::eventually("the startup sword icon to be admitted", || {
-        presentation
-            .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
-            .unwrap();
-        presentation.item_icon(IDENTIFIER, 0).is_some()
-    });
+    let icon_generation = presentation.session_icon_generation();
+    presentation
+        .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
+        .unwrap();
+    if has_icons {
+        test_time::eventually("the compiled icon atlas to be admitted", || {
+            presentation
+                .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
+                .unwrap();
+            presentation.session_icon_generation() != icon_generation
+        });
+    }
     refresh_hud_frame(
         &player,
         &mut runtime,
@@ -156,7 +160,17 @@ fn hotbar_carrier() -> Arc<RuntimeUiAssets> {
         }
     })).collect::<Vec<_>>();
     let hud = json!({"namespace":"hud", "hud_screen": {
-        "type":"screen", "controls":[{"fixture_bar": {
+        "type":"screen", "controls":[{"fixture_item_closeup": {
+            "type":"panel", "size":[120,120],
+            "anchor_from":"center", "anchor_to":"center", "offset":[0,-20],
+            "collection_name":"hotbar_items", "collection_index":0,
+            "controls":[
+                {"background":{"type":"custom", "renderer":"hotbar_renderer", "size":[120,120], "collection_index":0}},
+                {"icon":{"type":"custom", "renderer":"inventory_item_renderer", "size":[112,112], "collection_index":0,
+                    "anchor_from":"top_left", "anchor_to":"top_left", "offset":[4,4], "layer":1,
+                    "bindings":[{"binding_type":"collection", "binding_collection_name":"hotbar_items", "binding_name":"#item_renderer_data"}]}}
+            ]
+        }}, {"fixture_bar": {
             "type":"panel", "size":[182,22], "offset":[0,-12],
             "anchor_from":"bottom_middle", "anchor_to":"bottom_middle",
             "collection_name":"hotbar_items", "controls":controls

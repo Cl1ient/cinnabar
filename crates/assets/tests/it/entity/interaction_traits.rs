@@ -36,7 +36,7 @@ fn fixture() -> CompiledEntityAssets {
     }
     compiled.symbols[0].identifier = "fixture:unsupported".into();
     compiled.interaction_traits = interactions::compile(&compiled.symbols);
-    compiled
+    compiled.with_unresolved_seats()
 }
 
 #[test]

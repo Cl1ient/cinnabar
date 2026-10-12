@@ -230,7 +230,12 @@ pub fn counting_random_assets() -> Arc<RuntimeEntityAssets> {
 
 /// Gives actor fixtures the same deterministic rig under their actual entity identifier.
 pub fn counting_random_assets_for(identifier: &str) -> Arc<RuntimeEntityAssets> {
-    Arc::new(RuntimeEntityAssets::from_compiled(counting_random_compiled(identifier)).unwrap())
+    Arc::new(
+        RuntimeEntityAssets::from_compiled(
+            counting_random_compiled(identifier).with_unresolved_admissions(),
+        )
+        .unwrap(),
+    )
 }
 
 /// Builds a mutable counting rig for tests that add render-controller branches.

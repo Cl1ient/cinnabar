@@ -322,6 +322,13 @@ struct EntityCatalogPayload {
 /// An encoded entity carrier payload.
 pub type EntityCarrierBlob = Box<[u8]>;
 
+impl CompiledEntityAssets {
+    /// Rebuilds the identity-keyed seat and interaction entries as unresolved from `symbols`.
+    pub fn with_unresolved_admissions(self) -> Self {
+        self.with_unresolved_seats().with_unresolved_interactions()
+    }
+}
+
 mod runtime;
 pub use runtime::RuntimeEntityAssets;
 

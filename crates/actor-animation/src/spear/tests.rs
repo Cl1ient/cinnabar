@@ -182,7 +182,7 @@ fn authored_player_spear_inputs_keep_their_own_pre_animation() {
     compiled.rig_bindings[0].render_controller = 3;
     compiled.animation_clips[0].symbol = 2;
     compiled.molang_symbols[7].identifier = "variable.melee_spear_equipped".into();
-    let assets = RuntimeEntityAssets::from_compiled(compiled).unwrap();
+    let assets = RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap();
     assert!(
         !needs_completion(&assets, 0),
         "a supplied spear pre-animation must win"

@@ -409,7 +409,11 @@ impl ActorStore {
                 .seat_bases
                 .get(identifier.as_ref())
                 .copied()
-                .unwrap_or_else(|| self.entity_assets.as_ref()?.seat_descriptor_index(identifier)),
+                .unwrap_or_else(|| {
+                    self.entity_assets
+                        .as_ref()?
+                        .seat_descriptor_index(identifier)
+                }),
             protocol::ActorKind::Player { .. } => None,
         };
         self.seat_bindings.insert(actor.runtime_id, descriptor);
@@ -442,7 +446,9 @@ impl ActorStore {
                     .get(identifier.as_ref())
                     .copied()
                     .unwrap_or_else(|| {
-                        self.entity_assets.as_ref()?.seat_descriptor_index(identifier)
+                        self.entity_assets
+                            .as_ref()?
+                            .seat_descriptor_index(identifier)
                     }),
                 protocol::ActorKind::Player { .. } => None,
             };

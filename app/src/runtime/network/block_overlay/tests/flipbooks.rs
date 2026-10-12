@@ -175,6 +175,44 @@ fn sixteen_static_atlas_indices_share_one_layer_at_the_device_limit() {
 }
 
 #[test]
+fn missing_flipbook_rasters_reuse_static_fallback_for_every_selector_at_capacity() {
+    let sources = (0..3)
+        .map(|index| {
+            serde_json::from_value::<FlipbookSource>(serde_json::json!({
+                "atlas_tile":"tile", "atlas_index":index,
+                "flipbook_texture":format!("textures/absent_{index}")
+            }))
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let keys = assets::MaterialKeys::from_entries((1..=3).map(|material| (material, "tile")))
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbooks(&sources)
+        .with_flipbook_selectors((0..3).map(|index| (index + 1, (index, 0))))
+        .with_flipbook_destinations([("tile", [1; 3])]);
+    let raster = png(16, 16, |_, _| [180, 90, 30, 255]);
+    let view = pack(&[("textures/static.png", &raster)]);
+    let catalog = super::super::textures::TextureCatalog::new(&view, Some(&keys));
+    for index in 0..3 {
+        assert!(catalog.flipbook("tile", (index, 0)).is_some());
+    }
+    let compiled =
+        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 2)
+            .unwrap();
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+    assert_eq!(compiled.gaps.saturated_textures, 0);
+    assert!(compiled.overlay.animations.is_empty());
+    assert_eq!(compiled.overlay.material_overrides.len(), sources.len());
+    let texture = compiled.overlay.material_overrides[0].texture;
+    assert_eq!(pixel(&compiled.overlay, texture), [180, 90, 30, 255]);
+    for (index, replacement) in compiled.overlay.material_overrides.iter().enumerate() {
+        assert_eq!(replacement.material, index as u32 + 1);
+        assert_eq!(replacement.texture, texture);
+        assert_eq!(replacement.animation, assets::NO_ANIMATION);
+    }
+}
+
+#[test]
 fn independent_sources_and_full_selectors_keep_distinct_replicated_frames() {
     let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/static")])

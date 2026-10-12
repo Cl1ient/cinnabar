@@ -500,34 +500,28 @@ impl Builder<'_> {
 
     /// Loads replacement frames from the selected description's independent source path.
     fn load_texture(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
-        let source = self.catalog.flipbook(key, selector);
-        // Static selectors use the same terrain raster even when the array is full.
-        if source.is_none()
+        let animated = self.catalog.flipbook(key, selector).and_then(|source| {
+            self.catalog
+                .decode_path(key, &source.texture_path)
+                .map(|texture| (texture, source))
+        });
+        // Missing animation rasters can reuse the static fallback without another layer.
+        if animated.is_none()
             && let Some(slot) = self.static_textures.get(key)
         {
             return Some(slot.clone());
         }
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
-            // A full array rejects every later route, so name it rather than
-            // leaving those textures indistinguishable from unusable pack data.
+            // A full array rejects routes needing new storage; report that
+            // separately from unusable pack data.
             self.gaps.saturated_textures += 1;
             self.catalog.report_full(key);
             return None;
         }
-        let animated = source.and_then(|source| {
-            self.catalog
-                .decode_path(key, &source.texture_path)
-                .map(|texture| (texture, source))
-        });
         let (mut texture, flipbook) = match animated {
             Some((texture, source)) => (texture, Some(source)),
-            None => {
-                if let Some(slot) = self.static_textures.get(key) {
-                    return Some(slot.clone());
-                }
-                (self.catalog.decode(key)?, None)
-            }
+            None => (self.catalog.decode(key)?, None),
         };
         let grid = self.catalog.grid(key);
         // Bound frame count before cutting copies, and shrink each to MAX_TILE.

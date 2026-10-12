@@ -7,6 +7,11 @@ use std::sync::Arc;
 use ui::mod_panel::{MAX_PANEL_BYTES, Panel, PanelBundle, PanelPatch};
 
 impl ModHost {
+    /// Returns the panel from the last successful callback.
+    pub fn panel(&self) -> Option<&Panel> {
+        self.instance.panel()
+    }
+
     /// Prepares a bounded local UI catalog once, outside component callbacks.
     pub fn set_panel_bundle(&mut self, json: &str) -> Result<()> {
         ensure!(
@@ -15,6 +20,26 @@ impl ModHost {
         );
         let bundle = PanelBundle::parse(json).map_err(anyhow::Error::msg)?;
         self.instance.set_panel_bundle(Arc::new(bundle))
+    }
+
+    /// Reports whether the retained panel is open.
+    pub fn panel_open(&self) -> bool {
+        self.instance.panel_open()
+    }
+
+    /// Changes the retained panel's open state without entering the guest.
+    pub fn set_panel_open(&mut self, open: bool) {
+        self.instance.set_panel_open(open);
+    }
+
+    /// Returns the physical keys reserved by the last successful callback.
+    pub fn reserved_keys(&self) -> &[String] {
+        self.instance.reserved_keys()
+    }
+
+    /// Consumes committed local interaction requests once.
+    pub fn take_interaction(&mut self) -> InteractionOutput {
+        self.instance.take_interaction()
     }
 }
 

@@ -1,12 +1,14 @@
 """Check artifact reuse, changed-input invalidation, and bounded cache retention."""
 
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import stat
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -259,6 +261,82 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(module.stat().st_mode), 0o555)
             self.assertFalse((source / "home/registry/src/index/serde-1.0.0").exists())
             module.chmod(0o755)
+
+
+    def test_entries_outside_their_root_are_rejected(self):
+        """A tampered archive cannot write outside the planned paths or plant links and devices."""
+        def entry(name, kind=tarfile.REGTYPE, linkname=""):
+            info = tarfile.TarInfo(name)
+            info.type, info.linkname = kind, linkname
+            return info
+
+        for bad in [
+            entry("0/../escape.txt"),
+            entry("0//absolute.txt"),
+            entry("7/unplanned.txt"),
+            entry("0/link", tarfile.SYMTYPE, "/etc/passwd"),
+            entry("0/device", tarfile.CHRTYPE),
+            entry("0/hard", tarfile.LNKTYPE, "1/elsewhere"),
+            entry("0/hard", tarfile.LNKTYPE, "0/../../outside"),
+        ]:
+            with tempfile.TemporaryDirectory() as temp:
+                root, archive = Path(temp) / "cache/target", Path(temp) / "cache.tar.gz"
+                with tarfile.open(archive, "w:gz") as tar:
+                    tar.addfile(bad, io.BytesIO(b"") if bad.isreg() else None)
+                with open(archive, "rb") as stream, self.assertRaises(tarfile.FilterError, msg=bad.name):
+                    cache.unpack([str(root), str(Path(temp) / "cache/other")], stream)
+                self.assertFalse((Path(temp) / "escape.txt").exists())
+                self.assertFalse(Path("/absolute.txt").exists())
+
+
+class ProvenanceTests(unittest.TestCase):
+    """Release jobs restore only artifacts this repository's own workflow saved on dev."""
+
+    ENV = {"GITHUB_WORKFLOW_REF": "bedrock-mc/cinnabar/.github/workflows/package.yml@refs/heads/dev",
+           "GITHUB_REPOSITORY_ID": "7", "CACHE_BRANCH": "dev"}
+
+    def run_(self, **changes):
+        run = {"event": "schedule", "head_branch": "dev", "path": ".github/workflows/package.yml",
+               "repository": {"id": 7}, "head_repository": {"id": 7}}
+        return {**run, **changes}
+
+    def select(self, runs):
+        listed = [{"id": run_id, "expired": False, "created_at": f"2026-01-0{run_id}",
+                   "workflow_run": {"id": run_id}} for run_id in runs]
+        return [artifact["id"] for artifact in cache.trusted_artifacts(listed, runs.get, self.ENV)]
+
+    def test_only_this_workflow_on_dev_from_this_repository_is_trusted(self):
+        runs = {
+            1: self.run_(),
+            2: self.run_(event="workflow_dispatch"),
+            3: self.run_(head_repository={"id": 99}),
+            4: self.run_(event="pull_request"),
+            5: self.run_(event="pull_request_target"),
+            6: self.run_(head_branch="feature"),
+            7: self.run_(path=".github/workflows/ci.yml"),
+        }
+        self.assertEqual(self.select(runs), [2, 1])
+
+    def test_listing_failures_leave_a_cold_build(self):
+        with tempfile.TemporaryDirectory() as temp:
+            env = {"CACHE_PATHS": str(Path(temp) / "target"), "CACHE_PREFIX": "bucket-",
+                   "RUNNER_TEMP": temp}
+            failure = subprocess.CalledProcessError(1, ["gh", "api"], stderr="HTTP 502")
+            with patch.object(cache, "artifacts", side_effect=failure):
+                cache.restore_artifact(env)
+
+
+class DeletionTests(unittest.TestCase):
+    """Two workflows replacing the same bucket may race to delete one entry."""
+
+    def test_already_deleted_entries_are_not_errors(self):
+        missing = subprocess.CompletedProcess(["gh"], 1, "", "gh: Not Found (HTTP 404)")
+        with patch.object(cache.subprocess, "run", return_value=missing):
+            cache.delete("repos/o/r/actions/caches/1")
+        failing = subprocess.CompletedProcess(["gh"], 1, "", "gh: Server Error (HTTP 500)")
+        with patch.object(cache.subprocess, "run", return_value=failing), \
+                self.assertRaises(subprocess.CalledProcessError):
+            cache.delete("repos/o/r/actions/caches/1")
 
 
 if __name__ == "__main__":

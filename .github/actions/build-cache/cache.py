@@ -170,11 +170,18 @@ def caches(env):
     return [entry for page in pages for entry in page["actions_caches"]]
 
 
+def delete(endpoint):
+    """Delete an API resource; another job deleting it first is not an error."""
+    result = subprocess.run(["gh", "api", "--method", "DELETE", endpoint],
+                            capture_output=True, text=True)
+    if result.returncode != 0 and "HTTP 404" not in result.stderr:
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+
+
 def delete_caches(env, ids):
     """Delete cache entries by id."""
     for cache_id in ids:
-        command("gh", "api", "--method", "DELETE",
-                f"repos/{env['GITHUB_REPOSITORY']}/actions/caches/{cache_id}")
+        delete(f"repos/{env['GITHUB_REPOSITORY']}/actions/caches/{cache_id}")
 
 
 def replaced(entries, bucket, ref):
@@ -220,60 +227,99 @@ def pack(paths, archive):
     """Archive planned paths with their exact timestamps, which Cargo freshness depends on."""
     with tarfile.open(archive, "w:gz", compresslevel=1, format=tarfile.PAX_FORMAT) as tar:
         for index, root, matches in archive_roots(paths):
+            # Hard links may only point within their own root.
+            tar.inodes.clear()
             for match in matches:
                 tar.add(match, arcname=f"{index}/{match.relative_to(root).as_posix()}")
 
 
+def cache_member(member, root):
+    """Accept files, directories and hard links inside `root`, checked as the data filter does."""
+    if not (member.isfile() or member.isdir() or member.islnk()):
+        raise tarfile.SpecialFileError(member)
+    return tarfile.data_filter(member, root)
+
+
 def unpack(paths, stream):
-    """Extract an archive from `pack` into this runner's planned locations."""
-    roots = {index: root for index, root, _ in archive_roots(paths)}
+    """Extract an archive from `pack` into this runner's planned locations.
+
+    Every entry must name a planned root and stay inside it; anything else aborts the restore.
+    """
+    roots = {str(index): root for index, root, _ in archive_roots(paths)}
     directories = []
     with tarfile.open(fileobj=stream, mode="r|gz") as tar:
         for member in tar:
             index, _, name = member.name.partition("/")
-            root = roots.get(int(index))
-            if root is None or not name:
-                continue
+            if index not in roots or not name:
+                raise tarfile.OutsideDestinationError(member, member.name)
+            root = roots[index]
             member.name = name
             if member.islnk():
                 link_index, _, link_name = member.linkname.partition("/")
-                member.linkname = str(roots[int(link_index)] / link_name)
+                if link_index != index:
+                    raise tarfile.LinkOutsideDestinationError(member, member.linkname)
+                member.linkname = link_name
             if member.isdir():
                 # Read-only directories, such as Go's module cache, get their mode last.
-                directories.append((root / name, member.mode, member.mtime))
+                directories.append((root / name, member.mode & 0o755, member.mtime))
                 member.mode |= 0o700
-            tar.extract(member, root, filter="fully_trusted")
+            tar.extract(member, root, filter=cache_member)
     for path, mode, mtime in reversed(directories):
         os.chmod(path, mode)
         os.utime(path, (mtime, mtime))
 
 
-def artifacts(env, name):
-    """List unexpired artifacts with this name from runs on the default branch, newest first."""
-    listing = json.loads(command("gh", "api",
-                                 f"repos/{env['GITHUB_REPOSITORY']}/actions/artifacts?name={name}&per_page=100"))
-    found = [artifact for artifact in listing["artifacts"] if not artifact["expired"]
-             and (artifact.get("workflow_run") or {}).get("head_branch") == env["CACHE_BRANCH"]]
+# Events that run only this repository's own code; pull request runs can come from forks.
+TRUSTED_EVENTS = {"push", "schedule", "workflow_dispatch"}
+
+
+def trusted_run(run, env):
+    """Whether this workflow saved the run's artifacts on this repository's default branch."""
+    workflow = env["GITHUB_WORKFLOW_REF"].split("@")[0].split("/", 2)[2]
+    repository = int(env["GITHUB_REPOSITORY_ID"])
+    return (run["event"] in TRUSTED_EVENTS and run["head_branch"] == env["CACHE_BRANCH"]
+            and run["path"] == workflow
+            and (run.get("repository") or {}).get("id") == repository
+            and (run.get("head_repository") or {}).get("id") == repository)
+
+
+def trusted_artifacts(listed, run_of, env):
+    """Keep unexpired artifacts whose run, looked up with `run_of`, is trusted; newest first."""
+    found = [artifact for artifact in listed if not artifact["expired"]
+             and (artifact.get("workflow_run") or {}).get("id") is not None
+             and trusted_run(run_of(artifact["workflow_run"]["id"]), env)]
     return sorted(found, key=lambda artifact: artifact["created_at"], reverse=True)
 
 
+def artifacts(env, name):
+    """List this repository's trusted artifacts with this name, newest first."""
+    repo = env["GITHUB_REPOSITORY"]
+    listing = json.loads(command("gh", "api", f"repos/{repo}/actions/artifacts?name={name}&per_page=100"))
+    return trusted_artifacts(
+        listing["artifacts"],
+        lambda run_id: json.loads(command("gh", "api", f"repos/{repo}/actions/runs/{run_id}")),
+        env,
+    )
+
+
 def restore_artifact(env):
-    """Restore the newest saved artifact; a missing or broken one leaves a cold build."""
+    """Restore the newest trusted artifact; a missing or broken one, or an API error, leaves a cold build."""
     paths = env["CACHE_PATHS"].splitlines()
     name = env["CACHE_PREFIX"].rstrip("-")
-    found = artifacts(env, name)
-    if not found:
-        print(f"No artifact named {name}; building without a cache")
-        return
     download = Path(env["RUNNER_TEMP"]) / f"{name}.zip"
     try:
+        found = artifacts(env, name)
+        if not found:
+            print(f"No trusted artifact named {name}; building without a cache")
+            return
         with open(download, "wb") as output:
             subprocess.run(["gh", "api", f"repos/{env['GITHUB_REPOSITORY']}/actions/artifacts/"
                             f"{found[0]['id']}/zip"], stdout=output, check=True)
         with zipfile.ZipFile(download) as zipped, zipped.open(zipped.namelist()[0]) as stream:
             unpack(paths, stream)
         print(f"Restored artifact {found[0]['id']} ({found[0]['size_in_bytes']} bytes) for {name}")
-    except (OSError, subprocess.CalledProcessError, tarfile.TarError, zipfile.BadZipFile) as error:
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError, tarfile.TarError,
+            zipfile.BadZipFile) as error:
         # A partial extraction could pair fresh fingerprints with truncated outputs.
         for _, _, matches in archive_roots(paths):
             for match in matches:
@@ -305,8 +351,7 @@ def prune_artifacts(env):
     name, keep = env["CACHE_PREFIX"].rstrip("-"), int(env["CACHE_ARTIFACT_ID"])
     for artifact in artifacts(env, name):
         if artifact["id"] != keep:
-            command("gh", "api", "--method", "DELETE",
-                    f"repos/{env['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}")
+            delete(f"repos/{env['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}")
 
 
 def main():

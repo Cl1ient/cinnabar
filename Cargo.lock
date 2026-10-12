@@ -7665,11 +7665,13 @@ dependencies = [
  "launcher",
  "player-state",
  "protocol",
+ "render-model",
  "resource-pack",
  "serde_json",
  "tracing",
  "ui",
  "ui-engine",
+ "url",
 ]
 
 [[package]]

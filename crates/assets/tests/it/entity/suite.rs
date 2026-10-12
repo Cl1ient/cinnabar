@@ -86,6 +86,50 @@ pub(super) fn fixture() -> CompiledEntityAssets {
 mod geometry_fixture;
 use geometry_fixture::{geometry_fixture, scalar};
 
+/// Builds a derived geometry with a retained parent for inheritance tests.
+pub(super) fn inherited_geometry_fixture() -> CompiledEntityAssets {
+    let mut compiled = geometry_fixture();
+    compiled.sources = vec![
+        compiled.sources[0].clone(),
+        compiled.sources[1].clone(),
+        EntityAssetSource {
+            path: "models/entity/z_derived.geo.json".into(),
+            source_bytes: 1,
+            source_sha256: [0x77; 32],
+        },
+    ]
+    .into_boxed_slice();
+    compiled.symbols = vec![
+        compiled.symbols[0].clone(),
+        compiled.symbols[1].clone(),
+        EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
+            kind: EntityAssetKind::Geometry,
+            identifier: "geometry.derived".into(),
+            source_index: 2,
+            dependencies: Box::new([]),
+        },
+    ]
+    .into_boxed_slice();
+    compiled.geometries = vec![
+        compiled.geometries[0].clone(),
+        EntityGeometry {
+            visible_bounds: None,
+            identifier: "geometry.derived".into(),
+            inherits: Some(EntityGeometryInheritance {
+                identifier: "geometry.allay".into(),
+                resolution: EntityDependencyResolution::Catalog,
+            }),
+            source_index: 2,
+            texture_width: 32,
+            texture_height: 32,
+            bones: Box::new([]),
+        },
+    ]
+    .into_boxed_slice();
+    compiled
+}
+
 #[test]
 fn entity_carrier_round_trips_sparse_per_face_uvs() {
     let mut compiled = geometry_fixture();

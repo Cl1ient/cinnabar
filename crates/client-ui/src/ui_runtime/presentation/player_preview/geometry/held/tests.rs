@@ -21,7 +21,7 @@ fn grip_snapshot(mesh: &ui::UiMesh) -> render_model::UiRenderInput {
             clip_w: vertex.clip_w,
             uv: vertex.uv,
             color: vertex.color,
-            style_flags: vertex.style_flags,
+            style_flags: u32::from(vertex.style_flags),
             alpha_cutoff: 0.5,
             model_light: vertex.model_light,
             overlay_color: vertex.overlay_color,
@@ -312,7 +312,7 @@ fn held_glint_overrides_preserve_geometry_and_reach_both_hands() {
             &mesh.vertices()[batch.index_range.start as usize..batch.index_range.end as usize];
         assert!(
             vertices.iter().all(
-                |vertex| (vertex.style_flags & u32::from(ui::UI_STYLE_GLINT) != 0) == expected
+                |vertex| (vertex.style_flags & u16::from(ui::UI_STYLE_GLINT) != 0) == expected
             )
         );
     }

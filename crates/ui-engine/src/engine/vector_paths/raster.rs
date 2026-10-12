@@ -13,7 +13,7 @@ pub(super) struct Domain {
 }
 
 impl Domain {
-    /// Rejects excessive resolution or sample/segment work without silently coarsening the grid.
+    /// Rejects excessive resolution or coverage work without silently coarsening the grid.
     pub(super) fn new(coverage: &Coverage) -> Option<Self> {
         let (min, max) = coverage.raster_bounds()?;
         let extent = [max[0] - min[0], max[1] - min[1]];
@@ -35,7 +35,7 @@ impl Domain {
         let cells = requested.map(|value| value.max(1.0) as usize);
         let work = (cells[0] + 1)
             .checked_mul(cells[1] + 1)?
-            .checked_mul(coverage.segment_count())?;
+            .checked_mul(coverage.sample_work())?;
         if work > MAX_COVERAGE_WORK {
             return None;
         }

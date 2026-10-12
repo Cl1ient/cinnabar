@@ -192,11 +192,12 @@ fn append(
                 model_light,
                 overlay_color: [0.0; 4],
                 style_flags: if icon.glint {
-                    u32::from(UI_STYLE_GLINT)
+                    u16::from(UI_STYLE_GLINT)
                 } else {
                     0
                 } | if tint.is_some() {
-                    render_model::UI_STYLE_COLOR_MASK
+                    u16::try_from(render_model::UI_STYLE_COLOR_MASK)
+                        .expect("model style fits UI flags")
                 } else {
                     0
                 },

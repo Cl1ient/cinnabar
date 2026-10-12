@@ -1,5 +1,6 @@
 use super::*;
 
+/// Builds an authored rounded paint fixture in a fixed logical box.
 fn key(color: [u8; 4], end_color: [u8; 4], border: f32, border_color: [u8; 4]) -> Key {
     Key {
         width: 40f32.to_bits(),
@@ -44,16 +45,32 @@ fn rounded_geometry_cache_evicts_only_the_coldest_entry() {
     }));
 }
 
-/// Opaque vertices as (pixel position, color).
+/// Returns the vertex's visible straight color after evaluating its coverage paint.
+fn painted_color(vertex: &ui::UiMeshVertex) -> Option<[u8; 4]> {
+    let paint =
+        render_model::UiCoveragePaint::from_vertex_colors(vertex.color, vertex.overlay_color);
+    let sample = paint.sample(vertex.uv[0], [vertex.uv[1], vertex.model_light]);
+    (sample[3] > 0.0).then(|| {
+        [
+            (sample[0] / sample[3] * 255.0).round() as u8,
+            (sample[1] / sample[3] * 255.0).round() as u8,
+            (sample[2] / sample[3] * 255.0).round() as u8,
+            (sample[3] * 255.0).round() as u8,
+        ]
+    })
+}
+
+/// Visible vertices as logical pixel positions and evaluated colors.
 fn solid(mesh: &UiMesh) -> Vec<([f32; 2], [u8; 4])> {
     mesh.vertices()
         .iter()
-        .filter(|vertex| vertex.color[3] != 0)
-        .map(|vertex| {
-            (
-                [vertex.position[0] * 40.0, vertex.position[1] * 20.0],
-                vertex.color,
-            )
+        .filter_map(|vertex| {
+            painted_color(vertex).map(|color| {
+                (
+                    [vertex.position[0] * 40.0, vertex.position[1] * 20.0],
+                    color,
+                )
+            })
         })
         .collect()
 }
@@ -91,6 +108,7 @@ fn vertical_gradient_runs_from_top_to_bottom() {
     assert!(left[0] < 10);
 }
 
+/// Builds the fixture mesh without involving cached geometry.
 fn mesh_of(key: Key) -> UiMesh {
     mesh(key).unwrap()
 }
@@ -119,7 +137,7 @@ fn border_occupies_the_edge_and_the_fill_stays_inside_it() {
     assert!(
         mesh.vertices()
             .iter()
-            .any(|vertex| vertex.color == [255, 255, 255, 0]),
+            .any(|vertex| painted_color(vertex).is_none()),
         "the border's outer edge is antialiased"
     );
     let square = Key {

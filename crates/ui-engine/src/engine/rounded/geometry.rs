@@ -141,40 +141,6 @@ impl Shape {
     }
 }
 
-/// Encodes area contributions as straight tint; the shader premultiplies before interpolation.
-fn covered_color(fill: [u8; 4], border: [u8; 4], [fill_area, border_area]: [f32; 2]) -> [u8; 4] {
-    let fill_alpha = f32::from(fill[3]) * fill_area;
-    let border_alpha = f32::from(border[3]) * border_area;
-    let alpha = fill_alpha + border_alpha;
-    if alpha <= 0.0 {
-        let mut color = if border_area > 0.0 || fill_area == 0.0 {
-            border
-        } else {
-            fill
-        };
-        color[3] = 0;
-        return color;
-    }
-    let mut color = std::array::from_fn(|channel| {
-        ((f32::from(fill[channel]) * fill_alpha + f32::from(border[channel]) * border_alpha)
-            / alpha)
-            .round() as u8
-    });
-    color[3] = alpha.round() as u8;
-    color
-}
-
-/// Linear authored gradients stay in their original box, including coverage outside its edge.
-fn fill_color(key: Key, point: [f32; 2], size: [f32; 2]) -> [u8; 4] {
-    let axis = usize::from(!key.horizontal);
-    let amount = (point[axis] / size[axis]).clamp(0.0, 1.0);
-    std::array::from_fn(|channel| {
-        (f32::from(key.color[channel])
-            + (f32::from(key.end_color[channel]) - f32::from(key.color[channel])) * amount)
-            .round() as u8
-    })
-}
-
 /// Builds a single bounded, non-overlapping mesh whose edge coverage is independent of border width.
 pub(super) fn mesh(key: Key) -> Option<UiMesh> {
     let [width, height, radius, fringe, border] =
@@ -189,22 +155,23 @@ pub(super) fn mesh(key: Key) -> Option<UiMesh> {
     let rings = shape.rings();
     let steps = shape.corner_steps();
     let count = 4 * (steps + 1);
+    let paint = render_model::UiCoveragePaint {
+        fill: [key.color, key.end_color],
+        border: key.border_color,
+    };
+    let (color, overlay_color) = paint.vertex_colors();
+    let axis = usize::from(!key.horizontal);
     let vertex = |point: [f32; 2], inset: f32| {
-        let fill = fill_color(key, point, [width, height]);
-        let border = if shape.border > 0.0 {
-            key.border_color
-        } else {
-            fill
-        };
+        let [fill_area, border_area] = shape.coverage_at(point, inset);
         UiMeshVertex {
             position: [point[0] / width, point[1] / height],
             clip_z: 0.0,
             clip_w: 1.0,
-            uv: [0.0; 2],
-            color: covered_color(fill, border, shape.coverage_at(point, inset)),
-            model_light: 1.0,
-            overlay_color: [0.0; 4],
-            style_flags: render_model::UI_STYLE_ALPHA_WEIGHTED_TINT,
+            uv: [point[axis] / [width, height][axis], fill_area],
+            color,
+            model_light: border_area,
+            overlay_color,
+            style_flags: render_model::UI_STYLE_COVERAGE_PAINT,
             alpha_test: false,
         }
     };

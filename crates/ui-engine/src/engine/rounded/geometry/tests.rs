@@ -46,27 +46,32 @@ fn sample_color(mesh: &UiMesh, size: [f32; 2], point: [f32; 2]) -> [f32; 4] {
             edge(a, b, point) / area,
         ];
         if weights.iter().all(|weight| *weight >= -0.00001) {
-            let weighted = corners[0].style_flags & render_model::UI_STYLE_ALPHA_WEIGHTED_TINT != 0;
-            let mut color: [f32; 4] = std::array::from_fn(|channel| {
-                weights
+            let interpolate = |values: [f32; 3]| {
+                values
                     .into_iter()
-                    .zip(corners)
-                    .map(|(weight, vertex)| {
-                        let value = f32::from(vertex.color[channel]) / 255.0;
-                        let alpha = if weighted && channel < 3 {
-                            f32::from(vertex.color[3]) / 255.0
-                        } else {
-                            1.0
-                        };
-                        weight * value * alpha
-                    })
-                    .sum()
+                    .zip(weights)
+                    .map(|(value, weight)| value * weight)
+                    .sum::<f32>()
+            };
+            if corners[0].style_flags & render_model::UI_STYLE_COVERAGE_PAINT != 0 {
+                let paint = render_model::UiCoveragePaint::from_vertex_colors(
+                    corners[0].color,
+                    corners[0].overlay_color,
+                );
+                return paint.sample(
+                    interpolate(corners.map(|vertex| vertex.uv[0])),
+                    [
+                        interpolate(corners.map(|vertex| vertex.uv[1])),
+                        interpolate(corners.map(|vertex| vertex.model_light)),
+                    ],
+                );
+            }
+            let mut color: [f32; 4] = std::array::from_fn(|channel| {
+                interpolate(corners.map(|vertex| f32::from(vertex.color[channel]) / 255.0))
             });
-            if !weighted {
-                let alpha = color[3];
-                for value in &mut color[..3] {
-                    *value *= alpha;
-                }
+            let alpha = color[3];
+            for value in &mut color[..3] {
+                *value *= alpha;
             }
             return color;
         }
@@ -167,13 +172,17 @@ fn square_edges_and_tiny_rectangles_have_visible_coverage_rings() {
         ..key(10.0, 0.25, 0.0, 0.0, 1.0)
     })
     .unwrap();
-    assert_eq!(mesh.vertices()[0].color[3], 64);
+    assert_eq!(sample_alpha(&mesh, [10.0, 0.25], [5.0, 0.125]), 64);
     assert!(
         mesh.vertices()
             .iter()
             .any(|vertex| vertex.position[1] < 0.0)
     );
-    assert!(mesh.vertices().iter().any(|vertex| vertex.color[3] == 0));
+    assert!(mesh.vertices().iter().any(|vertex| {
+        render_model::UiCoveragePaint::from_vertex_colors(vertex.color, vertex.overlay_color)
+            .sample(vertex.uv[0], [vertex.uv[1], vertex.model_light])[3]
+            == 0.0
+    }));
 }
 
 /// Subpixel borders distribute their authored width across the full coverage band.
@@ -196,20 +205,20 @@ fn a_hairline_has_independent_outer_and_inner_antialiasing() {
 /// One combined seam uses area-weighted alpha rather than painting a border over a fill.
 #[test]
 fn translucent_border_and_fill_do_not_double_blend_at_the_seam() {
+    let paint = render_model::UiCoveragePaint {
+        fill: [[0, 0, 255, 64]; 2],
+        border: [255; 4],
+    };
     assert_eq!(
-        covered_color([0, 0, 255, 64], [255; 4], [0.25, 0.25]),
-        [204, 204, 255, 80]
+        paint.sample(0.0, [0.25, 0.25]),
+        [0.25, 0.25, 0.25 + 16.0 / 255.0, 0.25 + 16.0 / 255.0]
     );
     let key = key(40.0, 20.0, 6.0, 2.0, 1.0);
     let shape = shape(40.0, 20.0, 6.0, 2.0, 1.0);
     assert_eq!(shape.coverage(2.0), [0.5, 0.5]);
-    assert_eq!(
-        covered_color(key.color, key.border_color, shape.coverage(2.0))[3],
-        160
-    );
     let mesh = mesh(key).unwrap();
-    assert_eq!(mesh.vertices()[0].color, key.color);
-    assert!(mesh.vertices().iter().any(|vertex| vertex.color[3] == 160));
+    assert_eq!(sample_alpha(&mesh, [40.0, 20.0], [20.0, 2.0]), 160);
+    assert_eq!(sample_alpha(&mesh, [40.0, 20.0], [20.0, 10.0]), 64);
 }
 
 /// Larger display radii receive more arc samples while work remains bounded.
@@ -236,13 +245,52 @@ fn corner_tessellation_tracks_physical_radius() {
 fn full_width_border_and_gradients_preserve_authored_colors() {
     let shape = shape(10.0, 6.0, 3.0, 3.0, 1.0);
     assert_eq!(shape.coverage(3.0), [0.0, 1.0]);
+    let border = mesh(key(10.0, 6.0, 3.0, 3.0, 1.0)).unwrap();
+    assert_eq!(sample_color(&border, [10.0, 6.0], [5.0, 3.0]), [1.0; 4]);
     let mut key = key(40.0, 20.0, 6.0, 0.0, 1.0);
     key.color = [10, 20, 30, 64];
     key.end_color = [110, 120, 130, 128];
-    assert_eq!(
-        fill_color(key, [20.0, 10.0], [40.0, 20.0]),
-        [60, 70, 80, 96]
-    );
-    assert_eq!(fill_color(key, [0.0, -0.5], [40.0, 20.0]), key.color);
-    assert_eq!(mesh(key).unwrap().vertices()[0].color, [60, 70, 80, 96]);
+    let mesh = mesh(key).unwrap();
+    let center = sample_color(&mesh, [40.0, 20.0], [20.0, 10.0]);
+    for (actual, expected) in center.into_iter().zip([
+        60.0 / 255.0 * 96.0 / 255.0,
+        70.0 / 255.0 * 96.0 / 255.0,
+        80.0 / 255.0 * 96.0 / 255.0,
+        96.0 / 255.0,
+    ]) {
+        assert!((actual - expected).abs() < 0.00001);
+    }
+}
+
+/// Fill RGBA depends only on the authored gradient axis, including when the alpha varies.
+#[test]
+fn fill_gradient_is_independent_of_triangle_topology() {
+    for border in [0.0, 2.125] {
+        for dpi in [1.0, 1.5, 2.0] {
+            for horizontal in [false, true] {
+                let key = Key {
+                    color: [255, 0, 0, 255],
+                    end_color: [0, 0, 255, 0],
+                    horizontal,
+                    ..key(40.0, 20.0, 6.0, border, coverage_width(dpi))
+                };
+                let mesh = mesh(key).unwrap();
+                let points = if horizontal {
+                    [[30.0, 5.0], [30.0, 10.0], [30.0, 15.0]]
+                } else {
+                    [[5.0, 15.0], [20.0, 15.0], [35.0, 15.0]]
+                };
+                for point in points {
+                    let color = sample_color(&mesh, [40.0, 20.0], point);
+                    let expected = [0.0625, 0.0, 0.1875, 0.25];
+                    for (actual, expected) in color.into_iter().zip(expected) {
+                        assert!(
+                            (actual - expected).abs() < 0.00001,
+                            "at {point:?}: {color:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

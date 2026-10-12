@@ -321,14 +321,14 @@ fn equipment_batches_keep_source_pages_tint_and_shared_model_depth() {
         model.vertices()[armor_range.start as usize..armor_range.end as usize]
             .iter()
             .all(|vertex| vertex.color == [110, 70, 200, 255]
-                && vertex.style_flags & render_model::UI_STYLE_COLOR_MASK != 0)
+                && u32::from(vertex.style_flags) & render_model::UI_STYLE_COLOR_MASK != 0)
     );
     let held_range = &model.batches()[2].index_range;
     assert_eq!(model.batches()[2].texture_page, held.page);
     assert!(
         model.vertices()[held_range.start as usize..held_range.end as usize]
             .iter()
-            .all(|vertex| vertex.style_flags == u32::from(UI_STYLE_GLINT))
+            .all(|vertex| vertex.style_flags == u16::from(UI_STYLE_GLINT))
     );
     assert!(
         model

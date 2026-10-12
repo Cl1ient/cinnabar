@@ -164,6 +164,93 @@ fn coverage_width_stays_one_physical_pixel_at_fractional_dpi() {
     }
 }
 
+/// Both boundaries limit the peak alpha, including horizontal details and corners at fractional DPI.
+#[test]
+fn thin_filled_contours_have_width_limited_pixel_coverage() {
+    for dpi in [1.0, 1.5, 2.0] {
+        for width in [0.5, 0.25, 0.0625, 0.001] {
+            let logical_width = width / dpi;
+            for horizontal in [false, true] {
+                let points = [
+                    [8.0, 0.0],
+                    [8.0 + logical_width, 0.0],
+                    [8.0 + logical_width, 16.0],
+                    [8.0, 16.0],
+                ];
+                let points = points.map(|point| {
+                    if horizontal {
+                        [point[1], point[0]]
+                    } else {
+                        point
+                    }
+                });
+                let mut path = key(json!([points]), None, 16.0, dpi);
+                path.color = [255; 4];
+                let coverage = Coverage::new(&path).unwrap();
+                let point = |along: f32| {
+                    let narrow = 8.0 + logical_width * 0.5;
+                    if horizontal {
+                        [along, narrow]
+                    } else {
+                        [narrow, along]
+                    }
+                };
+                assert!((coverage.at(point(8.0)) - width).abs() < 0.00001);
+                assert!((coverage.at(point(0.0)) - width * 0.5).abs() < 0.00001);
+                let mesh = mesh(&path);
+                if width * 255.0 < 0.5 {
+                    assert!(
+                        mesh.is_none(),
+                        "sub-byte coverage disappears after alpha quantization"
+                    );
+                    continue;
+                }
+                let mesh = mesh.unwrap();
+                let peak = mesh
+                    .vertices()
+                    .iter()
+                    .map(|vertex| vertex.color[3])
+                    .max()
+                    .unwrap();
+                assert!(peak > 0);
+                assert!(f32::from(peak) <= (width * 255.0).round() + 1.0);
+            }
+        }
+    }
+}
+
+/// Pixel coverage combines both sides of a narrow hole without filling its geometric interior.
+#[test]
+fn thin_holes_preserve_the_two_visible_pixel_portions() {
+    let path = key(
+        json!([
+            [[0, 0], [16, 0], [16, 16], [0, 16]],
+            [[8, 2], [8.25, 2], [8.25, 14], [8, 14]],
+        ]),
+        None,
+        16.0,
+        1.0,
+    );
+    let coverage = Coverage::new(&path).unwrap();
+    assert_eq!(coverage.at([8.125, 8.0]), 0.75);
+    assert_eq!(coverage.at([7.5, 8.0]), 1.0);
+}
+
+/// Crossing contours keep even-odd area rather than depending on boundary ordering within a pixel.
+#[test]
+fn self_intersections_split_pixel_coverage_into_disjoint_areas() {
+    let path = key(
+        json!([[[0, 0], [16, 16], [0, 16], [16, 0]]]),
+        None,
+        16.0,
+        1.0,
+    );
+    let coverage = Coverage::new(&path).unwrap();
+    assert_eq!(coverage.at([8.0; 2]), 0.5);
+    assert_eq!(coverage.at([8.0, 4.0]), 1.0);
+    assert_eq!(coverage.at([4.0, 8.0]), 0.0);
+}
+
 #[test]
 fn malformed_or_unbounded_authored_paths_are_rejected() {
     let base = json!({"view_box": [0, 0, 16, 16], "paths": [[[0, 0], [16, 0], [16, 16]]]});
@@ -336,7 +423,7 @@ fn raster_work_and_expanded_geometry_have_independent_limits() {
         .collect();
     let expensive = key(json!([points]), Some(1.0), 32.0, 1.0);
     let coverage = Coverage::new(&expensive).unwrap();
-    assert_eq!(coverage.segment_count(), MAX_POINTS - 1);
+    assert_eq!(coverage.sample_work(), MAX_POINTS - 1);
     assert!(Domain::new(&coverage).is_none());
     assert!(mesh(&expensive).is_none());
     let square = json!([[[0, 0], [16, 0], [16, 16], [0, 16]]]);

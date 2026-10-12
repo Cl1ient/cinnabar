@@ -30,9 +30,9 @@ pub struct UiRenderVertex {
     pub style_flags: u32,
     /// Negative disables explicit model-material sampled alpha testing.
     pub alpha_cutoff: f32,
-    /// Native linear model lighting, interpolated without byte-color quantization.
+    /// Native linear lighting, or border area for coverage paint, without byte quantization.
     pub model_light: f32,
-    /// Native entity overlay RGB and its mix amount, without byte quantization.
+    /// Entity overlay RGB and mix amount, or the coverage paint's packed constant colors.
     pub overlay_color: [f32; 4],
 }
 
@@ -70,8 +70,6 @@ pub const UI_STYLE_GLINT: u32 = 1 << 1;
 pub const UI_STYLE_ALPHA_TEST: u32 = 1 << 4;
 /// Texture alpha weights dye color; every surviving sampled texel is opaque.
 pub const UI_STYLE_COLOR_MASK: u32 = 1 << 7;
-/// Premultiply the authored tint before interpolation, then recover straight RGB for shading.
-pub const UI_STYLE_ALPHA_WEIGHTED_TINT: u32 = 1 << 8;
 
 #[cfg(test)]
 mod style_tests {

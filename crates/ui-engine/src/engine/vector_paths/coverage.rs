@@ -1,6 +1,9 @@
-//! Pretransformed segment bounds and single-sample silhouette coverage.
+//! Prepared fill-area coverage and pretransformed stroke distance bounds.
 
 use super::Key;
+
+mod fill;
+use fill::Fill;
 
 struct Segment {
     a: [f32; 2],
@@ -55,12 +58,6 @@ impl Segment {
         delta[0] * delta[0] + delta[1] * delta[1]
     }
 
-    /// Whether the horizontal parity ray crosses this segment.
-    fn crosses(&self, point: [f32; 2]) -> bool {
-        (self.a[1] > point[1]) != (self.b[1] > point[1])
-            && point[0] < self.a[0] + ((point[1] - self.a[1]) / self.delta[1]) * self.delta[0]
-    }
-
     /// Tests an authored point against the exact line, without merging nearby outlines.
     fn collinear(&self, point: [f32; 2]) -> bool {
         let delta = std::array::from_fn::<_, 2, _>(|axis| {
@@ -105,6 +102,7 @@ pub(super) struct Coverage {
     segments: Vec<Segment>,
     bounds: Option<([f32; 2], [f32; 2])>,
     half_stroke: Option<f32>,
+    fill: Option<Fill>,
     pub(super) pixel: f32,
 }
 
@@ -163,17 +161,25 @@ impl Coverage {
             })
             .collect::<Option<_>>()?;
         let bounds = (!segments.is_empty()).then_some((min, max));
+        let fill = if half_stroke.is_none() {
+            Some(Fill::new(&segments, pixel)?)
+        } else {
+            None
+        };
         Some(Self {
             segments,
             bounds,
             half_stroke,
+            fill,
             pixel,
         })
     }
 
-    /// Raster work is admitted against every segment, even when bounds reject most candidates.
-    pub(super) fn segment_count(&self) -> usize {
-        self.segments.len()
+    /// Bounds segment work per sample for strokes or prepared fill spans.
+    pub(super) fn sample_work(&self) -> usize {
+        self.fill
+            .as_ref()
+            .map_or(self.segments.len(), Fill::sample_work)
     }
 
     /// Includes round caps, outside-view-box points, and half a physical pixel of coverage support.
@@ -186,27 +192,21 @@ impl Coverage {
         ))
     }
 
-    /// Covers each silhouette once, including holes, overlapping strokes and rounded joins.
+    /// Integrates each filled silhouette over one pixel, or softens the union of rounded strokes.
     pub(super) fn at(&self, point: [f32; 2]) -> f32 {
-        let limit = self.half_stroke.unwrap_or(0.0) + self.pixel * 0.5;
+        if let Some(fill) = &self.fill {
+            return fill.at(&self.segments, point, self.pixel);
+        }
+        let width = self.half_stroke.unwrap_or(0.0);
+        let limit = width + self.pixel * 0.5;
         let mut distance_squared = limit * limit;
-        let mut inside = false;
         for segment in &self.segments {
-            if self.half_stroke.is_none() && segment.crosses(point) {
-                inside = !inside;
-            }
             if segment.candidate(point, distance_squared) {
                 distance_squared = distance_squared.min(segment.distance_squared(point));
             }
         }
-        let distance = distance_squared.sqrt();
-        let signed = self.half_stroke.map_or_else(
-            || if inside { distance } else { -distance },
-            |width| width - distance,
-        );
-        let coverage = (0.5 + signed / self.pixel).clamp(0.0, 1.0);
-        self.half_stroke.map_or(coverage, |width| {
-            coverage.min((2.0 * width / self.pixel).min(1.0))
-        })
+        (0.5 + (width - distance_squared.sqrt()) / self.pixel)
+            .clamp(0.0, 1.0)
+            .min((2.0 * width / self.pixel).min(1.0))
     }
 }

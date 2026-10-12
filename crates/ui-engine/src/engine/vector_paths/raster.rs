@@ -51,7 +51,34 @@ impl Domain {
     }
 }
 
-/// Samples admitted coverage and stores only vertices referenced by visible cells.
+/// Extends a fully covered run while keeping every changing coverage cell on the original grid.
+fn covered_run(
+    samples: &[u8],
+    stride: usize,
+    x: usize,
+    y: usize,
+    width: usize,
+    alpha: u8,
+) -> usize {
+    let start = y * stride + x;
+    if alpha == 0
+        || [start, start + 1, start + stride, start + stride + 1]
+            .into_iter()
+            .any(|index| samples[index] != alpha)
+    {
+        return x + 1;
+    }
+    let mut end = x + 1;
+    while end < width
+        && samples[y * stride + end + 1] == alpha
+        && samples[(y + 1) * stride + end + 1] == alpha
+    {
+        end += 1;
+    }
+    end
+}
+
+/// Packs constant interior runs into quads while preserving the half-pixel antialiased edges.
 pub(super) fn mesh(key: &Key) -> Option<UiMesh> {
     let size = key.size.map(f32::from_bits);
     let coverage = Coverage::new(key)?;
@@ -68,12 +95,21 @@ pub(super) fn mesh(key: &Key) -> Option<UiMesh> {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
     for y in 0..height {
-        for x in 0..width {
+        let mut x = 0;
+        while x < width {
             let a = y * (width + 1) + x;
             let corners = [a, a + 1, a + width + 1, a + width + 2];
             if corners.iter().all(|&index| samples[index] == 0) {
+                x += 1;
                 continue;
             }
+            let end = covered_run(&samples, width + 1, x, y, width, key.color[3]);
+            let corners = [
+                a,
+                y * (width + 1) + end,
+                a + width + 1,
+                (y + 1) * (width + 1) + end,
+            ];
             if indices.len() + 6 > MAX_MESH_INDICES {
                 return None;
             }
@@ -106,6 +142,7 @@ pub(super) fn mesh(key: &Key) -> Option<UiMesh> {
                 referenced[3],
                 referenced[2],
             ]);
+            x = end;
         }
     }
     if indices.is_empty() {
@@ -126,3 +163,6 @@ pub(super) fn mesh(key: &Key) -> Option<UiMesh> {
     )
     .ok()
 }
+
+#[cfg(test)]
+mod tests;

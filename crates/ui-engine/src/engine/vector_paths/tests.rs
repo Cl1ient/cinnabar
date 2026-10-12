@@ -221,9 +221,18 @@ fn raster_work_and_expanded_geometry_have_independent_limits() {
     let square = json!([[[0, 0], [16, 0], [16, 16], [0, 16]]]);
     let dense = key(square.clone(), None, 80.0, 1.0);
     assert!(Domain::new(&Coverage::new(&dense).unwrap()).is_some());
+    assert!(mesh(&dense).unwrap().indices().len() <= MAX_MESH_INDICES);
+    let stripes: Vec<_> = (0..16)
+        .map(|index| {
+            let y = index as f32;
+            [[0.0, y], [16.0, y], [16.0, y + 0.5], [0.0, y + 0.5]]
+        })
+        .collect();
+    let detailed = key(json!(stripes), None, 80.0, 1.0);
+    assert!(Domain::new(&Coverage::new(&detailed).unwrap()).is_some());
     assert!(
-        mesh(&dense).is_none(),
-        "expanded indices exceed the per-mesh budget"
+        mesh(&detailed).is_none(),
+        "varying edge cells still respect the expanded-index budget"
     );
     let admitted = key(square, None, 30.0, 1.0);
     assert!(mesh(&admitted).unwrap().indices().len() <= MAX_MESH_INDICES);

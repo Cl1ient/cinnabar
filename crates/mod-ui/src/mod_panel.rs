@@ -152,21 +152,11 @@ impl ModUi {
         if !open {
             self.cancel_mod_hud_editor();
         }
-        if let Some(panel) = self.mod_panel.as_mut().filter(|panel| panel.open != open) {
-            panel.open = open;
-            if !open {
-                let reset_feedback = panel.motion.needs_feedback_reset();
-                panel.cancel_edit();
-                panel.frame = None;
-                panel.drag = None;
-                panel.vector_drag = None;
-                panel.scroll_drag = None;
-                panel.view = ViewState::default();
-                panel.motion = motion::PanelMotion::default();
-                panel.pointer = None;
-                if reset_feedback {
-                    panel.refresh_data();
-                }
+        if let Some(panel) = self.mod_panel.as_mut() {
+            if open {
+                panel.open = true;
+            } else {
+                panel.close();
             }
         }
     }
@@ -222,7 +212,7 @@ impl ModUi {
             return;
         };
         let Some(renderer) = engine else {
-            panel.open = false;
+            panel.close();
             return;
         };
         let content = paint_frame.content;
@@ -244,13 +234,7 @@ impl ModUi {
         if viewport[0] < 120.0
             || viewport[1] - layout::top_offset(viewport) - 12.0 < CHROME_HEIGHT + ROW_HEIGHT + 8.0
         {
-            panel.cancel_edit();
-            panel.frame = None;
-            panel.open = false;
-            panel.drag = None;
-            panel.vector_drag = None;
-            panel.scroll_drag = None;
-            panel.pointer = None;
+            panel.close();
             return;
         }
         let rows = (((viewport[1] - layout::top_offset(viewport) - CHROME_HEIGHT - 12.0)
@@ -285,7 +269,7 @@ impl ModUi {
                     panel.screen = CachedScreen::default();
                 }
                 Err(error) => {
-                    panel.open = false;
+                    panel.close();
                     tracing::warn!(%error, "personal extension panel rejected");
                     return;
                 }
@@ -364,15 +348,31 @@ impl ModUi {
 fn out_of_render(panel: &mut ModPanel, paint_frame: &mut PaintFrame<'_>, rollback: (usize, u32)) {
     paint_frame.nodes.truncate(rollback.0);
     *paint_frame.next = rollback.1;
-    panel.cancel_edit();
-    panel.frame = None;
-    panel.drag = None;
-    panel.scroll_drag = None;
-    panel.open = false;
-    panel.pointer = None;
+    panel.close();
 }
 
 impl ModPanel {
+    /// Closes an open panel once, clearing input, scroll state, and animated feedback.
+    fn close(&mut self) {
+        if !self.open {
+            return;
+        }
+        let reset_feedback = self.motion.needs_feedback_reset();
+        self.open = false;
+        self.cancel_edit();
+        self.frame = None;
+        self.drag = None;
+        self.vector_drag = None;
+        self.scroll_drag = None;
+        self.view = ViewState::default();
+        self.motion = motion::PanelMotion::default();
+        self.pointer = None;
+        self.held = false;
+        if reset_feedback {
+            self.refresh_data();
+        }
+    }
+
     /// Publishes typed control values and host viewport dimensions together.
     fn refresh_data(&mut self) {
         let mut data = control_data(&self.panel);

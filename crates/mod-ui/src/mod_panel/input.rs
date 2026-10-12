@@ -130,9 +130,7 @@ impl ModPanel {
         }
         match action {
             Some("mod.close") => {
-                self.open = false;
-                self.frame = None;
-                self.cancel_pointer_input();
+                self.close();
                 return Vec::new();
             }
             Some("mod.prev") | Some("mod.next") => {

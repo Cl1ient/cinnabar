@@ -7798,6 +7798,12 @@ acquire dye from a material name. The existing undyed colour and legacy armour m
 are retained. Complete native shader coverage and session item-component dye overrides remain
 open; this descriptor change does not close those parity gates.
 
+### Compiled ambient material facts
+
+The world carrier retains solid/liquid material dispositions for every state. Ambient leaf sampling reads these facts without identifier lookup or geometry inference. The partial plant catalog is joined to pinned state identities; unknown states and custom overlays remain unresolved. Air admission is explicitly provisional.
+
+Incomplete: the complete native material/state inventory, air binding, liquid and solid classifications, legacy protocols and server material component overlays remain unverified. This partial catalog does not close the material parity gate.
+
 ### Block-family routing coverage
 
 Crossed-plane routing now comes from the shared family catalog and is retained

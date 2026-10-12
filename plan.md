@@ -1194,6 +1194,8 @@ these changes do not close the movement, camera, or actor parity gates.
 ## Menu frame passes and retained memory
 
 - The HUD composites after FXAA, inside the output pass; FXAA is off with no world drawn.
+- HUD sprites use the shared nearest sampler across pack changes. Centered crosshairs snap
+  to physical pixels after positioning; larger pack textures keep their source texels.
 - The panorama draws opaque in the main pass; a static menu frame is two fullscreen passes.
 - Font pages are coverage bytes on CPU and GPU; the transparent ref buffer grows on demand;
   JSON-UI caches evict least recently used entries.
@@ -2374,6 +2376,13 @@ Pack readers share BOM, UTF-8 and Latin-1 text decoding and JSONC normalization;
 UI documents retain their existing parser recovery. Incomplete: native display
 comparison for legacy pack labels and arbitrary malformed UTF-8, and a full
 comparison of syntax tolerances across document families.
+Custom item icons and components follow the admitted registry, so an empty
+duplicate cannot replace a populated item's texture key. Missing custom icons
+report their identifier and requested atlas key during pack preparation.
+Provisional, incomplete: attachables without default geometry or texture aliases
+retain equipment bindings using their first compiled controller resources;
+dynamic controller selection still determines the resources drawn. Native static
+fallback behavior and live custom-item resource-pack acceptance remain open.
 See [continuation references](docs/resource-pack-continuation-references.md) and
 [original resource-pack references](docs/resource-pack-references.md).
 
@@ -7746,9 +7755,13 @@ Ordinary first-person world damage rotation samples the actor's completed hurt
 and death counters independently of hand animation. Scripted captures retain
 their requested pose after those effects run.
 Portal and fire overlays sample the final rendered camera pose and projection.
+While the local player is dead, first person presents third-person-back with a
+level heading fixed at the body's yaw, ignoring look and perspective input until
+respawn (the native client activates its death camera component on death); the
+Java 1.7 animation mode keeps first person.
 
 Incomplete parity: exact target-version animation constants,
-respawn retries, death camera/FOV, hurt and HUD flash timing, hardcore and secondary
+respawn retries, death camera framing/FOV, hurt and HUD flash timing, hardcore and secondary
 client variants, and matched native frames remain open. The modern implementation
 and its focused regressions do not close the full death-screen parity gate.
 

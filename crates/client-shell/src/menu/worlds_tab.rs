@@ -3,7 +3,8 @@
 //! presses to the module, an opened world is joined through the launcher core
 //! and closed when its session ends, and the pause menu pauses it.
 
-use bridge::{Backend, Difficulty, GameMode};
+use bridge::{Backend, GameMode};
+use launcher::local_worlds::world::Difficulty;
 
 use {
     super::MenuRuntime,
@@ -286,7 +287,7 @@ impl MenuRuntime {
             ]),
             Screen::Templates => Some(vec![
                 MenuAction::LocalWorld(A::BeginCreate),
-                MenuAction::Store(client_ui::store::OPEN),
+                MenuAction::Store(launcher::store::OPEN),
             ]),
             Screen::ConfirmDelete => local(&[A::Back, A::ConfirmDelete]),
             Screen::ConfirmLeaveEdit => local(&[A::Save, A::Discard]),

@@ -234,7 +234,7 @@ impl UiPresentationRuntime {
                     .or_insert(*icon);
             }
         }
-        bevy::log::info!(
+        tracing::info!(
             models = models.len(),
             source_pages = pages.len(),
             "native GUI item geometry prepared"
@@ -317,7 +317,8 @@ impl UiPresentationRuntime {
             let (identifier, metadata) = Self::item_icon_key(
                 &hand.identifier,
                 hand.metadata,
-                hand.charged_projectile.as_deref(),
+                hand.use_animation,
+                hand.charged_projectile,
                 None,
             );
             self.gui_models
@@ -332,6 +333,7 @@ impl UiPresentationRuntime {
                         metadata: 0,
                     })
                 })
+                .map(|model| model.with_grip(hand.grip))
         });
         let unposed = [None; 6];
         let body = if self.player_preview_view == player_preview::PreviewView::Hud {
@@ -359,7 +361,7 @@ impl UiPresentationRuntime {
             skin,
             &self.player_preview_gear,
             armor,
-            held,
+            held.each_ref().map(Option::as_ref),
             true, // Current desktop default is the native Fancy material group.
             self.gui_fire_frame(),
             if self.player_preview_view == player_preview::PreviewView::Hud {

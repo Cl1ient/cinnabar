@@ -76,10 +76,11 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         ecs::system::RunSystemOnce,
         prelude::*,
     };
-    use client_ui::test_support::{fixture_font, fixture_hud};
+    use client_ui::test_support::fixture_hud;
     use client_ui::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame};
     use protocol::WorldBootstrap;
     use std::sync::Arc;
+    use ui_engine::test_support::fixture_font;
     use {
         crate::{presentation::viewmodel::ViewmodelPublish, runtime::world::ClientWorld},
         client_presentation::{
@@ -151,16 +152,9 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         use sha2::Digest;
         sha2::Sha256::digest(&stack.extra_data).into()
     };
-    let session = protocol::BedrockSession { shield_item_id: 0 };
-    let wire = protocol::encode(
-        &protocol::select_hotbar_slot_packet(1, 0, &stack).unwrap(),
-        &session,
-    )
-    .unwrap();
-    let decoded = protocol::decode_batch(wire, &session)
-        .unwrap()
-        .pop()
-        .unwrap();
+    let wire =
+        protocol::encode(&protocol::select_hotbar_slot_packet(1, 0, &stack).unwrap()).unwrap();
+    let decoded = protocol::decode_batch(wire).unwrap().pop().unwrap();
     let Some(protocol::WorldEvent::Equipment(decoded)) =
         protocol::into_world_event(decoded, 0).unwrap()
     else {
@@ -230,7 +224,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         Quat::IDENTITY,
         &mut visibility,
     );
-    app.insert_resource(runtime)
+    app.insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
         .insert_resource(world)
         .insert_resource(movement)
@@ -262,7 +256,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             move |mut hand: ViewmodelPublish,
                   player_runtime: Res<PlayerRuntime>,
-                  runtime: Res<UiRuntime>,
+                  runtime: Res<UiRuntimeResource>,
                   world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
                 hand.bind_cpu_fallback(&observed_input, empty, None);
@@ -376,7 +370,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
             .run_system_once(
                 |mut hand: ViewmodelPublish,
                  player_runtime: Res<PlayerRuntime>,
-                 runtime: Res<UiRuntime>,
+                 runtime: Res<UiRuntimeResource>,
                  world: Res<ClientWorld>| {
                     assert!(!hand.observe(
                         &player_runtime,
@@ -398,7 +392,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
             .run_system_once(
                 move |mut hand: ViewmodelPublish,
                       player_runtime: Res<PlayerRuntime>,
-                      runtime: Res<UiRuntime>,
+                      runtime: Res<UiRuntimeResource>,
                       world: Res<ClientWorld>| {
                     assert!(!hand.observe(
                         &player_runtime,
@@ -438,7 +432,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
             },
@@ -457,7 +451,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             move |mut hand: ViewmodelPublish,
                   player_runtime: Res<PlayerRuntime>,
-                  runtime: Res<UiRuntime>,
+                  runtime: Res<UiRuntimeResource>,
                   world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
                 hand.bind_cpu_fallback(&recovered_input, empty, None);
@@ -479,7 +473,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
             },
@@ -499,7 +493,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             move |mut hand: ViewmodelPublish,
                   player_runtime: Res<PlayerRuntime>,
-                  runtime: Res<UiRuntime>,
+                  runtime: Res<UiRuntimeResource>,
                   world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
                 hand.bind_cpu_fallback(&resumed_input, empty, None);
@@ -514,7 +508,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
             },
@@ -577,7 +571,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
             .run_system_once(
                 move |mut hand: ViewmodelPublish,
                       player_runtime: Res<PlayerRuntime>,
-                      runtime: Res<UiRuntime>,
+                      runtime: Res<UiRuntimeResource>,
                       world: Res<ClientWorld>| {
                     assert!(!hand.observe(
                         &player_runtime,
@@ -602,7 +596,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(
                     world

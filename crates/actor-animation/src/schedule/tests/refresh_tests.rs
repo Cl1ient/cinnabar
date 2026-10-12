@@ -32,6 +32,7 @@ fn local_fixture_with(
     symbols.insert(
         2,
         assets::EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: assets::EntityAssetKind::Geometry,
             identifier: layer_geometry.identifier.clone(),
             source_index: layer_geometry.source_index,
@@ -153,7 +154,9 @@ fn local_fixture_with(
         }
     }
     configure(&mut compiled);
-    let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let assets = Arc::new(
+        RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap(),
+    );
     let mut actor = crate::tests::actor_with_metadata(HashMap::new());
     actor.kind = ActorKind::Player {
         uuid: [1; 16],

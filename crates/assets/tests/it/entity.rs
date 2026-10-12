@@ -9,9 +9,18 @@ mod bind_pose;
 mod controller_blend;
 #[path = "entity/material_states.rs"]
 mod material_states;
+#[path = "entity/molang_programs.rs"]
+mod molang_programs;
+#[path = "entity/mount.rs"]
+mod mount;
 #[path = "entity/review_regressions.rs"]
 mod review_regressions;
 #[path = "entity/runtime_admission.rs"]
 mod runtime_admission;
 #[path = "entity/suite.rs"]
 mod suite;
+
+#[path = "entity/interaction_traits.rs"]
+mod interaction_traits;
+#[path = "entity/placement_frame.rs"]
+mod placement_frame;

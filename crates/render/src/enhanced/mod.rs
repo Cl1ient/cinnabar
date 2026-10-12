@@ -56,6 +56,8 @@ pub(crate) mod plugin;
 mod post;
 #[cfg(all(test, feature = "enhanced"))]
 mod post_regressions;
+#[cfg(all(test, feature = "enhanced"))]
+mod probe_capture_tests;
 #[cfg(feature = "enhanced")]
 mod probes;
 #[cfg(all(test, feature = "enhanced"))]

@@ -480,6 +480,7 @@ pub(crate) struct EnhancedViewGpu {
     pub(crate) shadow_submitted: std::sync::Arc<std::sync::atomic::AtomicU64>,
     pub(crate) capture_parent: Option<Entity>,
     pub(crate) capture_lighting_ready: bool,
+    pub(crate) capture_background_submitted: std::sync::atomic::AtomicBool,
     pub(crate) capture_shadow_submission:
         Option<(std::sync::Arc<std::sync::atomic::AtomicU64>, u64)>,
     pub(crate) casters: Buffer,
@@ -531,6 +532,7 @@ impl EnhancedViewGpu {
             shadow_submitted: default(),
             capture_parent: None,
             capture_lighting_ready: false,
+            capture_background_submitted: default(),
             capture_shadow_submission: None,
             casters: buffer(
                 "enhanced caster uniforms",

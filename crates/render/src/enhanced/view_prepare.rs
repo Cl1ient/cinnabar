@@ -220,6 +220,9 @@ pub(crate) fn prepare_enhanced_views(
             state
                 .shadow_submitted
                 .store(0, std::sync::atomic::Ordering::Relaxed);
+            state
+                .capture_background_submitted
+                .store(false, std::sync::atomic::Ordering::Relaxed);
             state.capture_parent = capture_lighting.as_ref().map(|lighting| lighting.parent);
             state.capture_lighting_ready = !reflection_capture
                 || capture_lighting

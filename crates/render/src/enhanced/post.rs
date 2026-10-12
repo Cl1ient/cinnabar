@@ -457,7 +457,7 @@ pub(crate) fn enhanced_sky(
     let view_entity = query.entity();
     let (_target, depth, scene, settings, camera) = query.into_inner();
     let context = &mut context;
-    if settings.reflection_capture || !camera.hdr || !lighting_ready(world) {
+    if !camera.hdr || !lighting_ready(world) {
         return Ok(());
     }
     let (Some(pipelines), Some(gpu), Some(views), Some(cache)) = (
@@ -471,6 +471,19 @@ pub(crate) fn enhanced_sky(
     let Some(state) = views.0.get(&view_entity) else {
         return Ok(());
     };
+    if settings.reflection_capture {
+        let submitted = super::probes::probe_draw::sky(
+            context,
+            world,
+            &state.frame,
+            crate::scene_sampling::view_depth(depth),
+            scene.color_view(false),
+        );
+        state
+            .capture_background_submitted
+            .store(submitted, std::sync::atomic::Ordering::Relaxed);
+        return Ok(());
+    }
     let Some(post) = &state.post else {
         return Ok(());
     };

@@ -97,7 +97,9 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
         );
         return;
     };
-    let Some(images) = crate::ui_runtime::oreui_assets::load_optional_oreui_images()
+    let Some(images) = crate::ui_runtime::oreui_assets::load_optional_oreui_images(
+        &crate::ui_runtime::oreui_assets::checkout_compiled_dir(),
+    )
         .filter(|images| !images.loading_frames.is_empty())
     else {
         eprintln!(
@@ -228,7 +230,7 @@ fn the_disconnect_screen_has_a_way_back() {
     presentation.set_menu_view(Some(view));
     let runtime = UiRuntime::new(1);
     let dpi = DpiScale::new(1.0).unwrap();
-    let metrics = super::super::TextMetrics::for_viewport([1280, 720], dpi, None);
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport([1280, 720], dpi, None);
     let mut nodes = Vec::new();
     let mut next = 1;
     let hits = presentation

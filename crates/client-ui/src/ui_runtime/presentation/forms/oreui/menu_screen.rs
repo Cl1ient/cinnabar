@@ -6,8 +6,7 @@ use std::collections::HashMap;
 
 use ui::{IconRef, UiNode, UiRect};
 
-use super::super::super::menu_scroll::{MenuScrolls, ScrollArea};
-use super::super::engine::screen::{PaintError, PaintFrame, Screen, ScreenOutput, ScreenRegistry};
+use super::super::super::menu_scroll::MenuScrolls;
 use super::super::menu_caret::TextSpot;
 use super::super::menu_screens::{SETTINGS_SECTIONS, Translate};
 use super::{
@@ -20,6 +19,8 @@ use launcher::menu::{
     MenuAction, MenuScreen, MenuView,
     view::{SettingsFocusLandmark, SettingsFocusTarget},
 };
+use ui_engine::engine::screen::{PaintError, PaintFrame, Screen, ScreenOutput, ScreenRegistry};
+use ui_engine::scroll::ScrollArea;
 
 /// Whether OreUI draws `view`'s route; a launcher dialog draws over it instead.
 pub(in super::super) fn draws_menu(view: &MenuView) -> bool {

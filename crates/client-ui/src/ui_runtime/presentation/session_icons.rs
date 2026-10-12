@@ -219,7 +219,7 @@ fn install(
     packed: Option<PackedIcons>,
 ) {
     let page_index =
-        (runtime.textures.dynamic_start() + dynamic_textures::SESSION_ICON_PAGE) as u16;
+        (runtime.textures.dynamic_start() + ui_engine::pages::SESSION_ICON_PAGE) as u16;
     let packed = icons
         .zip(packed)
         .map(|(icons, packed)| (icons, packed.on_page(page_index)));

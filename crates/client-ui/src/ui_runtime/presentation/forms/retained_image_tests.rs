@@ -6,8 +6,8 @@ use ui::DpiScale;
 
 #[test]
 fn retained_menu_publishes_requested_original_image_pixels() {
-    use super::super::menu_artwork::TITLE_KEY;
     use super::ServerUiPack;
+    use ui_engine::textures::TITLE_KEY;
     let color = [123, 47, 201, 255];
     let size = [1992, 669];
     let mut bytes = std::io::Cursor::new(Vec::new());

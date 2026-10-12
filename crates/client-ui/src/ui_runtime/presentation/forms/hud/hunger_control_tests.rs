@@ -1,10 +1,11 @@
-use super::super::engine::{FormEngine, screen::PaintFrame};
 use super::super::hud_renderers::HudRenderer;
 use super::super::screen_registry::registry;
-use super::super::server_pack::ServerAtlas;
 use crate::test_support::{fixture_font, mini_carrier};
 use crate::ui_runtime::SequencedLocalAttributes;
+use json_ui::Context;
 use ui::{DpiScale, SafeArea, TextLayoutCache};
+use ui_engine::atlas::ServerAtlas;
+use ui_engine::engine::{FormEngine, screen::PaintFrame};
 use {super::*, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 /// A server pack placing independently visible hunger controls on separate rows.
@@ -28,7 +29,13 @@ fn engine() -> FormEngine {
                 "bindings":[{"binding_name":"#second_visible", "binding_name_override":"#visible"}]}}
         ]}
     }).to_string());
-    let mut engine = FormEngine::new(mini_carrier(), catalog, 2, registry());
+    let mut engine = FormEngine::new(
+        mini_carrier(),
+        catalog,
+        2,
+        registry(),
+        crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+    );
     let mut png = Vec::new();
     image::RgbaImage::from_pixel(9, 9, image::Rgba([255, 0, 0, 255]))
         .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)

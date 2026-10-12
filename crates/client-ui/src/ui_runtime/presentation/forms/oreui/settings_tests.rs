@@ -1,9 +1,10 @@
 //! Settings navigation and editing through the OreUI host without installed carriers.
 
-use crate::ui_runtime::presentation::menu_scroll::{MenuScrolls, ScrollArea};
+use crate::ui_runtime::presentation::menu_scroll::MenuScrolls;
 use crate::ui_runtime::presentation::tests::fixture_font;
 use launcher::menu::settings_options::{SETTINGS_OPTIONS, SettingKind, SettingsGroup};
 use std::collections::HashMap;
+use ui_engine::scroll::ScrollArea;
 use {
     super::*,
     launcher::menu::{MenuAction, MenuScreen, MenuView},

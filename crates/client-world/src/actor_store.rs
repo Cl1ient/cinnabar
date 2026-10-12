@@ -154,13 +154,6 @@ impl ActorSnapshot {
         self.status.native_velocity
     }
 
-    /// These actors animate their full yaw through the target-rotation queries.
-    #[must_use]
-    pub fn target_rotation_is_absolute(&self) -> bool {
-        matches!(&self.kind, ActorKind::Entity { identifier } if matches!(identifier.as_ref(),
-            "minecraft:arrow" | "minecraft:fireworks_rocket" | "minecraft:wither_skull" | "minecraft:wither_skull_dangerous"))
-    }
-
     /// The render position `alpha` of the way from the previous tick's pose to the current one,
     /// or `None` when a component is not finite.
     #[must_use]

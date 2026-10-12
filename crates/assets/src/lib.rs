@@ -42,6 +42,7 @@ mod material_keys;
 mod material_variations;
 mod model;
 mod ogg;
+pub mod oreui_icons;
 mod particle;
 mod physics_registry;
 mod pinned_content;
@@ -157,22 +158,20 @@ pub use entity::{
     MOLANG_QUERY_MANIFEST_VERSION, MolangBranch, MolangCall, MolangCollection,
     MolangCollectionItem, MolangEaseCurve, MolangEaseMode, MolangFunction, MolangOp, MolangProgram,
     MolangQuery, MolangQueryArguments, MolangQueryDescriptor, MolangQueryHandler,
-    MolangQueryOutput, MolangQuerySupport, MolangSymbol, MolangSymbolKind, RuntimeEntityAssets,
-    bind_molang_queries, encode_entity_blob, entity_render_pattern_matches, molang_call,
-    molang_program_stack, validate_entity_geometry_inheritance,
-};
-pub use entity::{
-    PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE, interactions, item_use, seats as entity_seats,
+    MolangQueryOutput, MolangQuerySupport, MolangSymbol, MolangSymbolKind,
+    PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE, RuntimeEntityAssets, bind_molang_queries,
+    encode_entity_blob, entity_render_pattern_matches, interactions, item_use, molang_call,
+    molang_program_stack, placement, seats as entity_seats, validate_entity_geometry_inheritance,
 };
 pub use environment_settings::{CloudQuality, EnvironmentQualitySettings, PrecipitationQuality};
 pub use equipment::{
     ArmorSlot, AttachablePose, AttachablePoseBone, CompiledItemAttackCooldown,
     CompiledItemAttackTiming, CompiledItemFood, CompiledKineticWeaponTiming, DEFAULT_LEATHER_RGB,
     EQUIPMENT_CARRIER_MAGIC, EQUIPMENT_CARRIER_VERSION, EquipmentBinding, EquipmentCategory,
-    EquipmentColorMask, EquipmentReference, EquipmentTexture, EquipmentTransform, ItemUseDuration,
-    MAX_EQUIPMENT_BINDINGS, MAX_EQUIPMENT_CARRIER_BYTES, MAX_EQUIPMENT_IDENTIFIER_BYTES,
-    MAX_EQUIPMENT_PIXEL_BYTES, MAX_EQUIPMENT_TEXTURE_SIDE, MAX_EQUIPMENT_TEXTURES,
-    RuntimeEquipmentCatalog, color_mask_texel, encode_equipment_catalog,
+    EquipmentColorMask, EquipmentItemFacts, EquipmentReference, EquipmentTexture,
+    EquipmentTransform, ItemUseDuration, MAX_EQUIPMENT_BINDINGS, MAX_EQUIPMENT_CARRIER_BYTES,
+    MAX_EQUIPMENT_IDENTIFIER_BYTES, MAX_EQUIPMENT_PIXEL_BYTES, MAX_EQUIPMENT_TEXTURE_SIDE,
+    MAX_EQUIPMENT_TEXTURES, RuntimeEquipmentCatalog, color_mask_texel, encode_equipment_catalog,
     encode_equipment_catalog_full, encode_equipment_catalog_with_attack_timings,
     encode_equipment_catalog_with_textures, encode_equipment_catalog_with_use_profiles,
 };

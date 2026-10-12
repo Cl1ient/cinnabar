@@ -9,6 +9,7 @@ fn fixture() -> Arc<RuntimeEntityAssets> {
 
 pub(super) fn owner_rig() -> ActorRigSnapshot<'static> {
     ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         actor: ActorLifetimeId {
             session_id: 1,
             dimension: 0,

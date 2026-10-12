@@ -111,6 +111,13 @@ pub(super) enum Command {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Compile the shipped original OreUI artwork named by its source manifest.
+    OreuiIconsAssets {
+        #[arg(long)]
+        source_manifest: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Compile the optional hardcore-heart sprite carrier.
     HudExtrasAssets {
         #[arg(long)]
@@ -184,6 +191,9 @@ pub(super) enum Command {
     ActorAssets {
         #[arg(long)]
         pack: PathBuf,
+        /// Behavior definitions used by the matching entity carrier's compiled seats.
+        #[arg(long)]
+        behavior_pack: Option<PathBuf>,
         #[arg(long)]
         source_manifest: PathBuf,
         #[arg(long)]

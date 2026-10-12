@@ -13,7 +13,8 @@ use super::{
     widgets::{self, Variant},
 };
 use launcher::menu::{MenuAction, MenuScreen, MenuView};
-use {super::super::engine::screen::PaintError, ui::IconRef};
+use ui::IconRef;
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,

@@ -8,26 +8,28 @@
 use std::sync::Arc;
 
 use json_ui::{
-    BindState, BossBar, CROSSHAIR_SCREEN, CachedLibrary, Catalog, CatalogLibrary, Context,
-    DataSource, FormRender, HUD_SCREEN, HudModel, HudSlot, HudTitle, ResolveCache, ResolvedControl,
-    Sidebar, Timed, ViewState, bind_incremental, hud_clocks, hud_context, hud_data_source, rebind,
-    render_bound_cached, resolve,
+    BossBar, CROSSHAIR_SCREEN, Catalog, DataSource, HUD_SCREEN, HudModel, HudSlot, HudTitle,
+    Sidebar, Timed, hud_clocks, hud_context, hud_data_source,
 };
+use mod_ui::crosshair::CrosshairRenderer;
 use ui::{TimedText, UiNode};
+use ui_engine::{
+    cached_screen::CachedScreen,
+    engine::{
+        ScreenArt,
+        item_renderer::ItemRenderer,
+        pack_catalog::CarrierRestore,
+        screen::{CustomRenderer, PaintFrame, ScreenRegistry},
+    },
+    text_metrics::TextMetrics,
+};
 
-use super::engine::{
-    ScreenArt,
-    pack_catalog::CarrierRestore,
-    screen::{CustomRenderer, PaintFrame, ScreenRegistry},
-};
-use super::{
-    hud_renderers::HudRenderer, item_renderer::ItemRenderer, menu_renderers::PreviewRenderer,
-};
+use super::{hud_renderers::HudRenderer, menu_renderers::PreviewRenderer};
 use crate::ui_runtime::UiRuntime;
 use {
     super::super::{
-        HudFrame, TextMetrics, UiPresentationError, UiPresentationRuntime, bounded_visible_text,
-        hud_layout, resolve_chat_line,
+        HudFrame, UiPresentationError, UiPresentationRuntime, bounded_visible_text, hud_layout,
+        resolve_chat_line,
     },
     ui::{FONT_DESIGN_PIXEL_TEXELS, IconRef},
 };
@@ -91,205 +93,6 @@ const SIDEBAR_TITLE_OPACITY: f64 = 0.4;
 const ITEM_NAME_MILLIS: u64 = 2_000;
 /// Display cap for stacked boss bars; the retained store holds more.
 const MAX_BOSS_BARS: usize = 8;
-
-/// One screen's resolved tree per catalog and its last layout per model.
-#[derive(Default)]
-pub(super) struct CachedScreen {
-    resolved: Option<ResolvedScreen>,
-    /// Factory and grid resolutions for the resolved catalog, kept across binds.
-    library: ResolveCache,
-    /// The screen's live bindings across data refreshes.
-    binding: BindState,
-    laid: Option<Laid>,
-    measures: json_ui::MeasureCache,
-    /// Bind+layout passes run, for cache tests and profiling.
-    pub(super) passes: usize,
-    /// Screens resolved on the frame rather than found prepared.
-    #[cfg(test)]
-    pub(super) resolves: usize,
-}
-
-struct ResolvedScreen {
-    reference: String,
-    catalog: Arc<Catalog>,
-    context: Context,
-    tree: Option<Arc<ResolvedControl>>,
-}
-
-struct Laid {
-    reference: String,
-    catalog: Arc<Catalog>,
-    data: Arc<DataSource>,
-    view: ViewState,
-    root: [f64; 2],
-    px: f32,
-    language: [usize; 3],
-    texture_metadata: u64,
-    render: FormRender,
-}
-
-impl CachedScreen {
-    /// Texture metadata participates in layout, including tiled sprite sizes.
-    fn invalidate_textures(&mut self) {
-        self.laid = None;
-        self.measures = json_ui::MeasureCache::default();
-    }
-
-    /// Whether the bound HUD has content for an extension to accompany.
-    pub(super) fn has_visible_content(&self) -> bool {
-        self.laid.as_ref().is_some_and(|laid| {
-            laid.render
-                .nodes
-                .iter()
-                .any(|node| node.alpha > 0.0 && node.shown(&laid.view))
-        })
-    }
-
-    /// The laid-out screen for `data`, rebinding only when an input changed.
-    fn render(
-        &mut self,
-        reference: &str,
-        catalog: &Arc<Catalog>,
-        context: &Context,
-        data: Arc<DataSource>,
-        at: ([f64; 2], f32, [usize; 3]),
-        env: &json_ui::LayoutEnv,
-    ) -> Option<&FormRender> {
-        self.render_shared_with(
-            reference,
-            catalog,
-            context,
-            data,
-            at,
-            env,
-            &ViewState::default(),
-        )
-    }
-
-    /// [`Self::render`] under the caller's pointer, focus and scroll state.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn render_with(
-        &mut self,
-        reference: &str,
-        catalog: &Arc<Catalog>,
-        context: &Context,
-        data: DataSource,
-        (root, px, language): ([f64; 2], f32, [usize; 3]),
-        env: &json_ui::LayoutEnv,
-        view: &ViewState,
-    ) -> Option<&FormRender> {
-        self.render_shared_with(
-            reference,
-            catalog,
-            context,
-            Arc::new(data),
-            (root, px, language),
-            env,
-            view,
-        )
-    }
-
-    /// Reuse a controller revision without cloning or comparing all its bags.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn render_shared_with(
-        &mut self,
-        reference: &str,
-        catalog: &Arc<Catalog>,
-        context: &Context,
-        data: Arc<DataSource>,
-        (root, px, language): ([f64; 2], f32, [usize; 3]),
-        env: &json_ui::LayoutEnv,
-        view: &ViewState,
-    ) -> Option<&FormRender> {
-        let texture_metadata = env.textures.metadata_revision();
-        let fresh = self.laid.as_ref().is_some_and(|laid| {
-            !self.binding.has_pending_visibility()
-                && laid.reference == reference
-                && Arc::ptr_eq(&laid.catalog, catalog)
-                && laid.root == root
-                && laid.px == px
-                && laid.language == language
-                && laid.texture_metadata == texture_metadata
-                && self
-                    .resolved
-                    .as_ref()
-                    .is_some_and(|resolved| resolved.context == *context)
-                && (Arc::ptr_eq(&laid.data, &data) || laid.data == data)
-                && laid.view == *view
-        });
-        if !fresh {
-            let current = self.resolved.as_ref().is_some_and(|resolved| {
-                resolved.reference == reference
-                    && Arc::ptr_eq(&resolved.catalog, catalog)
-                    && resolved.context == *context
-            });
-            if !current {
-                let found = prepared::find(catalog, reference, context);
-                let tree = found.unwrap_or_else(|| {
-                    #[cfg(test)]
-                    {
-                        self.resolves += 1;
-                    }
-                    resolve(catalog, reference, context).control.map(Arc::new)
-                });
-                self.resolved = Some(ResolvedScreen {
-                    reference: reference.to_owned(),
-                    catalog: Arc::clone(catalog),
-                    context: context.clone(),
-                    tree,
-                });
-                self.library = ResolveCache::default();
-                self.binding = BindState::new();
-            }
-            let tree = self.resolved.as_ref()?.tree.as_ref()?;
-            let library = CachedLibrary {
-                library: CatalogLibrary { catalog, context },
-                cache: &self.library,
-            };
-            let previous = self.laid.take().filter(|_| current);
-            let same_frame = previous.as_ref().is_some_and(|laid| {
-                laid.root == root
-                    && laid.px == px
-                    && laid.language == language
-                    && laid.texture_metadata == texture_metadata
-            });
-            let bound = match previous {
-                Some(laid) => {
-                    let mut bound = laid.render.bound;
-                    if !same_frame {
-                        self.measures = json_ui::MeasureCache::default();
-                    }
-                    rebind(
-                        tree,
-                        &data,
-                        &library,
-                        &mut self.binding,
-                        &mut bound,
-                        &mut self.measures,
-                    );
-                    bound
-                }
-                None => {
-                    self.measures = json_ui::MeasureCache::default();
-                    bind_incremental(tree, &data, &library, &mut self.binding)
-                }
-            };
-            self.passes += 1;
-            self.laid = Some(Laid {
-                reference: reference.to_owned(),
-                catalog: Arc::clone(catalog),
-                render: render_bound_cached(bound, root, env, view, &mut self.measures),
-                data,
-                view: view.clone(),
-                root,
-                px,
-                language,
-                texture_metadata,
-            });
-        }
-        self.laid.as_ref().map(|laid| &laid.render)
-    }
-}
 
 /// The HUD and crosshair screens, carried across frames.
 #[derive(Default)]
@@ -366,7 +169,7 @@ impl UiPresentationRuntime {
                 .scoreboard
                 .refresh(runtime.scoreboards(), &self.scoreboard_owner_names)
                 .map(sidebar_model);
-            let sidebar = if self.mod_scoreboard_hidden() {
+            let sidebar = if self.screens.mod_ui.mod_scoreboard_hidden() {
                 None
             } else {
                 sidebar
@@ -380,7 +183,7 @@ impl UiPresentationRuntime {
                 &mut icons,
                 options,
             );
-            if self.mod_effect_icons_hidden() {
+            if self.screens.mod_ui.mod_effect_icons_hidden() {
                 model.effects_visible = false;
             }
             super::settings_chat::apply_hud(options, &mut model);
@@ -413,7 +216,7 @@ impl UiPresentationRuntime {
             self.hud_textures.as_ref(),
             &self.screens.chat.settings.options,
         );
-        if let Some(style) = self.mod_hunger_overlay() {
+        if let Some(style) = self.screens.mod_ui.mod_hunger_overlay() {
             paint.hunger.set_overlay(
                 style,
                 runtime.gameplay_hud().saturation(),
@@ -430,12 +233,14 @@ impl UiPresentationRuntime {
             // Inverting the same pixels twice restores the world behind the cursor.
             paint.crosshair = None;
         }
-        if self.mod_effect_icons_hidden() {
+        if self.screens.mod_ui.mod_effect_icons_hidden() {
             paint.effects.clear();
         }
-        if self.mod_hud_visible(player_runtime, runtime) {
-            paint.custom_crosshair = self.screens.mod_crosshair.clone();
-        }
+        let crosshair_spec = if self.mod_hud_visible(player_runtime, runtime) {
+            self.screens.mod_ui.mod_crosshair().cloned()
+        } else {
+            None
+        };
         let px = metrics.scale.get() * FONT_DESIGN_PIXEL_TEXELS as f32;
         let translate = |key: &str| runtime.translation(key);
         let screens = &mut self.screens.hud;
@@ -460,8 +265,16 @@ impl UiPresentationRuntime {
             view: Some(&preview_view),
             ..PreviewRenderer::default()
         };
-        let mut renderers: [&mut dyn CustomRenderer; 3] =
-            [&mut hud_renderer, &mut items, &mut preview];
+        let mut custom_crosshair = CrosshairRenderer {
+            spec: crosshair_spec.as_ref(),
+            visible: paint.crosshair.is_some(),
+        };
+        let mut renderers: [&mut dyn CustomRenderer; 4] = [
+            &mut custom_crosshair,
+            &mut hud_renderer,
+            &mut items,
+            &mut preview,
+        ];
         let screen = if crosshair {
             &mut screens.crosshair
         } else {
@@ -728,15 +541,6 @@ fn boss_tint(color: ui::BossColor) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
-impl CachedScreen {
-    /// The last laid-out draw nodes, in virtual px.
-    pub(super) fn nodes(&self) -> &[json_ui::DrawNode] {
-        self.laid
-            .as_ref()
-            .map_or(&[], |laid| laid.render.nodes.as_slice())
-    }
-}
-
 #[cfg(any(test, feature = "test-support"))]
 impl UiPresentationRuntime {
     /// The engine HUD's last laid-out draw nodes, in GUI px.
@@ -755,7 +559,7 @@ impl UiPresentationRuntime {
             return Vec::new();
         };
         let atlas = engine.textures.lock();
-        let view = super::textures::Textures {
+        let view = ui_engine::textures::Textures {
             assets: engine.assets(),
             set: &engine.textures,
             atlas: &atlas,

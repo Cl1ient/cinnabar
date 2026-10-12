@@ -1,6 +1,7 @@
 use super::super::{paint::Canvas, transitions::Transitions};
-use crate::ui_runtime::presentation::{TextMetrics, tests::fixture_font};
+use crate::ui_runtime::presentation::tests::fixture_font;
 use launcher::menu::JoinStage;
+use ui_engine::text_metrics::TextMetrics;
 use {super::*, launcher::menu::MenuView};
 
 fn frame(transitions: &mut Transitions, view: &MenuView, seconds: f64) -> Vec<ui::UiNode> {

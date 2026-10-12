@@ -1,11 +1,12 @@
 use crate::ui_runtime::{
     oreui_assets::{OreUiImages, OreUiSprite},
     presentation::{
-        TextMetrics, forms::oreui::paint::Originals, forms::oreui::review_tests::solids,
+        forms::oreui::{paint::Originals, review_tests::solids},
         tests::fixture_font,
     },
 };
 use std::{collections::HashMap, sync::Arc};
+use ui_engine::text_metrics::TextMetrics;
 use {super::*, launcher::menu::MenuView, launcher::menu::auth::AuthState, ui::IconRef};
 
 fn paint(view: &MenuView, gamerpic: Option<IconRef>) -> Vec<ui::UiNode> {

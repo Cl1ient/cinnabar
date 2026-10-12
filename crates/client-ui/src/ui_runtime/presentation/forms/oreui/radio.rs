@@ -1,10 +1,10 @@
 //! Radio diamonds rotate the complete bordered square, including its speculars and centre.
 
-use super::super::engine::screen::PaintError;
 use super::motion::{Kind, mix, opacity};
 use super::paint::{Bounds, Canvas};
 use super::theme::{self, Rgba};
 use super::widgets::Interaction;
+use ui_engine::engine::screen::PaintError;
 
 #[cfg(test)]
 mod tests;

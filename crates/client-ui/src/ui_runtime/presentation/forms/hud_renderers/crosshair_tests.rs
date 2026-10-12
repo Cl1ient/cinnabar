@@ -1,13 +1,14 @@
 use super::*;
 use crate::test_support::{fixture_font, mini_carrier};
-use crate::ui_runtime::presentation::forms::{
-    engine::{FormEngine, ScreenArt, screen::PaintFrame},
-    screen_registry::registry,
-    server_pack::ServerAtlas,
-};
+use crate::ui_runtime::presentation::forms::screen_registry::registry;
 use json_ui::{Catalog, Context, DataSource, ViewState};
+use ui::FONT_DESIGN_PIXEL_TEXELS;
 use ui::{DpiScale, SafeArea, TextLayoutCache, UiNode};
-use {crate::ui_runtime::presentation::TextMetrics, ui::FONT_DESIGN_PIXEL_TEXELS};
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::{
+    atlas::ServerAtlas,
+    engine::{FormEngine, ScreenArt, screen::PaintFrame},
+};
 
 const FALLBACK: SheetSprite = SheetSprite {
     page: 1,
@@ -29,7 +30,13 @@ fn engine(files: &[(String, Vec<u8>)]) -> FormEngine {
         }]}
     });
     catalog.overlay_text("ui/crosshair_test.json", &definition.to_string());
-    let mut engine = FormEngine::new(mini_carrier(), catalog, 2, registry());
+    let mut engine = FormEngine::new(
+        mini_carrier(),
+        catalog,
+        2,
+        registry(),
+        crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+    );
     engine.set_server_atlas(ServerAtlas::new(files, None, 1), 3);
     engine
 }
@@ -51,7 +58,6 @@ fn draw_custom(
     let hud = HudPaint {
         crosshair: visible.then_some(FALLBACK),
         crosshair_blend: blend,
-        custom_crosshair: custom,
         ..Default::default()
     };
     let mut layouts = TextLayoutCache::new(32, 1024 * 1024);
@@ -76,10 +82,16 @@ fn draw_custom(
                 now: 0.0,
                 nodes: &mut nodes,
                 next: &mut next,
-                renderers: &mut [&mut HudRenderer {
-                    hud: &hud,
-                    hunger_update: None,
-                }],
+                renderers: &mut [
+                    &mut mod_ui::crosshair::CrosshairRenderer {
+                        spec: custom.as_ref(),
+                        visible,
+                    },
+                    &mut HudRenderer {
+                        hud: &hud,
+                        hunger_update: None,
+                    },
+                ],
             },
         )
         .unwrap()

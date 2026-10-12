@@ -245,6 +245,8 @@ pub enum EntityRigFallback {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntityRigBinding {
+    /// The admitted placement and target-rotation contract for this exact rig.
+    pub placement_frame: super::placement::EntityPlacementFrame,
     pub entity_symbol: u32,
     pub render_controller: u32,
     pub first_geometry: u32,
@@ -512,6 +514,7 @@ pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Resu
     validate_controller_payload(compiled)?;
     validate_rig_payload(compiled)?;
     super::interactions::validate(compiled)?;
+    super::placement::validate(compiled)?;
     validate_render_payload(compiled)?;
     validate_item_visuals(
         &compiled.item_visuals,

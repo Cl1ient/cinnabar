@@ -1,12 +1,12 @@
 //! GUI-scale choices carry viewport-derived percentages and commit signed modifiers.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::super::menu_screens::Translate;
 use super::super::paint::Canvas;
 use super::super::theme::{self, BODY};
 use super::super::widgets;
 use super::{Content, picker, sections};
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 fn label(percentage: u16, translate: Translate<'_>) -> String {
     translate("options.percent.format").map_or_else(

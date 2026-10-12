@@ -1,4 +1,3 @@
-use super::super::engine::screen::PaintError;
 use super::super::{
     join_progress,
     loading_screen::LoadingStage,
@@ -10,6 +9,7 @@ use super::{
     widgets::{self, Variant},
 };
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 #[cfg(test)]
 mod destination_tests;

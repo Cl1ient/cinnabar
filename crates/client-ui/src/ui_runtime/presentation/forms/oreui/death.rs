@@ -4,10 +4,10 @@ mod backdrop;
 
 use launcher::menu::death::{CONTENT_FADE_SECONDS, STAGE_SECONDS};
 
-use super::super::engine::screen::PaintError;
 use super::super::menu_screens::Translate;
 use super::{paint::Canvas, theme, widgets};
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 /// Samples a CSS cubic Bezier by solving its horizontal parameter first.
 fn bezier(t: f64, control: [f64; 4]) -> f32 {

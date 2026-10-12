@@ -2,11 +2,11 @@
 
 use ui::UiPoint;
 
-use super::super::engine::{
+use super::{BedHit, BedScreen, bedtime, paint::Canvas, theme};
+use ui_engine::engine::{
     rect,
     screen::{PaintError, PaintFrame},
 };
-use super::{BedHit, BedScreen, bedtime, paint::Canvas, theme};
 
 /// What one bed paint reads.
 pub(in super::super) struct BedInput {

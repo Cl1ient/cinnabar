@@ -56,6 +56,7 @@ fn owner_rig<'a>(
     names: &'a [Box<str>],
 ) -> ActorRigSnapshot<'a> {
     ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         actor: ActorLifetimeId {
             session_id: 1,
             dimension: 0,

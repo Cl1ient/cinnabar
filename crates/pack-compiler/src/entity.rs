@@ -320,6 +320,11 @@ fn assemble(
     source_manifest_sha256: [u8; 32],
     include_items: bool,
 ) -> Result<EntityAssetCompilation, AssetError> {
+    sources.push(EntityAssetSource {
+        path: assets::placement::SOURCE_PATH.into(),
+        source_bytes: assets::placement::SOURCE_BYTES.len() as u32,
+        source_sha256: Sha256::digest(assets::placement::SOURCE_BYTES).into(),
+    });
     mount::admit(&mut sources, include_items);
     sources.sort_by(|left, right| left.path.cmp(&right.path));
     let (length, hash) = assets::interactions::source_identity();

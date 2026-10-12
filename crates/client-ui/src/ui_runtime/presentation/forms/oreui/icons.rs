@@ -3,9 +3,9 @@
 
 use crate::ui_runtime::oreui_assets::ACTION_ICONS;
 
-use super::super::engine::screen::PaintError;
 use super::paint::{Bounds, Canvas};
 use super::theme::{EDGE, Rgba};
+use ui_engine::engine::screen::PaintError;
 
 /// Native category sprites round their 24-texel squares down at odd GUI scales.
 pub(super) fn native_side(canvas: &Canvas<'_>) -> f32 {

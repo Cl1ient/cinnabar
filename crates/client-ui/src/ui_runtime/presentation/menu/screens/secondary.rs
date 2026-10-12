@@ -8,8 +8,9 @@ use super::{
         rect,
         tokens::*,
     },
-    ContentArea, TextMetrics, UiPresentationError, panel, section_heading,
+    ContentArea, UiPresentationError, panel, section_heading,
 };
+use ui_engine::text_metrics::TextMetrics;
 
 pub(super) fn profile(
     view: &MenuView,

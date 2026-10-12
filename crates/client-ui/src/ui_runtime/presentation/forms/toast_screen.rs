@@ -9,10 +9,11 @@ use json_ui::{DataSource, FactoryItem, Scalar};
 use serde_json::{Value, json};
 use ui::{ToastPress, UiNode, UiPoint};
 
-use super::engine::{ScreenArt, screen::PaintFrame};
 use crate::ui_runtime::UiRuntime;
+use ui_engine::engine::{ScreenArt, screen::PaintFrame};
+use ui_engine::text_metrics::TextMetrics;
 use {
-    super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime, bounded_visible_text},
+    super::super::{UiPresentationError, UiPresentationRuntime, bounded_visible_text},
     ui::FONT_DESIGN_PIXEL_TEXELS,
 };
 

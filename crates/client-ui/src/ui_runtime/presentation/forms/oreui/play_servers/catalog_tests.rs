@@ -20,7 +20,7 @@ fn detail_labels(view: &MenuView) -> Vec<String> {
     let font = fixture_font();
     let (mut nodes, mut next, mut layouts) =
         (Vec::new(), 1, ui::TextLayoutCache::new(128, 1024 * 1024));
-    let metrics = super::super::super::super::TextMetrics::for_viewport(
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
         [1280, 720],
         ui::DpiScale::new(1.0).unwrap(),
         Some(2),
@@ -193,7 +193,7 @@ fn details_draw_complete_sections_and_end_at_content_with_independent_scroll() {
     let font = fixture_font();
     let (mut nodes, mut next, mut layouts) =
         (Vec::new(), 1, ui::TextLayoutCache::new(128, 1024 * 1024));
-    let metrics = super::super::super::super::TextMetrics::for_viewport(
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
         [1280, 720],
         ui::DpiScale::new(1.0).unwrap(),
         Some(2),
@@ -300,7 +300,7 @@ fn a_server_logo_is_never_stretched_into_missing_banner_art() {
     let font = fixture_font();
     let (mut nodes, mut next, mut layouts) =
         (Vec::new(), 1, ui::TextLayoutCache::new(128, 1024 * 1024));
-    let metrics = super::super::super::super::TextMetrics::for_viewport(
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
         [1280, 720],
         ui::DpiScale::new(1.0).unwrap(),
         Some(2),

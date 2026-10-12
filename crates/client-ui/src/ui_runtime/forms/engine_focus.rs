@@ -5,8 +5,8 @@ use json_ui::{FocusDirection, FocusMove, HitKind, HitRegion, RectOut};
 
 use semantic_input::KeyboardKey;
 
-use super::values::EngineFrame;
 use crate::ui_runtime::UiRuntime;
+use ui_engine::frame::EngineFrame;
 
 /// The focus direction an arrow key moves.
 pub fn direction_of(key: KeyboardKey) -> Option<FocusDirection> {

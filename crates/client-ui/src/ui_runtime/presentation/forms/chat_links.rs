@@ -1,12 +1,12 @@
 //! HTTP(S) targets and clipped glyph hits from the rendered chat history.
-use super::{
-    super::TextMetrics,
-    engine::{label_origin, painted_label_request},
-};
 use assets::RuntimeFontCatalog;
 use json_ui::{Draw, DrawNode, ViewState};
 use std::ops::Range;
 use ui::{TextLayoutCache, UiPoint, UiRect};
+use ui_engine::{
+    engine::text_paint::{label_origin, painted_label_request},
+    text_metrics::TextMetrics,
+};
 
 struct Target {
     chars: Range<usize>,
@@ -324,8 +324,8 @@ mod tests {
     fn link_hits_follow_the_actual_default_and_named_label_paint_origin() {
         use std::sync::Arc;
 
-        use super::super::engine::{FormEngine, ScreenArt, screen::PaintFrame};
         use crate::ui_runtime::presentation::UiPresentationRuntime;
+        use ui_engine::engine::{FormEngine, ScreenArt, screen::PaintFrame};
 
         for named in [false, true] {
             let base = crate::test_support::fixture_font();
@@ -348,6 +348,7 @@ mod tests {
                     Default::default(),
                     0,
                     super::super::screen_registry::registry(),
+                    crate::ui_runtime::presentation::forms::texture_sources::downloads(),
                 );
                 let mut node = history_node("https://example.com", 600.0);
                 if let Draw::Text { options, .. } = &mut node.draw {

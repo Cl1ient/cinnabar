@@ -657,8 +657,10 @@ fn focused_fields_respect_the_blink_phase_and_hide_carets_during_selection() {
 
 #[test]
 fn play_tabs_draw_the_installed_native_icons() {
-    use crate::ui_runtime::oreui_assets::{PLAY_TAB_ICONS, load_optional_oreui_images};
-    let Some(images) = load_optional_oreui_images() else {
+    use crate::ui_runtime::oreui_assets::{
+        PLAY_TAB_ICONS, checkout_compiled_dir, load_optional_oreui_images,
+    };
+    let Some(images) = load_optional_oreui_images(&checkout_compiled_dir()) else {
         eprintln!(
             "skipping play_tabs_draw_the_installed_native_icons: installed OreUI bundle unavailable"
         );
@@ -800,7 +802,7 @@ fn text_fields_center_visible_glyphs_instead_of_the_font_line_box() {
 
 #[test]
 fn pause_loads_small_server_logos_without_an_oversized_artwork_copy() {
-    use super::super::super::menu_artwork::TITLE_KEY;
+    use ui_engine::textures::TITLE_KEY;
     let mut presentation = crate::test_support::mini_engine_presentation();
     let mut bytes = Vec::new();
     image::RgbaImage::from_pixel(8, 4, image::Rgba([73, 91, 37, 255]))

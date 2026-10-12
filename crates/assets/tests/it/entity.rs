@@ -22,3 +22,5 @@ mod suite;
 
 #[path = "entity/interaction_traits.rs"]
 mod interaction_traits;
+#[path = "entity/placement_frame.rs"]
+mod placement_frame;

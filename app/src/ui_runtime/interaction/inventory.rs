@@ -104,7 +104,9 @@ pub(super) fn apply_inventory_pointer(
     let gui = presentation.inventory_gui_point(point, physical_size, window.scale_factor());
     runtime.set_inventory_pointer_gui(gui);
     // A player mod's view, or a control of its overlay, owns the pointer (`modding`).
-    let mod_owned = presentation.mod_screens_own([point.x(), point.y()]);
+    let mod_owned = presentation
+        .mod_ui()
+        .mod_screens_own([point.x(), point.y()]);
     let book_open = runtime.screen_state().book_open;
     let reader_mode = runtime
         .screen_state()
@@ -197,7 +199,7 @@ pub(super) fn apply_inventory_pointer(
 /// Wheel notches over an engine-drawn screen scroll the view under the pointer.
 pub(super) fn scroll_container(
     runtime: &mut UiRuntime,
-    frame: &client_ui::ui_runtime::forms::EngineFrame,
+    frame: &ui_engine::frame::EngineFrame,
     gui: [f32; 2],
     notches: &[(f32, MouseScrollUnit)],
 ) {

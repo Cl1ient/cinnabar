@@ -92,6 +92,7 @@ pub(super) fn fixture() -> CompiledEntityAssets {
 mod geometry_fixture;
 use geometry_fixture::{geometry_fixture, scalar};
 
+/// Builds a derived geometry with a retained parent for inheritance tests.
 pub(super) fn inherited_geometry_fixture() -> CompiledEntityAssets {
     let mut compiled = geometry_fixture();
     compiled.sources = vec![
@@ -593,6 +594,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         }]
         .into_boxed_slice(),
         rig_bindings: vec![EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             entity_symbol: 0,
             render_controller: 4,
             first_geometry: 0,
@@ -957,6 +959,7 @@ fn carrier_v4_enforces_molang_and_rig_bounds_and_all_indices() {
         .collect();
     compiled.rig_bindings = (0..MAX_ENTITY_RIG_BINDINGS)
         .map(|index| EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             first_geometry: index as u32,
             geometry_count: 1,
             ..compiled.rig_bindings[0]

@@ -1,4 +1,3 @@
-use super::super::super::engine::screen::PaintError;
 use super::super::{
     paint::Canvas,
     theme::{self, BODY, CAPTION, HEADER5, TEXT, TEXT_DIMMER},
@@ -7,6 +6,7 @@ use super::super::{
 use super::command;
 use launcher::dressing_room::{Action, SkinEditorMode, SkinEditorTarget};
 use launcher::menu::{MenuAction, MenuField, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,

@@ -83,7 +83,7 @@ fn global_resources_screen_renders_actions_and_pack_settings() {
     snapshot::write(&input, "global-resources");
     let mut nodes = Vec::new();
     let mut next = 1;
-    let metrics = crate::ui_runtime::presentation::TextMetrics::for_viewport(
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
         [1280, 720],
         ui::DpiScale::new(1.0).unwrap(),
         None,

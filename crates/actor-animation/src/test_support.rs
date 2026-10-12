@@ -158,6 +158,7 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
         controller_animations: Box::new([]),
         controller_transitions: Box::new([]),
         rig_bindings: vec![EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             entity_symbol: 4,
             render_controller: 2,
             first_geometry: 0,

@@ -8,8 +8,9 @@ use std::time::Instant;
 use json_ui::{Draggable, HitKind, HitRegion, ScrollMetrics};
 use semantic_input::ScrollUnit;
 
-use super::values::{EngineFrame, FormDrag};
+use super::values::FormDrag;
 use crate::ui_runtime::UiRuntime;
+use ui_engine::frame::EngineFrame;
 
 /// Wheel notches or pixels over the view the pointer reaches.
 pub(super) fn wheel(

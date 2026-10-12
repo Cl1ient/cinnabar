@@ -1,5 +1,7 @@
-use super::{Arc, CachedScreen, Catalog, Context, DataSource};
+use super::{Arc, Catalog, DataSource};
+use json_ui::Context;
 use json_ui::{Draw, LayoutEnv, Scalar, TextMeasure, TextureMeta, TextureSource};
+use ui_engine::cached_screen::CachedScreen;
 
 struct Metrics;
 

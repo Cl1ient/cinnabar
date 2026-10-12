@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use ui::UiVisual;
 
-use super::engine::{
+use crate::ui_runtime::presentation::hud_layout::{HeartPaint, HungerPaint};
+use ui_engine::engine::{
     Canvas,
     screen::{CustomDraw, CustomRenderer, PaintError},
 };
-use crate::ui_runtime::presentation::hud_layout::{HeartPaint, HungerPaint};
 
 mod hunger_animation;
 pub(in crate::ui_runtime::presentation) use hunger_animation::HungerAnimation;
@@ -94,7 +94,6 @@ pub struct HudPaint {
     pub hotbar_cooldowns: [f32; 9],
     pub crosshair: Option<SheetSprite>,
     pub crosshair_blend: ui::UiBlendMode,
-    pub custom_crosshair: Option<ui::mod_hud::Crosshair>,
 }
 
 impl HudPaint {
@@ -225,13 +224,7 @@ fn paint(
         }
         "cursor_renderer" => {
             if let Some(sprite) = hud.crosshair {
-                if let Some(spec) = &hud.custom_crosshair {
-                    if !super::mod_crosshair::paint(canvas, spec, dest) {
-                        crosshair(canvas, sprite, dest, hud.crosshair_blend);
-                    }
-                } else {
-                    crosshair(canvas, sprite, dest, hud.crosshair_blend);
-                }
+                crosshair(canvas, sprite, dest, hud.crosshair_blend);
             }
             return true;
         }

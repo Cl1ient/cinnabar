@@ -143,7 +143,7 @@ fn large_session_icons_install_without_blocking_later_server_ui_textures() {
         vec![Some(protocol::FormButtonImage::Path(path.into()))],
     );
     let nodes = pack_harness::render(&mut presentation, &runtime, [1280, 720], 1.0);
-    let server_page = presentation.textures.dynamic_start() + dynamic_textures::SERVER_UI_PAGE;
+    let server_page = presentation.textures.dynamic_start() + ui_engine::pages::SERVER_UI_PAGE;
     let uv = nodes
         .iter()
         .find_map(|node| match node.visual() {
@@ -244,7 +244,7 @@ fn a_large_icon_set_packs_off_the_frame() {
         &large
     ));
     assert_eq!(PACKS.with(std::cell::Cell::get), packs);
-    let page = (presentation.textures.dynamic_start() + dynamic_textures::SESSION_ICON_PAGE) as u16;
+    let page = (presentation.textures.dynamic_start() + ui_engine::pages::SESSION_ICON_PAGE) as u16;
     let expected = pack(&large, page).unwrap();
     assert_eq!(presentation.session_icons.refs, expected.refs);
     assert_eq!(presentation.session_icons.page, Some(expected.page));

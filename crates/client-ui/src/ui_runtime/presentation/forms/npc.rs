@@ -5,9 +5,10 @@ use json_ui::{CollectionItem, DataSource, Scalar, ViewState};
 use protocol::NpcDialogueForm;
 use ui::UiNode;
 
-use super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime};
-use super::engine::{self, screen::PaintFrame};
+use super::super::{UiPresentationError, UiPresentationRuntime};
 use crate::ui_runtime::{ServerFormIdentity, UiRuntime};
+use ui_engine::engine::{self, screen::PaintFrame};
+use ui_engine::text_metrics::TextMetrics;
 
 pub const NPC_SCREEN: &str = "npc_interact.npc_screen";
 

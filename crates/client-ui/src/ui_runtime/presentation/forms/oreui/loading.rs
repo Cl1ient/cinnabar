@@ -1,7 +1,7 @@
 //! Timed loading art from the optional version-matched OreUI bundle.
 
-use super::super::engine::screen::PaintError;
 use super::paint::{Bounds, Canvas};
+use ui_engine::engine::screen::PaintError;
 
 impl Canvas<'_> {
     /// Draws the current loading frame, or reports that install art is unavailable.

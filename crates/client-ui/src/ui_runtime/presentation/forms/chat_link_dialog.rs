@@ -1,12 +1,15 @@
 //! Explicit confirmation before opening a chat URL in the platform browser.
 use super::{
-    super::{TextMetrics, UiPresentationError, UiPresentationRuntime},
+    super::{UiPresentationError, UiPresentationRuntime},
     chat_screen::ChatHit,
-    engine::{ScreenArt, screen::PaintFrame},
     menus::window_rect,
 };
 use crate::ui_runtime::UiRuntime;
 use ui::UiNode;
+use ui_engine::{
+    engine::{ScreenArt, screen::PaintFrame},
+    text_metrics::TextMetrics,
+};
 
 impl UiPresentationRuntime {
     /// Retains the clicked target while the native popup owns chat input.

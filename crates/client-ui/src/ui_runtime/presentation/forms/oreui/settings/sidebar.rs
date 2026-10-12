@@ -1,6 +1,5 @@
 //! Flat category rows and group dividers in the independently scrolling settings sidebar.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::super::menu_screens::Translate;
 use super::super::focus;
 use super::super::motion::Kind;
@@ -12,6 +11,7 @@ use crate::ui_runtime::oreui_assets::{SETTINGS_ICON_HIGHLIGHT_IMAGE, SETTINGS_IC
 use launcher::menu::view::SettingsFocusAxis;
 use launcher::menu::{MenuAction, MenuView};
 use ui::IconRef;
+use ui_engine::engine::screen::PaintError;
 
 const TABS: [(&str, &str); 14] = [
     ("accessibility_forced_index", "menu.accessibility.tab.title"),

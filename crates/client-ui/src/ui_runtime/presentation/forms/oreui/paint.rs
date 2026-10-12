@@ -18,7 +18,6 @@ use ui::{
     TextLayoutCache, TextLayoutRequest, TextShadow, UiNode, UiNodeId, UiRect, UiScale, UiVisual,
 };
 
-use super::super::super::menu_scroll::ScrollArea;
 use super::super::menu_caret::TextSpot;
 use super::theme::{
     Appearance, BODY, Bundle, EDGE, LETTER_SPACING, Rgba, Role, TEXT_DIMMEST, TEXT_SHADOW, Type,
@@ -27,10 +26,11 @@ use launcher::menu::{
     MenuAction,
     view::{SettingsFocusLandmark, SettingsFocusTarget},
 };
-use {
-    super::super::super::TextMetrics,
-    super::super::engine::{rect, screen::PaintError},
-    ui::{FONT_DESIGN_PIXEL_TEXELS, IconRef},
+use ui::{FONT_DESIGN_PIXEL_TEXELS, IconRef};
+use ui_engine::scroll::ScrollArea;
+use ui_engine::{
+    engine::{rect, screen::PaintError},
+    text_metrics::TextMetrics,
 };
 
 /// `style`'s text scale over the frame metrics: the open font's default line is the

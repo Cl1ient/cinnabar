@@ -20,9 +20,8 @@ mod credits_renderer;
 pub mod credits_screen;
 pub mod crosshair_settings;
 pub mod emote_screen;
-pub mod engine;
-pub mod experience;
-pub mod experience_modal;
+#[cfg(test)]
+mod engine_tests;
 pub mod fallback;
 #[cfg(test)]
 mod formatting_tests;
@@ -32,7 +31,6 @@ pub mod hud_renderers;
 #[cfg(test)]
 pub mod inbox_tests;
 mod invite_screen;
-mod item_renderer;
 pub mod java_animations_setting;
 pub mod join_progress;
 #[cfg(test)]
@@ -47,12 +45,7 @@ mod menu_renderers;
 pub mod menu_screens;
 mod menu_title;
 pub mod menus;
-mod mod_crosshair;
-pub mod mod_hud;
-pub mod mod_hud_editor;
-pub mod mod_panel;
-pub mod mod_screens;
-pub mod mod_widgets;
+mod mod_surfaces;
 pub mod model;
 pub mod motion_blur_setting;
 pub mod npc;
@@ -70,7 +63,6 @@ pub(crate) mod compatibility_tests;
 mod font_snapshots;
 #[cfg(any(test, feature = "test-support"))]
 pub mod pack_harness;
-pub mod pages;
 #[cfg(test)]
 mod publication_tests;
 #[cfg(test)]
@@ -108,10 +100,9 @@ pub mod snapshot;
 pub mod start_feed;
 #[cfg(test)]
 mod store_tests;
-mod template_screen;
 #[cfg(test)]
 pub mod tests;
-pub mod textures;
+mod texture_sources;
 pub mod toast_screen;
 pub mod vrr_setting;
 pub mod vsync_setting;
@@ -119,22 +110,24 @@ pub mod vsync_setting;
 pub use chat_screen::{CHAT_SCREEN, ChatHit};
 pub use container_data::observe_station_block;
 pub use emote_screen::{EMOTE_EQUIP_POPUP, EMOTE_SCREEN, EmoteHit};
-pub use experience_modal::ExperienceModal;
 
 pub use loading_screen::{LOADING_SCREEN, LoadingStage};
-pub use mod_screens::ModScreensInput;
 pub use npc::NPC_SCREEN;
 pub use oreui::BedHit;
 pub use sign_editor::SIGN_SCREEN;
-pub use template_screen::ModalEdits;
 
-use super::{TextMetrics, UiPresentationError, UiPresentationRuntime, dynamic_textures};
+use super::{UiPresentationError, UiPresentationRuntime};
 use crate::ui_runtime::scene_stack::ScreenSettingsTable;
-use crate::ui_runtime::{LocalFormAction, ServerFormIdentity, UiRuntime, forms::EngineFrame};
+use crate::ui_runtime::{LocalFormAction, ServerFormIdentity, UiRuntime};
 use assets::RuntimeUiAssets;
 pub use containers::{container_screen_reference, engine_panel_contains, engine_screen_for};
-use engine::screen::PaintFrame;
 pub use recipe_book::{recipe_book_hover, recipe_book_icons, recipe_book_shown};
+use ui_engine::{
+    engine::{FormEngine, screen::PaintFrame},
+    frame::EngineFrame,
+    pages,
+    text_metrics::TextMetrics,
+};
 
 pub use server_pack::ServerUiPack;
 use std::sync::Arc;
@@ -155,17 +148,9 @@ pub(super) struct ScreenStates {
     logged: Option<ServerFormIdentity>,
     /// The engine HUD's cached screens.
     hud: hud::HudScreens,
-    mod_hud: Option<mod_hud::ModHud>,
-    mod_hud_editor: Option<mod_hud_editor::HudEditor>,
-    mod_widgets: Option<mod_widgets::ModWidgets>,
-    mod_crosshair: Option<ui::mod_hud::Crosshair>,
     player_list: Option<player_list::PlayerList>,
-    mod_panel: Option<mod_panel::ModPanel>,
-    experience: Option<experience::ExperienceChrome>,
-    /// A client part's modal screen.
-    experience_modal: Option<experience_modal::ModalScreen>,
-    /// A player mod's overlay and view.
-    mod_screens: Option<mod_screens::ModScreens>,
+    /// Every mod- and experience-owned surface.
+    pub(super) mod_ui: mod_ui::ModUi,
     /// The last container screen's layout.
     container_cache: Option<containers::ScreenCache>,
     /// Immutable creative rows reused across hover and scroll frames.
@@ -246,11 +231,17 @@ impl UiPresentationRuntime {
         self.preview_dirty = true;
         self.menu_artwork_dirty = true;
         self.rebuild_dynamic_textures();
-        let mut engine =
-            engine::FormEngine::new(assets, catalog, first_page, screen_registry::registry());
+        let mut engine = FormEngine::new(
+            assets,
+            catalog,
+            first_page,
+            screen_registry::registry(),
+            texture_sources::downloads(),
+        );
         engine.textures.server_page =
-            (self.textures.dynamic_start() + dynamic_textures::SERVER_UI_PAGE) as u16;
+            (self.textures.dynamic_start() + pages::SERVER_UI_PAGE) as u16;
         self.engine = Some(Box::new(engine));
+        self.engine_pack = None;
         // A new carrier reads its own credits files and splashes.
         self.screens.credits.forget_content();
         self.screens.splash = std::sync::OnceLock::new();
@@ -265,7 +256,7 @@ impl UiPresentationRuntime {
     /// carrier's from reserved dynamic pages, so the static texture identity the
     /// renderer pins never changes. An empty pack restores vanilla.
     pub fn set_server_ui_pack(&mut self, pack: &ServerUiPack) {
-        let first = self.textures.dynamic_start() + dynamic_textures::SERVER_UI_PAGE;
+        let first = self.textures.dynamic_start() + pages::SERVER_UI_PAGE;
         let Some(engine) = self.engine.as_mut() else {
             return;
         };
@@ -277,15 +268,15 @@ impl UiPresentationRuntime {
         }
         // Palette-only reloads can leave every cached text node unchanged.
         self.last_frame = None;
-        let atlas = server_pack::ServerAtlas::new(
+        let atlas = ui_engine::atlas::ServerAtlas::new(
             &pack.textures,
             pack.view.clone(),
-            dynamic_textures::SERVER_UI_PAGES,
+            pages::SERVER_UI_PAGES,
         )
         .with_preread(
             pack.catalog
                 .as_ref()
-                .and_then(hud::prepared::take_textures)
+                .and_then(ui_engine::prepared::take_textures)
                 .as_deref(),
         );
         tracing::info!(
@@ -361,8 +352,9 @@ impl UiPresentationRuntime {
             .engine
             .as_mut()
             .is_some_and(|engine| engine.take_server_pages().is_some());
-        let changed =
-            self.refresh_experience_modal_pages() | self.refresh_mod_screen_pages() | server;
+        let changed = self.screens.mod_ui.refresh_experience_modal_pages()
+            | self.screens.mod_ui.refresh_mod_screen_pages()
+            | server;
         // Server textures too big for a server page draw from full-resolution art.
         let set = super::menu_artwork::ArtworkSet {
             paths: self.menu_artwork_set.paths.clone(),
@@ -404,7 +396,9 @@ impl UiPresentationRuntime {
             }
         }
         if let Some(engine) = self.engine.as_mut() {
-            engine.textures.set_fallbacks(icons, vanilla);
+            engine
+                .textures
+                .set_fallbacks(icons, Arc::new(texture_sources::VanillaPack::new(vanilla)));
         }
     }
 
@@ -412,7 +406,10 @@ impl UiPresentationRuntime {
     #[cfg(test)]
     pub fn set_vanilla_texture_root(&mut self, vanilla: std::path::PathBuf) {
         if let Some(engine) = self.engine.as_mut() {
-            engine.textures.set_fallbacks(Default::default(), vanilla);
+            engine.textures.set_fallbacks(
+                Default::default(),
+                Arc::new(texture_sources::VanillaPack::new(vanilla)),
+            );
         }
     }
 
@@ -457,10 +454,16 @@ impl UiPresentationRuntime {
 
     /// Applies the runtime's server UI pack when it changes identity.
     pub(super) fn observe_server_ui(&mut self, pack: Option<&Arc<ServerUiPack>>) {
-        let Some(engine) = self.engine.as_mut() else {
+        if self.engine.is_none() {
             return;
+        }
+        let same = match (&self.engine_pack, pack) {
+            (Some(current), Some(next)) => Arc::ptr_eq(current, next),
+            (None, None) => true,
+            _ => false,
         };
-        if !engine.take_server_source(pack) {
+        self.engine_pack = pack.cloned();
+        if same {
             return;
         }
         self.screens.credits.forget_content();
@@ -578,9 +581,7 @@ impl UiPresentationRuntime {
             oreui_slider_tracks,
             ..FrameProjections::default()
         };
-        if let Some(screens) = self.screens.mod_screens.as_mut() {
-            screens.begin_frame();
-        }
+        self.screens.mod_ui.begin_mod_screens_frame();
     }
 
     /// Draws the open container's engine screen.

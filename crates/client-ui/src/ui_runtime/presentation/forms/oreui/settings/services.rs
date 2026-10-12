@@ -1,6 +1,5 @@
 //! Settings panels backed by launcher account, language, pack and storage state.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::theme::{BODY, CAPTION, EDGE, NEUTRAL, TEXT, TEXT_DIMMER};
 use super::super::widgets;
 use super::{Content, button};
@@ -10,6 +9,7 @@ use launcher::menu::{
     settings_storage::{CATEGORIES, StorageAction},
     settings_support::{SupportAction, SupportLink},
 };
+use ui_engine::engine::screen::PaintError;
 
 #[cfg(test)]
 mod tests;

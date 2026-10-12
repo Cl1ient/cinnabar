@@ -11,7 +11,8 @@ use super::theme::{CAPTION, NEUTRAL80, SECONDARY_BUTTON, TEXT, TEXT_DIMMEST};
 use super::widgets::{Variant, button, header, screen_overlay, tabs};
 use launcher::menu::ProfileTab;
 use launcher::menu::{MenuAction, MenuView, auth::AuthState};
-use {super::super::engine::screen::PaintError, ui::IconRef};
+use ui::IconRef;
+use ui_engine::engine::screen::PaintError;
 
 /// Draws fixed navigation above independently scrolling card and active tab content.
 pub(super) fn draw(

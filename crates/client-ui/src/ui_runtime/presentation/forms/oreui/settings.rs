@@ -14,7 +14,6 @@ mod sidebar;
 #[cfg(test)]
 mod row_tests;
 
-use super::super::engine::screen::PaintError;
 use super::super::menu_screens::{SETTINGS_SECTIONS, Translate};
 use super::focus;
 use super::paint::{Bounds, Canvas};
@@ -27,6 +26,7 @@ use launcher::menu::{
     view::SettingsFocusAxis,
 };
 use ui::IconRef;
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn section_index(name: &str) -> u8 {
     SETTINGS_SECTIONS

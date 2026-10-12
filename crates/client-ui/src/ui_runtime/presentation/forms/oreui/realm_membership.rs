@@ -2,7 +2,6 @@
 
 use launcher::menu::realm_membership::{Action, Stage};
 
-use super::super::engine::screen::PaintError;
 use super::{
     grid::Grid,
     modal,
@@ -11,6 +10,7 @@ use super::{
     widgets::{self, Variant},
 };
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 /// Draws the invitation flow with input isolated from the underlying Play tabs.
 pub(super) fn draw(

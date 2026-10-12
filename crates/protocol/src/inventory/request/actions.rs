@@ -517,11 +517,7 @@ mod tests {
                             identifier: Arc::from("minecraft:stick"),
                             aux: 0,
                         },
-                        count: 2,
-                    },
-                    AutoCraftIngredient {
-                        descriptor: StackItemDescriptor::Empty,
-                        count: 0,
+                        count: 1,
                     },
                 ]),
             },

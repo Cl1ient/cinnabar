@@ -567,9 +567,15 @@ jobs:
         run: |
           bash "$GITHUB_WORKSPACE/release-tools/packaging/release-notes.sh" release > "$RUNNER_TEMP/notes.md"
           if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            # Notes start at the last published release, not an unpublished attempt's tag.
+            previous="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')"
+            notes_start=()
+            if [[ -n "$previous" ]]; then
+              notes_start+=(--notes-start-tag "$previous")
+            fi
             # Publish a new version only after its downloads and signed metadata are present.
             gh release create "$RELEASE_TAG" --draft --latest=false --verify-tag --target "$RELEASE_COMMIT" \
-              --title "$RELEASE_TAG" --generate-notes --notes-file "$RUNNER_TEMP/notes.md"
+              --title "$RELEASE_TAG" --generate-notes "${notes_start[@]}" --notes-file "$RUNNER_TEMP/notes.md"
             echo "created=true" >> "${GITHUB_OUTPUT:-/dev/null}"
           fi
           # Keep an existing release public so cached manifests can still fetch their payloads.

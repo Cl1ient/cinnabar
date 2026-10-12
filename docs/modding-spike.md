@@ -276,8 +276,11 @@ publication. Bundles accept up to 128 surfaces and 8 MiB of source data.
 `ModHost::set_panel_bundle` prepares the same contract for host-owned integrations.
 The registration worker and direct environment startup also call
 `PreparedPanelUi::prepare(host.panel_bundle().unwrap())` and pass its result to
-`ModUi::preload_panel_bundle` before the first frame. Standalone integrations use
-the same two calls outside rendering. Prepared routes retain their catalogs and
+`ModUi::set_prepared_panel_ui(owner, Some(prepared))` before the first frame.
+Use `PanelUiOwner::Environment(index)` for each startup component or
+`PanelUiOwner::Registration` for the independently registered component. Remove
+that owner's entry with `None` when it unloads. Standalone integrations prepare
+and install their owner entry outside rendering. Prepared routes retain their catalogs and
 resolved roots; returning to a route reuses its binding and measurement caches.
 Route changes continue to release pointer capture and reset the scroll position.
 

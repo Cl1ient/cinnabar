@@ -28,12 +28,13 @@ pub use facts::{ItemStackFacts, ItemStackFactsCache};
 mod registry_capacity;
 
 pub use attack::{ItemAttackCooldown, ItemAttackTiming, KineticWeaponTiming};
-pub use components::{FoodProperties, ItemComponents, item_components};
+pub(crate) use components::item_components;
+pub use components::{FoodProperties, ItemComponents};
 pub use display::{
     ItemBook, ItemDisplay, MAX_BOOK_PAGES, item_book, item_bundle_id, item_display,
     item_has_enchantment_list,
 };
-pub use icons::item_icon_keys;
+pub(crate) use icons::item_icon_keys;
 
 /// The single item shape 1.26.40 puts on the wire.
 ///
@@ -71,8 +72,8 @@ pub fn select_hotbar_slot_packet(
         untracked.stack_network_id = -1;
     }
     let item =
-        VerifiedNetworkItemStack::try_new(untracked, stack.nbt_digest)?.into_vendor_item(0)?;
-    Ok(MobEquipmentPacket {
+        VerifiedNetworkItemStack::try_new(untracked, stack.nbt_digest)?.into_vendor_item()?;
+    Ok(crate::Packet::new(MobEquipmentPacket {
         target_runtime_id: ActorRuntimeId {
             actor_runtime_id: runtime_id,
         },
@@ -82,8 +83,7 @@ pub fn select_hotbar_slot_packet(
         // The inventory container. 1.26.40 carries the raw ID rather than a
         // named WindowId enum.
         container_id: 0,
-    }
-    .into())
+    }))
 }
 
 pub const MAX_ITEM_REGISTRY_ENTRIES: usize = 16_384;
@@ -676,7 +676,7 @@ fn validate_registry_nbt(nbt: &Nbt) -> Result<(), ItemPacketError> {
 
 pub(crate) fn normalize_item_registry(
     packet: ItemRegistryPacket,
-) -> Result<ItemActorEvent, ItemPacketError> {
+) -> Result<ItemRegistryEvent, ItemPacketError> {
     if packet.item_data.len() > MAX_ITEM_REGISTRY_ENTRIES {
         return Err(ItemPacketError::TooManyRegistryEntries {
             count: packet.item_data.len(),
@@ -744,9 +744,9 @@ pub(crate) fn normalize_item_registry(
             entries.push(entry);
         }
     }
-    Ok(ItemActorEvent::Registry(ItemRegistryEvent {
+    Ok(ItemRegistryEvent {
         entries: Arc::from(entries),
-    }))
+    })
 }
 
 pub(crate) fn normalize_equipment(

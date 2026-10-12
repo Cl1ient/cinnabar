@@ -3,7 +3,6 @@ use crate::mining::{
     FrozenMiningFrame, FrozenMiningRay, FrozenMiningSelection, FrozenMiningTarget,
 };
 use protocol::PlayerInputMode;
-#[cfg(test)]
 
 /// Wall-clock millis a deferred press may wait for fresh evidence or a tick, whatever the frame
 /// rate, without outliving a stalled simulation.

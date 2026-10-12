@@ -638,7 +638,7 @@ pub(crate) fn record_metrics(
                 snapshot.camera.stable_id,
                 snapshot.camera.pose_hash,
                 snapshot.camera.frustum_hash,
-                snapshot.pose_generation,
+                snapshot.pose_generation.get(),
                 snapshot.view_generation,
                 snapshot.draw_mode,
                 visibility_digest_marker_fields("resident", snapshot.resident_mesh),

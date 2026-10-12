@@ -70,30 +70,13 @@ jobs:
           path: target/cargo-timings/cargo-timing.html
           if-no-files-found: warn
 
-  runtime-plan:
+  runtime:
+    name: CPU benchmarks on one runner
     if: inputs.measurement == 'runtime'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - id: plan
-        run: python3 .github/scripts/runtime_profile.py plan "$GITHUB_OUTPUT"
-
-  runtime:
-    name: CPU benchmarks (${{ matrix.variant }})
-    needs: runtime-plan
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.runtime-plan.outputs.matrix) }}
+    timeout-minutes: 360
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
-      CARGO_BUILD_BUILD_DIR: "{workspace-root}/target"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -101,15 +84,15 @@ jobs:
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
       - name: Measure release CPU benchmarks
-        run: python3 .github/scripts/runtime_profile.py run "${{ matrix.variant }}"
+        run: python3 .github/scripts/runtime_profile.py suite
       - name: Upload Criterion estimates and runner metadata
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-profile-${{ matrix.variant }}
+          name: runtime-profile-results
           path: |
-            target/criterion/**/new/*.json
-            target/runtime-profile.json
+            target/runtime-profile-*/criterion/**/new/*.json
+            target/runtime-profile-*/runtime-profile.json
           if-no-files-found: error
 
   runtime-allocator:
@@ -133,8 +116,8 @@ jobs:
 
   runtime-summary:
     name: Compare runtime medians
-    if: ${{ !cancelled() && needs.runtime-plan.result == 'success' }}
-    needs: [runtime-plan, runtime]
+    if: ${{ !cancelled() && inputs.measurement == 'runtime' }}
+    needs: runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -145,7 +128,7 @@ jobs:
         run: python3 -m unittest discover -s .github/tests -p test_runtime_profile.py -v
       - uses: actions/download-artifact@v8
         with:
-          pattern: runtime-profile-*
+          name: runtime-profile-results
           path: runtime-results
       - name: Write the runtime comparison table
         run: python3 .github/scripts/runtime_profile.py summary runtime-results "$GITHUB_STEP_SUMMARY"

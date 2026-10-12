@@ -25,18 +25,16 @@ class RuntimeSummaryTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        for variant, settings in profile.VARIANTS.items():
+        for variant in profile.VARIANTS:
             artifact = self.root / f"runtime-profile-{variant}"
             artifact.mkdir()
             metadata = {
+                **profile.configuration(variant, MODULE.parents[2]),
                 "variant": variant,
                 "head_sha": "same-revision",
                 "sample_size": profile.SAMPLE_SIZE,
-                "profile": "release",
                 "rustc": "same-compiler",
-                "lto": settings.get("lto", "thin"),
-                "rustflags": settings.get("rustflags", ""),
-                "allocator": "mimalloc" if settings.get("mimalloc") else "system",
+                "host": "same-host",
                 "cpu": {"lscpu": [{"field": "Model name:", "data": "Test CPU"}]},
                 "completed": True,
                 "completed_benches": [
@@ -49,7 +47,8 @@ class RuntimeSummaryTests(unittest.TestCase):
                 for bench in benches:
                     directory = artifact / "criterion" / package / bench / "case" / "new"
                     directory.mkdir(parents=True)
-                    self.write_case(directory, "case|one", 100 if variant == "baseline" else 80)
+                    baseline = variant in ("baseline", "baseline-repeat")
+                    self.write_case(directory, "case|one", 100 if baseline else 80)
 
     def write_case(self, directory, identity, median):
         """Write only the Criterion fields needed for a comparison."""
@@ -171,6 +170,63 @@ class RuntimeSummaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Different source revision"):
             profile.summary(self.root)
 
+    def test_baseline_repeat_drift_rejects_comparison(self):
+        """Reject either direction of no-op drift beyond the geomean tolerance."""
+        directory = self.root / "runtime-profile-baseline-repeat"
+        for change in (profile.BASELINE_REPEAT_LIMIT + 0.01, -profile.BASELINE_REPEAT_LIMIT - 0.01):
+            for path in directory.glob("criterion/**/new"):
+                self.write_case(path, "case|one", 100 * (1 + change))
+            output = self.root / "summary.md"
+            with patch.object(sys, "argv", [str(MODULE), "summary", str(self.root), str(output)]):
+                with self.assertRaises(SystemExit):
+                    profile.main()
+            report = output.read_text()
+            self.assertIn("Runtime comparison rejected", report)
+            self.assertIn("Baseline repeat geomean change", report)
+            self.assertNotIn("median (ns)", report)
+
+    def test_baseline_repeat_at_limit_is_accepted(self):
+        """Allow a no-op repeat exactly at either tolerance boundary."""
+        directory = self.root / "runtime-profile-baseline-repeat"
+        for change in (profile.BASELINE_REPEAT_LIMIT, -profile.BASELINE_REPEAT_LIMIT):
+            for path in directory.glob("criterion/**/new"):
+                self.write_case(path, "case|one", 100 * (1 + change))
+            self.assertIn("median (ns)", profile.summary(self.root))
+
+    def test_baseline_repeat_uses_geometric_mean(self):
+        """Reciprocal changes cancel geometrically even when their arithmetic mean drifts."""
+        paths = list((self.root / "runtime-profile-baseline-repeat").glob("criterion/**/new"))
+        self.write_case(paths[0], "case|one", 50)
+        self.write_case(paths[1], "case|one", 200)
+        self.assertIn("median (ns)", profile.summary(self.root))
+
+    def test_different_cpu_rejects_comparison(self):
+        """Do not compare optimized binaries measured on a different CPU model."""
+        path = self.root / "runtime-profile-all" / "runtime-profile.json"
+        data = json.loads(path.read_text())
+        data["cpu"]["lscpu"][0]["data"] = "Different CPU"
+        path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(profile.ComparisonRejected, "Different measurement CPU"):
+            profile.summary(self.root)
+
+    def test_different_host_rejects_comparison(self):
+        """A matching CPU model does not permit measurements from a different host."""
+        path = self.root / "runtime-profile-all" / "runtime-profile.json"
+        data = json.loads(path.read_text())
+        data["host"] = "another-host"
+        path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(profile.ComparisonRejected, "Different measurement host"):
+            profile.summary(self.root)
+
+    def test_unrequested_flags_reject_comparison(self):
+        """Reject inherited compiler flags even if case coverage and hardware match."""
+        path = self.root / "runtime-profile-fat-lto" / "runtime-profile.json"
+        data = json.loads(path.read_text())
+        data["rustflags"] = "-C opt-level=0"
+        path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(profile.ComparisonRejected, "Unexpected rustflags"):
+            profile.summary(self.root)
+
 
 class RuntimeCompletionTests(unittest.TestCase):
     """Check the completion contract with mocked benchmark commands."""
@@ -181,13 +237,17 @@ class RuntimeCompletionTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         (self.root / "Cargo.toml").write_text((MODULE.parents[2] / "Cargo.toml").read_text())
-        self.target = self.root / "target"
+        self.results = self.root / "target"
+        self.target = self.results / "runtime-profile-baseline"
         self.metadata = self.target / "runtime-profile.json"
         self.benches = [
             f"{package}/{bench}"
             for package, benches in profile.BENCHES.items() for bench in benches
         ]
-        environment = {"CARGO_TARGET_DIR": str(self.target), "GITHUB_SHA": "same-revision"}
+        environment = {
+            "CARGO_TARGET_DIR": str(self.results), "GITHUB_SHA": "same-revision",
+            "GITHUB_STEP_SUMMARY": str(self.root / "audit.md"),
+        }
         self.enterContext(patch.dict(os.environ, environment))
         self.enterContext(patch.object(
             profile.subprocess, "check_output", side_effect=["same-compiler", '{"lscpu": []}'],
@@ -209,7 +269,7 @@ class RuntimeCompletionTests(unittest.TestCase):
 
     def test_metadata_failure_removes_previous_completion(self):
         """Discard a stale success marker even if runner metadata collection fails."""
-        self.target.mkdir()
+        self.target.mkdir(parents=True)
         self.metadata.write_text(json.dumps({"completed": True}))
         with patch.object(profile.subprocess, "check_output", side_effect=OSError("missing tool")):
             with self.assertRaises(OSError):
@@ -218,7 +278,7 @@ class RuntimeCompletionTests(unittest.TestCase):
 
     def test_later_failure_leaves_run_incomplete(self):
         """A final bench failure cannot retain a marker from an earlier successful run."""
-        self.target.mkdir()
+        self.target.mkdir(parents=True)
         self.metadata.write_text(json.dumps({"completed": True, "completed_benches": self.benches}))
         outcomes = [None] * (len(self.benches) - 1) + [subprocess.CalledProcessError(1, "bench")]
         with patch.object(profile.subprocess, "run", side_effect=outcomes):
@@ -254,6 +314,77 @@ class RuntimeCompletionTests(unittest.TestCase):
             bench = arguments[arguments.index("--bench") + 1]
             attempted.append(f"{package}/{bench}")
         self.assertEqual(attempted, self.benches)
+
+    def test_inherited_settings_are_removed_and_commands_are_audited(self):
+        """Use only the controlled release settings and publish the executed command list."""
+        inherited = {
+            "CARGO_PROFILE_RELEASE_OPT_LEVEL": "0", "CARGO_PROFILE_RELEASE_DEBUG": "2",
+            "CARGO_PROFILE_DEV_DEBUG": "2", "CARGO_ENCODED_RUSTFLAGS": "-Copt-level=0",
+        }
+        with patch.dict(os.environ, inherited):
+            with patch.object(profile.subprocess, "run") as command:
+                profile.run("baseline", self.root)
+        config = profile.configuration("baseline", self.root)
+        report = (self.root / "audit.md").read_text()
+        self.assertIn("RUSTFLAGS: `(empty)`", report)
+        self.assertIn("Profile: `release`", report)
+        for call, entry in zip(command.call_args_list, config["commands"], strict=True):
+            self.assertEqual(call.args[0], entry["command"])
+            self.assertIn(profile.shlex.join(call.args[0]), report)
+            env = call.kwargs["env"]
+            self.assertNotIn("CARGO_ENCODED_RUSTFLAGS", env)
+            self.assertNotIn("CARGO_PROFILE_DEV_DEBUG", env)
+            self.assertEqual(env["RUSTFLAGS"], config["rustflags"])
+            self.assertEqual(env["CARGO_TARGET_DIR"], str(self.target / "build"))
+            self.assertEqual(env["CARGO_BUILD_BUILD_DIR"], env["CARGO_TARGET_DIR"])
+            for key, expected in config["profile_environment"].items():
+                self.assertEqual(env[key], expected)
+
+    def test_suite_continues_variants_and_releases_only_build_outputs(self):
+        """Keep result JSON, isolate fresh builds, and attempt the baseline rebuild last."""
+        def measure(variant, root):
+            """Stand in for one variant while leaving its build and result files."""
+            target = self.results / f"runtime-profile-{variant}"
+            (target / "build").mkdir(parents=True)
+            (target / "runtime-profile.json").write_text("{}")
+            if variant == "fat-lto":
+                raise SystemExit("a bench failed")
+
+        with patch.object(profile, "run", side_effect=measure) as command:
+            with self.assertRaises(SystemExit):
+                profile.suite(self.root)
+        self.assertEqual([call.args[0] for call in command.call_args_list], list(profile.VARIANTS))
+        self.assertEqual(command.call_args_list[-1].args[0], "baseline-repeat")
+        for variant in profile.VARIANTS:
+            target = self.results / f"runtime-profile-{variant}"
+            self.assertTrue((target / "runtime-profile.json").is_file())
+            self.assertFalse((target / "build").exists())
+
+
+class RuntimeConfigurationTests(unittest.TestCase):
+    """Require only the requested settings to differ across benchmark configurations."""
+
+    def test_repeat_rebuilds_the_same_baseline_configuration(self):
+        """The repeat selects exactly the baseline commands, features, profile and flags."""
+        self.assertEqual(
+            profile.configuration("baseline", MODULE.parents[2]),
+            profile.configuration("baseline-repeat", MODULE.parents[2]),
+        )
+
+    def test_each_candidate_changes_only_its_intended_knob(self):
+        """Single-knob candidates cannot accidentally change unrelated compiler settings."""
+        baseline = profile.configuration("baseline", MODULE.parents[2])
+        effects = {
+            "lto": {"lto", "profile_environment"}, "rustflags": {"rustflags"},
+            "mimalloc": {"allocator", "commands"},
+        }
+        for variant, settings in profile.VARIANTS.items():
+            allowed = set().union(*(effects[name] for name in settings))
+            config = profile.configuration(variant, MODULE.parents[2])
+            self.assertEqual({name for name in config if config[name] != baseline[name]}, allowed)
+            expected_lto = str(config["lto"])
+            env = {**baseline["profile_environment"], "CARGO_PROFILE_RELEASE_LTO": expected_lto}
+            self.assertEqual(config["profile_environment"], env)
 
 
 if __name__ == "__main__":

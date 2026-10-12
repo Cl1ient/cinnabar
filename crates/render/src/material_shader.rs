@@ -74,8 +74,15 @@ pub(crate) fn native_leaf_sampler_descriptor() -> wgpu::SamplerDescriptor<'stati
     }
 }
 
+/// Formats the shared enchantment tint for the actor and UI shaders.
+pub(crate) fn glint_tint_source() -> String {
+    let [red, green, blue] = render_model::ActorGlint::TINT_RGB;
+    format!("vec3<f32>({red:?}, {green:?}, {blue:?})")
+}
+
 pub(crate) fn source(source: &str) -> String {
     source
+        .replace("GLINT_TINT_RGB", &glint_tint_source())
         .replace("ACTOR_LIGHT_WORLD_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_WORLD))
         .replace("ACTOR_LIGHT_DIRECTIONAL_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_DIRECTIONAL))
         .replace("TEXTURE_LAYER_MASK", &format!("{}u", assets::TEXTURE_LAYER_MASK))
@@ -191,11 +198,8 @@ fn legacy_glint_constants() -> String {
         format!("vec2<f32>({cos:?}, {sin:?})")
     };
     format!(
-        "const LEGACY_GLINT_ROTATION_1: vec2<f32> = {};\nconst LEGACY_GLINT_ROTATION_2: vec2<f32> = {};\nconst GLINT_COLOUR: vec3<f32> = vec3({:?}, {:?}, {:?});",
+        "const LEGACY_GLINT_ROTATION_1: vec2<f32> = {};\nconst LEGACY_GLINT_ROTATION_2: vec2<f32> = {};",
         rotation(rules.glint_rotation_radians[0]),
         rotation(rules.glint_rotation_radians[1]),
-        rules.glint_colour[0],
-        rules.glint_colour[1],
-        rules.glint_colour[2]
     )
 }

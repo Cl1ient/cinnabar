@@ -297,7 +297,7 @@ fn expected(case: Case, table: &[f32], fog: [f32; 3]) -> [f32; 4] {
         }
         let glint = if enchanted {
             let sum = (foil[0][i] + foil[1][i])
-                * render_api::BEDROCK_112.glint_colour[i]
+                * render_model::ActorGlint::TINT_RGB[i]
                 * case.strength
                 * light[i];
             sum * sum

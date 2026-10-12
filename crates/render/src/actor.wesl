@@ -321,7 +321,7 @@ fn actor_fragment(input: VertexOutput, @builtin(front_facing) front: bool) -> @l
             second = tint_to_gamma(textureSampleLevel(actor_glint, glint_sampler, second_uv, 0.0)).rgb;
         }
         let foil_light = select(vec3(1.0), actor_light_colour(input.light), (input.light & ACTOR_LIGHT_WORLD_FLAG) != 0u);
-        let foil = (first + second) * GLINT_COLOUR * strength * foil_light;
+        let foil = (first + second) * GLINT_TINT_RGB * strength * foil_light;
         if (legacy) {
             legacy_foil = foil * foil;
             legacy_alpha = (first.r + second.r) * strength;

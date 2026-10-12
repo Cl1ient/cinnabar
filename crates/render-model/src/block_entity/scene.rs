@@ -58,7 +58,19 @@ pub enum BlockEntityKind {
     EndGateway,
 }
 
+/// Blocks past its own block, on every side, that a block-anchored model may draw into.
+pub const BLOCK_ENTITY_REACH_BLOCKS: i32 = 2;
+
 impl BlockEntityKind {
+    /// Whether it is a beam that may draw beyond [`BLOCK_ENTITY_REACH_BLOCKS`] of its block.
+    #[must_use]
+    pub const fn renders_globally(&self) -> bool {
+        matches!(
+            self,
+            Self::Beacon(_) | Self::CrystalBeam(_) | Self::DragonDeath(_)
+        )
+    }
+
     /// Whether its mesh animates with [`SceneClock`] rather than only with its model.
     const fn is_clock_driven(&self) -> bool {
         matches!(
@@ -378,6 +390,10 @@ mod cache_tests;
 #[cfg(test)]
 #[path = "scene/skull_tests.rs"]
 mod skull_tests;
+
+#[cfg(test)]
+#[path = "scene/reach_tests.rs"]
+mod reach_tests;
 
 fn emit_submission(
     builder: &mut MeshBuilder,

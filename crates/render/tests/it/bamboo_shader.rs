@@ -237,7 +237,7 @@ fn read_vertices(
     };
     let materials = gpu.words(&[0, flags, assets::NO_ANIMATION, 0, 0, 0], storage);
     let records = gpu.words(meshing::PackedBiomeRecord::fallback().words(), storage);
-    let mut tint_words = vec![0; 8 + assets::SEASONAL_FOLIAGE_COUNT * 4];
+    let mut tint_words = vec![0; 8 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 4];
     tint_words[1] = 256 | (512 << 10) | (768 << 20);
     let tints = gpu.words(&tint_words, storage);
     let animations = gpu.words(&[0; 5], storage);

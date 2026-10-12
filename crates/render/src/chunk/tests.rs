@@ -43,6 +43,7 @@ fn test_runtime_assets(invisible_emitter: bool) -> RuntimeAssets {
     let mut compiled = CompiledAssets {
         visuals: vec![
             BlockVisual {
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 faces: [0; 6],
                 flags: BlockFlags::AIR,
                 kind: VisualKind::Invisible,
@@ -54,6 +55,7 @@ fn test_runtime_assets(invisible_emitter: bool) -> RuntimeAssets {
                 destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             },
             BlockVisual {
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 faces: [1; 6],
                 flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
                 kind: VisualKind::Cube,

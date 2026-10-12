@@ -1,7 +1,7 @@
 # Enhanced rendering extension
 
 Enhanced is experimental and remains disabled in default builds after GPU faults
-and system freezes. Build `bedrock-client` with `--features enhanced` to try it;
+and system freezes. Build `cinnabar` with `--features enhanced` to try it;
 the renderer stays opt-in through settings or `--render-mode enhanced`.
 
 Vanilla is the default. Enhanced is a deliberate non-parity look and never closes

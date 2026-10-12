@@ -199,7 +199,7 @@ fn tinted(
         assets::MATERIAL_FLAG_GRASS_TINT => tint.grass,
         assets::MATERIAL_FLAG_FOLIAGE_TINT => {
             if flags & assets::MATERIAL_FLAG_SEASONAL_FOLIAGE != 0 {
-                tint.seasonal_foliage[assets::seasonal_foliage_palette_index(
+                tint.seasonal_foliage[assets::seasonal_foliage::seasonal_foliage_palette_index(
                     flags,
                     flags & assets::MATERIAL_FLAG_EXPOSED_FOLIAGE != 0,
                 )]

@@ -869,7 +869,10 @@ impl Raster {
             storage,
         );
         let records = gpu.buffer(&[0.0], storage);
-        let tints = gpu.buffer(&[0.0; 8 + assets::SEASONAL_FOLIAGE_COUNT * 4], storage);
+        let tints = gpu.buffer(
+            &[0.0; 8 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 4],
+            storage,
+        );
         let mut atmosphere = [0.0; 32];
         atmosphere[16..19].copy_from_slice(&[0.6, 0.7, 0.9]);
         atmosphere[19] = 8.0;

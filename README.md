@@ -67,7 +67,7 @@ Vanilla behaviour is the default. Everything below is extra:
 ## How it works
 
 ```text
-bedrock-client (Rust, Bevy/wgpu)  ── local socket ──  bedrock-core (Go)
+cinnabar (Rust, Bevy/wgpu)  ── local socket ──  bedrock-core (Go)
                                                         ├─ RakNet ──── servers
                                                         └─ NetherNet ─ Realms and friend worlds
 ```

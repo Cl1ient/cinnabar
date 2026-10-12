@@ -260,7 +260,10 @@ impl Fixture {
             animations: gpu.words(&[0; 8], storage),
             animation_frames: gpu.words(&[0; 4], storage),
             records: gpu.buffer(&[0.0], storage),
-            tints: gpu.buffer(&[0.0; 8 + assets::SEASONAL_FOLIAGE_COUNT * 4], storage),
+            tints: gpu.buffer(
+                &[0.0; 8 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 4],
+                storage,
+            ),
             query_tables: gpu.words(
                 &material_shader::world_uniform_words(&[0; material_shader::WORLD_CLOCK_WORDS]),
                 wgpu::BufferUsages::UNIFORM,

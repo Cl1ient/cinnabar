@@ -292,6 +292,10 @@ the vendored client session crate is removed. Startup ordering, terminal transfe
 disconnects, and the one-shot initialization keep their regression coverage through a scripted
 core; those tests have not been executed locally. No existing completion entry is advanced.
 
+## Cached beacon beam sections
+
+Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
 ## Active block-entity artwork
 
 The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.

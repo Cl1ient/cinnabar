@@ -9,7 +9,7 @@
 
 #[cfg(test)]
 pub(super) mod app_tests;
-mod direct;
+pub(in crate::chunk) mod direct;
 #[cfg(test)]
 mod direct_tests;
 pub(in crate::chunk) mod kernels;

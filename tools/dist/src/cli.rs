@@ -8,7 +8,7 @@ where
     S: Into<String>,
 {
     let mut args = arguments.into_iter().map(Into::into);
-    let mut values = [None, None, None, None, None, None, None, None, None];
+    let mut values = [None, None, None, None, None, None, None, None, None, None];
     while let Some(flag) = args.next() {
         let value = args
             .next()
@@ -23,6 +23,7 @@ where
             "--target" => 6,
             "--git-commit" => 7,
             "--out" => 8,
+            "--binaries" => 9,
             _ => return Err(DistError::Usage(format!("unknown option {flag}"))),
         };
         if values[index].replace(value).is_some() {
@@ -39,11 +40,20 @@ where
         target,
         commit,
         output,
+        binaries,
     ] = values;
+    let client = PathBuf::from(required(client, "--client")?);
+    let binaries = binaries.map(PathBuf::from).unwrap_or_else(|| {
+        client
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_owned()
+    });
     Ok(Options {
         platform: parse_platform(required(platform, "--platform")?)?,
-        client: PathBuf::from(required(client, "--client")?),
+        client,
         core: PathBuf::from(required(core, "--core")?),
+        binaries,
         assets: PathBuf::from(assets.unwrap_or_else(|| assets::carriers::COMPILED_DIR.to_owned())),
         physics: PathBuf::from(required(physics, "--physics")?),
         notices: PathBuf::from(required(notices, "--notices")?),
@@ -116,6 +126,24 @@ mod tests {
             "--out",
             "out",
         ]
+    }
+
+    /// Companion binaries default beside the selected client and permit an explicit directory.
+    #[test]
+    fn companion_binary_directory_tracks_the_client_or_explicit_override() {
+        let mut args = arguments();
+        args[3] = "release/client";
+        assert_eq!(
+            parse_args(args.clone()).unwrap().binaries,
+            std::path::Path::new("release")
+        );
+        args.extend(["--binaries", "other-release"]);
+        assert_eq!(
+            parse_args(args.clone()).unwrap().binaries,
+            std::path::Path::new("other-release")
+        );
+        args.extend(["--binaries", "duplicate"]);
+        assert!(parse_args(args).is_err());
     }
 
     #[test]

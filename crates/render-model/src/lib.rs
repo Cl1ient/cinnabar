@@ -18,6 +18,7 @@ mod nametag;
 pub mod panorama;
 mod presentation;
 pub mod primitive_shapes;
+pub mod terrain_units;
 mod ui;
 mod ui_textures;
 mod visibility;

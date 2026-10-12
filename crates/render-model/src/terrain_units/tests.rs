@@ -1,0 +1,70 @@
+use super::*;
+
+#[test]
+fn units_cover_every_quad_once_and_reject_tail_before_addressing() {
+    for count in [0, 1, 63, 64, 65, 128, 4097] {
+        let units = TerrainUnit::build(17..17 + count, 3, [[0; 3], [16; 3]], Some(2), 91)
+            .collect::<Vec<_>>();
+        let mut visible = Vec::new();
+        TerrainUnit::compact(&units, |_| true, &mut visible);
+        let quads = visible
+            .iter()
+            .flat_map(|unit| {
+                (0..QUADS_PER_UNIT)
+                    .filter_map(move |quad| unit.quad(quad * 4).map(|(index, _)| index))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(quads, (17..17 + count).collect::<Vec<_>>());
+        for (unit, gpu) in units.iter().zip(&visible) {
+            assert_eq!(
+                (unit.origin_slot, unit.facing, unit.allocation_generation),
+                (3, Some(2), 91)
+            );
+            assert!(gpu.quad(unit.quad_count * 4).is_none());
+            assert_eq!(gpu.quad(3), Some((unit.stream_start, 3)));
+        }
+    }
+    // A final unit at the end of the address space must not wrap its tail.
+    assert_eq!(
+        TerrainUnit::build(u32::MAX - 1..u32::MAX, 0, [[0; 3]; 2], None, 0).count(),
+        1
+    );
+}
+
+#[test]
+fn compaction_preserves_stream_order_and_shards_never_drop_units() {
+    let units = (0..6)
+        .flat_map(|face| {
+            TerrainUnit::build(
+                face * 200..face * 200 + 129,
+                face,
+                [[0; 3], [16; 3]],
+                Some(face as u8),
+                4,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut visible = Vec::new();
+    TerrainUnit::compact(
+        &units,
+        |unit| unit.facing.is_some_and(|face| face % 2 == 0),
+        &mut visible,
+    );
+    assert_eq!(
+        visible
+            .iter()
+            .map(|unit| unit.stream_start)
+            .collect::<Vec<_>>(),
+        [0, 64, 128, 400, 464, 528, 800, 864, 928]
+    );
+    let ranges =
+        shards(visible.len(), 3 * size_of::<VisibleTerrainUnit>() as u64).collect::<Vec<_>>();
+    assert_eq!(ranges, [0..3, 3..6, 6..9]);
+    assert_eq!(
+        ranges
+            .into_iter()
+            .flat_map(|range| visible[range].iter().copied())
+            .collect::<Vec<_>>(),
+        visible
+    );
+}

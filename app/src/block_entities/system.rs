@@ -45,6 +45,8 @@ const TEXT_CACHE_ENTRIES: usize = 256;
 const TEXT_CACHE_BYTES: usize = 2 * 1024 * 1024;
 
 mod beacon;
+#[cfg(test)]
+mod beacon_tests;
 mod bed;
 mod columns;
 mod crystal_beams;
@@ -130,6 +132,7 @@ pub(crate) struct BlockEntityRuntime {
     map_requests: HashMap<i64, f64>,
     /// Session and dimension the runtime-id keyed caches were filled from.
     session: Option<(u64, i32)>,
+    beam_source: Option<(Arc<assets::RuntimeAssets>, Option<protocol::DimensionRange>)>,
 }
 
 impl BlockEntityRuntime {
@@ -147,6 +150,26 @@ impl BlockEntityRuntime {
             missing_maps: Vec::new(),
             map_requests: HashMap::new(),
             session: None,
+            beam_source: None,
+        }
+    }
+
+    /// Invalidates cached column rules when pack light data or dimension height changes.
+    fn bind_beam_source(
+        &mut self,
+        assets: &Arc<assets::RuntimeAssets>,
+        range: Option<protocol::DimensionRange>,
+    ) {
+        if !self
+            .beam_source
+            .as_ref()
+            .is_some_and(|(previous, previous_range)| {
+                Arc::ptr_eq(previous, assets) && *previous_range == range
+            })
+        {
+            self.beam_source = Some((Arc::clone(assets), range));
+            self.columns.clear();
+            self.blocks.clear();
         }
     }
 
@@ -157,6 +180,7 @@ impl BlockEntityRuntime {
             return;
         }
         self.session = session;
+        self.beam_source = None;
         self.lids = ContainerLids::default();
         self.missing_maps.clear();
         self.columns.clear();
@@ -320,8 +344,17 @@ pub(crate) fn update_block_entity_scene(
         stream.authority().actor_session_id(),
         stream.current_dimension(),
     )));
+    runtime.bind_beam_source(
+        stream.runtime_assets(),
+        stream
+            .authority()
+            .dimension_range(stream.current_dimension()),
+    );
     runtime.missing_maps.clear();
     let dimension = stream.current_dimension();
+    let beam_top = stream.authority().dimension_range(dimension).map(|range| {
+        (range.base_sub_chunk_y + range.sub_chunk_count as i32) * SUB_CHUNK_SIDE as i32
+    });
     let store = stream.collision_store();
     let mode = stream.network_id_mode();
     let eye = view.eye_translation();
@@ -472,7 +505,21 @@ pub(crate) fn update_block_entity_scene(
                     font: &font.0,
                 };
                 let kind = if matches!(template, Template::Beacon) {
-                    beacon::kind(&mut *runtime, store, dimension, mode, [x, y, z])
+                    beam_top.map(|top| {
+                        let model = scan.beacons.entry(entity.key).or_insert_with(|| {
+                            beacon::model(
+                                runtime,
+                                &collisions,
+                                stream.runtime_assets(),
+                                store,
+                                dimension,
+                                mode,
+                                [x, y, z],
+                                top,
+                            )
+                        });
+                        BlockEntityKind::Beacon(model.clone())
+                    })
                 } else {
                     resolve(
                         template,

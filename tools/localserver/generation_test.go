@@ -9,6 +9,7 @@ import (
 	"io"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 
 	"github.com/df-mc/dragonfly/server"
 	"github.com/df-mc/dragonfly/server/world"
@@ -88,4 +89,60 @@ func TestNormalWorldStartupKeepsSavedSpawnOnReopen(t *testing.T) {
 	if db.Settings().Spawn != saved.Spawn {
 		t.Fatalf("saved spawn reset to %v", db.Settings().Spawn)
 	}
+}
+
+// A new normal world keeps the generator's spawn without first generating a column at the origin
+// to search for one.
+func TestNewNormalWorldSavesTheGeneratorSpawnWithoutSearching(t *testing.T) {
+	dir := t.TempDir()
+	args := []string{"-dir", dir, "-addr", "127.0.0.1:0", "-generator", "normal", "-seed", "-7"}
+	if err := run(args, bytes.NewBufferString("stop\n"), io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	generators, err := (settings{generator: "normal", seed: -7}).configureGenerators(&server.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer generators.close()
+	want := generators[world.Overworld].DefaultSpawn(world.Overworld)
+	db, err := mcdb.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if got := db.Settings().Spawn; got != want {
+		t.Fatalf("spawn = %v, want the generator's %v", got, want)
+	}
+	spawnChunk := world.ChunkPos{int32(want[0] >> 4), int32(want[2] >> 4)}
+	if max(abs(spawnChunk[0]), abs(spawnChunk[1])) <= spawnWarmRadius+1 {
+		t.Skipf("spawn chunk %v is too near the origin to tell a search from the warm-up", spawnChunk)
+	}
+	if _, err := db.LoadColumn(world.ChunkPos{}, world.Overworld); err == nil {
+		t.Fatal("startup generated the origin column to search for a spawn")
+	}
+}
+
+func abs(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// Generators wait to be begun, so Experience blocks register before construction finalises the
+// block registry, and abandoned ones never build.
+func TestGeneratorsBuildOnlyOnceBegun(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		pending := (settings{generator: "normal", seed: -7}).startGenerators()
+		synctest.Wait()
+		select {
+		case <-pending.done:
+			t.Fatal("generators were built before blocks finished registering")
+		default:
+		}
+		pending.discard()
+		if len(pending.generators) != 0 {
+			t.Fatal("discarded generators were built")
+		}
+	})
 }

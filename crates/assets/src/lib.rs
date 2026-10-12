@@ -5,6 +5,7 @@ mod audio;
 mod audio_pcm;
 pub mod bamboo;
 pub mod banner;
+pub mod beacon;
 mod beacon_tints;
 mod biome;
 mod biome_noise;

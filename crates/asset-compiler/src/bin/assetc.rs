@@ -197,18 +197,8 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                 &records,
                 protocol,
             )?;
-            let compiled: Vec<_> = records
-                .iter()
-                .map(|record| {
-                    asset_compiler::block_shapes::compile(
-                        record,
-                        input
-                            .by_sequential_id(record.sequential_id)
-                            .expect("complete seed registry"),
-                    )
-                })
-                .collect();
-            let bytes = assets::encode_physics_registry(protocol, &breg, &records, &compiled)?;
+            let bytes =
+                asset_compiler::block_shapes::compile_registry(protocol, &breg, &records, &input)?;
             write_blob_atomic(&out, &bytes)?;
         }
         Command::Atmosphere {

@@ -16,23 +16,6 @@ use {
 const PANEL_SIZE: [f32; 2] = [176.0, 166.0];
 const SLOT_SIZE: f32 = 18.0;
 
-/// The active crafting grid's icons in row-major order plus the previewed
-/// output of its unique recipe.
-#[derive(Clone, Debug, Default)]
-pub struct CraftingFrame {
-    pub icons: [Option<IconRef>; 9],
-    pub output: Option<(Option<IconRef>, protocol::NetworkItemStack)>,
-}
-
-#[derive(Clone, Debug)]
-pub struct StorageIcons(pub [Option<IconRef>; 54]);
-
-impl Default for StorageIcons {
-    fn default() -> Self {
-        Self([None; 54])
-    }
-}
-
 impl HudLayout<'_> {
     pub(super) fn inventory_screen(
         &mut self,

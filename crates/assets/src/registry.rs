@@ -11,7 +11,7 @@ pub use schema::{
     BeaconTint, BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole,
     LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState, ModelStateField, MovementSemantics,
     PHYSICS_MOVEMENT_SEMANTICS_OFFSET, PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES,
-    PHYSICS_REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
+    PHYSICS_REGISTRY_MAGIC, RegistryMetadata, RegistryProvenance, RegistryRecord,
 };
 use schema::{
     LEGACY_REGISTRY_PROTOCOL, MAX_COLLISION_BOXES, MAX_REGISTRY_RECORDS, MAX_REGISTRY_STATE_BYTES,
@@ -31,6 +31,13 @@ impl BlockFlags {
 }
 
 impl ModelState {
+    /// Records a typed selector and marks it present in the carrier header.
+    pub fn set(&mut self, field: ModelStateField, value: u32) {
+        let index = usize::from(field as u8 - 1);
+        self.mask |= 1 << index;
+        self.values[index] = value;
+    }
+
     #[must_use]
     pub fn get(self, field: ModelStateField) -> Option<u32> {
         let index = usize::from(field as u8 - 1);

@@ -11,13 +11,15 @@ source "$here/common/stage-payload.sh"
 platform="${1:?usage: check-payload.sh <macos|linux|windows> <dir>}"
 root="$(CDPATH= cd -- "${2:?usage: check-payload.sh <macos|linux|windows> <dir>}" && pwd)"
 
+require_file "$runtime_binary_list" 'restore the runtime binary table'
+
 # Required and optional entries relative to $root; optional ones may be absent.
 case "$platform" in
     macos)
         prefix=Cinnabar.app/Contents/
         resources="${prefix}Resources/"
         required=(Applications "${prefix}Info.plist" "${resources}Cinnabar.icns")
-        for name in cinnabar bedrock-core bedrock-local-server; do required+=("${prefix}MacOS/$name"); done
+        while IFS= read -r name; do required+=("${prefix}MacOS/$name"); done < <(runtime_binaries)
         # CodeResources at the top of Contents is the stapled notarization ticket.
         optional=("${prefix}_CodeSignature/CodeResources" "${prefix}CodeResources")
         ;;
@@ -25,7 +27,7 @@ case "$platform" in
         prefix=''
         resources=usr/share/cinnabar/
         required=(AppRun cinnabar.desktop cinnabar.png)
-        for name in cinnabar bedrock-core bedrock-local-server; do required+=("usr/bin/$name"); done
+        while IFS= read -r name; do required+=("usr/bin/$name"); done < <(runtime_binaries)
         optional=(.DirIcon)
         ;;
     windows)
@@ -36,7 +38,7 @@ case "$platform" in
         [[ "$prefix" != ./ ]] || prefix=''
         resources="${prefix}resources/"
         required=()
-        for name in cinnabar bedrock-core bedrock-local-server; do required+=("$prefix$name.exe"); done
+        while IFS= read -r name; do required+=("$prefix$name.exe"); done < <(runtime_binaries)
         optional=()
         # msiexec /a leaves a copy of the package beside the image.
         while IFS= read -r msi; do optional+=("$msi"); done < <(cd "$root" && find . -maxdepth 1 -type f -name '*.msi' | sed 's|^\./||')

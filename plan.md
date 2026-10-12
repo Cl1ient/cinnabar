@@ -562,6 +562,11 @@ these changes do not close the movement, camera, or actor parity gates.
 - Named schedule traces and bounded frame recordings separate main work, render
   handoff, drawable acquisition, command submission and presentation. Metal
   timestamp queries use owned render passes and leave uncovered stages absent.
+- Ordinary direct terrain draws retain CPU-selected units of at most 64 quads,
+  compact visible lists after current occlusion results, and submit one instanced
+  draw per pipeline and list page. The per-section fallback and transparency paths
+  remain available. Incomplete: Metal pixel identity and paired hardware captures
+  must qualify the change before closing rendering or frame-budget acceptance.
 - Unchanged hand and cloud uniforms, inactive portals and empty item scenes skip
   redundant staging work. Regression tests assert allocations, writes and retained
   buffers; hardware captures measure elapsed time separately.
@@ -7974,6 +7979,12 @@ item names do not select bow or crossbow use frames. Unsupported charged project
 has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
+
+## Cached beacon beam sections
+
+Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer.
+
+Incomplete parity: the full beacon geometry, animation, visibility and GPU performance gallery remains open.
 
 ## Compiled beacon tint eligibility
 

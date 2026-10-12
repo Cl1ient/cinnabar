@@ -735,6 +735,8 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         .add_systems(Last, crate::frame_pacing::update_frame_pacing);
     #[cfg(target_os = "macos")]
     crate::thread_budget::ThreadBudget::configure_render_thread(&mut app);
+    #[cfg(target_os = "macos")]
+    crate::frame_pacing::macos_display_link::install(&mut app);
     app.add_systems(Update, crate::window_icon::apply);
     app.add_plugins(crate::hud_tools::HudToolsPlugin {
         screenshots_dir,

@@ -564,6 +564,10 @@ these changes do not close the movement, camera, or actor parity gates.
 - Apple pipelined rendering keeps surface creation on the UI thread while render
   submission stays on the render thread. Main and extraction schedules retain
   single-thread execution; runtime startup checks do not close frame-budget gates.
+- Focused synchronized macOS windows request their reported display refresh through
+  a window-bound display link, bounded by FPS limits. Background and fixed-clock
+  runs release this request. ProMotion presentation cadence and live smoothness
+  remain unverified; this does not close the 120 Hz display gate.
 - Idle native metadata publication no longer dispatches through the main thread.
   macOS frame workers use interactive scheduling; bounded-load diagnostics show
   more render-work headroom. Unloaded tail results remain adverse and unexplained:

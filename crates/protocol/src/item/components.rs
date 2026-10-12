@@ -289,10 +289,25 @@ mod tests {
     use super::parse_components;
 
     /// Encodes an original floating-point component field in network NBT.
-    fn float(key: &str, value: f32) -> Vec<u8> {
-        let mut bytes = name(5, key);
-        bytes.extend(value.to_le_bytes());
-        bytes
+
+    #[test]
+    fn declared_use_cooldown_matches_authored_component_precision() {
+        let nbt = compound(
+            "",
+            &[compound(
+                "components",
+                &[compound(
+                    "minecraft:cooldown",
+                    &[
+                        string("category", "fixture:shared"),
+                        float("duration", 0.549),
+                    ],
+                )],
+            )],
+        );
+        let cooldown = parse_components(&nbt).unwrap().use_cooldown.unwrap();
+        assert_eq!(cooldown.category.as_ref(), "fixture:shared");
+        assert_eq!(cooldown.ticks, 10);
     }
 
     #[test]
@@ -358,6 +373,7 @@ mod tests {
         bytes
     }
 
+    /// Encodes one finite or malformed float component for admission tests.
     fn float(key: &str, value: f32) -> Vec<u8> {
         let mut bytes = name(5, key);
         bytes.extend(value.to_le_bytes());

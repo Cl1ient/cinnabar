@@ -9,8 +9,8 @@ use launcher::menu::{
         ANIMATIONS_OPTION, CHAT_POSITION_OPTION, COMMAND_MACRO_COUNT, EXTRA_GAMEPAD, EXTRA_KEYS,
         GAMEPAD_BINDINGS, GAMEPAD_OFFSET, INVERT_CROSSHAIR_OPTION, KEY_BINDINGS,
         MOTION_BLUR_OPTION, SMAA_OPTION, SettingsGroup, SettingsOptions,
-        THIRD_PERSON_CROSSHAIR_OPTION, VOLUME_SETTINGS, key_name, macro_message, macro_row,
-        macro_row_index, macro_title,
+        THIRD_PERSON_CROSSHAIR_OPTION, VOLUME_SETTINGS, custom_key_label, key_name, macro_message,
+        macro_row, macro_row_index, macro_title,
     },
     settings_support::{SupportAction, SupportDialog, SupportLink},
 };
@@ -940,7 +940,6 @@ pub(super) fn fallback(key: &str) -> &str {
         | "options.sound.resetSettings.buttonLabel"
         | "options.key.reset.buttonLabel" => "Reset",
         "controllerLayoutScreen.unassigned" => "Unassigned",
-        "key.freelook" => "Freelook",
-        _ => key,
+        _ => custom_key_label(key).unwrap_or(key),
     }
 }

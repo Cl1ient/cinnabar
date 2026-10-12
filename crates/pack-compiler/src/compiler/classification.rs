@@ -306,6 +306,7 @@ pub(in crate::compiler) fn is_model_visual(record: &RegistryRecord) -> bool {
         || crate::respawn_anchor::is_record(record)
         || super::visuals::candle_cake::is_record(record)
         || super::visuals::sea_pickle::is_record(record)
+        || super::visuals::brewing_stand::is_record(record)
         || super::visuals::grindstone::is_record(record)
         || super::visuals::tripwire_hook::is_record(record)
         || super::visuals::portal::is_record(record)

@@ -7727,6 +7727,13 @@ numerical defaults. No ordinary movement classification is inferred from absence
 rule. Complete native ordinary/special coverage, custom session movement components and
 all provisional rule values still require verification before this gate can close.
 
+## Brewing stand models
+
+Brewing stands compile a central post, three feet and three bottle-selected radial panels
+from pack textures. All eight registered bottle combinations retain their own sprite
+regions. Exact server placement, native rendered comparison and broader lighting and
+performance parity remain incomplete.
+
 ## Compiled item armour
 
 - Protection and player slots live in the entity carrier; HUD capture reads numeric registry facts resolved at admission. Server wearable components replace protection without per-frame parsing.

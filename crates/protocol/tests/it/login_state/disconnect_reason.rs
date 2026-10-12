@@ -1,9 +1,10 @@
 use super::*;
-use valentine::bedrock::codec::ZigZag32;
-use valentine::bedrock::version::v1_26_51::{
-    ActorUniqueId, CameraInstruction, CameraInstructionOptionsSplineInstruction,
-    CameraInstructionPacket, CameraPacket, CameraShakePacket, EnumsCameraShakeAction,
-    EnumsCameraShakeType, ModalFormRequestPacket, TransferPacket,
+use bedrock_protocol_1_26_51::enums::{CameraShakeAction, CameraShakeType};
+use bedrock_protocol_1_26_51::packets::{
+    Camera, CameraInstruction, CameraShake, ModalFormRequest, Transfer,
+};
+use bedrock_protocol_1_26_51::types::{
+    ActorUniqueID, CameraInstructionData, CameraSplineInstruction,
 };
 
 const EPILOGUE_ITERATION_LIMIT: usize = 32;
@@ -36,42 +37,38 @@ pub(super) const CAMERA_INTERLEAVED_SENTINEL_TIME: i32 = 56_789;
 pub(super) fn camera_instruction_epilogue_packets(epilogue: PlayEpilogue) -> Vec<Packet> {
     match epilogue {
         PlayEpilogue::CameraInstructions => vec![
-            Packet::new(CameraInstructionPacket {
-                camera_instruction: CameraInstruction {
+            Packet::new(CameraInstruction {
+                camera_instruction: CameraInstructionData {
                     clear: Some(true),
                     ..Default::default()
                 },
             }),
             set_time(EPILOGUE_SENTINEL_TIME),
-            Packet::new(CameraShakePacket {
-                intensity: 0.25,
-                seconds: 3.0,
-                shake_type: EnumsCameraShakeType::Rotational,
-                shake_action: EnumsCameraShakeAction::Add,
+            Packet::new(CameraShake {
+                intensity: wire::F32LE(0.25),
+                seconds: wire::F32LE(3.0),
+                shake_type: CameraShakeType::Rotational,
+                shake_action: CameraShakeAction::Add,
             }),
-            Packet::new(CameraPacket {
-                camera_id: ActorUniqueId {
-                    actor_unique_id: -11,
-                },
-                target_player_id: ActorUniqueId {
-                    actor_unique_id: -22,
-                },
+            Packet::new(Camera {
+                camera_id: ActorUniqueID(-11),
+                target_player_id: ActorUniqueID(-22),
             }),
             set_time(CAMERA_INTERLEAVED_SENTINEL_TIME),
         ],
         PlayEpilogue::OddCameraInstruction => vec![
-            Packet::new(CameraInstructionPacket {
-                camera_instruction: CameraInstruction {
-                    spline: Some(CameraInstructionOptionsSplineInstruction::default()),
+            Packet::new(CameraInstruction {
+                camera_instruction: CameraInstructionData {
+                    spline: Some(CameraSplineInstruction::default()),
                     ..Default::default()
                 },
             }),
             set_time(EPILOGUE_SENTINEL_TIME),
         ],
         PlayEpilogue::OddModalForm => vec![
-            Packet::new(ModalFormRequestPacket {
-                form_id: 5,
-                form_uijson: r#"{"type":"form","title""#.to_owned(),
+            Packet::new(ModalFormRequest {
+                form_id: wire::VarUInt(5),
+                form_ui_json: r#"{"type":"form","title""#.into(),
             }),
             set_time(EPILOGUE_SENTINEL_TIME),
         ],
@@ -81,27 +78,19 @@ pub(super) fn camera_instruction_epilogue_packets(epilogue: PlayEpilogue) -> Vec
 
 /// The deliberately truncated raw packet each fatality epilogue appends, so
 /// every malformed-wire case shares one ingress path.
-pub(super) fn truncated_epilogue_wire(
-    epilogue: PlayEpilogue,
-) -> Option<(McpePacketName, &'static [u8])> {
+pub(super) fn truncated_epilogue_wire(epilogue: PlayEpilogue) -> Option<(PacketId, &'static [u8])> {
     match epilogue {
-        PlayEpilogue::TruncatedDisconnect => Some((McpePacketName::DisconnectPacket, &[0x00])),
-        PlayEpilogue::TruncatedTransfer => Some((McpePacketName::TransferPacket, &[0x08, 0x00])),
-        PlayEpilogue::TruncatedCameraShake => Some((McpePacketName::CameraShakePacket, &[0x00])),
-        PlayEpilogue::TruncatedModalFormRequest => {
-            Some((McpePacketName::ModalFormRequestPacket, &[0x05]))
-        }
+        PlayEpilogue::TruncatedDisconnect => Some((PacketId::Disconnect, &[0x00])),
+        PlayEpilogue::TruncatedTransfer => Some((PacketId::Transfer, &[0x08, 0x00])),
+        PlayEpilogue::TruncatedCameraShake => Some((PacketId::CameraShake, &[0x00])),
+        PlayEpilogue::TruncatedModalFormRequest => Some((PacketId::ModalFormRequest, &[0x05])),
         _ => None,
     }
 }
 
 /// The core's code for a disconnect reason, as it would forward the server's.
-fn reason_code(reason: EnumsConnectionDisconnectFailReason) -> i32 {
-    let mut encoded = BytesMut::new();
-    reason.encode(&mut encoded).expect("a reason encodes");
-    ZigZag32::decode(&mut encoded.freeze(), ())
-        .expect("a reason is a signed varint")
-        .0
+fn reason_code(reason: ConnectionDisconnectFailReason) -> i32 {
+    reason.to_raw()
 }
 
 /// The packets a boundary epilogue adds to the play batch and, when the script delivers the
@@ -114,7 +103,7 @@ pub(super) fn boundary_epilogue(script: &Script) -> (Vec<Packet>, Option<Bytes>)
             Some(terminal_frame(
                 KIND_DISCONNECT,
                 &serde_json::json!({
-                    "reason": reason_code(EnumsConnectionDisconnectFailReason::Kicked),
+                    "reason": reason_code(ConnectionDisconnectFailReason::Kicked),
                     "message": DISCONNECT_EPILOGUE_MESSAGE,
                     "filtered_message": "",
                     "hide_screen": false,
@@ -123,12 +112,11 @@ pub(super) fn boundary_epilogue(script: &Script) -> (Vec<Packet>, Option<Bytes>)
         ),
         PlayEpilogue::ServerDisconnect => (
             vec![
-                Packet::new(DisconnectPacket {
-                    reason: EnumsConnectionDisconnectFailReason::Kicked,
-                    hide_disconnection_screen: false,
-                    messages: DisconnectPacketMessages {
+                Packet::new(Disconnect {
+                    reason: ConnectionDisconnectFailReason::Kicked,
+                    messages: DisconnectMessages::DisconnectPacketMessages {
                         message: DISCONNECT_EPILOGUE_MESSAGE.into(),
-                        filtered_message: String::new(),
+                        filtered_message: Default::default(),
                     },
                 }),
                 sentinel,
@@ -151,8 +139,8 @@ pub(super) fn boundary_epilogue(script: &Script) -> (Vec<Packet>, Option<Bytes>)
         | PlayEpilogue::OddTransferEmptyHost
         | PlayEpilogue::OddTransferZeroPort => {
             let server_address = match script.epilogue {
-                PlayEpilogue::OddTransferEmptyHost => String::new(),
-                _ => TRANSFER_EPILOGUE_HOST.to_owned(),
+                PlayEpilogue::OddTransferEmptyHost => "",
+                _ => TRANSFER_EPILOGUE_HOST,
             };
             let server_port = match script.epilogue {
                 PlayEpilogue::OddTransferZeroPort => 0,
@@ -162,9 +150,9 @@ pub(super) fn boundary_epilogue(script: &Script) -> (Vec<Packet>, Option<Bytes>)
             // each transfer boundary in FIFO order before any later traffic.
             (
                 vec![
-                    Packet::new(TransferPacket {
-                        server_address,
-                        server_port,
+                    Packet::new(Transfer {
+                        server_address: server_address.into(),
+                        server_port: wire::U16LE(server_port),
                         reload_world: false,
                         ..Default::default()
                     }),

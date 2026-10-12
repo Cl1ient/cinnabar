@@ -170,7 +170,7 @@ impl From<wire::EncodeError> for ProtocolError {
 /// Bounds for server packet bodies: no ceiling beyond the input except the UI budgets.
 pub(crate) fn server_limits() -> &'static wire::Limits {
     static LIMITS: LazyLock<wire::Limits> = LazyLock::new(|| {
-        crate::ui::with_field_limits(wire::Limits::receiving_from(wire::Peer::Server))
+        crate::ui::validation::with_field_limits(wire::Limits::receiving_from(wire::Peer::Server))
     });
     &LIMITS
 }
@@ -189,7 +189,7 @@ pub(crate) fn decode_body(
 
 /// Rejects a decoded packet whose UI or audio content the client must not admit.
 pub(crate) fn validate_decoded(packet: &packets::Packet) -> Result<(), ProtocolError> {
-    crate::ui::validate_ui_packet(packet)?;
+    crate::ui::validation::validate_ui_packet(packet)?;
     crate::audio::validate_audio_packet(packet)?;
     Ok(())
 }
@@ -246,17 +246,17 @@ fn body_error(error: wire::DecodeError) -> ProtocolError {
     if let wire::DecodeError::TrailingBytes(remaining) = error {
         return ProtocolError::TrailingPacketBytes { remaining };
     }
-    match crate::ui::semantic_rejection(&error) {
+    match crate::ui::validation::semantic_rejection(&error) {
         Some(rejection) => rejection.into(),
         None => error.into(),
     }
 }
 
-/// Reclassifies a play-stream decode failure that only broke a UI budget or named an unknown
-/// selector as a skippable world rejection; every other failure stays fatal.
+/// Reclassifies a play-stream decode failure with intact framing (a broken UI budget, an unknown
+/// selector or a schema bound) as a skippable world rejection; every other failure stays fatal.
 pub(crate) fn world_decode_error(error: SessionError) -> ProtocolError {
     if let SessionFailure::PacketDecode { source, .. } = &error.0
-        && let Some(rejection) = crate::ui::semantic_rejection(source)
+        && let Some(rejection) = crate::ui::validation::semantic_rejection(source)
     {
         return ProtocolError::World(WorldPacketError::Ui(rejection));
     }

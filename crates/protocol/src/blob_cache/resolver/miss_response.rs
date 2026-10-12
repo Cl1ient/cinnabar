@@ -4,32 +4,31 @@ impl BlobCacheResolver {
     /// Validates the response before publishing its cache delta.
     pub(super) fn accept_miss_response_inner(
         &mut self,
-        response: ClientCacheMissResponsePacket,
+        response: ClientCacheMissResponse,
     ) -> Result<(), BlobCacheError> {
-        let mut unique = Vec::<(u64, Vec<u8>)>::new();
+        let mut unique = Vec::<(u64, bytes::Bytes)>::new();
         let mut positions = HashMap::<u64, usize>::new();
         for blob in response.missing_blobs {
-            if !self.pending_by_hash.contains_key(&blob.blob_id)
-                && !self.cache.contains(blob.blob_id)
-            {
-                return Err(BlobCacheError::UnsolicitedBlob(blob.blob_id));
+            let (blob_id, blob_data) = (blob.blob_id.0, blob.blob_data);
+            if !self.pending_by_hash.contains_key(&blob_id) && !self.cache.contains(blob_id) {
+                return Err(BlobCacheError::UnsolicitedBlob(blob_id));
             }
-            if let Some(&index) = positions.get(&blob.blob_id) {
-                if unique[index].1 != blob.blob_data {
-                    return Err(BlobCacheError::ConflictingDuplicate(blob.blob_id));
+            if let Some(&index) = positions.get(&blob_id) {
+                if unique[index].1 != blob_data {
+                    return Err(BlobCacheError::ConflictingDuplicate(blob_id));
                 }
                 continue;
             }
             // Validate repeated payloads too, before publishing any part of the response.
-            let actual = client_blob_hash(&blob.blob_data);
-            if actual != blob.blob_id {
+            let actual = client_blob_hash(&blob_data);
+            if actual != blob_id {
                 return Err(BlobCacheError::HashMismatch {
-                    claimed: blob.blob_id,
+                    claimed: blob_id,
                     actual,
                 });
             }
-            positions.insert(blob.blob_id, unique.len());
-            unique.push((blob.blob_id, blob.blob_data));
+            positions.insert(blob_id, unique.len());
+            unique.push((blob_id, blob_data));
         }
 
         let mut staged_additions = HashMap::<u64, usize>::new();
@@ -95,13 +94,16 @@ impl BlobCacheResolver {
 }
 
 /// Checks conflicts and aggregate size before any response entry can be published.
-fn validate_delta(store: &CacheStore, unique: &[(u64, Vec<u8>)]) -> Result<usize, BlobCacheError> {
+fn validate_delta(
+    store: &CacheStore,
+    unique: &[(u64, bytes::Bytes)],
+) -> Result<usize, BlobCacheError> {
     let mut total_bytes = store.total_bytes;
     let mut pinned_bytes = store.pinned_bytes;
     let mut new_entries = 0;
     for (hash, payload) in unique {
         if let Some(existing) = store.entries.get(hash) {
-            if existing.payload.as_ref() != payload {
+            if existing.payload.as_ref() != &payload[..] {
                 return Err(BlobCacheError::ConflictingDuplicate(*hash));
             }
         } else {

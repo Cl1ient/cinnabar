@@ -1,10 +1,19 @@
 //! Client packets tied to inventory screens: block pick and book editing.
 
-use valentine::bedrock::version::v1_26_51::{
-    BlockPickRequestPacket, BlockPos, BookEditActionAddPage, BookEditActionDeletePage,
-    BookEditActionFinalize, BookEditActionReplacePage, BookEditActionSwapPages, BookEditPacket,
-    BookEditPacketOperation, LecternUpdatePacket, PlayerToggleCrafterSlotRequestPacket,
+use bedrock_protocol_1_26_51::packets::{
+    BlockPickRequest, BookEdit as BookEditPacket, LecternUpdate, PlayerToggleCrafterSlotRequest,
 };
+use bedrock_protocol_1_26_51::types::{BlockPos, BookEditAction};
+use bedrock_protocol_1_26_51::wire;
+
+/// The wire block position of `position`.
+fn block_pos(position: [i32; 3]) -> BlockPos {
+    BlockPos {
+        x: wire::ZigZag32(position[0]),
+        y: wire::ZigZag32(position[1]),
+        z: wire::ZigZag32(position[2]),
+    }
+}
 
 /// Longest page text a book edit carries.
 pub const MAX_BOOK_PAGE_BYTES: usize = 1_024;
@@ -12,39 +21,31 @@ pub const MAX_BOOK_PAGE_BYTES: usize = 1_024;
 /// Asks the server to put the block at `position` in the player's hand.
 #[must_use]
 pub fn block_pick_request_packet(position: [i32; 3], with_data: bool) -> crate::Packet {
-    crate::Packet::new(BlockPickRequestPacket {
-        position: BlockPos {
-            x: position[0],
-            y: position[1],
-            z: position[2],
-        },
+    crate::Packet::new(BlockPickRequest {
+        position: block_pos(position),
         with_data,
-        max_slots: 9,
+        max_slots: wire::U8(9),
     })
 }
 
 /// Reports a lectern's page turn to the server.
 #[must_use]
 pub fn lectern_update_packet(page: u8, total_pages: u8, position: [i32; 3]) -> crate::Packet {
-    crate::Packet::new(LecternUpdatePacket {
-        newpagetoshow: page,
-        total_pages,
-        positionof_lecterntoupdate: BlockPos {
-            x: position[0],
-            y: position[1],
-            z: position[2],
-        },
+    crate::Packet::new(LecternUpdate {
+        new_page_to_show: wire::U8(page),
+        total_pages: wire::U8(total_pages),
+        position_of_lectern_to_update: block_pos(position),
     })
 }
 
 /// Asks the server to disable or enable one slot of the crafter at `position`.
 #[must_use]
 pub fn crafter_slot_toggle_packet(position: [i32; 3], slot: u8, disabled: bool) -> crate::Packet {
-    crate::Packet::new(PlayerToggleCrafterSlotRequestPacket {
-        pos_x: position[0],
-        pos_y: position[1],
-        pos_z: position[2],
-        slot_index: slot,
+    crate::Packet::new(PlayerToggleCrafterSlotRequest {
+        pos_x: wire::I32LE(position[0]),
+        pos_y: wire::I32LE(position[1]),
+        pos_z: wire::I32LE(position[2]),
+        slot_index: wire::U8(slot),
         is_disabled: disabled,
     })
 }
@@ -84,49 +85,52 @@ pub fn book_edit_packet(book_slot: u8, edit: &BookEdit) -> Option<crate::Packet>
             if *page < 0 || text.len() > MAX_BOOK_PAGE_BYTES {
                 return None;
             }
+            let page_index = wire::ZigZag32(*page);
+            let page_text = text.as_str().into();
+            let photo_name = wire::Str::default();
             if matches!(edit, BookEdit::ReplacePage { .. }) {
-                BookEditPacketOperation::ReplacePage(BookEditActionReplacePage {
-                    page_index: *page,
-                    page_text: text.clone(),
-                    photo_name: String::new(),
-                })
+                BookEditAction::ReplacePage {
+                    page_index,
+                    page_text,
+                    photo_name,
+                }
             } else {
-                BookEditPacketOperation::AddPage(BookEditActionAddPage {
-                    page_index: *page,
-                    page_text: text.clone(),
-                    photo_name: String::new(),
-                })
+                BookEditAction::AddPage {
+                    page_index,
+                    page_text,
+                    photo_name,
+                }
             }
         }
-        BookEdit::DeletePage { page } if *page >= 0 => {
-            BookEditPacketOperation::DeletePage(BookEditActionDeletePage { page_index: *page })
-        }
+        BookEdit::DeletePage { page } if *page >= 0 => BookEditAction::DeletePage {
+            page_index: wire::ZigZag32(*page),
+        },
         BookEdit::SwapPages { page, with } if *page >= 0 && *with >= 0 => {
-            BookEditPacketOperation::SwapPages(BookEditActionSwapPages {
-                page_index: *page,
-                swap_with_index: *with,
-            })
+            BookEditAction::SwapPages {
+                page_index: wire::ZigZag32(*page),
+                swap_with_index: wire::ZigZag32(*with),
+            }
         }
         BookEdit::Finalize {
             title,
             author,
             xuid,
-        } => BookEditPacketOperation::Finalize(BookEditActionFinalize {
-            title: title.clone(),
-            author: author.clone(),
-            xuid: xuid.clone(),
-        }),
+        } => BookEditAction::Finalize {
+            title: title.as_str().into(),
+            author: author.as_str().into(),
+            xuid: xuid.as_str().into(),
+        },
         _ => return None,
     };
     Some(crate::Packet::new(BookEditPacket {
-        book_slot: i32::from(book_slot),
+        book_slot: wire::ZigZag32(i32::from(book_slot)),
         operation,
     }))
 }
 
 #[cfg(test)]
 mod tests {
-    use valentine::bedrock::version::v1_26_51::McpePacketData;
+    use bedrock_protocol_1_26_51::packets;
 
     use super::*;
 
@@ -141,33 +145,33 @@ mod tests {
             },
         )
         .unwrap();
-        let McpePacketData::BookEditPacket(edit) = packet.data else {
+        let packets::Packet::BookEdit(edit) = packet.data else {
             panic!("a book edit");
         };
-        assert_eq!(edit.book_slot, 3);
+        assert_eq!(edit.book_slot.0, 3);
     }
 
     #[test]
     fn block_pick_carries_the_position() {
-        let McpePacketData::BlockPickRequestPacket(pick) =
+        let packets::Packet::BlockPickRequest(pick) =
             block_pick_request_packet([1, 2, 3], false).data
         else {
             panic!("a block pick");
         };
         assert_eq!(
-            (pick.position.x, pick.position.y, pick.position.z),
+            (pick.position.x.0, pick.position.y.0, pick.position.z.0),
             (1, 2, 3)
         );
     }
 
     #[test]
     fn crafter_toggle_names_the_block_and_slot() {
-        let McpePacketData::PlayerToggleCrafterSlotRequestPacket(toggle) =
+        let packets::Packet::PlayerToggleCrafterSlotRequest(toggle) =
             crafter_slot_toggle_packet([4, 5, 6], 7, true).data
         else {
             panic!("a crafter toggle");
         };
-        assert_eq!((toggle.pos_x, toggle.pos_y, toggle.pos_z), (4, 5, 6));
-        assert_eq!((toggle.slot_index, toggle.is_disabled), (7, true));
+        assert_eq!((toggle.pos_x.0, toggle.pos_y.0, toggle.pos_z.0), (4, 5, 6));
+        assert_eq!((toggle.slot_index.0, toggle.is_disabled), (7, true));
     }
 }

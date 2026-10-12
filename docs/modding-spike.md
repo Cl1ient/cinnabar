@@ -15,7 +15,7 @@ cargo run -p mod-host --bin mod-host --locked -- pack \
   target/wasm32-unknown-unknown/debug/hello_mod.wasm /tmp/cinnabar-hello.wasm
 cargo run -p mod-host --bin mod-host --locked -- probe /tmp/cinnabar-hello.wasm
 cargo run -p mod-host --bin mod-host --locked -- bench /tmp/cinnabar-hello.wasm
-CINNABAR_MOD_COMPONENT=/tmp/cinnabar-hello.wasm cargo run -p bedrock-client --features local-mods --locked
+CINNABAR_MOD_COMPONENT=/tmp/cinnabar-hello.wasm cargo run -p cinnabar --features local-mods --locked
 ```
 
 Route local builds through the shared limiter as required by
@@ -30,7 +30,7 @@ window-focus check and F8 action entirely offline, run:
 
 ```sh
 CINNABAR_MOD_COMPONENT=/tmp/cinnabar-hello.wasm \
-  cargo test -p bedrock-client --features local-mods --lib configured_sample_drives_the_app_adapter_offline --locked
+  cargo test -p cinnabar --features local-mods --lib configured_sample_drives_the_app_adapter_offline --locked
 ```
 
 During gameplay, F8 changes the label. UI focus and window focus suppress the
@@ -62,7 +62,7 @@ cargo build -p time-changer-mod --target wasm32-unknown-unknown --locked
 cargo run -p mod-host --bin mod-host --locked -- pack \
   target/wasm32-unknown-unknown/debug/time_changer_mod.wasm /tmp/cinnabar-time-changer.wasm
 cargo run -p mod-host --bin mod-host --locked -- probe-environment /tmp/cinnabar-time-changer.wasm
-CINNABAR_MOD_COMPONENT=/tmp/cinnabar-time-changer.wasm cargo run -p bedrock-client --features local-mods --locked
+CINNABAR_MOD_COMPONENT=/tmp/cinnabar-time-changer.wasm cargo run -p cinnabar --features local-mods --locked
 ```
 
 Use the shared build limiter for every cargo command, as for hello. The last
@@ -131,7 +131,7 @@ default, independently of the visual time grant. Explicitly opt in at startup:
 ```sh
 CINNABAR_MOD_COMPONENT=/tmp/my-mod.wasm \
 CINNABAR_MOD_PLAYERS=1 CINNABAR_MOD_CAMERA=1 \
-  cargo run -p bedrock-client --features local-mods --locked
+  cargo run -p cinnabar --features local-mods --locked
 ```
 
 On PowerShell, set the corresponding `$env:CINNABAR_MOD_*` variables before
@@ -330,7 +330,7 @@ cargo run -p mod-host --bin mod-host --locked -- pack \
   target/wasm32-unknown-unknown/debug/render_sample_mod.wasm /tmp/cinnabar-render.wasm
 cargo run -p mod-host --bin mod-host --locked -- probe-render /tmp/cinnabar-render.wasm
 CINNABAR_MOD_COMPONENT=/tmp/cinnabar-render.wasm CINNABAR_MOD_RENDER=1 CINNABAR_MOD_PLAYERS=1 \
-  cargo run -p bedrock-client --features local-mods --locked
+  cargo run -p cinnabar --features local-mods --locked
 ```
 
 Replacing the component reloads it as for other mods. A rejected shader shows its error as
@@ -430,8 +430,8 @@ older clients require one update and restart.
 
 ```sh
 cargo test -p mod-host --locked
-cargo test -p bedrock-client --features local-mods --lib modding --locked
-cargo test -p bedrock-client --lib mod_hud --locked
+cargo test -p cinnabar --features local-mods --lib modding --locked
+cargo test -p cinnabar --lib mod_hud --locked
 ```
 
 To capture the real compiled sample through the existing offline renderer:
@@ -440,7 +440,7 @@ To capture the real compiled sample through the existing offline renderer:
 mkdir -p /tmp/cinnabar-mod-frames
 CINNABAR_FORM_SNAPSHOT_DIR=/tmp/cinnabar-mod-frames \
 CINNABAR_MOD_SNAPSHOT_COMPONENT=/tmp/cinnabar-hello.wasm \
-  cargo test -p bedrock-client --lib mod_spike_snapshot_with_real_carrier --locked -- --nocapture
+  cargo test -p cinnabar --lib mod_spike_snapshot_with_real_carrier --locked -- --nocapture
 ```
 
 This writes before, initial-label and keybind PNGs without starting a network
@@ -450,7 +450,7 @@ Measure the real CPU UI build with zero mods and with the sample loaded:
 
 ```sh
 CINNABAR_MOD_SNAPSHOT_COMPONENT=/tmp/cinnabar-hello.wasm \
-  cargo test -p bedrock-client --lib mod_spike_offline_frame_overhead --locked -- --ignored --nocapture
+  cargo test -p cinnabar --lib mod_spike_offline_frame_overhead --locked -- --ignored --nocapture
 ```
 
 This alternates warmed baseline/sample batches at the same viewport and reports

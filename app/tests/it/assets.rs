@@ -168,6 +168,11 @@ fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
 
 fn synthetic_entity_blob_with_manifest(seed: u8, source_manifest_sha256: [u8; 32]) -> Box<[u8]> {
     encode_entity_blob(&CompiledEntityAssets {
+        seat_layouts: vec![assets::entity::seats::EntitySeatDescriptor {
+            identifier: "minecraft:allay".into(),
+            admission: assets::entity::seats::EntitySeatAdmission::Unresolved,
+        }]
+        .into_boxed_slice(),
         interaction_traits: vec![assets::interactions::EntityInteractionDescriptor {
             identifier: "minecraft:allay".into(),
             traits: assets::interactions::EntityInteractionTraits::Unresolved,

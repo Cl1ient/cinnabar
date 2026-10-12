@@ -32,6 +32,7 @@ const WIRE_ENCODING_ITEM_ID: i32 = 25_000;
 
 fn item_assets() -> Arc<RuntimeEntityAssets> {
     let compiled = CompiledEntityAssets {
+        seat_layouts: Box::new([]),
         interaction_traits: Box::new([]),
         source_manifest_sha256: [0x31; 32],
         block_visual_count: 1,
@@ -153,6 +154,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         .into_boxed_slice(),
         render: Default::default(),
     }
+    .with_unresolved_seats()
     .with_unresolved_interactions();
     let bytes = encode_entity_blob(&compiled).unwrap();
     Arc::new(RuntimeEntityAssets::decode(&bytes).unwrap())

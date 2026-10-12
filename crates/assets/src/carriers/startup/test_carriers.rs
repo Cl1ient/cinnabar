@@ -15,9 +15,10 @@ pub fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
     crate::encode_entity_blob(&synthetic_entity_assets(seed)).unwrap()
 }
 
-/// Original collected entity facts without installed pack assets.
+/// Gives original tests a checked-carrier fixture before changing its authored descriptors.
 pub fn synthetic_entity_assets(seed: u8) -> CompiledEntityAssets {
     CompiledEntityAssets {
+        seat_layouts: Box::new([]),
         interaction_traits: Box::new([]),
         source_manifest_sha256: manifest(),
         block_visual_count: 0,
@@ -56,6 +57,7 @@ pub fn synthetic_entity_assets(seed: u8) -> CompiledEntityAssets {
         item_visual_aliases: Box::new([]),
         render: Default::default(),
     }
+    .with_unresolved_seats()
     .with_unresolved_interactions()
 }
 
@@ -72,7 +74,7 @@ pub fn synthetic_interaction_assets(identifier: &str) -> CompiledEntityAssets {
     });
     compiled.sources = sources.into();
     compiled.interaction_traits = crate::interactions::compile(&compiled.symbols);
-    compiled
+    compiled.with_unresolved_seats()
 }
 
 /// An atmosphere carrier with flat sun, moon and cloud textures.

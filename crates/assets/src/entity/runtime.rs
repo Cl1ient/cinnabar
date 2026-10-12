@@ -6,6 +6,7 @@ use super::*;
 
 #[derive(Clone, Debug)]
 pub struct RuntimeEntityAssets {
+    pub(super) seat_layouts: Arc<[seats::EntitySeatDescriptor]>,
     pub(super) interaction_traits: Arc<[interactions::EntityInteractionDescriptor]>,
     pub(super) carrier_identity: Option<[u8; 32]>, // SHA-256 of the decoded carrier file
     pub(super) source_manifest_sha256: [u8; 32],
@@ -104,9 +105,10 @@ impl RuntimeEntityAssets {
             return Err(invalid("noncanonical MCBEENT4 catalog encoding"));
         }
         let compiled = CompiledEntityAssets {
+            seat_layouts: payload.seat_layouts,
+            interaction_traits: payload.interaction_traits,
             source_manifest_sha256,
             block_visual_count: payload.block_visual_count,
-            interaction_traits: payload.interaction_traits,
             sources: payload.sources,
             symbols: payload.symbols,
             geometries: payload.geometries,
@@ -155,9 +157,10 @@ impl RuntimeEntityAssets {
         let geometry_parents = validate_compiled(&compiled)?;
         Ok(Self {
             carrier_identity: None,
+            seat_layouts: Arc::from(compiled.seat_layouts),
+            interaction_traits: Arc::from(compiled.interaction_traits),
             source_manifest_sha256: compiled.source_manifest_sha256,
             block_visual_count: compiled.block_visual_count,
-            interaction_traits: Arc::from(compiled.interaction_traits),
             sources: Arc::from(compiled.sources),
             symbols: Arc::from(compiled.symbols),
             geometries: Arc::from(compiled.geometries),

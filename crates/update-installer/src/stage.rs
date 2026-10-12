@@ -131,7 +131,8 @@ impl Download {
         Ok(())
     }
 
-    /// Publishes a verified artifact and its signed envelope together; corrupt partials are discarded.
+    /// Publishes a verified artifact and its signed envelope together, replacing an older stage only
+    /// once this one is complete; corrupt partials are discarded.
     pub fn finish(self, destination: &Path) -> Result<PathBuf> {
         ensure!(
             self.written == self.selection.artifact.size as u64
@@ -147,15 +148,22 @@ impl Download {
         }
         self.file.sync_all()?;
         drop(self.file);
-        ensure!(!destination.exists(), "a staged update already exists");
+        let parent = destination.parent().context("missing update directory")?;
         let directory = tempfile::Builder::new()
             .prefix("stage-")
-            .tempdir_in(destination.parent().context("missing update directory")?)?;
+            .tempdir_in(parent)?;
         let mut manifest = File::create(directory.path().join(ENVELOPE_FILE))?;
         manifest.write_all(&self.selection.envelope)?;
         manifest.sync_all()?;
         drop(manifest);
         fs::rename(self.path, directory.path().join(ARTIFACT_FILE))?;
+        // Dropping the retired directory deletes the superseded stage.
+        let retired = tempfile::Builder::new()
+            .prefix("retired-")
+            .tempdir_in(parent)?;
+        if destination.exists() {
+            fs::rename(destination, retired.path().join("stage"))?;
+        }
         fs::rename(directory.path(), destination)?;
         Ok(destination.to_owned())
     }

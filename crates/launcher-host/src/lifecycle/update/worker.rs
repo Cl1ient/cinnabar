@@ -86,9 +86,9 @@ fn run(
         .truncate(false)
         .write(true)
         .open(root.join("update.lock"))?;
-    lease
-        .try_lock()
-        .context("another client is using the update directory")?;
+    // A freshly updated client starts while its apply helper still holds the lease, until this
+    // start is acknowledged; waiting here on the background thread resumes checks afterwards.
+    lease.lock().context("lock the update directory")?;
     let check = Check {
         channel: preferences.channel.name(),
         platform: &platform,
@@ -113,19 +113,23 @@ fn run(
         }
     }
     let destination = root.join("ready");
+    // A postponed stage stays offered while daily checks continue, and a newer release replaces it.
+    let mut staged = None;
     if destination.exists() {
-        if let Ok(selected) = stage::verify(&destination, &keys, check, OffsetDateTime::now_utc()) {
-            publish(
-                destination,
-                selected.manifest.version,
-                selected.manifest.expires,
-                preferences.channel,
-                switch_now,
-                generation,
-            );
-            return Ok(());
+        match stage::verify(&destination, &keys, check, OffsetDateTime::now_utc()) {
+            Ok(selected) => {
+                publish(
+                    destination.clone(),
+                    selected.manifest.version.clone(),
+                    selected.manifest.expires,
+                    preferences.channel,
+                    switch_now,
+                    generation,
+                );
+                staged = Some(selected.manifest);
+            }
+            Err(_) => fs::remove_dir_all(&destination)?,
         }
-        fs::remove_dir_all(&destination)?;
     }
     if (!preferences.checks && !switch_now) || !active(generation) {
         return Ok(());
@@ -191,6 +195,9 @@ fn run(
                     }
                 }
             }
+            return record(&stamp_path, check);
+        }
+        if !supersedes(&selected.manifest, staged.as_ref())? {
             return record(&stamp_path, check);
         }
         ensure!(active(generation), "update check cancelled");
@@ -293,6 +300,22 @@ fn older_release(manifest: &update_manifest::Manifest, check: Check<'_>) -> Resu
         check.current_build,
         &manifest.version,
         manifest.build_number,
+    )?)
+}
+
+/// Whether a fetched release should replace the postponed stage, if there is one.
+pub(super) fn supersedes(
+    fetched: &update_manifest::Manifest,
+    staged: Option<&update_manifest::Manifest>,
+) -> Result<bool> {
+    let Some(staged) = staged else {
+        return Ok(true);
+    };
+    Ok(update_manifest::select::newer_build(
+        &fetched.version,
+        fetched.build_number,
+        &staged.version,
+        staged.build_number,
     )?)
 }
 

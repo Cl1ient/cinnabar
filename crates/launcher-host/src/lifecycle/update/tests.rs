@@ -135,3 +135,23 @@ fn a_skipped_daily_check_restores_the_older_channel_switch_offer() {
         OffsetDateTime::now_utc()
     ));
 }
+
+#[test]
+fn a_postponed_stage_is_replaced_only_by_a_newer_release() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("manifest.json");
+    let release = |version, build| {
+        let keys = cached_release(&path, version, build);
+        update_manifest::verify(
+            &std::fs::read(&path).unwrap(),
+            &keys,
+            OffsetDateTime::now_utc(),
+        )
+        .unwrap()
+    };
+    let staged = release("2.0.0", 10);
+    assert!(worker::supersedes(&staged, None).unwrap());
+    assert!(!worker::supersedes(&release("2.0.0", 10), Some(&staged)).unwrap());
+    assert!(worker::supersedes(&release("2.0.0", 11), Some(&staged)).unwrap());
+    assert!(worker::supersedes(&release("2.1.0", 1), Some(&staged)).unwrap());
+}

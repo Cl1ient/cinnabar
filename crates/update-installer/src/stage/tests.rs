@@ -166,3 +166,23 @@ fn an_unnumbered_signed_release_cannot_bypass_build_ordering() {
         );
     }
 }
+
+#[test]
+fn a_newer_download_replaces_a_postponed_stage_without_leftovers() {
+    let root = tempfile::tempdir().unwrap();
+    let platform = "linux-x86_64";
+    let (ready, _) = staged(root.path(), platform);
+    let newer = b"a newer verified release payload";
+    let (envelope, keys) = signed(platform, "3.0.0", newer);
+    let selected = Selection::verify(&envelope, &keys, check(platform), now()).unwrap();
+    let mut download = Download::begin(root.path(), selected).unwrap();
+    download.write(newer).unwrap();
+    assert_eq!(download.finish(&ready).unwrap(), ready);
+    let selected = verify(&ready, &keys, check(platform), now()).unwrap();
+    assert_eq!(selected.manifest.version, "3.0.0");
+    let names: Vec<_> = fs::read_dir(root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(names, ["ready"]);
+}

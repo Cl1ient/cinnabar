@@ -228,7 +228,7 @@ pub struct PackRejection {
     pub reason: AdmissionError,
 }
 
-/// Admitted packs in exact server stack order; the last has the highest precedence.
+/// Admitted layers in lowest-to-highest precedence order.
 pub struct ValidatedPackStack {
     pub(crate) packs: Box<[ValidatedPack]>,
     pub(crate) rejections: Box<[PackRejection]>,
@@ -285,6 +285,7 @@ impl ValidatedPackStack {
             rejections,
         })
     }
+    /// Admitted layers, lowest precedence first.
     #[must_use]
     pub fn packs(&self) -> &[ValidatedPack] {
         &self.packs

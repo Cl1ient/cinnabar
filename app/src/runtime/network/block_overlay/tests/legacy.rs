@@ -18,6 +18,7 @@ fn legacy_view(layers: &[Value]) -> LayeredPackView {
     let archives = layers
         .iter()
         .enumerate()
+        .rev()
         .map(|(index, blocks)| {
             let id = format!("00000000-0000-0000-0000-{:012}", index + 1);
             let manifest = json!({"format_version":2,"header":{"uuid":id,"version":[1,0,0]},

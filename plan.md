@@ -2881,7 +2881,7 @@ not per frame, and any animated layer samples with repeat wrap); actors are lit 
 light at their feet through the shared light curve with daylight fixed at 1 (the vanilla light
 texture, tint and sample point are unmatched), pack attachables (held/worn on player bodies) layer over the equipment runtime per session
 (pack bindings win by item identifier; pack property defaults seed only from `entities/` in
-resource packs), rigs depending on vanilla clips are attributed as fallbacks; pack precedence follows the Bedrock stack (last entry wins). No vanilla acceptance gate is closed by this change.
+resource packs), rigs depending on vanilla clips are attributed as fallbacks; server pack admission converts first-entry priority into low-to-high merge layers. No vanilla acceptance gate is closed by this change.
 
 2026-10-12 protocol codec: `protocol` decodes and encodes through protocolgen's generated
 contract crate (`bedrock-protocol-1-26-51`, contract 1), vendored byte for byte and pinned by
@@ -8060,3 +8060,10 @@ Incomplete parity: recipe eligibility and exact pattern-choice styling remain op
   hidden-by-occlusion and submitted; draw counters record skipped/submitted vertices.
 - Performance and rendered-frame acceptance remain incomplete until comparable captures
   verify walls, gaps, rapid motion, shadows, name tags and unchanged animation state.
+
+Server pack priority: admission now converts highest-priority-first server handoffs
+into the low-to-high layer order used by resource reads and merge subscribers.
+Regression coverage checks overlapping files and glyph sheets, missing-file fallback,
+and original rejection indexes. Version-matched vanilla captures remain incomplete;
+this change does not close a parity gate. Locale font fallback and built-in named
+font alias behavior remain unchanged and need independent verification.

@@ -132,7 +132,7 @@ fn actor_material_collector_retains_custom_inheritance_and_highest_layer_child()
         }}),
     );
     let view = resource_pack::LayeredPackView::new(resource_pack::validate_handoff(
-        protocol::ResourcePackHandoff::from_archives(vec![lower, upper]),
+        protocol::ResourcePackHandoff::from_archives(vec![upper, lower]),
     ));
     let files = super::collect_files(&view, None, None);
     let definitions = files

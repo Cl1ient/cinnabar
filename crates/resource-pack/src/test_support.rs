@@ -12,6 +12,7 @@ pub fn layered_pack_view(layers: &[&[(String, Vec<u8>)]]) -> crate::LayeredPackV
     let archives = layers
         .iter()
         .enumerate()
+        .rev()
         .map(|(index, files)| {
             let id = format!("00000000-0000-0000-0000-{:012x}", index + 17);
             let manifest = format!(

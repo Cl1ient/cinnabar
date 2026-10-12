@@ -39,8 +39,8 @@ pub fn validate_archive_bytes(bytes: &[u8]) -> Result<(), AdmissionError> {
     validate_archive_parts(Uuid::nil(), "0.0.0", "", bytes.to_vec(), None, None).map(|_| ())
 }
 
-/// Admits each archive independently in stack order. Stack-wide bounds drop
-/// the packs that would exceed them, not the packs already admitted.
+/// Admits highest-priority-first server entries, then stores layers lowest priority first.
+/// Stack-wide bounds drop later entries; rejection indexes retain the server order.
 #[cfg(feature = "handoff")]
 pub(super) fn validate_stack(
     archives: Vec<ResourcePackArchive>,
@@ -81,6 +81,7 @@ pub(super) fn validate_stack(
             }),
         }
     }
+    packs.reverse();
     ValidatedPackStack {
         packs: packs.into_boxed_slice(),
         rejections: rejections.into_boxed_slice(),

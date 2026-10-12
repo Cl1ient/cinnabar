@@ -1,7 +1,7 @@
-use assets::TextureMip;
+use assets::{PBR_REF_LABPBR, TextureMip};
 use image::{ImageBuffer, Luma, Rgba, RgbaImage, imageops::FilterType};
 
-use super::{PBR_REF_LABPBR, PbrSurface, decode};
+use super::{PbrSurface, decode};
 
 type FloatImage = ImageBuffer<Rgba<f32>, Vec<f32>>;
 type ScalarImage = ImageBuffer<Luma<f32>, Vec<f32>>;

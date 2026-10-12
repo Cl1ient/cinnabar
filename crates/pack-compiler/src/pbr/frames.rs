@@ -1,6 +1,7 @@
+use assets::{PBR_REF_HEIGHT, PBR_REF_NORMAL};
 use image::{ImageBuffer, Rgba, RgbaImage};
 
-use super::{PBR_REF_HEIGHT, PBR_REF_NORMAL, PbrSurface, decode};
+use super::{PbrSurface, decode};
 
 /// Validates a square frame or strip and returns its number of frames.
 fn frame_count(image: &RgbaImage) -> Result<u32, String> {

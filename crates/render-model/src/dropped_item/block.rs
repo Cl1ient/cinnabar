@@ -34,7 +34,10 @@ pub fn block_mesh(
                 let [a, b, c, _] = quad
                     .positions
                     .map(|position| Vec3::from_array(position.map(f32::from)));
-                (b - a).cross(c - a).try_normalize()?.to_array()
+                let Some(normal) = (b - a).cross(c - a).try_normalize() else {
+                    continue;
+                };
+                normal.to_array()
             }
         };
         for corner in [0, 1, 2, 0, 2, 3] {
@@ -59,6 +62,46 @@ pub fn block_mesh(
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[test]
+    fn quantized_collapsed_faces_do_not_hide_drawable_faces() {
+        let drawable = assets::ModelQuad {
+            positions: [[36, 64, 36], [220, 64, 220], [220, 256, 220], [36, 256, 36]],
+            uvs: [[0, 4096], [4096, 4096], [4096, 0], [0, 0]],
+            material: 0,
+            flags: assets::MODEL_QUAD_FLAG_TWO_SIDED,
+        };
+        let collapsed = assets::ModelQuad {
+            positions: [
+                [128, 64, 128],
+                [128, 64, 128],
+                [128, 256, 128],
+                [128, 256, 128],
+            ],
+            ..drawable
+        };
+        let model = DroppedItemBlock {
+            materials: Arc::from([(
+                crate::DroppedItemSprite {
+                    width: 16,
+                    height: 16,
+                    rgba8: Arc::from([255; 16 * 16 * 4]),
+                },
+                crate::OPAQUE_WHITE,
+            )]),
+            quads: Arc::from([drawable, collapsed, drawable]),
+            rotation: 0,
+        };
+        let vertices = block_mesh(&model, 1, 32).expect("drawable faces survive quantization");
+        assert_eq!(vertices.len(), 12);
+        assert!(
+            vertices
+                .iter()
+                .all(|vertex| vertex.normal.iter().all(|axis| axis.is_finite()))
+        );
+        assert_eq!(vertices[0].position, [-0.359375, -0.25, -0.359375]);
+        assert_eq!(vertices[6].position, vertices[0].position);
+    }
 
     #[test]
     fn potted_planes_have_finite_unit_normals() {

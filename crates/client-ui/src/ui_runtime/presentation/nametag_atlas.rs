@@ -452,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn bold_multiline_nametag_grows_the_plate_and_retains_reset_line_centering() {
+    fn bold_multiline_nametag_grows_only_its_lines_plate_and_retains_reset_line_centering() {
         let font = stem_font();
         let build = |name: &str| {
             super::super::nametags::build_nametag_scene(
@@ -465,17 +465,18 @@ mod tests {
         };
         let plain = build("AB\nA");
         let bold = build("§lAB\n§rA");
-        assert_eq!(plain.records.len(), 3);
-        assert_eq!(bold.records.len(), 3);
+        assert_eq!(plain.records.len(), 4);
+        assert_eq!(bold.records.len(), 4);
         assert_eq!(bold.records[0].rect[0], plain.records[0].rect[0] - 1.0);
         assert_eq!(bold.records[0].rect[2], plain.records[0].rect[2] + 1.0);
         assert_eq!(bold.records[0].color, plain.records[0].color);
-        assert_eq!(bold.records[2].rect, plain.records[2].rect);
+        assert_eq!(bold.records[1].rect, plain.records[1].rect);
+        assert_eq!(bold.records[3].rect, plain.records[3].rect);
     }
 
     /// Builds the labels used by the original full-atlas timing fixture.
     fn sample_atlas() -> (NametagAtlas, std::time::Duration) {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(256, 1 << 20);
         let mut atlas = NametagAtlas::default();
         let started = std::time::Instant::now();
@@ -549,7 +550,7 @@ mod tests {
 
     #[test]
     fn palette_change_rerasterizes_retained_name_lines() {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(8, 1 << 20);
         let mut atlas = NametagAtlas::default();
         let text = Arc::from("§2Player");
@@ -580,7 +581,7 @@ mod tests {
 
     #[test]
     fn rectangles_preserve_skipped_publications_reset_and_old_readers() {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(8, 1 << 20);
         let mut atlas = NametagAtlas::default();
         assert!(atlas.publish().0.is_empty());

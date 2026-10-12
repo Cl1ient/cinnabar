@@ -1,5 +1,7 @@
 use std::collections::{BTreeSet, VecDeque};
 
+use workspace_declarations::within;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Package {
     pub(crate) name: String,
@@ -7,6 +9,10 @@ pub struct Package {
     pub(crate) root: String,
     pub(crate) dependencies: Vec<String>,
     pub(crate) doctest: bool,
+    /// `[package.metadata.cinnabar] platform-specific`, which the architecture gate enforces.
+    pub(crate) platforms: Vec<String>,
+    /// `[package.metadata.cinnabar] reads`: other crates' files this package reads.
+    pub(crate) reads: Vec<String>,
 }
 
 impl Package {
@@ -18,6 +24,8 @@ impl Package {
             root: normalize(root),
             dependencies: dependencies.iter().map(|name| (*name).into()).collect(),
             doctest: false,
+            platforms: Vec::new(),
+            reads: Vec::new(),
         }
     }
 
@@ -34,7 +42,30 @@ impl Package {
             root: normalize(&root),
             dependencies,
             doctest,
+            platforms: Vec::new(),
+            reads: Vec::new(),
         }
+    }
+
+    /// Sets the platforms whose code this package contains.
+    #[must_use]
+    pub fn with_platforms(mut self, platforms: Vec<String>) -> Self {
+        self.platforms = platforms;
+        self
+    }
+
+    /// Sets the repository paths, which may use `*`, of other crates' files this package reads.
+    #[must_use]
+    pub fn with_reads(mut self, reads: Vec<String>) -> Self {
+        self.reads = reads;
+        self
+    }
+
+    /// Whether this package declares reading `path`, a file or directory it names.
+    fn declares_read(&self, path: &str) -> bool {
+        self.reads
+            .iter()
+            .any(|pattern| workspace_declarations::read_names(pattern, path))
     }
 }
 
@@ -72,41 +103,12 @@ pub struct ExtraChecks {
 /// Shared carrier identity input read by the Rust runtime and registry validators.
 const TARGET_MANIFEST: &str = "assets/bedrock-target.json";
 
-/// Paths outside crate roots read by production code or tests.
-const EXTERNAL_TEST_INPUTS: &[(&str, &str)] = &[
-    ("assets/java-hud", "json-ui"),
-    (TARGET_MANIFEST, "assets"),
-    ("tools/registrygen/cmd/hashcheck/main.go", "bedrock-client"),
-    ("plan.md", "architecture"),
-    ("docs/evidence", "architecture"),
-];
-
 /// Selects Rust packages; paths no rule recognises fail safe to the whole workspace.
 #[must_use]
 pub fn select_packages(changed_paths: &[&str], packages: &[Package]) -> Selection {
-    if changed_paths.iter().any(|path| is_workspace_input(path)) {
+    let Some(mut selected) = changed_packages(changed_paths, packages) else {
         return Selection::Workspace;
-    }
-
-    let mut selected = BTreeSet::new();
-    for path in changed_paths {
-        let path = normalize(path);
-        if let Some(owner) = packages
-            .iter()
-            .filter(|package| is_within(&path, &package.root))
-            .max_by_key(|package| package.root.len())
-        {
-            selected.insert(owner.name.clone());
-        } else if let Some((_, reader)) = EXTERNAL_TEST_INPUTS
-            .iter()
-            .find(|(input, _)| is_within(&path, input))
-        {
-            selected.insert((*reader).to_owned());
-        } else if !is_rust_free(&path) {
-            return Selection::Workspace;
-        }
-    }
-
+    };
     if selected.is_empty() {
         return Selection::NoPackages;
     }
@@ -123,6 +125,53 @@ pub fn select_packages(changed_paths: &[&str], packages: &[Package]) -> Selectio
     Selection::Packages(selected.into_iter().collect())
 }
 
+/// Returns the packages that own or read the changed paths, before adding reverse dependencies,
+/// or `None` when a path needs the whole workspace.
+pub(crate) fn changed_packages(
+    changed_paths: &[&str],
+    packages: &[Package],
+) -> Option<BTreeSet<String>> {
+    if changed_paths.iter().any(|path| is_workspace_input(path)) {
+        return None;
+    }
+    let mut selected = BTreeSet::new();
+    for path in changed_paths {
+        let path = normalize(path);
+        let mut read = false;
+        for reader in packages
+            .iter()
+            .filter(|package| package.declares_read(&path))
+        {
+            selected.insert(reader.name.clone());
+            read = true;
+        }
+        if let Some(owner) = owner(&path, packages) {
+            selected.insert(owner.name.clone());
+        } else if (!read || is_go_input(&path)) && !is_rust_free(&path) {
+            return None;
+        }
+    }
+    Some(selected)
+}
+
+/// Go sources run everything even when declared: Rust tests also reach them through the Go
+/// toolchain, which `reads` declarations cannot see.
+fn is_go_input(path: &str) -> bool {
+    path.ends_with(".go")
+        || matches!(
+            path.rsplit('/').next(),
+            Some("go.mod" | "go.sum" | "go.work" | "go.work.sum")
+        )
+}
+
+/// Returns the package with the deepest root containing a normalized `path`.
+pub(crate) fn owner<'a>(path: &str, packages: &'a [Package]) -> Option<&'a Package> {
+    packages
+        .iter()
+        .filter(|package| within(path, &package.root))
+        .max_by_key(|package| package.root.len())
+}
+
 /// Returns the Go modules owning changed paths and whether the packaging tests apply.
 /// `go.work` and any workspace module's `go.mod` or `go.sum` select every workspace module,
 /// since their requirements and replaces resolve together.
@@ -132,7 +181,7 @@ pub fn select_extra_checks(changed_paths: &[&str], go_modules: &[GoModule]) -> E
     let mut packaging = false;
     for path in changed_paths {
         let path = normalize(path);
-        packaging |= is_within(&path, "packaging");
+        packaging |= within(&path, "packaging");
         if path == TARGET_MANIFEST || is_registry_manifest(&path) {
             selected.extend(
                 go_modules
@@ -142,7 +191,7 @@ pub fn select_extra_checks(changed_paths: &[&str], go_modules: &[GoModule]) -> E
         }
         let owner = go_modules
             .iter()
-            .filter(|module| module.dir.is_empty() || is_within(&path, &module.dir))
+            .filter(|module| module.dir.is_empty() || within(&path, &module.dir))
             .max_by_key(|module| module.dir.len());
         let workspace_manifest = owner.is_some_and(|module| {
             module.in_workspace
@@ -170,19 +219,12 @@ pub(crate) fn normalize(path: &str) -> String {
     path.trim_start_matches("./").replace('\\', "/")
 }
 
-fn is_within(path: &str, root: &str) -> bool {
-    path == root
-        || path
-            .strip_prefix(root)
-            .is_some_and(|suffix| suffix.starts_with('/'))
-}
-
 fn is_workspace_input(path: &str) -> bool {
     let path = normalize(path);
     matches!(
         path.as_str(),
         "Cargo.toml" | "Cargo.lock" | "rust-toolchain.toml" | "rust-toolchain"
-    ) || is_within(&path, ".cargo")
+    ) || within(&path, ".cargo")
 }
 
 /// Recognizes the versioned metadata files consumed only by registrygen.
@@ -204,7 +246,7 @@ fn is_registry_manifest(path: &str) -> bool {
 
 /// Generator source affects Rust only through separately selected generated artifacts.
 fn is_generator_source(path: &str) -> bool {
-    (is_within(path, "tools/registrygen") && path.ends_with(".go"))
+    (within(path, "tools/registrygen") && path.ends_with(".go"))
         || matches!(
             path,
             "tools/registrygen/update_bindings.py"
@@ -225,7 +267,7 @@ fn is_rust_free(path: &str) -> bool {
         || path == "LICENSE"
         || ["docs", ".github", "packaging"]
             .iter()
-            .any(|root| is_within(path, root))
+            .any(|root| within(path, root))
 }
 
 #[cfg(test)]
@@ -240,7 +282,7 @@ mod tests {
             Package::new("assets", "crates/assets", &[]),
             Package::new("meshing", "crates/meshing", &["assets"]),
             Package::new("render", "crates/render", &["assets", "meshing"]),
-            Package::new("bedrock-client", "app", &["render"]),
+            Package::new("cinnabar", "app", &["render"]),
         ]
     }
 
@@ -250,7 +292,7 @@ mod tests {
             select_packages(&["crates/assets/src/lib.rs"], &workspace()),
             Selection::Packages(vec![
                 "assets".into(),
-                "bedrock-client".into(),
+                "cinnabar".into(),
                 "meshing".into(),
                 "render".into(),
             ])
@@ -261,22 +303,23 @@ mod tests {
     fn selects_only_the_leaf_package_for_leaf_changes() {
         assert_eq!(
             select_packages(&["app/src/main.rs"], &workspace()),
-            Selection::Packages(vec!["bedrock-client".into()])
+            Selection::Packages(vec!["cinnabar".into()])
         );
     }
 
     #[test]
     fn builtin_hud_changes_select_the_ui_owner_and_its_consumers() {
         let packages = vec![
-            Package::new("json-ui", "crates/json-ui", &[]),
+            Package::new("json-ui", "crates/json-ui", &[])
+                .with_reads(vec!["assets/java-hud".into()]),
             Package::new("client-ui", "crates/client-ui", &["json-ui"]),
-            Package::new("bedrock-client", "app", &["client-ui"]),
+            Package::new("cinnabar", "app", &["client-ui"]),
             Package::new("sim", "crates/sim", &[]),
         ];
         assert_eq!(
             select_packages(&["assets/java-hud/ui/hud_screen.json"], &packages),
             Selection::Packages(vec![
-                "bedrock-client".into(),
+                "cinnabar".into(),
                 "client-ui".into(),
                 "json-ui".into(),
             ])
@@ -286,12 +329,13 @@ mod tests {
     #[test]
     fn target_manifest_selects_carrier_owner_and_reverse_consumers() {
         let mut packages = workspace();
+        packages[0] = packages[0].clone().with_reads(vec![TARGET_MANIFEST.into()]);
         packages.push(Package::new("inventory", "crates/inventory", &[]));
         assert_eq!(
             select_packages(&[TARGET_MANIFEST], &packages),
             Selection::Packages(vec![
                 "assets".into(),
-                "bedrock-client".into(),
+                "cinnabar".into(),
                 "meshing".into(),
                 "render".into()
             ])
@@ -351,15 +395,7 @@ mod tests {
                 &["tools/itembindinggen/main.py", "app/src/main.rs"],
                 &workspace()
             ),
-            Selection::Packages(vec!["bedrock-client".into()])
-        );
-    }
-
-    #[test]
-    fn hashcheck_source_selects_its_rust_installer_consumer() {
-        assert_eq!(
-            select_packages(&["tools/registrygen/cmd/hashcheck/main.go"], &workspace()),
-            Selection::Packages(vec!["bedrock-client".into()])
+            Selection::Packages(vec!["cinnabar".into()])
         );
     }
 
@@ -416,18 +452,41 @@ mod tests {
     fn markdown_inside_a_crate_still_selects_it() {
         assert_eq!(
             select_packages(&["app/README.md"], &workspace()),
-            Selection::Packages(vec!["bedrock-client".into()])
+            Selection::Packages(vec!["cinnabar".into()])
         );
     }
 
     #[test]
-    fn plan_and_evidence_ledger_select_the_architecture_tests() {
+    fn plan_and_evidence_ledger_select_their_declared_reader() {
+        let mut packages = workspace();
+        packages.push(
+            Package::new("architecture", "tools/architecture", &[])
+                .with_reads(vec!["plan.md".into(), "docs/evidence".into()]),
+        );
         for path in ["plan.md", "docs/evidence/ledger.md"] {
             assert_eq!(
-                select_packages(&[path], &workspace()),
+                select_packages(&[path], &packages),
                 Selection::Packages(vec!["architecture".into()])
             );
         }
+        assert_eq!(
+            select_packages(&["plan.md"], &workspace()),
+            Selection::NoPackages
+        );
+    }
+
+    #[test]
+    fn declared_reads_of_go_sources_still_run_everything() {
+        let mut packages = workspace();
+        packages.push(Package::new("bridge", "crates/bridge", &[]).with_reads(vec!["core".into()]));
+        assert_eq!(
+            select_packages(&["core/session/relay.go"], &packages),
+            Selection::Workspace
+        );
+        assert_eq!(
+            select_packages(&["core/catalog/artwork_limit.txt"], &packages),
+            Selection::Packages(vec!["bridge".into()])
+        );
     }
 
     #[test]
@@ -516,6 +575,51 @@ mod tests {
         assert_eq!(
             select_packages(&["unexpected/build-input.txt"], &workspace()),
             Selection::Workspace
+        );
+    }
+
+    #[test]
+    fn declared_readers_and_their_dependents_are_affected() {
+        let mut packages = workspace();
+        packages.push(
+            Package::new("pack-compiler", "crates/pack-compiler", &[]).with_reads(vec![
+                "crates/protocol/data/retail_items_1_26_50.tsv".into(),
+                "crates/meshing/fixtures/*".into(),
+            ]),
+        );
+        packages.push(Package::new("protocol", "crates/protocol", &[]));
+        assert_eq!(
+            select_packages(
+                &["crates/protocol/data/retail_items_1_26_50.tsv"],
+                &packages
+            ),
+            Selection::Packages(vec!["pack-compiler".into(), "protocol".into()])
+        );
+        assert_eq!(
+            select_packages(&["crates/protocol/data/other.tsv"], &packages),
+            Selection::Packages(vec!["protocol".into()])
+        );
+        let mut readers = packages.clone();
+        readers[0] = Package::new("assets", "crates/assets", &[])
+            .with_reads(vec!["crates/protocol/data".into()]);
+        assert_eq!(
+            select_packages(&["crates/protocol/data/other.tsv"], &readers),
+            Selection::Packages(vec![
+                "assets".into(),
+                "cinnabar".into(),
+                "meshing".into(),
+                "protocol".into(),
+                "render".into(),
+            ])
+        );
+        assert_eq!(
+            select_packages(&["crates/meshing/fixtures/deep/case.bin"], &packages),
+            Selection::Packages(vec![
+                "cinnabar".into(),
+                "meshing".into(),
+                "pack-compiler".into(),
+                "render".into(),
+            ])
         );
     }
 

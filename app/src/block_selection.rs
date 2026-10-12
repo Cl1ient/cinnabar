@@ -1,10 +1,10 @@
 //! Publishes the current gameplay pick to the native outline/highlight overlay passes.
 use bevy::{ecs::system::SystemParam, prelude::*};
 use gameplay::melee::{Crosshair, classify, pick_actor};
-use render::{BlockSelectionFrame, BlockSelectionTarget, CrackShape, crack_shape_from_template};
+use render_model::{BlockSelectionTarget, CrackShape, crack_shape_from_template};
 use sim::PaletteWorld;
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 use {
     crate::{interaction_authority::ray_is_current, runtime::world::ClientWorld},
     client_interaction::movement::PhysicsCollisionRegistries,
@@ -18,7 +18,7 @@ pub(crate) struct SelectionContext<'w> {
     player: Res<'w, client_state::PlayerRuntime>,
     world: Res<'w, ClientWorld>,
     collisions: Res<'w, PhysicsCollisionRegistries>,
-    ui: Res<'w, UiRuntime>,
+    ui: Res<'w, UiRuntimeResource>,
     focus: Res<'w, client_state::ScreenFocus>,
     origin: Res<'w, InteractionOriginSnapshot>,
     input: Res<'w, SemanticInputSnapshot>,
@@ -27,12 +27,15 @@ pub(crate) struct SelectionContext<'w> {
 
 /// Updates after the completed pose and interaction authorities have been published.
 pub(crate) fn configure(app: &mut App) {
-    app.init_resource::<BlockSelectionFrame>()
+    app.init_resource::<render_scene::BlockSelectionFrameResource>()
         .add_systems(Update, publish.in_set(ClientFrameSet::WorldPublication));
 }
 
 /// A missing, stale or menu-owned ray clears last frame's target immediately.
-pub(crate) fn publish(context: SelectionContext, mut frame: ResMut<BlockSelectionFrame>) {
+pub(crate) fn publish(
+    context: SelectionContext,
+    mut frame: ResMut<render_scene::BlockSelectionFrameResource>,
+) {
     let target = target(&context.player, &context);
     frame.update(
         target.as_ref(),

@@ -1,3 +1,13 @@
+use bedrock_protocol_1_26_51::enums::AnimateAction as AnimatePacketAction;
+use bedrock_protocol_1_26_51::packets::{
+    AddActor as AddActorPacket, AddPlayer as AddPlayerPacket, Animate as AnimatePacket,
+    AnimateEntity as AnimateEntityPacket, ItemRegistry as ItemRegistryPacket,
+    MobEquipment as MobEquipmentPacket, NetworkSettings as NetworkSettingsPacket,
+};
+use bedrock_protocol_1_26_51::types::{
+    ActorRuntimeID, ItemData, NetworkItemStackDescriptorSerializedData as ItemStackDescriptor,
+};
+use bedrock_protocol_1_26_51::wire::{self, NetworkNbt as Nbt};
 use bytes::Bytes;
 use protocol::{
     ActorActionKind, ActorEvent, ActorHandedness, EquipmentEvent, ItemActorEvent, ItemPacketError,
@@ -6,16 +16,8 @@ use protocol::{
     WorldPacketError, WorldWireError, into_world_event,
 };
 use sha2::{Digest, Sha256};
-use valentine::bedrock::codec::Nbt;
-use valentine::bedrock::version::v1_26_51::{
-    ActorRuntimeId, AddActorPacket, AddPlayerPacket, AnimateEntityPacket, AnimatePacket,
-    CerealizerNetworkItemStackDescriptorSerializedData as ItemStackDescriptor,
-    EnumsAnimatePacketPayloadAction as AnimatePacketAction, ItemData, ItemRegistryPacket,
-    MobEquipmentPacket, NetworkSettingsPacket,
-};
 
-/// The inventory container. 1.26.40 carries the raw container ID rather than a
-/// named `WindowId` enum (gophertunnel `MobEquipment.WindowID`, a plain byte).
+/// The inventory container: the raw container ID rather than a named `WindowId` enum (gophertunnel `MobEquipment.WindowID`, a plain byte).
 const INVENTORY_CONTAINER: u8 = 0;
 /// `CONTAINER_ID_OFFHAND`, the container that implies a left-handed equip.
 const OFFHAND_CONTAINER: u8 = 119;
@@ -24,7 +26,7 @@ const NO_CONTAINER: u8 = u8::MAX;
 
 /// Builds an item user-data buffer that carries no NBT compound.
 ///
-/// 1.26.40 hands the trailing item user data over as one opaque length-prefixed
+/// The generated codec hands the trailing item user data over as one opaque length-prefixed
 /// buffer instead of modelling its interior, so fixtures have to spell the
 /// layout out. gophertunnel be6713da4dc051a4197f897d04835e89e9c54321
 /// `minecraft/protocol/writer.go` `Writer.itemUserData`: an `int16` of 0 means
@@ -44,19 +46,17 @@ fn item_user_data(can_place_on: &[&str]) -> Vec<u8> {
 
 fn stack_item() -> ItemStackDescriptor {
     ItemStackDescriptor {
-        id: 5,
-        stacksize: 2,
-        auxvalue: 3,
-        net_id_variant: Some(7),
-        block_runtime_id: 9,
-        user_data_buffer: item_user_data(&["minecraft:stone"]),
+        id: wire::I16LE(5),
+        stack_size: wire::U16LE(2),
+        aux_value: wire::VarUInt(3),
+        net_id_variant: Some(wire::ZigZag32(7)),
+        block_runtime_id: wire::VarUInt(9),
+        user_data_buffer: item_user_data(&["minecraft:stone"]).into(),
     }
 }
 
-fn runtime_id(actor_runtime_id: i64) -> ActorRuntimeId {
-    ActorRuntimeId {
-        actor_runtime_id: u64::from_ne_bytes(actor_runtime_id.to_ne_bytes()),
-    }
+fn runtime_id(actor_runtime_id: i64) -> ActorRuntimeID {
+    ActorRuntimeID(u64::from_ne_bytes(actor_runtime_id.to_ne_bytes()))
 }
 
 #[test]
@@ -73,12 +73,14 @@ fn item_registry_and_add_player_held_item_are_vendor_neutral() {
     let registry = ItemRegistryPacket {
         item_data: vec![ItemData {
             item_name: "minecraft:stick".into(),
-            item_id: 5,
+            item_id: wire::I16LE(5),
             ..Default::default()
         }],
     };
     let WorldEvent::ItemActor(ItemActorEvent::Registry(registry)) =
-        into_world_event(registry.into(), 0).unwrap().unwrap()
+        into_world_event(protocol::Packet::new(registry), 0)
+            .unwrap()
+            .unwrap()
     else {
         panic!("expected item registry")
     };
@@ -92,7 +94,9 @@ fn item_registry_and_add_player_held_item_are_vendor_neutral() {
         ..Default::default()
     };
     let WorldEvent::Actor(ActorEvent::PlayerSpawn { spawn, .. }) =
-        into_world_event(player.into(), 0).unwrap().unwrap()
+        into_world_event(protocol::Packet::new(player), 0)
+            .unwrap()
+            .unwrap()
     else {
         panic!("expected player spawn")
     };
@@ -114,16 +118,16 @@ fn mob_equipment_retains_slots_and_canonical_stack_identity() {
     let packet = MobEquipmentPacket {
         target_runtime_id: runtime_id(42),
         item: ItemStackDescriptor {
-            id: 5,
-            stacksize: 4,
-            auxvalue: 6,
-            net_id_variant: Some(8),
-            block_runtime_id: 10,
-            user_data_buffer: item_user_data(&[]),
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(4),
+            aux_value: wire::VarUInt(6),
+            net_id_variant: Some(wire::ZigZag32(8)),
+            block_runtime_id: wire::VarUInt(10),
+            user_data_buffer: item_user_data(&[]).into(),
         },
-        slot: 2,
-        selected_slot: 2,
-        container_id: INVENTORY_CONTAINER,
+        slot: wire::U8(2),
+        selected_slot: wire::U8(2),
+        container_id: wire::U8(INVENTORY_CONTAINER),
     };
     let WorldEvent::Equipment(EquipmentEvent {
         actor_runtime_id,
@@ -132,7 +136,9 @@ fn mob_equipment_retains_slots_and_canonical_stack_identity() {
         selected_slot,
         window_id,
         handedness,
-    }) = into_world_event(packet.into(), 0).unwrap().unwrap()
+    }) = into_world_event(protocol::Packet::new(packet), 0)
+        .unwrap()
+        .unwrap()
     else {
         panic!("expected equipment")
     };
@@ -149,15 +155,17 @@ fn mob_equipment_retains_slots_and_canonical_stack_identity() {
     let offhand = MobEquipmentPacket {
         target_runtime_id: runtime_id(42),
         item: ItemStackDescriptor {
-            id: 5,
-            stacksize: 1,
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(1),
             ..Default::default()
         },
-        slot: 0,
-        selected_slot: 0,
-        container_id: OFFHAND_CONTAINER,
+        slot: wire::U8(0),
+        selected_slot: wire::U8(0),
+        container_id: wire::U8(OFFHAND_CONTAINER),
     };
-    let WorldEvent::Equipment(offhand) = into_world_event(offhand.into(), 0).unwrap().unwrap()
+    let WorldEvent::Equipment(offhand) = into_world_event(protocol::Packet::new(offhand), 0)
+        .unwrap()
+        .unwrap()
     else {
         panic!("expected offhand equipment")
     };
@@ -166,15 +174,18 @@ fn mob_equipment_retains_slots_and_canonical_stack_identity() {
     let hotbar = MobEquipmentPacket {
         target_runtime_id: runtime_id(42),
         item: ItemStackDescriptor {
-            id: 5,
-            stacksize: 1,
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(1),
             ..Default::default()
         },
-        slot: 0,
-        selected_slot: 0,
-        container_id: 122,
+        slot: wire::U8(0),
+        selected_slot: wire::U8(0),
+        container_id: wire::U8(122),
     };
-    let WorldEvent::Equipment(hotbar) = into_world_event(hotbar.into(), 0).unwrap().unwrap() else {
+    let WorldEvent::Equipment(hotbar) = into_world_event(protocol::Packet::new(hotbar), 0)
+        .unwrap()
+        .unwrap()
+    else {
         panic!("expected hotbar equipment")
     };
     assert_eq!(hotbar.handedness, Some(ActorHandedness::Right));
@@ -186,15 +197,15 @@ fn mob_equipment_rejects_unknown_and_sentinel_containers() {
         let packet = MobEquipmentPacket {
             target_runtime_id: runtime_id(42),
             item: ItemStackDescriptor {
-                id: 5,
-                stacksize: 1,
+                id: wire::I16LE(5),
+                stack_size: wire::U16LE(1),
                 ..Default::default()
             },
-            slot: 0,
-            selected_slot: 0,
-            container_id,
+            slot: wire::U8(0),
+            selected_slot: wire::U8(0),
+            container_id: wire::U8(container_id),
         };
-        let error = into_world_event(packet.into(), 0)
+        let error = into_world_event(protocol::Packet::new(packet), 0)
             .expect_err("unknown equipment container must be rejected");
         assert!(matches!(
             error,
@@ -227,11 +238,13 @@ fn animate_known_row_and_unknown_actions_are_attributed() {
         let packet = AnimatePacket {
             action,
             target_actor_runtime_id: runtime_id(42),
-            data: 0.25,
+            data: wire::F32LE(0.25),
             swing_source: Some("attack".into()),
         };
         let WorldEvent::ItemActor(ItemActorEvent::Action(action)) =
-            into_world_event(packet.into(), 0).unwrap().unwrap()
+            into_world_event(protocol::Packet::new(packet), 0)
+                .unwrap()
+                .unwrap()
         else {
             panic!("expected action")
         };
@@ -247,13 +260,15 @@ fn animate_entity_retains_one_bounded_custom_action_for_all_targets() {
         m_animation: "animation.test.attack".into(),
         m_next_state: "default".into(),
         m_stop_expression: "query.any_animation_finished".into(),
-        m_stop_expression_version: 1,
+        m_stop_expression_version: wire::I32LE(1),
         m_controller: "controller.animation.test".into(),
-        m_blend_out_time: 0.1,
+        m_blend_out_time: wire::F32LE(0.1),
         m_runtime_ids: vec![runtime_id(42), runtime_id(43)],
     };
     let WorldEvent::ItemActor(ItemActorEvent::Action(action)) =
-        into_world_event(packet.into(), 0).unwrap().unwrap()
+        into_world_event(protocol::Packet::new(packet), 0)
+            .unwrap()
+            .unwrap()
     else {
         panic!("expected custom action")
     };
@@ -273,7 +288,10 @@ fn animate_entity_retains_one_bounded_custom_action_for_all_targets() {
 #[test]
 fn unrelated_packets_remain_ignored() {
     let packet = NetworkSettingsPacket::default();
-    assert_eq!(into_world_event(packet.into(), 0).unwrap(), None);
+    assert_eq!(
+        into_world_event(protocol::Packet::new(packet), 0).unwrap(),
+        None
+    );
     let _ = NetworkItemStack::default();
 }
 
@@ -285,7 +303,9 @@ fn non_player_spawns_receive_the_canonical_empty_stack() {
         ..Default::default()
     };
     let WorldEvent::Actor(ActorEvent::Spawn(spawn)) =
-        into_world_event(packet.into(), 0).unwrap().unwrap()
+        into_world_event(protocol::Packet::new(packet), 0)
+            .unwrap()
+            .unwrap()
     else {
         panic!("expected entity spawn")
     };
@@ -301,18 +321,18 @@ fn item_stacks_reject_invalid_identity_and_unbounded_extra_bytes() {
     for item in [
         // A named item that claims to hold nothing.
         ItemStackDescriptor {
-            id: 5,
-            stacksize: 0,
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(0),
             ..Default::default()
         },
-        // A *present* stack net ID that is not a positive tracking ID. 1.26.40
+        // A *present* stack net ID that is not a positive tracking ID. The codec
         // models the net ID as a plain `Option`, so protocol 1001's
         // "present flag says no, payload says yes" shape can no longer be
         // built; this is the contradiction that survives the collapse.
         ItemStackDescriptor {
-            id: 5,
-            stacksize: 1,
-            net_id_variant: Some(0),
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(1),
+            net_id_variant: Some(wire::ZigZag32(0)),
             ..Default::default()
         },
     ] {
@@ -321,21 +341,21 @@ fn item_stacks_reject_invalid_identity_and_unbounded_extra_bytes() {
             carried_item: item,
             ..Default::default()
         };
-        assert!(into_world_event(packet.into(), 0).is_err());
+        assert!(into_world_event(protocol::Packet::new(packet), 0).is_err());
     }
 
     let signed_wire_fields = AddPlayerPacket {
         target_runtime_id: runtime_id(42),
         carried_item: ItemStackDescriptor {
-            id: -1,
-            stacksize: 1,
-            auxvalue: u32::from_ne_bytes((-1i32).to_ne_bytes()),
+            id: wire::I16LE(-1),
+            stack_size: wire::U16LE(1),
+            aux_value: wire::VarUInt(u32::from_ne_bytes((-1i32).to_ne_bytes())),
             ..Default::default()
         },
         ..Default::default()
     };
     let WorldEvent::Actor(ActorEvent::PlayerSpawn { spawn, .. }) =
-        into_world_event(signed_wire_fields.into(), 0)
+        into_world_event(protocol::Packet::new(signed_wire_fields), 0)
             .unwrap()
             .unwrap()
     else {
@@ -348,14 +368,14 @@ fn item_stacks_reject_invalid_identity_and_unbounded_extra_bytes() {
     let packet = AddPlayerPacket {
         target_runtime_id: runtime_id(42),
         carried_item: ItemStackDescriptor {
-            id: 5,
-            stacksize: 1,
-            user_data_buffer: vec![0; MAX_ITEM_EXTRA_BYTES + 1],
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(1),
+            user_data_buffer: vec![0; MAX_ITEM_EXTRA_BYTES + 1].into(),
             ..Default::default()
         },
         ..Default::default()
     };
-    assert!(into_world_event(packet.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(packet), 0).is_err());
 
     // A buffer too short to even hold its own `int16` header. Protocol 1001
     // spent this case on a `canDestroy` string longer than its `int16` length
@@ -364,40 +384,40 @@ fn item_stacks_reject_invalid_identity_and_unbounded_extra_bytes() {
     let truncated_user_data = AddPlayerPacket {
         target_runtime_id: runtime_id(42),
         carried_item: ItemStackDescriptor {
-            id: 5,
-            stacksize: 1,
-            user_data_buffer: vec![0xff],
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(1),
+            user_data_buffer: vec![0xff].into(),
             ..Default::default()
         },
         ..Default::default()
     };
-    assert!(into_world_event(truncated_user_data.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(truncated_user_data), 0).is_err());
 
     let invalid_nbt_version = AddPlayerPacket {
         target_runtime_id: runtime_id(42),
         carried_item: ItemStackDescriptor {
-            id: 5,
-            stacksize: 1,
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(1),
             // int16 -1 announces a compound, then an unsupported version byte.
-            user_data_buffer: vec![0xff, 0xff, 2],
+            user_data_buffer: vec![0xff, 0xff, 2].into(),
             ..Default::default()
         },
         ..Default::default()
     };
-    assert!(into_world_event(invalid_nbt_version.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(invalid_nbt_version), 0).is_err());
 
     let malformed_nbt = AddPlayerPacket {
         target_runtime_id: runtime_id(42),
         carried_item: ItemStackDescriptor {
-            id: 5,
-            stacksize: 1,
+            id: wire::I16LE(5),
+            stack_size: wire::U16LE(1),
             // Version 1 followed by a byte that is not a valid tag.
-            user_data_buffer: vec![0xff, 0xff, 1, 0xff],
+            user_data_buffer: vec![0xff, 0xff, 1, 0xff].into(),
             ..Default::default()
         },
         ..Default::default()
     };
-    assert!(into_world_event(malformed_nbt.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(malformed_nbt), 0).is_err());
 }
 
 #[test]
@@ -405,12 +425,14 @@ fn registry_preserves_signed_ids_and_rejects_conflicting_ids_and_oversized_recor
     let signed_id = ItemRegistryPacket {
         item_data: vec![ItemData {
             item_name: "minecraft:signed".into(),
-            item_id: -1,
+            item_id: wire::I16LE(-1),
             ..Default::default()
         }],
     };
     let WorldEvent::ItemActor(ItemActorEvent::Registry(signed_id)) =
-        into_world_event(signed_id.into(), 0).unwrap().unwrap()
+        into_world_event(protocol::Packet::new(signed_id), 0)
+            .unwrap()
+            .unwrap()
     else {
         panic!("expected signed registry ID")
     };
@@ -419,55 +441,55 @@ fn registry_preserves_signed_ids_and_rejects_conflicting_ids_and_oversized_recor
     let malformed_nbt = ItemRegistryPacket {
         item_data: vec![ItemData {
             item_name: "minecraft:malformed".into(),
-            item_id: 5,
+            item_id: wire::I16LE(5),
             item_component_data: Nbt(Bytes::from_static(&[0xff])),
             ..Default::default()
         }],
     };
-    assert!(into_world_event(malformed_nbt.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(malformed_nbt), 0).is_err());
 
     let duplicate = ItemRegistryPacket {
         item_data: vec![
             ItemData {
                 item_name: "minecraft:stick".into(),
-                item_id: 5,
+                item_id: wire::I16LE(5),
                 ..Default::default()
             },
             ItemData {
                 item_name: "minecraft:stone".into(),
-                item_id: 5,
+                item_id: wire::I16LE(5),
                 ..Default::default()
             },
         ],
     };
-    assert!(into_world_event(duplicate.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(duplicate), 0).is_err());
 
     let long_name = ItemRegistryPacket {
         item_data: vec![ItemData {
-            item_name: "x".repeat(MAX_ACTION_IDENTIFIER_BYTES + 1),
-            item_id: 5,
+            item_name: "x".repeat(MAX_ACTION_IDENTIFIER_BYTES + 1).into(),
+            item_id: wire::I16LE(5),
             ..Default::default()
         }],
     };
-    assert!(into_world_event(long_name.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(long_name), 0).is_err());
 
     let oversized = ItemRegistryPacket {
         item_data: (0..=MAX_ITEM_REGISTRY_ENTRIES)
             .map(|index| ItemData {
-                item_name: format!("test:item_{index}"),
-                item_id: 1,
+                item_name: format!("test:item_{index}").into(),
+                item_id: wire::I16LE(1),
                 ..Default::default()
             })
             .collect(),
     };
-    assert!(into_world_event(oversized.into(), 0).is_err());
+    assert!(into_world_event(protocol::Packet::new(oversized), 0).is_err());
 }
 
 #[test]
 fn equipment_rejects_invalid_runtime_and_stack_but_retains_unusual_slots() {
     let valid_item = ItemStackDescriptor {
-        id: 5,
-        stacksize: 1,
+        id: wire::I16LE(5),
+        stack_size: wire::U16LE(1),
         ..Default::default()
     };
     // A zero runtime id and a semantically invalid item still disconnect: those
@@ -476,22 +498,22 @@ fn equipment_rejects_invalid_runtime_and_stack_but_retains_unusual_slots() {
         MobEquipmentPacket {
             target_runtime_id: runtime_id(0),
             item: valid_item.clone(),
-            slot: 0,
-            selected_slot: 0,
-            container_id: INVENTORY_CONTAINER,
+            slot: wire::U8(0),
+            selected_slot: wire::U8(0),
+            container_id: wire::U8(INVENTORY_CONTAINER),
         },
         MobEquipmentPacket {
             target_runtime_id: runtime_id(42),
             item: ItemStackDescriptor {
-                user_data_buffer: vec![0; MAX_ITEM_EXTRA_BYTES + 1],
+                user_data_buffer: vec![0; MAX_ITEM_EXTRA_BYTES + 1].into(),
                 ..Default::default()
             },
-            slot: 0,
-            selected_slot: 0,
-            container_id: INVENTORY_CONTAINER,
+            slot: wire::U8(0),
+            selected_slot: wire::U8(0),
+            container_id: wire::U8(INVENTORY_CONTAINER),
         },
     ] {
-        assert!(into_world_event(packet.into(), 0).is_err());
+        assert!(into_world_event(protocol::Packet::new(packet), 0).is_err());
     }
 
     // Non-hotbar and mismatched slots are common on custom servers; the client
@@ -500,11 +522,13 @@ fn equipment_rejects_invalid_runtime_and_stack_but_retains_unusual_slots() {
         let packet = MobEquipmentPacket {
             target_runtime_id: runtime_id(42),
             item: valid_item.clone(),
-            slot,
-            selected_slot,
-            container_id: INVENTORY_CONTAINER,
+            slot: wire::U8(slot),
+            selected_slot: wire::U8(selected_slot),
+            container_id: wire::U8(INVENTORY_CONTAINER),
         };
-        let WorldEvent::Equipment(event) = into_world_event(packet.into(), 0).unwrap().unwrap()
+        let WorldEvent::Equipment(event) = into_world_event(protocol::Packet::new(packet), 0)
+            .unwrap()
+            .unwrap()
         else {
             panic!("expected retained equipment")
         };
@@ -515,11 +539,11 @@ fn equipment_rejects_invalid_runtime_and_stack_but_retains_unusual_slots() {
     let signed_window = MobEquipmentPacket {
         target_runtime_id: runtime_id(42),
         item: valid_item,
-        slot: 0,
-        selected_slot: 0,
-        container_id: NO_CONTAINER,
+        slot: wire::U8(0),
+        selected_slot: wire::U8(0),
+        container_id: wire::U8(NO_CONTAINER),
     };
-    let error = into_world_event(signed_window.into(), 0)
+    let error = into_world_event(protocol::Packet::new(signed_window), 0)
         .expect_err("sentinel equipment container must be rejected");
     assert!(matches!(
         error,
@@ -532,9 +556,9 @@ fn custom_action(targets: Vec<i64>) -> AnimateEntityPacket {
         m_animation: "animation.test.attack".into(),
         m_next_state: "default".into(),
         m_stop_expression: "query.any_animation_finished".into(),
-        m_stop_expression_version: 1,
+        m_stop_expression_version: wire::I32LE(1),
         m_controller: "controller.animation.test".into(),
-        m_blend_out_time: 0.1,
+        m_blend_out_time: wire::F32LE(0.1),
         m_runtime_ids: targets.into_iter().map(runtime_id).collect(),
     }
 }
@@ -542,30 +566,34 @@ fn custom_action(targets: Vec<i64>) -> AnimateEntityPacket {
 #[test]
 fn animate_entity_enforces_exact_target_and_text_bounds() {
     let maximum = custom_action((1..=MAX_ANIMATE_ENTITY_IDS as i64).collect());
-    assert!(into_world_event(maximum.into(), 0).unwrap().is_some());
+    assert!(
+        into_world_event(protocol::Packet::new(maximum), 0)
+            .unwrap()
+            .is_some()
+    );
 
     for packet in [
         custom_action(vec![]),
         custom_action((1..=(MAX_ANIMATE_ENTITY_IDS + 1) as i64).collect()),
         custom_action(vec![42, 42]),
         AnimateEntityPacket {
-            m_animation: "x".repeat(MAX_ANIMATION_IDENTIFIER_BYTES + 1),
+            m_animation: "x".repeat(MAX_ANIMATION_IDENTIFIER_BYTES + 1).into(),
             ..custom_action(vec![42])
         },
         AnimateEntityPacket {
-            m_controller: "x".repeat(MAX_ACTION_IDENTIFIER_BYTES + 1),
+            m_controller: "x".repeat(MAX_ACTION_IDENTIFIER_BYTES + 1).into(),
             ..custom_action(vec![42])
         },
         AnimateEntityPacket {
-            m_blend_out_time: f32::NAN,
+            m_blend_out_time: wire::F32LE(f32::NAN),
             ..custom_action(vec![42])
         },
     ] {
-        assert!(into_world_event(packet.into(), 0).is_err());
+        assert!(into_world_event(protocol::Packet::new(packet), 0).is_err());
     }
 
     let WorldEvent::ItemActor(ItemActorEvent::Action(high_runtime_id)) =
-        into_world_event(custom_action(vec![-1]).into(), 0)
+        into_world_event(protocol::Packet::new(custom_action(vec![-1])), 0)
             .unwrap()
             .unwrap()
     else {
@@ -585,17 +613,17 @@ fn animate_rejects_invalid_runtime_non_finite_data_and_oversized_source() {
         AnimatePacket {
             target_actor_runtime_id: runtime_id(42),
             action: AnimatePacketAction::Swing,
-            data: f32::INFINITY,
+            data: wire::F32LE(f32::INFINITY),
             ..Default::default()
         },
         AnimatePacket {
             target_actor_runtime_id: runtime_id(42),
             action: AnimatePacketAction::Swing,
-            swing_source: Some("x".repeat(MAX_ACTION_IDENTIFIER_BYTES + 1)),
+            swing_source: Some("x".repeat(MAX_ACTION_IDENTIFIER_BYTES + 1).into()),
             ..Default::default()
         },
     ] {
-        assert!(into_world_event(packet.into(), 0).is_err());
+        assert!(into_world_event(protocol::Packet::new(packet), 0).is_err());
     }
 }
 
@@ -606,13 +634,15 @@ fn registry_retains_every_numeric_alias_for_a_shared_item_identifier() {
             .into_iter()
             .map(|id| ItemData {
                 item_name: "example:menu_icon".into(),
-                item_id: id,
+                item_id: wire::I16LE(id),
                 ..Default::default()
             })
             .collect(),
     };
     let WorldEvent::ItemActor(ItemActorEvent::Registry(registry)) =
-        into_world_event(packet.into(), 0).unwrap().unwrap()
+        into_world_event(protocol::Packet::new(packet), 0)
+            .unwrap()
+            .unwrap()
     else {
         panic!("expected item registry")
     };
@@ -640,13 +670,15 @@ fn registry_collapses_identical_rows_without_losing_numeric_aliases() {
             .into_iter()
             .map(|id| ItemData {
                 item_name: "example:menu_icon".into(),
-                item_id: id,
+                item_id: wire::I16LE(id),
                 ..Default::default()
             })
             .collect(),
     };
     let WorldEvent::ItemActor(ItemActorEvent::Registry(registry)) =
-        into_world_event(packet.into(), 0).unwrap().unwrap()
+        into_world_event(protocol::Packet::new(packet), 0)
+            .unwrap()
+            .unwrap()
     else {
         panic!("expected item registry")
     };
@@ -666,19 +698,19 @@ fn repeated_registry_rows_still_validate_component_framing() {
         item_data: vec![
             ItemData {
                 item_name: "example:menu_icon".into(),
-                item_id: 101,
+                item_id: wire::I16LE(101),
                 ..Default::default()
             },
             ItemData {
                 item_name: "example:menu_icon".into(),
-                item_id: 101,
+                item_id: wire::I16LE(101),
                 item_component_data: Nbt(Bytes::from_static(&[0xff])),
                 ..Default::default()
             },
         ],
     };
     assert!(matches!(
-        into_world_event(packet.into(), 0),
+        into_world_event(protocol::Packet::new(packet), 0),
         Err(WorldPacketError::Wire(WorldWireError::Item(
             ItemPacketError::InvalidItemNbt
         )))

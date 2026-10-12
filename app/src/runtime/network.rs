@@ -35,7 +35,9 @@ use bevy::{
 use chunk_pipeline::WorldStream;
 use client_world::SAFE_SERVER_HEIGHT;
 use protocol::WorldEvent;
-use render::{ChunkTextureAssets, ChunkUploadAcknowledgements, RuntimeStage, RuntimeStageProfiler};
+use render_scene::{
+    ChunkTextureAssets, ChunkUploadAcknowledgements, RuntimeStage, RuntimeStageProfiler,
+};
 
 use {
     crate::{
@@ -67,8 +69,8 @@ use pack_runtime::{BootstrapGenerationDisposition, classify_bootstrap_generation
 pub(crate) use resource_packs::reuse::CompiledStacks;
 pub(crate) use resource_packs::ui_catalog::PackUiCatalog;
 pub(crate) use resource_packs::{
-    ResourcePackAdmissionState, await_overlay_texture_device, compiled_stacks,
-    initialize_overlay_texture_limit, set_base_material_keys,
+    await_overlay_texture_device, compiled_stacks, initialize_overlay_texture_limit,
+    set_base_material_keys,
 };
 use {
     client_session::{NetworkFailureOrigin, SessionTransferTarget, session_failure_display},
@@ -176,6 +178,7 @@ pub(crate) fn receive_network_events(
     mut resource_pack_admission: ResMut<ResourcePackAdmissionState>,
     mut pack_reload: Option<ResMut<PackReload>>,
     mut chunk_textures: Option<ResMut<ChunkTextureAssets>>,
+    mut block_entity_scene: Option<ResMut<render_scene::BlockEntitySceneResource>>,
     state: AppWorldState,
     #[cfg(feature = "acceptance")] mut acceptance: ResMut<AcceptanceRun>,
     #[cfg(feature = "acceptance")] metrics: Res<AppMetrics>,
@@ -417,6 +420,11 @@ pub(crate) fn receive_network_events(
                     )
                 }));
                 stream.seed_property_defaults(&packs.property_defaults);
+                if let (Some(scene), Some(art)) =
+                    (block_entity_scene.as_mut(), packs.block_entity_art.as_ref())
+                {
+                    scene.install_prepared_assets(art);
+                }
                 client_world.pack_entities = packs.entities.clone();
                 client_world.prepared_actor_artwork = packs.prepared_actor_artwork.clone();
                 client_world.session_items = Some(Arc::new(
@@ -649,7 +657,7 @@ pub(crate) fn receive_network_events(
         };
         // Every terminal event retires the same session-owned state.
         UiRuntime::retire_crafting_observation();
-        render::ViewmodelCompletionGate::retire_observation();
+        render_scene::ViewmodelCompletionGate::retire_observation();
         resource_pack_admission.clear_current();
         if let Some(reload) = pack_reload.as_mut() {
             reload.end_session();
@@ -954,6 +962,7 @@ mod pack_reload_tests;
 #[cfg(test)]
 mod pack_reload_world_witness;
 pub(crate) use entity_texture_reload::set_base_actor_artwork;
+pub(crate) mod block_entity_art;
 pub(crate) mod reload_environment;
 pub(crate) mod resource_packs;
 pub(crate) mod session;

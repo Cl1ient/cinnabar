@@ -1,7 +1,5 @@
+use bedrock_protocol_1_26_51::packets;
 use bytes::Bytes;
-use jolyne::batch::{decode_batch_raw, encode_batch_multi};
-use jolyne::valentine::{McpePacketArgs, McpePacketData};
-use protocol::BedrockSession;
 
 // Regenerated for protocol 2168 from gophertunnel at commit
 // be6713da4dc051a4197f897d04835e89e9c54321:
@@ -58,65 +56,51 @@ const ENCHANTED_BOOK_ICON_USER_DATA: &[u8] = &[
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
-fn raw_creative_content() -> jolyne::raw::RawPacket {
+fn raw_creative_content() -> crate::raw_packet::RawPacket {
     raw_creative_content_fixture(GOPHERTUNNEL_EMPTY_ICON_CREATIVE_CONTENT)
 }
 
-fn raw_creative_content_fixture(fixture: &'static [u8]) -> jolyne::raw::RawPacket {
-    let mut batch = Bytes::from_static(fixture);
-    decode_batch_raw(&mut batch, false, Some(1024))
+fn raw_creative_content_fixture(fixture: &'static [u8]) -> crate::raw_packet::RawPacket {
+    crate::raw_packet::decode_batch(Bytes::from_static(fixture), 1024)
         .expect("raw batch decode")
         .into_iter()
         .next()
         .expect("one packet")
 }
 
-fn assert_enchanted_book_payload(data: &McpePacketData) {
-    let McpePacketData::CreativeContentPacket(content) = data else {
-        panic!("expected CreativeContent, got {:?}", data.packet_id());
+fn assert_enchanted_book_payload(data: &packets::Packet) {
+    let packets::Packet::CreativeContent(content) = data else {
+        panic!("expected CreativeContent, got {:?}", data.id());
     };
     assert_eq!(content.groups.len(), 1);
     assert_eq!(content.groups[0].name, "itemGroup.name.enchantedBook");
-    // 1.26.40 renames `icon_item` to `group_icon_item` and `network_id` to `id`.
-    assert_eq!(content.groups[0].group_icon_item.id, 560);
-    assert_eq!(content.groups[0].group_icon_item.stacksize, 1);
+    assert_eq!(content.groups[0].group_icon_item.id.0, 560);
+    assert_eq!(content.groups[0].group_icon_item.stack_size.0, 1);
     assert_eq!(
         content.groups[0].group_icon_item.user_data_buffer,
         ENCHANTED_BOOK_ICON_USER_DATA
     );
-    // `items` is `entries` in 1.26.40; gophertunnel still calls it `Items`.
+    // gophertunnel calls `entries` `Items`.
     assert!(content.entries.is_empty());
 }
 
 #[test]
 fn pinned_gophertunnel_enchanted_book_nbt_decodes_and_round_trips_exactly() {
     let packet = raw_creative_content_fixture(GOPHERTUNNEL_ENCHANTED_BOOK_CREATIVE_CONTENT)
-        .decode(&BedrockSession { shield_item_id: 0 })
+        .decode()
         .expect("owned enchanted-book CreativeContent decode");
     assert_enchanted_book_payload(&packet.data);
 
-    let encoded = encode_batch_multi(&[packet], false, 0, 0, true).expect("re-encode");
+    let encoded = crate::encode(&packet).expect("re-encode");
     assert_eq!(
         encoded.as_ref(),
         GOPHERTUNNEL_ENCHANTED_BOOK_CREATIVE_CONTENT
     );
 }
 
-#[test]
-fn pinned_gophertunnel_enchanted_book_nbt_borrowed_materializes() {
-    let borrowed = raw_creative_content_fixture(GOPHERTUNNEL_ENCHANTED_BOOK_CREATIVE_CONTENT)
-        .decode_borrowed()
-        .expect("borrowed enchanted-book CreativeContent decode");
-    let owned = borrowed
-        .data
-        .into_owned(McpePacketArgs)
-        .expect("materialize borrowed enchanted-book CreativeContent");
-    assert_enchanted_book_payload(&owned);
-}
-
-fn assert_empty_icon_payload(data: &McpePacketData) {
-    let McpePacketData::CreativeContentPacket(packet) = data else {
-        panic!("expected CreativeContent, got {:?}", data.packet_id());
+fn assert_empty_icon_payload(data: &packets::Packet) {
+    let packets::Packet::CreativeContent(packet) = data else {
+        panic!("expected CreativeContent, got {:?}", data.id());
     };
     assert_eq!(packet.groups.len(), 1);
     // The empty item stack is network ID 0 with an empty user-data buffer. The
@@ -124,8 +108,8 @@ fn assert_empty_icon_payload(data: &McpePacketData) {
     // `ItemLegacy`, which skipped the item body for both 0 and -1; gophertunnel
     // only treats `NetworkID == 0` as absent (`Writer.Item` ->
     // `itemUserData(..., present: x.NetworkID != 0, ...)`).
-    assert_eq!(packet.groups[0].group_icon_item.id, 0);
-    assert_eq!(packet.groups[0].group_icon_item.stacksize, 0);
+    assert_eq!(packet.groups[0].group_icon_item.id.0, 0);
+    assert_eq!(packet.groups[0].group_icon_item.stack_size.0, 0);
     assert!(packet.groups[0].group_icon_item.user_data_buffer.is_empty());
     assert!(packet.entries.is_empty());
 }
@@ -133,21 +117,9 @@ fn assert_empty_icon_payload(data: &McpePacketData) {
 #[test]
 fn pinned_gophertunnel_empty_icon_decodes_and_round_trips_exactly() {
     let packet = raw_creative_content()
-        .decode(&BedrockSession { shield_item_id: 0 })
+        .decode()
         .expect("owned CreativeContent decode");
     assert_empty_icon_payload(&packet.data);
-    let encoded = encode_batch_multi(&[packet], false, 0, 0, true).expect("re-encode");
+    let encoded = crate::encode(&packet).expect("re-encode");
     assert_eq!(encoded.as_ref(), GOPHERTUNNEL_EMPTY_ICON_CREATIVE_CONTENT);
-}
-
-#[test]
-fn pinned_gophertunnel_empty_icon_borrowed_materializes_without_content() {
-    let borrowed = raw_creative_content()
-        .decode_borrowed()
-        .expect("borrowed CreativeContent decode");
-    let owned = borrowed
-        .data
-        .into_owned(McpePacketArgs)
-        .expect("materialize borrowed CreativeContent");
-    assert_empty_icon_payload(&owned);
 }

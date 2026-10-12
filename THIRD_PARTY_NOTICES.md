@@ -6,7 +6,7 @@ under the ignored `.local/assets/block-data/` directory, and the verified
 download cache stays in the ignored sibling `.local/assets/block-data.downloads/`
 directory. This notice is checked in and is not rewritten by the acquisition script.
 
-## Launcher panorama
+## Setup window panorama
 
 - Files: `assets/panorama/` (`panorama_0.jpg` .. `panorama_5.jpg`)
 - Provenance: original, generated for Cinnabar; not Mojang content.
@@ -15,6 +15,12 @@ directory. This notice is checked in and is not rewritten by the acquisition scr
 
 - Files: `assets/branding/` (`title.png`)
 - Provenance: original, generated for Cinnabar; not Mojang content.
+
+## OreUI artwork
+
+- Files: `assets/oreui-icons/`
+- Provenance: original pixel art drawn for Cinnabar by `tools/oreui_icons/build.py`; not Mojang
+  content.
 
 ## Window and installer icon
 
@@ -62,6 +68,13 @@ The client ships `assets/fonts/CinnanglesSans.ttf`, `CinnanglesTen.ttf`,
 Ten, Seven, Five and Five Bold are derived from Cinnangles Sans; their source
 manifests pin the exact Sans input. Sans provenance and licensing review is pending.
 No license is asserted here for these faces.
+
+## FreeType
+
+`assetc` statically links FreeType 2.13.2, bundled by `freetype-sys` 0.22.0, to rasterize
+the OreUI face bundles. Portions of this software are copyright © 2024 The FreeType Project
+(www.freetype.org). All rights reserved. FreeType is used under the FreeType License (FTL);
+see https://freetype.org/license.html.
 
 ## Optional outline-font fixtures
 
@@ -268,6 +281,11 @@ SOFTWARE.
 - Copyright: Copyright (c) 2025 Jeremy Ianne
 - Upstream license SHA-256:
   `62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184`
+- Components: Jolyne (client session library), whose raw packet entries and spawn
+  sequence are adapted in `crates/protocol/src/raw_packet.rs` and
+  `crates/protocol/src/login/startup.rs`. Current revision:
+  `c4540512dc47833bb40363da7ad1161110d64b67`, as recorded in
+  `crates/protocol/vendor/UPSTREAM.md`.
 
 <!-- BEGIN AXOLOTL-STACK-MIT -->
 MIT License

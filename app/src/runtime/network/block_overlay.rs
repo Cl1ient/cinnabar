@@ -276,7 +276,7 @@ impl Builder<'_> {
             let uv_flags = if components.geometry.as_deref() == Some(FULL_BLOCK_V1)
                 && source == assets::BlockFace::Down as usize
             {
-                render::MATERIAL_UV_ROTATE_180
+                render_scene::MATERIAL_UV_ROTATE_180
             } else {
                 0
             };
@@ -302,6 +302,7 @@ impl Builder<'_> {
             })
         });
         BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces,
             flags,
             kind: VisualKind::Cube,
@@ -314,6 +315,7 @@ impl Builder<'_> {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 
@@ -382,6 +384,7 @@ impl Builder<'_> {
         }
         self.overlay.model_quads.extend(quads);
         BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [material; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Model,
@@ -390,6 +393,7 @@ impl Builder<'_> {
             model_template: template,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 
@@ -676,7 +680,7 @@ fn rotate_face(face: usize, rotation: [i32; 3]) -> usize {
     let mut normal = FACE_NORMALS[face];
     for (axis, turns) in rotation.into_iter().enumerate() {
         for _ in 0..turns.rem_euclid(4) {
-            normal = rotate_quarter(normal, axis);
+            normal = block_transform::rotation::rotate_quarter(normal, axis);
         }
     }
     FACE_NORMALS
@@ -700,16 +704,6 @@ const FACE_NORMALS: [[i32; 3]; 6] = [
     [0, 0, 1],
 ];
 
-/// One right-handed quarter turn about `axis`; +90 degrees about Y turns north to west.
-fn rotate_quarter<T: Copy + std::ops::Neg<Output = T>>(value: [T; 3], axis: usize) -> [T; 3] {
-    let [x, y, z] = value;
-    match axis {
-        0 => [x, -z, y],
-        1 => [z, y, -x],
-        _ => [-y, x, z],
-    }
-}
-
 /// Applies the block transformation about the block centre and converts to
 /// carrier fixed point: 1/256 block positions and 1/4096 tile UVs.
 fn quantize(
@@ -724,17 +718,7 @@ fn quantize(
     for (slot, corner) in positions.iter_mut().zip(quad.positions) {
         let mut point = corner.map(|value| value - 8.0);
         if let Some(transform) = transform {
-            for (value, scale) in point.iter_mut().zip(transform.scale) {
-                *value *= scale;
-            }
-            for (axis, turns) in transform.rotation.into_iter().enumerate() {
-                for _ in 0..turns.rem_euclid(4) {
-                    point = rotate_quarter(point, axis);
-                }
-            }
-            for (value, offset) in point.iter_mut().zip(transform.translation) {
-                *value += offset * 16.0;
-            }
+            point = transform.apply(point);
         }
         for axis in 0..3 {
             let fixed = ((point[axis] + 8.0) * 16.0).round();

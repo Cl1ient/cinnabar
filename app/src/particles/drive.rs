@@ -1,10 +1,10 @@
+use bevy::prelude::IntoScheduleConfigs;
 use std::sync::Arc;
 
 use assets::{NetworkIdMode, RuntimeIconCatalog};
 use bevy::camera::Projection;
 use bevy::prelude::{
-    App, IntoScheduleConfigs, Local, MessageReader, Query, Res, ResMut, Resource, Time, Transform,
-    Update, With,
+    App, Local, MessageReader, Query, Res, ResMut, Resource, Time, Transform, Update, With,
 };
 use chunk_pipeline::WorldStream;
 use client_world::{ActorStatusNotice, CommittedParticleEvent};
@@ -16,7 +16,7 @@ use particles::{
     totem_activation_request,
 };
 use protocol::{ActorStatusKind, ParticleEvent, SpawnParticleEffectEvent};
-use render::{
+use render_scene::{
     ParticleGpuFrame, ParticleSimulation, RainSplashQueue, particle_view, update_particle_frame,
 };
 
@@ -375,12 +375,15 @@ fn drive_particles(
     mut block_cues: MessageReader<client_audio::audio::LocalBlockCue>,
     mut break_echoes: Local<client_audio::audio::EchoLedger>,
     mut ambient: Local<AmbientParticles>,
-    profiler: Option<Res<render::RuntimeStageProfiler>>,
+    (cave, profiler): (
+        Res<crate::runtime::visibility::CaveVisibilityCache>,
+        Option<Res<render_scene::RuntimeStageProfiler>>,
+    ),
 ) {
     // Timed inside the system: a span around it would also count systems ordered in between.
     let _timer = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::Particles));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::Particles));
     let Some(stream) = client_world.stream.as_mut() else {
         if system.emitter_count() > 0 {
             system.clear();
@@ -506,7 +509,27 @@ fn drive_particles(
     queue_actor_particles(stream, &mut system, &mut inbox.actor_commands);
     route_actor_particles(&mut system, &mut inbox.actor_commands);
     follow_bound_emitters(&mut system, stream);
-    update_particle_frame(&mut system, &mut frame, time.delta_secs(), &view, &world);
+    let camera = crate::runtime::telemetry::camera_sub_chunk_key(
+        stream.current_dimension(),
+        bevy::math::Vec3::from_array(view.position),
+    );
+    let generation = stream.connectivity_generation();
+    update_particle_frame(
+        &mut system,
+        &mut frame,
+        time.delta_secs(),
+        &view,
+        &world,
+        |low, high| {
+            cave.hides_box(
+                camera,
+                generation,
+                |key| stream.has_sub_chunk_connectivity(key),
+                low,
+                high,
+            )
+        },
+    );
 }
 
 fn route_critical(

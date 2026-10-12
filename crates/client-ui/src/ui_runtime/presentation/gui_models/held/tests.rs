@@ -63,6 +63,11 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
     compiled.block_visual_count = 2;
     compiled.item_visuals = (0..16)
         .map(|metadata| assets::ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: ItemVisualKey {
                 identifier: "minecraft:banner".into(),
                 metadata,
@@ -76,7 +81,7 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
             dropped: assets::ItemDisplayTransform::identity(),
         })
         .collect();
-    let entities = RuntimeEntityAssets::from_compiled(compiled).unwrap();
+    let entities = RuntimeEntityAssets::from_compiled(compiled.with_unresolved_item_use()).unwrap();
     let sprites = (0..16)
         .map(|metadata| {
             let color = assets::banner::color_rgb(metadata);
@@ -119,8 +124,9 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
 
 #[test]
 fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_hands() {
-    use crate::test_support::{fixture_font, fixture_hud};
+    use crate::test_support::fixture_hud;
     use crate::ui_runtime::presentation::UiPresentationRuntime;
+    use ui_engine::test_support::fixture_font;
     let (entities, icons) = banner_catalog();
     assert!(icons.block_sheets().is_empty());
     let presentation =
@@ -191,9 +197,10 @@ fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_
 
 #[test]
 fn installed_gui_carriers_reuse_sprite_pages_within_the_model_atlas_budget() {
-    use crate::test_support::{fixture_font, fixture_hud};
+    use crate::test_support::fixture_hud;
     use crate::ui_runtime::presentation::UiPresentationRuntime;
     use assets::carriers;
+    use ui_engine::test_support::fixture_font;
     let compiled = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(carriers::COMPILED_DIR);

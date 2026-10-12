@@ -2,14 +2,17 @@
 //! PNGs and a pose trace stay in the caller's scratch directory; no server/world is touched.
 use std::{path::Path, sync::Arc};
 
+use actor_animation::BoneTransform;
 use assets::RuntimeEntityAssets;
 use bevy::prelude::*;
 use chunk_pipeline::WorldStream;
-use client_world::BoneTransform;
 use protocol::{
     ActorEvent, ActorKind, ActorMoveEvent, ActorPositionOrigin, ActorSpawnEvent, WorldEvent,
 };
-use render::{ActorArtworkPages, ActorRenderFrame, ActorRenderScene};
+use {
+    render_model::ActorArtworkPages,
+    render_scene::{ActorRenderFrame, ActorRenderScene},
+};
 
 use super::render_report::world_for;
 
@@ -207,7 +210,7 @@ fn vanilla_mob_motion_on_native_gpu() {
             "source_manifest": serde_json::from_slice::<serde_json::Value>(include_bytes!(
                 "../../../../../assets/vanilla-source.json"
             )).unwrap(),
-            "actor_tick_seconds": world::TICK_DURATION.as_secs_f32(),
+            "actor_tick_seconds": simulation_clock::TICK_DURATION.as_secs_f32(),
             "walking_packets_per_tick": 1,
             "slow_blocks_per_tick": SLOW_STEP,
             "fast_blocks_per_tick": FAST_STEP,

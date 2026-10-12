@@ -1,5 +1,6 @@
 use crate::runtime::network::resource_packs::PackApplication;
 use client_runtime::network::NetworkHandle;
+use client_shell::ui_resources::UiRuntimeResource;
 use client_state::PlayerRuntime;
 use std::sync::Arc;
 
@@ -20,7 +21,6 @@ use {
             configure_acceptance_finish_system, configure_client_frame_schedule,
             configure_client_production_frame_systems,
         },
-        menu::MenuRuntime,
         runtime::world::{ClientWorld, TransferNotice, reconcile_world_stream_before_physics},
         session::{drive_session, follow_server_transfer, recover_session_failure},
         session_audio::drain_sequenced_audio_into_session,
@@ -29,6 +29,7 @@ use {
     client_runtime::{
         blob_cache::ClientBlobCacheOwner, pack_admission::ResourcePackAdmissionState,
     },
+    client_shell::menu::MenuRuntime,
     launcher::menu::MenuAction,
 };
 
@@ -363,7 +364,7 @@ fn add_audio_teardown_resources(app: &mut App, client_world: ClientWorld, menu: 
         .insert_resource(crate::session::SessionController::default())
         .insert_resource(NetworkHandle::<PackApplication>::disconnected())
         .insert_resource(ResourcePackAdmissionState::default())
-        .insert_resource(UiRuntime::new(1))
+        .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
         .insert_resource(PlayerRuntime(player_state::PlayerState::new(1)))
         .insert_resource(client_interaction::movement::MovementTicker::default())
         .insert_resource(client_interaction::movement::LocalPhysicsController::default())

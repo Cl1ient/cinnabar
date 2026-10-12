@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use bedrock_client::asset_bindings::{
+use cinnabar::asset_bindings::{
     AtmosphereEvidence, atmosphere_shader_source_sha256, cloud_shader_source_sha256,
 };
 
@@ -19,7 +19,7 @@ use ::assets::{
     TextureRef, VisualKind, encode_atmosphere_blob, encode_blob, encode_entity_blob,
     encode_font_catalog,
 };
-use bedrock_client::args::{ClientArgs, ParseOutcome};
+use cinnabar::args::{ClientArgs, ParseOutcome};
 use diagnostics::metrics::{DiagnosticQuadTracker, MetricsCollector};
 use meshing::{DiagnosticGeometryCount, DiagnosticGeometrySummary};
 use sha2::{Digest, Sha256};
@@ -74,6 +74,7 @@ fn synthetic_blob() -> Box<[u8]> {
         .into_boxed_slice();
     encode_blob(&CompiledAssets {
         visuals: vec![BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [1; 6],
             flags: BlockFlags::CUBE_GEOMETRY,
             kind: VisualKind::Cube,
@@ -82,6 +83,7 @@ fn synthetic_blob() -> Box<[u8]> {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }]
         .into_boxed_slice(),
         light_properties: vec![::assets::LightProperties::new(0, 15).unwrap()].into_boxed_slice(),
@@ -167,6 +169,17 @@ fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
 
 fn synthetic_entity_blob_with_manifest(seed: u8, source_manifest_sha256: [u8; 32]) -> Box<[u8]> {
     encode_entity_blob(&CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
+        seat_layouts: vec![assets::entity::seats::EntitySeatDescriptor {
+            identifier: "minecraft:allay".into(),
+            admission: assets::entity::seats::EntitySeatAdmission::Unresolved,
+        }]
+        .into_boxed_slice(),
+        interaction_traits: vec![assets::interactions::EntityInteractionDescriptor {
+            identifier: "minecraft:allay".into(),
+            traits: assets::interactions::EntityInteractionTraits::Unresolved,
+        }]
+        .into_boxed_slice(),
         source_manifest_sha256,
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -180,6 +193,7 @@ fn synthetic_entity_blob_with_manifest(seed: u8, source_manifest_sha256: [u8; 32
             identifier: "minecraft:allay".into(),
             source_index: 0,
             dependencies: Box::new([]),
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
         }]
         .into_boxed_slice(),
         geometries: Box::new([]),
@@ -219,7 +233,7 @@ fn synthetic_font_blob_with_manifest(seed: u8, manifest_sha256: [u8; 32]) -> Box
         pixels_sha256: Sha256::digest(&rgba8).into(),
         width: 1,
         height: 1,
-        pixels: FontPixels::Rgba8(rgba8),
+        pixels: FontPixels::Rgba8(rgba8.into()),
     };
     let glyphs = [GlyphMetrics {
         codepoint: '\u{fffd}',
@@ -272,7 +286,7 @@ fn workspace_consumers_accept_empty_new_tables() {
 #[test]
 fn assets_flag_parses_and_cli_beats_environment_then_default() {
     let ParseOutcome::Run(args) =
-        ClientArgs::parse_from(["bedrock-client", "--assets", "cli/vanilla.mcbea"]).unwrap()
+        ClientArgs::parse_from(["cinnabar", "--assets", "cli/vanilla.mcbea"]).unwrap()
     else {
         panic!("expected run arguments")
     };
@@ -299,7 +313,7 @@ fn default_asset_path_falls_back_to_the_executable_project_root() {
     let directory = temporary_directory("executable-root-assets");
     let current_directory = directory.join("unrelated-launch-directory");
     let project_root = directory.join("project");
-    let executable = project_root.join("target/debug/bedrock-client.exe");
+    let executable = project_root.join("target/debug/cinnabar.exe");
     let expected = project_root.join(DEFAULT_ASSET_PATH);
     fs::create_dir_all(expected.parent().unwrap()).unwrap();
     fs::write(&expected, b"compiled asset placeholder").unwrap();
@@ -818,8 +832,12 @@ fn startup_hands_the_single_decoded_atmosphere_identity_to_the_renderer() {
     let (runtime, identity) = loaded.atmosphere.into_parts();
     let decoded = Arc::downgrade(&runtime);
     let mut app = bevy::prelude::App::new();
-    app.insert_resource(render::AtmosphereTextureAssets::new(runtime, identity));
-    let renderer = app.world().resource::<render::AtmosphereTextureAssets>();
+    app.insert_resource(render_scene::AtmosphereTextureAssets::new(
+        runtime, identity,
+    ));
+    let renderer = app
+        .world()
+        .resource::<render_scene::AtmosphereTextureAssets>();
     assert_eq!(
         renderer.identity(),
         <[u8; 32]>::from(Sha256::digest(&bytes))

@@ -1,4 +1,5 @@
 //! RenderChunk interpolates light coordinates, then samples the byte lightmap.
+
 use crate::gpu_snapshot;
 use crate::material_shader;
 use crate::shader_source;
@@ -73,7 +74,7 @@ fn terrain_fragments_sample_interpolated_levels_not_interpolated_light_rgb() {
     let view = gpu.buffer(&[0.0; 104], wgpu::BufferUsages::UNIFORM);
     let records = gpu.buffer(&[0.0], wgpu::BufferUsages::STORAGE);
     let tints = gpu.buffer(
-        &[0.0; 8 + assets::SEASONAL_FOLIAGE_COUNT * 4],
+        &[0.0; 8 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 4],
         wgpu::BufferUsages::STORAGE,
     );
     let query_tables = gpu.words(
@@ -83,7 +84,7 @@ fn terrain_fragments_sample_interpolated_levels_not_interpolated_light_rgb() {
     let mut atmosphere = [0.0; 36];
     atmosphere[20] = 100.0;
     let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
-    let mut table = render::LightmapInputs::default().build();
+    let mut table = render_model::LightmapInputs::default().build();
     let side = table.len().isqrt();
     // Deliberately nonlinear RGB distinguishes coordinate lookup from the
     // former vertex-colour shortcut even when both corner pixels agree.

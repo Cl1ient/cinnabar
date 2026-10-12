@@ -1,6 +1,8 @@
 use super::*;
 use bevy::ecs::system::RunSystemOnce;
+
 use std::sync::Arc;
+use {render_model::ItemMeshVertex, render_scene::DroppedItemScene};
 
 /// Initializes item resources on the CPU-only backend for deterministic preparation tests.
 fn item_world() -> World {
@@ -15,6 +17,58 @@ fn item_world() -> World {
 }
 
 #[test]
+fn potted_block_artwork_keeps_its_resolution_and_alpha() {
+    let side = 64_u32;
+    let mut pixels = vec![90_u8; (side * side * 4) as usize];
+    for pixel in pixels.as_chunks_mut::<4>().0 {
+        pixel[3] = 255;
+    }
+    let transparent = (2 * side as usize + 3) * 4;
+    pixels[transparent + 3] = 0;
+    let model = DroppedItemModel::Block(render_model::DroppedItemBlock {
+        materials: Arc::from([(
+            render_model::DroppedItemSprite {
+                width: side,
+                height: side,
+                rgba8: Arc::from(pixels.clone()),
+            },
+            render_model::OPAQUE_WHITE,
+        )]),
+        quads: Arc::from([assets::ModelQuad {
+            positions: [[36, 64, 36], [220, 64, 220], [220, 256, 220], [36, 256, 36]],
+            uvs: [[0, 4096], [4096, 4096], [4096, 0], [0, 0]],
+            material: 0,
+            flags: assets::MODEL_QUAD_FLAG_TWO_SIDED,
+        }]),
+        rotation: 0,
+    });
+    let mut world = item_world();
+    world
+        .resource_mut::<DroppedItemScene>()
+        .publish(1, Arc::from([model.clone()]), &[], &[], 1.0);
+    world.run_system_once(prepare_items).unwrap();
+    let gpu = world.resource::<ItemGpu>();
+    assert_eq!(gpu._atlas.as_ref().unwrap().width(), side);
+    assert_eq!(
+        gpu.ranges[0].vertices.len(),
+        6,
+        "high-resolution pot art must remain drawable"
+    );
+    let mut atlas = vec![255; (side * side * 4) as usize];
+    let mesh = build_model(&mut atlas, &model, side).unwrap();
+    assert_eq!(&atlas[(side * side * 4) as usize..], &pixels);
+    assert!(mesh.iter().any(|vertex| vertex.uv == [1.0, 1.0]));
+    assert_eq!(
+        atlas_side(&[DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+            width: 16,
+            height: 16,
+            rgba8: Arc::from([255; 16 * 16 * 4])
+        })]),
+        MAX_ITEM_SPRITE_SIDE
+    );
+}
+
+#[test]
 fn hidden_item_catalog_is_prepared_before_visibility() {
     let mut world = item_world();
     let mut system = IntoSystem::into_system(prepare_items);
@@ -25,10 +79,10 @@ fn hidden_item_catalog_is_prepared_before_visibility() {
         height: 1,
         rgba8: Arc::from([255; 4]),
     });
-    let hidden = crate::dropped_item::TerrainItemInstance {
-        instance: crate::dropped_item::DroppedItemInstance {
+    let hidden = render_model::TerrainItemInstance {
+        instance: render_model::DroppedItemInstance {
             model: 0,
-            world_from_item: crate::dropped_item::dropped_item_transform([0.0; 3], 0.0, 1.0),
+            world_from_item: render_model::dropped_item_transform([0.0; 3], 0.0, 1.0),
             block_level: 15,
             sky_level: 15,
             overlay_rgba8: 0,
@@ -45,7 +99,7 @@ fn hidden_item_catalog_is_prepared_before_visibility() {
     let (mesh, atlas) = {
         let gpu = world.resource::<ItemGpu>();
         assert_eq!(gpu.models_revision, 1);
-        assert!(!gpu.ranges[0].is_empty());
+        assert!(!gpu.ranges[0].vertices.is_empty());
         assert!(gpu.draws.is_empty());
         assert_eq!(gpu.upload_calls, 0);
         (
@@ -81,12 +135,17 @@ fn steady_uploads_empty_item_scene_allocates_and_uploads_nothing() {
     };
     {
         let mut gpu = world.resource_mut::<ItemGpu>();
-        gpu.draws.push((0..3, 0));
+        gpu.draws.push(ItemDraw {
+            vertices: 0..3,
+            instance: 0,
+            cull_back: false,
+            bounds: None,
+        });
         gpu.dynamic_count = 3;
     }
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     system.run((), &mut world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations() - allocated, 0);
+    assert_eq!(test_alloc::thread_allocations() - allocated, 0);
     let gpu = world.resource::<ItemGpu>();
     assert!(gpu.draws.is_empty());
     assert_eq!(gpu.dynamic_count, 0);
@@ -114,9 +173,9 @@ fn steady_uploads_empty_item_scene_allocates_and_uploads_nothing() {
     assert_eq!(gpu.identity_instance, 0);
     assert_eq!(gpu.upload_calls, 3);
     world.resource_mut::<DroppedItemScene>().clear();
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     system.run((), &mut world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations() - allocated, 0);
+    assert_eq!(test_alloc::thread_allocations() - allocated, 0);
     assert_eq!(world.resource::<ItemGpu>().upload_calls, 3);
     assert_eq!(world.resource::<ItemGpu>().dynamic_count, 0);
 }
@@ -139,8 +198,91 @@ fn reclaimed_slots_leave_live_model_indices_and_atlas_layers_intact() {
     world.run_system_once(prepare_items).unwrap();
     let gpu = world.resource::<ItemGpu>();
     assert_eq!(gpu.ranges.len(), 3);
-    assert!(!gpu.ranges[0].is_empty());
-    assert!(gpu.ranges[1].is_empty());
-    assert!(!gpu.ranges[2].is_empty());
+    assert!(!gpu.ranges[0].vertices.is_empty());
+    assert!(gpu.ranges[1].vertices.is_empty());
+    assert!(!gpu.ranges[2].vertices.is_empty());
     assert_eq!(gpu._atlas.as_ref().unwrap().depth_or_array_layers(), 3);
+}
+
+#[test]
+fn cull_modes_follow_models_and_preserve_instance_order_and_mirrored_transforms() {
+    let mut world = item_world();
+    let sprite = DroppedItemModel::NativeSprite(render_model::DroppedItemSprite {
+        width: 1,
+        height: 1,
+        rgba8: Arc::from([255; 4]),
+    });
+    let plane = DroppedItemModel::Block(render_model::DroppedItemBlock {
+        materials: Arc::from([(
+            render_model::DroppedItemSprite {
+                width: 1,
+                height: 1,
+                rgba8: Arc::from([255; 4]),
+            },
+            render_model::OPAQUE_WHITE,
+        )]),
+        quads: Arc::from([assets::ModelQuad {
+            positions: [[0, 0, 128], [256, 0, 128], [256, 256, 128], [0, 256, 128]],
+            uvs: [[0, 0], [4096, 0], [4096, 4096], [0, 4096]],
+            material: 0,
+            flags: assets::MODEL_QUAD_FLAG_TWO_SIDED,
+        }]),
+        rotation: 0,
+    });
+    let make = |model, scale| render_model::DroppedItemInstance {
+        model,
+        world_from_item: render_model::dropped_item_transform([0.0; 3], 0.0, scale),
+        block_level: 15,
+        sky_level: 15,
+        overlay_rgba8: 0,
+    };
+    world.resource_mut::<DroppedItemScene>().publish(
+        1,
+        Arc::from([sprite, plane]),
+        &[make(0, 1.0), make(1, 1.0), make(0, -1.0), make(0, 1.0)],
+        &[],
+        1.0,
+    );
+    world.run_system_once(prepare_items).unwrap();
+    let draws = &world.resource::<ItemGpu>().draws;
+    assert_eq!(
+        draws
+            .iter()
+            .map(|d| (d.instance, d.cull_back))
+            .collect::<Vec<_>>(),
+        [(0, true), (1, false), (2, false), (3, true)]
+    );
+    assert_eq!(draws[0].vertices, draws[2].vertices);
+    assert_eq!(draws[0].vertices, draws[3].vertices);
+}
+
+#[test]
+fn one_prepared_item_selects_its_cull_mode_independently_for_each_view() {
+    let mesh = cube_mesh([0; 6], [render_model::OPAQUE_WHITE; 6], 1, 1).unwrap();
+    let draw = ItemDraw {
+        vertices: 0..mesh.len() as u32,
+        instance: 0,
+        cull_back: true,
+        bounds: DroppedItemBounds::from_mesh(&mesh).and_then(|bounds| {
+            bounds.transformed(render_model::dropped_item::dropped_item_transform(
+                [0.0; 3], 0.0, 1.0,
+            ))
+        }),
+    };
+    for (z, expected) in [
+        (2.5, true),
+        (0.5 + render_api::CAMERA_NEAR_PLANE_BLOCKS * 0.8, false),
+        (0.25, false),
+        (2.5, true),
+    ] {
+        let eye = glam::Vec3::Z * z;
+        let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+            0.65,
+            1.0,
+            render_api::CAMERA_NEAR_PLANE_BLOCKS,
+        ) * glam::camera::rh::view::look_at_mat4(eye, glam::Vec3::ZERO, glam::Vec3::Y);
+        let view = DroppedItemCullView::new(clip, eye).unwrap();
+        assert_eq!(draw.culls_in_view(Some(&view)), expected);
+    }
+    assert!(!draw.culls_in_view(None));
 }

@@ -1,7 +1,10 @@
 use super::*;
-use bevy::{ecs::system::RunSystemOnce, render::renderer::RenderAdapter};
+use bevy::ecs::system::RunSystemOnce;
+use bevy::render::renderer::RenderAdapter;
+use render_scene::AtmosphereFrame;
+use render_scene::EntityShadowScene;
+use std::future::Future;
 use std::{
-    future::Future,
     pin::pin,
     task::{Context, Poll, Waker},
 };
@@ -63,9 +66,9 @@ fn unchanged_frames_upload_and_allocate_nothing() {
     system.run((), &mut world).unwrap();
     let first = world.resource::<EntityShadowGpu>().uploads;
     assert_eq!(first, 2, "casters and parameters upload once");
-    let before = crate::alloc_count::thread_allocations();
+    let before = test_alloc::thread_allocations();
     system.run((), &mut world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
     assert_eq!(world.resource::<EntityShadowGpu>().uploads, first);
 
     publish(&mut world, &[caster(1.0), caster(2.0)]);
@@ -91,7 +94,7 @@ fn the_instance_buffer_grows_to_fit_and_an_empty_frame_draws_nothing() {
 #[test]
 fn pipeline_multiplies_colour_once_per_sample_and_keeps_alpha() {
     let gpu = EntityShadowGpu::new(&noop_world().resource::<RenderDevice>().clone());
-    for format in [TextureFormat::Rgba8Unorm, crate::SCENE_HDR_FORMAT] {
+    for format in [TextureFormat::Rgba8Unorm, render_scene::SCENE_HDR_FORMAT] {
         for samples in [1, 2, 4, 8] {
             let descriptor = pipeline_descriptor(
                 gpu.layouts[usize::from(samples > 1)].clone(),

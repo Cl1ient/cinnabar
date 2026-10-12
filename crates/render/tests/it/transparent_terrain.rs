@@ -4,7 +4,7 @@
 use crate::{chunk_constants, gpu_snapshot, material_shader, shader_source, solid_terrain_raster};
 use bevy::math::Vec3;
 use gpu_snapshot::Gpu;
-use meshing::liquid::TRANSPARENT_WATER_DRAW_FLAG;
+use meshing::liquid::{TRANSPARENT_WATER_DRAW_FLAG, TRANSPARENT_WATER_RECORD_FLAG};
 use meshing::{Face, PackedLiquidQuad, PackedModelDrawRef, PackedModelRef};
 use render::PackedTransparentDrawRef;
 
@@ -31,8 +31,13 @@ impl Fixture {
     fn new(gpu: &Gpu) -> Self {
         let storage = wgpu::BufferUsages::STORAGE;
         let uniform = wgpu::BufferUsages::UNIFORM;
-        // Metadata slot 0 at the world origin; both families read it through base vertex 0.
-        let origins = gpu.words(&[0, 0, 0, 0, 0, 0, 0, 0], storage);
+        // Liquid records, then model draw refs, model refs and lighting records.
+        let draw_word = WATER_QUADS as usize * 4;
+        let ref_word = draw_word + MODEL_QUADS as usize * 2;
+        let light_word = ref_word + MODEL_QUADS as usize * 4;
+        // Metadata slot 0 at the world origin, its liquid records from record 0 and their
+        // lighting from the first lighting record.
+        let origins = gpu.words(&[0, 0, 0, 0, 0, 0, 0, light_word as u32 / 2], storage);
         // Material 0 textures water, material 1 the models; neither animates.
         let materials = gpu.words(
             &[
@@ -49,20 +54,16 @@ impl Fixture {
             .concat(),
             storage,
         );
-        // Liquid records, then model draw refs, model refs and lighting records.
-        let draw_word = WATER_QUADS as usize * 4;
-        let ref_word = draw_word + MODEL_QUADS as usize * 2;
-        let light_word = ref_word + MODEL_QUADS as usize * 4;
         let mut geometry = Vec::new();
         for quad in 0..WATER_QUADS as u8 {
-            let lighting = (light_word / 2) as u32 + u32::from(quad);
+            // The last word names the record's origin slot, as the upload stamps it.
             geometry.extend(
                 PackedLiquidQuad::try_pack(
                     [quad, 0, quad],
                     Face::PositiveY,
                     [255; 4],
                     0,
-                    lighting,
+                    0,
                     [0, 0],
                     false,
                 )
@@ -128,7 +129,7 @@ impl Fixture {
         let templates = gpu.words(&templates, storage);
         let empty = gpu.words(&[0; 64], storage);
         // Biome tint 0 is the fallback: a blue water tint at half opacity.
-        let mut tint = [0.0_f32; 8 + assets::SEASONAL_FOLIAGE_COUNT * 4];
+        let mut tint = [0.0_f32; 8 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 4];
         tint[5] = f32::from_bits(0xff_80_40);
         tint[7] = 0.5;
         let tints = gpu.buffer(&tint, storage);
@@ -136,10 +137,10 @@ impl Fixture {
         let animations = gpu.words(&[0; 8], storage);
         let frames = gpu.words(&[0; 4], storage);
         let clock = gpu.words(&[0; 4], uniform);
-        let frame = render::AtmosphereFrame::default();
+        let frame = render_scene::AtmosphereFrame::default();
         let atmosphere = gpu.buffer(bytemuck::cast_slice(std::slice::from_ref(&frame)), uniform);
         let lightmap = gpu.buffer(
-            bytemuck::cast_slice(&render::LightmapInputs::default().build()),
+            bytemuck::cast_slice(&render_model::LightmapInputs::default().build()),
             uniform,
         );
         let eye = Vec3::new(1.0, 4.0, 1.0);
@@ -499,9 +500,13 @@ fn shared_transparent_pipeline_draws_water_and_models_like_their_own_pipelines()
         Quad::Water(index) => (&shared, 0, slot(index) | TRANSPARENT_WATER_DRAW_FLAG),
         Quad::Model(index) => (&shared, 0, MODEL_INSTANCE_BASE + index),
     });
-    // Direct water names its record and passes metadata index 0 plus one as base vertex 4.
+    // Direct water names its record at base vertex 0.
     let direct = fixture.render(&gpu, &order, |quad| match quad {
-        Quad::Water(index) => (&shared, 4, index | TRANSPARENT_WATER_DRAW_FLAG),
+        Quad::Water(index) => (
+            &shared,
+            0,
+            index | TRANSPARENT_WATER_DRAW_FLAG | TRANSPARENT_WATER_RECORD_FLAG,
+        ),
         Quad::Model(index) => (&shared, 0, MODEL_INSTANCE_BASE + index),
     });
     let models_only = fixture.render(&gpu, &order[..1], |_| (&model, 0, MODEL_INSTANCE_BASE));
@@ -531,7 +536,7 @@ const LIQUID_REFERENCE: &str = r#"
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
 ) -> VertexOutput {
-    return vertex_for_ref(transparent_refs[instance_index], vertex_index);
+    return vertex_for_record(transparent_refs[instance_index].liquid_record_index, vertex_index);
 }
 "#;
 

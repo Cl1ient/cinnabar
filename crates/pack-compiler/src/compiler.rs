@@ -35,8 +35,10 @@ use {
 
 mod classification;
 mod descriptors;
+mod destroy_facts;
 mod leaf_mips;
 mod lily_pad_textures;
+mod material_facts;
 mod seasonal_leaves;
 mod variations;
 mod visuals;
@@ -122,6 +124,8 @@ struct Descriptor {
     texture_key: Box<str>,
     flags: u32,
     state_variant: u32,
+    /// An explicit state selector; missing animations use the source's first frame.
+    flipbook_selector: Option<(u32, u32)>,
 }
 
 type CompiledMaterials = (Box<[Material]>, BTreeMap<Descriptor, u32>);
@@ -303,6 +307,7 @@ fn compile_pack_inner(
             || is_liquid(record)
             || record.name.as_ref() == "minecraft:enchanting_table"
             || visuals::literal::is_literal_cube(record)
+            || visuals::bubble_column::is_record(record)
             || fallback.contains(record)
     }) {
         if visuals::hollow_containers::is_name(&record.name) {
@@ -403,6 +408,14 @@ fn compile_pack_inner(
             }
             continue;
         }
+        if visuals::bubble_column::is_record(record) {
+            if let Some(descriptors) = visuals::bubble_column::material_descriptors(&pack, record) {
+                for (descriptor, key) in descriptors {
+                    descriptor_keys.insert(descriptor, key);
+                }
+            }
+            continue;
+        }
         if is_flowerbed(record) {
             if let Some(descriptors) = flowerbed_material_descriptors(&pack, record) {
                 for (descriptor, key) in descriptors {
@@ -433,17 +446,20 @@ fn compile_pack_inner(
             }
         }
         let aquatic_faces;
-        let faces: &[BlockFace] =
-            if is_kelp(record) || is_liquid(record) || visuals::fire::is_record(record) {
-                &BlockFace::ALL
-            } else if is_aquatic_cross(record) {
-                aquatic_faces = aquatic_cross_faces(record).unwrap_or([BlockFace::Up; 2]);
-                &aquatic_faces
-            } else if is_terrestrial_cross(record) {
-                &[cross_texture_face(record)]
-            } else {
-                &BlockFace::ALL
-            };
+        let faces: &[BlockFace] = if is_kelp(record)
+            || is_liquid(record)
+            || visuals::fire::is_record(record)
+            || visuals::potted_plants::is_record(record)
+        {
+            &BlockFace::ALL
+        } else if is_aquatic_cross(record) {
+            aquatic_faces = aquatic_cross_faces(record).unwrap_or([BlockFace::Up; 2]);
+            &aquatic_faces
+        } else if is_terrestrial_cross(record) {
+            &[cross_texture_face(record)]
+        } else {
+            &BlockFace::ALL
+        };
         for &face in faces {
             if let Some((descriptor, key)) = descriptor_for(fallback, &pack, record, face) {
                 descriptor_keys
@@ -494,6 +510,8 @@ fn compile_pack_inner(
     )?;
     let mut materials = materials.into_vec();
     let mut visuals = visuals.into_vec();
+    material_facts::install(records, &mut visuals, registry_protocol)?;
+    destroy_facts::install(records, &mut visuals, registry_protocol)?;
     let lily_pad_textures::Installed {
         pages: texture_pages,
         material_keys: lily_pad_keys,
@@ -618,6 +636,7 @@ fn flowerbed_material_descriptors(
         (
             Descriptor {
                 state_variant: index as u32,
+                flipbook_selector: None,
                 path: path.into(),
                 texture_key: key.clone(),
                 flags,
@@ -637,6 +656,7 @@ fn pale_moss_carpet_side_material_descriptors(
         (
             Descriptor {
                 state_variant: index as u32,
+                flipbook_selector: None,
                 path: path.into(),
                 texture_key: key.clone(),
                 flags: MATERIAL_FLAG_ALPHA_CUTOUT,
@@ -695,7 +715,15 @@ fn compile_runtime_animation_plan(
             .filter(|candidate| candidate.path == source_path)
             .all(|candidate| fallback_descriptors.contains(candidate));
         let path = static_texture_path(root, &source_path, key)?;
-        let decoded = decode_texture(&path, key)?;
+        let mut decoded = decode_texture(&path, key)?;
+        if descriptor.flipbook_selector.is_some()
+            && descriptor_keys
+                .keys()
+                .filter(|candidate| candidate.path == source_path)
+                .all(|candidate| candidate.flipbook_selector.is_some())
+        {
+            crate::image::retain_first_strip_frame(&mut decoded);
+        }
         if decoded.width != decoded.height {
             if fallback_only {
                 continue;
@@ -904,24 +932,27 @@ fn compile_materials(
                 source.atlas_tile.as_ref() == key.as_ref() && source.source_path == descriptor.path
             })
             .collect::<Vec<_>>();
-        let animation = match candidates.as_slice() {
-            [] => None,
-            [(index, _)] => Some(*index),
-            _ => Some(
-                candidates
-                    .iter()
-                    .find(|(_, source)| source.atlas_index == 0 && source.atlas_tile_variant == 0)
-                    .map(|(index, _)| *index)
-                    .ok_or_else(|| AssetError::InvalidCompiledAssets {
-                        detail: format!(
-                            "texture {} has multiple flipbook selectors and no canonical selector (0, 0)",
-                            descriptor.path
-                        )
-                        .into(),
-                    })?,
-            ),
-        }
-        .map(|index| u32::try_from(index).expect("bounded flipbook count"));
+        let animation = if let Some((atlas_index, tile_variant)) = descriptor.flipbook_selector {
+            candidates.iter().find(|(_, source)| {
+                source.atlas_index == atlas_index && source.atlas_tile_variant == tile_variant
+            }).map(|(index, _)| *index)
+        } else {
+            match candidates.as_slice() {
+                [] => None,
+                [(index, _)] => Some(*index),
+                _ => Some(
+                    candidates.iter()
+                        .find(|(_, source)| source.atlas_index == 0 && source.atlas_tile_variant == 0)
+                        .map(|(index, _)| *index)
+                        .ok_or_else(|| AssetError::InvalidCompiledAssets {
+                            detail: format!(
+                                "texture {} has multiple flipbook selectors and no canonical selector (0, 0)",
+                                descriptor.path
+                            ).into(),
+                        })?,
+                ),
+            }
+        }.map(|index| u32::try_from(index).expect("bounded flipbook count"));
         let texture = if let Some(animation) = animation {
             let source = &plan.animations[animation as usize];
             plan.frames[source.frame_start as usize]
@@ -965,4 +996,4 @@ fn compile_materials(
 
 #[cfg(test)]
 #[path = "compiler/tests.rs"]
-mod tests;
+pub(crate) mod tests;

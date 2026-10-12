@@ -10,6 +10,7 @@ use super::*;
 /// Builds distinct stone, grass face and diagnostic layers without external carriers.
 fn fixture() -> RuntimeAssets {
     let cube = BlockVisual {
+        native_material: assets::native_material::NativeMaterialFacts::Unresolved,
         faces: [1; 6],
         flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
         kind: VisualKind::Cube,
@@ -18,6 +19,7 @@ fn fixture() -> RuntimeAssets {
         model_template: NO_MODEL_TEMPLATE,
         animation: NO_ANIMATION,
         variant: 0,
+        destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
     };
     let mut grass = cube;
     grass.faces = [3, 3, 2, 4, 3, 3];

@@ -32,15 +32,16 @@ pub struct PackApplication {
     pub(crate) item_components:
         Option<Arc<client_ui::ui_runtime::item_facts::SessionItemComponents>>,
     pub(crate) glyph_sheets: Option<Arc<SessionGlyphSheets>>,
+    pub(crate) block_entity_art: Option<Arc<render_model::PreparedBlockEntityArtwork>>,
     pub(crate) entities: Option<Arc<assets::SessionEntityPack>>,
-    pub(super) entity_artwork: Option<Arc<render::ActorArtworkPages>>,
+    pub(super) entity_artwork: Option<Arc<render_model::ActorArtworkPages>>,
     pub(crate) prepared_actor_artwork:
         Option<Arc<client_presentation::prepared_actor_artwork::PreparedActorArtwork>>,
     pub(crate) property_defaults: Vec<(Arc<str>, Vec<client_world::PropertyDefault>)>,
     pub(crate) server_ui: Option<Arc<ServerUiPack>>,
     /// Installed only once the session's Bootstrap is accepted.
     pub(crate) server_sounds: Option<Arc<client_audio::audio::ServerSoundPack>>,
-    pub(crate) aim_assist_textures: [Option<Arc<render::AimAssistTexture>>; 2],
+    pub(crate) aim_assist_textures: [Option<Arc<render_scene::AimAssistTexture>>; 2],
 }
 
 impl Default for PackApplication {
@@ -55,6 +56,7 @@ impl Default for PackApplication {
             item_icons: None,
             item_components: None,
             glyph_sheets: None,
+            block_entity_art: super::block_entity_art::base().cloned(),
             entities: None,
             entity_artwork: None,
             prepared_actor_artwork: None,
@@ -75,7 +77,7 @@ impl PackApplication {
     }
 
     /// Prepares against the exact base snapshot that this application will publish over.
-    pub(super) fn prepare_actor_artwork(&mut self, base: Option<&render::ActorArtworkPages>) {
+    pub(super) fn prepare_actor_artwork(&mut self, base: Option<&render_model::ActorArtworkPages>) {
         self.prepared_actor_artwork = base.zip(self.entities.as_ref()).map(|(base, pack)| {
             if let Some(previous) = &self.prepared_actor_artwork
                 && previous.pages_for(base, pack).is_some()
@@ -95,7 +97,7 @@ use pack_runtime::required_packs_applied;
 /// The carrier snapshots a join's presentation is prepared over on the session worker.
 #[derive(Clone, Copy, Default)]
 pub(super) struct JoinBases<'a> {
-    pub(super) actor_artwork: Option<&'a render::ActorArtworkPages>,
+    pub(super) actor_artwork: Option<&'a render_model::ActorArtworkPages>,
     pub(super) ui_catalog: Option<&'a Arc<json_ui::Catalog>>,
 }
 
@@ -251,9 +253,20 @@ fn compile_application(
     let (mut blocks, mut icons, mut language, mut glyphs) = (None, None, None, None);
     let (mut entities, mut artwork, mut ui, mut sounds) = (None, None, None, None);
     let mut aim_assist = None;
+    let mut block_entity_art = None;
     // The entity compile checks cancellation between its own steps, as it outlasts the rest.
     let mut entities_stopped = false;
     rayon::scope(|scope| {
+        scope.spawn(|_| {
+            block_entity_art = compile_part(
+                &stack,
+                cancelled,
+                changes.block_entity_art,
+                Subscriber::BlockEntityArt,
+                previous.and_then(|old| old.block_entity_art.clone()),
+                super::block_entity_art::prepare,
+            );
+        });
         scope.spawn(|_| {
             aim_assist = compile_part(
                 &stack,
@@ -400,6 +413,11 @@ fn compile_application(
         }
         output
     }
+    let block_entity_art = record(
+        &mut dependencies,
+        Subscriber::BlockEntityArt,
+        block_entity_art?,
+    );
     let aim_assist_textures = record(&mut dependencies, Subscriber::AimAssist, aim_assist?);
     let block_overlay = record(&mut dependencies, Subscriber::Blocks, blocks?);
     let item_icons = record(&mut dependencies, Subscriber::Icons, icons?);
@@ -445,6 +463,7 @@ fn compile_application(
         item_icons,
         item_components: None,
         glyph_sheets,
+        block_entity_art,
         entities,
         entity_artwork,
         server_ui,
@@ -640,13 +659,13 @@ impl OverlaidCarrier {
 /// Points the chunk renderer at the session's assets. Every switch takes a
 /// fresh revision so the GPU tables re-upload even if an allocation is reused.
 pub(super) fn install_chunk_textures(
-    textures: &mut render::ChunkTextureAssets,
+    textures: &mut render_scene::ChunkTextureAssets,
     assets: &Arc<assets::RuntimeAssets>,
 ) {
     static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     if !Arc::ptr_eq(textures.assets(), assets) {
         let revision = REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        *textures = render::ChunkTextureAssets::with_revision(Arc::clone(assets), revision);
+        *textures = render_scene::ChunkTextureAssets::with_revision(Arc::clone(assets), revision);
     }
 }
 

@@ -15,6 +15,7 @@ use ui::BoundedStat;
 use super::*;
 use crate::ui_runtime::SequencedUiEvent;
 
+mod armour_facts_tests;
 mod bed_screen_tests;
 mod chat_screen_tests;
 mod container_screen_tests;
@@ -170,7 +171,7 @@ fn fixture_font_with_page_count(page_count: usize) -> Arc<RuntimeFontCatalog> {
                 pixels_sha256: Sha256::digest(&pixels).into(),
                 width: 1,
                 height: 1,
-                pixels: FontPixels::Rgba8(pixels),
+                pixels: FontPixels::Rgba8(pixels.into()),
             }
         })
         .collect::<Vec<_>>();
@@ -186,4 +187,5 @@ fn fixture_font_with_page_count(page_count: usize) -> Arc<RuntimeFontCatalog> {
     Arc::new(RuntimeFontCatalog::decode(&bytes, manifest).unwrap())
 }
 
-pub use crate::test_support::{fixture_font, fixture_hud};
+pub use crate::test_support::fixture_hud;
+use ui_engine::test_support::fixture_font;

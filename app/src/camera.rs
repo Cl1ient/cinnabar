@@ -82,12 +82,15 @@ impl Plugin for FlyCameraPlugin {
         .add_systems(
             Update,
             (
+                presentation::collect_fov_inputs
+                    .after(client_interaction::camera::apply_runtime_camera_settings)
+                    .after(ClientFrameSet::SemanticFinalize)
+                    .before(FlyCameraUpdateSet),
                 (
                     antialiasing::apply_camera_antialiasing
                         .after(client_interaction::camera::apply_runtime_camera_settings)
-                        .before(client_interaction::camera::collect_fov_inputs),
-                    facts::collect_screen_effect_facts
-                        .after(client_interaction::camera::collect_fov_inputs),
+                        .before(presentation::collect_fov_inputs),
+                    facts::collect_screen_effect_facts.after(presentation::collect_fov_inputs),
                 )
                     .chain()
                     .after(ClientFrameSet::SemanticFinalize)
@@ -124,15 +127,6 @@ impl Plugin for FlyCameraPlugin {
         );
     }
 }
-
-/// Present while a developer controller drives input; the window then counts as focused and
-/// captured without touching the OS cursor.
-#[derive(Resource, Debug, Default)]
-#[cfg_attr(
-    not(feature = "developer-control"),
-    allow(dead_code, reason = "inserted only by the developer control endpoint")
-)]
-pub(crate) struct DrivenInput;
 
 pub(crate) use focus::{mouse_input_active, update_cursor_capture};
 

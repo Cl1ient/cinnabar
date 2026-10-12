@@ -55,7 +55,7 @@ impl HudEffect {
         }
     }
 
-    /// Remaining whole seconds, used for the Java expiry blink.
+    /// Remaining ticks, used for the expiry blink.
     #[must_use]
     pub fn remaining_ticks(&self, now_tick: Option<u64>) -> Option<u64> {
         match (self.expires_at_tick, now_tick) {
@@ -241,6 +241,11 @@ impl GameplayHudState {
         if saturation.is_finite() {
             self.saturation = Some(saturation);
         }
+    }
+
+    /// Latest replicated food saturation; absence means the server has supplied no accepted value.
+    pub const fn saturation(&self) -> Option<f32> {
+        self.saturation
     }
 
     /// True once saturation is known to be exhausted, which shakes the hunger row.

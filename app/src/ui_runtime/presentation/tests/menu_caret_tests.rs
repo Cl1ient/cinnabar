@@ -5,14 +5,12 @@
 use bevy::prelude::{App, ButtonInput, KeyCode, MouseButton, Vec2, Window};
 use ui::{DpiScale, UiNode, UiVisual};
 
-use super::super::UiPresentationRuntime;
+use super::super::UiPresentationResource;
 use client_ui::test_support::pack_harness::{drawn_texts, engine_presentation};
 use client_ui::ui_runtime::UiRuntime;
 use {
-    crate::{
-        menu::{MenuClipboard, MenuRuntime},
-        ui_runtime::tests::menu_input_tests::{menu_input_app_with, press_key},
-    },
+    crate::ui_runtime::tests::menu_input_tests::{menu_input_app_with, press_key},
+    client_shell::menu::{MenuClipboard, MenuRuntime},
     launcher::menu::{MenuAction, MenuField, MenuScreen, worlds_tab::LocalWorldAction},
 };
 
@@ -22,7 +20,7 @@ const SIZE: [u32; 2] = [1280, 720];
 fn frame(app: &mut App, now_millis: u64) -> Vec<UiNode> {
     let view = app.world().resource::<MenuRuntime>().view();
     app.world_mut().resource_scope(
-        |world, mut presentation: bevy::prelude::Mut<UiPresentationRuntime>| {
+        |world, mut presentation: bevy::prelude::Mut<UiPresentationResource>| {
             presentation.set_menu_view(Some(view));
             let runtime = UiRuntime::new(1);
             let dpi = DpiScale::new(1.0).unwrap();
@@ -197,7 +195,7 @@ fn a_press_inside_a_box_places_the_caret_at_the_nearest_character() {
 
     let (_, h) = glyphs[0];
     let hits =
-        client_ui::test_support::menu_hit_targets(app.world().resource::<UiPresentationRuntime>())
+        client_ui::test_support::menu_hit_targets(app.world().resource::<UiPresentationResource>())
             .to_vec();
     let (_, name_box) = hits
         .iter()
@@ -230,7 +228,7 @@ fn a_press_in_the_oreui_world_name_field_places_its_caret() {
         return;
     };
     let (mut app, window) = menu_input_app_with(MenuClipboard::default(), presentation);
-    let mut worlds = crate::local_worlds::LocalWorlds::default();
+    let mut worlds = client_shell::local_worlds::LocalWorlds::default();
     {
         let mut menu = app.world_mut().resource_mut::<MenuRuntime>();
         menu.activate(MenuAction::Navigate(MenuScreen::Play));

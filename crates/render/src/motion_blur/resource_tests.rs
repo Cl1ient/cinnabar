@@ -2,13 +2,14 @@
 
 use super::{CameraMotionBlur, pipeline::BlurPipeline, prepare::BlurView};
 use bevy::ecs::schedule::ScheduleLabel;
+use bevy::ecs::system::RunSystemOnce;
+
 use bevy::{
     camera::{
         CameraMainTextureUsages, CameraOutputMode, ClearColorConfig, MsaaWriteback,
         NormalizedRenderTarget, RenderTarget,
     },
     core_pipeline::Core3d,
-    ecs::system::RunSystemOnce,
     prelude::*,
     render::{
         camera::ExtractedCamera,
@@ -100,9 +101,9 @@ fn motion_blur_off_allocates_no_view_resources_and_releases_enabled_resources() 
     let mut prepare = IntoSystem::into_system(super::prepare::prepare_views);
     prepare.initialize(world);
     prepare.run((), world).unwrap();
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     prepare.run((), world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+    assert_eq!(test_alloc::thread_allocations(), allocated);
     assert!(world.get::<BlurView>(entity).is_none());
 
     world.entity_mut(entity).insert(CameraMotionBlur {
@@ -127,9 +128,9 @@ fn motion_blur_off_allocates_no_view_resources_and_releases_enabled_resources() 
         .unwrap()
         .id();
     prepare.run((), world).unwrap();
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     prepare.run((), world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+    assert_eq!(test_alloc::thread_allocations(), allocated);
     assert_eq!(
         world
             .get::<BlurView>(entity)
@@ -143,9 +144,9 @@ fn motion_blur_off_allocates_no_view_resources_and_releases_enabled_resources() 
     world.entity_mut(entity).remove::<CameraMotionBlur>();
     prepare.run((), world).unwrap();
     assert!(world.get::<BlurView>(entity).is_none());
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     prepare.run((), world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+    assert_eq!(test_alloc::thread_allocations(), allocated);
     assert!(!super::applies(world, entity));
 }
 
@@ -189,12 +190,15 @@ fn motion_blur_repeated_specialization_reuses_pipelines_without_allocating() {
     world.run_system_once(super::pipeline::init).unwrap();
     world.resource_scope(|world, cache: Mut<PipelineCache>| {
         let mut pipeline = world.resource_mut::<BlurPipeline>();
-        for format in [crate::SCENE_COLOR_FORMAT, crate::SCENE_HDR_FORMAT] {
+        for format in [
+            render_scene::SCENE_COLOR_FORMAT,
+            render_scene::SCENE_HDR_FORMAT,
+        ] {
             for samples in [1, 2, 4, 8] {
                 let original = pipeline.specialize(&cache, format, samples);
-                let allocated = crate::alloc_count::thread_allocations();
+                let allocated = test_alloc::thread_allocations();
                 let repeated = pipeline.specialize(&cache, format, samples);
-                assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+                assert_eq!(test_alloc::thread_allocations(), allocated);
                 assert_eq!(repeated, original);
             }
         }
@@ -227,9 +231,9 @@ fn motion_blur_warmup_queues_the_same_formats_and_samples_used_for_drawing() {
                     .unwrap();
                 assert_eq!(warmed.len(), 1);
                 let format = if hdr {
-                    crate::SCENE_HDR_FORMAT
+                    render_scene::SCENE_HDR_FORMAT
                 } else {
-                    crate::SCENE_COLOR_FORMAT
+                    render_scene::SCENE_COLOR_FORMAT
                 };
                 assert_eq!(
                     warmed[0],

@@ -14,6 +14,7 @@ fn compiled_snow_fixture() -> &'static CompiledSnowFixture {
         let mut add = |name: &str, state: String, flags: BlockFlags, family: ModelFamily| {
             let id = records.len() as u32;
             records.push(RegistryRecord {
+                beacon_tint: assets::BeaconTint::Unresolved,
                 sequential_id: id,
                 network_hash: id,
                 name: name.into(),

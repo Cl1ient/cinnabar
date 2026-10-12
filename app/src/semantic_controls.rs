@@ -9,10 +9,10 @@ use semantic_input::{
 pub(crate) mod physical;
 pub(crate) use physical::{
     PendingDeviceFrame, SemanticRouteState, collect_raw_input,
-    finalize_semantic_input_after_ui_authority, keyboard_usage, route_semantic_input,
+    finalize_semantic_input_after_ui_authority, route_semantic_input,
 };
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 use {crate::runtime::world::ClientWorld, client_state::RuntimeSettings};
 
 #[derive(Resource, Default)]
@@ -278,7 +278,7 @@ impl SemanticTouchTargets {
 )]
 pub(crate) fn synchronize_semantic_input_authority(
     mut runtime: ResMut<SemanticInputRuntime>,
-    ui: Option<Res<UiRuntime>>,
+    ui: Option<Res<UiRuntimeResource>>,
     focus: Res<client_state::ScreenFocus>,
     settings: Res<RuntimeSettings>,
     client_world: Option<Res<ClientWorld>>,

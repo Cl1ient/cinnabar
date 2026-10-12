@@ -1,7 +1,8 @@
-use bridge::{
-    Backend, Difficulty, GameMode, Generator, Prefs, Setup, SetupState, UnavailableReason, World,
-    WorldState, WorldStatus, WorldUpdate,
+use super::world::{
+    Difficulty, Generator, NewWorld, Prefs, Setup, SetupState, UnavailableReason, World,
+    WorldStatus, WorldUpdate,
 };
+use bridge::{Backend, GameMode, WorldState};
 
 use super::form::{CreateForm, EditForm, validate_name};
 use super::progress::{self, Progress};
@@ -14,15 +15,13 @@ pub enum Screen {
     #[default]
     List,
     Create,
-    /// Create from template: the core has no templates, so this is vanilla's empty state.
+    /// Create from template: there are no templates, so this is vanilla's empty state.
     Templates,
     /// World settings of the selected world.
     Edit,
     /// Delete confirmation over the edit screen.
     ConfirmDelete,
-    /// "Do you want to save your changes?" when leaving the edit screen with edits.
-    ConfirmLeaveEdit,
-    /// Waiting for the core to bring the chosen world up.
+    /// Waiting for the chosen world's server to come up.
     Opening,
     /// The user must accept the Minecraft EULA before the server is downloaded.
     Eula,
@@ -51,7 +50,6 @@ pub enum Input {
     BeginEdit(usize),
     SetEditName(String),
     SubmitEdit,
-    DiscardEdit,
     /// The edit screen's Play: saves any edits, then opens the world.
     PlayFromEdit,
     RequestDelete,
@@ -64,11 +62,11 @@ pub enum Input {
     Back,
 }
 
-/// Control-channel work for the executor; each yields at most one [`Event`].
+/// World-service work for the executor; each yields at most one [`Event`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
     List,
-    Create(bridge::NewWorld),
+    Create(NewWorld),
     Delete(String),
     Update {
         id: String,
@@ -81,14 +79,14 @@ pub enum Effect {
     /// Its outcome is never surfaced.
     SetPaused(bool),
     LoadPrefs,
-    /// Waits briefly, then reloads preferences; repeats while the core is still detecting Docker.
+    /// Waits briefly, then reloads preferences; repeats while Docker is still being detected.
     PollPrefs,
     SetPrefs {
         dismiss_docker_prompt: bool,
         redetect: bool,
     },
     AcceptEula,
-    /// Handled by the embedding resource, not the control worker.
+    /// Handled by the embedding resource, not the world worker.
     OpenUrl(&'static str),
 }
 
@@ -251,7 +249,7 @@ impl WorldsMenu {
         Some(progress::progress(self.opening_status.as_ref(), name))
     }
 
-    /// False once the core reports the dedicated server cannot run here.
+    /// False once the dedicated server is reported unable to run here.
     pub fn bds_can_run(&self) -> bool {
         self.setup
             .as_ref()
@@ -279,7 +277,6 @@ impl WorldsMenu {
         match self.unavailable? {
             UnavailableReason::DockerMissing => Some(PromptKind::DockerMissing),
             UnavailableReason::DockerNotRunning => Some(PromptKind::DockerNotRunning),
-            UnavailableReason::Other => None,
         }
     }
 
@@ -469,14 +466,9 @@ impl WorldsMenu {
                 }
                 Vec::new()
             }
-            Input::SubmitEdit if matches!(self.screen, Screen::Edit | Screen::ConfirmLeaveEdit) => {
+            Input::SubmitEdit if self.screen == Screen::Edit => {
                 self.play_after_update = false;
                 self.submit_edit()
-            }
-            Input::DiscardEdit if self.screen == Screen::ConfirmLeaveEdit => {
-                self.edit = None;
-                self.screen = Screen::List;
-                Vec::new()
             }
             Input::PlayFromEdit if self.screen == Screen::Edit => {
                 self.play_after_update = true;
@@ -508,6 +500,7 @@ impl WorldsMenu {
         }
     }
 
+    /// Validates and saves edits, leaving the form open until the write succeeds.
     fn submit_edit(&mut self) -> Vec<Effect> {
         let Some(edit) = &self.edit else {
             return Vec::new();
@@ -546,26 +539,18 @@ impl WorldsMenu {
         }
     }
 
-    /// True when the edit form differs from the saved world.
-    fn edit_dirty(&self) -> bool {
-        let Some(edit) = &self.edit else {
-            return false;
-        };
-        self.worlds
-            .iter()
-            .find(|w| w.id == edit.id)
-            .is_some_and(|saved| {
-                edit_changes(edit, saved, edit.name.trim().to_owned()) != WorldUpdate::default()
-            })
-    }
-
     fn back(&mut self) -> Vec<Effect> {
         match self.screen {
-            Screen::Edit if self.edit_dirty() => {
-                self.screen = Screen::ConfirmLeaveEdit;
-                Vec::new()
+            Screen::Edit => {
+                self.play_after_update = false;
+                if self.busy {
+                    Vec::new()
+                } else {
+                    self.submit_edit()
+                }
             }
-            Screen::ConfirmLeaveEdit => {
+            Screen::Error if self.edit.is_some() => {
+                self.error = None;
                 self.screen = Screen::Edit;
                 Vec::new()
             }
@@ -589,7 +574,6 @@ impl WorldsMenu {
             }
             Screen::Create
             | Screen::Templates
-            | Screen::Edit
             | Screen::Error
             | Screen::Eula
             | Screen::BackendPrompt => {
@@ -662,7 +646,7 @@ impl WorldsMenu {
             Event::Prefs(_, status) => {
                 self.note_status(&status);
                 self.busy = self.mutation_pending;
-                // The Docker probe outlives core startup; keep reading until it reports a verdict.
+                // The Docker probe outlives startup; keep reading until it reports a verdict.
                 let detecting = status
                     .setup
                     .as_ref()
@@ -704,6 +688,7 @@ impl WorldsMenu {
             }
             Event::Failed(message) | Event::FailedPrefs(message) => {
                 self.mutation_pending = false;
+                self.play_after_update = false;
                 self.opening = None;
                 self.fail(message);
                 Vec::new()
@@ -745,6 +730,7 @@ impl WorldsMenu {
     }
 }
 
+/// Includes only fields that differ from the saved world, using the validated name.
 fn edit_changes(edit: &EditForm, saved: &World, name: String) -> WorldUpdate {
     WorldUpdate {
         name: (name != saved.name).then_some(name),

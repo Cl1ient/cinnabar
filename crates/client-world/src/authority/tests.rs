@@ -59,11 +59,12 @@ fn local_health_feed() -> crate::LocalPlayerFeed {
         pitch: 0.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_stack_id: None,
         main_hand_slot: 0,
-        bedrock_swing_ticks: crate::ACTOR_SWING_TICKS,
-        java_swing_ticks: crate::ACTOR_SWING_TICKS,
+        bedrock_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
+        java_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
         teleported: false,
         first_person: true,
         view_bobbing: true,
@@ -536,6 +537,7 @@ fn custom_identity_authority(mode: NetworkIdMode) -> WorldAuthority {
     let diagnostic = RuntimeAssets::diagnostic();
     let compiled = CompiledAssets {
         visuals: Box::new([BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::AIR,
             kind: VisualKind::Invisible,
@@ -544,6 +546,7 @@ fn custom_identity_authority(mode: NetworkIdMode) -> WorldAuthority {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }]),
         light_properties: Box::new([LightProperties::default()]),
         hashed: Box::new([(HASHED_AIR_NETWORK_ID, 0)]),

@@ -10,21 +10,22 @@ use bevy::{
 };
 use client_runtime::network::NetworkHandle;
 
-use crate::{
-    block_entities::{BlockEntityFont, BlockEntityRuntime},
-    menu::MenuRuntime,
-    runtime::world::ClientWorld,
-};
+use crate::ui_runtime::interaction::input_capture::restore_gameplay_input_after_chat;
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use client_ui::ui_runtime::sign_editor::{MAX_LINE_DESIGN_PIXELS, SignEdit};
-use client_ui::ui_runtime::{
-    UiRuntime, interaction::restore_gameplay_input_after_chat, presentation::UiPresentationRuntime,
+use {
+    crate::{
+        block_entities::{BlockEntityFont, BlockEntityRuntime},
+        runtime::world::ClientWorld,
+    },
+    client_shell::menu::MenuRuntime,
 };
 
 /// Applies desktop ownership before accepting sign-editor input.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct SignInputAuthority<'w> {
-    focus: Option<ResMut<'w, client_presentation::camera::CursorFocus>>,
-    driven: Option<Res<'w, crate::camera::DrivenInput>>,
+    focus: Option<ResMut<'w, client_state::CursorFocus>>,
+    driven: Option<Res<'w, client_state::DrivenInput>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -36,12 +37,12 @@ pub(crate) fn drive_sign_editor(
     mut motion: ResMut<AccumulatedMouseMotion>,
     mut keyboard: MessageReader<KeyboardInput>,
     menu: Option<Res<MenuRuntime>>,
-    presentation: Res<UiPresentationRuntime>,
+    presentation: Res<UiPresentationResource>,
     network: Option<Res<NetworkHandle<PackApplication>>>,
     font: Option<Res<BlockEntityFont>>,
     measure: Option<ResMut<BlockEntityRuntime>>,
     mut client_world: ResMut<ClientWorld>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
     mut owned_last_frame: Local<bool>,
     collisions: Option<Res<client_interaction::movement::PhysicsCollisionRegistries>>,
     authority: SignInputAuthority,

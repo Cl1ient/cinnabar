@@ -14,6 +14,7 @@ use crate::ui_runtime::presentation::{HudFrame, hud_layout};
 mod absorption;
 mod boss_removal_tests;
 mod crosshair_options;
+mod effects;
 mod experience_spacing;
 mod geometry;
 mod offhand;
@@ -352,7 +353,8 @@ fn game_mode_matrix_gates_each_surface_exactly() {
             stats,
             "{mode:?}"
         );
-        assert_eq!(customs(nodes, "mob_effects_renderer").len(), 1, "{mode:?}");
+        let effects = customs(nodes, "java_mob_effects_renderer");
+        assert_eq!(effects.len(), 1, "{mode:?}");
         let paint = hud_layout::capture_hud_paint(
             &player_runtime,
             &runtime,
@@ -360,8 +362,7 @@ fn game_mode_matrix_gates_each_surface_exactly() {
             None,
             &Default::default(),
         );
-        // Background plus icon for the one effect.
-        assert_eq!(paint.effects.len(), 2, "{mode:?}");
+        assert_eq!(paint.effects.icons.len(), 1, "{mode:?}");
         assert_eq!(paint.hearts.len(), if stats { 20 } else { 0 }, "{mode:?}");
     }
 }
@@ -903,7 +904,7 @@ fn world_rules_raise_the_position_and_days_lines() {
     };
     let mut runtime = UiRuntime::new(1);
     presentation.hud_frame_mut().player_block = Some([12, 64, -7]);
-    presentation.hud_frame_mut().world_time = Some(24_000.0 * 3.0 + 5.0);
+    presentation.hud_frame_mut().world_time = Some(f64::from(world::TICKS_PER_DAY) * 3.0 + 5.0);
     build(&player_runtime, &mut presentation, &runtime, 0);
     let shown = |presentation: &UiPresentationRuntime, wanted: &str| {
         text(presentation.hud_draw_nodes(), wanted).is_some()

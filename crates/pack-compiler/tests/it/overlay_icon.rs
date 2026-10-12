@@ -8,6 +8,7 @@ use assets::{
 fn geometry_block(flags: u32) -> BlockOverlay {
     BlockOverlay {
         visuals: vec![BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [1; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Model,
@@ -16,6 +17,7 @@ fn geometry_block(flags: u32) -> BlockOverlay {
             model_template: 0,
             animation: assets::NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }],
         materials: vec![
             Material::unvaried(),

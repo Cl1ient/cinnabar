@@ -1,11 +1,10 @@
 //! Offline player-body evidence from the real packet, actor and render publication paths.
 
-use std::{
-    collections::BTreeMap,
-    hash::{Hash, Hasher},
-};
+use std::collections::BTreeMap;
+use std::hash::Hash;
+use std::hash::Hasher;
 
-use bevy::{math::Mat4, prelude::Entity};
+use bevy::prelude::Entity;
 use protocol::{ActorEvent, PlayerListEntry, PlayerSkin};
 use serde_json::{Value, json};
 
@@ -22,8 +21,7 @@ fn labels(capture: &Capture) -> BTreeMap<[u8; 16], String> {
         let mut batch = vec![0xfe];
         write_varint(&mut batch, packet.len() as u64);
         batch.extend(packet);
-        let packets =
-            protocol::decode_batch(batch.into(), &BedrockSession { shield_item_id: 0 }).unwrap();
+        let packets = protocol::decode_batch(batch.into()).unwrap();
         for packet in packets {
             if let Ok(Some(WorldEvent::Actor(ActorEvent::PlayerList(list)))) =
                 protocol::into_world_event(packet, 0)
@@ -100,7 +98,7 @@ fn draw_body(rendered: &ActorRenderFrame, runtime_id: u64, out: &Path) -> (usize
         .zip(rendered.instance_pages())
     {
         if entry.identity.runtime_id != runtime_id
-            || (entry.identity.layer != render::ACTOR_LAYER_BODY
+            || (entry.identity.layer != render_model::ACTOR_LAYER_BODY
                 && !client_presentation::presentation::skin_layers::is_skin_layer(
                     entry.identity.layer,
                 ))
@@ -130,7 +128,7 @@ fn draw_body(rendered: &ActorRenderFrame, runtime_id: u64, out: &Path) -> (usize
         let shade = |uv: [f32; 2]| {
             let [x, y]: [usize; 2] = std::array::from_fn(|axis| {
                 let value = uv_anim[axis] + uv[axis] * uv_anim[axis + 2];
-                let value = if uv_anim == render::IDENTITY_UV_ANIM {
+                let value = if uv_anim == render_model::IDENTITY_UV_ANIM {
                     value.clamp(0.0, 1.0)
                 } else {
                     value.rem_euclid(1.0)

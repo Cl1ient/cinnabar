@@ -60,6 +60,15 @@ impl ResolvedBlock {
     pub const fn is_known(self) -> bool {
         self.known
     }
+    /// Returns the admitted material disposition, including unresolved support.
+    #[must_use]
+    pub const fn native_material(self) -> crate::native_material::NativeMaterialFacts {
+        self.visual.native_material
+    }
+    /// Returns admitted destroy facts without resolving names or source text.
+    pub const fn destroy(self) -> crate::compiled::block_destroy::BlockDestroyFacts {
+        self.visual.destroy
+    }
     #[must_use]
     pub const fn flags(self) -> BlockFlags {
         self.visual.flags
@@ -110,6 +119,7 @@ impl ResolvedBlock {
 
 const fn diagnostic_visual() -> BlockVisual {
     BlockVisual {
+        native_material: crate::native_material::NativeMaterialFacts::Unresolved,
         faces: [DIAGNOSTIC_MATERIAL; 6],
         flags: BlockFlags::empty(),
         kind: VisualKind::Diagnostic,
@@ -118,6 +128,7 @@ const fn diagnostic_visual() -> BlockVisual {
         model_template: NO_MODEL_TEMPLATE,
         animation: NO_ANIMATION,
         variant: 0,
+        destroy: crate::compiled::block_destroy::BlockDestroyFacts::Unresolved,
     }
 }
 
@@ -377,6 +388,17 @@ impl RuntimeAssets {
     #[must_use]
     pub const fn model_templates(&self) -> &[ModelTemplate] {
         &self.model_templates
+    }
+
+    /// Returns the separate pot-content model paired with this block's world model.
+    #[must_use]
+    pub fn potted_model_template(&self, mode: NetworkIdMode, id: u32) -> Option<u32> {
+        let block = self.resolve(mode, id);
+        let template = block.model_template()?.checked_sub(1)?;
+        (block.is_known()
+            && self.model_templates.get(template as usize)?.flags
+                == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT)
+            .then_some(template)
     }
     #[must_use]
     pub const fn model_quads(&self) -> &[ModelQuad] {

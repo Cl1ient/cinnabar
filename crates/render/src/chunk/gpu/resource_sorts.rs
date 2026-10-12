@@ -1,5 +1,7 @@
 //! Transparent address sets are uploaded into the candidate arena before publication.
+
 use crate::chunk::*;
+use render_scene::{ChunkBiomeTints, ChunkRenderInstance, ChunkTextureAssets};
 
 pub(super) struct ResourceView {
     pub(super) entity: Entity,
@@ -174,7 +176,11 @@ pub(super) fn prepare(
     for batch in sort_transparent_model_candidates(translation, model_candidates.into()) {
         write_geometry_stream_words(
             arena,
-            &queue,
+            TerrainUploads {
+                device: &device,
+                queue: &queue,
+                staging: None,
+            },
             u64::from(batch.draw_range.start) * GEOMETRY_STREAM_WORD_BYTES,
             bytemuck::cast_slice(&batch.words),
         );

@@ -1,18 +1,22 @@
-use std::{
-    mem::size_of,
-    sync::{Arc, OnceLock},
-};
+use super::gpu::arena::plan_chunk_range_update;
+use render_model::VisibilityKeyDigest;
+use render_scene::TargetRenderExpectation;
+use std::sync::{Arc, OnceLock};
 
 use assets::{
     BlockFlags, BlockVisual, CompiledAssets, CompiledBiomeAssets, Material, NO_ANIMATION,
     NO_MODEL_TEMPLATE, NetworkIdMode, TextureMip, TexturePage, TextureRef, VisualKind, encode_blob,
 };
-use bevy::render::render_resource::{DownlevelFlags, DrawIndexedIndirectArgs, WgpuFeatures};
-use render_model::VisibilityKeyDigest;
+
 use world::{RawBlockIds, SubChunk};
 
 use super::*;
-use crate::chunk::gpu::arena::plan_chunk_range_update;
+use meshing::{ChunkMesh, PackedBiomeRecord};
+use render_model::TransparentSortMetricsSnapshot;
+use render_scene::{
+    ChunkRenderQueue, ChunkTextureAssetIdentity, ChunkUploadPriority, RenderViewCohort,
+    TransparentSortMetrics, TransparentWitnessEvidence, chunk::build_presented_frame_ack,
+};
 
 fn target_expectation(
     now: Instant,
@@ -35,6 +39,7 @@ fn opaque_runtime_assets() -> &'static RuntimeAssets {
         let compiled = CompiledAssets {
             visuals: vec![
                 BlockVisual {
+                    native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                     faces: [0; 6],
                     flags: BlockFlags::AIR,
                     kind: VisualKind::Invisible,
@@ -43,8 +48,10 @@ fn opaque_runtime_assets() -> &'static RuntimeAssets {
                     model_template: NO_MODEL_TEMPLATE,
                     animation: NO_ANIMATION,
                     variant: 0,
+                    destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
                 },
                 BlockVisual {
+                    native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                     faces: [1; 6],
                     flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
                     kind: VisualKind::Cube,
@@ -53,6 +60,7 @@ fn opaque_runtime_assets() -> &'static RuntimeAssets {
                     model_template: NO_MODEL_TEMPLATE,
                     animation: NO_ANIMATION,
                     variant: 0,
+                    destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
                 },
             ]
             .into_boxed_slice(),

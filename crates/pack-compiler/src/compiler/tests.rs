@@ -8,14 +8,26 @@ use assets::{RegistryRecord, TILE_SIZE, VisualKind, VisualSupport};
 
 #[path = "tests/anvil.rs"]
 mod anvil;
+#[path = "tests/barrel.rs"]
+pub(crate) mod barrel;
+#[path = "tests/brewing_stand.rs"]
+mod brewing_stand;
+#[path = "tests/bubble_column.rs"]
+mod bubble_column;
 #[path = "tests/candle_cake.rs"]
 mod candle_cake;
+#[path = "tests/coral.rs"]
+mod coral;
+#[path = "tests/crops.rs"]
+mod crops;
 #[path = "tests/dragon_egg.rs"]
 mod dragon_egg;
 #[path = "tests/end_rod.rs"]
 mod end_rod;
 #[path = "tests/grass_side_mips.rs"]
 mod grass_side_mips;
+#[path = "tests/grindstone.rs"]
+mod grindstone;
 #[path = "tests/hollow_containers.rs"]
 mod hollow_containers;
 #[path = "tests/isotropic.rs"]
@@ -24,8 +36,14 @@ mod isotropic;
 mod lantern;
 #[path = "tests/lightning_rod.rs"]
 mod lightning_rod;
+#[path = "tests/potted_plants.rs"]
+mod potted_plants;
+#[path = "tests/sea_pickle.rs"]
+mod sea_pickle;
 #[path = "tests/shelf_cake.rs"]
 mod shelf_cake;
+#[path = "tests/tripwire_hook.rs"]
+mod tripwire_hook;
 
 fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {
     let path = path.as_ref();
@@ -203,6 +221,7 @@ fn visual_family_dispatch_uses_explicit_ordered_outcomes() {
 /// Builds one canonical-shaped air record at an arbitrary wire identity.
 fn synthetic_air_record(sequential_id: u32, network_hash: u32) -> RegistryRecord {
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id,
         network_hash,
         name: "minecraft:air".into(),

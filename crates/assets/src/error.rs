@@ -92,7 +92,7 @@ pub enum AssetError {
         source: serde_json::Error,
     },
 
-    #[error("invalid block registry magic")]
+    #[error("unsupported block registry format; rebuild with make assets")]
     InvalidRegistryMagic,
 
     #[error(
@@ -129,7 +129,7 @@ pub enum AssetError {
     #[error("registry has {remaining} trailing bytes")]
     TrailingRegistryBytes { remaining: usize },
 
-    #[error("invalid PREG1001 physics registry: {detail}")]
+    #[error("invalid physics registry: {detail}")]
     InvalidPhysicsRegistry { detail: Box<str> },
 
     #[error("source contains {count} texture keys, exceeding the limit of {max}")]

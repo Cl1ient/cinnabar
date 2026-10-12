@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
+use bedrock_protocol_1_26_51::enums::{TextPacketType, TitleType};
+use bedrock_protocol_1_26_51::packets::{SetTitle, Text};
+use bedrock_protocol_1_26_51::types::TextData;
 use protocol::{
-    BedrockSession, MAX_RAW_TEXT_COMPONENTS, MAX_RAW_TEXT_DEPTH, MAX_RAW_TEXT_INPUT_BYTES,
-    MAX_RAW_TEXT_NODES, MAX_RAW_TEXT_OUTPUT_BYTES, RawTextComponent, RawTextResolution, TextKind,
-    TitleAction, UiEvent, UiPacketError, WorldEvent, decode_batch, into_world_event,
-    parse_raw_text,
-};
-use valentine::bedrock::version::v1_26_51::{
-    EnumsSetTitlePacketPayloadTitleType, EnumsTextPacketType, SetTitlePacket, TextPacket,
-    TextPacketBody, TextPacketPayloadMessageOnly,
+    MAX_RAW_TEXT_COMPONENTS, MAX_RAW_TEXT_DEPTH, MAX_RAW_TEXT_INPUT_BYTES, MAX_RAW_TEXT_NODES,
+    MAX_RAW_TEXT_OUTPUT_BYTES, RawTextComponent, RawTextResolution, TextKind, TitleAction, UiEvent,
+    UiPacketError, WorldEvent, decode_batch, into_world_event, parse_raw_text,
 };
 
 const OBJECT_FIXTURE: &[u8] = include_bytes!("../../fixtures/text_object_rawtext.bin");
@@ -17,25 +15,25 @@ const ANNOUNCEMENT_FIXTURE: &[u8] =
     include_bytes!("../../fixtures/text_object_announcement_rawtext.bin");
 
 /// Builds a Text packet with one of the message-only union arms.
-fn message_only(body: TextPacketBody) -> TextPacket {
-    TextPacket {
+fn message_only(body: TextData) -> Text {
+    Text {
         body,
         ..Default::default()
     }
 }
 
-fn message_only_body(kind: TextKind, message: String) -> TextPacketBody {
+fn message_only_body(kind: TextKind, message: String) -> TextData {
     let message_type = match kind {
-        TextKind::Raw => EnumsTextPacketType::Raw,
-        TextKind::Json => EnumsTextPacketType::Textobject,
-        TextKind::JsonWhisper => EnumsTextPacketType::Textobjectwhisper,
-        TextKind::JsonAnnouncement => EnumsTextPacketType::Textobjectannouncement,
+        TextKind::Raw => TextPacketType::Raw,
+        TextKind::Json => TextPacketType::Textobject,
+        TextKind::JsonWhisper => TextPacketType::Textobjectwhisper,
+        TextKind::JsonAnnouncement => TextPacketType::Textobjectannouncement,
         other => panic!("unsupported message-only text kind: {other:?}"),
     };
-    TextPacketBody::MessageOnly(TextPacketPayloadMessageOnly {
+    TextData::MessageOnly {
         message_type,
-        message,
-    })
+        message: message.into(),
+    }
 }
 
 fn normalize_json(
@@ -50,7 +48,7 @@ fn normalize_json(
         "test helper accepts only object text packet kinds"
     );
     let packet = message_only(message_only_body(kind, message));
-    match into_world_event(packet.into(), 0) {
+    match into_world_event(protocol::Packet::new(packet), 0) {
         Ok(Some(WorldEvent::Ui(UiEvent::RawText(event)))) => Ok(event),
         Ok(other) => panic!("expected normalized text event, got {other:?}"),
         Err(protocol::WorldPacketError::Ui(error)) => Err(error),
@@ -60,7 +58,7 @@ fn normalize_json(
 
 fn normalize_raw(message: String) -> Result<UiEvent, UiPacketError> {
     let packet = message_only(message_only_body(TextKind::Raw, message));
-    match into_world_event(packet.into(), 0) {
+    match into_world_event(protocol::Packet::new(packet), 0) {
         Ok(Some(WorldEvent::Ui(event))) => Ok(event),
         Ok(other) => panic!("expected normalized UI event, got {other:?}"),
         Err(protocol::WorldPacketError::Ui(error)) => Err(error),
@@ -69,7 +67,7 @@ fn normalize_raw(message: String) -> Result<UiEvent, UiPacketError> {
 }
 
 fn decode_fixture(bytes: &'static [u8]) -> protocol::RawTextEvent {
-    let mut packets = decode_batch(bytes.into(), &BedrockSession { shield_item_id: 0 }).unwrap();
+    let mut packets = decode_batch(bytes.into()).unwrap();
     assert_eq!(packets.len(), 1);
     match into_world_event(packets.pop().unwrap(), 0).unwrap() {
         Some(WorldEvent::Ui(UiEvent::RawText(event))) => event,
@@ -78,15 +76,15 @@ fn decode_fixture(bytes: &'static [u8]) -> protocol::RawTextEvent {
 }
 
 fn normalize_title_object(
-    action: EnumsSetTitlePacketPayloadTitleType,
+    action: TitleType,
     message: &str,
 ) -> Result<protocol::TitleEvent, UiPacketError> {
-    let packet = SetTitlePacket {
+    let packet = SetTitle {
         title_type: action,
-        title_text: message.to_owned(),
+        title_text: message.into(),
         ..Default::default()
     };
-    match into_world_event(packet.into(), 0) {
+    match into_world_event(protocol::Packet::new(packet), 0) {
         Ok(Some(WorldEvent::Ui(UiEvent::Title(event)))) => Ok(event),
         Ok(other) => panic!("expected normalized title event, got {other:?}"),
         Err(protocol::WorldPacketError::Ui(error)) => Err(error),
@@ -430,18 +428,9 @@ fn json_packet_translation_remains_typed_and_never_becomes_source_json() {
 #[test]
 fn title_object_actions_retain_typed_raw_text_without_json_leakage() {
     for (wire, expected) in [
-        (
-            EnumsSetTitlePacketPayloadTitleType::Titletextobject,
-            TitleAction::SetTitleJson,
-        ),
-        (
-            EnumsSetTitlePacketPayloadTitleType::Subtitletextobject,
-            TitleAction::SetSubtitleJson,
-        ),
-        (
-            EnumsSetTitlePacketPayloadTitleType::Actionbartextobject,
-            TitleAction::ActionBarJson,
-        ),
+        (TitleType::Titletextobject, TitleAction::SetTitleJson),
+        (TitleType::Subtitletextobject, TitleAction::SetSubtitleJson),
+        (TitleType::Actionbartextobject, TitleAction::ActionBarJson),
     ] {
         let literal =
             normalize_title_object(wire, r#"{"rawtext":[{"text":"Human title"}]}"#).unwrap();
@@ -477,7 +466,7 @@ fn title_object_actions_retain_typed_raw_text_without_json_leakage() {
 fn malformed_title_object_raw_text_fails_closed() {
     assert!(matches!(
         normalize_title_object(
-            EnumsSetTitlePacketPayloadTitleType::Titletextobject,
+            TitleType::Titletextobject,
             r#"{"rawtext":[{"text":"ok","selector":"@a"}]}"#,
         ),
         Err(UiPacketError::InvalidRawText)

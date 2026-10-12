@@ -1,3 +1,4 @@
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use client_state::PlayerRuntime;
 use std::sync::Arc;
 
@@ -24,7 +25,6 @@ use ui::UiPoint;
 use {
     crate::{
         app::configure_client_frame_schedule,
-        menu::{MenuClipboard, MenuRuntime, drive_menu_input},
         semantic_controls::{
             PendingDeviceFrame, SemanticInputRuntime, SemanticRouteState, SemanticTouchTargets,
             collect_raw_input, finalize_semantic_input_after_ui_authority, route_semantic_input,
@@ -32,19 +32,17 @@ use {
         },
         ui_runtime::{drive_chat_keyboard_input, drive_inventory_ui_actions},
     },
-    client_state::RuntimeSettings,
-    client_state::{ClientFrameSet, SemanticInputSnapshot},
-    client_ui::test_support::fixture_font,
+    client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
+    client_state::{ClientFrameSet, RuntimeSettings, SemanticInputSnapshot},
+    ui_engine::test_support::fixture_font,
 };
 use {
-    client_ui::ui_runtime::{
-        UiRuntime,
-        presentation::{UiPresentationRuntime, inventory_pointer::InventoryCellHit},
-    },
+    client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime},
     inventory::inventory_ledger::{
         GENERIC_STORAGE_WINDOW_TYPE, INVENTORY_REQUEST_TIMEOUT_MILLIS, InventoryPendingState,
         SMALL_STORAGE_SLOT_COUNT,
     },
+    ui_screens::container_actions::InventoryCellHit,
 };
 
 const PHYSICAL_SIZE: [u32; 2] = [1280, 720];
@@ -476,7 +474,7 @@ fn inventory_open_and_close_transitions_suppress_secondary_edges() {
         });
         app.update();
 
-        let runtime = app.world().resource::<UiRuntime>();
+        let runtime = app.world().resource::<UiRuntimeResource>();
         assert_eq!(runtime.inventory_open(), !initially_open);
         assert_eq!(
             app.world()
@@ -524,7 +522,7 @@ fn menu_and_focus_loss_preempt_secondary_inventory_dispatch() {
         press(&mut app, MouseButton::Right);
         app.update();
 
-        let runtime = app.world().resource::<UiRuntime>();
+        let runtime = app.world().resource::<UiRuntimeResource>();
         assert_eq!(runtime.inventory_open(), !menu_visible);
         assert_eq!(
             app.world()
@@ -600,9 +598,9 @@ fn pointer_app_with(
         .init_resource::<Touches>()
         .init_resource::<MenuClipboard>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .insert_resource(MenuRuntime::new(menu_visible, 2, "Tester".to_owned()))
         .add_systems(
             Update,
@@ -642,9 +640,9 @@ fn semantic_app(
         .init_resource::<SemanticTouchTargets>()
         .init_resource::<RuntimeSettings>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .add_systems(Update, collect_raw_input.in_set(ClientFrameSet::RawInput))
         .add_systems(
@@ -657,7 +655,7 @@ fn semantic_app(
                 drive_chat_keyboard_input,
                 drive_menu_input,
                 drive_inventory_ui_actions,
-                crate::menu::screen_focus::publish_screen_focus,
+                client_shell::menu::screen_focus::publish_screen_focus,
                 synchronize_semantic_input_authority,
             )
                 .chain()
@@ -793,6 +791,7 @@ fn apply_apple_registry(player_runtime: &mut PlayerRuntime, runtime: &mut UiRunt
                 network_id: 6,
                 component_based: true,
                 version: ItemRegistryVersion::DataDriven,
+                components: None,
                 component_digest: [6; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: false,
@@ -989,7 +988,7 @@ fn review_remapped_drop_does_not_keep_q_active_in_inventory() {
             Some(2),
             "Tester".into(),
             layout,
-            crate::player_skin::LocalPlayerSkin::generated_default("Tester"),
+            client_shell::player_skin::LocalPlayerSkin::generated_default("Tester"),
         ));
         app.world_mut()
             .resource_mut::<MenuRuntime>()
@@ -1000,15 +999,15 @@ fn review_remapped_drop_does_not_keep_q_active_in_inventory() {
         assert_eq!(
             menu.view().settings_options.named_key_control("key.drop"),
             Some(semantic_input::PhysicalControl::KeyboardUsage(
-                crate::semantic_controls::keyboard_usage(KeyCode::KeyR).unwrap()
+                client_shell::physical_input::keyboard_usage(KeyCode::KeyR).unwrap()
             ))
         );
         menu.set_visible(false);
-        app.insert_resource(personal_runtime(
+        app.insert_resource(UiRuntimeResource(personal_runtime(
             &mut player_runtime,
             Some(stack(9, 92)),
             None,
-        ));
+        )));
         app.insert_resource(player_runtime.clone());
         if control {
             press_key(&mut app, KeyCode::ControlLeft);

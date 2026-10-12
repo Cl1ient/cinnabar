@@ -222,6 +222,7 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
     ] {
         let overlay = BlockOverlay {
             visuals: vec![BlockVisual {
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 faces: [1; 6],
                 flags: BlockFlags::CUBE_GEOMETRY,
                 kind: VisualKind::Cube,
@@ -230,6 +231,7 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
                 model_template: assets::NO_MODEL_TEMPLATE,
                 animation: assets::NO_ANIMATION,
                 variant: 0,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             }],
             materials: vec![
                 Material::unvaried(),
@@ -281,22 +283,8 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
 // A registry item named after a custom block is that block's item; others are not.
 #[test]
 fn registry_items_named_after_custom_blocks_are_block_items() {
-    let mut game_data = protocol::GameData {
-        start_game: Default::default(),
-        item_registry: Default::default(),
-        biome_definitions: None,
-        entity_identifiers: None,
-        creative_content: None,
-    };
-    for name in ["t:crate", "t:sword"] {
-        game_data.item_registry.item_data.push(Default::default());
-        game_data
-            .item_registry
-            .item_data
-            .last_mut()
-            .unwrap()
-            .item_name = name.into();
-    }
+    let mut items = protocol::GameData::default().items;
+    items.identifiers = ["t:crate", "t:sword"].map(Arc::<str>::from).into();
     let blocks = protocol::CustomBlocks {
         blocks: vec![protocol::CustomBlock {
             state_physics: Default::default(),
@@ -312,7 +300,7 @@ fn registry_items_named_after_custom_blocks_are_block_items() {
         vanilla_blocks: Default::default(),
         skipped: 0,
     };
-    let pairs = custom_block_items(&game_data, &blocks);
+    let pairs = custom_block_items(&items, &blocks);
     assert_eq!(pairs.len(), 1);
     assert_eq!(
         (pairs[0].0.as_ref(), pairs[0].1.as_ref()),

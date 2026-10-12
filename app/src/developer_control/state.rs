@@ -3,16 +3,15 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
-use client_ui::ui_runtime::{
-    UiRuntime, presentation::forms::scene_policy::MenuScene, scene_stack::SceneHost,
-};
+use client_shell::ui_resources::UiRuntimeResource;
+use client_ui::ui_runtime::{presentation::forms::scene_policy::MenuScene, scene_stack::SceneHost};
 use developer_control::{protocol::Condition, server::Reply};
 use serde_json::{Value, json};
 
 use super::{camera::ScriptedCamera, capture::Recording};
 use {
-    crate::{menu::MenuRuntime, runtime::world::ClientWorld},
-    client_presentation::local_player::LocalViewPose,
+    crate::runtime::world::ClientWorld, client_presentation::local_player::LocalViewPose,
+    client_shell::menu::MenuRuntime,
 };
 
 /// Waits without a timeout give up after this long so a controller is never wedged.
@@ -138,7 +137,7 @@ fn player_position(world: &World) -> Option<[f32; 3]> {
 /// Screen names bottom first, e.g. `Gameplay`, `Hud`, `Chat`, `Menu(Pause)`.
 fn screens(world: &World) -> Vec<String> {
     let (Some(ui), Some(player)) = (
-        world.get_resource::<UiRuntime>(),
+        world.get_resource::<UiRuntimeResource>(),
         world.get_resource::<client_state::PlayerRuntime>(),
     ) else {
         return Vec::new();
@@ -238,7 +237,7 @@ pub(super) fn snapshot(world: &World) -> Value {
     let view = world.get_resource::<LocalViewPose>();
     let stream = world.resource::<ClientWorld>().stream.as_ref();
     let health = world
-        .get_resource::<UiRuntime>()
+        .get_resource::<UiRuntimeResource>()
         .and_then(|ui| ui.hud().health())
         .map(|stat| {
             let scale = f32::from(stat.scale());
@@ -291,7 +290,7 @@ pub(super) fn snapshot(world: &World) -> Value {
         "player_motion": player_motion(world),
         "local_mods": local_mods,
         "primitive_shapes": crate::primitive_shapes::snapshot(world),
-        "sidebar": world.get_resource::<UiRuntime>()
+        "sidebar": world.get_resource::<UiRuntimeResource>()
             .and_then(|ui| super::scoreboards::snapshot(ui.scoreboards())),
         "screens": screens(world),
         "menu": menu_snapshot,
@@ -312,18 +311,18 @@ pub(super) fn snapshot(world: &World) -> Value {
                 })).collect::<Vec<_>>(),
             })
         }),
-        "skin": world.get_resource::<crate::player_skin::LocalPlayerSkin>().map(|skin| json!({
+        "skin": world.get_resource::<client_shell::player_skin::LocalPlayerSkin>().map(|skin| json!({
             "width": skin.width, "height": skin.height, "arm_size": skin.skin_model.arm_size(),
             "content_hash": skin.rgba8.content_hash(),
             "cape": skin.cape.as_ref().map(|cape| json!({"width": cape.width, "height": cape.height})),
         })),
-        "menu_preview": world.get_resource::<client_ui::ui_runtime::presentation::UiPresentationRuntime>().map(|ui| json!({
+        "menu_preview": world.get_resource::<client_shell::ui_resources::UiPresentationResource>().map(|ui| json!({
             "angles": ui.menu_player_preview_angles(),
             "bounds": ui.menu_player_preview_bounds().map(|bounds| [
                 bounds.min().x(), bounds.min().y(), bounds.max().x(), bounds.max().y(),
             ]),
         })),
-        "driven": world.contains_resource::<crate::camera::DrivenInput>(),
+        "driven": world.contains_resource::<client_state::DrivenInput>(),
         "camera": world.get_resource::<ScriptedCamera>().map(ScriptedCamera::summary),
         "server_camera": world.get_resource::<client_presentation::camera::ServerCameraView>().map(|camera| json!({
             "active": camera.is_active(),

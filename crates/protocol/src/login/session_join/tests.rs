@@ -1,15 +1,17 @@
 use std::path::{Path, PathBuf};
 
+use bedrock_protocol_1_26_51::enums::PlayStatusType;
+use bedrock_protocol_1_26_51::packets::{
+    self, ChunkRadiusUpdated, ItemRegistry, PlayStatus, SetTime, StartGame,
+};
+use bedrock_protocol_1_26_51::types::{ActorRuntimeID, ItemData};
+use bedrock_protocol_1_26_51::wire;
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use valentine::bedrock::version::v1_26_51::{
-    ActorRuntimeId, ChunkRadiusUpdatedPacket, ItemData, ItemRegistryPacket, PlayStatusPacket,
-    SetTimePacket, StartGamePacket,
-};
 
 use super::*;
-use crate::BedrockSession;
+use crate::Packet;
 
 const RUNTIME_ID: u64 = 7;
 
@@ -48,8 +50,7 @@ impl FakeCore {
         );
         let mut bedrock = BytesMut::from(&[0xfe][..]);
         bedrock.extend_from_slice(&frame[1..]);
-        crate::codec::decode_batch(bedrock.freeze(), &BedrockSession { shield_item_id: 0 })
-            .expect("client batch decodes")
+        crate::codec::decode_batch(bedrock.freeze()).expect("client batch decodes")
     }
 }
 
@@ -82,7 +83,7 @@ fn listen(dir: &Path) -> UnixListener {
 
 /// One packet's bytes, header included, as a batch carries it.
 fn packet_bytes(packet: &Packet) -> Bytes {
-    let batch = crate::codec::encode(packet, &BedrockSession { shield_item_id: 0 }).unwrap();
+    let batch = crate::codec::encode(packet).unwrap();
     let CoreMessage::Batch(mut packets) = crate::session_wire::decode_core_message(
         crate::session_wire::batch_frame_from_bedrock(&batch).unwrap(),
     )
@@ -95,7 +96,7 @@ fn packet_bytes(packet: &Packet) -> Bytes {
 fn batch_frame(packets: &[Packet]) -> Bytes {
     let mut frame = BytesMut::from(&[2u8][..]);
     for packet in packets {
-        let batch = crate::codec::encode(packet, &BedrockSession { shield_item_id: 0 }).unwrap();
+        let batch = crate::codec::encode(packet).unwrap();
         frame.extend_from_slice(&batch[1..]);
     }
     frame.freeze()
@@ -129,30 +130,27 @@ fn pack_frame(index: u32, bytes: &[u8]) -> Bytes {
 }
 
 fn start_game() -> Packet {
-    StartGamePacket {
-        runtime_id: ActorRuntimeId {
-            actor_runtime_id: RUNTIME_ID,
-        },
+    crate::Packet::new(StartGame {
+        runtime_id: ActorRuntimeID(RUNTIME_ID),
         ..Default::default()
-    }
-    .into()
+    })
 }
 
 fn spawn_prerequisites() -> Vec<Packet> {
     vec![
-        ItemRegistryPacket {
+        crate::Packet::new(ItemRegistry {
             item_data: vec![ItemData {
                 item_name: "minecraft:shield".into(),
-                item_id: 355,
+                item_id: wire::I16LE(355),
                 ..Default::default()
             }],
-        }
-        .into(),
-        ChunkRadiusUpdatedPacket { chunk_radius: 8 }.into(),
-        PlayStatusPacket {
-            status: jolyne::valentine::PlayStatusPacketStatus::Playerspawn,
-        }
-        .into(),
+        }),
+        crate::Packet::new(ChunkRadiusUpdated {
+            chunk_radius: wire::ZigZag32(8),
+        }),
+        crate::Packet::new(PlayStatus {
+            status: PlayStatusType::Playerspawn,
+        }),
     ]
 }
 
@@ -216,7 +214,7 @@ async fn check_handed_off_packs(cached: bool) {
         assert!(
             spawn_requests
                 .iter()
-                .any(|packet| matches!(packet.data, McpePacketData::RequestChunkRadiusPacket(_))),
+                .any(|packet| matches!(&*packet.data, packets::Packet::RequestChunkRadius(_))),
             "the client runs its own spawn sequence"
         );
         core.send(batch_frame(&spawn_prerequisites())).await;
@@ -232,7 +230,7 @@ async fn check_handed_off_packs(cached: bool) {
     );
     let (joined, mut core) = tokio::join!(join, core);
     let (mut session, game_data) = joined.expect("join");
-    assert_eq!(game_data.start_game.runtime_id.actor_runtime_id, RUNTIME_ID);
+    assert_eq!(game_data.world.local_player_runtime_id, RUNTIME_ID);
     assert!(
         !session.blob_cache_enabled(),
         "a cache serves only an upstream login that advertised one"
@@ -279,9 +277,9 @@ async fn check_handed_off_packs(cached: bool) {
     session.finish_loading().await.expect("presentation ready");
     let finish = core.receive_packets().await;
     assert!(finish.iter().any(|packet| matches!(
-        &packet.data,
-        McpePacketData::SetLocalPlayerAsInitializedPacket(initialized)
-            if initialized.player_id.actor_runtime_id == RUNTIME_ID
+        &*packet.data,
+        packets::Packet::SetLocalPlayerAsInitialized(initialized)
+            if initialized.player_id.0 == RUNTIME_ID
     )));
 }
 
@@ -293,7 +291,11 @@ async fn a_startup_longer_than_one_batch_still_joins() {
     let settings = LoginSettings::default();
     let listener = listen(dir.path());
     let mut startup: Vec<Packet> = (0..2_000)
-        .map(|time| SetTimePacket { time }.into())
+        .map(|time| {
+            crate::Packet::new(SetTime {
+                time: wire::ZigZag32(time),
+            })
+        })
         .collect();
     startup.push(start_game());
     let core = async {
@@ -320,38 +322,7 @@ async fn a_startup_longer_than_one_batch_still_joins() {
         core
     );
     let (_, game_data) = joined.expect("a long startup joins");
-    assert_eq!(game_data.start_game.runtime_id.actor_runtime_id, RUNTIME_ID);
-}
-
-/// Startup batches respect both of Jolyne's bounds and keep every packet in order.
-#[test]
-fn startup_batches_stay_within_the_packet_and_byte_bounds() {
-    let small: Vec<Bytes> = (0..3_500u32)
-        .map(|index| Bytes::from(index.to_le_bytes().to_vec()))
-        .collect();
-    let large: Vec<Bytes> = (0..5u8)
-        .map(|index| Bytes::from(vec![index; 5 << 20]))
-        .collect();
-    for packets in [small, large] {
-        let batches = startup_batches(&packets);
-        let mut decoded = Vec::new();
-        for batch in &batches {
-            assert!(
-                batch.len() <= MAX_DECOMPRESSED_BATCH_SIZE + 1,
-                "{} bytes",
-                batch.len()
-            );
-            let CoreMessage::Batch(inner) = crate::session_wire::decode_core_message(
-                crate::session_wire::batch_frame_from_bedrock(batch).unwrap(),
-            )
-            .unwrap() else {
-                unreachable!("a Batch frame decodes as a batch")
-            };
-            assert!(inner.len() <= jolyne::raw::MAX_RAW_BATCH_PACKETS);
-            decoded.extend(inner);
-        }
-        assert_eq!(decoded, packets);
-    }
+    assert_eq!(game_data.world.local_player_runtime_id, RUNTIME_ID);
 }
 
 /// A join the core could not make ends with the server's disconnect screen text.
@@ -425,39 +396,6 @@ async fn a_transfer_before_the_handoff_is_a_server_transfer() {
         (target.host.as_str(), target.port),
         ("next.example.test", 19133)
     );
-}
-
-/// The core's disconnect reasons map onto this protocol's reasons; one it does not name keeps its text.
-#[test]
-fn disconnect_messages_keep_reason_text_and_hidden_screen() {
-    let packet = |reason, hide_screen| {
-        disconnect_packet(&SessionDisconnect {
-            reason,
-            message: "kicked".into(),
-            filtered_message: "k*****".into(),
-            hide_screen,
-        })
-    };
-    let McpePacketData::DisconnectPacket(full) = packet(25, false).data else {
-        panic!("a Disconnect packet")
-    };
-    assert_eq!(full.reason, EnumsConnectionDisconnectFailReason::Serverfull);
-    assert_eq!(
-        (
-            full.messages.message.as_str(),
-            full.messages.filtered_message.as_str()
-        ),
-        ("kicked", "k*****")
-    );
-    let McpePacketData::DisconnectPacket(unknown) = packet(i32::MAX, true).data else {
-        panic!("a Disconnect packet")
-    };
-    assert_eq!(
-        unknown.reason,
-        EnumsConnectionDisconnectFailReason::UnknownValue(i32::MAX)
-    );
-    assert!(unknown.hide_disconnection_screen);
-    assert_eq!(unknown.messages.message, "kicked");
 }
 
 /// Invalid cache references fail the join before the client starts its spawn sequence.

@@ -10,6 +10,10 @@ End-rod terrain coverage now includes the six facing states, separate shaft/base
 mapping and an original-art GPU fixture. This bounded geometry correction leaves the
 exhaustive residual-family, world-join and hardware performance gates open.
 
+Common farmland crops now retain four lowered rows with stage-specific artwork.
+Compiler regressions cover all eight growth states and both network-ID modes;
+full crop presentation parity and the broader phase gates remain open.
+
 ## P2.5-NATIVE-BIOME
 
 | Field | Evidence |
@@ -49,10 +53,16 @@ Spectator regressions cover forced flight without MayFly, solid and unloaded
 terrain traversal, and embedded server anchors. The full native trajectory,
 platform, and performance gates remain open.
 
+Server-defined vehicle seats have deterministic coverage for actor-origin conversion,
+yaw, scale, link ordering, updates and removal. Dismount request coverage includes
+vehicle controls, queue retries and session/input boundaries. Authored seat fallbacks,
+special family placement, predictive exit placement and vehicle prediction remain
+incomplete; this work closes no movement parity or performance gate.
+
 | Field | Evidence |
 |---|---|
 | Owning plan/task | `docs/superpowers/plans/2026-07-17-phase-3-movement-controls-camera.md`, Tasks 8-14 |
-| Deterministic tests | Current integration tranche: 282/282 `bedrock-client` library tests and strict all-target/all-feature Clippy green; bounded Phase 3 evidence validator 5/5 green. See `docs/evidence/phase-3-movement-controls-camera.md`. Render frame-clock tests also cover 20 Hz tick flush cadence at 60/120 Hz FIFO and uncapped, with manual recording clock preservation; live movement cadence remains unverified. |
+| Deterministic tests | Current integration tranche: 282/282 `cinnabar` library tests and strict all-target/all-feature Clippy green; bounded Phase 3 evidence validator 5/5 green. See `docs/evidence/phase-3-movement-controls-camera.md`. Render frame-clock tests also cover 20 Hz tick flush cadence at 60/120 Hz FIFO and uncapped, with manual recording clock preservation; live movement cadence remains unverified. |
 | Review commit | Pending independent review of the final integration commit. |
 | Live/native witness | Current tranche not run; local BDS, Lunar, Zeqa, LBSG, and matching native gates remain required. |
 | Performance/resource witness | Current tranche not run; bounded live JSON records remain required. |
@@ -73,9 +83,14 @@ selection. This extraction is incomplete and has not been compiled or tested;
 no movement, input or interaction acceptance gate is closed by the move.
 
 Frame sets and shared player, settings and finalized-input resources now live in
-`client-state`. The shell publishes focus for gameplay and camera input; the input
-and cursor regressions retain their domain owners. This ownership change has not
-been compiled or executed, and does not close this gate.
+`client-state`. `ClientShellPlugin` owns menu input, fullscreen and settings drivers
+and publishes focus for gameplay and camera input. Desktop focus transitions live
+in `semantic-input`; its Bevy wrapper stays in `client-state`. The shell also owns
+launcher/local-world resources, appearance selection and Discord presence, using
+shared session observations instead of sibling plugin dependencies. Session,
+network and audio adapters remain in `app`. Menu tests moved with their owner;
+combined session, inventory and present-mode checks remain in `app`. These moves
+have not been compiled or executed and do not close this gate.
 
 `client-extensions` now owns personal component collection and callback merging,
 permission grants, player snapshots, panel fonts, and server consent input and text.
@@ -125,6 +140,11 @@ material/shader linkage remain open.
 | Live/native witness | Not started |
 | Performance/resource witness | Not started |
 | Final status | Open |
+
+Actor rigs, Molang evaluation, controllers and poses live in Bevy-free
+`actor-animation`, which reads actors through its `AnimatedActor` seam.
+Tests that drive actor authority stay in `client-world`. Compilation and
+execution of this move are unverified, and it adds no parity evidence.
 
 ## P4.5-ITEM-ACTIONS
 
@@ -252,6 +272,37 @@ Selection shape parity and displayed-frame performance gates remain open.
 
 Block overlays use the shared pack compiler to resolve legacy geometry inheritance before projecting faces. Parents may come from other model files or pack layers; missing parents, cycles and chains beyond the depth limit are rejected. Budget-limited reads admit higher-priority definitions first. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
 
+## Render ownership boundary
+
+CPU block models, dropped items, actor rigs and viewmodel meshes live in
+`render-model`. Bevy submission resources and presentation acknowledgements live
+in `render-scene`; presentation and acceptance have no dependency on `render`.
+GPU passes remain in `render`. Existing regression coverage is retained, but
+compilation and execution of these moves are unverified. No parity or performance
+gate is closed by the ownership change.
+
 ## Session biome climate and environment
 
 Admitted live biome identifiers and climate now travel with the session tint registry. Weather, fog precipitation, camera temperature and environment routes read that registry, including custom biome routes. Registry replacement clears removed routes. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Protocol session layer
+
+`protocol::login` runs the spawn sequence and play stream over the core's session endpoint, and
+the vendored client session crate is removed. Startup ordering, terminal transfers and
+disconnects, and the one-shot initialization keep their regression coverage through a scripted
+core; those tests have not been executed locally. No existing completion entry is advanced.
+
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Loom banner previews
+
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Protocol codec swap
+
+`protocol` uses protocolgen's vendored contract crate as its only codec; Valentine and its
+normalization machinery are gone. Packet routing and UI budgets derive from the generated packet
+table and field sites rather than hand-maintained ID lists. The ported tests have not been
+executed locally. No existing completion entry is advanced.

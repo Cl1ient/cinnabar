@@ -7,10 +7,12 @@ use client_presentation::{
     local_player::LocalViewPose,
 };
 
-use crate::{
-    environment::{WeatherTickFrame, WorldClock},
-    menu::MenuRuntime,
-    runtime::world::ClientWorld,
+use {
+    crate::{
+        environment::{WeatherTickFrame, WorldClock},
+        runtime::world::ClientWorld,
+    },
+    client_shell::menu::MenuRuntime,
 };
 
 /// Samples rain on the same completed weather ticks that update the atmosphere.
@@ -25,11 +27,11 @@ pub(super) fn drive_rain_audio(
     server_camera: Option<Res<ServerCameraView>>,
     mut engine: ResMut<AudioEngine>,
     mut state: Local<(Option<u64>, RainSoundScheduler)>,
-    profiler: Option<Res<render::RuntimeStageProfiler>>,
+    profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
 ) {
     let _timer = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::Audio));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::Audio));
     client_audio::audio::weather::drive_rain_audio(
         clock.session_generation(),
         world.stream.as_ref(),

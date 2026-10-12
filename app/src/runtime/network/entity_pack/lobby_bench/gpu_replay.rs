@@ -74,7 +74,7 @@ fn gpu_app(camera: Transform) -> App {
         Hdr,
         Tonemapping::Linear,
         Bloom::default(),
-        render::EnhancedRendering::default(),
+        render_scene::EnhancedRendering::default(),
         camera,
     ));
     app
@@ -82,7 +82,7 @@ fn gpu_app(camera: Transform) -> App {
 
 /// Loads the real font, HUD and JSON-UI carriers used by offline screen snapshots.
 fn ui_presentation() -> client_ui::ui_runtime::presentation::UiPresentationRuntime {
-    use crate::ui_runtime::presentation::forms::pack_harness;
+    use client_ui::test_support::pack_harness;
     use client_ui::ui_runtime::presentation::UiPresentationRuntime;
     let world_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -92,7 +92,7 @@ fn ui_presentation() -> client_ui::ui_runtime::presentation::UiPresentationRunti
         .into_runtime();
     let mut presentation = UiPresentationRuntime::with_hud(pack_harness::font(), hud).unwrap();
     presentation
-        .enable_json_ui(pack_harness::carrier().expect("installed JSON-UI carrier"))
+        .enable_json_ui(ui_engine::test_support::carrier().expect("installed JSON-UI carrier"))
         .unwrap();
     presentation.hud_frame_mut().first_person = true;
     presentation
@@ -117,10 +117,10 @@ fn publish_ui(
         .unwrap();
     let stats = app
         .world()
-        .resource::<render::UiRenderStatsResource>()
+        .resource::<render_scene::UiRenderStatsResource>()
         .clone();
     app.world_mut()
-        .resource_mut::<render::UiRenderSceneResource>()
+        .resource_mut::<render_scene::UiRenderSceneResource>()
         .publish(input, &stats)
         .unwrap();
 }
@@ -142,7 +142,7 @@ fn enhanced_lobby_replay_on_native_gpu() {
     let mut presentation = ui_presentation();
     let runtime = client_ui::ui_runtime::UiRuntime::new(1);
     presentation.set_menu_view(Some(
-        crate::menu::MenuRuntime::new(true, 2, "Steve".into()).view(),
+        client_shell::menu::MenuRuntime::new(true, 2, "Steve".into()).view(),
     ));
     for millis in 0..3 {
         publish_ui(
@@ -181,7 +181,7 @@ fn enhanced_lobby_replay_on_native_gpu() {
         app.world_mut()
             .insert_resource(world.resource::<ActorRenderFrame>().clone());
         app.world_mut()
-            .insert_resource(world.resource::<render::HandRigScene>().clone());
+            .insert_resource(world.resource::<render_scene::HandRigScene>().clone());
         publish_ui(
             &player_runtime,
             &mut app,
@@ -209,13 +209,15 @@ fn enhanced_lobby_replay_on_native_gpu() {
                 })
                 .collect();
             app.world_mut()
-                .insert_resource(render::NametagSceneResource(nametags::build_nametag_scene(
-                    &anchors,
-                    &font,
-                    &mut layouts,
-                    &mut atlas,
-                    &|page| nametag_atlas::font_page(&font, page),
-                )));
+                .insert_resource(render_scene::NametagSceneResource(
+                    nametags::build_nametag_scene(
+                        &anchors,
+                        &font,
+                        &mut layouts,
+                        &mut atlas,
+                        &|page| nametag_atlas::font_page(&font, page),
+                    ),
+                ));
         }
         app.update();
         app.sub_app(RenderApp)
@@ -232,7 +234,7 @@ fn enhanced_lobby_replay_on_native_gpu() {
     }
     assert!(
         !app.world()
-            .resource::<render::ActorPresentationGate>()
+            .resource::<render_scene::ActorPresentationGate>()
             .drain()
             .is_empty()
     );

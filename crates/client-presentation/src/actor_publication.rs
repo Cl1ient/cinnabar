@@ -1,5 +1,8 @@
+use bevy::prelude::DetectChanges;
 mod commit;
+mod occlusion;
 mod preparation;
+mod views;
 pub use preparation::{ActorFrameState, advance_actor_frame, advance_actor_motion};
 mod emote_geometry;
 mod equipment_layers;
@@ -13,7 +16,6 @@ use hand::{hand_camera_from_rig, hand_progress};
 
 use std::sync::Arc;
 
-use bevy::prelude::DetectChanges;
 use bevy::{
     ecs::system::SystemParam,
     math::Mat4,
@@ -22,10 +24,14 @@ use bevy::{
 };
 use chunk_pipeline::WorldStream;
 use client_world::LocalPlayerFeed;
-use render::{
-    ActorCullView, ActorMainWitness, ActorRenderScene, ActorRigFrameBuilder, ActorRigSubmission,
-    HandItemAtlas, HandRigLight, HandRigScene, MAX_ACTOR_RENDER_DISTANCE_BLOCKS, RuntimeStage,
-    RuntimeStageProfiler,
+use {
+    render_model::{
+        ActorCullView, ActorRigFrameBuilder, ActorRigSubmission, HandItemAtlas, HandRigLight,
+        MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
+    },
+    render_scene::{
+        ActorMainWitness, ActorRenderScene, HandRigScene, RuntimeStage, RuntimeStageProfiler,
+    },
 };
 
 use crate::camera::{CameraSettingsAuthority, FlyCamera};
@@ -61,10 +67,10 @@ pub struct ActorFrameInput {
     pub predicted_eye: Option<[f32; 3]>,
     pub predicted_feet: Option<[f32; 3]>,
     pub local_equipment: crate::presentation::equipment::ActorEquipmentInput,
-    pub swing_progress: Option<client_world::LocalSwingProgress>,
+    pub swing_progress: Option<actor_animation::LocalSwingProgress>,
     pub renders_game: bool,
     pub hide_hand: bool,
-    pub custom_emote: Option<(client_world::CustomEmote, f64)>,
+    pub custom_emote: Option<(actor_animation::CustomEmote, f64)>,
 }
 
 /// Presentation-owned resources that determine the avatar's current view.
@@ -76,6 +82,39 @@ pub struct ActorPresentationState<'w, 's> {
     server_camera: Option<Res<'w, crate::camera::ServerCameraView>>,
     view: Res<'w, LocalViewPose>,
     camera: Query<'w, 's, (&'static Transform, &'static Projection), With<FlyCamera>>,
+}
+
+/// Optional validated cosmetic tint of already active native actor damage overlays.
+#[derive(Resource, Default)]
+pub struct ActorPresentationStyle {
+    pub hurt_color: Option<[f32; 4]>,
+    pub hurt_armor_color: Option<[f32; 4]>,
+    /// Native admitted ray target; never a guest-provided actor identity.
+    pub attackable_actor: Option<u64>,
+    pub attackable_color: Option<[f32; 4]>,
+}
+
+/// Selects cosmetic color without treating a reach overlay as evidence of damage.
+fn cosmetic_overlay(
+    style: &ActorPresentationStyle,
+    hurt: bool,
+    armor: bool,
+    native_overlay: bool,
+    attackable: bool,
+) -> Option<[f32; 4]> {
+    if hurt {
+        if armor {
+            style.hurt_armor_color
+        } else if native_overlay {
+            style.hurt_color
+        } else {
+            None
+        }
+    } else if attackable {
+        style.attackable_color
+    } else {
+        None
+    }
 }
 
 /// The frame fraction the actor rigs interpolate at, for overlays anchored to actors.
@@ -109,9 +148,9 @@ fn apply_session_pack(
     equipment: Option<&mut EquipmentRuntime>,
     profiler: Option<&RuntimeStageProfiler>,
 ) -> (
-    Option<render::ActorArtworkPages>,
+    Option<render_model::ActorArtworkPages>,
     Option<StagedSessionIcons>,
-    Vec<Option<render::ActorArtworkLocation>>,
+    Vec<Option<render_model::ActorArtworkLocation>>,
 ) {
     let equipment_timer = profiler.map(|profiler| profiler.time(RuntimeStage::ActorEquipmentSetup));
     let mut pages = resources.pages.clone();
@@ -192,30 +231,33 @@ fn apply_session_geometry(
 #[derive(SystemParam)]
 pub struct ActorFramePublication<'w, 's> {
     time: Res<'w, Time<Real>>,
+    actor_style: Option<Res<'w, ActorPresentationStyle>>,
     state: ResMut<'w, ActorFrameState>,
     scene: ResMut<'w, ActorRenderScene>,
     prepared: ResMut<'w, PreparedActorPublication>,
     presentation: ActorPresentationState<'w, 's>,
-    artwork: Res<'w, render::ActorArtworkPages>,
+    artwork: Res<'w, render_scene::ActorArtworkResource>,
     hand_builder: ResMut<'w, HandRigBuilder>,
     hand_scene: ResMut<'w, HandRigScene>,
     hand_motion: Option<Res<'w, crate::camera::FirstPersonHandMotion>>,
     equipment: Option<ResMut<'w, EquipmentRuntime>>,
-    glint_settings: Option<Res<'w, render::UiGlintSettings>>,
+    glint_settings: Option<Res<'w, render_scene::UiGlintSettings>>,
     dropped_items: DroppedItemPublisher<'w, 's>,
-    profiler: Option<Res<'w, render::RuntimeStageProfiler>>,
+    profiler: Option<Res<'w, render_scene::RuntimeStageProfiler>>,
     partial_tick: ResMut<'w, ActorFramePartialTick>,
 }
 
 /// Builds final actor and hand poses after admission, without advancing remote actor ticks.
 pub fn prepare_actor_render_frame(
     mut client_world: ActorWorld<'_>,
-    swing_progress: Option<client_world::LocalSwingProgress>,
-    hides_box: impl Fn(&WorldStream, [f32; 3], [f32; 3], [f32; 3]) -> bool,
+    swing_progress: Option<actor_animation::LocalSwingProgress>,
+    hides_box: impl Fn(&WorldStream, ActorCullView, [f32; 3], [f32; 3]) -> bool,
+    icons: Option<&client_ui::ui_runtime::presentation::UiPresentationRuntime>,
     params: ActorFramePublication,
 ) {
     let ActorFramePublication {
         time,
+        actor_style,
         mut state,
         mut scene,
         mut prepared,
@@ -269,7 +311,7 @@ pub fn prepare_actor_render_frame(
         if let Some(progress) = swing_progress {
             stream.sync_local_swing(progress);
         }
-        stream.set_actor_camera_rotation(actor_camera_rotation(view.camera_rotation()));
+        stream.set_actor_camera_rotation(views::actor_camera_rotation(view.camera_rotation()));
         stream.advance_actor_interpolation_frame(0);
     }
     let authoritative_subject_eye = authoritative_local_actor_eye(
@@ -286,7 +328,7 @@ pub fn prepare_actor_render_frame(
         .and_then(|(_, projection)| crate::camera::first_person_hand_fov(projection));
     let preparation = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::ActorPreparation));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::ActorPreparation));
     let cull_view = camera
         .single()
         .ok()
@@ -304,10 +346,12 @@ pub fn prepare_actor_render_frame(
                 .authority()
                 .actor_rig(stream.local_player_runtime_id())?;
             let (emote, elapsed) = input.custom_emote?;
-            client_world::sample_custom_emote(&rig, emote, elapsed, elapsed)
+            actor_animation::sample_custom_emote(&rig, emote, elapsed, elapsed)
         })
         .flatten();
     let mut native_body_sampled = false;
+    let mut occlusion_candidates = 0_u32;
+    let mut hidden_by_occlusion = 0_u32;
     let mut render_frame = client_world
         .stream
         .as_ref()
@@ -346,6 +390,8 @@ pub fn prepare_actor_render_frame(
                         rig
                     };
                     // Cull at the sampled frame scale; the local rig also drives the hand.
+                    let occluded = std::cell::Cell::new(false);
+                    occlusion_candidates += u32::from(rig.actor.runtime_id != local_runtime_id);
                     if rig.actor.runtime_id != local_runtime_id
                         && !crate::presentation::actors::rig_may_be_visible(
                             &rig,
@@ -355,11 +401,21 @@ pub fn prepare_actor_render_frame(
                             render_frame.as_mut(),
                             |low, high| {
                                 cull_view.is_some_and(|view| {
-                                    hides_box(stream, view.camera_position.to_array(), low, high)
+                                    let (low, high) = occlusion::body_and_shadow_bounds(
+                                        stream,
+                                        &rig,
+                                        step.partial_tick,
+                                        low,
+                                        high,
+                                    );
+                                    let hidden = hides_box(stream, view, low, high);
+                                    occluded.set(hidden);
+                                    hidden
                                 })
                             },
                         )
                     {
+                        hidden_by_occlusion += u32::from(occluded.get());
                         continue;
                     }
                     let profile = stream
@@ -447,6 +503,7 @@ pub fn prepare_actor_render_frame(
                 )
             })
             .unwrap_or((0, 0, 0, Vec::new(), None, 0));
+
     // First person draws the player's own rig near the camera: the visible arms with every other
     // bone hidden, and a drawable held item in its own first-person frame. Anything not covered
     // (an undrawable item) leaves the CPU viewmodel in charge.
@@ -598,6 +655,12 @@ pub fn prepare_actor_render_frame(
         crate::presentation::actors::light_bodies(&mut batch, stream);
     }
     let selected_count = batch.submissions.len();
+    occlusion::record_work(
+        occlusion_candidates,
+        hidden_by_occlusion,
+        &batch,
+        local_runtime_id,
+    );
     if let (Some(stream), Some(render_frame)) =
         (client_world.stream.as_ref(), render_frame.as_mut())
     {
@@ -729,11 +792,40 @@ pub fn prepare_actor_render_frame(
     {
         scene.configure_artwork(pages);
     }
+    if let Some(style) = actor_style.as_ref() {
+        for submission in &mut batch.submissions {
+            let armor = (3..=6).contains(&submission.input.identity.layer);
+            let hurt = client_world.stream.as_ref().is_some_and(|stream| {
+                stream
+                    .authority()
+                    .actor(submission.input.identity.runtime_id)
+                    .is_some_and(|actor| actor.hurt_overlay_active())
+            });
+            let attackable = style.attackable_actor == Some(submission.input.identity.runtime_id)
+                && client_world.stream.as_ref().is_some_and(|stream| {
+                    stream
+                        .authority()
+                        .actor(submission.input.identity.runtime_id)
+                        .is_some_and(|actor| {
+                            matches!(actor.kind, protocol::ActorKind::Player { .. })
+                        })
+                });
+            if let Some(color) = cosmetic_overlay(
+                style,
+                hurt,
+                armor,
+                submission.overlay_rgba8 != 0,
+                attackable,
+            ) {
+                submission.overlay_rgba8 = render_model::pack_overlay_rgba8(color);
+            }
+        }
+    }
     // Hiding skin layers keeps armor and held items visible.
     if let Some(stream) = client_world.stream.as_ref() {
         for submission in &mut batch.submissions {
             let identity = submission.input.identity;
-            if (identity.layer == render::ACTOR_LAYER_BODY
+            if (identity.layer == render_model::ACTOR_LAYER_BODY
                 || identity.layer == crate::presentation::cape::ACTOR_LAYER_CAPE
                 || crate::presentation::skin_layers::is_skin_layer(identity.layer)
                 || identity.layer >= crate::presentation::entity_layers::ACTOR_LAYER_TEXTURE_BASE)
@@ -742,7 +834,7 @@ pub fn prepare_actor_render_frame(
                     .actor(identity.runtime_id)
                     .is_some_and(|actor| actor.is_invisible())
             {
-                submission.route = render::ActorRigRoute::NoDraw;
+                submission.route = render_model::ActorRigRoute::NoDraw;
             }
         }
     }
@@ -753,7 +845,7 @@ pub fn prepare_actor_render_frame(
     {
         let _rig_build = profiler
             .as_deref()
-            .map(|profiler| profiler.time(render::RuntimeStage::ActorRigBuild));
+            .map(|profiler| profiler.time(render_scene::RuntimeStage::ActorRigBuild));
         register_geometries(&mut hand_builder.0, &mut scene, new_geometries);
     }
     prepared.0 = Some(commit::PendingActorPublication {
@@ -816,6 +908,7 @@ pub fn prepare_actor_render_frame(
         hand_light
     };
     dropped_items.publish(
+        icons,
         client_world.stream.as_deref(),
         client_world.collisions,
         camera_position.map(|position| {
@@ -833,52 +926,6 @@ pub fn prepare_actor_render_frame(
         hand_light,
         step.partial_tick,
     );
-}
-
-/// Rigs this far outside the view on every side still animate, so only a turn faster than this
-/// in one tick shows a rig its held pose for that tick.
-const ANIMATION_GUARD_DEGREES: f32 = 30.0;
-
-fn actor_camera_rotation(rotation: bevy::math::Quat) -> [f32; 2] {
-    let (yaw, pitch, _) = rotation.to_euler(bevy::math::EulerRot::YXZ);
-    [
-        -pitch.to_degrees(),
-        (180.0 - yaw.to_degrees()).rem_euclid(360.0),
-    ]
-}
-
-/// The camera's frustum widened by the guard band, with the render distances.
-fn animation_view(
-    transform: &bevy::prelude::Transform,
-    projection: &Projection,
-) -> Option<client_world::ActorAnimationView> {
-    let Projection::Perspective(perspective) = projection else {
-        return None;
-    };
-    let (guard, limit) = (ANIMATION_GUARD_DEGREES.to_radians(), 85f32.to_radians());
-    let half_vertical = perspective.fov * 0.5;
-    let half_horizontal = (half_vertical.tan() * perspective.aspect_ratio).atan();
-    let (half_vertical, half_horizontal) = (
-        (half_vertical + guard).min(limit),
-        (half_horizontal + guard).min(limit),
-    );
-    let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
-        half_vertical * 2.0,
-        half_horizontal.tan() / half_vertical.tan(),
-        perspective.near,
-    ) * transform.to_matrix().inverse();
-    let [x, y, z, w] = [0, 1, 2, 3].map(|row| clip.row(row));
-    let planes = [w + x, w - x, w + y, w - y, z, w - z].map(|plane| plane.to_array());
-    planes
-        .iter()
-        .flatten()
-        .all(|value| value.is_finite())
-        .then(|| client_world::ActorAnimationView {
-            planes,
-            camera: transform.translation.to_array(),
-            player_distance: MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
-            entity_radius: render::ACTOR_CANDIDATE_RADIUS_BLOCKS,
-        })
 }
 
 /// Registers new skin models and item meshes in both rig catalogs with one rebuild each; if a

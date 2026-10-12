@@ -46,7 +46,7 @@ fn capture_offhand(
 
 #[test]
 fn snapshot_offhand_hud() {
-    let Some(carrier) = pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!("skipping snapshot_offhand_hud: missing UI carrier; make assets");
         return;
     };

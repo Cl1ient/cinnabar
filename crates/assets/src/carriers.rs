@@ -16,6 +16,7 @@ pub const FONT_TEN_MANIFEST: &str = "assets/cinnangles-ten-source.json";
 pub const FONT_SEVEN_MANIFEST: &str = "assets/cinnangles-seven-source.json";
 pub const FONT_FIVE_MANIFEST: &str = "assets/cinnangles-five-source.json";
 pub const FONT_FIVE_BOLD_MANIFEST: &str = "assets/cinnangles-five-bold-source.json";
+pub const OREUI_ICONS_MANIFEST: &str = "assets/oreui-icons-source.json";
 
 mod fonts;
 pub use fonts::{AsciiBearing, FontFace};
@@ -56,6 +57,7 @@ pub enum Recipe {
     HudExtras,
     StarterSkins,
     AudioPcm,
+    OreUiIcons,
 }
 
 /// What a recipe reads besides the compiler itself; tracked paths are checkout-relative.
@@ -63,7 +65,7 @@ pub enum Recipe {
 pub enum Input {
     /// The pinned sample `resource_pack`, identified by [`VANILLA_MANIFEST`].
     Pack,
-    /// The pinned sample `behavior_pack`, passed only when it ships item definitions.
+    /// The pinned behavior-pack source used by authored entity and item facts.
     BehaviorPack,
     /// The source manifest the compiler embeds.
     Manifest(&'static str),
@@ -155,21 +157,34 @@ pub const ATMOSPHERE: Carrier = carrier(
     Some("atmosphere-assets.json"),
     true,
 );
-pub const ENTITY: Carrier = carrier(
-    "entity",
-    "Compiling entity assets",
-    Recipe::Entity,
-    "vanilla-v1.mcbeent",
-    Some("entity-assets.json"),
-    true,
-);
+pub const ENTITY: Carrier = Carrier {
+    inputs: &[
+        Input::Pack,
+        Input::Manifest(VANILLA_MANIFEST),
+        Input::File(crate::item::grip::GRIP_INPUT_PATH),
+        Input::File(crate::item::glint::INPUT_PATH),
+        Input::File(crate::item::fuel::INPUT_PATH),
+        Input::File(crate::item::retail::INPUT_PATH),
+        Input::BehaviorPack,
+    ],
+    ..carrier(
+        "entity",
+        "Compiling entity assets",
+        Recipe::Entity,
+        "vanilla-v1.mcbeent",
+        Some("entity-assets.json"),
+        true,
+    )
+};
 pub const FONT: Carrier = Carrier {
     font_face: Some(FontFace {
+        native_raster: false,
         name: "Cinnangles Sans",
         ascii_bearing: None,
         space_em_1000: None,
         manifest: include_bytes!("../../../assets/cinnangles-sans-source.json"),
         units_per_em: 1152,
+        raster_em: 18,
         ascent: 896,
         descent: 128,
     }),
@@ -188,16 +203,15 @@ pub const FONT: Carrier = Carrier {
 };
 pub const FONT_TEN: Carrier = Carrier {
     font_face: Some(FontFace {
+        native_raster: true,
         name: "Cinnangles Ten",
-        ascii_bearing: Some(AsciiBearing {
-            regular: 1,
-            closing: 1,
-        }),
-        space_em_1000: Some(245),
+        ascii_bearing: None,
+        space_em_1000: None,
         manifest: include_bytes!("../../../assets/cinnangles-ten-source.json"),
-        units_per_em: 1280,
-        ascent: 1267,
-        descent: 320,
+        units_per_em: 1000,
+        raster_em: 20,
+        ascent: 990,
+        descent: 250,
     }),
     inputs: &[
         Input::Manifest(FONT_TEN_MANIFEST),
@@ -207,23 +221,22 @@ pub const FONT_TEN: Carrier = Carrier {
         "font-ten",
         "Compiling Cinnangles Ten",
         Recipe::Font,
-        "ui-cinnangles-ten-v2.mcbefont",
+        "ui-cinnangles-ten-v3.mcbeface",
         Some("ui-cinnangles-ten-font-assets.json"),
         false,
     )
 };
 pub const FONT_SEVEN: Carrier = Carrier {
     font_face: Some(FontFace {
+        native_raster: true,
         name: "Cinnangles Seven",
-        ascii_bearing: Some(AsciiBearing {
-            regular: 1,
-            closing: 3,
-        }),
-        space_em_1000: Some(300),
+        ascii_bearing: None,
+        space_em_1000: None,
         manifest: include_bytes!("../../../assets/cinnangles-seven-source.json"),
-        units_per_em: 1280,
-        ascent: 1024,
-        descent: 128,
+        units_per_em: 1000,
+        raster_em: 20,
+        ascent: 800,
+        descent: 100,
     }),
     inputs: &[
         Input::Manifest(FONT_SEVEN_MANIFEST),
@@ -233,20 +246,22 @@ pub const FONT_SEVEN: Carrier = Carrier {
         "font-seven",
         "Compiling Cinnangles Seven",
         Recipe::Font,
-        "ui-cinnangles-seven-v2.mcbefont",
+        "ui-cinnangles-seven-v3.mcbeface",
         Some("ui-cinnangles-seven-font-assets.json"),
         false,
     )
 };
 pub const FONT_FIVE: Carrier = Carrier {
     font_face: Some(FontFace {
+        native_raster: true,
         name: "Cinnangles Five",
         ascii_bearing: None,
-        space_em_1000: Some(420),
+        space_em_1000: None,
         manifest: include_bytes!("../../../assets/cinnangles-five-source.json"),
-        units_per_em: 1280,
-        ascent: 1434,
-        descent: 358,
+        units_per_em: 1000,
+        raster_em: 20,
+        ascent: 1120,
+        descent: 280,
     }),
     inputs: &[
         Input::Manifest(FONT_FIVE_MANIFEST),
@@ -256,20 +271,22 @@ pub const FONT_FIVE: Carrier = Carrier {
         "font-five",
         "Compiling Cinnangles Five",
         Recipe::Font,
-        "ui-cinnangles-five-v1.mcbefont",
+        "ui-cinnangles-five-v3.mcbeface",
         Some("ui-cinnangles-five-font-assets.json"),
         false,
     )
 };
 pub const FONT_FIVE_BOLD: Carrier = Carrier {
     font_face: Some(FontFace {
+        native_raster: true,
         name: "Cinnangles Five Bold",
         ascii_bearing: None,
-        space_em_1000: Some(420),
+        space_em_1000: None,
         manifest: include_bytes!("../../../assets/cinnangles-five-bold-source.json"),
-        units_per_em: 1280,
-        ascent: 1457,
-        descent: 392,
+        units_per_em: 1000,
+        raster_em: 20,
+        ascent: 1138,
+        descent: 306,
     }),
     inputs: &[
         Input::Manifest(FONT_FIVE_BOLD_MANIFEST),
@@ -279,7 +296,7 @@ pub const FONT_FIVE_BOLD: Carrier = Carrier {
         "font-five-bold",
         "Compiling Cinnangles Five Bold",
         Recipe::Font,
-        "ui-cinnangles-five-bold-v1.mcbefont",
+        "ui-cinnangles-five-bold-v3.mcbeface",
         Some("ui-cinnangles-five-bold-font-assets.json"),
         false,
     )
@@ -330,14 +347,21 @@ pub const AUDIO: Carrier = carrier(
     Some("audio-assets.json"),
     false,
 );
-pub const ACTOR: Carrier = carrier(
-    "actor",
-    "Compiling actor assets",
-    Recipe::Actor,
-    "vanilla-v1.mcbeact",
-    Some("actor-assets.json"),
-    false,
-);
+pub const ACTOR: Carrier = Carrier {
+    inputs: &[
+        Input::Pack,
+        Input::Manifest(VANILLA_MANIFEST),
+        Input::BehaviorPack,
+    ],
+    ..carrier(
+        "actor",
+        "Compiling actor assets",
+        Recipe::Actor,
+        "vanilla-v1.mcbeact",
+        Some("actor-assets.json"),
+        false,
+    )
+};
 pub const AUDIO_BANK: Carrier = Carrier {
     inputs: &[Input::Pack],
     ..carrier(
@@ -421,6 +445,18 @@ pub const STARTER_SKINS: Carrier = Carrier {
         false,
     )
 };
+/// Shipped original OreUI artwork; the manifest's per-file digests cover its PNG sources.
+pub const OREUI_ICONS: Carrier = Carrier {
+    inputs: &[Input::Manifest(OREUI_ICONS_MANIFEST)],
+    ..carrier(
+        "oreui-icons",
+        "Compiling OreUI icons",
+        Recipe::OreUiIcons,
+        "ui-oreui-icons-v1.mcbeoui",
+        None,
+        false,
+    )
+};
 /// Development-only finite predecode of one reviewed sample.
 pub const AUDIO_PCM: Carrier = Carrier {
     installed: false,
@@ -446,6 +482,7 @@ pub const CARRIERS: &[Carrier] = &[
     FONT_SEVEN,
     FONT_FIVE,
     FONT_FIVE_BOLD,
+    OREUI_ICONS,
     HUD,
     LANG,
     LANGUAGES,
@@ -489,10 +526,8 @@ pub fn required_present(dir: &Path) -> bool {
     required().all(|carrier| dir.join(carrier.output).is_file())
 }
 
-/// Preparation-kit directories and the checkout prefixes they stand in for.
-const KIT_LAYOUT: [(&str, &str); 2] = [("assets", "assets/"), ("data", "crates/assets/data/")];
-
-/// Where tracked inputs resolve: a checkout, or an installer's preparation kit.
+/// Where tracked inputs resolve: a checkout, or an installer's preparation kit that mirrors the
+/// checkout paths it ships.
 #[derive(Clone, Debug)]
 pub enum Sources {
     Checkout(PathBuf),
@@ -500,20 +535,13 @@ pub enum Sources {
 }
 
 impl Sources {
-    /// The file a checkout-relative path names here.
+    /// The file a checkout-relative, `/`-separated path names here, joined with native separators.
     #[must_use]
     pub fn resolve(&self, relative: &str) -> PathBuf {
-        match self {
-            Self::Checkout(root) => root.join(relative),
-            Self::Kit(kit) => KIT_LAYOUT
-                .iter()
-                .find_map(|(dir, prefix)| {
-                    relative
-                        .strip_prefix(prefix)
-                        .map(|rest| kit.join(dir).join(rest))
-                })
-                .unwrap_or_else(|| kit.join(relative)),
-        }
+        let (Self::Checkout(root) | Self::Kit(root)) = self;
+        relative
+            .split('/')
+            .fold(root.clone(), |path, component| path.join(component))
     }
 }
 
@@ -603,6 +631,12 @@ mod tests {
     }
 
     #[test]
+    fn shipped_oreui_icons_are_optional_and_independent_of_the_game_pack() {
+        assert!(!OREUI_ICONS.required && OREUI_ICONS.installed);
+        assert_eq!(OREUI_ICONS.inputs, &[Input::Manifest(OREUI_ICONS_MANIFEST)]);
+    }
+
+    #[test]
     fn every_tracked_input_exists_in_the_checkout() {
         let root = Sources::Checkout(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
         for carrier in CARRIERS {
@@ -614,17 +648,25 @@ mod tests {
         }
     }
 
+    /// Every input, wherever it lives in the checkout, sits at the same path below the kit.
     #[test]
-    fn kit_paths_follow_the_packaged_layout() {
+    fn kit_paths_mirror_the_checkout_with_native_separators() {
         let kit = Sources::Kit(PathBuf::from("kit"));
-        assert_eq!(
-            kit.resolve(BLOCK_REGISTRY),
-            Path::new("kit/data/block-registry-v2193.bin")
-        );
-        assert_eq!(
-            kit.resolve(VANILLA_MANIFEST),
-            Path::new("kit/assets/vanilla-source.json")
-        );
+        let native = |parts: &[&str]| parts.iter().fold(PathBuf::from("kit"), |p, c| p.join(c));
+        for (input, parts) in [
+            (
+                BLOCK_REGISTRY,
+                &["crates", "assets", "data", "block-registry-v2193.bin"][..],
+            ),
+            (VANILLA_MANIFEST, &["assets", "vanilla-source.json"][..]),
+            (
+                crate::item::retail::INPUT_PATH,
+                &["crates", "protocol", "data", "retail_items_1_26_50.tsv"][..],
+            ),
+        ] {
+            // Byte equality: `Path` equality would accept mixed separators on Windows.
+            assert_eq!(kit.resolve(input).as_os_str(), native(parts).as_os_str());
+        }
     }
 
     #[test]

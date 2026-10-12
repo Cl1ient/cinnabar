@@ -79,6 +79,7 @@ fn flush_pending_hotbar_selection(
 #[cfg(test)]
 mod tests {
     use bevy::input::mouse::AccumulatedMouseScroll;
+    use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
     use client_state::SemanticInputSnapshot;
     use client_ui::ui_runtime::UiRuntime;
     use std::sync::Arc;
@@ -173,7 +174,7 @@ mod tests {
         menu: Option<launcher::menu::MenuScreen>,
     ) -> u8 {
         let runtime = UiRuntime::new(1);
-        let mut menu_runtime = crate::menu::MenuRuntime::new(false, 2, "Tester".into());
+        let mut menu_runtime = client_shell::menu::MenuRuntime::new(false, 2, "Tester".into());
         if let Some(screen) = menu {
             menu_runtime.activate(launcher::menu::MenuAction::Navigate(screen));
         }
@@ -184,12 +185,12 @@ mod tests {
     fn wheel_with_ui(
         player_runtime: &mut client_state::PlayerRuntime,
         runtime: UiRuntime,
-        menu_runtime: crate::menu::MenuRuntime,
+        menu_runtime: client_shell::menu::MenuRuntime,
     ) -> u8 {
         use bevy::{ecs::system::RunSystemOnce, prelude::*};
         let mut app = App::new();
         player_runtime.inventory.set_local_selected_slot(0);
-        app.insert_resource(runtime)
+        app.insert_resource(UiRuntimeResource(runtime))
             .insert_resource(player_runtime.clone())
             .insert_resource(menu_runtime)
             .insert_resource(SemanticInputSnapshot::default())
@@ -201,7 +202,7 @@ mod tests {
             .insert_resource(ClientWorld::default());
         app.init_resource::<client_state::ScreenFocus>();
         app.world_mut()
-            .run_system_once(crate::menu::screen_focus::publish_screen_focus)
+            .run_system_once(client_shell::menu::screen_focus::publish_screen_focus)
             .unwrap();
         app.world_mut()
             .run_system_once(queue_hotbar_selection)
@@ -244,7 +245,7 @@ mod tests {
             wheel_selection(&mut player_runtime, Some(launcher::menu::MenuScreen::Pause)),
             0
         );
-        let hidden = || crate::menu::MenuRuntime::new(false, 2, "Tester".into());
+        let hidden = || client_shell::menu::MenuRuntime::new(false, 2, "Tester".into());
         let mut chat = UiRuntime::new(1);
         chat.open_chat(&mut player_runtime);
         assert_eq!(wheel_with_ui(&mut player_runtime, chat, hidden()), 0);
@@ -274,10 +275,14 @@ mod tests {
         use bevy::{ecs::system::RunSystemOnce, prelude::*};
         let mut app = App::new();
         player_runtime.inventory.set_local_selected_slot(0);
-        app.insert_resource(UiRuntime::new(1))
+        app.insert_resource(UiRuntimeResource(UiRuntime::new(1)))
             .insert_resource(player_runtime.clone())
-            .insert_resource(crate::menu::MenuRuntime::new(false, 2, "Tester".into()))
-            .insert_resource(presentation)
+            .insert_resource(client_shell::menu::MenuRuntime::new(
+                false,
+                2,
+                "Tester".into(),
+            ))
+            .insert_resource(UiPresentationResource(presentation))
             .insert_resource(SemanticInputSnapshot::default())
             .insert_resource(AccumulatedMouseScroll {
                 delta: Vec2::new(0.0, -1.0),
@@ -287,7 +292,7 @@ mod tests {
             .insert_resource(ClientWorld::default());
         app.init_resource::<client_state::ScreenFocus>();
         app.world_mut()
-            .run_system_once(crate::menu::screen_focus::publish_screen_focus)
+            .run_system_once(client_shell::menu::screen_focus::publish_screen_focus)
             .unwrap();
         app.world_mut()
             .run_system_once(queue_hotbar_selection)
@@ -300,7 +305,11 @@ mod tests {
             .remove_resource::<client_state::PlayerRuntime>()
             .unwrap();
         let slot = player_runtime.selected_hotbar_slot().unwrap();
-        (slot, app.world_mut().remove_resource().unwrap())
+        let presentation = app
+            .world_mut()
+            .remove_resource::<UiPresentationResource>()
+            .unwrap();
+        (slot, presentation.0)
     }
 
     /// A client part's modal screen is a screen like any other: while it is open the wheel and
@@ -308,9 +317,10 @@ mod tests {
     /// `ui.close-screen`, both of which clear its template) gives them back.
     #[test]
     fn menu_input_leak_client_part_modal_absorbs_gameplay_until_closed() {
-        use client_ui::test_support::fixture_font;
-        use client_ui::ui_runtime::presentation::{ExperienceModal, UiPresentationRuntime};
+        use client_ui::ui_runtime::presentation::UiPresentationRuntime;
+        use mod_ui::experience_modal::ExperienceModal;
         use server_experience::screen::{Files, Modal};
+        use ui_engine::test_support::fixture_font;
 
         let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
         let files = Arc::new(Files::default());
@@ -325,10 +335,14 @@ mod tests {
         };
         let absorbs = |player_runtime: &client_state::PlayerRuntime,
                        presentation: &UiPresentationRuntime| {
-            crate::screen_policy::absorbs_input(
+            client_shell::screen_policy::absorbs_input(
                 player_runtime,
                 Some(&UiRuntime::new(1)),
-                Some(&crate::menu::MenuRuntime::new(false, 2, "Tester".into())),
+                Some(&client_shell::menu::MenuRuntime::new(
+                    false,
+                    2,
+                    "Tester".into(),
+                )),
                 Some(presentation),
             )
         };
@@ -409,11 +423,10 @@ mod tests {
             Ok(())
         });
 
-        let session = protocol::BedrockSession { shield_item_id: 0 };
         let expected = select_hotbar_slot_packet(42, 2, &equipment_stack).unwrap();
         assert_eq!(
-            protocol::encode(&sent.unwrap(), &session).unwrap(),
-            protocol::encode(&expected, &session).unwrap()
+            protocol::encode(&sent.unwrap()).unwrap(),
+            protocol::encode(&expected).unwrap()
         );
         assert_eq!(player_runtime.inventory.pending_hotbar_selection(), None);
         assert_eq!(fatal, None);
@@ -448,11 +461,10 @@ mod tests {
             Ok(())
         });
 
-        let session = protocol::BedrockSession { shield_item_id: 0 };
         let expected = select_hotbar_slot_packet(42, 2, &NetworkItemStack::empty()).unwrap();
         assert_eq!(
-            protocol::encode(&retried.unwrap(), &session).unwrap(),
-            protocol::encode(&expected, &session).unwrap()
+            protocol::encode(&retried.unwrap()).unwrap(),
+            protocol::encode(&expected).unwrap()
         );
         assert_eq!(player_runtime.inventory.pending_hotbar_selection(), None);
         assert_eq!(fatal, None);
@@ -596,13 +608,9 @@ mod tests {
             predicted_packet = Some(packet);
             Ok(())
         });
-        let session = protocol::BedrockSession { shield_item_id: 0 };
-        let predicted_bytes = protocol::encode(&predicted_packet.unwrap(), &session).unwrap();
+        let predicted_bytes = protocol::encode(&predicted_packet.unwrap()).unwrap();
         let empty_packet = select_hotbar_slot_packet(42, 0, &NetworkItemStack::empty()).unwrap();
-        assert_eq!(
-            predicted_bytes,
-            protocol::encode(&empty_packet, &session).unwrap()
-        );
+        assert_eq!(predicted_bytes, protocol::encode(&empty_packet).unwrap());
 
         runtime
             .inventory_ledger_mut(&mut player_runtime)
@@ -633,11 +641,11 @@ mod tests {
             restored_packet = Some(packet);
             Ok(())
         });
-        let restored_bytes = protocol::encode(&restored_packet.unwrap(), &session).unwrap();
+        let restored_bytes = protocol::encode(&restored_packet.unwrap()).unwrap();
         let authoritative_packet = select_hotbar_slot_packet(42, 0, &authoritative).unwrap();
         assert_eq!(
             restored_bytes,
-            protocol::encode(&authoritative_packet, &session).unwrap()
+            protocol::encode(&authoritative_packet).unwrap()
         );
         assert_eq!(fatal, None);
     }
@@ -729,11 +737,10 @@ mod tests {
             Ok(())
         });
         assert_eq!(sent.len(), 1);
-        let session = protocol::BedrockSession { shield_item_id: 0 };
         let expected = select_hotbar_slot_packet(42, 0, &predicted).unwrap();
         assert_eq!(
-            protocol::encode(&sent[0], &session).unwrap(),
-            protocol::encode(&expected, &session).unwrap()
+            protocol::encode(&sent[0]).unwrap(),
+            protocol::encode(&expected).unwrap()
         );
         assert_eq!(player_runtime.inventory.pending_hotbar_selection(), None);
         assert_eq!(fatal, None);

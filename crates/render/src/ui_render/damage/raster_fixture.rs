@@ -2,11 +2,9 @@
 
 use super::super::*;
 use crate::gpu_snapshot::Gpu;
-use crate::ui_render::{
-    self as ui,
-    pipeline::{
-        UiPipelineKey, UiPipelineSpecializer, ui_bind_group_layout, ui_pipeline_descriptor,
-    },
+use crate::ui_render as ui;
+use crate::ui_render::pipeline::{
+    UiPipelineKey, UiPipelineSpecializer, ui_bind_group_layout, ui_pipeline_descriptor,
 };
 use bevy::render::render_resource::Specializer;
 use wgpu::util::DeviceExt;
@@ -127,6 +125,11 @@ pub(super) fn target(gpu: &Gpu, depth: bool) -> wgpu::Texture {
 impl Raster {
     /// Skips only a missing native adapter; all shader, device and rendering errors remain failures.
     pub(super) fn new(input: &UiRenderInput) -> Option<Self> {
+        Self::with_glint(input, 0.0)
+    }
+
+    /// Uses the production shader with an explicit fixture shine intensity.
+    pub(super) fn with_glint(input: &UiRenderInput, strength: f32) -> Option<Self> {
         let gpu = Gpu::for_fixture("retained UI damage exact pixel parity")?;
         let entries = ui_bind_group_layout();
         let bindings = gpu
@@ -186,7 +189,7 @@ impl Raster {
         });
         let viewport = buffer(
             &gpu,
-            bytemuck::cast_slice(&[SIDE as f32, SIDE as f32, 0.0, 0.0]),
+            bytemuck::cast_slice(&[SIDE as f32, SIDE as f32, 0.0, strength]),
             wgpu::BufferUsages::UNIFORM,
         );
         let format = buffer(

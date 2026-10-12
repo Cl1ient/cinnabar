@@ -10,8 +10,7 @@ use bevy::{
 use bridge::CORE_START_TIMEOUT;
 use client_runtime::network::NetworkHandle;
 use client_runtime::session::{
-    begin_session, format_transfer_address, presence_target, release_off_frame,
-    transfer_handoff_address,
+    begin_session, format_transfer_address, release_off_frame, transfer_handoff_address,
 };
 use launcher_host::{
     core_process::{CoreProcessGuard, spawn_core_for_address},
@@ -19,21 +18,20 @@ use launcher_host::{
     session_cleanup::SessionDirectoryGuard,
 };
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::presence_target::presence_target;
+use client_shell::ui_resources::UiRuntimeResource;
 use {
-    crate::{
-        menu::{LauncherCoreSlot, MenuRuntime},
-        runtime::{
-            network::{CompiledStacks, session::NetworkConfig},
-            shutdown::record_fatal_error,
-            world::{ClientWorld, TransferNotice},
-        },
+    crate::runtime::{
+        network::{CompiledStacks, session::NetworkConfig},
+        shutdown::record_fatal_error,
+        world::{ClientWorld, TransferNotice},
     },
     client_interaction::movement::{LocalPhysicsController, MovementTicker},
     client_presentation::local_player::{
         InteractionOriginSnapshot, LocalPlayerFrameCarrier, LocalPlayerFrameReset,
     },
     client_runtime::pack_admission::ResourcePackAdmissionState,
+    client_shell::menu::{LauncherCoreSlot, MenuRuntime},
     client_state::PlayerRuntime,
 };
 
@@ -51,22 +49,7 @@ type BlobCache = client_runtime::blob_cache::ClientBlobCacheOwner;
 type JoinAttempt = client_session::connection::JoinAttempt<SessionDirectoryGuard>;
 pub(crate) type JoinStage = client_session::connection::JoinStage<SessionDirectoryGuard>;
 
-/// A join the menu asks the controller to make.
-#[derive(Debug)]
-pub(crate) struct JoinIntent {
-    pub(crate) address: String,
-    pub(crate) auth_cache: Option<PathBuf>,
-    /// Joins the launcher core's opened local world instead of `address`.
-    pub(crate) local_world: bool,
-}
-
-/// What the menu gates and renders of the session; only the controller writes it.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SessionStatus {
-    pub(crate) connecting: bool,
-    /// A session runtime directory is bound.
-    pub(crate) owns_directory: bool,
-}
+use client_state::{JoinIntent, SessionStatus};
 
 #[derive(Debug, Resource)]
 pub(crate) struct SessionController {
@@ -133,12 +116,21 @@ impl SessionController {
     }
 
     /// Stable selected destination, kept independent from invites and transient session ids.
+    #[cfg(feature = "local-mods")]
     pub(crate) fn destination_identity(&self) -> Option<&str> {
         self.destination_identity.as_deref()
     }
 
     pub(crate) fn presence_target(&self) -> Option<&rich_presence::Target> {
         self.presence.as_ref()
+    }
+
+    /// Endpoint directory of the live session core; unavailable during teardown.
+    #[cfg(feature = "local-mods")]
+    pub(crate) fn socket_directory(&self) -> Option<&std::path::Path> {
+        self.directory
+            .as_ref()
+            .map(SessionDirectoryGuard::directory)
     }
 
     pub(crate) fn status(&self) -> SessionStatus {
@@ -282,7 +274,7 @@ pub(crate) struct SessionResources<'w> {
     controller: ResMut<'w, SessionController>,
     network: ResMut<'w, NetworkHandle<PackApplication>>,
     resource_packs: ResMut<'w, ResourcePackAdmissionState>,
-    runtime: ResMut<'w, UiRuntime>,
+    runtime: ResMut<'w, UiRuntimeResource>,
     player_runtime: ResMut<'w, PlayerRuntime>,
     client_world: ResMut<'w, ClientWorld>,
     movement: ResMut<'w, MovementTicker>,
@@ -290,7 +282,7 @@ pub(crate) struct SessionResources<'w> {
     local_frame: ResMut<'w, LocalPlayerFrameCarrier>,
     interaction: ResMut<'w, InteractionOriginSnapshot>,
     launcher: Option<Res<'w, LauncherCoreSlot>>,
-    actor_artwork: Option<Res<'w, render::ActorArtworkPages>>,
+    actor_artwork: Option<Res<'w, render_scene::ActorArtworkResource>>,
     ui_catalog: Option<Res<'w, crate::runtime::network::PackUiCatalog>>,
     input: Option<Res<'w, client_state::SemanticInputSnapshot>>,
 }
@@ -485,7 +477,7 @@ fn poll_join(
                 socket_dir,
                 login_settings,
                 client_random_id,
-                session.actor_artwork.as_deref(),
+                session.actor_artwork.as_deref().map(|artwork| &artwork.0),
                 session.ui_catalog.as_deref(),
             ) {
                 if owned_core {
@@ -517,7 +509,7 @@ pub(crate) fn login_settings(
                 gameplay::mining::protocol_input_mode(snapshot.input_mode)
             }),
         gui_scale_offset: menu.gui_scale_offset(),
-        memory_tier: protocol::login_memory_tier(crate::global_resources::memory::physical_bytes()),
+        memory_tier: protocol::login_memory_tier(launcher_host::memory::physical_bytes()),
         graphics_mode: u8::from(menu.settings_snapshot().0.value("graphics_mode") != 0),
         filter_profanity: menu.settings_snapshot().0.value("filter_profanity") != 0,
         resource_pack_cache_dir: Some(menu.layout().resource_pack_cache_dir()),
@@ -537,7 +529,7 @@ fn start_network(
     socket_dir: PathBuf,
     login_settings: protocol::LoginSettings,
     client_random_id: protocol::ClientRandomId,
-    actor_artwork: Option<&render::ActorArtworkPages>,
+    actor_artwork: Option<&render_model::ActorArtworkPages>,
     ui_catalog: Option<&crate::runtime::network::PackUiCatalog>,
 ) -> Result<(), String> {
     let replacement = crate::runtime::network::session::spawn_network(NetworkConfig {
@@ -774,7 +766,7 @@ mod tests {
                 None,
                 "Direct".to_owned(),
                 layout,
-                crate::player_skin::LocalPlayerSkin::generated_default("Direct"),
+                client_shell::player_skin::LocalPlayerSkin::generated_default("Direct"),
             );
             let settings = login_settings(&menu, None);
             assert_eq!(settings.filter_profanity, filter_profanity);
@@ -796,7 +788,7 @@ mod tests {
             None,
             "Direct".to_owned(),
             layout,
-            crate::player_skin::LocalPlayerSkin::generated_default("Direct"),
+            client_shell::player_skin::LocalPlayerSkin::generated_default("Direct"),
         );
         let settings = login_settings(&menu, None);
         assert_eq!(settings.gui_scale_offset, -1);

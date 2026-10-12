@@ -67,7 +67,7 @@ pub(in crate::ui_runtime::presentation) fn anchor(name: &str) -> NametagAnchor {
 }
 
 fn scene(anchors: &[NametagAnchor]) -> NametagScene {
-    let font = super::super::tests::fixture_font();
+    let font = ui_engine::test_support::fixture_font();
     build_nametag_scene(
         anchors,
         &font,
@@ -102,19 +102,25 @@ fn tag_anchor_follows_the_same_interpolated_feet_as_the_rig() {
 }
 
 #[test]
-fn multiline_plate_spans_all_lines_and_every_line_is_independently_centered() {
+fn multiline_lines_get_their_own_centred_backgrounds_before_their_glyphs() {
     let anchor = anchor("AB\nA");
     let scene = scene(std::slice::from_ref(&anchor));
-    assert_eq!(scene.records.len(), 3);
-    assert_eq!(scene.see_through, 3);
-    let plate = scene.records[0];
-    assert_eq!(plate.color, PLATE_COLOR);
-    assert_eq!(plate.text, 0);
-    assert_eq!(plate.rect[1], -1.0);
-    assert_eq!(plate.rect[3], 2.0 * LINE_PITCH_PX - 1.0);
-    assert_eq!(scene.records[1].rect[1], 0.0);
-    assert_eq!(scene.records[2].rect[1], LINE_PITCH_PX);
-    assert!(scene.records[2].rect[0] > scene.records[1].rect[0]);
+    assert_eq!(scene.records.len(), 4);
+    assert_eq!(scene.see_through, 4);
+    let (plates, glyphs) = scene.records.split_at(2);
+    for (index, (plate, glyph)) in plates.iter().zip(glyphs).enumerate() {
+        assert_eq!(plate.color, PLATE_COLOR);
+        assert_eq!(plate.text, 0);
+        assert_eq!(plate.rect[0], glyph.rect[0] - 1.0);
+        assert_eq!(plate.rect[0], -plate.rect[2]);
+        assert_eq!(plate.rect[1], NAMETAG_LINE_PITCH_PX * index as f32 - 1.0);
+        assert_eq!(plate.rect[3], plate.rect[1] + NAMETAG_LINE_PITCH_PX);
+        assert_eq!(glyph.rect[1], NAMETAG_LINE_PITCH_PX * index as f32);
+    }
+    assert!(
+        plates[1].rect[0] > plates[0].rect[0],
+        "the shorter line's background is narrower"
+    );
     assert!(
         scene
             .records
@@ -128,7 +134,7 @@ fn multiline_plate_spans_all_lines_and_every_line_is_independently_centered() {
             .all(|record| record.line_lift == EXTRA_LINE_LIFT)
     );
     assert!(
-        scene.records[1..]
+        glyphs
             .iter()
             .all(|record| record.text == 1 && record.color == [1.0; 4])
     );
@@ -266,4 +272,91 @@ fn coincident_eye_skips_only_the_degenerate_actor() {
         )
         .is_none()
     );
+}
+
+#[test]
+fn cosmetic_shadow_and_border_preserve_native_depth_partition_and_record_bound() {
+    let plate = NametagRecord {
+        uv: [0., 0., -1., -1.],
+        rect: [-2., -1., 2., 9.],
+        ..Default::default()
+    };
+    let text = NametagRecord {
+        uv: [0., 0., 1., 1.],
+        text: 1,
+        rect: [-1., 0., 1., 8.],
+        color: [1., 1., 1., 0.125],
+        ..Default::default()
+    };
+    let mut scene = NametagScene {
+        records: vec![plate, text, plate, text],
+        see_through: 2,
+        ..Default::default()
+    };
+    let style: ui::mod_hud::NametagStyle = serde_json::from_value(
+        serde_json::json!({"scale":2.,"shadow":true,"border_color":[1.,1.,1.,1.]}),
+    )
+    .unwrap();
+    style_scene(&mut scene, &style, None);
+    assert_eq!(scene.see_through, 7);
+    assert_eq!(scene.records.len(), 14);
+    assert_eq!(
+        scene.records[6].color[3], 0.125,
+        "sneaking alpha survives cosmetic styling"
+    );
+    let mut hidden = style;
+    hidden.hide = true;
+    style_scene(&mut scene, &hidden, None);
+    assert!(scene.records.is_empty());
+    assert_eq!(scene.see_through, 0);
+}
+
+#[test]
+fn own_tag_color_and_border_width_preserve_other_tags() {
+    let plate = NametagRecord {
+        rect: [-2., -1., 2., 9.],
+        uv: [0., 0., -1., -1.],
+        ..Default::default()
+    };
+    let glyph = NametagRecord {
+        anchor: [1., 2., 3.],
+        color: [1., 1., 1., 0.125],
+        ..Default::default()
+    };
+    let remote = NametagRecord {
+        anchor: [4., 5., 6.],
+        ..glyph
+    };
+    let mut scene = NametagScene {
+        records: vec![plate, glyph, remote],
+        ..Default::default()
+    };
+    let style: ui::mod_hud::NametagStyle = serde_json::from_value(serde_json::json!({"border_width":3.,"border_color":[1.,1.,1.,1.],"text_color":[0.,1.,0.,1.],"own_text_color":[1.,0.,0.,1.]})).unwrap();
+    style_scene(&mut scene, &style, Some([1., 2., 3.]));
+    assert_eq!(scene.records[0].rect, [-5., -4., 5., -1.]);
+    assert_eq!(scene.records[5].color, [1., 0., 0., 0.125]);
+    assert_eq!(scene.records[6].color, [0., 1., 0., 0.125]);
+}
+
+/// Replacement removes a formatted tint, while opacity still preserves native sneaking alpha.
+#[test]
+fn replacement_and_default_text_opacity_preserve_native_coverage() {
+    let glyph = NametagRecord {
+        anchor: [1., 2., 3.],
+        color: [0., 1., 0., 0.125],
+        uv: [0., 0., 1., 1.],
+        ..Default::default()
+    };
+    let remote = NametagRecord {
+        anchor: [4., 5., 6.],
+        ..glyph
+    };
+    let mut scene = NametagScene {
+        records: vec![glyph, remote],
+        ..Default::default()
+    };
+    let style: ui::mod_hud::NametagStyle = serde_json::from_value(serde_json::json!({"opacity":0.5,"own_text_color":[1.,0.,0.,1.],"replace_own_text_color":true})).unwrap();
+    style_scene(&mut scene, &style, Some(glyph.anchor));
+    assert_eq!(scene.records[0].color, [1., 0., 0., 0.0625]);
+    assert_eq!(scene.records[1].color, [0., 1., 0., 0.0625]);
 }

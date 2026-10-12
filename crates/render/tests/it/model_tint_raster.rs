@@ -15,7 +15,7 @@ const TEXTURE_SIDE: u32 = 4;
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct TintRow {
     packed: [u32; 8],
-    seasonal: [[f32; 4]; assets::SEASONAL_FOLIAGE_COUNT],
+    seasonal: [[f32; 4]; assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT],
 }
 
 /// Covers uniform fast paths, the full lattice and direct seasonal-biome lookup.
@@ -389,7 +389,7 @@ fn model_tint_pixels_match_fragment_biome_reference() {
     atmosphere[20] = 180.0;
     let atmosphere = gpu.buffer(&atmosphere, uniform);
     let lightmap = gpu.buffer(
-        bytemuck::cast_slice(&render::LightmapInputs::default().build()),
+        bytemuck::cast_slice(&render_model::LightmapInputs::default().build()),
         uniform,
     );
     let atlas = atlas(&gpu);

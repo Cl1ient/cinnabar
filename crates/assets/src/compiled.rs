@@ -1,3 +1,5 @@
+pub mod block_destroy;
+
 use crate::{
     Animation, BlockFlags, CompiledBiomeAssets, ContributorRole, LightProperties, ModelQuad,
     ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TexturePage, TextureRef, VisualKind,
@@ -183,18 +185,22 @@ const _: () = assert!(std::mem::size_of::<Material>() == 24);
 pub struct BlockVisual {
     pub faces: [u32; 6],
     pub flags: BlockFlags,
+    /// Resolved solid/liquid material facts, independent of visual support.
+    pub native_material: crate::native_material::NativeMaterialFacts,
     pub kind: VisualKind,
     pub support: VisualSupport,
     pub contributor_role: ContributorRole,
     pub model_template: u32,
     pub animation: u32,
     pub variant: u32,
+    pub destroy: block_destroy::BlockDestroyFacts,
 }
 
 impl BlockVisual {
     #[must_use]
     pub fn diagnostic(flags: BlockFlags, contributor_role: ContributorRole) -> Self {
         Self {
+            native_material: crate::native_material::NativeMaterialFacts::Unresolved,
             faces: [DIAGNOSTIC_MATERIAL; 6],
             flags,
             kind: VisualKind::Diagnostic,
@@ -203,6 +209,7 @@ impl BlockVisual {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 }

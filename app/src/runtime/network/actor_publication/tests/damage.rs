@@ -7,7 +7,7 @@ use std::time::Duration;
 struct DamageAtUiPreparation(Option<client_world::ActorDamageState>);
 
 /// Captures the damage snapshot consumed by this frame's UI preparation.
-fn observe_damage(ui: Res<UiRuntime>, mut damage: ResMut<DamageAtUiPreparation>) {
+fn observe_damage(ui: Res<UiRuntimeResource>, mut damage: ResMut<DamageAtUiPreparation>) {
     damage.0 = ui.local_actor_damage();
 }
 
@@ -27,8 +27,8 @@ fn actor_damage_publication_advances_before_ui_and_clears_with_the_stream() {
         .unwrap();
     let mut world = custom_emotes::fixture();
     world.init_resource::<DamageAtUiPreparation>();
-    world.init_resource::<render::ActorRenderFrame>();
-    world.init_resource::<render::ActorRuntimeWitness>();
+    world.init_resource::<render_scene::ActorRenderFrame>();
+    world.init_resource::<render_scene::ActorRuntimeWitness>();
     {
         let mut client = world.resource_mut::<ClientWorld>();
         let stream = client.stream.as_mut().unwrap();
@@ -76,7 +76,7 @@ fn hud_health_uses_the_actors_attribute_range_after_a_health_packet() {
             WorldEvent::Ui(UiEvent::Hud(HudEvent::Health { health: 40 })),
         )
         .unwrap();
-    world.resource_scope(|world, mut ui: Mut<UiRuntime>| {
+    world.resource_scope(|world, mut ui: Mut<UiRuntimeResource>| {
         let mut player = world.resource_mut::<client_state::PlayerRuntime>();
         ui.apply(
             &mut player,
@@ -100,7 +100,11 @@ fn hud_health_uses_the_actors_attribute_range_after_a_health_packet() {
         .actor(1)
         .unwrap()
         .attributes["minecraft:health"];
-    let displayed = world.resource::<UiRuntime>().hud().health().unwrap();
+    let displayed = world
+        .resource::<UiRuntimeResource>()
+        .hud()
+        .health()
+        .unwrap();
     assert_eq!(
         f32::from(displayed.current()) / f32::from(displayed.scale()),
         actor_health.current
@@ -140,10 +144,13 @@ fn local_actor_life_state_preserves_health_below_hud_precision_and_retires_with_
         )
         .unwrap();
     world.run_system_cached(publish_local_actor_damage).unwrap();
-    let ui = world.resource::<UiRuntime>();
+    let ui = world.resource::<UiRuntimeResource>();
     assert_eq!(ui.hud().health().unwrap().current(), 0);
     assert_eq!(ui.local_player_alive(), Some(true));
     world.resource_mut::<ClientWorld>().stream = None;
     world.run_system_cached(publish_local_actor_damage).unwrap();
-    assert_eq!(world.resource::<UiRuntime>().local_player_alive(), None);
+    assert_eq!(
+        world.resource::<UiRuntimeResource>().local_player_alive(),
+        None
+    );
 }

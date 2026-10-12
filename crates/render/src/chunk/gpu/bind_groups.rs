@@ -2,6 +2,13 @@ use super::resource_geometry::PreparedResourceGeometry;
 use crate::chunk::*;
 use bevy::color::ColorToPacked;
 
+use render_scene::{
+    BiomeTint, ChunkAnimationClock, ChunkBiomeTints, ChunkRenderInstance,
+    ChunkTextureAssetIdentity, ChunkTextureAssets, ChunkTextureReload, TextureArrayLimits,
+    TextureMipUploadPlan, TextureUploadPlanError, diagnostic_texture_page,
+    plan_texture_mip_uploads, plan_texture_page_bindings, texture_asset_needs_rebuild,
+};
+
 #[cfg(test)]
 mod water_tint_tests;
 
@@ -44,10 +51,9 @@ pub(in crate::chunk) struct AnimationGpu {
     pub(in crate::chunk) frame_count: u32,
     pub(in crate::chunk) ticks_per_frame: u32,
     pub(in crate::chunk) flags: u32,
-    pub(in crate::chunk) uv_scale: f32,
 }
 
-const _: () = assert!(std::mem::size_of::<AnimationGpu>() == 5 * 4);
+const _: () = assert!(std::mem::size_of::<AnimationGpu>() == 4 * 4);
 
 #[repr(C, align(16))]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -60,11 +66,14 @@ pub(in crate::chunk) struct BiomeTintGpu {
     pub(in crate::chunk) water: u32,
     pub(in crate::chunk) flags: u32,
     pub(in crate::chunk) water_opacity: f32,
-    pub(in crate::chunk) seasonal_foliage: [[f32; 4]; assets::SEASONAL_FOLIAGE_COUNT],
+    pub(in crate::chunk) seasonal_foliage:
+        [[f32; 4]; assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT],
 }
 
-const _: () =
-    assert!(std::mem::size_of::<BiomeTintGpu>() == 8 * 4 + assets::SEASONAL_FOLIAGE_COUNT * 16);
+const _: () = assert!(
+    std::mem::size_of::<BiomeTintGpu>()
+        == 8 * 4 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 16
+);
 
 pub(in crate::chunk) fn pack_linear_rgb10(rgb: [f32; 3]) -> u32 {
     let component = |value: f32| {
@@ -236,7 +245,10 @@ pub struct ChunkTextureUploadStats {
 pub(in crate::chunk) fn prepare_chunk_texture_assets(
     mut commands: Commands,
     instances: Query<(Entity, &ChunkRenderInstance)>,
-    views: Query<(Entity, &ExtractedView, Has<crate::EnhancedRendering>), With<ExtractedCamera>>,
+    views: Query<
+        (Entity, &ExtractedView, Has<render_scene::EnhancedRendering>),
+        With<ExtractedCamera>,
+    >,
     mut arena: ResMut<ChunkGpuArena>,
     assets: Res<ChunkTextureAssets>,
     render_device: Res<RenderDevice>,
@@ -444,7 +456,6 @@ fn build_chunk_texture_assets(
             frame_count: animation.frame_count,
             ticks_per_frame: animation.ticks_per_frame,
             flags: animation.flags,
-            uv_scale: 1.0 / animation.replicate as f32,
         })
         .collect::<Vec<_>>();
     let animation_frame_words = assets
@@ -491,7 +502,6 @@ fn build_chunk_texture_assets(
         frame_count: 1,
         ticks_per_frame: 1,
         flags: 0,
-        uv_scale: 1.0,
     }];
     let animation_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("global chunk animations"),

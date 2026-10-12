@@ -6,13 +6,16 @@ use protocol::{
 };
 
 use gameplay::mining::FrozenMiningSelection;
+use protocol::test_support::transactions::{ReleaseAction, TransactionBody};
 use protocol::{NetworkItemStack, VerifiedNetworkItemStack};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use {
     super::*,
-    gameplay::item_use::{AirUse, UseFrame, classify},
+    gameplay::item_use::{AirUse, UseFrame},
 };
+
+use gameplay::item_use::fixtures::classify;
 
 const BOW: i32 = 300;
 
@@ -106,6 +109,7 @@ fn fixture(
                 network_id,
                 component_based: false,
                 version: ItemRegistryVersion::Legacy,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: None,
                 canonical_empty_component_data: true,
@@ -246,7 +250,7 @@ fn offhand_projectile_precedes_inventory_and_only_creative_synthesizes_ammo() {
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, true),
-        Some("minecraft:arrow")
+        Some(assets::item_use::ItemProjectileRole::Arrow)
     );
     publish(
         &mut player_runtime,
@@ -258,7 +262,7 @@ fn offhand_projectile_precedes_inventory_and_only_creative_synthesizes_ammo() {
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:arrow")
+        Some(assets::item_use::ItemProjectileRole::Arrow)
     );
     let offhand = ContainerIdentity {
         window_id: None,
@@ -268,16 +272,16 @@ fn offhand_projectile_precedes_inventory_and_only_creative_synthesizes_ammo() {
     publish(&mut player_runtime, &mut ui, 3, offhand, 0, stack(FIREWORK));
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:firework_rocket")
+        Some(assets::item_use::ItemProjectileRole::Firework)
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, true),
-        Some("minecraft:firework_rocket")
+        Some(assets::item_use::ItemProjectileRole::Firework)
     );
     publish(&mut player_runtime, &mut ui, 4, offhand, 0, stack(ARROW));
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:arrow")
+        Some(assets::item_use::ItemProjectileRole::Arrow)
     );
 }
 
@@ -333,7 +337,7 @@ fn normal_transaction_clears_loaded_prediction_and_retains_charged_nbt_and_offha
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:firework_rocket")
+        Some(assets::item_use::ItemProjectileRole::Firework)
     );
     assert_eq!(ui.gameplay_hud().offhand_stack(), Some(&stack(FIREWORK)));
     ui.enqueue_inventory_event(
@@ -367,13 +371,16 @@ fn kinds(outcome: &gameplay::item_use::UseOutcome) -> Vec<&'static str> {
         .packets
         .iter()
         .map(|packet| {
-            let debug = format!("{:?}", packet.data);
-            if debug.contains("ItemUseInventoryTransaction(") {
-                "use"
-            } else if debug.contains("action_type: Release") {
-                "release"
-            } else {
-                "other"
+            match protocol::test_support::transactions::observe_transaction(packet)
+                .map(|transaction| transaction.body)
+            {
+                Some(TransactionBody::ItemUse(_)) => "use",
+                Some(TransactionBody::Release(release))
+                    if release.action == ReleaseAction::Release =>
+                {
+                    "release"
+                }
+                _ => "other",
             }
         })
         .collect()

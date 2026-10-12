@@ -54,13 +54,13 @@ use client_presentation::server_camera::{ServerCameraInstructions, drain_committ
 use client_ui::block_cracks::reconcile_world_block_cracks;
 use meshing::CameraMedium;
 use protocol::BlobCacheStats;
-use render::{
+use render_scene::{
     ChunkBiomeTints, ChunkRenderQueue, ChunkUploadAcknowledgements, ChunkUploadBudget,
     ChunkUploadPriority, ChunkUploadToken, RuntimeStage, RuntimeStageProfiler,
     VisibilityDiagnosticsInput,
 };
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 use {
     crate::{
         environment::{self, WeatherState, WorldClock, apply_environment_control},
@@ -189,7 +189,7 @@ pub(crate) struct AppWorldState<'w> {
     pub(crate) movement_effects: ResMut<'w, LocalMovementEffectTimeline>,
     pub(crate) movement_speed: ResMut<'w, LocalMovementSpeedAuthority>,
     pub(crate) collisions: ResMut<'w, PhysicsCollisionRegistries>,
-    pub(crate) ui_runtime: ResMut<'w, UiRuntime>,
+    pub(crate) ui_runtime: ResMut<'w, UiRuntimeResource>,
     pub(crate) time: Res<'w, Time<Real>>,
 }
 
@@ -217,7 +217,7 @@ pub(crate) fn update_camera_medium(
     mut medium: ResMut<environment::CameraMediumState>,
     mut context: ResMut<environment::EnvironmentContext>,
     mut fog_bindings: ResMut<environment::FogBindings>,
-    atmosphere: Res<render::AtmosphereTextureAssets>,
+    atmosphere: Res<render_scene::AtmosphereTextureAssets>,
 ) {
     let Some((stream, camera)) = client_world.stream.as_ref().zip(camera.single().ok()) else {
         medium.0 = CameraMedium::Air;
@@ -317,10 +317,18 @@ pub(crate) fn reconcile_world_stream_before_physics(
     mut server_camera: ResMut<ServerCameraInstructions>,
     mut camera_hurt: Option<ResMut<client_presentation::camera::CameraHurtState>>,
     mut particle_inbox: Option<ResMut<crate::particles::ParticleInbox>>,
-    (visibility_diagnostics, profiler, mut player_runtime): (
+    (
+        visibility_diagnostics,
+        profiler,
+        mut player_runtime,
+        server_camera_view,
+        mut correction_log,
+    ): (
         Option<Res<VisibilityDiagnosticsInput>>,
         Option<Res<RuntimeStageProfiler>>,
         ResMut<client_state::PlayerRuntime>,
+        Option<Res<client_presentation::camera::ServerCameraView>>,
+        Local<gameplay::movement::CorrectionContextLog>,
     ),
 ) {
     let _timer = profiler
@@ -433,6 +441,20 @@ pub(crate) fn reconcile_world_stream_before_physics(
             continue;
         }
         gameplay::movement::trace_server_control(&movement, &local_physics, &control);
+        if let Some(packet) = gameplay::movement::CorrectionPacket::from_control(&control) {
+            let camera = server_camera_view.as_deref();
+            correction_log.note(
+                movement.session_generation(),
+                std::time::Instant::now(),
+                packet,
+                gameplay::movement::CorrectionContext::read(
+                    &player_runtime.facts,
+                    movement.physics_is_authorized(),
+                    camera.and_then(|camera| camera.active_preset_name()),
+                    camera.is_some_and(|camera| camera.has_pose_override()),
+                ),
+            );
+        }
         if let CommittedControlEvent::LocalMovementFlags { tick, flags, .. } = control {
             let previous = player_runtime.facts.is_immobile();
             player_runtime

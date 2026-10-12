@@ -48,6 +48,8 @@ type Config struct {
 	Selector *UpstreamSelector
 	// OnDisconnect receives the server's disconnect reason, before or during a session.
 	OnDisconnect func(DisconnectInfo)
+	// NetworkObservation supplies the active upstream transport estimator.
+	NetworkObservation func(NetworkObservation)
 	// LocalTarget, when set, is asked per connection for a local server address; ok=false
 	// falls back to Upstream. Upstream may then be empty.
 	LocalTarget LocalTargetFunc
@@ -106,6 +108,7 @@ func Serve(ctx context.Context, cfg Config) (err error) {
 		prepared:     prepared,
 		transfers:    transfers,
 		onDisconnect: cfg.OnDisconnect,
+		onNetwork:    cfg.NetworkObservation,
 		selectTarget: cfg.SessionTarget,
 		device:       cfg.Device,
 		dialTarget:   dial,
@@ -188,6 +191,7 @@ func connectUpstream(
 			err = errors.Join(err, finishPreparedResources(owned, nil))
 		}
 	}()
+	started := time.Now()
 	logger.Info("upstream connection starting", "target", address, "authentication", authentication)
 	upstream, err := dialFollowingTransfers(ctx, address, dial)
 	if err != nil {
@@ -195,7 +199,7 @@ func connectUpstream(
 		return nil, err
 	}
 	owned = upstream
-	logger.Info("upstream connected", "target", address, "authentication", authentication)
+	logger.Info("upstream connected", "target", address, "authentication", authentication, "elapsed_ms", time.Since(started).Milliseconds())
 	result = upstream
 	owned = nil
 	return result, nil

@@ -104,6 +104,7 @@ fn custom_compound_cracks_follow_each_admitted_column_displacement() {
     };
     let overlay = assets::BlockOverlay {
         visuals: vec![assets::BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: assets::BlockFlags::empty(),
             kind: assets::VisualKind::Model,
@@ -112,6 +113,7 @@ fn custom_compound_cracks_follow_each_admitted_column_displacement() {
             model_template: 0,
             animation: assets::NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }],
         light_properties: vec![assets::LightProperties::default()],
         materials: vec![assets::Material {
@@ -183,6 +185,7 @@ fn custom_compound_cracks_follow_each_admitted_column_displacement() {
 fn overlay_surface(height: i16) -> Arc<assets::RuntimeAssets> {
     let overlay = assets::BlockOverlay {
         visuals: vec![assets::BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: assets::BlockFlags::empty(),
             kind: assets::VisualKind::Model,
@@ -191,6 +194,7 @@ fn overlay_surface(height: i16) -> Arc<assets::RuntimeAssets> {
             model_template: 0,
             animation: assets::NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }],
         light_properties: vec![assets::LightProperties::default()],
         materials: vec![assets::Material {

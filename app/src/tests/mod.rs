@@ -18,10 +18,6 @@ use protocol::{
     LevelChunkMode, PlayerMovementCorrectionEvent, PlayerSkin, SubChunkBatchEvent,
     SubChunkEntryEvent, SubChunkResult, WorldBootstrap, WorldEvent,
 };
-use render::{
-    ChunkBiomeTints, ChunkRenderApplySet, ChunkRenderPlugin, ChunkRenderQueue, ChunkUploadPriority,
-    PresentedFrameAck, RenderViewCohort, TargetRenderExpectation, VisibilityDiagnosticsInput,
-};
 use render_api::StandardSkin;
 use render_model::{
     GraphicsAdapterMetadata, OpaqueDrawMode, VisibilityDiagnosticSnapshot, VisibilityKeyDigest,
@@ -32,6 +28,13 @@ use std::{
     time::{Duration, Instant},
 };
 use world::{ChunkKey, LightSolveError, SubChunkKey};
+use {
+    render::ChunkRenderPlugin,
+    render_scene::{
+        ChunkBiomeTints, ChunkRenderApplySet, ChunkRenderQueue, ChunkUploadPriority,
+        PresentedFrameAck, RenderViewCohort, TargetRenderExpectation, VisibilityDiagnosticsInput,
+    },
+};
 
 fn actor_snapshot(spawn: protocol::ActorSpawnEvent) -> client_world::ActorSnapshot {
     let runtime = spawn.runtime_id;
@@ -303,7 +306,6 @@ fn binding_teleport_completion(
 pub(crate) mod actor_frame_allocations;
 mod actor_pack_publication;
 pub(crate) mod actor_rest_presentation;
-pub(crate) mod alloc_count;
 mod audio;
 mod audio_camera;
 mod camera;
@@ -344,7 +346,7 @@ pub(crate) fn with_ui_player<T>(
     app.world_mut()
         .resource_scope(|world, mut player: bevy::prelude::Mut<PlayerRuntime>| {
             command(
-                &mut world.resource_mut::<client_ui::ui_runtime::UiRuntime>(),
+                &mut world.resource_mut::<client_shell::ui_resources::UiRuntimeResource>(),
                 &mut player,
             )
         })

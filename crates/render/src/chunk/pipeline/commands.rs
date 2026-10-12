@@ -2,6 +2,7 @@ use crate::chunk::transparent::liquid::{
     transparent_frame_draw_for_range, transparent_frame_draws,
 };
 use crate::chunk::*;
+use render_scene::TransparentSortMetrics;
 
 pub(in crate::chunk) fn drawable_allocation_identity(
     frame_probe: &FrameProbeScope<'_>,
@@ -95,94 +96,6 @@ pub(in crate::chunk) fn prepare_depth_liquid_indirect_batch_draws<'a>(
     (commands, drawn)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(in crate::chunk) fn prepare_chunk_indirect_batches(
-    render_device: Res<RenderDevice>,
-    render_queue: Res<RenderQueue>,
-    allocations: Query<&GpuChunkAllocation>,
-    biome_tints: Res<ChunkBiomeTints>,
-    frame_probe: Res<ActiveFrameProbe>,
-    mut solid_batches: ResMut<super::solid::ChunkSolidIndirectBatches>,
-    mut batches: ResMut<ChunkIndirectBatches>,
-    mut model_batches: ResMut<ChunkModelIndirectBatches>,
-    mut depth_liquid_batches: ResMut<ChunkDepthLiquidIndirectBatches>,
-    mut arena: ResMut<ChunkGpuArena>,
-    profiler: Option<Res<RuntimeStageProfiler>>,
-) {
-    let _timer = profiler
-        .as_deref()
-        .map(|profiler| profiler.time(RuntimeStage::IndirectPreparation));
-    let frame_probe = frame_probe.scope();
-    let mut all_commands = Vec::new();
-    let tint_identity = biome_tints.table_identity();
-    // Solid runs go first so the alpha-tested cutout draws meet a filled depth buffer.
-    for batch in solid_batches.0.values_mut() {
-        let draws = super::solid::prepare_solid_indirect_batch_draws(
-            resident(&batch.cubes.visible_entities, &allocations),
-            batch.camera,
-            &frame_probe,
-            tint_identity,
-        );
-        append_indirect_batch(&mut batch.cubes, draws, &mut all_commands);
-    }
-    for batch in batches.0.values_mut() {
-        let draws = prepare_indirect_batch_draws(
-            resident(&batch.visible_entities, &allocations),
-            &frame_probe,
-            tint_identity,
-        );
-        append_indirect_batch(batch, draws, &mut all_commands);
-    }
-    for batch in model_batches.0.values_mut() {
-        let draws = prepare_model_indirect_batch_draws(
-            resident(&batch.visible_entities, &allocations),
-            &frame_probe,
-            tint_identity,
-        );
-        append_indirect_batch(batch, draws, &mut all_commands);
-    }
-    for batch in depth_liquid_batches.0.values_mut() {
-        let draws = prepare_depth_liquid_indirect_batch_draws(
-            resident(&batch.visible_entities, &allocations),
-            &frame_probe,
-            tint_identity,
-        );
-        append_indirect_batch(batch, draws, &mut all_commands);
-    }
-
-    if all_commands.is_empty() {
-        return;
-    }
-    upload_indirect_commands_if_changed(&mut arena, &render_device, &render_queue, &all_commands);
-}
-
-fn resident<'a>(
-    entities: &'a [Entity],
-    allocations: &'a Query<&GpuChunkAllocation>,
-) -> impl Iterator<Item = (Entity, &'a GpuChunkAllocation)> {
-    entities
-        .iter()
-        .filter_map(|&entity| allocations.get(entity).ok().map(|item| (entity, item)))
-}
-
-fn append_indirect_batch(
-    batch: &mut ChunkIndirectBatch,
-    (commands, drawn): (
-        Vec<DrawIndexedIndirectArgs>,
-        Vec<(Entity, FrameAllocationIdentity)>,
-    ),
-    all_commands: &mut Vec<DrawIndexedIndirectArgs>,
-) {
-    batch.drawn_allocations = drawn;
-    batch.indirect_offset = all_commands.len() as u64 * INDEXED_INDIRECT_BYTES;
-    let Ok(command_count) = u32::try_from(commands.len()) else {
-        batch.command_count = 0;
-        return;
-    };
-    batch.command_count = command_count;
-    all_commands.extend(commands);
-}
-
 /// Writes the frame's indirect commands unless the buffer already holds exactly
 /// these bytes; returns the bytes written.
 pub(in crate::chunk) fn upload_indirect_commands_if_changed(
@@ -251,7 +164,7 @@ pub(in crate::chunk) fn front_to_back_cube_entities(
 mod order_tests;
 
 pub(in crate::chunk) type DrawChunkCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainCutout as usize },
+    { render_scene::RuntimeStage::GpuTerrainCutout as usize },
     (
         crate::chunk::gpu_cull::SkipOccludedTerrain,
         SetItemPipeline,
@@ -261,7 +174,7 @@ pub(in crate::chunk) type DrawChunkCommands = crate::gpu_timing::GpuDrawSpan<
     ),
 >;
 pub(in crate::chunk) type DrawChunkIndirectCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainCutout as usize },
+    { render_scene::RuntimeStage::GpuTerrainCutout as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -270,7 +183,7 @@ pub(in crate::chunk) type DrawChunkIndirectCommands = crate::gpu_timing::GpuDraw
     ),
 >;
 pub(in crate::chunk) type DrawModelCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainModel as usize },
+    { render_scene::RuntimeStage::GpuTerrainModel as usize },
     (
         crate::chunk::gpu_cull::SkipOccludedTerrain,
         SetItemPipeline,
@@ -280,7 +193,7 @@ pub(in crate::chunk) type DrawModelCommands = crate::gpu_timing::GpuDrawSpan<
     ),
 >;
 pub(in crate::chunk) type DrawModelIndirectCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainModel as usize },
+    { render_scene::RuntimeStage::GpuTerrainModel as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -289,7 +202,7 @@ pub(in crate::chunk) type DrawModelIndirectCommands = crate::gpu_timing::GpuDraw
     ),
 >;
 pub(in crate::chunk) type DrawTransparentModelCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainTransparent as usize },
+    { render_scene::RuntimeStage::GpuTerrainTransparent as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -298,7 +211,7 @@ pub(in crate::chunk) type DrawTransparentModelCommands = crate::gpu_timing::GpuD
     ),
 >;
 pub(in crate::chunk) type DrawDepthLiquidCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainDepthLiquid as usize },
+    { render_scene::RuntimeStage::GpuTerrainDepthLiquid as usize },
     (
         crate::chunk::gpu_cull::SkipOccludedTerrain,
         SetItemPipeline,
@@ -308,7 +221,7 @@ pub(in crate::chunk) type DrawDepthLiquidCommands = crate::gpu_timing::GpuDrawSp
     ),
 >;
 pub(in crate::chunk) type DrawDepthLiquidIndirectCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainDepthLiquid as usize },
+    { render_scene::RuntimeStage::GpuTerrainDepthLiquid as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -317,7 +230,7 @@ pub(in crate::chunk) type DrawDepthLiquidIndirectCommands = crate::gpu_timing::G
     ),
 >;
 pub(in crate::chunk) type DrawTransparentLiquidCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainTransparent as usize },
+    { render_scene::RuntimeStage::GpuTerrainTransparent as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -326,7 +239,7 @@ pub(in crate::chunk) type DrawTransparentLiquidCommands = crate::gpu_timing::Gpu
     ),
 >;
 pub(in crate::chunk) type DrawTransparentLiquidDirectCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainTransparent as usize },
+    { render_scene::RuntimeStage::GpuTerrainTransparent as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -335,7 +248,7 @@ pub(in crate::chunk) type DrawTransparentLiquidDirectCommands = crate::gpu_timin
     ),
 >;
 pub(in crate::chunk) type DrawTransparentLiquidIndirectCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainTransparent as usize },
+    { render_scene::RuntimeStage::GpuTerrainTransparent as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,

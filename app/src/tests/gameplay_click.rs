@@ -5,6 +5,7 @@ use bevy::{
     time::{Real, Time},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window},
 };
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use client_state::PlayerRuntime;
 use semantic_input::Action;
 
@@ -14,7 +15,6 @@ use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
 use {
     crate::{
         app::configure_client_frame_schedule,
-        menu::{MenuClipboard, MenuRuntime, drive_menu_input},
         runtime::world::ClientWorld,
         semantic_controls::{
             collect_raw_input, finalize_semantic_input_after_ui_authority, route_semantic_input,
@@ -26,9 +26,9 @@ use {
             drive_world_inventory_keys, gameplay_touch::drive_gameplay_touch_targets,
         },
     },
-    client_state::RuntimeSettings,
-    client_state::{ClientFrameSet, SemanticInputSnapshot},
-    client_ui::test_support::fixture_font,
+    client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
+    client_state::{ClientFrameSet, RuntimeSettings, SemanticInputSnapshot},
+    ui_engine::test_support::fixture_font,
 };
 
 /// Builds the production input chain with a focused gameplay window.
@@ -60,7 +60,7 @@ pub(crate) fn gameplay_app(menu_visible: bool) -> App {
                 drive_menu_input,
                 drive_inventory_ui_actions,
                 // Connection and store drivers own no input and are left out.
-                crate::menu::screen_focus::publish_screen_focus,
+                client_shell::menu::screen_focus::publish_screen_focus,
                 synchronize_semantic_input_authority,
                 drive_world_inventory_keys,
             )
@@ -105,9 +105,11 @@ pub(crate) fn gameplay_app(menu_visible: bool) -> App {
         .init_resource::<client_presentation::local_player::LocalPlayerFrameCarrier>()
         .init_resource::<client_presentation::local_player::InteractionOriginSnapshot>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(UiPresentationRuntime::new(fixture_font()).unwrap())
+        .insert_resource(UiPresentationResource(
+            UiPresentationRuntime::new(fixture_font()).unwrap(),
+        ))
         .insert_resource(MenuRuntime::new(menu_visible, 2, "Tester".to_owned()));
     app.world_mut().spawn((
         Window {

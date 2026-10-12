@@ -49,6 +49,7 @@ fn terrain_assets() -> RuntimeAssets {
     let mut texture = base.texture_array().clone();
     texture.layers = 1;
     let visual = |material| BlockVisual {
+        native_material: assets::native_material::NativeMaterialFacts::Unresolved,
         faces: [material; 6],
         flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
         kind: VisualKind::Cube,
@@ -57,6 +58,7 @@ fn terrain_assets() -> RuntimeAssets {
         model_template: NO_MODEL_TEMPLATE,
         animation: NO_ANIMATION,
         variant: 0,
+        destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
     };
     let material = Material {
         texture: TextureRef::new(1, 0).unwrap(),

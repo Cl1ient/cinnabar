@@ -234,7 +234,7 @@ impl UiPresentationRuntime {
                     .or_insert(*icon);
             }
         }
-        bevy::log::info!(
+        tracing::info!(
             models = models.len(),
             source_pages = pages.len(),
             "native GUI item geometry prepared"
@@ -307,17 +307,22 @@ impl UiPresentationRuntime {
         };
         let armor = std::array::from_fn(|slot| {
             let texture = self.player_preview_gear.armor[slot].as_ref()?;
-            self.gui_models.pack_equipment.region(slot).or_else(|| {
-                let key = atlas::key([texture.width, texture.height], &texture.rgba);
-                self.gui_models.textures.get(&key).copied()
-            })
+            self.gui_models
+                .pack_equipment
+                .region(slot)
+                .or_else(|| {
+                    let key = atlas::key([texture.width, texture.height], &texture.rgba);
+                    self.gui_models.textures.get(&key).copied()
+                })
+                .map(|icon| icon.with_glint(self.player_preview_gear.armor_glint[slot]))
         });
         let held = self.player_preview_gear.hands.each_ref().map(|hand| {
             let hand = hand.as_ref()?;
             let (identifier, metadata) = Self::item_icon_key(
                 &hand.identifier,
                 hand.metadata,
-                hand.charged_projectile.as_deref(),
+                hand.use_animation,
+                hand.charged_projectile,
                 None,
             );
             self.gui_models
@@ -332,6 +337,7 @@ impl UiPresentationRuntime {
                         metadata: 0,
                     })
                 })
+                .map(|model| model.with_grip(hand.grip).with_glint(hand.glint))
         });
         let unposed = [None; 6];
         let body = if self.player_preview_view == player_preview::PreviewView::Hud {
@@ -359,7 +365,7 @@ impl UiPresentationRuntime {
             skin,
             &self.player_preview_gear,
             armor,
-            held,
+            held.each_ref().map(Option::as_ref),
             true, // Current desktop default is the native Fancy material group.
             self.gui_fire_frame(),
             if self.player_preview_view == player_preview::PreviewView::Hud {

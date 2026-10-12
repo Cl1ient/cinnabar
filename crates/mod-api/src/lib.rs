@@ -5,7 +5,7 @@ mod guest;
 
 pub use guest::PlayerMod;
 
-/// Ticks in one Bedrock day, shared by capability validation and sky math.
+/// Exclusive bound for guest time overrides: ticks in one Bedrock day.
 pub const BEDROCK_DAY_TICKS: u32 = 24_000;
 /// Maximum remote players exposed by one local gameplay snapshot.
 pub const MAX_GAMEPLAY_PLAYERS: usize = 128;
@@ -128,3 +128,10 @@ pub mod player_mod {
 
 /// Maximum bytes in a stable selected world or server identity.
 pub const MAX_WORLD_IDENTITY_BYTES: usize = 256;
+
+/// Bounded cosmetic actor and combat observations per sandbox callback.
+pub const MAX_OBSERVED_ACTORS: usize = 16;
+pub const MAX_OBSERVED_ACTOR_BOXES: usize = 8;
+pub const MAX_OBSERVED_ACTOR_NAME_BYTES: usize = 128;
+pub const MAX_OBSERVED_COMBAT_EVENTS: usize = 64;
+pub const MAX_COMBAT_READ_EVENTS: usize = 4;

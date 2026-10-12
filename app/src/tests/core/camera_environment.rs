@@ -62,11 +62,18 @@ fn camera_environment_samples_the_live_biome_for_atmosphere_profiles() {
                 fog_identifier: "test:fog".into(),
                 atmosphere_identifier: "test:atmosphere".into(),
                 lighting_identifier: "test:lighting".into(),
-                sky_rgb8: Some([12, 34, 56]),
+                sky_rgb8: Some(0x0c2238),
             }],
             &[assets::FogProfile {
                 identifier: "test:fog".into(),
-                distances: Box::new([]),
+                distances: Box::new([assets::FogDistance {
+                    medium: assets::FogMedium::Air,
+                    mode: assets::FogDistanceMode::RenderRelative,
+                    start_bits: 0.0_f32.to_bits(),
+                    end_bits: 1.0_f32.to_bits(),
+                    rgb8: 0,
+                    transition: None,
+                }]),
             }],
         )
         .unwrap(),
@@ -80,7 +87,7 @@ fn camera_environment_samples_the_live_biome_for_atmosphere_profiles() {
     .init_resource::<CameraMediumState>()
     .init_resource::<EnvironmentContext>()
     .init_resource::<FogBindings>()
-    .insert_resource(render::AtmosphereTextureAssets::new(
+    .insert_resource(render_scene::AtmosphereTextureAssets::new(
         atmosphere.clone(),
         identity,
     ))

@@ -1,5 +1,8 @@
 use super::face_metric::{FaceOrderCamera, FaceOrderClass, TransparentFaceMetric};
 use crate::chunk::*;
+use render_scene::{
+    ChunkRenderInstance, ChunkTextureAssetIdentity, ChunkTextureAssets, TransparentSortMetrics,
+};
 
 mod orders;
 pub(in crate::chunk) use orders::TransparentModelDrawOrders;
@@ -272,7 +275,7 @@ pub(in crate::chunk) fn transparent_model_draw_candidate(
     let has_offset = model_ref[0] & meshing::MODEL_REF_FLAG_RANDOM_OFFSET != 0;
     if template.flags & assets::MODEL_TEMPLATE_FLAG_BAMBOO != 0 {
         let transform = model_ref[0] >> 12;
-        let mut offset = meshing::bamboo::quad_offset(transform, quad_index);
+        let mut offset = assets::bamboo::quad_offset(transform, quad_index);
         if has_offset {
             let default = block_transform::bamboo::offset_from_transform(transform);
             offset = std::array::from_fn(|axis| offset[axis] - default[axis]);
@@ -433,7 +436,7 @@ pub(in crate::chunk) fn prepare_transparent_model_sorts(
     allocations: Query<&GpuChunkAllocation>,
     texture_assets: Res<ChunkTextureAssets>,
     arena: Res<ChunkGpuArena>,
-    render_queue: Res<RenderQueue>,
+    upload_queue: TerrainUploadQueue,
     transparent_runtime: Res<TransparentSortRuntime>,
     mut upload_budget: ResMut<TransparentUploadBudget>,
     mut runtime: ResMut<TransparentModelSortRuntime>,
@@ -565,7 +568,7 @@ pub(in crate::chunk) fn prepare_transparent_model_sorts(
         for batch in batches {
             write_geometry_stream_words(
                 &arena,
-                &render_queue,
+                upload_queue.uploads(),
                 u64::from(batch.draw_range.start) * GEOMETRY_STREAM_WORD_BYTES,
                 bytemuck::cast_slice(&batch.words),
             );

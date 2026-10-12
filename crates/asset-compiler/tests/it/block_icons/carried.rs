@@ -368,6 +368,7 @@ fn native_cube_sheets_follow_shape_and_preserve_carried_alpha() {
             NO_MODEL_TEMPLATE
         };
         source.visuals[block_visual.0 as usize] = BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [material; 6],
             flags,
             kind: if template == NO_MODEL_TEMPLATE {
@@ -380,6 +381,7 @@ fn native_cube_sheets_follow_shape_and_preserve_carried_alpha() {
             model_template: template,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         };
         bindings.push((identifier, block_visual, pixel, carried));
     }

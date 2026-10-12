@@ -11,7 +11,10 @@ use bevy::{
     time::{Real, Time},
 };
 use protocol::{ActorEvent, ActorKind, ActorSpawnEvent, WorldEvent};
-use render::{ActorArtworkPages, ActorRenderFrame, ActorRenderScene};
+use {
+    render_model::ActorArtworkPages,
+    render_scene::{ActorRenderFrame, ActorRenderScene},
+};
 
 use super::actor_rest_presentation::{compiled_fixture, stream};
 use {
@@ -44,13 +47,11 @@ pub(crate) fn actor_frame_world(
     );
     world.insert_resource(client_presentation::camera::CameraSettingsAuthority::default());
     world.insert_resource(client_interaction::movement::LocalPhysicsController::default());
-    world.insert_resource(render::ActorRuntimeWitness::default());
-    world.insert_resource(artwork);
+    world.insert_resource(render_scene::ActorRuntimeWitness::default());
+    world.insert_resource(render_scene::ActorArtworkResource(artwork));
     world.insert_resource(hand);
-    world.insert_resource(render::HandRigScene::default());
-    world.insert_resource(crate::player_skin::LocalPlayerSkin::generated_default(
-        "bench",
-    ));
+    world.insert_resource(render_scene::HandRigScene::default());
+    world.insert_resource(client_shell::player_skin::LocalPlayerSkin::generated_default("bench"));
     world.init_resource::<client_presentation::actor_publication::ActorFrameState>();
     world.insert_resource(ActorFramePartialTick::default());
     world.init_resource::<client_presentation::actor_publication::PreparedActorPublication>();
@@ -140,13 +141,13 @@ fn steady_frame_allocations(actors: u64) -> u64 {
             .resource_mut::<Time<Real>>()
             .update_with_instant(clock);
         let before_tick = tick(&world);
-        let before = super::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         world
             .run_system_cached(crate::runtime::network::advance_actor_frame)
             .unwrap();
         world.run_system_cached(prepare_actor_render_frame).unwrap();
         world.run_system_cached(publish_actor_render_frame).unwrap();
-        let allocated = super::alloc_count::thread_allocations() - before;
+        let allocated = test_alloc::thread_allocations() - before;
         if frame >= 30 && tick(&world) == before_tick {
             worst = worst.max(allocated);
         }

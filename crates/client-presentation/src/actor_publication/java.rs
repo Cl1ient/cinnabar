@@ -3,9 +3,10 @@
 
 use std::sync::Arc;
 
+use actor_animation::{ActorRigSnapshot, BoneTransform, JavaHeldItem, SkinRenderLayer};
 use bevy::math::Vec3;
 use chunk_pipeline::WorldStream;
-use client_world::{ActorRigSnapshot, ActorSnapshot, BoneTransform, JavaHeldItem, SkinRenderLayer};
+use client_world::ActorSnapshot;
 use render_model::{
     RenderBoneTransform,
     java_animation::{
@@ -23,7 +24,7 @@ use crate::presentation::{
 };
 
 const BOW: &str = "minecraft:bow";
-const BOW_USE_DURATION: u32 = 72_000;
+const BOW_USE_DURATION: u32 = assets::item_use::LONG_WEAPON_USE_TICKS;
 const FILLED_MAP: &str = "minecraft:filled_map";
 /// Pose bones Java's parts drive, in [`JavaBiped::parts`] order.
 const PART_BONES: [&str; 6] = ["head", "body", "rightarm", "leftarm", "rightleg", "leftleg"];
@@ -166,7 +167,7 @@ fn retargeted(
 /// Reusable buffers and retained tick transforms for posing Java players each frame.
 #[derive(Default)]
 pub(super) struct PoseScratch {
-    retarget: client_world::JavaRetargetCache,
+    retarget: actor_animation::JavaRetargetCache,
     targets: Vec<Option<BoneTransform>>,
     render: Vec<RenderBoneTransform>,
 }
@@ -407,7 +408,7 @@ pub(super) fn lift(world_from_actor: &mut [[f32; 4]; 3], sneaking: bool, local: 
     }
 }
 
-type ArmKey = (client_world::ActorLifetimeId, u32, u64);
+type ArmKey = (actor_animation::ActorLifetimeId, u32, u64);
 
 /// Frame-to-frame state of Java's first-person hand.
 #[derive(Default)]

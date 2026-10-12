@@ -1,18 +1,18 @@
-use crate::menu::MenuRuntime;
 use bevy::{
     prelude::{Local, Query, Res, ResMut, With},
     window::{PrimaryWindow, Window},
 };
-use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
-use render::PanoramaScene;
+use client_shell::menu::MenuRuntime;
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use render_model::panorama::{launcher_faces, launcher_view, overlay_tint};
+use render_scene::PanoramaScene;
 use std::{sync::Arc, time::Instant};
 /// Uploads the faces on first sight of the carrier and shows the panorama
 /// behind launcher screens; in-world Settings retains the game beneath it.
 pub(crate) fn drive_menu_panorama(
     player_runtime: bevy::prelude::Res<client_state::PlayerRuntime>,
-    presentation: Res<UiPresentationRuntime>,
-    runtime: Option<Res<UiRuntime>>,
+    presentation: Res<UiPresentationResource>,
+    runtime: Option<Res<UiRuntimeResource>>,
     menu: Option<Res<MenuRuntime>>,
     scene: Option<ResMut<PanoramaScene>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -21,9 +21,9 @@ pub(crate) fn drive_menu_panorama(
     let Some(mut scene) = scene else {
         return;
     };
-    scene.set_game_visible(crate::screen_policy::renders_game(
+    scene.set_game_visible(client_shell::screen_policy::renders_game(
         &player_runtime,
-        runtime.as_deref(),
+        runtime.as_deref().map(|runtime| &runtime.0),
         menu.as_deref(),
         Some(&presentation),
     ));

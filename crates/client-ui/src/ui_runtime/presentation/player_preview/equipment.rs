@@ -41,6 +41,8 @@ impl PreviewTexture {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PreviewEquipment {
     pub armor: [Option<PreviewTexture>; 4],
+    /// Effective shine already resolved for each worn stack.
+    pub armor_glint: [bool; 4],
     /// Small compatibility raster only; GPU previews use `hands` and real models.
     pub held: Option<PreviewTexture>,
     pub hands: [Option<PreviewHandItem>; 2],
@@ -49,9 +51,14 @@ pub struct PreviewEquipment {
 /// Identity and authoritative item state used to select each hand's native model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewHandItem {
+    /// Registry facts when a live stack is available; standalone previews use their compiled model.
+    pub grip: Option<assets::item::grip::ItemGrip>,
+    /// Live stack shine; absent context retains the compiled model choice.
+    pub glint: Option<bool>,
     pub identifier: Arc<str>,
     pub metadata: u32,
-    pub charged_projectile: Option<Arc<str>>,
+    pub use_animation: assets::item_use::ItemUseAnimation,
+    pub charged_projectile: assets::item_use::ItemProjectileRole,
 }
 
 /// Real item-space geometry and the source atlas region, never a projected GUI icon.
@@ -62,6 +69,33 @@ pub struct PreviewHeldModel {
     pub placements: [PreviewHeldPlacement; 2],
     /// Native player `rightItem`/`leftItem` bind origins in mirrored rig blocks.
     pub hand_pivots: [[f32; 3]; 2],
+}
+
+impl PreviewHeldModel {
+    /// Applies an admitted sprite grip while preserving authored and block placements.
+    pub(in crate::ui_runtime::presentation) fn with_grip(
+        &self,
+        grip: Option<assets::item::grip::ItemGrip>,
+    ) -> Self {
+        let mut model = self.clone();
+        if let Some(grip) = grip {
+            for placement in &mut model.placements {
+                if let PreviewHeldPlacement::Sprite { hand_equipped } = placement {
+                    *hand_equipped = grip.upright().unwrap_or(false);
+                }
+            }
+        }
+        model
+    }
+
+    /// Applies admitted stack shine while sharing the cached geometry and placements.
+    pub(in crate::ui_runtime::presentation) fn with_glint(&self, glint: Option<bool>) -> Self {
+        let mut model = self.clone();
+        if let Some(glint) = glint {
+            model.source = model.source.with_glint(glint);
+        }
+        model
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

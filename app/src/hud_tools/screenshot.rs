@@ -21,7 +21,7 @@ use bevy::{
 };
 use crossbeam_channel::{Receiver, Sender};
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 
 mod offscreen;
 
@@ -150,14 +150,14 @@ fn capture_from_env(
 }
 
 fn capture_on_key(
-    menu: Option<Res<crate::menu::MenuRuntime>>,
+    menu: Option<Res<client_shell::menu::MenuRuntime>>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     channel: Res<ScreenshotChannel>,
     mut frames: ResMut<FrameCapture>,
 ) {
     if menu.as_ref().is_some_and(|menu| menu.is_visible())
-        || !crate::menu::settings_options::control_bindings::binding_pressed(
+        || !client_shell::menu::settings_options::control_bindings::binding_pressed(
             menu.as_deref(),
             "key.screenshot",
             &keys,
@@ -184,7 +184,7 @@ fn capture_on_key(
 
 fn report_saved(
     channel: Res<ScreenshotChannel>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
     time: Res<Time<Real>>,
 ) {
     let now_millis = u64::try_from(time.elapsed().as_millis()).unwrap_or(u64::MAX);

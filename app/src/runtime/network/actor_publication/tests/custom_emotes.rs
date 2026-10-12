@@ -1,8 +1,9 @@
 //! Original geometry through the production frame preparation system, without GPU/assets.
+use client_shell::ui_resources::UiRuntimeResource;
 use std::{sync::Arc, time::Duration};
 
 use bevy::{
-    prelude::{PerspectiveProjection, World},
+    prelude::{PerspectiveProjection, Vec3, World},
     time::Real,
 };
 use client_presentation::actor_publication::PreparedActorPublication;
@@ -131,7 +132,7 @@ fn fixture_with_skin(with_skin: bool) -> World {
             icons,
             None,
             None,
-            render::ActorArtworkPages::default(),
+            render_model::ActorArtworkPages::default(),
         );
     let mut world = World::new();
     world.insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
@@ -139,22 +140,24 @@ fn fixture_with_skin(with_skin: bool) -> World {
     )));
     world.insert_resource(client);
     world.insert_resource(Time::<Real>::default());
-    world.insert_resource(render::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap());
+    world.insert_resource(
+        render_scene::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap(),
+    );
     world.insert_resource(PreparedActorPublication::default());
     world.insert_resource(avatar);
     world.init_resource::<client_presentation::local_player::LocalAvatarVisibilityCarrier>();
     world.init_resource::<client_presentation::camera::CameraSettingsAuthority>();
     world.insert_resource(physics);
-    world.insert_resource(artwork);
+    world.insert_resource(render_scene::ActorArtworkResource(artwork));
     world.insert_resource(equipment);
     world.insert_resource(HandRigBuilder::from_runtime_assets(&entities).unwrap());
-    world.init_resource::<render::HandRigScene>();
-    world.insert_resource(crate::player_skin::LocalPlayerSkin::generated_default(
-        "emote fixture",
-    ));
+    world.init_resource::<render_scene::HandRigScene>();
+    world.insert_resource(
+        client_shell::player_skin::LocalPlayerSkin::generated_default("emote fixture"),
+    );
     world.init_resource::<client_presentation::actor_publication::ActorFrameState>();
     world.init_resource::<ActorFramePartialTick>();
-    world.insert_resource(UiRuntime::new(1));
+    world.insert_resource(UiRuntimeResource(UiRuntime::new(1)));
     let camera =
         Transform::from_xyz(0.0, 66.0, -8.0).looking_at(Vec3::new(0.0, 65.0, 0.0), Vec3::Y);
     world.spawn((
@@ -188,7 +191,7 @@ fn prepare(world: &mut World, millis: u64) {
     world.run_system_cached(prepare_actor_render_frame).unwrap();
 }
 
-fn body(world: &World, id: u64) -> render::ActorRigSubmission {
+fn body(world: &World, id: u64) -> render_model::ActorRigSubmission {
     world
         .resource::<PreparedActorPublication>()
         .submissions()
@@ -196,7 +199,7 @@ fn body(world: &World, id: u64) -> render::ActorRigSubmission {
         .iter()
         .find(|body| {
             body.input.identity.runtime_id == id
-                && body.input.identity.layer == render::ACTOR_LAYER_BODY
+                && body.input.identity.layer == render_model::ACTOR_LAYER_BODY
         })
         .expect("visible production body")
         .clone()
@@ -214,7 +217,7 @@ fn assert_unaffected(world: &World, plain: &World, id: u64) {
     );
 }
 
-fn native_pose(world: &World) -> (u64, Vec<client_world::BoneTransform>) {
+fn native_pose(world: &World) -> (u64, Vec<actor_animation::BoneTransform>) {
     let stream = world.resource::<ClientWorld>().stream.as_ref().unwrap();
     let rig = stream.authority().actor_rig(1).unwrap();
     (rig.completed_tick, rig.current.to_vec())
@@ -230,7 +233,7 @@ fn custom_emote_knees_use_matching_mesh_and_retire_with_playback() {
     let native = native_pose(&world);
     let ordinary = body(&world, 1);
     {
-        let mut ui = world.resource_mut::<UiRuntime>();
+        let mut ui = world.resource_mut::<UiRuntimeResource>();
         ui.emotes_mut().open();
         ui.emotes_mut().activate_slot(0, 100);
     }
@@ -244,7 +247,10 @@ fn custom_emote_knees_use_matching_mesh_and_retire_with_playback() {
     );
     assert_eq!(native_pose(&world), native);
     assert_unaffected(&world, &plain, 2);
-    world.resource_mut::<UiRuntime>().emotes_mut().stop();
+    world
+        .resource_mut::<UiRuntimeResource>()
+        .emotes_mut()
+        .stop();
     prepare(&mut world, 0);
     prepare(&mut plain, 0);
     assert_eq!(body(&world, 1).input.rig, ordinary.input.rig);
@@ -262,11 +268,11 @@ fn custom_emote_publication_advances_between_ticks_without_changing_native_hand_
     let native = native_pose(&world);
     let rest = body(&world, 1);
     {
-        let mut ui = world.resource_mut::<UiRuntime>();
+        let mut ui = world.resource_mut::<UiRuntimeResource>();
         ui.emotes_mut().open();
         assert_eq!(
             ui.emotes_mut().activate_slot(0, 100),
-            Some(client_world::CustomEmote::Twerk)
+            Some(actor_animation::CustomEmote::Twerk)
         );
     }
     prepare(&mut world, 10);
@@ -295,7 +301,7 @@ fn custom_emote_publication_advances_between_ticks_without_changing_native_hand_
         prepare(world, 0);
     }
     assert!(
-        world.resource::<render::HandRigScene>().is_active(),
+        world.resource::<render_scene::HandRigScene>().is_active(),
         "native hand still publishes during playback"
     );
     assert_eq!(native_pose(&world), native);
@@ -308,10 +314,13 @@ fn custom_emote_publication_advances_between_ticks_without_changing_native_hand_
             .all(|body| body.input.identity.runtime_id != 1),
         "first person does not publish the custom body"
     );
-    world.resource_mut::<UiRuntime>().emotes_mut().stop();
+    world
+        .resource_mut::<UiRuntimeResource>()
+        .emotes_mut()
+        .stop();
     prepare(&mut world, 0);
     prepare(&mut plain, 0);
-    assert!(world.resource::<render::HandRigScene>().is_active());
+    assert!(world.resource::<render_scene::HandRigScene>().is_active());
     assert_eq!(native_pose(&world), native);
     assert_unaffected(&world, &plain, 2);
 }
@@ -330,9 +339,12 @@ fn emotes_keep_vanilla_bones_with_java_enabled() {
                 .replace(1, &settings)
                 .unwrap();
             if custom {
-                world.resource_mut::<UiRuntime>().emotes_mut().open();
                 world
-                    .resource_mut::<UiRuntime>()
+                    .resource_mut::<UiRuntimeResource>()
+                    .emotes_mut()
+                    .open();
+                world
+                    .resource_mut::<UiRuntimeResource>()
                     .emotes_mut()
                     .activate_slot(0, 0);
             } else {
@@ -414,27 +426,33 @@ fn production_actor_preparation_preserves_same_frame_swing_admission() {
     world.init_resource::<client_interaction::movement::LocalMovementEffectTimeline>();
     world.init_resource::<client_interaction::melee::SwingTracker>();
     world.init_resource::<SwingAdmission>();
-    world.init_resource::<render::ActorRenderFrame>();
-    world.init_resource::<render::ActorRuntimeWitness>();
+    world.init_resource::<render_scene::ActorRenderFrame>();
+    world.init_resource::<render_scene::ActorRuntimeWitness>();
     let states = [
         (true, [0.0, 0.0]),
-        (false, [0.0, 1.0 / client_world::ACTOR_SWING_TICKS as f32]),
+        (
+            false,
+            [0.0, 1.0 / actor_animation::ACTOR_SWING_TICKS as f32],
+        ),
         (
             false,
             [
-                1.0 / client_world::ACTOR_SWING_TICKS as f32,
-                2.0 / client_world::ACTOR_SWING_TICKS as f32,
+                1.0 / actor_animation::ACTOR_SWING_TICKS as f32,
+                2.0 / actor_animation::ACTOR_SWING_TICKS as f32,
             ],
         ),
         (
             false,
             [
-                2.0 / client_world::ACTOR_SWING_TICKS as f32,
-                3.0 / client_world::ACTOR_SWING_TICKS as f32,
+                2.0 / actor_animation::ACTOR_SWING_TICKS as f32,
+                3.0 / actor_animation::ACTOR_SWING_TICKS as f32,
             ],
         ),
-        (true, [3.0 / client_world::ACTOR_SWING_TICKS as f32, 0.0]),
-        (false, [0.0, 1.0 / client_world::ACTOR_SWING_TICKS as f32]),
+        (true, [3.0 / actor_animation::ACTOR_SWING_TICKS as f32, 0.0]),
+        (
+            false,
+            [0.0, 1.0 / actor_animation::ACTOR_SWING_TICKS as f32],
+        ),
     ];
     for (index, (admitted, expected)) in states.into_iter().enumerate() {
         *world.resource_mut::<client_interaction::movement::MovementTicker>() = {
@@ -507,8 +525,8 @@ fn production_early_ui_readiness_matches_the_current_hand_source() {
         .unwrap();
     let mut world = fixture_with_skin(true);
     world.init_resource::<HandReadiness>();
-    world.init_resource::<render::ActorRenderFrame>();
-    world.init_resource::<render::ActorRuntimeWitness>();
+    world.init_resource::<render_scene::ActorRenderFrame>();
+    world.init_resource::<render_scene::ActorRuntimeWitness>();
     for (index, (mode, active)) in [
         (PerspectiveMode::FirstPerson, true),
         (PerspectiveMode::ThirdPersonBack, false),
@@ -523,7 +541,10 @@ fn production_early_ui_readiness_matches_the_current_hand_source() {
             .advance_by(Duration::from_millis(50));
         schedule.run(&mut world);
         assert_eq!(world.resource::<HandReadiness>().0, active);
-        assert_eq!(world.resource::<render::HandRigScene>().is_active(), active);
+        assert_eq!(
+            world.resource::<render_scene::HandRigScene>().is_active(),
+            active
+        );
     }
 }
 

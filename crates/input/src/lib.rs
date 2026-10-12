@@ -4,6 +4,7 @@ mod action;
 mod axes;
 mod binding;
 mod button_events;
+mod desktop;
 mod device;
 pub mod finalized;
 mod router;
@@ -16,6 +17,7 @@ pub use binding::{
     ActionBinding, AxisDirection, BindingError, ControlSettings, DEFAULT_MOUSE_SENSITIVITY,
     InputChord, MAX_BINDINGS, ModifierChord, MouseAxis, PhysicalControl,
 };
+pub use desktop::{KEYBOARD_USAGES, KeyboardKey, ScrollUnit};
 pub use device::{
     ButtonEdges, ControllerFrame, DeviceFrame, FrameError, KeyboardMouseFrame,
     MAX_CONTROLLER_BUTTONS, MAX_CONTROLLERS, MAX_DISCONNECTED_CONTROLLERS, MAX_KEYBOARD_KEYS,
@@ -58,3 +60,18 @@ pub mod touch {
     pub const LOOK_LEFT: u16 = 30;
     pub const LOOK_RIGHT: u16 = 31;
 }
+
+pub mod cursor_focus;
+
+/// Hotbar digit actions in slot order.
+pub const HOTBAR_DIGIT_ACTIONS: &[Action] = &[
+    Action::Hotbar1,
+    Action::Hotbar2,
+    Action::Hotbar3,
+    Action::Hotbar4,
+    Action::Hotbar5,
+    Action::Hotbar6,
+    Action::Hotbar7,
+    Action::Hotbar8,
+    Action::Hotbar9,
+];

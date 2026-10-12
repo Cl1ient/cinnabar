@@ -1,7 +1,7 @@
 //! Env-gated lobby frame benchmark: replays a captured server session into a world stream and
 //! times the real actor publication system per frame.
 //! Run: `CINNABAR_LOBBY_CAPTURE=<raw.bin> CINNABAR_RENDER_PACK=<uuid_version.zip> cargo test -p
-//! bedrock-client --features reports --lib lobby_frame_bench -- --ignored --nocapture`.
+//! cinnabar --features reports --lib lobby_frame_bench -- --ignored --nocapture`.
 
 use std::{
     path::{Path, PathBuf},
@@ -15,8 +15,8 @@ use bevy::{
     time::{Real, Time},
 };
 use chunk_pipeline::WorldStream;
-use protocol::{ActorKind, BedrockSession, WorldBootstrap, WorldEvent};
-use render::{ActorRenderFrame, RuntimeStage, RuntimeStageProfiler};
+use protocol::{ActorKind, WorldBootstrap, WorldEvent};
+use render_scene::{ActorRenderFrame, RuntimeStage, RuntimeStageProfiler};
 
 use {
     crate::runtime::network::{advance_actor_frame, prepare_actor_render_frame},
@@ -126,7 +126,6 @@ fn write_varint(out: &mut Vec<u8>, mut value: u64) {
 
 /// Feeds one captured packet through the client's decoder into the stream.
 struct Replay {
-    session: BedrockSession,
     sequence: u64,
     local_position: [f32; 3],
     local_runtime_id: u64,
@@ -146,7 +145,7 @@ impl Replay {
         write_varint(&mut batch, (header.len() + body.len()) as u64);
         batch.extend_from_slice(&header);
         batch.extend_from_slice(body);
-        let packets = match protocol::decode_batch(batch.into(), &self.session) {
+        let packets = match protocol::decode_batch(batch.into()) {
             Ok(packets) => packets,
             Err(error) => {
                 self.reject(id, error.to_string());
@@ -293,7 +292,7 @@ fn build_world(
             crate::block_entities::load_block_entity_carrier(&loaded.selected_path),
             artwork,
         );
-    let mut scene = render::ActorRenderScene::with_runtime_entity_assets_and_equipment(
+    let mut scene = render_scene::ActorRenderScene::with_runtime_entity_assets_and_equipment(
         &entity_runtime,
         &equipment_geometries,
     )
@@ -334,7 +333,6 @@ fn build_world(
         stream.seed_property_defaults(defaults);
     }
     let mut replay = Replay {
-        session: BedrockSession { shield_item_id: 0 },
         sequence: 0,
         local_position: capture.bootstrap.player_position,
         local_runtime_id: capture.bootstrap.local_player_runtime_id,
@@ -555,7 +553,7 @@ fn lobby_frame_bench() {
         world
             .resource_mut::<Time<Real>>()
             .update_with_instant(clock);
-        let before = crate::tests::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         let (timer, cpu_timer) = (Instant::now(), thread_cpu_time());
         prepare_offline_actor_frame(&mut world);
         world.run_system_cached(publish_actor_render_frame).unwrap();
@@ -563,7 +561,7 @@ fn lobby_frame_bench() {
         let cpu_elapsed = thread_cpu_time()
             .zip(cpu_timer)
             .map(|(after, before)| after - before);
-        let allocated = crate::tests::alloc_count::thread_allocations() - before;
+        let allocated = test_alloc::thread_allocations() - before;
         let snapshot = world
             .resource::<RuntimeStageProfiler>()
             .take_snapshot_if_due(Duration::ZERO)

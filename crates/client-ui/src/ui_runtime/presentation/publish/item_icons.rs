@@ -18,21 +18,19 @@ pub(super) fn stack_icon(
     runtime: &UiRuntime,
     presentation: &UiPresentationRuntime,
     stack: &protocol::NetworkItemStack,
-    identifier: &str,
+    item: client_world::CanonicalItemStack,
     animation_frame: Option<u32>,
 ) -> Option<IconRef> {
-    let facts = runtime.stack_facts(stack, Some(identifier));
-    let charged_projectile = (identifier == "minecraft:crossbow")
-        .then(|| facts.charged_projectile())
-        .flatten();
+    let identifier = item.identifier.as_deref()?;
     let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
         identifier,
         stack.metadata,
-        charged_projectile.as_deref(),
+        item.use_animation,
+        item.charged_projectile_role,
         animation_frame,
     );
     let icon = presentation.item_icon(icon_identifier, variant)?;
-    Some(icon.with_glint(runtime.item_glint(stack, identifier)))
+    Some(icon.with_glint(runtime.item_glint(stack, item.glint)))
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -43,9 +41,9 @@ pub mod test_support {
         runtime: &UiRuntime,
         presentation: &UiPresentationRuntime,
         stack: &protocol::NetworkItemStack,
-        identifier: &str,
+        item: client_world::CanonicalItemStack,
         animation_frame: Option<u32>,
     ) -> Option<IconRef> {
-        super::stack_icon(runtime, presentation, stack, identifier, animation_frame)
+        super::stack_icon(runtime, presentation, stack, item, animation_frame)
     }
 }

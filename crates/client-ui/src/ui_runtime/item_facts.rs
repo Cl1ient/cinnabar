@@ -1,13 +1,4 @@
-//! Pinned vanilla item presentation facts: armor points, maximum durability,
-//! and mechanical display names.
-//!
-//! The vanilla client derives the armor bar and durability fractions from the
-//! item identity; the identity itself is authoritative (the server's own item
-//! registry maps network ids to identifiers). Values below are the vanilla
-//! Bedrock item stats cross-checked against PocketMine-MP and Dragonfly's
-//! item definitions; an identifier outside the table simply contributes
-//! nothing rather than guessing. Custom component-based items declare their
-//! own stats server-side and are intentionally not modeled here.
+//! Session item presentation facts and mechanical display names.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -27,7 +18,7 @@ struct SessionItem {
 impl SessionItemComponents {
     /// `None` when no StartGame item declares components.
     pub fn from_game_data(game_data: &protocol::GameData) -> Option<Arc<Self>> {
-        let items = Self::from_iter(protocol::item_components(game_data));
+        let items = Self::from_iter(game_data.items.components.iter().cloned());
         (!items.0.is_empty()).then(|| Arc::new(items))
     }
 
@@ -63,43 +54,6 @@ impl FromIterator<(Arc<str>, ItemComponents)> for SessionItemComponents {
                 .collect(),
         )
     }
-}
-
-/// Armor points for one equipped vanilla armor identifier.
-#[must_use]
-pub fn armor_points(identifier: &str) -> u16 {
-    match identifier.strip_prefix("minecraft:").unwrap_or(identifier) {
-        "leather_helmet" | "golden_boots" | "chainmail_boots" => 1,
-        "leather_boots" => 1,
-        "leather_leggings" => 2,
-        "leather_chestplate" => 3,
-        "golden_helmet" | "chainmail_helmet" | "iron_helmet" | "iron_boots" | "turtle_helmet" => 2,
-        // The 1.26.30 copper set (base durability 11) protects between
-        // leather and chainmail: 2/4/3/1.
-        "copper_helmet" => 2,
-        "copper_chestplate" => 4,
-        "copper_leggings" | "golden_leggings" => 3,
-        "copper_boots" => 1,
-        "chainmail_leggings" => 4,
-        "golden_chestplate" | "chainmail_chestplate" => 5,
-        "iron_leggings" => 5,
-        "iron_chestplate" => 6,
-        "diamond_helmet" | "netherite_helmet" | "diamond_boots" | "netherite_boots" => 3,
-        "diamond_leggings" | "netherite_leggings" => 6,
-        "diamond_chestplate" | "netherite_chestplate" => 8,
-        _ => 0,
-    }
-}
-
-/// Total armor points across the local player's equipped armor identifiers,
-/// clamped to the reference 20-point bar.
-#[must_use]
-pub fn total_armor_points<'a>(identifiers: impl Iterator<Item = Option<&'a str>>) -> u16 {
-    identifiers
-        .flatten()
-        .map(armor_points)
-        .fold(0u16, u16::saturating_add)
-        .min(20)
 }
 
 /// Remaining durability in `0.0..=1.0` for a damageable stack, or `None` when
@@ -153,37 +107,21 @@ fn fraction_from_damage(maximum: u32, damage: u32) -> Option<f32> {
     Some(remaining as f32 / maximum as f32)
 }
 
-/// Whether a stack glints as in vanilla: an `ench` list, the item's glint
-/// component, or a vanilla item that always glints.
+/// Combines the stack's enchantment list with an admitted intrinsic disposition.
 #[must_use]
-pub fn is_glint(
-    stack: &NetworkItemStack,
-    identifier: &str,
-    components: Option<&ItemComponents>,
-) -> bool {
+pub fn is_glint(stack: &NetworkItemStack, intrinsic: assets::item::glint::ItemGlint) -> bool {
     glint_for_facts(
         protocol::item_has_enchantment_list(&stack.extra_data),
-        identifier,
-        components,
+        intrinsic,
     )
 }
 
-/// Combines cached NBT glint with the current item definition's intrinsic traits.
+/// Combines cached stack facts with registry-owned intrinsic shine.
 pub(super) fn glint_for_facts(
     has_enchantment_list: bool,
-    identifier: &str,
-    components: Option<&ItemComponents>,
+    intrinsic: assets::item::glint::ItemGlint,
 ) -> bool {
-    has_enchantment_list
-        || components.is_some_and(|components| components.glint)
-        || matches!(
-            identifier,
-            "minecraft:enchanted_book"
-                | "minecraft:experience_bottle"
-                | "minecraft:written_book"
-                | "minecraft:end_crystal"
-                | "minecraft:enchanted_golden_apple"
-        )
+    has_enchantment_list || intrinsic.enabled().unwrap_or(false)
 }
 
 /// Resolve a component item's semantic colour at admission: explicit hover colour
@@ -232,46 +170,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn armor_points_follow_the_pinned_vanilla_table() {
-        assert_eq!(armor_points("minecraft:diamond_chestplate"), 8);
-        assert_eq!(armor_points("minecraft:leather_boots"), 1);
-        assert_eq!(armor_points("minecraft:turtle_helmet"), 2);
-        assert_eq!(armor_points("minecraft:elytra"), 0);
-        assert_eq!(armor_points("custom:armor"), 0);
-        // The 1.26.30 copper set sits between leather and chainmail.
-        assert_eq!(armor_points("minecraft:copper_helmet"), 2);
-        assert_eq!(armor_points("minecraft:copper_chestplate"), 4);
-        assert_eq!(armor_points("minecraft:copper_leggings"), 3);
-        assert_eq!(armor_points("minecraft:copper_boots"), 1);
-        let total = total_armor_points(
-            [
-                Some("minecraft:iron_helmet"),
-                Some("minecraft:iron_chestplate"),
-                Some("minecraft:iron_leggings"),
-                Some("minecraft:iron_boots"),
-                None,
-            ]
-            .into_iter(),
-        );
-        assert_eq!(total, 15);
-        // A pathological modded sum clamps to the reference bar.
-        let clamped = total_armor_points(
-            [Some("minecraft:diamond_chestplate"); 4]
-                .map(Some)
-                .map(|value| value.flatten())
-                .into_iter(),
-        );
-        assert_eq!(clamped, 20);
-    }
-
-    #[test]
     fn durability_fractions_follow_the_pinned_maxima_and_hide_pristine_bars() {
         let fraction = fraction_from_damage(250, 125).unwrap();
         assert!((fraction - 0.5).abs() < 0.01);
         assert_eq!(fraction_from_damage(250, 0), None);
         assert_eq!(
             durability_fraction_for_damage(
-                client_world::vanilla_max_durability("minecraft:stick"),
+                assets::item::durability::builtin_item_durability("minecraft:stick").maximum(),
                 125
             ),
             None
@@ -282,7 +187,7 @@ mod tests {
         assert_eq!(
             durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             ),
             None
         );
@@ -321,7 +226,7 @@ mod tests {
         // A correction wins over conflicting damage carried by the local stack.
         let fraction = cell_durability_fraction(
             &stack_with_damage(125),
-            client_world::vanilla_max_durability("minecraft:iron_sword"),
+            assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
             Some(50),
         )
         .unwrap();
@@ -329,7 +234,7 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(9_999),
             ),
             Some(0.0),
@@ -339,7 +244,7 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(0)
             ),
             None
@@ -349,19 +254,19 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(-3)
             ),
             durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             )
         );
         // Unknown maxima stay hidden under correction too.
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:stick"),
+                assets::item::durability::builtin_item_durability("minecraft:stick").maximum(),
                 Some(5)
             ),
             None
@@ -370,12 +275,12 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 None
             ),
             durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             )
         );
         assert_eq!(
@@ -386,7 +291,7 @@ mod tests {
 
     // Component names translate as keys or show literally; custom maxima drive the bar.
     #[test]
-    fn session_components_name_and_bound_custom_items() {
+    fn session_components_name_custom_items() {
         let mut player_runtime = player_state::PlayerState::new(1);
 
         let mut runtime = crate::ui_runtime::UiRuntime::new(1);
@@ -409,12 +314,6 @@ mod tests {
         ]))));
         assert_eq!(runtime.localized_item_name("zeqa:blade"), "Zeqa Blade");
         assert_eq!(runtime.localized_item_name("zeqa:gem"), "Shiny Gem");
-        assert_eq!(runtime.item_max_durability(Some("zeqa:blade")), Some(100));
-        assert_eq!(runtime.item_max_durability(Some("zeqa:gem")), None);
-        assert_eq!(
-            runtime.item_max_durability(Some("minecraft:iron_sword")),
-            Some(250)
-        );
         player_runtime.begin_session(2);
         runtime.begin_session(2);
         assert_eq!(runtime.localized_item_name("zeqa:gem"), "Gem");
@@ -422,21 +321,29 @@ mod tests {
 
     // Glint follows an ench list (even empty), the glint component, or an always-glinting item.
     #[test]
-    fn glint_follows_enchantments_components_and_vanilla_items() {
+    fn glint_follows_enchantments_and_admitted_intrinsic_facts() {
         let plain = NetworkItemStack::empty();
-        assert!(!is_glint(&plain, "minecraft:stick", None));
-        assert!(is_glint(&plain, "minecraft:enchanted_book", None));
-        let foil = ItemComponents {
-            glint: true,
-            ..ItemComponents::default()
-        };
-        assert!(is_glint(&plain, "zeqa:blade", Some(&foil)));
+        assert!(!is_glint(
+            &plain,
+            assets::item::glint::builtin_item_glint("minecraft:stick")
+        ));
+        assert!(is_glint(
+            &plain,
+            assets::item::glint::builtin_item_glint("minecraft:enchanted_book")
+        ));
+        assert!(is_glint(
+            &plain,
+            assets::item::glint::ItemGlint::Session { enabled: true }
+        ));
         let mut enchanted = stack_with_damage(0);
         let mut extra = enchanted.extra_data.to_vec();
         let end = extra.len() - 1;
         extra.splice(end..end, [9, 4, 0, b'e', b'n', b'c', b'h', 10, 0, 0, 0, 0]);
         enchanted.extra_data = Arc::from(extra);
-        assert!(is_glint(&enchanted, "minecraft:stick", None));
+        assert!(is_glint(
+            &enchanted,
+            assets::item::glint::ItemGlint::Unresolved
+        ));
     }
 
     // hover_text_color outranks rarity; unknown names and common rarity keep the default.

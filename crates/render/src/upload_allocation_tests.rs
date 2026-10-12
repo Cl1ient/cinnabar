@@ -1,8 +1,8 @@
 //! Real owner preparation keeps Metal staging allocations visible until submission.
 
+use bevy::ecs::system::RunSystemOnce;
 use bevy::{
     core_pipeline::core_3d::Transparent3d,
-    ecs::system::RunSystemOnce,
     prelude::*,
     render::{
         ExtractSchedule, Render, RenderApp, RenderStartup,
@@ -13,8 +13,8 @@ use bevy::{
 };
 use std::sync::Arc;
 
-/// Installs the real owner and startup systems on Metal without a window or render submission.
-pub(crate) fn app(plugin: impl Plugin) -> Option<App> {
+/// A Metal device whose buffer counters observe every live allocation, including queue staging.
+pub(crate) fn metal_device() -> Option<(RenderDevice, wgpu::Queue)> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::METAL,
         ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -46,8 +46,12 @@ pub(crate) fn app(plugin: impl Plugin) -> Option<App> {
         "Metal buffer counters must observe allocations"
     );
     drop(probe);
-    let device = RenderDevice::from(device);
+    Some((RenderDevice::from(device), queue))
+}
 
+/// Installs the real owner and startup systems on Metal without a window or render submission.
+pub(crate) fn app(plugin: impl Plugin) -> Option<App> {
+    let (device, queue) = metal_device()?;
     let mut render_app = SubApp::new();
     render_app
         .insert_resource(PipelineCache::new(device.clone(), true))
@@ -71,8 +75,12 @@ pub(crate) fn app(plugin: impl Plugin) -> Option<App> {
 
 /// Counts all live Metal buffers, including queue staging hidden from destination handles.
 pub(crate) fn buffers(world: &World) -> isize {
-    world
-        .resource::<RenderDevice>()
+    live_buffers(world.resource::<RenderDevice>())
+}
+
+/// Counts `device`'s live Metal buffers, including queue staging.
+pub(crate) fn live_buffers(device: &RenderDevice) -> isize {
+    device
         .wgpu_device()
         .get_internal_counters()
         .hal
@@ -123,9 +131,9 @@ fn ui_input() -> render_model::UiRenderInput {
 
 #[test]
 fn recurring_ui_viewport_updates_allocate_no_gpu_staging_buffers() {
-    use crate::ui_render::{
-        UiGlintSettings, UiRenderPlugin, UiRenderSceneResource, UiRenderStatsResource,
-        resources::prepare_ui_resources,
+    use {
+        crate::ui_render::{UiRenderPlugin, resources::prepare_ui_resources},
+        render_scene::{UiGlintSettings, UiRenderSceneResource, UiRenderStatsResource},
     };
     let Some(mut app) = app(UiRenderPlugin) else {
         return;

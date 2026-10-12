@@ -138,7 +138,10 @@ fn culled_solid_runs_match_the_two_sided_discard_path_from_every_side() {
     let clock = gpu.words(&[0; 4], wgpu::BufferUsages::UNIFORM);
     let streams = gpu.words(&lighting_words(quads.len()), storage);
     let records = gpu.buffer(&[0.0], storage);
-    let tints = gpu.buffer(&[0.0; 8 + assets::SEASONAL_FOLIAGE_COUNT * 4], storage);
+    let tints = gpu.buffer(
+        &[0.0; 8 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 4],
+        storage,
+    );
     let query_tables = gpu.words(
         &meshing::biome_lattice::query_table_words(),
         wgpu::BufferUsages::UNIFORM,
@@ -148,7 +151,7 @@ fn culled_solid_runs_match_the_two_sided_discard_path_from_every_side() {
     atmosphere[19] = 8.0;
     atmosphere[20] = 60.0;
     let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
-    let table = render::LightmapInputs::default().build();
+    let table = render_model::LightmapInputs::default().build();
     let lightmap = gpu.buffer(bytemuck::cast_slice(&table), wgpu::BufferUsages::UNIFORM);
     let atlas = pattern_texture(&gpu);
     let sampler = gpu.device.create_sampler(&Default::default());

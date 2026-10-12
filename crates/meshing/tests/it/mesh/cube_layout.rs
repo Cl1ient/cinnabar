@@ -5,6 +5,7 @@ fn layout_fixture_assets() -> RuntimeAssets {
     let mut page = base.texture_array().clone();
     page.layers = 1;
     let visual = |material: u32| BlockVisual {
+        native_material: assets::native_material::NativeMaterialFacts::Unresolved,
         faces: [material; 6],
         flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
         kind: VisualKind::Cube,
@@ -13,6 +14,7 @@ fn layout_fixture_assets() -> RuntimeAssets {
         model_template: NO_MODEL_TEMPLATE,
         animation: NO_ANIMATION,
         variant: 0,
+        destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
     };
     let material = |flags: u32| Material {
         texture,

@@ -1,5 +1,4 @@
-use render::{SCENE_COLOR_FORMAT, SCENE_HDR_FORMAT};
-
+use bevy::ecs::system::RunSystemOnce;
 #[path = "../src/render_test_support.rs"]
 #[allow(
     dead_code,
@@ -7,8 +6,8 @@ use render::{SCENE_COLOR_FORMAT, SCENE_HDR_FORMAT};
 )]
 mod render_test_support;
 
-#[path = "../src/alloc_count.rs"]
-mod alloc_count;
+#[global_allocator]
+static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;
 
 #[path = "../src/device_poll.rs"]
 #[allow(
@@ -43,6 +42,7 @@ mod shader_safety;
 )]
 pub mod ui_render;
 #[path = "../src/upload_staging.rs"]
+#[allow(dead_code, reason = "the UI fixture installs only the frame pool")]
 mod upload_staging;
 
 // This standalone UI fixture installs no camera-effect scene. Production's
@@ -63,7 +63,7 @@ mod gpu_timing {
     /// Runs the UI fixture's draw system with profiling disabled.
     pub(crate) fn profiled<S, M>(
         system: S,
-        _: Option<render::RuntimeStage>,
+        _: Option<render_scene::RuntimeStage>,
         _: &'static str,
     ) -> bevy::ecs::schedule::ScheduleConfigs<bevy::ecs::system::ScheduleSystem>
     where
@@ -98,27 +98,26 @@ mod gpu_timing {
     /// The standalone UI fixture has no diagnostic query ring.
     pub(crate) fn ui_pass_timestamps(
         _: &bevy::prelude::World,
-        _: render::RuntimeStage,
+        _: render_scene::RuntimeStage,
     ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         None
     }
     /// The isolated UI fixture installs no GPU timing query ring.
     pub(crate) fn render_pass_timestamps(
         _: &bevy::prelude::World,
-        _: render::RuntimeStage,
+        _: render_scene::RuntimeStage,
     ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         None
     }
 }
 
-use render::{EnhancedRendering, RuntimeStage};
 use std::sync::Arc;
 
 use bevy::{
     app::SubApp,
     asset::Assets,
     core_pipeline::core_3d::Transparent3d,
-    ecs::{schedule::Schedule, system::RunSystemOnce},
+    ecs::schedule::Schedule,
     prelude::{App, Shader},
     render::{
         ExtractSchedule, Render, RenderApp, RenderStartup,
@@ -131,10 +130,11 @@ use render_model::{
     MAX_UI_INDICES, UiRenderBatch, UiRenderInput, UiRenderRejectReason, UiRenderScene,
     UiRenderStats, UiRenderTextureArray, UiRenderVertex, UiScissor, UiTexturePage,
 };
+use render_scene::{UiRenderSceneResource, UiRenderStatsResource};
+use ui_render::UiRenderPlugin;
 use ui_render::harness::UiRenderHarness;
 use ui_render::pipeline::{ui_bind_group_layout, ui_pipeline_descriptor};
 use ui_render::resources::prepare_ui_resources;
-use ui_render::{UiRenderPlugin, UiRenderSceneResource, UiRenderStatsResource};
 
 #[test]
 fn repeated_draw_lists_reuse_shared_gpu_resources_and_preserve_batch_order() {

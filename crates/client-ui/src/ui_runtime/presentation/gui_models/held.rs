@@ -57,7 +57,9 @@ pub(super) fn prepare(
                     hand_pivots,
                     vertices: vertices.into(),
                     placements: [PreviewHeldPlacement::Sprite {
-                        hand_equipped: render_model::equipment::is_hand_equipped(&entry.identifier),
+                        hand_equipped: definition
+                            .and_then(|definition| definition.grip.upright())
+                            .unwrap_or(false),
                     }; 2],
                 })
             }
@@ -68,7 +70,10 @@ pub(super) fn prepare(
                     identifier: entry.identifier.clone(),
                     metadata: entry.metadata,
                 },
-                model,
+                model
+                    .with_glint(Some(definition.is_some_and(|definition| {
+                        definition.glint.enabled().unwrap_or(false)
+                    }))),
             );
         }
     }
@@ -82,7 +87,11 @@ pub(super) fn prepare(
                     identifier: binding.identifier.clone(),
                     metadata: 0,
                 },
-                model,
+                model.with_glint(Some(entities.item_visuals().iter().any(|definition| {
+                    definition.key.identifier == binding.identifier
+                        && definition.key.metadata == 0
+                        && definition.glint.enabled().unwrap_or(false)
+                }))),
             );
         }
     }

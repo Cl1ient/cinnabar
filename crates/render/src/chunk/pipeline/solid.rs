@@ -27,7 +27,20 @@ pub(in crate::chunk) fn solid_cull_camera(
 
 pub(in crate::chunk) struct ChunkSolidIndirectBatch {
     pub(in crate::chunk) camera: Option<[f64; 3]>,
+    /// The [`meshing::facing_cell`] of the camera `cubes`' commands were built for.
+    pub(in crate::chunk) facing: Option<[(f64, bool); 3]>,
     pub(in crate::chunk) cubes: ChunkIndirectBatch,
+}
+
+impl ChunkSolidIndirectBatch {
+    /// A batch over `cubes` whose commands the next prepare builds for its camera.
+    pub(in crate::chunk) fn new(cubes: Vec<Entity>) -> Self {
+        Self {
+            camera: None,
+            facing: None,
+            cubes: ChunkIndirectBatch::new(cubes),
+        }
+    }
 }
 
 #[derive(Resource, Default)]
@@ -63,7 +76,7 @@ pub(in crate::chunk) fn prepare_solid_indirect_batch_draws<'a>(
 }
 
 pub(in crate::chunk) type DrawSolidChunkCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainSolid as usize },
+    { render_scene::RuntimeStage::GpuTerrainSolid as usize },
     (
         crate::chunk::gpu_cull::SkipOccludedTerrain,
         SetItemPipeline,
@@ -73,7 +86,7 @@ pub(in crate::chunk) type DrawSolidChunkCommands = crate::gpu_timing::GpuDrawSpa
     ),
 >;
 pub(in crate::chunk) type DrawSolidChunkIndirectCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainSolid as usize },
+    { render_scene::RuntimeStage::GpuTerrainSolid as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -94,7 +107,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPackedSolidChunk {
         Entity,
         Read<ViewUniformOffset>,
         Read<ExtractedView>,
-        Has<crate::EnhancedRendering>,
+        Has<render_scene::EnhancedRendering>,
     );
     type ItemQuery = Read<GpuChunkAllocation>;
 
@@ -209,7 +222,7 @@ mod tests {
             clip_from_view,
             world_from_view: GlobalTransform::from(world_from_view),
             clip_from_world: None,
-            target_format: crate::SCENE_COLOR_FORMAT,
+            target_format: render_scene::SCENE_COLOR_FORMAT,
             viewport: UVec4::new(0, 0, 1, 1),
             color_grading: default(),
             invert_culling: false,

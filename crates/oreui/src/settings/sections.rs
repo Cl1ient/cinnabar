@@ -601,14 +601,33 @@ fn general(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
         "menu.general.tab.network.title",
         "menu.general.tab.network.description",
     )?;
-    options(
-        content,
-        &[
-            "websockets_enabled",
-            "websocket_encryption",
-            "auto_update_enabled",
-        ],
-    )?;
+    options(content, &["websockets_enabled", "websocket_encryption"])?;
+    if content.view.updates.active {
+        options(
+            content,
+            &[
+                launcher::menu::settings_options::AUTO_UPDATE_OPTION.name,
+                launcher::menu::settings_options::INSTALL_ON_QUIT_OPTION.name,
+                launcher::menu::settings_options::UPDATE_CHANNEL_OPTION.name,
+            ],
+        )?;
+    }
+    if content.view.updates.active && !content.view.over_world {
+        if let Some(message) = &content.view.updates.message {
+            content.heading(message, "")?;
+        }
+        if content.view.updates.switch_available {
+            super::services::action_row(
+                content,
+                "Change channel now",
+                "Download this channel's older build for manual installation.",
+                "Switch now",
+                Some(MenuAction::Update(
+                    launcher::menu::updates::Action::SwitchNow,
+                )),
+            )?;
+        }
+    }
     content.heading(
         "menu.general.tab.miscellaneous.title",
         "menu.general.tab.miscellaneous.description",
@@ -703,7 +722,6 @@ pub(super) fn option_label(name: &str, default: &'static str) -> &'static str {
         "keyboard_mouse_autojump" | "controller_autojump" => "options.autojump.name",
         "keyboard_show_full_keyboard_options" => "options.fullKeyboardGameplay.name",
         "websockets_enabled" => "options.websocketsEnabled.name",
-        "auto_update_enabled" => "options.autoUpdateEnabled.name",
         "only_trusted_skins_allowed" => "options.onlyTrustedSkinsAllowed.name",
         "filter_profanity" => "options.filterProfanity.name",
         "ecomode_toggle" => "options.enableEcoMode.name",

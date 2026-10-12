@@ -78,3 +78,87 @@ fn unanimated_state_destinations_remain_available_to_new_pack_descriptions() {
     let keys = build(&pack, &descriptors, &materials, &[]);
     assert_eq!(keys.flipbook_selector(1), (2, 0));
 }
+
+#[test]
+fn matching_pixels_share_storage_without_collapsing_material_destinations() {
+    use crate::animation::{AnimationLimits, DecodedImage, compile_animation_plan};
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("textures")).unwrap();
+    for (path, bytes) in [
+        ("blocks.json", "{}"),
+        (
+            "textures/terrain_texture.json",
+            r#"{"texture_data":{
+            "water":{"textures":["textures/shared", "textures/shared"]},
+            "alias":{"textures":"textures/shared"}
+        }}"#,
+        ),
+        ("textures/flipbook_textures.json", "[]"),
+    ] {
+        std::fs::write(root.path().join(path), bytes).unwrap();
+    }
+    let pack = crate::read_pack(root.path()).unwrap();
+    let image = DecodedImage {
+        source_path: "textures/shared".into(),
+        width: assets::TILE_SIZE,
+        height: assets::TILE_SIZE,
+        rgba8: [31, 47, 59, 255]
+            .into_iter()
+            .cycle()
+            .take((assets::TILE_SIZE * assets::TILE_SIZE * 4) as usize)
+            .collect(),
+    };
+    let plan = compile_animation_plan(
+        &pack,
+        &[image],
+        AnimationLimits {
+            max_layers_per_page: 4,
+            max_pages: 1,
+        },
+    )
+    .unwrap();
+    let first = Descriptor {
+        path: "textures/shared".into(),
+        texture_key: "water".into(),
+        flags: 0,
+        state_variant: 0,
+        flipbook_selector: None,
+    };
+    let second = Descriptor {
+        state_variant: 1,
+        ..first.clone()
+    };
+    let same_destination = Descriptor {
+        flipbook_selector: Some((0, 0)),
+        ..first.clone()
+    };
+    let alias = Descriptor {
+        texture_key: "alias".into(),
+        ..first.clone()
+    };
+    let descriptors = BTreeMap::from([
+        (first.clone(), "water".into()),
+        (second.clone(), "water".into()),
+        (same_destination.clone(), "water".into()),
+        (alias.clone(), "alias".into()),
+    ]);
+    let (materials, ids) =
+        super::super::compile_materials(&descriptors, &plan, &BTreeSet::new()).unwrap();
+    let (first_id, second_id, alias_id) = (ids[&first], ids[&second], ids[&alias]);
+    assert_ne!(first_id, second_id);
+    assert_ne!(first_id, alias_id);
+    assert_eq!(first_id, ids[&same_destination]);
+    assert_eq!(
+        materials[first_id as usize].texture,
+        materials[second_id as usize].texture
+    );
+    assert_eq!(
+        materials[first_id as usize].texture,
+        materials[alias_id as usize].texture
+    );
+    let keys = build(&pack, &ids, &materials, &[]);
+    assert_eq!(keys.materials("water").len(), 2);
+    assert_eq!(keys.flipbook_selector(first_id), (0, 0));
+    assert_eq!(keys.flipbook_selector(second_id), (1, 0));
+    assert_eq!(keys.materials("alias"), [alias_id]);
+}

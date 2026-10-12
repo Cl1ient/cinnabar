@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use assets::flipbook::FlipbookSource;
+use assets::texture::flipbook::FlipbookSource;
 use resource_pack::LayeredPackView;
 
 use pack_runtime::pack_textures::DecodedTexture;
@@ -20,6 +20,7 @@ pub(super) struct TextureCatalog<'a> {
     grids: HashMap<String, u8>,
     tints: HashMap<String, [u8; 3]>,
     server_keys: HashSet<String>,
+    destinations: HashMap<String, Vec<u32>>,
     flipbooks: HashMap<String, Vec<FlipbookSource>>,
     diagnostics: TextureDiagnostics,
 }
@@ -55,9 +56,7 @@ impl<'a> TextureCatalog<'a> {
                 );
                 continue;
             };
-            if source.atlas_tile_variant >= *count {
-                source.atlas_tile_variant = 0;
-            }
+            source.atlas_tile_variant = normalize_variant(source.atlas_tile_variant, *count);
             flipbooks
                 .entry(source.atlas_tile.to_string())
                 .or_default()
@@ -69,6 +68,7 @@ impl<'a> TextureCatalog<'a> {
             grids: pack_runtime::pack_textures::terrain_texture_grids(view),
             tints: tint::catalog_tints(view, base),
             server_keys,
+            destinations,
             flipbooks,
             diagnostics,
         }
@@ -80,10 +80,21 @@ impl<'a> TextureCatalog<'a> {
 
     /// Returns the last animation created for a destination, including all-variant descriptions.
     pub(super) fn flipbook(&self, key: &str, selector: (u32, u32)) -> Option<&FlipbookSource> {
+        let selector = self.normalize_selector(key, selector);
         self.flipbooks.get(key)?.iter().rev().find(|source| {
             source.atlas_index == selector.0
                 && (source.all_variants || source.atlas_tile_variant == selector.1)
         })
+    }
+
+    /// Applies the same UV-variant fallback to material routes and animation descriptions.
+    pub(super) fn normalize_selector(&self, key: &str, selector: (u32, u32)) -> (u32, u32) {
+        let variant = self
+            .destinations
+            .get(key)
+            .and_then(|counts| counts.get(selector.0 as usize))
+            .map_or(selector.1, |&count| normalize_variant(selector.1, count));
+        (selector.0, variant)
     }
 
     /// Returns the winning terrain entry's normalized UV-grid exponent.
@@ -131,22 +142,29 @@ impl<'a> TextureCatalog<'a> {
     }
 }
 
-/// Cuts bounded square frames in timeline order, crops replication from the upper-left,
-/// and shrinks each retained frame before it enters the overlay source budget.
+/// Uses variant zero when the requested UV set is outside the destination's bounds.
+fn normalize_variant(variant: u32, count: u32) -> u32 {
+    if variant < count { variant } else { 0 }
+}
+
+/// Cuts row or column strips into bounded square frames in timeline order.
+/// Crops replication from the upper-left and shrinks frames before source-budget accounting.
 pub(super) fn flipbook_frames(
     texture: &DecodedTexture,
     flipbook: &FlipbookSource,
     max_frames: usize,
     max_side: u32,
 ) -> Vec<DecodedTexture> {
-    let side = texture.width;
-    if max_frames == 0 || side == 0 || texture.height == 0 {
+    let side = texture.width.min(texture.height);
+    if max_frames == 0 || side == 0 {
         return Vec::new();
     }
-    if texture.height < side || !texture.height.is_multiple_of(side) {
+    let long_side = texture.width.max(texture.height);
+    if !long_side.is_multiple_of(side) {
         return Vec::new();
     }
-    let count = texture.height / side;
+    let count = long_side / side;
+    let horizontal = texture.width > texture.height;
     let crop = (side / flipbook.replicate.max(1)).max(1);
     let output = crop.min(max_side).max(1);
     let len = if flipbook.frames.is_empty() {
@@ -161,12 +179,13 @@ pub(super) fn flipbook_frames(
             } else {
                 flipbook.frames[index]
             };
-            let y_start = frame.min(count - 1) * side;
+            let start = frame.min(count - 1) * side;
+            let (x_start, y_start) = if horizontal { (start, 0) } else { (0, start) };
             let mut rgba8 = Vec::with_capacity((output * output * 4) as usize);
             for y in 0..output {
                 let source_y = y_start + y * crop / output;
                 for x in 0..output {
-                    let source_x = x * crop / output;
+                    let source_x = x_start + x * crop / output;
                     let start = ((source_y * texture.width + source_x) * 4) as usize;
                     rgba8.extend_from_slice(&texture.rgba8[start..start + 4]);
                 }

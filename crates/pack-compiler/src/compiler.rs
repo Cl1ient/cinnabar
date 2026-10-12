@@ -130,6 +130,7 @@ struct Descriptor {
 }
 
 type CompiledMaterials = (Box<[Material]>, BTreeMap<Descriptor, u32>);
+type MaterialIdentity<'a> = (TextureRef, u32, u32, (&'a str, u32, u32));
 type CompiledVisuals = (
     Box<[BlockVisual]>,
     Box<[(u32, u32)]>,
@@ -891,11 +892,7 @@ fn compile_materials(
         animation: NO_ANIMATION,
         ..assets::Material::unvaried()
     }];
-    let mut material_by_value = BTreeMap::<(TextureRef, u32, u32), u32>::new();
-    material_by_value.insert(
-        (TextureRef::DIAGNOSTIC, 0, NO_ANIMATION),
-        DIAGNOSTIC_MATERIAL,
-    );
+    let mut material_by_value = BTreeMap::<MaterialIdentity<'_>, u32>::new();
     let mut material_by_descriptor = BTreeMap::new();
 
     for descriptor in descriptor_keys.keys() {
@@ -944,8 +941,13 @@ fn compile_materials(
         } else {
             continue;
         };
+        let animated = animation.map(|id| {
+            let source = &plan.animations[id as usize];
+            (source.atlas_index, source.atlas_tile_variant)
+        });
+        let destination = material_keys::destination(descriptor, animated);
         let animation = animation.unwrap_or(NO_ANIMATION);
-        let value = (texture, descriptor.flags, animation);
+        let value = (texture, descriptor.flags, animation, destination);
         let material = if let Some(&material) = material_by_value.get(&value) {
             material
         } else {

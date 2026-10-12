@@ -26,7 +26,6 @@ pub mod equipment;
 mod error;
 mod family_routing;
 mod fire;
-pub mod flipbook;
 mod fog_layers;
 mod fog_transition;
 mod font;
@@ -61,7 +60,7 @@ pub mod sound_bank;
 mod sound_events;
 mod stair;
 pub mod starter_skins;
-mod texture;
+pub mod texture;
 mod ui;
 pub mod vanilla_pack;
 mod vanilla_refs;
@@ -283,7 +282,8 @@ pub use skin_geometry::{
     SkinGeometryBounds, SkinGeometryError, SkinPolyMesh, SkinPolyVertex, parse_skin_geometry,
     parse_skin_geometry_layer, skin_geometry_name,
 };
-pub use skybox::*;
+pub use skybox::{DEFAULT_NATIVE_SKYBOX_OFFSET, SKYBOX_FACE_COUNT};
+pub use skybox::{PackSkybox, SkyboxDimension, SkyboxFace};
 pub use sound_events::{FloatRange, RouteLookup, SoundEventTables, SoundRoute};
 pub use stair::StairDirection;
 pub use texture::{

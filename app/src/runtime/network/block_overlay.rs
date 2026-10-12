@@ -486,6 +486,7 @@ impl Builder<'_> {
 
     /// Caches each atlas destination independently so variants cannot replace each other.
     fn texture_slot_for(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
+        let selector = self.catalog.normalize_selector(key, selector);
         let cache_key = (key.to_owned(), selector.0, selector.1);
         if let Some(slot) = self.textures.get(&cache_key) {
             return slot.clone();

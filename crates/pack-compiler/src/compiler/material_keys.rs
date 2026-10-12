@@ -18,16 +18,25 @@ pub(super) fn build(
     .with_flipbooks(&pack.flipbooks)
     .with_flipbook_destinations(pack.terrain.flipbook_destinations())
     .with_flipbook_selectors(descriptors.iter().map(|(descriptor, &material)| {
-        let selector = animations
+        let animated = animations
             .get(materials[material as usize].animation as usize)
-            .map(|animation| (animation.atlas_index, animation.atlas_tile_variant))
-            .unwrap_or_else(|| {
-                descriptor
-                    .flipbook_selector
-                    .unwrap_or((descriptor.state_variant, 0))
-            });
-        (material, selector)
+            .map(|animation| (animation.atlas_index, animation.atlas_tile_variant));
+        let (_, index, variant) = destination(descriptor, animated);
+        (material, (index, variant))
     }))
+}
+
+/// Identifies a material's terrain destination independently of its deduplicated pixels.
+pub(super) fn destination(
+    descriptor: &Descriptor,
+    animated: Option<(u32, u32)>,
+) -> (&str, u32, u32) {
+    let (index, variant) = animated.unwrap_or_else(|| {
+        descriptor
+            .flipbook_selector
+            .unwrap_or((descriptor.state_variant, 0))
+    });
+    (&descriptor.texture_key, index, variant)
 }
 
 /// Adds generated materials without losing the original routes or animation descriptions.

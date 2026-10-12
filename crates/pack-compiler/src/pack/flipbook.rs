@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, path::Path};
 
 use assets::{
     AssetError,
-    flipbook::{DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES},
+    texture::flipbook::{DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES},
 };
 use serde::Deserialize;
 use serde_json::Value;

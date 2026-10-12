@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use assets::flipbook::FlipbookSource;
+use assets::texture::flipbook::FlipbookSource;
 use resource_pack::LayeredPackView;
 use serde_json::Value;
 
@@ -11,7 +11,7 @@ use crate::pack_textures::{MAX_CATALOG_ENTRIES, parse_pack_json};
 mod destinations;
 pub use destinations::destinations;
 
-type Selector = (Box<str>, u32, u32);
+type Selector = (Box<str>, u32, Option<u32>);
 
 /// Overlays only supplied fields of matching selectors and retains unrelated base animations.
 pub fn flipbooks(view: &LayeredPackView, base: &[FlipbookSource]) -> Vec<FlipbookSource> {
@@ -36,7 +36,7 @@ fn merge(entries: &mut Vec<FlipbookSource>, bytes: &[u8]) {
                 (
                     source.atlas_tile.clone(),
                     source.atlas_index,
-                    source.atlas_tile_variant,
+                    (!source.all_variants).then_some(source.atlas_tile_variant),
                 ),
                 index,
             )
@@ -58,18 +58,26 @@ fn merge(entries: &mut Vec<FlipbookSource>, bytes: &[u8]) {
         let Some(variant) = selector_index(fields.get("atlas_tile_variant")) else {
             continue;
         };
+        let variant = fields.contains_key("atlas_tile_variant").then_some(variant);
         let selector = (Box::<str>::from(tile), index, variant);
         let position = indices.get(&selector).copied();
-        let lower = position.map(|position| &entries[position]);
-        if entries.len() >= MAX_CATALOG_ENTRIES && lower.is_none() {
+        if entries.len() >= MAX_CATALOG_ENTRIES && position.is_none() {
             continue;
         }
-        let all_variants = if fields.contains_key("atlas_tile_variant") {
-            false
-        } else {
-            lower.is_none_or(|source| source.all_variants)
-        };
-        fields.insert("all_variants".into(), Value::Bool(all_variants));
+        let lower = position
+            .or_else(|| match variant {
+                None | Some(0) => {
+                    let other = (
+                        selector.0.clone(),
+                        index,
+                        if variant.is_none() { Some(0) } else { None },
+                    );
+                    indices.get(&other).copied()
+                }
+                _ => None,
+            })
+            .map(|position| &entries[position]);
+        fields.insert("all_variants".into(), Value::Bool(variant.is_none()));
         let mut merged = lower.map_or_else(serde_json::Map::new, |source| {
             serde_json::to_value(source)
                 .expect("flipbook serializes")

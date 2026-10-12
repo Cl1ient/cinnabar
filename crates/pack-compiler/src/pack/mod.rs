@@ -8,7 +8,7 @@ pub use fixed_tint::{apply_atlas_tint, parse_atlas_tint};
 
 use std::path::Path;
 
-use assets::{AssetError, flipbook::FlipbookSource};
+use assets::{AssetError, texture::flipbook::FlipbookSource};
 
 pub use block::{BlockTextureMap, TextureKey, resolve_texture_key};
 pub(crate) use block::{resolve_carried_down_key, resolve_carried_face_key};

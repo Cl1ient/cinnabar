@@ -638,7 +638,7 @@ fn bone_visibility_hides_bones_per_state() {
 #[test]
 fn flipbook_frames_are_capped_and_shrunk() {
     use super::textures::{flipbook_frames, shrink_to_max};
-    use assets::flipbook::FlipbookSource;
+    use assets::texture::flipbook::FlipbookSource;
     use pack_runtime::pack_textures::DecodedTexture;
     let strip = DecodedTexture {
         width: 64,

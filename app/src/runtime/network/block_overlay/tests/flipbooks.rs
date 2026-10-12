@@ -1,5 +1,5 @@
 use super::*;
-use assets::flipbook::FlipbookSource;
+use assets::texture::flipbook::FlipbookSource;
 
 /// Admits a pack containing only the synthetic files named by the test.
 fn pack(files: &[(&str, &[u8])]) -> LayeredPackView {
@@ -301,5 +301,150 @@ fn a_later_all_variant_description_overwrites_an_earlier_exact_destination() {
             .texture_path
             .as_ref(),
         "textures/all"
+    );
+}
+
+#[test]
+fn raster_only_replacements_normalize_nonzero_carrier_selectors() {
+    for index in 1..=4 {
+        let source: FlipbookSource = serde_json::from_value(serde_json::json!({
+            "flipbook_texture":"textures/charged", "atlas_tile":"top",
+            "atlas_index":index, "atlas_tile_variant":index,
+            "frames":[1,0], "ticks_per_frame":9, "blend_frames":false
+        }))
+        .unwrap();
+        let keys = assets::MaterialKeys::from_entries([(1, "top")])
+            .with_aliases([("top", "textures/charged")])
+            .with_flipbooks(&[source])
+            .with_flipbook_selectors([(1, (index, index))])
+            .with_flipbook_destinations([("top", [1; 5])]);
+        let strip = png(16, 32, |_, y| {
+            if y < 16 {
+                [250, 20, 10, 255]
+            } else {
+                [10, 30, 240, 255]
+            }
+        });
+        let compiled = compile_block_overlay(
+            &pack(&[("textures/charged.png", &strip)]),
+            &CustomBlocks::default(),
+            false,
+            Some(&keys),
+        )
+        .unwrap();
+        let replacement = &compiled.overlay.material_overrides[0];
+        assert_ne!(
+            replacement.animation,
+            assets::NO_ANIMATION,
+            "atlas index {index}"
+        );
+        let animation = &compiled.overlay.animations[replacement.animation as usize];
+        assert_eq!(
+            (animation.atlas_index, animation.atlas_tile_variant),
+            (index, 0)
+        );
+        assert_eq!((animation.frame_count, animation.ticks_per_frame), (2, 9));
+        assert_eq!(
+            pixel(&compiled.overlay, replacement.texture),
+            [10, 30, 240, 255]
+        );
+        assert_eq!(keys.flipbook_selector(1), (index, index));
+    }
+}
+
+#[test]
+fn variant_zero_override_keeps_the_other_variants_base_animation() {
+    let source: FlipbookSource = serde_json::from_value(serde_json::json!({
+        "flipbook_texture":"textures/base", "atlas_tile":"tile", "all_variants":true,
+        "frames":[1,0], "ticks_per_frame":7, "blend_frames":false
+    }))
+    .unwrap();
+    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+        .with_aliases([("tile", "textures/base")])
+        .with_flipbooks(&[source])
+        .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
+        .with_flipbook_destinations([("tile", [2])]);
+    let base = png(16, 32, |_, y| {
+        if y < 16 {
+            [20, 180, 10, 255]
+        } else {
+            [10, 80, 20, 255]
+        }
+    });
+    let upper = png(16, 32, |_, y| {
+        if y < 16 {
+            [250, 20, 10, 255]
+        } else {
+            [10, 30, 240, 255]
+        }
+    });
+    let view = pack(&[
+        ("textures/base.png", &base), ("textures/upper.png", &upper),
+        ("textures/flipbook_textures.json", br#"[{
+            "atlas_tile":"tile", "atlas_tile_variant":0, "flipbook_texture":"textures/upper", "ticks_per_frame":3
+        }]"#),
+    ]);
+    let compiled =
+        compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys)).unwrap();
+    for (replacement, (ticks, color)) in compiled
+        .overlay
+        .material_overrides
+        .iter()
+        .zip([(3, [10, 30, 240, 255]), (7, [10, 80, 20, 255])])
+    {
+        assert_ne!(replacement.animation, assets::NO_ANIMATION);
+        let animation = &compiled.overlay.animations[replacement.animation as usize];
+        assert_eq!(
+            (
+                animation.frame_count,
+                animation.ticks_per_frame,
+                animation.flags
+            ),
+            (2, ticks, 0)
+        );
+        assert_eq!(pixel(&compiled.overlay, replacement.texture), color);
+    }
+    assert_eq!(compiled.overlay.material_overrides.len(), 2);
+}
+
+#[test]
+fn horizontal_strip_replacement_retains_both_frames_in_timeline_order() {
+    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/strip")]);
+    let strip = png(32, 16, |x, _| {
+        if x < 16 {
+            [250, 20, 10, 255]
+        } else {
+            [10, 30, 240, 255]
+        }
+    });
+    let view = pack(&[
+        ("textures/strip.png", &strip),
+        ("textures/flipbook_textures.json", br#"[{
+            "atlas_tile":"tile", "flipbook_texture":"textures/strip", "frames":[1,0], "ticks_per_frame":9
+        }]"#),
+    ]);
+    let compiled =
+        compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys)).unwrap();
+    let animation = &compiled.overlay.animations[0];
+    assert_eq!((animation.frame_count, animation.ticks_per_frame), (2, 9));
+    let mip = &compiled.overlay.texture.as_ref().unwrap().mips[0];
+    let bytes_per_frame = (mip.size * mip.size * 4) as usize;
+    for (&frame, color) in compiled
+        .overlay
+        .animation_frames
+        .iter()
+        .zip([[10, 30, 240, 255], [250, 20, 10, 255]])
+    {
+        let start = frame.layer() as usize * bytes_per_frame;
+        assert!(
+            mip.rgba8[start..start + bytes_per_frame]
+                .chunks_exact(4)
+                .all(|pixel| pixel == color)
+        );
+    }
+    assert_ne!(
+        compiled.overlay.material_overrides[0].animation,
+        assets::NO_ANIMATION
     );
 }

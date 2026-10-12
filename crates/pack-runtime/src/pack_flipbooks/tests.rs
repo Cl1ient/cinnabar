@@ -95,3 +95,28 @@ fn destination_bounds_cover_unused_indices_and_weighted_uv_sets() {
     }"#)]));
     assert_eq!(destinations(&view, Some(&base))["tile"], [1, 2]);
 }
+
+#[test]
+fn explicit_zero_patch_keeps_the_wildcard_and_inherits_its_unsupplied_fields() {
+    let mut entries = Vec::new();
+    merge(
+        &mut entries,
+        br#"[{
+        "atlas_tile":"tile", "flipbook_texture":"textures/base", "ticks_per_frame":7,
+        "frames":[1,0], "replicate":2, "blend_frames":false
+    }]"#,
+    );
+    let wildcard = entries[0].clone();
+    merge(&mut entries, br#"[{
+        "atlas_tile":"tile", "atlas_tile_variant":0, "flipbook_texture":"textures/upper", "ticks_per_frame":3
+    }]"#);
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0], wildcard);
+    assert!(entries[0].all_variants);
+    assert!(!entries[1].all_variants);
+    assert_eq!(entries[1].texture_path.as_ref(), "textures/upper");
+    assert_eq!(entries[1].ticks_per_frame, 3);
+    assert_eq!(entries[1].frames, wildcard.frames);
+    assert_eq!(entries[1].replicate, wildcard.replicate);
+    assert_eq!(entries[1].blend_frames, wildcard.blend_frames);
+}

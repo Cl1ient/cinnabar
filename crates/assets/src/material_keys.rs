@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::flipbook::FlipbookSource;
+use crate::texture::flipbook::FlipbookSource;
 use serde::{Deserialize, Serialize};
 
 /// Sidecar wire version; part of the world carrier's prepared identity.
@@ -304,12 +304,13 @@ mod tests {
 
     #[test]
     fn animation_sources_and_destinations_survive_sidecar_round_trip() {
-        let source: crate::flipbook::FlipbookSource = serde_json::from_value(serde_json::json!({
-            "flipbook_texture":"textures/strip", "atlas_tile":"tile", "frames":[2,0,1],
-            "atlas_index":3, "atlas_tile_variant":2, "ticks_per_frame":7,
-            "replicate":2, "blend_frames":false
-        }))
-        .unwrap();
+        let source: crate::texture::flipbook::FlipbookSource =
+            serde_json::from_value(serde_json::json!({
+                "flipbook_texture":"textures/strip", "atlas_tile":"tile", "frames":[2,0,1],
+                "atlas_index":3, "atlas_tile_variant":2, "ticks_per_frame":7,
+                "replicate":2, "blend_frames":false
+            }))
+            .unwrap();
         let keys = MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
             .with_aliases([("tile", "textures/static")])
             .with_flipbooks(std::slice::from_ref(&source))

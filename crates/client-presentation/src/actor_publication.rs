@@ -152,8 +152,7 @@ pub fn prepare_actor_render_frame(
         .map(|profiler| profiler.time(RuntimeStage::ActorPreparation));
     let cull_view = params.presentation.cull_view();
     let mut new_geometries = Vec::new();
-    // The hand reads the canonical body before local placement. Layers share the body sample's
-    // controller budget; all new geometry is registered together before either rig is published.
+    // The hand and body share controller sampling before local placement.
     let mut bodies = bodies::sample(
         stream,
         &input,
@@ -195,9 +194,7 @@ pub fn prepare_actor_render_frame(
         params.equipment.as_deref_mut(),
         &mut new_geometries,
     );
-    let camera_position = cull_view
-        .as_ref()
-        .map(|view| view.camera_position.to_array());
+    let camera_position = cull_view.map(|view| view.camera_position.to_array());
     let mut batch = select_actor_presentations_for_view(
         bodies.local_runtime_id,
         local_visible,

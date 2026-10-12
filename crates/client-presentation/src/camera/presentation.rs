@@ -156,13 +156,24 @@ pub fn advance_presentation_state(
                 stream.local_player_runtime_id(),
             )
         });
-    legacy.observe_subject(
+    let reanchored = legacy.observe_subject(
         subject,
         physics
             .and_then(|physics| physics.state())
             .map(|state| state.tick),
+        view.camera_reanchor_epoch(),
     );
     if let Some(physics) = physics {
+        if reanchored && let Some(state) = physics.state() {
+            legacy.state.reset_at(
+                state.tick,
+                [
+                    state.position.x as f32,
+                    state.position.y as f32 + protocol::PLAYER_NETWORK_OFFSET,
+                    state.position.z as f32,
+                ],
+            );
+        }
         let after = legacy.state.last_tick();
         physics.visit_camera_ticks(after, &mut |tick| {
             legacy

@@ -8,6 +8,7 @@ use render_model::legacy_combat::LegacyCameraState;
 pub struct LegacyCameraMotion {
     pub state: LegacyCameraState,
     session: Option<(u64, u64)>,
+    reanchor_epoch: u64,
 }
 
 impl Default for LegacyCameraMotion {
@@ -17,14 +18,22 @@ impl Default for LegacyCameraMotion {
         Self {
             state: LegacyCameraState::default(),
             session: None,
+            reanchor_epoch: 0,
         }
     }
 }
 
 impl LegacyCameraMotion {
-    /// Clears old motion when the camera subject changes, leaves, or its physics clock rewinds.
-    pub fn observe_subject(&mut self, session: Option<(u64, u64)>, tick: Option<u64>) {
+    /// Clears old motion and reports when an existing camera must skip pre-correction history.
+    pub fn observe_subject(
+        &mut self,
+        session: Option<(u64, u64)>,
+        tick: Option<u64>,
+        reanchor_epoch: u64,
+    ) -> bool {
+        let reanchored = self.reanchor_epoch != reanchor_epoch && self.state.last_tick().is_some();
         if self.session != session
+            || reanchored
             || tick.is_none()
             || tick
                 .zip(self.state.last_tick())
@@ -33,6 +42,8 @@ impl LegacyCameraMotion {
             self.state = LegacyCameraState::default();
         }
         self.session = session;
+        self.reanchor_epoch = reanchor_epoch;
+        reanchored
     }
 }
 

@@ -98,3 +98,106 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod legacy_tests {
+    use super::*;
+    use render_api::{BEDROCK_112, CombatVisuals, DEFAULT_COMBAT_VISUALS};
+
+    /// Calculates a shared wrap boundary without another hand-maintained period.
+    fn gcd(mut a: i32, mut b: i32) -> i32 {
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        a
+    }
+
+    #[test]
+    fn default_and_each_legacy_clock_boundary_follow_the_shared_profile() {
+        assert_eq!(ActorGlint::default().profile, DEFAULT_COMBAT_VISUALS);
+        let [first, second] = BEDROCK_112.glint_period_ms;
+        for milliseconds in [
+            0,
+            first - 1,
+            first,
+            second - 1,
+            second,
+            first * second / gcd(first, second),
+        ] {
+            let glint = ActorGlint {
+                profile: CombatVisuals::Legacy112,
+                time_seconds: milliseconds as f32 / 1000.0,
+                ..Default::default()
+            };
+            let [a, b, strength] = glint.parameters();
+            assert!((a + (milliseconds % first) as f32 / first as f32).abs() < 1e-6);
+            assert!((b - (milliseconds % second) as f32 / second as f32).abs() < 1e-6);
+            assert_eq!(strength, 1.0);
+        }
+        for profile in [CombatVisuals::Modern, CombatVisuals::Legacy112] {
+            for strength in [0.0, 0.25, 0.5, 1.0] {
+                let glint = ActorGlint {
+                    profile,
+                    time_seconds: 4.0,
+                    strength,
+                    speed: 0.0,
+                };
+                assert_eq!(glint.parameters(), [0.0, 0.0, strength]);
+            }
+        }
+    }
+
+    #[test]
+    fn uv_rotation_preserves_pixel_origins_and_non_square_extents() {
+        let offsets = [-0.25, 0.75];
+        // These coordinates come from a deliberately off-origin rectangle on a non-square image.
+        for pixel in [[13.0, 7.0], [35.0, 18.0]] {
+            let uv = [pixel[0] / 64.0, pixel[1] / 32.0];
+            for pass in 0..2 {
+                let angle = BEDROCK_112.glint_rotation_radians[pass];
+                let matrix = glam::Mat2::from_cols(
+                    glam::Vec2::new(angle.cos(), -angle.sin()),
+                    glam::Vec2::new(angle.sin(), angle.cos()),
+                );
+                let rotated = matrix * (glam::Vec2::from_array(uv) - glam::Vec2::splat(0.5));
+                let expected = (rotated
+                    + glam::Vec2::new(offsets[pass] / BEDROCK_112.glint_uv_scale[0] + 0.5, 0.5))
+                    * glam::Vec2::from_array(BEDROCK_112.glint_uv_scale);
+                assert!(
+                    glam::Vec2::from_array(legacy_glint_uv(uv, offsets, pass))
+                        .abs_diff_eq(expected, 1e-6)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn profile_and_mask_flags_do_not_overlap_any_admitted_material_state() {
+        let admitted = assets::EntityRenderMaterial::Glint
+            .word(assets::EntityRenderMaterialState::from_word(u32::MAX));
+        assert_eq!(
+            admitted & (LEGACY_COMBAT_MATERIAL_FLAG | ACTOR_COLOR_MASK_MATERIAL_FLAG),
+            0
+        );
+        assert_eq!(
+            LEGACY_COMBAT_MATERIAL_FLAG & ACTOR_COLOR_MASK_MATERIAL_FLAG,
+            0
+        );
+        let material = crate::ActorMaterial {
+            color_mask: true,
+            glint: ActorGlint {
+                profile: CombatVisuals::Legacy112,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            material.gpu_word() & LEGACY_COMBAT_MATERIAL_FLAG,
+            LEGACY_COMBAT_MATERIAL_FLAG
+        );
+        assert_eq!(
+            material.gpu_word() & ACTOR_COLOR_MASK_MATERIAL_FLAG,
+            ACTOR_COLOR_MASK_MATERIAL_FLAG
+        );
+    }
+}

@@ -660,18 +660,20 @@ Bedrock 1.12 combat visuals are a deliberate default and accepted deviation from
 Modern profile as a one-line code choice. The combat profile owns body and worn
 armour hurt red, glint, and camera bob/hurt; Java 1.7 still owns its poses and items.
 
-Implementation and deterministic coverage are in progress. Compilation, GPU
-fixtures and a headless visual comparison remain unverified; this does not close
-a parity or visual acceptance gate.
+Implementation and deterministic camera, overlay, equipment and shader fixtures
+are present. They have not been compiled or run. CI verification and a headless
+visual comparison remain outstanding; this does not close a parity or visual
+acceptance gate.
 
 ## Java 1.7 animations
 
-- Owner-mandated default, selected live from Video › Animations (persisted): Java 1.7 or
+- Player poses and items are selected live from Video › Animations (persisted): Java 1.7 or
   Bedrock. Saved toggle choices migrate without changing the selected mode. Rules and frame mapping:
   [Java 1.7 animations](docs/reference/java-1-7-animations.md).
 - First person: Java's item stacks (swing; equip with the old item through the dip and the
   re-equip after a placement; eat/drink; sword block with block-hitting; bow draw and pull
-  frames; rods), the empty-hand arm, view bob, sneak eye height, hurt/death roll and arm sway. Third person: Java's
+  frames; rods), the empty-hand arm, sneak eye height and arm sway. The shared combat
+  profile takes precedence for view bob, hurt/death motion and glint. Third person: Java's
   biped pose, body yaw, limb swing with the hurt flail, held-item grips, the cape's chasing
   swing and the sneak drops; armour flashes red, held items do not.
 - Every hurt event immediately resets the limb boost, including consecutive hits; movement

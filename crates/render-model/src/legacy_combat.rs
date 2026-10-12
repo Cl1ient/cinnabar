@@ -63,6 +63,14 @@ fn table_sample(index: f32) -> f32 {
 }
 
 impl LegacyCameraState {
+    /// Reanchors presentation to a corrected simulation position without replaying old motion.
+    pub fn reset_at(&mut self, tick: u64, position: [f32; 3]) {
+        let position = Vec3::from_array(position);
+        *self = Self {
+            last: position.is_finite().then_some((tick, position)),
+            endpoints: LegacyCameraEndpoints::default(),
+        };
+    }
     /// Returns the completed tick cursor for a borrowed movement history.
     pub fn last_tick(&self) -> Option<u64> {
         self.last.map(|(tick, _)| tick)
@@ -81,13 +89,15 @@ impl LegacyCameraState {
             self.last = Some((tick.tick, position));
             return;
         };
+        if position.distance(previous_position) > TELEPORT_BLOCKS {
+            self.reset_at(tick.tick, tick.position);
+            return;
+        }
         if tick.tick == previous_tick {
             return;
         }
         self.last = Some((tick.tick, position));
-        if tick.tick != previous_tick.saturating_add(1)
-            || position.distance(previous_position) > TELEPORT_BLOCKS
-        {
+        if tick.tick != previous_tick.saturating_add(1) {
             self.endpoints = LegacyCameraEndpoints::default();
             return;
         }

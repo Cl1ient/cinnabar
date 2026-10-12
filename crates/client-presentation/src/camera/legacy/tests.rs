@@ -329,3 +329,30 @@ fn third_person_and_free_server_camera_preserve_their_base_pose() {
         None
     );
 }
+
+#[test]
+fn teleport_reanchor_skips_old_ticks_even_when_the_physics_clock_does_not_advance() {
+    let mut app = camera_app();
+    for index in 0..4 {
+        tick(&mut app, index);
+    }
+    app.world_mut().run_system_cached(sample).unwrap();
+    assert!(
+        app.world()
+            .resource::<LegacyCameraMotion>()
+            .state
+            .endpoints
+            .bob[1]
+            > 0.0
+    );
+    app.world_mut()
+        .resource_mut::<LocalViewPose>()
+        .reanchor_camera();
+    app.world_mut().run_system_cached(sample).unwrap();
+    let motion = app.world().resource::<LegacyCameraMotion>();
+    assert_eq!(motion.state.last_tick(), Some(3));
+    assert_eq!(
+        motion.state.endpoints,
+        render_model::legacy_combat::LegacyCameraEndpoints::default()
+    );
+}

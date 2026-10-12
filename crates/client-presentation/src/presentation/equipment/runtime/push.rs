@@ -265,6 +265,18 @@ impl EquipmentRuntime {
         let color_mask = profile == render_api::CombatVisuals::Legacy112
             && binding.color_mask == assets::EquipmentColorMask::Dye;
         presentation.submission.material.color_mask = color_mask;
+        if profile == render_api::CombatVisuals::Legacy112 {
+            presentation.submission.material.kind = if item.enchanted {
+                assets::EntityRenderMaterial::Glint
+            } else {
+                assets::EntityRenderMaterial::Default
+            };
+            presentation.submission.material.state = Some(assets::EntityRenderMaterialState {
+                alpha_test: true,
+                cull: false,
+                ..Default::default()
+            });
+        }
         if profile == render_api::CombatVisuals::Legacy112
             && let Some((_, selected)) = selected
         {

@@ -48,7 +48,7 @@ impl EquipmentRuntime {
 
     /// The item glint raster retained independently for legacy worn equipment.
     pub fn item_glint(catalog: &RuntimeEquipmentCatalog) -> Option<EquipmentRaster> {
-        Self::glint_raster(catalog, assets::ITEM_GLINT_TEXTURE_IDENTIFIER)
+        Self::glint_raster(catalog, assets::entity::ITEM_GLINT_TEXTURE_IDENTIFIER)
     }
 
     /// Finds a validated enchantment image by its shared runtime identifier.

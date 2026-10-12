@@ -30,9 +30,18 @@ pub fn apply_actor_damage_camera_rotation(
         0.0
     };
     if render_api::DEFAULT_COMBAT_VISUALS == render_api::CombatVisuals::Legacy112 {
-        let actor = world
-            .and_then(|world| world.stream)
-            .and_then(|stream| stream.authority().actor(stream.local_player_runtime_id()));
+        let stream = world.and_then(|world| world.stream);
+        let actor =
+            stream.and_then(|stream| stream.authority().actor(stream.local_player_runtime_id()));
+        let geometry = stream
+            .and_then(|stream| {
+                stream
+                    .authority()
+                    .actor_rig(stream.local_player_runtime_id())
+            })
+            .and_then(|rig| rig.skin_geometry)
+            .map(|geometry| geometry.as_ref());
+        let bob_allowed = movement_bob_allowed(geometry);
         let effect = sampled_legacy_effect(
             actor,
             legacy
@@ -40,7 +49,7 @@ pub fn apply_actor_damage_camera_rotation(
                 .map(|legacy| legacy.state.endpoints)
                 .unwrap_or_default(),
             alpha,
-            settings.feel().view_bobbing,
+            settings.feel().view_bobbing && bob_allowed,
             settings.feel().damage_bob,
         );
         hand.legacy_effect = Some(effect);
@@ -81,6 +90,11 @@ pub fn apply_actor_damage_camera_rotation(
     for mut camera in &mut cameras {
         *camera = Transform::from_matrix(camera.to_matrix() * effect);
     }
+}
+
+/// Missing skin geometry keeps movement bob; the authored flag suppresses only that matrix.
+fn movement_bob_allowed(geometry: Option<&assets::SkinGeometry>) -> bool {
+    geometry.is_none_or(|geometry| !geometry.animation_no_head_bob)
 }
 
 /// Samples the same actor counters and render fraction for world and first-person draws.
@@ -180,6 +194,51 @@ mod tests {
         assert_eq!(
             damage_rotation(Some(200.0), 0.5, 0.0, 0.0),
             damage_rotation(Some(200.0), 0.0, 0.0, 1.0)
+        );
+    }
+}
+
+#[cfg(test)]
+mod skin_bob_tests {
+    use super::*;
+
+    #[test]
+    fn authored_bob_suppression_keeps_hurt_rotation() {
+        let mut geometry = serde_json::json!({"description":{"identifier":"geometry.body"},
+            "bones":[{"name":"body"}]});
+        geometry[assets::entity::GEOMETRY_NO_HEAD_BOB_FIELD] = true.into();
+        let source =
+            serde_json::json!({"format_version":"1.12.0", "minecraft:geometry":[geometry]});
+        let skin = assets::parse_skin_geometry(
+            r#"{"geometry":{"default":"geometry.body"}}"#,
+            &source.to_string(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(movement_bob_allowed(None));
+        assert!(!movement_bob_allowed(Some(&skin)));
+        let mut stream = crate::presentation::combat::tests::player_stream();
+        let id = stream.local_player_runtime_id();
+        crate::presentation::combat::tests::event(&mut stream, 2, protocol::ActorStatusKind::Hurt);
+        let actor = stream.authority().actor(id);
+        let endpoints = render_model::legacy_combat::LegacyCameraEndpoints {
+            walked: [0.3, 0.6],
+            bob: [0.05, 0.1],
+            fall_degrees: [-4.0, -2.0],
+        };
+        let suppressed = sampled_legacy_effect(
+            actor,
+            endpoints,
+            0.5,
+            movement_bob_allowed(Some(&skin)),
+            1.0,
+        );
+        let hurt_only = sampled_legacy_effect(actor, Default::default(), 0.5, true, 1.0);
+        assert_eq!(suppressed, hurt_only);
+        assert_ne!(suppressed, Mat4::IDENTITY);
+        assert_ne!(
+            suppressed,
+            sampled_legacy_effect(actor, endpoints, 0.5, true, 1.0)
         );
     }
 }

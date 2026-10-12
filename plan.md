@@ -2178,7 +2178,7 @@ and covered-vegetation parity remain incomplete. No visual or stability gate clo
 
 2026-10-02 macOS stability (in progress; no acceptance gate closed): repeated
 Apple M3 Pro/macOS 26.3 GPU events attribute firmware-detected lockups to
-`bedrock-client`; subsequent WindowServer watchdog panics and AGX-blocked
+`cinnabar`; subsequent WindowServer watchdog panics and AGX-blocked
 threads explain the whole-host freezes. Cinnabar's custom shader constructors
 now enable Bevy/wgpu runtime bounds and loop checks instead of the unchecked
 default. The shared biome shader bounds its data-driven loop by the existing
@@ -3995,7 +3995,7 @@ Scope (detailed plan to be written at phase start):
 
 - [x] Add an explicit, ignored Microsoft token cache and optional authenticated upstream
   dial mode while preserving the offline BDS path when `-auth-cache` is omitted.
-- [x] Document the exact `bedrock-core` and release `bedrock-client` commands, device-code
+- [x] Document the exact `bedrock-core` and release `cinnabar` commands, device-code
   stdout flow, cache privacy requirements, and Rust → local socket → Go → RakNet boundary.
 - [x] Report the core's startup lifecycle synchronously: Go build start, process/auth state,
   published local endpoint, local Rust-client acceptance, and upstream connect/success/failure.
@@ -5582,7 +5582,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
   then landed as merge `a9593e7`.
   - Post-integration deterministic verification on the merged tree passed:
     `cargo test -p semantic-input --locked` (53 passed);
-    `cargo test -p bedrock-client --locked` (lib 420, assets 41, hud_assets 9,
+    `cargo test -p cinnabar --locked` (lib 420, assets 41, hud_assets 9,
     inventory_router 3, physics_assets 2, doctest 1; all passed);
     `cargo test -p protocol --locked` (21 test binaries, all passed);
     `cargo test -p client-world --locked` (lib 236 passed / 1 ignored,
@@ -5762,7 +5762,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
     launcher timeout, no watchdog firing, and an ordered `SHUTDOWN_WATCHDOG_ARMED` then
     `SHUTDOWN_COMPLETED` tail.
   - The final safety integration passes formatting, the architecture checker, all 496
-    bedrock-client tests, strict bedrock-client Clippy, and all 106 Phase 3/FastTransfer
+    cinnabar tests, strict cinnabar Clippy, and all 106 Phase 3/FastTransfer
     Pester contracts. The preceding integrated head passed all 2,487 workspace tests and
     strict workspace Clippy. Linux acceptance remains delegated to CI.
   - This is one BDS FreeCamera smoke, not CandidatePhysics, external-server, native-parity,
@@ -6764,7 +6764,7 @@ no longer needs RUST_MCBE_TELEPORT_ACK; that opt-in still enables unverified ext
   - `cargo test -p server-experience -p mod-host --locked` (31 and 13 tests)
   - `cargo test -p server-experience -p mod-host --features server-experience/developer-media --locked`
     (34 and 13 tests)
-  - `cargo test -p bedrock-client --locked` (unit, integration and documentation tests)
+  - `cargo test -p cinnabar --locked` (unit, integration and documentation tests)
   - `cargo clippy --workspace --all-targets --features server-experience/developer-media --locked -- -D warnings`
   - `cargo run -p architecture --locked -- check --root . --policy tools/architecture/policy.toml`
 - `cargo fmt --all`, the formatting check and `git diff --check` passed. Production
@@ -6786,7 +6786,7 @@ no longer needs RUST_MCBE_TELEPORT_ACK; that opt-in still enables unverified ext
   recorded validation and existing lockfile additions.
 - Local checks passed through the owner's `cslot` limiter:
   - `cargo check --workspace --all-targets --locked`
-  - `cargo test -p server-experience -p bedrock-client --locked` (35 server-experience
+  - `cargo test -p server-experience -p cinnabar --locked` (35 server-experience
     tests; 1,879 client unit tests passed and 16 were ignored; client integration
     and documentation tests passed)
   - `cargo test -p server-experience --features developer-media --locked` (38 tests)
@@ -7449,6 +7449,16 @@ durations and mapping source coordinates into resized atlas placements.
 Incomplete: exhaustive authored effect variants, matched live game-mode sequencing
 and hardware frame budgets remain open.
 
+Chat trigger filters now survive built-in layout restoration when a pack attaches
+its visibility binding inside a derived HUD row or the open chat history label.
+Pack variables resolve before the binding transfers, and effect factories retain
+the full message stream. Private-use bitmap icons preserve their sheet colors and
+text opacity; missing icons retain the normal replacement glyph tint.
+Incomplete: several active derived labels with different `#visible` filters are
+flattened onto the one built-in label, so the last filter wins instead of their union.
+Full native pixel matching, supplementary-plane emoji routing and hardware frame
+budgets also remain open. These changes do not close general chat parity.
+
 Live follow-up confirms custom sound playback. The latest user test reports the
 earlier actor, HUD, collision and inventory bugs fixed, including the actual
 Galaxite death animation. Matched native pixel comparisons remain separate.
@@ -7962,3 +7972,20 @@ Incomplete parity: full pack-reload galleries and streaming frame budgets remain
 JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers.
 
 Incomplete parity: recipe eligibility and exact pattern-choice styling remain open.
+
+## Entity terrain occlusion and retained block-entity view culling
+
+- Actor bodies and their shadow bounds use bounded, current-terrain exposed-face proofs after
+  ordinary view admission. Name tags retain their independent publication. Unknown,
+  dirty, unpublished, clipped, transparent or budget-exhausted terrain always draws.
+  Internal voxel faces cannot certify depth. Near-clip safety is independent of rotation.
+  Actors with unbounded attachments, extra layers or no authored bounds also draw.
+  Controllers with any replacement geometry bypass base-model terrain proofs, including
+  selections between ticks; controllers that always draw the base model remain eligible.
+- Block entities use the same proof without stopping lids, rings, map requests or text
+  canvases. Global beams bypass terrain proofs. Retained vertex runs are culled at draw
+  submission, so camera turns do not rebuild or upload cached meshes.
+- Each kind has a fixed plane/cell probe budget. Preparation counters record candidates,
+  hidden-by-occlusion and submitted; draw counters record skipped/submitted vertices.
+- Performance and rendered-frame acceptance remain incomplete until comparable captures
+  verify walls, gaps, rapid motion, shadows, name tags and unchanged animation state.

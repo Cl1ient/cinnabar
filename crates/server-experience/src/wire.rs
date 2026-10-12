@@ -77,7 +77,7 @@ pub enum Scalar {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "type", deny_unknown_fields)]
 pub enum Field {
-    Bool {},
+    Bool,
     Integer { min: i64, max: i64 },
     Text { max_bytes: u16 },
     Choice { variants: u16 },

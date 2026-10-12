@@ -114,7 +114,7 @@ def rust_enum(enum):
     out += ['#[serde('+', '.join(attrs)+')]', f"pub enum {enum['name']} {{"]
     for v in enum['variants']:
         if 'type' in v: out += [f"{v['rust']}({v['type']}),"]
-        elif 'fields' in v: out += [v['rust']+' {']+[f"{f['name']}: {f['type']}," for f in v['fields']]+['},']
+        elif v.get('fields'): out += [v['rust']+' {']+[f"{f['name']}: {f['type']}," for f in v['fields']]+['},']
         else: out += [v['rust']+',']
     return '\n'.join(out+['}'])+'\n'
 

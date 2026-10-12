@@ -23,7 +23,7 @@ pub(super) fn upload(
     let limits = device.limits();
     let max_bytes = limits
         .max_buffer_size
-        .min(u64::from(limits.max_storage_buffer_binding_size));
+        .min(limits.max_storage_buffer_binding_size);
     let mut bytes_uploaded = 0;
     let mut page_count = 0;
     for (index, range) in shards(visible.len(), max_bytes).enumerate() {

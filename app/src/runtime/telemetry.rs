@@ -270,8 +270,8 @@ pub(crate) fn send_player_auth_inputs(
                 && camera_distance + render_api::CAMERA_NEAR_PLANE_BLOCKS
                     < THIRD_PERSON_RADIUS_BLOCKS;
             PhysicsTickEvidenceContext {
-                fifo_sequence: frame.fifo_sequence(),
-                pose_generation: frame.pose_generation(),
+                fifo_sequence: frame.fifo_sequence().get(),
+                pose_generation: frame.pose_generation().get(),
                 dimension: stream.current_dimension(),
                 perspective: frame.perspective(),
                 camera_blocked,
@@ -638,7 +638,7 @@ pub(crate) fn record_metrics(
                 snapshot.camera.stable_id,
                 snapshot.camera.pose_hash,
                 snapshot.camera.frustum_hash,
-                snapshot.pose_generation,
+                snapshot.pose_generation.get(),
                 snapshot.view_generation,
                 snapshot.draw_mode,
                 visibility_digest_marker_fields("resident", snapshot.resident_mesh),

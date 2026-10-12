@@ -1,3 +1,5 @@
+use protocol::identity::FifoSequence;
+use simulation_clock::identity::SessionGeneration;
 use {super::*, acceptance::committed_control::acceptance_surface_anchor};
 #[test]
 fn forced_remesh_starts_only_after_binding_teleport_completion() {
@@ -1012,8 +1014,8 @@ fn zero_world_admission_still_drains_control_ack_and_leaves_world_fifo_untouched
     let (world_sender, mut world_receiver) = tokio::sync::mpsc::channel(1);
     world_sender
         .try_send(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(1),
             event: WorldEvent::ChunkRadiusUpdated(16),
         })
         .unwrap();
@@ -1032,12 +1034,12 @@ fn zero_world_admission_still_drains_control_ack_and_leaves_world_fifo_untouched
     ));
     assert!(world.is_empty());
     assert!(matches!(
-        world_receiver.try_recv(),
-        Ok(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
-            event: WorldEvent::ChunkRadiusUpdated(16),
-        })
+            world_receiver.try_recv(),
+            Ok(SequencedWorldEvent {
+                session_generation,
+                sequence,
+                event: WorldEvent::ChunkRadiusUpdated(16),
+            }) if session_generation.get() == 7 && sequence.get() == 1
     ));
 }
 
@@ -1046,22 +1048,22 @@ fn world_ingress_drain_stops_at_transfer_barrier_without_consuming_replacement_e
     let (sender, mut receiver) = tokio::sync::mpsc::channel(4);
     sender
         .try_send(WorldIngress::Event(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(1),
             event: WorldEvent::ChunkRadiusUpdated(16),
         }))
         .unwrap();
     sender
         .try_send(WorldIngress::FastTransferBarrier {
-            session_generation: 7,
-            sequence: 2,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(2),
             action_sequence: 11,
         })
         .unwrap();
     sender
         .try_send(WorldIngress::Event(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 3,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(3),
             event: WorldEvent::ChunkRadiusUpdated(8),
         }))
         .unwrap();
@@ -1071,19 +1073,22 @@ fn world_ingress_drain_stops_at_transfer_barrier_without_consuming_replacement_e
     let drained: Vec<_> = std::iter::from_fn(|| drain.next(&mut receiver, 4, now)).collect();
 
     assert!(matches!(
-        drained.as_slice(),
-        [
-            WorldIngress::Event(SequencedWorldEvent { sequence: 1, .. }),
-            WorldIngress::FastTransferBarrier { sequence: 2, .. }
-        ]
+            drained.as_slice(),
+            [
+                WorldIngress::Event(SequencedWorldEvent {
+                    sequence: event_sequence,
+                    ..
+                }),
+                WorldIngress::FastTransferBarrier { sequence: barrier_sequence, .. }
+            ] if event_sequence.get() == 1 && barrier_sequence.get() == 2
     ));
     assert!(matches!(
-        receiver.try_recv(),
-        Ok(WorldIngress::Event(SequencedWorldEvent {
-            sequence: 3,
-            event: WorldEvent::ChunkRadiusUpdated(8),
-            ..
-        }))
+            receiver.try_recv(),
+            Ok(WorldIngress::Event(SequencedWorldEvent {
+                sequence,
+                event: WorldEvent::ChunkRadiusUpdated(8),
+                ..
+            })) if sequence.get() == 3
     ));
 }
 

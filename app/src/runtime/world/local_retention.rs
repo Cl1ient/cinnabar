@@ -17,11 +17,14 @@ pub(super) fn retain_completed_player_terrain(
     let Some(published) = publication.and_then(CameraPublicationAttempt::published) else {
         return false;
     };
-    let owner = CameraOwner::current(stream, session_generation);
+    let owner = CameraOwner::current(
+        stream,
+        simulation_clock::identity::SessionGeneration::new(session_generation),
+    );
     if published.owner != owner
         || physics
             .state()
-            .is_none_or(|state| state.tick != published.tick)
+            .is_none_or(|state| state.tick != published.tick.get())
     {
         return false;
     }

@@ -5,6 +5,7 @@ use crate::actor::frame::{
     ActorRigGeometry, ActorRigRejects, ActorRigRenderFrame, ActorRigRenderInput, ActorRigRoute,
     ActorRigSubmission, EntityRigId,
 };
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 /// Creates a finite pose with rotation, translation and nonuniform scale.
@@ -44,7 +45,7 @@ fn submission(runtime_id: u64, bones: usize) -> ActorRigSubmission {
                 ingress_sequence: runtime_id,
                 source_tick: Some(1),
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: 0,
             },
             rig: EntityRigId(3),

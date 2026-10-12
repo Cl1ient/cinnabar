@@ -103,7 +103,6 @@ impl VerifiedOffer {
 
 /// Ceilings of the selected wire version. A Hello offers the host's constants; an Accept may
 /// lower each one and never raise it.
-
 impl Limits {
     /// The ceilings this host offers.
     pub const fn host() -> Self {
@@ -124,7 +123,6 @@ impl Limits {
 }
 
 /// The wire version and ceilings of a session.
-
 impl Wire {
     /// The original wire: whole envelopes of at most `MAX_PAYLOAD_BYTES` and no fragments.
     pub const fn v1() -> Self {

@@ -1,4 +1,6 @@
 use super::*;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 #[path = "network_latency_bench.rs"]
 mod network_latency_bench;
@@ -113,13 +115,13 @@ fn traced_movement_packets(tick: u64) -> (protocol::Packet, protocol::Packet) {
 #[tokio::test]
 async fn guarded_then_ordinary_trace_follows_successful_socket_fifo() {
     let guarded_identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
     let ordinary_identity = protocol::PhysicsSendIdentity {
-        tick: 102,
+        tick: PhysicsTick::new(102),
         admission_id: 4,
         ..guarded_identity
     };
@@ -162,7 +164,7 @@ async fn guarded_then_ordinary_trace_follows_successful_socket_fifo() {
         RecordingSendSession {
             sent: Arc::clone(&sent),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -219,10 +221,10 @@ impl NetworkSession for RecordingSendSession {
 #[tokio::test]
 async fn revoked_mining_is_removed_before_write_without_suppressing_its_movement_tick() {
     let identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
     let (combined, movement) = traced_movement_packets(101);
     let expected = protocol::encode(&movement).unwrap().to_vec();
@@ -254,7 +256,7 @@ async fn revoked_mining_is_removed_before_write_without_suppressing_its_movement
         RecordingSendSession {
             sent: Arc::clone(&sent),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -284,10 +286,10 @@ async fn revoked_mining_is_removed_before_write_without_suppressing_its_movement
 #[tokio::test]
 async fn current_mining_command_reaches_the_write_byte_exact() {
     let identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
     let combined = protocol::request_sub_chunk_column(0, 7, 8, -4, 1).unwrap();
     let expected = protocol::encode(&combined).unwrap().to_vec();
@@ -316,7 +318,7 @@ async fn current_mining_command_reaches_the_write_byte_exact() {
         RecordingSendSession {
             sent: Arc::clone(&sent),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -336,12 +338,12 @@ async fn current_mining_command_reaches_the_write_byte_exact() {
 #[tokio::test]
 async fn reanchor_cancels_an_admitted_but_unstarted_physics_send_before_socket_write() {
     let identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
-    let (reanchor, reanchor_rx) = watch::channel(0);
+    let (reanchor, reanchor_rx) = watch::channel(PositionAuthorityGeneration::default());
     let (_mining_authority, mining_authority_rx) = watch::channel(0);
     let (world_event_tx, _world_events) = mpsc::channel(WORLD_EVENT_CAPACITY);
     let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
@@ -359,7 +361,7 @@ async fn reanchor_cancels_an_admitted_but_unstarted_physics_send_before_socket_w
             )),
         })
         .unwrap();
-    reanchor.send_replace(1);
+    reanchor.send_replace(PositionAuthorityGeneration::new(1));
     let sends = Arc::new(AtomicUsize::new(0));
     let (control_event_tx, mut controls) = mpsc::channel(CONTROL_EVENT_CAPACITY);
     let (shutdown, shutdown_rx) = watch::channel(false);
@@ -368,7 +370,7 @@ async fn reanchor_cancels_an_admitted_but_unstarted_physics_send_before_socket_w
         CountingSendSession {
             sends: Arc::clone(&sends),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -390,10 +392,10 @@ async fn reanchor_cancels_an_admitted_but_unstarted_physics_send_before_socket_w
 #[tokio::test]
 async fn physics_send_ack_is_emitted_only_after_successful_socket_write() {
     let identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
     let (world_event_tx, _world_events) = mpsc::channel(WORLD_EVENT_CAPACITY);
     let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
@@ -415,7 +417,7 @@ async fn physics_send_ack_is_emitted_only_after_successful_socket_write() {
             inbound: None,
             inbound_selected: Arc::new(AtomicBool::new(false)),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -438,10 +440,10 @@ async fn transfer_messages_survive_reanchor_and_precede_destination_movement() {
     let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
     handle.commands = commands;
     let stale = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 100,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(100),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
     handle
         .send_physics_packet(stale, test_packet(), None)
@@ -454,14 +456,16 @@ async fn transfer_messages_survive_reanchor_and_precede_destination_movement() {
     for packet in &transfer {
         handle.send_dimension_packet(packet.clone()).unwrap();
     }
-    handle.physics_epoch_publisher().send_replace(1);
+    handle
+        .physics_epoch_publisher()
+        .send_replace(PositionAuthorityGeneration::new(1));
     let current = protocol::PhysicsSendIdentity {
-        tick: 101,
+        tick: PhysicsTick::new(101),
         admission_id: 4,
-        reanchor_epoch: 1,
+        reanchor_epoch: PositionAuthorityGeneration::new(1),
         ..stale
     };
-    let (_, movement) = traced_movement_packets(current.tick);
+    let (_, movement) = traced_movement_packets(current.tick.get());
     handle
         .send_physics_packet(current, movement.clone(), None)
         .unwrap();
@@ -479,7 +483,7 @@ async fn transfer_messages_survive_reanchor_and_precede_destination_movement() {
         RecordingSendSession {
             sent: Arc::clone(&sent),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -504,10 +508,10 @@ async fn transfer_messages_survive_reanchor_and_precede_destination_movement() {
 #[tokio::test]
 async fn failed_physics_socket_write_never_emits_success_ack() {
     let identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
     let (combined, movement) = traced_movement_packets(101);
     let (_mining_authority, mining_authority_rx) = watch::channel(0);
@@ -535,7 +539,7 @@ async fn failed_physics_socket_write_never_emits_success_ack() {
     commands.try_send(NetworkCommand::FlushFrame).unwrap();
     run_network_pump_with_trace(
         FailingSendSession,
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -564,10 +568,10 @@ async fn failed_physics_socket_write_never_emits_success_ack() {
 #[tokio::test]
 async fn cancelled_pending_physics_socket_write_never_emits_success_ack() {
     let identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
     let (world_event_tx, _world_events) = mpsc::channel(WORLD_EVENT_CAPACITY);
     let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
@@ -590,7 +594,7 @@ async fn cancelled_pending_physics_socket_write_never_emits_success_ack() {
             started: Some(started_tx),
             complete: None,
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -611,12 +615,12 @@ async fn cancelled_pending_physics_socket_write_never_emits_success_ack() {
 #[tokio::test]
 async fn reanchor_during_an_in_flight_physics_send_preserves_the_socket_result() {
     let identity = protocol::PhysicsSendIdentity {
-        session_generation: 7,
-        tick: 101,
+        session_generation: SessionGeneration::new(7),
+        tick: PhysicsTick::new(101),
         admission_id: 3,
-        reanchor_epoch: 0,
+        reanchor_epoch: PositionAuthorityGeneration::new(0),
     };
-    let (reanchor, reanchor_rx) = watch::channel(0);
+    let (reanchor, reanchor_rx) = watch::channel(PositionAuthorityGeneration::default());
     let (world_event_tx, _world_events) = mpsc::channel(WORLD_EVENT_CAPACITY);
     let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
     commands
@@ -639,7 +643,7 @@ async fn reanchor_during_an_in_flight_physics_send_preserves_the_socket_result()
             started: Some(started_tx),
             complete: Some(complete_rx),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -647,7 +651,7 @@ async fn reanchor_during_an_in_flight_physics_send_preserves_the_socket_result()
     ));
 
     started_rx.await.unwrap();
-    reanchor.send_replace(1);
+    reanchor.send_replace(PositionAuthorityGeneration::new(1));
     assert!(
         tokio::time::timeout(Duration::from_millis(20), controls.recv())
             .await

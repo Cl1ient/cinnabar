@@ -1,4 +1,5 @@
 use super::*;
+use simulation_clock::identity::PositionAuthorityGeneration;
 
 #[test]
 fn closed_command_deferral_ends_after_nonterminal_controls_are_drained() {
@@ -47,7 +48,8 @@ fn closed_command_predicate_catches_terminal_queued_after_precheck() {
     let (control_sender, control_events) = mpsc::channel(2);
     let (_world_sender, world_events) = mpsc::channel(1);
     let (commands, command_receiver) = mpsc::channel(1);
-    let (physics_reanchor, _physics_reanchor_rx) = watch::channel(0);
+    let (physics_reanchor, _physics_reanchor_rx) =
+        watch::channel(PositionAuthorityGeneration::default());
     let (shutdown, _shutdown_rx) = watch::channel(false);
     let handle = NetworkHandle {
         session_generation: 0,

@@ -1,3 +1,4 @@
+use render_api::PoseGeneration;
 #[path = "runtime/elytra_tests.rs"]
 mod elytra_tests;
 
@@ -140,7 +141,7 @@ fn equipment_layer_keeps_body_placement_without_its_hurt_overlay() {
                 ingress_sequence: 4,
                 source_tick: None,
                 movement_revision: 5,
-                pose_generation: 6,
+                pose_generation: PoseGeneration::new(6),
                 layer: ACTOR_LAYER_BODY,
             },
             rig: EntityRigId(0),
@@ -305,7 +306,7 @@ fn real_carriers_draw_armor_and_report_each_held_item() {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 0,
+                pose_generation: PoseGeneration::new(0),
                 layer: ACTOR_LAYER_BODY,
             },
             rig,
@@ -398,7 +399,7 @@ fn player_body(runtime: &mut super::runtime::EquipmentRuntime) -> ActorRigSubmis
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 0,
+                pose_generation: PoseGeneration::new(0),
                 layer: ACTOR_LAYER_BODY,
             },
             rig,

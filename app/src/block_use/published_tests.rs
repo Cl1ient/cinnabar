@@ -8,6 +8,8 @@ use bevy::prelude::*;
 use client_runtime::network::NetworkHandle;
 use client_ui::ui_runtime::UiRuntime;
 use protocol::{ContainerIdentity, InventoryEvent, InventorySlotEvent, SlotIdentity};
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 use std::time::{Duration, Instant};
 use {
     super::*,
@@ -107,10 +109,10 @@ fn fixture() -> (World, client_session::CapturedPackets) {
     let eye = Vec3::new(4.5, 2.5, 8.5);
     carrier
         .publish(client_presentation::local_player::LocalPlayerFrameSample {
-            session_generation: 7,
+            session_generation: SessionGeneration::new(7),
             actor_session_id: stream.authority().actor_session_id(),
-            fifo_sequence: stream.committed_sequence(),
-            physics_tick: 101,
+            fifo_sequence: protocol::identity::FifoSequence::new(stream.committed_sequence()),
+            physics_tick: PhysicsTick::new(101),
             perspective: semantic_input::PerspectiveMode::FirstPerson,
             world_collision_identity: sample.world_identity,
             pose: Transform::from_translation(eye),
@@ -258,10 +260,10 @@ fn frame_origin(world: &World, eye: Vec3, rotation: Quat) -> InteractionOriginSn
     let mut carrier = client_presentation::local_player::LocalPlayerFrameCarrier::default();
     carrier
         .publish(client_presentation::local_player::LocalPlayerFrameSample {
-            session_generation: 7,
+            session_generation: SessionGeneration::new(7),
             actor_session_id: stream.authority().actor_session_id(),
-            fifo_sequence: stream.committed_sequence(),
-            physics_tick: 101,
+            fifo_sequence: protocol::identity::FifoSequence::new(stream.committed_sequence()),
+            physics_tick: PhysicsTick::new(101),
             perspective: semantic_input::PerspectiveMode::FirstPerson,
             world_collision_identity: gameplay::test_support::survival_mining::completed(101)
                 .world_identity,

@@ -211,7 +211,7 @@ pub fn world_publication_snapshot_marker(
         "upload_queue_bytes": upload_queue_bytes,
         "gpu_upload_bytes": gpu_upload_bytes,
         "frame_generation": visibility_valid.then_some(visibility.frame_generation),
-        "pose_generation": visibility_valid.then_some(visibility.pose_generation),
+        "pose_generation": visibility_valid.then_some(visibility.pose_generation.get()),
         "view_generation": visibility_valid.then_some(visibility.view_generation),
         "draw_mode": visibility_valid.then(|| format!("{:?}", visibility.draw_mode)),
         "build_profile": build_profile,

@@ -1,4 +1,8 @@
-//! Shared simulation clock values and duration conversion, without a world-model dependency.
+//! Shared simulation clock values, scope identities and durations, without a world-model dependency.
+
+pub mod identity;
+mod physics_tick;
+pub use physics_tick::PhysicsTick;
 
 /// Simulation ticks per second.
 pub const TICKS_PER_SECOND: u32 = 20;

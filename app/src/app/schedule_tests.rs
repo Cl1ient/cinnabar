@@ -1,4 +1,5 @@
 use bevy::ecs::schedule::Schedules;
+use simulation_clock::identity::SessionGeneration;
 
 use super::*;
 
@@ -6,7 +7,7 @@ use super::*;
 fn network_config_call_sites_share_the_process_blob_cache() {
     let owner = ClientBlobCacheOwner::default();
     let first = NetworkConfig {
-        session_generation: 7,
+        session_generation: SessionGeneration::new(7),
         socket_dir: std::path::PathBuf::from("first-core.sock"),
         display_name: "cache-owner".to_owned(),
         client_random_id: protocol::ClientRandomId::new(-7).unwrap(),
@@ -21,7 +22,7 @@ fn network_config_call_sites_share_the_process_blob_cache() {
         .insert(b"verified-across-session")
         .expect("seed verified blob before replacement");
     let replacement = NetworkConfig {
-        session_generation: 8,
+        session_generation: SessionGeneration::new(8),
         socket_dir: std::path::PathBuf::from("replacement-core.sock"),
         display_name: "cache-owner".to_owned(),
         client_random_id: protocol::ClientRandomId::new(-7).unwrap(),

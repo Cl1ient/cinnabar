@@ -891,7 +891,7 @@ fn free_camera_publishes_the_local_body_and_clear_restores_first_person() {
     use crate::local_player::{LocalAvatarPresentation, LocalAvatarVisibilityCarrier};
     let mut view = free_view();
     let mut avatar = LocalAvatarPresentation::default();
-    avatar.begin_session(1, 7);
+    avatar.begin_session(simulation_clock::identity::SessionGeneration::new(1), 7);
     let mut visibility = LocalAvatarVisibilityCarrier::default();
     let context = ctx(Transform::IDENTITY);
     for (sequence, event, expected) in [

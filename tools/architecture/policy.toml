@@ -146,7 +146,7 @@ forbidden_transitive_dependencies = ["app", "cinnabar", "launcher", "client-ui",
 [[crates]]
 name = "gameplay"
 path = "crates/gameplay"
-allowed_dependencies = ["env-compat", "simulation-clock", "actor-animation", "assets", "block-transform", "client-world", "inventory", "player-state", "protocol", "semantic-input", "sim", "world"]
+allowed_dependencies = ["env-compat", "simulation-clock", "actor-animation", "assets", "block-transform", "client-world", "inventory", "player-state", "protocol", "render-api", "semantic-input", "sim", "world"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-session", "client-presentation", "acceptance", "launcher", "client-ui", "chunk-pipeline", "ui", "json-ui", "render", "asset-compiler", "pack-compiler", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]
 
@@ -187,7 +187,7 @@ contract_only = true
 [[crates]]
 name = "client-runtime"
 path = "crates/client-runtime"
-allowed_dependencies = ["env-compat", "bridge", "chunk-pipeline", "client-session", "client-state", "client-ui", "client-world", "diagnostics", "launcher-host", "meshing", "pack-runtime", "protocol", "render", "render-api", "render-scene"]
+allowed_dependencies = ["env-compat", "bridge", "chunk-pipeline", "client-session", "client-state", "client-ui", "client-world", "diagnostics", "launcher-host", "meshing", "pack-runtime", "protocol", "render", "render-api", "render-scene", "simulation-clock"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-presentation", "client-audio", "client-interaction", "client-shell", "client-extensions", "acceptance", "asset-compiler"]
 test_support_features = ["test-support"]
 
@@ -211,7 +211,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "client-interaction"
 path = "crates/client-interaction"
-allowed_dependencies = ["actor-animation", "assets", "chunk-pipeline", "client-audio", "client-presentation", "client-state", "client-ui", "client-world", "diagnostics", "gameplay", "inventory", "player-state", "protocol", "semantic-input", "sim", "ui", "world"]
+allowed_dependencies = ["simulation-clock", "actor-animation", "assets", "chunk-pipeline", "client-audio", "client-presentation", "client-state", "client-ui", "client-world", "diagnostics", "gameplay", "inventory", "player-state", "protocol", "semantic-input", "sim", "ui", "world"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-runtime", "client-shell", "client-extensions", "acceptance", "client-session", "asset-compiler", "pack-compiler", "pack-runtime"]
 test_support_features = ["test-support"]
 

@@ -1,4 +1,5 @@
 use crate::shader_source;
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 use bevy::{
@@ -205,7 +206,7 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
             ingress_sequence: 4,
             source_tick: None,
             movement_revision: 0,
-            pose_generation: 1,
+            pose_generation: PoseGeneration::new(1),
             layer: 0,
         },
         rig: EntityRigId(0),
@@ -487,7 +488,7 @@ fn diagnostic_body(runtime_id: u64, texture_layer: u32) -> render_model::ActorRi
                 ingress_sequence: 1,
                 source_tick: Some(1),
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: 0,
             },
             rig: render_model::EntityRigId(u32::MAX),

@@ -1,11 +1,12 @@
 use super::{java_swing_duration, swing_duration};
 use crate::movement::{LocalMovementEffectTimeline, MAX_LOCAL_PHYSICS_TICKS_PER_FRAME};
 use actor_animation::LocalSwingProgress;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Packet admission and both animation counters on the committed local simulation clock.
 #[derive(Debug, Default, Clone)]
 pub struct SwingTracker {
-    authority: Option<(u64, u64)>,
+    authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     completed_tick: Option<u64>,
     attempted_tick: Option<u64>,
     deferred_attempt: Option<(u64, [i32; 2])>,
@@ -80,7 +81,7 @@ impl SwingTracker {
     /// Supplies each committed tick's post-expiry denominators and resets on a new movement authority.
     pub fn sync_ticks(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         completed_tick: u64,
         effects: &LocalMovementEffectTimeline,
     ) {
@@ -90,7 +91,7 @@ impl SwingTracker {
     /// Keeps an authored item swing denominator across publication and queue retry history.
     pub fn sync_ticks_for_item(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         completed_tick: u64,
         effects: &LocalMovementEffectTimeline,
         item_duration: Option<u32>,
@@ -120,7 +121,7 @@ impl SwingTracker {
     }
 
     /// Identifies the movement authority owning the current counters and retry history.
-    pub fn authority_identity(&self) -> Option<(u64, u64)> {
+    pub fn authority_identity(&self) -> Option<(SessionGeneration, PositionAuthorityGeneration)> {
         self.authority
     }
 

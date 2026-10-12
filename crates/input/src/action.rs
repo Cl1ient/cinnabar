@@ -1,4 +1,4 @@
-use core::num::NonZeroU64;
+use crate::identity::{InputAuthorityGeneration, InputSequence};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
@@ -191,8 +191,8 @@ impl ReleaseReason {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ActionSnapshot {
-    pub frame_sequence: u64,
-    pub authority_generation: NonZeroU64,
+    pub frame_sequence: InputSequence,
+    pub authority_generation: InputAuthorityGeneration,
     /// Unit-clamped movement consumed by simulation and packet construction.
     pub movement: [f32; 2],
     /// Controlling-device differential before magnitude normalization.

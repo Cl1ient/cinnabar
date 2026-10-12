@@ -81,10 +81,10 @@ pub(super) fn apply(
         NetworkControlEvent::PhysicsPacketSent { identity } => {
             if !movement.acknowledge_physics_send(identity) {
                 warn!(
-                    session_generation = identity.session_generation,
-                    tick = identity.tick,
+                    session_generation = identity.session_generation.get(),
+                    tick = identity.tick.get(),
                     admission_id = identity.admission_id,
-                    reanchor_epoch = identity.reanchor_epoch,
+                    reanchor_epoch = identity.reanchor_epoch.get(),
                     "ignored stale, duplicate, or out-of-order physics send acknowledgement"
                 );
             }
@@ -96,10 +96,10 @@ pub(super) fn apply(
         } => {
             if !movement.resolve_cancelled_physics_send(identity, definitely_unsent) {
                 warn!(
-                    session_generation = identity.session_generation,
-                    tick = identity.tick,
+                    session_generation = identity.session_generation.get(),
+                    tick = identity.tick.get(),
                     admission_id = identity.admission_id,
-                    reanchor_epoch = identity.reanchor_epoch,
+                    reanchor_epoch = identity.reanchor_epoch.get(),
                     definitely_unsent,
                     "ignored stale, duplicate, or out-of-order physics cancellation"
                 );

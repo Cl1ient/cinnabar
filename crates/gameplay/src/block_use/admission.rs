@@ -27,10 +27,20 @@ mod tests {
     /// Produces a published unsent tick and an eligible fresh block-use press.
     fn fixture() -> (BlockUseRuntime, SwingTracker) {
         let mut runtime = BlockUseRuntime::default();
-        runtime.synchronize((7, 1));
+        runtime.synchronize((
+            simulation_clock::identity::SessionGeneration::new(7),
+            simulation_clock::identity::PositionAuthorityGeneration::new(1),
+        ));
         runtime.observe_use(true, true, false, true);
         let mut swings = SwingTracker::default();
-        swings.sync_ticks((7, 1), 101, &LocalMovementEffectTimeline::default());
+        swings.sync_ticks(
+            (
+                simulation_clock::identity::SessionGeneration::new(7),
+                simulation_clock::identity::PositionAuthorityGeneration::new(1),
+            ),
+            101,
+            &LocalMovementEffectTimeline::default(),
+        );
         swings.published_progress(101);
         (runtime, swings)
     }
@@ -93,8 +103,14 @@ mod tests {
                 2 => {
                     runtime.observe_use(true, true, false, true);
                 }
-                3 => runtime.synchronize((7, 2)),
-                4 => runtime.synchronize((8, 1)),
+                3 => runtime.synchronize((
+                    simulation_clock::identity::SessionGeneration::new(7),
+                    simulation_clock::identity::PositionAuthorityGeneration::new(2),
+                )),
+                4 => runtime.synchronize((
+                    simulation_clock::identity::SessionGeneration::new(8),
+                    simulation_clock::identity::PositionAuthorityGeneration::new(1),
+                )),
                 _ => {
                     runtime.stop_packets(42, false);
                 }
@@ -139,7 +155,14 @@ mod tests {
     fn owned_retry_cannot_cross_a_swing_authority_change() {
         let (mut runtime, mut swings) = fixture();
         runtime.refuse_transport(101, LocalUse::Place, true);
-        swings.sync_ticks((7, 2), 101, &LocalMovementEffectTimeline::default());
+        swings.sync_ticks(
+            (
+                simulation_clock::identity::SessionGeneration::new(7),
+                simulation_clock::identity::PositionAuthorityGeneration::new(2),
+            ),
+            101,
+            &LocalMovementEffectTimeline::default(),
+        );
         swings.published_progress(101);
         assert!(!runtime.may_attempt(101, LocalUse::Place, &swings));
     }

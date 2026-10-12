@@ -1,3 +1,4 @@
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use {super::*, render_api::PublicationAllowance};
 
 impl WorldStream {
@@ -223,13 +224,16 @@ impl WorldStream {
         self.authority.sync_local_swing(progress);
     }
     /// Selects the local motion authority before the actor clock advances unrelated animation.
-    pub fn set_local_motion_authority(&mut self, authority: Option<(u64, u64)>) {
+    pub fn set_local_motion_authority(
+        &mut self,
+        authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
+    ) {
         self.authority.set_local_motion_authority(authority);
     }
     /// Advances local torso motion with each admitted physical tick's matching swing samples.
     pub fn sync_local_swing_motion(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         samples: impl IntoIterator<Item = actor_animation::LocalSwingMotionSample>,
     ) {
         self.authority.sync_local_swing_motion(authority, samples);

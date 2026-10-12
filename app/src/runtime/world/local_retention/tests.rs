@@ -38,10 +38,10 @@ fn publication(owner: CameraOwner, tick: u64) -> CameraPublicationAttempt {
             entity: Entity::PLACEHOLDER,
             transform: Transform::from_translation(Vec3::new(-1600.0, 70.0, 0.0)),
             perspective: PerspectiveMode::FirstPerson,
-            tick,
-            frame_generation: 0,
+            tick: simulation_clock::PhysicsTick::new(tick),
+            frame_generation: render_api::PoseGeneration::new(0),
         },
-        1,
+        render_api::PoseGeneration::new(1),
     );
     publication
 }
@@ -49,7 +49,10 @@ fn publication(owner: CameraOwner, tick: u64) -> CameraPublicationAttempt {
 #[test]
 fn retention_uses_physics_and_requires_the_current_publication_owner() {
     let (mut stream, physics) = fixture();
-    let owner = CameraOwner::current(&stream, 4);
+    let owner = CameraOwner::current(
+        &stream,
+        simulation_clock::identity::SessionGeneration::new(4),
+    );
     assert!(!retain_completed_player_terrain(
         &mut stream,
         &physics,
@@ -58,7 +61,7 @@ fn retention_uses_physics_and_requires_the_current_publication_owner() {
     ));
     for stale in [
         CameraOwner {
-            session: owner.session + 1,
+            session: simulation_clock::identity::SessionGeneration::new(owner.session.get() + 1),
             ..owner
         },
         CameraOwner {
@@ -74,7 +77,7 @@ fn retention_uses_physics_and_requires_the_current_publication_owner() {
             ..owner
         },
         CameraOwner {
-            sequence: owner.sequence + 1,
+            sequence: protocol::identity::FifoSequence::new(owner.sequence.get() + 1),
             ..owner
         },
     ] {
@@ -113,7 +116,10 @@ fn retention_uses_physics_and_requires_the_current_publication_owner() {
 #[test]
 fn inactive_physics_retains_around_the_committed_server_position() {
     let (mut stream, physics) = fixture();
-    let owner = CameraOwner::current(&stream, 4);
+    let owner = CameraOwner::current(
+        &stream,
+        simulation_clock::identity::SessionGeneration::new(4),
+    );
     assert!(retain_completed_player_terrain(
         &mut stream,
         &physics,

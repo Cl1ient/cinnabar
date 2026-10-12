@@ -3,7 +3,9 @@ use gameplay::{
     block_use::PlacementTarget,
     melee::{Crosshair, classify, pick_actor},
 };
+use semantic_input::identity::{InputAuthorityGeneration, InputSequence};
 use sim::CollisionWorld;
+use simulation_clock::identity::PositionAuthorityGeneration;
 use {
     super::*,
     gameplay::interaction_authority::FrozenBlockObservation,
@@ -17,8 +19,8 @@ pub(super) fn observe_use_target(
     context: &BlockUseContext,
     input_mode: PlayerInputMode,
     survival: bool,
-    input_authority: (std::num::NonZeroU64, u64),
-    position_authority_generation: u64,
+    input_authority: (InputAuthorityGeneration, InputSequence),
+    position_authority_generation: PositionAuthorityGeneration,
     runtime: &BlockUseRuntime,
     pick: Option<FramePick>,
     trigger: ItemUseTrigger,

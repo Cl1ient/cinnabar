@@ -34,7 +34,6 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 
 /// Hex avoids JSON number and Unicode ambiguities around signed bytes.
-
 impl SignedDocument {
     /// Checks bounds, canonical bytes and the pinned key before returning data.
     pub fn verify<T: DeserializeOwned + Serialize>(

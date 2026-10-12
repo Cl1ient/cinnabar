@@ -279,7 +279,7 @@ impl VisibilityFrameProbe {
         VisibilityDiagnosticSnapshot {
             frame_generation: self.input.frame_generation,
             camera: self.camera,
-            pose_generation: self.generations.pose,
+            pose_generation: render_api::PoseGeneration::new(self.generations.pose),
             view_generation: self.generations.view,
             witness_column,
             resident_witness_subchunks: self.input.resident_mesh.column_count(witness_column),

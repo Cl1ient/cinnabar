@@ -112,7 +112,10 @@ fn installed_spear_charge_keeps_the_authored_third_person_arm_with_java_enabled(
     world.init_resource::<super::super::ActorFramePartialTick>();
     world.init_resource::<render_scene::HandRigScene>();
     let mut avatar = crate::local_player::LocalAvatarPresentation::default();
-    avatar.begin_session(stream.authority().actor_session_id(), 1);
+    avatar.begin_session(
+        simulation_clock::identity::SessionGeneration::new(stream.authority().actor_session_id()),
+        1,
+    );
     world.insert_resource(avatar);
     world.init_resource::<crate::local_player::LocalAvatarVisibilityCarrier>();
     let mut settings = crate::camera::CameraSettingsAuthority::default();

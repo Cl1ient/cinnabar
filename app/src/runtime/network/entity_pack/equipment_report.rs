@@ -1,5 +1,6 @@
 //! Env-gated check over locally cached server packs: custom armor attachables draw on a body.
 
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 use render_model::{
@@ -38,7 +39,7 @@ fn body(runtime: &mut EquipmentRuntime) -> ActorRigSubmission {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 0,
+                pose_generation: PoseGeneration::new(0),
                 layer: ACTOR_LAYER_BODY,
             },
             rig,

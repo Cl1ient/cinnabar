@@ -1,3 +1,4 @@
+use semantic_input::identity::InputAuthorityGeneration;
 use std::{collections::HashMap, num::NonZeroU64};
 
 use bevy::prelude::{Res, ResMut, Resource};
@@ -102,7 +103,7 @@ impl SemanticInputRuntime {
         self.router.replace_bindings(settings)
     }
 
-    pub fn replace_authority(&mut self, generation: NonZeroU64) {
+    pub fn replace_authority(&mut self, generation: InputAuthorityGeneration) {
         self.router.replace_authority(generation);
     }
 
@@ -138,7 +139,7 @@ impl SemanticInputRuntime {
         if previous
             .is_none_or(|previous| previous.session_generation != identity.session_generation)
         {
-            self.replace_authority(identity.session_generation);
+            self.replace_authority(InputAuthorityGeneration::new(identity.session_generation));
         }
         if previous
             .is_some_and(|previous| previous.session_generation != identity.session_generation)

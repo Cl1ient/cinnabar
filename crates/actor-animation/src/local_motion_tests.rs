@@ -1,4 +1,5 @@
 use super::*;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// A synthetic player carrier exercises publication without installed assets.
 fn fixture() -> (HashMap<u64, TestActor>, ActorAnimationStore) {
@@ -19,7 +20,13 @@ fn fixture() -> (HashMap<u64, TestActor>, ActorAnimationStore) {
         RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap(),
     ));
     store.insert(1, 0, &actor);
-    store.set_local_motion_authority(1, Some((1, 1)));
+    store.set_local_motion_authority(
+        1,
+        Some((
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        )),
+    );
     (HashMap::from([(1, actor)]), store)
 }
 
@@ -97,7 +104,14 @@ fn publish(
     store: &mut ActorAnimationStore,
     progress: LocalSwingProgress,
 ) {
-    store.sync_local_swing_motion(1, (1, 1), [sample(101, 30.0, progress)]);
+    store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        [sample(101, 30.0, progress)],
+    );
     store.sync_local_swing(1, progress);
     store.refresh_local_view(actors, 1, |_| ActorTickContext {
         is_local: true,
@@ -150,7 +164,10 @@ fn java_torso_catchup_keeps_each_committed_swing_sample() {
         };
         store.sync_local_swing_motion(
             1,
-            (1, 1),
+            (
+                SessionGeneration::new(1),
+                PositionAuthorityGeneration::new(1),
+            ),
             (0..5).map(|counter| {
                 let value = if counter < duration {
                     counter as f32 / duration as f32
@@ -208,7 +225,14 @@ fn java_torso_uses_physics_ticks_and_preserves_other_motion() {
         frame_alpha: Some(0.75),
         ..Default::default()
     };
-    assert!(store.sync_local_swing_motion(1, (1, 1), [sample(101, 30.0, progress)]));
+    assert!(store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [sample(101, 30.0, progress)]
+    ));
     let changed = store.get(1).unwrap().java;
     assert_eq!(changed.body_yaw, [0.0, 9.0]);
     assert_eq!(changed.body_yaw_at(0.0), 6.75);
@@ -230,7 +254,14 @@ fn java_torso_retries_latest_tick_without_double_turning() {
     let (actors, mut store) = fixture();
     early(&actors, &mut store, 1);
     let idle = sample(101, 30.0, LocalSwingProgress::default());
-    assert!(!store.sync_local_swing_motion(1, (1, 1), [idle]));
+    assert!(!store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [idle]
+    ));
     let active = sample(
         101,
         30.0,
@@ -240,8 +271,22 @@ fn java_torso_retries_latest_tick_without_double_turning() {
             ..Default::default()
         },
     );
-    assert!(store.sync_local_swing_motion(1, (1, 1), [active]));
-    assert!(!store.sync_local_swing_motion(1, (1, 1), [active]));
+    assert!(store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [active]
+    ));
+    assert!(!store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [active]
+    ));
     assert_eq!(store.get(1).unwrap().java.body_yaw, [0.0, 9.0]);
     let phase = LocalSwingMotionSample {
         progress: LocalSwingProgress {
@@ -250,11 +295,21 @@ fn java_torso_retries_latest_tick_without_double_turning() {
         },
         ..active
     };
-    assert!(!store.sync_local_swing_motion(1, (1, 1), [phase]));
+    assert!(!store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [phase]
+    ));
     assert_eq!(store.get(1).unwrap().java.body_yaw_at(0.0), 4.5);
     assert!(!store.sync_local_swing_motion(
         1,
-        (1, 1),
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
         [LocalSwingMotionSample {
             tick: 100,
             ..active
@@ -263,7 +318,10 @@ fn java_torso_retries_latest_tick_without_double_turning() {
     assert_eq!(store.get(1).unwrap().java.body_yaw, [0.0, 9.0]);
     assert!(store.sync_local_swing_motion(
         1,
-        (1, 1),
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
         [LocalSwingMotionSample {
             tick: 102,
             ..active
@@ -286,7 +344,14 @@ fn java_torso_catchup_reads_per_tick_displacement() {
         delta: [0.0, 0.0, 0.1],
         ..first
     };
-    assert!(store.sync_local_swing_motion(1, (1, 1), [first, second]));
+    assert!(store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [first, second]
+    ));
     let heading = store.get(1).unwrap().java.body_yaw;
     assert!((heading[0] + 27.0).abs() < 1e-5);
     assert!((heading[1] + 18.9).abs() < 1e-5);
@@ -305,23 +370,60 @@ fn java_torso_authority_and_respawn_reset_the_replay_clock() {
             ..Default::default()
         },
     );
-    store.sync_local_swing_motion(1, (1, 1), [active]);
-    store.set_local_motion_authority(1, Some((1, 2)));
-    assert!(!store.sync_local_swing_motion(1, (1, 1), [active]));
+    store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        [active],
+    );
+    store.set_local_motion_authority(
+        1,
+        Some((
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        )),
+    );
+    assert!(!store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [active]
+    ));
     assert!(store.sync_local_swing_motion(
         1,
-        (1, 2),
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2)
+        ),
         [LocalSwingMotionSample { tick: 1, ..active }]
     ));
     assert!((store.get(1).unwrap().java.body_yaw[1] - 15.3).abs() < 1e-5);
     let mut respawn = actors[&1].clone();
     respawn.spawn_revision += 1;
     store.insert(1, 0, &respawn);
-    assert!(store.sync_local_swing_motion(1, (1, 2), [active]));
+    assert!(store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2)
+        ),
+        [active]
+    ));
     assert_eq!(store.get(1).unwrap().java.body_yaw, [0.0, 9.0]);
     store.set_local_motion_authority(1, None);
     assert_eq!(store.get(1).unwrap().java.body_frame_alpha, None);
-    assert!(!store.sync_local_swing_motion(1, (1, 2), [active]));
+    assert!(!store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2)
+        ),
+        [active]
+    ));
 }
 
 /// Native motion keeps its actor cadence, and Bedrock-only acceleration cannot turn the Java torso.
@@ -339,7 +441,14 @@ fn native_body_is_unchanged_by_java_physics_replay() {
         java: [0.0; 2],
         ..Default::default()
     };
-    assert!(!store.sync_local_swing_motion(1, (1, 1), [sample(100, 30.0, progress)]));
+    assert!(!store.sync_local_swing_motion(
+        1,
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1)
+        ),
+        [sample(100, 30.0, progress)]
+    ));
     let rig = store.get(1).unwrap();
     assert_eq!(rig.java.body_yaw, [0.0; 2]);
     assert_eq!((rig.previous_body_yaw, rig.body_yaw), native);

@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 mod surface;
 mod update;
 pub use surface::{Surface, SurfaceValue};
-pub use update::{MAX_PANEL_BUNDLE_BYTES, MAX_PANEL_PATCH_BYTES, PanelBundle, PanelPatch};
+pub use update::{
+    MAX_PANEL_BUNDLE_BYTES, MAX_PANEL_PATCH_BYTES, MAX_PANEL_SURFACES, PanelBundle, PanelPatch,
+};
 
 pub const MAX_PANEL_BYTES: usize = 128 * 1024;
 pub const MAX_PANEL_CONTROLS: usize = 512;

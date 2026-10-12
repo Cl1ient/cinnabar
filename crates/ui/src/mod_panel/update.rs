@@ -11,7 +11,8 @@ use super::{Control, MAX_PANEL_CONTROLS, Panel, Surface, SurfaceValue, text};
 pub const MAX_PANEL_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 /// Changing values never need to carry the retained document or control schema.
 pub const MAX_PANEL_PATCH_BYTES: usize = 32 * 1024;
-const MAX_SURFACES: usize = 128;
+/// Maximum route documents admitted by one local catalog.
+pub const MAX_PANEL_SURFACES: usize = 128;
 
 /// An initial control schema with individually validated, reusable local routes.
 #[derive(Clone, Debug, Deserialize)]
@@ -65,11 +66,30 @@ impl PanelBundle {
             return Err("panel bundle exceeds byte limit".into());
         }
         let bundle: Self = serde_json::from_str(json).map_err(|error| error.to_string())?;
-        bundle.panel.validate()?;
-        if bundle.surfaces.len() > MAX_SURFACES {
+        bundle.validate()?;
+        Ok(bundle)
+    }
+
+    /// Checks caller-constructed bundles before allocating prepared route state.
+    pub fn validate(&self) -> Result<(), String> {
+        self.panel.validate()?;
+        if self.surfaces.len() > MAX_PANEL_SURFACES {
             return Err("panel bundle has too many surfaces".into());
         }
-        for (id, surface) in &bundle.surfaces {
+        let document_bytes = self
+            .surfaces
+            .values()
+            .map(|surface| surface.document.len())
+            .sum::<usize>()
+            + self
+                .panel
+                .surface
+                .as_ref()
+                .map_or(0, |surface| surface.document.len());
+        if document_bytes > MAX_PANEL_BUNDLE_BYTES {
+            return Err("panel bundle exceeds byte limit".into());
+        }
+        for (id, surface) in &self.surfaces {
             if id.is_empty()
                 || id.len() > 96
                 || !id
@@ -78,11 +98,11 @@ impl PanelBundle {
             {
                 return Err("panel surface route is invalid".into());
             }
-            let mut panel = bundle.panel.clone();
+            let mut panel = self.panel.clone();
             panel.surface = Some(surface.clone());
             panel.validate()?;
         }
-        Ok(bundle)
+        Ok(())
     }
 }
 

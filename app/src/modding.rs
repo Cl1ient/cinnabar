@@ -179,6 +179,20 @@ fn install(app: &mut App, mut hosts: Vec<ModHost>) {
             eprintln!("Optional personal-panel catalog unavailable: {error}");
         }
     }
+    for host in &hosts {
+        if let Some(bundle) = host.panel_bundle() {
+            match mod_ui::PreparedPanelUi::prepare(bundle) {
+                Ok(prepared) => {
+                    if let Some(mut presentation) =
+                        app.world_mut().get_resource_mut::<UiPresentationResource>()
+                    {
+                        presentation.mod_ui_mut().preload_panel_bundle(prepared);
+                    }
+                }
+                Err(error) => eprintln!("Optional personal-panel preparation unavailable: {error}"),
+            }
+        }
+    }
     let mut hosts = hosts.into_iter();
     let Some(host) = hosts.next() else { return };
     app.init_resource::<client_presentation::actor_publication::ActorPresentationStyle>();

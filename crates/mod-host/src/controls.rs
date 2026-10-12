@@ -7,6 +7,11 @@ use std::sync::Arc;
 use ui::mod_panel::{MAX_PANEL_BYTES, Panel, PanelBundle, PanelPatch};
 
 impl ModHost {
+    /// Shares the validated local UI catalog with presentation preparation workers.
+    pub fn panel_bundle(&self) -> Option<Arc<PanelBundle>> {
+        self.instance.panel_bundle()
+    }
+
     /// Prepares a bounded local UI catalog once, outside component callbacks.
     pub fn set_panel_bundle(&mut self, json: &str) -> Result<()> {
         ensure!(

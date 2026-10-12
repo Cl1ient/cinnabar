@@ -7,6 +7,7 @@ mod icons;
 mod input;
 mod layout;
 mod motion;
+pub(crate) mod prepared;
 mod scrolling;
 pub(crate) mod surface;
 mod template;
@@ -57,15 +58,36 @@ pub(super) struct ModPanel {
     edit: Option<edit::Editor>,
     motion: motion::PanelMotion,
     motion_data_dirty: bool,
+    prepared: Option<Arc<prepared::PreparedRoute>>,
+    routes: Vec<prepared::CachedRoute>,
 }
 
 impl ModUi {
+    /// Installs worker-prepared local routes; at most four active component catalogs are kept.
+    pub fn preload_panel_bundle(&mut self, prepared: Arc<prepared::PreparedPanelUi>) {
+        if self
+            .prepared_panel_ui
+            .iter()
+            .any(|current| current.same_bundle(&prepared))
+        {
+            return;
+        }
+        if self.prepared_panel_ui.len() == 4 {
+            self.prepared_panel_ui.remove(0);
+        }
+        self.prepared_panel_ui.push(prepared);
+    }
+
     /// Drops the panel's laid-out text and pointer capture after its private font changed.
     pub fn invalidate_mod_panel_font(&mut self) {
         self.cancel_mod_hud_editor();
         if let Some(panel) = &mut self.mod_panel {
             panel.cancel_edit();
-            panel.screen = CachedScreen::default();
+            panel.screen = panel
+                .prepared
+                .as_ref()
+                .map_or_else(CachedScreen::default, |route| route.screen());
+            panel.routes.clear();
             panel.frame = None;
             panel.drag = None;
             panel.vector_drag = None;
@@ -92,13 +114,19 @@ impl ModUi {
             .mod_panel
             .as_ref()
             .is_some_and(|current| template::same_shape(&current.panel, panel));
-        if same_shape {
+        let prepared = self
+            .prepared_panel_ui
+            .iter()
+            .rev()
+            .find_map(|prepared| prepared.route(panel));
+        if same_shape || prepared.is_some() {
             panel.validate_values()?;
         } else {
             panel.validate()?;
         }
         if let Some(current) = self.mod_panel.as_mut() {
             if !same_shape {
+                current.retain_prepared_route();
                 current.edit = None;
                 current.catalog = None;
                 current.frame = None;
@@ -114,6 +142,10 @@ impl ModUi {
                 current.view = ViewState::default();
                 current.motion = motion::PanelMotion::default();
                 current.pointer = None;
+                current.prepared = prepared.clone();
+                if prepared.is_some() {
+                    current.restore_prepared_route();
+                }
             }
             if panel.capture_key {
                 current.cancel_edit();
@@ -124,8 +156,10 @@ impl ModUi {
             self.mod_panel = Some(ModPanel {
                 panel: panel.clone(),
                 open: false,
-                catalog: None,
-                screen: CachedScreen::default(),
+                catalog: prepared.as_ref().map(|route| Arc::clone(&route.catalog)),
+                screen: prepared
+                    .as_ref()
+                    .map_or_else(CachedScreen::default, |route| route.screen()),
                 frame: None,
                 viewport: [0.0; 2],
                 page: 0,
@@ -142,6 +176,8 @@ impl ModUi {
                 edit: None,
                 motion: motion::PanelMotion::default(),
                 motion_data_dirty: false,
+                prepared,
+                routes: Vec::new(),
             });
         }
         Ok(())
@@ -257,7 +293,9 @@ impl ModUi {
             panel.refresh_data();
             panel.rows = rows;
             panel.page = panel.page.min(panel.last_page());
-            panel.catalog = None;
+            if panel.panel.surface.is_none() {
+                panel.catalog = None;
+            }
             panel.frame = None;
             panel.drag = None;
             panel.vector_drag = None;
@@ -265,13 +303,19 @@ impl ModUi {
             panel.pointer = None;
         }
         if panel.catalog.is_none() {
-            match template::catalog(
+            if panel.prepared.is_some() && panel.edit.is_none() {
+                panel.restore_prepared_route();
+            }
+        }
+        if panel.catalog.is_none() {
+            match template::catalog_prepared(
                 &panel.panel,
                 viewport,
                 panel.category,
                 panel.page,
                 rows,
                 panel.edit.as_ref(),
+                panel.prepared.as_ref().map(|route| route.catalog.as_ref()),
             ) {
                 Ok((catalog, pages)) => {
                     panel.pages = pages;
@@ -395,6 +439,8 @@ impl ModUi {
             category: panel.category,
             pages: panel.pages,
             passes: panel.screen.passes,
+            #[cfg(feature = "test-support")]
+            resolves: panel.screen.resolves,
         })
     }
 }

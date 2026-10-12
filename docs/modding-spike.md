@@ -274,6 +274,12 @@ an initial ordinary `panel` and a `surfaces` object mapping route identifiers to
 every document and action against the shared control schema once before
 publication. Bundles accept up to 128 surfaces and 8 MiB of source data.
 `ModHost::set_panel_bundle` prepares the same contract for host-owned integrations.
+The registration worker and direct environment startup also call
+`PreparedPanelUi::prepare(host.panel_bundle().unwrap())` and pass its result to
+`ModUi::preload_panel_bundle` before the first frame. Standalone integrations use
+the same two calls outside rendering. Prepared routes retain their catalogs and
+resolved roots; returning to a route reuses its binding and measurement caches.
+Route changes continue to release pointer capture and reset the scroll position.
 
 `panel.update-content(json)` then applies a bounded 32 KiB patch:
 

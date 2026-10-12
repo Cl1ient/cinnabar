@@ -936,6 +936,20 @@ these changes do not close the movement, camera, or actor parity gates.
   screen-position offsets are taken as zero. The top band ignores riding hearts and
   pocket-profile rules.
 
+## Potion tooltips
+
+- Potion, splash and lingering potion stacks resolve their name from the
+  auxiliary value (`potion.<type>[.splash|.linger].name`), shared by the
+  inventory tooltip and the selected-item HUD. The tooltip lists each effect
+  with its potency and `m:ss` duration, blue when beneficial and red when
+  harmful. See docs/reference/potion-tooltips.md.
+- Incomplete: effect amplifiers and durations come from the Minecraft wiki's
+  Bedrock tables, not a native capture. Lingering durations are shown at a
+  quarter of the drinkable duration, which matches the cloud's applied duration
+  but is not confirmed as the native tooltip value. Base potions show no
+  `No Effects` line, tipped arrows keep their generic name, and attribute
+  modifier lines are not shown.
+
 ## Worn server-pack armour textures
 
 - Worn armour from server packs runs its attachable scripts with the wearer as

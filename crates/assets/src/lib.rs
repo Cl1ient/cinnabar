@@ -125,7 +125,8 @@ pub use compiled::{
     MAX_MATERIALS, MAX_TEXTURE_LAYERS, Material, TEXTURE_LAYER_MASK, material_leaf_ao_exponent,
 };
 pub use effects::{
-    EFFECT_DESCRIPTORS, EffectDescriptor, effect_descriptor, effect_registry_version,
+    EFFECT_DESCRIPTORS, EffectDescriptor, effect_descriptor, effect_descriptor_by_identifier,
+    effect_registry_version,
 };
 pub use entity::{
     ACTOR_GLINT_TEXTURE_IDENTIFIER, BED_GEOMETRY_IDENTIFIER, CAPE_GEOMETRY_IDENTIFIER,
@@ -257,7 +258,9 @@ pub use pinned_content::{
     active_content_registry_protocol, pinned_block_registry_bytes, pinned_block_sequential_id,
     pinned_world_provenance,
 };
-pub use potion::vanilla_potion_variant;
+pub use potion::{
+    POTION_DESCRIPTORS, PotionDescriptor, PotionEffect, potion_descriptor, vanilla_potion_variant,
+};
 pub use provenance::{
     BlobProvenance, VANILLA_SOURCE_MANIFEST, VanillaSource, canonical_source_manifest_sha256,
     vanilla_source, vanilla_source_manifest_sha256,

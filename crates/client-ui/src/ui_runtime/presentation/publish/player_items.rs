@@ -147,6 +147,7 @@ pub(super) fn equipment(
         presentation::inventory_tooltip::name_line(
             runtime,
             identifier.as_deref(),
+            stack.metadata,
             stated_name.as_deref(),
             &facts.display,
         )

@@ -43,7 +43,7 @@ fn owner_store(
     owner: &TestActor,
     context: &ActorTickContext,
 ) -> ActorAnimationStore {
-    let mut store = ActorAnimationStore::new(Some(Arc::clone(assets)));
+    let mut store = ActorAnimationStore::with_assets(Arc::clone(assets));
     let lifetime = tests::owner_rig().actor;
     let state = resolve_binding(assets, &store.layout, owner, 0, 0).unwrap();
     store.rigs.insert(lifetime, state);

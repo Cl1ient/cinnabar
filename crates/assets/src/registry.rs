@@ -8,15 +8,15 @@ mod schema;
 mod wire_tests;
 
 pub use schema::{
-    BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole,
+    BeaconTint, BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole,
     LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState, ModelStateField, MovementSemantics,
     PHYSICS_MOVEMENT_SEMANTICS_OFFSET, PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES,
     PHYSICS_REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
 };
 use schema::{
     LEGACY_REGISTRY_PROTOCOL, MAX_COLLISION_BOXES, MAX_REGISTRY_RECORDS, MAX_REGISTRY_STATE_BYTES,
-    RECORD_HEADER_BYTES, REGISTRY_MAGIC, RecordHeader, read_collision_box, read_record_header,
-    read_registry_metadata,
+    PREVIOUS_RECORD_HEADER_BYTES, PREVIOUS_REGISTRY_MAGIC, RECORD_HEADER_BYTES, REGISTRY_MAGIC,
+    RecordHeader, read_collision_box, read_record_header, read_registry_metadata,
 };
 
 impl BlockFlags {
@@ -43,12 +43,12 @@ impl ModelState {
     }
 }
 
-/// Reads the bounded protocol-1001 BREG1003 block registry.
+/// Reads the bounded protocol-1001 legacy block registry.
 pub fn read_registry(bytes: &[u8]) -> Result<Box<[RegistryRecord]>, AssetError> {
     read_registry_for_protocol(bytes, LEGACY_REGISTRY_PROTOCOL)
 }
 
-/// Reads the wire protocol stamped in a `BREG1003` header without decoding
+/// Reads the wire protocol stamped in a supported block header without decoding
 /// any record payload.
 ///
 /// Startup cross-carrier coherence checks use this cheap reader ahead of the
@@ -56,13 +56,14 @@ pub fn read_registry(bytes: &[u8]) -> Result<Box<[RegistryRecord]>, AssetError> 
 /// reader produces.
 pub fn registry_header_protocol(bytes: &[u8]) -> Result<u32, AssetError> {
     let mut reader = Reader::new(bytes);
-    if reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")? != REGISTRY_MAGIC {
+    let magic = reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")?;
+    if magic != REGISTRY_MAGIC && magic != PREVIOUS_REGISTRY_MAGIC {
         return Err(AssetError::InvalidRegistryMagic);
     }
     reader.read_u32("registry protocol")
 }
 
-/// Reads a bounded `BREG1003` registry for one explicit wire protocol.
+/// Reads a bounded supported block registry for one explicit wire protocol.
 pub fn read_registry_for_protocol(
     bytes: &[u8],
     expected_protocol: u32,
@@ -73,7 +74,10 @@ pub fn read_registry_for_protocol(
         return Err(AssetError::InvalidRegistryMagic);
     }
     let mut reader = Reader::new(bytes);
-    if reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")? != REGISTRY_MAGIC {
+    let magic = reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")?;
+    let previous =
+        magic == PREVIOUS_REGISTRY_MAGIC && expected_protocol == LEGACY_REGISTRY_PROTOCOL;
+    if magic != REGISTRY_MAGIC && !previous {
         return Err(AssetError::InvalidRegistryMagic);
     }
     let metadata = read_registry_metadata(&mut reader)?;
@@ -98,13 +102,16 @@ pub fn read_registry_for_protocol(
     {
         return Err(AssetError::InvalidRegistryFlags(0xff));
     }
-    let minimum_bytes =
-        count
-            .checked_mul(RECORD_HEADER_BYTES)
-            .ok_or(AssetError::TooManyRegistryRecords {
-                count,
-                max: MAX_REGISTRY_RECORDS,
-            })?;
+    let minimum_bytes = count
+        .checked_mul(if previous {
+            PREVIOUS_RECORD_HEADER_BYTES
+        } else {
+            RECORD_HEADER_BYTES
+        })
+        .ok_or(AssetError::TooManyRegistryRecords {
+            count,
+            max: MAX_REGISTRY_RECORDS,
+        })?;
     if reader.remaining() < minimum_bytes {
         return Err(AssetError::UnexpectedEof {
             context: "registry record headers",
@@ -135,7 +142,9 @@ pub fn read_registry_for_protocol(
             name_len,
             state_len,
             values,
-        } = read_record_header(&mut reader)?;
+            beacon_tint,
+        } = read_record_header(&mut reader, previous)?;
+        let beacon_tint = BeaconTint::read(beacon_tint)?;
         let model_family = ModelFamily::read(model_family)?;
         let contributor_role = ContributorRole::read(contributor_role)?;
         let confidence = CollisionConfidence::read(confidence)?;
@@ -229,6 +238,7 @@ pub fn read_registry_for_protocol(
                 boxes: boxes.into_boxed_slice(),
             },
             provenance,
+            beacon_tint,
         });
     }
     if names.len() != name_count

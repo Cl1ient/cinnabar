@@ -4,7 +4,8 @@ package main
 import "encoding/binary"
 
 const (
-	registryHeader                 = "BREG1003"
+	registryHeader                 = "BREG1004"
+	previousRegistryHeader         = "BREG1003"
 	physicsRegistryHeader          = "PREG1001"
 	physicsRegistryActiveHeader    = "PREG1002"
 	physicsRegistryHeaderBytes     = 48
@@ -16,7 +17,8 @@ const (
 	maxCollisionBoxesPerRecord     = 7
 	maxNameBytes                   = 65535
 	registryHeaderBytes            = 36
-	recordHeaderBytes              = 56
+	recordHeaderBytes              = 57
+	previousRecordHeaderBytes      = 56
 	collisionBoxBytes              = 24
 )
 
@@ -125,6 +127,31 @@ const (
 )
 const maxCollisionConfidence = CollisionConfidenceReviewedVisibleBounds
 
+// BeaconTint is a byte-sized registry discriminator.
+type BeaconTint uint8
+
+const (
+	BeaconTintUnresolved BeaconTint = 0
+	BeaconTintNoTinting  BeaconTint = 1
+	BeaconTintWhite      BeaconTint = 2
+	BeaconTintOrange     BeaconTint = 3
+	BeaconTintMagenta    BeaconTint = 4
+	BeaconTintLightBlue  BeaconTint = 5
+	BeaconTintYellow     BeaconTint = 6
+	BeaconTintLime       BeaconTint = 7
+	BeaconTintPink       BeaconTint = 8
+	BeaconTintGray       BeaconTint = 9
+	BeaconTintLightGray  BeaconTint = 10
+	BeaconTintCyan       BeaconTint = 11
+	BeaconTintPurple     BeaconTint = 12
+	BeaconTintBlue       BeaconTint = 13
+	BeaconTintBrown      BeaconTint = 14
+	BeaconTintGreen      BeaconTint = 15
+	BeaconTintRed        BeaconTint = 16
+	BeaconTintBlack      BeaconTint = 17
+)
+const maxBeaconTint = BeaconTintBlack
+
 // ModelState is a typed block-registry value.
 type ModelState struct {
 	Mask   uint8
@@ -161,6 +188,7 @@ type Record struct {
 	FaceCoverage    uint8
 	CollisionSeed   CollisionSeed
 	Provenance      uint8
+	BeaconTint      BeaconTint
 }
 
 // RegistryMetadata is a typed block-registry value.
@@ -176,7 +204,11 @@ type RegistryMetadata struct {
 
 // appendRegistryMetadata writes RegistryMetadata in its declared little-endian order.
 func appendRegistryMetadata(encoded []byte, value RegistryMetadata) []byte {
-	encoded = append(encoded, registryHeader...)
+	if value.Protocol == registryProtocol {
+		encoded = append(encoded, previousRegistryHeader...)
+	} else {
+		encoded = append(encoded, registryHeader...)
+	}
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(value.Protocol))
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(value.CanonicalNames))
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(value.CanonicalStates))
@@ -239,10 +271,11 @@ type RecordHeader struct {
 	NameLen         uint16
 	StateLen        uint32
 	Values          [8]uint32
+	BeaconTint      uint8
 }
 
 // decodeRecordHeader reads a previously length-checked record prefix.
-func decodeRecordHeader(data []byte) RecordHeader {
+func decodeRecordHeader(data []byte, previous bool) RecordHeader {
 	var value RecordHeader
 	value.SequentialID = binary.LittleEndian.Uint32(data[0:4])
 	value.NetworkHash = binary.LittleEndian.Uint32(data[4:8])
@@ -260,11 +293,14 @@ func decodeRecordHeader(data []byte) RecordHeader {
 	for index := range value.Values {
 		value.Values[index] = binary.LittleEndian.Uint32(data[24+index*4 : 28+index*4])
 	}
+	if !previous {
+		value.BeaconTint = data[56]
+	}
 	return value
 }
 
 // appendRecordHeader writes the already-validated fixed record header.
-func appendRecordHeader(encoded []byte, record Record) []byte {
+func appendRecordHeader(encoded []byte, record Record, previous bool) []byte {
 	encoded = binary.LittleEndian.AppendUint32(encoded, record.SequentialID)
 	encoded = binary.LittleEndian.AppendUint32(encoded, record.NetworkHash)
 	encoded = append(encoded, record.Flags)
@@ -280,6 +316,9 @@ func appendRecordHeader(encoded []byte, record Record) []byte {
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(len(record.StateJSON)))
 	for _, value := range record.ModelState.Values {
 		encoded = binary.LittleEndian.AppendUint32(encoded, value)
+	}
+	if !previous {
+		encoded = append(encoded, uint8(record.BeaconTint))
 	}
 	return encoded
 }

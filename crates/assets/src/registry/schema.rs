@@ -3,14 +3,16 @@ use super::Reader;
 use crate::AssetError;
 use bitflags::bitflags;
 
-pub(super) const REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
+pub(super) const REGISTRY_MAGIC: &[u8; 8] = b"BREG1004";
+pub(super) const PREVIOUS_REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
 pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1002";
 pub const LEGACY_PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1001";
 pub const PHYSICS_REGISTRY_HEADER_BYTES: usize = 48;
 pub const PHYSICS_RECORD_HEADER_BYTES: usize = 28;
 pub const PHYSICS_MOVEMENT_SEMANTICS_OFFSET: usize = 11;
 pub(super) const LEGACY_REGISTRY_PROTOCOL: u32 = 1001;
-pub(super) const RECORD_HEADER_BYTES: usize = 56;
+pub(super) const RECORD_HEADER_BYTES: usize = 57;
+pub(super) const PREVIOUS_RECORD_HEADER_BYTES: usize = 56;
 pub(super) const MAX_REGISTRY_RECORDS: usize = 65536;
 pub(super) const MAX_REGISTRY_STATE_BYTES: usize = 1048576;
 pub(super) const MAX_COLLISION_BOXES: usize = 7;
@@ -213,6 +215,58 @@ impl CollisionConfidence {
     }
 }
 
+/// A byte-sized registry discriminator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u8)]
+pub enum BeaconTint {
+    #[default]
+    Unresolved = 0,
+    NoTinting = 1,
+    White = 2,
+    Orange = 3,
+    Magenta = 4,
+    LightBlue = 5,
+    Yellow = 6,
+    Lime = 7,
+    Pink = 8,
+    Gray = 9,
+    LightGray = 10,
+    Cyan = 11,
+    Purple = 12,
+    Blue = 13,
+    Brown = 14,
+    Green = 15,
+    Red = 16,
+    Black = 17,
+}
+
+impl BeaconTint {
+    /// Decode a known discriminator and reject reserved values.
+    pub(super) fn read(raw: u8) -> Result<Self, AssetError> {
+        match raw {
+            0 => Ok(Self::Unresolved),
+            1 => Ok(Self::NoTinting),
+            2 => Ok(Self::White),
+            3 => Ok(Self::Orange),
+            4 => Ok(Self::Magenta),
+            5 => Ok(Self::LightBlue),
+            6 => Ok(Self::Yellow),
+            7 => Ok(Self::Lime),
+            8 => Ok(Self::Pink),
+            9 => Ok(Self::Gray),
+            10 => Ok(Self::LightGray),
+            11 => Ok(Self::Cyan),
+            12 => Ok(Self::Purple),
+            13 => Ok(Self::Blue),
+            14 => Ok(Self::Brown),
+            15 => Ok(Self::Green),
+            16 => Ok(Self::Red),
+            17 => Ok(Self::Black),
+            _ => Err(AssetError::InvalidRegistryFlags(raw)),
+        }
+    }
+}
+
 /// Presence-tagged model-state fields.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ModelState {
@@ -253,6 +307,7 @@ pub struct RegistryRecord {
     pub face_coverage: u8,
     pub collision_seed: CollisionSeed,
     pub provenance: RegistryProvenance,
+    pub beacon_tint: BeaconTint,
 }
 
 /// Counts and protocol in the block-registry header.
@@ -310,10 +365,14 @@ pub(super) struct RecordHeader {
     pub(super) name_len: u16,
     pub(super) state_len: u32,
     pub(super) values: [u32; 8],
+    pub(super) beacon_tint: u8,
 }
 
 /// Read the fixed header in schema order before validating its facts.
-pub(super) fn read_record_header(reader: &mut Reader<'_>) -> Result<RecordHeader, AssetError> {
+pub(super) fn read_record_header(
+    reader: &mut Reader<'_>,
+    previous: bool,
+) -> Result<RecordHeader, AssetError> {
     Ok(RecordHeader {
         sequential_id: reader.read_u32("record sequential_id")?,
         network_hash: reader.read_u32("record network_hash")?,
@@ -334,6 +393,11 @@ pub(super) fn read_record_header(reader: &mut Reader<'_>) -> Result<RecordHeader
                 *value = reader.read_u32("record values")?;
             }
             values
+        },
+        beacon_tint: if previous {
+            0
+        } else {
+            reader.read_u8("record beacon_tint")?
         },
     })
 }

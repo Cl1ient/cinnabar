@@ -446,6 +446,60 @@ fn overlay_cache_reuses_the_previous_session_compile() {
     );
 }
 
+// Re-applying a pack after another reuses its compiled blocks, identical to a fresh compile.
+#[test]
+fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
+    use std::sync::Arc;
+    let _cache = overlay_cache();
+    let keys = assets::MaterialKeys::from_entries([(5, "reapply_key")]);
+    let blocks = protocol::CustomBlocks::default();
+    let limit = super::overlay_texture_layer_limit();
+    let stack = |id| {
+        resource_pack::validate_handoff(protocol::ResourcePackHandoff::from_archives(vec![
+            archive(
+                id,
+                &[
+                    (
+                        "textures/terrain_texture.json",
+                        br#"{"texture_data":{"reapply_key":{"textures":"textures/blocks/reapply"}}}"#,
+                    ),
+                    ("textures/blocks/reapply.png", &png(16, 16)),
+                ],
+            ),
+        ]))
+    };
+    let fresh = |stack: &Arc<resource_pack::ValidatedPackStack>| {
+        let view = resource_pack::LayeredPackView::tracked(stack.clone());
+        super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+    };
+    let mut compiles = 0;
+    let mut cached = |stack: &Arc<resource_pack::ValidatedPackStack>| {
+        let view = resource_pack::LayeredPackView::tracked(stack.clone());
+        super::cached_block_overlay(
+            &super::stack_fingerprint(stack),
+            &view,
+            &blocks,
+            false,
+            limit,
+            || {
+                compiles += 1;
+                super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+                    .map(Arc::new)
+            },
+        )
+    };
+    let (first, second) = (stack(41), stack(42));
+    let applied = cached(&first).expect("the pack overrides a vanilla key");
+    cached(&second);
+    let reapplied = cached(&first).expect("the pack overrides a vanilla key");
+    assert_eq!(compiles, 2, "switching back does not compile again");
+    assert!(Arc::ptr_eq(&applied, &reapplied));
+    assert_eq!(
+        format!("{:?}", reapplied),
+        format!("{:?}", fresh(&first).expect("uncached compile")),
+    );
+}
+
 #[test]
 fn newer_generation_replaces_atomically_and_stale_results_are_ignored() {
     let mut state = ResourcePackAdmissionState::default();

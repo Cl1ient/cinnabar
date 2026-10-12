@@ -58,6 +58,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
 ) -> Option<(PreparedChunkTextureAssets, ChunkTextureUploadStats)> {
+    let _zone = bevy::log::info_span!("pack_apply.gpu_atlas").entered();
     let identity = assets.identity();
     let pages = assets.assets().texture_pages();
     let Some(page_bindings) = plan_texture_page_bindings(pages.len()) else {
@@ -106,6 +107,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             bevy::log::error!(?error, "chunk texture page exceeds adapter limits");
             return None;
         }
+        let mips = bevy::log::info_span!("pack_apply.gpu_atlas_mips").entered();
         let texture = match match binding {
             TexturePageBinding::Asset(index) => assets.assets().terrain_texture_page(index),
             TexturePageBinding::DiagnosticFallback => {
@@ -118,6 +120,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
                 return None;
             }
         };
+        drop(mips);
         let plans = match plan_queue_texture_mips(&texture) {
             Ok(plans) => plans,
             Err(error) => {

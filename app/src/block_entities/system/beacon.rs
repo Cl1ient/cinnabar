@@ -1,43 +1,11 @@
-//! Beacon beams: their height to the build limit and the tint of stained glass above them.
+//! Beacon beams: their height to the build limit and the tint of glass above them.
 
-use client_interaction::movement::PhysicsCollisionRegistries;
 use render_model::{BeaconModel, BlockEntityKind};
 
-use super::{BlockEntityRuntime, block_info};
+use super::BlockEntityRuntime;
 
 /// Highest world Y a beacon beam is drawn to; the beam stops at the build limit.
 const BEAM_TOP: i32 = 320;
-
-/// The dye color of a stained-glass block name, as linear RGB.
-fn glass_tint(name: &str) -> Option<[f32; 3]> {
-    let color = name
-        .strip_prefix("minecraft:")?
-        .strip_suffix("_stained_glass_pane")
-        .or_else(|| {
-            name.strip_prefix("minecraft:")?
-                .strip_suffix("_stained_glass")
-        })?;
-    let java_id = match color {
-        "white" => 0,
-        "orange" => 1,
-        "magenta" => 2,
-        "light_blue" => 3,
-        "yellow" => 4,
-        "lime" => 5,
-        "pink" => 6,
-        "gray" => 7,
-        "light_gray" | "silver" => 8,
-        "cyan" => 9,
-        "purple" => 10,
-        "blue" => 11,
-        "brown" => 12,
-        "green" => 13,
-        "red" => 14,
-        "black" => 15,
-        _ => return None,
-    };
-    Some(assets::banner::color_linear(15 - java_id))
-}
 
 /// Blends the tint of each stained-glass block above the beacon, each new pane averaging
 /// with the color so far.
@@ -51,10 +19,9 @@ fn beam_tint(glass: impl IntoIterator<Item = [f32; 3]>) -> [f32; 3] {
     })
 }
 
-/// The beam a beacon at `position` draws, tinted by the stained glass above it.
+/// The beam a beacon at `position` draws, tinted from compiled descriptors of the blocks above it.
 pub(super) fn kind(
     runtime: &mut BlockEntityRuntime,
-    collisions: &PhysicsCollisionRegistries,
     store: &world::ChunkStore,
     dimension: i32,
     mode: assets::NetworkIdMode,
@@ -80,10 +47,10 @@ pub(super) fn kind(
                     position[2].rem_euclid(16) as u8,
                 )
             });
-        if let Some(info) = runtime_id.and_then(|id| block_info(runtime, collisions, mode, id))
-            && let Some(color) = glass_tint(&info.name)
+        if let Some(colour) =
+            runtime_id.and_then(|id| runtime.beacon_tints.get(mode, id).dye_colour())
         {
-            glass.push(color);
+            glass.push(assets::banner::color_linear(colour));
         }
     }
     Some(BlockEntityKind::Beacon(BeaconModel {
@@ -103,8 +70,8 @@ mod tests {
         let blue = [0.0, 0.0, 1.0];
         assert_eq!(beam_tint([red]), red);
         assert_eq!(beam_tint([red, blue]), [0.5, 0.0, 0.5]);
-        assert!(glass_tint("minecraft:red_stained_glass").is_some());
-        assert!(glass_tint("minecraft:silver_stained_glass_pane").is_some());
-        assert!(glass_tint("minecraft:glass").is_none());
+        assert_eq!(assets::BeaconTint::Red.dye_colour(), Some(1));
+        assert_eq!(assets::BeaconTint::LightGray.dye_colour(), Some(7));
+        assert_eq!(assets::BeaconTint::NoTinting.dye_colour(), None);
     }
 }

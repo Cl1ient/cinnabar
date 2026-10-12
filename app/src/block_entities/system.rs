@@ -52,6 +52,9 @@ mod culling;
 mod dragon_death;
 mod portals;
 
+#[cfg(test)]
+mod beacon_tint_tests;
+
 /// Reads the optional block-entity carrier next to the world carrier, which the block-entity
 /// scene and worn heads share; on absence or corruption logs once and returns `None`.
 pub(crate) fn load_block_entity_carrier(
@@ -112,6 +115,7 @@ struct BlockInfo {
 #[derive(Resource)]
 pub(crate) struct BlockEntityRuntime {
     lids: ContainerLids,
+    beacon_tints: assets::BeaconTintCatalog,
     /// Scan results per loaded column, rebuilt when the column changes.
     columns: HashMap<ChunkKey, columns::ColumnScan>,
     rescans: columns::RescanOrder,
@@ -132,6 +136,7 @@ impl BlockEntityRuntime {
     pub(crate) fn new() -> Self {
         Self {
             lids: ContainerLids::default(),
+            beacon_tints: assets::BeaconTintCatalog::pinned(),
             columns: HashMap::new(),
             rescans: columns::RescanOrder::default(),
             frame: 0,
@@ -467,14 +472,7 @@ pub(crate) fn update_block_entity_scene(
                     font: &font.0,
                 };
                 let kind = if matches!(template, Template::Beacon) {
-                    beacon::kind(
-                        &mut *runtime,
-                        &collisions,
-                        store,
-                        dimension,
-                        mode,
-                        [x, y, z],
-                    )
+                    beacon::kind(&mut *runtime, store, dimension, mode, [x, y, z])
                 } else {
                     resolve(
                         template,

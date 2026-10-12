@@ -445,9 +445,14 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
         let result = build_carrier_texture_assets(&candidate, previous.as_ref(), &device, &queue)
             .and_then(|(atlas, stats)| {
                 let geometry = match geometry {
-                    Some(instances) => Some(PreparedResourceGeometry::build(
-                        &instances, candidate, device, queue, view,
-                    )?),
+                    Some(instances) => Some({
+                        let _zone = bevy::log::info_span!(
+                            "pack_apply.gpu_geometry",
+                            chunks = instances.len()
+                        )
+                        .entered();
+                        PreparedResourceGeometry::build(&instances, candidate, device, queue, view)?
+                    }),
                     None => None,
                 };
                 Some((atlas, stats, geometry))

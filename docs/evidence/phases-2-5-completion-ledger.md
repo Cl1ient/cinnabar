@@ -295,3 +295,10 @@ core; those tests have not been executed locally. No existing completion entry i
 ## Loom banner previews and renderer capabilities
 
 JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. Frames report custom renderer names that no renderer drew. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Protocol codec swap
+
+`protocol` uses protocolgen's vendored contract crate as its only codec; Valentine and its
+normalization machinery are gone. Packet routing and UI budgets derive from the generated packet
+table and field sites rather than hand-maintained ID lists. The ported tests have not been
+executed locally. No existing completion entry is advanced.

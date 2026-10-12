@@ -5,7 +5,7 @@ How the client, the Go core and their libraries fit together, and what each crat
 ## Overview
 
 ```text
-bedrock-client (Rust)  ── local socket ──  bedrock-core (Go, gophertunnel)
+cinnabar (Rust)  ── local socket ──  bedrock-core (Go, gophertunnel)
                                              ├─ go-raknet ──── servers and BDS
                                              └─ go-nethernet ─ Realms and friend worlds
 ```
@@ -33,8 +33,8 @@ Every workspace member has one row below. The first column is its directory; the
 its Cargo package name, which can differ from the directory. Import APIs from their owning
 crate directly. The architecture gate checks these rows against `tools/architecture/policy.toml`,
 which also requires every workspace member to be registered. Package names are checked against
-their Cargo manifests. Adding a crate requires an entry
-with its package name, caller guidance and related owners.
+their Cargo manifests. Each entry needs its package name, caller guidance and related owners.
+Keep rows current when adding, moving or removing a crate.
 
 ### Client composition and adapters
 
@@ -45,7 +45,7 @@ coordinates work that crosses these owners.
 
 | Workspace member | Package | Ownership and caller guidance | Related owners |
 | --- | --- | --- | --- |
-| `app` | `bedrock-client` | Client executable and Bevy composition; use it to launch the client and assemble its plugins. | `client-*` crates own subsystem adapters; domain crates own game rules. |
+| `app` | `cinnabar` | Client executable and Bevy composition; use it to launch the client and assemble its plugins. | `client-*` crates own subsystem adapters; domain crates own game rules. |
 | `crates/client-state` | `client-state` | Shared ECS resource wrappers, frame sets and observations; use these contracts to connect plugins. | Domain crates own transitions; the other `client-*` crates own systems. |
 | `crates/client-runtime` | `client-runtime` | Transport resources, world servicing and session lifecycle adapters; use its runtime plugin and ingress/publication APIs. | `client-session` owns transport; `client-world` and `chunk-pipeline` own world work. |
 | `crates/client-session` | `client-session` | Session transport, join bootstrap and separate bounded control/world FIFOs; use its network handle and sequenced events. | `pack-runtime` prepares packs; presentation owners interpret the opaque prepared payload. |

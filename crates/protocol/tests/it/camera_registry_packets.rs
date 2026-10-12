@@ -93,13 +93,50 @@ fn camera_presets_preserve_targeting_limits_starting_rotation_and_listener() {
     assert_eq!(preset.starting_rotation, Some([20.0, 30.0]));
 }
 
+/// One linear spline definition named `test:flight`.
+fn linear_spline() -> CameraSpline {
+    CameraSpline {
+        camera_data_splines: vec![CameraSplineDefinition {
+            name: "test:flight".into(),
+            total_time: wire::F32LE(4.0),
+            spline_type: "linear".into(),
+            control_points: [0.0, 2.0, 6.0]
+                .map(|x| CameraSplineControlPoint {
+                    position: [x, 3.0, 5.0].into(),
+                })
+                .into(),
+            ..Default::default()
+        }],
+    }
+}
+
+/// A mixed-case spline type breaks the codec's exact-name pattern, so the packet is a skippable
+/// rejection rather than an admitted spline.
 #[test]
-fn camera_spline_registry_keeps_independent_tracks_and_case_insensitive_type() {
+fn camera_spline_type_is_case_sensitive() {
+    let encoded = protocol::encode(&protocol::Packet::new(linear_spline())).unwrap();
+    assert!(protocol::decode_batch(encoded.clone()).is_ok());
+    let position = encoded
+        .windows(6)
+        .position(|window| window == b"linear")
+        .expect("spline type bytes");
+    let mut mixed = encoded.to_vec();
+    mixed[position..position + 6].copy_from_slice(b"LiNeAr");
+    assert!(matches!(
+        protocol::decode_batch(mixed.into()),
+        Err(protocol::ProtocolError::Ui(
+            protocol::UiPacketError::SchemaViolation { .. }
+        ))
+    ));
+}
+
+#[test]
+fn camera_spline_registry_keeps_independent_tracks_and_lowercase_type() {
     let event = camera(CameraSpline {
         camera_data_splines: vec![CameraSplineDefinition {
             name: "test:flight".into(),
             total_time: wire::F32LE(4.0),
-            spline_type: "LiNeAr".into(),
+            spline_type: "linear".into(),
             control_points: [0.0, 2.0, 6.0]
                 .map(|x| CameraSplineControlPoint {
                     position: [x, 3.0, 5.0].into(),

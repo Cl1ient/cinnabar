@@ -149,19 +149,18 @@ pub(crate) fn normalize_registry(
         .map(CameraEvent::Splines)
 }
 
-/// Both named curve identifiers are case-insensitive in the registry.
+/// The curve type is one of the two exact lowercase names the codec's pattern admits.
 fn normalize_definition(
     wire: types::CameraSplineDefinition,
 ) -> Result<CameraSpline, WorldPacketError> {
-    let spline_type = wire.spline_type.as_bytes();
-    let kind = if spline_type.eq_ignore_ascii_case(b"catmullrom") {
-        CameraSplineKind::CatmullRom
-    } else if spline_type.eq_ignore_ascii_case(b"linear") {
-        CameraSplineKind::Linear
-    } else {
-        return Err(WorldPacketError::InvalidCameraField {
-            field: "spline.kind",
-        });
+    let kind = match wire.spline_type.as_bytes() {
+        b"catmullrom" => CameraSplineKind::CatmullRom,
+        b"linear" => CameraSplineKind::Linear,
+        _ => {
+            return Err(WorldPacketError::InvalidCameraField {
+                field: "spline.kind",
+            });
+        }
     };
     validate(
         CameraSpline {

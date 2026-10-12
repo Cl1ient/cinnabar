@@ -283,10 +283,10 @@ mod session {
     /// unusable in-batch target is skipped.
     #[tokio::test]
     async fn spawn_ends_with_a_startup_transfer() {
-        for terminal in [false, true] {
-            let name = format!("startup-transfer-{terminal}");
+        for from_core in [false, true] {
+            let name = format!("startup-transfer-{from_core}");
             let mut pair = handed_off(&name, &[]).await;
-            if terminal {
+            if from_core {
                 write_frame(&mut pair.peer, &terminal(5, TRANSFER_JSON)).await;
             } else {
                 let transfer = |address: &str| {

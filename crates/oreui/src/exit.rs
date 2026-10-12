@@ -10,8 +10,8 @@ use ui::UiRect;
 use ui_engine::engine::screen::{PaintError, PaintFrame};
 use ui_engine::scroll::ScrollArea;
 
-/// Hit targets and scrolling regions drawn by the quit dialog.
-pub type ExitPaint = (Vec<(MenuAction, UiRect)>, Vec<ScrollArea>);
+/// The quit dialog's hit targets and scroll areas.
+type ExitTargets = (Vec<(MenuAction, UiRect)>, Vec<ScrollArea>);
 
 impl OreUiScreen {
     /// Draws the quit confirmation; returns its targets and its scroll areas.
@@ -21,7 +21,7 @@ impl OreUiScreen {
         size: [f32; 2],
         translate: &dyn Fn(&str) -> Option<std::sync::Arc<str>>,
         frame: &mut PaintFrame<'_>,
-    ) -> Result<ExitPaint, PaintError> {
+    ) -> Result<ExitTargets, PaintError> {
         let originals = self
             .originals
             .as_deref()

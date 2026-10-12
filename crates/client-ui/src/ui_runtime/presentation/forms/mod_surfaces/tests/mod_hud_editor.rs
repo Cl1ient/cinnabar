@@ -305,7 +305,7 @@ fn normalized_titleless_cards_keep_foreground_opaque_and_fit_after_resize() {
     let runtime = UiRuntime::new(1);
     p.set_mod_hud(Some(&hud)).unwrap();
     let clear = frame(&mut p, &runtime, [1280, 720], 1.);
-    let catalog = Arc::clone(&p.mod_ui().mod_widgets_state().unwrap().catalog);
+    let catalog = Arc::clone(p.mod_ui().mod_widgets_state().unwrap().catalog);
     for opacity in [0., 0.35, 1.] {
         hud.cards[0].background_opacity = opacity;
         p.set_mod_hud(Some(&hud)).unwrap();
@@ -331,7 +331,7 @@ fn normalized_titleless_cards_keep_foreground_opaque_and_fit_after_resize() {
     );
     assert!(Arc::ptr_eq(
         &catalog,
-        &p.mod_ui().mod_widgets_state().unwrap().catalog
+        p.mod_ui().mod_widgets_state().unwrap().catalog
     ));
     for (size, dpi, scale) in [
         ([1280, 720], 1., 0.5),

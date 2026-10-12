@@ -321,12 +321,8 @@ pub(super) fn style_scene(
                 style.replace_text_color
             };
             if let Some(color) = text_color {
-                for axis in 0..3 {
-                    record.color[axis] = if replace {
-                        color[axis]
-                    } else {
-                        record.color[axis] * color[axis]
-                    };
+                for (channel, tint) in record.color[..3].iter_mut().zip(color) {
+                    *channel = if replace { tint } else { *channel * tint };
                 }
                 record.color[3] *= color[3];
             }
@@ -343,7 +339,7 @@ pub(super) fn style_scene(
                 extra.push(shadow);
             }
         }
-        if scene.records.len() + extra.len() + 1 <= MAX_NAMETAG_RECORDS {
+        if scene.records.len() + extra.len() < MAX_NAMETAG_RECORDS {
             scene.records.extend(extra);
             scene.records.push(record);
         }

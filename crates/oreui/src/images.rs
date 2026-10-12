@@ -519,7 +519,7 @@ fn pack(
     })
 }
 
-/// Decoded artwork and the catalog describing its source bundle.
+/// Named crops and rasters with the catalog of the files they came from.
 type BundleArt = (Vec<(String, Art)>, Arc<catalog::SourceCatalog>);
 
 /// Decodes the bundle's `wanted` atlas crops and standalone rasters, largest standalone first.

@@ -1,3 +1,17 @@
+## Launcher updates
+
+One client per install owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and
+update / Later actions, and a separate default-off install-on-quit preference. Signed manifests
+carry monotonic build numbers, and digest-named partial downloads resume with HTTP ranges.
+An offline Rust helper waits for the old process, applies the verified native package, and
+restores failed macOS/Linux starts. Read-only installs offer the manual download action.
+
+Incomplete: CI must compile and run the written regression tests on all platforms. The package
+workflow publishes each channel's signed manifest. The `CINNABAR_UPDATE_SIGNING_KEY` secret in
+the protected `release` environment and the `UPDATE_TRUSTED_KEYS` repository variable are
+configured. The first signed publication remains pending.
+The launcher owner must review the notice screenshots before merge.
+
 ## Actor animation ownership
 
 `actor-animation` owns actor rigs, Molang evaluation, controllers, poses,
@@ -1246,9 +1260,14 @@ these changes do not close the movement, camera, or actor parity gates.
 
 ## Java-style Tab player list
 
-- User-requested HUD extension: hold Tab for the authoritative online roster.
+Keyboard & Mouse settings exposes Player List, with Tab as its default. Keyboard
+and mouse remaps persist and reset with the existing mappings; menu Tab navigation
+keeps its own binding.
+
+- User-requested HUD extension: hold the Player List binding for the authoritative
+  online roster.
 - Compact centered columns, bounded to 80 players with an explicit overflow count.
-- Roster changes refresh cached JSON-UI; Tab release, focus loss and menus hide it.
+- Roster changes refresh cached JSON-UI; binding release, focus loss and menus hide it.
 - Input, rendered collection, focus/release, roster refresh and cache tests passed.
 - Incomplete live Windows acceptance: installed-client Tab capture pending.
 
@@ -1425,6 +1444,8 @@ and compilation pass; that meshing regression is outside this change.
 2026-10-04 F3 diagnostics (user-accepted developer feature): the supplied Java
 19w05a screenshot is the requested styling reference. F3 is available by default,
 hidden at startup, and the window title contains only the shared product name.
+Keyboard & Mouse settings exposes Debug Overlay with keyboard and mouse remaps,
+saved mappings and resets. The overlay's help row shows the configured shortcuts.
 JSON-UI draws player/world/movement/render/queue diagnostics and target-state
 rows during gameplay; other screens hide the overlay without resetting F3.
 Coordinates use player feet, including third person. A fixed row budget keeps

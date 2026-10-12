@@ -6,6 +6,9 @@ pub(super) struct Policy {
     pub(super) module_root_max: usize,
     pub(super) powershell_max: usize,
     pub(super) test_max: usize,
+    /// Ownership table that must describe every crate registered by this policy.
+    #[serde(default)]
+    pub(super) workspace_document: Option<String>,
     #[serde(default)]
     pub(super) vendored: Vec<VendoredRule>,
     #[serde(default)]

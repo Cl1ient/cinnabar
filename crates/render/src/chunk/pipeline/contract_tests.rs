@@ -237,28 +237,37 @@ fn cutout_pipeline_warmup_covers_every_sample_count() {
     let (app, _) = crate::queue_review_support::app();
     let cache = app.world().resource::<PipelineCache>();
     let mut pipelines = ChunkPipeline::from_world(&mut World::new());
-    for msaa in [Msaa::Off, Msaa::Sample2, Msaa::Sample4, Msaa::Sample8] {
-        for hdr in [false, true] {
-            let mut ids = Vec::new();
-            pipelines
-                .prewarm(
-                    cache,
-                    WarmView {
-                        msaa,
-                        hdr,
-                        enhanced: false,
-                        output: None,
-                    },
-                    &mut ids,
-                )
-                .unwrap();
-            let key = ChunkPipelineKey {
-                msaa,
-                hdr,
-                enhanced: false,
-            };
-            for variants in [&mut pipelines.variants, &mut pipelines.model_variants] {
-                assert!(ids.contains(&variants.specialize(cache, key).unwrap()));
+    for unit_supported in [false, true] {
+        pipelines.unit_supported = unit_supported;
+        for msaa in [Msaa::Off, Msaa::Sample2, Msaa::Sample4, Msaa::Sample8] {
+            for hdr in [false, true] {
+                let mut ids = Vec::new();
+                pipelines
+                    .prewarm(
+                        cache,
+                        WarmView {
+                            msaa,
+                            hdr,
+                            enhanced: false,
+                            output: None,
+                        },
+                        &mut ids,
+                    )
+                    .unwrap();
+                let key = ChunkPipelineKey {
+                    msaa,
+                    hdr,
+                    enhanced: false,
+                };
+                for variants in [&mut pipelines.variants, &mut pipelines.model_variants] {
+                    assert!(ids.contains(&variants.specialize(cache, key).unwrap()));
+                }
+                for variants in &mut pipelines.unit_variants {
+                    assert_eq!(
+                        ids.contains(&variants.specialize(cache, key).unwrap()),
+                        unit_supported
+                    );
+                }
             }
         }
     }

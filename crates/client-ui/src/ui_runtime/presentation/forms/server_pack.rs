@@ -19,6 +19,8 @@ pub struct ServerUiPack {
     /// The session's pack stack, which texture files read from on first draw.
     pub view: Option<resource_pack::LayeredPackView>,
     pub catalog: Option<Arc<json_ui::Catalog>>,
+    /// Built-in screens' catalog carrying this pack's filters; absent when it adds none.
+    pub builtin_screen_catalog: Option<Arc<json_ui::Catalog>>,
     /// Immutable screen policies prepared alongside the matching catalog.
     pub screen_settings: Option<Arc<PreparedScreenSettings>>,
 }
@@ -39,20 +41,36 @@ impl ServerUiPack {
     /// Resolves pack definitions on the reload worker against the immutable carrier catalog.
     pub fn prepare_catalog(&self, base: &json_ui::Catalog) -> Arc<Self> {
         let mut prepared = self.clone();
-        let catalog = Arc::new(
+        let layered = {
+            let _zone = tracing::info_span!("ui.prepare.layer").entered();
             super::screen_registry::registry()
                 .catalog()
-                .layer(base, &self.ui_layers),
+                .layer(base, &self.ui_layers)
+        };
+        let catalog = Arc::new(layered.pack);
+        // HUD art and screen policies each read only the finished catalog.
+        let ((), settings) = rayon::join(
+            || {
+                let _zone = tracing::info_span!("ui.prepare.hud_textures").entered();
+                let textures = super::hud::prepare(&catalog);
+                if let Some(view) = &self.view {
+                    ui_engine::prepared::keep_textures(
+                        &catalog,
+                        PrereadTextures::read(view, &textures),
+                    );
+                }
+            },
+            || {
+                let _zone = tracing::info_span!("ui.prepare.screen_settings").entered();
+                PreparedScreenSettings::new(
+                    catalog.clone(),
+                    ui_screens::menu_screens::retail_context(),
+                )
+            },
         );
-        let textures = super::hud::prepare(&catalog);
-        if let Some(view) = &self.view {
-            ui_engine::prepared::keep_textures(&catalog, PrereadTextures::read(view, &textures));
-        }
-        prepared.screen_settings = Some(Arc::new(PreparedScreenSettings::new(
-            catalog.clone(),
-            ui_screens::menu_screens::retail_context(),
-        )));
+        prepared.screen_settings = Some(Arc::new(settings));
         prepared.catalog = Some(catalog);
+        prepared.builtin_screen_catalog = layered.builtin_screens.map(Arc::new);
         Arc::new(prepared)
     }
 

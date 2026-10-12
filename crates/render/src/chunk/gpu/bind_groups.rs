@@ -66,11 +66,14 @@ pub(in crate::chunk) struct BiomeTintGpu {
     pub(in crate::chunk) water: u32,
     pub(in crate::chunk) flags: u32,
     pub(in crate::chunk) water_opacity: f32,
-    pub(in crate::chunk) seasonal_foliage: [[f32; 4]; assets::SEASONAL_FOLIAGE_COUNT],
+    pub(in crate::chunk) seasonal_foliage:
+        [[f32; 4]; assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT],
 }
 
-const _: () =
-    assert!(std::mem::size_of::<BiomeTintGpu>() == 8 * 4 + assets::SEASONAL_FOLIAGE_COUNT * 16);
+const _: () = assert!(
+    std::mem::size_of::<BiomeTintGpu>()
+        == 8 * 4 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 16
+);
 
 pub(in crate::chunk) fn pack_linear_rgb10(rgb: [f32; 3]) -> u32 {
     let component = |value: f32| {
@@ -342,9 +345,14 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
         let result =
             build_chunk_texture_assets(&candidate, &device, &queue).and_then(|(atlas, stats)| {
                 let geometry = match geometry {
-                    Some(instances) => Some(PreparedResourceGeometry::build(
-                        &instances, candidate, device, queue, view,
-                    )?),
+                    Some(instances) => Some({
+                        let _zone = bevy::log::info_span!(
+                            "pack_apply.gpu_geometry",
+                            chunks = instances.len()
+                        )
+                        .entered();
+                        PreparedResourceGeometry::build(&instances, candidate, device, queue, view)?
+                    }),
                     None => None,
                 };
                 Some((atlas, stats, geometry))
@@ -359,6 +367,7 @@ fn build_chunk_texture_assets(
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
 ) -> Option<(PreparedChunkTextureAssets, ChunkTextureUploadStats)> {
+    let _zone = bevy::log::info_span!("pack_apply.gpu_atlas").entered();
     let identity = assets.identity();
     let pages = assets.assets().texture_pages();
     let Some(page_bindings) = plan_texture_page_bindings(pages.len()) else {
@@ -407,6 +416,7 @@ fn build_chunk_texture_assets(
             bevy::log::error!(?error, "chunk texture page exceeds adapter limits");
             return None;
         }
+        let mips = bevy::log::info_span!("pack_apply.gpu_atlas_mips").entered();
         let texture = match match binding {
             TexturePageBinding::Asset(index) => assets.assets().terrain_texture_page(index),
             TexturePageBinding::DiagnosticFallback => {
@@ -419,6 +429,7 @@ fn build_chunk_texture_assets(
                 return None;
             }
         };
+        drop(mips);
         let plans = match plan_queue_texture_mips(&texture) {
             Ok(plans) => plans,
             Err(error) => {

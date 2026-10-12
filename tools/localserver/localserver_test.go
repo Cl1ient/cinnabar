@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -177,5 +178,54 @@ func TestSetPausedSuspendsAndRestoresWorlds(t *testing.T) {
 	}
 	if !cycling.TimeCycle() || stopped.TimeCycle() {
 		t.Fatalf("resume changed time cycle: cycling=%v stopped=%v", cycling.TimeCycle(), stopped.TimeCycle())
+	}
+}
+
+// A standby server hosts the world its start line names, and stops like any other server.
+func TestStandbyServerHostsTheWorldItIsGiven(t *testing.T) {
+	dir := t.TempDir()
+	start, err := json.Marshal([]string{"-dir", dir, "-addr", "127.0.0.1:0", "-name", "Given"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	stdin := strings.NewReader(standbyStart + string(start) + "\nstop\n")
+	if err := run([]string{standbyFlag}, stdin, &stdout, io.Discard); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if stdout.String() != "ready\n" {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), "ready\n")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "db", "level.dat")); err != nil {
+		t.Fatalf("the given world was not saved: %v", err)
+	}
+}
+
+// A standby server whose launcher goes away exits cleanly, and one given garbage refuses it.
+func TestStandbyServerWithoutAStartLine(t *testing.T) {
+	var stdout bytes.Buffer
+	if err := run([]string{standbyFlag}, strings.NewReader(""), &stdout, io.Discard); err != nil || stdout.Len() != 0 {
+		t.Fatalf("closed stdin: err = %v, stdout = %q", err, stdout.String())
+	}
+	err := run([]string{standbyFlag}, strings.NewReader("stop\n"), &stdout, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "standby expected") || stdout.Len() != 0 {
+		t.Fatalf("garbage line: err = %v, stdout = %q", err, stdout.String())
+	}
+}
+
+// A standby server refuses Experiences, whose blocks its warm-up would already have locked out.
+func TestStandbyServerRefusesExperiences(t *testing.T) {
+	dir := t.TempDir()
+	start, err := json.Marshal([]string{
+		"-dir", dir, "-addr", "127.0.0.1:0",
+		"-experiences", t.TempDir(), "-experience-runtime", filepath.Join(dir, "no-runtime"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	err = run([]string{standbyFlag}, strings.NewReader(standbyStart+string(start)+"\n"), &stdout, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "standby") || stdout.Len() != 0 {
+		t.Fatalf("err = %v, stdout = %q", err, stdout.String())
 	}
 }

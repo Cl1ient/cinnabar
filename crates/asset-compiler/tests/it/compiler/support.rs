@@ -38,6 +38,7 @@ pub(super) fn compile_pack(
 /// [`with_canonical_air`] to satisfy the same compile-time contract.
 pub(super) fn canonical_air_record(sequential_id: u32, network_hash: u32) -> RegistryRecord {
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id,
         network_hash,
         name: "minecraft:air".into(),
@@ -236,6 +237,7 @@ pub(super) fn record(
         ModelFamily::Unknown
     };
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id,
         network_hash,
         name: name.into(),
@@ -472,7 +474,14 @@ pub(super) fn registry_bytes(records: &[RegistryRecord]) -> Vec<u8> {
 
 /// Encodes the same fixture registry for one explicit wire protocol.
 pub(super) fn registry_bytes_for_protocol(protocol: u32, records: &[RegistryRecord]) -> Vec<u8> {
-    let mut bytes = b"BREG1003".to_vec();
+    let schema: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../assets/data/registry-schema.json"))
+            .expect("shared registry schema");
+    let legacy = protocol == schema["legacy_protocol"].as_u64().unwrap() as u32;
+    let magic = schema[if legacy { "previous_magic" } else { "magic" }]
+        .as_str()
+        .unwrap();
+    let mut bytes = magic.as_bytes().to_vec();
     bytes.extend_from_slice(&protocol.to_le_bytes());
     bytes.extend_from_slice(
         &u32::try_from(records.len())
@@ -529,6 +538,9 @@ pub(super) fn registry_bytes_for_protocol(protocol: u32, records: &[RegistryReco
             assets::ModelStateField::Flags,
         ] {
             bytes.extend_from_slice(&record.model_state.get(field).unwrap_or(0).to_le_bytes());
+        }
+        if !legacy {
+            bytes.push(record.beacon_tint as u8);
         }
         for collision_box in &record.collision_seed.boxes {
             for coordinate in [

@@ -36,6 +36,8 @@ pub(super) struct LocalWorldsUi {
     hosted: bool,
     /// The open world's player limit, as its server reported it.
     max_players: Option<u32>,
+    /// The worlds screen was showing last frame, so a server was already readied for it.
+    prepared: bool,
 }
 
 impl LocalWorldsUi {
@@ -56,6 +58,7 @@ impl Default for LocalWorldsUi {
             world_id: None,
             hosted: false,
             max_players: None,
+            prepared: false,
         }
     }
 }
@@ -94,6 +97,11 @@ impl MenuRuntime {
     pub fn sync_local_worlds(&mut self, worlds: &mut LocalWorlds, in_session: bool) {
         self.sync_storage_worlds(worlds);
         self.push_local_text(worlds);
+        let on_worlds = self.visible && self.screen == MenuScreen::Play;
+        if on_worlds && !self.local_ui.prepared {
+            worlds.prepare();
+        }
+        self.local_ui.prepared = on_worlds;
         for action in std::mem::take(&mut self.local_ui.actions) {
             if let Some(input) = action.input() {
                 worlds.input(input);
@@ -290,7 +298,6 @@ impl MenuRuntime {
                 MenuAction::Store(launcher::store::OPEN),
             ]),
             Screen::ConfirmDelete => local(&[A::Back, A::ConfirmDelete]),
-            Screen::ConfirmLeaveEdit => local(&[A::Save, A::Discard]),
             Screen::Eula => local(&[A::AcceptEula, A::ViewEula, A::Back]),
             Screen::Error => local(&[A::Back]),
         }

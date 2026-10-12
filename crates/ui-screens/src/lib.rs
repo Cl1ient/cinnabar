@@ -29,6 +29,7 @@ pub mod global_resources;
 pub mod graphics_expander;
 pub mod hud;
 pub mod hud_renderers;
+pub mod inventory_capture;
 pub mod invite_screen;
 pub mod java_animations_setting;
 pub mod join_progress;

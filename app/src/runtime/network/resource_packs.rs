@@ -32,6 +32,7 @@ pub struct PackApplication {
     pub(crate) item_components:
         Option<Arc<client_ui::ui_runtime::item_facts::SessionItemComponents>>,
     pub(crate) glyph_sheets: Option<Arc<SessionGlyphSheets>>,
+    pub(crate) block_entity_art: Option<Arc<render_model::PreparedBlockEntityArtwork>>,
     pub(crate) entities: Option<Arc<assets::SessionEntityPack>>,
     pub(super) entity_artwork: Option<Arc<render_model::ActorArtworkPages>>,
     pub(crate) prepared_actor_artwork:
@@ -55,6 +56,7 @@ impl Default for PackApplication {
             item_icons: None,
             item_components: None,
             glyph_sheets: None,
+            block_entity_art: super::block_entity_art::base().cloned(),
             entities: None,
             entity_artwork: None,
             prepared_actor_artwork: None,
@@ -192,20 +194,34 @@ pub(super) fn prepare_validated_application(
     prepare_changed_application(&reuse::CompiledStacks::new(), stack, inputs, None)
 }
 
-/// Reuses each compiled subscriber whose contributing files have not changed. Without a
-/// previous application, a `kept` stack with the same contents stands in for it.
+/// Diffs `stack` against `previous` and prepares it as [`prepare_diffed_application`] does.
+#[cfg(test)]
 pub(super) fn prepare_changed_application(
     kept: &reuse::CompiledStacks,
     stack: Arc<resource_pack::ValidatedPackStack>,
     inputs: Arc<pack_runtime::PackInputs>,
     previous: Option<&PackApplication>,
 ) -> PackApplication {
+    let previous = previous.map(|previous| {
+        let changes = pack_runtime::reload_diff::Changes::between(
+            &stack,
+            Some((&previous.admission, &previous.dependencies)),
+        );
+        (previous, changes)
+    });
+    prepare_diffed_application(kept, stack, inputs, previous)
+}
+
+/// Reuses each subscriber of the previous application that `changes`, taken against it, leaves
+/// unchanged. Without a previous application, a `kept` stack with the same contents stands in.
+pub(super) fn prepare_diffed_application(
+    kept: &reuse::CompiledStacks,
+    stack: Arc<resource_pack::ValidatedPackStack>,
+    inputs: Arc<pack_runtime::PackInputs>,
+    previous: Option<(&PackApplication, pack_runtime::reload_diff::Changes)>,
+) -> PackApplication {
     let compiled = match previous {
-        Some(previous) => {
-            let changes = pack_runtime::reload_diff::Changes::between(
-                &stack,
-                Some((&previous.admission, &previous.dependencies)),
-            );
+        Some((previous, changes)) => {
             compile_application(stack, inputs, Some(previous), changes, &|| false)
         }
         None => reuse::compile_reusing(
@@ -251,9 +267,20 @@ fn compile_application(
     let (mut blocks, mut icons, mut language, mut glyphs) = (None, None, None, None);
     let (mut entities, mut artwork, mut ui, mut sounds) = (None, None, None, None);
     let mut aim_assist = None;
+    let mut block_entity_art = None;
     // The entity compile checks cancellation between its own steps, as it outlasts the rest.
     let mut entities_stopped = false;
     rayon::scope(|scope| {
+        scope.spawn(|_| {
+            block_entity_art = compile_part(
+                &stack,
+                cancelled,
+                changes.block_entity_art,
+                Subscriber::BlockEntityArt,
+                previous.and_then(|old| old.block_entity_art.clone()),
+                super::block_entity_art::prepare,
+            );
+        });
         scope.spawn(|_| {
             aim_assist = compile_part(
                 &stack,
@@ -400,6 +427,11 @@ fn compile_application(
         }
         output
     }
+    let block_entity_art = record(
+        &mut dependencies,
+        Subscriber::BlockEntityArt,
+        block_entity_art?,
+    );
     let aim_assist_textures = record(&mut dependencies, Subscriber::AimAssist, aim_assist?);
     let block_overlay = record(&mut dependencies, Subscriber::Blocks, blocks?);
     let item_icons = record(&mut dependencies, Subscriber::Icons, icons?);
@@ -445,6 +477,7 @@ fn compile_application(
         item_icons,
         item_components: None,
         glyph_sheets,
+        block_entity_art,
         entities,
         entity_artwork,
         server_ui,
@@ -518,9 +551,13 @@ struct CachedOverlay {
     overlay: Option<Arc<CompiledBlockOverlay>>,
 }
 
-/// The previous session's compiled overlay, reused when the same pack stack and
-/// block definitions rejoin.
-static OVERLAY_CACHE: std::sync::Mutex<Option<CachedOverlay>> = std::sync::Mutex::new(None);
+/// The current and previous stacks, so switching packs back reuses the earlier compile.
+const KEPT_OVERLAYS: usize = 2;
+
+/// Recently compiled overlays, newest first, reused when the same pack contents and block
+/// definitions return in a later session or reload.
+static OVERLAY_CACHE: std::sync::Mutex<std::collections::VecDeque<CachedOverlay>> =
+    std::sync::Mutex::new(std::collections::VecDeque::new());
 
 /// Reuses compiled blocks with the fingerprint already computed for this admission.
 fn cached_block_overlay(
@@ -534,20 +571,23 @@ fn cached_block_overlay(
     let mut cache = OVERLAY_CACHE
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
-    if let Some(cached) = cache.as_ref()
-        && cached.hashed == hashed
-        && cached.max_layers == max_layers
-        && cached.stack == *fingerprint
-        && cached.blocks == *blocks
-        && (view.dependencies().is_none() || cached.dependencies.is_some())
-    {
+    if let Some(index) = cache.iter().position(|cached| {
+        cached.hashed == hashed
+            && cached.max_layers == max_layers
+            && cached.stack == *fingerprint
+            && cached.blocks == *blocks
+            && (view.dependencies().is_none() || cached.dependencies.is_some())
+    }) {
+        let cached = cache.remove(index).expect("matched entry");
         if let (Some(dependencies), Some(inputs)) = (view.dependencies(), &cached.dependencies) {
             dependencies.extend(inputs.clone());
         }
-        return cached.overlay.clone();
+        let overlay = cached.overlay.clone();
+        cache.push_front(cached);
+        return overlay;
     }
     let overlay = compile();
-    *cache = Some(CachedOverlay {
+    cache.push_front(CachedOverlay {
         dependencies: view
             .dependencies()
             .map(|dependencies| dependencies.snapshot()),
@@ -557,6 +597,7 @@ fn cached_block_overlay(
         blocks: blocks.clone(),
         overlay: overlay.clone(),
     });
+    cache.truncate(KEPT_OVERLAYS);
     overlay
 }
 

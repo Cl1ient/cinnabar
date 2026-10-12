@@ -9,11 +9,13 @@ pub struct ResourceMeshSnapshot {
 }
 
 impl ResourceMeshSnapshot {
-    /// Rebuilds every captured mesh with one asset generation.
+    /// Rebuilds every captured mesh with one asset generation, in capture order. Each
+    /// neighbourhood meshes independently, so the work spreads across the rayon pool.
     pub fn build(
         self,
         assets: &RuntimeAssets,
     ) -> Option<Vec<(SubChunkKey, ChunkMesh, PackedBiomeRecord)>> {
+        use rayon::prelude::*;
         let live: Vec<_> = self
             .definitions
             .iter()
@@ -28,17 +30,17 @@ impl ResourceMeshSnapshot {
             })
             .collect();
         let resolved = assets.biome_assets().resolve_live(&live).ok()?;
-        self.chunks
-            .into_iter()
-            .map(|(key, snapshot)| {
-                let biome = pack_biome_record(&snapshot.biomes, &resolved);
-                Some((
-                    key,
-                    snapshot.mesh(self.classifier, assets, self.mode, &biome),
-                    biome,
-                ))
-            })
-            .collect()
+        let (classifier, mode) = (self.classifier, self.mode);
+        Some(
+            self.chunks
+                .into_par_iter()
+                .map(|(key, snapshot)| {
+                    let biome = pack_biome_record(&snapshot.biomes, &resolved);
+                    let mesh = snapshot.mesh(classifier, assets, mode, &biome);
+                    (key, mesh, biome)
+                })
+                .collect(),
+        )
     }
 }
 

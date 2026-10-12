@@ -26,7 +26,7 @@ func TestRegistryEncoderMatchesCrossLanguageFixture(t *testing.T) {
 	metadata := RegistryMetadata{Protocol: 2193, CanonicalNames: 2, CanonicalStates: 2, ValentineNames: 2, ValentineStates: 2}
 	records := []Record{
 		{
-			SequentialID: 7, NetworkHash: 0x12345678, Flags: flagCubeGeometry | flagLeafModel,
+			BeaconTint: BeaconTintRed, SequentialID: 7, NetworkHash: 0x12345678, Flags: flagCubeGeometry | flagLeafModel,
 			Name: "fixture:leaf", StateJSON: []byte(`{"color":{"type":"int","value":3}}`),
 			ModelFamily: ModelFamilyLeaves, ContributorRole: ContributorPrimary,
 			ModelState:   ModelState{Mask: 0xff, Values: [8]uint32{1, 2, 3, 4, 5, 6, 7, 8}},
@@ -35,7 +35,7 @@ func TestRegistryEncoderMatchesCrossLanguageFixture(t *testing.T) {
 				Boxes: []CollisionBox{{MinX: -1, MinY: 0, MinZ: 1, MaxX: 100_000_000, MaxY: 99_999_999, MaxZ: 50_000_000}}},
 		},
 		{
-			SequentialID: 8, NetworkHash: 0x87654321, Flags: flagCubeGeometry,
+			BeaconTint: BeaconTintNoTinting, SequentialID: 8, NetworkHash: 0x87654321, Flags: flagCubeGeometry,
 			Name: "fixture:resin", StateJSON: []byte(`{}`), ModelFamily: ModelFamilyResinClump,
 			ContributorRole: ContributorLiquidAdditional, Provenance: ProvenanceValentine,
 			ModelState: ModelState{Mask: 0x80, Values: [8]uint32{0, 0, 0, 0, 0, 0, 0, 0xfeed}},

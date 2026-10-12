@@ -3,9 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/df-mc/dragonfly/server/world"
 	"io"
 	"strings"
+	"sync"
 )
 
 // commands are the actions of the stdin protocol. reload is nil without Experiences, and its
@@ -133,4 +137,54 @@ func setPaused(worlds []*world.World, paused bool) {
 	for _, w := range worlds {
 		w.SetPaused(paused)
 	}
+}
+
+// pauseState pauses the worlds while the launcher asks or a hold such as the spawn warm-up keeps them still.
+type pauseState struct {
+	mu              sync.Mutex
+	worlds          []*world.World
+	requested, held bool
+}
+
+// request records the launcher's pause or resume.
+func (p *pauseState) request(paused bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.requested = paused
+	setPaused(p.worlds, p.requested || p.held)
+}
+
+// hold keeps the worlds paused whatever the launcher asks until released.
+func (p *pauseState) hold(held bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.held = held
+	setPaused(p.worlds, p.requested || p.held)
+}
+
+// standbyFlag starts a server with no world that waits for a standbyStart line.
+const standbyFlag = "-standby"
+
+// standbyStart prefixes the JSON array of world arguments that ends a standby wait.
+const standbyStart = "start "
+
+// awaitStandbyStart reads the line giving a standby server its world arguments, returning them and
+// the rest of stdin; ok is false when stdin closes first.
+func awaitStandbyStart(stdin io.Reader) (args []string, rest io.Reader, ok bool, err error) {
+	reader := bufio.NewReader(stdin)
+	line, err := reader.ReadString('\n')
+	if errors.Is(err, io.EOF) && strings.TrimSpace(line) == "" {
+		return nil, nil, false, nil
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, nil, false, fmt.Errorf("read standby start: %w", err)
+	}
+	encoded, found := strings.CutPrefix(strings.TrimSpace(line), standbyStart)
+	if !found {
+		return nil, nil, false, fmt.Errorf("standby expected %q, got %q", standbyStart, line)
+	}
+	if err := json.Unmarshal([]byte(encoded), &args); err != nil {
+		return nil, nil, false, fmt.Errorf("decode standby start: %w", err)
+	}
+	return args, reader, true, nil
 }

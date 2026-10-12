@@ -39,7 +39,7 @@ fn a_signed_manifest_verifies_with_the_artifact_digest() {
     let artifact = &manifest.artifacts["macos-arm64"];
     assert_eq!(
         (manifest.version.as_str(), manifest.channel.as_str()),
-        ("1.2.3", "stable")
+        ("1.2.3", update_manifest::channel::Channel::default().name())
     );
     assert_eq!(manifest.build_number, 42);
     assert_eq!(manifest.notes_url, "https://example.test/n");
@@ -49,8 +49,13 @@ fn a_signed_manifest_verifies_with_the_artifact_digest() {
         "239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5"
     );
     assert!(manifest.expires > OffsetDateTime::now_utc() + Duration::days(29));
-    let verdict =
-        update_manifest::select::evaluate(&manifest, "stable", "macos-arm64", "1.2.2").unwrap();
+    let verdict = update_manifest::select::evaluate(
+        &manifest,
+        update_manifest::channel::Channel::default().name(),
+        "macos-arm64",
+        "1.2.2",
+    )
+    .unwrap();
     assert!(verdict.available);
 }
 

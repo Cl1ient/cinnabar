@@ -73,7 +73,7 @@ def fixture(root: Path) -> None:
         directory.mkdir(parents=True)
         (directory / "Cargo.toml").write_text(f'[package]\nname = "{name}"\n{declaration}\n')
     (root / "packaging").mkdir()
-    for name in ["bump-version.py", "prepare-release.py"]:
+    for name in ["bump-version.py", "prepare-release.py", "release-assets.json"]:
         shutil.copyfile(PACKAGING / name, root / "packaging" / name)
 
 
@@ -217,7 +217,7 @@ else:
     def test_main_push_is_read_only_nightly_at_the_event_commit(self):
         before = self.refs()
         self.prepare(EVENT_NAME="push")
-        self.assertEqual(self.outputs(), {"channel": "nightly", "tag": "nightly", "version": SOURCE_VERSION,
+        self.assertEqual(self.outputs(), {"channel": "nightly", "track": "rolling", "tag": "nightly", "version": SOURCE_VERSION,
                                          "ref": self.initial, "commit": self.initial})
         self.assertEqual(self.refs(), before)
         self.assertFalse(self.log.exists())
@@ -225,14 +225,14 @@ else:
     def test_scheduled_run_is_read_only_nightly_at_the_default_branch(self):
         before = self.refs()
         self.prepare(EVENT_NAME="schedule")
-        self.assertEqual(self.outputs(), {"channel": "nightly", "tag": "nightly", "version": SOURCE_VERSION,
+        self.assertEqual(self.outputs(), {"channel": "nightly", "track": "rolling", "tag": "nightly", "version": SOURCE_VERSION,
                                          "ref": self.initial, "commit": self.initial})
         self.assertEqual(self.refs(), before)
 
     def test_manual_nightly_is_read_only_and_limited_to_the_default_branch(self):
         before = self.refs()
         self.prepare(BUMP="nightly")
-        self.assertEqual(self.outputs(), {"channel": "nightly", "tag": "nightly", "version": SOURCE_VERSION,
+        self.assertEqual(self.outputs(), {"channel": "nightly", "track": "rolling", "tag": "nightly", "version": SOURCE_VERSION,
                                          "ref": self.initial, "commit": self.initial})
         self.assertEqual(self.refs(), before)
         self.assertFalse(self.log.exists())
@@ -244,16 +244,12 @@ else:
             self.assert_no_outputs()
         self.assertEqual(self.git("tag"), "")
 
-    def test_manual_beta_is_read_only_and_limited_to_the_default_branch(self):
+    def test_rolling_beta_dispatch_is_rejected_without_changing_refs(self):
         before = self.refs()
-        self.prepare(BUMP="beta")
-        self.assertEqual(self.outputs(), {"channel": "beta", "tag": "beta", "version": SOURCE_VERSION,
-                                         "ref": self.initial, "commit": self.initial})
-        self.assertEqual(self.refs(), before)
-        self.assertFalse(self.log.exists())
-        result = self.prepare(check=False, BUMP="beta", TARGET_BRANCH="feature")
+        result = self.prepare(check=False, BUMP="beta")
         self.assertNotEqual(result.returncode, 0)
         self.assert_no_outputs()
+        self.assertEqual(self.refs(), before)
         self.assertEqual(self.git("tag"), "")
 
     def test_current_creates_one_annotated_tag_and_no_version_commit(self):
@@ -262,7 +258,25 @@ else:
         self.assertEqual(self.git("cat-file", "-t", "v" + SOURCE_VERSION), "tag")
         self.assertEqual(self.outputs()["commit"], self.initial)
         self.assertEqual(self.outputs()["tag"], "v" + SOURCE_VERSION)
+        self.assertEqual(self.outputs()["channel"], "beta")
+        self.assertEqual(self.outputs()["track"], "tagged")
         self.assertIn("refs/tags/v" + SOURCE_VERSION, self.refs())
+
+    def test_release_channels_and_rolling_tag_come_from_shared_metadata(self):
+        metadata = self.root / "packaging/release-assets.json"
+        config = json.loads(metadata.read_text())
+        config["update_channels"]["candidate"] = config["update_channels"].pop("beta")
+        config["update_channels"]["nightly"]["tag"] = "fixture-nightly"
+        metadata.write_text(json.dumps(config))
+        self.git("add", str(metadata))
+        self.git("commit", "-m", "Change fixture release tracks")
+        self.prepare(BUMP="nightly")
+        values = dict(line.split("=", 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(values["tag"], "fixture-nightly")
+        self.prepare()
+        values = dict(line.split("=", 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(values["channel"], "candidate")
+        self.assertEqual(values["track"], "tagged")
 
     def test_patch_commits_and_atomically_pushes_version_and_tag(self):
         self.prepare(BUMP="patch")
@@ -383,7 +397,8 @@ else:
         self.git("push", "origin", "v" + SOURCE_VERSION)
         before = self.refs()
         self.prepare(EVENT_NAME="push", GITHUB_REF="refs/tags/v" + SOURCE_VERSION)
-        self.assertEqual(self.outputs()["channel"], "stable")
+        self.assertEqual(self.outputs()["channel"], "beta")
+        self.assertEqual(self.outputs()["track"], "tagged")
         self.assertEqual(self.outputs()["ref"], self.initial)
         self.assertEqual(self.refs(), before)
         self.assertFalse(self.log.exists())

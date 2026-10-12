@@ -39,9 +39,9 @@ The prep kit at `<resources>/prep-kit/` holds `bin/assetc` and each file
 list; an asset-compiler test fails when it is stale, and `check-payload.sh` plans a first run with
 the shipped compiler against the shipped kit.
 
-CI: `.github/workflows/package.yml`. Pushes to `main` replace the `nightly` prerelease (tag moved,
-assets replaced); running **Package** with `beta` does the same for the `beta` prerelease from the
-default branch. To publish a stable release, run **Package** in GitHub Actions and choose
+CI: `.github/workflows/package.yml`. The daily schedule and manual `nightly` runs replace
+its rolling prerelease from the default branch. To publish a tagged Beta release as the latest
+GitHub release, run **Package** in GitHub Actions and choose
 `current`, `patch`, `minor`, `major`, or `custom`. The **branch** input accepts any existing branch;
 leave it blank to use the branch selected in Actions' **Use workflow from** menu. A version bump
 is committed to that branch, leaving other branches unchanged. These are Cinnabar app versions,
@@ -49,7 +49,7 @@ independent of the Minecraft game/protocol version. `current` releases the
 version in `[workspace.package]`; the other choices update that version and the inherited
 workspace entries in `Cargo.lock`, commit the change, and create a matching `vX.Y.Z` tag. The
 commit and tag are pushed together before building. Every platform builds the exact prepared
-commit, and the final job publishes the installers as a stable release rather than a draft.
+commit, and the final job publishes the installers and signed Beta manifest as the latest release.
 For `custom`, fill **version** with a greater plain semantic version such as `1.4.2` (no `v`
 prefix or prerelease suffix). Patch increments the last component; minor and major reset lower
 components to zero. Repository-wide release tags must be unique across branches.
@@ -63,8 +63,8 @@ while that tag still points at the selected branch's HEAD, to finish it. Repeati
 version also recovers an unpublished tag at HEAD. Manual preparation rejects
 an existing release or a tag on a different commit for the version being released. Pushing a
 matching `vX.Y.Z` tag by hand also builds and publishes it; re-running that tagged workflow
-replaces its release assets. Stable runs do not cancel a running release; GitHub may replace an
-older pending run. Main pushes cancel older nightly runs.
+replaces its release assets. Tagged runs do not cancel a running release; GitHub may replace an
+older pending run. Scheduled runs cancel older nightly runs.
 
 Every installer is extracted and checked by `packaging/check-payload.sh`, which fails on any file
 outside the payload allowlist (shared with `stage-payload.sh`). Windows uses WiX extraction without
@@ -76,7 +76,7 @@ WiX Burn wizard embedding the same MSI; CI checks its embedded MSI hash against 
 verified package. Both install to Program Files and retain the existing machine-wide MSI upgrade
 identity, so Windows may request administrator approval. Setup, the installed executable, uninstall
 entry, Start menu and desktop shortcuts use the original `packaging/icons/cinnabar.svg` logo.
-The update manifest points to setup EXE. No Mojang artwork is embedded. Local packaging requires
+The update manifest points to the MSI. No Mojang artwork is embedded. Local packaging requires
 ImageMagick and `dotnet tool install --global wix --version 5.0.2`, followed by
 `wix extension add -g WixToolset.BootstrapperApplications.wixext/5.0.2`.
 
@@ -99,10 +99,11 @@ it on other Macs until the recipient runs `xattr -dr com.apple.quarantine /Appli
 
 `packaging/release-assets.json` is the canonical list of downloadable release artifacts and
 their repository. Publication requires every platform installer and the generated
-Linux install script before writing checksums. The signed update manifest, when present, is included
-in those checksums. Replacing an existing stable release keeps it draft until upload completes.
+Linux install script before writing checksums for the native downloads. A new tagged Beta release
+stays draft until its downloads, update payloads and signed manifest are uploaded. Reruns keep
+existing payload downloads public; the signature authenticates the update manifest.
 
-Linux users can install the latest stable release without root:
+Linux users can install the latest Beta release without root:
 
 ```sh
 curl -fsSL https://github.com/bedrock-mc/cinnabar/releases/latest/download/install.sh | sh
@@ -116,7 +117,7 @@ and adds a launcher, icon and application-menu entry. It uses the user's XDG dat
 verification or extraction preserve the current installation. The AppImage is unpacked once, without
 FUSE or `/tmp`, into `<data>/cinnabar/app/<tag>-<digest>`; `app/current` names the build the
 launcher runs and `app/previous` the one it replaced; each install keeps only those two. Pass
-`--channel nightly` or `--version TAG` when invoking the script directly to test a particular release; these are explicit opt-ins to builds outside the stable channel.
+`--channel nightly` or `--version TAG` when invoking the script directly to test a particular release; these are explicit opt-ins to builds outside the Beta channel.
 
 Windows users download the self-contained setup EXE. macOS users choose the native Apple silicon
 or Intel DMG. The website is deployed separately and links directly to GitHub's latest release.

@@ -31,7 +31,8 @@ class ReleaseDownloadsTests(unittest.TestCase):
         self.config["install_script"] = "fixture-" + self.config["install_script"]
         self.config["update_payload_prefix"] = "fixture-" + self.config["update_payload_prefix"]
         self.config["update_channels"] = {
-            channel: {"tag": "fixture-" + release["tag"], "manifest": "fixture-" + release["manifest"]}
+            channel: {**release, **({"tag": "fixture-" + release["tag"]} if "tag" in release else {}),
+                      "manifest": "fixture-" + release["manifest"]}
             for channel, release in self.config["update_channels"].items()
         }
         self.config["assets"] = {
@@ -150,11 +151,19 @@ class ReleaseDownloadsTests(unittest.TestCase):
     def test_each_channel_names_its_manifest_and_release(self):
         for channel, release in self.config["update_channels"].items():
             with self.subTest(channel=channel):
-                result = self.run_helper("env", "--channel", channel)
+                result = self.run_helper("env", "--channel", channel, "--tag", "v1.2.3")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 values = dict(line.split("=", 1) for line in result.stdout.splitlines())
                 self.assertEqual(values["UPDATE_MANIFEST"], release["manifest"])
-                self.assertEqual(values["UPDATE_MANIFEST_TAG"], release["tag"])
+                self.assertEqual(values["UPDATE_MANIFEST_TAG"],
+                                 "v1.2.3" if release["track"] == "tagged" else release["tag"])
+
+    def test_unpublished_stable_and_missing_version_tags_are_rejected(self):
+        for args in [("env", "--channel", "stable", "--tag", "v1.2.3"),
+                     ("env", "--channel", "beta")]:
+            result = self.run_helper(*args)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("UPDATE_MANIFEST=", result.stdout)
 
     def test_update_payloads_are_content_addressed_copies_of_native_artifacts(self):
         base = "https://download-contract.invalid/releases/test-version"

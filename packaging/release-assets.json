@@ -16,9 +16,8 @@
   "install_script": "install.sh",
   "update_payload_prefix": "update-payload-",
   "update_channels": {
-    "beta": { "tag": "beta", "manifest": "update-beta.json" },
-    "nightly": { "tag": "nightly", "manifest": "update-nightly.json" },
-    "stable": { "tag": "stable", "manifest": "update-stable.json" }
+    "beta": { "track": "tagged", "manifest": "update-beta.json" },
+    "nightly": { "track": "rolling", "tag": "nightly", "manifest": "update-nightly.json" }
   },
   "update_assets": {
     "windows": {

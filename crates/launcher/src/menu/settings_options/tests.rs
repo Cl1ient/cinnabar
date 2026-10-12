@@ -800,3 +800,16 @@ fn install_on_quit_requires_an_opt_in_and_channel_preferences_round_trip() {
     assert!(saved.update_preferences().install_on_quit);
     assert_eq!(saved.update_preferences().channel, Channel::Nightly);
 }
+
+#[test]
+fn an_unpublished_saved_channel_falls_back_to_beta() {
+    use update_manifest::channel::Channel;
+    let mut settings = SettingsOptions::default();
+    let index = SETTINGS_OPTIONS
+        .iter()
+        .position(|option| option.name == UPDATE_CHANNEL_OPTION.name)
+        .unwrap();
+    settings.set(index, Channel::Stable.index() as i32);
+    let saved = SettingsOptions::decode(&serde_json::to_vec(&settings).unwrap()).unwrap();
+    assert_eq!(saved.update_preferences().channel, Channel::default());
+}

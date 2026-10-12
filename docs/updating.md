@@ -10,7 +10,9 @@ for this session; daily checks continue, and a newer release replaces the waitin
 updates when I quit**. Installation on quit is off by default. The in-game pause menu only shows
 a small ready badge; update actions remain in the launcher.
 
-Beta and Nightly are available initially. Stable appears after a signed stable release exists.
+Beta follows the latest tagged `vX.Y.Z` release. Nightly follows the rolling `nightly`
+prerelease. Stable is reserved for a future release track and stays hidden until that track
+publishes a signed release. Clients from before these channels require one manual install.
 Changing channels never silently downgrades: a slower channel waits for a newer app version
 and build. **Switch now** explicitly permits the selected channel's older release. Numeric
 prereleases use SemVer ordering, and successive builds use a signed monotonic build number.
@@ -34,11 +36,14 @@ If the install location is not writable, the launcher offers **Download update**
 verified DMG or installer for you to finish; on Linux it opens the folder containing the AppImage.
 The updater does not request elevated privileges or reboot the machine.
 
-Each channel's manifest lives in a fixed GitHub release; `update_channels` in
-`packaging/release-assets.json` names its tag and file for both the client and the package
-workflow. Its payloads sit beside it under content-addressed names, separate from the
-stable-named downloads. The workflow uploads new payloads, then the manifest, then removes payloads
-no manifest names, so a published manifest never names a missing or replaced file. Publication
+`update_channels` in `packaging/release-assets.json` owns each published channel's track and
+manifest filename for both the client and the package workflow. Beta reads
+`releases/latest/download/update-beta.json`; the manifest and its payloads are attached to the
+version tag before it becomes latest. Nightly reads the same files from its fixed prerelease.
+Payloads use content-addressed names beside the manifest, separate from native installer downloads.
+Publication uploads new payloads before the manifest and keeps the preceding publication's payloads.
+Renewing an unchanged payload set preserves that grace period. Older version tags keep their assets.
+There is no Stable publishing path or compatibility manifest. Publication
 must sign the correct channel and a positive build number. The release signer accepts
 `-build-number`; packaged builds use `CINNABAR_BUILD_NUMBER` or the package workflow's
 `GITHUB_RUN_NUMBER`.

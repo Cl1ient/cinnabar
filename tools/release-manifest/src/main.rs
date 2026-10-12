@@ -107,7 +107,9 @@ impl SignFlags {
     fn parse(args: &[String]) -> Result<Self, String> {
         let mut flags = Self {
             version: String::new(),
-            channel: "stable".to_owned(),
+            channel: update_manifest::channel::Channel::default()
+                .name()
+                .to_owned(),
             build: update_manifest::build_number(),
             key_id: "k1".to_owned(),
             notes_url: String::new(),

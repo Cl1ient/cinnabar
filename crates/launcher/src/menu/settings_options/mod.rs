@@ -87,6 +87,7 @@ impl SettingsOptions {
             channel: update_manifest::channel::Channel::ALL
                 .get(self.value(UPDATE_CHANNEL_OPTION.name) as usize)
                 .copied()
+                .filter(|channel| channel.is_published())
                 .unwrap_or_default(),
         }
     }

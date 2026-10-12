@@ -71,9 +71,9 @@ impl Default for Preferences {
 impl View {
     /// Only verified publication of a stable release unlocks its selector entry.
     pub fn channel_visible(&self, choice: usize) -> bool {
-        Channel::ALL
-            .get(choice)
-            .is_some_and(|channel| *channel != Channel::Stable || self.stable_available)
+        Channel::ALL.get(choice).is_some_and(|channel| {
+            channel.is_published() && (*channel != Channel::Stable || self.stable_available)
+        })
     }
 }
 
@@ -81,13 +81,13 @@ impl View {
 mod tests {
     use super::*;
     #[test]
-    fn stable_is_hidden_until_a_verified_release_is_available() {
+    fn unpublished_stable_stays_hidden_even_with_old_availability() {
         let mut view = View::default();
         assert!(view.channel_visible(Channel::Beta.index()));
         assert!(view.channel_visible(Channel::Nightly.index()));
         assert!(!view.channel_visible(Channel::Stable.index()));
         view.stable_available = true;
-        assert!(view.channel_visible(Channel::Stable.index()));
+        assert!(!view.channel_visible(Channel::Stable.index()));
     }
     #[test]
     fn protocol_requirement_changes_wording_without_authorizing_installation() {

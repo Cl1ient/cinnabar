@@ -14,8 +14,17 @@ struct ReleaseAssets {
 /// Where the release pipeline publishes one channel's signed manifest.
 #[derive(Deserialize)]
 pub struct ChannelRelease {
-    pub tag: String,
+    pub track: ReleaseTrack,
+    pub tag: Option<String>,
     pub manifest: String,
+}
+
+/// Tagged releases advance the latest download; rolling releases keep one prerelease tag.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReleaseTrack {
+    Tagged,
+    Rolling,
 }
 
 static RELEASE: LazyLock<ReleaseAssets> = LazyLock::new(|| {
@@ -44,7 +53,7 @@ pub fn artifact_name(os: &str, arch: &str) -> Option<&'static str> {
         .map(String::as_str)
 }
 
-/// The fixed release holding `channel`'s manifest, if the pipeline publishes that channel.
+/// The release track holding `channel`'s manifest, if the pipeline publishes that channel.
 pub fn channel_release(channel: &str) -> Option<&'static ChannelRelease> {
     RELEASE.update_channels.get(channel)
 }
@@ -88,17 +97,33 @@ mod tests {
     }
 
     #[test]
-    fn the_pipeline_publishes_exactly_the_selectable_channels() {
-        let published = RELEASE.update_channels.keys().map(String::as_str);
-        let mut selectable = crate::channel::Channel::ALL.map(|channel| channel.name());
-        selectable.sort_unstable();
-        assert!(published.eq(selectable));
-        for channel in crate::channel::Channel::ALL {
-            let release = channel_release(channel.name()).unwrap();
-            assert!(channel.manifest_url().ends_with(&format!(
-                "/releases/download/{}/{}",
-                release.tag, release.manifest
-            )));
-        }
+    fn beta_follows_latest_nightly_rolls_and_stable_is_unpublished() {
+        use crate::channel::Channel;
+        assert_eq!(RELEASE.update_channels.len(), 2);
+        let beta = channel_release(Channel::Beta.name()).unwrap();
+        assert!(matches!(beta.track, ReleaseTrack::Tagged));
+        assert!(beta.tag.is_none());
+        assert_eq!(
+            Channel::Beta.manifest_url().unwrap(),
+            format!(
+                "https://github.com/{}/releases/latest/download/{}",
+                repository(),
+                beta.manifest
+            )
+        );
+        let nightly = channel_release(Channel::Nightly.name()).unwrap();
+        assert!(matches!(nightly.track, ReleaseTrack::Rolling));
+        assert_eq!(nightly.tag.as_deref(), Some(Channel::Nightly.name()));
+        assert_eq!(
+            Channel::Nightly.manifest_url().unwrap(),
+            format!(
+                "https://github.com/{}/releases/download/{}/{}",
+                repository(),
+                nightly.tag.as_deref().unwrap(),
+                nightly.manifest
+            )
+        );
+        assert!(channel_release(Channel::Stable.name()).is_none());
+        assert!(Channel::Stable.manifest_url().is_none());
     }
 }

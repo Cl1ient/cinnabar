@@ -105,6 +105,9 @@ fn run(
     switch_now: bool,
     generation: u64,
 ) -> Result<()> {
+    let Some(manifest_url) = preferences.channel.manifest_url() else {
+        return Ok(());
+    };
     let keys = update_manifest::parse_keys(update_installer::TRUSTED_KEYS)?;
     if keys.is_empty() {
         return Ok(());
@@ -135,9 +138,12 @@ fn run(
     };
     let stable_cache = cache_path(&root, Channel::Stable);
     let channel_cache = cache_path(&root, preferences.channel);
-    if read_cached(&stable_cache).is_some_and(|cached| {
-        Selection::verify(&cached, &keys, stable, OffsetDateTime::now_utc()).is_ok()
-    }) {
+    let stable_url = Channel::Stable.manifest_url();
+    if stable_url.is_some()
+        && read_cached(&stable_cache).is_some_and(|cached| {
+            Selection::verify(&cached, &keys, stable, OffsetDateTime::now_utc()).is_ok()
+        })
+    {
         if let Ok(mut state) = STATE.lock() {
             if state.generation == generation {
                 state.stable_available = true;
@@ -198,19 +204,21 @@ fn run(
     let client = http_client()?;
     runtime.block_on(async {
         if preferences.channel != Channel::Stable {
-            if let Ok(bytes) = fetch(&client, &Channel::Stable.manifest_url()).await {
-                if Selection::verify(&bytes, &keys, stable, OffsetDateTime::now_utc()).is_ok() {
-                    let _ = fs::write(&stable_cache, &bytes);
-                    if let Ok(mut state) = STATE.lock() {
-                        if state.generation == generation {
-                            state.stable_available = true;
+            if let Some(url) = &stable_url {
+                if let Ok(bytes) = fetch(&client, url).await {
+                    if Selection::verify(&bytes, &keys, stable, OffsetDateTime::now_utc()).is_ok() {
+                        let _ = fs::write(&stable_cache, &bytes);
+                        if let Ok(mut state) = STATE.lock() {
+                            if state.generation == generation {
+                                state.stable_available = true;
+                            }
                         }
                     }
                 }
             }
         }
         ensure!(active(generation), "update channel changed");
-        let envelope = fetch(&client, &preferences.channel.manifest_url()).await?;
+        let envelope = fetch(&client, &manifest_url).await?;
         let selected = Selection::verify(
             &envelope,
             &keys,

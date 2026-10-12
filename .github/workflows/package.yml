@@ -1,7 +1,7 @@
 name: Package
 
-# A daily schedule or a manual `nightly` run refreshes `nightly` from the default branch, and a manual `beta` run refreshes `beta`;
-# other manual runs and v* tags publish stable releases. Signing is optional: missing secrets yield unsigned artifacts,
+# A daily schedule or a manual `nightly` run refreshes the default branch's nightly prerelease;
+# other manual runs and v* tags publish tagged Beta releases as latest. Signing is optional: missing secrets yield unsigned artifacts,
 # and without CINNABAR_UPDATE_SIGNING_KEY the channel's update manifest is left unchanged.
 on:
   schedule:
@@ -12,11 +12,11 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Cinnabar app version (independent of the Minecraft protocol), or nightly/beta to refresh that prerelease
+        description: Cinnabar app version (independent of the Minecraft protocol), or nightly to refresh its prerelease
         required: true
         default: current
         type: choice
-        options: [current, patch, minor, major, custom, nightly, beta]
+        options: [current, patch, minor, major, custom, nightly]
       version:
         description: Custom app version X.Y.Z (only for custom)
         type: string
@@ -25,7 +25,7 @@ on:
         type: string
 
 concurrency:
-  group: ${{ (github.event_name == 'schedule' || inputs.bump == 'nightly') && 'package-nightly' || inputs.bump == 'beta' && 'package-beta' || 'package-release' }}
+  group: ${{ (github.event_name == 'schedule' || inputs.bump == 'nightly') && 'package-nightly' || 'package-release' }}
   cancel-in-progress: ${{ github.event_name == 'schedule' }}
 
 permissions:
@@ -52,6 +52,7 @@ jobs:
       contents: write
     outputs:
       channel: ${{ steps.release.outputs.channel }}
+      track: ${{ steps.release.outputs.track }}
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
       ref: ${{ steps.release.outputs.ref }}
@@ -505,6 +506,7 @@ jobs:
       WINDOWS_SIGNED: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' }}
       UPDATE_SIGNED: ${{ secrets.CINNABAR_UPDATE_SIGNING_KEY != '' }}
       RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+      RELEASE_TRACK: ${{ needs.prepare.outputs.track }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
@@ -526,7 +528,7 @@ jobs:
           pattern: "{macos-*,windows-x64,linux-x86_64}"
           merge-multiple: true
       - name: Resolve release metadata names
-        run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" env --channel "$RELEASE_CHANNEL" >> "$GITHUB_ENV"
+        run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" env --channel "$RELEASE_CHANNEL" --tag "$RELEASE_TAG" >> "$GITHUB_ENV"
       - name: Add the standalone Linux installer
         run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" install-script --output "dist/$INSTALL_SCRIPT"
       - name: Install the release tooling Rust toolchain
@@ -542,7 +544,7 @@ jobs:
             exit 0
           fi
           # Update payloads live beside the manifest under content-addressed names, apart from the
-          # stable-named downloads, so no upload replaces a file a published manifest names.
+          # native installer downloads, so no upload replaces a file a published manifest names.
           base="${{ github.server_url }}/${{ github.repository }}/releases/download/$UPDATE_MANIFEST_TAG"
           args=()
           while IFS= read -r spec; do
@@ -555,24 +557,25 @@ jobs:
             sign -version "$RELEASE_VERSION" -channel "$RELEASE_CHANNEL" -build-number "$GITHUB_RUN_NUMBER" "${args[@]}") \
             > "$RUNNER_TEMP/$UPDATE_MANIFEST.partial"
           mv "$RUNNER_TEMP/$UPDATE_MANIFEST.partial" "$RUNNER_TEMP/$UPDATE_MANIFEST"
-      - name: Add the stable manifest compatibility download
-        if: needs.prepare.outputs.channel == 'stable'
+      - name: Verify all downloads and checksum the release
+        run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" checksums dist
+      - name: Prepare the tagged release
+        id: prepare_publish
+        if: needs.prepare.outputs.track == 'tagged'
         run: |
-          manifest="$RUNNER_TEMP/$UPDATE_MANIFEST"
-          if [[ -e "$manifest" ]]; then
-            cp "$manifest" "dist/$UPDATE_MANIFEST"
-          elif gh release view "$UPDATE_MANIFEST_TAG" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/stable-assets"; then
-            # Unsigned releases still serve the current signed manifest to existing clients.
-            if grep -Fxq "$UPDATE_MANIFEST" "$RUNNER_TEMP/stable-assets"; then
-              gh release download "$UPDATE_MANIFEST_TAG" --pattern "$UPDATE_MANIFEST" --dir dist --clobber
-            fi
+          bash "$GITHUB_WORKSPACE/release-tools/packaging/release-notes.sh" release > "$RUNNER_TEMP/notes.md"
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            # Publish a new version only after its downloads and signed metadata are present.
+            gh release create "$RELEASE_TAG" --draft --latest=false --verify-tag --target "$RELEASE_COMMIT" \
+              --title "$RELEASE_TAG" --generate-notes --notes-file "$RUNNER_TEMP/notes.md"
+            echo "created=true" >> "${GITHUB_OUTPUT:-/dev/null}"
           fi
-      - name: Verify all downloads and checksum the rolling prerelease
-        if: needs.prepare.outputs.channel != 'stable'
-        run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" checksums dist
-      - name: Verify all downloads and checksum the stable release
-        if: needs.prepare.outputs.channel == 'stable'
-        run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" checksums dist
+          # Keep an existing release public so cached manifests can still fetch their payloads.
+          gh release upload "$RELEASE_TAG" dist/* --clobber
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
+            [[ -e "dist/$name" || "$name" == "$UPDATE_MANIFEST" || "$name" == "$UPDATE_PAYLOAD_PREFIX"* ]] ||
+              gh release delete-asset "$RELEASE_TAG" "$name" --yes
+          done
       - name: Publish the signed update manifest
         # New payloads, then the manifest naming them; retain the preceding publication too.
         # Without a new manifest, the current one and its payloads stay untouched.
@@ -584,7 +587,8 @@ jobs:
             exit 0
           fi
           if ! gh release view "$UPDATE_MANIFEST_TAG" > /dev/null 2>&1; then
-            # A prerelease holder can never become the repository's latest release.
+            [[ "$RELEASE_TRACK" == rolling ]] || { echo "::error::Tagged release was not prepared"; exit 1; }
+            # The rolling holder can never become the repository's latest release.
             gh release create "$UPDATE_MANIFEST_TAG" --prerelease --latest=false --target "$RELEASE_COMMIT" \
               --title "${RELEASE_CHANNEL^} updates" --notes "Signed update manifest for the $RELEASE_CHANNEL channel."
           fi
@@ -626,7 +630,7 @@ jobs:
             fi
           done
       - name: Publish the rolling prerelease
-        if: needs.prepare.outputs.channel != 'stable'
+        if: needs.prepare.outputs.track == 'rolling'
         run: |
           previous="$(git rev-parse -q --verify "refs/tags/$RELEASE_TAG^{commit}" || true)"
           bash "$GITHUB_WORKSPACE/release-tools/packaging/release-notes.sh" "$RELEASE_CHANNEL" "$previous" > "$RUNNER_TEMP/notes.md"
@@ -646,27 +650,13 @@ jobs:
           git push -f origin "refs/tags/$RELEASE_TAG"
           gh release edit "$RELEASE_TAG" --title "$title" --notes-file "$RUNNER_TEMP/notes.md" \
             --prerelease --latest=false --draft=false
-      - name: Publish the stable release
-        id: publish
-        if: needs.prepare.outputs.channel == 'stable'
+      - name: Publish the tagged release
+        if: needs.prepare.outputs.track == 'tagged'
         run: |
-          bash "$GITHUB_WORKSPACE/release-tools/packaging/release-notes.sh" release > "$RUNNER_TEMP/notes.md"
-          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
-            # Keep a replacement private until every artifact and checksum agrees.
-            gh release edit "$RELEASE_TAG" --draft=true
-            gh release upload "$RELEASE_TAG" dist/* --clobber
-            gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
-              [[ -e "dist/$name" ]] || gh release delete-asset "$RELEASE_TAG" "$name" --yes
-            done
-            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" \
-              --notes-file "$RUNNER_TEMP/notes.md" --draft=false --prerelease=false
-          else
-            gh release create "$RELEASE_TAG" dist/* --verify-tag --target "$RELEASE_COMMIT" \
-              --title "$RELEASE_TAG" --generate-notes --notes-file "$RUNNER_TEMP/notes.md"
-            echo "created=true" >> "${GITHUB_OUTPUT:-/dev/null}"
-          fi
+          gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md" --draft=false --prerelease=false --latest=true
       - name: Post the changelog to Discord
-        if: steps.publish.outputs.created == 'true'
+        if: steps.prepare_publish.outputs.created == 'true'
         continue-on-error: true
         env:
           DISCORD_CHANGELOG_WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}

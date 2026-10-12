@@ -50,20 +50,30 @@ impl Channel {
             .expect("declared channel")
     }
 
-    /// Resolves only the published channels, rejecting an unknown wire value.
+    /// Resolves known channel names, including the reserved stable channel.
     pub fn parse(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|channel| channel.name() == name)
     }
 
-    /// The fixed GitHub release URL the package workflow publishes this channel's manifest to.
-    pub fn manifest_url(self) -> String {
-        let release = super::platforms::channel_release(self.name())
-            .expect("release-assets.json lists every channel");
-        format!(
-            "https://github.com/{}/releases/download/{}/{}",
+    /// Whether the shared release metadata assigns this channel a publishing track.
+    pub fn is_published(self) -> bool {
+        super::platforms::channel_release(self.name()).is_some()
+    }
+
+    /// The pipeline's manifest URL, or none for a channel without a publishing track.
+    pub fn manifest_url(self) -> Option<String> {
+        let release = super::platforms::channel_release(self.name())?;
+        let path = match release.track {
+            super::platforms::ReleaseTrack::Tagged => "latest/download".to_owned(),
+            super::platforms::ReleaseTrack::Rolling => {
+                format!("download/{}", release.tag.as_ref()?)
+            }
+        };
+        Some(format!(
+            "https://github.com/{}/releases/{}/{}",
             super::platforms::repository(),
-            release.tag,
+            path,
             release.manifest
-        )
+        ))
     }
 }

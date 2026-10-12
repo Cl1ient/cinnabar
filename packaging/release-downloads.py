@@ -17,8 +17,14 @@ def manifest():
 def render_installer():
     config = manifest()
     template = (HERE / "install.sh.in").read_text()
+    tagged = next(name for name, release in config["update_channels"].items()
+                  if release["track"] == "tagged")
+    rolling, release = next((name, release) for name, release in config["update_channels"].items()
+                            if release["track"] == "rolling")
     values = {"REPOSITORY": config["repository"], "CHECKSUM_ASSET": config["checksums"],
-              "LINUX_X86_64_ASSET": config["assets"]["linux"]["x86_64"]}
+              "LINUX_X86_64_ASSET": config["assets"]["linux"]["x86_64"],
+              "TAGGED_CHANNEL": tagged, "TAGGED_CHANNEL_LABEL": tagged.capitalize(),
+              "ROLLING_CHANNEL": rolling, "ROLLING_TAG": release["tag"]}
     for key, value in values.items():
         template = template.replace(f"@{key}@", value)
     if re.search(r"@[A-Z_0-9]+@", template):
@@ -72,6 +78,7 @@ def main():
     environment.add_argument("platform", nargs="?")
     environment.add_argument("arch", nargs="?")
     environment.add_argument("--channel", help="also name this channel's signed manifest and its release")
+    environment.add_argument("--tag", help="version tag for a tagged release channel")
     update = commands.add_parser("update-payloads")
     update.add_argument("base")
     update.add_argument("directory", type=Path)
@@ -87,9 +94,14 @@ def main():
                            ("UPDATE_PAYLOAD_PREFIX", "update_payload_prefix")]:
             print(f"{key}={config[field]}")
         if args.channel:
-            release = config["update_channels"][args.channel]
+            release = config["update_channels"].get(args.channel)
+            if release is None:
+                parser.error(f"channel {args.channel} is not published")
+            tag = args.tag if release["track"] == "tagged" else release["tag"]
+            if not tag:
+                parser.error("a tagged channel requires --tag")
             print(f'UPDATE_MANIFEST={release["manifest"]}')
-            print(f'UPDATE_MANIFEST_TAG={release["tag"]}')
+            print(f'UPDATE_MANIFEST_TAG={tag}')
         if args.platform:
             print(f'RELEASE_ASSET={config["assets"][args.platform][args.arch]}')
             if args.platform == "windows":

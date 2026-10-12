@@ -82,7 +82,7 @@ pub(super) fn compile_equipment_assets_command(
         .map(compile_item_attack_timings)
         .transpose()?
         .unwrap_or_default();
-    let item_food = behavior_pack
+    let item_food = item_behavior
         .map(compile_item_foods)
         .transpose()?
         .unwrap_or_default();

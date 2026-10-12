@@ -149,13 +149,14 @@ impl SetupApp {
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&cancel);
         let handle = std::thread::spawn(move || {
-            if let Err(error) = record_consent(&layout) {
-                let _ = sender.send(Status::failed("Failed", &format!("{error:#}")));
-                return;
-            }
             let mut report = reporter(&layout, |status| {
                 let _ = sender.send(status.clone());
             });
+            report(Status::starting());
+            if let Err(error) = record_consent(&layout) {
+                report(Status::failed("Failed", &format!("{error:#}")));
+                return;
+            }
             let _ = prepare(&layout, &flag, &mut report);
         });
         self.meter = Meter::default();

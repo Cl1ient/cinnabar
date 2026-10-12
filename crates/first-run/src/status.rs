@@ -47,6 +47,11 @@ impl Status {
         Self::new(Phase::AwaitingConsent, 0, 0, "Waiting for consent")
     }
 
+    /// Consent is resolved and preparation is starting; it carries no step count yet.
+    pub(super) fn starting() -> Self {
+        Self::new(Phase::Running, 0, 0, "Starting setup")
+    }
+
     pub(super) fn downloading(downloaded: u64, total: Option<u64>) -> Self {
         Self {
             downloaded: Some(downloaded),

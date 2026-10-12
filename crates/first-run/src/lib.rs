@@ -138,8 +138,8 @@ fn ensure_with(
     }
     let title = setup_title(std::env::var("CINNABAR_WINDOW_TITLE").ok().as_deref());
     let mut report = reporter(layout, |_| {});
-    report(Status::awaiting_consent());
     if !env_consent && !consent_recorded(layout) {
+        report(Status::awaiting_consent());
         match prompter.confirm(&title, CONSENT_BODY) {
             Consent::Accepted => {}
             Consent::Declined => {
@@ -158,6 +158,7 @@ fn ensure_with(
             }
         }
     }
+    report(Status::starting());
     let is_update = updating(layout);
     record_consent(layout)?;
     prompter.info(

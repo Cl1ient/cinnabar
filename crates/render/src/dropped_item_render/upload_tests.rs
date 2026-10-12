@@ -141,6 +141,61 @@ fn unaffordable_wide_sprite_does_not_hide_unrelated_small_items() {
 }
 
 #[test]
+fn checkerboard_items_cannot_overflow_the_aggregate_geometry_upload() {
+    let side = 256;
+    let pixels: Arc<[u8]> = (0..side * side)
+        .flat_map(|index| {
+            [
+                255,
+                73,
+                91,
+                if (index % side + index / side) % 2 == 0 {
+                    255
+                } else {
+                    0
+                },
+            ]
+        })
+        .collect::<Vec<_>>()
+        .into();
+    let mut models = (0..9)
+        .map(|_| {
+            DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+                width: side,
+                height: side,
+                rgba8: Arc::clone(&pixels),
+            })
+        })
+        .collect::<Vec<_>>();
+    models.push(DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+        width: 16,
+        height: 16,
+        rgba8: vec![255; 16 * 16 * 4].into(),
+    }));
+    let mut world = item_world();
+    let limit = world
+        .resource::<RenderDevice>()
+        .limits()
+        .max_buffer_size
+        .min(assets::texture::policy::MAX_SUBSCRIBER_BYTES as u64);
+    world
+        .resource_mut::<DroppedItemScene>()
+        .publish(1, models.into(), &[], &[], 1.0);
+    world.run_system_once(prepare_items).unwrap();
+    let gpu = world.resource::<ItemGpu>();
+    assert!(gpu.mesh_buffer.as_ref().unwrap().size() <= limit);
+    let admitted = gpu.ranges[..9]
+        .iter()
+        .filter(|range| !range.vertices.is_empty())
+        .count();
+    assert!(admitted > 0 && admitted < 9);
+    assert!(
+        !gpu.ranges[9].vertices.is_empty(),
+        "rejected meshes leave storage for smaller items"
+    );
+}
+
+#[test]
 fn hidden_item_catalog_is_prepared_before_visibility() {
     let mut world = item_world();
     let mut system = IntoSystem::into_system(prepare_items);

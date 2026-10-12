@@ -52,6 +52,79 @@ fn atlas_reclaims_despawned_models_and_keeps_live_handles() {
 }
 
 #[test]
+fn inactive_hd_models_cannot_size_the_current_atlas() {
+    let mut cache = ModelCache::default();
+    frame(&mut cache, []);
+    let hd = cache
+        .model(
+            key(0),
+            || Some(1),
+            || {
+                Some(DroppedItemModel::Sprite(DroppedItemSprite {
+                    width: 2048,
+                    height: 2048,
+                    rgba8: vec![255; 2048 * 2048 * 4].into(),
+                }))
+            },
+        )
+        .unwrap();
+    cache.finish_frame();
+    let first_revision = cache.revision;
+    frame(&mut cache, 1..=8);
+    let ordinary = (1..=8)
+        .map(|id| {
+            cache
+                .model(
+                    key(id),
+                    || Some(1),
+                    || {
+                        Some(DroppedItemModel::Sprite(DroppedItemSprite {
+                            width: 16,
+                            height: 16,
+                            rgba8: vec![73; 16 * 16 * 4].into(),
+                        }))
+                    },
+                )
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    cache.finish_frame();
+    assert!(matches!(
+        cache.shared[hd as usize],
+        DroppedItemModel::Vacant
+    ));
+    assert!(
+        matches!(cache.models[hd as usize], DroppedItemModel::Sprite(_)),
+        "inactive source stays cached"
+    );
+    for slot in ordinary {
+        let DroppedItemModel::Sprite(sprite) = &cache.shared[slot as usize] else {
+            panic!("current item remains published");
+        };
+        assert_eq!([sprite.width, sprite.height], [16; 2]);
+    }
+    assert!(cache.revision > first_revision);
+    let shared = Arc::clone(&cache.shared);
+    frame(&mut cache, 1..=8);
+    cache.finish_frame();
+    assert!(Arc::ptr_eq(&shared, &cache.shared));
+    frame(&mut cache, [0, 1]);
+    assert_eq!(
+        cache.model(
+            key(0),
+            || panic!("reuse cached cost"),
+            || panic!("reuse cached model")
+        ),
+        Some(hd)
+    );
+    cache.finish_frame();
+    assert!(matches!(
+        cache.shared[hd as usize],
+        DroppedItemModel::Sprite(_)
+    ));
+}
+
+#[test]
 fn evicted_cpu_pixels_are_released_and_returning_models_are_rebuilt() {
     let mut cache = ModelCache::default();
     frame(&mut cache, []);

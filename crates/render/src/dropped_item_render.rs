@@ -1,4 +1,5 @@
 //! Draws dropped-item and block models plus dynamic line geometry in the opaque 3D phase.
+mod mesh_storage;
 use bevy::prelude::IntoScheduleConfigs;
 #[cfg(test)]
 use bevy::prelude::IntoSystem;
@@ -46,6 +47,7 @@ use bevy::{
         view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms},
     },
 };
+use mesh_storage::MeshStorage;
 use std::ops::Range;
 use {
     render_model::{
@@ -376,15 +378,17 @@ fn rebuild_models(
         .min(device.limits().max_texture_array_layers as usize);
     // Layer 0 is opaque white for untextured geometry.
     let mut atlas = vec![255_u8; layer_bytes];
-    let mut vertices: Vec<ItemMeshVertex> = Vec::new();
+    let mut vertices = MeshStorage::new(device.limits().max_buffer_size);
     let mut ranges = Vec::with_capacity(scene.models.len());
     for model in scene.models.iter() {
         let start = vertices.len() as u32;
+        let atlas_start = atlas.len();
         let needed = model_texture_layers(model);
         if atlas.len() / layer_bytes + needed <= max_layers
             && let Some(mesh) = build_model(&mut atlas, model, side as u32)
+            && !vertices.append(mesh)
         {
-            vertices.extend(mesh);
+            atlas.truncate(atlas_start);
         }
         ranges.push(ItemMeshRange {
             vertices: start..vertices.len() as u32,

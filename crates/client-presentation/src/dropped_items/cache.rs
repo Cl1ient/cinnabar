@@ -293,10 +293,35 @@ impl ModelCache {
         Some(slot as u32)
     }
 
-    /// Shares the resident table once after all admissions.
+    /// Whether this slot has a consumer in the current frame, including hidden candidates.
+    fn demanded(&self, slot: usize) -> bool {
+        self.residents[slot]
+            .as_ref()
+            .is_some_and(|entry| entry.requested == self.frame)
+    }
+
+    /// Publishes current demand at stable slots while keeping inactive CPU models cached.
     pub(super) fn finish_frame(&mut self) {
-        if self.dirty {
-            self.shared = Arc::from(self.models.as_slice());
+        let demand_changed = self.models.iter().enumerate().any(|(slot, _)| {
+            self.demanded(slot)
+                != self
+                    .shared
+                    .get(slot)
+                    .is_some_and(|model| !matches!(model, DroppedItemModel::Vacant))
+        });
+        if self.dirty || demand_changed {
+            self.shared = self
+                .models
+                .iter()
+                .enumerate()
+                .map(|(slot, model)| {
+                    if self.demanded(slot) {
+                        model.clone()
+                    } else {
+                        DroppedItemModel::Vacant
+                    }
+                })
+                .collect();
             self.revision = self.revision.wrapping_add(1);
             self.dirty = false;
         }

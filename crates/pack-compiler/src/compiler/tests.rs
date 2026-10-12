@@ -18,6 +18,8 @@ mod bubble_column;
 mod candle_cake;
 #[path = "tests/coral.rs"]
 mod coral;
+#[path = "tests/crops.rs"]
+mod crops;
 #[path = "tests/dragon_egg.rs"]
 mod dragon_egg;
 #[path = "tests/end_rod.rs"]
@@ -34,6 +36,8 @@ mod isotropic;
 mod lantern;
 #[path = "tests/lightning_rod.rs"]
 mod lightning_rod;
+#[path = "tests/potted_plants.rs"]
+mod potted_plants;
 #[path = "tests/sea_pickle.rs"]
 mod sea_pickle;
 #[path = "tests/shelf_cake.rs"]

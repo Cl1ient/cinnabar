@@ -370,6 +370,14 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
                 "compound continuation cannot be directly visual-referenced",
             ));
         }
+        if visual.model_template != NO_MODEL_TEMPLATE
+            && compiled.model_templates[visual.model_template as usize].flags
+                == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+        {
+            return Err(invalid(
+                "pot-content template cannot be directly visual-referenced",
+            ));
+        }
         optional_id(
             visual.animation,
             compiled.animations.len(),
@@ -481,7 +489,17 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
         previous = Some(hash);
     }
     let mut expected_quad = 0usize;
-    for template in &compiled.model_templates {
+    for (index, template) in compiled.model_templates.iter().enumerate() {
+        if template.flags == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+            && (template.quad_count == 0
+                || compiled.model_templates.get(index + 1).is_none_or(|next| {
+                    !matches!(next.flags, 0 | crate::MODEL_TEMPLATE_FLAG_BAMBOO)
+                }))
+        {
+            return Err(invalid(
+                "pot-content template has no standalone world model",
+            ));
+        }
         if !model_template_flags_are_valid(template.flags)
             || template.quad_start as usize != expected_quad
             || template.quad_count as usize > crate::MAX_MODEL_TEMPLATE_QUADS

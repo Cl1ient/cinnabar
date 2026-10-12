@@ -642,6 +642,7 @@ pub(in crate::compiler) fn compile_visuals(
     };
     compiler.flower_pot_soil = super::flower_pot::soil_material(records, &inputs);
     let mut ordered_records = records.iter().collect::<Vec<_>>();
+    let mut potted_templates = BTreeMap::new();
     ordered_records.sort_unstable_by_key(|record| record.sequential_id);
     for record in ordered_records {
         visuals[record.sequential_id as usize] =
@@ -654,6 +655,16 @@ pub(in crate::compiler) fn compile_visuals(
                     }
                     super::snowy_grass::apply(record, &mut visual, &inputs);
                     super::fire_admission::apply(record, &mut visual);
+                    super::potted_plants::apply(
+                        record,
+                        &mut visual,
+                        &inputs,
+                        &mut potted_templates,
+                        &mut ModelStorage {
+                            templates: &mut compiler.model_templates,
+                            quads: &mut compiler.model_quads,
+                        },
+                    )?;
                     visual
                 }
                 CompileRuleResult::NoMatch | CompileRuleResult::Reject => {

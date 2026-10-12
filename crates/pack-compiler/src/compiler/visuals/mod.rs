@@ -47,6 +47,7 @@ pub(in crate::compiler) mod multiface;
 pub(in crate::compiler) mod named_blocks;
 pub(in crate::compiler) mod panes;
 pub(in crate::compiler) mod portal;
+pub(in crate::compiler) mod potted_plants;
 pub(in crate::compiler) mod pressure_plates;
 pub(in crate::compiler) mod rails;
 pub(in crate::compiler) mod resin_clump;

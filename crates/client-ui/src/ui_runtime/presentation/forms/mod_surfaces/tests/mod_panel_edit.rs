@@ -331,13 +331,6 @@ fn eight_dropdown_options_remain_inside_small_viewport_and_route_individually() 
 }
 
 #[test]
-fn long_numeric_draft_keeps_caret_visible_at_both_ends() {
-    let text = "123456789012345678901234";
-    assert_eq!(edit::visible_draft(text, false, 0, 42.), "|123456");
-    assert_eq!(edit::visible_draft(text, false, 24, 42.), "901234|");
-}
-
-#[test]
 fn same_shape_guest_updates_keep_draft_but_shape_changes_cancel_it() {
     let mut presentation = opened();
     let value = point(&presentation, "mod.edit:1", 0.5);

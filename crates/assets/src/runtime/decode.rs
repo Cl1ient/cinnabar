@@ -314,6 +314,14 @@ fn validate_fixed(
                 "compound continuation cannot be directly visual-referenced",
             ));
         }
+        if template != NO_MODEL_TEMPLATE
+            && u32_at(&sections[3][template as usize * TEMPLATE_BYTES..], 8)
+                == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+        {
+            return Err(invalid(
+                "pot-content template cannot be directly visual-referenced",
+            ));
+        }
         valid_optional(animation, header.counts[5], "visual animation")?;
         if (matches!(kind, VisualKind::Model | VisualKind::Cross))
             != (template != NO_MODEL_TEMPLATE)
@@ -427,7 +435,26 @@ fn validate_fixed(
         }
     }
     let mut quad = 0usize;
-    for record in sections[3].as_chunks::<TEMPLATE_BYTES>().0 {
+    for (index, record) in sections[3]
+        .as_chunks::<TEMPLATE_BYTES>()
+        .0
+        .iter()
+        .enumerate()
+    {
+        if u32_at(record, 8) == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+            && (u32_at(record, 4) == 0
+                || sections[3]
+                    .as_chunks::<TEMPLATE_BYTES>()
+                    .0
+                    .get(index + 1)
+                    .is_none_or(|next| {
+                        !matches!(u32_at(next, 8), 0 | crate::MODEL_TEMPLATE_FLAG_BAMBOO)
+                    }))
+        {
+            return Err(invalid(
+                "pot-content template has no standalone world model",
+            ));
+        }
         if u32_at(record, 0) as usize != quad
             || u32_at(record, 4) as usize > crate::MAX_MODEL_TEMPLATE_QUADS
             || !model_template_flags_are_valid(u32_at(record, 8))

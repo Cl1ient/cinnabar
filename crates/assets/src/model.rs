@@ -100,6 +100,8 @@ pub const MODEL_TEMPLATE_FLAG_FIRE: u32 = 1 << 12;
 pub const MODEL_TEMPLATE_FLAG_NETHER_PORTAL: u32 = 1 << 13;
 /// Bamboo stalks and radial leaves select position-dependent stem UVs and offsets.
 pub const MODEL_TEMPLATE_FLAG_BAMBOO: u32 = 1 << 14;
+/// Potted contents precede their ordinary standalone world template.
+pub const MODEL_TEMPLATE_FLAG_POTTED_PLANT: u32 = 1 << 15;
 /// Bubble-column shells select positional sprites and an exposed surface template.
 pub const MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN: u32 = 1 << 16;
 /// Number of positional sprite variants in each bubble-column surface group.
@@ -158,6 +160,7 @@ pub(crate) const fn model_template_flags_are_valid(flags: u32) -> bool {
             | MODEL_TEMPLATE_FLAG_FIRE
             | MODEL_TEMPLATE_FLAG_NETHER_PORTAL
             | MODEL_TEMPLATE_FLAG_BAMBOO
+            | MODEL_TEMPLATE_FLAG_POTTED_PLANT
             | MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN
     ) || flags == MODEL_TEMPLATE_FLAG_COMPOUND_NEXT | MODEL_TEMPLATE_FLAG_GATE_AXIS_X
         || flags == MODEL_TEMPLATE_FLAG_COMPOUND_NEXT | MODEL_TEMPLATE_FLAG_GATE_AXIS_Z

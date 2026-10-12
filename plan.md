@@ -1174,6 +1174,11 @@ these changes do not close the movement, camera, or actor parity gates.
 
 ## Flower-pot floor and lily-pad atlas tint
 
+- Pot contents retain their block-state selectors and use separate terrain-textured models.
+- Flowers, saplings and roots use unextruded planes; cactus, bamboo and azalea retain their
+  separate parts and pot-specific sprite regions. Ordinary terrain models remain unchanged.
+- Incomplete: mangrove-propagule geometry, eyeblossom geometry/emission and biome tint need separate
+  acceptance; native-server placement parity and the full pot body remain open.
 - Flower pots now add the dirt surface four pixels above the block base, below the rim.
 - Pot bodies and lantern surfaces use double-sided alpha testing instead of fallback blending and rear-face culling.
 - The pot body remains provisional fallback geometry; full current-version visual parity is incomplete.
@@ -4575,6 +4580,13 @@ Scope: block registry + block-state → model/texture mapping (generated export 
         counts and zero contamination counters.
         The October 4 macOS Metal manual check confirms that farmland and the
         corrected wheat model render correctly; the user approved this fix.
+    - [x] Common farmland crop rows: wheat, carrots, potatoes and beetroot use
+      four axis-aligned, two-sided planes lowered to the farmland surface.
+      All eight growth states preserve their selected artwork and upright UVs
+      in sequential and hashed lookup; ordinary flowers retain crossed planes.
+      - [ ] Full crop presentation parity: exact native-client comparison and
+        calibrated UV rows remain open, as do torchflower, pitcher and nether
+        wart geometry and selectors.
     - [ ] Slab/stair native and packed-GPU live acceptance: capture all five
       fixed Cinnabar poses through native `%TEMP%` screenshots and require two
       consecutive exact GPU-completed model-stream witnesses. Automated gallery

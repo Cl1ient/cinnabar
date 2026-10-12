@@ -2,7 +2,7 @@
 
 use std::sync::LazyLock;
 
-use super::engine::screen::{Screen, ScreenRegistry};
+use ui_engine::engine::screen::{Screen, ScreenRegistry};
 
 static REGISTRY: LazyLock<ScreenRegistry> = LazyLock::new(compose);
 

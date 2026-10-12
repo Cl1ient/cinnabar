@@ -85,7 +85,7 @@ fn section_height_interpolates_on_reopening_and_collapse_and_respects_motion_set
         let (mut nodes, mut next, mut layouts) =
             (Vec::new(), 1, ui::TextLayoutCache::new(128, 1024 * 1024));
         let font = crate::ui_runtime::presentation::tests::fixture_font();
-        let metrics = crate::ui_runtime::presentation::TextMetrics::for_viewport(
+        let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
             [1280, 720],
             ui::DpiScale::new(1.0).unwrap(),
             Some(2),
@@ -182,7 +182,7 @@ fn server_list_highlights_fade_for_hover_selection_and_focus_and_can_be_disabled
         let (mut nodes, mut next, mut layouts) =
             (Vec::new(), 1, ui::TextLayoutCache::new(16, 65536));
         let font = crate::ui_runtime::presentation::tests::fixture_font();
-        let metrics = crate::ui_runtime::presentation::TextMetrics::for_viewport(
+        let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
             [1280, 720],
             ui::DpiScale::new(1.0).unwrap(),
             Some(2),

@@ -7,26 +7,24 @@ mod template;
 #[cfg(test)]
 mod tests;
 
-use super::{
-    engine::{
-        ScreenArt,
-        screen::{CustomRenderer, PaintFrame},
-    },
-    hud::CachedScreen,
-    item_renderer::ItemRenderer,
-    mod_widgets::template as cards,
-};
-use crate::ui_runtime::{UiRuntime, forms::EngineFrame};
+use super::{item_renderer::ItemRenderer, mod_widgets::template as cards};
+use crate::ui_runtime::UiRuntime;
 use json_ui::{Catalog, Context, DataSource, Scalar, ViewState};
 use std::sync::Arc;
 use ui::{
     IconRef, UiNode,
     mod_hud::{EditorResult, Hud, MAX_HUD_ROWS},
 };
-use {
-    super::super::{TextMetrics, UiPresentationRuntime},
-    ui::FONT_DESIGN_PIXEL_TEXELS,
+use ui_engine::frame::EngineFrame;
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::{
+    cached_screen::CachedScreen,
+    engine::{
+        ScreenArt,
+        screen::{CustomRenderer, PaintFrame},
+    },
 };
+use {super::super::UiPresentationRuntime, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 const SCREEN: &str = "cinnabar_hud_editor.layout";
 const GUIDE_WIDTH: f64 = 0.75;

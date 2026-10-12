@@ -1,6 +1,7 @@
 use ui::{TextError, TextLayoutCache};
 
-use super::{TextMetrics, UiPresentationError, bounded_visible_text, text_visual_extent};
+use super::{UiPresentationError, bounded_visible_text, text_visual_extent};
+use ui_engine::text_metrics::TextMetrics;
 
 pub(super) struct StatusParagraphs {
     pub title: String,

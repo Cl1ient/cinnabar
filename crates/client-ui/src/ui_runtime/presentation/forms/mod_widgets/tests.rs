@@ -523,7 +523,8 @@ fn authored_label_bounds(
     font: &assets::RuntimeFontCatalog,
     px: f32,
 ) -> ui::UiRect {
-    let [left, top] = super::super::engine::label_origin([0.0; 4], font, &Default::default(), px);
+    let [left, top] =
+        ui_engine::engine::text_paint::label_origin([0.0; 4], font, &Default::default(), px);
     ui::UiRect::new(
         ui::UiPoint::new(painted.min().x() - left, painted.min().y() - top).unwrap(),
         ui::UiPoint::new(painted.max().x() - left, painted.max().y() - top).unwrap(),

@@ -1,11 +1,11 @@
 //! Inbox layout from the owner's vanilla inbox capture; date grouping is independent of read state.
-use super::super::engine::screen::PaintError;
 use super::super::menu_screens::Translate;
 use super::grid::{Grid, space};
 use super::motion::Surface;
 use super::paint::Canvas;
 use super::theme::{BODY, CAPTION, NEUTRAL, TEXT, TEXT_DIMMER};
 use super::widgets::{header, row, screen_overlay};
+use ui_engine::engine::screen::PaintError;
 use {
     launcher::menu::inbox::Action,
     launcher::menu::{InboxItem, MenuAction, MenuScreen, MenuView, inbox},

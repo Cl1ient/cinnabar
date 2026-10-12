@@ -196,7 +196,7 @@ forbidden_transitive_dependencies = ["app", "bedrock-client", "client-runtime", 
 name = "client-ui"
 path = "crates/client-ui"
 # Extension edges support presentation adapters; render data comes from render-model, never render.
-allowed_dependencies = ["actor-animation", "launcher-host", "bridge", "assets", "chunk-pipeline", "client-world", "player-state", "launcher", "inventory", "json-ui", "protocol", "render-api", "render-model", "resource-pack", "semantic-input", "ui", "world", "mod-host", "server-experience", "test-time"]
+allowed_dependencies = ["actor-animation", "launcher-host", "bridge", "assets", "chunk-pipeline", "client-world", "player-state", "launcher", "inventory", "json-ui", "protocol", "render-api", "render-model", "resource-pack", "semantic-input", "ui", "ui-engine", "world", "mod-host", "server-experience", "test-time"]
 forbidden_dependencies = ["asset-compiler", "pack-compiler", "bevy", "wgpu"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "gameplay", "client-session", "render", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]
@@ -305,7 +305,7 @@ forbidden_transitive_dependencies = ["client-world", "chunk-pipeline", "protocol
 [[crates]]
 name = "app"
 path = "app"
-allowed_dependencies = ["actor-animation", "render-scene", "client-shell", "client-interaction", "client-runtime", "client-extensions", "client-state", "first-run", "launcher-host", "bridge", "experience-sdk", "mod-api", "mod-render", "acceptance", "assets", "block-transform", "chunk-pipeline", "client-presentation", "client-session", "client-ui", "client-world", "developer-control", "diagnostics", "gameplay", "gilrs", "inventory", "json-ui", "launcher", "libc", "meshing", "mod-host", "objc2", "objc2-app-kit", "pack-compiler", "particles", "player-state", "protocol", "raw-window-handle", "render", "render-api", "render-model", "resource-pack", "rich-presence", "semantic-input", "server-experience", "sim", "tracing-tracy", "ui", "update-manifest", "world", "test-time", "pack-runtime", "client-audio"]
+allowed_dependencies = ["actor-animation", "render-scene", "client-shell", "client-interaction", "client-runtime", "client-extensions", "client-state", "first-run", "launcher-host", "bridge", "experience-sdk", "mod-api", "mod-render", "acceptance", "assets", "block-transform", "chunk-pipeline", "client-presentation", "client-session", "client-ui", "client-world", "developer-control", "diagnostics", "gameplay", "gilrs", "inventory", "json-ui", "launcher", "libc", "meshing", "mod-host", "objc2", "objc2-app-kit", "pack-compiler", "particles", "player-state", "protocol", "raw-window-handle", "render", "render-api", "render-model", "resource-pack", "rich-presence", "semantic-input", "server-experience", "sim", "tracing-tracy", "ui", "ui-engine", "update-manifest", "world", "test-time", "pack-runtime", "client-audio"]
 forbidden_dependencies = ["asset-compiler"]
 forbidden_transitive_dependencies = ["asset-compiler"]
 
@@ -394,6 +394,15 @@ name = "ui"
 path = "crates/ui"
 allowed_dependencies = ["json-ui", "assets", "render-api", "semantic-input"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
+
+# The portable JSON-UI engine; hosts supply filesystem and network reads through its sources.
+[[crates]]
+name = "ui-engine"
+path = "crates/ui-engine"
+allowed_dependencies = ["assets", "json-ui", "render-model", "resource-pack", "ui"]
+forbidden_dependencies = ["asset-compiler", "bevy", "wgpu", "client-ui", "launcher-host"]
+forbidden_transitive_dependencies = ["app", "bedrock-client", "client-ui", "launcher-host", "render", "bevy", "bevy_*", "wgpu*"]
+test_support_features = ["test-support"]
 
 [[crates]]
 name = "bedrock-replay"

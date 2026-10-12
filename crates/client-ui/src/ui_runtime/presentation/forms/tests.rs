@@ -413,7 +413,10 @@ fn path_and_url_button_images_resolve_like_vanilla() {
     };
     let icons = [("textures/items/apple".to_owned(), apple)].into();
     let engine = presentation.engine.as_mut().unwrap();
-    engine.textures.set_fallbacks(icons, vanilla.clone());
+    engine.textures.set_fallbacks(
+        icons,
+        Arc::new(super::texture_sources::VanillaPack::new(vanilla.clone())),
+    );
     let remote = engine.textures.remote.clone();
     let runtime = super::pack_harness::image_form(
         &mut player_runtime,
@@ -425,8 +428,7 @@ fn path_and_url_button_images_resolve_like_vanilla() {
             Some(Url(url.as_str().into())),
         ],
     );
-    let server_page =
-        presentation.textures.dynamic_start() + super::super::dynamic_textures::SERVER_UI_PAGE;
+    let server_page = presentation.textures.dynamic_start() + ui_engine::pages::SERVER_UI_PAGE;
     let frame = |presentation: &mut UiPresentationRuntime| {
         let nodes = super::pack_harness::render(presentation, &runtime, [1280, 720], 1.0);
         sprite_pages(&nodes)
@@ -448,7 +450,7 @@ fn path_and_url_button_images_resolve_like_vanilla() {
         "the block decodes from the vanilla pack"
     );
     test_time::wait_until(std::time::Duration::from_secs(5), || {
-        remote.state(&url) != launcher_host::remote_images::RemoteState::Loading
+        remote.state(&url) != ui_engine::sources::RemoteImage::Loading
     });
     let loaded = frame(&mut presentation);
     assert_eq!(on_server(&loaded), 2, "the downloaded image joins it");
@@ -793,7 +795,7 @@ fn the_server_list_builds_only_visible_rows() {
 fn oreui_texts(view: &launcher::menu::MenuView) -> Vec<String> {
     let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
     let dpi = ui::DpiScale::new(1.0).unwrap();
-    let metrics = super::super::TextMetrics::for_viewport([1600, 900], dpi, None);
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport([1600, 900], dpi, None);
     let (mut nodes, mut next) = (Vec::new(), 1);
     presentation
         .append_oreui_screen(

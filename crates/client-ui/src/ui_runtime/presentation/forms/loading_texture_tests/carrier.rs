@@ -106,10 +106,8 @@ fn settled(
         let atlas = textures.lock();
         let ready = (!atlas.has_image("textures/blocks/dirt")
             || atlas.placement("textures/blocks/dirt").is_some())
-            && (!atlas.has_image(crate::ui_runtime::presentation::menu_artwork::TITLE_KEY)
-                || atlas
-                    .placement(crate::ui_runtime::presentation::menu_artwork::TITLE_KEY)
-                    .is_some());
+            && (!atlas.has_image(ui_engine::textures::TITLE_KEY)
+                || atlas.placement(ui_engine::textures::TITLE_KEY).is_some());
         drop(atlas);
         if ready {
             break;
@@ -153,7 +151,7 @@ pub(super) fn center(presentation: &UiPresentationRuntime) -> [u32; 2] {
 }
 
 fn layout_pixel_scale(presentation: &UiPresentationRuntime) -> f32 {
-    crate::ui_runtime::presentation::TextMetrics::for_viewport(
+    ui_engine::text_metrics::TextMetrics::for_viewport(
         [1280, 720],
         ui::DpiScale::new(1.0).unwrap(),
         presentation.gui_scale_preference,

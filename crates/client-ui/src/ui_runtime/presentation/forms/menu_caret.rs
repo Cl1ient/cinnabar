@@ -8,9 +8,13 @@ use std::borrow::Cow;
 
 use ui::{TextLayoutCache, UiPoint, UiRect, UiScale};
 
-use super::super::{TextMetrics, UiPresentationRuntime};
-use super::engine::{UNWRAPPED_LOGICAL, width_64};
+use super::super::UiPresentationRuntime;
 use launcher::menu::{MenuField, MenuView};
+use ui_engine::{
+    caret::{caret_byte, nearest_boundary},
+    engine::text_paint::{UNWRAPPED_LOGICAL, width_64},
+    text_metrics::TextMetrics,
+};
 
 /// The caret's blink clock and where the last menu frame drew each box's text.
 #[derive(Default)]
@@ -62,15 +66,6 @@ impl TextSpot {
     }
 }
 
-/// `byte` clamped into `text` and back to a character boundary.
-pub(in crate::ui_runtime::presentation) fn caret_byte(text: &str, byte: usize) -> usize {
-    let mut at = byte.min(text.len());
-    while !text.is_char_boundary(at) {
-        at -= 1;
-    }
-    at
-}
-
 /// `text` with the caret glyph at the caret while `field` is focused and the blink shows it.
 pub(in crate::ui_runtime::presentation) fn with_caret<'a>(
     view: &MenuView,
@@ -86,29 +81,6 @@ pub(in crate::ui_runtime::presentation) fn with_caret<'a>(
     shown.push(json_ui::CARET_GLYPH);
     shown.push_str(&text[at..]);
     Cow::Owned(shown)
-}
-
-/// The character boundary of `text` nearest `x`, from each prefix's drawn width.
-fn nearest_boundary(text: &str, x: f32, mut width: impl FnMut(&str) -> f32) -> usize {
-    let bounds: Vec<usize> = text
-        .char_indices()
-        .map(|(at, _)| at)
-        .chain([text.len()])
-        .collect();
-    // Widths grow with the prefix: find the first boundary at or past `x`.
-    let (mut low, mut high) = (0, bounds.len() - 1);
-    while low < high {
-        let middle = (low + high) / 2;
-        if width(&text[..bounds[middle]]) < x {
-            low = middle + 1;
-        } else {
-            high = middle;
-        }
-    }
-    if low > 0 && x - width(&text[..bounds[low - 1]]) < width(&text[..bounds[low]]) - x {
-        low -= 1;
-    }
-    bounds[low]
 }
 
 impl UiPresentationRuntime {

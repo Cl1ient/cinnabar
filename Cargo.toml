@@ -54,6 +54,7 @@ members = [
     "crates/player-state",
     "crates/sim",
     "crates/ui",
+    "crates/ui-engine",
     "crates/world",
     "crates/update-manifest",
     "tools/architecture",

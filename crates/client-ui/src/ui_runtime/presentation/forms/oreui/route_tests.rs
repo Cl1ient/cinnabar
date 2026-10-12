@@ -800,7 +800,7 @@ fn text_fields_center_visible_glyphs_instead_of_the_font_line_box() {
 
 #[test]
 fn pause_loads_small_server_logos_without_an_oversized_artwork_copy() {
-    use super::super::super::menu_artwork::TITLE_KEY;
+    use ui_engine::textures::TITLE_KEY;
     let mut presentation = crate::test_support::mini_engine_presentation();
     let mut bytes = Vec::new();
     image::RgbaImage::from_pixel(8, 4, image::Rgba([73, 91, 37, 255]))

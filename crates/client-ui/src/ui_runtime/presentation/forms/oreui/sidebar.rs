@@ -1,9 +1,9 @@
 //! Shared flat category faces keep press and selection brightness continuous.
 
-use super::super::engine::screen::PaintError;
 use super::motion::{Feedback, mix};
 use super::paint::{Bounds, Canvas};
 use super::theme::{EDGE, NEUTRAL80};
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn background(
     canvas: &mut Canvas<'_>,

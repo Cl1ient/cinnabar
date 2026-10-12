@@ -3,10 +3,11 @@
 use json_ui::{Draw, DrawNode, FormRender, LayoutEnv, TextMeasure, TextureMeta, TextureSource};
 use ui::{DpiScale, UiVisual};
 
-use super::super::{TextMetrics, debug_overlay};
+use super::super::debug_overlay;
 use crate::test_support::mini_engine_presentation;
 use crate::ui_runtime::UiRuntime;
 use crate::ui_runtime::presentation::{DebugLines, UiPresentationRuntime};
+use ui_engine::text_metrics::TextMetrics;
 
 fn vertex_count(
     player_runtime: &player_state::PlayerState,

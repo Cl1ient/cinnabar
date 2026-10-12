@@ -164,7 +164,7 @@ fn commerce_routes_do_not_render_service_promotional_art() {
         },
     )]);
     let font = crate::ui_runtime::presentation::tests::fixture_font();
-    let metrics = super::super::super::super::TextMetrics::for_viewport(
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
         [1280, 720],
         ui::DpiScale::new(1.0).unwrap(),
         Some(2),

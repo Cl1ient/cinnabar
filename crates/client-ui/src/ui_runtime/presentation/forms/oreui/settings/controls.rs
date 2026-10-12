@@ -1,12 +1,12 @@
 //! Settings controls share vanilla's rail, thumb, bevel and focus geometry.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::motion::{Kind, mix, opacity};
 use super::super::paint::{Bounds, Canvas};
 use super::super::theme::{self, EDGE, Rgba};
 use super::super::widgets::Interaction;
 use crate::ui_runtime::oreui_assets::{SWITCH_OFF_IMAGE, SWITCH_ON_IMAGE};
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 const RAIL_OFF: Rgba = theme::DISABLED.shadow;
 

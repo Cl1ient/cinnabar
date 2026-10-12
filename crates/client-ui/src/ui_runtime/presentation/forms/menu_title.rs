@@ -2,13 +2,11 @@
 
 use std::collections::HashMap;
 
-use crate::ui_runtime::presentation::{
-    UiPresentationRuntime,
-    menu_artwork::{SERVER_ART_PREFIX, TITLE_KEY},
-};
-use {
-    super::{engine::FormEngine, textures::Textures},
-    ui::IconRef,
+use crate::ui_runtime::presentation::{UiPresentationRuntime, menu_artwork::SERVER_ART_PREFIX};
+use ui::IconRef;
+use ui_engine::{
+    engine::FormEngine,
+    textures::{TITLE_KEY, Textures},
 };
 
 /// Where the active catalog's title image draws from; rebuilt with each installed catalog.
@@ -27,7 +25,7 @@ impl TitleSource {
             .and_then(|control| control.properties.get("texture"))
             .and_then(serde_json::Value::as_str)
             .unwrap_or(TITLE_KEY);
-        let texture = super::textures::texture_key(path).to_owned();
+        let texture = ui_engine::textures::texture_key(path).to_owned();
         let artwork = format!("{SERVER_ART_PREFIX}{texture}");
         Self { texture, artwork }
     }

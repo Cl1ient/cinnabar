@@ -2,13 +2,13 @@
 //! the search field and close button, the People / Party / World tabs, and the
 //! friends playing now (each row joins that friend's world).
 
-use super::super::engine::screen::PaintError;
 use super::grid::space;
 use super::icons::{self, Icon};
 use super::paint::Canvas;
 use super::theme::{BODY, BORDER, CAPTION, NEUTRAL90, TEXT, TEXT_DIMMER, TEXT_DIMMEST};
 use super::widgets::{Variant, button, panel, row, screen_overlay, tabs};
 use launcher::menu::{MenuAction, MenuScreen, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 const DRAWER_WIDTH: f32 = 37.6;
 

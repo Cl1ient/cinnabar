@@ -1,7 +1,5 @@
 //! The quit confirmation, drawn as an OreUI modal over the current screen.
 
-use super::super::super::menu_scroll::ScrollArea;
-use super::super::engine::screen::{PaintError, PaintFrame};
 use super::modal::{self, Modal};
 use super::paint::Canvas;
 use super::theme::{Appearance, TEXT};
@@ -9,6 +7,8 @@ use super::widgets::Variant;
 use super::{Look, OreUiScreen};
 use launcher::menu::{MenuAction, MenuView};
 use ui::UiRect;
+use ui_engine::engine::screen::{PaintError, PaintFrame};
+use ui_engine::scroll::ScrollArea;
 
 impl OreUiScreen {
     /// Draws the quit confirmation; returns its targets and its scroll areas.
@@ -65,7 +65,8 @@ impl OreUiScreen {
 #[cfg(test)]
 mod tests {
     use super::super::theme;
-    use crate::ui_runtime::presentation::{TextMetrics, tests::fixture_font};
+    use crate::ui_runtime::presentation::tests::fixture_font;
+    use ui_engine::text_metrics::TextMetrics;
     use {
         super::*,
         launcher::menu::{MenuAction, MenuView},

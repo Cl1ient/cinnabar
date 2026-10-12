@@ -1,6 +1,5 @@
 //! Settings registry sections share the launcher’s persisted options and binding actions.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::theme::{self, BODY, CAPTION, EDGE, NEUTRAL80, TEXT, TEXT_DIMMER};
 use super::super::widgets::{self, Interaction};
 use super::{Content, button};
@@ -15,6 +14,7 @@ use launcher::menu::{
     },
     settings_support::{SupportAction, SupportDialog, SupportLink},
 };
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn draw(content: &mut Content<'_, '_>, section: &str) -> Result<(), PaintError> {
     if super::services::draw(content, section)? {

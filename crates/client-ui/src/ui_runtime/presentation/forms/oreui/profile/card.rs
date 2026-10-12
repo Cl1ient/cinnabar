@@ -178,8 +178,8 @@ fn cover(mut icon: IconRef, bounds: Bounds) -> IconRef {
 
 #[cfg(test)]
 mod tests {
-    use crate::ui_runtime::presentation::TextMetrics;
     use crate::ui_runtime::presentation::tests::fixture_font;
+    use ui_engine::text_metrics::TextMetrics;
     use {
         super::*,
         launcher::menu::{MenuAction, MenuView},

@@ -2,7 +2,7 @@
 use json_ui::ResolvedControl;
 use serde_json::Value;
 
-use super::engine::screen::ScreenRegistry;
+use ui_engine::engine::screen::ScreenRegistry;
 
 pub(super) const REASON_BINDING: &str = "#death_reason_text";
 

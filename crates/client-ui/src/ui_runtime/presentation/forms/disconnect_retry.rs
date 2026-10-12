@@ -57,7 +57,7 @@ mod tests {
             view.can_reconnect = true;
             view.focused_action = Some(MenuAction::Reconnect);
             presentation.set_menu_view(Some(view));
-            let metrics = super::super::super::TextMetrics::for_viewport(
+            let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
                 size,
                 DpiScale::new(1.0).unwrap(),
                 None,
@@ -102,7 +102,7 @@ mod tests {
         view.disconnect_message = Some("network session failed: closed".into());
         view.focused_action = Some(MenuAction::DismissDialog);
         presentation.set_menu_view(Some(view));
-        let metrics = super::super::super::TextMetrics::for_viewport(
+        let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
             [1280, 720],
             DpiScale::new(1.0).unwrap(),
             None,

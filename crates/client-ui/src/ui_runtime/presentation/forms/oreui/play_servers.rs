@@ -22,7 +22,8 @@ use super::paint::{Bounds, Canvas};
 use super::theme::{BODY, CAPTION, NEUTRAL80, NEUTRAL100, TEXT, TEXT_DIMMER};
 use super::widgets::{Variant, button, divider, side_menu};
 use launcher::menu::{MenuAction, MenuServerCard, MenuView, PingInfo, pingable};
-use {super::super::engine::screen::PaintError, ui::IconRef};
+use ui::IconRef;
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,
@@ -332,7 +333,7 @@ mod review_tests {
         let font = crate::ui_runtime::presentation::tests::fixture_font();
         let (mut nodes, mut next, mut layouts) =
             (Vec::new(), 1, ui::TextLayoutCache::new(128, 1024 * 1024));
-        let metrics = crate::ui_runtime::presentation::TextMetrics::for_viewport(
+        let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
             [1280, 720],
             ui::DpiScale::new(1.0).unwrap(),
             Some(2),

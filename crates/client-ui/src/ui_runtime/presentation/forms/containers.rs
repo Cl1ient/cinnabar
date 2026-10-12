@@ -15,19 +15,20 @@ use ui::UiNode;
 
 use super::container_data;
 use super::container_kinds::{Cell, ContainerKind, mount_kind, storage_kind, window_kind};
-use super::engine::{
+use super::{item_renderer::ItemRenderer, menu_renderers::PreviewRenderer};
+use ui_engine::engine::{
     self,
     screen::{CustomRenderer, PaintFrame},
 };
-use super::{item_renderer::ItemRenderer, menu_renderers::PreviewRenderer};
+use ui_engine::frame::EngineFrame;
+use ui_engine::text_metrics::TextMetrics;
 use {
-    super::super::{HudFrame, TextMetrics, UiPresentationError, UiPresentationRuntime},
+    super::super::{HudFrame, UiPresentationError, UiPresentationRuntime},
     ui::IconRef,
 };
 use {
     crate::ui_runtime::{
         UiRuntime,
-        forms::EngineFrame,
         presentation::inventory_pointer::{InventoryCellHit, InventoryScreen},
     },
     inventory::inventory_ledger::InventoryTarget,

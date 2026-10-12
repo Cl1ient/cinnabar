@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use ui::IconRef;
 
-use super::engine::{
+use ui_engine::engine::{
     Canvas,
     screen::{CustomDraw, CustomRenderer, PaintError},
 };

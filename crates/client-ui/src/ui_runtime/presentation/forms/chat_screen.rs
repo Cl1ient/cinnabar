@@ -11,17 +11,17 @@ use json_ui::{
 use serde_json::Value;
 use ui::{UiNode, UiPoint, UiRect};
 
-use super::engine::{
+use super::menus::window_rect;
+use crate::ui_runtime::UiRuntime;
+use ui_engine::cached_screen::CachedScreen;
+use ui_engine::engine::{
     ScreenArt,
     screen::{PaintFrame, ScreenRegistry},
 };
-use super::hud::CachedScreen;
-use super::menus::window_rect;
-use crate::ui_runtime::UiRuntime;
+use ui_engine::text_metrics::TextMetrics;
 use {
     super::super::{
-        TextMetrics, UiPresentationError, UiPresentationRuntime, bounded_visible_text,
-        resolve_chat_line,
+        UiPresentationError, UiPresentationRuntime, bounded_visible_text, resolve_chat_line,
     },
     ui::FONT_DESIGN_PIXEL_TEXELS,
 };
@@ -172,7 +172,7 @@ impl UiPresentationRuntime {
         let art = ScreenArt {
             clocks: Some(&self.scene_clock),
             view: Some(&view),
-            edit: Some(super::engine::host_edit::Feedback::from_chat(
+            edit: Some(ui_engine::engine::host_edit::Feedback::from_chat(
                 runtime.chat_editor(),
             )),
             ..ScreenArt::default()

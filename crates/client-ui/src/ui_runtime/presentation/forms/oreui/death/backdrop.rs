@@ -1,10 +1,10 @@
 //! A single analytic gradient quad preserves the smooth elliptical death vignette.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::paint::Canvas;
 use launcher::menu::death::{BACKDROP_SECONDS, OVERLAY_FADE_SECONDS};
 use std::sync::Arc;
 use ui::{UiBlendMode, UiMesh, UiMeshBatch, UiMeshVertex};
+use ui_engine::engine::screen::PaintError;
 
 /// Draws an expanding radial gradient without tessellation or texture resampling.
 pub(super) fn draw(

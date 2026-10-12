@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use ui::UiVisual;
 
-use super::engine::{
+use crate::ui_runtime::presentation::hud_layout::{HeartPaint, HungerPaint};
+use ui_engine::engine::{
     Canvas,
     screen::{CustomDraw, CustomRenderer, PaintError},
 };
-use crate::ui_runtime::presentation::hud_layout::{HeartPaint, HungerPaint};
 
 mod hunger_animation;
 pub(in crate::ui_runtime::presentation) use hunger_animation::HungerAnimation;

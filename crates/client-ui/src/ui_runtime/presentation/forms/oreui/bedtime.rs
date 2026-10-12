@@ -6,10 +6,10 @@
 
 use ui::UiRect;
 
-use super::super::engine::{rect, screen::PaintError};
 use super::paint::Canvas;
 use super::theme::{HEADER5, TEXT};
 use super::widgets::{Interaction, Variant, button_face};
+use ui_engine::engine::{rect, screen::PaintError};
 
 /// The gradient bands' strongest alpha (0.8) and where it starts (4.49%).
 const BAND_ALPHA: f32 = 0.8;

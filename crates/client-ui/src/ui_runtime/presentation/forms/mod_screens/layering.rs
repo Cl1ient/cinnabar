@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, ops::Range};
 use server_experience::screen::{Rect, ScreenLayout};
 use ui::{UiNode, UiNodeId, UiVisual};
 
-use crate::ui_runtime::forms::EngineFrame;
+use ui_engine::frame::EngineFrame;
 
 /// A control covering at least this share of the root on both axes is a full-screen one (a
 /// dismiss area), not part of the vanilla panels.

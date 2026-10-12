@@ -5,7 +5,6 @@
 
 use std::borrow::Cow;
 
-use super::super::engine::screen::PaintError;
 use super::focus;
 use super::icons::{self, Icon};
 use super::motion::{Kind, Surface, opacity};
@@ -18,6 +17,7 @@ use super::widgets::{MenuItem, Variant, button, menu_item};
 use launcher::local_worlds::{PromptButton, Screen, WorldsView};
 use launcher::menu::view::SettingsFocusAxis;
 use launcher::menu::{LocalWorldAction, MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 /// One modal; a button without an action draws disabled.
 pub(super) struct Modal<'a> {

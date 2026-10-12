@@ -3,30 +3,14 @@
 use std::sync::Arc;
 
 use render_model::UiTexturePage;
+use ui_engine::pages::{
+    GLYPH_PAGES, MOD_UI_PAGES, MODAL_UI_PAGES, SERVER_UI_PAGES, SESSION_ICON_PAGE,
+};
 
 use {
     super::{UiPresentationRuntime, item_viewmodel, menu_artwork, player_preview},
     ui::IconRef,
 };
-
-/// Dynamic page offset holding the session's server item icons.
-pub(super) const SESSION_ICON_PAGE: usize = render_model::UI_SESSION_ICON_PAGE_OFFSET;
-/// Dynamic pages after the general ten, holding the session's glyph-sheet atlas.
-pub(super) const GLYPH_PAGES: usize = 8;
-pub(super) const FIRST_GLYPH_PAGE: usize = SESSION_ICON_PAGE + 1;
-/// Dynamic page offset of the server resource-pack UI textures, after the glyphs.
-pub(super) const SERVER_UI_PAGE: usize = FIRST_GLYPH_PAGE + GLYPH_PAGES;
-/// Dynamic pages reserved for server resource-pack UI textures.
-pub(super) const SERVER_UI_PAGES: usize =
-    render_model::UI_LOCAL_FONT_PAGE_OFFSET - SERVER_UI_PAGE - MODAL_UI_PAGES - MOD_UI_PAGES;
-/// Dynamic page offset of a client part's modal screen textures, after the server pack's.
-pub(super) const MODAL_UI_PAGE: usize = SERVER_UI_PAGE + SERVER_UI_PAGES;
-/// Dynamic pages reserved for the modal's bundle textures, apart from the server pack's.
-pub(super) const MODAL_UI_PAGES: usize = 4;
-/// Dynamic page offset of a player mod's screen textures, after the modal's.
-pub(super) const MOD_UI_PAGE: usize = MODAL_UI_PAGE + MODAL_UI_PAGES;
-/// Dynamic pages reserved for the player mod's package textures, before the local font page.
-pub(super) const MOD_UI_PAGES: usize = 4;
 
 pub(super) fn observe_session(runtime: &mut UiPresentationRuntime, session: u64) {
     let changed = runtime
@@ -346,7 +330,7 @@ mod tests {
         runtime.menu_artwork_loader.set_pending_fixture(
             vec![UiTexturePage::owned([side; 2], pixels.into()).unwrap()],
             std::collections::HashMap::from([(
-                menu_artwork::TITLE_KEY.to_owned(),
+                ui_engine::textures::TITLE_KEY.to_owned(),
                 IconRef {
                     page: 0,
                     uv: [0, 0, 8, 4],
@@ -373,7 +357,9 @@ mod tests {
         assert!(!runtime.preview_dirty);
         assert!(!runtime.menu_artwork_dirty);
         assert!(!runtime.menu_artwork_loader.poll());
-        let icon = runtime.menu_artwork_icon(menu_artwork::TITLE_KEY).unwrap();
+        let icon = runtime
+            .menu_artwork_icon(ui_engine::textures::TITLE_KEY)
+            .unwrap();
         assert_eq!(
             runtime.textures.pages()[usize::from(icon.page)].pixels()[0],
             91

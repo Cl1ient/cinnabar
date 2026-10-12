@@ -1,9 +1,9 @@
 use super::*;
 use crate::ui_runtime::presentation::{
-    TextMetrics,
     forms::oreui::{theme, transitions::Transitions, widgets},
     tests::fixture_font,
 };
+use ui_engine::text_metrics::TextMetrics;
 
 #[test]
 fn entrances_move_clipped_content_once_and_keep_hit_geometry_and_backdrops_stable() {

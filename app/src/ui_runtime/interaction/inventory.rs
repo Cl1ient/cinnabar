@@ -197,7 +197,7 @@ pub(super) fn apply_inventory_pointer(
 /// Wheel notches over an engine-drawn screen scroll the view under the pointer.
 pub(super) fn scroll_container(
     runtime: &mut UiRuntime,
-    frame: &client_ui::ui_runtime::forms::EngineFrame,
+    frame: &ui_engine::frame::EngineFrame,
     gui: [f32; 2],
     notches: &[(f32, MouseScrollUnit)],
 ) {

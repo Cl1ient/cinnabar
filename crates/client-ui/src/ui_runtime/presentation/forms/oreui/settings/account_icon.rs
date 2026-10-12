@@ -1,11 +1,11 @@
 //! The Account category uses its signed-in gamerpic with the native image border.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::paint::{Bounds, Canvas};
 use super::super::theme;
 use crate::ui_runtime::oreui_assets::SETTINGS_ICONS;
 use launcher::menu::{MenuView, auth::AuthState};
 use ui::IconRef;
+use ui_engine::engine::screen::PaintError;
 
 #[cfg(test)]
 mod tests;

@@ -199,7 +199,7 @@ fn paragraph(
 fn extend_fill(canvas: &mut Canvas<'_>, first: usize, bounds: Bounds) -> Result<(), PaintError> {
     let node = &canvas.nodes[first];
     let b = node.bounds();
-    let rect = super::super::super::engine::rect(
+    let rect = ui_engine::engine::rect(
         b.min().x(),
         b.min().y(),
         b.min().x() + bounds[2] - bounds[0],

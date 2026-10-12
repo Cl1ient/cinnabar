@@ -11,9 +11,9 @@ use super::{
         rect,
         tokens::*,
     },
-    ContentArea, TextMetrics, UiPresentationError, catalog_status, empty_state, panel,
-    section_heading,
+    ContentArea, UiPresentationError, catalog_status, empty_state, panel, section_heading,
 };
+use ui_engine::text_metrics::TextMetrics;
 
 pub(super) fn append(
     view: &MenuView,

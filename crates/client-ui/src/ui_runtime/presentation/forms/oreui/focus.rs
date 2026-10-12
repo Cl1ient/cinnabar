@@ -1,11 +1,11 @@
 //! Focus regions retain the native landmark hierarchy independently of pointer clipping.
 
-use super::super::engine::{rect, screen::PaintError};
 use super::paint::{Bounds, Canvas};
 use launcher::menu::{
     MenuAction,
     view::{SettingsFocusAxis, SettingsFocusLandmark},
 };
+use ui_engine::engine::{rect, screen::PaintError};
 
 #[cfg(test)]
 mod tests;

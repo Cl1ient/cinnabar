@@ -1,8 +1,9 @@
-use super::super::{
-    server_pack::ServerAtlas,
+use super::*;
+use json_ui::{Context, ViewState};
+use ui_engine::{
+    atlas::ServerAtlas,
     textures::{TextureSet, Textures},
 };
-use super::*;
 
 /// Creates a source with known dimensions without asynchronous metadata updates.
 fn atlas(size: [u32; 2]) -> ServerAtlas {
@@ -37,7 +38,10 @@ fn texture_only_reload_remeasures_shared_screens_without_resetting_bindings() {
     ]);
     let catalog = Arc::new(catalog);
     let assets = crate::test_support::mini_carrier();
-    let mut set = TextureSet::new(0);
+    let mut set = TextureSet::new(
+        0,
+        crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+    );
     let mut screen = CachedScreen::default();
     let (context, view) = (Context::desktop(), ViewState::default());
     let mut data = DataSource::new();

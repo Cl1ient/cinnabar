@@ -1,10 +1,10 @@
 //! Raised segmented choices share selection, press travel and focus across menus.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::motion::{Kind, mix};
 use super::super::paint::{Bounds, Canvas};
 use super::super::theme::{self, BODY, EDGE};
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 const CHOICE_PADDING: f32 = 1.2;
 

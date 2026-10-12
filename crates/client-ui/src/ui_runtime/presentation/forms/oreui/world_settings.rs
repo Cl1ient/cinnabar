@@ -6,7 +6,6 @@
 use bridge::GameMode;
 use launcher::local_worlds::world::{Difficulty, Generator};
 
-use super::super::engine::screen::PaintError;
 use super::grid::{Grid, space};
 use super::paint::{Bounds, Canvas};
 use super::theme::{
@@ -20,6 +19,7 @@ use launcher::local_worlds::{
     game_mode_label, world_type_label,
 };
 use launcher::menu::{LocalWorldAction as A, MenuAction, MenuField, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 mod advanced;
 mod sections;

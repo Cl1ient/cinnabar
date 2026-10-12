@@ -3,7 +3,8 @@ use super::super::review_tests::{paint, solids};
 use {super::*, launcher::menu::MenuView};
 
 fn loading(stage: LoadingStage, seconds: f64) -> Vec<ui::UiNode> {
-    use crate::ui_runtime::presentation::{TextMetrics, UiPresentationRuntime};
+    use crate::ui_runtime::presentation::UiPresentationRuntime;
+    use ui_engine::text_metrics::TextMetrics;
     let mut presentation = UiPresentationRuntime::new(crate::test_support::fixture_font()).unwrap();
     presentation.menu_seconds = seconds;
     let mut nodes = Vec::new();
@@ -100,8 +101,9 @@ fn dimension_loading_uses_a_neutral_backdrop() {
 fn overworld_loading_keeps_the_installed_grass_block_square_and_static() {
     use crate::ui_runtime::{
         oreui_assets::{OVERWORLD_BLOCK_IMAGE, OreUiImages, OreUiPage, OreUiSprite},
-        presentation::{TextMetrics, UiPresentationRuntime},
+        presentation::UiPresentationRuntime,
     };
+    use ui_engine::text_metrics::TextMetrics;
     let sizes = [[112, 112]];
     let mut presentation = UiPresentationRuntime::new(crate::test_support::fixture_font()).unwrap();
     presentation
@@ -246,7 +248,7 @@ fn download_progress_is_determinate_and_clamps_invalid_input() {
 
 #[test]
 fn loading_logo_and_status_form_one_compact_centered_group() {
-    use {crate::ui_runtime::presentation::menu_artwork::TITLE_KEY, ui::IconRef};
+    use {ui::IconRef, ui_engine::textures::TITLE_KEY};
     static ART: std::sync::OnceLock<std::collections::HashMap<String, IconRef>> =
         std::sync::OnceLock::new();
     let art = ART.get_or_init(|| {

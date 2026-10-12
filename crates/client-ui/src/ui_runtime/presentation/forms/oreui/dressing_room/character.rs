@@ -1,4 +1,3 @@
-use super::super::super::engine::screen::PaintError;
 use super::super::{
     grid::space,
     paint::{Bounds, Canvas},
@@ -8,6 +7,7 @@ use super::super::{
 use super::{PreviewArea, command, enabled};
 use launcher::dressing_room::{Action, DressingRoomSection, SkinModel};
 use launcher::menu::MenuView;
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,

@@ -7,8 +7,9 @@ use {crate::ui_runtime::presentation::forms::menu_caret::with_caret, ui::IconRef
 
 use super::{
     ACCENT, BUTTON, BUTTON_FOCUSED, BUTTON_HOVERED, BUTTON_PRESSED, MUTED, PANEL_ALT, TEXT,
-    TextMetrics, UiPresentationError, bounded_visible_text, rect,
+    UiPresentationError, bounded_visible_text, rect,
 };
+use ui_engine::text_metrics::TextMetrics;
 
 pub(super) fn card(
     view: &MenuView,

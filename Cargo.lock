@@ -718,6 +718,7 @@ dependencies = [
  "tokio",
  "tracing-tracy",
  "ui",
+ "ui-engine",
  "url",
  "wgpu",
  "windows-sys 0.61.2",
@@ -2481,6 +2482,7 @@ dependencies = [
  "tokio",
  "tracing",
  "ui",
+ "ui-engine",
  "url",
  "world",
  "zip",
@@ -7544,6 +7546,26 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ui-engine"
+version = "0.1.12"
+dependencies = [
+ "assets",
+ "crossbeam-channel",
+ "image",
+ "json-ui",
+ "protocol",
+ "rayon",
+ "render-model",
+ "resource-pack",
+ "serde_json",
+ "sha2",
+ "test-time",
+ "tracing",
+ "ui",
+ "zip",
 ]
 
 [[package]]

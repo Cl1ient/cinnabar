@@ -1,20 +1,6 @@
 use super::*;
-use std::io::Write;
-
-/// Creates custom-path artwork with a sidecar and known pixels.
-fn files() -> Vec<(String, Vec<u8>)> {
-    let mut png = Cursor::new(Vec::new());
-    image::RgbaImage::from_pixel(512, 512, image::Rgba([24, 48, 72, 255]))
-        .write_to(&mut png, image::ImageFormat::Png)
-        .unwrap();
-    vec![
-        ("assets/gui/inventory.png".into(), png.into_inner()),
-        (
-            "assets/gui/inventory.json".into(),
-            br#"{"base_size":[176,166],"nineslice_size":2}"#.to_vec(),
-        ),
-    ]
-}
+use std::io::{Cursor, Write};
+use ui_engine::atlas::ServerAtlas;
 
 /// Admits an archive containing the supplied artwork as a server pack.
 pub(in crate::ui_runtime::presentation::forms) fn view(
@@ -46,30 +32,6 @@ pub(in crate::ui_runtime::presentation::forms) fn layered_view(
     resource_pack::LayeredPackView::new(resource_pack::validate_handoff(
         protocol::ResourcePackHandoff::from_archives(archives),
     ))
-}
-
-#[test]
-fn arbitrary_pack_texture_keeps_source_dimensions_sidecar_and_pixels() {
-    let files = files();
-    let pack = view(&files);
-    for mut atlas in [
-        ServerAtlas::new(&files, None, 1),
-        ServerAtlas::new(&[], Some(pack), 1),
-    ] {
-        let key = "assets/gui/inventory";
-        assert!(atlas.has_image(key));
-        assert_eq!(atlas.image_size(key), Some([512.0, 512.0]));
-        assert_eq!(atlas.sidecar(key).unwrap().base_size, [176.0, 166.0]);
-        atlas.require([key]);
-        let placement = atlas.placement(key).unwrap();
-        assert_eq!(placement.rect[2..], [256, 256]);
-        let [x, y, _, _] = placement.rect;
-        let offset = ((u32::from(y) * PAGE_SIDE + u32::from(x)) * 4) as usize;
-        assert_eq!(
-            &atlas.pages[usize::from(placement.page)].pixels[offset..offset + 4],
-            &[24, 48, 72, 255]
-        );
-    }
 }
 
 #[test]

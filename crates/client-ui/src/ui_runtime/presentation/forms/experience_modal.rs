@@ -9,18 +9,16 @@ use server_experience::screen::{self, GuiSize};
 use ui::UiNode;
 
 use super::{
-    engine::{
-        ScreenArt,
-        screen::{CustomRenderer, PaintFrame},
-    },
     item_renderer::ItemRenderer,
     template_screen::{TemplateArt, TemplateScreen},
 };
 use crate::ui_runtime::UiRuntime;
-use {
-    super::super::{TextMetrics, UiPresentationRuntime},
-    ui::IconRef,
+use ui_engine::engine::{
+    ScreenArt,
+    screen::{CustomRenderer, PaintFrame},
 };
+use ui_engine::text_metrics::TextMetrics;
+use {super::super::UiPresentationRuntime, ui::IconRef};
 
 pub use super::template_screen::ModalEdits;
 #[cfg(test)]
@@ -48,8 +46,7 @@ impl UiPresentationRuntime {
     /// Follows the client part's modal, closed or open; `None` (no running client part) drops
     /// its catalog and textures.
     pub fn set_experience_modal(&mut self, modal: Option<ExperienceModal<'_>>) {
-        let page =
-            (self.textures.dynamic_start() + super::super::dynamic_textures::MODAL_UI_PAGE) as u16;
+        let page = (self.textures.dynamic_start() + ui_engine::pages::MODAL_UI_PAGE) as u16;
         let slot = &mut self.screens.experience_modal;
         let Some(modal) = modal else {
             *slot = None;
@@ -64,7 +61,7 @@ impl UiPresentationRuntime {
                     modal.bundle,
                     modal.files,
                     page,
-                    super::super::dynamic_textures::MODAL_UI_PAGES,
+                    ui_engine::pages::MODAL_UI_PAGES,
                 ),
                 screen: TemplateScreen::default(),
                 scrolled: BTreeMap::new(),

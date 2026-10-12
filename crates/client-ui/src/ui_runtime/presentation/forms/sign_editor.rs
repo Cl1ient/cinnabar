@@ -8,12 +8,13 @@ use json_ui::{DataSource, HitRegion, Scalar, ViewState};
 use serde_json::Value;
 use ui::{UiNode, UiPoint, UiRect};
 
-use super::engine::{ScreenArt, screen::PaintFrame};
-use super::hud::CachedScreen;
 use super::menus::window_rect;
 use crate::ui_runtime::{UiRuntime, sign_editor::SignEdit};
+use ui_engine::cached_screen::CachedScreen;
+use ui_engine::engine::{ScreenArt, screen::PaintFrame};
+use ui_engine::text_metrics::TextMetrics;
 use {
-    super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime},
+    super::super::{UiPresentationError, UiPresentationRuntime},
     ui::FONT_DESIGN_PIXEL_TEXELS,
 };
 

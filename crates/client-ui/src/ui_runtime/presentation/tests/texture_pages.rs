@@ -521,7 +521,7 @@ fn session_icons_pack_onto_the_last_dynamic_page() {
     let dynamic_start = presentation.textures.dynamic_start();
     assert_eq!(
         usize::from(icon.page),
-        dynamic_start + dynamic_textures::SESSION_ICON_PAGE
+        dynamic_start + ui_engine::pages::SESSION_ICON_PAGE
     );
     assert_eq!(icon.uv, [1, 1, 3, 2], "one-pixel gutter around the sprite");
     assert!(

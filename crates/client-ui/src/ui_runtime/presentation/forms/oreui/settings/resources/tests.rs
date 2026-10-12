@@ -23,7 +23,7 @@ fn resource_sections_and_pack_details_reveal_height_instead_of_jumping() {
         let (mut nodes, mut next, mut layouts) =
             (Vec::new(), 1, ui::TextLayoutCache::new(128, 1024 * 1024));
         let font = crate::ui_runtime::presentation::tests::fixture_font();
-        let metrics = crate::ui_runtime::presentation::TextMetrics::for_viewport(
+        let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
             [1280, 720],
             ui::DpiScale::new(1.0).unwrap(),
             Some(2),
@@ -396,7 +396,7 @@ fn imported_pack_thumbnail_uses_the_ready_artwork_without_stretching() {
     let (mut nodes, mut next, mut layouts) =
         (Vec::new(), 1, ui::TextLayoutCache::new(128, 1024 * 1024));
     let font = crate::ui_runtime::presentation::tests::fixture_font();
-    let metrics = crate::ui_runtime::presentation::TextMetrics::for_viewport(
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
         [1280, 720],
         ui::DpiScale::new(1.0).unwrap(),
         Some(2),

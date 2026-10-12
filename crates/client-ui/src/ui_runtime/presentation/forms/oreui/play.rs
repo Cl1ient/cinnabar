@@ -16,7 +16,8 @@ use super::theme::{
 use super::widgets::{Variant, button, header, panel, row, screen_overlay, tag};
 use super::{play_realms, play_servers};
 use launcher::menu::{LocalWorldAction, MenuAction, MenuScreen, MenuView};
-use {super::super::engine::screen::PaintError, ui::IconRef};
+use ui::IconRef;
+use ui_engine::engine::screen::PaintError;
 
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,

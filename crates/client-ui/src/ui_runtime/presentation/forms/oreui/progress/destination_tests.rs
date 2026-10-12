@@ -1,8 +1,9 @@
 use super::*;
 use crate::ui_runtime::{
     oreui_assets::{OreUiImages, OreUiPage, OreUiSprite, dimensions::DIMENSIONS},
-    presentation::{TextMetrics, UiPresentationRuntime},
+    presentation::UiPresentationRuntime,
 };
+use ui_engine::text_metrics::TextMetrics;
 
 #[test]
 fn dimension_backgrounds_cover_each_window_without_stretching_or_bleeding_into_terrain() {

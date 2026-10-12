@@ -14,9 +14,10 @@ use ui::{ChatClipboard, UiPoint};
 
 use super::engine_focus;
 use super::engine_scroll;
-use super::values::{EngineFrame, slider_fraction, slider_value_after_step, slider_value_at};
+use super::values::{slider_fraction, slider_value_after_step, slider_value_at};
 use super::{FormValue, LocalFormAction};
 use crate::ui_runtime::{PlatformClipboard, UiRuntime};
+use ui_engine::frame::EngineFrame;
 
 /// Longest paste accepted into an edit box, before its own `max_length`.
 const MAX_PASTE_BYTES: usize = 4096;

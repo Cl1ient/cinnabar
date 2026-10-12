@@ -1,5 +1,6 @@
-use crate::ui_runtime::presentation::{TextMetrics, UiPresentationRuntime, tests::fixture_font};
+use crate::ui_runtime::presentation::{UiPresentationRuntime, tests::fixture_font};
 use ui::{DpiScale, UiNode, UiVisual};
+use ui_engine::text_metrics::TextMetrics;
 use {
     super::*,
     launcher::menu::inbox::Action,

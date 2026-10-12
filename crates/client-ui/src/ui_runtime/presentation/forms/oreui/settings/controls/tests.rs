@@ -1,6 +1,7 @@
 use crate::ui_runtime::presentation::forms::oreui::review_tests::{paint, solids};
 use crate::ui_runtime::presentation::forms::oreui::transitions::Transitions;
-use crate::ui_runtime::presentation::{TextMetrics, tests::fixture_font};
+use crate::ui_runtime::presentation::tests::fixture_font;
+use ui_engine::text_metrics::TextMetrics;
 use {
     super::*,
     launcher::menu::{MenuAction, MenuView},

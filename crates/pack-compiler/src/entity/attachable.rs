@@ -32,6 +32,7 @@ pub use item_attack::compile_item_attack_timings;
 pub(super) use resources::controller_resources;
 use resources::{ControllerResources, named_resource};
 use textures::compile_texture_identifiers_with;
+pub use textures::decode_raster as decode_equipment_raster;
 pub use textures::{compile_textures_for_assets, compile_textures_for_assets_with};
 
 /// Literal transforms an item's attachable exposed, keyed by item identifier.

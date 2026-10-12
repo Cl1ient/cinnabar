@@ -1,8 +1,14 @@
-//! The same equipped actor follows texture-only pack publication without loose base files.
+//! Startup bindings follow texture-only pack publication without loose base files.
 
+use actor_animation::{
+    ActorAnimationVariables, ActorLifetimeId, ActorRigSnapshot, HandPhase, ItemAnimationState,
+};
+use assets::EntityRigFallback;
 use client_presentation::presentation::equipment::{
     ActorEquipmentInput, EquipmentRuntime, HeldKind, WornItem,
 };
+use client_world::{ActorSnapshot, WorldAuthority};
+use protocol::{ActorEvent, ActorKind, ActorSpawnEvent, WorldBootstrap, WorldEvent};
 use render_model::{ActorArtworkPages, ActorRigSubmission};
 use std::sync::Arc;
 
@@ -29,6 +35,8 @@ fn base() -> (assets::VanillaEntityRefs, assets::SessionEntityPack) {
                     "textures": {"default": "textures/models/fixture_armor",
                         "enchanted": assets::ACTOR_GLINT_TEXTURE_IDENTIFIER},
                     "geometry": {"default": "geometry.fixture.chestplate"},
+                    "animations": {"idle": "animation.fixture.idle"},
+                    "scripts": {"animate": ["idle"]},
                     "render_controllers": ["controller.render.fixture"]
                 }}
             })
@@ -53,13 +61,26 @@ fn base() -> (assets::VanillaEntityRefs, assets::SessionEntityPack) {
             serde_json::json!({
                 "format_version": "1.8.0", "render_controllers": {"controller.render.fixture": {
                     "geometry": "Geometry.default", "materials": [{"*": "Material.default"}],
-                    "textures": ["Texture.default"]
+                    "textures": ["Texture.default", "Texture.enchanted"]
                 }}
             })
             .to_string()
             .into_bytes(),
         ),
+        (
+            "animations/fixture.json".into(),
+            serde_json::to_vec(&serde_json::json!({
+                "format_version": "1.8.0", "animations": {"animation.fixture.idle": {
+                    "loop": true, "bones": {"body": {"rotation": [1, 2, 3]}}
+                }}
+            }))
+            .unwrap(),
+        ),
         (TEXTURE.into(), png([10, 20, 30, 255])),
+        (
+            format!("{}.png", assets::ACTOR_GLINT_TEXTURE_IDENTIFIER).into(),
+            png([1, 2, 3, 255]),
+        ),
     ];
     let root = tempfile::tempdir().unwrap();
     for (path, bytes) in &files {
@@ -135,6 +156,89 @@ fn body(runtime: &mut EquipmentRuntime) -> ActorRigSubmission {
     }
 }
 
+/// Produces a real player snapshot through the public event admission path.
+fn owner() -> ActorSnapshot {
+    let mut world = WorldAuthority::new(
+        WorldBootstrap {
+            local_player_unique_id: 1,
+            local_player_runtime_id: 1,
+            dimension: 0,
+            player_position: [0.0; 3],
+            world_spawn_position: [0; 3],
+            air_network_id: 0,
+            block_network_ids_are_hashes: false,
+        },
+        Arc::new(assets::RuntimeAssets::diagnostic()),
+        None,
+        [0.0; 3],
+        None,
+    );
+    world
+        .apply_ordered_event(
+            WorldEvent::Actor(ActorEvent::Spawn(ActorSpawnEvent {
+                dimension: 0,
+                unique_id: 2,
+                runtime_id: 2,
+                kind: ActorKind::Player {
+                    uuid: [2; 16],
+                    username: "wing-test".into(),
+                },
+                position: [0.0; 3],
+                velocity: [0.0; 3],
+                pitch: 0.0,
+                yaw: 0.0,
+                head_yaw: 0.0,
+                body_yaw: 0.0,
+                held_item: Default::default(),
+                metadata: Arc::from([]),
+                attributes: Arc::from([]),
+                properties: Arc::from([]),
+                links: Arc::from([]),
+            })),
+            Some(1),
+        )
+        .unwrap();
+    world.actor(2).unwrap().clone()
+}
+
+/// Supplies tick-owned actor identity and body-name bindings to the authored attachable.
+fn owner_rig<'a>(owner: &ActorSnapshot, names: &'a [Box<str>], tick: u64) -> ActorRigSnapshot<'a> {
+    ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
+        actor: ActorLifetimeId {
+            session_id: 1,
+            dimension: 0,
+            runtime_id: owner.runtime_id,
+            spawn_revision: owner.spawn_revision,
+        },
+        rig: actor_animation::EntityRigId(0),
+        previous: &[],
+        current: &[],
+        rest: &[],
+        rest_completed_tick: tick,
+        rest_reset_generation: 0,
+        completed_tick: tick,
+        pose_evaluated: true,
+        reset_generation: 0,
+        fallback: EntityRigFallback::Skip,
+        scale: 1.0,
+        axis_scale: [1.0; 3],
+        previous_body_yaw: 0.0,
+        body_yaw: 0.0,
+        render: &[],
+        bone_names: names,
+        skin_geometry: None,
+        skin_mesh: None,
+        skin_layers: &[],
+        hand: [HandPhase::default(); 2],
+        item_animation: [ItemAnimationState::default(); 2],
+        off_hand_animation: [ItemAnimationState::default(); 2],
+        animation_variables: ActorAnimationVariables::default(),
+        java: Default::default(),
+        java_equipped: None,
+    }
+}
+
 /// Reads the selected armour texel without assuming an atlas page or layer number.
 fn worn_pixel(
     runtime: &mut EquipmentRuntime,
@@ -142,7 +246,21 @@ fn worn_pixel(
     equipped: &ActorEquipmentInput,
     pages: &ActorArtworkPages,
 ) -> [u8; 4] {
-    let layers = runtime.layers_for(body, equipped, None);
+    let owner = owner();
+    let names = [Box::from("body")];
+    let rig = owner_rig(&owner, &names, 1);
+    let layers = runtime.layers_for(
+        body,
+        equipped,
+        Some(
+            client_presentation::presentation::equipment::EquipmentAnimation {
+                owner: &owner,
+                rig: &rig,
+                frame_alpha: 1.0,
+                delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
+            },
+        ),
+    );
     let [layer] = layers else {
         panic!("one worn armour layer");
     };
@@ -165,6 +283,7 @@ fn hot_reload_replaces_armour_on_an_already_equipped_actor_and_restores_base() {
         )
         .unwrap(),
     );
+    let base_catalog = base_pack.equipment.clone();
     let (mut runtime, base_pages, _) = EquipmentRuntime::build(
         base_pack.assets,
         base_pack.equipment,
@@ -196,14 +315,17 @@ fn hot_reload_replaces_armour_on_an_already_equipped_actor_and_restores_base() {
         worn_pixel(&mut runtime, &body, &equipped, &base_pages),
         [10, 20, 30, 255]
     );
+    let startup_rig = runtime.layers_for(&body, &equipped, None)[0]
+        .submission
+        .input
+        .rig;
     for color in [[40, 50, 60, 255], [70, 80, 90, 255]] {
         let pixels = png(color);
         let view =
             resource_pack::LayeredPackView::new(super::super::pack_reload_tests::stack(&[(
                 TEXTURE, &pixels,
             )]));
-        let files = pack_runtime::entity_pack::collect::collect_files(&view, Some(&refs), None);
-        let pack = compiled_pack(files);
+        let pack = pack_runtime::entity_pack::compile(&view, Some(&refs), base_catalog.as_deref());
         let (pages, locations) = match &pack {
             Some(pack) => {
                 base_pages
@@ -214,9 +336,18 @@ fn hot_reload_replaces_armour_on_an_already_equipped_actor_and_restores_base() {
             }
             None => (base_pages.clone(), Vec::new()),
         };
-        runtime.set_pack_layer(pack.map(|pack| (pack.assets, pack.equipment, locations)));
+        runtime.set_pack_layer(
+            pack.map(|pack| (Arc::clone(&pack.assets), pack.equipment.clone(), locations)),
+        );
         assert_ne!(pages.identity(), base_pages.identity());
         assert_eq!(worn_pixel(&mut runtime, &body, &equipped, &pages), color);
+        assert_eq!(
+            runtime.layers_for(&body, &equipped, None)[0]
+                .submission
+                .input
+                .rig,
+            startup_rig
+        );
     }
     runtime.set_pack_layer(None);
     assert_eq!(
@@ -234,6 +365,7 @@ fn a_sidecar_only_glint_override_keeps_the_base_armour_visible() {
         )
         .unwrap(),
     );
+    let base_catalog = base_pack.equipment.clone();
     let (mut runtime, base_pages, _) = EquipmentRuntime::build(
         base_pack.assets,
         base_pack.equipment,
@@ -266,19 +398,23 @@ fn a_sidecar_only_glint_override_keeps_the_base_armour_visible() {
         &path,
         &png([40, 50, 60, 255]),
     )]));
-    let files = pack_runtime::entity_pack::collect::collect_files(&view, Some(&refs), None);
-    let pack = compiled_pack(files).expect("the secondary texture inherits its base attachable");
+    let pack = pack_runtime::entity_pack::compile(&view, Some(&refs), base_catalog.as_deref())
+        .expect("the supplied raster forms an artwork-only layer");
     let catalog = pack.equipment.as_ref().unwrap();
-    let binding = catalog.binding(ITEM).unwrap();
-    assert!(catalog.texture(&binding.texture.identifier).is_none());
+    assert!(catalog.texture("textures/models/fixture_armor").is_none());
     let glint = EquipmentRuntime::actor_glint(catalog).expect("the glint override is retained");
     let (pages, locations) =
         base_pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(catalog));
     let pages = pages.with_actor_glint(glint);
-    runtime.set_pack_layer(Some((pack.assets, pack.equipment, locations)));
+    runtime.set_pack_layer(Some((
+        Arc::clone(&pack.assets),
+        pack.equipment.clone(),
+        locations,
+    )));
     assert_eq!(
         worn_pixel(&mut runtime, &body, &equipped, &pages),
         [10, 20, 30, 255]
     );
     assert_eq!(&pages.actor_glint().unwrap().rgba8[..4], &[40, 50, 60, 255]);
+    assert!(catalog.binding(ITEM).is_none());
 }

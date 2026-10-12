@@ -1,8 +1,6 @@
 //! The session's server-pack attachable layer, consulted before the startup catalog.
 
 use super::*;
-use actor_animation::{ActorRigSnapshot, AttachableAnimationInput, AttachableRigSnapshot};
-use client_world::ActorSnapshot;
 
 /// Separates armor mappings sourced from a replaceable pack.
 pub(super) const ARMOR_CACHE_PREFIX: &str = "\u{1}pack:";
@@ -27,42 +25,6 @@ pub struct PackEquipment {
 /// geometry indices and skin rig ids.
 fn is_pack_body_key(key: u32) -> bool {
     render_model::is_pack_rig_id(EntityRigId(key))
-}
-
-/// Evaluates the declared binding without using artwork availability to change controller results.
-pub(super) fn evaluate_binding<'a>(
-    pack: &'a mut Option<PackEquipment>,
-    startup: (
-        &Arc<RuntimeEntityAssets>,
-        Option<&Arc<RuntimeEquipmentCatalog>>,
-        &'a mut actor_animation::AttachablesRuntime,
-    ),
-    identifier: &str,
-    owner: &ActorSnapshot,
-    owner_rig: &ActorRigSnapshot<'_>,
-    input: AttachableAnimationInput<'_>,
-) -> Option<(
-    Arc<RuntimeEntityAssets>,
-    Arc<RuntimeEquipmentCatalog>,
-    bool,
-    AttachableRigSnapshot<'a>,
-)> {
-    if let Some(pack) = pack.as_mut()
-        && let Some(catalog) = pack.catalog.as_ref()
-        && catalog.binding(identifier).is_some()
-    {
-        return Some((
-            Arc::clone(&pack.assets),
-            Arc::clone(catalog),
-            true,
-            pack.attachables
-                .evaluate(identifier, owner, owner_rig, input)?,
-        ));
-    }
-    let (assets, catalog, runtime) = startup;
-    let catalog = catalog.filter(|catalog| catalog.binding(identifier).is_some())?;
-    let evaluated = runtime.evaluate(identifier, owner, owner_rig, input)?;
-    Some((Arc::clone(assets), Arc::clone(catalog), false, evaluated))
 }
 
 impl EquipmentRuntime {
@@ -121,13 +83,11 @@ impl EquipmentRuntime {
     /// Installs the session's pack layer, or removes it. `locations` parallel the catalog's
     /// textures (the pages `pack_rasters` produced).
     pub fn set_pack_layer(&mut self, layer: Option<PackEquipmentLayer>) {
-        self.java_rasters.retain(|(from_pack, _, _), _| !from_pack);
-        self.attachable_meshes.retain(|(from_pack, _, _), rig| {
-            if *from_pack {
-                self.free_meshes.push(*rig);
-            }
-            !from_pack
-        });
+        // Startup texture meshes also depend on the replaced artwork layer.
+        self.java_rasters.clear();
+        self.free_meshes
+            .extend(self.attachable_meshes.values().copied());
+        self.attachable_meshes.clear();
         // Pack equipment ids name the replaced pack's geometry indices.
         self.pending.retain(|geometry| {
             !self.free_meshes.contains(&geometry.id)
@@ -169,27 +129,43 @@ impl EquipmentRuntime {
             .map(|_| (Arc::clone(catalog), false))
     }
 
-    /// Resolves one draw's selected raster, using startup binding artwork only when it is missing.
-    /// The caller keeps the evaluated pack geometry, pose, material and visibility.
+    /// Resolves selected pixels by path without changing the binding or controller result.
+    /// Authored models with missing artwork may use their startup item's default raster.
     pub(super) fn draw_artwork(
         &self,
         identifier: &str,
         texture: &str,
         (catalog, from_pack): (Arc<RuntimeEquipmentCatalog>, bool),
-    ) -> Option<(Arc<RuntimeEquipmentCatalog>, bool, ActorArtworkLocation)> {
-        if catalog.texture(texture).is_some()
-            && let Some(location) = self.texture_location(texture, from_pack)
+    ) -> Option<(Arc<RuntimeEquipmentCatalog>, usize, ActorArtworkLocation)> {
+        if let Some(pack) = &self.pack
+            && let Some(artwork) = &pack.catalog
+            && let Some(location) = pack.texture_locations.get(texture)
+            && let Some(index) = artwork
+                .textures()
+                .iter()
+                .position(|image| image.identifier.as_ref() == texture)
         {
-            return Some((catalog, from_pack, location));
+            return Some((Arc::clone(artwork), index, *location));
+        }
+        let base = self.catalog.as_ref().unwrap_or(&catalog);
+        if let Some(index) = base
+            .textures()
+            .iter()
+            .position(|image| image.identifier.as_ref() == texture)
+            && let Some(location) = self.texture_locations.get(texture)
+        {
+            return Some((Arc::clone(base), index, *location));
         }
         if !from_pack {
             return None;
         }
         let catalog = self.catalog.as_ref()?;
         let binding = catalog.binding(identifier)?;
-        catalog.texture(&binding.texture.identifier)?;
-        let location = self.texture_location(&binding.texture.identifier, false)?;
-        Some((Arc::clone(catalog), false, location))
+        self.draw_artwork(
+            identifier,
+            &binding.texture.identifier,
+            (Arc::clone(catalog), false),
+        )
     }
 
     pub(super) fn texture_location(

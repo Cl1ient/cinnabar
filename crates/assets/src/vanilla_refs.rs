@@ -1,6 +1,5 @@
 //! Vanilla entity definitions a server pack may reference without shipping them (render
-//! controllers, animations, animation controllers, geometry and attachables), built beside the
-//! entity carrier.
+//! controllers, animations, animation controllers, geometry), built beside the entity carrier.
 
 use std::collections::BTreeMap;
 
@@ -24,9 +23,6 @@ pub struct VanillaEntityRefs {
     pub render_controllers: BTreeMap<String, Value>,
     pub animations: BTreeMap<String, Value>,
     pub animation_controllers: BTreeMap<String, Value>,
-    /// Base attachable documents by pack-relative path, for texture-only pack overrides.
-    #[serde(default)]
-    pub attachables: BTreeMap<String, Value>,
     /// Geometry identifier to its file's index in `geometry_files`.
     pub geometry_index: BTreeMap<String, u32>,
     /// Parent identifier of each geometry that inherits (`geometry.x:geometry.parent`).
@@ -65,21 +61,7 @@ mod tests {
         let mut refs = VanillaEntityRefs::new();
         refs.render_controllers
             .insert("controller.render.default".into(), Value::Null);
-        refs.attachables.insert(
-            "attachables/fixture.json".into(),
-            serde_json::json!({"minecraft:attachable": {"description": {
-                "identifier": "fixture:chestplate"
-            }}}),
-        );
         assert_eq!(VanillaEntityRefs::from_json(&refs.to_json()), Some(refs));
         assert_eq!(VanillaEntityRefs::from_json(b"{\"schema\":9}"), None);
-    }
-
-    #[test]
-    fn older_sidecars_keep_their_render_dependencies_without_attachable_documents() {
-        let mut value = serde_json::to_value(VanillaEntityRefs::new()).unwrap();
-        value.as_object_mut().unwrap().remove("attachables");
-        let restored = VanillaEntityRefs::from_json(&serde_json::to_vec(&value).unwrap()).unwrap();
-        assert!(restored.attachables.is_empty());
     }
 }

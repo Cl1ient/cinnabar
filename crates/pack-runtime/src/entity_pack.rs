@@ -7,6 +7,15 @@ use assets::{RuntimeEntityAssets, RuntimeEquipmentCatalog};
 use resource_pack::LayeredPackView;
 
 pub mod collect;
+mod equipment_artwork;
+
+static BASE_EQUIPMENT: std::sync::OnceLock<Arc<RuntimeEquipmentCatalog>> =
+    std::sync::OnceLock::new();
+
+/// Installs the validated startup artwork paths before any stack is compiled.
+pub fn set_base_equipment_catalog(catalog: Arc<RuntimeEquipmentCatalog>) {
+    let _ = BASE_EQUIPMENT.set(catalog);
+}
 use collect::collect_files;
 
 use crate::{StackFingerprint, pack_textures::parse_pack_json};
@@ -63,6 +72,7 @@ pub fn compile_session_entities(
         stack: fingerprint.clone(),
         vanilla: vanilla_refs(),
         vanilla_pack_dir: vanilla_pack_dir(),
+        equipment: BASE_EQUIPMENT.get().cloned(),
     };
     ENTITY_CACHE.get_or_compile(
         inputs,
@@ -78,10 +88,16 @@ pub fn compile_session_entities(
 pub fn compile(
     view: &LayeredPackView,
     vanilla: Option<&assets::VanillaEntityRefs>,
+    equipment: Option<&RuntimeEquipmentCatalog>,
 ) -> Option<Arc<SessionEntityPack>> {
-    compile_encoded(view, vanilla, vanilla_pack_dir().as_deref(), false, &|| {
-        false
-    })
+    compile_encoded(
+        view,
+        vanilla,
+        vanilla_pack_dir().as_deref(),
+        equipment,
+        false,
+        &|| false,
+    )
     .expect("an uncancellable compile completes")
     .0
 }
@@ -92,14 +108,16 @@ fn compile_encoded(
     view: &LayeredPackView,
     vanilla: Option<&assets::VanillaEntityRefs>,
     vanilla_pack_dir: Option<&std::path::Path>,
+    base_equipment: Option<&RuntimeEquipmentCatalog>,
     encode: bool,
     cancelled: &dyn Fn() -> bool,
 ) -> Option<Compiled> {
-    let files = collect_files(view, vanilla, vanilla_pack_dir);
+    let mut files = collect_files(view, vanilla, vanilla_pack_dir);
+    let overrides = equipment_artwork::collect(view, base_equipment, &mut files);
     if cancelled() {
         return None;
     }
-    let compiled = match pack_compiler::compile_actor_pack_unless(files, cancelled)? {
+    let mut compiled = match pack_compiler::compile_actor_pack_unless(files, cancelled)? {
         Ok(Some(compiled)) => compiled,
         Ok(None) => return Some((None, None)),
         Err(error) => {
@@ -121,21 +139,23 @@ fn compile_encoded(
             "server pack entities are incomplete"
         );
     }
-    let equipment = if compiled.equipment_bindings.is_empty() {
-        None
-    } else {
-        match RuntimeEquipmentCatalog::from_parts(
-            compiled.identity,
-            compiled.equipment_bindings,
-            compiled.equipment_textures,
-        ) {
-            Ok(catalog) => Some(Arc::new(catalog)),
-            Err(error) => {
-                tracing::warn!(%error, "server pack attachables were rejected");
-                None
+    equipment_artwork::merge(&mut compiled.equipment_textures, overrides);
+    let equipment =
+        if compiled.equipment_bindings.is_empty() && compiled.equipment_textures.is_empty() {
+            None
+        } else {
+            match RuntimeEquipmentCatalog::from_parts(
+                compiled.identity,
+                compiled.equipment_bindings,
+                compiled.equipment_textures,
+            ) {
+                Ok(catalog) => Some(Arc::new(catalog)),
+                Err(error) => {
+                    tracing::warn!(%error, "server pack attachables were rejected");
+                    None
+                }
             }
-        }
-    };
+        };
     let built = if encode {
         RuntimeEntityAssets::from_compiled_encoded(compiled.entities)
     } else {

@@ -1173,3 +1173,6 @@ fn animated_held_attachables_skip_the_hurt_overlay_in_both_views() {
     }
     assert_eq!(body.overlay_rgba8, 0x6600_00ff);
 }
+
+#[path = "held_artwork_tests.rs"]
+mod artwork;

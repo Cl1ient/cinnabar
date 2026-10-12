@@ -9,6 +9,7 @@ fn inputs(vanilla: Option<assets::VanillaEntityRefs>) -> super::EntityInputs {
         stack: Vec::new(),
         vanilla: vanilla.map(std::sync::Arc::new),
         vanilla_pack_dir: None,
+        equipment: None,
     }
 }
 
@@ -30,10 +31,16 @@ fn entity_cache_keys_on_vanilla_refs() {
         Some(assets::VanillaEntityRefs::new()),
         Some(refs_with_animation()),
     ] {
-        cache.get_or_compile(inputs(vanilla), &view, None, &|| false, |_, _, _, _, _| {
-            compiles.set(compiles.get() + 1);
-            Some((None, None))
-        });
+        cache.get_or_compile(
+            inputs(vanilla),
+            &view,
+            None,
+            &|| false,
+            |_, _, _, _, _, _| {
+                compiles.set(compiles.get() + 1);
+                Some((None, None))
+            },
+        );
     }
     assert_eq!(compiles.get(), 3);
 }
@@ -45,7 +52,7 @@ fn entity_cache_recompiles_when_the_installed_vanilla_layer_changes() {
     for directory in ["first", "first", "second"] {
         let mut input = inputs(None);
         input.vanilla_pack_dir = Some(directory.into());
-        cache.get_or_compile(input, &view, None, &|| false, |_, _, _, _, _| {
+        cache.get_or_compile(input, &view, None, &|| false, |_, _, _, _, _, _| {
             compiles.set(compiles.get() + 1);
             Some((None, None))
         });
@@ -56,7 +63,7 @@ fn entity_cache_recompiles_when_the_installed_vanilla_layer_changes() {
 #[test]
 fn entity_cache_compiles_without_holding_its_lock() {
     let (view, cache) = (empty_view(), super::EntityCache::default());
-    cache.get_or_compile(inputs(None), &view, None, &|| false, |_, _, _, _, _| {
+    cache.get_or_compile(inputs(None), &view, None, &|| false, |_, _, _, _, _, _| {
         assert!(cache.last.try_lock().is_ok());
         Some((None, None))
     });
@@ -101,9 +108,16 @@ fn a_disk_hit_skips_compilation_and_a_corrupt_entry_recompiles() {
             &view,
             Some(&disk),
             &|| false,
-            |view, vanilla, vanilla_pack_dir, encode, cancelled| {
+            |view, vanilla, vanilla_pack_dir, equipment, encode, cancelled| {
                 compiles.set(compiles.get() + 1);
-                super::super::compile_encoded(view, vanilla, vanilla_pack_dir, encode, cancelled)
+                super::super::compile_encoded(
+                    view,
+                    vanilla,
+                    vanilla_pack_dir,
+                    equipment,
+                    encode,
+                    cancelled,
+                )
             },
         );
         let pack = pack.flatten().expect("the fixture defines an entity");
@@ -178,7 +192,7 @@ fn a_fresh_compile_returns_before_its_disk_entry_is_written() {
         &resource_pack::LayeredPackView::tracked(stack),
         Some(&disk),
         &|| false,
-        |_, _, _, _, _| panic!("the deferred write stored the compile"),
+        |_, _, _, _, _, _| panic!("the deferred write stored the compile"),
     );
     assert_eq!(
         relaunched
@@ -246,11 +260,38 @@ fn a_cancelled_compile_stops_between_steps_and_keeps_nothing() {
         &resource_pack::LayeredPackView::tracked(stack),
         Some(&disk),
         &|| false,
-        |view, vanilla, vanilla_pack_dir, encode, cancelled| {
+        |view, vanilla, vanilla_pack_dir, equipment, encode, cancelled| {
             compiles.set(compiles.get() + 1);
-            super::super::compile_encoded(view, vanilla, vanilla_pack_dir, encode, cancelled)
+            super::super::compile_encoded(
+                view,
+                vanilla,
+                vanilla_pack_dir,
+                equipment,
+                encode,
+                cancelled,
+            )
         },
     );
     assert!(compiled.flatten().is_some());
     assert_eq!(compiles.get(), 1);
+}
+
+#[test]
+fn changing_startup_artwork_paths_recompiles_the_same_stack() {
+    let (view, cache) = (empty_view(), super::EntityCache::default());
+    let compiles = std::cell::Cell::new(0);
+    for identity in [None, None, Some([1; 32]), Some([1; 32]), Some([2; 32])] {
+        let mut input = inputs(None);
+        input.equipment = identity.map(|identity| {
+            std::sync::Arc::new(
+                assets::RuntimeEquipmentCatalog::from_parts(identity, Vec::new(), Vec::new())
+                    .unwrap(),
+            )
+        });
+        cache.get_or_compile(input, &view, None, &|| false, |_, _, _, _, _, _| {
+            compiles.set(compiles.get() + 1);
+            Some((None, None))
+        });
+    }
+    assert_eq!(compiles.get(), 3);
 }

@@ -225,8 +225,7 @@ impl EquipmentRuntime {
             return;
         }
         let selected = animation
-            .filter(|_| from_pack)
-            .and_then(|animation| self.worn_texture(item, slot, equipment, animation));
+            .and_then(|animation| self.worn_texture(item, slot, equipment, animation, from_pack));
         let texture = selected.as_deref().unwrap_or(&binding.texture.identifier);
         let Some((_, _, location)) =
             self.draw_artwork(&item.identifier, texture, (Arc::clone(&catalog), from_pack))
@@ -278,6 +277,7 @@ impl EquipmentRuntime {
         slot: ArmorSlot,
         equipment: &ActorEquipmentInput,
         animation: EquipmentAnimation<'_>,
+        from_pack: bool,
     ) -> Option<Box<str>> {
         let elapsed = animation
             .owner
@@ -289,7 +289,6 @@ impl EquipmentRuntime {
             .map(|main| main.use_facts)
             .unwrap_or_default();
         let duration = use_facts.ticks.unwrap_or_default();
-        let pack = self.pack.as_mut()?;
         let variables = [("variable.is_enchanted", f32::from(item.enchanted))];
         let input = equipment.attachable_input(actor_animation::AttachableAnimationInput {
             worn: true,
@@ -306,14 +305,19 @@ impl EquipmentRuntime {
             owner_variables: &variables,
             ..Default::default()
         });
+        let (assets, runtime) = if from_pack {
+            let pack = self.pack.as_mut()?;
+            (&pack.assets, &mut pack.attachables)
+        } else {
+            (&self.assets, &mut self.attachables)
+        };
         let evaluated =
-            pack.attachables
-                .evaluate(&item.identifier, animation.owner, animation.rig, input)?;
+            runtime.evaluate(&item.identifier, animation.owner, animation.rig, input)?;
         let layer = evaluated
             .render
             .iter()
             .find(|layer| layer.texture_slot == 0)?;
-        let path = &pack.assets.sources().get(layer.source as usize)?.path;
+        let path = &assets.sources().get(layer.source as usize)?.path;
         let texture = path
             .strip_suffix(".png")
             .or_else(|| path.strip_suffix(".tga"))?

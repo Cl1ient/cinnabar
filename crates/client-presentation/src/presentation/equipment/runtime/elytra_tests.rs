@@ -865,3 +865,44 @@ fn later_wing_groups_draw_when_the_first_group_has_no_artwork_location() {
         }
     }
 }
+
+#[test]
+fn a_glint_only_layer_keeps_the_startup_wing_controllers_primary_sampler() {
+    let mut files = wing_pack();
+    let (_, bytes) = files
+        .iter_mut()
+        .find(|(path, _)| path.as_ref() == "attachables/elytra.json")
+        .unwrap();
+    let mut document: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    document["minecraft:attachable"]["description"]["textures"]["enchanted"] =
+        serde_json::json!(assets::ACTOR_GLINT_TEXTURE_IDENTIFIER);
+    *bytes = serde_json::to_vec(&document).unwrap();
+    let (_, bytes) = files
+        .iter_mut()
+        .find(|(path, _)| path.as_ref() == "render_controllers/wings.json")
+        .unwrap();
+    let mut document: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    document["render_controllers"]["controller.render.wings"]["textures"] =
+        serde_json::json!(["Texture.default", "Texture.enchanted"]);
+    *bytes = serde_json::to_vec(&document).unwrap();
+    let path: Box<str> = format!("{}.png", assets::ACTOR_GLINT_TEXTURE_IDENTIFIER).into();
+    let mut glint = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(64, 32, image::Rgba([3, 4, 5, 255]))
+        .write_to(&mut glint, image::ImageFormat::Png)
+        .unwrap();
+    let glint = glint.into_inner();
+    files.push((path.clone(), glint.clone()));
+    let (mut runtime, base_pages) = startup_runtime(files);
+    let body = player_body(&mut runtime);
+    let owner = owner();
+    let before = layers(&mut runtime, &body, &owner, &worn(true), 1)[0].clone();
+    let (entities, catalog) = pack_catalog(vec![(path, glint)]);
+    let (pages, locations) =
+        base_pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(&catalog));
+    runtime.set_pack_layer(Some((entities, Some(catalog), locations)));
+    let after = layers(&mut runtime, &body, &owner, &worn(true), 2);
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].location, before.location);
+    assert_eq!(after[0].submission.input.rig, before.submission.input.rig);
+    assert_eq!(selected_pixel(&pages, &after[0]), [200, 40, 40, 255]);
+}

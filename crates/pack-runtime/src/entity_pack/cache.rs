@@ -3,12 +3,35 @@ use assets::SessionEntityPack;
 use resource_pack::LayeredPackView;
 use std::{path::PathBuf, sync::Arc};
 
-/// Everything a compile reads: the pack stack and the vanilla refs it resolved against.
-#[derive(Clone, PartialEq)]
+/// Pack content, reference definitions, and the startup artwork paths a compile reads.
+#[derive(Clone)]
 pub(super) struct EntityInputs {
     pub(super) stack: StackFingerprint,
     pub(super) vanilla: Option<Arc<assets::VanillaEntityRefs>>,
     pub(super) vanilla_pack_dir: Option<PathBuf>,
+    pub(super) equipment: Option<Arc<assets::RuntimeEquipmentCatalog>>,
+}
+
+impl PartialEq for EntityInputs {
+    /// Immutable carrier identities keep artwork-path changes out of stale cache entries.
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            stack,
+            vanilla,
+            vanilla_pack_dir,
+            equipment,
+        } = self;
+        stack == &other.stack
+            && vanilla == &other.vanilla
+            && vanilla_pack_dir == &other.vanilla_pack_dir
+            && equipment
+                .as_ref()
+                .map(|catalog| catalog.source_manifest_sha256())
+                == other
+                    .equipment
+                    .as_ref()
+                    .map(|catalog| catalog.source_manifest_sha256())
+    }
 }
 
 type CachedEntities = (
@@ -78,6 +101,7 @@ impl EntityCache {
             &LayeredPackView,
             Option<&assets::VanillaEntityRefs>,
             Option<&std::path::Path>,
+            Option<&assets::RuntimeEquipmentCatalog>,
             bool,
             &dyn Fn() -> bool,
         ) -> Option<Compiled>,
@@ -115,6 +139,7 @@ impl EntityCache {
                 view,
                 inputs.vanilla.as_deref(),
                 inputs.vanilla_pack_dir.as_deref(),
+                inputs.equipment.as_deref(),
                 disk.is_some(),
                 cancelled,
             )?;
@@ -159,6 +184,15 @@ fn disk_key(inputs: &EntityInputs) -> [u8; 32] {
         }
     }
     part(&mut key, &vanilla_digest(inputs.vanilla.as_ref()));
+    part(&mut key, &[u8::from(inputs.equipment.is_some())]);
+    part(
+        &mut key,
+        &inputs
+            .equipment
+            .as_ref()
+            .map(|catalog| catalog.source_manifest_sha256())
+            .unwrap_or_default(),
+    );
     if let Some(path) = &inputs.vanilla_pack_dir {
         part(&mut key, path.as_os_str().as_encoded_bytes());
     }

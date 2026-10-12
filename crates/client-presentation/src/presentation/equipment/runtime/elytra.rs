@@ -36,14 +36,20 @@ impl EquipmentRuntime {
             owner_variables: &variables,
             ..Default::default()
         });
-        let Some((assets, catalog, from_pack, evaluated)) = pack::evaluate_binding(
-            &mut self.pack,
-            (&self.assets, self.catalog.as_ref(), &mut self.attachables),
-            &item.identifier,
-            animation.owner,
-            animation.rig,
-            input,
-        ) else {
+        let Some((catalog, from_pack)) = self.binding_source(&item.identifier) else {
+            return;
+        };
+        let (assets, runtime) = if from_pack {
+            let Some(pack) = self.pack.as_mut() else {
+                return;
+            };
+            (Arc::clone(&pack.assets), &mut pack.attachables)
+        } else {
+            (Arc::clone(&self.assets), &mut self.attachables)
+        };
+        let Some(evaluated) =
+            runtime.evaluate(&item.identifier, animation.owner, animation.rig, input)
+        else {
             return;
         };
         // The scene registers only each binding's catalog default model.

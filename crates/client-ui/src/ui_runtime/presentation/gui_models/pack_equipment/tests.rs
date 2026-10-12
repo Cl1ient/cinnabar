@@ -50,7 +50,15 @@ fn previews_use_pack_armor_reuse_unchanged_pages_and_restore_base_on_removal() {
     let mut presentation =
         UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let base = catalog([22, 33, 44, 255]);
-    let pack = catalog([77, 88, 99, 255]);
+    let painted = catalog([77, 88, 99, 255]);
+    let pack = Arc::new(
+        assets::RuntimeEquipmentCatalog::from_parts(
+            [2; 32],
+            Vec::new(),
+            painted.textures().to_vec(),
+        )
+        .unwrap(),
+    );
     presentation.set_equipment_catalog(Some(base.clone()));
     presentation.gui_models.enabled = true;
     presentation.set_player_preview_skin(None, Default::default());

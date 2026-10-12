@@ -35,6 +35,9 @@ helper then stops the client, its setup process and the asset compiler before re
 If the install location is not writable, the launcher offers **Download update**. It opens the
 verified DMG or installer for you to finish; on Linux it opens the folder containing the AppImage.
 The updater does not request elevated privileges or reboot the machine.
+Manual installers are copied out of the waiting stage before opening. A newer download or channel
+change can replace that stage while the handed-off installer remains available. Manual copies use
+the same lease and handoff retention window as copied update helpers.
 
 `update_channels` in `packaging/release-assets.json` owns each published channel's track and
 manifest filename for both the client and the package workflow. Beta reads

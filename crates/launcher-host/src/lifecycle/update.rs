@@ -189,6 +189,7 @@ pub fn view() -> View {
         stable_available: state.stable_available,
         switch_available: state.switch_available,
         message: state.message.clone(),
+        ..View::default()
     }
 }
 

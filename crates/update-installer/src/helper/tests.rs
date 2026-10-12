@@ -47,3 +47,34 @@ fn the_install_itself_is_never_held() {
     let install = update_dir.path().join("Cinnabar").join("cinnabar-updater");
     assert!(hold(&install).is_err());
 }
+
+#[test]
+fn manual_packages_share_the_held_lease_and_recent_handoff_retention_rule() {
+    let root = tempfile::tempdir().unwrap();
+    let (directory, lease) = manual_directory(root.path()).unwrap();
+    let directory = directory.keep();
+    let package = directory.join("installer");
+    fs::write(&package, "manual package").unwrap();
+    let handed_off = SystemTime::now() + HANDOFF_WINDOW * 2;
+    prune(root.path(), handed_off);
+    assert!(package.exists());
+    // Even a slow snapshot gets a full window after the desktop handoff finishes.
+    lease.set_modified(handed_off).unwrap();
+    drop(lease);
+    prune(root.path(), handed_off + HANDOFF_WINDOW / 2);
+    assert!(package.exists());
+    prune(root.path(), handed_off + HANDOFF_WINDOW * 2);
+    assert!(!directory.exists());
+}
+
+#[test]
+fn an_abandoned_manual_copy_is_pruned_without_touching_ready() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("ready")).unwrap();
+    let (directory, lease) = manual_directory(root.path()).unwrap();
+    let directory = directory.keep();
+    drop(lease);
+    prune(root.path(), SystemTime::now() + HANDOFF_WINDOW * 2);
+    assert!(!directory.exists());
+    assert!(root.path().join("ready").is_dir());
+}

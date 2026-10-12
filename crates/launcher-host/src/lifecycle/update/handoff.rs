@@ -3,9 +3,10 @@ use super::*;
 use anyhow::{Context, Result, ensure};
 use std::{
     ffi::OsString,
-    fs,
-    path::PathBuf,
+    fs::{self, File},
+    path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::SystemTime,
 };
 use time::OffsetDateTime;
 use update_manifest::select::Check;
@@ -82,13 +83,18 @@ fn spawn_with_args(layout: &InstallLayout, args: &[OsString]) -> Result<()> {
 /// Revalidates before exposing a native package to the desktop; this never requests elevation.
 pub(super) fn open_download(ready: Ready) {
     std::thread::spawn(move || {
-        let result = manual_package(&ready).and_then(|path| {
+        let result = manual_package(&ready).and_then(|package| {
+            let path = if cfg!(target_os = "linux") {
+                package.path.parent().context("missing package directory")?
+            } else {
+                &package.path
+            };
             let argument = if cfg!(windows) {
                 path.to_str()
                     .context("invalid downloaded package path")?
                     .to_owned()
             } else {
-                url::Url::from_file_path(&path)
+                url::Url::from_file_path(path)
                     .map_err(|_| anyhow::anyhow!("invalid download path"))?
                     .to_string()
             };
@@ -96,6 +102,8 @@ pub(super) fn open_download(ready: Ready) {
                 crate::desktop::open_with_default(&argument),
                 "could not open the downloaded update"
             );
+            // Retain the copy for a full handoff window after the desktop accepts the path.
+            package.lease.set_modified(SystemTime::now())?;
             Ok(())
         });
         if let Err(error) = result {
@@ -107,12 +115,16 @@ pub(super) fn open_download(ready: Ready) {
 }
 
 /// Gives a verified file its published extension, so macOS and Windows open the correct installer.
-fn manual_package(ready: &Ready) -> Result<PathBuf> {
+fn manual_package(ready: &Ready) -> Result<ManualPackage> {
     let keys = update_manifest::parse_keys(update_installer::TRUSTED_KEYS)?;
     let platform = update_manifest::platform_key(std::env::consts::OS, std::env::consts::ARCH)
         .context("unsupported platform")?;
-    let selected = update_installer::stage::verify(
+    let name =
+        update_manifest::platforms::artifact_name(std::env::consts::OS, std::env::consts::ARCH)
+            .context("unknown native artifact")?;
+    snapshot_package(
         &ready.stage,
+        name,
         &keys,
         Check {
             channel: ready.channel.name(),
@@ -122,25 +134,45 @@ fn manual_package(ready: &Ready) -> Result<PathBuf> {
             switch_now: ready.switch_now,
         },
         OffsetDateTime::now_utc(),
-    )?;
-    let name =
-        update_manifest::platforms::artifact_name(std::env::consts::OS, std::env::consts::ARCH)
-            .context("unknown native artifact")?;
-    let destination = named_package(&ready.stage, name, &selected.artifact)?;
-    if cfg!(target_os = "linux") {
-        Ok(ready.stage.clone())
-    } else {
-        Ok(destination)
-    }
+    )
 }
 
-/// Copies the staged artifact to `name` and verifies it; on Linux the AppImage is made runnable.
+/// A verified manual installer held independently of further stage replacement or deletion.
+pub(super) struct ManualPackage {
+    pub(super) path: PathBuf,
+    lease: File,
+}
+
+/// Verifies and copies one stage under the shared writer lease, then retains the independent copy.
+pub(super) fn snapshot_package(
+    stage: &Path,
+    name: &str,
+    keys: &update_manifest::TrustedKeys,
+    check: Check<'_>,
+    now: OffsetDateTime,
+) -> Result<ManualPackage> {
+    let root = stage.parent().context("missing update directory")?;
+    let stage_lease = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(root.join(update_installer::LOCK_FILE))?;
+    stage_lease.lock().context("lock the update directory")?;
+    let selected = update_installer::stage::verify(stage, keys, check, now)?;
+    let (directory, lease) = update_installer::helper::manual_directory(root)?;
+    let path = named_package(stage, directory.path(), name, &selected.artifact)?;
+    let _ = directory.keep();
+    Ok(ManualPackage { path, lease })
+}
+
+/// Copies the artifact to a separate directory and verifies it; Linux AppImages become runnable.
 pub(super) fn named_package(
-    stage: &std::path::Path,
+    stage: &Path,
+    directory: &Path,
     name: &str,
     artifact: &update_manifest::Artifact,
 ) -> Result<PathBuf> {
-    let destination = stage.join(name);
+    let destination = directory.join(name);
     fs::copy(
         stage.join(update_installer::stage::ARTIFACT_FILE),
         &destination,

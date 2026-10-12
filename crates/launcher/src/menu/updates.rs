@@ -37,12 +37,21 @@ impl Ready {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct View {
     pub ready: Option<Ready>,
     pub stable_available: bool,
     pub switch_available: bool,
     pub message: Option<String>,
+    /// Publishing tracks known to this view, in the persisted channel order.
+    pub published_channels: [bool; Channel::ALL.len()],
+}
+
+impl Default for View {
+    /// Uses the shipped release metadata until another publication catalog is supplied.
+    fn default() -> Self {
+        Self::with_publications(Channel::is_published)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,10 +78,22 @@ impl Default for Preferences {
 }
 
 impl View {
+    /// Builds a view from the publishing tracks declared by a release catalog.
+    pub fn with_publications(published: impl Fn(Channel) -> bool) -> Self {
+        Self {
+            ready: None,
+            stable_available: false,
+            switch_available: false,
+            message: None,
+            published_channels: Channel::ALL.map(published),
+        }
+    }
+
     /// Only verified publication of a stable release unlocks its selector entry.
     pub fn channel_visible(&self, choice: usize) -> bool {
         Channel::ALL.get(choice).is_some_and(|channel| {
-            channel.is_published() && (*channel != Channel::Stable || self.stable_available)
+            self.published_channels[choice]
+                && (*channel != Channel::Stable || self.stable_available)
         })
     }
 }

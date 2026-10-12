@@ -267,6 +267,7 @@ fn a_manually_downloaded_appimage_is_executable() {
     use sha2::Digest;
     use std::os::unix::fs::PermissionsExt;
     let stage = tempfile::tempdir().unwrap();
+    let directory = tempfile::tempdir().unwrap();
     let payload = b"verified AppImage";
     std::fs::write(
         stage.path().join(update_installer::stage::ARTIFACT_FILE),
@@ -278,10 +279,98 @@ fn a_manually_downloaded_appimage_is_executable() {
         sha256: format!("{:x}", sha2::Sha256::digest(payload)),
         size: payload.len() as i64,
     };
-    let package =
-        handoff::named_package(stage.path(), "Cinnabar-x86_64.AppImage", &artifact).unwrap();
+    let package = handoff::named_package(
+        stage.path(),
+        directory.path(),
+        update_manifest::platforms::artifact_name("linux", "x86_64").unwrap(),
+        &artifact,
+    )
+    .unwrap();
     let mode = std::fs::metadata(package).unwrap().permissions().mode();
     assert_eq!(mode & 0o755, 0o755);
+}
+
+/// Publishes a signed fixture through the real stage writer without network or installer processes.
+fn manual_stage(root: &std::path::Path, version: &str, payload: &[u8]) -> (PathBuf, TrustedKeys) {
+    use sha2::Digest;
+    let seed = [7; update_manifest::KEY_BYTES];
+    let platform = update_manifest::platform_key("macos", "arm64").unwrap();
+    let keys = TrustedKeys::from([("test".into(), update_manifest::public_key(&seed).unwrap())]);
+    let manifest = update_manifest::Manifest {
+        schema: update_manifest::SCHEMA,
+        channel: Channel::Beta.name().into(),
+        version: version.into(),
+        build_number: 2,
+        expires: OffsetDateTime::UNIX_EPOCH + time::Duration::days(1),
+        notes_url: String::new(),
+        artifacts: [(
+            platform.clone(),
+            update_manifest::Artifact {
+                url: "https://example.test/manual.dmg".into(),
+                size: payload.len() as i64,
+                sha256: format!("{:x}", sha2::Sha256::digest(payload)),
+            },
+        )]
+        .into(),
+    };
+    let envelope = update_manifest::sign(&manifest, "test", &seed).unwrap();
+    let selection = update_installer::stage::Selection::verify(
+        &envelope,
+        &keys,
+        update_manifest::select::Check {
+            channel: Channel::Beta.name(),
+            platform: &platform,
+            current: "1.0.0",
+            current_build: 1,
+            switch_now: false,
+        },
+        OffsetDateTime::UNIX_EPOCH,
+    )
+    .unwrap();
+    let mut download = update_installer::stage::Download::begin(root, selection).unwrap();
+    download.write(payload).unwrap();
+    (download.finish(&root.join("ready")).unwrap(), keys)
+}
+
+#[test]
+fn replacing_ready_during_manual_handoff_keeps_the_handed_off_installer() {
+    let root = tempfile::tempdir().unwrap();
+    let (stage, keys) = manual_stage(root.path(), "2.0.0", b"accepted manual installer");
+    let platform = update_manifest::platform_key("macos", "arm64").unwrap();
+    let package = handoff::snapshot_package(
+        &stage,
+        update_manifest::platforms::artifact_name("macos", "arm64").unwrap(),
+        &keys,
+        update_manifest::select::Check {
+            channel: Channel::Beta.name(),
+            platform: &platform,
+            current: "1.0.0",
+            current_build: 1,
+            switch_now: false,
+        },
+        OffsetDateTime::UNIX_EPOCH,
+    )
+    .unwrap();
+    let path = package.path.clone();
+    assert!(!path.starts_with(&stage));
+    // The worker can take its lease again before the desktop opens the manual installer.
+    let writer = std::fs::File::options()
+        .write(true)
+        .open(root.path().join(update_installer::LOCK_FILE))
+        .unwrap();
+    writer.try_lock().unwrap();
+    manual_stage(root.path(), "3.0.0", b"replacement installer");
+    assert_eq!(
+        std::fs::read(stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
+        b"replacement installer"
+    );
+    std::fs::remove_dir_all(stage).unwrap();
+    let later = std::time::SystemTime::now() + update_installer::helper::HANDOFF_WINDOW * 2;
+    update_installer::helper::prune(root.path(), later);
+    assert_eq!(std::fs::read(&path).unwrap(), b"accepted manual installer");
+    drop(package);
+    update_installer::helper::prune(root.path(), later);
+    assert!(!path.exists());
 }
 
 #[test]

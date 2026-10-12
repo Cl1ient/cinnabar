@@ -21,6 +21,7 @@ pub enum ItemUseProfile {
     Unresolved,
     /// Compatibility facts whose complete native census remains open.
     Provisional {
+        animation: ItemUseAnimation,
         kind: ItemUseKind,
         duration: ItemUseDurationRule,
         requirement: ItemUseRequirement,
@@ -30,6 +31,15 @@ pub enum ItemUseProfile {
         projectile: ItemProjectileRole,
         duration_alias: Option<Box<str>>,
     },
+}
+
+/// Item drawing route admitted independently from its displayed identity.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ItemUseAnimation {
+    #[default]
+    None,
+    Bow,
+    Crossbow,
 }
 
 /// Action selected independently from a declared use duration.
@@ -107,7 +117,7 @@ fn catalog() -> &'static Catalog {
     static CATALOG: OnceLock<Catalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
         let catalog: Catalog = serde_json::from_slice(SOURCE_BYTES).expect("valid item-use source");
-        assert_eq!(catalog.version, 1);
+        assert_eq!(catalog.version, 2);
         catalog
     })
 }

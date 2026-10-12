@@ -23,6 +23,7 @@ pub struct ResolvedUseCooldown {
 /// Effective facts cached by numerical network ID; unresolved fields grant no prediction.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EffectiveItemUse {
+    pub animation: assets::item_use::ItemUseAnimation,
     pub kind: Option<ItemUseKind>,
     pub ticks: Option<u32>,
     pub requirement: ItemUseRequirement,
@@ -36,6 +37,7 @@ impl Default for EffectiveItemUse {
     /// Keeps unsupported items distinct from declared generic hold or consumption behavior.
     fn default() -> Self {
         Self {
+            animation: assets::item_use::ItemUseAnimation::None,
             kind: None,
             ticks: None,
             requirement: ItemUseRequirement::Nothing,
@@ -54,6 +56,7 @@ pub fn resolve_item_use(
     category: Option<UseCooldownCategory>,
 ) -> EffectiveItemUse {
     let ItemUseProfile::Provisional {
+        animation,
         kind,
         duration,
         requirement,
@@ -70,6 +73,7 @@ pub fn resolve_item_use(
         };
     };
     EffectiveItemUse {
+        animation: *animation,
         kind: Some(*kind),
         ticks: match duration {
             ItemUseDurationRule::Declared => declared_ticks,
@@ -144,6 +148,14 @@ impl ItemStateStore {
                 resolve_item_use(&profile, ticks, category),
             );
         }
+        self.projectile_roles = self
+            .registry
+            .values()
+            .filter_map(|entry| {
+                let role = profiles.get(&entry.network_id)?.projectile;
+                (role != ItemProjectileRole::None).then(|| (Arc::clone(&entry.identifier), role))
+            })
+            .collect();
         self.use_profiles = profiles;
     }
 
@@ -205,6 +217,7 @@ fn overlay_authored(
 ) {
     if overlay.food_can_always_eat.is_some() && matches!(profile, ItemUseProfile::Unresolved) {
         *profile = ItemUseProfile::Provisional {
+            animation: assets::item_use::ItemUseAnimation::None,
             kind: ItemUseKind::Hold,
             duration: ItemUseDurationRule::Declared,
             requirement: ItemUseRequirement::Nothing,
@@ -285,6 +298,29 @@ mod tests {
             canonical_empty_component_data: false,
             item_tags: Arc::from([]),
         }
+    }
+
+    #[test]
+    fn numeric_animation_admission_clears_when_the_registry_identity_changes() {
+        let mut store = ItemStateStore::diagnostic();
+        assert!(store.apply_registry(protocol::ItemRegistryEvent {
+            entries: Arc::from([entry(15000, "minecraft:bow", Default::default())]),
+        }));
+        assert_eq!(
+            store.item_use_profile(15000).animation,
+            assets::item_use::ItemUseAnimation::Bow
+        );
+        assert!(store.apply_registry(protocol::ItemRegistryEvent {
+            entries: Arc::from([entry(15000, "fixture:display", Default::default())]),
+        }));
+        assert_eq!(
+            store.item_use_profile(15000).animation,
+            assets::item_use::ItemUseAnimation::None
+        );
+        assert_eq!(
+            store.projectile_role(Some("fixture:unadmitted")),
+            ItemProjectileRole::None
+        );
     }
 
     #[test]

@@ -206,7 +206,8 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
                 ticks: cooldown
                     .field("duration")
                     .and_then(Nbt::number)
-                    .and_then(duration_ticks)?,
+                    .map(|seconds| seconds as f32)
+                    .and_then(simulation_clock::whole_ticks_from_seconds)?,
             })
         }),
         fuel_duration_ticks: component("minecraft:fuel")

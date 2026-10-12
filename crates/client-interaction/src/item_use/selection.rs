@@ -16,7 +16,7 @@ pub fn selected_air_use(
 pub fn selected_air_use_with_projectile(
     player_runtime: &client_state::PlayerRuntime,
     stream: &WorldStream,
-    projectile_override: Option<Option<&str>>,
+    projectile_override: Option<Option<assets::item_use::ItemProjectileRole>>,
 ) -> Option<AirUse> {
     let stack = player_runtime.selected_stack()?;
     let canonical = stream.authority().canonical_item_stack(stack)?;
@@ -102,7 +102,7 @@ pub fn loading_projectile(
     stream: &chunk_pipeline::WorldStream,
     ui: &UiRuntime,
     creative: bool,
-) -> Option<&'static str> {
+) -> Option<assets::item_use::ItemProjectileRole> {
     let role = |stack: &protocol::NetworkItemStack| {
         if stack.is_empty() {
             assets::item_use::ItemProjectileRole::None
@@ -116,9 +116,11 @@ pub fn loading_projectile(
     if let Some(offhand) = ui.gameplay_hud().offhand_stack() {
         match role(offhand) {
             assets::item_use::ItemProjectileRole::Firework => {
-                return Some("minecraft:firework_rocket");
+                return Some(assets::item_use::ItemProjectileRole::Firework);
             }
-            assets::item_use::ItemProjectileRole::Arrow => return Some("minecraft:arrow"),
+            assets::item_use::ItemProjectileRole::Arrow => {
+                return Some(assets::item_use::ItemProjectileRole::Arrow);
+            }
             _ => {}
         }
     }
@@ -126,5 +128,5 @@ pub fn loading_projectile(
         || (0..protocol::PLAYER_INVENTORY_SLOTS)
             .filter_map(|slot| ui.inventory_ledger(player_runtime).displayed_stack(slot))
             .any(|stack| role(stack) == assets::item_use::ItemProjectileRole::Arrow))
-    .then_some("minecraft:arrow")
+    .then_some(assets::item_use::ItemProjectileRole::Arrow)
 }

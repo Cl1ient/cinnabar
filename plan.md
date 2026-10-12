@@ -7708,7 +7708,7 @@ replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
 fallback drawing, pointer handling and quick-move routing. Active equippable
 components, accepted items, conditional activation, advertised custom bases and
 later mount layouts remain incomplete and do not close the entity parity gate.
-Entity carrier 18 requires a `make assets` rebuild.
+Entity carrier 19 requires a `make assets` rebuild.
 
 ### Compiled furnace fuel admission (incomplete)
 
@@ -7757,7 +7757,7 @@ Effective item durability is shared through required entity-carrier descriptors 
 
 ## Held-item grip admission (incomplete parity)
 
-Item grip facts are compiled into entity carrier 18, checked against the separate
+Item grip facts are compiled into entity carrier 19, checked against the separate
 retail identity inventory and copied through numeric item admission into equipment
 input. Unknown names cannot borrow a tool grip. Explicit session flags, including
 false, replace the compiled upright choice. The existing built-in grip and rod-art
@@ -7765,3 +7765,10 @@ choices remain provisional compatibility data. Complete native, metadata, versio
 and custom base-item coverage is incomplete. Optional Java animation name routing
 remains a separate incomplete admission path. This does not close the complete
 equipment parity gate. `make assets` rebuilds carriers that lack these records.
+
+Item-use animation routes and charged projectile drawing roles are typed admissions.
+Local and remote equipment read numerical registry facts, including generation replacements;
+item names do not select bow or crossbow use frames. Unsupported charged projectile metadata
+has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
+cache acceptance remain incomplete. Authored and session use cooldown fractions share the
+provisional component-precision conversion; native cooldown initialization is unverified.

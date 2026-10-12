@@ -4420,6 +4420,7 @@ dependencies = [
  "assets",
  "bytes",
  "protocol",
+ "simulation-clock",
  "serde",
  "serde_json",
  "sha2",

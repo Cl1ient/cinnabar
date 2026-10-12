@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use {
     client_interaction::item_use::ItemUseRuntime,
-    gameplay::item_use::{AirUse, UseFrame, classify},
+    gameplay::item_use::{AirUse, UseFrame, fixtures::classify},
 };
 
 fn presentation() -> UiPresentationRuntime {
@@ -120,7 +120,7 @@ fn charge_frame(
         inventory_revision: ui
             .inventory_ledger(player_runtime)
             .authoritative_slot_revision(2),
-        charge_projectile: Some("minecraft:arrow"),
+        charge_projectile: Some(assets::item_use::ItemProjectileRole::Arrow),
         press_consumed: false,
     }
 }

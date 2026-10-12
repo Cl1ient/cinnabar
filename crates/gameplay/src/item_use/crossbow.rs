@@ -15,7 +15,7 @@ struct Prediction {
     item: VerifiedNetworkItemStack,
     revision: u64,
     /// `None` is a fired crossbow, not absence of a prediction.
-    projectile: Option<&'static str>,
+    projectile: Option<assets::item_use::ItemProjectileRole>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -32,7 +32,7 @@ impl CrossbowPredictions {
         &mut self,
         selection: &FrozenMiningSelection,
         revision: Option<u64>,
-        projectile: Option<&'static str>,
+        projectile: Option<assets::item_use::ItemProjectileRole>,
     ) {
         if let (Some(slot), Some(revision)) =
             (self.slots.get_mut(usize::from(selection.slot)), revision)
@@ -51,7 +51,7 @@ impl CrossbowPredictions {
         slot: u8,
         revision: u64,
         stack: &NetworkItemStack,
-    ) -> Option<Option<&'static str>> {
+    ) -> Option<Option<assets::item_use::ItemProjectileRole>> {
         self.projectile(slot, revision, |item| matches_stack(item, stack))
     }
 
@@ -60,7 +60,7 @@ impl CrossbowPredictions {
         slot: u8,
         revision: u64,
         matches: impl FnOnce(&VerifiedNetworkItemStack) -> bool,
-    ) -> Option<Option<&'static str>> {
+    ) -> Option<Option<assets::item_use::ItemProjectileRole>> {
         let prediction = self.slots.get(usize::from(slot))?.as_ref()?;
         (prediction.revision == revision && matches(&prediction.item))
             .then_some(prediction.projectile)
@@ -70,7 +70,7 @@ impl CrossbowPredictions {
         &self,
         selection: &FrozenMiningSelection,
         revision: Option<u64>,
-    ) -> Option<Option<&'static str>> {
+    ) -> Option<Option<assets::item_use::ItemProjectileRole>> {
         self.projectile(selection.slot, revision?, |item| item == &selection.item)
     }
 

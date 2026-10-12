@@ -168,6 +168,7 @@ fn worn(enchanted: bool) -> ActorEquipmentInput {
         armor: [
             None,
             Some(WornItem {
+                use_facts: client_world::EffectiveItemUse::default(),
                 grip: assets::item::grip::builtin_item_grip("minecraft:elytra"),
                 identifier: Arc::from("minecraft:elytra"),
                 metadata: 0,

@@ -434,12 +434,12 @@ impl EquipmentRuntime {
                         .owner
                         .is_using_item()
                         .then_some(animation.rig.hand[1].use_ticks);
-                    let duration = input
+                    let use_facts = input
                         .main
                         .as_ref()
-                        .and_then(|main| self.item_use.get(main.identifier.as_ref()))
-                        .copied()
+                        .map(|main| main.use_facts)
                         .unwrap_or_default();
+                    let duration = use_facts.ticks.unwrap_or_default();
                     self.held_attachable(
                         body,
                         item,
@@ -451,7 +451,7 @@ impl EquipmentRuntime {
                             use_elapsed_ticks: elapsed,
                             delta_seconds: Some(animation.delta_seconds),
                             animation_frame: inventory::ranged_animation_frame(
-                                input.main.as_ref().map(|main| main.identifier.as_ref()),
+                                use_facts.animation,
                                 elapsed,
                                 duration,
                             ),

@@ -49,7 +49,7 @@ pub struct UseFrame {
     pub creative: bool,
     /// Authoritative writes, including identical rejected-charge corrections.
     pub inventory_revision: Option<u64>,
-    pub charge_projectile: Option<&'static str>,
+    pub charge_projectile: Option<assets::item_use::ItemProjectileRole>,
     /// A block interaction or recent attack consumed this press.
     pub press_consumed: bool,
 }
@@ -139,7 +139,7 @@ impl ItemUseRuntime {
         slot: u8,
         revision: u64,
         stack: &protocol::NetworkItemStack,
-    ) -> Option<Option<&'static str>> {
+    ) -> Option<Option<assets::item_use::ItemProjectileRole>> {
         self.crossbows.projectile_for_stack(slot, revision, stack)
     }
 
@@ -291,7 +291,10 @@ impl ItemUseRuntime {
 
     /// Why a latched press sends nothing on this frame, for the click-drop trace; `None` when it
     /// is used or no press waits.
-    pub fn press_drop_reason(&self, frame: &UseFrame) -> Option<&'static str> {
+    pub fn press_drop_reason(
+        &self,
+        frame: &UseFrame,
+    ) -> Option<assets::item_use::ItemProjectileRole> {
         if !self.latched_press || self.active.is_some() {
             return None;
         }

@@ -249,7 +249,7 @@ fn offhand_projectile_precedes_inventory_and_only_creative_synthesizes_ammo() {
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, true),
-        Some("minecraft:arrow")
+        Some(assets::item_use::ItemProjectileRole::Arrow)
     );
     publish(
         &mut player_runtime,
@@ -261,7 +261,7 @@ fn offhand_projectile_precedes_inventory_and_only_creative_synthesizes_ammo() {
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:arrow")
+        Some(assets::item_use::ItemProjectileRole::Arrow)
     );
     let offhand = ContainerIdentity {
         window_id: None,
@@ -271,16 +271,16 @@ fn offhand_projectile_precedes_inventory_and_only_creative_synthesizes_ammo() {
     publish(&mut player_runtime, &mut ui, 3, offhand, 0, stack(FIREWORK));
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:firework_rocket")
+        Some(assets::item_use::ItemProjectileRole::Firework)
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, true),
-        Some("minecraft:firework_rocket")
+        Some(assets::item_use::ItemProjectileRole::Firework)
     );
     publish(&mut player_runtime, &mut ui, 4, offhand, 0, stack(ARROW));
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:arrow")
+        Some(assets::item_use::ItemProjectileRole::Arrow)
     );
 }
 
@@ -336,7 +336,7 @@ fn normal_transaction_clears_loaded_prediction_and_retains_charged_nbt_and_offha
     );
     assert_eq!(
         loading_projectile(&player_runtime, &stream, &ui, false),
-        Some("minecraft:firework_rocket")
+        Some(assets::item_use::ItemProjectileRole::Firework)
     );
     assert_eq!(ui.gameplay_hud().offhand_stack(), Some(&stack(FIREWORK)));
     ui.enqueue_inventory_event(

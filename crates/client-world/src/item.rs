@@ -38,6 +38,8 @@ pub struct CanonicalItemStack {
     pub visual: ItemVisualRoute,
     /// Projectile a loaded crossbow holds; `None` for any uncharged stack.
     pub charged_projectile: Option<Arc<str>>,
+    /// Projectile drawing facts resolved when this stack enters canonical admission.
+    pub charged_projectile_role: assets::item_use::ItemProjectileRole,
     /// Durability damage retained separately from the stack's visual metadata.
     pub damage: Option<u32>,
     /// Maximum resolved at registry admission; gameplay and presentation share this fact.
@@ -131,6 +133,7 @@ pub(crate) struct ItemStateStore {
     persistent_armor_runtime: Option<u64>,
     use_durations: Option<Arc<BTreeMap<Box<str>, u32>>>,
     use_profiles: BTreeMap<i32, EffectiveItemUse>,
+    projectile_roles: BTreeMap<Arc<str>, assets::item_use::ItemProjectileRole>,
     use_overlays: Option<Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>>>,
     attack_timings: Option<Arc<BTreeMap<Box<str>, protocol::ItemAttackTiming>>>,
     notices: Vec<EquipmentNotice>,
@@ -156,6 +159,7 @@ impl ItemStateStore {
             persistent_armor_runtime: None,
             use_durations: None,
             use_profiles: BTreeMap::new(),
+            projectile_roles: BTreeMap::new(),
             use_overlays: None,
             attack_timings: None,
             notices: Vec::new(),
@@ -397,6 +401,8 @@ impl ItemStateStore {
                 let enchanted = piece.item.enchanted;
                 piece.item = self.resolve_identity(piece.item.identity);
                 piece.item.charged_projectile = charged;
+                piece.item.charged_projectile_role =
+                    self.projectile_role(piece.item.charged_projectile.as_deref());
                 piece.item.damage = damage;
                 piece.item.enchanted = enchanted;
             }
@@ -418,6 +424,7 @@ impl ItemStateStore {
                 .equipment
                 .get(&key)
                 .and_then(|equipment| equipment.item.charged_projectile.clone());
+            item.charged_projectile_role = self.projectile_role(item.charged_projectile.as_deref());
             item.damage = self
                 .equipment
                 .get(&key)
@@ -478,9 +485,18 @@ impl ItemStateStore {
         };
         let mut item = self.resolve_identity(identity);
         item.charged_projectile = protocol::item_charged_projectile(&stack.extra_data);
+        item.charged_projectile_role = self.projectile_role(item.charged_projectile.as_deref());
         item.damage = protocol::item_stack_damage(stack);
         item.enchanted = protocol::item_has_enchantment_list(&stack.extra_data);
         Some(item)
+    }
+
+    /// Resolves stack projectile metadata against this registry's admitted identities.
+    fn projectile_role(&self, identifier: Option<&str>) -> assets::item_use::ItemProjectileRole {
+        identifier
+            .and_then(|key| self.projectile_roles.get(key))
+            .copied()
+            .unwrap_or_default()
     }
 
     /// The registry identifier for an item network id.
@@ -493,6 +509,7 @@ impl ItemStateStore {
     fn resolve_identity(&self, identity: ItemStackIdentity) -> CanonicalItemStack {
         if identity.is_empty() {
             return CanonicalItemStack {
+                charged_projectile_role: assets::item_use::ItemProjectileRole::None,
                 grip: assets::item::grip::ItemGrip::Unresolved,
                 identity,
                 identifier: None,
@@ -516,6 +533,7 @@ impl ItemStateStore {
             identity.block_runtime_id,
         );
         CanonicalItemStack {
+            charged_projectile_role: assets::item_use::ItemProjectileRole::None,
             grip: self
                 .registry
                 .get(&identity.network_id)

@@ -94,6 +94,11 @@ fn owner_rig<'a>(
 fn held(identifier: &str) -> ActorEquipmentInput {
     ActorEquipmentInput {
         main: Some(WornItem {
+            use_facts: client_world::resolve_item_use(
+                &assets::item_use::diagnostic_profile(identifier),
+                None,
+                None,
+            ),
             grip: assets::item::grip::builtin_item_grip(identifier),
             identifier: Arc::from(identifier),
             metadata: 0,
@@ -389,8 +394,9 @@ fn third_person_bow_publication_tracks_use_frames_duration_and_release() {
         "leftItem",
     ]
     .map(Box::from);
-    let input = held("minecraft:bow");
+    let mut input = held("minecraft:bow");
     let duration = 40;
+    input.main.as_mut().unwrap().use_facts.ticks = Some(duration);
     let items = crate::session_assets::SessionItems {
         components: Arc::new(
             [(
@@ -450,6 +456,7 @@ fn third_person_bow_publication_tracks_use_frames_duration_and_release() {
     let mut offhand = input.clone();
     offhand.off = offhand.main.take();
     offhand.main = Some(crate::presentation::equipment::WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
         grip: assets::item::grip::builtin_item_grip("minecraft:trident"),
         identifier: "minecraft:trident".into(),
         ..offhand.off.as_ref().unwrap().clone()

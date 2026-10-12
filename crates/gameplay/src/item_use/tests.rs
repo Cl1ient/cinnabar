@@ -27,11 +27,21 @@ fn native_crossbow_frames_follow_charge_duration_and_projectile() {
         4
     );
     assert_eq!(
-        crossbow_animation_frame(None, duration, Some("minecraft:arrow"), false),
+        crossbow_animation_frame(
+            None,
+            duration,
+            Some(assets::item_use::ItemProjectileRole::Arrow),
+            false
+        ),
         4
     );
     assert_eq!(
-        crossbow_animation_frame(None, duration, Some("minecraft:firework_rocket"), false),
+        crossbow_animation_frame(
+            None,
+            duration,
+            Some(assets::item_use::ItemProjectileRole::Firework),
+            false
+        ),
         5
     );
     assert_eq!(crossbow_animation_frame(Some(23), duration, None, true), 5);
@@ -297,7 +307,7 @@ fn bow_press_starts_a_use_and_button_up_releases_it() {
 fn a_depleted_crossbow_charge_ends_without_a_packet() {
     let crossbow = |tick| UseFrame {
         air_use: classify("minecraft:crossbow", false, 0, None),
-        charge_projectile: Some("minecraft:arrow"),
+        charge_projectile: Some(assets::item_use::ItemProjectileRole::Arrow),
         ..frame(tick, true)
     };
     let mut runtime = ItemUseRuntime::default();

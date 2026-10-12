@@ -6,7 +6,7 @@
 use bridge::GameMode;
 use launcher::local_worlds::world::{Difficulty, Generator};
 
-use super::super::super::UiPresentationError;
+use super::super::engine::screen::PaintError;
 use super::grid::{Grid, space};
 use super::paint::{Bounds, Canvas};
 use super::theme::{
@@ -56,7 +56,7 @@ pub(super) fn draw(
     view: &MenuView,
     size: [f32; 2],
     route: Screen,
-) -> Result<(), UiPresentationError> {
+) -> Result<(), PaintError> {
     let [width, height] = size;
     screen_overlay(canvas, size)?;
     let title = match route {
@@ -136,7 +136,7 @@ fn tab_row(
     label: &str,
     selected: bool,
     action: Option<MenuAction>,
-) -> Result<f32, UiPresentationError> {
+) -> Result<f32, PaintError> {
     let height = canvas.r(4.8);
     let b = [side[0], top, side[1], top + height];
     row(canvas, view, b, selected, action)?;
@@ -154,23 +154,13 @@ fn tab_row(
 }
 
 /// A control's label above it; returns the y below.
-fn label(
-    canvas: &mut Canvas<'_>,
-    text: &str,
-    area: Bounds,
-    y: f32,
-) -> Result<f32, UiPresentationError> {
+fn label(canvas: &mut Canvas<'_>, text: &str, area: Bounds, y: f32) -> Result<f32, PaintError> {
     let height = canvas.text(text, [area[0], y], area[2] - area[0], BODY, TEXT, false)?;
     Ok(y + height + space(canvas, 1))
 }
 
 /// A description under a control; returns its bottom edge.
-fn caption(
-    canvas: &mut Canvas<'_>,
-    text: &str,
-    area: Bounds,
-    y: f32,
-) -> Result<f32, UiPresentationError> {
+fn caption(canvas: &mut Canvas<'_>, text: &str, area: Bounds, y: f32) -> Result<f32, PaintError> {
     let height = canvas.text(
         text,
         [area[0], y],
@@ -188,7 +178,7 @@ fn name_field(
     name: &str,
     area: Bounds,
     y: f32,
-) -> Result<f32, UiPresentationError> {
+) -> Result<f32, PaintError> {
     let y = label(canvas, "World name", area, y)?;
     let focused = view.field == Some(MenuField::WorldName);
     let b = [area[0], y, area[2], y + canvas.r(FIELD)];
@@ -222,7 +212,7 @@ fn game_modes(
     current: GameMode,
     area: Bounds,
     y: f32,
-) -> Result<f32, UiPresentationError> {
+) -> Result<f32, PaintError> {
     let y = label(canvas, "Game mode", area, y)?;
     let options: Vec<_> = modes
         .iter()
@@ -250,7 +240,7 @@ fn difficulties(
     current: Difficulty,
     area: Bounds,
     y: f32,
-) -> Result<f32, UiPresentationError> {
+) -> Result<f32, PaintError> {
     let y = label(canvas, "Difficulty", area, y)?;
     let options: Vec<_> = [
         Difficulty::Peaceful,
@@ -281,7 +271,7 @@ fn choice_height(
     canvas: &mut Canvas<'_>,
     area: Bounds,
     options: &[(&str, MenuAction, bool)],
-) -> Result<f32, UiPresentationError> {
+) -> Result<f32, PaintError> {
     let width = (area[2] - area[0]) / options.len().max(1) as f32;
     let mut height = canvas.r(5.6);
     for (label, _, _) in options {
@@ -295,7 +285,7 @@ fn create_general(
     view: &MenuView,
     local_view: &WorldsView,
     area: Bounds,
-) -> Result<f32, UiPresentationError> {
+) -> Result<f32, PaintError> {
     let form = &local_view.create;
     let y = sections::row(canvas, area, area[1], |canvas, inner| {
         name_field(canvas, view, &form.name, inner, inner[1])
@@ -321,7 +311,7 @@ fn edit_general(
     view: &MenuView,
     local_view: &WorldsView,
     area: Bounds,
-) -> Result<f32, UiPresentationError> {
+) -> Result<f32, PaintError> {
     let Some(edit) = &local_view.edit else {
         return Ok(area[1]);
     };
@@ -394,7 +384,7 @@ fn templates_empty(
     canvas: &mut Canvas<'_>,
     view: &MenuView,
     area: Bounds,
-) -> Result<(), UiPresentationError> {
+) -> Result<(), PaintError> {
     let card = [area[0], area[1], area[2], area[1] + canvas.r(22.0)];
     panel(canvas, card)?;
     let pad = space(canvas, 4);

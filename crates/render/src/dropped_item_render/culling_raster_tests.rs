@@ -1,6 +1,6 @@
 use super::*;
 use crate::gpu_snapshot::{self, Draw, Gpu, RasterState};
-use bevy::math::Vec3;
+use bevy::math::{Mat4, Vec3};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -55,19 +55,19 @@ fn raster(gpu: &Gpu, model: &DroppedItemModel, eye: Vec3, samples: u32, cull: bo
     let sampler = gpu
         .device
         .create_sampler(&wgpu::SamplerDescriptor::default());
-    let center = if matches!(model, DroppedItemModel::NativeSprite(_)) {
-        Vec3::new(0.0, 0.5, 0.0)
-    } else {
-        Vec3::ZERO
+    let (matrix, eye) = camera(model, eye);
+    let draw = ItemDraw {
+        vertices: 0..vertices.len() as u32,
+        instance: 0,
+        cull_back: model.can_cull_back_faces(),
+        bounds: DroppedItemBounds::from_mesh(&vertices).and_then(|bounds| {
+            bounds.transformed(render_model::dropped_item::dropped_item_transform(
+                [0.0; 3], 0.0, 1.0,
+            ))
+        }),
     };
-    let eye = center + eye;
-    let up = if (eye - center).normalize().dot(Vec3::Y).abs() > 0.99 {
-        Vec3::Z
-    } else {
-        Vec3::Y
-    };
-    let matrix = glam::camera::rh::proj::directx::perspective_infinite_reverse(0.65, 1.0, 0.05)
-        * glam::camera::rh::view::look_at_mat4(eye, center, up);
+    let cull =
+        cull && samples == 1 && draw.culls_in_view(DroppedItemCullView::new(matrix, eye).as_ref());
     let view = gpu.buffer(
         &gpu_snapshot::view(matrix, eye),
         wgpu::BufferUsages::UNIFORM,
@@ -135,6 +135,27 @@ fn raster(gpu: &Gpu, model: &DroppedItemModel, eye: Vec3, samples: u32, cull: bo
             ..default()
         },
     )
+}
+
+/// Builds the same reverse-Z camera for pixel rendering and per-view eligibility.
+fn camera(model: &DroppedItemModel, eye: Vec3) -> (Mat4, Vec3) {
+    let center = if matches!(model, DroppedItemModel::NativeSprite(_)) {
+        Vec3::new(0.0, 0.5, 0.0)
+    } else {
+        Vec3::ZERO
+    };
+    let eye = center + eye;
+    let up = if (eye - center).normalize().dot(Vec3::Y).abs() > 0.99 {
+        Vec3::Z
+    } else {
+        Vec3::Y
+    };
+    let matrix = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        0.65,
+        1.0,
+        render_api::CAMERA_NEAR_PLANE_BLOCKS,
+    ) * glam::camera::rh::view::look_at_mat4(eye, center, up);
+    (matrix, eye)
 }
 
 /// Produces a colored binary-alpha sprite with a central hole and distinct edge texels.
@@ -234,6 +255,38 @@ fn closed_item_culling_preserves_pixels_from_faces_edges_and_corners() {
                     gpu_snapshot::save("dropped-item-culling-after", &after);
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn camera_inside_and_near_plane_clipped_cube_keeps_visible_rear_pixels() {
+    let Some(gpu) = Gpu::for_fixture("dropped item camera intersection pixels") else {
+        return;
+    };
+    let model = DroppedItemModel::Cube(render_model::DroppedItemCube {
+        tile: 1,
+        faces: std::array::from_fn(|_| Arc::from([80, 180, 40, 255])),
+        tints: [render_model::OPAQUE_WHITE; 6],
+    });
+    let near = render_api::CAMERA_NEAR_PLANE_BLOCKS;
+    for axis in [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z] {
+        for distance in [0.25, 0.5, 0.5 + near * 0.8] {
+            let eye = axis * distance;
+            let before = raster(&gpu, &model, eye, 1, false);
+            let after = raster(&gpu, &model, eye, 1, true);
+            assert!(
+                before
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|pixel| pixel[1] > pixel[2]),
+                "rear surface was not visible at {eye:?}"
+            );
+            assert_eq!(
+                before, after,
+                "camera or near-plane intersection at {eye:?}"
+            );
         }
     }
 }

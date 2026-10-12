@@ -52,8 +52,8 @@ use {
         DroppedItemModel, ItemMeshVertex, MAX_DROPPED_ITEM_INSTANCES, MAX_DYNAMIC_ITEM_VERTICES,
         MAX_ITEM_LAYERS, MAX_ITEM_SPRITE_SIDE,
         dropped_item::{
-            ITEM_MESH_VERTEX_BYTES, block_mesh, cube_mesh, extruded_sprite_mesh,
-            native_dropped_sprite_mesh,
+            DroppedItemBounds, DroppedItemCullView, ITEM_MESH_VERTEX_BYTES, block_mesh, cube_mesh,
+            extruded_sprite_mesh, native_dropped_sprite_mesh,
         },
     },
     render_scene::DroppedItemScene,
@@ -159,6 +159,7 @@ struct ItemGpu {
 struct ItemMeshRange {
     vertices: Range<u32>,
     cull_back: bool,
+    bounds: Option<DroppedItemBounds>,
 }
 
 /// One ordered draw, including the cull mode allowed by its model and transform.
@@ -166,6 +167,18 @@ struct ItemDraw {
     vertices: Range<u32>,
     instance: u32,
     cull_back: bool,
+    bounds: Option<DroppedItemBounds>,
+}
+
+impl ItemDraw {
+    /// Removes rear faces only when this view cannot clip or enter the item's closed surface.
+    fn culls_in_view(&self, view: Option<&DroppedItemCullView>) -> bool {
+        self.cull_back
+            && self
+                .bounds
+                .zip(view)
+                .is_some_and(|(bounds, view)| bounds.allows_back_face_culling(view))
+    }
 }
 
 /// The prepared pipelines for a view; draw commands switch modes without regrouping instances.
@@ -173,6 +186,7 @@ struct ItemDraw {
 struct ItemViewPipelines {
     two_sided: CachedRenderPipelineId,
     closed: CachedRenderPipelineId,
+    cull_view: Option<DroppedItemCullView>,
 }
 
 fn init_gpu(mut commands: Commands, device: Res<RenderDevice>) {
@@ -345,6 +359,7 @@ fn rebuild_models(
         ranges.push(ItemMeshRange {
             vertices: start..vertices.len() as u32,
             cull_back: model.can_cull_back_faces(),
+            bounds: DroppedItemBounds::from_mesh(&vertices[start as usize..]),
         });
     }
     let layers = atlas.len() / layer_bytes;
@@ -435,6 +450,9 @@ fn prepare_items(
             vertices: range.vertices.clone(),
             instance: instances.len() as u32,
             cull_back: range.cull_back && rows[0].dot(rows[1].cross(rows[2])) > 0.0,
+            bounds: range
+                .bounds
+                .and_then(|bounds| bounds.transformed(instance.world_from_item)),
         });
         instances.push(GpuItemInstance {
             rows: instance.world_from_item,
@@ -742,6 +760,7 @@ struct QueueItemParams<'w, 's> {
             &'static ExtractedView,
             &'static bevy::render::camera::ExtractedCamera,
             &'static Msaa,
+            Option<&'static bevy::render::camera::TemporalJitter>,
         ),
     >,
 }
@@ -758,7 +777,7 @@ fn queue_items(mut commands: Commands, mut params: QueueItemParams<'_, '_>) {
         return;
     }
     let draw_function = params.draw_functions.read().id::<DrawItemCommands>();
-    for (view_entity, main_entity, view, extracted_camera, msaa) in &params.views {
+    for (view_entity, main_entity, view, extracted_camera, msaa, jitter) in &params.views {
         let Some(phase) = params.phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -785,9 +804,19 @@ fn queue_items(mut commands: Commands, mut params: QueueItemParams<'_, '_>) {
         ) else {
             continue;
         };
+        let projection = || view.clip_from_view * view.world_from_view.to_matrix().inverse();
+        let clip_from_world = if jitter.is_some() {
+            projection()
+        } else {
+            view.clip_from_world.unwrap_or_else(projection)
+        };
         commands.entity(view_entity).insert(ItemViewPipelines {
             two_sided: pipeline_id,
             closed,
+            cull_view: DroppedItemCullView::new(
+                clip_from_world,
+                view.world_from_view.translation(),
+            ),
         });
 
         phase.add(
@@ -849,7 +878,11 @@ impl<P: PhaseItem> RenderCommand<P> for DrawItems {
         if let Some(mesh) = gpu.mesh_buffer.as_ref() {
             pass.set_vertex_buffer(0, mesh.slice(..));
             for draw in &gpu.draws {
-                pass.set_render_pipeline(if draw.cull_back { closed } else { two_sided });
+                pass.set_render_pipeline(if draw.culls_in_view(pipelines.cull_view.as_ref()) {
+                    closed
+                } else {
+                    two_sided
+                });
                 pass.draw(draw.vertices.clone(), draw.instance..draw.instance + 1);
             }
         }

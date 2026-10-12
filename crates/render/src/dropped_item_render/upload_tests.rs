@@ -139,6 +139,7 @@ fn steady_uploads_empty_item_scene_allocates_and_uploads_nothing() {
             vertices: 0..3,
             instance: 0,
             cull_back: false,
+            bounds: None,
         });
         gpu.dynamic_count = 3;
     }
@@ -253,4 +254,35 @@ fn cull_modes_follow_models_and_preserve_instance_order_and_mirrored_transforms(
     );
     assert_eq!(draws[0].vertices, draws[2].vertices);
     assert_eq!(draws[0].vertices, draws[3].vertices);
+}
+
+#[test]
+fn one_prepared_item_selects_its_cull_mode_independently_for_each_view() {
+    let mesh = cube_mesh([0; 6], [render_model::OPAQUE_WHITE; 6], 1, 1).unwrap();
+    let draw = ItemDraw {
+        vertices: 0..mesh.len() as u32,
+        instance: 0,
+        cull_back: true,
+        bounds: DroppedItemBounds::from_mesh(&mesh).and_then(|bounds| {
+            bounds.transformed(render_model::dropped_item::dropped_item_transform(
+                [0.0; 3], 0.0, 1.0,
+            ))
+        }),
+    };
+    for (z, expected) in [
+        (2.5, true),
+        (0.5 + render_api::CAMERA_NEAR_PLANE_BLOCKS * 0.8, false),
+        (0.25, false),
+        (2.5, true),
+    ] {
+        let eye = glam::Vec3::Z * z;
+        let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+            0.65,
+            1.0,
+            render_api::CAMERA_NEAR_PLANE_BLOCKS,
+        ) * glam::camera::rh::view::look_at_mat4(eye, glam::Vec3::ZERO, glam::Vec3::Y);
+        let view = DroppedItemCullView::new(clip, eye).unwrap();
+        assert_eq!(draw.culls_in_view(Some(&view)), expected);
+    }
+    assert!(!draw.culls_in_view(None));
 }

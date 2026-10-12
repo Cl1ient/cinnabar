@@ -29,6 +29,7 @@ class ReleaseDownloadsTests(unittest.TestCase):
         self.config["repository"] = "fixture/download-contract"
         self.config["checksums"] = "fixture-" + self.config["checksums"]
         self.config["install_script"] = "fixture-" + self.config["install_script"]
+        self.config["update_payload_prefix"] = "fixture-" + self.config["update_payload_prefix"]
         self.config["update_channels"] = {
             channel: {"tag": "fixture-" + release["tag"], "manifest": "fixture-" + release["manifest"]}
             for channel, release in self.config["update_channels"].items()
@@ -129,6 +130,7 @@ class ReleaseDownloadsTests(unittest.TestCase):
         common = {
             "INSTALL_SCRIPT": self.config["install_script"],
             "CHECKSUM_ASSET": self.config["checksums"],
+            "UPDATE_PAYLOAD_PREFIX": self.config["update_payload_prefix"],
         }
         result = self.run_helper("env")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -154,20 +156,29 @@ class ReleaseDownloadsTests(unittest.TestCase):
                 self.assertEqual(values["UPDATE_MANIFEST"], release["manifest"])
                 self.assertEqual(values["UPDATE_MANIFEST_TAG"], release["tag"])
 
-    def test_updater_specs_pair_download_urls_with_the_same_local_assets(self):
+    def test_update_payloads_are_content_addressed_copies_of_native_artifacts(self):
         base = "https://download-contract.invalid/releases/test-version"
         directory = self.root / "artifact directory with spaces"
-        result = self.run_helper("update-artifacts", base, directory)
+        self.dist = directory
+        directory.mkdir()
+        self.populate()
+        out = self.root / "payloads"
+        result = self.run_helper("update-payloads", base, directory, out)
         self.assertEqual(result.returncode, 0, result.stderr)
         specs = [line.split("=", 2) for line in result.stdout.splitlines()]
-        expected = {
-            f"{platform}-{arch}": (base + "/" + selected, str(directory / selected))
-            for platform, arches in self.config["assets"].items()
-            for arch, name in arches.items()
-            for selected in [self.config["update_assets"].get(platform, {}).get(arch, name)]
-        }
+        expected, copies = {}, []
+        for platform, arches in self.config["assets"].items():
+            for arch, name in arches.items():
+                selected = self.config["update_assets"].get(platform, {}).get(arch, name)
+                digest = hashlib.sha256((directory / selected).read_bytes()).hexdigest()
+                payload = f'{self.config["update_payload_prefix"]}{digest[:16]}-{selected}'
+                expected[f"{platform}-{arch}"] = (base + "/" + payload, str(out / payload))
+                # A byte-identical copy, so its name changes whenever its content does.
+                copies.append((out / payload, directory / selected))
         self.assertEqual(len(specs), len(expected))
         self.assertEqual({platform: (url, local) for platform, url, local in specs}, expected)
+        for copy, source in copies:
+            self.assertEqual(copy.read_bytes(), source.read_bytes())
 
     def test_windows_job_retains_the_workflow_source_working_directory(self):
         workflow = (PACKAGING.parent / ".github/workflows/package.yml").read_text()

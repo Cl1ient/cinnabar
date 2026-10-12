@@ -36,5 +36,9 @@ The updater does not request elevated privileges or reboot the machine.
 
 Each channel's manifest lives in a fixed GitHub release; `update_channels` in
 `packaging/release-assets.json` names its tag and file for both the client and the package
-workflow. Publication must sign the correct channel and a positive build number. The release signer accepts `-build-number`;
-packaged builds use `CINNABAR_BUILD_NUMBER` or the package workflow's `GITHUB_RUN_NUMBER`.
+workflow. Its payloads sit beside it under content-addressed names, separate from the
+stable-named downloads. The workflow uploads new payloads, then the manifest, then removes payloads
+no manifest names, so a published manifest never names a missing or replaced file. Publication
+must sign the correct channel and a positive build number. The release signer accepts
+`-build-number`; packaged builds use `CINNABAR_BUILD_NUMBER` or the package workflow's
+`GITHUB_RUN_NUMBER`.

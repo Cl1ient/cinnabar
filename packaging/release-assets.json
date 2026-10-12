@@ -14,6 +14,7 @@
     }
   },
   "install_script": "install.sh",
+  "update_payload_prefix": "update-payload-",
   "update_channels": {
     "beta": { "tag": "beta", "manifest": "update-beta.json" },
     "nightly": { "tag": "nightly", "manifest": "update-nightly.json" },

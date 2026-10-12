@@ -9,7 +9,9 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CHANNELS = json.loads((ROOT / "packaging/release-assets.json").read_text())["update_channels"]
+RELEASE_ASSETS = json.loads((ROOT / "packaging/release-assets.json").read_text())
+CHANNELS = RELEASE_ASSETS["update_channels"]
+PREFIX = RELEASE_ASSETS["update_payload_prefix"]
 FAKE_GH = '''#!/bin/bash
 set -eu
 echo "$*" >> calls
@@ -35,61 +37,89 @@ def step(name):
 
 
 class ManifestPublishTests(unittest.TestCase):
-    def publish(self, root, channel, signed):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        notes = self.root / "release-tools/packaging/release-notes.sh"
+        notes.parent.mkdir(parents=True)
+        notes.write_text("exit 0\n")
+        for name, script in [("gh", FAKE_GH), ("git", FAKE_GIT)]:
+            (self.root / name).write_text(script)
+            (self.root / name).chmod(0o755)
+        (self.root / "dist").mkdir()
+
+    def run_step(self, name, channel):
         release = CHANNELS[channel]
+        env = dict(os.environ, PATH=f"{self.root}:{os.environ['PATH']}", RUNNER_TEMP=str(self.root),
+                   GITHUB_WORKSPACE=str(self.root), RELEASE_CHANNEL=channel,
+                   RELEASE_TAG=release["tag"], RELEASE_COMMIT="0" * 40,
+                   UPDATE_MANIFEST=release["manifest"], UPDATE_MANIFEST_TAG=release["tag"],
+                   UPDATE_PAYLOAD_PREFIX=PREFIX)
+        result = subprocess.run(["bash", "-eu", "-c", step(name)], cwd=self.root, env=env,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result
+
+    def holder(self, channel):
+        return self.root / "releases" / CHANNELS[channel]["tag"]
+
+    def publish(self, channel, signed):
+        """Builds a new download and, when signed, a manifest naming a new payload."""
+        (self.root / "dist/Cinnabar.dmg").write_text("new download")
         if signed:
-            (root / release["manifest"]).write_text('{"signed": "fixture"}')
-        (root / "gh").write_text(FAKE_GH)
-        (root / "gh").chmod(0o755)
-        env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", RUNNER_TEMP=str(root),
-                   RELEASE_CHANNEL=channel, RELEASE_COMMIT="0" * 40,
-                   UPDATE_MANIFEST=release["manifest"], UPDATE_MANIFEST_TAG=release["tag"])
-        return subprocess.run(["bash", "-eu", "-c", step("Publish the signed update manifest")],
-                              cwd=root, env=env, capture_output=True, text=True)
+            payloads = self.root / "update-payloads"
+            payloads.mkdir()
+            (payloads / f"{PREFIX}new-Cinnabar.dmg").write_text("new payload")
+            (self.root / CHANNELS[channel]["manifest"]).write_text(f"names {PREFIX}new-Cinnabar.dmg")
+        if channel != "stable":
+            self.run_step("Publish the rolling prerelease", channel)
+        return self.run_step("Publish the signed update manifest", channel)
 
-    def test_each_channel_manifest_lands_where_the_client_fetches_it(self):
+    def published_release(self, channel):
+        """A channel whose current manifest names the payload beside it."""
+        holder = self.holder(channel)
+        holder.mkdir(parents=True)
+        (holder / CHANNELS[channel]["manifest"]).write_text(f"names {PREFIX}old-Cinnabar.dmg")
+        (holder / f"{PREFIX}old-Cinnabar.dmg").write_text("old payload")
+        (holder / "Cinnabar.dmg").write_text("old download")
+        return holder
+
+    def files(self, directory):
+        return {path.name: path.read_text() for path in directory.iterdir()}
+
+    def test_a_new_channel_holder_is_a_prerelease_that_never_becomes_latest(self):
+        self.publish("stable", signed=True)
+        self.assertTrue((self.holder("stable") / CHANNELS["stable"]["manifest"]).is_file())
+        create = next(line for line in (self.root / "calls").read_text().splitlines()
+                      if line.startswith("release create"))
+        self.assertIn("--prerelease --latest=false", create)
+
+    def test_signed_publication_replaces_payloads_only_after_the_new_manifest(self):
         for channel, release in CHANNELS.items():
-            with self.subTest(channel=channel), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                result = self.publish(root, channel, signed=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertTrue((root / "releases" / release["tag"] / release["manifest"]).is_file())
-                create = next(line for line in (root / "calls").read_text().splitlines()
-                              if line.startswith("release create"))
-                self.assertIn("--prerelease --latest=false", create)
+            with self.subTest(channel=channel):
+                self.setUp()
+                holder = self.published_release(channel)
+                self.publish(channel, signed=True)
+                expected = {release["manifest"]: f"names {PREFIX}new-Cinnabar.dmg",
+                            f"{PREFIX}new-Cinnabar.dmg": "new payload"}
+                # The stable holder carries no downloads; those live in the version release.
+                expected["Cinnabar.dmg"] = "old download" if channel == "stable" else "new download"
+                self.assertEqual(self.files(holder), expected)
+                calls = (self.root / "calls").read_text().splitlines()
+                order = [next(index for index, call in enumerate(calls) if marker in call)
+                         for marker in [f"{PREFIX}new-Cinnabar.dmg", release["manifest"],
+                                        f"delete-asset {release['tag']} {PREFIX}old"]]
+                self.assertEqual(order, sorted(order))
 
-    def test_a_rolling_rerun_keeps_the_manifest_until_a_signed_one_replaces_it(self):
-        for channel, release in CHANNELS.items():
-            if channel == "stable":
-                continue
-            with self.subTest(channel=channel), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                published = root / "releases" / release["tag"]
-                published.mkdir(parents=True)
-                for name in [release["manifest"], "obsolete-installer"]:
-                    (published / name).write_text("old")
-                (root / "dist").mkdir()
-                (root / "dist/installer").write_text("new")
-                notes = root / "release-tools/packaging/release-notes.sh"
-                notes.parent.mkdir(parents=True)
-                notes.write_text("exit 0\n")
-                for name, script in [("gh", FAKE_GH), ("git", FAKE_GIT)]:
-                    (root / name).write_text(script)
-                    (root / name).chmod(0o755)
-                env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", RUNNER_TEMP=str(root),
-                           GITHUB_WORKSPACE=str(root), RELEASE_CHANNEL=channel,
-                           RELEASE_TAG=release["tag"], RELEASE_COMMIT="0" * 40,
-                           UPDATE_MANIFEST=release["manifest"])
-                result = subprocess.run(["bash", "-eu", "-c", step("Publish the rolling prerelease")],
-                                        cwd=root, env=env, capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(sorted(path.name for path in published.iterdir()),
-                                 sorted([release["manifest"], "installer"]))
-
-    def test_a_missing_signing_key_skips_publication_with_a_notice(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            result = self.publish(root, "stable", signed=False)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("::notice::", result.stdout)
-            self.assertFalse((root / "calls").exists())
+    def test_without_signing_the_current_manifest_and_its_payloads_stay_consistent(self):
+        for channel in CHANNELS:
+            with self.subTest(channel=channel):
+                self.setUp()
+                holder = self.published_release(channel)
+                result = self.publish(channel, signed=False)
+                self.assertIn("::notice::", result.stdout)
+                files = self.files(holder)
+                named = files[CHANNELS[channel]["manifest"]].removeprefix("names ")
+                self.assertEqual(files[named], "old payload")
+                self.assertNotIn(f"{PREFIX}new-Cinnabar.dmg", files)

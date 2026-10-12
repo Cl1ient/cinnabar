@@ -541,16 +541,20 @@ jobs:
             echo "::notice::CINNABAR_UPDATE_SIGNING_KEY is unset; skipping the signed $RELEASE_CHANNEL update manifest"
             exit 0
           fi
-          base="${{ github.server_url }}/${{ github.repository }}/releases/download/$RELEASE_TAG"
+          # Update payloads live beside the manifest under content-addressed names, apart from the
+          # stable-named downloads, so no upload replaces a file a published manifest names.
+          base="${{ github.server_url }}/${{ github.repository }}/releases/download/$UPDATE_MANIFEST_TAG"
           args=()
           while IFS= read -r spec; do
             args+=(-artifact "$spec")
-          done < <(python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" update-artifacts "$base" "$GITHUB_WORKSPACE/source/dist")
+          done < <(python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" update-payloads \
+            "$base" "$GITHUB_WORKSPACE/source/dist" "$RUNNER_TEMP/update-payloads")
           # The signer comes from the workflow revision, so older source branches still sign.
           # Packaged clients bake in this run number, which orders successive builds of one version.
           (cd "$GITHUB_WORKSPACE/release-tools" && cargo run --quiet --locked -p release-manifest -- \
             sign -version "$RELEASE_VERSION" -channel "$RELEASE_CHANNEL" -build-number "$GITHUB_RUN_NUMBER" "${args[@]}") \
-            > "$RUNNER_TEMP/$UPDATE_MANIFEST"
+            > "$RUNNER_TEMP/$UPDATE_MANIFEST.partial"
+          mv "$RUNNER_TEMP/$UPDATE_MANIFEST.partial" "$RUNNER_TEMP/$UPDATE_MANIFEST"
       - name: Verify all downloads and checksum the rolling prerelease
         if: needs.prepare.outputs.channel != 'stable'
         run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" checksums dist
@@ -562,9 +566,10 @@ jobs:
           title="${RELEASE_CHANNEL^} $(date -u +%Y-%m-%d) ($(git rev-parse --short HEAD))"
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/* --clobber
-            # The channel manifest stays until a newly signed one replaces it.
+            # The manifest and its payloads change only in the signed manifest step.
             gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
-              [[ -e "dist/$name" || "$name" == "$UPDATE_MANIFEST" ]] || gh release delete-asset "$RELEASE_TAG" "$name" --yes
+              [[ -e "dist/$name" || "$name" == "$UPDATE_MANIFEST" || "$name" == "$UPDATE_PAYLOAD_PREFIX"* ]] ||
+                gh release delete-asset "$RELEASE_TAG" "$name" --yes
             done
           else
             gh release create "$RELEASE_TAG" dist/* --prerelease --latest=false --target "$RELEASE_COMMIT" \
@@ -597,11 +602,13 @@ jobs:
             echo "created=true" >> "${GITHUB_OUTPUT:-/dev/null}"
           fi
       - name: Publish the signed update manifest
-        # Runs after the artifacts it names are public. release-assets.json names the release and file.
+        # New payloads, then the manifest naming them, then payloads no manifest names any more.
+        # Without a new manifest, the current one and its payloads stay untouched.
         run: |
           manifest="$RUNNER_TEMP/$UPDATE_MANIFEST"
+          payloads="$RUNNER_TEMP/update-payloads"
           if [[ ! -e "$manifest" ]]; then
-            echo "::notice::No signed $RELEASE_CHANNEL update manifest, so this run offers no automatic update"
+            echo "::notice::No signed $RELEASE_CHANNEL update manifest; the published one stays current"
             exit 0
           fi
           if ! gh release view "$UPDATE_MANIFEST_TAG" > /dev/null 2>&1; then
@@ -609,7 +616,12 @@ jobs:
             gh release create "$UPDATE_MANIFEST_TAG" --prerelease --latest=false --target "$RELEASE_COMMIT" \
               --title "${RELEASE_CHANNEL^} updates" --notes "Signed update manifest for the $RELEASE_CHANNEL channel."
           fi
+          gh release upload "$UPDATE_MANIFEST_TAG" "$payloads"/* --clobber
           gh release upload "$UPDATE_MANIFEST_TAG" "$manifest" --clobber
+          gh release view "$UPDATE_MANIFEST_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
+            [[ "$name" != "$UPDATE_PAYLOAD_PREFIX"* || -e "$payloads/$name" ]] ||
+              gh release delete-asset "$UPDATE_MANIFEST_TAG" "$name" --yes
+          done
       - name: Post the changelog to Discord
         if: steps.publish.outputs.created == 'true'
         continue-on-error: true

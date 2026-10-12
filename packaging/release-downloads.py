@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 
 HERE = Path(__file__).resolve().parent
 
@@ -41,6 +42,24 @@ def checksum(directory):
     (directory / config["checksums"]).write_text("".join(lines))
 
 
+def update_payloads(directory, out):
+    """Copies each platform's update artifact to a content-addressed name, so an upload never
+    replaces a payload that a published manifest still names."""
+    config = manifest()
+    out.mkdir(parents=True, exist_ok=True)
+    payloads = []
+    for platform, arches in config["assets"].items():
+        for arch, filename in arches.items():
+            filename = config["update_assets"].get(platform, {}).get(arch, filename)
+            source = directory / filename
+            with source.open("rb") as payload:
+                digest = hashlib.file_digest(payload, "sha256").hexdigest()
+            target = out / f'{config["update_payload_prefix"]}{digest[:16]}-{filename}'
+            shutil.copyfile(source, target)
+            payloads.append((f"{platform}-{arch}", target))
+    return payloads
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -53,9 +72,10 @@ def main():
     environment.add_argument("platform", nargs="?")
     environment.add_argument("arch", nargs="?")
     environment.add_argument("--channel", help="also name this channel's signed manifest and its release")
-    update = commands.add_parser("update-artifacts")
+    update = commands.add_parser("update-payloads")
     update.add_argument("base")
     update.add_argument("directory", type=Path)
+    update.add_argument("out", type=Path)
     checksums = commands.add_parser("checksums")
     checksums.add_argument("directory", type=Path)
     args = parser.parse_args()
@@ -63,7 +83,8 @@ def main():
         print(manifest()["assets"][args.platform][args.arch])
     elif args.command == "env":
         config = manifest()
-        for key, field in [("INSTALL_SCRIPT", "install_script"), ("CHECKSUM_ASSET", "checksums")]:
+        for key, field in [("INSTALL_SCRIPT", "install_script"), ("CHECKSUM_ASSET", "checksums"),
+                           ("UPDATE_PAYLOAD_PREFIX", "update_payload_prefix")]:
             print(f"{key}={config[field]}")
         if args.channel:
             release = config["update_channels"][args.channel]
@@ -73,12 +94,9 @@ def main():
             print(f'RELEASE_ASSET={config["assets"][args.platform][args.arch]}')
             if args.platform == "windows":
                 print(f'AUXILIARY_ASSET={config["update_assets"][args.platform][args.arch]}')
-    elif args.command == "update-artifacts":
-        config = manifest()
-        for platform, arches in config["assets"].items():
-            for arch, filename in arches.items():
-                filename = config["update_assets"].get(platform, {}).get(arch, filename)
-                print(f"{platform}-{arch}={args.base}/{filename}={args.directory / filename}")
+    elif args.command == "update-payloads":
+        for platform, path in update_payloads(args.directory, args.out):
+            print(f"{platform}={args.base}/{path.name}={path}")
     elif args.command == "install-script":
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(render_installer())

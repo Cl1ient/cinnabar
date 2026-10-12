@@ -116,11 +116,18 @@ pub(crate) fn collect_sources(
         Changed<render_scene::ChunkRenderInstance>,
     >,
     mut removed: RemovedComponents<render_scene::ChunkRenderInstance>,
+    changed_emitters: Query<
+        (Entity, &render_scene::chunk::instance::ChunkLightEmitters),
+        Changed<render_scene::chunk::instance::ChunkLightEmitters>,
+    >,
+    mut removed_emitters: RemovedComponents<render_scene::chunk::instance::ChunkLightEmitters>,
 ) {
     let mut geometry_dirty = false;
     let mut lights_dirty = false;
     for entity in removed.read() {
         geometry_dirty |= cache.casters.remove(&entity).is_some();
+    }
+    for entity in removed_emitters.read() {
         lights_dirty |= cache.chunks.remove(&entity).is_some();
     }
     for (entity, chunk) in &changed {
@@ -137,11 +144,14 @@ pub(crate) fn collect_sources(
                 .insert(entity, CasterGeometry { key, cubes, models });
             geometry_dirty = true;
         }
+    }
+    for (entity, chunk) in &changed_emitters {
+        let key = chunk.key;
         let origin =
             Vec3::new(key.x as f32, key.y as f32, key.z as f32) * world::SUB_CHUNK_SIDE as f32;
         let lights = || {
             chunk
-                .light_emitters()
+                .emitters
                 .iter()
                 .filter(|light| light.emission > 0)
                 .map(|light| LightSource {

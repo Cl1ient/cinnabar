@@ -91,7 +91,7 @@ fn alternate_atlas_views_and_native_sampler_fit_baseline_limits_without_more_sto
     assert!(!material_shader::chunk_atlas_views_fit(&limits));
     limits.max_sampled_textures_per_shader_stage = required;
     assert!(material_shader::chunk_atlas_views_fit(&limits));
-    limits.max_bindings_per_bind_group = material_shader::LAST_CHUNK_BINDING;
+    limits.max_bindings_per_bind_group = material_shader::ACTIVE_LAST_CHUNK_BINDING;
     assert!(!material_shader::chunk_atlas_views_fit(&limits));
     limits.max_bindings_per_bind_group += 1;
     assert!(material_shader::chunk_atlas_views_fit(&limits));

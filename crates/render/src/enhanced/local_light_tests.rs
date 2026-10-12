@@ -290,3 +290,48 @@ fn indirect_light_signature_tracks_radiance_without_shadow_or_selection_order_ch
     data.lights[0].radiance_shadow[0] += 0.1;
     assert_ne!(data.illumination_signature(), signature);
 }
+
+/// Geometry-free sources enter and leave the light cache through their own component.
+#[test]
+fn emitter_component_updates_lights_without_a_geometry_publication() {
+    use render_scene::chunk::instance::ChunkLightEmitters;
+    let key = world::SubChunkKey::new(7, 2, 3, 4);
+    let mut app = App::new();
+    app.init_resource::<LocalLightSources>()
+        .add_systems(Update, collect_sources);
+    let entity = app
+        .world_mut()
+        .spawn(ChunkLightEmitters {
+            key,
+            emitters: Arc::from([meshing::BlockLightEmitter {
+                position: [1, 2, 3],
+                emission: 12,
+                material: 0,
+            }]),
+        })
+        .id();
+    app.update();
+    let cache = app.world().resource::<LocalLightSources>();
+    assert_eq!(
+        cache.chunks[&entity],
+        [LightSource {
+            position: Vec3::new(33.5, 50.5, 67.5),
+            level: 12,
+            dimension: 7,
+        }]
+    );
+    assert!(cache.casters.is_empty());
+    assert_eq!(cache.revision, 0);
+    let revision = cache.lights_revision;
+    app.update();
+    assert_eq!(
+        app.world().resource::<LocalLightSources>().lights_revision,
+        revision
+    );
+    app.world_mut().entity_mut(entity).despawn();
+    app.update();
+    let cache = app.world().resource::<LocalLightSources>();
+    assert!(cache.chunks.is_empty());
+    assert_ne!(cache.lights_revision, revision);
+    assert_eq!(cache.revision, 0);
+}

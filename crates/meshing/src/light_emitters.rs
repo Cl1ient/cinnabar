@@ -1,7 +1,10 @@
 //! Block-state light sources retained independently of greedy surface merging.
 
+#[cfg(feature = "enhanced")]
 use assets::{BlockFace, NetworkIdMode, RuntimeAssets};
+#[cfg(any(feature = "enhanced", test))]
 use std::collections::BTreeMap;
+#[cfg(any(feature = "enhanced", test))]
 use world::{SUB_CHUNK_SIDE, SubChunk};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,6 +14,8 @@ pub struct BlockLightEmitter {
     pub material: u32,
 }
 
+/// Collects emitting cells from every storage without requiring a visible face.
+#[cfg(feature = "enhanced")]
 pub(crate) fn collect_emitters(
     source: &SubChunk,
     assets: &RuntimeAssets,
@@ -25,6 +30,8 @@ pub(crate) fn collect_emitters(
     })
 }
 
+/// Keeps the strongest emitter at each cell across all storages.
+#[cfg(any(feature = "enhanced", test))]
 fn collect(source: &SubChunk, resolve: impl Fn(u32) -> (u8, u32)) -> Box<[BlockLightEmitter]> {
     let mut sources = BTreeMap::new();
     for storage in source.storages() {
@@ -67,6 +74,27 @@ fn collect(source: &SubChunk, resolve: impl Fn(u32) -> (u8, u32)) -> Box<[BlockL
             material,
         })
         .collect()
+}
+
+impl crate::ChunkMesh {
+    /// Returns block emitters collected by an Enhanced mesh build.
+    #[must_use]
+    pub fn light_emitters(&self) -> &[crate::BlockLightEmitter] {
+        #[cfg(feature = "enhanced")]
+        {
+            &self.light_emitters
+        }
+        #[cfg(not(feature = "enhanced"))]
+        {
+            &[]
+        }
+    }
+
+    /// Removes emitters without changing the visible geometry or its byte accounting.
+    #[cfg(feature = "enhanced")]
+    pub fn take_light_emitters(&mut self) -> Box<[crate::BlockLightEmitter]> {
+        std::mem::take(&mut self.light_emitters)
+    }
 }
 
 #[cfg(test)]

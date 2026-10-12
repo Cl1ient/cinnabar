@@ -5,11 +5,13 @@ use super::bind_groups::{
     plan_queue_texture_mips, storage_table_fits, write_texture_mips,
 };
 use crate::chunk::*;
+#[cfg(feature = "enhanced")]
 use assets::TextureMip;
 use render_scene::{
     TextureArrayLimits, TextureMipUploadPlan, diagnostic_texture_page, plan_texture_page_bindings,
 };
 /// Unused material bindings remain valid without deriving materials from carrier albedo.
+#[cfg(feature = "enhanced")]
 fn neutral_pbr_layers() -> (TextureArray, TextureArray) {
     let [normal, material] = [[128, 128, 255, 128], [0, 0, 255, 0]].map(|rgba| TextureArray {
         layers: 1,
@@ -22,16 +24,18 @@ fn neutral_pbr_layers() -> (TextureArray, TextureArray) {
 }
 
 /// Rebuilds the carrier while reusing unchanged authored GPU maps; changed maps start on fallback.
+#[allow(unused_mut)]
 pub(super) fn build_carrier_texture_assets(
     assets: &ChunkTextureAssets,
-    previous: Option<&PreparedChunkTextureAssets>,
+    _previous: Option<&PreparedChunkTextureAssets>,
     device: &RenderDevice,
     queue: &RenderQueue,
 ) -> Option<(PreparedChunkTextureAssets, ChunkTextureUploadStats)> {
     let carrier = assets.with_updated_enhanced(None);
     let (mut prepared, mut stats) = build_chunk_texture_assets(&carrier, device, queue)?;
     prepared.identity = assets.identity();
-    if let Some(previous) = previous.filter(|previous| {
+    #[cfg(feature = "enhanced")]
+    if let Some(previous) = _previous.filter(|previous| {
         previous
             .authored_source
             .as_ref()
@@ -133,29 +137,37 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
     }
     let bound_pages = [&terrain_pages[0], &terrain_pages[1]];
 
+    #[cfg(feature = "enhanced")]
     let pbr_pages = [neutral_pbr_layers(), neutral_pbr_layers()];
+    #[cfg(feature = "enhanced")]
     let pbr_upload_plans = pbr_pages.iter().map(|(normal, mer)| {
         let normal_plans = plan_queue_texture_mips(normal).ok()?;
         let mer_plans = plan_queue_texture_mips(mer).ok()?;
         Some((normal_plans, mer_plans))
     });
+    #[cfg(feature = "enhanced")]
     let pbr_upload_plans = pbr_upload_plans.into_iter().collect::<Option<Vec<_>>>()?;
 
     // Missing authored maps use neutral shader defaults; placeholder views keep bindings valid.
+    #[cfg(feature = "enhanced")]
     let fallback_color_pages = [
         diagnostic_texture_page(bound_pages[0]).ok()?,
         diagnostic_texture_page(bound_pages[1]).ok()?,
     ];
+    #[cfg(feature = "enhanced")]
     let fallback_normal_pages = [
         diagnostic_texture_page(&pbr_pages[0].0).ok()?,
         diagnostic_texture_page(&pbr_pages[1].0).ok()?,
     ];
+    #[cfg(feature = "enhanced")]
     let fallback_mer_pages = [
         diagnostic_texture_page(&pbr_pages[0].1).ok()?,
         diagnostic_texture_page(&pbr_pages[1].1).ok()?,
     ];
+    #[cfg(feature = "enhanced")]
     let fallback_texture_refs =
         vec![u32::MAX; assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS];
+    #[cfg(feature = "enhanced")]
     let enhanced = assets.enhanced().filter(|authored| {
         let supported = authored.fits_device_limits(&device_limits);
         if !supported {
@@ -163,12 +175,17 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         }
         supported
     });
+    #[cfg(feature = "enhanced")]
     let enhanced_color_pages = enhanced.map_or(&fallback_color_pages, |assets| &assets.color_pages);
+    #[cfg(feature = "enhanced")]
     let enhanced_normal_pages =
         enhanced.map_or(&fallback_normal_pages, |assets| &assets.normal_pages);
+    #[cfg(feature = "enhanced")]
     let enhanced_mer_pages = enhanced.map_or(&fallback_mer_pages, |assets| &assets.mer_pages);
+    #[cfg(feature = "enhanced")]
     let enhanced_texture_refs: &[u32] =
         enhanced.map_or(&fallback_texture_refs, |assets| &assets.texture_refs);
+    #[cfg(feature = "enhanced")]
     let enhanced_pages = [
         &enhanced_color_pages[0],
         &enhanced_color_pages[1],
@@ -177,11 +194,14 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         &enhanced_mer_pages[0],
         &enhanced_mer_pages[1],
     ];
+    #[cfg(feature = "enhanced")]
     let enhanced_upload_plans = enhanced_pages
         .iter()
         .map(|texture| plan_queue_texture_mips(texture).ok())
         .collect::<Option<Vec<_>>>()?;
+    #[cfg(feature = "enhanced")]
     let enhanced_ref_bytes = std::mem::size_of_val(enhanced_texture_refs);
+    #[cfg(feature = "enhanced")]
     if !storage_table_fits(
         enhanced_ref_bytes,
         device_limits.max_buffer_size,
@@ -190,7 +210,6 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         bevy::log::error!("authored Enhanced texture reference table exceeds adapter limits");
         return None;
     }
-
     let material_words = assets
         .assets()
         .materials()
@@ -298,6 +317,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         &upload_plans[1],
         "global chunk texture page 1",
     );
+    #[cfg(feature = "enhanced")]
     let (normal_texture_0, normal_view_0, normal_uploaded_0) = upload_linear_texture_page(
         render_device,
         render_queue,
@@ -305,6 +325,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         &pbr_upload_plans[0].0,
         "enhanced normal page 0",
     );
+    #[cfg(feature = "enhanced")]
     let (normal_texture_1, normal_view_1, normal_uploaded_1) = upload_linear_texture_page(
         render_device,
         render_queue,
@@ -312,6 +333,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         &pbr_upload_plans[1].0,
         "enhanced normal page 1",
     );
+    #[cfg(feature = "enhanced")]
     let (mer_texture_0, mer_view_0, mer_uploaded_0) = upload_linear_texture_page(
         render_device,
         render_queue,
@@ -319,6 +341,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         &pbr_upload_plans[0].1,
         "enhanced MER page 0",
     );
+    #[cfg(feature = "enhanced")]
     let (mer_texture_1, mer_view_1, mer_uploaded_1) = upload_linear_texture_page(
         render_device,
         render_queue,
@@ -326,6 +349,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         &pbr_upload_plans[1].1,
         "enhanced MER page 1",
     );
+    #[cfg(feature = "enhanced")]
     let (enhanced_color_texture_0, enhanced_color_view_0, enhanced_color_uploaded_0) =
         upload_texture_page(
             render_device,
@@ -334,6 +358,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             &enhanced_upload_plans[0],
             "authored Enhanced color page 0",
         );
+    #[cfg(feature = "enhanced")]
     let (enhanced_color_texture_1, enhanced_color_view_1, enhanced_color_uploaded_1) =
         upload_texture_page(
             render_device,
@@ -342,6 +367,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             &enhanced_upload_plans[1],
             "authored Enhanced color page 1",
         );
+    #[cfg(feature = "enhanced")]
     let (enhanced_normal_texture_0, enhanced_normal_view_0, enhanced_normal_uploaded_0) =
         upload_linear_texture_page(
             render_device,
@@ -350,6 +376,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             &enhanced_upload_plans[2],
             "authored Enhanced normal page 0",
         );
+    #[cfg(feature = "enhanced")]
     let (enhanced_normal_texture_1, enhanced_normal_view_1, enhanced_normal_uploaded_1) =
         upload_linear_texture_page(
             render_device,
@@ -358,6 +385,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             &enhanced_upload_plans[3],
             "authored Enhanced normal page 1",
         );
+    #[cfg(feature = "enhanced")]
     let (enhanced_mer_texture_0, enhanced_mer_view_0, enhanced_mer_uploaded_0) =
         upload_linear_texture_page(
             render_device,
@@ -366,6 +394,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             &enhanced_upload_plans[4],
             "authored Enhanced MER page 0",
         );
+    #[cfg(feature = "enhanced")]
     let (enhanced_mer_texture_1, enhanced_mer_view_1, enhanced_mer_uploaded_1) =
         upload_linear_texture_page(
             render_device,
@@ -374,6 +403,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             &enhanced_upload_plans[5],
             "authored Enhanced MER page 1",
         );
+    #[cfg(feature = "enhanced")]
     let enhanced_texture_refs = render_device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("authored Enhanced texture references"),
         contents: bytemuck::cast_slice(enhanced_texture_refs),
@@ -406,33 +436,38 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         .flat_map(|texture| texture.mips.iter())
         .map(|mip| mip.rgba8.len() as u64)
         .sum();
-    stats.queue_upload_bytes = uploaded_0
-        .saturating_add(uploaded_1)
-        .saturating_add(normal_uploaded_0)
-        .saturating_add(normal_uploaded_1)
-        .saturating_add(mer_uploaded_0)
-        .saturating_add(mer_uploaded_1)
-        .saturating_add(enhanced_color_uploaded_0)
-        .saturating_add(enhanced_color_uploaded_1)
-        .saturating_add(enhanced_normal_uploaded_0)
-        .saturating_add(enhanced_normal_uploaded_1)
-        .saturating_add(enhanced_mer_uploaded_0)
-        .saturating_add(enhanced_mer_uploaded_1);
-    stats.texture_bytes_including_mips = stats.texture_bytes_including_mips.saturating_add(
-        pbr_pages
-            .iter()
-            .flat_map(|(normal, mer)| normal.mips.iter().chain(mer.mips.iter()))
-            .map(|mip| mip.rgba8.len() as u64)
-            .sum::<u64>(),
-    );
-    stats.texture_bytes_including_mips = stats.texture_bytes_including_mips.saturating_add(
-        enhanced_pages
-            .iter()
-            .flat_map(|texture| texture.mips.iter())
-            .map(|mip| mip.rgba8.len() as u64)
-            .sum::<u64>(),
-    );
+    stats.queue_upload_bytes = uploaded_0.saturating_add(uploaded_1);
+    #[cfg(feature = "enhanced")]
+    {
+        stats.queue_upload_bytes = stats
+            .queue_upload_bytes
+            .saturating_add(normal_uploaded_0)
+            .saturating_add(normal_uploaded_1)
+            .saturating_add(mer_uploaded_0)
+            .saturating_add(mer_uploaded_1)
+            .saturating_add(enhanced_color_uploaded_0)
+            .saturating_add(enhanced_color_uploaded_1)
+            .saturating_add(enhanced_normal_uploaded_0)
+            .saturating_add(enhanced_normal_uploaded_1)
+            .saturating_add(enhanced_mer_uploaded_0)
+            .saturating_add(enhanced_mer_uploaded_1);
+        stats.texture_bytes_including_mips = stats.texture_bytes_including_mips.saturating_add(
+            pbr_pages
+                .iter()
+                .flat_map(|(normal, mer)| normal.mips.iter().chain(mer.mips.iter()))
+                .map(|mip| mip.rgba8.len() as u64)
+                .sum::<u64>(),
+        );
+        stats.texture_bytes_including_mips = stats.texture_bytes_including_mips.saturating_add(
+            enhanced_pages
+                .iter()
+                .flat_map(|texture| texture.mips.iter())
+                .map(|mip| mip.rgba8.len() as u64)
+                .sum::<u64>(),
+        );
+    }
     let prepared = PreparedChunkTextureAssets {
+        #[cfg(feature = "enhanced")]
         authored_source: enhanced.cloned(),
         identity,
         material_buffer,
@@ -441,13 +476,16 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         model_template_buffer,
         _textures: [texture_0, texture_1],
         views: [view_0, view_1],
+        #[cfg(feature = "enhanced")]
         _pbr_textures: [
             normal_texture_0,
             normal_texture_1,
             mer_texture_0,
             mer_texture_1,
         ],
+        #[cfg(feature = "enhanced")]
         pbr_views: [normal_view_0, normal_view_1, mer_view_0, mer_view_1],
+        #[cfg(feature = "enhanced")]
         _enhanced_textures: [
             enhanced_color_texture_0,
             enhanced_color_texture_1,
@@ -456,6 +494,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             enhanced_mer_texture_0,
             enhanced_mer_texture_1,
         ],
+        #[cfg(feature = "enhanced")]
         enhanced_views: [
             enhanced_color_view_0,
             enhanced_color_view_1,
@@ -464,12 +503,15 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             enhanced_mer_view_0,
             enhanced_mer_view_1,
         ],
+        #[cfg(feature = "enhanced")]
         enhanced_texture_refs,
+        #[cfg(feature = "enhanced")]
         authored_bytes: enhanced_pages
             .iter()
             .flat_map(|texture| texture.mips.iter())
             .map(|mip| mip.rgba8.len() as u64)
             .sum(),
+        #[cfg(feature = "enhanced")]
         authored_upload_bytes: enhanced_color_uploaded_0
             .saturating_add(enhanced_color_uploaded_1)
             .saturating_add(enhanced_normal_uploaded_0)
@@ -479,8 +521,10 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         native_leaf_views,
         native_leaf_sampler,
         sampler,
+        #[cfg(feature = "enhanced")]
         pbr_sampler: render_device
             .create_sampler(&crate::material_shader::pbr_sampler_descriptor()),
+        #[cfg(feature = "enhanced")]
         enhanced_sampler: render_device
             .create_sampler(&crate::material_shader::pbr_sampler_descriptor()),
     };
@@ -505,6 +549,7 @@ pub(in crate::chunk) fn upload_texture_page(
     )
 }
 
+#[cfg(feature = "enhanced")]
 fn upload_linear_texture_page(
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
@@ -583,8 +628,53 @@ fn upload_texture_page_format(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "enhanced")]
     use render_scene::{EnhancedTextureAssets, plan_texture_mip_uploads};
 
+    /// Ordinary carrier uploads fit the original texture and sampler limits.
+    #[cfg(not(feature = "enhanced"))]
+    #[test]
+    fn vanilla_carrier_keeps_its_binding_limits_and_upload_bytes() {
+        let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_sampled_textures_per_shader_stage: 4,
+                max_samplers_per_shader_stage: 2,
+                max_bindings_per_bind_group: 20,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let device = RenderDevice::from(device);
+        let queue = RenderQueue::new(queue);
+        let carrier = ChunkTextureAssets::default();
+        let (prepared, stats) = build_chunk_texture_assets(&carrier, &device, &queue).unwrap();
+        assert_eq!(prepared.identity, carrier.identity());
+        let pages = carrier.assets().texture_pages();
+        let fallback = diagnostic_texture_page(&pages[0].texture).unwrap();
+        let bindings = plan_texture_page_bindings(pages.len()).unwrap();
+        let expected: u64 = bindings
+            .into_iter()
+            .map(|binding| {
+                let page = match binding {
+                    TexturePageBinding::Asset(index) => {
+                        carrier.assets().terrain_texture_page(index).unwrap()
+                    }
+                    TexturePageBinding::DiagnosticFallback => std::borrow::Cow::Owned(
+                        assets::rebuild_legacy_terrain_mips(&fallback).unwrap(),
+                    ),
+                };
+                page.mips
+                    .iter()
+                    .map(|mip| mip.rgba8.len() as u64)
+                    .sum::<u64>()
+            })
+            .sum();
+
+        assert_eq!(stats.texture_bytes_including_mips, expected);
+        assert_eq!(stats.queue_upload_bytes, expected);
+    }
+
+    #[cfg(feature = "enhanced")]
     #[test]
     fn oversized_optional_maps_do_not_reject_a_server_pack_atlas() {
         let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor {
@@ -642,6 +732,7 @@ mod tests {
         assert_eq!(prepared.unwrap().0.identity, replacement.identity());
     }
 
+    #[cfg(feature = "enhanced")]
     #[test]
     fn fallback_material_bindings_are_neutral_single_texels() {
         let (normal, material) = neutral_pbr_layers();

@@ -12,15 +12,23 @@ pub(crate) const ENHANCED_SAMPLER_BINDING: u32 = 30;
 pub(crate) const ENHANCED_TEXTURE_REF_BINDING: u32 = 31;
 pub(crate) const LAST_CHUNK_BINDING: u32 =
     PBR_NORMAL_TEXTURE_BINDINGS[assets::MAX_TEXTURE_PAGES - 1];
-pub(crate) const CHUNK_SAMPLER_COUNT: u32 = 4;
+pub(crate) const ACTIVE_LAST_CHUNK_BINDING: u32 = if cfg!(feature = "enhanced") {
+    LAST_CHUNK_BINDING
+} else {
+    BIOME_QUERY_TABLES_BINDING
+};
+pub(crate) const CHUNK_SAMPLER_COUNT: u32 = 2 + if cfg!(feature = "enhanced") { 2 } else { 0 };
 pub(crate) const CHUNK_SAMPLED_TEXTURE_BINDINGS: u32 = (assets::MAX_TEXTURE_PAGES
     + NATIVE_LEAF_TEXTURE_BINDINGS.len()
-    + PBR_NORMAL_TEXTURE_BINDINGS.len()
-    + PBR_MER_TEXTURE_BINDINGS.len()
-    + ENHANCED_COLOR_TEXTURE_BINDINGS.len()
-    + ENHANCED_NORMAL_TEXTURE_BINDINGS.len()
-    + ENHANCED_MER_TEXTURE_BINDINGS.len())
-    as u32;
+    + if cfg!(feature = "enhanced") {
+        PBR_NORMAL_TEXTURE_BINDINGS.len()
+            + PBR_MER_TEXTURE_BINDINGS.len()
+            + ENHANCED_COLOR_TEXTURE_BINDINGS.len()
+            + ENHANCED_NORMAL_TEXTURE_BINDINGS.len()
+            + ENHANCED_MER_TEXTURE_BINDINGS.len()
+    } else {
+        0
+    }) as u32;
 pub(crate) const BIOME_QUERY_TABLES_BINDING: u32 = 19;
 pub(crate) const WORLD_CLOCK_WORDS: usize = 4;
 pub(crate) const WORLD_UNIFORM_BYTES: u64 =
@@ -84,7 +92,7 @@ pub(crate) fn bind_biome_tables(source: &str) -> String {
 pub(crate) fn chunk_atlas_views_fit(limits: &wgpu::Limits) -> bool {
     limits.max_sampled_textures_per_shader_stage >= CHUNK_SAMPLED_TEXTURE_BINDINGS
         && limits.max_samplers_per_shader_stage >= CHUNK_SAMPLER_COUNT
-        && limits.max_bindings_per_bind_group > LAST_CHUNK_BINDING
+        && limits.max_bindings_per_bind_group > ACTIVE_LAST_CHUNK_BINDING
 }
 
 /// Terrain samples nearest texels and interpolates only between mip levels.
@@ -102,6 +110,8 @@ pub(crate) fn native_leaf_sampler_descriptor() -> wgpu::SamplerDescriptor<'stati
     }
 }
 
+/// Filters authored linear maps across texels, mips, and oblique surfaces.
+#[cfg(feature = "enhanced")]
 pub(crate) fn pbr_sampler_descriptor() -> wgpu::SamplerDescriptor<'static> {
     wgpu::SamplerDescriptor {
         label: Some("enhanced linear PBR sampler"),

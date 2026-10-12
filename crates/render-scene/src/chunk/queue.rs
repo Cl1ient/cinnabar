@@ -624,7 +624,7 @@ impl ChunkRenderQueue {
         }
         self.next_generation = self.next_generation.wrapping_add(1).max(1);
         let generation = token.map_or(self.next_generation, |token| token.generation);
-        if empty_publication(&mesh) {
+        if mesh.is_empty() {
             self.render_manifest.remove(&key);
         } else {
             self.render_manifest.insert(key, generation);
@@ -686,10 +686,4 @@ pub const fn chunk_origin(key: SubChunkKey) -> [i32; 3] {
         key.y.saturating_mul(16),
         key.z.saturating_mul(16),
     ]
-}
-
-/// A publication removes its render instance only when neither geometry nor lights remain.
-#[must_use]
-pub fn empty_publication(mesh: &ChunkMesh) -> bool {
-    mesh.is_empty() && mesh.light_emitters().is_empty()
 }

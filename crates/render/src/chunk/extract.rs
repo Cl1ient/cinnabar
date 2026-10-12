@@ -40,11 +40,37 @@ fn extract_chunk_render_instances(
         .as_deref()
         .map(|profiler| profiler.time(RuntimeStage::ChunkExtraction));
     let mut values = Vec::with_capacity(*previous_len);
-    values.extend(
-        query
-            .iter()
-            .map(|(render_entity, instance)| (render_entity, instance.clone())),
-    );
+    for (render_entity, instance) in &query {
+        #[cfg(feature = "enhanced")]
+        if !extract_enhanced_chunk(&mut commands, render_entity.id(), instance) {
+            continue;
+        }
+        values.push((render_entity, instance.clone()));
+    }
     *previous_len = values.len();
     commands.try_insert_batch(values);
+}
+
+/// Publishes lights separately and retires GPU geometry for CPU-only instances.
+#[cfg(feature = "enhanced")]
+pub(in crate::chunk) fn extract_enhanced_chunk(
+    commands: &mut Commands,
+    entity: Entity,
+    instance: &ChunkRenderInstance,
+) -> bool {
+    use render_scene::chunk::instance::ChunkLightEmitters;
+    if instance.light_emitters().is_empty() {
+        commands.entity(entity).remove::<ChunkLightEmitters>();
+    } else {
+        commands.entity(entity).insert(ChunkLightEmitters {
+            key: instance.key,
+            emitters: Arc::clone(&instance.light_emitters),
+        });
+    }
+    if instance.geometry_is_empty() {
+        commands.entity(entity).remove::<ChunkRenderInstance>();
+        false
+    } else {
+        true
+    }
 }

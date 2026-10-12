@@ -449,6 +449,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 ty: BindingType::Sampler(SamplerBindingType::Filtering),
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::PBR_NORMAL_TEXTURE_BINDINGS[0],
                 visibility: ShaderStages::FRAGMENT,
@@ -459,6 +460,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::PBR_NORMAL_TEXTURE_BINDINGS[1],
                 visibility: ShaderStages::FRAGMENT,
@@ -469,6 +471,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::PBR_MER_TEXTURE_BINDINGS[0],
                 visibility: ShaderStages::FRAGMENT,
@@ -479,6 +482,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::PBR_MER_TEXTURE_BINDINGS[1],
                 visibility: ShaderStages::FRAGMENT,
@@ -489,12 +493,14 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::PBR_SAMPLER_BINDING,
                 visibility: ShaderStages::FRAGMENT,
                 ty: BindingType::Sampler(SamplerBindingType::Filtering),
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_COLOR_TEXTURE_BINDINGS[0],
                 visibility: ShaderStages::FRAGMENT,
@@ -505,6 +511,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_COLOR_TEXTURE_BINDINGS[1],
                 visibility: ShaderStages::FRAGMENT,
@@ -515,6 +522,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_NORMAL_TEXTURE_BINDINGS[0],
                 visibility: ShaderStages::FRAGMENT,
@@ -525,6 +533,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_NORMAL_TEXTURE_BINDINGS[1],
                 visibility: ShaderStages::FRAGMENT,
@@ -535,6 +544,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_MER_TEXTURE_BINDINGS[0],
                 visibility: ShaderStages::FRAGMENT,
@@ -545,6 +555,7 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_MER_TEXTURE_BINDINGS[1],
                 visibility: ShaderStages::FRAGMENT,
@@ -555,12 +566,14 @@ pub(crate) fn chunk_bind_group_layout() -> BindGroupLayoutDescriptor {
                 },
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_SAMPLER_BINDING,
                 visibility: ShaderStages::FRAGMENT,
                 ty: BindingType::Sampler(SamplerBindingType::Filtering),
                 count: None,
             },
+            #[cfg(feature = "enhanced")]
             BindGroupLayoutEntry {
                 binding: crate::material_shader::ENHANCED_TEXTURE_REF_BINDING,
                 visibility: if render_model::ENHANCED_RENDERING_ENABLED {
@@ -669,8 +682,29 @@ mod review_tests {
         ));
         assert_eq!(
             bindings.last().copied(),
-            Some(crate::material_shader::LAST_CHUNK_BINDING)
+            Some(crate::material_shader::ACTIVE_LAST_CHUNK_BINDING)
         );
+    }
+
+    /// Binding admission follows the active layout in both build modes.
+    #[test]
+    fn atlas_admission_counts_match_the_active_layout() {
+        let layout = chunk_bind_group_layout();
+        let textures = layout
+            .entries
+            .iter()
+            .filter(|entry| matches!(entry.ty, BindingType::Texture { .. }))
+            .count() as u32;
+        let samplers = layout
+            .entries
+            .iter()
+            .filter(|entry| matches!(entry.ty, BindingType::Sampler(_)))
+            .count() as u32;
+        assert_eq!(
+            textures,
+            crate::material_shader::CHUNK_SAMPLED_TEXTURE_BINDINGS
+        );
+        assert_eq!(samplers, crate::material_shader::CHUNK_SAMPLER_COUNT);
     }
 
     #[test]

@@ -50,6 +50,7 @@ pub(super) fn ocean_surface(key: SubChunkKey, shore: bool) -> ChunkRenderInstanc
         }
     }
     ChunkRenderInstance {
+        #[cfg(feature = "enhanced")]
         light_emitters: Arc::from([]),
         cube_layout: CubeQuadLayout::default(),
         key,

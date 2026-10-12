@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod alpha_edge_tests;
 pub(in crate::chunk) mod arena;
+#[cfg(feature = "enhanced")]
 mod authored_upload;
 pub(crate) mod bind_groups;
 pub(in crate::chunk) mod graphics_metadata;

@@ -273,18 +273,59 @@ pub(in crate::chunk) fn transparent_model_draw_candidate(
                 f32::from(position[2]),
             )
     }) / (4.0 * 256.0);
-    // Placement is the same translation and turn for every corner, so it carries the centroid.
-    let placed = reference.place_vertex(
-        template.flags,
-        quad_index,
-        centroid.to_array(),
-        origin,
-        model_lighting,
-    )?;
-    Some((
-        Vec3::from_array(origin.map(|coordinate| coordinate as f32)) + Vec3::from_array(placed),
-        [local_model_ref.checked_add(model_record_base)?, quad_index],
-    ))
+    #[cfg(not(feature = "enhanced"))]
+    {
+        let mut centroid = centroid;
+        let has_offset = model_ref[0] & meshing::MODEL_REF_FLAG_RANDOM_OFFSET != 0;
+        if template.flags & assets::MODEL_TEMPLATE_FLAG_BAMBOO != 0 {
+            let transform = model_ref[0] >> 12;
+            let mut offset = assets::bamboo::quad_offset(transform, quad_index);
+            if has_offset {
+                let default = block_transform::bamboo::offset_from_transform(transform);
+                offset = std::array::from_fn(|axis| offset[axis] - default[axis]);
+            }
+            centroid += Vec3::from_array(offset);
+        } else {
+            let centered = centroid - Vec3::new(0.5, 0.0, 0.5);
+            centroid = match (model_ref[0] >> 12) & 3 {
+                1 => Vec3::new(-centered.z, centered.y, centered.x),
+                2 => Vec3::new(-centered.x, centered.y, -centered.z),
+                3 => Vec3::new(centered.z, centered.y, -centered.x),
+                _ => centered,
+            } + Vec3::new(0.5, 0.0, 0.5);
+        }
+        if has_offset {
+            let base = model_ref[2] as usize;
+            let records = model_lighting.get(base.checked_sub(2)?..base)?;
+            centroid += Vec3::from_array(meshing::PackedQuadLighting::offset_from_prefix([
+                records[0], records[1],
+            ]));
+        }
+        let block = Vec3::new(
+            (model_ref[0] & 15) as f32,
+            ((model_ref[0] >> 4) & 15) as f32,
+            ((model_ref[0] >> 8) & 15) as f32,
+        );
+        Some((
+            Vec3::from_array(origin.map(|coordinate| coordinate as f32)) + block + centroid,
+            [local_model_ref.checked_add(model_record_base)?, quad_index],
+        ))
+    }
+    #[cfg(feature = "enhanced")]
+    {
+        // Placement is the same translation and turn for every corner, so it carries the centroid.
+        let placed = reference.place_vertex(
+            template.flags,
+            quad_index,
+            centroid.to_array(),
+            origin,
+            model_lighting,
+        )?;
+        Some((
+            Vec3::from_array(origin.map(|coordinate| coordinate as f32)) + Vec3::from_array(placed),
+            [local_model_ref.checked_add(model_record_base)?, quad_index],
+        ))
+    }
 }
 
 pub(in crate::chunk) fn sort_transparent_model_candidates(

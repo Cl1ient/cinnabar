@@ -36,12 +36,6 @@ pub(crate) fn candidate(artifact: &Path, work: &Path, target: &Path) -> Result<P
 /// `NAME="value"`; Windows paths never contain quotes.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn msiexec_arguments(msi: &Path, target: &Path) -> Vec<OsString> {
-    let quoted = |prefix: &str, path: &Path| {
-        let mut argument = OsString::from(format!("{prefix}\""));
-        argument.push(path.as_os_str());
-        argument.push("\"");
-        argument
-    };
     vec![
         "/i".into(),
         quoted("", msi),
@@ -50,6 +44,26 @@ pub(crate) fn msiexec_arguments(msi: &Path, target: &Path) -> Vec<OsString> {
         "REBOOT=ReallySuppress".into(),
         quoted("INSTALLFOLDER=", target),
     ]
+}
+
+/// `prefix"path"`, where no backslash may escape the closing quote: trailing separators are
+/// dropped, and a bare drive or root keeps its backslash doubled, which parses as one.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn quoted(prefix: &str, path: &Path) -> OsString {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    let end = bytes
+        .iter()
+        .rposition(|&byte| !matches!(byte, b'\\' | b'/'))
+        .map_or(0, |last| last + 1);
+    // SAFETY: only trailing ASCII separators are cut, which leaves valid encoded bytes.
+    let value = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(&bytes[..end]) };
+    let mut argument = OsString::from(format!("{prefix}\""));
+    argument.push(value);
+    if end == 0 || bytes[end - 1] == b':' {
+        argument.push(r"\\");
+    }
+    argument.push("\"");
+    argument
 }
 
 /// Runs Windows Installer passively without requesting elevation or forcing a reboot.

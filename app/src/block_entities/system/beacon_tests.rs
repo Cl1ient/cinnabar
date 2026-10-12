@@ -140,7 +140,7 @@ fn fixture(beacon_count: usize, eye: Vec3, fill_portals: bool) -> World {
         pixels_sha256: sha2::Sha256::digest([255u8; 4]).into(),
         width: 1,
         height: 1,
-        pixels: assets::FontPixels::Rgba8(Box::new([255; 4])),
+        pixels: assets::FontPixels::Rgba8(std::sync::Arc::new([255; 4])),
     };
     let glyph = assets::GlyphMetrics {
         codepoint: '\u{fffd}',

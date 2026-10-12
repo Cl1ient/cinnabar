@@ -5,7 +5,8 @@ use assets::BlockFace;
 
 /// Whether compilation needs all face selectors for a dedicated pot-content model.
 pub(in crate::compiler) fn is_record(record: &RegistryRecord) -> bool {
-    record.model_family == ModelFamily::Cross
+    (record.model_family == ModelFamily::Cross
+        && !matches!(record.name.as_ref(), "minecraft:fire" | "minecraft:soul_fire"))
         || matches!(
             record.name.as_ref(),
             "minecraft:cactus"

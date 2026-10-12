@@ -10,6 +10,7 @@ use std::sync::Arc;
 use ui_engine::test_support::fixture_font;
 
 pub use crate::ui_runtime::presentation::forms::pack_harness;
+pub use crate::ui_runtime::presentation::forms::snapshot::{rasterize, write as write_snapshot};
 
 /// Builds every required HUD texture with deterministic synthetic pixels.
 pub fn fixture_hud() -> Arc<RuntimeHudCatalog> {

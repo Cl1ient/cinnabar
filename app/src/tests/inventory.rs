@@ -7,7 +7,7 @@ use protocol::{
 
 use pack_runtime::{BootstrapGenerationDisposition, classify_bootstrap_generation};
 use {
-    crate::runtime::network::{
+    crate::runtime::network::equipment::{
         EquipmentIngress, publish_equipment_identity, route_equipment_ingress,
     },
     client_runtime::inventory::{

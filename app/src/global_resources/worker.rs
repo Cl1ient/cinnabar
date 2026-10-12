@@ -292,7 +292,10 @@ fn act(
         Action::ToggleAvailable => snapshot.available_expanded = !snapshot.available_expanded,
         Action::ToggleActive => snapshot.active_expanded = !snapshot.active_expanded,
         Action::Apply => {
-            let stack = library.preview()?;
+            let stack = {
+                let _zone = bevy::log::info_span!("pack_apply.preview").entered();
+                library.preview()?
+            };
             let _ = outgoing.send(Event::Apply(stack, library.active().to_vec()));
             snapshot.message = "Preparing resource packs…".into();
         }

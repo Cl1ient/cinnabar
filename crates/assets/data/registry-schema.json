@@ -1,5 +1,6 @@
 {
-  "magic": "BREG1003",
+  "magic": "BREG1004",
+  "previous_magic": "BREG1003",
   "legacy_protocol": 1001,
   "physics_magic": "PREG1002",
   "physics_legacy_magic": "PREG1001",
@@ -117,6 +118,34 @@
       ],
       "read": true,
       "read_visibility": "pub(super)"
+    },
+    {
+      "name": "BeaconTint",
+      "default": "Unresolved",
+      "go_prefix": "BeaconTint",
+      "go_max": "maxBeaconTint",
+      "values": [
+        {"name": "Unresolved", "value": 0},
+        {"name": "NoTinting", "value": 1},
+        {"name": "White", "value": 2},
+        {"name": "Orange", "value": 3},
+        {"name": "Magenta", "value": 4},
+        {"name": "LightBlue", "value": 5},
+        {"name": "Yellow", "value": 6},
+        {"name": "Lime", "value": 7},
+        {"name": "Pink", "value": 8},
+        {"name": "Gray", "value": 9},
+        {"name": "LightGray", "value": 10},
+        {"name": "Cyan", "value": 11},
+        {"name": "Purple", "value": 12},
+        {"name": "Blue", "value": 13},
+        {"name": "Brown", "value": 14},
+        {"name": "Green", "value": 15},
+        {"name": "Red", "value": 16},
+        {"name": "Black", "value": 17}
+      ],
+      "read": true,
+      "read_visibility": "pub(super)"
     }
   ],
   "flags": [
@@ -197,7 +226,8 @@
         {"rust_name": "model_state", "go_name": "ModelState", "rust_type": "ModelState", "go_type": "ModelState", "public": true},
         {"rust_name": "face_coverage", "go_name": "FaceCoverage", "rust_type": "u8", "go_type": "uint8", "public": true},
         {"rust_name": "collision_seed", "go_name": "CollisionSeed", "rust_type": "CollisionSeed", "go_type": "CollisionSeed", "public": true},
-        {"rust_name": "provenance", "go_name": "Provenance", "rust_type": "RegistryProvenance", "go_type": "uint8", "public": true}
+        {"rust_name": "provenance", "go_name": "Provenance", "rust_type": "RegistryProvenance", "go_type": "uint8", "public": true},
+        {"rust_name": "beacon_tint", "go_name": "BeaconTint", "rust_type": "BeaconTint", "go_type": "BeaconTint", "public": true}
       ],
       "doc": "One canonical state from the deterministic block registry."
     },
@@ -231,6 +261,7 @@
     {"name": "shape_id", "type": "u16", "go_value": "record.CollisionSeed.ShapeID"},
     {"name": "name_len", "type": "u16", "go_value": "uint16(len(record.Name))"},
     {"name": "state_len", "type": "u32", "go_value": "uint32(len(record.StateJSON))"},
-    {"name": "values", "type": "u32[8]", "go_value": "record.ModelState.Values"}
+    {"name": "values", "type": "u32[8]", "go_value": "record.ModelState.Values"},
+    {"name": "beacon_tint", "type": "u8", "go_value": "uint8(record.BeaconTint)", "previous_default": 0}
   ]
 }

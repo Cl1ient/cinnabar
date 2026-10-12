@@ -15,6 +15,8 @@ fn stale_worker_failure_does_not_consume_a_newer_request() {
             revision: 0,
             generation: 0,
             result: Mutex::new(rx),
+            carrier: Mutex::new(mpsc::sync_channel(1).1),
+            early: None,
         });
     }
     tx.send(Err("stale failure".into())).unwrap();
@@ -39,6 +41,8 @@ fn stale_session_worker_disconnect_does_not_fail_the_current_session() {
             revision: 1,
             generation: 1,
             result: Mutex::new(rx),
+            carrier: Mutex::new(mpsc::sync_channel(1).1),
+            early: None,
         });
     }
     drop(tx);

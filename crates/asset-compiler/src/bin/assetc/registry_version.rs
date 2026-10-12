@@ -2,13 +2,12 @@ use std::{error::Error, fmt, path::Path};
 
 use assets::{
     LightProperties, RegistryRecord, read_light_registry, read_light_registry_for_protocol,
-    read_registry, read_registry_for_protocol,
+    read_registry, read_registry_for_protocol, registry_header_protocol,
 };
 
 /// Decoded block records paired with their header-declared wire protocol.
 pub(super) type BlockRegistryInput = (Box<[RegistryRecord]>, u32);
 
-const BLOCK_REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
 const LIGHT_REGISTRY_MAGIC: &[u8; 8] = b"LREG1001";
 /// The protocol assumed only when a header is too malformed to name one; the
 /// strict readers then reject it with their canonical legacy decode error.
@@ -73,6 +72,7 @@ fn decoded_registry_protocol(magic: &[u8; 8], bytes: &[u8]) -> Option<u32> {
     }
 }
 
+/// Accepts supported wire protocols and attributes unsupported headers to their input file.
 fn supported_registry_protocol(path: &Path, protocol: u32) -> Result<u32, RegistryVersionError> {
     match protocol {
         1001 | 2193 => Ok(protocol),
@@ -90,13 +90,13 @@ pub(super) fn read_block_registry_input(
     path: &Path,
     bytes: &[u8],
 ) -> Result<BlockRegistryInput, Box<dyn Error>> {
-    match decoded_registry_protocol(BLOCK_REGISTRY_MAGIC, bytes) {
-        Some(protocol) => {
+    match registry_header_protocol(bytes) {
+        Ok(protocol) => {
             let protocol = supported_registry_protocol(path, protocol)?;
             Ok((read_registry_for_protocol(bytes, protocol)?, protocol))
         }
         // Malformed headers keep today's exact strict-reader failure.
-        None => Ok((read_registry(bytes)?, LEGACY_REGISTRY_PROTOCOL)),
+        Err(_) => Ok((read_registry(bytes)?, LEGACY_REGISTRY_PROTOCOL)),
     }
 }
 
@@ -147,10 +147,17 @@ mod tests {
         network_hash: u32,
     }
 
-    /// Encodes one-record BREG1003 bytes carrying a synthetic canonical air.
+    /// Encodes canonical air using the shared active or historical registry format.
     fn encode_block_registry(protocol: u32, air: &SyntheticAir) -> Vec<u8> {
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"BREG1003");
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../../../../assets/data/registry-schema.json"))
+                .expect("shared registry schema");
+        let legacy = protocol == schema["legacy_protocol"].as_u64().unwrap() as u32;
+        let magic = schema[if legacy { "previous_magic" } else { "magic" }]
+            .as_str()
+            .unwrap();
+        bytes.extend_from_slice(magic.as_bytes());
         bytes.extend_from_slice(&protocol.to_le_bytes());
         // One unique name and state, fully provenanced outside Valentine, so
         // no Valentine overlap bookkeeping is required.
@@ -173,6 +180,9 @@ mod tests {
         for _ in 0..8 {
             bytes.extend_from_slice(&0_u32.to_le_bytes());
         }
+        if !legacy {
+            bytes.push(assets::BeaconTint::NoTinting as u8);
+        }
         bytes.extend_from_slice(b"minecraft:air");
         bytes.extend_from_slice(b"{}");
         bytes
@@ -189,6 +199,17 @@ mod tests {
         let digest = Sha256::digest(&bytes);
         bytes.extend_from_slice(&digest);
         bytes
+    }
+
+    #[test]
+    fn the_pinned_active_registry_dispatches_to_its_declared_protocol() {
+        let bytes = assets::pinned_block_registry_bytes();
+        let protocol = assets::active_content_registry_protocol();
+        let expected = assets::read_registry_for_protocol(bytes, protocol).unwrap();
+        let (records, declared) = read_block_registry_input(Path::new("block.bin"), bytes)
+            .expect("decode the pinned active registry");
+        assert_eq!(declared, protocol);
+        assert_eq!(records, expected);
     }
 
     #[test]

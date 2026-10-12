@@ -204,9 +204,6 @@ func (o *object) end() ([]byte, error) {
 	return append(o.b, '}'), nil
 }
 
-// maxDepth is serde_json's recursion limit.
-const maxDepth = 128
-
 // reader parses JSON with serde_json's grammar and strictness.
 type reader struct {
 	data  []byte

@@ -313,7 +313,12 @@ type ModOutputs<'w> = (
 type ModObservation<'w, 's> = (
     Option<Res<'w, registration::Watcher>>,
     Option<ResMut<'w, render_scene::ModRenderScene>>,
-    Query<'w, 's, (&'static GlobalTransform, &'static Projection), With<client_presentation::camera::FlyCamera>>,
+    Query<
+        'w,
+        's,
+        (&'static GlobalTransform, &'static Projection),
+        With<client_presentation::camera::FlyCamera>,
+    >,
     Local<'s, presentation_facts::FrameRate>,
     Local<'s, module_observations::ModuleObserver>,
     Option<ResMut<'w, client_presentation::actor_publication::ActorPresentationStyle>>,

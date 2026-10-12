@@ -2469,6 +2469,13 @@ not established by the pack binding names. See the settings audit below.
   not a retail visual acceptance. Focus/hover/pressed, scrolling, all modal flows,
   runtime option effects and flight/platform visibility still need full acceptance.
 
+Personal inventory quick move equips stock totems into an available offhand cell
+before moving them between the hotbar and main inventory. Explicit item offhand
+permissions override stock defaults; offhand wearable declarations admit that cell.
+Occupied equipment falls back to inventory, open storage keeps its own route, and
+rejected requests restore the authoritative source. Broader stock equipment defaults
+and unsupported custom wearable declarations remain incomplete.
+
 2026-10-01 inventory reconciliation: the current native sparse-container audit
 replaces delta replay over mutable backing truth with absolute request-owned cell
 snapshots. Changed and emptied cells can be addressed by prior odd negative

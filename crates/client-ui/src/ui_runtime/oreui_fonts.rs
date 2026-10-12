@@ -11,7 +11,23 @@ use ui::oreui_theme::OreUiFont;
 /// Faces map only their own ranges, so none attach without the shared Sans fallback.
 pub fn install(base: Arc<RuntimeFontCatalog>, compiled_dir: &Path) -> Arc<RuntimeFontCatalog> {
     let mut combined = (*base).clone();
-    let fallback = match shared_fallback(&mut combined, compiled_dir) {
+    // Faces decode concurrently but attach in `ALL` order, keeping page indices deterministic.
+    let (fallback, loaded) = std::thread::scope(|scope| {
+        let loads = OreUiFont::ALL.map(|face| {
+            let path = compiled_dir.join(face.carrier().output);
+            scope.spawn(move || {
+                let font = load(face, &path);
+                (face, path, font)
+            })
+        });
+        let fallback = shared_fallback(&mut combined, compiled_dir);
+        let loaded = loads.map(|load| {
+            load.join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        });
+        (fallback, loaded)
+    });
+    let fallback = match fallback {
         Ok(fallback) => fallback,
         Err(reason) => {
             eprintln!(
@@ -21,9 +37,8 @@ pub fn install(base: Arc<RuntimeFontCatalog>, compiled_dir: &Path) -> Arc<Runtim
         }
     };
     let mut installed = 0;
-    for face in OreUiFont::ALL {
-        let path = compiled_dir.join(face.carrier().output);
-        match load(face, &path).and_then(|(font, sizes)| {
+    for (face, path, font) in loaded {
+        match font.and_then(|(font, sizes)| {
             combined
                 .with_named_face(face.name(), &font, &sizes, Some(&fallback))
                 .map_err(|e| e.to_string())

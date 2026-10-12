@@ -162,3 +162,94 @@ fn a_body_enabled_after_initialisation_initialises_in_the_world_context() {
         "the first-person evaluator is not re-initialised"
     );
 }
+
+#[test]
+fn world_body_keeps_owner_position_delta_item_context_and_animation_clock() {
+    let assets = Arc::new(
+        RuntimeEntityAssets::from_compiled(
+            crate::test_support::initialized_pose_compiled().with_unresolved_admissions(),
+        )
+        .unwrap(),
+    );
+    let actor = crate::tests::actor_with_metadata(HashMap::new());
+    let mut store = ActorAnimationStore::with_assets(Arc::clone(&assets));
+    store.insert(1, 0, &actor);
+    store.set_local_body_enabled(true);
+    let mut actors = HashMap::from([(1, actor)]);
+    let context = |_: &TestActor| ActorTickContext {
+        is_local_first_person: true,
+        main_hand_is_spear: true,
+        main_hand_swing_seconds: Some(0.75),
+        ..Default::default()
+    };
+    store.advance_tick(&actors, None, Some(1), true, false, context);
+    let delta = [0.25, -0.4, 0.5];
+    for (position, movement) in actors.get_mut(&1).unwrap().position.iter_mut().zip(delta) {
+        *position += movement;
+    }
+    store.advance_tick(&actors, None, Some(1), true, false, context);
+    let slot = store.layout.named_slot(&assets, "variable.charge_amount");
+    let lifetime = store.runtime_to_lifetime[&1];
+    let state = store.rigs.get_mut(&lifetime).unwrap();
+    state.animation_epoch = state.completed_tick.saturating_sub(1);
+    state.history.back_mut().unwrap().swim_amount = 0.7;
+    state.variables.set(slot, 99.0);
+    state.world_body.as_mut().unwrap().variables.set(slot, 77.0);
+    let owner = store.get(1).unwrap();
+    let body = store.world_body(1).unwrap();
+    let input = body
+        .animation_variables
+        .input()
+        .expect("body retains owner movement queries");
+    let owner_input = owner.animation_variables.input().unwrap();
+    assert_eq!(input.position_delta, owner_input.position_delta);
+    assert_eq!(input.swim_amount, owner_input.swim_amount);
+    assert_eq!(input.swim_amount, 0.7);
+    assert_eq!(body.animation_variables.anim_tick(), 1);
+    assert_eq!(
+        body.animation_variables.life_tick(),
+        owner.animation_variables.life_tick()
+    );
+    assert!(body.animation_variables.is_spear());
+    assert_eq!(body.animation_variables.item_timings().1, Some(0.75));
+    assert_eq!(
+        body.animation_variables
+            .value("variable.charge_amount")
+            .unwrap()
+            .number(),
+        77.0
+    );
+    assert_eq!(
+        owner
+            .animation_variables
+            .value("variable.charge_amount")
+            .unwrap()
+            .number(),
+        99.0
+    );
+    let query = crate::query::QueryInputs {
+        actor: &actors[&1],
+        input: &input,
+        context: body.animation_variables.owner_context().unwrap(),
+        anim_tick: body.animation_variables.anim_tick(),
+        anim_time: None,
+        swell_amount: None,
+        life_tick: body.animation_variables.life_tick(),
+        finished: (false, false),
+        state_time: 0.0,
+        bones: &[],
+        bone_names: &[],
+    };
+    for (axis, expected) in delta.into_iter().enumerate() {
+        let actual = crate::query::named_query(
+            &query,
+            "query.position_delta",
+            &[MolangValue::Number(axis as f32)],
+        )
+        .number();
+        assert!(
+            (actual - expected).abs() < 0.00001,
+            "axis {axis} keeps the owner's movement delta"
+        );
+    }
+}

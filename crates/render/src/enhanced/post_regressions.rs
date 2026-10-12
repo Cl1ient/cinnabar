@@ -337,3 +337,34 @@ import render::enhanced::temporal::temporal_transparency_reactivity;
     close(values[0][2], 1.0);
     close(values[0][3], 1.0);
 }
+
+#[test]
+fn blended_actor_shadow_coverage_rejects_invisible_opacity_but_retains_masks() {
+    let source = r#"
+import render::lighting::actor_shadow_opacity_visible;
+@group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,3>;
+@compute @workgroup_size(1) fn regression(){
+    results[0]=vec4(
+        select(0.0,1.0,actor_shadow_opacity_visible(0.0,true,0u,false,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(2.0/255.0,true,0u,false,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(3.0/255.0,true,0u,false,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(1.0,true,0u,false,false)));
+    results[1]=vec4(
+        select(0.0,1.0,actor_shadow_opacity_visible(1.0,true,0x00ffffffu,false,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(1.0,true,0x80ffffffu,false,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(0.01,true,0x80ffffffu,false,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(0.0,false,0u,false,false)));
+    results[2]=vec4(
+        select(0.0,1.0,actor_shadow_opacity_visible(0.0,true,0u,true,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(0.0,true,0u,false,true)),
+        select(0.0,1.0,actor_shadow_opacity_visible(1.0,true,0x00ffffffu,true,false)),
+        select(0.0,1.0,actor_shadow_opacity_visible(1.0,true,0x00ffffffu,false,true)));
+}
+"#;
+    let Some(values) = execute(source, 3) else {
+        return;
+    };
+    assert_eq!(values[0], [0.0, 0.0, 1.0, 1.0]);
+    assert_eq!(values[1], [0.0, 1.0, 0.0, 1.0]);
+    assert_eq!(values[2], [1.0; 4]);
+}

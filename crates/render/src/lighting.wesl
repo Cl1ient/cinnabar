@@ -211,3 +211,11 @@ fn actor_distance_fog(colour_gamma: vec3<f32>, position: vec3<f32>, camera: vec3
     let fog_gamma = tint_to_gamma(vec4(world_atmosphere.fog_color_start.rgb, 1.0)).rgb;
     return configured_distance_fog(colour_gamma, position, camera, vec4(fog_gamma, world_atmosphere.fog_color_start.w), world_atmosphere.fog_end_time.x);
 }
+
+// Shadow depth treats alpha as opacity only for blended surfaces, never dye or multitexture masks.
+fn actor_shadow_opacity_visible(alpha: f32, blended: bool, tint: u32, colour_mask: bool, multitexture: bool) -> bool {
+    if (!blended || colour_mask || multitexture) { return true; }
+    var opacity = alpha;
+    if (tint != 0u) { opacity *= unpack4x8unorm(tint).a; }
+    return opacity >= 0.01;
+}

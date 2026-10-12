@@ -1,5 +1,5 @@
 import bevy_render::view::View;
-import render::lighting::{actor_lighting, actor_distance_fog, actor_light_colour, tint_to_gamma, tint_to_linear};
+import render::lighting::{actor_lighting, actor_distance_fog, actor_shadow_opacity_visible, actor_light_colour, tint_to_gamma, tint_to_linear};
 @if(ALPHA_TO_COVERAGE)
 import render::lighting::{CutoutSample, cutout_alpha_array};
 @if(ENHANCED)
@@ -341,6 +341,17 @@ fn actor_surface_color(input: VertexOutput, front: bool) -> ActorSurface {
     return ActorSurface(color, color.a);
 }
 
+// Both shadow and receiver-depth passes reject invisible blended texels after sampling.
+@if(ENHANCED_SHADOW)
+fn actor_shadow_surface(input: VertexOutput, front: bool) -> ActorSurface {
+    let surface = actor_surface_color(input, front);
+    let blended = (input.material & ACTOR_MATERIAL_BLEND_FLAG) != 0u
+        && (input.material & ACTOR_MATERIAL_KIND_MASK) != ACTOR_MATERIAL_DISSOLVE_DEPTH;
+    let multitexture = material_class.z != 0u && all(input.multitexture_layers != vec2(0xffffffffu));
+    if (!actor_shadow_opacity_visible(surface.color.a, blended, input.tint, material_class.y != 0u, multitexture)) { discard; }
+    return surface;
+}
+
 @if(ENHANCED_SHADOW && ENHANCED_MOTION)
 struct CameraSurface {
     @location(0) motion: vec4<f32>,
@@ -350,7 +361,7 @@ struct CameraSurface {
 @if(ENHANCED_SHADOW && ENHANCED_MOTION)
 @fragment
 fn actor_fragment_motion(input: VertexOutput, @builtin(front_facing) front: bool) -> CameraSurface {
-    let color = actor_surface_color(input, front);
+    let color = actor_shadow_surface(input, front);
     let normal = select(-input.world_normal, input.world_normal, front);
     return CameraSurface(submitted_surface_motion(input.current_clip, input.previous_clip, input.motion_valid != 0u), encode_geometric_normal(normal));
 }
@@ -358,7 +369,7 @@ fn actor_fragment_motion(input: VertexOutput, @builtin(front_facing) front: bool
 @if(ENHANCED_SHADOW)
 @fragment
 fn actor_fragment_shadow(input: VertexOutput, @builtin(front_facing) front: bool) {
-    let color = actor_surface_color(input, front);
+    let color = actor_shadow_surface(input, front);
 }
 
 @if(!ENHANCED_SHADOW)

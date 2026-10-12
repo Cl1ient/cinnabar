@@ -1,4 +1,4 @@
-//! Optional world-context third-person animation for the local first-person body's shadow.
+//! World-context animation for the local first-person body and its equipment.
 
 use super::*;
 
@@ -160,16 +160,7 @@ impl ActorAnimationStore {
             rig.scale = scale[0];
             rig.axis_scale = [scale[1], scale[2], scale[3]];
         }
-        let assets = if state.pack {
-            self.pack.as_ref().map(|pack| pack.assets.as_ref())
-        } else {
-            self.assets.as_deref()
-        };
-        rig.animation_variables = ActorAnimationVariables::new(
-            assets,
-            &body.variables,
-            state.completed_tick.saturating_sub(state.lifetime_epoch),
-        );
+        rig.animation_variables = rig.animation_variables.with_values(&body.variables);
         Some(rig)
     }
 }

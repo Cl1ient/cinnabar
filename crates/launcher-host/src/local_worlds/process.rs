@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
     process::{ChildStdin, Command, ExitStatus, Stdio},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
     thread,
@@ -65,15 +65,23 @@ pub(crate) trait Instance: Send + Sync {
 /// Launches local servers; `start` returns once the server accepts connections.
 pub(crate) trait Runner: Send + Sync {
     fn start(&self, spec: &StartSpec, cancel: &Cancel) -> Result<Arc<dyn Instance>, WorldError>;
+    /// Readies a server ahead of a likely open, so the open skips the process's startup work.
+    fn prepare(&self) {}
+    /// Ends a readied server at once, as the client exits; a lock held by the exiting thread
+    /// leaves it to the exit sweep.
+    fn discard_standby(&self) {}
 }
 
 /// Hosts each Dragonfly world in `bedrock-local-server`, which prints `ready` once listening and
 /// reads `pause`, `resume` and `stop` lines; stdin EOF also stops it, so it cannot outlive us.
+/// Started with `-standby`, it warms its world generation and waits for a `start <JSON args>` line.
 pub(crate) struct ProcessRunner {
     pub binary: PathBuf,
     /// Added to the inherited environment.
     pub env: Vec<(OsString, OsString)>,
     pub start_timeout: Duration,
+    /// A standby server the next start takes over.
+    standby: Mutex<Option<Spawn>>,
 }
 
 impl ProcessRunner {
@@ -82,36 +90,100 @@ impl ProcessRunner {
             binary,
             env: Vec::new(),
             start_timeout: DEFAULT_START_TIMEOUT,
+            standby: Mutex::new(None),
         }
     }
+
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.binary);
+        command.envs(self.env.iter().map(|(key, value)| (key, value)));
+        command
+    }
+
+    /// Hands `args` to a live standby server; `None` when there is none or it cannot take them.
+    fn take_standby(&self, args: &[OsString], address: &str) -> Option<Spawn> {
+        let standby = lock(&self.standby).take()?;
+        let args: Option<Vec<&str>> = args.iter().map(|arg| arg.to_str()).collect();
+        let line = serde_json::to_string(&args?).ok()?;
+        if standby.process.has_exited() || standby.process.send(&format!("start {line}")).is_err() {
+            standby.process.kill();
+            return None;
+        }
+        let _ = standby.process.address.set(address.to_owned());
+        Some(standby)
+    }
+}
+
+/// The line `bedrock-local-server` prints once it accepts connections.
+fn ready_line(line: &str) -> bool {
+    line.trim() == "ready"
 }
 
 impl Runner for ProcessRunner {
     fn start(&self, spec: &StartSpec, cancel: &Cancel) -> Result<Arc<dyn Instance>, WorldError> {
         let address = loopback(free_loopback_port()?);
         let world = &spec.world;
-        let mut command = Command::new(&self.binary);
-        command
-            .arg("-dir")
-            .arg(&spec.dir)
-            .args(["-addr", address.as_str(), "-name", world.name.as_str()])
-            .args(["-game-mode", wire_name(world.game_mode).as_str()])
-            .args(["-difficulty", wire_name(world.difficulty).as_str()])
-            .args(["-generator", wire_name(world.generator).as_str()])
-            .args(["-seed", world.seed.to_string().as_str()])
-            .envs(self.env.iter().map(|(key, value)| (key, value)));
-        let process: Arc<dyn Instance> = launch(
-            command,
-            Launch {
-                address,
-                timeout: self.start_timeout,
-                can_pause: true,
-                ready: |line| line.trim() == "ready",
-                label: format!("local-server {}", world.id),
-            },
-            cancel,
-        )?;
+        let mut args: Vec<OsString> = vec!["-dir".into(), spec.dir.clone().into()];
+        for (flag, value) in [
+            ("-addr", address.clone()),
+            ("-name", world.name.clone()),
+            ("-game-mode", wire_name(world.game_mode)),
+            ("-difficulty", wire_name(world.difficulty)),
+            ("-generator", wire_name(world.generator)),
+            ("-seed", world.seed.to_string()),
+        ] {
+            args.extend([flag.into(), value.into()]);
+        }
+        let spawned = match self.take_standby(&args, &address) {
+            Some(standby) => standby,
+            None => {
+                let mut command = self.command();
+                command.args(&args);
+                spawn(
+                    command,
+                    Some(address),
+                    true,
+                    ready_line,
+                    format!("local-server {}", world.id),
+                )?
+            }
+        };
+        let process: Arc<dyn Instance> = await_ready(spawned, self.start_timeout, cancel)?;
         Ok(process)
+    }
+
+    fn prepare(&self) {
+        let mut standby = lock(&self.standby);
+        if standby
+            .as_ref()
+            .is_some_and(|standby| !standby.process.has_exited())
+        {
+            return;
+        }
+        let mut command = self.command();
+        command.arg("-standby");
+        match spawn(
+            command,
+            None,
+            true,
+            ready_line,
+            "local-server standby".to_owned(),
+        ) {
+            Ok(spawned) => *standby = Some(spawned),
+            Err(error) => tracing::warn!("prepare a standby local server: {error}"),
+        }
+    }
+
+    fn discard_standby(&self) {
+        let standby = match self.standby.try_lock() {
+            Ok(mut standby) => standby.take(),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner().take(),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+        };
+        if let Some(standby) = standby {
+            // A standby holds no world, so nothing needs saving.
+            standby.process.kill();
+        }
     }
 }
 
@@ -131,7 +203,8 @@ pub(crate) struct Process {
     /// Tracked so the client's exit sweep ends it even when no destructor runs.
     child: Arc<Spawned>,
     stdin: Mutex<Option<ChildStdin>>,
-    address: String,
+    /// Set at launch, or when a standby server is given its world.
+    address: OnceLock<String>,
     can_pause: bool,
     exited: Receiver<()>,
     status: Arc<Mutex<Option<ExitStatus>>>,
@@ -141,10 +214,34 @@ pub(crate) struct Process {
 /// Starts `command` as a tracked child and waits for its ready line, killing it on exit, timeout
 /// or cancellation.
 pub(crate) fn launch(
-    mut command: Command,
+    command: Command,
     spec: Launch,
     cancel: &Cancel,
 ) -> Result<Arc<Process>, WorldError> {
+    let spawned = spawn(
+        command,
+        Some(spec.address),
+        spec.can_pause,
+        spec.ready,
+        spec.label,
+    )?;
+    await_ready(spawned, spec.timeout, cancel)
+}
+
+/// A started child and the signal of its ready line.
+struct Spawn {
+    process: Arc<Process>,
+    ready: Receiver<()>,
+}
+
+/// Starts `command` as a tracked child whose output is logged under `label`.
+fn spawn(
+    mut command: Command,
+    address: Option<String>,
+    can_pause: bool,
+    is_ready: fn(&str) -> bool,
+    label: String,
+) -> Result<Spawn, WorldError> {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -158,7 +255,7 @@ pub(crate) fn launch(
     let (exit_sender, exited) = crossbeam_channel::bounded::<()>(0);
     let mut readers = Vec::new();
     if let Some(stdout) = stdout {
-        let (label, is_ready) = (spec.label.clone(), spec.ready);
+        let label = label.clone();
         readers.push(thread::spawn(move || {
             for_each_line(stdout, |line| {
                 tracing::debug!("{label}: {line}");
@@ -169,7 +266,7 @@ pub(crate) fn launch(
         }));
     }
     if let Some(stderr) = stderr {
-        let label = spec.label.clone();
+        let label = label.clone();
         readers.push(thread::spawn(move || {
             for_each_line(stderr, |line| tracing::info!("{label}: {line}"));
         }));
@@ -196,13 +293,23 @@ pub(crate) fn launch(
     let process = Arc::new(Process {
         child,
         stdin: Mutex::new(stdin),
-        address: spec.address,
-        can_pause: spec.can_pause,
+        address: address.map_or_else(OnceLock::new, OnceLock::from),
+        can_pause,
         exited,
         status,
         stop_requested: AtomicBool::new(false),
     });
-    let deadline = Instant::now() + spec.timeout;
+    Ok(Spawn { process, ready })
+}
+
+/// Waits for `spawned`'s ready line, killing it on exit, timeout or cancellation.
+fn await_ready(
+    spawned: Spawn,
+    timeout: Duration,
+    cancel: &Cancel,
+) -> Result<Arc<Process>, WorldError> {
+    let Spawn { process, ready } = spawned;
+    let deadline = Instant::now() + timeout;
     let (exit, cancelled) = (process.exited.clone(), cancel.receiver().clone());
     let mut announcing = true;
     let failure = loop {
@@ -270,7 +377,7 @@ impl Process {
 
 impl Instance for Process {
     fn address(&self) -> &str {
-        &self.address
+        self.address.get().map_or("", String::as_str)
     }
 
     fn set_paused(&self, paused: bool) -> io::Result<()> {

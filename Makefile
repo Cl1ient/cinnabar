@@ -23,6 +23,7 @@ RUST_MCBE_BUILD_COMMIT ?= $(shell git rev-parse HEAD)
 DIST_PLATFORM ?= $(if $(filter Windows_NT,$(OS)),windows,$(if $(findstring Darwin,$(shell uname -s)),macos,linux))
 DIST_CLIENT ?= target/release/$(if $(filter windows,$(DIST_PLATFORM)),cinnabar.exe,cinnabar)
 DIST_CORE ?= target/release/$(if $(filter windows,$(DIST_PLATFORM)),bedrock-core.exe,bedrock-core)
+DIST_BINARIES ?= $(dir $(DIST_CLIENT))
 DIST_OUT ?= .local/dist/$(DIST_PLATFORM)
 DIST_TARGET ?= $(shell rustc --print host-tuple)
 DIST_GIT_COMMIT ?= $(RUST_MCBE_BUILD_COMMIT)
@@ -116,7 +117,7 @@ LOCAL_SERVER_OUT ?= target/release/bedrock-local-server$(if $(filter windows,$(D
 
 local-server:
 	cd tools/localserver && GOWORK=off $(GO) build -o "$(abspath $(LOCAL_SERVER_OUT))" .
-	$(CARGO) build -p experience-runtime --release --locked
+	$(CARGO) build -p experience-runtime -p cinnabar-cxb --release --locked
 
 # Full game from the launcher menu: refresh assets, build the core and local server beside the client, run it.
 play-build: assets
@@ -132,7 +133,7 @@ play: play-build
 	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) run --profile $(PROFILE) -p cinnabar --locked $(CLIENT_FEATURES) -- $(if $(filter 1,$(NO_VSYNC)),--no-vsync)
 
 dist-local:
-	$(CARGO) run --locked -p dist-local -- --platform "$(DIST_PLATFORM)" --client "$(DIST_CLIENT)" --core "$(DIST_CORE)" --physics "$(PHYSICS_REGISTRY)" --notices "$(DIST_NOTICES)" --target "$(DIST_TARGET)" --git-commit "$(DIST_GIT_COMMIT)" --out "$(DIST_OUT)"
+	$(CARGO) run --locked -p dist-local -- --platform "$(DIST_PLATFORM)" --client "$(DIST_CLIENT)" --core "$(DIST_CORE)" --binaries "$(DIST_BINARIES)" --physics "$(PHYSICS_REGISTRY)" --notices "$(DIST_NOTICES)" --target "$(DIST_TARGET)" --git-commit "$(DIST_GIT_COMMIT)" --out "$(DIST_OUT)"
 
 # Release packaging (see packaging/README.md). Signing credentials come from the environment.
 PKG_VERSION ?= $(shell sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p;}' Cargo.toml | head -n 1)
@@ -147,9 +148,11 @@ endif
 PKG_CORE_LDFLAGS = -s -w
 # Optional diagnostics for the release Rust build, such as --timings.
 PACKAGE_CARGO_FLAGS ?=
+# The runtime table owns Rust package/bin pairs; Go integrations retain their module-specific builds.
+PACKAGE_RUST_BINARIES = $(shell awk '$$2 != "-" {printf "-p %s --bin %s ", $$2, $$1}' packaging/common/runtime-binaries.txt)
 .PHONY: package-binaries package-macos package-windows package-linux
 package-binaries:
-	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build $(PACKAGE_CARGO_FLAGS) --release --locked --no-default-features -p cinnabar -p asset-compiler --features cinnabar/local-mods --bin cinnabar --bin assetc
+	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build $(PACKAGE_CARGO_FLAGS) --release --locked --no-default-features $(PACKAGE_RUST_BINARIES) -p asset-compiler --features cinnabar/local-mods --bin assetc
 	$(GO) build -trimpath -ldflags "$(PKG_CORE_LDFLAGS)" -o "$(DIST_CORE)" ./core/cmd/bedrock-core
 	cd tools/localserver && GOWORK=off $(GO) build -trimpath -ldflags "-s -w" -o "$(abspath $(LOCAL_SERVER_OUT))" .
 

@@ -11,6 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 LISTED = [line for line in (ROOT / "packaging/common/prep-kit-files.txt").read_text().splitlines() if line]
+BINARIES = [line.split()[0] for line in (ROOT / "packaging/common/runtime-binaries.txt").read_text().splitlines()]
 STAGE = ROOT / "packaging/common/stage-payload.sh"
 HOST = {"darwin": "macos", "linux": "linux"}.get(sys.platform)
 FOREIGN = "linux" if HOST == "macos" else "macos"
@@ -70,16 +71,40 @@ class PrepKitTests(unittest.TestCase):
         )
         self.assertEqual(files_below(kit), sorted(["bin/assetc.exe", *LISTED]))
 
+    def test_runtime_staging_keeps_the_server_and_verifier_together(self):
+        """The packaged server can execute its verifier without a system-installed CLI."""
+        binaries = self.temp / "release"
+        binaries.mkdir()
+        for name in BINARIES:
+            (binaries / name).write_text(f"synthetic {name}")
+        server = binaries / "bedrock-local-server"
+        server.write_text('#!/bin/sh\nexec "$(dirname "$0")/cinnabar-cxb" verify --stdin\n')
+        verifier = binaries / "cinnabar-cxb"
+        verifier.write_text('#!/bin/sh\n[ "$1 $2" = "verify --stdin" ] || exit 1\necho verified\n')
+        for platform, destination in [("linux", "usr/bin"), ("macos", "Cinnabar.app/Contents/MacOS")]:
+            with self.subTest(platform=platform):
+                staged = self.temp / platform / destination
+                result = bash('stage_runtime_binaries "$1"', str(staged), env={"BINARIES": str(binaries)})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(files_below(staged), sorted(BINARIES))
+                result = subprocess.run([str(staged / server.name)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), "verified")
+        verifier.unlink()
+        result = bash('stage_runtime_binaries "$1"', str(self.temp / "incomplete"), env={"BINARIES": str(binaries)})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cinnabar-cxb", result.stderr)
+
     def payload(self, platform, compiler_script):
         root = self.temp / platform
         if platform == "linux":
             entries = ["AppRun", "cinnabar.desktop", "cinnabar.png"]
-            entries += [f"usr/bin/{name}" for name in ["cinnabar", "bedrock-core", "bedrock-local-server"]]
+            entries += [f"usr/bin/{name}" for name in BINARIES]
             resources = root / "usr/share/cinnabar"
         else:
             contents = "Cinnabar.app/Contents/"
             entries = ["Applications", f"{contents}Info.plist", f"{contents}Resources/Cinnabar.icns"]
-            entries += [f"{contents}MacOS/{name}" for name in ["cinnabar", "bedrock-core", "bedrock-local-server"]]
+            entries += [f"{contents}MacOS/{name}" for name in BINARIES]
             resources = root / contents / "Resources"
         for entry in entries:
             (root / entry).parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +135,13 @@ class PrepKitTests(unittest.TestCase):
         result = self.check_payload(HOST, root)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("prep kit satisfies its compiler", result.stdout)
+        verifier = root / ("usr/bin/cinnabar-cxb" if HOST == "linux" else "Cinnabar.app/Contents/MacOS/cinnabar-cxb")
+        verifier.unlink()
+        result = self.check_payload(HOST, root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing file", result.stderr)
+        self.assertIn("cinnabar-cxb", result.stderr)
+        verifier.write_text("")
         (kit / LISTED[-1]).unlink()
         result = self.check_payload(HOST, root)
         self.assertNotEqual(result.returncode, 0)

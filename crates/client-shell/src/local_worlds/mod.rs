@@ -126,6 +126,11 @@ impl LocalWorlds {
         self.sync_pause();
     }
 
+    /// Readies a local server while the worlds are on screen, so an open skips its startup work.
+    pub fn prepare(&self) {
+        self.dispatch(vec![Effect::Prepare]);
+    }
+
     /// Leaves the local world: its server saves and stops.
     pub fn leave_world(&mut self) {
         self.playing = false;

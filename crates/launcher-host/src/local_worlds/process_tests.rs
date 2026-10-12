@@ -118,3 +118,60 @@ fn the_generator_and_signed_seed_reach_the_server() {
     }
     instance.stop(test_time::DEFAULT_TIMEOUT).expect("stop");
 }
+
+/// A Dragonfly stand-in that, started with `-standby`, logs its start line before serving.
+#[cfg(unix)]
+const FAKE_STANDBY_SERVER: &[u8] = b"#!/bin/sh\nif [ \"$1\" = -standby ]; then IFS= read -r line; printf '%s\\n' \"$line\" > \"$0.start\"; fi\nprintf '%s\\n' \"$@\" > \"$0.args\"\necho ready\nwhile IFS= read -r line; do\n  [ \"$line\" = stop ] && exit 0\ndone\n";
+
+/// A prepared standby server is handed the world instead of a new process being started.
+#[cfg(unix)]
+#[test]
+fn a_prepared_standby_server_takes_the_next_world() {
+    let dir = scratch();
+    let runner = runner(dir.path(), FAKE_STANDBY_SERVER);
+    runner.prepare();
+    let instance = runner
+        .start(&spec(dir.path()), &Cancel::never())
+        .expect("start");
+    assert!(
+        instance.address().starts_with("127.0.0.1:"),
+        "{}",
+        instance.address()
+    );
+    let line = std::fs::read_to_string(dir.path().join("server.start")).expect("start line");
+    let args: Vec<String> =
+        serde_json::from_str(line.trim().strip_prefix("start ").expect("a start line"))
+            .expect("JSON arguments");
+    let addr = args.iter().position(|arg| arg == "-addr").expect("-addr");
+    assert_eq!(args[addr + 1], instance.address());
+    let seed = args.iter().position(|arg| arg == "-seed").expect("-seed");
+    assert_eq!(args[seed + 1], "-7");
+    instance.stop(test_time::DEFAULT_TIMEOUT).expect("stop");
+
+    // The standby is used once; the next start launches its own server.
+    let again = runner
+        .start(&spec(dir.path()), &Cancel::never())
+        .expect("second start");
+    let logged = std::fs::read_to_string(dir.path().join("server.args")).expect("argument log");
+    assert!(logged.lines().any(|arg| arg == "-dir"), "{logged}");
+    again.stop(test_time::DEFAULT_TIMEOUT).expect("stop");
+}
+
+/// Discarding ends a waiting standby server at once.
+#[cfg(unix)]
+#[test]
+fn a_discarded_standby_server_exits() {
+    let dir = scratch();
+    let runner = runner(dir.path(), FAKE_STANDBY_SERVER);
+    runner.prepare();
+    let exited = lock(&runner.standby)
+        .as_ref()
+        .expect("a standby server")
+        .process
+        .exited();
+    runner.discard_standby();
+    assert!(lock(&runner.standby).is_none());
+    test_time::eventually("the standby to exit", || {
+        matches!(exited.try_recv(), Err(TryRecvError::Disconnected))
+    });
+}

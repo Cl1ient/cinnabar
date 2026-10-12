@@ -564,6 +564,10 @@ these changes do not close the movement, camera, or actor parity gates.
 - Apple pipelined rendering keeps surface creation on the UI thread while render
   submission stays on the render thread. Main and extraction schedules retain
   single-thread execution; runtime startup checks do not close frame-budget gates.
+- Focused synchronized macOS windows request their reported display refresh through
+  a window-bound display link, bounded by FPS limits. Background and fixed-clock
+  runs release this request. ProMotion presentation cadence and live smoothness
+  remain unverified; this does not close the 120 Hz display gate.
 - Idle native metadata publication no longer dispatches through the main thread.
   macOS frame workers use interactive scheduling; bounded-load diagnostics show
   more render-work headroom. Unloaded tail results remain adverse and unexplained:
@@ -7130,6 +7134,15 @@ the rebuilt ordinary-mode Mac client (Apple M3 Pro/Metal, Retina display,
 defect. The installed native app is a near-version witness, not an exact-version
 capture; broad rendering, persona and live HUD pack-refresh parity remain open.
 World fire is tracked separately below.
+
+### Pack masks, End sky and title text (acceptance incomplete)
+
+Active packs now prepare pumpkin and spyglass masks, End-sky pixels and layered
+title splash lists during resource reload. Removing the optional resources
+restores startup data. End-sky overrides retain their decoded dimensions; masks
+use the existing 256-pixel scene layers. Synthetic regression tests cover
+priority, removal, alpha, cache invalidation and stale-generation publication.
+Compilation, regression execution and rendered parity acceptance remain open.
 
 ### World fire (accepted geometry and smoke; parity incomplete)
 

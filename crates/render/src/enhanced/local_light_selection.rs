@@ -64,7 +64,7 @@ fn select_biased(
         std::array::from_fn(|index| candidates.get(index).copied());
     let mut scores = [0.0; MAX_LOCAL_LIGHTS];
     candidates.clear();
-    let Some(dimension) = input.dimension else {
+    let Some(dimension) = input.world.map(|world| world.dimension) else {
         return;
     };
     for &source in sources.chunks.values().flatten() {

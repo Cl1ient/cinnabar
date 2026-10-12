@@ -5,7 +5,10 @@ mod textures;
 fn inputs() -> PreparedInputs {
     PreparedInputs {
         lights_revision: 0,
-        dimension: Some(0),
+        world: Some(RenderedWorld {
+            session_generation: 1,
+            dimension: 0,
+        }),
         camera: Vec3::ZERO,
         clip: glam::camera::rh::proj::directx::perspective(
             std::f32::consts::FRAC_PI_2,
@@ -59,7 +62,7 @@ fn selection_filters_dimension_and_behind_camera_and_reuses_bounded_capacity() {
     assert_eq!(candidates.capacity(), capacity);
     assert_eq!(candidates.as_ptr(), pointer);
     let mut unknown = inputs();
-    unknown.dimension = None;
+    unknown.world = None;
     selection::select(&mut candidates, &sources, &unknown);
     assert!(
         candidates.is_empty(),
@@ -112,6 +115,23 @@ fn off_axis_light_sphere_bounds_are_conservative() {
             assert!(tile.x >= low[0] && tile.x <= high[0] && tile.y >= low[1] && tile.y <= high[1]);
         }
     }
+}
+
+/// Lamp shadow history never follows an emitter into another session or dimension.
+#[test]
+fn shadow_lanes_are_bound_to_the_rendered_world() {
+    let lamp = source(Vec3::new(1.0, 2.0, 3.0), 0);
+    let world = |session_generation, dimension| {
+        Some(RenderedWorld {
+            session_generation,
+            dimension,
+        })
+    };
+    let lane = shadow_lane_identity(world(1, 0), lamp);
+    assert_eq!(shadow_lane_identity(world(1, 0), lamp), lane);
+    assert_ne!(shadow_lane_identity(world(2, 0), lamp), lane);
+    assert_ne!(shadow_lane_identity(world(1, 1), lamp), lane);
+    assert_ne!(shadow_lane_identity(None, lamp), lane);
 }
 
 #[test]

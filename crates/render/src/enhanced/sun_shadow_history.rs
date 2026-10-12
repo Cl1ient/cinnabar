@@ -4,6 +4,7 @@ use bevy::render::{
     render_resource::*,
     renderer::{RenderContext, RenderDevice, RenderQueue},
 };
+use render_scene::enhanced::RenderedWorld;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const RESPONSE_SECONDS: f32 = 0.06;
@@ -15,7 +16,7 @@ pub(crate) struct SunShadowHistory {
     pub history_view: TextureView,
     pub parameters: Buffer,
     uploaded: Option<[f32; 4]>,
-    source: Option<(Option<i32>, u64, TextureViewId)>,
+    source: Option<(Option<RenderedWorld>, u64, TextureViewId)>,
     submitted: AtomicBool,
 }
 
@@ -62,12 +63,12 @@ impl SunShadowHistory {
         &mut self,
         queue: &RenderQueue,
         camera_valid: bool,
-        dimension: Option<i32>,
+        world: Option<RenderedWorld>,
         geometry_revision: u64,
         materials: TextureViewId,
         delta: f32,
     ) {
-        let source = (dimension, geometry_revision, materials);
+        let source = (world, geometry_revision, materials);
         let valid = self.submitted.swap(false, Ordering::Relaxed)
             && camera_valid
             && self.source == Some(source);
@@ -91,5 +92,50 @@ impl SunShadowHistory {
             self.output.size(),
         );
         self.submitted.store(true, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Sunlight visibility resolved in another session or dimension is never blended in.
+    #[test]
+    fn another_world_rejects_sunlight_history() {
+        let instance = crate::enhanced::validation::native_instance();
+        let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default()))
+        else {
+            eprintln!("missing fixture: native GPU for sunlight history world binding");
+            return;
+        };
+        let (device, queue) =
+            bevy::tasks::block_on(adapter.request_device(&Default::default())).unwrap();
+        let queue = RenderQueue::new(queue);
+        let mut history = SunShadowHistory::new(&RenderDevice::from(device), [8, 8]);
+        let materials = history.view.id();
+        let retained = |history: &mut SunShadowHistory, world| {
+            history.submitted.store(true, Ordering::Relaxed);
+            history.prepare(&queue, true, Some(world), 1, materials, 1.0 / 60.0);
+            history.uploaded.unwrap()[0] == 1.0
+        };
+        let overworld = RenderedWorld {
+            session_generation: 1,
+            dimension: 0,
+        };
+        retained(&mut history, overworld);
+        assert!(retained(&mut history, overworld));
+        let transferred = RenderedWorld {
+            session_generation: 2,
+            ..overworld
+        };
+        assert!(!retained(&mut history, transferred));
+        assert!(retained(&mut history, transferred));
+        assert!(!retained(
+            &mut history,
+            RenderedWorld {
+                dimension: 1,
+                ..transferred
+            }
+        ));
     }
 }

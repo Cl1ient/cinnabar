@@ -2,6 +2,8 @@
 
 use super::*;
 use crate::enhanced::EnhancedViews;
+use crate::enhanced::world_cache::WorldCache;
+use bevy::prelude::{Deref, DerefMut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) enum SubmissionKind {
@@ -197,12 +199,15 @@ impl GeometryBatch {
     }
 }
 
-#[derive(Resource, Default)]
-pub(crate) struct EnhancedGeometryCache {
+#[derive(Default)]
+pub(crate) struct GeometryState {
     scene: ResidentScene,
     batches: HashMap<(Entity, SubmissionKind), GeometryBatch>,
     pub(super) indirect_enabled: bool,
 }
+
+#[derive(Resource, Default, Deref, DerefMut)]
+pub(crate) struct EnhancedGeometryCache(WorldCache<GeometryState>);
 
 impl EnhancedGeometryCache {
     pub(super) fn batch(
@@ -228,6 +233,7 @@ pub(super) fn prepare_enhanced_geometry(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
 ) {
+    cache.0.enter_world(views.0.world());
     if !views.0.values().any(|view| {
         !view.settings.reflection_capture
             && (view.scene.is_some()
@@ -272,7 +278,7 @@ pub(super) fn prepare_enhanced_geometry(
     });
     cache.indirect_enabled = matches!(mode, ChunkDrawMode::MultiDrawIndirect);
     let indirect = cache.indirect_enabled;
-    let EnhancedGeometryCache { scene, batches, .. } = &mut *cache;
+    let GeometryState { scene, batches, .. } = &mut *cache.0;
     batches.retain(|(entity, kind), _| {
         views.0.get(entity).is_some_and(|view| {
             !view.settings.reflection_capture

@@ -58,10 +58,6 @@ pub(crate) struct LocalLightingInputs<'w> {
     pipelines: Res<'w, crate::enhanced::shadows::EnhancedShadowPipelines>,
 }
 
-fn render_dimension(environment: Option<&render_scene::AtmosphereViewInputs>) -> Option<i32> {
-    environment.map(|environment| environment.dimension)
-}
-
 struct CaptureLighting {
     parent: Entity,
     frame: Buffer,
@@ -107,6 +103,8 @@ pub(crate) fn prepare_enhanced_views(
         Option<&bevy::render::camera::ExtractedCamera>,
     )>,
 ) {
+    let world = render_scene::enhanced::RenderedWorld::of(local.environment.as_deref());
+    state.0.enter_world(world);
     state
         .0
         .retain(|entity, _| views.contains(*entity) || probe_faces.contains(*entity));
@@ -114,11 +112,6 @@ pub(crate) fn prepare_enhanced_views(
     let seconds = time.elapsed_secs_wrapped();
     let view_layout = pipeline_cache.get_bind_group_layout(&enhanced_view_layout());
     let caster_layout = pipeline_cache.get_bind_group_layout(&enhanced_caster_layout());
-    let dimension = render_dimension(local.environment.as_deref());
-    let world = local
-        .environment
-        .as_deref()
-        .map(crate::enhanced::temporal::HistoryWorld::of);
     // Parent resources must describe this render frame before a cube view binds them.
     for reflection_capture in [false, true] {
         for (entity, view, target, depth, settings, jitter, camera) in &views {
@@ -202,6 +195,7 @@ pub(crate) fn prepare_enhanced_views(
             if state.settings.reflection_capture != reflection_capture {
                 *state = EnhancedViewGpu::new(&device, *settings);
             }
+            state.exposure.enter_world(&queue, world);
             if state
                 .resolved_depth
                 .as_ref()
@@ -381,7 +375,7 @@ pub(crate) fn prepare_enhanced_views(
                     &device,
                     &queue,
                     &local.sources,
-                    dimension,
+                    world,
                     inputs.camera,
                     view.clip_from_world.unwrap_or_else(|| {
                         view.clip_from_view * view.world_from_view.to_matrix().inverse()
@@ -474,7 +468,7 @@ pub(crate) fn prepare_enhanced_views(
                     &local.assets,
                     &local.tints,
                     inputs.camera,
-                    dimension,
+                    world,
                     signature,
                 );
             }
@@ -602,7 +596,7 @@ pub(crate) fn prepare_enhanced_views(
                 history.sun.prepare(
                     &queue,
                     valid,
-                    dimension,
+                    world,
                     local.sources.revision,
                     gpu.materials.id(),
                     time.delta_secs(),
@@ -888,17 +882,6 @@ mod tests {
     use super::*;
     use bevy::math::Vec3;
 
-    #[test]
-    fn local_light_dimension_needs_no_diagnostic_publication_witness() {
-        assert_eq!(render_dimension(None), None);
-        for dimension in [-42, 0, 700] {
-            let environment = render_scene::AtmosphereViewInputs {
-                dimension,
-                ..default()
-            };
-            assert_eq!(render_dimension(Some(&environment)), Some(dimension));
-        }
-    }
     #[test]
     fn cloud_visibility_controls_frame_flags_and_shadow_sampling() {
         let inputs = ViewInputs {

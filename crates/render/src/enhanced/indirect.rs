@@ -8,7 +8,7 @@ use bevy::{
         renderer::{RenderContext, RenderDevice, RenderQueue},
     },
 };
-use render_scene::ChunkTextureAssets;
+use render_scene::{ChunkTextureAssets, enhanced::RenderedWorld};
 use std::{
     num::NonZeroU64,
     sync::atomic::{AtomicBool, Ordering},
@@ -42,7 +42,7 @@ struct GridKey {
     assets: render_scene::ChunkTextureAssetIdentity,
     tints: meshing::ChunkBiomeTintIdentity,
     origin: IVec3,
-    dimension: Option<i32>,
+    world: Option<RenderedWorld>,
 }
 
 pub(crate) struct IndirectGridGpu {
@@ -55,8 +55,8 @@ pub(crate) struct IndirectGridGpu {
     colors: Vec<geometry::Reflectance>,
     prepared: Option<GridKey>,
     lighting: Option<u64>,
-    geometry_revision: Option<(u64, IVec3, Option<i32>, u64)>,
-    coverage_revision: Option<(u64, IVec3, Option<i32>, u64)>,
+    geometry_revision: Option<(u64, IVec3, Option<RenderedWorld>, u64)>,
+    coverage_revision: Option<(u64, IVec3, Option<RenderedWorld>, u64)>,
     epoch: u32,
     cursor: u32,
     batch: u32,
@@ -145,9 +145,10 @@ impl IndirectGridGpu {
         assets: &ChunkTextureAssets,
         tints: &render_scene::ChunkBiomeTints,
         camera: Vec3,
-        dimension: Option<i32>,
+        world: Option<RenderedWorld>,
         lighting_signature: u64,
     ) -> bool {
+        let dimension = world.map(|world| world.dimension);
         if self.submitted.swap(false, Ordering::Relaxed) {
             self.cursor = (self.cursor + self.batch).min(PROBE_COUNT);
         }
@@ -159,40 +160,41 @@ impl IndirectGridGpu {
         let snapped = (camera / spacing).floor().as_ivec3() * PROBE_SPACING as i32;
         let origin = snapped - IVec3::from_array(GRID_SIZE.map(|v| v as i32 / 2));
         let regional = match self.geometry_revision {
-            Some((revision, previous_origin, previous_dimension, regional))
+            Some((revision, previous_origin, previous_world, regional))
                 if revision == geometry.revision
                     && previous_origin == origin
-                    && previous_dimension == dimension =>
+                    && previous_world == world =>
             {
                 regional
             }
             _ => geometry.region_revision(origin, dimension),
         };
-        self.geometry_revision = Some((geometry.revision, origin, dimension, regional));
+        self.geometry_revision = Some((geometry.revision, origin, world, regional));
         let coverage_revision = coverage.revision();
         let known = match self.coverage_revision {
-            Some((revision, previous_origin, previous_dimension, signature))
+            Some((revision, previous_origin, previous_world, signature))
                 if revision == coverage_revision
                     && previous_origin == origin
-                    && previous_dimension == dimension =>
+                    && previous_world == world =>
             {
                 signature
             }
             _ => geometry::coverage_signature(coverage, origin, dimension),
         };
-        self.coverage_revision = Some((coverage_revision, origin, dimension, known));
+        self.coverage_revision = Some((coverage_revision, origin, world, known));
         let key = GridKey {
             geometry: regional,
             coverage: known,
             assets: assets.identity(),
             tints: tints.table_identity(),
             origin,
-            dimension,
+            world,
         };
         let changed = self.prepared != Some(key);
         let relight = self.lighting != Some(lighting_signature);
+        // Probe radiance from another session or dimension is never retained.
         let retained = self.prepared.filter(|previous| {
-            previous.dimension == dimension
+            previous.world == world
                 && previous.assets == key.assets
                 && grids_overlap(previous.origin, origin)
         });

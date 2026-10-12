@@ -450,11 +450,15 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
     );
     let clip =
         glam::camera::rh::proj::directx::perspective(std::f32::consts::FRAC_PI_2, 1.0, 0.05, 96.0);
+    let world = Some(RenderedWorld {
+        session_generation: 1,
+        dimension: 0,
+    });
     view.prepare(
         &render_device,
         &render_queue,
         &source,
-        Some(0),
+        world,
         Vec3::ZERO,
         clip,
         [256, 256],
@@ -475,7 +479,7 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
         &render_device,
         &render_queue,
         &source,
-        Some(0),
+        world,
         Vec3::ZERO,
         clip,
         [256, 256],
@@ -504,7 +508,7 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
         &render_device,
         &render_queue,
         &source,
-        Some(0),
+        world,
         Vec3::ZERO,
         clip,
         [256, 256],
@@ -531,7 +535,7 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
         &render_device,
         &render_queue,
         &source,
-        Some(0),
+        world,
         Vec3::ZERO,
         clip * Mat4::from_rotation_y(std::f32::consts::PI),
         [256, 256],
@@ -554,4 +558,22 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
         !view.dirty,
         "turning alone does not recapture a lamp's static world"
     );
+    view.submitted.store(true, Ordering::Relaxed);
+    view.prepare(
+        &render_device,
+        &render_queue,
+        &source,
+        Some(RenderedWorld {
+            session_generation: 2,
+            ..world.unwrap()
+        }),
+        Vec3::ZERO,
+        clip,
+        [256, 256],
+        0,
+        false,
+        true,
+    );
+    assert!(view.dirty, "another session retires submitted point maps");
+    assert_ne!(view.shadow_lane_identities(), identities);
 }

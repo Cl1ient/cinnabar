@@ -18,6 +18,7 @@ use bevy::{
     },
 };
 use probe_cache::{ProbeLighting, ProbeSchedule};
+use render_scene::enhanced::RenderedWorld;
 use std::{
     collections::{HashMap, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
@@ -45,7 +46,7 @@ pub(crate) struct ProbeOrigin {
     pub epoch: u64,
     pub quality: super::EnhancedQuality,
     pub(crate) source: Option<Entity>,
-    dimension: Option<i32>,
+    world: Option<RenderedWorld>,
     completed_faces: Arc<AtomicU64>,
     lighting_signature: Arc<AtomicU64>,
 }
@@ -80,6 +81,11 @@ impl ProbeOrigin {
 struct Cameras {
     entities: Vec<Entity>,
     images: Vec<Handle<Image>>,
+    history: super::world_cache::WorldCache<CaptureHistory>,
+}
+
+#[derive(Default)]
+struct CaptureHistory {
     schedule: ProbeSchedule,
     lighting: Option<ProbeLighting>,
     material: Option<render_scene::ChunkTextureAssetIdentity>,
@@ -149,8 +155,7 @@ fn sync_cameras(
         for image in cameras.images.drain(..) {
             images.remove(image.id());
         }
-        cameras.schedule = default();
-        cameras.settings = None;
+        cameras.history = default();
         if origin.source.take().is_some() {
             origin.epoch = origin.epoch.wrapping_add(1);
             origin.reset_faces();
@@ -159,29 +164,30 @@ fn sync_cameras(
     };
     let applied = super::frame::applied_cloud_settings(*settings, clouds.as_deref());
     let settings = &applied;
-    let dimension = environment
-        .as_ref()
-        .map(|environment| environment.dimension);
-    let source_changed = origin.source != Some(source_entity) || origin.dimension != dimension;
+    let world = RenderedWorld::of(environment.as_deref());
+    cameras.history.enter_world(world);
+    let source_changed = origin.source != Some(source_entity) || origin.world != world;
     origin.source = Some(source_entity);
-    origin.dimension = dimension;
+    origin.world = world;
     origin.quality = settings.quality;
     let budget = render_scene::enhanced::enhanced_quality_budget(settings.quality);
     cameras
+        .history
         .schedule
         .set_intervals(budget.reflection_refresh, budget.reflection_animation);
     let capture_order = source_camera.order.saturating_add(1);
     let now = time.as_ref().map_or(0.0, |time| time.elapsed_secs_f64());
     if changed_chunks.iter().next().is_some() || removed_chunks.read().count() != 0 {
-        cameras.schedule.invalidate();
+        cameras.history.schedule.invalidate();
     }
     let material = materials.as_ref().map(|materials| materials.identity());
     let enhanced = capture_settings(*settings);
-    let inputs_changed = cameras.material != material || cameras.settings != Some(enhanced);
+    let inputs_changed =
+        cameras.history.material != material || cameras.history.settings != Some(enhanced);
     if inputs_changed {
-        cameras.material = material;
-        cameras.settings = Some(enhanced);
-        cameras.schedule.invalidate();
+        cameras.history.material = material;
+        cameras.history.settings = Some(enhanced);
+        cameras.history.schedule.invalidate();
     }
     if let Some(atmosphere) = atmosphere {
         let next = ProbeLighting {
@@ -192,32 +198,42 @@ fn sync_cameras(
             zenith: Vec3::from_array(atmosphere.sky_zenith()),
             horizon: Vec3::from_array(atmosphere.sky_horizon()),
         };
-        if cameras.lighting.is_none_or(|old| !old.reusable(next)) {
-            if cameras.lighting.is_some_and(|old| old.discontinuity(next)) {
+        if cameras
+            .history
+            .lighting
+            .is_none_or(|old| !old.reusable(next))
+        {
+            if cameras
+                .history
+                .lighting
+                .is_some_and(|old| old.discontinuity(next))
+            {
                 origin.epoch = origin.epoch.wrapping_add(1);
                 origin.reset_faces();
                 cameras
+                    .history
                     .schedule
                     .relocate(preferred_face(pose.forward().as_vec3()));
             }
-            cameras.lighting = Some(next);
-            cameras.schedule.invalidate();
+            cameras.history.lighting = Some(next);
+            cameras.history.schedule.invalidate();
         }
     }
-    if now >= cameras.schedule.next_inputs {
+    if now >= cameras.history.schedule.next_inputs {
         let signature = actors.as_ref().map_or(0, |frame| actor_signature(frame));
-        if signature != cameras.actor_signature {
-            cameras.actor_signature = signature;
-            cameras.schedule.invalidate();
+        if signature != cameras.history.actor_signature {
+            cameras.history.actor_signature = signature;
+            cameras.history.schedule.invalidate();
         }
         let lighting_signature = origin.lighting_signature.load(Ordering::Relaxed);
-        if cameras.lighting_signature != lighting_signature {
-            cameras.lighting_signature = lighting_signature;
-            cameras.schedule.invalidate();
+        if cameras.history.lighting_signature != lighting_signature {
+            cameras.history.lighting_signature = lighting_signature;
+            cameras.history.schedule.invalidate();
         }
-        cameras.schedule.next_inputs = now + budget.reflection_refresh;
+        cameras.history.schedule.next_inputs = now + budget.reflection_refresh;
     }
     cameras
+        .history
         .schedule
         .animate(now, settings.volumetric_clouds || settings.waving);
     let position = pose.translation();
@@ -228,17 +244,19 @@ fn sync_cameras(
         origin.epoch = origin.epoch.wrapping_add(1);
         origin.reset_faces();
         cameras
+            .history
             .schedule
             .relocate(preferred_face(pose.forward().as_vec3()));
     } else if inputs_changed {
         origin.epoch = origin.epoch.wrapping_add(1);
         origin.reset_faces();
         cameras
+            .history
             .schedule
             .relocate(preferred_face(pose.forward().as_vec3()));
     }
-    cameras.schedule.completed(origin.face_mask());
-    let active_face = cameras.schedule.next_face(now);
+    cameras.history.schedule.completed(origin.face_mask());
+    let active_face = cameras.history.schedule.next_face(now);
     if cameras.entities.is_empty() {
         for face in 0..6 {
             let mut image = Image::new_target_texture(SIZE, SIZE, TextureFormat::Rgba16Float, None);

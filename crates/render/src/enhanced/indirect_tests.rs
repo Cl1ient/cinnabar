@@ -502,6 +502,10 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
     let coverage = crate::chunk::resident_coverage::ChunkResidentCoverage::default();
     let textures = ChunkTextureAssets::default();
     let tints = render_scene::ChunkBiomeTints::default();
+    let overworld = Some(RenderedWorld {
+        session_generation: 1,
+        dimension: 0,
+    });
     view.prepare(
         &render_queue,
         &geometry,
@@ -509,7 +513,7 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
         &textures,
         &tints,
         Vec3::ZERO,
-        Some(0),
+        overworld,
         1,
     );
     for _ in 0..PROBE_COUNT
@@ -523,7 +527,7 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
             &textures,
             &tints,
             Vec3::ZERO,
-            Some(0),
+            overworld,
             1,
         );
     }
@@ -538,7 +542,7 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
             &textures,
             &tints,
             Vec3::splat(0.05),
-            Some(0),
+            overworld,
             1
         ));
     }
@@ -559,7 +563,7 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
         &textures,
         &tints,
         Vec3::ZERO,
-        Some(0),
+        overworld,
         2
     ));
     assert_eq!(
@@ -575,7 +579,7 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
         &textures,
         &tints,
         Vec3::new(4.1, 0.0, 0.0),
-        Some(0),
+        overworld,
         2
     ));
     assert_eq!(
@@ -590,11 +594,65 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
         &textures,
         &tints,
         Vec3::new(400.0, 0.0, 0.0),
-        Some(0),
+        overworld,
         2,
     );
     assert_ne!(
         view.epoch, epoch,
         "teleports invalidate unrelated probe history"
     );
+    let epoch = view.epoch;
+    view.submitted.store(true, Ordering::Relaxed);
+    view.prepare(
+        &render_queue,
+        &geometry,
+        &coverage,
+        &textures,
+        &tints,
+        Vec3::new(400.0, 0.0, 0.0),
+        overworld,
+        2,
+    );
+    assert!(view.cursor > 0);
+    assert!(view.prepare(
+        &render_queue,
+        &geometry,
+        &coverage,
+        &textures,
+        &tints,
+        Vec3::new(400.0, 0.0, 0.0),
+        Some(RenderedWorld {
+            session_generation: 2,
+            dimension: 0,
+        }),
+        2,
+    ));
+    assert_ne!(
+        view.epoch, epoch,
+        "a transfer at the same position invalidates the old session's probe history"
+    );
+    assert_eq!(view.cursor, 0, "the new world starts a fresh probe sweep");
+    assert!(view.pending());
+    assert_eq!(view.words[3][0], view.epoch);
+    assert_ne!(
+        view.words[3][0], epoch,
+        "old GPU probes fail the epoch check"
+    );
+    let epoch = view.epoch;
+    let origin = view.prepared.unwrap().origin;
+    assert!(view.prepare(
+        &render_queue,
+        &geometry,
+        &coverage,
+        &textures,
+        &tints,
+        Vec3::new(404.1, 0.0, 0.0),
+        Some(RenderedWorld {
+            session_generation: 3,
+            dimension: 0,
+        }),
+        2,
+    ));
+    assert!(grids_overlap(origin, view.prepared.unwrap().origin));
+    assert_ne!(view.epoch, epoch, "overlap cannot preserve another session");
 }

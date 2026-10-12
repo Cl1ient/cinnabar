@@ -9,6 +9,7 @@ use bevy::{
     },
 };
 use bytemuck::{Pod, Zeroable};
+use render_scene::enhanced::RenderedWorld;
 use std::{
     collections::{HashMap, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
@@ -202,10 +203,21 @@ impl LocalLightBlock {
 }
 pub(crate) const LOCAL_LIGHT_BUFFER_BYTES: usize = std::mem::size_of::<LocalLightBlock>();
 
+/// Identifies one emitter's shadow lane; an emitter at the same place in another world differs.
+fn shadow_lane_identity(world: Option<RenderedWorld>, source: LightSource) -> u64 {
+    let mut hash = DefaultHasher::new();
+    world.hash(&mut hash);
+    source.dimension.hash(&mut hash);
+    for value in source.position.to_array() {
+        value.to_bits().hash(&mut hash);
+    }
+    hash.finish()
+}
+
 #[derive(Clone, Copy, PartialEq)]
 struct PreparedInputs {
     lights_revision: u64,
-    dimension: Option<i32>,
+    world: Option<RenderedWorld>,
     camera: Vec3,
     clip: Mat4,
     size: [u32; 2],
@@ -266,15 +278,9 @@ impl LocalLightView {
 
     /// Source identities follow emitters when the dense atlas prefix moves between lanes.
     pub(crate) fn shadow_lane_identities(&self) -> [Option<u64>; MAX_SHADOWED_LIGHTS] {
-        self.shadow_owners.map(|owner| {
-            let source = owner?;
-            let mut hash = DefaultHasher::new();
-            source.dimension.hash(&mut hash);
-            for value in source.position.to_array() {
-                value.to_bits().hash(&mut hash);
-            }
-            Some(hash.finish())
-        })
+        let world = self.prepared.and_then(|input| input.world);
+        self.shadow_owners
+            .map(|owner| Some(shadow_lane_identity(world, owner?)))
     }
 
     pub(crate) fn set_quality(&mut self, quality: EnhancedQuality) {
@@ -343,7 +349,7 @@ impl LocalLightView {
         device: &RenderDevice,
         queue: &RenderQueue,
         sources: &LocalLightSources,
-        dimension: Option<i32>,
+        world: Option<RenderedWorld>,
         camera: Vec3,
         clip: Mat4,
         size: [u32; 2],
@@ -354,7 +360,7 @@ impl LocalLightView {
         let was_submitted = self.submitted.swap(false, Ordering::Relaxed);
         let inputs = PreparedInputs {
             lights_revision: sources.lights_revision,
-            dimension,
+            world,
             camera,
             clip,
             size,
@@ -367,7 +373,7 @@ impl LocalLightView {
             let shadow_count = self.shadow_count();
             let pool_changed = self.prepared.is_none_or(|previous| {
                 previous.lights_revision != inputs.lights_revision
-                    || previous.dimension != inputs.dimension
+                    || previous.world != inputs.world
                     || previous.camera != inputs.camera
             });
             if pool_changed {

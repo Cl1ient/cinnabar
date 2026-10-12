@@ -4,9 +4,10 @@ use bevy::{
     prelude::*,
     render::{
         render_resource::*,
-        renderer::{RenderContext, RenderDevice},
+        renderer::{RenderContext, RenderDevice, RenderQueue},
     },
 };
+use render_scene::enhanced::RenderedWorld;
 use std::num::NonZeroU64;
 
 pub(crate) fn layout() -> BindGroupLayoutDescriptor {
@@ -51,6 +52,7 @@ pub(crate) fn layout() -> BindGroupLayoutDescriptor {
 pub(crate) struct ExposureBuffers {
     pub histogram: Buffer,
     pub value: Buffer,
+    world: Option<RenderedWorld>,
 }
 impl ExposureBuffers {
     pub fn new(device: &RenderDevice) -> Self {
@@ -65,7 +67,50 @@ impl ExposureBuffers {
         Self {
             histogram: create("enhanced luminance histogram", 256),
             value: create("enhanced adapted exposure", 16),
+            world: None,
         }
+    }
+
+    /// Discards adapted exposure metered in another world; returns whether it was discarded.
+    pub fn enter_world(&mut self, queue: &RenderQueue, world: Option<RenderedWorld>) -> bool {
+        if self.world == world {
+            return false;
+        }
+        self.world = world;
+        // A zero `w` marks the meter history invalid, so the next frame adopts its exposure.
+        queue.write_buffer(&self.value, 0, &[0; 16]);
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Eye adaptation restarts in a new session or dimension instead of easing from the old one.
+    #[test]
+    fn another_world_discards_adapted_exposure() {
+        let instance = crate::enhanced::validation::native_instance();
+        let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default()))
+        else {
+            eprintln!("missing fixture: native GPU for exposure world binding");
+            return;
+        };
+        let (device, queue) =
+            bevy::tasks::block_on(adapter.request_device(&Default::default())).unwrap();
+        let queue = RenderQueue::new(queue);
+        let mut buffers = ExposureBuffers::new(&RenderDevice::from(device));
+        let world = |session_generation, dimension| {
+            Some(RenderedWorld {
+                session_generation,
+                dimension,
+            })
+        };
+        assert!(buffers.enter_world(&queue, world(1, 0)));
+        assert!(!buffers.enter_world(&queue, world(1, 0)));
+        assert!(buffers.enter_world(&queue, world(2, 0)));
+        assert!(buffers.enter_world(&queue, world(2, 1)));
+        assert!(!buffers.enter_world(&queue, world(2, 1)));
     }
 }
 

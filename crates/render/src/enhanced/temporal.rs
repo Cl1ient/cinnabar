@@ -8,6 +8,7 @@ use bevy::{
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{EnhancedRendering, frame::EnhancedFrameGpu};
+use render_scene::enhanced::RenderedWorld;
 
 const HISTORY_WEATHER_CUT: f32 = 0.15;
 const HISTORY_CLOUD_COVERAGE_CUT: f32 = 0.1;
@@ -95,22 +96,6 @@ pub(crate) fn temporal_history_allowed(
         && settings.shadow_debug == super::EnhancedShadowDebug::Off
 }
 
-/// The world a history was rendered in; imagery never blends across sessions or dimensions.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct HistoryWorld {
-    session_generation: u64,
-    dimension: i32,
-}
-
-impl HistoryWorld {
-    pub(crate) const fn of(view: &render_scene::AtmosphereViewInputs) -> Self {
-        Self {
-            session_generation: view.session_generation,
-            dimension: view.dimension,
-        }
-    }
-}
-
 #[derive(Default)]
 pub(crate) struct HistoryState {
     pub(crate) submitted: AtomicBool,
@@ -122,7 +107,7 @@ pub(crate) struct HistoryState {
     pub(crate) seconds: f32,
     pub(crate) index: u32,
     environment: EnvironmentHistory,
-    world: Option<HistoryWorld>,
+    world: Option<RenderedWorld>,
 }
 
 impl HistoryState {
@@ -132,7 +117,7 @@ impl HistoryState {
         clip: Mat4,
         frame: &EnhancedFrameGpu,
         seconds: f32,
-        world: Option<HistoryWorld>,
+        world: Option<RenderedWorld>,
     ) -> bool {
         let camera = view.world_from_view.translation();
         let forward = view.world_from_view.forward().as_vec3();
@@ -339,17 +324,14 @@ mod tests {
         let mut frame: EnhancedFrameGpu = bytemuck::Zeroable::zeroed();
         frame.light_direction = Vec3::Y.extend(super::super::frame::SOLAR_IRRADIANCE);
         frame.atmosphere.x = 1.0;
-        let overworld = |session_generation| {
-            HistoryWorld::of(&render_scene::AtmosphereViewInputs {
-                session_generation,
-                ..Default::default()
-            })
+        let overworld = |session_generation| RenderedWorld {
+            session_generation,
+            dimension: 0,
         };
-        let nether = HistoryWorld::of(&render_scene::AtmosphereViewInputs {
-            dimension: 1,
+        let nether = RenderedWorld {
             session_generation: 1,
-            ..Default::default()
-        });
+            dimension: 1,
+        };
         let mut history = HistoryState::default();
         let mut seconds = 1.0;
         let mut advance = |world| {

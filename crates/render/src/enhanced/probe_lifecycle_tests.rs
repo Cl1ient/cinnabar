@@ -98,6 +98,72 @@ fn dimension_changes_discard_completed_reflections_at_the_same_coordinates() {
 }
 
 #[test]
+fn a_session_transfer_retires_the_cube_before_any_replacement_face_completes() {
+    let instance = super::super::validation::native_instance();
+    let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
+        eprintln!("missing fixture: native GPU for reflection session invalidation");
+        return;
+    };
+    let (device, _) = bevy::tasks::block_on(adapter.request_device(&Default::default())).unwrap();
+    let mut app = App::new();
+    app.insert_resource(bevy::render::renderer::RenderDevice::from(device))
+        .init_resource::<ProbeGpu>()
+        .init_resource::<Cameras>()
+        .init_resource::<ProbeOrigin>()
+        .init_resource::<Assets<Image>>()
+        .insert_resource(render_scene::AtmosphereViewInputs {
+            session_generation: 1,
+            ..default()
+        })
+        .add_systems(Update, sync_cameras);
+    let camera = app
+        .world_mut()
+        .spawn((
+            Camera::default(),
+            GlobalTransform::IDENTITY,
+            EnhancedRendering::default(),
+        ))
+        .id();
+    app.update();
+    let previous = app.world().resource::<ProbeOrigin>().clone();
+    let gpu = app.world().resource::<ProbeGpu>();
+    gpu.epoch.store(previous.epoch, Ordering::Relaxed);
+    for face in 0..CUBE_FACE_COUNT {
+        previous.complete_face(face);
+    }
+    assert!(gpu.is_current(&previous));
+    app.update();
+    let captures = app.world().resource::<Cameras>().entities.clone();
+    app.world_mut()
+        .resource_mut::<render_scene::AtmosphereViewInputs>()
+        .session_generation += 1;
+    app.update();
+    let current = app.world().resource::<ProbeOrigin>();
+    let gpu = app.world().resource::<ProbeGpu>();
+    assert_eq!(current.source, Some(camera));
+    assert_eq!(current.position, previous.position);
+    assert_ne!(current.epoch, previous.epoch);
+    assert_eq!(current.face_mask(), 0);
+    assert!(
+        !gpu.is_current(current),
+        "the old cube is retired immediately"
+    );
+    previous.complete_face(0);
+    assert_eq!(current.face_mask(), 0, "old-session feedback is rejected");
+    gpu.epoch.store(current.epoch, Ordering::Relaxed);
+    current.complete_face(0);
+    assert!(
+        !gpu.is_current(current),
+        "one new face cannot restore the old cube"
+    );
+    for face in 1..CUBE_FACE_COUNT {
+        current.complete_face(face);
+    }
+    assert!(gpu.is_current(current));
+    assert_eq!(app.world().resource::<Cameras>().entities, captures);
+}
+
+#[test]
 fn cloud_visibility_changes_discard_completed_reflections() {
     let mut app = App::new();
     app.init_resource::<Cameras>()

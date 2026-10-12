@@ -6,10 +6,12 @@ use super::*;
 use crate::enhanced::actor_motion::{
     ActorMotionHistory, ActorMotionInstanceGpu, ActorMotionUploadCache,
 };
+use crate::enhanced::world_cache::WorldCache;
+use render_scene::enhanced::RenderedWorld;
 
 #[derive(Resource, Default)]
 pub(super) struct ActorMotionGpu {
-    history: ActorMotionHistory,
+    history: WorldCache<ActorMotionHistory>,
     uploads: ActorMotionUploadCache,
     instances: Option<Buffer>,
     bones: Option<Buffer>,
@@ -67,6 +69,7 @@ fn upload(
 
 pub(super) fn prepare_actor_motion(
     frame: Res<ActorRenderFrame>,
+    environment: Option<Res<render_scene::AtmosphereViewInputs>>,
     actors: Res<ActorGpu>,
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
@@ -74,6 +77,12 @@ pub(super) fn prepare_actor_motion(
     views: Query<&render_scene::EnhancedRendering>,
     mut motion: ResMut<ActorMotionGpu>,
 ) {
+    if motion
+        .history
+        .enter_world(RenderedWorld::of(environment.as_deref()))
+    {
+        motion.resolved.store(false, Ordering::Relaxed);
+    }
     let enabled = views.iter().any(|settings| !settings.reflection_capture);
     if !enabled || actors.instance_count == 0 {
         motion.history.clear();

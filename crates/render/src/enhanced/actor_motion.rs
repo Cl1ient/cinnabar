@@ -3,9 +3,10 @@
 use std::collections::HashMap;
 
 use render_model::{ActorDrawManifestEntry, ActorRigRenderFrame};
+use render_scene::enhanced::RenderedWorld;
 
 type BoneMatrix = [[f32; 4]; 3];
-type Lifetime = (u64, i32, u64, u64, u8);
+type Lifetime = (RenderedWorld, u64, u64, u8);
 
 /// Matches the four vec4 rows of `MotionInstance` in the actor motion vertex path.
 #[repr(C)]
@@ -61,11 +62,14 @@ impl ActorMotionUploadCache {
     }
 }
 
+/// Identifies a rendered layer within one world's actor lifetime.
 fn lifetime(entry: &ActorDrawManifestEntry) -> Lifetime {
     let id = entry.identity;
     (
-        id.session_id,
-        id.dimension,
+        RenderedWorld {
+            session_generation: id.session_id,
+            dimension: id.dimension,
+        },
         id.runtime_id,
         id.spawn_revision,
         id.layer,
@@ -204,6 +208,34 @@ mod tests {
     use render_model::EntityRigId;
     use render_model::{ActorGpuInstance, ActorRenderIdentity, ActorRigRoute, IDENTITY_UV_ANIM};
     use std::sync::Arc;
+
+    #[test]
+    fn another_world_rejects_submitted_motion_even_when_frame_generation_repeats() {
+        let mut history = super::super::world_cache::WorldCache::<ActorMotionHistory>::default();
+        let stationary = frame(1, &[1], 0.0, 0.25);
+        for world in [
+            RenderedWorld {
+                session_generation: 1,
+                dimension: 0,
+            },
+            RenderedWorld {
+                session_generation: 2,
+                dimension: 0,
+            },
+            RenderedWorld {
+                session_generation: 2,
+                dimension: 1,
+            },
+        ] {
+            assert!(history.enter_world(Some(world)));
+            history.prepare(&stationary);
+            assert_eq!(history.instances()[0].metadata[2], 0);
+            history.commit_submitted(|_| true);
+            assert!(!history.enter_world(Some(world)));
+            history.prepare(&stationary);
+            assert_eq!(history.instances()[0].metadata[2], 1);
+        }
+    }
 
     fn frame(generation: u64, runtime_ids: &[u64], x: f32, fraction: f32) -> ActorRigRenderFrame {
         let bone = |x| {

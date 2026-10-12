@@ -80,6 +80,8 @@ mod temporal_texture_tests;
 mod validation;
 #[cfg(all(test, feature = "enhanced"))]
 mod water_tests;
+#[cfg(feature = "enhanced")]
+pub(crate) mod world_cache;
 
 #[cfg(feature = "enhanced")]
 use render_model::enhanced_rendering_enabled;

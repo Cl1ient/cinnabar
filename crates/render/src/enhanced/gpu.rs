@@ -468,7 +468,7 @@ impl ShadowTargets {
     }
 }
 
-/// Per-view Enhanced state, rebuilt from the frame each render update.
+/// World-owned per-view state. Keep new view caches here so world changes retire them together.
 pub(crate) struct EnhancedViewGpu {
     pub(crate) local_lights: super::local_lights::LocalLightView,
     pub(crate) indirect: super::indirect::IndirectGridGpu,
@@ -565,7 +565,9 @@ impl EnhancedViewGpu {
 }
 
 #[derive(Resource, Default)]
-pub(crate) struct EnhancedViews(pub(crate) HashMap<Entity, EnhancedViewGpu>);
+pub(crate) struct EnhancedViews(
+    pub(crate) super::world_cache::WorldCache<HashMap<Entity, EnhancedViewGpu>>,
+);
 
 #[path = "view_prepare.rs"]
 mod view_prepare;

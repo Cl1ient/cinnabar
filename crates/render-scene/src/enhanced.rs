@@ -160,10 +160,47 @@ pub const fn enhanced_quality_budget(quality: EnhancedQuality) -> EnhancedQualit
     }
 }
 
+/// The session and dimension that own a view's spatial lighting and history.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct RenderedWorld {
+    pub session_generation: u64,
+    pub dimension: i32,
+}
+
+impl RenderedWorld {
+    /// The world `inputs` describe; `None` before any world publishes view inputs.
+    #[must_use]
+    pub fn of(inputs: Option<&crate::AtmosphereViewInputs>) -> Option<Self> {
+        inputs.map(|inputs| Self {
+            session_generation: inputs.session_generation,
+            dimension: inputs.dimension,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use bevy::prelude::{Camera3d, World};
+
+    #[test]
+    fn rendered_world_carries_the_exact_session_and_dimension() {
+        assert_eq!(RenderedWorld::of(None), None);
+        for (session_generation, dimension) in [(1, -42), (1, 0), (2, 0), (3, 700)] {
+            let inputs = crate::AtmosphereViewInputs {
+                session_generation,
+                dimension,
+                ..Default::default()
+            };
+            assert_eq!(
+                RenderedWorld::of(Some(&inputs)),
+                Some(RenderedWorld {
+                    session_generation,
+                    dimension
+                })
+            );
+        }
+    }
 
     /// Enhanced's required components never propagate to an ordinary camera.
     #[test]

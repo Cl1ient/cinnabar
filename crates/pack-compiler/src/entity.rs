@@ -35,9 +35,6 @@ mod native_held_items;
 mod pack;
 mod sanitize;
 mod source;
-mod source_manifest;
-use source_manifest::validate_source_manifest;
-pub(crate) use source_manifest::validate_vanilla_source_manifest;
 mod vanilla_refs;
 mod versions;
 pub use molang::{BlockMolang, BlockStateValue, compile_molang_expression};
@@ -52,6 +49,7 @@ use collect::{collect_family, collect_optional_family, collect_optional_file};
 use geometry::parse_geometry;
 pub(crate) use json::parse_fully_unique_json;
 use json::{parse_semantic_json, parse_unique_json};
+use source::validate_source_manifest;
 pub(crate) use source::{open_source_handle, read_bounded_source};
 
 #[allow(unused_imports)] // Integration publishes this private leaf after review.
@@ -979,6 +977,10 @@ fn validate_root_fields(
     }
     Ok(())
 }
+pub(crate) fn validate_vanilla_source_manifest(source: &[u8]) -> Result<[u8; 32], AssetError> {
+    validate_source_manifest(source)
+}
+
 fn invalid(detail: impl Into<Box<str>>) -> AssetError {
     AssetError::InvalidCompiledAssets {
         detail: detail.into(),

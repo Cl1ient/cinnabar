@@ -10,7 +10,8 @@ use semantic_input::PerspectiveMode;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ActorCameraEffects;
 
-/// Applies completed actor counters before the accepted hand bob, without changing gameplay aim.
+/// Shares hurt at the actor fraction and bob at the physics fraction without changing gameplay aim.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_actor_damage_camera_rotation(
     settings: Res<CameraSettingsAuthority>,
     mut hand: ResMut<FirstPersonHandMotion>,
@@ -18,17 +19,14 @@ pub fn apply_actor_damage_camera_rotation(
     server: Res<ServerCameraView>,
     world: Option<WorldObservation<'_>>,
     partial_tick: f32,
+    physics_partial_tick: f32,
     mut cameras: Query<&mut Transform, With<FlyCamera>>,
 ) {
     hand.legacy_effect = None;
     if !server.renders_first_person(settings.perspective() == PerspectiveMode::FirstPerson) {
         return;
     }
-    let alpha = if partial_tick.is_finite() {
-        partial_tick.clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
+    let alpha = render_model::legacy_combat::partial_tick(partial_tick);
     if render_api::DEFAULT_COMBAT_VISUALS == render_api::CombatVisuals::Legacy112 {
         let stream = world.and_then(|world| world.stream);
         let actor =
@@ -41,7 +39,6 @@ pub fn apply_actor_damage_camera_rotation(
             })
             .and_then(|rig| rig.skin_geometry)
             .map(|geometry| geometry.as_ref());
-        let bob_allowed = movement_bob_allowed(geometry);
         let effect = sampled_legacy_effect(
             actor,
             legacy
@@ -49,8 +46,10 @@ pub fn apply_actor_damage_camera_rotation(
                 .map(|legacy| legacy.state.endpoints)
                 .unwrap_or_default(),
             alpha,
-            settings.feel().view_bobbing && bob_allowed,
+            physics_partial_tick,
+            settings.feel().view_bobbing,
             settings.feel().damage_bob,
+            geometry,
         );
         hand.legacy_effect = Some(effect);
         if effect.is_finite() {
@@ -92,18 +91,15 @@ pub fn apply_actor_damage_camera_rotation(
     }
 }
 
-/// Missing skin geometry keeps movement bob; the authored flag suppresses only that matrix.
-fn movement_bob_allowed(geometry: Option<&assets::SkinGeometry>) -> bool {
-    geometry.is_none_or(|geometry| !geometry.animation_no_head_bob)
-}
-
-/// Samples the same actor counters and render fraction for world and first-person draws.
+/// Shares actor-clock hurt and physics-clock bob between world and first-person draws.
 fn sampled_legacy_effect(
     actor: Option<&client_world::ActorSnapshot>,
     endpoints: render_model::legacy_combat::LegacyCameraEndpoints,
-    alpha: f32,
+    actor_alpha: f32,
+    physics_alpha: f32,
     view_bobbing: bool,
     strength: f32,
+    geometry: Option<&assets::SkinGeometry>,
 ) -> Mat4 {
     let Some(actor) = actor else {
         return Mat4::IDENTITY;
@@ -118,11 +114,14 @@ fn sampled_legacy_effect(
         actor.status.hurt_time,
         actor.status.hurt_direction.unwrap_or(0.0),
         death_ticks,
-        alpha,
+        actor_alpha,
         strength,
     );
-    let bob = if view_bobbing && matches!(actor.kind, protocol::ActorKind::Player { .. }) {
-        endpoints.bob_matrix(alpha)
+    let bob = if view_bobbing
+        && matches!(actor.kind, protocol::ActorKind::Player { .. })
+        && geometry.is_none_or(|geometry| !geometry.animation_no_head_bob)
+    {
+        endpoints.bob_matrix(physics_alpha)
     } else {
         Mat4::IDENTITY
     };
@@ -199,7 +198,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod skin_bob_tests {
+mod legacy_effect_tests {
     use super::*;
 
     #[test]
@@ -215,8 +214,6 @@ mod skin_bob_tests {
         )
         .unwrap()
         .unwrap();
-        assert!(movement_bob_allowed(None));
-        assert!(!movement_bob_allowed(Some(&skin)));
         let mut stream = crate::presentation::combat::tests::player_stream();
         let id = stream.local_player_runtime_id();
         crate::presentation::combat::tests::event(&mut stream, 2, protocol::ActorStatusKind::Hurt);
@@ -226,19 +223,48 @@ mod skin_bob_tests {
             bob: [0.05, 0.1],
             fall_degrees: [-4.0, -2.0],
         };
-        let suppressed = sampled_legacy_effect(
-            actor,
-            endpoints,
-            0.5,
-            movement_bob_allowed(Some(&skin)),
-            1.0,
-        );
-        let hurt_only = sampled_legacy_effect(actor, Default::default(), 0.5, true, 1.0);
+        let suppressed = sampled_legacy_effect(actor, endpoints, 0.5, 0.5, true, 1.0, Some(&skin));
+        let hurt_only = sampled_legacy_effect(actor, Default::default(), 0.5, 0.5, true, 1.0, None);
         assert_eq!(suppressed, hurt_only);
         assert_ne!(suppressed, Mat4::IDENTITY);
         assert_ne!(
             suppressed,
-            sampled_legacy_effect(actor, endpoints, 0.5, true, 1.0)
+            sampled_legacy_effect(actor, endpoints, 0.5, 0.5, true, 1.0, None)
         );
+    }
+
+    #[test]
+    fn hurt_and_death_keep_the_actor_fraction_when_physics_has_a_different_fraction() {
+        let mut stream = crate::presentation::combat::tests::player_stream();
+        let id = stream.local_player_runtime_id();
+        crate::presentation::combat::tests::event(&mut stream, 2, protocol::ActorStatusKind::Hurt);
+        let endpoints = render_model::legacy_combat::LegacyCameraEndpoints {
+            walked: [0.3, 0.6],
+            bob: [0.05, 0.1],
+            fall_degrees: [-4.0, -2.0],
+        };
+        for dead in [false, true] {
+            if dead {
+                crate::presentation::combat::tests::event(
+                    &mut stream,
+                    3,
+                    protocol::ActorStatusKind::Death,
+                );
+            }
+            let actor = stream.authority().actor(id).unwrap();
+            let expected = render_model::legacy_combat::legacy_hurt_matrix(
+                actor.status.hurt_time,
+                actor.status.hurt_direction.unwrap_or(0.0),
+                dead.then(|| f32::from(actor.status.native_death_ticks())),
+                0.85,
+                1.0,
+            ) * endpoints.bob_matrix(0.2);
+            let actual = sampled_legacy_effect(Some(actor), endpoints, 0.85, 0.2, true, 1.0, None);
+            assert_eq!(actual, expected);
+            assert!(!actual.abs_diff_eq(
+                sampled_legacy_effect(Some(actor), endpoints, 0.2, 0.2, true, 1.0, None),
+                1e-5,
+            ));
+        }
     }
 }

@@ -333,6 +333,28 @@ fn actual_actor_fragment_matches_native_colour_lightmap_and_material_order() {
     render_cases(&gpu, cases());
 }
 
+#[test]
+fn dye_mask_pages_keep_zero_alpha_rgb_and_depth_in_both_profiles() {
+    let Some(gpu) = Gpu::for_fixture("sheep and wolf dye-mask page contract") else {
+        return;
+    };
+    let cases = [0, render_model::LEGACY_COMBAT_MATERIAL_FLAG]
+        .into_iter()
+        .flat_map(|profile| {
+            [0, 1, 4].map(|texture| Case {
+                name: "body dye mask alpha is not transparency",
+                texture,
+                material: [0, 1, 0, 0],
+                material_word: profile,
+                tint: render_model::pack_overlay_rgba8([0.2, 0.8, 0.4, 1.0]),
+                depth_probe: true,
+                ..Default::default()
+            })
+        })
+        .collect();
+    render_cases(&gpu, cases);
+}
+
 /// Creates an original one-pixel foil image with independent actor/item sampler contents.
 fn glint_view(gpu: &Gpu, texel: [u8; 4], pattern: bool) -> wgpu::TextureView {
     let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -684,8 +706,7 @@ fn render_cases(gpu: &Gpu, cases: Vec<Case>) {
         let offset = (128 * 256 + 128) * 4;
         let alpha = f32::from(TEXELS[case.texture as usize][3]) / 255.0;
         let legacy = case.material_word & render_model::LEGACY_COMBAT_MATERIAL_FLAG != 0;
-        let mask = case.material[1] != 0
-            || case.material_word & render_model::ACTOR_COLOR_MASK_MATERIAL_FLAG != 0;
+        let mask = case.material_word & render_model::ACTOR_COLOR_MASK_MATERIAL_FLAG != 0;
         let enchanted = case.material_word & assets::EntityRenderMaterialState::KIND_MASK
             == assets::EntityRenderMaterial::Glint as u32;
         let authored_cutout = case.material_word

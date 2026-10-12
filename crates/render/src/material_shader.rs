@@ -191,11 +191,9 @@ fn legacy_glint_constants() -> String {
         format!("vec2<f32>({cos:?}, {sin:?})")
     };
     format!(
-        "const LEGACY_GLINT_ROTATION_1: vec2<f32> = {};\nconst LEGACY_GLINT_ROTATION_2: vec2<f32> = {};\nconst LEGACY_GLINT_SCALE: vec2<f32> = vec2({:?}, {:?});\nconst GLINT_COLOUR: vec3<f32> = vec3({:?}, {:?}, {:?});",
+        "const LEGACY_GLINT_ROTATION_1: vec2<f32> = {};\nconst LEGACY_GLINT_ROTATION_2: vec2<f32> = {};\nconst GLINT_COLOUR: vec3<f32> = vec3({:?}, {:?}, {:?});",
         rotation(rules.glint_rotation_radians[0]),
         rotation(rules.glint_rotation_radians[1]),
-        rules.glint_uv_scale[0],
-        rules.glint_uv_scale[1],
         rules.glint_colour[0],
         rules.glint_colour[1],
         rules.glint_colour[2]

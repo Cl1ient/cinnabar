@@ -673,6 +673,8 @@ Bedrock 1.12 combat visuals are a deliberate default and accepted deviation from
 1.26.50. There is no user setting. `render_api::DEFAULT_COMBAT_VISUALS` retains the
 Modern profile as a one-line code choice. The combat profile owns body and worn
 armour hurt red, glint, and camera bob/hurt; Java 1.7 still owns its poses and items.
+Movement bob uses the physics fraction; hurt and death use the actor fraction.
+Page-level body dye masks retain zero-alpha RGB and depth independently of armour cutout.
 
 Implementation and deterministic camera, overlay, equipment and shader fixtures
 are present. They have not been compiled or run. CI verification and a headless

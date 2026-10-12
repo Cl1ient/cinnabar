@@ -144,7 +144,7 @@ impl LegacyCameraEndpoints {
             * Mat4::from_rotation_x(
                 rules.pitch_radians * (bob * legacy_cos(phase + rules.pitch_phase)).abs(),
             )
-            * Mat4::from_rotation_x(rules.radians_per_degree * fall)
+            * Mat4::from_rotation_x(fall.to_radians())
     }
 }
 
@@ -176,7 +176,7 @@ pub fn legacy_hurt_matrix(
         } else {
             1.0
         };
-        let direction = direction_degrees * rules.radians_per_degree;
+        let direction = direction_degrees.to_radians();
         effect *= Mat4::from_rotation_y(-direction)
             * Mat4::from_rotation_z(rules.hurt_radians * shake * strength)
             * Mat4::from_rotation_y(direction);

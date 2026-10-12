@@ -194,7 +194,7 @@ fn scripted_pose_survives_late_actor_camera_effects() {
         cameras: Query<&mut Transform, With<FlyCamera>>,
     ) {
         actor_effects::apply_actor_damage_camera_rotation(
-            settings, hand, None, server, None, 0.0, cameras,
+            settings, hand, None, server, None, 0.0, 0.0, cameras,
         );
     }
 

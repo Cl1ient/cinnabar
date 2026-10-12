@@ -5,15 +5,14 @@ pub const LEGACY_COMBAT_MATERIAL_FLAG: u32 = assets::EntityRenderMaterialState::
 /// Per-draw dye masking keeps leather separate even when rasters share an artwork page.
 pub const ACTOR_COLOR_MASK_MATERIAL_FLAG: u32 = LEGACY_COMBAT_MATERIAL_FLAG << 1;
 
-/// Converts legacy raster UV through rotation, offset and scale in that order.
+/// Converts legacy raster UV through rotation and then offset.
 pub fn legacy_glint_uv(uv: [f32; 2], offsets: [f32; 2], pass: usize) -> [f32; 2] {
     let rules = render_api::BEDROCK_112;
     let (sin, cos) = rules.glint_rotation_radians[pass].sin_cos();
     let [x, y] = uv.map(|component| component - 0.5);
     [
-        (cos * x + sin * y + offsets[pass] / rules.glint_uv_scale[0] + 0.5)
-            * rules.glint_uv_scale[0],
-        (-sin * x + cos * y + 0.5) * rules.glint_uv_scale[1],
+        cos * x + sin * y + offsets[pass] + 0.5,
+        -sin * x + cos * y + 0.5,
     ]
 }
 
@@ -160,9 +159,7 @@ mod legacy_tests {
                     glam::Vec2::new(angle.sin(), angle.cos()),
                 );
                 let rotated = matrix * (glam::Vec2::from_array(uv) - glam::Vec2::splat(0.5));
-                let expected = (rotated
-                    + glam::Vec2::new(offsets[pass] / BEDROCK_112.glint_uv_scale[0] + 0.5, 0.5))
-                    * glam::Vec2::from_array(BEDROCK_112.glint_uv_scale);
+                let expected = rotated + glam::Vec2::new(offsets[pass] + 0.5, 0.5);
                 assert!(
                     glam::Vec2::from_array(legacy_glint_uv(uv, offsets, pass))
                         .abs_diff_eq(expected, 1e-6)

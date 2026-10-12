@@ -219,7 +219,7 @@ fn actor_fragment(input: VertexOutput, @builtin(front_facing) front: bool) -> @l
     let material = input.material & ACTOR_MATERIAL_KIND_MASK;
     let legacy = (input.material & ACTOR_MATERIAL_LEGACY112_FLAG) != 0u;
     let color_mask_material = material_class.y != 0u || (input.material & ACTOR_COLOR_MASK_MATERIAL_FLAG) != 0u;
-    let legacy_mask = legacy && color_mask_material;
+    let legacy_mask = legacy && (input.material & ACTOR_COLOR_MASK_MATERIAL_FLAG) != 0u;
     let authored = (input.material & ACTOR_MATERIAL_AUTHORED_FLAG) != 0u;
     let emissive = material == ACTOR_MATERIAL_DRAGON || (input.material & ACTOR_MATERIAL_EMISSIVE_FLAG) != 0u;
     if (input.skin_info.y == 0u) {
@@ -308,8 +308,8 @@ fn actor_fragment(input: VertexOutput, @builtin(front_facing) front: bool) -> @l
         if (legacy) {
             let r1 = LEGACY_GLINT_ROTATION_1;
             let r2 = LEGACY_GLINT_ROTATION_2;
-            first_uv = (vec2(r1.x * centered_uv.x + r1.y * centered_uv.y, -r1.y * centered_uv.x + r1.x * centered_uv.y) + vec2(offsets.x / LEGACY_GLINT_SCALE.x + 0.5, 0.5)) * LEGACY_GLINT_SCALE;
-            second_uv = (vec2(r2.x * centered_uv.x + r2.y * centered_uv.y, -r2.y * centered_uv.x + r2.x * centered_uv.y) + vec2(offsets.y / LEGACY_GLINT_SCALE.x + 0.5, 0.5)) * LEGACY_GLINT_SCALE;
+            first_uv = vec2(r1.x * centered_uv.x + r1.y * centered_uv.y, -r1.y * centered_uv.x + r1.x * centered_uv.y) + vec2(offsets.x + 0.5, 0.5);
+            second_uv = vec2(r2.x * centered_uv.x + r2.y * centered_uv.y, -r2.y * centered_uv.x + r2.x * centered_uv.y) + vec2(offsets.y + 0.5, 0.5);
         }
         var first = vec3(0.0);
         var second = vec3(0.0);

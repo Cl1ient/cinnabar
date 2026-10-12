@@ -1,5 +1,6 @@
 //! Scheduled camera contracts with original actors and resolved movement observations.
 use super::*;
+use crate::actor_publication::ActorFramePartialTick;
 use crate::camera::{CameraSettingsAuthority, FirstPersonHandMotion, FlyCamera, ServerCameraView};
 use crate::camera::{
     bob::{HandSwayState, WalkBobState},
@@ -18,6 +19,7 @@ struct TestWorld(chunk_pipeline::WorldStream);
 struct TestPhysics {
     state: sim::PlayerState,
     ticks: Vec<CameraMovementTick>,
+    alpha: f32,
 }
 impl PhysicsObservation for TestPhysics {
     /// Returns the deterministic completed state.
@@ -52,9 +54,9 @@ impl PhysicsObservation for TestPhysics {
     fn is_active(&self) -> bool {
         true
     }
-    /// Uses the chosen midpoint between completed ticks.
+    /// Uses the fixture's physics fraction independently of the actor clock.
     fn tick_alpha(&self) -> f32 {
-        0.5
+        self.alpha
     }
 }
 
@@ -91,13 +93,16 @@ fn sample(
     );
 }
 
-/// Applies the late actor-clock effect at the same render fraction as the hand.
+/// Shares the late effect with the hand while retaining each owner's clock fraction.
+#[allow(clippy::too_many_arguments)]
 fn apply(
     settings: Res<CameraSettingsAuthority>,
     hand: ResMut<FirstPersonHandMotion>,
     legacy: Res<LegacyCameraMotion>,
     server: Res<ServerCameraView>,
     world: Res<TestWorld>,
+    physics: Res<TestPhysics>,
+    actor_fraction: Res<ActorFramePartialTick>,
     cameras: Query<&mut Transform, With<FlyCamera>>,
 ) {
     crate::camera::actor_effects::apply_actor_damage_camera_rotation(
@@ -108,7 +113,8 @@ fn apply(
         Some(WorldObservation {
             stream: Some(&world.0),
         }),
-        0.5,
+        actor_fraction.0,
+        physics.tick_alpha(),
         cameras,
     );
 }
@@ -126,10 +132,12 @@ fn camera_app() -> App {
         .init_resource::<LegacyCameraMotion>()
         .init_resource::<FirstPersonHandMotion>()
         .init_resource::<ServerCameraView>()
+        .insert_resource(ActorFramePartialTick(0.5))
         .insert_resource(TestWorld(player_stream()))
         .insert_resource(TestPhysics {
             state: sim::PlayerState::new(sim::Vec3::ZERO),
             ticks: Vec::new(),
+            alpha: 0.5,
         });
     app
 }
@@ -354,5 +362,52 @@ fn teleport_reanchor_skips_old_ticks_even_when_the_physics_clock_does_not_advanc
     assert_eq!(
         motion.state.endpoints,
         render_model::legacy_combat::LegacyCameraEndpoints::default()
+    );
+}
+
+#[test]
+fn reanchored_bob_does_not_rewind_when_the_actor_fraction_wraps() {
+    let mut app = camera_app();
+    for index in 0..4 {
+        tick(&mut app, index);
+    }
+    app.world_mut().run_system_cached(sample).unwrap();
+    app.world_mut()
+        .resource_mut::<LocalViewPose>()
+        .reanchor_camera();
+    app.world_mut().resource_mut::<TestPhysics>().alpha = 0.0;
+    app.world_mut().run_system_cached(sample).unwrap();
+    tick(&mut app, 4);
+    app.world_mut().run_system_cached(sample).unwrap();
+    app.world_mut().resource_mut::<TestPhysics>().alpha = 0.75;
+    let endpoints = app.world().resource::<LegacyCameraMotion>().state.endpoints;
+    let expected = endpoints.bob_matrix(0.75);
+    assert_ne!(expected, Mat4::IDENTITY);
+    assert!(!expected.abs_diff_eq(endpoints.bob_matrix(0.0), 1e-5));
+    let base = Transform::from_xyz(3.0, 5.0, 7.0).with_rotation(Quat::from_rotation_y(0.7));
+    let camera = app.world_mut().spawn((FlyCamera::default(), base)).id();
+    // Physics has no new completed tick while the independent actor fraction wraps.
+    for actor_fraction in [0.75, 0.0, 0.25] {
+        app.world_mut().resource_mut::<ActorFramePartialTick>().0 = actor_fraction;
+        *app.world_mut().get_mut::<Transform>(camera).unwrap() = base;
+        app.world_mut().run_system_cached(apply).unwrap();
+        assert_eq!(
+            app.world()
+                .resource::<FirstPersonHandMotion>()
+                .legacy_effect,
+            Some(expected)
+        );
+        let view = app
+            .world()
+            .get::<Transform>(camera)
+            .unwrap()
+            .to_matrix()
+            .inverse();
+        assert!(view.abs_diff_eq(expected * base.to_matrix().inverse(), 3e-5));
+    }
+    assert_eq!(app.world().resource::<TestPhysics>().state.tick, 4);
+    assert_eq!(
+        app.world().resource::<LegacyCameraMotion>().state.endpoints,
+        endpoints
     );
 }

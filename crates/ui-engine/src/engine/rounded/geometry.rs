@@ -155,7 +155,7 @@ pub(super) fn mesh(key: Key) -> Option<UiMesh> {
     let rings = shape.rings();
     let steps = shape.corner_steps();
     let count = 4 * (steps + 1);
-    let paint = render_model::UiCoveragePaint {
+    let paint = render_api::UiCoveragePaint {
         fill: [key.color, key.end_color],
         border: key.border_color,
     };
@@ -171,7 +171,7 @@ pub(super) fn mesh(key: Key) -> Option<UiMesh> {
             color,
             model_light: border_area,
             overlay_color,
-            style_flags: render_model::UI_STYLE_COVERAGE_PAINT,
+            style_flags: render_api::UI_STYLE_COVERAGE_PAINT,
             alpha_test: false,
         }
     };

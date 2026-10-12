@@ -53,8 +53,8 @@ fn sample_color(mesh: &UiMesh, size: [f32; 2], point: [f32; 2]) -> [f32; 4] {
                     .map(|(value, weight)| value * weight)
                     .sum::<f32>()
             };
-            if corners[0].style_flags & render_model::UI_STYLE_COVERAGE_PAINT != 0 {
-                let paint = render_model::UiCoveragePaint::from_vertex_colors(
+            if corners[0].style_flags & render_api::UI_STYLE_COVERAGE_PAINT != 0 {
+                let paint = render_api::UiCoveragePaint::from_vertex_colors(
                     corners[0].color,
                     corners[0].overlay_color,
                 );
@@ -179,7 +179,7 @@ fn square_edges_and_tiny_rectangles_have_visible_coverage_rings() {
             .any(|vertex| vertex.position[1] < 0.0)
     );
     assert!(mesh.vertices().iter().any(|vertex| {
-        render_model::UiCoveragePaint::from_vertex_colors(vertex.color, vertex.overlay_color)
+        render_api::UiCoveragePaint::from_vertex_colors(vertex.color, vertex.overlay_color)
             .sample(vertex.uv[0], [vertex.uv[1], vertex.model_light])[3]
             == 0.0
     }));
@@ -205,7 +205,7 @@ fn a_hairline_has_independent_outer_and_inner_antialiasing() {
 /// One combined seam uses area-weighted alpha rather than painting a border over a fill.
 #[test]
 fn translucent_border_and_fill_do_not_double_blend_at_the_seam() {
-    let paint = render_model::UiCoveragePaint {
+    let paint = render_api::UiCoveragePaint {
         fill: [[0, 0, 255, 64]; 2],
         border: [255; 4],
     };

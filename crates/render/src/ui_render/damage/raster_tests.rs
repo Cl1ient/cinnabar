@@ -378,7 +378,7 @@ fn coverage_paint_keeps_invisible_fill_rgb_out_of_the_border() {
         0,
         None,
     );
-    let paint = render_model::UiCoveragePaint {
+    let paint = render_api::UiCoveragePaint {
         fill: [[0, 0, 255, 0]; 2],
         border: [255, 0, 0, 255],
     };
@@ -387,7 +387,7 @@ fn coverage_paint_keeps_invisible_fill_rgb_out_of_the_border() {
         vertex.color = tint;
         vertex.overlay_color = overlay;
         vertex.uv = [0.0; 2];
-        vertex.style_flags = u32::from(render_model::UI_STYLE_COVERAGE_PAINT);
+        vertex.style_flags = u32::from(render_api::UI_STYLE_COVERAGE_PAINT);
         vertex.model_light = 64.0 / 255.0 * (1.0 - vertex.position[0] / SIDE as f32);
     }
     let Some(raster) = Raster::new(&input) else {
@@ -419,14 +419,14 @@ fn coverage_paint_keeps_invisible_fill_rgb_out_of_the_border() {
 fn coverage_paint_gradient_matches_the_cpu_contract_across_triangulations() {
     for (paint, coverage) in [
         (
-            render_model::UiCoveragePaint {
+            render_api::UiCoveragePaint {
                 fill: [[255, 0, 0, 255], [0, 0, 255, 0]],
                 border: [0, 255, 0, 128],
             },
             [1.0, 0.0],
         ),
         (
-            render_model::UiCoveragePaint {
+            render_api::UiCoveragePaint {
                 fill: [[17, 73, 201, 160], [199, 31, 113, 47]],
                 border: [91, 209, 33, 83],
             },
@@ -452,7 +452,7 @@ fn coverage_paint_gradient_matches_the_cpu_contract_across_triangulations() {
                     coverage[0],
                 ];
                 vertex.overlay_color = overlay;
-                vertex.style_flags = u32::from(render_model::UI_STYLE_COVERAGE_PAINT);
+                vertex.style_flags = u32::from(render_api::UI_STYLE_COVERAGE_PAINT);
                 vertex.model_light = coverage[1];
             }
             let Some(raster) = Raster::new(&input) else {

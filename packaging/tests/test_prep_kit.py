@@ -1,0 +1,117 @@
+"""Stage the preparation kit as the packagers do and check it against the generated list."""
+
+from pathlib import Path
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+LISTED = [line for line in (ROOT / "packaging/common/prep-kit-files.txt").read_text().splitlines() if line]
+STAGE = ROOT / "packaging/common/stage-payload.sh"
+
+
+def files_below(root):
+    return sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
+
+
+def bash(script, *args, env=None):
+    return subprocess.run(
+        ["bash", "-c", f'source "{STAGE}"; {script}', "bash", *args],
+        env={**os.environ, "CINNABAR_SOURCE_ROOT": str(ROOT), **(env or {})},
+        capture_output=True,
+        text=True,
+    )
+
+
+class PrepKitTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.temp)
+
+    def compiler(self, name, script):
+        path = self.temp / "bin" / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(script)
+        path.chmod(0o755)
+        return path
+
+    def test_the_list_names_unique_tracked_files_in_byte_order(self):
+        self.assertEqual(LISTED, sorted(set(LISTED), key=str.encode))
+        for file in LISTED:
+            self.assertTrue((ROOT / file).is_file(), file)
+
+    def test_unix_staging_ships_the_compiler_and_exactly_the_listed_files(self):
+        kit = self.temp / "kit"
+        result = bash('stage_prep_kit "$1" "$2"', str(kit), str(self.compiler("assetc", "")))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(files_below(kit), sorted(["bin/assetc", *LISTED]))
+        for file in LISTED:
+            self.assertEqual((kit / file).read_bytes(), (ROOT / file).read_bytes(), file)
+        manifest = bash("resource_manifest linux").stdout.splitlines()
+        self.assertEqual(
+            sorted(line for line in manifest if line.startswith("prep-kit/")),
+            sorted(f"prep-kit/{file}" for file in ["bin/assetc", *LISTED]),
+        )
+
+    @unittest.skipUnless(shutil.which("pwsh"), "pwsh is required for the Windows staging script")
+    def test_windows_staging_matches_unix_staging(self):
+        kit = self.temp / "kit"
+        assetc = self.compiler("assetc.exe", "")
+        subprocess.run(
+            ["pwsh", "-NoProfile", "-File", str(ROOT / "packaging/windows/stage-prep-kit.ps1"),
+             "-Root", str(ROOT), "-Kit", str(kit), "-Assetc", str(assetc)],
+            check=True,
+        )
+        self.assertEqual(files_below(kit), sorted(["bin/assetc.exe", *LISTED]))
+
+    def linux_payload(self, compiler_script):
+        root = self.temp / "squashfs-root"
+        for name in ["AppRun", "cinnabar.desktop", "cinnabar.png"]:
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text("")
+        for name in ["bedrock-client", "bedrock-core", "bedrock-local-server"]:
+            (root / "usr/bin").mkdir(parents=True, exist_ok=True)
+            (root / "usr/bin" / name).write_text("")
+        resources = root / "usr/share/cinnabar"
+        result = bash('stage_resources "$1" "$2"', str(resources), str(self.compiler("assetc", compiler_script)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return root
+
+    def check_payload(self, root):
+        return subprocess.run(
+            ["bash", str(ROOT / "packaging/check-payload.sh"), "linux", str(root)],
+            env={**os.environ, "CINNABAR_SOURCE_ROOT": str(ROOT), "CINNABAR_UPDATE_URL": ""},
+            capture_output=True,
+            text=True,
+        )
+
+    def test_payload_check_plans_a_first_run_with_the_shipped_compiler(self):
+        # Stands in for assetc: the plan fails unless the kit it is handed holds every listed file.
+        script = (
+            '#!/bin/sh\n[ "$1" = --help ] && exit 0\n'
+            'kit="$3"\nwhile IFS= read -r file; do\n'
+            '  [ -f "$kit/$file" ] || { echo "read $kit/$file: missing" >&2; exit 1; }\n'
+            f'done < "{ROOT}/packaging/common/prep-kit-files.txt"\n'
+            'echo \'{"current":false}\'\n'
+        )
+        root = self.linux_payload(script)
+        result = self.check_payload(root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("prep kit satisfies its compiler", result.stdout)
+        (root / "usr/share/cinnabar/prep-kit" / LISTED[-1]).unlink()
+        result = self.check_payload(root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot plan from the linux prep kit", result.stderr)
+
+    def test_payload_check_skips_the_plan_when_the_compiler_cannot_run_here(self):
+        root = self.linux_payload("#!/bin/sh\nexit 126\n")
+        result = self.check_payload(root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("skipping the linux prep-kit plan", result.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

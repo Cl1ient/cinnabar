@@ -23,9 +23,9 @@ if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($payload)) -ne $outPath) 
 Remove-Item -LiteralPath $payload -Recurse -Force -ErrorAction SilentlyContinue
 $resources = Join-Path $payload "resources"
 $kit = Join-Path $resources "prep-kit"
-New-Item -ItemType Directory -Force (Join-Path $resources "assets"), (Join-Path $resources "licenses"), (Join-Path $resources "fonts"), (Join-Path $kit "bin"), (Join-Path $kit "assets"), (Join-Path $kit "assets/fonts"), (Join-Path $kit "data") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $resources "assets"), (Join-Path $resources "licenses"), (Join-Path $resources "fonts") | Out-Null
 Copy-Item (Join-Path $release "bedrock-client.exe"), (Join-Path $release "bedrock-core.exe"), (Join-Path $release "bedrock-local-server.exe") $payload
-Copy-Item (Join-Path $release "assetc.exe") (Join-Path $kit "bin")
+& (Join-Path $PSScriptRoot "stage-prep-kit.ps1") -Root $root -Kit $kit -Assetc (Join-Path $release "assetc.exe")
 Copy-Item (Join-Path $root "crates/assets/data/block-physics-v2193.bin") (Join-Path $resources "assets")
 Copy-Item (Join-Path $root "THIRD_PARTY_NOTICES.md") (Join-Path $resources "assets")
 Copy-Item (Join-Path $root "LICENSE") (Join-Path $resources "licenses/Cinnabar-LICENSE.md")
@@ -34,13 +34,6 @@ $fontSource = Get-Content -Raw (Join-Path $root "assets/cinnangles-sans-source.j
 $font = Join-Path $root "assets/fonts/$($fontSource.font_file)"
 if (-not (Test-Path $font)) { throw "missing $font" }
 Copy-Item $font (Join-Path $resources "fonts")
-Copy-Item (Join-Path $root "assets/*.json") (Join-Path $kit "assets")
-Copy-Item (Join-Path $root "assets/fonts/*") (Join-Path $kit "assets/fonts")
-Copy-Item (Join-Path $root "assets/oreui-icons") (Join-Path $kit "assets") -Recurse
-Copy-Item (Join-Path $root "crates/assets/data/*") (Join-Path $kit "data")
-# Inputs outside the kit layout resolve at their checkout path below the kit.
-New-Item -ItemType Directory -Force (Join-Path $kit "crates/protocol/data") | Out-Null
-Copy-Item (Join-Path $root "crates/protocol/data/retail_items_1_26_50.tsv") (Join-Path $kit "crates/protocol/data")
 if ($env:CINNABAR_UPDATE_URL) { [System.IO.File]::WriteAllText((Join-Path $resources "update-url"), $env:CINNABAR_UPDATE_URL) }
 
 $icon = Join-Path $outPath "cinnabar.ico"

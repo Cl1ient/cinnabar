@@ -25,6 +25,11 @@ harness. Developer defaults stay enabled for `make play`, live testing, CI and c
 Installers also ship the bundled Cinnangles Sans font at `<resources>/fonts/`, so first-run setup can
 draw before any download.
 
+The prep kit at `<resources>/prep-kit/` holds `bin/assetc` and each file
+`packaging/common/prep-kit-files.txt` lists, at its checkout path. `assetc kit-files` generates that
+list; an asset-compiler test fails when it is stale, and `check-payload.sh` plans a first run with
+the shipped compiler against the shipped kit.
+
 CI: `.github/workflows/package.yml`. Pushes to `main` replace the `nightly` prerelease (tag moved,
 assets replaced). To publish a stable release, run **Package** in GitHub Actions and choose
 `current`, `patch`, `minor`, `major`, or `custom`. The **branch** input accepts any existing branch;

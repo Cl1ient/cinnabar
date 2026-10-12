@@ -1,4 +1,4 @@
-use protocol::{ActorEffectAction, ActorEffectEvent};
+use protocol::{ActorEffectAction, ActorEffectEvent, HASTE_EFFECT_ID, MINING_FATIGUE_EFFECT_ID};
 use sim::MovementEffects;
 
 use super::physics::MovementEffectSource;
@@ -6,8 +6,6 @@ use super::physics::MovementEffectSource;
 const JUMP_BOOST_EFFECT_ID: i32 = 8;
 const LEVITATION_EFFECT_ID: i32 = 24;
 const SLOW_FALLING_EFFECT_ID: i32 = 27;
-const HASTE_EFFECT_ID: i32 = 3;
-const MINING_FATIGUE_EFFECT_ID: i32 = 4;
 const CONDUIT_POWER_EFFECT_ID: i32 = 26;
 const WEAVING_EFFECT_ID: i32 = 33;
 const BLINDNESS_EFFECT_ID: i32 = 15;

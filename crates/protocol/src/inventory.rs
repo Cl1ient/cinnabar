@@ -251,7 +251,7 @@ pub enum InventoryPacketError {
     InvalidNormalTransactionActionCount(usize),
     #[error("item stack request ID must be a negative odd integer below -1")]
     InvalidStackRequestId,
-    #[error("item stack request amount must be positive")]
+    #[error("item stack request amount must be from 1 to 64")]
     InvalidStackRequestAmount,
     #[error("item stack request has {0} actions, outside 1..=100")]
     InvalidStackRequestActionCount(usize),

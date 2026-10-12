@@ -150,8 +150,12 @@ pub enum StackRequestAction {
     },
 }
 
+/// Largest count one stack-request action moves: the codec's bound, which a test pins to the
+/// generated encoder.
+const MAX_STACK_REQUEST_AMOUNT: u8 = 64;
+
 fn amount(amount: u8) -> Result<u8, InventoryPacketError> {
-    if amount == 0 {
+    if !(1..=MAX_STACK_REQUEST_AMOUNT).contains(&amount) {
         return Err(InventoryPacketError::InvalidStackRequestAmount);
     }
     Ok(amount)
@@ -401,6 +405,33 @@ mod tests {
 
     use super::super::item_stack_request_packet;
     use super::*;
+
+    /// Amounts outside the codec's 1..=64 bound fail with a typed error before encoding.
+    #[test]
+    fn stack_amounts_match_the_codec_bound() {
+        let take = |count| Item::TakeActionData {
+            action_type: Kind::Take,
+            amount: wire::U8(count),
+            source: StackRequestSlotInfo::default(),
+            destination: StackRequestSlotInfo::default(),
+        };
+        assert!(take(MAX_STACK_REQUEST_AMOUNT).encode_to_vec().is_ok());
+        assert!(matches!(
+            take(MAX_STACK_REQUEST_AMOUNT + 1).encode_to_vec(),
+            Err(wire::EncodeError::SchemaConstraint(_))
+        ));
+        let player = at(StackRequestContainer::PlayerInventory, 12, 7);
+        for count in [0, MAX_STACK_REQUEST_AMOUNT + 1] {
+            assert!(matches!(
+                encode(&StackRequestAction::Drop {
+                    amount: count,
+                    source: player,
+                    randomly: false,
+                }),
+                Err(InventoryPacketError::InvalidStackRequestAmount)
+            ));
+        }
+    }
 
     fn at(container: StackRequestContainer, slot: u8, id: i32) -> StackRequestSlot {
         StackRequestSlot {

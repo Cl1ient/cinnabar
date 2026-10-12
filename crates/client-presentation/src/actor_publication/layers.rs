@@ -94,6 +94,7 @@ pub(super) fn attach(
             local_runtime_id,
             local_equipment_input,
             java_posed,
+            local_shadows,
             (partial_tick, delta_seconds, glint_settings),
         );
     }

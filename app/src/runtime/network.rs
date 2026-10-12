@@ -49,9 +49,8 @@ pub(crate) struct NetworkLocalPlayerState<'w> {
     auto_fly: Res<'w, AutoFly>,
 }
 
-// Explicit Bevy access modes let the scheduler validate conflicts while
-// bootstrap wires the
-// shared publication allowance into each newly created world stream.
+// Explicit Bevy access modes let the scheduler validate conflicts while bootstrap
+// shares the publication allowance with each new world stream.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn receive_network_events(
     mut player_runtime: bevy::prelude::ResMut<client_state::PlayerRuntime>,

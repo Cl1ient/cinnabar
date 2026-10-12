@@ -72,7 +72,7 @@ fn consume_equipment_route(
 }
 
 /// Releases buffered equipment after the stream exists; identity failure stops bootstrap.
-/// A FIFO rejection records the failure but still allows presentation retirement to run.
+/// A FIFO rejection records the failure but still runs the presentation checks.
 pub(super) fn publish_bootstrap_equipment(
     player_runtime: &mut client_state::PlayerRuntime,
     ui_runtime: &mut UiRuntime,

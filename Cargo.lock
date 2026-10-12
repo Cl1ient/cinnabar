@@ -7556,7 +7556,6 @@ dependencies = [
  "crossbeam-channel",
  "image",
  "json-ui",
- "protocol",
  "rayon",
  "render-model",
  "resource-pack",
@@ -7565,7 +7564,6 @@ dependencies = [
  "test-time",
  "tracing",
  "ui",
- "zip",
 ]
 
 [[package]]

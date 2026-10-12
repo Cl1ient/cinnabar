@@ -26,7 +26,7 @@ fn prepared_hud_textures_read_off_the_frame() {
         };
         let base = presentation.pack_catalog_base().unwrap();
         let pack = ServerUiPack {
-            view: Some(ui_engine::test_support::pack_view(&files)),
+            view: Some(resource_pack::test_support::pack_view(&files)),
             ..ServerUiPack::default()
         };
         let pack = if prepared {

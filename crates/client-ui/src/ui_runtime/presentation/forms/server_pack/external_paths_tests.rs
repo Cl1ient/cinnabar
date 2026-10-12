@@ -1,5 +1,6 @@
 use super::*;
-use ui_engine::{atlas::ServerAtlas, test_support::pack_view};
+use resource_pack::test_support::pack_view;
+use ui_engine::atlas::ServerAtlas;
 
 #[test]
 fn pack_image_path_uses_supported_extensions_without_directory_restriction() {

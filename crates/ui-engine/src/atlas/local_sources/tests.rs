@@ -1,6 +1,6 @@
 use super::super::tests::MemoryPack;
 use super::*;
-use crate::test_support::pack_view;
+use resource_pack::test_support::pack_view;
 use std::{io::Cursor, sync::Arc};
 
 /// Makes an encoded image with valid dimensions and a caller-selected encoded length.

@@ -1,14 +1,14 @@
-//! Fixtures for tests of the engine and its hosts.
+//! Pack-stack fixtures for tests of the crates that read admitted packs.
 
 use std::io::{Cursor, Write};
 
 /// Admits an archive containing the supplied artwork as a server pack.
-pub fn pack_view(files: &[(String, Vec<u8>)]) -> resource_pack::LayeredPackView {
+pub fn pack_view(files: &[(String, Vec<u8>)]) -> crate::LayeredPackView {
     layered_pack_view(&[files])
 }
 
 /// Admits fixture layers in exact lowest-to-highest precedence order.
-pub fn layered_pack_view(layers: &[&[(String, Vec<u8>)]]) -> resource_pack::LayeredPackView {
+pub fn layered_pack_view(layers: &[&[(String, Vec<u8>)]]) -> crate::LayeredPackView {
     let archives = layers
         .iter()
         .enumerate()
@@ -35,7 +35,7 @@ pub fn layered_pack_view(layers: &[&[(String, Vec<u8>)]]) -> resource_pack::Laye
             )
         })
         .collect();
-    resource_pack::LayeredPackView::new(resource_pack::validate_handoff(
+    crate::LayeredPackView::new(crate::validate_handoff(
         protocol::ResourcePackHandoff::from_archives(archives),
     ))
 }

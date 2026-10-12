@@ -97,7 +97,7 @@ fn emote_source_readiness_rebuilds_static_crop_coordinates() {
     pack.textures[0]
         .1
         .resize(resource_pack::MAX_PACK_TEXTURE_BYTES as usize + 1, 0);
-    pack.view = Some(ui_engine::test_support::pack_view(&pack.textures));
+    pack.view = Some(resource_pack::test_support::pack_view(&pack.textures));
     pack.textures.clear();
     let mut player = player_state::PlayerState::new(1);
     let mut runtime = crate::test_support::inventory_session(&mut player);
@@ -147,7 +147,7 @@ fn inventory_source_readiness_rebuilds_static_crop_coordinates() {
     pack.textures[0]
         .1
         .resize(resource_pack::MAX_PACK_TEXTURE_BYTES as usize + 1, 0);
-    pack.view = Some(ui_engine::test_support::pack_view(&pack.textures));
+    pack.view = Some(resource_pack::test_support::pack_view(&pack.textures));
     pack.textures.clear();
     let mut player = player_state::PlayerState::new(1);
     let mut runtime = crate::test_support::inventory_session(&mut player);
@@ -200,7 +200,7 @@ fn archive_source_readiness_rebuilds_static_crop_coordinates() {
     pack.textures[0]
         .1
         .resize(resource_pack::MAX_PACK_TEXTURE_BYTES as usize + 1, 0);
-    pack.view = Some(ui_engine::test_support::pack_view(&pack.textures));
+    pack.view = Some(resource_pack::test_support::pack_view(&pack.textures));
     pack.textures.clear();
     let mut runtime = UiRuntime::new(1);
     runtime.set_server_ui(Some(Arc::new(pack)));

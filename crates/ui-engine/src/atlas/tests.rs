@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{layered_pack_view, pack_view};
+use resource_pack::test_support::{layered_pack_view, pack_view};
 use std::sync::Mutex;
 
 /// An installed vanilla pack held in memory.

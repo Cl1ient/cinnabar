@@ -328,7 +328,7 @@ fn open_default_stream() -> Option<(OutputStream, (OutputStreamHandle, u32))> {
 }
 
 /// The opening result and the thread that owns the audio stream.
-type Opening<H> = (
+type OwnedOpening<H> = (
     Receiver<Option<(H, Sender<()>)>>,
     std::thread::JoinHandle<()>,
 );
@@ -337,7 +337,7 @@ type Opening<H> = (
 /// the shared half drops; the stream never leaves that thread. `None` reports a failed open.
 fn open_on_owner_thread<S: 'static, H: Send + 'static>(
     open: impl FnOnce() -> Option<(S, H)> + Send + 'static,
-) -> std::io::Result<Opening<H>> {
+) -> std::io::Result<OwnedOpening<H>> {
     let (opened, opening) = mpsc::channel();
     let owner = std::thread::Builder::new()
         .name("audio-output".to_owned())

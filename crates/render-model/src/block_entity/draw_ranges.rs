@@ -78,10 +78,11 @@ mod tests {
         let mut runs = Vec::new();
         rebuild_runs(&mut runs, &vertices);
         let retained = runs.clone();
-        let projection = Mat4::perspective_infinite_reverse_rh(1.0, 1.0, 0.1);
+        let projection =
+            glam::camera::rh::proj::directx::perspective_infinite_reverse(1.0, 1.0, 0.1);
         assert_eq!(
             visible_ranges(&runs, projection).collect::<Vec<_>>(),
-            vec![0..vertices.len() as u32]
+            [0..vertices.len() as u32]
         );
         assert_eq!(
             visible_ranges(

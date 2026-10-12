@@ -6,7 +6,7 @@ use bevy::prelude::{App, Mut, Resource, Update};
 use bevy::time::Real;
 use bevy::{
     ecs::system::SystemParam,
-    prelude::{Local, Projection, Query, Res, ResMut, Time, Transform, Vec3, With},
+    prelude::{Local, Projection, Query, Res, ResMut, Time, Transform, With},
 };
 use client_presentation::actor_publication::ActorFramePartialTick;
 use client_presentation::actor_publication::{ActorFrameInput, ActorWorld};

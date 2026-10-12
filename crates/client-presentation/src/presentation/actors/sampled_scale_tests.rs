@@ -340,7 +340,9 @@ fn assert_sampled_admission(cull_completed_tick: bool) {
 fn terrain_hidden_actors_keep_advancing_completed_ticks() {
     let mut world = world("1", false, [0.0, 0.0, -10.0]);
     let view = ActorCullView {
-        clip_from_world: Mat4::perspective_infinite_reverse_rh(1.0, 1.0, 0.1),
+        clip_from_world: glam::camera::rh::proj::directx::perspective_infinite_reverse(
+            1.0, 1.0, 0.1,
+        ),
         camera_position: Vec3::ZERO,
         max_distance: render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
     };

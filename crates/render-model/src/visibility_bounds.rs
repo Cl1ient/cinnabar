@@ -64,7 +64,8 @@ mod tests {
     #[test]
     fn single_eye_proofs_require_a_matching_perspective_origin() {
         assert!(!perspective_eye_matches(Mat4::IDENTITY, [0.0; 3]));
-        let projection = Mat4::perspective_infinite_reverse_rh(1.0, 1.0, 0.1);
+        let projection =
+            glam::camera::rh::proj::directx::perspective_infinite_reverse(1.0, 1.0, 0.1);
         assert!(perspective_eye_matches(projection, [0.0; 3]));
         assert!(!perspective_eye_matches(projection, [0.0, 0.0, 2.0]));
     }

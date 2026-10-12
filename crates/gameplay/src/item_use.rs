@@ -291,10 +291,7 @@ impl ItemUseRuntime {
 
     /// Why a latched press sends nothing on this frame, for the click-drop trace; `None` when it
     /// is used or no press waits.
-    pub fn press_drop_reason(
-        &self,
-        frame: &UseFrame,
-    ) -> Option<assets::item_use::ItemProjectileRole> {
+    pub fn press_drop_reason(&self, frame: &UseFrame) -> Option<&'static str> {
         if !self.latched_press || self.active.is_some() {
             return None;
         }

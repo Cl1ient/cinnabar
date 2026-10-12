@@ -242,10 +242,10 @@ fn route_press(
     }
     let mod_text = presentation
         .as_deref()
-        .is_some_and(UiPresentationRuntime::mod_text_focused);
+        .is_some_and(|view| view.mod_ui().mod_text_focused());
     let mod_view = presentation
         .as_deref()
-        .is_some_and(UiPresentationRuntime::mod_view_shown);
+        .is_some_and(|view| view.mod_ui().mod_view_shown());
     if !runtime.chat_focused() && (!runtime.screen_state().text_focused() || mod_view) && !mod_text
     {
         if binding_mouse_button(menu, "key.inventory", button) {

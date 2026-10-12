@@ -300,6 +300,19 @@ type RenderModeCameraQuery = (
 );
 
 /// Keep the opt-in effects on gameplay cameras only.
+/// The mode the renderer actually draws: Enhanced only when compiled in and the device
+/// supports it, so every Enhanced resource follows the same fallback as the cameras.
+pub(crate) fn effective_render_mode(
+    requested: RenderMode,
+    support: Option<&render::EnhancedRenderSupport>,
+) -> RenderMode {
+    if enhanced_rendering_enabled() && support.is_none_or(|support| support.0) {
+        requested
+    } else {
+        RenderMode::Vanilla
+    }
+}
+
 fn apply_render_mode_to_cameras(
     mut commands: Commands,
     settings: Res<RuntimeSettings>,
@@ -307,9 +320,8 @@ fn apply_render_mode_to_cameras(
     mut cameras: Query<RenderModeCameraQuery, With<FlyCamera>>,
 ) {
     let video = settings.user_settings_update().1.video;
-    let enhanced = enhanced_rendering_enabled()
-        && support.is_none_or(|support| support.0)
-        && video.render_mode == RenderMode::Enhanced;
+    let enhanced =
+        effective_render_mode(video.render_mode, support.as_deref()) == RenderMode::Enhanced;
     for (entity, mut camera, current_enhanced, vanilla_depth) in &mut cameras {
         let has_enhanced = current_enhanced.is_some();
         if enhanced != has_enhanced {

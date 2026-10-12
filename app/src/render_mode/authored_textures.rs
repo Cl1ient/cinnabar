@@ -147,11 +147,16 @@ pub(super) fn update_authored_textures(
     textures: Option<ResMut<ChunkTextureAssets>>,
     reload: Option<Res<ChunkTextureReload>>,
     device: Option<Res<RenderDevice>>,
+    support: Option<Res<render::EnhancedRenderSupport>>,
 ) {
     let (Some(mut loading), Some(mut textures)) = (loading, textures) else {
         return;
     };
-    let mode = settings.user_settings_update().1.video.render_mode;
+    // A Vanilla fallback on an unsupported device never decodes or attaches authored maps.
+    let mode = super::effective_render_mode(
+        settings.user_settings_update().1.video.render_mode,
+        support.as_deref(),
+    );
     let limits = device.as_ref().map(|device| device.limits());
     loading.begin(mode, |base, keys| spawn(base, keys, limits.clone()));
     loading.poll();
@@ -238,6 +243,38 @@ mod tests {
         assert_eq!(textures.identity(), enhanced_identity);
         apply(&mut textures, None);
         assert_eq!(textures.identity(), original_identity);
+    }
+
+    /// An Enhanced request on a device that falls back to Vanilla decodes and attaches nothing.
+    #[test]
+    fn a_vanilla_fallback_never_loads_or_attaches_authored_maps() {
+        let base = Arc::new(RuntimeAssets::diagnostic());
+        let mut settings = RuntimeSettings::default();
+        crate::render_mode::set_render_mode(&mut settings, RenderMode::Enhanced);
+        let mut app = App::new();
+        app.insert_resource(settings)
+            .insert_resource(AuthoredTextureLoading::new(
+                base.clone(),
+                Some(MaterialKeys::default()),
+            ))
+            .insert_resource(ChunkTextureAssets::new(base))
+            .insert_resource(render::EnhancedRenderSupport(false))
+            .add_systems(Update, update_authored_textures);
+        app.update();
+        assert!(matches!(
+            app.world().resource::<AuthoredTextureLoading>().loading,
+            Loading::Unrequested,
+        ));
+        app.world_mut()
+            .resource_mut::<AuthoredTextureLoading>()
+            .loading = Loading::Complete(Some(maps()));
+        app.update();
+        assert!(
+            app.world()
+                .resource::<ChunkTextureAssets>()
+                .enhanced()
+                .is_none()
+        );
     }
 
     #[cfg(feature = "enhanced")]

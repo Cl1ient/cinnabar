@@ -2,7 +2,10 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use assets::{MaterialKeys, NO_ANIMATION, RuntimeAssets, TextureArray, TextureMip, TextureRef};
+use assets::{
+    MaterialKeys, NO_ANIMATION, RuntimeAssets, TextureRef,
+    texture::{TextureArray, TextureMip},
+};
 use image::{ImageBuffer, Rgba};
 use pack_compiler::pbr::{
     PbrMipLayer, PbrPack, PbrSurface, build_pbr_mips, load_pbr_texture_for_key,
@@ -16,10 +19,10 @@ mod config;
 pub(crate) const ENHANCED_PBR_DIR_ENVIRONMENT: &str = "CINNABAR_ENHANCED_PBR_DIR";
 const REF_FALLBACK: u32 = u32::MAX;
 /// Authored layers sit below the `PBR_REF_*` flag bits of their packed reference.
-const MAX_AUTHORED_LAYERS: u32 = assets::PBR_REF_COLOR;
+const MAX_AUTHORED_LAYERS: u32 = assets::texture::PBR_REF_COLOR;
 const AUTHORED_LAYER_MASK: u32 = MAX_AUTHORED_LAYERS - 1;
 const _: () = assert!(MAX_AUTHORED_LAYERS as usize <= assets::MAX_TEXTURE_LAYERS);
-const LOW_PBR_TILE_SIZE: u32 = assets::TILE_SIZE * 2;
+const LOW_PBR_TILE_SIZE: u32 = assets::texture::TILE_SIZE * 2;
 
 #[derive(Clone, Copy)]
 struct Source {
@@ -160,7 +163,7 @@ fn load(
 ) -> (Option<cache::Payload>, Vec<audit::Alias>) {
     let pages = || {
         [
-            Page::new(assets::PBR_TILE_SIZE),
+            Page::new(assets::texture::PBR_TILE_SIZE),
             Page::new(LOW_PBR_TILE_SIZE),
         ]
     };

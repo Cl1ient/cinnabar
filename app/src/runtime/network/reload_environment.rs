@@ -1,6 +1,6 @@
 //! Cinnabar extension: prepare optional environment layers for a live pack swap.
 
-use assets::{AtmosphereTexture, BiomeVisualProfile};
+use assets::atmosphere::{AtmosphereTexture, BiomeVisualProfile};
 use bevy::prelude::Resource;
 use pack_runtime::pack_textures::{decode_pack_texture, parse_pack_json};
 use resource_pack::LayeredPackView;
@@ -135,7 +135,7 @@ fn prepare_atmosphere(
         digest.update(&bytes);
         if path.starts_with("fogs/") {
             if let Some(profile) = fog_profile(&root)
-                && (fogs.len() < assets::MAX_ENVIRONMENT_PROFILES
+                && (fogs.len() < assets::atmosphere::MAX_ENVIRONMENT_PROFILES
                     || fogs.contains_key(&profile.identifier))
             {
                 fogs.insert(profile.identifier.clone(), profile);
@@ -177,8 +177,12 @@ fn prepare_atmosphere(
 }
 
 /// Optional packs must not publish cloud masks the fixed-size mesher cannot consume.
-fn supports_texture_dimensions(role: assets::AtmosphereRole, width: u32, height: u32) -> bool {
-    role != assets::AtmosphereRole::Clouds
+fn supports_texture_dimensions(
+    role: assets::atmosphere::AtmosphereRole,
+    width: u32,
+    height: u32,
+) -> bool {
+    role != assets::atmosphere::AtmosphereRole::Clouds
         || (width == meshing::CLOUD_MASK_SIZE && height == meshing::CLOUD_MASK_SIZE)
 }
 
@@ -218,19 +222,21 @@ fn layered_json(view: &LayeredPackView, prefix: &str) -> Vec<(String, Box<[u8]>)
 fn overlay_biome_profile(
     root: &Value,
     profiles: &mut BTreeMap<Box<str>, BiomeVisualProfile>,
-    fogs: &BTreeMap<Box<str>, assets::FogProfile>,
+    fogs: &BTreeMap<Box<str>, assets::atmosphere::FogProfile>,
 ) {
     let biome = &root["minecraft:client_biome"];
     let Some(identifier) = biome["description"]["identifier"].as_str() else {
         return;
     };
-    if identifier.is_empty() || identifier.len() > assets::MAX_ENVIRONMENT_IDENTIFIER_BYTES {
+    if identifier.is_empty()
+        || identifier.len() > assets::atmosphere::MAX_ENVIRONMENT_IDENTIFIER_BYTES
+    {
         return;
     }
     let mut profile = match profiles.get(identifier) {
         Some(profile) => profile.clone(),
         None => {
-            if profiles.len() >= assets::MAX_ENVIRONMENT_PROFILES {
+            if profiles.len() >= assets::atmosphere::MAX_ENVIRONMENT_PROFILES {
                 return;
             }
             let Some(mut fallback) = profiles.get("minecraft:plains").cloned() else {
@@ -259,7 +265,7 @@ fn overlay_biome_profile(
         ),
     ] {
         if let Some(value) = components[key][field].as_str().filter(|value| {
-            !value.is_empty() && value.len() <= assets::MAX_ENVIRONMENT_IDENTIFIER_BYTES
+            !value.is_empty() && value.len() <= assets::atmosphere::MAX_ENVIRONMENT_IDENTIFIER_BYTES
         }) {
             *target = value.into();
         }

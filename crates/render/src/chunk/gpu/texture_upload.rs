@@ -6,7 +6,7 @@ use super::bind_groups::{
 };
 use crate::chunk::*;
 #[cfg(feature = "enhanced")]
-use assets::TextureMip;
+use assets::texture::TextureMip;
 use render_scene::{
     TextureArrayLimits, TextureMipUploadPlan, diagnostic_texture_page, plan_texture_page_bindings,
 };
@@ -115,7 +115,7 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         let texture = match match binding {
             TexturePageBinding::Asset(index) => assets.assets().terrain_texture_page(index),
             TexturePageBinding::DiagnosticFallback => {
-                assets::rebuild_legacy_terrain_mips(texture).map(std::borrow::Cow::Owned)
+                assets::texture::rebuild_legacy_terrain_mips(texture).map(std::borrow::Cow::Owned)
             }
         } {
             Ok(texture) => texture,
@@ -660,7 +660,7 @@ mod tests {
                         carrier.assets().terrain_texture_page(index).unwrap()
                     }
                     TexturePageBinding::DiagnosticFallback => std::borrow::Cow::Owned(
-                        assets::rebuild_legacy_terrain_mips(&fallback).unwrap(),
+                        assets::texture::rebuild_legacy_terrain_mips(&fallback).unwrap(),
                     ),
                 };
                 page.mips

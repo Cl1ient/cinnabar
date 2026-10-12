@@ -33,7 +33,8 @@ use client_runtime::publication::{
 use {
     crate::app::{
         configure_acceptance_finish_system, configure_client_frame_schedule,
-        configure_client_production_frame_systems, configure_client_runtime_frame_systems,
+        configure_client_production_frame_systems,
+        frame_systems::configure_client_runtime_frame_systems,
     },
     client_state::ClientFrameSet,
 };

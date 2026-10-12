@@ -6,7 +6,7 @@ use super::{
     EnvironmentContext, WeatherState, WorldClock, apply_environment_control,
     bind_session_generation, replace_session, visual_world_time,
 };
-use assets::{BiomeVisualProfile, FogDistance, FogDistanceMode, FogMedium, FogProfile};
+use assets::atmosphere::{BiomeVisualProfile, FogDistance, FogDistanceMode, FogMedium, FogProfile};
 use client_world::CommittedControlEvent;
 use protocol::{
     ChangeDimensionEvent, DaylightCycleUpdateEvent, SetTimeEvent, WeatherChannel,
@@ -728,7 +728,7 @@ fn powder_snow_selects_its_profile_and_blocks_physical_sky() {
     assert!(!frame.physical_atmosphere_allowed());
     let expected = render_scene::AtmosphereFrame::default().with_environment_profile(
         None,
-        Some(assets::ResolvedFog {
+        Some(assets::atmosphere::ResolvedFog {
             start: 0.5,
             end: 3.0,
             rgb: [128.0 / 255.0, 64.0 / 255.0, 32.0 / 255.0],

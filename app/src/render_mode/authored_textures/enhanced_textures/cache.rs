@@ -7,7 +7,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use assets::{TextureArray, TextureMip};
+use assets::texture::{TextureArray, TextureMip};
 use pack_compiler::pbr::PbrPack;
 use sha2::{Digest, Sha256};
 
@@ -78,17 +78,17 @@ pub(super) fn fingerprint(
 ) -> Option<[u8; 32]> {
     let mut digest = Sha256::new();
     digest.update(MAGIC);
-    digest.update(assets::PBR_TILE_SIZE.to_le_bytes());
+    digest.update(assets::texture::PBR_TILE_SIZE.to_le_bytes());
     digest.update(LOW_PBR_TILE_SIZE.to_le_bytes());
-    digest.update(assets::PBR_HEIGHT_SCALE.to_bits().to_le_bytes());
+    digest.update(assets::texture::PBR_HEIGHT_SCALE.to_bits().to_le_bytes());
     for flag in [
-        assets::PBR_REF_COLOR,
-        assets::PBR_REF_NORMAL,
-        assets::PBR_REF_HEIGHT,
-        assets::PBR_REF_MATERIAL,
-        assets::PBR_REF_LABPBR,
-        assets::PBR_REF_OCCLUSION,
-        assets::PBR_REF_SUBSURFACE,
+        assets::texture::PBR_REF_COLOR,
+        assets::texture::PBR_REF_NORMAL,
+        assets::texture::PBR_REF_HEIGHT,
+        assets::texture::PBR_REF_MATERIAL,
+        assets::texture::PBR_REF_LABPBR,
+        assets::texture::PBR_REF_OCCLUSION,
+        assets::texture::PBR_REF_SUBSURFACE,
     ] {
         digest.update(flag.to_le_bytes());
     }
@@ -167,7 +167,7 @@ fn array_header_is_valid(layers: u32, side: u32, levels: u32) -> bool {
     layers > 0
         && layers <= super::MAX_AUTHORED_LAYERS
         && side.is_power_of_two()
-        && side <= assets::PBR_TILE_SIZE
+        && side <= assets::texture::PBR_TILE_SIZE
         && levels == side.ilog2() + 1
 }
 
@@ -379,7 +379,7 @@ mod tests {
             normal: std::array::from_fn(|page| array(64 + page as u8)),
             material: std::array::from_fn(|page| array(128 + page as u8)),
             references: render_scene::EnhancedTextureAssets::material_references(
-                std::collections::BTreeMap::from([((1, 0), assets::PBR_REF_COLOR)]),
+                std::collections::BTreeMap::from([((1, 0), assets::texture::PBR_REF_COLOR)]),
             ),
         }
     }
@@ -458,8 +458,8 @@ mod tests {
             material: [array.clone(), array],
             references: render_scene::EnhancedTextureAssets::material_references(
                 std::collections::BTreeMap::from([
-                    ((1, 0), assets::PBR_REF_COLOR),
-                    ((2, 0), assets::PBR_REF_COLOR | 1),
+                    ((1, 0), assets::texture::PBR_REF_COLOR),
+                    ((2, 0), assets::texture::PBR_REF_COLOR | 1),
                 ]),
             ),
         };
@@ -476,10 +476,13 @@ mod tests {
         assert_eq!(restored.references, payload.references);
         let maps = restored.into_assets().unwrap();
         let texture = assets::TextureRef::DIAGNOSTIC;
-        assert_eq!(maps.material_reference(1, texture), assets::PBR_REF_COLOR);
+        assert_eq!(
+            maps.material_reference(1, texture),
+            assets::texture::PBR_REF_COLOR
+        );
         assert_eq!(
             maps.material_reference(2, texture),
-            assets::PBR_REF_COLOR | 1
+            assets::texture::PBR_REF_COLOR | 1
         );
         assert_eq!(maps.material_reference(3, texture), u32::MAX);
     }
@@ -491,7 +494,7 @@ mod tests {
         bytes.extend_from_slice(MAGIC);
         bytes.extend_from_slice(&key);
         bytes.extend_from_slice(&u32::MAX.to_le_bytes());
-        bytes.extend_from_slice(&(assets::PBR_TILE_SIZE.ilog2() + 1).to_le_bytes());
+        bytes.extend_from_slice(&(assets::texture::PBR_TILE_SIZE.ilog2() + 1).to_le_bytes());
         assert!(
             decode(
                 &mut bytes.as_slice(),

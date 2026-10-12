@@ -1,5 +1,5 @@
 use super::*;
-use assets::TextureMip;
+use assets::texture::TextureMip;
 
 fn array(side: u32, layers: u32) -> TextureArray {
     TextureArray {

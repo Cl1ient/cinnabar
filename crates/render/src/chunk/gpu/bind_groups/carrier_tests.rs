@@ -87,7 +87,7 @@ fn carrier_replacement_stages_changed_authored_maps_within_frame_budget() {
     let mut app = ready(authored(4, 1));
     let replacement = ChunkTextureAssets::with_enhanced(
         Arc::new(RuntimeAssets::diagnostic()),
-        authored(assets::PBR_TILE_SIZE, 2),
+        authored(assets::texture::PBR_TILE_SIZE, 2),
         1,
     );
     let identity = replacement.identity();

@@ -1,4 +1,4 @@
-use assets::{PBR_REF_LABPBR, TextureMip};
+use assets::texture::{PBR_REF_LABPBR, TextureMip};
 use image::{ImageBuffer, Luma, Rgba, RgbaImage, imageops::FilterType};
 
 use super::{PbrSurface, decode};
@@ -310,7 +310,7 @@ pub fn build_pbr_mips(
     cutout: bool,
     overlay_mask: bool,
 ) -> Result<PbrMipLayer, String> {
-    if !side.is_power_of_two() || side > assets::PBR_TILE_SIZE {
+    if !side.is_power_of_two() || side > assets::texture::PBR_TILE_SIZE {
         return Err("unsupported authored material layer size".to_owned());
     }
     if [

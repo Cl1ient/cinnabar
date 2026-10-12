@@ -467,7 +467,7 @@ mod tests {
                         .with_camera_medium(medium)
                         .with_environment_profile(
                             None,
-                            Some(assets::ResolvedFog {
+                            Some(assets::atmosphere::ResolvedFog {
                                 start: 0.5,
                                 end: 12.0,
                                 rgb: [0.2, 0.4, 0.6],

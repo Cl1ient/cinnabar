@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use assets::{
+use assets::texture::{
     PBR_REF_COLOR, PBR_REF_HEIGHT, PBR_REF_MATERIAL, PBR_REF_NORMAL, PBR_REF_OCCLUSION,
     PBR_REF_SUBSURFACE,
 };
@@ -131,16 +131,16 @@ impl Alias {
             && self.color_style == pack_compiler::pbr::PbrColorStyle::Photorealistic.as_str();
         self.native_512_photorealistic_color = self.photorealistic_color
             && self.color_source.is_some()
-            && self
-                .native_color_size
-                .is_some_and(|size| size.into_iter().min().unwrap_or(0) >= assets::PBR_TILE_SIZE);
+            && self.native_color_size.is_some_and(|size| {
+                size.into_iter().min().unwrap_or(0) >= assets::texture::PBR_TILE_SIZE
+            });
         self.native_512_photorealistic_material = self.native_512_photorealistic_color
             && self.full_material
             && [self.native_normal_size, self.native_material_size]
                 .into_iter()
                 .all(|size| {
                     size.is_some_and(|size| {
-                        size.into_iter().min().unwrap_or(0) >= assets::PBR_TILE_SIZE
+                        size.into_iter().min().unwrap_or(0) >= assets::texture::PBR_TILE_SIZE
                     })
                 });
     }
@@ -171,7 +171,7 @@ impl Report {
             schema: SCHEMA,
             fingerprint: fingerprint(key),
             source: "decoded".to_owned(),
-            tile_size: assets::PBR_TILE_SIZE,
+            tile_size: assets::texture::PBR_TILE_SIZE,
             page_sizes,
             mapped_texture_refs,
             albedo_layers,

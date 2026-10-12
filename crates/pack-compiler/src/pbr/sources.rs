@@ -7,7 +7,7 @@ use image::{DynamicImage, ImageBuffer, Rgba, RgbaImage};
 use serde_json::Value;
 
 use super::{PbrFormat, PbrPack, PbrSurface, PbrTexture, PbrTextureSource, decode};
-use assets::{PBR_REF_COLOR, PBR_REF_NORMAL};
+use assets::texture::{PBR_REF_COLOR, PBR_REF_NORMAL};
 
 mod names;
 pub(super) mod terrain;

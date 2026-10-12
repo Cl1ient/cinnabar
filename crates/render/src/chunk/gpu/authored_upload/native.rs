@@ -57,8 +57,8 @@ fn native_authored_stripes_publish_complete_mips_and_preserve_carrier_resources(
     });
     let [color0, color1, normal0, normal1, material0, material1] = arrays;
     let mut references = vec![u32::MAX; assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS];
-    references[0] = assets::PBR_REF_COLOR;
-    *references.last_mut().unwrap() = assets::PBR_REF_COLOR | 1;
+    references[0] = assets::texture::PBR_REF_COLOR;
+    *references.last_mut().unwrap() = assets::texture::PBR_REF_COLOR | 1;
     let source = Arc::new(
         EnhancedTextureAssets::new(
             [color0, color1],
@@ -249,8 +249,8 @@ fn sample_page(page:u32,layer:i32,mip:i32)->vec4<f32>{
             }
         }
     }
-    assert_eq!(values[36][0], assets::PBR_REF_COLOR as f32);
-    assert_eq!(values[37][0], (assets::PBR_REF_COLOR | 1) as f32);
+    assert_eq!(values[36][0], assets::texture::PBR_REF_COLOR as f32);
+    assert_eq!(values[37][0], (assets::texture::PBR_REF_COLOR | 1) as f32);
     super::super::detach(&mut prepared, original_identity, &device, &mut stats);
     assert_eq!(prepared.identity, original_identity);
     assert_eq!(prepared._textures[0].id(), carrier_texture);

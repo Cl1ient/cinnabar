@@ -174,9 +174,9 @@ mod tests {
     use super::*;
 
     fn maps() -> Arc<EnhancedTextureAssets> {
-        let array = || assets::TextureArray {
+        let array = || assets::texture::TextureArray {
             layers: 1,
-            mips: vec![assets::TextureMip {
+            mips: vec![assets::texture::TextureMip {
                 size: 1,
                 rgba8: vec![128, 128, 255, 255].into_boxed_slice(),
             }]
@@ -281,9 +281,9 @@ mod tests {
     #[test]
     fn unsupported_maps_are_discarded_before_server_assets_can_inherit_them() {
         let base = Arc::new(RuntimeAssets::diagnostic());
-        let array = assets::TextureArray {
+        let array = assets::texture::TextureArray {
             layers: 2,
-            mips: Box::new([assets::TextureMip {
+            mips: Box::new([assets::texture::TextureMip {
                 size: 1,
                 rgba8: vec![128; 8].into_boxed_slice(),
             }]),

@@ -6,7 +6,7 @@ use bevy::render::render_resource::ShaderType;
 use render_scene::CloudVisibility;
 use std::collections::HashMap;
 
-use assets::AtmosphereRole;
+use assets::atmosphere::AtmosphereRole;
 #[cfg(test)]
 use bevy::prelude::{GlobalTransform, IntoSystem, Mat4, UVec4};
 use bevy::{

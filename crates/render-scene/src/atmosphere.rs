@@ -2,7 +2,7 @@ use crate::native_sunlight;
 use render_model::celestial;
 use std::sync::Arc;
 
-use assets::{ResolvedFog, RuntimeAtmosphereAssets};
+use assets::atmosphere::{ResolvedFog, RuntimeAtmosphereAssets};
 use bevy::{
     prelude::{Resource, Vec4},
     render::{extract_resource::ExtractResource, render_resource::ShaderType},
@@ -881,7 +881,7 @@ mod tests {
             .with_camera_medium(CameraMedium::Water);
         let profiled = water.with_environment_profile(
             None,
-            Some(assets::ResolvedFog {
+            Some(assets::atmosphere::ResolvedFog {
                 start: 0.0,
                 end: 40.0,
                 rgb: super::rgb8_to_gamma(0x112233),
@@ -904,12 +904,12 @@ mod tests {
 
     #[test]
     fn weather_fog_pulls_inward_and_lightning_flash_lights_the_world() {
-        let air = assets::ResolvedFog {
+        let air = assets::atmosphere::ResolvedFog {
             start: 235.0,
             end: 256.0,
             rgb: [0.5; 3],
         };
-        let weather = assets::ResolvedFog {
+        let weather = assets::atmosphere::ResolvedFog {
             start: 59.0,
             end: 179.0,
             rgb: [0.4; 3],
@@ -956,12 +956,12 @@ mod tests {
 
     #[test]
     fn blended_fog_interpolates_by_weather_fog_independently_of_rain() {
-        let air = assets::ResolvedFog {
+        let air = assets::atmosphere::ResolvedFog {
             start: 235.0,
             end: 256.0,
             rgb: super::rgb8_to_gamma(0xABD2FF),
         };
-        let weather = assets::ResolvedFog {
+        let weather = assets::atmosphere::ResolvedFog {
             start: 59.0,
             end: 179.0,
             rgb: super::rgb8_to_gamma(0x666666),

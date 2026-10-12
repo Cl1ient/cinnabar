@@ -230,8 +230,8 @@ fn native_leaf_point_mip_filter_preserves_alpha_without_changing_carried_mips() 
             base[(y * 4 + x) * 4..(y * 4 + x + 1) * 4].copy_from_slice(&[140, 140, 140, 255]);
         }
     }
-    let native = assets::build_legacy_terrain_mip_chain(&base, 4).unwrap();
-    let carried = assets::build_texture_mip_chain(base.into_boxed_slice(), 4).unwrap();
+    let native = assets::texture::build_legacy_terrain_mip_chain(&base, 4).unwrap();
+    let carried = assets::texture::build_texture_mip_chain(base.into_boxed_slice(), 4).unwrap();
     assert_eq!(native[0], carried[0]);
     assert_eq!(native[1].rgba8[3], 255);
     assert_eq!(carried[1].rgba8[3], 128);

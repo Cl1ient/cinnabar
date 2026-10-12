@@ -1,4 +1,4 @@
-use assets::{PBR_REF_HEIGHT, PBR_REF_NORMAL};
+use assets::texture::{PBR_REF_HEIGHT, PBR_REF_NORMAL};
 use image::{ImageBuffer, Rgba, RgbaImage};
 
 use super::{PbrSurface, decode};
@@ -100,7 +100,7 @@ fn derive_height_normals(normal: &mut RgbaImage) {
         let right = height((x + 1) % side, y);
         let above = height(x, (y + side - 1) % side);
         let below = height(x, (y + 1) % side);
-        let strength = assets::PBR_HEIGHT_SCALE * side as f32 * 0.5;
+        let strength = assets::texture::PBR_HEIGHT_SCALE * side as f32 * 0.5;
         let value = decode::unit([(left - right) * strength, (above - below) * strength, 1.0]);
         pixel[0] = decode::byte(value[0] * 0.5 + 0.5);
         pixel[1] = decode::byte(value[1] * 0.5 + 0.5);

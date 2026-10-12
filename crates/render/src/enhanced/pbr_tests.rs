@@ -47,7 +47,7 @@ import render::enhanced::pbr::{material_basis,material_normal,material_response,
     assert!((v[4][0] + 0.5).abs() < 0.0001 && v[4][2] > 0.86);
     assert!((v[5][1] + 0.5).abs() < 0.0001 && v[5][2] > 0.86);
     assert_eq!(v[6], [1.0, 0.0, 0.0, 0.0]);
-    assert!((v[7][0] + assets::PBR_HEIGHT_SCALE).abs() < 0.0001);
+    assert!((v[7][0] + assets::texture::PBR_HEIGHT_SCALE).abs() < 0.0001);
     assert_eq!(&v[7][1..], &[0.0, 0.0, 0.0]);
 }
 
@@ -165,9 +165,9 @@ fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces
         label: None,
         contents: bytemuck::cast_slice(&render_scene::EnhancedTextureAssets::material_references(
             std::collections::BTreeMap::from([
-                ((0, 0), assets::PBR_REF_HEIGHT),
+                ((0, 0), assets::texture::PBR_REF_HEIGHT),
                 ((0, 1), 0),
-                ((0, 2), assets::PBR_REF_LABPBR),
+                ((0, 2), assets::texture::PBR_REF_LABPBR),
                 ((1, 0), 0),
             ]),
         )),
@@ -242,7 +242,8 @@ fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces
         .expect("readback buffer is mapped");
     let values: &[[f32; 4]] = bytemuck::cast_slice(&bytes);
     assert!(
-        (values[0][0] - (0.5 - assets::PBR_HEIGHT_SCALE * (1.0 - 128.0 / 255.0))).abs() < 0.0001
+        (values[0][0] - (0.5 - assets::texture::PBR_HEIGHT_SCALE * (1.0 - 128.0 / 255.0))).abs()
+            < 0.0001
     );
     assert_eq!(&values[0][1..], &[0.5, 0.5, 0.5]);
     assert_eq!(values[1], [0.5; 4]);

@@ -1,5 +1,5 @@
 use super::PoseConversions;
-use crate::presentation::actors::{ActorRigPresentation, sampled_rig_placement};
+use crate::presentation::actors::{ActorRigPresentation, transform::sampled_rig_placement};
 use actor_animation::ActorRigSnapshot;
 use client_world::ActorSnapshot;
 

@@ -54,7 +54,7 @@ pub(crate) fn gpu_texture_ref(
         debug_assert!(
             dimensions
                 .iter()
-                .all(|size| size.is_power_of_two() && *size <= assets::MAX_TILE_SIZE)
+                .all(|size| size.is_power_of_two() && *size <= assets::texture::MAX_TILE_SIZE)
         );
         reference.raw()
             | ((dimensions[0].ilog2() + 1) << TEXTURE_WIDTH_SHIFT)
@@ -105,7 +105,7 @@ pub(crate) fn native_leaf_sampler_descriptor() -> wgpu::SamplerDescriptor<'stati
         min_filter: wgpu::FilterMode::Nearest,
         mag_filter: wgpu::FilterMode::Nearest,
         mipmap_filter: wgpu::MipmapFilterMode::Linear,
-        lod_max_clamp: (assets::VANILLA_TERRAIN_MIP_COUNT - 1) as f32,
+        lod_max_clamp: (assets::texture::VANILLA_TERRAIN_MIP_COUNT - 1) as f32,
         ..Default::default()
     }
 }
@@ -134,7 +134,7 @@ pub(crate) fn source(source: &str) -> String {
         .replace("TEXTURE_LAYER_MASK", &format!("{}u", assets::TEXTURE_LAYER_MASK))
         .replace("GPU_TEXTURE_GRID_SHIFT", &format!("{TEXTURE_GRID_SHIFT}u"))
         .replace("GPU_TEXTURE_SIZE_EXPONENT_MASK", &format!("{TEXTURE_SIZE_EXPONENT_MASK}u"))
-        .replace("TERRAIN_QUAD_SHIFT_MASK", &format!("{}u", assets::TERRAIN_QUAD_SHIFT_MASK))
+        .replace("TERRAIN_QUAD_SHIFT_MASK", &format!("{}u", assets::texture::TERRAIN_QUAD_SHIFT_MASK))
         .replace("GPU_TEXTURE_WIDTH_SHIFT", &format!("{TEXTURE_WIDTH_SHIFT}u"))
         .replace("GPU_TEXTURE_HEIGHT_SHIFT", &format!("{TEXTURE_HEIGHT_SHIFT}u"))
         .replace("BLOCK_OVERLAY_FACE_OFFSET", &format!("{:?}", render_api::BLOCK_OVERLAY_FACE_OFFSET))
@@ -142,8 +142,8 @@ pub(crate) fn source(source: &str) -> String {
         .replace("// ENHANCED_PBR_CONSTANTS", &format!(
             "const AUTHORED_REFERENCE_BASE_WORDS:u32={}u;\nconst AUTHORED_REFERENCE_OVERRIDE_WORDS:u32={}u;\nconst PBR_REF_COLOR:u32={}u;\nconst PBR_REF_NORMAL:u32={}u;\nconst PBR_REF_HEIGHT:u32={}u;\nconst PBR_REF_MATERIAL:u32={}u;\nconst PBR_REF_LABPBR:u32={}u;\nconst PBR_REF_OCCLUSION:u32={}u;\nconst PBR_REF_SUBSURFACE:u32={}u;\nconst PBR_HEIGHT_SCALE:f32={:?};",
             render_scene::EnhancedTextureAssets::REFERENCE_BASE_WORDS, render_scene::EnhancedTextureAssets::REFERENCE_OVERRIDE_WORDS,
-            assets::PBR_REF_COLOR, assets::PBR_REF_NORMAL, assets::PBR_REF_HEIGHT, assets::PBR_REF_MATERIAL,
-            assets::PBR_REF_LABPBR, assets::PBR_REF_OCCLUSION, assets::PBR_REF_SUBSURFACE, assets::PBR_HEIGHT_SCALE))
+            assets::texture::PBR_REF_COLOR, assets::texture::PBR_REF_NORMAL, assets::texture::PBR_REF_HEIGHT, assets::texture::PBR_REF_MATERIAL,
+            assets::texture::PBR_REF_LABPBR, assets::texture::PBR_REF_OCCLUSION, assets::texture::PBR_REF_SUBSURFACE, assets::texture::PBR_HEIGHT_SCALE))
         .replace("ACTOR_MATERIAL_GLINT", &format!("{}u", assets::EntityRenderMaterial::Glint as u32))
         .replace("ACTOR_MATERIAL_DEFAULT", &format!("{}u", assets::EntityRenderMaterial::Default as u32))
         .replace("ACTOR_MATERIAL_DRAGON", &format!("{}u", assets::EntityRenderMaterial::Dragon as u32))

@@ -70,7 +70,7 @@ impl EnhancedTextureAssets {
                     return false;
                 }
                 let page = (texture_ref >> 31) as usize;
-                let layer = (texture_ref & (assets::PBR_REF_COLOR - 1)) as usize;
+                let layer = (texture_ref & (assets::texture::PBR_REF_COLOR - 1)) as usize;
                 page >= assets::MAX_TEXTURE_PAGES || layer >= color_pages[page].layers as usize
             })
         {

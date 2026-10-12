@@ -5,7 +5,8 @@ use std::sync::{Arc, OnceLock};
 
 use assets::{
     BlockFlags, BlockVisual, CompiledAssets, CompiledBiomeAssets, Material, NO_ANIMATION,
-    NO_MODEL_TEMPLATE, NetworkIdMode, TextureMip, TexturePage, TextureRef, VisualKind, encode_blob,
+    NO_MODEL_TEMPLATE, NetworkIdMode, TexturePage, TextureRef, VisualKind, encode_blob,
+    texture::TextureMip,
 };
 
 use world::{RawBlockIds, SubChunk};

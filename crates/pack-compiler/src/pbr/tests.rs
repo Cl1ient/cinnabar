@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use image::{ImageBuffer, Rgb, Rgba, RgbaImage};
 
 use super::*;
-use assets::{
+use assets::texture::{
     PBR_REF_HEIGHT, PBR_REF_LABPBR, PBR_REF_MATERIAL, PBR_REF_NORMAL, PBR_REF_OCCLUSION,
     PBR_REF_SUBSURFACE,
 };
@@ -498,10 +498,10 @@ fn available_faithful_materials_keep_the_512_target_and_declared_labpbr_data() {
         .unwrap();
     let frame = texture.frame(0, 1).unwrap();
     assert_ne!(frame.flags & PBR_REF_LABPBR, 0);
-    let mip = build_pbr_mips(&frame, assets::PBR_TILE_SIZE, false, false).unwrap();
-    assert_eq!(mip.color[0].size, assets::PBR_TILE_SIZE);
-    assert_eq!(mip.normal[0].size, assets::PBR_TILE_SIZE);
-    assert_eq!(mip.material[0].size, assets::PBR_TILE_SIZE);
+    let mip = build_pbr_mips(&frame, assets::texture::PBR_TILE_SIZE, false, false).unwrap();
+    assert_eq!(mip.color[0].size, assets::texture::PBR_TILE_SIZE);
+    assert_eq!(mip.normal[0].size, assets::texture::PBR_TILE_SIZE);
+    assert_eq!(mip.material[0].size, assets::texture::PBR_TILE_SIZE);
     assert_eq!(mip.color.last().unwrap().size, 1);
 }
 

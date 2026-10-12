@@ -1,7 +1,7 @@
 use image::{Rgba, RgbaImage};
 
 use super::{PbrFormat, PbrNormalFormat};
-use assets::{PBR_REF_LABPBR, PBR_REF_MATERIAL, PBR_REF_OCCLUSION, PBR_REF_SUBSURFACE};
+use assets::texture::{PBR_REF_LABPBR, PBR_REF_MATERIAL, PBR_REF_OCCLUSION, PBR_REF_SUBSURFACE};
 
 pub(super) fn byte(value: f32) -> u8 {
     (value.clamp(0.0, 1.0) * 255.0).round() as u8

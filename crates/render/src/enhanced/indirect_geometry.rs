@@ -112,10 +112,10 @@ pub(super) fn palette(textures: &ChunkTextureAssets, output: &mut Vec<Reflectanc
             let reference = authored.material_reference(material_id as u32, material.texture);
             if reference != u32::MAX {
                 page = (reference >> 31) as usize;
-                layer = (reference & (assets::PBR_REF_COLOR - 1)) as usize;
+                layer = (reference & (assets::texture::PBR_REF_COLOR - 1)) as usize;
                 color = &authored.color_pages[page];
                 mer = Some(&authored.mer_pages[page]);
-                lab = reference & assets::PBR_REF_LABPBR != 0;
+                lab = reference & assets::texture::PBR_REF_LABPBR != 0;
             }
         }
         let rgba = color

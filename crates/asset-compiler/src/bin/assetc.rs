@@ -12,8 +12,9 @@ use assets::{
 use clap::Parser;
 use pack_compiler::{
     AnimationInventory, AtmosphereCompileOptions, CompileReferenceOutcome, FontCompileError,
-    compile_atmosphere_assets_with_options, compile_entity_assets_with_report, compile_fonts,
-    compile_pack_with_material_keys, compile_vanilla_entity_refs, inspect_animation_inventory,
+    compile_atmosphere_assets_with_options, compile_entity_assets_with_behavior_report,
+    compile_entity_assets_with_report, compile_fonts, compile_pack_with_material_keys,
+    compile_vanilla_entity_refs, inspect_animation_inventory,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -228,11 +229,18 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::EntityAssets {
             pack,
+            behavior_pack,
             source_manifest,
             out,
             report,
         } => {
-            compile_entity_assets_command(&pack, &source_manifest, &out, &report)?;
+            compile_entity_assets_command(
+                &pack,
+                behavior_pack.as_deref(),
+                &source_manifest,
+                &out,
+                &report,
+            )?;
         }
         Command::EquipmentAssets {
             pack,
@@ -647,8 +655,10 @@ fn write_compiled_font_assets(
     Ok(())
 }
 
+/// Compiles an entity carrier and optional authored behavior-seat inputs as one pinned bundle.
 fn compile_entity_assets_command(
     pack: &Path,
+    behavior_pack: Option<&Path>,
     source_manifest: &Path,
     out: &Path,
     report: &Path,
@@ -665,7 +675,12 @@ fn compile_entity_assets_command(
                 source,
             }
         })?;
-    let mut compilation = compile_entity_assets_with_report(pack, &manifest_bytes)?;
+    let mut compilation = match behavior_pack {
+        Some(behavior) => {
+            compile_entity_assets_with_behavior_report(pack, behavior, &manifest_bytes)?
+        }
+        None => compile_entity_assets_with_report(pack, &manifest_bytes)?,
+    };
     compilation.reference_outcomes.sort_by_key(outcome_sort_key);
     let compiled = &compilation.assets;
     let blob = encode_entity_blob(compiled)?;

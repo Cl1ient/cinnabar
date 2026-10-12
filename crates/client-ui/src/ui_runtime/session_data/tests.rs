@@ -6,11 +6,11 @@ use ::protocol::{CreativeCategory, CreativeGroup, CreativeItem, ItemRegistryVers
 
 fn entry(network_id: i32, identifier: &str, tags: &[&str]) -> ItemRegistryEntry {
     ItemRegistryEntry {
-        components: None,
         identifier: identifier.into(),
         network_id,
         component_based: !tags.is_empty(),
         version: ItemRegistryVersion::None,
+        components: None,
         component_digest: [0; 32],
         negotiated_max_stack_size: (network_id == 3).then_some(16),
         canonical_empty_component_data: true,

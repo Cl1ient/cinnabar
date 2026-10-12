@@ -29,7 +29,7 @@ mod registry_capacity;
 
 pub use attack::{ItemAttackCooldown, ItemAttackTiming, KineticWeaponTiming};
 pub(crate) use components::item_components;
-pub use components::{FoodProperties, ItemComponents};
+pub use components::{FoodProperties, ItemComponents, ItemUseCooldown};
 pub use display::{
     ItemBook, ItemDisplay, MAX_BOOK_PAGES, item_book, item_bundle_id, item_display,
     item_has_enchantment_list,
@@ -409,11 +409,11 @@ pub fn vanilla_item_registry() -> Arc<[ItemRegistryEntry]> {
             .parse::<i32>()
             .expect("retail item ID must be an i32");
         entries.push(ItemRegistryEntry {
-            components: None,
             identifier: Arc::from(identifier),
             network_id,
             component_based: false,
             version: ItemRegistryVersion::Legacy,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -709,11 +709,11 @@ pub(crate) fn normalize_item_registry(
             registry_capacity::negotiated_max_stack_size(&component_bytes)
         };
         let entry = ItemRegistryEntry {
-            components: components::parse_components(&component_bytes).map(Arc::new),
             identifier: Arc::from(item.item_name),
             network_id,
             component_based: item.is_component_based,
             version,
+            components: components::parse_components(&component_bytes).map(Arc::new),
             component_digest: Sha256::digest(&component_bytes).into(),
             negotiated_max_stack_size,
             canonical_empty_component_data,

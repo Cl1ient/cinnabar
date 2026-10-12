@@ -3,7 +3,7 @@
 use crate::runtime::network::resource_packs::PackApplication;
 use client_runtime::network::NetworkHandle;
 use gameplay::{
-    item_use::{ItemUseRuntime, UseFrame, admit_on_tick, classify},
+    item_use::{ItemUseRuntime, UseFrame, admit_on_tick, fixtures::classify},
     melee::SwingTracker,
     mining::FrozenMiningSelection,
     test_support::survival_mining::{completed, evidence},

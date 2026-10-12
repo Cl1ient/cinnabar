@@ -79,3 +79,71 @@ fn texture_refresh_remeasures_inventory_and_preserves_once_bindings() {
         "metadata invalidation preserves live once bindings"
     );
 }
+
+#[test]
+fn inventory_data_refresh_keeps_unrelated_controls_bound() {
+    let mut controls = vec![serde_json::json!({"item": {
+        "type": "label", "size": [50,10], "text": "#text",
+        "bindings": [{"binding_name": "#item", "binding_name_override": "#text"}]
+    }})];
+    controls.extend((0..64).map(|index| {
+        serde_json::json!({format!("unrelated{index}"): {
+            "type": "label", "size": [50,10], "text": "unchanged"
+        }})
+    }));
+    let screen = serde_json::to_vec(
+        &serde_json::json!({"namespace":"chest", "small_chest_screen": {
+            "type": "screen", "controls": controls
+        }}),
+    )
+    .unwrap();
+    let mut catalog = json_ui::Catalog::default();
+    catalog.apply_pack([
+        (
+            "ui/_ui_defs.json",
+            br#"{"ui_defs":["ui/chest.json"]}"#.as_slice(),
+        ),
+        ("ui/chest.json", screen.as_slice()),
+    ]);
+    let catalog = Arc::new(catalog);
+    let (context, view) = (json_ui::Context::desktop(), ViewState::default());
+    let texture = Texture(Cell::new([10.0; 2]));
+    let env = json_ui::LayoutEnv {
+        text: &Text,
+        textures: &texture,
+    };
+    let mut cache = None;
+    let mut data = DataSource::new();
+    let mut initial = 0;
+    for value in ["inventory", "hotbar"] {
+        data.set_global("#item", Scalar::Text(value.into()));
+        let rendered = ScreenCache::render(
+            &mut cache,
+            &catalog,
+            false,
+            "chest.small_chest_screen",
+            &context,
+            &data,
+            &view,
+            [100.; 2],
+            &env,
+            (1., [0; 3]),
+        )
+        .unwrap();
+        assert!(
+            rendered
+                .nodes
+                .iter()
+                .any(|node| matches!(&node.draw, Draw::Text { text, .. } if text == value))
+        );
+        let rebuilt = cache.as_ref().unwrap().binding.rebuilt();
+        if initial == 0 {
+            initial = rebuilt;
+        } else {
+            assert!(
+                rebuilt < initial / 2,
+                "a moved item rebound {rebuilt} of {initial} controls"
+            );
+        }
+    }
+}

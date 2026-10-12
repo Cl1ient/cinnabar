@@ -16,18 +16,20 @@ use crate::{AssetError, EntityDependencyResolution};
 
 mod attack;
 mod food;
+mod use_profiles;
 pub use attack::{
     CompiledItemAttackCooldown, CompiledItemAttackTiming, CompiledKineticWeaponTiming,
 };
 pub use food::CompiledItemFood;
+pub use use_profiles::CompiledItemUseOverlay;
 
 #[cfg(test)]
 #[path = "equipment/texture_tests.rs"]
 mod texture_tests;
 
 pub const EQUIPMENT_CARRIER_MAGIC: [u8; 8] = *b"MCBEEQP1";
-/// Includes the resolved material dye capability; older carriers must be rebuilt.
-pub const EQUIPMENT_CARRIER_VERSION: u32 = 3;
+/// Includes authored use profiles, food nutrition and component-precision durations; older carriers need a rebuild.
+pub const EQUIPMENT_CARRIER_VERSION: u32 = 4;
 pub const MAX_EQUIPMENT_BINDINGS: usize = 1024;
 pub const MAX_EQUIPMENT_IDENTIFIER_BYTES: usize = 256;
 pub const MAX_EQUIPMENT_TEXTURES: usize = 256;
@@ -183,6 +185,7 @@ pub fn color_mask_texel(mut texel: [u8; 4], tint: [u8; 3]) -> [u8; 4] {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct EquipmentCatalogPayload {
+    item_use_overlays: Box<[CompiledItemUseOverlay]>,
     source_manifest_sha256: [u8; 32],
     entity_blob_sha256: [u8; 32],
     bindings: Box<[EquipmentBinding]>,
@@ -205,6 +208,7 @@ pub struct ItemUseDuration {
 /// Decoded, validated equipment catalog pinned to one entity carrier build.
 #[derive(Clone, Debug)]
 pub struct RuntimeEquipmentCatalog {
+    item_use_overlays: Arc<[CompiledItemUseOverlay]>,
     source_manifest_sha256: [u8; 32],
     entity_blob_sha256: [u8; 32],
     bindings: Arc<[EquipmentBinding]>,
@@ -254,12 +258,14 @@ impl RuntimeEquipmentCatalog {
         )?;
         validate_item_use(&payload.item_use)?;
         attack::validate(&payload.item_attack)?;
+        use_profiles::validate(&payload.item_use_overlays)?;
         food::validate(&payload.item_food)?;
         let textures = decode_textures(&bytes[payload_end..hash_start])?;
         Ok(Self {
             source_manifest_sha256: payload.source_manifest_sha256,
             entity_blob_sha256: payload.entity_blob_sha256,
             bindings: Arc::from(payload.bindings),
+            item_use_overlays: Arc::from(payload.item_use_overlays),
             item_use: Arc::from(payload.item_use),
             item_attack: Arc::from(payload.item_attack),
             item_food: Arc::from(payload.item_food),
@@ -286,6 +292,7 @@ impl RuntimeEquipmentCatalog {
             entity_blob_sha256: identity,
             bindings: Arc::from(bindings),
             textures: Arc::from(textures),
+            item_use_overlays: Arc::from([]),
             item_use: Arc::from(Vec::new()),
             item_attack: Arc::from(Vec::new()),
             item_food: Arc::from(Vec::new()),
@@ -307,6 +314,12 @@ impl RuntimeEquipmentCatalog {
     #[must_use]
     pub fn bindings(&self) -> &[EquipmentBinding] {
         &self.bindings
+    }
+
+    /// Returns authored use facts without deriving consumption from their duration.
+    #[must_use]
+    pub fn item_use_overlays(&self) -> &[CompiledItemUseOverlay] {
+        &self.item_use_overlays
     }
 
     /// Use durations sorted by item identifier.
@@ -422,7 +435,7 @@ pub fn encode_equipment_catalog_with_attack_timings(
     item_use: &[ItemUseDuration],
     item_attack: &[CompiledItemAttackTiming],
 ) -> Result<Vec<u8>, AssetError> {
-    encode_equipment_catalog_with_food(
+    encode_equipment_catalog_with_use_profiles(
         source_manifest_sha256,
         entity_blob_sha256,
         bindings,
@@ -430,25 +443,29 @@ pub fn encode_equipment_catalog_with_attack_timings(
         item_use,
         item_attack,
         &[],
+        &[],
     )
 }
 
-/// Encodes authored food facts while preserving unchanged carriers when none are available.
-pub fn encode_equipment_catalog_with_food(
+/// Encodes complete authored use facts alongside nutrition, duration and attack timing.
+pub fn encode_equipment_catalog_with_use_profiles(
     source_manifest_sha256: [u8; 32],
     entity_blob_sha256: [u8; 32],
     bindings: &[EquipmentBinding],
     textures: &[EquipmentTexture],
     item_use: &[ItemUseDuration],
     item_attack: &[CompiledItemAttackTiming],
+    item_use_overlays: &[CompiledItemUseOverlay],
     item_food: &[CompiledItemFood],
 ) -> Result<Vec<u8>, AssetError> {
     validate(&source_manifest_sha256, &entity_blob_sha256, bindings)?;
     validate_textures(textures)?;
     validate_item_use(item_use)?;
     attack::validate(item_attack)?;
+    use_profiles::validate(item_use_overlays)?;
     food::validate(item_food)?;
     let payload = EquipmentCatalogPayload {
+        item_use_overlays: item_use_overlays.to_vec().into(),
         source_manifest_sha256,
         entity_blob_sha256,
         bindings: bindings.to_vec().into_boxed_slice(),

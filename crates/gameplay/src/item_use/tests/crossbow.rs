@@ -3,12 +3,15 @@ use {super::*, inventory::crossbow_animation_frame};
 fn crossbow(tick: u64, held: bool) -> UseFrame {
     UseFrame {
         air_use: classify("minecraft:crossbow", false, 0, None),
-        charge_projectile: Some("minecraft:arrow"),
+        charge_projectile: Some(assets::item_use::ItemProjectileRole::Arrow),
         ..frame(tick, held)
     }
 }
 
-fn charged(runtime: &ItemUseRuntime, frame: &UseFrame) -> Option<Option<&'static str>> {
+fn charged(
+    runtime: &ItemUseRuntime,
+    frame: &UseFrame,
+) -> Option<Option<assets::item_use::ItemProjectileRole>> {
     runtime
         .crossbows
         .verified_projectile(frame.selection.as_ref()?, frame.inventory_revision)
@@ -27,8 +30,14 @@ fn load() -> ItemUseRuntime {
 fn full_charge_persists_until_another_press_fires_without_recharging() {
     let mut runtime = load();
     let idle = crossbow(36, true);
-    assert_eq!(charged(&runtime, &idle), Some(Some("minecraft:arrow")));
-    assert_eq!(runtime.crossbows.air_use(&idle), Some(AirUse::Instant));
+    assert_eq!(
+        charged(&runtime, &idle),
+        Some(Some(assets::item_use::ItemProjectileRole::Arrow))
+    );
+    assert_eq!(
+        runtime.crossbows.air_use(&idle),
+        classify("minecraft:crossbow", true, 0, None)
+    );
     assert_eq!(
         crossbow_animation_frame(
             None,
@@ -85,7 +94,7 @@ fn an_authoritative_restatement_even_identical_rejects_a_load_prediction() {
 fn an_authoritative_loaded_state_wins_after_a_fire_correction() {
     let mut runtime = ItemUseRuntime::default();
     let authoritative_loaded = UseFrame {
-        air_use: Some(AirUse::Instant),
+        air_use: classify("minecraft:crossbow", true, 0, None),
         ..crossbow(10, true)
     };
     runtime.observe_press(true);
@@ -100,14 +109,21 @@ fn an_authoritative_loaded_state_wins_after_a_fire_correction() {
         ..authoritative_loaded
     };
     assert_eq!(charged(&runtime, &corrected), None);
-    assert_eq!(runtime.crossbows.air_use(&corrected), Some(AirUse::Instant));
+    assert_eq!(
+        runtime.crossbows.air_use(&corrected),
+        classify("minecraft:crossbow", true, 0, None)
+    );
 }
 
 #[test]
 fn early_release_cancels_but_release_at_depletion_loads() {
     for (tick, expected, projectile) in [
         (34, vec!["release"], None),
-        (35, vec![], Some(Some("minecraft:arrow"))),
+        (
+            35,
+            vec![],
+            Some(Some(assets::item_use::ItemProjectileRole::Arrow)),
+        ),
     ] {
         let mut runtime = ItemUseRuntime::default();
         runtime.observe_press(true);
@@ -124,13 +140,13 @@ fn loading_uses_the_projectile_present_when_charge_completes() {
     runtime.observe_press(true);
     runtime.step(&crossbow(10, true));
     let completed = UseFrame {
-        charge_projectile: Some("minecraft:firework_rocket"),
+        charge_projectile: Some(assets::item_use::ItemProjectileRole::Firework),
         ..crossbow(35, true)
     };
     runtime.step(&completed);
     assert_eq!(
         charged(&runtime, &completed),
-        Some(Some("minecraft:firework_rocket"))
+        Some(Some(assets::item_use::ItemProjectileRole::Firework))
     );
     assert_eq!(
         crossbow_animation_frame(
@@ -154,7 +170,7 @@ fn switching_away_preserves_the_loaded_stack_but_not_a_partial_charge() {
     assert!(runtime.step(&switched).packets.is_empty());
     assert_eq!(
         charged(&runtime, &crossbow(37, false)),
-        Some(Some("minecraft:arrow"))
+        Some(Some(assets::item_use::ItemProjectileRole::Arrow))
     );
     let mut partial = ItemUseRuntime::default();
     partial.observe_press(true);
@@ -209,7 +225,10 @@ fn rejected_fire_preserves_loaded_prediction_until_admitted() {
         6,
         |_| Err(BatchSendError::Full),
     ));
-    assert_eq!(charged(&runtime, &fire), Some(Some("minecraft:arrow")));
+    assert_eq!(
+        charged(&runtime, &fire),
+        Some(Some(assets::item_use::ItemProjectileRole::Arrow))
+    );
     assert!(runtime.has_work(false));
     let (ready, _open) = AdmissionQueue::with_command_capacity(1);
     assert!(!step_and_send(
@@ -297,6 +316,9 @@ fn full_charge_completes_locally_without_queue_admission() {
         6,
         |_| panic!("native crossbow completion sends no release transaction"),
     ));
-    assert_eq!(charged(&runtime, &completed), Some(Some("minecraft:arrow")));
+    assert_eq!(
+        charged(&runtime, &completed),
+        Some(Some(assets::item_use::ItemProjectileRole::Arrow))
+    );
     assert!(!runtime.is_using());
 }

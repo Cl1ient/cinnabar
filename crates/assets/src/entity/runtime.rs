@@ -1,10 +1,14 @@
-//! Admitted entity assets and cached runtime lookups.
+//! Immutable entity carrier admission and retained runtime assets.
+
+use std::sync::Arc;
 
 use super::*;
-use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct RuntimeEntityAssets {
+    pub(super) item_use_profiles: Arc<[item_use::ItemUseDescriptor]>,
+    pub(super) seat_layouts: Arc<[seats::EntitySeatDescriptor]>,
+    pub(super) interaction_traits: Arc<[interactions::EntityInteractionDescriptor]>,
     pub(super) carrier_identity: Option<[u8; 32]>, // SHA-256 of the decoded carrier file
     pub(super) source_manifest_sha256: [u8; 32],
     pub(super) block_visual_count: u32,
@@ -102,6 +106,9 @@ impl RuntimeEntityAssets {
             return Err(invalid("noncanonical MCBEENT4 catalog encoding"));
         }
         let compiled = CompiledEntityAssets {
+            item_use_profiles: payload.item_use_profiles,
+            seat_layouts: payload.seat_layouts,
+            interaction_traits: payload.interaction_traits,
             source_manifest_sha256,
             block_visual_count: payload.block_visual_count,
             sources: payload.sources,
@@ -152,6 +159,9 @@ impl RuntimeEntityAssets {
         let geometry_parents = validate_compiled(&compiled)?;
         Ok(Self {
             carrier_identity: None,
+            item_use_profiles: Arc::from(compiled.item_use_profiles),
+            seat_layouts: Arc::from(compiled.seat_layouts),
+            interaction_traits: Arc::from(compiled.interaction_traits),
             source_manifest_sha256: compiled.source_manifest_sha256,
             block_visual_count: compiled.block_visual_count,
             sources: Arc::from(compiled.sources),

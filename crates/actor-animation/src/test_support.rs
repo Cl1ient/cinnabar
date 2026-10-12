@@ -64,6 +64,9 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
     .collect::<Vec<_>>()
     .into_boxed_slice();
     CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 1,
         sources,
@@ -229,7 +232,12 @@ pub fn counting_random_assets() -> Arc<RuntimeEntityAssets> {
 
 /// Gives actor fixtures the same deterministic rig under their actual entity identifier.
 pub fn counting_random_assets_for(identifier: &str) -> Arc<RuntimeEntityAssets> {
-    Arc::new(RuntimeEntityAssets::from_compiled(counting_random_compiled(identifier)).unwrap())
+    Arc::new(
+        RuntimeEntityAssets::from_compiled(
+            counting_random_compiled(identifier).with_unresolved_admissions(),
+        )
+        .unwrap(),
+    )
 }
 
 /// Builds a mutable counting rig for tests that add render-controller branches.

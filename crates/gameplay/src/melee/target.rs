@@ -3,36 +3,6 @@ use client_world::ActorSnapshot;
 
 /// Pick-box inflation and actor-versus-block bias. Needs independent measurement.
 const ACTOR_PICK_RADIUS: f64 = 0.1;
-/// Actors vanilla cannot pick: drops, orbs, projectiles and effect carriers.
-const UNPICKABLE_ACTORS: &[&str] = &[
-    "minecraft:item",
-    "minecraft:xp_orb",
-    "minecraft:arrow",
-    "minecraft:thrown_trident",
-    "minecraft:snowball",
-    "minecraft:egg",
-    "minecraft:ender_pearl",
-    "minecraft:splash_potion",
-    "minecraft:lingering_potion",
-    "minecraft:xp_bottle",
-    "minecraft:fireball",
-    "minecraft:small_fireball",
-    "minecraft:wither_skull",
-    "minecraft:wither_skull_dangerous",
-    "minecraft:dragon_fireball",
-    "minecraft:wind_charge_projectile",
-    "minecraft:breeze_wind_charge_projectile",
-    "minecraft:fishing_hook",
-    "minecraft:falling_block",
-    "minecraft:lightning_bolt",
-    "minecraft:area_effect_cloud",
-    "minecraft:evocation_fang",
-    "minecraft:eye_of_ender_signal",
-    "minecraft:fireworks_rocket",
-    "minecraft:llama_spit",
-    "minecraft:shulker_bullet",
-];
-
 /// The nearest pickable actor along the crosshair ray.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ActorHit {
@@ -108,9 +78,10 @@ where
         .min_by(|left, right| left.distance.total_cmp(&right.distance))
 }
 
-/// Drops, orbs, projectiles and effect carriers never block a placement either.
+/// Reads the admitted obstruction disposition independently from picking.
 pub fn obstructs_placement(actor: &ActorSnapshot) -> bool {
-    actor_is_pickable(actor)
+    matches!(actor.kind, protocol::ActorKind::Player { .. })
+        || actor.interaction_traits.obstructs_placement() == Some(true)
 }
 
 /// Only actors with selectable collision boxes can consume the crosshair.
@@ -118,9 +89,7 @@ pub fn obstructs_placement(actor: &ActorSnapshot) -> bool {
 pub fn actor_is_pickable(actor: &ActorSnapshot) -> bool {
     match &actor.kind {
         protocol::ActorKind::Player { .. } => true,
-        protocol::ActorKind::Entity { identifier } => {
-            !UNPICKABLE_ACTORS.contains(&identifier.as_ref())
-        }
+        protocol::ActorKind::Entity { .. } => actor.interaction_traits.pickable() == Some(true),
     }
 }
 

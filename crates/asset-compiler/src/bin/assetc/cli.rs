@@ -47,6 +47,9 @@ pub(super) enum Command {
         /// Root of the pinned vanilla resource pack.
         #[arg(long)]
         pack: PathBuf,
+        /// Behavior definitions for compiled seats; absence leaves explicit unresolved entries.
+        #[arg(long)]
+        behavior_pack: Option<PathBuf>,
         /// Tracked manifest that pins the local resource-pack source.
         #[arg(long)]
         source_manifest: PathBuf,

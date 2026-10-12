@@ -115,6 +115,7 @@ pub struct EquipmentRuntime {
     /// Worn head geometry and texture location per skull kind.
     skulls: BTreeMap<u8, (EntityRigId, ActorArtworkLocation)>,
     item_use: Arc<BTreeMap<Box<str>, u32>>,
+    use_overlays: Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>>,
     /// The startup catalog's use durations, before session items join them.
     base_item_use: Arc<BTreeMap<Box<str>, u32>>,
     /// Compiled attack facts with the session's component overrides.
@@ -255,13 +256,27 @@ impl EquipmentRuntime {
             .collect::<Vec<_>>();
         geometries.sort_unstable();
         geometries.dedup();
-        let mut item_use = BTreeMap::from([
-            (Box::from("minecraft:bow"), inventory::LONG_WEAPON_USE_TICKS),
-            (
-                Box::from("minecraft:trident"),
-                inventory::LONG_WEAPON_USE_TICKS,
-            ),
-        ]);
+        let mut item_use: BTreeMap<Box<str>, u32> = assets
+            .item_use_profiles()
+            .iter()
+            .filter_map(|entry| {
+                let assets::item_use::ItemUseProfile::Provisional { duration, .. } = &entry.profile
+                else {
+                    return None;
+                };
+                let ticks = match duration {
+                    assets::item_use::ItemUseDurationRule::Fixed(ticks) => *ticks,
+                    assets::item_use::ItemUseDurationRule::LongWeapon => {
+                        assets::item_use::LONG_WEAPON_USE_TICKS
+                    }
+                    assets::item_use::ItemUseDurationRule::Crossbow => {
+                        assets::item_use::CROSSBOW_CHARGE_TICKS
+                    }
+                    assets::item_use::ItemUseDurationRule::Declared => return None,
+                };
+                Some((entry.identifier.clone(), ticks))
+            })
+            .collect();
         item_use.extend(
             catalog
                 .iter()
@@ -274,6 +289,13 @@ impl EquipmentRuntime {
                 .iter()
                 .flat_map(|catalog| catalog.item_attack_timings())
                 .map(|entry| (entry.identifier.clone(), attack::timing(entry)))
+                .collect(),
+        );
+        let use_overlays = Arc::new(
+            catalog
+                .iter()
+                .flat_map(|catalog| catalog.item_use_overlays())
+                .map(|overlay| (overlay.identifier.clone(), overlay.clone()))
                 .collect(),
         );
         let runtime = Self {
@@ -294,6 +316,7 @@ impl EquipmentRuntime {
             armor_geometry: BTreeMap::new(),
             armor_maps: BTreeMap::new(),
             meshes: BTreeMap::new(),
+            use_overlays,
             base_item_use: Arc::clone(&item_use),
             item_use,
             base_item_attack: Arc::clone(&item_attack),
@@ -310,6 +333,13 @@ impl EquipmentRuntime {
             layers: Vec::new(),
         };
         (runtime, artwork, geometries)
+    }
+
+    /// Shares immutable authored facts with the numerical gameplay and audio cache.
+    pub fn item_use_overlays(
+        &self,
+    ) -> Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>> {
+        Arc::clone(&self.use_overlays)
     }
 
     /// Item use durations for the animation runtime's max-duration query.
@@ -404,12 +434,12 @@ impl EquipmentRuntime {
                         .owner
                         .is_using_item()
                         .then_some(animation.rig.hand[1].use_ticks);
-                    let duration = input
+                    let use_facts = input
                         .main
                         .as_ref()
-                        .and_then(|main| self.item_use.get(main.identifier.as_ref()))
-                        .copied()
+                        .map(|main| main.use_facts)
                         .unwrap_or_default();
+                    let duration = use_facts.ticks.unwrap_or_default();
                     self.held_attachable(
                         body,
                         item,
@@ -421,7 +451,7 @@ impl EquipmentRuntime {
                             use_elapsed_ticks: elapsed,
                             delta_seconds: Some(animation.delta_seconds),
                             animation_frame: inventory::ranged_animation_frame(
-                                input.main.as_ref().map(|main| main.identifier.as_ref()),
+                                use_facts.animation,
                                 elapsed,
                                 duration,
                             ),

@@ -44,8 +44,9 @@ mod mod_surfaces;
 pub mod model;
 pub mod motion_blur_setting;
 pub mod npc;
-pub mod oreui;
 mod oreui_runtime;
+#[cfg(test)]
+mod oreui_tests;
 #[cfg(test)]
 mod retained_image_tests;
 mod retained_menu;
@@ -63,6 +64,7 @@ mod publication_tests;
 #[cfg(test)]
 pub mod regression_snapshots;
 
+#[cfg(test)]
 mod accounts;
 pub mod always_sprint_setting;
 pub mod enhanced_setting;
@@ -106,9 +108,8 @@ pub use chat_screen::{CHAT_SCREEN, ChatHit};
 pub use containers::observe_station_block;
 pub use emote_screen::{EMOTE_EQUIP_POPUP, EMOTE_SCREEN, EmoteHit};
 
-pub use loading_screen::{LOADING_SCREEN, LoadingStage};
+pub use loading_screen::LOADING_SCREEN;
 pub use npc::NPC_SCREEN;
-pub use oreui::BedHit;
 pub use sign_editor::SIGN_SCREEN;
 
 use super::{UiPresentationError, UiPresentationRuntime};

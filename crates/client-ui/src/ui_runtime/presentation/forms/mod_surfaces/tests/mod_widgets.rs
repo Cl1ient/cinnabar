@@ -681,7 +681,7 @@ fn cards_cannot_bypass_inventory_chat_loading_server_or_player_hud_visibility() 
         match gate {
             1 => runtime.inventory_open = true,
             2 => runtime.chat_focused = true,
-            3 => p.loading_stage = Some(crate::ui_runtime::presentation::LoadingStage::Connecting),
+            3 => p.loading_stage = Some(ui::LoadingStage::Connecting),
             4 => {
                 let mut options = launcher::menu::settings_options::SettingsOptions::default();
                 let index = launcher::menu::settings_options::SETTINGS_OPTIONS

@@ -90,7 +90,7 @@ fn release_local_terrain(wait_for_actor_pipelines: bool) {
     };
     let runtime = UiRuntime::new(7);
     let mut presentation =
-        UiPresentationRuntime::new(client_ui::test_support::fixture_font()).unwrap();
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let (network, _receiver) = NetworkHandle::<PackApplication>::with_command_capacity(8);
     client_world.dimension_transfer.begin(
         runtime.session_id(),

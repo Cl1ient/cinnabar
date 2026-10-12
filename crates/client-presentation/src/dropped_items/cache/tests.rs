@@ -443,7 +443,7 @@ fn icons() -> UiPresentationRuntime {
         RuntimeIconCatalog::decode(&encode_icon_catalog([5; 32], &sprites, &entries).unwrap())
             .unwrap();
     UiPresentationRuntime::with_hud_and_icons(
-        client_ui::test_support::fixture_font(),
+        ui_engine::test_support::fixture_font(),
         client_ui::test_support::fixture_hud(),
         Arc::new(catalog),
     )

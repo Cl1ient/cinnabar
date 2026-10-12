@@ -12,7 +12,7 @@ pub(in crate::ui_runtime::presentation) struct RetainedMenu {
     text_generation: [usize; 3],
     session: u64,
     scale: Option<u8>,
-    look: forms::oreui::Look,
+    look: oreui::Look,
     offsets: HashMap<String, f32>,
 }
 
@@ -26,7 +26,7 @@ impl UiPresentationRuntime {
                 view.screen,
                 MenuScreen::Home | MenuScreen::Servers | MenuScreen::Settings
             )
-            && !(view.screen == MenuScreen::Servers && forms::oreui::animated_server_details(view))
+            && !(view.screen == MenuScreen::Servers && oreui::animated_server_details(view))
             && !view.popup_open()
             && view.field.is_none()
             && view.key_remap.is_none()

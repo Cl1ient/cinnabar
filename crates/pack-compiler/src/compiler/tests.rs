@@ -12,6 +12,8 @@ mod anvil;
 pub(crate) mod barrel;
 #[path = "tests/brewing_stand.rs"]
 mod brewing_stand;
+#[path = "tests/bubble_column.rs"]
+mod bubble_column;
 #[path = "tests/candle_cake.rs"]
 mod candle_cake;
 #[path = "tests/coral.rs"]

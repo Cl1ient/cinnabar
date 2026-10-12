@@ -91,6 +91,16 @@ for UI authority and presentation, and maps Bevy device codes to semantic keys a
 prepared publication resource. `client-presentation` borrows UI state from those app systems.
 This move has not been compiled or executed and closes no parity gate.
 
+## OreUI crate
+
+`oreui` owns the OreUI screens, their presentation state, artwork loading and shipped fonts.
+It depends on `ui-engine` and lower crates, never on `client-ui` or a sibling screen crate.
+`client-ui` adapters project menu, loading and bed state into its typed inputs. Shared pieces
+moved down: menu schemas and view projections to `launcher`, `LoadingStage` to `ui`, and
+translation, caret spots, menu scroll views and the font fixture to `ui-engine`. Tests that
+drive the presentation runtime stay in `client-ui`. This move has not been compiled or executed
+and closes no parity gate.
+
 ## Vanilla screen crate
 
 `ui-screens` owns the engine-drawn container screens, the recipe and furnace books, the container
@@ -162,6 +172,18 @@ malformed selectors and replacement sprites. Matched headless frames cover all
 server. Acceptance uses externally compiled carriers with production terrain
 consumers; runtime server-pack compilation and reported server-version placement
 remain unverified. No broader parity gate closes.
+
+## Bubble column terrain geometry
+
+Bubble columns compile separate outer and inner side shells with directional
+sprites and positional variants. The surface sprite appears only below primary
+air; water keeps its independent liquid contributor. Original-art regressions
+cover texture ownership, carrier groups, malformed direction states, and layered
+meshing across sub-chunk boundaries. Matched headless frames with original art
+cover both directions and preserve the water layer. A native 1.26.52.3 server
+session confirms normal-pack rendering, column motion, and real glass placement
+and breaking above the surface. Final bubble tint, native-client frame comparison,
+and enhanced-graphics parity remain incomplete; broader rendering gates stay open.
 
 ## Sea pickle terrain geometry
 

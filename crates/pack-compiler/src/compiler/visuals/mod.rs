@@ -4,6 +4,7 @@ pub(in crate::compiler) mod barrel;
 pub(in crate::compiler) mod bee_housing;
 pub(in crate::compiler) mod bookshelf;
 pub(in crate::compiler) mod brewing_stand;
+pub(in crate::compiler) mod bubble_column;
 pub(in crate::compiler) mod button;
 pub(in crate::compiler) mod cactus;
 pub(in crate::compiler) mod cake;

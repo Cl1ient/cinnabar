@@ -1,11 +1,12 @@
 use super::super::screen_registry::registry;
-use crate::test_support::{fixture_font, mini_carrier};
+use crate::test_support::mini_carrier;
 use crate::ui_runtime::SequencedLocalAttributes;
 use json_ui::{Context, DataSource};
 use ui::{DpiScale, SafeArea, TextLayoutCache};
 use ui_engine::atlas::ServerAtlas;
 use ui_engine::cached_screen::CachedScreen;
 use ui_engine::engine::{FormEngine, ScreenArt, screen::PaintFrame};
+use ui_engine::test_support::fixture_font;
 use ui_screens::hud_renderers::{HUNGER_RENDERER, HudRenderer, HungerAnimation};
 use {super::*, ui::FONT_DESIGN_PIXEL_TEXELS};
 

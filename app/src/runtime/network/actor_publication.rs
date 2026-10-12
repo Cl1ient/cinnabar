@@ -339,7 +339,7 @@ pub(crate) fn prepare_actor_render_frame(
                     let safe = render_model::visibility_bounds::perspective_supports_occlusion(
                         view.clip_from_world,
                         camera,
-                        meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS,
+                        f64::from(meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS),
                     );
                     projection_safe.set(Some(safe));
                     safe

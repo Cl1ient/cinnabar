@@ -345,7 +345,7 @@ pub(crate) fn update_block_entity_scene(
         render_model::visibility_bounds::perspective_supports_occlusion(
             matrix,
             eye,
-            meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS,
+            f64::from(meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS),
         )
         .then_some(eye)
     });

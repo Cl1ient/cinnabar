@@ -3,7 +3,8 @@
 /// Maximum plane and cell probes shared by one kind of entity in a frame.
 pub const ENTITY_OCCLUSION_PROBES: usize = 4096;
 /// Minimum gap from the eye to a tested face; camera near clipping must fit inside it.
-pub const OCCLUSION_EYE_GAP_BLOCKS: f64 = 1.0;
+pub const OCCLUSION_EYE_GAP_BLOCKS: i32 = 1;
+const _: () = assert!(OCCLUSION_EYE_GAP_BLOCKS > 0);
 const MAX_PLANES: usize = 64;
 const ROUNDING_MARGIN: f64 = 0.0001;
 const COORDINATE_LIMIT: f64 = 8_000_000.0;
@@ -71,14 +72,14 @@ impl OcclusionBudget {
         let axis = (0..3)
             .max_by(|&a, &b| distance[a].total_cmp(&distance[b]))
             .unwrap();
-        if distance[axis] <= OCCLUSION_EYE_GAP_BLOCKS + 1.0 {
+        if distance[axis] <= f64::from(OCCLUSION_EYE_GAP_BLOCKS) + 1.0 {
             return false;
         }
         let positive = eye[axis] < low[axis];
         let first = if positive {
-            eye[axis].ceil() as i32 + OCCLUSION_EYE_GAP_BLOCKS as i32
+            eye[axis].ceil() as i32 + OCCLUSION_EYE_GAP_BLOCKS
         } else {
-            eye[axis].floor() as i32 - 1 - OCCLUSION_EYE_GAP_BLOCKS as i32
+            eye[axis].floor() as i32 - 1 - OCCLUSION_EYE_GAP_BLOCKS
         };
         let u = (axis + 1) % 3;
         let v = (axis + 2) % 3;

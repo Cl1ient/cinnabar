@@ -239,7 +239,7 @@ fn large_local_images_publish_metadata_without_reading_on_the_requesting_thread(
     });
     assert!(atlas.metadata_revision() > 0);
     assert!(atlas.take_metadata_changed());
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         for _ in 0..3 {
             atlas.require([key]);
             assert_eq!(atlas.fallback_size(key), Some([2.0, 3.0]));

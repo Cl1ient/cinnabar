@@ -444,7 +444,7 @@ fn unchanged_overlay_paint_allocates_nothing_and_reuses_glyph_runs() {
     let expected = nodes.clone();
     let passes = presentation.debug_overlay.passes;
     nodes.clear();
-    let (result, allocations) = crate::allocation_count::count(|| {
+    let (result, allocations) = test_alloc::count(|| {
         presentation.append_debug_overlay(&mut nodes, &mut 1, metrics, [800.0, 600.0])
     });
     result.unwrap();
@@ -620,7 +620,7 @@ fn publishing_equal_overlay_lines_keeps_both_buffer_sets() {
         right: Vec::new(),
     });
     let staged_storage = staged.as_ref().unwrap().left[0].as_ptr();
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         assert!(!presentation.swap_debug_lines(&mut staged));
     });
     assert_eq!(allocations, 0);
@@ -656,7 +656,7 @@ fn changes_outside_displayed_rows_keep_paint_and_glyphs() {
     lines.left[49] = "changed hidden row".into();
     presentation.set_debug_lines(Some(lines));
     nodes.clear();
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         presentation
             .append_debug_overlay(&mut nodes, &mut 1, metrics, [800.0, 600.0])
             .unwrap();
@@ -713,9 +713,8 @@ fn diagnostic_eligibility_matches_the_rendered_stack_without_allocations() {
                 .scenes()
                 .iter()
                 .all(|entry| matches!(entry.key, Scene::Gameplay | Scene::Crosshair | Scene::Hud));
-        let (allowed, allocations) = crate::allocation_count::count(|| {
-            presentation.debug_overlay_allowed(&player, &runtime)
-        });
+        let (allowed, allocations) =
+            test_alloc::count(|| presentation.debug_overlay_allowed(&player, &runtime));
         assert_eq!(allowed, expected, "{cover}");
         assert_eq!(allowed, cover == "game", "{cover}");
         assert_eq!(allocations, 0, "{cover}");
@@ -803,9 +802,8 @@ fn pack_hud_visibility_controls_diagnostic_eligibility_without_allocations() {
             stack.visible(false).contains(&Scene::Gameplay),
             render_game_behind
         );
-        let (allowed, allocations) = crate::allocation_count::count(|| {
-            presentation.debug_overlay_allowed(&player, &runtime)
-        });
+        let (allowed, allocations) =
+            test_alloc::count(|| presentation.debug_overlay_allowed(&player, &runtime));
         assert_eq!(allowed, render_game_behind);
         assert_eq!(allocations, 0);
     }

@@ -273,6 +273,14 @@ path = "crates/test-time"
 allowed_dependencies = []
 dependency_free = true
 
+# Test-only counting allocator; std-only. Consumers leave it off their allowlists, so only
+# dev-dependencies can reach it.
+[[crates]]
+name = "test-alloc"
+path = "crates/test-alloc"
+allowed_dependencies = []
+dependency_free = true
+
 # Render data contracts and CPU geometry; presentation builds against it without the GPU renderer.
 [[crates]]
 name = "render-model"

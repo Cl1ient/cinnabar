@@ -9,7 +9,7 @@ fn repeated_line(value: &str, width: f32) -> usize {
     let metrics = TextMetrics::for_viewport([1280, 720], ui::DpiScale::new(1.0).unwrap(), Some(2));
     let mut canvas = Canvas::new(&mut nodes, &mut next, &mut layouts, &font, metrics, 0, None);
     let before = canvas.line_layout(value, width, BODY).unwrap().unwrap();
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         for _ in 0..10 {
             let again = canvas.line_layout(value, width, BODY).unwrap().unwrap();
             assert!(Arc::ptr_eq(&again, &before));

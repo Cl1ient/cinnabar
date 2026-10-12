@@ -58,6 +58,7 @@ tokio.workspace = true
 resource-pack = { path = "../resource-pack" }
 
 [dev-dependencies]
+test-alloc = { path = "../test-alloc" }
 launcher = { path = "../launcher", features = ["test-support"] }
 oreui = { path = "../oreui", features = ["test-support"] }
 ui-engine = { path = "../ui-engine", features = ["test-support"] }

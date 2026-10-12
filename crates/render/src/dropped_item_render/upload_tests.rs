@@ -86,9 +86,9 @@ fn steady_uploads_empty_item_scene_allocates_and_uploads_nothing() {
         gpu.draws.push((0..3, 0));
         gpu.dynamic_count = 3;
     }
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     system.run((), &mut world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations() - allocated, 0);
+    assert_eq!(test_alloc::thread_allocations() - allocated, 0);
     let gpu = world.resource::<ItemGpu>();
     assert!(gpu.draws.is_empty());
     assert_eq!(gpu.dynamic_count, 0);
@@ -116,9 +116,9 @@ fn steady_uploads_empty_item_scene_allocates_and_uploads_nothing() {
     assert_eq!(gpu.identity_instance, 0);
     assert_eq!(gpu.upload_calls, 3);
     world.resource_mut::<DroppedItemScene>().clear();
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     system.run((), &mut world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations() - allocated, 0);
+    assert_eq!(test_alloc::thread_allocations() - allocated, 0);
     assert_eq!(world.resource::<ItemGpu>().upload_calls, 3);
     assert_eq!(world.resource::<ItemGpu>().dynamic_count, 0);
 }

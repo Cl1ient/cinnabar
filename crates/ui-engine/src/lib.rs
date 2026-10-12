@@ -19,4 +19,5 @@ pub mod textures;
 pub mod test_support;
 
 #[cfg(test)]
-mod allocation_count;
+#[global_allocator]
+static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;

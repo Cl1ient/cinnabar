@@ -212,7 +212,7 @@ mod tests {
             std::sync::Arc::make_mut(&mut view.dressing_room).section = section;
             presentation.sync_menu_artwork_view(&view);
             presentation.finish_menu_artwork();
-            let (_, allocations) = crate::allocation_count::count(|| {
+            let (_, allocations) = test_alloc::count(|| {
                 for _ in 0..8 {
                     presentation.sync_menu_artwork_view(&view);
                 }

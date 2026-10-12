@@ -141,12 +141,32 @@ fn all(args: &Args, facts: &registry_policy::Facts) -> Result<()> {
         &args.out.join(&biome_path),
         &args.out.join(&biome_manifest),
     )?;
+    let breg_bytes = std::fs::read(args.out.join(&block_path))?;
+    let seed_bytes = std::fs::read(args.out.join(&seed_path))?;
+    let protocol = assets::registry_header_protocol(&breg_bytes)?;
+    let records = assets::read_registry_for_protocol(&breg_bytes, protocol)?;
+    let seed = assets::read_physics_registry_seed_for_protocol(
+        &seed_bytes,
+        &breg_bytes,
+        &records,
+        protocol,
+    )?;
+    let final_bytes =
+        asset_compiler::block_shapes::compile_registry(protocol, &breg_bytes, &records, &seed)?;
+    let final_path = args.out.join(&physics_path);
+    std::fs::write(&final_path, &final_bytes)?;
+    use sha2::{Digest, Sha256};
+    std::fs::write(
+        final_path.with_extension("sha256"),
+        format!("{:x}\n", Sha256::digest(&final_bytes)),
+    )?;
     if args.check {
         for path in [
             &block_path,
             &light_path,
             &biome_path,
             &seed_path,
+            &physics_path,
             &block_manifest,
             &biome_manifest,
         ] {
@@ -159,6 +179,7 @@ fn all(args: &Args, facts: &registry_policy::Facts) -> Result<()> {
             (&light_path, true),
             (&biome_path, false),
             (&seed_path, false),
+            (&physics_path, false),
         ] {
             let sha = if filename {
                 path.with_file_name(format!(

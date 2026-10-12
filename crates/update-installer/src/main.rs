@@ -72,14 +72,22 @@ fn run() -> Result<()> {
             result
         },
     );
-    if let Err(error) = result {
-        if !started {
-            update_installer::recovery::restore(&target, root)?;
-            launch(&target, root).context("restart the retained installation")?;
-        }
-        return Err(error);
+    finish_apply(result, started, || {
+        update_installer::recovery::restore(&target, root)?;
+        launch(&target, root).context("restart the retained installation")
+    })
+}
+
+/// Restarts after a failed apply, except when the replacement already confirmed good startup.
+fn finish_apply(
+    result: Result<()>,
+    started: bool,
+    restart: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    if result.is_err() && !started {
+        restart()?;
     }
-    Ok(())
+    result
 }
 
 /// Confirms the new client reached a complete frame, restoring its predecessor on early failure.
@@ -120,5 +128,36 @@ fn launch(target: &Path, root: &Path) -> Result<()> {
             anyhow::bail!(failure);
         }
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_update_restarts_the_retained_client_and_keeps_the_original_error() {
+        let mut restarted = false;
+        let error = finish_apply(Err(anyhow::anyhow!("manifest expired")), false, || {
+            restarted = true;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(restarted);
+        assert_eq!(error.to_string(), "manifest expired");
+    }
+
+    #[test]
+    fn cleanup_failure_after_good_start_does_not_launch_a_second_client() {
+        assert!(
+            finish_apply(Err(anyhow::anyhow!("cleanup failed")), true, || panic!(
+                "already running replacement must not be launched twice"
+            ))
+            .is_err()
+        );
+        finish_apply(Ok(()), true, || {
+            panic!("already running replacement must not be launched twice")
+        })
+        .unwrap();
     }
 }

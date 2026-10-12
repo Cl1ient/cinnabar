@@ -25,7 +25,7 @@ pub mod hud_layout;
 pub mod inventory_pointer;
 pub mod inventory_tooltip;
 mod item_activation;
-mod item_glint;
+pub(super) mod item_glint;
 pub mod item_gui;
 pub mod item_sprite;
 pub mod item_viewmodel;

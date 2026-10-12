@@ -181,6 +181,22 @@ impl PreparedJsonUi {
     /// Parses every definition the carrier lists; needs no runtime, so startup runs it off the
     /// main thread.
     pub fn new(assets: Arc<RuntimeUiAssets>) -> Result<Self, String> {
+        let item_glint = super::item_glint::carrier_texture(&assets);
+        Self::with_item_glint(assets, item_glint)
+    }
+
+    /// Prepares a validated startup carrier without decoding its glint artwork again.
+    pub fn from_loaded(
+        loaded: crate::ui_runtime::json_ui_assets::LoadedUiAssets,
+    ) -> Result<Self, String> {
+        Self::with_item_glint(loaded.assets, Some(loaded.item_glint))
+    }
+
+    /// Parses the catalog while retaining artwork already decoded by the caller.
+    fn with_item_glint(
+        assets: Arc<RuntimeUiAssets>,
+        item_glint: Option<Arc<render_model::UiTexturePage>>,
+    ) -> Result<Self, String> {
         let catalog = json_ui::Catalog::from_files(
             assets
                 .ui_files()
@@ -189,7 +205,7 @@ impl PreparedJsonUi {
         )
         .map_err(|error| format!("ui catalog: {error}"))?;
         Ok(Self {
-            item_glint: super::item_glint::carrier_texture(&assets),
+            item_glint,
             catalog: PreparedCatalog::new(catalog, screen_registry::registry()),
             assets,
         })

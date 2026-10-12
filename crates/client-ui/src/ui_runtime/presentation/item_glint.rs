@@ -20,8 +20,10 @@ impl super::UiPresentationRuntime {
     }
 }
 
-/// Decodes carrier artwork once during off-thread JSON-UI preparation.
-pub(super) fn carrier_texture(assets: &assets::RuntimeUiAssets) -> Option<Arc<UiTexturePage>> {
+/// Decodes carrier artwork once on the startup worker or during explicit UI preparation.
+pub(in crate::ui_runtime) fn carrier_texture(
+    assets: &assets::RuntimeUiAssets,
+) -> Option<Arc<UiTexturePage>> {
     let path = format!("{}.png", assets::ITEM_GLINT_TEXTURE_PATH);
     let bytes = assets.ui_file(&path)?;
     let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Png);

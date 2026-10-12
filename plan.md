@@ -6338,7 +6338,9 @@ hover colours, durability maxima, stack-merge capacity, held grip, wearable
 slots and use durations. Item glint: stacks marked as glinting (an `ench` list,
 the glint component, always-glinting items) sample the active pack's item glint
 raster in HUD and JSON-UI item cells. Removing the pack restores the startup
-UI carrier's image. UV scale, blend and scrolling periods remain provisional
+UI carrier's image. Startup rejects stale carriers and missing or invalid base
+glint artwork with the carrier path and `make assets` rebuild guidance.
+UV scale, blend and scrolling periods remain provisional
 pending rendered acceptance; held items and the item viewmodel do not glint.
 `minecraft:render_offsets` is not applied.
 Initial negotiated item-registry binding for world item visuals is also separate

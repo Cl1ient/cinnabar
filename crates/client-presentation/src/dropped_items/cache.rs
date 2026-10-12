@@ -43,6 +43,7 @@ pub(crate) struct ModelCache {
     pub(super) revision: u64,
     pub(super) models: Vec<DroppedItemModel>,
     layers: usize,
+    pixel_bytes: usize,
     pub(super) shared: Arc<[DroppedItemModel]>,
     index: HashMap<ModelKey, usize>,
     /// Bounded layer estimates and permanent block failures still demanded.
@@ -79,6 +80,22 @@ fn layer_cost(model: &DroppedItemModel) -> usize {
         DroppedItemModel::Cube(cube) => cube.faces.len(),
         DroppedItemModel::Block(block) => block.materials.len(),
         DroppedItemModel::Sprite(_) | DroppedItemModel::NativeSprite(_) => 1,
+    }
+}
+
+/// Counts retained source pixels independently of physical GPU layer expansion.
+fn pixel_cost(model: &DroppedItemModel) -> usize {
+    match model {
+        DroppedItemModel::Vacant => 0,
+        DroppedItemModel::Cube(cube) => cube.faces.iter().map(|face| face.len()).sum(),
+        DroppedItemModel::Block(block) => block
+            .materials
+            .iter()
+            .map(|(sprite, _)| sprite.rgba8.len())
+            .sum(),
+        DroppedItemModel::Sprite(sprite) | DroppedItemModel::NativeSprite(sprite) => {
+            sprite.rgba8.len()
+        }
     }
 }
 
@@ -210,8 +227,32 @@ impl ModelCache {
             cost,
             "model layer estimate must match its geometry"
         );
+        let pixel_bytes = pixel_cost(&model);
+        if pixel_bytes
+            > assets::texture_policy::MAX_SUBSCRIBER_BYTES.saturating_sub(self.pixel_bytes)
+        {
+            let reclaimable_bytes: usize = self
+                .reclaimable
+                .iter()
+                .filter(|&&slot| {
+                    self.residents[slot]
+                        .as_ref()
+                        .is_some_and(|entry| entry.requested != self.frame)
+                })
+                .map(|&slot| pixel_cost(&self.models[slot]))
+                .sum();
+            if pixel_bytes
+                > assets::texture_policy::MAX_SUBSCRIBER_BYTES
+                    .saturating_sub(self.pixel_bytes - reclaimable_bytes)
+            {
+                return None;
+            }
+        }
         self.rejected.remove(&key);
-        while self.layers + cost >= MAX_ITEM_LAYERS {
+        while self.layers + cost >= MAX_ITEM_LAYERS
+            || pixel_bytes
+                > assets::texture_policy::MAX_SUBSCRIBER_BYTES.saturating_sub(self.pixel_bytes)
+        {
             let slot = self
                 .reclaimable
                 .pop()
@@ -228,6 +269,7 @@ impl ModelCache {
             }
             let entry = self.residents[slot].take().expect("reclaimable resident");
             self.layers -= entry.layers;
+            self.pixel_bytes -= pixel_cost(&self.models[slot]);
             self.index.remove(&entry.key);
             self.models[slot] = DroppedItemModel::Vacant;
             self.free_slots.push(slot);
@@ -245,6 +287,7 @@ impl ModelCache {
             layers: cost,
         });
         self.layers += cost;
+        self.pixel_bytes += pixel_bytes;
         self.available -= cost;
         self.dirty = true;
         Some(slot as u32)

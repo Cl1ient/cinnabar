@@ -283,3 +283,66 @@ fn review_oversized_icons_are_rejected_before_gutter_arithmetic() {
     assert!(refs["test:variant"].contains_key(&0));
     assert!(!refs["test:variant"].contains_key(&1));
 }
+
+#[test]
+fn hd_icon_pixels_reach_inventory_and_world_sprite_consumers() {
+    let width = 512;
+    let height = 128;
+    let pixels = (0..width * height)
+        .flat_map(|index| {
+            [
+                if index % 2 == 0 { 255 } else { 0 },
+                (index / width) as u8,
+                91,
+                255,
+            ]
+        })
+        .collect::<Vec<_>>();
+    let icons = Arc::new(SessionIcons {
+        icons: vec![SessionIcon {
+            identifier: Arc::from("test:hd"),
+            metadata: 7,
+            width,
+            height,
+            rgba8: pixels.clone().into(),
+        }],
+        ..Default::default()
+    });
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    install_landed(&mut presentation, &icons);
+    let icon = presentation.item_icon("test:hd", 7).unwrap();
+    assert_eq!(
+        [
+            u32::from(icon.uv[2] - icon.uv[0]),
+            u32::from(icon.uv[3] - icon.uv[1])
+        ],
+        [width, height]
+    );
+    let sprite = presentation
+        .item_sprite("test:hd", 7, device_policy().max_side())
+        .unwrap();
+    assert_eq!([sprite.width, sprite.height], [width, height]);
+    assert_eq!(sprite.rgba8, pixels);
+}
+
+#[test]
+fn wide_short_hd_icons_grow_the_page_for_their_width() {
+    let icon = SessionIcon {
+        identifier: Arc::from("test:wide"),
+        metadata: 0,
+        width: 512,
+        height: 8,
+        rgba8: vec![255; 512 * 8 * 4].into(),
+    };
+    let packed = pack(
+        &SessionIcons {
+            icons: vec![icon],
+            ..Default::default()
+        },
+        0,
+    )
+    .unwrap();
+    assert!(packed.page.dimensions()[0] >= 512 + GUTTER * 2);
+    assert!(packed.refs.contains_key("test:wide"));
+}

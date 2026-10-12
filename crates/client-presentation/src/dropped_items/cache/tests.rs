@@ -513,3 +513,29 @@ fn rejected_icons_retain_no_pixels_or_request_keys() {
             .all(|key| matches!(key, ModelKey::Block { .. }))
     );
 }
+
+#[test]
+fn hd_pixel_budget_reclaims_unused_models_and_preserves_current_consumers() {
+    let pixels: Arc<[u8]> = vec![255; assets::texture_policy::MAX_IMAGE_BYTES].into();
+    let build = || {
+        Some(DroppedItemModel::Sprite(DroppedItemSprite {
+            width: 2048,
+            height: 2048,
+            rgba8: Arc::clone(&pixels),
+        }))
+    };
+    let mut cache = ModelCache::default();
+    frame(&mut cache, []);
+    for id in 0..4 {
+        assert!(cache.model(key(id), || Some(1), build).is_some());
+    }
+    frame(&mut cache, [0, 1, 2, 3, 4]);
+    assert!(cache.model(key(4), || Some(1), build).is_none());
+    frame(&mut cache, [0, 4]);
+    assert!(cache.model(key(4), || Some(1), build).is_some());
+    assert!(cache.index.contains_key(&key(0)));
+    assert_eq!(
+        cache.models.iter().map(pixel_cost).sum::<usize>(),
+        assets::texture_policy::MAX_SUBSCRIBER_BYTES
+    );
+}

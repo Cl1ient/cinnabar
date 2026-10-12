@@ -50,7 +50,7 @@ use std::ops::Range;
 use {
     render_model::{
         DroppedItemModel, ItemMeshVertex, MAX_DROPPED_ITEM_INSTANCES, MAX_DYNAMIC_ITEM_VERTICES,
-        MAX_ITEM_LAYERS, MAX_ITEM_SPRITE_SIDE,
+        MAX_ITEM_LAYERS, MIN_ITEM_ATLAS_SIDE,
         dropped_item::{
             DroppedItemBounds, DroppedItemCullView, ITEM_MESH_VERTEX_BYTES, block_mesh, cube_mesh,
             extruded_sprite_mesh, native_dropped_sprite_mesh,
@@ -321,8 +321,8 @@ fn build_model(
     }
 }
 
-/// Sizes the atlas to admitted block artwork while ordinary item sprites retain their size.
-fn atlas_side(models: &[DroppedItemModel]) -> u32 {
+/// Sizes physical layers to the admitted source artwork, including HD item sprites.
+fn atlas_side(models: &[DroppedItemModel], policy: assets::texture_policy::TexturePolicy) -> u32 {
     models
         .iter()
         .filter_map(|model| match model {
@@ -332,10 +332,16 @@ fn atlas_side(models: &[DroppedItemModel]) -> u32 {
                 .map(|(sprite, _)| sprite.width.max(sprite.height))
                 .max(),
             DroppedItemModel::Cube(cube) => Some(cube.tile),
+            DroppedItemModel::Sprite(sprite) | DroppedItemModel::NativeSprite(sprite) => {
+                Some(sprite.width.max(sprite.height))
+            }
             _ => None,
         })
-        .filter(|&side| side <= assets::MAX_TILE_SIZE)
-        .fold(MAX_ITEM_SPRITE_SIDE, u32::max)
+        .filter(|&side| {
+            side.checked_next_power_of_two()
+                .is_some_and(|side| side <= policy.max_side())
+        })
+        .fold(MIN_ITEM_ATLAS_SIDE, u32::max)
         .next_power_of_two()
 }
 
@@ -345,15 +351,31 @@ fn rebuild_models(
     queue: &RenderQueue,
     gpu: &mut ItemGpu,
 ) {
-    let side = atlas_side(&scene.models) as usize;
+    let policy =
+        assets::texture_policy::TexturePolicy::for_device(device.limits().max_texture_dimension_2d);
+    let side = atlas_side(&scene.models, policy) as usize;
     let layer_bytes = side * side * 4;
+    if policy.page_bytes(side as u32, side as u32).is_none() {
+        return;
+    }
+    let max_layers = (assets::texture_policy::MAX_SUBSCRIBER_BYTES / layer_bytes)
+        .min(MAX_ITEM_LAYERS)
+        .min(device.limits().max_texture_array_layers as usize);
     // Layer 0 is opaque white for untextured geometry.
     let mut atlas = vec![255_u8; layer_bytes];
     let mut vertices: Vec<ItemMeshVertex> = Vec::new();
     let mut ranges = Vec::with_capacity(scene.models.len());
     for model in scene.models.iter() {
         let start = vertices.len() as u32;
-        if let Some(mesh) = build_model(&mut atlas, model, side as u32) {
+        let needed = match model {
+            DroppedItemModel::Vacant => 0,
+            DroppedItemModel::Sprite(_) | DroppedItemModel::NativeSprite(_) => 1,
+            DroppedItemModel::Cube(cube) => cube.faces.len(),
+            DroppedItemModel::Block(block) => block.materials.len(),
+        };
+        if atlas.len() / layer_bytes + needed <= max_layers
+            && let Some(mesh) = build_model(&mut atlas, model, side as u32)
+        {
             vertices.extend(mesh);
         }
         ranges.push(ItemMeshRange {

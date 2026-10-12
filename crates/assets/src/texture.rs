@@ -14,7 +14,7 @@ pub const VANILLA_TERRAIN_MIP_COUNT: u32 = 4;
 /// Terrain entry grid exponents use the low five shift bits.
 pub const TERRAIN_QUAD_SHIFT_MASK: u32 = 31;
 /// Largest square layer a runtime overlay page may use.
-pub const MAX_TILE_SIZE: u32 = 256;
+pub const MAX_TILE_SIZE: u32 = crate::texture_policy::MAX_TEXTURE_SIDE;
 const ALPHA_TEST_THRESHOLD: u8 = 128;
 const ALPHA_SCALE_FRACTION_BITS: u32 = 16;
 const ALPHA_SCALE_MAX: u32 = 16 << ALPHA_SCALE_FRACTION_BITS;

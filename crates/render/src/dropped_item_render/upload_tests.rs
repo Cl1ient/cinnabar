@@ -59,12 +59,47 @@ fn potted_block_artwork_keeps_its_resolution_and_alpha() {
     assert_eq!(&atlas[(side * side * 4) as usize..], &pixels);
     assert!(mesh.iter().any(|vertex| vertex.uv == [1.0, 1.0]));
     assert_eq!(
-        atlas_side(&[DroppedItemModel::Sprite(render_model::DroppedItemSprite {
-            width: 16,
-            height: 16,
-            rgba8: Arc::from([255; 16 * 16 * 4])
-        })]),
-        MAX_ITEM_SPRITE_SIDE
+        atlas_side(
+            &[DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+                width: 16,
+                height: 16,
+                rgba8: Arc::from([255; 16 * 16 * 4])
+            })],
+            assets::texture_policy::device_policy()
+        ),
+        MIN_ITEM_ATLAS_SIDE
+    );
+}
+
+#[test]
+fn hd_dropped_sprites_keep_their_source_pixels_and_physical_extent() {
+    let width = 128;
+    let height = 64;
+    let pixels = (0..width * height)
+        .flat_map(|i| [if i % 2 == 0 { 255 } else { 0 }, 73, 91, 255])
+        .collect::<Vec<_>>();
+    let model = DroppedItemModel::NativeSprite(render_model::DroppedItemSprite {
+        width,
+        height,
+        rgba8: Arc::from(pixels.clone()),
+    });
+    assert_eq!(
+        atlas_side(&[model.clone()], assets::texture_policy::device_policy()),
+        width
+    );
+    let mut atlas = vec![255; (width * width * 4) as usize];
+    assert!(build_model(&mut atlas, &model, width).is_some());
+    let row = (width * 4) as usize;
+    let layer = (width * width * 4) as usize;
+    assert_eq!(&atlas[layer..layer + row * height as usize], &pixels);
+    let mut world = item_world();
+    world
+        .resource_mut::<DroppedItemScene>()
+        .publish(1, Arc::from([model]), &[], &[], 1.0);
+    world.run_system_once(prepare_items).unwrap();
+    assert_eq!(
+        world.resource::<ItemGpu>()._atlas.as_ref().unwrap().width(),
+        width
     );
 }
 

@@ -31,7 +31,7 @@ fn live_reload_world_software_witness() {
     let keys = assets::MaterialKeys::from_entries(
         BlockFace::ALL.map(|face| (visual.face(face).material_id(), "reload_witness")),
     );
-    super::resource_packs::set_base_material_keys(keys);
+    super::resource_packs::set_base_material_keys(keys, Arc::clone(&base));
     let air = base.air_network_id(NetworkIdMode::Sequential).unwrap();
     let terrain = terrain(air, id);
     let mut app = app_with_assets(base);

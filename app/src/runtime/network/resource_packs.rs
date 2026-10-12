@@ -312,8 +312,9 @@ fn compile_application(
                                 view,
                                 custom_blocks,
                                 hashed_block_ids,
-                                BASE_MATERIAL_KEYS.get(),
+                                BASE_MATERIAL_KEYS.get().map(|(keys, _)| keys),
                                 max_layers,
+                                BASE_MATERIAL_KEYS.get().map(|(_, base)| base.as_ref()),
                             )
                             .map(Arc::new)
                         },
@@ -326,7 +327,7 @@ fn compile_application(
             {
                 bevy::log::warn!(gaps = ?compiled.gaps, "server block visuals are incomplete");
             }
-            let block_icons = overlay
+            let mut block_icons = overlay
                 .as_deref()
                 .map_or_else(BlockIcons::default, |compiled| {
                     custom_block_icons(
@@ -336,6 +337,11 @@ fn compile_application(
                         &inputs.block_items,
                     )
                 });
+            if let (Some(compiled), Some((_, base))) =
+                (overlay.as_deref(), BASE_MATERIAL_KEYS.get())
+            {
+                super::item_icons::vanilla_blocks::append(base, compiled, &mut block_icons);
+            }
             icons = compile_part(
                 &stack,
                 cancelled,
@@ -532,10 +538,12 @@ pub(super) fn overlay_texture_layer_limit() -> u32 {
 }
 
 /// Texture keys of the vanilla carrier's materials, set once at startup when the sidecar loads.
-static BASE_MATERIAL_KEYS: std::sync::OnceLock<assets::MaterialKeys> = std::sync::OnceLock::new();
+static BASE_MATERIAL_KEYS: std::sync::OnceLock<(assets::MaterialKeys, Arc<assets::RuntimeAssets>)> =
+    std::sync::OnceLock::new();
 
-pub(crate) fn set_base_material_keys(keys: assets::MaterialKeys) {
-    let _ = BASE_MATERIAL_KEYS.set(keys);
+/// Installs immutable source facts and pixels from the same world carrier.
+pub(crate) fn set_base_material_keys(keys: assets::MaterialKeys, base: Arc<assets::RuntimeAssets>) {
+    let _ = BASE_MATERIAL_KEYS.set((keys, base));
 }
 
 use pack_runtime::pack_language::merged_server_lang;

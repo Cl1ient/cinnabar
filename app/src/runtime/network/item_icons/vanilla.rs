@@ -24,6 +24,7 @@ pub(crate) fn vanilla_item_paths_installed() -> bool {
 
 /// Retains source routes once, so menus can apply packs before any item registry arrives.
 pub(crate) fn set_vanilla_item_paths(entities: &RuntimeEntityAssets) {
+    super::vanilla_blocks::install(entities);
     let mut aliases_by_source = std::collections::HashMap::<_, Vec<String>>::new();
     for item in entities.item_visuals() {
         if let ItemVisualDefinitionRoute::Sprite { texture } = item.route {

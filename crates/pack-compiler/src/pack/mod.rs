@@ -11,7 +11,10 @@ use std::path::Path;
 use assets::AssetError;
 
 pub use block::{BlockTextureMap, TextureKey, resolve_texture_key};
-pub(crate) use block::{resolve_carried_down_key, resolve_carried_face_key};
+pub(crate) use block::{
+    resolve_carried_down_key, resolve_carried_face_key, resolve_carried_fallback_key,
+    runtime_binding_identity,
+};
 pub use flipbook::{DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES, MAX_FLIPBOOKS};
 pub use terrain::TerrainTextureMap;
 

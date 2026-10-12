@@ -22,6 +22,7 @@ fn compile_block_overlay(
         hashed,
         keys,
         assets::MAX_TEXTURE_LAYERS as u32,
+        None,
     )
 }
 
@@ -33,6 +34,7 @@ mod lighting;
 mod random_offset;
 mod session;
 mod texture_budget;
+mod vanilla_terrain;
 
 mod vines;
 
@@ -120,7 +122,7 @@ fn terrain_replacement_applies_literal_atlas_tint_once_and_keeps_alpha() {
         r##"{"texture_data":{"lucky":{"textures":[{"path":"textures/blocks/lucky","tint_color":"#ff80ff"}]}}}"##,
     );
     let catalog = super::textures::TextureCatalog::new(&view, None);
-    let image = catalog.decode("lucky").unwrap();
+    let image = catalog.decode_choice("lucky", 0, 0).unwrap();
     assert_eq!(&image.rgba8[..4], &[0, 100, 0, 255]);
 }
 
@@ -131,7 +133,7 @@ fn raster_only_replacement_retains_the_base_lily_tint() {
         .with_aliases([("pad", "textures/blocks/lucky")])
         .with_fixed_tints([("pad", [32, 128, 48])]);
     let catalog = super::textures::TextureCatalog::new(&view, Some(&keys));
-    let image = catalog.decode("pad").unwrap();
+    let image = catalog.decode_choice("pad", 0, 0).unwrap();
     assert_eq!(&image.rgba8[..4], &[0, 100, 0, 255]);
     let compiled =
         compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys)).unwrap();

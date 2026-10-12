@@ -16,6 +16,7 @@ use super::{
 #[derive(Debug)]
 pub struct TerrainTextureMap {
     pub(super) entries: BTreeMap<Box<str>, TerrainPaths>,
+    pub(super) runtime_entries: BTreeMap<Box<str>, Value>,
     pub(crate) position_variations: BTreeMap<(Box<str>, u32), Vec<super::variations::WeightedPath>>,
 }
 
@@ -283,6 +284,13 @@ impl TerrainTextureMap {
             .map(|(key, paths)| (key.as_ref(), paths.first()))
     }
 
+    /// Retains the validated catalog entries before weighted choices are compiled into materials.
+    pub(crate) fn runtime_entries(&self) -> impl Iterator<Item = (Box<str>, Value)> + '_ {
+        self.runtime_entries
+            .iter()
+            .map(|(key, entry)| (key.clone(), entry.clone()))
+    }
+
     pub(crate) fn source_paths(&self) -> impl Iterator<Item = &str> {
         self.entries.values().flat_map(TerrainPaths::paths).chain(
             self.position_variations
@@ -406,8 +414,15 @@ pub(super) fn read_terrain(path: &Path) -> Result<TerrainTextureMap, AssetError>
     };
 
     let mut entries = BTreeMap::new();
+    let mut runtime_entries = BTreeMap::new();
     let mut position_variations = BTreeMap::new();
     for (key, mut entry) in texture_data {
+        let mut runtime_entry = entry
+            .extra
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<serde_json::Map<_, _>>();
+        runtime_entry.insert("textures".to_owned(), entry.textures.clone());
         let values = match &mut entry.textures {
             Value::Array(values) => values.as_mut_slice(),
             value => std::slice::from_mut(value),
@@ -431,10 +446,12 @@ pub(super) fn read_terrain(path: &Path) -> Result<TerrainTextureMap, AssetError>
             source,
         })?;
         let variants = collect_terrain_paths(&key, value, !entry.extra.is_empty())?;
+        runtime_entries.insert(key.clone().into_boxed_str(), Value::Object(runtime_entry));
         entries.insert(key.into_boxed_str(), variants);
     }
     Ok(TerrainTextureMap {
         entries,
+        runtime_entries,
         position_variations,
     })
 }

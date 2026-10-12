@@ -7,6 +7,7 @@ mod geometry_inputs;
 use pack_compiler::block_geometry as geometry;
 mod legacy;
 mod textures;
+mod vanilla;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -64,6 +65,7 @@ pub(crate) struct OverlayGaps {
 pub(crate) struct CompiledBlockOverlay {
     pub(crate) overlay: BlockOverlay,
     pub(crate) gaps: OverlayGaps,
+    pub(crate) vanilla_carried: Vec<(u32, [u32; 6])>,
 }
 
 /// Returns visuals for the admitted custom prefix in palette or hashed-state order.
@@ -74,6 +76,7 @@ pub(super) fn compile_block_overlay(
     hashed: bool,
     vanilla_keys: Option<&MaterialKeys>,
     max_texture_array_layers: u32,
+    base_assets: Option<&assets::RuntimeAssets>,
 ) -> Option<CompiledBlockOverlay> {
     if max_texture_array_layers == 0 {
         return None;
@@ -96,6 +99,10 @@ pub(super) fn compile_block_overlay(
         .collect::<HashSet<_>>();
     let mut builder = Builder {
         catalog: TextureCatalog::new(view, vanilla_keys),
+        base_assets,
+        vanilla_carried: Vec::new(),
+        base_textures: HashMap::new(),
+        terrain_materials: HashMap::new(),
         geometries: geometry_catalog(view, &wanted),
         overlay: BlockOverlay::default(),
         sources: Vec::new(),
@@ -159,8 +166,13 @@ pub(super) fn compile_block_overlay(
     if let Some(keys) = vanilla_keys {
         let _zone = bevy::log::info_span!("pack.blocks.vanilla_overrides").entered();
         builder.override_vanilla_materials(keys);
+        builder.override_vanilla_bindings(keys, &legacy);
     }
-    if blocks.blocks.is_empty() && builder.overlay.material_overrides.is_empty() {
+    if blocks.blocks.is_empty()
+        && builder.overlay.material_overrides.is_empty()
+        && builder.overlay.face_overrides.is_empty()
+        && builder.vanilla_carried.is_empty()
+    {
         builder.catalog.emit_diagnostics();
         return None;
     }
@@ -181,46 +193,46 @@ struct TextureSlot {
     animation: u32,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum TextureRoute {
+    Catalog {
+        key: String,
+        variant: u32,
+        choice: u32,
+    },
+    Path {
+        key: String,
+        path: String,
+    },
+}
+
+impl TextureRoute {
+    /// The catalog key used for diagnostics and inherited animation metadata.
+    fn key(&self) -> &str {
+        match self {
+            Self::Catalog { key, .. } | Self::Path { key, .. } => key,
+        }
+    }
+}
+
 struct Builder<'a> {
     catalog: TextureCatalog<'a>,
+    base_assets: Option<&'a assets::RuntimeAssets>,
+    vanilla_carried: Vec<(u32, [u32; 6])>,
+    base_textures: HashMap<u32, TextureSlot>,
+    terrain_materials: HashMap<(String, u32, u32), u32>,
     geometries: HashMap<String, Geometry>,
     overlay: BlockOverlay,
     sources: Vec<Source>,
     source_bytes: usize,
     max_layers: usize,
-    textures: HashMap<String, Option<TextureSlot>>,
+    textures: HashMap<TextureRoute, Option<TextureSlot>>,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
     gaps: OverlayGaps,
 }
 
 impl Builder<'_> {
-    /// Repoints every base material whose terrain key the pack redefines.
-    fn override_vanilla_materials(&mut self, keys: &MaterialKeys) {
-        let mut candidates = self
-            .catalog
-            .terrain_keys()
-            .filter(|key| !keys.materials(key).is_empty())
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        candidates.sort_unstable();
-        let mut claimed = HashSet::new();
-        for key in candidates {
-            let Some(slot) = self.texture_slot(&key) else {
-                continue;
-            };
-            for &material in keys.materials(&key) {
-                if material != DIAGNOSTIC_MATERIAL && claimed.insert(material) {
-                    self.overlay.material_overrides.push(MaterialOverride {
-                        material,
-                        texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
-                        animation: slot.animation,
-                    });
-                }
-            }
-        }
-    }
-
     fn push_state(&mut self, state: &StateVisual) {
         let light = state_light(&state.components);
         let visual = self.visual(state);
@@ -475,16 +487,28 @@ impl Builder<'_> {
         (material, alpha_flags, two_sided)
     }
 
+    /// Resolves the default state and choice for a custom block material.
     fn texture_slot(&mut self, key: &str) -> Option<TextureSlot> {
-        if let Some(slot) = self.textures.get(key) {
+        self.route_slot(TextureRoute::Catalog {
+            key: key.to_owned(),
+            variant: 0,
+            choice: 0,
+        })
+    }
+
+    /// Caches each state and positional choice independently.
+    fn route_slot(&mut self, route: TextureRoute) -> Option<TextureSlot> {
+        if let Some(slot) = self.textures.get(&route) {
             return slot.clone();
         }
-        let slot = self.load_texture(key);
-        self.textures.insert(key.to_owned(), slot.clone());
+        let slot = self.load_texture(&route);
+        self.textures.insert(route, slot.clone());
         slot
     }
 
-    fn load_texture(&mut self, key: &str) -> Option<TextureSlot> {
+    /// Admits one raster route using the existing frame and storage budgets.
+    fn load_texture(&mut self, route: &TextureRoute) -> Option<TextureSlot> {
+        let key = route.key();
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
             // A full array rejects every later route, so name it rather than
@@ -493,10 +517,26 @@ impl Builder<'_> {
             self.catalog.report_full(key);
             return None;
         }
-        let mut texture = self.catalog.decode(key)?;
+        let mut texture = match route {
+            TextureRoute::Catalog {
+                variant, choice, ..
+            } => self.catalog.decode_choice(key, *variant, *choice),
+            TextureRoute::Path { path, .. } => self.catalog.decode_path(key, path, None),
+        }?;
         let grid = self.catalog.grid(key);
+        let animate = match route {
+            TextureRoute::Catalog {
+                variant, choice, ..
+            } => *variant == 0 && *choice == 0,
+            TextureRoute::Path { path, .. } => self
+                .catalog
+                .choices(key, 0)
+                .and_then(|choices| choices.first())
+                .is_some_and(|choice| choice.path == *path),
+        };
+        let flipbook = animate.then(|| self.catalog.flipbook(key)).flatten();
         // Bound frame count before cutting copies, and shrink each to MAX_TILE.
-        let frames = match self.catalog.flipbook(key) {
+        let frames = match flipbook {
             Some(flipbook) => flipbook_frames(&texture, flipbook, available.min(256), MAX_TILE),
             None => {
                 admit_static_rectangle(&mut texture);
@@ -524,7 +564,7 @@ impl Builder<'_> {
                 Source::GridImage(frame, grid)
             }
         }));
-        let animation = match self.catalog.flipbook(key) {
+        let animation = match flipbook {
             Some(flipbook) if frame_count > 1 => {
                 let frame_start = self.overlay.animation_frames.len() as u32;
                 for layer in first..first + frame_count {
@@ -626,6 +666,7 @@ impl Builder<'_> {
         Some(CompiledBlockOverlay {
             overlay: self.overlay,
             gaps: self.gaps,
+            vanilla_carried: self.vanilla_carried,
         })
     }
 }

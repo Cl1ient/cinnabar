@@ -39,6 +39,7 @@ mod destroy_facts;
 mod leaf_mips;
 mod lily_pad_textures;
 mod material_facts;
+mod pack_bindings;
 mod seasonal_leaves;
 mod variations;
 mod visuals;
@@ -538,28 +539,17 @@ fn compile_pack_inner(
     } = leaf_mips::install(&mut materials, texture_pages, animations, animation_frames)?;
     // World leaf selectors retain their original terrain keys even though their
     // native mip chains are separate from carried/shared texture pixels.
-    let original_keys = material_keys
-        .keys()
-        .flat_map(|key| {
-            material_keys
-                .materials(key)
-                .iter()
-                .map(move |&id| (id, key))
-        })
-        .collect::<Vec<_>>();
-    let material_keys = MaterialKeys::from_entries(
-        original_keys
-            .iter()
-            .copied()
-            .chain(lily_pad_keys.iter().map(|(id, key)| (*id, key.as_ref())))
-            .chain(seasonal_copies.iter().flat_map(|&(copy, original)| {
-                original_keys
-                    .iter()
-                    .filter_map(move |&(id, key)| (id == original).then_some((copy, key)))
-            })),
-    )
-    .with_aliases(material_keys.aliases())
-    .with_fixed_tints(lily_pad_tints);
+    let material_keys = pack_bindings::with_copies(material_keys, &lily_pad_keys, &seasonal_copies)
+        .with_fixed_tints(lily_pad_tints);
+    let material_keys = pack_bindings::retain(
+        material_keys,
+        &pack,
+        &material_by_descriptor,
+        &materials,
+        records,
+        &lily_pad_keys,
+        &seasonal_copies,
+    );
     if light_properties.len() != visuals.len() {
         return Err(AssetError::InvalidCompiledAssets {
             detail: "light-property count does not match sequential visual span".into(),

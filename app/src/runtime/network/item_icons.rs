@@ -8,6 +8,7 @@ use std::{
 
 mod catalog;
 mod vanilla;
+pub(super) mod vanilla_blocks;
 pub(crate) use vanilla::{set_vanilla_item_paths, vanilla_item_paths_installed};
 
 use resource_pack::LayeredPackView;

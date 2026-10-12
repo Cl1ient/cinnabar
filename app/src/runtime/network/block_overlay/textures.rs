@@ -10,9 +10,7 @@ mod diagnostics;
 mod terrain;
 mod tint;
 use diagnostics::{FailureReason, TextureDiagnostics};
-use pack_runtime::pack_textures::{
-    MAX_CATALOG_ENTRIES, decode_pack_texture, parse_pack_json, texture_key_paths,
-};
+use pack_runtime::pack_textures::{MAX_CATALOG_ENTRIES, decode_pack_texture, parse_pack_json};
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -25,8 +23,7 @@ pub(super) struct Flipbook {
 /// Texture keys resolved across the stack; a higher pack replaces a key.
 pub(super) struct TextureCatalog<'a> {
     view: &'a LayeredPackView,
-    terrain: HashMap<String, String>,
-    grids: HashMap<String, u8>,
+    terrain: HashMap<String, pack_runtime::pack_textures::terrain::Entry>,
     tints: HashMap<String, [u8; 3]>,
     server_keys: HashSet<String>,
     flipbooks: HashMap<String, Flipbook>,
@@ -35,14 +32,30 @@ pub(super) struct TextureCatalog<'a> {
 
 impl<'a> TextureCatalog<'a> {
     pub(super) fn new(view: &'a LayeredPackView, base: Option<&assets::MaterialKeys>) -> Self {
-        let mut terrain = pack_runtime::pack_textures::base_terrain_catalog();
+        let mut terrain = pack_runtime::pack_textures::base_terrain_catalog()
+            .into_iter()
+            .filter_map(|(key, path)| {
+                let entry = pack_runtime::pack_textures::terrain::parse_entry(
+                    &serde_json::json!({"textures":path}),
+                )?;
+                Some((key, entry))
+            })
+            .collect::<HashMap<_, _>>();
         if let Some(base) = base {
-            terrain.extend(
-                base.aliases()
-                    .map(|(key, path)| (key.to_owned(), path.to_owned())),
-            );
+            for (key, path) in base.aliases() {
+                if let Some(entry) = pack_runtime::pack_textures::terrain::parse_entry(
+                    &serde_json::json!({"textures":path}),
+                ) {
+                    terrain.insert(key.to_owned(), entry);
+                }
+            }
+            for (key, value) in base.terrain_entries() {
+                if let Some(entry) = pack_runtime::pack_textures::terrain::parse_entry(value) {
+                    terrain.insert(key.to_owned(), entry);
+                }
+            }
         }
-        let server_terrain = texture_key_paths(view, "textures/terrain_texture.json");
+        let server_terrain = pack_runtime::pack_textures::terrain::entries(view);
         let server_keys = server_terrain.keys().cloned().collect();
         terrain.extend(server_terrain);
         let diagnostics = TextureDiagnostics::default();
@@ -83,16 +96,11 @@ impl<'a> TextureCatalog<'a> {
         Self {
             view,
             terrain,
-            grids: pack_runtime::pack_textures::terrain_texture_grids(view),
             tints: tint::catalog_tints(view, base),
             server_keys,
             flipbooks,
             diagnostics,
         }
-    }
-
-    pub(super) fn terrain_keys(&self) -> impl Iterator<Item = &str> {
-        self.terrain.keys().map(String::as_str)
     }
 
     pub(super) fn flipbook(&self, key: &str) -> Option<&Flipbook> {
@@ -101,25 +109,56 @@ impl<'a> TextureCatalog<'a> {
 
     /// Returns the winning terrain entry's normalized UV-grid exponent.
     pub(super) fn grid(&self, key: &str) -> u8 {
-        self.grids.get(key).copied().unwrap_or(0)
+        self.terrain.get(key).map_or(0, |entry| entry.grid)
     }
 
-    /// Decodes the image a terrain key names.
-    pub(super) fn decode(&self, key: &str) -> Option<DecodedTexture> {
-        let Some(path) = self.terrain.get(key) else {
+    /// Whether an optional layer supplied a complete catalog entry for this key.
+    pub(super) fn redefined(&self, key: &str) -> bool {
+        self.server_keys.contains(key)
+    }
+
+    /// Choices for one state variant, independent of the other variants.
+    pub(super) fn choices(
+        &self,
+        key: &str,
+        variant: u32,
+    ) -> Option<&[pack_runtime::pack_textures::terrain::Choice]> {
+        Some(self.terrain.get(key)?.variant(variant))
+    }
+
+    /// Decodes a state and positional choice, retaining the entry's literal tint.
+    pub(super) fn decode_choice(
+        &self,
+        key: &str,
+        variant: u32,
+        choice: u32,
+    ) -> Option<DecodedTexture> {
+        let Some(choice) = self
+            .choices(key, variant)
+            .and_then(|choices| choices.get(choice as usize))
+        else {
             self.diagnostics
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;
         };
+        self.decode_path(key, &choice.path, choice.tint)
+    }
+
+    /// Reads a recorded source path for raster-only replacements of weighted leaves.
+    pub(super) fn decode_path(
+        &self,
+        key: &str,
+        path: &str,
+        tint: Option<[u8; 3]>,
+    ) -> Option<DecodedTexture> {
         let mut texture = decode_pack_texture(self.view, path);
-        if let Some(tint) = self.tints.get(key)
+        if let Some(tint) = tint.or_else(|| self.tints.get(key).copied())
             && let Some(texture) = texture.as_mut()
         {
-            pack_compiler::apply_atlas_tint(&mut texture.rgba8, *tint);
+            pack_compiler::apply_atlas_tint(&mut texture.rgba8, tint);
         }
         if texture.is_none() {
             let reason = diagnostics::failure_reason(self.view, path);
-            // Base aliases have no server raster until a pack overrides them.
             if self.server_keys.contains(key) || reason != FailureReason::TextureFileMissing {
                 self.diagnostics.failure(reason, key, Some(path));
             }

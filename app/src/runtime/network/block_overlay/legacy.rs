@@ -11,6 +11,7 @@ use pack_runtime::pack_textures::{MAX_CATALOG_ENTRIES, parse_pack_json};
 
 pub(super) struct TextureBindings {
     materials: HashMap<String, Box<[CustomMaterialInstance]>>,
+    carried: HashMap<String, Box<[CustomMaterialInstance]>>,
     pub(super) invalid: u32,
 }
 
@@ -18,6 +19,7 @@ impl TextureBindings {
     pub(super) fn new(view: &LayeredPackView) -> Self {
         let mut bindings = Self {
             materials: HashMap::new(),
+            carried: HashMap::new(),
             invalid: 0,
         };
         for layer in view.read_layers("blocks.json") {
@@ -26,21 +28,54 @@ impl TextureBindings {
                 continue;
             };
             for (name, entry) in entries {
-                let Some(textures) = entry.get("textures") else {
-                    continue;
-                };
-                let Some(materials) = parse_textures(textures) else {
-                    bindings.invalid = bindings.invalid.saturating_add(1);
-                    continue;
-                };
-                if bindings.materials.len() < MAX_CATALOG_ENTRIES
-                    || bindings.materials.contains_key(&name)
-                {
-                    bindings.materials.insert(name, materials);
+                for (field, target) in [
+                    ("textures", &mut bindings.materials),
+                    ("carried_textures", &mut bindings.carried),
+                ] {
+                    let Some(textures) = entry.get(field) else {
+                        continue;
+                    };
+                    let Some(materials) = parse_textures(textures) else {
+                        bindings.invalid = bindings.invalid.saturating_add(1);
+                        continue;
+                    };
+                    if target.len() < MAX_CATALOG_ENTRIES || target.contains_key(&name) {
+                        target.insert(name.clone(), materials);
+                    }
                 }
             }
         }
         bindings
+    }
+
+    /// Resolves a binding face, accepting the registry name or its pack alias.
+    pub(super) fn texture(
+        &self,
+        name: &str,
+        alias: &str,
+        face: usize,
+        carried: bool,
+    ) -> Option<&str> {
+        let bindings = if carried {
+            &self.carried
+        } else {
+            &self.materials
+        };
+        let materials = bindings
+            .get(name)
+            .or_else(|| bindings.get(name.strip_prefix("minecraft:").unwrap_or(name)))
+            .or_else(|| bindings.get(alias))?;
+        let face = FACE_NAMES[face];
+        let horizontal = !matches!(face, "up" | "down");
+        std::iter::once(face)
+            .chain(horizontal.then_some("side"))
+            .chain(std::iter::once("*"))
+            .find_map(|name| {
+                materials
+                    .iter()
+                    .find(|material| material.name.as_ref() == name)
+            })
+            .map(|material| material.texture.as_ref())
     }
 
     /// Legacy textures supply cubes whose component set declares no

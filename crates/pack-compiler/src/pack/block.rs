@@ -285,6 +285,30 @@ pub fn resolve_texture_key(
     }
 }
 
+/// Retains the same block alias and axis mapping used by world texture compilation.
+pub(crate) fn runtime_binding_identity(
+    blocks: &BlockTextureMap,
+    record: &RegistryRecord,
+) -> (Box<str>, [u8; 6]) {
+    let name = record
+        .name
+        .strip_prefix("minecraft:")
+        .unwrap_or(&record.name);
+    let binding_name = if blocks.entries.contains_key(name) {
+        name
+    } else {
+        legacy_resource_pack_block_alias(name).unwrap_or(name)
+    };
+    let axis = match state_axis(&record.canonical_state) {
+        AxisState::Exact(axis) => axis,
+        AxisState::Absent | AxisState::Invalid => Axis::Y,
+    };
+    (
+        binding_name.into(),
+        BlockFace::ALL.map(|face| orient_face(face, axis).0 as u8),
+    )
+}
+
 /// The texture key a vanilla block item's icon reads: `carried_textures`, else `textures`,
 /// down face.
 pub(crate) fn resolve_carried_down_key<'a>(
@@ -301,6 +325,15 @@ pub(crate) fn resolve_carried_face_key(
     face: BlockFace,
 ) -> Option<String> {
     carried_or_world_key(blocks, record, face, false).map(std::borrow::Cow::into_owned)
+}
+
+/// Retains the unrotated carried fallback used when a block has no carried override.
+pub(crate) fn resolve_carried_fallback_key(
+    blocks: &BlockTextureMap,
+    record: &RegistryRecord,
+    face: BlockFace,
+) -> Option<Box<str>> {
+    carried_or_world_key(blocks, record, face, true).map(|key| key.into_owned().into_boxed_str())
 }
 
 fn carried_or_world_key<'a>(

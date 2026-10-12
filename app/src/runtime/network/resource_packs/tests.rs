@@ -471,7 +471,7 @@ fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
     };
     let fresh = |stack: &Arc<resource_pack::ValidatedPackStack>| {
         let view = resource_pack::LayeredPackView::tracked(stack.clone());
-        super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+        super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit, None)
     };
     let mut compiles = 0;
     let mut cached = |stack: &Arc<resource_pack::ValidatedPackStack>| {
@@ -484,7 +484,7 @@ fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
             limit,
             || {
                 compiles += 1;
-                super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+                super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit, None)
                     .map(Arc::new)
             },
         )
@@ -657,6 +657,7 @@ fn the_same_blocks_share_the_extended_carrier_and_its_texture_identity() {
         Arc::new(super::CompiledBlockOverlay {
             overlay: Default::default(),
             gaps: Default::default(),
+            vanilla_carried: Vec::new(),
         })
     };
     let overlay = compiled();

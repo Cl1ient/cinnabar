@@ -83,6 +83,10 @@ fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
     let view = view();
     let mut builder = super::super::Builder {
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        base_textures: Default::default(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: Vec::new(),
@@ -240,6 +244,10 @@ fn overlay_images(
     let view = view();
     super::super::Builder {
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        base_textures: Default::default(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: images
@@ -434,6 +442,10 @@ fn terrain_grid_budget_fallback_preserves_unrelated_texture_layers() {
     let view = view();
     let mut builder = super::super::Builder {
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        base_textures: Default::default(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: Vec::new(),

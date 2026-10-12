@@ -6,6 +6,8 @@ use resource_pack::LayeredPackView;
 use serde_json::Value;
 use std::{collections::HashMap, io::Cursor};
 
+pub mod terrain;
+
 const MAX_TEXTURE_SOURCE_BYTES: usize = resource_pack::MAX_PACK_TEXTURE_BYTES as usize;
 const MAX_TEXTURE_SIDE: u32 = 1024;
 const MAX_DECODE_ALLOC: u64 = 16 * 1024 * 1024;

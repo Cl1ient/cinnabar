@@ -1,4 +1,5 @@
 mod decode;
+mod face_overrides;
 mod id_remap;
 mod overlay;
 mod server_defined_blocks;

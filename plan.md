@@ -1,3 +1,14 @@
+## Runtime terrain bindings
+
+Optional terrain catalogs retain each material's state variant and independent weighted
+choices. Raster-only layers preserve base weighted selectors. Block texture bindings
+repoint individual vanilla visuals and prepare separate carried faces for session icons
+and held-item sheets. The material sidecar retains these source facts after packing.
+
+Incomplete: CI must compile and run the regression fixtures. Rendered state variants,
+position-selected texture output, special model bindings, pack reload/removal, and
+performance acceptance still need headless verification. No parity gate closes here.
+
 ## Launcher updates
 
 One client per install owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and

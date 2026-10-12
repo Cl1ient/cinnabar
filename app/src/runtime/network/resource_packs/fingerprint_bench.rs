@@ -258,8 +258,9 @@ fn join_part_timing() {
             view,
             &Default::default(),
             false,
-            BASE_MATERIAL_KEYS.get(),
+            BASE_MATERIAL_KEYS.get().map(|(keys, _)| keys),
             overlay_texture_layer_limit(),
+            BASE_MATERIAL_KEYS.get().map(|(_, base)| base.as_ref()),
         );
     });
     time("icons", &|view| {

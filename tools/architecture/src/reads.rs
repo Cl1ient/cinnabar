@@ -25,7 +25,8 @@ use crate::{
 /// literal starting with `../` or `/../`, resolved from the crate root as
 /// `env!("CARGO_MANIFEST_DIR")` paths are. Paths in no crate count only if they exist. A bare
 /// repository-relative literal such as `"plan.md"` only keeps a declaration current: tests name
-/// such paths as data.
+/// such paths as data. The architecture crate also reads the workspace document configured
+/// by policy, even when no Rust literal names that document.
 pub(super) fn check_reads(
     root: &Path,
     policy: &Policy,
@@ -108,6 +109,17 @@ pub(super) fn check_reads(
                 mentioned.entry(name).or_default().insert(target);
             }
         }
+    }
+    if let Some(document) = policy
+        .workspace_document
+        .as_deref()
+        .and_then(|document| resolve("", document))
+    {
+        required
+            .entry(env!("CARGO_PKG_NAME"))
+            .or_default()
+            .entry(document)
+            .or_insert_with(|| "policy.workspace_document".to_owned());
     }
     for (crate_root, name) in &roots {
         let manifest_path = root.join(crate_root).join("Cargo.toml");

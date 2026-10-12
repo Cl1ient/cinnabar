@@ -41,6 +41,72 @@ path = 'beta'
     }
 }
 
+/// Returns findings for a configured document read by the architecture crate, with no sources.
+fn configured_document_findings(gate_metadata: &str, beta_metadata: &str) -> Vec<String> {
+    let temp = tempfile::tempdir().expect("fixture root");
+    let root = temp.path();
+    let gate = env!("CARGO_PKG_NAME");
+    let document = "configured.md";
+    fixture(
+        root,
+        Some(&format!(
+            "| `alpha` | `{gate}` | Check ownership. | Beta owns decoding. |\n\
+            | `beta` | `beta` | Decode inputs. | The gate checks ownership. |\n"
+        )),
+    );
+    let policy_path = root.join("policy.toml");
+    let mut policy: toml::Value =
+        toml::from_str(&fs::read_to_string(&policy_path).expect("read policy"))
+            .expect("parse policy");
+    policy["workspace_document"] = toml::Value::String(document.to_owned());
+    policy["crates"][0]["name"] = toml::Value::String(gate.to_owned());
+    fs::write(
+        &policy_path,
+        toml::to_string(&policy).expect("serialize policy"),
+    )
+    .expect("write configured policy");
+    fs::rename(root.join("workspace.md"), root.join(document)).expect("move configured document");
+    fs::write(
+        root.join("alpha/Cargo.toml"),
+        format!("[package]\nname='{gate}'\nversion='0.1.0'\n{gate_metadata}\n"),
+    )
+    .expect("write gate manifest");
+    fs::write(
+        root.join("beta/Cargo.toml"),
+        format!("[package]\nname='beta'\nversion='0.1.0'\n{beta_metadata}\n"),
+    )
+    .expect("write beta manifest");
+    check_repository(root, &policy_path).expect("check configured document")
+}
+
+#[test]
+fn configured_document_keeps_the_architecture_read_declaration_current() {
+    assert_eq!(
+        configured_document_findings("[package.metadata.cinnabar]\nreads=['configured.md']", ""),
+        Vec::<String>::new(),
+    );
+}
+
+#[test]
+fn configured_document_requires_an_architecture_read_declaration() {
+    assert_eq!(
+        configured_document_findings("", ""),
+        [format!(
+            "{}: policy.workspace_document reads `configured.md` outside the crate; list it in `reads` under [package.metadata.cinnabar]",
+            env!("CARGO_PKG_NAME"),
+        )],
+    );
+}
+
+#[test]
+fn configured_document_does_not_validate_another_crates_stale_declaration() {
+    let metadata = "[package.metadata.cinnabar]\nreads=['configured.md']";
+    assert_eq!(
+        configured_document_findings(metadata, metadata),
+        ["beta: declared read `configured.md` matches nothing its sources read"],
+    );
+}
+
 #[test]
 fn accepts_complete_ownership_rows_in_any_order() {
     let temp = tempfile::tempdir().expect("fixture root");

@@ -661,8 +661,9 @@ jobs:
       - name: Publish the tagged release
         if: needs.prepare.outputs.track == 'tagged'
         run: |
+          # Keep the generated changelog and installation notes from release creation.
           gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" \
-            --notes-file "$RUNNER_TEMP/notes.md" --draft=false --prerelease=false --latest=true
+            --draft=false --prerelease=false --latest=true
       - name: Post the changelog to Discord
         if: steps.prepare_publish.outputs.created == 'true'
         continue-on-error: true

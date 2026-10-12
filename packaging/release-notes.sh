@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prints release notes for HEAD. Usage: release-notes.sh <nightly|release> [previous_commit_of_that_prerelease]
+# Prints release notes for HEAD. Usage: release-notes.sh <nightly|release> [previous_nightly_commit]
 # Env: MACOS_SIGNED, WINDOWS_SIGNED ("true" when that platform's artifacts are signed).
 set -euo pipefail
 kind="${1:?usage: release-notes.sh <nightly|release> [previous_commit]}"
@@ -7,9 +7,9 @@ previous="${2:-}"
 max_commits=100
 
 if [[ "$kind" == nightly ]]; then
-    printf 'Rolling Nightly build at %s; it is replaced on each publication.\n\n' "$(git rev-parse --short HEAD)"
+    printf 'Rolling build of `main` at %s. Not a stable release; it is replaced on every push.\n\n' "$(git rev-parse --short HEAD)"
     if [[ -n "$previous" ]] && git merge-base --is-ancestor "$previous" HEAD 2>/dev/null; then
-        printf '## Changes since the previous %s (%s)\n\n' "$kind" "$(git rev-parse --short "$previous")"
+        printf '## Changes since the previous nightly (%s)\n\n' "$(git rev-parse --short "$previous")"
         range="$previous..HEAD" limit=$((max_commits + 1))
     else
         printf '## Recent changes\n\n'

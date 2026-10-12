@@ -2,6 +2,7 @@
 
 import os
 import json
+import importlib.util
 from pathlib import Path
 import subprocess
 import tempfile
@@ -13,10 +14,14 @@ RELEASE_ASSETS = json.loads((ROOT / "packaging/release-assets.json").read_text()
 CHANNELS = RELEASE_ASSETS["update_channels"]
 VERSION_TAG = "v1.2.3"
 PREFIX = RELEASE_ASSETS["update_payload_prefix"]
+CHANGELOG_SPEC = importlib.util.spec_from_file_location("changelog", ROOT / "packaging/changelog.py")
+changelog = importlib.util.module_from_spec(CHANGELOG_SPEC)
+CHANGELOG_SPEC.loader.exec_module(changelog)
 FAKE_GH = '''#!/bin/bash
 set -eu
 echo "$*" >> calls
 case "$2" in
+  list) : ;;
   view) [[ -d "releases/$3" ]] && { [[ "$*" != *--json* ]] || ls "releases/$3"; } ;;
   create)
     mkdir -p "releases/$3" states
@@ -42,8 +47,15 @@ case "$2" in
     ;;
   delete-asset) rm "releases/$3/$4" ;;
   edit)
-    mkdir -p states
+    mkdir -p states bodies
     if [[ "$*" == *--latest=true* ]]; then echo "$3" > latest; echo published > "states/$3"; fi
+    tag="$3"; shift 3
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --notes-file) cp "$2" "bodies/$tag"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
     ;;
   *) exit 43 ;;
 esac
@@ -213,6 +225,26 @@ class ManifestPublishTests(unittest.TestCase):
         calls = (self.root / "calls").read_text().splitlines()
         self.assertFalse(any("--draft=true" in call for call in calls))
         self.assertTrue((holder / f"{PREFIX}old-Cinnabar.dmg").is_file())
+
+    def test_tagged_publication_keeps_generated_entries_and_install_notes_for_discord(self):
+        holder = self.published_release("beta")
+        (self.root / "bodies").mkdir()
+        install = "## Installing\n\nDownload the installer.\n"
+        pull_url = "https://github.com/o/r/pull/42"
+        compare = f"https://github.com/o/r/compare/v1.2.2...{VERSION_TAG}"
+        generated = f"## What's Changed\n\n* Add a feature by @contributor in {pull_url}\n\n**Full Changelog**: {compare}\n"
+        body = self.root / "bodies" / holder.name
+        body.write_text(install + "\n" + generated)
+        (self.root / "notes.md").write_text(install)
+        for _ in range(2):
+            self.run_step("Publish the tagged release", "beta")
+            published = body.read_text()
+            self.assertEqual(published, install + "\n" + generated)
+            entries = changelog.release_entries(published)
+            self.assertEqual(entries, [{"number": "42", "title": "Add a feature", "url": pull_url}])
+            message = changelog.payload(VERSION_TAG, "https://github.com/o/r/releases/latest", "",
+                                        entries, {"42": "new"}, compare)
+            self.assertIn("1 change", message["embeds"][0]["description"])
 
     def test_an_unsigned_new_beta_release_has_no_compatibility_manifest(self):
         self.publish("beta", signed=False)

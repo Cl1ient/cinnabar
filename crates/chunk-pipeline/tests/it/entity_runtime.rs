@@ -46,18 +46,21 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
     .into_boxed_slice();
     let symbols = vec![
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Entity,
             identifier: "minecraft:bee".into(),
             source_index: 2,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: "geometry.base".into(),
             source_index: 3,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: "geometry.bee".into(),
             source_index: 3,
@@ -69,18 +72,21 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
             .into_boxed_slice(),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Animation,
             identifier: "animation.bee.move".into(),
             source_index: 1,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::AnimationController,
             identifier: "controller.animation.bee".into(),
             source_index: 0,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::RenderController,
             identifier: "controller.render.bee".into(),
             source_index: 4,
@@ -89,6 +95,9 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
     ]
     .into_boxed_slice();
     CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [0x44; 32],
         block_visual_count: 1,
         sources,
@@ -248,6 +257,7 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
         }]
         .into_boxed_slice(),
         rig_bindings: vec![EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             entity_symbol: 0,
             render_controller: 5,
             first_geometry: 0,
@@ -280,6 +290,9 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
         item_visual_aliases: Box::new([]),
         render: Default::default(),
     }
+    .with_unresolved_item_use()
+    .with_unresolved_seats()
+    .with_unresolved_interactions()
 }
 
 fn decode_entity_assets(compiled: &CompiledEntityAssets) -> Arc<RuntimeEntityAssets> {

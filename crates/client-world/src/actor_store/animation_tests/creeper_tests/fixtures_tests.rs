@@ -167,6 +167,7 @@ pub(super) fn pack_swell_fixture_with(
         symbols.insert(
             2,
             assets::EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: assets::EntityAssetKind::Geometry,
                 identifier: geometry.identifier.clone(),
                 source_index: geometry.source_index,
@@ -223,7 +224,9 @@ pub(super) fn pack_swell_fixture_with(
     }
 
     edit(&mut compiled);
-    let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let assets = Arc::new(
+        RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap(),
+    );
     let mut store = crate::actor_store::ActorStore::new_with_entity_assets(1, 0, assets);
     store.apply(
         1,
@@ -286,6 +289,7 @@ pub(super) fn swell_controller_fixture_with(
             symbols.insert(
                 3,
                 EntityAssetSymbol {
+                    mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                     kind: EntityAssetKind::AnimationController,
                     identifier: "controller.animation.test".into(),
                     source_index: 0,

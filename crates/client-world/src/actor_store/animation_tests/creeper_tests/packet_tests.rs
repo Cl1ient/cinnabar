@@ -1,4 +1,4 @@
-use {super::*, world::TICK_DURATION as ACTOR_TICK_DURATION};
+use {super::*, simulation_clock::TICK_DURATION as ACTOR_TICK_DURATION};
 
 fn compile_swell_stop(source: &str, version: i32) -> Option<assets::MolangProgram> {
     assert_eq!(source, "variable.factor = 3; return 0;");
@@ -122,6 +122,7 @@ fn swell_server_selected_clip_extends_the_authored_dependency_graph() {
             symbols.insert(
                 3,
                 assets::EntityAssetSymbol {
+                    mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                     kind: assets::EntityAssetKind::Animation,
                     identifier: "animation.server".into(),
                     source_index: 0,
@@ -228,6 +229,7 @@ fn swell_packet_clock_expansion_keeps_each_endpoint_sampling_plan() {
         symbols.insert(
             3,
             assets::EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: assets::EntityAssetKind::Animation,
                 identifier: "animation.server".into(),
                 source_index: compiled.animation_clips[0].source,

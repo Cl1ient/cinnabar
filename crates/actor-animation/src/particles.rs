@@ -72,7 +72,7 @@ impl<'a> super::ActorRigSnapshot<'a> {
     ) -> ActorParticleQueries<'a> {
         let owner = self.animation_variables;
         let state_time = (owner.anim_tick().saturating_sub(entered_tick) as f32 + alpha)
-            * world::TICK_DURATION.as_secs_f32();
+            * simulation_clock::TICK_DURATION.as_secs_f32();
         let mut context = owner.owner_context().cloned().unwrap_or_default();
         context.frame_alpha = alpha;
         ActorParticleQueries {
@@ -149,7 +149,8 @@ mod tests {
             ("state_time", queries.state_time),
             (
                 "life_time",
-                (queries.life_tick as f32 + queries.alpha) * world::TICK_DURATION.as_secs_f32(),
+                (queries.life_tick as f32 + queries.alpha)
+                    * simulation_clock::TICK_DURATION.as_secs_f32(),
             ),
             ("not_admitted", 0.0),
         ] {
@@ -181,18 +182,18 @@ mod tests {
         assert_eq!(rig.completed_tick, 101);
         assert_eq!(
             rig.particle_queries(&actor, 0.5, 0).query("anim_time"),
-            world::TICK_DURATION.as_secs_f32()
+            simulation_clock::TICK_DURATION.as_secs_f32()
         );
         // State time follows the actor's animation clock, not the store's global tick.
         assert_eq!(
             rig.particle_queries(&actor, 0.5, 0).query("state_time"),
-            1.5 * world::TICK_DURATION.as_secs_f32()
+            1.5 * simulation_clock::TICK_DURATION.as_secs_f32()
         );
         advance(&mut store);
         let rig = store.get(actor.runtime_id).unwrap();
         assert_eq!(
             rig.particle_queries(&actor, 0.5, 0).query("anim_time"),
-            2.0 * world::TICK_DURATION.as_secs_f32()
+            2.0 * simulation_clock::TICK_DURATION.as_secs_f32()
         );
         store.mark_reset(actor.runtime_id);
         advance(&mut store);
@@ -202,13 +203,13 @@ mod tests {
         assert_eq!(queries.query("query.anim_time"), 0.0);
         assert_eq!(
             queries.query("life_time"),
-            3.5 * world::TICK_DURATION.as_secs_f32()
+            3.5 * simulation_clock::TICK_DURATION.as_secs_f32()
         );
         advance(&mut store);
         let rig = store.get(actor.runtime_id).unwrap();
         assert_eq!(
             rig.particle_queries(&actor, 0.5, 0).query("anim_time"),
-            world::TICK_DURATION.as_secs_f32()
+            simulation_clock::TICK_DURATION.as_secs_f32()
         );
     }
 }

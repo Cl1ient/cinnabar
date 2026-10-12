@@ -1,6 +1,66 @@
 use super::*;
 use crate::test_support::sample_panel as panel;
 
+/// Reopening unchanged content clears settled hover and restores a toggle closed mid-transition.
+#[test]
+fn reopening_panel_restores_settled_feedback_bindings() {
+    use ui::mod_panel::Theme;
+
+    for theme in [Theme::Default, Theme::Monochrome] {
+        for enabled in [false, true] {
+            let mut settings = panel();
+            settings.motion = true;
+            settings.theme = theme;
+            if let Control::Toggle { value, .. } = &mut settings.controls[0] {
+                *value = !enabled;
+            }
+            let mut ui = ModUi::default();
+            ui.set_mod_panel(Some(&settings)).unwrap();
+            ui.set_mod_panel_open(true);
+            {
+                let current = ui.mod_panel.as_mut().unwrap();
+                current.viewport = [600.0, 400.0];
+                current
+                    .motion
+                    .advance(&current.panel, &mut current.view, Some(0), 1.0);
+                current
+                    .motion
+                    .advance(&current.panel, &mut current.view, Some(0), 1.2);
+                current
+                    .motion
+                    .write(&current.panel, Arc::make_mut(&mut current.data));
+            }
+            if let Control::Toggle { value, .. } = &mut settings.controls[0] {
+                *value = enabled;
+            }
+            ui.set_mod_panel(Some(&settings)).unwrap();
+            let settled = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
+            {
+                let current = ui.mod_panel.as_mut().unwrap();
+                current
+                    .motion
+                    .advance(&current.panel, &mut current.view, Some(0), 1.2);
+                current
+                    .motion
+                    .advance(&current.panel, &mut current.view, Some(0), 1.24);
+                current
+                    .motion
+                    .write(&current.panel, Arc::make_mut(&mut current.data));
+                assert_ne!(current.data, settled);
+            }
+            assert!(ui.mod_panel_motion_active());
+
+            ui.set_mod_panel_open(false);
+            ui.set_mod_panel_open(true);
+            ui.set_mod_panel(Some(&settings)).unwrap();
+
+            let reopened = ui.mod_panel.as_ref().unwrap();
+            assert_eq!(reopened.viewport, [600.0, 400.0]);
+            assert_eq!(reopened.data, settled);
+        }
+    }
+}
+
 /// Bound labels are values rather than static geometry and cannot interrupt a captured drag.
 #[test]
 fn relabeled_controls_keep_the_retained_catalog_shape() {

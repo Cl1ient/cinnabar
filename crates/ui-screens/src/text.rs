@@ -47,14 +47,12 @@ pub fn resolve_chat_line<'a>(
 
 /// `value` cut at a character boundary to [`MAX_PRESENTED_TEXT_BYTES`].
 pub fn bounded_visible_text(value: &str) -> &str {
-    if value.len() <= MAX_PRESENTED_TEXT_BYTES {
-        return value;
-    }
-    let mut end = MAX_PRESENTED_TEXT_BYTES;
-    while !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    &value[..end]
+    bounded_text(value, MAX_PRESENTED_TEXT_BYTES)
+}
+
+/// `value` cut at a character boundary to at most `max_bytes`.
+pub fn bounded_text(value: &str, max_bytes: usize) -> &str {
+    &value[..value.floor_char_boundary(max_bytes)]
 }
 
 #[cfg(test)]

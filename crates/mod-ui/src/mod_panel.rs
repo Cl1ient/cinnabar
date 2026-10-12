@@ -198,6 +198,7 @@ impl ModUi {
                 panel.view = ViewState::default();
                 panel.motion = motion::PanelMotion::default();
                 panel.pointer = None;
+                panel.refresh_data();
             }
         }
     }

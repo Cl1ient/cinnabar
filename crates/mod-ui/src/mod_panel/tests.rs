@@ -1,6 +1,19 @@
 use super::*;
 use crate::test_support::sample_panel as panel;
 
+/// Bound labels are values rather than static geometry and cannot interrupt a captured drag.
+#[test]
+fn relabeled_controls_keep_the_retained_catalog_shape() {
+    let original = panel();
+    let mut changed = original.clone();
+    if let Control::Toggle { label, value, .. } = &mut changed.controls[0] {
+        *label = "Updated title".into();
+        *value = true;
+    }
+    assert!(template::same_shape(&original, &changed));
+    assert!(changed.validate_values().is_ok());
+}
+
 #[test]
 fn compact_module_cards_align_and_wrap_without_losing_bindings() {
     use ui::mod_panel::{Icon, Section, Style};

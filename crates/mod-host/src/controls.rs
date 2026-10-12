@@ -3,11 +3,13 @@
 use super::{MAX_IMPORT_WRITES, State, cinnabar};
 use crate::{ControlFrame, InteractionOutput, empty_controls};
 use anyhow::{Result, bail, ensure};
-use ui::mod_panel::{MAX_PANEL_BYTES, Panel};
+use std::sync::Arc;
+use ui::mod_panel::{MAX_PANEL_BYTES, Panel, PanelBundle, PanelPatch};
 
 pub(super) struct ControlState {
     pub frame: ControlFrame,
     pub panel: Option<Panel>,
+    pub bundle: Option<Arc<PanelBundle>>,
     pub open: bool,
     pub keys: Vec<String>,
     pub interaction: InteractionOutput,
@@ -30,6 +32,7 @@ impl ControlState {
         Self {
             frame: empty_controls(),
             panel: None,
+            bundle: None,
             open: false,
             keys: Vec::new(),
             interaction: InteractionOutput::default(),
@@ -251,6 +254,39 @@ impl cinnabar::extension::panel::Host for State {
         }
         self.controls.pending_panel = Some(Some(panel));
         Ok(Ok(()))
+    }
+
+    fn update_content(&mut self, json: String) -> Result<Result<(), String>> {
+        self.controls.budget(false)?;
+        if !self.grants.controls {
+            return Ok(Err("controls capability denied".into()));
+        }
+        let current = self
+            .controls
+            .pending_panel
+            .as_ref()
+            .map_or(self.controls.panel.as_ref(), Option::as_ref);
+        let Some(current) = current else {
+            return Ok(Err("panel update requires retained content".into()));
+        };
+        if let Some(bundle) = &self.controls.bundle
+            && !bundle.matches_schema(current)
+        {
+            return Ok(Err(
+                "panel update schema differs from the registered bundle".into(),
+            ));
+        }
+        let routes = self.controls.bundle.as_ref().map(|bundle| &bundle.surfaces);
+        let empty = std::collections::BTreeMap::new();
+        match PanelPatch::parse(&json)
+            .and_then(|patch| patch.apply(current, routes.unwrap_or(&empty)))
+        {
+            Ok(panel) => {
+                self.controls.pending_panel = Some(Some(panel));
+                Ok(Ok(()))
+            }
+            Err(error) => Ok(Err(format!("invalid panel update: {error}"))),
+        }
     }
 }
 

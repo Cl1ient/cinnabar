@@ -166,7 +166,19 @@ fn configure_entries(app: &mut App, mods: Vec<(multi::ModSource, ModGrants)>) {
 
 /// Installs loaded mods in load order; none installs nothing.
 #[cfg(feature = "local-mods")]
-fn install(app: &mut App, hosts: Vec<ModHost>) {
+fn install(app: &mut App, mut hosts: Vec<ModHost>) {
+    if let Some(path) = std::env::var_os(client_extensions::modding::panel_ui::UI_ENV)
+        && let Some(host) = hosts.iter_mut().find(|host| host.grants().controls)
+    {
+        let result =
+            client_extensions::modding::panel_ui::load(Path::new(&path)).and_then(|json| {
+                host.set_panel_bundle(&json)
+                    .map_err(|error| format!("{error:#}"))
+            });
+        if let Err(error) = result {
+            eprintln!("Optional personal-panel catalog unavailable: {error}");
+        }
+    }
     let mut hosts = hosts.into_iter();
     let Some(host) = hosts.next() else { return };
     app.init_resource::<client_presentation::actor_publication::ActorPresentationStyle>();

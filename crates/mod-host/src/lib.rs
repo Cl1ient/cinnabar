@@ -255,6 +255,15 @@ impl ModHost {
     pub fn panel(&self) -> Option<&ui::mod_panel::Panel> {
         self.instance.panel()
     }
+    /// Prepares a bounded local UI catalog once, outside component callbacks.
+    pub fn set_panel_bundle(&mut self, json: &str) -> Result<()> {
+        anyhow::ensure!(
+            self.grants.controls && self.instance.active,
+            "controls capability denied"
+        );
+        let bundle = ui::mod_panel::PanelBundle::parse(json).map_err(anyhow::Error::msg)?;
+        self.instance.set_panel_bundle(Arc::new(bundle))
+    }
     pub fn panel_open(&self) -> bool {
         self.instance.panel_open()
     }

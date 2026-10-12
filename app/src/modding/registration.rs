@@ -48,6 +48,8 @@ struct Registration {
     #[serde(default)]
     font: Option<PathBuf>,
     #[serde(default)]
+    ui: Option<PathBuf>,
+    #[serde(default)]
     grants: ModGrants,
 }
 
@@ -64,8 +66,9 @@ impl Registration {
         }
         if !self.component.is_absolute()
             || self.font.as_ref().is_some_and(|font| !font.is_absolute())
+            || self.ui.as_ref().is_some_and(|ui| !ui.is_absolute())
         {
-            return Err("registration component and font paths must be absolute".into());
+            return Err("registration component, font and UI paths must be absolute".into());
         }
         Ok(())
     }
@@ -92,6 +95,7 @@ fn build_candidate_with_settings(
         identity,
         component,
         font: font_bytes,
+        ui,
     } = snapshot;
     let grants = registration.grants.clone();
     let font = if grants.controls {
@@ -103,13 +107,18 @@ fn build_candidate_with_settings(
     } else {
         None
     };
-    let host = ModHost::prepare_snapshot_with_grants(
+    let mut host = ModHost::prepare_snapshot_with_grants(
         &registration.component,
         &component,
         grants,
         settings.map(|settings| (settings.path.as_path(), settings.json.as_str())),
     )
     .map_err(|error| format!("{error:#}"))?;
+    if let Some(ui) = ui {
+        let json = std::str::from_utf8(&ui).map_err(|error| error.to_string())?;
+        host.set_panel_bundle(json)
+            .map_err(|error| format!("{error:#}"))?;
+    }
     Ok(Candidate {
         host,
         font,
@@ -143,6 +152,7 @@ struct SourceSnapshot {
     identity: [u8; 32],
     component: Vec<u8>,
     font: Option<Vec<u8>>,
+    ui: Option<Vec<u8>>,
 }
 
 enum Message {

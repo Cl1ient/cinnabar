@@ -10,6 +10,7 @@ use super::{
 pub(crate) fn same_shape(a: &Panel, b: &Panel) -> bool {
     a.title == b.title
         && a.reference_size == b.reference_size
+        && a.motion == b.motion
         && a.style == b.style
         && a.theme == b.theme
         && a.dark == b.dark
@@ -22,7 +23,6 @@ pub(crate) fn same_shape(a: &Panel, b: &Panel) -> bool {
         && a.controls.len() == b.controls.len()
         && a.controls.iter().zip(&b.controls).all(|(a, b)| {
             a.id() == b.id()
-                && a.label() == b.label()
                 && match (a, b) {
                     (Control::Toggle { .. }, Control::Toggle { .. })
                     | (Control::Keybind { .. }, Control::Keybind { .. })

@@ -33,6 +33,7 @@ fn registration(directory: &Scratch, request_id: &str) -> Registration {
         enabled: true,
         component: directory.0.join("selected.component.wat"),
         font: None,
+        ui: None,
         grants: ModGrants {
             controls: true,
             ..Default::default()

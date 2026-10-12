@@ -6,6 +6,7 @@ mod edit;
 mod icons;
 mod input;
 mod layout;
+mod motion;
 mod scrolling;
 pub(crate) mod surface;
 mod template;
@@ -54,6 +55,8 @@ pub(super) struct ModPanel {
     pointer: Option<[f32; 2]>,
     held: bool,
     edit: Option<edit::Editor>,
+    motion: motion::PanelMotion,
+    motion_data_dirty: bool,
 }
 
 impl ModUi {
@@ -78,12 +81,24 @@ impl ModUi {
             self.mod_panel = None;
             return Ok(());
         };
-        panel.validate()?;
+        if self
+            .mod_panel
+            .as_ref()
+            .is_some_and(|current| current.panel == *panel)
+        {
+            return Ok(());
+        }
+        let same_shape = self
+            .mod_panel
+            .as_ref()
+            .is_some_and(|current| template::same_shape(&current.panel, panel));
+        if same_shape {
+            panel.validate_values()?;
+        } else {
+            panel.validate()?;
+        }
         if let Some(current) = self.mod_panel.as_mut() {
-            if current.panel == *panel {
-                return Ok(());
-            }
-            if !template::same_shape(&current.panel, panel) {
+            if !same_shape {
                 current.edit = None;
                 current.catalog = None;
                 current.frame = None;
@@ -97,6 +112,7 @@ impl ModUi {
                     current.category = 0;
                 }
                 current.view = ViewState::default();
+                current.motion = motion::PanelMotion::default();
                 current.pointer = None;
             }
             if panel.capture_key {
@@ -124,6 +140,8 @@ impl ModUi {
                 pointer: None,
                 held: false,
                 edit: None,
+                motion: motion::PanelMotion::default(),
+                motion_data_dirty: false,
             });
         }
         Ok(())
@@ -142,6 +160,7 @@ impl ModUi {
                 panel.vector_drag = None;
                 panel.scroll_drag = None;
                 panel.view = ViewState::default();
+                panel.motion = motion::PanelMotion::default();
                 panel.pointer = None;
             }
         }
@@ -149,6 +168,13 @@ impl ModUi {
 
     pub fn mod_panel_open(&self) -> bool {
         self.mod_panel.as_ref().is_some_and(|panel| panel.open)
+    }
+
+    /// Native feedback needs frames only while the opt-in panel motion is active.
+    pub fn mod_panel_motion_active(&self) -> bool {
+        self.mod_panel.as_ref().is_some_and(|panel| {
+            panel.open && panel.panel.motion && (panel.motion_data_dirty || panel.motion.active())
+        })
     }
 
     pub fn mod_panel_toggle_key(&self) -> Option<&str> {
@@ -260,6 +286,39 @@ impl ModUi {
                 }
             }
         }
+        if panel.panel.motion {
+            if let Some(frame) = &panel.frame {
+                for (key, metrics) in &frame.report.scrolls {
+                    panel.motion.scroll_extent(key, metrics.max_offset());
+                }
+            }
+            let hovered = panel
+                .frame
+                .as_ref()
+                .and_then(|frame| {
+                    frame
+                        .hits
+                        .iter()
+                        .find(|hit| panel.view.hovered.as_deref() == Some(hit.key.as_str()))
+                })
+                .and_then(|hit| hit.pressed.as_deref())
+                .and_then(|action| {
+                    action
+                        .strip_prefix("mod.control:")
+                        .or_else(|| action.strip_prefix("mod.edit:"))
+                })
+                .and_then(|index| index.parse().ok());
+            let changed =
+                panel
+                    .motion
+                    .advance(&panel.panel, &mut panel.view, hovered, paint_frame.now);
+            if changed || panel.motion_data_dirty {
+                panel
+                    .motion
+                    .write(&panel.panel, Arc::make_mut(&mut panel.data));
+                panel.motion_data_dirty = false;
+            }
+        }
         let data = Arc::clone(&panel.data);
         let rollback = (paint_frame.nodes.len(), *paint_frame.next);
         let language = paint_frame.language;
@@ -316,6 +375,7 @@ impl ModPanel {
             surface::viewport(&mut data, self.viewport);
         }
         self.data = Arc::new(data);
+        self.motion_data_dirty = true;
     }
 
     fn last_page(&self) -> usize {

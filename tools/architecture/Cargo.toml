@@ -10,6 +10,7 @@ reads = [
     "crates/diagnostics/src/console.rs",
     "crates/diagnostics/src/console/raw_stderr.rs",
     "docs/evidence",
+    "docs/architecture/workspace.md",
     "plan.md",
 ]
 

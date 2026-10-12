@@ -2,6 +2,7 @@ production_rust_max = 1000
 module_root_max = 300
 powershell_max = 800
 test_max = 1200
+workspace_document = "docs/architecture/workspace.md"
 forbidden_artifacts = [
     "*.exe",
     "*.dll",

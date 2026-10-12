@@ -45,6 +45,10 @@ pub struct DrawLists {
     pub add: Vec<ParticleInstance>,
     /// Drawable particles omitted because the caller proved their whole quad hidden.
     pub cave_hidden: usize,
+    /// World light queries for distinct visible, lit cells this frame.
+    pub light_lookups: usize,
+    /// Visible, lit particles that reused another particle's cell sample.
+    pub light_cache_hits: usize,
 }
 
 pub const MAX_DRAW_DISTANCE: f32 = 128.0;
@@ -217,15 +221,47 @@ fn uv_of(
     }
 }
 
+/// Packs the cell's clamped light channels without changing their values.
 fn light_sample(world: &dyn ParticleWorld, cell: [i32; 3]) -> f32 {
     let (block, sky) = world.light(cell);
     f32::from(block.min(15) | (sky.min(15) << 4))
 }
 
+/// Samples each visible lit cell once, writing the packed light back without reordering instances.
+fn sample_particle_light(
+    world: &dyn ParticleWorld,
+    instances: &mut [(f32, ParticleInstance, Material)],
+) -> (usize, usize) {
+    let mut cells: Vec<_> = instances
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, instance, _))| instance.axis_y[3] != 0.0)
+        .map(|(index, (_, instance, _))| {
+            let [x, y, z, _] = instance.center_light;
+            ([x, y, z].map(|c| c.floor() as i32), index)
+        })
+        .collect();
+    cells.sort_unstable_by_key(|&(cell, _)| cell);
+    let mut last = None;
+    let mut lookups = 0;
+    for &(cell, index) in &cells {
+        let sample = match last {
+            Some((previous, sample)) if previous == cell => sample,
+            _ => {
+                lookups += 1;
+                light_sample(world, cell)
+            }
+        };
+        instances[index].1.center_light[3] = sample;
+        last = Some((cell, sample));
+    }
+    (lookups, cells.len() - lookups)
+}
+
+/// Evaluates one emitter in particle order and appends its visible instances.
 fn emit_emitter(
     emitter: &mut Emitter,
     view: &ParticleView,
-    world: &dyn ParticleWorld,
     cos_limit: f32,
     out: &mut Vec<(f32, ParticleInstance, Material)>,
     hides_box: &mut impl FnMut([f32; 3], [f32; 3]) -> bool,
@@ -328,13 +364,8 @@ fn emit_emitter(
             *cave_hidden += 1;
             continue;
         }
-        let sample = if def.particle.lit {
-            light_sample(world, position.map(|c| c.floor() as i32))
-        } else {
-            0.0
-        };
         let instance = ParticleInstance {
-            center_light: [position[0], position[1], position[2], sample],
+            center_light: [position[0], position[1], position[2], 0.0],
             axis_x: [
                 right[0] * size[0],
                 right[1] * size[0],
@@ -380,16 +411,18 @@ impl ParticleSystem {
             emit_emitter(
                 emitter,
                 view,
-                world,
                 cos_limit,
                 &mut collected,
                 &mut hides_box,
                 &mut cave_hidden,
             );
         }
+        let (light_lookups, light_cache_hits) = sample_particle_light(world, &mut collected);
         collected.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
         let mut lists = DrawLists {
             cave_hidden,
+            light_lookups,
+            light_cache_hits,
             ..DrawLists::default()
         };
         for (_, instance, material) in collected {
@@ -410,7 +443,7 @@ mod tests {
     use super::*;
     use crate::{emitter::SpawnRequest, world::EmptyWorld};
 
-    fn view() -> ParticleView {
+    pub(super) fn view() -> ParticleView {
         ParticleView {
             position: [0.0, 0.0, 0.0],
             right: [1.0, 0.0, 0.0],
@@ -420,7 +453,7 @@ mod tests {
         }
     }
 
-    const EFFECT: &str = r#"{"particle_effect":{"description":{"identifier":"minecraft:quad","basic_render_parameters":{"material":"particles_alpha","texture":"textures/none"}},
+    pub(super) const EFFECT: &str = r#"{"particle_effect":{"description":{"identifier":"minecraft:quad","basic_render_parameters":{"material":"particles_alpha","texture":"textures/none"}},
       "components":{
         "minecraft:emitter_lifetime_once":{"active_time":1},
         "minecraft:emitter_rate_instant":{"num_particles":1},
@@ -676,3 +709,7 @@ mod tests {
         assert!((dot(right, right) - 1.0).abs() < 1e-4);
     }
 }
+
+#[cfg(test)]
+#[path = "draw/light_tests.rs"]
+mod light_tests;

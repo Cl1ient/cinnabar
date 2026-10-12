@@ -62,6 +62,10 @@ impl WorldAuthority {
     ) -> Option<crate::item::CanonicalItemStack> {
         self.actors.canonical_item_stack(stack)
     }
+    /// Reads intrinsic shine admitted for the current numeric item identity.
+    pub fn item_glint(&self, network_id: i32) -> assets::item::glint::ItemGlint {
+        self.actors.item_glint(network_id)
+    }
     /// The item identifier registered for a network id.
     pub fn item_identifier(&self, network_id: i32) -> Option<std::sync::Arc<str>> {
         self.actors.item_identifier(network_id)

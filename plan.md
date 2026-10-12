@@ -7879,7 +7879,7 @@ replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
 fallback drawing, pointer handling and quick-move routing. Active equippable
 components, accepted items, conditional activation, advertised custom bases and
 later mount layouts remain incomplete and do not close the entity parity gate.
-Entity carrier 21 requires a `make assets` rebuild.
+Entity carrier 22 requires a `make assets` rebuild.
 
 ### Compiled furnace fuel admission (incomplete)
 
@@ -7947,6 +7947,16 @@ the generic-mob disposition remains provisional and does not close a parity gate
 
 Compiled seat descriptors are incomplete. Every independently collected entity has a seat admission, including unresolved definitions. Authored base layouts, bounded rider counts, literal rotations and Molang rotation references are compiled before runtime; component-group names no longer select layouts. Actual group activation and rotation-expression evaluation remain unresolved, so those layouts retain streamed poses. Passenger ordering, mutable rideable components, session behavior overlays and complete native layout coverage remain open. Static count selection preserves the existing compatibility order and is provisional.
 
+### Compiled intrinsic shine (incomplete)
+
+Intrinsic shine admission remains incomplete. The versioned item descriptor retains the existing
+four admitted positive choices as provisional compatibility data and gives each independently
+admitted retail identity an explicit disposition. Written books are absent from this inventory
+and remain unresolved until their admission is independently established. Unsupported identities remain unresolved. Full native class,
+metadata and component-version coverage remains open; compiler facts alone do not close these
+parity gates. Numeric session admission and shared world/UI consumers are implemented; their
+focused tests pass. Full visible rendering, metadata and native coverage verification remain open.
+
 ## Held-item grip admission (incomplete parity)
 
 Item grip facts are compiled into entity carrier 21, checked against the separate
@@ -7964,6 +7974,18 @@ item names do not select bow or crossbow use frames. Unsupported charged project
 has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
+
+## Compiled beacon tint eligibility
+
+The block registry carries a tint or an explicit non-tinting disposition for each
+canonical state. Hardened stained glass and panes use the same palette colours
+as ordinary stained glass. Frame submission reads numeric descriptors, and
+unrecognised custom identities remain unresolved. Stale active registries require
+`make assets`.
+
+Incomplete: this descriptor does not establish beam sections, obstruction,
+activation, world height, custom block material overlays or end-to-end colour
+transfer. These remain separate acceptance gates.
 
 ## Active block-entity artwork
 

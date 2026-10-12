@@ -1,6 +1,9 @@
 //! Complete manifest/content verification before any component is compiled.
 
-include!("contract/bundle.rs");
+// BEGIN GENERATED EXTENSION CONTRACT
+// Generated from crates/server-experience/schema/extension.json; do not edit.
+pub const MANIFEST_PATH: &str = "manifest.signed.json";
+// END GENERATED EXTENSION CONTRACT
 
 use crate::{
     crypto::{self, SignedDocument},

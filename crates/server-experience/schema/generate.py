@@ -209,8 +209,19 @@ def outputs(schema):
             constants.append(f"{c['go']} = {value}")
     result={Path('tools/localserver/extension/limits.go'):HEADER+'package extension\nconst(\n'+'\n'.join(constants)+f"\nmaxDepth={schema['json']['recursion_limit']}\n)\n"}
     for module,parts in rust.items():
-        path=Path('crates/server-experience/src')/('policy.rs' if module=='policy' else f'contract/{module}.rs')
-        result[path]=HEADER+'\n'.join(parts)
+        path=Path('crates/server-experience/src')/f'{module}.rs'
+        generated=HEADER+'\n'.join(parts)
+        if module=='policy': result[path]=generated
+        else:
+            source=(ROOT/path).read_text()
+            begin='// BEGIN GENERATED EXTENSION CONTRACT\n'
+            end='// END GENERATED EXTENSION CONTRACT\n'
+            if begin in source:
+                before,rest=source.split(begin,1)
+                _,after=rest.split(end,1)
+            else:
+                before,after=source.split(f'include!("contract/{module}.rs");\n',1)
+            result[path]=before+begin+generated+end+after
     for module,parts in go.items():
         imports={'manifest':['fmt','slices','strings'], 'negotiation':[], 'crypto':[], 'session':['fmt'], 'wire':['errors','fmt','slices','strconv','github.com/hashimthearab/rust-mcbe/tools/localserver/experience']}[module]
         result[Path(f'tools/localserver/extension/contract_{module}_generated.go')]=HEADER+'package extension\n'+('import('+''.join(json.dumps(i)+'\n' for i in imports)+')\n' if imports else '')+'\n'.join(parts)

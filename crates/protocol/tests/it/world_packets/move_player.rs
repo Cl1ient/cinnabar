@@ -1,7 +1,7 @@
 use super::*;
 use bedrock_protocol_1_26_51::enums::PlayerPositionModeComponentPositionMode as MovePlayerPacketPositionMode;
 use bedrock_protocol_1_26_51::packets::MovePlayer;
-use bedrock_protocol_1_26_51::types::PlayerInputTick;
+use bedrock_protocol_1_26_51::types::{MovePlayerTeleportData, PlayerInputTick};
 use bedrock_protocol_1_26_51::wire::{Decode, Encode};
 use protocol::MovePlayerEvent;
 
@@ -28,6 +28,8 @@ fn normalizes_move_player_to_the_bounded_world_surface() {
             on_ground: false,
             teleported: false,
             source_tick: 0,
+            riding_runtime_id: 0,
+            teleport_cause: None,
         }))
     );
 }
@@ -85,7 +87,7 @@ fn move_player_rejects_every_non_finite_pose_field_and_recovers_for_valid_input(
 }
 
 #[test]
-fn move_player_normalization_preserves_mode_tick_head_yaw_and_ground() {
+fn move_player_normalization_preserves_mode_tick_head_yaw_ground_ride_and_cause() {
     let packet = MovePlayer {
         player_runtime_id: ActorRuntimeID(73),
         position: [-12.25, 65.5, 4096.75].into(),
@@ -93,8 +95,12 @@ fn move_player_normalization_preserves_mode_tick_head_yaw_and_ground() {
         y_head_rotation: wire::F32LE(99.0),
         position_mode: MovePlayerPacketPositionMode::Teleport,
         on_ground: true,
+        riding_runtime_id: ActorRuntimeID(91),
+        teleport_data: Some(MovePlayerTeleportData {
+            teleportation_cause: wire::I32LE(3),
+            source_actor_type: wire::I32LE(87),
+        }),
         tick: PlayerInputTick(12),
-        ..Default::default()
     };
 
     assert_eq!(
@@ -109,6 +115,8 @@ fn move_player_normalization_preserves_mode_tick_head_yaw_and_ground() {
             on_ground: true,
             teleported: true,
             source_tick: 12,
+            riding_runtime_id: 91,
+            teleport_cause: Some(3),
         }))
     );
 }
@@ -185,6 +193,8 @@ fn move_player_uses_varuint64_for_runtime_and_ridden_ids_above_u32() {
             on_ground: false,
             teleported: false,
             source_tick: 0,
+            riding_runtime_id: RIDDEN_RUNTIME_ID,
+            teleport_cause: None,
         }))
     );
 }

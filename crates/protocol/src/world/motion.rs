@@ -41,6 +41,11 @@ pub(super) fn normalize_move_player(
         on_ground: packet.on_ground,
         teleported: mode.is_teleport(),
         source_tick: packet.tick.0,
+        riding_runtime_id: packet.riding_runtime_id.0,
+        teleport_cause: packet
+            .teleport_data
+            .as_ref()
+            .map(|data| data.teleportation_cause.0),
     })
 }
 

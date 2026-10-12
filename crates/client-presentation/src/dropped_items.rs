@@ -330,7 +330,8 @@ impl DroppedItemPublisher<'_, '_> {
                 let (identifier, metadata) = UiPresentationRuntime::item_icon_key(
                     identifier,
                     view.item.identity.metadata,
-                    view.item.charged_projectile.as_deref(),
+                    view.item.use_animation,
+                    view.item.charged_projectile_role,
                     None,
                 );
                 if let Some(icon) = icons.item_icon(identifier, metadata) {
@@ -377,7 +378,8 @@ impl DroppedItemPublisher<'_, '_> {
                     let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
                         identifier,
                         view.item.identity.metadata,
-                        view.item.charged_projectile.as_deref(),
+                        view.item.use_animation,
+                        view.item.charged_projectile_role,
                         None,
                     );
                     let Some(model) =

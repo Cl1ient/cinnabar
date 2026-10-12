@@ -9,6 +9,7 @@ use {
     gameplay::item_use::{AirUse, UseFrame, fixtures::classify},
 };
 
+/// Builds original icons for the loaded and pulling crossbow frames.
 fn presentation() -> UiPresentationRuntime {
     let sprites = (0..6)
         .map(|index| assets::IconSprite {
@@ -36,6 +37,7 @@ fn presentation() -> UiPresentationRuntime {
     .unwrap()
 }
 
+/// Encodes an original charged stack with its matching integrity digest.
 fn crossbow(projectile: Option<&str>) -> NetworkItemStack {
     let network_id = protocol::vanilla_item_registry()
         .iter()
@@ -63,6 +65,7 @@ fn crossbow(projectile: Option<&str>) -> NetworkItemStack {
     }
 }
 
+/// Admits one authoritative slot through the normal UI inventory path.
 fn publish(
     player_runtime: &mut client_state::PlayerRuntime,
     ui: &mut UiRuntime,
@@ -87,6 +90,7 @@ fn publish(
     ui.drain_pending_inventory(player_runtime);
 }
 
+/// Seeds the diagnostic registry used to resolve the fixture drawing roles.
 fn stream() -> chunk_pipeline::WorldStream {
     let mut stream = chunk_pipeline::WorldStream::new(protocol::WorldBootstrap {
         dimension: 0,
@@ -103,6 +107,7 @@ fn stream() -> chunk_pipeline::WorldStream {
     stream
 }
 
+/// Supplies an admitted crossbow use frame for local icon prediction.
 fn charge_frame(
     player_runtime: &client_state::PlayerRuntime,
     ui: &UiRuntime,
@@ -129,10 +134,17 @@ fn charge_frame(
 fn native_crossbow_icon_uses_loaded_nbt_and_frame_minus_one_not_damage() {
     let presentation = presentation();
     let runtime = UiRuntime::new(1);
+    let stream = stream();
     for (projectile, variant) in [("minecraft:arrow", 3), ("minecraft:firework_rocket", 4)] {
         let stack = crossbow(Some(projectile));
         assert_eq!(
-            stack_icon(&runtime, &presentation, &stack, "minecraft:crossbow", None),
+            stack_icon(
+                &runtime,
+                &presentation,
+                &stack,
+                stream.authority().canonical_item_stack(&stack).unwrap(),
+                None
+            ),
             presentation.item_icon("minecraft:crossbow_pulling", variant),
         );
         // Local fire clears loaded presentation without rewriting the charged stack.
@@ -141,7 +153,7 @@ fn native_crossbow_icon_uses_loaded_nbt_and_frame_minus_one_not_damage() {
                 &runtime,
                 &presentation,
                 &stack,
-                "minecraft:crossbow",
+                stream.authority().canonical_item_stack(&stack).unwrap(),
                 Some(0)
             ),
             presentation.item_icon("minecraft:crossbow", 0),
@@ -151,13 +163,14 @@ fn native_crossbow_icon_uses_loaded_nbt_and_frame_minus_one_not_damage() {
             Some(projectile)
         );
     }
+    let uncharged = crossbow(None);
     for frame in 1..=5 {
         assert_eq!(
             stack_icon(
                 &runtime,
                 &presentation,
-                &crossbow(None),
-                "minecraft:crossbow",
+                &uncharged,
+                stream.authority().canonical_item_stack(&uncharged).unwrap(),
                 Some(frame)
             ),
             presentation.item_icon("minecraft:crossbow_pulling", frame - 1),
@@ -165,12 +178,13 @@ fn native_crossbow_icon_uses_loaded_nbt_and_frame_minus_one_not_damage() {
     }
     let mut malformed = crossbow(None);
     malformed.extra_data = Arc::from([255, 255, 1, 10]);
+    malformed.nbt_digest = Sha256::digest(&malformed.extra_data).into();
     assert_eq!(
         stack_icon(
             &runtime,
             &presentation,
             &malformed,
-            "minecraft:crossbow",
+            stream.authority().canonical_item_stack(&malformed).unwrap(),
             None
         ),
         presentation.item_icon("minecraft:crossbow", 0),

@@ -164,35 +164,50 @@ fn large_session_icons_install_without_blocking_later_server_ui_textures() {
 }
 
 #[test]
-fn stack_icon_identity_retains_loaded_projectile_and_local_frame_override() {
-    for projectile in ["minecraft:arrow", "minecraft:firework_rocket"] {
+fn stack_icon_identity_retains_admitted_roles_and_local_frame_override() {
+    use assets::item_use::{ItemProjectileRole as Projectile, ItemUseAnimation as Animation};
+    for projectile in [Projectile::Arrow, Projectile::Firework] {
         let frame = inventory::crossbow_animation_frame(None, 0, Some(projectile), false);
         assert_eq!(
-            UiPresentationRuntime::item_icon_key("minecraft:crossbow", 73, Some(projectile), None),
+            UiPresentationRuntime::item_icon_key(
+                "fixture:display",
+                73,
+                Animation::Crossbow,
+                projectile,
+                None
+            ),
             ("minecraft:crossbow_pulling", frame - 1),
         );
         assert_eq!(
             UiPresentationRuntime::item_icon_key(
-                "minecraft:crossbow",
+                "fixture:display",
                 73,
-                Some(projectile),
+                Animation::Crossbow,
+                projectile,
                 Some(0)
             ),
-            ("minecraft:crossbow", 73),
+            ("fixture:display", 73),
         );
     }
     assert_eq!(
-        UiPresentationRuntime::item_icon_key("minecraft:crossbow", 73, None, None),
+        UiPresentationRuntime::item_icon_key(
+            "minecraft:crossbow",
+            73,
+            Animation::Crossbow,
+            Projectile::None,
+            None
+        ),
         ("minecraft:crossbow", 73),
     );
     assert_eq!(
         UiPresentationRuntime::item_icon_key(
-            "minecraft:stone",
+            "minecraft:crossbow",
             2,
-            Some("minecraft:arrow"),
+            Animation::None,
+            Projectile::Arrow,
             Some(1)
         ),
-        ("minecraft:stone", 2),
+        ("minecraft:crossbow", 2),
     );
 }
 

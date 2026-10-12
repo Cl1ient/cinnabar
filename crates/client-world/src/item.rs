@@ -31,6 +31,8 @@ pub const MAX_EQUIPMENT_NOTICES: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalItemStack {
+    /// Drawing role resolved for the current numeric item registry.
+    pub use_animation: assets::item_use::ItemUseAnimation,
     /// Grip resolved for the current numeric item registry generation.
     pub grip: assets::item::grip::ItemGrip,
     pub identity: ItemStackIdentity,
@@ -509,6 +511,7 @@ impl ItemStateStore {
     fn resolve_identity(&self, identity: ItemStackIdentity) -> CanonicalItemStack {
         if identity.is_empty() {
             return CanonicalItemStack {
+                use_animation: assets::item_use::ItemUseAnimation::None,
                 charged_projectile_role: assets::item_use::ItemProjectileRole::None,
                 grip: assets::item::grip::ItemGrip::Unresolved,
                 identity,
@@ -533,6 +536,7 @@ impl ItemStateStore {
             identity.block_runtime_id,
         );
         CanonicalItemStack {
+            use_animation: self.item_use_profile(identity.network_id).animation,
             charged_projectile_role: assets::item_use::ItemProjectileRole::None,
             grip: self
                 .registry

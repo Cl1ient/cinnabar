@@ -307,14 +307,26 @@ mod tests {
             entries: Arc::from([entry(15000, "minecraft:bow", Default::default())]),
         }));
         assert_eq!(
-            store.item_use_profile(15000).animation,
+            store
+                .resolve_identity(assets::ItemStackIdentity {
+                    network_id: 15000,
+                    count: 1,
+                    ..assets::ItemStackIdentity::empty()
+                })
+                .use_animation,
             assets::item_use::ItemUseAnimation::Bow
         );
         assert!(store.apply_registry(protocol::ItemRegistryEvent {
             entries: Arc::from([entry(15000, "fixture:display", Default::default())]),
         }));
         assert_eq!(
-            store.item_use_profile(15000).animation,
+            store
+                .resolve_identity(assets::ItemStackIdentity {
+                    network_id: 15000,
+                    count: 1,
+                    ..assets::ItemStackIdentity::empty()
+                })
+                .use_animation,
             assets::item_use::ItemUseAnimation::None
         );
         assert_eq!(

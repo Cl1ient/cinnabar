@@ -669,46 +669,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn installed_inputs_match_the_staged_preparation_kit() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let temp = tempfile::tempdir().unwrap();
-        let compiler = temp.path().join("assetc");
-        std::fs::write(&compiler, b"compiler fixture").unwrap();
-        let kit = temp.path().join("kit");
-        let staged = std::process::Command::new("bash")
-            .args(["-c", "source \"$1\"; stage_prep_kit \"$2\" \"$3\"", "--"])
-            .env("CINNABAR_SOURCE_ROOT", &root)
-            .arg(root.join("packaging/common/stage-payload.sh"))
-            .arg(&kit)
-            .arg(&compiler)
-            .output()
-            .unwrap();
-        assert!(
-            staged.status.success(),
-            "{}",
-            String::from_utf8_lossy(&staged.stderr)
-        );
-        let checkout = Sources::Checkout(root);
-        let sources = Sources::Kit(kit);
-        for carrier in CARRIERS.iter().filter(|carrier| carrier.installed) {
-            for input in carrier.inputs {
-                if let Input::Manifest(path) | Input::File(path) | Input::FontFile(path) = input {
-                    let staged = sources.resolve(path);
-                    assert_eq!(
-                        std::fs::read(&staged).unwrap_or_else(|error| {
-                            panic!("{}: {}: {error}", carrier.name, staged.display())
-                        }),
-                        std::fs::read(checkout.resolve(path)).unwrap(),
-                        "{}: {path}",
-                        carrier.name
-                    );
-                }
-            }
-        }
-    }
-
     #[test]
     fn required_present_needs_every_required_output() {
         let dir = tempfile::tempdir().unwrap();

@@ -114,10 +114,15 @@ fn retained_publication_plans_no_vertex_or_index_uploads() {
 #[test]
 fn item_glint_rebinds_retained_ui_without_uploading_geometry() {
     let mut world = retained_world();
+    world.insert_resource(profile::UiProfile::with_baseline_replay(false));
     let image =
         Arc::new(render_model::UiTexturePage::owned([1, 1], Arc::from([100, 0, 0, 255])).unwrap());
     world.insert_resource(render_scene::UiItemGlintTexture(Some(image)));
     world.run_system_once(prepare_ui_bind_group).unwrap();
+    assert_eq!(
+        world.resource::<profile::UiProfile>().submitted_uploads(),
+        [[0, 1, 0], [0, 4, 0]]
+    );
     let group = world.resource::<UiGpu>().textures.buckets[0]
         .bind_group
         .as_ref()
@@ -125,6 +130,10 @@ fn item_glint_rebinds_retained_ui_without_uploading_geometry() {
         .id();
     let writes = world.resource::<UiGpu>().geometry_writes;
     world.run_system_once(prepare_ui_bind_group).unwrap();
+    assert_eq!(
+        world.resource::<profile::UiProfile>().submitted_uploads(),
+        [[0, 1, 0], [0, 4, 0]]
+    );
     assert_eq!(
         world.resource::<UiGpu>().textures.buckets[0]
             .bind_group
@@ -143,6 +152,10 @@ fn item_glint_rebinds_retained_ui_without_uploading_geometry() {
         .as_ref()
         .unwrap()
         .id();
+    assert_eq!(
+        world.resource::<profile::UiProfile>().submitted_uploads(),
+        [[0, 2, 0], [0, 12, 0]]
+    );
     assert_ne!(changed, group);
     assert_eq!(
         world
@@ -157,6 +170,10 @@ fn item_glint_rebinds_retained_ui_without_uploading_geometry() {
     );
     world.resource_mut::<render_scene::UiItemGlintTexture>().0 = None;
     world.run_system_once(prepare_ui_bind_group).unwrap();
+    assert_eq!(
+        world.resource::<profile::UiProfile>().submitted_uploads(),
+        [[0, 3, 0], [0, 16, 0]]
+    );
     assert_ne!(
         world.resource::<UiGpu>().textures.buckets[0]
             .bind_group
@@ -167,6 +184,11 @@ fn item_glint_rebinds_retained_ui_without_uploading_geometry() {
     );
     assert_eq!(world.resource::<UiGpu>().geometry_writes, writes);
     assert_eq!(world.resource::<UiGpu>().accepted_revision, Some(1));
+    world.run_system_once(prepare_ui_bind_group).unwrap();
+    assert_eq!(
+        world.resource::<profile::UiProfile>().submitted_uploads(),
+        [[0, 3, 0], [0, 16, 0]]
+    );
 }
 
 /// The actual preparation system leaves the static viewport buffer untouched after admission.

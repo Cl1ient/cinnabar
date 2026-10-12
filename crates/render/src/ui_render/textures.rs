@@ -299,7 +299,10 @@ impl UiGpuTextures {
 pub(super) fn prepare_ui_bind_group(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
-    item_glint: Option<Res<render_scene::UiItemGlintTexture>>,
+    (item_glint, profile): (
+        Option<Res<render_scene::UiItemGlintTexture>>,
+        Option<Res<super::profile::UiProfile>>,
+    ),
     pipeline_cache: Res<PipelineCache>,
     pipeline: Res<UiPipeline>,
     mut gpu: ResMut<UiGpu>,
@@ -317,6 +320,7 @@ pub(super) fn prepare_ui_bind_group(
         item_glint
             .as_ref()
             .and_then(|resource| resource.0.as_deref()),
+        profile.as_deref(),
     );
     if changed {
         stats.update(|stats| {

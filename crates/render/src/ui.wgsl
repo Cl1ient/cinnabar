@@ -182,5 +182,5 @@ fn glint(pixel: vec2<f32>) -> vec3<f32> {
         pixel.x * 0.87 + pixel.y * 0.5) / 80.0 + vec2<f32>(t * 0.21, 0.0);
     let first = textureSampleLevel(item_glint, item_glint_sampler, a, 0.0);
     let second = textureSampleLevel(item_glint, item_glint_sampler, b, 0.0);
-    return (first.rgb * first.a + second.rgb * second.a) * 0.55;
+    return (first.rgb * first.a + second.rgb * second.a) * GLINT_TINT_RGB * 0.55;
 }

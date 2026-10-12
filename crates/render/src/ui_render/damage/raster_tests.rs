@@ -520,7 +520,7 @@ fn admitted_intrinsic_glint_changes_the_production_shader_pixels() {
 }
 
 #[test]
-fn item_glint_samples_pack_colors_and_restores_pixels_without_changing_alpha() {
+fn item_glint_tints_grayscale_purple_and_restores_pack_pixels_without_changing_alpha() {
     let mut input = scene();
     input.vertices = Arc::from([]);
     input.indices = Arc::from([]);
@@ -540,6 +540,7 @@ fn item_glint_samples_pack_colors_and_restores_pixels_without_changing_alpha() {
         [100, 0, 0, 255],
         [0, 100, 0, 255],
         [100, 0, 0, 255],
+        [100, 100, 100, 255],
         [255, 255, 255, 0],
     ] {
         raster.gpu.queue.write_texture(
@@ -572,15 +573,20 @@ fn item_glint_samples_pack_colors_and_restores_pixels_without_changing_alpha() {
         let center = &pixels[((32 * SIDE + 32) * 4) as usize..][..4];
         if color[3] == 0 {
             assert_eq!(pixels, plain);
+        } else if color[0] == color[1] && color[1] == color[2] {
+            assert!(
+                center[2] > center[0] && center[0] > center[1] && center[1] > 0,
+                "grayscale artwork must retain the purple enchantment tint: {center:?}"
+            );
         } else if color[0] != 0 {
-            assert!(center[0] > 40 && center[1] == 0 && center[2] == 0);
+            assert!(center[0] > 0 && center[1] == 0 && center[2] == 0);
             if let Some(first) = &first {
                 assert_eq!(&pixels, first);
             } else {
                 first = Some(pixels);
             }
         } else {
-            assert!(center[1] > 40 && center[0] == 0 && center[2] == 0);
+            assert!(center[1] > 0 && center[0] == 0 && center[2] == 0);
         }
     }
 }

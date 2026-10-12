@@ -32,6 +32,7 @@ pub fn synthetic_entity_assets(seed: u8) -> CompiledEntityAssets {
             identifier: "minecraft:allay".into(),
             source_index: 0,
             dependencies: Box::new([]),
+            mount_equipment: crate::entity::mount::MountEquipment::Unresolved,
         }]
         .into(),
         geometries: Box::new([]),
@@ -104,6 +105,7 @@ pub fn synthetic_atmosphere_blob() -> Box<[u8]> {
 pub fn synthetic_entity_assets_for_item_use() -> CompiledEntityAssets {
     let mut compiled = synthetic_entity_assets(1);
     compiled.item_visuals = Box::from([crate::ItemVisualDefinition {
+        grip: crate::item::grip::ItemGrip::Unresolved,
         fuel: crate::item::fuel::ItemFuel::Unresolved,
         armour: crate::item::armour::ItemArmour::Unresolved,
         durability: crate::item::durability::ItemDurability::Unresolved,

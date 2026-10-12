@@ -163,6 +163,8 @@ platforms. These limits and the unresolved server-routing behavior remain open g
   `bridge`; shared skin data lives in `render-api`.
 - `launcher-host` owns authentication and core processes, account and artwork workers,
   server-list storage, storage scans, persistent login IDs, video persistence and process lifecycle services.
+  It also runs local worlds: the world store, the BDS download and the local server processes; the core
+  only receives the open world's address over `local_world.v1`. This move is not yet compiled or run.
   `client-shell` supplies the menu resources and drivers; `app` adapts session and network state.
 - `first-run` owns the standalone setup window and asset preparation flow. Shared OreUI styles
   live in `ui`, and panorama preparation lives in `render-model`. Both new crates are Bevy-free.
@@ -351,11 +353,13 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 ## Shipped OreUI fonts
 
 - Body text uses Cinnangles Seven and headings use Cinnangles Ten, derived from the shipped
-  Cinnangles Sans. Optional font carriers compile before startup and use the default font when
-  missing or invalid. OreUI no longer reads installed game fonts or rasterizes them at startup.
-- Compiled Unicode ranges supply Latin, symbols and bounded CJK coverage. The installed Noto
-  chain and its worker cache have been removed. Full Unicode coverage, script substitution,
-  bidirectional shaping and small-text raster parity remain incomplete.
+  Cinnangles Sans. Optional face bundles compile before startup and use the default font when
+  missing or invalid. OreUI reads no installed game fonts and rasterizes nothing at startup.
+- Each OreUI face maps only its Latin, Greek, Cyrillic and symbol ranges. Its bundle holds
+  unhinted FreeType rasters of them, tightly packed R8: a 52 px distance field and exact coverage
+  for physical sizes 1-9 px. The shipped Sans carrier draws every other character. This restores
+  the pre-Cinnangles OreUI text rendering. Full Unicode coverage, script substitution, bidirectional shaping and
+  distance-field rendering of CJK remain incomplete.
 - Game-bundle artwork remains a runtime input; this font change closes no native artwork,
   responsive-layout or font-parity gate.
 
@@ -4714,6 +4718,9 @@ Scope: block registry + block-state → model/texture mapping (generated export 
     - [ ] Coral fans compile spreading floor sprites and four wall mounting
       directions with replacement-pack artwork. Native-server placement and
       rendered parity acceptance remain incomplete.
+    - [ ] Tripwire hooks compile separate mounts, pitched shafts, eyes and attached
+      string in every facing and signal state. Native-server placement and
+      rendered parity acceptance remain incomplete.
     - [x] Round two: night light floors lowered to the night sky transfer,
       biome tints blend on a 4-block lattice (four taps per axis; vertical axis
       unblended, needs measurement), chains route through crossed link planes.
@@ -7566,37 +7573,26 @@ No visual parity or hardware performance gate closes with this extension.
   command is indistinguishable from the client's own feedback. No native parity
   gate closes from these changes.
 
-### Shipped font grid and coverage (incomplete text parity)
+### Shipped font grids and coverage (visual acceptance pending)
 
-Shipped carriers include every mapped source scalar. Sans uses its 18-pixel raster em;
-Seven, Ten, Five and Five Bold use 20, with one atlas texel per source-grid unit.
-Semantic line and word-space metrics come from the carrier table. OreUI rounds final
-unrotated glyph edges onto the device grid while retaining semantic sizes and tracking.
-Five and Five Bold are available as roles; current screens still use Seven and Ten.
+The Sans carrier includes every mapped source scalar at its 18-pixel raster em. The four
+generated faces use a 1000-unit em and committed pixel cells with individual widths and
+heights. The generator traces those cells into fresh outlines and writes declared advances,
+bearings and pair spacing, then keeps only each face's Latin, Greek, Cyrillic and symbol
+ranges; Sans draws every other scalar. Fonts and source manifests reproduce byte for byte.
+
+The Sans carrier preserves partial edge coverage and glyph advances in 1/64 atlas texels,
+excludes legacy character maps from Unicode lookups, and retains source bearings. Face
+bundles hold a 52 px FreeType distance field and exact 1-9 px coverage with the same advance
+precision. The runtime loader applies generated pair spacing at each raster em; layout
+includes it before wrapping. The carrier table owns line metrics. Sans pixel-grid text
+rounds final unrotated glyph edges onto the device grid; face rasters are filtered. Five and Five Bold
+are available as roles; current screens still use Seven and Ten.
+
 Missing regular, bold, italic and monospace mathematical Latin letters and digits use
-original grid-based variants built from the shipped Latin artwork. This fixes the
-sampled styled MOTD boxes; unrestricted Unicode and native fallback shaping remain open.
-
-The display faces now use original ASCII pixel drawings and declared per-glyph
-advances. Ten has heavier stems and narrower I/i; Five and Five Bold use wider,
-five-row letterforms. Seven has revised lowercase letters, digits and descenders.
-Greek and Cyrillic display capitals follow the adjusted Latin proportions. The
-generator preserves the 64-unit outline grid, complete source coverage and fixed
-metadata, and reproduces the shipped fonts and manifests byte for byte.
-
-Full parity is incomplete. Advances round to the nearest font unit, while ink
-widths and stroke weights remain quantized to the source grid. The carrier compiler
-still rounds glyph advances to whole atlas texels, limiting runtime spacing precision. Ten's 0.052-em
-bearing is represented by 0.05 em on its 20-texel carrier. Five's fine weight and
-bearing differences cannot all fit that grid. Seven's accented fallback drawings
-have not all been revised to match the new ASCII letters. A few narrow accented
-Ten capitals retain their prior forms when a mark cannot fit the adjusted base.
-At GUI scale 7, Seven's
-14-texel capital height maps to 39.2 screen pixels; preserving this size cannot also
-give every texel a uniform integer width. Rounded edges and nearest sampling do
-not close that scale/weight gate. Source line metrics retain sub-unit rounding.
-Version-matched live text-raster evidence across all GUI scales, locale shaping,
-kerning, and the remaining per-glyph differences are open gates.
+original grid-based variants built from the shipped Latin artwork. Unrestricted Unicode,
+script shaping and native fallback rendering remain open. Owner visual acceptance and
+live text rendering across scales remain open gates.
 
 ## Device render-distance defaults
 
@@ -7702,6 +7698,18 @@ The simulation clock values and finite component-duration conversion share the
 `simulation-clock` crate. Protocol consumers no longer depend on the world model
 for timing. Complete native use-kind, appetite, movement and cooldown coverage
 remains incomplete.
+
+Mount equipment admission is incomplete. Each compiled entity symbol carries a
+typed unresolved, empty, supported or provisional equipment disposition. The
+existing eleven mount layouts are retained as provisional facts in one
+hash-checked source; they do not prove active component groups or the full native
+inventory. Actor admission caches these facts, including unresolved pack
+replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
+fallback drawing, pointer handling and quick-move routing. Active equippable
+components, accepted items, conditional activation, advertised custom bases and
+later mount layouts remain incomplete and do not close the entity parity gate.
+Entity carrier 18 requires a `make assets` rebuild.
+
 ### Compiled furnace fuel admission (incomplete)
 
 Furnace quick-move fuel decisions use numeric registry facts and validated compiled inputs.
@@ -7733,9 +7741,27 @@ all provisional rule values still require verification before this gate can clos
 Item-use descriptor admission is incomplete. The carrier records explicit unresolved items against the independently collected item-visual inventory. Gameplay, animation durations, consume audio, first-person consumption and cooldown publication read numerical admissions with session component overlays. A duration alone grants no use kind or movement penalty. The stock compatibility catalog, complete native use-kind census, authored cooldown timing, special appetite modes and conflicting component/class semantics remain provisional. Authored and session facts share whole-tick conversion. Cooldown quantization and component-version precedence remain provisional.
 
 
+## Brewing stand models
+
+Brewing stands compile a central post, three feet and three bottle-selected radial panels
+from pack textures. All eight registered bottle combinations retain their own sprite
+regions. Exact server placement, native rendered comparison and broader lighting and
+performance parity remain incomplete.
+
 ## Compiled item armour
 
 - Protection and player slots live in the entity carrier; HUD capture reads numeric registry facts resolved at admission. Server wearable components replace protection without per-frame parsing.
 - Incomplete: the full armour identifier/class inventory, missing-member defaults, body slots and later component versions still need parity verification. Unverified items and malformed declarations retain explicit unresolved facts.
 
 Effective item durability is shared through required entity-carrier descriptors and session registry admission. Unknown entries and invalid declared maxima stay unresolved; UI and elytra gameplay read the admitted numeric-ID fact. This gate remains incomplete: the full damageable item inventory, native class bindings, numeric component bounds and all network replacement behavior still need verification. The pinned base table preserves the existing positive values and its coverage guard checks their membership in the independent retail inventory.
+
+## Held-item grip admission (incomplete parity)
+
+Item grip facts are compiled into entity carrier 18, checked against the separate
+retail identity inventory and copied through numeric item admission into equipment
+input. Unknown names cannot borrow a tool grip. Explicit session flags, including
+false, replace the compiled upright choice. The existing built-in grip and rod-art
+choices remain provisional compatibility data. Complete native, metadata, version
+and custom base-item coverage is incomplete. Optional Java animation name routing
+remains a separate incomplete admission path. This does not close the complete
+equipment parity gate. `make assets` rebuilds carriers that lack these records.

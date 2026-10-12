@@ -31,7 +31,7 @@ pub use facts::{ItemStackFacts, ItemStackFactsCache};
 mod registry_capacity;
 
 pub use attack::{ItemAttackCooldown, ItemAttackTiming, KineticWeaponTiming};
-pub use components::{ItemComponents, ItemUseCooldown, item_components};
+pub use components::{FoodProperties, ItemComponents, ItemUseCooldown, item_components};
 pub use display::{
     ItemBook, ItemDisplay, MAX_BOOK_PAGES, item_book, item_bundle_id, item_display,
     item_has_enchantment_list,

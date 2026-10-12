@@ -100,7 +100,7 @@ forbidden_transitive_dependencies = ["app", "bedrock-client", "asset-compiler", 
 [[crates]]
 name = "pack-compiler"
 path = "crates/pack-compiler"
-allowed_dependencies = ["simulation-clock", "assets"]
+allowed_dependencies = ["simulation-clock", "assets", "freetype-sys"]
 forbidden_dependencies = ["asset-compiler", "clap", "bevy", "wgpu"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "asset-compiler", "clap", "protocol", "client-world", "chunk-pipeline", "render", "bevy", "bevy_*", "wgpu*"]
 
@@ -389,7 +389,7 @@ forbidden_dependencies = ["bevy", "wgpu", "protocol", "world"]
 [[crates]]
 name = "ui"
 path = "crates/ui"
-allowed_dependencies = ["assets", "render-api", "semantic-input"]
+allowed_dependencies = ["json-ui", "assets", "render-api", "semantic-input"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 
 [[crates]]

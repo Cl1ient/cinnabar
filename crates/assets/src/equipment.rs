@@ -15,10 +15,12 @@ use crate::item::{ItemDisplayScalar, ItemDisplayTransform};
 use crate::{AssetError, EntityDependencyResolution};
 
 mod attack;
+mod food;
 mod use_profiles;
 pub use attack::{
     CompiledItemAttackCooldown, CompiledItemAttackTiming, CompiledKineticWeaponTiming,
 };
+pub use food::CompiledItemFood;
 pub use use_profiles::CompiledItemUseOverlay;
 
 #[cfg(test)]
@@ -26,8 +28,8 @@ pub use use_profiles::CompiledItemUseOverlay;
 mod texture_tests;
 
 pub const EQUIPMENT_CARRIER_MAGIC: [u8; 8] = *b"MCBEEQP1";
-/// Includes authored use profiles and component-precision durations; older carriers need a rebuild.
-pub const EQUIPMENT_CARRIER_VERSION: u32 = 5;
+/// Includes authored use profiles, food nutrition and component-precision durations; older carriers need a rebuild.
+pub const EQUIPMENT_CARRIER_VERSION: u32 = 6;
 pub const MAX_EQUIPMENT_BINDINGS: usize = 1024;
 pub const MAX_EQUIPMENT_IDENTIFIER_BYTES: usize = 256;
 pub const MAX_EQUIPMENT_TEXTURES: usize = 256;
@@ -191,6 +193,8 @@ struct EquipmentCatalogPayload {
     item_use: Box<[ItemUseDuration]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     item_attack: Vec<CompiledItemAttackTiming>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    item_food: Vec<CompiledItemFood>,
 }
 
 /// How long one item can be used (eaten, drunk, drawn) before it completes.
@@ -211,6 +215,7 @@ pub struct RuntimeEquipmentCatalog {
     textures: Arc<[EquipmentTexture]>,
     item_use: Arc<[ItemUseDuration]>,
     item_attack: Arc<[CompiledItemAttackTiming]>,
+    item_food: Arc<[CompiledItemFood]>,
 }
 
 impl RuntimeEquipmentCatalog {
@@ -254,6 +259,7 @@ impl RuntimeEquipmentCatalog {
         validate_item_use(&payload.item_use)?;
         attack::validate(&payload.item_attack)?;
         use_profiles::validate(&payload.item_use_overlays)?;
+        food::validate(&payload.item_food)?;
         let textures = decode_textures(&bytes[payload_end..hash_start])?;
         Ok(Self {
             source_manifest_sha256: payload.source_manifest_sha256,
@@ -262,6 +268,7 @@ impl RuntimeEquipmentCatalog {
             item_use_overlays: Arc::from(payload.item_use_overlays),
             item_use: Arc::from(payload.item_use),
             item_attack: Arc::from(payload.item_attack),
+            item_food: Arc::from(payload.item_food),
             textures: Arc::from(textures),
         })
     }
@@ -288,6 +295,7 @@ impl RuntimeEquipmentCatalog {
             item_use_overlays: Arc::from([]),
             item_use: Arc::from(Vec::new()),
             item_attack: Arc::from(Vec::new()),
+            item_food: Arc::from(Vec::new()),
         })
     }
 
@@ -308,13 +316,14 @@ impl RuntimeEquipmentCatalog {
         &self.bindings
     }
 
-    /// Use durations sorted by item identifier.
-    #[must_use]
     /// Returns authored use facts without deriving consumption from their duration.
+    #[must_use]
     pub fn item_use_overlays(&self) -> &[CompiledItemUseOverlay] {
         &self.item_use_overlays
     }
 
+    /// Use durations sorted by item identifier.
+    #[must_use]
     pub fn item_use(&self) -> &[ItemUseDuration] {
         &self.item_use
     }
@@ -323,6 +332,19 @@ impl RuntimeEquipmentCatalog {
     #[must_use]
     pub fn item_attack_timings(&self) -> &[CompiledItemAttackTiming] {
         &self.item_attack
+    }
+
+    /// Authored food components compiled from this installation's behavior pack.
+    pub fn item_foods(&self) -> &[CompiledItemFood] {
+        &self.item_food
+    }
+
+    /// Finds exact retained food metadata without inferring it from item names.
+    pub fn item_food(&self, identifier: &str) -> Option<&CompiledItemFood> {
+        self.item_food
+            .binary_search_by(|entry| entry.identifier.as_ref().cmp(identifier))
+            .ok()
+            .map(|index| &self.item_food[index])
     }
 
     /// Ticks the item can be used for, when the pack states it.
@@ -421,10 +443,11 @@ pub fn encode_equipment_catalog_with_attack_timings(
         item_use,
         item_attack,
         &[],
+        &[],
     )
 }
 
-/// Encodes complete authored use facts separately from duration and attack timing.
+/// Encodes complete authored use facts alongside nutrition, duration and attack timing.
 pub fn encode_equipment_catalog_with_use_profiles(
     source_manifest_sha256: [u8; 32],
     entity_blob_sha256: [u8; 32],
@@ -433,12 +456,14 @@ pub fn encode_equipment_catalog_with_use_profiles(
     item_use: &[ItemUseDuration],
     item_attack: &[CompiledItemAttackTiming],
     item_use_overlays: &[CompiledItemUseOverlay],
+    item_food: &[CompiledItemFood],
 ) -> Result<Vec<u8>, AssetError> {
     validate(&source_manifest_sha256, &entity_blob_sha256, bindings)?;
     validate_textures(textures)?;
     validate_item_use(item_use)?;
     attack::validate(item_attack)?;
     use_profiles::validate(item_use_overlays)?;
+    food::validate(item_food)?;
     let payload = EquipmentCatalogPayload {
         item_use_overlays: item_use_overlays.to_vec().into(),
         source_manifest_sha256,
@@ -446,6 +471,7 @@ pub fn encode_equipment_catalog_with_use_profiles(
         bindings: bindings.to_vec().into_boxed_slice(),
         item_use: item_use.to_vec().into_boxed_slice(),
         item_attack: item_attack.to_vec(),
+        item_food: item_food.to_vec(),
     };
     let payload_bytes =
         serde_json::to_vec(&payload).map_err(|_| invalid("failed to encode equipment payload"))?;

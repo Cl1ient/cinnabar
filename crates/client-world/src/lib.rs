@@ -37,7 +37,6 @@ pub use item::{
 pub use server_position::{ResolvedServerPosition, SAFE_SERVER_HEIGHT};
 
 mod authority;
-pub use authority::BiomeCommitReport;
 pub use authority::{
     AIR_DRAG_MODIFIER_ATTRIBUTE, BlockEventCue, COMMITTED_AUDIO_CAPACITY,
     COMMITTED_CAMERA_CAPACITY, COMMITTED_CONTROL_CAPACITY, COMMITTED_PARTICLE_CAPACITY,
@@ -45,4 +44,5 @@ pub use authority::{
     CommittedParticleEvent, CommittedUiEvent, MapImage, MovementSpeedAttribute,
     PublisherViewGeometry, SPRINT_SPEED_MODIFIER_ID, SignEditRequest, ViewCohort, WorldAuthority,
 };
+pub use authority::{ActorCombatEvidence, ActorCombatKind, BiomeCommitReport};
 pub use protocol::ItemAttackTiming;

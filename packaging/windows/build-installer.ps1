@@ -23,7 +23,7 @@ if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($payload)) -ne $outPath) 
 Remove-Item -LiteralPath $payload -Recurse -Force -ErrorAction SilentlyContinue
 $resources = Join-Path $payload "resources"
 $kit = Join-Path $resources "prep-kit"
-New-Item -ItemType Directory -Force (Join-Path $resources "assets"), (Join-Path $resources "licenses"), (Join-Path $resources "fonts"), (Join-Path $kit "bin"), (Join-Path $kit "assets"), (Join-Path $kit "assets/fonts"), (Join-Path $kit "data") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $resources "assets"), (Join-Path $resources "licenses"), (Join-Path $resources "fonts"), (Join-Path $kit "bin"), (Join-Path $kit "assets"), (Join-Path $kit "assets/fonts"), (Join-Path $kit "data"), (Join-Path $kit "protocol-data") | Out-Null
 Copy-Item (Join-Path $release "bedrock-client.exe"), (Join-Path $release "bedrock-core.exe"), (Join-Path $release "bedrock-local-server.exe") $payload
 Copy-Item (Join-Path $release "assetc.exe") (Join-Path $kit "bin")
 Copy-Item (Join-Path $root "crates/assets/data/block-physics-v2193.bin") (Join-Path $resources "assets")
@@ -37,13 +37,8 @@ Copy-Item $font (Join-Path $resources "fonts")
 Copy-Item (Join-Path $root "assets/*.json") (Join-Path $kit "assets")
 Copy-Item (Join-Path $root "assets/fonts/*") (Join-Path $kit "assets/fonts")
 Copy-Item (Join-Path $root "assets/oreui-icons") (Join-Path $kit "assets") -Recurse
-foreach ($stem in "block-registry", "block-light-registry", "biome-registry", "block-physics-seed") { Copy-Item (Join-Path $root "crates/assets/data/$stem-v2193.*") (Join-Path $kit "data") }
-foreach ($line in Get-Content -LiteralPath (Join-Path $PSScriptRoot "../common/prep-kit-files.tsv")) {
-    $source, $destination = $line.Split("`t")
-    $target = Join-Path $kit $destination
-    New-Item -ItemType Directory -Force (Split-Path -Parent $target) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $root $source) -Destination $target
-}
+Copy-Item (Join-Path $root "crates/assets/data/*") (Join-Path $kit "data")
+Copy-Item (Join-Path $root "crates/protocol/data/*") (Join-Path $kit "protocol-data")
 if ($env:CINNABAR_UPDATE_URL) { [System.IO.File]::WriteAllText((Join-Path $resources "update-url"), $env:CINNABAR_UPDATE_URL) }
 
 $icon = Join-Path $outPath "cinnabar.ico"

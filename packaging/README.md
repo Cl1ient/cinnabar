@@ -25,9 +25,8 @@ harness. Developer defaults stay enabled for `make play`, live testing, CI and c
 Installers also ship the bundled Cinnangles Sans font at `<resources>/fonts/`, so first-run setup can
 draw before any download.
 
-The prep kit maps checkout `assets/`, `crates/assets/data/` and `crates/protocol/data/` inputs to
-`assets/`, `data/` and `protocol-data/` directories. Extra compiler inputs are listed in
-`common/prep-kit-files.tsv`, shared by the platform builders and the payload allowlist.
+The prep kit copies checkout `assets/`, `crates/assets/data/` and `crates/protocol/data/` to its
+`assets/`, `data/` and `protocol-data/` directories.
 
 CI: `.github/workflows/package.yml`. Pushes to `main` replace the `nightly` prerelease (tag moved,
 assets replaced). To publish a stable release, run **Package** in GitHub Actions and choose

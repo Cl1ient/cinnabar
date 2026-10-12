@@ -14,7 +14,7 @@ STAGER = ROOT / "packaging/common/stage-payload.sh"
 
 class PrepKitTests(unittest.TestCase):
     def assert_resources(self, resources, platform):
-        """Require the declared payload and exact bytes for added compiler inputs."""
+        """Require the declared payload and exact bytes for the copied compiler data."""
         manifest = subprocess.run(
             ["bash", "-c", 'source "$1"; resource_manifest "$2"',
              "--", str(STAGER), platform],
@@ -24,11 +24,12 @@ class PrepKitTests(unittest.TestCase):
         actual = {path.relative_to(resources).as_posix()
                   for path in resources.rglob("*") if path.is_file()}
         self.assertEqual(actual, set(manifest))
-        for line in (ROOT / "packaging/common/prep-kit-files.tsv").read_text().splitlines():
-            source, destination = line.split("\t")
-            path = resources / "prep-kit" / destination
-            self.assertIn(f"prep-kit/{destination}", manifest)
-            self.assertEqual(path.read_bytes(), (ROOT / source).read_bytes())
+        for source, destination in (("crates/assets/data", "data"),
+                                    ("crates/protocol/data", "protocol-data")):
+            for file in (ROOT / source).iterdir():
+                path = resources / "prep-kit" / destination / file.name
+                self.assertIn(f"prep-kit/{destination}/{file.name}", manifest)
+                self.assertEqual(path.read_bytes(), file.read_bytes())
 
     @unittest.skipUnless(shutil.which("bash"), "Bash is required")
     def test_shared_stager_and_payload_manifests(self):

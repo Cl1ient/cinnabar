@@ -212,7 +212,15 @@ pub fn prepare_actor_render_frame(
         local,
         local_shadows,
         stream,
-        &mut state.shadow_poses,
+        (
+            &mut state.shadow_poses,
+            &mut state.java_poses,
+            &mut bodies.java_posed,
+        ),
+        (
+            state.java_mode && input.custom_emote.is_none(),
+            &input.local_equipment,
+        ),
         step.partial_tick,
     );
     let camera_position = cull_view

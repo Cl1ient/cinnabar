@@ -1,3 +1,4 @@
+use super::java;
 use actor_animation::ActorRigSnapshot;
 use bevy::math::Mat4;
 use bevy::prelude::{Projection, Transform};
@@ -98,21 +99,34 @@ pub(super) fn with_local_shadow_body(
     local: Option<crate::presentation::actors::ActorRigPresentation>,
     enabled: bool,
     stream: Option<&chunk_pipeline::WorldStream>,
-    poses: &mut crate::presentation::actors::PoseConversions,
+    caches: (
+        &mut crate::presentation::actors::PoseConversions,
+        &mut java::PoseScratch,
+        &mut Vec<java::Posed>,
+    ),
+    animation: (bool, &crate::presentation::equipment::ActorEquipmentInput),
     partial_tick: f32,
 ) -> Option<crate::presentation::actors::ActorRigPresentation> {
     if !enabled {
         return local;
     }
-    local.and_then(|local| local_shadow_body(local, stream, poses, partial_tick))
+    local.and_then(|local| local_shadow_body(local, stream, caches, animation, partial_tick))
 }
 
+/// Samples the selected third-person animation at the local render feet for shadow publication.
 fn local_shadow_body(
     mut local: crate::presentation::actors::ActorRigPresentation,
     stream: Option<&chunk_pipeline::WorldStream>,
-    poses: &mut crate::presentation::actors::PoseConversions,
+    caches: (
+        &mut crate::presentation::actors::PoseConversions,
+        &mut java::PoseScratch,
+        &mut Vec<java::Posed>,
+    ),
+    animation: (bool, &crate::presentation::equipment::ActorEquipmentInput),
     partial_tick: f32,
 ) -> Option<crate::presentation::actors::ActorRigPresentation> {
+    let (poses, java_poses, java_posed) = caches;
+    let (java_mode, equipment) = animation;
     match local.submission.route {
         render_model::ActorRigRoute::NoDraw => return None,
         render_model::ActorRigRoute::Diagnostic => {}
@@ -121,8 +135,37 @@ fn local_shadow_body(
                 .authority()
                 .actor_world_body_rig(local.submission.input.identity.runtime_id)?;
             let actor = stream?.authority().actor(rig.actor.runtime_id)?;
-            if !poses.apply_pose(&mut local, &rig, actor, partial_tick) {
+            let java_pose = java_mode
+                .then(|| {
+                    java::third_person(
+                        stream?,
+                        &rig,
+                        actor,
+                        Some(equipment),
+                        partial_tick,
+                        java_poses,
+                    )
+                })
+                .flatten();
+            let selected = java_pose.as_ref().map_or(&rig, |pose| &pose.rig);
+            if java_pose.is_some() {
+                local.world_yaw_degrees = crate::presentation::actors::transform::lerp_degrees(
+                    selected.previous_body_yaw,
+                    selected.body_yaw,
+                    partial_tick.clamp(0.0, 1.0),
+                );
+            }
+            if !poses.apply_pose(&mut local, selected, actor, partial_tick) {
                 return None;
+            }
+            if let Some(pose) = java_pose {
+                java::apply_pose(&mut local, &pose.bones, true, actor, partial_tick);
+                java::lift(
+                    &mut local.submission.world_from_actor,
+                    actor.is_sneaking(),
+                    true,
+                );
+                java_posed.push(pose.posed);
             }
         }
     }

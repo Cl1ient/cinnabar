@@ -368,3 +368,36 @@ import render::lighting::actor_shadow_opacity_visible;
     assert_eq!(values[1], [0.0, 1.0, 0.0, 1.0]);
     assert_eq!(values[2], [1.0; 4]);
 }
+
+#[test]
+fn wave_reprojection_requires_water_liquid_coverage_at_the_final_depth() {
+    let source = r#"
+import render::enhanced::common::CLASS_WATER;
+import render::enhanced::temporal::{water_coverage_depth,water_reprojection_surface};
+@group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>>;
+@compute @workgroup_size(1) fn regression() {
+    let depth=0.02;
+    let water=water_coverage_depth(true,CLASS_WATER,depth);
+    let glass=water_coverage_depth(false,CLASS_WATER,depth);
+    let other_liquid=water_coverage_depth(true,0u,depth);
+    results[0]=vec4(water,glass,other_liquid,0.0);
+    results[1]=vec4(
+        f32(water_reprojection_surface(true,depth,water)),
+        f32(water_reprojection_surface(true,depth,glass)),
+        f32(water_reprojection_surface(true,depth,other_liquid)),
+        f32(water_reprojection_surface(false,depth,water)));
+    results[2]=vec4(
+        f32(water_reprojection_surface(true,depth*2.0,water)),
+        f32(water_reprojection_surface(true,0.0,water)),
+        f32(water_reprojection_surface(true,depth,0.0)),
+        f32(water_reprojection_surface(true,depth,water+0.00000001)));
+}
+"#;
+    let Some(results) = execute(source, 3) else {
+        return;
+    };
+    assert!((results[0][0] - 0.02).abs() < 1e-6);
+    assert_eq!(&results[0][1..], &[0.0, 0.0, 0.0]);
+    assert_eq!(results[1], [1.0, 0.0, 0.0, 0.0]);
+    assert_eq!(results[2], [0.0, 0.0, 0.0, 1.0]);
+}

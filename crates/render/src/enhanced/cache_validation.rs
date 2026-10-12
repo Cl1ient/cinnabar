@@ -153,7 +153,16 @@ fn enhanced_pipelines_compile_through_async_cache() {
                 shader: handle,
                 entry_point: Some(fragment.into()),
                 shader_defs,
-                targets: if shadow && !motion {
+                targets: if name == "transparent_terrain" {
+                    vec![
+                        Some(ColorTargetState {
+                            format: TextureFormat::Rgba16Float,
+                            blend: Some(bevy::render::render_resource::BlendState::ALPHA_BLENDING),
+                            write_mask: ColorWrites::RED | ColorWrites::GREEN | ColorWrites::BLUE,
+                        }),
+                        Some(crate::scene_target::water_coverage::target()),
+                    ]
+                } else if shadow && !motion {
                     vec![]
                 } else if fragment == "resolve_reflections" {
                     vec![Some(super::probes::reflection_resolve_target())]

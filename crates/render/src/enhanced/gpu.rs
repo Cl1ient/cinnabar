@@ -252,7 +252,10 @@ pub(crate) fn enhanced_post_layout() -> BindGroupLayoutDescriptor {
             entry(
                 15,
                 fragment,
-                texture(TextureSampleType::Depth, TextureViewDimension::D2),
+                texture(
+                    TextureSampleType::Float { filterable: false },
+                    TextureViewDimension::D2,
+                ),
             ),
             entry(
                 14,

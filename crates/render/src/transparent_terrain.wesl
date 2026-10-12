@@ -5,6 +5,8 @@
 // refs. Both paths run the liquid and model programs' own vertex and shading functions on their
 // own outputs, so the picture matches drawing each family through its own pipeline.
 import render::chunk_bindings::TRANSPARENT_WATER_DRAW_FLAG;
+@if(ENHANCED)
+import render::enhanced::temporal::water_coverage_depth;
 import render::liquid::{VertexOutput as LiquidOutput, liquid_record, vertex_for_record, shade_liquid};
 import render::model::{VertexOutput as ModelOutput, model_vertex, shade_blend};
 
@@ -153,16 +155,27 @@ fn model_output(in: VertexOutput) -> ModelOutput {
     return model;
 }
 
+struct FragmentOutput {
+    @location(0) colour: vec4<f32>,
+    @if(ENHANCED)
+    @location(1) water_depth: f32,
+}
+
 @fragment
-fn fragment(in: VertexOutput, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+fn fragment(in: VertexOutput, @builtin(front_facing) front_facing: bool) -> FragmentOutput {
     // Derivatives stay in uniform control flow; each family only reads its own.
     let liquid_dx = dpdx(in.liquid_uv);
     let liquid_dy = dpdy(in.liquid_uv);
     let model_dx = dpdx(in.model_uv);
     let model_dy = dpdy(in.model_uv);
+    var out: FragmentOutput;
     if (in.routing.x != 0u) {
         // Packed liquid corners wind clockwise; this pipeline's front face is counter-clockwise.
-        return shade_liquid(liquid_output(in), !front_facing, liquid_dx, liquid_dy);
+        out.colour = shade_liquid(liquid_output(in), !front_facing, liquid_dx, liquid_dy);
+    } else {
+        out.colour = shade_blend(model_output(in), front_facing, model_dx, model_dy);
     }
-    return shade_blend(model_output(in), front_facing, model_dx, model_dy);
+    @if(ENHANCED)
+    out.water_depth = water_coverage_depth(in.routing.x != 0u, u32(in.tint_surface.w), in.clip_position.z);
+    return out;
 }

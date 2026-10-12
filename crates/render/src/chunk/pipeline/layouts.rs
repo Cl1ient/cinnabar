@@ -217,6 +217,13 @@ impl Specializer<RenderPipeline> for ChunkPipelineSpecializer {
         };
         #[cfg(feature = "enhanced")]
         if render_model::enhanced_rendering_enabled() && key.enhanced {
+            if descriptor
+                .fragment
+                .as_ref()
+                .is_some_and(|fragment| fragment.shader == TRANSPARENT_SHADER_HANDLE)
+            {
+                crate::scene_target::water_coverage::apply_pipeline(descriptor);
+            }
             descriptor
                 .layout
                 .push(crate::enhanced::enhanced_view_layout());

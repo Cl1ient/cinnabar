@@ -1,3 +1,16 @@
+import render::enhanced::common::CLASS_WATER;
+
+/// Only water liquid fragments write coverage; glass, ice and other liquids clear it.
+fn water_coverage_depth(liquid:bool,surface_class:u32,depth:f32)->f32 {
+    return select(0.0,depth,liquid && (surface_class&CLASS_WATER)!=0u);
+}
+
+/// A later depth-writing surface can hide water without using the terrain coverage target.
+fn water_reprojection_surface(enabled:bool,depth:f32,water_depth:f32)->bool {
+    return enabled && depth>0.00001 && water_depth>0.0
+        && abs(depth-water_depth)<=max(0.0000001,depth*0.00001);
+}
+
 fn temporal_luminance(rgb:vec3<f32>)->f32 {return dot(rgb,vec3(0.2126,0.7152,0.0722));}
 fn temporal_ycocg(rgb:vec3<f32>)->vec3<f32>{return vec3(dot(rgb,vec3(0.25,0.5,0.25)),rgb.r*0.5-rgb.b*0.5,-rgb.r*0.25+rgb.g*0.5-rgb.b*0.25);}
 fn temporal_rgb(v:vec3<f32>)->vec3<f32>{return vec3(v.x+v.y-v.z,v.x+v.z,v.x-v.y-v.z);}

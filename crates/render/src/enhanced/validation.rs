@@ -10,6 +10,10 @@ pub(super) fn variants() -> Vec<Variant> {
         ("chunk", include_str!("../chunk.wesl")),
         ("model", include_str!("../model.wesl")),
         ("liquid", include_str!("../liquid.wesl")),
+        (
+            "transparent_terrain",
+            include_str!("../transparent_terrain.wesl"),
+        ),
     ] {
         result.push((
             name,
@@ -171,6 +175,7 @@ pub(super) fn variant_shader(name: &str) -> bevy::prelude::Shader {
         "chunk" | "chunk_motion" => include_str!("../chunk.wesl"),
         "model" | "model_motion" => include_str!("../model.wesl"),
         "liquid" => include_str!("../liquid.wesl"),
+        "transparent_terrain" => include_str!("../transparent_terrain.wesl"),
         "actor" | "actor_motion" => include_str!("../actor.wesl"),
         "capture_probe" | "filter_mip" | "resolve_reflections" | "cloud_environment" => {
             include_str!("probe.wesl")
@@ -196,7 +201,10 @@ pub(super) fn variant_definitions(name: &str, shadow: bool) -> &'static [&'stati
         &["ENHANCED_SHADOW", "ENHANCED_MOTION"]
     } else if shadow {
         &["ENHANCED_SHADOW"]
-    } else if matches!(name, "chunk" | "model" | "liquid" | "actor") {
+    } else if matches!(
+        name,
+        "chunk" | "model" | "liquid" | "actor" | "transparent_terrain"
+    ) {
         &["ENHANCED"]
     } else {
         &[]
@@ -329,7 +337,18 @@ fn build_native_pipelines() {
             label: Some(name),
             source: wgpu::ShaderSource::Wgsl(native_source(name, shadow).into()),
         });
-        let targets = if fragment == "resolve_local_shadows" {
+        let targets = if name == "transparent_terrain" {
+            vec![
+                Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::RED
+                        | wgpu::ColorWrites::GREEN
+                        | wgpu::ColorWrites::BLUE,
+                }),
+                Some(crate::scene_target::water_coverage::target()),
+            ]
+        } else if fragment == "resolve_local_shadows" {
             vec![
                 Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba16Float,

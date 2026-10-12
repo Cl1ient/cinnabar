@@ -113,7 +113,6 @@ struct PostInputs<'a> {
     opaque: &'a TextureView,
     shafts: &'a TextureView,
     depth: &'a TextureView,
-    opaque_depth: &'a TextureView,
     shadow: &'a TextureView,
     history: &'a TextureView,
     effects: &'a TextureView,
@@ -121,6 +120,7 @@ struct PostInputs<'a> {
     exposure: &'a Buffer,
     motion: &'a TextureView,
     receiver_normal: &'a TextureView,
+    water_depth: &'a TextureView,
     noise: &'a super::cloud_noise::CloudNoiseVolume,
     scattering: &'a super::multiple_scattering::MultipleScattering,
 }
@@ -155,7 +155,7 @@ fn post_bind_group(
             inputs.opaque.id(),
             inputs.shafts.id(),
             inputs.depth.id(),
-            inputs.opaque_depth.id(),
+            inputs.water_depth.id(),
             inputs.shadow.id(),
             inputs.history.id(),
             inputs.effects.id(),
@@ -239,7 +239,7 @@ fn post_bind_group(
                     },
                     BindGroupEntry {
                         binding: 15,
-                        resource: BindingResource::TextureView(inputs.opaque_depth),
+                        resource: BindingResource::TextureView(inputs.water_depth),
                     },
                     BindGroupEntry {
                         binding: 16,
@@ -372,13 +372,13 @@ pub(crate) fn enhanced_lighting(
                 opaque: black,
                 shafts: black,
                 depth: &scene.depth_view,
-                opaque_depth: &scene.depth_view,
                 shadow,
                 history: black,
                 effects,
                 sky,
                 exposure: &state.exposure.value,
                 motion: &scene.motion_view,
+                water_depth: black,
                 receiver_normal: &scene.receiver_normal_view,
             },
         )
@@ -508,10 +508,6 @@ pub(crate) fn enhanced_sky(
             opaque: black,
             shafts: black,
             depth: crate::scene_sampling::view_depth(depth),
-            opaque_depth: state
-                .scene
-                .as_ref()
-                .map_or(&gpu.fallback_depth, |scene| &scene.depth_view),
             shadow,
             history: black,
             effects: &post.effects,
@@ -521,6 +517,7 @@ pub(crate) fn enhanced_sky(
                 .scene
                 .as_ref()
                 .map_or(black, |scene| &scene.motion_view),
+            water_depth: black,
             receiver_normal: state
                 .scene
                 .as_ref()
@@ -649,10 +646,6 @@ pub(crate) fn enhanced_post(
                 opaque: state.scene.as_ref().map_or(black, |scene| &scene.mips[0]),
                 shafts,
                 depth: &depth.view,
-                opaque_depth: state
-                    .scene
-                    .as_ref()
-                    .map_or(&gpu.fallback_depth, |scene| &scene.depth_view),
                 shadow,
                 history,
                 effects,
@@ -662,6 +655,10 @@ pub(crate) fn enhanced_post(
                     .scene
                     .as_ref()
                     .map_or(black, |scene| &scene.motion_view),
+                water_depth: scene
+                    .water_coverage
+                    .as_ref()
+                    .map_or(black, |coverage| &coverage.view),
                 receiver_normal: state
                     .scene
                     .as_ref()

@@ -5,7 +5,7 @@ import render::enhanced::clouds::{integrate_clouds, cloud_shadow, cloud_history_
 import render::enhanced::ao::{horizon_ao, screen_contact_shadow, ao_world_position};
 import render::enhanced::shadow::sun_shadow_sample;
 import render::enhanced::water::{water_surface_offset};
-import render::enhanced::temporal::{temporal_ycocg, temporal_rgb, temporal_depth_matches, temporal_transparency_reactivity, temporal_history_sample, temporal_clip, temporal_sharpen, temporal_display_curve};
+import render::enhanced::temporal::{water_reprojection_surface, temporal_ycocg, temporal_rgb, temporal_depth_matches, temporal_transparency_reactivity, temporal_history_sample, temporal_clip, temporal_sharpen, temporal_display_curve};
 
 @group(0) @binding(0) var<uniform> frame:EnhancedFrame;
 @group(0) @binding(1) var source_texture:texture_2d<f32>;
@@ -20,7 +20,7 @@ import render::enhanced::temporal::{temporal_ycocg, temporal_rgb, temporal_depth
 @group(0) @binding(10) var sky_texture:texture_2d<f32>;
 @group(0) @binding(11) var<storage, read> exposure:vec4<f32>;
 @group(0) @binding(12) var motion_texture:texture_2d<f32>;
-@group(0) @binding(15) var opaque_depth_texture:texture_depth_2d;
+@group(0) @binding(15) var water_depth_texture:texture_2d<f32>;
 @group(0) @binding(16) var receiver_normal_texture:texture_2d<f32>;
 
 fn luminance(rgb:vec3<f32>)->f32 {return dot(rgb,vec3(0.2126,0.7152,0.0722));}
@@ -175,11 +175,8 @@ fn filtered_effects(uv:vec2<f32>,depth:f32)->vec4<f32> {
     var previous_uv=(previous_clip.xy/max(previous_clip.w,0.00001))*vec2(0.5,-0.5)+vec2(0.5);
     var expected=select(frame.projection.x*previous_clip.w/max(previous_clip.z,0.00001),0.0,depth<=0.00001);
     let motion=textureLoad(motion_texture,pixel,0);
-    let opaque_depth=textureLoad(opaque_depth_texture,pixel,0);
-    let opaque_distance=frame.projection.x/max(opaque_depth,0.000001);
-    // Water owns the foreground depth; opaque motion belongs to submerged geometry.
-    let water_surface=(frame.flags.x&FEATURE_WATER)!=0u && depth>0.00001
-        && (opaque_depth<=0.00001 || distance<opaque_distance-max(0.025,distance*0.0001));
+    let water_depth=textureLoad(water_depth_texture,pixel,0).r;
+    let water_surface=water_reprojection_surface((frame.flags.x&FEATURE_WATER)!=0u,depth,water_depth);
     if(water_surface){
         var previous_world=ao_world_position(frame,uv,depth);
         if((frame.flags.x&FEATURE_WAVING)!=0u){

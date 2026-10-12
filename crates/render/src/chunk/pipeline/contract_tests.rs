@@ -28,6 +28,11 @@ fn enhanced_liquid_retains_surface_depth_for_underwater_transport_and_history() 
     let fragment = descriptor.fragment.as_ref().unwrap();
     assert!(fragment.shader_defs.contains(&"ENHANCED".into()));
     assert!(!fragment.shader_defs.contains(&"NATIVE_GAMMA_BLEND".into()));
+    assert_eq!(fragment.targets.len(), 2);
+    assert_eq!(
+        fragment.targets[1],
+        Some(crate::scene_target::water_coverage::target())
+    );
 }
 
 #[test]

@@ -619,3 +619,7 @@ mod tests;
 #[cfg(test)]
 #[path = "java/hand_tests.rs"]
 mod hand_tests;
+
+#[cfg(test)]
+#[path = "java/shadow_tests.rs"]
+mod shadow_tests;

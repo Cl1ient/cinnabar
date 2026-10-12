@@ -53,7 +53,7 @@ pub mod startup;
 pub mod texture_atlas;
 
 pub use debug_overlay::DebugLines;
-pub use forms::{BedHit, ChatHit, ExperienceModal, LoadingStage, ModScreensInput, ModalEdits};
+pub use forms::{BedHit, ChatHit, LoadingStage};
 pub use hud_layout::HudFrame;
 use hud_layout::{HudGeometry, HudLayout};
 use launcher::menu::{MenuAction, MenuView};

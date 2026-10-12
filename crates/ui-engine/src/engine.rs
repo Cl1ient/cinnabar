@@ -20,6 +20,7 @@ use {crate::text_metrics::TextMetrics, ui::FONT_DESIGN_PIXEL_TEXELS};
 mod fill_renderers;
 mod formatting_colors;
 pub mod host_edit;
+pub mod item_renderer;
 #[cfg(test)]
 mod ownership_tests;
 pub mod pack_catalog;

@@ -657,8 +657,10 @@ fn focused_fields_respect_the_blink_phase_and_hide_carets_during_selection() {
 
 #[test]
 fn play_tabs_draw_the_installed_native_icons() {
-    use crate::ui_runtime::oreui_assets::{PLAY_TAB_ICONS, load_optional_oreui_images};
-    let Some(images) = load_optional_oreui_images() else {
+    use crate::ui_runtime::oreui_assets::{
+        PLAY_TAB_ICONS, checkout_compiled_dir, load_optional_oreui_images,
+    };
+    let Some(images) = load_optional_oreui_images(&checkout_compiled_dir()) else {
         eprintln!(
             "skipping play_tabs_draw_the_installed_native_icons: installed OreUI bundle unavailable"
         );

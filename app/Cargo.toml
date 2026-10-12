@@ -94,6 +94,7 @@ actor-animation = { path = "../crates/actor-animation" }
 image.workspace = true
 json-ui = { path = "../crates/json-ui" }
 meshing = { path = "../crates/meshing" }
+mod-ui = { path = "../crates/mod-ui" }
 mod-host = { path = "../crates/mod-host", default-features = false }
 particles = { path = "../crates/particles" }
 protocol = { path = "../crates/protocol" }

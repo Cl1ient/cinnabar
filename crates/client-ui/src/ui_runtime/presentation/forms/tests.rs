@@ -910,12 +910,16 @@ fn fallback_form_preserves_host_owned_presentation_state() {
     let runtime = super::pack_harness::action_form(&mut player_runtime, "Menu", &["A"]);
     let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
     presentation
+        .mod_ui_mut()
         .set_experience_chrome(Some("Trusted status"), false)
         .unwrap();
-    presentation.set_mod_label(Some("Extension label")).unwrap();
+    presentation
+        .mod_ui_mut()
+        .set_mod_label(Some("Extension label"))
+        .unwrap();
     super::pack_harness::render(&mut presentation, &runtime, [1280, 720], 1.0);
-    assert!(presentation.screens.experience.is_some());
-    assert!(presentation.screens.mod_hud.is_some());
+    assert!(presentation.mod_ui().experience_chrome_installed());
+    assert!(presentation.mod_ui().mod_label_passes().is_some());
 }
 
 #[test]

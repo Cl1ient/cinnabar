@@ -97,7 +97,9 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
         );
         return;
     };
-    let Some(images) = crate::ui_runtime::oreui_assets::load_optional_oreui_images()
+    let Some(images) = crate::ui_runtime::oreui_assets::load_optional_oreui_images(
+        &crate::ui_runtime::oreui_assets::checkout_compiled_dir(),
+    )
         .filter(|images| !images.loading_frames.is_empty())
     else {
         eprintln!(

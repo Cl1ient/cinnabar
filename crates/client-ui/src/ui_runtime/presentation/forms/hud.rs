@@ -7,12 +7,10 @@ use json_ui::{
     BossBar, CROSSHAIR_SCREEN, Catalog, HUD_SCREEN, HudModel, HudSlot, HudTitle, Sidebar, Timed,
     hud_context,
 };
+use mod_ui::crosshair::CrosshairRenderer;
 use ui::{IconRef, TimedText, UiNode};
 use ui_engine::{
-    engine::{
-        Canvas,
-        screen::{CustomDraw, CustomRenderer, PaintError, PaintFrame},
-    },
+    engine::screen::{CustomRenderer, PaintFrame},
     text_metrics::TextMetrics,
 };
 use ui_screens::hud::HudInput;
@@ -42,25 +40,6 @@ const SIDEBAR_TITLE_OPACITY: f64 = 0.4;
 const ITEM_NAME_MILLIS: u64 = 2_000;
 /// Display cap for stacked boss bars; the retained store holds more.
 const MAX_BOSS_BARS: usize = 8;
-
-/// A mod's cosmetic cursor, drawn in place of the native crosshair while that shows.
-struct ModCrosshair {
-    spec: ui::mod_hud::Crosshair,
-    /// Whether the native crosshair shows this frame.
-    shown: bool,
-}
-
-impl CustomRenderer for ModCrosshair {
-    fn paint(
-        &mut self,
-        node: &CustomDraw<'_>,
-        canvas: &mut Canvas<'_>,
-    ) -> Result<bool, PaintError> {
-        Ok(self.shown
-            && node.renderer == "cursor_renderer"
-            && super::mod_crosshair::paint(canvas, &self.spec, node.dest))
-    }
-}
 
 /// Resolves the HUD screens of `catalog` under both chat placements on the calling thread, and
 /// returns the textures their controls name.
@@ -118,7 +97,7 @@ impl UiPresentationRuntime {
                 .scoreboard
                 .refresh(runtime.scoreboards(), &self.scoreboard_owner_names)
                 .map(sidebar_model);
-            let sidebar = if self.mod_scoreboard_hidden() {
+            let sidebar = if self.screens.mod_ui.mod_scoreboard_hidden() {
                 None
             } else {
                 sidebar
@@ -132,7 +111,7 @@ impl UiPresentationRuntime {
                 &mut icons,
                 options,
             );
-            if self.mod_effect_icons_hidden() {
+            if self.screens.mod_ui.mod_effect_icons_hidden() {
                 model.effects_visible = false;
             }
             super::settings_chat::apply_hud(options, &mut model);
@@ -150,7 +129,7 @@ impl UiPresentationRuntime {
             self.hud_textures.as_ref(),
             &self.screens.chat.settings.options,
         );
-        if let Some(style) = self.mod_hunger_overlay() {
+        if let Some(style) = self.screens.mod_ui.mod_hunger_overlay() {
             paint.hunger.set_overlay(
                 style,
                 runtime.gameplay_hud().saturation(),
@@ -167,17 +146,14 @@ impl UiPresentationRuntime {
             // Inverting the same pixels twice restores the world behind the cursor.
             paint.crosshair = None;
         }
-        if self.mod_effect_icons_hidden() {
+        if self.screens.mod_ui.mod_effect_icons_hidden() {
             paint.effects.clear();
         }
-        let mut custom_crosshair = self
-            .mod_hud_visible(player_runtime, runtime)
-            .then(|| self.screens.mod_crosshair.clone())
-            .flatten()
-            .map(|spec| ModCrosshair {
-                spec,
-                shown: paint.crosshair.is_some(),
-            });
+        let crosshair_spec = if self.mod_hud_visible(player_runtime, runtime) {
+            self.screens.mod_ui.mod_crosshair().cloned()
+        } else {
+            None
+        };
         let translate = |key: &str| runtime.translation(key);
         let preview_view = std::cell::Cell::new(None);
         let mut preview = PreviewRenderer {
@@ -185,11 +161,11 @@ impl UiPresentationRuntime {
             view: Some(&preview_view),
             ..PreviewRenderer::default()
         };
-        let mut renderers: Vec<&mut dyn CustomRenderer> = Vec::with_capacity(2);
-        renderers.push(&mut preview);
-        if let Some(custom) = custom_crosshair.as_mut() {
-            renderers.push(custom);
-        }
+        let mut custom_crosshair = CrosshairRenderer {
+            spec: crosshair_spec.as_ref(),
+            visible: paint.crosshair.is_some(),
+        };
+        let mut renderers: [&mut dyn CustomRenderer; 2] = [&mut custom_crosshair, &mut preview];
         let mut paint_frame = PaintFrame {
             layouts: &mut self.layouts,
             font: &self.font,

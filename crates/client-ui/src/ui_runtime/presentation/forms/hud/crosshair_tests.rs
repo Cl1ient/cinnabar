@@ -1,10 +1,8 @@
-use super::ModCrosshair;
 use crate::test_support::{fixture_font, mini_carrier};
 use crate::ui_runtime::presentation::forms::screen_registry::registry;
 use json_ui::{Catalog, Context, DataSource, ViewState};
 use ui::FONT_DESIGN_PIXEL_TEXELS;
 use ui::{DpiScale, SafeArea, TextLayoutCache, UiNode, UiVisual};
-use ui_engine::engine::screen::CustomRenderer;
 use ui_engine::text_metrics::TextMetrics;
 use ui_engine::{
     atlas::ServerAtlas,
@@ -64,20 +62,6 @@ fn draw_custom(
         crosshair_blend: blend,
         ..Default::default()
     };
-    // The HUD composition places a mod's cursor ahead of the native renderers.
-    let mut custom = custom.map(|spec| ModCrosshair {
-        spec,
-        shown: hud.crosshair.is_some(),
-    });
-    let mut native = HudRenderer {
-        hud: &hud,
-        hunger_update: None,
-    };
-    let mut renderers: Vec<&mut dyn CustomRenderer> = Vec::with_capacity(2);
-    if let Some(custom) = custom.as_mut() {
-        renderers.push(custom);
-    }
-    renderers.push(&mut native);
     let mut layouts = TextLayoutCache::new(32, 1024 * 1024);
     let mut nodes = Vec::new();
     let mut next = 1;
@@ -100,7 +84,16 @@ fn draw_custom(
                 now: 0.0,
                 nodes: &mut nodes,
                 next: &mut next,
-                renderers: &mut renderers,
+                renderers: &mut [
+                    &mut mod_ui::crosshair::CrosshairRenderer {
+                        spec: custom.as_ref(),
+                        visible,
+                    },
+                    &mut HudRenderer {
+                        hud: &hud,
+                        hunger_update: None,
+                    },
+                ],
             },
         )
         .unwrap()

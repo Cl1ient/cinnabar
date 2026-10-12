@@ -291,6 +291,14 @@ Admitted live biome identifiers and climate now travel with the session tint reg
 the vendored client session crate is removed. Startup ordering, terminal transfers and
 disconnects, and the one-shot initialization keep their regression coverage through a scripted
 core; those tests have not been executed locally. No existing completion entry is advanced.
+## Controller particle attachments
+
+Typed locator and initialization contracts are implemented. Independent pinned
+controller coverage and focused emitter/placement regressions are added. Pending
+placement retries after temporary zero scale; existing attachments retain their
+actor lifetime. Particle placement samples each needed actor once per frame. The
+unsupported query grammar, skin locator, child-event placement, fallback and
+animated gallery checks in `plan.md` remain open. No completion entry advances.
 
 ## Cached beacon beam sections
 

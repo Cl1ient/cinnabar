@@ -244,12 +244,13 @@ pub(super) struct MolangVariables {
     writes: Vec<u64>,
 }
 
-/// Borrowed owner script values, copied by name when an item uses another asset catalog.
+/// Completed owner query clocks and borrowed script values for equipment and particles.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ActorAnimationVariables<'a> {
     assets: Option<&'a RuntimeEntityAssets>,
     variables: Option<&'a MolangVariables>,
     life_tick: u64,
+    anim_tick: u64,
     input: Option<ActorTickInput>,
     item_context: Option<&'a ActorTickContext>,
     complete_spear: bool,

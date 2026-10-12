@@ -407,7 +407,7 @@ fn owner_variables_copy_by_name_between_catalogs_with_different_slots() {
         owner_layout.named_slot(&owner, "variable.charge_amount"),
         0.75,
     );
-    let inherited = ActorAnimationVariables::new(Some(&owner), &values, 77);
+    let inherited = ActorAnimationVariables::new(Some(&owner), &values, 77, 0);
     let mut copied = target_layout.fresh(1);
     inherited.copy_to(&target, &target_layout, &mut copied);
     assert_eq!(

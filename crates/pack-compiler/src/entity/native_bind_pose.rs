@@ -96,6 +96,7 @@ mod tests {
             texture_width: None,
             texture_height: None,
             bones: vec![EntityGeometryBone {
+                locators: Box::default(),
                 name: "body".into(),
                 parent: None,
                 pivot: None,

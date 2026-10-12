@@ -186,6 +186,7 @@ mod tests {
                 "controller.animation.hive.hub.game.idle.particle",
                 "default",
             )
+            .map(|effect| (effect.identifier, effect.bound))
             .collect();
         assert_eq!(effects, [("hivehub:game_wars", true)]);
         let effects: Vec<_> = system
@@ -195,6 +196,7 @@ mod tests {
                 "controller.animation.hive.hub.game.idle.particle",
                 "default",
             )
+            .map(|effect| (effect.identifier, effect.bound))
             .collect();
         assert_eq!(effects, [("hivehub:game_sky", true)]);
     }

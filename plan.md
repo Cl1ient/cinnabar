@@ -7884,7 +7884,7 @@ replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
 fallback drawing, pointer handling and quick-move routing. Active equippable
 components, accepted items, conditional activation, advertised custom bases and
 later mount layouts remain incomplete and do not close the entity parity gate.
-Entity carrier 22 requires a `make assets` rebuild.
+Entity carrier 23 requires a `make assets` rebuild.
 
 ### Compiled furnace fuel admission (incomplete)
 
@@ -7979,6 +7979,21 @@ item names do not select bow or crossbow use frames. Unsupported charged project
 has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
+## Controller particle attachments
+
+Controller effects retain typed locator references and compiled initialization
+programs. Locator attachments follow the sampled actor placement and inherited
+skeleton; initialization reads the emitter's variables and, for bound effects, the actor's
+numeric query context before any particle is emitted. Bound effects retire with their
+actor lifetime. Temporary zero scale retains attachments and pending state entries
+retry placement when scale returns. Particle spawning and attachment updates share
+one lazy pose sample per actor per frame. The annotation coverage guard reads the
+pinned controller files.
+
+Incomplete parity: function-style actor queries outside the particle expression
+grammar, skin-authored locators, bound child-event offsets under rotation, fallback
+placement without a rig, and the full animated locator gallery remain unverified.
+Frame and streaming performance acceptance remains open. No parity gate closes.
 
 ## Cached beacon beam sections
 

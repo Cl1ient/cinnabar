@@ -63,21 +63,6 @@ pub(super) struct ModPanel {
 }
 
 impl ModUi {
-    /// Installs worker-prepared local routes; at most four active component catalogs are kept.
-    pub fn preload_panel_bundle(&mut self, prepared: Arc<prepared::PreparedPanelUi>) {
-        if self
-            .prepared_panel_ui
-            .iter()
-            .any(|current| current.same_bundle(&prepared))
-        {
-            return;
-        }
-        if self.prepared_panel_ui.len() == 4 {
-            self.prepared_panel_ui.remove(0);
-        }
-        self.prepared_panel_ui.push(prepared);
-    }
-
     /// Drops the panel's laid-out text and pointer capture after its private font changed.
     pub fn invalidate_mod_panel_font(&mut self) {
         self.cancel_mod_hud_editor();
@@ -116,7 +101,7 @@ impl ModUi {
             .is_some_and(|current| template::same_shape(&current.panel, panel));
         let prepared = self
             .prepared_panel_ui
-            .iter()
+            .values()
             .rev()
             .find_map(|prepared| prepared.route(panel));
         if same_shape || prepared.is_some() {

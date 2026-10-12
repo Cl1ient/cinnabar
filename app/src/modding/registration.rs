@@ -524,11 +524,10 @@ fn install(world: &mut World, update: Update) {
                             presentation
                                 .mod_ui_mut()
                                 .set_mod_crosshair(candidate.host.crosshair())?;
-                            if let Some(prepared) = &candidate.panel_ui {
-                                presentation
-                                    .mod_ui_mut()
-                                    .preload_panel_bundle(Arc::clone(prepared));
-                            }
+                            presentation.mod_ui_mut().set_prepared_panel_ui(
+                                mod_ui::PanelUiOwner::Registration,
+                                candidate.panel_ui.clone(),
+                            );
                             presentation
                                 .mod_ui_mut()
                                 .set_mod_panel(candidate.host.panel())?;

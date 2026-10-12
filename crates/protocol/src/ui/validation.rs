@@ -289,7 +289,6 @@ fn validate_soft_enum(packet: &packets::UpdateSoftEnum) -> Result<(), UiPacketEr
     Ok(())
 }
 
-/// Text message types run 0 through 11; the generated enum names only the message-only ones.
 /// Rejects a Text message type the protocol does not name.
 fn known_text_type(message_type: TextPacketType) -> Result<(), UiPacketError> {
     match message_type {

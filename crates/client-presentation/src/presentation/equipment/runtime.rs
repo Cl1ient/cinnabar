@@ -116,7 +116,7 @@ pub struct EquipmentRuntime {
     skulls: BTreeMap<u8, (EntityRigId, ActorArtworkLocation)>,
     item_use: Arc<BTreeMap<Box<str>, u32>>,
     /// The startup catalog's use durations, before session items join them.
-    use_overlays: Arc<BTreeMap<Box<str>, assets::CompiledItemUseOverlay>>,
+    use_overlays: Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>>,
     base_item_use: Arc<BTreeMap<Box<str>, u32>>,
     /// Compiled attack facts with the session's component overrides.
     item_attack: Arc<BTreeMap<Box<str>, protocol::ItemAttackTiming>>,
@@ -337,7 +337,9 @@ impl EquipmentRuntime {
 
     /// Item use durations for the animation runtime's max-duration query.
     /// Shares immutable authored facts with the numerical gameplay and audio cache.
-    pub fn item_use_overlays(&self) -> Arc<BTreeMap<Box<str>, assets::CompiledItemUseOverlay>> {
+    pub fn item_use_overlays(
+        &self,
+    ) -> Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>> {
         Arc::clone(&self.use_overlays)
     }
 

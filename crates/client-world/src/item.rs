@@ -131,7 +131,7 @@ pub(crate) struct ItemStateStore {
     persistent_armor_runtime: Option<u64>,
     use_durations: Option<Arc<BTreeMap<Box<str>, u32>>>,
     use_profiles: BTreeMap<i32, EffectiveItemUse>,
-    use_overlays: Option<Arc<BTreeMap<Box<str>, assets::CompiledItemUseOverlay>>>,
+    use_overlays: Option<Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>>>,
     attack_timings: Option<Arc<BTreeMap<Box<str>, protocol::ItemAttackTiming>>>,
     notices: Vec<EquipmentNotice>,
 }

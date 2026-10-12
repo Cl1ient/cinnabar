@@ -383,7 +383,7 @@ impl WorldAuthority {
     pub fn set_item_use_overlays(
         &mut self,
         overlays: std::sync::Arc<
-            std::collections::BTreeMap<Box<str>, assets::CompiledItemUseOverlay>,
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
         >,
     ) {
         self.actors.set_item_use_overlays(overlays)

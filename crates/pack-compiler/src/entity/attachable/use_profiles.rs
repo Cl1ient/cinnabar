@@ -2,7 +2,7 @@
 
 use super::*;
 use assets::{
-    CompiledItemUseOverlay,
+    equipment::CompiledItemUseOverlay,
     item_use::{ItemConsumption, ItemUseCategory},
 };
 

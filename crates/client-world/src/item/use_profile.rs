@@ -174,7 +174,7 @@ impl ItemStateStore {
 
 /// Converts parsed wire evidence once before applying the common authored overlay.
 fn overlay_components(profile: &mut ItemUseProfile, components: &protocol::ItemComponents) {
-    let overlay = assets::CompiledItemUseOverlay {
+    let overlay = assets::equipment::CompiledItemUseOverlay {
         identifier: Box::from(""),
         duration_ticks: components.use_duration_ticks,
         food_can_always_eat: components.food_can_always_eat,
@@ -199,7 +199,10 @@ fn overlay_components(profile: &mut ItemUseProfile, components: &protocol::ItemC
 }
 
 /// Applies explicit fields while duration alone leaves consumption unresolved.
-fn overlay_authored(profile: &mut ItemUseProfile, overlay: &assets::CompiledItemUseOverlay) {
+fn overlay_authored(
+    profile: &mut ItemUseProfile,
+    overlay: &assets::equipment::CompiledItemUseOverlay,
+) {
     if overlay.food_can_always_eat.is_some() && matches!(profile, ItemUseProfile::Unresolved) {
         *profile = ItemUseProfile::Provisional {
             kind: ItemUseKind::Hold,
@@ -248,7 +251,7 @@ impl ItemStateStore {
     /// Installs immutable compiled authored facts and rebuilds only after a source replacement.
     pub(crate) fn set_use_overlays(
         &mut self,
-        overlays: Arc<BTreeMap<Box<str>, assets::CompiledItemUseOverlay>>,
+        overlays: Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>>,
     ) {
         if !self
             .use_overlays

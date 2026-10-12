@@ -53,7 +53,7 @@ mod tests {
             nutrition: 4,
             saturation_modifier: ItemDisplayScalar::new(0.3).unwrap(),
         };
-        let overlay = crate::CompiledItemUseOverlay {
+        let overlay = crate::equipment::CompiledItemUseOverlay {
             identifier: food.identifier.clone(),
             duration_ticks: Some(20),
             food_can_always_eat: Some(false),

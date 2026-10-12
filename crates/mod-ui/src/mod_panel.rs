@@ -276,10 +276,8 @@ impl ModUi {
             panel.scroll_drag = None;
             panel.pointer = None;
         }
-        if panel.catalog.is_none() {
-            if panel.prepared.is_some() && panel.edit.is_none() {
-                panel.restore_prepared_route();
-            }
+        if panel.catalog.is_none() && panel.prepared.is_some() && panel.edit.is_none() {
+            panel.restore_prepared_route();
         }
         if panel.catalog.is_none() {
             match template::catalog_prepared(

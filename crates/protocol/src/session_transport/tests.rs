@@ -238,3 +238,23 @@ fn startup_packets_keep_their_headers() {
     assert_eq!(raw.id, PacketId::SetTime);
     assert_eq!(raw.decode().unwrap(), packet);
 }
+
+/// A packet the codec refuses is left out; the rest of the batch still goes, in order.
+#[test]
+fn an_unencodable_packet_does_not_lose_its_batch() {
+    let time = |time| {
+        Packet::new(SetTime {
+            time: wire::ZigZag32(time),
+        })
+    };
+    // The manifest bounds a LevelChunk at 64 sub-chunks, so the encoder refuses 65.
+    let refused = Packet::new(bedrock_protocol_1_26_51::packets::LevelChunk {
+        sub_chunks_count: wire::VarUInt(65),
+        ..Default::default()
+    });
+    assert_eq!(
+        batch_frame(&[time(1), refused.clone(), time(2)]),
+        batch_frame(&[time(1), time(2)])
+    );
+    assert_eq!(batch_frame(&[refused]), None);
+}

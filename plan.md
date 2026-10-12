@@ -7897,8 +7897,9 @@ pick, placement-obstruction and aim dispositions, checks every independently col
 entity identity, and retains the existing class routes as provisional compatibility data.
 Actor admission resolves advertised bases once, preserves the first advertisement,
 refreshes earlier actors, and caches numeric dispositions for frame and ray consumers.
-Unadvertised identities and unadmitted nonempty bases remain unresolved. Empty
-advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
+Unadvertised identities and unadmitted nonempty bases remain unresolved; attack picking
+still admits them through their collision box or server hitboxes, while aim assist skips
+them. Empty advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
 mutable component, spectator pick/obstruction and class inventories are still open;
 the generic-mob disposition remains provisional and does not close a parity gate.
 

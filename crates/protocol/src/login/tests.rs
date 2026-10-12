@@ -1110,3 +1110,55 @@ fn block_pos(x: i32, y: i32, z: i32) -> BlockPos {
         z: wire::ZigZag32(z),
     }
 }
+
+/// A cached SubChunk keeps only its own entry alive, not the batch it arrived in.
+#[test]
+fn cached_sub_chunks_detach_from_their_batch() {
+    use bedrock_protocol_1_26_51::enums::SubChunkRequestResult;
+    use bedrock_protocol_1_26_51::packets::{ScriptMessage, SubChunk};
+    use bedrock_protocol_1_26_51::types::SubChunkData;
+
+    let payload = vec![0x5a; 64];
+    let sub_chunk = Packet::new(SubChunk {
+        cache_enabled: true,
+        sub_chunk_data: vec![SubChunkData {
+            sub_chunk_request_result: SubChunkRequestResult::Success,
+            serialized_sub_chunk: Some(payload.clone().into()),
+            blob_id: Some(wire::U64LE(7)),
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    let sibling = Packet::new(ScriptMessage {
+        message_id: "sibling".into(),
+        message_value: vec![0; 1 << 20].into(),
+    });
+    let mut batch = Vec::new();
+    crate::codec::encode_entry(&sub_chunk, &mut batch).unwrap();
+    crate::codec::encode_entry(&sibling, &mut batch).unwrap();
+    let batch = Bytes::from(batch);
+
+    let raw = crate::raw_packet::decode_batch_body(batch.clone(), usize::MAX)
+        .unwrap()
+        .remove(0);
+    let entry_len = raw.inner_frame().len();
+    let raw = detach_cached_chunk(raw);
+    let frame = raw.inner_frame().clone();
+    assert_eq!(frame.len(), entry_len);
+    assert!(
+        !batch.as_ptr_range().contains(&frame.as_ptr()),
+        "the entry no longer shares the batch allocation"
+    );
+    let packets::Packet::SubChunk(decoded) = raw.decode().unwrap().data else {
+        panic!("a SubChunk");
+    };
+    let retained = decoded.sub_chunk_data[0]
+        .serialized_sub_chunk
+        .clone()
+        .expect("a payload");
+    assert_eq!(&retained[..], &payload[..]);
+    assert!(
+        frame.as_ptr_range().contains(&retained.as_ptr()),
+        "the retained payload slices only its detached entry"
+    );
+}

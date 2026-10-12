@@ -469,11 +469,7 @@ impl PlaySession {
             self.packet_id_trace.observe(raw.id);
             let packet_bytes = raw.inner_frame().len();
             let packet_name = raw.id;
-            let raw = if packet_name == PacketId::LevelChunk {
-                raw.into_retention_bounded()
-            } else {
-                raw
-            };
+            let raw = detach_cached_chunk(raw);
 
             if matches!(packet_name, PacketId::Transfer | PacketId::Disconnect) {
                 if self.absorb_boundary_packet(raw, packet_name).await? {
@@ -646,6 +642,16 @@ fn reset_blob_cache_for_decoded_candidate(
         resolver.reset_pending_for_fast_transfer_candidate()
     } else {
         Ok(false)
+    }
+}
+
+/// Copies a LevelChunk or SubChunk entry out of its batch, so the payload slices the blob cache
+/// retains, and charges by length, keep only that entry alive.
+fn detach_cached_chunk(raw: RawPacket) -> RawPacket {
+    if matches!(raw.id, PacketId::LevelChunk | PacketId::SubChunk) {
+        raw.into_retention_bounded()
+    } else {
+        raw
     }
 }
 

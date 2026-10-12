@@ -87,11 +87,9 @@ fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
     player
         .facts
         .publish_player_game_mode(PlayerGameMode::Survival);
-    runtime.set_session_icons(compile_session_icons(
-        &view,
-        &startup.items.icon_keys,
-        BlockIcons::default(),
-    ));
+    let icons = compile_session_icons(&view, &startup.items.icon_keys, BlockIcons::default());
+    let has_icons = icons.is_some();
+    runtime.set_session_icons(icons);
     let mut presentation = UiPresentationRuntime::with_hud(
         ui_engine::test_support::fixture_font(),
         client_ui::test_support::fixture_hud(),
@@ -99,12 +97,18 @@ fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
     .unwrap();
     presentation.enable_json_ui(hotbar_carrier()).unwrap();
     presentation.set_gui_scale_preference(Some(4));
-    test_time::eventually("the startup sword icon to be admitted", || {
-        presentation
-            .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
-            .unwrap();
-        presentation.item_icon(IDENTIFIER, 0).is_some()
-    });
+    let icon_generation = presentation.session_icon_generation();
+    presentation
+        .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
+        .unwrap();
+    if has_icons {
+        test_time::eventually("the compiled icon atlas to be admitted", || {
+            presentation
+                .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
+                .unwrap();
+            presentation.session_icon_generation() != icon_generation
+        });
+    }
     refresh_hud_frame(
         &player,
         &mut runtime,

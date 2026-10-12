@@ -87,7 +87,7 @@ fn stage<'a, T: bytemuck::Pod>(
 
 /// Stages `staged` into `buffer` in offset order, so abutting records share one retained
 /// copy; overlapping ranges keep their issue order, so the buffer ends identical either way.
-/// A refused batch takes the queue path. Drains `staged`.
+/// Whatever the pool cannot hold takes the queue path. Drains `staged`.
 fn write_merged(uploads: TerrainUploads<'_>, buffer: &Buffer, staged: &mut Vec<(u64, &[u8])>) {
     #[cfg(feature = "tracy")]
     let _span = bevy::log::info_span!(
@@ -110,8 +110,13 @@ fn write_merged(uploads: TerrainUploads<'_>, buffer: &Buffer, staged: &mut Vec<(
         .iter()
         .map(|&(offset, bytes)| (&**buffer, offset, bytes))
         .collect();
-    uploads.write(&writes, || {
-        queue_merged(uploads.queue, buffer, order, overlapping);
+    uploads.write(&writes, |rest| {
+        // The unstaged rest is a suffix of `order`, so it keeps its order and overlap.
+        let rest: Vec<(u64, &[u8])> = rest
+            .iter()
+            .map(|&(_, offset, bytes)| (offset, bytes))
+            .collect();
+        queue_merged(uploads.queue, buffer, &rest, overlapping);
     });
     staged.clear();
 }
@@ -298,6 +303,47 @@ mod tests {
             .chain([[3, 3]; 8])
             .collect();
         let bytes = read(&device, &queue, &arena.quad_buffer, 48 * PACKED_QUAD_BYTES);
+        assert_eq!(bytes, bytemuck::cast_slice::<[u32; 2], u8>(&words));
+    }
+
+    /// A frame larger than the terrain pool stages what fits and queues only the overflow.
+    #[test]
+    fn oversized_terrain_frames_queue_only_the_overflow() {
+        let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
+        let (device, queue) = (RenderDevice::from(device), RenderQueue::new(queue));
+        let (staging, mut arena) = staged_arena(&device);
+        let capacity = staging.capacity_bytes();
+        let overflow = 64 * 1024;
+        let quads = ((capacity + overflow) / PACKED_QUAD_BYTES) as u32;
+        arena.quad_capacity = quads as usize;
+        arena.quad_buffer =
+            create_storage_buffer(&device, "test quads", u64::from(quads) * PACKED_QUAD_BYTES);
+        let uploads = TerrainUploads {
+            device: &device,
+            queue: &queue,
+            staging: Some(&staging),
+        };
+        let half = quads / 2;
+        let words: Vec<[u32; 2]> = (0..quads).map(|quad| [quad, !quad]).collect();
+        ArenaWrites {
+            quads: vec![
+                (half, words[half as usize..].to_vec()),
+                (0, words[..half as usize].to_vec()),
+            ],
+            ..ArenaWrites::default()
+        }
+        .issue(&arena, uploads);
+        let stats = staging.stats();
+        assert_eq!(stats.staged_bytes, capacity);
+        assert_eq!(stats.fallback_bytes, overflow);
+        assert_eq!(stats.fallback_writes, 1);
+        end_frame(&device, &queue, &staging);
+        let bytes = read(
+            &device,
+            &queue,
+            &arena.quad_buffer,
+            u64::from(quads) * PACKED_QUAD_BYTES,
+        );
         assert_eq!(bytes, bytemuck::cast_slice::<[u32; 2], u8>(&words));
     }
 

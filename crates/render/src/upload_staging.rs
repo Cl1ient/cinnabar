@@ -14,39 +14,8 @@ use bevy::{
         renderer::{RenderContext, RenderDevice, RenderQueue},
     },
 };
-use pool::Pool;
-use render_api::PublicationServiceConfig;
+use pool::{FRAME, Pool, Shape, TERRAIN};
 use std::sync::{Mutex, MutexGuard};
-
-/// Retained mapped storage and copy records for one family of participating buffers.
-#[derive(Debug, Clone, Copy)]
-struct Shape {
-    name: &'static str,
-    slots: usize,
-    slot_bytes: u64,
-    max_copies: usize,
-}
-
-/// Hand, UI viewport and particle writes.
-const FRAME: Shape = Shape {
-    name: "retained frame upload staging",
-    slots: 8,
-    slot_bytes: 64 * 1024,
-    max_copies: 128,
-};
-
-const TERRAIN_SLOT_BYTES: u64 = 256 * 1024;
-/// Three 120 Hz frames of the publication target rate, so slots recycle before streaming
-/// exhausts them; larger join bursts take the queue path.
-const TERRAIN_STAGED_BYTES: u64 =
-    PublicationServiceConfig::PHASE2_GATE.target_bytes_per_second * 3 / 120;
-/// Terrain arena writes, including coalesced runs that span several slots.
-const TERRAIN: Shape = Shape {
-    name: "retained terrain upload staging",
-    slots: TERRAIN_STAGED_BYTES.div_ceil(TERRAIN_SLOT_BYTES) as usize,
-    slot_bytes: TERRAIN_SLOT_BYTES,
-    max_copies: 2048,
-};
 
 pub(crate) type BufferWrite<'a> = (&'a wgpu::Buffer, u64, &'a [u8]);
 
@@ -61,6 +30,8 @@ pub(crate) struct Stats {
     pub(crate) overflow_submissions: u64,
     /// Copy commands encoded; abutting writes share one.
     pub(crate) encoded_copies: u64,
+    /// Slots added after missed frames.
+    pub(crate) grown_slots: u64,
 }
 
 /// Pools requested by render owners; the graph prefix encodes every installed pool.
@@ -161,6 +132,14 @@ impl TerrainUploadStaging {
 /// Preparation owns destination writes; the graph consumes copies before any camera reads them.
 pub(crate) struct Staging(Mutex<Pool>);
 
+/// Writes a pool could not hold, and older overlapping copies to submit before them.
+struct Miss<'a> {
+    rest: Vec<BufferWrite<'a>>,
+    flush: Option<wgpu::CommandBuffer>,
+    #[cfg(feature = "tracy")]
+    span: bevy::log::tracing::Span,
+}
+
 impl Staging {
     fn new(device: &RenderDevice, shape: Shape) -> Self {
         Self(Mutex::new(Pool::new(device, shape)))
@@ -171,67 +150,101 @@ impl Staging {
         self.0.lock().unwrap_or_else(|error| error.into_inner())
     }
 
-    /// Stages the batch, or queues each write when the pool cannot hold all of it.
+    /// Stages what fits and queues the rest of the batch.
     pub(crate) fn write_batch(
         &self,
         device: &RenderDevice,
         queue: &RenderQueue,
         writes: &[BufferWrite<'_>],
     ) {
-        self.write_batch_or(device, queue, writes, || fallback(queue, writes));
+        self.write_batch_or(device, queue, writes, |rest| fallback(queue, rest));
     }
 
-    /// Runs `fallback` for a refused batch after older overlapping copies are submitted, under
-    /// the same lock, so overlapping updates cannot overtake each other.
+    /// Stages writes in order until the pool fills and passes the unstaged rest to `fallback`,
+    /// after submitting older copies it overlaps. The lock is released before that submission:
+    /// each participating buffer is written by one system at a time, so no other writer can
+    /// interleave updates to the same bytes.
     pub(crate) fn write_batch_or(
         &self,
         device: &RenderDevice,
         queue: &RenderQueue,
         writes: &[BufferWrite<'_>],
-        fallback: impl FnOnce(),
+        fallback: impl FnOnce(&[BufferWrite<'_>]),
     ) {
-        let mut pool = self.lock();
-        if pool.try_stage(writes) {
+        let Some(miss) = self.admit(device, writes) else {
             return;
+        };
+        #[cfg(feature = "tracy")]
+        let _span = miss.span.entered();
+        if let Some(command) = miss.flush {
+            queue.submit([command]);
         }
-        let overlap = pool.overlaps(writes);
-        let count = writes.iter().filter(|write| !write.2.is_empty()).count() as u64;
-        let bytes = writes.iter().map(|write| write.2.len() as u64).sum::<u64>();
-        pool.stats.fallback_writes += count;
-        pool.stats.fallback_bytes += bytes;
-        #[cfg(feature = "tracy")]
-        let ([ready, active, pending, failed], queued_copies) = pool.diagnostic_counts();
-        #[cfg(feature = "tracy")]
-        let _span = bevy::log::info_span!(
-            "uploads.fallback",
-            pool = pool.name(),
-            writes = count,
-            bytes,
-            overlap,
-            ready,
-            active,
-            pending,
-            failed,
-            queued_copies,
-            total_writes = pool.stats.fallback_writes,
-            total_bytes = pool.stats.fallback_bytes,
-        )
-        .entered();
-        if overlap {
+        fallback(&miss.rest);
+    }
+
+    /// Stages under the lock and returns what must take the queue path, if anything.
+    fn admit<'a>(&self, device: &RenderDevice, writes: &[BufferWrite<'a>]) -> Option<Miss<'a>> {
+        let mut pool = self.lock();
+        let (index, staged) = pool.stage_prefix(writes)?;
+        let (target, offset, bytes) = writes[index];
+        let mut rest = Vec::with_capacity(writes.len() - index);
+        rest.push((target, offset + staged, &bytes[staged as usize..]));
+        rest.extend(
+            writes[index + 1..]
+                .iter()
+                .copied()
+                .filter(|write| !write.2.is_empty()),
+        );
+        let bytes = rest.iter().map(|write| write.2.len() as u64).sum::<u64>();
+        pool.record_miss(rest.len() as u64, bytes);
+        let overlap = pool.overlaps(&rest);
+        let flush = overlap.then(|| {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("ordered upload fallback"),
             });
             pool.encode(&mut encoder);
             pool.stats.overflow_submissions += 1;
-            queue.submit([encoder.finish()]);
-        }
-        fallback();
+            encoder.finish()
+        });
+        #[cfg(feature = "tracy")]
+        let span = {
+            let ([ready, active, pending, failed], queued_copies) = pool.diagnostic_counts();
+            bevy::log::info_span!(
+                "uploads.fallback",
+                pool = pool.name(),
+                writes = rest.len(),
+                bytes,
+                staged,
+                overlap,
+                ready,
+                active,
+                pending,
+                failed,
+                queued_copies,
+                total_writes = pool.stats.fallback_writes,
+                total_bytes = pool.stats.fallback_bytes,
+            )
+        };
+        Some(Miss {
+            rest,
+            flush,
+            #[cfg(feature = "tracy")]
+            span,
+        })
     }
 
     /// Cumulative staged, fallback and encoded work since creation.
     #[cfg(test)]
     pub(crate) fn stats(&self) -> Stats {
         self.lock().stats
+    }
+
+    /// Bytes the pool's current slots can hold at once.
+    #[cfg(test)]
+    pub(crate) fn capacity_bytes(&self) -> u64 {
+        let pool = self.lock();
+        let ([ready, active, pending, failed], _) = pool.diagnostic_counts();
+        (ready + active + pending + failed) as u64 * pool.slot_bytes()
     }
 
     /// Encodes pending copies ahead of `encoder`'s later commands, which may read their bytes.
@@ -258,5 +271,6 @@ fn upload_buffers(
         if pool.has_copies() {
             pool.encode(context.command_encoder());
         }
+        pool.grow();
     }
 }

@@ -377,11 +377,16 @@ pub(in crate::chunk) struct TerrainUploads<'a> {
 }
 
 impl TerrainUploads<'_> {
-    /// Stages `writes` whole, or runs `fallback` after older overlapping staged copies submit.
-    pub(in crate::chunk) fn write(self, writes: &[BufferWrite<'_>], fallback: impl FnOnce()) {
+    /// Stages what fits and passes the unstaged rest to `fallback`, after older overlapping
+    /// staged copies submit; without staging every write takes `fallback`.
+    pub(in crate::chunk) fn write(
+        self,
+        writes: &[BufferWrite<'_>],
+        fallback: impl FnOnce(&[BufferWrite<'_>]),
+    ) {
         match self.staging {
             Some(staging) => staging.write_batch_or(self.device, self.queue, writes, fallback),
-            None => fallback(),
+            None => fallback(writes),
         }
     }
 }
@@ -460,8 +465,8 @@ pub(in crate::chunk) fn write_geometry_stream_words(
         .map(|migration| (&*migration.buffer, offset_bytes, bytes));
     let writes = [current, mirror.unwrap_or(current)];
     let writes = &writes[..1 + usize::from(mirror.is_some())];
-    uploads.write(writes, || {
-        for &(buffer, offset, bytes) in writes {
+    uploads.write(writes, |rest| {
+        for &(buffer, offset, bytes) in rest {
             uploads.queue.write_buffer(buffer, offset, bytes);
         }
     });

@@ -1,5 +1,6 @@
-use super::{BufferWrite, Shape, Stats};
+use super::{BufferWrite, Stats};
 use bevy::render::renderer::RenderDevice;
+use render_api::PublicationServiceConfig;
 use std::sync::{
     Arc,
     atomic::{AtomicU8, Ordering},
@@ -8,6 +9,48 @@ use std::sync::{
 #[cfg(test)]
 #[path = "pool_tests.rs"]
 mod tests;
+
+/// Retained mapped storage and copy records for one family of participating buffers.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Shape {
+    pub(super) name: &'static str,
+    /// Slots created up front.
+    pub(super) slots: usize,
+    /// Ceiling that growth after missed frames never passes.
+    pub(super) max_slots: usize,
+    /// Slots one frame's misses may add; each costs one buffer creation, like one queue write.
+    pub(super) growth_slots: usize,
+    pub(super) slot_bytes: u64,
+    pub(super) max_copies: usize,
+}
+
+/// Hand, UI viewport and particle writes; fixed, since their recurring sizes are known.
+pub(super) const FRAME: Shape = Shape {
+    name: "retained frame upload staging",
+    slots: 8,
+    max_slots: 8,
+    growth_slots: 0,
+    slot_bytes: 64 * 1024,
+    max_copies: 128,
+};
+
+const TERRAIN_SLOT_BYTES: u64 = 256 * 1024;
+const TERRAIN_TARGET_BYTES_PER_SECOND: u64 =
+    PublicationServiceConfig::PHASE2_GATE.target_bytes_per_second;
+/// Terrain arena writes. A 32 blocks/s flight at 1080p and 12 chunks measured about 13.5 MB/s
+/// of terrain, arriving as bursts above 3 MiB per buffer in single frames; the 128 blocks/s
+/// streaming gate scales that to about 54 MB/s. The pool starts at three 120 Hz frames of the
+/// publication target rate and grows after missed frames up to a quarter second of it
+/// (32 MiB), so slots, which recycle a few frames after submission, absorb bursts of several
+/// MiB per frame; larger bursts stage what fits and queue the rest.
+pub(super) const TERRAIN: Shape = Shape {
+    name: "retained terrain upload staging",
+    slots: (TERRAIN_TARGET_BYTES_PER_SECOND * 3 / 120).div_ceil(TERRAIN_SLOT_BYTES) as usize,
+    max_slots: (TERRAIN_TARGET_BYTES_PER_SECOND / 4).div_ceil(TERRAIN_SLOT_BYTES) as usize,
+    growth_slots: 8,
+    slot_bytes: TERRAIN_SLOT_BYTES,
+    max_copies: 2048,
+};
 
 const READY: u8 = 0;
 const ACTIVE: u8 = 1;
@@ -38,34 +81,46 @@ struct Piece {
 
 pub(super) struct Pool {
     shape: Shape,
-    slots: Box<[Slot]>,
+    device: RenderDevice,
+    slots: Vec<Slot>,
     copies: Vec<Copy>,
-    /// Slot offsets and states before the batch being admitted, for an atomic refusal.
-    admitted: Vec<(u64, u8)>,
+    /// Fallback bytes since the last growth check.
+    missed_bytes: u64,
     pub(super) stats: Stats,
 }
 
 impl Pool {
-    /// Allocates fixed mapped slots and copy metadata once, before recurring preparation.
+    /// Allocates the initial mapped slots and all copy metadata before recurring preparation.
     pub(super) fn new(device: &RenderDevice, shape: Shape) -> Self {
+        let mut slots = Vec::with_capacity(shape.max_slots);
+        slots.extend((0..shape.slots).map(|_| Self::slot(device, shape)));
         Self {
-            slots: (0..shape.slots)
-                .map(|_| Slot {
-                    buffer: device.wgpu_device().create_buffer(&wgpu::BufferDescriptor {
-                        label: Some(shape.name),
-                        size: shape.slot_bytes,
-                        usage: wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC,
-                        mapped_at_creation: true,
-                    }),
-                    state: Arc::new(AtomicU8::new(READY)),
-                    offset: 0,
-                })
-                .collect(),
-            copies: Vec::with_capacity(shape.max_copies),
-            admitted: Vec::with_capacity(shape.slots),
-            stats: Stats::default(),
             shape,
+            device: device.clone(),
+            slots,
+            copies: Vec::with_capacity(shape.max_copies),
+            missed_bytes: 0,
+            stats: Stats::default(),
         }
+    }
+
+    /// Creates one slot, mapped and ready to stage.
+    fn slot(device: &RenderDevice, shape: Shape) -> Slot {
+        Slot {
+            buffer: device.wgpu_device().create_buffer(&wgpu::BufferDescriptor {
+                label: Some(shape.name),
+                size: shape.slot_bytes,
+                usage: wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: true,
+            }),
+            state: Arc::new(AtomicU8::new(READY)),
+            offset: 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn slot_bytes(&self) -> u64 {
+        self.shape.slot_bytes
     }
 
     /// Names the pool in trace zones.
@@ -74,49 +129,65 @@ impl Pool {
         self.shape.name
     }
 
-    /// Admits a complete batch without allocating GPU storage, polling, or partially staging it.
-    pub(super) fn try_stage(&mut self, writes: &[BufferWrite<'_>]) -> bool {
-        self.admitted.clear();
-        self.admitted.extend(
-            self.slots
-                .iter()
-                .map(|slot| (slot.offset, slot.state.load(Ordering::Acquire))),
-        );
-        let copies = self.copies.len();
-        let newest_bytes = self.copies.last().map(|copy| copy.bytes);
-        let stats = self.stats;
-        for &(target, offset, bytes) in writes.iter().filter(|write| !write.2.is_empty()) {
-            if !self.stage(target, offset, bytes) {
-                self.refuse(copies, newest_bytes, stats);
-                return false;
+    /// Stages writes in issue order until the pool fills, without allocating or polling.
+    /// Returns the first write not wholly staged and how many of its bytes were.
+    pub(super) fn stage_prefix(&mut self, writes: &[BufferWrite<'_>]) -> Option<(usize, u64)> {
+        for (index, &(target, offset, bytes)) in writes.iter().enumerate() {
+            if bytes.is_empty() {
+                continue;
             }
+            let staged = self.stage(target, offset, bytes);
+            if staged < bytes.len() as u64 {
+                return Some((index, staged));
+            }
+            self.stats.staged_writes += 1;
         }
-        true
+        None
     }
 
-    /// Restores the admission snapshot; only mapped slots can have changed since it was taken.
-    fn refuse(&mut self, copies: usize, newest_bytes: Option<u64>, stats: Stats) {
-        for (slot, &(offset, state)) in self.slots.iter_mut().zip(&self.admitted) {
-            if matches!(state, READY | ACTIVE) {
-                slot.offset = offset;
-                slot.state.store(state, Ordering::Release);
-            }
-        }
-        self.copies.truncate(copies);
-        if let (Some(copy), Some(bytes)) = (self.copies.last_mut(), newest_bytes) {
-            copy.bytes = bytes;
-        }
-        self.stats = stats;
+    /// Counts bytes that took the queue path toward the next growth check.
+    pub(super) fn record_miss(&mut self, writes: u64, bytes: u64) {
+        self.stats.fallback_writes += writes;
+        self.stats.fallback_bytes += bytes;
+        self.missed_bytes += bytes;
     }
 
-    /// Copies `bytes` into as few pieces as fit, extending the newest copy when it abuts.
-    fn stage(&mut self, target: &wgpu::Buffer, mut offset: u64, mut bytes: &[u8]) -> bool {
+    /// After a frame with misses, adds slots for the missed bytes, at most the shape's
+    /// per-frame growth and never past its ceiling.
+    pub(super) fn grow(&mut self) {
+        let missed = std::mem::take(&mut self.missed_bytes);
+        let wanted = usize::try_from(missed.div_ceil(self.shape.slot_bytes)).unwrap_or(usize::MAX);
+        let added = wanted
+            .min(self.shape.growth_slots)
+            .min(self.shape.max_slots.saturating_sub(self.slots.len()));
+        if added == 0 {
+            return;
+        }
+        #[cfg(feature = "tracy")]
+        let _span = bevy::log::info_span!(
+            "uploads.grow",
+            pool = self.shape.name,
+            missed,
+            added,
+            slots = self.slots.len() + added,
+        )
+        .entered();
+        for _ in 0..added {
+            self.slots.push(Self::slot(&self.device, self.shape));
+        }
+        self.stats.grown_slots += added as u64;
+    }
+
+    /// Copies as many of `bytes` as fit, extending the newest copy when it abuts; returns
+    /// the staged length, always a whole number of copy-aligned words.
+    fn stage(&mut self, target: &wgpu::Buffer, mut offset: u64, mut bytes: &[u8]) -> u64 {
+        let mut staged = 0;
         while !bytes.is_empty() {
             let Some(piece) = self.reserve(target, offset, bytes.len() as u64) else {
-                return false;
+                break;
             };
             if !piece.extends && self.copies.len() == self.shape.max_copies {
-                return false;
+                break;
             }
             let (head, rest) = bytes.split_at(piece.bytes as usize);
             let slot = &mut self.slots[piece.slot];
@@ -146,11 +217,11 @@ impl Pool {
                 });
             }
             self.stats.staged_bytes += piece.bytes;
+            staged += piece.bytes;
             offset += piece.bytes;
             bytes = rest;
         }
-        self.stats.staged_writes += 1;
-        true
+        staged
     }
 
     /// Reports pending command work without creating an encoder for an empty frame.

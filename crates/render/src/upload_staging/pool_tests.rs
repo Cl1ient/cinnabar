@@ -1,8 +1,8 @@
 use super::*;
 use bevy::render::renderer::RenderQueue;
 
-const SLOTS: usize = super::super::FRAME.slots;
-const MAX_COPIES: usize = super::super::FRAME.max_copies;
+const SLOTS: usize = FRAME.slots;
+const MAX_COPIES: usize = FRAME.max_copies;
 
 /// Supplies validation and synchronous buffer copies without a hardware requirement.
 fn setup(slot_bytes: u64) -> (RenderDevice, RenderQueue, Pool, wgpu::Buffer) {
@@ -13,7 +13,7 @@ fn setup(slot_bytes: u64) -> (RenderDevice, RenderQueue, Pool, wgpu::Buffer) {
         &device,
         Shape {
             slot_bytes,
-            ..super::super::FRAME
+            ..FRAME
         },
     );
     let target = device.wgpu_device().create_buffer(&wgpu::BufferDescriptor {
@@ -46,7 +46,7 @@ fn completed_slots_reuse_buffers_and_empty_batches_create_no_work() {
     let (device, queue, mut pool, target) = setup(64);
     let retained = buffers(&pool);
     for value in 0..SLOTS * 2 {
-        assert!(pool.try_stage(&[(&target, 0, &[value as u8; 64])]));
+        assert_eq!(pool.stage_prefix(&[(&target, 0, &[value as u8; 64])]), None);
         let mut encoder = device.create_command_encoder(&Default::default());
         pool.encode(&mut encoder);
         queue.submit([encoder.finish()]);
@@ -62,7 +62,7 @@ fn completed_slots_reuse_buffers_and_empty_batches_create_no_work() {
     assert_eq!(pool.stats.staged_bytes, (SLOTS * 2 * 64) as u64);
     assert_eq!(pool.diagnostic_counts(), ([SLOTS, 0, 0, 0], 0));
     let stats = pool.stats;
-    assert!(pool.try_stage(&[(&target, 0, &[])]));
+    assert_eq!(pool.stage_prefix(&[(&target, 0, &[])]), None);
     assert!(!pool.has_copies());
     assert_eq!(pool.stats, stats);
 }
@@ -73,11 +73,11 @@ fn incomplete_slots_refuse_work_without_growth_or_polling() {
     let retained = buffers(&pool);
     let bytes = [1; 64];
     let writes = vec![(&target, 0, bytes.as_slice()); SLOTS];
-    assert!(pool.try_stage(&writes));
+    assert_eq!(pool.stage_prefix(&writes), None);
     let mut encoder = device.create_command_encoder(&Default::default());
     pool.encode(&mut encoder);
     let stats = pool.stats;
-    assert!(!pool.try_stage(&[(&target, 256, &[5; 4])]));
+    assert_eq!(pool.stage_prefix(&[(&target, 256, &[5; 4])]), Some((0, 0)));
     assert_eq!(buffers(&pool), retained);
     assert!(
         pool.slots
@@ -92,44 +92,41 @@ fn incomplete_slots_refuse_work_without_growth_or_polling() {
     device.poll(wgpu::PollType::Poll).unwrap();
 }
 
-/// A batch larger than every free slot together is refused whole, even after a partial split.
+/// A batch larger than the pool stages every byte that fits and reports where staging stopped.
 #[test]
-fn oversized_batches_preserve_all_slots_without_partial_writes() {
+fn oversized_batches_stage_what_fits() {
     let (_, _, mut pool, target) = setup(64);
-    let total = SLOTS * 64;
-    let large = vec![2; total];
-    assert!(!pool.try_stage(&[(&target, 0, &[1; 16]), (&target, 16, &large)]));
-    assert!(!pool.has_copies());
+    let large = vec![2; SLOTS * 64];
+    let first = 16;
+    assert_eq!(
+        pool.stage_prefix(&[(&target, 0, &[1; 16]), (&target, 16, large.as_slice())]),
+        Some((1, (SLOTS * 64 - first) as u64))
+    );
     assert!(
         pool.slots
             .iter()
-            .all(|slot| { slot.offset == 0 && slot.state.load(Ordering::Acquire) == READY })
+            .all(|slot| slot.offset == 64 && slot.state.load(Ordering::Acquire) == ACTIVE)
     );
-    assert_eq!(pool.stats, Stats::default());
-}
-
-/// Refusal restores an extended newest copy, so a later batch cannot copy refused bytes.
-#[test]
-fn refused_batches_restore_the_copy_they_extended() {
-    let (_, _, mut pool, target) = setup(64);
-    assert!(pool.try_stage(&[(&target, 0, &[1; 16])]));
-    let large = vec![2; SLOTS * 64];
-    assert!(!pool.try_stage(&[(&target, 16, &large)]));
-    assert_eq!(pool.copies.len(), 1);
-    assert_eq!(pool.copies[0].bytes, 16);
-    assert_eq!(pool.slots[0].offset, 16);
-    assert_eq!(pool.diagnostic_counts(), ([SLOTS - 1, 1, 0, 0], 1));
+    assert_eq!(pool.stats.staged_writes, 1);
+    assert_eq!(pool.stats.staged_bytes, (SLOTS * 64) as u64);
+    let mut staged = vec![0; SLOTS * 64];
+    for copy in &pool.copies {
+        let at = copy.offset as usize;
+        staged[at..at + copy.bytes as usize].copy_from_slice(&source(&pool, copy));
+    }
+    assert_eq!(&staged[..16], &[1; 16]);
+    assert!(staged[16..].iter().all(|byte| *byte == 2));
 }
 
 #[test]
-fn copy_metadata_exhaustion_refuses_the_batch_without_growing() {
+fn copy_metadata_exhaustion_stages_nothing_more_without_growing() {
     let (_, _, mut pool, target) = setup(4096);
     let bytes = [1; 4];
     let writes = vec![(&target, 0, bytes.as_slice()); MAX_COPIES];
-    assert!(pool.try_stage(&writes));
+    assert_eq!(pool.stage_prefix(&writes), None);
     let stats = pool.stats;
     // Not abutting the newest copy, so it needs a record of its own.
-    assert!(!pool.try_stage(&[(&target, 8, &[2; 4])]));
+    assert_eq!(pool.stage_prefix(&[(&target, 8, &[2; 4])]), Some((0, 0)));
     assert_eq!(pool.copies.len(), MAX_COPIES);
     assert_eq!(pool.copies.capacity(), MAX_COPIES);
     assert_eq!(pool.stats, stats);
@@ -142,8 +139,8 @@ fn failed_mapping_slots_are_quarantined_without_replacement() {
     pool.slots[0].state.store(FAILED, Ordering::Release);
     let bytes = [1; 64];
     let writes = vec![(&target, 0, bytes.as_slice()); SLOTS - 1];
-    assert!(pool.try_stage(&writes));
-    assert!(!pool.try_stage(&[(&target, 192, &[4; 4])]));
+    assert_eq!(pool.stage_prefix(&writes), None);
+    assert_eq!(pool.stage_prefix(&[(&target, 192, &[4; 4])]), Some((0, 0)));
     assert!(pool.copies.iter().all(|copy| copy.slot != 0));
     assert_eq!(pool.slots[0].state.load(Ordering::Acquire), FAILED);
     assert_eq!(pool.slots[0].offset, 0);
@@ -154,7 +151,10 @@ fn failed_mapping_slots_are_quarantined_without_replacement() {
 #[test]
 fn four_byte_payload_sizes_keep_the_next_mapped_offset_aligned() {
     let (_, _, mut pool, target) = setup(192);
-    assert!(pool.try_stage(&[(&target, 0, &[1; 132]), (&target, 136, &[2; 20])]));
+    assert_eq!(
+        pool.stage_prefix(&[(&target, 0, &[1; 132]), (&target, 136, &[2; 20])]),
+        None
+    );
     assert_eq!(pool.copies[0].source, 0);
     assert_eq!(pool.copies[1].source, 136);
     for copy in &pool.copies {
@@ -168,11 +168,14 @@ fn four_byte_payload_sizes_keep_the_next_mapped_offset_aligned() {
 #[test]
 fn abutting_writes_share_one_copy() {
     let (_, _, mut pool, target) = setup(256);
-    assert!(pool.try_stage(&[
-        (&target, 0, &[1; 12]),
-        (&target, 12, &[2; 20]),
-        (&target, 32, &[3; 8]),
-    ]));
+    assert_eq!(
+        pool.stage_prefix(&[
+            (&target, 0, &[1; 12]),
+            (&target, 12, &[2; 20]),
+            (&target, 32, &[3; 8]),
+        ]),
+        None
+    );
     assert_eq!(pool.copies.len(), 1);
     assert_eq!((pool.copies[0].offset, pool.copies[0].bytes), (0, 40));
     let expected: Vec<u8> = [vec![1; 12], vec![2; 20], vec![3; 8]].concat();
@@ -185,7 +188,7 @@ fn abutting_writes_share_one_copy() {
 fn large_writes_split_across_slots_in_destination_order() {
     let (_, _, mut pool, target) = setup(64);
     let bytes: Vec<u8> = (0..160_u8).collect();
-    assert!(pool.try_stage(&[(&target, 32, &bytes)]));
+    assert_eq!(pool.stage_prefix(&[(&target, 32, &bytes)]), None);
     assert_eq!(pool.copies.len(), 3);
     let mut joined = Vec::new();
     let mut offset = 32;
@@ -197,4 +200,36 @@ fn large_writes_split_across_slots_in_destination_order() {
     assert_eq!(joined, bytes);
     assert_eq!(pool.stats.staged_writes, 1);
     assert_eq!(pool.stats.staged_bytes, 160);
+}
+
+/// Growth adds slots only after misses, at most the per-frame step and never past the ceiling.
+#[test]
+fn growth_follows_misses_up_to_the_ceiling() {
+    let (device, _, _, _) = setup(64);
+    let mut pool = Pool::new(
+        &device,
+        Shape {
+            slots: 2,
+            max_slots: 5,
+            growth_slots: 2,
+            slot_bytes: 64,
+            ..FRAME
+        },
+    );
+    pool.grow();
+    assert_eq!(pool.slots.len(), 2);
+    pool.record_miss(1, 4 * 64);
+    pool.grow();
+    assert_eq!(pool.slots.len(), 4);
+    pool.grow();
+    assert_eq!(pool.slots.len(), 4);
+    pool.record_miss(1, 4 * 64);
+    pool.grow();
+    assert_eq!(pool.slots.len(), 5);
+    assert_eq!(pool.stats.grown_slots, 3);
+    assert!(
+        pool.slots
+            .iter()
+            .all(|slot| slot.state.load(Ordering::Acquire) == READY)
+    );
 }

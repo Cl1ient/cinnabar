@@ -92,7 +92,7 @@ samples.
 
 ## Always-on frame attribution
 
-`RUST_MCBE_SLOW_FRAME` reports a preceding start-to-start interval or main update
+`CINNABAR_SLOW_FRAME` reports a preceding start-to-start interval or main update
 lasting 20 ms or more, at most once per second. It prints `frame_ms`, `main_ms`,
 `between_updates_ms`, focus, occlusion, suppressed slow-frame count, and sorted
 `main_stages` / `window_stages` durations in milliseconds. Named spans include

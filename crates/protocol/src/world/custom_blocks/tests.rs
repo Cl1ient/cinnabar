@@ -18,6 +18,7 @@ fn hashed_states_enumerate_axes_and_hash_distinctly() {
         collides: true,
         collision_boxes: None,
         selection: CustomSelection::Default,
+        friction: None,
         visual: std::sync::Arc::new(CustomBlockVisuals {
             state_axes: Box::new([
                 CustomStateAxis {
@@ -186,6 +187,7 @@ fn custom_block(name: &str, root: &Nbt) -> CustomBlock {
         collides: definition.collides,
         collision_boxes: definition.collision_boxes,
         selection: definition.selection,
+        friction: definition.friction,
         visual: std::sync::Arc::new(definition.visual),
     }
 }

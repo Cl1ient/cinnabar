@@ -17,7 +17,7 @@ pub(super) fn observe(event: &FormRequestEvent) {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     static CLAIMED: AtomicBool = AtomicBool::new(false);
     let enabled = *ENABLED.get_or_init(|| {
-        opted_in(std::env::var_os(crate::diagnostic_markers::FORM_SHAPE_PROBE).as_deref())
+        opted_in(env_compat::var_os(crate::diagnostic_markers::FORM_SHAPE_PROBE).as_deref())
     });
     if let Some(summary) = inspect(enabled, &CLAIMED, event) {
         tracing::warn!(target: "cinnabar::form_shape_probe", "form shape probe: {summary:?}");

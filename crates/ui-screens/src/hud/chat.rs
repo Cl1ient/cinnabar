@@ -296,7 +296,8 @@ impl Rules {
         let bindings = bindings
             .iter()
             .zip(&wanted)
-            .filter_map(|(binding, wanted)| wanted.then(|| binding.clone()))
+            .filter(|(_, wanted)| **wanted)
+            .map(|(binding, _)| binding.clone())
             .collect::<Vec<_>>();
         let bag = if bindings.is_empty() {
             serde_json::Map::new()

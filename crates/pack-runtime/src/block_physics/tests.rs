@@ -135,7 +135,8 @@ fn preparation_materializes_state_physics_for_registry_consumers() {
                 transformation,
                 collides,
                 collision_boxes,
-                selection
+                selection,
+                friction: None,
             }
         );
     }
@@ -203,6 +204,42 @@ fn aggregate_state_reservation_is_bounded_and_does_not_expand_for_rejected_block
 
 #[path = "tests/fixture.rs"]
 mod fixture;
+
+/// A friction-only permutation is physical and replaces the base value for its states.
+#[test]
+fn friction_permutations_override_the_base_component() {
+    let mut encoded = named(10, "");
+    encoded.extend(named(10, "components"));
+    encoded.extend(named(10, "minecraft:friction"));
+    encoded.extend(named(5, "value"));
+    encoded.extend(0.4_f32.to_le_bytes());
+    encoded.extend([0, 0]);
+    encoded.extend(named(9, "properties"));
+    encoded.extend([10, 2]);
+    encoded.extend(named(8, "name"));
+    encoded.extend(text("test:surface"));
+    encoded.extend(named(9, "enum"));
+    encoded.extend([8, 4]);
+    encoded.extend(text("dry"));
+    encoded.extend(text("icy"));
+    encoded.push(0);
+    encoded.extend(named(9, "permutations"));
+    encoded.extend([10, 2]);
+    encoded.extend(named(8, "condition"));
+    encoded.extend(text("q.block_state('test:surface') == 'icy'"));
+    encoded.extend(named(10, "components"));
+    encoded.extend(named(10, "minecraft:friction"));
+    encoded.extend(named(5, "value"));
+    encoded.extend(0.02_f32.to_le_bytes());
+    encoded.extend([0, 0, 0, 0]);
+    let mut blocks = CustomBlocks::from_definitions([("test:ice", encoded.as_slice())]);
+    assert_eq!(blocks.skipped, 0);
+    resolve(&mut blocks);
+    assert_eq!(blocks.skipped, 0);
+    let block = &blocks.blocks[0];
+    assert_eq!(block.physics_for_state(0).friction, Some(0.4));
+    assert_eq!(block.physics_for_state(1).friction, Some(0.02));
+}
 
 #[test]
 fn random_offset_state_overrides_are_prepared_once_in_palette_order() {

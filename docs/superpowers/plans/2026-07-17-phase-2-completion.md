@@ -406,7 +406,7 @@ Expected: the immutable branch still points at the reviewed carrier commit, `HEA
 - [ ] **Step 6: Capture canonical Lunar diagnostic completeness first**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Diagnostic -RunId checkpoint0-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Diagnostic -RunId checkpoint0-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: `.local/phase2/remote/checkpoint0-lunar-attempt-01/manifest.json` proves release/FIFO identity and contains a complete `PHASE2_PUBLICATION` stage sequence. This diagnostic gate requires attributable counters and coherent identities, including the raw publisher radius in blocks as well as its derived retention radius; it records holes/stalls as findings and does not require them to be fixed.
@@ -414,7 +414,7 @@ Expected: `.local/phase2/remote/checkpoint0-lunar-attempt-01/manifest.json` prov
 - [ ] **Step 7: Capture canonical Zeqa only after Lunar diagnostics are complete**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Diagnostic -RunId checkpoint0-zeqa-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Diagnostic -RunId checkpoint0-zeqa-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: the runner rejects this command unless the Lunar diagnostic-completeness manifest exists and hashes successfully. Zeqa records the same stage/outcome surface without requiring Lunar’s publication behavior to have passed.
@@ -447,7 +447,7 @@ git commit -m "docs: record canonical phase 2 server diagnostics"
 - [ ] **Step 1: Run the exact release/FIFO matching-view gallery**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId biome-kernel-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId biome-kernel-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo
 ```
 
 Expected: the create-new run directory contains straight, corner, island, and alternating manifests; matching native/Cinnabar crops; linear-colour reports; a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms; two exact presented witnesses; and no unexplained diagnostic. Conflicting patterns block implementation and require `biome-kernel-attempt-02`, never a guessed kernel.
@@ -585,7 +585,7 @@ cargo test -p client-world -p cinnabar --locked retry -- --nocapture
 cargo test -p render --locked publication -- --nocapture
 cargo clippy -p client-world -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId measured-fix-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId measured-fix-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:CINNABAR_ASSETS
 git add crates/client-world crates/render docs/phase-2-completion-report.md
 git commit -m "fix: correct measured chunk publication stall"
 ```
@@ -730,7 +730,7 @@ Expected: deterministic publication tests pass; the Pester contract is green usi
 - [ ] **Step 1: Run the non-final Lunar publication candidate**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId publication-candidate-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId publication-candidate-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: current-position spawn region complete without holes/stalls; the initial publisher epoch's actually announced cohort publishes without a visible stall; publisher-epoch, required-cohort, resident, allocation, visible, submitted, and GPU-presented identities agree; no unexplained outcome/error counter; join, teleport settle, and forced full-view remesh each ≤2,000 ms; after the 30-second warmup, the uninterrupted 120-second steady sample has p95 and p99 frame time each ≤`16.6666666667` ms and maximum frame time ≤`50` ms; two adjacent exact presented witnesses; exactly 120 one-second steady resource samples with maximum RSS ≤650 MB and mean/p95 CPU ≤15%; clean shutdown.
@@ -738,7 +738,7 @@ Expected: current-position spawn region complete without holes/stalls; the initi
 - [ ] **Step 2: Run Zeqa only after Lunar passes**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Candidate -RunId publication-candidate-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Candidate -RunId publication-candidate-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: authenticated transfer completes, the same publication/presentation/resource gates pass, and the transfer session does not retain stale Lunar cohort or retry state.
@@ -779,7 +779,7 @@ The integration owner implements the exact script files listed above, reruns the
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId lighting-atmosphere-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId lighting-atmosphere-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo
 ```
 
 Expected: the wrapper executes separate complete `cargo run -p phase2-evidence --locked -- compare` commands for `lighting`, `fog-air`, `fog-water`, and `fog-lava`. Every stratum has a report SHA-256, a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, two exact presented witnesses, and no unexplained diagnostic; no aggregate pass hides a failed medium.
@@ -888,7 +888,7 @@ Expected: all isolated-carrier, renderer, startup, bounds, and no-churn tests pa
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId precipitation-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId precipitation-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo
 ```
 
 Expected: rain and snow pass intensity 0/partial/full, above/below cover, biome/dimension suppression, wind/motion, fog, day/night, and clear/rain/thunder views. Metrics prove one steady draw, zero steady uploads, bounded instances, a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, exactly 120 one-second resource samples within 650 MB/15 percent, and two exact presented witnesses. Record the hashes under `P2-PRECIPITATION` → `P2.7-ATMOSPHERE` in a follow-up evidence-only lane commit.
@@ -919,7 +919,7 @@ After the integration owner applies the reviewed gallery handoff and the Pester 
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId celestial-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId celestial-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo
 ```
 
 Expected: for every manifested view, the wrapper substitutes that view's concrete create-new run paths into a complete `cargo run -p phase2-evidence --locked -- compare` invocation with `--kind celestial`, `--manifest`, `--native`, `--cinnabar`, and `--out`. All 18 views and their center/border/outside/horizon/minified crops pass in release/FIFO after a 30-second warmup and 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms, maximum frame time ≤`50` ms, and two exact frames. If a crop fails, add a red shader/sampler test for the proven blend, UV, sampler, mip, or composition-order discrepancy only.
@@ -994,7 +994,7 @@ After the integration owner applies the reviewed Cloud gallery handoff and Peste
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId cloud-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId cloud-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo
 ```
 
 Expected: Low/Medium/High/Ultra each pass above/below/within/grazing, positive/negative period crossing, and fog-edge views across clear/rain/thunder/day/night. Metrics prove no edge pop, accepted thickness/density/silhouette/face shading/motion/fog/seams, one steady draw, zero steady uploads, a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, exactly 120 one-second resource samples within 650 MB/15 percent, and two exact frames.
@@ -1036,7 +1036,7 @@ Expected: FAIL because the paired runner is absent.
 Run the exact create-new paired capture:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId motion-ab-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId motion-ab-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180
 ```
 
 Expected: the script runs FIFO first and Immediate second on one release binary and identical scene/camera/build/adapter/driver/assets/duration/resolution, proves each effective present mode, records the exact artifact frame, and compares resident, cave-visible, frustum-visible, submitted, and GPU-completed sets for that coherent frame. Each leg contains a 30-second warmup followed by an uninterrupted 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms. It rejects an existing `.local/phase2/motion/motion-ab-attempt-01/` directory.
@@ -1103,12 +1103,12 @@ Expected: zero failures, warnings, formatting differences, policy failures, or d
 ```powershell
 cargo build --workspace --release --locked
 $client = (Resolve-Path target/release/cinnabar.exe).Path
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId final-biome-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId final-lighting-atmosphere-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId final-precipitation-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId final-celestial-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId final-cloud-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId final-motion-ab-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180 -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId final-biome-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId final-lighting-atmosphere-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId final-precipitation-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId final-celestial-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId final-cloud-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId final-motion-ab-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180 -ClientExecutable $client -SkipClientBuild
 ```
 
 Expected: every create-new directory proves the same client SHA-256, release profile, FIFO for binding captures, accepted native reports, two exact frames, the required 30-second warmup plus uninterrupted 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, no diagnostic texture, and no unexplained decode/normalization/stale/capacity/retry/fallback failure.
@@ -1118,9 +1118,9 @@ Expected: every create-new directory proves the same client SHA-256, release pro
 After Phase 5 settings is integrated with `EnvironmentQualitySettings`, the integration owner uses the same release binary and runs Lunar first:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Final -RunId final-integrated-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:RUST_MCBE_ASSETS -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Final -RunId final-integrated-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:CINNABAR_ASSETS -ClientExecutable $client -SkipClientBuild
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/ui-publication-pressure.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Final -RunId final-integrated-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:RUST_MCBE_ASSETS -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Final -RunId final-integrated-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:CINNABAR_ASSETS -ClientExecutable $client -SkipClientBuild
 ```
 
 Expected: Zeqa is rejected unless the final Lunar manifest passes. Both prove zero persistent holes/stalls, radius-16 publisher coherence, join, teleport settle, and forced full-view remesh each ≤2,000 ms, two exact frames, and—after a 30-second warmup—one uninterrupted 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms, maximum frame time ≤`50` ms, and exactly 120 one-second resource samples whose maximum RSS is ≤650 MB and mean/p95 CPU are ≤15 percent. `P2-UI-PUBLICATION-PRESSURE` additionally proves the settings overlay remains open throughout the forced remesh, the minimum service rates are maintained, the overlay remains responsive, and no UI code mutates client-world queue ownership.

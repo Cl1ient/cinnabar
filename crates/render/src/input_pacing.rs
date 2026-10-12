@@ -35,7 +35,7 @@ use render_model::{Cadence, FrameRate};
 use render_scene::{RuntimeStage, RuntimeStageProfiler};
 
 /// `0` keeps measuring input age but never delays an update for render completion.
-const PACING_ENV: &str = "RUST_MCBE_INPUT_PACING";
+const PACING_ENV: &str = "CINNABAR_INPUT_PACING";
 
 /// Time the next update reaches the handoff ahead of render completion.
 pub(crate) const MARGIN: Duration = Duration::from_micros(1_000);
@@ -411,7 +411,7 @@ impl InputPacingPlugin {
         if let Some(pacer) = &self.pacer {
             return pacer.clone();
         }
-        let enabled = std::env::var_os(PACING_ENV).is_none_or(|value| value != "0");
+        let enabled = env_compat::var_os(PACING_ENV).is_none_or(|value| value != "0");
         InputPacer::new(Arc::new(SystemClock::new()), enabled)
     }
 }

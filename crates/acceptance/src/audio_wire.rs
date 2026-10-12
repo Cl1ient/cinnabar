@@ -38,7 +38,7 @@ pub struct WireEvidence {
 impl Default for WireEvidence {
     fn default() -> Self {
         Self::new(selected(
-            std::env::var(diagnostics::markers::AUDIO_WIRE_EVIDENCE)
+            env_compat::var(diagnostics::markers::AUDIO_WIRE_EVIDENCE)
                 .ok()
                 .as_deref(),
         ))

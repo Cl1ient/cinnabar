@@ -792,8 +792,8 @@
   call `WorldStream::remesh_all_resident(started)` and return its exact sorted key/new-generation
   manifest as the independently expected remesh set. Apply the same equality and presented/GPU
   fence; `forced_full_view_remesh_ms` is
-  `gpu_completed_at - started`. Emit distinct `RUST_MCBE_TELEPORT_SETTLED` and
-  `RUST_MCBE_FORCED_FULL_VIEW_REMESH_SETTLED` markers only after these proofs. Their metrics
+  `gpu_completed_at - started`. Emit distinct `CINNABAR_TELEPORT_SETTLED` and
+  `CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED` markers only after these proofs. Their metrics
   records carry the exact `CohortStatus`, expected and presented manifest hashes and lengths, view
   generation, present-return timestamp, GPU-completion timestamp, and
   missing/unexpected/source/foreign/stale-generation/orphan counts; the harness validates those
@@ -811,7 +811,7 @@
   Resolve an explicit baseline client only when both prebuilt options are supplied and hash it
   before launch. Route exactly one trigger per run:
 
-  - `WorldReady`: pinned opaque baseline, armed by its compatible `RUST_MCBE_WORLD_READY` marker;
+  - `WorldReady`: pinned opaque baseline, armed by its compatible `CINNABAR_WORLD_READY` marker;
   - `VisualFixtureReady`: near GalleryFront/Back, armed after the observable
     `VISUAL_FIXTURE_READY=<path>` sequence and never passed `--full-view-teleport-gate`;
   - `FullViewPresented`: far forest, armed only after both binding teleport and forced-remesh

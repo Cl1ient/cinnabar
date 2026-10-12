@@ -404,12 +404,12 @@ function Publish-VisualFixture {
             if ($null -eq $WaitForAppMarker) {
                 $modelCameraCommitEvidence = Wait-ProcessOutputMarker `
                     -Handle $AppHandle `
-                    -Marker 'RUST_MCBE_CAMERA_COMMITTED ' `
+                    -Marker 'CINNABAR_CAMERA_COMMITTED ' `
                     -TimeoutSeconds 60 `
                     -PassThruEvidence
             }
             else {
-                $modelCameraCommitEvidence = & $WaitForAppMarker $AppHandle 'RUST_MCBE_CAMERA_COMMITTED ' 60
+                $modelCameraCommitEvidence = & $WaitForAppMarker $AppHandle 'CINNABAR_CAMERA_COMMITTED ' 60
             }
             $modelCameraCommit = ConvertFrom-CameraCommittedMarker -Line ([string]$modelCameraCommitEvidence.Line)
             $null = Assert-ModelGalleryCommittedCamera -Committed $modelCameraCommit -Target $Plan.CameraTarget
@@ -503,12 +503,12 @@ function Publish-VisualFixture {
             if ($null -eq $WaitForAppMarker) {
                 $evidence = Wait-ProcessOutputMarker `
                     -Handle $AppHandle `
-                    -Marker 'RUST_MCBE_MODEL_WITNESS_COMPLETE ' `
+                    -Marker 'CINNABAR_MODEL_WITNESS_COMPLETE ' `
                     -TimeoutSeconds 30 `
                     -PassThruEvidence
             }
             else {
-                $evidence = & $WaitForAppMarker $AppHandle 'RUST_MCBE_MODEL_WITNESS_COMPLETE ' 30
+                $evidence = & $WaitForAppMarker $AppHandle 'CINNABAR_MODEL_WITNESS_COMPLETE ' 30
             }
             $witness = ConvertFrom-ModelWitnessCompleteMarker -Line ([string]$evidence.Line)
             if ([int]$witness.consecutive -ne $expectedConsecutive) {
@@ -561,10 +561,10 @@ function Publish-VisualFixture {
             Start-Sleep -Milliseconds $initialPoseSettle
         }
         if ($null -eq $WaitForAppMarker) {
-            $initialSortEvidence = Wait-ProcessOutputMarker -Handle $AppHandle -Marker 'RUST_MCBE_TRANSPARENT_SORT_COMMITTED ' -TimeoutSeconds 30 -PassThruEvidence
+            $initialSortEvidence = Wait-ProcessOutputMarker -Handle $AppHandle -Marker 'CINNABAR_TRANSPARENT_SORT_COMMITTED ' -TimeoutSeconds 30 -PassThruEvidence
         }
         else {
-            $initialSortEvidence = & $WaitForAppMarker $AppHandle 'RUST_MCBE_TRANSPARENT_SORT_COMMITTED ' 30
+            $initialSortEvidence = & $WaitForAppMarker $AppHandle 'CINNABAR_TRANSPARENT_SORT_COMMITTED ' 30
         }
         $initialSort = ConvertFrom-TransparentSortCommittedMarker -Line ([string]$initialSortEvidence.Line)
         Write-AcceptanceEvent -RunDirectory $RunDirectory -Event 'initial_transparent_sort_committed' -Fields ([ordered]@{
@@ -595,10 +595,10 @@ function Publish-VisualFixture {
             result_line = [string]$resortResultLine
         })
         if ($null -eq $WaitForAppMarker) {
-            $resortSortEvidence = Wait-ProcessOutputMarker -Handle $AppHandle -Marker 'RUST_MCBE_TRANSPARENT_SORT_COMMITTED ' -TimeoutSeconds 30 -PassThruEvidence
+            $resortSortEvidence = Wait-ProcessOutputMarker -Handle $AppHandle -Marker 'CINNABAR_TRANSPARENT_SORT_COMMITTED ' -TimeoutSeconds 30 -PassThruEvidence
         }
         else {
-            $resortSortEvidence = & $WaitForAppMarker $AppHandle 'RUST_MCBE_TRANSPARENT_SORT_COMMITTED ' 30
+            $resortSortEvidence = & $WaitForAppMarker $AppHandle 'CINNABAR_TRANSPARENT_SORT_COMMITTED ' 30
         }
         $resortSort = ConvertFrom-TransparentSortCommittedMarker -Line ([string]$resortSortEvidence.Line)
         $null = Assert-NewerTransparentSortCommit `
@@ -622,12 +622,12 @@ function Publish-VisualFixture {
                 if ($null -eq $WaitForAppMarker) {
                     $evidence = Wait-ProcessOutputMarker `
                         -Handle $AppHandle `
-                        -Marker 'RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE ' `
+                        -Marker 'CINNABAR_TRANSPARENT_WITNESS_COMPLETE ' `
                         -TimeoutSeconds 30 `
                         -PassThruEvidence
                 }
                 else {
-                    $evidence = & $WaitForAppMarker $AppHandle 'RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE ' 30
+                    $evidence = & $WaitForAppMarker $AppHandle 'CINNABAR_TRANSPARENT_WITNESS_COMPLETE ' 30
                 }
                 $witness = ConvertFrom-TransparentWitnessCompleteMarker -Line ([string]$evidence.Line)
                 if ([int]$witness.consecutive -ne $expectedConsecutive) {

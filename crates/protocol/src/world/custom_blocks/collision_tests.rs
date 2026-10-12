@@ -162,3 +162,28 @@ fn native_collision_boxes_default_wrong_typed_coordinates_to_zero() {
         )
     );
 }
+
+/// Friction follows the network tag: a missing or mistyped value reads as zero, and a value
+/// that leaves no positive friction is counted instead of admitted.
+#[test]
+fn friction_component_reads_the_network_value() {
+    let parse = |component: Option<Nbt>| {
+        let components = component
+            .map(|component| vec![("minecraft:friction".into(), component)])
+            .unwrap_or_default();
+        let definition = parse_definition(&Nbt::Compound(vec![(
+            "components".into(),
+            Nbt::Compound(components),
+        )]))
+        .expect("definition");
+        (definition.friction, definition.skipped)
+    };
+    let value = |value: Nbt| Some(Nbt::Compound(vec![("value".into(), value)]));
+    assert_eq!(parse(None), (None, 0));
+    assert_eq!(parse(value(Nbt::Float(0.25))), (Some(0.25), 0));
+    assert_eq!(parse(Some(Nbt::Compound(Vec::new()))), (Some(0.0), 0));
+    assert_eq!(parse(value(Nbt::Int(1))), (Some(0.0), 0));
+    assert_eq!(parse(value(Nbt::Float(1.0))), (None, 1));
+    assert_eq!(parse(value(Nbt::Float(f64::NAN))), (None, 1));
+    assert_eq!(parse(Some(Nbt::Byte(1))), (None, 1));
+}

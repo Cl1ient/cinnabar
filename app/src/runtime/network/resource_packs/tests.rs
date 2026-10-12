@@ -390,6 +390,7 @@ fn overlay_cache_reuses_the_previous_session_compile() {
             collides: true,
             collision_boxes: None,
             selection: Default::default(),
+            friction: None,
             visual: Default::default(),
         }]
         .into(),

@@ -68,7 +68,7 @@ forbidden_dependencies = ["asset-compiler", "assets", "bevy", "wgpu"]
 [[crates]]
 name = "assets"
 path = "crates/assets"
-allowed_dependencies = ["block-transform"]
+allowed_dependencies = ["env-compat", "block-transform"]
 forbidden_dependencies = ["asset-compiler", "bevy", "clap", "image", "wgpu", "diagnostics", "pack-runtime", "render", "render-model"]
 forbidden_transitive_dependencies = ["bevy", "bevy_*", "wgpu"]
 test_support_features = ["test-support"]
@@ -146,7 +146,7 @@ forbidden_transitive_dependencies = ["app", "cinnabar", "launcher", "client-ui",
 [[crates]]
 name = "gameplay"
 path = "crates/gameplay"
-allowed_dependencies = ["simulation-clock", "actor-animation", "assets", "block-transform", "client-world", "inventory", "player-state", "protocol", "semantic-input", "sim", "world"]
+allowed_dependencies = ["env-compat", "simulation-clock", "actor-animation", "assets", "block-transform", "client-world", "inventory", "player-state", "protocol", "semantic-input", "sim", "world"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-session", "client-presentation", "acceptance", "launcher", "client-ui", "chunk-pipeline", "ui", "json-ui", "render", "asset-compiler", "pack-compiler", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]
 
@@ -187,7 +187,7 @@ contract_only = true
 [[crates]]
 name = "client-runtime"
 path = "crates/client-runtime"
-allowed_dependencies = ["bridge", "chunk-pipeline", "client-session", "client-state", "client-ui", "client-world", "diagnostics", "launcher-host", "meshing", "pack-runtime", "protocol", "render", "render-api", "render-scene"]
+allowed_dependencies = ["env-compat", "bridge", "chunk-pipeline", "client-session", "client-state", "client-ui", "client-world", "diagnostics", "launcher-host", "meshing", "pack-runtime", "protocol", "render", "render-api", "render-scene"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-presentation", "client-audio", "client-interaction", "client-shell", "client-extensions", "acceptance", "asset-compiler"]
 test_support_features = ["test-support"]
 
@@ -202,7 +202,7 @@ forbidden_transitive_dependencies = ["app", "cinnabar", "client-runtime", "clien
 name = "client-ui"
 path = "crates/client-ui"
 # Extension edges support presentation adapters; render data comes from render-model, never render.
-allowed_dependencies = ["simulation-clock", "actor-animation", "launcher-host", "bridge", "assets", "chunk-pipeline", "client-world", "player-state", "launcher", "inventory", "json-ui", "oreui", "protocol", "render-api", "render-model", "resource-pack", "semantic-input", "ui", "ui-engine", "ui-screens", "mod-ui", "world", "mod-host", "server-experience", "test-time"]
+allowed_dependencies = ["env-compat", "simulation-clock", "actor-animation", "launcher-host", "bridge", "assets", "chunk-pipeline", "client-world", "player-state", "launcher", "inventory", "json-ui", "oreui", "protocol", "render-api", "render-model", "resource-pack", "semantic-input", "ui", "ui-engine", "ui-screens", "mod-ui", "world", "mod-host", "server-experience", "test-time"]
 forbidden_dependencies = ["asset-compiler", "pack-compiler", "bevy", "wgpu"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "gameplay", "client-session", "render", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]
@@ -244,7 +244,7 @@ forbidden_transitive_dependencies = ["app", "cinnabar", "gameplay", "client-sess
 name = "acceptance"
 path = "crates/acceptance"
 test_support_features = ["test-support"]
-allowed_dependencies = ["client-audio", "chunk-pipeline", "client-presentation", "client-world", "diagnostics", "protocol", "render-scene", "render-model", "semantic-input", "world"]
+allowed_dependencies = ["env-compat", "client-audio", "chunk-pipeline", "client-presentation", "client-world", "diagnostics", "protocol", "render-scene", "render-model", "semantic-input", "world"]
 forbidden_transitive_dependencies = ["render", "app", "cinnabar", "gameplay", "client-session", "asset-compiler", "pack-compiler"]
 
 [[crates]]
@@ -303,7 +303,7 @@ forbidden_transitive_dependencies = ["app", "cinnabar", "render", "protocol", "c
 [[crates]]
 name = "render-scene"
 path = "crates/render-scene"
-allowed_dependencies = ["simulation-clock", "assets", "meshing", "mod-api", "mod-render", "particles", "render-api", "render-model", "world", "tracy-client", "test-time"]
+allowed_dependencies = ["env-compat", "simulation-clock", "assets", "meshing", "mod-api", "mod-render", "particles", "render-api", "render-model", "world", "tracy-client", "test-time"]
 forbidden_transitive_dependencies = ["render", "app", "cinnabar", "client-world", "chunk-pipeline", "client-presentation", "protocol"]
 test_support_features = ["publication-test-support"]
 
@@ -311,7 +311,7 @@ test_support_features = ["publication-test-support"]
 name = "render"
 path = "crates/render"
 test_support_features = ["publication-test-support"]
-allowed_dependencies = ["render-scene", "assets", "block-transform", "meshing", "mod-api", "mod-render", "particles", "render-api", "render-model", "tracy-client", "world", "test-time"]
+allowed_dependencies = ["env-compat", "render-scene", "assets", "block-transform", "meshing", "mod-api", "mod-render", "particles", "render-api", "render-model", "tracy-client", "world", "test-time"]
 forbidden_dependencies = ["asset-compiler"]
 # Also reject game-state edges hidden behind another local crate or test dependency.
 forbidden_transitive_dependencies = ["client-world", "chunk-pipeline", "protocol"]
@@ -319,7 +319,7 @@ forbidden_transitive_dependencies = ["client-world", "chunk-pipeline", "protocol
 [[crates]]
 name = "app"
 path = "app"
-allowed_dependencies = ["simulation-clock", "actor-animation", "render-scene", "client-shell", "client-interaction", "client-runtime", "client-extensions", "client-state", "first-run", "launcher-host", "bridge", "experience-sdk", "mod-api", "mod-render", "acceptance", "assets", "block-transform", "chunk-pipeline", "client-presentation", "client-session", "client-ui", "client-world", "developer-control", "diagnostics", "gameplay", "gilrs", "inventory", "json-ui", "launcher", "libc", "meshing", "mod-host", "objc2", "objc2-app-kit", "oreui", "pack-compiler", "particles", "player-state", "protocol", "raw-window-handle", "render", "render-api", "render-model", "resource-pack", "rich-presence", "semantic-input", "server-experience", "sim", "tracing-tracy", "ui", "ui-engine", "ui-screens", "mod-ui", "update-manifest", "world", "test-time", "pack-runtime", "client-audio"]
+allowed_dependencies = ["env-compat", "simulation-clock", "actor-animation", "render-scene", "client-shell", "client-interaction", "client-runtime", "client-extensions", "client-state", "first-run", "launcher-host", "bridge", "experience-sdk", "mod-api", "mod-render", "acceptance", "assets", "block-transform", "chunk-pipeline", "client-presentation", "client-session", "client-ui", "client-world", "developer-control", "diagnostics", "gameplay", "gilrs", "inventory", "json-ui", "launcher", "libc", "meshing", "mod-host", "objc2", "objc2-app-kit", "oreui", "pack-compiler", "particles", "player-state", "protocol", "raw-window-handle", "render", "render-api", "render-model", "resource-pack", "rich-presence", "semantic-input", "server-experience", "sim", "tracing-tracy", "ui", "ui-engine", "ui-screens", "mod-ui", "update-manifest", "world", "test-time", "pack-runtime", "client-audio"]
 forbidden_dependencies = ["asset-compiler"]
 forbidden_transitive_dependencies = ["asset-compiler"]
 
@@ -522,296 +522,296 @@ allowed_dependencies = ["protocol", "server-experience"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 
 [[markers]]
-literal = "RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA"
+literal = "CINNABAR_ACCEPTANCE_RUNTIME_METADATA"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_CAMERA_COMMITTED"
+literal = "CINNABAR_CAMERA_COMMITTED"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_FORCED_FULL_VIEW_REMESH_SETTLED"
+literal = "CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Proofs.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_FAST_TRANSFER_ACTION"
+literal = "CINNABAR_FAST_TRANSFER_ACTION"
 kind = "parsed"
 producer = "crates/client-ui/src/diagnostic_markers.rs"
 consumer = "scripts/acceptance/FastTransferWitnessValidation.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_GALLERY_ANCHOR_READY"
+literal = "CINNABAR_GALLERY_ANCHOR_READY"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_MODEL_WITNESS_COMPLETE"
+literal = "CINNABAR_MODEL_WITNESS_COMPLETE"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_MOVE_PLAYER_INGRESS"
+literal = "CINNABAR_MOVE_PLAYER_INGRESS"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Proofs.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_MUTATION_COORDINATE"
+literal = "CINNABAR_MUTATION_COORDINATE"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Orchestration/Execute.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_EVENT"
+literal = "CINNABAR_PHASE3_EVENT"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Phase3.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE2_TIMING"
+literal = "CINNABAR_PHASE2_TIMING"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/FastTransferWitnessValidation.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_FRAME"
+literal = "CINNABAR_PHASE3_FRAME"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Phase3.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_IDENTITY"
+literal = "CINNABAR_PHASE3_IDENTITY"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Phase3.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_NETWORK_PUMP_TERMINAL"
+literal = "CINNABAR_NETWORK_PUMP_TERMINAL"
 kind = "parsed"
 producer = "crates/client-session/src/session.rs"
 consumer = "scripts/acceptance/Phase3.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_TERMINAL"
+literal = "CINNABAR_PHASE3_TERMINAL"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Phase3.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_VIOLATION"
+literal = "CINNABAR_PHASE3_VIOLATION"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Phase3.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_TARGET_MUTATION_ARMED"
+literal = "CINNABAR_TARGET_MUTATION_ARMED"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Proofs.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_TELEPORT_SETTLED"
+literal = "CINNABAR_TELEPORT_SETTLED"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Proofs.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_TRANSPARENT_SORT_COMMITTED"
+literal = "CINNABAR_TRANSPARENT_SORT_COMMITTED"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE"
+literal = "CINNABAR_TRANSPARENT_WITNESS_COMPLETE"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT"
+literal = "CINNABAR_WORLD_PUBLICATION_SNAPSHOT"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Markers.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_WORLD_READY"
+literal = "CINNABAR_WORLD_READY"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Resources.ps1"
 
 [[markers]]
-literal = "RUST_MCBE_ASSETS"
+literal = "CINNABAR_ASSETS"
 kind = "environment_variable"
 producer = "crates/assets/src/carriers/startup/markers.rs"
 consumer = "crates/assets/src/carriers/startup.rs"
 
 [[markers]]
-literal = "RUST_MCBE_USE_ON_IDENTITY_EVIDENCE"
+literal = "CINNABAR_USE_ON_IDENTITY_EVIDENCE"
 kind = "environment_variable"
 producer = "crates/client-ui/src/diagnostic_markers.rs"
 consumer = "crates/client-ui/src/ui_runtime/use_on_identity_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_AUDIO_WIRE_EVIDENCE"
+literal = "CINNABAR_AUDIO_WIRE_EVIDENCE"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/audio_wire.rs"
 
 [[markers]]
-literal = "RUST_MCBE_FORM_SHAPE_PROBE"
+literal = "CINNABAR_FORM_SHAPE_PROBE"
 kind = "environment_variable"
 producer = "crates/client-ui/src/diagnostic_markers.rs"
 consumer = "crates/client-ui/src/ui_runtime/forms/shape_probe.rs"
 
 [[markers]]
-literal = "RUST_MCBE_CRAFT_OBSERVATION"
+literal = "CINNABAR_CRAFT_OBSERVATION"
 kind = "environment_variable"
 producer = "crates/client-ui/src/diagnostic_markers.rs"
 consumer = "crates/client-ui/src/ui_runtime/crafting_observation.rs"
 
 [[markers]]
-literal = "RUST_MCBE_STAGE_PROFILE"
+literal = "CINNABAR_STAGE_PROFILE"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "app/src/app.rs"
 
 [[markers]]
-literal = "RUST_MCBE_STAGE_PROFILE_FRAMES"
+literal = "CINNABAR_STAGE_PROFILE_FRAMES"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "app/src/app.rs"
 
 [[markers]]
-literal = "RUST_MCBE_WORLD_SERVICE"
+literal = "CINNABAR_WORLD_SERVICE"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/client-runtime/src/world_service.rs"
 
 [[markers]]
-literal = "RUST_MCBE_MOVEMENT_TRACE"
+literal = "CINNABAR_MOVEMENT_TRACE"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/client-interaction/src/movement.rs"
 
 [[markers]]
-literal = "RUST_MCBE_TELEPORT_ACK"
+literal = "CINNABAR_TELEPORT_ACK"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/client-interaction/src/movement.rs"
 
 [[markers]]
-literal = "RUST_MCBE_ANCHOR_PROBE"
+literal = "CINNABAR_ANCHOR_PROBE"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/client-interaction/src/movement.rs"
 
 [[markers]]
-literal = "RUST_MCBE_BUILD_COMMIT"
+literal = "CINNABAR_BUILD_COMMIT"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/phase3_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_SOURCE_DIRTY"
+literal = "CINNABAR_SOURCE_DIRTY"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/phase3_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_RUN_ID"
+literal = "CINNABAR_PHASE3_RUN_ID"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/phase3_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_ENDPOINT"
+literal = "CINNABAR_PHASE3_ENDPOINT"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/phase3_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_CORE_SHA256"
+literal = "CINNABAR_PHASE3_CORE_SHA256"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/phase3_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_CORE_PROCESS_ID"
+literal = "CINNABAR_PHASE3_CORE_PROCESS_ID"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/phase3_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_PHASE3_BRIDGE_ENDPOINT"
+literal = "CINNABAR_PHASE3_BRIDGE_ENDPOINT"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "crates/acceptance/src/phase3_evidence.rs"
 
 [[markers]]
-literal = "RUST_MCBE_ERROR_COUNTERS"
+literal = "CINNABAR_ERROR_COUNTERS"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_FAST_TRANSFER_PACKET_TRACE"
+literal = "CINNABAR_FAST_TRANSFER_PACKET_TRACE"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_LOADING_MILESTONE"
+literal = "CINNABAR_LOADING_MILESTONE"
 kind = "log_only"
 producer = "crates/client-ui/src/diagnostic_markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_SHUTDOWN_COMPLETED"
+literal = "CINNABAR_SHUTDOWN_COMPLETED"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_SHUTDOWN_WATCHDOG_ARMED"
+literal = "CINNABAR_SHUTDOWN_WATCHDOG_ARMED"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_SHUTDOWN_WATCHDOG_FIRED"
+literal = "CINNABAR_SHUTDOWN_WATCHDOG_FIRED"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_TELEPORT_COHORT"
+literal = "CINNABAR_TELEPORT_COHORT"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_TELEPORT_GLOBAL_STAGE_DIAGNOSTIC"
+literal = "CINNABAR_TELEPORT_GLOBAL_STAGE_DIAGNOSTIC"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_TRANSPARENT_WITNESS_INCOMPLETE"
+literal = "CINNABAR_TRANSPARENT_WITNESS_INCOMPLETE"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_TRANSPARENT_WITNESS_STAGE"
+literal = "CINNABAR_TRANSPARENT_WITNESS_STAGE"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_VISIBILITY_SNAPSHOT"
+literal = "CINNABAR_VISIBILITY_SNAPSHOT"
 kind = "log_only"
 producer = "crates/diagnostics/src/markers.rs"
 
 [[markers]]
-literal = "RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY"
+literal = "CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY"
 kind = "harness_only"
 producer = "scripts/acceptance.ps1"
 
@@ -1149,6 +1149,14 @@ name = "first-run"
 path = "crates/first-run"
 allowed_dependencies = ["assets", "launcher", "launcher-host", "render-model", "semantic-input", "test-time", "ui", "gilrs"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-ui", "render", "bevy", "bevy_*"]
+
+# Environment reads accepting the pre-rename `RUST_MCBE_` spellings for one release.
+[[crates]]
+name = "env-compat"
+path = "crates/env-compat"
+allowed_dependencies = []
+dependency_free = true
+forbidden_dependencies = ["bevy", "wgpu"]
 
 [[crates]]
 name = "simulation-clock"

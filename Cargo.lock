@@ -29,6 +29,7 @@ dependencies = [
  "client-presentation",
  "client-world",
  "diagnostics",
+ "env-compat",
  "protocol",
  "render-model",
  "render-scene",
@@ -445,6 +446,7 @@ version = "0.1.12"
 dependencies = [
  "bitflags 2.13.0",
  "block-transform",
+ "env-compat",
  "flate2",
  "lewton",
  "rayon",
@@ -675,6 +677,7 @@ dependencies = [
  "crossbeam-channel",
  "developer-control",
  "diagnostics",
+ "env-compat",
  "experience-sdk",
  "first-run",
  "fontdue",
@@ -2388,6 +2391,7 @@ dependencies = [
  "client-ui",
  "client-world",
  "diagnostics",
+ "env-compat",
  "launcher-host",
  "meshing",
  "pack-runtime",
@@ -2484,6 +2488,7 @@ dependencies = [
  "chunk-pipeline",
  "client-world",
  "crossbeam-channel",
+ "env-compat",
  "glam",
  "image",
  "inventory 0.1.12",
@@ -3362,6 +3367,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "env-compat"
+version = "0.1.12"
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3729,6 +3738,7 @@ dependencies = [
  "assets",
  "block-transform",
  "client-world",
+ "env-compat",
  "inventory 0.1.12",
  "player-state",
  "protocol",
@@ -6335,6 +6345,7 @@ dependencies = [
  "bevy",
  "block-transform",
  "bytemuck",
+ "env-compat",
  "glam",
  "image",
  "libc",
@@ -6401,6 +6412,7 @@ dependencies = [
  "assets",
  "bevy",
  "bytemuck",
+ "env-compat",
  "glam",
  "meshing",
  "mod-api",

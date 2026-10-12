@@ -71,7 +71,7 @@ func TestProxyRustStartupHarness(t *testing.T) {
 	defer connections.finishShutdown()
 	defer server.close()
 	defer connections.beginShutdown()
-	fmt.Printf("RUST_MCBE_EXTERNAL_READY=%s\n", socketDir)
+	fmt.Printf("CINNABAR_EXTERNAL_READY=%s\n", socketDir)
 	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,11 @@ Common farmland crops now retain four lowered rows with stage-specific artwork.
 Compiler regressions cover all eight growth states and both network-ID modes;
 full crop presentation parity and the broader phase gates remain open.
 
+Trapdoor compiler regressions cover edge sprite rows, facing/top-half artwork,
+opened cap texture ownership and malformed selectors across registered poses
+with 16/32 pixel textures. Rendered/input acceptance and broader graphics parity
+remain open.
+
 ## P2.5-NATIVE-BIOME
 
 | Field | Evidence |
@@ -58,6 +63,10 @@ yaw, scale, link ordering, updates and removal. Dismount request coverage includ
 vehicle controls, queue retries and session/input boundaries. Authored seat fallbacks,
 special family placement, predictive exit placement and vehicle prediction remain
 incomplete; this work closes no movement parity or performance gate.
+
+Custom block surface friction follows each state's `minecraft:friction` component, with
+protocol, permutation and registry regressions in both identity spaces. No live witness
+exists; complete ordinary/special block classification remains open.
 
 | Field | Evidence |
 |---|---|

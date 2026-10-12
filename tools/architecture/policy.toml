@@ -32,7 +32,7 @@ ownership_record = "THIRD_PARTY_NOTICES.md"
 path = "assets/oreui-icons/"
 ownership_record = "THIRD_PARTY_NOTICES.md"
 
-# The vendored codec crates stay behind protocol's owned API.
+# The vendored contract codec (`bedrock-protocol-1-26-51`) is a dependency of `protocol` only.
 [[vendored]]
 path = "crates/protocol/vendor/"
 ownership_record = "crates/protocol/vendor/UPSTREAM.md"
@@ -430,7 +430,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "ui-screens"
 path = "crates/ui-screens"
-allowed_dependencies = ["actor-animation", "assets", "bridge", "inventory", "json-ui", "launcher", "player-state", "protocol", "resource-pack", "ui", "ui-engine"]
+allowed_dependencies = ["actor-animation", "assets", "bridge", "inventory", "json-ui", "launcher", "player-state", "protocol", "render-model", "resource-pack", "ui", "ui-engine"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu", "client-ui", "launcher-host", "oreui", "mod-ui"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "client-ui", "launcher-host", "oreui", "mod-ui", "render", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]

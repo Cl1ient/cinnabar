@@ -39,7 +39,7 @@ pub use packet_delay::{
     PacketDelayLease, RelayedPosition, packet_delay_with_position, set_packet_delay,
 };
 pub use status::{
-    Lifecycle, PackAcquisition, PackAdmission, PackApplication, PackDownstreamOutcome, PackOffer,
+    Lifecycle, NetworkConnection, PackAcquisition, PackAdmission, PackApplication, PackDownstreamOutcome, PackOffer,
     StatusV1, TransferPending, read_status, report_pack_application,
 };
 pub use store::{

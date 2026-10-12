@@ -20,6 +20,7 @@ fn fixture(identifier: &str) -> (player_state::PlayerState, UiRuntime) {
     ledger.apply(&InventoryEvent::Authority(InventoryAuthority::Server));
     ledger.apply_registry(&ItemRegistryEvent {
         entries: Arc::from([ItemRegistryEntry {
+            components: None,
             identifier: Arc::from(identifier),
             network_id: 1,
             component_based: false,

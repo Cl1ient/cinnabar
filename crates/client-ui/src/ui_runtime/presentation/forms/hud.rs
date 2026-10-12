@@ -399,6 +399,13 @@ impl UiPresentationRuntime {
             self.hud_textures.as_ref(),
             &self.form_presentation.chat.settings.options,
         );
+        if let Some(style) = self.mod_hunger_overlay() {
+            paint.hunger.set_overlay(
+                style,
+                runtime.gameplay_hud().saturation(),
+                frame.selected_food.as_ref(),
+            );
+        }
         // Packs may replace the native cursor renderer with ordinary image controls.
         // Gate the whole overlay so these controls obey the same camera and HUD settings.
         if crosshair && paint.crosshair.is_none() {

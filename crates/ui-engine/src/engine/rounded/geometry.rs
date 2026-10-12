@@ -94,6 +94,15 @@ impl Shape {
         ]
     }
 
+    /// Extends an arc endpoint along its straight edge past the square inner corner's pixel band.
+    fn straight_point(&self, mut point: [f32; 2], corner: usize, exit: bool) -> [f32; 2] {
+        let axis = (corner + usize::from(!exit)) % 2;
+        let extent = [self.width, self.height][axis];
+        let support = (self.border + self.fringe * 0.5).min(extent * 0.5);
+        point[axis] = point[axis].clamp(support, extent - support);
+        point
+    }
+
     /// Fill and border cover disjoint portions of one pixel, without an overlapping fill pass.
     fn coverage(&self, inset: f32) -> [f32; 2] {
         let extent = self.width.min(self.height);
@@ -154,7 +163,8 @@ pub(super) fn mesh(key: Key) -> Option<UiMesh> {
     };
     let rings = shape.rings();
     let steps = shape.corner_steps();
-    let count = 4 * (steps + 1);
+    let square_inner = radius > 0.0 && border >= radius;
+    let count = 4 * (steps + 1 + 2 * usize::from(square_inner));
     let paint = render_model::UiCoveragePaint {
         fill: [key.color, key.end_color],
         border: key.border_color,
@@ -183,15 +193,19 @@ pub(super) fn mesh(key: Key) -> Option<UiMesh> {
             let start = std::f32::consts::PI + corner as f32 * std::f32::consts::FRAC_PI_2;
             for step in 0..=steps {
                 let angle = start + step as f32 / steps as f32 * std::f32::consts::FRAC_PI_2;
-                vertices.push(vertex(
-                    shape.point(
-                        inset,
-                        corner,
-                        [angle.cos(), angle.sin()],
-                        step as f32 / steps as f32,
-                    ),
+                let point = shape.point(
                     inset,
-                ));
+                    corner,
+                    [angle.cos(), angle.sin()],
+                    step as f32 / steps as f32,
+                );
+                if square_inner && step == 0 {
+                    vertices.push(vertex(shape.straight_point(point, corner, false), inset));
+                }
+                vertices.push(vertex(point, inset));
+                if square_inner && step == steps {
+                    vertices.push(vertex(shape.straight_point(point, corner, true), inset));
+                }
             }
         }
     }

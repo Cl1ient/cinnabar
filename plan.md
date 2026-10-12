@@ -605,6 +605,11 @@ these changes do not close the movement, camera, or actor parity gates.
   See [pooled-upload evidence](docs/evidence/render-stall-pooling.md),
   [frame breakdown evidence](docs/evidence/frame-breakdown.md) and
   [Tracy attribution](docs/evidence/frame-breakdown-tracy.md).
+- Block entities whose reach lies only in sections the current cave result never reached
+  skip model and text preparation, under the actor camera and graph validity rule; lids,
+  bell rings and map requests still advance, and beacon beams are exempt. Regression tests
+  count prepared candidates and bound authored model reach. Incomplete: no hardware capture
+  yet measures the gain.
 
 ## Camera packets and aim assist
 
@@ -768,6 +773,16 @@ these changes do not close the movement, camera, or actor parity gates.
   Incomplete: live acceptance remains pending. The updated inspection client is
   running after the requested restart. Changes are local and uncommitted;
   nothing is pushed.
+
+## Status-effect column
+
+- Vanilla's `mob_effects_renderer` draws one column at the right edge, below the
+  top band. Effects run in id order, wrap leftward, and blink at vanilla's rate.
+- The built-in Java pack keeps its Java rows at the top-right through its own
+  `java_mob_effects_renderer`. Packs that place vanilla's control get the column.
+- Incomplete: there is no slide-in or slide-out animation. The safe-zone and
+  screen-position offsets are taken as zero. The top band ignores riding hearts and
+  pocket-profile rules.
 
 ## Worn server-pack armour textures
 
@@ -7897,8 +7912,9 @@ pick, placement-obstruction and aim dispositions, checks every independently col
 entity identity, and retains the existing class routes as provisional compatibility data.
 Actor admission resolves advertised bases once, preserves the first advertisement,
 refreshes earlier actors, and caches numeric dispositions for frame and ray consumers.
-Unadvertised identities and unadmitted nonempty bases remain unresolved. Empty
-advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
+Unadvertised identities and unadmitted nonempty bases remain unresolved; attack picking
+still admits them through their collision box or server hitboxes, while aim assist skips
+them. Empty advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
 mutable component, spectator pick/obstruction and class inventories are still open;
 the generic-mob disposition remains provisional and does not close a parity gate.
 
@@ -7931,3 +7947,15 @@ item names do not select bow or crossbow use frames. Unsupported charged project
 has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
+
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together.
+
+Incomplete parity: full pack-reload galleries and streaming frame budgets remain open.
+
+## Loom banner previews
+
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers.
+
+Incomplete parity: recipe eligibility and exact pattern-choice styling remain open.

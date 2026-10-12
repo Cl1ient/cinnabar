@@ -527,11 +527,7 @@ pub fn required_present(dir: &Path) -> bool {
 }
 
 /// Preparation-kit directories and the checkout prefixes they stand in for.
-const KIT_LAYOUT: [(&str, &str); 3] = [
-    ("assets", "assets/"),
-    ("data", "crates/assets/data/"),
-    ("protocol-data", "crates/protocol/data/"),
-];
+const KIT_LAYOUT: [(&str, &str); 2] = [("assets", "assets/"), ("data", "crates/assets/data/")];
 
 /// Where tracked inputs resolve: a checkout, or an installer's preparation kit.
 #[derive(Clone, Debug)]
@@ -671,14 +667,6 @@ mod tests {
         assert_eq!(
             kit.resolve(VANILLA_MANIFEST),
             Path::new("kit/assets/vanilla-source.json")
-        );
-        assert_eq!(
-            kit.resolve(crate::item::retail::INPUT_PATH),
-            Path::new("kit/protocol-data").join(
-                Path::new(crate::item::retail::INPUT_PATH)
-                    .file_name()
-                    .unwrap()
-            )
         );
     }
 

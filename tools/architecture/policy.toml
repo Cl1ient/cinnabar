@@ -978,6 +978,7 @@ clock_free_crates = [
     "crates/sim",
     "crates/ui",
     "crates/ui-engine",
+    "crates/ui-screens",
     "crates/world",
 ]
 sleep_exceptions = [

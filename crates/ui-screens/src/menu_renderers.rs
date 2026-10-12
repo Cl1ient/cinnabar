@@ -4,7 +4,6 @@
 use std::{
     f64::consts::PI,
     sync::{Arc, OnceLock},
-    time::Instant,
 };
 
 use assets::RuntimeUiAssets;
@@ -60,11 +59,12 @@ pub fn install_brand_overlays(catalog: &mut json_ui::Catalog) {
     );
 }
 
-/// The splash for this launch: a random line of the pack's `splashes.json`,
+/// The splash for this launch: the line of the pack's `splashes.json` that `seed` picks,
 /// else `menu.beta` as the preview client (whose pack has none) shows.
 pub fn pick_splash(
     assets: &RuntimeUiAssets,
     translate: &dyn Fn(&str) -> Option<Arc<str>>,
+    seed: usize,
 ) -> Option<String> {
     let lines: Vec<String> = assets
         .ui_file("splashes.json")
@@ -84,9 +84,6 @@ pub fn pick_splash(
     if lines.is_empty() {
         return translate("menu.beta").map(|text| text.to_string());
     }
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.subsec_nanos() as usize);
     let pick = seed % lines.len();
     lines.into_iter().nth(pick)
 }
@@ -112,6 +109,10 @@ fn split_sentence(text: &str, limit: usize) -> (&str, Option<&str>) {
 pub struct MenuRenderer<'a> {
     pub splash: Option<&'a str>,
     pub portrait: Option<IconRef>,
+    /// The menu clock, in seconds.
+    pub now: f64,
+    /// The menu clock when the splash first drew; its pulse runs from there.
+    pub splash_epoch: &'a OnceLock<f64>,
 }
 
 impl CustomRenderer for MenuRenderer<'_> {
@@ -123,7 +124,8 @@ impl CustomRenderer for MenuRenderer<'_> {
         match node.renderer {
             "splash_text_renderer" => {
                 if let Some(text) = self.splash {
-                    splash(canvas, text, node);
+                    let seconds = self.now - *self.splash_epoch.get_or_init(|| self.now);
+                    splash(canvas, text, node, seconds);
                 }
                 Ok(true)
             }
@@ -151,8 +153,7 @@ impl CustomRenderer for MenuRenderer<'_> {
 
 /// Yellow text tilted up to the right around the control's position,
 /// pulsing up to 4% larger and shrunk to stay below the top of the screen.
-fn splash(canvas: &mut Canvas<'_>, text: &str, node: &CustomDraw<'_>) -> Option<()> {
-    static EPOCH: OnceLock<Instant> = OnceLock::new();
+fn splash(canvas: &mut Canvas<'_>, text: &str, node: &CustomDraw<'_>, seconds: f64) -> Option<()> {
     let dest = node.dest;
     let (px, metrics, font, screen) = (
         canvas.px(),
@@ -160,7 +161,6 @@ fn splash(canvas: &mut Canvas<'_>, text: &str, node: &CustomDraw<'_>) -> Option<
         canvas.font(),
         canvas.screen(),
     );
-    let seconds = EPOCH.get_or_init(Instant::now).elapsed().as_secs_f64();
     let mut scale = 1.0 + 0.04 * (seconds * PI * 2.3).sin().powi(4) as f32;
     let (first, second) = split_sentence(text, SPLASH_LINE_CHARS);
     let mut width = |line: &str| {

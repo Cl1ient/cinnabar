@@ -126,7 +126,7 @@ fn render(view: &MenuView) -> Option<json_ui::ScreenRender> {
             .map(|file| (&*file.path, &*file.bytes)),
     )
     .ok()?;
-    let screen = screen_data(view, &|_| None)?;
+    let screen = screen_data(view, &|_| None, 0)?;
     let env = json_ui::LayoutEnv {
         text: &crate::test_support::FixedText,
         textures: &crate::test_support::NoTextures,

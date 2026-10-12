@@ -221,7 +221,7 @@ fn graphics_options_expander_uses_full_settings_button_height() {
         .unwrap();
     for expanded in [false, true, false] {
         view.settings_advanced_graphics = expanded;
-        let screen = ui_screens::menu_screens::screen_data(&view, &|_| None).unwrap();
+        let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
         let rendered = json_ui::render_screen(
             screen.reference,
             &catalog,

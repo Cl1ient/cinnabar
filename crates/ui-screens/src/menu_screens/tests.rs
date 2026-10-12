@@ -61,7 +61,7 @@ fn region(kind: HitKind, pressed: Option<&str>) -> HitRegion {
 }
 
 fn reference(view: &MenuView) -> Option<&'static str> {
-    screen_data(view, &|_| None).map(|screen| screen.reference)
+    screen_data(view, &|_| None, 0).map(|screen| screen.reference)
 }
 
 #[test]
@@ -175,7 +175,7 @@ fn local_world_download_bar_fills_with_the_bytes_done() {
         fraction: Some(0.882),
         detail: "72.2 / 81.8 MB".to_owned(),
     });
-    let screen = screen_data(&opening, &|_| None).unwrap();
+    let screen = screen_data(&opening, &|_| None, 0).unwrap();
     let resolved = json_ui::resolve(&catalog, screen.reference, &screen.context)
         .control
         .unwrap();
@@ -310,7 +310,7 @@ fn fullscreen_toggle_binds_and_changes_the_current_window_mode() {
         action_for(&view, &toggle),
         Some(MenuAction::SettingsFullscreen(false))
     );
-    let data = screen_data(&view, &|_| None).unwrap().data;
+    let data = screen_data(&view, &|_| None, 0).unwrap().data;
     let toggle = json_ui::ResolvedControl {
         name: "full_screen".into(),
         control_type: Some("toggle".into()),

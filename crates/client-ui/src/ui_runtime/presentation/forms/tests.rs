@@ -476,7 +476,7 @@ pub(super) fn screen_texts(view: &launcher::menu::MenuView) -> Option<Vec<String
             .map(|file| (&*file.path, &*file.bytes)),
     )
     .ok()?;
-    let screen = ui_screens::menu_screens::screen_data(view, &|_| None)?;
+    let screen = ui_screens::menu_screens::screen_data(view, &|_| None, 0)?;
     let env = json_ui::LayoutEnv {
         text: &FixedText,
         textures: &NoTextures,
@@ -609,7 +609,7 @@ fn retail_settings_hide_debug_and_automation_sections() {
         json_ui::Catalog::from_files(files.iter().map(|file| (&*file.path, &*file.bytes))).unwrap();
     let mut view = launcher::menu::MenuView::new(true, "Steve".to_owned());
     view.screen = launcher::menu::MenuScreen::Settings;
-    let settings = ui_screens::menu_screens::screen_data(&view, &|_| None).unwrap();
+    let settings = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
     let tree = json_ui::resolve(&catalog, settings.reference, &settings.context)
         .control
         .unwrap();
@@ -669,7 +669,7 @@ fn retail_settings_keep_navigation_and_video_options_compact() {
     .unwrap();
     let mut view = launcher::menu::MenuView::new(true, "Player".to_owned());
     view.screen = launcher::menu::MenuScreen::Settings;
-    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None).unwrap();
+    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
     let resolved = json_ui::resolve(&catalog, screen.reference, &screen.context)
         .control
         .unwrap();

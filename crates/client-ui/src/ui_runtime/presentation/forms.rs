@@ -109,6 +109,8 @@ pub(super) struct ScreenStates {
     menu_title: Option<menu_title::TitleSource>,
     /// The title splash, picked once per launch.
     splash: std::sync::OnceLock<Option<String>>,
+    /// The menu clock when the splash first drew, which its pulse runs from.
+    splash_epoch: std::sync::OnceLock<f64>,
     /// The form whose render path was last logged, so each form logs once.
     logged: Option<ServerFormIdentity>,
     /// The engine HUD's cached screens.

@@ -67,8 +67,12 @@ pub(super) fn flags(data: &mut DataSource, on: &[&str]) {
 use launcher::menu::menu_reference;
 
 /// The vanilla screen for `view`, or `None` for states without one (the
-/// programmatic launcher then draws them).
-pub fn screen_data(view: &MenuView, translate: Translate<'_>) -> Option<MenuScreenData> {
+/// programmatic launcher then draws them). `now_unix` is the wall-clock time in seconds.
+pub fn screen_data(
+    view: &MenuView,
+    translate: Translate<'_>,
+    now_unix: i64,
+) -> Option<MenuScreenData> {
     let mut data = DataSource::new();
     data.set_strict(true);
     let mut context = base_context();
@@ -155,7 +159,7 @@ pub fn screen_data(view: &MenuView, translate: Translate<'_>) -> Option<MenuScre
                     );
             }
             MenuScreen::Home => {
-                start_screen(view, &mut data, translate);
+                start_screen(view, &mut data, translate, now_unix);
                 context = start_screen_vars(context);
             }
             MenuScreen::Play | MenuScreen::Social | MenuScreen::Servers => {
@@ -307,7 +311,7 @@ fn store_screen(
     Some(base)
 }
 
-fn start_screen(view: &MenuView, data: &mut DataSource, translate: Translate<'_>) {
+fn start_screen(view: &MenuView, data: &mut DataSource, translate: Translate<'_>, now_unix: i64) {
     let gamertag = launcher::menu::profile::current_name(view).to_owned();
     data.set_global("#playername", text(gamertag.clone()));
     data.set_global("#gamertag_label", text(gamertag));
@@ -326,7 +330,7 @@ fn start_screen(view: &MenuView, data: &mut DataSource, translate: Translate<'_>
         "#is_paper_doll_visible",
         Scalar::Bool(view.profile_icon.is_some()),
     );
-    super::start_feed::bind(view, data);
+    super::start_feed::bind(view, data, now_unix);
     data.set_global("#version", text(version_label(protocol::GAME_VERSION)));
     data.set_global("#unlock_full_game_button_text", text(UNLOCK_FULL_GAME_TEXT));
     data.set_global("#edu_demo_only_ui_visible", Scalar::Bool(false));

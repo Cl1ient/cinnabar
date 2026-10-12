@@ -202,6 +202,7 @@ pub fn hits(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::history_node;
 
     #[test]
     fn web_targets_keep_punctuation_balanced_and_strip_formatting() {
@@ -217,37 +218,6 @@ mod tests {
             ]
         );
         assert!(targets("https://user:password@example.com http:/// https://").is_empty());
-    }
-    fn history_node(text: &str, width: f64) -> DrawNode {
-        DrawNode {
-            name: "text".into(),
-            key: "chat/messages_panel/messages_text/text".into(),
-            dest: json_ui::RectOut {
-                x: 10.0,
-                y: 20.0,
-                w: width,
-                h: 400.0,
-            },
-            clip: json_ui::RectOut {
-                x: 0.0,
-                y: 0.0,
-                w: 800.0,
-                h: 500.0,
-            },
-            layer: 1,
-            alpha: 1.0,
-            anim: None,
-            gates: Vec::new(),
-            draw: Draw::Text {
-                text: text.into(),
-                color: [255; 4],
-                shadow: true,
-                align: json_ui::TextAlign::Left,
-                scale: 1.0,
-                localize: false,
-                options: Default::default(),
-            },
-        }
     }
     #[test]
     fn multiple_links_hit_their_own_glyphs_and_wrapped_links_keep_one_target() {

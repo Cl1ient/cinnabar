@@ -129,7 +129,7 @@ fn a_hero_row_draws_and_opens_its_offers() {
     let files = carrier.ui_files();
     let catalog =
         json_ui::Catalog::from_files(files.iter().map(|f| (&*f.path, &*f.bytes))).unwrap();
-    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None).unwrap();
+    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
     let env = json_ui::LayoutEnv {
         text: &FixedText,
         textures: &NoTextures,
@@ -210,7 +210,7 @@ fn each_hero_row_draws_its_own_offers() {
     let files = carrier.ui_files();
     let catalog =
         json_ui::Catalog::from_files(files.iter().map(|f| (&*f.path, &*f.bytes))).unwrap();
-    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None).unwrap();
+    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
     let env = json_ui::LayoutEnv {
         text: &FixedText,
         textures: &NoTextures,
@@ -266,7 +266,7 @@ fn store_render(
     let files = carrier.ui_files();
     let catalog =
         json_ui::Catalog::from_files(files.iter().map(|f| (&*f.path, &*f.bytes))).unwrap();
-    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None).unwrap();
+    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
     let env = json_ui::LayoutEnv {
         text: &FixedText,
         textures: &NoTextures,

@@ -2,8 +2,6 @@
 //! Store buttons, the inbox badge, the Realms invite count and the live-event
 //! button with its countdown caption.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use json_ui::{DataSource, Scalar};
 
 use launcher::menu::{ButtonArt, MenuView};
@@ -12,7 +10,8 @@ fn text(value: impl Into<String>) -> Scalar {
     Scalar::Text(value.into())
 }
 
-pub(super) fn bind(view: &MenuView, data: &mut DataSource) {
+/// Binds the start screen's feeds; `now_unix` is the wall-clock time live-event countdowns run to.
+pub(super) fn bind(view: &MenuView, data: &mut DataSource, now_unix: i64) {
     let home = &view.feeds.home;
     button_art(data, "play", home.play_art.as_ref());
     button_art(data, "store", home.store_art.as_ref());
@@ -45,11 +44,8 @@ pub(super) fn bind(view: &MenuView, data: &mut DataSource) {
         Scalar::Bool(!event.badge_path.is_empty()),
     );
     data.set_global("#gathering_gif_badge", Scalar::Bool(false));
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs() as i64);
     let caption = if event.countdown {
-        countdown_caption(&event.caption, event.start_unix, now)
+        countdown_caption(&event.caption, event.start_unix, now_unix)
     } else {
         event.caption.clone()
     };

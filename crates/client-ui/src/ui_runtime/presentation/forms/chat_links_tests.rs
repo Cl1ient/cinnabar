@@ -2,45 +2,14 @@
 
 use std::sync::Arc;
 
-use json_ui::{Draw, DrawNode, ViewState};
+use json_ui::{Draw, ViewState};
 use ui_engine::engine::{FormEngine, ScreenArt, screen::PaintFrame};
 use ui_engine::text_metrics::TextMetrics;
+use ui_screens::test_support::history_node;
 
 use crate::ui_runtime::presentation::UiPresentationRuntime;
 
 mod hud_rows;
-
-fn history_node(text: &str, width: f64) -> DrawNode {
-    DrawNode {
-        name: "text".into(),
-        key: "chat/messages_panel/messages_text/text".into(),
-        dest: json_ui::RectOut {
-            x: 10.0,
-            y: 20.0,
-            w: width,
-            h: 400.0,
-        },
-        clip: json_ui::RectOut {
-            x: 0.0,
-            y: 0.0,
-            w: 800.0,
-            h: 500.0,
-        },
-        layer: 1,
-        alpha: 1.0,
-        anim: None,
-        gates: Vec::new(),
-        draw: Draw::Text {
-            text: text.into(),
-            color: [255; 4],
-            shadow: true,
-            align: json_ui::TextAlign::Left,
-            scale: 1.0,
-            localize: false,
-            options: Default::default(),
-        },
-    }
-}
 
 #[test]
 fn link_hits_follow_the_actual_default_and_named_label_paint_origin() {

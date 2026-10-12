@@ -19,3 +19,38 @@ impl json_ui::TextureSource for NoTextures {
         })
     }
 }
+
+/// A chat history label drawing `text` `width` px wide inside an 800x500 clip.
+pub fn history_node(text: &str, width: f64) -> json_ui::DrawNode {
+    use json_ui::{Draw, DrawNode};
+
+    DrawNode {
+        name: "text".into(),
+        key: "chat/messages_panel/messages_text/text".into(),
+        dest: json_ui::RectOut {
+            x: 10.0,
+            y: 20.0,
+            w: width,
+            h: 400.0,
+        },
+        clip: json_ui::RectOut {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 500.0,
+        },
+        layer: 1,
+        alpha: 1.0,
+        anim: None,
+        gates: Vec::new(),
+        draw: Draw::Text {
+            text: text.into(),
+            color: [255; 4],
+            shadow: true,
+            align: json_ui::TextAlign::Left,
+            scale: 1.0,
+            localize: false,
+            options: Default::default(),
+        },
+    }
+}

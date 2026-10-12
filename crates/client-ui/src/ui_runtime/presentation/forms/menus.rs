@@ -203,7 +203,7 @@ impl UiPresentationRuntime {
             return Ok(None);
         };
         let translate = |key: &str| runtime.translation(key);
-        let Some(screen) = menu_screens::screen_data(view, &translate) else {
+        let Some(screen) = menu_screens::screen_data(view, &translate, unix_seconds()) else {
             return Ok(None);
         };
         // Last frame's region keys carry the launcher's hover/press/focus.
@@ -292,7 +292,11 @@ impl UiPresentationRuntime {
                     .screens
                     .splash
                     .get_or_init(|| {
-                        ui_screens::menu_renderers::pick_splash(renderer.assets(), &translate)
+                        ui_screens::menu_renderers::pick_splash(
+                            renderer.assets(),
+                            &translate,
+                            splash_seed(),
+                        )
                     })
                     .as_deref(),
                 // The gamerpic, else the rendered persona head.
@@ -302,6 +306,8 @@ impl UiPresentationRuntime {
                 ]
                 .into_iter()
                 .find_map(|path| self.menu_artwork.refs.get(path).copied()),
+                now: self.menu_seconds,
+                splash_epoch: &self.screens.splash_epoch,
             };
             let mut preview = PreviewRenderer {
                 preview: self.hud_frame.player_preview,
@@ -569,6 +575,20 @@ impl UiPresentationRuntime {
         self.screens.menu_sounds = sounds;
         Some((hits, keys))
     }
+}
+
+/// Wall-clock seconds since the Unix epoch, which live-event countdowns run to.
+pub(super) fn unix_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs() as i64)
+}
+
+/// A seed that picks this launch's splash from the wall clock's sub-second nanoseconds.
+fn splash_seed() -> usize {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.subsec_nanos() as usize)
 }
 
 /// Where a launcher text box's region drew its text, for placing a pressed caret.

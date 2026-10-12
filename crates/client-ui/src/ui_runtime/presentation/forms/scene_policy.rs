@@ -99,8 +99,11 @@ impl UiPresentationRuntime {
         let Some(engine) = self.engine.as_deref() else {
             return ScreenSettings::default();
         };
-        let Some(mut screen) = menu_screens::screen_data(view, &|key| runtime.translation(key))
-        else {
+        let Some(mut screen) = menu_screens::screen_data(
+            view,
+            &|key| runtime.translation(key),
+            super::menus::unix_seconds(),
+        ) else {
             return ScreenSettings::default();
         };
         let mut policy = engine.scene_settings(screen.reference, &screen.context);

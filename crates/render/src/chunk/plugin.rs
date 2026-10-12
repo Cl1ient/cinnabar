@@ -89,6 +89,7 @@ impl Plugin for ChunkRenderPlugin {
 
         app.init_resource::<ChunkTextureReload>();
         install_chunk_extraction(app);
+        crate::upload_staging::install_terrain(app);
 
         crate::lighting::install(app);
         load_internal_asset!(

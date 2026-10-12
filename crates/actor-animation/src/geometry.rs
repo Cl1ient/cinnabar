@@ -338,6 +338,7 @@ pub(super) fn skeleton(merged: &[EntityGeometryBone]) -> Option<(Vec<RuntimeBone
 // following an inheritance chain; mesh resolution has its own cumulative cube budget.
 fn bone_metadata(bone: &EntityGeometryBone) -> EntityGeometryBone {
     EntityGeometryBone {
+        locators: bone.locators.clone(),
         name: bone.name.clone(),
         parent: bone.parent.clone(),
         pivot: bone.pivot,

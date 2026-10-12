@@ -25,8 +25,8 @@ mod visibility;
 pub mod visibility_bounds;
 
 pub use actor::{
-    ACTOR_RIG_VERTEX_WORDS, ActorRigGeometry, ActorRigGeometryError, ActorRigSurface,
-    ActorRigVertex, ActorSkinPixels, ActorVertex, DEFAULT_PLAYER_SKIN_PATH,
+    ACTOR_RIG_VERTEX_WORDS, ActorEmitterTransform, ActorRigGeometry, ActorRigGeometryError,
+    ActorRigSurface, ActorRigVertex, ActorSkinPixels, ActorVertex, DEFAULT_PLAYER_SKIN_PATH,
     DEFAULT_SKIN_PROVENANCE, DIAGNOSTIC_RIG_ID, EntityRigId, FrameSlotRecency,
     MAX_ACTOR_CATALOG_VERTEX_BYTES, MAX_ACTOR_CATALOG_VERTICES, MAX_ACTOR_RIG_VERTICES,
     MAX_RENDER_BONES_PER_ACTOR, MAX_RENDERED_PLAYERS, ONE_SIDED_BACK_UV, PLAYER_SKIN_BUDGET_BYTES,
@@ -39,8 +39,8 @@ pub use actor::{
     is_equipment_rig_id, is_layer_geometry_rig_id, is_pack_equipment_rig_id, is_pack_rig_id,
     item_mesh_rig_id, layer_geometries, layer_geometry_rig_id, normalize_actor_skin,
     pack_equipment_rig_id, pack_geometries, pack_rig_id, prepare_actor_skin_cached,
-    resolve_geometry_bones, skin_geometry, skin_rig_id, standard_biped_overlay_vertices,
-    standard_biped_vertices,
+    resolve_geometry_bones, sampled_locator_transform, skin_geometry, skin_rig_id,
+    standard_biped_overlay_vertices, standard_biped_vertices,
 };
 pub use chunk_metrics::{
     ModelWorkloadCount, ModelWorkloadMetricsSnapshot, TransparentSortMetricsSnapshot,

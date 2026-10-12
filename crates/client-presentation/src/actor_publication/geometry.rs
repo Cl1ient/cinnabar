@@ -18,14 +18,13 @@ pub(super) fn apply_session_pack(
 ) {
     let equipment_timer = profiler.map(|profiler| profiler.time(RuntimeStage::ActorEquipmentSetup));
     let mut pages = resources.pages.clone();
-    let layer = pack.and_then(|pack| {
-        pack.equipment.as_ref().map(|catalog| {
-            (
-                Arc::clone(&pack.assets),
-                Arc::clone(catalog),
-                resources.locations.clone(),
-            )
-        })
+    // A pack without attachables still owns the bodies of the actors it rigs.
+    let layer = pack.map(|pack| {
+        (
+            Arc::clone(&pack.assets),
+            pack.equipment.clone(),
+            resources.locations.clone(),
+        )
     });
     if let Some(equipment) = equipment {
         equipment.set_pack_layer(layer);

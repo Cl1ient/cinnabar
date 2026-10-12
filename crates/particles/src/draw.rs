@@ -270,7 +270,7 @@ fn emit_emitter(
     let def = std::sync::Arc::clone(&emitter.def);
     let local = def.emitter.local_position;
     let placement = emitter.texture.normalized();
-    let (origin, basis, queries) = (emitter.pos, emitter.basis, emitter.queries);
+    let (origin, basis, queries) = (emitter.pos, emitter.basis, emitter.queries.clone());
     let alpha_test = if def.material == Material::Alpha {
         1.0
     } else {

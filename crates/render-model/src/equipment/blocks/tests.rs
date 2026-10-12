@@ -20,6 +20,7 @@ fn overlay(flags: BlockFlags, material_flags: u32, size: u32) -> BlockOverlay {
     }
     BlockOverlay {
         visuals: vec![assets::BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [1; 6],
             flags,
             kind: VisualKind::Cube,
@@ -336,6 +337,7 @@ fn barrel_entities(
                         block_visual: assets::BlockVisualId(record.sequential_id),
                     },
                     grip: assets::item::grip::ItemGrip::Unresolved,
+                    glint: assets::item::glint::ItemGlint::Unresolved,
                     fuel: assets::item::fuel::ItemFuel::Unresolved,
                     armour: assets::item::armour::ItemArmour::Unresolved,
                     durability: assets::item::durability::ItemDurability::Unresolved,

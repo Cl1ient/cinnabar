@@ -32,6 +32,9 @@ const WIRE_ENCODING_ITEM_ID: i32 = 25_000;
 
 fn item_assets() -> Arc<RuntimeEntityAssets> {
     let compiled = CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [0x31; 32],
         block_visual_count: 1,
         sources: vec![
@@ -59,12 +62,14 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         .into_boxed_slice(),
         symbols: vec![
             EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: EntityAssetKind::Entity,
                 identifier: "minecraft:item_frame".into(),
                 source_index: 1,
                 dependencies: Box::new([]),
             },
             EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: EntityAssetKind::Animation,
                 identifier: "animation.catalog_only".into(),
                 source_index: 0,
@@ -102,6 +107,10 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         rig_controllers: Box::new([]),
         item_visuals: vec![
             ItemVisualDefinition {
+                grip: assets::item::grip::ItemGrip::Unresolved,
+                fuel: assets::item::fuel::ItemFuel::Unresolved,
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:apple".into(),
                     metadata: 0,
@@ -118,6 +127,10 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
                 dropped: ItemDisplayTransform::identity(),
             },
             ItemVisualDefinition {
+                grip: assets::item::grip::ItemGrip::Unresolved,
+                fuel: assets::item::fuel::ItemFuel::Unresolved,
+                durability: assets::item::durability::ItemDurability::Unresolved,
+                armour: assets::item::armour::ItemArmour::Unresolved,
                 key: ItemVisualKey {
                     identifier: "minecraft:block_witness".into(),
                     metadata: 0,
@@ -141,7 +154,10 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         }]
         .into_boxed_slice(),
         render: Default::default(),
-    };
+    }
+    .with_unresolved_item_use()
+    .with_unresolved_seats()
+    .with_unresolved_interactions();
     let bytes = encode_entity_blob(&compiled).unwrap();
     Arc::new(RuntimeEntityAssets::decode(&bytes).unwrap())
 }
@@ -215,6 +231,7 @@ fn registry(network_id: i32, identifier: &str) -> WorldEvent {
             network_id,
             component_based: false,
             version: ItemRegistryVersion::Legacy,
+            components: None,
             component_digest: [7; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -402,18 +419,17 @@ fn selected_slot_wire_encoding_distinguishes_retained_block_identity() {
     let mut blocked = plain.clone();
     blocked.block_runtime_id = 180;
 
-    let session = protocol::BedrockSession { shield_item_id: 0 };
     let plain_packet = select_hotbar_slot_packet(42, 0, &plain).unwrap();
     let blocked_packet = select_hotbar_slot_packet(42, 0, &blocked).unwrap();
-    let plain_bytes = protocol::encode(&plain_packet, &session).unwrap();
-    let blocked_bytes = protocol::encode(&blocked_packet, &session).unwrap();
+    let plain_bytes = protocol::encode(&plain_packet).unwrap();
+    let blocked_bytes = protocol::encode(&blocked_packet).unwrap();
 
     // The outbound selected-slot wire carries the exact retained block
     // identity, so the two stacks never encode to the same bytes.
     assert_ne!(plain_bytes, blocked_bytes);
 
     let rebuilt = select_hotbar_slot_packet(42, 0, &plain).unwrap();
-    assert_eq!(protocol::encode(&rebuilt, &session).unwrap(), plain_bytes);
+    assert_eq!(protocol::encode(&rebuilt).unwrap(), plain_bytes);
 }
 
 #[test]
@@ -574,6 +590,7 @@ fn registry_record_bound_accepts_exact_limit_and_rejects_limit_plus_one_atomical
                     network_id: index as i32 + 1,
                     component_based: false,
                     version: ItemRegistryVersion::Legacy,
+                    components: None,
                     component_digest: [index as u8; 32],
                     negotiated_max_stack_size: None,
                     canonical_empty_component_data: true,

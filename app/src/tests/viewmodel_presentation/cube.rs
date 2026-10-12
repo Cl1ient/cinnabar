@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(not(feature = "acceptance"))]
+use crate::acceptance::AcceptanceRun;
+#[cfg(feature = "acceptance")]
+use ::acceptance::AcceptanceRun;
 
 fn cube_world_assets(
     entities: &assets::RuntimeEntityAssets,
@@ -16,6 +20,7 @@ fn cube_world_assets(
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         };
         count
     ];
@@ -53,10 +58,7 @@ fn cube_world_assets(
         biomes: CompiledBiomeAssets::diagnostic(),
         provenance: BlobProvenance {
             source_manifest_sha256: entities.source_manifest_sha256(),
-            block_registry_sha256: Sha256::digest(
-                crate::asset_startup::pinned_block_registry_bytes(),
-            )
-            .into(),
+            block_registry_sha256: Sha256::digest(assets::pinned_block_registry_bytes()).into(),
             light_registry_sha256: [3; 32],
             biome_registry_sha256: [4; 32],
         },
@@ -66,22 +68,25 @@ fn cube_world_assets(
 
 #[test]
 fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rejection() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
-    use crate::ui_runtime::presentation::tests::{fixture_font, fixture_hud};
-    use crate::{
-        camera::FlyCamera,
-        presentation::viewmodel::{HandAdapter, HandFallback, ViewmodelPublish},
-        runtime::world::ClientWorld,
-    };
     use bevy::{
         camera::{Camera, ComputedCameraValues, RenderTarget, RenderTargetInfo},
         ecs::system::RunSystemOnce,
         prelude::*,
     };
+    use client_ui::test_support::fixture_hud;
     use client_ui::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame};
     use protocol::WorldBootstrap;
     use std::sync::Arc;
+    use ui_engine::test_support::fixture_font;
+    use {
+        crate::{presentation::viewmodel::ViewmodelPublish, runtime::world::ClientWorld},
+        client_presentation::{
+            camera::FlyCamera,
+            presentation::viewmodel::{HandAdapter, HandFallback},
+        },
+    };
     let (pack, _geometry, _) = hand_fixture();
     // Match the decoded carrier's unsupported player-controller route: retain
     // the player symbol, authored geometry and item routes, but no resolved rig.
@@ -146,16 +151,9 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         use sha2::Digest;
         sha2::Sha256::digest(&stack.extra_data).into()
     };
-    let session = protocol::BedrockSession { shield_item_id: 0 };
-    let wire = protocol::encode(
-        &protocol::select_hotbar_slot_packet(1, 0, &stack).unwrap(),
-        &session,
-    )
-    .unwrap();
-    let decoded = protocol::decode_batch(wire, &session)
-        .unwrap()
-        .pop()
-        .unwrap();
+    let wire =
+        protocol::encode(&protocol::select_hotbar_slot_packet(1, 0, &stack).unwrap()).unwrap();
+    let decoded = protocol::decode_batch(wire).unwrap().pop().unwrap();
     let Some(protocol::WorldEvent::Equipment(decoded)) =
         protocol::into_world_event(decoded, 0).unwrap()
     else {
@@ -183,7 +181,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         &mut runtime,
         &mut presentation,
         world.stream.as_ref(),
-        crate::camera::CameraSettingsAuthority::default().perspective(),
+        client_presentation::camera::CameraSettingsAuthority::default().perspective(),
         0,
     );
     // Block-routed items are absent from the sprite-only icon catalog. The
@@ -202,14 +200,14 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .unwrap();
     let empty = presentation.cpu_empty_hand_fallback();
     let mut app = App::new();
-    let mut movement = crate::movement::MovementTicker::default();
-    let mut physics = crate::movement::LocalPhysicsController::default();
-    crate::movement::reset_start_game_prediction(&mut movement, &mut physics, 1, [0., 64., 0.]);
-    movement.set_source(crate::movement::MovementSource::Physics);
-    let mut avatar = crate::local_player::LocalAvatarPresentation::default();
-    let mut view = crate::local_player::LocalViewPose::default();
-    let mut settings = crate::camera::CameraSettingsAuthority::default();
-    crate::local_player::reset_local_player_session(
+    let mut movement = client_interaction::movement::MovementTicker::default();
+    let mut physics = client_interaction::movement::LocalPhysicsController::default();
+    gameplay::movement::reset_start_game_prediction(&mut movement, &mut physics, 1, [0., 64., 0.]);
+    movement.set_source(gameplay::movement::MovementSource::Physics);
+    let mut avatar = client_presentation::local_player::LocalAvatarPresentation::default();
+    let mut view = client_presentation::local_player::LocalViewPose::default();
+    let mut settings = client_presentation::camera::CameraSettingsAuthority::default();
+    client_presentation::local_player::reset_local_player_session(
         1,
         1,
         [0., 64., 0.],
@@ -217,7 +215,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         &mut view,
         &mut avatar,
     );
-    let mut visibility = crate::local_player::LocalAvatarVisibilityCarrier::default();
+    let mut visibility = client_presentation::local_player::LocalAvatarVisibilityCarrier::default();
     avatar.publish_view_visibility(
         semantic_input::PerspectiveMode::FirstPerson,
         Vec3::new(0., 64., 0.),
@@ -225,15 +223,18 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         Quat::IDENTITY,
         &mut visibility,
     );
-    app.insert_resource(runtime)
+    app.insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
         .insert_resource(world)
         .insert_resource(movement)
         .insert_resource(visibility)
         .init_resource::<HandAdapter>()
-        .init_resource::<render::ViewmodelScene>()
-        .init_resource::<render::ViewmodelCompletionGate>();
-    assert!(!app.world().contains_resource::<render::ViewmodelGeometry>());
+        .init_resource::<render_scene::ViewmodelScene>()
+        .init_resource::<render_scene::ViewmodelCompletionGate>();
+    assert!(
+        !app.world()
+            .contains_resource::<render_scene::ViewmodelGeometryResource>()
+    );
     app.world_mut().spawn((
         FlyCamera::default(),
         Camera {
@@ -254,7 +255,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             move |mut hand: ViewmodelPublish,
                   player_runtime: Res<PlayerRuntime>,
-                  runtime: Res<UiRuntime>,
+                  runtime: Res<UiRuntimeResource>,
                   world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
                 hand.bind_cpu_fallback(&observed_input, empty, None);
@@ -282,7 +283,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
     assert_cube_scene(&app, true);
     assert_eq!(
         app.world().resource::<HandAdapter>().stats.mode,
-        Some(render::ViewmodelMode::OpaqueCubeNeutralStaticFallback)
+        Some(render_scene::ViewmodelMode::OpaqueCubeNeutralStaticFallback)
     );
     // Exercise the real committed-control reconciliation, not a fabricated
     // actor spawn counter. The free-camera correction branch anchors without
@@ -290,9 +291,9 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
     let mut clock = crate::environment::WorldClock::default();
     let mut weather = crate::environment::WeatherState::default();
     crate::environment::bind_session_generation(&mut clock, &mut weather, 1);
-    let breg = crate::asset_startup::pinned_block_registry_bytes();
+    let breg = assets::pinned_block_registry_bytes();
     let records = assets::read_registry_for_protocol(breg, 2193).unwrap();
-    let collisions = crate::movement::PhysicsCollisionRegistries::from_assets(
+    let collisions = client_interaction::movement::PhysicsCollisionRegistries::from_assets(
         breg,
         &records,
         include_bytes!("../../../../crates/assets/data/block-physics-v2193.bin"),
@@ -303,25 +304,20 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .insert_resource(weather)
         .insert_resource(collisions)
         .insert_resource(physics)
-        .insert_resource(crate::acceptance::AcceptanceRun::new(
-            Some(900),
-            None,
-            false,
-            false,
-        ))
-        .insert_resource(crate::acceptance::model_witness::ModelWitnessFileSource::new(None))
-        .init_resource::<crate::movement::LocalMovementEffectTimeline>()
-        .init_resource::<crate::movement::LocalMovementSpeedAuthority>()
+        .insert_resource(AcceptanceRun::new(Some(900), None, false, false))
+        .insert_resource(acceptance::model_witness::ModelWitnessFileSource::new(None))
+        .init_resource::<client_interaction::movement::LocalMovementEffectTimeline>()
+        .init_resource::<client_interaction::movement::LocalMovementSpeedAuthority>()
         .init_resource::<Time<bevy::time::Real>>()
-        .init_resource::<render::ChunkUploadBudget>()
-        .init_resource::<crate::camera::CameraSettingsAuthority>()
-        .init_resource::<crate::local_player::LocalViewPose>()
-        .init_resource::<crate::local_player::LocalPlayerFrameCarrier>()
-        .init_resource::<crate::local_player::InteractionOriginSnapshot>()
+        .init_resource::<render_scene::ChunkUploadBudget>()
+        .init_resource::<client_presentation::camera::CameraSettingsAuthority>()
+        .init_resource::<client_presentation::local_player::LocalViewPose>()
+        .init_resource::<client_presentation::local_player::LocalPlayerFrameCarrier>()
+        .init_resource::<client_presentation::local_player::InteractionOriginSnapshot>()
         .init_resource::<crate::runtime::phase3_evidence::Phase3EvidenceEmitter>()
         .init_resource::<crate::runtime::world::WorldStreamFramePoll>()
         .init_resource::<client_presentation::server_camera::ServerCameraInstructions>()
-        .add_message::<client_presentation::audio_ingress::SequencedAudioEvent>();
+        .add_message::<client_audio::audio_ingress::SequencedAudioEvent>();
     let controls = [
         protocol::WorldEvent::Respawn(protocol::RespawnEvent {
             position: [1., 64., 0.],
@@ -347,11 +343,11 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
     ];
     for (index, event) in controls.into_iter().enumerate() {
         app.world_mut()
-            .resource_mut::<crate::movement::MovementTicker>()
-            .set_source(crate::movement::MovementSource::FreeCamera);
+            .resource_mut::<client_interaction::movement::MovementTicker>()
+            .set_source(gameplay::movement::MovementSource::FreeCamera);
         let before = app
             .world()
-            .resource::<crate::movement::MovementTicker>()
+            .resource::<client_interaction::movement::MovementTicker>()
             .interaction_authority_identity();
         app.world_mut()
             .resource_mut::<ClientWorld>()
@@ -365,7 +361,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
             .unwrap();
         let after = app
             .world()
-            .resource::<crate::movement::MovementTicker>()
+            .resource::<client_interaction::movement::MovementTicker>()
             .interaction_authority_identity();
         assert_eq!(before.0, after.0);
         assert!(after.1 > before.1);
@@ -373,7 +369,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
             .run_system_once(
                 |mut hand: ViewmodelPublish,
                  player_runtime: Res<PlayerRuntime>,
-                 runtime: Res<UiRuntime>,
+                 runtime: Res<UiRuntimeResource>,
                  world: Res<ClientWorld>| {
                     assert!(!hand.observe(
                         &player_runtime,
@@ -388,14 +384,14 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
             .unwrap();
         assert_cube_scene(&app, false);
         app.world_mut()
-            .resource_mut::<crate::movement::MovementTicker>()
-            .set_source(crate::movement::MovementSource::Physics);
+            .resource_mut::<client_interaction::movement::MovementTicker>()
+            .set_source(gameplay::movement::MovementSource::Physics);
         let input = input.clone();
         app.world_mut()
             .run_system_once(
                 move |mut hand: ViewmodelPublish,
                       player_runtime: Res<PlayerRuntime>,
-                      runtime: Res<UiRuntime>,
+                      runtime: Res<UiRuntimeResource>,
                       world: Res<ClientWorld>| {
                     assert!(!hand.observe(
                         &player_runtime,
@@ -435,7 +431,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
             },
@@ -454,7 +450,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             move |mut hand: ViewmodelPublish,
                   player_runtime: Res<PlayerRuntime>,
-                  runtime: Res<UiRuntime>,
+                  runtime: Res<UiRuntimeResource>,
                   world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
                 hand.bind_cpu_fallback(&recovered_input, empty, None);
@@ -476,7 +472,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
             },
@@ -496,7 +492,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .run_system_once(
             move |mut hand: ViewmodelPublish,
                   player_runtime: Res<PlayerRuntime>,
-                  runtime: Res<UiRuntime>,
+                  runtime: Res<UiRuntimeResource>,
                   world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
                 hand.bind_cpu_fallback(&resumed_input, empty, None);
@@ -505,13 +501,13 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .unwrap();
     assert_cube_scene(&app, true);
     crate::tests::with_ui_player(&mut app, |runtime, player_runtime| {
-        crate::session::begin_session(runtime, player_runtime, 2);
+        client_runtime::session::begin_session(runtime, player_runtime, 2);
     });
     app.world_mut()
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
             },
@@ -534,9 +530,9 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         );
     });
     app.world_mut()
-        .resource_mut::<crate::movement::MovementTicker>()
+        .resource_mut::<client_interaction::movement::MovementTicker>()
         .reset(2, 0, [0., 64., 0.]);
-    let mut avatar = crate::local_player::LocalAvatarPresentation::default();
+    let mut avatar = client_presentation::local_player::LocalAvatarPresentation::default();
     avatar.begin_session(2, 1);
     avatar.publish_view_visibility(
         semantic_input::PerspectiveMode::FirstPerson,
@@ -545,7 +541,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         Quat::IDENTITY,
         &mut app
             .world_mut()
-            .resource_mut::<crate::local_player::LocalAvatarVisibilityCarrier>(),
+            .resource_mut::<client_presentation::local_player::LocalAvatarVisibilityCarrier>(),
     );
     for fresh_stream in [false, true] {
         if fresh_stream {
@@ -574,7 +570,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
             .run_system_once(
                 move |mut hand: ViewmodelPublish,
                       player_runtime: Res<PlayerRuntime>,
-                      runtime: Res<UiRuntime>,
+                      runtime: Res<UiRuntimeResource>,
                       world: Res<ClientWorld>| {
                     assert!(!hand.observe(
                         &player_runtime,
@@ -593,13 +589,13 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
     // Retiring genuine local authority withholds the cube; no remote spawn was
     // ever installed, and a visibility snapshot alone cannot grant admission.
     app.world_mut()
-        .resource_mut::<crate::movement::MovementTicker>()
+        .resource_mut::<client_interaction::movement::MovementTicker>()
         .deactivate();
     app.world_mut()
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(
                     world

@@ -9,7 +9,7 @@ use bevy::{
         system::{SystemParamItem, lifetimeless::SRes},
     },
     math::{Mat4, UVec4, Vec4},
-    prelude::*,
+    prelude::{Entity, FromWorld, Has, Query, Res, ResMut, Resource, Time, With, World, default},
     render::{
         render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
         render_resource::{
@@ -23,17 +23,20 @@ use bevy::{
         },
         renderer::{RenderDevice, RenderQueue},
         texture::{CachedTexture, TextureCache},
-        view::{ExtractedView, ViewDepthTexture, ViewTarget},
+        view::{ExtractedView, ViewDepthStencilTexture, ViewTarget},
     },
 };
 
-use super::{
-    EnhancedRendering,
-    frame::{CascadeBounds, EnhancedFrameGpu, ViewInputs, build_frame},
-    materials::material_classes,
+use {
+    super::{
+        frame::{CascadeBounds, EnhancedFrameGpu, ViewInputs, build_frame},
+        materials::material_classes,
+    },
+    render_scene::EnhancedRendering,
 };
-use crate::{
-    AtmosphereFrame, ChunkTextureAssetIdentity, ChunkTextureAssets, scene_sampling::ResolvedDepth,
+use {
+    crate::scene_sampling::ResolvedDepth,
+    render_scene::{AtmosphereFrame, ChunkTextureAssetIdentity, ChunkTextureAssets},
 };
 
 pub(crate) const CASTER_SLOT_BYTES: u64 = 256;
@@ -41,7 +44,7 @@ const CASTER_UNIFORM_BYTES: u64 = 96;
 pub(crate) const SHADOW_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 pub(crate) const POST_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
-/// Mirrors `CasterUniform` in enhanced/caster.wgsl, padded to one dynamic slot.
+/// Mirrors `CasterUniform` in enhanced/caster.wesl, padded to one dynamic slot.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct CasterUniformGpu {
@@ -407,7 +410,7 @@ impl EnhancedViewGpu {
             frame: buffer("enhanced frame uniform", FRAME_BYTES),
             casters: buffer(
                 "enhanced caster uniforms",
-                CASTER_SLOT_BYTES * u64::from(super::MAX_SHADOW_CASCADES),
+                CASTER_SLOT_BYTES * u64::from(render_scene::MAX_SHADOW_CASCADES),
             ),
             settings,
             cascades: Vec::new(),
@@ -490,7 +493,7 @@ pub(crate) fn prepare_enhanced_views(
         Entity,
         &ExtractedView,
         &ViewTarget,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &EnhancedRendering,
     )>,
 ) {
@@ -514,7 +517,7 @@ pub(crate) fn prepare_enhanced_views(
             state.resolved_depth = Some(ResolvedDepth::new(
                 &device,
                 depth,
-                crate::RuntimeStage::GpuPost,
+                render_scene::RuntimeStage::GpuPost,
             ));
         }
         if state

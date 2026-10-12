@@ -1,30 +1,38 @@
 //! The per-frame system, carrier loading and the caches behind them.
 
+use crate::runtime::network::resource_packs::PackApplication;
+use bevy::prelude::IntoScheduleConfigs;
+use client_runtime::network::NetworkHandle;
 use std::{collections::HashMap, path::Path, sync::Arc};
 
 use assets::{RuntimeBlockEntityAssets, RuntimeFontCatalog};
-use bevy::prelude::*;
-use render::{
-    AtlasRect, AtmosphereFrame, BeaconModel, BellModel, BlockEntityFrame, BlockEntityKind,
-    BlockEntityLight, BlockEntityScene, BlockEntitySubmission, ConduitModel, SceneClock, SignFace,
-    SignModel, StaticItemPlacement, StaticItemPlacements, item_frame_item_transform, matrix_rows,
+use bevy::prelude::{
+    App, Mat4, Projection, Query, Real, Res, ResMut, Resource, Time, Transform, Update, Vec3, With,
 };
 use ui::TextLayoutCache;
 use world::{ChunkKey, SUB_CHUNK_SIDE};
+use {
+    render_model::{
+        AtlasRect, BeaconModel, BellModel, BlockEntityKind, BlockEntityLight, BlockEntityScene,
+        BlockEntitySubmission, ConduitModel, SceneClock, SignFace, SignModel, StaticItemPlacement,
+        item_frame_item_transform, matrix_rows,
+    },
+    render_scene::AtmosphereFrame,
+};
 
 use super::{
     containers::{ContainerKind, ContainerLids, cue_is_open},
-    cracks::{CachedCrackShape, crack_instances, crack_shape},
+    cracks::{CrackShapeCache, crack_instances, crack_shape},
     describe::{HeldItem, Template, describe},
     sign_text,
     state::BlockState,
 };
-use crate::{
-    local_player::LocalViewPose,
-    movement::PhysicsCollisionRegistries,
-    runtime::{network::ActorFramePartialTick, world::ClientWorld},
+use client_shell::ui_resources::UiRuntimeResource;
+use {
+    crate::runtime::world::ClientWorld,
+    client_interaction::movement::PhysicsCollisionRegistries,
+    client_presentation::{actor_publication::ActorFramePartialTick, local_player::LocalViewPose},
 };
-use client_ui::ui_runtime::UiRuntime;
 
 const BLOCK_ENTITY_ASSETS_FILENAME: &str = assets::carriers::BLOCK_ENTITY.output;
 /// Block entities farther than this from the eye are not drawn.
@@ -52,7 +60,7 @@ pub(crate) fn load_block_entity_carrier(
     ) {
         Ok(bytes) => bytes,
         Err(error) => {
-            eprintln!(
+            diagnostics::log_stderr!(
                 "block-entity carrier {} unavailable ({error}); block-entity models, sign text, break cracks and worn heads are not drawn; rebuild with: make block-entity-assets",
                 path.display()
             );
@@ -61,7 +69,7 @@ pub(crate) fn load_block_entity_carrier(
     };
     match RuntimeBlockEntityAssets::decode(&bytes) {
         Ok(assets) => {
-            eprintln!(
+            diagnostics::log_stderr!(
                 "loaded block-entity carrier from {} ({} textures, atlas {:?})",
                 path.display(),
                 assets.placements().len(),
@@ -70,7 +78,7 @@ pub(crate) fn load_block_entity_carrier(
             Some(Arc::new(assets))
         }
         Err(error) => {
-            eprintln!(
+            diagnostics::log_stderr!(
                 "block-entity carrier {} is invalid ({error}); block-entity models, sign text, break cracks and worn heads are not drawn; rebuild with: make block-entity-assets",
                 path.display()
             );
@@ -106,7 +114,7 @@ pub(crate) struct BlockEntityRuntime {
     frame: u64,
     blocks: HashMap<u32, Option<Arc<BlockInfo>>>,
     layouts: TextLayoutCache,
-    shapes: HashMap<(u32, u32), CachedCrackShape>,
+    shapes: CrackShapeCache,
     bell_rings: HashMap<[i32; 3], (u64, f64)>,
     /// Framed map ids seen this frame without an image.
     missing_maps: Vec<i64>,
@@ -125,7 +133,7 @@ impl BlockEntityRuntime {
             frame: 0,
             blocks: HashMap::new(),
             layouts: TextLayoutCache::new(TEXT_CACHE_ENTRIES, TEXT_CACHE_BYTES),
-            shapes: HashMap::new(),
+            shapes: CrackShapeCache::default(),
             bell_rings: HashMap::new(),
             missing_maps: Vec::new(),
             map_requests: HashMap::new(),
@@ -257,18 +265,18 @@ fn portal_kind(
 pub(crate) fn update_block_entity_scene(
     client_world: Res<ClientWorld>,
     actor_partial_tick: Res<ActorFramePartialTick>,
-    camera: Query<(&Transform, &Projection), With<crate::camera::FlyCamera>>,
+    camera: Query<(&Transform, &Projection), With<client_presentation::camera::FlyCamera>>,
     collisions: Res<PhysicsCollisionRegistries>,
     view: Res<LocalViewPose>,
-    ui: Res<UiRuntime>,
+    ui: Res<UiRuntimeResource>,
     atmosphere: Res<AtmosphereFrame>,
     time: Res<Time<Real>>,
     font: Res<BlockEntityFont>,
     mut runtime: ResMut<BlockEntityRuntime>,
-    mut scene: ResMut<BlockEntityScene>,
-    mut frame: ResMut<BlockEntityFrame>,
-    mut placements: ResMut<StaticItemPlacements>,
-    profiler: Option<Res<render::RuntimeStageProfiler>>,
+    mut scene: ResMut<render_scene::BlockEntitySceneResource>,
+    mut frame: ResMut<render_scene::BlockEntityFrameResource>,
+    mut placements: ResMut<render_scene::StaticItemPlacementsResource>,
+    profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
 ) {
     if !scene.has_assets() {
         dragon_death::update_without_atlas(
@@ -286,15 +294,15 @@ pub(crate) fn update_block_entity_scene(
     // Timed in the body: a span around the chain would also count waiting on actor publication.
     let _timer = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::BlockEntities));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::BlockEntities));
     let now_seconds = time.elapsed_secs_f64();
     let clock = SceneClock {
         ticks: now_seconds * TICKS_PER_SECOND,
     };
     let Some(stream) = client_world.stream.as_ref() else {
         runtime.bind_session(None);
-        placements.0.clear();
-        *frame = scene.update(clock, &[], &[]).clone();
+        placements.0.0.clear();
+        frame.0 = scene.update(clock, &[], &[]).clone();
         return;
     };
     let runtime = &mut *runtime;
@@ -399,6 +407,7 @@ pub(crate) fn update_block_entity_scene(
                 let (block_light, sky_light) = stream.light_level_at(center.to_array());
                 let context = FrameContext {
                     stream,
+                    collisions: &collisions,
                     eye,
                     delta_seconds: delta,
                     now_seconds,
@@ -485,12 +494,13 @@ pub(crate) fn update_block_entity_scene(
             stream.solved_light_at(actor.brightness_sample_position(owner_position))
         },
     );
-    placements.0 = held;
-    *frame = scene.update(clock, &cracks, &submissions).clone();
+    placements.0.0 = held;
+    frame.0 = scene.update(clock, &cracks, &submissions).clone();
 }
 
 struct FrameContext<'a> {
     stream: &'a chunk_pipeline::WorldStream,
+    collisions: &'a PhysicsCollisionRegistries,
     eye: Vec3,
     delta_seconds: f32,
     now_seconds: f64,
@@ -514,6 +524,7 @@ fn held_placement(
     StaticItemPlacement {
         identifier: Arc::clone(&item.identifier),
         metadata: item.metadata,
+        potted_block: None,
         world_from_item,
         light,
     }
@@ -523,7 +534,6 @@ fn held_placement(
 const CAMPFIRE_SLOTS: [[f32; 2]; 4] = [[-4.0, -4.0], [4.0, -4.0], [4.0, 4.0], [-4.0, 4.0]];
 const CAMPFIRE_ITEM_HEIGHT: f32 = 7.5;
 const CAMPFIRE_ITEM_SCALE: f32 = 0.375;
-const FLOWER_SCALE: f32 = 0.5;
 
 /// Seconds before an unanswered map request is repeated.
 const MAP_REQUEST_RETRY_SECONDS: f64 = 5.0;
@@ -531,7 +541,7 @@ const MAP_REQUEST_RETRY_SECONDS: f64 = 5.0;
 /// Asks the server for the pixels of framed maps whose images have not arrived.
 pub(crate) fn request_missing_maps(
     mut runtime: ResMut<BlockEntityRuntime>,
-    network: Option<Res<crate::runtime::network::NetworkHandle>>,
+    network: Option<Res<NetworkHandle<PackApplication>>>,
     time: Res<Time<Real>>,
 ) {
     let Some(network) = network else {
@@ -597,8 +607,8 @@ fn resolve(
         Template::Beacon => None,
         &Template::Chest(mut model) => {
             let open = open_at(position)
-                || matches!(model.pair, render::ChestPair::Lead { partner } if open_at(partner));
-            if !matches!(model.pair, render::ChestPair::Follower) {
+                || matches!(model.pair, render_model::ChestPair::Lead { partner } if open_at(partner));
+            if !matches!(model.pair, render_model::ChestPair::Follower) {
                 model.lid = runtime.lids.advance(
                     position,
                     ContainerKind::Chest,
@@ -648,10 +658,10 @@ fn resolve(
         Template::ItemFrame {
             model,
             item,
-            rotation_steps,
+            rotation_degrees,
             map_id,
         } => {
-            let (mut model, rotation_steps, map_id) = (*model, *rotation_steps, *map_id);
+            let (mut model, rotation_degrees, map_id) = (*model, *rotation_degrees, *map_id);
             if let Some(id) = map_id
                 && stream.map_image(id).is_none()
             {
@@ -667,25 +677,33 @@ fn resolve(
             if let (Some(item), None) = (item, map) {
                 held.push(held_placement(
                     item,
-                    item_frame_item_transform(position, model.outward, rotation_steps),
+                    item_frame_item_transform(position, model.outward, rotation_degrees),
                     model.glow.then_some((15, 15)),
                 ));
             }
             Some(BlockEntityKind::ItemFrame(model))
         }
         Template::FlowerPot { plant } => {
-            // Two crossed sprites standing in the pot; the plant icon stands in for the model.
-            let base = render::block_matrix(position, [0.5, 0.32, 0.5], 0.0);
-            for yaw in [45.0_f32, 135.0] {
-                let pose = base
-                    * Mat4::from_rotation_y(yaw.to_radians())
-                    * Mat4::from_scale(Vec3::splat(FLOWER_SCALE * 16.0));
-                held.push(held_placement(plant, matrix_rows(pose), None));
-            }
+            let id = context.collisions.block_state_runtime_id(
+                assets::NetworkIdMode::Sequential,
+                &plant.identifier,
+                &plant.states,
+            )?;
+            held.push(StaticItemPlacement {
+                identifier: Arc::clone(&plant.identifier),
+                metadata: 0,
+                potted_block: Some(id),
+                world_from_item: render_model::dropped_item_transform(
+                    position.map(|axis| axis as f32 + 0.5),
+                    0.0,
+                    1.0,
+                ),
+                light: None,
+            });
             None
         }
         Template::Campfire { yaw_degrees, items } => {
-            let base = render::block_matrix(position, [0.5, 0.0, 0.5], *yaw_degrees);
+            let base = render_model::block_matrix(position, [0.5, 0.0, 0.5], *yaw_degrees);
             for (item, [x, z]) in items.iter().zip(CAMPFIRE_SLOTS) {
                 let Some(item) = item else {
                     continue;
@@ -883,9 +901,9 @@ mod tests {
 
     #[test]
     fn placed_player_skulls_keep_native_light_coordinates_for_the_environment_shader() {
-        let kind = BlockEntityKind::Skull(render::SkullModel {
-            kind: render::SkullKind::Player,
-            mount: render::SkullMount::Floor {
+        let kind = BlockEntityKind::Skull(render_model::SkullModel {
+            kind: render_model::SkullKind::Player,
+            mount: render_model::SkullMount::Floor {
                 rotation_degrees: 0.0,
             },
         });
@@ -950,12 +968,12 @@ mod tests {
         let mut runtime = BlockEntityRuntime::new();
         runtime.bind_session(Some((1, 0)));
         runtime.blocks.insert(7, None);
-        runtime.shapes.insert(
-            (7, 0),
-            CachedCrackShape {
-                column: None,
-                shape: render::CrackShape::Cube,
-            },
+        crack_shape(
+            &mut runtime.shapes,
+            &Arc::new(assets::RuntimeAssets::diagnostic()),
+            assets::NetworkIdMode::Sequential,
+            Some(7),
+            [0; 3],
         );
         runtime.bell_rings.insert([0, 0, 0], (1, 0.0));
         runtime.bind_session(Some((1, 0)));

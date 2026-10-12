@@ -1,122 +1,50 @@
 use std::collections::VecDeque;
-use std::path::Path;
-use std::sync::Arc;
 
 use bytes::Bytes;
-use jolyne::error::JolyneError;
-use jolyne::raw::RawPacket;
-use jolyne::stream::client::ClientHandshakeConfig;
-use jolyne::stream::transport::{BedrockTransport, Transport};
-use jolyne::stream::{BedrockStream, Client, Handshake, Play};
 use valentine::bedrock::version::v1_26_51::{McpePacketData, McpePacketName};
 #[cfg(test)]
 use valentine::protocol::wire;
 
 use crate::blob_cache::ResolverReady;
-use crate::socket_transport::SocketTransport;
+use crate::raw_packet::RawPacket;
+use crate::session_transport::{Inbound, SessionTransport};
 use crate::{
-    BlobCacheResolver, BlobCacheStats, ClientBlobCache, GameData, LevelChunkEvent, Packet,
-    ProtocolError, ResourcePackHandoff, ResourcePackStore, ServerDisconnectEvent,
-    ServerTransferEvent, WorldEvent, into_world_event,
+    BlobCacheResolver, BlobCacheStats, ClientBlobCache, LevelChunkEvent, Packet, ProtocolError,
+    ServerDisconnectEvent, ServerTransferEvent, SessionError, WorldEvent, into_world_event,
 };
 
 mod boundary;
+mod client_data;
+mod game_data;
 mod latency_probe;
 mod outbound;
+mod pack_handoff;
 mod packet_trace;
 mod raw_equipment;
+pub(crate) mod session_join;
+mod startup;
 use boundary::boundary_wakeup;
+pub use client_data::{
+    ClientCape, ClientRandomId, ClientSkin, ClientSkinGeometry, GAME_VERSION, LoginSettings,
+    PROTOCOL_VERSION, login_memory_tier,
+};
+pub use game_data::{GameData, StartupItems, StartupSettings};
 pub use latency_probe::network_stack_latency_reply;
 pub use outbound::PlayOutbound;
+pub use pack_handoff::{ResourcePackArchive, ResourcePackContentKey, ResourcePackHandoff};
 pub use packet_trace::PacketIdTraceSnapshot;
 use packet_trace::PacketIdTraceState;
 #[cfg(test)]
 use packet_trace::{MAX_PACKET_ID_TRACE_ENTRIES, PACKET_ID_TRACE_DURATION};
 
-const MAX_DECOMPRESSED_BATCH_SIZE: usize = 16 * 1024 * 1024;
-
-/// Entry point for the offline local-core login sequence.
+/// Entry point for joining through the core.
 pub struct LoginSequence;
 
-impl LoginSequence {
-    /// Connects to the core; the owner calls `finish_loading` after presenting the world.
-    pub async fn connect(
-        socket_dir: &Path,
-        display_name: &str,
-        skin: Option<crate::ClientSkin>,
-    ) -> Result<(PlaySession, GameData), ProtocolError> {
-        let transport = SocketTransport::connect(socket_dir)
-            .await
-            .map_err(ProtocolError::Bridge)?;
-        Self::connect_transport_inner(transport, display_name, None, skin, None).await
-    }
-
-    /// Connects with a persistent verified cache and a fresh session-owned resolver.
-    pub async fn connect_with_blob_cache(
-        socket_dir: &Path,
-        display_name: &str,
-        cache: ClientBlobCache,
-        skin: Option<crate::ClientSkin>,
-        pack_store: Option<Arc<dyn ResourcePackStore>>,
-    ) -> Result<(PlaySession, GameData), ProtocolError> {
-        let transport = SocketTransport::connect(socket_dir)
-            .await
-            .map_err(ProtocolError::Bridge)?;
-        Self::connect_transport_inner(transport, display_name, Some(cache), skin, pack_store).await
-    }
-
-    /// Headless test seam that treats the received spawn prerequisites as presentation readiness.
-    #[doc(hidden)]
-    pub async fn connect_transport<T: Transport>(
-        transport: T,
-        display_name: &str,
-    ) -> Result<(PlaySession<T>, GameData), ProtocolError> {
-        let (mut session, data) =
-            Self::connect_transport_inner(transport, display_name, None, None, None).await?;
-        session.finish_loading().await?;
-        Ok((session, data))
-    }
-
-    /// Headless cache test seam that completes loading immediately after negotiation.
-    #[doc(hidden)]
-    pub async fn connect_transport_with_blob_cache<T: Transport>(
-        transport: T,
-        display_name: &str,
-        cache: ClientBlobCache,
-    ) -> Result<(PlaySession<T>, GameData), ProtocolError> {
-        let (mut session, data) =
-            Self::connect_transport_inner(transport, display_name, Some(cache), None, None).await?;
-        session.finish_loading().await?;
-        Ok((session, data))
-    }
-
-    async fn connect_transport_inner<T: Transport>(
-        transport: T,
-        display_name: &str,
-        cache: Option<ClientBlobCache>,
-        skin: Option<crate::ClientSkin>,
-        pack_store: Option<Arc<dyn ResourcePackStore>>,
-    ) -> Result<(PlaySession<T>, GameData), ProtocolError> {
-        let peer_addr = transport.peer_addr();
-        let mut transport = BedrockTransport::new(transport);
-        transport.set_max_decompressed_batch_size(Some(MAX_DECOMPRESSED_BATCH_SIZE));
-        let stream: BedrockStream<Handshake, Client, T> = BedrockStream::from_transport(transport);
-        let mut config = ClientHandshakeConfig::random(peer_addr, display_name)
-            .with_client_cache_enabled(cache.is_some());
-        if let Some(skin) = skin {
-            config = config.with_skin(skin);
-        }
-        if let Some(store) = pack_store {
-            config = config.with_resource_pack_store(store);
-        }
-        let (stream, game_data) = stream.join(config).await?;
-        Ok((PlaySession::new(stream, cache), game_data))
-    }
-}
-
 /// An authenticated, spawned Bedrock session.
-pub struct PlaySession<T: Transport = SocketTransport> {
-    stream: BedrockStream<Play, Client, T>,
+pub struct PlaySession {
+    transport: SessionTransport,
+    pending_initialization: Option<u64>, // the runtime ID until loading completes
+    terrain_before_spawn: bool,
     decode_errors: u64,
     world_skips: u64,
     transfer_skips: u64,
@@ -125,6 +53,7 @@ pub struct PlaySession<T: Transport = SocketTransport> {
     pending_blob_cache_delivery: Option<PendingBlobCacheDelivery>,
     server_disconnect: Option<ServerDisconnectEvent>,
     server_transfer: Option<ServerTransferEvent>,
+    resource_packs: ResourcePackHandoff,
 }
 
 struct PendingBlobCacheDelivery {
@@ -152,18 +81,33 @@ impl WorldIngress {
     }
 }
 
-impl<T: Transport> PlaySession<T> {
-    /// Sends loading-end and initialization once the client can present the world.
+impl PlaySession {
+    /// Sends loading-end and initialization once the client can present the world; later
+    /// calls send nothing.
     pub async fn finish_loading(&mut self) -> Result<(), ProtocolError> {
-        self.stream
-            .finish_loading()
-            .await
-            .map_err(ProtocolError::from)
+        let packets = self.take_finish_loading_packets();
+        self.transport.send(&packets).await
     }
 
-    fn new(stream: BedrockStream<Play, Client, T>, cache: Option<ClientBlobCache>) -> Self {
+    /// Takes the one-shot loading-end and initialization packets for a caller that batches them.
+    fn take_finish_loading_packets(&mut self) -> Vec<Packet> {
+        self.pending_initialization
+            .take()
+            .map(startup::loading_finished)
+            .unwrap_or_default()
+    }
+
+    fn new(
+        transport: SessionTransport,
+        cache: Option<ClientBlobCache>,
+        resource_packs: ResourcePackHandoff,
+        runtime_id: u64,
+        terrain_before_spawn: bool,
+    ) -> Self {
         Self {
-            stream,
+            transport,
+            pending_initialization: Some(runtime_id),
+            terrain_before_spawn,
             decode_errors: 0,
             world_skips: 0,
             transfer_skips: 0,
@@ -172,6 +116,7 @@ impl<T: Transport> PlaySession<T> {
             pending_blob_cache_delivery: None,
             server_disconnect: None,
             server_transfer: None,
+            resource_packs,
         }
     }
 
@@ -199,14 +144,14 @@ impl<T: Transport> PlaySession<T> {
     /// Takes the validated ordered resource-pack archives captured during login.
     /// No archive is parsed or applied, and a second call returns an empty handoff.
     pub fn take_resource_pack_handoff(&mut self) -> ResourcePackHandoff {
-        self.stream.take_resource_pack_handoff()
+        std::mem::take(&mut self.resource_packs)
     }
 
     /// Whether the server sent terrain before login completed at PlayerSpawn.
     /// Servers such as Dragonfly stream none until the client reports initialized.
     #[must_use]
     pub fn terrain_before_spawn(&self) -> bool {
-        self.stream.terrain_before_spawn()
+        self.terrain_before_spawn
     }
 
     /// Skips a well-formed but semantically unusable world packet instead of
@@ -227,25 +172,32 @@ impl<T: Transport> PlaySession<T> {
         self.world_skips
     }
 
-    /// Receives one packet, counting malformed/decompression failures.
+    /// Receives one packet, counting malformed failures. The core's terminal transfer or
+    /// disconnect is retained, as world ingress retains it, and ends the session.
     pub async fn recv(&mut self) -> Result<Packet, ProtocolError> {
-        match self.stream.recv_packet().await {
-            Ok(packet) => {
-                if matches!(
-                    &packet.data,
-                    McpePacketData::TransferPacket(_) | McpePacketData::DisconnectPacket(_)
-                ) {
+        loop {
+            let inbound = match self.transport.recv().await {
+                Ok(inbound) => inbound,
+                Err(error) => return Err(self.fail_session(error)),
+            };
+            let raw = match inbound {
+                Inbound::Packet(raw) => raw,
+                Inbound::Terminal(terminal) => {
                     self.reset_blob_cache_pending();
+                    if self.absorb_terminal(terminal)? {
+                        return boundary_wakeup();
+                    }
+                    continue;
                 }
-                Ok(packet)
-            }
-            Err(error) => {
-                if is_decode_error(&error) {
-                    self.decode_errors = self.decode_errors.saturating_add(1);
-                }
+            };
+            let packet = raw.decode().map_err(|error| self.fail_session(error))?;
+            if matches!(
+                &packet.data,
+                McpePacketData::TransferPacket(_) | McpePacketData::DisconnectPacket(_)
+            ) {
                 self.reset_blob_cache_pending();
-                Err(error.into())
             }
+            return Ok(packet);
         }
     }
 
@@ -293,10 +245,16 @@ impl<T: Transport> PlaySession<T> {
                 .await;
         }
         loop {
-            let raw = match self.stream.recv_packet_raw().await {
-                Ok(raw) => raw,
+            let raw = match self.transport.recv().await {
+                Ok(Inbound::Packet(raw)) => raw,
+                Ok(Inbound::Terminal(terminal)) => {
+                    if self.absorb_terminal(terminal)? {
+                        return boundary_wakeup();
+                    }
+                    continue;
+                }
                 Err(error) => {
-                    if is_decode_error(&error) {
+                    if error.0.is_decode() {
                         self.decode_errors = self.decode_errors.saturating_add(1);
                     }
                     return Err(error.into());
@@ -332,14 +290,12 @@ impl<T: Transport> PlaySession<T> {
                 }
                 continue;
             }
-            let decoded = decode_world_raw_with(raw, current_dimension, |raw| {
-                self.stream.decode_raw_packet(raw)
-            });
+            let decoded = decode_world_raw_with(raw, current_dimension, RawPacket::decode);
             match decoded {
                 Ok(Some(event)) => return Ok(WorldIngress::Event(event)),
                 Ok(None) => {}
                 Err(ProtocolError::Session(error)) => {
-                    if is_decode_error(&error) {
+                    if error.0.is_decode() {
                         self.decode_errors = self.decode_errors.saturating_add(1);
                     }
                     return Err(ProtocolError::Session(error));
@@ -349,11 +305,10 @@ impl<T: Transport> PlaySession<T> {
         }
     }
 
-    /// Sends one packet through the encrypted play session.
+    /// Sends one packet as its own batch behind every send accepted before it.
     pub async fn send(&mut self, packet: Packet) -> Result<(), ProtocolError> {
         crate::codec::validate_packet(&packet)?;
-        self.stream.send_packet(packet).await?;
-        Ok(())
+        self.transport.send(&[packet]).await
     }
 
     /// Starts a bounded, secret-safe packet-ID trace for native acceptance.
@@ -416,9 +371,9 @@ impl<T: Transport> PlaySession<T> {
                 .as_ref()
                 .is_some_and(|delivery| delivery.status_send_in_flight)
             {
-                if let Err(error) = self.stream.drain_send().await {
+                if let Err(error) = self.transport.drain_send().await {
                     self.reset_blob_cache_pending();
-                    return Err(error.into());
+                    return Err(error);
                 }
                 self.pending_blob_cache_delivery
                     .as_mut()
@@ -443,7 +398,7 @@ impl<T: Transport> PlaySession<T> {
                     .as_mut()
                     .expect("the status packet came from a pending cache delivery")
                     .status_send_in_flight = true;
-                // SocketTransport retains an accepted frame until that exact frame flushes.
+                // SessionTransport retains an accepted frame until that exact frame flushes.
                 // Transfer ownership before awaiting so cancellation cannot logically resend it.
                 if let Err(error) = self.send(status_packet).await {
                     self.reset_blob_cache_pending();
@@ -507,8 +462,14 @@ impl<T: Transport> PlaySession<T> {
                 continue;
             }
 
-            let raw = match self.stream.recv_packet_raw().await {
-                Ok(raw) => raw,
+            let raw = match self.transport.recv().await {
+                Ok(Inbound::Packet(raw)) => raw,
+                Ok(Inbound::Terminal(terminal)) => {
+                    if self.absorb_terminal(terminal)? {
+                        return boundary_wakeup();
+                    }
+                    continue;
+                }
                 Err(error) => return Err(self.fail_session(error)),
             };
             self.packet_id_trace.observe(raw.id);
@@ -563,7 +524,7 @@ impl<T: Transport> PlaySession<T> {
                         continue;
                     }
                 }
-                let packet = match self.stream.decode_raw_packet(raw) {
+                let packet = match raw.decode() {
                     Ok(packet) => packet,
                     Err(error) => return Err(self.fail_session(error)),
                 };
@@ -605,7 +566,11 @@ impl<T: Transport> PlaySession<T> {
                         events.push_back(WorldEvent::ChunkResync(recovery));
                     }
                     self.pending_blob_cache_delivery = Some(PendingBlobCacheDelivery {
-                        status_packets: status.into_packets().into_iter().map(Into::into).collect(),
+                        status_packets: status
+                            .into_packets()
+                            .into_iter()
+                            .map(Packet::new)
+                            .collect(),
                         status_send_in_flight: false,
                         events,
                     });
@@ -631,9 +596,7 @@ impl<T: Transport> PlaySession<T> {
                 continue;
             }
 
-            let decoded = decode_world_raw_with(raw, current_dimension, |raw| {
-                self.stream.decode_raw_packet(raw)
-            });
+            let decoded = decode_world_raw_with(raw, current_dimension, RawPacket::decode);
             match decoded {
                 Ok(Some(event)) => {
                     if let Err(error) = self
@@ -652,12 +615,12 @@ impl<T: Transport> PlaySession<T> {
         }
     }
 
-    fn fail_session(&mut self, error: JolyneError) -> ProtocolError {
-        if is_decode_error(&error) {
+    fn fail_session(&mut self, error: SessionError) -> ProtocolError {
+        if error.0.is_decode() {
             self.decode_errors = self.decode_errors.saturating_add(1);
         }
         self.reset_blob_cache_pending();
-        ProtocolError::Session(error)
+        ProtocolError::from(error)
     }
 }
 
@@ -718,21 +681,10 @@ fn reset_cache_for_immediate_boundary(
     }
 }
 
-fn is_decode_error(error: &JolyneError) -> bool {
-    matches!(
-        error,
-        JolyneError::Decode(_)
-            | JolyneError::PacketDecode { .. }
-            | JolyneError::PacketTrailingBytes { .. }
-            | JolyneError::Io(_)
-            | JolyneError::Protocol(_)
-    )
-}
-
 fn decode_world_raw_with(
     raw: RawPacket,
     current_dimension: i32,
-    decode: impl FnOnce(RawPacket) -> Result<Packet, JolyneError>,
+    decode: impl FnOnce(RawPacket) -> Result<Packet, SessionError>,
 ) -> Result<Option<WorldEvent>, ProtocolError> {
     if raw.id == McpePacketName::ItemRegistryPacket {
         // Login has already initialized this session's registry. Vanilla 1.26.50
@@ -879,6 +831,12 @@ fn decode_world_raw_with(
     Ok(into_world_event(packet, current_dimension)?)
 }
 
+/// Decodes a raw test packet as the play stream does.
+#[cfg(test)]
+fn decode_test_raw(raw: RawPacket) -> Result<Packet, SessionError> {
+    raw.decode()
+}
+
 /// LevelEventGeneric's event data is loose NBT tags filling the rest of the packet (as
 /// gophertunnel documents); the generated decoder reads one rooted value and rejects the rest.
 fn level_event_generic(raw: &RawPacket) -> Option<Packet> {
@@ -893,7 +851,7 @@ fn level_event_generic(raw: &RawPacket) -> Option<Packet> {
         event_id,
         __ctd__: Nbt(body),
     });
-    Some(Packet::new(raw.header, data))
+    Some(Packet::from_parts(raw.header, data))
 }
 
 /// Reclassifies the raw UI pre-validator's semantic rejections as skippable
@@ -951,7 +909,3 @@ mod actor_identifier_ingress_tests;
 
 #[cfg(test)]
 mod primitive_shapes_ingress_tests;
-
-#[cfg(test)]
-#[path = "login/skin_upload_tests.rs"]
-mod skin_upload_tests;

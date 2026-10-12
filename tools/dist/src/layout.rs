@@ -2,9 +2,11 @@ use std::path::PathBuf;
 
 use crate::{Options, Platform};
 
-/// The carriers a bundle ships: every one packaged startup requires.
+/// Compiled asset inputs; the physics carrier comes from its explicit input path.
 pub(crate) fn asset_files() -> impl Iterator<Item = &'static str> {
-    assets::carriers::required().map(|carrier| carrier.output)
+    assets::carriers::required()
+        .filter(|carrier| carrier.name != assets::carriers::BLOCK_PHYSICS.name)
+        .map(|carrier| carrier.output)
 }
 
 pub(crate) fn input_files(options: &Options) -> Vec<(PathBuf, String)> {
@@ -36,7 +38,10 @@ pub(crate) fn input_files(options: &Options) -> Vec<(PathBuf, String)> {
         (options.core.clone(), format!("{binary_root}{core_name}")),
         (
             options.physics.clone(),
-            format!("{resource_root}/block-physics-v2193.bin"),
+            format!(
+                "{resource_root}/{}",
+                assets::carriers::physics_registry_basename()
+            ),
         ),
         (
             options.notices.clone(),

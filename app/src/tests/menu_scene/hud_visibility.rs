@@ -1,38 +1,46 @@
 //! HUD visibility through both first-person hand publishers and retained name tags.
-use super::*;
-use crate::{
-    camera::FlyCamera,
-    environment::{WeatherState, WorldClock},
-    item_use::ItemUseRuntime,
-    local_player::LocalPlayerFrameCarrier,
-    movement::MovementTicker,
-    runtime::{
-        network::NetworkHandle, visibility::CaveVisibilityCache, world::WorldStreamFramePoll,
-    },
-    ui_runtime::presentation::prepare_ui_runtime,
-};
+use crate::runtime::network::resource_packs::PackApplication;
+use crate::ui_runtime::presentation::publish::PreparedUiPublication;
 use bevy::window::{PrimaryWindow, Window};
-use client_ui::ui_runtime::presentation::{PreparedUiPublication, UiPresentationRuntime};
+use client_runtime::network::NetworkHandle;
+use {
+    super::*, client_presentation::actor_publication::HandRigBuilder,
+    client_ui::test_support::mini_engine_presentation,
+};
+use {
+    crate::{
+        environment::{WeatherState, WorldClock},
+        runtime::{visibility::CaveVisibilityCache, world::WorldStreamFramePoll},
+        ui_runtime::presentation::prepare_ui_runtime,
+    },
+    client_interaction::{item_use::ItemUseRuntime, movement::MovementTicker},
+    client_presentation::{
+        camera::{CameraSettingsAuthority, FlyCamera, perspective_pose},
+        local_player::{LocalPlayerFrameCarrier, LocalPlayerFrameSample},
+    },
+};
 
 /// Builds a renderer-free world with gameplay overlays available.
 fn fixture_world() -> World {
     let (_pack, _geometry, entities) = super::super::viewmodel_presentation::hand_fixture();
     let scene =
-        render::ActorRenderScene::with_runtime_entity_assets_and_equipment(&entities, &[]).unwrap();
+        render_scene::ActorRenderScene::with_runtime_entity_assets_and_equipment(&entities, &[])
+            .unwrap();
     let icons = Arc::new(
         assets::RuntimeIconCatalog::decode(
             &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
         )
         .unwrap(),
     );
-    let (equipment, artwork, _) = crate::presentation::equipment::EquipmentRuntime::build(
-        entities.clone(),
-        None,
-        icons,
-        None,
-        None,
-        render::ActorArtworkPages::default(),
-    );
+    let (equipment, artwork, _) =
+        client_presentation::presentation::equipment::EquipmentRuntime::build(
+            entities.clone(),
+            None,
+            icons,
+            None,
+            None,
+            render_model::ActorArtworkPages::default(),
+        );
     let mut client = player_world(entities.clone());
     let stream = client.stream.as_mut().unwrap();
     stream
@@ -69,16 +77,16 @@ fn fixture_world() -> World {
         (Vec3::new(0., 66., -2.), Vec3::new(0., 66., 0.)),
     );
     world.insert_resource(equipment);
-    world.insert_resource(UiRuntime::new(1));
-    world.insert_resource(mini_engine_presentation());
+    world.insert_resource(UiRuntimeResource(UiRuntime::new(1)));
+    world.insert_resource(UiPresentationResource(mini_engine_presentation()));
     world.insert_resource(MenuRuntime::new(false, 2, "Tester".into()));
-    world.insert_resource(NetworkHandle::stub().0);
+    world.insert_resource(NetworkHandle::<PackApplication>::stub().0);
     world.init_resource::<PreparedUiPublication>();
     world.init_resource::<CaveVisibilityCache>();
-    world.init_resource::<render::VisibilityDiagnosticsInput>();
-    world.init_resource::<render::VisibilityDiagnostics>();
-    world.init_resource::<render::ChunkRenderQueue>();
-    world.init_resource::<render::ChunkUploadAcknowledgements>();
+    world.init_resource::<render_scene::VisibilityDiagnosticsInput>();
+    world.init_resource::<render_scene::VisibilityDiagnostics>();
+    world.init_resource::<render_scene::ChunkRenderQueue>();
+    world.init_resource::<render_scene::ChunkUploadAcknowledgements>();
     world.init_resource::<WorldStreamFramePoll>();
     world.init_resource::<LocalPlayerFrameCarrier>();
     world.init_resource::<WorldClock>();
@@ -99,7 +107,7 @@ fn fixture_world() -> World {
 /// Checks the published hand and label state after one visibility update.
 fn assert_published(world: &mut World, hands: bool, names: bool) {
     // An inactive animated rig selects the real CPU-hand capture path.
-    world.resource_mut::<render::HandRigScene>().clear();
+    world.resource_mut::<render_scene::HandRigScene>().clear();
     world.run_system_cached(prepare_ui_runtime).unwrap();
     let pending = world
         .resource::<PreparedUiPublication>()
@@ -109,7 +117,7 @@ fn assert_published(world: &mut World, hands: bool, names: bool) {
     assert_eq!(pending.preview.hands, hands, "CPU hand capture");
     assert_eq!(
         world
-            .resource_mut::<UiPresentationRuntime>()
+            .resource_mut::<UiPresentationResource>()
             .hud_frame_mut()
             .first_person,
         hands,
@@ -117,7 +125,7 @@ fn assert_published(world: &mut World, hands: bool, names: bool) {
     );
     assert_eq!(
         !world
-            .resource_mut::<UiPresentationRuntime>()
+            .resource_mut::<UiPresentationResource>()
             .nametag_scene()
             .records
             .is_empty(),
@@ -126,17 +134,68 @@ fn assert_published(world: &mut World, hands: bool, names: bool) {
     );
     // Terrain startup is unrelated to the visibility option under test.
     world
-        .resource_mut::<UiPresentationRuntime>()
+        .resource_mut::<UiPresentationResource>()
         .set_loading_stage(None);
     world
         .run_system_cached(crate::runtime::network::advance_actor_frame)
         .unwrap();
     world.run_system_cached(prepare_actor_render_frame).unwrap();
     assert_eq!(
-        world.resource::<render::HandRigScene>().is_active(),
+        world.resource::<render_scene::HandRigScene>().is_active(),
         hands,
         "animated hand publication"
     );
+}
+
+#[test]
+fn hud_coordinates_floor_player_feet_independently_of_camera_pose() {
+    let mut world = fixture_world();
+    let camera = world
+        .query_filtered::<Entity, With<FlyCamera>>()
+        .single(&world)
+        .unwrap();
+    let feet = Vec3::new(-16.5, 47.0, 2.5);
+    let eye = feet + Vec3::Y * protocol::PLAYER_NETWORK_OFFSET;
+    let rotation = Quat::from_euler(EulerRot::YXZ, 0.8, -0.3, 0.0);
+    for perspective in [
+        semantic_input::PerspectiveMode::FirstPerson,
+        semantic_input::PerspectiveMode::ThirdPersonBack,
+        semantic_input::PerspectiveMode::ThirdPersonFront,
+    ] {
+        assert_eq!(
+            world.resource::<CameraSettingsAuthority>().perspective(),
+            perspective
+        );
+        let pose = perspective_pose(eye, rotation, perspective);
+        world.entity_mut(camera).insert(pose);
+        world
+            .resource_mut::<LocalPlayerFrameCarrier>()
+            .publish(LocalPlayerFrameSample {
+                session_generation: 1,
+                actor_session_id: 1,
+                fifo_sequence: 1,
+                physics_tick: 1,
+                perspective,
+                world_collision_identity: sim::CollisionQuery::synthetic(()).identity,
+                pose,
+                eye,
+                feet,
+                rotation,
+            })
+            .unwrap();
+        world.run_system_cached(prepare_ui_runtime).unwrap();
+        assert_eq!(
+            world
+                .resource::<UiPresentationResource>()
+                .hud_frame()
+                .player_block,
+            Some([-17, 47, 2]),
+            "HUD coordinates must follow floored feet in {perspective:?}"
+        );
+        world
+            .resource_mut::<CameraSettingsAuthority>()
+            .cycle_perspective();
+    }
 }
 
 #[test]

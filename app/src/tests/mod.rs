@@ -1,22 +1,24 @@
-use crate::player_runtime::PlayerRuntime;
+#[cfg(not(feature = "acceptance"))]
+use crate::acceptance::AcceptanceRun;
+#[cfg(feature = "acceptance")]
+use ::acceptance::AcceptanceRun;
 use assets::RuntimeAssets;
 use bevy::prelude::{
     App, AppExit, IntoScheduleConfigs, MinimalPlugins, Quat, Transform, Update, Vec3,
 };
 use bevy::window::WindowCloseRequested;
+use bridge::{bridge_endpoint_exists, session_endpoint_path as bridge_endpoint_path};
+use client_state::PlayerRuntime;
 use meshing::{
     ChunkBiomeTintIdentity, ChunkMesh, DiagnosticGeometryCount, DiagnosticGeometrySummary,
     FaceConnectivity, PackedBiomeRecord, PackedModelDrawRef, PackedModelRef, PackedQuadLighting,
 };
 use protocol::{
     ActorKind, BiomeDefinitionEvent, BiomeDefinitionsEvent, BlockUpdateEvent, LevelChunkEvent,
-    LevelChunkMode, PlayerMovementCorrectionEvent, PlayerSkin, StandardSkin, SubChunkBatchEvent,
+    LevelChunkMode, PlayerMovementCorrectionEvent, PlayerSkin, SubChunkBatchEvent,
     SubChunkEntryEvent, SubChunkResult, WorldBootstrap, WorldEvent,
 };
-use render::{
-    ChunkBiomeTints, ChunkRenderApplySet, ChunkRenderPlugin, ChunkRenderQueue, ChunkUploadPriority,
-    PresentedFrameAck, RenderViewCohort, TargetRenderExpectation, VisibilityDiagnosticsInput,
-};
+use render_api::StandardSkin;
 use render_model::{
     GraphicsAdapterMetadata, OpaqueDrawMode, VisibilityDiagnosticSnapshot, VisibilityKeyDigest,
 };
@@ -26,6 +28,13 @@ use std::{
     time::{Duration, Instant},
 };
 use world::{ChunkKey, LightSolveError, SubChunkKey};
+use {
+    render::ChunkRenderPlugin,
+    render_scene::{
+        ChunkBiomeTints, ChunkRenderApplySet, ChunkRenderQueue, ChunkUploadPriority,
+        PresentedFrameAck, RenderViewCohort, TargetRenderExpectation, VisibilityDiagnosticsInput,
+    },
+};
 
 fn actor_snapshot(spawn: protocol::ActorSpawnEvent) -> client_world::ActorSnapshot {
     let runtime = spawn.runtime_id;
@@ -55,66 +64,6 @@ fn actor_snapshot(spawn: protocol::ActorSpawnEvent) -> client_world::ActorSnapsh
         .clone()
 }
 
-use crate::acceptance::markers::{
-    ACCEPTANCE_RUNTIME_METADATA, CAMERA_COMMITTED, GALLERY_ANCHOR_READY, MOVE_PLAYER_INGRESS,
-    MUTATION_COORDINATE, TARGET_MUTATION_ARMED, TELEPORT_COHORT, TELEPORT_GLOBAL_STAGE_DIAGNOSTIC,
-    TRANSPARENT_SORT_COMMITTED, WORLD_PUBLICATION_SNAPSHOT, WORLD_READY,
-};
-use crate::acceptance::{
-    AcceptanceExitDecision, AcceptanceRun, Phase3TerminalDrainDecision,
-    TRANSPARENT_PRESENTATION_EXIT_GRACE,
-    markers::{
-        acceptance_runtime_metadata_marker, cumulative_counter_delta,
-        visibility_digest_marker_fields, world_publication_snapshot_marker,
-    },
-    mutation::{
-        MutationTracker, accepted_move_player_ingress_marker, deterministic_mutation_coordinate,
-        leaf_forest_target_mutation_coordinate, target_mutation_armed_marker, world_ready_markers,
-        write_move_player_ingress_before_source_capture, write_stdout_marker,
-    },
-    proofs::{exact_full_view_proof_marker_fields, teleport_proof},
-    remesh::FullViewRemeshTracker,
-    teleport::{
-        FullViewTeleportCompletion, FullViewTeleportTracker, TeleportReadySnapshot,
-        teleport_global_stage_diagnostic_marker,
-    },
-    world_ready::{
-        GalleryAnchorEmitter, SubChunkTimeoutProgress, WORLD_READY_QUIET_INTERVAL,
-        WorldReadySettler, WorldReadySnapshot, WorldReadyWork, mutation_look_target,
-        orient_acceptance_camera, orient_mutation_camera,
-    },
-};
-use crate::menu::core_process::{CoreProcessGuard, CoreStopOutcome};
-use crate::runtime::network::{
-    NetworkControlEvent,
-    session::{SequencedWorldEvent, WorldIngress},
-};
-use crate::runtime::{
-    endpoint::{
-        bridge_endpoint_exists, bridge_endpoint_path, preflight_bridge_endpoint,
-        resolve_socket_dir_from,
-    },
-    network::{
-        ActorFrameClock, NetworkHandle, OUTBOUND_SEND_BUDGET_PER_FRAME, WORLD_INGRESS_DRAIN_BUDGET,
-        WorldIngressDrain, acceptance_surface_anchor, actor_render_source, drain_network_controls,
-        drain_network_ingress, update_actor_render_scene,
-    },
-    shutdown::{
-        exit_on_window_close_requested, fatal_runtime_exit, record_fatal_error, window_close_exit,
-    },
-    telemetry::{
-        AcceptanceRuntimeConfig, CommittedBiomeBlendSnapshot, bedrock_camera_rotation,
-        biome_blend_diagnostic_marker_if_changed, biome_blend_diagnostics_enabled,
-        camera_sub_chunk_key, refresh_diagnostic_attribution, transparent_sort_committed_marker,
-        update_visibility_diagnostics,
-    },
-    visibility::{CaveVisibilityCache, apply_added_chunk_visibility, remove_chunk_visibility},
-    world::{
-        ShutdownWatchdog, TeardownWatchdog, apply_committed_control, arm_shutdown_watchdog,
-        flush_sub_chunk_requests, startup_biome_tints, synchronize_biome_tints,
-        world_stream_fatal_message,
-    },
-};
 use acceptance::committed_control::{
     model_gallery_camera_committed_marker, refresh_mutation_anchor_from_committed_control,
 };
@@ -123,8 +72,65 @@ use chunk_pipeline::{
     WorldStream, WorldStreamFatalError, WorldStreamStats,
 };
 use client_world::{CommittedControlEvent, PublisherViewGeometry, ViewCohort};
+use diagnostics::markers::{
+    ACCEPTANCE_RUNTIME_METADATA, CAMERA_COMMITTED, GALLERY_ANCHOR_READY, MOVE_PLAYER_INGRESS,
+    MUTATION_COORDINATE, TARGET_MUTATION_ARMED, TELEPORT_COHORT, TELEPORT_GLOBAL_STAGE_DIAGNOSTIC,
+    TRANSPARENT_SORT_COMMITTED, WORLD_PUBLICATION_SNAPSHOT, WORLD_READY,
+};
 use diagnostics::metrics::{
     DiagnosticQuadTracker, MetricsCollector, TransparentSortMetricsSnapshot,
+};
+use {
+    crate::runtime::network::session::NetworkControlEvent,
+    client_session::{SequencedWorldEvent, WorldIngress},
+};
+use {
+    crate::runtime::{
+        network::{actor_render_source, update_actor_render_scene},
+        shutdown::{
+            exit_on_window_close_requested, fatal_runtime_exit, record_fatal_error,
+            window_close_exit,
+        },
+        telemetry::{
+            CommittedBiomeBlendSnapshot, bedrock_camera_rotation,
+            biome_blend_diagnostic_marker_if_changed, biome_blend_diagnostics_enabled,
+            camera_sub_chunk_key, refresh_diagnostic_attribution, update_visibility_diagnostics,
+        },
+        visibility::{CaveVisibilityCache, apply_added_chunk_visibility, remove_chunk_visibility},
+        world::{
+            apply_committed_control, flush_sub_chunk_requests, startup_biome_tints,
+            synchronize_biome_tints, world_stream_fatal_message,
+        },
+    },
+    client_runtime::{
+        endpoint::{preflight_bridge_endpoint, resolve_socket_dir_from},
+        ingress::{
+            OUTBOUND_SEND_BUDGET_PER_FRAME, WORLD_INGRESS_DRAIN_BUDGET, WorldIngressDrain,
+            drain_network_controls, drain_network_ingress,
+        },
+        shutdown::{ShutdownWatchdog, TeardownWatchdog, arm_shutdown_watchdog},
+    },
+};
+use {
+    acceptance::mutation::{
+        MutationTracker, accepted_move_player_ingress_marker, deterministic_mutation_coordinate,
+        leaf_forest_target_mutation_coordinate, target_mutation_armed_marker, world_ready_markers,
+        write_move_player_ingress_before_source_capture,
+    },
+    acceptance::proofs::{exact_full_view_proof_marker_fields, teleport_proof},
+    acceptance::remesh::FullViewRemeshTracker,
+    acceptance::teleport::{
+        FullViewTeleportCompletion, FullViewTeleportTracker, TeleportReadySnapshot,
+        teleport_global_stage_diagnostic_marker,
+    },
+    acceptance::world_ready::{
+        GalleryAnchorEmitter, SubChunkTimeoutProgress, WORLD_READY_QUIET_INTERVAL,
+        WorldReadySettler, WorldReadySnapshot, WorldReadyWork, mutation_look_target,
+        orient_acceptance_camera, orient_mutation_camera,
+    },
+    acceptance::{
+        AcceptanceExitDecision, Phase3TerminalDrainDecision, TRANSPARENT_PRESENTATION_EXIT_GRACE,
+    },
 };
 
 const DESTINATION_COHORT: ViewCohort = ViewCohort {
@@ -300,22 +306,22 @@ fn binding_teleport_completion(
 pub(crate) mod actor_frame_allocations;
 mod actor_pack_publication;
 pub(crate) mod actor_rest_presentation;
-pub(crate) mod alloc_count;
 mod audio;
 mod audio_camera;
 mod camera;
 mod camera_controls;
 mod cohort_epoch;
 mod core;
-mod core_process;
+
 mod crafting_authority_schedule;
 mod finish;
 #[cfg(feature = "reports")]
 mod frame_cost_bench;
-mod gameplay_click;
+pub(crate) mod gameplay_click;
 mod input_publication;
 mod inventory;
 mod inventory_close_order;
+mod inventory_publication_allocations;
 mod inventory_reopen;
 mod inventory_schedule;
 mod inventory_secondary_input;
@@ -325,9 +331,8 @@ mod phase2_evidence;
 mod phase4_presentation;
 mod player_animation;
 mod publication;
-mod publication_pressure;
 mod runtime_metrics;
-mod servers;
+
 mod teleport;
 mod viewmodel_presentation;
 
@@ -341,7 +346,7 @@ pub(crate) fn with_ui_player<T>(
     app.world_mut()
         .resource_scope(|world, mut player: bevy::prelude::Mut<PlayerRuntime>| {
             command(
-                &mut world.resource_mut::<client_ui::ui_runtime::UiRuntime>(),
+                &mut world.resource_mut::<client_shell::ui_resources::UiRuntimeResource>(),
                 &mut player,
             )
         })

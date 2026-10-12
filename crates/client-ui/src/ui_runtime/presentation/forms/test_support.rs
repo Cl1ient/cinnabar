@@ -1,11 +1,11 @@
 //! Shared menu fixtures for renderer and app service integration tests.
 use super::pack_harness::engine_presentation;
-use crate::{
-    menu::{MenuAction, MenuScreen, MenuView},
-    ui_runtime::{UiRuntime, presentation::UiPresentationRuntime},
-};
 use std::{path::PathBuf, sync::Arc};
 use ui::DpiScale;
+use {
+    crate::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime},
+    launcher::menu::{MenuAction, MenuScreen, MenuView},
+};
 
 /// Draws the retained menu twice and returns the active hit actions.
 pub fn draw_menu_actions(
@@ -34,14 +34,14 @@ pub fn draw_menu_actions(
 
 /// Creates a settings view without starting a session.
 pub fn settings_view() -> MenuView {
-    let mut view = crate::menu::MenuView::new(true, "Steve".into());
+    let mut view = launcher::menu::MenuView::new(true, "Steve".into());
     view.screen = MenuScreen::Settings;
     view
 }
 
 /// Resolves a settings selector using the production section map.
 pub fn settings_section_index(variable: &str) -> Option<u8> {
-    super::menu_screens::SETTINGS_SECTIONS
+    launcher::menu::settings_sections::SETTINGS_SECTIONS
         .iter()
         .find_map(|(name, index)| (*name == variable).then_some(*index))
 }
@@ -78,7 +78,7 @@ pub fn snapshot_menu_vanilla(
     view: &MenuView,
     name: &str,
 ) {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         return;
     };
     let files = carrier.ui_files();
@@ -102,11 +102,11 @@ pub fn snapshot_menu_with_catalog(
     };
     if let Some(catalog) = catalog {
         presentation
-            .form_presentation
             .engine
             .as_mut()
             .unwrap()
             .install_pack_catalog(catalog);
+        presentation.refresh_menu_title();
     }
     let mut runtime = UiRuntime::new(1);
     let lang = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -152,7 +152,6 @@ pub fn screen_settings(
     reference: &str,
 ) -> json_ui::ScreenSettings {
     let engine = presentation
-        .form_presentation
         .engine
         .as_deref()
         .expect("fixture JSON-UI engine");
@@ -164,11 +163,11 @@ pub fn text_metrics(
     physical_size: [u32; 2],
     dpi: ui::DpiScale,
     preference: Option<u8>,
-) -> super::super::text_metrics::TextMetrics {
-    super::super::text_metrics::TextMetrics::for_viewport(physical_size, dpi, preference)
+) -> ui_engine::text_metrics::TextMetrics {
+    ui_engine::text_metrics::TextMetrics::for_viewport(physical_size, dpi, preference)
 }
 
 /// Reads the renderer's selected text scale without exposing mutable metrics.
-pub fn text_scale(metrics: &super::super::text_metrics::TextMetrics) -> ui::UiScale {
+pub fn text_scale(metrics: &ui_engine::text_metrics::TextMetrics) -> ui::UiScale {
     metrics.scale
 }

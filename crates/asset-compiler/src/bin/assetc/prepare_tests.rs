@@ -1,7 +1,8 @@
 use std::{collections::HashMap, fs, path::Path};
 
 use assets::carriers::{
-    self, AUDIO, AUDIO_PCM, CARRIERS, Carrier, FONT, HUD, ICON, Sources, WEATHER, WORLD,
+    self, AUDIO, AUDIO_PCM, BLOCK_PHYSICS, CARRIERS, Carrier, FONT, HUD, ICON, Sources, WEATHER,
+    WORLD,
 };
 
 use super::{Command, Queue, Reporter, command, execute, take_ready};
@@ -115,7 +116,7 @@ fn unchanged_inputs_skip_every_carrier() {
 fn a_changed_input_rebuilds_its_carrier_and_the_carriers_reading_it() {
     let dir = checkout();
     build_all(dir.path());
-    fs::write(dir.path().join("assets/fonts/Font.ttf"), b"font-2").unwrap();
+    fs::write(dir.path().join("assets/fonts/Font.ttf"), b"font-22").unwrap();
     assert_eq!(stale(dir.path(), COMPILER), [FONT.name]);
     build_all(dir.path());
     let root = Sources::Checkout(dir.path().to_path_buf());
@@ -125,7 +126,10 @@ fn a_changed_input_rebuilds_its_carrier_and_the_carriers_reading_it() {
         root.resolve("crates/assets/data/block-registry-v2193.bin")
     );
     fs::write(registry, b"changed").unwrap();
-    assert_eq!(stale(dir.path(), COMPILER), [WORLD.name, ICON.name]);
+    assert_eq!(
+        stale(dir.path(), COMPILER),
+        [BLOCK_PHYSICS.name, WORLD.name, ICON.name]
+    );
 }
 
 #[test]
@@ -271,6 +275,32 @@ fn every_recipe_reads_the_outputs_the_table_names() {
     }
 }
 
+/// The world recipe receives exactly its three registries, in their declared roles.
+#[test]
+fn world_recipe_passes_only_its_registries() {
+    let dir = checkout();
+    let context = context(dir.path());
+    let Command::Compile {
+        registry,
+        light_registry,
+        biome_registry,
+        ..
+    } = command(&WORLD, &context).unwrap()
+    else {
+        panic!("the world recipe compiles block assets");
+    };
+    let named = |suffix: &str| {
+        context
+            .files(&WORLD)
+            .into_iter()
+            .find(|path| path.to_string_lossy().ends_with(suffix))
+            .unwrap()
+    };
+    assert_eq!(registry, named("block-registry-v2193.bin"));
+    assert_eq!(light_registry, named("block-light-registry-v2193.bin"));
+    assert_eq!(biome_registry, named("biome-registry-v2193.bin"));
+}
+
 fn run(root: &Path, only: &str) -> (Result<(), String>, Stamp) {
     let context = context(root);
     let only = [only.to_owned()];
@@ -336,4 +366,127 @@ fn an_input_with_unchanged_size_and_mtime_is_not_rehashed() {
     assert!(stale(dir.path(), COMPILER).is_empty());
     set(b"font-22");
     assert_eq!(stale(dir.path(), COMPILER), [FONT.name]);
+}
+
+#[test]
+fn physics_compiles_from_the_seed_and_is_reused_until_an_input_changes() {
+    let dir = checkout();
+    let files = context(dir.path()).files(&BLOCK_PHYSICS);
+    fs::write(&files[0], assets::pinned_block_registry_bytes()).unwrap();
+    fs::write(
+        &files[1],
+        include_bytes!("../../../../assets/data/block-physics-seed-v2193.bin"),
+    )
+    .unwrap();
+    let (result, _) = run(dir.path(), BLOCK_PHYSICS.name);
+    result.unwrap();
+    let ctx = context(dir.path());
+    let output = fs::read(ctx.out.join(BLOCK_PHYSICS.output)).unwrap();
+    let protocol = assets::active_content_registry_protocol();
+    let records =
+        assets::read_registry_for_protocol(assets::pinned_block_registry_bytes(), protocol)
+            .unwrap();
+    let registry = assets::read_physics_registry_for_protocol(
+        &output,
+        assets::pinned_block_registry_bytes(),
+        &records,
+        protocol,
+    )
+    .unwrap();
+    assert_eq!(registry.len(), records.len());
+    assert!(records.iter().all(|record| {
+        registry
+            .by_sequential_id(record.sequential_id)
+            .unwrap()
+            .shapes
+            .is_some()
+    }));
+    assert!(
+        plan_for(dir.path(), COMPILER, &[BLOCK_PHYSICS.name.to_owned()])
+            .stale
+            .is_empty()
+    );
+    fs::write(&files[1], b"changed seed").unwrap();
+    assert_eq!(
+        plan_for(dir.path(), COMPILER, &[BLOCK_PHYSICS.name.to_owned()]).stale[0].name,
+        BLOCK_PHYSICS.name
+    );
+}
+
+#[test]
+fn entity_only_behavior_is_available_to_entity_actor_and_equipment_compilation() {
+    let root = checkout();
+    let context = context(root.path());
+    let behavior = context.pack.cache.join("behavior_pack");
+    fs::create_dir_all(behavior.join("entities")).unwrap();
+    assert_eq!(context.behavior_pack(), Some(behavior.clone()));
+    assert_eq!(context.seat_behavior_pack(), Some(behavior.clone()));
+    for carrier in [carriers::ENTITY, carriers::ACTOR, carriers::EQUIPMENT] {
+        let selected = match command(&carrier, &context).unwrap() {
+            Command::EntityAssets { behavior_pack, .. }
+            | Command::ActorAssets { behavior_pack, .. }
+            | Command::EquipmentAssets { behavior_pack, .. } => behavior_pack,
+            _ => unreachable!(),
+        };
+        assert_eq!(selected, Some(behavior.clone()));
+    }
+}
+
+#[test]
+fn prepared_actor_and_equipment_decode_against_the_published_entity_carrier() {
+    let root = checkout();
+    let context = context(root.path());
+    let resource = context.resource_pack();
+    for family in [
+        "entity",
+        "models/entity",
+        "animations",
+        "animation_controllers",
+        "render_controllers",
+        "textures/entity",
+    ] {
+        fs::create_dir_all(resource.join(family)).unwrap();
+    }
+    fs::write(resource.join("entity/mount.json"), br#"{"format_version":"1.8.0","minecraft:client_entity":{"description":{"identifier":"fixture:mount","geometry":{"default":"geometry.mount"},"materials":{"default":"entity_alphatest"},"textures":{"default":"textures/entity/mount"},"render_controllers":["controller.render.mount"]}}}"#).unwrap();
+    fs::write(resource.join("models/entity/mount.json"), br#"{"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":"geometry.mount","texture_width":16,"texture_height":16},"bones":[{"name":"root","cubes":[{"origin":[0,0,0],"size":[0,2,7],"uv":[0,0]}]}]}]}"#).unwrap();
+    fs::write(resource.join("render_controllers/mount.json"), br#"{"format_version":"1.8.0","render_controllers":{"controller.render.mount":{"geometry":"Geometry.default","materials":[{"*":"Material.default"}],"textures":["Texture.default"]}}}"#).unwrap();
+    image::RgbaImage::from_pixel(16, 16, image::Rgba([17, 31, 47, 255]))
+        .save(resource.join("textures/entity/mount.png"))
+        .unwrap();
+    let behavior = context.pack.cache.join("behavior_pack/entities");
+    fs::create_dir_all(&behavior).unwrap();
+    fs::write(behavior.join("mount.json"), br#"{"format_version":"1.21.0","minecraft:entity":{"description":{"identifier":"fixture:mount"},"components":{"minecraft:rideable":{"seats":{"position":[0,1,0]}}}}}"#).unwrap();
+    fs::write(
+        root.path().join(carriers::VANILLA_MANIFEST),
+        include_bytes!("../../../../../assets/vanilla-source.json"),
+    )
+    .unwrap();
+    fs::create_dir_all(&context.out).unwrap();
+    for with_behavior in [true, false] {
+        if !with_behavior {
+            fs::remove_dir_all(&behavior).unwrap();
+        }
+        for carrier in [carriers::ENTITY, carriers::ACTOR, carriers::EQUIPMENT] {
+            crate::run(command(&carrier, &context).unwrap()).unwrap();
+        }
+        let entity = assets::RuntimeEntityAssets::decode(
+            &fs::read(context.out.join(carriers::ENTITY.output)).unwrap(),
+        )
+        .unwrap();
+        let actor = assets::RuntimeActorCatalog::decode(
+            &fs::read(context.out.join(carriers::ACTOR.output)).unwrap(),
+            &entity,
+        )
+        .unwrap();
+        assert_eq!(actor.bindings().len(), 1);
+        assert_eq!(&actor.textures()[0].rgba8[..4], &[17, 31, 47, 255]);
+        let equipment = assets::RuntimeEquipmentCatalog::decode(
+            &fs::read(context.out.join(carriers::EQUIPMENT.output)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            Some(equipment.entity_blob_sha256()),
+            entity.carrier_identity()
+        );
+    }
 }

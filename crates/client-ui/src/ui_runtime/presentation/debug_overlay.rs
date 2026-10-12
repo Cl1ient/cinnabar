@@ -16,7 +16,10 @@ pub(super) mod visible;
 use paint::PaintedOverlay;
 
 use super::bounded_visible_text;
-use super::{FONT_DESIGN_PIXEL_TEXELS, TEXT_LINE_HEIGHT_64, UiPresentationRuntime};
+use {
+    super::UiPresentationRuntime,
+    ui::{FONT_DESIGN_PIXEL_TEXELS, TEXT_LINE_HEIGHT_64},
+};
 
 const STRIP_COLOR: [u8; 4] = [80, 80, 80, 144];
 const INSET: f64 = 2.0;
@@ -130,7 +133,7 @@ pub(super) fn render<'a>(
     }
     cache.painted.key = None;
     #[cfg(feature = "tracy")]
-    let _span = bevy::log::info_span!("ui.f3.rebind_layout").entered();
+    let _span = tracing::info_span!("ui.f3.rebind_layout").entered();
     let previous = cache
         .laid
         .as_ref()
@@ -164,7 +167,7 @@ pub(super) fn render<'a>(
     }
     let render = {
         #[cfg(feature = "tracy")]
-        let _span = bevy::log::info_span!("ui.f3.layout").entered();
+        let _span = tracing::info_span!("ui.f3.layout").entered();
         json_ui::render_bound_cached(bound, root, env, &ViewState::default(), &mut cache.measures)
     };
     &cache
@@ -187,7 +190,7 @@ fn data_source(
     widths: &mut [Vec<f64>; 2],
 ) -> DataSource {
     #[cfg(feature = "tracy")]
-    let _span = bevy::log::info_span!("ui.f3.bindings_measure").entered();
+    let _span = tracing::info_span!("ui.f3.bindings_measure").entered();
     let row_limit = visible::row_limit(root);
     let columns = [&lines.left, &lines.right];
     for (column_index, column) in columns.into_iter().enumerate() {

@@ -252,9 +252,18 @@ JSON-UI. It has `screen` (`namespace.name`), `document` (a JSON string containin
 that namespace and one root definition), and `bindings` (a map of `#name` to a
 boolean, finite number, bounded text or 2–4-number array). The private catalog
 accepts bounded screen, panel, button, label, stack-panel and rectangle/vector
-custom nodes; factories, inheritance and dynamic expansion are rejected. The
-whole panel is capped at 128 KiB; its document at 96 KiB, 1,024 nodes and depth 32.
-Bindings update without rebuilding unchanged catalog geometry. Host bindings
+custom nodes, scroll views and their track/box controls; factories, inheritance
+and dynamic expansion are rejected. The whole panel is capped at 128 KiB; its
+document at 96 KiB, 1,024 nodes and depth 32.
+Bindings update without rebuilding unchanged catalog geometry.
+
+Personal-panel surfaces support JSON-UI scroll views, including wheel input, track
+presses and scrollbar-box dragging. Wheel input stays within the view under the
+pointer; closing the panel or losing focus releases scrollbar capture. Changes
+to content bounds clamp the scroll offset to the visible range. Track mappings
+use `mod.scroll_track` with the view's `scrollbar_track_button` set to that action;
+these presses are consumed by the host without invoking an extension control.
+
 `#surface_width` and `#surface_height` report the current logical viewport.
 With a surface, the optional panel `reference_size` pair declares positive logical
 dimensions up to 1,000,000. Smaller viewports proportionally reduce rendering and
@@ -366,11 +375,12 @@ reload. A component that fails to load is skipped:
 
 File order settles conflicts: the earliest camera rig, rotation, time override, attack
 reach and non-zero packet delay win; a key reserved by an earlier mod never reaches a later
-one; the first mod with a panel owns it; labels join with ` | `; commands and cues keep load
-order. Render passes merge by name with the earliest mod keeping a contested name, and passes
+one; each panel can be selected with its own toggle key (load order resolves shared keys);
+labels join with ` | `; commands and cues keep load order. Render passes merge by name with
+the earliest mod keeping a contested name, and passes
 and each primitive kind fill the single-mod budgets in load order. Each mod polls
-every mod's previous-frame cues. The set takes precedence over `CINNABAR_MOD_COMPONENT`
-and the registration watcher, which still load a single mod.
+every mod's previous-frame cues. The set takes precedence over `CINNABAR_MOD_COMPONENT`;
+the registration watcher adds one independently managed local component.
 
 ## Attach a local component to a running client
 
@@ -404,11 +414,15 @@ to false. Component compilation, source polling, font rasterization and status
 writes run on the worker. The current generation is installed before physical
 input sampling; deleting, disabling or invalidating the registration revokes its
 runtime and restores input ownership. A request-ID-only change preserves guest
-state. An environment-selected component takes precedence over registration.
+state. Environment-selected components load first; registration adds a companion without
+replacing them. Replacing, disabling or revoking registration affects only that companion. The total
+loaded component count remains bounded by `mod_api::MAX_LOADED_MODS`.
 
 `local-mod.status.json` reports the request ID, client PID and `loaded`, `error`
-or `disabled` state. `loaded` acknowledges actual installation, rather than only
-successful compilation. The guest still has no filesystem or process access.
+or `disabled` state. The additive capability field `independent_registration: true`
+indicates that registration can attach, replace and revoke a component independently of
+environment-selected components. `loaded` acknowledges actual installation, rather than
+only successful compilation. The guest still has no filesystem or process access.
 This loader cannot be added to an executable that is already running without it;
 older clients require one update and restart.
 
@@ -585,8 +599,8 @@ the new instance.
 
 Verification: `cargo test -p mod-host --locked --lib` (real components for every callback,
 fuel, traps, caps, revisions, permissions and reload), `cargo test -p experience-sdk --lib`
-(the manifest) and `cargo test -p client-ui --lib mod_screens session_data` (clipping, the
-lifted held stack, hit filtering, session data). The overlay has not been checked on a
+(the manifest), `cargo test -p mod-ui --lib mod_screens` (clipping, the lifted held stack, hit
+filtering) and `cargo test -p client-ui --lib mod_surfaces session_data` (session data). The overlay has not been checked on a
 rendered frame yet; see `plan.md`.
 
 ## Loaded block highlights

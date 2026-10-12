@@ -1,4 +1,7 @@
-use super::*;
+use {
+    super::*,
+    client_presentation::actor_publication::{HandRigBuilder, publish_actor_render_frame},
+};
 
 #[test]
 fn offline_actor_frames_publish_and_advance_the_synthetic_actor() {
@@ -36,7 +39,7 @@ fn offline_actor_frames_publish_and_advance_the_synthetic_actor() {
         stream.authority().actor_rig(42).is_some(),
         "the synthetic actor is admitted before preparation"
     );
-    let mut scene = render::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap();
+    let mut scene = render_scene::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap();
     scene.configure_artwork(artwork.clone());
     let mut client = crate::runtime::world::ClientWorld::new_with_entity_assets(
         Arc::new(assets::RuntimeAssets::diagnostic()),
@@ -69,7 +72,7 @@ fn offline_actor_frames_publish_and_advance_the_synthetic_actor() {
     };
     world
         .resource_mut::<Time<Real>>()
-        .update_with_instant(clock + client_world::ACTOR_TICK_DURATION);
+        .update_with_instant(clock + simulation_clock::TICK_DURATION);
     prepare_offline_actor_frame(&mut world);
     world.run_system_cached(publish_actor_render_frame).unwrap();
     assert_eq!(

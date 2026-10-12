@@ -1,6 +1,6 @@
 //! Offline settings gallery through the installed vanilla UI carrier.
 
-use crate::menu::MenuScreen;
+use launcher::menu::MenuScreen;
 
 struct Metrics;
 
@@ -28,7 +28,7 @@ fn selector(tree: &json_ui::LaidOut<'_>, name: &str) -> Option<json_ui::Rect> {
 
 #[test]
 fn settings_category_button_pitch_matches_vanilla_toggle_height() {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!(
             "skipping settings_category_button_pitch_matches_vanilla_toggle_height: fixture unavailable; requires installed UI carrier (make assets)"
         );
@@ -37,7 +37,7 @@ fn settings_category_button_pitch_matches_vanilla_toggle_height() {
     let files = carrier.ui_files();
     let catalog =
         json_ui::Catalog::from_files(files.iter().map(|file| (&*file.path, &*file.bytes))).unwrap();
-    let (reference, context) = super::menu_screens::settings_target();
+    let (reference, context) = ui_screens::menu_screens::settings_target();
     let tree = json_ui::resolve(&catalog, reference, &context)
         .control
         .unwrap();
@@ -64,19 +64,19 @@ fn section(variable: &str) {
 }
 
 /// Render a section after adjusting the menu view, such as opening a dropdown.
-fn section_with(variable: &str, name: &str, adjust: impl FnOnce(&mut crate::menu::MenuView)) {
-    if super::pack_harness::carrier().is_none() {
+fn section_with(variable: &str, name: &str, adjust: impl FnOnce(&mut launcher::menu::MenuView)) {
+    if ui_engine::test_support::carrier().is_none() {
         return;
     }
     let player_runtime = player_state::PlayerState::new(1);
-    let mut view = crate::menu::MenuView::new(true, "Steve".to_owned());
+    let mut view = launcher::menu::MenuView::new(true, "Steve".to_owned());
     let local = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("../.local");
     view.language_choices =
-        crate::menu::settings_options::SettingsOptions::language_choices(&local);
+        launcher::menu::settings_options::SettingsOptions::language_choices(&local);
     view.screen = MenuScreen::Settings;
-    view.settings_section = super::menu_screens::SETTINGS_SECTIONS
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
         .iter()
         .find_map(|(name, index)| (*name == variable).then_some(*index))
         .expect("known settings section");
@@ -104,7 +104,7 @@ fn settings_sections_gallery() {
 
 #[test]
 fn settings_video_graphics_mode_open() {
-    let index = crate::menu::settings_options::SETTINGS_OPTIONS
+    let index = launcher::menu::settings_options::SETTINGS_OPTIONS
         .iter()
         .position(|option| option.name == "graphics_mode")
         .unwrap();
@@ -126,13 +126,13 @@ fn open_graphics_mode_rows_select_their_own_choice() {
         );
         return;
     };
-    let index = crate::menu::settings_options::SETTINGS_OPTIONS
+    let index = launcher::menu::settings_options::SETTINGS_OPTIONS
         .iter()
         .position(|option| option.name == "graphics_mode")
         .unwrap() as u16;
-    let mut view = crate::menu::MenuView::new(true, "Steve".to_owned());
+    let mut view = launcher::menu::MenuView::new(true, "Steve".to_owned());
     view.screen = MenuScreen::Settings;
-    view.settings_section = super::menu_screens::SETTINGS_SECTIONS
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
         .iter()
         .find_map(|(name, at)| (*name == "video_forced_index").then_some(*at))
         .unwrap();
@@ -148,7 +148,7 @@ fn open_graphics_mode_rows_select_their_own_choice() {
         )
         .unwrap();
     for choice in 0..2 {
-        let action = crate::menu::MenuAction::SettingsOption(index, choice);
+        let action = launcher::menu::MenuAction::SettingsOption(index, choice);
         let row = presentation
             .menu_hit_targets
             .iter()
@@ -163,14 +163,14 @@ fn open_graphics_mode_rows_select_their_own_choice() {
 
 #[test]
 fn settings_video_graphics_options_pack_before() {
-    if super::pack_harness::carrier().is_none() {
+    if ui_engine::test_support::carrier().is_none() {
         return;
     }
     let player_runtime = player_state::PlayerState::new(1);
 
-    let mut view = crate::menu::MenuView::new(true, "Steve".to_owned());
+    let mut view = launcher::menu::MenuView::new(true, "Steve".to_owned());
     view.screen = MenuScreen::Settings;
-    view.settings_section = super::menu_screens::SETTINGS_SECTIONS
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
         .iter()
         .find_map(|(name, index)| (*name == "video_forced_index").then_some(*index))
         .unwrap();
@@ -192,8 +192,8 @@ fn settings_video_graphics_options_expanded() {
 }
 
 /// Selects the registry's Simple graphics choice for the requested screenshot state.
-fn simple_graphics(view: &mut crate::menu::MenuView) {
-    let index = crate::menu::settings_options::SETTINGS_OPTIONS
+fn simple_graphics(view: &mut launcher::menu::MenuView) {
+    let index = launcher::menu::settings_options::SETTINGS_OPTIONS
         .iter()
         .position(|option| option.name == "graphics_mode")
         .unwrap();
@@ -203,7 +203,7 @@ fn simple_graphics(view: &mut crate::menu::MenuView) {
 // A complete section-button hit target expands and collapses the original option grid.
 #[test]
 fn graphics_options_expander_uses_full_settings_button_height() {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!(
             "skipping graphics_options_expander_uses_full_settings_button_height: fixture unavailable; requires installed UI carrier (make assets)"
         );
@@ -212,16 +212,16 @@ fn graphics_options_expander_uses_full_settings_button_height() {
     let files = carrier.ui_files();
     let mut catalog =
         json_ui::Catalog::from_files(files.iter().map(|file| (&*file.path, &*file.bytes))).unwrap();
-    super::graphics_expander::install(&mut catalog);
-    let mut view = crate::menu::MenuView::new(true, "Steve".to_owned());
+    ui_screens::graphics_expander::install(&mut catalog);
+    let mut view = launcher::menu::MenuView::new(true, "Steve".to_owned());
     view.screen = MenuScreen::Settings;
-    view.settings_section = super::menu_screens::SETTINGS_SECTIONS
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
         .iter()
         .find_map(|(name, index)| (*name == "video_forced_index").then_some(*index))
         .unwrap();
     for expanded in [false, true, false] {
         view.settings_advanced_graphics = expanded;
-        let screen = super::menu_screens::screen_data(&view, &|_| None).unwrap();
+        let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
         let rendered = json_ui::render_screen(
             screen.reference,
             &catalog,
@@ -242,8 +242,8 @@ fn graphics_options_expander_uses_full_settings_button_height() {
             .unwrap();
         assert_eq!(hit.rect.h, 30.0);
         assert_eq!(
-            super::settings_controls::action(&view, hit),
-            Some(crate::menu::MenuAction::SettingsAdvancedGraphics)
+            ui_screens::settings_controls::action(&view, hit),
+            Some(launcher::menu::MenuAction::SettingsAdvancedGraphics)
         );
         let texture = if expanded {
             "textures/ui/arrowDown"
@@ -263,9 +263,9 @@ fn video_toggles_admit_pointer_and_keyboard_focus() {
         );
         return;
     };
-    let mut view = crate::menu::MenuView::new(true, "Player".to_owned());
+    let mut view = launcher::menu::MenuView::new(true, "Player".to_owned());
     view.screen = MenuScreen::Settings;
-    view.settings_section = super::menu_screens::SETTINGS_SECTIONS
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
         .iter()
         .find_map(|(name, index)| (*name == "video_forced_index").then_some(*index))
         .unwrap();
@@ -274,11 +274,11 @@ fn video_toggles_admit_pointer_and_keyboard_focus() {
     let actions = presentation.menu_focus_actions().collect::<Vec<_>>();
     let mut previous = None;
     for name in ["hide_hand", "view_bobbing"] {
-        let index = crate::menu::settings_options::SETTINGS_OPTIONS
+        let index = launcher::menu::settings_options::SETTINGS_OPTIONS
             .iter()
             .position(|option| option.name == name)
             .unwrap() as u16;
-        let action = actions.iter().find(|action| matches!(action, crate::menu::MenuAction::SettingsOption(at, _) if *at == index))
+        let action = actions.iter().find(|action| matches!(action, launcher::menu::MenuAction::SettingsOption(at, _) if *at == index))
             .copied().unwrap_or_else(|| panic!("missing focus action for {name}"));
         let position = actions
             .iter()
@@ -301,7 +301,7 @@ fn video_toggles_admit_pointer_and_keyboard_focus() {
 /// Both responsive selector forms accept pointer and keyboard/controller focus.
 #[test]
 fn animations_selector_and_choices_admit_pointer_and_navigation_focus() {
-    use crate::menu::{
+    use launcher::menu::{
         MenuAction,
         settings_options::{ANIMATIONS_OPTION, SETTINGS_OPTIONS},
     };
@@ -315,16 +315,16 @@ fn animations_selector_and_choices_admit_pointer_and_navigation_focus() {
         .iter()
         .position(|option| option.name == ANIMATIONS_OPTION.name)
         .expect("animations selector") as u16;
-    let mut view = crate::menu::MenuView::new(true, "Player".to_owned());
+    let mut view = launcher::menu::MenuView::new(true, "Player".to_owned());
     view.screen = MenuScreen::Settings;
-    view.settings_section = super::menu_screens::SETTINGS_SECTIONS
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
         .iter()
         .find_map(|(name, index)| (*name == "video_forced_index").then_some(*index))
         .unwrap();
     let player = player_state::PlayerState::new(1);
     let runtime = crate::ui_runtime::UiRuntime::new(1);
     let draw = |presentation: &mut super::super::UiPresentationRuntime,
-                view: &crate::menu::MenuView,
+                view: &launcher::menu::MenuView,
                 size| {
         for _ in 0..2 {
             presentation.set_menu_view(Some(view.clone()));
@@ -388,7 +388,7 @@ fn animations_selector_and_choices_admit_pointer_and_navigation_focus() {
 /// Captures the persisted VRR choices with the control scrolled into view.
 #[test]
 fn settings_vrr_choices_snapshot() {
-    use crate::menu::{
+    use launcher::menu::{
         MenuAction,
         settings_options::{SETTINGS_OPTIONS, VRR_OPTION},
     };
@@ -408,6 +408,56 @@ fn settings_vrr_choices_snapshot() {
                 std::sync::Arc::make_mut(&mut view.settings_options).set(index, choice as i32);
                 view.focused_action = Some(MenuAction::SettingsOption(index as u16, choice as i32));
                 view.settings_advanced_graphics = true;
+            },
+        );
+    }
+}
+
+/// The added Video toggle is actionable in both persisted states through the real carrier.
+#[test]
+fn native_skybox_offset_video_toggle_is_reachable_in_both_states() {
+    use launcher::menu::{
+        MenuAction,
+        settings_options::{NATIVE_SKYBOX_OFFSET_OPTION, SETTINGS_OPTIONS},
+    };
+    let Some(mut presentation) = super::pack_harness::engine_presentation() else {
+        eprintln!(
+            "skipping native_skybox_offset_video_toggle_is_reachable_in_both_states: missing installed UI carrier; make assets"
+        );
+        return;
+    };
+    let index = SETTINGS_OPTIONS
+        .iter()
+        .position(|o| o.name == NATIVE_SKYBOX_OFFSET_OPTION.name)
+        .unwrap() as u16;
+    let mut view = crate::test_support::settings_view();
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
+        .iter()
+        .find_map(|(name, index)| (*name == "video_forced_index").then_some(*index))
+        .unwrap();
+    let player = player_state::PlayerState::new(1);
+    for enabled in [true, false] {
+        std::sync::Arc::make_mut(&mut view.settings_options)
+            .set(index as usize, i32::from(enabled));
+        crate::test_support::draw_menu_actions(&player, &mut presentation, &view);
+        let action = MenuAction::SettingsOption(index, i32::from(!enabled));
+        assert!(
+            presentation
+                .menu_focus_actions()
+                .any(|candidate| candidate == action)
+        );
+        view.focused_action = Some(action);
+        assert!(
+            crate::test_support::draw_menu_actions(&player, &mut presentation, &view)
+                .contains(&action)
+        );
+        super::play_flow_snapshots::snapshot(
+            &player,
+            &view,
+            if enabled {
+                "settings-skybox-native"
+            } else {
+                "settings-skybox-centered"
             },
         );
     }

@@ -1,8 +1,4 @@
 //! One instanced draw per shared mesh and four material passes for retained text.
-use super::{
-    PrimitiveShapesScene, SHADER,
-    gpu::{ACTOR_BYTES, INSTANCE_BYTES, ShapeGpu, TEXT_BYTES, is_text},
-};
 use bevy::{
     core_pipeline::core_3d::{CORE_3D_DEPTH_FORMAT, Transparent3d},
     ecs::{
@@ -23,8 +19,15 @@ use bevy::{
         render_resource::*,
         renderer::RenderDevice,
         sync_world::MainEntity,
-        view::{ExtractedView, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms},
     },
+};
+use {
+    super::{
+        SHADER,
+        gpu::{ACTOR_BYTES, INSTANCE_BYTES, ShapeGpu, TEXT_BYTES, is_text},
+    },
+    render_scene::PrimitiveShapesScene,
 };
 
 pub(super) const TEXT_FRONT_FACE: FrontFace = FrontFace::Cw;
@@ -115,7 +118,7 @@ fn descriptor() -> RenderPipelineDescriptor {
             shader: SHADER,
             entry_point: Some("shape_fragment".into()),
             targets: vec![Some(ColorTargetState {
-                format: TextureFormat::bevy_default(),
+                format: render_scene::SCENE_COLOR_FORMAT,
                 blend: None,
                 write_mask: ColorWrites::ALL,
             })],
@@ -128,8 +131,8 @@ fn descriptor() -> RenderPipelineDescriptor {
         },
         depth_stencil: Some(DepthStencilState {
             format: CORE_3D_DEPTH_FORMAT,
-            depth_write_enabled: true,
-            depth_compare: CompareFunction::GreaterEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(CompareFunction::GreaterEqual),
             stencil: default(),
             bias: default(),
         }),
@@ -156,9 +159,9 @@ impl Specializer<RenderPipeline> for ShapeSpecializer {
         descriptor.multisample.count = key.msaa.samples();
         let fragment = descriptor.fragment.as_mut().unwrap();
         fragment.targets[0].as_mut().unwrap().format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         if key.gamma {
             let target = fragment.targets[0].as_mut().unwrap();
@@ -174,12 +177,12 @@ impl Specializer<RenderPipeline> for ShapeSpecializer {
             descriptor.vertex.entry_point = Some("text_vertex".into());
             let depth_test = key.mode >= 3;
             let glyph = key.mode == 2 || key.mode == 4;
-            depth.depth_compare = if depth_test {
+            depth.depth_compare = Some(if depth_test {
                 CompareFunction::GreaterEqual
             } else {
                 CompareFunction::Always
-            };
-            depth.depth_write_enabled = glyph;
+            });
+            depth.depth_write_enabled = Some(glyph);
             if depth_test && glyph {
                 depth.bias.constant = render_model::NAMETAG_TEXT_REVERSE_Z_BIAS;
                 fragment.shader_defs.push("TEXT_ALPHA_TEST".into());
@@ -267,6 +270,16 @@ pub(super) fn prepare_bind_groups(
     }
 }
 
+/// Camera identity and settings used to queue primitive mesh variants.
+type ShapeQueueView = (
+    Entity,
+    &'static MainEntity,
+    &'static ExtractedView,
+    &'static bevy::render::camera::ExtractedCamera,
+    &'static Msaa,
+    Option<&'static render_scene::EnhancedRendering>,
+);
+
 /// Queues work by mesh variant, never by shape or text record.
 pub(super) fn queue(
     cache: Res<PipelineCache>,
@@ -274,13 +287,7 @@ pub(super) fn queue(
     scene: Res<PrimitiveShapesScene>,
     mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     functions: Res<DrawFunctions<Transparent3d>>,
-    views: Query<(
-        Entity,
-        &MainEntity,
-        &ExtractedView,
-        &Msaa,
-        Option<&crate::EnhancedRendering>,
-    )>,
+    views: Query<ShapeQueueView>,
 ) {
     let store = scene
         .store
@@ -290,7 +297,7 @@ pub(super) fn queue(
         return;
     }
     let functions = functions.read();
-    for (entity, main, view, msaa, enhanced) in &views {
+    for (entity, main, view, extracted_camera, msaa, enhanced) in &views {
         let Some(phase) = phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -304,9 +311,9 @@ pub(super) fn queue(
                     &cache,
                     Key {
                         msaa: *msaa,
-                        hdr: view.hdr,
+                        hdr: extracted_camera.hdr,
                         gamma: crate::chunk::transparent::gamma_pass::admitted(
-                            view.hdr,
+                            extracted_camera.hdr,
                             *msaa,
                             enhanced.is_some(),
                         ),
@@ -316,15 +323,20 @@ pub(super) fn queue(
                     continue;
                 };
                 let encoded = index as u32 * 5 + u32::from(mode);
-                phase.add(Transparent3d {
-                    entity: (entity, *main),
-                    pipeline: id,
-                    draw_function: functions.id::<DrawShapes>(),
-                    distance: 1.1e9 + mode as f32 * 128.0,
-                    batch_range: encoded..encoded + 1,
-                    extra_index: PhaseItemExtraIndex::None,
-                    indexed: false,
-                });
+                crate::transparent_phase::add(
+                    phase,
+                    Transparent3d {
+                        sorting_info:
+                            bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
+                        entity: (entity, *main),
+                        pipeline: id,
+                        draw_function: functions.id::<DrawShapes>(),
+                        distance: 1.1e9 + mode as f32 * 128.0,
+                        batch_range: encoded..encoded + 1,
+                        extra_index: PhaseItemExtraIndex::None,
+                        indexed: false,
+                    },
+                );
             }
         }
     }

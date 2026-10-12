@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use render::{ActorArtworkLocation, ActorRigSubmission};
 use render_model::EntityRigId;
+use render_model::{ActorArtworkLocation, ActorRigSubmission};
 
 /// Source catalog, geometry, and selected image identify one attachable raster.
 pub(super) type AttachableMeshKey = (bool, u32, u32);
@@ -19,6 +19,10 @@ pub(super) struct JavaRasterFrame {
 /// One stack an actor wears or holds, reduced to what drawing needs.
 #[derive(Clone, Debug)]
 pub struct WornItem {
+    /// Grip admitted by the numeric item registry, copied from the canonical stack.
+    pub grip: assets::item::grip::ItemGrip,
+    /// Use and animation facts from the numerical registry admission.
+    pub use_facts: client_world::EffectiveItemUse,
     pub identifier: Arc<str>,
     pub metadata: u32,
     /// Durability damage, when the stack carries it separately from its visual data value.
@@ -81,7 +85,7 @@ pub struct EquipmentPresentation {
 pub struct FirstPersonItem {
     pub presentation: EquipmentPresentation,
     pub camera_space: bool,
-    pub alpha_mode: render::HandItemAlphaMode,
+    pub alpha_mode: render_model::HandItemAlphaMode,
     /// Camera from item space under Java's hand stack; the item's bones then sit at rest.
     pub java_camera: Option<bevy::math::Mat4>,
     /// Java's sprite-depth normal in this rig frame, used for legacy normal rescaling.
@@ -121,7 +125,7 @@ impl FirstPersonArms {
 #[derive(Clone, Copy)]
 pub struct EquipmentAnimation<'a> {
     pub owner: &'a client_world::ActorSnapshot,
-    pub rig: &'a client_world::ActorRigSnapshot<'a>,
+    pub rig: &'a actor_animation::ActorRigSnapshot<'a>,
     pub frame_alpha: f32,
     pub delta_seconds: f32,
 }

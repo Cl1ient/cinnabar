@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use crate::shader_source;
+use std::sync::Arc;
 
 use bevy::{
     app::SubApp,
@@ -11,7 +10,7 @@ use bevy::{
     render::{
         ExtractSchedule, Render, RenderApp, RenderStartup,
         render_phase::DrawFunctions,
-        renderer::{RenderDevice, RenderQueue, WgpuWrapper},
+        renderer::{RenderDevice, RenderQueue},
     },
 };
 
@@ -31,10 +30,10 @@ mod pipeline_material_gpu_tests;
 mod frame_order_tests;
 
 /// A residency holding one standard-raster skin in class 0, layer 0.
-fn one_resident_skin() -> Arc<crate::actor::ActorSkinResidency> {
+fn one_resident_skin() -> Arc<render_model::ActorSkinResidency> {
     let skin = render_api::SkinRgba8::from(vec![255; render_model::STANDARD_SKIN_BYTES]);
-    let mut residency = crate::actor::ActorSkinResidency::default();
-    residency.classes[0] = Arc::from([Some(crate::actor::ResidentSkin {
+    let mut residency = render_model::ActorSkinResidency::default();
+    residency.classes[0] = Arc::from([Some(render_model::ResidentSkin {
         texels: Arc::clone(skin.pixels()),
         skin,
         admission: 1,
@@ -44,13 +43,13 @@ fn one_resident_skin() -> Arc<crate::actor::ActorSkinResidency> {
 
 #[test]
 fn shared_skin_layer_prepares_one_texture_layer_for_multiple_actors() {
-    let mut frame = crate::actor::ActorRenderFrame::default();
+    let mut frame = render_scene::ActorRenderFrame::default();
     frame.rig.instances = Arc::from([
-        crate::actor::ActorGpuInstance {
+        render_model::ActorGpuInstance {
             texture_layer: 0,
             ..Default::default()
         },
-        crate::actor::ActorGpuInstance {
+        render_model::ActorGpuInstance {
             texture_layer: 0,
             ..Default::default()
         },
@@ -82,14 +81,14 @@ fn dragon_dissolve_depth_and_color_passes_keep_their_distinct_depth_contracts() 
             .unwrap();
         let depth = descriptor.depth_stencil.unwrap();
         let target = descriptor.fragment.unwrap().targets[0].clone().unwrap();
-        assert!(depth.depth_write_enabled);
+        assert_eq!(depth.depth_write_enabled, Some(true));
         assert_eq!(target.blend, None);
         if material == assets::EntityRenderMaterial::DissolveDepth {
             assert_eq!(target.write_mask, ColorWrites::empty());
-            assert_eq!(depth.depth_compare, CompareFunction::GreaterEqual);
+            assert_eq!(depth.depth_compare, Some(CompareFunction::GreaterEqual));
         } else {
             assert_eq!(target.write_mask, ColorWrites::ALL);
-            assert_eq!(depth.depth_compare, CompareFunction::Equal);
+            assert_eq!(depth.depth_compare, Some(CompareFunction::Equal));
         }
     }
 }
@@ -103,7 +102,7 @@ fn actor_material_states_specialize_culling_blending_and_depth_write_independent
         (false, true, true),
         (true, true, false),
     ] {
-        let material = crate::ActorMaterial {
+        let material = render_model::ActorMaterial {
             state: Some(assets::EntityRenderMaterialState {
                 alpha_test: true,
                 cull,
@@ -128,7 +127,7 @@ fn actor_material_states_specialize_culling_blending_and_depth_write_independent
         assert_eq!(descriptor.primitive.cull_mode, cull.then_some(Face::Back));
         assert_eq!(
             descriptor.depth_stencil.unwrap().depth_write_enabled,
-            depth_write
+            Some(depth_write)
         );
         let actual = descriptor.fragment.unwrap().targets[0]
             .as_ref()
@@ -144,8 +143,8 @@ fn actor_material_states_specialize_culling_blending_and_depth_write_independent
 
 #[test]
 fn skin_preparation_rejects_slots_that_are_not_resident() {
-    let mut frame = crate::actor::ActorRenderFrame::default();
-    frame.rig.instances = Arc::from([crate::actor::ActorGpuInstance {
+    let mut frame = render_scene::ActorRenderFrame::default();
+    frame.rig.instances = Arc::from([render_model::ActorGpuInstance {
         texture_layer: 0,
         ..Default::default()
     }]);
@@ -153,7 +152,7 @@ fn skin_preparation_rejects_slots_that_are_not_resident() {
 
     frame.skins = one_resident_skin();
     assert!(player_skins_resident(&frame));
-    for slot in [1, crate::actor::pack_skin_slot(1, 0)] {
+    for slot in [1, render_model::pack_skin_slot(1, 0)] {
         Arc::make_mut(&mut frame.rig.instances)[0].texture_layer = slot;
         assert!(!player_skins_resident(&frame));
     }
@@ -161,8 +160,8 @@ fn skin_preparation_rejects_slots_that_are_not_resident() {
 
 #[test]
 fn generic_only_frames_do_not_require_or_reinterpret_player_skins() {
-    let mut frame = crate::actor::ActorRenderFrame::default();
-    frame.rig.instances = Arc::from([crate::actor::ActorGpuInstance {
+    let mut frame = render_scene::ActorRenderFrame::default();
+    frame.rig.instances = Arc::from([render_model::ActorGpuInstance {
         texture_layer: 17,
         ..Default::default()
     }]);
@@ -177,8 +176,8 @@ fn generic_only_frames_do_not_require_or_reinterpret_player_skins() {
 
 #[test]
 fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
-    use crate::actor::{ActorDrawManifestEntry, ActorRenderIdentity, ActorRigRoute};
     use bevy::ecs::system::RunSystemOnce;
+    use render_model::{ActorDrawManifestEntry, ActorRenderIdentity, ActorRigRoute};
     use render_model::{ActorRigVertex, EntityRigId};
     let mut app = app_with_noop_render_sub_app();
     app.add_plugins(ActorRenderPlugin);
@@ -186,11 +185,11 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
     let world = app.sub_app_mut(RenderApp).world_mut();
     world.run_schedule(RenderStartup);
     world.resource_mut::<ActorGpu>().skin_revision = 0;
-    let mut frame = crate::actor::ActorRenderFrame::default();
+    let mut frame = render_scene::ActorRenderFrame::default();
     frame.rig.frame_generation = 1;
     frame.rig.geometry_revision = 1;
     frame.rig.maximum_vertex_count = 3;
-    frame.rig.instances = Arc::from([crate::actor::ActorGpuInstance {
+    frame.rig.instances = Arc::from([render_model::ActorGpuInstance {
         texture_layer: 0,
         ..Default::default()
     }]);
@@ -218,7 +217,7 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
         current_bone_base: 0,
         bone_count: 1,
     }]);
-    frame.rig.geometry_vertices = crate::actor::ActorRigVertexSegments::from_vertices(
+    frame.rig.geometry_vertices = render_model::ActorRigVertexSegments::from_vertices(
         [ActorRigVertex {
             position: [0.0; 3],
             normal: [0.0, 1.0, 0.0],
@@ -228,14 +227,14 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
             surface: Default::default(),
         }; 3],
     );
-    frame.rig.geometry_spans = Arc::from([crate::actor::ActorRigGeometrySpan {
+    frame.rig.geometry_spans = Arc::from([render_model::ActorRigGeometrySpan {
         first_vertex: 0,
         vertex_count: 3,
     }]);
-    let mut artwork = crate::actor::ActorArtworkPages::default();
+    let mut artwork = render_model::ActorArtworkPages::default();
     artwork.identity = [1; 32];
     artwork.entity_identity = [2; 32];
-    artwork.pages = Arc::from([crate::actor::ActorTexturePage {
+    artwork.pages = Arc::from([render_model::ActorTexturePage {
         width: 16,
         height: 16,
         layers: 1,
@@ -251,7 +250,7 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
     let gpu = world.resource::<ActorGpu>();
     assert_eq!(gpu.instance_count, 1);
     assert_eq!(gpu.artwork.pages.len(), 1);
-    let draw = crate::actor::ActorDrawFrame {
+    let draw = render_scene::ActorDrawFrame {
         artwork_identity: gpu.artwork_identity,
         skin_revision: gpu.skin_revision,
         geometry_revision: gpu.geometry_revision,
@@ -260,18 +259,18 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
         manifest: Arc::clone(&gpu.manifest),
     };
     let gate = world
-        .resource::<crate::actor::ActorPresentationGate>()
+        .resource::<render_scene::ActorPresentationGate>()
         .clone();
     let old = gate.try_reserve_callback(draw).unwrap();
     let mut replacement = world
-        .resource::<crate::actor::ActorRenderFrame>()
+        .resource::<render_scene::ActorRenderFrame>()
         .artwork
         .as_ref()
         .clone();
     replacement.identity = [3; 32];
     replacement.entity_identity = [4; 32];
     world
-        .resource_mut::<crate::actor::ActorRenderFrame>()
+        .resource_mut::<render_scene::ActorRenderFrame>()
         .artwork = Arc::new(replacement);
     world
         .run_system_once(super::prepare_actor_resources)
@@ -287,13 +286,13 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
     assert!(gate.drain().is_empty());
 
     let mut next = world
-        .resource::<crate::actor::ActorRenderFrame>()
+        .resource::<render_scene::ActorRenderFrame>()
         .artwork
         .as_ref()
         .clone();
     next.entity_identity = [5; 32];
     world
-        .resource_mut::<crate::actor::ActorRenderFrame>()
+        .resource_mut::<render_scene::ActorRenderFrame>()
         .artwork = Arc::new(next);
     world
         .run_system_once(super::prepare_actor_resources)
@@ -306,7 +305,7 @@ fn app_with_noop_render_sub_app() -> App {
     let mut render_app = SubApp::new();
     render_app
         .insert_resource(RenderDevice::from(device))
-        .insert_resource(RenderQueue(Arc::new(WgpuWrapper::new(queue))))
+        .insert_resource(RenderQueue::new(queue))
         .insert_resource(DrawFunctions::<Opaque3d>::default())
         .insert_resource(DrawFunctions::<Transparent3d>::default())
         .add_schedule(Schedule::new(RenderStartup))
@@ -319,13 +318,13 @@ fn app_with_noop_render_sub_app() -> App {
 }
 
 fn standalone_actor_shader_source() -> String {
-    let shader = crate::shader_safety::from_actor_wgsl(
+    let shader = crate::shader_safety::from_actor_wesl(
         ACTOR_SHADER_SOURCE,
-        "actor.wgsl",
-        crate::actor::ACTOR_GPU_INSTANCE_WORDS,
+        "actor.wesl",
+        render_model::ACTOR_GPU_INSTANCE_WORDS,
         render_model::ACTOR_RIG_VERTEX_WORDS,
     );
-    let bevy::shader::Source::Wgsl(source) = shader.source else {
+    let bevy::shader::Source::Wesl(source) = shader.source else {
         panic!("actor source is WGSL");
     };
     shader_source::standalone(&source, &[])
@@ -378,7 +377,7 @@ fn plugin_install_is_idempotent_and_starts_one_shared_gpu_state() {
 #[test]
 fn pipeline_descriptor_specializes_and_noop_backend_accepts_the_binding_layout() {
     use bevy::prelude::Msaa;
-    use bevy::render::{render_resource::Specializer, view::ViewTarget};
+    use bevy::render::render_resource::Specializer;
 
     let layout = actor_bind_group_layout();
     crate::shader_test_support::assert_binding_visibility(
@@ -406,7 +405,7 @@ fn pipeline_descriptor_specializes_and_noop_backend_accepts_the_binding_layout()
                 .as_ref()
                 .unwrap()
                 .format,
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         );
     }
 
@@ -448,7 +447,10 @@ fn native_color_mask_alpha_controls_dye_not_opacity() {
             .blend
             .is_none()
     );
-    assert!(descriptor.depth_stencil.unwrap().depth_write_enabled);
+    assert_eq!(
+        descriptor.depth_stencil.unwrap().depth_write_enabled,
+        Some(true)
+    );
 }
 
 #[test]
@@ -461,19 +463,19 @@ fn native_multitexture_mixes_rgb_once_without_using_base_alpha_as_coverage() {
     );
     assert!(ACTOR_SHADER_SOURCE.contains("!color_mask_material && !multitexture_material &&"));
     assert_eq!(
-        std::mem::offset_of!(crate::actor::ActorGpuInstance, multitexture_layers) / 4,
-        std::mem::offset_of!(crate::actor::ActorGpuInstance, material) / 4 - 2
+        std::mem::offset_of!(render_model::ActorGpuInstance, multitexture_layers) / 4,
+        std::mem::offset_of!(render_model::ActorGpuInstance, material) / 4 - 2
     );
 }
 
-fn diagnostic_body(runtime_id: u64, texture_layer: u32) -> crate::actor::ActorRigSubmission {
-    use crate::actor::{ActorRenderIdentity, ActorRigRenderInput, ActorRigRoute};
+fn diagnostic_body(runtime_id: u64, texture_layer: u32) -> render_model::ActorRigSubmission {
+    use render_model::{ActorRenderIdentity, ActorRigRenderInput, ActorRigRoute};
     let bone = render_model::RenderBoneTransform {
         rotation: [0.0, 0.0, 0.0, 1.0],
         translation_scale: [0.0, 0.0, 0.0, 1.0],
         axis_scale: render_model::UNIT_AXIS_SCALE,
     };
-    crate::actor::ActorRigSubmission {
+    render_model::ActorRigSubmission {
         material: Default::default(),
         culling_bounds: Default::default(),
         input: ActorRigRenderInput {
@@ -502,7 +504,7 @@ fn diagnostic_body(runtime_id: u64, texture_layer: u32) -> crate::actor::ActorRi
         texture_layer,
         route: ActorRigRoute::Diagnostic,
         tint: 0,
-        uv_anim: crate::IDENTITY_UV_ANIM,
+        uv_anim: render_model::IDENTITY_UV_ANIM,
         light: 0,
         overlay_rgba8: 0,
     }
@@ -513,7 +515,7 @@ fn upscaled_skin(seed: u8, side: usize) -> render_api::SkinRgba8 {
     let standard = render_model::STANDARD_SKIN_SIDE;
     let scale = standard / side;
     let mut out = vec![0; render_model::STANDARD_SKIN_BYTES];
-    for (index, texel) in out.chunks_exact_mut(4).enumerate() {
+    for (index, texel) in out.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         let (x, y) = (index % standard / scale, index / standard / scale);
         texel.copy_from_slice(&[seed, x as u8, y as u8, 255]);
     }
@@ -522,7 +524,7 @@ fn upscaled_skin(seed: u8, side: usize) -> render_api::SkinRgba8 {
 
 /// Publishes the players in `shown` (runtime id, skin) and syncs the GPU arrays to that frame.
 fn publish_and_sync(
-    scene: &mut crate::actor::ActorRenderScene,
+    scene: &mut render_scene::ActorRenderScene,
     gpu: &mut super::GpuSkinArrays,
     device: &RenderDevice,
     queue: &RenderQueue,
@@ -553,9 +555,9 @@ fn publish_and_sync(
 fn skin_arrays_upload_only_newly_admitted_skins() {
     let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+    let queue = RenderQueue::new(queue);
     let mut gpu = super::GpuSkinArrays::new(&device);
-    let mut scene = crate::actor::ActorRenderScene::default();
+    let mut scene = render_scene::ActorRenderScene::default();
     let skins: Vec<_> = (0..6).map(|seed| upscaled_skin(seed, 64)).collect();
     let classic = 64 * 64 * 4;
 

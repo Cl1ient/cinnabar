@@ -1,22 +1,27 @@
 //! Client-side weather presentation: eased levels, lightning flash and the precipitation scene.
 
-use assets::BiomeRule;
 use bevy::{
     prelude::{Local, Query, Res, ResMut, Resource, Time, Transform, With},
     time::Real,
 };
 use chunk_pipeline::WorldStream;
 use meshing::CameraMedium;
-use render::{
-    AtmosphereFrame, ColumnSample, ColumnSampler, LightningScene, OcclusionGrid,
-    PRECIPITATION_LEVEL_PER_TICK, PRECIPITATION_SAMPLE_OFFSETS, PRECIPITATION_TICKS_PER_SECOND,
-    PrecipitationMix, PrecipitationScene, PrecipitationSim, RainSplashQueue, SkyKind,
-    approach_level, average_precipitation, lightning_bolt_segments, lightning_flash_level,
-    pick_rain_splashes, precipitation_forward_offset, push_bolt_records,
+use {
+    render_model::ColumnSampler,
+    render_model::{
+        ColumnSample, OcclusionGrid, PRECIPITATION_LEVEL_PER_TICK, PRECIPITATION_SAMPLE_OFFSETS,
+        PRECIPITATION_TICKS_PER_SECOND, PrecipitationMix, PrecipitationSim, approach_level,
+        average_precipitation, pick_rain_splashes, precipitation_forward_offset,
+    },
+    render_scene::{
+        AtmosphereFrame, LightningScene, PrecipitationMixResource, PrecipitationScene,
+        RainSplashQueue, SkyKind, lightning_bolt_segments, lightning_flash_level,
+        push_bolt_records,
+    },
 };
 
 use super::{WeatherState, WeatherTickFrame, weather_fog::WeatherFog};
-use crate::{camera::FlyCamera, runtime::world::ClientWorld};
+use {crate::runtime::world::ClientWorld, client_presentation::camera::FlyCamera};
 
 const MAX_FRAME_STEP_SECONDS: f64 = 1.0;
 const MAX_QUEUED_SPLASHES: usize = 256;
@@ -31,24 +36,25 @@ const WEATHER_TEXTURES_COMPILE_COMMAND: &str = "make weather-assets";
 #[must_use]
 pub(crate) fn load_optional_weather_textures(
     world_asset_path: &std::path::Path,
-) -> render::WeatherTextureAssets {
+) -> render_scene::WeatherTextureAssets {
     let path = world_asset_path.with_file_name(WEATHER_TEXTURES_FILENAME);
     let decoded = std::fs::read(&path)
         .map_err(|error| error.to_string())
         .and_then(|bytes| {
-            assets::decode_weather_textures(&bytes).map_err(|error| error.to_string())
+            assets::weather_textures::decode_weather_textures(&bytes)
+                .map_err(|error| error.to_string())
         });
     match decoded {
         Ok((textures, identity)) => {
-            eprintln!("loaded weather textures from {}", path.display());
-            render::WeatherTextureAssets::new(std::sync::Arc::new(textures), identity)
+            diagnostics::log_stderr!("loaded weather textures from {}", path.display());
+            render_scene::WeatherTextureAssets::new(std::sync::Arc::new(textures), identity)
         }
         Err(error) => {
-            eprintln!(
+            diagnostics::log_stderr!(
                 "weather textures unavailable at {} ({error}); using procedural precipitation and End sky; build with {WEATHER_TEXTURES_COMPILE_COMMAND}",
                 path.display()
             );
-            render::WeatherTextureAssets::default()
+            render_scene::WeatherTextureAssets::default()
         }
     }
 }
@@ -124,7 +130,7 @@ impl WeatherDisplay {
             self.previous_thunder = self.thunder;
             self.tick_seconds = 0.0;
         } else {
-            let tick = world::TICK_DURATION.as_secs_f64();
+            let tick = simulation_clock::TICK_DURATION.as_secs_f64();
             self.tick_seconds += self.step_seconds;
             let count = ((self.tick_seconds + f64::EPSILON) / tick).floor() as usize;
             self.tick_seconds = (self.tick_seconds - count as f64 * tick).max(0.0);
@@ -140,7 +146,7 @@ impl WeatherDisplay {
         }
         // Vanilla weather consumers interpolate the previous/current tick states;
         // only the seasonal palette rate explicitly uses alpha zero.
-        let alpha = (self.tick_seconds / world::TICK_DURATION.as_secs_f64()) as f32;
+        let alpha = (self.tick_seconds / simulation_clock::TICK_DURATION.as_secs_f64()) as f32;
         WeatherState {
             rain_level: self.previous_rain + (self.rain - self.previous_rain) * alpha,
             lightning_level: self.previous_thunder + (self.thunder - self.previous_thunder) * alpha,
@@ -179,7 +185,6 @@ impl WeatherDisplay {
 
 struct StreamColumns<'a> {
     stream: &'a WorldStream,
-    rules: &'a [BiomeRule],
 }
 
 impl ColumnSampler for StreamColumns<'_> {
@@ -188,14 +193,12 @@ impl ColumnSampler for StreamColumns<'_> {
         let biome =
             self.stream
                 .camera_biome_id([x as f32 + 0.5, top as f32 + 0.5, z as f32 + 0.5])?;
-        let rule = &self.rules[self
-            .rules
-            .binary_search_by_key(&biome, |rule| rule.id)
-            .ok()?];
+        let registry = self.stream.authority().resolved_biome_tints();
+        let rule = registry.biome(biome)?;
         Some(ColumnSample {
             surface_y: top.saturating_add(1),
-            temperature: rule.temperature(),
-            downfall: rule.downfall(),
+            temperature: rule.temperature,
+            downfall: rule.downfall,
         })
     }
 }
@@ -225,14 +228,10 @@ impl Default for PrecipitationCadence {
 }
 
 /// Biome (temperature, downfall) at a block position, when its chunk and biome are known.
-fn biome_climate(
-    stream: &WorldStream,
-    rules: &[BiomeRule],
-    position: [f32; 3],
-) -> Option<(f32, f32)> {
+fn biome_climate(stream: &WorldStream, position: [f32; 3]) -> Option<(f32, f32)> {
     let id = stream.camera_biome_id(position)?;
-    let rule = &rules[rules.binary_search_by_key(&id, |rule| rule.id).ok()?];
-    Some((rule.temperature(), rule.downfall()))
+    let rule = stream.authority().resolved_biome_tints().biome(id)?;
+    Some((rule.temperature, rule.downfall))
 }
 
 /// Ticks the vanilla precipitation layers, refreshes the occlusion grid and queues rain splashes.
@@ -244,7 +243,7 @@ pub(crate) fn update_precipitation_scene(
     time: Res<Time<Real>>,
     mut scene: ResMut<PrecipitationScene>,
     mut splashes: ResMut<RainSplashQueue>,
-    mut mix: ResMut<PrecipitationMix>,
+    mut mix: ResMut<PrecipitationMixResource>,
     mut cadence: Local<PrecipitationCadence>,
 ) {
     let level = frame.rain_level();
@@ -256,7 +255,7 @@ pub(crate) fn update_precipitation_scene(
         level > 0.0 && frame.sky_kind() == SkyKind::Overworld,
     ) else {
         scene.layers.clear();
-        *mix = PrecipitationMix::default();
+        mix.0 = PrecipitationMix::default();
         *cadence = PrecipitationCadence::default();
         return;
     };
@@ -264,7 +263,6 @@ pub(crate) fn update_precipitation_scene(
     let ticks = elapsed * PRECIPITATION_TICKS_PER_SECOND;
     let tick = ticks as u64;
     let origin = camera.translation.to_array();
-    let rules = &client_world.runtime_assets.biome_assets().rules;
     let pending = cadence
         .last_tick
         .map_or(1, |last| tick.saturating_sub(last).min(MAX_CATCH_UP_TICKS));
@@ -277,11 +275,11 @@ pub(crate) fn update_precipitation_scene(
                 feet[1] + offset[1] as f32,
                 feet[2] + offset[2] as f32,
             ];
-            biome_climate(stream, rules, position)
+            biome_climate(stream, position)
                 .map(|(temperature, downfall)| (temperature, downfall, position[1] as i32))
         });
         let averaged = average_precipitation(&samples);
-        *mix = PrecipitationMix {
+        mix.0 = PrecipitationMix {
             rain: averaged.rain * level,
             snow: averaged.snow * level,
         };
@@ -291,7 +289,7 @@ pub(crate) fn update_precipitation_scene(
             cadence.sim.tick(weights, seconds as f32);
         }
         let PrecipitationCadence { grid, cursor, .. } = &mut *cadence;
-        let mut columns = StreamColumns { stream, rules };
+        let mut columns = StreamColumns { stream };
         let refresh = OCCLUSION_REFRESH_PER_TICK * pending as usize;
         grid.update(
             OcclusionGrid::origin_for(origin),
@@ -384,7 +382,8 @@ mod tests {
         let mut display = WeatherDisplay::default();
         assert_eq!(display.advance(target(1.0, 0.0, 1), 10.0).rain_level(), 1.0);
         let fading = display.advance(target(0.0, 0.0, 1), 11.0);
-        let expected = 1.0 - PRECIPITATION_LEVEL_PER_TICK * (world::TICKS_PER_SECOND - 1) as f32;
+        let expected =
+            1.0 - PRECIPITATION_LEVEL_PER_TICK * (simulation_clock::TICKS_PER_SECOND - 1) as f32;
         assert!((fading.rain_level() - expected).abs() < 1.0e-6);
         let mut done = fading;
         for second in 12..20 {
@@ -403,7 +402,7 @@ mod tests {
 
     #[test]
     fn seasonal_weather_samples_are_tick_states_not_interpolated_atmosphere() {
-        let tick = world::TICK_DURATION.as_secs_f64();
+        let tick = simulation_clock::TICK_DURATION.as_secs_f64();
         let mut display = WeatherDisplay::default();
         display.advance(target(0.0, 0.0, 1), 0.0);
         let shown = display.advance(target(1.0, 1.0, 1), tick);
@@ -429,7 +428,7 @@ mod tests {
 
     #[test]
     fn weather_fog_uses_previous_rain_only_on_fixed_renderer_ticks() {
-        let tick = world::TICK_DURATION.as_secs_f64();
+        let tick = simulation_clock::TICK_DURATION.as_secs_f64();
         let mut display = WeatherDisplay::default();
         display.set_precipitation_count(Some(PRECIPITATION_SAMPLE_OFFSETS.len()));
         display.advance(target(0.0, 0.0, 1), 0.0);
@@ -461,14 +460,14 @@ mod tests {
         let mut display = WeatherDisplay::default();
         display.set_precipitation_count(Some(PRECIPITATION_SAMPLE_OFFSETS.len()));
         display.advance(weather, 0.0);
-        display.advance(weather, world::TICK_DURATION.as_secs_f64());
+        display.advance(weather, simulation_clock::TICK_DURATION.as_secs_f64());
         assert!(display.fog_level() > 0.0);
         assert!(!display.ticks.weather_cycle_enabled);
     }
 
     #[test]
     fn weather_fog_resets_on_new_client_level_not_dimension_switch() {
-        let tick = world::TICK_DURATION.as_secs_f64();
+        let tick = simulation_clock::TICK_DURATION.as_secs_f64();
         let mut display = WeatherDisplay::default();
         display.set_precipitation_count(Some(PRECIPITATION_SAMPLE_OFFSETS.len()));
         display.advance(target(1.0, 0.0, 1), 0.0);
@@ -487,7 +486,10 @@ mod tests {
         let mut display = WeatherDisplay::default();
         display.advance(target(0.0, 0.0, 1), 0.0);
         display.advance(target(1.0, 1.0, 1), 1_000.0);
-        assert_eq!(display.ticks.rain.len(), world::TICKS_PER_SECOND as usize);
+        assert_eq!(
+            display.ticks.rain.len(),
+            simulation_clock::TICKS_PER_SECOND as usize
+        );
         display.advance_in_dimension(target(1.0, 1.0, 1), 1_001.0, 1);
         assert!(display.ticks.rain.is_empty());
         assert_eq!(display.tick_seconds, 0.0);
@@ -511,7 +513,7 @@ mod tests {
         ));
         let mut display = WeatherDisplay::default();
         display.advance(weather, 0.0);
-        display.advance(weather, world::TICK_DURATION.as_secs_f64());
+        display.advance(weather, simulation_clock::TICK_DURATION.as_secs_f64());
         assert!(!display.ticks.weather_cycle_enabled);
         assert_eq!(weather.last_update_sequence(), Some(5));
         display.advance(target(1.0, 0.0, 2), 1.0);

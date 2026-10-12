@@ -1,9 +1,19 @@
 //! Published-tick block admission through the production producer and bounded session queue.
-use super::*;
+#[cfg(not(feature = "acceptance"))]
+use crate::acceptance::AcceptanceRun;
+use crate::runtime::network::resource_packs::PackApplication;
+#[cfg(feature = "acceptance")]
+use ::acceptance::AcceptanceRun;
 use bevy::prelude::*;
+use client_runtime::network::NetworkHandle;
 use client_ui::ui_runtime::UiRuntime;
 use protocol::{ContainerIdentity, InventoryEvent, InventorySlotEvent, SlotIdentity};
 use std::time::{Duration, Instant};
+use {
+    super::*,
+    client_presentation::local_player::{InteractionOriginSnapshot, LocalViewPose},
+    gameplay::block_use::{LocalUse, RepeatClock},
+};
 
 #[path = "published_tests/actor_use.rs"]
 mod actor_use_tests;
@@ -86,15 +96,17 @@ fn fixture() -> (World, client_session::CapturedPackets) {
     }
     let mut sample = gameplay::test_support::survival_mining::completed(101);
     sample.position = position;
-    let (network, captured) = NetworkHandle::stub_capturing_packets();
-    let mut movement = network.movement_ticker();
+    let (network, captured) = NetworkHandle::<PackApplication>::stub_capturing_packets();
+    let mut movement = client_interaction::movement::MovementTicker::with_epoch_publisher(
+        network.physics_epoch_publisher(),
+    );
     movement.reset(7, 100, position);
     movement.set_source(gameplay::movement::MovementSource::Physics);
     movement.enqueue_completed_physics(sample.clone()).unwrap();
-    let mut carrier = crate::local_player::LocalPlayerFrameCarrier::default();
+    let mut carrier = client_presentation::local_player::LocalPlayerFrameCarrier::default();
     let eye = Vec3::new(4.5, 2.5, 8.5);
     carrier
-        .publish(crate::local_player::LocalPlayerFrameSample {
+        .publish(client_presentation::local_player::LocalPlayerFrameSample {
             session_generation: 7,
             actor_session_id: stream.authority().actor_session_id(),
             fifo_sequence: stream.committed_sequence(),
@@ -112,7 +124,7 @@ fn fixture() -> (World, client_session::CapturedPackets) {
     // The frame before this one picked along the same ray.
     let mut block_use = BlockUseRuntime::default();
     block_use.retain_pick(&origin, movement.interaction_authority_identity());
-    let mut player = crate::player_runtime::PlayerRuntime::new(7);
+    let mut player = client_state::PlayerRuntime(player_state::PlayerState::new(7));
     player
         .facts
         .publish_player_game_mode(PlayerGameMode::Survival);
@@ -142,13 +154,15 @@ fn fixture() -> (World, client_session::CapturedPackets) {
         .unwrap();
     assert!(snapshot.phases[Action::Use as usize].pressed);
     let mut world = World::new();
-    world
-        .insert_resource(crate::semantic_controls::SemanticInputSnapshot::from_finalized(snapshot));
+    world.init_resource::<client_state::ScreenFocus>();
+    world.insert_resource(client_state::SemanticInputSnapshot(
+        semantic_input::finalized::FinalizedInput::from_finalized(snapshot),
+    ));
     world.insert_resource(origin);
     world.insert_resource(LocalViewPose::new(eye, Quat::IDENTITY));
     world.insert_resource(input);
-    world.insert_resource(ui);
-    world.insert_resource(crate::menu::MenuRuntime::new(
+    world.insert_resource(UiRuntimeResource(ui));
+    world.insert_resource(client_shell::menu::MenuRuntime::new(
         false,
         2,
         "block fixture".into(),
@@ -166,11 +180,11 @@ fn fixture() -> (World, client_session::CapturedPackets) {
     world
         .resource_mut::<Time<Real>>()
         .advance_by(Duration::from_millis(1_000));
-    world.init_resource::<Messages<crate::audio::LocalBlockCue>>();
+    world.init_resource::<Messages<client_audio::audio::LocalBlockCue>>();
     world.insert_resource(player);
     world.insert_resource(block_use);
     world.init_resource::<SwingTracker>();
-    world.init_resource::<crate::item_use::ItemUseRuntime>();
+    world.init_resource::<client_interaction::item_use::ItemUseRuntime>();
     world.insert_resource(movement);
     world.spawn((
         Window {
@@ -200,7 +214,7 @@ fn a_fresh_press_resolves_for_the_tick_after_the_last_completed_one() {
     let ids: Vec<_> = captured
         .drain()
         .iter()
-        .map(|packet| format!("{:?}", packet.header.id))
+        .map(|packet| format!("{:?}", packet.kind()))
         .collect();
     let swing = ids.iter().position(|id| id == "AnimatePacket").unwrap();
     let transaction = ids
@@ -214,9 +228,6 @@ fn a_fresh_press_resolves_for_the_tick_after_the_last_completed_one() {
 /// A press reports the end position of the last completed tick, which precedes its tick.
 #[test]
 fn a_block_press_reports_the_last_completed_position() {
-    use protocol::wire::valentine::bedrock::version::v1_26_51::{
-        InventoryTransactionPacketTransaction, McpePacketData,
-    };
     let (mut world, mut captured) = fixture();
     let before = world
         .resource::<MovementTicker>()
@@ -233,16 +244,9 @@ fn a_block_press_reports_the_last_completed_position() {
     world.run_system_cached(produce_block_use).unwrap();
     let positions: Vec<_> = captured
         .drain()
-        .into_iter()
-        .filter_map(|packet| match packet.data {
-            McpePacketData::InventoryTransactionPacket(tx) => match tx.transaction {
-                InventoryTransactionPacketTransaction::ItemUseInventoryTransaction(tx) => {
-                    Some([tx.from_position.x, tx.from_position.y, tx.from_position.z])
-                }
-                _ => None,
-            },
-            _ => None,
-        })
+        .iter()
+        .filter_map(item_use)
+        .map(|tx| tx.from_position)
         .collect();
     assert_eq!(positions, [moved]);
 }
@@ -251,9 +255,9 @@ fn a_block_press_reports_the_last_completed_position() {
 fn frame_origin(world: &World, eye: Vec3, rotation: Quat) -> InteractionOriginSnapshot {
     let stream = world.resource::<crate::runtime::world::ClientWorld>();
     let stream = stream.stream.as_ref().unwrap();
-    let mut carrier = crate::local_player::LocalPlayerFrameCarrier::default();
+    let mut carrier = client_presentation::local_player::LocalPlayerFrameCarrier::default();
     carrier
-        .publish(crate::local_player::LocalPlayerFrameSample {
+        .publish(client_presentation::local_player::LocalPlayerFrameSample {
             session_generation: 7,
             actor_session_id: stream.authority().actor_session_id(),
             fifo_sequence: stream.committed_sequence(),
@@ -272,23 +276,22 @@ fn frame_origin(world: &World, eye: Vec3, rotation: Quat) -> InteractionOriginSn
     origin
 }
 
+/// The item-use transaction a packet carries, if any.
+fn item_use(
+    packet: &protocol::Packet,
+) -> Option<protocol::test_support::transactions::ItemUseObservation> {
+    protocol::test_support::transactions::observe_transaction(packet)?
+        .item_use()
+        .cloned()
+}
+
 /// Blocks targeted by the captured item-use transactions.
 fn transaction_targets(captured: &mut client_session::CapturedPackets) -> Vec<[i32; 3]> {
-    use protocol::wire::valentine::bedrock::version::v1_26_51::{
-        InventoryTransactionPacketTransaction, McpePacketData,
-    };
     captured
         .drain()
-        .into_iter()
-        .filter_map(|packet| match packet.data {
-            McpePacketData::InventoryTransactionPacket(tx) => match tx.transaction {
-                InventoryTransactionPacketTransaction::ItemUseInventoryTransaction(tx) => {
-                    Some([tx.position.x, tx.position.y, tx.position.z])
-                }
-                _ => None,
-            },
-            _ => None,
-        })
+        .iter()
+        .filter_map(item_use)
+        .map(|tx| tx.position)
         .collect()
 }
 
@@ -388,6 +391,7 @@ fn a_press_waiting_for_a_pick_is_not_resolved_as_item_use() {
                     network_id: snowball,
                     component_based: false,
                     version: protocol::ItemRegistryVersion::None,
+                    components: None,
                     component_digest: [0; 32],
                     negotiated_max_stack_size: Some(16),
                     canonical_empty_component_data: true,
@@ -396,8 +400,8 @@ fn a_press_waiting_for_a_pick_is_not_resolved_as_item_use() {
                 .into(),
             })
     );
-    world.resource_scope(|world, mut ui: Mut<UiRuntime>| {
-        let mut player = world.resource_mut::<crate::player_runtime::PlayerRuntime>();
+    world.resource_scope(|world, mut ui: Mut<UiRuntimeResource>| {
+        let mut player = world.resource_mut::<client_state::PlayerRuntime>();
         let extra_data: std::sync::Arc<[u8]> = std::sync::Arc::from([]);
         ui.inventory_ledger_mut(&mut player)
             .apply(&InventoryEvent::Slot(InventorySlotEvent {
@@ -422,8 +426,8 @@ fn a_press_waiting_for_a_pick_is_not_resolved_as_item_use() {
             }));
     });
     world.init_resource::<client_presentation::aim_assist::AimAssistFrame>();
-    world.init_resource::<crate::camera::ServerCameraView>();
-    world.init_resource::<crate::local_player::LocalViewPose>();
+    world.init_resource::<client_presentation::camera::ServerCameraView>();
+    world.init_resource::<client_presentation::local_player::LocalViewPose>();
     let position = world
         .resource::<MovementTicker>()
         .newest_unsent_sample()
@@ -438,7 +442,7 @@ fn a_press_waiting_for_a_pick_is_not_resolved_as_item_use() {
     for _ in 0..2 {
         world.run_system_cached(produce_block_use).unwrap();
         world
-            .run_system_cached(crate::block_use::retain_block_use_pick)
+            .run_system_cached(client_interaction::block_use::retain_block_use_pick)
             .unwrap();
         world
             .run_system_cached(crate::item_use::produce_item_use)
@@ -483,8 +487,8 @@ fn floor_fixture(start: [f32; 3], pick: Quat) -> (World, client_session::Capture
             std::thread::yield_now();
         }
     }
-    world.resource_scope(|world, mut ui: Mut<UiRuntime>| {
-        let mut player = world.resource_mut::<crate::player_runtime::PlayerRuntime>();
+    world.resource_scope(|world, mut ui: Mut<UiRuntimeResource>| {
+        let mut player = world.resource_mut::<client_state::PlayerRuntime>();
         let extra_data: std::sync::Arc<[u8]> = std::sync::Arc::from([]);
         ui.inventory_ledger_mut(&mut player)
             .apply(&InventoryEvent::Slot(InventorySlotEvent {
@@ -511,7 +515,7 @@ fn floor_fixture(start: [f32; 3], pick: Quat) -> (World, client_session::Capture
     let mut movement = world.resource_mut::<MovementTicker>();
     movement.reset(7, 100, start);
     let authority = movement.interaction_authority_identity();
-    let mut physics = crate::movement::LocalPhysicsController::default();
+    let mut physics = client_interaction::movement::LocalPhysicsController::default();
     physics.reanchor_network_position(start, 100, true);
     world.insert_resource(physics);
     let eye = Vec3::from_array(start);
@@ -519,15 +523,16 @@ fn floor_fixture(start: [f32; 3], pick: Quat) -> (World, client_session::Capture
     world
         .resource_mut::<BlockUseRuntime>()
         .retain_pick(&previous, authority);
-    world.insert_resource(crate::local_player::LocalViewPose::new(eye, Quat::IDENTITY));
-    world.insert_resource(crate::camera::AutoFly::new(false));
-    #[cfg(feature = "acceptance")]
-    world.insert_resource(crate::acceptance::AcceptanceRun::new(
-        None, None, false, false,
+    world.insert_resource(client_presentation::local_player::LocalViewPose::new(
+        eye,
+        Quat::IDENTITY,
     ));
+    world.insert_resource(client_presentation::camera::AutoFly::new(false));
+    #[cfg(feature = "acceptance")]
+    world.insert_resource(AcceptanceRun::new(None, None, false, false));
     #[cfg(not(feature = "acceptance"))]
-    world.init_resource::<crate::acceptance::AcceptanceRun>();
-    world.init_resource::<crate::movement::LocalMovementSpeedAuthority>();
+    world.init_resource::<AcceptanceRun>();
+    world.init_resource::<client_interaction::movement::LocalMovementSpeedAuthority>();
     (world, captured)
 }
 
@@ -548,9 +553,9 @@ fn hold(
             ..Default::default()
         })
         .unwrap();
-    world.insert_resource(
-        crate::semantic_controls::SemanticInputSnapshot::from_finalized(snapshot.clone()),
-    );
+    world.insert_resource(client_state::SemanticInputSnapshot(
+        semantic_input::finalized::FinalizedInput::from_finalized(snapshot.clone()),
+    ));
     snapshot
 }
 
@@ -644,7 +649,7 @@ fn held_repeats_follow_simulation_ticks_not_render_frames() {
 
 /// Drives a tapped attack plus a Use press in one frame; melee resolves the attack against
 /// `crosshair` before the next frame. Returns the block transactions sent over both frames.
-fn attack_tap_then_use(crosshair: crate::melee::Crosshair) -> Vec<[i32; 3]> {
+fn attack_tap_then_use(crosshair: gameplay::melee::Crosshair) -> Vec<[i32; 3]> {
     let (mut world, mut captured) = fixture();
     let mut router = crate::semantic_controls::SemanticInputRuntime::default();
     let frame = |router: &mut crate::semantic_controls::SemanticInputRuntime, tap: bool| {
@@ -669,14 +674,16 @@ fn attack_tap_then_use(crosshair: crate::melee::Crosshair) -> Vec<[i32; 3]> {
         "the attack was tapped between frames"
     );
     assert!(tapped.phases[Action::Use as usize].pressed);
-    world.insert_resource(crate::semantic_controls::SemanticInputSnapshot::from_finalized(tapped));
+    world.insert_resource(client_state::SemanticInputSnapshot(
+        semantic_input::finalized::FinalizedInput::from_finalized(tapped),
+    ));
     world.run_system_cached(produce_block_use).unwrap();
     // Melee runs later in the frame and resolves the same tap.
-    let mut melee = world.resource_mut::<crate::melee::MeleeRuntime>();
+    let mut melee = world.resource_mut::<client_interaction::melee::MeleeRuntime>();
     assert!(melee.observe_input(true, false));
     melee.resolve(
         crosshair,
-        &crate::melee::PressContext {
+        &gameplay::melee::PressContext {
             tick: 102,
             player_position: [4.5, 2.620_01, 8.5],
             input_mode: protocol::PlayerInputMode::Mouse,
@@ -690,7 +697,9 @@ fn attack_tap_then_use(crosshair: crate::melee::Crosshair) -> Vec<[i32; 3]> {
     );
     let held = frame(&mut router, false);
     assert!(!held.phases[Action::Use as usize].pressed);
-    world.insert_resource(crate::semantic_controls::SemanticInputSnapshot::from_finalized(held));
+    world.insert_resource(client_state::SemanticInputSnapshot(
+        semantic_input::finalized::FinalizedInput::from_finalized(held),
+    ));
     world.run_system_cached(produce_block_use).unwrap();
     transaction_targets(&mut captured)
 }
@@ -698,7 +707,7 @@ fn attack_tap_then_use(crosshair: crate::melee::Crosshair) -> Vec<[i32; 3]> {
 /// An attack handled first holds off a Use pressed in the same frame: only the hit lands.
 #[test]
 fn a_tapped_actor_attack_holds_off_the_same_frame_use() {
-    let hit = crate::melee::Crosshair::Actor(crate::melee::ActorHit {
+    let hit = gameplay::melee::Crosshair::Actor(gameplay::melee::ActorHit {
         runtime_id: 9,
         distance: 2.0,
         point: [4.5, 2.5, 6.5],
@@ -710,7 +719,7 @@ fn a_tapped_actor_attack_holds_off_the_same_frame_use() {
 #[test]
 fn a_tapped_block_attack_lets_the_same_frame_use_follow() {
     assert_eq!(
-        attack_tap_then_use(crate::melee::Crosshair::Block),
+        attack_tap_then_use(gameplay::melee::Crosshair::Block),
         [[4, 2, 6]]
     );
 }
@@ -728,8 +737,9 @@ fn hold_use(world: &mut World) {
         })
         .unwrap();
     assert!(!snapshot.phases[Action::Use as usize].pressed);
-    world
-        .insert_resource(crate::semantic_controls::SemanticInputSnapshot::from_finalized(snapshot));
+    world.insert_resource(client_state::SemanticInputSnapshot(
+        semantic_input::finalized::FinalizedInput::from_finalized(snapshot),
+    ));
 }
 
 /// Publishes an authoritative hotbar stack with the matched block palette for placement tests.
@@ -754,7 +764,7 @@ fn set_hotbar_stack(world: &mut World, slot: u16, block: Option<&str>) {
         }
     });
     world
-        .resource_mut::<crate::player_runtime::PlayerRuntime>()
+        .resource_mut::<client_state::PlayerRuntime>()
         .inventory
         .ledger_mut()
         .apply(&InventoryEvent::Slot(InventorySlotEvent {
@@ -779,8 +789,8 @@ fn hotbar_changes_preserve_the_held_line_intercept_and_repeat_deadline() {
         set_hotbar_stack(&mut world, 0, Some("minecraft:stone"));
         set_hotbar_stack(&mut world, 1, placeable.then_some("minecraft:dirt"));
         let selected = verified_use_selection(
-            world.resource::<crate::player_runtime::PlayerRuntime>(),
-            world.resource::<UiRuntime>(),
+            world.resource::<client_state::PlayerRuntime>(),
+            world.resource::<UiRuntimeResource>(),
         )
         .unwrap();
         let mut runtime = world.resource_mut::<BlockUseRuntime>();
@@ -813,7 +823,7 @@ fn hotbar_changes_preserve_the_held_line_intercept_and_repeat_deadline() {
                 survival: true,
             },
         );
-        let mut player = world.resource_mut::<crate::player_runtime::PlayerRuntime>();
+        let mut player = world.resource_mut::<client_state::PlayerRuntime>();
         if pending {
             player
                 .inventory
@@ -877,11 +887,11 @@ fn denied_nonblock_repeat_keeps_the_last_admitted_placement_schedule() {
         .newest_unsent_sample()
         .unwrap()
         .position;
-    let mut physics = crate::movement::LocalPhysicsController::default();
+    let mut physics = client_interaction::movement::LocalPhysicsController::default();
     physics.reanchor_network_position(position, 101, true);
     world.insert_resource(physics);
     world
-        .resource_mut::<crate::player_runtime::PlayerRuntime>()
+        .resource_mut::<client_state::PlayerRuntime>()
         .inventory
         .ledger_mut()
         .apply(&InventoryEvent::Slot(InventorySlotEvent {
@@ -939,7 +949,7 @@ fn denied_nonblock_repeat_keeps_the_last_admitted_placement_schedule() {
 fn pending_hotbar_selection_retains_a_deferred_block_press() {
     let (mut world, mut captured) = fixture();
     world
-        .resource_mut::<crate::player_runtime::PlayerRuntime>()
+        .resource_mut::<client_state::PlayerRuntime>()
         .inventory
         .queue_local_hotbar_selection(1, Some(PlayerGameMode::Survival));
     world.run_system_cached(produce_block_use).unwrap();
@@ -964,9 +974,6 @@ fn pending_hotbar_selection_retains_a_deferred_block_press() {
 /// selected block from the pre-physics build action, without a stop or a fresh start.
 #[test]
 fn a_hotbar_switch_mid_hold_repeats_with_the_new_block_before_the_tick() {
-    use protocol::wire::valentine::bedrock::version::v1_26_51::{
-        InventoryTransactionPacketTransaction, McpePacketData,
-    };
     let (mut world, mut captured) =
         floor_fixture([4.5, 2.620_01, 8.32], Quat::from_rotation_x(-0.9601));
     let mut router = crate::semantic_controls::SemanticInputRuntime::default();
@@ -975,7 +982,7 @@ fn a_hotbar_switch_mid_hold_repeats_with_the_new_block_before_the_tick() {
     assert_eq!(transaction_targets(&mut captured), [[4, 0, 7]]);
     set_hotbar_stack(&mut world, 1, Some("minecraft:dirt"));
     world
-        .resource_mut::<crate::player_runtime::PlayerRuntime>()
+        .resource_mut::<client_state::PlayerRuntime>()
         .inventory
         .set_local_selected_slot(1);
     let mut sent = Vec::new();
@@ -992,20 +999,13 @@ fn a_hotbar_switch_mid_hold_repeats_with_the_new_block_before_the_tick() {
     }
     assert!(
         sent.iter()
-            .all(|packet| format!("{:?}", packet.header.id) != "PlayerActionPacket"),
+            .all(|packet| format!("{:?}", packet.kind()) != "PlayerActionPacket"),
         "switching must not stop or restart the hold"
     );
     let repeats: Vec<_> = sent
-        .into_iter()
-        .filter_map(|packet| match packet.data {
-            McpePacketData::InventoryTransactionPacket(tx) => match tx.transaction {
-                InventoryTransactionPacketTransaction::ItemUseInventoryTransaction(tx) => {
-                    Some((tx.slot, [tx.position.x, tx.position.y, tx.position.z]))
-                }
-                _ => None,
-            },
-            _ => None,
-        })
+        .iter()
+        .filter_map(item_use)
+        .map(|tx| (tx.slot, tx.position))
         .collect();
     assert_eq!(repeats.first(), Some(&(1, [4, 1, 7])), "{repeats:?}");
 }
@@ -1016,7 +1016,7 @@ fn an_unrelated_inventory_request_does_not_delay_a_placement() {
     let (mut world, mut captured) =
         floor_fixture([4.5, 2.620_01, 8.32], Quat::from_rotation_x(-0.9601));
     world
-        .resource_mut::<crate::player_runtime::PlayerRuntime>()
+        .resource_mut::<client_state::PlayerRuntime>()
         .inventory
         .ledger_mut()
         .apply(&InventoryEvent::Authority(
@@ -1024,7 +1024,7 @@ fn an_unrelated_inventory_request_does_not_delay_a_placement() {
         ));
     set_hotbar_stack(&mut world, 3, Some("minecraft:dirt"));
     {
-        let mut player = world.resource_mut::<crate::player_runtime::PlayerRuntime>();
+        let mut player = world.resource_mut::<client_state::PlayerRuntime>();
         let ledger = player.inventory.ledger_mut();
         ledger.begin_world_drop(3, Some(1)).unwrap();
         assert!(ledger.pending_request_id().is_some());

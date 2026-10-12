@@ -1,5 +1,7 @@
 //! Optional camera exposure, using scene depth without object motion vectors.
 
+use render_scene::CameraMotionBlur;
+
 #[cfg(test)]
 mod extraction_tests;
 pub(crate) mod graph;
@@ -21,15 +23,6 @@ use bevy::{
         sync_world::RenderEntity,
     },
 };
-
-/// Presentation-only exposure; removing this component releases the per-view blur resources.
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
-pub struct CameraMotionBlur {
-    pub exposure_seconds: f32,
-    pub samples: u32,
-    pub reset_epoch: u64,
-    pub delta_seconds: f32,
-}
 
 const SHADER: Handle<Shader> = uuid_handle!("084d4ee2-222c-4990-9c05-e303b8e8081a");
 const MSAA_SHADER: Handle<Shader> = uuid_handle!("935fcd71-f7d0-43b9-9b70-374366e0b3c3");
@@ -74,12 +67,12 @@ fn shader_source(source: &str, multisampled: bool) -> String {
 pub(crate) fn applies(world: &World, entity: Entity) -> bool {
     use bevy::render::{
         render_resource::PipelineCache,
-        view::{ViewDepthTexture, ViewTarget},
+        view::{ViewDepthStencilTexture, ViewTarget},
     };
     let (Some(state), Some(target), Some(depth), Some(cache)) = (
         world.get::<prepare::BlurView>(entity),
         world.get::<ViewTarget>(entity),
-        world.get::<ViewDepthTexture>(entity),
+        world.get::<ViewDepthStencilTexture>(entity),
         world.get_resource::<PipelineCache>(),
     ) else {
         return false;
@@ -87,7 +80,10 @@ pub(crate) fn applies(world: &World, entity: Entity) -> bool {
     state.active
         && cache.get_render_pipeline(state.pipeline).is_some()
         && state
-            .binding(target.main_texture_view().id(), depth.view().id())
+            .binding(
+                target.main_texture_view().id(),
+                crate::scene_sampling::view_depth(depth).id(),
+            )
             .is_some()
 }
 

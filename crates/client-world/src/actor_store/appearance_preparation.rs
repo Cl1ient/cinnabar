@@ -11,6 +11,27 @@ pub(super) struct ReadyAppearances {
     bytes: usize,
 }
 
+impl ReadyAppearances {
+    /// Admits a prepared first appearance, a retained replacement, or an unlisted default.
+    pub(super) fn admits(
+        &self,
+        actor: &super::ActorSnapshot,
+        prepared: bool,
+        players: &HashMap<[u8; 16], PlayerProfile>,
+        unlisted: &HashMap<[u8; 16], PlayerProfile>,
+    ) -> bool {
+        let ActorKind::Player { uuid, .. } = &actor.kind else {
+            return true;
+        };
+        !prepared
+            || self
+                .profiles
+                .get(uuid)
+                .is_some_and(|profile| profile.unique_id == actor.unique_id)
+            || players.get(uuid).or_else(|| unlisted.get(uuid)).is_none()
+    }
+}
+
 impl ActorStore {
     /// Publishes bounded ready profiles, retaining old replacements until a tick.
     /// First appearances may publish without a tick; retained bytes have their own ceiling.
@@ -102,25 +123,17 @@ impl ActorStore {
 
     /// Newly pending appearances have no drawable body or hand until the matching model is ready.
     pub(super) fn appearance_ready(&self, actor: &super::ActorSnapshot) -> bool {
-        let ActorKind::Player { uuid, .. } = &actor.kind else {
-            return true;
-        };
-        !self.animation.has_skin_preparation()
-            || self
-                .ready_appearances
-                .profiles
-                .get(uuid)
-                .is_some_and(|profile| profile.unique_id == actor.unique_id)
-            || self
-                .players
-                .get(uuid)
-                .or_else(|| self.unlisted_players.get(uuid))
-                .is_none()
+        self.ready_appearances.admits(
+            actor,
+            self.animation.has_skin_preparation(),
+            &self.players,
+            &self.unlisted_players,
+        )
     }
 }
 
 /// Standard and animated skin bytes keep the source allocation alive until publication.
-fn geometry_source(profile: &PlayerProfile) -> Option<&Arc<protocol::SkinGeometrySource>> {
+fn geometry_source(profile: &PlayerProfile) -> Option<&Arc<render_api::SkinGeometrySource>> {
     match &profile.skin {
         PlayerSkin::Standard(skin) => skin.geometry.as_ref(),
         PlayerSkin::Unavailable(_) => None,
@@ -147,14 +160,14 @@ fn same_profile_allocation(a: &PlayerProfile, b: &PlayerProfile) -> bool {
     match (a_skin, b_skin) {
         (PlayerSkin::Unavailable(a), PlayerSkin::Unavailable(b)) => a == b,
         (PlayerSkin::Standard(a), PlayerSkin::Standard(b)) => {
-            let protocol::StandardSkin {
+            let render_api::StandardSkin {
                 width: a_width,
                 height: a_height,
                 rgba8: a_pixels,
                 cape: a_cape,
                 geometry: a_geometry,
             } = a;
-            let protocol::StandardSkin {
+            let render_api::StandardSkin {
                 width: b_width,
                 height: b_height,
                 rgba8: b_pixels,
@@ -171,12 +184,12 @@ fn same_profile_allocation(a: &PlayerProfile, b: &PlayerProfile) -> bool {
                 }
                 && match (a_cape, b_cape) {
                     (Some(a), Some(b)) => {
-                        let protocol::CapeImage {
+                        let render_api::CapeImage {
                             width: a_width,
                             height: a_height,
                             rgba8: a_pixels,
                         } = a;
-                        let protocol::CapeImage {
+                        let render_api::CapeImage {
                             width: b_width,
                             height: b_height,
                             rgba8: b_pixels,

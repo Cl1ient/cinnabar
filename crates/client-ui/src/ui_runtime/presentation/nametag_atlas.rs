@@ -475,7 +475,7 @@ mod tests {
 
     /// Builds the labels used by the original full-atlas timing fixture.
     fn sample_atlas() -> (NametagAtlas, std::time::Duration) {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(256, 1 << 20);
         let mut atlas = NametagAtlas::default();
         let started = std::time::Instant::now();
@@ -519,7 +519,13 @@ mod tests {
                 } else {
                     [0; 4]
                 };
-                assert!(pixels.chunks_exact(4).all(|pixel| pixel == expected));
+                assert!(
+                    pixels
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .all(|pixel| *pixel == expected)
+                );
             }
         }
     }
@@ -543,7 +549,7 @@ mod tests {
 
     #[test]
     fn palette_change_rerasterizes_retained_name_lines() {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(8, 1 << 20);
         let mut atlas = NametagAtlas::default();
         let text = Arc::from("§2Player");
@@ -553,8 +559,9 @@ mod tests {
         assert!(
             first[0]
                 .rgba8
-                .chunks_exact(4)
-                .any(|pixel| pixel == [0, 170, 0, 255])
+                .as_chunks::<4>()
+                .0
+                .contains(&[0, 170, 0, 255])
         );
         atlas.set_palette(ui::FormattingPalette::from_globals(|name| {
             (name == "$2_color_format").then_some([0.976, 0.859, 0.427])
@@ -564,15 +571,16 @@ mod tests {
         assert!(
             changed[0]
                 .rgba8
-                .chunks_exact(4)
-                .any(|pixel| pixel == [249, 219, 109, 255])
+                .as_chunks::<4>()
+                .0
+                .contains(&[249, 219, 109, 255])
         );
         assert_ne!(first[0].rgba8, changed[0].rgba8);
     }
 
     #[test]
     fn rectangles_preserve_skipped_publications_reset_and_old_readers() {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(8, 1 << 20);
         let mut atlas = NametagAtlas::default();
         assert!(atlas.publish().0.is_empty());

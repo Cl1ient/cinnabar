@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use protocol::{ContainerIdentity, InventorySlotEvent, ItemRegistryEvent, SlotIdentity};
 
-use super::*;
+use {super::*, inventory::InventoryAuthorityEvent};
 
 /// Creates an independent UI and domain owner at the observation session.
 fn runtime(player_runtime: &mut player_state::PlayerState, enabled: bool) -> UiRuntime {
@@ -20,6 +20,7 @@ fn registry() -> InventoryAuthorityEvent {
             network_id: 2,
             component_based: false,
             version: ItemRegistryVersion::None,
+            components: None,
             component_digest: [7; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -309,7 +310,7 @@ fn pending_selection_and_mismatched_wire_stack_are_not_authority_rows() {
 fn pending_inventory_prediction_and_required_recovery_are_not_authority_rows() {
     let mut player_runtime = player_state::PlayerState::new(1);
 
-    use crate::ui_runtime::inventory_ledger::PERSONAL_INVENTORY_WINDOW_TYPE;
+    use inventory::inventory_ledger::PERSONAL_INVENTORY_WINDOW_TYPE;
     use protocol::{
         CONTAINER_NAME_CURSOR, ContainerOpenEvent, InventoryAuthority, InventoryContentEvent,
     };

@@ -1,54 +1,59 @@
+use bevy::prelude::IntoScheduleConfigs;
+#[cfg(test)]
+use bevy::prelude::System;
+use bevy::render::render_phase::AddRenderCommand;
+use bevy::render::render_resource::ShaderType;
+use render_scene::CloudVisibility;
 use std::collections::HashMap;
 
 use assets::AtmosphereRole;
+#[cfg(test)]
+use bevy::prelude::{GlobalTransform, IntoSystem, Mat4, UVec4};
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
     core_pipeline::core_3d::{CORE_3D_DEPTH_FORMAT, Transparent3d},
     ecs::{
         query::ROQueryItem,
-        system::{SystemParamItem, lifetimeless::Read, lifetimeless::SRes},
+        system::{
+            SystemParamItem,
+            lifetimeless::{Read, SRes},
+        },
     },
-    prelude::*,
+    prelude::{
+        App, BevyError, Camera3d, Commands, Entity, FromWorld, Handle, Msaa, Query, Res, ResMut,
+        Resource, Result, Shader, Vec3, With, World, default,
+    },
     render::{
         Render, RenderApp, RenderStartup, RenderSystems,
-        extract_resource::{ExtractResource, ExtractResourcePlugin},
+        extract_resource::ExtractResourcePlugin,
         render_phase::{
-            AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
-            RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
+            DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand, RenderCommandResult,
+            SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
         },
         render_resource::{
             BindGroup, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
             BindingType, BlendState, Buffer, BufferBindingType, BufferId, BufferInitDescriptor,
             BufferSize, BufferUsages, Canonical, ColorTargetState, ColorWrites, CompareFunction,
             DepthStencilState, Face, FragmentState, FrontFace, PipelineCache, PrimitiveState,
-            RenderPipeline, RenderPipelineDescriptor, ShaderStages, ShaderType, Specializer,
-            SpecializerKey, TextureFormat, Variants, VertexState,
+            RenderPipeline, RenderPipelineDescriptor, ShaderStages, Specializer, SpecializerKey,
+            Variants, VertexState,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        view::{ExtractedView, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms},
     },
 };
 
-use crate::{
-    AtmosphereFrame, AtmosphereTextureAssets, CloudGeometryDiagnostic, CloudRenderConfig,
-    atmosphere_render::AtmosphereGpu,
-};
 use meshing::{
     CLOUD_CELL_BLOCKS, CLOUD_TOP_Y, CLOUD_UNDERSIDE_Y, CLOUD_WORLD_PERIOD,
     cloud_viewport::{CloudViewport, ViewportCloudQuad, mesh_cloud_viewport},
 };
-
-/// The user's cloud visibility preference, copied into the render world each frame.
-#[derive(Resource, ExtractResource, Clone, Copy)]
-pub struct CloudVisibility(pub bool);
-
-impl Default for CloudVisibility {
-    /// Clouds remain visible until the app supplies its saved preference.
-    fn default() -> Self {
-        Self(true)
-    }
-}
+use {
+    crate::atmosphere_render::AtmosphereGpu,
+    render_scene::{
+        AtmosphereFrame, AtmosphereTextureAssets, CloudGeometryDiagnostic, CloudRenderConfig,
+    },
+};
 
 const CLOUD_SHADER_HANDLE: Handle<Shader> = uuid_handle!("8dcfe9d0-c182-44cc-ae4c-7e5233b68659");
 pub(crate) fn install_cloud_render(app: &mut App) {
@@ -58,12 +63,13 @@ pub(crate) fn install_cloud_render(app: &mut App) {
     load_internal_asset!(
         app,
         CLOUD_SHADER_HANDLE,
-        "cloud.wgsl",
-        |source: &str, path| crate::shader_safety::from_wgsl(
+        "cloud.wesl",
+        |source: &str, path| crate::shader_safety::from_wesl(
             meshing::cloud_viewport::shader_source(source),
             path,
         )
     );
+    crate::transparent_phase::install(app.sub_app_mut(RenderApp));
     app.sub_app_mut(RenderApp)
         .init_resource::<CloudPipeline>()
         .add_render_command::<Transparent3d, DrawCloudCommands>()
@@ -75,13 +81,13 @@ pub(crate) fn install_cloud_render(app: &mut App) {
                 // Queue, not later in PrepareResources while a queued item can
                 // still refer to the previous window's bounds.
                 prepare_cloud_records
-                    .run_if(crate::panorama::world_passes_enabled)
-                    .after(RenderSystems::ManageViews)
+                    .run_if(render_scene::panorama::world_passes_enabled)
+                    .after(RenderSystems::PrepareViews)
                     .before(RenderSystems::Queue),
                 prepare_cloud_colour.in_set(RenderSystems::PrepareResources),
                 prepare_cloud_bind_group.in_set(RenderSystems::PrepareBindGroups),
                 queue_clouds
-                    .run_if(crate::panorama::world_passes_enabled)
+                    .run_if(render_scene::panorama::world_passes_enabled)
                     .in_set(RenderSystems::Queue),
             ),
         );
@@ -217,7 +223,7 @@ pub(crate) fn prepare_cloud_records(
 
 fn prepare_cloud_colour(
     atmosphere: Res<AtmosphereFrame>,
-    view: Res<crate::AtmosphereViewInputs>,
+    view: Res<render_scene::AtmosphereViewInputs>,
     mut gpu: ResMut<CloudGpu>,
     render_queue: Res<RenderQueue>,
 ) {
@@ -318,7 +324,7 @@ impl FromWorld for CloudPipeline {
                 shader: CLOUD_SHADER_HANDLE,
                 entry_point: Some("cloud_fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::bevy_default(),
+                    format: render_scene::SCENE_COLOR_FORMAT,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::RED | ColorWrites::GREEN | ColorWrites::BLUE,
                 })],
@@ -326,9 +332,9 @@ impl FromWorld for CloudPipeline {
             }),
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: false,
+                depth_write_enabled: Some(false),
                 // Native comparison2 translates to LESS; Bevy reverses Z.
-                depth_compare: CompareFunction::Greater,
+                depth_compare: Some(CompareFunction::Greater),
                 stencil: default(),
                 bias: default(),
             }),
@@ -360,9 +366,9 @@ impl Specializer<RenderPipeline> for CloudPipelineSpecializer {
             .as_mut()
             .unwrap()
             .format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         Ok(key)
     }
@@ -439,13 +445,19 @@ fn queue_clouds(
     (atmosphere, visibility): (Res<AtmosphereFrame>, Res<CloudVisibility>),
     mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     draw_functions: Res<DrawFunctions<Transparent3d>>,
-    views: Query<(Entity, &MainEntity, &ExtractedView, &Msaa)>,
+    views: Query<(
+        Entity,
+        &MainEntity,
+        &ExtractedView,
+        &bevy::render::camera::ExtractedCamera,
+        &Msaa,
+    )>,
 ) {
     if !visibility.0 || !atmosphere.sky_kind().has_clouds() {
         return;
     }
     let draw_function = draw_functions.read().id::<DrawCloudCommands>();
-    for (view_entity, main_entity, view, msaa) in &views {
+    for (view_entity, main_entity, view, extracted_camera, msaa) in &views {
         let Some(prepared) = gpu.views.get(&view_entity) else {
             continue;
         };
@@ -466,20 +478,24 @@ fn queue_clouds(
             &pipeline_cache,
             CloudPipelineKey {
                 msaa: *msaa,
-                hdr: view.hdr,
+                hdr: extracted_camera.hdr,
             },
         ) else {
             continue;
         };
-        phase.add(Transparent3d {
-            entity: (view_entity, *main_entity),
-            pipeline: pipeline_id,
-            draw_function,
-            distance: cloud_phase_distance(view, prepared.viewport, &atmosphere),
-            batch_range: 0..1,
-            extra_index: PhaseItemExtraIndex::None,
-            indexed: false,
-        });
+        crate::transparent_phase::add(
+            phase,
+            Transparent3d {
+                sorting_info: bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
+                entity: (view_entity, *main_entity),
+                pipeline: pipeline_id,
+                draw_function,
+                distance: cloud_phase_distance(view, prepared.viewport, &atmosphere),
+                batch_range: 0..1,
+                extra_index: PhaseItemExtraIndex::None,
+                indexed: false,
+            },
+        );
     }
 }
 
@@ -505,7 +521,7 @@ fn cloud_bounds_center(viewport: CloudViewport, scroll_blocks: f32) -> [f32; 3] 
 }
 
 type DrawCloudCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuSky as usize },
+    { render_scene::RuntimeStage::GpuSky as usize },
     (SetItemPipeline, SetCloudBindGroup<0>, DrawClouds),
 >;
 

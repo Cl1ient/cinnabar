@@ -9,26 +9,31 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/hashimthearab/rust-mcbe/core/internal/bridgecontract"
 	"github.com/hashimthearab/rust-mcbe/core/internal/streamnet"
 	"github.com/sandertv/gophertunnel/minecraft"
+	"github.com/sandertv/gophertunnel/minecraft/device"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"github.com/sandertv/gophertunnel/minecraft/resource"
 )
 
-// sessionFixture reads a wire fixture the Rust bridge tests share.
+// sessionFixture reads a wire fixture the Rust protocol tests share.
 func sessionFixture(t *testing.T, name string) []byte {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "crates", "bridge", "tests", "fixtures", "session", name))
+	data, err := os.ReadFile(filepath.Join("..", "..", "crates", "protocol", "fixtures", "session", name))
 	if err != nil {
 		t.Fatalf("read shared session fixture: %v", err)
 	}
@@ -110,7 +115,7 @@ func TestDecodeSessionConnectRejectsMalformedSetup(t *testing.T) {
 		"trailing array": "\x01{\"protocol\":1,\"client_data\":{}}]",
 		"no client data": "\x01{\"protocol\":1}",
 	} {
-		if _, err := decodeSessionConnect([]byte(frame)); !errors.Is(err, errMalformedSessionMessage) {
+		if _, err := decodeSessionConnect([]byte(frame)); !errors.Is(err, errMalformedSession) {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
@@ -118,7 +123,7 @@ func TestDecodeSessionConnectRejectsMalformedSetup(t *testing.T) {
 
 func TestSessionDownstreamAcceptsOnlyThePinnedProtocolAndValidClientData(t *testing.T) {
 	request := testSessionConnect(t)
-	downstream, err := newSessionDownstream(request)
+	downstream, err := newSessionDownstream(request, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,20 +132,107 @@ func TestSessionDownstreamAcceptsOnlyThePinnedProtocolAndValidClientData(t *test
 	}
 	wrongProtocol := request
 	wrongProtocol.Protocol++
-	if _, err := newSessionDownstream(wrongProtocol); err == nil {
+	if _, err := newSessionDownstream(wrongProtocol, nil); err == nil {
 		t.Fatal("another protocol was accepted")
 	}
 	invalid := request
 	invalid.ClientData = json.RawMessage(`{"GameVersion":"` + minecraft.DefaultProtocol.Ver() + `","DeviceOS":0}`)
-	if _, err := newSessionDownstream(invalid); !errors.Is(err, errMalformedSessionMessage) {
+	if _, err := newSessionDownstream(invalid, nil); !errors.Is(err, errMalformedSession) {
 		t.Fatalf("invalid client data: %v", err)
+	}
+}
+
+// The core's device replaces whatever device the client claims, so a client that sends none still
+// logs in, and every login claims the platform the core signs in as.
+func TestSessionDownstreamClaimsTheCoreDevice(t *testing.T) {
+	profile := device.New(protocol.DeviceAndroid)
+	request := testSessionConnect(t)
+	var claims map[string]any
+	if err := json.Unmarshal(request.ClientData, &claims); err != nil {
+		t.Fatal(err)
+	}
+	delete(claims, "DeviceOS")
+	claims["DeviceModel"] = "FixtureClient"
+	claims["CurrentInputMode"] = packet.InputModeMouse
+	request.ClientData, _ = json.Marshal(claims)
+	if _, err := newSessionDownstream(request, nil); err == nil {
+		t.Fatal("a client claiming no device validated without the core's")
+	}
+	downstream, err := newSessionDownstream(request, &profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The upstream login carries the serialized claims, so check those rather than the struct.
+	encoded, err := json.Marshal(downstream.ClientData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data login.ClientData
+	if err := json.Unmarshal(encoded, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.DeviceOS != protocol.DeviceAndroid || data.DeviceModel != profile.Model || data.DeviceID != profile.ID ||
+		data.DefaultInputMode != packet.InputModeTouch || data.CurrentInputMode != packet.InputModeMouse {
+		t.Fatalf("serialized login = %s", encoded)
+	}
+}
+
+// Signed login IDs survive bridge decoding, device application and upstream serialization.
+func TestSessionDownstreamPreservesSignedClientRandomID(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		value int64
+	}{
+		{"minimum", math.MinInt64},
+		{"maximum", math.MaxInt64},
+		{"negative", -1},
+		{"positive", 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := testSessionConnect(t)
+			var claims map[string]json.RawMessage
+			if err := json.Unmarshal(request.ClientData, &claims); err != nil {
+				t.Fatal(err)
+			}
+			claims["ClientRandomId"], _ = json.Marshal(test.value)
+			request.ClientData, _ = json.Marshal(claims)
+			frame, err := encodeSessionJSON(bridgecontract.SessionKindConnect, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := decodeSessionConnect(frame)
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile := device.New(protocol.DeviceAndroid)
+			downstream, err := newSessionDownstream(decoded, &profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(downstream.ClientData())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var data login.ClientData
+			if err := json.Unmarshal(encoded, &data); err != nil {
+				t.Fatal(err)
+			}
+			if data.ClientRandomID != test.value {
+				t.Fatalf("ClientRandomID = %d, want %d", data.ClientRandomID, test.value)
+			}
+			if data.DeviceID != profile.ID {
+				t.Fatal("device profile changed")
+			}
+		})
 	}
 }
 
 func TestSplitBatchRoundTripsAndRejectsMalformedBodies(t *testing.T) {
 	large := bytes.Repeat([]byte{7}, 300)
-	body := appendBatchPacket(appendBatchPacket(nil, []byte{1, 2}), large)
-	packets, err := splitBatch(body)
+	body := appendSessionBatchPacket(appendSessionBatchPacket(nil, []byte{1, 2}), large)
+	packets, err := splitSessionBatch(body)
 	if err != nil || len(packets) != 2 || !bytes.Equal(packets[0], []byte{1, 2}) || !bytes.Equal(packets[1], large) {
 		t.Fatalf("split = %v, %v", packets, err)
 	}
@@ -153,7 +245,7 @@ func TestSplitBatchRoundTripsAndRejectsMalformedBodies(t *testing.T) {
 		"wide length":   {0x81, 0x80, 0x80, 0x80, 0x80, 0x00, 9},
 		"33-bit length": {0x81, 0x80, 0x80, 0x80, 0x10, 9},
 	} {
-		if _, err := splitBatch(body); !errors.Is(err, errMalformedSessionMessage) {
+		if _, err := splitSessionBatch(body); !errors.Is(err, errMalformedSession) {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
@@ -172,12 +264,12 @@ func TestSessionDisconnectFlushesTheFormingBatchFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	batch := <-frames
-	if batch[0] != sessionKindBatch || !bytes.Equal(batch[1:], []byte{2, 0x09, 0x00}) {
+	if batch[0] != bridgecontract.SessionKindBatch || !bytes.Equal(batch[1:], []byte{2, 0x09, 0x00}) {
 		t.Fatalf("batch frame = %x", batch)
 	}
-	var disconnect sessionDisconnectMessage
-	if frame := <-frames; frame[0] != sessionKindDisconnect || json.Unmarshal(frame[1:], &disconnect) != nil ||
-		disconnect != (sessionDisconnectMessage{Reason: 5, Message: "bye", HideScreen: true}) {
+	var disconnect sessionDisconnect
+	if frame := <-frames; frame[0] != bridgecontract.SessionKindDisconnect || json.Unmarshal(frame[1:], &disconnect) != nil ||
+		disconnect != (sessionDisconnect{Reason: 5, Message: "bye", HideScreen: true}) {
 		t.Fatalf("disconnect frame = %q", frame)
 	}
 	if err := session.Flush(); err != nil {
@@ -198,7 +290,7 @@ func TestSessionRelaysUnusableTransferAsPacket(t *testing.T) {
 	if err := session.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	if frame := <-frames; frame[0] != sessionKindBatch || !bytes.Equal(frame[1:], appendBatchPacket(nil, transfer)) {
+	if frame := <-frames; frame[0] != bridgecontract.SessionKindBatch || !bytes.Equal(frame[1:], appendSessionBatchPacket(nil, transfer)) {
 		t.Fatalf("frame = %x", frame)
 	}
 }
@@ -216,7 +308,7 @@ func TestSelectSessionPacksFollowsTheNegotiatedStack(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		selected, content, err := selectSessionPacks(stack)
+		selected, content, err := selectSessionPacks(stack, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -230,7 +322,7 @@ func TestSelectSessionPacksFollowsTheNegotiatedStack(t *testing.T) {
 			}
 		}
 	}
-	if _, _, err := selectSessionPacks(nil); !errors.Is(err, errResourcePackStackUnavailable) {
+	if _, _, err := selectSessionPacks(nil, nil); !errors.Is(err, errResourcePackStackUnavailable) {
 		t.Fatalf("missing stack: %v", err)
 	}
 }
@@ -245,7 +337,7 @@ func TestSelectSessionPacksRejectsUnavailableRequiredPacks(t *testing.T) {
 	offer, _ := negotiatedOfferUpstream(t, []*resource.Pack{first}, false).ResourcePackOffer()
 	stack, _ := negotiatedOfferUpstream(t, []*resource.Pack{first, second}, false).ResourcePackStack()
 	for _, required := range []bool{false, true} {
-		selected, _, err := selectSessionPacks(&selectedResourcePackStack{offer: offer, snapshot: stack, required: required})
+		selected, _, err := selectSessionPacks(&selectedResourcePackStack{offer: offer, snapshot: stack, required: required}, nil)
 		var admission *PackAdmissionError
 		if required != errors.As(err, &admission) {
 			t.Fatalf("required=%t: err = %v", required, err)
@@ -263,21 +355,21 @@ func testSessionOffer(pack *resource.Pack, key, subPack string) sessionOffer {
 	}, pack: pack}
 }
 
-// An offer repeating one identity is ambiguous, so the join is refused rather than pairing one entry's
-// archive with another's key or sub-pack.
-func TestChooseSessionPacksRefusesARepeatedOfferIdentity(t *testing.T) {
+// An offer repeating one identity keeps its first entry, as vanilla requests each identity once, for
+// optional and required offers alike.
+func TestChooseSessionPacksKeepsTheFirstOfARepeatedOfferIdentity(t *testing.T) {
 	pack := testAdmissionPack(t)
 	offers := []sessionOffer{testSessionOffer(pack, "first-key", ""), testSessionOffer(pack, "second-key", "high")}
-	entries := []sessionStackEntry{{uuid: pack.UUID().String(), version: pack.Version(), subPack: "high"}}
+	entries := []sessionStackEntry{{uuid: pack.UUID().String(), version: pack.Version()}}
 	for _, required := range []bool{false, true} {
-		var admission *PackAdmissionError
-		if _, _, err := chooseSessionPacks(offers, entries, required); !errors.As(err, &admission) {
-			t.Fatalf("required=%t: err = %v", required, err)
+		selected, _, err := chooseSessionPacks(offers, entries, required, nil)
+		if err != nil || len(selected) != 1 || selected[0].ContentKey != "first-key" || selected[0].SubPack != "" {
+			t.Fatalf("required=%t: selected %+v, %v", required, selected, err)
 		}
 	}
-	selected, _, err := chooseSessionPacks(offers[1:], entries, true)
-	if err != nil || len(selected) != 1 || selected[0].ContentKey != "second-key" {
-		t.Fatalf("single offer = %+v, %v", selected, err)
+	highStack := []sessionStackEntry{{uuid: pack.UUID().String(), version: pack.Version(), subPack: "high"}}
+	if selected, _, err := chooseSessionPacks(offers, highStack, false, nil); err != nil || len(selected) != 0 {
+		t.Fatalf("the repeated entry's sub-pack was selected: %+v, %v", selected, err)
 	}
 }
 
@@ -286,15 +378,15 @@ func TestChooseSessionPacksParsesStackUUIDs(t *testing.T) {
 	pack := testAdmissionPack(t)
 	offers := []sessionOffer{testSessionOffer(pack, "", "")}
 	upper := []sessionStackEntry{{uuid: strings.ToUpper(pack.UUID().String()), version: pack.Version()}}
-	selected, _, err := chooseSessionPacks(offers, upper, true)
+	selected, _, err := chooseSessionPacks(offers, upper, true, nil)
 	if err != nil || len(selected) != 1 || selected[0].UUID != pack.UUID().String() {
 		t.Fatalf("upper-case stack entry = %+v, %v", selected, err)
 	}
 	invalid := []sessionStackEntry{{uuid: "not-a-uuid", version: pack.Version()}}
-	if selected, _, err := chooseSessionPacks(offers, invalid, false); err != nil || len(selected) != 0 {
+	if selected, _, err := chooseSessionPacks(offers, invalid, false, nil); err != nil || len(selected) != 0 {
 		t.Fatalf("optional invalid entry = %+v, %v", selected, err)
 	}
-	if _, _, err := chooseSessionPacks(offers, invalid, true); err == nil {
+	if _, _, err := chooseSessionPacks(offers, invalid, true, nil); err == nil {
 		t.Fatal("a required invalid entry was accepted")
 	}
 }
@@ -310,7 +402,7 @@ func TestSessionHandoffObservesStartupItemRegistry(t *testing.T) {
 	if err := writeSessionHandoff(session, plan); err != nil {
 		t.Fatal(err)
 	}
-	if frame := <-frames; frame[0] != sessionKindHandoff {
+	if frame := <-frames; frame[0] != bridgecontract.SessionKindHandoff {
 		t.Fatalf("frame kind %d", frame[0])
 	}
 	if got := session.shieldID.Load(); got != 300 {
@@ -335,7 +427,7 @@ func TestSessionPrepareExposesThePlayerRuntimeID(t *testing.T) {
 	defer session.Close()
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	downstream, err := newSessionDownstream(testSessionConnect(t))
+	downstream, err := newSessionDownstream(testSessionConnect(t), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +470,7 @@ func TestSessionServerHandsOffAndRelaysARealJoin(t *testing.T) {
 
 	client, frames := dialTestSession(t, dir, testSessionConnect(t))
 	handoffFrame := <-frames
-	if handoffFrame[0] != sessionKindHandoff {
+	if handoffFrame[0] != bridgecontract.SessionKindHandoff {
 		t.Fatalf("first frame kind %d", handoffFrame[0])
 	}
 	length := binary.BigEndian.Uint32(handoffFrame[1:5])
@@ -386,7 +478,7 @@ func TestSessionServerHandsOffAndRelaysARealJoin(t *testing.T) {
 	if err := json.Unmarshal(handoffFrame[5:5+length], &handoff); err != nil {
 		t.Fatal(err)
 	}
-	startup, err := splitBatch(handoffFrame[5+length:])
+	startup, err := splitSessionBatch(handoffFrame[5+length:])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +496,7 @@ func TestSessionServerHandsOffAndRelaysARealJoin(t *testing.T) {
 	var received []byte
 	for len(received) < len(archive) {
 		frame := <-frames
-		if frame[0] != sessionKindPackData || binary.BigEndian.Uint32(frame[1:5]) != 0 {
+		if frame[0] != bridgecontract.SessionKindPackData || binary.BigEndian.Uint32(frame[1:5]) != 0 {
 			t.Fatalf("pack frame = %x", frame[:min(len(frame), 8)])
 		}
 		received = append(received, frame[5:]...)
@@ -421,13 +513,13 @@ func TestSessionServerHandsOffAndRelaysARealJoin(t *testing.T) {
 	_ = upstream.WritePacket(&packet.Text{TextType: packet.TextTypeRaw, Message: "hello"})
 	_ = upstream.Flush()
 	batch := <-frames
-	packets, err := splitBatch(batch[1:])
-	if batch[0] != sessionKindBatch || err != nil || len(packets) != 1 || packets[0][0] != packet.IDText {
+	packets, err := splitSessionBatch(batch[1:])
+	if batch[0] != bridgecontract.SessionKindBatch || err != nil || len(packets) != 1 || packets[0][0] != packet.IDText {
 		t.Fatalf("relayed frame = %x", batch)
 	}
 
 	chat := encodeTestPacket(&packet.Text{TextType: packet.TextTypeChat, SourceName: "Impostor", Message: "hi"})
-	if _, err := client.Write(append([]byte{sessionKindBatch}, appendBatchPacket(nil, chat)...)); err != nil {
+	if _, err := client.Write(append([]byte{bridgecontract.SessionKindBatch}, appendSessionBatchPacket(nil, chat)...)); err != nil {
 		t.Fatal(err)
 	}
 	relayed, err := upstream.ReadBatch()
@@ -440,9 +532,9 @@ func TestSessionServerHandsOffAndRelaysARealJoin(t *testing.T) {
 
 	_ = upstream.WritePacket(&packet.Transfer{Address: "play.example.net", Port: 19132})
 	_ = upstream.Flush()
-	var transfer sessionTransferMessage
-	if frame := <-frames; frame[0] != sessionKindTransfer || json.Unmarshal(frame[1:], &transfer) != nil ||
-		transfer != (sessionTransferMessage{Address: "play.example.net", Port: 19132}) {
+	var transfer sessionTransfer
+	if frame := <-frames; frame[0] != bridgecontract.SessionKindTransfer || json.Unmarshal(frame[1:], &transfer) != nil ||
+		transfer != (sessionTransfer{Address: "play.example.net", Port: 19132}) {
 		t.Fatalf("transfer frame = %q", frame)
 	}
 	if next, ok := transfers.Pending(); !ok || next != "play.example.net:19132" {
@@ -486,8 +578,8 @@ func TestSessionPreparationFailureSendsDisconnect(t *testing.T) {
 		server.onDisconnect = func(info DisconnectInfo) { reported <- info }
 	})
 	_, frames := dialTestSession(t, dir, testSessionConnect(t))
-	var disconnect sessionDisconnectMessage
-	if frame := <-frames; frame[0] != sessionKindDisconnect || json.Unmarshal(frame[1:], &disconnect) != nil ||
+	var disconnect sessionDisconnect
+	if frame := <-frames; frame[0] != bridgecontract.SessionKindDisconnect || json.Unmarshal(frame[1:], &disconnect) != nil ||
 		disconnect.Message != "disconnectionScreen.resourcePack" {
 		t.Fatalf("frame = %q", frame)
 	}
@@ -517,7 +609,7 @@ func TestSessionConnectTargetIsBoundToItsSession(t *testing.T) {
 	request := testSessionConnect(t)
 	request.Target = &sessionTarget{Kind: "realm", Value: "42"}
 	_, frames := dialTestSession(t, dir, request)
-	if frame := <-frames; frame[0] != sessionKindDisconnect || !bytes.Contains(frame, []byte("disconnectionScreen.cantConnect")) {
+	if frame := <-frames; frame[0] != bridgecontract.SessionKindDisconnect || !bytes.Contains(frame, []byte("disconnectionScreen.cantConnect")) {
 		t.Fatalf("frame = %q", frame)
 	}
 	if address := <-dialed; address != "realm/42" {
@@ -531,7 +623,7 @@ func TestSessionConnectTargetIsBoundToItsSession(t *testing.T) {
 		}
 	})
 	_, frames = dialTestSession(t, untargetable, request)
-	if frame := <-frames; frame[0] != sessionKindDisconnect || !bytes.Contains(frame, []byte("disconnectionScreen.cantConnect")) {
+	if frame := <-frames; frame[0] != bridgecontract.SessionKindDisconnect || !bytes.Contains(frame, []byte("disconnectionScreen.cantConnect")) {
 		t.Fatalf("untargetable core frame = %q", frame)
 	}
 }
@@ -619,14 +711,14 @@ func TestSessionServerKeepsAcceptingAfterTransientFailure(t *testing.T) {
 		t.Fatal("the session endpoint stopped accepting after one failure")
 	}
 	client := streamnet.NewFramedConn(peer)
-	frame, err := encodeSessionJSON(sessionKindConnect, testSessionConnect(t))
+	frame, err := encodeSessionJSON(bridgecontract.SessionKindConnect, testSessionConnect(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.Write(frame); err != nil {
 		t.Fatal(err)
 	}
-	if reply, err := client.ReadPacket(); err != nil || reply[0] != sessionKindDisconnect {
+	if reply, err := client.ReadPacket(); err != nil || reply[0] != bridgecontract.SessionKindDisconnect {
 		t.Fatalf("reply = %q, %v", reply, err)
 	}
 }
@@ -648,7 +740,7 @@ func TestSessionRefusedConnectSendsDisconnect(t *testing.T) {
 	invalid := request
 	invalid.ClientData = json.RawMessage(`{"GameVersion":"` + minecraft.DefaultProtocol.Ver() + `","DeviceOS":0}`)
 	encode := func(request sessionConnectRequest) []byte {
-		frame, err := encodeSessionJSON(sessionKindConnect, request)
+		frame, err := encodeSessionJSON(bridgecontract.SessionKindConnect, request)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -665,9 +757,9 @@ func TestSessionRefusedConnectSendsDisconnect(t *testing.T) {
 		"malformed json":     {[]byte("\x01{"), "disconnectionScreen.cantConnect"},
 	} {
 		_, frames := dialTestSessionFrame(t, dir, test.frame)
-		var disconnect sessionDisconnectMessage
+		var disconnect sessionDisconnect
 		frame, ok := <-frames
-		if !ok || frame[0] != sessionKindDisconnect || json.Unmarshal(frame[1:], &disconnect) != nil || disconnect.Message != test.key {
+		if !ok || frame[0] != bridgecontract.SessionKindDisconnect || json.Unmarshal(frame[1:], &disconnect) != nil || disconnect.Message != test.key {
 			t.Fatalf("%s: frame = %q", name, frame)
 		}
 		if _, ok := <-frames; ok {
@@ -743,7 +835,7 @@ func newTestSessionServer(t *testing.T, dir string, configure func(*sessionServe
 // dialTestSession sends request and returns the connection and its incoming frames.
 func dialTestSession(t *testing.T, dir string, request sessionConnectRequest) (*streamnet.FramedConn, <-chan []byte) {
 	t.Helper()
-	frame, err := encodeSessionJSON(sessionKindConnect, request)
+	frame, err := encodeSessionJSON(bridgecontract.SessionKindConnect, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -844,4 +936,51 @@ func negotiatedOfferUpstream(t *testing.T, packs []*resource.Pack, required bool
 		t.Fatal(err)
 	}
 	return conn
+}
+
+// Acceptance waits on readiness even when the endpoint lives outside a long socket directory.
+func TestBashAcceptanceObservesHashedSessionReadiness(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash Unix endpoint test")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("missing fixture: bash executable")
+	}
+	root, err := os.MkdirTemp("/tmp", "acceptance-ready-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	for _, length := range []int{91, 92, 93} {
+		dir := filepath.Join(root, strings.Repeat("x", length-len(root)-1))
+		listener, err := streamnet.ListenSession(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		func() {
+			defer listener.Close()
+			_, endpoint, err := streamnet.ResolveSession(dir)
+			if err != nil || filepath.Dir(endpoint) == dir {
+				t.Fatalf("expected hashed endpoint: %s, %v", endpoint, err)
+			}
+			logPath := filepath.Join(dir, "core.stderr.log")
+			file, err := os.Create(logPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reportListenerReady(slog.New(slog.NewTextHandler(file, nil)), dir)
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "acceptance.sh"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := exec.CommandContext(t.Context(), bash, "-c", `export RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY=1; source "$1"; wait_for_core_ready "$2" $$ 1`, "acceptance", script, logPath)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("readiness wait: %v: %s", err, output)
+			}
+		}()
+	}
 }

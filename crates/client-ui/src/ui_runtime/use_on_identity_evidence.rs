@@ -6,7 +6,10 @@ use protocol::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use super::{InventoryAuthorityEvent, UiRuntime, inventory_ledger::PlayerInventorySlot};
+use {
+    super::UiRuntime,
+    inventory::{InventoryAuthorityEvent, inventory_ledger::PlayerInventorySlot},
+};
 
 const MAX_ROWS: usize = 8;
 const TARGET: &str = "minecraft:stone";
@@ -262,7 +265,7 @@ impl UiRuntime {
             identity,
         };
         if let Ok(encoded) = serde_json::to_string(&row) {
-            bevy::log::info!(target: "bedrock_client::use_on_inbound_identity", row = %encoded,
+            tracing::info!(target: "bedrock_client::use_on_inbound_identity", row = %encoded,
                 "normalized inbound identity observation; not outgoing or use confirmation");
         }
         self.use_on_identity_evidence.rows.push(row);

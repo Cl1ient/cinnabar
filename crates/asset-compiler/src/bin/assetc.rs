@@ -12,8 +12,9 @@ use assets::{
 use clap::Parser;
 use pack_compiler::{
     AnimationInventory, AtmosphereCompileOptions, CompileReferenceOutcome, FontCompileError,
-    compile_atmosphere_assets_with_options, compile_entity_assets_with_report, compile_fonts,
-    compile_pack_with_material_keys, compile_vanilla_entity_refs, inspect_animation_inventory,
+    compile_atmosphere_assets_with_options, compile_entity_assets_with_behavior_report,
+    compile_entity_assets_with_report, compile_fonts, compile_pack_with_material_keys,
+    compile_vanilla_entity_refs, inspect_animation_inventory,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -182,6 +183,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
     command_outputs::validate_command_outputs(&command)?;
     match command {
+        Command::BlockPhysics {
+            registry,
+            seed,
+            out,
+        } => {
+            let breg = read_bounded(&registry)?;
+            let (records, protocol) =
+                registry_version::read_block_registry_input(&registry, &breg)?;
+            let input = assets::read_physics_registry_seed_for_protocol(
+                &read_bounded(&seed)?,
+                &breg,
+                &records,
+                protocol,
+            )?;
+            let compiled: Vec<_> = records
+                .iter()
+                .map(|record| {
+                    asset_compiler::block_shapes::compile(
+                        record,
+                        input
+                            .by_sequential_id(record.sequential_id)
+                            .expect("complete seed registry"),
+                    )
+                })
+                .collect();
+            let bytes = assets::encode_physics_registry(protocol, &breg, &records, &compiled)?;
+            write_blob_atomic(&out, &bytes)?;
+        }
         Command::Atmosphere {
             pack,
             source_manifest,
@@ -200,11 +229,18 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::EntityAssets {
             pack,
+            behavior_pack,
             source_manifest,
             out,
             report,
         } => {
-            compile_entity_assets_command(&pack, &source_manifest, &out, &report)?;
+            compile_entity_assets_command(
+                &pack,
+                behavior_pack.as_deref(),
+                &source_manifest,
+                &out,
+                &report,
+            )?;
         }
         Command::EquipmentAssets {
             pack,
@@ -244,6 +280,13 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             compile_hud_assets_command(&pack, &source_manifest, &out, &report)?;
         }
+        Command::OreuiIconsAssets {
+            source_manifest,
+            out,
+        } => {
+            let count = pack_compiler::compile_oreui_icons_to_file(&source_manifest, &out)?;
+            println!("compiled {count} OreUI images to {}", out.display());
+        }
         Command::HudExtrasAssets { pack, out } => {
             pack_compiler::compile_hud_extras_to_file(&pack, &out)?;
             println!("compiled HUD extras to {}", out.display());
@@ -258,11 +301,18 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::ActorAssets {
             pack,
+            behavior_pack,
             source_manifest,
             out,
             report,
         } => {
-            actor_command::compile_actor_assets_command(&pack, &source_manifest, &out, &report)?;
+            actor_command::compile_actor_assets_command(
+                &pack,
+                &source_manifest,
+                &out,
+                &report,
+                behavior_pack.as_deref(),
+            )?;
         }
         Command::BlockEntityAssets {
             pack,
@@ -619,8 +669,10 @@ fn write_compiled_font_assets(
     Ok(())
 }
 
+/// Compiles an entity carrier and optional authored behavior-seat inputs as one pinned bundle.
 fn compile_entity_assets_command(
     pack: &Path,
+    behavior_pack: Option<&Path>,
     source_manifest: &Path,
     out: &Path,
     report: &Path,
@@ -637,7 +689,12 @@ fn compile_entity_assets_command(
                 source,
             }
         })?;
-    let mut compilation = compile_entity_assets_with_report(pack, &manifest_bytes)?;
+    let mut compilation = match behavior_pack {
+        Some(behavior) => {
+            compile_entity_assets_with_behavior_report(pack, behavior, &manifest_bytes)?
+        }
+        None => compile_entity_assets_with_report(pack, &manifest_bytes)?,
+    };
     compilation.reference_outcomes.sort_by_key(outcome_sort_key);
     let compiled = &compilation.assets;
     let blob = encode_entity_blob(compiled)?;

@@ -16,8 +16,7 @@ pub use conformance::{
     verify_legacy_trace_jsonl, verify_scenario_trace_jsonl, verify_trace_jsonl,
 };
 pub use destroy::{
-    BlockDestroyInfo, DestroyConditions, HeldTool, ToolKind, ToolTier, block_destroy_info,
-    destroy_progress_per_tick,
+    BlockDestroyInfo, DestroyConditions, HeldTool, ToolTier, destroy_progress_per_tick,
 };
 pub use fluid::sample_actor_liquids;
 pub use math::{Vec3, minecraft_cos, minecraft_sin, view_direction};
@@ -26,9 +25,10 @@ pub use simulator::{
     AxisCollisions, ControlledTickResult, DEFAULT_MOVEMENT_SPEED, JUMP_DELAY_TICKS,
     MAX_BLOCK_SAMPLES_PER_TICK, MAX_SAFE_LIQUID_VELOCITY, MovementEffects, MovementEnvironment,
     MovementInput, MovementMode, NORMAL_GRAVITY, PlayerState, ProcessedControls,
-    SPRINT_SPEED_MULTIPLIER, SimulationError, Simulator, TICKS_PER_SECOND, TickResult,
-    VerticalPhysics, pose_fits, sample_liquid_submersion, sample_water_head,
+    SPRINT_SPEED_MULTIPLIER, SimulationError, Simulator, TickResult, VerticalPhysics, pose_fits,
+    sample_liquid_submersion, sample_water_head,
 };
+
 pub use world::{
     BLOCK_USE_SUPPORT_DEPTH, BLOCK_USE_SUPPORT_MAX_Y, BlockHit, BlockPhysicsFacts,
     BlockPhysicsFlags, BlockPhysicsSample, CameraBlockHit, CollisionIdSpace, CollisionQuery,

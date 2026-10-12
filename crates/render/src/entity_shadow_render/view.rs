@@ -1,4 +1,5 @@
 use super::*;
+use render_scene::EntityShadowScene;
 
 /// Retains the overlap stencil and bindings for this view's shadow coverage.
 #[derive(Component)]
@@ -89,7 +90,7 @@ pub(crate) fn prepare_shadow_bind_groups(
     cache: Res<PipelineCache>,
     gpu: Res<EntityShadowGpu>,
     view_uniforms: Res<ViewUniforms>,
-    mut views: Query<(&mut EntityShadowView, &ViewDepthTexture)>,
+    mut views: Query<(&mut EntityShadowView, &ViewDepthStencilTexture)>,
 ) {
     let (Some(binding), Some(uniforms)) = (
         view_uniforms.uniforms.binding(),
@@ -102,7 +103,7 @@ pub(crate) fn prepare_shadow_bind_groups(
             continue;
         }
         let key = BindGroupKey {
-            depth: depth.view().id(),
+            depth: crate::scene_sampling::view_depth(depth).id(),
             instances: gpu.instances.id(),
             view_uniforms: uniforms.id(),
         };
@@ -124,7 +125,9 @@ pub(crate) fn prepare_shadow_bind_groups(
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::TextureView(depth.view()),
+                    resource: BindingResource::TextureView(crate::scene_sampling::view_depth(
+                        depth,
+                    )),
                 },
                 BindGroupEntry {
                     binding: 3,
@@ -141,9 +144,9 @@ pub(crate) fn prepare_shadow_bind_groups(
 }
 
 /// Shadows read the original depth samples without an intermediate resolve.
-fn depth_is_sampleable(depth: &ViewDepthTexture) -> bool {
+fn depth_is_sampleable(depth: &ViewDepthStencilTexture) -> bool {
     depth
-        .texture
+        .texture()
         .usage()
         .contains(TextureUsages::TEXTURE_BINDING)
 }

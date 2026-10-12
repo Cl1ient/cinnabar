@@ -1,5 +1,5 @@
 //! Env-gated offline frame of a captured lobby: pack entities and every name tag, drawn from one
-//! camera with the same billboard maths as `nametag.wgsl`.
+//! camera with the same billboard maths as `nametag.wesl`.
 
 use std::{path::Path, sync::Arc};
 
@@ -7,12 +7,12 @@ use bevy::math::{EulerRot, Mat4, Quat, Vec3, Vec4};
 use protocol::{
     ActorEvent, ActorKind, ActorMetadata, ActorMetadataValue, ActorSpawnEvent, WorldEvent,
 };
-use render::{ActorArtworkPages, ActorRenderScene};
 use render_model::{NAMETAG_ATLAS_SIDE, NametagScene};
 use ui::TextLayoutCache;
+use {render_model::ActorArtworkPages, render_scene::ActorRenderScene};
 
 use super::render_report::{compile_local_pack, world_for};
-use crate::presentation::{actors, entity_layers};
+
 use client_ui::ui_runtime::presentation::{
     nametag_atlas::{GlyphPage, GlyphPixels, NametagAtlas, font_page},
     nametags::{build_nametag_scene, extract_nametag},
@@ -85,8 +85,9 @@ fn render_captured_scene() {
     let rotation = Quat::from_euler(EulerRot::YXZ, camera[3], camera[4], 0.0);
     let aspect = WIDTH as f32 / HEIGHT as f32;
     let vertical_fov = 2.0 * ((HORIZONTAL_FOV_DEGREES.to_radians() / 2.0).tan() / aspect).atan();
-    let clip_from_world = Mat4::perspective_rh(vertical_fov, aspect, 0.05, 500.0)
-        * Mat4::from_rotation_translation(rotation, eye).inverse();
+    let clip_from_world =
+        glam::camera::rh::proj::directx::perspective(vertical_fov, aspect, 0.05, 500.0)
+            * Mat4::from_rotation_translation(rotation, eye).inverse();
     let mut frame = Frame::new(clip_from_world);
     draw_actors(
         &mut frame,
@@ -140,7 +141,7 @@ fn render_captured_scene() {
 const GLYPH_PAGE_SIDE: u32 = 256;
 
 fn font_with_glyphs(font: &Path, glyphs: &Path) -> (assets::RuntimeFontCatalog, Vec<Box<[u8]>>) {
-    let manifest = crate::asset_startup::canonical_source_manifest_sha256(include_str!(
+    let manifest = assets::carriers::startup::canonical_source_manifest_sha256(include_str!(
         "../../../../../assets/cinnangles-sans-source.json"
     ));
     let base = assets::RuntimeFontCatalog::decode(&std::fs::read(font).unwrap(), manifest).unwrap();
@@ -340,11 +341,22 @@ pub(super) fn draw_actors(
         .iter()
         .filter_map(|id| {
             let rig = world.authority().actor_rig(*id)?;
-            actors::entity_rig_presentation(&rig, world.authority().actor(*id)?, artwork, 1.0)
+            client_presentation::presentation::actors::entity_rig_presentation(
+                &rig,
+                world.authority().actor(*id)?,
+                artwork,
+                1.0,
+            )
         })
         .collect();
-    let mut batch = actors::select_actor_presentations(1, false, None, bodies);
-    entity_layers::apply_render_layers(&mut batch, |id| world.authority().actor_rig(id), artwork);
+    let mut batch = client_presentation::presentation::actors::select_actor_presentations(
+        1, false, None, bodies,
+    );
+    client_presentation::presentation::entity_layers::apply_render_layers(
+        &mut batch,
+        |id| world.authority().actor_rig(id),
+        artwork,
+    );
     let mut scene = ActorRenderScene::default();
     scene.replace_pack_entities(Some(entities)).unwrap();
     scene.configure_artwork(artwork.clone());
@@ -367,7 +379,7 @@ pub(super) fn draw_actors(
         let shade = |uv: [f32; 2]| {
             let [u, v] = std::array::from_fn(|axis| {
                 let animated = uv_anim[axis] + uv[axis] * uv_anim[axis + 2];
-                if uv_anim == render::IDENTITY_UV_ANIM {
+                if uv_anim == render_model::IDENTITY_UV_ANIM {
                     animated.clamp(0.0, 1.0)
                 } else {
                     animated.rem_euclid(1.0)
@@ -383,7 +395,7 @@ pub(super) fn draw_actors(
         let Some(vertices) = rig.geometry_vertices.span(span) else {
             continue;
         };
-        for corners in vertices.chunks_exact(3) {
+        for corners in vertices.as_chunks::<3>().0 {
             let placed = std::array::from_fn(|corner| {
                 let vertex = corners[corner];
                 let bone =

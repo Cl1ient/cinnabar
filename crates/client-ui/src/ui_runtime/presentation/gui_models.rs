@@ -9,7 +9,10 @@ use assets::{ItemVisualDefinitionRoute, RuntimeAssets, RuntimeEntityAssets};
 use render_model::UiTexturePage;
 use ui::{UiMesh, UiNode, UiVisual};
 
-use super::{IconRef, UiPresentationError, UiPresentationRuntime, item_gui, player_preview};
+use {
+    super::{UiPresentationError, UiPresentationRuntime, item_gui, player_preview},
+    ui::IconRef,
+};
 
 mod atlas;
 mod block_models;
@@ -186,13 +189,13 @@ impl UiPresentationRuntime {
             for texture in equipment.textures() {
                 atlas.insert([texture.width, texture.height], &texture.rgba8)?;
             }
-            if let Some(binding) = equipment.binding(item_gui::SHIELD_IDENTIFIER)
+            if let Some(binding) = equipment.binding(assets::gui_item::SHIELD_IDENTIFIER)
                 && let Some(geometry) = entities
                     .geometries()
                     .iter()
                     .find(|geometry| geometry.identifier == binding.geometry.identifier)
                 && let Some(texture) = equipment.texture(&binding.texture.identifier)
-                && let Some(icon) = self.item_icon(item_gui::SHIELD_IDENTIFIER, 0)
+                && let Some(icon) = self.item_icon(assets::gui_item::SHIELD_IDENTIFIER, 0)
             {
                 let source = atlas.insert([texture.width, texture.height], &texture.rgba8)?;
                 if let Some(mesh) = item_gui::shield(geometry, texture, source) {
@@ -231,7 +234,7 @@ impl UiPresentationRuntime {
                     .or_insert(*icon);
             }
         }
-        bevy::log::info!(
+        tracing::info!(
             models = models.len(),
             source_pages = pages.len(),
             "native GUI item geometry prepared"
@@ -314,7 +317,8 @@ impl UiPresentationRuntime {
             let (identifier, metadata) = Self::item_icon_key(
                 &hand.identifier,
                 hand.metadata,
-                hand.charged_projectile.as_deref(),
+                hand.use_animation,
+                hand.charged_projectile,
                 None,
             );
             self.gui_models
@@ -329,6 +333,7 @@ impl UiPresentationRuntime {
                         metadata: 0,
                     })
                 })
+                .map(|model| model.with_grip(hand.grip))
         });
         let unposed = [None; 6];
         let body = if self.player_preview_view == player_preview::PreviewView::Hud {
@@ -356,7 +361,7 @@ impl UiPresentationRuntime {
             skin,
             &self.player_preview_gear,
             armor,
-            held,
+            held.each_ref().map(Option::as_ref),
             true, // Current desktop default is the native Fancy material group.
             self.gui_fire_frame(),
             if self.player_preview_view == player_preview::PreviewView::Hud {

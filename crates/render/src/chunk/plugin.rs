@@ -1,9 +1,21 @@
-use crate::RuntimeStageProfiler;
 use crate::chunk::gpu::graphics_metadata::{
     GraphicsMetadataPublication, GraphicsMetadataPublicationState,
-    configure_graphics_metadata_publication,
+    configure_graphics_metadata_publication, publish_graphics_runtime_metadata,
 };
 use crate::chunk::*;
+use crate::chunk::{
+    draw::{queue_chunks, queue_transparent_chunks},
+    extract::install_chunk_extraction,
+    pipeline::install_chunk_commands,
+};
+use render_scene::RuntimeStageProfiler;
+use render_scene::{
+    ChunkAnimationClock, ChunkBiomeTints, ChunkRenderApplySet, ChunkRenderQueue,
+    ChunkTextureAssets, ChunkTextureReload, ChunkUploadAcknowledgements, ChunkUploadBudget,
+    ModelWitnessEvidence, ModelWitnessRequest, ModelWorkloadMetrics, PresentedFrameGate,
+    TransparentSortMetrics, TransparentWitnessEvidence, TransparentWitnessRequest,
+    VisibilityDiagnostics, VisibilityDiagnosticsInput,
+};
 
 mod publication_schedule;
 use publication_schedule::{ChunkPublicationStage, configure_chunk_publication};
@@ -19,12 +31,6 @@ pub(in crate::chunk) struct ChunkEntities(pub(in crate::chunk) HashMap<SubChunkK
 pub struct ChunkRenderPlugin {
     pub(in crate::chunk) upload_budget: ChunkUploadBudget,
 }
-
-/// Main-world queue application boundary. Systems ordered after this set
-/// observe spawned/updated/despawned chunk entities after deferred commands
-/// and component observers have been applied.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ChunkRenderApplySet;
 
 impl ChunkRenderPlugin {
     #[must_use]
@@ -83,8 +89,8 @@ impl Plugin for ChunkRenderPlugin {
         load_internal_asset!(
             app,
             BIOME_TINT_SHADER_HANDLE,
-            "../biome_tint.wgsl",
-            |source, path| crate::shader_safety::from_wgsl(
+            "../biome_tint.wesl",
+            |source, path| crate::shader_safety::from_wesl(
                 crate::material_shader::bind_biome_tables(&meshing::biome_lattice::shader_source(
                     source
                 )),
@@ -95,23 +101,23 @@ impl Plugin for ChunkRenderPlugin {
         load_internal_asset!(
             app,
             CHUNK_BINDINGS_SHADER_HANDLE,
-            "../chunk_bindings.wgsl",
-            |source, path| crate::shader_safety::from_wgsl(
+            "../chunk_bindings.wesl",
+            |source, path| crate::shader_safety::from_wesl(
                 crate::material_shader::source(source),
                 path
             )
         );
-        load_internal_asset!(app, CHUNK_SHADER_HANDLE, "../chunk.wgsl", |source, path| {
-            crate::shader_safety::from_wgsl(crate::material_shader::source(source), path)
+        load_internal_asset!(app, CHUNK_SHADER_HANDLE, "../chunk.wesl", |source, path| {
+            crate::shader_safety::from_wesl(crate::material_shader::source(source), path)
         });
-        load_internal_asset!(app, MODEL_SHADER_HANDLE, "../model.wgsl", |source, path| {
-            crate::shader_safety::from_wgsl(crate::material_shader::source(source), path)
+        load_internal_asset!(app, MODEL_SHADER_HANDLE, "../model.wesl", |source, path| {
+            crate::shader_safety::from_wesl(crate::material_shader::source(source), path)
         });
         load_internal_asset!(
             app,
             LIQUID_SHADER_HANDLE,
-            "../liquid.wgsl",
-            |source, path| crate::shader_safety::from_wgsl(
+            "../liquid.wesl",
+            |source, path| crate::shader_safety::from_wesl(
                 crate::material_shader::source(source),
                 path
             )
@@ -119,8 +125,8 @@ impl Plugin for ChunkRenderPlugin {
         load_internal_asset!(
             app,
             TRANSPARENT_SHADER_HANDLE,
-            "../transparent_terrain.wgsl",
-            |source, path| crate::shader_safety::from_wgsl(
+            "../transparent_terrain.wesl",
+            |source, path| crate::shader_safety::from_wesl(
                 crate::material_shader::source(source),
                 path
             )
@@ -191,10 +197,10 @@ impl Plugin for ChunkRenderPlugin {
                 (
                     publish_graphics_runtime_metadata.in_set(GraphicsMetadataPublication),
                     queue_chunks
-                        .run_if(crate::panorama::world_passes_enabled)
+                        .run_if(render_scene::panorama::world_passes_enabled)
                         .in_set(RenderSystems::Queue),
                     queue_transparent_chunks
-                        .run_if(crate::panorama::world_passes_enabled)
+                        .run_if(render_scene::panorama::world_passes_enabled)
                         .in_set(RenderSystems::Queue),
                     prepare_chunk_texture_assets
                         .in_set(RenderSystems::PrepareAssets)

@@ -17,7 +17,7 @@ fn link_confirmation_consumes_typing_and_escape_preserves_chat_draft() {
         eprintln!("skipping link_confirmation input: missing installed UI carrier (make assets)");
         return;
     };
-    let mut player = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player = client_state::PlayerRuntime(player_state::PlayerState::new(1));
     let mut runtime = UiRuntime::new(1);
     chat(
         &mut player,
@@ -32,7 +32,7 @@ fn link_confirmation_consumes_typing_and_escape_preserves_chat_draft() {
         .chat_hits()
         .iter()
         .find_map(|(hit, _)| match hit {
-            client_ui::ui_runtime::presentation::ChatHit::Link(index) => Some(*index),
+            ui_screens::chat_screen::ChatHit::Link(index) => Some(*index),
             _ => None,
         })
         .expect("visible chat URL has a hit target");
@@ -45,8 +45,8 @@ fn link_confirmation_consumes_typing_and_escape_preserves_chat_draft() {
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<bevy::input::mouse::AccumulatedMouseMotion>()
         .insert_resource(player)
-        .insert_resource(runtime)
-        .insert_resource(presentation)
+        .insert_resource(UiRuntimeResource(runtime))
+        .insert_resource(UiPresentationResource(presentation))
         .add_systems(Update, crate::ui_runtime::drive_chat_keyboard_input);
     let window = app
         .world_mut()
@@ -69,13 +69,13 @@ fn link_confirmation_consumes_typing_and_escape_preserves_chat_draft() {
             window,
         });
         app.update();
-        let runtime = app.world().resource::<UiRuntime>();
+        let runtime = app.world().resource::<UiRuntimeResource>();
         assert!(runtime.chat_focused());
         assert_eq!(runtime.chat_editor().as_str(), "unsent draft");
         assert!(runtime.pending_chat_sends().is_empty());
         assert_eq!(
             app.world()
-                .resource::<UiPresentationRuntime>()
+                .resource::<UiPresentationResource>()
                 .chat_link_confirmation_open(),
             key != KeyCode::Escape
         );
@@ -91,7 +91,7 @@ fn text_node<'a>(nodes: &'a [DrawNode], wanted: &str) -> Option<&'a DrawNode> {
 
 /// Applies one authoritative chat message.
 fn chat(
-    player_runtime: &mut crate::player_runtime::PlayerRuntime,
+    player_runtime: &mut client_state::PlayerRuntime,
     runtime: &mut UiRuntime,
     sequence: u64,
     message: &str,
@@ -112,7 +112,7 @@ fn chat(
 
 /// Lays out one gameplay frame.
 fn build(
-    player_runtime: &crate::player_runtime::PlayerRuntime,
+    player_runtime: &client_state::PlayerRuntime,
     presentation: &mut UiPresentationRuntime,
     runtime: &UiRuntime,
     now: u64,
@@ -130,7 +130,7 @@ fn build(
 
 #[test]
 fn wheel_input_system_scrolls_the_open_chat() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     use bevy::{
         input::mouse::AccumulatedMouseScroll, prelude::*, time::Real, window::PrimaryWindow,
@@ -155,9 +155,9 @@ fn wheel_input_system_scrolls_the_open_chat() {
     assert!(text_node(presentation.chat_draw_nodes(), "line 1").is_none());
     let mut app = App::new();
     app.init_resource::<Time<Real>>()
-        .init_resource::<crate::local_player::LocalPlayerFrameCarrier>()
-        .init_resource::<crate::local_player::InteractionOriginSnapshot>()
-        .init_resource::<crate::semantic_controls::SemanticInputSnapshot>()
+        .init_resource::<client_presentation::local_player::LocalPlayerFrameCarrier>()
+        .init_resource::<client_presentation::local_player::InteractionOriginSnapshot>()
+        .init_resource::<client_state::SemanticInputSnapshot>()
         .init_resource::<crate::runtime::world::ClientWorld>()
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<Touches>()
@@ -165,9 +165,9 @@ fn wheel_input_system_scrolls_the_open_chat() {
             delta: Vec2::new(0.0, 1000.0),
             ..Default::default()
         })
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime)
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .add_systems(Update, crate::ui_runtime::drive_chat_ui_actions);
     app.world_mut().spawn((
         Window {
@@ -179,12 +179,15 @@ fn wheel_input_system_scrolls_the_open_chat() {
     app.update();
     let player_runtime = app
         .world_mut()
-        .remove_resource::<crate::player_runtime::PlayerRuntime>()
+        .remove_resource::<client_state::PlayerRuntime>()
         .unwrap();
-    let runtime = app.world_mut().remove_resource::<UiRuntime>().unwrap();
+    let runtime = app
+        .world_mut()
+        .remove_resource::<UiRuntimeResource>()
+        .unwrap();
     let mut presentation = app
         .world_mut()
-        .remove_resource::<UiPresentationRuntime>()
+        .remove_resource::<UiPresentationResource>()
         .unwrap();
     build(&player_runtime, &mut presentation, &runtime, 0);
     let oldest = text_node(presentation.chat_draw_nodes(), "line 1").unwrap();
@@ -206,10 +209,10 @@ fn texts(nodes: &[DrawNode]) -> Vec<&str> {
 
 #[test]
 fn server_chat_screen_keeps_the_java_layout_and_input_policy() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let Some(mut presentation) =
-        engine_presentation_with(super::super::forms::pack_harness::font())
+        engine_presentation_with(client_ui::test_support::pack_harness::font())
     else {
         eprintln!(
             "skipping server_chat_screen_keeps_the_java_layout_and_input_policy: fixture unavailable; requires installed local carriers (make assets)"
@@ -230,7 +233,7 @@ fn server_chat_screen_keeps_the_java_layout_and_input_policy() {
     });
     build(&player_runtime, &mut presentation, &runtime, 0);
     assert!(!texts(presentation.chat_draw_nodes()).contains(&"Server chat"));
-    let menu = crate::menu::MenuRuntime::new(false, 2, "Tester".into());
+    let menu = client_shell::menu::MenuRuntime::new(false, 2, "Tester".into());
     assert!(presentation.renders_game_behind(&player_runtime, &runtime, &menu));
     let input = presentation
         .build(

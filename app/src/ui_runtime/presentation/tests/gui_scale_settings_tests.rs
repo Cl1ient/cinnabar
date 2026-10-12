@@ -2,14 +2,16 @@ use bevy::{
     prelude::{App, MinimalPlugins, Update, With},
     window::{PrimaryWindow, Window, WindowResolution},
 };
+use client_shell::ui_resources::UiPresentationResource;
 use ui::{DpiScale, UiPoint};
 
-use super::{engine_hud_tests::engine_presentation, fixture_font, fixture_hud};
-use crate::{
-    menu::{MenuAction, MenuRuntime, MenuScreen},
-    ui_runtime::presentation::apply_gui_scale_setting,
-};
+use client_ui::test_support::{engine_presentation, fixture_hud};
 use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
+use ui_engine::test_support::fixture_font;
+use {
+    client_shell::{menu::MenuRuntime, settings_runtime::gui_scale::apply_gui_scale_setting},
+    launcher::menu::{MenuAction, MenuScreen},
+};
 
 fn settings_app(visible: bool, preference: Option<u8>) -> App {
     let mut menu = MenuRuntime::new(visible, 2, "Player".to_owned());
@@ -18,9 +20,11 @@ fn settings_app(visible: bool, preference: Option<u8>) -> App {
     let presentation = UiPresentationRuntime::with_hud(fixture_font(), fixture_hud()).unwrap();
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
-        .insert_resource(crate::player_runtime::PlayerRuntime::new(1))
+        .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
+            1,
+        )))
         .insert_resource(menu)
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .add_systems(Update, apply_gui_scale_setting);
     app.world_mut().spawn((
         Window {
@@ -46,11 +50,11 @@ fn build_menu(app: &mut App, physical: [u32; 2], dpi: f32) -> render_model::UiRe
     app.update();
     let view = app.world().resource::<MenuRuntime>().view();
     app.world_mut().resource_scope(
-        |world, mut presentation: bevy::prelude::Mut<UiPresentationRuntime>| {
+        |world, mut presentation: bevy::prelude::Mut<UiPresentationResource>| {
             presentation.set_menu_view(Some(view));
             presentation
                 .build(
-                    world.resource::<crate::player_runtime::PlayerRuntime>(),
+                    world.resource::<client_state::PlayerRuntime>(),
                     &UiRuntime::new(1),
                     0,
                     physical,
@@ -69,26 +73,30 @@ fn largest_font_quad_height(input: &render_model::UiRenderInput) -> f32 {
         .flat_map(|batch| {
             let start = batch.first_index as usize;
             let end = start + batch.index_count as usize;
-            input.indices[start..end].chunks_exact(6).map(|indices| {
-                let positions = indices
-                    .iter()
-                    .map(|index| input.vertices[*index as usize].position[1]);
-                let bottom = positions.clone().fold(f32::NEG_INFINITY, f32::max);
-                let top = positions.fold(f32::INFINITY, f32::min);
-                bottom - top
-            })
+            input.indices[start..end]
+                .as_chunks::<6>()
+                .0
+                .iter()
+                .map(|indices| {
+                    let positions = indices
+                        .iter()
+                        .map(|index| input.vertices[*index as usize].position[1]);
+                    let bottom = positions.clone().fold(f32::NEG_INFINITY, f32::max);
+                    let top = positions.fold(f32::INFINITY, f32::min);
+                    bottom - top
+                })
         })
         .fold(0.0, f32::max)
 }
 
 fn native_toggle_height(app: &App, dpi: DpiScale) -> f32 {
-    let presentation = app.world().resource::<UiPresentationRuntime>();
+    let presentation = app.world().resource::<UiPresentationResource>();
     let (action, bounds) = client_ui::test_support::menu_hit_targets(presentation)
         .iter()
         .find(|(action, _)| {
             matches!(action, MenuAction::SettingsOption(index, _)
-            if matches!(crate::menu::settings_options::SETTINGS_OPTIONS[usize::from(*index)].kind,
-                crate::menu::settings_options::SettingKind::Toggle))
+            if matches!(launcher::menu::settings_options::SETTINGS_OPTIONS[usize::from(*index)].kind,
+                launcher::menu::settings_options::SettingKind::Toggle))
         })
         .expect("the initial native Settings category renders a toggle");
     let physical_centre = [
@@ -112,7 +120,7 @@ fn gui_scale_minimum_on_high_dpi_resizes_native_menu_text_controls_and_pointer()
         return;
     };
     let mut app = settings_app(true, None);
-    app.insert_resource(presentation);
+    app.insert_resource(UiPresentationResource(presentation));
     app.world_mut()
         .resource_mut::<MenuRuntime>()
         .activate(MenuAction::Navigate(MenuScreen::Settings));
@@ -123,7 +131,7 @@ fn gui_scale_minimum_on_high_dpi_resizes_native_menu_text_controls_and_pointer()
     let point = UiPoint::new(120.0, 90.0).unwrap();
     let before_pointer = app
         .world()
-        .resource::<UiPresentationRuntime>()
+        .resource::<UiPresentationResource>()
         .inventory_gui_point(point, physical, dpi.get())
         .unwrap();
     app.world_mut()
@@ -138,7 +146,7 @@ fn gui_scale_minimum_on_high_dpi_resizes_native_menu_text_controls_and_pointer()
     );
     assert_eq!(native_toggle_height(&app, dpi), before_toggle / 2.0);
     assert_ne!(before.revision, after.revision);
-    let presentation = app.world().resource::<UiPresentationRuntime>();
+    let presentation = app.world().resource::<UiPresentationResource>();
     assert_eq!(
         presentation
             .inventory_gui_point(point, physical, dpi.get())
@@ -189,7 +197,7 @@ fn gui_scale_video_action_resizes_rendered_menu_text_and_keeps_hits_aligned() {
     assert_eq!(largest_font_quad_height(&after), before_height / 4.0 * 3.0);
     assert_ne!(before.revision, after.revision);
 
-    let presentation = app.world().resource::<UiPresentationRuntime>();
+    let presentation = app.world().resource::<UiPresentationResource>();
     assert!(!client_ui::test_support::menu_hit_targets(presentation).is_empty());
     for (action, bounds) in client_ui::test_support::menu_hit_targets(presentation) {
         let centre = UiPoint::new(
@@ -209,7 +217,7 @@ fn gui_scale_video_action_updates_inventory_pointer_coordinates_while_menu_is_hi
     let dpi = 1.5;
     let before = app
         .world()
-        .resource::<UiPresentationRuntime>()
+        .resource::<UiPresentationResource>()
         .inventory_gui_point(point, physical, dpi)
         .unwrap();
 
@@ -219,7 +227,7 @@ fn gui_scale_video_action_updates_inventory_pointer_coordinates_while_menu_is_hi
     app.update();
     let after = app
         .world()
-        .resource::<UiPresentationRuntime>()
+        .resource::<UiPresentationResource>()
         .inventory_gui_point(point, physical, dpi)
         .unwrap();
     assert_eq!(after, [before[0] * 4.0 / 3.0, before[1] * 4.0 / 3.0]);
@@ -267,7 +275,7 @@ fn gui_scale_keeps_auto_responsive_and_clamps_saved_native_offset_after_resize()
 
 #[test]
 fn gui_scale_video_action_relayouts_cached_engine_hud_at_the_new_scale() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let Some(mut presentation) = engine_presentation() else {
         eprintln!(
@@ -280,7 +288,7 @@ fn gui_scale_video_action_relayouts_cached_engine_hud_at_the_new_scale() {
         ..Default::default()
     };
     let mut app = settings_app(false, None);
-    app.insert_resource(presentation);
+    app.insert_resource(UiPresentationResource(presentation));
     app.update();
 
     let runtime = UiRuntime::new(1);
@@ -295,8 +303,8 @@ fn gui_scale_video_action_relayouts_cached_engine_hud_at_the_new_scale() {
             .activate(MenuAction::SettingsScale(offset));
         app.update();
         app.world_mut().resource_scope(
-            |world, mut presentation: bevy::prelude::Mut<UiPresentationRuntime>| {
-                let player_runtime = world.resource::<crate::player_runtime::PlayerRuntime>();
+            |world, mut presentation: bevy::prelude::Mut<UiPresentationResource>| {
+                let player_runtime = world.resource::<client_state::PlayerRuntime>();
                 let passes = presentation.hud_passes();
                 let input = presentation
                     .build(
@@ -317,7 +325,9 @@ fn gui_scale_video_action_relayouts_cached_engine_hud_at_the_new_scale() {
 fn assert_crosshair_size(input: &render_model::UiRenderInput, physical: [u32; 2], scale: u8) {
     let crosshair = input
         .vertices
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|quad| {
             quad.iter().fold(
                 [
@@ -348,7 +358,7 @@ fn assert_crosshair_size(input: &render_model::UiRenderInput, physical: [u32; 2]
 
 #[test]
 fn gui_scale_minimum_on_high_dpi_relayouts_cached_native_hud() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let Some(mut presentation) = engine_presentation() else {
         eprintln!(
@@ -361,7 +371,7 @@ fn gui_scale_minimum_on_high_dpi_relayouts_cached_native_hud() {
         ..Default::default()
     };
     let mut app = settings_app(false, None);
-    app.insert_resource(presentation);
+    app.insert_resource(UiPresentationResource(presentation));
     let physical = [1280, 720];
     {
         let world = app.world_mut();
@@ -383,8 +393,8 @@ fn gui_scale_minimum_on_high_dpi_relayouts_cached_native_hud() {
             .activate(MenuAction::SettingsScale(offset));
         app.update();
         app.world_mut().resource_scope(
-            |world, mut presentation: bevy::prelude::Mut<UiPresentationRuntime>| {
-                let player_runtime = world.resource::<crate::player_runtime::PlayerRuntime>();
+            |world, mut presentation: bevy::prelude::Mut<UiPresentationResource>| {
+                let player_runtime = world.resource::<client_state::PlayerRuntime>();
                 let passes = presentation.hud_passes();
                 let input = presentation
                     .build(

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net"
 
-	"github.com/hashimthearab/rust-mcbe/core/store"
 	"github.com/sandertv/gophertunnel/minecraft/service/marketplace"
 )
 
@@ -17,7 +16,6 @@ const (
 	methodStoreBalance      = "store_balance.v1"
 	methodStoreEntitlements = "store_entitlements.v1"
 	methodStorePurchase     = "store_purchase.v1"
-	methodStoreImage        = "store_image.v1"
 	methodStoreRowMore      = "store_row_more.v1"
 
 	codePurchaseBusy   = -32031
@@ -27,21 +25,136 @@ const (
 	defaultStorePage = marketplace.PageStoreRoot
 )
 
-// Marketplace is the Minecraft Marketplace service behind the store_* methods; *store.Session implements it.
+var (
+	// ErrStoreInvalidRequest reports store parameters that fail validation before any network call.
+	ErrStoreInvalidRequest = errors.New("control: invalid store request")
+	// ErrPurchaseBusy reports a purchase of the same offer still in flight or unresolved.
+	ErrPurchaseBusy = errors.New("control: purchase in progress")
+	// ErrPurchaseReused reports a purchase_id replayed with different parameters.
+	ErrPurchaseReused = errors.New("control: purchase id reused")
+)
+
+// Marketplace is the Minecraft Marketplace service behind the store_* methods. Offer and
+// MoreOffers report ErrStoreInvalidRequest for a malformed id or token before any network call.
 type Marketplace interface {
-	Home(ctx context.Context, page string) (store.Page, error)
-	Search(ctx context.Context, q store.SearchQuery) (store.SearchResults, error)
-	Offer(ctx context.Context, id string) (store.OfferDetail, error)
-	Balances(ctx context.Context) ([]store.Balance, error)
-	Entitlements(ctx context.Context, offset, limit int, refresh bool) (store.Entitlements, error)
-	MoreOffers(ctx context.Context, token string) (store.RowMore, error)
-	Purchase(ctx context.Context, r store.PurchaseRequest) (store.PurchaseResult, error)
-	Image(ctx context.Context, rawURL string) (store.Image, error)
+	Home(ctx context.Context, page string) (StorePage, error)
+	Search(ctx context.Context, q StoreSearchQuery) (StoreSearchResults, error)
+	Offer(ctx context.Context, id string) (StoreOfferDetail, error)
+	Balances(ctx context.Context) ([]StoreBalance, error)
+	Entitlements(ctx context.Context, offset, limit int, refresh bool) (StoreEntitlements, error)
+	MoreOffers(ctx context.Context, token string) (StoreRowMore, error)
+	Purchase(ctx context.Context, r StorePurchaseRequest) (StorePurchaseResult, error)
+}
+
+// StorePrice is one currency amount an offer costs; Currency is the service's own identifier.
+type StorePrice struct {
+	Currency string `json:"currency"`
+	Amount   int64  `json:"amount"`
+}
+
+// StoreRating is an offer's aggregate star rating.
+type StoreRating struct {
+	Average float64 `json:"average"`
+	Count   int     `json:"count"`
+}
+
+// StoreOffer is one store listing as shown in a row, grid or search result.
+type StoreOffer struct {
+	ID           string       `json:"id"`
+	Title        string       `json:"title"`
+	Creator      string       `json:"creator,omitempty"`
+	ContentType  string       `json:"content_type,omitempty"`
+	ThumbnailURL string       `json:"thumbnail_url,omitempty"`
+	StoreID      string       `json:"store_id,omitempty"`
+	Prices       []StorePrice `json:"prices,omitempty"`
+	Rating       *StoreRating `json:"rating,omitempty"`
+	Tags         []string     `json:"tags,omitempty"`
+	Owned        bool         `json:"owned"`
+}
+
+// StoreOfferDetail is an offer plus the fields only the detail screen shows.
+type StoreOfferDetail struct {
+	StoreOffer
+	Description    string   `json:"description,omitempty"`
+	ScreenshotURLs []string `json:"screenshot_urls,omitempty"`
+	DisplayVersion string   `json:"display_version,omitempty"`
+	Platforms      []string `json:"platforms,omitempty"`
+}
+
+// StoreRow is one titled strip of offers on a store page.
+type StoreRow struct {
+	ID           string       `json:"id,omitempty"`
+	Title        string       `json:"title,omitempty"`
+	Kind         string       `json:"kind,omitempty"`
+	Offers       []StoreOffer `json:"offers"`
+	Continuation string       `json:"continuation,omitempty"` // token for row_more, when the row has more offers
+}
+
+// StoreRowMore is the next slice of a row's offers.
+type StoreRowMore struct {
+	Offers       []StoreOffer `json:"offers"`
+	Continuation string       `json:"continuation,omitempty"`
+}
+
+// StorePage is a server-driven store page reduced to the rows the client draws.
+type StorePage struct {
+	ID               string     `json:"id"`
+	Rows             []StoreRow `json:"rows"`
+	InventoryVersion string     `json:"inventory_version,omitempty"`
+	Truncated        bool       `json:"truncated,omitempty"`
+}
+
+// StoreSearchQuery is a store search, or the continuation of one.
+type StoreSearchQuery struct {
+	Term         string
+	Continuation string
+}
+
+// StoreSearchResults is one page of search results.
+type StoreSearchResults struct {
+	Offers       []StoreOffer `json:"offers"`
+	Continuation string       `json:"continuation,omitempty"`
+	Truncated    bool         `json:"truncated,omitempty"`
+}
+
+// StoreBalance is one virtual currency balance.
+type StoreBalance struct {
+	Currency string `json:"currency"`
+	Amount   int64  `json:"amount"`
+}
+
+// StoreEntitlements is a window of the account's owned content ids.
+type StoreEntitlements struct {
+	Owned            []string `json:"owned"`
+	Total            int      `json:"total"`
+	Offset           int      `json:"offset"`
+	InventoryVersion string   `json:"inventory_version,omitempty"`
+}
+
+// StorePurchaseRequest is one Minecoin purchase the player explicitly confirmed.
+type StorePurchaseRequest struct {
+	PurchaseID          string // client-generated idempotency key
+	OfferID             string
+	StoreID             string
+	Currency            string
+	Amount              string // decimal digits
+	UnitDurationSeconds *uint64
+	Confirmed           bool
+}
+
+// StorePurchaseResult is the recorded outcome of one purchase attempt.
+type StorePurchaseResult struct {
+	Status               string `json:"status"`
+	HTTPStatus           int    `json:"http_status,omitempty"`
+	MarketplaceErrorCode int    `json:"marketplace_error_code,omitempty"`
+	CorrelationID        string `json:"correlation_id"`
+	InventoryVersion     string `json:"inventory_version,omitempty"`
+	Replayed             bool   `json:"replayed,omitempty"`
 }
 
 var storeMethods = map[string]struct{}{
 	methodStoreHome: {}, methodStoreSearch: {}, methodStoreOffer: {},
-	methodStoreBalance: {}, methodStoreEntitlements: {}, methodStorePurchase: {}, methodStoreImage: {}, methodStoreRowMore: {},
+	methodStoreBalance: {}, methodStoreEntitlements: {}, methodStorePurchase: {}, methodStoreRowMore: {},
 }
 
 func isStoreMethod(method string) bool {
@@ -63,43 +176,38 @@ func (server *Server) marketplaceService() Marketplace {
 }
 
 type storeHomeResultV1 struct {
-	SchemaVersion uint32     `json:"schema_version"`
-	Page          store.Page `json:"page"`
+	SchemaVersion uint32    `json:"schema_version"`
+	Page          StorePage `json:"page"`
 }
 
 type storeSearchResultV1 struct {
 	SchemaVersion uint32 `json:"schema_version"`
-	store.SearchResults
+	StoreSearchResults
 }
 
 type storeOfferResultV1 struct {
-	SchemaVersion uint32            `json:"schema_version"`
-	Offer         store.OfferDetail `json:"offer"`
+	SchemaVersion uint32           `json:"schema_version"`
+	Offer         StoreOfferDetail `json:"offer"`
 }
 
 type storeBalanceResultV1 struct {
-	SchemaVersion uint32          `json:"schema_version"`
-	Balances      []store.Balance `json:"balances"`
+	SchemaVersion uint32         `json:"schema_version"`
+	Balances      []StoreBalance `json:"balances"`
 }
 
 type storeEntitlementsResultV1 struct {
 	SchemaVersion uint32 `json:"schema_version"`
-	store.Entitlements
+	StoreEntitlements
 }
 
 type storeRowMoreResultV1 struct {
 	SchemaVersion uint32 `json:"schema_version"`
-	store.RowMore
-}
-
-type storeImageResultV1 struct {
-	SchemaVersion uint32      `json:"schema_version"`
-	Image         store.Image `json:"image"`
+	StoreRowMore
 }
 
 type storePurchaseResultV1 struct {
 	SchemaVersion uint32 `json:"schema_version"`
-	store.PurchaseResult
+	StorePurchaseResult
 }
 
 func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw json.RawMessage) error {
@@ -115,20 +223,17 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 		switch {
 		case errors.Is(err, ErrSignedOut):
 			return reply.fail(codeSignedOut, "Not signed in")
-		case errors.Is(err, store.ErrInvalidRequest), errors.Is(err, store.ErrImageRejected):
+		case errors.Is(err, ErrStoreInvalidRequest):
 			return reply.invalid()
-		case errors.Is(err, store.ErrPurchaseBusy):
+		case errors.Is(err, ErrPurchaseBusy):
 			return reply.fail(codePurchaseBusy, "Purchase in progress")
-		case errors.Is(err, store.ErrPurchaseReused):
+		case errors.Is(err, ErrPurchaseReused):
 			return reply.fail(codePurchaseReused, "Purchase id reused")
 		case errors.Is(err, marketplace.ErrUnknownPage):
 			server.logServiceFailure(method, err) // names the page keys the session config offers
 			return reply.fail(codeStoreNotFound, "Unknown page")
 		}
-		// Thumbnail misses are per image and bounded by the client; everything else names why the store failed.
-		if method != methodStoreImage {
-			server.logServiceFailure(method, err)
-		}
+		server.logServiceFailure(method, err)
 		return reply.fail(codeServiceFailed, "Service unavailable")
 	}
 	switch method {
@@ -148,7 +253,7 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 			return failStore(err)
 		}
 		if result.Rows == nil {
-			result.Rows = []store.Row{}
+			result.Rows = []StoreRow{}
 		}
 		result = fitPage(result)
 		return reply.ok(storeHomeResultV1{SchemaVersion: 1, Page: result})
@@ -160,22 +265,22 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 		if !decodeParams(raw, &params) {
 			return reply.invalid()
 		}
-		result, err := market.Search(ctx, store.SearchQuery{
+		result, err := market.Search(ctx, StoreSearchQuery{
 			Term: params.Term, Continuation: params.Continuation,
 		})
 		if err != nil {
 			return failStore(err)
 		}
 		if result.Offers == nil {
-			result.Offers = []store.Offer{}
+			result.Offers = []StoreOffer{}
 		}
 		result = fitSearch(result)
-		return reply.ok(storeSearchResultV1{SchemaVersion: 1, SearchResults: result})
+		return reply.ok(storeSearchResultV1{SchemaVersion: 1, StoreSearchResults: result})
 	case methodStoreOffer:
 		var params struct {
 			OfferID *string `json:"offer_id"`
 		}
-		if !decodeParams(raw, &params) || params.OfferID == nil || !store.ValidOfferID(*params.OfferID) {
+		if !decodeParams(raw, &params) || params.OfferID == nil {
 			return reply.invalid()
 		}
 		result, err := market.Offer(ctx, *params.OfferID)
@@ -192,7 +297,7 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 			return failStore(err)
 		}
 		if balances == nil {
-			balances = []store.Balance{}
+			balances = []StoreBalance{}
 		}
 		return reply.ok(storeBalanceResultV1{SchemaVersion: 1, Balances: balances})
 	case methodStoreEntitlements:
@@ -209,12 +314,12 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 			return failStore(err)
 		}
 		result.Owned = fitOwned(result.Owned)
-		return reply.ok(storeEntitlementsResultV1{SchemaVersion: 1, Entitlements: result})
+		return reply.ok(storeEntitlementsResultV1{SchemaVersion: 1, StoreEntitlements: result})
 	case methodStoreRowMore:
 		var params struct {
 			Continuation *string `json:"continuation"`
 		}
-		if !decodeParams(raw, &params) || params.Continuation == nil || !store.ValidContinuation(*params.Continuation) {
+		if !decodeParams(raw, &params) || params.Continuation == nil {
 			return reply.invalid()
 		}
 		result, err := market.MoreOffers(ctx, *params.Continuation)
@@ -222,21 +327,9 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 			return failStore(err)
 		}
 		if result.Offers == nil {
-			result.Offers = []store.Offer{}
+			result.Offers = []StoreOffer{}
 		}
-		return reply.ok(storeRowMoreResultV1{SchemaVersion: 1, RowMore: result})
-	case methodStoreImage:
-		var params struct {
-			URL *string `json:"url"`
-		}
-		if !decodeParams(raw, &params) || params.URL == nil {
-			return reply.invalid()
-		}
-		result, err := market.Image(ctx, *params.URL)
-		if err != nil {
-			return failStore(err)
-		}
-		return reply.ok(storeImageResultV1{SchemaVersion: 1, Image: result})
+		return reply.ok(storeRowMoreResultV1{SchemaVersion: 1, StoreRowMore: result})
 	case methodStorePurchase:
 		var params struct {
 			PurchaseID          *string `json:"purchase_id"`
@@ -251,7 +344,7 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 			params.Currency == nil || params.Amount == nil || params.Confirmed == nil || !*params.Confirmed {
 			return reply.invalid()
 		}
-		result, err := market.Purchase(ctx, store.PurchaseRequest{
+		result, err := market.Purchase(ctx, StorePurchaseRequest{
 			PurchaseID: *params.PurchaseID, OfferID: *params.OfferID, StoreID: params.StoreID,
 			Currency: *params.Currency, Amount: *params.Amount,
 			UnitDurationSeconds: params.UnitDurationSeconds, Confirmed: true,
@@ -259,7 +352,7 @@ func (server *Server) serveStore(conn net.Conn, id uint64, method string, raw js
 		if err != nil {
 			return failStore(err)
 		}
-		return reply.ok(storePurchaseResultV1{SchemaVersion: 1, PurchaseResult: result})
+		return reply.ok(storePurchaseResultV1{SchemaVersion: 1, StorePurchaseResult: result})
 	}
 	return reply.fail(-32601, "Method not found")
 }
@@ -276,7 +369,7 @@ func encodedLen(v any) int {
 }
 
 // fitPage drops trailing offers and rows until the page fits one control frame.
-func fitPage(page store.Page) store.Page {
+func fitPage(page StorePage) StorePage {
 	for encodedLen(page) > frameBudget && len(page.Rows) > 0 {
 		page.Truncated = true
 		last := &page.Rows[len(page.Rows)-1]
@@ -289,7 +382,7 @@ func fitPage(page store.Page) store.Page {
 	return page
 }
 
-func fitSearch(r store.SearchResults) store.SearchResults {
+func fitSearch(r StoreSearchResults) StoreSearchResults {
 	for encodedLen(r) > frameBudget && len(r.Offers) > 0 {
 		r.Truncated = true
 		r.Offers = r.Offers[:len(r.Offers)-1]

@@ -1,12 +1,13 @@
 //! Own last-forwarded position, smoothed for display without predicting beyond the sample.
 
 use super::packet_delay::RealPositionSnapshot;
-use crate::{
-    app::ClientFrameSet, camera::FlyCamera, menu::MenuRuntime, runtime::world::ClientWorld,
-};
 use bevy::prelude::*;
-use client_ui::ui_runtime::UiRuntime;
-use render::ModRenderScene;
+use client_shell::ui_resources::UiRuntimeResource;
+use render_scene::ModRenderScene;
+use {
+    crate::runtime::world::ClientWorld, client_presentation::camera::FlyCamera,
+    client_shell::menu::MenuRuntime, client_state::ClientFrameSet,
+};
 
 pub(super) fn configure(app: &mut App) {
     app.add_systems(
@@ -62,8 +63,8 @@ pub(crate) fn publish(
     snapshot: Option<Res<RealPositionSnapshot>>,
     world: Option<Res<ClientWorld>>,
     menu: Option<Res<MenuRuntime>>,
-    ui: Option<Res<UiRuntime>>,
-    player: Option<Res<crate::player_runtime::PlayerRuntime>>,
+    ui: Option<Res<UiRuntimeResource>>,
+    player: Option<Res<client_state::PlayerRuntime>>,
     time: Option<Res<Time>>,
     cameras: Query<&Transform, With<FlyCamera>>,
     mut smooth: Local<SmoothedPosition>,

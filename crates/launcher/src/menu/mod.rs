@@ -5,12 +5,14 @@ pub mod death;
 pub mod disconnect;
 pub mod inbox;
 pub mod invite;
+pub mod join_progress;
 pub mod join_requests;
 pub mod profile;
 pub mod profile_achievements;
 pub mod realm_membership;
 pub mod server_list;
 pub mod settings_options;
+pub mod settings_sections;
 pub mod settings_storage;
 pub mod settings_support;
 pub mod sign_in;
@@ -21,10 +23,11 @@ pub use profile::{
     ProfileTab, profile_banner_index, profile_count_display, profile_minutes_display,
 };
 pub use view::{
-    ButtonArt, CatalogFile, CatalogFriend, EXPERIENCE_ADDRESS_PREFIX, FRIEND_ADDRESS_PREFIX,
-    InboxItem, JoinKind, JoinProgress, JoinStage, LiveEventCard, LocalWorldCard, MenuCaret,
-    MenuFeeds, MenuFriendCard, MenuGameCard, MenuHome, MenuProfile, MenuRealmCard, MenuServerCard,
-    MenuView, PingInfo, SavedServer, ServerDetails, ServerTrustPrompt, pingable,
+    ButtonArt, CatalogFile, CatalogFriend, CatalogServer, EXPERIENCE_ADDRESS_PREFIX,
+    FRIEND_ADDRESS_PREFIX, InboxItem, JoinKind, JoinProgress, JoinStage, LiveEventCard,
+    LocalWorldCard, MenuCaret, MenuFeeds, MenuFriendCard, MenuGameCard, MenuHome, MenuProfile,
+    MenuRealmCard, MenuServerCard, MenuView, PingInfo, SavedServer, ServerDetails,
+    ServerTrustPrompt, pingable,
 };
 pub use worlds_tab::{LocalWorldAction, civil_date, file_size};
 
@@ -80,6 +83,8 @@ pub enum MenuField {
     WorldSeed,
     SkinName,
     RealmCode,
+    /// One command macro slot's command box.
+    MacroCommand(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -131,6 +136,8 @@ pub enum MenuAction {
     SettingsKey(u16),
     SettingsResetKey(u16),
     SettingsResetBindings(bool),
+    /// Presses a command macro's command text box.
+    SettingsMacroCommand(usize),
     SettingsResetGroup(settings_options::SettingsGroup),
     SettingsConfirmResetBindings(bool),
     SettingsConfirmResetGroup(settings_options::SettingsGroup),
@@ -179,6 +186,7 @@ impl MenuAction {
     /// The text field a press on this control focuses.
     pub fn text_field(self) -> Option<MenuField> {
         match self {
+            Self::SettingsMacroCommand(slot) => Some(MenuField::MacroCommand(slot)),
             Self::RealmMembership(realm_membership::Action::EditCode) => Some(MenuField::RealmCode),
             Self::AddName => Some(MenuField::Name),
             Self::AddAddress => Some(MenuField::Address),
@@ -188,6 +196,11 @@ impl MenuAction {
             _ => None,
         }
     }
+}
+
+/// Joining the featured-list entry at `index`.
+pub fn play_featured(view: &MenuView, index: usize) -> Option<MenuAction> {
+    (index < view.featured.len()).then_some(MenuAction::PlayFeatured(index))
 }
 
 /// The vanilla screen family used by both menu history and scene composition.
@@ -235,3 +248,8 @@ pub fn split_address(address: &str) -> (String, String) {
 
 #[cfg(test)]
 mod address_tests;
+
+/// Maximum saved server name size in UTF-8 bytes.
+pub const MAX_SERVER_NAME_BYTES: usize = 64;
+/// Maximum saved server address size in UTF-8 bytes.
+pub const MAX_SERVER_ADDRESS_BYTES: usize = 128;

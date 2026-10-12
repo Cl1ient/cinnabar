@@ -2,12 +2,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use client_world::ActorRigSnapshot;
-use render::{
+use actor_animation::ActorRigSnapshot;
+use render_model::ActorRigGeometry;
+use render_model::{
     ACTOR_LAYER_BODY, ActorArtworkLocation, ActorArtworkPages, ActorRigRoute, ActorRigSubmission,
     EquipmentRaster,
 };
-use render_model::ActorRigGeometry;
 
 use super::{
     actors::ActorPresentationBatch, entity_layers::LayerPoseCache, skin_rig::SkinRigCache,
@@ -18,7 +18,8 @@ pub const SKIN_LAYER_BASE: u8 = super::cape::ACTOR_LAYER_CAPE + 1;
 
 /// Whether an instance belongs to a player's animated skin, rather than equipment.
 pub fn is_skin_layer(layer: u8) -> bool {
-    (SKIN_LAYER_BASE..SKIN_LAYER_BASE + protocol::MAX_SKIN_ANIMATION_LAYERS as u8).contains(&layer)
+    (SKIN_LAYER_BASE..SKIN_LAYER_BASE + render_api::MAX_SKIN_ANIMATION_LAYERS as u8)
+        .contains(&layer)
 }
 
 /// Texture pages and converted poses retained while the same skin images remain selected.
@@ -62,7 +63,7 @@ fn same_image(left: &EquipmentRaster, right: &EquipmentRaster) -> bool {
 }
 
 /// Keeps source dimensions exact when an animation image fits the artwork page format.
-fn image_raster(image: &protocol::SkinAnimation) -> Option<EquipmentRaster> {
+fn image_raster(image: &render_api::SkinAnimation) -> Option<EquipmentRaster> {
     Some(EquipmentRaster {
         width: u16::try_from(image.width).ok()?,
         height: u16::try_from(image.height).ok()?,

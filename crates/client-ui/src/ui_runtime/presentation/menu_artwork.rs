@@ -1,6 +1,6 @@
 //! Bounded decoding and atlas packing for service-provided launcher artwork.
 //!
-//! The authenticated Go catalog downloads remote images into the local cache.
+//! Launcher art arrives as files from the remote image cache or the core's rendered persona art.
 //! This module treats those files as untrusted input: reads, decoded dimensions,
 //! allocation and output pages are all capped before artwork enters the
 //! retained UI texture array's full-resolution art pages.
@@ -17,17 +17,17 @@ use crossbeam_channel::{Receiver, Sender};
 
 use image::{ImageReader, Limits, imageops::FilterType};
 
-use super::IconRef;
 use super::UiPresentationRuntime;
+use ui::IconRef;
+use ui_engine::pages::WHOLE_ART_PAGE;
 
 mod skin_previews;
 use skin_previews::SkinArtwork;
-pub(crate) use skin_previews::thumbnail_key;
 mod cape_previews;
 mod packing;
 mod request_cache;
 use cape_previews::CapeArtwork;
-pub(crate) use cape_previews::{cape_texture_key, cape_thumbnail_key};
+pub(crate) use cape_previews::cape_texture_key;
 use packing::pack;
 
 use launcher::accounts::MAX_ARTWORK_BYTES as MAX_SOURCE_BYTES;
@@ -40,7 +40,6 @@ const MAX_WORKING_ALLOC: u64 = MAX_DECODE_ALLOC * 2;
 const MAX_ARTWORK_SIDE: u32 = 512;
 const SERVER_BANNER_SIDE: u32 = 960;
 const SERVER_ACTIVITY_SIDE: u32 = 256;
-const GUTTER: u32 = 1;
 const MAX_ARTWORKS: usize = 64;
 /// Longest side kept for a list thumbnail (server logos, gamerpics, badges), so
 /// a whole featured list fits the art pages beside banners.
@@ -49,13 +48,9 @@ pub const THUMBNAIL_SIDE: u32 = 128;
 /// keep 16:9 art several to a 1024 art page next to the title, so a screen's images all pack.
 const STORE_CARD_SIDE: u32 = 192;
 const STORE_FEATURE_SIDE: u32 = 480;
-/// The start screen's title texture, which Cinnabar's own logo replaces.
-pub(super) const TITLE_KEY: &str = "textures/ui/title";
 /// Prefix of a server-pack texture's full-resolution copy on the art pages, so
 /// a pack's `textures/ui/title` never collides with Cinnabar's logo.
 pub(super) const SERVER_ART_PREFIX: &str = "server-pack:";
-/// Cinnabar's logo; the pack's title draws only if this fails to decode.
-pub const BUILT_IN_TITLE: &[u8] = include_bytes!("../../../../../assets/branding/title.png");
 
 #[derive(Default)]
 pub(super) struct MenuArtworkAtlas {
@@ -134,7 +129,7 @@ impl Default for ArtworkLoader {
             .name("menu-artwork".to_owned())
             .spawn(move || serve(&jobs, &done));
         if let Err(error) = spawned {
-            bevy::log::warn!("menu artwork worker unavailable: {error}");
+            tracing::warn!("menu artwork worker unavailable: {error}");
         }
         // The title is packed before the first frame so the pack's own never flashes.
         let title = pack(&ArtworkSet::default(), &DecodeCache::default(), 0, true);
@@ -290,13 +285,15 @@ impl Source {
             Self::File(path, side) => (path.clone(), *side, None),
             Self::Bytes(key, bytes) => {
                 use sha2::{Digest, Sha256};
-                (key.clone(), WHOLE_PAGE, Some(Sha256::digest(bytes).into()))
+                (
+                    key.clone(),
+                    WHOLE_ART_PAGE,
+                    Some(Sha256::digest(bytes).into()),
+                )
             }
         }
     }
 }
-
-const WHOLE_PAGE: u32 = render_model::UI_ART_PAGE_SIDE - GUTTER * 2;
 
 impl DecodeCache {
     fn missing(&self, set: &ArtworkSet) -> Vec<Source> {
@@ -318,7 +315,7 @@ impl DecodeCache {
                     Source::Skin(skin) => skin.decode(),
                     Source::Cape(cape) => cape.decode(),
                     Source::File(path, side) => decode(Path::new(path), *side),
-                    Source::Bytes(_, bytes) => decode_bytes(bytes, WHOLE_PAGE),
+                    Source::Bytes(_, bytes) => decode_bytes(bytes, WHOLE_ART_PAGE),
                 };
                 (source.key(), art)
             })
@@ -483,14 +480,14 @@ fn decode_bytes(bytes: &[u8], max_side: u32) -> Option<(Vec<u8>, u32, u32)> {
 }
 
 /// Every downloaded artwork path the menu view can draw.
-pub fn view_paths(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
-    if view.screen == crate::menu::MenuScreen::DressingRoom {
+pub fn view_paths(view: &launcher::menu::MenuView) -> Vec<(String, u32)> {
+    if view.screen == launcher::menu::MenuScreen::DressingRoom {
         return Vec::new();
     }
-    if view.screen == crate::menu::MenuScreen::Profile {
+    if view.screen == launcher::menu::MenuScreen::Profile {
         return profile_art(view);
     }
-    if view.screen == crate::menu::MenuScreen::Store {
+    if view.screen == launcher::menu::MenuScreen::Store {
         return store_art(view);
     }
     // The invite screen draws only its friends' gamerpics, online list first.
@@ -517,7 +514,7 @@ pub fn view_paths(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
                 .accounts
                 .iter()
                 .filter(|account| {
-                    view.dialog == Some(crate::menu::MenuDialog::Accounts)
+                    view.dialog == Some(launcher::menu::MenuDialog::Accounts)
                         || view.feeds.account_active_id.as_deref() == Some(account.id.as_str())
                 })
                 .filter_map(|account| account.picture_path.clone()),
@@ -534,7 +531,7 @@ pub fn view_paths(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
             view.feeds.profile.featured_screenshot_path.clone(),
         ))
         .map(|path| (path, MAX_ARTWORK_SIDE));
-    if view.screen == crate::menu::MenuScreen::Servers {
+    if view.screen == launcher::menu::MenuScreen::Servers {
         let server_art = selected.into_iter().flat_map(|details| {
             let side = if details.games.len() > 8 {
                 192
@@ -570,7 +567,7 @@ pub fn view_paths(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
 
 /// Queues Profile card art first, followed by only the achievements Overview draws.
 /// The Marketplace draws only its offer art, so the start screen's art does not take its pages.
-fn store_art(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
+fn store_art(view: &launcher::menu::MenuView) -> Vec<(String, u32)> {
     let Some(store) = view.store.as_deref() else {
         return Vec::new();
     };
@@ -589,7 +586,7 @@ fn store_art(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
         .collect()
 }
 
-fn profile_art(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
+fn profile_art(view: &launcher::menu::MenuView) -> Vec<(String, u32)> {
     let profile = &view.feeds.profile;
     let mut paths = vec![
         (profile.avatar_path.clone(), MAX_ARTWORK_SIDE),
@@ -597,12 +594,12 @@ fn profile_art(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
         (profile.picture_path.clone(), THUMBNAIL_SIDE),
         (view.feeds.home.persona_head.clone(), THUMBNAIL_SIDE),
     ];
-    if view.profile_tab == crate::menu::ProfileTab::Overview
+    if view.profile_tab == launcher::menu::ProfileTab::Overview
         && profile.achievements_loaded
         && !profile.achievements_error
         && let Some(summary) = &profile.achievements
     {
-        let sections = crate::menu::profile_achievements::visible_achievements(&summary.entries);
+        let sections = launcher::menu::profile_achievements::visible_achievements(&summary.entries);
         paths.extend(
             sections
                 .into_iter()
@@ -615,7 +612,7 @@ fn profile_art(view: &crate::menu::MenuView) -> Vec<(String, u32)> {
 }
 
 /// The start screen's service art: messaging tile layers, the event badge and the persona head.
-fn home_art(home: &crate::menu::MenuHome) -> Vec<String> {
+fn home_art(home: &launcher::menu::MenuHome) -> Vec<String> {
     let mut paths = vec![home.persona_head.clone()];
     for art in [&home.play_art, &home.store_art].into_iter().flatten() {
         paths.extend([

@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, assets::BlockFace};
 
 pub(super) fn descriptor_for(
     fallback: &visuals::fallback::FallbackInventory,
@@ -6,6 +6,9 @@ pub(super) fn descriptor_for(
     record: &RegistryRecord,
     face: BlockFace,
 ) -> Option<(Descriptor, Box<str>)> {
+    if visuals::barrel::is_record(record) {
+        return visuals::barrel::descriptor(pack, record, face);
+    }
     let TextureKey { key, rotate_uv } = resolve_texture_key(&pack.blocks, record, face);
     let key = key?;
     let (path, state_variant) = if is_model_visual(record) {
@@ -31,11 +34,23 @@ pub(super) fn descriptor_for(
     {
         flags |= pack.blocks.isotropic_face_flags(record)[face as usize];
     }
-    if visuals::end_portal_frame::is_record(record)
+    if crate::respawn_anchor::is_record(record)
+        || visuals::shelf::is_record(record)
+        || visuals::sea_pickle::is_record(record)
+        || visuals::brewing_stand::is_record(record)
+        || visuals::grindstone::is_record(record)
+        || visuals::tripwire_hook::is_record(record)
+        || visuals::end_portal_frame::is_record(record)
+        || visuals::end_rod::is_record(record)
+        || visuals::lightning_rod::is_record(record)
         || visuals::bamboo::is_record(record)
         || matches!(
             record.name.as_ref(),
-            "minecraft:flower_pot" | "minecraft:lantern" | "minecraft:soul_lantern"
+            "minecraft:flower_pot"
+                | "minecraft:lantern"
+                | "minecraft:soul_lantern"
+                | "minecraft:azalea"
+                | "minecraft:flowering_azalea"
         )
     {
         flags |= MATERIAL_FLAG_ALPHA_CUTOUT;
@@ -84,6 +99,8 @@ pub(super) fn descriptor_for(
     Some((
         Descriptor {
             state_variant,
+            flipbook_selector: crate::respawn_anchor::is_record(record)
+                .then_some((state_variant, state_variant)),
             path: path.into(),
             texture_key: key.clone(),
             flags,

@@ -1,10 +1,10 @@
 use crate::{gpu_snapshot, shader_source};
+use wgpu::util::DeviceExt;
 
 use assets::ResolvedFog;
 use bevy::math::{Mat4, Vec3};
 use gpu_snapshot::{Draw, Gpu, SNAPSHOT_SIDE};
-use render::{AtmosphereFrame, SkyKind};
-use wgpu::util::DeviceExt;
+use render_scene::{AtmosphereFrame, SkyKind};
 
 fn texture(gpu: &Gpu, size: [u32; 2], pixels: &[u8]) -> wgpu::TextureView {
     gpu.device
@@ -85,7 +85,7 @@ fn end_sky_multiplies_texture_by_resolved_fog_in_gamma_space() {
     else {
         return;
     };
-    let source = shader_source::standalone(include_str!("../../src/atmosphere.wgsl"), &[]);
+    let source = shader_source::standalone(include_str!("../../src/atmosphere.wesl"), &[]);
     let view = gpu.buffer(
         &gpu_snapshot::view(Mat4::IDENTITY, Vec3::ZERO),
         wgpu::BufferUsages::UNIFORM,
@@ -210,7 +210,7 @@ fn end_sky_repeats_the_pack_texture_on_all_six_world_aligned_faces() {
         }
     }
     let count = rays.len() / 4;
-    let mut source = shader_source::standalone(include_str!("../../src/atmosphere.wgsl"), &[]);
+    let mut source = shader_source::standalone(include_str!("../../src/atmosphere.wesl"), &[]);
     source.push_str(&format!(
         "\n@vertex fn face_probe_vertex(@builtin(vertex_index) index: u32) -> VertexOutput {{
             let p = vec2(f32(index & 1u), f32((index >> 1u) & 1u)) * 4.0 - vec2(1.0);

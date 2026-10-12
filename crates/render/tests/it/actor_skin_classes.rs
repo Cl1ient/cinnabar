@@ -1,9 +1,9 @@
 //! Skins drawn from their native-resolution class arrays match the standard-raster array.
 use crate::gpu_snapshot;
 
-use bevy::math::{Mat4, Vec3};
+use bevy::math::Vec3;
 use gpu_snapshot::{Draw, Gpu};
-use render::ActorGpuInstance;
+use render_model::ActorGpuInstance;
 use render_model::{ActorRigVertex, EntityRigId, STANDARD_SKIN_SIDE};
 
 fn box_uv_cube() -> Vec<ActorRigVertex> {
@@ -94,8 +94,8 @@ fn raster(
     layer: u32,
 ) -> Vec<u8> {
     let eye = Vec3::new(0.45, 0.7, 0.55);
-    let clip = Mat4::perspective_infinite_reverse_rh(1.0, 1.0, 0.05)
-        * Mat4::look_at_rh(eye, Vec3::new(0.0, 0.25, 0.0), Vec3::Y);
+    let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(1.0, 1.0, 0.05)
+        * glam::camera::rh::view::look_at_mat4(eye, Vec3::new(0.0, 0.25, 0.0), Vec3::Y);
     let view = gpu.buffer(&gpu_snapshot::view(clip, eye), wgpu::BufferUsages::UNIFORM);
     let affine = [
         [1.0, 0.0, 0.0, 0.0],
@@ -105,8 +105,8 @@ fn raster(
     let instance = ActorGpuInstance {
         world_from_actor: affine,
         partial_tick: 1.0,
-        uv_anim: render::IDENTITY_UV_ANIM,
-        light: render::pack_actor_light(15, 15),
+        uv_anim: render_model::IDENTITY_UV_ANIM,
+        light: render_model::pack_actor_light(15, 15),
         multitexture_layers: [u32::MAX; 2],
         texture_layer: layer,
         dissolve_multiplier: 1.0,
@@ -201,16 +201,20 @@ fn native_class_arrays_draw_the_same_pixels_as_the_standard_raster() {
         // Every other binding holds a black decoy, so only the class array can match.
         let mut views = [&decoy; 4];
         views[class] = &small;
-        let drawn = raster(&gpu, &cube, views, render::pack_skin_slot(class, 0));
+        let drawn = raster(&gpu, &cube, views, render_model::pack_skin_slot(class, 0));
         let background = &reference[..4];
         let covered = reference
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|pixel| *pixel != background)
             .count();
         assert!(covered > 5_000, "{side}-texel cube covers {covered} pixels");
         let differing = reference
-            .chunks_exact(4)
-            .zip(drawn.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(drawn.as_chunks::<4>().0.iter())
             .filter(|(a, b)| a != b)
             .count();
         assert_eq!(

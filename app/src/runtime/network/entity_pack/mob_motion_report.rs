@@ -2,17 +2,19 @@
 //! PNGs and a pose trace stay in the caller's scratch directory; no server/world is touched.
 use std::{path::Path, sync::Arc};
 
+use actor_animation::BoneTransform;
 use assets::RuntimeEntityAssets;
 use bevy::prelude::*;
 use chunk_pipeline::WorldStream;
-use client_world::BoneTransform;
 use protocol::{
     ActorEvent, ActorKind, ActorMoveEvent, ActorPositionOrigin, ActorSpawnEvent, WorldEvent,
 };
-use render::{ActorArtworkPages, ActorRenderFrame, ActorRenderScene};
+use {
+    render_model::ActorArtworkPages,
+    render_scene::{ActorRenderFrame, ActorRenderScene},
+};
 
 use super::render_report::world_for;
-use crate::presentation::{actors, entity_layers};
 
 mod gait;
 mod gpu;
@@ -208,7 +210,7 @@ fn vanilla_mob_motion_on_native_gpu() {
             "source_manifest": serde_json::from_slice::<serde_json::Value>(include_bytes!(
                 "../../../../../assets/vanilla-source.json"
             )).unwrap(),
-            "actor_tick_seconds": client_world::ACTOR_TICK_DURATION.as_secs_f32(),
+            "actor_tick_seconds": simulation_clock::TICK_DURATION.as_secs_f32(),
             "walking_packets_per_tick": 1,
             "slow_blocks_per_tick": SLOW_STEP,
             "fast_blocks_per_tick": FAST_STEP,
@@ -321,11 +323,22 @@ fn publish(
             "{} has no compiled pose bones",
             SPECIES[index]
         );
-        actors::entity_rig_presentation(&rig, world.authority().actor(id).unwrap(), artwork, 1.0)
-            .expect("drawable vanilla body")
+        client_presentation::presentation::actors::entity_rig_presentation(
+            &rig,
+            world.authority().actor(id).unwrap(),
+            artwork,
+            1.0,
+        )
+        .expect("drawable vanilla body")
     });
-    let mut batch = actors::select_actor_presentations(1, false, None, bodies);
-    entity_layers::apply_render_layers(&mut batch, |id| world.authority().actor_rig(id), artwork);
+    let mut batch = client_presentation::presentation::actors::select_actor_presentations(
+        1, false, None, bodies,
+    );
+    client_presentation::presentation::entity_layers::apply_render_layers(
+        &mut batch,
+        |id| world.authority().actor_rig(id),
+        artwork,
+    );
     let frame: ActorRenderFrame = scene
         .update_rigs_with_artwork(1.0, None, batch.submissions.clone(), &[], &batch.artwork)
         .clone();

@@ -42,7 +42,8 @@ mod tree;
 mod widgets;
 
 #[cfg(test)]
-mod allocation_count;
+#[global_allocator]
+static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;
 
 pub use anim::{
     AnimEvent, AnimGraph, AnimKind, AnimNode, Animated, Animator, ControlAnims, Easing, FlipWrite,
@@ -96,8 +97,8 @@ pub use predicate::{Bindings, Scalar};
 pub use resolve::Resolver;
 pub use scene::{SceneEntry, SceneStack, ScreenNav, ScreenSettings};
 pub use screens::{
-    ENGINE_SCREENS, ScreenRender, bind_screen, is_engine_screen, render_screen, resolve_screen,
-    screen_settings,
+    ENGINE_SCREENS, ScreenRender, bind_screen, bind_screen_incremental, is_engine_screen,
+    rebind_screen, render_screen, resolve_screen, screen_settings,
 };
 pub use sidecar::{
     AsepriteFrame, NineSlice, TextureMeta, parse_aseprite_frames, parse_texture_meta,
@@ -118,6 +119,24 @@ pub struct Resolution {
 /// Resolve a `namespace.name` reference against `catalog` in `context`.
 pub fn resolve(catalog: &Catalog, reference: &str, context: &Context) -> Resolution {
     resolve_in(catalog, reference, &context.root_env(catalog))
+}
+
+/// Resolves with a bounded caller-owned tree budget, retaining ordinary catalog semantics.
+pub fn resolve_with_limits(
+    catalog: &Catalog,
+    reference: &str,
+    context: &Context,
+    depth: usize,
+    nodes: usize,
+) -> Resolution {
+    let mut resolver = Resolver::new(catalog).with_limits(depth, nodes);
+    let control = reference.split_once('.').and_then(|(namespace, name)| {
+        resolver.resolve(namespace, name, &context.root_env(catalog))
+    });
+    Resolution {
+        control,
+        diagnostics: resolver.into_diagnostics(),
+    }
 }
 
 /// [`resolve`] in a root scope already built from a catalog and context.

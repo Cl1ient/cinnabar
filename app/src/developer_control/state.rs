@@ -3,14 +3,16 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
-use client_ui::ui_runtime::{
-    UiRuntime, presentation::forms::scene_policy::MenuScene, scene_stack::SceneHost,
-};
+use client_shell::ui_resources::UiRuntimeResource;
+use client_ui::ui_runtime::{presentation::forms::scene_policy::MenuScene, scene_stack::SceneHost};
 use developer_control::{protocol::Condition, server::Reply};
 use serde_json::{Value, json};
 
 use super::{camera::ScriptedCamera, capture::Recording};
-use crate::{local_player::LocalViewPose, menu::MenuRuntime, runtime::world::ClientWorld};
+use {
+    crate::runtime::world::ClientWorld, client_presentation::local_player::LocalViewPose,
+    client_shell::menu::MenuRuntime,
+};
 
 /// Waits without a timeout give up after this long so a controller is never wedged.
 const DEFAULT_WAIT: Duration = Duration::from_secs(120);
@@ -135,8 +137,8 @@ fn player_position(world: &World) -> Option<[f32; 3]> {
 /// Screen names bottom first, e.g. `Gameplay`, `Hud`, `Chat`, `Menu(Pause)`.
 fn screens(world: &World) -> Vec<String> {
     let (Some(ui), Some(player)) = (
-        world.get_resource::<UiRuntime>(),
-        world.get_resource::<crate::player_runtime::PlayerRuntime>(),
+        world.get_resource::<UiRuntimeResource>(),
+        world.get_resource::<client_state::PlayerRuntime>(),
     ) else {
         return Vec::new();
     };
@@ -194,14 +196,14 @@ fn actors(world: &World) -> Vec<Value> {
 
 fn player_motion(world: &World) -> Option<Value> {
     let stream = world.get_resource::<ClientWorld>()?.stream.as_ref()?;
-    let player = world.get_resource::<crate::player_runtime::PlayerRuntime>()?;
-    let physics = world.get_resource::<crate::movement::LocalPhysicsController>()?;
+    let player = world.get_resource::<client_state::PlayerRuntime>()?;
+    let physics = world.get_resource::<client_interaction::movement::LocalPhysicsController>()?;
     let authority = stream.authority();
     let rig = authority.actor_rig(stream.local_player_runtime_id())?;
     let java = rig.java;
     let state = physics.state();
     let jump_held = world
-        .get_resource::<crate::semantic_controls::SemanticInputSnapshot>()
+        .get_resource::<client_state::SemanticInputSnapshot>()
         .and_then(|input| input.snapshot())
         .map(|input| input.phases[semantic_input::Action::Jump as usize].held);
     Some(json!({
@@ -211,7 +213,7 @@ fn player_motion(world: &World) -> Option<Value> {
         "velocity": state.map(|state| [state.velocity.x, state.velocity.y, state.velocity.z]),
         "jump_delay": state.map(|state| state.jump_delay),
         "knockback_sequence": physics.knockback_sequence(),
-        "physics_authorized": world.get_resource::<crate::movement::MovementTicker>()
+        "physics_authorized": world.get_resource::<client_interaction::movement::MovementTicker>()
             .map(|movement| movement.physics_is_authorized()),
         "jump_eligible": physics.jump_pulse_eligible(),
         "jump_held": jump_held,
@@ -235,7 +237,7 @@ pub(super) fn snapshot(world: &World) -> Value {
     let view = world.get_resource::<LocalViewPose>();
     let stream = world.resource::<ClientWorld>().stream.as_ref();
     let health = world
-        .get_resource::<UiRuntime>()
+        .get_resource::<UiRuntimeResource>()
         .and_then(|ui| ui.hud().health())
         .map(|stat| {
             let scale = f32::from(stat.scale());
@@ -265,7 +267,7 @@ pub(super) fn snapshot(world: &World) -> Value {
     let local_mods: Option<Value> = None;
     json!({
         "in_world": stream.is_some(),
-        "immobile": world.get_resource::<crate::player_runtime::PlayerRuntime>()
+        "immobile": world.get_resource::<client_state::PlayerRuntime>()
             .map(|player| player.facts.is_immobile()),
         "feet": view.map(|view| view.feet_translation().to_array()),
         "eye": view.map(|view| view.eye_translation().to_array()),
@@ -275,7 +277,7 @@ pub(super) fn snapshot(world: &World) -> Value {
             json!({ "yaw": yaw, "pitch": pitch })
         }),
         "health": health,
-        "java_animations": world.get_resource::<crate::camera::CameraSettingsAuthority>()
+        "java_animations": world.get_resource::<client_presentation::camera::CameraSettingsAuthority>()
             .map(|settings| settings.feel().java_animations),
         "dimension": stream.map(|stream| stream.current_dimension()),
         "chunks": stream.map(|stream| json!({
@@ -288,7 +290,7 @@ pub(super) fn snapshot(world: &World) -> Value {
         "player_motion": player_motion(world),
         "local_mods": local_mods,
         "primitive_shapes": crate::primitive_shapes::snapshot(world),
-        "sidebar": world.get_resource::<UiRuntime>()
+        "sidebar": world.get_resource::<UiRuntimeResource>()
             .and_then(|ui| super::scoreboards::snapshot(ui.scoreboards())),
         "screens": screens(world),
         "menu": menu_snapshot,
@@ -309,20 +311,20 @@ pub(super) fn snapshot(world: &World) -> Value {
                 })).collect::<Vec<_>>(),
             })
         }),
-        "skin": world.get_resource::<crate::player_skin::LocalPlayerSkin>().map(|skin| json!({
+        "skin": world.get_resource::<client_shell::player_skin::LocalPlayerSkin>().map(|skin| json!({
             "width": skin.width, "height": skin.height, "arm_size": skin.skin_model.arm_size(),
             "content_hash": skin.rgba8.content_hash(),
             "cape": skin.cape.as_ref().map(|cape| json!({"width": cape.width, "height": cape.height})),
         })),
-        "menu_preview": world.get_resource::<client_ui::ui_runtime::presentation::UiPresentationRuntime>().map(|ui| json!({
+        "menu_preview": world.get_resource::<client_shell::ui_resources::UiPresentationResource>().map(|ui| json!({
             "angles": ui.menu_player_preview_angles(),
             "bounds": ui.menu_player_preview_bounds().map(|bounds| [
                 bounds.min().x(), bounds.min().y(), bounds.max().x(), bounds.max().y(),
             ]),
         })),
-        "driven": world.contains_resource::<crate::camera::DrivenInput>(),
+        "driven": world.contains_resource::<client_state::DrivenInput>(),
         "camera": world.get_resource::<ScriptedCamera>().map(ScriptedCamera::summary),
-        "server_camera": world.get_resource::<crate::camera::ServerCameraView>().map(|camera| json!({
+        "server_camera": world.get_resource::<client_presentation::camera::ServerCameraView>().map(|camera| json!({
             "active": camera.is_active(),
             "preset": camera.active_preset_name(),
             "base_preset": camera.active_base_preset_name(),
@@ -336,7 +338,7 @@ pub(super) fn snapshot(world: &World) -> Value {
         "recording": world.get_resource::<Recording>().map(Recording::summary),
         "game_seconds": world.resource::<Time>().elapsed_secs_f64(),
         "frame_count": world.get_resource::<bevy::diagnostic::FrameCount>().map(|count| count.0),
-        "placement_frames": world.get_resource::<crate::block_use::BlockUseRuntime>().map(|runtime| json!({
+        "placement_frames": world.get_resource::<client_interaction::block_use::BlockUseRuntime>().map(|runtime| json!({
             "committed": runtime.prediction_frames.committed_frame,
             "staged": runtime.prediction_frames.staged_frame,
             "upload_acknowledged": runtime.prediction_frames.upload_acknowledged_frame,

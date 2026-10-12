@@ -6,6 +6,9 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+/// Canonical item identity shared by inventory and activation presentation.
+pub const TOTEM_IDENTIFIER: &str = "minecraft:totem_of_undying";
+
 mod admission;
 mod auto_craft;
 mod bundles;
@@ -15,8 +18,11 @@ mod crafting_close;
 #[cfg(test)]
 mod crafting_tests;
 mod distribute;
+mod equipment;
 #[cfg(test)]
 mod fixed_window_tests;
+mod fuel;
+mod furnace_inputs;
 #[cfg(test)]
 mod generic_storage_tests;
 mod gesture;
@@ -34,6 +40,8 @@ mod merge_tests;
 mod moves;
 #[cfg(test)]
 mod moves_tests;
+#[cfg(test)]
+mod offhand_quick_move_tests;
 mod overlay;
 #[cfg(test)]
 mod overlay_tests;
@@ -75,7 +83,8 @@ use protocol::{
 };
 use thiserror::Error;
 
-pub const PLAYER_INVENTORY_SLOT_COUNT: usize = 36;
+/// Player slots share the protocol request boundary.
+pub const PLAYER_INVENTORY_SLOT_COUNT: usize = protocol::PLAYER_INVENTORY_SLOTS as usize;
 pub const INVENTORY_REQUEST_TIMEOUT_MILLIS: u64 = 1_500;
 /// Remote window churn is retained only far enough to close the newest
 /// observed surface, while the current personal close can never be evicted.
@@ -200,6 +209,9 @@ pub struct PlayerInventoryLedger {
     offhand_known: bool,
     slot_revisions: [u64; PLAYER_INVENTORY_SLOT_COUNT],
     item_registry: Option<std::sync::Arc<BTreeMap<i32, ItemRegistryEntry>>>,
+    fuel_catalog: Option<std::sync::Arc<assets::RuntimeEntityAssets>>,
+    fuel_facts: BTreeMap<i32, assets::item::fuel::ItemFuel>,
+    furnace_inputs: furnace_inputs::FurnaceInputs,
     creative: Option<protocol::CreativeContentEvent>,
     /// Enchanting-table options for the current input item.
     enchant_options: Option<std::sync::Arc<[protocol::EnchantOption]>>,
@@ -245,6 +257,9 @@ impl Default for PlayerInventoryLedger {
             offhand_known: false,
             slot_revisions: [0; PLAYER_INVENTORY_SLOT_COUNT],
             item_registry: None,
+            fuel_catalog: None,
+            fuel_facts: BTreeMap::new(),
+            furnace_inputs: Default::default(),
             creative: None,
             enchant_options: None,
             bundles: BTreeMap::new(),
@@ -658,25 +673,38 @@ impl PlayerInventoryLedger {
         personal_expired
     }
 
-    fn poll_personal_timeout(&mut self, now_millis: u64) -> bool {
-        let Some(personal) = self.personal else {
-            return false;
-        };
-        let expired = match personal {
-            PersonalWindow::Opening {
-                admitted: true,
-                deadline_millis: Some(deadline),
-                ..
-            }
-            | PersonalWindow::Closing {
-                deadline_millis: Some(deadline),
-                ..
-            } => now_millis >= deadline,
+    /// Whether polling can change a deadline, request, or deferred close.
+    pub(crate) fn timeout_work_due(&self, now_millis: u64) -> bool {
+        self.personal_timeout_due(now_millis)
+            || self.request_timeout_work_due(now_millis)
+            || self.settled_close_index().is_some()
+    }
+
+    /// Tests the personal window's existing admitted deadline without mutating it.
+    fn personal_timeout_due(&self, now_millis: u64) -> bool {
+        match self.personal {
+            Some(
+                PersonalWindow::Opening {
+                    admitted: true,
+                    deadline_millis: Some(deadline),
+                    ..
+                }
+                | PersonalWindow::Closing {
+                    deadline_millis: Some(deadline),
+                    ..
+                },
+            ) => now_millis >= deadline,
             _ => false,
-        };
-        if !expired {
+        }
+    }
+
+    fn poll_personal_timeout(&mut self, now_millis: u64) -> bool {
+        if !self.personal_timeout_due(now_millis) {
             return false;
         }
+        let personal = self
+            .personal
+            .expect("an expired personal window was observed");
         let generation = personal.generation();
         self.pending_closes
             .retain(|close| close.owner.personal_generation() != Some(generation));

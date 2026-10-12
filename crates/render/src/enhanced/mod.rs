@@ -2,6 +2,8 @@
 //! Passes require `enhanced`; the camera component and shared shader imports do not.
 
 #[cfg(feature = "enhanced")]
+use bevy::prelude::IntoScheduleConfigs;
+#[cfg(feature = "enhanced")]
 mod frame;
 #[cfg(feature = "enhanced")]
 mod gpu;
@@ -24,11 +26,14 @@ mod validation;
 
 #[cfg(feature = "enhanced")]
 use render_model::enhanced_rendering_enabled;
+#[cfg(feature = "enhanced")]
+use render_scene::EnhancedRendering;
 
+#[cfg(all(test, feature = "enhanced"))]
+use bevy::prelude::{Has, World};
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
-    prelude::*,
-    render::extract_component::ExtractComponent,
+    prelude::{App, Assets, Handle, Plugin},
     shader::Shader,
 };
 #[cfg(feature = "enhanced")]
@@ -55,55 +60,6 @@ const ENHANCED_CASTER_SHADER_HANDLE: Handle<Shader> =
 const ENHANCED_POST_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("9b7e2c15-3f4a-4d8b-a6e2-7c1d0f5b3a84");
 
-/// Per-camera opt-in for Enhanced rendering, with resolved depth for post effects.
-#[derive(Component, ExtractComponent, Clone, Copy, Debug, PartialEq)]
-pub struct EnhancedRendering {
-    pub shadows: bool,
-    pub shadow_resolution: u32,
-    /// Sun shadow cascades, clamped to `2..=MAX_SHADOW_CASCADES`.
-    pub shadow_cascades: u32,
-    /// Blocks from the camera covered by the last cascade.
-    pub shadow_distance: f32,
-    pub bloom: bool,
-    pub light_shafts: bool,
-    pub waving: bool,
-    pub water_reflections: bool,
-}
-
-pub const MAX_SHADOW_CASCADES: u32 = 3;
-/// Smallest shadow target admitted by frame preparation.
-#[cfg(feature = "enhanced")]
-pub(crate) const MIN_SHADOW_RESOLUTION: u32 = 256;
-
-impl Default for EnhancedRendering {
-    fn default() -> Self {
-        Self {
-            shadows: true,
-            shadow_resolution: 1024,
-            shadow_cascades: 2,
-            shadow_distance: 96.0,
-            bloom: true,
-            light_shafts: true,
-            waving: true,
-            water_reflections: true,
-        }
-    }
-}
-
-#[cfg(feature = "enhanced-diagnostics")]
-impl EnhancedRendering {
-    /// Bounds the actual Enhanced passes for hidden development captures.
-    #[must_use]
-    pub fn bounded_diagnostic() -> Self {
-        Self {
-            shadow_resolution: MIN_SHADOW_RESOLUTION,
-            shadow_distance: 24.0,
-            waving: false,
-            ..Self::default()
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EnhancedRenderPlugin;
 
@@ -120,20 +76,20 @@ pub(crate) fn load_shader_imports(app: &mut App) {
     load_internal_asset!(
         app,
         ENHANCED_COMMON_SHADER_HANDLE,
-        "common.wgsl",
-        crate::shader_safety::from_wgsl
+        "common.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         ENHANCED_VIEW_SHADER_HANDLE,
-        "view.wgsl",
-        crate::shader_safety::from_wgsl
+        "view.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         ENHANCED_CASTER_SHADER_HANDLE,
-        "caster.wgsl",
-        crate::shader_safety::from_wgsl
+        "caster.wesl",
+        crate::shader_safety::from_wesl
     );
 }
 
@@ -175,8 +131,8 @@ impl Plugin for EnhancedRenderPlugin {
         load_internal_asset!(
             app,
             ENHANCED_POST_SHADER_HANDLE,
-            "post.wgsl",
-            crate::shader_safety::from_wgsl
+            "post.wesl",
+            crate::shader_safety::from_wesl
         );
         app.add_plugins(ExtractComponentPlugin::<EnhancedRendering>::default());
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {

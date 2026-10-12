@@ -6,7 +6,7 @@ use json_ui::{Draw, DrawNode};
 
 use super::engine_hud_tests::{engine_presentation, engine_presentation_with};
 use super::*;
-use crate::ui_runtime::presentation::ChatHit;
+use ui_screens::chat_screen::ChatHit;
 
 /// Selects the native catalog directly for native control checks.
 fn native_chat_presentation() -> Option<UiPresentationRuntime> {
@@ -552,7 +552,7 @@ fn chat_screen_snapshot() {
 fn chat_settings_popup_routes_native_controls_and_retains_the_draft() {
     let mut player_runtime = player_state::PlayerState::new(1);
 
-    use crate::menu::{
+    use launcher::menu::{
         MenuAction,
         settings_options::{SETTINGS_OPTIONS, SettingsOptions},
     };
@@ -632,7 +632,7 @@ fn chat_settings_popup_routes_native_controls_and_retains_the_draft() {
 fn creator_coordinates_bind_native_copy_dropdown_and_invalid_target() {
     let mut player_runtime = player_state::PlayerState::new(1);
 
-    use crate::menu::settings_options::{SETTINGS_OPTIONS, SettingsOptions};
+    use launcher::menu::settings_options::{SETTINGS_OPTIONS, SettingsOptions};
     let Some(mut presentation) = native_chat_presentation() else {
         eprintln!(
             "skipping creator_coordinates_bind_native_copy_dropdown_and_invalid_target: fixture unavailable; requires installed local carriers (make assets)"

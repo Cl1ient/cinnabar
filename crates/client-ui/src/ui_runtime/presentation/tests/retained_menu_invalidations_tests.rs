@@ -1,6 +1,6 @@
-use super::*;
-use crate::menu::{MenuScreen, MenuServerCard, MenuView, PingInfo, SavedServer};
 use launcher::menu::server_list::{ServerGroup, ServerListAction};
+use launcher::menu::{MenuScreen, MenuServerCard, MenuView, PingInfo, SavedServer};
+use {super::*, launcher::menu::MenuAction};
 
 /// Two featured and saved entries expose selected and unrelated ping states.
 pub(super) fn servers_view() -> MenuView {
@@ -27,7 +27,7 @@ pub(super) fn servers_view() -> MenuView {
         .collect();
     view.feeds.details.insert(
         view.featured[1].address.clone(),
-        crate::menu::ServerDetails {
+        launcher::menu::ServerDetails {
             group: "creator".into(),
             ..Default::default()
         },
@@ -49,7 +49,7 @@ pub(super) fn pong(view: &mut MenuView, address: String, online: bool) {
 #[test]
 fn selected_ping_animation_follows_default_explicit_and_collapsed_selection() {
     let mut view = servers_view();
-    let animated = super::super::forms::oreui::animated_server_details;
+    let animated = oreui::animated_server_details;
     assert!(
         animated(&view),
         "the default featured detail has a pending ping"
@@ -100,31 +100,29 @@ fn gathering_details_without_a_ping_strip_can_be_retained() {
     let mut view = servers_view();
     view.featured[0].address =
         format!("{}fixture", launcher::menu::view::EXPERIENCE_ADDRESS_PREFIX);
-    assert!(!super::super::forms::oreui::animated_server_details(&view));
+    assert!(!oreui::animated_server_details(&view));
     view.featured.clear();
     assert!(
-        super::super::forms::oreui::animated_server_details(&view),
+        oreui::animated_server_details(&view),
         "custom fallback still paints its ping strip"
     );
 }
 
 /// Supplies synthetic ping cells so temporal output is tested without installed Mojang images.
 fn install_ping_cells(presentation: &mut UiPresentationRuntime) {
-    use crate::ui_runtime::oreui_assets::{
-        OreUiImages, OreUiPage, OreUiSprite, SERVER_PING_IMAGES,
-    };
+    use oreui::images::{OreUiImages, OreUiPage, OreUiSprite, SERVER_PING_IMAGES};
     let sprites = std::collections::HashMap::from([(
         SERVER_PING_IMAGES[3].into(),
         OreUiSprite {
             page: 0,
-            bounds: [0, 0, 6, 1],
+            bounds: [0, 0, 7, 1],
         },
     )]);
     presentation
         .enable_oreui_originals(OreUiImages {
             pages: vec![OreUiPage {
-                dimensions: [6, 1],
-                pixels: vec![255; 24].into(),
+                dimensions: [7, 1],
+                pixels: vec![255; 28].into(),
             }],
             sprites: Arc::new(sprites),
             loading_frames: Default::default(),

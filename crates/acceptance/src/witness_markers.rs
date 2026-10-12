@@ -1,13 +1,14 @@
 //! Renderer witness evidence generated from read-only observations.
-use crate::{
+use diagnostics::{
     markers::{
         MODEL_WITNESS_COMPLETE, TRANSPARENT_WITNESS_COMPLETE, TRANSPARENT_WITNESS_INCOMPLETE,
         TRANSPARENT_WITNESS_STAGE,
     },
-    mutation::write_stdout_marker,
+    write_stdout_marker,
 };
-use render::{ModelWitnessEvidence, ModelWitnessManifestRecord, TransparentWitnessEvidence};
-use sha2::{Digest, Sha256};
+use render_scene::{ModelWitnessEvidence, ModelWitnessManifestRecord, TransparentWitnessEvidence};
+use sha2::Digest;
+use sha2::Sha256;
 
 /// Formats the fixed hash bytes used by witness identities.
 fn lower_hex(bytes: &[u8]) -> String {

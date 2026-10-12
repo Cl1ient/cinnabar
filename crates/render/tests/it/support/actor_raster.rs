@@ -8,7 +8,7 @@ use super::{gpu_snapshot, render_api as render, shader_source};
 use assets::EntityRenderMaterial;
 use bevy::math::{Mat4, Vec3, Vec4};
 use gpu_snapshot::{Draw, Gpu};
-use render::ActorGpuInstance;
+use render_model::ActorGpuInstance;
 use render_model::{ActorRigVertex, EntityRigId};
 
 pub(super) fn cube(size: [u32; 3], top: bool, bottom: bool) -> Vec<ActorRigVertex> {
@@ -42,10 +42,10 @@ pub(super) fn cube(size: [u32; 3], top: bool, bottom: bool) -> Vec<ActorRigVerte
 }
 
 pub(super) fn source(gamma: bool) -> String {
-    let actor = include_str!("../../../src/actor.wgsl")
+    let actor = include_str!("../../../src/actor.wesl")
         .replace(
             "ACTOR_GPU_INSTANCE_WORDS",
-            &render::ACTOR_GPU_INSTANCE_WORDS.to_string(),
+            &render_model::ACTOR_GPU_INSTANCE_WORDS.to_string(),
         )
         .replace(
             "ACTOR_RIG_VERTEX_WORDS",
@@ -66,7 +66,7 @@ pub(super) fn raster(
     raster_material(
         gpu,
         vertices,
-        render::ActorMaterial {
+        render_model::ActorMaterial {
             kind: material,
             ..Default::default()
         },
@@ -78,7 +78,7 @@ pub(super) fn raster(
 pub(super) fn raster_material(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
-    material: render::ActorMaterial,
+    material: render_model::ActorMaterial,
     below: bool,
     texels: [[u8; 4]; 2],
 ) -> Vec<u8> {
@@ -88,7 +88,7 @@ pub(super) fn raster_material(
 pub(super) fn raster_material_target(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
-    material: render::ActorMaterial,
+    material: render_model::ActorMaterial,
     below: bool,
     texels: [[u8; 4]; 2],
     srgb: bool,
@@ -102,7 +102,7 @@ pub(super) fn raster_material_target(
         texels,
         srgb,
         gamma,
-        render::pack_actor_light(15, 15),
+        render_model::pack_actor_light(15, 15),
     )
 }
 
@@ -113,7 +113,7 @@ pub(super) fn raster_material_target(
 pub(super) fn raster_material_lighting(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
-    material: render::ActorMaterial,
+    material: render_model::ActorMaterial,
     below: bool,
     texels: [[u8; 4]; 2],
     srgb: bool,
@@ -121,11 +121,11 @@ pub(super) fn raster_material_lighting(
     light: u32,
 ) -> Vec<u8> {
     raster_material_with_overlay(
-        gpu, vertices, material, below, texels, srgb, gamma, light, 0,
+        gpu, vertices, material, below, texels, srgb, gamma, light, 0, 0,
     )
 }
 
-/// Renders a material with an independent actor overlay and the fixed fixture camera.
+/// Renders independent actor tint and overlay inputs with the fixed fixture camera.
 #[allow(
     clippy::too_many_arguments,
     reason = "each knob is an independent shader input under test"
@@ -133,13 +133,14 @@ pub(super) fn raster_material_lighting(
 pub(super) fn raster_material_with_overlay(
     gpu: &Gpu,
     vertices: &[ActorRigVertex],
-    material: render::ActorMaterial,
+    material: render_model::ActorMaterial,
     below: bool,
     texels: [[u8; 4]; 2],
     srgb: bool,
     gamma: bool,
     light: u32,
     overlay_rgba8: u32,
+    tint_rgba8: u32,
 ) -> Vec<u8> {
     let clip = Mat4::from_cols(
         Vec4::new(2.0, 0.0, 0.0, 0.0),
@@ -159,9 +160,10 @@ pub(super) fn raster_material_with_overlay(
     let instance = ActorGpuInstance {
         world_from_actor: affine,
         partial_tick: 1.0,
-        uv_anim: render::IDENTITY_UV_ANIM,
+        uv_anim: render_model::IDENTITY_UV_ANIM,
         light,
         overlay_rgba8,
+        tint: tint_rgba8,
         multitexture_layers: [u32::MAX; 2],
         material: material.gpu_word(),
         dissolve_multiplier: 1.0,
@@ -289,7 +291,7 @@ pub(super) fn raster_material_with_overlay(
         fragment: "actor_fragment",
         vertices: 0..vertices.len() as u32,
         bindings: &bindings,
-        blend: material.blend_state(),
+        blend: material.state.and_then(render::actor_material_blend_state),
         write_depth: material.state.is_none_or(|state| state.depth_write),
     }];
     if srgb {

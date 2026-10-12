@@ -15,16 +15,21 @@ use crate::item::{ItemDisplayScalar, ItemDisplayTransform};
 use crate::{AssetError, EntityDependencyResolution};
 
 mod attack;
+mod food;
+mod use_profiles;
 pub use attack::{
     CompiledItemAttackCooldown, CompiledItemAttackTiming, CompiledKineticWeaponTiming,
 };
+pub use food::CompiledItemFood;
+pub use use_profiles::CompiledItemUseOverlay;
 
 #[cfg(test)]
 #[path = "equipment/texture_tests.rs"]
 mod texture_tests;
 
 pub const EQUIPMENT_CARRIER_MAGIC: [u8; 8] = *b"MCBEEQP1";
-pub const EQUIPMENT_CARRIER_VERSION: u32 = 2;
+/// Includes authored use profiles, food nutrition and component-precision durations; older carriers need a rebuild.
+pub const EQUIPMENT_CARRIER_VERSION: u32 = 4;
 pub const MAX_EQUIPMENT_BINDINGS: usize = 1024;
 pub const MAX_EQUIPMENT_IDENTIFIER_BYTES: usize = 256;
 pub const MAX_EQUIPMENT_TEXTURES: usize = 256;
@@ -38,6 +43,15 @@ pub const MAX_EQUIPMENT_CARRIER_BYTES: usize =
 const HEADER_BYTES: usize = 20;
 const HASH_BYTES: usize = 32;
 
+/// Material capability used by stack dye presentation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EquipmentColorMask {
+    NoMask,
+    Dye,
+    Unresolved,
+}
+
 /// One item's attachable binding into the entity catalog.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +62,8 @@ pub struct EquipmentBinding {
     pub geometry: EquipmentReference,
     pub texture: EquipmentReference,
     pub material: Box<str>,
+    /// Dye support resolved at compilation, with unknown material ancestry retained explicitly.
+    pub color_mask: EquipmentColorMask,
     pub render_controller: Box<str>,
     pub first_person: EquipmentTransform,
     pub third_person: EquipmentTransform,
@@ -83,13 +99,11 @@ impl EquipmentBinding {
         self.poses.iter().find(|pose| pose.key.as_ref() == key)
     }
 
-    /// Returns the stack dye or undyed-leather RGB only for color-mask leather materials.
-    /// Other materials keep their authored texture regardless of the stack dye.
+    /// Returns the stack dye or the existing undyed RGB for a compiled dye mask.
+    /// Unsupported and unresolved masks keep their authored texture.
     #[must_use]
     pub fn color_mask_rgb(&self, dye: Option<u32>) -> Option<u32> {
-        self.material
-            .contains("leather")
-            .then(|| dye.unwrap_or(DEFAULT_LEATHER_RGB))
+        (self.color_mask == EquipmentColorMask::Dye).then(|| dye.unwrap_or(DEFAULT_LEATHER_RGB))
     }
 }
 
@@ -171,6 +185,7 @@ pub fn color_mask_texel(mut texel: [u8; 4], tint: [u8; 3]) -> [u8; 4] {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct EquipmentCatalogPayload {
+    item_use_overlays: Box<[CompiledItemUseOverlay]>,
     source_manifest_sha256: [u8; 32],
     entity_blob_sha256: [u8; 32],
     bindings: Box<[EquipmentBinding]>,
@@ -178,6 +193,8 @@ struct EquipmentCatalogPayload {
     item_use: Box<[ItemUseDuration]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     item_attack: Vec<CompiledItemAttackTiming>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    item_food: Vec<CompiledItemFood>,
 }
 
 /// How long one item can be used (eaten, drunk, drawn) before it completes.
@@ -191,12 +208,14 @@ pub struct ItemUseDuration {
 /// Decoded, validated equipment catalog pinned to one entity carrier build.
 #[derive(Clone, Debug)]
 pub struct RuntimeEquipmentCatalog {
+    item_use_overlays: Arc<[CompiledItemUseOverlay]>,
     source_manifest_sha256: [u8; 32],
     entity_blob_sha256: [u8; 32],
     bindings: Arc<[EquipmentBinding]>,
     textures: Arc<[EquipmentTexture]>,
     item_use: Arc<[ItemUseDuration]>,
     item_attack: Arc<[CompiledItemAttackTiming]>,
+    item_food: Arc<[CompiledItemFood]>,
 }
 
 impl RuntimeEquipmentCatalog {
@@ -207,7 +226,9 @@ impl RuntimeEquipmentCatalog {
         if bytes[..8] != EQUIPMENT_CARRIER_MAGIC
             || u32::from_le_bytes(field::<4>(bytes, 8)?) != EQUIPMENT_CARRIER_VERSION
         {
-            return Err(invalid("unsupported equipment carrier header"));
+            return Err(invalid(
+                "unsupported equipment carrier header; rebuild with make assets",
+            ));
         }
         let payload_bytes = usize::try_from(u64::from_le_bytes(field::<8>(bytes, 12)?))
             .map_err(|_| invalid("equipment payload size exceeds platform"))?;
@@ -237,13 +258,17 @@ impl RuntimeEquipmentCatalog {
         )?;
         validate_item_use(&payload.item_use)?;
         attack::validate(&payload.item_attack)?;
+        use_profiles::validate(&payload.item_use_overlays)?;
+        food::validate(&payload.item_food)?;
         let textures = decode_textures(&bytes[payload_end..hash_start])?;
         Ok(Self {
             source_manifest_sha256: payload.source_manifest_sha256,
             entity_blob_sha256: payload.entity_blob_sha256,
             bindings: Arc::from(payload.bindings),
+            item_use_overlays: Arc::from(payload.item_use_overlays),
             item_use: Arc::from(payload.item_use),
             item_attack: Arc::from(payload.item_attack),
+            item_food: Arc::from(payload.item_food),
             textures: Arc::from(textures),
         })
     }
@@ -267,8 +292,10 @@ impl RuntimeEquipmentCatalog {
             entity_blob_sha256: identity,
             bindings: Arc::from(bindings),
             textures: Arc::from(textures),
+            item_use_overlays: Arc::from([]),
             item_use: Arc::from(Vec::new()),
             item_attack: Arc::from(Vec::new()),
+            item_food: Arc::from(Vec::new()),
         })
     }
 
@@ -289,6 +316,12 @@ impl RuntimeEquipmentCatalog {
         &self.bindings
     }
 
+    /// Returns authored use facts without deriving consumption from their duration.
+    #[must_use]
+    pub fn item_use_overlays(&self) -> &[CompiledItemUseOverlay] {
+        &self.item_use_overlays
+    }
+
     /// Use durations sorted by item identifier.
     #[must_use]
     pub fn item_use(&self) -> &[ItemUseDuration] {
@@ -299,6 +332,19 @@ impl RuntimeEquipmentCatalog {
     #[must_use]
     pub fn item_attack_timings(&self) -> &[CompiledItemAttackTiming] {
         &self.item_attack
+    }
+
+    /// Authored food components compiled from this installation's behavior pack.
+    pub fn item_foods(&self) -> &[CompiledItemFood] {
+        &self.item_food
+    }
+
+    /// Finds exact retained food metadata without inferring it from item names.
+    pub fn item_food(&self, identifier: &str) -> Option<&CompiledItemFood> {
+        self.item_food
+            .binary_search_by(|entry| entry.identifier.as_ref().cmp(identifier))
+            .ok()
+            .map(|index| &self.item_food[index])
     }
 
     /// Ticks the item can be used for, when the pack states it.
@@ -389,16 +435,56 @@ pub fn encode_equipment_catalog_with_attack_timings(
     item_use: &[ItemUseDuration],
     item_attack: &[CompiledItemAttackTiming],
 ) -> Result<Vec<u8>, AssetError> {
+    encode_equipment_catalog_with_use_profiles(
+        source_manifest_sha256,
+        entity_blob_sha256,
+        bindings,
+        textures,
+        EquipmentItemFacts {
+            item_use,
+            item_attack,
+            ..Default::default()
+        },
+    )
+}
+
+/// Per-item facts carried beside the equipment bindings; empty slices mean none were authored.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EquipmentItemFacts<'a> {
+    pub item_use: &'a [ItemUseDuration],
+    pub item_attack: &'a [CompiledItemAttackTiming],
+    pub item_use_overlays: &'a [CompiledItemUseOverlay],
+    pub item_food: &'a [CompiledItemFood],
+}
+
+/// Encodes complete authored use facts alongside nutrition, duration and attack timing.
+pub fn encode_equipment_catalog_with_use_profiles(
+    source_manifest_sha256: [u8; 32],
+    entity_blob_sha256: [u8; 32],
+    bindings: &[EquipmentBinding],
+    textures: &[EquipmentTexture],
+    items: EquipmentItemFacts<'_>,
+) -> Result<Vec<u8>, AssetError> {
+    let EquipmentItemFacts {
+        item_use,
+        item_attack,
+        item_use_overlays,
+        item_food,
+    } = items;
     validate(&source_manifest_sha256, &entity_blob_sha256, bindings)?;
     validate_textures(textures)?;
     validate_item_use(item_use)?;
     attack::validate(item_attack)?;
+    use_profiles::validate(item_use_overlays)?;
+    food::validate(item_food)?;
     let payload = EquipmentCatalogPayload {
+        item_use_overlays: item_use_overlays.to_vec().into(),
         source_manifest_sha256,
         entity_blob_sha256,
         bindings: bindings.to_vec().into_boxed_slice(),
         item_use: item_use.to_vec().into_boxed_slice(),
         item_attack: item_attack.to_vec(),
+        item_food: item_food.to_vec(),
     };
     let payload_bytes =
         serde_json::to_vec(&payload).map_err(|_| invalid("failed to encode equipment payload"))?;
@@ -658,6 +744,7 @@ mod tests {
                     resolution: EntityDependencyResolution::Catalog,
                 },
                 material: "armor".into(),
+                color_mask: EquipmentColorMask::NoMask,
                 render_controller: "controller.render.armor".into(),
                 first_person: EquipmentTransform::NeedsMeasurement,
                 third_person: EquipmentTransform::NeedsMeasurement,
@@ -676,6 +763,7 @@ mod tests {
                     resolution: EntityDependencyResolution::Catalog,
                 },
                 material: "entity_alphatest".into(),
+                color_mask: EquipmentColorMask::NoMask,
                 render_controller: "controller.render.item_default".into(),
                 first_person: EquipmentTransform::Literal {
                     transform: transform([-7.0, -3.0, -2.0], [152.0, -9.0, 25.0]),
@@ -702,6 +790,25 @@ mod tests {
             -7.0
         );
         assert!(catalog.binding("minecraft:absent").is_none());
+    }
+
+    #[test]
+    fn mask_capabilities_round_trip_and_old_equipment_headers_require_a_rebuild() {
+        for mask in [
+            EquipmentColorMask::Dye,
+            EquipmentColorMask::NoMask,
+            EquipmentColorMask::Unresolved,
+        ] {
+            let mut bindings = sample();
+            bindings[0].color_mask = mask;
+            let bytes = encode_equipment_catalog([1; 32], [2; 32], &bindings).unwrap();
+            let catalog = RuntimeEquipmentCatalog::decode(&bytes).unwrap();
+            assert_eq!(catalog.bindings()[0].color_mask, mask);
+            let mut stale = bytes;
+            stale[8..12].copy_from_slice(&(EQUIPMENT_CARRIER_VERSION - 1).to_le_bytes());
+            let error = RuntimeEquipmentCatalog::decode(&stale).unwrap_err();
+            assert!(error.to_string().contains("rebuild with make assets"));
+        }
     }
 
     #[test]
@@ -774,9 +881,10 @@ mod tests {
         bytes[last] ^= 0xff;
         assert!(RuntimeEquipmentCatalog::decode(&bytes).is_err());
 
-        let mut truncated = encode_equipment_catalog([1; 32], [2; 32], &sample()).unwrap();
-        truncated[8] = 0x03; // unsupported version
-        assert!(RuntimeEquipmentCatalog::decode(&truncated).is_err());
+        let mut unsupported = encode_equipment_catalog([1; 32], [2; 32], &sample()).unwrap();
+        let next_version = EQUIPMENT_CARRIER_VERSION.checked_add(1).unwrap();
+        unsupported[8..12].copy_from_slice(&next_version.to_le_bytes());
+        assert!(RuntimeEquipmentCatalog::decode(&unsupported).is_err());
     }
 
     #[test]
@@ -823,6 +931,7 @@ mod from_parts_tests {
             geometry: reference("geometry.a"),
             texture: reference("textures/entity/a"),
             material: "entity".into(),
+            color_mask: EquipmentColorMask::NoMask,
             render_controller: "controller.render.a".into(),
             first_person: EquipmentTransform::NeedsMeasurement,
             third_person: EquipmentTransform::NeedsMeasurement,
@@ -853,22 +962,29 @@ mod from_parts_tests {
         );
     }
 
-    // A team dye on diamond armor leaves the diamond texture untinted; leather takes it.
     #[test]
-    fn only_leather_materials_apply_a_stack_dye() {
-        let worn = |material: &str| EquipmentBinding {
-            material: material.into(),
-            ..binding("minecraft:chestplate")
-        };
+    fn compiled_mask_capability_applies_dye_without_inspecting_the_material_name() {
         let red = Some(0x00b0_2e26);
-        assert_eq!(worn("armor").color_mask_rgb(red), None);
-        assert_eq!(worn("armor").color_mask_rgb(None), None);
-        assert_eq!(worn("armor_enchanted").color_mask_rgb(red), None);
-        assert_eq!(worn("entity_alphatest").color_mask_rgb(red), None);
-        assert_eq!(worn("armor_leather").color_mask_rgb(red), red);
+        let worn = |material: &str, color_mask| EquipmentBinding {
+            material: material.into(),
+            color_mask,
+            ..binding("custom:chestplate")
+        };
         assert_eq!(
-            worn("armor_leather_enchanted").color_mask_rgb(None),
+            worn("renamed", EquipmentColorMask::Dye).color_mask_rgb(red),
+            red
+        );
+        assert_eq!(
+            worn("renamed", EquipmentColorMask::Dye).color_mask_rgb(None),
             Some(DEFAULT_LEATHER_RGB)
+        );
+        assert_eq!(
+            worn("leather_decoy", EquipmentColorMask::NoMask).color_mask_rgb(red),
+            None
+        );
+        assert_eq!(
+            worn("unknown", EquipmentColorMask::Unresolved).color_mask_rgb(red),
+            None
         );
     }
 }

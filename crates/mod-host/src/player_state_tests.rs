@@ -325,3 +325,129 @@ fn malformed_snapshots_cannot_expose_items_or_expired_effects() {
     bad.inventory[0].item.as_mut().unwrap().count = 0;
     assert!(validate(Some(&bad)).is_err());
 }
+
+#[test]
+fn presentation_reads_share_grants_budget_and_revocation() {
+    let mut state = State::new(ModGrants::default(), String::new(), Default::default());
+    state.player_state.fps = Some(144.0);
+    state.player_state.world = Some(crate::WorldObservation {
+        session: 7,
+        world: "remote:example:19132".into(),
+        dimension: 0,
+        position: (1., 2., 3.),
+        alive: true,
+    });
+    assert!(state.read_fps().unwrap().is_err());
+    assert!(state.read_world().unwrap().is_err());
+    assert!(state.read_sidebar().unwrap().is_err());
+    state.grants.player_state = true;
+    assert_eq!(state.read_fps().unwrap().unwrap(), Some(144.));
+    assert_eq!(
+        state.read_world().unwrap().unwrap().unwrap().position,
+        (1., 2., 3.)
+    );
+    state.player_state.revoke();
+    assert_eq!(state.read_fps().unwrap().unwrap(), None);
+    assert_eq!(state.read_world().unwrap().unwrap(), None);
+}
+
+#[test]
+fn chat_import_is_incremental_bounded_and_fifo() {
+    let mut state = State::new(
+        ModGrants {
+            player_state: true,
+            ..Default::default()
+        },
+        String::new(),
+        Default::default(),
+    );
+    state.player_state.chat = (10..16)
+        .map(|sequence| crate::ObservedChatMessage {
+            sequence,
+            text: format!("Message {sequence}"),
+        })
+        .collect();
+    assert!(state.read_chat(0, 0).unwrap().is_err());
+    assert!(
+        state
+            .read_chat(0, (ui::mod_hud::MAX_CHAT_READ_MESSAGES + 1) as u32)
+            .unwrap()
+            .is_err()
+    );
+    let result = state.read_chat(11, 2).unwrap().unwrap();
+    assert_eq!(
+        result.iter().map(|m| m.sequence).collect::<Vec<_>>(),
+        vec![12, 13]
+    );
+    assert!(state.read_chat(15, 4).unwrap().unwrap().is_empty());
+}
+
+#[test]
+fn supplemental_facts_require_independent_grants_and_expire() {
+    let mut state = State::new(ModGrants::default(), String::new(), Default::default());
+    state.player_state.observations.ping_ms = Some(42);
+    assert!(state.read_ping().unwrap().is_err());
+    assert!(state.read_actors().unwrap().is_err());
+    state.grants.player_state = true;
+    assert_eq!(state.read_ping().unwrap().unwrap(), Some(42));
+    assert!(
+        state
+            .read_combat(0, (mod_api::MAX_COMBAT_READ_EVENTS + 1) as u32)
+            .unwrap()
+            .is_err()
+    );
+    state.player_state.clear_presentation();
+    assert_eq!(state.read_ping().unwrap().unwrap(), None);
+}
+
+#[test]
+fn remote_combat_statuses_obey_actor_grants_while_local_intent_remains_player_owned() {
+    let mut state = State::new(
+        ModGrants {
+            player_state: true,
+            ..Default::default()
+        },
+        String::new(),
+        Default::default(),
+    );
+    let event = |sequence, player, local, kind| crate::CombatObservation {
+        sequence,
+        session: 7,
+        dimension: 0,
+        player,
+        local,
+        kind,
+        runtime_id: sequence,
+        distance: None,
+        position: (0., 0., 0.),
+    };
+    state.player_state.observations.combat = vec![
+        event(1, true, false, crate::CombatKind::Hurt),
+        event(2, false, false, crate::CombatKind::Hurt),
+        event(3, true, true, crate::CombatKind::Hurt),
+        event(4, true, false, crate::CombatKind::AttackAdmitted),
+    ];
+    assert_eq!(
+        state
+            .read_combat(0, 4)
+            .unwrap()
+            .unwrap()
+            .iter()
+            .map(|event| event.sequence)
+            .collect::<Vec<_>>(),
+        vec![3, 4]
+    );
+    state.grants.players = true;
+    assert_eq!(
+        state
+            .read_combat(0, 4)
+            .unwrap()
+            .unwrap()
+            .iter()
+            .map(|event| event.sequence)
+            .collect::<Vec<_>>(),
+        vec![1, 3, 4]
+    );
+    state.grants.entities = true;
+    assert_eq!(state.read_combat(0, 4).unwrap().unwrap().len(), 4);
+}

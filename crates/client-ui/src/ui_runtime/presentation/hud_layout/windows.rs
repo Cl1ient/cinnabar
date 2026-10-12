@@ -9,13 +9,20 @@ use std::sync::Arc;
 use protocol::{NetworkItemStack, WindowKind};
 use ui::{TextLayoutRequest, TextStyle, UiNode, UiNodeId, UiVisual};
 
-use super::{HudFrame, HudLayout, IconRef, UiPresentationError, UiRuntime, rect};
 use crate::ui_runtime::inventory_actions::visible_creative_entries;
-use crate::ui_runtime::inventory_ledger::InventoryTarget;
-use crate::ui_runtime::presentation::inventory_pointer::{InventoryCellHit, InventoryScreen};
+use crate::ui_runtime::presentation::inventory_pointer::InventoryScreen;
 use crate::ui_runtime::presentation::screens::{
-    self, CREATIVE_PANEL, GRID_CELLS, GRID_COLUMNS, GRID_ROWS, PlacedSlot, SEARCH_TAB, SLOT_SIZE,
-    STONECUTTER_CELLS, TAB_COUNT, Widget, tab_origin, tab_size,
+    self, CREATIVE_PANEL, GRID_CELLS, GRID_COLUMNS, GRID_ROWS, PlacedSlot, SLOT_SIZE, tab_origin,
+    tab_size,
+};
+use inventory::inventory_ledger::InventoryTarget;
+use ui_screens::container_actions::{
+    BEACON_LEVEL_FOR, InventoryCellHit, LOOM_PATTERNS, SEARCH_TAB, STONECUTTER_CELLS, TAB_COUNT,
+    Widget,
+};
+use {
+    super::{HudFrame, HudLayout, UiPresentationError, UiRuntime, rect},
+    ui::IconRef,
 };
 
 const FURNACE_COOK_TICKS: f32 = 200.0;
@@ -196,8 +203,8 @@ impl HudLayout<'_> {
                 text,
                 style: TextStyle::default(),
                 width_64: 1_024 * 64,
-                line_height_64: super::super::TEXT_LINE_HEIGHT_64,
-                baseline_64: super::super::TEXT_BASELINE_64,
+                line_height_64: ui::TEXT_LINE_HEIGHT_64,
+                baseline_64: ui::TEXT_BASELINE_64,
                 scale: self.text_scale(TEXT_GUI_PX),
                 font: self.font,
                 wrap: self.geometry.text_wrap(),
@@ -361,6 +368,12 @@ impl HudLayout<'_> {
         )?;
         self.progress_widgets(player_runtime, runtime, kind, origin)?;
         for slot in screens::screen_slots(screen) {
+            if kind == WindowKind::Horse
+                && let InventoryCellHit::Storage(index) = slot.hit
+                && !frame.mount_equipment.permits_inventory_slot(index)
+            {
+                continue;
+            }
             self.placed_slot(player_runtime, runtime, frame, origin, &slot)?;
         }
         self.window_widgets(player_runtime, runtime, frame, kind, origin)?;
@@ -374,8 +387,8 @@ impl HudLayout<'_> {
                 text,
                 style: TextStyle::default(),
                 width_64: 1_024 * 64,
-                line_height_64: super::super::TEXT_LINE_HEIGHT_64,
-                baseline_64: super::super::TEXT_BASELINE_64,
+                line_height_64: ui::TEXT_LINE_HEIGHT_64,
+                baseline_64: ui::TEXT_BASELINE_64,
                 scale: self.text_scale(TEXT_GUI_PX),
                 font: self.font,
                 wrap: self.geometry.text_wrap(),
@@ -554,7 +567,7 @@ impl HudLayout<'_> {
                     } else {
                         primary == id
                     };
-                    let unlocked = screens::BEACON_LEVEL_FOR
+                    let unlocked = BEACON_LEVEL_FOR
                         .iter()
                         .find(|(effect, _)| *effect == id)
                         .is_some_and(|(_, needed)| {
@@ -633,9 +646,7 @@ impl HudLayout<'_> {
                 }
                 Widget::LoomPattern(index) => {
                     let position = state.loom_row * screens::LOOM_COLUMNS + usize::from(index);
-                    let Some(pattern) =
-                        crate::ui_runtime::screen_recipes::LOOM_PATTERNS.get(position)
-                    else {
+                    let Some(pattern) = LOOM_PATTERNS.get(position) else {
                         continue;
                     };
                     let chosen = state.loom_pattern.as_deref() == Some(*pattern);
@@ -722,7 +733,7 @@ impl HudLayout<'_> {
             );
             self.ui_text(&text, [field[0] + 2.0, field[1] + 2.0], [255; 4], false)?;
         }
-        let entries = visible_creative_entries(runtime.inventory_ledger(player_runtime), state);
+        let entries = visible_creative_entries(runtime.inventory_ledger(player_runtime), runtime);
         for slot in screens::creative_slots() {
             let position = [origin[0] + slot.pos[0], origin[1] + slot.pos[1]];
             self.slot_frame(position, SLOT_SIZE)?;
@@ -783,6 +794,11 @@ impl HudLayout<'_> {
         };
         if let Some(slot) = screens::screen_slots(screen)
             .into_iter()
+            .filter(|slot| {
+                !matches!((screen, slot.hit),
+                (InventoryScreen::Window(WindowKind::Horse, _), InventoryCellHit::Storage(index))
+                if !frame.mount_equipment.permits_inventory_slot(index))
+            })
             .find(|slot| slot.hit == hover)
         {
             let inset = if slot.output { 5.0 } else { 1.0 };

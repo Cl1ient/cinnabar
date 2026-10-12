@@ -2,19 +2,19 @@
 //! gaps, not evidence that the player is in a source-qualified idle state.
 use crate::camera::FlyCamera;
 use bevy::{
-    camera::{Camera, RenderTarget},
+    camera::{Camera, Hdr, RenderTarget},
     ecs::system::SystemParam,
     prelude::*,
-    render::view::Hdr,
     window::WindowRef,
 };
 use client_ui::ui_runtime::UiRuntime;
-use render::{
-    ViewmodelCompletionGate, ViewmodelGeometry, ViewmodelMode, ViewmodelScene, ViewmodelSkin,
-    ViewmodelToken,
-};
-use sha2::{Digest, Sha256};
+use sha2::Digest;
+use sha2::Sha256;
 use std::sync::Arc;
+use {
+    render_model::{ViewmodelGeometry, ViewmodelSkin},
+    render_scene::{ViewmodelCompletionGate, ViewmodelMode, ViewmodelScene, ViewmodelToken},
+};
 
 /// World and gameplay facts sampled by the host at the viewmodel preparation boundary.
 pub struct ViewmodelWorld<'a> {
@@ -76,7 +76,7 @@ pub struct HandAdapter {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum HandOwner {
-    Actor(client_world::ActorLifetimeId),
+    Actor(actor_animation::ActorLifetimeId),
     Local {
         session: u64,
         actor_session: u64,
@@ -171,7 +171,7 @@ mod local_owner_tests {
             assert_eq!(adapter.revision, revision);
         }
         adapter
-            .select_owner(HandOwner::Actor(client_world::ActorLifetimeId {
+            .select_owner(HandOwner::Actor(actor_animation::ActorLifetimeId {
                 session_id: 1,
                 dimension: 0,
                 runtime_id: 1,
@@ -206,7 +206,7 @@ mod local_owner_tests {
         adapter.revision = u64::MAX;
         assert!(
             adapter
-                .select_owner(HandOwner::Actor(client_world::ActorLifetimeId {
+                .select_owner(HandOwner::Actor(actor_animation::ActorLifetimeId {
                     session_id: 1,
                     dimension: 0,
                     runtime_id: 1,
@@ -384,7 +384,7 @@ impl HandAdapter {
         }
         Some((cached.geometry.clone(), cached.pixels.clone()))
     }
-    fn skin(&mut self, raw: &protocol::StandardSkin) -> Option<ViewmodelSkin> {
+    fn skin(&mut self, raw: &render_api::StandardSkin) -> Option<ViewmodelSkin> {
         if raw.width != 64
             || raw.height != 64
             || raw.rgba8.len() != 64 * 64 * 4
@@ -430,7 +430,7 @@ pub struct ViewmodelPublish<'w, 's> {
     scene: Option<ResMut<'w, ViewmodelScene>>,
     gate: Option<Res<'w, ViewmodelCompletionGate>>,
     adapter: Option<ResMut<'w, HandAdapter>>,
-    geometry: Option<Res<'w, ViewmodelGeometry>>,
+    geometry: Option<Res<'w, render_scene::ViewmodelGeometryResource>>,
     local_visibility: Option<Res<'w, crate::local_player::LocalAvatarVisibilityCarrier>>,
     cameras: ViewmodelCameras<'w, 's>,
 }
@@ -438,8 +438,8 @@ impl ViewmodelPublish<'_, '_> {
     pub fn bind_cpu_fallback(
         &mut self,
         input: &render_model::UiRenderInput,
-        empty: Option<client_ui::ui_runtime::presentation::IconRef>,
-        held: Option<client_ui::ui_runtime::presentation::IconRef>,
+        empty: Option<ui::IconRef>,
+        held: Option<ui::IconRef>,
     ) {
         let cube = self
             .scene
@@ -670,11 +670,9 @@ impl ViewmodelPublish<'_, '_> {
         if let Some(selected) = player_runtime.selected_stack_snapshot() {
             values[7] = i128::from(selected.slot);
             match selected.state {
-                client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Unknown => {}
-                client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Empty => {
-                    values[6] = 1
-                }
-                client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(stack) => {
+                inventory::inventory_ledger::PlayerInventorySlot::Unknown => {}
+                inventory::inventory_ledger::PlayerInventorySlot::Empty => values[6] = 1,
+                inventory::inventory_ledger::PlayerInventorySlot::Present(stack) => {
                     values[6] = 2;
                     values[8..14].copy_from_slice(&[
                         i128::from(stack.network_id),
@@ -800,7 +798,7 @@ impl ViewmodelPublish<'_, '_> {
         }
         let local_owner = if matches!(
             selected.state,
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(_)
+            inventory::inventory_ledger::PlayerInventorySlot::Present(_)
         ) {
             let movement = world.movement.ok_or(HandFallback::Ownership)?;
             let visibility = self
@@ -830,7 +828,7 @@ impl ViewmodelPublish<'_, '_> {
         };
         let adapter = self.adapter.as_deref_mut().unwrap();
         let owner_identity =
-            local_owner.unwrap_or(HandOwner::Actor(client_world::ActorLifetimeId {
+            local_owner.unwrap_or(HandOwner::Actor(actor_animation::ActorLifetimeId {
                 session_id: stream.authority().actor_session_id(),
                 dimension: stream.current_dimension(),
                 runtime_id: actor.map_or(0, |actor| actor.runtime_id),
@@ -840,7 +838,7 @@ impl ViewmodelPublish<'_, '_> {
             .select_owner(owner_identity)
             .ok_or(HandFallback::Geometry)?;
         let (geometry, skin, lifetime) = match selected.state {
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Empty => {
+            inventory::inventory_ledger::PlayerInventorySlot::Empty => {
                 let actor = actor.ok_or(HandFallback::Ownership)?;
                 let rig = stream
                     .authority()
@@ -867,12 +865,12 @@ impl ViewmodelPublish<'_, '_> {
                     return Err(HandFallback::Skin);
                 };
                 (
-                    (**geometry).clone(),
+                    geometry.0.clone(),
                     adapter.skin(raw).ok_or(HandFallback::Skin)?,
                     rig.actor,
                 )
             }
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(stack) => {
+            inventory::inventory_ledger::PlayerInventorySlot::Present(stack) => {
                 let Some(HandOwner::Local {
                     actor_session,
                     dimension,
@@ -889,7 +887,7 @@ impl ViewmodelPublish<'_, '_> {
                 (
                     geometry,
                     skin,
-                    client_world::ActorLifetimeId {
+                    actor_animation::ActorLifetimeId {
                         session_id: actor_session,
                         dimension,
                         runtime_id: runtime,
@@ -899,7 +897,7 @@ impl ViewmodelPublish<'_, '_> {
                     },
                 )
             }
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Unknown => {
+            inventory::inventory_ledger::PlayerInventorySlot::Unknown => {
                 return Err(HandFallback::ItemsUnknownOrHeld);
             }
         };

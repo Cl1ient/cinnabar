@@ -1,6 +1,7 @@
 //! Same-frame pointer and close-key ordering through the production input owners.
 
-use crate::player_runtime::PlayerRuntime;
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
+use client_state::PlayerRuntime;
 use std::sync::Arc;
 
 use bevy::{
@@ -20,14 +21,16 @@ use protocol::{
 };
 use ui::UiPoint;
 
-use crate::{
-    app::{ClientFrameSet, configure_client_frame_schedule},
-    menu::{MenuClipboard, MenuRuntime, drive_menu_input},
-    ui_runtime::{
-        drive_chat_keyboard_input, drive_inventory_ui_actions, presentation::tests::fixture_font,
-    },
-};
 use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
+use {
+    crate::{
+        app::configure_client_frame_schedule,
+        ui_runtime::{drive_chat_keyboard_input, drive_inventory_ui_actions},
+    },
+    client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
+    client_state::ClientFrameSet,
+    ui_engine::test_support::fixture_font,
+};
 
 fn app() -> (App, Entity) {
     app_with(true)
@@ -35,7 +38,7 @@ fn app() -> (App, Entity) {
 
 /// One stack in slot zero under the pointer, with the personal inventory open or closed.
 fn app_with(open: bool) -> (App, Entity) {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
     let mut runtime = UiRuntime::new(1);
     runtime.publish_inventory_authority(&mut player_runtime, InventoryAuthority::Server);
     runtime
@@ -104,9 +107,9 @@ fn app_with(open: bool) -> (App, Entity) {
         .add_message::<KeyboardInput>()
         // As in frames without a fixed tick, window events are not rotated between updates.
         .init_resource::<bevy::ecs::message::Messages<WindowEvent>>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime)
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .add_systems(
             Update,
@@ -192,7 +195,7 @@ fn click_then_escape_in_one_frame_applies_the_click() {
 
         app.update();
 
-        assert!(!app.world().resource::<UiRuntime>().inventory_open());
+        assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
         assert_eq!(
             requests(&app) > 0,
             applied,
@@ -223,7 +226,7 @@ fn earlier_frame_keys_do_not_reorder_a_later_click_and_escape() {
         &[Input::Click(MouseButton::Left), Input::Key(KeyCode::KeyQ)],
     );
     app.update();
-    assert!(app.world().resource::<UiRuntime>().inventory_open());
+    assert!(app.world().resource::<UiRuntimeResource>().inventory_open());
     assert_eq!(requests(&app), 0);
 
     app.world_mut()
@@ -237,7 +240,7 @@ fn earlier_frame_keys_do_not_reorder_a_later_click_and_escape() {
     );
     app.update();
 
-    assert!(!app.world().resource::<UiRuntime>().inventory_open());
+    assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
     assert!(
         requests(&app) > 0,
         "the second frame's click lands before Escape"
@@ -263,7 +266,7 @@ fn keys_after_click_and_escape_route_to_the_closed_screen() {
     );
     app.update();
 
-    let runtime = app.world().resource::<UiRuntime>();
+    let runtime = app.world().resource::<UiRuntimeResource>();
     assert!(!runtime.inventory_open());
     assert!(runtime.chat_focused(), "T after Escape opens chat");
     assert_eq!(
@@ -304,7 +307,7 @@ fn press_after_escape_cannot_change_the_earlier_take() {
     );
     app.update();
 
-    assert!(!app.world().resource::<UiRuntime>().inventory_open());
+    assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
     assert_eq!(
         queued_batch(&app),
         queued_batch(&control),
@@ -333,7 +336,7 @@ fn press_before_the_open_key_never_reaches_the_opened_screen() {
     );
     app.update();
 
-    assert!(!app.world().resource::<UiRuntime>().inventory_open());
+    assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
     assert_eq!(queued_batch(&app), None, "the inventory receives nothing");
 }
 
@@ -378,7 +381,7 @@ fn gameplay_click_followed_by_a_key_keeps_its_edge() {
 /// A press that triggers the inventory binding opens the screen and is never also a click on it.
 #[test]
 fn inventory_binding_press_followed_by_a_key_is_not_a_click() {
-    use crate::menu::{
+    use launcher::menu::{
         MenuAction,
         settings_options::{EXTRA_KEYS, KEY_BINDINGS},
     };
@@ -419,14 +422,14 @@ fn inventory_binding_press_followed_by_a_key_is_not_a_click() {
                 .0
                 .named_key_control("key.inventory"),
             Some(semantic_input::PhysicalControl::MouseButton(
-                crate::semantic_controls::physical::mouse_button_code(MouseButton::Right).unwrap()
+                client_shell::physical_input::mouse_button_code(MouseButton::Right).unwrap()
             )),
             "the inventory is bound to the right button"
         );
         menu.set_visible(false);
     }
     app.update();
-    assert!(!app.world().resource::<UiRuntime>().inventory_open());
+    assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
 
     frame(
         &mut app,
@@ -435,7 +438,7 @@ fn inventory_binding_press_followed_by_a_key_is_not_a_click() {
     );
     app.update();
 
-    assert!(app.world().resource::<UiRuntime>().inventory_open());
+    assert!(app.world().resource::<UiRuntimeResource>().inventory_open());
     assert_eq!(requests(&app), 0, "no slot click and no drop");
     assert!(
         !app.world()

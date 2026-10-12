@@ -1,13 +1,13 @@
-use crate::{
-    camera::FlyCamera,
-    environment::WorldClock,
-    local_player::{CameraPose, LocalPlayerFrameCarrier},
-    runtime::world::ClientWorld,
-};
 use bevy::prelude::*;
-pub use client_presentation::named_audio::{AudioDevice, NamedAudio};
-use client_presentation::{
-    audio_ingress::SequencedAudioEvent, local_player_camera_receipt::CameraPublicationAttempt,
+use client_audio::audio_ingress::SequencedAudioEvent;
+use client_audio::named_audio::{AudioDevice, NamedAudio};
+use client_presentation::local_player_camera_receipt::CameraPublicationAttempt;
+use {
+    crate::{environment::WorldClock, runtime::world::ClientWorld},
+    client_presentation::{
+        camera::FlyCamera,
+        local_player::{CameraPose, LocalPlayerFrameCarrier},
+    },
 };
 
 /// Borrows current owner facts and forwards them at the existing system boundary.
@@ -19,26 +19,33 @@ pub(crate) fn drain_live_named_audio(
     receipt: Res<CameraPublicationAttempt>,
     frame: Res<LocalPlayerFrameCarrier>,
     camera_pose: Res<CameraPose>,
-    physics: Res<crate::movement::LocalPhysicsController>,
+    physics: Res<client_interaction::movement::LocalPhysicsController>,
     cameras: Query<&Transform, With<FlyCamera>>,
     state: ResMut<NamedAudio>,
     device: Option<NonSendMut<AudioDevice>>,
-    profiler: Option<Res<render::RuntimeStageProfiler>>,
+    profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
 ) {
     let _timer = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::Audio));
-    client_presentation::named_audio::drain_live_named_audio(
-        messages,
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::Audio));
+    let camera = client_presentation::local_player_camera_receipt::published_default_camera(
         client_presentation::observations::WorldObservation {
             stream: world.stream.as_ref(),
         },
-        client_presentation::observations::SessionObservation(clock.session_generation()),
-        receipt,
-        frame,
-        camera_pose,
+        clock.session_generation(),
+        &receipt,
+        &frame,
+        &camera_pose,
         &*physics,
-        cameras,
+        &cameras,
+    );
+    client_audio::named_audio::drain_live_named_audio(
+        messages,
+        client_audio::observations::WorldObservation {
+            stream: world.stream.as_ref(),
+        },
+        client_audio::observations::SessionObservation(clock.session_generation()),
+        camera,
         state,
         device,
     );

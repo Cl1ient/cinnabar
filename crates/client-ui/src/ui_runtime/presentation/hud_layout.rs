@@ -16,7 +16,10 @@ use ui::{
     UiNodeId, UiScale, UiVisual,
 };
 
-use super::{HudTexturePages, IconRef, UiPresentationError, UiRuntime, rect};
+use {
+    super::{HudTexturePages, UiPresentationError, UiRuntime, rect},
+    ui::IconRef,
+};
 
 mod inventory;
 mod pinned;
@@ -24,15 +27,15 @@ mod player;
 mod reader;
 mod recipe_book;
 mod sleep;
-mod status_motion;
 mod status_rows;
-pub(super) use status_rows::{HeartPaint, HungerPaint, capture as capture_hud_paint};
+pub(super) use status_rows::capture as capture_hud_paint;
 mod windows;
 
 pub(super) use inventory::{CraftingFrame, StorageIcons};
-pub use pinned::{BOSS_TINTS, effect_icon_role, gui_scale};
+pub use pinned::{BOSS_TINTS, effect_icon_role};
 use pinned::{BOTTOM_STACK_HEIGHT, HOTBAR_WIDTH, hsv_to_rgb};
 pub use sleep::SleepTimeline;
+use ui::gui_scale;
 pub(super) use windows::{Durability, TooltipLine, WindowIcons, WindowText, title_key};
 
 #[derive(Clone, Debug)]
@@ -49,6 +52,8 @@ impl Default for InventoryIcons {
 /// registry immediately before presentation.
 #[derive(Clone, Debug, Default)]
 pub struct HudFrame {
+    /// Equipment capabilities used by the painted mount layout and its pointer hits.
+    pub mount_equipment: assets::entity::mount::MountEquipment,
     pub now_millis: u64,
     /// The crosshair is a first-person-only surface in the reference.
     pub first_person: bool,
@@ -94,6 +99,8 @@ pub struct HudFrame {
     pub viewmodel_pitch_degrees: f32,
     /// Presented name of the selected stack, resolved this frame.
     pub selected_item_name: Option<std::sync::Arc<str>>,
+    /// Exact declared food component of the currently selected authoritative stack.
+    pub selected_food: Option<protocol::FoodProperties>,
     /// Jump charge in `0.0..=1.0` while riding a jump-capable mount: the
     /// mount jump bar replaces the experience bar for the ride's duration.
     pub mount_jump: Option<f32>,
@@ -208,8 +215,8 @@ impl<'a> HudLayout<'a> {
                 text: "0",
                 style: TextStyle::default(),
                 width_64: 64 * 64,
-                line_height_64: super::TEXT_LINE_HEIGHT_64,
-                baseline_64: super::TEXT_BASELINE_64,
+                line_height_64: ui::TEXT_LINE_HEIGHT_64,
+                baseline_64: ui::TEXT_BASELINE_64,
                 scale: UiScale::default(),
                 font,
                 wrap: Default::default(),
@@ -295,8 +302,8 @@ impl<'a> HudLayout<'a> {
                     text: &text,
                     style: TextStyle::default(),
                     width_64: (64.0 * 64.0) as u32,
-                    line_height_64: super::TEXT_LINE_HEIGHT_64,
-                    baseline_64: super::TEXT_BASELINE_64,
+                    line_height_64: ui::TEXT_LINE_HEIGHT_64,
+                    baseline_64: ui::TEXT_BASELINE_64,
                     scale,
                     font: self.font,
                     wrap: self.geometry.text_wrap(),
@@ -415,7 +422,7 @@ impl<'a> HudLayout<'a> {
         .with_visual(UiVisual::Text {
             layout,
             color,
-            shadow: TextShadow::Offset64(super::TEXT_SHADOW_OFFSET_64),
+            shadow: TextShadow::Offset64(ui::TEXT_SHADOW_OFFSET_64),
         });
         self.nodes.push(node);
         *self.next_id = self.next_id.saturating_add(1);

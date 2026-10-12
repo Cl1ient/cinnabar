@@ -1,26 +1,32 @@
 //! Draws dropped-item and block models plus dynamic line geometry in the opaque 3D phase.
-use crate::dropped_item::{
-    DroppedItemModel, DroppedItemScene, ITEM_MESH_VERTEX_BYTES, ItemMeshVertex,
-    MAX_DROPPED_ITEM_INSTANCES, MAX_DYNAMIC_ITEM_VERTICES, MAX_ITEM_LAYERS, MAX_ITEM_SPRITE_SIDE,
-    block_mesh, cube_mesh, extruded_sprite_mesh, native_dropped_sprite_mesh,
-};
+use bevy::prelude::IntoScheduleConfigs;
+#[cfg(test)]
+use bevy::prelude::IntoSystem;
+#[cfg(test)]
+use bevy::prelude::System;
+use bevy::render::render_phase::AddRenderCommand;
+use bevy::render::render_resource::ShaderType;
 use bevy::{
     asset::{AssetId, load_internal_asset, uuid_handle},
     core_pipeline::core_3d::{CORE_3D_DEPTH_FORMAT, Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey},
     ecs::{
-        change_detection::Tick,
         query::ROQueryItem,
-        system::{SystemParam, SystemParamItem, lifetimeless::Read, lifetimeless::SRes},
+        system::{
+            SystemParam, SystemParamItem,
+            lifetimeless::{Read, SRes},
+        },
     },
     mesh::VertexBufferLayout,
-    prelude::*,
+    prelude::{
+        App, BevyError, Commands, Entity, FromWorld, Handle, Msaa, Plugin, Query, Res, ResMut,
+        Resource, Result, Shader, World, default,
+    },
     render::{
         Render, RenderApp, RenderStartup, RenderSystems,
         extract_resource::ExtractResourcePlugin,
         render_phase::{
-            AddRenderCommand, BinnedRenderPhaseType, DrawFunctions, InputUniformIndex, PhaseItem,
-            RenderCommand, RenderCommandResult, SetItemPipeline, TrackedRenderPass,
-            ViewBinnedRenderPhases,
+            BinnedRenderPhaseType, DrawFunctions, InputUniformIndex, PhaseItem, RenderCommand,
+            RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewBinnedRenderPhases,
         },
         render_resource::{
             AddressMode, BindGroup, BindGroupEntry, BindGroupLayoutDescriptor,
@@ -28,7 +34,7 @@ use bevy::{
             BufferDescriptor, BufferId, BufferInitDescriptor, BufferSize, BufferUsages, Canonical,
             ColorTargetState, ColorWrites, CompareFunction, DepthStencilState, Extent3d,
             FilterMode, FragmentState, PipelineCache, RenderPipeline, RenderPipelineDescriptor,
-            Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, ShaderType, Specializer,
+            Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, Specializer,
             SpecializerKey, Texture, TextureDataOrder, TextureDescriptor, TextureDimension,
             TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
             TextureViewDimension, Variants, VertexAttribute, VertexFormat, VertexState,
@@ -36,10 +42,21 @@ use bevy::{
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        view::{ExtractedView, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms},
     },
 };
 use std::ops::Range;
+use {
+    render_model::{
+        DroppedItemModel, ItemMeshVertex, MAX_DROPPED_ITEM_INSTANCES, MAX_DYNAMIC_ITEM_VERTICES,
+        MAX_ITEM_LAYERS, MAX_ITEM_SPRITE_SIDE,
+        dropped_item::{
+            ITEM_MESH_VERTEX_BYTES, block_mesh, cube_mesh, extruded_sprite_mesh,
+            native_dropped_sprite_mesh,
+        },
+    },
+    render_scene::DroppedItemScene,
+};
 
 const ITEM_SHADER_HANDLE: Handle<Shader> = uuid_handle!("6b7c1b0e-2f3d-4a61-9d1e-7a8f2c4e5b13");
 pub(crate) mod terrain_items;
@@ -77,8 +94,8 @@ fn install(app: &mut App) {
     load_internal_asset!(
         app,
         ITEM_SHADER_HANDLE,
-        "dropped_item.wgsl",
-        crate::shader_safety::from_wgsl
+        "dropped_item.wesl",
+        crate::shader_safety::from_wesl
     );
     crate::pipeline_warmup::register::<ItemPipeline>(app);
     crate::install_opaque_phase_reset(app.sub_app_mut(RenderApp));
@@ -98,7 +115,7 @@ fn install(app: &mut App) {
                 prepare_items.in_set(RenderSystems::PrepareResources),
                 prepare_bind_group.in_set(RenderSystems::PrepareBindGroups),
                 queue_items
-                    .run_if(crate::panorama::world_passes_enabled)
+                    .run_if(render_scene::panorama::world_passes_enabled)
                     .in_set(RenderSystems::Queue),
             ),
         );
@@ -146,7 +163,7 @@ fn init_gpu(mut commands: Commands, device: Res<RenderDevice>) {
             address_mode_w: AddressMode::ClampToEdge,
             mag_filter: FilterMode::Nearest,
             min_filter: FilterMode::Nearest,
-            mipmap_filter: FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..default()
         }),
         environment: device.create_buffer(&BufferDescriptor {
@@ -183,8 +200,7 @@ fn init_gpu(mut commands: Commands, device: Res<RenderDevice>) {
 }
 
 /// Appends one square-or-smaller RGBA tile as a new atlas layer and returns its index.
-fn push_layer(atlas: &mut Vec<u8>, width: usize, height: usize, rgba8: &[u8]) -> u32 {
-    let side = MAX_ITEM_SPRITE_SIDE as usize;
+fn push_layer(atlas: &mut Vec<u8>, side: usize, width: usize, height: usize, rgba8: &[u8]) -> u32 {
     let layer_bytes = side * side * 4;
     let layer = atlas.len() / layer_bytes;
     atlas.resize(atlas.len() + layer_bytes, 0);
@@ -198,10 +214,14 @@ fn push_layer(atlas: &mut Vec<u8>, width: usize, height: usize, rgba8: &[u8]) ->
 }
 
 /// Builds the mesh vertices for one model, appending its tiles to `atlas`; `None` if rejected.
-fn build_model(atlas: &mut Vec<u8>, model: &DroppedItemModel) -> Option<Vec<ItemMeshVertex>> {
-    let side = MAX_ITEM_SPRITE_SIDE;
+fn build_model(
+    atlas: &mut Vec<u8>,
+    model: &DroppedItemModel,
+    side: u32,
+) -> Option<Vec<ItemMeshVertex>> {
     let layers_used = atlas.len() / (side * side * 4) as usize;
     match model {
+        DroppedItemModel::Vacant => None,
         DroppedItemModel::Sprite(sprite) | DroppedItemModel::NativeSprite(sprite) => {
             let (width, height) = (sprite.width as usize, sprite.height as usize);
             if layers_used >= MAX_ITEM_LAYERS
@@ -223,7 +243,7 @@ fn build_model(atlas: &mut Vec<u8>, model: &DroppedItemModel) -> Option<Vec<Item
                 side,
                 layers_used as u32,
             )?;
-            push_layer(atlas, width, height, &sprite.rgba8);
+            push_layer(atlas, side as usize, width, height, &sprite.rgba8);
             Some(mesh)
         }
         DroppedItemModel::Cube(cube) => {
@@ -235,8 +255,9 @@ fn build_model(atlas: &mut Vec<u8>, model: &DroppedItemModel) -> Option<Vec<Item
             {
                 return None;
             }
-            let layers: [u32; 6] =
-                std::array::from_fn(|face| push_layer(atlas, tile, tile, &cube.faces[face]));
+            let layers: [u32; 6] = std::array::from_fn(|face| {
+                push_layer(atlas, side as usize, tile, tile, &cube.faces[face])
+            });
             cube_mesh(layers, cube.tints, cube.tile, side)
         }
         DroppedItemModel::Block(block) => {
@@ -250,10 +271,11 @@ fn build_model(atlas: &mut Vec<u8>, model: &DroppedItemModel) -> Option<Vec<Item
                     return None;
                 }
             }
-            let vertices = block_mesh(block, layers_used as u32)?;
+            let vertices = block_mesh(block, layers_used as u32, side)?;
             for (sprite, _) in block.materials.iter() {
                 push_layer(
                     atlas,
+                    side as usize,
                     sprite.width as usize,
                     sprite.height as usize,
                     &sprite.rgba8,
@@ -264,13 +286,31 @@ fn build_model(atlas: &mut Vec<u8>, model: &DroppedItemModel) -> Option<Vec<Item
     }
 }
 
+/// Sizes the atlas to admitted block artwork while ordinary item sprites retain their size.
+fn atlas_side(models: &[DroppedItemModel]) -> u32 {
+    models
+        .iter()
+        .filter_map(|model| match model {
+            DroppedItemModel::Block(block) => block
+                .materials
+                .iter()
+                .map(|(sprite, _)| sprite.width.max(sprite.height))
+                .max(),
+            DroppedItemModel::Cube(cube) => Some(cube.tile),
+            _ => None,
+        })
+        .filter(|&side| side <= assets::MAX_TILE_SIZE)
+        .fold(MAX_ITEM_SPRITE_SIDE, u32::max)
+        .next_power_of_two()
+}
+
 fn rebuild_models(
     scene: &DroppedItemScene,
     device: &RenderDevice,
     queue: &RenderQueue,
     gpu: &mut ItemGpu,
 ) {
-    let side = MAX_ITEM_SPRITE_SIDE as usize;
+    let side = atlas_side(&scene.models) as usize;
     let layer_bytes = side * side * 4;
     // Layer 0 is opaque white for untextured geometry.
     let mut atlas = vec![255_u8; layer_bytes];
@@ -278,7 +318,7 @@ fn rebuild_models(
     let mut ranges = Vec::with_capacity(scene.models.len());
     for model in scene.models.iter() {
         let start = vertices.len() as u32;
-        if let Some(mesh) = build_model(&mut atlas, model) {
+        if let Some(mesh) = build_model(&mut atlas, model, side as u32) {
             vertices.extend(mesh);
         }
         ranges.push(start..vertices.len() as u32);
@@ -297,8 +337,8 @@ fn rebuild_models(
         &TextureDescriptor {
             label: Some("dropped item texture layers"),
             size: Extent3d {
-                width: MAX_ITEM_SPRITE_SIDE,
-                height: MAX_ITEM_SPRITE_SIDE,
+                width: side as u32,
+                height: side as u32,
                 depth_or_array_layers: layers as u32,
             },
             mip_level_count: 1,
@@ -553,7 +593,7 @@ fn item_pipeline_descriptor(layout: BindGroupLayoutDescriptor) -> RenderPipeline
             shader: ITEM_SHADER_HANDLE,
             entry_point: Some("item_fragment".into()),
             targets: vec![Some(ColorTargetState {
-                format: TextureFormat::bevy_default(),
+                format: render_scene::SCENE_COLOR_FORMAT,
                 blend: None,
                 write_mask: ColorWrites::ALL,
             })],
@@ -561,8 +601,8 @@ fn item_pipeline_descriptor(layout: BindGroupLayoutDescriptor) -> RenderPipeline
         }),
         depth_stencil: Some(DepthStencilState {
             format: CORE_3D_DEPTH_FORMAT,
-            depth_write_enabled: true,
-            depth_compare: CompareFunction::GreaterEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(CompareFunction::GreaterEqual),
             stencil: default(),
             bias: default(),
         }),
@@ -590,9 +630,9 @@ impl Specializer<RenderPipeline> for ItemPipelineSpecializer {
             .as_mut()
             .unwrap()
             .format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         Ok(key)
     }
@@ -661,12 +701,13 @@ struct QueueItemParams<'w, 's> {
             Entity,
             &'static MainEntity,
             &'static ExtractedView,
+            &'static bevy::render::camera::ExtractedCamera,
             &'static Msaa,
         ),
     >,
 }
 
-fn queue_items(mut params: QueueItemParams<'_, '_>, mut next_tick: Local<Tick>) {
+fn queue_items(mut params: QueueItemParams<'_, '_>) {
     if params.scene.instances.is_empty()
         && params.scene.dynamic.is_empty()
         && !params
@@ -678,7 +719,7 @@ fn queue_items(mut params: QueueItemParams<'_, '_>, mut next_tick: Local<Tick>) 
         return;
     }
     let draw_function = params.draw_functions.read().id::<DrawItemCommands>();
-    for (view_entity, main_entity, view, msaa) in &params.views {
+    for (view_entity, main_entity, view, extracted_camera, msaa) in &params.views {
         let Some(phase) = params.phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -686,35 +727,32 @@ fn queue_items(mut params: QueueItemParams<'_, '_>, mut next_tick: Local<Tick>) 
             &params.pipeline_cache,
             ItemPipelineKey {
                 msaa: *msaa,
-                hdr: view.hdr,
+                hdr: extracted_camera.hdr,
             },
         ) else {
             continue;
         };
-        let this_tick = next_tick.get() + 1;
-        next_tick.set(this_tick);
+
         phase.add(
             Opaque3dBatchSetKey {
                 draw_function,
                 pipeline: pipeline_id,
                 material_bind_group_index: None,
                 lightmap_slab: None,
-                vertex_slab: default(),
-                index_slab: None,
+                slabs: default(),
             },
             Opaque3dBinKey {
-                asset_id: AssetId::<Shader>::invalid().untyped(),
+                asset_id: AssetId::<Shader>::default().untyped(),
             },
             (view_entity, *main_entity),
             InputUniformIndex::default(),
             BinnedRenderPhaseType::NonMesh,
-            *next_tick,
         );
     }
 }
 
 type DrawItemCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuActors as usize },
+    { render_scene::RuntimeStage::GpuActors as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -788,24 +826,9 @@ mod tests {
     // The item fragment stage reads the view for distance fog; a vertex-only binding fails validation.
     #[test]
     fn fragment_view_reads_are_visible_to_the_fragment_stage() {
-        let lighting = crate::material_shader::source(include_str!("lighting.wgsl")).replacen(
-            "#define_import_path cinnabar::lighting",
-            "",
-            1,
-        );
-        let source = include_str!("dropped_item.wgsl")
-            .replace(
-                "#import bevy_render::view::View",
-                "struct View { clip_from_world: mat4x4<f32>, world_position: vec3<f32>, }",
-            )
-            .replace(
-                "#import cinnabar::lighting::{actor_light_colour, actor_distance_fog, tint_to_gamma, tint_to_linear}",
-                &lighting,
-            );
+        let source = crate::shader_source::composed(include_str!("dropped_item.wesl"), &[]);
         assert!(crate::shader_test_support::fragment_reads_binding(
-            &crate::shader_source::preprocess(&source, &[]),
-            0,
-            0
+            &source, 0, 0
         ));
         assert!(
             super::item_bind_group_layout().entries[0]

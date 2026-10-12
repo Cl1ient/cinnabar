@@ -39,8 +39,7 @@ impl InventorySession {
         session: u64,
         runtime_id: u64,
     ) -> Result<Vec<EquipmentRoute>, InventoryRouterError> {
-        self.equipment_router
-            .publish_local_runtime_id(session, runtime_id)
+        Arc::make_mut(&mut self.equipment_router).publish_local_runtime_id(session, runtime_id)
     }
     /// Route equipment to local inventory selection or remote presentation.
     pub fn route_equipment(
@@ -49,7 +48,7 @@ impl InventorySession {
         sequence: u64,
         event: EquipmentEvent,
     ) -> Result<EquipmentRouteResult, InventoryRouterError> {
-        self.equipment_router.route(session, sequence, event)
+        Arc::make_mut(&mut self.equipment_router).route(session, sequence, event)
     }
     /// Retain a main-hand echo without allowing offhand traffic to change selection.
     pub fn retain_local_selected_equipment(&mut self, fifo_sequence: u64, event: EquipmentEvent) {
@@ -228,7 +227,6 @@ impl InventorySession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use protocol::wire::valentine::bedrock::version::v1_26_51::McpePacketData;
     use protocol::{ContainerIdentity, InventoryAuthority, InventoryEvent, InventorySlotEvent};
 
     /// A slot whose stack still carries a predicted request id sends at once.
@@ -262,10 +260,9 @@ mod tests {
         session.queue_local_hotbar_selection(2, game_mode);
         let (slot, packet) = session.pending_hotbar_packet(game_mode).unwrap().unwrap();
         assert_eq!(slot, 2);
-        let McpePacketData::MobEquipmentPacket(packet) = packet.data else {
-            panic!("hotbar selection must build a MobEquipment packet");
-        };
-        assert_eq!(packet.item.stacksize, 3);
-        assert_eq!(packet.item.net_id_variant, None);
+        let packet = protocol::test_support::packets::equipment(&packet)
+            .expect("hotbar selection must build a MobEquipment packet");
+        assert_eq!(packet.count, 3);
+        assert_eq!(packet.stack_network_id, None);
     }
 }

@@ -2,10 +2,14 @@
 
 use std::sync::Arc;
 
-use json_ui::{BindState, EmptyLibrary, ResolvedControl, bind_stateful};
+use json_ui::{BindState, DataSource, EmptyLibrary, ResolvedControl, bind_stateful};
 use serde_json::{Value, json};
+use ui::IconRef;
+use ui_screens::recipe_book::{COLLECTION, book_data};
 
-use super::*;
+use super::super::containers::{ContainerAuthority, container_frame};
+use crate::ui_runtime::UiRuntime;
+use crate::ui_runtime::presentation::HudFrame;
 
 #[test]
 fn review_recipe_cell_clears_an_icon_when_replacement_has_no_art() {
@@ -60,10 +64,9 @@ fn review_recipe_cell_clears_an_icon_when_replacement_has_no_art() {
         let mut data = DataSource::new();
         let mut icons = Vec::new();
         book_data(
-            &player_runtime,
+            &ContainerAuthority::new(&player_runtime, &runtime),
             &mut data,
-            &runtime,
-            &frame,
+            &container_frame(&frame),
             &mut icons,
             true,
             &mut cache,
@@ -129,10 +132,9 @@ fn an_empty_recipe_tab_clears_the_retained_grid_size() {
         runtime.screen_state_mut().creative_tab = tab;
         let mut data = DataSource::new();
         book_data(
-            &player,
+            &ContainerAuthority::new(&player, &runtime),
             &mut data,
-            &runtime,
-            &HudFrame::default(),
+            &container_frame(&HudFrame::default()),
             &mut Vec::new(),
             true,
             &mut cache,

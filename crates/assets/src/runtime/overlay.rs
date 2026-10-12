@@ -247,10 +247,25 @@ impl RuntimeAssets {
         let mut model_templates = self.model_templates.to_vec();
         let compound_tails = crate::blob::compiled_compound_tails(&overlay.model_templates)?;
         let mut covered = 0usize;
-        for template in &overlay.model_templates {
+        for (index, template) in overlay.model_templates.iter().enumerate() {
+            if template.flags == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+                && (template.quad_count == 0
+                    || overlay
+                        .model_templates
+                        .get(index + 1)
+                        .is_none_or(|next| next.flags != 0))
+            {
+                return Err(invalid(
+                    "overlay pot-content template has no standalone world model",
+                ));
+            }
             if template.quad_start as usize != covered
                 || template.quad_count as usize > crate::MAX_MODEL_TEMPLATE_QUADS
-                || !matches!(template.flags, 0 | crate::MODEL_TEMPLATE_FLAG_COMPOUND_NEXT)
+                || !matches!(
+                    template.flags,
+                    0 | crate::MODEL_TEMPLATE_FLAG_COMPOUND_NEXT
+                        | crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+                )
             {
                 return Err(invalid("overlay template spans are noncanonical"));
             }
@@ -298,6 +313,13 @@ impl RuntimeAssets {
         }
         let mut visuals = self.visuals.to_vec();
         for visual in &overlay.visuals {
+            if overlay
+                .model_templates
+                .get(visual.model_template as usize)
+                .is_some_and(|template| template.flags == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT)
+            {
+                return Err(invalid("overlay visual references pot-content geometry"));
+            }
             if visual.model_template != NO_MODEL_TEMPLATE
                 && compound_tails.get(visual.model_template as usize).copied() == Some(true)
             {
@@ -483,6 +505,7 @@ mod tests {
                 model_template: NO_MODEL_TEMPLATE,
                 animation: NO_ANIMATION,
                 variant: 0,
+                destroy: crate::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             }],
             light_properties: vec![LightProperties::OPAQUE_DARK],
             materials: vec![Material {
@@ -611,7 +634,13 @@ mod tests {
     #[test]
     fn expanded_layers_retain_their_source_mips_for_terrain_upload() {
         let mut texture = page(64);
-        for (index, pixel) in texture.mips[0].rgba8.chunks_exact_mut(4).enumerate() {
+        for (index, pixel) in texture.mips[0]
+            .rgba8
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
             pixel.copy_from_slice(if index % 8 < 4 {
                 &[255, 0, 0, 255]
             } else {
@@ -619,7 +648,7 @@ mod tests {
             });
         }
         for mip in &mut texture.mips[1..] {
-            for pixel in mip.rgba8.chunks_exact_mut(4) {
+            for pixel in mip.rgba8.as_chunks_mut::<4>().0 {
                 pixel.copy_from_slice(&[127, 0, 127, 255]);
             }
         }

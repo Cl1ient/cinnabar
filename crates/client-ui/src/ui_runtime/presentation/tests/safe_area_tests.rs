@@ -89,8 +89,8 @@ fn tiny_launcher_text_keeps_rendering_after_resize() {
     let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
     let player = player_state::PlayerState::new(0);
     let runtime = UiRuntime::new(0);
-    let mut view = crate::menu::MenuView::new(true, "Fixture".into());
-    view.screen = crate::menu::MenuScreen::Settings;
+    let mut view = launcher::menu::MenuView::new(true, "Fixture".into());
+    view.screen = launcher::menu::MenuScreen::Settings;
     presentation.set_menu_view(Some(view));
     for physical in [[1280, 720], [254, 124], [1, 1], [1280, 720]] {
         let result = presentation.build(
@@ -122,8 +122,11 @@ fn tiny_launcher_text_keeps_rendering_after_resize() {
 #[test]
 fn six_pixel_glyph_in_one_pixel_label_still_has_a_layout() {
     let font = fixture_font();
-    let metrics =
-        super::super::TextMetrics::for_viewport([254, 124], ui::DpiScale::new(1.0).unwrap(), None);
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport(
+        [254, 124],
+        ui::DpiScale::new(1.0).unwrap(),
+        None,
+    );
     let mut cache = ui::TextLayoutCache::new(8, 64 * 1024);
     let layout = cache.layout(metrics.request("W", 64, &font)).unwrap();
     assert_eq!(layout.size_64()[0], 384);
@@ -202,8 +205,8 @@ fn installed_launcher_text_snapshot() {
     };
     let runtime = super::super::forms::pack_harness::menu_runtime();
     let player = player_state::PlayerState::new(0);
-    let mut view = crate::menu::MenuView::new(true, "Fixture".into());
-    view.screen = crate::menu::MenuScreen::Settings;
+    let mut view = launcher::menu::MenuView::new(true, "Fixture".into());
+    view.screen = launcher::menu::MenuScreen::Settings;
     presentation.set_menu_view(Some(view));
     let input = presentation
         .build(

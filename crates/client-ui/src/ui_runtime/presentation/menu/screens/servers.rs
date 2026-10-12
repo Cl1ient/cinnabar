@@ -1,8 +1,8 @@
 use ui::{SafeArea, TextLayoutCache, UiNode, UiRect};
 
-use crate::{
-    menu::{MenuAction, MenuServerCard, MenuServerTab, MenuView, SavedServer},
-    ui_runtime::presentation::IconRef,
+use {
+    launcher::menu::{MenuAction, MenuServerCard, MenuServerTab, MenuView, SavedServer},
+    ui::IconRef,
 };
 
 use super::{
@@ -11,9 +11,9 @@ use super::{
         rect,
         tokens::*,
     },
-    ContentArea, TextMetrics, UiPresentationError, catalog_status, empty_state, panel,
-    section_heading,
+    ContentArea, UiPresentationError, catalog_status, empty_state, panel, section_heading,
 };
+use ui_engine::text_metrics::TextMetrics;
 
 pub(super) fn append(
     view: &MenuView,
@@ -418,17 +418,20 @@ pub(super) fn saved_card(
 
 #[cfg(test)]
 mod review_tests {
-    use super::*;
+    use {
+        super::*,
+        launcher::menu::{MenuAction, SavedServer},
+    };
     #[test]
     fn review_saved_server_text_reserves_the_action_region() {
-        let view = crate::menu::MenuView::new(true, "Test".into());
+        let view = launcher::menu::MenuView::new(true, "Test".into());
         let server = SavedServer {
             name: "Long server name ".repeat(50),
             address: "example.test".into(),
             favorite: false,
             last_joined_unix: 0,
         };
-        let font = crate::ui_runtime::presentation::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let metrics =
             TextMetrics::for_viewport([1280, 720], ui::DpiScale::new(1.0).unwrap(), Some(2));
         let (mut nodes, mut hits, mut next, mut layouts) = (

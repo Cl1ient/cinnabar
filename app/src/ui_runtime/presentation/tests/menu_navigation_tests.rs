@@ -1,9 +1,12 @@
 //! Launcher actions remain app-owned while UI consumes their views.
-use crate::{
-    global_resources::{Action, Snapshot},
-    menu::{MenuAction, MenuRuntime, MenuScreen},
-};
 use std::sync::Arc;
+use {
+    client_shell::menu::MenuRuntime,
+    launcher::{
+        global_resources::{Action, Snapshot},
+        menu::{MenuAction, MenuScreen},
+    },
+};
 
 #[test]
 fn back_closes_pack_settings_before_leaving_global_resources() {
@@ -20,7 +23,7 @@ fn back_closes_pack_settings_before_leaving_global_resources() {
 
 #[test]
 fn disabled_enhanced_ignores_menu_toggle_requests() {
-    let mut menu = crate::menu::MenuRuntime::new(true, 2, "Player".into());
+    let mut menu = client_shell::menu::MenuRuntime::new(true, 2, "Player".into());
     menu.activate(MenuAction::ToggleRenderMode);
     assert!(menu.take_render_mode_request().is_none());
     assert_eq!(menu.view().render_mode, ui::RenderMode::Vanilla);

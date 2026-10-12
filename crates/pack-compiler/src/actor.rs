@@ -49,12 +49,22 @@ pub struct CompiledActorCarrier {
     pub report: ActorCompileReport,
 }
 
+/// Compiles neutral artwork against the resource-only entity carrier.
 pub fn compile_actor_assets(
     root: &Path,
     manifest: &[u8],
 ) -> Result<CompiledActorCarrier, AssetError> {
     let entities = compile_entity_assets(root, manifest)?;
-    let entity_bytes = encode_entity_blob(&entities)?;
+    compile_actor_assets_for_assets(root, &entities)
+}
+
+/// Compiles neutral artwork in the exact entity catalog's index space and pins its encoding.
+/// Only resource textures are read from `root`, with their recorded size and hash checked.
+pub fn compile_actor_assets_for_assets(
+    root: &Path,
+    entities: &CompiledEntityAssets,
+) -> Result<CompiledActorCarrier, AssetError> {
+    let entity_bytes = encode_entity_blob(entities)?;
     let runtime_entities = assets::RuntimeEntityAssets::decode(&entity_bytes)?;
     let mut read = |index: u32| -> Result<Vec<u8>, AssetError> {
         let source = &entities.sources[index as usize];
@@ -71,7 +81,7 @@ pub fn compile_actor_assets(
         bindings,
         fallbacks,
         pixel_bytes,
-    } = build_artwork(&entities, &runtime_entities, &mut read, false)?;
+    } = build_artwork(entities, &runtime_entities, &mut read, false)?;
     let bytes = encode_actor_catalog(&entity_bytes, &textures, &bindings)?;
     let report = ActorCompileReport {
         source_manifest_sha256: entities.source_manifest_sha256,
@@ -256,7 +266,7 @@ fn decode_raster(
     // discards alpha below 0.5. Baking coverage keeps the binary carrier contract without
     // rejecting the whole model over the crystal raster's eight alpha-127 texels.
     if crystal {
-        for pixel in pixels.chunks_exact_mut(4) {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
             pixel[3] = if pixel[3] >= 128 { 255 } else { 0 };
         }
     }
@@ -264,11 +274,13 @@ fn decode_raster(
     // or a lenient server-pack build, retains every alpha byte instead of quantizing it.
     if let Some(sampled) = binary_alpha
         && !pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .all(|pixel| matches!(pixel[3], 0 | 255))
     {
         let sampled = sampled(width, height)?;
-        for (pixel, sampled) in pixels.chunks_exact_mut(4).zip(sampled) {
+        for (pixel, sampled) in pixels.as_chunks_mut::<4>().0.iter_mut().zip(sampled) {
             if !matches!(pixel[3], 0 | 255) {
                 if sampled {
                     return None;

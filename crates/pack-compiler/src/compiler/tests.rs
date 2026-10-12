@@ -8,14 +8,42 @@ use assets::{RegistryRecord, TILE_SIZE, VisualKind, VisualSupport};
 
 #[path = "tests/anvil.rs"]
 mod anvil;
+#[path = "tests/barrel.rs"]
+pub(crate) mod barrel;
+#[path = "tests/brewing_stand.rs"]
+mod brewing_stand;
+#[path = "tests/bubble_column.rs"]
+mod bubble_column;
+#[path = "tests/candle_cake.rs"]
+mod candle_cake;
+#[path = "tests/coral.rs"]
+mod coral;
+#[path = "tests/crops.rs"]
+mod crops;
 #[path = "tests/dragon_egg.rs"]
 mod dragon_egg;
+#[path = "tests/end_rod.rs"]
+mod end_rod;
 #[path = "tests/grass_side_mips.rs"]
 mod grass_side_mips;
+#[path = "tests/grindstone.rs"]
+mod grindstone;
+#[path = "tests/hollow_containers.rs"]
+mod hollow_containers;
 #[path = "tests/isotropic.rs"]
 mod isotropic;
 #[path = "tests/lantern.rs"]
 mod lantern;
+#[path = "tests/lightning_rod.rs"]
+mod lightning_rod;
+#[path = "tests/potted_plants.rs"]
+mod potted_plants;
+#[path = "tests/sea_pickle.rs"]
+mod sea_pickle;
+#[path = "tests/shelf_cake.rs"]
+mod shelf_cake;
+#[path = "tests/tripwire_hook.rs"]
+mod tripwire_hook;
 
 fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {
     let path = path.as_ref();
@@ -56,13 +84,17 @@ fn animation_inventory_inspects_a_bounded_pack_without_installing_it() {
     );
     let mut strip = vec![0; (TILE_SIZE * TILE_SIZE * 2 * 4) as usize];
     for pixel in strip
-        .chunks_exact_mut(4)
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
         .take((TILE_SIZE * TILE_SIZE) as usize)
     {
         pixel.copy_from_slice(&[10, 20, 30, 255]);
     }
     for pixel in strip
-        .chunks_exact_mut(4)
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
         .skip((TILE_SIZE * TILE_SIZE) as usize)
     {
         pixel.copy_from_slice(&[40, 50, 60, 255]);

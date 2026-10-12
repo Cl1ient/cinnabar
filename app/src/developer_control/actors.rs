@@ -3,10 +3,10 @@
 use std::collections::BTreeSet;
 
 use bevy::prelude::*;
-use render::ActorRenderFrame;
+use render_scene::ActorRenderFrame;
 use serde_json::{Value, json};
 
-use crate::{camera::FlyCamera, runtime::world::ClientWorld};
+use {crate::runtime::world::ClientWorld, client_presentation::camera::FlyCamera};
 
 const MAX_INSTANCES: usize = 512;
 const MAX_MATRIX_ROWS: usize = 8_192;

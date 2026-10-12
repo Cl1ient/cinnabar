@@ -7,7 +7,10 @@ missing states or mismatched names. Registry and property catalogs must come
 from the same source lock.
 
 Rendering families, model selectors, retail admission, carrier encodings and
-movement rules belong to Cinnabar. The reviewed protocol-1001 block carrier is
+movement rules belong to Cinnabar. `crates/assets/data/block-family-routing.json`
+owns crossed-plane routes that older carriers did not record. The generator
+writes those families, and historical carrier admission uses the same catalog.
+The pack compiler consumes the recorded family without repairing it by name. The reviewed protocol-1001 block carrier is
 still the rendering-policy baseline. Its inherited collision and light facts
 are replaced by exact state lookups in the shared catalog. Historical
 protocol-1001 generation remains available for reproducing that baseline.
@@ -24,7 +27,7 @@ go -C tools/registrygen run . \
 python3 tools/registrygen/update_bindings.py --out .
 go -C tools/registrygen run . \
   -physics-v2193-breg ../../crates/assets/data/block-registry-v2193.bin \
-  -physics-v2193-out ../../crates/assets/data/block-physics-v2193.bin \
+  -physics-v2193-out ../../crates/assets/data/block-physics-seed-v2193.bin \
   -physics-v2193-manifest ../../assets/block-projection-v2193.json
 go -C tools/registrygen run . \
   -block-item-breg ../../crates/assets/data/block-registry-v2193.bin \
@@ -33,15 +36,31 @@ go -C tools/registrygen run . \
   -biome-v2193-allowlist ../../crates/protocol/data/retail_biomes_1_26_50.txt \
   -biome-out ../../crates/assets/data/biome-registry-v2193.bin \
   -biome-v2193-manifest ../../assets/biome-projection-v2193.json
+cargo run --locked -p asset-compiler --bin assetc -- block-physics \
+  --registry crates/assets/data/block-registry-v2193.bin \
+  --seed crates/assets/data/block-physics-seed-v2193.bin \
+  --out crates/assets/data/block-physics-v2193.bin
 python3 tools/registrygen/update_bindings.py --out .
 go -C tools/registrygen test ./...
 ```
 
+The Go physics output is the movement seed. The asset compiler adds independent
+selection geometry and final state facts. Update each physics file’s `.sha256`
+sidecar after changing it. `make assets` builds the final carrier into the local
+compiled asset directory.
+
 The destroy-table generator reads hardness and provisional tool classifications
 from the same shared catalog. Missing tool evidence stays unresolved. Regenerate
-it with `go -C tools/registrygen run ./cmd/blockdestroy -out ../../crates/sim/data/block_destroy_1_26_50.tsv`.
+it with `go -C tools/registrygen run ./cmd/blockdestroy -out ../../crates/assets/data/block-destroy-v2193.tsv`.
 
 The active biome generator reads numeric IDs from the shared catalog and keeps
 only names in the local retail allowlist. Its source lock is recorded in the
 projection manifest. No local BDS executable or PMMP biome map is needed.
 Client rendering policy and movement algorithms remain local.
+
+The registry wire contract is `crates/assets/data/registry-schema.json`. It owns
+the byte order, discriminants, source flags, compiled enrichment flags and limits.
+After editing it, run `python3 tools/registrygen/generate_schema.py` from the root
+with Python 3, Go and Rust installed. The Go tests check that both generated
+declarations are current and share the synthetic fixture used by the Rust reader.
+Changing the wire layout also requires a new carrier version and regenerated carriers.

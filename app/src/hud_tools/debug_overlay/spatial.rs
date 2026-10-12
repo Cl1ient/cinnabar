@@ -3,8 +3,11 @@
 use bevy::prelude::Vec3;
 use chunk_pipeline::WorldStream;
 
-use super::{Column, DebugContext, Lines, LocalPlayerFrameCarrier, LocalViewPose};
 use std::fmt::Write;
+use {
+    super::{Column, DebugContext, Lines},
+    client_presentation::local_player::{LocalPlayerFrameCarrier, LocalViewPose},
+};
 
 /// Diagnostic inspection reach, independent of the server's interaction reach.
 pub(super) const TARGET_RANGE_BLOCKS: f64 = 20.0;
@@ -97,6 +100,17 @@ impl DebugContext<'_, '_> {
             stream.collision_store(),
             collisions.registry(stream.network_id_mode()),
             stream.current_dimension(),
+            crate::interaction_authority::pick_context(
+                stream,
+                collisions,
+                self.player
+                    .as_ref()
+                    .and_then(|player| player.facts.player_game_mode()),
+                self.player
+                    .as_ref()
+                    .and_then(|player| player.selected_stack())
+                    .map(|item| item.block_runtime_id),
+            ),
         );
         let vector = |value: Vec3| {
             sim::Vec3::new(f64::from(value.x), f64::from(value.y), f64::from(value.z))

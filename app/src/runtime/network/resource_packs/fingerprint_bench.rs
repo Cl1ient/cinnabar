@@ -1,4 +1,5 @@
 use super::*;
+use pack_runtime::{compile_cache::set_compile_cache_dir, pack_textures::parse_pack_json};
 use std::io::Cursor;
 
 /// Admits a stored archive with one inert payload for cache-key fixtures.
@@ -45,9 +46,10 @@ fn shared_stack_fingerprint_timing() {
             &view,
             &blocks,
             false,
+            overlay_texture_layer_limit(),
             || None,
         ));
-        black_box(super::super::entity_pack::compile_session_entities(
+        black_box(pack_runtime::entity_pack::compile_session_entities(
             &fingerprint,
             &view,
             &|| false,
@@ -129,26 +131,31 @@ fn join_icon_keys(view: &LayeredPackView) -> Vec<(Arc<str>, Arc<str>)> {
 fn install_join_carriers() {
     if let Some(compiled) = std::env::var_os("CINNABAR_JOIN_CARRIERS") {
         let path = std::path::Path::new(&compiled).join(
-            std::path::Path::new(crate::asset_startup::DEFAULT_ASSET_PATH)
+            std::path::Path::new(assets::carriers::startup::DEFAULT_ASSET_PATH)
                 .file_name()
                 .unwrap(),
         );
-        let loaded =
-            crate::asset_startup::load_runtime_assets(crate::asset_startup::AssetSelection {
+        let mut loaded = assets::carriers::startup::load_runtime_assets(
+            assets::carriers::startup::AssetSelection {
                 path,
-                source: crate::asset_startup::AssetPathSource::CommandLine,
-            })
-            .unwrap();
-        let artwork = crate::asset_startup::actor_artwork(
-            &crate::asset_startup::require_actor_assets(&loaded.selected_path, &loaded.entities)
-                .unwrap(),
+                source: assets::carriers::startup::AssetPathSource::CommandLine,
+            },
+        )
+        .unwrap();
+        crate::asset_bindings::install_world_sidecars(&mut loaded);
+        let artwork = crate::asset_bindings::actor_artwork(
+            &assets::carriers::startup::require_actor_assets(
+                &loaded.selected_path,
+                &loaded.entities,
+            )
+            .unwrap(),
             loaded.entities.runtime(),
         );
         super::super::set_vanilla_item_paths(loaded.entities.runtime());
         super::super::set_base_actor_artwork(artwork, Arc::clone(loaded.entities.runtime()));
     }
     if let Some(dir) = std::env::var_os("CINNABAR_JOIN_VANILLA_PACK") {
-        super::super::entity_pack::set_vanilla_pack_dir(dir.into());
+        pack_runtime::entity_pack::set_vanilla_pack_dir(dir.into());
     }
     if let Some(dir) = std::env::var_os("CINNABAR_JOIN_CACHE") {
         set_compile_cache_dir(dir.into());
@@ -186,7 +193,7 @@ fn join_preparation_timing() {
             kept = reuse::CompiledStacks::new();
         }
         let stack = join_stack(&paths);
-        let inputs = Arc::new(super::super::pack_reload::PackInputs {
+        let inputs = Arc::new(pack_runtime::PackInputs {
             icons: join_icon_keys(&LayeredPackView::new(Arc::clone(&stack))),
             ..Default::default()
         });
@@ -251,7 +258,13 @@ fn join_part_timing() {
         crate::camera::aim_highlight::prepare_pack_textures(view);
     });
     time("blocks", &|view| {
-        compile_block_overlay(view, &Default::default(), false, BASE_MATERIAL_KEYS.get());
+        compile_block_overlay(
+            view,
+            &Default::default(),
+            false,
+            BASE_MATERIAL_KEYS.get(),
+            overlay_texture_layer_limit(),
+        );
     });
     time("icons", &|view| {
         compile_session_icons(view, &icon_keys, Default::default());
@@ -263,7 +276,7 @@ fn join_part_timing() {
         compile_session_glyphs(view);
     });
     time("entities", &|view| {
-        super::super::entity_pack::compile_session_entities(
+        pack_runtime::entity_pack::compile_session_entities(
             &stack_fingerprint(&stack),
             view,
             &|| false,
@@ -276,7 +289,7 @@ fn join_part_timing() {
         collect_server_ui(view);
     });
     time("sounds", &|view| {
-        crate::audio::ServerSoundPack::from_view(view);
+        client_audio::audio::ServerSoundPack::from_view(view);
     });
     time("property_defaults", &|view| {
         super::super::entity_pack::pack_property_defaults(view);

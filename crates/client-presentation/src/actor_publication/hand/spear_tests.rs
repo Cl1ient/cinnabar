@@ -44,7 +44,7 @@ fn installed_spear_charge_keeps_the_authored_third_person_arm_with_java_enabled(
         icons,
         None,
         None,
-        render::ActorArtworkPages::default(),
+        render_model::ActorArtworkPages::default(),
     );
     let timings = equipment.item_attack_timings();
     let timing = timings
@@ -86,6 +86,8 @@ fn installed_spear_charge_keeps_the_authored_third_person_arm_with_java_enabled(
     stream.advance_actor_interpolation_frame(delay + 2);
     let input = ActorEquipmentInput {
         main: Some(crate::presentation::equipment::WornItem {
+            use_facts: client_world::EffectiveItemUse::default(),
+            grip: assets::item::grip::builtin_item_grip("minecraft:iron_spear"),
             identifier: "minecraft:iron_spear".into(),
             kind: crate::presentation::equipment::HeldKind::Sprite,
             metadata: 0,
@@ -97,16 +99,18 @@ fn installed_spear_charge_keeps_the_authored_third_person_arm_with_java_enabled(
     };
     let mut world = World::new();
     let mut time = Time::<Real>::default();
-    time.advance_by(client_world::ACTOR_TICK_DURATION);
+    time.advance_by(simulation_clock::TICK_DURATION);
     world.insert_resource(time);
     world.insert_resource(equipment);
-    world.insert_resource(artwork);
-    world.insert_resource(render::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap());
+    world.insert_resource(render_scene::ActorArtworkResource(artwork));
+    world.insert_resource(
+        render_scene::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap(),
+    );
     world.insert_resource(super::super::HandRigBuilder::from_runtime_assets(&entities).unwrap());
     world.init_resource::<super::super::ActorFrameState>();
     world.init_resource::<super::super::PreparedActorPublication>();
     world.init_resource::<super::super::ActorFramePartialTick>();
-    world.init_resource::<render::HandRigScene>();
+    world.init_resource::<render_scene::HandRigScene>();
     let mut avatar = crate::local_player::LocalAvatarPresentation::default();
     avatar.begin_session(stream.authority().actor_session_id(), 1);
     world.insert_resource(avatar);
@@ -146,7 +150,7 @@ fn installed_spear_charge_keeps_the_authored_third_person_arm_with_java_enabled(
         },
         |_| {},
         |_, _| (None, None),
-        params.get_mut(&mut world),
+        params.get_mut(&mut world).unwrap(),
     );
     super::super::prepare_actor_render_frame(
         super::super::ActorWorld {
@@ -159,7 +163,8 @@ fn installed_spear_charge_keeps_the_authored_third_person_arm_with_java_enabled(
         },
         None,
         |_, _, _, _| false,
-        params.get_mut(&mut world),
+        None,
+        params.get_mut(&mut world).unwrap(),
     );
     let rig = stream.authority().actor_rig(1).unwrap();
     assert!(rig.hand[1].use_ticks > delay);
@@ -173,7 +178,7 @@ fn installed_spear_charge_keeps_the_authored_third_person_arm_with_java_enabled(
         .submissions()
         .unwrap()
         .iter()
-        .find(|draw| draw.input.identity.layer == render::ACTOR_LAYER_BODY)
+        .find(|draw| draw.input.identity.layer == render_model::ACTOR_LAYER_BODY)
         .unwrap();
     let authored = crate::presentation::actors::convert_bones(rig.current).unwrap();
     let rotation = Quat::from_array(body.input.current_bones[arm].rotation);

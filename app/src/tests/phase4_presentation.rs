@@ -1,33 +1,36 @@
 use std::sync::Arc;
 
+use actor_animation::{ActorLifetimeId, ActorRigSnapshot, BoneTransform, EntityRigId};
 use assets::EntityRigFallback;
 use bevy::math::{Mat4, Quat, Vec3};
-use client_world::{
-    ActorLifetimeId, ActorPose, ActorRigSnapshot, ActorSnapshot, BoneTransform, EntityRigId,
-    PlayerProfile,
-};
-use protocol::{ActorKind, PlayerSkin, StandardSkin};
-use render::{
-    ActorCullView, ActorRenderIdentity, ActorRenderScene, ActorRigRenderInput, ActorRigRoute,
-    ActorRigSubmission,
-};
+use client_world::{ActorPose, ActorSnapshot, PlayerProfile};
+use protocol::{ActorKind, PlayerSkin};
+use render_api::StandardSkin;
 use render_model::{
     EntityRigId as RenderEntityRigId, MAX_RENDERED_PLAYERS, RenderBoneTransform,
     STANDARD_SKIN_BYTES,
 };
 use semantic_input::PerspectiveMode;
+use {
+    render_model::{
+        ActorCullView, ActorRenderIdentity, ActorRigRenderInput, ActorRigRoute, ActorRigSubmission,
+    },
+    render_scene::ActorRenderScene,
+};
 
-use crate::local_player::{
+use client_presentation::actor_clock::{
+    authoritative_local_actor_eye, publish_local_actor_visibility,
+};
+use client_presentation::local_player::{
     LocalAvatarPresentation, LocalAvatarVisibilityCarrier, LocalPlayerFrameCarrier,
     LocalPlayerFrameSample,
 };
-use crate::movement::{MovementSource, PhysicsAuthorityGate};
-use crate::presentation::actors::{
+use client_presentation::presentation::actors::{
     ActorRigPresentation, actor_rig_presentation, entity_rig_presentation,
     local_actor_presentation_for_visibility, local_diagnostic_presentation,
     select_actor_presentations, select_actor_presentations_for_view, update_actor_rig_scene,
 };
-use crate::runtime::network::{authoritative_local_actor_eye, publish_local_actor_visibility};
+use {client_interaction::movement::PhysicsAuthorityGate, gameplay::movement::MovementSource};
 
 fn model_bone(translation: [f32; 3]) -> BoneTransform {
     BoneTransform {
@@ -107,6 +110,7 @@ fn rig<'a>(
             spawn_revision: 3,
         },
         rig: EntityRigId(9),
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         previous,
         current,
         rest: previous,
@@ -114,6 +118,7 @@ fn rig<'a>(
         rest_reset_generation: 5,
         completed_tick: 11,
         reset_generation: 5,
+        pose_evaluated: true,
         fallback: EntityRigFallback::GeometryOnly,
         scale: 1.0,
         axis_scale: [1.0; 3],
@@ -125,8 +130,8 @@ fn rig<'a>(
         skin_mesh: None,
         skin_layers: &[],
         hand: Default::default(),
-        item_animation: [client_world::ItemAnimationState::default(); 2],
-        off_hand_animation: [client_world::ItemAnimationState::default(); 2],
+        item_animation: [actor_animation::ItemAnimationState::default(); 2],
+        off_hand_animation: [actor_animation::ItemAnimationState::default(); 2],
         animation_variables: Default::default(),
         java: Default::default(),
         java_equipped: None,
@@ -164,7 +169,7 @@ fn render_owned(runtime_id: u64, skin: u8) -> ActorRigPresentation {
             texture_layer: u32::MAX,
             route: ActorRigRoute::Compiled,
             tint: 0,
-            uv_anim: render::IDENTITY_UV_ANIM,
+            uv_anim: render_model::IDENTITY_UV_ANIM,
             light: 0,
             overlay_rgba8: 0,
         },
@@ -222,7 +227,7 @@ fn generic_actor_without_validated_artwork_remains_explicitly_no_draw() {
     let presentation = entity_rig_presentation(
         &rig(42, &bones, &bones),
         &actor,
-        &render::ActorArtworkPages::default(),
+        &render_model::ActorArtworkPages::default(),
         0.5,
     )
     .unwrap();
@@ -480,7 +485,7 @@ fn f5_local_avatar_uses_authoritative_subject_when_view_eye_is_boomed() {
         physics_tick: 900,
         perspective: PerspectiveMode::ThirdPersonBack,
         world_collision_identity: collision_identity,
-        pose: crate::camera::perspective_pose(
+        pose: client_presentation::camera::perspective_pose(
             stale_eye,
             subject_rotation,
             PerspectiveMode::ThirdPersonBack,
@@ -498,7 +503,11 @@ fn f5_local_avatar_uses_authoritative_subject_when_view_eye_is_boomed() {
         PerspectiveMode::ThirdPersonBack,
         PerspectiveMode::ThirdPersonFront,
     ] {
-        let camera = crate::camera::perspective_pose(subject_eye, subject_rotation, perspective);
+        let camera = client_presentation::camera::perspective_pose(
+            subject_eye,
+            subject_rotation,
+            perspective,
+        );
         assert_ne!(camera.translation, subject_eye);
         let authoritative_eye =
             authoritative_local_actor_eye(Some(subject_eye.to_array()), Some(stale_eye.to_array()));
@@ -532,9 +541,11 @@ fn f5_local_avatar_uses_authoritative_subject_when_view_eye_is_boomed() {
             world_from_actor[1][3] + 1.0,
             world_from_actor[2][3],
         );
-        let clip_from_world =
-            Mat4::perspective_infinite_reverse_rh(70.0_f32.to_radians(), 16.0 / 9.0, 0.1)
-                * camera.to_matrix().inverse();
+        let clip_from_world = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+            70.0_f32.to_radians(),
+            16.0 / 9.0,
+            0.1,
+        ) * camera.to_matrix().inverse();
         let projected_center = clip_from_world * body_center.extend(1.0);
         assert!(projected_center.w > 0.0);
         assert!((projected_center.x / projected_center.w).abs() < 1.0e-5);
@@ -563,7 +574,7 @@ fn local_canonical_body_lags_the_view_yaw_by_the_rigs_head_offset() {
     let mut canonical = render_owned(7, 31);
     canonical.head_over_body = 30.0;
     canonical.submission.world_from_actor =
-        crate::presentation::actors::rig_world_from_actor([0.0; 3], 0.0, 1.0);
+        client_presentation::presentation::actors::rig_world_from_actor([0.0; 3], 0.0, 1.0);
     let diagnostic = local_diagnostic_presentation(7, 0, 7, 5, [4.0, 64.0, 2.0], 90.0, 0.0)
         .expect("finite local carrier converts");
     let local =
@@ -571,7 +582,11 @@ fn local_canonical_body_lags_the_view_yaw_by_the_rigs_head_offset() {
             .expect("canonical local rig is kept");
     assert_eq!(
         local.submission.world_from_actor,
-        crate::presentation::actors::rig_world_from_actor([4.0, 64.0, 2.0], 60.0, 1.0)
+        client_presentation::presentation::actors::rig_world_from_actor(
+            [4.0, 64.0, 2.0],
+            60.0,
+            1.0
+        )
     );
 }
 
@@ -603,7 +618,7 @@ fn projectile_animation_rotation_is_not_multiplied_by_mob_body_yaw() {
                 let presentation = entity_rig_presentation(
                     &rig,
                     &actor,
-                    &render::ActorArtworkPages::default(),
+                    &render_model::ActorArtworkPages::default(),
                     1.0,
                 )
                 .unwrap();
@@ -648,28 +663,32 @@ fn authored_skin_bounds_reach_frustum_and_cave_admission() {
         camera_position: Vec3::new(0.0, 65.0, 0.0),
         max_distance: 192.0,
     };
-    assert!(!crate::presentation::actors::rig_may_be_visible(
-        &default,
-        &actor,
-        1.0,
-        Some(view),
-        None,
-        |_, _| false,
-    ));
-    assert!(crate::presentation::actors::rig_may_be_visible(
-        &authored,
-        &actor,
-        1.0,
-        Some(view),
-        None,
-        |low, high| {
-            assert_eq!(low, [0.5, 64.0, -1.5]);
-            assert_eq!(high, [3.5, 68.0, 1.5]);
-            false
-        },
-    ));
+    assert!(
+        !client_presentation::presentation::actors::rig_may_be_visible(
+            &default,
+            &actor,
+            1.0,
+            Some(view),
+            None,
+            |_, _| false,
+        )
+    );
+    assert!(
+        client_presentation::presentation::actors::rig_may_be_visible(
+            &authored,
+            &actor,
+            1.0,
+            Some(view),
+            None,
+            |low, high| {
+                assert_eq!(low, [0.5, 64.0, -1.5]);
+                assert_eq!(high, [3.5, 68.0, 1.5]);
+                false
+            },
+        )
+    );
     let body = actor_rig_presentation(&authored, &actor, Some(&profile(42, 255)), 1.0).unwrap();
-    assert!(render::actor_rig_submission_is_visible(
+    assert!(render_model::actor_rig_submission_is_visible(
         &body.submission,
         Some(view)
     ));

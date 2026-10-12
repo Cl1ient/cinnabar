@@ -18,7 +18,7 @@ impl ActorStore {
         &mut self,
         runtime_id: u64,
         authority: (u64, u64),
-        samples: impl IntoIterator<Item = crate::LocalSwingMotionSample>,
+        samples: impl IntoIterator<Item = actor_animation::LocalSwingMotionSample>,
     ) {
         self.local_view_dirty |= self
             .animation
@@ -29,7 +29,7 @@ impl ActorStore {
     pub(crate) fn sync_local_swing(
         &mut self,
         runtime_id: u64,
-        progress: crate::LocalSwingProgress,
+        progress: actor_animation::LocalSwingProgress,
     ) {
         self.local_view_dirty |= self.animation.sync_local_swing(runtime_id, progress);
     }
@@ -117,15 +117,24 @@ impl ActorStore {
         self.prepare_appearances(ticks > 0);
         // The live actors now reach the positions picks were reading.
         self.picks_ahead = false;
-        for tick in 0..ticks.max(u32::from(refresh_view)) {
-            if !refresh_view {
+        let prepare_frame = frame
+            && ticks == 0
+            && (refresh_view
+                || self.animation.needs_initial_presentation(
+                    &self.actors,
+                    self.animation_view.as_ref(),
+                    self.remote_state_excluded_runtime_id,
+                    |actor| self.appearance_ready(actor),
+                ));
+        for tick in 0..ticks.max(u32::from(prepare_frame)) {
+            if !prepare_frame {
                 if let Some(pending) = &mut self.pending_local_damage {
                     pending.tick();
                 }
                 self.step_motion();
                 self.seat_riders();
             }
-            if !refresh_view {
+            if !prepare_frame {
                 self.advance_pickup_visuals();
                 self.advance_dragon_animation();
                 self.advance_dragon_beams();
@@ -166,7 +175,10 @@ impl ActorStore {
             let local_runtime = self.remote_state_excluded_runtime_id;
             let local_view_bobbing = self.local_view_bobbing;
             let local_flying = self.local_flying;
+            let world_game_mode = self.world_default_game_mode;
             let local_hands = self.local_hands.clone();
+            let local_held_network_ids = self.local_held_network_ids;
+            let local_item_use = self.local_item_use;
             let local_main_metadata = self.local_main_metadata;
             let local_main_slot = self.local_main_slot;
             let local_main_stack_id = self.local_main_stack_id;
@@ -191,7 +203,7 @@ impl ActorStore {
                         .filter(|equipment| equipment.item.identity.network_id != 0)
                         .and_then(|equipment| equipment.item.identifier.clone())
                 };
-                let hand_charged = [
+                let mut hand_charged = [
                     protocol::ActorHandedness::Right,
                     protocol::ActorHandedness::Left,
                 ]
@@ -214,16 +226,36 @@ impl ActorStore {
                                 .unwrap_or(equipment.item.identity.metadata)
                         })
                 };
-                let main_hand_max_use_ticks = main_hand
-                    .as_deref()
-                    .and_then(|identifier| items.max_use_ticks(identifier))
-                    .unwrap_or(0);
+                let mut main_hand_max_use_ticks = items.held_use_ticks(
+                    lifetime,
+                    protocol::ActorHandedness::Right,
+                    is_local.then_some(local_held_network_ids[0]),
+                );
+                let local_item_use_ticks = if is_local
+                    && let LocalItemUse::Predicted {
+                        elapsed_ticks,
+                        max_ticks,
+                        charged,
+                    } = local_item_use
+                {
+                    main_hand_max_use_ticks = max_ticks;
+                    hand_charged = charged;
+                    Some(elapsed_ticks.unwrap_or(0).min(max_ticks))
+                } else {
+                    None
+                };
+                let off_hand = held(protocol::ActorHandedness::Left);
+                let off_hand_max_use_ticks = items.held_use_ticks(
+                    lifetime,
+                    protocol::ActorHandedness::Left,
+                    is_local.then_some(local_held_network_ids[1]),
+                );
                 let attack = main_hand.as_deref().and_then(|id| items.attack_timing(id));
                 let main_hand_kinetic = attack.and_then(|attack| attack.kinetic_weapon);
                 let main_hand_is_spear = attack.is_some_and(|attack| attack.is_spear);
                 let main_hand_swing_seconds = attack
                     .and_then(|attack| attack.swing_duration_ticks)
-                    .map(|ticks| ticks as f32 * crate::ACTOR_TICK_DURATION.as_secs_f32());
+                    .map(|ticks| ticks as f32 * simulation_clock::TICK_DURATION.as_secs_f32());
                 let kind_of = |unique_id: &i64| {
                     unique_to_runtime
                         .get(unique_id)
@@ -234,7 +266,10 @@ impl ActorStore {
                     .get(&actor.unique_id)
                     .copied()
                     .unwrap_or_default();
-                crate::actor_animation::ActorTickContext {
+                actor_animation::ActorTickContext {
+                    appearance_pending: !self.ready_appearances.admits(
+                        actor, prepared, &self.players, &self.unlisted_players,
+                    ),
                     frame_alpha: 0.0,
                     animation_elapsed_ticks: frame.then_some(ticks),
                     is_riding: rider_to_ridden.contains_key(&actor.unique_id),
@@ -257,7 +292,7 @@ impl ActorStore {
                     java_swing_ticks: if is_local {
                         local_java_swing_ticks
                     } else {
-                        crate::ACTOR_SWING_TICKS
+                        actor_animation::ACTOR_SWING_TICKS
                     },
                     main_hand_slot: if is_local {
                         local_main_slot
@@ -267,10 +302,12 @@ impl ActorStore {
                             .map_or(0, |equipment| equipment.selected_slot)
                     },
                     main_hand_max_use_ticks,
+                    local_item_use_ticks,
+                    off_hand_max_use_ticks,
                     main_hand_kinetic,
                     main_hand_is_spear,
                     main_hand_swing_seconds,
-                    off_hand: held(protocol::ActorHandedness::Left),
+                    off_hand,
                     ridden: rider_to_ridden
                         .get(&actor.unique_id)
                         .and_then(kind_of)
@@ -286,6 +323,7 @@ impl ActorStore {
                     view_bobbing: is_local.then_some(local_view_bobbing),
                     is_local,
                     is_flying: is_local && local_flying,
+                    world_game_mode,
                     is_in_ui: false,
                     camera_rotation,
                     camera_position,
@@ -308,11 +346,9 @@ impl ActorStore {
                     },
                 }
             };
-            if refresh_view {
-                if let Some(runtime_id) = local_runtime {
-                    self.animation
-                        .refresh_local_view(actors, runtime_id, context);
-                }
+            if prepare_frame {
+                self.animation
+                    .prepare_frame(actors, view, local_runtime, refresh_view, context);
             } else {
                 self.animation.advance_tick(
                     actors,
@@ -331,9 +367,9 @@ impl ActorStore {
 /// Worn stacks in helmet, chestplate, leggings, boots, body order.
 fn worn_armor(
     snapshot: Option<&crate::item::ActorArmorSnapshot>,
-) -> [Option<crate::actor_animation::WornArmor>; 5] {
+) -> [Option<actor_animation::WornArmor>; 5] {
     let piece = |piece: &crate::item::ActorArmorPiece| {
-        Some(crate::actor_animation::WornArmor {
+        Some(actor_animation::WornArmor {
             item: piece.item.identifier.clone()?,
             dye_rgb: piece.dye_rgb,
         })

@@ -1,4 +1,13 @@
-use super::support::*;
+use {
+    super::support::*,
+    assets::{
+        BlockFlags, CollisionConfidence, ContributorRole, DIAGNOSTIC_MATERIAL,
+        MATERIAL_FLAG_ALPHA_CUTOUT, MODEL_QUAD_FLAG_CULL_FACE_MASK, MODEL_QUAD_FLAG_FACE_MASK,
+        MODEL_QUAD_FLAG_TWO_SIDED, ModelFamily, ModelStateField, RegistryRecord, VisualKind,
+        encode_blob, read_registry,
+    },
+    std::path::Path,
+};
 
 fn cactus_records() -> Vec<RegistryRecord> {
     let mut records = read_registry(include_bytes!(
@@ -71,9 +80,22 @@ fn compiler_emits_one_exact_cactus_template_and_three_cutout_materials() {
         4,
         "diagnostic plus three cactus materials"
     );
-    assert_eq!(compiled.model_templates.len(), 1);
-    assert_eq!(compiled.model_quads.len(), 6);
     let first = compiled.visuals[13_606];
+    assert_eq!(template_quads(&compiled, first.model_template).len(), 6);
+    let runtime = assets::RuntimeAssets::decode(&encode_blob(&compiled).unwrap()).unwrap();
+    let potted = runtime
+        .potted_model_template(assets::NetworkIdMode::Sequential, records[0].sequential_id)
+        .expect("separate potted cactus geometry");
+    let potted_quads = template_quads(&compiled, potted);
+    assert_eq!(potted_quads.len(), 6);
+    assert!(
+        potted_quads
+            .iter()
+            .flat_map(|quad| quad.positions)
+            .all(|[x, y, z]| (96..=160).contains(&x)
+                && (64..=256).contains(&y)
+                && (96..=160).contains(&z))
+    );
     let [side_west, side_east, bottom, top, side_north, side_south] = first.faces;
     assert_eq!(side_west, side_east);
     assert_eq!(side_west, side_north);
@@ -331,15 +353,23 @@ fn compiler_cactus_rejects_nonexact_pack_routes_even_when_materials_are_interned
 }
 
 #[test]
-#[ignore = "requires PINNED_VANILLA_PACK pointing at the ignored pinned vanilla resource pack"]
 fn compiler_real_pinned_pack_admits_all_exact_cactus_records() {
-    let pack = std::env::var_os("PINNED_VANILLA_PACK")
-        .expect("set PINNED_VANILLA_PACK to the ignored pinned vanilla resource pack");
+    let Some(pack) = crate::fixture_input::env_path("PINNED_VANILLA_PACK") else {
+        return;
+    };
     let records = cactus_records();
     let compiled = compile_pack(Path::new(&pack), &records).expect("compile pinned cactus family");
     assert!(records.iter().all(|record| {
         compiled.visuals[record.sequential_id as usize].kind == VisualKind::Model
     }));
-    assert_eq!(compiled.model_templates.len(), 1);
-    assert_eq!(compiled.model_quads.len(), 6);
+    for record in &records {
+        let visual = compiled.visuals[record.sequential_id as usize];
+        assert_eq!(template_quads(&compiled, visual.model_template).len(), 6);
+    }
+    let runtime = assets::RuntimeAssets::decode(&encode_blob(&compiled).unwrap()).unwrap();
+    assert!(
+        runtime
+            .potted_model_template(assets::NetworkIdMode::Sequential, records[0].sequential_id)
+            .is_some()
+    );
 }

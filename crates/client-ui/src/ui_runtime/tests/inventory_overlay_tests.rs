@@ -13,12 +13,12 @@ use protocol::{
 use sha2::{Digest, Sha256};
 
 use super::*;
-use crate::test_support::fixture_font;
-use crate::ui_runtime::inventory_ledger::{
+use crate::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame};
+use inventory::inventory_ledger::{
     GENERIC_STORAGE_SLOT_TYPE, GENERIC_STORAGE_WINDOW_TYPE, INVENTORY_REQUEST_TIMEOUT_MILLIS,
     PLAYER_INVENTORY_SLOT_COUNT, SMALL_STORAGE_SLOT_COUNT,
 };
-use crate::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame};
+use ui_engine::test_support::fixture_font;
 
 fn ledger_stack(network_id: i32, stack_network_id: i32, count: u16) -> NetworkItemStack {
     NetworkItemStack {
@@ -75,7 +75,7 @@ fn admit_personal_inventory(
         .inventory_ledger_mut(player_runtime)
         .apply(&InventoryEvent::Open(protocol::ContainerOpenEvent {
             container: ContainerIdentity::window(2),
-            window_type: crate::ui_runtime::inventory_ledger::PERSONAL_INVENTORY_WINDOW_TYPE,
+            window_type: inventory::inventory_ledger::PERSONAL_INVENTORY_WINDOW_TYPE,
             position: [0, 0, 0],
             runtime_entity_id: -1,
         }));
@@ -970,7 +970,7 @@ fn zero_durability_correction_repairs_despite_the_old_local_damage_tag() {
             .inventory_ledger(&player_runtime)
             .displayed_stack(0)
             .unwrap(),
-        client_world::vanilla_max_durability("minecraft:iron_sword"),
+        assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
     );
     assert!(
         derived.is_some_and(|fraction| (fraction - 0.5).abs() < 0.01),

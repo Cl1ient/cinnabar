@@ -1,7 +1,7 @@
 //! Closing-frame wheel ownership covers raw inventory consumers after the wheel.
 use super::*;
 use crate::ui_runtime::interaction::drive_world_inventory_keys;
-use client_ui::ui_runtime::inventory_ledger::PLAYER_INVENTORY_SLOT_COUNT;
+use inventory::inventory_ledger::PLAYER_INVENTORY_SLOT_COUNT;
 use protocol::{
     ContainerIdentity, InventoryContentEvent, InventoryEvent, ItemRegistryEvent, NetworkItemStack,
 };
@@ -23,7 +23,7 @@ fn inventory_harness(identifier: &str) -> Harness {
         .network_id;
     h.app
         .world_mut()
-        .resource_scope(|world, mut runtime: Mut<UiRuntime>| {
+        .resource_scope(|world, mut runtime: Mut<UiRuntimeResource>| {
             let mut player = world.resource_mut::<PlayerRuntime>();
             player
                 .facts
@@ -55,7 +55,7 @@ fn closing_emote_wheel_cannot_replay_controller_navigation_as_world_drop() {
         h.press(KeyCode::KeyB);
         h.app
             .world_mut()
-            .resource_mut::<UiRuntime>()
+            .resource_mut::<UiRuntimeResource>()
             .emotes_mut()
             .hover_slot(Some(0));
         {

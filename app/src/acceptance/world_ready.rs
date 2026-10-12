@@ -1,26 +1,23 @@
 //! Observations gathered from app resources for the acceptance plugin.
-use crate::{
-    acceptance::{AcceptanceRun, model_witness::ModelWitnessFileSource},
-    camera,
-    runtime::{
-        network::NetworkHandle,
+use crate::runtime::network::resource_packs::PackApplication;
+#[cfg(feature = "acceptance")]
+use ::acceptance::AcceptanceRun;
+use ::acceptance::world_observation::{WorldReadyCommands, WorldReadyObservation};
+use ::acceptance::world_ready::observe_world_ready;
+use ::acceptance::world_ready::{SubChunkTimeoutProgress, WorldReadyWork};
+use bevy::prelude::*;
+use chunk_pipeline::{ForcedRemeshManifest, ForcedRemeshManifestState, WorldStream};
+use client_runtime::network::NetworkHandle;
+use render_scene::{ChunkRenderQueue, ChunkUploadAcknowledgements, PresentedFrameGate};
+use std::time::Instant;
+use world::SubChunkKey;
+use {
+    crate::runtime::{
         visibility::{AppMetrics, CaveVisibilityCache, DiagnosticQuads},
         world::{ClientWorld, WorldStreamFramePoll},
     },
+    acceptance::model_witness::ModelWitnessFileSource,
 };
-use ::acceptance::world_observation::{WorldReadyCommands, WorldReadyObservation};
-use ::acceptance::world_ready::observe_world_ready;
-#[cfg(test)]
-pub(crate) use ::acceptance::world_ready::{
-    GalleryAnchorEmitter, WORLD_READY_QUIET_INTERVAL, WorldReadySettler, WorldReadySnapshot,
-    mutation_look_target, orient_acceptance_camera, orient_mutation_camera,
-};
-pub(crate) use ::acceptance::world_ready::{SubChunkTimeoutProgress, WorldReadyWork};
-use bevy::prelude::*;
-use chunk_pipeline::{ForcedRemeshManifest, ForcedRemeshManifestState, WorldStream};
-use render::{ChunkRenderQueue, ChunkUploadAcknowledgements, PresentedFrameGate};
-use std::time::Instant;
-use world::SubChunkKey;
 
 /// Translates explicit evidence commands into the existing world API.
 struct Commands<'a>(&'a mut WorldStream);
@@ -49,7 +46,7 @@ impl WorldReadyCommands for Commands<'_> {
 /// Publishes transport, world and visibility facts without transferring their ownership.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_world_ready(
-    network: Res<NetworkHandle>,
+    network: Res<NetworkHandle<PackApplication>>,
     frame_poll: Res<WorldStreamFramePoll>,
     mut client_world: ResMut<ClientWorld>,
     cache: Res<CaveVisibilityCache>,
@@ -59,9 +56,9 @@ pub(crate) fn emit_world_ready(
     acknowledgements: Res<ChunkUploadAcknowledgements>,
     presented_frames: Res<PresentedFrameGate>,
     mut acceptance: ResMut<AcceptanceRun>,
-    mut auto_fly: ResMut<camera::AutoFly>,
+    mut auto_fly: ResMut<client_presentation::camera::AutoFly>,
     mut metrics: ResMut<AppMetrics>,
-    mut cameras: Query<&mut Transform, With<camera::FlyCamera>>,
+    mut cameras: Query<&mut Transform, With<client_presentation::camera::FlyCamera>>,
 ) {
     let missing_mapping_count = client_world.missing_asset_count();
     let Some(stream) = client_world.stream.as_mut() else {

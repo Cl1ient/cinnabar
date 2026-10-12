@@ -2,13 +2,25 @@
 use crate::ingestion::MAX_ADMITTED_WORLD_EVENTS;
 use crate::{
     ActorArmorSnapshot, ActorEquipmentSnapshot, ActorSnapshot, LocalPlayerFeed, PlayerProfile,
-    RemoteActionSnapshot, RemoteActionStats, ResolvedServerPosition,
-    actor_animation::{ActorAnimationStats, ActorRigSnapshot},
-    actor_store::ActorStore,
+    RemoteActionSnapshot, RemoteActionStats, ResolvedServerPosition, actor_store::ActorStore,
     server_position::resolve_server_position,
 };
+use actor_animation::{ActorAnimationStats, ActorRigSnapshot};
 use assets::{NetworkIdMode, ResolvedBiomeTints, RuntimeAssets, RuntimeEntityAssets};
-use protocol::*;
+use protocol::{
+    ActorAttribute, ActorEvent, ActorHandedness, AudioEvent, BiomeDefinitionEvent, BlockCrackEvent,
+    ChangeDimensionEvent, CustomBlocks, DaylightCycleUpdateEvent, DimensionHeightDiagnostic,
+    DimensionRange, MAX_DIMENSION_DEFINITIONS, MovePlayerEvent, PlayerMovementCorrectionEvent,
+    PrimitiveShapesEvent, RespawnEvent, SetTimeEvent, UiEvent, WeatherUpdateEvent, WorldBootstrap,
+    WorldEvent, vanilla_dimension_range,
+};
+#[cfg(test)]
+use protocol::{
+    ActorAttributesUpdateEvent, ActorKind, ActorMetadata, ActorMetadataUpdateEvent,
+    ActorMetadataValue, ActorSpawnEvent, CustomBlock, CustomBlockVisuals, CustomSelection,
+    CustomStateAxis, CustomStateValue, HASHED_AIR_NETWORK_ID, PrimitiveShapeChange,
+    SEQUENTIAL_AIR_NETWORK_ID,
+};
 use std::{
     collections::BTreeSet,
     collections::VecDeque,
@@ -23,6 +35,7 @@ mod actors;
 mod biomes;
 mod block_events;
 mod block_identities;
+mod combat;
 mod commits;
 mod contracts;
 mod dimension_ranges;
@@ -47,12 +60,15 @@ mod terrain;
 mod tests;
 pub use biomes::BiomeCommitReport;
 pub use block_events::BlockEventCue;
+pub use combat::{ActorCombatEvidence, ActorCombatKind};
 pub use contracts::{
     CommittedAudioEvent, CommittedCameraEvent, CommittedControlEvent, CommittedParticleEvent,
     CommittedUiEvent, PublisherViewGeometry, ViewCohort,
 };
 pub use map_data::MapImage;
-pub use movement_attribute::AIR_DRAG_MODIFIER_ATTRIBUTE;
+pub use movement_attribute::{
+    AIR_DRAG_MODIFIER_ATTRIBUTE, MovementSpeedAttribute, SPRINT_SPEED_MODIFIER_ID,
+};
 pub use sign_edit::SignEditRequest;
 
 static NEXT_BIOME_TINT_STREAM_ID: AtomicU64 = AtomicU64::new(1);
@@ -68,6 +84,8 @@ pub const COMMITTED_PARTICLE_CAPACITY: usize = 512;
 pub struct WorldAuthority {
     terrain: ChunkStore,
     actors: ActorStore,
+    combat_evidence: VecDeque<ActorCombatEvidence>,
+    combat_revision: u64,
     block_events: block_events::BlockEvents,
     map_images: map_data::MapImages,
     pending_sign_edit: Option<SignEditRequest>,
@@ -77,6 +95,7 @@ pub struct WorldAuthority {
     runtime_assets: Arc<RuntimeAssets>,
     custom_block_ids: std::ops::Range<u32>,
     custom_block_identities: Arc<std::collections::HashMap<u32, u32>>,
+    block_names: block_identities::BlockNames,
     id_remap: Arc<assets::SequentialIdRemap>,
     decode_diagnostics: Arc<crate::ingestion::DecodeDiagnostics>,
     biome_definitions: Arc<[BiomeDefinitionEvent]>,
@@ -147,6 +166,8 @@ impl WorldAuthority {
         Self {
             terrain: ChunkStore::new(),
             actors,
+            combat_evidence: VecDeque::new(),
+            combat_revision: 0,
             block_events: block_events::BlockEvents::default(),
             map_images: map_data::MapImages::default(),
             pending_sign_edit: None,
@@ -156,6 +177,7 @@ impl WorldAuthority {
             runtime_assets,
             custom_block_ids: 0..0,
             custom_block_identities: Arc::default(),
+            block_names: block_identities::BlockNames::new(network_id_mode),
             id_remap: Arc::default(),
             decode_diagnostics: Arc::default(),
             biome_definitions: Arc::from([]),

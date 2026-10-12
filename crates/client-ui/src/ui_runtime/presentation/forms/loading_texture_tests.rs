@@ -4,9 +4,10 @@ use std::io::Cursor;
 
 use ui::DpiScale;
 
-use super::super::{LoadingStage, UiPresentationRuntime, menu_artwork};
+use super::super::UiPresentationRuntime;
 use super::{pack_harness, snapshot};
 use crate::ui_runtime::UiRuntime;
+use ui::LoadingStage;
 
 mod carrier;
 
@@ -45,7 +46,7 @@ fn loading_screen_keeps_artwork_uvs_with_the_pixels_they_address() {
         );
         return;
     };
-    let title = menu_artwork::TITLE_KEY;
+    let title = ui_engine::textures::TITLE_KEY;
     presentation.set_server_ui_pack(&super::ServerUiPack {
         textures: vec![(format!("{title}.png"), png([900, 300], [220, 20, 30, 255]))],
         ..Default::default()
@@ -85,33 +86,25 @@ fn loading_screen_keeps_artwork_uvs_with_the_pixels_they_address() {
     );
 }
 
-/// Waits for the loading textures, then installs their complete artwork atlas.
+/// Waits for the loading backdrop and title, then installs their artwork atlas.
 fn settled(
     player_runtime: &player_state::PlayerState,
     presentation: &mut UiPresentationRuntime,
 ) -> render_model::UiRenderInput {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
+    test_time::eventually("loading backdrop and title become available", || {
         frame(player_runtime, presentation);
-        let atlas = presentation
-            .form_presentation
-            .engine
-            .as_ref()
-            .unwrap()
-            .textures
-            .lock();
-        let ready = !atlas.has_image("textures/blocks/dirt")
+        let engine = presentation.engine.as_ref().unwrap();
+        let atlas = engine.textures.lock();
+        let backdrop_ready = !atlas.has_image("textures/blocks/dirt")
             || atlas.placement("textures/blocks/dirt").is_some();
+        let has_title = atlas.has_image(ui_engine::textures::TITLE_KEY);
         drop(atlas);
-        if ready {
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "loading textures never became resident"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
+        backdrop_ready
+            && (!has_title
+                || presentation
+                    .title_icon(&presentation.menu_artwork.refs)
+                    .is_some())
+    });
     presentation.finish_menu_artwork();
     frame(player_runtime, presentation)
 }
@@ -121,7 +114,7 @@ fn vanilla_image(path: &str) -> image::RgbaImage {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("../.local")
-        .join(crate::install_layout::vanilla_pack_relative());
+        .join(launcher::install_layout::vanilla_pack_relative());
     image::open(root.join(format!("{path}.png")))
         .unwrap()
         .into_rgba8()
@@ -141,7 +134,7 @@ fn zeqa_loading_pixels_survive_artwork_repacking_and_pack_reload() {
     assert!(
         pack.textures
             .iter()
-            .any(|(key, _)| key == &format!("{}.png", menu_artwork::TITLE_KEY))
+            .any(|(key, _)| key == &format!("{}.png", ui_engine::textures::TITLE_KEY))
     );
     presentation.set_server_ui_pack(&pack);
     presentation.set_loading_stage(Some(LoadingStage::BuildingTerrain));
@@ -187,14 +180,32 @@ fn zeqa_loading_pixels_survive_artwork_repacking_and_pack_reload() {
         "Zeqa hides its loading bar"
     );
     before.validate().unwrap();
-    let title = presentation
-        .form_presentation
-        .engine
-        .as_ref()
-        .unwrap()
+    let title_icon = presentation
+        .title_icon(&presentation.menu_artwork.refs)
+        .expect("the pack title is ready for loading-screen painting");
+    carrier::title_bounds(&presentation);
+    let title_bytes = &pack
         .textures
-        .oversized();
-    assert!(title.iter().any(|(key, _)| key == menu_artwork::TITLE_KEY));
+        .iter()
+        .find(|(key, _)| key == &format!("{}.png", ui_engine::textures::TITLE_KEY))
+        .unwrap()
+        .1;
+    let title = image::load_from_memory(title_bytes).unwrap().into_rgba8();
+    assert_eq!(
+        title_icon.uv[2..],
+        [title.width() as u16, title.height() as u16]
+    );
+    let page = &before.textures.pages()[usize::from(title_icon.page)];
+    for (y, row) in title
+        .as_raw()
+        .chunks_exact(title.width() as usize * 4)
+        .enumerate()
+    {
+        let at = ((usize::from(title_icon.uv[1]) + y) * page.dimensions()[0] as usize
+            + usize::from(title_icon.uv[0]))
+            * 4;
+        assert_eq!(&page.pixels()[at..at + row.len()], row);
+    }
     let path = std::env::temp_dir().join(format!("zeqa-repack-{}.png", std::process::id()));
     std::fs::write(&path, png([512, 512], [20, 220, 30, 255])).unwrap();
     let mut set = presentation.menu_artwork_set.clone();

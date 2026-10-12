@@ -1,14 +1,13 @@
 //! Client-authored classic appearance updates.
 
-/// Minimum engine version for model inputs without a manifest requirement.
-pub const DEFAULT_SKIN_GEOMETRY_ENGINE_VERSION: &str = "0.0.0";
+use render_api::DEFAULT_SKIN_GEOMETRY_ENGINE_VERSION;
 
 use sha2::{Digest, Sha256};
 use valentine::bedrock::version::v1_26_51::{
     EnumsSharedTypespersonaArmSizeType, PlayerSkinPacket, SerializedSkinRef, SkinImage,
 };
 
-pub fn cape_content_id(cape: &crate::CapeImage) -> String {
+pub fn cape_content_id(cape: &render_api::CapeImage) -> String {
     let mut hash = Sha256::new();
     hash.update(cape.width.to_le_bytes());
     hash.update(cape.height.to_le_bytes());
@@ -36,7 +35,7 @@ pub fn set_skin_packet_engine_version(packet: &mut crate::Packet, version: &str)
 /// Sends the same pixels and geometry used by the local preview.
 pub fn player_skin_packet(
     uuid: [u8; 16],
-    skin: &crate::StandardSkin,
+    skin: &render_api::StandardSkin,
     arm_size: &str,
     id: &str,
     name: &str,
@@ -44,7 +43,7 @@ pub fn player_skin_packet(
     let geometry = skin.geometry.as_ref();
     let cape = skin.cape.as_ref().filter(|cape| cape.is_valid());
     let cape_id = cape.map_or_else(String::new, cape_content_id);
-    PlayerSkinPacket {
+    crate::Packet::new(PlayerSkinPacket {
         uuid: uuid::Uuid::from_bytes(uuid),
         serialized_skin: SerializedSkinRef {
             id: id.to_owned(),
@@ -84,8 +83,7 @@ pub fn player_skin_packet(
         },
         localized_new_skin_name: name.to_owned(),
         localized_old_skin_name: String::new(),
-    }
-    .into()
+    })
 }
 
 #[cfg(test)]
@@ -95,20 +93,22 @@ mod tests {
 
     #[test]
     fn selected_skin_update_preserves_wire_pixels_geometry_and_model() {
-        let skin = crate::StandardSkin {
-            width: crate::CLASSIC_SKIN_SIDE as u32,
-            height: crate::CLASSIC_SKIN_SIDE as u32,
-            rgba8: vec![7; crate::CLASSIC_SKIN_SIDE * crate::CLASSIC_SKIN_SIDE * 4].into(),
-            cape: Some(crate::CapeImage {
-                width: crate::CAPE_DIMENSIONS[0].0,
-                height: crate::CAPE_DIMENSIONS[0].1,
+        let skin = render_api::StandardSkin {
+            width: render_api::CLASSIC_SKIN_SIDE as u32,
+            height: render_api::CLASSIC_SKIN_SIDE as u32,
+            rgba8: vec![7; render_api::CLASSIC_SKIN_SIDE * render_api::CLASSIC_SKIN_SIDE * 4]
+                .into(),
+            cape: Some(render_api::CapeImage {
+                width: render_api::CAPE_DIMENSIONS[0].0,
+                height: render_api::CAPE_DIMENSIONS[0].1,
                 rgba8: vec![
                     63;
-                    (crate::CAPE_DIMENSIONS[0].0 * crate::CAPE_DIMENSIONS[0].1 * 4) as usize
+                    (render_api::CAPE_DIMENSIONS[0].0 * render_api::CAPE_DIMENSIONS[0].1 * 4)
+                        as usize
                 ]
                 .into(),
             }),
-            geometry: Some(Arc::new(crate::SkinGeometrySource {
+            geometry: Some(Arc::new(render_api::SkinGeometrySource {
                 resource_patch: "{\"geometry\":{\"default\":\"geometry.humanoid.customSlim\"}}"
                     .into(),
                 geometry_data: "{\"geometry.humanoid.customSlim\":{}}".into(),
@@ -116,14 +116,10 @@ mod tests {
             })),
         };
         let packet = player_skin_packet([9; 16], &skin, "slim", "imported", "Fixture");
-        let session = crate::BedrockSession { shield_item_id: 0 };
         let mut packet = packet;
         set_skin_packet_engine_version(&mut packet, "1.12.0");
-        let encoded = crate::encode(&packet, &session).unwrap();
-        let packet = crate::decode_batch(encoded, &session)
-            .unwrap()
-            .pop()
-            .unwrap();
+        let encoded = crate::encode(&packet).unwrap();
+        let packet = crate::decode_batch(encoded).unwrap().pop().unwrap();
         let valentine::bedrock::version::v1_26_51::McpePacketData::PlayerSkinPacket(wire) =
             packet.data
         else {
@@ -171,10 +167,11 @@ mod tests {
 
     #[test]
     fn absent_cape_clears_the_wire_image_and_identity() {
-        let skin = crate::StandardSkin {
-            width: crate::CLASSIC_SKIN_SIDE as u32,
-            height: crate::CLASSIC_SKIN_SIDE as u32,
-            rgba8: vec![255; crate::CLASSIC_SKIN_SIDE * crate::CLASSIC_SKIN_SIDE * 4].into(),
+        let skin = render_api::StandardSkin {
+            width: render_api::CLASSIC_SKIN_SIDE as u32,
+            height: render_api::CLASSIC_SKIN_SIDE as u32,
+            rgba8: vec![255; render_api::CLASSIC_SKIN_SIDE * render_api::CLASSIC_SKIN_SIDE * 4]
+                .into(),
             cape: None,
             geometry: None,
         };

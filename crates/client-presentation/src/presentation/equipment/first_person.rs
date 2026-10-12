@@ -3,11 +3,14 @@
 //! The mesh uses the native icon basis (X in [-1, 0], Y in [0, 1]); centering or
 //! mirroring it again would duplicate the correction already in held_sprite_vertices.
 
+use actor_animation::ItemAnimationState;
 use bevy::math::{Mat4, Vec3};
-use client_world::ItemAnimationState;
 use render_model::RenderBoneTransform;
 
-use super::display::{FirstPersonShape, ItemDisplay, first_person_display, view_bone};
+use {
+    super::display::{FirstPersonShape, first_person_display, view_bone},
+    render_model::equipment::ItemDisplay,
+};
 
 #[cfg(test)]
 mod tests;

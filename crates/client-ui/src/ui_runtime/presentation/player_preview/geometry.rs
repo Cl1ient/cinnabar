@@ -6,9 +6,12 @@ use std::sync::Arc;
 use render_model::{ActorVertex, standard_biped_overlay_vertices, standard_biped_vertices};
 use ui::{UI_STYLE_GLINT, UiBlendMode, UiMesh, UiMeshBatch, UiMeshVertex};
 
-use super::{
-    IconRef, PREVIEW_HEIGHT, PREVIEW_WIDTH, PlayerPreviewPose, PreviewEquipment, PreviewHeldModel,
-    PreviewView, Rig, equipment,
+use {
+    super::{
+        PREVIEW_HEIGHT, PREVIEW_WIDTH, PlayerPreviewPose, PreviewEquipment, PreviewHeldModel,
+        PreviewView, Rig, equipment,
+    },
+    ui::IconRef,
 };
 
 mod fire;
@@ -43,7 +46,7 @@ pub fn mesh(
 /// Uses already posed world geometry for the HUD, retaining the shared UI shading and depth path.
 #[allow(clippy::too_many_arguments)]
 pub fn mesh_with_body(
-    body: Option<(&[ActorVertex], &[Option<bevy::math::Affine3A>; 6])>,
+    body: Option<(&[ActorVertex], &[Option<glam::Affine3A>; 6])>,
     pose: PlayerPreviewPose,
     view: PreviewView,
     bob: f32,
@@ -74,7 +77,7 @@ pub fn mesh_with_body(
 /// Samples an attached cape from its original texture alongside the skin and equipment.
 #[allow(clippy::too_many_arguments)]
 pub fn mesh_with_cape(
-    body: Option<(&[ActorVertex], &[Option<bevy::math::Affine3A>; 6])>,
+    body: Option<(&[ActorVertex], &[Option<glam::Affine3A>; 6])>,
     pose: PlayerPreviewPose,
     view: PreviewView,
     bob: f32,
@@ -155,7 +158,7 @@ fn append(
     let start = u32::try_from(vertices.len()).ok()?;
     let [red, green, blue] = tint.unwrap_or([255; 3]);
     let centers = lighting::part_centers(source);
-    for triangle in source.chunks_exact(3) {
+    for triangle in source.as_chunks::<3>().0 {
         let projected = [0, 1, 2].map(|corner| rig.project(triangle[corner]));
         let model_light = lighting::triangle_light(
             triangle,

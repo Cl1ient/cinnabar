@@ -22,7 +22,7 @@ fn native_liquid_faces_admit_only_their_original_and_marked_reverse_windings() {
     let source = format!(
         "{}\n{index_source}\n{WITNESS}",
         shader_source::standalone(
-            include_str!("../../src/liquid.wgsl"),
+            include_str!("../../src/liquid.wesl"),
             &["NATIVE_GAMMA_BLEND"]
         )
     )
@@ -56,7 +56,7 @@ fn native_liquid_faces_admit_only_their_original_and_marked_reverse_windings() {
         ..Default::default()
     });
     let sampler = gpu.device.create_sampler(&Default::default());
-    let frame = render::AtmosphereFrame::default();
+    let frame = render_scene::AtmosphereFrame::default();
     assert!(
         frame.fog_start() > 3.0,
         "fixture must remain outside distance fog"
@@ -65,7 +65,7 @@ fn native_liquid_faces_admit_only_their_original_and_marked_reverse_windings() {
         bytemuck::cast_slice(std::slice::from_ref(&frame)),
         wgpu::BufferUsages::UNIFORM,
     );
-    let table = render::LightmapInputs::default()
+    let table = render_model::LightmapInputs::default()
         .build()
         .map(|_| [1.0_f32; 4]);
     let lightmap = gpu.buffer(bytemuck::cast_slice(&table), wgpu::BufferUsages::UNIFORM);
@@ -201,8 +201,15 @@ fn face_view(face: Face, inside: bool) -> (Mat4, Vec3) {
     let centre = Vec3::splat(0.5) + normal * 0.5;
     let eye = centre + normal * if inside { -2.0 } else { 2.0 };
     let up = if normal.y == 0.0 { Vec3::Y } else { Vec3::Z };
-    let projection = Mat4::perspective_infinite_reverse_rh(std::f32::consts::FRAC_PI_4, 1.0, 0.1);
-    (projection * Mat4::look_at_rh(eye, centre, up), eye)
+    let projection = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        std::f32::consts::FRAC_PI_4,
+        1.0,
+        0.1,
+    );
+    (
+        projection * glam::camera::rh::view::look_at_mat4(eye, centre, up),
+        eye,
+    )
 }
 
 // Vertex positions come from production liquid_corner, not a screen-space

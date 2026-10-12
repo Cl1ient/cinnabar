@@ -1,35 +1,39 @@
 //! A left click during gameplay must reach the attack producers through the production input chain.
-use crate::player_runtime::PlayerRuntime;
 use bevy::{
     input::{ButtonInput, keyboard::KeyboardInput, mouse::AccumulatedMouseMotion, touch::Touches},
     prelude::{App, MouseButton},
     time::{Real, Time},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window},
 };
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
+use client_state::PlayerRuntime;
 use semantic_input::Action;
 
 use bevy::prelude::{IntoScheduleConfigs, Update};
 
-use crate::{
-    app::{ClientFrameSet, configure_client_frame_schedule},
-    menu::{MenuClipboard, MenuRuntime, drive_menu_input},
-    runtime::world::ClientWorld,
-    semantic_controls::{
-        SemanticInputSnapshot, collect_raw_input, finalize_semantic_input_after_ui_authority,
-        route_semantic_input, synchronize_semantic_input_authority,
-    },
-    settings_runtime::RuntimeSettings,
-    ui_runtime::{
-        drain_inventory_authority, drive_chat_keyboard_input, drive_chat_ui_actions,
-        drive_inventory_ui_actions, drive_server_form_input, drive_sign_editor,
-        drive_world_inventory_keys, gameplay_touch::drive_gameplay_touch_targets,
-        presentation::tests::fixture_font,
-    },
-};
 use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
+use {
+    crate::{
+        app::configure_client_frame_schedule,
+        runtime::world::ClientWorld,
+        semantic_controls::{
+            collect_raw_input, finalize_semantic_input_after_ui_authority, route_semantic_input,
+            synchronize_semantic_input_authority,
+        },
+        ui_runtime::{
+            drain_inventory_authority, drive_chat_keyboard_input, drive_chat_ui_actions,
+            drive_inventory_ui_actions, drive_server_form_input, drive_sign_editor,
+            drive_world_inventory_keys, gameplay_touch::drive_gameplay_touch_targets,
+        },
+    },
+    client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
+    client_state::{ClientFrameSet, RuntimeSettings, SemanticInputSnapshot},
+    ui_engine::test_support::fixture_font,
+};
 
-fn gameplay_app(menu_visible: bool) -> App {
-    let mut player_runtime = PlayerRuntime::new(1);
+/// Builds the production input chain with a focused gameplay window.
+pub(crate) fn gameplay_app(menu_visible: bool) -> App {
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
     let mut app = App::new();
     configure_client_frame_schedule(&mut app);
     // The production RawInput/SemanticSample/UiAuthority/SemanticFinalize registrations.
@@ -49,12 +53,14 @@ fn gameplay_app(menu_visible: bool) -> App {
             (
                 drive_sign_editor,
                 drive_server_form_input,
+                crate::ui_runtime::emotes::drive_emote_input,
                 drive_chat_ui_actions,
                 drain_inventory_authority,
                 drive_chat_keyboard_input,
                 drive_menu_input,
                 drive_inventory_ui_actions,
                 // Connection and store drivers own no input and are left out.
+                client_shell::menu::screen_focus::publish_screen_focus,
                 synchronize_semantic_input_authority,
                 drive_world_inventory_keys,
             )
@@ -66,11 +72,13 @@ fn gameplay_app(menu_visible: bool) -> App {
             finalize_semantic_input_after_ui_authority.in_set(ClientFrameSet::SemanticFinalize),
         );
     let mut runtime = UiRuntime::new(1);
+    let local_runtime_id = 42;
     runtime
-        .publish_local_runtime_id(&mut player_runtime, 1, 42)
+        .publish_local_runtime_id(&mut player_runtime, 1, local_runtime_id)
         .unwrap();
     app.init_resource::<Time<Real>>()
         .init_resource::<Time>()
+        .init_resource::<crate::ui_runtime::emotes::EmoteInputConsumed>()
         .init_resource::<ButtonInput<bevy::input::keyboard::KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<AccumulatedMouseMotion>()
@@ -82,13 +90,26 @@ fn gameplay_app(menu_visible: bool) -> App {
         .init_resource::<crate::semantic_controls::SemanticRouteState>()
         .init_resource::<crate::semantic_controls::SemanticTouchTargets>()
         .init_resource::<RuntimeSettings>()
-        .init_resource::<ClientWorld>()
-        .init_resource::<crate::local_player::LocalPlayerFrameCarrier>()
-        .init_resource::<crate::local_player::InteractionOriginSnapshot>()
+        .insert_resource(ClientWorld {
+            stream: Some(chunk_pipeline::WorldStream::new(protocol::WorldBootstrap {
+                dimension: 0,
+                local_player_runtime_id: local_runtime_id,
+                local_player_unique_id: 1,
+                player_position: [0.0, 70.0, 0.0],
+                world_spawn_position: [0, 70, 0],
+                air_network_id: protocol::SEQUENTIAL_AIR_NETWORK_ID,
+                block_network_ids_are_hashes: false,
+            })),
+            ..ClientWorld::default()
+        })
+        .init_resource::<client_presentation::local_player::LocalPlayerFrameCarrier>()
+        .init_resource::<client_presentation::local_player::InteractionOriginSnapshot>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(UiPresentationRuntime::new(fixture_font()).unwrap())
+        .insert_resource(UiPresentationResource(
+            UiPresentationRuntime::new(fixture_font()).unwrap(),
+        ))
         .insert_resource(MenuRuntime::new(menu_visible, 2, "Tester".to_owned()));
     app.world_mut().spawn((
         Window {
@@ -127,7 +148,7 @@ fn a_gameplay_click_reaches_attack_only_without_a_menu() {
 fn consent_discards_semantic_input_collected_before_approval() {
     let mut app = gameplay_app(false);
     app.update();
-    app.insert_resource(crate::server_experiences::input::ConsentInput(true));
+    app.insert_resource(client_state::ConsentInput(true));
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Left);

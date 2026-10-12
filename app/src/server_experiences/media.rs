@@ -2,7 +2,7 @@
 //! frames to the same bundle's scene quads and reports playback transitions to that guest.
 
 use anyhow::{Result, ensure};
-use client_presentation::audio::{
+use client_audio::audio::{
     media::{self as media_audio, MediaAudio},
     settings::AudioSettings,
 };
@@ -59,7 +59,7 @@ impl Activity for Slot {
 /// Makes room for one more player within the concurrent limit.
 fn admit<V: Activity>(
     players: &mut BTreeMap<Key, V>,
-    frames: &mut BTreeMap<Key, Option<render::MediaFrame>>,
+    frames: &mut BTreeMap<Key, Option<render_scene::MediaFrame>>,
 ) -> Result<()> {
     if players.len() >= MAX_PLAYERS {
         // Finished players keep their last frame only until a new one needs the slot.
@@ -86,7 +86,7 @@ impl Voice {
     /// Opens, resets or keeps the voice for an active player; an inactive one releases it.
     fn sync(
         &mut self,
-        device: Option<&mut client_presentation::named_audio::AudioDevice>,
+        device: Option<&mut client_audio::named_audio::AudioDevice>,
         generation: u64,
         active: bool,
     ) -> Option<&Arc<MediaAudio>> {
@@ -125,7 +125,7 @@ pub(super) struct Media {
     helper: PathBuf,
     bundles: BTreeMap<String, VerifiedBundle>,
     players: BTreeMap<(String, String), Slot>,
-    frames: BTreeMap<(String, String), Option<render::MediaFrame>>,
+    frames: BTreeMap<(String, String), Option<render_scene::MediaFrame>>,
     pending: VecDeque<Control>,
     events: VecDeque<(String, Vec<u8>)>,
     data_budget: Arc<AtomicU64>,
@@ -196,7 +196,7 @@ impl Media {
                         self.serial += 1;
                         self.frames.insert(
                             key.clone(),
-                            Some(render::MediaFrame {
+                            Some(render_scene::MediaFrame {
                                 serial: self.serial,
                                 width: frame.width,
                                 height: frame.height,
@@ -295,7 +295,7 @@ impl Media {
     /// Feeds decoded PCM to one mixer voice per player and steers it onto the media clock.
     pub(super) fn pump_audio(
         &mut self,
-        mut device: Option<&mut client_presentation::named_audio::AudioDevice>,
+        mut device: Option<&mut client_audio::named_audio::AudioDevice>,
         settings: &AudioSettings,
         muted: bool,
         local_us: u64,
@@ -332,7 +332,11 @@ impl Media {
     /// The latest frame bound to the bundle's quad textured by `texture`, if one plays.
     /// The latest frame for the bundle's quad textured by `texture`; a linear scan over at
     /// most MAX_PLAYERS entries, so lookups never allocate.
-    pub(super) fn frame(&self, bundle: &str, texture: &str) -> Option<Option<render::MediaFrame>> {
+    pub(super) fn frame(
+        &self,
+        bundle: &str,
+        texture: &str,
+    ) -> Option<Option<render_scene::MediaFrame>> {
         self.frames
             .iter()
             .find(|((owner, path), _)| owner == bundle && path == texture)
@@ -349,7 +353,7 @@ impl Media {
         &mut self,
         bundle: &str,
         texture: &str,
-        frame: Option<render::MediaFrame>,
+        frame: Option<render_scene::MediaFrame>,
     ) {
         self.frames
             .insert((bundle.to_owned(), texture.to_owned()), frame);
@@ -389,7 +393,7 @@ impl Media {
 }
 
 /// Places a quad from a scene object the way the renderer draws a media screen.
-pub(super) fn screen(id: u64, object: &SceneObject) -> Option<(&str, render::MediaScreen)> {
+pub(super) fn screen(id: u64, object: &SceneObject) -> Option<(&str, render_scene::MediaScreen)> {
     let SceneObject::Quad {
         texture,
         transform,
@@ -398,7 +402,7 @@ pub(super) fn screen(id: u64, object: &SceneObject) -> Option<(&str, render::Med
     else {
         return None;
     };
-    let (center, half_right, half_up) = render::media_screen_axes(
+    let (center, half_right, half_up) = render_scene::media_screen_axes(
         [transform[0], transform[1], transform[2]],
         [transform[3], transform[4], transform[5], transform[6]],
         [transform[7], transform[8], transform[9]],
@@ -406,7 +410,7 @@ pub(super) fn screen(id: u64, object: &SceneObject) -> Option<(&str, render::Med
     );
     Some((
         texture.as_str(),
-        render::MediaScreen {
+        render_scene::MediaScreen {
             id,
             center,
             half_right,
@@ -459,7 +463,7 @@ mod tests {
 
     #[test]
     fn a_finished_player_hands_the_single_mixer_voice_to_the_next() {
-        let (mut device, mut mixer) = client_presentation::named_audio::AudioDevice::memory_mixer();
+        let (mut device, mut mixer) = client_audio::named_audio::AudioDevice::memory_mixer();
         let mut first = Voice::default();
         assert!(first.sync(Some(&mut device), 1, true).is_some());
         assert!(first.sync(Some(&mut device), 1, false).is_none());

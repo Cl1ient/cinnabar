@@ -96,14 +96,14 @@ fn first_frame_uploads_only_requested_texels_and_warm_frames_allocate_and_upload
         .prepare(&input, |_, _, _, _| panic!("warm glyph uploaded twice"))
         .unwrap();
     fonts.commit_vertices();
-    let before = crate::alloc_count::thread_allocations();
+    let before = test_alloc::thread_allocations();
     for _ in 0..10 {
         fonts
             .prepare(&input, |_, _, _, _| panic!("warm glyph uploaded twice"))
             .unwrap();
         fonts.commit_vertices();
     }
-    assert_eq!(crate::alloc_count::thread_allocations() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
     fonts.clear();
     let mut replacement_writes = 0;
     fonts
@@ -453,7 +453,7 @@ fn row_uploads_preserve_existing_glyphs_when_a_taller_glyph_is_added() {
         })
         .unwrap();
     let source = &input.textures.pages()[0];
-    for quad in fonts.vertices.chunks_exact(4) {
+    for quad in fonts.vertices.as_chunks::<4>().0 {
         let [dx, dy] = quad[0].atlas_offset.map(|value| value as i32);
         for y in quad[0].source.uv[1] as i32..quad[2].source.uv[1] as i32 {
             for x in quad[0].source.uv[0] as i32..quad[2].source.uv[0] as i32 {

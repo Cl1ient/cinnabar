@@ -1,22 +1,24 @@
 //! Borrows gameplay and UI facts at the existing camera phase.
-use super::{CameraFovInputs, ScreenEffectFacts};
-use crate::{
-    item_use::ItemUseRuntime,
-    local_player::LocalViewPose,
-    movement::{LocalPhysicsController, PhysicsCollisionRegistries},
-    runtime::world::ClientWorld,
-};
 use bevy::prelude::{Local, Res, ResMut, Time};
-pub use client_presentation::camera::facts::ItemUseClock;
-use client_ui::ui_runtime::UiRuntime;
+use client_presentation::camera::facts::ItemUseClock;
+use client_presentation::camera::{CameraFovInputs, ScreenEffectFacts};
+use client_shell::ui_resources::UiRuntimeResource;
+use {
+    crate::runtime::world::ClientWorld,
+    client_interaction::{
+        item_use::ItemUseRuntime,
+        movement::{LocalPhysicsController, PhysicsCollisionRegistries},
+    },
+    client_presentation::local_player::LocalViewPose,
+};
 
 /// Borrows current owner facts and forwards them at the existing system boundary.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn collect_screen_effect_facts(
-    player_runtime: bevy::prelude::Res<crate::player_runtime::PlayerRuntime>,
+    player_runtime: bevy::prelude::Res<client_state::PlayerRuntime>,
     time: Res<bevy::prelude::Time>,
     item_use: Option<Res<ItemUseRuntime>>,
-    ui: Option<Res<UiRuntime>>,
+    ui: Option<Res<UiRuntimeResource>>,
     client_world: Option<Res<ClientWorld>>,
     clock: ResMut<ItemUseClock>,
     facts: ResMut<ScreenEffectFacts>,
@@ -28,7 +30,7 @@ pub(crate) fn collect_screen_effect_facts(
         item_use
             .as_deref()
             .map(|value| value as &dyn client_presentation::observations::ItemUseObservation),
-        ui.as_deref(),
+        ui.as_deref().map(|ui| &ui.0),
         client_world.as_deref().map(
             |world| client_presentation::observations::WorldObservation {
                 stream: world.stream.as_ref(),
@@ -41,7 +43,7 @@ pub(crate) fn collect_screen_effect_facts(
 }
 
 pub(crate) fn collect_portal_contact(
-    player_runtime: Res<crate::player_runtime::PlayerRuntime>,
+    player_runtime: Res<client_state::PlayerRuntime>,
     view: Res<LocalViewPose>,
     physics: Option<Res<LocalPhysicsController>>,
     client_world: Option<Res<ClientWorld>>,
@@ -71,9 +73,9 @@ pub(crate) fn diagnose_portal(
     time: Option<Res<Time<bevy::time::Real>>>,
     view: Res<LocalViewPose>,
     facts: Res<ScreenEffectFacts>,
-    portal: Res<super::PortalProgress>,
-    overlays: Res<super::ScreenOverlays>,
-    settings: Res<super::CameraSettingsAuthority>,
+    portal: Res<client_presentation::camera::PortalProgress>,
+    overlays: Res<client_presentation::camera::ScreenOverlays>,
+    settings: Res<client_presentation::camera::CameraSettingsAuthority>,
     physics: Option<Res<LocalPhysicsController>>,
     client_world: Option<Res<ClientWorld>>,
     mut diagnostics: Local<client_presentation::camera::portal_diagnostics::PortalDiagnostics>,

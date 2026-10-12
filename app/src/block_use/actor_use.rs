@@ -1,6 +1,10 @@
 //! Actor use shares the pre-physics pick and press admission with block use.
-use super::*;
 use gameplay::melee::{Crosshair, classify, pick_actor};
+use {
+    super::*,
+    gameplay::block_use::{LocalUse, RepeatClock},
+    gameplay::mining::{FrozenMiningSelection, creative_reach, survival_reach},
+};
 
 /// Resolves an admitted press against the fresh actor/block pick before block use.
 #[allow(clippy::too_many_arguments)]
@@ -8,6 +12,7 @@ pub(super) fn produce(
     context: &BlockUseContext,
     runtime: &mut BlockUseRuntime,
     selection: &FrozenMiningSelection,
+    game_mode: Option<protocol::PlayerGameMode>,
     pick: FramePick,
     state: &gameplay::movement::UnsentSampleView,
     input_mode: PlayerInputMode,
@@ -43,6 +48,12 @@ pub(super) fn produce(
         stream.collision_store(),
         context.collisions.registry(stream.network_id_mode()),
         stream.current_dimension(),
+        crate::interaction_authority::pick_context(
+            stream,
+            &context.collisions,
+            game_mode,
+            Some(selection.item.block_runtime_id()),
+        ),
     );
     let vector =
         |v: bevy::prelude::Vec3| sim::Vec3::new(f64::from(v.x), f64::from(v.y), f64::from(v.z));
@@ -65,17 +76,14 @@ pub(super) fn produce(
     if trigger == ItemUseTrigger::SimulationTick {
         return true;
     }
-    let packet = protocol::use_actor_packet(
-        protocol::ActorUseRequest {
-            actor_runtime_id: hit.runtime_id,
-            action: protocol::ActorUseAction::Interact,
-            selected_slot: selection.slot,
-            selected_item: selection.item.clone(),
-            player_position: state.position,
-            hit_position: hit.point,
-        },
-        &protocol::BedrockSession { shield_item_id: 0 },
-    );
+    let packet = protocol::use_actor_packet(protocol::ActorUseRequest {
+        actor_runtime_id: hit.runtime_id,
+        action: protocol::ActorUseAction::Interact,
+        selected_slot: selection.slot,
+        selected_item: selection.item.clone(),
+        player_position: state.position,
+        hit_position: hit.point,
+    });
     let admitted = packet
         .ok()
         .is_some_and(|packet| context.network.send_inventory_packets(vec![packet]).is_ok());

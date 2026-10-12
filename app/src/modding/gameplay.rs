@@ -10,25 +10,63 @@ use mod_host::{
     GameplayVector3, ModGrants,
 };
 
-use crate::{runtime::world::ClientWorld, semantic_controls::SemanticInputSnapshot};
+use {crate::runtime::world::ClientWorld, client_state::SemanticInputSnapshot};
 
 #[derive(SystemParam)]
 pub(super) struct GameplayContext<'w> {
-    world: Option<Res<'w, ClientWorld>>,
-    view: Option<ResMut<'w, LocalViewPose>>,
-    input: Option<ResMut<'w, SemanticInputSnapshot>>,
+    pub(super) world: Option<Res<'w, ClientWorld>>,
+    pub(super) view: Option<ResMut<'w, LocalViewPose>>,
+    pub(super) input: Option<ResMut<'w, SemanticInputSnapshot>>,
     auto_fly: Option<Res<'w, AutoFly>>,
     server_camera: Option<Res<'w, ServerCameraView>>,
     time: Option<Res<'w, Time>>,
     real_time: Option<Res<'w, Time<Real>>>,
     clock: Option<Res<'w, crate::environment::WorldClock>>,
-    physics: Option<ResMut<'w, crate::movement::LocalPhysicsController>>,
-    movement: Option<Res<'w, crate::movement::MovementTicker>>,
-    player: Option<Res<'w, crate::player_runtime::PlayerRuntime>>,
-    ui: Option<Res<'w, client_ui::ui_runtime::UiRuntime>>,
+    pub(super) physics: Option<ResMut<'w, client_interaction::movement::LocalPhysicsController>>,
+    pub(super) movement: Option<Res<'w, client_interaction::movement::MovementTicker>>,
+    pub(super) player: Option<Res<'w, client_state::PlayerRuntime>>,
+    pub(super) origin:
+        Option<Res<'w, client_presentation::local_player::InteractionOriginSnapshot>>,
+    pub(super) collisions:
+        Option<Res<'w, client_interaction::movement::PhysicsCollisionRegistries>>,
+    pub(super) aim: Option<Res<'w, client_presentation::aim_assist::AimAssistFrame>>,
+    pub(super) actor_partial:
+        Option<Res<'w, client_presentation::actor_publication::ActorFramePartialTick>>,
+    pub(super) melee: Option<Res<'w, client_interaction::melee::MeleeRuntime>>,
+    pub(super) session: Option<Res<'w, crate::session::SessionController>>,
 }
 
 impl GameplayContext<'_> {
+    /// Read-only current world identity and feet pose, independent of input capture.
+    pub(super) fn world_observation(
+        &self,
+        ui: &client_ui::ui_runtime::UiRuntime,
+    ) -> Option<mod_host::WorldObservation> {
+        let world = self.world.as_ref()?;
+        let authority = world.stream.as_ref()?.authority();
+        let session = self.clock.as_ref()?.session_generation();
+        if session == 0 || session != ui.session_id() || world.dimension_transfer.active() {
+            return None;
+        }
+        let position = self.view.as_ref()?.feet_translation();
+        if !position.is_finite() {
+            return None;
+        }
+        let identity = self.session.as_ref()?.destination_identity()?;
+        if identity.len() > mod_api::MAX_WORLD_IDENTITY_BYTES
+            || identity.chars().any(char::is_control)
+        {
+            return None;
+        }
+        Some(mod_host::WorldObservation {
+            session,
+            world: identity.to_owned(),
+            dimension: authority.current_dimension(),
+            position: (position.x, position.y, position.z),
+            alive: ui.hud().health().is_none_or(|health| health.current() > 0),
+        })
+    }
+
     /// Layout editing requires the same current connected world as player presentation.
     pub(super) fn hud_editor_session(&self, ui: &client_ui::ui_runtime::UiRuntime) -> Option<u64> {
         self.world.as_ref()?.stream.as_ref()?;
@@ -52,11 +90,13 @@ impl GameplayContext<'_> {
         let now_millis = self.real_time.as_ref().map_or(0, |time| {
             u64::try_from(time.elapsed().as_millis()).unwrap_or(u64::MAX)
         });
-        super::player_state::snapshot(authority, session, player, ui, now_millis)
+        client_extensions::modding::player_state::snapshot(
+            authority, session, player, ui, now_millis,
+        )
     }
 
     /// Returns the current walking authority only while local movement can accept input.
-    fn movement_scope(&self) -> Option<(u64, i32)> {
+    fn movement_scope(&self, ui: &client_ui::ui_runtime::UiRuntime) -> Option<(u64, i32)> {
         self.input.as_ref()?.snapshot()?;
         let world = self.world.as_ref()?;
         if world.dimension_transfer.active()
@@ -67,11 +107,10 @@ impl GameplayContext<'_> {
                 .server_camera
                 .as_ref()
                 .is_some_and(|camera| camera.is_active())
-            || self.ui.as_ref().is_some_and(|ui| {
-                ui.hud()
-                    .health()
-                    .is_some_and(|health| health.current() == 0)
-            })
+            || ui
+                .hud()
+                .health()
+                .is_some_and(|health| health.current() == 0)
         {
             return None;
         }
@@ -89,8 +128,12 @@ impl GameplayContext<'_> {
     }
 
     /// Revokes pending jump input when its gameplay ownership changes.
-    pub(super) fn synchronize_jump_scope(&mut self, granted: bool) {
-        let scope = granted.then(|| self.movement_scope()).flatten();
+    pub(super) fn synchronize_jump_scope(
+        &mut self,
+        granted: bool,
+        ui: &client_ui::ui_runtime::UiRuntime,
+    ) {
+        let scope = granted.then(|| self.movement_scope(ui)).flatten();
         if let Some(physics) = self.physics.as_mut() {
             physics.set_jump_pulse_scope(scope);
         }
@@ -101,11 +144,12 @@ impl GameplayContext<'_> {
         &self,
         allowed: bool,
         grants: &ModGrants,
+        ui: &client_ui::ui_runtime::UiRuntime,
     ) -> Option<GameplayMovementSnapshot> {
         if !allowed || !grants.movement {
             return None;
         }
-        let (session, dimension) = self.movement_scope()?;
+        let (session, dimension) = self.movement_scope(ui)?;
         let physics = self.physics.as_ref()?;
         let state = physics.state()?;
         let velocity = state.velocity;
@@ -128,9 +172,9 @@ impl GameplayContext<'_> {
     }
 
     /// Queues an ordinary jump while the current walking authority remains valid.
-    pub(super) fn pulse_jump(&mut self, requested: bool) {
+    pub(super) fn pulse_jump(&mut self, requested: bool, ui: &client_ui::ui_runtime::UiRuntime) {
         if requested
-            && self.movement_scope().is_some()
+            && self.movement_scope(ui).is_some()
             && let Some(physics) = self.physics.as_mut()
         {
             physics.request_jump_pulse();
@@ -213,26 +257,73 @@ impl GameplayContext<'_> {
     }
 }
 
+/// Selects at most K borrowed actors before constructing any guest-owned payloads.
+fn nearest_actors<'a>(
+    actors: impl Iterator<Item = &'a client_world::ActorSnapshot>,
+    eye: Vec3,
+    limit: usize,
+) -> Vec<&'a client_world::ActorSnapshot> {
+    let mut nearest = std::collections::BinaryHeap::with_capacity(limit);
+    for actor in actors {
+        let candidate = Candidate {
+            actor,
+            distance: Vec3::from_array(actor.position).distance_squared(eye),
+        };
+        if nearest.len() < limit {
+            nearest.push(candidate);
+        } else if nearest.peek().is_some_and(|furthest| candidate < *furthest) {
+            *nearest.peek_mut().unwrap() = candidate;
+        }
+    }
+    nearest
+        .into_sorted_vec()
+        .into_iter()
+        .map(|candidate| candidate.actor)
+        .collect()
+}
+
+struct Candidate<'a> {
+    actor: &'a client_world::ActorSnapshot,
+    distance: f32,
+}
+
+impl PartialEq for Candidate<'_> {
+    /// Compares the same distance and identity order used for deterministic selection.
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+impl Eq for Candidate<'_> {}
+impl PartialOrd for Candidate<'_> {
+    /// Uses the total ordering even when distance arithmetic overflows to infinity.
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Candidate<'_> {
+    /// Keeps the furthest candidate at the heap root, breaking ties by runtime ID.
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.distance
+            .total_cmp(&other.distance)
+            .then(self.actor.runtime_id.cmp(&other.actor.runtime_id))
+    }
+}
+
 /// Reports protocol-classified remote players, never named mobs or list-only users.
 fn nearest_players<'a>(
     actors: impl Iterator<Item = &'a client_world::ActorSnapshot>,
     eye: Vec3,
 ) -> Vec<GameplayPlayer> {
-    let mut players: Vec<_> = actors
+    let eligible = actors
         .filter(|actor| matches!(actor.kind, protocol::ActorKind::Player { .. }))
-        .filter(|actor| actor.runtime_id != 0 && Vec3::from_array(actor.position).is_finite())
+        .filter(|actor| actor.runtime_id != 0 && Vec3::from_array(actor.position).is_finite());
+    nearest_actors(eligible, eye, mod_api::MAX_GAMEPLAY_PLAYERS)
+        .into_iter()
         .map(|actor| GameplayPlayer {
             runtime_id: actor.runtime_id,
             position: vector(Vec3::from_array(actor.position)),
         })
-        .collect();
-    players.sort_by(|a, b| {
-        distance_squared(a, eye)
-            .total_cmp(&distance_squared(b, eye))
-            .then_with(|| a.runtime_id.cmp(&b.runtime_id))
-    });
-    players.truncate(mod_host::MAX_GAMEPLAY_PLAYERS);
-    players
+        .collect()
 }
 
 /// Non-player actors within the published range, nearest first; health is the replicated attribute.
@@ -240,49 +331,42 @@ fn nearest_mobs<'a>(
     actors: impl Iterator<Item = &'a client_world::ActorSnapshot>,
     eye: Vec3,
 ) -> Vec<GameplayMob> {
-    let range = mod_host::MAX_MOB_RANGE_BLOCKS * mod_host::MAX_MOB_RANGE_BLOCKS;
-    let mut mobs: Vec<_> = actors
-        .filter_map(|actor| {
+    let range = mod_api::MAX_MOB_RANGE_BLOCKS * mod_api::MAX_MOB_RANGE_BLOCKS;
+    let eligible = actors.filter(|actor| {
+        let protocol::ActorKind::Entity { identifier } = &actor.kind else {
+            return false;
+        };
+        let position = Vec3::from_array(actor.position);
+        if actor.runtime_id == 0
+            || !position.is_finite()
+            || position.distance_squared(eye) > range
+            || identifier.is_empty()
+            || identifier.len() > mod_api::MAX_MOB_TYPE_BYTES
+        {
+            return false;
+        }
+        true
+    });
+    nearest_actors(eligible, eye, mod_api::MAX_GAMEPLAY_MOBS)
+        .into_iter()
+        .map(|actor| {
             let protocol::ActorKind::Entity { identifier } = &actor.kind else {
-                return None;
+                unreachable!()
             };
-            let position = Vec3::from_array(actor.position);
-            if actor.runtime_id == 0
-                || !position.is_finite()
-                || position.distance_squared(eye) > range
-                || identifier.is_empty()
-                || identifier.len() > mod_host::MAX_MOB_TYPE_BYTES
-            {
-                return None;
-            }
             let health = actor
                 .attributes
                 .get("minecraft:health")
                 .filter(|health| health.current.is_finite() && health.max.is_finite());
-            Some(GameplayMob {
+            GameplayMob {
                 runtime_id: actor.runtime_id,
                 unique_id: actor.unique_id,
                 type_id: identifier.to_string(),
-                position: vector(position),
+                position: vector(Vec3::from_array(actor.position)),
                 health: health.map(|health| health.current),
                 max_health: health.map(|health| health.max),
-            })
+            }
         })
-        .collect();
-    let distance = |mob: &GameplayMob| {
-        Vec3::new(mob.position.x, mob.position.y, mob.position.z).distance_squared(eye)
-    };
-    mobs.sort_by(|a, b| {
-        distance(a)
-            .total_cmp(&distance(b))
-            .then_with(|| a.runtime_id.cmp(&b.runtime_id))
-    });
-    mobs.truncate(mod_host::MAX_GAMEPLAY_MOBS);
-    mobs
-}
-
-fn distance_squared(player: &GameplayPlayer, eye: Vec3) -> f32 {
-    Vec3::new(player.position.x, player.position.y, player.position.z).distance_squared(eye)
+        .collect()
 }
 
 fn vector(value: Vec3) -> GameplayVector3 {

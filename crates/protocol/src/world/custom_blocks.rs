@@ -1,6 +1,7 @@
+mod shared_states;
 use std::sync::Arc;
 
-use jolyne::GameData;
+use valentine::bedrock::version::v1_26_51::StartGamePacket;
 
 use crate::nbt_tree::{Nbt, read_root};
 
@@ -65,6 +66,8 @@ pub struct CustomBlockVisuals {
     pub state_axes: Box<[CustomStateAxis]>,
     /// A declared state could not be represented by the named axes.
     pub state_identity_incomplete: bool,
+    /// The palette run is retained for wire offsets, but its states must not be expanded.
+    pub materialization_disabled: bool,
 }
 
 /// Visual components present in one component set; `None` means absent.
@@ -120,6 +123,25 @@ pub struct CustomTransformation {
     pub translation: [f32; 3],
 }
 
+impl CustomTransformation {
+    /// Transforms a point given in pixels from the block centre; geometry and boxes share it.
+    #[must_use]
+    pub fn apply(&self, mut point: [f32; 3]) -> [f32; 3] {
+        for (value, scale) in point.iter_mut().zip(self.scale) {
+            *value *= scale;
+        }
+        for (axis, turns) in self.rotation.into_iter().enumerate() {
+            for _ in 0..turns.rem_euclid(4) {
+                point = block_transform::rotation::rotate_quarter(point, axis);
+            }
+        }
+        for (value, offset) in point.iter_mut().zip(self.translation) {
+            *value += offset * 16.0;
+        }
+        point
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomPermutation {
     pub condition: Arc<str>,
@@ -133,6 +155,8 @@ pub struct CustomPhysicalComponents {
     pub random_offset: Option<block_transform::random_offset::RandomOffsetComponent>,
     pub collision: Option<CustomCollision>,
     pub selection: Option<CustomSelection>,
+    /// Transforms the block's geometry, collision box and selection box together.
+    pub transformation: Option<CustomTransformation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -145,6 +169,8 @@ pub struct CustomCollision {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomBlockPhysics {
     pub random_offset: Option<block_transform::random_offset::RandomOffsetComponent>,
+    /// Transform this state's boxes inherit, about the block centre.
+    pub transformation: Option<CustomTransformation>,
     pub collides: bool,
     pub collision_boxes: Option<Arc<[CustomBox]>>,
     pub selection: CustomSelection,
@@ -168,7 +194,7 @@ pub enum CustomStateValue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomHashedState {
     pub hash: u32,
-    pub values: Box<[CustomStateValue]>,
+    pub values: Arc<[CustomStateValue]>,
 }
 
 impl CustomBlock {
@@ -185,6 +211,7 @@ impl CustomBlock {
     pub fn base_physics(&self) -> CustomBlockPhysics {
         CustomBlockPhysics {
             random_offset: self.visual.base.random_offset,
+            transformation: self.visual.base.transformation,
             collides: self.collides,
             collision_boxes: self.collision_boxes.clone(),
             selection: self.selection,
@@ -194,13 +221,18 @@ impl CustomBlock {
     /// Every state in palette order with its network block hash, for sessions whose block
     /// ids are hashes.
     #[must_use]
-    pub fn hashed_states(&self) -> Vec<CustomHashedState> {
+    pub fn hashed_states(&self) -> shared_states::SharedStates {
+        shared_states::resolve(self)
+    }
+
+    /// Compiles the canonical palette identities for one immutable definition.
+    fn compile_states(&self) -> Arc<[CustomHashedState]> {
         let axes = &self.visual.state_axes;
-        if self.visual.state_identity_incomplete {
-            return Vec::new();
+        if self.visual.state_identity_incomplete || self.visual.materialization_disabled {
+            return Arc::default();
         }
         let Some(total) = axis_combinations(axes) else {
-            return Vec::new();
+            return Arc::default();
         };
         (0..total)
             .filter_map(|index| {
@@ -212,7 +244,7 @@ impl CustomBlock {
                             .map(|axis| axis.name.as_ref())
                             .zip(values.iter()),
                     ),
-                    values,
+                    values: values.into(),
                 })
             })
             .collect()
@@ -221,15 +253,17 @@ impl CustomBlock {
     /// The value on each of `state_axes` of the state at `index` in the block's palette run;
     /// `None` when the axes do not account for every state.
     #[must_use]
-    pub fn state_values(&self, index: u32) -> Option<Box<[CustomStateValue]>> {
+    pub fn state_values(&self, index: u32) -> Option<Arc<[CustomStateValue]>> {
         let axes = &self.visual.state_axes;
-        if self.visual.state_identity_incomplete {
+        if self.visual.state_identity_incomplete || self.visual.materialization_disabled {
             return None;
         }
         if axis_combinations(axes)? != u64::from(self.state_count) {
             return None;
         }
-        decode_state(axes, u64::from(index))
+        self.hashed_states()
+            .get(index as usize)
+            .map(|state| Arc::clone(&state.values))
     }
 
     /// Vanilla orders the sequential block palette by FNV-1 64 of the name, then the name.
@@ -315,8 +349,10 @@ pub fn block_state_network_hash<'a>(
 }
 
 /// StartGame custom blocks in sequential palette order; malformed definitions are skipped.
+/// Budget-rejected runs retain their names and counts without materialized states.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CustomBlocks {
+    /// Materialized definitions form a prefix; budget-rejected runs follow it.
     pub blocks: Arc<[CustomBlock]>,
     /// Vanilla data-driven types admitted by the server's definitions.
     pub vanilla_blocks: Arc<[Arc<str>]>,
@@ -324,20 +360,13 @@ pub struct CustomBlocks {
 }
 
 impl CustomBlocks {
-    #[must_use]
-    pub fn from_game_data(game_data: &GameData) -> Self {
-        Self::from_definitions(
-            game_data
-                .start_game
-                .block_properties
-                .iter()
-                .map(|property| {
-                    (
-                        property.block_name.as_str(),
-                        property.block_definition.0.as_ref(),
-                    )
-                }),
-        )
+    pub(crate) fn from_start_game(start_game: &StartGamePacket) -> Self {
+        Self::from_definitions(start_game.block_properties.iter().map(|property| {
+            (
+                property.block_name.as_str(),
+                property.block_definition.0.as_ref(),
+            )
+        }))
     }
 
     /// Parses `(name, network NBT)` block definitions as StartGame carries them.
@@ -381,6 +410,26 @@ impl CustomBlocks {
         blocks.sort_by(|left, right| {
             (left.sort_key(), &left.name).cmp(&(right.sort_key(), &right.name))
         });
+        let mut state_budget = shared_states::AdmissionBudget::default();
+        let mut exhausted = false;
+        for block in &mut blocks {
+            let admitted =
+                !exhausted && state_budget.admit(&block.name, &block.visual, block.state_count);
+            if !admitted {
+                exhausted = true;
+                skipped += 1;
+                block.tags = Arc::default();
+                block.collision_boxes = None;
+                block.visual = Arc::new(CustomBlockVisuals {
+                    state_identity_incomplete: true,
+                    materialization_disabled: true,
+                    ..Default::default()
+                });
+            }
+        }
+        for block in &blocks {
+            let _ = block.hashed_states();
+        }
         Self {
             blocks: blocks.into(),
             vanilla_blocks: vanilla_blocks.into(),
@@ -530,6 +579,7 @@ fn parse_definition(root: &Nbt) -> Option<Definition> {
             permutations,
             state_axes: state_axes.into_boxed_slice(),
             state_identity_incomplete,
+            materialization_disabled: false,
         },
     })
 }
@@ -577,6 +627,7 @@ fn physical_components(components: Option<&Nbt>) -> (CustomPhysicalComponents, u
             selection: components
                 .and_then(|set| set.field("minecraft:selection_box"))
                 .map(|component| selection_component(Some(component))),
+            transformation: transformation_component(components),
         },
         skipped
             + usize::from(
@@ -714,6 +765,38 @@ fn box_component(component: &Nbt) -> Option<CustomBox> {
     Some(CustomBox { min, max })
 }
 
+/// Reads `minecraft:transformation`: quarter turns about each axis, a scale and a
+/// translation in block units, all applied about the block centre.
+fn transformation_component(components: Option<&Nbt>) -> Option<CustomTransformation> {
+    let transform = components?.field("minecraft:transformation")?;
+    let number = |key: &str, default: f64| {
+        transform
+            .field(key)
+            .and_then(Nbt::number)
+            .unwrap_or(default)
+    };
+    let quarter = |key: &str| (number(key, 0.0).round() as i64).rem_euclid(4) as i32;
+    let transformation = CustomTransformation {
+        rotation: [quarter("RX"), quarter("RY"), quarter("RZ")],
+        scale: [
+            number("SX", 1.0) as f32,
+            number("SY", 1.0) as f32,
+            number("SZ", 1.0) as f32,
+        ],
+        translation: [
+            number("TX", 0.0) as f32,
+            number("TY", 0.0) as f32,
+            number("TZ", 0.0) as f32,
+        ],
+    };
+    transformation
+        .scale
+        .iter()
+        .chain(&transformation.translation)
+        .all(|value| value.is_finite())
+        .then_some(transformation)
+}
+
 /// Reads geometry, material instances, and transformation; odd values are
 /// treated as absent so the block keeps its other visuals.
 fn visual_components(components: Option<&Nbt>) -> CustomVisualComponents {
@@ -798,37 +881,7 @@ fn visual_components(components: Option<&Nbt>) -> CustomVisualComponents {
                 })
                 .collect()
         });
-    let transformation = components
-        .field("minecraft:transformation")
-        .map(|transform| {
-            let number = |key: &str, default: f64| {
-                transform
-                    .field(key)
-                    .and_then(Nbt::number)
-                    .unwrap_or(default)
-            };
-            let quarter = |key: &str| (number(key, 0.0).round() as i64).rem_euclid(4) as i32;
-            CustomTransformation {
-                rotation: [quarter("RX"), quarter("RY"), quarter("RZ")],
-                scale: [
-                    number("SX", 1.0) as f32,
-                    number("SY", 1.0) as f32,
-                    number("SZ", 1.0) as f32,
-                ],
-                translation: [
-                    number("TX", 0.0) as f32,
-                    number("TY", 0.0) as f32,
-                    number("TZ", 0.0) as f32,
-                ],
-            }
-        })
-        .filter(|transform| {
-            transform
-                .scale
-                .iter()
-                .chain(&transform.translation)
-                .all(|value| value.is_finite())
-        });
+    let transformation = transformation_component(Some(components));
     let nibble = |key: &str, field: &str| {
         components
             .field(key)

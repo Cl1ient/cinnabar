@@ -353,11 +353,13 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 ## Shipped OreUI fonts
 
 - Body text uses Cinnangles Seven and headings use Cinnangles Ten, derived from the shipped
-  Cinnangles Sans. Optional font carriers compile before startup and use the default font when
-  missing or invalid. OreUI no longer reads installed game fonts or rasterizes them at startup.
-- Compiled Unicode ranges supply Latin, symbols and bounded CJK coverage. The installed Noto
-  chain and its worker cache have been removed. Full Unicode coverage, script substitution,
-  bidirectional shaping and small-text raster parity remain incomplete.
+  Cinnangles Sans. Optional face bundles compile before startup and use the default font when
+  missing or invalid. OreUI reads no installed game fonts and rasterizes nothing at startup.
+- Each OreUI face maps only its Latin, Greek, Cyrillic and symbol ranges. Its bundle holds
+  unhinted FreeType rasters of them, tightly packed R8: a 52 px distance field and exact coverage
+  for physical sizes 1-9 px. The shipped Sans carrier draws every other character. This restores
+  the pre-Cinnangles OreUI text rendering. Full Unicode coverage, script substitution, bidirectional shaping and
+  distance-field rendering of CJK remain incomplete.
 - Game-bundle artwork remains a runtime input; this font change closes no native artwork,
   responsive-layout or font-parity gate.
 
@@ -7568,37 +7570,26 @@ No visual parity or hardware performance gate closes with this extension.
   command is indistinguishable from the client's own feedback. No native parity
   gate closes from these changes.
 
-### Shipped font grid and coverage (incomplete text parity)
+### Shipped font grids and coverage (visual acceptance pending)
 
-Shipped carriers include every mapped source scalar. Sans uses its 18-pixel raster em;
-Seven, Ten, Five and Five Bold use 20, with one atlas texel per source-grid unit.
-Semantic line and word-space metrics come from the carrier table. OreUI rounds final
-unrotated glyph edges onto the device grid while retaining semantic sizes and tracking.
-Five and Five Bold are available as roles; current screens still use Seven and Ten.
+The Sans carrier includes every mapped source scalar at its 18-pixel raster em. The four
+generated faces use a 1000-unit em and committed pixel cells with individual widths and
+heights. The generator traces those cells into fresh outlines and writes declared advances,
+bearings and pair spacing, then keeps only each face's Latin, Greek, Cyrillic and symbol
+ranges; Sans draws every other scalar. Fonts and source manifests reproduce byte for byte.
+
+The Sans carrier preserves partial edge coverage and glyph advances in 1/64 atlas texels,
+excludes legacy character maps from Unicode lookups, and retains source bearings. Face
+bundles hold a 52 px FreeType distance field and exact 1-9 px coverage with the same advance
+precision. The runtime loader applies generated pair spacing at each raster em; layout
+includes it before wrapping. The carrier table owns line metrics. Sans pixel-grid text
+rounds final unrotated glyph edges onto the device grid; face rasters are filtered. Five and Five Bold
+are available as roles; current screens still use Seven and Ten.
+
 Missing regular, bold, italic and monospace mathematical Latin letters and digits use
-original grid-based variants built from the shipped Latin artwork. This fixes the
-sampled styled MOTD boxes; unrestricted Unicode and native fallback shaping remain open.
-
-The display faces now use original ASCII pixel drawings and declared per-glyph
-advances. Ten has heavier stems and narrower I/i; Five and Five Bold use wider,
-five-row letterforms. Seven has revised lowercase letters, digits and descenders.
-Greek and Cyrillic display capitals follow the adjusted Latin proportions. The
-generator preserves the 64-unit outline grid, complete source coverage and fixed
-metadata, and reproduces the shipped fonts and manifests byte for byte.
-
-Full parity is incomplete. Advances round to the nearest font unit, while ink
-widths and stroke weights remain quantized to the source grid. The carrier compiler
-still rounds glyph advances to whole atlas texels, limiting runtime spacing precision. Ten's 0.052-em
-bearing is represented by 0.05 em on its 20-texel carrier. Five's fine weight and
-bearing differences cannot all fit that grid. Seven's accented fallback drawings
-have not all been revised to match the new ASCII letters. A few narrow accented
-Ten capitals retain their prior forms when a mark cannot fit the adjusted base.
-At GUI scale 7, Seven's
-14-texel capital height maps to 39.2 screen pixels; preserving this size cannot also
-give every texel a uniform integer width. Rounded edges and nearest sampling do
-not close that scale/weight gate. Source line metrics retain sub-unit rounding.
-Version-matched live text-raster evidence across all GUI scales, locale shaping,
-kerning, and the remaining per-glyph differences are open gates.
+original grid-based variants built from the shipped Latin artwork. Unrestricted Unicode,
+script shaping and native fallback rendering remain open. Owner visual acceptance and
+live text rendering across scales remain open gates.
 
 ## Device render-distance defaults
 

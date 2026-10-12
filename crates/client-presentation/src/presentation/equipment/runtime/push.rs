@@ -40,12 +40,14 @@ impl EquipmentRuntime {
         let Some((catalog, from_pack)) = self.binding_source(&item.identifier) else {
             return false;
         };
-        let Some((catalog, from_pack, location)) =
-            self.binding_artwork(&item.identifier, (catalog, from_pack), None)
-        else {
+        let Some(binding) = catalog.binding(&item.identifier) else {
             return false;
         };
-        let Some(binding) = catalog.binding(&item.identifier) else {
+        let Some((_, _, location)) = self.draw_artwork(
+            &item.identifier,
+            &binding.texture.identifier,
+            (Arc::clone(&catalog), from_pack),
+        ) else {
             return false;
         };
         let channels = match self.effective_category(&item.identifier, binding.category) {
@@ -225,19 +227,12 @@ impl EquipmentRuntime {
         let selected = animation
             .filter(|_| from_pack)
             .and_then(|animation| self.worn_texture(item, slot, equipment, animation));
-        let Some((catalog, from_pack, location)) =
-            self.binding_artwork(&item.identifier, (catalog, from_pack), selected)
+        let texture = selected.as_deref().unwrap_or(&binding.texture.identifier);
+        let Some((_, _, location)) =
+            self.draw_artwork(&item.identifier, texture, (Arc::clone(&catalog), from_pack))
         else {
             return;
         };
-        let Some(binding) = catalog.binding(&item.identifier) else {
-            return;
-        };
-        if self.effective_category(&item.identifier, binding.category)
-            != (EquipmentCategory::Armor { slot })
-        {
-            return;
-        }
         let Some(geometry) = self.armor_geometry_for(&binding.geometry.identifier, from_pack)
         else {
             return;
@@ -276,14 +271,14 @@ impl EquipmentRuntime {
     }
 
     /// The texture a pack attachable's render controller selects for a worn piece, such as a
-    /// team colour read from its owner; `None` keeps the binding's default texture.
+    /// team colour read from its owner; `None` keeps the static binding's default texture.
     fn worn_texture(
         &mut self,
         item: &WornItem,
         slot: ArmorSlot,
         equipment: &ActorEquipmentInput,
         animation: EquipmentAnimation<'_>,
-    ) -> Option<ActorArtworkLocation> {
+    ) -> Option<Box<str>> {
         let elapsed = animation
             .owner
             .is_using_item()
@@ -319,11 +314,11 @@ impl EquipmentRuntime {
             .iter()
             .find(|layer| layer.texture_slot == 0)?;
         let path = &pack.assets.sources().get(layer.source as usize)?.path;
-        let texture: Box<str> = path
+        let texture = path
             .strip_suffix(".png")
             .or_else(|| path.strip_suffix(".tga"))?
             .into();
-        self.texture_location(&texture, true)
+        Some(texture)
     }
 
     /// A worn head riding the body's head bone.

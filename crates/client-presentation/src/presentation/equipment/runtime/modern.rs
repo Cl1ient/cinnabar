@@ -32,7 +32,7 @@ impl EquipmentRuntime {
         java_hand: Option<render_model::java_animation::JavaHand>,
     ) -> Option<FirstPersonItem> {
         let (_, body_bones) = self.body_bones_for(body.input.rig)?;
-        let (assets, catalog, from_pack, evaluated) = pack::evaluate_artwork(
+        let (assets, catalog, from_pack, evaluated) = pack::evaluate_binding(
             &mut self.pack,
             (&self.assets, self.catalog.as_ref(), &mut self.attachables),
             &item.identifier,
@@ -92,12 +92,15 @@ impl EquipmentRuntime {
             .strip_suffix(".png")
             .or_else(|| source.path.strip_suffix(".tga"))
             .unwrap_or(&source.path);
-        let texture = catalog
-            .textures()
-            .iter()
-            .find(|t| &*t.identifier == texture_identifier)?;
         let key = (from_pack, geometry_index, selected.source);
-        let location = self.texture_location(&texture.identifier, from_pack)?;
+        let (artwork, artwork_from_pack, location) =
+            self.draw_artwork(&item.identifier, texture_identifier, (catalog, from_pack))?;
+        let texture = if artwork_from_pack == from_pack {
+            artwork.texture(texture_identifier)?
+        } else {
+            let binding = artwork.binding(&item.identifier)?;
+            artwork.texture(&binding.texture.identifier)?
+        };
         // Java draws a raster attachable (the bow's pull frames) as its own flat item.
         let java = java_hand
             .filter(|_| super::java::java_draws_attachable(&item.identifier))

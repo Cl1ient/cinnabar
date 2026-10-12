@@ -36,7 +36,7 @@ impl EquipmentRuntime {
             owner_variables: &variables,
             ..Default::default()
         });
-        let Some((assets, catalog, from_pack, evaluated)) = pack::evaluate_artwork(
+        let Some((assets, catalog, from_pack, evaluated)) = pack::evaluate_binding(
             &mut self.pack,
             (&self.assets, self.catalog.as_ref(), &mut self.attachables),
             &item.identifier,
@@ -121,9 +121,9 @@ impl EquipmentRuntime {
                 .path
                 .strip_suffix(".png")
                 .or_else(|| source.path.strip_suffix(".tga"));
-            let Some(location) =
-                texture.and_then(|texture| self.texture_location(texture, from_pack))
-            else {
+            let Some((_, _, location)) = texture.and_then(|texture| {
+                self.draw_artwork(&item.identifier, texture, (Arc::clone(&catalog), from_pack))
+            }) else {
                 continue;
             };
             let Some(geometry) = assets.geometries().get(index as usize) else {

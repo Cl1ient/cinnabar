@@ -26,7 +26,7 @@ func exportCompilerFacts(path string) error {
 		if !ok {
 			return fmt.Errorf("missing source collision shape for %s", r.Name)
 		}
-		blocks = append(blocks, map[string]any{"sequential_id": r.SequentialID, "network_hash": r.NetworkHash, "name": r.Name, "state": string(r.StateJSON), "shape_id": p.CollisionShape, "boxes": boxes, "friction": p.Friction, "emission": p.LightEmission, "filter": p.LightDampening})
+		blocks = append(blocks, blockFact(r, p, boxes))
 	}
 	var biomes []map[string]any
 	if err := validateSharedBiomeTarget(); err != nil {
@@ -40,4 +40,17 @@ func exportCompilerFacts(path string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// blockFact widens float32 library values to float64 so JSON carries their exact value, not Go's shortest float32 spelling.
+func blockFact(r Record, p sharedblock.Properties, boxes []sharedblock.Box) map[string]any {
+	var wide [][6]float64 // nil stays nil so empty shapes keep exporting as null
+	for _, b := range boxes {
+		var w [6]float64
+		for j, v := range b {
+			w[j] = float64(v)
+		}
+		wide = append(wide, w)
+	}
+	return map[string]any{"sequential_id": r.SequentialID, "network_hash": r.NetworkHash, "name": r.Name, "state": string(r.StateJSON), "shape_id": p.CollisionShape, "boxes": wide, "friction": float64(p.Friction), "emission": p.LightEmission, "filter": p.LightDampening}
 }

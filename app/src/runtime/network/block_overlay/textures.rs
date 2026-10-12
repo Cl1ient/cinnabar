@@ -25,6 +25,15 @@ pub(super) struct TextureCatalog<'a> {
     diagnostics: TextureDiagnostics,
 }
 
+/// Pixel-storage identity, independent of animation timing and atlas destinations.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct TextureStorageKey {
+    path: Box<str>,
+    pub(super) grid: u8,
+    tint: Option<[u8; 3]>,
+    frames: Option<(Box<[u32]>, u32)>,
+}
+
 impl<'a> TextureCatalog<'a> {
     pub(super) fn new(view: &'a LayeredPackView, base: Option<&assets::MaterialKeys>) -> Self {
         let mut terrain = pack_runtime::pack_textures::base_terrain_catalog();
@@ -87,14 +96,17 @@ impl<'a> TextureCatalog<'a> {
         })
     }
 
-    /// Applies the same UV-variant fallback to material routes and animation descriptions.
+    /// Clamps material indices to the winning layout, then normalizes their UV variants.
     pub(super) fn normalize_selector(&self, key: &str, selector: (u32, u32)) -> (u32, u32) {
-        let variant = self
+        let Some(counts) = self
             .destinations
             .get(key)
-            .and_then(|counts| counts.get(selector.0 as usize))
-            .map_or(selector.1, |&count| normalize_variant(selector.1, count));
-        (selector.0, variant)
+            .filter(|counts| !counts.is_empty())
+        else {
+            return selector;
+        };
+        let index = selector.0.min(counts.len() as u32 - 1);
+        (index, normalize_variant(selector.1, counts[index as usize]))
     }
 
     /// Returns the winning terrain entry's normalized UV-grid exponent.
@@ -102,14 +114,37 @@ impl<'a> TextureCatalog<'a> {
         self.grids.get(key).copied().unwrap_or(0)
     }
 
+    /// Identifies shared pixels by their image route, frame sampling, tint, and UV grid.
+    pub(super) fn storage_key(
+        &self,
+        key: &str,
+        source: Option<&FlipbookSource>,
+    ) -> Option<TextureStorageKey> {
+        let path = match source {
+            Some(source) => source.texture_path.as_ref(),
+            None => self.terrain_path(key)?,
+        };
+        Some(TextureStorageKey {
+            path: path.into(),
+            grid: self.grid(key),
+            tint: self.tints.get(key).copied(),
+            frames: source.map(|source| (source.frames.clone(), source.replicate)),
+        })
+    }
+
     /// Decodes the image a terrain key names.
     pub(super) fn decode(&self, key: &str) -> Option<DecodedTexture> {
+        self.decode_path(key, self.terrain_path(key)?)
+    }
+
+    /// Returns the static terrain route and records a missing key once per lookup.
+    fn terrain_path(&self, key: &str) -> Option<&str> {
         let Some(path) = self.terrain.get(key) else {
             self.diagnostics
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;
         };
-        self.decode_path(key, path)
+        Some(path)
     }
 
     /// Decodes an independent animation source with the destination tile's atlas tint.

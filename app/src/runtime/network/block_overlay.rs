@@ -6,6 +6,7 @@ mod condition;
 mod geometry_inputs;
 use pack_compiler::block_geometry as geometry;
 mod legacy;
+mod storage;
 mod textures;
 
 use std::{
@@ -14,7 +15,7 @@ use std::{
 };
 
 use assets::{
-    Animation, BlockFlags, BlockOverlay, BlockVisual, ContributorRole, LightProperties,
+    BlockFlags, BlockOverlay, BlockVisual, ContributorRole, LightProperties,
     MATERIAL_FLAG_ALPHA_BLEND, MATERIAL_FLAG_ALPHA_CUTOUT, MATERIAL_FLAG_BIRCH_FOLIAGE,
     MATERIAL_FLAG_DISABLE_AO, MATERIAL_FLAG_DISABLE_FACE_DIMMING, MATERIAL_FLAG_DRY_FOLIAGE,
     MATERIAL_FLAG_EVERGREEN_FOLIAGE, MATERIAL_FLAG_FOLIAGE_TINT, MATERIAL_FLAG_GRASS_TINT,
@@ -29,9 +30,8 @@ use self::{
     condition::StateVisual,
     geometry::{FACE_NAMES, FaceQuad, Geometry},
     geometry_inputs::geometry_catalog,
-    textures::{
-        TextureCatalog, admit_static_rectangle, flipbook_frames, shrink_to_max, source_mip_chain,
-    },
+    storage::FrameStorage,
+    textures::{TextureCatalog, TextureStorageKey, admit_static_rectangle, source_mip_chain},
 };
 use pack_runtime::pack_textures::DecodedTexture;
 
@@ -102,7 +102,7 @@ pub(super) fn compile_block_overlay(
         source_bytes: 0,
         max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
         textures: HashMap::new(),
-        static_textures: HashMap::new(),
+        frame_storage: HashMap::new(),
         materials: HashMap::new(),
         visuals: HashMap::new(),
         gaps: OverlayGaps {
@@ -190,7 +190,7 @@ struct Builder<'a> {
     source_bytes: usize,
     max_layers: usize,
     textures: HashMap<(String, u32, u32), Option<TextureSlot>>,
-    static_textures: HashMap<String, TextureSlot>,
+    frame_storage: HashMap<TextureStorageKey, FrameStorage>,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
     gaps: OverlayGaps,
@@ -496,99 +496,6 @@ impl Builder<'_> {
         let slot = self.load_texture(key, selector);
         self.textures.insert(cache_key, slot.clone());
         slot
-    }
-
-    /// Loads replacement frames from the selected description's independent source path.
-    fn load_texture(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
-        let animated = self.catalog.flipbook(key, selector).and_then(|source| {
-            self.catalog
-                .decode_path(key, &source.texture_path)
-                .map(|texture| (texture, source))
-        });
-        // Missing animation rasters can reuse the static fallback without another layer.
-        if animated.is_none()
-            && let Some(slot) = self.static_textures.get(key)
-        {
-            return Some(slot.clone());
-        }
-        let available = self.max_layers.saturating_sub(self.sources.len());
-        if available == 0 {
-            // A full array rejects routes needing new storage; report that
-            // separately from unusable pack data.
-            self.gaps.saturated_textures += 1;
-            self.catalog.report_full(key);
-            return None;
-        }
-        let (mut texture, flipbook) = match animated {
-            Some((texture, source)) => (texture, Some(source)),
-            None => (self.catalog.decode(key)?, None),
-        };
-        let grid = self.catalog.grid(key);
-        // Bound frame count before cutting copies, and shrink each to MAX_TILE.
-        let frames = match flipbook {
-            Some(flipbook) => flipbook_frames(&texture, flipbook, available.min(256), MAX_TILE),
-            None => {
-                admit_static_rectangle(&mut texture);
-                vec![shrink_to_max(&texture, MAX_TILE)]
-            }
-        };
-        drop(texture);
-        if frames
-            .iter()
-            .any(|frame| frame.width >> grid == 0 || frame.height >> grid == 0)
-        {
-            return None;
-        }
-        let added_bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
-        if frames.is_empty()
-            || self.source_bytes + added_bytes > MAX_OVERLAY_SOURCE_BYTES
-            || flipbook.is_some_and(|source| {
-                (frames.len() as u32)
-                    .checked_mul(source.ticks_per_frame)
-                    .is_none()
-            })
-        {
-            return None;
-        }
-        self.source_bytes += added_bytes;
-        let first = self.sources.len() as u32;
-        let frame_count = frames.len() as u32;
-        self.sources.extend(frames.into_iter().map(|frame| {
-            if grid == 0 {
-                Source::Image(frame)
-            } else {
-                Source::GridImage(frame, grid)
-            }
-        }));
-        let animation = match flipbook {
-            Some(flipbook) if frame_count > 1 => {
-                let frame_start = self.overlay.animation_frames.len() as u32;
-                for layer in first..first + frame_count {
-                    self.overlay
-                        .animation_frames
-                        .push(TextureRef::new(1, layer).expect("bounded layer"));
-                }
-                self.overlay.animations.push(Animation {
-                    frame_start,
-                    frame_count,
-                    ticks_per_frame: flipbook.ticks_per_frame,
-                    atlas_index: selector.0,
-                    atlas_tile_variant: selector.1,
-                    replicate: flipbook.replicate,
-                    flags: u32::from(flipbook.blend_frames) * assets::ANIMATION_FLAG_BLEND,
-                });
-                self.overlay.animations.len() as u32 - 1
-            }
-            _ => NO_ANIMATION,
-        };
-        let slot = TextureSlot {
-            layer: first,
-            animation,
-        };
-        if flipbook.is_none() {
-            self.static_textures.insert(key.to_owned(), slot.clone());
-        }
-        Some(slot)
     }
 
     fn finish(mut self) -> Option<CompiledBlockOverlay> {

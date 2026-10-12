@@ -348,7 +348,119 @@ fn invalid_uv_variants_fall_back_in_creation_order_and_invalid_indices_skip() {
         "textures/second"
     );
     assert!(catalog.flipbook("tile", (0, 1)).is_none());
-    assert!(catalog.flipbook("tile", (1, 0)).is_none());
+    assert_eq!(catalog.normalize_selector("tile", (1, 0)), (0, 0));
+    assert_eq!(
+        catalog
+            .flipbook("tile", (1, 0))
+            .unwrap()
+            .texture_path
+            .as_ref(),
+        "textures/second",
+        "an invalid authored index must not replace the valid description"
+    );
+}
+
+#[test]
+fn scalar_terrain_replacement_remaps_indexed_materials_to_the_valid_animation() {
+    let keys = assets::MaterialKeys::from_entries([(1, "barrel_top"), (2, "barrel_top")])
+        .with_aliases([("barrel_top", "textures/base")])
+        .with_flipbook_selectors([(1, (0, 0)), (2, (1, 1))])
+        .with_flipbook_destinations([("barrel_top", [2, 2])]);
+    let strip = png(16, 32, |_, y| {
+        if y < 16 {
+            [230, 10, 20, 255]
+        } else {
+            [20, 10, 230, 255]
+        }
+    });
+    let raster = png(16, 16, |_, _| [0, 180, 0, 255]);
+    let view = pack(&[
+        ("textures/static.png", &raster),
+        ("textures/strip.png", &strip),
+        ("textures/terrain_texture.json", br#"{"texture_data":{"barrel_top":{"textures":"textures/static"}}}"#),
+        ("textures/flipbook_textures.json", br#"[
+            {"atlas_tile":"barrel_top","atlas_index":0,"flipbook_texture":"textures/strip","ticks_per_frame":7},
+            {"atlas_tile":"barrel_top","atlas_index":1,"flipbook_texture":"textures/strip","ticks_per_frame":11}
+        ]"#),
+    ]);
+    let compiled =
+        compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys)).unwrap();
+    assert_eq!(compiled.overlay.material_overrides.len(), 2);
+    for replacement in &compiled.overlay.material_overrides {
+        assert_ne!(replacement.animation, assets::NO_ANIMATION);
+        let animation = &compiled.overlay.animations[replacement.animation as usize];
+        assert_eq!(
+            (animation.atlas_index, animation.atlas_tile_variant),
+            (0, 0)
+        );
+        assert_eq!((animation.frame_count, animation.ticks_per_frame), (2, 7));
+        assert_eq!(
+            pixel(&compiled.overlay, replacement.texture),
+            [230, 10, 20, 255]
+        );
+    }
+    assert_eq!(keys.flipbook_selector(2), (1, 1));
+}
+
+#[test]
+fn matching_animation_frames_share_storage_at_capacity_with_separate_destination_metadata() {
+    let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile"), (3, "alias")])
+        .with_aliases([("tile", "textures/static"), ("alias", "textures/static")])
+        .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1)), (3, (1, 0))])
+        .with_flipbook_destinations([("tile", vec![2]), ("alias", vec![1, 1])]);
+    let strip = png(16, 32, |_, y| {
+        if y < 16 {
+            [230, 10, 20, 255]
+        } else {
+            [20, 10, 230, 255]
+        }
+    });
+    let view = pack(&[
+        ("textures/strip.png", &strip),
+        ("textures/flipbook_textures.json", br#"[
+            {"atlas_tile":"tile","flipbook_texture":"textures/strip","frames":[1,0],"ticks_per_frame":3},
+            {"atlas_tile":"alias","atlas_index":1,"flipbook_texture":"textures/strip","frames":[1,0],"ticks_per_frame":5,"blend_frames":false}
+        ]"#),
+    ]);
+    let compiled =
+        super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 3)
+            .unwrap();
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+    assert_eq!(compiled.gaps.saturated_textures, 0);
+    assert_eq!(compiled.overlay.material_overrides.len(), 3);
+    assert_eq!(compiled.overlay.animations.len(), 3);
+    assert_eq!(compiled.overlay.animation_frames.len(), 2);
+    let texture = compiled.overlay.material_overrides[0].texture;
+    for replacement in &compiled.overlay.material_overrides {
+        assert_eq!(replacement.texture, texture);
+        assert_ne!(replacement.animation, assets::NO_ANIMATION);
+        let animation = &compiled.overlay.animations[replacement.animation as usize];
+        assert_eq!(
+            (animation.atlas_index, animation.atlas_tile_variant),
+            keys.flipbook_selector(replacement.material)
+        );
+        assert_eq!(
+            animation.ticks_per_frame,
+            if replacement.material == 3 { 5 } else { 3 }
+        );
+        assert_eq!(
+            animation.flags,
+            if replacement.material == 3 {
+                0
+            } else {
+                assets::ANIMATION_FLAG_BLEND
+            }
+        );
+        let start = animation.frame_start as usize;
+        let end = start + animation.frame_count as usize;
+        assert_eq!(
+            compiled.overlay.animation_frames[start..end]
+                .iter()
+                .map(|&frame| pixel(&compiled.overlay, frame))
+                .collect::<Vec<_>>(),
+            [[20, 10, 230, 255], [230, 10, 20, 255]]
+        );
+    }
 }
 
 #[test]

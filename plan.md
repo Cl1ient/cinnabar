@@ -7938,6 +7938,12 @@ has no admitted drawing frame. Complete native item/stack metadata coverage and 
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
 
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together.
+
+Incomplete parity: full pack-reload galleries and streaming frame budgets remain open.
+
 ## Loom banner previews
 
 JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers.

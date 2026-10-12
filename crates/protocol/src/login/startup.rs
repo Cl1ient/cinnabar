@@ -1,3 +1,6 @@
+// Adapted from Jolyne (Axolotl Stack, https://github.com/axolotl-stack/axolotl-stack),
+// Copyright (c) 2025 Jeremy Ianne, MIT License; see crates/protocol/vendor/LICENSE.
+
 //! The client's spawn sequence after the core hands over a session at StartGame: request the view
 //! radius, wait for the spawn prerequisites, and defer every other packet to play in order.
 

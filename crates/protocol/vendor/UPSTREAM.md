@@ -15,8 +15,11 @@ The copied surface contains the shared codec/runtime and the generated protocol
 workspace crates, and uninitialised generator-input submodules are omitted.
 Local manifests replace workspace inheritance with direct versions and local
 paths. The protocol crate's raw packet entries and spawn sequence
-(`src/raw_packet.rs`, `src/login/startup.rs`) are adapted from the client
-session crate at the same Axolotl Stack revision, under the same license.
+(`src/raw_packet.rs`, `src/login/startup.rs`) are adapted from Jolyne, the
+Axolotl Stack client session library previously vendored here at the same
+revision. Jolyne is MIT licensed, Copyright (c) 2025 Jeremy Ianne; its license
+is the retained `crates/protocol/vendor/LICENSE`, also reproduced in
+`THIRD_PARTY_NOTICES.md`.
 
 The generated crate is regenerated locally: `valentine_gen` at the pinned
 Axolotl revision lowers protocolgen's `generated/1.26.51/manifest.json`

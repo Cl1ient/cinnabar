@@ -1,3 +1,6 @@
+// Adapted from Jolyne (Axolotl Stack, https://github.com/axolotl-stack/axolotl-stack),
+// Copyright (c) 2025 Jeremy Ianne, MIT License; see crates/protocol/vendor/LICENSE.
+
 //! Packet entries with only their header parsed, so play can route by ID and decode bodies lazily.
 
 use bytes::{Buf, Bytes};

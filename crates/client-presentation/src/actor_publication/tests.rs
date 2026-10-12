@@ -797,7 +797,7 @@ fn player_model_from_an_attachable_free_pack_keeps_held_items() {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 0,
+                pose_generation: render_api::PoseGeneration::new(0),
                 layer: render_model::ACTOR_LAYER_BODY,
             },
             rig: render_model::pack_rig_id(binding as u32),

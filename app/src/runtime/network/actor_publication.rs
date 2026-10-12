@@ -308,6 +308,7 @@ pub(crate) fn prepare_actor_render_frame(
         prepared_actor_artwork,
         ..
     } = &mut *world;
+    let occlusion_budget = std::cell::RefCell::new(meshing::occlusion::OcclusionBudget::default());
     client_presentation::actor_publication::prepare_actor_render_frame(
         ActorWorld {
             stream: stream.as_mut(),
@@ -320,22 +321,42 @@ pub(crate) fn prepare_actor_render_frame(
             prepared_actor_artwork,
         },
         swing_progress,
-        |stream, camera, low, high| {
+        |stream, view, low, high| {
+            let _zone = bevy::log::info_span!("actor.occlusion").entered();
+            let camera = view.camera_position.to_array();
             cave.as_deref().is_some_and(|cave| {
                 cave.hides_box(
                     crate::runtime::telemetry::camera_sub_chunk_key(
                         stream.current_dimension(),
-                        Vec3::from_array(camera),
+                        view.camera_position,
                     ),
                     stream.connectivity_generation(),
                     |key| stream.has_sub_chunk_connectivity(key),
                     low,
                     high,
+                ) || stream.terrain_hides_box(
+                    &mut occlusion_budget.borrow_mut(),
+                    camera,
+                    low,
+                    high,
+                    |cell, key| {
+                        cave.is_visible(key)
+                            && cave.rendered.contains_key(&key)
+                            && render_model::visibility_bounds::cell_is_inside_depth(
+                                view.clip_from_world,
+                                cell,
+                            )
+                    },
                 )
             })
         },
         icons.as_deref().map(|icons| &icons.0),
         params,
+    );
+    bevy::log::trace!(
+        probes =
+            meshing::occlusion::ENTITY_OCCLUSION_PROBES - occlusion_budget.borrow().remaining(),
+        "actor occlusion work"
     );
 }
 

@@ -152,6 +152,16 @@ impl WorldAuthority {
     ) -> impl Iterator<Item = crate::ActorShadowCaster> + '_ {
         self.actors.shadow_casters(partial_tick)
     }
+    /// Samples one actor's shadow volume source at the render frame's interpolation fraction.
+    pub fn actor_shadow_caster(
+        &self,
+        runtime_id: u64,
+        partial_tick: f32,
+    ) -> Option<crate::ActorShadowCaster> {
+        self.actors
+            .shadow_caster(self.actors.get(runtime_id)?, partial_tick)
+    }
+
     /// Sets the view `[pitch, yaw]` (degrees) that camera-facing billboard rigs sample per tick.
     pub fn set_actor_camera_rotation(&mut self, rotation: [f32; 2]) {
         self.actors.set_camera_rotation(rotation);

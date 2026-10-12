@@ -334,3 +334,38 @@ fn assert_sampled_admission(cull_completed_tick: bool) {
         assert_eq!(world.actor_rig(1).unwrap().scale, tick.scale);
     }
 }
+
+/// Render occlusion never owns the clock that advances retained actor state.
+#[test]
+fn terrain_hidden_actors_keep_advancing_completed_ticks() {
+    let mut world = world("1", false, [0.0, 0.0, -10.0]);
+    let view = ActorCullView {
+        clip_from_world: Mat4::perspective_infinite_reverse_rh(1.0, 1.0, 0.1),
+        camera_position: Vec3::ZERO,
+        max_distance: render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
+    };
+    let before = world.actor_rig(1).unwrap().completed_tick;
+    for tick in 1..=4 {
+        world.advance_actor_interpolation_ticks(1);
+        let rig = world.actor_rig(1).unwrap();
+        let actor = world.actor(1).unwrap();
+        assert!(!rig_may_be_visible(
+            &rig,
+            actor,
+            0.5,
+            Some(view),
+            None,
+            |_, _| true
+        ));
+        assert_eq!(rig.completed_tick, before + tick);
+    }
+    let rig = world.actor_rig(1).unwrap();
+    assert!(rig_may_be_visible(
+        &rig,
+        world.actor(1).unwrap(),
+        0.5,
+        Some(view),
+        None,
+        |_, _| false
+    ));
+}

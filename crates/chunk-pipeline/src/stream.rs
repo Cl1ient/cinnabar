@@ -58,6 +58,7 @@ mod cohort;
 mod column_set;
 mod commit_budget;
 mod connectivity;
+mod entity_occlusion;
 mod construction;
 mod decode;
 mod diagnostics;

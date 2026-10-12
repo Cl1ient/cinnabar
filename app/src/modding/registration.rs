@@ -8,11 +8,11 @@ mod status;
 mod tests;
 
 use presentation::{clear_owned_state, clear_presentation, refresh_presentation};
-use source::{Observation, observe, source_snapshot};
+use source::{observe, source_snapshot};
 use status::{bounded_message, write_status};
 
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},

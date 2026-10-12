@@ -179,9 +179,10 @@ jobs:
         run: |
           bin="$PWD/target/$CARGO_BUILD_TARGET/release"
           make package-binaries PACKAGE_CARGO_FLAGS=--timings DIST_CORE="$bin/bedrock-core" LOCAL_SERVER_OUT="$bin/bedrock-local-server"
-          for binary in cinnabar bedrock-core bedrock-local-server assetc; do
+          # The runtime table packaging stages from, plus the prep-kit compiler.
+          while read -r binary; do
             lipo "$bin/$binary" -verify_arch "${{ matrix.arch }}"
-          done
+          done < <(awk '{print $1} END {print "assetc"}' packaging/common/runtime-binaries.txt)
           tools="$GITHUB_WORKSPACE/release-tools/packaging/macos"
           CLIENT="$bin/cinnabar" CORE="$bin/bedrock-core" \
             LOCAL_SERVER="$bin/bedrock-local-server" ASSETC="$bin/assetc" bash "$tools/build-app.sh"

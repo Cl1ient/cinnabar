@@ -177,7 +177,10 @@ pub(crate) fn server_limits() -> &'static wire::Limits {
 
 /// Decodes one entry body as `id` under [`server_limits`], sharing `body`'s allocation, and
 /// rejects bytes the packet leaves unread.
-pub(crate) fn decode_body(id: PacketId, body: &Bytes) -> Result<packets::Packet, wire::DecodeError> {
+pub(crate) fn decode_body(
+    id: PacketId,
+    body: &Bytes,
+) -> Result<packets::Packet, wire::DecodeError> {
     let mut reader = wire::Reader::from_shared(body).with_limits(server_limits());
     let packet = packets::Packet::decode_body(id, &mut reader)?;
     reader.expect_consumed()?;
@@ -199,16 +202,19 @@ pub fn decode_batch(bytes: Bytes) -> Result<Vec<Packet>, ProtocolError> {
             max: MAX_BATCH_BYTES,
         });
     }
-    let frames = wire::Frames::from_batch(bytes, MAX_BATCH_PACKETS).map_err(|error| match error {
-        wire::DecodeError::InvalidBatchHeader(actual) => ProtocolError::InvalidBatchHeader { actual },
-        error => error.into(),
-    })?;
+    let frames =
+        wire::Frames::from_batch(bytes, MAX_BATCH_PACKETS).map_err(|error| match error {
+            wire::DecodeError::InvalidBatchHeader(actual) => {
+                ProtocolError::InvalidBatchHeader { actual }
+            }
+            error => error.into(),
+        })?;
     let mut packets = Vec::new();
     for frame in frames {
         let frame = frame.map_err(framing_error)?;
         let header = frame.header();
-        let id = PacketId::from_raw(header.id)
-            .ok_or(wire::DecodeError::UnknownPacketId(header.id))?;
+        let id =
+            PacketId::from_raw(header.id).ok_or(wire::DecodeError::UnknownPacketId(header.id))?;
         let data = decode_body(id, &frame.body()).map_err(body_error)?;
         validate_decoded(&data)?;
         packets.push(Packet::from_parts(

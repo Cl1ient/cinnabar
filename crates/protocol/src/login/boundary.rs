@@ -1,4 +1,4 @@
-use valentine::bedrock::version::v1_26_51::McpePacketName;
+use bedrock_protocol_1_26_51::packets::PacketId;
 
 use super::{PlaySession, reset_cache_for_immediate_boundary};
 use crate::raw_packet::RawPacket;
@@ -36,7 +36,7 @@ impl PlaySession {
     pub(super) async fn absorb_boundary_packet(
         &mut self,
         raw: RawPacket,
-        name: McpePacketName,
+        name: PacketId,
     ) -> Result<bool, ProtocolError> {
         let packet = match raw.decode() {
             Ok(packet) => packet,
@@ -55,7 +55,7 @@ impl PlaySession {
     pub(super) fn absorb_terminal(&mut self, terminal: Terminal) -> Result<bool, ProtocolError> {
         let name = match terminal {
             Terminal::Transfer(transfer) => {
-                self.packet_id_trace.observe(McpePacketName::TransferPacket);
+                self.packet_id_trace.observe(PacketId::Transfer);
                 match ServerTransferEvent::from_target(
                     &transfer.address,
                     transfer.port,
@@ -67,13 +67,12 @@ impl PlaySession {
                         return Ok(false);
                     }
                 }
-                McpePacketName::TransferPacket
+                PacketId::Transfer
             }
             Terminal::Disconnect(disconnect) => {
-                self.packet_id_trace
-                    .observe(McpePacketName::DisconnectPacket);
+                self.packet_id_trace.observe(PacketId::Disconnect);
                 self.server_disconnect = Some(ServerDisconnectEvent::from_session(&disconnect));
-                McpePacketName::DisconnectPacket
+                PacketId::Disconnect
             }
         };
         if let Some(resolver) = self.blob_cache.as_mut() {

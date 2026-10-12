@@ -177,16 +177,11 @@ impl SessionTransport {
 
 /// One Batch frame holding `packets`, each length-prefixed as a Bedrock batch carries it.
 pub(crate) fn batch_frame(packets: &[Packet]) -> Result<Bytes, ProtocolError> {
-    let mut frame = BytesMut::new();
-    frame.put_u8(bridge::contract::KIND_BATCH);
+    let mut frame = vec![bridge::contract::KIND_BATCH];
     for packet in packets {
-        packet.data.encode_inner_bytes_mut(
-            &mut frame,
-            packet.header.from_subclient,
-            packet.header.to_subclient,
-        )?;
+        crate::codec::encode_entry(packet, &mut frame)?;
     }
-    Ok(frame.freeze())
+    Ok(Bytes::from(frame))
 }
 
 /// Groups the startup packets, which may span many upstream batches, into batch bodies that each

@@ -3,7 +3,7 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    process::{Child, Command},
+    process::{Child, Command, ExitStatus},
     time::{Duration, Instant},
 };
 
@@ -137,41 +137,132 @@ impl Monitor {
     }
 }
 
-/// Starts the client in its own process group, so `stop` also reaches its setup process.
-pub fn isolate(command: &mut Command) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    #[cfg(not(unix))]
-    let _ = command;
+/// The launched client and every process it starts: a process group on Unix, a job on Windows.
+pub struct Tree {
+    child: Child,
+    /// Absent only if Windows refused the job, leaving `stop` to end the client alone.
+    #[cfg(windows)]
+    job: Option<job::Job>,
 }
 
-/// Returns once the client and every process left in its group have exited.
-pub fn stop(child: &mut Child) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use rustix::process::{Pid, Signal, kill_process_group, test_kill_process_group};
-        let group = Pid::from_child(child);
-        for signal in [Signal::TERM, Signal::KILL] {
-            let _ = kill_process_group(group, signal);
-            let deadline = Instant::now() + STOP_GRACE;
-            // Reaping the leader keeps its zombie from holding the group open.
-            while child.try_wait()?.is_none() || test_kill_process_group(group).is_ok() {
-                if signal == Signal::TERM && Instant::now() >= deadline {
-                    break;
+impl Tree {
+    /// Spawns `command` as the root of a new tree.
+    pub fn spawn(command: &mut Command) -> io::Result<Self> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command.spawn()?;
+        // The client starts setup only after it initializes, well after this assignment.
+        #[cfg(windows)]
+        let job = job::Job::assign(&child).ok();
+        Ok(Self {
+            child,
+            #[cfg(windows)]
+            job,
+        })
+    }
+
+    /// The client's exit status, once it has exited.
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        self.child.try_wait()
+    }
+
+    /// Returns once the client and every process it started have exited.
+    pub fn stop(mut self) -> io::Result<()> {
+        #[cfg(unix)]
+        {
+            use rustix::process::{Pid, Signal, kill_process_group, test_kill_process_group};
+            let group = Pid::from_child(&self.child);
+            for signal in [Signal::TERM, Signal::KILL] {
+                let _ = kill_process_group(group, signal);
+                let deadline = Instant::now() + STOP_GRACE;
+                // Reaping the leader keeps its zombie from holding the group open.
+                while self.child.try_wait()?.is_none() || test_kill_process_group(group).is_ok() {
+                    if signal == Signal::TERM && Instant::now() >= deadline {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
                 }
-                std::thread::sleep(Duration::from_millis(100));
             }
         }
-        child.wait()?;
-        Ok(())
+        #[cfg(windows)]
+        match &self.job {
+            Some(job) => job.terminate()?,
+            None => {
+                let _ = self.child.kill();
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
+        let _ = self.child.kill();
+        self.child.wait().map(drop)
     }
-    #[cfg(not(unix))]
-    {
-        let _ = child.kill();
-        child.wait().map(drop)
+}
+
+#[cfg(windows)]
+mod job {
+    use std::{io, os::windows::io::AsRawHandle, process::Child, time::Duration};
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+            JobObjectBasicAccountingInformation, QueryInformationJobObject, TerminateJobObject,
+        },
+    };
+
+    /// Holds the client's process tree; closing it leaves a healthy client running.
+    pub(super) struct Job(HANDLE);
+
+    impl Job {
+        pub(super) fn assign(child: &Child) -> io::Result<Self> {
+            // SAFETY: the new handle is checked and owned by `Job`; the child handle stays valid.
+            unsafe {
+                let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if handle.is_null() {
+                    return Err(io::Error::last_os_error());
+                }
+                let job = Self(handle);
+                if AssignProcessToJobObject(job.0, child.as_raw_handle()) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(job)
+            }
+        }
+
+        /// Terminates every process in the job and returns once none remain.
+        pub(super) fn terminate(&self) -> io::Result<()> {
+            // SAFETY: the job handle is valid, and the query writes only into `info`.
+            unsafe {
+                if TerminateJobObject(self.0, 1) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                loop {
+                    let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+                    let queried = QueryInformationJobObject(
+                        self.0,
+                        JobObjectBasicAccountingInformation,
+                        (&raw mut info).cast(),
+                        size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                        std::ptr::null_mut(),
+                    );
+                    if queried == 0 {
+                        return Err(io::Error::last_os_error());
+                    }
+                    if info.ActiveProcesses == 0 {
+                        return Ok(());
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
+        }
+    }
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            // SAFETY: `Job` owns this handle and closes it exactly once.
+            unsafe { CloseHandle(self.0) };
+        }
     }
 }
 

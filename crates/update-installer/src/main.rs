@@ -68,7 +68,6 @@ fn launch(target: &Path, root: &Path) -> Result<()> {
         .env(startup::STARTUP_ENV, startup::marker(directory.path()))
         .stdin(Stdio::null())
         .stdout(Stdio::null());
-    startup::isolate(&mut command);
     #[cfg(target_os = "linux")]
     {
         command.arg("--appimage-extract-and-run");
@@ -76,19 +75,19 @@ fn launch(target: &Path, root: &Path) -> Result<()> {
             command.env_remove(name);
         }
     }
-    let mut child = command.spawn().context("launch updated client")?;
+    let mut client = startup::Tree::spawn(&mut command).context("launch updated client")?;
     let mut monitor = Monitor::new(Instant::now());
     loop {
         let failure = match monitor.poll(directory.path(), Instant::now()) {
             Progress::Started => return Ok(()),
             Progress::Stalled => Some("updated client did not complete startup".to_owned()),
-            Progress::Waiting => child
+            Progress::Waiting => client
                 .try_wait()?
                 .map(|status| format!("updated client exited before startup: {status}")),
         };
         if let Some(failure) = failure {
             // Rollback restores files only after the client and its setup process have exited.
-            startup::stop(&mut child)?;
+            client.stop()?;
             anyhow::bail!(failure);
         }
         std::thread::sleep(Duration::from_millis(100));

@@ -117,9 +117,20 @@ fn stopping_a_client_also_ends_the_setup_process_it_started() {
     use rustix::process::{Pid, test_kill_process_group};
     let mut command = Command::new("sh");
     command.args(["-c", "sleep 600 & wait"]);
-    isolate(&mut command);
-    let mut child = command.spawn().unwrap();
-    let group = Pid::from_child(&child);
-    stop(&mut child).unwrap();
+    let tree = Tree::spawn(&mut command).unwrap();
+    let group = Pid::from_child(&tree.child);
+    tree.stop().unwrap();
     assert!(test_kill_process_group(group).is_err());
+}
+
+#[cfg(windows)]
+#[test]
+fn stopping_a_client_also_ends_the_setup_process_it_started() {
+    // `cmd` waits on a long-running grandchild, as the client waits on its setup process.
+    let mut command = Command::new("cmd");
+    command.args(["/C", "ping -n 600 127.0.0.1 >NUL"]);
+    let tree = Tree::spawn(&mut command).unwrap();
+    assert!(tree.job.is_some());
+    // Returns only once the job, grandchild included, has no live process.
+    tree.stop().unwrap();
 }

@@ -23,24 +23,11 @@ pub fn block_mesh(
         if texture.width > layer_side || texture.height > layer_side {
             return None;
         }
-        let normal = match quad.flags & assets::MODEL_QUAD_FLAG_FACE_MASK {
-            1 => [0.0, -1.0, 0.0],
-            2 => [0.0, 1.0, 0.0],
-            3 => [-1.0, 0.0, 0.0],
-            4 => [1.0, 0.0, 0.0],
-            5 => [0.0, 0.0, -1.0],
-            6 => [0.0, 0.0, 1.0],
-            _ => {
-                let [a, b, c, _] = quad
-                    .positions
-                    .map(|position| Vec3::from_array(position.map(f32::from)));
-                let Some(normal) = (b - a).cross(c - a).try_normalize() else {
-                    continue;
-                };
-                normal.to_array()
-            }
+        let Some(normal) = quad_normal(quad) else {
+            continue;
         };
-        for corner in [0, 1, 2, 0, 2, 3] {
+        let [a, b, c, d] = quad_order(quad, normal);
+        for corner in [a, b, c, a, c, d] {
             vertices.push(ItemMeshVertex {
                 position: rotate(quad.positions[corner].map(|p| f32::from(p) / 256.0 - 0.5)),
                 uv: [
@@ -56,6 +43,32 @@ pub fn block_mesh(
         }
     }
     Some(vertices)
+}
+
+/// Returns the authored face normal, or the geometric normal for an unlabelled quad.
+pub(super) fn quad_normal(quad: &assets::ModelQuad) -> Option<[f32; 3]> {
+    Some(match quad.flags & assets::MODEL_QUAD_FLAG_FACE_MASK {
+        1 => [0.0, -1.0, 0.0],
+        2 => [0.0, 1.0, 0.0],
+        3 => [-1.0, 0.0, 0.0],
+        4 => [1.0, 0.0, 0.0],
+        5 => [0.0, 0.0, -1.0],
+        6 => [0.0, 0.0, 1.0],
+        _ => {
+            let [a, b, c, _] = quad.positions.map(|p| Vec3::from_array(p.map(f32::from)));
+            (b - a).cross(c - a).try_normalize()?.to_array()
+        }
+    })
+}
+
+/// Orders the original corners about the normal while retaining every position and UV pair.
+pub(super) fn quad_order(quad: &assets::ModelQuad, normal: [f32; 3]) -> [usize; 4] {
+    let [a, b, c, _] = quad.positions.map(|p| Vec3::from_array(p.map(f32::from)));
+    if (b - a).cross(c - a).dot(Vec3::from_array(normal)) < 0.0 {
+        [0, 3, 2, 1]
+    } else {
+        [0, 1, 2, 3]
+    }
 }
 
 #[cfg(test)]

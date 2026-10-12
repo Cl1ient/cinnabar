@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 mod block;
+mod culling;
 mod mesh;
 mod native;
 mod rope;

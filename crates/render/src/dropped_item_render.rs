@@ -18,8 +18,8 @@ use bevy::{
     },
     mesh::VertexBufferLayout,
     prelude::{
-        App, BevyError, Commands, Entity, FromWorld, Handle, Msaa, Plugin, Query, Res, ResMut,
-        Resource, Result, Shader, World, default,
+        App, BevyError, Commands, Component, Entity, FromWorld, Handle, Msaa, Plugin, Query, Res,
+        ResMut, Resource, Result, Shader, World, default,
     },
     render::{
         Render, RenderApp, RenderStartup, RenderSystems,
@@ -31,12 +31,13 @@ use bevy::{
         render_resource::{
             AddressMode, BindGroup, BindGroupEntry, BindGroupLayoutDescriptor,
             BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType,
-            BufferDescriptor, BufferId, BufferInitDescriptor, BufferSize, BufferUsages, Canonical,
-            ColorTargetState, ColorWrites, CompareFunction, DepthStencilState, Extent3d,
-            FilterMode, FragmentState, PipelineCache, RenderPipeline, RenderPipelineDescriptor,
-            Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, Specializer,
-            SpecializerKey, Texture, TextureDataOrder, TextureDescriptor, TextureDimension,
-            TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
+            BufferDescriptor, BufferId, BufferInitDescriptor, BufferSize, BufferUsages,
+            CachedRenderPipelineId, Canonical, ColorTargetState, ColorWrites, CompareFunction,
+            DepthStencilState, Extent3d, Face, FilterMode, FragmentState, FrontFace, PipelineCache,
+            RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
+            SamplerDescriptor, ShaderStages, Specializer, SpecializerKey, Texture,
+            TextureDataOrder, TextureDescriptor, TextureDimension, TextureFormat,
+            TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
             TextureViewDimension, Variants, VertexAttribute, VertexFormat, VertexState,
             VertexStepMode,
         },
@@ -139,7 +140,7 @@ struct ItemGpu {
     mesh_buffer: Option<Buffer>,
     dynamic_buffer: Buffer,
     /// Vertex range of each model's mesh; empty for rejected models.
-    ranges: Vec<Range<u32>>,
+    ranges: Vec<ItemMeshRange>,
     _atlas: Option<Texture>,
     atlas_view: Option<TextureView>,
     models_revision: u64,
@@ -147,11 +148,31 @@ struct ItemGpu {
     /// Instance slot holding the identity transform used for dynamic geometry.
     identity_instance: u32,
     /// This frame's `(vertex range, instance index)` draws.
-    draws: Vec<(Range<u32>, u32)>,
+    draws: Vec<ItemDraw>,
     bind_group: Option<BindGroup>,
     view_buffer_id: Option<BufferId>,
     #[cfg(test)]
     upload_calls: u64,
+}
+
+/// A model's uploaded vertices and the cull mode its surface supports.
+struct ItemMeshRange {
+    vertices: Range<u32>,
+    cull_back: bool,
+}
+
+/// One ordered draw, including the cull mode allowed by its model and transform.
+struct ItemDraw {
+    vertices: Range<u32>,
+    instance: u32,
+    cull_back: bool,
+}
+
+/// The prepared pipelines for a view; draw commands switch modes without regrouping instances.
+#[derive(Component)]
+struct ItemViewPipelines {
+    two_sided: CachedRenderPipelineId,
+    closed: CachedRenderPipelineId,
 }
 
 fn init_gpu(mut commands: Commands, device: Res<RenderDevice>) {
@@ -321,7 +342,10 @@ fn rebuild_models(
         if let Some(mesh) = build_model(&mut atlas, model, side as u32) {
             vertices.extend(mesh);
         }
-        ranges.push(start..vertices.len() as u32);
+        ranges.push(ItemMeshRange {
+            vertices: start..vertices.len() as u32,
+            cull_back: model.can_cull_back_faces(),
+        });
     }
     let layers = atlas.len() / layer_bytes;
     gpu.mesh_buffer = (!vertices.is_empty()).then(|| {
@@ -400,11 +424,18 @@ fn prepare_items(
         let Some(range) = gpu
             .ranges
             .get(instance.model as usize)
-            .filter(|range| !range.is_empty())
+            .filter(|range| !range.vertices.is_empty())
         else {
             continue;
         };
-        draws.push((range.clone(), instances.len() as u32));
+        let rows = instance
+            .world_from_item
+            .map(|row| glam::Vec3::new(row[0], row[1], row[2]));
+        draws.push(ItemDraw {
+            vertices: range.vertices.clone(),
+            instance: instances.len() as u32,
+            cull_back: range.cull_back && rows[0].dot(rows[1].cross(rows[2])) > 0.0,
+        });
         instances.push(GpuItemInstance {
             rows: instance.world_from_item,
             meta: [
@@ -614,6 +645,8 @@ fn item_pipeline_descriptor(layout: BindGroupLayoutDescriptor) -> RenderPipeline
 struct ItemPipelineKey {
     msaa: Msaa,
     hdr: bool,
+    cull_back: bool,
+    invert_culling: bool,
 }
 
 impl Specializer<RenderPipeline> for ItemPipelineSpecializer {
@@ -624,6 +657,12 @@ impl Specializer<RenderPipeline> for ItemPipelineSpecializer {
         key: Self::Key,
         descriptor: &mut RenderPipelineDescriptor,
     ) -> Result<Canonical<Self::Key>, BevyError> {
+        descriptor.primitive.cull_mode = key.cull_back.then_some(Face::Back);
+        descriptor.primitive.front_face = if key.invert_culling {
+            FrontFace::Cw
+        } else {
+            FrontFace::Ccw
+        };
         descriptor.multisample.count = key.msaa.samples();
         crate::alpha_coverage::apply(descriptor, true);
         descriptor.fragment.as_mut().unwrap().targets[0]
@@ -707,7 +746,7 @@ struct QueueItemParams<'w, 's> {
     >,
 }
 
-fn queue_items(mut params: QueueItemParams<'_, '_>) {
+fn queue_items(mut commands: Commands, mut params: QueueItemParams<'_, '_>) {
     if params.scene.instances.is_empty()
         && params.scene.dynamic.is_empty()
         && !params
@@ -728,10 +767,28 @@ fn queue_items(mut params: QueueItemParams<'_, '_>) {
             ItemPipelineKey {
                 msaa: *msaa,
                 hdr: extracted_camera.hdr,
+                cull_back: false,
+                invert_culling: view.invert_culling,
             },
         ) else {
             continue;
         };
+
+        let Ok(closed) = params.pipeline.variants.specialize(
+            &params.pipeline_cache,
+            ItemPipelineKey {
+                msaa: *msaa,
+                hdr: extracted_camera.hdr,
+                cull_back: true,
+                invert_culling: view.invert_culling,
+            },
+        ) else {
+            continue;
+        };
+        commands.entity(view_entity).insert(ItemViewPipelines {
+            two_sided: pipeline_id,
+            closed,
+        });
 
         phase.add(
             Opaque3dBatchSetKey {
@@ -763,8 +820,8 @@ type DrawItemCommands = crate::gpu_timing::GpuDrawSpan<
 struct DrawItems;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawItems {
-    type Param = SRes<ItemGpu>;
-    type ViewQuery = Read<ViewUniformOffset>;
+    type Param = (SRes<ItemGpu>, SRes<PipelineCache>);
+    type ViewQuery = (Read<ViewUniformOffset>, Read<ItemViewPipelines>);
     type ItemQuery = ();
 
     fn render<'w>(
@@ -774,7 +831,16 @@ impl<P: PhaseItem> RenderCommand<P> for DrawItems {
         gpu: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let gpu = gpu.into_inner();
+        let (gpu, cache) = gpu;
+        let (gpu, cache) = (gpu.into_inner(), cache.into_inner());
+        let (view, pipelines) = view;
+        let Some(two_sided) = cache.get_render_pipeline(pipelines.two_sided) else {
+            return RenderCommandResult::Skip;
+        };
+        let closed = cache
+            .get_render_pipeline(pipelines.closed)
+            .unwrap_or(two_sided);
+        let _zone = bevy::log::info_span!("dropped_item.draw").entered();
         let Some(bind_group) = gpu.bind_group.as_ref() else {
             return RenderCommandResult::Success;
         };
@@ -782,11 +848,13 @@ impl<P: PhaseItem> RenderCommand<P> for DrawItems {
         pass.set_vertex_buffer(1, gpu.instance_buffer.slice(..));
         if let Some(mesh) = gpu.mesh_buffer.as_ref() {
             pass.set_vertex_buffer(0, mesh.slice(..));
-            for (range, instance) in &gpu.draws {
-                pass.draw(range.clone(), *instance..*instance + 1);
+            for draw in &gpu.draws {
+                pass.set_render_pipeline(if draw.cull_back { closed } else { two_sided });
+                pass.draw(draw.vertices.clone(), draw.instance..draw.instance + 1);
             }
         }
         if gpu.dynamic_count != 0 {
+            pass.set_render_pipeline(two_sided);
             pass.set_vertex_buffer(0, gpu.dynamic_buffer.slice(..));
             pass.draw(
                 0..gpu.dynamic_count,
@@ -804,13 +872,19 @@ impl crate::pipeline_warmup::PrewarmPipelines for ItemPipeline {
         view: crate::pipeline_warmup::WarmView,
         ids: &mut crate::pipeline_warmup::WarmupIds,
     ) -> Result<(), BevyError> {
-        ids.push(self.variants.specialize(
-            cache,
-            ItemPipelineKey {
-                msaa: view.msaa,
-                hdr: view.hdr,
-            },
-        )?);
+        for cull_back in [false, true] {
+            for invert_culling in [false, true] {
+                ids.push(self.variants.specialize(
+                    cache,
+                    ItemPipelineKey {
+                        msaa: view.msaa,
+                        hdr: view.hdr,
+                        cull_back,
+                        invert_culling,
+                    },
+                )?);
+            }
+        }
         Ok(())
     }
 }
@@ -820,55 +894,9 @@ impl crate::pipeline_warmup::PrewarmPipelines for ItemPipeline {
 mod upload_tests;
 
 #[cfg(test)]
-mod tests {
-    use bevy::render::render_resource::ShaderStages;
+#[path = "dropped_item_render/pipeline_tests.rs"]
+mod tests;
 
-    // The item fragment stage reads the view for distance fog; a vertex-only binding fails validation.
-    #[test]
-    fn fragment_view_reads_are_visible_to_the_fragment_stage() {
-        let source = crate::shader_source::composed(include_str!("dropped_item.wesl"), &[]);
-        assert!(crate::shader_test_support::fragment_reads_binding(
-            &source, 0, 0
-        ));
-        assert!(
-            super::item_bind_group_layout().entries[0]
-                .visibility
-                .contains(ShaderStages::FRAGMENT)
-        );
-    }
-
-    #[test]
-    fn dropped_item_coverage_is_prewarmed_at_each_sample_count() {
-        use super::*;
-        use crate::pipeline_warmup::{PrewarmPipelines, WarmView};
-        let (mut app, _) = crate::queue_review_support::app();
-        let mut cache = app.world_mut().remove_resource::<PipelineCache>().unwrap();
-        let mut pipeline = ItemPipeline::from_world(&mut World::new());
-        for msaa in [Msaa::Off, Msaa::Sample2, Msaa::Sample4, Msaa::Sample8] {
-            let mut ids = Vec::new();
-            pipeline
-                .prewarm(
-                    &cache,
-                    WarmView {
-                        msaa,
-                        hdr: false,
-                        enhanced: false,
-                        output: None,
-                    },
-                    &mut ids,
-                )
-                .unwrap();
-            let id = pipeline
-                .variants
-                .specialize(&cache, ItemPipelineKey { msaa, hdr: false })
-                .unwrap();
-            assert!(ids.contains(&id));
-            assert_eq!(
-                crate::queue_review_support::queued_descriptor(&mut cache, id)
-                    .multisample
-                    .alpha_to_coverage_enabled,
-                msaa.samples() > 1
-            );
-        }
-    }
-}
+#[cfg(test)]
+#[path = "dropped_item_render/culling_raster_tests.rs"]
+mod culling_raster_tests;

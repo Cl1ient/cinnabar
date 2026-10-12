@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// Frozen elapsed-time publication service bounds for the Phase 2 gate.
+/// Frozen elapsed-time publication service bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PublicationServiceConfig {
     pub minimum_items_per_second: u32,
@@ -20,7 +20,7 @@ pub struct PublicationServiceConfig {
 }
 
 impl PublicationServiceConfig {
-    pub const PHASE2_GATE: Self = Self {
+    pub const DEFAULT: Self = Self {
         minimum_items_per_second: 4_096,
         minimum_bytes_per_second: 64 * 1024 * 1024,
         target_items_per_second: 8_192,
@@ -479,13 +479,13 @@ mod tests {
 
     #[test]
     fn one_linear_permit_transfers_across_every_stage() {
-        let allowance = PublicationAllowance::new(PublicationServiceConfig::PHASE2_GATE);
+        let allowance = PublicationAllowance::new(PublicationServiceConfig::DEFAULT);
         allowance.begin_frame(
             1,
             1,
             1,
             1,
-            PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+            PublicationServiceConfig::DEFAULT.maximum_frame_items,
         );
         let permit = allowance
             .try_admit_payload(1)
@@ -502,13 +502,13 @@ mod tests {
 
     #[test]
     fn stale_or_dropped_permit_is_retired_without_refunding_spent_authority() {
-        let allowance = PublicationAllowance::new(PublicationServiceConfig::PHASE2_GATE);
+        let allowance = PublicationAllowance::new(PublicationServiceConfig::DEFAULT);
         allowance.begin_frame(
             1,
             1,
             64,
             1,
-            PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+            PublicationServiceConfig::DEFAULT.maximum_frame_items,
         );
         let permit = allowance.try_admit_payload(64).unwrap();
 
@@ -522,13 +522,13 @@ mod tests {
 
     #[test]
     fn dropping_the_linear_carrier_retires_the_live_permit_without_refund() {
-        let allowance = PublicationAllowance::new(PublicationServiceConfig::PHASE2_GATE);
+        let allowance = PublicationAllowance::new(PublicationServiceConfig::DEFAULT);
         allowance.begin_frame(
             1,
             1,
             64,
             0,
-            PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+            PublicationServiceConfig::DEFAULT.maximum_frame_items,
         );
         let permit = allowance.try_admit_payload(64).unwrap();
         drop(permit);
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn five_hundred_twelve_mixed_payload_and_zero_byte_attempts_share_exact_item_caps() {
-        let config = PublicationServiceConfig::PHASE2_GATE;
+        let config = PublicationServiceConfig::DEFAULT;
         let allowance = PublicationAllowance::new(config);
         allowance.begin_frame(
             1,
@@ -576,7 +576,7 @@ mod tests {
     }
     #[test]
     fn carried_item_authority_respects_dynamic_frame_item_limit() {
-        let config = PublicationServiceConfig::PHASE2_GATE;
+        let config = PublicationServiceConfig::DEFAULT;
         let allowance = PublicationAllowance::new(config);
         allowance.begin_frame(1, 512, 4, 4, config.maximum_frame_items);
         allowance.begin_frame(2, 512, 4, 4, 4);
@@ -598,13 +598,13 @@ mod tests {
 
     #[test]
     fn rejected_zero_byte_attempts_preserve_shared_item_authority_with_zero_cap() {
-        let allowance = PublicationAllowance::new(PublicationServiceConfig::PHASE2_GATE);
+        let allowance = PublicationAllowance::new(PublicationServiceConfig::DEFAULT);
         allowance.begin_frame(
             1,
             1,
             1,
             0,
-            PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+            PublicationServiceConfig::DEFAULT.maximum_frame_items,
         );
 
         for _ in 0..8 {
@@ -623,7 +623,7 @@ mod tests {
 
     #[test]
     fn urgent_zero_byte_permits_use_a_reserved_live_window() {
-        let config = PublicationServiceConfig::PHASE2_GATE;
+        let config = PublicationServiceConfig::DEFAULT;
         let allowance = PublicationAllowance::new(config);
         allowance.begin_frame(
             1,
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn live_payload_bytes_never_cross_the_literal_64_mib_boundary_across_frames() {
-        let config = PublicationServiceConfig::PHASE2_GATE;
+        let config = PublicationServiceConfig::DEFAULT;
         let allowance = PublicationAllowance::new(config);
         allowance.begin_frame(
             1,
@@ -695,7 +695,7 @@ mod tests {
 
     #[test]
     fn unused_payload_authority_accumulates_without_crossing_the_burst_ceiling() {
-        let config = PublicationServiceConfig::PHASE2_GATE;
+        let config = PublicationServiceConfig::DEFAULT;
         let allowance = PublicationAllowance::new(config);
 
         allowance.begin_frame(
@@ -730,13 +730,13 @@ mod tests {
 
     #[test]
     fn arena_growth_charges_bytes_to_the_existing_item_without_an_item_redebit() {
-        let allowance = PublicationAllowance::new(PublicationServiceConfig::PHASE2_GATE);
+        let allowance = PublicationAllowance::new(PublicationServiceConfig::DEFAULT);
         allowance.begin_frame(
             1,
             1,
             96,
             0,
-            PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+            PublicationServiceConfig::DEFAULT.maximum_frame_items,
         );
         let permit = allowance.try_admit_payload(64).unwrap();
 

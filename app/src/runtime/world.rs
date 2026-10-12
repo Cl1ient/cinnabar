@@ -6,8 +6,8 @@ use ::acceptance::AcceptanceRun;
 use client_runtime::network::NetworkHandle;
 #[cfg(feature = "acceptance")]
 use {
-    crate::runtime::phase3_evidence::Phase3EvidenceEmitter,
-    acceptance::phase3_evidence::Phase3EvidenceEventKind,
+    crate::runtime::movement_evidence::MovementEvidenceEmitter,
+    acceptance::movement_evidence::MovementEvidenceEventKind,
 };
 #[cfg(feature = "acceptance")]
 use {
@@ -311,7 +311,7 @@ pub(crate) fn reconcile_world_stream_before_physics(
     mut view: ResMut<LocalViewPose>,
     mut local_frame: ResMut<LocalPlayerFrameCarrier>,
     mut interaction: ResMut<InteractionOriginSnapshot>,
-    #[cfg(feature = "acceptance")] mut phase3_evidence: ResMut<Phase3EvidenceEmitter>,
+    #[cfg(feature = "acceptance")] mut movement_evidence: ResMut<MovementEvidenceEmitter>,
     mut frame_poll: ResMut<WorldStreamFramePoll>,
     mut audio: MessageWriter<SequencedAudioEvent>,
     mut server_camera: ResMut<ServerCameraInstructions>,
@@ -543,11 +543,12 @@ pub(crate) fn reconcile_world_stream_before_physics(
                     previous,
                     position,
                 } => {
-                    phase3_evidence.note_correction(outcome, position_distance(previous, position));
+                    movement_evidence
+                        .note_correction(outcome, position_distance(previous, position));
                 }
                 #[cfg(feature = "acceptance")]
                 ControlObservation::Dimension => {
-                    phase3_evidence.note_event(Phase3EvidenceEventKind::Dimension);
+                    movement_evidence.note_event(MovementEvidenceEventKind::Dimension);
                 }
                 #[cfg(not(feature = "acceptance"))]
                 ControlObservation::BeforeSpatial(_)

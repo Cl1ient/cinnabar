@@ -41,8 +41,8 @@ pub use cube_layout::{
     CubeQuadLayout, FaceMask, facing_cell, is_single_sided_opaque, sub_chunk_facing_faces,
 };
 pub use lighting::{
-    FullBrightLightSampler, MeshLightSample, MeshLightSampler, PHASE26_BLOCK_LIGHT,
-    PHASE26_SKY_LIGHT, bake_quad_lighting, bake_quad_lighting_with_sampler, bake_template_lighting,
+    FULL_BRIGHT_BLOCK_LIGHT, FULL_BRIGHT_SKY_LIGHT, FullBrightLightSampler, MeshLightSample,
+    MeshLightSampler, bake_quad_lighting, bake_quad_lighting_with_sampler, bake_template_lighting,
     bake_template_lighting_with_sampler, mesh_dependency_mask,
 };
 pub use liquid::{CameraMedium, LiquidLevel, sample_camera_medium};

@@ -21,7 +21,7 @@ use {
     crate::{
         environment::{WeatherState, WorldClock, bind_session_generation},
         runtime::{
-            phase3_evidence::Phase3EvidenceEmitter,
+            movement_evidence::MovementEvidenceEmitter,
             world::{
                 ClientWorld, WorldStreamFramePoll, drain_committed_ui_before_authority,
                 reconcile_world_stream_before_physics,
@@ -98,7 +98,7 @@ fn app() -> App {
     .init_resource::<LocalViewPose>()
     .init_resource::<LocalPlayerFrameCarrier>()
     .init_resource::<InteractionOriginSnapshot>()
-    .init_resource::<Phase3EvidenceEmitter>()
+    .init_resource::<MovementEvidenceEmitter>()
     .init_resource::<WorldStreamFramePoll>()
     .init_resource::<ServerCameraInstructions>()
     .add_message::<SequencedAudioEvent>()

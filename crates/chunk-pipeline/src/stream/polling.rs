@@ -71,7 +71,7 @@ impl WorldStream {
     pub fn poll(&mut self, camera_position: [f32; 3], max_mesh_jobs: usize) -> WorldStreamPoll {
         #[cfg(feature = "tracy")]
         let _zone = tracing::info_span!("stream.poll").entered();
-        let mesh_changes_queued = self.stats.phase2_stages.mesh_changes_queued;
+        let mesh_changes_queued = self.stats.publication_stages.mesh_changes_queued;
         // Before any commit, as the request preceded every commit still to come.
         self.apply_due_chunk_retention();
         if camera_position.iter().all(|value| value.is_finite()) {
@@ -162,7 +162,7 @@ impl WorldStream {
         report.commit_steps = self.commit_steps.wrapping_sub(commit_steps) as usize;
         report.mesh_changes_queued = self
             .stats
-            .phase2_stages
+            .publication_stages
             .mesh_changes_queued
             .saturating_sub(mesh_changes_queued) as usize;
         report

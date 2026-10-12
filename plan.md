@@ -5612,7 +5612,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
     `git diff --check` passed;
     `cargo clippy --workspace --all-targets --locked -- -D warnings` passed with zero
     warnings and is CI's exact Clippy command; and
-    `Invoke-Pester -Script 'scripts/tests/acceptance/Phase3.Tests.ps1' -PassThru` passed
+    `Invoke-Pester -Script 'scripts/tests/acceptance/MovementEvidence.Tests.ps1' -PassThru` passed
     89/89.
   - `cargo test --workspace --locked` was not run locally as a single invocation. The
     per-crate suites above were run instead; CI runs the workspace form.
@@ -5628,7 +5628,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
     witnesses, while its manifest and final evidence name Touch as `Deferred`, attribute the
     deferral to the owner decision, and leave touch parity open rather than treating it as
     observed or satisfied.
-  - `Phase3Launcher.ps1` now supports authenticated `Zeno` runs at
+  - `MovementLauncher.ps1` now supports authenticated `Zeno` runs at
     `zenomc.org:19197`, following the same candidate/free-camera scenario and five-minute
     minimum used by the other external targets. Zeno is the low-population official-BDS
     server-authority target for movement rejection and correction checks.
@@ -5768,7 +5768,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
   The final local head is not yet pushed or integrated.
   - Normal production sessions again install `PhysicsAuthorityGate::ProductionDisabled`.
     `CandidatePhysics` and authenticated `FastTransferWitness` are the only attributable
-    harness lanes that add `--phase3-candidate-physics`; `FreeCameraSilence` remains
+    harness lanes that add `--movement-candidate-physics`; `FreeCameraSilence` remains
     candidate-free and adds only `--auto-fly`. Dry-run and final evidence both report
     `production_physics_default_enabled=false`.
   - The first pushed-head CI run exposed ten architecture-size violations. Coherent private

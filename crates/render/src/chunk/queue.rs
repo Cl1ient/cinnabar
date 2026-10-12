@@ -70,7 +70,7 @@ pub(in crate::chunk) fn apply_chunk_render_queue(
     }
     let maximum_zero_byte_operations = budget
         .max_zero_byte_operations_per_frame
-        .min(PublicationServiceConfig::PHASE2_GATE.maximum_zero_byte_operations_per_frame);
+        .min(PublicationServiceConfig::DEFAULT.maximum_zero_byte_operations_per_frame);
     let mut ready = std::mem::take(&mut queue.ready_scratch);
     ready.clear();
     ready.extend(

@@ -348,7 +348,7 @@ fn disjoint_local_teleport_accepts_destination_chunks_before_publisher_update() 
     assert!(!stream.tracked_columns().contains(&source));
     assert!(stream.requests.deadlines.is_empty());
     assert_eq!(stream.outstanding_sub_chunk_count(), 0);
-    let armed = stream.phase2_publication_snapshot(destination);
+    let armed = stream.publication_snapshot(destination);
     assert!(armed.local_reset_armed);
     assert_eq!(armed.local_resets_armed, 1);
     assert_eq!(armed.local_resets_consumed, 0);
@@ -390,7 +390,7 @@ fn disjoint_local_teleport_accepts_destination_chunks_before_publisher_update() 
     assert!(stream.publisher.required_columns.contains(&destination));
     assert_eq!(stream.publisher.epoch, 2);
     assert_eq!(stream.committed_view_cohort().unwrap().center, [65, 65]);
-    let consumed = stream.phase2_publication_snapshot(destination);
+    let consumed = stream.publication_snapshot(destination);
     assert!(!consumed.local_reset_armed);
     assert_eq!(consumed.local_resets_armed, 1);
     assert_eq!(consumed.local_resets_consumed, 1);
@@ -401,7 +401,7 @@ fn disjoint_local_teleport_accepts_destination_chunks_before_publisher_update() 
     assert_eq!(request.chunk, destination);
     assert_eq!(
         stream
-            .phase2_publication_snapshot(destination)
+            .publication_snapshot(destination)
             .local_reset_dispatch_total,
         0,
         "selection alone is not successful-send evidence",
@@ -411,7 +411,7 @@ fn disjoint_local_teleport_accepts_destination_chunks_before_publisher_update() 
         request.base_sub_chunk_y,
         request.count,
     );
-    let dispatched = stream.phase2_publication_snapshot(destination);
+    let dispatched = stream.publication_snapshot(destination);
     assert_eq!(dispatched.local_reset_dispatch_count, 1);
     assert_eq!(dispatched.local_reset_dispatch_total, 1);
     assert!(!dispatched.local_reset_dispatch_trace_overflowed);
@@ -430,7 +430,7 @@ fn disjoint_local_teleport_accepts_destination_chunks_before_publisher_update() 
             }),
         )
         .unwrap();
-    let changed_dimension = stream.phase2_publication_snapshot(ChunkKey::new(1, 0, 0));
+    let changed_dimension = stream.publication_snapshot(ChunkKey::new(1, 0, 0));
     assert_eq!(changed_dimension.local_resets_armed, 0);
     assert_eq!(changed_dimension.local_resets_consumed, 0);
     assert_eq!(changed_dimension.local_reset_dispatch_count, 0);
@@ -913,7 +913,8 @@ fn valid_late_inactive_subchunk_reply_records_stale_without_world_side_effects()
     );
     assert_eq!(stream.requests.queue.len(), requests_before);
     let mut expected_stats = stats_before;
-    expected_stats.phase2_outcomes.stale = expected_stats.phase2_outcomes.stale.saturating_add(1);
+    expected_stats.publication_outcomes.stale =
+        expected_stats.publication_outcomes.stale.saturating_add(1);
     assert_eq!(stream.stats(), expected_stats);
     assert_eq!(stream.stats().normalization_reasons.inactive_sub_chunks, 0);
 }

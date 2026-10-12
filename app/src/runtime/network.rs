@@ -24,7 +24,7 @@ use session::NetworkControlEvent;
 use std::time::Duration;
 #[cfg(feature = "acceptance")]
 use {
-    crate::runtime::{phase3_evidence::Phase3EvidenceEmitter, visibility::AppMetrics},
+    crate::runtime::{movement_evidence::MovementEvidenceEmitter, visibility::AppMetrics},
     acceptance::{AcceptanceRun, model_witness::ModelWitnessFileSource},
 };
 
@@ -44,7 +44,7 @@ pub(crate) struct NetworkLocalPlayerState<'w> {
     frame: ResMut<'w, LocalPlayerFrameCarrier>,
     interaction: ResMut<'w, InteractionOriginSnapshot>,
     #[cfg(feature = "acceptance")]
-    evidence: ResMut<'w, Phase3EvidenceEmitter>,
+    evidence: ResMut<'w, MovementEvidenceEmitter>,
     authority: Res<'w, PhysicsAuthorityGate>,
     auto_fly: Res<'w, AutoFly>,
 }

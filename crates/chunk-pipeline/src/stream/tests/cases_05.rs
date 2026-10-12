@@ -17,8 +17,8 @@ fn collision_revision_commit_errors_are_mutation_failures_not_decode_failures() 
 }
 
 #[test]
-fn phase2_gate_has_explicit_minimum_frame_and_burst_bounds() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+fn default_config_has_explicit_minimum_frame_and_burst_bounds() {
+    let config = PublicationServiceConfig::DEFAULT;
     assert_eq!(config.minimum_items_per_second, 4_096);
     assert_eq!(config.minimum_bytes_per_second, 64 * 1024 * 1024);
     assert_eq!(config.target_items_per_second, 8_192);
@@ -108,7 +108,7 @@ fn publication_snapshot_separates_every_stage_and_subchunk_outcome() {
     }
     .classifier_columns();
 
-    let snapshot = stream.phase2_publication_snapshot(keys[0].chunk());
+    let snapshot = stream.publication_snapshot(keys[0].chunk());
     assert_eq!(
         snapshot.session_generation,
         stream.authority().actor_session_id()
@@ -129,8 +129,7 @@ fn publication_snapshot_separates_every_stage_and_subchunk_outcome() {
     assert!(snapshot.stages.requests_sent <= snapshot.stages.requests_constructed);
     assert_eq!(snapshot.stages.subchunks_awaiting_response, 0);
 
-    let other_dimension =
-        stream.phase2_publication_snapshot(ChunkKey::new(1, keys[0].x, keys[0].z));
+    let other_dimension = stream.publication_snapshot(ChunkKey::new(1, keys[0].x, keys[0].z));
     assert_eq!(other_dimension.required_columns, 0);
     assert_ne!(
         other_dimension.required_cohort_hash,
@@ -226,7 +225,7 @@ fn publication_distinguishes_ready_from_transport_pending_requests() {
         .unwrap();
     complete_pending_decode_jobs(&mut stream);
 
-    let ready = stream.phase2_publication_snapshot(chunk).stages;
+    let ready = stream.publication_snapshot(chunk).stages;
     assert_eq!(ready.requests_constructed, 1);
     assert_eq!(ready.requests_ready, 1);
     assert_eq!(ready.requests_transport_pending, 0);
@@ -238,7 +237,7 @@ fn publication_distinguishes_ready_from_transport_pending_requests() {
         request.base_sub_chunk_y,
         request.count,
     );
-    let pending = stream.phase2_publication_snapshot(chunk).stages;
+    let pending = stream.publication_snapshot(chunk).stages;
     assert_eq!(pending.requests_constructed, 1);
     assert_eq!(pending.requests_ready, 0);
     assert_eq!(pending.requests_transport_pending, 1);
@@ -250,7 +249,7 @@ fn publication_distinguishes_ready_from_transport_pending_requests() {
         request.count,
         Instant::now(),
     );
-    let sent = stream.phase2_publication_snapshot(chunk).stages;
+    let sent = stream.publication_snapshot(chunk).stages;
     assert_eq!(sent.requests_constructed, 1);
     assert_eq!(sent.requests_ready, 0);
     assert_eq!(sent.requests_transport_pending, 0);

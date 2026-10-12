@@ -1,6 +1,6 @@
-use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
-use crate::runtime::phase3_evidence::{Phase3EvidenceEmitter, Phase3EvidenceIdentitySource};
+use crate::runtime::movement_evidence::{MovementEvidenceEmitter, MovementEvidenceIdentitySource};
+use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
 use ::acceptance::AcceptanceRun;
 use client_runtime::network::NetworkHandle;
@@ -70,10 +70,10 @@ pub(crate) fn exit_on_fatal_runtime_error(
 
 #[cfg(feature = "acceptance")]
 #[derive(SystemParam)]
-pub(crate) struct Phase3TerminalEvidence<'w> {
+pub(crate) struct MovementTerminalEvidence<'w> {
     movement: Res<'w, MovementTicker>,
-    identity_source: Option<Res<'w, Phase3EvidenceIdentitySource>>,
-    evidence: ResMut<'w, Phase3EvidenceEmitter>,
+    identity_source: Option<Res<'w, MovementEvidenceIdentitySource>>,
+    evidence: ResMut<'w, MovementEvidenceEmitter>,
 }
 
 /// Converts terminal observations into the ordinary network stop and app-exit commands.
@@ -83,15 +83,15 @@ pub(crate) fn finish_acceptance_run(
     client_world: Res<ClientWorld>,
     mut metrics: ResMut<AppMetrics>,
     transparent_sort: Res<TransparentSortMetrics>,
-    phase3: Phase3TerminalEvidence,
+    terminal_evidence: MovementTerminalEvidence,
     mut network: ResMut<NetworkHandle<PackApplication>>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    let Phase3TerminalEvidence {
+    let MovementTerminalEvidence {
         movement,
         identity_source,
         mut evidence,
-    } = phase3;
+    } = terminal_evidence;
     let terminal = || {
         let identity = identity_source
             .as_deref()

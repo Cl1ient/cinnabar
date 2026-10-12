@@ -137,7 +137,7 @@ fn mesh() -> ChunkMesh {
 }
 
 fn upload(app: &mut App, key: SubChunkKey, generation: u64, mesh: ChunkMesh) {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let allowance = PublicationAllowance::new(config);
     allowance.begin_frame(
         generation,

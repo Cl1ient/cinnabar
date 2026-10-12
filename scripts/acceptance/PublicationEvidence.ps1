@@ -1,4 +1,4 @@
-function Assert-Phase2Evidence {
+function Assert-PublicationEvidence {
     param(
         [Parameter(Mandatory = $true)][string]$MetricsPath,
         [Parameter(Mandatory = $true)][string]$ResourcesPath,
@@ -16,40 +16,40 @@ function Assert-Phase2Evidence {
     }
     foreach ($field in $frameLimits.Keys) {
         if ($null -eq $metrics.PSObject.Properties[$field]) {
-            throw "Phase 2 metrics are missing $field"
+            throw "publication metrics are missing $field"
         }
         $value = $metrics.$field
         if ($null -eq $value -or $value -is [string] -or $value -is [bool]) {
-            throw "Phase 2 frame gate contains a nonnumeric $field"
+            throw "publication frame gate contains a nonnumeric $field"
         }
         $number = [double]$value
         if ([double]::IsNaN($number) -or [double]::IsInfinity($number) -or
             $number -lt 0.0 -or $number -gt [double]$frameLimits[$field]) {
-            throw "Phase 2 frame gate failed for $field`: $number"
+            throw "publication frame gate failed for $field`: $number"
         }
     }
     if ([double]::IsNaN($JoinMilliseconds) -or [double]::IsInfinity($JoinMilliseconds) -or
         $JoinMilliseconds -lt 0.0 -or $JoinMilliseconds -gt 2000.0) {
-        throw "Phase 2 join gate failed: $JoinMilliseconds ms"
+        throw "publication join gate failed: $JoinMilliseconds ms"
     }
     if ($RequireFullView) {
         foreach ($field in @('teleport_settle_ms', 'forced_full_view_remesh_ms')) {
             if ($null -eq $metrics.PSObject.Properties[$field] -or $null -eq $metrics.$field -or
                 [double]$metrics.$field -gt 2000.0) {
-                throw "Phase 2 full-view lifecycle gate failed for $field"
+                throw "publication full-view lifecycle gate failed for $field"
             }
         }
     }
 
     $resources = Get-Content -Raw -LiteralPath $ResourcesPath | ConvertFrom-Json
     $samples = @($resources.samples)
-    if ([string]$resources.schema -cne 'rust-mcbe-phase2-resources-v1' -or
+    if ([string]$resources.schema -cne 'rust-mcbe-publication-resources-v1' -or
         [int]$resources.warmup_seconds -ne 30 -or
         [int]$resources.duration_seconds -ne 120 -or
         [int]$resources.processor_count -le 0 -or
         $samples.Count -ne 120 -or
         [int]$resources.summary.sample_count -ne 120) {
-        throw 'Phase 2 resource evidence must contain a 30-second warmup and exactly 120 one-second samples'
+        throw 'publication resource evidence must contain a 30-second warmup and exactly 120 one-second samples'
     }
     $previous = 0.0
     $rss = [Collections.Generic.List[uint64]]::new()
@@ -58,7 +58,7 @@ function Assert-Phase2Evidence {
         $elapsed = [double]$sample.elapsed_seconds
         $delta = $elapsed - $previous
         if ($delta -lt 0.5 -or $delta -gt 1.5) {
-            throw "Phase 2 resource cadence was not one second: delta=$delta"
+            throw "publication resource cadence was not one second: delta=$delta"
         }
         $rss.Add([uint64]$sample.combined_rss_bytes)
         $cpu.Add([double]$sample.cpu_percent)
@@ -69,22 +69,22 @@ function Assert-Phase2Evidence {
     $sortedCpu = @($cpu | Sort-Object)
     $p95Cpu = [double]$sortedCpu[[Math]::Ceiling(($sortedCpu.Count - 1) * 0.95)]
     if ($maxRss -gt 650MB -or $meanCpu -gt 15.0 -or $p95Cpu -gt 15.0) {
-        throw "Phase 2 resource gate failed: rss=$maxRss mean_cpu=$meanCpu p95_cpu=$p95Cpu"
+        throw "publication resource gate failed: rss=$maxRss mean_cpu=$meanCpu p95_cpu=$p95Cpu"
     }
     if ([uint64]$resources.summary.max_combined_rss_bytes -ne $maxRss -or
         [Math]::Abs([double]$resources.summary.mean_cpu_percent - $meanCpu) -gt 0.000001 -or
         [Math]::Abs([double]$resources.summary.p95_cpu_percent - $p95Cpu) -gt 0.000001) {
-        throw 'Phase 2 resource summary does not match its samples'
+        throw 'publication resource summary does not match its samples'
     }
 
     $publicationLines = @(Get-Content -LiteralPath $ClientLogPath | Where-Object {
-        $_.StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)
+        $_.StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)
     })
     if ($publicationLines.Count -eq 0) {
-        throw 'client log contains no PHASE2_PUBLICATION evidence'
+        throw 'client log contains no CINNABAR_CHUNK_PUBLICATION evidence'
     }
-    $publication = $publicationLines[-1].Substring('PHASE2_PUBLICATION='.Length) | ConvertFrom-Json
-    Assert-Phase2PublicationRecord -Record $publication -ExpectedPresentMode $ExpectedPresentMode
+    $publication = $publicationLines[-1].Substring('CINNABAR_CHUNK_PUBLICATION='.Length) | ConvertFrom-Json
+    Assert-PublicationRecord -Record $publication -ExpectedPresentMode $ExpectedPresentMode
     $presentation = $publication.presentation
     if ([string]$presentation.build_profile -cne 'release' -or
         [string]$presentation.requested_present_mode -cne $ExpectedPresentMode.ToLowerInvariant() -or
@@ -93,12 +93,12 @@ function Assert-Phase2Evidence {
         -not [bool]$presentation.present_mode_proven -or
         [string]$presentation.graphics_identity_sha256 -notmatch '^[0-9a-f]{64}$' -or
         [string]$presentation.assets_manifest_sha256 -notmatch '^[0-9a-f]{64}$') {
-        throw 'PHASE2_PUBLICATION did not prove release build, effective present mode, graphics identity, and asset identity'
+        throw 'CINNABAR_CHUNK_PUBLICATION did not prove release build, effective present mode, graphics identity, and asset identity'
     }
     $publicationText = $publicationLines[-1].ToLowerInvariant()
     foreach ($forbidden in @('"path"', '"token"', '"auth"', '"payload"', '"credential"')) {
         if ($publicationText.Contains($forbidden)) {
-            throw "PHASE2_PUBLICATION leaked forbidden field $forbidden"
+            throw "CINNABAR_CHUNK_PUBLICATION leaked forbidden field $forbidden"
         }
     }
     return [pscustomobject][ordered]@{
@@ -109,7 +109,7 @@ function Assert-Phase2Evidence {
     }
 }
 
-function Measure-Phase2Resources {
+function Measure-PublicationResources {
     param(
         [Parameter(Mandatory = $true)]$ClientHandle,
         [Parameter(Mandatory = $true)]$CoreHandle,
@@ -127,7 +127,7 @@ function Measure-Phase2Resources {
     for ($second = 1; $second -le 150; $second++) {
         Start-Sleep -Seconds 1
         if ($client.HasExited -or $core.HasExited) {
-            throw 'client or core exited before the Phase 2 performance window completed'
+            throw 'client or core exited before the publication performance window completed'
         }
         $client.Refresh()
         $core.Refresh()
@@ -149,7 +149,7 @@ function Measure-Phase2Resources {
     $rss = @($samples | ForEach-Object { [uint64]$_.combined_rss_bytes })
     $cpu = @($samples | ForEach-Object { [double]$_.cpu_percent } | Sort-Object)
     $document = [pscustomobject][ordered]@{
-        schema = 'rust-mcbe-phase2-resources-v1'
+        schema = 'rust-mcbe-publication-resources-v1'
         warmup_seconds = 30
         duration_seconds = 120
         processor_count = [Environment]::ProcessorCount
@@ -161,6 +161,6 @@ function Measure-Phase2Resources {
             p95_cpu_percent = [double]$cpu[[Math]::Ceiling(($cpu.Count - 1) * 0.95)]
         }
     }
-    Write-Phase2Json -Path $OutputPath -Value $document
+    Write-AcceptanceJson -Path $OutputPath -Value $document
     return $document
 }

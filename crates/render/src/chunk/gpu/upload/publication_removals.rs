@@ -15,7 +15,7 @@ pub(super) fn prepare_publication_removals(
     let mut retirement_pressure = false;
     let maximum_zero_byte_operations = budget
         .max_zero_byte_operations_per_frame
-        .min(PublicationServiceConfig::PHASE2_GATE.maximum_zero_byte_operations_per_frame);
+        .min(PublicationServiceConfig::DEFAULT.maximum_zero_byte_operations_per_frame);
     let mut zero_byte_operations = 0;
     let mut physically_removed_keys = HashSet::new();
     let urgent_removal_keys = gpu_removals.urgent_keys();

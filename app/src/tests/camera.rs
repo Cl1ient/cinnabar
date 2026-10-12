@@ -22,11 +22,11 @@ use semantic_input::{
     ReleaseReason, TouchContact,
 };
 use {
-    crate::runtime::phase3_evidence::Phase3EvidenceEmitter,
-    acceptance::phase3_evidence::{
-        MAX_PHASE3_EVENT_RECORDS, MAX_PHASE3_FAULT_RECORDS, MAX_PHASE3_FRAME_RECORDS,
-        Phase3EvidenceEventKind, Phase3EvidenceFrame, Phase3EvidenceIdentity,
-        validate_phase3_build_source,
+    crate::runtime::movement_evidence::MovementEvidenceEmitter,
+    acceptance::movement_evidence::{
+        MAX_MOVEMENT_EVENT_RECORDS, MAX_MOVEMENT_FAULT_RECORDS, MAX_MOVEMENT_FRAME_RECORDS,
+        MovementEvidenceEventKind, MovementEvidenceFrame, MovementEvidenceIdentity,
+        validate_movement_build_source,
     },
 };
 use {

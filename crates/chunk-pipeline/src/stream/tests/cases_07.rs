@@ -369,17 +369,17 @@ fn publisher_identity_and_dimension_changes_reset_required_membership_epoch() {
         )
         .unwrap();
     complete_pending_decode_jobs(&mut stream);
-    let first = stream.phase2_publication_snapshot(ChunkKey::new(0, 0, 0));
+    let first = stream.publication_snapshot(ChunkKey::new(0, 0, 0));
     assert_eq!(first.publisher_epoch, 1);
     assert_eq!(first.required_columns, 1);
 
     publish(&mut stream, 3, [0, 64, 0], 128);
-    let repeated = stream.phase2_publication_snapshot(ChunkKey::new(0, 0, 0));
+    let repeated = stream.publication_snapshot(ChunkKey::new(0, 0, 0));
     assert_eq!(repeated.publisher_epoch, 1);
     assert_eq!(repeated.required_columns, 1);
 
     publish(&mut stream, 4, [16, 64, 0], 128);
-    let moved = stream.phase2_publication_snapshot(ChunkKey::new(0, 1, 0));
+    let moved = stream.publication_snapshot(ChunkKey::new(0, 1, 0));
     assert_eq!(moved.publisher_epoch, 2);
     assert_eq!(moved.required_columns, 0);
 
@@ -394,7 +394,7 @@ fn publisher_identity_and_dimension_changes_reset_required_membership_epoch() {
         )
         .unwrap();
     publish(&mut stream, 6, [0, 80, 0], 128);
-    let changed_dimension = stream.phase2_publication_snapshot(ChunkKey::new(1, 0, 0));
+    let changed_dimension = stream.publication_snapshot(ChunkKey::new(1, 0, 0));
     assert_eq!(changed_dimension.publisher_epoch, 3);
     assert_eq!(changed_dimension.required_columns, 0);
 
@@ -433,11 +433,11 @@ fn required_epoch_reports_stable_only_after_stream_work_drains() {
         .insert(ChunkKey::new(0, 0, 0));
     stream.loaded_columns.insert(ChunkKey::new(0, 0, 0));
 
-    let drained = stream.phase2_publication_snapshot(ChunkKey::new(0, 0, 0));
+    let drained = stream.publication_snapshot(ChunkKey::new(0, 0, 0));
     assert!(drained.required_cohort_stable);
 
     stream.requests.transport_pending = 1;
-    let pending = stream.phase2_publication_snapshot(ChunkKey::new(0, 0, 0));
+    let pending = stream.publication_snapshot(ChunkKey::new(0, 0, 0));
     assert!(!pending.required_cohort_stable);
 }
 
@@ -473,7 +473,7 @@ fn announcements_follow_confirmed_grid_slack_but_not_unbounded_distance() {
     complete_pending_decode_jobs(&mut stream);
     assert_eq!(
         stream
-            .phase2_publication_snapshot(ChunkKey::new(0, 0, 0))
+            .publication_snapshot(ChunkKey::new(0, 0, 0))
             .required_columns,
         0
     );
@@ -487,7 +487,7 @@ fn announcements_follow_confirmed_grid_slack_but_not_unbounded_distance() {
     complete_pending_decode_jobs(&mut stream);
     assert_eq!(
         stream
-            .phase2_publication_snapshot(ChunkKey::new(0, 0, 0))
+            .publication_snapshot(ChunkKey::new(0, 0, 0))
             .required_columns,
         1
     );

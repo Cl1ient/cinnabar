@@ -36,7 +36,7 @@ pub(super) const FRAME: Shape = Shape {
 
 const TERRAIN_SLOT_BYTES: u64 = 256 * 1024;
 const TERRAIN_TARGET_BYTES_PER_SECOND: u64 =
-    PublicationServiceConfig::PHASE2_GATE.target_bytes_per_second;
+    PublicationServiceConfig::DEFAULT.target_bytes_per_second;
 /// Terrain arena writes. A 32 blocks/s flight at 1080p and 12 chunks measured about 13.5 MB/s
 /// of terrain, arriving as bursts above 3 MiB per buffer in single frames; the 128 blocks/s
 /// streaming gate scales that to about 54 MB/s. The pool starts at three 120 Hz frames of the

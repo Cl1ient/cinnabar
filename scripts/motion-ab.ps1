@@ -14,13 +14,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'acceptance\Load.ps1')
 
-$ProjectRoot = Get-Phase2ProjectRoot -EntryPath $PSCommandPath
-Assert-Phase2Duration -DurationSeconds $DurationSeconds
+$ProjectRoot = Get-AcceptanceProjectRoot -EntryPath $PSCommandPath
+Assert-AcceptanceDuration -DurationSeconds $DurationSeconds
 if ($SkipClientBuild -and [string]::IsNullOrWhiteSpace($ClientExecutable)) {
     throw 'SkipClientBuild requires ClientExecutable'
 }
-$NativeRootFull = Resolve-Phase2ContainedPath -ProjectRoot $ProjectRoot -Path $NativeRoot -Scope Phase2
-$RunDirectory = New-Phase2RunDirectory -ProjectRoot $ProjectRoot -Kind motion -RunId $RunId
+$NativeRootFull = Resolve-AcceptanceContainedPath -ProjectRoot $ProjectRoot -Path $NativeRoot -Scope WorldAcceptance
+$RunDirectory = New-AcceptanceRunDirectory -ProjectRoot $ProjectRoot -Kind motion -RunId $RunId
 $sceneText = "$BdsDir|$Assets|$NativeRootFull|$DurationSeconds"
 $sha = [Security.Cryptography.SHA256]::Create()
 try {
@@ -39,7 +39,7 @@ $legs = @('Fifo', 'Immediate') | ForEach-Object {
     }
 }
 $manifest = [pscustomobject][ordered]@{
-    schema = 'rust-mcbe-phase2-motion-ab-v1'
+    schema = 'rust-mcbe-motion-ab-v1'
     status = if ($ValidateOnly) { 'validated' } else { 'pending' }
     scene_identity_sha256 = $sceneIdentity
     legs = @($legs)
@@ -52,9 +52,9 @@ $manifest = [pscustomobject][ordered]@{
         max_frame_ms_max = 50.0
     }
 }
-Write-Phase2Json -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
+Write-AcceptanceJson -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
 if ($ValidateOnly) {
-    Write-Output "PHASE2_MOTION_DIRECTORY=$RunDirectory"
+    Write-Output "MOTION_AB_DIRECTORY=$RunDirectory"
     return
 }
 throw 'motion A/B execution is fail-closed until both release legs prove identical scene/camera/build/adapter/driver/assets/duration/resolution identities and effective present modes'

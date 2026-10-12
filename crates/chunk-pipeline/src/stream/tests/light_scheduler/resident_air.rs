@@ -38,7 +38,7 @@ fn resident_air_publishes_removal_without_worker_credit_or_ready_light_halo() {
     assert_eq!(stream.mesh_memory.retained.load(Ordering::Acquire), 0);
     assert!(stream.mesh_jobs.in_flight.is_empty());
     assert!(stream.mesh_rx.is_empty());
-    assert_eq!(stream.stats.phase2_stages.mesh_jobs_dispatched, 0);
+    assert_eq!(stream.stats.publication_stages.mesh_jobs_dispatched, 0);
     assert!(stream.resident.contains(&key));
     assert!(!stream.known_air.contains(&key));
     assert!(Arc::ptr_eq(

@@ -301,9 +301,9 @@ impl WorldStream {
                 workers::send_result(&tx, completion);
             });
             self.stats.last_mesh_dispatch_at = Some(Instant::now());
-            self.stats.phase2_stages.mesh_jobs_dispatched = self
+            self.stats.publication_stages.mesh_jobs_dispatched = self
                 .stats
-                .phase2_stages
+                .publication_stages
                 .mesh_jobs_dispatched
                 .saturating_add(1);
             dispatched += 1;
@@ -537,9 +537,9 @@ impl WorldStream {
         #[cfg(feature = "tracy")]
         let _zone = tracing::info_span!("mesh.completion", key = ?completion.key, revision = completion.revision).entered();
         completion._job_permit.take();
-        self.stats.phase2_stages.mesh_jobs_completed = self
+        self.stats.publication_stages.mesh_jobs_completed = self
             .stats
-            .phase2_stages
+            .publication_stages
             .mesh_jobs_completed
             .saturating_add(1);
         self.stats

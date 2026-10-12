@@ -2,11 +2,18 @@ use std::time::Duration;
 
 use render_model::{VisibilityKeyDelta, VisibilityKeyDigest};
 
+pub const ACCEPTANCE_BRIDGE_ENDPOINT: &str = "CINNABAR_ACCEPTANCE_BRIDGE_ENDPOINT";
+pub const ACCEPTANCE_CORE_PROCESS_ID: &str = "CINNABAR_ACCEPTANCE_CORE_PROCESS_ID";
+pub const ACCEPTANCE_CORE_SHA256: &str = "CINNABAR_ACCEPTANCE_CORE_SHA256";
+pub const ACCEPTANCE_ENDPOINT: &str = "CINNABAR_ACCEPTANCE_ENDPOINT";
+pub const ACCEPTANCE_RUN_ID: &str = "CINNABAR_ACCEPTANCE_RUN_ID";
 pub const ACCEPTANCE_RUNTIME_METADATA: &str = "CINNABAR_ACCEPTANCE_RUNTIME_METADATA";
 pub const ANCHOR_PROBE: &str = "CINNABAR_ANCHOR_PROBE";
 pub const AUDIO_WIRE_EVIDENCE: &str = "CINNABAR_AUDIO_WIRE_EVIDENCE";
 pub const BUILD_COMMIT: &str = "CINNABAR_BUILD_COMMIT";
 pub const CAMERA_COMMITTED: &str = "CINNABAR_CAMERA_COMMITTED";
+pub const CHUNK_PUBLICATION: &str = "CINNABAR_CHUNK_PUBLICATION";
+pub const CHUNK_PUBLICATION_TIMING: &str = "CINNABAR_CHUNK_PUBLICATION_TIMING";
 pub const ERROR_COUNTERS: &str = "CINNABAR_ERROR_COUNTERS";
 pub const FAST_TRANSFER_PACKET_TRACE: &str = "CINNABAR_FAST_TRANSFER_PACKET_TRACE";
 pub const FORCED_FULL_VIEW_REMESH_SETTLED: &str = "CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED";
@@ -15,17 +22,11 @@ pub const MODEL_WITNESS_COMPLETE: &str = "CINNABAR_MODEL_WITNESS_COMPLETE";
 pub const MOVEMENT_TRACE: &str = "CINNABAR_MOVEMENT_TRACE";
 pub const MOVE_PLAYER_INGRESS: &str = "CINNABAR_MOVE_PLAYER_INGRESS";
 pub const MUTATION_COORDINATE: &str = "CINNABAR_MUTATION_COORDINATE";
-pub const PHASE3_EVENT: &str = "CINNABAR_PHASE3_EVENT";
-pub const PHASE3_FRAME: &str = "CINNABAR_PHASE3_FRAME";
-pub const PHASE3_IDENTITY: &str = "CINNABAR_PHASE3_IDENTITY";
-pub const PHASE3_TERMINAL: &str = "CINNABAR_PHASE3_TERMINAL";
-pub const PHASE3_VIOLATION: &str = "CINNABAR_PHASE3_VIOLATION";
-pub const PHASE2_TIMING: &str = "CINNABAR_PHASE2_TIMING";
-pub const PHASE3_CORE_PROCESS_ID: &str = "CINNABAR_PHASE3_CORE_PROCESS_ID";
-pub const PHASE3_CORE_SHA256: &str = "CINNABAR_PHASE3_CORE_SHA256";
-pub const PHASE3_BRIDGE_ENDPOINT: &str = "CINNABAR_PHASE3_BRIDGE_ENDPOINT";
-pub const PHASE3_ENDPOINT: &str = "CINNABAR_PHASE3_ENDPOINT";
-pub const PHASE3_RUN_ID: &str = "CINNABAR_PHASE3_RUN_ID";
+pub const MOVEMENT_EVENT: &str = "CINNABAR_MOVEMENT_EVENT";
+pub const MOVEMENT_FRAME: &str = "CINNABAR_MOVEMENT_FRAME";
+pub const MOVEMENT_IDENTITY: &str = "CINNABAR_MOVEMENT_IDENTITY";
+pub const MOVEMENT_TERMINAL: &str = "CINNABAR_MOVEMENT_TERMINAL";
+pub const MOVEMENT_VIOLATION: &str = "CINNABAR_MOVEMENT_VIOLATION";
 pub const SOURCE_DIRTY: &str = "CINNABAR_SOURCE_DIRTY";
 pub const SHUTDOWN_COMPLETED: &str = "CINNABAR_SHUTDOWN_COMPLETED";
 pub const SHUTDOWN_WATCHDOG_ARMED_MARKER: &str = "CINNABAR_SHUTDOWN_WATCHDOG_ARMED";
@@ -77,6 +78,8 @@ pub const EXPECTATIONS: &[(&str, MarkerContract)] = &[
         MarkerContract::EnvironmentVariable,
     ),
     (CAMERA_COMMITTED, MarkerContract::ParsedEvidence),
+    (CHUNK_PUBLICATION, MarkerContract::ParsedEvidence),
+    (CHUNK_PUBLICATION_TIMING, MarkerContract::ParsedEvidence),
     (ERROR_COUNTERS, MarkerContract::LogOnlyDiagnostic),
     (FAST_TRANSFER_ACTION, MarkerContract::ParsedEvidence),
     (
@@ -93,12 +96,11 @@ pub const EXPECTATIONS: &[(&str, MarkerContract)] = &[
     (MOVE_PLAYER_INGRESS, MarkerContract::ParsedEvidence),
     (MOVEMENT_TRACE, MarkerContract::EnvironmentVariable),
     (MUTATION_COORDINATE, MarkerContract::ParsedEvidence),
-    (PHASE2_TIMING, MarkerContract::ParsedEvidence),
-    (PHASE3_EVENT, MarkerContract::ParsedEvidence),
-    (PHASE3_FRAME, MarkerContract::ParsedEvidence),
-    (PHASE3_IDENTITY, MarkerContract::ParsedEvidence),
-    (PHASE3_TERMINAL, MarkerContract::ParsedEvidence),
-    (PHASE3_VIOLATION, MarkerContract::ParsedEvidence),
+    (MOVEMENT_EVENT, MarkerContract::ParsedEvidence),
+    (MOVEMENT_FRAME, MarkerContract::ParsedEvidence),
+    (MOVEMENT_IDENTITY, MarkerContract::ParsedEvidence),
+    (MOVEMENT_TERMINAL, MarkerContract::ParsedEvidence),
+    (MOVEMENT_VIOLATION, MarkerContract::ParsedEvidence),
     (SHUTDOWN_COMPLETED, MarkerContract::LogOnlyDiagnostic),
     (
         SHUTDOWN_WATCHDOG_ARMED_MARKER,
@@ -120,11 +122,17 @@ pub const EXPECTATIONS: &[(&str, MarkerContract)] = &[
     (STAGE_PROFILE_FRAMES, MarkerContract::EnvironmentVariable),
     (BUILD_COMMIT, MarkerContract::EnvironmentVariable),
     (SOURCE_DIRTY, MarkerContract::EnvironmentVariable),
-    (PHASE3_RUN_ID, MarkerContract::EnvironmentVariable),
-    (PHASE3_ENDPOINT, MarkerContract::EnvironmentVariable),
-    (PHASE3_CORE_SHA256, MarkerContract::EnvironmentVariable),
-    (PHASE3_CORE_PROCESS_ID, MarkerContract::EnvironmentVariable),
-    (PHASE3_BRIDGE_ENDPOINT, MarkerContract::EnvironmentVariable),
+    (ACCEPTANCE_RUN_ID, MarkerContract::EnvironmentVariable),
+    (ACCEPTANCE_ENDPOINT, MarkerContract::EnvironmentVariable),
+    (ACCEPTANCE_CORE_SHA256, MarkerContract::EnvironmentVariable),
+    (
+        ACCEPTANCE_CORE_PROCESS_ID,
+        MarkerContract::EnvironmentVariable,
+    ),
+    (
+        ACCEPTANCE_BRIDGE_ENDPOINT,
+        MarkerContract::EnvironmentVariable,
+    ),
     (TRANSPARENT_SORT_COMMITTED, MarkerContract::ParsedEvidence),
     (TRANSPARENT_WITNESS_COMPLETE, MarkerContract::ParsedEvidence),
     (

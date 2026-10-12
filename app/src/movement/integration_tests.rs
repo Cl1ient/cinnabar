@@ -23,7 +23,7 @@ use {
 
 use {
     crate::environment::{WeatherState, WorldClock, replace_session},
-    acceptance::{Phase3TerminalDrainDecision, TRANSPARENT_PRESENTATION_EXIT_GRACE},
+    acceptance::{MovementTerminalDrainDecision, TRANSPARENT_PRESENTATION_EXIT_GRACE},
     client_presentation::camera::CameraSettingsAuthority,
     gameplay::movement::reset_start_game_prediction,
 };
@@ -232,7 +232,7 @@ impl CollisionWorld for DeferredCollisionWorld {
     }
 }
 
-use crate::runtime::phase3_evidence::Phase3EvidenceEmitter;
+use crate::runtime::movement_evidence::MovementEvidenceEmitter;
 include!("integration_tests/basics.rs");
 include!("integration_tests/replay_retry.rs");
 include!("integration_tests/simulation.rs");

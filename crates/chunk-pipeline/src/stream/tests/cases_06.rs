@@ -616,13 +616,13 @@ fn removal_waits_for_source_authority_and_carries_its_zero_byte_permit() {
         air_network_id: 12_530,
         block_network_ids_are_hashes: false,
     });
-    let allowance = super::PublicationAllowance::new(super::PublicationServiceConfig::PHASE2_GATE);
+    let allowance = super::PublicationAllowance::new(super::PublicationServiceConfig::DEFAULT);
     allowance.begin_frame(
         1,
         0,
         0,
         0,
-        super::PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+        super::PublicationServiceConfig::DEFAULT.maximum_frame_items,
     );
     stream.set_publication_allowance(allowance.clone());
     let removed = SubChunkKey::new(0, 0, -4, 0);
@@ -636,7 +636,7 @@ fn removal_waits_for_source_authority_and_carries_its_zero_byte_permit() {
         1,
         0,
         1,
-        super::PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+        super::PublicationServiceConfig::DEFAULT.maximum_frame_items,
     );
     assert_eq!(stream.dispatch_mesh_jobs([0.0; 3], 1), 0);
     let mut changes = stream.take_mesh_changes();

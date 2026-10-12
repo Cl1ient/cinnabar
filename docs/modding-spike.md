@@ -271,7 +271,7 @@ For larger local menus, `CINNABAR_MOD_UI` selects a bounded JSON bundle, or a
 running-client registration can supply its absolute path in `ui`. The bundle has
 an initial ordinary `panel` and a `surfaces` object mapping route identifiers to
 `{ "screen": "namespace.name", "document": "..." }`. The loading worker checks
-every document and action against the shared control schema once before
+every document and action against the shared control schema before
 publication. Bundles accept up to 128 surfaces and 8 MiB of source data.
 `ModHost::set_panel_bundle` prepares the same contract for host-owned integrations.
 The registration worker and direct environment startup also call

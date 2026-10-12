@@ -4,7 +4,9 @@ use bedrock_protocol_1_26_51::enums::{
     ActorEventType, ActorType, ConnectionDisconnectFailReason, ContainerEnumName,
     ItemStackRequestActionType, LegacyTelemetryType, PhotoType, PlayStatusType,
 };
-use bedrock_protocol_1_26_51::types::{BookEditAction, ResourcePackClientResponseData};
+use bedrock_protocol_1_26_51::types::{
+    BookEditAction, EventData, ResourcePackClientResponseData, StackRequestAction,
+};
 use bedrock_protocol_1_26_51::wire::{self, Decode, Encode};
 
 fn assert_wire<T>(value: T, expected: &[u8])
@@ -145,4 +147,57 @@ fn resource_pack_client_response_selector_is_varuint32() {
         error,
         wire::DecodeError::UnknownVariant { value: 128, .. }
     ));
+}
+
+/// Education container names 35..=40 decode as named values and re-encode byte for byte.
+#[test]
+fn education_container_names_round_trip() {
+    for value in 35..=40_u8 {
+        let name = ContainerEnumName::decode_exact(&[value]).expect("named container");
+        assert!(!matches!(name, ContainerEnumName::Unknown(_)), "{value}");
+        assert_wire(name, &[value]);
+    }
+}
+
+/// The lab-table action keeps both its union selector (7) and its action type (9), and is
+/// distinct from the retail mine-block action.
+#[test]
+fn lab_table_stack_action_keeps_both_wire_tags() {
+    assert_wire(ItemStackRequestActionType::Screenlabtablecombine, &[9]);
+    assert_wire(
+        StackRequestAction::LabTableCombineActionData {
+            action_type: ItemStackRequestActionType::Screenlabtablecombine,
+        },
+        &[7, 9],
+    );
+    for truncated in [&[][..], &[7][..]] {
+        assert!(StackRequestAction::decode_exact(truncated).is_err());
+    }
+    let retail =
+        StackRequestAction::decode_exact(&[9, 11, 0, 0, 0, 0, 0, 0]).expect("mine-block action");
+    assert!(matches!(
+        retail,
+        StackRequestAction::MineBlockActionData { .. }
+    ));
+    assert_eq!(retail.encode_to_vec().unwrap(), [9, 11, 0, 0, 0, 0, 0, 0]);
+}
+
+/// Code Builder telemetry keeps its enum values and its union selectors 18 and 19.
+#[test]
+fn code_builder_telemetry_keeps_enum_and_union_selectors() {
+    assert_wire(LegacyTelemetryType::Codebuilderruntimeaction, &[52]);
+    assert_wire(LegacyTelemetryType::Codebuilderscoreboard, &[54]);
+    assert_wire(
+        EventData::CodeBuilderRuntimeAction {
+            code_builder_runtime_action: wire::Str::default(),
+        },
+        &[18, 0],
+    );
+    assert_wire(
+        EventData::CodeBuilderScoreboard {
+            objective_name: wire::Str::default(),
+            score: wire::ZigZag32(-2),
+        },
+        &[19, 0, 3],
+    );
 }

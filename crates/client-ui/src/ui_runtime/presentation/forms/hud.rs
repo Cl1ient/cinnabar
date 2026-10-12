@@ -11,20 +11,20 @@ use json_ui::{
     BossBar, CROSSHAIR_SCREEN, Catalog, DataSource, HUD_SCREEN, HudModel, HudSlot, HudTitle,
     Sidebar, Timed, hud_clocks, hud_context, hud_data_source,
 };
+use mod_ui::crosshair::CrosshairRenderer;
 use ui::{TimedText, UiNode};
 use ui_engine::{
     cached_screen::CachedScreen,
     engine::{
         ScreenArt,
+        item_renderer::ItemRenderer,
         pack_catalog::CarrierRestore,
         screen::{CustomRenderer, PaintFrame, ScreenRegistry},
     },
     text_metrics::TextMetrics,
 };
 
-use super::{
-    hud_renderers::HudRenderer, item_renderer::ItemRenderer, menu_renderers::PreviewRenderer,
-};
+use super::{hud_renderers::HudRenderer, menu_renderers::PreviewRenderer};
 use crate::ui_runtime::UiRuntime;
 use {
     super::super::{
@@ -169,7 +169,7 @@ impl UiPresentationRuntime {
                 .scoreboard
                 .refresh(runtime.scoreboards(), &self.scoreboard_owner_names)
                 .map(sidebar_model);
-            let sidebar = if self.mod_scoreboard_hidden() {
+            let sidebar = if self.screens.mod_ui.mod_scoreboard_hidden() {
                 None
             } else {
                 sidebar
@@ -183,7 +183,7 @@ impl UiPresentationRuntime {
                 &mut icons,
                 options,
             );
-            if self.mod_effect_icons_hidden() {
+            if self.screens.mod_ui.mod_effect_icons_hidden() {
                 model.effects_visible = false;
             }
             super::settings_chat::apply_hud(options, &mut model);
@@ -216,7 +216,7 @@ impl UiPresentationRuntime {
             self.hud_textures.as_ref(),
             &self.screens.chat.settings.options,
         );
-        if let Some(style) = self.mod_hunger_overlay() {
+        if let Some(style) = self.screens.mod_ui.mod_hunger_overlay() {
             paint.hunger.set_overlay(
                 style,
                 runtime.gameplay_hud().saturation(),
@@ -233,12 +233,14 @@ impl UiPresentationRuntime {
             // Inverting the same pixels twice restores the world behind the cursor.
             paint.crosshair = None;
         }
-        if self.mod_effect_icons_hidden() {
+        if self.screens.mod_ui.mod_effect_icons_hidden() {
             paint.effects.clear();
         }
-        if self.mod_hud_visible(player_runtime, runtime) {
-            paint.custom_crosshair = self.screens.mod_crosshair.clone();
-        }
+        let crosshair_spec = if self.mod_hud_visible(player_runtime, runtime) {
+            self.screens.mod_ui.mod_crosshair().cloned()
+        } else {
+            None
+        };
         let px = metrics.scale.get() * FONT_DESIGN_PIXEL_TEXELS as f32;
         let translate = |key: &str| runtime.translation(key);
         let screens = &mut self.screens.hud;
@@ -263,8 +265,16 @@ impl UiPresentationRuntime {
             view: Some(&preview_view),
             ..PreviewRenderer::default()
         };
-        let mut renderers: [&mut dyn CustomRenderer; 3] =
-            [&mut hud_renderer, &mut items, &mut preview];
+        let mut custom_crosshair = CrosshairRenderer {
+            spec: crosshair_spec.as_ref(),
+            visible: paint.crosshair.is_some(),
+        };
+        let mut renderers: [&mut dyn CustomRenderer; 4] = [
+            &mut custom_crosshair,
+            &mut hud_renderer,
+            &mut items,
+            &mut preview,
+        ];
         let screen = if crosshair {
             &mut screens.crosshair
         } else {

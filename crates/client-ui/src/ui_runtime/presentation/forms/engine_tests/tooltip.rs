@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use assets::{RuntimeUiAssets, UiAtlasPage, encode_ui_catalog};
 use json_ui::{Catalog, Draw, DrawNode, FormRender, RectOut, ResolvedControl};
-use ui::{DpiScale, SafeArea, TextLayoutCache, UiNode, UiVisual};
+use ui::{DpiScale, SafeArea, TextLayoutCache, TextShadow, UiNode, UiVisual};
 
 use serde_json::Value;
 use ui::FONT_DESIGN_PIXEL_TEXELS;

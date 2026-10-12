@@ -22,8 +22,6 @@ pub mod crosshair_settings;
 pub mod emote_screen;
 #[cfg(test)]
 mod engine_tests;
-pub mod experience;
-pub mod experience_modal;
 pub mod fallback;
 #[cfg(test)]
 mod formatting_tests;
@@ -33,7 +31,6 @@ pub mod hud_renderers;
 #[cfg(test)]
 pub mod inbox_tests;
 mod invite_screen;
-mod item_renderer;
 pub mod java_animations_setting;
 pub mod join_progress;
 #[cfg(test)]
@@ -48,12 +45,7 @@ mod menu_renderers;
 pub mod menu_screens;
 mod menu_title;
 pub mod menus;
-mod mod_crosshair;
-pub mod mod_hud;
-pub mod mod_hud_editor;
-pub mod mod_panel;
-pub mod mod_screens;
-pub mod mod_widgets;
+mod mod_surfaces;
 pub mod model;
 pub mod motion_blur_setting;
 pub mod npc;
@@ -108,7 +100,6 @@ pub mod snapshot;
 pub mod start_feed;
 #[cfg(test)]
 mod store_tests;
-mod template_screen;
 #[cfg(test)]
 pub mod tests;
 mod texture_sources;
@@ -119,14 +110,11 @@ pub mod vsync_setting;
 pub use chat_screen::{CHAT_SCREEN, ChatHit};
 pub use container_data::observe_station_block;
 pub use emote_screen::{EMOTE_EQUIP_POPUP, EMOTE_SCREEN, EmoteHit};
-pub use experience_modal::ExperienceModal;
 
 pub use loading_screen::{LOADING_SCREEN, LoadingStage};
-pub use mod_screens::ModScreensInput;
 pub use npc::NPC_SCREEN;
 pub use oreui::BedHit;
 pub use sign_editor::SIGN_SCREEN;
-pub use template_screen::ModalEdits;
 
 use super::{UiPresentationError, UiPresentationRuntime};
 use crate::ui_runtime::scene_stack::ScreenSettingsTable;
@@ -160,17 +148,9 @@ pub(super) struct ScreenStates {
     logged: Option<ServerFormIdentity>,
     /// The engine HUD's cached screens.
     hud: hud::HudScreens,
-    mod_hud: Option<mod_hud::ModHud>,
-    mod_hud_editor: Option<mod_hud_editor::HudEditor>,
-    mod_widgets: Option<mod_widgets::ModWidgets>,
-    mod_crosshair: Option<ui::mod_hud::Crosshair>,
     player_list: Option<player_list::PlayerList>,
-    mod_panel: Option<mod_panel::ModPanel>,
-    experience: Option<experience::ExperienceChrome>,
-    /// A client part's modal screen.
-    experience_modal: Option<experience_modal::ModalScreen>,
-    /// A player mod's overlay and view.
-    mod_screens: Option<mod_screens::ModScreens>,
+    /// Every mod- and experience-owned surface.
+    pub(super) mod_ui: mod_ui::ModUi,
     /// The last container screen's layout.
     container_cache: Option<containers::ScreenCache>,
     /// Immutable creative rows reused across hover and scroll frames.
@@ -372,8 +352,9 @@ impl UiPresentationRuntime {
             .engine
             .as_mut()
             .is_some_and(|engine| engine.take_server_pages().is_some());
-        let changed =
-            self.refresh_experience_modal_pages() | self.refresh_mod_screen_pages() | server;
+        let changed = self.screens.mod_ui.refresh_experience_modal_pages()
+            | self.screens.mod_ui.refresh_mod_screen_pages()
+            | server;
         // Server textures too big for a server page draw from full-resolution art.
         let set = super::menu_artwork::ArtworkSet {
             paths: self.menu_artwork_set.paths.clone(),
@@ -600,9 +581,7 @@ impl UiPresentationRuntime {
             oreui_slider_tracks,
             ..FrameProjections::default()
         };
-        if let Some(screens) = self.screens.mod_screens.as_mut() {
-            screens.begin_frame();
-        }
+        self.screens.mod_ui.begin_mod_screens_frame();
     }
 
     /// Draws the open container's engine screen.

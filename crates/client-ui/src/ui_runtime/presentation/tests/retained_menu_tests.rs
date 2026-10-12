@@ -339,13 +339,11 @@ fn retained_menu_is_invalidated_by_presentation_owned_experience_modal() {
     let mut modal = server_experience::screen::Modal::default();
     modal.open(Some("ui/fixture.json".into()));
     let files = Arc::new(server_experience::screen::Files::default());
-    presentation.set_experience_modal(Some(
-        super::super::forms::experience_modal::ExperienceModal {
-            bundle: "fixture",
-            files: &files,
-            modal: &modal,
-        },
-    ));
+    presentation.set_experience_modal(Some(mod_ui::experience_modal::ExperienceModal {
+        bundle: "fixture",
+        files: &files,
+        modal: &modal,
+    }));
     let frame = ([1280, 720], dpi.get(), presentation.safe_area);
     assert!(
         presentation.retained_menu_input(&runtime, frame).is_none(),

@@ -1,7 +1,7 @@
 use crate::ui_runtime::{
     oreui_assets::{
         OreUiImages, OreUiPage, OreUiSprite, SETTINGS_ICON_HIGHLIGHT_IMAGE,
-        load_optional_oreui_images,
+        checkout_compiled_dir, load_optional_oreui_images,
     },
     presentation::{UiPresentationRuntime, tests::fixture_font},
 };
@@ -15,7 +15,7 @@ use {
 
 #[test]
 fn installed_settings_categories_use_their_full_native_icon_cells() {
-    let Some(images) = load_optional_oreui_images() else {
+    let Some(images) = load_optional_oreui_images(&checkout_compiled_dir()) else {
         eprintln!(
             "skipping installed_settings_categories_use_their_full_native_icon_cells: installed OreUI bundle unavailable"
         );

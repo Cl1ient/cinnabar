@@ -1,5 +1,5 @@
 use crate::ui_runtime::{
-    oreui_assets::load_optional_oreui_images,
+    oreui_assets::{checkout_compiled_dir, load_optional_oreui_images},
     presentation::{UiPresentationRuntime, tests::fixture_font},
 };
 use ui::UiVisual;
@@ -45,7 +45,7 @@ fn focused_middle_play_tab_keeps_its_right_outline_above_the_next_tab() {
 
 #[test]
 fn installed_play_tabs_use_native_faces_and_keep_fixed_targets_while_pressed() {
-    let Some(images) = load_optional_oreui_images() else {
+    let Some(images) = load_optional_oreui_images(&checkout_compiled_dir()) else {
         eprintln!(
             "skipping installed_play_tabs_use_native_faces_and_keep_fixed_targets_while_pressed: installed OreUI bundle unavailable"
         );

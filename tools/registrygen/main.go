@@ -181,6 +181,7 @@ type BiomeRecord struct {
 }
 
 func main() {
+	factsOut := flag.String("facts-out", "", "export raw shared catalog facts for the Rust compiler")
 	out := flag.String("out", "", "path to write the block registry")
 	lightOut := flag.String("light-out", "", "path to write the BREG-bound block light registry")
 	lightBREG := flag.String("light-breg", "", "existing reviewed BREG1003 whose exact bytes the light registry binds")
@@ -213,6 +214,13 @@ func main() {
 	fallbackRekeyManifest := flag.String("fallback-rekey-manifest", "", "optional path to write the rekeyed source manifest")
 	refreshBindings := flag.Bool("refresh-bindings", false, "bind derived registries to the newly generated BREG")
 	flag.Parse()
+	if *factsOut != "" {
+		if err := exportCompilerFacts(*factsOut); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *fallbackRekeyIn != "" || *rekeyLegacyBREG != "" || *rekeyNewBREG != "" || *fallbackRekeyOut != "" || *fallbackRekeyManifest != "" {
 		if *fallbackRekeyIn == "" || *rekeyLegacyBREG == "" || *rekeyNewBREG == "" || *fallbackRekeyOut == "" ||
 			*out != "" || *lightOut != "" || *lightBREG != "" ||

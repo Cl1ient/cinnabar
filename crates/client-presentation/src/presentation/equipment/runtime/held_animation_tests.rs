@@ -758,7 +758,7 @@ fn installed_bow_third_person_uses_authored_texture_mesh_and_wield_pose() {
     ]
     .map(Box::from);
     let mut rig = owner_rig(&owner, &names);
-    let input = held("minecraft:bow");
+    let mut input = held("minecraft:bow");
     let expected = runtime
         .first_person_attachable(
             &body,
@@ -798,6 +798,7 @@ fn installed_bow_third_person_uses_authored_texture_mesh_and_wield_pose() {
         .get("minecraft:bow")
         .expect("the installed bow must retain its authored use duration");
     assert!(duration > 15);
+    input.main.as_mut().unwrap().use_facts.ticks = Some(duration);
     let mut stages = Vec::new();
     for (elapsed, pulling) in [(0, true), (9, true), (15, true), (duration, false)] {
         owner

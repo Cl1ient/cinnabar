@@ -84,6 +84,8 @@ func TestMain(m *testing.M) {
 // buildHelpers sets every variable that TestMain sets. Everything it writes goes below scratch,
 // except what cargo keeps in its target directories.
 func buildHelpers(ctx context.Context, scratch string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if _, err := exec.LookPath("cargo"); err != nil {
 		return fmt.Errorf("cargo is required to build experience-runtime and the probe guest: %w", err)
 	}
@@ -93,19 +95,44 @@ func buildHelpers(ctx context.Context, scratch string) error {
 		return err
 	}
 	repoRoot = root
-	runtimeBinary, err = cargoArtifact(ctx, root, "experience-runtime",
-		"build", "-p", "experience-runtime", "--locked")
-	if err != nil {
-		return err
+	// Separate build directories let the host and guest compile together. Reserve one Cargo
+	// job for the guest; a single-CPU runner admits only one build process at a time.
+	type artifact struct {
+		path string
+		err  error
 	}
-	// Like the runtime's own tests, the guest gets a target directory of its own.
+	cpus := min(runtime.NumCPU(), runtime.GOMAXPROCS(0))
+	slots := make(chan struct{}, min(cpus, 2))
+	faults := make(chan error, 1)
+	// buildArtifact reports the first build failure before canceling its sibling.
+	buildArtifact := func(target string, args ...string) artifact {
+		slots <- struct{}{}
+		defer func() { <-slots }()
+		path, err := cargoArtifact(ctx, root, target, args...)
+		if err != nil {
+			select {
+			case faults <- err:
+			default:
+			}
+			cancel()
+		}
+		return artifact{path, err}
+	}
+	host := make(chan artifact, 1)
+	go func() {
+		host <- buildArtifact("experience-runtime", "build", "-p", "experience-runtime", "--locked",
+			"--jobs", strconv.Itoa(max(cpus-1, 1)))
+	}()
 	guestTarget := filepath.Join(root, "target", "experience-guests")
-	probeWasm, err = cargoArtifact(ctx, root, "experience_probe",
+	guest := buildArtifact("experience_probe",
 		"build", "--locked", "--target", "wasm32-unknown-unknown", "-p", "experience-probe",
-		"--target-dir", guestTarget, "--config", "build.build-dir="+strconv.Quote(filepath.ToSlash(filepath.Join(guestTarget, "build"))))
-	if err != nil {
-		return err
+		"--jobs", "1", "--target-dir", guestTarget,
+		"--config", "build.build-dir="+strconv.Quote(filepath.ToSlash(filepath.Join(guestTarget, "build"))))
+	runtimeArtifact := <-host
+	if runtimeArtifact.err != nil || guest.err != nil {
+		return <-faults
 	}
+	runtimeBinary, probeWasm = runtimeArtifact.path, guest.path
 	probeDir = filepath.Join(scratch, "probe")
 	if err := assembleProbe(root, probeWasm, probeDir); err != nil {
 		return fmt.Errorf("assembling the probe artifact: %w", err)
@@ -132,6 +159,9 @@ func cargoArtifact(ctx context.Context, root, target string, args ...string) (st
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("cargo %s: %w (%v)\n%s", strings.Join(args, " "), ctx.Err(), err, stderr.Bytes())
+		}
 		return "", fmt.Errorf("cargo %s: %v\n%s", strings.Join(args, " "), err, stderr.Bytes())
 	}
 	file := ""

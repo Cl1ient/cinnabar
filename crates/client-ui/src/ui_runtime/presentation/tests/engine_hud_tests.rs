@@ -188,9 +188,9 @@ fn select_slot(player_runtime: &mut player_state::PlayerState, runtime: &mut UiR
     );
 }
 
-// The crosshair spans 15 GUI px and centres exactly on the (safe) viewport.
+// The crosshair spans 15 GUI px and stays on physical pixels near the safe viewport's center.
 #[test]
-fn crosshair_centres_exactly_across_scales_dpi_and_insets() {
+fn crosshair_aligns_to_pixels_across_scales_dpi_and_insets() {
     let mut player_runtime = player_state::PlayerState::new(1);
 
     for (physical, dpi, preference, k, safe) in [
@@ -216,7 +216,7 @@ fn crosshair_centres_exactly_across_scales_dpi_and_insets() {
     ] {
         let Some(mut presentation) = engine_presentation() else {
             eprintln!(
-                "skipping crosshair_centres_exactly_across_scales_dpi_and_insets: fixture unavailable; requires installed local carriers (make assets)"
+                "skipping crosshair_aligns_to_pixels_across_scales_dpi_and_insets: fixture unavailable; requires installed local carriers (make assets)"
             );
             return;
         };
@@ -243,13 +243,16 @@ fn crosshair_centres_exactly_across_scales_dpi_and_insets() {
             (safe.top() + (logical[1] - safe.top() - safe.bottom()) / 2.0) * dpi,
         ];
         assert!(
-            ((bounds[0] + bounds[2]) / 2.0 - centre[0]).abs() < 1e-3,
+            ((bounds[0] + bounds[2]) / 2.0 - centre[0]).abs() <= 0.5 + 1e-3,
             "{physical:?}"
         );
         assert!(
-            ((bounds[1] + bounds[3]) / 2.0 - centre[1]).abs() < 1e-3,
+            ((bounds[1] + bounds[3]) / 2.0 - centre[1]).abs() <= 0.5 + 1e-3,
             "{physical:?}"
         );
+        for edge in bounds {
+            assert!((edge - edge.round()).abs() < 1e-3, "{physical:?}");
+        }
     }
 }
 

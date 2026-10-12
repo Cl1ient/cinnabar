@@ -1194,6 +1194,8 @@ these changes do not close the movement, camera, or actor parity gates.
 ## Menu frame passes and retained memory
 
 - The HUD composites after FXAA, inside the output pass; FXAA is off with no world drawn.
+- HUD sprites use the shared nearest sampler across pack changes. Centered crosshairs snap
+  to physical pixels after positioning; larger pack textures keep their source texels.
 - The panorama draws opaque in the main pass; a static menu frame is two fullscreen passes.
 - Font pages are coverage bytes on CPU and GPU; the transparent ref buffer grows on demand;
   JSON-UI caches evict least recently used entries.

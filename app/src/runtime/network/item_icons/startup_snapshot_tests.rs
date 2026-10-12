@@ -17,7 +17,7 @@ const IDENTIFIER: &str = "fixture:custom_sword";
 const ICON: &str = "plutonium_sword";
 const NETWORK_ID: i16 = 5;
 const PLAYER_ID: u64 = 42;
-const VIEWPORT: [u32; 2] = [1280, 720];
+const VIEWPORT: [u32; 2] = [800, 600];
 
 #[test]
 fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
@@ -153,7 +153,17 @@ fn hotbar_carrier() -> Arc<RuntimeUiAssets> {
         }
     })).collect::<Vec<_>>();
     let hud = json!({"namespace":"hud", "hud_screen": {
-        "type":"screen", "controls":[{"fixture_bar": {
+        "type":"screen", "controls":[{"fixture_item_closeup": {
+            "type":"panel", "size":[120,120],
+            "anchor_from":"center", "anchor_to":"center", "offset":[0,-20],
+            "collection_name":"hotbar_items", "collection_index":0,
+            "controls":[
+                {"background":{"type":"custom", "renderer":"hotbar_renderer", "size":[120,120], "collection_index":0}},
+                {"icon":{"type":"custom", "renderer":"inventory_item_renderer", "size":[112,112], "collection_index":0,
+                    "anchor_from":"top_left", "anchor_to":"top_left", "offset":[4,4], "layer":1,
+                    "bindings":[{"binding_type":"collection", "binding_collection_name":"hotbar_items", "binding_name":"#item_renderer_data"}]}}
+            ]
+        }}, {"fixture_bar": {
             "type":"panel", "size":[182,22], "offset":[0,-12],
             "anchor_from":"bottom_middle", "anchor_to":"bottom_middle",
             "collection_name":"hotbar_items", "controls":controls

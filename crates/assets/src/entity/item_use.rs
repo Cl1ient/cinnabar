@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::OnceLock};
 
+/// Compatibility maximum duration shared by long-held weapon actions and animation.
+pub const LONG_WEAPON_USE_TICKS: u32 = 72_000;
+
 /// Compatibility crossbow charge before stack enchantments are applied.
 pub const CROSSBOW_CHARGE_TICKS: u32 = 25;
 /// Charge reduction for one admitted Quick Charge enchantment level.

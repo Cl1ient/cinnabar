@@ -1,6 +1,3 @@
-/// Compatibility maximum duration shared by long-held weapon actions and animation.
-pub const LONG_WEAPON_USE_TICKS: u32 = 72_000;
-
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,

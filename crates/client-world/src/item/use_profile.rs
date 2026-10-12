@@ -77,7 +77,7 @@ pub fn resolve_item_use(
         kind: Some(*kind),
         ticks: match duration {
             ItemUseDurationRule::Declared => declared_ticks,
-            ItemUseDurationRule::LongWeapon => Some(protocol::LONG_WEAPON_USE_TICKS),
+            ItemUseDurationRule::LongWeapon => Some(assets::item_use::LONG_WEAPON_USE_TICKS),
             ItemUseDurationRule::Fixed(ticks) => Some(*ticks),
             ItemUseDurationRule::Crossbow => Some(assets::item_use::CROSSBOW_CHARGE_TICKS),
         },

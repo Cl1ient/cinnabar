@@ -1,8 +1,8 @@
 //! Item-state projection shared by gameplay and UI.
 
-use assets::item_use::{ItemProjectileRole, ItemUseAnimation};
 #[cfg(test)]
-use protocol::LONG_WEAPON_USE_TICKS;
+use assets::item_use::LONG_WEAPON_USE_TICKS;
+use assets::item_use::{ItemProjectileRole, ItemUseAnimation};
 
 /// The main-hand bow frame follows draw power while its use counter remains nonzero.
 /// Other items keep frame zero; crossbows use their separate projectile-aware rule.

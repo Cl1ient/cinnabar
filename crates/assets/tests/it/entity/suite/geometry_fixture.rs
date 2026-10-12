@@ -22,6 +22,7 @@ pub(super) fn geometry_fixture() -> CompiledEntityAssets {
     compiled.symbols = vec![
         compiled.symbols[0].clone(),
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: "geometry.allay".into(),
             source_index: 1,

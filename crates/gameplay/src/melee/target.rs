@@ -62,7 +62,7 @@ where
     }
     let direction = direction.map(|axis| f64::from(axis) / length);
     actors
-        .filter(|actor| Some(actor.unique_id) != excluded_unique_id && pickable(actor))
+        .filter(|actor| Some(actor.unique_id) != excluded_unique_id && actor_is_pickable(actor))
         .filter_map(|actor| {
             let distance = hit_boxes(actor).into_iter().find_map(|(min, max)| {
                 let min = min.map(|axis| f64::from(axis) - ACTOR_PICK_RADIUS);
@@ -85,7 +85,8 @@ pub fn obstructs_placement(actor: &ActorSnapshot) -> bool {
 }
 
 /// Only actors with selectable collision boxes can consume the crosshair.
-fn pickable(actor: &ActorSnapshot) -> bool {
+/// Whether native attack picking admits this actor class and metadata.
+pub fn actor_is_pickable(actor: &ActorSnapshot) -> bool {
     match &actor.kind {
         protocol::ActorKind::Player { .. } => true,
         protocol::ActorKind::Entity { .. } => actor.interaction_traits.pickable() == Some(true),

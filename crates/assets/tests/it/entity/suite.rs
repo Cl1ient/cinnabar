@@ -41,6 +41,7 @@ pub(super) fn fixture() -> CompiledEntityAssets {
         }]
         .into_boxed_slice(),
         symbols: vec![EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Entity,
             identifier: "minecraft:allay".into(),
             source_index: 0,
@@ -103,6 +104,7 @@ pub(super) fn inherited_geometry_fixture() -> CompiledEntityAssets {
         compiled.symbols[0].clone(),
         compiled.symbols[1].clone(),
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: "geometry.derived".into(),
             source_index: 2,
@@ -294,6 +296,7 @@ fn duplicate_symbol_lookup_returns_every_source_candidate() {
     compiled.symbols = vec![
         compiled.symbols[0].clone(),
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Entity,
             identifier: "minecraft:allay".into(),
             source_index: 1,
@@ -328,6 +331,7 @@ fn carrier_rejects_dependency_resolution_that_disagrees_with_catalog() {
     compiled.symbols = vec![
         compiled.symbols[0].clone(),
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: "geometry.allay".into(),
             source_index: 1,
@@ -444,6 +448,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
     .into_iter()
     .map(
         |(kind, identifier, source_index)| entity::EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind,
             identifier: identifier.into(),
             source_index,
@@ -617,6 +622,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         }]
         .into_boxed_slice(),
         item_visuals: vec![ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,

@@ -545,6 +545,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     {
         diagnostics::log_stderr!("OreUI originals disabled ({reason})");
     }
+    let food_catalog = equipment_catalog.clone();
     ui_presentation.set_equipment_catalog(equipment_catalog);
     ui_presentation
         .set_gui_models(&loaded_assets.runtime, &entity_runtime)
@@ -766,6 +767,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     .insert_resource({
         let mut ui_runtime = UiRuntime::new(0);
         ui_runtime.set_item_fuel_catalog(Arc::clone(&entity_runtime));
+        ui_runtime.set_food_catalog(food_catalog);
         if let Some(address) = &args.address {
             ui_runtime.experiences.select_destination(address);
         }

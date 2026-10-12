@@ -257,6 +257,12 @@ and dynamic expansion are rejected. The whole panel is capped at 128 KiB; its
 document at 96 KiB, 1,024 nodes and depth 32.
 Bindings update without rebuilding unchanged catalog geometry.
 
+`cinnabar_rounded_rectangle` nodes take `radius` (GUI pixels, default 6) and `color`.
+Optional `color2` fades the fill linearly from `color` along `gradient_direction`
+(`vertical`, the default, or `horizontal`). Optional `border_color` draws an inside
+border `border_width` GUI pixels wide (default 1). The fill stops at the border, so
+translucent fills never mix with it.
+
 Personal-panel surfaces support JSON-UI scroll views, including wheel input, track
 presses and scrollbar-box dragging. Wheel input stays within the view under the
 pointer; closing the panel or losing focus releases scrollbar capture. Changes
@@ -716,6 +722,11 @@ Each card edge and its center can align to a guide, including placement directly
 above or below the horizontal center line. Optional `reset_anchor`, `reset_offset`,
 and `reset_scale` supply factory layout without changing the current preview.
 These fields affect only the layout editor.
+Optional `editor_style` recolors the host-owned chrome: `outline` and `selected`
+card outlines, resize `handle`, `handle_hover` and `handle_pressed` colors, the
+`handle_radius` of the five-pixel handle mark (0–4), alignment `guide`, and the
+built-in `grid`. Colors are RGBA from zero to one; omitted fields keep the
+built-in appearance.
 
 The editor captures native pointer dragging, clamps cards to the available
 viewport, supports one-pixel arrow nudges, and offers optional eight-GUI-pixel

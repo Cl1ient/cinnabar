@@ -3,7 +3,12 @@ use assets::{BlockVisualId, CompiledAssets, RegistryRecord};
 use std::fs;
 
 /// Compiles real barrel selectors with original opaque sprite artwork for held-consumer checks.
-fn barrels() -> (CompiledAssets, Vec<RegistryRecord>) {
+pub(crate) fn barrels() -> (CompiledAssets, Vec<RegistryRecord>) {
+    barrels_with_size(assets::TILE_SIZE)
+}
+
+/// Compiles original sprites at the requested source resolution.
+pub(crate) fn barrels_with_size(side: u32) -> (CompiledAssets, Vec<RegistryRecord>) {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
     fs::create_dir_all(root.join("biomes")).unwrap();
@@ -22,8 +27,8 @@ fn barrels() -> (CompiledAssets, Vec<RegistryRecord>) {
     )
     .unwrap();
     fs::write(root.join("textures/flipbook_textures.json"), "[]").unwrap();
-    image::RgbaImage::from_fn(assets::TILE_SIZE, assets::TILE_SIZE, |x, y| {
-        image::Rgba([20, x as u8 * 12, y as u8 * 12, 255])
+    image::RgbaImage::from_fn(side, side, |x, y| {
+        image::Rgba([20, (x * 192 / side) as u8, (y * 192 / side) as u8, 255])
     })
     .save(root.join("textures/art.png"))
     .unwrap();

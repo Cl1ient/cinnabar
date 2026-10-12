@@ -14,7 +14,7 @@ const TILE_COLUMNS: usize = assets::BLOCK_ITEM_SHEET_GRID[0] as usize;
 
 #[cfg(test)]
 #[path = "cube_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 /// The existing held-cube transport pose, shared by cube and validated cube-model geometry.
 fn opaque_cube_pose() -> Mat4 {

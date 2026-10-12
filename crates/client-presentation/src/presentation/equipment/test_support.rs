@@ -49,10 +49,10 @@ pub fn render_first_person_session_item(items: &SessionItems, item: &WornItem) -
         ActorArtworkPages::default(),
     );
     let staged = StagedSessionIcons::stage(Some(items));
-    let (pages, locations) = staged.as_ref().map_or_else(
-        || (pages.clone(), Vec::new()),
-        |icons| pages.with_equipment_rasters(icons.rasters()),
-    );
+    let (pages, locations) = match &staged {
+        Some(icons) => pages.with_equipment_rasters(icons.rasters()),
+        None => (pages, Vec::new()),
+    };
     runtime.set_session_items(Some(items), staged, locations);
     let body = fixture_body(&mut runtime);
     let mut target = Target {

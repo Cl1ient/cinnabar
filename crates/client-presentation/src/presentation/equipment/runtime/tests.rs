@@ -45,44 +45,48 @@ fn unchanged_authored_pose_sampling_allocates_nothing_and_keeps_matrix_identity(
 /// The cube sheet is injected after atlas construction: these tests cover placement and
 /// routing, not block-carrier admission (which has separate asset tests).
 fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
-    let entities = RuntimeEntityAssets::from_compiled(assets::CompiledEntityAssets {
-        source_manifest_sha256: [1; 32],
-        block_visual_count: 8,
-        sources: vec![assets::EntityAssetSource {
-            path: "entity/fixture.entity.json".into(),
-            source_bytes: 2,
-            source_sha256: Sha256::digest(b"{}").into(),
-        }]
-        .into(),
-        symbols: vec![assets::EntityAssetSymbol {
-            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
-            kind: assets::EntityAssetKind::Entity,
-            identifier: "test:fixture".into(),
-            source_index: 0,
-            dependencies: Box::new([]),
-        }]
-        .into(),
-        geometries: Box::new([]),
-        animation_clips: Box::new([]),
-        animation_channels: Box::new([]),
-        animation_keyframes: Box::new([]),
-        molang_symbols: Box::new([]),
-        molang_expressions: Box::new([]),
-        molang_ops: Box::new([]),
-        molang_collections: Box::new([]),
-        molang_collection_items: Box::new([]),
-        controllers: Box::new([]),
-        controller_states: Box::new([]),
-        controller_animations: Box::new([]),
-        controller_transitions: Box::new([]),
-        rig_bindings: Box::new([]),
-        rig_geometries: Box::new([]),
-        rig_animations: Box::new([]),
-        rig_controllers: Box::new([]),
-        item_visuals: Box::new([]),
-        item_visual_aliases: Box::new([]),
-        render: Default::default(),
-    })
+    let entities = RuntimeEntityAssets::from_compiled(
+        assets::CompiledEntityAssets {
+            seat_layouts: Box::new([]),
+            source_manifest_sha256: [1; 32],
+            block_visual_count: 8,
+            sources: vec![assets::EntityAssetSource {
+                path: "entity/fixture.entity.json".into(),
+                source_bytes: 2,
+                source_sha256: Sha256::digest(b"{}").into(),
+            }]
+            .into(),
+            symbols: vec![assets::EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
+                kind: assets::EntityAssetKind::Entity,
+                identifier: "test:fixture".into(),
+                source_index: 0,
+                dependencies: Box::new([]),
+            }]
+            .into(),
+            geometries: Box::new([]),
+            animation_clips: Box::new([]),
+            animation_channels: Box::new([]),
+            animation_keyframes: Box::new([]),
+            molang_symbols: Box::new([]),
+            molang_expressions: Box::new([]),
+            molang_ops: Box::new([]),
+            molang_collections: Box::new([]),
+            molang_collection_items: Box::new([]),
+            controllers: Box::new([]),
+            controller_states: Box::new([]),
+            controller_animations: Box::new([]),
+            controller_transitions: Box::new([]),
+            rig_bindings: Box::new([]),
+            rig_geometries: Box::new([]),
+            rig_animations: Box::new([]),
+            rig_controllers: Box::new([]),
+            item_visuals: Box::new([]),
+            item_visual_aliases: Box::new([]),
+            render: Default::default(),
+        }
+        .with_unresolved_seats(),
+    )
     .unwrap();
     let icons =
         RuntimeIconCatalog::decode(&assets::encode_icon_catalog([1; 32], &[], &[]).unwrap())

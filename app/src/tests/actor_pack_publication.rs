@@ -183,6 +183,7 @@ fn with_equipment_geometry(
         rig_controllers: entities.rig_controllers().into(),
         item_visuals: entities.item_visuals().into(),
         item_visual_aliases: entities.item_visual_aliases().into(),
+        seat_layouts: entities.seat_layouts().into(),
         render: entities.render_data().clone(),
     };
     for clip in &mut compiled.animation_clips {

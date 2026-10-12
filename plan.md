@@ -82,6 +82,15 @@ memory discovery belongs to `launcher-host`. Existing menu and integration tests
 remain enabled in their owning crates. Compilation, execution and live behavior
 remain unverified for these moves; they do not close a parity gate.
 
+## Bevy-free client UI
+
+`client-ui` has no Bevy dependency. It reads `semantic-input` keyboard keys and wheel units,
+`glam` math, `tracing` logs and a camera eye position. `client-shell` owns the ECS wrappers
+for UI authority and presentation, and maps Bevy device codes to semantic keys and HID usages.
+`app` owns gameplay cursor capture, FOV input collection, screen input suppression and the
+prepared publication resource. `client-presentation` borrows UI state from those app systems.
+This move has not been compiled or executed and closes no parity gate.
+
 ## Extension crate ownership
 
 `client-extensions` owns local component loading and load-order merging, environment
@@ -7768,6 +7777,8 @@ state map does not establish independent survival. Missing targets, unsupported
 custom states and unresolved support defer prediction to the server. Full native
 placement, replacement, mutable component and neighbor behavior acceptance remains
 open. The legacy pure JSON behavior matrices are test oracles only.
+
+Compiled seat descriptors are incomplete. Every independently collected entity has a seat admission, including unresolved definitions. Authored base layouts, bounded rider counts, literal rotations and Molang rotation references are compiled before runtime; component-group names no longer select layouts. Actual group activation and rotation-expression evaluation remain unresolved, so those layouts retain streamed poses. Passenger ordering, mutable rideable components, session behavior overlays and complete native layout coverage remain open. Static count selection preserves the existing compatibility order and is provisional.
 
 ## Held-item grip admission (incomplete parity)
 

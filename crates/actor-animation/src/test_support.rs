@@ -3,7 +3,8 @@ use super::*;
 use assets::*;
 use render_api::SkinGeometrySource;
 
-fn scalar(value: f32) -> EntityGeometryScalar {
+/// Build a bounded scalar for synthetic animation fixtures.
+pub(crate) fn scalar(value: f32) -> EntityGeometryScalar {
     EntityGeometryScalar::new(value).unwrap()
 }
 
@@ -63,6 +64,7 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
     .collect::<Vec<_>>()
     .into_boxed_slice();
     CompiledEntityAssets {
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 1,
         sources,

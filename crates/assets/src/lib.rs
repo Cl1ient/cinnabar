@@ -33,7 +33,7 @@ mod fsb;
 mod glyph_sheet;
 pub mod gui_item;
 mod hud;
-mod hud_extras;
+pub mod hud_extras;
 mod icon;
 pub mod item;
 mod lang;
@@ -161,7 +161,7 @@ pub use entity::{
     bind_molang_queries, encode_entity_blob, entity_render_pattern_matches, molang_call,
     molang_program_stack, validate_entity_geometry_inheritance,
 };
-pub use entity::{PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE};
+pub use entity::{PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE, seats as entity_seats};
 pub use environment_settings::{CloudQuality, EnvironmentQualitySettings, PrecipitationQuality};
 pub use equipment::{
     ArmorSlot, AttachablePose, AttachablePoseBone, CompiledItemAttackCooldown,
@@ -196,9 +196,6 @@ pub use hud::{
     HudCatalogError, HudTexture, HudTextureRole, MAX_HUD_TEXTURE_BYTES, RuntimeHudCatalog,
     encode_hud_catalog,
 };
-pub use hud_extras::{HUD_EXTRA_SIDE, HUD_EXTRAS_MAGIC, HUD_EXTRAS_VERSION, MAX_HUD_EXTRAS_BYTES};
-pub use hud_extras::{HudExtraRole, HudExtras, HudExtrasError};
-pub use hud_extras::{decode_hud_extras, encode_hud_extras};
 pub use icon::{
     BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE, ICON_CARRIER_MAGIC,
     ICON_CARRIER_VERSION, IconBlockModel, IconBlockSheet, IconEntry, IconSprite,

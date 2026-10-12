@@ -12,7 +12,13 @@ fn manifest() -> [u8; 32] {
 
 /// An entity carrier with one source; `seed` varies its identity.
 pub fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
-    crate::encode_entity_blob(&CompiledEntityAssets {
+    crate::encode_entity_blob(&synthetic_entity_assets(seed)).unwrap()
+}
+
+/// Gives original tests a checked-carrier fixture before changing its authored descriptors.
+pub fn synthetic_entity_assets(seed: u8) -> CompiledEntityAssets {
+    CompiledEntityAssets {
+        seat_layouts: Box::new([]),
         source_manifest_sha256: manifest(),
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -49,8 +55,8 @@ pub fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
         item_visuals: Box::new([]),
         item_visual_aliases: Box::new([]),
         render: Default::default(),
-    })
-    .unwrap()
+    }
+    .with_unresolved_seats()
 }
 
 /// An atmosphere carrier with flat sun, moon and cloud textures.

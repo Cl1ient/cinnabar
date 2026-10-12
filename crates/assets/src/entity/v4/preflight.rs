@@ -23,6 +23,7 @@ struct EntityCatalogCountProbe {
     #[serde(rename = "block_visual_count")]
     _block_visual_count: de::IgnoredAny,
     sources: SequenceCount,
+    seat_layouts: SequenceCount,
     symbols: SymbolSequenceCount,
     geometries: GeometrySequenceCount,
     animation_clips: SequenceCount,
@@ -296,6 +297,7 @@ pub(crate) fn payload_counts(bytes: &[u8]) -> Result<[usize; 7], serde_json::Err
     let bounded = [
         (counts.sources.0, MAX_ENTITY_ASSET_SOURCES),
         (counts.symbols.0, MAX_ENTITY_ASSET_SYMBOLS),
+        (counts.seat_layouts.0, MAX_ENTITY_ASSET_SYMBOLS),
         (counts.geometries.0, MAX_ENTITY_GEOMETRIES),
         (counts.animation_clips.0, MAX_ENTITY_ANIMATION_CLIPS),
         (counts.animation_channels.0, MAX_ENTITY_ANIMATION_CHANNELS),

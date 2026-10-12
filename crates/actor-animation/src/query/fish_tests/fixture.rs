@@ -80,6 +80,7 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
     .collect::<Vec<_>>()
     .into_boxed_slice();
     let compiled = CompiledEntityAssets {
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 1,
         sources,
@@ -132,6 +133,7 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
         item_visuals: Box::new([]),
         item_visual_aliases: Box::new([]),
         render: EntityRenderData::default(),
-    };
+    }
+    .with_unresolved_seats();
     Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap())
 }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::pose::quat_from_euler;
+use crate::test_support::scalar;
 use assets::*;
 
 fn fixture() -> Arc<RuntimeEntityAssets> {

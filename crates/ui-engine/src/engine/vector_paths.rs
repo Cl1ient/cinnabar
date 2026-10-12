@@ -1,0 +1,125 @@
+//! Bounded, cached coverage meshes for caller-authored vector silhouettes and strokes.
+
+use std::{cell::RefCell, collections::BTreeMap, collections::HashMap, mem::size_of, sync::Arc};
+
+use serde_json::Value;
+use ui::{UiMesh, UiMeshVertex, UiVisual};
+
+use super::Canvas;
+
+mod coverage;
+mod parse;
+mod raster;
+use parse::{Path, parse};
+use raster::mesh;
+
+const MAX_CONTOURS: usize = 64;
+const MAX_POINTS: usize = 2048;
+const MAX_GRID_CELLS: usize = 256;
+const MAX_COVERAGE_WORK: usize = 8_000_000;
+const MAX_MESH_INDICES: usize = 32_768;
+const MAX_CACHED_PATHS: usize = 128;
+const MAX_CACHED_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Eq, Hash, PartialEq)]
+struct Key {
+    path: Path,
+    size: [u32; 2],
+    dpi: u32,
+    page: u16,
+    color: [u8; 4],
+}
+
+struct Entry {
+    used: u64,
+    bytes: usize,
+    mesh: Arc<UiMesh>,
+}
+
+#[derive(Default)]
+struct Cache {
+    entries: HashMap<Key, Entry>,
+    bytes: usize,
+    clock: u64,
+}
+
+impl Cache {
+    /// Retains hot meshes while bounding both entry count and total authored geometry bytes.
+    fn get_or_create(&mut self, key: Key) -> Option<Arc<UiMesh>> {
+        self.clock = self.clock.saturating_add(1);
+        if let Some(entry) = self.entries.get_mut(&key) {
+            entry.used = self.clock;
+            return Some(Arc::clone(&entry.mesh));
+        }
+        let mesh = Arc::new(mesh(&key)?);
+        let bytes = mesh.vertices().len() * size_of::<UiMeshVertex>()
+            + mesh.indices().len() * size_of::<u32>()
+            + key
+                .path
+                .contours
+                .iter()
+                .map(|path| path.len() * size_of::<[u32; 2]>())
+                .sum::<usize>();
+        if bytes > MAX_CACHED_BYTES {
+            return Some(mesh);
+        }
+        while self.entries.len() >= MAX_CACHED_PATHS || self.bytes + bytes > MAX_CACHED_BYTES {
+            let oldest = self.entries.iter().min_by_key(|(_, entry)| entry.used)?.0;
+            let oldest = Key {
+                path: oldest.path.clone(),
+                size: oldest.size,
+                dpi: oldest.dpi,
+                page: oldest.page,
+                color: oldest.color,
+            };
+            self.bytes -= self.entries.remove(&oldest)?.bytes;
+        }
+        self.bytes += bytes;
+        self.entries.insert(
+            key,
+            Entry {
+                used: self.clock,
+                bytes,
+                mesh: Arc::clone(&mesh),
+            },
+        );
+        Some(mesh)
+    }
+}
+
+thread_local! { static CACHE: RefCell<Cache> = RefCell::default(); }
+
+impl Canvas<'_> {
+    /// Draws finite authored contours with even-odd fills or a union of rounded strokes.
+    pub(super) fn vector_path(
+        &self,
+        data: &BTreeMap<String, Value>,
+        dest: [f32; 4],
+        alpha: &dyn Fn([u8; 4]) -> [u8; 4],
+    ) -> Option<UiVisual> {
+        let size = [dest[2] - dest[0], dest[3] - dest[1]];
+        if size.iter().any(|value| !value.is_finite() || *value <= 0.0) {
+            return None;
+        }
+        let color = data
+            .get("#color")
+            .or_else(|| data.get("color"))
+            .and_then(json_ui::color_value)
+            .unwrap_or([255; 4]);
+        let color = alpha(color);
+        if color[3] == 0 {
+            return None;
+        }
+        let key = Key {
+            path: parse(data)?,
+            size: size.map(f32::to_bits),
+            dpi: self.metrics.dpi_scale.get().to_bits(),
+            page: self.solid_page,
+            color,
+        };
+        CACHE.with(|cache| cache.borrow_mut().get_or_create(key).map(UiVisual::Mesh))
+    }
+}
+
+#[cfg(test)]
+mod tests;

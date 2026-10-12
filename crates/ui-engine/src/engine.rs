@@ -33,6 +33,7 @@ pub mod screen_cache;
 mod sprites;
 pub mod text_paint;
 mod vector_icons;
+mod vector_paths;
 use crate::atlas::ServerAtlas;
 use crate::frame::EngineFrame;
 use crate::sources::{ImageWork, RemoteSource};
@@ -630,6 +631,9 @@ impl Canvas<'_> {
         let drawn = match node.renderer {
             "cinnabar_vector_icon" => self
                 .vector_icon(data, dest, &alpha)
+                .map(|visual| (visual, dest)),
+            "cinnabar_vector_path" => self
+                .vector_path(data, dest, &alpha)
                 .map(|visual| (visual, dest)),
             "cinnabar_rounded_rectangle" => self
                 .rounded_rectangle(data, dest, &alpha)

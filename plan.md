@@ -82,6 +82,15 @@ memory discovery belongs to `launcher-host`. Existing menu and integration tests
 remain enabled in their owning crates. Compilation, execution and live behavior
 remain unverified for these moves; they do not close a parity gate.
 
+## Bevy-free client UI
+
+`client-ui` has no Bevy dependency. It reads `semantic-input` keyboard keys and wheel units,
+`glam` math, `tracing` logs and a camera eye position. `client-shell` owns the ECS wrappers
+for UI authority and presentation, and maps Bevy device codes to semantic keys and HID usages.
+`app` owns gameplay cursor capture, FOV input collection, screen input suppression and the
+prepared publication resource. `client-presentation` borrows UI state from those app systems.
+This move has not been compiled or executed and closes no parity gate.
+
 ## Extension crate ownership
 
 `client-extensions` owns local component loading and load-order merging, environment
@@ -7722,7 +7731,7 @@ replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
 fallback drawing, pointer handling and quick-move routing. Active equippable
 components, accepted items, conditional activation, advertised custom bases and
 later mount layouts remain incomplete and do not close the entity parity gate.
-Entity carrier 19 requires a `make assets` rebuild.
+Entity carrier 18 requires a `make assets` rebuild.
 
 ### Compiled furnace fuel admission (incomplete)
 
@@ -7771,7 +7780,7 @@ Effective item durability is shared through required entity-carrier descriptors 
 
 ## Held-item grip admission (incomplete parity)
 
-Item grip facts are compiled into entity carrier 19, checked against the separate
+Item grip facts are compiled into entity carrier 18, checked against the separate
 retail identity inventory and copied through numeric item admission into equipment
 input. Unknown names cannot borrow a tool grip. Explicit session flags, including
 false, replace the compiled upright choice. The existing built-in grip and rod-art

@@ -968,7 +968,6 @@ mod audio_events;
 #[path = "tests/camera_events.rs"]
 mod camera_events;
 mod cases_01;
-mod entity_occlusion;
 mod cases_02;
 mod cases_03;
 mod cases_04;
@@ -981,6 +980,7 @@ mod cases_10;
 mod cases_11;
 mod cases_12;
 mod cohort_progress;
+mod entity_occlusion;
 mod forced_remesh;
 mod inbound_lanes;
 mod inline_cohort;

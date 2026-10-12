@@ -23,12 +23,18 @@ pub fn rebuild_runs(runs: &mut Vec<DrawRun>, vertices: &[BlockEntityVertex]) {
         let mut high = [f32::NEG_INFINITY; 3];
         for vertex in vertices {
             for axis in 0..3 {
-                if !vertex.position[axis].is_finite() {
+                // Overlay shaders can lift either side of a face toward the camera.
+                let padding = if vertex.actor_light == 0 {
+                    vertex.normal[axis].abs() * render_api::BLOCK_OVERLAY_FACE_OFFSET
+                } else {
+                    0.0
+                };
+                if !vertex.position[axis].is_finite() || !padding.is_finite() {
                     low[axis] = f32::NAN;
                     high[axis] = f32::NAN;
                 } else if !low[axis].is_nan() {
-                    low[axis] = low[axis].min(vertex.position[axis]);
-                    high[axis] = high[axis].max(vertex.position[axis]);
+                    low[axis] = low[axis].min(vertex.position[axis] - padding);
+                    high[axis] = high[axis].max(vertex.position[axis] + padding);
                 }
             }
         }
@@ -65,6 +71,21 @@ pub fn visible_ranges(runs: &[DrawRun], matrix: Mat4) -> impl Iterator<Item = Ra
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn overlay_lift_can_reach_the_view_even_when_the_authored_plane_is_outside() {
+        let mut vertex = BlockEntityVertex {
+            position: [1.0 + render_api::BLOCK_OVERLAY_FACE_OFFSET * 0.5, 0.0, 0.5],
+            normal: [1.0, 0.0, 0.0],
+            ..Default::default()
+        };
+        let mut runs = Vec::new();
+        rebuild_runs(&mut runs, &[vertex]);
+        assert_eq!(visible_ranges(&runs, Mat4::IDENTITY).count(), 1);
+        vertex.normal = [f32::NAN; 3];
+        rebuild_runs(&mut runs, &[vertex]);
+        assert_eq!(visible_ranges(&runs, Mat4::IDENTITY).count(), 1);
+    }
 
     #[test]
     fn rotations_cull_retained_runs_without_rebuilding_vertices() {

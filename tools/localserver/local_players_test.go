@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"path/filepath"
 	"testing"
 
@@ -16,6 +18,21 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/google/uuid"
 )
+
+func TestOpaqueOverdrawKeepsPlayerProviderFallback(t *testing.T) {
+	cfg := settings{
+		dir: t.TempDir(), addr: "127.0.0.1:0",
+		gameMode: "creative", diff: "normal", opaqueOverdraw: true,
+	}
+	conf, err := cfg.userConfig().Config(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.configureLocalPlayers(&conf)
+	if conf.PlayerProvider != nil {
+		t.Fatalf("disabled player storage must keep Dragonfly's no-op fallback, got %T", conf.PlayerProvider)
+	}
+}
 
 func TestEditedGameModeRestoresHostAndRoundTripsPlayerData(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "players")

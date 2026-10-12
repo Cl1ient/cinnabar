@@ -25,7 +25,11 @@ func (p localPlayerProvider) Load(id uuid.UUID, lookup func(world.Dimension) *wo
 }
 
 // configureLocalPlayers makes the selected world mode apply to returning local hosts too.
+// Nil storage stays unset so Dragonfly can install its no-op provider.
 func (s settings) configureLocalPlayers(conf *server.Config) {
+	if conf.PlayerProvider == nil {
+		return
+	}
 	mode, _ := s.worldGameMode()
 	conf.PlayerProvider = localPlayerProvider{Provider: conf.PlayerProvider, mode: mode}
 }

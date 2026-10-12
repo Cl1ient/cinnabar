@@ -1,3 +1,4 @@
+use crate::test_support::scalar;
 //! Attachables worn on the body rather than held.
 
 use super::*;

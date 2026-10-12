@@ -107,6 +107,8 @@ pub struct ActorStatus {
     pub breathing_submerged: Option<bool>,
     /// Bed orientation in degrees under a sleeping actor, sampled from the world.
     pub sleep_rotation: Option<f32>,
+    /// Haste and Mining Fatigue the server last reported, which set the Java swing length.
+    pub(crate) swing_effects: actor_animation::SwingEffects,
 }
 
 impl ActorStatus {

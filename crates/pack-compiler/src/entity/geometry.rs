@@ -1,3 +1,4 @@
+mod locator;
 use std::{collections::BTreeMap, path::Path};
 
 use assets::{
@@ -275,6 +276,7 @@ fn parse_geometry_bones_with_inheritance(
             return Err(invalid("entity geometry cube count exceeds bound"));
         }
         parsed.push(EntityGeometryBone {
+            locators: locator::parse(bone.get("locators"), path)?,
             name: name.into(),
             parent,
             pivot,

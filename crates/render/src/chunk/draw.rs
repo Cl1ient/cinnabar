@@ -37,7 +37,11 @@ pub(in crate::chunk) fn queue_chunks(
     views: Query<ChunkViewQuery>,
     instances: Query<(Entity, &ChunkRenderInstance)>,
     allocations: Query<&GpuChunkAllocation>,
-    (arena, mut retained): (Res<ChunkGpuArena>, ResMut<RetainedTerrainBatches>),
+    (arena, mut retained, mut units): (
+        Res<ChunkGpuArena>,
+        ResMut<RetainedTerrainBatches>,
+        ResMut<pipeline::units::TerrainUnitBatches>,
+    ),
     biome_tints: Res<ChunkBiomeTints>,
     mut model_witness_resources: ParamSet<(
         Res<PresentedFrameGate>,
@@ -56,6 +60,7 @@ pub(in crate::chunk) fn queue_chunks(
         .map(|profiler| profiler.time(RuntimeStage::OpaqueQueue));
     let frame_probe = &probes.frame_probe;
     let changes = retained.begin_frame();
+    units.begin_frame();
     let diagnostic_timer = probes
         .profiler
         .as_deref()
@@ -381,6 +386,66 @@ pub(in crate::chunk) fn queue_chunks(
                 (view_entity, *view_main_entity),
                 InputUniformIndex::default(),
                 BinnedRenderPhaseType::NonMesh,
+            );
+            continue;
+        }
+
+        let use_units =
+            !probing && enhanced.is_none() && !units.disabled && pipeline.unit_supported;
+        if use_units {
+            lists.drawable(admit);
+            let sources = lists.units(&allocations);
+            let draws = [
+                draw_functions.id::<pipeline::units::commands::DrawTerrainUnits<0>>(),
+                draw_functions.id::<pipeline::units::commands::DrawTerrainUnits<1>>(),
+                draw_functions.id::<pipeline::units::commands::DrawTerrainUnits<2>>(),
+                draw_functions.id::<pipeline::units::commands::DrawTerrainUnits<3>>(),
+            ];
+            let [Ok(solid), Ok(cutout), Ok(model), Ok(liquid)] = pipeline
+                .unit_variants
+                .each_mut()
+                .map(|variants| variants.specialize(&pipeline_cache, key))
+            else {
+                continue;
+            };
+            let pipelines = [solid, cutout, model, liquid];
+            let terrain_pass = if direct_view == Some(view_entity) {
+                gpu_culling.begin_direct(view_entity, view, *msaa, (pipelines[0], draws[0]))
+            } else {
+                None
+            };
+            if terrain_pass.is_some()
+                && let Some(frame) = gpu_culling.direct_frame()
+            {
+                for terrain in lists.drawable(admit) {
+                    frame.push(terrain.entity, terrain.solid);
+                }
+            }
+            for &stream in &sources.order {
+                if stream == 0 && terrain_pass == Some(true) {
+                    continue;
+                }
+                phase.add(
+                    Opaque3dBatchSetKey {
+                        draw_function: draws[stream],
+                        pipeline: pipelines[stream],
+                        material_bind_group_index: None,
+                        lightmap_slab: None,
+                        slabs: default(),
+                    },
+                    Opaque3dBinKey {
+                        asset_id: AssetId::<Mesh>::default().untyped(),
+                    },
+                    (view_entity, *view_main_entity),
+                    InputUniformIndex::default(),
+                    BinnedRenderPhaseType::NonMesh,
+                );
+                units.stats.phase_items += 1;
+            }
+            units.queue(
+                view_entity,
+                sources,
+                pipeline::solid::solid_cull_camera(view, false),
             );
             continue;
         }

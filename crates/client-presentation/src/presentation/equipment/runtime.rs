@@ -668,6 +668,9 @@ impl EquipmentRuntime {
             // Skin rig ids lie far above every catalog geometry index, so they key armor maps.
             return Some((rig.0, Arc::clone(bones)));
         }
+        if render_model::is_pack_rig_id(rig) {
+            return self.pack_body_bones(rig);
+        }
         let geometry = self
             .assets
             .rig_geometries()

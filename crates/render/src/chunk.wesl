@@ -242,8 +242,28 @@ fn greedy_uv_limit(width: f32, height: f32, flags: u32) -> vec2<f32> {
     return extents - vec2(CUBE_UV_EDGE_INSET);
 }
 
-// Every terrain draw fetches its vertex index and first instance from vertex buffer 0, which
-// vertex fetch offsets by the draw's base vertex on every backend: GPU-culled commands bind the
+// Each instance selects one CPU-visible unit; reject padding before reconstructing geometry.
+@if(TERRAIN_UNITS)
+@group(2) @binding(0) var<storage, read> terrain_units: array<vec4<u32>>;
+
+@if(TERRAIN_UNITS)
+@vertex
+fn vertex_unit(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {
+    let unit = terrain_units[instance_index];
+    let quad = vertex_index / 4u;
+    if (quad >= unit.y) {
+        var invisible: VertexOutput;
+        invisible.clip_position = vec4(2.0, 2.0, 2.0, 1.0);
+        return invisible;
+    }
+    return cube_vertex(unit.z * 4u + vertex_index % 4u, unit.x + quad);
+}
+
+// Per-section and indirect draws fetch their vertex index and first instance from vertex
+// buffer 0, offset by the base vertex on every backend. GPU-culled commands bind the
 // cull kernel's draw offsets (`chunk/gpu_cull/cull.wgsl`), CPU-planned draws an identity buffer
 // whose instance part is zero, keeping their builtin first instance.
 @vertex

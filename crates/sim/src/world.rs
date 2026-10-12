@@ -27,7 +27,8 @@ mod validate;
 pub use raycast::{BLOCK_USE_SUPPORT_DEPTH, BLOCK_USE_SUPPORT_MAX_Y, BlockHit, CameraBlockHit};
 use validate::{validate_facts, validate_shapes};
 
-pub(crate) const DEFAULT_SURFACE_FRICTION: f64 = 0.6;
+/// Surface friction of a block that declares no friction of its own.
+pub const DEFAULT_SURFACE_FRICTION: f64 = 0.6;
 /// Maximum width, height, or depth of a collision query in blocks.
 pub const MAX_COLLISION_QUERY_EXTENT: f64 = 128.0;
 /// Maximum number of distinct columns retained by one immutable query identity.
@@ -560,6 +561,19 @@ impl CollisionRegistry {
             .map(|physics| physics.pick_shapes.as_deref().unwrap_or(&physics.shapes))
     }
 
+    /// Surface and fluid movement facts of a registered runtime id.
+    #[must_use]
+    pub fn movement_facts(&self, runtime_id: u32) -> Option<BlockPhysicsFacts> {
+        self.physics(runtime_id).map(|physics| BlockPhysicsFacts {
+            friction: physics.friction,
+            horizontal_speed_factor: physics.horizontal_speed_factor,
+            vertical_speed_factor: physics.vertical_speed_factor,
+            fluid_height_blocks: physics.fluid_height_blocks,
+            flags: physics.flags,
+            surface_response: physics.surface_response,
+        })
+    }
+
     fn physics(&self, runtime_id: u32) -> Option<&BlockPhysics> {
         self.blocks.get(&runtime_id)
     }
@@ -875,18 +889,9 @@ impl CollisionWorld for PaletteWorld<'_> {
             .runtime_ids_at(block)?
             .into_iter()
             .map(|runtime_id| {
-                let physics = self
-                    .registry
-                    .physics(runtime_id)
-                    .ok_or(WorldQueryError::UnknownRuntimeId { runtime_id, block })?;
-                Ok(BlockPhysicsFacts {
-                    friction: physics.friction,
-                    horizontal_speed_factor: physics.horizontal_speed_factor,
-                    vertical_speed_factor: physics.vertical_speed_factor,
-                    fluid_height_blocks: physics.fluid_height_blocks,
-                    flags: physics.flags,
-                    surface_response: physics.surface_response,
-                })
+                self.registry
+                    .movement_facts(runtime_id)
+                    .ok_or(WorldQueryError::UnknownRuntimeId { runtime_id, block })
             })
             .collect::<Result<Vec<_>, WorldQueryError>>()?;
         Ok(BlockPhysicsSample {

@@ -49,7 +49,7 @@ foreach ($libraryPath in Get-AcceptanceLibraryPaths -EntryPath $PSCommandPath) {
 $ProjectRootForDependencyResolution = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $PinnedGophertunnelCommit = Get-PinnedGophertunnelCommit -ProjectRoot $ProjectRootForDependencyResolution
 
-if ($env:RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY -eq '1') {
+if ($env:CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY -eq '1') {
     return
 }
 

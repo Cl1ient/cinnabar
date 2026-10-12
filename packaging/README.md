@@ -1,7 +1,8 @@
 # Packaging
 
-Release installers ship the client, the Go core, the dragonfly local-world server beside it, the
-Cinnangles Sans font and a prep kit, never Mojang-derived carriers. A packaged launch whose carriers are
+Release installers ship the client, the Go core, the dragonfly local-world server and its
+`cinnabar-cxb` verifier beside it, the Cinnangles Sans font and a prep kit, never Mojang-derived
+carriers. A packaged launch whose carriers are
 missing or stale runs `crates/first-run`: a setup window (a `--first-run-setup` child process, or
 native dialogs if no window opens) asks consent, downloads the pinned `bedrock-samples` pack
 (`assets/vanilla-source.json`, resumable, hash-verified), runs the bundled `assetc`, and publishes
@@ -21,6 +22,14 @@ All release targets build with `--no-default-features` and `cinnabar/local-mods`
 the local module loader used by companion apps such as Cinnaroids while excluding the acceptance
 harness. Developer defaults stay enabled for `make play`, live testing, CI and client MCP. A local
 `cargo build --release` still includes acceptance; use `make package-binaries` for shipping.
+
+`packaging/common/runtime-binaries.txt` owns the runtime executable list. Each row gives the
+basename, Cargo package (`-` for Go integrations), and Unix path override variable. Release
+builds, platform staging, signing, payload checks and `dist-local` use this table. Unix packagers
+accept `BINARIES` for the build directory; otherwise helpers default beside the selected local
+server, core or client. `CXB` overrides the verifier path. `dist-local --binaries <DIR>` selects
+companion executables (by default beside `--client`), while `--client` and `--core` retain their
+explicit paths. Missing runtime executables fail staging.
 
 Installers also ship the bundled Cinnangles Sans font at `<resources>/fonts/`, so first-run setup can
 draw before any download.

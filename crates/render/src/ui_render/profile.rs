@@ -98,7 +98,7 @@ pub(crate) struct UiProfile {
 impl Default for UiProfile {
     fn default() -> Self {
         Self {
-            baseline_replay: std::env::var_os("RUST_MCBE_GPU_UI_BASELINE")
+            baseline_replay: env_compat::var_os("CINNABAR_GPU_UI_BASELINE")
                 .is_some_and(|value| value == "1"),
             started: Instant::now(),
             interval: Mutex::default(),
@@ -214,7 +214,7 @@ fn flush(mut profile: ResMut<UiProfile>, gpu: Option<Res<super::UiGpu>>) {
         {
             report["publication"] = publication_counts(&input);
         }
-        bevy::log::info!("RUST_MCBE_GPU_UI {}", report);
+        bevy::log::info!("CINNABAR_GPU_UI {}", report);
     }
 }
 

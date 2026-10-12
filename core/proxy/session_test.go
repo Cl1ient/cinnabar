@@ -977,7 +977,7 @@ func TestBashAcceptanceObservesHashedSessionReadiness(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			command := exec.CommandContext(t.Context(), bash, "-c", `export RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY=1; source "$1"; wait_for_core_ready "$2" $$ 1`, "acceptance", script, logPath)
+			command := exec.CommandContext(t.Context(), bash, "-c", `export CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY=1; source "$1"; wait_for_core_ready "$2" $$ 1`, "acceptance", script, logPath)
 			if output, err := command.CombinedOutput(); err != nil {
 				t.Fatalf("readiness wait: %v: %s", err, output)
 			}

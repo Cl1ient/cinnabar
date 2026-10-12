@@ -11,7 +11,7 @@ pub(in crate::compiler) fn compile_rule(
     templates: &mut BTreeMap<CuboidTemplateKey, u32>,
     storage: &mut ModelStorage<'_>,
 ) -> Result<CompileRuleResult, AssetError> {
-    if !is_door(record) && !is_trapdoor(record) {
+    if !is_door(record) {
         return Ok(CompileRuleResult::NoMatch);
     }
     let mut visual = diagnostic_visual(record);
@@ -43,23 +43,6 @@ pub(in crate::compiler) fn compile_rule(
                 set_model_visual(&mut visual, materials, template);
             }
         }
-    } else if let Some(materials) = inputs.materials(record)
-        && let (Some(orientation @ 0..=3), Some(open @ 0..=1), Some(half @ 0..=1)) = (
-            record.model_state.get(ModelStateField::Orientation),
-            record.model_state.get(ModelStateField::Open),
-            record.model_state.get(ModelStateField::Half),
-        )
-    {
-        let (min, max) = trapdoor_bounds(orientation, open, half);
-        let template = intern_cuboid_template(
-            materials,
-            min,
-            max,
-            templates,
-            storage.templates,
-            storage.quads,
-        )?;
-        set_model_visual(&mut visual, materials, template);
     }
     Ok(CompileRuleResult::Compiled(visual))
 }
@@ -111,23 +94,5 @@ pub(in crate::compiler) fn door_bounds(
         WEST => ([HIGH, 0, 0], [256, 256, 256]),
         EAST => ([0, 0, 0], [THICKNESS, 256, 256]),
         _ => unreachable!(),
-    }
-}
-
-pub(in crate::compiler) fn trapdoor_bounds(
-    orientation: u32,
-    open: u32,
-    half: u32,
-) -> ([i16; 3], [i16; 3]) {
-    const THICKNESS: i16 = 3 * 16;
-    const HIGH: i16 = 256 - THICKNESS;
-    match (open, orientation, half) {
-        (0, _, 0) => ([0, 0, 0], [256, THICKNESS, 256]),
-        (0, _, 1) => ([0, HIGH, 0], [256, 256, 256]),
-        (1, 0, _) => ([0, 0, 0], [THICKNESS, 256, 256]),
-        (1, 1, _) => ([HIGH, 0, 0], [256, 256, 256]),
-        (1, 2, _) => ([0, 0, 0], [256, 256, THICKNESS]),
-        (1, 3, _) => ([0, 0, HIGH], [256, 256, 256]),
-        _ => unreachable!("trapdoor selectors are checked before geometry generation"),
     }
 }

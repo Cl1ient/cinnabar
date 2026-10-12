@@ -226,7 +226,7 @@ git commit -m "feat: adjudicate static block entity visuals"
 **Interfaces:**
 - Produces CLI flag `--block-entity-witness-request <path>`.
 - Produces startup-validated `BlockEntityWitnessRequest` with at most 256 targets.
-- Produces adjacent markers `RUST_MCBE_BLOCK_ENTITY_WITNESS` and an atomic local candidate evidence catalog.
+- Produces adjacent markers `CINNABAR_BLOCK_ENTITY_WITNESS` and an atomic local candidate evidence catalog.
 
 - [ ] **Step 1: Write failing request-validation tests**
 

@@ -17,6 +17,7 @@ use std::{
 };
 
 mod directory;
+pub mod offline;
 
 #[derive(Debug)]
 pub struct VerifiedBundle {

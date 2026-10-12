@@ -1,5 +1,5 @@
 //! Opt-in GPU time for render passes, plotted in Tracy as `gpu node <schedule>/<pass>`.
-//! `RUST_MCBE_GPU_NODES=1` adds timestamps between passes. These measure elapsed GPU
+//! `CINNABAR_GPU_NODES=1` adds timestamps between passes. These measure elapsed GPU
 //! latency, including overlap and idle gaps; their empty passes are for attribution.
 //! Results arrive a few frames late through the shared nonblocking device poll.
 
@@ -32,7 +32,7 @@ const FAILED: u8 = 2;
 
 /// Reads only the opt-in flag.
 pub(super) fn requested() -> bool {
-    std::env::var_os("RUST_MCBE_GPU_NODES").is_some_and(|value| value == "1")
+    env_compat::var_os("CINNABAR_GPU_NODES").is_some_and(|value| value == "1")
 }
 
 /// Installs opt-in pass plots and their nonblocking readback.

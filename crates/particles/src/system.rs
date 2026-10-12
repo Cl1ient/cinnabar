@@ -259,6 +259,30 @@ impl ParticleSystem {
         }
     }
 
+    /// Updates placed attachments, retains pending ones, and stops removed actor lifetimes.
+    pub fn update_actor_attachments(
+        &mut self,
+        mut transform: impl FnMut(&super::actor::ActorAttachment) -> super::actor::ActorAttachmentUpdate,
+    ) {
+        for emitter in &mut self.emitters {
+            if emitter.done {
+                continue;
+            }
+            let Some(attachment) = &emitter.actor_attachment else {
+                continue;
+            };
+            match transform(attachment) {
+                super::actor::ActorAttachmentUpdate::Placed(transform, queries) => {
+                    emitter.pos = transform.position;
+                    emitter.basis = transform.basis;
+                    emitter.queries = queries;
+                }
+                super::actor::ActorAttachmentUpdate::Pending => {}
+                super::actor::ActorAttachmentUpdate::Removed => emitter.done = true,
+            }
+        }
+    }
+
     /// Moves an attached emitter; ignored once the emitter is gone.
     pub fn set_transform(&mut self, id: u64, position: [f32; 3], basis: [[f32; 3]; 3]) {
         if let Some(emitter) = self.emitters.iter_mut().find(|e| e.id == id) {
@@ -370,6 +394,90 @@ mod tests {
         assert!(system.spawn(&request("burst", 0.0)).is_some());
         system.tick(0.05, &EmptyWorld);
         assert_eq!(system.live_particles(), 4);
+    }
+
+    #[test]
+    fn pending_actor_placement_retains_emission_until_the_lifetime_is_removed() {
+        use crate::actor::{ActorAttachment, ActorAttachmentUpdate};
+        use render_model::ActorEmitterTransform;
+        let mut system = ParticleSystem::default();
+        let steady = EFFECT.replace(
+            "\"minecraft:emitter_rate_instant\":{\"num_particles\":4}",
+            "\"minecraft:emitter_rate_steady\":{\"spawn_rate\":20,\"max_particles\":30}",
+        );
+        assert!(system.register_effect(steady.as_bytes()));
+        system
+            .spawn(&SpawnRequest {
+                actor_attachment: Some(ActorAttachment {
+                    runtime_id: 42,
+                    spawn_revision: 1,
+                    locator: None,
+                    queries: Box::default(),
+                    entered_tick: 0,
+                    world_offset: [0.0; 3],
+                }),
+                ..request("burst", 0.0)
+            })
+            .unwrap();
+        system.tick(0.1, &EmptyWorld);
+        system.update_actor_attachments(|_| ActorAttachmentUpdate::Pending);
+        system.update_actor_attachments(|_| {
+            ActorAttachmentUpdate::Placed(
+                ActorEmitterTransform {
+                    position: [2.0, 0.0, 0.0],
+                    basis: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                },
+                crate::Queries::default(),
+            )
+        });
+        let count = system.live_particles();
+        system.tick(0.1, &EmptyWorld);
+        assert!(
+            system.live_particles() > count,
+            "pending placement retains emission"
+        );
+        system.update_actor_attachments(|_| ActorAttachmentUpdate::Removed);
+        let count = system.live_particles();
+        system.tick(0.1, &EmptyWorld);
+        assert_eq!(
+            system.live_particles(),
+            count,
+            "removed lifetimes stop emission"
+        );
+    }
+
+    #[test]
+    fn actor_bound_emitters_keep_the_actor_water_query_across_steps() {
+        use crate::actor::{ActorAttachment, ActorAttachmentUpdate};
+        use render_model::ActorEmitterTransform;
+        let mut system = system();
+        system
+            .spawn(&SpawnRequest {
+                actor_attachment: Some(ActorAttachment {
+                    runtime_id: 42,
+                    spawn_revision: 1,
+                    locator: None,
+                    queries: Box::default(),
+                    entered_tick: 0,
+                    world_offset: [0.0; 3],
+                }),
+                ..request("burst", 0.0)
+            })
+            .unwrap();
+        system.update_actor_attachments(|_| {
+            ActorAttachmentUpdate::Placed(
+                ActorEmitterTransform {
+                    position: [2.0, 0.0, 0.0],
+                    basis: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                },
+                crate::Queries {
+                    is_in_water: 1.0,
+                    ..crate::Queries::default()
+                },
+            )
+        });
+        system.tick(0.1, &EmptyWorld);
+        assert_eq!(system.emitters[0].queries.is_in_water, 1.0);
     }
 
     #[test]

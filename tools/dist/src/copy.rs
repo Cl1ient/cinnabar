@@ -71,15 +71,14 @@ pub(crate) fn copy_validated(
     set_executable_permissions(destination, executable)
 }
 
+/// Applies executable permissions only to the registered Unix runtime binaries.
 pub(crate) fn executable_destination(platform: Platform, destination: &str) -> bool {
-    match platform {
-        Platform::Windows => false,
-        Platform::Linux => matches!(destination, "bin/cinnabar" | "bin/bedrock-core"),
-        Platform::Macos => matches!(
-            destination,
-            "Cinnabar.app/Contents/MacOS/cinnabar" | "Cinnabar.app/Contents/MacOS/bedrock-core"
-        ),
-    }
+    platform != Platform::Windows
+        && destination
+            .strip_prefix(crate::layout::binary_root(platform))
+            .is_some_and(|filename| {
+                crate::layout::runtime_binaries().any(|(name, _)| name == filename)
+            })
 }
 
 #[cfg(unix)]

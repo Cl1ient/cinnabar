@@ -104,6 +104,30 @@ fn sanitize_face(face: &mut Value) -> bool {
         .is_some_and(|uv| numbers::<2>(uv).is_some())
 }
 
+/// Keeps 3-vector locators and object locators reduced to their known, well-typed fields.
+fn sanitize_locators(locators: &mut Map<String, Value>) {
+    locators.retain(|name, locator| {
+        if name.is_empty()
+            || name.len() > assets::MAX_ENTITY_GEOMETRY_NAME_BYTES
+            || name.chars().any(char::is_control)
+        {
+            return false;
+        }
+        if locator.is_array() {
+            return numbers::<3>(locator).is_some();
+        }
+        let Some(object) = locator.as_object_mut() else {
+            return false;
+        };
+        keep_keys(object, &["offset", "rotation", "ignore_inherited_scale"]);
+        for vector in ["offset", "rotation"] {
+            drop_unless(object, vector, |value| numbers::<3>(value).is_some());
+        }
+        drop_unless(object, "ignore_inherited_scale", Value::is_boolean);
+        true
+    });
+}
+
 /// `inherits` keeps parents that name bones of the parent geometry.
 fn sanitize_bones(bones: &mut Value, inherits: bool) {
     let Some(list) = bones.as_array_mut() else {
@@ -132,6 +156,9 @@ fn sanitize_bones(bones: &mut Value, inherits: bool) {
         drop_unless(object, "inflate", Value::is_number);
         drop_unless(object, "binding", Value::is_string);
         drop_unless(object, "locators", Value::is_object);
+        if let Some(locators) = object.get_mut("locators").and_then(Value::as_object_mut) {
+            sanitize_locators(locators);
+        }
         drop_unless(object, "texture_meshes", Value::is_array);
         if let Some(cubes) = object.get_mut("cubes") {
             match cubes.as_array_mut() {
@@ -286,5 +313,37 @@ mod tests {
         assert_eq!(cubes[0]["size"], json!([2.0, 4.0, 4.0]));
         assert!(cubes[0].get("uv").is_none());
         assert!(root.get("other").is_none());
+    }
+
+    // Unused or malformed locator contents drop without discarding the model.
+    #[test]
+    fn locators_are_normalised_to_the_accepted_schema() {
+        let mut root = json!({
+            "format_version": "1.12.0",
+            "minecraft:geometry": [{
+                "description": {"identifier": "geometry.a"},
+                "bones": [{"name": "b", "locators": {
+                    "hand": {"offset": [1, 2, 3], "rotation": [0], "extra": true},
+                    "wing": [4, 5, 6],
+                    "short": [1, 2],
+                    "scalar": 3,
+                    "": [0, 0, 0],
+                    "bad\u{7}name": [0, 0, 0]
+                }}]
+            }]
+        });
+        root["minecraft:geometry"][0]["bones"][0]["locators"]
+            .as_object_mut()
+            .unwrap()
+            .insert(
+                "x".repeat(assets::MAX_ENTITY_GEOMETRY_NAME_BYTES + 1),
+                json!([0, 0, 0]),
+            );
+        assert!(sanitize_geometry(&mut root));
+        let locators = &root["minecraft:geometry"][0]["bones"][0]["locators"];
+        assert_eq!(
+            locators,
+            &json!({"hand": {"offset": [1, 2, 3]}, "wing": [4, 5, 6]})
+        );
     }
 }

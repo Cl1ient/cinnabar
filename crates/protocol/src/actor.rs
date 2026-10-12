@@ -216,6 +216,11 @@ pub enum ActorEffectAction {
     Unknown(u8),
 }
 
+/// MobEffect id of Haste, which shortens arm swings.
+pub const HASTE_EFFECT_ID: i32 = 3;
+/// MobEffect id of Mining Fatigue, which lengthens arm swings.
+pub const MINING_FATIGUE_EFFECT_ID: i32 = 4;
+
 /// One server-authoritative MobEffect change. Effect and amplifier values are
 /// retained raw; presentation decides which ids it can draw.
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -232,30 +232,30 @@ function Assert-FastTransferWitnessEvidence {
     $lastPublicationEvidence = $null
     for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
         $line = [string]$lines[$lineIndex]
-        if ($line.StartsWith('RUST_MCBE_PHASE3_VIOLATION=', [StringComparison]::Ordinal)) {
+        if ($line.StartsWith('CINNABAR_PHASE3_VIOLATION=', [StringComparison]::Ordinal)) {
             throw 'FastTransferWitness client log contains a Phase 3 violation marker'
         }
-        if ($line.StartsWith('RUST_MCBE_PHASE3_IDENTITY=', [StringComparison]::Ordinal)) {
-            $identityJson.Add($line.Substring('RUST_MCBE_PHASE3_IDENTITY='.Length))
+        if ($line.StartsWith('CINNABAR_PHASE3_IDENTITY=', [StringComparison]::Ordinal)) {
+            $identityJson.Add($line.Substring('CINNABAR_PHASE3_IDENTITY='.Length))
         }
-        elseif ($line.StartsWith('RUST_MCBE_PHASE3_FRAME=', [StringComparison]::Ordinal)) {
+        elseif ($line.StartsWith('CINNABAR_PHASE3_FRAME=', [StringComparison]::Ordinal)) {
             if ($frames.Count -eq 12000) { throw 'FastTransferWitness frame markers exceed 12000 records' }
-            $frame = ConvertFrom-FastTransferJson $line.Substring('RUST_MCBE_PHASE3_FRAME='.Length) `
+            $frame = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_PHASE3_FRAME='.Length) `
                 "frame[$($frames.Count)]"
             $frames.Add([pscustomobject]@{ Record = $frame; LineIndex = $lineIndex })
         }
-        elseif ($line.StartsWith('RUST_MCBE_PHASE3_TERMINAL=', [StringComparison]::Ordinal)) {
+        elseif ($line.StartsWith('CINNABAR_PHASE3_TERMINAL=', [StringComparison]::Ordinal)) {
             $terminal = ConvertFrom-FastTransferJson `
-                $line.Substring('RUST_MCBE_PHASE3_TERMINAL='.Length) "terminal[$($terminals.Count)]"
+                $line.Substring('CINNABAR_PHASE3_TERMINAL='.Length) "terminal[$($terminals.Count)]"
             $terminals.Add([pscustomobject]@{ Record = $terminal; LineIndex = $lineIndex })
         }
-        elseif ($line.StartsWith('RUST_MCBE_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)) {
+        elseif ($line.StartsWith('CINNABAR_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)) {
             $action = ConvertFrom-FastTransferJson `
-                $line.Substring('RUST_MCBE_FAST_TRANSFER_ACTION='.Length) "action[$($actions.Count)]"
+                $line.Substring('CINNABAR_FAST_TRANSFER_ACTION='.Length) "action[$($actions.Count)]"
             $actions.Add([pscustomobject]@{ Record = $action; LineIndex = $lineIndex })
         }
-        elseif ($line.StartsWith('RUST_MCBE_PHASE3_EVENT=', [StringComparison]::Ordinal)) {
-            $event = ConvertFrom-FastTransferJson $line.Substring('RUST_MCBE_PHASE3_EVENT='.Length) `
+        elseif ($line.StartsWith('CINNABAR_PHASE3_EVENT=', [StringComparison]::Ordinal)) {
+            $event = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_PHASE3_EVENT='.Length) `
                 "event line $lineIndex"
             if ([string]$event.kind -ceq 'correction') {
                 $corrections.Add([pscustomobject]@{ Record = $event; LineIndex = $lineIndex })
@@ -269,13 +269,13 @@ function Assert-FastTransferWitnessEvidence {
             }
             $publications.Add($lastPublicationEvidence)
         }
-        elseif ($line.StartsWith('RUST_MCBE_PHASE2_TIMING=', [StringComparison]::Ordinal)) {
+        elseif ($line.StartsWith('CINNABAR_PHASE2_TIMING=', [StringComparison]::Ordinal)) {
             if ($null -eq $lastPublicationEvidence -or
                 [int]$lastPublicationEvidence.LineIndex -ne ($lineIndex - 1) -or
                 $null -ne $lastPublicationEvidence.ObservedUnixMs) {
                 throw 'FastTransferWitness Phase 2 timing marker is not adjacent to one publication'
             }
-            $timing = ConvertFrom-FastTransferJson $line.Substring('RUST_MCBE_PHASE2_TIMING='.Length) `
+            $timing = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_PHASE2_TIMING='.Length) `
                 "Phase 2 timing line $lineIndex"
             Assert-FastTransferExactProperties $timing @(
                 'observed_unix_ms', 'publication_sha256', 'schema'

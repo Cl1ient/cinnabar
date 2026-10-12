@@ -16,7 +16,7 @@
             -Kind Teleport
     } 'Teleport settle marker is missing transparent_sort_generation*' 'full-view marker accepted missing transparent presentation evidence'
 
-    $worldReadyLine = 'RUST_MCBE_WORLD_READY source_tag=v1 blob_sha256=abc'
+    $worldReadyLine = 'CINNABAR_WORLD_READY source_tag=v1 blob_sha256=abc'
     $worldReadyTrigger = New-SteadyResourceTriggerEvidence `
         -Kind WorldReady `
         -WorldReadyMarker $worldReadyLine
@@ -209,20 +209,20 @@
         Assert-BdsFixtureCommandResults -Commands $fullViewForestPlan.FixtureCommands -Lines $tooManyFilledLines
     } 'BDS fill result exceeded declared command volume:*' 'schema-v2 fixture accepted an impossible fill count'
 
-    $armedMarker = ConvertFrom-TargetMutationArmedMarker -Line 'RUST_MCBE_TARGET_MUTATION_ARMED source=101,64,-37 target=1141,64,1015 view_generation=9'
+    $armedMarker = ConvertFrom-TargetMutationArmedMarker -Line 'CINNABAR_TARGET_MUTATION_ARMED source=101,64,-37 target=1141,64,1015 view_generation=9'
     Assert-Equal '101,64,-37' (@($armedMarker.source) -join ',') 'target-mutation marker lost source coordinate'
     Assert-Equal '1141,64,1015' (@($armedMarker.target) -join ',') 'target-mutation marker lost target coordinate'
     Assert-Equal 9 $armedMarker.view_generation 'target-mutation marker lost view generation'
     Assert-ThrowsLike {
-        ConvertFrom-TargetMutationArmedMarker -Line 'RUST_MCBE_TARGET_MUTATION_ARMED source=101,64,-37 target=1141,64,1015'
+        ConvertFrom-TargetMutationArmedMarker -Line 'CINNABAR_TARGET_MUTATION_ARMED source=101,64,-37 target=1141,64,1015'
     } 'invalid target mutation armed marker:*' 'target-mutation marker accepted a missing generation'
-    $movePlayerIngress = ConvertFrom-MovePlayerIngressMarker -Line 'RUST_MCBE_MOVE_PLAYER_INGRESS sequence=27 position=1141.5,76.25,1003.5'
+    $movePlayerIngress = ConvertFrom-MovePlayerIngressMarker -Line 'CINNABAR_MOVE_PLAYER_INGRESS sequence=27 position=1141.5,76.25,1003.5'
     Assert-Equal 27 $movePlayerIngress.sequence 'MovePlayer ingress marker lost its sequence'
     Assert-Equal 1141.5 ([double]$movePlayerIngress.position[0]) 'MovePlayer ingress marker lost decimal X'
     Assert-Equal 76.25 ([double]$movePlayerIngress.position[1]) 'MovePlayer ingress marker lost decimal Y'
     Assert-Equal 1003.5 ([double]$movePlayerIngress.position[2]) 'MovePlayer ingress marker lost decimal Z'
     Assert-ThrowsLike {
-        ConvertFrom-MovePlayerIngressMarker -Line 'RUST_MCBE_MOVE_PLAYER_INGRESS sequence=0 position=1141.5,76.25,1003.5'
+        ConvertFrom-MovePlayerIngressMarker -Line 'CINNABAR_MOVE_PLAYER_INGRESS sequence=0 position=1141.5,76.25,1003.5'
     } 'invalid MovePlayer ingress marker:*' 'MovePlayer ingress marker accepted sequence zero'
 
     Assert-Equal ($frontPlan.Commands -join "`n") ($frontPlanAgain.Commands -join "`n") 'front fixture commands were not deterministic'
@@ -367,7 +367,7 @@
     $waterAppStdout = Join-Path $TempRoot 'water app stdout.log'
     [IO.File]::WriteAllText(
         $waterAppStdout,
-        "RUST_MCBE_TRANSPARENT_SORT_COMMITTED generation=3 ref_count=12`n",
+        "CINNABAR_TRANSPARENT_SORT_COMMITTED generation=3 ref_count=12`n",
         [Text.UTF8Encoding]::new($false)
     )
     $waterAppHandle = [pscustomobject]@{
@@ -405,22 +405,22 @@
         -WaitForAppMarker {
             param($Handle, $Marker, $TimeoutSeconds)
             $script:WaterSortMarkerCount++
-            $lines = if ($Marker -ceq 'RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE ') {
+            $lines = if ($Marker -ceq 'CINNABAR_TRANSPARENT_WITNESS_COMPLETE ') {
                 if ($script:WaterSortMarkerCount -eq 3) {
-                    @('RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE revision=1 sequence=21 generation=194 key_count=3 consecutive=1')
+                    @('CINNABAR_TRANSPARENT_WITNESS_COMPLETE revision=1 sequence=21 generation=194 key_count=3 consecutive=1')
                 }
                 else {
-                    @('RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE revision=1 sequence=22 generation=194 key_count=3 consecutive=2')
+                    @('CINNABAR_TRANSPARENT_WITNESS_COMPLETE revision=1 sequence=22 generation=194 key_count=3 consecutive=2')
                 }
             }
             elseif ($script:WaterSortMarkerCount -eq 1) {
                 @(
-                    'RUST_MCBE_TRANSPARENT_SORT_COMMITTED generation=7 ref_count=42',
-                    'RUST_MCBE_TRANSPARENT_SORT_COMMITTED generation=8 ref_count=42'
+                    'CINNABAR_TRANSPARENT_SORT_COMMITTED generation=7 ref_count=42',
+                    'CINNABAR_TRANSPARENT_SORT_COMMITTED generation=8 ref_count=42'
                 )
             }
             else {
-                @('RUST_MCBE_TRANSPARENT_SORT_COMMITTED generation=9 ref_count=42')
+                @('CINNABAR_TRANSPARENT_SORT_COMMITTED generation=9 ref_count=42')
             }
             [IO.File]::AppendAllText($Handle.StdoutPath, (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
             return Wait-ProcessOutputMarker -Handle $Handle -Marker $Marker -TimeoutSeconds $TimeoutSeconds -PassThruEvidence
@@ -441,17 +441,17 @@
             -SkippedLines @('[ERROR] No targets matched selector'))
     } 'BDS camera resort command failed:*' 'water gallery accepted a rejected camera resort before its fence'
 
-    $sortMarker = ConvertFrom-TransparentSortCommittedMarker -Line 'RUST_MCBE_TRANSPARENT_SORT_COMMITTED generation=17 ref_count=99'
+    $sortMarker = ConvertFrom-TransparentSortCommittedMarker -Line 'CINNABAR_TRANSPARENT_SORT_COMMITTED generation=17 ref_count=99'
     Assert-Equal 17 $sortMarker.generation 'transparent sort marker parser lost generation'
     Assert-Equal 99 $sortMarker.ref_count 'transparent sort marker parser lost ref count'
     Assert-ThrowsLike {
-        ConvertFrom-TransparentSortCommittedMarker -Line 'RUST_MCBE_TRANSPARENT_SORT_COMMITTED generation=0 ref_count=99'
+        ConvertFrom-TransparentSortCommittedMarker -Line 'CINNABAR_TRANSPARENT_SORT_COMMITTED generation=0 ref_count=99'
     } 'invalid transparent sort committed marker:*' 'transparent sort marker accepted generation zero'
-    $witnessMarker = ConvertFrom-TransparentWitnessCompleteMarker -Line 'RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE revision=3 sequence=17 generation=194 key_count=3 consecutive=2'
+    $witnessMarker = ConvertFrom-TransparentWitnessCompleteMarker -Line 'CINNABAR_TRANSPARENT_WITNESS_COMPLETE revision=3 sequence=17 generation=194 key_count=3 consecutive=2'
     Assert-Equal 3 ([uint64]$witnessMarker.revision) 'transparent witness marker parser lost revision'
     Assert-Equal 2 ([int]$witnessMarker.consecutive) 'transparent witness marker parser lost consecutive proof count'
     Assert-ThrowsLike {
-        ConvertFrom-TransparentWitnessCompleteMarker -Line 'RUST_MCBE_TRANSPARENT_WITNESS_COMPLETE revision=3 sequence=17 generation=194 key_count=0 consecutive=2'
+        ConvertFrom-TransparentWitnessCompleteMarker -Line 'CINNABAR_TRANSPARENT_WITNESS_COMPLETE revision=3 sequence=17 generation=194 key_count=0 consecutive=2'
     } 'invalid transparent witness complete marker:*' 'transparent witness marker accepted zero keys'
     $null = Assert-StableTransparentWitnessEvidence `
         -Request ([pscustomobject]@{ revision = [uint64]3; sub_chunks = @([pscustomobject]@{ x = 1; y = 2; z = 3 }) }) `

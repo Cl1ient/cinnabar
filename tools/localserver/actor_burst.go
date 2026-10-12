@@ -55,6 +55,8 @@ type actorBurstConn struct {
 	count    int
 	mode     string
 	artwork  int
+	ticks    int        // Input ticks since a sword crowd spawned.
+	origin   mgl32.Vec3 // The eye position a sword crowd spawned around.
 }
 
 // ReadPacket replaces the previous crowd atomically in wire order around the latest player position.
@@ -66,6 +68,14 @@ func (c *actorBurstConn) ReadPacket() (packet.Packet, error) {
 		}
 		if movement, ok := pk.(*packet.PlayerAuthInput); ok {
 			c.position = movement.Position
+			if actorBurstSwingMode(c.mode) {
+				for _, fixture := range actorBurstSwingTick(c.mode, c.count, c.ticks, c.origin) {
+					if err := c.Conn.WritePacket(fixture); err != nil {
+						return nil, err
+					}
+				}
+				c.ticks++
+			}
 		}
 		request, ok := pk.(*packet.CommandRequest)
 		if !ok {
@@ -84,7 +94,7 @@ func (c *actorBurstConn) ReadPacket() (packet.Packet, error) {
 				return nil, err
 			}
 		}
-		c.count, c.mode = count, mode
+		c.count, c.mode, c.ticks, c.origin = count, mode, 0, c.position
 	}
 }
 
@@ -102,7 +112,7 @@ func actorBurstCommand(command string) (int, string, bool) {
 		return 0, "", false
 	}
 	switch fields[2] {
-	case "shared", "skins", "geometry", "complex", "artwork":
+	case "shared", "skins", "geometry", "complex", "artwork", "swing", "strafe":
 		return count, fields[2], true
 	}
 	return 0, "", false
@@ -124,7 +134,7 @@ func actorBurstPackets(count int, mode string, origin mgl32.Vec3) []packet.Packe
 	for index := range count {
 		id, name := int64(actorBurstFirstID+index), fmt.Sprintf("Fixture %03d", index+1)
 		variant, model := 0, 0
-		if mode != "shared" {
+		if mode != "shared" && !actorBurstSwingMode(mode) {
 			variant = index
 		}
 		if mode == "geometry" || mode == "complex" {
@@ -134,16 +144,27 @@ func actorBurstPackets(count int, mode string, origin mgl32.Vec3) []packet.Packe
 		if mode == "complex" {
 			skin.SkinGeometry = actorBurstComplexGeometry(model)
 		}
+		if actorBurstSwingMode(mode) {
+			skin.SkinGeometry = actorBurstHumanoidGeometry()
+		}
 		list.Entries[index] = protocol.PlayerListEntry{
 			ActionType: protocol.PlayerListActionAdd, UUID: actorBurstUUID(index),
 			EntityUniqueID: id, Username: name, Skin: skin,
 		}
-		packets = append(packets, &packet.AddPlayer{
+		player := &packet.AddPlayer{
 			UUID: actorBurstUUID(index), Username: name, EntityRuntimeID: uint64(id),
 			Position:       actorBurstPosition(index, origin),
 			EntityMetadata: actorBurstMetadata(),
 			AbilityData:    protocol.AbilityData{EntityUniqueID: id},
-		})
+		}
+		if actorBurstSwingMode(mode) {
+			// Faces back toward an origin looking along +Z.
+			player.Position, player.Yaw, player.HeadYaw = actorBurstSwingPosition(index, origin), 180, 180
+		}
+		packets = append(packets, player)
+	}
+	if actorBurstSwingMode(mode) {
+		packets = append(packets, actorBurstSwordPackets(count)...)
 	}
 	return packets
 }

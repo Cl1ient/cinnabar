@@ -270,19 +270,32 @@ impl<P: PhaseItem, const STAGE: usize, C: RenderCommand<P>> RenderCommand<P>
         (timestamps, param): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let span = timestamps
-            .map(|timestamps| timestamps.into_inner())
-            .and_then(|timestamps| timestamps.open_draw(RuntimeStage::ALL[STAGE]));
-        if let Some(span) = &span {
-            pass.wgpu_pass().write_timestamp(span.queries, span.begin);
-        }
-        let result = C::render(item, view, entity, param, pass);
-        if let Some(span) = &span {
-            pass.wgpu_pass()
-                .write_timestamp(span.queries, span.begin + 1);
-        }
-        result
+        time_draw(
+            timestamps.map(|timestamps| timestamps.into_inner()),
+            RuntimeStage::ALL[STAGE],
+            pass,
+            |pass| C::render(item, view, entity, param, pass),
+        )
     }
+}
+
+/// Brackets `draw` with an in-pass span for `stage` when draw spans are recording this frame.
+pub(crate) fn time_draw<'w, R>(
+    timestamps: Option<&GpuTimestamps>,
+    stage: RuntimeStage,
+    pass: &mut TrackedRenderPass<'w>,
+    draw: impl FnOnce(&mut TrackedRenderPass<'w>) -> R,
+) -> R {
+    let span = timestamps.and_then(|timestamps| timestamps.open_draw(stage));
+    if let Some(span) = &span {
+        pass.wgpu_pass().write_timestamp(span.queries, span.begin);
+    }
+    let result = draw(pass);
+    if let Some(span) = &span {
+        pass.wgpu_pass()
+            .write_timestamp(span.queries, span.begin + 1);
+    }
+    result
 }
 
 /// A begin/end query pair; the end index is `begin + 1`.

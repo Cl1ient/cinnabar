@@ -424,7 +424,7 @@ fn transient_collision_unavailability_keeps_todays_blocked_behavior() {
 }
 
 // ---------------------------------------------------------------------------
-// Failure-evidence markers (RUST_MCBE_ANCHOR_PROBE family).
+// Failure-evidence markers (CINNABAR_ANCHOR_PROBE family).
 //
 // Live third-party evidence (2026-08-25) could not answer WHICH blocks seal
 // an unescapable spawn pocket after two embedded-anchor holds failed open.

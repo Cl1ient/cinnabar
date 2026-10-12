@@ -29,7 +29,7 @@ do not replace that gate.
 The source checkout, archive, unpacked textures, and compiled `.mcbea` remain
 under ignored `.local/` paths. No Mojang image, JSON payload, archive, or compiled
 asset blob is tracked by Git. The app loads the ignored default blob only when it
-exists; `--assets` overrides `RUST_MCBE_ASSETS`, which overrides that default. A
+exists; `--assets` overrides `CINNABAR_ASSETS`, which overrides that default. A
 missing blob starts the generated diagnostic checker and prints the exact local
 fetch/compile commands rather than downloading content.
 

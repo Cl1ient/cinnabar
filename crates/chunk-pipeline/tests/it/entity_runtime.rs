@@ -111,6 +111,7 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
                 texture_width: 16,
                 texture_height: 16,
                 bones: vec![EntityGeometryBone {
+                    locators: Box::default(),
                     name: "root".into(),
                     binding: None,
                     texture_meshes: Box::new([]),
@@ -137,6 +138,7 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
                 texture_width: 16,
                 texture_height: 16,
                 bones: vec![EntityGeometryBone {
+                    locators: Box::default(),
                     name: "wing".into(),
                     binding: None,
                     texture_meshes: Box::new([]),

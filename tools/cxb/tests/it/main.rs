@@ -1,5 +1,5 @@
 mod cli;
+mod contracts;
 mod fixtures;
 mod media;
-
-mod contracts;
+mod offline;

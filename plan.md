@@ -7131,6 +7131,15 @@ defect. The installed native app is a near-version witness, not an exact-version
 capture; broad rendering, persona and live HUD pack-refresh parity remain open.
 World fire is tracked separately below.
 
+### Pack masks, End sky and title text (acceptance incomplete)
+
+Active packs now prepare pumpkin and spyglass masks, End-sky pixels and layered
+title splash lists during resource reload. Removing the optional resources
+restores startup data. End-sky overrides retain their decoded dimensions; masks
+use the existing 256-pixel scene layers. Synthetic regression tests cover
+priority, removal, alpha, cache invalidation and stale-generation publication.
+Compilation, regression execution and rendered parity acceptance remain open.
+
 ### World fire (accepted geometry and smoke; parity incomplete)
 
 World fire now uses vanilla's eight supported sloped quads, their height,

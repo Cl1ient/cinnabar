@@ -821,11 +821,12 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     .insert_resource(equipment_runtime)
     .insert_resource(hand_rig_builder)
     .insert_resource(AtmosphereFrame::default())
-    .insert_resource(weather_textures)
+    .insert_resource(weather_textures.clone())
     .insert_resource(
         crate::runtime::network::reload_environment::EnvironmentBase::new(
             atmosphere_assets.clone(),
             particle_assets.clone(),
+            weather_textures,
         ),
     )
     .insert_resource(atmosphere_assets)

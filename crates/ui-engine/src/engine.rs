@@ -96,26 +96,65 @@ struct Art<'a> {
     animator: &'a std::sync::Mutex<json_ui::Animator>,
 }
 
+/// A carrier catalog extended and layered with a registry's built-in screens: the costly part
+/// of building a [`FormEngine`], which needs no engine state and may run on any thread.
+pub struct PreparedCatalog {
+    vanilla: Arc<Catalog>,
+    base: Arc<Catalog>,
+    formatting_palette: ui::FormattingPalette,
+    registry: &'static ScreenRegistry,
+}
+
+impl PreparedCatalog {
+    /// Extends `catalog` with the families `registry` records and layers its built-in screens.
+    pub fn new(mut catalog: Catalog, registry: &'static ScreenRegistry) -> Self {
+        registry.catalog().extended(&mut catalog);
+        let vanilla = Arc::new(catalog);
+        let base = Arc::new(registry.catalog().builtin(&vanilla));
+        Self {
+            formatting_palette: formatting_colors::from_catalog(&base),
+            vanilla,
+            base,
+            registry,
+        }
+    }
+}
+
 impl FormEngine {
     /// An engine over `assets` and its `catalog` under the families `registry` records; URL
     /// textures download through `remote`, and images read and decode as `work` allows.
     pub fn new(
         assets: Arc<RuntimeUiAssets>,
-        mut catalog: Catalog,
+        catalog: Catalog,
         first_page: u16,
         registry: &'static ScreenRegistry,
         remote: Arc<dyn RemoteSource>,
         work: ImageWork,
     ) -> Self {
-        registry.catalog().extended(&mut catalog);
-        let vanilla = Arc::new(catalog);
-        let base = Arc::new(registry.catalog().builtin(&vanilla));
+        let catalog = PreparedCatalog::new(catalog, registry);
+        Self::with_prepared(assets, catalog, first_page, remote, work)
+    }
+
+    /// [`Self::new`] over a catalog already prepared for its registry.
+    pub fn with_prepared(
+        assets: Arc<RuntimeUiAssets>,
+        catalog: PreparedCatalog,
+        first_page: u16,
+        remote: Arc<dyn RemoteSource>,
+        work: ImageWork,
+    ) -> Self {
+        let PreparedCatalog {
+            vanilla,
+            base,
+            formatting_palette,
+            registry,
+        } = catalog;
         Self {
             textures: TextureSet::new(first_page, remote, work).with_carrier(Arc::clone(&assets)),
             assets,
             catalog: Arc::clone(&base),
             builtin_screens: Arc::clone(&base),
-            formatting_palette: formatting_colors::from_catalog(&base),
+            formatting_palette,
             screens: screen_cache::ScreenCache::default(),
             vanilla,
             base,

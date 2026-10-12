@@ -15,6 +15,7 @@ use assets::{
     RuntimeEquipmentCatalog, RuntimeParticleAssets, RuntimeUiAssets,
 };
 use client_interaction::movement::PhysicsCollisionRegistries;
+use client_ui::ui_runtime::presentation::PreparedJsonUi;
 use launcher_host::session_cleanup::ScopedSessionDirectory;
 use sha2::Digest;
 use sha2::Sha256;
@@ -30,9 +31,29 @@ pub(super) struct StartupCarriers {
     pub(super) audio: Result<AudioCarriers>,
     pub(super) block_entities: Option<Arc<RuntimeBlockEntityAssets>>,
     pub(super) particles: Option<Arc<RuntimeParticleAssets>>,
-    pub(super) ui: Result<Arc<RuntimeUiAssets>>,
+    pub(super) ui: Result<PreparingJsonUi>,
     pub(super) weather: render_scene::WeatherTextureAssets,
     pub(super) collision: Result<PhysicsCollisionRegistries>,
+}
+
+/// The validated UI carrier's catalog, parsing on its own thread while startup continues.
+pub(super) struct PreparingJsonUi(std::thread::JoinHandle<Result<PreparedJsonUi, String>>);
+
+impl PreparingJsonUi {
+    fn start(assets: Arc<RuntimeUiAssets>) -> Result<Self> {
+        std::thread::Builder::new()
+            .name("json-ui-catalog".to_owned())
+            .spawn(move || PreparedJsonUi::new(assets))
+            .map(Self)
+            .context("start the JSON-UI catalog thread")
+    }
+
+    /// Waits for the parsed catalog, re-raising a panic from its thread.
+    pub(super) fn join(self) -> Result<PreparedJsonUi, String> {
+        self.0
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    }
 }
 
 /// The carriers bound to the decoded entity catalog.
@@ -92,9 +113,11 @@ fn load_with(
             })
         });
         let ui = scope.spawn(|| {
-            times.time("ui", || {
-                client_ui::ui_runtime::json_ui_assets::require_ui_assets(world)
-            })
+            times
+                .time("ui", || {
+                    client_ui::ui_runtime::json_ui_assets::require_ui_assets(world)
+                })
+                .and_then(PreparingJsonUi::start)
         });
         let weather = scope.spawn(|| {
             times.time("weather", || {

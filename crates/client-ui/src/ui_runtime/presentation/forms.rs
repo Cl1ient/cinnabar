@@ -88,7 +88,7 @@ use assets::RuntimeUiAssets;
 pub use containers::{container_screen_reference, engine_screen_for};
 pub use recipe_book::{recipe_book_hover, recipe_book_icons, recipe_book_shown};
 use ui_engine::{
-    engine::{FormEngine, screen::PaintFrame},
+    engine::{FormEngine, PreparedCatalog, screen::PaintFrame},
     frame::EngineFrame,
     pages,
     text_metrics::TextMetrics,
@@ -170,6 +170,30 @@ pub(super) struct FormProjection {
     frame: Option<(ServerFormIdentity, EngineFrame)>,
 }
 
+/// A UI carrier whose catalog is parsed and prepared with the client's built-in screens.
+pub struct PreparedJsonUi {
+    assets: Arc<RuntimeUiAssets>,
+    catalog: PreparedCatalog,
+}
+
+impl PreparedJsonUi {
+    /// Parses every definition the carrier lists; needs no runtime, so startup runs it off the
+    /// main thread.
+    pub fn new(assets: Arc<RuntimeUiAssets>) -> Result<Self, String> {
+        let catalog = json_ui::Catalog::from_files(
+            assets
+                .ui_files()
+                .iter()
+                .map(|file| (&*file.path, &*file.bytes)),
+        )
+        .map_err(|error| format!("ui catalog: {error}"))?;
+        Ok(Self {
+            catalog: PreparedCatalog::new(catalog, screen_registry::registry()),
+            assets,
+        })
+    }
+}
+
 impl UiPresentationRuntime {
     /// Shares immutable carrier definitions with the optional-pack reload worker.
     pub fn pack_catalog_base(&self) -> Option<Arc<json_ui::Catalog>> {
@@ -181,13 +205,12 @@ impl UiPresentationRuntime {
     /// Bind the compiled UI carrier: its atlas pages join the texture array and
     /// its catalog drives server forms. On failure the fallback dialog stays.
     pub fn enable_json_ui(&mut self, assets: Arc<RuntimeUiAssets>) -> Result<(), String> {
-        let catalog = json_ui::Catalog::from_files(
-            assets
-                .ui_files()
-                .iter()
-                .map(|file| (&*file.path, &*file.bytes)),
-        )
-        .map_err(|error| format!("ui catalog: {error}"))?;
+        self.enable_prepared_json_ui(PreparedJsonUi::new(assets)?)
+    }
+
+    /// [`Self::enable_json_ui`] with the carrier's catalog already parsed.
+    pub fn enable_prepared_json_ui(&mut self, prepared: PreparedJsonUi) -> Result<(), String> {
+        let PreparedJsonUi { assets, catalog } = prepared;
         let (textures, first_page) = pages::with_ui_pages(&self.textures, &assets)
             .map_err(|error| format!("ui atlas pages: {error}"))?;
         self.textures = Arc::new(textures);
@@ -195,11 +218,10 @@ impl UiPresentationRuntime {
         self.preview_dirty = true;
         self.menu_artwork_dirty = true;
         self.rebuild_dynamic_textures();
-        let mut engine = FormEngine::new(
+        let mut engine = FormEngine::with_prepared(
             assets,
             catalog,
             first_page,
-            screen_registry::registry(),
             texture_sources::downloads(),
             texture_sources::image_work(),
         );

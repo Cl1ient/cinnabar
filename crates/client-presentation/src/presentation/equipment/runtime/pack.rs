@@ -5,20 +5,26 @@ use super::*;
 /// Separates armor mappings sourced from a replaceable pack.
 pub(super) const ARMOR_CACHE_PREFIX: &str = "\u{1}pack:";
 
-/// A server pack's entity catalog, attachable catalog and artwork locations.
+/// A server pack's entity catalog, its attachables if it has any, and their artwork locations.
 pub type PackEquipmentLayer = (
     Arc<RuntimeEntityAssets>,
-    Arc<RuntimeEquipmentCatalog>,
+    Option<Arc<RuntimeEquipmentCatalog>>,
     Vec<Option<ActorArtworkLocation>>,
 );
 
-/// A pack's attachable bindings with its own entity catalog and artwork locations.
+/// A pack's entity catalog, which also owns the bodies of pack-rigged actors, and its attachables.
 pub struct PackEquipment {
     pub(super) assets: Arc<RuntimeEntityAssets>,
-    catalog: Arc<RuntimeEquipmentCatalog>,
+    catalog: Option<Arc<RuntimeEquipmentCatalog>>,
     texture_locations: BTreeMap<Box<str>, ActorArtworkLocation>,
     armor_geometry: BTreeMap<Box<str>, Option<Arc<ArmorGeometry>>>,
     pub(super) attachables: actor_animation::AttachablesRuntime,
+}
+
+/// Body-bone and armor-map keys of pack geometries sit in the pack rig range, apart from startup
+/// geometry indices and skin rig ids.
+fn is_pack_body_key(key: u32) -> bool {
+    render_model::is_pack_rig_id(EntityRigId(key))
 }
 
 impl EquipmentRuntime {
@@ -91,13 +97,15 @@ impl EquipmentRuntime {
         });
         self.selected_geometries
             .retain(|rig| !render_model::is_pack_equipment_rig_id(*rig));
-        self.armor_maps
-            .retain(|(_, geometry), _| !geometry.starts_with(ARMOR_CACHE_PREFIX));
+        self.armor_maps.retain(|(body, geometry), _| {
+            !geometry.starts_with(ARMOR_CACHE_PREFIX) && !is_pack_body_key(*body)
+        });
+        self.body_bones.retain(|body, _| !is_pack_body_key(*body));
         self.pack = layer.map(|(assets, catalog, locations)| PackEquipment {
             attachables: actor_animation::AttachablesRuntime::new(Arc::clone(&assets)),
             texture_locations: catalog
-                .textures()
                 .iter()
+                .flat_map(|catalog| catalog.textures())
                 .zip(locations)
                 .filter_map(|(texture, location)| Some((texture.identifier.clone(), location?)))
                 .collect(),
@@ -112,10 +120,10 @@ impl EquipmentRuntime {
         &self,
         identifier: &str,
     ) -> Option<(Arc<RuntimeEquipmentCatalog>, bool)> {
-        if let Some(pack) = &self.pack
-            && pack.catalog.binding(identifier).is_some()
+        if let Some(catalog) = self.pack.as_ref().and_then(|pack| pack.catalog.as_ref())
+            && catalog.binding(identifier).is_some()
         {
-            return Some((Arc::clone(&pack.catalog), true));
+            return Some((Arc::clone(catalog), true));
         }
         let catalog = self.catalog.as_ref()?;
         catalog
@@ -134,6 +142,22 @@ impl EquipmentRuntime {
             &self.texture_locations
         };
         locations.get(identifier).copied()
+    }
+
+    /// The pack geometry and bones of a pack-rigged body, under its pack body key.
+    pub(super) fn pack_body_bones(&mut self, rig: EntityRigId) -> Option<(u32, Arc<BodyBones>)> {
+        let binding = rig.0.checked_sub(assets::PACK_RIG_ID_BASE)?;
+        let pack = self.pack.as_ref()?;
+        let geometry = pack.assets.rig_geometries().get(binding as usize)?.geometry;
+        let key = assets::PACK_RIG_ID_BASE.checked_add(geometry)?;
+        let assets = &pack.assets;
+        let entry = self.body_bones.entry(key).or_insert_with(|| {
+            Some(Arc::new(body_bones(geometry_bone_names(
+                assets,
+                geometry as usize,
+            )?)))
+        });
+        entry.clone().map(|bones| (key, bones))
     }
 
     /// A pack attachable's geometry: the pack catalog's, else the startup catalog's.

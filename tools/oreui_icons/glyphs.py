@@ -245,6 +245,7 @@ HARDCORE = hardcore()
 
 # Server status: four rising bars, lit by tier.
 PING_DIM = rgb("#c4c6cc")
+PING_SWEEP_DIM = rgb("#6e7076")
 _BARS = [(3, 3), (7, 6), (11, 9), (15, 12)]
 
 
@@ -259,12 +260,15 @@ PINGS = [ping(4, rgb("#58c88c")), ping(3, rgb("#e8be2c")), ping(1, rgb("#f25c64"
 
 
 def ping_strip():
-    """A 112 px strip of bars whose heights form a travelling triangle wave."""
+    """Seven 16 px cells: a lit bar sweeps up and back; the last cell repeats the first.
+
+    Screens loop the first six cells, so the sweep wraps without a pause.
+    """
     canvas = Canvas(112, 20)
-    for index in range(28):
-        phase = index % 8
-        height = 3 + 3 * (phase if phase <= 4 else 8 - phase)
-        canvas.rect(index * 4, 17 - height, 3, height, PING_DIM)
+    for cell, lit in enumerate([0, 1, 2, 3, 2, 1, 0]):
+        for index, (x, height) in enumerate(_BARS):
+            color = rgb("#ffffff") if index == lit else PING_SWEEP_DIM
+            canvas.rect(cell * 16 + x - 2, 17 - height, 3, height, color)
     return canvas
 
 

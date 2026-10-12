@@ -234,14 +234,7 @@ fn ping_strip(
             [255; 4],
         )?;
     } else {
-        let frame = ((canvas.seconds.max(0.0) * 1000.0 / 700.0 * 6.0) as u16) % 6;
-        canvas.sprite_frame(
-            SERVER_PING_IMAGES[3],
-            [x, icon_top, x + icon_side, icon_top + icon_side],
-            [255; 4],
-            frame,
-            6,
-        )?;
+        pending_ping(canvas, [x, icon_top, x + icon_side, icon_top + icon_side])?;
     }
     let label = ping_label(ping, exact);
     let label_x = x + icon_side + canvas.r(0.4);
@@ -258,6 +251,28 @@ fn ping_strip(
         .map_or(0, |p| p.players)
         .to_string();
     player_count(canvas, overlay, players_x, &count)
+}
+
+/// Cells in the pending-ping sheet; the loop steps through all but the last.
+const PING_PENDING_CELLS: u16 = 7;
+const PING_PENDING_LOOP_SECONDS: f64 = 0.7;
+/// Pending-ping cell width over height.
+const PING_PENDING_ASPECT: f32 = 16.0 / 20.0;
+
+/// Centres the current pending-ping cell in a square status-icon slot.
+fn pending_ping(canvas: &mut Canvas<'_>, slot: Bounds) -> Result<bool, PaintError> {
+    let steps = PING_PENDING_CELLS - 1;
+    let cycle = canvas.seconds.max(0.0) / PING_PENDING_LOOP_SECONDS;
+    let frame = (cycle.fract() * f64::from(steps)) as u16 % steps;
+    let width = (slot[3] - slot[1]) * PING_PENDING_ASPECT;
+    let left = (slot[0] + slot[2] - width) * 0.5;
+    canvas.sprite_frame(
+        SERVER_PING_IMAGES[3],
+        [left, slot[1], left + width, slot[3]],
+        [255; 4],
+        frame,
+        PING_PENDING_CELLS,
+    )
 }
 
 fn status_overlay(canvas: &mut Canvas<'_>, banner: Bounds) -> Result<Bounds, PaintError> {
@@ -373,4 +388,81 @@ pub(super) fn saved_details(
         "Remove",
         Some(MenuAction::RemoveSavedDialog(index)),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_runtime::{
+        oreui_assets::{OreUiImages, OreUiSprite},
+        presentation::{forms::oreui::Originals, tests::fixture_font},
+    };
+    use std::sync::Arc;
+    use ui::UiVisual;
+    use ui_engine::text_metrics::TextMetrics;
+
+    /// The shipped 112x20 pending sheet must yield a whole 16x20 cell at every loop step.
+    #[test]
+    fn pending_ping_cycles_whole_cells_of_the_shipped_sheet() {
+        let sprites = Arc::new(HashMap::from([(
+            SERVER_PING_IMAGES[3].to_owned(),
+            OreUiSprite {
+                page: 0,
+                bounds: [0, 0, 112, 20],
+            },
+        )]));
+        let originals = Originals {
+            page: 0,
+            images: OreUiImages {
+                pages: Vec::new(),
+                sprites: sprites.clone(),
+                loading_frames: Default::default(),
+                animations: Default::default(),
+                source: None,
+            },
+            sprites,
+            masks: HashMap::new(),
+            loading_frames: Default::default(),
+            animations: Default::default(),
+        };
+        let font = fixture_font();
+        let metrics =
+            TextMetrics::for_viewport([1280, 720], ui::DpiScale::new(1.0).unwrap(), Some(2));
+        let mut cells = Vec::new();
+        for step in 0..12 {
+            let (mut nodes, mut next) = (Vec::new(), 1);
+            let mut layouts = ui::TextLayoutCache::new(8, 4096);
+            let mut canvas = Canvas::new(
+                &mut nodes,
+                &mut next,
+                &mut layouts,
+                &font,
+                metrics,
+                u16::MAX,
+                Some(&originals),
+            );
+            canvas.seconds = 0.7 * (f64::from(step) + 0.5) / 6.0;
+            assert!(pending_ping(&mut canvas, [0.0, 0.0, 40.0, 40.0]).unwrap());
+            let sprites: Vec<_> = nodes
+                .iter()
+                .filter_map(|node| match node.visual() {
+                    UiVisual::Sprite { uv, .. } => Some((*uv, node.bounds())),
+                    _ => None,
+                })
+                .collect();
+            let [(uv, b)] = sprites.as_slice() else {
+                panic!("step {step} drew {} sprites", sprites.len());
+            };
+            assert_eq!(
+                b.max().x() - b.min().x(),
+                32.0,
+                "cell keeps its 16:20 shape"
+            );
+            cells.push(*uv);
+        }
+        let expected: Vec<_> = (0..12u16)
+            .map(|step| [16 * (step % 6), 0, 16 * (step % 6) + 16, 20])
+            .collect();
+        assert_eq!(cells, expected);
+    }
 }

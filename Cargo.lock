@@ -2350,6 +2350,7 @@ dependencies = [
  "sha2",
  "sim",
  "simulation-clock",
+ "tempfile",
  "thiserror 2.0.18",
  "ui",
  "world",
@@ -4263,10 +4264,10 @@ dependencies = [
  "assets",
  "bytes",
  "protocol",
- "simulation-clock",
  "serde",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -4455,6 +4456,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui-engine",
  "wasm-bindgen",
  "zip",
 ]

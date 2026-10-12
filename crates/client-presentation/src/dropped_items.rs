@@ -278,13 +278,22 @@ impl DroppedItemPublisher<'_, '_> {
             || Some(BlockFace::ALL.len()),
             || {
                 let block = assets.resolve(mode, id);
-                if !block.is_known() || block.kind() != VisualKind::Cube {
+                if !block.is_known() {
                     return None;
                 }
                 let visual = match mode {
                     NetworkIdMode::Sequential => id,
                     NetworkIdMode::Hashed => assets.sequential_id_for_hash(id)?,
                 };
+                if block.kind() != VisualKind::Cube
+                    && assets::gui_item::full_cube_model_quads(
+                        assets,
+                        assets::BlockVisualId(visual),
+                    )
+                    .is_none()
+                {
+                    return None;
+                }
                 let cube =
                     icons.carried_block_cube(visual, assets.provenance().source_manifest_sha256)?;
                 Some(DroppedItemModel::Cube(cube))

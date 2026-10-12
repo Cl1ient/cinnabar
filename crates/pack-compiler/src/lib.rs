@@ -23,6 +23,7 @@ mod icon;
 mod image;
 mod lang;
 mod lightning_rod;
+mod oreui_icons;
 mod pack;
 mod particle;
 mod respawn_anchor;
@@ -33,7 +34,8 @@ pub use pack::{apply_atlas_tint, parse_atlas_tint};
 
 pub use actor::{
     ActorCompileReport, ActorFallback, ActorPackCompilation, ActorTextureEvidence,
-    CompiledActorCarrier, compile_actor_assets, compile_actor_pack, compile_actor_pack_unless,
+    CompiledActorCarrier, compile_actor_assets, compile_actor_assets_for_assets,
+    compile_actor_pack, compile_actor_pack_unless,
 };
 pub use animation::AnimationInventory;
 
@@ -77,6 +79,7 @@ pub use font::{
 };
 pub use hud::{CompiledHudCarrier, HudCompileError, HudCompileReport, compile_hud_assets};
 pub use hud_extras::compile_hud_extras_to_file;
+pub use oreui_icons::compile_oreui_icons_to_file;
 pub use icon::{
     CompiledIconCarrier, IconCompileReport, compile_icon_assets, compile_icon_assets_with_blocks,
     overlay_block_icon,

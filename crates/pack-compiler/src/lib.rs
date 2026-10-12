@@ -79,7 +79,6 @@ pub use font::{
 };
 pub use hud::{CompiledHudCarrier, HudCompileError, HudCompileReport, compile_hud_assets};
 pub use hud_extras::compile_hud_extras_to_file;
-pub use oreui_icons::compile_oreui_icons_to_file;
 pub use icon::{
     CompiledIconCarrier, IconCompileReport, compile_icon_assets, compile_icon_assets_with_blocks,
     overlay_block_icon,
@@ -88,6 +87,7 @@ pub use lang::{
     CompiledLangCarrier, LangCompileError, LangCompileReport, compile_lang_assets,
     compile_language, vanilla_language_codes,
 };
+pub use oreui_icons::compile_oreui_icons_to_file;
 pub use pack::{
     BlockTextureMap, DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES, MAX_FLIPBOOKS,
     PackSources, TerrainTextureMap, TextureKey, read_pack, resolve_texture_key,

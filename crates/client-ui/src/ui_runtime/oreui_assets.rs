@@ -409,7 +409,11 @@ pub fn load_optional_oreui_images(compiled_dir: &Path) -> Option<OreUiImages> {
                     Vec::new()
                 })
             };
-            let wanted = if comparison { is_referenced } else { is_install_only };
+            let wanted = if comparison {
+                is_referenced
+            } else {
+                is_install_only
+            };
             let (mut art, source) = match bundle_dir().map(|dir| (read_bundle(&dir, wanted), dir)) {
                 Some((Ok((art, source)), dir)) => {
                     eprintln!(

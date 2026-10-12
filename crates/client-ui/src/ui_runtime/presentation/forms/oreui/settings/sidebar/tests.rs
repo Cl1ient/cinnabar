@@ -1,7 +1,7 @@
 use crate::ui_runtime::{
     oreui_assets::{
-        OreUiImages, OreUiPage, OreUiSprite, SETTINGS_ICON_HIGHLIGHT_IMAGE,
-        checkout_compiled_dir, load_optional_oreui_images,
+        OreUiImages, OreUiPage, OreUiSprite, SETTINGS_ICON_HIGHLIGHT_IMAGE, checkout_compiled_dir,
+        load_optional_oreui_images,
     },
     presentation::{UiPresentationRuntime, tests::fixture_font},
 };

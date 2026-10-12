@@ -97,6 +97,67 @@ fn open_runs_the_world_and_close_stops_its_server() {
     assert_eq!(manager.core_report(), LocalWorld::default());
 }
 
+/// Reopening a world that still saves starts its server only once the old one has exited.
+#[test]
+fn reopening_while_the_last_server_saves_waits_for_it() {
+    let (runner, save) = FakeRunner::saving();
+    let runner = Arc::new(runner);
+    let fixture = with_runner(&runner);
+    let manager = &fixture.manager;
+    let world = manager.create(&flat("w")).expect("create");
+    manager.open(&world.id, None).expect("open");
+    wait_for(manager, WorldState::Running);
+    let old = runner.last();
+    manager.close();
+    assert_eq!(manager.status().state, WorldState::Stopping);
+    assert!(matches!(manager.delete(&world.id), Err(WorldError::InUse)));
+    manager
+        .open(&world.id, None)
+        .expect("an open during the save is accepted");
+    assert_eq!(manager.status().state, WorldState::Starting);
+    drop(save);
+    let status = wait_for(manager, WorldState::Running);
+    assert_eq!(status.world_id.as_deref(), Some(world.id.as_str()));
+    assert!(old.stopped());
+    assert_eq!(lock(&runner.made).len(), 2);
+    assert!(
+        !runner.overlapped.load(std::sync::atomic::Ordering::SeqCst),
+        "the new server started before the old one exited"
+    );
+}
+
+/// A start cancelled by a close lets a following open wait for its server, not fail as busy.
+#[test]
+fn an_open_after_a_cancelled_start_runs_the_world() {
+    let (runner, release) = FakeRunner::gated();
+    let fixture = with_runner(&Arc::new(runner));
+    let manager = &fixture.manager;
+    let world = manager.create(&flat("w")).expect("create");
+    manager.open(&world.id, None).expect("open");
+    manager.close();
+    manager.open(&world.id, None).expect("reopen");
+    drop(release);
+    wait_for(manager, WorldState::Running);
+}
+
+#[test]
+fn preparing_readies_only_the_dragonfly_runner() {
+    let dragonfly = Arc::new(FakeRunner::default());
+    let bds = Arc::new(FakeRunner::default());
+    let (dragonfly_runner, bds_runner): (Arc<dyn Runner>, Arc<dyn Runner>) =
+        (dragonfly.clone(), bds.clone());
+    let fixture = fixture(|parts, _| {
+        parts.runners.dragonfly = Some(dragonfly_runner);
+        parts.runners.bds = Some(bds_runner);
+    });
+    fixture.manager.prepare();
+    assert_eq!(
+        dragonfly.prepared.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(bds.prepared.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
 #[test]
 fn another_world_is_busy_while_one_runs() {
     let runner = Arc::new(FakeRunner::default());

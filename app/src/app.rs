@@ -53,7 +53,8 @@ use client_presentation::{
     camera::FlyCameraUpdateSet,
     local_player::{LocalPlayerFrameSet, publish_interaction_origin},
 };
-use client_ui::ui_runtime::{UiRuntime, oreui_fonts, presentation::UiPresentationRuntime};
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
+use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
 use diagnostics::markers::SHUTDOWN_COMPLETED;
 use diagnostics::metrics::MetricsCollector;
 use launcher::install_layout::InstallLayout;
@@ -521,7 +522,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     let font_runtime = loaded_assets.fonts.into_runtime();
     let block_entity_font = Arc::clone(&font_runtime);
     let font_dir = loaded_assets.selected_path.parent();
-    let font_runtime = oreui_fonts::install(font_runtime, font_dir.unwrap_or(Path::new(".")));
+    let font_runtime = oreui::fonts::install(font_runtime, font_dir.unwrap_or(Path::new(".")));
     let mut ui_presentation = UiPresentationRuntime::with_hud_and_icons(
         font_runtime,
         hud_assets.into_runtime(),
@@ -539,9 +540,13 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
             .context("JSON-UI engine is missing its carrier catalog")?,
     );
     ui_presentation.set_form_texture_fallbacks(&entity_runtime, layout.vanilla_pack_dir());
-    // Installed OreUI artwork is discovered and decoded once for every native screen.
-    if let Some(images) = client_ui::ui_runtime::oreui_assets::load_optional_oreui_images()
-        && let Err(reason) = ui_presentation.enable_oreui_originals(images)
+    // OreUI artwork is decoded once for every native screen.
+    if let Some(images) = oreui::images::load_optional_oreui_images(
+        loaded_assets
+            .selected_path
+            .parent()
+            .unwrap_or(Path::new(".")),
+    ) && let Err(reason) = ui_presentation.enable_oreui_originals(images)
     {
         diagnostics::log_stderr!("OreUI originals disabled ({reason})");
     }
@@ -764,7 +769,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         Arc::clone(&runtime_assets),
         Arc::clone(&entity_runtime),
     ))
-    .insert_resource({
+    .insert_resource(UiRuntimeResource({
         let mut ui_runtime = UiRuntime::new(0);
         ui_runtime.set_item_fuel_catalog(Arc::clone(&entity_runtime));
         ui_runtime.set_food_catalog(food_catalog);
@@ -774,11 +779,11 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         ui_runtime.set_lang_catalog(lang_assets.into_runtime());
         ui_runtime.set_active_language(active_lang);
         ui_runtime
-    })
+    }))
     .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
         0,
     )))
-    .insert_resource(ui_presentation)
+    .insert_resource(UiPresentationResource(ui_presentation))
     .insert_resource(WorldClock::default())
     .insert_resource(WeatherState::default())
     .init_resource::<environment::WeatherTickFrame>()

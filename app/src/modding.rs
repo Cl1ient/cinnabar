@@ -14,8 +14,8 @@ use {
     bevy::window::{CursorOptions, PrimaryWindow},
     client_runtime::network::NetworkHandle,
     client_shell::menu::MenuRuntime,
+    client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource},
     client_state::ClientFrameSet,
-    client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime},
     mod_host::{ModGrants, ModHost},
     std::{
         path::Path,
@@ -195,7 +195,7 @@ fn install(app: &mut App, hosts: Vec<ModHost>) {
         match font::load(Path::new(&path)).and_then(|font| {
             let font = std::sync::Arc::new(font);
             app.world_mut()
-                .get_resource_mut::<UiPresentationRuntime>()
+                .get_resource_mut::<UiPresentationResource>()
                 .ok_or_else(|| "presentation is unavailable".to_owned())?
                 .set_mod_panel_font(Some(font.clone()))
                 .map_err(|error| error.to_string())?;
@@ -275,9 +275,9 @@ fn drive_mod(
     focus: Option<Res<client_state::CursorFocus>>,
     driven: Option<Res<client_state::DrivenInput>>,
     windows: Query<(&Window, Option<&CursorOptions>), With<PrimaryWindow>>,
-    mut ui: ResMut<UiRuntime>,
+    mut ui: ResMut<UiRuntimeResource>,
     menu: Option<Res<MenuRuntime>>,
-    mut presentation: ResMut<UiPresentationRuntime>,
+    mut presentation: ResMut<UiPresentationResource>,
     time_override: Option<ResMut<VisualTimeOverride>>,
     mut gameplay: gameplay::GameplayContext,
     interaction: Option<ResMut<interaction::ModInteraction>>,
@@ -466,7 +466,10 @@ fn drive_mod(
         policy.scope = merged.item_use_delay_fix;
     }
     time_override.0 = merged.time_override;
-    if let Err(error) = presentation.set_mod_label(extension.hosts.merged_label()) {
+    if let Err(error) = presentation
+        .mod_ui_mut()
+        .set_mod_label(extension.hosts.merged_label())
+    {
         eprintln!("Cinnabar extension HUD rejected: {error}");
     }
     let hud_owner = extension.hosts.hud_owner();
@@ -490,23 +493,30 @@ fn drive_mod(
     if let Err(error) = presentation.set_mod_hud(hud) {
         eprintln!("Cinnabar extension HUD cards rejected: {error}");
     }
-    presentation.set_mod_world_projection(cameras.single().ok().map(|(transform, projection)| {
-        (projection.get_clip_from_view() * transform.to_matrix().inverse()).to_cols_array()
-    }));
+    presentation
+        .mod_ui_mut()
+        .set_mod_world_projection(cameras.single().ok().map(|(transform, projection)| {
+            (projection.get_clip_from_view() * transform.to_matrix().inverse()).to_cols_array()
+        }));
     let crosshair_owner = extension.hosts.crosshair_owner();
     let crosshair = crosshair_owner.and_then(|owner| extension.hosts.host(owner).crosshair());
-    if let Err(error) = presentation.set_mod_crosshair(crosshair) {
+    if let Err(error) = presentation.mod_ui_mut().set_mod_crosshair(crosshair) {
         eprintln!("Cinnabar extension crosshair rejected: {error}");
     }
     let owner = extension.hosts.panel_owner();
     if let Err(error) = presentation.set_mod_panel_font(extension.panel_fonts[owner].clone()) {
         eprintln!("Cinnabar extension panel font rejected: {error}");
     }
-    if let Err(error) = presentation.set_mod_panel(extension.hosts.host(owner).panel()) {
+    if let Err(error) = presentation
+        .mod_ui_mut()
+        .set_mod_panel(extension.hosts.host(owner).panel())
+    {
         eprintln!("Cinnabar extension panel rejected: {error}");
         extension.hosts.host_mut(owner).set_panel_open(false);
     }
-    presentation.set_mod_panel_open(extension.hosts.host(owner).panel_open());
+    presentation
+        .mod_ui_mut()
+        .set_mod_panel_open(extension.hosts.host(owner).panel_open());
     let editor_session = gameplay.hud_editor_session(&ui);
     hud_editor::publish(
         &mut extension,
@@ -568,6 +578,7 @@ fn keybind_allowed(window_focused: bool, input_absorbed: bool) -> bool {
 #[cfg(all(test, feature = "local-mods"))]
 mod tests {
     use super::*;
+    use client_ui::ui_runtime::UiRuntime;
 
     #[test]
     fn no_mod_path_registers_no_runtime_or_systems() {
@@ -599,8 +610,8 @@ mod tests {
             return;
         };
         let mut app = App::new();
-        app.insert_resource(presentation)
-            .insert_resource(UiRuntime::new(1))
+        app.insert_resource(UiPresentationResource(presentation))
+            .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
             .insert_resource(client_state::PlayerRuntime(
                 ::player_state::PlayerState::new(1),
             ))
@@ -639,7 +650,7 @@ mod tests {
             .resource::<client_state::PlayerRuntime>()
             .clone();
         app.world_mut()
-            .resource_mut::<UiPresentationRuntime>()
+            .resource_mut::<UiPresentationResource>()
             .build(
                 &player_runtime,
                 &UiRuntime::new(1),

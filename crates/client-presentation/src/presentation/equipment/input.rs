@@ -26,11 +26,16 @@ impl ActorEquipmentInput {
 }
 
 /// A drawable worn item, or `None` for an empty or unresolved stack.
-pub(super) fn worn_item(item: &CanonicalItemStack, dye_rgb: Option<u32>) -> Option<WornItem> {
+pub(super) fn worn_item(
+    item: &CanonicalItemStack,
+    dye_rgb: Option<u32>,
+    use_facts: client_world::EffectiveItemUse,
+) -> Option<WornItem> {
     if item.identity.is_empty() {
         return None;
     }
     Some(WornItem {
+        use_facts,
         grip: item.grip,
         identifier: item.identifier.clone()?,
         metadata: item.identity.metadata,
@@ -55,7 +60,7 @@ fn armor_slots(armor: Option<&ActorArmorSnapshot>) -> [Option<WornItem>; 4] {
         &armor.leggings,
         &armor.boots,
     ]
-    .map(|piece| worn_item(&piece.item, piece.dye_rgb))
+    .map(|piece| worn_item(&piece.item, piece.dye_rgb, Default::default()))
 }
 
 /// A remote actor's equipment from its replicated equipment and armor events.
@@ -64,7 +69,15 @@ pub fn remote_input(stream: &WorldStream, runtime_id: u64) -> ActorEquipmentInpu
         stream
             .authority()
             .actor_equipment_in_hand(runtime_id, hand)
-            .and_then(|equipment| worn_item(&equipment.item, None))
+            .and_then(|equipment| {
+                worn_item(
+                    &equipment.item,
+                    None,
+                    stream
+                        .authority()
+                        .item_use_profile(equipment.item.identity.network_id),
+                )
+            })
     };
     let actor = stream.authority().actor(runtime_id);
     ActorEquipmentInput {
@@ -92,7 +105,15 @@ pub fn local_input(
         stream
             .authority()
             .canonical_item_stack(stack)
-            .and_then(|item| worn_item(&item, dye_rgb))
+            .and_then(|item| {
+                worn_item(
+                    &item,
+                    dye_rgb,
+                    stream
+                        .authority()
+                        .item_use_profile(item.identity.network_id),
+                )
+            })
     };
     let armor = ui
         .map(|ui| ui.local_armor(player_runtime))
@@ -160,6 +181,7 @@ mod tests {
     #[test]
     fn local_attachable_input_retains_other_hand_and_render_timing() {
         let item = |identifier: &str| WornItem {
+            use_facts: client_world::EffectiveItemUse::default(),
             grip: assets::item::grip::builtin_item_grip(identifier),
             identifier: identifier.into(),
             metadata: 0,
@@ -195,6 +217,8 @@ mod tests {
     #[test]
     fn worn_glint_combines_intrinsic_dispositions_and_enchantment_facts() {
         let mut item = CanonicalItemStack {
+            use_animation: assets::item_use::ItemUseAnimation::None,
+            charged_projectile_role: assets::item_use::ItemProjectileRole::None,
             grip: assets::item::grip::ItemGrip::Unresolved,
             glint: assets::item::glint::builtin_item_glint("minecraft:enchanted_book"),
             durability: assets::item::durability::ItemDurability::Unresolved,
@@ -212,12 +236,28 @@ mod tests {
             damage: None,
             enchanted: false,
         };
-        assert!(worn_item(&item, None).unwrap().enchanted);
+        assert!(
+            worn_item(&item, None, Default::default())
+                .unwrap()
+                .enchanted
+        );
         item.glint = assets::item::glint::ItemGlint::Unresolved;
-        assert!(!worn_item(&item, None).unwrap().enchanted);
+        assert!(
+            !worn_item(&item, None, Default::default())
+                .unwrap()
+                .enchanted
+        );
         item.enchanted = true;
-        assert!(worn_item(&item, None).unwrap().enchanted);
+        assert!(
+            worn_item(&item, None, Default::default())
+                .unwrap()
+                .enchanted
+        );
         item.glint = assets::item::glint::ItemGlint::Session { enabled: false };
-        assert!(worn_item(&item, None).unwrap().enchanted);
+        assert!(
+            worn_item(&item, None, Default::default())
+                .unwrap()
+                .enchanted
+        );
     }
 }

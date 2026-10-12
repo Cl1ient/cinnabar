@@ -10,7 +10,7 @@ impl UiPresentationRuntime {
     pub fn record_frame_failure(&mut self, error: &UiPresentationError) {
         self.rejected_frames = self.rejected_frames.saturating_add(1);
         if self.rejected_frames.is_power_of_two() {
-            bevy::log::warn!(
+            tracing::warn!(
                 rejected_frames = self.rejected_frames,
                 ?error,
                 "skipped invalid UI frame"
@@ -28,12 +28,6 @@ impl UiPresentationRuntime {
     }
 
     pub fn set_menu_view(&mut self, view: Option<MenuView>) {
-        if let Some(requests) = self.base_font.glyph_requests()
-            && let Some(view) = &view
-        {
-            requests.set_locale(view.settings_options.language().unwrap_or(""));
-        }
-        self.poll_font_fallback();
         if let (Some(current), Some(incoming)) = (&self.menu_view, &view)
             && current.as_ref() == incoming
         {
@@ -95,6 +89,8 @@ impl UiPresentationRuntime {
             },
         );
         if let Some(style) = self
+            .screens
+            .mod_ui
             .mod_actor_style()
             .and_then(|style| style.nametags.as_ref())
         {

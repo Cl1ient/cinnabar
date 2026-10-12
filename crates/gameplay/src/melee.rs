@@ -3,9 +3,7 @@ use crate::{
     BatchSendError, interaction_authority::MAX_PENDING_INTERACTION_MILLIS,
     mining::FrozenMiningSelection, movement::MiningEffects,
 };
-use protocol::{
-    ActorUseAction, ActorUseRequest, BedrockSession, PlayerGameMode, PlayerInputMode, SwingSource,
-};
+use protocol::{ActorUseAction, ActorUseRequest, PlayerGameMode, PlayerInputMode, SwingSource};
 
 /// Wall-clock time after an attack during which block use is suppressed. Needs
 /// independent measurement.
@@ -293,19 +291,14 @@ impl MeleeRuntime {
                 let Some(selection) = press.selection.clone() else {
                     return outcome;
                 };
-                // The item descriptor no longer reads session state.
-                let session = BedrockSession { shield_item_id: 0 };
-                if let Ok(packet) = protocol::use_actor_packet(
-                    ActorUseRequest {
-                        actor_runtime_id: hit.runtime_id,
-                        action: ActorUseAction::Attack,
-                        selected_slot: selection.slot,
-                        selected_item: selection.item,
-                        player_position: press.player_position,
-                        hit_position: hit.point,
-                    },
-                    &session,
-                ) {
+                if let Ok(packet) = protocol::use_actor_packet(ActorUseRequest {
+                    actor_runtime_id: hit.runtime_id,
+                    action: ActorUseAction::Attack,
+                    selected_slot: selection.slot,
+                    selected_item: selection.item,
+                    player_position: press.player_position,
+                    hit_position: hit.point,
+                }) {
                     outcome.packets.push(packet);
                 }
             }

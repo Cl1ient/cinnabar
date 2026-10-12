@@ -18,30 +18,19 @@ pub(super) fn stack_icon(
     runtime: &UiRuntime,
     presentation: &UiPresentationRuntime,
     stack: &protocol::NetworkItemStack,
-    identifier: &str,
+    item: client_world::CanonicalItemStack,
     animation_frame: Option<u32>,
-    authority: Option<&client_world::WorldAuthority>,
 ) -> Option<IconRef> {
-    let facts = runtime.stack_facts(stack, Some(identifier));
-    let charged_projectile = (identifier == "minecraft:crossbow")
-        .then(|| facts.charged_projectile())
-        .flatten();
+    let identifier = item.identifier.as_deref()?;
     let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
         identifier,
         stack.metadata,
-        charged_projectile.as_deref(),
+        item.use_animation,
+        item.charged_projectile_role,
         animation_frame,
     );
     let icon = presentation.item_icon(icon_identifier, variant)?;
-    let intrinsic = authority.map_or(Default::default(), |world| {
-        world.item_glint(stack.network_id)
-    });
-    Some(
-        icon.with_glint(crate::ui_runtime::item_facts::glint_for_facts(
-            facts.has_enchantment_list,
-            intrinsic,
-        )),
-    )
+    Some(icon.with_glint(runtime.item_glint(stack, item.glint)))
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -52,16 +41,9 @@ pub mod test_support {
         runtime: &UiRuntime,
         presentation: &UiPresentationRuntime,
         stack: &protocol::NetworkItemStack,
-        identifier: &str,
+        item: client_world::CanonicalItemStack,
         animation_frame: Option<u32>,
     ) -> Option<IconRef> {
-        super::stack_icon(
-            runtime,
-            presentation,
-            stack,
-            identifier,
-            animation_frame,
-            None,
-        )
+        super::stack_icon(runtime, presentation, stack, item, animation_frame)
     }
 }

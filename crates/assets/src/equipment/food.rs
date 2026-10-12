@@ -36,7 +36,8 @@ pub(super) fn validate(entries: &[CompiledItemFood]) -> Result<(), AssetError> {
 mod tests {
     use super::*;
     use crate::{
-        RuntimeEquipmentCatalog, encode_equipment_catalog_full, encode_equipment_catalog_with_food,
+        RuntimeEquipmentCatalog, encode_equipment_catalog_full,
+        encode_equipment_catalog_with_use_profiles,
     };
     #[test]
     fn optional_food_roundtrips_and_old_carriers_stay_empty() {
@@ -52,34 +53,53 @@ mod tests {
             nutrition: 4,
             saturation_modifier: ItemDisplayScalar::new(0.3).unwrap(),
         };
-        let bytes = encode_equipment_catalog_with_food(
+        let overlay = crate::equipment::CompiledItemUseOverlay {
+            identifier: food.identifier.clone(),
+            duration_ticks: Some(20),
+            food_can_always_eat: Some(false),
+            ..Default::default()
+        };
+        let bytes = encode_equipment_catalog_with_use_profiles(
             [1; 32],
             [2; 32],
             &[],
             &[],
-            &[],
-            &[],
-            std::slice::from_ref(&food),
+            crate::equipment::EquipmentItemFacts {
+                item_use_overlays: std::slice::from_ref(&overlay),
+                item_food: std::slice::from_ref(&food),
+                ..Default::default()
+            },
         )
         .unwrap();
         let catalog = RuntimeEquipmentCatalog::decode(&bytes).unwrap();
         assert_eq!(catalog.item_food("fixture:food"), Some(&food));
+        assert_eq!(catalog.item_use_overlays(), &[overlay]);
         assert!(catalog.item_food("fixture:unknown").is_none());
         let mut bad = food.clone();
         bad.saturation_modifier = ItemDisplayScalar::new(-0.3).unwrap();
         assert!(
-            encode_equipment_catalog_with_food([1; 32], [2; 32], &[], &[], &[], &[], &[bad])
-                .is_err()
-        );
-        assert!(
-            encode_equipment_catalog_with_food(
+            encode_equipment_catalog_with_use_profiles(
                 [1; 32],
                 [2; 32],
                 &[],
                 &[],
+                crate::equipment::EquipmentItemFacts {
+                    item_food: &[bad],
+                    ..Default::default()
+                },
+            )
+            .is_err()
+        );
+        assert!(
+            encode_equipment_catalog_with_use_profiles(
+                [1; 32],
+                [2; 32],
                 &[],
                 &[],
-                &[food.clone(), food]
+                crate::equipment::EquipmentItemFacts {
+                    item_food: &[food.clone(), food],
+                    ..Default::default()
+                },
             )
             .is_err()
         );

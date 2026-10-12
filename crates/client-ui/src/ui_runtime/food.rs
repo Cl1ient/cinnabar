@@ -42,14 +42,15 @@ mod tests {
             nutrition: 4,
             saturation_modifier: assets::ItemDisplayScalar::new(0.3).unwrap(),
         };
-        let bytes = assets::encode_equipment_catalog_with_food(
+        let bytes = assets::encode_equipment_catalog_with_use_profiles(
             [1; 32],
             [2; 32],
             &[],
             &[],
-            &[],
-            &[],
-            &[food],
+            assets::EquipmentItemFacts {
+                item_food: &[food],
+                ..Default::default()
+            },
         )
         .unwrap();
         let mut runtime = UiRuntime::new(1);

@@ -131,10 +131,7 @@ impl WorldAuthority {
     pub fn actor_fluid_probes(&self) -> Vec<crate::ActorFluidProbe> {
         self.actors.fluid_probes()
     }
-    /// Installs the per-mount seat layouts riders fall back to when the server streams no offset.
-    pub fn set_actor_seat_defaults(&mut self, defaults: std::sync::Arc<crate::SeatDefaults>) {
-        self.actors.set_seat_defaults(defaults);
-    }
+
     /// Bed block under every sleeping actor, for [`Self::set_actor_bed_rotations`] sampling.
     #[must_use]
     pub fn actor_bed_sample_points(&self) -> Vec<(u64, [i32; 3])> {
@@ -365,7 +362,6 @@ impl WorldAuthority {
         self.actors.set_server_animation_compiler(compiler);
     }
 
-    /// Item use durations (ticks by identifier) that drive `query.main_hand_item_max_duration`.
     /// Layers the session's server-pack entity catalog over the vanilla one; its entities
     /// win by identifier for actors spawned afterwards.
     pub fn set_pack_entities(
@@ -384,6 +380,16 @@ impl WorldAuthority {
         self.actors.seed_property_defaults(types);
     }
 
+    /// Installs compiled item-use overlays before numerical admission.
+    pub fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.actors.set_item_use_overlays(overlays)
+    }
+
     /// Installs resource-defined item use durations for actor animation.
     pub fn set_item_use_durations(
         &mut self,
@@ -391,9 +397,9 @@ impl WorldAuthority {
     ) {
         self.actors.set_item_use_durations(durations);
     }
-    /// Ticks the pack lets `identifier` be used for before its use completes.
-    pub fn item_max_use_ticks(&self, identifier: &str) -> Option<u32> {
-        self.actors.item_max_use_ticks(identifier)
+    /// Returns numerical use admission without resolving names or component data.
+    pub fn item_use_profile(&self, network_id: i32) -> crate::EffectiveItemUse {
+        self.actors.item_use_profile(network_id)
     }
     /// Installs effective item-directed attack and kinetic presentation facts.
     pub fn set_item_attack_timings(

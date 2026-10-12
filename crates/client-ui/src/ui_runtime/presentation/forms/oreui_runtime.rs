@@ -431,8 +431,7 @@ impl UiPresentationRuntime {
         {
             return Ok(());
         }
-        let images = oreui::images::load_optional_oreui_images()
-            .ok_or("OreUI installed artwork is unavailable")?;
+        let images = oreui::images::loaded_oreui_images().ok_or("OreUI artwork was not loaded")?;
         let old_start = self
             .screens
             .oreui

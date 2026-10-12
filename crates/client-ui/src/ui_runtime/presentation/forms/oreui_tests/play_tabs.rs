@@ -2,14 +2,14 @@
 
 use super::super::super::UiPresentationRuntime;
 use launcher::menu::{MenuAction, MenuScreen, MenuView};
-use oreui::images::{PLAY_TAB_IMAGES, load_optional_oreui_images};
+use oreui::images::{PLAY_TAB_IMAGES, checkout_compiled_dir, load_optional_oreui_images};
 use ui::UiVisual;
 use ui_engine::test_support::fixture_font;
 use ui_engine::text_metrics::TextMetrics;
 
 #[test]
 fn installed_play_tabs_use_native_faces_and_keep_fixed_targets_while_pressed() {
-    let Some(images) = load_optional_oreui_images() else {
+    let Some(images) = load_optional_oreui_images(&checkout_compiled_dir()) else {
         eprintln!(
             "skipping installed_play_tabs_use_native_faces_and_keep_fixed_targets_while_pressed: installed OreUI bundle unavailable"
         );

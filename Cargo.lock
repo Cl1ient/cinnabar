@@ -4458,6 +4458,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui-engine",
  "wasm-bindgen",
  "zip",
 ]

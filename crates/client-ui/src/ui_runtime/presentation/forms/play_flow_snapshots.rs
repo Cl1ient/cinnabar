@@ -97,8 +97,9 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
         );
         return;
     };
-    let Some(images) = oreui::images::load_optional_oreui_images()
-        .filter(|images| !images.loading_frames.is_empty())
+    let Some(images) =
+        oreui::images::load_optional_oreui_images(&oreui::images::checkout_compiled_dir())
+            .filter(|images| !images.loading_frames.is_empty())
     else {
         eprintln!(
             "skipping the_connecting_loader_animates_over_its_cached_layout: fixture unavailable; requires the installed OreUI loading animation"

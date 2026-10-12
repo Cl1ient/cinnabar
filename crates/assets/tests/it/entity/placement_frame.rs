@@ -36,7 +36,7 @@ fn fixture(identifier: &str) -> CompiledEntityAssets {
     }
     compiled.symbols[0].identifier = identifier.into();
     compiled.rig_bindings[0].placement_frame = placement::builtin_placement_frame(identifier);
-    compiled
+    compiled.with_unresolved_admissions()
 }
 
 #[test]

@@ -87,7 +87,7 @@ fn lobby_ui_publication_cost() {
     let (Some(hud), Some(icons), Some(carrier)) = (
         read("vanilla-v1.mcbehud"),
         read("vanilla-v1.mcbeico"),
-        pack_harness::carrier(),
+        ui_engine::test_support::carrier(),
     ) else {
         eprintln!("LOBBY_PUBLICATION skipped: no installed carriers");
         return;

@@ -143,7 +143,7 @@ fn death_reveal_preserves_the_reason_and_loading_retires_the_controls() {
     ] {
         view.death_controls_visible = controls;
         view.death_loading = loading;
-        let screen = super::super::menu_screens::screen_data(&view, &|_| None).unwrap();
+        let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
         let rendered = cache
             .render(
                 ScreenKey {

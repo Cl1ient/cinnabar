@@ -5,6 +5,7 @@ use crate::ui_runtime::UiRuntime;
 use protocol::{FormKind, FormRequestEvent, ModalDialogForm, ServerFormModel};
 use std::sync::Arc;
 use ui_engine::test_support::fixture_font;
+use ui_screens::test_support::{FixedText, NoTextures};
 
 pub use crate::test_support::{mini_carrier, mini_engine_presentation};
 
@@ -460,24 +461,6 @@ fn path_and_url_button_images_resolve_like_vanilla() {
 }
 
 /// Six virtual px per character, nine per line.
-pub(super) struct FixedText;
-impl json_ui::TextMeasure for FixedText {
-    fn extent(&self, text: &str) -> [f64; 2] {
-        [text.chars().count() as f64 * 6.0, 9.0]
-    }
-}
-
-pub(super) struct NoTextures;
-impl json_ui::TextureSource for NoTextures {
-    fn texture(&self, _: &str) -> Option<json_ui::TextureMeta> {
-        Some(json_ui::TextureMeta {
-            base_size: [16.0, 16.0],
-            pixels: [16.0, 16.0],
-            nineslice: None,
-        })
-    }
-}
-
 fn pause_texts() -> Option<Vec<String>> {
     let mut view = launcher::menu::MenuView::new(true, "Player".to_owned());
     view.screen = launcher::menu::MenuScreen::Pause;
@@ -485,7 +468,7 @@ fn pause_texts() -> Option<Vec<String>> {
 }
 
 pub(super) fn screen_texts(view: &launcher::menu::MenuView) -> Option<Vec<String>> {
-    let carrier = super::pack_harness::carrier()?;
+    let carrier = ui_engine::test_support::carrier()?;
     let catalog = json_ui::Catalog::from_files(
         carrier
             .ui_files()
@@ -493,7 +476,7 @@ pub(super) fn screen_texts(view: &launcher::menu::MenuView) -> Option<Vec<String
             .map(|file| (&*file.path, &*file.bytes)),
     )
     .ok()?;
-    let screen = super::menu_screens::screen_data(view, &|_| None)?;
+    let screen = ui_screens::menu_screens::screen_data(view, &|_| None, 0)?;
     let env = json_ui::LayoutEnv {
         text: &FixedText,
         textures: &NoTextures,
@@ -615,7 +598,7 @@ fn local_world_loading_screen_names_the_stage() {
 // automation sections stay hidden.
 #[test]
 fn retail_settings_hide_debug_and_automation_sections() {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!(
             "skipping retail_settings_hide_debug_and_automation_sections: fixture unavailable; requires installed local carriers (make assets)"
         );
@@ -626,7 +609,7 @@ fn retail_settings_hide_debug_and_automation_sections() {
         json_ui::Catalog::from_files(files.iter().map(|file| (&*file.path, &*file.bytes))).unwrap();
     let mut view = launcher::menu::MenuView::new(true, "Steve".to_owned());
     view.screen = launcher::menu::MenuScreen::Settings;
-    let settings = super::menu_screens::screen_data(&view, &|_| None).unwrap();
+    let settings = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
     let tree = json_ui::resolve(&catalog, settings.reference, &settings.context)
         .control
         .unwrap();
@@ -671,7 +654,7 @@ fn retail_settings_hide_debug_and_automation_sections() {
 // and hidden advanced video options leave only the panel's normal bottom inset.
 #[test]
 fn retail_settings_keep_navigation_and_video_options_compact() {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!(
             "skipping retail_settings_keep_navigation_and_video_options_compact: fixture unavailable; requires installed local carriers (make assets)"
         );
@@ -686,7 +669,7 @@ fn retail_settings_keep_navigation_and_video_options_compact() {
     .unwrap();
     let mut view = launcher::menu::MenuView::new(true, "Player".to_owned());
     view.screen = launcher::menu::MenuScreen::Settings;
-    let screen = super::menu_screens::screen_data(&view, &|_| None).unwrap();
+    let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
     let resolved = json_ui::resolve(&catalog, screen.reference, &screen.context)
         .control
         .unwrap();
@@ -957,7 +940,7 @@ fn review_failed_menu_modal_does_not_expose_underlying_actions() {
 
 #[test]
 fn paper_doll_keeps_vanilla_placement_under_the_java_hud_overlay() {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         return;
     };
     let mut catalog = json_ui::Catalog::from_files(
@@ -1071,7 +1054,7 @@ fn server_trust_question_reads_the_active_language() {
         (key == "permissions.servertrust.message").then(|| Arc::<str>::from("Vertrauen %1$s?"))
     };
     let json_ui::FormModel::Modal(modal) =
-        super::menu_screens::server_trust_model("http://a:1", &translate)
+        ui_screens::menu_screens::server_trust_model("http://a:1", &translate)
     else {
         panic!("the trust question is a modal popup");
     };

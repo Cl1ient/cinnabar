@@ -50,7 +50,7 @@ impl ServerUiPack {
         }
         prepared.screen_settings = Some(Arc::new(PreparedScreenSettings::new(
             catalog.clone(),
-            super::menu_screens::retail_context(),
+            ui_screens::menu_screens::retail_context(),
         )));
         prepared.catalog = Some(catalog);
         Arc::new(prepared)

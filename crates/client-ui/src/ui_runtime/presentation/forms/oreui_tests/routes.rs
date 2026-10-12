@@ -180,7 +180,7 @@ fn home_owns_oreui_actions_and_directional_focus() {
         MenuAction::Navigate(MenuScreen::Servers),
         MenuAction::Navigate(MenuScreen::Settings),
         MenuAction::Navigate(MenuScreen::Social),
-        MenuAction::Store(crate::store::OPEN),
+        MenuAction::Store(launcher::store::OPEN),
         MenuAction::Navigate(MenuScreen::DressingRoom),
         MenuAction::Navigate(MenuScreen::Friends),
         MenuAction::Navigate(MenuScreen::Inbox),

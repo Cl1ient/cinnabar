@@ -53,11 +53,10 @@ pub mod startup;
 pub mod texture_atlas;
 
 pub use debug_overlay::DebugLines;
-pub use forms::ChatHit;
 pub use hud_layout::HudFrame;
 use hud_layout::{HudGeometry, HudLayout};
 use launcher::menu::{MenuAction, MenuView};
-use primitives::{bounded_visible_text, rect, resolve_chat_line};
+use primitives::rect;
 #[cfg(any(test, feature = "test-support"))]
 pub use publish::commit::refresh_hud_frame;
 pub use publish::{
@@ -73,10 +72,10 @@ use texture_atlas::{
 };
 use ui::IconRef;
 use ui_engine::text_metrics::TextMetrics;
+use ui_screens::text::{bounded_visible_text, resolve_chat_line};
 
 const TEXT_CACHE_ENTRIES: usize = 1_024;
 const TEXT_CACHE_BYTES: usize = 8 * 1024 * 1024;
-const MAX_PRESENTED_TEXT_BYTES: usize = 512;
 #[derive(Debug)]
 pub enum UiPresentationError {
     InvalidFontTexture,

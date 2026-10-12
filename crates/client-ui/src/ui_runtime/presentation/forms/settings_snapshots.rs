@@ -28,7 +28,7 @@ fn selector(tree: &json_ui::LaidOut<'_>, name: &str) -> Option<json_ui::Rect> {
 
 #[test]
 fn settings_category_button_pitch_matches_vanilla_toggle_height() {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!(
             "skipping settings_category_button_pitch_matches_vanilla_toggle_height: fixture unavailable; requires installed UI carrier (make assets)"
         );
@@ -37,7 +37,7 @@ fn settings_category_button_pitch_matches_vanilla_toggle_height() {
     let files = carrier.ui_files();
     let catalog =
         json_ui::Catalog::from_files(files.iter().map(|file| (&*file.path, &*file.bytes))).unwrap();
-    let (reference, context) = super::menu_screens::settings_target();
+    let (reference, context) = ui_screens::menu_screens::settings_target();
     let tree = json_ui::resolve(&catalog, reference, &context)
         .control
         .unwrap();
@@ -65,7 +65,7 @@ fn section(variable: &str) {
 
 /// Render a section after adjusting the menu view, such as opening a dropdown.
 fn section_with(variable: &str, name: &str, adjust: impl FnOnce(&mut launcher::menu::MenuView)) {
-    if super::pack_harness::carrier().is_none() {
+    if ui_engine::test_support::carrier().is_none() {
         return;
     }
     let player_runtime = player_state::PlayerState::new(1);
@@ -163,7 +163,7 @@ fn open_graphics_mode_rows_select_their_own_choice() {
 
 #[test]
 fn settings_video_graphics_options_pack_before() {
-    if super::pack_harness::carrier().is_none() {
+    if ui_engine::test_support::carrier().is_none() {
         return;
     }
     let player_runtime = player_state::PlayerState::new(1);
@@ -203,7 +203,7 @@ fn simple_graphics(view: &mut launcher::menu::MenuView) {
 // A complete section-button hit target expands and collapses the original option grid.
 #[test]
 fn graphics_options_expander_uses_full_settings_button_height() {
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!(
             "skipping graphics_options_expander_uses_full_settings_button_height: fixture unavailable; requires installed UI carrier (make assets)"
         );
@@ -212,7 +212,7 @@ fn graphics_options_expander_uses_full_settings_button_height() {
     let files = carrier.ui_files();
     let mut catalog =
         json_ui::Catalog::from_files(files.iter().map(|file| (&*file.path, &*file.bytes))).unwrap();
-    super::graphics_expander::install(&mut catalog);
+    ui_screens::graphics_expander::install(&mut catalog);
     let mut view = launcher::menu::MenuView::new(true, "Steve".to_owned());
     view.screen = MenuScreen::Settings;
     view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
@@ -221,7 +221,7 @@ fn graphics_options_expander_uses_full_settings_button_height() {
         .unwrap();
     for expanded in [false, true, false] {
         view.settings_advanced_graphics = expanded;
-        let screen = super::menu_screens::screen_data(&view, &|_| None).unwrap();
+        let screen = ui_screens::menu_screens::screen_data(&view, &|_| None, 0).unwrap();
         let rendered = json_ui::render_screen(
             screen.reference,
             &catalog,
@@ -242,7 +242,7 @@ fn graphics_options_expander_uses_full_settings_button_height() {
             .unwrap();
         assert_eq!(hit.rect.h, 30.0);
         assert_eq!(
-            super::settings_controls::action(&view, hit),
+            ui_screens::settings_controls::action(&view, hit),
             Some(launcher::menu::MenuAction::SettingsAdvancedGraphics)
         );
         let texture = if expanded {

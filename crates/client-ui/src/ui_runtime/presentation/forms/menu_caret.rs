@@ -4,13 +4,11 @@
 //! again after each edit. A press inside a box places the caret at the
 //! character nearest the pointer, measured as the box drew its text.
 
-use std::borrow::Cow;
-
 use ui::UiPoint;
 
 use super::super::UiPresentationRuntime;
 use launcher::menu::{MenuField, MenuView};
-use ui_engine::caret::{TextSpot, caret_byte, nearest_boundary};
+use ui_engine::caret::{TextSpot, nearest_boundary};
 
 /// The caret's blink clock and where the last menu frame drew each box's text.
 #[derive(Default)]
@@ -18,23 +16,6 @@ pub(super) struct MenuCaretState {
     /// The caret revision last seen, and the menu clock when it changed.
     blink: Option<(u64, f64)>,
     spots: Vec<TextSpot<MenuField>>,
-}
-
-/// `text` with the caret glyph at the caret while `field` is focused and the blink shows it.
-pub(in crate::ui_runtime::presentation) fn with_caret<'a>(
-    view: &MenuView,
-    field: MenuField,
-    text: &'a str,
-) -> Cow<'a, str> {
-    if view.field != Some(field) || !view.caret.shown || view.caret.selection.is_some() {
-        return Cow::Borrowed(text);
-    }
-    let at = caret_byte(text, view.caret.byte);
-    let mut shown = String::with_capacity(text.len() + json_ui::CARET_GLYPH.len_utf8());
-    shown.push_str(&text[..at]);
-    shown.push(json_ui::CARET_GLYPH);
-    shown.push_str(&text[at..]);
-    Cow::Owned(shown)
 }
 
 impl UiPresentationRuntime {

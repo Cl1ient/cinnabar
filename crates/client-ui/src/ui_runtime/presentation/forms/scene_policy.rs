@@ -2,7 +2,7 @@
 
 use json_ui::ScreenSettings;
 
-use super::menu_screens;
+use ui_screens::menu_screens;
 use {
     crate::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime},
     launcher::menu::MenuView,
@@ -67,11 +67,13 @@ impl UiPresentationRuntime {
         {
             return false;
         }
-        if runtime.chat_focused() && !settings(super::chat_screen::CHAT_SCREEN).render_game_behind {
+        if runtime.chat_focused()
+            && !settings(ui_screens::chat_screen::CHAT_SCREEN).render_game_behind
+        {
             return false;
         }
         if runtime.emotes().is_open()
-            && !settings(super::emote_screen::EMOTE_SCREEN).render_game_behind
+            && !settings(ui_screens::emote_screen::EMOTE_SCREEN).render_game_behind
         {
             return false;
         }
@@ -97,8 +99,11 @@ impl UiPresentationRuntime {
         let Some(engine) = self.engine.as_deref() else {
             return ScreenSettings::default();
         };
-        let Some(mut screen) = menu_screens::screen_data(view, &|key| runtime.translation(key))
-        else {
+        let Some(mut screen) = menu_screens::screen_data(
+            view,
+            &|key| runtime.translation(key),
+            super::menus::unix_seconds(),
+        ) else {
             return ScreenSettings::default();
         };
         let mut policy = engine.scene_settings(screen.reference, &screen.context);

@@ -49,10 +49,7 @@ impl UiPresentationRuntime {
         if self.screens.mod_ui.mod_chat_actions()
             != content.map_or(&[][..], |hud| hud.chat_actions.as_slice())
         {
-            let chat = &mut self.screens.chat;
-            chat.link_generation = None;
-            chat.link_hits.clear();
-            chat.extension_events.clear();
+            self.screens.chat.forget_annotations();
         }
         self.screens.mod_ui.set_mod_hud(content)
     }
@@ -78,7 +75,7 @@ impl UiPresentationRuntime {
         !runtime.ui_focused(player)
             && self.menu_view.is_none()
             && self.loading_stage.is_none()
-            && self.screens.chat.settings.options.value("hide_hud") == 0
+            && self.screens.chat.settings.options().value("hide_hud") == 0
             && !self.screens.mod_ui.mod_panel_open()
     }
 

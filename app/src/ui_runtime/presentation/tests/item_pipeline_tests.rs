@@ -50,7 +50,7 @@ fn harness() -> Option<Harness> {
         RuntimeAssets::decode(&local("vanilla-v2193.mcbea")?)
             .expect("decode installed world fixture"),
     );
-    let carrier = client_ui::test_support::pack_harness::carrier()?;
+    let carrier = ui_engine::test_support::carrier()?;
     let mut presentation =
         UiPresentationRuntime::with_hud_and_icons(fixture_font(), fixture_hud(), icons)
             .expect("build item fixture HUD");

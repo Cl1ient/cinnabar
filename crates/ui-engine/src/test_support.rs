@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use assets::{FontPixels, FontTexturePage, GlyphMetrics, RuntimeFontCatalog, encode_font_catalog};
+use assets::{
+    FontPixels, FontTexturePage, GlyphMetrics, RuntimeFontCatalog, RuntimeUiAssets,
+    encode_font_catalog,
+};
 use sha2::{Digest, Sha256};
 
 /// Models the shipped atlas: ink 16 texels tall sitting 14 above the baseline
@@ -30,4 +33,26 @@ pub fn fixture_font() -> Arc<RuntimeFontCatalog> {
     let manifest = [7; 32];
     let bytes = encode_font_catalog(manifest, &glyphs, &[page]).unwrap();
     Arc::new(RuntimeFontCatalog::decode(&bytes, manifest).unwrap())
+}
+
+/// Loads the installed UI carrier, reporting an absent fixture and rejecting malformed data.
+pub fn carrier() -> Option<Arc<RuntimeUiAssets>> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("../.local")
+        .join("assets/compiled/vanilla-v1.mcbeui");
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "skipping local UI fixture test: missing {}; make assets",
+                path.display()
+            );
+            return None;
+        }
+        Err(error) => panic!("read UI fixture {}: {error}", path.display()),
+    };
+    Some(Arc::new(
+        RuntimeUiAssets::decode(&bytes).expect("decode installed UI fixture"),
+    ))
 }

@@ -292,10 +292,10 @@ pub(super) enum Command {
         /// Tracked manifest that pins the local resource-pack source.
         #[arg(long)]
         source_manifest: PathBuf,
-        /// BREG1003 registry exported by tools/registrygen.
+        /// Block registry exported by tools/registrygen.
         #[arg(long)]
         registry: PathBuf,
-        /// LREG1001 state light metadata bound to the exact BREG1003 input.
+        /// LREG1001 state light metadata bound to the exact block registry input.
         #[arg(long)]
         light_registry: PathBuf,
         /// BIOREG01 registry exported by tools/registrygen.

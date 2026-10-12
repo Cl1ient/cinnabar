@@ -1,35 +1,81 @@
 //! Typed, bounded envelopes. Runtime bytes never become arbitrary Bedrock packets.
 
-use crate::{
-    manifest::identifier,
-    negotiation::{Grant, Wire},
-    policy::*,
-};
-use anyhow::{Result, ensure};
-use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+// BEGIN GENERATED EXTENSION CONTRACT
+// Generated from crates/server-experience/schema/extension.json; do not edit.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Channel {
+    pub id: String,
+    pub schema: u16,
+    pub direction: Direction,
+    pub fields: Vec<Field>,
+}
 
-/// One value of a channel record: a leaf, or since wire v2 a list or record of values.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Envelope {
+    pub version: u16,
+    pub session: String,
+    pub connection: String,
+    pub subclient: u8,
+    pub bundle: String,
+    pub generation: u64,
+    pub channel: String,
+    pub schema: u16,
+    pub sequence: u64,
+    pub world_epoch: u64,
+    pub payload: Vec<Scalar>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Part {
+    pub index: u32,
+    pub count: u32,
+    pub data: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Fragment {
+    pub version: u16,
+    pub session: String,
+    pub connection: String,
+    pub subclient: u8,
+    pub bundle: String,
+    pub generation: u64,
+    pub channel: String,
+    pub schema: u16,
+    pub sequence: u64,
+    pub world_epoch: u64,
+    pub fragment: Part,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    ToClient,
+    ToServer,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(
-    tag = "type",
-    content = "value",
     rename_all = "snake_case",
-    deny_unknown_fields
+    tag = "type",
+    deny_unknown_fields,
+    content = "value"
 )]
 pub enum Scalar {
     Bool(bool),
     Integer(i64),
     Text(String),
     Choice(u16),
-    /// Items of the list field's one item type.
     List(Vec<Scalar>),
-    /// One value per field of the record field, in order.
     Record(Vec<Scalar>),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(rename_all = "snake_case", tag = "type", deny_unknown_fields)]
 pub enum Field {
     Bool,
     Integer { min: i64, max: i64 },
@@ -40,7 +86,7 @@ pub enum Field {
 }
 
 impl Field {
-    /// Checks a declaration that may still nest `depth` containers.
+    /// Checks container nesting and record field counts before accepting a declaration.
     fn declared(&self, depth: usize) -> bool {
         match self {
             Field::List { item, .. } => depth > 0 && item.declared(depth - 1),
@@ -52,8 +98,7 @@ impl Field {
             _ => true,
         }
     }
-
-    /// Checks one value against this type and range, every nested value included.
+    /// Checks the value's type and every schema-defined bound recursively.
     fn admits(&self, value: &Scalar) -> bool {
         match (self, value) {
             (Field::Bool, Scalar::Bool(_)) => true,
@@ -63,36 +108,22 @@ impl Field {
             }
             (Field::Choice { variants }, Scalar::Choice(value)) => value < variants,
             (Field::List { item, max_items }, Scalar::List(items)) => {
-                items.len() <= usize::from(*max_items) && items.iter().all(|v| item.admits(v))
+                items.len() <= usize::from(*max_items)
+                    && items.iter().all(|value| item.admits(value))
             }
             (Field::Record { fields }, Scalar::Record(values)) => {
                 fields.len() == values.len()
-                    && fields.iter().zip(values).all(|(field, v)| field.admits(v))
+                    && fields
+                        .iter()
+                        .zip(values)
+                        .all(|(field, value)| field.admits(value))
             }
             _ => false,
         }
     }
 }
-
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Direction {
-    ToClient,
-    ToServer,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Channel {
-    pub id: String,
-    pub schema: u16,
-    pub direction: Direction,
-    pub fields: Vec<Field>,
-}
-
 impl Channel {
-    /// Checks the declaration against the shared limits: an identifier, at most
-    /// `MAX_CHANNEL_FIELDS` fields per record and containers nested `MAX_FIELD_DEPTH` deep.
+    /// Checks identifiers, field counts and nesting against the shared ceilings.
     pub fn declared(&self) -> bool {
         identifier(&self.id)
             && self.fields.len() <= MAX_CHANNEL_FIELDS
@@ -101,9 +132,7 @@ impl Channel {
                 .iter()
                 .all(|field| field.declared(MAX_FIELD_DEPTH))
     }
-
-    /// Validates the declared positional record, of at most `max_bytes` encoded, before guest
-    /// dispatch or sending.
+    /// Checks the record's direction, positional fields and encoded byte ceiling.
     pub fn validate(
         &self,
         payload: &[Scalar],
@@ -128,50 +157,16 @@ impl Channel {
         Ok(())
     }
 }
+// END GENERATED EXTENSION CONTRACT
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Envelope {
-    pub version: u16,
-    pub session: String,
-    pub connection: String,
-    pub subclient: u8,
-    pub bundle: String,
-    pub generation: u64,
-    pub channel: String,
-    pub schema: u16,
-    pub sequence: u64,
-    pub world_epoch: u64,
-    pub payload: Vec<Scalar>,
-}
-
-/// One ordered piece of a payload too large to send inline.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Part {
-    pub index: u32,
-    pub count: u32,
-    /// Whole UTF-8 characters of the payload's JSON.
-    pub data: String,
-}
-
-/// A wire v2 envelope that carries one part of its payload instead of the payload. All parts of
-/// a message share its header, sequence number included.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Fragment {
-    pub version: u16,
-    pub session: String,
-    pub connection: String,
-    pub subclient: u8,
-    pub bundle: String,
-    pub generation: u64,
-    pub channel: String,
-    pub schema: u16,
-    pub sequence: u64,
-    pub world_epoch: u64,
-    pub fragment: Part,
-}
+use crate::{
+    manifest::identifier,
+    negotiation::{Grant, Wire},
+    policy::*,
+};
+use anyhow::{Result, ensure};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 impl Fragment {
     /// The fragment of `envelope` that carries `part`.

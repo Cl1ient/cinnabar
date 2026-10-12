@@ -64,6 +64,7 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
     compiled.item_visuals = (0..16)
         .map(|metadata| assets::ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,

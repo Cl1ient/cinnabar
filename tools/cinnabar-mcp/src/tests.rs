@@ -44,6 +44,7 @@ fn tools_list_names_every_tool() {
             "test_cape",
             "sign_in_fixture",
             "test_accounts",
+            "global_packs",
             "state",
             "wait_for",
             "screenshot",
@@ -215,6 +216,19 @@ fn pointer_wheel_and_cape_tools_preserve_arguments() {
     let (command, _) =
         commands::command("test_accounts", &json!({"enabled": false}), repo, repo).unwrap();
     assert_eq!(command, Command::TestAccounts { enabled: false });
+    let (command, _) = commands::command(
+        "global_packs",
+        &json!({"action": {"deactivate": {"index": 0}}}),
+        repo,
+        repo,
+    )
+    .unwrap();
+    assert_eq!(
+        command,
+        Command::GlobalPacks {
+            action: Some(developer_control::protocol::GlobalPackAction::Deactivate { index: 0 })
+        }
+    );
     assert!(
         commands::command(
             "test_cape",

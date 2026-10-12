@@ -455,12 +455,7 @@ fn third_person_bow_publication_tracks_use_frames_duration_and_release() {
     }
     let mut offhand = input.clone();
     offhand.off = offhand.main.take();
-    offhand.main = Some(crate::presentation::equipment::WornItem {
-        use_facts: client_world::EffectiveItemUse::default(),
-        grip: assets::item::grip::builtin_item_grip("minecraft:trident"),
-        identifier: "minecraft:trident".into(),
-        ..offhand.off.as_ref().unwrap().clone()
-    });
+    offhand.main = held("minecraft:trident").main;
     owner
         .metadata
         .insert(0, protocol::ActorMetadataValue::Flags(1 << 4));

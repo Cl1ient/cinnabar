@@ -7952,9 +7952,10 @@ Incomplete parity: recipe eligibility and exact pattern-choice styling remain op
 
 ## Entity terrain occlusion and retained block-entity view culling
 
-- Actor bodies and their shadow bounds use bounded, current-terrain slab proofs after
+- Actor bodies and their shadow bounds use bounded, current-terrain exposed-face proofs after
   ordinary view admission. Name tags retain their independent publication. Unknown,
   dirty, unpublished, clipped, transparent or budget-exhausted terrain always draws.
+  Internal voxel faces cannot certify depth. Near-clip safety is independent of rotation.
   Actors with unbounded attachments, extra layers or no authored bounds also draw.
 - Block entities use the same proof without stopping lids, rings, map requests or text
   canvases. Global beams bypass terrain proofs. Retained vertex runs are culled at draw

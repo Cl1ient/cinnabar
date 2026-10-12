@@ -339,11 +339,15 @@ pub(crate) fn update_block_entity_scene(
         });
     let mut work = culling::BlockEntityWork::default();
     let mut occlusion_budget = meshing::occlusion::OcclusionBudget::default();
-    let occlusion_view = camera.single().ok().map(|(transform, projection)| {
-        (
-            transform.translation.to_array(),
-            projection.get_clip_from_view() * transform.to_matrix().inverse(),
+    let occlusion_eye = camera.single().ok().and_then(|(transform, projection)| {
+        let eye = transform.translation.to_array();
+        let matrix = projection.get_clip_from_view() * transform.to_matrix().inverse();
+        render_model::visibility_bounds::perspective_supports_occlusion(
+            matrix,
+            eye,
+            meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS,
         )
+        .then_some(eye)
     });
 
     let cracks = ui
@@ -441,24 +445,17 @@ pub(crate) fn update_block_entity_scene(
                 let mut hidden = !work.admit(culling.as_ref(), template, [x, y, z]);
                 if !hidden
                     && let Some((low, high)) = culling::bounds(template, [x, y, z])
-                    && let Some((eye, matrix)) = occlusion_view
+                    && let Some(eye) = occlusion_eye
                     && let Some(cave) = cave.as_deref()
                 {
                     let _zone = bevy::log::info_span!("block_entity.occlusion").entered();
-                    hidden = render_model::visibility_bounds::perspective_eye_matches(matrix, eye)
-                        && stream.terrain_hides_box(
-                            &mut occlusion_budget,
-                            eye,
-                            low,
-                            high,
-                            |cell, key| {
-                                cave.is_visible(key)
-                                    && cave.rendered.contains_key(&key)
-                                    && render_model::visibility_bounds::cell_is_inside_depth(
-                                        matrix, cell,
-                                    )
-                            },
-                        );
+                    hidden = stream.terrain_hides_box(
+                        &mut occlusion_budget,
+                        eye,
+                        low,
+                        high,
+                        |_, key| cave.is_visible(key) && cave.rendered.contains_key(&key),
+                    );
                     work.prepared -= u32::from(hidden);
                 }
                 let context = FrameContext {

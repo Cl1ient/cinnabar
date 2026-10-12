@@ -128,7 +128,8 @@ impl ResolvedContributors {
             })
     }
 
-    const fn is_empty(self) -> bool {
+    /// Whether resolution retained no geometry, liquid or diagnostic contributor.
+    pub const fn is_empty(self) -> bool {
         self.primary.is_none() && self.liquid.is_none() && self.diagnostic.is_none()
     }
 

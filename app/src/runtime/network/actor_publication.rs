@@ -309,6 +309,7 @@ pub(crate) fn prepare_actor_render_frame(
         ..
     } = &mut *world;
     let occlusion_budget = std::cell::RefCell::new(meshing::occlusion::OcclusionBudget::default());
+    let projection_safe = std::cell::Cell::new(None);
     client_presentation::actor_publication::prepare_actor_render_frame(
         ActorWorld {
             stream: stream.as_mut(),
@@ -334,22 +335,20 @@ pub(crate) fn prepare_actor_render_frame(
                     |key| stream.has_sub_chunk_connectivity(key),
                     low,
                     high,
-                ) || (render_model::visibility_bounds::perspective_eye_matches(
-                    view.clip_from_world,
-                    camera,
-                ) && stream.terrain_hides_box(
+                ) || (projection_safe.get().unwrap_or_else(|| {
+                    let safe = render_model::visibility_bounds::perspective_supports_occlusion(
+                        view.clip_from_world,
+                        camera,
+                        meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS,
+                    );
+                    projection_safe.set(Some(safe));
+                    safe
+                }) && stream.terrain_hides_box(
                     &mut occlusion_budget.borrow_mut(),
                     camera,
                     low,
                     high,
-                    |cell, key| {
-                        cave.is_visible(key)
-                            && cave.rendered.contains_key(&key)
-                            && render_model::visibility_bounds::cell_is_inside_depth(
-                                view.clip_from_world,
-                                cell,
-                            )
-                    },
+                    |_, key| cave.is_visible(key) && cave.rendered.contains_key(&key),
                 ))
             })
         },

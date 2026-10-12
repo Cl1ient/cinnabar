@@ -71,3 +71,15 @@ fn clear_sight_and_cutout_terrain_draw() {
         .unwrap();
     assert!(!hidden(&stream));
 }
+
+#[test]
+fn occupied_cells_with_no_exposed_face_cannot_certify_depth() {
+    let (mut stream, key) = wall_stream();
+    // The camera and actor are inside the solid section. Its outer faces cannot hide
+    // the actor, and its internal voxel faces were removed by terrain meshing.
+    stream
+        .authority
+        .commit_sub_chunk(key, uniform_sub_chunk(2))
+        .unwrap();
+    assert!(!hidden(&stream));
+}

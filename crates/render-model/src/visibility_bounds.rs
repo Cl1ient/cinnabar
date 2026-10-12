@@ -52,28 +52,40 @@ pub fn box_intersects_view(matrix: Mat4, low: [f32; 3], high: [f32; 3]) -> bool 
         || p.iter().all(|p| p.w < -error.w))
 }
 
-/// Whether `eye` is the origin of perspective rays for this projection. Orthographic
-/// and uncertain transforms cannot use proofs projected from a single camera point.
-pub fn perspective_eye_matches(matrix: Mat4, eye: [f32; 3]) -> bool {
-    let eye = Vec3::from_array(eye);
-    let plane = matrix.row(3);
-    matrix.is_finite()
-        && eye.is_finite()
-        && plane.truncate().length_squared() > f32::EPSILON
-        && (matrix.as_dmat4() * eye.as_dvec3().extend(1.0)).w.abs()
-            < f64::from(CLIP_ROUNDING_MARGIN)
-}
-
-/// Whether a full cube is strictly inside the depth clip interval. A clipped occluder
-/// cannot prove another object's invisibility, even when its terrain occupancy is opaque.
-pub fn cell_is_inside_depth(matrix: Mat4, cell: [i32; 3]) -> bool {
-    let low = cell.map(|x| x as f32);
-    let high = cell.map(|x| x as f32 + 1.0);
-    let error = clip_error(matrix, low, high);
-    corners(matrix, low, high).is_some_and(|p| {
-        p.iter()
-            .all(|p| p.w > error.w && p.z > error.z && p.z < p.w - error.z - error.w)
-    })
+/// Supports point-origin occlusion proofs only when the perspective eye matches and
+/// every near-plane point lies closer than `near_radius_limit`. This test does not depend
+/// on an occluder's view direction, so ordinary camera turns keep preparation stable.
+pub fn perspective_supports_occlusion(matrix: Mat4, eye: [f32; 3], near_radius_limit: f64) -> bool {
+    let eye = Vec3::from_array(eye).as_dvec3();
+    if !matrix.is_finite()
+        || !eye.is_finite()
+        || !near_radius_limit.is_finite()
+        || near_radius_limit <= 0.0
+        || matrix.determinant() == 0.0
+    {
+        return false;
+    }
+    let inverse = matrix.as_dmat4().inverse();
+    let origin = inverse * glam::DVec4::Z;
+    if !origin.is_finite()
+        || origin.w <= 0.0
+        || (origin.truncate() / origin.w).distance(eye) > f64::from(CLIP_ROUNDING_MARGIN)
+    {
+        return false;
+    }
+    for x in [-1.0, 1.0] {
+        for y in [-1.0, 1.0] {
+            let corner = inverse * glam::DVec4::new(x, y, 1.0, 1.0);
+            if !corner.is_finite()
+                || corner.w <= 0.0
+                || (corner.truncate() / corner.w).distance_squared(eye)
+                    >= near_radius_limit * near_radius_limit
+            {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -88,17 +100,35 @@ mod tests {
 
     #[test]
     fn single_eye_proofs_require_a_matching_perspective_origin() {
-        assert!(!perspective_eye_matches(Mat4::IDENTITY, [0.0; 3]));
+        assert!(!perspective_supports_occlusion(
+            Mat4::IDENTITY,
+            [0.0; 3],
+            1.0
+        ));
         let projection =
             glam::camera::rh::proj::directx::perspective_infinite_reverse(1.0, 1.0, 0.1);
-        assert!(perspective_eye_matches(projection, [0.0; 3]));
-        assert!(!perspective_eye_matches(projection, [0.0, 0.0, 2.0]));
+        assert!(perspective_supports_occlusion(projection, [0.0; 3], 1.0));
+        assert!(!perspective_supports_occlusion(
+            projection,
+            [0.0, 0.0, 2.0],
+            1.0
+        ));
     }
 
     #[test]
-    fn clipped_or_uncertain_cells_cannot_occlude() {
-        assert!(!cell_is_inside_depth(Mat4::IDENTITY, [0; 3]));
-        assert!(!cell_is_inside_depth(Mat4::ZERO, [0; 3]));
-        assert!(box_intersects_view(Mat4::ZERO, [f32::NAN; 3], [0.0; 3]));
+    fn near_clipping_safety_is_stable_under_rotation() {
+        let projection =
+            glam::camera::rh::proj::directx::perspective_infinite_reverse(1.0, 1.0, 0.1);
+        for yaw in [0.0, 0.5, 1.5, 3.0] {
+            assert!(perspective_supports_occlusion(
+                projection * Mat4::from_rotation_y(yaw),
+                [0.0; 3],
+                1.0
+            ));
+        }
+        let large_near =
+            glam::camera::rh::proj::directx::perspective_infinite_reverse(1.0, 1.0, 2.0);
+        assert!(!perspective_supports_occlusion(large_near, [0.0; 3], 1.0));
+        assert!(!perspective_supports_occlusion(Mat4::ZERO, [0.0; 3], 1.0));
     }
 }

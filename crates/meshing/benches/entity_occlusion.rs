@@ -20,7 +20,7 @@ fn entity_occlusion(c: &mut Criterion) {
                             black_box([0.5, 4.5, 4.5]),
                             [12.0, 3.0, 3.0],
                             [13.0, 6.0, 6.0],
-                            |cell| black_box(wall && cell[0] == 8),
+                            |cell, _| black_box(wall && cell[0] == 8),
                         ));
                     }
                     black_box((hidden, budget.remaining()))

@@ -120,7 +120,7 @@ fn hidden_entities_keep_lids_rings_and_map_requests() {
                 [-10.0, 64.5, 0.5],
                 position.map(|axis| axis as f32 - 2.0),
                 position.map(|axis| axis as f32 + 3.0),
-                |cell| cell[0] == -5,
+                |cell, _| cell[0] == -5,
             );
             assert!(hidden);
             assert_eq!(

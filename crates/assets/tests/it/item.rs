@@ -220,6 +220,7 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         ]
         .into_boxed_slice(),
         symbols: vec![entity::EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: entity::EntityAssetKind::Entity,
             identifier: "minecraft:item_frame".into(),
             source_index: 0,
@@ -244,6 +245,7 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         rig_animations: Box::new([]),
         rig_controllers: Box::new([]),
         item_visuals: vec![ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
             glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
@@ -435,6 +437,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
     let base = compiled.item_visuals[0].clone();
     compiled.item_visuals = vec![
         ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
             glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
@@ -445,6 +448,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
         },
         base.clone(),
         ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
             glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
@@ -454,6 +458,7 @@ fn item_carrier_round_trips_all_four_exact_routes() {
             ..base.clone()
         },
         ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
             glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
@@ -503,6 +508,7 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     let mut compiled = item_carrier_fixture();
     compiled.item_visuals = (0..MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
             glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
@@ -515,6 +521,7 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     assert!(compiled.validate().is_ok());
     compiled.item_visuals = (0..=MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
             glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,

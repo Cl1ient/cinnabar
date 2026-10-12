@@ -336,7 +336,7 @@ impl UiPresentationRuntime {
                         metadata: 0,
                     })
                 })
-                .map(|model| model.with_glint(hand.glint))
+                .map(|model| model.with_grip(hand.grip).with_glint(hand.glint))
         });
         let unposed = [None; 6];
         let body = if self.player_preview_view == player_preview::PreviewView::Hud {

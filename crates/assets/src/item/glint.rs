@@ -115,6 +115,7 @@ mod tests {
     /// Builds one missing-art descriptor with exact checked input identities.
     fn fixture() -> (ItemVisualDefinition, Vec<EntityAssetSource>) {
         let visual = ItemVisualDefinition {
+            grip: crate::item::grip::ItemGrip::Unresolved,
             glint: builtin_item_glint("minecraft:enchanted_book"),
             fuel: crate::item::fuel::ItemFuel::Unresolved,
             armour: crate::item::armour::ItemArmour::Unresolved,

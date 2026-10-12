@@ -78,7 +78,7 @@ impl UiPresentationRuntime {
         self.equipment_catalog = catalog;
     }
 
-    /// Dresses the model using each stack's admitted identity and intrinsic shine.
+    /// Dresses the model using each stack's admitted identity, grip and intrinsic shine.
     pub fn dress_player_preview(
         &mut self,
         player_runtime: &player_state::PlayerState,
@@ -121,6 +121,7 @@ impl UiPresentationRuntime {
                 .then(|| facts.charged_projectile())
                 .flatten();
             Some(PreviewHandItem {
+                grip: Some(item.grip),
                 glint: Some(crate::ui_runtime::item_facts::glint_for_facts(
                     facts.has_enchantment_list,
                     item.glint,
@@ -168,6 +169,7 @@ impl UiPresentationRuntime {
         });
         let hands = [
             held.map(|(identifier, metadata)| PreviewHandItem {
+                grip: None,
                 glint: None,
                 identifier: Arc::from(identifier),
                 metadata,

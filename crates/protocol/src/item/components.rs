@@ -31,7 +31,10 @@ pub struct ItemComponents {
     pub glint: Option<bool>,
     /// Presence of an intrinsic-shine declaration, including malformed values.
     pub glint_declared: bool,
-    pub hand_equipped: bool,
+    /// Explicit finite hand flag; absence or malformed data remains unresolved.
+    pub hand_equipped: Option<bool>,
+    /// Distinguishes a malformed declaration from an absent hand component.
+    pub hand_equipped_declared: bool,
     pub max_durability: Option<u32>,
     /// Retains declaration presence when its maximum is absent or invalid.
     pub durability_declared: bool,
@@ -41,6 +44,8 @@ pub struct ItemComponents {
     pub use_duration_ticks: Option<u32>,
     /// Whether `minecraft:food` is declared.
     pub food: bool,
+    /// Present only when a food component declares finite numeric nutrition facts.
+    pub food_properties: Option<FoodProperties>,
     /// `minecraft:wearable` slot, e.g. `slot.armor.head`.
     pub wearable_slot: Option<Arc<str>>,
     /// Whether the payload declares `minecraft:wearable`, including malformed declarations.
@@ -79,6 +84,47 @@ impl ItemComponents {
         }
         bytes
     }
+}
+/// Retained finite component-defined food values, with no guessed vanilla catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoodProperties {
+    nutrition: u32,
+    saturation_modifier_bits: u32,
+}
+impl FoodProperties {
+    /// Constructs validated component or version-pinned carrier values.
+    pub fn new(nutrition: u32, saturation_modifier: f32) -> Option<Self> {
+        (saturation_modifier.is_finite() && saturation_modifier >= 0.0).then_some(Self {
+            nutrition,
+            saturation_modifier_bits: saturation_modifier.to_bits(),
+        })
+    }
+    /// Nutrition points granted when consuming this item.
+    pub const fn nutrition(&self) -> u32 {
+        self.nutrition
+    }
+    /// Component multiplier; saturation gained is nutrition × multiplier × 2.
+    pub fn saturation_modifier(&self) -> f32 {
+        f32::from_bits(self.saturation_modifier_bits)
+    }
+}
+/// Reads only explicit component values; absent or malformed fields remain unavailable.
+fn food_properties(component: Option<&Nbt>) -> Option<FoodProperties> {
+    let component = component?;
+    let nutrition = component.field("nutrition")?.number()?;
+    let modifier = component.field("saturation_modifier")?.number()? as f32;
+    if !nutrition.is_finite()
+        || !(0.0..=u32::MAX as f64).contains(&nutrition)
+        || nutrition.fract() != 0.0
+        || !modifier.is_finite()
+        || modifier < 0.0
+    {
+        return None;
+    }
+    Some(FoodProperties {
+        nutrition: nutrition as u32,
+        saturation_modifier_bits: modifier.to_bits(),
+    })
 }
 
 /// Components for every StartGame registry item whose component data is non-empty.
@@ -133,7 +179,6 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
             .filter(|text| !text.is_empty() && text.len() <= MAX_TEXT_BYTES)
             .map(Arc::from)
     };
-    let flag = |nbt: Option<&Nbt>| nbt.and_then(value_of).is_some_and(|value| value != 0.0);
     let count = |nbt: Option<&Nbt>| {
         nbt.and_then(value_of)
             .filter(|value| value.is_finite() && *value >= 0.0)
@@ -146,6 +191,10 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
             .and_then(duration_ticks)
     });
     let glint = declared_flag(property("foil"), component("minecraft:glint"));
+    let hand_equipped = declared_flag(
+        property("hand_equipped"),
+        component("minecraft:hand_equipped"),
+    );
     Some(ItemComponents {
         fuel_duration_ticks: component("minecraft:fuel")
             .and_then(|fuel| fuel.field("duration"))
@@ -159,8 +208,8 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         ),
         glint: glint.1,
         glint_declared: glint.0,
-        hand_equipped: flag(property("hand_equipped"))
-            || flag(component("minecraft:hand_equipped")),
+        hand_equipped: hand_equipped.1,
+        hand_equipped_declared: hand_equipped.0,
         durability_declared: component("minecraft:durability").is_some(),
         max_durability: count(
             component("minecraft:durability")
@@ -185,6 +234,7 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         }),
         use_duration_ticks,
         food: component("minecraft:food").is_some(),
+        food_properties: food_properties(component("minecraft:food")),
         wearable_slot: text(
             component("minecraft:wearable").and_then(|wearable| wearable.field("slot")),
         ),
@@ -242,6 +292,37 @@ mod tests {
         let mut bytes = name(1, key);
         bytes.push(value);
         bytes
+    }
+
+    fn float(key: &str, value: f32) -> Vec<u8> {
+        let mut bytes = name(5, key);
+        bytes.extend(value.to_le_bytes());
+        bytes
+    }
+    #[test]
+    fn explicit_food_values_are_retained_without_guessing_missing_or_nonfinite_values() {
+        let food = |modifier| {
+            compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound(
+                        "minecraft:food",
+                        &[int("nutrition", 4), float("saturation_modifier", modifier)],
+                    )],
+                )],
+            )
+        };
+        let components = parse_components(&food(0.6)).unwrap();
+        let values = components.food_properties.unwrap();
+        assert_eq!(values.nutrition(), 4);
+        assert_eq!(values.saturation_modifier(), 0.6);
+        assert!(
+            parse_components(&food(f32::NAN))
+                .unwrap()
+                .food_properties
+                .is_none()
+        );
     }
 
     fn compound(key: &str, entries: &[Vec<u8>]) -> Vec<u8> {
@@ -401,7 +482,7 @@ mod tests {
             components.display_name.as_deref(),
             Some("item.zeqa.sword.name")
         );
-        assert!(components.glint == Some(true) && components.hand_equipped);
+        assert!(components.glint == Some(true) && components.hand_equipped == Some(true));
         assert_eq!(components.max_durability, Some(250));
         assert_eq!(components.max_stack_size, Some(16));
         assert_eq!(components.use_animation.as_deref(), Some("eat"));
@@ -440,7 +521,7 @@ mod tests {
             )],
         );
         let components = parse_components(&nbt).unwrap();
-        assert!(components.glint == Some(true) && !components.hand_equipped);
+        assert!(components.glint == Some(true) && components.hand_equipped == Some(false));
         assert_eq!(components.max_stack_size, Some(1));
         assert_eq!(components.use_duration_ticks, Some(32));
         assert_eq!(components.use_animation.as_deref(), Some("drink"));
@@ -449,6 +530,7 @@ mod tests {
         assert_eq!(components.block_placer.as_deref(), Some("test:ore"));
         assert!(parse_components(&compound("", &[])).is_none());
     }
+
     #[test]
     fn intrinsic_glint_flags_distinguish_false_missing_and_malformed_data() {
         let payload = |flag: Option<Vec<u8>>| {
@@ -473,5 +555,32 @@ mod tests {
         let malformed = parse_components(&payload(Some(compound("minecraft:glint", &[])))).unwrap();
         assert_eq!(malformed.glint, None);
         assert!(malformed.glint_declared);
+    }
+
+    #[test]
+    fn hand_grip_flag_presence_keeps_false_distinct_from_missing_or_malformed() {
+        let payload = |flag: Option<Vec<u8>>| {
+            compound(
+                "",
+                &[compound(
+                    "components",
+                    &flag.into_iter().collect::<Vec<_>>(),
+                )],
+            )
+        };
+        let missing = parse_components(&payload(None)).unwrap();
+        assert_eq!(missing.hand_equipped, None);
+        assert!(!missing.hand_equipped_declared);
+        let flat = parse_components(&payload(Some(compound(
+            "minecraft:hand_equipped",
+            &[byte("value", 0)],
+        ))))
+        .unwrap();
+        assert_eq!(flat.hand_equipped, Some(false));
+        assert!(flat.hand_equipped_declared);
+        let malformed =
+            parse_components(&payload(Some(compound("minecraft:hand_equipped", &[])))).unwrap();
+        assert_eq!(malformed.hand_equipped, None);
+        assert!(malformed.hand_equipped_declared);
     }
 }

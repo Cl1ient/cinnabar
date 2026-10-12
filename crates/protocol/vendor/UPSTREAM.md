@@ -5,11 +5,9 @@
 
 - Generator: https://github.com/bedrock-mc/protocolgen
 - Generator commit: `0c6d30a3bf2e6a35002737ef1b79acb2dad30517` (`generated/1.26.51/rust-contract`)
-- `CODEC_CONTRACT`: `1`
-- `MANIFEST_SHA256`: `dc97931d683795fefffbe41b3be167b4ff8f820628323d18b42f97fb883c84df`
 
-`assets/bedrock-target.json` records the expected protocol, contract and manifest fingerprint;
-a protocol test fails until a re-vendored crate matches it. Protocol 2193 is spoken by Minecraft
+The expected protocol, codec contract and manifest fingerprint are pinned once, in
+`assets/bedrock-target.json`; a protocol test fails until a re-vendored crate matches them. Protocol 2193 is spoken by Minecraft
 1.26.50 through 1.26.52, and the client reports game version 1.26.50 to match gophertunnel.
 
 The raw packet entries and spawn sequence (`src/raw_packet.rs`, `src/login/startup.rs`) are

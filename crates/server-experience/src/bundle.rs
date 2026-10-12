@@ -1,5 +1,7 @@
 //! Complete manifest/content verification before any component is compiled.
 
+include!("contract/bundle.rs");
+
 use crate::{
     crypto::{self, SignedDocument},
     manifest::{Manifest, PackageOffer, Scope},
@@ -12,8 +14,6 @@ use std::{
 };
 
 mod directory;
-
-pub const MANIFEST_PATH: &str = "manifest.signed.json";
 
 #[derive(Debug)]
 pub struct VerifiedBundle {

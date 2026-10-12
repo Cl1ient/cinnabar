@@ -11,34 +11,7 @@ use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(
-    tag = "kind",
-    content = "body",
-    rename_all = "snake_case",
-    deny_unknown_fields
-)]
-pub enum Control {
-    Hello(Hello),
-    Accept(SignedDocument),
-    Ready {
-        session: String,
-        packages: Vec<String>,
-        generation: u64,
-        permissions: std::collections::BTreeMap<
-            String,
-            std::collections::BTreeSet<crate::manifest::Permission>,
-        >,
-        world_epoch: u64,
-    },
-    /// Wire v2: the client's world epoch changed and its runtime kept running. Later
-    /// envelopes carry `world_epoch`; earlier-epoch ones are dropped and counted, not fatal.
-    Epoch {
-        session: String,
-        world_epoch: u64,
-    },
-    Disabled,
-}
+include!("contract/session.rs");
 
 /// Session snapshots share one consumption latch instead of copying the challenge.
 #[derive(Clone, Debug)]

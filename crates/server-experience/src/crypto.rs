@@ -1,5 +1,7 @@
 //! Domain-separated Ed25519 signatures over exact canonical JSON bytes.
 
+include!("contract/crypto.rs");
+
 use anyhow::{Result, bail, ensure};
 use ring::signature::Ed25519KeyPair;
 use ring::{
@@ -9,17 +11,7 @@ use ring::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 
-pub const OFFER_DOMAIN: &[u8] = b"Cinnabar/experience/offer/v1\0";
-pub const ACCEPT_DOMAIN: &[u8] = b"Cinnabar/experience/accept/v1\0";
-pub const MANIFEST_DOMAIN: &[u8] = b"Cinnabar/experience/manifest/v1\0";
-
 /// Hex avoids JSON number and Unicode ambiguities around signed bytes.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct SignedDocument {
-    pub payload: String,
-    pub signature: String,
-}
 
 impl SignedDocument {
     /// Checks bounds, canonical bytes and the pinned key before returning data.
@@ -33,9 +25,7 @@ impl SignedDocument {
         let payload = unhex(&self.payload)?;
         let key = fixed_hex::<32>(key)?;
         let signature = fixed_hex::<64>(&self.signature)?;
-        let mut message = Vec::with_capacity(domain.len() + payload.len());
-        message.extend_from_slice(domain);
-        message.extend_from_slice(&payload);
+        let message = signing_bytes(domain, &payload);
         signature::UnparsedPublicKey::new(&signature::ED25519, key)
             .verify(&message, &signature)
             .map_err(|_| anyhow::anyhow!("invalid signature"))?;
@@ -55,9 +45,7 @@ pub fn sign<T: Serialize>(
     key: &Ed25519KeyPair,
 ) -> Result<SignedDocument> {
     let payload = serde_json::to_vec(value)?;
-    let mut message = Vec::with_capacity(domain.len() + payload.len());
-    message.extend_from_slice(domain);
-    message.extend_from_slice(&payload);
+    let message = signing_bytes(domain, &payload);
     Ok(SignedDocument {
         payload: hex(&payload),
         signature: hex(key.sign(&message).as_ref()),

@@ -7655,12 +7655,18 @@ dependencies = [
 name = "ui-screens"
 version = "0.1.12"
 dependencies = [
+ "actor-animation",
  "assets",
+ "bridge",
+ "image",
  "inventory 0.1.12",
  "json-ui",
+ "launcher",
  "player-state",
  "protocol",
+ "resource-pack",
  "serde_json",
+ "tracing",
  "ui",
  "ui-engine",
 ]

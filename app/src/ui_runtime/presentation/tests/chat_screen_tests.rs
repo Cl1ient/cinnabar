@@ -32,7 +32,7 @@ fn link_confirmation_consumes_typing_and_escape_preserves_chat_draft() {
         .chat_hits()
         .iter()
         .find_map(|(hit, _)| match hit {
-            client_ui::ui_runtime::presentation::ChatHit::Link(index) => Some(*index),
+            ui_screens::chat_screen::ChatHit::Link(index) => Some(*index),
             _ => None,
         })
         .expect("visible chat URL has a hit target");

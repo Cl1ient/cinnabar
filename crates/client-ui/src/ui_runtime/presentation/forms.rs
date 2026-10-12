@@ -1,19 +1,15 @@
 //! Server-form presentation: the vanilla JSON-UI templates through the engine
 //! when the UI carrier is loaded, else the programmatic fallback dialog.
-pub mod chat_coordinates;
-mod chat_link_dialog;
-mod chat_links;
-mod chat_position;
+#[cfg(test)]
+mod chat_links_tests;
+#[cfg(test)]
+mod chat_position_tests;
 pub mod chat_screen;
 pub mod containers;
-pub(super) mod credits_content;
-mod credits_renderer;
 pub mod credits_screen;
-pub mod crosshair_settings;
-mod death_screen;
 mod debug_overlay;
-mod disconnect_retry;
-pub mod discord_presence_setting;
+#[cfg(test)]
+mod disconnect_retry_tests;
 pub mod emote_screen;
 #[cfg(test)]
 mod engine_tests;
@@ -21,13 +17,11 @@ pub mod fallback;
 #[cfg(test)]
 mod formatting_tests;
 pub mod furnace_book;
-pub mod global_resources;
+#[cfg(test)]
+mod global_resources_tests;
 pub mod hud;
 #[cfg(test)]
 pub mod inbox_tests;
-mod invite_screen;
-pub mod java_animations_setting;
-pub mod join_progress;
 #[cfg(test)]
 mod join_request_tests;
 pub mod loading_screen;
@@ -36,22 +30,18 @@ pub mod loading_texture_tests;
 pub(super) mod menu_caret;
 #[cfg(test)]
 pub mod menu_latency;
-mod menu_renderers;
-pub mod menu_screens;
 mod menu_title;
 pub mod menus;
 mod mod_surfaces;
 pub mod model;
-pub mod motion_blur_setting;
 pub mod npc;
 mod oreui_runtime;
 #[cfg(test)]
 mod oreui_tests;
+mod preview_renderer;
 #[cfg(test)]
 mod retained_image_tests;
 mod retained_menu;
-mod skybox_setting;
-pub mod smaa_setting;
 pub(super) use retained_menu::RetainedMenu;
 #[cfg(test)]
 pub(crate) mod compatibility_tests;
@@ -66,51 +56,30 @@ pub mod regression_snapshots;
 
 #[cfg(test)]
 mod accounts;
-pub mod always_sprint_setting;
-pub mod enhanced_setting;
-pub mod graphics_expander;
 #[cfg(test)]
 pub mod play_flow_snapshots;
-pub mod play_screen;
 mod player_list;
 pub mod recipe_book;
 pub mod scene_policy;
 mod screen_registry;
 pub mod server_pack;
-pub mod settings_account;
-pub mod settings_chat;
-pub mod settings_controls;
-pub mod settings_defaults;
-pub mod settings_keys;
-pub mod settings_language;
-pub mod settings_reset;
-pub mod settings_resources;
+#[cfg(test)]
+mod settings_reset_tests;
 #[cfg(test)]
 pub mod settings_snapshots;
-pub mod settings_storage;
 #[cfg(test)]
 pub mod settings_storage_support_tests;
-pub mod settings_support;
 pub mod sign_editor;
 #[cfg(any(test, feature = "test-support"))]
 pub mod snapshot;
-pub mod start_feed;
 #[cfg(test)]
 mod store_tests;
 #[cfg(test)]
 pub mod tests;
 mod texture_sources;
 pub mod toast_screen;
-pub mod vrr_setting;
-pub mod vsync_setting;
 
-pub use chat_screen::{CHAT_SCREEN, ChatHit};
 pub use containers::observe_station_block;
-pub use emote_screen::{EMOTE_EQUIP_POPUP, EMOTE_SCREEN, EmoteHit};
-
-pub use loading_screen::LOADING_SCREEN;
-pub use npc::NPC_SCREEN;
-pub use sign_editor::SIGN_SCREEN;
 
 use super::{UiPresentationError, UiPresentationRuntime};
 use crate::ui_runtime::scene_stack::ScreenSettingsTable;
@@ -140,11 +109,13 @@ pub(super) struct ScreenStates {
     menu_title: Option<menu_title::TitleSource>,
     /// The title splash, picked once per launch.
     splash: std::sync::OnceLock<Option<String>>,
+    /// The menu clock when the splash first drew, which its pulse runs from.
+    splash_epoch: std::sync::OnceLock<f64>,
     /// The form whose render path was last logged, so each form logs once.
     logged: Option<ServerFormIdentity>,
     /// The engine HUD's cached screens.
     hud: ui_screens::hud::HudScreens,
-    player_list: Option<player_list::PlayerList>,
+    player_list: Option<ui_screens::player_list::PlayerList>,
     /// Every mod- and experience-owned surface.
     pub(super) mod_ui: mod_ui::ModUi,
     /// The container screens' layout and recipe rows.
@@ -152,15 +123,15 @@ pub(super) struct ScreenStates {
     /// The menu text caret's blink and its boxes' text.
     menu_caret: menu_caret::MenuCaretState,
     /// The open chat's cached screen.
-    chat: chat_screen::ChatScreen,
-    emote: emote_screen::EmoteScreen,
+    chat: ui_screens::chat_screen::ChatScreen,
+    emote: ui_screens::emote_screen::EmoteScreen,
     /// The bed screen's hits and pointer.
     bed: oreui::BedScreen,
     /// The sign editor's cached screen.
-    sign: sign_editor::SignScreen,
-    credits: credits_screen::CreditsScreen,
+    sign: ui_screens::sign_editor::SignScreen,
+    credits: ui_screens::credits_screen::CreditsScreen,
     /// The credits' skip regions from their last paint.
-    credits_hits: Vec<(credits_screen::CreditsAction, UiRect)>,
+    credits_hits: Vec<(ui_screens::credits_screen::CreditsAction, UiRect)>,
     /// OreUI's artwork, look and motion.
     oreui: oreui::OreUiScreen,
 }
@@ -699,16 +670,16 @@ impl UiPresentationRuntime {
 /// Screens the host draws beyond [`json_ui::ENGINE_SCREENS`], for the scene settings.
 pub fn host_screen_references() -> impl Iterator<Item = &'static str> {
     [
-        SIGN_SCREEN,
-        EMOTE_SCREEN,
-        EMOTE_EQUIP_POPUP,
-        NPC_SCREEN,
-        toast_screen::TOAST_SCREEN,
+        ui_screens::sign_editor::SIGN_SCREEN,
+        ui_screens::emote_screen::EMOTE_SCREEN,
+        ui_screens::emote_screen::EMOTE_EQUIP_POPUP,
+        ui_screens::npc::NPC_SCREEN,
+        ui_screens::toast_screen::TOAST_SCREEN,
         launcher::store::SDL_SCREEN,
-        crate::ui_runtime::credits::CREDITS_SCREEN,
+        ui_screens::credits_screen::CREDITS_SCREEN,
     ]
     .into_iter()
-    .chain(loading_screen::LOADING_SCREENS)
+    .chain(ui_screens::loading_screen::LOADING_SCREENS)
 }
 
 /// Logs which path draws `identity`, once per form.

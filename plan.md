@@ -103,11 +103,13 @@ and closes no parity gate.
 
 ## Vanilla screen crate
 
-`ui-screens` owns the engine-drawn container screens, the recipe and furnace books, the container
-hit vocabulary, and the HUD screen with its native renderers and catalog patches. Screens read
-typed inputs; `client-ui` keeps their runtime adapters, scene selection and the Java-styled
-fallback. Chat, signs, NPCs, credits, loading, toasts, menu templates and settings binders still
-live in `client-ui`. This move has not been compiled or executed and closes no parity gate.
+`ui-screens` owns the engine-drawn vanilla screens: containers with the recipe and furnace books
+and their hit vocabulary, the HUD with its native renderers and catalog patches, chat, signs, NPC
+dialogue, credits, loading, toasts, the roster, the emote wheel, and the menu shell's screen
+bindings, settings binders and store bindings. Screens read typed inputs; `client-ui` keeps their
+runtime adapters, scene selection, the menu composition, the server-form fallback, the menu title
+and caret state, the player preview and the Java-styled fallback. This move has not been compiled
+or executed and closes no parity gate.
 
 ## Mod surface presentation
 
@@ -195,6 +197,13 @@ material ownership and malformed selectors. Geometry uses the carrier's existing
 position and UV precision. Rendered/input acceptance and reported server-version
 placement remain incomplete; broader parity gates stay open.
 
+## Transparent water draws at base vertex zero
+
+Unsorted transparent water draws at base vertex zero: each liquid record names its own
+chunk origin slot, and the origin carries the sub-chunk's liquid and liquid-lighting
+bases. The previous base-vertex encoding drew flat water a block off on Honeykrisp,
+which misreports the builtin vertex index under nonzero base vertices.
+
 ## RakNet transport compatibility
 
 The Go core, local server, and fixture generator share a reviewed transport revision with
@@ -204,6 +213,14 @@ and ordering, peer GUID generation, datagram batching, and outgoing split envelo
 Full transport parity remains incomplete. Host-resolver timing and address admission,
 absolute monotonic timestamp origin, and discovery-peer reuse remain provisional across
 platforms. These limits and the unresolved server-routing behavior remain open gates.
+
+## Flowing water texels
+
+Replicated flipbooks compile the frame's upper-left `1 / replicate` square at full
+resolution, matching the native flipbook blit, which draws a frame `replicate` times the
+tile's size from its upper-left corner. Liquid faces then span the whole tile. The
+native liquid tessellator's UV extent for rotated flow is unverified: diagonal flow
+shrinks until its corners meet the tile edges, an approximation that keeps parity open.
 
 ## Launcher crate ownership
 

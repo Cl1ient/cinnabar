@@ -44,7 +44,7 @@ pub(super) fn installed_hud_presentation() -> Option<UiPresentationRuntime> {
     let mut presentation = UiPresentationRuntime::with_hud_and_icons(font, hud, icons)
         .expect("build installed HUD fixture");
     presentation
-        .enable_json_ui(super::super::super::pack_harness::carrier()?)
+        .enable_json_ui(ui_engine::test_support::carrier()?)
         .expect("enable installed JSON-UI fixture");
     presentation
         .engine

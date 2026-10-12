@@ -5,7 +5,6 @@ use ui::FONT_DESIGN_PIXEL_TEXELS;
 use ui::{DpiScale, SafeArea, TextLayoutCache, UiNode, UiVisual};
 use ui_engine::engine::{FormEngine, ScreenArt, screen::PaintFrame};
 use ui_engine::test_support::fixture_font;
-use ui_engine::test_support::fixture_font;
 use ui_engine::text_metrics::TextMetrics;
 use ui_screens::hud_renderers::{HudPaint, HudRenderer};
 

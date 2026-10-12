@@ -19,7 +19,7 @@ use super::super::{
     HudFrame, UiPresentationError, UiPresentationRuntime, bounded_visible_text, hud_layout,
     resolve_chat_line,
 };
-use super::menu_renderers::PreviewRenderer;
+use super::preview_renderer::PreviewRenderer;
 use crate::ui_runtime::UiRuntime;
 
 #[cfg(test)]
@@ -44,10 +44,10 @@ const MAX_BOSS_BARS: usize = 8;
 /// Resolves the HUD screens of `catalog` under both chat placements on the calling thread, and
 /// returns the textures their controls name.
 pub(super) fn prepare(catalog: &Arc<Catalog>) -> BTreeSet<String> {
-    let base = hud_context(&super::menu_screens::retail_context());
+    let base = hud_context(&ui_screens::menu_screens::retail_context());
     ui_screens::hud::prepared::prepare(
         catalog,
-        [false, true].map(|top| super::chat_position::placed(base.clone(), top)),
+        [false, true].map(|top| ui_screens::chat_position::placed(base.clone(), top)),
     )
 }
 
@@ -69,12 +69,12 @@ impl UiPresentationRuntime {
         let Some(renderer) = self.engine.as_deref() else {
             return Ok(false);
         };
-        if self.screens.chat.settings.options.value("hide_hud") != 0 {
+        if self.screens.chat.settings.options().value("hide_hud") != 0 {
             return Ok(true);
         }
-        let context = super::chat_position::context(
+        let context = ui_screens::chat_position::context(
             hud_context(renderer.context()),
-            &self.screens.chat.settings.options,
+            self.screens.chat.settings.options(),
         );
         let reference = if crosshair {
             CROSSHAIR_SCREEN
@@ -102,7 +102,7 @@ impl UiPresentationRuntime {
             } else {
                 sidebar
             };
-            let options = &self.screens.chat.settings.options;
+            let options = self.screens.chat.settings.options();
             let mut model = hud_model(
                 player_runtime,
                 runtime,
@@ -114,7 +114,7 @@ impl UiPresentationRuntime {
             if self.screens.mod_ui.mod_effect_icons_hidden() {
                 model.effects_visible = false;
             }
-            super::settings_chat::apply_hud(options, &mut model);
+            ui_screens::settings_chat::apply_hud(options, &mut model);
             Some((model, options.value("interface_opacity")))
         };
         let catalog = Arc::clone(renderer.catalog());
@@ -127,7 +127,7 @@ impl UiPresentationRuntime {
             runtime,
             &frame,
             self.hud_textures.as_ref(),
-            &self.screens.chat.settings.options,
+            self.screens.chat.settings.options(),
         );
         if let Some(style) = self.screens.mod_ui.mod_hunger_overlay() {
             paint.hunger.set_overlay(
@@ -288,7 +288,7 @@ fn hud_model(
         .map(|line| {
             let text = resolve_chat_line(line, |key| runtime.translation(key));
             Timed {
-                text: super::settings_chat::message_text(settings, text.as_ref()),
+                text: ui_screens::settings_chat::message_text(settings, text.as_ref()),
                 // Rows stamped ahead of the local clock stay fresh.
                 born: seconds(line.received_millis.min(now)),
             }

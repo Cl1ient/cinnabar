@@ -1,16 +1,13 @@
-//! NPC dialogue through the vanilla NPC screen's student (player) view: the
-//! NPC's name and dialogue text over one button per button-mode action.
+//! Draws an active NPC dialogue form through the NPC screen and records its frame.
 
-use json_ui::{CollectionItem, DataSource, Scalar, ViewState};
+use json_ui::ViewState;
 use protocol::NpcDialogueForm;
 use ui::UiNode;
 
 use super::super::{UiPresentationError, UiPresentationRuntime};
 use crate::ui_runtime::{ServerFormIdentity, UiRuntime};
-use ui_engine::engine::{self, screen::PaintFrame};
+use ui_engine::engine::screen::PaintFrame;
 use ui_engine::text_metrics::TextMetrics;
-
-pub const NPC_SCREEN: &str = "npc_interact.npc_screen";
 
 impl UiPresentationRuntime {
     /// Draw `npc` through the engine; `Ok(false)` leaves it to the fallback.
@@ -29,7 +26,6 @@ impl UiPresentationRuntime {
         let Some(renderer) = self.engine.as_deref() else {
             return Ok(false);
         };
-        let data = npc_data(npc);
         let view: &ViewState = &runtime.server_forms().engine().view;
         let translate = |key: &str| runtime.translation(key);
         let rollback = (nodes.len(), *next);
@@ -47,18 +43,7 @@ impl UiPresentationRuntime {
             next: &mut *next,
             renderers: &mut [],
         };
-        let art = engine::ScreenArt {
-            clocks: Some(&self.scene_clock),
-            ..engine::ScreenArt::default()
-        };
-        match renderer.render_screen(
-            NPC_SCREEN,
-            &data,
-            &super::menu_screens::retail_context(),
-            view,
-            art,
-            &mut paint_frame,
-        ) {
+        match ui_screens::npc::paint(renderer, npc, view, &self.scene_clock, &mut paint_frame) {
             Ok(Some(frame)) => {
                 self.projections.form.frame = Some((identity, frame));
                 Ok(true)
@@ -70,27 +55,4 @@ impl UiPresentationRuntime {
             }
         }
     }
-}
-
-fn npc_data(npc: &NpcDialogueForm) -> DataSource {
-    let mut data = DataSource::new();
-    data.set_strict(true);
-    data.set_global("#student_view_visible", Scalar::Bool(true));
-    data.set_global("#title_text", Scalar::Text(npc.npc_name.to_string()));
-    data.set_global("#dialogtext", Scalar::Text(npc.dialogue.to_string()));
-    data.set_global("#action_count", Scalar::Num(npc.buttons.len() as f64));
-    let buttons = npc
-        .buttons
-        .iter()
-        .map(|button| {
-            CollectionItem::default()
-                .with(
-                    "#student_button_text",
-                    Scalar::Text(button.text.to_string()),
-                )
-                .with("#student_button_visible", Scalar::Bool(true))
-        })
-        .collect();
-    data.set_collection("student_buttons_collection", buttons);
-    data
 }

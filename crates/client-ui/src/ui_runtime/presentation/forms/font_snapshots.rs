@@ -16,7 +16,7 @@ fn compact_font_snapshots() {
         );
         return;
     };
-    let Some(carrier) = super::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         return;
     };
     let manifest = assets::canonical_source_manifest_sha256(include_bytes!(

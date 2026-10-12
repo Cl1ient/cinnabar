@@ -17,9 +17,9 @@ use bevy::{
     time::Real,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowEvent},
 };
-use client_ui::ui_runtime::presentation::forms::EmoteHit;
 use launcher::menu::settings_options::EMOTE_SLOT_COUNT;
 use ui::{UiAction, UiPoint};
+use ui_screens::emote_screen::EmoteHit;
 
 use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use client_ui::ui_runtime::UiRuntime;

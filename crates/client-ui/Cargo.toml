@@ -8,9 +8,7 @@ publish = false
 [package.metadata.cinnabar]
 platform-specific = ["macos"]
 reads = [
-    "assets/branding/title.png",
     "assets/cinnangles-sans-source.json",
-    "assets/java-hud/ui/*",
     "crates/protocol/fixtures/*",
 ]
 

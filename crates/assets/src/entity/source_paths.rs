@@ -1,6 +1,8 @@
 use super::{AssetError, EntityAssetKind, MAX_ENTITY_ASSET_PATH_BYTES, invalid};
 
 pub const ACTOR_GLINT_TEXTURE_IDENTIFIER: &str = "textures/misc/enchanted_actor_glint";
+/// Shared item raster also used by Bedrock 1.12 worn-armour glint.
+pub const ITEM_GLINT_TEXTURE_IDENTIFIER: &str = "textures/misc/enchanted_item_glint";
 pub const BED_GEOMETRY_IDENTIFIER: &str = "geometry.bed";
 pub const CAPE_GEOMETRY_IDENTIFIER: &str = "geometry.cape";
 pub const ELYTRA_GEOMETRY_IDENTIFIER: &str = "geometry.elytra";

@@ -8,6 +8,9 @@ on:
       - tools/jsonui-editor/**
       - crates/json-ui/**
       - crates/ui/**
+      - crates/ui-engine/**
+      - crates/render-model/**
+      - crates/resource-pack/**
       - crates/assets/**
       - crates/input/**
       - crates/asset-compiler/**

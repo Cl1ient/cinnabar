@@ -146,6 +146,16 @@ server. Acceptance uses externally compiled carriers with production terrain
 consumers; runtime server-pack compilation and reported server-version placement
 remain unverified. No broader parity gate closes.
 
+## Bubble column terrain geometry
+
+Bubble columns compile separate outer and inner side shells with directional
+sprites and positional variants. The surface sprite appears only below primary
+air; water keeps its independent liquid contributor. Original-art regressions
+cover texture ownership, carrier groups, malformed direction states, and layered
+meshing across sub-chunk boundaries. Rendered/input acceptance and native server
+ingress remain incomplete; broader rendering and enhanced-graphics parity gates
+stay open.
+
 ## Sea pickle terrain geometry
 
 Sea pickles compile one to four separate bodies and crossed live tips selected by

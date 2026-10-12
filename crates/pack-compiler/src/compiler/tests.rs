@@ -10,6 +10,8 @@ use assets::{RegistryRecord, TILE_SIZE, VisualKind, VisualSupport};
 mod anvil;
 #[path = "tests/brewing_stand.rs"]
 mod brewing_stand;
+#[path = "tests/bubble_column.rs"]
+mod bubble_column;
 #[path = "tests/candle_cake.rs"]
 mod candle_cake;
 #[path = "tests/coral.rs"]

@@ -514,7 +514,7 @@ pub(crate) fn actor_shadow_pipeline_descriptor(
         depth_write_enabled: Some(true),
         depth_compare: Some(CompareFunction::LessEqual),
         stencil: default(),
-        bias: crate::enhanced::shadow_raster_bias(),
+        bias: crate::enhanced::shadows::shadow_raster_bias(),
     });
     descriptor
 }

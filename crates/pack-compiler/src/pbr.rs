@@ -14,10 +14,7 @@ mod sources;
 
 pub use mips::{PbrMipLayer, build_pbr_mips};
 
-pub use assets::{
-    PBR_REF_COLOR, PBR_REF_HEIGHT, PBR_REF_LABPBR, PBR_REF_MATERIAL, PBR_REF_NORMAL,
-    PBR_REF_OCCLUSION, PBR_REF_SUBSURFACE,
-};
+use assets::PBR_REF_MATERIAL;
 
 /// Suffixes alone never identify the meaning of Java specular channels.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

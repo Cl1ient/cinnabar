@@ -65,7 +65,7 @@ mod reflection_tests;
 #[cfg(all(test, feature = "enhanced"))]
 mod shadow_tests;
 #[cfg(feature = "enhanced")]
-mod shadows;
+pub(crate) mod shadows;
 #[cfg(feature = "enhanced")]
 mod snapshot;
 #[cfg(feature = "enhanced")]
@@ -92,7 +92,11 @@ use {
     },
 };
 
-use bevy::{asset::uuid_handle, prelude::*, shader::Shader};
+use bevy::{
+    asset::uuid_handle,
+    prelude::{Handle, Resource},
+    shader::Shader,
+};
 
 #[cfg(feature = "enhanced")]
 pub(crate) use frame::CascadeBounds;
@@ -100,8 +104,6 @@ pub(crate) use frame::CascadeBounds;
 pub(crate) use gpu::enhanced_caster_layout;
 #[cfg(feature = "enhanced")]
 pub(crate) use gpu::{EnhancedViews, SetEnhancedViewBindGroup, enhanced_view_layout};
-#[cfg(feature = "enhanced")]
-pub(crate) use shadows::shadow_raster_bias;
 
 const ENHANCED_COMMON_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("0f5b3a57-5d7e-4a3e-9d0e-2b1f6c8a4e11");

@@ -45,7 +45,7 @@ fn wind_shadow_update_due(seconds: f32, previous: f32) -> bool {
 #[derive(SystemParam)]
 pub(crate) struct LocalLightingInputs<'w> {
     sources: Res<'w, crate::enhanced::local_lights::LocalLightSources>,
-    geometry: Res<'w, crate::enhanced::indirect::IndirectGeometry>,
+    geometry: Res<'w, crate::enhanced::indirect::geometry::IndirectGeometry>,
     coverage: Res<'w, crate::chunk::resident_coverage::ChunkResidentCoverage>,
     assets: Res<'w, render_scene::ChunkTextureAssets>,
     texture_gpu: Option<Res<'w, crate::chunk::gpu::bind_groups::ChunkGpuTextureAssets>>,

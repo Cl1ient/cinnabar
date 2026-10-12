@@ -14,8 +14,8 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 #[path = "indirect_geometry.rs"]
-mod geometry;
-pub(crate) use geometry::{IndirectGeometry, collect_geometry};
+pub(crate) mod geometry;
+use geometry::IndirectGeometry;
 #[cfg(test)]
 #[path = "indirect_tests.rs"]
 mod tests;

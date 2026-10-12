@@ -1,7 +1,7 @@
 //! Loads shared shader imports and installs opted-in Enhanced passes.
 
 use super::*;
-use bevy::asset::load_internal_asset;
+use bevy::{asset::load_internal_asset, prelude::*};
 #[cfg(feature = "enhanced")]
 use render_model::enhanced_rendering_enabled;
 #[cfg(feature = "enhanced")]
@@ -208,13 +208,13 @@ impl Plugin for EnhancedRenderPlugin {
         render_app
             .init_resource::<EnhancedViews>()
             .init_resource::<local_lights::LocalLightSources>()
-            .init_resource::<indirect::IndirectGeometry>()
+            .init_resource::<indirect::geometry::IndirectGeometry>()
             .add_systems(
                 Render,
                 (
                     probes::prepare_quality,
                     local_lights::collect_sources,
-                    indirect::collect_geometry,
+                    indirect::geometry::collect_geometry,
                     prepare_cloud_noise,
                     multiple_scattering::prepare,
                     prepare_enhanced_materials,

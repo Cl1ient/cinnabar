@@ -568,10 +568,11 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     let (atmosphere_runtime, atmosphere_identity) = loaded_assets.atmosphere.into_parts();
     let atmosphere_assets = AtmosphereTextureAssets::new(atmosphere_runtime, atmosphere_identity);
     let weather_textures = carriers.weather;
-    let authored_texture_loading = crate::render_mode::AuthoredTextureLoading::new(
-        Arc::clone(&loaded_assets.runtime),
-        loaded_assets.material_keys.clone(),
-    );
+    let authored_texture_loading =
+        crate::render_mode::authored_textures::AuthoredTextureLoading::new(
+            Arc::clone(&loaded_assets.runtime),
+            loaded_assets.material_keys.clone(),
+        );
     let runtime_assets = loaded_assets.runtime;
     let asset_metrics = loaded_assets.metrics.into();
     let mut actor_render_scene = ActorRenderScene::with_runtime_entity_assets_and_equipment(

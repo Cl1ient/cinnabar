@@ -30,8 +30,7 @@ use {
     client_shell::menu::MenuRuntime, client_state::RuntimeSettings,
 };
 
-mod authored_textures;
-pub(crate) use authored_textures::AuthoredTextureLoading;
+pub(crate) mod authored_textures;
 
 #[cfg(all(test, feature = "enhanced"))]
 mod input_tests;

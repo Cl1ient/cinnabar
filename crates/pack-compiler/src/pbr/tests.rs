@@ -3,6 +3,10 @@ use std::{fs, path::Path};
 use image::{ImageBuffer, Rgb, Rgba, RgbaImage};
 
 use super::*;
+use assets::{
+    PBR_REF_HEIGHT, PBR_REF_LABPBR, PBR_REF_MATERIAL, PBR_REF_NORMAL, PBR_REF_OCCLUSION,
+    PBR_REF_SUBSURFACE,
+};
 
 fn save(root: &Path, name: &str, image: &RgbaImage) {
     let path = root.join(name);

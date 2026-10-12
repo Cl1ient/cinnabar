@@ -1,4 +1,5 @@
 use super::*;
+use bevy::prelude::{Has, World};
 use render_scene::EnhancedRendering;
 
 #[test]

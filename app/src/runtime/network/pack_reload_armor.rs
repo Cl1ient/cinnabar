@@ -26,7 +26,8 @@ fn base() -> (assets::VanillaEntityRefs, assets::SessionEntityPack) {
             serde_json::json!({
                 "format_version": "1.10.0", "minecraft:attachable": {"description": {
                     "identifier": ITEM, "materials": {"default": "armor_leather"},
-                    "textures": {"default": "textures/models/fixture_armor"},
+                    "textures": {"default": "textures/models/fixture_armor",
+                        "enchanted": assets::ACTOR_GLINT_TEXTURE_IDENTIFIER},
                     "geometry": {"default": "geometry.fixture.chestplate"},
                     "render_controllers": ["controller.render.fixture"]
                 }}
@@ -222,4 +223,62 @@ fn hot_reload_replaces_armour_on_an_already_equipped_actor_and_restores_base() {
         worn_pixel(&mut runtime, &body, &equipped, &base_pages),
         [10, 20, 30, 255]
     );
+}
+
+#[test]
+fn a_sidecar_only_glint_override_keeps_the_base_armour_visible() {
+    let (refs, base_pack) = base();
+    let icons = Arc::new(
+        assets::RuntimeIconCatalog::decode(
+            &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
+        )
+        .unwrap(),
+    );
+    let (mut runtime, base_pages, _) = EquipmentRuntime::build(
+        base_pack.assets,
+        base_pack.equipment,
+        icons,
+        None,
+        None,
+        ActorArtworkPages::default(),
+    );
+    let body = body(&mut runtime);
+    let equipped = ActorEquipmentInput {
+        armor: [
+            None,
+            Some(WornItem {
+                grip: assets::item::grip::builtin_item_grip(ITEM),
+                use_facts: Default::default(),
+                identifier: ITEM.into(),
+                metadata: 0,
+                damage: None,
+                kind: HeldKind::Other,
+                dye_rgb: None,
+                enchanted: true,
+            }),
+            None,
+            None,
+        ],
+        ..Default::default()
+    };
+    let path = format!("{}.png", assets::ACTOR_GLINT_TEXTURE_IDENTIFIER);
+    let view = resource_pack::LayeredPackView::new(super::super::pack_reload_tests::stack(&[(
+        &path,
+        &png([40, 50, 60, 255]),
+    )]));
+    let files = pack_runtime::entity_pack::collect::collect_files(&view, Some(&refs), None);
+    let pack = compiled_pack(files).expect("the secondary texture inherits its base attachable");
+    let catalog = pack.equipment.as_ref().unwrap();
+    let binding = catalog.binding(ITEM).unwrap();
+    assert!(catalog.texture(&binding.texture.identifier).is_none());
+    let glint = EquipmentRuntime::actor_glint(catalog).expect("the glint override is retained");
+    let (pages, locations) =
+        base_pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(catalog));
+    let pages = pages.with_actor_glint(glint);
+    runtime.set_pack_layer(Some((pack.assets, pack.equipment, locations)));
+    assert_eq!(
+        worn_pixel(&mut runtime, &body, &equipped, &pages),
+        [10, 20, 30, 255]
+    );
+    assert_eq!(&pages.actor_glint().unwrap().rgba8[..4], &[40, 50, 60, 255]);
 }

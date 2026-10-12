@@ -115,13 +115,20 @@ impl EquipmentRuntime {
         });
     }
 
-    /// The catalog binding an item resolves through, the pack's first, and whether it is the pack's.
+    /// Prefers the pack binding, keeping startup equipment when its default artwork is absent.
     pub(super) fn binding_source(
         &self,
         identifier: &str,
     ) -> Option<(Arc<RuntimeEquipmentCatalog>, bool)> {
         if let Some(catalog) = self.pack.as_ref().and_then(|pack| pack.catalog.as_ref())
-            && catalog.binding(identifier).is_some()
+            && let Some(binding) = catalog.binding(identifier)
+            && (self
+                .texture_location(&binding.texture.identifier, true)
+                .is_some()
+                || self
+                    .catalog
+                    .as_ref()
+                    .is_none_or(|catalog| catalog.binding(identifier).is_none()))
         {
             return Some((Arc::clone(catalog), true));
         }

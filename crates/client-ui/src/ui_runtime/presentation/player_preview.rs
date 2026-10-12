@@ -150,11 +150,11 @@ impl UiPresentationRuntime {
             Some(*texture)
         }));
         let armor = std::array::from_fn(|slot| {
-            // Pack art the GUI atlas could not hold falls back to the item's base art.
+            // Missing pack art and images the GUI atlas could not hold retain the base art.
             if from_pack[slot]
-                && self.gui_models.enabled
-                && resolved[slot].is_some()
-                && self.gui_models.pack_equipment.region(slot).is_none()
+                && (resolved[slot].is_none()
+                    || (self.gui_models.enabled
+                        && self.gui_models.pack_equipment.region(slot).is_none()))
             {
                 return worn_armor(base.as_deref(), armor[slot]).map(|(preview, _)| preview);
             }

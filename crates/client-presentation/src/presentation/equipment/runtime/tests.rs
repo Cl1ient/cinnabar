@@ -1,5 +1,8 @@
 //! Isolated camera-item routing tests; no optional installed carriers or native art.
 
+#[path = "missing_artwork_tests.rs"]
+mod missing_artwork_tests;
+
 use actor_animation::ItemAnimationState;
 use bevy::math::Quat;
 use render_api::PoseGeneration;

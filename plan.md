@@ -2770,6 +2770,12 @@ texture, tint and sample point are unmatched), pack attachables (held/worn on pl
 (pack bindings win by item identifier; pack property defaults seed only from `entities/` in
 resource packs), rigs depending on vanilla clips are attributed as fallbacks; pack precedence follows the Bedrock stack (last entry wins). No vanilla acceptance gate is closed by this change.
 
+2026-10-12 protocol boundary: `protocol` exposes only Cinnabar-owned types: an opaque
+`Packet`, owned `GameData` startup facts, the login skin and version constants, the pack
+handoff, transfer and error types. Other crates' tests use `protocol::test_support`; wire-layout
+tests compile inside the crate. Valentine and Jolyne remain its codec and session layer, and the
+architecture gate rejects any other crate depending on them. Behaviour and parity are unchanged.
+
 2026-09-30 protocol-2193 wire target (owner decision): Cinnabar moves from
 Bedrock 1.26.44 / protocol 2168 to 1.26.50 / protocol 2193, because Gophertunnel
 `lunar` now supports only 1.26.50 (Mojang's current release is 1.26.52 on the

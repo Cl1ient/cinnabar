@@ -116,7 +116,7 @@ LOCAL_SERVER_OUT ?= target/release/bedrock-local-server$(if $(filter windows,$(D
 
 local-server:
 	cd tools/localserver && GOWORK=off $(GO) build -o "$(abspath $(LOCAL_SERVER_OUT))" .
-	$(CARGO) build -p experience-runtime --release --locked
+	$(CARGO) build -p experience-runtime -p cinnabar-cxb --release --locked
 
 # Full game from the launcher menu: refresh assets, build the core and local server beside the client, run it.
 play-build: assets

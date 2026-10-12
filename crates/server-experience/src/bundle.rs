@@ -12,6 +12,7 @@ use std::{
 };
 
 mod directory;
+pub mod offline;
 
 pub const MANIFEST_PATH: &str = "manifest.signed.json";
 

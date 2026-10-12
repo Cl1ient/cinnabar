@@ -66,7 +66,9 @@ incomplete; this work closes no movement parity or performance gate.
 
 Custom block surface friction follows each state's `minecraft:friction` component, with
 protocol, permutation and registry regressions in both identity spaces. No live witness
-exists; complete ordinary/special block classification remains open.
+exists. Every vanilla state now carries a reviewed ordinary, special or unresolved movement
+disposition bound to its identifier set; one-way door collision, block-actor collision and
+soul soil remain unmodeled or unresolved.
 
 | Field | Evidence |
 |---|---|

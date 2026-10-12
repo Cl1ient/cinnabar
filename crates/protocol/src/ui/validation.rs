@@ -1,7 +1,7 @@
 //! UI admission for decoded server packets: per-field budgets bound the decoder before it
 //! allocates, and decoded packets are checked for UTF-8, enum and aggregate budgets.
 
-use bedrock_protocol_1_26_51::enums::{BossEventUpdateType, SoftEnumUpdateType};
+use bedrock_protocol_1_26_51::enums::{BossEventUpdateType, SoftEnumUpdateType, TextPacketType};
 use bedrock_protocol_1_26_51::fields;
 use bedrock_protocol_1_26_51::packets;
 use bedrock_protocol_1_26_51::types::{SetScoreInfoItem, TextData};
@@ -166,7 +166,7 @@ pub(crate) fn validate_ui_packet(packet: &packets::Packet) -> Result<(), UiPacke
                     message_type,
                     message,
                 } => {
-                    known_text_type(message_type.to_raw())?;
+                    known_text_type(*message_type)?;
                     utf8(message, "text.message")?;
                 }
                 TextData::AuthorAndMessage {
@@ -174,7 +174,7 @@ pub(crate) fn validate_ui_packet(packet: &packets::Packet) -> Result<(), UiPacke
                     player_name,
                     message,
                 } => {
-                    known_text_type(message_type.to_raw())?;
+                    known_text_type(*message_type)?;
                     utf8(player_name, "text.source_name")?;
                     utf8(message, "text.message")?;
                 }
@@ -183,7 +183,7 @@ pub(crate) fn validate_ui_packet(packet: &packets::Packet) -> Result<(), UiPacke
                     message,
                     parameter_list,
                 } => {
-                    known_text_type(message_type.to_raw())?;
+                    known_text_type(*message_type)?;
                     utf8(message, "text.message")?;
                     for parameter in parameter_list {
                         utf8(parameter, "text.parameter")?;
@@ -290,14 +290,15 @@ fn validate_soft_enum(packet: &packets::UpdateSoftEnum) -> Result<(), UiPacketEr
 }
 
 /// Text message types run 0 through 11; the generated enum names only the message-only ones.
-fn known_text_type(value: u8) -> Result<(), UiPacketError> {
-    if value > super::text::MAX_TEXT_TYPE {
-        return Err(UiPacketError::UnknownEnum {
+/// Rejects a Text message type the protocol does not name.
+fn known_text_type(message_type: TextPacketType) -> Result<(), UiPacketError> {
+    match message_type {
+        TextPacketType::Unknown(value) => Err(UiPacketError::UnknownEnum {
             kind: "text type",
             value: i64::from(value),
-        });
+        }),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 fn utf8(value: &wire::Str, field: &'static str) -> Result<(), UiPacketError> {

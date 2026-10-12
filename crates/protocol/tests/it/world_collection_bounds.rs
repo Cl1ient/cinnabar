@@ -82,8 +82,8 @@ fn level_chunk_rejects_payload_longer_than_remaining_buffer() {
 }
 
 /// gophertunnel `packet/level_chunk.go` writes `BlobHashes []uint64` inline and
-/// unconditionally, which the generated crate models as `cache_metadata`; the
-/// schema bounds it at 65 hashes, one per sub-chunk plus the biome blob.
+/// unconditionally, which the generated crate models as `cache_metadata`. A declared count the
+/// input cannot hold is truncation, which stays fatal.
 #[test]
 fn level_chunk_rejects_oversized_cache_metadata_hash_count() {
     let empty = LevelChunk::default();
@@ -93,11 +93,7 @@ fn level_chunk_rejects_oversized_cache_metadata_hash_count() {
         oversized_varint(bytes, MAX_WORLD_COLLECTION_ELEMENTS)
     });
 
-    let error = LevelChunk::decode_exact(&bytes).unwrap_err();
-    assert!(
-        matches!(error, wire::DecodeError::SchemaConstraint(_)),
-        "unexpected decode error: {error:?}"
-    );
+    assert_rejected_without_a_length_ceiling(LevelChunk::decode_exact(&bytes).unwrap_err());
 }
 
 #[test]

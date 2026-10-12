@@ -450,6 +450,8 @@ fn raw_text_parameter_count_is_bounded_before_parameter_allocation() {
     put_var_u32(&mut payload, 1);
     payload.put_u8(b'x');
     put_var_u32(&mut payload, (protocol::MAX_CHAT_PARAMETERS + 1) as u32);
+    // Empty parameters, so the declared count is held by the input rather than truncated.
+    payload.put_bytes(0, protocol::MAX_CHAT_PARAMETERS + 1);
 
     let mut batch = BytesMut::new();
     batch.put_u8(0xfe);
@@ -476,6 +478,8 @@ fn raw_soft_enum_count_is_bounded_before_suggestion_allocation() {
     put_var_u32(&mut payload, 8);
     payload.extend_from_slice(b"commands");
     put_var_u32(&mut payload, (MAX_CHAT_AUTOCOMPLETE + 1) as u32);
+    // Empty suggestions, so the declared count is held by the input rather than truncated.
+    payload.put_bytes(0, MAX_CHAT_AUTOCOMPLETE + 1);
 
     let mut batch = BytesMut::new();
     batch.put_u8(0xfe);

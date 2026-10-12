@@ -108,7 +108,7 @@ pub fn chat_text_packet(
     Ok(crate::Packet::new(Text {
         localize: false,
         body: TextData::AuthorAndMessage {
-            message_type: TextPacketType::from(text::TEXT_TYPE_CHAT),
+            message_type: TextPacketType::Chat,
             player_name: source_name.into(),
             message: message.into(),
         },

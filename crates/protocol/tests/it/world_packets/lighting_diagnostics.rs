@@ -23,8 +23,7 @@ fn retains_sub_chunk_payload_presence_and_server_heightmap_facts() {
                             vec![]
                         }
                     })),
-                    // The generated enum leaves "all copied" (4) unnamed.
-                    render_height_map_type: HeightmapType::Unknown(4),
+                    render_height_map_type: HeightmapType::Allcopied,
                     ..Default::default()
                 },
                 ..Default::default()

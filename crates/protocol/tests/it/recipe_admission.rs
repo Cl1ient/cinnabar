@@ -7,8 +7,6 @@ use bedrock_protocol_1_26_51::types::{
 };
 use bedrock_protocol_1_26_51::wire::{self, Encode};
 
-/// A placeholder ingredient aux the encoder accepts, as its zigzag varint.
-const INGREDIENT_AUX_PLACEHOLDER: (i32, &[u8]) = (12_345, &[0xf2, 0xc0, 0x01]);
 /// A placeholder result aux the encoder accepts, as its varint.
 const RESULT_AUX_PLACEHOLDER: (u32, &[u8]) = (12_345, &[0xb9, 0x60]);
 
@@ -164,13 +162,8 @@ fn refusal_is_atomic_and_truncation_or_trailing_wire_is_not_semantic() {
 fn descriptors_dimensions_and_complex_outputs_are_unavailable_not_fatal() {
     let mut cases = Vec::new();
     let mut r = recipe(1);
-    r.ingredients[0].aux_value = wire::ZigZag32(INGREDIENT_AUX_PLACEHOLDER.0);
-    // Ingredient aux -1 is below the schema bound, so it is spliced in after encoding.
-    cases.push(splice(
-        encode(vec![r], true),
-        INGREDIENT_AUX_PLACEHOLDER.1,
-        &[0x01],
-    ));
+    r.ingredients[0].aux_value = wire::ZigZag32(-1);
+    cases.push(encode(vec![r], true));
     let mut r = recipe(1);
     let duplicate = r.ingredients[0].descriptor[0].clone();
     r.ingredients[0].descriptor.push(duplicate);

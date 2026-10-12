@@ -7,16 +7,6 @@ use bedrock_protocol_1_26_51::wire;
 
 use super::{MAX_CHAT_PARAMETERS, UiEvent, UiPacketError, bounded_text};
 
-// Text message types the generated enum leaves unnamed, as gophertunnel's `TextType*` numbers them.
-pub(super) const TEXT_TYPE_CHAT: u8 = 1;
-const TEXT_TYPE_TRANSLATION: u8 = 2;
-const TEXT_TYPE_POPUP: u8 = 3;
-const TEXT_TYPE_JUKEBOX_POPUP: u8 = 4;
-const TEXT_TYPE_WHISPER: u8 = 7;
-const TEXT_TYPE_ANNOUNCEMENT: u8 = 8;
-/// The highest Text message type the protocol defines.
-pub(super) const MAX_TEXT_TYPE: u8 = 11;
-
 /// Which of the three Text payload shapes the packet carried.
 ///
 /// The leading union tag of `TextPacketBody`; the message type follows inside
@@ -106,18 +96,18 @@ pub(crate) fn normalize_text(packet: Text) -> Result<UiEvent, UiPacketError> {
             TextPacketType::Textobjectannouncement => {
                 normalize_json_message(TextKind::JsonAnnouncement, message)?
             }
-            TextPacketType::Unknown(value) => return Err(unknown_text_type(value)),
+            other => return Err(unknown_text_type(other.to_raw())),
         },
         TextData::AuthorAndMessage {
             message_type,
             player_name,
             message,
         } => {
-            let kind = match message_type.to_raw() {
-                TEXT_TYPE_CHAT => TextKind::Chat,
-                TEXT_TYPE_WHISPER => TextKind::Whisper,
-                TEXT_TYPE_ANNOUNCEMENT => TextKind::Announcement,
-                value => return Err(unknown_text_type(value)),
+            let kind = match message_type {
+                TextPacketType::Chat => TextKind::Chat,
+                TextPacketType::Whisper => TextKind::Whisper,
+                TextPacketType::Announcement => TextKind::Announcement,
+                other => return Err(unknown_text_type(other.to_raw())),
             };
             normalize_authored(kind, player_name, message)?
         }
@@ -126,11 +116,11 @@ pub(crate) fn normalize_text(packet: Text) -> Result<UiEvent, UiPacketError> {
             message,
             parameter_list,
         } => {
-            let kind = match message_type.to_raw() {
-                TEXT_TYPE_TRANSLATION => TextKind::Translation,
-                TEXT_TYPE_POPUP => TextKind::Popup,
-                TEXT_TYPE_JUKEBOX_POPUP => TextKind::JukeboxPopup,
-                value => return Err(unknown_text_type(value)),
+            let kind = match message_type {
+                TextPacketType::Translate => TextKind::Translation,
+                TextPacketType::Popup => TextKind::Popup,
+                TextPacketType::Jukeboxpopup => TextKind::JukeboxPopup,
+                other => return Err(unknown_text_type(other.to_raw())),
             };
             normalize_parameters(kind, message, parameter_list)?
         }

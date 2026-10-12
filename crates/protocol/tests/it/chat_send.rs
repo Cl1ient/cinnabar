@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
+use bedrock_protocol_1_26_51::enums::TextPacketType;
 use bedrock_protocol_1_26_51::packets::{self, PacketId};
 use bedrock_protocol_1_26_51::types::TextData;
 use protocol::{
     ChatAutocompleteAction, ChatAutocompleteCatalog, ChatAutocompleteEvent, ChatPacketError,
     chat_input_packet, chat_text_packet, decode_batch, encode,
 };
-
-/// gophertunnel's `TextTypeChat`, which the generated text enum leaves unnamed.
-const TEXT_TYPE_CHAT: u8 = 1;
 
 #[test]
 fn outbound_chat_uses_exact_authored_text_shape() {
@@ -27,7 +25,7 @@ fn outbound_chat_uses_exact_authored_text_shape() {
     else {
         panic!("expected authored chat body")
     };
-    assert_eq!(message_type.to_raw(), TEXT_TYPE_CHAT);
+    assert_eq!(message_type, TextPacketType::Chat);
     assert_eq!(player_name, "RustMCBE");
     assert_eq!(message, "hello server");
     assert_eq!(packet.sender_xuid, "1234");
@@ -192,7 +190,7 @@ fn ordinary_chat_input_remains_an_authored_text_packet() {
     else {
         panic!("expected authored chat body")
     };
-    assert_eq!(message_type.to_raw(), TEXT_TYPE_CHAT);
+    assert_eq!(message_type, TextPacketType::Chat);
     assert_eq!(player_name, "RustMCBE");
     assert_eq!(message, "hello server");
     assert_eq!(packet.sender_xuid, "1234");

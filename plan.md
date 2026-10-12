@@ -2843,10 +2843,10 @@ world normalization routes, derived from the dispatch table, and UI budgets are 
 plus post-decode checks instead of a raw frame-ID list. An unknown union selector or a value
 outside the manifest's schema bounds is now a counted skip rather than a fatal decode error. The
 recipe string-selector scanner still bypasses the codec, so generated crafting-descriptor
-coverage stays open. Incomplete: the manifest bounds some fields Valentine left open (for
-example four Text parameters, empty Text messages, item aux above 32767), so such packets are
-now skipped without retail evidence that vanilla rejects them. The ported tests are unexecuted
-until CI and the retail harness gate is open.
+coverage stays open. The manifest bounds some fields Valentine left open (for example four Text
+parameters, empty Text messages, item aux above 32767); vanilla rejects those packets too, and
+the client now skips them. The ported tests are unexecuted until CI and the retail harness gate
+is open.
 
 2026-10-12 protocol session layer: `protocol::login` owns the play stream on the core's session
 endpoint. Its spawn sequence keeps the first item registry, defers every other packet to play in

@@ -65,4 +65,17 @@ mod tests {
         assert!(body.actor_flying_state);
         assert_eq!(body.actor_data_flag.actor_flag_bitset_data.0[0], 1 << 3);
     }
+
+    /// Flag bits past the 131-bit set are dropped on the wire rather than failing the send.
+    #[test]
+    fn flags_beyond_the_bitset_width_still_encode() {
+        let packet = client_movement_prediction_sync(MovementPredictionSync {
+            actor_flags: [1, 0, u64::MAX],
+            bounding_box: [1.0, 1.8, 0.6],
+            attributes: [0.0; 9],
+            unique_id: 1,
+            flying: false,
+        });
+        assert!(crate::encode(&packet).is_ok());
+    }
 }

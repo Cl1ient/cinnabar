@@ -83,7 +83,7 @@ fn shared_decode_rejects_adversarial_payload_and_metadata_lengths() {
         "unexpected error: {error:?}"
     );
 
-    // The schema bounds the hash list at 65 before the remaining input is consulted.
+    // A hash count the input cannot hold is truncation, checked before the schema bound.
     let packet = LevelChunk {
         cache_enabled: true,
         ..LevelChunk::default()
@@ -95,9 +95,9 @@ fn shared_decode_rejects_adversarial_payload_and_metadata_lengths() {
         .write_var_u32(i32::MAX as u32)
         .expect("encode oversized metadata length");
     let error = decode_shared(&Bytes::from(oversized_metadata))
-        .expect_err("metadata length beyond its bound must fail");
+        .expect_err("metadata length beyond the input must fail");
     assert!(
-        matches!(error, wire::DecodeError::SchemaConstraint(_)),
+        matches!(error, wire::DecodeError::LengthNotRepresentable { .. }),
         "unexpected error: {error:?}"
     );
 }

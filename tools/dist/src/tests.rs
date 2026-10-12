@@ -34,10 +34,25 @@ fn fixture(platform: Platform) -> (PathBuf, Options) {
     fs::write(&core, b"synthetic core").unwrap();
     fs::write(&physics, b"synthetic physics").unwrap();
     fs::write(&notices, b"synthetic notices").unwrap();
+    let binaries = root.join("runtime");
+    fs::create_dir(&binaries).unwrap();
+    let suffix = if platform == Platform::Windows {
+        ".exe"
+    } else {
+        ""
+    };
+    for (name, _) in layout::runtime_binaries() {
+        fs::write(
+            binaries.join(format!("{name}{suffix}")),
+            format!("synthetic {name}"),
+        )
+        .unwrap();
+    }
     let options = Options {
         platform,
         client,
         core,
+        binaries,
         assets,
         physics,
         notices,
@@ -109,17 +124,11 @@ fn synthetic_bundle_has_sorted_hash_manifest_and_local_scope() {
 fn unix_bundle_binaries_are_executable() {
     use std::os::unix::fs::PermissionsExt;
 
-    for (platform, client, core) in [
-        (Platform::Linux, "bin/bedrock-client", "bin/bedrock-core"),
-        (
-            Platform::Macos,
-            "Cinnabar.app/Contents/MacOS/bedrock-client",
-            "Cinnabar.app/Contents/MacOS/bedrock-core",
-        ),
-    ] {
+    for platform in [Platform::Linux, Platform::Macos] {
         let (root, options) = fixture(platform);
         stage(&options).unwrap();
-        for path in [client, core] {
+        for (name, _) in layout::runtime_binaries() {
+            let path = format!("{}{name}", layout::binary_root(platform));
             let mode = fs::metadata(options.output.join(path))
                 .unwrap()
                 .permissions()
@@ -178,4 +187,32 @@ fn top_level_alias_resolution_preserves_nested_link_rejection() {
         Err(DistError::NotRegular(_))
     ));
     fs::remove_dir_all(root).unwrap();
+}
+
+/// Local bundles must ship the verifier as a sibling of the local server on every platform.
+#[test]
+fn stages_the_server_and_verifier_together_and_refuses_a_missing_verifier() {
+    for platform in [Platform::Linux, Platform::Macos, Platform::Windows] {
+        let (root, options) = fixture(platform);
+        let suffix = if platform == Platform::Windows {
+            ".exe"
+        } else {
+            ""
+        };
+        stage(&options).unwrap();
+        for name in ["bedrock-local-server", "cinnabar-cxb"] {
+            let destination = options
+                .output
+                .join(format!("{}{name}{suffix}", layout::binary_root(platform)));
+            assert_eq!(
+                fs::read(destination).unwrap(),
+                format!("synthetic {name}").as_bytes()
+            );
+        }
+        fs::remove_dir_all(&options.output).unwrap();
+        fs::remove_file(options.binaries.join(format!("cinnabar-cxb{suffix}"))).unwrap();
+        assert!(matches!(stage(&options), Err(DistError::Io { .. })));
+        assert!(!options.output.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
 }

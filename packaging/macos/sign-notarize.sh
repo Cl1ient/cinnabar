@@ -4,6 +4,9 @@
 # or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_PASSWORD. Without CODESIGN_IDENTITY the app is ad-hoc
 # signed and nothing is notarized, so recipients must clear Gatekeeper themselves.
 set -euo pipefail
+here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+# shellcheck source=../common/stage-payload.sh
+source "$here/../common/stage-payload.sh"
 target="${1:?usage: sign-notarize.sh <app-or-dmg>}"
 
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
@@ -40,7 +43,10 @@ case "$target" in
         while IFS= read -r -d '' file; do
             if file "$file" | grep -q 'Mach-O'; then sign "$file"; fi
         done < <(find "$target/Contents/Resources" -type f -perm -u+x -print0)
-        sign "$target/Contents/MacOS/bedrock-core" "$target/Contents/MacOS/bedrock-local-server"
+        require_file "$runtime_binary_list" 'restore the runtime binary table'
+        while IFS= read -r name; do
+            sign "$target/Contents/MacOS/$name"
+        done < <(runtime_binaries)
         sign "$target"
         codesign --verify --deep --strict --verbose=2 "$target"
         archive="$(mktemp -d)/Cinnabar.zip"

@@ -381,7 +381,10 @@ fn drive_particles(
     mut block_cues: MessageReader<client_audio::audio::LocalBlockCue>,
     mut break_echoes: Local<client_audio::audio::EchoLedger>,
     mut ambient: Local<AmbientParticles>,
-    profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
+    (cave, profiler): (
+        Res<crate::runtime::visibility::CaveVisibilityCache>,
+        Option<Res<render_scene::RuntimeStageProfiler>>,
+    ),
 ) {
     let (time, actor_alpha) = frame_time;
     // Timed inside the system: a span around it would also count systems ordered in between.
@@ -516,7 +519,27 @@ fn drive_particles(
     route_actor_particles(&mut system, &mut inbox.actor_commands);
     follow_bound_emitters(&mut system, stream);
     follow_actor_particles(&mut system, &mut actor_frame);
-    update_particle_frame(&mut system, &mut frame, time.delta_secs(), &view, &world);
+    let camera = crate::runtime::telemetry::camera_sub_chunk_key(
+        stream.current_dimension(),
+        bevy::math::Vec3::from_array(view.position),
+    );
+    let generation = stream.connectivity_generation();
+    update_particle_frame(
+        &mut system,
+        &mut frame,
+        time.delta_secs(),
+        &view,
+        &world,
+        |low, high| {
+            cave.hides_box(
+                camera,
+                generation,
+                |key| stream.has_sub_chunk_connectivity(key),
+                low,
+                high,
+            )
+        },
+    );
 }
 
 fn route_critical(

@@ -181,6 +181,15 @@ fn default_true() -> bool {
     true
 }
 
+/// A Global Resources screen action; indices follow the last reported lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum GlobalPackAction {
+    Activate { index: usize },
+    Deactivate { index: usize },
+    Apply,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
@@ -214,6 +223,11 @@ pub enum Command {
     /// Presents a signed-in launcher with placeholder accounts; nothing signs in or is saved.
     TestAccounts {
         enabled: bool,
+    },
+    /// Stages or applies global resource packs as the settings screen does, then reports the
+    /// lists and worker status; without an action it only reports.
+    GlobalPacks {
+        action: Option<GlobalPackAction>,
     },
     State,
     WaitFor {

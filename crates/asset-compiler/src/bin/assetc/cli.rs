@@ -292,10 +292,10 @@ pub(super) enum Command {
         /// Tracked manifest that pins the local resource-pack source.
         #[arg(long)]
         source_manifest: PathBuf,
-        /// BREG1003 registry exported by tools/registrygen.
+        /// Block registry exported by tools/registrygen.
         #[arg(long)]
         registry: PathBuf,
-        /// LREG1001 state light metadata bound to the exact BREG1003 input.
+        /// LREG1001 state light metadata bound to the exact block registry input.
         #[arg(long)]
         light_registry: PathBuf,
         /// BIOREG01 registry exported by tools/registrygen.
@@ -351,6 +351,12 @@ pub(super) enum Command {
         accept_eula: bool,
         #[arg(long)]
         clouds_override: Option<PathBuf>,
+    },
+    /// Print every checkout-relative file `prepare --kit` reads; installers stage exactly these.
+    KitFiles {
+        /// Checkout the tracked inputs resolve against.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
     },
     /// Download (when missing), verify and unpack the pinned sample pack below `.local/assets`.
     VanillaPack {

@@ -238,3 +238,60 @@ fn eviction_or_superseding_revision_cannot_complete_forced_manifest() {
         "applying a replacement revision must not satisfy the forced generation"
     );
 }
+
+// A pack swap's parallel rebuild matches one thread meshing the same neighbourhoods in order.
+#[test]
+fn resource_remesh_in_parallel_matches_a_serial_rebuild() {
+    let mut stream = WorldStream::new(WorldBootstrap {
+        local_player_unique_id: 1,
+        dimension: 0,
+        local_player_runtime_id: 1,
+        player_position: [0.0; 3],
+        world_spawn_position: [0; 3],
+        air_network_id: 12_530,
+        block_network_ids_are_hashes: false,
+    });
+    let keys: Vec<_> = (-1..=1)
+        .flat_map(|x| (0..=1).map(move |y| SubChunkKey::new(0, x, y, 0)))
+        .collect();
+    for (index, key) in keys.iter().enumerate() {
+        for offset in 0..4u8 {
+            let at = (index as u8 + offset * 3) % 16;
+            stream
+                .authority
+                .update_block(*key, BlockUpdate::new(at, offset, 15 - at, 0, 99), 12_530)
+                .unwrap();
+        }
+        stream.resident.insert(*key);
+    }
+    stream.mark_light_changed_sources(keys.iter().copied());
+    light_scheduler::settle_light(&mut stream, [0.0; 3]);
+    let snapshot = || {
+        stream
+            .resource_mesh_snapshot(keys.iter().copied())
+            .expect("every neighbourhood is lit")
+    };
+    let assets = stream.runtime_assets().clone();
+    let serial = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap()
+        .install(|| snapshot().build(&assets))
+        .expect("biomes resolve");
+    let parallel = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .unwrap()
+        .install(|| snapshot().build(&assets))
+        .expect("biomes resolve");
+    assert_eq!(
+        serial.iter().map(|(key, ..)| *key).collect::<Vec<_>>(),
+        keys
+    );
+    assert!(
+        serial
+            .iter()
+            .any(|(_, mesh, _)| *mesh != Default::default())
+    );
+    assert_eq!(serial, parallel);
+}

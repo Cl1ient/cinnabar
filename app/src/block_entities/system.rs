@@ -10,10 +10,10 @@ use bevy::prelude::{
     App, Mat4, Projection, Query, Real, Res, ResMut, Resource, Time, Transform, Update, Vec3, With,
 };
 use ui::TextLayoutCache;
-use world::{ChunkKey, SUB_CHUNK_SIDE};
+use world::{ChunkKey, SUB_CHUNK_SIDE, SubChunkKey};
 use {
     render_model::{
-        AtlasRect, BeaconModel, BellModel, BlockEntityKind, BlockEntityLight, BlockEntityScene,
+        AtlasRect, BellModel, BlockEntityKind, BlockEntityLight, BlockEntityScene,
         BlockEntitySubmission, ConduitModel, SceneClock, SignFace, SignModel, StaticItemPlacement,
         item_frame_item_transform, matrix_rows,
     },
@@ -29,7 +29,9 @@ use super::{
 };
 use client_shell::ui_resources::UiRuntimeResource;
 use {
-    crate::runtime::world::ClientWorld,
+    crate::runtime::{
+        telemetry::camera_sub_chunk_key, visibility::CaveVisibilityCache, world::ClientWorld,
+    },
     client_interaction::movement::PhysicsCollisionRegistries,
     client_presentation::{actor_publication::ActorFramePartialTick, local_player::LocalViewPose},
 };
@@ -42,11 +44,18 @@ const TICKS_PER_SECOND: f64 = 20.0;
 const TEXT_CACHE_ENTRIES: usize = 256;
 const TEXT_CACHE_BYTES: usize = 2 * 1024 * 1024;
 
+mod beacon;
+#[cfg(test)]
+mod beacon_tests;
 mod bed;
 mod columns;
 mod crystal_beams;
+mod culling;
 mod dragon_death;
 mod portals;
+
+#[cfg(test)]
+mod beacon_tint_tests;
 
 /// Reads the optional block-entity carrier next to the world carrier, which the block-entity
 /// scene and worn heads share; on absence or corruption logs once and returns `None`.
@@ -108,6 +117,7 @@ struct BlockInfo {
 #[derive(Resource)]
 pub(crate) struct BlockEntityRuntime {
     lids: ContainerLids,
+    beacon_tints: assets::BeaconTintCatalog,
     /// Scan results per loaded column, rebuilt when the column changes.
     columns: HashMap<ChunkKey, columns::ColumnScan>,
     rescans: columns::RescanOrder,
@@ -122,12 +132,14 @@ pub(crate) struct BlockEntityRuntime {
     map_requests: HashMap<i64, f64>,
     /// Session and dimension the runtime-id keyed caches were filled from.
     session: Option<(u64, i32)>,
+    beam_source: Option<(Arc<assets::RuntimeAssets>, Option<protocol::DimensionRange>)>,
 }
 
 impl BlockEntityRuntime {
     pub(crate) fn new() -> Self {
         Self {
             lids: ContainerLids::default(),
+            beacon_tints: assets::BeaconTintCatalog::pinned(),
             columns: HashMap::new(),
             rescans: columns::RescanOrder::default(),
             frame: 0,
@@ -138,6 +150,26 @@ impl BlockEntityRuntime {
             missing_maps: Vec::new(),
             map_requests: HashMap::new(),
             session: None,
+            beam_source: None,
+        }
+    }
+
+    /// Invalidates cached column rules when pack light data or dimension height changes.
+    fn bind_beam_source(
+        &mut self,
+        assets: &Arc<assets::RuntimeAssets>,
+        range: Option<protocol::DimensionRange>,
+    ) {
+        if !self
+            .beam_source
+            .as_ref()
+            .is_some_and(|(previous, previous_range)| {
+                Arc::ptr_eq(previous, assets) && *previous_range == range
+            })
+        {
+            self.beam_source = Some((Arc::clone(assets), range));
+            self.columns.clear();
+            self.blocks.clear();
         }
     }
 
@@ -148,6 +180,7 @@ impl BlockEntityRuntime {
             return;
         }
         self.session = session;
+        self.beam_source = None;
         self.lids = ContainerLids::default();
         self.missing_maps.clear();
         self.columns.clear();
@@ -277,6 +310,7 @@ pub(crate) fn update_block_entity_scene(
     mut frame: ResMut<render_scene::BlockEntityFrameResource>,
     mut placements: ResMut<render_scene::StaticItemPlacementsResource>,
     profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
+    cave: Option<Res<CaveVisibilityCache>>,
 ) {
     if !scene.has_assets() {
         dragon_death::update_without_atlas(
@@ -310,13 +344,49 @@ pub(crate) fn update_block_entity_scene(
         stream.authority().actor_session_id(),
         stream.current_dimension(),
     )));
+    runtime.bind_beam_source(
+        stream.runtime_assets(),
+        stream
+            .authority()
+            .dimension_range(stream.current_dimension()),
+    );
     runtime.missing_maps.clear();
     let dimension = stream.current_dimension();
+    let beam_top = stream.authority().dimension_range(dimension).map(|range| {
+        (range.base_sub_chunk_y + range.sub_chunk_count as i32) * SUB_CHUNK_SIDE as i32
+    });
     let store = stream.collision_store();
     let mode = stream.network_id_mode();
     let eye = view.eye_translation();
     let delta = time.delta_secs();
     let daylight = atmosphere.daylight();
+    let camera_position = camera
+        .single()
+        .ok()
+        .map(|(transform, _)| transform.translation);
+    let culling = cave
+        .as_deref()
+        .zip(camera_position)
+        .map(|(cave, position)| {
+            culling::CaveCulling::new(
+                cave,
+                camera_sub_chunk_key(dimension, position),
+                stream.connectivity_generation(),
+                |key: SubChunkKey| stream.has_sub_chunk_connectivity(key),
+            )
+        });
+    let mut work = culling::BlockEntityWork::default();
+    let mut occlusion_budget = meshing::occlusion::OcclusionBudget::default();
+    let occlusion_eye = camera.single().ok().and_then(|(transform, projection)| {
+        let eye = transform.translation.to_array();
+        let matrix = projection.get_clip_from_view() * transform.to_matrix().inverse();
+        render_model::visibility_bounds::perspective_supports_occlusion(
+            matrix,
+            eye,
+            f64::from(meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS),
+        )
+        .then_some(eye)
+    });
 
     let cracks = ui
         .block_crack_snapshot()
@@ -358,6 +428,7 @@ pub(crate) fn update_block_entity_scene(
                     })
             }),
     );
+    let prepare_zone = bevy::log::info_span!("block_entity.prepare").entered();
     'columns: for chunk_x in chunk_range(eye.x) {
         for chunk_z in chunk_range(eye.z) {
             let chunk_key = ChunkKey::new(dimension, chunk_x, chunk_z);
@@ -389,7 +460,11 @@ pub(crate) fn update_block_entity_scene(
                 continue;
             };
             scan.seen_frame = frame_stamp;
+            let before_portals = submissions.len();
             portals::submit(&mut submissions, &scan.portals, eye);
+            let portals = (submissions.len() - before_portals) as u32;
+            work.candidates += portals;
+            work.prepared += portals;
             let mut full = false;
             for entity in &scan.entities {
                 if submissions.len() >= MAX_SUBMISSIONS {
@@ -404,7 +479,23 @@ pub(crate) fn update_block_entity_scene(
                 if center.distance_squared(eye) > SCAN_RADIUS_BLOCKS * SCAN_RADIUS_BLOCKS {
                     continue;
                 }
-                let (block_light, sky_light) = stream.light_level_at(center.to_array());
+                // Hidden entities skip geometry but keep lids, rings, map requests and canvases.
+                let mut hidden = !work.admit(culling.as_ref(), template, [x, y, z]);
+                if !hidden
+                    && let Some((low, high)) = culling::bounds(template, [x, y, z])
+                    && let Some(eye) = occlusion_eye
+                    && let Some(cave) = cave.as_deref()
+                {
+                    let _zone = bevy::log::info_span!("block_entity.occlusion").entered();
+                    hidden = stream.terrain_hides_box(
+                        &mut occlusion_budget,
+                        eye,
+                        low,
+                        high,
+                        |_, key| cave.is_visible(key) && cave.rendered.contains_key(&key),
+                    );
+                    work.prepared -= u32::from(hidden);
+                }
                 let context = FrameContext {
                     stream,
                     collisions: &collisions,
@@ -414,14 +505,21 @@ pub(crate) fn update_block_entity_scene(
                     font: &font.0,
                 };
                 let kind = if matches!(template, Template::Beacon) {
-                    beacon_kind(
-                        &mut *runtime,
-                        &collisions,
-                        store,
-                        dimension,
-                        mode,
-                        [x, y, z],
-                    )
+                    beam_top.map(|top| {
+                        let model = scan.beacons.entry(entity.key).or_insert_with(|| {
+                            beacon::model(
+                                runtime,
+                                &collisions,
+                                stream.runtime_assets(),
+                                store,
+                                dimension,
+                                mode,
+                                [x, y, z],
+                                top,
+                            )
+                        });
+                        BlockEntityKind::Beacon(model.clone())
+                    })
                 } else {
                     resolve(
                         template,
@@ -430,6 +528,7 @@ pub(crate) fn update_block_entity_scene(
                         runtime,
                         &mut scene,
                         &mut held,
+                        hidden,
                     )
                 };
                 if let Some(kind) = kind {
@@ -446,6 +545,7 @@ pub(crate) fn update_block_entity_scene(
                             stream.light_level_at(position)
                         })
                     } else {
+                        let (block_light, sky_light) = stream.light_level_at(center.to_array());
                         model_light(&kind, block_light, sky_light, daylight)
                     };
                     submissions.push(BlockEntitySubmission {
@@ -461,6 +561,7 @@ pub(crate) fn update_block_entity_scene(
             }
         }
     }
+    drop(prepare_zone);
     runtime.lids.finish();
     scans.retain(|_, scan| scan.seen_frame == frame_stamp);
     runtime.columns = scans;
@@ -470,13 +571,11 @@ pub(crate) fn update_block_entity_scene(
             .filter(|cue| cue.event_type == BELL_RING_EVENT_TYPE)
             .map(|cue| cue.sequence)
     });
+    let before_global = submissions.len();
     crystal_beams::submit(
         &mut submissions,
         stream.authority().crystal_beams(actor_partial_tick.0),
-        camera
-            .single()
-            .ok()
-            .map(|(transform, _)| transform.translation),
+        camera_position,
         |runtime_id, owner_position| {
             let actor = stream.authority().actor(runtime_id)?;
             stream.solved_light_at(actor.brightness_sample_position(owner_position))
@@ -485,16 +584,25 @@ pub(crate) fn update_block_entity_scene(
     dragon_death::submit(
         &mut submissions,
         stream.authority().dragon_death_rays(actor_partial_tick.0),
-        camera
-            .single()
-            .ok()
-            .map(|(transform, _)| transform.translation),
+        camera_position,
         |runtime_id, owner_position| {
             let actor = stream.authority().actor(runtime_id)?;
             stream.solved_light_at(actor.brightness_sample_position(owner_position))
         },
     );
+    let global = (submissions.len() - before_global) as u32;
+    work.candidates += global;
+    work.prepared += global;
     placements.0.0 = held;
+    let _zone = bevy::log::info_span!(
+        "block_entity.scene_update",
+        candidates = work.candidates,
+        prepared = work.prepared,
+        hidden_by_occlusion = work.candidates - work.prepared,
+        probes = meshing::occlusion::ENTITY_OCCLUSION_PROBES - occlusion_budget.remaining(),
+        submitted = submissions.len()
+    )
+    .entered();
     frame.0 = scene.update(clock, &cracks, &submissions).clone();
 }
 
@@ -587,7 +695,9 @@ fn map_canvas(pixels: &[u32]) -> Vec<u8> {
         .collect()
 }
 
-/// Applies per-frame state (lid openness, sign canvases, viewer yaw) to a template.
+/// Applies per-frame state (lid openness, sign canvases, viewer yaw) to a template; a `hidden`
+/// one still advances its lid, ring and map request and keeps its text and map canvases
+/// resident, but prepares no geometry.
 fn resolve(
     template: &Template,
     position: [i32; 3],
@@ -595,7 +705,19 @@ fn resolve(
     runtime: &mut BlockEntityRuntime,
     scene: &mut BlockEntityScene,
     held: &mut Vec<StaticItemPlacement>,
+    hidden: bool,
 ) -> Option<BlockEntityKind> {
+    let stateful = matches!(
+        template,
+        Template::Chest(_)
+            | Template::Shulker(_)
+            | Template::Bell { .. }
+            | Template::ItemFrame { .. }
+            | Template::Sign { .. }
+    );
+    if hidden && !stateful {
+        return None;
+    }
     let stream = context.stream;
     let open_at = |at: [i32; 3]| {
         stream
@@ -616,7 +738,7 @@ fn resolve(
                     context.delta_seconds,
                 );
             }
-            Some(BlockEntityKind::Chest(model))
+            (!hidden).then_some(BlockEntityKind::Chest(model))
         }
         &Template::Shulker(mut model) => {
             model.open = runtime.lids.advance(
@@ -625,7 +747,7 @@ fn resolve(
                 open_at(position),
                 context.delta_seconds,
             );
-            Some(BlockEntityKind::Shulker(model))
+            (!hidden).then_some(BlockEntityKind::Shulker(model))
         }
         Template::EnchantTable => Some(BlockEntityKind::EnchantTable {
             facing_yaw_degrees: yaw_toward(context.eye, position),
@@ -649,7 +771,7 @@ fn resolve(
                 sequence,
                 context.now_seconds,
             );
-            Some(BlockEntityKind::Bell(BellModel {
+            (!hidden).then_some(BlockEntityKind::Bell(BellModel {
                 attachment,
                 direction,
                 seconds_since_ring,
@@ -673,6 +795,9 @@ fn resolve(
                     map_canvas(&image.pixels)
                 })
             });
+            if hidden {
+                return None;
+            }
             model.map = map;
             if let (Some(item), None) = (item, map) {
                 held.push(held_placement(
@@ -731,11 +856,13 @@ fn resolve(
             };
             let front = face(front);
             let back = face(back);
-            (front.is_some() || back.is_some()).then_some(BlockEntityKind::Sign(SignModel {
-                mount: *mount,
-                front,
-                back,
-            }))
+            (!hidden && (front.is_some() || back.is_some())).then_some(BlockEntityKind::Sign(
+                SignModel {
+                    mount: *mount,
+                    front,
+                    back,
+                },
+            ))
         }
     }
 }
@@ -774,91 +901,9 @@ fn prune_bell_rings(
     });
 }
 
-/// Highest world Y a beacon beam is drawn to; the beam stops at the build limit.
-const BEAM_TOP: i32 = 320;
-
-/// The dye color of a stained-glass block name, as linear RGB.
-fn glass_tint(name: &str) -> Option<[f32; 3]> {
-    let color = name
-        .strip_prefix("minecraft:")?
-        .strip_suffix("_stained_glass_pane")
-        .or_else(|| {
-            name.strip_prefix("minecraft:")?
-                .strip_suffix("_stained_glass")
-        })?;
-    let java_id = match color {
-        "white" => 0,
-        "orange" => 1,
-        "magenta" => 2,
-        "light_blue" => 3,
-        "yellow" => 4,
-        "lime" => 5,
-        "pink" => 6,
-        "gray" => 7,
-        "light_gray" | "silver" => 8,
-        "cyan" => 9,
-        "purple" => 10,
-        "blue" => 11,
-        "brown" => 12,
-        "green" => 13,
-        "red" => 14,
-        "black" => 15,
-        _ => return None,
-    };
-    Some(assets::banner::color_linear(15 - java_id))
-}
-
-/// Blends the tint of each stained-glass block above the beacon, each new pane averaging
-/// with the color so far.
-fn beam_tint(glass: impl IntoIterator<Item = [f32; 3]>) -> [f32; 3] {
-    glass.into_iter().fold([1.0; 3], |tint, color| {
-        if tint == [1.0; 3] {
-            color
-        } else {
-            std::array::from_fn(|axis| (tint[axis] + color[axis]) * 0.5)
-        }
-    })
-}
-
-fn beacon_kind(
-    runtime: &mut BlockEntityRuntime,
-    collisions: &PhysicsCollisionRegistries,
-    store: &world::ChunkStore,
-    dimension: i32,
-    mode: assets::NetworkIdMode,
-    position: [i32; 3],
-) -> Option<BlockEntityKind> {
-    let height = u32::try_from(BEAM_TOP - position[1] - 1)
-        .ok()
-        .filter(|height| *height > 0)?;
-    let mut glass = Vec::new();
-    for y in position[1] + 1..BEAM_TOP {
-        let runtime_id = store
-            .sub_chunk(world::SubChunkKey::new(
-                dimension,
-                position[0].div_euclid(16),
-                y.div_euclid(16),
-                position[2].div_euclid(16),
-            ))
-            .and_then(|sub_chunk| {
-                sub_chunk.runtime_id(
-                    0,
-                    position[0].rem_euclid(16) as u8,
-                    y.rem_euclid(16) as u8,
-                    position[2].rem_euclid(16) as u8,
-                )
-            });
-        if let Some(info) = runtime_id.and_then(|id| block_info(runtime, collisions, mode, id))
-            && let Some(color) = glass_tint(&info.name)
-        {
-            glass.push(color);
-        }
-    }
-    Some(BlockEntityKind::Beacon(BeaconModel {
-        height,
-        tint: beam_tint(glass),
-    }))
-}
+#[cfg(test)]
+#[path = "system/resolve_tests.rs"]
+mod resolve_tests;
 
 #[cfg(test)]
 mod tests {
@@ -919,18 +964,6 @@ mod tests {
             model_light(&BlockEntityKind::EndPortal, 0, 15, 1.0),
             1.0.into()
         );
-    }
-
-    #[test]
-    fn beam_tint_averages_each_new_pane_with_the_color_so_far() {
-        assert_eq!(beam_tint([]), [1.0; 3]);
-        let red = [1.0, 0.0, 0.0];
-        let blue = [0.0, 0.0, 1.0];
-        assert_eq!(beam_tint([red]), red);
-        assert_eq!(beam_tint([red, blue]), [0.5, 0.0, 0.5]);
-        assert!(glass_tint("minecraft:red_stained_glass").is_some());
-        assert!(glass_tint("minecraft:silver_stained_glass_pane").is_some());
-        assert!(glass_tint("minecraft:glass").is_none());
     }
 
     #[test]

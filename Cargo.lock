@@ -650,7 +650,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bedrock-client"
+name = "cinnabar"
 version = "0.1.12"
 dependencies = [
  "acceptance",
@@ -733,6 +733,16 @@ dependencies = [
  "wit-component",
  "world",
  "zip",
+]
+
+[[package]]
+name = "bedrock-protocol-1-26-51"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "glam",
+ "regex",
+ "uuid",
 ]
 
 [[package]]
@@ -5695,6 +5705,7 @@ dependencies = [
  "json-ui",
  "pack-compiler",
  "protocol",
+ "rayon",
  "resource-pack",
  "serde_json",
  "sha2",
@@ -5985,6 +5996,7 @@ version = "0.1.12"
 dependencies = [
  "anyhow",
  "base64",
+ "bedrock-protocol-1-26-51",
  "block-transform",
  "bridge",
  "bytes",
@@ -6003,7 +6015,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
- "valentine",
  "xxhash-rust",
  "zeroize",
 ]
@@ -7762,37 +7773,6 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "valentine"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.0",
- "bytes",
- "serde",
- "uuid",
- "valentine_bedrock_1_26_51",
- "valentine_bedrock_core",
-]
-
-[[package]]
-name = "valentine_bedrock_1_26_51"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.0",
- "bytes",
- "uuid",
- "valentine_bedrock_core",
-]
-
-[[package]]
-name = "valentine_bedrock_core"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "thiserror 1.0.69",
- "uuid",
 ]
 
 [[package]]

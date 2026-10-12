@@ -562,6 +562,11 @@ these changes do not close the movement, camera, or actor parity gates.
 - Named schedule traces and bounded frame recordings separate main work, render
   handoff, drawable acquisition, command submission and presentation. Metal
   timestamp queries use owned render passes and leave uncovered stages absent.
+- Ordinary direct terrain draws retain CPU-selected units of at most 64 quads,
+  compact visible lists after current occlusion results, and submit one instanced
+  draw per pipeline and list page. The per-section fallback and transparency paths
+  remain available. Incomplete: Metal pixel identity and paired hardware captures
+  must qualify the change before closing rendering or frame-budget acceptance.
 - Unchanged hand and cloud uniforms, inactive portals and empty item scenes skip
   redundant staging work. Regression tests assert allocations, writes and retained
   buffers; hardware captures measure elapsed time separately.
@@ -592,9 +597,16 @@ these changes do not close the movement, camera, or actor parity gates.
   establish native first-appearance timing, join latency, no-pop-in acceptance or release
   frame budgets; those gates remain open.
 - Recurring hand, UI viewport and particle writes share bounded retained GPU
-  staging. Allocation regressions cover real Metal owners; lifecycle and byte-order
-  tests cover asynchronous reuse and fallback. Attach-only native samples confirm
-  staging-allocation mutex contention, drawable waits and scheduler delays.
+  staging. Terrain arena writes use a separate pool that starts at three 120 Hz
+  frames of the publication target rate and grows after missed frames, at most
+  2 MiB per frame, to a 32 MiB ceiling. Abutting records share one copy, batches
+  stage what fits and queue only the overflow, and a growth slice encodes staged
+  writes before it copies. Allocation regressions cover real Metal owners; lifecycle
+  and byte-order tests cover asynchronous reuse, partial staging and fallback.
+  Attach-only native samples confirm staging-allocation mutex contention, drawable
+  waits and scheduler delays.
+- Incomplete: one 32 blocks/s flight capture sized the terrain pool's growth; its
+  staged share after growth, the 128 blocks/s route and joins remain unmeasured.
 - Incomplete: the synthetic fixed-camera fixture is not the populated-lobby/flight
   release replay; hidden frames do not establish displayed FPS. Three paired runs
   at each resolution reduce measured maxima but do not consistently improve p99.
@@ -605,6 +617,11 @@ these changes do not close the movement, camera, or actor parity gates.
   See [pooled-upload evidence](docs/evidence/render-stall-pooling.md),
   [frame breakdown evidence](docs/evidence/frame-breakdown.md) and
   [Tracy attribution](docs/evidence/frame-breakdown-tracy.md).
+- Block entities whose reach lies only in sections the current cave result never reached
+  skip model and text preparation, under the actor camera and graph validity rule; lids,
+  bell rings and map requests still advance, and beacon beams are exempt. Regression tests
+  count prepared candidates and bound authored model reach. Incomplete: no hardware capture
+  yet measures the gain.
 
 ## Camera packets and aim assist
 
@@ -768,6 +785,16 @@ these changes do not close the movement, camera, or actor parity gates.
   Incomplete: live acceptance remains pending. The updated inspection client is
   running after the requested restart. Changes are local and uncommitted;
   nothing is pushed.
+
+## Status-effect column
+
+- Vanilla's `mob_effects_renderer` draws one column at the right edge, below the
+  top band. Effects run in id order, wrap leftward, and blink at vanilla's rate.
+- The built-in Java pack keeps its Java rows at the top-right through its own
+  `java_mob_effects_renderer`. Packs that place vanilla's control get the column.
+- Incomplete: there is no slide-in or slide-out animation. The safe-zone and
+  screen-position offsets are taken as zero. The top band ignores riding hearts and
+  pocket-profile rules.
 
 ## Worn server-pack armour textures
 
@@ -2156,7 +2183,7 @@ and covered-vegetation parity remain incomplete. No visual or stability gate clo
 
 2026-10-02 macOS stability (in progress; no acceptance gate closed): repeated
 Apple M3 Pro/macOS 26.3 GPU events attribute firmware-detected lockups to
-`bedrock-client`; subsequent WindowServer watchdog panics and AGX-blocked
+`cinnabar`; subsequent WindowServer watchdog panics and AGX-blocked
 threads explain the whole-host freezes. Cinnabar's custom shader constructors
 now enable Bevy/wgpu runtime bounds and loop checks instead of the unchecked
 default. The shared biome shader bounds its data-driven loop by the existing
@@ -2856,6 +2883,19 @@ light at their feet through the shared light curve with daylight fixed at 1 (the
 texture, tint and sample point are unmatched), pack attachables (held/worn on player bodies) layer over the equipment runtime per session
 (pack bindings win by item identifier; pack property defaults seed only from `entities/` in
 resource packs), rigs depending on vanilla clips are attributed as fallbacks; pack precedence follows the Bedrock stack (last entry wins). No vanilla acceptance gate is closed by this change.
+
+2026-10-12 protocol codec: `protocol` decodes and encodes through protocolgen's generated
+contract crate (`bedrock-protocol-1-26-51`, contract 1), vendored byte for byte and pinned by
+`assets/bedrock-target.json`; Valentine and its normalization tool are removed, and the
+architecture gate keeps the vendored crate private to `protocol`. Play decodes only the packets
+world normalization routes, derived from the dispatch table, and UI budgets are field limits
+plus post-decode checks instead of a raw frame-ID list. An unknown union selector or a value
+outside the manifest's schema bounds is now a counted skip rather than a fatal decode error. The
+recipe string-selector scanner still bypasses the codec, so generated crafting-descriptor
+coverage stays open. The manifest bounds some fields Valentine left open (for example four Text
+parameters, empty Text messages, item aux above 32767); vanilla rejects those packets too, and
+the client now skips them. The ported tests are unexecuted until CI and the retail harness gate
+is open.
 
 2026-10-12 protocol session layer: `protocol::login` owns the play stream on the core's session
 endpoint. Its spawn sequence keeps the first item registry, defers every other packet to play in
@@ -3960,7 +4000,7 @@ Scope (detailed plan to be written at phase start):
 
 - [x] Add an explicit, ignored Microsoft token cache and optional authenticated upstream
   dial mode while preserving the offline BDS path when `-auth-cache` is omitted.
-- [x] Document the exact `bedrock-core` and release `bedrock-client` commands, device-code
+- [x] Document the exact `bedrock-core` and release `cinnabar` commands, device-code
   stdout flow, cache privacy requirements, and Rust → local socket → Go → RakNet boundary.
 - [x] Report the core's startup lifecycle synchronously: Go build start, process/auth state,
   published local endpoint, local Rust-client acceptance, and upstream connect/success/failure.
@@ -5547,7 +5587,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
   then landed as merge `a9593e7`.
   - Post-integration deterministic verification on the merged tree passed:
     `cargo test -p semantic-input --locked` (53 passed);
-    `cargo test -p bedrock-client --locked` (lib 420, assets 41, hud_assets 9,
+    `cargo test -p cinnabar --locked` (lib 420, assets 41, hud_assets 9,
     inventory_router 3, physics_assets 2, doctest 1; all passed);
     `cargo test -p protocol --locked` (21 test binaries, all passed);
     `cargo test -p client-world --locked` (lib 236 passed / 1 ignored,
@@ -5727,7 +5767,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
     launcher timeout, no watchdog firing, and an ordered `SHUTDOWN_WATCHDOG_ARMED` then
     `SHUTDOWN_COMPLETED` tail.
   - The final safety integration passes formatting, the architecture checker, all 496
-    bedrock-client tests, strict bedrock-client Clippy, and all 106 Phase 3/FastTransfer
+    cinnabar tests, strict cinnabar Clippy, and all 106 Phase 3/FastTransfer
     Pester contracts. The preceding integrated head passed all 2,487 workspace tests and
     strict workspace Clippy. Linux acceptance remains delegated to CI.
   - This is one BDS FreeCamera smoke, not CandidatePhysics, external-server, native-parity,
@@ -6352,6 +6392,10 @@ dragonfly's generation and mob AI parity gaps are accepted, not chased.
 
 Status: provisional (see `docs/local-worlds.md`): BDS 1.26.52.3 (native, or the manifest-pinned container on macOS) for default worlds, dragonfly for Flat worlds; menu create/edit/delete/templates and staged loading are built. Live-verified on macOS through the core's control channel (create, staged open, spawn, server-side teleport and client fall, pause, close with no orphan); the menu click-through and on-screen input were not exercised (locked screen), and the create screen lacks vanilla's Multiplayer, Cheats and pack tabs, so no acceptance gate is closed.
 
+Local-world edits save before Play and on Back or Escape. Save errors preserve the form for retry.
+Dragonfly restores the local host with the selected mode, and native and container BDS launches
+apply the selected mode to existing worlds. The local-world parity gate remains provisional.
+
 ## Phase 8 — Audio, polish, packaging
 
 **Rain ambience:** completed weather ticks now admit overlapping finite rain
@@ -6729,7 +6773,7 @@ no longer needs RUST_MCBE_TELEPORT_ACK; that opt-in still enables unverified ext
   - `cargo test -p server-experience -p mod-host --locked` (31 and 13 tests)
   - `cargo test -p server-experience -p mod-host --features server-experience/developer-media --locked`
     (34 and 13 tests)
-  - `cargo test -p bedrock-client --locked` (unit, integration and documentation tests)
+  - `cargo test -p cinnabar --locked` (unit, integration and documentation tests)
   - `cargo clippy --workspace --all-targets --features server-experience/developer-media --locked -- -D warnings`
   - `cargo run -p architecture --locked -- check --root . --policy tools/architecture/policy.toml`
 - `cargo fmt --all`, the formatting check and `git diff --check` passed. Production
@@ -6751,7 +6795,7 @@ no longer needs RUST_MCBE_TELEPORT_ACK; that opt-in still enables unverified ext
   recorded validation and existing lockfile additions.
 - Local checks passed through the owner's `cslot` limiter:
   - `cargo check --workspace --all-targets --locked`
-  - `cargo test -p server-experience -p bedrock-client --locked` (35 server-experience
+  - `cargo test -p server-experience -p cinnabar --locked` (35 server-experience
     tests; 1,879 client unit tests passed and 16 were ignored; client integration
     and documentation tests passed)
   - `cargo test -p server-experience --features developer-media --locked` (38 tests)
@@ -7414,6 +7458,16 @@ durations and mapping source coordinates into resized atlas placements.
 Incomplete: exhaustive authored effect variants, matched live game-mode sequencing
 and hardware frame budgets remain open.
 
+Chat trigger filters now survive built-in layout restoration when a pack attaches
+its visibility binding inside a derived HUD row or the open chat history label.
+Pack variables resolve before the binding transfers, and effect factories retain
+the full message stream. Private-use bitmap icons preserve their sheet colors and
+text opacity; missing icons retain the normal replacement glyph tint.
+Incomplete: several active derived labels with different `#visible` filters are
+flattened onto the one built-in label, so the last filter wins instead of their union.
+Full native pixel matching, supplementary-plane emoji routing and hardware frame
+budgets also remain open. These changes do not close general chat parity.
+
 Live follow-up confirms custom sound playback. The latest user test reports the
 earlier actor, HUD, collision and inventory bugs fixed, including the actual
 Galaxite death animation. Matched native pixel comparisons remain separate.
@@ -7763,6 +7817,12 @@ acquire dye from a material name. The existing undyed colour and legacy armour m
 are retained. Complete native shader coverage and session item-component dye overrides remain
 open; this descriptor change does not close those parity gates.
 
+### Compiled ambient material facts
+
+The world carrier retains solid/liquid material dispositions for every state. Ambient leaf sampling reads these facts without identifier lookup or geometry inference. The partial plant catalog is joined to pinned state identities; unknown states and custom overlays remain unresolved. Air admission is explicitly provisional.
+
+Incomplete: the complete native material/state inventory, air binding, liquid and solid classifications, legacy protocols and server material component overlays remain unverified. This partial catalog does not close the material parity gate.
+
 ### Block-family routing coverage
 
 Crossed-plane routing now comes from the shared family catalog and is retained
@@ -7824,7 +7884,7 @@ replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
 fallback drawing, pointer handling and quick-move routing. Active equippable
 components, accepted items, conditional activation, advertised custom bases and
 later mount layouts remain incomplete and do not close the entity parity gate.
-Entity carrier 22 requires a `make assets` rebuild.
+Entity carrier 23 requires a `make assets` rebuild.
 
 ### Compiled furnace fuel admission (incomplete)
 
@@ -7884,16 +7944,27 @@ pick, placement-obstruction and aim dispositions, checks every independently col
 entity identity, and retains the existing class routes as provisional compatibility data.
 Actor admission resolves advertised bases once, preserves the first advertisement,
 refreshes earlier actors, and caches numeric dispositions for frame and ray consumers.
-Unadvertised identities and unadmitted nonempty bases remain unresolved. Empty
-advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
+Unadvertised identities and unadmitted nonempty bases remain unresolved; attack picking
+still admits them through their collision box or server hitboxes, while aim assist skips
+them. Empty advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
 mutable component, spectator pick/obstruction and class inventories are still open;
 the generic-mob disposition remains provisional and does not close a parity gate.
 
 Compiled seat descriptors are incomplete. Every independently collected entity has a seat admission, including unresolved definitions. Authored base layouts, bounded rider counts, literal rotations and Molang rotation references are compiled before runtime; component-group names no longer select layouts. Actual group activation and rotation-expression evaluation remain unresolved, so those layouts retain streamed poses. Passenger ordering, mutable rideable components, session behavior overlays and complete native layout coverage remain open. Static count selection preserves the existing compatibility order and is provisional.
 
+### Compiled intrinsic shine (incomplete)
+
+Intrinsic shine admission remains incomplete. The versioned item descriptor retains the existing
+four admitted positive choices as provisional compatibility data and gives each independently
+admitted retail identity an explicit disposition. Written books are absent from this inventory
+and remain unresolved until their admission is independently established. Unsupported identities remain unresolved. Full native class,
+metadata and component-version coverage remains open; compiler facts alone do not close these
+parity gates. Numeric session admission and shared world/UI consumers are implemented; their
+focused tests pass. Full visible rendering, metadata and native coverage verification remain open.
+
 ## Held-item grip admission (incomplete parity)
 
-Item grip facts are compiled into entity carrier 22, checked against the separate
+Item grip facts are compiled into entity carrier 21, checked against the separate
 retail identity inventory and copied through numeric item admission into equipment
 input. Unknown names cannot borrow a tool grip. Explicit session flags, including
 false, replace the compiled upright choice. The existing built-in grip and rod-art
@@ -7923,3 +7994,50 @@ Incomplete parity: function-style actor queries outside the particle expression
 grammar, skin-authored locators, bound child-event offsets under rotation, fallback
 placement without a rig, and the full animated locator gallery remain unverified.
 Frame and streaming performance acceptance remains open. No parity gate closes.
+
+## Cached beacon beam sections
+
+Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer.
+
+Incomplete parity: the full beacon geometry, animation, visibility and GPU performance gallery remains open.
+
+## Compiled beacon tint eligibility
+
+The block registry carries a tint or an explicit non-tinting disposition for each
+canonical state. Hardened stained glass and panes use the same palette colours
+as ordinary stained glass. Frame submission reads numeric descriptors, and
+unrecognised custom identities remain unresolved. Stale active registries require
+`make assets`.
+
+Incomplete: this descriptor does not establish beam sections, obstruction,
+activation, world height, custom block material overlays or end-to-end colour
+transfer. These remain separate acceptance gates.
+
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together.
+
+Incomplete parity: full pack-reload galleries and streaming frame budgets remain open.
+
+## Loom banner previews
+
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers.
+
+Incomplete parity: recipe eligibility and exact pattern-choice styling remain open.
+
+## Entity terrain occlusion and retained block-entity view culling
+
+- Actor bodies and their shadow bounds use bounded, current-terrain exposed-face proofs after
+  ordinary view admission. Name tags retain their independent publication. Unknown,
+  dirty, unpublished, clipped, transparent or budget-exhausted terrain always draws.
+  Internal voxel faces cannot certify depth. Near-clip safety is independent of rotation.
+  Actors with unbounded attachments, extra layers or no authored bounds also draw.
+  Controllers with any replacement geometry bypass base-model terrain proofs, including
+  selections between ticks; controllers that always draw the base model remain eligible.
+- Block entities use the same proof without stopping lids, rings, map requests or text
+  canvases. Global beams bypass terrain proofs. Retained vertex runs are culled at draw
+  submission, so camera turns do not rebuild or upload cached meshes.
+- Each kind has a fixed plane/cell probe budget. Preparation counters record candidates,
+  hidden-by-occlusion and submitted; draw counters record skipped/submitted vertices.
+- Performance and rendered-frame acceptance remain incomplete until comparable captures
+  verify walls, gaps, rapid motion, shadows, name tags and unchanged animation state.

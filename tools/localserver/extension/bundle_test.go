@@ -3,11 +3,15 @@ package extension
 import (
 	"archive/zip"
 	"bytes"
+	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/hashimthearab/rust-mcbe/tools/localserver/internal/cxbtest"
 )
 
 // zipEntry is one file of a test .cxb.
@@ -19,10 +23,23 @@ type zipEntry struct {
 // writeCXB writes a .cxb holding entries at path and returns its bytes.
 func writeCXB(t *testing.T, path string, entries ...zipEntry) []byte {
 	t.Helper()
+	t.Setenv("CINNABAR_CXB_BIN", cxbtest.Binary(t))
+	for _, e := range entries {
+		if e.name == ManifestPath {
+			var signed SignedDocument
+			var m Manifest
+			if Decode(e.data, &signed) == nil {
+				if payload, err := unhex(signed.Payload); err == nil && Decode(payload, &m) == nil && len(m.Templates) > 0 {
+					entries = append(entries, zipEntry{"ui/terminal.json", templateBytes(m.ID)})
+				}
+			}
+			break
+		}
+	}
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)
 	for _, e := range entries {
-		f, err := w.CreateHeader(&zip.FileHeader{Name: e.name, Method: zip.Store})
+		f, err := w.CreateRaw(&zip.FileHeader{Name: e.name, Method: zip.Store, CRC32: crc32.ChecksumIEEE(e.data), CompressedSize64: uint64(len(e.data)), UncompressedSize64: uint64(len(e.data))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -39,8 +56,8 @@ func writeCXB(t *testing.T, path string, entries ...zipEntry) []byte {
 	return buf.Bytes()
 }
 
-// component is a stand-in component file; the server half never reads it.
-var component = zipEntry{"component.wasm", []byte("\x00asm\x01\x00\x00\x00")}
+// component matches the independent golden manifest's indexed component bytes.
+var component = zipEntry{"component.wasm", []byte("\x00asm\x0d\x00\x01\x00")}
 
 // resignedManifest is the golden manifest changed by change and signed with the fixture
 // publisher seed, as a manifest.signed.json entry.
@@ -68,6 +85,13 @@ func renamed(id string) func(*Manifest) {
 			m.Channels[i].ID = id + strings.TrimPrefix(m.Channels[i].ID, m.ID)
 		}
 		m.ID = id
+		for i := range m.Files {
+			if m.Files[i].Path == "ui/terminal.json" {
+				data := templateBytes(id)
+				m.Files[i].Bytes = uint64(len(data))
+				m.Files[i].SHA256 = Digest(data)
+			}
+		}
 	}
 }
 
@@ -191,5 +215,45 @@ func TestReadBundlesStopsAtCountLimit(t *testing.T) {
 	}
 	if _, err := ReadBundles(dir); err == nil || !strings.Contains(err.Error(), "more than") {
 		t.Fatalf("count limit did not stop parsing: %v", err)
+	}
+}
+
+// templateBytes constructs the independent golden screen in a bundle's own namespace.
+func templateBytes(id string) []byte {
+	return []byte(`{"namespace":"` + id + `","terminal":{"type":"panel"}}`)
+}
+
+// Metadata returned by the CLI cannot be reused for a different archive snapshot.
+func TestVerifiedMetadataBindsExactArchive(t *testing.T) {
+	data := []byte("archive one")
+	var manifest Manifest
+	decodeGolden(t, "manifest_payload.json", &manifest)
+	payload, err := Encode(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := []byte(`{"sha256":"` + Digest(data) + `","bytes":11,"manifest":` + string(payload) + `}`)
+	if _, err := verifiedMetadata(data, metadata); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifiedMetadata([]byte("archive two"), metadata); err == nil {
+		t.Fatal("accepted metadata for another digest")
+	}
+	if _, err := verifiedMetadata(append(data, 'x'), metadata); err == nil {
+		t.Fatal("accepted metadata for another size")
+	}
+	if _, err := verifiedMetadata(data, append(metadata, []byte("null")...)); err == nil {
+		t.Fatal("accepted trailing metadata")
+	}
+}
+
+func TestVerifierOutputIsBounded(t *testing.T) {
+	out := cappedOutput{limit: 4}
+	input := struct{ io.Reader }{strings.NewReader("too much output")}
+	if _, err := io.Copy(&out, input); err == nil {
+		t.Fatal("accepted excess helper output")
+	}
+	if out.buffer.Len() > out.limit {
+		t.Fatal("output exceeded its allocation bound")
 	}
 }

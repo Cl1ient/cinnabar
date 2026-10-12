@@ -1,4 +1,4 @@
-//! Bedrock 1.26.50 (protocol 2193) packet definitions and codec.
+//! Bedrock 1.26.50 (protocol 2193) packets, coded by the generated contract crate.
 
 mod actor;
 mod audio;
@@ -88,7 +88,9 @@ pub use camera::{
     CameraTargetInstruction, MAX_CAMERA_AIM_ASSIST_ENTRIES, MAX_CAMERA_EASE_IDENTIFIER_BYTES,
     MAX_CAMERA_PRESETS, MAX_CAMERA_SPLINE_POINTS, camera_aim_assist_activation_packet,
 };
-pub use codec::{PacketDecodeError, ProtocolError, SessionError, decode_batch, encode};
+pub use codec::{
+    PacketDecodeError, PacketEncodeError, ProtocolError, SessionError, decode_batch, encode,
+};
 pub use disconnect::ServerDisconnectEvent;
 pub use interaction::{
     ActorUseAction, ActorUsePacketError, ActorUseRequest, BlockUsePacketError, BlockUseRequest,
@@ -157,13 +159,14 @@ pub use inventory::{RecipeRegistryError, RecipeRegistrySnapshot};
 pub use item::{
     ActorActionEvent, ActorActionKind, ActorHandedness, ArmorEquipmentEvent, EquipmentEvent,
     FoodProperties, HOTBAR_SLOT_COUNT, ItemActorEvent, ItemAttackCooldown, ItemAttackTiming,
-    ItemBook, ItemComponents, ItemDisplay, ItemPacketError, ItemRegistryEntry, ItemRegistryEvent,
-    ItemRegistryVersion, ItemStackFacts, ItemStackFactsCache, ItemUseCooldown, KineticWeaponTiming,
-    MAX_ACTION_IDENTIFIER_BYTES, MAX_ANIMATE_ENTITY_IDS, MAX_ANIMATION_IDENTIFIER_BYTES,
-    MAX_BOOK_PAGES, MAX_ITEM_EXTRA_BYTES, MAX_ITEM_REGISTRY_ENTRIES, NetworkItemStack, item_book,
-    item_bundle_id, item_charged_projectile, item_custom_color, item_display,
-    item_enchantment_level, item_extra_damage, item_extra_unbreakable, item_has_enchantment_list,
-    item_stack_damage, select_hotbar_slot_packet, vanilla_item_registry,
+    ItemBannerPattern, ItemBook, ItemComponents, ItemDisplay, ItemPacketError, ItemRegistryEntry,
+    ItemRegistryEvent, ItemRegistryVersion, ItemStackFacts, ItemStackFactsCache, ItemUseCooldown,
+    KineticWeaponTiming, MAX_ACTION_IDENTIFIER_BYTES, MAX_ANIMATE_ENTITY_IDS,
+    MAX_ANIMATION_IDENTIFIER_BYTES, MAX_BOOK_PAGES, MAX_ITEM_EXTRA_BYTES,
+    MAX_ITEM_REGISTRY_ENTRIES, NetworkItemStack, item_banner_patterns, item_book, item_bundle_id,
+    item_charged_projectile, item_custom_color, item_display, item_enchantment_level,
+    item_extra_damage, item_extra_unbreakable, item_has_enchantment_list, item_stack_damage,
+    select_hotbar_slot_packet, vanilla_item_registry,
 };
 pub use item_capacity::{ITEM_DEFAULT_MAX_STACK_SIZE, vanilla_item_capacity};
 pub use respawn::{respawn_ready_packet, respawn_request_packet};

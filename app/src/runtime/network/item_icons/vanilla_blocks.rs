@@ -65,59 +65,15 @@ fn append_routes(
         let carried = &compiled.vanilla_carried[index];
         let faces = carried.faces;
         let block = base.resolve(assets::NetworkIdMode::Sequential, route.visual);
-        let cube = block.kind() == VisualKind::Cube
-            || assets::gui_item::full_cube_model_quads(base, assets::BlockVisualId(route.visual))
-                .is_some();
-        let mut model = None;
-        let sprite = if cube {
-            pack_compiler::overlay_cube_icon(&compiled.overlay, faces)
-        } else if carried.flat {
-            let id = faces[assets::BlockFace::Down as usize];
-            let (pixels, side, _) =
-                assets::gui_item::material_tile(&compiled.overlay.materials, id, |_| {
-                    compiled.overlay.texture.as_ref()
-                })
-                .ok()
-                .unwrap_or((&[], 0, false));
-            (side != 0).then(|| assets::IconSprite {
-                width: side as u16,
-                height: side as u16,
-                rgba8: Arc::from(pixels),
-            })
-        } else {
-            model = assets::gui_item::carried_block_quads(
-                base,
-                assets::BlockVisualId(route.visual),
-                faces,
-            )
-            .ok();
-            model
-                .as_deref()
-                .and_then(|quads| pack_compiler::overlay_model_icon(&compiled.overlay, quads))
-        };
-        if let Some(sprite) = sprite {
+        if block.kind() != VisualKind::Cube {
+            continue;
+        }
+        if let Some(sprite) = pack_compiler::overlay_cube_icon(&compiled.overlay, faces) {
             icons.icons.push(session_icon(route, sprite));
         }
-        if (cube || model.is_some())
-            && let Some(sheet) =
-                render_model::equipment::blocks::overlay_face_sheet(&compiled.overlay, faces)
+        if let Some(sheet) =
+            render_model::equipment::blocks::overlay_face_sheet(&compiled.overlay, faces)
         {
-            if let Some(mut quads) = model {
-                let rects = render_model::equipment::blocks::face_rects([0.0, 0.0, 1.0, 1.0]);
-                for quad in &mut quads {
-                    let face = assets::gui_item::quad_face(quad.corners);
-                    let rect = rects[face as usize];
-                    quad.uvs = quad.uvs.map(|uv| {
-                        std::array::from_fn(|axis| {
-                            rect[axis] + uv[axis] * (rect[axis + 2] - rect[axis])
-                        })
-                    });
-                }
-                icons.block_models.insert(
-                    (Arc::clone(&route.identifier), route.metadata),
-                    quads.into(),
-                );
-            }
             icons.block_sheets.push(session_icon(route, sheet));
             let flags = faces.iter().fold(0, |flags, &id| {
                 flags | compiled.overlay.materials[id as usize].flags

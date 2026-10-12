@@ -88,8 +88,17 @@ impl Builder<'_> {
             .collect::<HashSet<_>>();
         for source in keys.block_sources() {
             let block = base.resolve(assets::NetworkIdMode::Sequential, source.visual);
-            if !block.is_known()
-                || matches!(block.kind(), VisualKind::Diagnostic | VisualKind::Invisible)
+            if !source.cube_binding_eligible
+                || !block.is_known()
+                || block.kind() != VisualKind::Cube
+                || block.model_template().is_some()
+                || block.variant() != 0
+                || block.flags().contains(assets::BlockFlags::LEAF_MODEL)
+                || assets::BlockFace::ALL.into_iter().any(|face| {
+                    base.material(block.face(face).material_id()).flags
+                        & assets::MATERIAL_FLAG_TINT_MASK
+                        != 0
+                })
             {
                 continue;
             }
@@ -127,6 +136,29 @@ impl Builder<'_> {
             if !affected && !carried_changed {
                 continue;
             }
+            let carried_keys = assets::BlockFace::ALL.map(|face| {
+                let index = face as usize;
+                let material = block.face(face).material_id();
+                bindings
+                    .texture(&source.name, &source.binding_name, index, true)
+                    .or(source.carried_keys[index].as_deref())
+                    .or_else(|| bindings.texture(&source.name, &source.binding_name, index, false))
+                    .or(source.carried_fallback_keys[index].as_deref())
+                    .or_else(|| {
+                        keys.material_source(material)
+                            .map(|source| source.key.as_ref())
+                    })
+            });
+            if carried_keys.iter().enumerate().any(|(index, key)| {
+                let material = block.face(assets::BlockFace::ALL[index]).material_id();
+                let variant = keys
+                    .material_source(material)
+                    .map_or(0, |source| source.variant);
+                key.and_then(|key| self.catalog.choices(key, variant))
+                    .is_some_and(|choices| choices.iter().any(|choice| choice.tint.is_some()))
+            }) {
+                continue;
+            }
             let mut faces = [None; 6];
             let mut carried = [None; 6];
 
@@ -146,15 +178,7 @@ impl Builder<'_> {
                 if let Some(key) = world_key {
                     faces[index] = self.terrain_material(keys, key, variant, flags);
                 }
-                let carried_key = bindings
-                    .texture(&source.name, &source.binding_name, index, true)
-                    .or(source.carried_keys[index].as_deref())
-                    .or_else(|| bindings.texture(&source.name, &source.binding_name, index, false))
-                    .or(source.carried_fallback_keys[index].as_deref())
-                    .or_else(|| {
-                        keys.material_source(material)
-                            .map(|source| source.key.as_ref())
-                    });
+                let carried_key = carried_keys[index];
                 if let Some(key) = carried_key {
                     carried[index] = self.terrain_material(
                         keys,
@@ -171,7 +195,6 @@ impl Builder<'_> {
                 self.vanilla_carried.push(CarriedBlock {
                     visual: source.visual,
                     faces: carried.map(Option::unwrap),
-                    flat: source.flat_item,
                 });
             }
         }

@@ -40,8 +40,6 @@ pub struct SessionIcons {
     pub icons: Vec<SessionIcon>,
     /// Six-face sheets (`assets::BLOCK_ITEM_SHEET_SIZE`) for custom held cubes.
     pub block_sheets: Vec<SessionIcon>,
-    /// Existing model geometry with sheet-relative UVs, keyed by item and metadata.
-    pub block_models: BTreeMap<(Arc<str>, u32), Arc<[assets::gui_item::GuiBlockQuad]>>,
     /// Admitted face material flags for each custom block item's sheet.
     pub block_material_flags: BTreeMap<Arc<str>, u32>,
     /// Why an item's icon key did not resolve to an image, for diagnostics.
@@ -290,22 +288,11 @@ fn block_cubes(icons: &SessionIcons, packed: &PackedIcons) -> BTreeMap<IconKey, 
         ) else {
             continue;
         };
-        if let Some(quads) = icons
-            .block_models
-            .get(&(Arc::clone(&sheet.identifier), sheet.metadata))
-        {
-            let quads = quads
-                .iter()
-                .copied()
-                .map(|quad| (quad, *placed))
-                .collect::<Vec<_>>();
-            if let Some(mesh) = item_gui::block_model(&quads) {
-                models.insert(icon_key(*thumbnail), mesh);
-            }
-        } else if ordinary_cube_sheet(&sheet.rgba8) {
-            if let Some(mesh) = item_gui::cube(sheet_faces(*placed)) {
-                models.insert(icon_key(*thumbnail), mesh);
-            }
+        if !ordinary_cube_sheet(&sheet.rgba8) {
+            continue;
+        }
+        if let Some(mesh) = item_gui::cube(sheet_faces(*placed)) {
+            models.insert(icon_key(*thumbnail), mesh);
         }
     }
     models

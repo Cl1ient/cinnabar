@@ -21,9 +21,9 @@ use assets::{
     MATERIAL_FLAG_ALPHA_BLEND, MATERIAL_FLAG_ALPHA_CUTOUT, MATERIAL_FLAG_BIRCH_FOLIAGE,
     MATERIAL_FLAG_DISABLE_AO, MATERIAL_FLAG_DISABLE_FACE_DIMMING, MATERIAL_FLAG_DRY_FOLIAGE,
     MATERIAL_FLAG_EVERGREEN_FOLIAGE, MATERIAL_FLAG_FOLIAGE_TINT, MATERIAL_FLAG_GRASS_TINT,
-    MATERIAL_FLAG_WATER_TINT, MODEL_QUAD_FLAG_TWO_SIDED, Material, MaterialOverride,
-    ModelQuad, ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TextureArray, TextureMip,
-    TextureRef, VisualKind, VisualSupport,
+    MATERIAL_FLAG_WATER_TINT, MODEL_QUAD_FLAG_TWO_SIDED, Material, MaterialOverride, ModelQuad,
+    ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TextureArray, TextureMip, TextureRef,
+    VisualKind, VisualSupport,
 };
 use protocol::{CustomBlocks, CustomVisualComponents};
 use resource_pack::LayeredPackView;
@@ -70,12 +70,11 @@ pub(crate) struct CompiledBlockOverlay {
     pub(crate) vanilla_carried: Vec<CarriedBlock>,
 }
 
-/// Carried textures and the existing item-shape classification for one vanilla visual.
+/// Carried textures for one eligible vanilla full cube.
 #[derive(Clone, Debug)]
 pub(crate) struct CarriedBlock {
     pub(crate) visual: u32,
     pub(crate) faces: [u32; 6],
-    pub(crate) flat: bool,
 }
 
 /// Returns visuals for the admitted custom prefix in palette or hashed-state order.

@@ -19,7 +19,8 @@ pub struct BlockTextureSource {
     pub name: Box<str>,
     pub binding_name: Box<str>,
     pub source_faces: [u8; 6],
-    pub flat_item: bool,
+    /// Both world faces and carried art may be rebound only for admitted full cubes.
+    pub cube_binding_eligible: bool,
     pub carried_keys: [Option<Box<str>>; 6],
     pub carried_fallback_keys: [Option<Box<str>>; 6],
 }

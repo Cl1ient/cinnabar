@@ -41,7 +41,7 @@ fn complete_sources_round_trip_with_variant_and_carried_binding_identity() {
             [("fixture".into(), serde_json::json!({"textures":["textures/a",{"variations":["textures/b","textures/c"]}]}))],
             [(1, MaterialTextureSource { key:"fixture".into(), variant:1, path:"textures/b".into() })],
             [BlockTextureSource { visual:2, name:"minecraft:fixture".into(), binding_name:"fixture".into(),
-                source_faces:[2,3,1,0,4,5], flat_item:false, carried_keys:std::array::from_fn(|_| Some("carried".into())),
+                source_faces:[2,3,1,0,4,5], cube_binding_eligible:true, carried_keys:std::array::from_fn(|_| Some("carried".into())),
                 carried_fallback_keys:std::array::from_fn(|_| Some("fixture".into())) }],
         );
     let restored = MaterialKeys::from_json(&keys.to_json(3), 3).unwrap();
@@ -50,5 +50,7 @@ fn complete_sources_round_trip_with_variant_and_carried_binding_identity() {
     assert_eq!(restored.block_sources()[0].source_faces, [2, 3, 1, 0, 4, 5]);
     let mut bad: serde_json::Value = serde_json::from_slice(&keys.to_json(3)).unwrap();
     bad["block_sources"][0]["source_faces"][0] = 6.into();
+    assert!(MaterialKeys::from_json(&serde_json::to_vec(&bad).unwrap(), 3).is_none());
+    bad["block_sources"][0]["source_faces"][0] = 3.into();
     assert!(MaterialKeys::from_json(&serde_json::to_vec(&bad).unwrap(), 3).is_none());
 }

@@ -131,35 +131,9 @@ impl<'a> Model<'a> {
         materials: [u32; 6],
         template: Option<u32>,
     ) -> Result<Self, Reject> {
-        let quads = block_item_quads(kind, materials, template, parts.templates, parts.quads)
-            .map_err(reject)?;
-        Self::from_quads(parts, &quads)
-    }
-
-    /// Reads rebound materials for existing model quads without changing their positions or UVs.
-    pub(super) fn overlay_quads(
-        overlay: &'a BlockOverlay,
-        quads: &[assets::gui_item::GuiBlockQuad],
-    ) -> Result<Self, Reject> {
-        let parts = Parts {
-            materials: &overlay.materials,
-            templates: &overlay.model_templates,
-            quads: &overlay.model_quads,
-            textures: Textures::Overlay(
-                overlay.texture.as_ref().ok_or(Reject::Texture)?,
-                &overlay.texture_source_grids,
-            ),
-        };
-        Self::from_quads(parts, quads)
-    }
-
-    /// Resolves each quad's raster before the shared GUI projection and depth pass.
-    fn from_quads(
-        parts: Parts<'a>,
-        quads: &[assets::gui_item::GuiBlockQuad],
-    ) -> Result<Self, Reject> {
-        let faces = quads
-            .iter()
+        let faces = block_item_quads(kind, materials, template, parts.templates, parts.quads)
+            .map_err(reject)?
+            .into_iter()
             .map(|quad| {
                 let (tile, side, blend, uv_scale) = tile(parts, quad.material)?;
                 Ok(Face {

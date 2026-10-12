@@ -85,7 +85,7 @@ fn keys() -> MaterialKeys {
                     name: "minecraft:fixture".into(),
                     binding_name: "fixture".into(),
                     source_faces: [0, 1, 2, 3, 4, 5],
-                    flat_item: false,
+                    cube_binding_eligible: true,
                     carried_keys: std::array::from_fn(|_| None),
                     carried_fallback_keys: std::array::from_fn(|_| Some("state".into())),
                 },
@@ -94,7 +94,7 @@ fn keys() -> MaterialKeys {
                     name: "minecraft:other".into(),
                     binding_name: "other".into(),
                     source_faces: [0, 1, 2, 3, 4, 5],
-                    flat_item: false,
+                    cube_binding_eligible: true,
                     carried_keys: std::array::from_fn(|_| None),
                     carried_fallback_keys: std::array::from_fn(|_| Some("state".into())),
                 },
@@ -387,3 +387,5 @@ fn carried_only_keys_trigger_item_preparation_for_catalog_and_raster_changes() {
         assert_eq!(base.material(1).texture.page(), 0);
     }
 }
+
+mod exclusions;

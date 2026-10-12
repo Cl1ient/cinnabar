@@ -368,23 +368,3 @@ pub fn face_rects(region: [f32; 4]) -> [[f32; 4]; 6] {
         ]
     })
 }
-
-/// Draws sheet-relative carried model quads in centered block coordinates for either hand.
-pub fn carried_model_vertices(
-    quads: &[assets::gui_item::GuiBlockQuad],
-) -> Vec<crate::ActorRigVertex> {
-    quads
-        .iter()
-        .flat_map(|quad| {
-            let normal = assets::gui_item::face_normal(quad.corners);
-            [0, 1, 2, 0, 2, 3].map(|corner| crate::ActorRigVertex {
-                position: quad.corners[corner].map(|coordinate| coordinate - 0.5),
-                normal,
-                uv: quad.uvs[corner],
-                back_uv: quad.uvs[corner],
-                bone_index: 0,
-                surface: crate::ActorRigSurface::SINGLE_FACE,
-            })
-        })
-        .collect()
-}

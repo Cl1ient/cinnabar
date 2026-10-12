@@ -15,7 +15,6 @@ pub struct StagedSessionIcons {
     by_identifier: BTreeMap<Box<str>, BTreeMap<u32, usize>>,
     block_sheets: BTreeMap<Box<str>, usize>,
     block_alpha: BTreeMap<Box<str>, render_model::HandItemAlphaMode>,
-    block_models: BTreeMap<usize, Vec<render_model::ActorRigVertex>>,
     atlas: SpriteAtlas,
 }
 
@@ -28,7 +27,6 @@ impl StagedSessionIcons {
         let mut by_identifier: BTreeMap<Box<str>, BTreeMap<u32, usize>> = BTreeMap::new();
         let mut block_sheets = BTreeMap::new();
         let mut block_alpha = BTreeMap::new();
-        let mut block_models = BTreeMap::new();
         for icon in icons.icons.iter().take(MAX_SESSION_MESHES) {
             let (Ok(width), Ok(height)) = (u16::try_from(icon.width), u16::try_from(icon.height))
             else {
@@ -68,15 +66,6 @@ impl StagedSessionIcons {
                 Box::from(sheet.identifier.as_ref()),
                 alpha::mode_for_material_flags(flags),
             );
-            if let Some(quads) = icons
-                .block_models
-                .get(&(Arc::clone(&sheet.identifier), sheet.metadata))
-            {
-                block_models.insert(
-                    sprites.len(),
-                    render_model::equipment::blocks::carried_model_vertices(quads),
-                );
-            }
             sprites.push(IconSprite {
                 width,
                 height,
@@ -89,7 +78,6 @@ impl StagedSessionIcons {
             by_identifier,
             block_sheets,
             block_alpha,
-            block_models,
         })
     }
 
@@ -107,7 +95,6 @@ pub(super) struct SessionLayer {
     /// Custom block item to its cube sheet's index in `sprites`.
     block_sheets: BTreeMap<Box<str>, usize>,
     block_alpha: BTreeMap<Box<str>, render_model::HandItemAlphaMode>,
-    block_models: BTreeMap<usize, Vec<render_model::ActorRigVertex>>,
     placements: Vec<Option<Placement>>,
     locations: Vec<Option<ActorArtworkLocation>>,
 }
@@ -154,7 +141,6 @@ impl EquipmentRuntime {
             layer.by_identifier = icons.by_identifier;
             layer.block_sheets = icons.block_sheets;
             layer.block_alpha = icons.block_alpha;
-            layer.block_models = icons.block_models;
             layer.placements = icons.atlas.placements;
             layer.locations = locations;
         }
@@ -205,14 +191,6 @@ impl EquipmentRuntime {
         let index = *variants.get(&metadata).or_else(|| variants.get(&0))?;
         let (placement, location) = self.session_placement(index)?;
         Some((index, placement, location))
-    }
-
-    /// The retained model for a session sheet; cube sheets have no separate model.
-    pub(super) fn session_block_vertices(
-        &self,
-        index: usize,
-    ) -> Option<&[render_model::ActorRigVertex]> {
-        self.session.block_models.get(&index).map(Vec::as_slice)
     }
 
     fn session_placement(&self, index: usize) -> Option<(Placement, ActorArtworkLocation)> {

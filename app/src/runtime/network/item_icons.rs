@@ -31,7 +31,6 @@ pub(super) fn compile_session_icons(
     let BlockIcons {
         icons: block_icons,
         block_sheets,
-        block_models,
         block_material_flags,
         misses: block_misses,
     } = block_icons;
@@ -108,7 +107,6 @@ pub(super) fn compile_session_icons(
         Arc::new(SessionIcons {
             icons,
             block_sheets,
-            block_models,
             block_material_flags,
             misses,
         })
@@ -120,7 +118,6 @@ pub(super) fn compile_session_icons(
 pub(super) struct BlockIcons {
     pub(super) icons: Vec<SessionIcon>,
     pub(super) block_sheets: Vec<SessionIcon>,
-    pub(super) block_models: BTreeMap<(Arc<str>, u32), Arc<[assets::gui_item::GuiBlockQuad]>>,
     pub(super) block_material_flags: BTreeMap<Arc<str>, u32>,
     pub(super) misses: Vec<(Arc<str>, Box<str>)>,
 }

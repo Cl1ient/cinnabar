@@ -309,6 +309,27 @@ pub(crate) fn runtime_binding_identity(
     )
 }
 
+/// Admits the axis mapping shared by ordinary cube compilation, rejecting other rotations.
+pub(crate) fn has_runtime_cube_face_mapping(record: &RegistryRecord) -> bool {
+    let Ok(properties) = serde_json::from_str::<Map<String, Value>>(&record.canonical_state) else {
+        return false;
+    };
+    if properties
+        .keys()
+        .any(|key| key.contains("direction") || key.contains("rotation"))
+    {
+        return false;
+    }
+    match state_axis(&record.canonical_state) {
+        AxisState::Exact(_) => true,
+        AxisState::Absent => record
+            .model_state
+            .get(assets::ModelStateField::Orientation)
+            .is_none(),
+        AxisState::Invalid => false,
+    }
+}
+
 /// The texture key a vanilla block item's icon reads: `carried_textures`, else `textures`,
 /// down face.
 pub(crate) fn resolve_carried_down_key<'a>(

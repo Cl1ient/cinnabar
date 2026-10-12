@@ -70,9 +70,11 @@ pub(super) fn retain(
                 name: record.name.clone(),
                 binding_name,
                 source_faces,
-                flat_item: assets::gui_item::block_item_is_flat(
+                cube_binding_eligible: cube_binding_eligible(
+                    pack,
                     record,
-                    visuals[record.sequential_id as usize].kind,
+                    &visuals[record.sequential_id as usize],
+                    materials,
                 ),
                 carried_fallback_keys: BlockFace::ALL.map(|face| {
                     crate::pack::resolve_carried_fallback_key(&pack.blocks, record, face)
@@ -86,6 +88,38 @@ pub(super) fn retain(
         .collect::<Vec<_>>();
     keys.with_sources(pack.terrain.runtime_entries(), sources, blocks)
 }
+
+/// Admits one-to-one full-cube world and carried faces as a single rebinding route.
+fn cube_binding_eligible(
+    pack: &PackSources,
+    record: &RegistryRecord,
+    visual: &BlockVisual,
+    materials: &[Material],
+) -> bool {
+    record.model_family == assets::ModelFamily::Cube
+        && visual.kind == VisualKind::Cube
+        && visual.support == VisualSupport::Exact
+        && visual.model_template == assets::NO_MODEL_TEMPLATE
+        && visual.variant == 0
+        && visual.flags.contains(BlockFlags::CUBE_GEOMETRY)
+        && !visual.flags.contains(BlockFlags::LEAF_MODEL)
+        && crate::pack::has_runtime_cube_face_mapping(record)
+        && visual.faces.iter().all(|&id| {
+            id != assets::DIAGNOSTIC_MATERIAL
+                && materials
+                    .get(id as usize)
+                    .is_some_and(|material| material.flags & assets::MATERIAL_FLAG_TINT_MASK == 0)
+        })
+        && BlockFace::ALL.into_iter().all(|face| {
+            crate::pack::resolve_carried_face_key(&pack.blocks, record, face)
+                .map(Into::<Box<str>>::into)
+                .or_else(|| crate::pack::resolve_carried_fallback_key(&pack.blocks, record, face))
+                .is_some_and(|key| !pack.terrain.requires_tint(&key))
+        })
+}
+
+#[cfg(test)]
+mod tests;
 
 /// Extends the material index with copies derived from existing compiler source routes.
 pub(super) fn with_copies(

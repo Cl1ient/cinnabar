@@ -12,7 +12,7 @@ pub use sources::{
 };
 
 /// Sidecar wire version; part of the world carrier's prepared identity.
-pub const MATERIAL_KEYS_SCHEMA: u32 = 5;
+pub const MATERIAL_KEYS_SCHEMA: u32 = 6;
 /// Largest sidecar file the runtime reads.
 pub const MAX_MATERIAL_KEYS_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -140,10 +140,16 @@ impl MaterialKeys {
             .material_sources
             .keys()
             .any(|&id| id as usize >= material_count)
-            || wire
-                .block_sources
-                .iter()
-                .any(|source| source.source_faces.iter().any(|&face| face >= 6))
+            || wire.block_sources.iter().any(|source| {
+                let mut faces = source.source_faces;
+                faces.sort_unstable();
+                source
+                    .source_faces
+                    .iter()
+                    .any(|&face| face >= crate::BlockFace::ALL.len() as u8)
+                    || (source.cube_binding_eligible
+                        && faces != crate::BlockFace::ALL.map(|face| face as u8))
+            })
         {
             return None;
         }

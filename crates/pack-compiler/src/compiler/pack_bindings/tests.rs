@@ -1,0 +1,180 @@
+use super::*;
+use assets::{ModelFamily, ModelStateField};
+use serde_json::json;
+
+/// Original catalog data gives every face an untinted world and carried route.
+fn pack(tinted_carried: bool) -> PackSources {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("textures")).unwrap();
+    std::fs::write(
+        root.path().join("blocks.json"),
+        r#"{"fixture":{"textures":"world","carried_textures":"carry"}}"#,
+    )
+    .unwrap();
+    std::fs::write(root.path().join("textures/terrain_texture.json"), json!({"texture_data":{"world":{"textures":"textures/world"},"carry":{"textures":if tinted_carried { json!({"path":"textures/carry","tint_color":"#ff0000"}) } else { json!("textures/carry") }}}}).to_string()).unwrap();
+    std::fs::write(root.path().join("textures/flipbook_textures.json"), "[]").unwrap();
+    read_pack(root.path()).unwrap()
+}
+
+/// Minimal typed registry and visual facts for a plain full cube.
+fn cube() -> (RegistryRecord, BlockVisual, Vec<Material>) {
+    let record = RegistryRecord {
+        sequential_id: 0,
+        network_hash: 1,
+        name: "minecraft:fixture".into(),
+        canonical_state: "{}".into(),
+        flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
+        model_family: ModelFamily::Cube,
+        contributor_role: ContributorRole::Primary,
+        model_state: Default::default(),
+        face_coverage: 0x3f,
+        collision_seed: Default::default(),
+        provenance: assets::RegistryProvenance::PMMP,
+        beacon_tint: assets::BeaconTint::Unresolved,
+    };
+    let mut visual = BlockVisual::diagnostic(record.flags, record.contributor_role);
+    visual.faces = [1; 6];
+    visual.kind = VisualKind::Cube;
+    visual.support = VisualSupport::Exact;
+    (record, visual, vec![Material::unvaried(); 2])
+}
+
+/// Exercises the actual sidecar publisher so an excluded block cannot acquire a partial route.
+fn retained_eligibility(
+    pack: &PackSources,
+    record: RegistryRecord,
+    visual: BlockVisual,
+    materials: &[Material],
+) -> bool {
+    let keys = retain(
+        MaterialKeys::default(),
+        pack,
+        &BTreeMap::new(),
+        materials,
+        (&[record], &[visual]),
+        &[],
+        &[],
+    );
+    let restored =
+        MaterialKeys::from_json(&keys.to_json(materials.len() as u32), materials.len()).unwrap();
+    restored.block_sources()[0].cube_binding_eligible
+}
+
+#[test]
+fn cube_binding_eligibility_requires_plain_faces_and_axis_only_orientation() {
+    let pack = pack(false);
+    let (record, visual, materials) = cube();
+    assert!(retained_eligibility(
+        &pack,
+        record.clone(),
+        visual,
+        &materials
+    ));
+    for axis in ["x", "y", "z"] {
+        let mut record = record.clone();
+        record.canonical_state = json!({"pillar_axis":{"type":"string","value":axis}})
+            .to_string()
+            .into();
+        record.model_state.set(ModelStateField::Orientation, 1);
+        assert!(retained_eligibility(&pack, record, visual, &materials));
+    }
+    let mut malformed = record.clone();
+    malformed.canonical_state = json!({"pillar_axis":{"type":"string","value":"invalid"}})
+        .to_string()
+        .into();
+    assert!(!retained_eligibility(&pack, malformed, visual, &materials));
+    let mut fallback = visual;
+    fallback.support = VisualSupport::VanillaFallback;
+    assert!(!retained_eligibility(&pack, record, fallback, &materials));
+}
+
+#[test]
+fn pottable_plants_are_excluded_from_both_binding_routes() {
+    let (mut record, mut visual, materials) = cube();
+    record.model_family = ModelFamily::Cross;
+    visual.kind = VisualKind::Cross;
+    visual.model_template = 1;
+    assert!(!retained_eligibility(
+        &pack(false),
+        record,
+        visual,
+        &materials
+    ));
+}
+
+#[test]
+fn directional_cubes_are_excluded_even_at_zero_rotation() {
+    for direction in 0..4 {
+        let (mut record, visual, materials) = cube();
+        record.canonical_state = json!({"direction":{"type":"int","value":direction}})
+            .to_string()
+            .into();
+        record
+            .model_state
+            .set(ModelStateField::Orientation, direction);
+        assert!(!retained_eligibility(
+            &pack(false),
+            record,
+            visual,
+            &materials
+        ));
+    }
+    let (mut record, visual, materials) = cube();
+    record.model_state.set(ModelStateField::Orientation, 0);
+    assert!(!retained_eligibility(
+        &pack(false),
+        record,
+        visual,
+        &materials
+    ));
+}
+
+#[test]
+fn internal_material_and_container_models_are_excluded() {
+    let (mut record, mut visual, materials) = cube();
+    record.model_family = ModelFamily::Cuboid;
+    visual.kind = VisualKind::Model;
+    visual.model_template = 0;
+    assert!(!retained_eligibility(
+        &pack(false),
+        record,
+        visual,
+        &materials
+    ));
+}
+
+#[test]
+fn tinted_world_or_carried_faces_are_excluded_as_a_whole() {
+    let (record, visual, mut materials) = cube();
+    materials[1].flags = assets::MATERIAL_FLAG_GRASS_TINT;
+    assert!(!retained_eligibility(
+        &pack(false),
+        record.clone(),
+        visual,
+        &materials
+    ));
+    materials[1].flags = 0;
+    let pack = pack(true);
+    assert!(!retained_eligibility(&pack, record, visual, &materials));
+}
+
+#[test]
+fn wall_fence_and_other_inventory_models_are_excluded() {
+    for family in [
+        ModelFamily::Wall,
+        ModelFamily::Fence,
+        ModelFamily::Stair,
+        ModelFamily::Slab,
+    ] {
+        let (mut record, mut visual, materials) = cube();
+        record.model_family = family;
+        visual.kind = VisualKind::Model;
+        visual.model_template = 0;
+        assert!(!retained_eligibility(
+            &pack(false),
+            record,
+            visual,
+            &materials
+        ));
+    }
+}

@@ -2,14 +2,17 @@
 
 Optional terrain catalogs retain each material's source key, state variant, tint, and
 independent weighted choices. Raster-only layers preserve base weighted selectors. Block texture bindings
-repoint individual vanilla visuals and prepare separate carried faces for session icons
-and held-item sheets. Model items retain their geometry; leaf bindings repoint world
-exposure and depth groups. Carried-only texture changes also prepare item art. The material
-sidecar retains these source and shape facts after packing.
+repoint only plain full-cube world faces with one-to-one source mappings and prepare
+separate carried cube icons and held-item sheets. Carried-only texture changes also
+prepare art for eligible cubes. The material sidecar retains source facts and cube
+rebinding eligibility after packing.
 
-Incomplete: CI must compile and run the regression fixtures. Rendered state variants,
-position-selected texture output, special model bindings, pack reload/removal, and
-performance acceptance still need headless verification. No parity gate closes here.
+Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
+blocks without a pillar axis, model and container blocks, tinted carried textures,
+leaves, walls, fences, and other inventory-state models. These keep their existing routes.
+CI must compile and run the regression fixtures. Rendered state variants, position-selected
+texture output, pack reload/removal, and performance acceptance still need headless
+verification. No parity gate closes here.
 
 ## Launcher updates
 

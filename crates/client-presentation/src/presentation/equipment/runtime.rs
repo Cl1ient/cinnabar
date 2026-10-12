@@ -765,38 +765,32 @@ impl EquipmentRuntime {
             MeshKey::Session(index) => self.session_sprite_pixels(index),
             MeshKey::Block(_) | MeshKey::SessionBlock(_) => None,
         };
-        let model = match key {
-            MeshKey::Block(visual) => self.block_models.get(&visual).map(Vec::as_slice),
-            MeshKey::SessionBlock(index) => self.session_block_vertices(index),
-            _ => None,
-        };
-        let vertices = if let Some(model) = model {
-            let rect = placement.uv_rect();
-            model
-                .iter()
-                .copied()
-                .map(|mut vertex| {
-                    for uv in [&mut vertex.uv, &mut vertex.back_uv] {
-                        for axis in 0..2 {
-                            uv[axis] = rect[axis] + uv[axis] * (rect[axis + 2] - rect[axis]);
+        let vertices = match (key, sprite) {
+            (MeshKey::Block(visual), _) if self.block_models.contains_key(&visual) => {
+                let rect = placement.uv_rect();
+                self.block_models[&visual]
+                    .iter()
+                    .copied()
+                    .map(|mut vertex| {
+                        for uv in [&mut vertex.uv, &mut vertex.back_uv] {
+                            for axis in 0..2 {
+                                uv[axis] = rect[axis] + uv[axis] * (rect[axis + 2] - rect[axis]);
+                            }
                         }
-                    }
-                    vertex
-                })
-                .collect()
-        } else {
-            match (key, sprite) {
-                (MeshKey::Block(_) | MeshKey::SessionBlock(_), _) => textured_cube_vertices(
-                    render_model::equipment::blocks::face_rects(placement.uv_rect()),
-                ),
-                (_, Some(sprite)) => held_sprite_vertices(
-                    usize::from(sprite.width),
-                    usize::from(sprite.height),
-                    &sprite.rgba8,
-                    placement.uv_rect(),
-                )?,
-                (_, None) => return None,
+                        vertex
+                    })
+                    .collect()
             }
+            (MeshKey::Block(_) | MeshKey::SessionBlock(_), _) => textured_cube_vertices(
+                render_model::equipment::blocks::face_rects(placement.uv_rect()),
+            ),
+            (_, Some(sprite)) => held_sprite_vertices(
+                usize::from(sprite.width),
+                usize::from(sprite.height),
+                &sprite.rgba8,
+                placement.uv_rect(),
+            )?,
+            (_, None) => return None,
         };
         if let MeshKey::Session(index) | MeshKey::SessionBlock(index) = key {
             let id = session::session_mesh_id(index)?;

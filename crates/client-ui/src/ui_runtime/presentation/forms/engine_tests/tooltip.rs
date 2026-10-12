@@ -17,7 +17,7 @@ use ui_engine::{
 };
 
 use super::super::screen_registry::registry;
-use crate::ui_runtime::presentation::tests::fixture_font;
+use ui_engine::test_support::fixture_font;
 
 /// Synthetic art, not a redistributed vanilla bitmap. The actual runtime pack
 /// determines the border texels and sidecar; this fixture verifies their path.
@@ -35,6 +35,7 @@ fn engine() -> FormEngine {
         2,
         registry(),
         crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+        crate::ui_runtime::presentation::forms::texture_sources::image_work(),
     );
     let mut png = Vec::new();
     image::RgbaImage::from_pixel(16, 16, image::Rgba([22, 33, 44, 255]))

@@ -32,7 +32,8 @@ fn activation_projects_the_full_rotating_quad_and_preserves_icon_uvs() {
 
 #[test]
 fn activation_draws_the_session_texture_through_all_phases_and_then_disappears() {
-    let mut presentation = UiPresentationRuntime::new(super::super::tests::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let mut runtime = UiRuntime::new(1);
     let icons = Arc::new(SessionIcons {
         icons: vec![SessionIcon {
@@ -99,7 +100,7 @@ fn active_totem_follows_pack_replacement_and_removal() {
         .unwrap(),
     );
     let mut presentation = UiPresentationRuntime::with_hud_and_icons(
-        super::super::tests::fixture_font(),
+        ui_engine::test_support::fixture_font(),
         super::super::tests::fixture_hud(),
         catalog,
     )
@@ -176,7 +177,7 @@ fn camera_activation_keeps_full_viewport_coordinates_below_screen_overlays() {
         .unwrap(),
     );
     let mut presentation = UiPresentationRuntime::with_hud_and_icons(
-        super::super::tests::fixture_font(),
+        ui_engine::test_support::fixture_font(),
         super::super::tests::fixture_hud(),
         icons,
     )

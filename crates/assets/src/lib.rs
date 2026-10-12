@@ -42,7 +42,7 @@ mod material_keys;
 mod material_variations;
 mod model;
 mod ogg;
-mod oreui_icons;
+pub mod oreui_icons;
 mod particle;
 mod physics_registry;
 mod pinned_content;
@@ -158,13 +158,10 @@ pub use entity::{
     MOLANG_QUERY_MANIFEST_VERSION, MolangBranch, MolangCall, MolangCollection,
     MolangCollectionItem, MolangEaseCurve, MolangEaseMode, MolangFunction, MolangOp, MolangProgram,
     MolangQuery, MolangQueryArguments, MolangQueryDescriptor, MolangQueryHandler,
-    MolangQueryOutput, MolangQuerySupport, MolangSymbol, MolangSymbolKind, RuntimeEntityAssets,
-    bind_molang_queries, encode_entity_blob, entity_render_pattern_matches, molang_call,
-    molang_program_stack, validate_entity_geometry_inheritance,
-};
-pub use entity::{
-    PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE, interactions, item_use, placement,
-    seats as entity_seats,
+    MolangQueryOutput, MolangQuerySupport, MolangSymbol, MolangSymbolKind,
+    PACK_EQUIPMENT_INDEX_BASE, PACK_RIG_ID_BASE, RuntimeEntityAssets, bind_molang_queries,
+    encode_entity_blob, entity_render_pattern_matches, interactions, item_use, molang_call,
+    molang_program_stack, placement, seats as entity_seats, validate_entity_geometry_inheritance,
 };
 pub use environment_settings::{CloudQuality, EnvironmentQualitySettings, PrecipitationQuality};
 pub use equipment::{
@@ -200,12 +197,6 @@ pub use hud::{
     HudCatalogError, HudTexture, HudTextureRole, MAX_HUD_TEXTURE_BYTES, RuntimeHudCatalog,
     encode_hud_catalog,
 };
-pub use oreui_icons::{
-    MAX_OREUI_ICON_FRAMES, MAX_OREUI_ICON_IMAGES, MAX_OREUI_ICON_KEY_BYTES,
-    MAX_OREUI_ICON_PIXEL_BYTES, MAX_OREUI_ICON_SIDE, MAX_OREUI_ICONS_BYTES, OREUI_ICONS_MAGIC,
-    OREUI_ICONS_SOURCE_MANIFEST, OREUI_ICONS_VERSION, OreUiIcon, OreUiIconFrame, OreUiIconsError,
-    decode_oreui_icons, encode_oreui_icons,
-};
 pub use icon::{
     BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE, ICON_CARRIER_MAGIC,
     ICON_CARRIER_VERSION, IconBlockModel, IconBlockSheet, IconEntry, IconSprite,
@@ -230,19 +221,22 @@ pub use model::{
     ANIMATION_FLAG_BLEND, Animation, BLOCK_VISUAL_VARIANT_COVERED_GRASS,
     BLOCK_VISUAL_VARIANT_MATERIAL_MASK, BLOCK_VISUAL_VARIANT_NONSEASONAL_LEAF,
     BLOCK_VISUAL_VARIANT_PORTAL_UNKNOWN, BLOCK_VISUAL_VARIANT_SEASONAL_LEAF,
-    BLOCK_VISUAL_VARIANT_SNOW_COVER, BLOCK_VISUAL_VARIANT_TOP_SNOW, END_GATEWAY_IDENTIFIER,
+    BLOCK_VISUAL_VARIANT_SNOW_COVER, BLOCK_VISUAL_VARIANT_TOP_SNOW,
+    BUBBLE_COLUMN_POSITION_VARIANTS, BUBBLE_COLUMN_TEMPLATE_COUNT, END_GATEWAY_IDENTIFIER,
     END_PORTAL_FRAME_IDENTIFIER, END_PORTAL_IDENTIFIER, MAX_ANIMATION_FRAMES, MAX_ANIMATIONS,
     MAX_MODEL_QUADS, MAX_MODEL_TEMPLATE_QUADS, MAX_MODEL_TEMPLATES, MAX_TEXTURE_PAGES,
     MODEL_QUAD_FLAG_CULL_FACE_MASK, MODEL_QUAD_FLAG_FACE_MASK, MODEL_QUAD_FLAG_TWO_SIDED,
-    MODEL_TEMPLATE_FLAG_BAMBOO, MODEL_TEMPLATE_FLAG_COMPOUND_NEXT,
-    MODEL_TEMPLATE_FLAG_FENCE_NETHER, MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE,
-    MODEL_TEMPLATE_FLAG_GATE_AXIS_X, MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP,
-    MODEL_TEMPLATE_FLAG_LILY_PAD, MODEL_TEMPLATE_FLAG_NETHER_PORTAL, MODEL_TEMPLATE_FLAG_PANE,
+    MODEL_TEMPLATE_FLAG_BAMBOO, MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN,
+    MODEL_TEMPLATE_FLAG_COMPOUND_NEXT, MODEL_TEMPLATE_FLAG_FENCE_NETHER,
+    MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE, MODEL_TEMPLATE_FLAG_GATE_AXIS_X,
+    MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP, MODEL_TEMPLATE_FLAG_LILY_PAD,
+    MODEL_TEMPLATE_FLAG_NETHER_PORTAL, MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_POTTED_PLANT,
     MODEL_TEMPLATE_FLAG_SNOW_LAYER, MODEL_TEMPLATE_FLAG_STAIR,
     MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, MODEL_TEMPLATE_FLAG_WALL, ModelQuad, ModelTemplate,
     NETHER_PORTAL_IDENTIFIER, NO_ANIMATION, NO_MODEL_TEMPLATE, SEASONAL_LEAF_DEEP_OFFSET,
     SEASONAL_LEAF_EXPOSED_OFFSET, SEASONAL_LEAF_MATERIAL_COUNT, SNOWED_GRASS_SIDE_TEXTURE,
-    TOP_SNOW_LAYER_COUNT, TexturePage, TextureRef, VisualKind, VisualSupport, model_template_parts,
+    TOP_SNOW_LAYER_COUNT, TexturePage, TextureRef, VisualKind, VisualSupport,
+    bubble_column_quad_count, model_template_parts,
 };
 pub use ogg::{decode_ogg, decode_sound};
 pub use particle::{

@@ -36,7 +36,10 @@ pub use definitions::{
     SettingKind, THIRD_PERSON_CROSSHAIR_OPTION, UPDATE_CHANNEL_OPTION, VRR_CHOICES, VRR_OPTION,
 };
 pub use emotes::EMOTE_SLOT_COUNT;
-pub use keybindings::{KEY_BINDINGS, OPEN_NOTIFICATION_KEY, key_name};
+pub use keybindings::{
+    DEBUG_OVERLAY_KEY, KEY_BINDINGS, OPEN_NOTIFICATION_KEY, PLAYER_LIST_KEY, custom_key_label,
+    key_name,
+};
 pub use persistence::{SETTINGS_FILE, SETTINGS_SCHEMA};
 pub use runtime::{frame_rate_label, frame_rate_limit};
 

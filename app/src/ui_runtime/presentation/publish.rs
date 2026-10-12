@@ -318,6 +318,8 @@ pub(crate) fn prepare_ui_runtime(
         [feet.x, feet.y, feet.z].map(|axis| axis.floor() as i32)
     });
     presentation.hud_frame_mut().thunderstorm = weather.lightning_level() > 0.0;
+    presentation.hud_frame_mut().death_screen =
+        menu_runtime.is_visible() && menu_runtime.screen() == launcher::menu::MenuScreen::Death;
     presentation.hud_frame_mut().dimension = client_world
         .stream
         .as_ref()
@@ -399,22 +401,19 @@ pub(crate) fn prepare_ui_runtime(
                             !tag_style.is_some_and(|style| style.hide_passengers)
                                 || authority.ridden_unique_id(actor.unique_id).is_none()
                         })
-                {
-                    if let Some(name) = authority
+                    && let Some(name) = authority
                         .actor_name_tag(actor.unique_id)
                         .or_else(|| authority.actor_display_name(actor.unique_id))
-                    {
-                        if let Some(tag) = nametags::extract_nametag(
-                            actor,
-                            transform.translation(),
-                            None,
-                            name,
-                            runtime.scoreboards(),
-                            actor_partial.0,
-                        ) {
-                            tags.push(tag);
-                        }
-                    }
+                    && let Some(tag) = nametags::extract_nametag(
+                        actor,
+                        transform.translation(),
+                        None,
+                        name,
+                        runtime.scoreboards(),
+                        actor_partial.0,
+                    )
+                {
+                    tags.push(tag);
                 }
             }
             tags

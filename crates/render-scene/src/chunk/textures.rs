@@ -105,7 +105,9 @@ impl EnhancedTextureAssets {
         let (carrier, overrides) = words.split_at(words.len().min(Self::REFERENCE_BASE_WORDS));
         carrier.iter().copied().chain(
             overrides
-                .chunks_exact(Self::REFERENCE_OVERRIDE_WORDS)
+                .as_chunks::<{ Self::REFERENCE_OVERRIDE_WORDS }>()
+                .0
+                .iter()
                 .map(|entry| entry[2]),
         )
     }
@@ -116,14 +118,12 @@ impl EnhancedTextureAssets {
             return false;
         }
         let overrides = &words[Self::REFERENCE_BASE_WORDS..];
-        if !overrides
-            .len()
-            .is_multiple_of(Self::REFERENCE_OVERRIDE_WORDS)
-        {
+        let (overrides, remainder) = overrides.as_chunks::<{ Self::REFERENCE_OVERRIDE_WORDS }>();
+        if !remainder.is_empty() {
             return false;
         }
         let mut previous = None;
-        for entry in overrides.chunks_exact(Self::REFERENCE_OVERRIDE_WORDS) {
+        for entry in overrides {
             let key = (entry[0], entry[1]);
             if entry[0] as usize >= assets::MAX_MATERIALS
                 || TextureRef::from_raw(entry[1]).is_err()

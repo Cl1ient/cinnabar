@@ -14,8 +14,12 @@ pub use prepared_settings::PreparedScreenSettings;
 #[derive(Clone, Debug, Default)]
 pub struct ServerUiPack {
     pub ui_layers: Vec<Vec<(String, Vec<u8>)>>,
+    /// Parsed title resources in ascending pack priority, prepared by the reload worker.
+    pub splashes: Arc<[ui_screens::menu_renderers::splashes::SplashSource]>,
     /// Winning texture files read up front (fixture packs).
     pub textures: Vec<(String, Vec<u8>)>,
+    /// Item glint pixels decoded on the pack worker, independent of item icon pages.
+    pub item_glint: Option<Arc<render_model::UiTexturePage>>,
     /// The session's pack stack, which texture files read from on first draw.
     pub view: Option<resource_pack::LayeredPackView>,
     pub catalog: Option<Arc<json_ui::Catalog>>,
@@ -75,7 +79,9 @@ impl ServerUiPack {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.ui_layers.iter().all(Vec::is_empty) && self.textures.is_empty()
+        self.ui_layers.iter().all(Vec::is_empty)
+            && self.textures.is_empty()
+            && self.splashes.is_empty()
     }
 }
 

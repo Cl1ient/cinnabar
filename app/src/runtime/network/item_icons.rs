@@ -276,3 +276,12 @@ mod tests;
 
 #[cfg(test)]
 mod capture_tests;
+
+#[cfg(test)]
+mod startup_snapshot_tests;
+
+#[cfg(test)]
+mod startup_fixture;
+
+#[cfg(test)]
+mod startup_held_tests;

@@ -65,6 +65,7 @@ pub struct HudFrame {
     pub window_text: WindowText,
     pub cursor_icon: Option<IconRef>,
     pub armor_icons: [Option<IconRef>; 4],
+    pub armor_durability: [Option<f32>; 4],
     pub offhand_icon: Option<IconRef>,
     /// Geometry-rendered offhand carrier; the original icon remains reserved
     /// for the compact hotbar slot.
@@ -108,6 +109,8 @@ pub struct HudFrame {
     pub holding_filled_map: bool,
     /// Lightning is falling: the bed screen talks of a thunderstorm.
     pub thunderstorm: bool,
+    /// The death screen is up: the gameplay HUD and crosshair stay hidden behind it.
+    pub death_screen: bool,
     /// The stream's current dimension, which picks the loading backdrop.
     pub dimension: i32,
     pub sleep: SleepTimeline,

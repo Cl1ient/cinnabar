@@ -306,6 +306,7 @@ fn compile_pack_inner(
             || is_liquid(record)
             || record.name.as_ref() == "minecraft:enchanting_table"
             || visuals::literal::is_literal_cube(record)
+            || visuals::bubble_column::is_record(record)
             || fallback.contains(record)
     }) {
         if visuals::hollow_containers::is_name(&record.name) {
@@ -400,6 +401,14 @@ fn compile_pack_inner(
         }
         if admit_bee_housing && is_bee_housing_record(record) {
             if let Some(descriptors) = bee_housing_material_descriptors(&pack) {
+                for (descriptor, key) in descriptors {
+                    descriptor_keys.insert(descriptor, key);
+                }
+            }
+            continue;
+        }
+        if visuals::bubble_column::is_record(record) {
+            if let Some(descriptors) = visuals::bubble_column::material_descriptors(&pack, record) {
                 for (descriptor, key) in descriptors {
                     descriptor_keys.insert(descriptor, key);
                 }

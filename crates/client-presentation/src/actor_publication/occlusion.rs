@@ -29,6 +29,8 @@ pub(super) fn body_and_shadow_bounds(
     // Attachments and extra skin/controller geometry have no combined bound here.
     if authored.is_none()
         || !rig.scale.is_finite()
+        || rig.scale <= 0.0
+        || low.iter().chain(&high).any(|v| !v.is_finite())
         || rig.axis_scale.iter().any(|s| !s.is_finite())
         || rig.render.len() > 1
         || !rig.skin_layers.is_empty()

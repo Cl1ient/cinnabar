@@ -445,19 +445,20 @@ pub(crate) fn update_block_entity_scene(
                     && let Some(cave) = cave.as_deref()
                 {
                     let _zone = bevy::log::info_span!("block_entity.occlusion").entered();
-                    hidden = stream.terrain_hides_box(
-                        &mut occlusion_budget,
-                        eye,
-                        low,
-                        high,
-                        |cell, key| {
-                            cave.is_visible(key)
-                                && cave.rendered.contains_key(&key)
-                                && render_model::visibility_bounds::cell_is_inside_depth(
-                                    matrix, cell,
-                                )
-                        },
-                    );
+                    hidden = render_model::visibility_bounds::perspective_eye_matches(matrix, eye)
+                        && stream.terrain_hides_box(
+                            &mut occlusion_budget,
+                            eye,
+                            low,
+                            high,
+                            |cell, key| {
+                                cave.is_visible(key)
+                                    && cave.rendered.contains_key(&key)
+                                    && render_model::visibility_bounds::cell_is_inside_depth(
+                                        matrix, cell,
+                                    )
+                            },
+                        );
                     work.prepared -= u32::from(hidden);
                 }
                 let context = FrameContext {

@@ -37,6 +37,17 @@ pub fn box_intersects_view(matrix: Mat4, low: [f32; 3], high: [f32; 3]) -> bool 
         || p.iter().all(|p| p.w <= 0.0))
 }
 
+/// Whether `eye` is the origin of perspective rays for this projection. Orthographic
+/// and uncertain transforms cannot use proofs projected from a single camera point.
+pub fn perspective_eye_matches(matrix: Mat4, eye: [f32; 3]) -> bool {
+    let eye = Vec3::from_array(eye);
+    let plane = matrix.row(3);
+    matrix.is_finite()
+        && eye.is_finite()
+        && plane.truncate().length_squared() > f32::EPSILON
+        && (matrix * eye.extend(1.0)).w.abs() < 0.0001
+}
+
 /// Whether a full cube is strictly inside the depth clip interval. A clipped occluder
 /// cannot prove another object's invisibility, even when its terrain occupancy is opaque.
 pub fn cell_is_inside_depth(matrix: Mat4, cell: [i32; 3]) -> bool {
@@ -49,6 +60,14 @@ pub fn cell_is_inside_depth(matrix: Mat4, cell: [i32; 3]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn single_eye_proofs_require_a_matching_perspective_origin() {
+        assert!(!perspective_eye_matches(Mat4::IDENTITY, [0.0; 3]));
+        let projection = Mat4::perspective_infinite_reverse_rh(1.0, 1.0, 0.1);
+        assert!(perspective_eye_matches(projection, [0.0; 3]));
+        assert!(!perspective_eye_matches(projection, [0.0, 0.0, 2.0]));
+    }
 
     #[test]
     fn clipped_or_uncertain_cells_cannot_occlude() {

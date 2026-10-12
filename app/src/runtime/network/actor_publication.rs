@@ -334,7 +334,10 @@ pub(crate) fn prepare_actor_render_frame(
                     |key| stream.has_sub_chunk_connectivity(key),
                     low,
                     high,
-                ) || stream.terrain_hides_box(
+                ) || (render_model::visibility_bounds::perspective_eye_matches(
+                    view.clip_from_world,
+                    camera,
+                ) && stream.terrain_hides_box(
                     &mut occlusion_budget.borrow_mut(),
                     camera,
                     low,
@@ -347,7 +350,7 @@ pub(crate) fn prepare_actor_render_frame(
                                 cell,
                             )
                     },
-                )
+                ))
             })
         },
         icons.as_deref().map(|icons| &icons.0),

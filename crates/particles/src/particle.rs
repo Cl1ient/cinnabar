@@ -245,8 +245,11 @@ impl Emitter {
     ) {
         let def = Arc::clone(&self.def);
         let local = def.emitter.local_position;
-        self.queries.is_in_water = f32::from(world.fluid(cell(self.pos)) == Fluid::Water);
-        let (origin, basis, queries) = (self.pos, self.basis, self.queries);
+        // Actor-bound emitters keep the actor's water fact rather than their locator's cell.
+        if self.actor_attachment.is_none() {
+            self.queries.is_in_water = f32::from(world.fluid(cell(self.pos)) == Fluid::Water);
+        }
+        let (origin, basis, queries) = (self.pos, self.basis, self.queries.clone());
         let mut particles = std::mem::take(&mut self.particles);
         let mut pending: Vec<(Box<str>, [f32; 3], [f32; 3])> = Vec::new();
         let rng = &mut self.rng;

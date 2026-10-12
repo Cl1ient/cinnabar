@@ -31,6 +31,8 @@ pub(crate) const MAX_TRACKED_PLAYER_SKIN_BYTES: usize = MAX_PLAYER_LIST_SKIN_BYT
 const PLAYER_FLAGS_METADATA_KEY: u32 = 26;
 /// Raw server actor scale, applied independently of the visual definition's scale.
 pub const SCALE_METADATA_KEY: u32 = 38;
+/// Packed RGB color supplied by the server for casting particles.
+pub const SPELL_COLOR_METADATA_KEY: u32 = 77;
 const NAMETAG_METADATA_KEY: u32 = 4;
 pub(crate) const VARIANT_METADATA_KEY: u32 = 2;
 /// Unscaled actor collision width supplied by the server.
@@ -122,6 +124,21 @@ pub struct ActorSnapshot {
 }
 
 impl ActorSnapshot {
+    /// Reads the server's packed spell RGB color as an opaque particle tint.
+    #[must_use]
+    pub fn spell_color(&self) -> [f32; 4] {
+        let rgb = match self.metadata.get(&SPELL_COLOR_METADATA_KEY) {
+            Some(ActorMetadataValue::Int(value)) => *value as u32,
+            _ => 0,
+        };
+        [
+            ((rgb >> 16) & 0xff) as f32 / 255.0,
+            ((rgb >> 8) & 0xff) as f32 / 255.0,
+            (rgb & 0xff) as f32 / 255.0,
+            1.0,
+        ]
+    }
+
     /// Whether damage or ordinary mob death applies the red actor overlay.
     #[must_use]
     pub fn hurt_overlay_active(&self) -> bool {

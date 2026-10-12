@@ -20,7 +20,9 @@ mod server_animation;
 pub use molang_program::MolangProgram;
 #[path = "entity/inherited_cubes.rs"]
 mod inherited_cubes;
+mod locator;
 pub use geometry::{EntityGeometry, EntityGeometryBounds, EntityGeometryInheritance};
+pub use locator::{EntityGeometryLocator, EntityGeometryLocatorBinding, MAX_GEOMETRY_LOCATORS};
 mod source_paths;
 #[path = "entity/texture_mesh.rs"]
 mod texture_mesh;
@@ -59,9 +61,9 @@ pub use v4::{
 };
 
 pub const ENTITY_BLOB_MAGIC: [u8; 8] = *b"MCBEENT3";
-/// Includes item-use, seat, interaction, rig-frame and intrinsic shine facts; stale carriers need
-/// `make assets`.
-pub const ENTITY_BLOB_VERSION: u32 = 22;
+/// Includes item-use, seat, interaction, rig-frame, intrinsic shine and geometry-locator facts;
+/// stale carriers need `make assets`.
+pub const ENTITY_BLOB_VERSION: u32 = 23;
 /// Actor rig id ranges (a rig id is a `u32`):
 /// - `0..PACK_RIG_ID_BASE`: vanilla catalog rig-geometry bindings, and from `0x2000_0000`
 ///   the catalog geometries render controllers draw beside the rig (`0x2000_0000 + index`).
@@ -241,6 +243,8 @@ pub struct EntityGeometryFaceUvs {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntityGeometryBone {
+    #[serde(default, skip_serializing_if = "<[EntityGeometryLocator]>::is_empty")]
+    pub locators: Box<[EntityGeometryLocator]>,
     pub name: Box<str>,
     pub parent: Option<Box<str>>,
     pub pivot: Option<[EntityGeometryScalar; 3]>,
@@ -471,7 +475,7 @@ fn validate_geometries(
     validate_entity_geometry_inheritance(&compiled.geometries)
 }
 
-/// Validates deterministic catalog inheritance selection and inherited bone parents.
+/// Validates catalog inheritance selection, inherited bone parents and locator limits.
 ///
 /// External inheritance overlays are retained, but an explicit bone parent must
 /// resolve within the retained local/catalog chain; unseen external bones are
@@ -489,8 +493,17 @@ pub fn validate_entity_geometry_inheritance(
     for start in 0..geometries.len() {
         let chain = selected_geometry_chain(&parents, start)?;
         let mut effective_parents = std::collections::BTreeMap::<String, Option<String>>::new();
+        let mut locator_names = std::collections::BTreeSet::new();
         for index in chain.into_iter().rev() {
             for bone in &geometries[index].bones {
+                for locator in &bone.locators {
+                    if locator_names.len() >= MAX_GEOMETRY_LOCATORS
+                        && !locator_names.contains(locator.name.as_ref())
+                    {
+                        return Err(invalid("inherited geometry locator count exceeds bound"));
+                    }
+                    locator_names.insert(locator.name.as_ref());
+                }
                 let name = bone.name.to_ascii_lowercase();
                 if let Some(parent) = &bone.parent {
                     effective_parents.insert(name, Some(parent.to_ascii_lowercase()));
@@ -611,6 +624,7 @@ fn validate_geometry_bones(
     bones: &[EntityGeometryBone],
     allow_inherited_parent: bool,
 ) -> Result<(), AssetError> {
+    locator::validate_total(bones)?;
     let mut total_cubes = 0usize;
     let mut total_texture_meshes = 0usize;
     for bone in bones {
@@ -619,6 +633,7 @@ fn validate_geometry_bones(
             .filter(|count| *count <= MAX_ENTITY_GEOMETRY_TEXTURE_MESHES)
             .ok_or_else(|| invalid("entity geometry texture mesh count exceeds bound"))?;
         texture_mesh::validate(bone)?;
+        locator::validate(bone)?;
         validate_geometry_name(&bone.name)?;
         if let Some(parent) = &bone.parent {
             validate_geometry_name(parent)?;
@@ -654,7 +669,7 @@ fn validate_geometry_bones(
             validate_scalars(&cube.size)?;
             validate_scalars(&cube.pivot)?;
             validate_scalars(&cube.rotation)?;
-            validate_geometry_uv(&cube.uv)?;
+            geometry::validate_uv(&cube.uv)?;
             validate_geometry_scalar(cube.inflate)?;
             if cube.size.iter().any(|value| value.get() < 0.0) {
                 return Err(invalid("entity geometry cube size is negative"));
@@ -679,32 +694,6 @@ fn validate_geometry_bones(
         }
     }
     Ok(())
-}
-
-fn validate_geometry_uv(uv: &EntityGeometryUv) -> Result<(), AssetError> {
-    match uv {
-        EntityGeometryUv::Box(uv) => validate_scalars(uv),
-        EntityGeometryUv::Faces(faces) => {
-            let faces = [
-                &faces.north,
-                &faces.south,
-                &faces.east,
-                &faces.west,
-                &faces.up,
-                &faces.down,
-            ];
-            if faces.iter().all(|face| face.is_none()) {
-                return Err(invalid("entity geometry per-face UV map is empty"));
-            }
-            for face in faces.into_iter().flatten() {
-                validate_scalars(&face.uv)?;
-                if let Some(uv_size) = &face.uv_size {
-                    validate_scalars(uv_size)?;
-                }
-            }
-            Ok(())
-        }
-    }
 }
 
 fn validate_geometry_name(name: &str) -> Result<(), AssetError> {

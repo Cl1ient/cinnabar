@@ -374,6 +374,7 @@ impl ActorAnimationStore {
                 },
                 &state.variables,
                 state.completed_tick.saturating_sub(state.lifetime_epoch),
+                state.completed_tick.saturating_sub(state.animation_epoch),
             )
             .with_input(state.history.back().copied())
             .with_item_context(Some(&state.query_context), state.complete_spear_variables),

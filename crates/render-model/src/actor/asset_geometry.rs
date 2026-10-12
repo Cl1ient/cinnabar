@@ -372,6 +372,7 @@ mod tests {
             mirror: false,
         };
         EntityGeometryBone {
+            locators: Box::default(),
             name: "body".into(),
             binding: None,
             texture_meshes: Box::new([]),

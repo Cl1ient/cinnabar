@@ -11,7 +11,7 @@ pub(super) fn install(
     expected: &update_manifest::Artifact,
 ) -> Result<()> {
     ensure!(
-        target.join("bedrock-client.exe").is_file() && target.join("resources").is_dir(),
+        target.join("cinnabar.exe").is_file() && target.join("resources").is_dir(),
         "target is not an installed MSI layout"
     );
     let msi = work.join("update.msi");
@@ -184,7 +184,7 @@ mod tests {
     fn payload(root: &Path) -> std::path::PathBuf {
         let target = root.join("installed");
         fs::create_dir_all(target.join("resources")).unwrap();
-        fs::write(target.join("bedrock-client.exe"), "old").unwrap();
+        fs::write(target.join("cinnabar.exe"), "old").unwrap();
         fs::write(target.join("resources/data"), "old resources").unwrap();
         target
     }
@@ -195,11 +195,11 @@ mod tests {
         let target = payload(root.path());
         let backup = root.path().join("previous");
         retain_install(&target, &backup, || {
-            fs::write(target.join("bedrock-client.exe"), "new")?;
+            fs::write(target.join("cinnabar.exe"), "new")?;
             Ok(())
         })
         .unwrap();
-        assert_eq!(fs::read(backup.join("bedrock-client.exe")).unwrap(), b"old");
+        assert_eq!(fs::read(backup.join("cinnabar.exe")).unwrap(), b"old");
         assert_eq!(
             fs::read(backup.join("resources/data")).unwrap(),
             b"old resources"
@@ -213,7 +213,7 @@ mod tests {
         let backup = root.path().join("previous");
         assert!(retain_install(&target, &backup, || anyhow::bail!("cancelled")).is_err());
         assert!(!backup.exists());
-        assert_eq!(fs::read(target.join("bedrock-client.exe")).unwrap(), b"old");
+        assert_eq!(fs::read(target.join("cinnabar.exe")).unwrap(), b"old");
         retain_install(&target, &backup, || Ok(())).unwrap();
     }
 
@@ -224,11 +224,11 @@ mod tests {
         let backup = root.path().join("previous");
         assert!(
             retain_install(&target, &backup, || {
-                fs::write(target.join("bedrock-client.exe"), "damaged")?;
+                fs::write(target.join("cinnabar.exe"), "damaged")?;
                 anyhow::bail!("rollback failed")
             })
             .is_err()
         );
-        assert_eq!(fs::read(backup.join("bedrock-client.exe")).unwrap(), b"old");
+        assert_eq!(fs::read(backup.join("cinnabar.exe")).unwrap(), b"old");
     }
 }

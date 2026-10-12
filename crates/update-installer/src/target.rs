@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn windows_target_is_the_whole_install_directory() {
         let root = tempfile::tempdir().unwrap();
-        let executable = root.path().join("bedrock-client.exe");
+        let executable = root.path().join("cinnabar.exe");
         assert_eq!(resolve("windows", &executable, None).unwrap(), root.path());
     }
 
@@ -59,7 +59,7 @@ mod tests {
         assert_eq!(
             resolve(
                 "macos",
-                Path::new("/Applications/Client.app/Contents/MacOS/bedrock-client"),
+                Path::new("/Applications/Client.app/Contents/MacOS/cinnabar"),
                 None
             )
             .unwrap(),

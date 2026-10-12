@@ -80,7 +80,7 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
             dropped: assets::ItemDisplayTransform::identity(),
         })
         .collect();
-    let entities = RuntimeEntityAssets::from_compiled(compiled).unwrap();
+    let entities = RuntimeEntityAssets::from_compiled(compiled.with_unresolved_item_use()).unwrap();
     let sprites = (0..16)
         .map(|metadata| {
             let color = assets::banner::color_rgb(metadata);

@@ -41,7 +41,7 @@ pub(super) fn install(artifact: &Path, work: &Path, target: &Path, backup: &Path
         .args(["--verify", "--deep", "--strict"])
         .arg(&candidate))?;
     ensure!(
-        candidate.join("Contents/MacOS/bedrock-client").is_file(),
+        candidate.join("Contents/MacOS/cinnabar").is_file(),
         "bundle is missing its entry point"
     );
     crate::apply::swap(target, &candidate, backup)

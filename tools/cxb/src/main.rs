@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    io::{self, Read},
+    path::Path,
+};
 
 use anyhow::{Context, Result, bail, ensure};
 use cinnabar_cxb::{bundle, fixtures, keys, media, seed_cache};
@@ -8,12 +11,22 @@ const USAGE: &str = "usage: cinnabar-cxb keygen <seed-file>
        cinnabar-cxb build --experience <experience.toml> --component <wasm> --publisher-seed <seed-file> --out <bundle.cxb> [--assets <dir>]
        cinnabar-cxb media --webm <in.webm> --url <https url> --id <media id> --poster <bundle path> --out-webm <file> --out-descriptor <file>
        cinnabar-cxb seed-cache --cxb <bundle.cxb> --user-data <dir>
-       cinnabar-cxb write-fixtures <dir>";
+       cinnabar-cxb write-fixtures <dir>
+       cinnabar-cxb verify --stdin";
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     match args.as_slice() {
+        ["verify", "--stdin"] => {
+            let mut bytes = Vec::new();
+            io::stdin()
+                .lock()
+                .take((server_experience::policy::MAX_BUNDLE_BYTES + 1) as u64)
+                .read_to_end(&mut bytes)?;
+            let metadata = server_experience::bundle::offline::verify(&bytes)?;
+            serde_json::to_writer(io::stdout().lock(), &metadata)?;
+        }
         ["keygen", path] => println!("public_key={}", keys::generate(Path::new(path))?),
         ["build", flags @ ..] => {
             const NAMES: [&str; 4] = ["--experience", "--component", "--publisher-seed", "--out"];

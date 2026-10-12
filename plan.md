@@ -562,6 +562,11 @@ these changes do not close the movement, camera, or actor parity gates.
 - Named schedule traces and bounded frame recordings separate main work, render
   handoff, drawable acquisition, command submission and presentation. Metal
   timestamp queries use owned render passes and leave uncovered stages absent.
+- Ordinary direct terrain draws retain CPU-selected units of at most 64 quads,
+  compact visible lists after current occlusion results, and submit one instanced
+  draw per pipeline and list page. The per-section fallback and transparency paths
+  remain available. Incomplete: Metal pixel identity and paired hardware captures
+  must qualify the change before closing rendering or frame-budget acceptance.
 - Unchanged hand and cloud uniforms, inactive portals and empty item scenes skip
   redundant staging work. Regression tests assert allocations, writes and retained
   buffers; hardware captures measure elapsed time separately.

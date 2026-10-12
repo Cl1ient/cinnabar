@@ -242,7 +242,7 @@ pub enum BeaconTint {
 
 impl BeaconTint {
     /// Decode a known discriminator and reject reserved values.
-    pub(super) fn read(raw: u8) -> Result<Self, AssetError> {
+    pub fn read(raw: u8) -> Result<Self, AssetError> {
         match raw {
             0 => Ok(Self::Unresolved),
             1 => Ok(Self::NoTinting),

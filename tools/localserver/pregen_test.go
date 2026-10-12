@@ -8,7 +8,9 @@ import (
 	"github.com/df-mc/dragonfly/server"
 	"io"
 	"strings"
+	"sync"
 	"testing"
+	"testing/synctest"
 
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/block/cube"
@@ -207,5 +209,69 @@ func TestTerrainFixtureHonorsExplicitChunkWorkers(t *testing.T) {
 		if conf.ChunkLoadWorkers != workers {
 			t.Fatalf("workers=%d, want %d", conf.ChunkLoadWorkers, workers)
 		}
+	}
+}
+
+// warmCountingGenerator records the columns generated, for the spawn warm-up tests.
+type warmCountingGenerator struct {
+	pregenTestGenerator
+	mu        sync.Mutex
+	generated map[world.ChunkPos]bool
+}
+
+// GenerateChunk records pos before generating the cheap fixture column.
+func (g *warmCountingGenerator) GenerateChunk(pos world.ChunkPos, c *chunk.Chunk) {
+	g.mu.Lock()
+	g.generated[pos] = true
+	g.mu.Unlock()
+	g.pregenTestGenerator.GenerateChunk(pos, c)
+}
+
+// A new world's spawn chunks generate before any player asks, and the world stays still meanwhile.
+func TestSpawnWarmupGeneratesSpawnWhileTheWorldWaits(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		gen := &warmCountingGenerator{generated: map[world.ChunkPos]bool{}}
+		w := world.Config{Generator: gen, ChunkLoadWorkers: 2}.New()
+		defer w.Close()
+		w.SetSpawn(cube.Pos{40, 70, -24})
+		pauses := &pauseState{worlds: []*world.World{w}}
+		end := warmSpawn(w, pauses)
+		synctest.Wait()
+		if !w.Paused() {
+			t.Fatal("the warming world ticks before a player joins")
+		}
+		gen.mu.Lock()
+		for _, pos := range []world.ChunkPos{{2, -2}, {1, -3}, {3, -1}, {2 + spawnWarmRadius, -2}} {
+			if !gen.generated[pos] {
+				t.Errorf("spawn column %v was not generated", pos)
+			}
+		}
+		gen.mu.Unlock()
+		end()
+		end()
+		if w.Paused() {
+			t.Fatal("the world stays paused after its first player joined")
+		}
+	})
+}
+
+// A launcher pause outlasts a warm-up hold, and the hold outlasts a launcher resume.
+func TestPauseHoldAndRequestCombine(t *testing.T) {
+	w := world.Config{}.New()
+	defer w.Close()
+	pauses := &pauseState{worlds: []*world.World{w}}
+	pauses.hold(true)
+	pauses.request(false)
+	if !w.Paused() {
+		t.Fatal("a resume released the hold")
+	}
+	pauses.request(true)
+	pauses.hold(false)
+	if !w.Paused() {
+		t.Fatal("releasing the hold dropped the launcher's pause")
+	}
+	pauses.request(false)
+	if w.Paused() {
+		t.Fatal("the world stayed paused with nothing holding it")
 	}
 }

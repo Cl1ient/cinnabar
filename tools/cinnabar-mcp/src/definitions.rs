@@ -111,6 +111,17 @@ pub fn definitions() -> Value {
             "inputSchema": { "type": "object", "properties": { "enabled": { "type": "boolean" } }, "required": ["enabled"], "additionalProperties": false }
         },
         {
+            "name": "global_packs",
+            "description": "Stage or apply global resource packs as the Global Resources screen does (import them with launch_client args [\"--import-pack\", path]), then report the available and active lists and worker status. Omit action to only report; poll until busy is false and pending is false.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "oneOf": [
+                    { "enum": ["apply"] },
+                    { "type": "object", "properties": { "activate": { "type": "object", "properties": { "index": { "type": "integer", "minimum": 0 } }, "required": ["index"], "additionalProperties": false } }, "required": ["activate"], "additionalProperties": false },
+                    { "type": "object", "properties": { "deactivate": { "type": "object", "properties": { "index": { "type": "integer", "minimum": 0 } }, "required": ["index"], "additionalProperties": false } }, "required": ["deactivate"], "additionalProperties": false }
+                ], "description": "Indices follow the last reported available (activate) or active (deactivate) list." }
+            }, "additionalProperties": false }
+        },
+        {
             "name": "state",
             "description": "Position, rotation (Bedrock degrees), health, dimension, loaded chunk columns, nearby actors (nearest first), screen stack, menu, camera and recording status, and game time.",
             "inputSchema": { "type": "object", "properties": {} }

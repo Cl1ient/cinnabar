@@ -88,24 +88,6 @@ impl Default for WindowIcons {
     }
 }
 
-/// Durability bar fractions per inventory surface.
-#[derive(Clone, Debug)]
-pub struct Durability {
-    pub player: [Option<f32>; 36],
-    pub storage: [Option<f32>; 54],
-    pub ui: [Option<f32>; UI_ICON_SLOTS],
-}
-
-impl Default for Durability {
-    fn default() -> Self {
-        Self {
-            player: [None; 36],
-            storage: [None; 54],
-            ui: [None; UI_ICON_SLOTS],
-        }
-    }
-}
-
 /// Resolved strings for the open screen.
 #[derive(Clone, Debug, Default)]
 pub struct WindowText {

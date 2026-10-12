@@ -12,6 +12,7 @@ use launcher_host::local_worlds::{CoreLink, CoreRoute, Manager, WorldError};
 
 use super::model::{Effect, Event};
 
+/// Spaces preference polls, and bounds a status poll that no world change answers sooner.
 const POLL_DELAY: Duration = Duration::from_millis(250);
 
 /// Runs [`Effect`]s against the world manager on a worker thread, in order, and keeps the
@@ -27,8 +28,17 @@ pub struct WorldsClient {
 impl WorldsClient {
     /// Starts the worker; it exits when the client is dropped.
     pub fn spawn(manager: Manager, socket_dir: PathBuf) -> io::Result<Self> {
+        Self::spawn_polling(manager, socket_dir, POLL_DELAY)
+    }
+
+    fn spawn_polling(
+        manager: Manager,
+        socket_dir: PathBuf,
+        poll_delay: Duration,
+    ) -> io::Result<Self> {
         let core = CoreLink::spawn(manager.clone(), socket_dir)?;
         let route = core.route();
+        let (changes, routed) = (manager.subscribe(), route.changes());
         let revoked = Arc::new(Mutex::new(false));
         let worker_revoked = Arc::clone(&revoked);
         let (effects, effect_rx) = unbounded::<Effect>();
@@ -37,8 +47,15 @@ impl WorldsClient {
             .name("local-worlds".to_owned())
             .spawn(move || {
                 while let Ok(effect) = effect_rx.recv() {
-                    if matches!(effect, Effect::PollStatus | Effect::PollPrefs) {
-                        thread::sleep(POLL_DELAY);
+                    match effect {
+                        // A world change or the core routing it answers at once.
+                        Effect::PollStatus => crossbeam_channel::select! {
+                            recv(changes) -> _ => {}
+                            recv(routed) -> _ => {}
+                            default(poll_delay) => {}
+                        },
+                        Effect::PollPrefs => thread::sleep(poll_delay),
+                        _ => {}
                     }
                     let preferences = matches!(
                         effect,
@@ -144,6 +161,10 @@ fn execute(manager: &Manager, route: &CoreRoute, effect: Effect) -> Option<Event
             let _ = manager.set_paused(paused);
             return None;
         }
+        Effect::Prepare => {
+            manager.prepare();
+            return None;
+        }
         Effect::OpenUrl(_) => return None,
     })
 }
@@ -185,6 +206,36 @@ mod tests {
             )
         });
         assert_eq!(manager.status().state, bridge::WorldState::Idle);
+    }
+
+    /// A status poll answers when the world changes instead of waiting out its delay.
+    #[test]
+    fn a_status_poll_answers_as_soon_as_the_world_changes() {
+        use launcher::local_worlds::world::NewWorld;
+        let worlds = tempfile::tempdir().expect("worlds folder");
+        let manager =
+            launcher_host::local_worlds::open_store(worlds.path().to_path_buf()).expect("manager");
+        let world = manager
+            .create(&NewWorld {
+                name: "w".into(),
+                backend: Some(bridge::Backend::Dragonfly),
+                ..NewWorld::default()
+            })
+            .expect("create");
+        let client = WorldsClient::spawn_polling(
+            manager.clone(),
+            worlds.path().join("no-core-here"),
+            Duration::from_secs(3600),
+        )
+        .expect("spawn worker");
+        client.send(Effect::PollStatus);
+        manager.open(&world.id, None).expect("open");
+        let mut events = Vec::new();
+        test_time::eventually_within(Duration::from_secs(5), "a status after the change", || {
+            events.extend(client.drain());
+            !events.is_empty()
+        });
+        assert!(matches!(&events[0], Event::Status(_)));
     }
 
     #[test]

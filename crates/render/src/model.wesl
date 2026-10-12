@@ -133,7 +133,27 @@ fn lily_pad_rotation(position: vec3<i32>) -> u32 {
     return (((h * 0x285b825u + 11u) * h) >> 16u) & 3u;
 }
 
-// Fetches the vertex index and first instance from vertex buffer 0, as `chunk.wgsl` describes.
+// Each instance selects one CPU-visible unit; reject padding before reconstructing geometry.
+@if(TERRAIN_UNITS)
+@group(2) @binding(0) var<storage, read> terrain_units: array<vec4<u32>>;
+
+@if(TERRAIN_UNITS)
+@vertex
+fn vertex_unit(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {
+    let unit = terrain_units[instance_index];
+    let quad = vertex_index / 4u;
+    if (quad >= unit.y) {
+        var invisible: VertexOutput;
+        invisible.clip_position = vec4(2.0, 2.0, 2.0, 1.0);
+        return invisible;
+    }
+    return model_vertex(unit.z * 4u + vertex_index % 4u, unit.x + quad);
+}
+
+// Fetches the vertex index and first instance from vertex buffer 0, as `chunk.wesl` describes.
 @vertex
 fn vertex(
     @location(0) offsets: vec2<u32>,

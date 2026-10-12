@@ -153,3 +153,33 @@ fn review_render_world_actor_fragments_read_shared_fog() {
         assert!(!info.get_entry_point(fragment)[fog].is_empty());
     }
 }
+
+/// Validates every batched entry point, including those not covered by the cube pixel fixture.
+#[test]
+fn direct_terrain_unit_shaders_validate_with_and_without_msaa_cutout() {
+    for raw in [
+        include_str!("../../src/chunk.wesl"),
+        include_str!("../../src/model.wesl"),
+        include_str!("../../src/liquid.wesl"),
+    ] {
+        for definitions in [
+            &["TERRAIN_UNITS"][..],
+            &["TERRAIN_UNITS", "ALPHA_TO_COVERAGE"][..],
+        ] {
+            let source = shader_source::standalone(raw, definitions);
+            let module = naga::front::wgsl::parse_str(&source).expect("unit shader parses");
+            naga::valid::Validator::new(
+                naga::valid::ValidationFlags::all(),
+                naga::valid::Capabilities::all(),
+            )
+            .validate(&module)
+            .expect("unit shader validates");
+            assert!(
+                module
+                    .entry_points
+                    .iter()
+                    .any(|entry| entry.name == "vertex_unit")
+            );
+        }
+    }
+}

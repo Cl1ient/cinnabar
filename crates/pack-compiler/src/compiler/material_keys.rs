@@ -16,6 +16,7 @@ pub(super) fn build(
     )
     .with_aliases(pack.terrain.first_paths())
     .with_flipbooks(&pack.flipbooks)
+    .with_flipbook_destinations(pack.terrain.flipbook_destinations())
     .with_flipbook_selectors(descriptors.iter().map(|(descriptor, &material)| {
         let selector = animations
             .get(materials[material as usize].animation as usize)
@@ -54,6 +55,7 @@ pub(super) fn extend(
     .with_aliases(keys.aliases())
     .with_fixed_tints(lily_pad_tints)
     .with_flipbooks(keys.flipbooks())
+    .with_flipbook_destinations(keys.flipbook_destinations())
     .with_flipbook_selectors(
         keys.flipbook_selectors().chain(
             seasonal_copies

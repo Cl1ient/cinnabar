@@ -146,7 +146,8 @@ fn raster_only_pack_replaces_all_base_frames_and_removal_restores_the_carrier() 
 fn independent_sources_and_full_selectors_keep_distinct_replicated_frames() {
     let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/static")])
-        .with_flipbook_selectors([(1, (1, 0)), (2, (1, 1))]);
+        .with_flipbook_selectors([(1, (1, 0)), (2, (1, 1))])
+        .with_flipbook_destinations([("tile", [1, 2])]);
     let first = png(32, 64, |x, y| {
         if x < 16 && y % 32 < 16 {
             if y < 32 {
@@ -226,7 +227,10 @@ fn omitted_variant_reaches_every_destination_without_crossing_atlas_indices() {
         {"atlas_tile":"tile","atlas_index":1,"flipbook_texture":"textures/strip"}
     ]"#,
     )]);
-    let catalog = super::super::textures::TextureCatalog::new(&view, None);
+    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbook_destinations([("tile", [1, 3])]);
+    let catalog = super::super::textures::TextureCatalog::new(&view, Some(&keys));
     assert!(catalog.flipbook("tile", (1, 0)).is_some());
     assert!(catalog.flipbook("tile", (1, 2)).is_some());
     assert!(catalog.flipbook("tile", (0, 0)).is_none());
@@ -249,4 +253,53 @@ fn explicit_frames_clamp_to_the_last_physical_frame_before_replication() {
     assert_eq!((frames[0].width, frames[0].height), (2, 2));
     assert_eq!(&frames[0].rgba8[..4], &[0, 4, 9, 255]);
     assert_eq!(&frames[1].rgba8[..4], &[0, 0, 9, 255]);
+}
+
+#[test]
+fn invalid_uv_variants_fall_back_in_creation_order_and_invalid_indices_skip() {
+    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbook_destinations([("tile", [2])]);
+    let view = pack(&[(
+        "textures/flipbook_textures.json",
+        br#"[
+        {"atlas_tile":"tile","atlas_tile_variant":9,"flipbook_texture":"textures/first"},
+        {"atlas_tile":"tile","atlas_tile_variant":4,"flipbook_texture":"textures/second"},
+        {"atlas_tile":"tile","atlas_index":1,"flipbook_texture":"textures/invalid"}
+    ]"#,
+    )]);
+    let catalog = super::super::textures::TextureCatalog::new(&view, Some(&keys));
+    assert_eq!(
+        catalog
+            .flipbook("tile", (0, 0))
+            .unwrap()
+            .texture_path
+            .as_ref(),
+        "textures/second"
+    );
+    assert!(catalog.flipbook("tile", (0, 1)).is_none());
+    assert!(catalog.flipbook("tile", (1, 0)).is_none());
+}
+
+#[test]
+fn a_later_all_variant_description_overwrites_an_earlier_exact_destination() {
+    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/static")])
+        .with_flipbook_destinations([("tile", [2])]);
+    let view = pack(&[(
+        "textures/flipbook_textures.json",
+        br#"[
+        {"atlas_tile":"tile","atlas_tile_variant":1,"flipbook_texture":"textures/exact"},
+        {"atlas_tile":"tile","flipbook_texture":"textures/all"}
+    ]"#,
+    )]);
+    let catalog = super::super::textures::TextureCatalog::new(&view, Some(&keys));
+    assert_eq!(
+        catalog
+            .flipbook("tile", (0, 1))
+            .unwrap()
+            .texture_path
+            .as_ref(),
+        "textures/all"
+    );
 }

@@ -445,6 +445,12 @@ fn material_keys_carry_every_vanilla_terrain_alias() {
         ]
     );
     let source = &keys.flipbooks()[0];
+    assert_eq!(
+        keys.flipbook_destinations()
+            .map(|(key, counts)| (key, counts.to_vec()))
+            .collect::<Vec<_>>(),
+        [("stone", vec![1]), ("variants", vec![1, 1])]
+    );
     assert_eq!(source.texture_path.as_ref(), "textures/blocks/animated");
     assert_eq!(source.frames.as_ref(), [1, 0]);
     assert_eq!(

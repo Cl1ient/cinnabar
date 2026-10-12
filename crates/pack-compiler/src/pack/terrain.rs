@@ -283,6 +283,20 @@ impl TerrainTextureMap {
             .map(|(key, paths)| (key.as_ref(), paths.first()))
     }
 
+    /// Counts every atlas index and its position-selected UV variants for flipbook binding.
+    pub(crate) fn flipbook_destinations(&self) -> impl Iterator<Item = (&str, Vec<u32>)> {
+        self.entries.iter().map(|(key, paths)| {
+            let counts = (0..paths.paths().count())
+                .map(|index| {
+                    self.position_variations
+                        .get(&(key.clone(), index as u32))
+                        .map_or(1, |variants| variants.len() as u32)
+                })
+                .collect();
+            (key.as_ref(), counts)
+        })
+    }
+
     pub(crate) fn source_paths(&self) -> impl Iterator<Item = &str> {
         self.entries.values().flat_map(TerrainPaths::paths).chain(
             self.position_variations

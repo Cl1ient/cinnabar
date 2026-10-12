@@ -8,6 +8,9 @@ use serde_json::Value;
 
 use crate::pack_textures::{MAX_CATALOG_ENTRIES, parse_pack_json};
 
+mod destinations;
+pub use destinations::destinations;
+
 type Selector = (Box<str>, u32, u32);
 
 /// Overlays only supplied fields of matching selectors and retains unrelated base animations.
@@ -15,23 +18,30 @@ pub fn flipbooks(view: &LayeredPackView, base: &[FlipbookSource]) -> Vec<Flipboo
     let mut entries = base
         .iter()
         .take(MAX_CATALOG_ENTRIES)
-        .map(|source| {
-            let selector = (
-                source.atlas_tile.clone(),
-                source.atlas_index,
-                source.atlas_tile_variant,
-            );
-            (selector, source.clone())
-        })
-        .collect::<BTreeMap<_, _>>();
+        .cloned()
+        .collect::<Vec<_>>();
     for bytes in view.read_layers("textures/flipbook_textures.json") {
         merge(&mut entries, &bytes);
     }
-    entries.into_values().collect()
+    entries
 }
 
 /// Applies a bounded list of valid descriptions; malformed patches leave lower entries usable.
-fn merge(entries: &mut BTreeMap<Selector, FlipbookSource>, bytes: &[u8]) {
+fn merge(entries: &mut Vec<FlipbookSource>, bytes: &[u8]) {
+    let mut indices = entries
+        .iter()
+        .enumerate()
+        .map(|(index, source)| {
+            (
+                (
+                    source.atlas_tile.clone(),
+                    source.atlas_index,
+                    source.atlas_tile_variant,
+                ),
+                index,
+            )
+        })
+        .collect::<BTreeMap<Selector, usize>>();
     let Some(Value::Array(layer)) = parse_pack_json(bytes) else {
         return;
     };
@@ -49,7 +59,8 @@ fn merge(entries: &mut BTreeMap<Selector, FlipbookSource>, bytes: &[u8]) {
             continue;
         };
         let selector = (Box::<str>::from(tile), index, variant);
-        let lower = entries.get(&selector);
+        let position = indices.get(&selector).copied();
+        let lower = position.map(|position| &entries[position]);
         if entries.len() >= MAX_CATALOG_ENTRIES && lower.is_none() {
             continue;
         }
@@ -67,10 +78,17 @@ fn merge(entries: &mut BTreeMap<Selector, FlipbookSource>, bytes: &[u8]) {
                 .clone()
         });
         merged.extend(fields);
-        if let Ok(source) = serde_json::from_value::<FlipbookSource>(Value::Object(merged))
-            && source.is_valid()
-        {
-            entries.insert(selector, source);
+        if let Ok(mut source) = serde_json::from_value::<FlipbookSource>(Value::Object(merged)) {
+            source.ticks_per_frame = source.ticks_per_frame.max(1);
+            if !source.is_valid() {
+                continue;
+            }
+            if let Some(position) = position {
+                entries[position] = source;
+            } else {
+                indices.insert(selector, entries.len());
+                entries.push(source);
+            }
         }
     }
 }

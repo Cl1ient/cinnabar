@@ -22,6 +22,7 @@ struct Wire {
     fixed_tints: BTreeMap<String, [u8; 3]>,
     flipbooks: Vec<FlipbookSource>,
     flipbook_selectors: BTreeMap<u32, (u32, u32)>,
+    flipbook_destinations: BTreeMap<String, Vec<u32>>,
 }
 
 /// Material ids by the terrain texture key they were compiled from.
@@ -33,6 +34,7 @@ pub struct MaterialKeys {
     fixed_tints: BTreeMap<Box<str>, [u8; 3]>,
     flipbooks: Box<[FlipbookSource]>,
     flipbook_selectors: BTreeMap<u32, (u32, u32)>,
+    flipbook_destinations: BTreeMap<Box<str>, Box<[u32]>>,
 }
 
 impl MaterialKeys {
@@ -59,6 +61,7 @@ impl MaterialKeys {
             fixed_tints: BTreeMap::new(),
             flipbooks: Box::default(),
             flipbook_selectors: BTreeMap::new(),
+            flipbook_destinations: BTreeMap::new(),
         }
     }
 
@@ -71,6 +74,11 @@ impl MaterialKeys {
             .into_iter()
             .map(|(key, path)| (key.as_ref().into(), path.as_ref().into()))
             .collect();
+        for key in self.aliases.keys() {
+            self.flipbook_destinations
+                .entry(key.clone())
+                .or_insert_with(|| vec![1].into());
+        }
         self
     }
 
@@ -130,6 +138,26 @@ impl MaterialKeys {
             .map(|(&material, &selector)| (material, selector))
     }
 
+    /// Records the number of UV variants at each atlas index, including unused destinations.
+    #[must_use]
+    pub fn with_flipbook_destinations<K: AsRef<str>, C: AsRef<[u32]>>(
+        mut self,
+        destinations: impl IntoIterator<Item = (K, C)>,
+    ) -> Self {
+        self.flipbook_destinations = destinations
+            .into_iter()
+            .map(|(key, counts)| (key.as_ref().into(), counts.as_ref().into()))
+            .collect();
+        self
+    }
+
+    /// Atlas index and UV-variant bounds derived from the complete base terrain catalog.
+    pub fn flipbook_destinations(&self) -> impl Iterator<Item = (&str, &[u32])> {
+        self.flipbook_destinations
+            .iter()
+            .map(|(key, counts)| (key.as_ref(), counts.as_ref()))
+    }
+
     /// Serializes the sidecar for a carrier with `material_count` materials.
     #[must_use]
     pub fn to_json(&self, material_count: u32) -> Vec<u8> {
@@ -153,6 +181,11 @@ impl MaterialKeys {
                 .collect(),
             flipbooks: self.flipbooks.to_vec(),
             flipbook_selectors: self.flipbook_selectors.clone(),
+            flipbook_destinations: self
+                .flipbook_destinations
+                .iter()
+                .map(|(key, counts)| (key.to_string(), counts.to_vec()))
+                .collect(),
         };
         serde_json::to_vec(&wire).expect("material key sidecar serializes")
     }
@@ -170,6 +203,10 @@ impl MaterialKeys {
                 .flipbook_selectors
                 .keys()
                 .any(|&id| id as usize >= material_count)
+            || wire
+                .flipbook_destinations
+                .values()
+                .any(|counts| counts.is_empty() || counts.contains(&0))
         {
             return None;
         }
@@ -196,6 +233,11 @@ impl MaterialKeys {
             fixed_tints,
             flipbooks: wire.flipbooks.into_boxed_slice(),
             flipbook_selectors: wire.flipbook_selectors,
+            flipbook_destinations: wire
+                .flipbook_destinations
+                .into_iter()
+                .map(|(key, counts)| (key.into_boxed_str(), counts.into_boxed_slice()))
+                .collect(),
         })
     }
 

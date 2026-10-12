@@ -20,7 +20,7 @@ pub(super) struct TextureCatalog<'a> {
     grids: HashMap<String, u8>,
     tints: HashMap<String, [u8; 3]>,
     server_keys: HashSet<String>,
-    flipbooks: HashMap<String, std::collections::BTreeMap<(u32, u32), FlipbookSource>>,
+    flipbooks: HashMap<String, Vec<FlipbookSource>>,
     diagnostics: TextureDiagnostics,
 }
 
@@ -38,15 +38,30 @@ impl<'a> TextureCatalog<'a> {
         terrain.extend(server_terrain);
         let diagnostics = TextureDiagnostics::default();
         diagnostics.catalogs(view);
-        let mut flipbooks = HashMap::<String, std::collections::BTreeMap<_, _>>::new();
-        for source in pack_runtime::pack_flipbooks::flipbooks(
+        let destinations = pack_runtime::pack_flipbooks::destinations(view, base);
+        let mut flipbooks = HashMap::<String, Vec<FlipbookSource>>::new();
+        for mut source in pack_runtime::pack_flipbooks::flipbooks(
             view,
             base.map_or(&[], assets::MaterialKeys::flipbooks),
         ) {
+            let Some(count) = destinations
+                .get(source.atlas_tile.as_ref())
+                .and_then(|counts| counts.get(source.atlas_index as usize))
+            else {
+                diagnostics.failure(
+                    FailureReason::AnimationDestinationMissing,
+                    &source.atlas_tile,
+                    Some(&source.texture_path),
+                );
+                continue;
+            };
+            if source.atlas_tile_variant >= *count {
+                source.atlas_tile_variant = 0;
+            }
             flipbooks
                 .entry(source.atlas_tile.to_string())
                 .or_default()
-                .insert((source.atlas_index, source.atlas_tile_variant), source);
+                .push(source);
         }
         Self {
             view,
@@ -63,13 +78,11 @@ impl<'a> TextureCatalog<'a> {
         self.terrain.keys().map(String::as_str)
     }
 
-    /// Resolves an exact destination, then an animation covering all its UV variants.
+    /// Returns the last animation created for a destination, including all-variant descriptions.
     pub(super) fn flipbook(&self, key: &str, selector: (u32, u32)) -> Option<&FlipbookSource> {
-        let entries = self.flipbooks.get(key)?;
-        entries.get(&selector).or_else(|| {
-            entries
-                .get(&(selector.0, 0))
-                .filter(|source| source.all_variants)
+        self.flipbooks.get(key)?.iter().rev().find(|source| {
+            source.atlas_index == selector.0
+                && (source.all_variants || source.atlas_tile_variant == selector.1)
         })
     }
 

@@ -322,6 +322,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      # Only test steps expose race flags to Go; cache planning uses the shared configuration.
+      RACE_TEST_FLAGS: ${{ github.event_name != 'pull_request' && matrix.os == 'ubuntu-latest' && '-race' || '' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -336,35 +339,47 @@ jobs:
       - name: Build release Go core
         run: go build -trimpath -o "$RUNNER_TEMP/bedrock-core$(go env GOEXE)" ./core/cmd/bedrock-core
       - name: Test and vet Go core
+        env:
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./core/...
+          unset GOFLAGS
           go vet ./core/...
       - name: Test and vet protocol registry tools
+        env:
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go -C tools/registrygen test ./... -count=1
+          unset GOFLAGS
           go -C tools/registrygen vet ./...
       - name: Test and vet local server Experiences
         working-directory: tools/localserver
         env:
           GOWORK: "off"
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./... -count=1
+          unset GOFLAGS
           go vet ./...
       - name: Test and vet pinned chunk fixture generator
         if: runner.os == 'Linux'
         working-directory: tools/chunkfix
         env:
           GOWORK: "off"
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./... -count=1
+          unset GOFLAGS
           go vet ./...
       - name: Test and vet pinned bedsim movement trace generator
         if: runner.os == 'Linux'
         working-directory: tools/bedsimtrace
         env:
           GOWORK: "off"
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./... -count=1
+          unset GOFLAGS
           go vet ./...
 
       - name: Save Go build cache

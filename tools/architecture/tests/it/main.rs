@@ -10,3 +10,4 @@ mod policy;
 mod presentation_boundary;
 mod reads;
 mod render_boundary;
+mod workspace_docs;

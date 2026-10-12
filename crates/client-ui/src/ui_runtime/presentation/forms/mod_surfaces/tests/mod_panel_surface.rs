@@ -156,7 +156,9 @@ fn prepared_panel_routes_reuse_resolution_and_layout_on_return() {
     .unwrap();
     let prepared = mod_ui::PreparedPanelUi::prepare(Arc::new(bundle)).unwrap();
     let mut presentation = mini_engine_presentation();
-    presentation.mod_ui_mut().preload_panel_bundle(prepared);
+    presentation
+        .mod_ui_mut()
+        .set_prepared_panel_ui(mod_ui::PanelUiOwner::Environment(0), Some(prepared));
     presentation
         .mod_ui_mut()
         .set_mod_panel(Some(&initial))
@@ -213,9 +215,10 @@ fn prepared_panel_falls_back_for_changed_wrapper_facts() {
     variants.push(changed);
     for changed in variants {
         let mut presentation = mini_engine_presentation();
-        presentation
-            .mod_ui_mut()
-            .preload_panel_bundle(Arc::clone(&prepared));
+        presentation.mod_ui_mut().set_prepared_panel_ui(
+            mod_ui::PanelUiOwner::Environment(0),
+            Some(Arc::clone(&prepared)),
+        );
         presentation
             .mod_ui_mut()
             .set_mod_panel(Some(&initial))

@@ -1,6 +1,66 @@
 use super::*;
 use crate::test_support::sample_panel as panel;
 
+/// Prepares one original authored route with distinct wrapper facts for each owner or revision.
+fn prepared_panel(title: &str) -> (Panel, Arc<prepared::PreparedPanelUi>) {
+    let mut content = panel();
+    content.title = title.into();
+    content.surface = Some(ui::mod_panel::Surface {
+        screen: "extension.screen".into(),
+        document: serde_json::json!({
+            "namespace": "extension",
+            "screen": {"type": "screen", "size": ["100%", "100%"], "controls": []}
+        })
+        .to_string(),
+        bindings: Default::default(),
+    });
+    let bundle = Arc::new(ui::mod_panel::PanelBundle {
+        panel: content.clone(),
+        surfaces: Default::default(),
+    });
+    let prepared = prepared::PreparedPanelUi::prepare(bundle).unwrap();
+    (content, prepared)
+}
+
+/// Replacing a registration retires its old bundles and preserves an active environment route.
+#[test]
+fn registration_replacements_preserve_environment_prepared_routes() {
+    use prepared::PanelUiOwner;
+
+    let (environment, prepared_environment) = prepared_panel("Environment");
+    let environment_route = prepared_environment.route(&environment).unwrap();
+    let mut ui = ModUi::default();
+    ui.set_prepared_panel_ui(PanelUiOwner::Environment(0), Some(prepared_environment));
+    ui.set_mod_panel(Some(&environment)).unwrap();
+    let mut previous: Option<std::sync::Weak<prepared::PreparedPanelUi>> = None;
+    for revision in 0..5 {
+        let (registration, prepared_registration) =
+            prepared_panel(&format!("Registration {revision}"));
+        let current = Arc::downgrade(&prepared_registration);
+        ui.set_prepared_panel_ui(PanelUiOwner::Registration, Some(prepared_registration));
+        if let Some(previous) = previous {
+            assert!(previous.upgrade().is_none(), "superseded bundle is retired");
+        }
+        previous = Some(current);
+        ui.set_mod_panel(Some(&registration)).unwrap();
+        assert!(ui.mod_panel.as_ref().unwrap().prepared.is_some());
+    }
+
+    ui.set_mod_panel(Some(&environment)).unwrap();
+    assert!(Arc::ptr_eq(
+        ui.mod_panel.as_ref().unwrap().prepared.as_ref().unwrap(),
+        &environment_route,
+    ));
+    ui.set_prepared_panel_ui(PanelUiOwner::Registration, None);
+    assert!(previous.unwrap().upgrade().is_none());
+    ui.set_mod_panel(None).unwrap();
+    ui.set_mod_panel(Some(&environment)).unwrap();
+    assert!(Arc::ptr_eq(
+        ui.mod_panel.as_ref().unwrap().prepared.as_ref().unwrap(),
+        &environment_route,
+    ));
+}
+
 struct InputArt;
 
 impl json_ui::TextMeasure for InputArt {

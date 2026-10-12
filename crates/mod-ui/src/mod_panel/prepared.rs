@@ -8,6 +8,30 @@ use ui_engine::cached_screen::CachedScreen;
 
 use super::{SCREEN, template};
 
+/// The loaded component that owns a prepared panel catalog.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PanelUiOwner {
+    /// A component's stable index in the environment-loaded set.
+    Environment(usize),
+    /// The independently registered component, including all of its replacements.
+    Registration,
+}
+
+impl crate::ModUi {
+    /// Replaces or removes one owner's catalog without evicting another active owner's routes.
+    pub fn set_prepared_panel_ui(
+        &mut self,
+        owner: PanelUiOwner,
+        prepared: Option<Arc<PreparedPanelUi>>,
+    ) {
+        if let Some(prepared) = prepared {
+            self.prepared_panel_ui.insert(owner, prepared);
+        } else {
+            self.prepared_panel_ui.remove(&owner);
+        }
+    }
+}
+
 /// Immutable catalogs and resolved roots prepared on the local component loading worker.
 pub struct PreparedPanelUi {
     bundle: Arc<PanelBundle>,
@@ -60,10 +84,6 @@ impl PreparedPanelUi {
             .iter()
             .find(|route| same_document(&route.source, source))
             .cloned()
-    }
-
-    pub(super) fn same_bundle(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.bundle, &other.bundle)
     }
 }
 

@@ -2363,6 +2363,10 @@ Incomplete: native frame/GPU/process-memory acceptance, full remote gates,
 TTFMSDF/precomputed MSDF rendering, contextual item icon routes, verified retail
 missing-icon fallback, and native font alias/metric comparison. Outline MSDF
 fonts currently use provisional alpha rasterization. No visual gate is closed.
+Pack readers share BOM, UTF-8 and Latin-1 text decoding and JSONC normalization;
+UI documents retain their existing parser recovery. Incomplete: native display
+comparison for legacy pack labels and arbitrary malformed UTF-8, and a full
+comparison of syntax tolerances across document families.
 See [continuation references](docs/resource-pack-continuation-references.md) and
 [original resource-pack references](docs/resource-pack-references.md).
 

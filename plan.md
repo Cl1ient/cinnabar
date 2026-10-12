@@ -2384,6 +2384,11 @@ comparison of syntax tolerances across document families.
 Custom item icons and components follow the admitted registry, so an empty
 duplicate cannot replace a populated item's texture key. Missing custom icons
 report their identifier and requested atlas key during pack preparation.
+An offline regression follows the admitted registry and selected inventory stack
+through the first-person equipment path, its extruded sprite mesh and artwork
+atlas. Original synthetic art runs in CI; an explicitly supplied local pack can
+export the same native hand pose for comparison. Live server item payloads and
+native GPU output remain unverified.
 Provisional, incomplete: attachables without default geometry or texture aliases
 retain equipment bindings using their first compiled controller resources;
 dynamic controller selection still determines the resources drawn. Native static

@@ -28,6 +28,10 @@ ownership_record = "THIRD_PARTY_NOTICES.md"
 path = "assets/fonts/"
 ownership_record = "THIRD_PARTY_NOTICES.md"
 
+[[owned_artifacts]]
+path = "assets/oreui-icons/"
+ownership_record = "THIRD_PARTY_NOTICES.md"
+
 # The vendored codec crates stay behind protocol's owned API.
 [[vendored]]
 path = "crates/protocol/vendor/"

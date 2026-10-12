@@ -985,4 +985,4 @@ fn compile_materials(
 
 #[cfg(test)]
 #[path = "compiler/tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -13,9 +13,14 @@ if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     case "$target" in
         *.app)
             # Apple Silicon refuses unsigned Mach-O, so every helper gets an ad-hoc signature too.
+            # Cross-built x86_64 executables carry no linker signature, so sign the listed ones by name.
+            require_file "$runtime_binary_list" 'restore the runtime binary table'
+            while IFS= read -r name; do
+                codesign --force --sign - "$target/Contents/MacOS/$name"
+            done < <(runtime_binaries)
             while IFS= read -r -d '' file; do
-                if file "$file" | grep -q 'Mach-O'; then codesign --force --sign - "$file"; fi
-            done < <(find "$target/Contents" -type f -perm -u+x -print0)
+                if [[ "$(file -b "$file")" == Mach-O* ]]; then codesign --force --sign - "$file"; fi
+            done < <(find "$target/Contents/Resources" -type f -perm -u+x -print0)
             codesign --force --deep --sign - "$target"
             codesign --verify --deep --strict --verbose=2 "$target"
             echo "ad-hoc signed $target (not notarized)"

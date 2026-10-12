@@ -57,6 +57,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
             }]
             .into(),
             symbols: vec![assets::EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: assets::EntityAssetKind::Entity,
                 identifier: "test:fixture".into(),
                 source_index: 0,
@@ -151,6 +152,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
         overlay_rgba8: 0,
     };
     let item = WornItem {
+        grip: assets::item::grip::builtin_item_grip("test:opaque_cube"),
         identifier: Arc::from("test:opaque_cube"),
         metadata: 0,
         damage: None,

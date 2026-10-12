@@ -652,7 +652,8 @@ fn lunar_sized_many_small_blobs_are_not_charged_as_worst_case_blobs() {
     let cache = ClientBlobCache::with_limits(limits(4_096));
     let mut hashes = Vec::new();
     let mut expected = Vec::new();
-    for value in 0..177_u16 {
+    // A LevelChunk carries at most 64 sub-chunk blobs plus its biome blob on the wire.
+    for value in 0..65_u16 {
         let payload = value.to_le_bytes();
         hashes.push(cache.insert(&payload).expect("seed small blob"));
         expected.extend_from_slice(&payload);
@@ -662,7 +663,7 @@ fn lunar_sized_many_small_blobs_are_not_charged_as_worst_case_blobs() {
 
     resolver
         .accept_cached_packet(packet)
-        .expect("177 small Lunar-style blobs fit retained and reconstructed limits");
+        .expect("65 small Lunar-style blobs fit retained and reconstructed limits");
     let packet = pop_packet(&mut resolver, "many-small ready packet");
     let packets::Packet::LevelChunk(packet) = packet.data else {
         panic!("expected level chunk")
@@ -704,8 +705,22 @@ fn blob_status_splits_4096_wire_hashes_at_4095_ids_without_omission() {
     let mut hashes = missing.clone();
     hashes.push(hit);
     let mut resolver = BlobCacheResolver::new(cache);
+    // One SubChunk reply may carry up to 8192 entries, each naming its own blob.
+    let entries = hashes
+        .iter()
+        .enumerate()
+        .map(|(index, hash)| {
+            let offset = |shift: usize| i8::try_from((index >> shift) & 0xf).expect("nibble");
+            sub_chunk_entry(
+                (offset(0), offset(4), offset(8)),
+                SubChunkRequestResult::Success,
+                Some(Vec::new()),
+                Some(*hash),
+            )
+        })
+        .collect();
     let status = resolver
-        .accept_cached_packet(protocol::Packet::new(cached_level_chunk(0, 0, hashes, b"")))
+        .accept_cached_packet(protocol::Packet::new(cached_sub_chunk_packet(entries)))
         .expect("classify every referenced hash through the only status-producing path");
     let packets = status.into_packets();
 

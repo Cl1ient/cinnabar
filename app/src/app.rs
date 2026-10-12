@@ -960,7 +960,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     #[cfg(feature = "enhanced-diagnostics")]
     crate::enhanced_diagnostics::install(&mut app, diagnostic_budget);
     executor::configure_frame_schedule_executors(&mut app);
-    app.add_plugins(render::StartupPresentationPlugin)
+    app.add_plugins(render::startup_presentation::StartupPresentationPlugin)
         .add_systems(First, crate::lifecycle::acknowledge_startup);
     startup::install_first_frame_log(&mut app);
     let exit = app.run();

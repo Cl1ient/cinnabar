@@ -1,7 +1,7 @@
 //! Confirms startup only after primary-window presentation and GPU completion.
 
 use bevy::{
-    prelude::*,
+    prelude::{App, Entity, IntoScheduleConfigs, Plugin, Query, Res, ResMut, Resource, With},
     render::{
         Render, RenderApp, RenderSystems,
         renderer::{RenderQueue, render_system},

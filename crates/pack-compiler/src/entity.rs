@@ -480,7 +480,11 @@ fn assemble(
         rig_geometries: animation.rig_geometries,
         rig_animations: animation.rig_animations,
         rig_controllers: animation.rig_controllers,
-        item_use_profiles: assets::item_use::compile(&items.visuals),
+        item_use_profiles: if include_items {
+            assets::item_use::compile(&items.visuals)
+        } else {
+            Box::default()
+        },
         item_visuals: items.visuals,
         item_visual_aliases: items.aliases,
         render: animation.render,

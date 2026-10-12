@@ -6387,6 +6387,10 @@ dragonfly's generation and mob AI parity gaps are accepted, not chased.
 
 Status: provisional (see `docs/local-worlds.md`): BDS 1.26.52.3 (native, or the manifest-pinned container on macOS) for default worlds, dragonfly for Flat worlds; menu create/edit/delete/templates and staged loading are built. Live-verified on macOS through the core's control channel (create, staged open, spawn, server-side teleport and client fall, pause, close with no orphan); the menu click-through and on-screen input were not exercised (locked screen), and the create screen lacks vanilla's Multiplayer, Cheats and pack tabs, so no acceptance gate is closed.
 
+Local-world edits save before Play and on Back or Escape. Save errors preserve the form for retry.
+Dragonfly restores the local host with the selected mode, and native and container BDS launches
+apply the selected mode to existing worlds. The local-world parity gate remains provisional.
+
 ## Phase 8 — Audio, polish, packaging
 
 **Rain ambience:** completed weather ticks now admit overlapping finite rain
@@ -7972,3 +7976,20 @@ Incomplete parity: full pack-reload galleries and streaming frame budgets remain
 JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers.
 
 Incomplete parity: recipe eligibility and exact pattern-choice styling remain open.
+
+## Entity terrain occlusion and retained block-entity view culling
+
+- Actor bodies and their shadow bounds use bounded, current-terrain exposed-face proofs after
+  ordinary view admission. Name tags retain their independent publication. Unknown,
+  dirty, unpublished, clipped, transparent or budget-exhausted terrain always draws.
+  Internal voxel faces cannot certify depth. Near-clip safety is independent of rotation.
+  Actors with unbounded attachments, extra layers or no authored bounds also draw.
+  Controllers with any replacement geometry bypass base-model terrain proofs, including
+  selections between ticks; controllers that always draw the base model remain eligible.
+- Block entities use the same proof without stopping lids, rings, map requests or text
+  canvases. Global beams bypass terrain proofs. Retained vertex runs are culled at draw
+  submission, so camera turns do not rebuild or upload cached meshes.
+- Each kind has a fixed plane/cell probe budget. Preparation counters record candidates,
+  hidden-by-occlusion and submitted; draw counters record skipped/submitted vertices.
+- Performance and rendered-frame acceptance remain incomplete until comparable captures
+  verify walls, gaps, rapid motion, shadows, name tags and unchanged animation state.

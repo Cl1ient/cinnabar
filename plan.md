@@ -592,9 +592,16 @@ these changes do not close the movement, camera, or actor parity gates.
   establish native first-appearance timing, join latency, no-pop-in acceptance or release
   frame budgets; those gates remain open.
 - Recurring hand, UI viewport and particle writes share bounded retained GPU
-  staging. Allocation regressions cover real Metal owners; lifecycle and byte-order
-  tests cover asynchronous reuse and fallback. Attach-only native samples confirm
-  staging-allocation mutex contention, drawable waits and scheduler delays.
+  staging. Terrain arena writes use a separate pool that starts at three 120 Hz
+  frames of the publication target rate and grows after missed frames, at most
+  2 MiB per frame, to a 32 MiB ceiling. Abutting records share one copy, batches
+  stage what fits and queue only the overflow, and a growth slice encodes staged
+  writes before it copies. Allocation regressions cover real Metal owners; lifecycle
+  and byte-order tests cover asynchronous reuse, partial staging and fallback.
+  Attach-only native samples confirm staging-allocation mutex contention, drawable
+  waits and scheduler delays.
+- Incomplete: one 32 blocks/s flight capture sized the terrain pool's growth; its
+  staged share after growth, the 128 blocks/s route and joins remain unmeasured.
 - Incomplete: the synthetic fixed-camera fixture is not the populated-lobby/flight
   release replay; hidden frames do not establish displayed FPS. Three paired runs
   at each resolution reduce measured maxima but do not consistently improve p99.
@@ -7442,6 +7449,16 @@ durations and mapping source coordinates into resized atlas placements.
 Incomplete: exhaustive authored effect variants, matched live game-mode sequencing
 and hardware frame budgets remain open.
 
+Chat trigger filters now survive built-in layout restoration when a pack attaches
+its visibility binding inside a derived HUD row or the open chat history label.
+Pack variables resolve before the binding transfers, and effect factories retain
+the full message stream. Private-use bitmap icons preserve their sheet colors and
+text opacity; missing icons retain the normal replacement glyph tint.
+Incomplete: several active derived labels with different `#visible` filters are
+flattened onto the one built-in label, so the last filter wins instead of their union.
+Full native pixel matching, supplementary-plane emoji routing and hardware frame
+budgets also remain open. These changes do not close general chat parity.
+
 Live follow-up confirms custom sound playback. The latest user test reports the
 earlier actor, HUD, collision and inventory bugs fixed, including the actual
 Galaxite death animation. Matched native pixel comparisons remain separate.
@@ -7791,6 +7808,12 @@ acquire dye from a material name. The existing undyed colour and legacy armour m
 are retained. Complete native shader coverage and session item-component dye overrides remain
 open; this descriptor change does not close those parity gates.
 
+### Compiled ambient material facts
+
+The world carrier retains solid/liquid material dispositions for every state. Ambient leaf sampling reads these facts without identifier lookup or geometry inference. The partial plant catalog is joined to pinned state identities; unknown states and custom overlays remain unresolved. Air admission is explicitly provisional.
+
+Incomplete: the complete native material/state inventory, air binding, liquid and solid classifications, legacy protocols and server material component overlays remain unverified. This partial catalog does not close the material parity gate.
+
 ### Block-family routing coverage
 
 Crossed-plane routing now comes from the shared family catalog and is retained
@@ -7912,8 +7935,9 @@ pick, placement-obstruction and aim dispositions, checks every independently col
 entity identity, and retains the existing class routes as provisional compatibility data.
 Actor admission resolves advertised bases once, preserves the first advertisement,
 refreshes earlier actors, and caches numeric dispositions for frame and ray consumers.
-Unadvertised identities and unadmitted nonempty bases remain unresolved. Empty
-advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
+Unadvertised identities and unadmitted nonempty bases remain unresolved; attack picking
+still admits them through their collision box or server hitboxes, while aim assist skips
+them. Empty advertised bases retain an explicit provisional generic-mob disposition. Complete native constructor,
 mutable component, spectator pick/obstruction and class inventories are still open;
 the generic-mob disposition remains provisional and does not close a parity gate.
 
@@ -7936,3 +7960,15 @@ item names do not select bow or crossbow use frames. Unsupported charged project
 has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
+
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together.
+
+Incomplete parity: full pack-reload galleries and streaming frame budgets remain open.
+
+## Loom banner previews
+
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers.
+
+Incomplete parity: recipe eligibility and exact pattern-choice styling remain open.

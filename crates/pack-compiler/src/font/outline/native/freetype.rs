@@ -50,7 +50,10 @@ impl<'a> Face<'a> {
             if codepoints.len() == assets::MAX_FONT_GLYPHS {
                 return Err(invalid("outline character map exceeds bounds"));
             }
-            codepoints.extend(u32::try_from(code).ok().and_then(char::from_u32));
+            // FT_ULong is 32-bit on Windows but 64-bit elsewhere.
+            #[allow(clippy::useless_conversion)]
+            let code32 = u32::try_from(code).ok();
+            codepoints.extend(code32.and_then(char::from_u32));
             code = unsafe { ft::FT_Get_Next_Char(self.raw, code, &mut index) };
         }
         Ok(codepoints)

@@ -1,6 +1,7 @@
 //! Subscriber fingerprints preserve unchanged compiled resources across stack edits.
 
 use crate::PackInputs;
+use rayon::prelude::*;
 use resource_pack::{PackAdmission, PackDependency, ValidatedPackStack};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,6 +21,25 @@ pub enum Subscriber {
     AimAssist,
 }
 
+impl Subscriber {
+    /// A profiler zone named for this subscriber, since zone names must be static.
+    fn zone(self) -> tracing::Span {
+        match self {
+            Self::Blocks => tracing::info_span!("pack.compile.blocks"),
+            Self::BlockEntityArt => tracing::info_span!("pack.compile.block_entity_art"),
+            Self::Atmosphere => tracing::info_span!("pack.compile.atmosphere"),
+            Self::Particles => tracing::info_span!("pack.compile.particles"),
+            Self::Icons => tracing::info_span!("pack.compile.icons"),
+            Self::Glyphs => tracing::info_span!("pack.compile.glyphs"),
+            Self::Entities => tracing::info_span!("pack.compile.entities"),
+            Self::Ui => tracing::info_span!("pack.compile.ui"),
+            Self::Sounds => tracing::info_span!("pack.compile.sounds"),
+            Self::Language => tracing::info_span!("pack.compile.language"),
+            Self::AimAssist => tracing::info_span!("pack.compile.aim_assist"),
+        }
+    }
+}
+
 pub type Dependencies = BTreeMap<Subscriber, BTreeSet<PackDependency>>;
 
 /// Runs one compiler with an independent record of its successful and missing reads.
@@ -29,6 +49,7 @@ pub fn compile<T>(
     dependencies: &mut Dependencies,
     build: impl FnOnce(&resource_pack::LayeredPackView) -> T,
 ) -> T {
+    let _zone = subscriber.zone().entered();
     let view = resource_pack::LayeredPackView::tracked(stack.clone());
     let output = build(&view);
     let inputs = view.dependencies().expect("tracked view").snapshot();
@@ -57,6 +78,7 @@ pub fn compile_part<T>(
     Some((output, inputs.remove(&subscriber)))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Changes {
     /// Whether any file may read differently, so whole-stack facts are read again.
     pub contents: bool,
@@ -140,9 +162,31 @@ impl Changes {
                         .collect();
                     &fallback
                 };
-                dependency_fingerprint(old, inputs) != dependency_fingerprint(stack, inputs)
+                let (before, after) = rayon::join(
+                    || dependency_fingerprint(old, inputs),
+                    || dependency_fingerprint(stack, inputs),
+                );
+                before != after
             })
         };
+        // Subscribers fingerprint independently, so they compare on the rayon pool together.
+        let compared: BTreeMap<Subscriber, bool> = [
+            Subscriber::Blocks,
+            Subscriber::BlockEntityArt,
+            Subscriber::Atmosphere,
+            Subscriber::Particles,
+            Subscriber::Icons,
+            Subscriber::Glyphs,
+            Subscriber::Entities,
+            Subscriber::Ui,
+            Subscriber::Sounds,
+            Subscriber::Language,
+            Subscriber::AimAssist,
+        ]
+        .into_par_iter()
+        .map(|subscriber| (subscriber, changed(subscriber)))
+        .collect();
+        let changed = |subscriber: Subscriber| compared[&subscriber];
         let blocks = changed(Subscriber::Blocks);
         Self {
             contents: true,
@@ -166,63 +210,131 @@ fn dependency_fingerprint(
     stack: &ValidatedPackStack,
     inputs: &BTreeSet<PackDependency>,
 ) -> [u8; 32] {
+    let _zone = tracing::info_span!("pack.diff.fingerprint", inputs = inputs.len()).entered();
+    let layers: Vec<_> = stack
+        .packs()
+        .par_iter()
+        .map(|pack| layer_fingerprint(pack, inputs))
+        .collect();
     let mut hash = Sha256::new();
-    for pack in stack.packs() {
-        let mut layer = Sha256::new();
-        let mut populated = false;
-        for input in inputs {
-            match input {
-                PackDependency::File { path, limit } => {
-                    match pack.read_file_with_limit(path, *limit) {
-                        Ok(Some(bytes)) => {
-                            layer.update([0]);
-                            hash_part(&mut layer, path.as_bytes());
-                            hash_part(&mut layer, &bytes);
-                            populated = true;
-                        }
-                        Err(_) => {
-                            layer.update([4]);
-                            hash_part(&mut layer, path.as_bytes());
-                            populated = true;
-                        }
-                        Ok(None) => {}
-                    }
-                }
-                PackDependency::Directory(prefix) => {
-                    for path in pack.files_under(prefix) {
-                        layer.update([1]);
-                        hash_part(&mut layer, prefix.as_bytes());
-                        hash_part(&mut layer, path.as_bytes());
-                        populated = true;
-                    }
-                }
-                PackDependency::DirectoryWithSuffixes { prefix, suffixes } => {
-                    for path in pack.files_under(prefix) {
-                        if suffixes.iter().any(|suffix| path.ends_with(suffix)) {
-                            layer.update([3]);
-                            hash_part(&mut layer, prefix.as_bytes());
-                            hash_part(&mut layer, path.as_bytes());
-                            populated = true;
-                        }
-                    }
-                }
-                PackDependency::Contents(prefix) => {
-                    for path in pack.files_under(prefix) {
-                        layer.update([2]);
-                        hash_part(&mut layer, path.as_bytes());
-                        if let Ok(Some(bytes)) = pack.read_file(path) {
-                            hash_part(&mut layer, &bytes);
-                        }
-                        populated = true;
-                    }
-                }
-            }
-        }
-        if populated {
-            hash.update(layer.finalize());
-        }
+    for layer in layers.into_iter().flatten() {
+        hash.update(layer);
     }
     hash.finalize().into()
+}
+
+/// One input as a layer replays it; reads hash their bytes separately so they inflate in parallel.
+enum Part<'a> {
+    File {
+        path: &'a str,
+        limit: u64,
+    },
+    Listed {
+        tag: u8,
+        prefix: &'a str,
+        path: &'a str,
+    },
+    Contents(&'a str),
+}
+
+/// A read's outcome, with the bytes reduced to their digest.
+enum Read {
+    Bytes([u8; 32]),
+    Missing,
+    Rejected,
+}
+
+/// The layer's digest over `inputs`, or `None` when none of them is present in `pack`.
+fn layer_fingerprint(
+    pack: &resource_pack::ValidatedPack,
+    inputs: &BTreeSet<PackDependency>,
+) -> Option<[u8; 32]> {
+    let mut parts = Vec::new();
+    for input in inputs {
+        match input {
+            PackDependency::File { path, limit } => parts.push(Part::File {
+                path,
+                limit: *limit,
+            }),
+            PackDependency::Directory(prefix) => {
+                parts.extend(pack.files_under(prefix).into_vec().into_iter().map(|path| {
+                    Part::Listed {
+                        tag: 1,
+                        prefix,
+                        path,
+                    }
+                }));
+            }
+            PackDependency::DirectoryWithSuffixes { prefix, suffixes } => parts.extend(
+                pack.files_under(prefix)
+                    .into_vec()
+                    .into_iter()
+                    .filter(|path| suffixes.iter().any(|suffix| path.ends_with(suffix)))
+                    .map(|path| Part::Listed {
+                        tag: 3,
+                        prefix,
+                        path,
+                    }),
+            ),
+            PackDependency::Contents(prefix) => {
+                parts.extend(
+                    pack.files_under(prefix)
+                        .into_vec()
+                        .into_iter()
+                        .map(Part::Contents),
+                );
+            }
+        }
+    }
+    let digest = |bytes: &[u8]| Read::Bytes(Sha256::digest(bytes).into());
+    let reads: Vec<_> = parts
+        .par_iter()
+        .map(|part| match part {
+            Part::File { path, limit } => Some(match pack.read_file_with_limit(path, *limit) {
+                Ok(Some(bytes)) => digest(&bytes),
+                Ok(None) => Read::Missing,
+                Err(_) => Read::Rejected,
+            }),
+            Part::Contents(path) => Some(match pack.read_file(path) {
+                Ok(Some(bytes)) => digest(&bytes),
+                _ => Read::Missing,
+            }),
+            Part::Listed { .. } => None,
+        })
+        .collect();
+    let mut layer = Sha256::new();
+    let mut populated = false;
+    for (part, read) in parts.iter().zip(reads) {
+        match (part, read) {
+            (Part::File { path, .. }, Some(Read::Bytes(bytes))) => {
+                layer.update([0]);
+                hash_part(&mut layer, path.as_bytes());
+                hash_part(&mut layer, &bytes);
+                populated = true;
+            }
+            (Part::File { path, .. }, Some(Read::Rejected)) => {
+                layer.update([4]);
+                hash_part(&mut layer, path.as_bytes());
+                populated = true;
+            }
+            (Part::Listed { tag, prefix, path }, _) => {
+                layer.update([*tag]);
+                hash_part(&mut layer, prefix.as_bytes());
+                hash_part(&mut layer, path.as_bytes());
+                populated = true;
+            }
+            (Part::Contents(path), read) => {
+                layer.update([2]);
+                hash_part(&mut layer, path.as_bytes());
+                if let Some(Read::Bytes(bytes)) = read {
+                    hash_part(&mut layer, &bytes);
+                }
+                populated = true;
+            }
+            (Part::File { .. }, _) => {}
+        }
+    }
+    populated.then(|| layer.finalize().into())
 }
 
 /// Length framing prevents two adjacent names or payloads from aliasing one input.

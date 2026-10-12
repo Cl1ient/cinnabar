@@ -1,22 +1,7 @@
 //! Signed offer scope and immutable bundle index.
 
-use anyhow::{Result, ensure};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
-
-use crate::{crypto::fixed_hex, policy::*};
-
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "snake_case")]
-pub enum Permission {
-    Ui,
-    ModalUi,
-    Input,
-    Messaging,
-    Scene,
-    Media,
-}
-
+// BEGIN GENERATED EXTENSION CONTRACT
+// Generated from crates/server-experience/schema/extension.json; do not edit.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Scope {
@@ -24,26 +9,6 @@ pub struct Scope {
     pub origins: BTreeSet<String>,
     pub memory_bytes: u64,
     pub gpu_bytes: u64,
-}
-
-impl Scope {
-    /// Validates the user-visible scope against host ceilings.
-    pub fn validate(&self) -> Result<()> {
-        ensure!(
-            self.memory_bytes <= MAX_SESSION_MEMORY,
-            "memory grant too large"
-        );
-        ensure!(self.gpu_bytes <= MAX_GPU_BYTES, "GPU grant too large");
-        ensure!(self.origins.len() <= MAX_ORIGINS, "too many origins");
-        for origin in &self.origins {
-            let url = crate::fetch::approved_url(origin, &self.origins)?;
-            ensure!(
-                url.origin().ascii_serialization() == *origin,
-                "origin must be canonical"
-            );
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -68,6 +33,87 @@ pub struct Offer {
     pub packages: Vec<PackageOffer>,
     pub fallback: String,
     pub carrier: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContentFile {
+    pub path: String,
+    pub bytes: u64,
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Manifest {
+    pub version: u16,
+    pub api: u16,
+    pub id: String,
+    pub publisher_key: String,
+    pub package_version: String,
+    pub permissions: BTreeSet<Permission>,
+    pub component: Option<String>,
+    pub channels: Vec<crate::wire::Channel>,
+    pub actions: BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub templates: BTreeSet<String>,
+    pub files: Vec<ContentFile>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum Permission {
+    Ui,
+    ModalUi,
+    Input,
+    Messaging,
+    Scene,
+    Media,
+}
+
+/// Restricts identifiers to the shared portable namespace.
+pub fn identifier(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= MAX_IDENTIFIER_BYTES
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b":_-.".contains(&b))
+}
+/// Lists permissions with application adapters in the developer preview.
+pub fn implemented_permissions() -> BTreeSet<Permission> {
+    BTreeSet::from([
+        Permission::Ui,
+        Permission::ModalUi,
+        Permission::Input,
+        Permission::Messaging,
+    ])
+}
+// END GENERATED EXTENSION CONTRACT
+
+use anyhow::{Result, ensure};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+
+use crate::{crypto::fixed_hex, policy::*};
+
+impl Scope {
+    /// Validates the user-visible scope against host ceilings.
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.memory_bytes <= MAX_SESSION_MEMORY,
+            "memory grant too large"
+        );
+        ensure!(self.gpu_bytes <= MAX_GPU_BYTES, "GPU grant too large");
+        ensure!(self.origins.len() <= MAX_ORIGINS, "too many origins");
+        for origin in &self.origins {
+            let url = crate::fetch::approved_url(origin, &self.origins)?;
+            ensure!(
+                url.origin().ascii_serialization() == *origin,
+                "origin must be canonical"
+            );
+        }
+        Ok(())
+    }
 }
 
 impl Offer {
@@ -121,33 +167,6 @@ impl Offer {
         );
         Ok(())
     }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ContentFile {
-    pub path: String,
-    pub bytes: u64,
-    pub sha256: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Manifest {
-    pub version: u16,
-    pub api: u16,
-    pub id: String,
-    pub publisher_key: String,
-    pub package_version: String,
-    pub permissions: BTreeSet<Permission>,
-    pub component: Option<String>,
-    pub channels: Vec<crate::wire::Channel>,
-    pub actions: BTreeSet<String>,
-    /// JSON-UI files the modal may open, each also indexed in `files`. Omitted when empty, so a
-    /// manifest without screens keeps its canonical bytes.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub templates: BTreeSet<String>,
-    pub files: Vec<ContentFile>,
 }
 
 impl Manifest {
@@ -208,28 +227,9 @@ pub fn template_namespace(id: &str) -> String {
         .collect()
 }
 
-/// Restricts identifiers to an unambiguous, portable owned namespace.
-pub fn identifier(text: &str) -> bool {
-    !text.is_empty()
-        && text.len() <= MAX_IDENTIFIER_BYTES
-        && text.bytes().all(|b| {
-            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b':' | b'_' | b'-' | b'.')
-        })
-}
-
 /// Keeps remote strings out of control markup and trusted UI formatting.
 pub fn plain_text(text: &str, limit: usize) -> bool {
     !text.is_empty() && text.len() <= limit && !text.chars().any(|c| c.is_control() || c == '§')
-}
-
-/// Lists only capabilities with application adapters in this developer preview.
-pub fn implemented_permissions() -> BTreeSet<Permission> {
-    BTreeSet::from([
-        Permission::Ui,
-        Permission::ModalUi,
-        Permission::Input,
-        Permission::Messaging,
-    ])
 }
 
 /// What the developer client advertises: the above plus media playback onto scene quads.

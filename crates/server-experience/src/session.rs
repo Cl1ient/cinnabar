@@ -11,12 +11,14 @@ use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
+// BEGIN GENERATED EXTENSION CONTRACT
+// Generated from crates/server-experience/schema/extension.json; do not edit.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(
-    tag = "kind",
-    content = "body",
     rename_all = "snake_case",
-    deny_unknown_fields
+    tag = "kind",
+    deny_unknown_fields,
+    content = "body"
 )]
 pub enum Control {
     Hello(Hello),
@@ -31,14 +33,13 @@ pub enum Control {
         >,
         world_epoch: u64,
     },
-    /// Wire v2: the client's world epoch changed and its runtime kept running. Later
-    /// envelopes carry `world_epoch`; earlier-epoch ones are dropped and counted, not fatal.
     Epoch {
         session: String,
         world_epoch: u64,
     },
     Disabled,
 }
+// END GENERATED EXTENSION CONTRACT
 
 /// Session snapshots share one consumption latch instead of copying the challenge.
 #[derive(Clone, Debug)]

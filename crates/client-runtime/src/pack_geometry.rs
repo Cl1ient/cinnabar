@@ -77,9 +77,12 @@ impl GeometryPreparation {
             old_tint.revision()
                 + u64::from(current.assets().biome_assets() != candidate.assets().biome_assets()),
         );
-        let Some(snapshot) =
+        let snapshot = {
+            let _zone = bevy::log::info_span!("pack_apply.mesh_snapshot", chunks = instances.len())
+                .entered();
             stream.resource_mesh_snapshot(instances.iter().map(ChunkRenderInstance::key))
-        else {
+        };
+        let Some(snapshot) = snapshot else {
             return Ok(());
         };
         gpu.hold_geometry();
@@ -88,7 +91,11 @@ impl GeometryPreparation {
         let (sender, receiver) = mpsc::sync_channel(1);
         self.pending = Some((candidate.identity(), Mutex::new(receiver)));
         std::thread::spawn(move || {
-            let Some(meshes) = snapshot.build(&assets) else {
+            let _zone =
+                bevy::log::info_span!("pack_apply.remesh", chunks = instances.len()).entered();
+            // Spread across the world cores, which the held mesh handoff leaves idle.
+            let Some(meshes) = chunk_pipeline::on_idle_world_cores(|| snapshot.build(&assets))
+            else {
                 return;
             };
             let mut meshes: std::collections::BTreeMap<_, _> = meshes

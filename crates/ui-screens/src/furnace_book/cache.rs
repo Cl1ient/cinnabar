@@ -4,11 +4,12 @@ use json_ui::{CollectionItem, Scalar};
 use serde_json::Value;
 
 use {
-    super::{HudFrame, UiRuntime, category, entries},
+    crate::container_source::{ContainerFrame, ContainerSource, NameSources},
     ui::IconRef,
 };
 
-pub(in super::super) struct FurnaceBookCache {
+/// The furnace rows last published, with every input they were built from.
+pub struct FurnaceBookCache {
     all: Arc<[usize]>,
     supplied: Arc<[usize]>,
     projection: Arc<[usize]>,
@@ -16,8 +17,7 @@ pub(in super::super) struct FurnaceBookCache {
     filtering: bool,
     tab: Option<u8>,
     search: String,
-    components: Option<Arc<crate::ui_runtime::item_facts::SessionItemComponents>>,
-    lang: Option<Arc<assets::RuntimeLangCatalog>>,
+    names: NameSources,
     source_icons: Arc<[Option<IconRef>]>,
     first_icon: usize,
     selected: Option<(i32, u32, i32)>,
@@ -26,26 +26,20 @@ pub(in super::super) struct FurnaceBookCache {
     pub(super) rows: Arc<[CollectionItem]>,
 }
 
-fn same<T>(left: &Option<Arc<T>>, right: &Option<Arc<T>>) -> bool {
-    match (left, right) {
-        (Some(left), Some(right)) => Arc::ptr_eq(left, right),
-        (None, None) => true,
-        _ => false,
-    }
-}
-
-pub(super) fn publication<'a>(
-    player: &player_state::PlayerState,
-    runtime: &UiRuntime,
-    frame: &HudFrame,
+/// The furnace rows for this frame, reusing the cached allocation while every input matches.
+pub fn publication<'a>(
+    source: &dyn ContainerSource,
+    frame: &ContainerFrame<'_>,
     first_icon: usize,
     cache: &'a mut Option<FurnaceBookCache>,
 ) -> &'a FurnaceBookCache {
+    let player = source.player();
     let all = player.inventory.furnace_recipes(false);
     let supplied = player.inventory.furnace_recipes(true);
-    let projection = super::projection(player, runtime);
-    let state = runtime.screen_state();
-    let filtering = runtime.recipe_filtering(player);
+    let projection = source.furnace_projection();
+    let state = source.screen();
+    let filtering = source.recipe_filtering();
+    let names = source.name_sources();
     let shown = state.furnace_book_open;
     let selected = player
         .inventory
@@ -62,18 +56,17 @@ pub(super) fn publication<'a>(
             && cache.search == state.search
             && cache.first_icon == first_icon
             && cache.selected == selected
-            && Arc::ptr_eq(&cache.source_icons, &frame.window_icons.furnace_entries)
-            && same(&cache.components, &runtime.session_items)
-            && same(&cache.lang, &runtime.lang_catalog)
+            && Arc::ptr_eq(&cache.source_icons, frame.furnace_entries)
+            && cache.names.same(&names)
     });
     if !reusable {
         let categories = std::array::from_fn(|index| {
             all.iter()
-                .any(|recipe| category(player, runtime, recipe) == index as u8 + 1)
+                .any(|recipe| source.furnace_category(recipe) == index as u8 + 1)
         });
         let mut icons = Vec::new();
         let rows = if shown {
-            rows(player, runtime, frame, first_icon, &mut icons)
+            rows(source, frame, first_icon, &mut icons)
         } else {
             Arc::from([])
         };
@@ -84,10 +77,9 @@ pub(super) fn publication<'a>(
             shown,
             filtering,
             tab: state.furnace_tab,
-            search: state.search.clone(),
-            components: runtime.session_items.clone(),
-            lang: runtime.lang_catalog.clone(),
-            source_icons: Arc::clone(&frame.window_icons.furnace_entries),
+            search: state.search.to_owned(),
+            names,
+            source_icons: Arc::clone(frame.furnace_entries),
             first_icon,
             selected,
             categories,
@@ -99,24 +91,19 @@ pub(super) fn publication<'a>(
 }
 
 fn rows(
-    player: &player_state::PlayerState,
-    runtime: &UiRuntime,
-    frame: &HudFrame,
+    source: &dyn ContainerSource,
+    frame: &ContainerFrame<'_>,
     first_icon: usize,
     icons: &mut Vec<IconRef>,
 ) -> Arc<[CollectionItem]> {
-    let entries = entries(player, runtime);
+    let player = source.player();
+    let entries = source.furnace_entries();
     let total = entries.len() as f64;
     entries
         .iter()
         .enumerate()
         .map(|(index, recipe)| {
-            let icon = frame
-                .window_icons
-                .furnace_entries
-                .get(index)
-                .copied()
-                .flatten();
+            let icon = frame.furnace_entries.get(index).copied().flatten();
             let renderer = icon.map_or(Scalar::Json(Value::Null), |icon| {
                 icons.push(icon);
                 Scalar::Num((first_icon + icons.len() - 1) as f64)
@@ -154,33 +141,10 @@ fn rows(
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn furnace_recipe_rows_reuse_scroll_and_hover_frames() {
-        let mut player = player_state::PlayerState::new(1);
-        let mut runtime = crate::test_support::inventory_session(&mut player);
-        runtime.screen_state_mut().furnace_book_open = true;
-        let frame = HudFrame::default();
-        let mut cache = None;
-        let first = Arc::clone(&publication(&player, &runtime, &frame, 0, &mut cache).rows);
-        runtime
-            .screen_state_mut()
-            .container_scroll
-            .insert("recipes".into(), 24.0);
-        runtime.screen_state_mut().search_focused = true;
-        assert!(Arc::ptr_eq(
-            &first,
-            &publication(&player, &runtime, &frame, 0, &mut cache).rows
-        ));
-        runtime.screen_state_mut().search = "iron".into();
-        let searched = Arc::clone(&publication(&player, &runtime, &frame, 0, &mut cache).rows);
-        assert!(!Arc::ptr_eq(&first, &searched));
-        assert!(Arc::ptr_eq(
-            &searched,
-            &publication(&player, &runtime, &frame, 0, &mut cache).rows
-        ));
+#[cfg(any(test, feature = "test-support"))]
+impl FurnaceBookCache {
+    /// The published rows.
+    pub fn rows(&self) -> &Arc<[CollectionItem]> {
+        &self.rows
     }
 }

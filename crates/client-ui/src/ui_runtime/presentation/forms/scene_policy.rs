@@ -76,7 +76,7 @@ impl UiPresentationRuntime {
             return false;
         }
         if runtime.inventory_open()
-            && let Some(layout) = super::containers::ScreenLayout::of(player_runtime, runtime, None)
+            && let Some(layout) = super::containers::screen_layout(player_runtime, runtime, None)
             && !settings(layout.screen().0).render_game_behind
         {
             return false;

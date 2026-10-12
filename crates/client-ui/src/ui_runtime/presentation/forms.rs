@@ -1,33 +1,28 @@
 //! Server-form presentation: the vanilla JSON-UI templates through the engine
 //! when the UI carrier is loaded, else the programmatic fallback dialog.
-pub mod book_screen;
 pub mod chat_coordinates;
 mod chat_link_dialog;
 mod chat_links;
 mod chat_position;
 pub mod chat_screen;
-pub mod container_data;
-pub mod container_kinds;
-mod death_screen;
-mod debug_overlay;
-mod disconnect_retry;
-pub mod discord_presence_setting;
-pub mod furnace_book;
-pub(super) use container_kinds::supported_storage_slots;
 pub mod containers;
 pub(super) mod credits_content;
 mod credits_renderer;
 pub mod credits_screen;
 pub mod crosshair_settings;
+mod death_screen;
+mod debug_overlay;
+mod disconnect_retry;
+pub mod discord_presence_setting;
 pub mod emote_screen;
 #[cfg(test)]
 mod engine_tests;
 pub mod fallback;
 #[cfg(test)]
 mod formatting_tests;
+pub mod furnace_book;
 pub mod global_resources;
 pub mod hud;
-pub mod hud_renderers;
 #[cfg(test)]
 pub mod inbox_tests;
 mod invite_screen;
@@ -108,7 +103,7 @@ pub mod vrr_setting;
 pub mod vsync_setting;
 
 pub use chat_screen::{CHAT_SCREEN, ChatHit};
-pub use container_data::observe_station_block;
+pub use containers::observe_station_block;
 pub use emote_screen::{EMOTE_EQUIP_POPUP, EMOTE_SCREEN, EmoteHit};
 
 pub use loading_screen::{LOADING_SCREEN, LoadingStage};
@@ -120,7 +115,7 @@ use super::{UiPresentationError, UiPresentationRuntime};
 use crate::ui_runtime::scene_stack::ScreenSettingsTable;
 use crate::ui_runtime::{LocalFormAction, ServerFormIdentity, UiRuntime};
 use assets::RuntimeUiAssets;
-pub use containers::{container_screen_reference, engine_panel_contains, engine_screen_for};
+pub use containers::{container_screen_reference, engine_screen_for};
 pub use recipe_book::{recipe_book_hover, recipe_book_icons, recipe_book_shown};
 use ui_engine::{
     engine::{FormEngine, screen::PaintFrame},
@@ -147,15 +142,12 @@ pub(super) struct ScreenStates {
     /// The form whose render path was last logged, so each form logs once.
     logged: Option<ServerFormIdentity>,
     /// The engine HUD's cached screens.
-    hud: hud::HudScreens,
+    hud: ui_screens::hud::HudScreens,
     player_list: Option<player_list::PlayerList>,
     /// Every mod- and experience-owned surface.
     pub(super) mod_ui: mod_ui::ModUi,
-    /// The last container screen's layout.
-    container_cache: Option<containers::ScreenCache>,
-    /// Immutable creative rows reused across hover and scroll frames.
-    book_cache: Option<recipe_book::BookCache>,
-    furnace_cache: Option<furnace_book::FurnaceBookCache>,
+    /// The container screens' layout and recipe rows.
+    containers: ui_screens::containers::ContainerScreen,
     /// The menu text caret's blink and its boxes' text.
     menu_caret: menu_caret::MenuCaretState,
     /// The open chat's cached screen.
@@ -178,9 +170,9 @@ pub(super) struct FrameProjections {
     /// The server form drawn this build.
     pub(super) form: FormProjection,
     /// The container screen the engine drew this build, with its cell layout.
-    container: Option<(EngineFrame, containers::ScreenLayout)>,
+    container: Option<(EngineFrame, ui_screens::containers::ScreenLayout)>,
     /// Last build's container frame, for this build's pointer hover.
-    previous_container: Option<(EngineFrame, containers::ScreenLayout)>,
+    previous_container: Option<(EngineFrame, ui_screens::containers::ScreenLayout)>,
     /// Keyboard controls include rows outside the pointer's clipped viewports.
     pub(super) menu_focus: Vec<launcher::menu::MenuAction>,
     /// Screen and popup context owning the painted menu controls.
@@ -289,9 +281,7 @@ impl UiPresentationRuntime {
         // A texture-only pack may retain the catalog while changing sprite
         // dimensions, UV metadata, or nine-slice borders used during layout.
         self.screens.hud.invalidate_textures();
-        if let Some(cache) = &mut self.screens.container_cache {
-            cache.invalidate_textures();
-        }
+        self.screens.containers.invalidate_textures();
         if let Some(settings) = pack
             .screen_settings
             .as_ref()
@@ -338,9 +328,7 @@ impl UiPresentationRuntime {
         {
             self.retained_menu = None;
             self.screens.hud.invalidate_textures();
-            if let Some(cache) = &mut self.screens.container_cache {
-                cache.invalidate_textures();
-            }
+            self.screens.containers.invalidate_textures();
             self.sync_server_ui_pages();
         }
     }

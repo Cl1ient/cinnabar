@@ -11,23 +11,22 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use ui::UiVisual;
 
-use crate::ui_runtime::presentation::hud_layout::{HeartPaint, HungerPaint};
 use ui_engine::engine::{
     Canvas,
     screen::{CustomDraw, CustomRenderer, PaintError},
 };
 
 mod hunger_animation;
-pub(in crate::ui_runtime::presentation) use hunger_animation::HungerAnimation;
+mod status;
+mod status_motion;
+pub use hunger_animation::HungerAnimation;
+pub use status::{HEART_COLUMNS, HEART_ROW_PITCH, HeartPaint, HungerPaint};
 
-const CROSSHAIR_TEXTURE: &str = "textures/ui/cross_hair";
-const CROSSHAIR_SIDE: f32 = 16.0;
-pub(super) const HUNGER_RENDERER: &str = "hunger_renderer";
-
-#[cfg(test)]
-mod cooldown_tests;
-#[cfg(test)]
-mod crosshair_tests;
+/// The pack's standalone crosshair art, used ahead of the HUD icons sheet.
+pub const CROSSHAIR_TEXTURE: &str = "textures/ui/cross_hair";
+/// The standalone crosshair's side in GUI px.
+pub const CROSSHAIR_SIDE: f32 = 16.0;
+pub const HUNGER_RENDERER: &str = "hunger_renderer";
 
 /// One sprite a renderer draws, relative to its control's origin, in GUI px.
 #[derive(Clone, Debug, PartialEq)]
@@ -121,13 +120,13 @@ impl HudPaint {
 }
 
 /// Advance an admitted hunger control and return its render-update count.
-pub(super) type HungerUpdate<'a> = &'a dyn Fn(&str, Option<u64>) -> u64;
+pub type HungerUpdate<'a> = &'a dyn Fn(&str, Option<u64>) -> u64;
 
 /// The HUD's native renderers over this frame's captured state.
-pub(super) struct HudRenderer<'a> {
-    pub(super) hud: &'a HudPaint,
+pub struct HudRenderer<'a> {
+    pub hud: &'a HudPaint,
     /// Per-control updates advance only when a hunger renderer reaches painting.
-    pub(super) hunger_update: Option<HungerUpdate<'a>>,
+    pub hunger_update: Option<HungerUpdate<'a>>,
 }
 
 impl CustomRenderer for HudRenderer<'_> {
@@ -222,6 +221,7 @@ fn paint(
             }
             return true;
         }
+        // A cosmetic cursor renderer supplied ahead of this one draws instead.
         "cursor_renderer" => {
             if let Some(sprite) = hud.crosshair {
                 crosshair(canvas, sprite, dest, hud.crosshair_blend);

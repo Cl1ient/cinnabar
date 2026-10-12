@@ -37,14 +37,12 @@ use {
     client_ui::test_support::fixture_font,
 };
 use {
-    client_ui::ui_runtime::{
-        UiRuntime,
-        presentation::{UiPresentationRuntime, inventory_pointer::InventoryCellHit},
-    },
+    client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime},
     inventory::inventory_ledger::{
         GENERIC_STORAGE_WINDOW_TYPE, INVENTORY_REQUEST_TIMEOUT_MILLIS, InventoryPendingState,
         SMALL_STORAGE_SLOT_COUNT,
     },
+    ui_screens::container_actions::InventoryCellHit,
 };
 
 const PHYSICAL_SIZE: [u32; 2] = [1280, 720];

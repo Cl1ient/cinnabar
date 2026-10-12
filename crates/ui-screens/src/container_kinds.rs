@@ -7,7 +7,7 @@
 use assets::entity::mount::{MountBody, MountEquipment, MountSlots};
 use protocol::WindowKind;
 
-use crate::ui_runtime::presentation::inventory_pointer::InventoryCellHit;
+use crate::container_actions::InventoryCellHit;
 
 /// One cell a collection index addresses.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -138,7 +138,7 @@ pub fn storage_kind(slots: usize, block_entity: Option<&str>) -> &'static Contai
 }
 
 /// Row counts supported by the bounded chest templates and server menu layouts.
-pub(crate) fn supported_storage_slots(slots: usize) -> bool {
+pub fn supported_storage_slots(slots: usize) -> bool {
     matches!(WindowKind::Storage.open_cells(), Some(protocol::OpenCells::Generic(lengths)) if lengths.contains(&slots))
 }
 

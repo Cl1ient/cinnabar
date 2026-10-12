@@ -115,6 +115,7 @@ url = "2"
 tokio.workspace = true
 ui = { path = "../crates/ui" }
 ui-engine = { path = "../crates/ui-engine" }
+ui-screens = { path = "../crates/ui-screens" }
 wgpu.workspace = true
 winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
 world = { path = "../crates/world" }

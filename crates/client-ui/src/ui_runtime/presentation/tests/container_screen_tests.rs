@@ -582,12 +582,14 @@ fn crafter_slots_toggle_through_their_buttons() {
         PointerAction::Click(InventoryCellHit::Storage(4)),
     );
     assert_eq!(runtime.screen_state().crafter.shown_disabled(), 0b1_0100);
-    let toggles: Vec<String> = std::iter::from_fn(|| runtime.take_client_packet())
-        .map(|packet| format!("{:?}", packet.data))
+    let toggles: Vec<_> = std::iter::from_fn(|| runtime.take_client_packet())
+        .map(|packet| {
+            let toggle = protocol::test_support::packets::crafter_slot_toggle(&packet)
+                .expect("a crafter slot toggle");
+            (toggle.slot, toggle.disabled)
+        })
         .collect();
-    assert_eq!(toggles.len(), 2);
-    assert!(toggles[0].contains("slot_index: 0") && toggles[0].contains("is_disabled: false"));
-    assert!(toggles[1].contains("slot_index: 4") && toggles[1].contains("is_disabled: true"));
+    assert_eq!(toggles, [(0, false), (4, true)]);
 }
 
 // A llama's single equip cell is its carpet slot, never the saddle's.

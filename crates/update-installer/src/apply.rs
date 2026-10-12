@@ -4,7 +4,7 @@ use crate::{platform, stage, target};
 use anyhow::{Context, Result, ensure};
 use std::{
     fs::{self, File},
-    path::Path,
+    path::{Path, PathBuf},
 };
 use time::OffsetDateTime;
 use update_manifest::{TrustedKeys, select::Check};
@@ -81,7 +81,8 @@ pub fn after_exit(
             rollback(target, &backup, &work.path().join("failed"))?;
             return Err(error).context("new version did not start; previous version restored");
         }
-        remove(&backup)?;
+        confirm_start(&backup)?;
+        cleanup_confirmed_backup(target, &backup)?;
     }
     fs::remove_dir_all(stage_dir)?;
     Ok(())
@@ -103,12 +104,47 @@ fn remember_installer(root: &Path, artifact: &Path) -> Result<()> {
 
 /// Promotes a file or complete app bundle, restoring it if the promotion itself fails.
 pub(crate) fn swap(target: &Path, candidate: &Path, backup: &Path) -> Result<()> {
+    cleanup_confirmed_backup(target, backup)?;
     ensure!(!backup.exists(), "previous installation is still retained");
     fs::rename(target, backup).context("retain previous installation")?;
     if let Err(error) = fs::rename(candidate, target) {
         fs::rename(backup, target).context("restore previous installation")?;
         return Err(error).context("install update");
     }
+    Ok(())
+}
+
+/// The receipt beside a backup, written only after its replacement confirms startup.
+fn confirmation(backup: &Path) -> PathBuf {
+    let mut name = backup.as_os_str().to_os_string();
+    name.push(".started");
+    PathBuf::from(name)
+}
+
+/// Persists successful startup before cleanup, so a later swap can retry failed removal.
+fn confirm_start(backup: &Path) -> Result<()> {
+    File::options()
+        .write(true)
+        .create_new(true)
+        .open(confirmation(backup))?
+        .sync_all()?;
+    Ok(())
+}
+
+/// Retries only confirmed cleanup; unconfirmed backups remain available for rollback.
+fn cleanup_confirmed_backup(target: &Path, backup: &Path) -> Result<()> {
+    let receipt = confirmation(backup);
+    if !receipt.is_file() {
+        return Ok(());
+    }
+    ensure!(
+        target.exists(),
+        "confirmed replacement is missing; keep previous installation"
+    );
+    if backup.exists() {
+        remove(backup).context("remove confirmed previous installation")?;
+    }
+    fs::remove_file(receipt).context("remove startup confirmation")?;
     Ok(())
 }
 

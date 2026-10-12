@@ -1,6 +1,9 @@
 //! Supported installed targets; unpacked developer builds are never replaced.
 use anyhow::{Context, Result, bail, ensure};
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 /// Resolves the replaceable bundle, MSI directory, or mounted AppImage source.
 pub fn resolve(os: &str, executable: &Path, appimage: Option<&Path>) -> Result<PathBuf> {
@@ -59,14 +62,11 @@ pub fn access(target: &Path) -> Result<Access> {
     if !machine_install_rights() {
         return Ok(Access::Manual);
     }
-    let directory = if cfg!(windows) {
-        target
-    } else {
-        target.parent().context("missing install parent")?
-    };
-    Ok(access_with(|| {
-        tempfile::NamedTempFile::new_in(directory).is_ok()
-    }))
+    access_with(target, |directory| {
+        tempfile::NamedTempFile::new_in(directory)
+            .and_then(|file| file.close())
+            .is_ok()
+    })
 }
 
 #[cfg(windows)]
@@ -98,12 +98,55 @@ fn machine_install_rights() -> bool {
 }
 
 /// Keeps permission decisions testable without chmod, elevation, or a platform-specific account.
-fn access_with(probe: impl FnOnce() -> bool) -> Access {
-    if probe() {
-        Access::Writable
+fn access_with(target: &Path, mut probe: impl FnMut(&Path) -> bool) -> Result<Access> {
+    let directory = if cfg!(windows) {
+        target
     } else {
-        Access::Manual
+        target.parent().context("missing install parent")?
+    };
+    if !probe(directory) {
+        return Ok(Access::Manual);
     }
+    if !cfg!(windows) {
+        let previous = backup(target)?;
+        if !removable_tree(target, &mut probe)
+            || (previous.exists() && !removable_tree(&previous, &mut probe))
+        {
+            return Ok(Access::Manual);
+        }
+    }
+    Ok(Access::Writable)
+}
+
+/// Checks every directory needed to delete a bundle, without following its symlinks.
+fn removable_tree(target: &Path, probe: &mut impl FnMut(&Path) -> bool) -> bool {
+    let mut pending = vec![target.to_owned()];
+    while let Some(path) = pending.pop() {
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            return false;
+        };
+        if !metadata.is_dir() {
+            continue;
+        }
+        if !probe(&path) {
+            return false;
+        }
+        let Ok(entries) = fs::read_dir(&path) else {
+            return false;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                return false;
+            };
+            let Ok(kind) = entry.file_type() else {
+                return false;
+            };
+            if kind.is_dir() {
+                pending.push(entry.path());
+            }
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -151,7 +194,62 @@ mod tests {
     }
     #[test]
     fn not_writable_installs_offer_the_manual_download() {
-        assert_eq!(access_with(|| false), Access::Manual);
-        assert_eq!(access_with(|| true), Access::Writable);
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("client");
+        fs::write(&target, "installed").unwrap();
+        assert_eq!(access_with(&target, |_| false).unwrap(), Access::Manual);
+        assert_eq!(access_with(&target, |_| true).unwrap(), Access::Writable);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn writable_parent_with_a_non_writable_bundle_directory_requires_manual_download() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("Client.app");
+        let internal = target.join("Contents/MacOS");
+        fs::create_dir_all(&internal).unwrap();
+        fs::write(internal.join("client"), "installed").unwrap();
+        let mut checked_internal = false;
+        let access = access_with(&target, |directory| {
+            if directory == internal.as_path() {
+                checked_internal = true;
+                false
+            } else {
+                true
+            }
+        })
+        .unwrap();
+        assert!(checked_internal);
+        assert_eq!(access, Access::Manual);
+        assert_eq!(access_with(&target, |_| true).unwrap(), Access::Writable);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_retained_bundle_that_cannot_be_removed_requires_manual_download() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("Client.app");
+        fs::create_dir_all(target.join("Contents/MacOS")).unwrap();
+        let internal = backup(&target).unwrap().join("Contents/MacOS");
+        fs::create_dir_all(&internal).unwrap();
+        assert_eq!(
+            access_with(&target, |directory| directory != internal.as_path()).unwrap(),
+            Access::Manual
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundle_cleanup_does_not_probe_symlinked_external_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("Client.app");
+        let external = root.path().join("external");
+        fs::create_dir(&target).unwrap();
+        fs::create_dir(&external).unwrap();
+        std::os::unix::fs::symlink(&external, target.join("linked")).unwrap();
+        assert_eq!(
+            access_with(&target, |directory| directory != external.as_path()).unwrap(),
+            Access::Writable
+        );
     }
 }

@@ -75,6 +75,68 @@ fn expired_ready_updates_never_authorize_exit_time_installation() {
     assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH + time::Duration::days(2)));
 }
 
+#[test]
+fn a_failed_promotion_keeps_restart_available_only_when_the_previous_stage_survives() {
+    let root = tempfile::tempdir().unwrap();
+    let stage = root.path().join("ready");
+    std::fs::create_dir(&stage).unwrap();
+    std::fs::write(
+        stage.join(update_installer::stage::ENVELOPE_FILE),
+        "envelope",
+    )
+    .unwrap();
+    std::fs::write(
+        stage.join(update_installer::stage::ARTIFACT_FILE),
+        "payload",
+    )
+    .unwrap();
+    let mut state = State::new();
+    state.ready = Some(Ready {
+        stage: stage.clone(),
+        ..ready(true)
+    });
+    state.requested = true;
+    let previous = state.ready.take();
+    assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
+    assert!(
+        worker::finish_promotion(
+            &mut state,
+            previous,
+            Err(anyhow::anyhow!("promotion failed; stage restored"))
+        )
+        .is_err()
+    );
+    assert!(state.ready.is_some());
+    assert!(state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
+    let previous = state.ready.take();
+    std::fs::remove_dir_all(&stage).unwrap();
+    assert!(
+        worker::finish_promotion(
+            &mut state,
+            previous,
+            Err(anyhow::anyhow!("promotion and restoration failed"))
+        )
+        .is_err()
+    );
+    assert!(state.ready.is_none());
+    assert!(!state.requested);
+    assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
+}
+
+#[test]
+fn a_successful_promotion_clears_the_previous_notice_and_consent_before_publishing() {
+    let mut state = State::new();
+    state.ready = Some(ready(true));
+    state.requested = true;
+    let previous = state.ready.take();
+    let stage =
+        worker::finish_promotion(&mut state, previous, Ok(PathBuf::from("new-ready"))).unwrap();
+    assert_eq!(stage, PathBuf::from("new-ready"));
+    assert!(state.ready.is_none());
+    assert!(!state.requested);
+    assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
+}
+
 /// A signed envelope for `version` on the stable channel, as a manifest fetch would cache it.
 fn cached_release(path: &std::path::Path, version: &str, build_number: u64) -> TrustedKeys {
     let seed = [7; update_manifest::KEY_BYTES];

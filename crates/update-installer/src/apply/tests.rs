@@ -78,6 +78,57 @@ fn a_failed_promotion_restores_the_old_file_without_discarding_a_retained_backup
 }
 
 #[test]
+fn a_confirmed_start_recovers_leftover_backup_cleanup_before_the_next_swap() {
+    for bundle in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        let candidate = root.path().join("candidate");
+        let backup = target::backup(&target).unwrap();
+        if bundle {
+            fs::create_dir_all(target.join("Contents/MacOS")).unwrap();
+            fs::create_dir_all(candidate.join("Contents/MacOS")).unwrap();
+        }
+        let payload = |path: &Path| {
+            if bundle {
+                path.join("Contents/MacOS/client")
+            } else {
+                path.to_owned()
+            }
+        };
+        fs::write(payload(&target), "first").unwrap();
+        fs::write(payload(&candidate), "second").unwrap();
+        swap(&target, &candidate, &backup).unwrap();
+        confirm_start(&backup).unwrap();
+        // Leave the confirmed backup as if cleanup was interrupted after startup.
+        assert!(backup.exists());
+        if bundle {
+            fs::create_dir_all(candidate.join("Contents/MacOS")).unwrap();
+        }
+        fs::write(payload(&candidate), "third").unwrap();
+        swap(&target, &candidate, &backup).unwrap();
+        assert_eq!(fs::read(payload(&target)).unwrap(), b"third");
+        assert_eq!(fs::read(payload(&backup)).unwrap(), b"second");
+        assert!(!confirmation(&backup).exists());
+        confirm_start(&backup).unwrap();
+        cleanup_confirmed_backup(&target, &backup).unwrap();
+        assert!(!backup.exists());
+        assert!(!confirmation(&backup).exists());
+    }
+}
+
+#[test]
+fn a_confirmed_backup_is_preserved_if_the_replacement_is_missing() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("missing");
+    let backup = target::backup(&target).unwrap();
+    fs::write(&backup, "previous").unwrap();
+    confirm_start(&backup).unwrap();
+    assert!(cleanup_confirmed_backup(&target, &backup).is_err());
+    assert_eq!(fs::read(&backup).unwrap(), b"previous");
+    assert!(confirmation(&backup).exists());
+}
+
+#[test]
 fn previous_downloaded_windows_installer_is_kept_for_manual_repair() {
     let root = tempfile::tempdir().unwrap();
     let artifact = root.path().join("payload");

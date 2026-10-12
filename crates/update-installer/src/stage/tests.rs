@@ -1,6 +1,16 @@
 use super::*;
 use crate::fixtures::*;
 
+/// Downloads a newer signed release to exercise replacement of a postponed stage.
+fn newer_download(root: &Path, platform: &str, keys: &TrustedKeys) -> Download {
+    let payload = b"a newer verified release payload";
+    let (envelope, _) = signed(platform, "3.0.0", payload);
+    let selected = Selection::verify(&envelope, keys, check(platform), now()).unwrap();
+    let mut download = Download::begin(root, selected).unwrap();
+    download.write(payload).unwrap();
+    download
+}
+
 #[test]
 fn signed_manifest_download_verify_stage_and_reopen_without_network() {
     let root = tempfile::tempdir().unwrap();
@@ -171,12 +181,8 @@ fn an_unnumbered_signed_release_cannot_bypass_build_ordering() {
 fn a_newer_download_replaces_a_postponed_stage_without_leftovers() {
     let root = tempfile::tempdir().unwrap();
     let platform = "linux-x86_64";
-    let (ready, _) = staged(root.path(), platform);
-    let newer = b"a newer verified release payload";
-    let (envelope, keys) = signed(platform, "3.0.0", newer);
-    let selected = Selection::verify(&envelope, &keys, check(platform), now()).unwrap();
-    let mut download = Download::begin(root.path(), selected).unwrap();
-    download.write(newer).unwrap();
+    let (ready, keys) = staged(root.path(), platform);
+    let download = newer_download(root.path(), platform, &keys);
     assert_eq!(download.finish(&ready).unwrap(), ready);
     let selected = verify(&ready, &keys, check(platform), now()).unwrap();
     assert_eq!(selected.manifest.version, "3.0.0");
@@ -185,4 +191,74 @@ fn a_newer_download_replaces_a_postponed_stage_without_leftovers() {
         .map(|entry| entry.unwrap().file_name())
         .collect();
     assert_eq!(names, ["ready"]);
+}
+
+#[test]
+fn failed_stage_promotion_restores_the_verified_postponed_release() {
+    let root = tempfile::tempdir().unwrap();
+    let platform = "linux-x86_64";
+    let (ready, keys) = staged(root.path(), platform);
+    let old_envelope = fs::read(ready.join(ENVELOPE_FILE)).unwrap();
+    let download = newer_download(root.path(), platform, &keys);
+    let mut failed = false;
+    assert!(
+        download
+            .finish_with(&ready, |from, to| {
+                if to == ready.as_path() && !failed {
+                    failed = true;
+                    return Err(std::io::Error::other("injected promotion failure"));
+                }
+                fs::rename(from, to)
+            })
+            .is_err()
+    );
+    assert!(failed);
+    assert_eq!(fs::read(ready.join(ENVELOPE_FILE)).unwrap(), old_envelope);
+    assert_eq!(fs::read(ready.join(ARTIFACT_FILE)).unwrap(), PAYLOAD);
+    assert_eq!(
+        verify(&ready, &keys, check(platform), now())
+            .unwrap()
+            .manifest
+            .version,
+        "2.0.0"
+    );
+    let names: Vec<_> = fs::read_dir(root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(names, ["ready"]);
+}
+
+#[test]
+fn failed_stage_restoration_keeps_the_previous_payload_for_recovery() {
+    let root = tempfile::tempdir().unwrap();
+    let platform = "linux-x86_64";
+    let (ready, keys) = staged(root.path(), platform);
+    let download = newer_download(root.path(), platform, &keys);
+    assert!(
+        download
+            .finish_with(&ready, |from, to| {
+                if to == ready.as_path() {
+                    return Err(std::io::Error::other("injected rename failure"));
+                }
+                fs::rename(from, to)
+            })
+            .is_err()
+    );
+    assert!(!ready.exists());
+    let retained = fs::read_dir(root.path())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join("stage");
+    assert_eq!(fs::read(retained.join(ARTIFACT_FILE)).unwrap(), PAYLOAD);
+    assert_eq!(
+        verify(&retained, &keys, check(platform), now())
+            .unwrap()
+            .manifest
+            .version,
+        "2.0.0"
+    );
 }

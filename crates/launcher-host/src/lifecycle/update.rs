@@ -208,7 +208,7 @@ pub fn apply_after_exit() {
     }
 }
 
-/// Signals a complete first frame to the waiting helper; no persistent receipt is written.
+/// Signals a complete first frame to the waiting helper.
 pub fn acknowledge_startup() {
     let Some(marker) = LAYOUT.get().and_then(startup_marker) else {
         return;

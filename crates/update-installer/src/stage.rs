@@ -134,6 +134,15 @@ impl Download {
     /// Publishes a verified artifact and its signed envelope together, replacing an older stage only
     /// once this one is complete; corrupt partials are discarded.
     pub fn finish(self, destination: &Path) -> Result<PathBuf> {
+        self.finish_with(destination, |from, to| fs::rename(from, to))
+    }
+
+    /// Publishes with caller-supplied renames so failures and restoration can be tested.
+    fn finish_with(
+        self,
+        destination: &Path,
+        mut rename: impl FnMut(&Path, &Path) -> std::io::Result<()>,
+    ) -> Result<PathBuf> {
         ensure!(
             self.written == self.selection.artifact.size as u64
                 && self.file.metadata()?.len() == self.written,
@@ -156,15 +165,26 @@ impl Download {
         manifest.write_all(&self.selection.envelope)?;
         manifest.sync_all()?;
         drop(manifest);
-        fs::rename(self.path, directory.path().join(ARTIFACT_FILE))?;
+        rename(&self.path, &directory.path().join(ARTIFACT_FILE))?;
         // Dropping the retired directory deletes the superseded stage.
         let retired = tempfile::Builder::new()
             .prefix("retired-")
             .tempdir_in(parent)?;
-        if destination.exists() {
-            fs::rename(destination, retired.path().join("stage"))?;
+        let previous = retired.path().join("stage");
+        let replacing = destination.exists();
+        if replacing {
+            rename(destination, &previous)?;
         }
-        fs::rename(directory.path(), destination)?;
+        if let Err(error) = rename(directory.path(), destination) {
+            if replacing && let Err(restore) = rename(&previous, destination) {
+                let retained = retired.keep();
+                return Err(error).context(format!(
+                    "publish verified stage; restoration failed: {restore}; previous stage retained in {}",
+                    retained.display()
+                ));
+            }
+            return Err(error).context("publish verified stage");
+        }
         Ok(destination.to_owned())
     }
 }

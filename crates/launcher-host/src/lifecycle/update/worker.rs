@@ -128,7 +128,15 @@ fn run(
                 );
                 staged = Some(selected.manifest);
             }
-            Err(_) => fs::remove_dir_all(&destination)?,
+            Err(_) => {
+                if let Ok(mut state) = STATE.lock() {
+                    if state.generation == generation {
+                        state.ready = None;
+                        state.requested = false;
+                    }
+                }
+                fs::remove_dir_all(&destination)?;
+            }
         }
     }
     if (!preferences.checks && !switch_now) || !active(generation) {
@@ -258,8 +266,24 @@ fn run(
                 download.write(&chunk)?;
             }
         }
-        ensure!(active(generation), "update check cancelled");
-        let directory = download.finish(&destination)?;
+        let previous = {
+            let mut state = STATE
+                .lock()
+                .map_err(|_| anyhow::anyhow!("update state unavailable"))?;
+            ensure!(state.generation == generation, "update check cancelled");
+            state.ready.take()
+        };
+        let promotion = download.finish(&destination);
+        let directory = {
+            let mut state = STATE
+                .lock()
+                .map_err(|_| anyhow::anyhow!("update state unavailable"))?;
+            if state.generation == generation {
+                finish_promotion(&mut state, previous, promotion)?
+            } else {
+                promotion?
+            }
+        };
         ensure!(
             expires > OffsetDateTime::now_utc(),
             "release manifest expired during download"
@@ -274,6 +298,23 @@ fn run(
         );
         record(&stamp_path, check)
     })
+}
+
+/// Restores the postponed notice only after failed promotion leaves its files ready on disk.
+pub(super) fn finish_promotion(
+    state: &mut State,
+    previous: Option<Ready>,
+    result: Result<PathBuf>,
+) -> Result<PathBuf> {
+    state.ready = previous.filter(|ready| {
+        result.is_err()
+            && ready.stage.join(stage::ENVELOPE_FILE).is_file()
+            && ready.stage.join(stage::ARTIFACT_FILE).is_file()
+    });
+    if state.ready.is_none() {
+        state.requested = false;
+    }
+    result
 }
 
 /// The last verified envelope fetched for `channel`.

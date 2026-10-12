@@ -1,6 +1,46 @@
 use super::*;
 use update_manifest::TrustedKeys;
 
+const TEST_SEED: [u8; update_manifest::KEY_BYTES] = [7; update_manifest::KEY_BYTES];
+
+#[test]
+fn running_clients_check_each_interval_from_completion_without_skipped_ticks_deferring_it() {
+    let root = tempfile::tempdir().unwrap();
+    let mut state = State::new();
+    let ticks_per_interval = CHECK_INTERVAL.as_secs() / CHECK_POLL_INTERVAL.as_secs();
+    let check = update_manifest::select::Check {
+        channel: Channel::Beta.name(),
+        platform: "macos-arm64",
+        current: env!("CARGO_PKG_VERSION"),
+        current_build: update_manifest::build_number(),
+        switch_now: false,
+    };
+    let mut finish = None;
+    let mut starts = Vec::new();
+    for tick in 0..=3 * (ticks_per_interval + 1) {
+        let now = tick * CHECK_POLL_INTERVAL.as_secs();
+        if finish == Some(tick) {
+            worker::record(&worker::stamp_path(root.path(), Channel::Beta), check, now).unwrap();
+            state.running = false;
+            finish = None;
+        }
+        if state.tick(root.path(), now) {
+            starts.push(tick);
+            state.running = true;
+            finish = Some(tick + 1);
+        }
+    }
+    assert_eq!(
+        starts,
+        [
+            0,
+            ticks_per_interval + 1,
+            2 * (ticks_per_interval + 1),
+            3 * (ticks_per_interval + 1)
+        ]
+    );
+}
+
 #[test]
 fn a_passive_client_takes_over_on_its_next_daily_tick_after_the_updater_exits() {
     let root = tempfile::tempdir().unwrap();
@@ -208,7 +248,7 @@ fn cancellation_and_other_download_failures_do_not_trigger_manifest_retry() {
 
 /// A signed envelope for `version` on the stable channel, as a manifest fetch would cache it.
 fn cached_release(path: &std::path::Path, version: &str, build_number: u64) -> TrustedKeys {
-    let seed = [7; update_manifest::KEY_BYTES];
+    let seed = TEST_SEED;
     let manifest = update_manifest::Manifest {
         schema: update_manifest::SCHEMA,
         channel: "stable".into(),
@@ -265,7 +305,7 @@ fn manual_stage(
     channel: Channel,
 ) -> (PathBuf, TrustedKeys) {
     use sha2::Digest;
-    let seed = [7; update_manifest::KEY_BYTES];
+    let seed = TEST_SEED;
     let platform = update_manifest::platform_key("macos", "arm64").unwrap();
     let keys = TrustedKeys::from([("test".into(), update_manifest::public_key(&seed).unwrap())]);
     let manifest = update_manifest::Manifest {
@@ -302,6 +342,114 @@ fn manual_stage(
     let mut download = update_installer::stage::Download::begin(root, selection).unwrap();
     download.write(payload).unwrap();
     (download.finish(&root.join("ready")).unwrap(), keys)
+}
+
+#[test]
+fn reselecting_a_channel_restores_its_cached_release_before_the_daily_deadline() {
+    let root = tempfile::tempdir().unwrap();
+    let payload = b"cached Beta payload";
+    let (beta, keys) = manual_stage(root.path(), "2.0.0", payload, Channel::Beta);
+    let cache = root.path().join("manifest-beta.json");
+    std::fs::copy(beta.join(update_installer::stage::ENVELOPE_FILE), &cache).unwrap();
+    let check = update_manifest::select::Check {
+        channel: Channel::Beta.name(),
+        platform: "macos-arm64",
+        current: env!("CARGO_PKG_VERSION"),
+        current_build: update_manifest::build_number(),
+        switch_now: false,
+    };
+    worker::record(&worker::stamp_path(root.path(), Channel::Beta), check, 100).unwrap();
+    assert!(!due(worker::last_check(root.path(), Channel::Beta), 101));
+    let mut state = State::new();
+    state.ready = Some(ready(true));
+    assert_eq!(
+        state.configure(Preferences {
+            channel: Channel::Nightly,
+            ..state.preferences
+        }),
+        Some(true)
+    );
+    let _ = manual_stage(root.path(), "3.0.0", b"Nightly payload", Channel::Nightly);
+    assert_eq!(
+        state.configure(Preferences {
+            channel: Channel::Beta,
+            ..state.preferences
+        }),
+        Some(true)
+    );
+    let selected =
+        worker::cached_selection(&cache, &keys, check, OffsetDateTime::UNIX_EPOCH).unwrap();
+    let writer = update_installer::lease::Lease::acquire(root.path()).unwrap();
+    assert!(
+        worker::reuse_stage(&writer, &selected, [beta.as_path()])
+            .unwrap()
+            .is_none()
+    );
+    let mut download = update_installer::stage::Download::begin(root.path(), selected).unwrap();
+    download.write(payload).unwrap();
+    let directory = download.finish(&beta).unwrap();
+    let selected =
+        update_installer::stage::verify(&directory, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    let (directory, reader) =
+        update_installer::stage::retain(&directory, &writer, &selected).unwrap();
+    state.ready = Some(Ready::new(
+        directory,
+        reader,
+        selected,
+        Channel::Beta,
+        false,
+        true,
+    ));
+    let restored = state.ready.unwrap();
+    assert_eq!(restored.notice.version, "2.0.0");
+    assert_eq!(restored.channel, Channel::Beta);
+    assert_eq!(
+        std::fs::read(restored.stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
+        payload
+    );
+}
+
+#[test]
+fn renewed_envelopes_replace_expiring_stages_and_offers_without_a_download() {
+    let root = tempfile::tempdir().unwrap();
+    let payload = b"unchanged authenticated payload";
+    let (directory, keys) = manual_stage(root.path(), "2.0.0", payload, Channel::Beta);
+    let check = update_manifest::select::Check {
+        channel: Channel::Beta.name(),
+        platform: "macos-arm64",
+        current: "1.0.0",
+        current_build: 1,
+        switch_now: false,
+    };
+    let original =
+        update_installer::stage::verify(&directory, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    let mut manifest = original.manifest.clone();
+    manifest.expires += time::Duration::days(1);
+    let renewed = update_manifest::sign(&manifest, "test", &TEST_SEED).unwrap();
+    let now = original.manifest.expires + time::Duration::seconds(1);
+    let selected = update_installer::stage::Selection::verify(&renewed, &keys, check, now).unwrap();
+    assert!(worker::supersedes(&selected.manifest, Some(&original.manifest)).unwrap());
+    assert!(update_installer::stage::verify(&directory, &keys, check, now).is_err());
+    let writer = update_installer::lease::Lease::acquire(root.path()).unwrap();
+    let reused = worker::reuse_stage(&writer, &selected, [directory.as_path()])
+        .unwrap()
+        .expect("renewal must reuse the payload without a download");
+    assert_eq!(reused, directory);
+    assert_eq!(
+        std::fs::read(directory.join(update_installer::stage::ENVELOPE_FILE)).unwrap(),
+        renewed
+    );
+    let selected = update_installer::stage::verify(&reused, &keys, check, now).unwrap();
+    let (stage, reader) = update_installer::stage::retain(&reused, &writer, &selected).unwrap();
+    let offer = Ready::new(stage, reader, selected, Channel::Beta, false, true);
+    assert_eq!(offer.expires, manifest.expires);
+    assert_eq!(
+        std::fs::read(offer.stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
+        payload
+    );
+    assert!(update_installer::stage::verify(&offer.stage, &keys, check, now).is_ok());
 }
 
 #[test]
@@ -465,12 +613,14 @@ fn a_postponed_stage_is_replaced_only_by_a_newer_release() {
     let path = root.path().join("manifest.json");
     let release = |version, build| {
         let keys = cached_release(&path, version, build);
-        update_manifest::verify(
+        let mut manifest = update_manifest::verify(
             &std::fs::read(&path).unwrap(),
             &keys,
             OffsetDateTime::now_utc(),
         )
-        .unwrap()
+        .unwrap();
+        manifest.expires = OffsetDateTime::UNIX_EPOCH + time::Duration::days(1);
+        manifest
     };
     let staged = release("2.0.0", 10);
     assert!(worker::supersedes(&staged, None).unwrap());

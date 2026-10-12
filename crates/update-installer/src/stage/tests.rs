@@ -1,6 +1,19 @@
 use super::*;
 use crate::fixtures::*;
 
+#[test]
+fn refreshing_an_envelope_refuses_a_different_payload_and_keeps_the_old_envelope() {
+    let root = tempfile::tempdir().unwrap();
+    let (directory, keys) = staged(root.path(), "linux-x86_64");
+    let original = fs::read(directory.join(ENVELOPE_FILE)).unwrap();
+    let (envelope, _) = signed("linux-x86_64", "2.0.0", b"different payload");
+    let selected = Selection::verify(&envelope, &keys, check("linux-x86_64"), now()).unwrap();
+    let lease = crate::lease::Lease::acquire(root.path()).unwrap();
+    assert!(!refresh_envelope(&directory, &lease, &selected).unwrap());
+    assert_eq!(fs::read(directory.join(ENVELOPE_FILE)).unwrap(), original);
+    assert_eq!(fs::read(directory.join(ARTIFACT_FILE)).unwrap(), PAYLOAD);
+}
+
 /// Downloads a newer signed release to exercise replacement of a postponed stage.
 fn newer_download(root: &Path, platform: &str, keys: &TrustedKeys) -> Download {
     let payload = b"a newer verified release payload";

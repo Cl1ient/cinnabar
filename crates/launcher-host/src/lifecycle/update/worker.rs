@@ -51,7 +51,7 @@ pub(super) fn retry_missing(
 }
 
 /// Runs one worker at a time and retries when a preference changes during its request.
-pub(super) fn start() {
+pub(super) fn start(force: bool) {
     let Some(layout) = LAYOUT.get().cloned() else {
         return;
     };
@@ -71,7 +71,7 @@ pub(super) fn start() {
     };
     std::thread::spawn(move || {
         if let Err(error) = retry_missing(
-            || run(&layout, preferences, switch_now, generation),
+            || run(&layout, preferences, switch_now, generation, force),
             || active(generation),
         ) {
             tracing::debug!("update check: {error:#}");
@@ -90,7 +90,7 @@ pub(super) fn start() {
             false
         };
         if changed {
-            start();
+            start(true);
         }
     });
 }
@@ -108,6 +108,7 @@ fn run(
     preferences: Preferences,
     switch_now: bool,
     generation: u64,
+    force: bool,
 ) -> Result<()> {
     let Some(manifest_url) = preferences.channel.manifest_url() else {
         return Ok(());
@@ -178,21 +179,15 @@ fn run(
                     );
                 }
             }
-            Err(_) => {
-                fs::remove_dir_all(&destination)?;
-            }
+            // A fresh signed envelope can still authenticate this payload after expiry or a channel change.
+            Err(_) => {}
         }
     }
     if (!preferences.checks && !switch_now) || !active(generation) {
         return Ok(());
     }
-    let stamp_path = root.join(format!("last-check-{}.json", preferences.channel.name()));
-    let last = fs::read(&stamp_path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Stamp>(&bytes).ok())
-        .filter(|stamp| stamp.current == check.current && stamp.build == check.current_build)
-        .map(|stamp| stamp.checked_at);
-    if !switch_now && !due(last, now_secs()) {
+    let stamp_path = stamp_path(&root, preferences.channel);
+    if !force && !switch_now && !due(last_check(&root, preferences.channel), now_secs()) {
         // The skipped check would have found the same release, so restore what it offered.
         if cached_switch_offer(&channel_cache, &keys, check, OffsetDateTime::now_utc()) {
             if let Ok(mut state) = STATE.lock() {
@@ -223,17 +218,25 @@ fn run(
             }
         }
         ensure!(active(generation), "update channel changed");
-        let envelope = fetch(&client, &manifest_url).await?;
-        let selected = Selection::verify(
-            &envelope,
-            &keys,
-            Check {
-                switch_now: true,
-                ..check
-            },
-            OffsetDateTime::now_utc(),
-        )?;
-        let _ = fs::write(&channel_cache, &envelope);
+        let cached = force
+            .then(|| cached_selection(&channel_cache, &keys, check, OffsetDateTime::now_utc()))
+            .flatten();
+        let selected = if let Some(cached) = cached {
+            cached
+        } else {
+            let envelope = fetch(&client, &manifest_url).await?;
+            let selected = Selection::verify(
+                &envelope,
+                &keys,
+                Check {
+                    switch_now: true,
+                    ..check
+                },
+                OffsetDateTime::now_utc(),
+            )?;
+            let _ = fs::write(&channel_cache, &envelope);
+            selected
+        };
         if !switch_now
             && !update_manifest::select::newer_build(
                 &selected.manifest.version,
@@ -249,71 +252,85 @@ fn run(
                     }
                 }
             }
-            return record(&stamp_path, check);
+            return record(&stamp_path, check, now_secs());
         }
         if !supersedes(&selected.manifest, staged.as_ref())? {
-            return record(&stamp_path, check);
+            return record(&stamp_path, check, now_secs());
         }
         ensure!(active(generation), "update check cancelled");
         let artifact = selected.artifact.clone();
         let expires = selected.manifest.expires;
-        let mut download = Download::begin(&root, selected)?;
-        let offset = download.offset();
-        // Retain only the current partial transfer. A channel change can restart another digest safely.
-        for entry in fs::read_dir(&root)? {
-            let entry = entry?;
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if let Some(digest) = name.strip_suffix(".part") {
-                if digest.len() == 64
-                    && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-                    && !digest.eq_ignore_ascii_case(&artifact.sha256)
-                    && entry.file_type()?.is_file()
-                {
-                    fs::remove_file(entry.path())?;
+        let candidates = [
+            Some(destination.as_path()),
+            retained.as_ref().map(|ready| ready.stage.as_path()),
+        ];
+        let reused = reuse_stage(&lease, &selected, candidates.into_iter().flatten())?;
+        let directory = if let Some(directory) = reused {
+            directory
+        } else {
+            let mut download = Download::begin(&root, selected)?;
+            let offset = download.offset();
+            // Retain only the current partial transfer. A channel change can restart another digest safely.
+            for entry in fs::read_dir(&root)? {
+                let entry = entry?;
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if let Some(digest) = name.strip_suffix(".part") {
+                    if digest.len() == 64
+                        && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                        && !digest.eq_ignore_ascii_case(&artifact.sha256)
+                        && entry.file_type()?.is_file()
+                    {
+                        fs::remove_file(entry.path())?;
+                    }
                 }
             }
-        }
-        if offset < artifact.size as u64 {
-            let mut request = client.get(&artifact.url).timeout(DOWNLOAD_TIMEOUT);
-            if offset != 0 {
-                request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
-            }
-            let mut response = request.send().await?;
-            check_missing(response.status())?;
-            if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
-                let expected = format!("bytes {offset}-{}/{}", artifact.size - 1, artifact.size);
-                ensure!(
-                    response
-                        .headers()
-                        .get(reqwest::header::CONTENT_RANGE)
-                        .and_then(|value| value.to_str().ok())
-                        == Some(expected.as_str()),
-                    "invalid resumed range"
-                );
-            } else {
-                ensure!(
-                    response.status() == reqwest::StatusCode::OK,
-                    "artifact download failed: {}",
-                    response.status()
-                );
+            if offset < artifact.size as u64 {
+                let mut request = client.get(&artifact.url).timeout(DOWNLOAD_TIMEOUT);
                 if offset != 0 {
-                    download.restart()?;
+                    request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
+                }
+                let mut response = request.send().await?;
+                if response.status() == reqwest::StatusCode::NOT_FOUND {
+                    // The bounded retry must fetch a fresh manifest rather than reuse this cache.
+                    let _ = fs::remove_file(&channel_cache);
+                }
+                check_missing(response.status())?;
+                if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+                    let expected =
+                        format!("bytes {offset}-{}/{}", artifact.size - 1, artifact.size);
+                    ensure!(
+                        response
+                            .headers()
+                            .get(reqwest::header::CONTENT_RANGE)
+                            .and_then(|value| value.to_str().ok())
+                            == Some(expected.as_str()),
+                        "invalid resumed range"
+                    );
+                } else {
+                    ensure!(
+                        response.status() == reqwest::StatusCode::OK,
+                        "artifact download failed: {}",
+                        response.status()
+                    );
+                    if offset != 0 {
+                        download.restart()?;
+                    }
+                }
+                if let Some(length) = response.content_length() {
+                    ensure!(
+                        length == artifact.size as u64 - download.offset(),
+                        "artifact content length mismatch"
+                    );
+                }
+                while let Some(chunk) = response.chunk().await? {
+                    ensure!(active(generation), "update check cancelled");
+                    download.write(&chunk)?;
                 }
             }
-            if let Some(length) = response.content_length() {
-                ensure!(
-                    length == artifact.size as u64 - download.offset(),
-                    "artifact content length mismatch"
-                );
-            }
-            while let Some(chunk) = response.chunk().await? {
-                ensure!(active(generation), "update check cancelled");
-                download.write(&chunk)?;
-            }
-        }
-        ensure!(active(generation), "update check cancelled");
-        let directory = download.finish(&destination)?;
+            ensure!(active(generation), "update check cancelled");
+            download.finish(&destination)?
+        };
         ensure!(
             expires > OffsetDateTime::now_utc(),
             "release manifest expired during download"
@@ -328,7 +345,7 @@ fn run(
             switch_now,
             generation,
         );
-        record(&stamp_path, check)
+        record(&stamp_path, check, now_secs())
     })
 }
 
@@ -347,6 +364,51 @@ pub(super) fn retained_manifest(
 /// The last verified envelope fetched for `channel`.
 fn cache_path(root: &Path, channel: Channel) -> PathBuf {
     root.join(format!("manifest-{}.json", channel.name()))
+}
+
+/// The sole persisted completion timestamp used by both polling and the worker.
+pub(super) fn stamp_path(root: &Path, channel: Channel) -> PathBuf {
+    root.join(format!("last-check-{}.json", channel.name()))
+}
+
+/// Reads this running build's last successful check without moving its daily deadline.
+pub(super) fn last_check(root: &Path, channel: Channel) -> Option<u64> {
+    let stamp: Stamp = serde_json::from_slice(&read_cached(&stamp_path(root, channel))?).ok()?;
+    (stamp.current == env!("CARGO_PKG_VERSION") && stamp.build == update_manifest::build_number())
+        .then_some(stamp.checked_at)
+}
+
+/// Reuses only authenticated, unexpired cached selections for an explicit channel change.
+pub(super) fn cached_selection(
+    path: &Path,
+    keys: &TrustedKeys,
+    check: Check<'_>,
+    now: OffsetDateTime,
+) -> Option<Selection> {
+    Selection::verify(
+        &read_cached(path)?,
+        keys,
+        Check {
+            switch_now: true,
+            ..check
+        },
+        now,
+    )
+    .ok()
+}
+
+/// Renews an unchanged verified payload locally, leaving downloads for payloads that are absent.
+pub(super) fn reuse_stage<'a>(
+    lease: &update_installer::lease::Lease,
+    selected: &Selection,
+    candidates: impl IntoIterator<Item = &'a Path>,
+) -> Result<Option<PathBuf>> {
+    for candidate in candidates {
+        if stage::refresh_envelope(candidate, lease, selected)? {
+            return Ok(Some(candidate.to_owned()));
+        }
+    }
+    Ok(None)
 }
 
 /// Reads a cached envelope no larger than a fetched one may be.
@@ -371,7 +433,7 @@ fn older_release(manifest: &update_manifest::Manifest, check: Check<'_>) -> Resu
     )?)
 }
 
-/// Whether a fetched release should replace the postponed stage, if there is one.
+/// A newer release or a renewed expiry replaces the postponed envelope and offer.
 pub(super) fn supersedes(
     fetched: &update_manifest::Manifest,
     staged: Option<&update_manifest::Manifest>,
@@ -384,7 +446,9 @@ pub(super) fn supersedes(
         fetched.build_number,
         &staged.version,
         staged.build_number,
-    )?)
+    )? || (fetched.version == staged.version
+        && fetched.build_number == staged.build_number
+        && fetched.expires > staged.expires))
 }
 
 /// Whether the cached, still-valid manifest at `path` warrants the Switch now offer.
@@ -394,19 +458,8 @@ pub(super) fn cached_switch_offer(
     check: Check<'_>,
     now: OffsetDateTime,
 ) -> bool {
-    read_cached(path).is_some_and(|envelope| {
-        Selection::verify(
-            &envelope,
-            keys,
-            Check {
-                switch_now: true,
-                ..check
-            },
-            now,
-        )
-        .and_then(|selected| older_release(&selected.manifest, check))
-        .unwrap_or(false)
-    })
+    cached_selection(path, keys, check, now)
+        .is_some_and(|selected| older_release(&selected.manifest, check).unwrap_or(false))
 }
 
 /// Offers an explicit switch to the selected channel's older release.
@@ -440,18 +493,9 @@ fn publish(
             .is_ok_and(|access| access == update_installer::target::Access::Writable);
     if let Ok(mut state) = STATE.lock() {
         if state.accepts_worker(generation) {
-            state.ready = Some(Ready {
-                expires: selected.manifest.expires,
-                stage,
-                channel,
-                switch_now,
-                lease: Some(std::sync::Arc::new(reader)),
-                notice: Notice {
-                    version: selected.manifest.version,
-                    writable,
-                    protocol_required: false,
-                },
-            });
+            state.ready = Some(Ready::new(
+                stage, reader, selected, channel, switch_now, writable,
+            ));
             state.switch_available = false;
             state.message = None;
             if channel == Channel::Stable {
@@ -503,11 +547,11 @@ fn now_secs() -> u64 {
 }
 
 /// Records successful channel checks; failed or interrupted downloads remain retryable.
-fn record(path: &std::path::Path, check: Check<'_>) -> Result<()> {
+pub(super) fn record(path: &std::path::Path, check: Check<'_>, now: u64) -> Result<()> {
     let mut file =
         tempfile::NamedTempFile::new_in(path.parent().context("missing check directory")?)?;
     file.write_all(&serde_json::to_vec(&Stamp {
-        checked_at: now_secs(),
+        checked_at: now,
         current: check.current.into(),
         build: check.current_build,
     })?)?;

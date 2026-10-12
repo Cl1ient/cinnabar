@@ -22,6 +22,7 @@ use update_installer::startup;
 use update_manifest::channel::Channel;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const CHECK_POLL_INTERVAL: Duration = Duration::from_secs(60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 static LAYOUT: OnceLock<InstallLayout> = OnceLock::new();
@@ -40,9 +41,34 @@ struct Ready {
     lease: Option<std::sync::Arc<std::fs::File>>,
 }
 
+impl Ready {
+    /// Presents the verified selection's version and expiry while retaining its own stage reader.
+    fn new(
+        stage: PathBuf,
+        reader: std::fs::File,
+        selected: update_installer::stage::Selection,
+        channel: Channel,
+        switch_now: bool,
+        writable: bool,
+    ) -> Self {
+        Self {
+            expires: selected.manifest.expires,
+            stage,
+            channel,
+            switch_now,
+            lease: Some(std::sync::Arc::new(reader)),
+            notice: Notice {
+                version: selected.manifest.version,
+                writable,
+                protocol_required: false,
+            },
+        }
+    }
+}
+
 struct State {
     updater: Option<update_installer::lease::Updater>,
-    last_tick: Option<u64>,
+    last_poll: Option<u64>,
     preferences: Preferences,
     ready: Option<Ready>,
     dismissed: bool,
@@ -66,25 +92,49 @@ enum StartupPhase {
 }
 
 impl State {
-    /// Tries the lifetime role at startup or on a daily tick, leaving other clients passive.
+    /// Polls the persisted completion stamp; skipped polls never move the daily deadline.
     fn tick(&mut self, root: &std::path::Path, now: u64) -> bool {
-        if !due(self.last_tick, now) {
+        if self.running
+            || self.requested
+            || self
+                .last_poll
+                .is_some_and(|last| now >= last && now - last < CHECK_POLL_INTERVAL.as_secs())
+        {
             return false;
         }
-        self.last_tick = Some(now);
+        self.last_poll = Some(now);
         if self.updater.is_none() {
             self.updater = std::fs::create_dir_all(root)
                 .and_then(|()| update_installer::lease::Updater::try_acquire(root))
                 .ok();
         }
         self.updater.is_some()
+            && self.preferences.checks
+            && due(worker::last_check(root, self.preferences.channel), now)
+    }
+
+    /// Clears old channel consent and requests an immediate check when the selection changes.
+    fn configure(&mut self, preferences: Preferences) -> Option<bool> {
+        if self.requested || self.preferences == preferences {
+            return None;
+        }
+        let channel_changed = self.preferences.channel != preferences.channel;
+        if channel_changed {
+            self.ready = None;
+            self.dismissed = false;
+            self.switch_now = false;
+            self.switch_available = false;
+        }
+        self.preferences = preferences;
+        self.generation += 1;
+        Some(channel_changed)
     }
 
     /// Holds one session's preferences and consent, without a persisted transaction state.
     const fn new() -> Self {
         Self {
             updater: None,
-            last_tick: None,
+            last_poll: None,
             preferences: Preferences::DEFAULT,
             ready: None,
             dismissed: false,
@@ -158,7 +208,7 @@ pub fn check_in_background(layout: &InstallLayout) {
     configure(
         SettingsOptions::load(&layout.user_config_root.join(SETTINGS_FILE)).update_preferences(),
     );
-    worker::start();
+    worker::start(false);
 }
 
 /// Shares live preferences with the worker; channel changes always clear earlier consent.
@@ -166,28 +216,12 @@ pub fn configure(mut preferences: Preferences) {
     if std::env::var("CINNABAR_UPDATE_CHECK").is_ok_and(|value| value == "0") {
         preferences.checks = false;
     }
-    let changed = if let Ok(mut state) = STATE.lock() {
-        if state.requested {
-            return;
-        }
-        let changed = state.preferences != preferences;
-        if changed {
-            if state.preferences.channel != preferences.channel {
-                state.ready = None;
-                state.requested = false;
-                state.dismissed = false;
-                state.switch_now = false;
-                state.switch_available = false;
-            }
-            state.preferences = preferences;
-            state.generation += 1;
-        }
-        changed
-    } else {
-        false
-    };
-    if changed {
-        worker::start();
+    let force = STATE
+        .lock()
+        .ok()
+        .and_then(|mut state| state.configure(preferences));
+    if let Some(force) = force {
+        worker::start(force);
     }
 }
 
@@ -272,7 +306,7 @@ pub fn act(action: Action) -> bool {
         handoff::open_download(ready);
     }
     if switch {
-        worker::start();
+        worker::start(true);
     }
     quit
 }
@@ -327,7 +361,7 @@ pub fn acknowledge_startup() {
         if let Ok(mut state) = STATE.lock() {
             state.startup = StartupPhase::Complete;
         }
-        worker::start();
+        worker::start(false);
     });
 }
 
@@ -411,6 +445,6 @@ fn tick(now: OffsetDateTime) {
         false
     };
     if run {
-        worker::start();
+        worker::start(false);
     }
 }

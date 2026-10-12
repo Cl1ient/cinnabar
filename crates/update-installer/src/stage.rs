@@ -18,6 +18,25 @@ const STAGE_PREFIX: &str = "stage-";
 const RETIRED_PREFIX: &str = "retired-";
 const RETIRED_STAGE: &str = "stage";
 
+/// Atomically replaces an envelope only when its authenticated payload already exists unchanged.
+pub fn refresh_envelope(
+    directory: &Path,
+    lease: &crate::lease::Lease,
+    selected: &Selection,
+) -> Result<bool> {
+    ensure!(
+        directory.parent() == Some(lease.root()),
+        "stage is outside the leased directory"
+    );
+    if verify_file(&directory.join(ARTIFACT_FILE), &selected.artifact).is_err() {
+        return Ok(false);
+    }
+    let mut envelope = tempfile::NamedTempFile::new_in(directory)?;
+    envelope.write_all(&selected.envelope)?;
+    envelope.persist(directory.join(ENVELOPE_FILE))?;
+    Ok(true)
+}
+
 /// Retains a verified offer independently of later cache promotion or manual desktop handoff.
 pub fn retain(
     source: &Path,

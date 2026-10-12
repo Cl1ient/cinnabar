@@ -2,6 +2,8 @@
 
 /// Render-owned profile bit, above the authored material state bits.
 pub const LEGACY_COMBAT_MATERIAL_FLAG: u32 = assets::EntityRenderMaterialState::DEPTH_ALWAYS << 1;
+/// Per-draw dye masking keeps leather separate even when rasters share an artwork page.
+pub const ACTOR_COLOR_MASK_MATERIAL_FLAG: u32 = LEGACY_COMBAT_MATERIAL_FLAG << 1;
 
 /// Converts legacy raster UV through rotation, offset and scale in that order.
 pub fn legacy_glint_uv(uv: [f32; 2], offsets: [f32; 2], pass: usize) -> [f32; 2] {

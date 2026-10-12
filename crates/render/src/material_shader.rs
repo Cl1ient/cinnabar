@@ -85,6 +85,7 @@ pub(crate) fn source(source: &str) -> String {
         .replace("GPU_TEXTURE_WIDTH_SHIFT", &format!("{TEXTURE_WIDTH_SHIFT}u"))
         .replace("GPU_TEXTURE_HEIGHT_SHIFT", &format!("{TEXTURE_HEIGHT_SHIFT}u"))
         .replace("BLOCK_OVERLAY_FACE_OFFSET", &format!("{:?}", render_api::BLOCK_OVERLAY_FACE_OFFSET))
+        .replace("ACTOR_COLOR_MASK_MATERIAL_FLAG", &format!("{}u", render_model::ACTOR_COLOR_MASK_MATERIAL_FLAG))
         .replace("ACTOR_MATERIAL_LEGACY112_FLAG", &format!("{}u", render_model::LEGACY_COMBAT_MATERIAL_FLAG))
         .replace("// LEGACY_GLINT_CONSTANTS", &legacy_glint_constants())
         .replace("ACTOR_MATERIAL_GLINT", &format!("{}u", assets::EntityRenderMaterial::Glint as u32))

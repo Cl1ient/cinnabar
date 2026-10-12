@@ -386,7 +386,7 @@ impl EquipmentRuntime {
     ) -> &mut [EquipmentPresentation] {
         let mut layers = std::mem::take(&mut self.layers);
         layers.clear();
-        self.fill_layers(body, input, animation, &mut layers);
+        self.fill_layers(body, input, profile, animation, &mut layers);
         if profile == render_api::CombatVisuals::Legacy112 {
             for layer in &mut layers {
                 let layer_id = layer.submission.input.identity.layer;
@@ -397,6 +397,7 @@ impl EquipmentRuntime {
                 if let Some(slot) = layer_id.checked_sub(LAYER_HELMET)
                     && let Some(Some(item)) = input.armor.get(usize::from(slot))
                     && item.enchanted
+                    && layer.submission.material.state.is_none()
                 {
                     layer.submission.material.kind = assets::EntityRenderMaterial::Glint;
                 }
@@ -432,6 +433,7 @@ impl EquipmentRuntime {
         &mut self,
         body: &ActorRigSubmission,
         input: &ActorEquipmentInput,
+        profile: render_api::CombatVisuals,
         animation: Option<EquipmentAnimation<'_>>,
         layers: &mut Vec<EquipmentPresentation>,
     ) {
@@ -566,7 +568,7 @@ impl EquipmentRuntime {
                     geometry,
                     (slot, layer),
                     item,
-                    (input, animation),
+                    (input, animation, profile),
                     layers,
                 );
                 if layers.len() == before {

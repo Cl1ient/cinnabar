@@ -218,7 +218,8 @@ repeat_uv: bool) -> CutoutSample {
 fn actor_fragment(input: VertexOutput, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let material = input.material & ACTOR_MATERIAL_KIND_MASK;
     let legacy = (input.material & ACTOR_MATERIAL_LEGACY112_FLAG) != 0u;
-    let legacy_mask = legacy && material_class.y != 0u;
+    let color_mask_material = material_class.y != 0u || (input.material & ACTOR_COLOR_MASK_MATERIAL_FLAG) != 0u;
+    let legacy_mask = legacy && color_mask_material;
     let authored = (input.material & ACTOR_MATERIAL_AUTHORED_FLAG) != 0u;
     let emissive = material == ACTOR_MATERIAL_DRAGON || (input.material & ACTOR_MATERIAL_EMISSIVE_FLAG) != 0u;
     if (input.skin_info.y == 0u) {
@@ -259,7 +260,6 @@ fn actor_fragment(input: VertexOutput, @builtin(front_facing) front: bool) -> @l
     if (material == ACTOR_MATERIAL_DRAGON && all(color == vec4(0.0))) { discard; }
     @if(!ALPHA_TO_COVERAGE)
     if (material == ACTOR_MATERIAL_GLINT && !legacy_mask && color.a < ACTOR_ALPHA_TEST_THRESHOLD) { discard; }
-    let color_mask_material = material_class.y != 0u;
     if (legacy_mask && color.a == 0.0) { discard; }
     let multitexture_material = material_class.z != 0u && all(input.multitexture_layers != vec2(0xffffffffu));
     if (authored && (input.material & ACTOR_MATERIAL_ALPHA_TEST_FLAG) != 0u) {

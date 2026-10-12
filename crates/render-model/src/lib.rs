@@ -156,10 +156,12 @@ pub use actor::{
 };
 pub use actor::{ACTOR_CANDIDATE_RADIUS_BLOCKS, ActorCullView, MAX_ACTOR_RENDER_DISTANCE_BLOCKS};
 pub use actor::{
+    ACTOR_COLOR_MASK_MATERIAL_FLAG, ActorGlint, LEGACY_COMBAT_MATERIAL_FLAG, legacy_glint_uv,
+};
+pub use actor::{
     ActorArtworkLocation, ActorArtworkPageId, ActorArtworkPages, ActorTexturePage, EquipmentRaster,
     MAX_ACTOR_GPU_PIXEL_BYTES, MAX_ACTOR_TEXTURE_PAGES,
 };
-pub use actor::{ActorGlint, LEGACY_COMBAT_MATERIAL_FLAG, legacy_glint_uv};
 pub use actor::{ActorSkinResidency, ResidentSkin, pack_skin_slot};
 pub use block_entity::BeaconModel;
 pub use block_entity::ConduitModel;

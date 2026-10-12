@@ -274,6 +274,7 @@ impl ActorArtworkPages {
             identity: catalog.identity(),
             entity_identity: catalog.entity_identity(),
             actor_glint: None,
+            item_glint: None,
             pages: pages.into(),
             routes: Arc::new(routes),
             equipment: Arc::new(BTreeSet::new()),

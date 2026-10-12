@@ -31,8 +31,8 @@ On Windows, retain the repository's firewall-approved executable path and follow
 `docs/agents/live-testing.md` before running the client.
 
 ```sh
-RUST_MCBE_STAGE_PROFILE=1 \
-RUST_MCBE_STAGE_PROFILE_FRAMES="$EVIDENCE/frames.json" \
+CINNABAR_STAGE_PROFILE=1 \
+CINNABAR_STAGE_PROFILE_FRAMES="$EVIDENCE/frames.json" \
 "$ISOLATED_CLIENT" --socket-dir "$EVIDENCE/bridge" \
   --assets "$WORLD_CARRIER" --acceptance-seconds 15 \
   --metrics-out "$EVIDENCE/metrics.json"

@@ -67,12 +67,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$framePrefix = 'RUST_MCBE_PHASE3_FRAME='
-$eventPrefix = 'RUST_MCBE_PHASE3_EVENT='
-$identityPrefix = 'RUST_MCBE_PHASE3_IDENTITY='
-$networkPumpTerminalPrefix = 'RUST_MCBE_NETWORK_PUMP_TERMINAL='
-$terminalPrefix = 'RUST_MCBE_PHASE3_TERMINAL='
-$violationPrefix = 'RUST_MCBE_PHASE3_VIOLATION='
+$framePrefix = 'CINNABAR_PHASE3_FRAME='
+$eventPrefix = 'CINNABAR_PHASE3_EVENT='
+$identityPrefix = 'CINNABAR_PHASE3_IDENTITY='
+$networkPumpTerminalPrefix = 'CINNABAR_NETWORK_PUMP_TERMINAL='
+$terminalPrefix = 'CINNABAR_PHASE3_TERMINAL='
+$violationPrefix = 'CINNABAR_PHASE3_VIOLATION='
 $identityProperties = @(
     'schema', 'build_commit', 'target', 'protocol', 'session_generation', 'preg_sha256',
     'breg_sha256', 'candidate_physics', 'source_dirty', 'run_id', 'endpoint',

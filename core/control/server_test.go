@@ -19,12 +19,12 @@ import (
 const testRequestIOTimeout = 100 * time.Millisecond
 
 func TestBridgeCompatibilityStatusHelper(t *testing.T) {
-	if os.Getenv("RUST_MCBE_BRIDGE_STATUS_HELPER") != "1" {
+	if os.Getenv("CINNABAR_BRIDGE_STATUS_HELPER") != "1" {
 		t.Skip("bridge cross-language helper")
 	}
-	dir := os.Getenv("RUST_MCBE_BRIDGE_STATUS_SOCKET_DIR")
+	dir := os.Getenv("CINNABAR_BRIDGE_STATUS_SOCKET_DIR")
 	if dir == "" {
-		t.Fatal("RUST_MCBE_BRIDGE_STATUS_SOCKET_DIR is required")
+		t.Fatal("CINNABAR_BRIDGE_STATUS_SOCKET_DIR is required")
 	}
 	store := NewStore()
 	store.SetLifecycle(LifecycleRunning)

@@ -26,10 +26,13 @@ pub(super) fn in_tree(relative: &str, tree: &str) -> bool {
     )
 }
 
+/// Prefix shared by diagnostic markers and the client's environment variables.
+const MARKER_PREFIX: &str = "CINNABAR_";
+
 pub(super) fn marker_literals(source: &str) -> Vec<String> {
     let mut markers = Vec::new();
     let mut rest = source;
-    while let Some(index) = rest.find("RUST_MCBE_") {
+    while let Some(index) = rest.find(MARKER_PREFIX) {
         rest = &rest[index..];
         let length = rest
             .bytes()

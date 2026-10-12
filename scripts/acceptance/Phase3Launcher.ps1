@@ -127,13 +127,13 @@ $bridgeEndpoint = $null
 $coreSha256 = $null
 $appSha256 = $null
 $failurePhase = 'scenario_manifest'
-$savedRunId = $env:RUST_MCBE_PHASE3_RUN_ID
-$savedEndpoint = $env:RUST_MCBE_PHASE3_ENDPOINT
-$savedBridgeEndpoint = $env:RUST_MCBE_PHASE3_BRIDGE_ENDPOINT
-$savedCoreSha256 = $env:RUST_MCBE_PHASE3_CORE_SHA256
-$savedCoreProcessId = $env:RUST_MCBE_PHASE3_CORE_PROCESS_ID
-$savedBuildCommit = $env:RUST_MCBE_BUILD_COMMIT
-$savedSourceDirty = $env:RUST_MCBE_SOURCE_DIRTY
+$savedRunId = $env:CINNABAR_PHASE3_RUN_ID
+$savedEndpoint = $env:CINNABAR_PHASE3_ENDPOINT
+$savedBridgeEndpoint = $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT
+$savedCoreSha256 = $env:CINNABAR_PHASE3_CORE_SHA256
+$savedCoreProcessId = $env:CINNABAR_PHASE3_CORE_PROCESS_ID
+$savedBuildCommit = $env:CINNABAR_BUILD_COMMIT
+$savedSourceDirty = $env:CINNABAR_SOURCE_DIRTY
 try {
     $failurePhase = 'prebuild_identity'
     foreach ($required in @($pregPath, $bregPath)) {
@@ -259,26 +259,26 @@ try {
 
     try {
         $failurePhase = 'start_app'
-        $env:RUST_MCBE_PHASE3_RUN_ID = $runId
-        $env:RUST_MCBE_PHASE3_ENDPOINT = $endpoint
-        $env:RUST_MCBE_PHASE3_BRIDGE_ENDPOINT = $bridgeEndpoint
-        $env:RUST_MCBE_PHASE3_CORE_SHA256 = $coreSha256
-        $env:RUST_MCBE_PHASE3_CORE_PROCESS_ID = $coreProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
-        $env:RUST_MCBE_BUILD_COMMIT = $buildCommit
-        $env:RUST_MCBE_SOURCE_DIRTY = 'false'
+        $env:CINNABAR_PHASE3_RUN_ID = $runId
+        $env:CINNABAR_PHASE3_ENDPOINT = $endpoint
+        $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT = $bridgeEndpoint
+        $env:CINNABAR_PHASE3_CORE_SHA256 = $coreSha256
+        $env:CINNABAR_PHASE3_CORE_PROCESS_ID = $coreProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
+        $env:CINNABAR_BUILD_COMMIT = $buildCommit
+        $env:CINNABAR_SOURCE_DIRTY = 'false'
         $appHandle = Start-LoggedProcess -Executable $appExecutable -Arguments $plan.AppArguments `
             -WorkingDirectory $projectRoot -StdoutPath $logPath `
             -StderrPath (Join-Path $runDirectory 'app.stderr.log')
         $appProcessId = [int]$appHandle.Process.Id
     }
     finally {
-        $env:RUST_MCBE_PHASE3_RUN_ID = $savedRunId
-        $env:RUST_MCBE_PHASE3_ENDPOINT = $savedEndpoint
-        $env:RUST_MCBE_PHASE3_BRIDGE_ENDPOINT = $savedBridgeEndpoint
-        $env:RUST_MCBE_PHASE3_CORE_SHA256 = $savedCoreSha256
-        $env:RUST_MCBE_PHASE3_CORE_PROCESS_ID = $savedCoreProcessId
-        $env:RUST_MCBE_BUILD_COMMIT = $savedBuildCommit
-        $env:RUST_MCBE_SOURCE_DIRTY = $savedSourceDirty
+        $env:CINNABAR_PHASE3_RUN_ID = $savedRunId
+        $env:CINNABAR_PHASE3_ENDPOINT = $savedEndpoint
+        $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT = $savedBridgeEndpoint
+        $env:CINNABAR_PHASE3_CORE_SHA256 = $savedCoreSha256
+        $env:CINNABAR_PHASE3_CORE_PROCESS_ID = $savedCoreProcessId
+        $env:CINNABAR_BUILD_COMMIT = $savedBuildCommit
+        $env:CINNABAR_SOURCE_DIRTY = $savedSourceDirty
     }
     $failurePhase = 'wait_app'
     if (-not $appHandle.Process.WaitForExit(($DurationSeconds + 120) * 1000)) {
@@ -423,11 +423,11 @@ finally {
             try { Stop-BoundedProcess -Handle $handle -Kind ([string]$entry[1]) } catch {}
         }
     }
-    $env:RUST_MCBE_PHASE3_RUN_ID = $savedRunId
-    $env:RUST_MCBE_PHASE3_ENDPOINT = $savedEndpoint
-    $env:RUST_MCBE_PHASE3_BRIDGE_ENDPOINT = $savedBridgeEndpoint
-    $env:RUST_MCBE_PHASE3_CORE_SHA256 = $savedCoreSha256
-    $env:RUST_MCBE_PHASE3_CORE_PROCESS_ID = $savedCoreProcessId
-    $env:RUST_MCBE_BUILD_COMMIT = $savedBuildCommit
-    $env:RUST_MCBE_SOURCE_DIRTY = $savedSourceDirty
+    $env:CINNABAR_PHASE3_RUN_ID = $savedRunId
+    $env:CINNABAR_PHASE3_ENDPOINT = $savedEndpoint
+    $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT = $savedBridgeEndpoint
+    $env:CINNABAR_PHASE3_CORE_SHA256 = $savedCoreSha256
+    $env:CINNABAR_PHASE3_CORE_PROCESS_ID = $savedCoreProcessId
+    $env:CINNABAR_BUILD_COMMIT = $savedBuildCommit
+    $env:CINNABAR_SOURCE_DIRTY = $savedSourceDirty
 }

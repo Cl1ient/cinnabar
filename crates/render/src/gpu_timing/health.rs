@@ -95,7 +95,7 @@ pub(super) struct QueryHealth {
 impl QueryHealth {
     /// The optional diagnostics resource reads only its named flag once at startup.
     pub(super) fn requested() -> Option<Self> {
-        (std::env::var("RUST_MCBE_GPU_QUERY_HEALTH").as_deref() == Ok("1")).then(|| Self {
+        (env_compat::var("CINNABAR_GPU_QUERY_HEALTH").as_deref() == Ok("1")).then(|| Self {
             started: Instant::now(),
             interval: HealthInterval::default(),
         })
@@ -123,7 +123,7 @@ impl QueryHealth {
         self.interval.frames += 1;
         self.interval.ring_skips += u64::from(skipped);
         if let Some((elapsed, interval)) = self.take_due(Instant::now()) {
-            eprintln!("RUST_MCBE_GPU_QUERY_HEALTH {}", interval.json(elapsed));
+            eprintln!("CINNABAR_GPU_QUERY_HEALTH {}", interval.json(elapsed));
         }
     }
 

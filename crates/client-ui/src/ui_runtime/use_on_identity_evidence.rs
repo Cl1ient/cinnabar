@@ -83,7 +83,7 @@ impl UseOnIdentityEvidence {
     pub(super) fn from_environment(session: u64) -> Self {
         // Explicitly select the one ordinary acceptance target; other values are off.
         Self::new(
-            std::env::var(crate::diagnostic_markers::USE_ON_IDENTITY_EVIDENCE)
+            env_compat::var(crate::diagnostic_markers::USE_ON_IDENTITY_EVIDENCE)
                 .is_ok_and(|value| value == "stone"),
             session,
         )

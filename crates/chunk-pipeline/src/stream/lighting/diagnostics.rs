@@ -37,7 +37,7 @@ impl WorldStream {
                     let after = sample(mutation.replacement(), position);
                     (before != after).then_some((position, before, after))
                 });
-            eprintln!("RUST_MCBE_LIGHT_MUTATION count={count} key={key:?} changed={changed:?}");
+            eprintln!("CINNABAR_LIGHT_MUTATION count={count} key={key:?} changed={changed:?}");
         }
     }
 
@@ -54,7 +54,7 @@ impl WorldStream {
             return;
         }
         eprintln!(
-            "RUST_MCBE_STALE_LIGHT count={count} reason={reason} key={key:?} expected={identity:?} current_revision={:?} current_block_generation={:?} current_light_generation={:?} current_direct_generation={:?} resident={} pending={}",
+            "CINNABAR_STALE_LIGHT count={count} reason={reason} key={key:?} expected={identity:?} current_revision={:?} current_block_generation={:?} current_light_generation={:?} current_direct_generation={:?} resident={} pending={}",
             self.lighting
                 .revisions
                 .dirty(key)

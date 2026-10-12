@@ -413,8 +413,8 @@ impl GoHarness {
                 OsStr::new("-test.count=1"),
                 OsStr::new("-test.v"),
             ])
-            .env("RUST_MCBE_EXTERNAL_RUST_CLIENT", "1")
-            .env("RUST_MCBE_PROXY_SOCKET_DIR", socket_dir)
+            .env("CINNABAR_EXTERNAL_RUST_CLIENT", "1")
+            .env("CINNABAR_PROXY_SOCKET_DIR", socket_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

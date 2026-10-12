@@ -37,7 +37,7 @@ pub(in crate::chunk) use node::{DrawGpuCulledCommands, draw_function_ids, instal
 use prepare::{ChunkHiddenEntities, GpuCull, extract_hidden_chunks, prepare_gpu_cull};
 
 /// Forces the CPU culling path for A/B measurement.
-const CPU_CULLING_ENV: &str = "RUST_MCBE_CPU_CULLING";
+const CPU_CULLING_ENV: &str = "CINNABAR_CPU_CULLING";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::chunk) enum GpuCullSubmission {
     Count,
@@ -184,7 +184,7 @@ impl GpuCullQueue<'_, '_> {
 }
 
 pub(in crate::chunk) fn install(app: &mut App) {
-    let forced_cpu = std::env::var_os(CPU_CULLING_ENV).is_some_and(|value| value != "0");
+    let forced_cpu = env_compat::var_os(CPU_CULLING_ENV).is_some_and(|value| value != "0");
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
         return;
     };

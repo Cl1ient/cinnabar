@@ -192,7 +192,7 @@ fn phase2_publication_timing_binds_exact_line_hash_and_unix_millis() {
     assert_eq!(
         marker,
         format!(
-            "RUST_MCBE_PHASE2_TIMING={{\"observed_unix_ms\":1000123,\"publication_sha256\":\"{expected_hash}\",\"schema\":\"rust-mcbe-phase2-timing-v1\"}}"
+            "CINNABAR_PHASE2_TIMING={{\"observed_unix_ms\":1000123,\"publication_sha256\":\"{expected_hash}\",\"schema\":\"rust-mcbe-phase2-timing-v1\"}}"
         )
     );
 }

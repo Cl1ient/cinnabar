@@ -151,7 +151,7 @@ fn transferred_terminal_marker_names_the_exact_target() {
     let line = String::from_utf8(output).expect("marker is UTF-8");
     let payload = line
         .trim()
-        .strip_prefix("RUST_MCBE_NETWORK_PUMP_TERMINAL=")
+        .strip_prefix("CINNABAR_NETWORK_PUMP_TERMINAL=")
         .expect("durable marker prefix");
     let marker: serde_json::Value = serde_json::from_str(payload).expect("marker JSON");
 

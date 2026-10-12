@@ -521,7 +521,7 @@ read_world_publication_snapshots() {
 import json, math, os, sys
 
 log_path, expected_profile, expected_present_mode, output_path = sys.argv[1:]
-prefix = "RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT="
+prefix = "CINNABAR_WORLD_PUBLICATION_SNAPSHOT="
 
 def reject_duplicate_fields(pairs):
     result = {}
@@ -616,7 +616,7 @@ os.replace(temporary, output_path)
 PY
 }
 
-if [[ ${RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY:-} == 1 ]]; then
+if [[ ${CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY:-} == 1 ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
@@ -881,65 +881,65 @@ write_command_manifest() {
 
 write_metadata() {
     local status=$1 exit_code=${2:-}
-    export RUST_MCBE_META_STATUS="$status"
-    export RUST_MCBE_META_EXIT_CODE="$exit_code"
-    export RUST_MCBE_META_STARTED="$run_started_utc"
-    export RUST_MCBE_META_REPO_COMMIT="$repo_commit"
-    export RUST_MCBE_META_GOPHERTUNNEL="$pinned_gophertunnel_commit"
-    export RUST_MCBE_META_AXOLOTL_STACK="$pinned_axolotl_stack_commit"
-    export RUST_MCBE_META_PROTOCOLGEN="$pinned_protocolgen_commit"
-    export RUST_MCBE_META_JOLYNE_LICENSE="$pinned_jolyne_license_sha256"
-    export RUST_MCBE_META_BDS_HASH="$bds_hash"
-    export RUST_MCBE_META_BDS_COMMAND="$(format_command "${bds_command[@]}")"
-    export RUST_MCBE_META_CORE_COMMAND="$(format_command "${core_command[@]}")"
-    export RUST_MCBE_META_APP_COMMAND="$(format_command "${app_command[@]}")"
-    export RUST_MCBE_META_MUTATION_COMMAND="${mutation_command:-local-bds-stdin}"
-    export RUST_MCBE_META_MACHINE="$machine"
-    export RUST_MCBE_META_OS="$os_description"
-    export RUST_MCBE_META_CPU="$cpu_description"
-    export RUST_MCBE_META_GPU="$gpu_description"
-    export RUST_MCBE_META_DURATION="$duration"
-    export RUST_MCBE_META_NO_VSYNC="$no_vsync"
-    export RUST_MCBE_META_RUNTIME_PATH="$runtime_metadata_json"
+    export CINNABAR_META_STATUS="$status"
+    export CINNABAR_META_EXIT_CODE="$exit_code"
+    export CINNABAR_META_STARTED="$run_started_utc"
+    export CINNABAR_META_REPO_COMMIT="$repo_commit"
+    export CINNABAR_META_GOPHERTUNNEL="$pinned_gophertunnel_commit"
+    export CINNABAR_META_AXOLOTL_STACK="$pinned_axolotl_stack_commit"
+    export CINNABAR_META_PROTOCOLGEN="$pinned_protocolgen_commit"
+    export CINNABAR_META_JOLYNE_LICENSE="$pinned_jolyne_license_sha256"
+    export CINNABAR_META_BDS_HASH="$bds_hash"
+    export CINNABAR_META_BDS_COMMAND="$(format_command "${bds_command[@]}")"
+    export CINNABAR_META_CORE_COMMAND="$(format_command "${core_command[@]}")"
+    export CINNABAR_META_APP_COMMAND="$(format_command "${app_command[@]}")"
+    export CINNABAR_META_MUTATION_COMMAND="${mutation_command:-local-bds-stdin}"
+    export CINNABAR_META_MACHINE="$machine"
+    export CINNABAR_META_OS="$os_description"
+    export CINNABAR_META_CPU="$cpu_description"
+    export CINNABAR_META_GPU="$gpu_description"
+    export CINNABAR_META_DURATION="$duration"
+    export CINNABAR_META_NO_VSYNC="$no_vsync"
+    export CINNABAR_META_RUNTIME_PATH="$runtime_metadata_json"
     python3 - "$run_dir/metadata.json" <<'PY'
 import datetime, json, os, sys
 keys = {
-    "status": "RUST_MCBE_META_STATUS",
-    "started_utc": "RUST_MCBE_META_STARTED",
-    "repo_commit": "RUST_MCBE_META_REPO_COMMIT",
-    "pinned_gophertunnel_commit": "RUST_MCBE_META_GOPHERTUNNEL",
-    "pinned_axolotl_stack_commit": "RUST_MCBE_META_AXOLOTL_STACK",
-    "pinned_protocolgen_commit": "RUST_MCBE_META_PROTOCOLGEN",
-    "pinned_jolyne_license_sha256": "RUST_MCBE_META_JOLYNE_LICENSE",
-    "bds_sha256": "RUST_MCBE_META_BDS_HASH",
-    "bds_command": "RUST_MCBE_META_BDS_COMMAND",
-    "core_command": "RUST_MCBE_META_CORE_COMMAND",
-    "app_command": "RUST_MCBE_META_APP_COMMAND",
-    "mutation_command": "RUST_MCBE_META_MUTATION_COMMAND",
-    "machine": "RUST_MCBE_META_MACHINE",
-    "operating_system": "RUST_MCBE_META_OS",
-    "cpu": "RUST_MCBE_META_CPU",
-    "gpu_display": "RUST_MCBE_META_GPU",
+    "status": "CINNABAR_META_STATUS",
+    "started_utc": "CINNABAR_META_STARTED",
+    "repo_commit": "CINNABAR_META_REPO_COMMIT",
+    "pinned_gophertunnel_commit": "CINNABAR_META_GOPHERTUNNEL",
+    "pinned_axolotl_stack_commit": "CINNABAR_META_AXOLOTL_STACK",
+    "pinned_protocolgen_commit": "CINNABAR_META_PROTOCOLGEN",
+    "pinned_jolyne_license_sha256": "CINNABAR_META_JOLYNE_LICENSE",
+    "bds_sha256": "CINNABAR_META_BDS_HASH",
+    "bds_command": "CINNABAR_META_BDS_COMMAND",
+    "core_command": "CINNABAR_META_CORE_COMMAND",
+    "app_command": "CINNABAR_META_APP_COMMAND",
+    "mutation_command": "CINNABAR_META_MUTATION_COMMAND",
+    "machine": "CINNABAR_META_MACHINE",
+    "operating_system": "CINNABAR_META_OS",
+    "cpu": "CINNABAR_META_CPU",
+    "gpu_display": "CINNABAR_META_GPU",
 }
 metadata = {name: os.environ[source] for name, source in keys.items()}
 metadata.update({
     "protocol_dependency_resolution": "vendored-path",
-    "duration_seconds": int(os.environ["RUST_MCBE_META_DURATION"]),
+    "duration_seconds": int(os.environ["CINNABAR_META_DURATION"]),
     "build_app_command": "cargo build --release -p cinnabar --locked",
     "build_profile": "release",
     "build_core_command": "go build -trimpath -o target/release/bedrock-core ./core/cmd/bedrock-core",
-    "use_vsync": os.environ["RUST_MCBE_META_NO_VSYNC"] != "true",
-    "no_vsync_ab": os.environ["RUST_MCBE_META_NO_VSYNC"] == "true",
-    "requested_present_mode": "Immediate" if os.environ["RUST_MCBE_META_NO_VSYNC"] == "true" else "Fifo",
+    "use_vsync": os.environ["CINNABAR_META_NO_VSYNC"] != "true",
+    "no_vsync_ab": os.environ["CINNABAR_META_NO_VSYNC"] == "true",
+    "requested_present_mode": "Immediate" if os.environ["CINNABAR_META_NO_VSYNC"] == "true" else "Fifo",
     "effective_present_mode": None,
     "present_mode_proven": False,
 })
-runtime_path = os.environ["RUST_MCBE_META_RUNTIME_PATH"]
+runtime_path = os.environ["CINNABAR_META_RUNTIME_PATH"]
 if os.path.isfile(runtime_path):
     with open(runtime_path, encoding="utf-8") as source:
         metadata.update(json.load(source))
-if os.environ["RUST_MCBE_META_EXIT_CODE"]:
-    metadata["exit_code"] = int(os.environ["RUST_MCBE_META_EXIT_CODE"])
+if os.environ["CINNABAR_META_EXIT_CODE"]:
+    metadata["exit_code"] = int(os.environ["CINNABAR_META_EXIT_CODE"])
 if metadata["status"] in {"passed", "failed"}:
     metadata["completed_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 temporary = sys.argv[1] + ".tmp"
@@ -1016,11 +1016,11 @@ exec 8>"$core_stdin"
 core_fd_open=true
 wait_for_core_ready "$run_dir/core.stderr.log" "$core_pid"
 
-(cd "$project_root" && RUST_MCBE_BUILD_COMMIT="$repo_commit" exec "${app_command[@]}" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" 6>&- 8>&- 9>&-) &
+(cd "$project_root" && CINNABAR_BUILD_COMMIT="$repo_commit" exec "${app_command[@]}" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" 6>&- 8>&- 9>&-) &
 app_pid=$!
-wait_for_marker "$run_dir/app.stdout.log" 'RUST_MCBE_MUTATION_COORDINATE=' 180 "$app_pid"
-wait_for_marker "$run_dir/app.stdout.log" 'RUST_MCBE_WORLD_READY ' 180 "$app_pid"
-coordinate=$(grep -m1 '^RUST_MCBE_MUTATION_COORDINATE=' "$run_dir/app.stdout.log" | sed 's/^RUST_MCBE_MUTATION_COORDINATE=//')
+wait_for_marker "$run_dir/app.stdout.log" 'CINNABAR_MUTATION_COORDINATE=' 180 "$app_pid"
+wait_for_marker "$run_dir/app.stdout.log" 'CINNABAR_WORLD_READY ' 180 "$app_pid"
+coordinate=$(grep -m1 '^CINNABAR_MUTATION_COORDINATE=' "$run_dir/app.stdout.log" | sed 's/^CINNABAR_MUTATION_COORDINATE=//')
 [[ $coordinate =~ ^-?[0-9]+,-?[0-9]+,-?[0-9]+$ ]] || die "invalid mutation coordinate: $coordinate"
 IFS=, read -r mutation_x mutation_y mutation_z <<EOF
 $coordinate
@@ -1076,7 +1076,7 @@ read_world_publication_snapshots \
 python3 - "$run_dir/app.stdout.log" "$runtime_metadata_json" "$no_vsync" "$publication_snapshot_json" <<'PY'
 import json, os, sys
 stdout_path, output_path, no_vsync, publication_path = sys.argv[1:]
-prefix = "RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA="
+prefix = "CINNABAR_ACCEPTANCE_RUNTIME_METADATA="
 with open(stdout_path, encoding="utf-8") as source:
     markers = [line.rstrip("\n")[len(prefix):] for line in source if line.startswith(prefix)]
 if len(markers) != 1:

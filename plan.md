@@ -1055,7 +1055,7 @@ these changes do not close the movement, camera, or actor parity gates.
   are skipped once two consecutive verdicts agree under the same eye, orientation,
   projection, viewport, depth size and geometry; any translation or turn (the near plane swings and can
   clip a near occluder), sub-chunk removal or replacement, cave or tint change voids them.
-  `RUST_MCBE_CPU_CULLING=1` turns it off.
+  `CINNABAR_CPU_CULLING=1` turns it off.
 - Offscreen tests: kernel bits match a CPU Hi-Z reference; replayed paths (flick, strafe past
   a pillar, wall edit, a turn that clips a wall just beyond the near plane) never skip a
   sub-chunk that shows pixels while a stale-verdict policy does; the walled scene stops
@@ -1110,7 +1110,7 @@ these changes do not close the movement, camera, or actor parity gates.
   against rendered ids, and the CPU path's pixels from a stale history.
 - Live visual pass: on Vulkan and DX12, GPU-culled and CPU-planned frames at the aeris.land
   spawn match at four headings apart from moving entities, nametags and chat. GPU pass times
-  come from `RUST_MCBE_GPU_NODES=1` (below).
+  come from `CINNABAR_GPU_NODES=1` (below).
 
 ## Render frame time
 
@@ -1137,7 +1137,7 @@ these changes do not close the movement, camera, or actor parity gates.
   On an RX 6600 XT the program switch between the two families cost more than the drawing. An
   offscreen GPU test matches the shared pipeline's pixels, for sorted refs and direct records,
   against both programs through their own pipelines.
-- `RUST_MCBE_GPU_NODES=1` plots per-node and per-section GPU times under Tracy, and Tracy
+- `CINNABAR_GPU_NODES=1` plots per-node and per-section GPU times under Tracy, and Tracy
   builds expose wgpu's encode and submit zones; see the live-testing guide.
 - Evidence: [render frame time](docs/evidence/render-frame-time.md), measured on DX12 before
   Windows defaulted to Vulkan; `WGPU_BACKEND=dx12` selects that backend.
@@ -3558,7 +3558,7 @@ re-engaging the provisional settle gate, GamePad-frame validation (no physical g
 tolerance re-verification of scaled echoes, and authoritative retail-client measurement of the NSL
 echo contract.
 
-**Session record (2026-08-25, continuation).** Five reviewed tranches landed on `dev/ox-alpha`: `d0bb7ccc` derives every hotbar cell from one ledger-snapshot authority revision (VPA-123 deterministic slice); `b6d689eb` bumps PHASE3_VIOLATION to v2 with a ten-key identity payload for `non_monotonic_frame` so future one-off live occurrences are self-diagnosing; `57b59b06` lands the canonical container-address projection (VPA-122) after a recovered interrupted lane was completed and a review-caught silent narrowing of prior window-0 admissions was restored; `b3b14bc5` adds the bounded spawn-anchor depenetration probe with `SpawnSettleGate::EmbeddedHold` and exact surface-spawn feet (VPA-109 slice); `f9cbe242` adds opt-in (`RUST_MCBE_TELEPORT_ACK=1`) HandledTeleport acknowledgement wired through production reconciliation for correction snaps, teleported MovePlayers, and Respawns after its first review found the Respawn site unwired. Each has fresh independent review evidence in the tracking table, and the branch-adjudication startup obligation is discharged: 49 unintegrated local heads dispositioned as 30 superseded + 12 stale-historical + 7 backup + 1 genuine candidate (`agent/combat-phase5`, kept as reference only — it predates the protocolgen rewrite so it seeds a fresh reviewed tranche, never a direct merge) + 4 low-confidence entries requiring object inspection before any deletion. Live: the first authenticated current-binary LBSG session joined, streamed its full inline cohort, transmitted 44 physics packets, then reproduced the exact `"We've detected movement cheats"` rejection at 49.8 s after two 200-tick embedded-anchor fail-open lifts with a constant +1.00 X-block/tick inputless slide — the embedment mechanism is now confirmed live, the probe correctly refused to invent motion, and the next cure tranche is collision-truth adjudication instrumentation. The same session exposed and fixed a launcher stale-binary defect (machine-wide `CARGO_TARGET_DIR` redirecting the harness build while it executed a days-old project-local exe) and an auth-cache ACL quarantine that blocked all authenticated runs until the operator cache was restored under its required protected DACL. BDS/LBSG tolerance of scaled NSL echoes remains unreverified because this session ended in a movement rejection before echo behavior could be decisive.
+**Session record (2026-08-25, continuation).** Five reviewed tranches landed on `dev/ox-alpha`: `d0bb7ccc` derives every hotbar cell from one ledger-snapshot authority revision (VPA-123 deterministic slice); `b6d689eb` bumps PHASE3_VIOLATION to v2 with a ten-key identity payload for `non_monotonic_frame` so future one-off live occurrences are self-diagnosing; `57b59b06` lands the canonical container-address projection (VPA-122) after a recovered interrupted lane was completed and a review-caught silent narrowing of prior window-0 admissions was restored; `b3b14bc5` adds the bounded spawn-anchor depenetration probe with `SpawnSettleGate::EmbeddedHold` and exact surface-spawn feet (VPA-109 slice); `f9cbe242` adds opt-in (`CINNABAR_TELEPORT_ACK=1`) HandledTeleport acknowledgement wired through production reconciliation for correction snaps, teleported MovePlayers, and Respawns after its first review found the Respawn site unwired. Each has fresh independent review evidence in the tracking table, and the branch-adjudication startup obligation is discharged: 49 unintegrated local heads dispositioned as 30 superseded + 12 stale-historical + 7 backup + 1 genuine candidate (`agent/combat-phase5`, kept as reference only — it predates the protocolgen rewrite so it seeds a fresh reviewed tranche, never a direct merge) + 4 low-confidence entries requiring object inspection before any deletion. Live: the first authenticated current-binary LBSG session joined, streamed its full inline cohort, transmitted 44 physics packets, then reproduced the exact `"We've detected movement cheats"` rejection at 49.8 s after two 200-tick embedded-anchor fail-open lifts with a constant +1.00 X-block/tick inputless slide — the embedment mechanism is now confirmed live, the probe correctly refused to invent motion, and the next cure tranche is collision-truth adjudication instrumentation. The same session exposed and fixed a launcher stale-binary defect (machine-wide `CARGO_TARGET_DIR` redirecting the harness build while it executed a days-old project-local exe) and an auth-cache ACL quarantine that blocked all authenticated runs until the operator cache was restored under its required protected DACL. BDS/LBSG tolerance of scaled NSL echoes remains unreverified because this session ended in a movement rejection before echo behavior could be decisive.
 
 **Repository-wide parity audit follow-up (2026-08-20):**
 
@@ -4728,7 +4728,7 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       generation-coherence, Direct/MDI-parity, and bound tests are present. This
       checkpoint changes no culling, meshing, shader, draw-order, or presentation
       behavior and does not establish a visibility fix. A fresh affected live
-      run must still capture consecutive `RUST_MCBE_VISIBILITY_SNAPSHOT`
+      run must still capture consecutive `CINNABAR_VISIBILITY_SNAPSHOT`
       markers spanning the symptom and identify the first nonzero adjacent loss
       before any repair is proposed.
       **Live diagnostic-geometry attribution (2026-07-16):** every actually
@@ -5400,7 +5400,7 @@ store it only under the user's temporary directory, inspect that file, and never
     visibility-churn, and skipped-frame regressions are green along with all 157
     render tests, 289 client unit tests (two ignored), strict Clippy, formatting,
     and diff checks. Live DX12/FIFO run `20260716T003124Z-7592` advanced through
-    `RUST_MCBE_TELEPORT_SETTLED` with a complete 6,951-allocation manifest and a
+    `CINNABAR_TELEPORT_SETTLED` with a complete 6,951-allocation manifest and a
     stable 1,676-allocation visible/drawn subset, with every contamination
     counter zero. The binding far teleport still took 48,128 ms and the forced
     full-view remesh did not finish inside the 60-second timed session; peak
@@ -5647,7 +5647,7 @@ tick states; correction/rewind handling (`CorrectPlayerMovePrediction`).
     (`stream/retries.rs:247-255`) while the column is still added to `loaded_columns`
     (`retries.rs:39-47`), so cohort completeness can be misleading. Consequently
     `mutation_coordinate` remains `null` (`app-metrics.json:7`);
-    `RUST_MCBE_WORLD_READY` never fires (`app/src/acceptance/mutation.rs:270-272`), the
+    `CINNABAR_WORLD_READY` never fires (`app/src/acceptance/mutation.rs:270-272`), the
     60-second acceptance clock never arms, and runs hang until the launcher's 180-second bound.
     **No `phase3-final.json` has ever been produced; there is no Phase 3 acceptance verdict of
     any kind.**
@@ -6716,9 +6716,9 @@ most inbound correction velocity/ground fields, and some motion events. The firs
 burst's floor-contact discrepancy and the last burst's exact replay failure need a
 fresh capture. Future/missing correction-frame behavior remains unverified; existing fallback snaps, collision identity policy and teleport
 expiry remain provisional. The simulator still uses its existing f64 arithmetic.
-No live server connection was made. Use RUST_MCBE_MOVEMENT_TRACE=1 for outbound PAI
+No live server connection was made. Use CINNABAR_MOVEMENT_TRACE=1 for outbound PAI
 and the new unthrottled inbound movement and latency-fence records. Normal MovePlayer acknowledgement
-no longer needs RUST_MCBE_TELEPORT_ACK; that opt-in still enables unverified extra routes.
+no longer needs CINNABAR_TELEPORT_ACK; that opt-in still enables unverified extra routes.
 
 ## Cinnabar extension: server experiences (incomplete; not vanilla parity)
 

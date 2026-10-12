@@ -14,11 +14,30 @@ use update_manifest::{Artifact, Manifest, TrustedKeys, select::Check};
 pub const MAX_ARTIFACT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const ENVELOPE_FILE: &str = "manifest.json";
 pub const ARTIFACT_FILE: &str = "artifact";
-mod snapshot;
-pub use snapshot::Snapshot;
 const STAGE_PREFIX: &str = "stage-";
 const RETIRED_PREFIX: &str = "retired-";
 const RETIRED_STAGE: &str = "stage";
+
+/// Retains a verified offer independently of later cache promotion or manual desktop handoff.
+pub fn retain(
+    source: &Path,
+    lease: &crate::lease::Lease,
+    selected: &Selection,
+) -> Result<(PathBuf, File)> {
+    ensure!(
+        source.parent() == Some(lease.root()),
+        "stage is outside the leased directory"
+    );
+    let (directory, reader) = crate::helper::snapshot_directory(lease.root())?;
+    fs::write(directory.path().join(ENVELOPE_FILE), &selected.envelope)?;
+    let artifact = directory.path().join(ARTIFACT_FILE);
+    // Immutable payload links survive cache replacement without copying gigabytes.
+    if fs::hard_link(source.join(ARTIFACT_FILE), &artifact).is_err() {
+        fs::copy(source.join(ARTIFACT_FILE), &artifact)?;
+    }
+    verify_file(&artifact, &selected.artifact)?;
+    Ok((directory.keep(), reader))
+}
 
 /// The signed release and its selected native artifact.
 pub struct Selection {

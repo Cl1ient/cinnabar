@@ -2,6 +2,20 @@ use super::*;
 use update_manifest::TrustedKeys;
 
 #[test]
+fn a_passive_client_takes_over_on_its_next_daily_tick_after_the_updater_exits() {
+    let root = tempfile::tempdir().unwrap();
+    let mut first = State::new();
+    let mut second = State::new();
+    assert!(first.tick(root.path(), 1));
+    assert!(!second.tick(root.path(), 1));
+    assert!(second.updater.is_none());
+    drop(first);
+    assert!(!second.tick(root.path(), 2));
+    assert!(second.tick(root.path(), 1 + CHECK_INTERVAL.as_secs()));
+    assert!(second.updater.is_some());
+}
+
+#[test]
 fn update_http_client_refuses_plaintext_before_connecting() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
@@ -115,9 +129,8 @@ fn accepted_restart_freezes_the_stage_while_a_newer_download_finishes() {
     let downloading_generation = state.generation;
     assert!(state.request_restart(OffsetDateTime::UNIX_EPOCH));
     assert!(!state.preferences.install_on_quit);
-    assert!(worker::begin_promotion(&mut state, downloading_generation).is_err());
-    let frozen_generation = state.generation;
-    assert!(worker::begin_promotion(&mut state, frozen_generation).is_err());
+    assert!(!state.accepts_worker(downloading_generation));
+    assert!(!state.accepts_worker(state.generation));
     assert!(state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
     assert_eq!(state.ready.as_ref().unwrap().stage, stage);
     assert_eq!(
@@ -191,67 +204,6 @@ fn cancellation_and_other_download_failures_do_not_trigger_manifest_retry() {
         );
         assert_eq!(fetched, 1);
     }
-}
-
-#[test]
-fn a_failed_promotion_keeps_restart_available_only_when_the_previous_stage_survives() {
-    let root = tempfile::tempdir().unwrap();
-    let stage = root.path().join("ready");
-    std::fs::create_dir(&stage).unwrap();
-    std::fs::write(
-        stage.join(update_installer::stage::ENVELOPE_FILE),
-        "envelope",
-    )
-    .unwrap();
-    std::fs::write(
-        stage.join(update_installer::stage::ARTIFACT_FILE),
-        "payload",
-    )
-    .unwrap();
-    let mut state = State::new();
-    state.ready = Some(Ready {
-        stage: stage.clone(),
-        ..ready(true)
-    });
-    state.preferences.install_on_quit = true;
-    let previous = state.ready.take();
-    assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
-    assert!(
-        worker::finish_promotion(
-            &mut state,
-            previous,
-            Err(anyhow::anyhow!("promotion failed; stage restored"))
-        )
-        .is_err()
-    );
-    assert!(state.ready.is_some());
-    assert!(state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
-    let previous = state.ready.take();
-    std::fs::remove_dir_all(&stage).unwrap();
-    assert!(
-        worker::finish_promotion(
-            &mut state,
-            previous,
-            Err(anyhow::anyhow!("promotion and restoration failed"))
-        )
-        .is_err()
-    );
-    assert!(state.ready.is_none());
-    assert!(!state.requested);
-    assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
-}
-
-#[test]
-fn a_successful_background_promotion_withdraws_the_previous_notice_until_reverified() {
-    let mut state = State::new();
-    state.ready = Some(ready(true));
-    let previous = state.ready.take();
-    let stage =
-        worker::finish_promotion(&mut state, previous, Ok(PathBuf::from("new-ready"))).unwrap();
-    assert_eq!(stage, PathBuf::from("new-ready"));
-    assert!(state.ready.is_none());
-    assert!(!state.requested);
-    assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
 }
 
 /// A signed envelope for `version` on the stable channel, as a manifest fetch would cache it.
@@ -407,7 +359,7 @@ fn replacing_ready_during_manual_handoff_keeps_the_handed_off_installer() {
 }
 
 #[test]
-fn another_clients_channel_switch_cannot_change_an_accepted_helper_handoff() {
+fn a_retained_offer_stays_valid_when_the_shared_cache_changes() {
     let root = tempfile::tempdir().unwrap();
     let (shared_stage, keys) =
         manual_stage(root.path(), "2.0.0", b"accepted release", Channel::Beta);
@@ -423,10 +375,8 @@ fn another_clients_channel_switch_cannot_change_an_accepted_helper_handoff() {
     let selected =
         update_installer::stage::verify(&shared_stage, &keys, check, OffsetDateTime::UNIX_EPOCH)
             .unwrap();
-    let (stage, lease, _) =
-        update_installer::stage::Snapshot::capture(&shared_stage, &writer, selected)
-            .unwrap()
-            .into_parts();
+    let (stage, lease) =
+        update_installer::stage::retain(&shared_stage, &writer, &selected).unwrap();
     drop(writer);
     let mut state = State::new();
     state.ready = Some(Ready {
@@ -450,6 +400,10 @@ fn another_clients_channel_switch_cannot_change_an_accepted_helper_handoff() {
     );
     std::fs::remove_dir_all(&shared_stage).unwrap();
     drop(other_client);
+    let selected =
+        worker::retained_manifest(Some(&accepted), &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    assert_eq!(selected.version, accepted.notice.version);
     assert_eq!(
         std::fs::read(accepted.stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
         b"accepted release"

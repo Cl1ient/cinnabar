@@ -11,6 +11,7 @@ use ring::{
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+pub mod build;
 pub mod channel;
 pub mod platforms;
 pub mod select;

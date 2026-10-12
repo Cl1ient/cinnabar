@@ -729,6 +729,7 @@ dependencies = [
  "ui",
  "ui-engine",
  "ui-screens",
+ "update-manifest",
  "url",
  "wgpu",
  "windows-sys 0.61.2",

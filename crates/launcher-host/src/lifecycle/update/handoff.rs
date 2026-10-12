@@ -34,7 +34,7 @@ pub(super) fn spawn_or_restart(
     }
 }
 
-/// Starts the copied helper with the exact parent PID and the user's channel-switch choice.
+/// Starts the copied helper with the exact parent PID and retained channel stage.
 pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
     if let Some(lease) = &ready.lease {
         lease.set_modified(SystemTime::now())?;
@@ -46,7 +46,6 @@ pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
             installed_target()?.into_os_string(),
             std::process::id().to_string().into(),
             ready.channel.name().into(),
-            ready.switch_now.to_string().into(),
         ],
     )?;
     if let Some(lease) = &ready.lease {
@@ -182,8 +181,7 @@ pub(super) fn snapshot_package(
     let root = stage.parent().context("missing update directory")?;
     let writer = update_installer::lease::Lease::acquire(root)?;
     let selected = update_installer::stage::verify(stage, keys, check, now())?;
-    let (directory, lease, selected) =
-        update_installer::stage::Snapshot::capture(stage, &writer, selected)?.into_parts();
+    let (directory, lease) = update_installer::stage::retain(stage, &writer, &selected)?;
     let path = named_package(&directory, name, &selected.artifact)?;
     Ok(ManualPackage { path, lease })
 }

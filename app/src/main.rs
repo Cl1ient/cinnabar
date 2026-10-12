@@ -7,6 +7,17 @@ use std::io::Write;
 fn main() {
     if std::env::args_os()
         .nth(1)
+        .is_some_and(|arg| arg == update_manifest::build::QUERY_FLAG)
+    {
+        println!(
+            "{}",
+            serde_json::to_string(&update_manifest::build::Build::current())
+                .expect("build identity is serializable")
+        );
+        return;
+    }
+    if std::env::args_os()
+        .nth(1)
         .is_some_and(|arg| arg == first_run::SETUP_FLAG)
     {
         std::process::exit(first_run::run_setup_process());

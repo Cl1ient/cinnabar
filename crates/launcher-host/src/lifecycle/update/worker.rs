@@ -59,7 +59,11 @@ pub(super) fn start() {
         let Ok(mut state) = STATE.lock() else {
             return;
         };
-        if state.running || state.requested || state.startup != StartupPhase::Complete {
+        if state.updater.is_none()
+            || state.running
+            || state.requested
+            || state.startup != StartupPhase::Complete
+        {
             return;
         }
         state.running = true;
@@ -117,7 +121,7 @@ fn run(
     let root = layout.update_dir();
     fs::create_dir_all(&root)?;
     update_installer::helper::prune(&root, SystemTime::now());
-    // Other clients and offline helpers share this lease with stage writers.
+    // The updater's worker and offline helper share this transaction lease.
     let lease =
         update_installer::lease::Lease::acquire(&root).context("lock the update directory")?;
     let check = Check {
@@ -149,29 +153,32 @@ fn run(
     let destination = root.join("ready");
     stage::recover(&destination, &keys, check, OffsetDateTime::now_utc())?;
     // A postponed stage stays offered while daily checks continue, and a newer release replaces it.
-    let mut staged = None;
+    let retained = STATE.lock().ok().and_then(|state| state.ready.clone());
+    let mut staged = retained_manifest(retained.as_ref(), &keys, check, OffsetDateTime::now_utc());
+    if retained.is_some() && staged.is_none() {
+        if let Ok(mut state) = STATE.lock() {
+            if state.accepts_worker(generation) {
+                state.ready = None;
+            }
+        }
+    }
     if destination.exists() {
         match stage::verify(&destination, &keys, check, OffsetDateTime::now_utc()) {
             Ok(selected) => {
-                staged = Some(selected.manifest.clone());
-                let (directory, reader, selected) =
-                    stage::Snapshot::capture(&destination, &lease, selected)?.into_parts();
-                publish(
-                    directory,
-                    reader,
-                    selected,
-                    preferences.channel,
-                    switch_now,
-                    generation,
-                );
+                if supersedes(&selected.manifest, staged.as_ref())? {
+                    staged = Some(selected.manifest.clone());
+                    let (directory, reader) = stage::retain(&destination, &lease, &selected)?;
+                    publish(
+                        directory,
+                        reader,
+                        selected,
+                        preferences.channel,
+                        switch_now,
+                        generation,
+                    );
+                }
             }
             Err(_) => {
-                if let Ok(mut state) = STATE.lock() {
-                    if state.generation == generation {
-                        state.ready = None;
-                        state.requested = false;
-                    }
-                }
                 fs::remove_dir_all(&destination)?;
             }
         }
@@ -305,30 +312,14 @@ fn run(
                 download.write(&chunk)?;
             }
         }
-        let previous = {
-            let mut state = STATE
-                .lock()
-                .map_err(|_| anyhow::anyhow!("update state unavailable"))?;
-            begin_promotion(&mut state, generation)?
-        };
-        let promotion = download.finish(&destination);
-        let directory = {
-            let mut state = STATE
-                .lock()
-                .map_err(|_| anyhow::anyhow!("update state unavailable"))?;
-            if state.generation == generation {
-                finish_promotion(&mut state, previous, promotion)?
-            } else {
-                promotion?
-            }
-        };
+        ensure!(active(generation), "update check cancelled");
+        let directory = download.finish(&destination)?;
         ensure!(
             expires > OffsetDateTime::now_utc(),
             "release manifest expired during download"
         );
         let selected = stage::verify(&directory, &keys, check, OffsetDateTime::now_utc())?;
-        let (directory, reader, selected) =
-            stage::Snapshot::capture(&directory, &lease, selected)?.into_parts();
+        let (directory, reader) = stage::retain(&directory, &lease, &selected)?;
         publish(
             directory,
             reader,
@@ -341,27 +332,16 @@ fn run(
     })
 }
 
-/// Withdraws the current notice only if no accepted handoff has frozen its stage.
-pub(super) fn begin_promotion(state: &mut State, generation: u64) -> Result<Option<Ready>> {
-    ensure!(state.accepts_worker(generation), "update check cancelled");
-    Ok(state.ready.take())
-}
-
-/// Restores the postponed notice only after failed promotion leaves its files ready on disk.
-pub(super) fn finish_promotion(
-    state: &mut State,
-    previous: Option<Ready>,
-    result: Result<PathBuf>,
-) -> Result<PathBuf> {
-    state.ready = previous.filter(|ready| {
-        result.is_err()
-            && ready.stage.join(stage::ENVELOPE_FILE).is_file()
-            && ready.stage.join(stage::ARTIFACT_FILE).is_file()
-    });
-    if state.ready.is_none() {
-        state.requested = false;
-    }
-    result
+/// Revalidates the offered files themselves, independently of the replaceable shared cache.
+pub(super) fn retained_manifest(
+    ready: Option<&Ready>,
+    keys: &TrustedKeys,
+    check: Check<'_>,
+    now: OffsetDateTime,
+) -> Option<update_manifest::Manifest> {
+    stage::verify(&ready?.stage, keys, check, now)
+        .ok()
+        .map(|selected| selected.manifest)
 }
 
 /// The last verified envelope fetched for `channel`.
@@ -447,9 +427,17 @@ fn publish(
     switch_now: bool,
     generation: u64,
 ) {
-    let writable = handoff::installed_target()
-        .and_then(|target| update_installer::target::access(&target))
-        .is_ok_and(|access| access == update_installer::target::Access::Writable);
+    let newer = update_manifest::select::newer_build(
+        &selected.manifest.version,
+        selected.manifest.build_number,
+        env!("CARGO_PKG_VERSION"),
+        update_manifest::build_number(),
+    )
+    .unwrap_or(false);
+    let writable = newer
+        && handoff::installed_target()
+            .and_then(|target| update_installer::target::access(&target))
+            .is_ok_and(|access| access == update_installer::target::Access::Writable);
     if let Ok(mut state) = STATE.lock() {
         if state.accepts_worker(generation) {
             state.ready = Some(Ready {

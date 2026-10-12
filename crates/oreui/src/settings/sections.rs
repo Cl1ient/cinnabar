@@ -601,17 +601,18 @@ fn general(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
         "menu.general.tab.network.title",
         "menu.general.tab.network.description",
     )?;
-    options(
-        content,
-        &[
-            "websockets_enabled",
-            "websocket_encryption",
-            launcher::menu::settings_options::AUTO_UPDATE_OPTION.name,
-            launcher::menu::settings_options::INSTALL_ON_QUIT_OPTION.name,
-            launcher::menu::settings_options::UPDATE_CHANNEL_OPTION.name,
-        ],
-    )?;
-    if !content.view.over_world {
+    options(content, &["websockets_enabled", "websocket_encryption"])?;
+    if content.view.updates.active {
+        options(
+            content,
+            &[
+                launcher::menu::settings_options::AUTO_UPDATE_OPTION.name,
+                launcher::menu::settings_options::INSTALL_ON_QUIT_OPTION.name,
+                launcher::menu::settings_options::UPDATE_CHANNEL_OPTION.name,
+            ],
+        )?;
+    }
+    if content.view.updates.active && !content.view.over_world {
         if let Some(message) = &content.view.updates.message {
             content.heading(message, "")?;
         }
@@ -619,7 +620,7 @@ fn general(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
             super::services::action_row(
                 content,
                 "Change channel now",
-                "Install this channel's build even when it is older.",
+                "Download this channel's older build for manual installation.",
                 "Switch now",
                 Some(MenuAction::Update(
                     launcher::menu::updates::Action::SwitchNow,

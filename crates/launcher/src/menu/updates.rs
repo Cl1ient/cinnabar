@@ -39,6 +39,8 @@ impl Ready {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct View {
+    /// Only the client holding the updater role exposes update controls and notices.
+    pub active: bool,
     pub ready: Option<Ready>,
     pub stable_available: bool,
     pub switch_available: bool,
@@ -81,6 +83,7 @@ impl View {
     /// Builds a view from the publishing tracks declared by a release catalog.
     pub fn with_publications(published: impl Fn(Channel) -> bool) -> Self {
         Self {
+            active: true,
             ready: None,
             stable_available: false,
             switch_available: false,

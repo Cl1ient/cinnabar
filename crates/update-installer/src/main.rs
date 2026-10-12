@@ -34,16 +34,12 @@ fn run() -> Result<()> {
         }
         return Ok(());
     }
-    ensure!(
-        args.len() == 5,
-        "expected STAGE TARGET PARENT_PID CHANNEL SWITCH_NOW"
-    );
+    ensure!(args.len() == 4, "expected STAGE TARGET PARENT_PID CHANNEL");
     let (stage, target) = (PathBuf::from(&args[0]), PathBuf::from(&args[1]));
     let pid = args[2].to_str().context("invalid parent PID")?.parse()?;
     let channel =
         update_manifest::channel::Channel::parse(args[3].to_str().context("invalid channel")?)
             .context("unknown channel")?;
-    let switch_now = args[4].to_str().context("invalid switch choice")?.parse()?;
     let platform = update_manifest::platform_key(std::env::consts::OS, std::env::consts::ARCH)
         .context("unsupported platform")?;
     let keys = update_manifest::parse_keys(update_installer::TRUSTED_KEYS)?;
@@ -63,6 +59,8 @@ fn run() -> Result<()> {
             || std::thread::sleep(update_installer::lease::POLL_INTERVAL),
         )
         .map_err(|error| anyhow::Error::new(error).context(update_installer::apply::Untouched))?;
+        let installed = update_installer::target::installed_build(&target)
+            .context(update_installer::apply::Untouched)?;
         update_installer::apply::after_exit(
             update_installer::apply::Request {
                 stage_dir: &stage,
@@ -71,9 +69,9 @@ fn run() -> Result<()> {
                 check: update_manifest::select::Check {
                     channel: channel.name(),
                     platform: &platform,
-                    current: env!("CARGO_PKG_VERSION"),
-                    current_build: update_manifest::build_number(),
-                    switch_now,
+                    current: &installed.version,
+                    current_build: installed.number,
+                    switch_now: false,
                 },
                 now: time::OffsetDateTime::now_utc(),
             },

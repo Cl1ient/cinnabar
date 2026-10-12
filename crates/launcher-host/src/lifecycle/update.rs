@@ -36,11 +36,13 @@ struct Ready {
     notice: Notice,
     channel: Channel,
     switch_now: bool,
-    /// Keeps this client's immutable offered stage alive through another client's cache changes.
+    /// Keeps the offered stage alive while a later download replaces the cache.
     lease: Option<std::sync::Arc<std::fs::File>>,
 }
 
 struct State {
+    updater: Option<update_installer::lease::Updater>,
+    last_tick: Option<u64>,
     preferences: Preferences,
     ready: Option<Ready>,
     dismissed: bool,
@@ -64,9 +66,25 @@ enum StartupPhase {
 }
 
 impl State {
+    /// Tries the lifetime role at startup or on a daily tick, leaving other clients passive.
+    fn tick(&mut self, root: &std::path::Path, now: u64) -> bool {
+        if !due(self.last_tick, now) {
+            return false;
+        }
+        self.last_tick = Some(now);
+        if self.updater.is_none() {
+            self.updater = std::fs::create_dir_all(root)
+                .and_then(|()| update_installer::lease::Updater::try_acquire(root))
+                .ok();
+        }
+        self.updater.is_some()
+    }
+
     /// Holds one session's preferences and consent, without a persisted transaction state.
     const fn new() -> Self {
         Self {
+            updater: None,
+            last_tick: None,
             preferences: Preferences::DEFAULT,
             ready: None,
             dismissed: false,
@@ -130,6 +148,7 @@ pub fn check_in_background(layout: &InstallLayout) {
         return;
     }
     let _ = LAYOUT.set(layout.clone());
+    tick(OffsetDateTime::now_utc());
     #[cfg(unix)]
     if let Ok(startup) =
         handoff::installed_target().and_then(update_installer::recovery::Startup::observe)
@@ -175,9 +194,19 @@ pub fn configure(mut preferences: Preferences) {
 /// Presents a verified ready stage and channel availability through the launcher data contract.
 pub fn view() -> View {
     let now = OffsetDateTime::now_utc();
+    tick(now);
     let Ok(state) = STATE.lock() else {
-        return View::default();
+        return View {
+            active: false,
+            ..View::default()
+        };
     };
+    if state.updater.is_none() {
+        return View {
+            active: false,
+            ..View::default()
+        };
+    }
     View {
         ready: state
             .ready
@@ -208,6 +237,9 @@ pub fn act(action: Action) -> bool {
     let mut download = None;
     let mut switch = false;
     let quit = if let Ok(mut state) = STATE.lock() {
+        if state.updater.is_none() {
+            return false;
+        }
         if state.requested {
             return true;
         }
@@ -250,6 +282,7 @@ pub fn apply_after_exit() {
     let ready = STATE
         .lock()
         .ok()
+        .filter(|state| state.updater.is_some())
         .and_then(|mut state| state.handoff_after_exit(OffsetDateTime::now_utc()));
     if let (Some(layout), Some(ready)) = (LAYOUT.get(), ready)
         && let Err(error) = handoff::spawn_or_restart(
@@ -303,7 +336,7 @@ pub fn recover_after_failed_start() {
     #[cfg(unix)]
     if STATE
         .lock()
-        .is_ok_and(|state| state.startup == StartupPhase::Preparing)
+        .is_ok_and(|state| state.updater.is_some() && state.startup == StartupPhase::Preparing)
     {
         if let Some(layout) = LAYOUT.get() {
             if let Ok(target) = handoff::installed_target() {
@@ -364,4 +397,20 @@ fn startup_marker(layout: &InstallLayout) -> Option<PathBuf> {
 /// A corrected clock cannot suppress the next daily check.
 fn due(last: Option<u64>, now: u64) -> bool {
     last.is_none_or(|last| now < last || now - last >= CHECK_INTERVAL.as_secs())
+}
+
+/// Retries the lifetime updater role and starts a check only on this process's daily tick.
+fn tick(now: OffsetDateTime) {
+    let Some(layout) = LAYOUT.get() else {
+        return;
+    };
+    let now = now.unix_timestamp().max(0) as u64;
+    let run = if let Ok(mut state) = STATE.lock() {
+        state.tick(&layout.update_dir(), now)
+    } else {
+        false
+    };
+    if run {
+        worker::start();
+    }
 }

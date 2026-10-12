@@ -38,7 +38,26 @@ pub fn after_exit(
             root == lease.root(),
             "installation is outside the leased update directory"
         );
-        let selected = stage::verify(stage_dir, keys, check, now)?;
+        // Authenticate even an obsolete queued stage before deciding to skip it.
+        let selected = stage::verify(
+            stage_dir,
+            keys,
+            Check {
+                switch_now: true,
+                ..check
+            },
+            now,
+        )?;
+        if !update_manifest::select::newer_build(
+            &selected.manifest.version,
+            selected.manifest.build_number,
+            check.current,
+            check.current_build,
+        )? {
+            start(target)?;
+            started = true;
+            return Ok(());
+        }
         ensure!(
             target::access(target)? == target::Access::Writable,
             "install is not writable; use Download update"

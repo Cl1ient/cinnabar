@@ -7,10 +7,29 @@ use std::{
     time::Duration,
 };
 
-/// Longest a Restart helper waits for another client's shared-directory work.
+/// Longest a Restart helper waits for the worker or a previous helper's transaction.
 pub const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// The helper's edge code may sleep between these nonblocking acquisition attempts.
 pub const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Owns update checks and consent for one client until its process exits.
+#[derive(Debug)]
+pub struct Updater {
+    _file: File,
+}
+
+impl Updater {
+    /// Attempts the process-lifetime role without waiting for another client to exit.
+    pub fn try_acquire(root: &Path) -> io::Result<Self> {
+        let file = File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(root.join("updater.lock"))?;
+        file.try_lock()?;
+        Ok(Self { _file: file })
+    }
+}
 
 /// An exclusive lease on one update directory; its lifetime bounds every shared mutation.
 #[derive(Debug)]
@@ -88,6 +107,22 @@ fn open(root: &Path) -> io::Result<File> {
 mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
+
+    #[test]
+    fn only_one_client_updates_until_its_lifetime_role_is_released() {
+        let root = tempfile::tempdir().unwrap();
+        let first = Updater::try_acquire(root.path()).unwrap();
+        assert_eq!(
+            Updater::try_acquire(root.path()).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        // The role is separate from the worker/helper transaction lease.
+        let _stage = Lease::acquire(root.path()).unwrap();
+        drop(first);
+        let second = Updater::try_acquire(root.path()).unwrap();
+        assert!(Updater::try_acquire(root.path()).is_err());
+        drop(second);
+    }
 
     #[test]
     fn contention_wait_is_bounded_by_the_callers_clock() {

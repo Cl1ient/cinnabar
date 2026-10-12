@@ -4,6 +4,8 @@ The launcher checks its selected release channel once a day and downloads verifi
 in the background. An interrupted transfer resumes from its digest-named partial file, or
 restarts safely if the server does not support ranges.
 
+Only one running client per install handles updates; other windows stay passive until they take over on a daily-check tick.
+
 When the download is ready, choose **Restart and update** or **Later**. Later defers installation
 for this session; daily checks continue, and a newer release replaces the waiting one. In
 **Settings → General**, you can turn off update checks, select a channel, or enable **Install
@@ -14,7 +16,7 @@ Beta follows the latest tagged `vX.Y.Z` release. Nightly follows the rolling `ni
 prerelease. Stable is reserved for a future release track and stays hidden until that track
 publishes a signed release. Clients from before these channels require one manual install.
 Changing channels never silently downgrades: a slower channel waits for a newer app version
-and build. **Switch now** explicitly permits the selected channel's older release. Numeric
+and build. **Switch now** downloads the selected channel's older release for manual installation. Numeric
 prereleases use SemVer ordering, and successive builds use a signed monotonic build number.
 
 The client checks the manifest's Ed25519 signature, channel, expiry, app version and build,
@@ -41,11 +43,11 @@ Manual installers are copied out of the waiting stage before opening. A newer do
 change can replace that stage while the handed-off installer remains available. Manual copies use
 the same lease and handoff retention window as copied update helpers.
 
-Each running client retains its own verified stage before offering an update. Another client's
-download or channel change can replace the shared cache without changing an accepted handoff.
-The helper waits briefly for the shared installation lease; if it remains busy, it reopens the
-retained client without changing the installation. Rollback stays inside the lease that performed
-the swap. Helper copies and stages remain retained while either side of a handoff holds them.
+The updater retains its verified offer while a later download replaces the cache. The helper
+revalidates that offer and queries the installed executable's version and build under the apply
+lease. If the installation is already at that build or newer, it skips the swap and relaunches.
+Rollback stays inside the lease that performed the swap. Helper copies and stages remain retained
+while either side of a handoff holds them.
 
 `update_channels` in `packaging/release-assets.json` owns each published channel's track and
 manifest filename for both the client and the package workflow. Beta reads

@@ -1,6 +1,6 @@
 ## Launcher updates
 
-The launcher owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and
+One client per install owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and
 update / Later actions, and a separate default-off install-on-quit preference. Signed manifests
 carry monotonic build numbers, and digest-named partial downloads resume with HTTP ranges.
 An offline Rust helper waits for the old process, applies the verified native package, and

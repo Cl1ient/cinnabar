@@ -7,6 +7,42 @@ use {
 };
 
 #[test]
+fn passive_clients_have_no_update_settings_actions() {
+    use launcher::menu::settings_options::{
+        AUTO_UPDATE_OPTION, INSTALL_ON_QUIT_OPTION, UPDATE_CHANNEL_OPTION,
+    };
+    let mut view = MenuView::new(true, "Player".into());
+    view.updates.active = false;
+    let (_, hits, _) = paint(HashMap::new(), |canvas| {
+        let mut content = Content {
+            canvas,
+            view: &view,
+            span: [100.0, 900.0],
+            column_width: 800.0,
+            y: 100.0,
+            translate: &|_| None,
+            nested: false,
+        };
+        sections::draw(&mut content, "general_forced_index").unwrap();
+    });
+    let update_options = [
+        AUTO_UPDATE_OPTION,
+        INSTALL_ON_QUIT_OPTION,
+        UPDATE_CHANNEL_OPTION,
+    ];
+    assert!(!hits.iter().any(|(action, _)| {
+        match action {
+            MenuAction::SettingsOption(index, _) => update_options
+                .iter()
+                .any(|option| SETTINGS_OPTIONS[*index as usize].name == option.name),
+            MenuAction::Update(_) => true,
+            _ => false,
+        }
+    }));
+    assert!(!hits.is_empty());
+}
+
+#[test]
 fn graphics_group_rows_keep_the_same_horizontal_gutters_as_regular_rows() {
     let index = |name: &str| {
         SETTINGS_OPTIONS

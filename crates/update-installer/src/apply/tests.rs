@@ -3,6 +3,43 @@ use crate::fixtures::*;
 use crate::recovery::{cleanup_confirmed_backup, confirm_start, confirmation, remove};
 
 #[test]
+fn an_equal_or_newer_installed_build_is_relaunched_without_swapping() {
+    let platform =
+        update_manifest::platform_key(std::env::consts::OS, std::env::consts::ARCH).unwrap();
+    for (version, build) in [("2.0.0", 2), ("2.0.0", 3), ("3.0.0", 1)] {
+        let root = tempfile::tempdir().unwrap();
+        let (directory, keys) = staged(root.path(), &platform);
+        let target = root.path().join("installed-client");
+        fs::write(&target, "newer installation").unwrap();
+        let mut relaunched = false;
+        after_exit(
+            Request {
+                stage_dir: &directory,
+                target: &target,
+                keys: &keys,
+                check: Check {
+                    current: version,
+                    current_build: build,
+                    ..check(&platform)
+                },
+                now: now(),
+            },
+            crate::lease::Lease::acquire(root.path()).unwrap(),
+            |installed| {
+                assert!(crate::lease::Lease::try_acquire(root.path()).is_err());
+                assert_eq!(fs::read(installed).unwrap(), b"newer installation");
+                assert!(!crate::target::backup(installed).unwrap().exists());
+                relaunched = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(relaunched);
+        assert_eq!(fs::read(&target).unwrap(), b"newer installation");
+    }
+}
+
+#[test]
 fn file_and_whole_bundle_swaps_keep_the_previous_copy_until_startup() {
     for bundle in [false, true] {
         let root = tempfile::tempdir().unwrap();
@@ -196,7 +233,6 @@ fn all_tampered_stages_are_refused_before_start_or_swap() {
         "truncated",
         "channel",
         "expired",
-        "downgrade",
         "platform",
     ] {
         let root = tempfile::tempdir().unwrap();
@@ -215,7 +251,6 @@ fn all_tampered_stages_are_refused_before_start_or_swap() {
             "truncated" => fs::write(directory.join(stage::ARTIFACT_FILE), &PAYLOAD[..2]).unwrap(),
             "channel" => policy.channel = "nightly",
             "expired" => clock += time::Duration::days(2),
-            "downgrade" => policy.current = "3.0.0",
             "platform" => policy.platform = "windows-x86_64",
             _ => unreachable!(),
         }

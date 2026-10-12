@@ -19,6 +19,9 @@ thiserror.workspace = true
 world = { path = "../world" }
 
 [dev-dependencies]
+pack-compiler = { path = "../pack-compiler" }
+tempfile = "3"
+image.workspace = true
 actor-animation = { path = "../actor-animation", features = ["test-support"] }
 assets = { path = "../assets", features = ["test-support"] }
 test-time = { path = "../test-time" }

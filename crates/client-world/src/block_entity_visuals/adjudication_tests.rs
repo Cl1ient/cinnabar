@@ -345,3 +345,144 @@ fn block_entity_visuals_route_digest_distinguishes_unresolved_hashed_states() {
     assert!(matches!(second, BlockEntityVisualRoute::Unknown { .. }));
     assert_ne!(first.route_digest(), second.route_digest());
 }
+
+use std::fs;
+/// Compiles original barrel artwork for the adjudicator's retained backing identities.
+fn compiled_barrels_with_retained_identities() -> (CompiledAssets, Vec<assets::RegistryRecord>) {
+    let side = assets::TILE_SIZE;
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    fs::create_dir_all(root.join("biomes")).unwrap();
+    fs::create_dir_all(root.join("behavior/biomes")).unwrap();
+    fs::create_dir_all(root.join("textures/colormap")).unwrap();
+    fs::write(
+        root.join("biomes/plain.client_biome.json"),
+        r#"{"minecraft:client_biome":{"description":{"identifier":"plain"},"components":{}}}"#,
+    )
+    .unwrap();
+    fs::write(root.join("behavior/biomes/plain.biome.json"),r#"{"minecraft:biome":{"description":{"identifier":"plain"},"components":{"minecraft:climate":{"temperature":0.8,"downfall":0.4}}}}"#).unwrap();
+    fs::write(root.join("blocks.json"), r#"{"barrel":{"textures":"art"}}"#).unwrap();
+    fs::write(
+        root.join("textures/terrain_texture.json"),
+        r#"{"texture_data":{"art":{"textures":"textures/art"}}}"#,
+    )
+    .unwrap();
+    fs::write(root.join("textures/flipbook_textures.json"), "[]").unwrap();
+    image::RgbaImage::from_fn(side, side, |x, y| {
+        image::Rgba([20, (x * 192 / side) as u8, (y * 192 / side) as u8, 255])
+    })
+    .save(root.join("textures/art.png"))
+    .unwrap();
+    for map in assets::TintMapId::ALL {
+        image::RgbaImage::from_pixel(
+            assets::TINT_MAP_SIZE,
+            assets::TINT_MAP_SIZE,
+            image::Rgba([255; 4]),
+        )
+        .save(root.join(format!("textures/colormap/{}.png", map.source_name())))
+        .unwrap();
+    }
+    let protocol = assets::active_content_registry_protocol();
+    let mut records =
+        assets::read_registry_for_protocol(assets::pinned_block_registry_bytes(), protocol)
+            .unwrap()
+            .into_vec()
+            .into_iter()
+            .filter(|r| matches!(r.name.as_ref(), "minecraft:air" | "minecraft:barrel"))
+            .collect::<Vec<_>>();
+    let retained = super::STATIC_BACKINGS
+        .iter()
+        .filter(|r| r.source == super::StaticSource::Barrel);
+    for (record, identity) in records
+        .iter_mut()
+        .filter(|r| r.name.as_ref() == "minecraft:barrel")
+        .zip(retained)
+    {
+        record.sequential_id = identity.sequential_id;
+        record.network_hash = identity.hash;
+    }
+    let span = records
+        .iter()
+        .map(|r| r.sequential_id as usize + 1)
+        .max()
+        .unwrap();
+    let compiled = pack_compiler::compile_pack_with_biomes(
+        root,
+        &root.join("behavior"),
+        &records,
+        &[],
+        &vec![assets::LightProperties::default(); span],
+        protocol,
+    )
+    .unwrap();
+    (compiled, records)
+}
+
+#[test]
+fn compiled_barrel_models_keep_existing_block_entity_routes() {
+    let (compiled, records) = compiled_barrels_with_retained_identities();
+    let runtime = assets::RuntimeAssets::decode(&encode_blob(&compiled).unwrap()).unwrap();
+    let source = block_entity_nbt(Some("Barrel"), &[]);
+    let mut count = 0;
+    for record in records
+        .iter()
+        .filter(|r| r.name.as_ref() == "minecraft:barrel")
+    {
+        assert!(
+            assets::gui_item::full_cube_model_quads(
+                &runtime,
+                assets::BlockVisualId(record.sequential_id)
+            )
+            .is_some()
+        );
+        for (mode, value) in [
+            (NetworkIdMode::Sequential, record.sequential_id),
+            (NetworkIdMode::Hashed, record.network_hash),
+        ] {
+            let identity = BackingBlockIdentity::from_runtime(value, mode, &runtime);
+            assert!(
+                matches!(
+                    adjudicate_block_entity_visual(&source, identity),
+                    BlockEntityVisualRoute::ExistingBlockState {
+                        additional_refs: 0,
+                        ..
+                    }
+                ),
+                "compiled barrel models retain their backed NBT route"
+            );
+            assert!(matches!(
+                adjudicate_block_entity_visual(&block_entity_nbt(Some("Furnace"), &[]), identity),
+                BlockEntityVisualRoute::Unknown { .. }
+            ));
+        }
+        count += 1;
+    }
+    assert_eq!(count, 12);
+}
+
+#[test]
+fn barrel_backing_rejects_models_without_full_cube_geometry() {
+    let (mut compiled, records) = compiled_barrels_with_retained_identities();
+    let record = records
+        .iter()
+        .find(|r| r.name.as_ref() == "minecraft:barrel")
+        .unwrap();
+    let template = compiled.model_templates
+        [compiled.visuals[record.sequential_id as usize].model_template as usize];
+    for point in &mut compiled.model_quads[template.quad_start as usize].positions {
+        point[0] = 16;
+    }
+    let runtime = assets::RuntimeAssets::decode(&encode_blob(&compiled).unwrap()).unwrap();
+    for (mode, value) in [
+        (NetworkIdMode::Sequential, record.sequential_id),
+        (NetworkIdMode::Hashed, record.network_hash),
+    ] {
+        assert!(matches!(
+            adjudicate_block_entity_visual(
+                &block_entity_nbt(Some("Barrel"), &[]),
+                BackingBlockIdentity::from_runtime(value, mode, &runtime)
+            ),
+            BlockEntityVisualRoute::Unknown { .. }
+        ));
+    }
+}

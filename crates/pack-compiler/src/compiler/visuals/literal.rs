@@ -1,8 +1,8 @@
 //! Stateless blocks the pack defines literally: full cubes whose faces come from the block
 //! texture map, and blocks vanilla draws nothing for.
 //!
-//! Anything that needs geometry the pack does not carry (hopper, brewing stand, campfire,
-//! candle, cauldron, end rod, ...) stays diagnostic until measured.
+//! Anything that needs geometry the pack does not carry (hopper, campfire,
+//! candle, cauldron, ...) stays diagnostic until measured.
 
 use super::super::*;
 use super::context::{RuleInputs, diagnostic_visual};

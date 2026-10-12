@@ -1,17 +1,15 @@
 use super::*;
 use bevy::ecs::system::RunSystemOnce;
-use bevy::render::render_phase::DrawFunctionId;
-use bevy::render::render_phase::SortedPhaseItem;
+use bevy::render::render_phase::{DrawFunctionId, SortedRenderPhase};
+use particles::DrawLists;
 
 /// Uploads and queues all material lists through the production systems.
-fn queue_lists(app: &mut App, lists: DrawLists) {
+fn queue_lists(app: &mut App, frame: ParticleGpuFrame) {
     app.init_resource::<ParticlePipeline>()
         .add_render_command::<Transparent3d, DrawParticles<{ ParticleMode::Opaque as u8 }>>()
         .add_render_command::<Transparent3d, DrawParticles<{ ParticleMode::Blend as u8 }>>()
         .add_render_command::<Transparent3d, DrawParticles<{ ParticleMode::Add as u8 }>>();
     app.world_mut().run_system_once(init_particle_gpu).unwrap();
-    let mut frame = ParticleGpuFrame::default();
-    frame.set_lists(lists);
     app.insert_resource(frame);
     app.world_mut()
         .run_system_once(prepare_particle_resources)
@@ -19,12 +17,22 @@ fn queue_lists(app: &mut App, lists: DrawLists) {
     app.world_mut().run_system_once(queue_particles).unwrap();
 }
 
+/// The extracted frame for camera-sorted draw lists.
+fn frame(lists: DrawLists) -> ParticleGpuFrame {
+    ParticleGpuFrame {
+        opaque: lists.opaque.into(),
+        blend: lists.blend.into(),
+        add: lists.add.into(),
+        ..Default::default()
+    }
+}
+
 /// Queues a depth-writing particle through the production upload and queue systems.
 pub(crate) fn queue_opaque(app: &mut App) -> (DrawFunctionId, RenderPipelineDescriptor) {
     queue_lists(
         app,
-        DrawLists {
-            opaque: vec![ParticleInstance::default()],
+        ParticleGpuFrame {
+            opaque: vec![ParticleInstance::default()].into(),
             ..Default::default()
         },
     );
@@ -37,7 +45,7 @@ pub(crate) fn queue_opaque(app: &mut App) -> (DrawFunctionId, RenderPipelineDesc
         .world()
         .resource::<ViewSortedRenderPhases<Transparent3d>>()
         .values()
-        .flat_map(|phase| phase.items.iter())
+        .flat_map(|phase| phase.items.values())
         .find(|item| item.draw_function == draw)
         .unwrap()
         .pipeline;
@@ -54,15 +62,17 @@ fn additive_particles_compose_at_their_depth_with_only_cutout_particles_present(
         let (mut app, view) = crate::queue_review_support::app();
         queue_lists(
             &mut app,
-            DrawLists {
+            ParticleGpuFrame {
                 opaque: vec![ParticleInstance {
                     center_light: [100.0, 0.0, -1.0, 0.0],
                     ..Default::default()
-                }],
+                }]
+                .into(),
                 add: vec![ParticleInstance {
                     center_light: [0.0, 0.0, distance, 0.0],
                     ..Default::default()
-                }],
+                }]
+                .into(),
                 ..Default::default()
             },
         );
@@ -73,16 +83,19 @@ fn additive_particles_compose_at_their_depth_with_only_cutout_particles_present(
         let add = functions.id::<DrawParticles<{ ParticleMode::Add as u8 }>>();
         let terrain = functions.id::<DrawParticles<{ ParticleMode::Blend as u8 }>>();
         drop(functions);
-        let mut items = std::mem::take(
-            &mut app
-                .world_mut()
+        let mut phase = std::mem::take(
+            app.world_mut()
                 .resource_mut::<ViewSortedRenderPhases<Transparent3d>>()
                 .get_mut(&view)
-                .unwrap()
-                .items,
+                .unwrap(),
         );
-        let item = items.iter().find(|item| item.draw_function == add).unwrap();
-        items.push(Transparent3d {
+        let item = phase
+            .items
+            .values()
+            .find(|item| item.draw_function == add)
+            .unwrap();
+        let extra = Transparent3d {
+            sorting_info: bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
             entity: item.entity,
             pipeline: item.pipeline,
             draw_function: terrain,
@@ -90,8 +103,10 @@ fn additive_particles_compose_at_their_depth_with_only_cutout_particles_present(
             batch_range: 0..1,
             extra_index: PhaseItemExtraIndex::None,
             indexed: false,
-        });
-        Transparent3d::sort(&mut items);
+        };
+        crate::transparent_phase::add(&mut phase, extra);
+        phase.sort();
+        let items = phase.items.into_values();
         let mut pixel = 0.2;
         let mut depth = 0.0;
         for item in items {
@@ -141,12 +156,13 @@ fn blended_and_additive_particles_keep_their_translucent_pipeline() {
                 .write_mask,
             ColorWrites::COLOR
         );
-        assert!(
-            !descriptor
+        assert_eq!(
+            descriptor
                 .depth_stencil
                 .as_ref()
                 .unwrap()
-                .depth_write_enabled
+                .depth_write_enabled,
+            Some(false)
         );
         assert!(
             descriptor.fragment.as_ref().unwrap().targets[0]
@@ -182,7 +198,7 @@ fn particles_on_both_sides_of_glass_compose_in_depth_order() {
                 ..Default::default()
             }
         };
-        queue_lists(&mut app, lists);
+        queue_lists(&mut app, frame(lists));
         let functions = app
             .world()
             .resource::<DrawFunctions<Transparent3d>>()
@@ -193,21 +209,13 @@ fn particles_on_both_sides_of_glass_compose_in_depth_order() {
         let phases = &mut *app
             .world_mut()
             .resource_mut::<ViewSortedRenderPhases<Transparent3d>>();
-        let items = &mut phases.get_mut(&view).unwrap().items;
-        let (entity, pipeline) = (items[0].entity, items[0].pipeline);
-        items.push(Transparent3d {
-            entity,
-            pipeline,
-            draw_function: blend,
-            distance: -5.0,
-            batch_range: 0..1,
-            extra_index: PhaseItemExtraIndex::None,
-            indexed: false,
-        });
-        Transparent3d::sort(items);
-        coalesce_ranges(items, [blend, add]);
-        let ordered: Vec<_> = items
-            .iter()
+        let phase = phases.get_mut(&view).unwrap();
+        add_glass(phase, blend);
+        let len = phase.items.len();
+        coalesce_ranges(phase.items.as_mut_slice(), len, [blend, add]);
+        let ordered: Vec<_> = phase
+            .items
+            .values()
             .filter(|item| !item.batch_range.is_empty())
             .map(|item| {
                 if item.distance == -5.0 {
@@ -249,7 +257,7 @@ fn adjacent_particle_instances_share_a_draw_without_crossing_glass() {
     let (mut app, view) = crate::queue_review_support::app();
     queue_lists(
         &mut app,
-        DrawLists {
+        frame(DrawLists {
             blend: [-12.0, -10.0, -3.0, -2.0]
                 .map(|z| ParticleInstance {
                     center_light: [0.0, 0.0, z, 0.0],
@@ -257,7 +265,7 @@ fn adjacent_particle_instances_share_a_draw_without_crossing_glass() {
                 })
                 .to_vec(),
             ..Default::default()
-        },
+        }),
     );
     let functions = app
         .world()
@@ -269,21 +277,13 @@ fn adjacent_particle_instances_share_a_draw_without_crossing_glass() {
     let phases = &mut *app
         .world_mut()
         .resource_mut::<ViewSortedRenderPhases<Transparent3d>>();
-    let items = &mut phases.get_mut(&view).unwrap().items;
-    let (entity, pipeline) = (items[0].entity, items[0].pipeline);
-    items.push(Transparent3d {
-        entity,
-        pipeline,
-        draw_function: blend,
-        distance: -5.0,
-        batch_range: 0..1,
-        extra_index: PhaseItemExtraIndex::None,
-        indexed: false,
-    });
-    Transparent3d::sort(items);
-    coalesce_ranges(items, [blend, add]);
-    let ranges = items
-        .iter()
+    let phase = phases.get_mut(&view).unwrap();
+    add_glass(phase, blend);
+    let len = phase.items.len();
+    coalesce_ranges(phase.items.as_mut_slice(), len, [blend, add]);
+    let ranges = phase
+        .items
+        .values()
         .filter(|item| !item.batch_range.is_empty())
         .filter_map(|item| match &item.extra_index {
             PhaseItemExtraIndex::IndirectParametersIndex { range, .. } => Some(range.clone()),
@@ -298,14 +298,13 @@ fn queued_particle_ranges_use_the_extracted_frame_before_gpu_preparation() {
     let (mut app, view) = crate::queue_review_support::app();
     queue_lists(
         &mut app,
-        DrawLists {
+        frame(DrawLists {
             blend: vec![ParticleInstance::default()],
             ..Default::default()
-        },
+        }),
     );
     crate::queue_review_support::clear(&mut app, view);
-    let mut frame = ParticleGpuFrame::default();
-    frame.set_lists(DrawLists {
+    app.insert_resource(frame(DrawLists {
         opaque: vec![ParticleInstance::default()],
         blend: [-10.0, -8.0, -4.0, -2.0]
             .map(|z| ParticleInstance {
@@ -314,8 +313,7 @@ fn queued_particle_ranges_use_the_extracted_frame_before_gpu_preparation() {
             })
             .to_vec(),
         ..Default::default()
-    });
-    app.insert_resource(frame);
+    }));
     app.world_mut().run_system_once(queue_particles).unwrap();
     let mut ranges: Vec<_> = crate::queue_review_support::items(&app, view)
         .iter()
@@ -326,4 +324,24 @@ fn queued_particle_ranges_use_the_extracted_frame_before_gpu_preparation() {
         .collect();
     ranges.sort_by_key(|range| range.start);
     assert_eq!(ranges, [1..2, 2..3, 3..4, 4..5]);
+}
+
+/// Adds a translucent terrain draw between the fixture's particles, then sorts the phase.
+fn add_glass(phase: &mut SortedRenderPhase<Transparent3d>, glass: DrawFunctionId) {
+    let first = phase.items.values().next().unwrap();
+    let (entity, pipeline) = (first.entity, first.pipeline);
+    crate::transparent_phase::add(
+        phase,
+        Transparent3d {
+            sorting_info: bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
+            entity,
+            pipeline,
+            draw_function: glass,
+            distance: -5.0,
+            batch_range: 0..1,
+            extra_index: PhaseItemExtraIndex::None,
+            indexed: false,
+        },
+    );
+    phase.sort();
 }

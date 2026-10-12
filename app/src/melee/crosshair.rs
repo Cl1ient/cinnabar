@@ -6,16 +6,14 @@ use {
     gameplay::melee::{Crosshair, classify},
 };
 use {
-    crate::{
-        interaction_authority::{BlockRayUnavailable, observe_block_ray, ray_is_current},
-        mining::hand_interaction_selection,
-    },
+    crate::interaction_authority::{BlockRayUnavailable, observe_block_ray, ray_is_current},
+    client_interaction::mining::hand_interaction_selection,
     gameplay::mining::{creative_reach, survival_reach},
 };
 
 /// Assisted actor identity is preserved while ordinary reach and world obstruction remain authoritative.
 pub(super) fn resolve_crosshair(
-    player_runtime: &crate::player_runtime::PlayerRuntime,
+    player_runtime: &client_state::PlayerRuntime,
     context: &MeleeContext,
     input_mode: PlayerInputMode,
     attack_reach: f64,
@@ -49,6 +47,7 @@ pub(super) fn resolve_crosshair(
             &context.client_world,
             &context.collisions,
             selection,
+            player_runtime.facts.player_game_mode(),
             (
                 input_mode,
                 reach,
@@ -95,3 +94,7 @@ pub(super) fn resolve_crosshair(
     );
     Some(classify(actor, block_distance, attack_reach))
 }
+
+#[cfg(test)]
+#[path = "crosshair/interaction_traits_tests.rs"]
+mod interaction_traits_tests;

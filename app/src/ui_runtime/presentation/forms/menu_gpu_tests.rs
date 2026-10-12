@@ -14,8 +14,8 @@ use bevy::{
     },
     window::WindowPlugin,
 };
-use client_ui::ui_runtime::presentation::forms::panorama;
 use launcher::menu::MenuScreen;
+use render_model::panorama;
 use std::{sync::Arc, time::Instant};
 
 /// The frame size: `CINNABAR_GPU_SIZE=<width>x<height>` overrides 1280×720, for checking odd
@@ -65,7 +65,7 @@ fn app() -> App {
         Camera::default(),
         RenderTarget::Image(image.clone().into()),
         Msaa::Off,
-        Tonemapping::None,
+        Tonemapping::Linear,
     ));
     app.init_resource::<Captured>();
     app.world_mut().spawn(Readback::texture(image)).observe(
@@ -73,9 +73,11 @@ fn app() -> App {
             capture.0 = unpadded_rows(&event.data, SIZE[0], SIZE[1]);
         },
     );
-    let mut scene = app.world_mut().resource_mut::<render::PanoramaScene>();
+    let mut scene = app
+        .world_mut()
+        .resource_mut::<render_scene::PanoramaScene>();
     scene.set_game_visible(false);
-    scene.set_faces(panorama::built_in_faces().map(Arc::new));
+    scene.set_faces(synthetic_faces().map(Arc::new));
     scene.show(Some(panorama::launcher_view(
         0.0,
         SIZE[0] as f32 / SIZE[1] as f32,
@@ -84,6 +86,23 @@ fn app() -> App {
     app.finish();
     app.cleanup();
     app
+}
+
+/// Six distinct solid faces, so the panorama pass draws without a pack.
+fn synthetic_faces() -> Option<panorama::PanoramaFaces> {
+    const SIDE: u32 = 16;
+    let colours: [[u8; 4]; 6] = [
+        [170, 60, 60, 255],
+        [60, 170, 60, 255],
+        [60, 60, 170, 255],
+        [170, 170, 60, 255],
+        [60, 170, 170, 255],
+        [170, 60, 170, 255],
+    ];
+    panorama::PanoramaFaces::new(
+        SIDE,
+        colours.map(|rgba| rgba.repeat((SIDE * SIDE) as usize)),
+    )
 }
 
 /// A texture readback's RGBA8 rows without the padding that pads each one to wgpu's copy row
@@ -116,7 +135,7 @@ fn readback_rows_drop_their_alignment_padding() {
 #[test]
 #[ignore = "offline native GPU menu timings and snapshots"]
 fn menu_frames_on_native_gpu() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let mut presentation = pack_harness::startup_presentation().expect("installed carriers");
     let dir = client_ui::test_support::pack_harness::scratch_dir("gpu-menu");
@@ -147,9 +166,9 @@ fn menu_frames_on_native_gpu() {
         .unwrap();
     let stats = app
         .world()
-        .resource::<render::UiRenderStatsResource>()
+        .resource::<render_scene::UiRenderStatsResource>()
         .clone();
-    let skin = crate::player_skin::LocalPlayerSkin::generated_default("Test");
+    let skin = client_shell::player_skin::LocalPlayerSkin::generated_default("Test");
     let skin_pixels = image::open(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../.local")
@@ -185,7 +204,7 @@ fn menu_frames_on_native_gpu() {
             runtime.set_server_ui(client_ui::test_support::pack_harness::env_pack().map(Arc::new));
             runtime.set_session_glyphs(client_ui::test_support::pack_harness::env_glyphs());
             app.world_mut()
-                .resource_mut::<render::PanoramaScene>()
+                .resource_mut::<render_scene::PanoramaScene>()
                 .show(None);
         }
         let mut samples = Vec::new();
@@ -228,7 +247,7 @@ fn menu_frames_on_native_gpu() {
             let paint_done = Instant::now();
             geometry = (input.vertices.len(), input.batches.len());
             app.world_mut()
-                .resource_mut::<render::UiRenderSceneResource>()
+                .resource_mut::<render_scene::UiRenderSceneResource>()
                 .publish(input, &stats)
                 .unwrap();
             let published = Instant::now();
@@ -282,7 +301,7 @@ fn menu_frames_on_native_gpu() {
 #[test]
 #[ignore = "offline native GPU Zeqa page ordering"]
 fn zeqa_late_pages_match_the_published_frame_on_gpu() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let pack = client_ui::test_support::pack_harness::env_pack().expect("CINNABAR_FORM_PACK_DIR");
     let mut presentation = pack_harness::startup_presentation().expect("installed carriers");
@@ -295,13 +314,13 @@ fn zeqa_late_pages_match_the_published_frame_on_gpu() {
     let mut app = app();
     let stats = app
         .world()
-        .resource::<render::UiRenderStatsResource>()
+        .resource::<render_scene::UiRenderStatsResource>()
         .clone();
     for phase in 0..3 {
         if phase != 0 {
             presentation.set_menu_view(None);
             presentation.set_loading_stage(Some(super::LoadingStage::BuildingTerrain));
-            crate::session::begin_session(&mut runtime, &mut player_runtime, phase + 1);
+            client_runtime::session::begin_session(&mut runtime, &mut player_runtime, phase + 1);
             runtime.set_server_ui(Some(Arc::new(super::loading_sequence_tests::lazy(
                 pack.clone(),
             ))));
@@ -327,11 +346,11 @@ fn zeqa_late_pages_match_the_published_frame_on_gpu() {
                 .unwrap();
             let expected = (phase != 0).then(|| super::snapshot::rasterize(&input));
             app.world_mut()
-                .resource_mut::<render::UiRenderSceneResource>()
+                .resource_mut::<render_scene::UiRenderSceneResource>()
                 .publish(input, &stats)
                 .unwrap();
             app.world_mut()
-                .resource_mut::<render::PanoramaScene>()
+                .resource_mut::<render_scene::PanoramaScene>()
                 .show(None);
             // Readback completion is delivered to the main world on the following update.
             for _ in 0..3 {
@@ -372,18 +391,18 @@ fn profile_frames_on_native_gpu() {
     let Some(mut presentation) = pack_harness::startup_presentation() else {
         return;
     };
-    let mut view = crate::menu::MenuRuntime::new(true, 2, "Steve".into()).view();
+    let mut view = client_shell::menu::MenuRuntime::new(true, 2, "Steve".into()).view();
     view.screen = MenuScreen::Profile;
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
     let mut runtime = client_ui::test_support::pack_harness::menu_runtime();
     runtime.publish_inventory_authority(&mut player_runtime, protocol::InventoryAuthority::Server);
-    let skin = crate::player_skin::LocalPlayerSkin::generated_default("Test");
+    let skin = client_shell::player_skin::LocalPlayerSkin::generated_default("Test");
     presentation.sync_player_preview(Some(&skin.rgba8), Default::default(), true, false, 0.0);
     view.profile_icon = presentation.player_preview_icon();
     let mut app = app();
     let stats = app
         .world()
-        .resource::<render::UiRenderStatsResource>()
+        .resource::<render_scene::UiRenderStatsResource>()
         .clone();
     for state in [
         "signed-out",
@@ -411,7 +430,7 @@ fn profile_frames_on_native_gpu() {
         profile.avatar_error = true;
         profile.achievements_loaded = true;
         profile.achievements_error = false;
-        profile.achievements = Some(protocol::launcher_control::ProfileAchievements {
+        profile.achievements = Some(bridge::ProfileAchievements {
             unlocked: 2,
             total: 10,
             current_gamerscore: Some(20),
@@ -425,7 +444,7 @@ fn profile_frames_on_native_gpu() {
         profile.followers = Some(24);
         profile.statistics_loaded = true;
         profile.statistics_error = false;
-        profile.statistics = Some(protocol::launcher_control::ProfileStatistics {
+        profile.statistics = Some(bridge::ProfileStatistics {
             minutes_played: (state != "empty").then(|| "120.5".into()),
             blocks_broken: (state != "empty").then(|| "12345".into()),
             mobs_defeated: (state != "empty").then(|| "0".into()),
@@ -443,7 +462,7 @@ fn profile_frames_on_native_gpu() {
                 )
                 .unwrap();
             app.world_mut()
-                .resource_mut::<render::UiRenderSceneResource>()
+                .resource_mut::<render_scene::UiRenderSceneResource>()
                 .publish(input, &stats)
                 .unwrap();
             app.update();

@@ -4,8 +4,9 @@ use super::{ACTOR_LAYER_CAPE, apply_capes, tests::fixture_cape};
 use crate::presentation::{actors::ActorPresentationBatch, equipment::ELYTRA_LAYER};
 use assets::EntityRenderMaterial;
 use client_world::PlayerProfile;
-use protocol::{CapeImage, PlayerSkin, StandardSkin};
-use render::{
+use protocol::PlayerSkin;
+use render_api::{CapeImage, StandardSkin};
+use render_model::{
     ACTOR_LAYER_BODY, ActorArtworkPages, ActorGlint, ActorMaterial, ActorRenderIdentity,
     ActorRigRenderInput, ActorRigRoute, ActorRigSubmission, EquipmentRaster,
 };
@@ -48,7 +49,7 @@ fn batch() -> ActorPresentationBatch {
         texture_layer: 0,
         route: ActorRigRoute::Compiled,
         tint: 0,
-        uv_anim: render::IDENTITY_UV_ANIM,
+        uv_anim: render_model::IDENTITY_UV_ANIM,
         light: 0,
         overlay_rgba8: 0,
     };

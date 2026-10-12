@@ -7,9 +7,9 @@ use std::io::Write;
 fn main() {
     if std::env::args_os()
         .nth(1)
-        .is_some_and(|arg| arg == lifecycle::FIRST_RUN_SETUP_FLAG)
+        .is_some_and(|arg| arg == first_run::SETUP_FLAG)
     {
-        std::process::exit(lifecycle::run_first_run_setup());
+        std::process::exit(first_run::run_setup_process());
     }
     match ClientArgs::parse_env() {
         Ok(ParseOutcome::Help) => print!("{}", bedrock_client::args::HELP),
@@ -18,7 +18,11 @@ fn main() {
                 Ok(true) => {}
                 Ok(false) => return,
                 Err(error) => {
-                    eprintln!("bedrock-client failed: {error:#}");
+                    let _ = writeln!(
+                        diagnostics::console::stderr(),
+                        "bedrock-client failed: {error:#}"
+                    );
+                    diagnostics::console::flush_before_exit();
                     std::process::exit(1);
                 }
             }

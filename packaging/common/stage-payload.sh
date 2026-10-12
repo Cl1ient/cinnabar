@@ -6,7 +6,7 @@ set -euo pipefail
 repo_root="$(CDPATH= cd -- "${CINNABAR_SOURCE_ROOT:-$(dirname -- "${BASH_SOURCE[0]}")/../..}" && pwd)"
 
 # Shared with check-payload.sh; Windows copies the same set in build-installer.ps1.
-kit_registry_stems=(block-registry block-light-registry biome-registry)
+kit_registry_stems=(block-registry block-light-registry biome-registry block-physics-seed)
 
 # stage_prep_kit <kit_dir> <assetc_binary>
 stage_prep_kit() {
@@ -15,7 +15,7 @@ stage_prep_kit() {
     mkdir -p "$kit/bin" "$kit/assets" "$kit/data"
     install -m 0755 "$assetc" "$kit/bin/$(basename "$assetc")"
     cp "$repo_root"/assets/*.json "$kit/assets/"
-    cp -R "$repo_root/assets/fonts" "$kit/assets/"
+    cp -R "$repo_root/assets/fonts" "$repo_root/assets/oreui-icons" "$kit/assets/"
     for name in "${kit_registry_stems[@]}"; do
         cp "$repo_root/crates/assets/data/$name"-v2193.* "$kit/data/"
     done
@@ -57,6 +57,7 @@ resource_manifest() {
     for file in "$repo_root"/assets/licenses/*; do printf 'licenses/%s\n' "${file##*/}"; done
     for file in "$repo_root"/assets/*.json; do printf 'prep-kit/assets/%s\n' "${file##*/}"; done
     for file in "$repo_root"/assets/fonts/*; do printf 'prep-kit/assets/fonts/%s\n' "${file##*/}"; done
+    (cd "$repo_root/assets" && find oreui-icons -type f | LC_ALL=C sort | sed 's|^|prep-kit/assets/|')
     for name in "${kit_registry_stems[@]}"; do
         for file in "$repo_root/crates/assets/data/$name"-v2193.*; do printf 'prep-kit/data/%s\n' "${file##*/}"; done
     done

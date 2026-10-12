@@ -1,14 +1,19 @@
-use crate::player_runtime::PlayerRuntime;
+use client_state::PlayerRuntime;
 use protocol::{
     CONTAINER_NAME_CURSOR, ContainerIdentity, ContainerOpenEvent, EquipmentEvent,
     InventoryAuthority, InventoryContentEvent, InventoryEvent, ItemActorEvent, ItemRegistryEntry,
     ItemRegistryEvent, ItemRegistryVersion, NetworkItemStack, WorldBootstrap, WorldEvent,
 };
 
-use crate::runtime::network::{
-    BootstrapGenerationDisposition, EquipmentIngress, classify_bootstrap_generation,
-    publish_bootstrap_inventory, publish_equipment_identity, route_equipment_ingress,
-    route_inventory_ingress, route_item_registry_ingress, session::SequencedWorldEvent,
+use pack_runtime::{BootstrapGenerationDisposition, classify_bootstrap_generation};
+use {
+    crate::runtime::network::{
+        EquipmentIngress, publish_equipment_identity, route_equipment_ingress,
+    },
+    client_runtime::inventory::{
+        publish_bootstrap_inventory, route_inventory_ingress, route_item_registry_ingress,
+    },
+    client_session::SequencedWorldEvent,
 };
 use {
     client_ui::ui_runtime::UiRuntime,
@@ -31,7 +36,7 @@ fn equipment(actor_runtime_id: u64, selected_slot: u8) -> EquipmentEvent {
 
 #[test]
 fn bootstrap_registry_precedes_authority_and_enables_first_occupied_merge() {
-    let mut player_runtime = PlayerRuntime::new(7);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(7));
 
     let mut runtime = UiRuntime::new(7);
     let registry = ItemRegistryEvent {
@@ -40,6 +45,7 @@ fn bootstrap_registry_precedes_authority_and_enables_first_occupied_merge() {
             network_id: 878,
             component_based: true,
             version: ItemRegistryVersion::DataDriven,
+            components: None,
             component_digest: [8; 32],
             negotiated_max_stack_size: Some(64),
             canonical_empty_component_data: false,
@@ -92,7 +98,7 @@ fn bootstrap_registry_precedes_authority_and_enables_first_occupied_merge() {
 
 #[test]
 fn runtime_publishes_session_identity_and_routes_fifo_equipment_once() {
-    let mut player_runtime = PlayerRuntime::new(7);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(7));
 
     let mut runtime = UiRuntime::new(7);
     let buffered = route_equipment_ingress(
@@ -145,7 +151,7 @@ fn runtime_publishes_session_identity_and_routes_fifo_equipment_once() {
 
 #[test]
 fn session_replacement_clears_published_identity_and_local_selection() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     let mut runtime = UiRuntime::new(1);
     publish_equipment_identity(&mut player_runtime, &mut runtime, 1, 42).unwrap();
@@ -163,7 +169,7 @@ fn session_replacement_clears_published_identity_and_local_selection() {
         EquipmentIngress::CommitOnly { fifo_sequence: 1 }
     );
 
-    crate::session::begin_session(&mut runtime, &mut player_runtime, 2);
+    client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 2);
     assert!(runtime.local_selected_equipment(&player_runtime).is_none());
     assert_eq!(
         route_equipment_ingress(
@@ -182,7 +188,7 @@ fn session_replacement_clears_published_identity_and_local_selection() {
 
 #[test]
 fn consumed_local_equipment_commits_its_global_fifo_slot() {
-    let mut player_runtime = PlayerRuntime::new(7);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(7));
 
     let mut runtime = UiRuntime::new(7);
     publish_equipment_identity(&mut player_runtime, &mut runtime, 7, 42).unwrap();
@@ -226,7 +232,7 @@ fn consumed_local_equipment_commits_its_global_fifo_slot() {
 
 #[test]
 fn inventory_handoff_is_bounded_session_scoped_and_fifo_ordered() {
-    let mut player_runtime = PlayerRuntime::new(7);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(7));
 
     let mut runtime = UiRuntime::new(7);
     for sequence in 1..=MAX_PENDING_INVENTORY_EVENTS as u64 {
@@ -276,13 +282,13 @@ fn inventory_handoff_is_bounded_session_scoped_and_fifo_ordered() {
             .is_err()
     );
 
-    crate::session::begin_session(&mut runtime, &mut player_runtime, 8);
+    client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 8);
     assert!(runtime.pop_inventory_event(&mut player_runtime).is_none());
 }
 
 #[test]
 fn inventory_ingress_is_retained_while_global_fifo_advances() {
-    let mut player_runtime = PlayerRuntime::new(7);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(7));
 
     let mut runtime = UiRuntime::new(7);
     let commit_sequence = route_inventory_ingress(
@@ -319,7 +325,7 @@ fn inventory_ingress_is_retained_while_global_fifo_advances() {
 
 #[test]
 fn item_registry_and_inventory_authority_share_one_bounded_fifo() {
-    let mut player_runtime = PlayerRuntime::new(7);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(7));
 
     let mut runtime = UiRuntime::new(7);
     runtime
@@ -336,6 +342,7 @@ fn item_registry_and_inventory_authority_share_one_bounded_fifo() {
             network_id: 6,
             component_based: true,
             version: ItemRegistryVersion::DataDriven,
+            components: None,
             component_digest: [6; 32],
             negotiated_max_stack_size: Some(64),
             canonical_empty_component_data: false,
@@ -382,7 +389,7 @@ fn item_registry_and_inventory_authority_share_one_bounded_fifo() {
 
 #[test]
 fn stale_equipment_envelope_is_rejected_instead_of_relabelled() {
-    let mut player_runtime = PlayerRuntime::new(8);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(8));
 
     let mut runtime = UiRuntime::new(8);
     publish_equipment_identity(&mut player_runtime, &mut runtime, 8, 42).unwrap();

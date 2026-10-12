@@ -12,6 +12,9 @@ use crate::InventorySession;
 
 use super::*;
 
+#[path = "mining_tests.rs"]
+mod mining_tests;
+
 #[path = "settling_tests.rs"]
 mod settling_tests;
 
@@ -52,9 +55,7 @@ fn inventory_request_batch_retries_atomically() {
     let mut attempts = Vec::new();
     assert_eq!(
         runtime.flush_inventory_send(10, |packet| {
-            attempts.push(
-                protocol::encode(&packet, &protocol::BedrockSession { shield_item_id: 0 }).unwrap(),
-            );
+            attempts.push(protocol::encode(&packet).unwrap());
             Err("full")
         }),
         Err("full")
@@ -69,10 +70,7 @@ fn inventory_request_batch_retries_atomically() {
     assert!(
         runtime
             .flush_inventory_send(20, |packet| {
-                attempts.push(
-                    protocol::encode(&packet, &protocol::BedrockSession { shield_item_id: 0 })
-                        .unwrap(),
-                );
+                attempts.push(protocol::encode(&packet).unwrap());
                 Ok::<_, &str>(())
             })
             .unwrap()
@@ -519,11 +517,15 @@ fn server_close_of_a_storage_window_is_confirmed_with_a_close() {
         .expect("a queued confirmation");
     assert_eq!(confirmation.window_id, 3);
     assert_eq!(confirmation.owner, PendingCloseOwner::Cleanup);
-    assert!(matches!(
-        ledger.pending_control_packet().unwrap().unwrap().data,
-        protocol::wire::valentine::bedrock::version::v1_26_51::McpePacketData::ContainerClosePacket(close)
-            if close.container_id == 3 && !close.server_initiated_close
-    ));
+    assert_eq!(
+        protocol::test_support::packets::container_close(
+            &ledger.pending_control_packet().unwrap().unwrap()
+        ),
+        Some(protocol::test_support::packets::ContainerCloseObservation {
+            container_id: 3,
+            server_initiated: false,
+        })
+    );
 
     // The server's answer to our own close needs no confirmation.
     assert!(ledger.mark_transport_enqueued(10));
@@ -859,7 +861,7 @@ fn flushed_packet_names(session: &mut InventorySession, now_millis: u64) -> Vec<
     let mut sent = Vec::new();
     session
         .flush_inventory_send(now_millis, |packet| {
-            sent.push(format!("{:?}", packet.header.id));
+            sent.push(format!("{:?}", packet.kind()));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -1027,162 +1029,19 @@ fn close_ack_clears_unrestated_cursor_and_session_reset_drops_all_personal_work(
     assert_eq!(ledger.pending_state(), None);
 }
 
-fn mining_response(
-    request_id: i32,
-    status: StackResponseStatus,
-    damage: i32,
-    stack_id: i32,
-) -> InventoryEvent {
-    let mut container = correction(CONTAINER_NAME_COMBINED_HOTBAR_AND_INVENTORY, 0, 1, stack_id);
-    container.slots = Arc::from([StackResponseSlot {
-        durability_correction: damage,
-        ..container.slots[0].clone()
-    }]);
-    InventoryEvent::Response(ItemStackResponseEvent {
-        responses: Arc::from([StackResponse {
-            status,
-            request_id,
-            containers: Arc::from([container]),
-        }]),
-    })
-}
-
 #[test]
-fn mining_responses_correct_the_worn_slot_without_a_pending_gesture() {
-    let mut ledger = ledger_with_slot_zero();
-    let first = ledger.begin_mining_request(0, 4).unwrap();
-    let second = ledger.begin_mining_request(0, 5).unwrap();
+fn quiet_timeout_polls_preserve_shared_ledger_until_a_request_is_due() {
+    let mut runtime = InventorySession::new(1);
+    *runtime.ledger_mut() = ledger_with_slot_zero();
+    runtime.ledger_mut().begin_world_drop(0, Some(1)).unwrap();
+    assert!(runtime.ledger_mut().mark_transport_enqueued(10));
+    let captured = runtime.ledger_snapshot();
+    assert!(!runtime.poll_inventory_timeout(11));
+    assert!(Arc::ptr_eq(&captured, &runtime.ledger_snapshot()));
+    assert!(!runtime.poll_inventory_timeout(10 + INVENTORY_REQUEST_TIMEOUT_MILLIS));
+    assert!(!Arc::ptr_eq(&captured, &runtime.ledger_snapshot()));
     assert_eq!(
-        (first, second),
-        (-3, -5),
-        "mining ids share the gesture counter"
-    );
-    // Outstanding predictions chain onto each other.
-    assert_eq!(ledger.predicted_slot_damage(0), Some(5));
-    ledger.apply(&mining_response(
-        first,
-        StackResponseStatus::Accepted,
-        4,
-        77,
-    ));
-    assert_eq!(
-        ledger
-            .displayed_stack(0)
-            .map(|stack| stack.stack_network_id),
-        Some(77)
-    );
-    assert_eq!(ledger.predicted_slot_damage(0), Some(5));
-    // A rejected prediction is dropped; the last accepted damage remains.
-    ledger.apply(&mining_response(
-        second,
-        StackResponseStatus::Rejected,
-        9,
-        88,
-    ));
-    assert_eq!(ledger.predicted_slot_damage(0), Some(4));
-    assert_eq!(
-        ledger
-            .displayed_stack(0)
-            .map(|stack| stack.stack_network_id),
-        Some(77)
-    );
-    // Unknown and repeated ids change nothing.
-    ledger.apply(&mining_response(
-        second,
-        StackResponseStatus::Accepted,
-        9,
-        88,
-    ));
-    assert_eq!(
-        ledger
-            .displayed_stack(0)
-            .map(|stack| stack.stack_network_id),
-        Some(77)
-    );
-    acknowledge_personal_open(&mut ledger, 2);
-    assert_eq!(
-        ledger.begin_click(0).unwrap(),
-        -7,
-        "the next gesture keeps a distinct id"
-    );
-}
-
-#[test]
-fn mining_corrections_never_touch_a_slot_owned_by_a_pending_gesture() {
-    let mut ledger = ledger_with_slot_zero();
-    acknowledge_personal_open(&mut ledger, 2);
-    let mining = ledger.begin_mining_request(0, 1).unwrap();
-    let gesture = ledger.begin_click(0).unwrap();
-    assert!(ledger.mark_transport_enqueued(20));
-    ledger.apply(&mining_response(
-        mining,
-        StackResponseStatus::Accepted,
-        1,
-        77,
-    ));
-    assert_eq!(ledger.pending_request_id(), Some(gesture));
-    ledger.apply(&InventoryEvent::Response(ItemStackResponseEvent {
-        responses: Arc::from([StackResponse {
-            status: StackResponseStatus::Accepted,
-            request_id: gesture,
-            containers: Arc::from([
-                correction(CONTAINER_NAME_COMBINED_HOTBAR_AND_INVENTORY, 0, 0, -1),
-                correction(CONTAINER_NAME_CURSOR, 0, 32, 9),
-            ]),
-        }]),
-    }));
-    assert_eq!(ledger.pending_state(), None);
-    assert!(!ledger.resync_required());
-}
-
-#[test]
-fn outstanding_mining_requests_are_bounded() {
-    let mut ledger = ledger_with_slot_zero();
-    let ids = (0..40)
-        .map(|damage| ledger.begin_mining_request(0, damage).unwrap())
-        .collect::<Vec<_>>();
-    ledger.apply(&mining_response(
-        ids[0],
-        StackResponseStatus::Accepted,
-        0,
-        55,
-    ));
-    assert_eq!(
-        ledger
-            .displayed_stack(0)
-            .map(|stack| stack.stack_network_id),
-        Some(9),
-        "an evicted request's late response is ignored"
-    );
-    assert_eq!(ledger.predicted_slot_damage(0), Some(39));
-}
-
-#[test]
-fn cancelled_mining_request_leaves_no_prediction_behind() {
-    let mut ledger = ledger_with_slot_zero();
-    let id = ledger.begin_mining_request(0, 4).unwrap();
-    ledger.cancel_mining_request(id);
-    assert_eq!(ledger.predicted_slot_damage(0), None);
-    assert_eq!(ledger.begin_mining_request(0, 4), Some(id - 2));
-}
-
-#[test]
-fn accepted_mining_behind_an_expired_head_still_corrects_the_slot() {
-    let mut ledger = ledger_with_slot_zero();
-    let _unanswered = ledger.begin_mining_request(0, 4).unwrap();
-    let answered = ledger.begin_mining_request(0, 5).unwrap();
-    ledger.poll_timeout(0);
-    ledger.apply(&mining_response(
-        answered,
-        StackResponseStatus::Accepted,
-        5,
-        88,
-    ));
-    ledger.poll_timeout(super::INVENTORY_REQUEST_TIMEOUT_MILLIS + 1);
-    assert_eq!(
-        ledger
-            .displayed_stack(0)
-            .map(|stack| stack.stack_network_id),
-        Some(88)
+        captured.pending_state(),
+        Some(InventoryPendingState::AwaitingResponse)
     );
 }

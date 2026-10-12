@@ -1,11 +1,14 @@
 use super::*;
 use crate::queue_review_support as fixture;
+use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::FromWorld;
-use bevy::{
-    core_pipeline::core_3d::Transparent3d, ecs::system::RunSystemOnce,
-    render::render_phase::AddRenderCommand, render::view::ExtractedView,
-};
+use bevy::render::render_phase::AddRenderCommand;
+use mod_render::RenderOutput;
+use std::sync::Arc;
+
+use bevy::{core_pipeline::core_3d::Transparent3d, render::view::ExtractedView};
 use mod_render::{Decal, DecalStyle, Pass, Primitives};
+use render_scene::ModRenderScene;
 
 const GRADE: &str = "fn effect(uv: vec2<f32>) -> vec3<f32> { return scene(uv) * param(1u); }";
 
@@ -81,10 +84,12 @@ fn frame_uniform_packs_view_and_params() {
             None,
             0,
         ),
-        clip_from_view: Mat4::perspective_infinite_reverse_rh(1.0, 2.0, 0.1),
+        clip_from_view: glam::camera::rh::proj::directx::perspective_infinite_reverse(
+            1.0, 2.0, 0.1,
+        ),
         world_from_view: GlobalTransform::from_translation(Vec3::new(1.0, 2.0, 3.0)),
         clip_from_world: None,
-        hdr: false,
+        target_format: render_scene::SCENE_COLOR_FORMAT,
         viewport: UVec4::new(0, 0, 640, 360),
         color_grading: default(),
         invert_culling: false,
@@ -117,8 +122,8 @@ fn pass_pipelines_compile_for_each_view_format_without_blending() {
     app.world_mut().run_system_once(passes::init_gpu).unwrap();
     bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::default);
     let formats = [
-        bevy::render::view::ViewTarget::TEXTURE_FORMAT_HDR,
-        bevy::render::render_resource::TextureFormat::bevy_default(),
+        render_scene::SCENE_HDR_FORMAT,
+        render_scene::SCENE_COLOR_FORMAT,
     ];
     let pass = pass("a", 1);
     app.world_mut()
@@ -172,16 +177,16 @@ fn primitives_queue_one_late_transparent_item_only_when_present() {
         .resource_mut::<bevy::render::render_resource::PipelineCache>();
     let descriptor = fixture::queued_descriptor(&mut cache, id);
     let depth = descriptor.depth_stencil.as_ref().unwrap();
-    assert!(!depth.depth_write_enabled);
+    assert_eq!(depth.depth_write_enabled, Some(false));
     assert_eq!(
         depth.depth_compare,
-        bevy::render::render_resource::CompareFunction::GreaterEqual
+        Some(bevy::render::render_resource::CompareFunction::GreaterEqual)
     );
 }
 
 #[test]
 fn primitive_shader_resources_match_the_layout() {
-    let source = crate::shader_source::standalone(include_str!("primitives.wgsl"), &[]);
+    let source = crate::shader_source::standalone(include_str!("primitives.wesl"), &[]);
     let pipeline = primitives::PrimitivePipeline::from_world(&mut World::new());
     crate::shader_test_support::assert_binding_visibility(&source, 0, &pipeline.layout);
 }
@@ -199,7 +204,7 @@ fn sandbox_shaders_survive_bevy_shader_composition() {
 fn replaced_passes_release_their_pipelines() {
     let (mut app, _) = fixture::app();
     app.world_mut().run_system_once(passes::init_gpu).unwrap();
-    let format = bevy::render::view::ViewTarget::TEXTURE_FORMAT_HDR;
+    let format = render_scene::SCENE_HDR_FORMAT;
     let mut scene = ModRenderScene::default();
     for revision in 1..=20 {
         scene.apply(
@@ -302,8 +307,8 @@ fn solid_blocks_queue_separately_without_relaxing_guest_depth_tests() {
             let descriptor = fixture::queued_descriptor(&mut cache, pipeline);
             assert_eq!(descriptor.multisample.count, msaa.samples());
             let depth = descriptor.depth_stencil.as_ref().unwrap();
-            assert!(!depth.depth_write_enabled);
-            depths.push(depth.depth_compare);
+            assert_eq!(depth.depth_write_enabled, Some(false));
+            depths.push(depth.depth_compare.unwrap());
         }
         assert!(depths.contains(&bevy::render::render_resource::CompareFunction::Always));
         assert!(depths.contains(&bevy::render::render_resource::CompareFunction::GreaterEqual));

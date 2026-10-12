@@ -1,11 +1,8 @@
 //! Captures post-send observations and finalizes poses after local interaction admission.
-use crate::{
-    movement::{LocalPhysicsController, MovementTicker, PhysicsCollisionRegistries},
-    player_runtime::PlayerRuntime,
-    runtime::world::ClientWorld,
-};
 #[cfg(test)]
-use bevy::prelude::{App, IntoScheduleConfigs, Mut, Resource, Update};
+use bevy::prelude::IntoScheduleConfigs;
+#[cfg(test)]
+use bevy::prelude::{App, Mut, Resource, Update};
 use bevy::time::Real;
 use bevy::{
     ecs::system::SystemParam,
@@ -13,12 +10,19 @@ use bevy::{
 };
 use client_presentation::actor_publication::ActorFramePartialTick;
 use client_presentation::actor_publication::{ActorFrameInput, ActorWorld};
-use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
+use {
+    crate::runtime::world::ClientWorld,
+    client_interaction::movement::{
+        LocalPhysicsController, MovementTicker, PhysicsCollisionRegistries,
+    },
+    client_state::PlayerRuntime,
+};
 
 /// Projects local damage only after actor ticking, clearing it when the session leaves gameplay.
 pub(crate) fn publish_local_actor_damage(
     world: Res<ClientWorld>,
-    mut ui: Option<ResMut<UiRuntime>>,
+    mut ui: Option<ResMut<UiRuntimeResource>>,
 ) {
     let Some(ui) = ui.as_deref_mut() else {
         return;
@@ -38,18 +42,18 @@ pub(crate) struct ActorObservations<'w> {
     player: Res<'w, PlayerRuntime>,
     physics: Res<'w, LocalPhysicsController>,
     view: Res<'w, client_presentation::local_player::LocalViewPose>,
-    skin: Res<'w, crate::player_skin::LocalPlayerSkin>,
+    skin: Res<'w, client_shell::player_skin::LocalPlayerSkin>,
     settings: Res<'w, client_presentation::camera::CameraSettingsAuthority>,
-    effects: Option<Res<'w, crate::movement::LocalMovementEffectTimeline>>,
-    ui: Option<Res<'w, UiRuntime>>,
-    menu: Option<Res<'w, crate::menu::MenuRuntime>>,
-    ui_presentation: Option<Res<'w, UiPresentationRuntime>>,
+    effects: Option<Res<'w, client_interaction::movement::LocalMovementEffectTimeline>>,
+    ui: Option<Res<'w, UiRuntimeResource>>,
+    menu: Option<Res<'w, client_shell::menu::MenuRuntime>>,
+    ui_presentation: Option<Res<'w, UiPresentationResource>>,
     collisions: Option<Res<'w, PhysicsCollisionRegistries>>,
-    item_use: Option<Res<'w, crate::item_use::ItemUseRuntime>>,
-    input: Option<Res<'w, crate::semantic_controls::SemanticInputSnapshot>>,
+    item_use: Option<Res<'w, client_interaction::item_use::ItemUseRuntime>>,
+    input: Option<Res<'w, client_state::SemanticInputSnapshot>>,
     movement: Option<Res<'w, MovementTicker>>,
     time: Res<'w, Time<Real>>,
-    profiler: Option<Res<'w, render::RuntimeStageProfiler>>,
+    profiler: Option<Res<'w, render_scene::RuntimeStageProfiler>>,
 }
 
 /// Predicts remote actors at this frame's tick positions before interaction picks them.
@@ -91,68 +95,45 @@ pub(crate) fn advance_actor_frame(
     } = observations;
     let _timer = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::ActorPublication));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::ActorPublication));
     let stream = world.stream.as_ref();
     let local_equipment = stream.map_or_else(Default::default, |stream| {
         client_presentation::presentation::equipment::local_input(
             &player,
             stream,
-            ui.as_deref(),
+            ui.as_deref().map(|ui| &ui.0),
             stream.local_player_runtime_id(),
         )
     });
-    // Java blocks with a sword while use is held; Bedrock never flags that use.
-    let java_sword = settings.feel().java_animations
-        && local_equipment
-            .main
-            .as_ref()
-            .is_some_and(|item| render_model::java_animation::is_java_sword(&item.identifier));
-    let blocking = java_sword
-        && input
+    let mining_effects = effects
+        .as_deref()
+        .map_or_else(Default::default, |effects| effects.mining_effects());
+    #[cfg(feature = "developer-control")]
+    let prefer_client_skin = skin.recording_cape_enabled();
+    #[cfg(not(feature = "developer-control"))]
+    let prefer_client_skin = false;
+    let local_feed = client_presentation::actor_feed::prepare_local_player_feed(
+        &*physics,
+        &view,
+        &settings,
+        &local_equipment,
+        &player,
+        input
             .as_deref()
-            .is_some_and(|input| input.phase(semantic_input::Action::Use).held);
-    let local_use = if blocking {
-        client_world::LocalItemUse::Using
-    } else {
-        match stream.zip(ui.as_deref()).zip(item_use.as_deref()) {
+            .is_some_and(|input| input.phase(semantic_input::Action::Use).held),
+        || match stream.zip(ui.as_deref()).zip(item_use.as_deref()) {
             Some(((stream, ui), item_use)) => item_use.local_item_use(&player, stream, ui),
             None => client_world::LocalItemUse::Unpredicted,
-        }
-    };
-    // Ending a block clears the use flag it raised, whatever the hand holds next.
-    let local_use =
-        if (java_sword || *java_blocking) && local_use == client_world::LocalItemUse::Unpredicted {
-            client_world::LocalItemUse::Idle
-        } else {
-            local_use
-        };
-    *java_blocking = blocking;
-    let mut local_feed = client_presentation::actor_feed::build_local_player_feed(
-        &*physics,
-        view.rotation(),
-        false,
-        settings.feel().view_bobbing,
+        },
+        &mut java_blocking,
         skin.local_uuid,
         || skin.player_skin(),
-        local_use,
+        prefer_client_skin,
+        (
+            gameplay::melee::swing_duration(mining_effects),
+            gameplay::melee::java_swing_duration(mining_effects),
+        ),
     );
-    if let Some(feed) = &mut local_feed {
-        feed.game_mode = player.facts.player_game_mode();
-        #[cfg(feature = "developer-control")]
-        {
-            feed.prefer_client_skin = skin.recording_cape_enabled();
-        }
-        feed.main_hand_slot = player.selected_hotbar_slot().unwrap_or(0);
-        feed.main_hand_stack_id = player
-            .selected_stack()
-            .map(|stack| stack.stack_network_id)
-            .filter(|id| *id > 0);
-        let mining_effects = effects
-            .as_deref()
-            .map_or_else(Default::default, |effects| effects.mining_effects());
-        feed.bedrock_swing_ticks = gameplay::melee::swing_duration(mining_effects);
-        feed.java_swing_ticks = gameplay::melee::java_swing_duration(mining_effects);
-    }
     let input = ActorFrameInput {
         local_feed,
         predicted_eye: physics.render_eye_position(),
@@ -163,12 +144,14 @@ pub(crate) fn advance_actor_frame(
         renders_game: {
             let _ui = profiler
                 .as_deref()
-                .map(|profiler| profiler.time(render::RuntimeStage::UiPreparation));
-            crate::screen_policy::renders_game(
+                .map(|profiler| profiler.time(render_scene::RuntimeStage::UiPreparation));
+            client_shell::screen_policy::renders_game(
                 &player,
-                ui.as_deref(),
+                ui.as_deref().map(|ui| &ui.0),
                 menu.as_deref(),
-                ui_presentation.as_deref(),
+                ui_presentation
+                    .as_deref()
+                    .map(|presentation| &presentation.0),
             )
         },
         custom_emote: ui
@@ -222,9 +205,9 @@ pub(crate) fn advance_actor_frame(
             }
         },
         |stream, partial_tick| {
-            let consume = ui
-                .as_deref()
-                .and_then(|_| crate::item_use::consume_ticks(&player, stream));
+            let consume = ui.as_deref().and_then(|_| {
+                client_interaction::item_use::selection::consume_ticks(&player, stream)
+            });
             let animation = ui
                 .as_deref()
                 .zip(item_use.as_deref())
@@ -249,13 +232,14 @@ pub(crate) fn advance_actor_frame(
 #[derive(SystemParam)]
 pub(crate) struct ActorFinalObservations<'w> {
     world: ResMut<'w, ClientWorld>,
-    player: Option<Res<'w, crate::player_runtime::PlayerRuntime>>,
+    player: Option<Res<'w, client_state::PlayerRuntime>>,
     physics: Res<'w, LocalPhysicsController>,
-    effects: Option<Res<'w, crate::movement::LocalMovementEffectTimeline>>,
-    swings: Option<ResMut<'w, crate::melee::SwingTracker>>,
+    effects: Option<Res<'w, client_interaction::movement::LocalMovementEffectTimeline>>,
+    swings: Option<ResMut<'w, client_interaction::melee::SwingTracker>>,
     movement: Option<Res<'w, MovementTicker>>,
     collisions: Option<Res<'w, PhysicsCollisionRegistries>>,
     cave: Option<Res<'w, crate::runtime::visibility::CaveVisibilityCache>>,
+    icons: Option<Res<'w, UiPresentationResource>>,
 }
 
 /// Consumes admitted local ticks and builds their final poses with the pre-send capture.
@@ -272,6 +256,7 @@ pub(crate) fn prepare_actor_render_frame(
         movement,
         collisions,
         cave,
+        icons,
     } = observations;
     let item_swing_ticks = player
         .as_deref()
@@ -306,7 +291,7 @@ pub(crate) fn prepare_actor_render_frame(
             .filter_map(|(tick, mut progress)| {
                 let sample = physics.sample_at(tick)?;
                 progress.frame_alpha = Some(alpha);
-                Some(client_world::LocalSwingMotionSample {
+                Some(actor_animation::LocalSwingMotionSample {
                     tick,
                     delta: sample.movement,
                     yaw: sample.yaw,
@@ -349,6 +334,7 @@ pub(crate) fn prepare_actor_render_frame(
                 )
             })
         },
+        icons.as_deref().map(|icons| &icons.0),
         params,
     );
 }
@@ -361,49 +347,21 @@ pub(crate) fn publish_entity_shadows(
     partial_tick: Res<ActorFramePartialTick>,
     local: Res<client_presentation::local_player::LocalAvatarVisibilityCarrier>,
     camera: Query<(&Transform, &Projection), With<client_presentation::camera::FlyCamera>>,
-    frame: Res<render::ActorRenderFrame>,
-    mut drawn: Local<Vec<u64>>,
-    mut staging: Local<Vec<render_model::EntityShadow>>,
-    scene: Option<ResMut<render::EntityShadowScene>>,
+    frame: Res<render_scene::ActorRenderFrame>,
+    drawn: Local<Vec<u64>>,
+    staging: Local<Vec<render_model::EntityShadow>>,
+    scene: Option<ResMut<render_scene::EntityShadowScene>>,
 ) {
-    let Some(mut scene) = scene else {
-        return;
-    };
-    let stream = world.stream.as_ref();
-    let local = stream.map(|stream| {
-        let runtime_id = stream.local_player_runtime_id();
-        client_presentation::entity_shadows::LocalShadowSource {
-            runtime_id,
-            visible: local.snapshot().is_some_and(|visibility| {
-                visibility.runtime_id() == runtime_id && visibility.visible()
-            }),
-            feet: local
-                .snapshot()
-                .filter(|visibility| visibility.runtime_id() == runtime_id)
-                .map(|visibility| visibility.feet().to_array()),
-            spectator: player
-                .facts
-                .game_mode_capabilities()
-                .is_some_and(|caps| !caps.visible),
-        }
-    });
-    let view = camera
-        .single()
-        .ok()
-        .map(|(transform, projection)| render::ActorCullView {
-            clip_from_world: projection.get_clip_from_view() * transform.to_matrix().inverse(),
-            camera_position: transform.translation,
-            max_distance: render::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
-        });
-    client_presentation::entity_shadows::drawn_bodies(&frame, &mut drawn);
-    client_presentation::entity_shadows::publish_entity_shadows(
-        stream,
-        partial_tick.0,
+    client_presentation::entity_shadows::drive_entity_shadows(
+        world.stream.as_ref(),
+        &player,
+        partial_tick,
         local,
-        view,
-        &drawn,
-        &mut staging,
-        &mut scene,
+        camera,
+        frame,
+        drawn,
+        staging,
+        scene,
     );
 }
 

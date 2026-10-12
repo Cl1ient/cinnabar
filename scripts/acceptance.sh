@@ -221,7 +221,6 @@ if len(protocol_packages) != 1:
     )
 expected_dependencies = {
     "valentine": ["bedrock_1_26_51"],
-    "jolyne": ["client", "bedrock_1_26_51"],
 }
 for dependency_name, expected_features in expected_dependencies.items():
     matches = [
@@ -301,7 +300,7 @@ for block in re.split(r"(?m)^\s*\[\[package\]\]\s*$", lock)[1:]:
     if not name_match:
         continue
     name = name_match.group(1)
-    if name != "jolyne" and not name.startswith("valentine"):
+    if not name.startswith("valentine"):
         continue
     resolved.add(name)
     resolution_key = re.search(r"(?m)^\s*(source|checksum)\s*=", block)
@@ -309,10 +308,16 @@ for block in re.split(r"(?m)^\s*\[\[package\]\]\s*$", lock)[1:]:
         raise SystemExit(
             f"Cargo.lock local package {name} has a {resolution_key.group(1)} entry"
         )
-for dependency in ("valentine", "jolyne"):
+for dependency in ("valentine",):
     if dependency not in resolved:
         raise SystemExit(f"Cargo.lock does not contain local package {dependency}")
 PY
+}
+
+# Wait for the core's own publication signal, including hashed Unix endpoints.
+wait_for_core_ready() {
+    local log=$1 pid=$2 timeout=${3:-30}
+    wait_for_marker "$log" 'msg="listener ready; waiting for local Rust client"' "$timeout" "$pid"
 }
 
 wait_for_marker() {
@@ -1009,13 +1014,7 @@ mkfifo -- "$core_stdin"
 core_pid=$!
 exec 8>"$core_stdin"
 core_fd_open=true
-endpoint="$socket_dir/game.sock"
-endpoint_deadline=$(( $(date +%s) + 30 ))
-while [[ ! -S $endpoint ]]; do
-    kill -0 "$core_pid" 2>/dev/null || die "core exited before endpoint publication (log: $run_dir/core.stderr.log)"
-    (( $(date +%s) < endpoint_deadline )) || die "timed out waiting for core endpoint: $endpoint"
-    sleep 0.1
-done
+wait_for_core_ready "$run_dir/core.stderr.log" "$core_pid"
 
 (cd "$project_root" && RUST_MCBE_BUILD_COMMIT="$repo_commit" exec "${app_command[@]}" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" 6>&- 8>&- 9>&-) &
 app_pid=$!

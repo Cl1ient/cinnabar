@@ -1,7 +1,8 @@
 use super::model::{
-    ARGS_WORDS, CullCamera, CullPhase, CullRecord, CullStream, args_region, args_words,
-    reference_args, slot_enabled,
+    ARGS_WORDS, CullCamera, CullPhase, CullRecord, CullStream, CullViewInput, CullViewUniform,
+    STREAM_COUNT, args_region, args_words, reference_args, region_draws, slot_enabled,
 };
+use super::node::culled_max_draw_count;
 use super::slots::{CullSlots, cull_record, quad_bounds};
 use super::*;
 
@@ -31,10 +32,7 @@ fn allocation(layout: CubeQuadLayout, metadata_index: u32) -> GpuChunkAllocation
 
 #[test]
 fn displaced_model_cull_record_keeps_outer_geometry_visible() {
-    use bevy::{
-        camera::primitives::Aabb,
-        math::{Mat4, Vec3A},
-    };
+    use bevy::{camera::primitives::Aabb, math::Vec3A};
     let mut allocation = allocation(CubeQuadLayout::default(), 0);
     allocation.key = SubChunkKey::new(0, 0, 0, 0);
     let [low, high] = cull_record(&allocation, None).bounds();
@@ -44,8 +42,9 @@ fn displaced_model_cull_record_keeps_outer_geometry_visible() {
         center: (low + high) * 0.5,
         half_extents: (high - low) * 0.5,
     };
-    let frustum =
-        Frustum::from_clip_from_world(&Mat4::orthographic_rh(-1.4, -1.25, 0.0, 16.0, -16.0, 16.0));
+    let frustum = Frustum(bevy::shape::ViewFrustum::from_clip_from_world(
+        &glam::camera::rh::proj::directx::orthographic(-1.4, -1.25, 0.0, 16.0, -16.0, 16.0),
+    ));
     assert!(
         frustum.intersects_obb_identity(&aabb),
         "GPU culling retains component displacement beyond a model overhang"
@@ -196,6 +195,39 @@ fn args_regions_are_disjoint_and_fit_the_buffer() {
     assert!(regions.windows(2).all(|pair| pair[0].1 == pair[1].0));
     assert_eq!(regions[0].0, 0);
     assert_eq!(u64::from(regions.last().unwrap().1), args_words(capacity));
+}
+
+/// A drifted or wrapped draw ceiling still reads, writes and counts only its own args region.
+#[test]
+fn culled_draw_counts_never_reach_past_their_args_region() {
+    let capacity = 1024;
+    let input = CullViewInput {
+        planes: [[0.0; 4]; 5],
+        clip_from_world: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        camera: CullCamera::new(None),
+        viewport: [0.0, 0.0, 1.0, 1.0],
+        depth_size: [1, 1],
+        hiz_mips: 0,
+        index_counts: [6; STREAM_COUNT],
+    };
+    for phase in CullPhase::ALL {
+        let uniform = CullViewUniform::new(&input, phase, capacity, capacity);
+        for stream in CullStream::ALL {
+            let limit = region_draws(capacity, stream);
+            assert_eq!(limit, stream.draws_per_record() * capacity);
+            assert_eq!(uniform.region_draws[stream as usize], limit);
+            let mut bounds = [0; STREAM_COUNT];
+            bounds[stream as usize] = u32::MAX;
+            assert_eq!(culled_max_draw_count(bounds, capacity, stream), limit);
+            bounds[stream as usize] = 7;
+            assert_eq!(culled_max_draw_count(bounds, capacity, stream), 7);
+        }
+    }
 }
 
 /// Every count-capable backend, DX12 included, consumes compacted counts; the rest use cleared
@@ -363,9 +395,12 @@ fn gpu_cull_cpu_stage_bench() {
     let eye = Vec3::new(8.0, 72.0, 8.0);
     let world_from_view =
         Transform::from_translation(eye).looking_to(Vec3::new(1.0, -0.2, 0.4), Vec3::Y);
-    let clip_from_world = Mat4::perspective_infinite_reverse_rh(1.2, 16.0 / 9.0, 0.05)
-        * world_from_view.to_matrix().inverse();
-    let frustum = bevy::camera::primitives::Frustum::from_clip_from_world(&clip_from_world);
+    let clip_from_world =
+        glam::camera::rh::proj::directx::perspective_infinite_reverse(1.2, 16.0 / 9.0, 0.05)
+            * world_from_view.to_matrix().inverse();
+    let frustum = bevy::camera::primitives::Frustum(
+        bevy::shape::ViewFrustum::from_clip_from_world(&clip_from_world),
+    );
     let mut query = world.query::<&GpuChunkAllocation>();
     query.update_archetypes(&world);
     let visible = entities

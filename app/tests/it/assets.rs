@@ -1,5 +1,9 @@
 #![allow(dead_code)]
 
+use bedrock_client::asset_bindings::{
+    AtmosphereEvidence, atmosphere_shader_source_sha256, cloud_shader_source_sha256,
+};
+
 use std::{
     ffi::OsString,
     fs,
@@ -20,16 +24,15 @@ use diagnostics::metrics::{DiagnosticQuadTracker, MetricsCollector};
 use meshing::{DiagnosticGeometryCount, DiagnosticGeometrySummary};
 use sha2::{Digest, Sha256};
 use {
-    assets::pinned_world_provenance,
-    bedrock_client::asset_startup::{
+    assets::carriers::startup::{
         ATMOSPHERE_COMPILE_COMMAND, ATMOSPHERE_FILENAME, AssetPathSource, COMPILE_COMMAND,
         DEFAULT_ASSET_PATH, ENTITY_ASSETS_COMPILE_COMMAND, ENTITY_ASSETS_FILENAME, FETCH_COMMAND,
         FONT_ASSETS_COMPILE_COMMAND, FONT_ASSETS_FILENAME, LOCAL_FONT_ASSETS_COMPILE_COMMAND,
-        LOCAL_FONT_ASSETS_FILENAME, LoadedAssetKind, atmosphere_asset_path,
-        atmosphere_shader_source_sha256, cloud_shader_source_sha256, entity_asset_path,
+        LOCAL_FONT_ASSETS_FILENAME, LoadedAssetKind, atmosphere_asset_path, entity_asset_path,
         font_asset_path, load_runtime_assets, local_font_asset_path, select_asset_path,
         select_asset_path_in_context,
     },
+    assets::pinned_world_provenance,
 };
 
 fn temporary_directory(label: &str) -> PathBuf {
@@ -79,6 +82,7 @@ fn synthetic_blob() -> Box<[u8]> {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }]
         .into_boxed_slice(),
         light_properties: vec![::assets::LightProperties::new(0, 15).unwrap()].into_boxed_slice(),
@@ -164,6 +168,17 @@ fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
 
 fn synthetic_entity_blob_with_manifest(seed: u8, source_manifest_sha256: [u8; 32]) -> Box<[u8]> {
     encode_entity_blob(&CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
+        seat_layouts: vec![assets::entity::seats::EntitySeatDescriptor {
+            identifier: "minecraft:allay".into(),
+            admission: assets::entity::seats::EntitySeatAdmission::Unresolved,
+        }]
+        .into_boxed_slice(),
+        interaction_traits: vec![assets::interactions::EntityInteractionDescriptor {
+            identifier: "minecraft:allay".into(),
+            traits: assets::interactions::EntityInteractionTraits::Unresolved,
+        }]
+        .into_boxed_slice(),
         source_manifest_sha256,
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -177,6 +192,7 @@ fn synthetic_entity_blob_with_manifest(seed: u8, source_manifest_sha256: [u8; 32
             identifier: "minecraft:allay".into(),
             source_index: 0,
             dependencies: Box::new([]),
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
         }]
         .into_boxed_slice(),
         geometries: Box::new([]),
@@ -216,7 +232,7 @@ fn synthetic_font_blob_with_manifest(seed: u8, manifest_sha256: [u8; 32]) -> Box
         pixels_sha256: Sha256::digest(&rgba8).into(),
         width: 1,
         height: 1,
-        pixels: FontPixels::Rgba8(rgba8),
+        pixels: FontPixels::Rgba8(rgba8.into()),
     };
     let glyphs = [GlyphMetrics {
         codepoint: '\u{fffd}',
@@ -406,9 +422,9 @@ fn atmosphere_live_evidence_distinguishes_envelopes_and_is_stable_across_loads()
     fs::write(atmosphere_asset_path(&world_path), &first_blob).unwrap();
     write_sibling_entity(&world_path, 0x51);
     let first = load_runtime_assets(select_asset_path(Some(&world_path), None)).unwrap();
-    let first_evidence = first.atmosphere.evidence();
+    let first_evidence = AtmosphereEvidence::evidence(&first.atmosphere);
     let repeated = load_runtime_assets(select_asset_path(Some(&world_path), None)).unwrap();
-    let repeated_evidence = repeated.atmosphere.evidence();
+    let repeated_evidence = AtmosphereEvidence::evidence(&repeated.atmosphere);
     assert_eq!(first_evidence, repeated_evidence);
     assert_eq!(
         first_evidence.envelope_sha256,
@@ -418,7 +434,7 @@ fn atmosphere_live_evidence_distinguishes_envelopes_and_is_stable_across_loads()
     let second_blob = synthetic_atmosphere_blob(0x62);
     fs::write(atmosphere_asset_path(&world_path), &second_blob).unwrap();
     let second = load_runtime_assets(select_asset_path(Some(&world_path), None)).unwrap();
-    let second_evidence = second.atmosphere.evidence();
+    let second_evidence = AtmosphereEvidence::evidence(&second.atmosphere);
     assert_ne!(
         first_evidence.envelope_sha256,
         second_evidence.envelope_sha256
@@ -428,7 +444,7 @@ fn atmosphere_live_evidence_distinguishes_envelopes_and_is_stable_across_loads()
         second_evidence.shader_source_sha256
     );
 
-    let summary = second.atmosphere.startup_summary();
+    let summary = AtmosphereEvidence::startup_summary(&second.atmosphere);
     let envelope_marker = format!("envelope_sha256={}", second_evidence.envelope_sha256);
     let shader_marker = format!(
         "shader_source_sha256={}",
@@ -455,8 +471,8 @@ fn atmosphere_evidence_summary_contains_only_stable_hashes() {
 
     let loaded = load_runtime_assets(select_asset_path(Some(&world_path), None)).unwrap();
     let selected_path = loaded.atmosphere.selected_path().display().to_string();
-    let evidence = loaded.atmosphere.evidence();
-    let summary = loaded.atmosphere.startup_summary();
+    let evidence = AtmosphereEvidence::evidence(&loaded.atmosphere);
+    let summary = AtmosphereEvidence::startup_summary(&loaded.atmosphere);
 
     assert!(
         !summary.contains(&selected_path),
@@ -479,7 +495,7 @@ fn atmosphere_evidence_summary_contains_only_stable_hashes() {
 fn atmosphere_shader_identity_hashes_the_exact_embedded_wgsl_source() {
     let expected = format!(
         "{:x}",
-        Sha256::digest(include_bytes!("../../../crates/render/src/atmosphere.wgsl"))
+        Sha256::digest(include_bytes!("../../../crates/render/src/atmosphere.wesl"))
     );
     assert_eq!(atmosphere_shader_source_sha256(), expected);
 }
@@ -488,7 +504,7 @@ fn atmosphere_shader_identity_hashes_the_exact_embedded_wgsl_source() {
 fn cloud_shader_identity_hashes_the_exact_embedded_wgsl_source() {
     let expected = format!(
         "{:x}",
-        Sha256::digest(include_bytes!("../../../crates/render/src/cloud.wgsl"))
+        Sha256::digest(include_bytes!("../../../crates/render/src/cloud.wesl"))
     );
     assert_eq!(cloud_shader_source_sha256(), expected);
 }
@@ -500,7 +516,7 @@ fn asset_metrics_flow_into_json_and_the_world_ready_marker() {
     fs::write(&path, synthetic_blob()).unwrap();
     write_sibling_atmosphere(&path, 0x50);
     let loaded = load_runtime_assets(select_asset_path(Some(&path), None)).unwrap();
-    let mut collector = MetricsCollector::with_asset_metrics(loaded.metrics);
+    let mut collector = MetricsCollector::with_asset_metrics(loaded.metrics.into());
     collector.record_asset_counters(7, 11);
     let mut diagnostics = DiagnosticQuadTracker::default();
     diagnostics.upsert(
@@ -803,17 +819,36 @@ fn malformed_required_atmosphere_carrier_fails_closed_with_rebuild_command() {
 
 #[test]
 fn startup_hands_the_single_decoded_atmosphere_identity_to_the_renderer() {
-    let source = include_str!("../../src/app.rs");
-    assert!(source.contains("loaded_assets.atmosphere.startup_summary()"));
-    assert!(source.contains("loaded_assets.atmosphere.into_parts()"));
-    assert!(source.contains(".insert_resource(AtmosphereTextureAssets::new("));
+    let directory = temporary_directory("atmosphere-render-handoff");
+    let path = directory.join("vanilla.mcbea");
+    fs::write(&path, synthetic_blob()).unwrap();
+    let bytes = synthetic_atmosphere_blob(0x42);
+    fs::write(atmosphere_asset_path(&path), &bytes).unwrap();
+    write_sibling_entity(&path, 0x43);
+
+    let loaded = load_runtime_assets(select_asset_path(Some(&path), None)).unwrap();
+    let evidence = AtmosphereEvidence::evidence(&loaded.atmosphere);
+    let (runtime, identity) = loaded.atmosphere.into_parts();
+    let decoded = Arc::downgrade(&runtime);
+    let mut app = bevy::prelude::App::new();
+    app.insert_resource(render_scene::AtmosphereTextureAssets::new(
+        runtime, identity,
+    ));
+    let renderer = app
+        .world()
+        .resource::<render_scene::AtmosphereTextureAssets>();
     assert_eq!(
-        source
-            .matches("loaded_assets.atmosphere.into_parts()")
-            .count(),
-        1,
-        "the required MCBEATM2 runtime must move into render exactly once"
+        renderer.identity(),
+        <[u8; 32]>::from(Sha256::digest(&bytes))
     );
+    assert_eq!(
+        evidence.envelope_sha256,
+        format!("{:x}", Sha256::digest(&bytes))
+    );
+    let rendered = renderer.runtime().unwrap();
+    assert!(Arc::ptr_eq(rendered, &decoded.upgrade().unwrap()));
+    assert_eq!(Arc::strong_count(rendered), 1);
+    fs::remove_dir_all(directory).unwrap();
 }
 
 include!("assets/provenance_tests.rs");

@@ -1,4 +1,5 @@
-use protocol::world_control::{SetupState, WorldState, WorldStatus};
+use super::world::{SetupState, WorldStatus};
+use bridge::WorldState;
 
 /// A step of opening a local world, in the order they run.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -64,7 +65,7 @@ pub fn progress(status: Option<&WorldStatus>, world: &str) -> Progress {
     let setup = status
         .setup
         .as_ref()
-        .filter(|_| status.backend == Some(protocol::world_control::Backend::Bds));
+        .filter(|_| status.backend == Some(bridge::Backend::Bds));
     let Some(setup) = setup else {
         return starting;
     };
@@ -109,7 +110,8 @@ pub fn progress(status: Option<&WorldStatus>, world: &str) -> Progress {
 
 #[cfg(test)]
 mod tests {
-    use protocol::world_control::{Backend, Setup};
+    use crate::local_worlds::world::Setup;
+    use bridge::Backend;
 
     use super::*;
 

@@ -143,11 +143,11 @@ fn camera_corner_rays_leave_thin_geometry_between_the_rays_and_allocate_nothing(
             .z,
         4.0
     );
-    let before = crate::test_allocations::count();
+    let before = test_alloc::thread_allocations();
     for _ in 0..1000 {
         let _ = collision_safe_rig_pose(eye, Quat::IDENTITY, rig, &thin);
     }
-    assert_eq!(crate::test_allocations::count() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn per_ray_boom_matches_the_volume_scan_around_walls_slabs_and_fences() {
     blocks.push(([9, 2, 7], 1));
     let store = loaded_palette_store(&blocks);
     let registry = camera_registry();
-    let world = PaletteWorld::new(&store, &registry, 0);
+    let world = PaletteWorld::new(&store, &registry, 0, Default::default());
     let eye = Vec3::new(8.3, 5.62, 8.4);
     let mut clipped = 0;
     for yaw_step in 0..32 {
@@ -335,7 +335,7 @@ fn easing_boom_across_a_hundred_unloaded_blocks_inspects_only_cells_along_its_ra
     let store = ChunkStore::new();
     let registry = camera_registry();
     let world = CountingPalette {
-        world: PaletteWorld::new(&store, &registry, 0),
+        world: PaletteWorld::new(&store, &registry, 0, Default::default()),
         inspected: Cell::new(0),
     };
     let rig = CameraRig {

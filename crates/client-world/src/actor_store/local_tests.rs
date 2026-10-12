@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use protocol::{
-    ActorEvent, ActorKind, PlayerListEntry, PlayerListUpdateEvent, PlayerSkin, StandardSkin,
-};
+use protocol::{ActorEvent, ActorKind, PlayerListEntry, PlayerListUpdateEvent, PlayerSkin};
+use render_api::StandardSkin;
 
 use super::{ActorApplyResult, ActorStore, LocalPlayerFeed, tests::player_move};
 
@@ -54,11 +53,12 @@ fn local_feed(x: f32, yaw: f32) -> LocalPlayerFeed {
         pitch: 0.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_stack_id: None,
         main_hand_slot: 0,
-        bedrock_swing_ticks: crate::ACTOR_SWING_TICKS,
-        java_swing_ticks: crate::ACTOR_SWING_TICKS,
+        bedrock_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
+        java_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
         teleported: false,
         first_person: false,
         view_bobbing: true,
@@ -520,7 +520,7 @@ fn cape_skin(byte: u8) -> PlayerSkin {
     let PlayerSkin::Standard(mut skin) = standard_skin(byte) else {
         unreachable!()
     };
-    skin.cape = Some(protocol::CapeImage {
+    skin.cape = Some(render_api::CapeImage {
         width: 64,
         height: 32,
         rgba8: vec![byte; 64 * 32 * 4].into(),

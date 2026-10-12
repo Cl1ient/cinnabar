@@ -7,12 +7,33 @@ use protocol::{
 };
 use resource_pack::LayeredPackView;
 
-use super::{OverlayGaps, compile_block_overlay};
+use super::OverlayGaps;
 
+/// Compiles non-device fixtures against the full reference capacity.
+fn compile_block_overlay(
+    view: &LayeredPackView,
+    blocks: &CustomBlocks,
+    hashed: bool,
+    keys: Option<&assets::MaterialKeys>,
+) -> Option<super::CompiledBlockOverlay> {
+    super::compile_block_overlay(
+        view,
+        blocks,
+        hashed,
+        keys,
+        assets::MAX_TEXTURE_LAYERS as u32,
+    )
+}
+
+mod budget;
 mod builtins;
+mod capacity;
 mod legacy;
 mod lighting;
 mod random_offset;
+mod session;
+mod texture_budget;
+
 mod vines;
 
 fn png(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
@@ -614,7 +635,8 @@ fn bone_visibility_hides_bones_per_state() {
 // Flipbook framing is bounded before copies are cut and each frame is shrunk.
 #[test]
 fn flipbook_frames_are_capped_and_shrunk() {
-    use super::textures::{DecodedTexture, Flipbook, flipbook_frames, shrink_to_max};
+    use super::textures::{Flipbook, flipbook_frames, shrink_to_max};
+    use pack_runtime::pack_textures::DecodedTexture;
     let strip = DecodedTexture {
         width: 64,
         height: 64 * 8,
@@ -1060,7 +1082,7 @@ fn review_geometry_catalog_accepts_json_escaped_identifiers() {
     let escaped = GEOMETRY.replace("geometry.gen", r"geometry\u002egen");
     let view = view_with_geometry(escaped.as_bytes());
     let wanted = std::collections::HashSet::from(["geometry.gen"]);
-    let catalog = super::geometry::geometry_catalog(&view, &wanted);
+    let catalog = super::geometry_inputs::geometry_catalog(&view, &wanted);
     assert!(catalog.contains_key("geometry.gen"));
 }
 
@@ -1079,7 +1101,7 @@ fn join_preparation_icons_carry_the_compiled_block_sheets() {
             ..CustomBlockVisuals::default()
         },
     );
-    let inputs = Arc::new(super::super::pack_reload::PackInputs {
+    let inputs = Arc::new(pack_runtime::PackInputs {
         blocks: CustomBlocks {
             blocks: vec![lucky].into(),
             vanilla_blocks: Default::default(),

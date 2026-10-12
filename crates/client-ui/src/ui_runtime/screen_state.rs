@@ -8,8 +8,8 @@ use creative_filter::CreativeFilterCache;
 pub use creative_filter::{CreativeEntries, creative_entries};
 
 use super::inventory_drag::InventoryPointer;
-use super::presentation::inventory_pointer::InventoryCellHit;
-use super::presentation::screens::{GRID_CELLS, GRID_COLUMNS, SEARCH_TAB};
+use super::presentation::screens::{GRID_CELLS, GRID_COLUMNS};
+use ui_screens::container_actions::{InventoryCellHit, SEARCH_TAB};
 
 /// Longest creative search text.
 const MAX_SEARCH_CHARS: usize = 32;
@@ -39,6 +39,8 @@ pub struct ScreenState {
     pub crafter: CrafterView,
     /// The open mount inventory's entity identifier.
     pub mount_identifier: Option<std::sync::Arc<str>>,
+    /// Admitted equipment facts; an unknown mount is not assumed to be a horse.
+    pub mount_equipment: assets::entity::mount::MountEquipment,
     pub book_open: bool,
     pub furnace_book_open: bool,
     /// Furnace tabs have their own food/items/blocks/search indexes.
@@ -65,7 +67,7 @@ pub struct CrafterView {
     /// Disabled slots as the block entity reports them, one bit per slot.
     pub disabled: u16,
     /// The block's `triggered_bit`.
-    pub powered: bool,
+    pub powered: Option<bool>,
     /// Toggles not yet echoed: the local mask and when it was set, stamped on
     /// the next observation.
     pub pending: Option<(u16, Option<u64>)>,
@@ -85,7 +87,7 @@ impl CrafterView {
     }
 
     /// Adopts the block entity's state, keeping recent local toggles.
-    pub fn observe(&mut self, disabled: u16, powered: bool, now_millis: u64) {
+    pub fn observe(&mut self, disabled: u16, powered: Option<bool>, now_millis: u64) {
         self.disabled = disabled & 0x1ff;
         self.powered = powered;
         self.pending = match self.pending {
@@ -115,6 +117,7 @@ impl ScreenState {
             self.beacon_level = None;
             self.crafter = CrafterView::default();
             self.mount_identifier = None;
+            self.mount_equipment = assets::entity::mount::MountEquipment::Unresolved;
             self.container_scroll.clear();
             self.creative_expanded.clear();
             self.recipe_filtering = None;
@@ -212,13 +215,13 @@ mod tests {
             pending: Some((0b10, None)),
             ..CrafterView::default()
         };
-        crafter.observe(0, false, 100);
+        crafter.observe(0, Some(false), 100);
         assert_eq!(crafter.shown_disabled(), 0b10);
-        crafter.observe(0, false, 100 + CRAFTER_TOGGLE_HOLD_MILLIS);
+        crafter.observe(0, Some(false), 100 + CRAFTER_TOGGLE_HOLD_MILLIS);
         assert_eq!(crafter.shown_disabled(), 0b10);
-        crafter.observe(0b1, true, 101 + CRAFTER_TOGGLE_HOLD_MILLIS);
+        crafter.observe(0b1, Some(true), 101 + CRAFTER_TOGGLE_HOLD_MILLIS);
         assert_eq!(crafter.shown_disabled(), 0b1);
-        assert!(crafter.powered);
+        assert_eq!(crafter.powered, Some(true));
     }
 
     fn catalog() -> CreativeContentEvent {

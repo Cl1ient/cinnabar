@@ -1,6 +1,7 @@
 use super::*;
 use bevy::math::{Mat4, Vec3};
 use image::ImageEncoder;
+
 use protocol::{
     ActorEvent, ActorMetadata, ActorMetadataValue, ActorSpawnEvent, WorldBootstrap, WorldEvent,
 };
@@ -114,7 +115,7 @@ fn sampled_scales_can_admit_a_frame_after_the_animation_tick_was_culled() {
 
 #[test]
 fn scale_independent_distance_gate_retains_edges_and_rejects_far_actors() {
-    let radius = render::ACTOR_CANDIDATE_RADIUS_BLOCKS;
+    let radius = render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS;
     let view = ActorCullView {
         camera_position: Vec3::Y,
         clip_from_world: Mat4::IDENTITY,
@@ -170,11 +171,11 @@ fn always_depth_materials_bypass_terrain_occlusion_but_keep_view_culling() {
     let camera = Vec3::new(0.0, 1.0, 0.0);
     let view = ActorCullView {
         camera_position: camera,
-        clip_from_world: Mat4::perspective_infinite_reverse_rh(
+        clip_from_world: glam::camera::rh::proj::directx::perspective_infinite_reverse(
             90_f32.to_radians(),
             1.0,
             render_api::CAMERA_NEAR_PLANE_BLOCKS,
-        ) * Mat4::look_to_rh(camera, -Vec3::Z, Vec3::Y),
+        ) * glam::camera::rh::view::look_to_mat4(camera, -Vec3::Z, Vec3::Y),
         max_distance: 100.0,
     };
     for (feet, maximum, visible) in [
@@ -222,14 +223,14 @@ fn frame_selected_always_depth_layers_survive_terrain_occlusion() {
     let camera = Vec3::new(0.0, 1.0, 0.0);
     let view = Some(ActorCullView {
         camera_position: camera,
-        clip_from_world: Mat4::perspective_infinite_reverse_rh(
+        clip_from_world: glam::camera::rh::proj::directx::perspective_infinite_reverse(
             90_f32.to_radians(),
             1.0,
             render_api::CAMERA_NEAR_PLANE_BLOCKS,
-        ) * Mat4::look_to_rh(camera, -Vec3::Z, Vec3::Y),
+        ) * glam::camera::rh::view::look_to_mat4(camera, -Vec3::Z, Vec3::Y),
         max_distance: 100.0,
     });
-    let through_wall = |layers: &[client_world::RenderTextureLayer]| {
+    let through_wall = |layers: &[actor_animation::RenderTextureLayer]| {
         layers
             .iter()
             .any(|layer| layer.material_state.is_some_and(|state| state.depth_always))
@@ -259,15 +260,15 @@ fn assert_sampled_admission(cull_completed_tick: bool) {
     let camera = Vec3::new(0.0, 1.0, 0.0);
     let view = ActorCullView {
         camera_position: camera,
-        clip_from_world: Mat4::perspective_infinite_reverse_rh(
+        clip_from_world: glam::camera::rh::proj::directx::perspective_infinite_reverse(
             90_f32.to_radians(),
             1.0,
             render_api::CAMERA_NEAR_PLANE_BLOCKS,
-        ) * Mat4::look_to_rh(camera, -Vec3::Z, Vec3::Y),
+        ) * glam::camera::rh::view::look_to_mat4(camera, -Vec3::Z, Vec3::Y),
         max_distance: 100.0,
     };
     let (artwork, locations) =
-        ActorArtworkPages::default().with_equipment_rasters(&[render::EquipmentRaster {
+        ActorArtworkPages::default().with_equipment_rasters(&[render_model::EquipmentRaster {
             width: 1,
             height: 1,
             rgba8: Arc::from([255; 4]),
@@ -280,7 +281,7 @@ fn assert_sampled_admission(cull_completed_tick: bool) {
     ] {
         let mut world = world(expression, axis, feet);
         if cull_completed_tick {
-            let view = client_world::ActorAnimationView {
+            let view = actor_animation::ActorAnimationView {
                 planes: [[0.0, 0.0, 0.0, -1.0]; 6],
                 camera: [0.0; 3],
                 player_distance: 100.0,
@@ -288,7 +289,7 @@ fn assert_sampled_admission(cull_completed_tick: bool) {
             };
             world.set_actor_animation_view(Some(view));
             world.advance_actor_interpolation_ticks(1);
-            world.set_actor_animation_view(Some(client_world::ActorAnimationView {
+            world.set_actor_animation_view(Some(actor_animation::ActorAnimationView {
                 planes: [[0.0, 0.0, 0.0, 1.0]; 6],
                 ..view
             }));

@@ -1,10 +1,6 @@
 package control
 
-import (
-	"sync"
-
-	"github.com/hashimthearab/rust-mcbe/core/proxy"
-)
+import "sync"
 
 // Lifecycle is the process lifecycle exposed by Status v1.
 type Lifecycle string
@@ -17,10 +13,52 @@ const (
 
 // StatusV1 is the complete secret-safe Status v1 result.
 type StatusV1 struct {
-	SchemaVersion uint32                              `json:"schema_version"`
-	Lifecycle     Lifecycle                           `json:"lifecycle"`
-	PackAdmission proxy.ResourcePackAdmissionSnapshot `json:"pack_admission"`
-	Transfer      *TransferV1                         `json:"transfer,omitempty"`
+	SchemaVersion uint32        `json:"schema_version"`
+	Lifecycle     Lifecycle     `json:"lifecycle"`
+	PackAdmission PackAdmission `json:"pack_admission"`
+	Transfer      *TransferV1   `json:"transfer,omitempty"`
+	Network       *NetworkV1    `json:"network,omitempty"`
+}
+
+// PackAdmission is the newest resource-pack admission attempt; it names no pack identity,
+// version, source, content key, digest or filesystem location.
+type PackAdmission struct {
+	AttemptID         uint64 `json:"attempt_id"`
+	Offer             string `json:"offer"`
+	PackCount         uint32 `json:"pack_count"`
+	TotalBytes        uint64 `json:"total_bytes"`
+	Acquisition       string `json:"acquisition"`
+	CacheLoads        uint64 `json:"cache_loads"`
+	CacheHits         uint64 `json:"cache_hits"`
+	CacheMisses       uint64 `json:"cache_misses"`
+	CacheStores       uint64 `json:"cache_stores"`
+	CacheErrors       uint64 `json:"cache_errors"`
+	DownstreamOutcome string `json:"downstream_outcome"`
+	Application       string `json:"application"`
+}
+
+// Pack admission values the store reasons about; the relay supplies the others verbatim.
+const (
+	packNone                   = "none" // offer, acquisition and downstream outcome before any attempt
+	packHandedOffOptional      = "handed_off_optional"
+	packHandedOffRequired      = "handed_off_required"
+	packApplicationUnavailable = "unavailable"
+	packApplicationApplied     = "applied" // the client confirmed applying the handed-off packs
+)
+
+// NetworkV1 is the current upstream transport's round-trip estimate.
+type NetworkV1 struct {
+	AttemptID       uint64  `json:"attempt_id"`
+	LocalRuntimeID  uint64  `json:"local_runtime_id"`
+	RoundTripMillis *uint32 `json:"round_trip_ms"`
+}
+
+// NetworkObservation is the control plane's transport-neutral retained RTT sampler.
+// A nil sampler withdraws an attempt; a nil sample means no measured value.
+type NetworkObservation struct {
+	AttemptID       uint64
+	LocalRuntimeID  uint64
+	RoundTripMillis func() *uint32
 }
 
 // TransferV1 announces that the server transferred the session; the client should
@@ -35,17 +73,18 @@ type TransferV1 struct {
 type Store struct {
 	mu        sync.RWMutex
 	lifecycle Lifecycle
-	latest    proxy.ResourcePackAdmissionSnapshot
+	latest    PackAdmission
 	applied   uint64 // attempt whose packs the client confirmed applying
 	transfer  *TransferV1
 	transfers uint64
-	connect   *proxy.ConnectProgress // live while the newest attempt prepares a join
+	connect   *ConnectProgress // live while the newest attempt prepares a join
+	network   *NetworkObservation
 
 	auth        AuthV1
 	disconnect  *DisconnectV1
 	disconnects uint64
 
-	trustPrompt *proxy.ServerTrustPrompt           // the pending trust question, if any
+	trustPrompt *ServerTrustPrompt                 // the pending trust question, if any
 	trustAnswer func(id uint64, trusted bool) bool // resolves a trust question
 }
 
@@ -53,11 +92,11 @@ func NewStore() *Store {
 	return &Store{
 		lifecycle: LifecycleStarting,
 		auth:      AuthV1{State: AuthSignedOut},
-		latest: proxy.ResourcePackAdmissionSnapshot{
-			Offer:             proxy.ResourcePackOfferNone,
-			Acquisition:       proxy.ResourcePackAcquisitionNone,
-			DownstreamOutcome: proxy.ResourcePackDownstreamNone,
-			Application:       proxy.ResourcePackApplicationUnavailable,
+		latest: PackAdmission{
+			Offer:             packNone,
+			Acquisition:       packNone,
+			DownstreamOutcome: packNone,
+			Application:       packApplicationUnavailable,
 		},
 	}
 }
@@ -70,13 +109,14 @@ func (store *Store) SetLifecycle(lifecycle Lifecycle) {
 
 // Observe applies an attempt reset or final update. Older attempts cannot
 // overwrite a newer attempt that finished first.
-func (store *Store) Observe(snapshot proxy.ResourcePackAdmissionSnapshot) {
-	snapshot.Application = proxy.ResourcePackApplicationUnavailable
+func (store *Store) Observe(snapshot PackAdmission) {
+	snapshot.Application = packApplicationUnavailable
 	store.mu.Lock()
 	if snapshot.AttemptID >= store.latest.AttemptID {
 		if snapshot.AttemptID > store.latest.AttemptID {
 			store.transfer = nil // the client reconnected
 			store.disconnect = nil
+			store.network = nil
 		}
 		store.latest = snapshot
 		store.connect = nil // a reset or final snapshot ends the join's core stages
@@ -85,7 +125,7 @@ func (store *Store) Observe(snapshot proxy.ResourcePackAdmissionSnapshot) {
 }
 
 // ObserveConnectProgress publishes the preparing join's stage; a zero stage withdraws it.
-func (store *Store) ObserveConnectProgress(progress proxy.ConnectProgress) {
+func (store *Store) ObserveConnectProgress(progress ConnectProgress) {
 	store.mu.Lock()
 	if progress.Stage == "" {
 		store.connect = nil
@@ -96,10 +136,10 @@ func (store *Store) ObserveConnectProgress(progress proxy.ConnectProgress) {
 }
 
 // ObserveTransfer publishes a pending transfer until the next admission attempt begins.
-func (store *Store) ObserveTransfer(target proxy.TransferTarget) {
+func (store *Store) ObserveTransfer(host string, port uint16) {
 	store.mu.Lock()
 	store.transfers++
-	store.transfer = &TransferV1{Host: target.Host, Port: target.Port, Sequence: store.transfers}
+	store.transfer = &TransferV1{Host: host, Port: port, Sequence: store.transfers}
 	store.mu.Unlock()
 }
 
@@ -117,8 +157,8 @@ func (store *Store) SetApplied(attemptID uint64, applied bool) {
 	defer store.mu.Unlock()
 	switch {
 	case applied && attemptID != 0 && attemptID == store.latest.AttemptID &&
-		(store.latest.DownstreamOutcome == proxy.ResourcePackDownstreamHandedOffOptional ||
-			store.latest.DownstreamOutcome == proxy.ResourcePackDownstreamHandedOffRequired):
+		(store.latest.DownstreamOutcome == packHandedOffOptional ||
+			store.latest.DownstreamOutcome == packHandedOffRequired):
 		store.applied = attemptID
 	case !applied && store.applied == attemptID:
 		store.applied = 0
@@ -133,8 +173,28 @@ func (store *Store) Status() StatusV1 {
 		status.Transfer = &pending
 	}
 	if store.applied != 0 && store.applied == store.latest.AttemptID {
-		status.PackAdmission.Application = proxy.ResourcePackApplicationApplied
+		status.PackAdmission.Application = packApplicationApplied
+	}
+	if store.network != nil {
+		source := *store.network
+		status.Network = &NetworkV1{AttemptID: source.AttemptID, LocalRuntimeID: source.LocalRuntimeID, RoundTripMillis: source.RoundTripMillis()}
 	}
 	store.mu.RUnlock()
 	return status
+}
+
+// ObserveNetwork retains only the newest attempt's live estimator and ignores stale withdrawals.
+func (store *Store) ObserveNetwork(source NetworkObservation) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if source.AttemptID < store.latest.AttemptID || (store.network != nil && source.AttemptID < store.network.AttemptID) {
+		return
+	}
+	if source.RoundTripMillis == nil {
+		if store.network != nil && store.network.AttemptID == source.AttemptID {
+			store.network = nil
+		}
+	} else {
+		store.network = &source
+	}
 }

@@ -113,6 +113,8 @@ struct VisualCompiler {
     dragon_egg_templates: BTreeMap<[u32; 6], u32>,
     anvil_templates: BTreeMap<super::anvil::TemplateKey, u32>,
     end_portal_frame_templates: BTreeMap<super::end_portal_frame::TemplateKey, u32>,
+    end_rod_templates: BTreeMap<(u32, usize), u32>,
+    lightning_rod_templates: BTreeMap<(u32, usize), u32>,
     flowerbed_templates: BTreeMap<[u32; 4], u32>,
     slab_templates: BTreeMap<[u32; 7], u32>,
     stair_templates: BTreeMap<[u32; 7], u32>,
@@ -135,6 +137,16 @@ struct VisualCompiler {
     lantern_templates: BTreeMap<(u32, bool), u32>,
     flower_pot_soil: Option<u32>,
     chiseled_bookshelf_templates: BTreeMap<[u32; 5], u32>,
+    shelf_templates: BTreeMap<([u32; 6], u8, u8), u32>,
+    grindstone_templates: BTreeMap<([u32; 6], u8, u8), u32>,
+    sea_pickle_templates: BTreeMap<(u32, u8, bool), u32>,
+    tripwire_hook_templates: BTreeMap<([u32; 6], u8, bool, bool), u32>,
+    coral_templates: BTreeMap<(u32, super::coral::Shape), u32>,
+    barrel_templates: BTreeMap<([u32; 6], usize), u32>,
+    brewing_stand_templates: BTreeMap<([u32; 6], [bool; 3]), u32>,
+    bubble_column_templates: BTreeMap<[u32; 9], u32>,
+    candle_cake_templates: BTreeMap<[u32; 4], u32>,
+    hollow_container_templates: BTreeMap<(super::hollow_containers::VesselState, Vec<u32>), u32>,
 }
 
 impl VisualCompiler {
@@ -160,6 +172,33 @@ impl VisualCompiler {
             return Ok(CompileRuleResult::Compiled(visual));
         }
 
+        ordered_rule!(super::bubble_column::compile_rule(
+            record,
+            inputs,
+            &mut self.bubble_column_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads
+            },
+        ));
+        ordered_rule!(super::barrel::compile_rule(
+            record,
+            inputs,
+            &mut self.barrel_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads
+            },
+        ));
+        ordered_rule!(super::coral::compile_rule(
+            record,
+            inputs,
+            &mut self.coral_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
         ordered_rule!(super::bamboo::compile_rule(
             record,
             inputs,
@@ -232,6 +271,60 @@ impl VisualCompiler {
                 quads: &mut self.model_quads,
             },
         ));
+        ordered_rule!(super::lightning_rod::compile_rule(
+            record,
+            inputs,
+            &mut self.lightning_rod_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::grindstone::compile_rule(
+            record,
+            inputs,
+            &mut self.grindstone_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::tripwire_hook::compile_rule(
+            record,
+            inputs,
+            &mut self.tripwire_hook_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::sea_pickle::compile_rule(
+            record,
+            inputs,
+            &mut self.sea_pickle_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::brewing_stand::compile_rule(
+            record,
+            inputs,
+            &mut self.brewing_stand_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::end_rod::compile_rule(
+            record,
+            inputs,
+            &mut self.end_rod_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
         ordered_rule!(super::flower_pot::compile_rule(
             record,
             inputs,
@@ -260,6 +353,37 @@ impl VisualCompiler {
                 quads: &mut self.model_quads,
             },
         ));
+        ordered_rule!(super::shelf::compile_rule(
+            record,
+            inputs,
+            &mut self.shelf_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::candle_cake::compile_rule(
+            record,
+            inputs,
+            &mut self.candle_cake_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        ordered_rule!(super::hollow_containers::compile_rule(
+            record,
+            inputs,
+            &mut self.hollow_container_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads,
+            },
+        ));
+        match super::respawn_anchor::compile_rule(record, inputs) {
+            CompileRuleResult::NoMatch => {}
+            outcome => return Ok(outcome),
+        }
         ordered_rule!(super::fallback::compile_rule(
             record,
             inputs,
@@ -518,6 +642,7 @@ pub(in crate::compiler) fn compile_visuals(
     };
     compiler.flower_pot_soil = super::flower_pot::soil_material(records, &inputs);
     let mut ordered_records = records.iter().collect::<Vec<_>>();
+    let mut potted_templates = BTreeMap::new();
     ordered_records.sort_unstable_by_key(|record| record.sequential_id);
     for record in ordered_records {
         visuals[record.sequential_id as usize] =
@@ -530,6 +655,16 @@ pub(in crate::compiler) fn compile_visuals(
                     }
                     super::snowy_grass::apply(record, &mut visual, &inputs);
                     super::fire_admission::apply(record, &mut visual);
+                    super::potted_plants::apply(
+                        record,
+                        &mut visual,
+                        &inputs,
+                        &mut potted_templates,
+                        &mut ModelStorage {
+                            templates: &mut compiler.model_templates,
+                            quads: &mut compiler.model_quads,
+                        },
+                    )?;
                     visual
                 }
                 CompileRuleResult::NoMatch | CompileRuleResult::Reject => {

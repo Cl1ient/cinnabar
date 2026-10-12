@@ -59,36 +59,16 @@ fn ledge_fixture(pitch: f32) -> (World, client_session::CapturedPackets) {
 fn looking_past_a_ledge_places_on_the_forward_face_of_support() {
     let (mut world, mut captured) = ledge_fixture(-0.9601);
     world.run_system_cached(produce_block_use).unwrap();
-    use protocol::wire::valentine::bedrock::version::v1_26_51::{
-        InventoryTransactionPacketTransaction, McpePacketData,
-    };
     let transaction = captured
         .drain()
-        .into_iter()
-        .find_map(|packet| {
-            let McpePacketData::InventoryTransactionPacket(packet) = packet.data else {
-                return None;
-            };
-            let InventoryTransactionPacketTransaction::ItemUseInventoryTransaction(tx) =
-                packet.transaction
-            else {
-                return None;
-            };
-            Some(tx)
-        })
+        .iter()
+        .find_map(super::item_use)
         .expect("forward placement transaction");
-    assert_eq!(
-        [
-            transaction.position.x,
-            transaction.position.y,
-            transaction.position.z
-        ],
-        [4, 0, 6]
-    );
+    assert_eq!(transaction.position, [4, 0, 6]);
     assert_eq!(transaction.face, 2);
-    assert_eq!(transaction.click_position.x, 0.5);
-    assert_eq!(transaction.click_position.y, 1.0);
-    assert!((transaction.click_position.z - 0.1).abs() < 1.0e-5);
+    assert_eq!(transaction.click_position[0], 0.5);
+    assert_eq!(transaction.click_position[1], 1.0);
+    assert!((transaction.click_position[2] - 0.1).abs() < 1.0e-5);
     let client = world.resource::<crate::runtime::world::ClientWorld>();
     let stream = client.stream.as_ref().unwrap();
     let palette = sim::PaletteWorld::new(
@@ -97,6 +77,7 @@ fn looking_past_a_ledge_places_on_the_forward_face_of_support() {
             .resource::<PhysicsCollisionRegistries>()
             .registry(stream.network_id_mode()),
         stream.current_dimension(),
+        Default::default(),
     );
     assert_eq!(
         palette.primary_runtime_id([4, 0, 5]).unwrap(),
@@ -114,7 +95,7 @@ fn shallow_ledge_miss_does_not_place() {
 #[test]
 fn ledge_miss_outlines_the_supporting_block() {
     let (mut world, _) = ledge_fixture(-0.9601);
-    world.init_resource::<crate::settings_runtime::RuntimeSettings>();
+    world.init_resource::<client_state::RuntimeSettings>();
     let bounds = published_outline(&mut world).expect("ledge support outline");
     // The supporting block [4, 0, 6], outlined as a full unit box.
     assert_eq!(bounds, [[4.0, 0.0, 6.0], [5.0, 1.0, 7.0]]);
@@ -124,10 +105,10 @@ fn ledge_miss_outlines_the_supporting_block() {
 fn spectator_ledge_miss_has_no_use_or_outline() {
     let (mut world, mut captured) = ledge_fixture(-0.9601);
     world
-        .resource_mut::<crate::player_runtime::PlayerRuntime>()
+        .resource_mut::<client_state::PlayerRuntime>()
         .facts
         .publish_player_game_mode(PlayerGameMode::Spectator);
-    world.init_resource::<crate::settings_runtime::RuntimeSettings>();
+    world.init_resource::<client_state::RuntimeSettings>();
     assert!(published_outline(&mut world).is_none());
     world.run_system_cached(produce_block_use).unwrap();
     assert!(transaction_targets(&mut captured).is_empty());
@@ -157,7 +138,7 @@ fn a_picked_actor_prevents_indirect_support_use_and_outline() {
         .resource_mut::<BlockUseRuntime>()
         .retain_pick(&origin, authority);
     world.insert_resource(origin);
-    world.init_resource::<crate::settings_runtime::RuntimeSettings>();
+    world.init_resource::<client_state::RuntimeSettings>();
     assert!(published_outline(&mut world).is_none());
     world.run_system_cached(produce_block_use).unwrap();
     assert!(transaction_targets(&mut captured).is_empty());
@@ -186,11 +167,11 @@ fn sneaking_and_airborne_states_can_use_nearby_ledge_support() {
 fn observed_target(world: &mut World, trigger: ItemUseTrigger) -> Option<FrozenBlockObservation> {
     let mut system = bevy::ecs::system::SystemState::<(
         BlockUseContext,
-        Res<crate::player_runtime::PlayerRuntime>,
+        Res<client_state::PlayerRuntime>,
         Res<BlockUseRuntime>,
         Res<MovementTicker>,
     )>::new(world);
-    let (context, player, runtime, movement) = system.get_mut(world);
+    let (context, player, runtime, movement) = system.get_mut(world).unwrap();
     let input = context.input.snapshot()?;
     let authority = movement.interaction_authority_identity();
     observe_use_target(
@@ -265,11 +246,11 @@ fn a_locked_line_uses_the_indirect_intercept_instead_of_the_forward_miss_segment
 
 /// Corners of the outline the production selection system publishes, if any.
 fn published_outline(world: &mut World) -> Option<[[f32; 3]; 2]> {
-    world.init_resource::<render::BlockSelectionFrame>();
+    world.init_resource::<render_scene::BlockSelectionFrameResource>();
     world
         .run_system_cached(crate::block_selection::publish)
         .unwrap();
-    let frame = world.resource::<render::BlockSelectionFrame>();
+    let frame = world.resource::<render_scene::BlockSelectionFrameResource>();
     let mut points = frame
         .outline
         .iter()

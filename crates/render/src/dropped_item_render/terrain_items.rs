@@ -3,13 +3,14 @@ use std::collections::{HashMap, HashSet};
 use bevy::{prelude::*, render::extract_resource::ExtractResource};
 use world::SubChunkKey;
 
-use crate::dropped_item::{DroppedItemScene, TerrainItemInstance};
+use {render_model::TerrainItemInstance, render_scene::DroppedItemScene};
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct TerrainItemSessionSet;
 
 /// Successful zero-byte changes applied in the main world before extraction.
 #[derive(Resource, Default, Clone, ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
 pub(crate) struct ImmediateTerrainMeshPublications(pub(crate) Vec<(SubChunkKey, u64)>);
 
 #[derive(Resource, Default)]

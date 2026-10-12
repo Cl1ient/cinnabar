@@ -29,7 +29,6 @@ use bevy::{
 };
 
 use crate::chunk::*;
-pub(crate) use direct::TerrainPassLabel;
 use direct::{DirectOcclusion, direct_occlusion_supported, reset_direct_occlusion_frame};
 pub(in crate::chunk) use direct::{DirectOcclusionFrame, SkipOccludedTerrain};
 use model::STREAM_COUNT;
@@ -213,6 +212,13 @@ pub(in crate::chunk) fn install(app: &mut App) {
         adapter.get_downlevel_capabilities().flags,
         forced_cpu,
     ));
+    bevy::log::info!(
+        ?draw_mode,
+        gpu_cull = ?submission,
+        direct_occlusion = direct.0,
+        forced_cpu,
+        "terrain draw path"
+    );
     render_app
         .insert_resource(support)
         .insert_resource(direct)

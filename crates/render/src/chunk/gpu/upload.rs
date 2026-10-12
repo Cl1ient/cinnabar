@@ -1,5 +1,9 @@
 use crate::chunk::*;
 use meshing::liquid::LIQUID_FACE_INSET;
+use render_scene::{
+    ChunkBiomeTints, ChunkRenderInstance, ChunkTextureAssets, ChunkUploadAcknowledgements,
+    ChunkUploadBudget, RuntimeStageProfiler,
+};
 mod arena_writes;
 mod lighting;
 #[cfg(test)]
@@ -102,7 +106,13 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
         &fairness,
     );
 
-    arena.pending_removals.extend(removed_instances.read());
+    for entity in removed_instances.read() {
+        arena.pending_removals.insert(entity);
+        // Stop drawing immediately; GPU ranges retire behind their completion fence.
+        if let Ok(mut entity) = commands.get_entity(entity) {
+            entity.remove::<GpuChunkAllocation>();
+        }
+    }
     let retirement_pressure = prepare_publication_removals(
         &mut arena,
         *budget,
@@ -434,7 +444,7 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
             .copied()
             .map(PackedLiquidQuad::words)
             .collect::<Vec<_>>();
-        absolutize_liquid_lighting_indices(&mut liquid_words, plan.liquid_lighting_start);
+        stamp_liquid_metadata_index(&mut liquid_words, metadata_index);
         let liquid_lighting_words = packed_lighting_records(&instance.liquid_lighting);
         let cube_lighting_words = packed_lighting_records(&instance.cube_lighting);
         let origin = gpu_chunk_origin(
@@ -442,6 +452,8 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
             plan.biome_start,
             plan.quad_start,
             plan.cube_lighting_start,
+            plan.liquid_start,
+            plan.liquid_lighting_start,
         )
         .expect("aligned arena layout and bounded biome offset produce a valid origin record");
         writes.quads.push((plan.quad_start, words));

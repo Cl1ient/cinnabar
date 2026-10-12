@@ -18,14 +18,15 @@ pub(super) fn stack_icon(
     runtime: &UiRuntime,
     presentation: &UiPresentationRuntime,
     stack: &protocol::NetworkItemStack,
-    identifier: &str,
+    item: client_world::CanonicalItemStack,
     animation_frame: Option<u32>,
 ) -> Option<IconRef> {
-    let projectile = protocol::item_charged_projectile(&stack.extra_data);
+    let identifier = item.identifier.as_deref()?;
     let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
         identifier,
         stack.metadata,
-        projectile.as_deref(),
+        item.use_animation,
+        item.charged_projectile_role,
         animation_frame,
     );
     let icon = presentation.item_icon(icon_identifier, variant)?;
@@ -40,9 +41,9 @@ pub mod test_support {
         runtime: &UiRuntime,
         presentation: &UiPresentationRuntime,
         stack: &protocol::NetworkItemStack,
-        identifier: &str,
+        item: client_world::CanonicalItemStack,
         animation_frame: Option<u32>,
     ) -> Option<IconRef> {
-        super::stack_icon(runtime, presentation, stack, identifier, animation_frame)
+        super::stack_icon(runtime, presentation, stack, item, animation_frame)
     }
 }

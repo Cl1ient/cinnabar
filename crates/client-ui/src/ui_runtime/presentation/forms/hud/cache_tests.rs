@@ -1,7 +1,9 @@
 //! Cached screens follow their text environment and resolution context.
 
 use super::*;
+use json_ui::{Context, DataSource, ViewState};
 use std::borrow::Cow;
+use ui_engine::cached_screen::CachedScreen;
 
 struct Metrics(&'static str);
 
@@ -108,14 +110,16 @@ fn prepared_server_catalogs_resolve_no_hud_on_the_frame() {
             (*super::super::ServerUiPack::default().prepare_catalog(&base)).clone()
         } else {
             super::super::ServerUiPack {
-                catalog: Some(Arc::new(super::super::engine::layer_pack_catalog(
-                    &base,
-                    &[],
-                ))),
+                catalog: Some(Arc::new(
+                    super::super::screen_registry::registry()
+                        .catalog()
+                        .layer(&base, &[]),
+                )),
                 ..super::super::ServerUiPack::default()
             }
         };
         presentation.set_server_ui_pack(&pack);
+        presentation.hud_frame_mut().first_person = true;
         // A survival player in a session shows the HUD.
         let mut player = player_state::PlayerState::new(1);
         player
@@ -130,7 +134,7 @@ fn prepared_server_catalogs_resolve_no_hud_on_the_frame() {
                 ui::DpiScale::new(1.0).unwrap(),
             )
             .unwrap();
-        let screens = &presentation.form_presentation.hud;
+        let screens = &presentation.screens.hud;
         assert!(screens.hud.passes > 0, "the HUD bound");
         let resolves = screens.hud.resolves + screens.crosshair.resolves;
         assert_eq!(

@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use render::{
+use render_model::{
     ActorRigFrameBuilder, BlockEntityKind, BlockEntityScene, BlockEntitySubmission, SceneClock,
 };
 use render_model::{
@@ -102,10 +102,10 @@ fn frame_cost_bench_block_entity_scene_400_static() {
         .map(|index| BlockEntitySubmission {
             block: [index % 20, 64, index / 20],
             light: 1.0.into(),
-            kind: BlockEntityKind::Chest(render::ChestModel {
-                variant: render::ChestVariant::Normal,
-                facing: render::Facing::North,
-                pair: render::ChestPair::Single,
+            kind: BlockEntityKind::Chest(render_model::ChestModel {
+                variant: render_model::ChestVariant::Normal,
+                facing: render_model::Facing::North,
+                pair: render_model::ChestPair::Single,
                 lid: 0.0,
             }),
         })
@@ -131,12 +131,12 @@ fn frame_cost_bench_block_entity_scene_400_static() {
 #[test]
 #[ignore = "benchmark"]
 fn frame_cost_bench_sound_decode() {
-    let path = client_presentation::audio::sound_bank_path(
+    let path = client_audio::audio::sound_bank_path(
         &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
-            .join(crate::asset_startup::DEFAULT_ASSET_PATH),
+            .join(assets::carriers::startup::DEFAULT_ASSET_PATH),
     );
-    let mut bank = client_presentation::audio::SoundBank::open(&path, None)
+    let mut bank = client_audio::audio::SoundBank::open(&path, None)
         .expect("offline sound timing requires a valid installed sound bank (make assets)")
         .expect("offline sound timing requires the installed sound bank (make assets)");
     // The largest streamed sound (re-decoded on every start) and common first-play effects.

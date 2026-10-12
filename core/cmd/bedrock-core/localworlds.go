@@ -2,108 +2,52 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
-	"os"
-	"path/filepath"
-	"runtime"
 
+	"github.com/hashimthearab/rust-mcbe/core/control"
 	"github.com/hashimthearab/rust-mcbe/core/localworld"
-	"github.com/hashimthearab/rust-mcbe/core/proxy"
 )
 
-const localServerName = "bedrock-local-server"
-
-func defaultLocalServerBinary() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	name := localServerName
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	return filepath.Join(filepath.Dir(exe), name), nil
+// worldSentinels are the local-world failures the control plane reports by code.
+var worldSentinels = []sentinelPair{
+	{control.ErrWorldInvalid, localworld.ErrInvalid},
+	{control.ErrWorldNotOpen, localworld.ErrNotOpen},
 }
 
-// detectRuntime probes how BDS can run; -local-backend=dragonfly skips the probe.
-func detectRuntime(ctx context.Context, opts options) localworld.RuntimeInfo {
-	if opts.localBackend == "dragonfly" {
-		return localworld.RuntimeInfo{Kind: localworld.RuntimeNone, Reason: "dragonfly forced by -local-backend"}
-	}
-	return localworld.DetectRuntime(ctx, opts.docker)
+func worldErr(err error) error { return classify(err, &worldSentinels) }
+
+// controlWorlds routes the launcher's open local world reports and serves friend invites.
+type controlWorlds struct {
+	local  *localworld.Local
+	onOpen func()                              // runs each time a world begins opening
+	invite func(context.Context, string) error // nil while friends cannot be invited
 }
 
-// startupRuntime is the runtime known without waiting on Docker; pending means a background probe must settle it.
-func startupRuntime(opts options) (info localworld.RuntimeInfo, pending bool) {
-	if opts.localBackend == "dragonfly" || localworld.PlatformSupportsBDS() {
-		return detectRuntime(context.Background(), opts), false
+func (w controlWorlds) SetLocal(report control.LocalWorld) error {
+	opened, err := w.local.SetLocal(localStatus(report))
+	if opened && w.onOpen != nil {
+		w.onOpen()
 	}
-	return localworld.RuntimeInfo{Kind: localworld.RuntimeContainer, Reason: "checking Docker"}, true
+	return worldErr(err)
 }
 
-// defaultBackend resolves -local-backend; auto picks BDS when it can run natively or in a container.
-func defaultBackend(flag string, info localworld.RuntimeInfo) string {
-	if flag == "auto" || flag == "" {
-		return localworld.DefaultBackend(info)
+// localStatus is the route a local_world.v1 report describes.
+func localStatus(report control.LocalWorld) localworld.Status {
+	status := localworld.Status{State: localworld.State(report.State), Error: report.Error}
+	if world := report.World; world != nil {
+		status.World = &localworld.World{ID: world.ID, Name: world.Name, GameMode: world.GameMode, Backend: world.Backend}
 	}
-	return flag
-}
-
-// openLocalWorlds builds the manager with a dragonfly runner (when its binary exists) and a BDS runner.
-// The dragonfly binary is required, and its absence fatal, only when it is the default backend at startup;
-// otherwise Dragonfly worlds are refused.
-func openLocalWorlds(opts options, logger *slog.Logger) (*localworld.Manager, error) {
-	runtimeInfo, pending := startupRuntime(opts)
-	backend := defaultBackend(opts.localBackend, runtimeInfo)
-	binary := opts.localServerBin
-	if binary == "" {
-		var err error
-		if binary, err = defaultLocalServerBinary(); err != nil {
-			return nil, fmt.Errorf("locate local world server: %w", err)
+	if target := report.Target; target != nil {
+		status.Target = &localworld.ConnectionTarget{
+			Address: target.Address, Transport: localworld.Transport(target.Transport),
+			LANAddress: target.LANAddress, LevelName: target.LevelName,
 		}
 	}
-	runners := localworld.Runners{}
-	var missingDragonfly error
-	if info, err := os.Stat(binary); err == nil && !info.IsDir() {
-		runners[localworld.BackendDragonfly] = localworld.ProcessRunner{Binary: binary, Log: logger}
-	} else {
-		missingDragonfly = fmt.Errorf("local world server binary not found at %s; build it with `make local-server`", binary)
-		if backend == localworld.BackendDragonfly {
-			return nil, missingDragonfly
-		}
+	return status
+}
+
+func (w controlWorlds) Invite(ctx context.Context, xuid string) error {
+	if w.invite == nil {
+		return control.ErrWorldNotOpen
 	}
-	store, err := localworld.OpenStore(opts.localWorldsDir)
-	if err != nil {
-		return nil, err
-	}
-	store.SetDefaultBackend(backend)
-	bdsDir := opts.bdsDir
-	if bdsDir == "" {
-		bdsDir = filepath.Join(filepath.Dir(filepath.Clean(opts.localWorldsDir)), "bds")
-	}
-	provisioner := &localworld.Provisioner{Root: bdsDir, Version: opts.bdsVersion, Log: logger}
-	provisioner.SetRuntime(runtimeInfo)
-	provisioner.SetDetector(func(ctx context.Context) localworld.RuntimeInfo { return detectRuntime(ctx, opts) })
-	maxPlayers := opts.bdsMaxPlayers
-	if maxPlayers == 0 {
-		// Room for friends joining the hosted world, as vanilla allows.
-		maxPlayers = proxy.FriendWorldMaxPlayers
-	}
-	runners[localworld.BackendBDS] = localworld.BDSRunner{
-		Provisioner: provisioner, Log: logger, Docker: opts.docker, Image: opts.bdsImage,
-		MaxPlayers: maxPlayers, HostPort: opts.bdsHostPort, LANVisible: opts.bdsLANVisible, LANHostPort: opts.bdsLANHostPort,
-	}
-	manager := localworld.NewManager(store, runners, logger)
-	if missingDragonfly != nil {
-		// Docker detection may still settle on Dragonfly; its worlds are then refused, not saved unopenable.
-		manager.SetUnavailable(localworld.BackendDragonfly, missingDragonfly)
-	}
-	manager.SetSetup(provisioner)
-	manager.SetAutoBackend(opts.localBackend == "auto" || opts.localBackend == "")
-	logger.Info("local worlds enabled", "dir", opts.localWorldsDir, "default_backend", backend, "bds_runtime", runtimeInfo.Kind, "reason", runtimeInfo.Reason)
-	if pending {
-		provisioner.DetectInBackground(runtimeInfo)
-	}
-	return manager, nil
+	return worldErr(w.invite(ctx, xuid))
 }

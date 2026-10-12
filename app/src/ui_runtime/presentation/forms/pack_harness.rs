@@ -1,8 +1,9 @@
 //! Startup fixture that exercises the app's carrier-loading entry points.
 
-use client_ui::test_support::pack_harness::{carrier, font};
+use client_ui::test_support::pack_harness::font;
 use client_ui::ui_runtime::presentation::UiPresentationRuntime;
 use std::path::Path;
+use ui_engine::test_support::carrier;
 
 /// Resolves a fixture asset through this worktree's installed assets symlink.
 fn local(path: &str) -> std::path::PathBuf {
@@ -15,11 +16,11 @@ fn local(path: &str) -> std::path::PathBuf {
 pub fn startup_presentation() -> Option<UiPresentationRuntime> {
     let world = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join(crate::asset_startup::DEFAULT_ASSET_PATH);
+        .join(assets::carriers::startup::DEFAULT_ASSET_PATH);
     for path in [
-        crate::asset_startup::hud_asset_path(&world),
-        crate::asset_startup::icon_asset_path(&world),
-        crate::asset_startup::entity_asset_path(&world),
+        assets::carriers::startup::hud_asset_path(&world),
+        assets::carriers::startup::icon_asset_path(&world),
+        assets::carriers::startup::entity_asset_path(&world),
     ] {
         if !path.exists() {
             eprintln!(
@@ -29,17 +30,17 @@ pub fn startup_presentation() -> Option<UiPresentationRuntime> {
             return None;
         }
     }
-    let hud = crate::asset_startup::require_hud_assets(&world)
+    let hud = assets::carriers::startup::require_hud_assets(&world)
         .expect("load installed HUD fixture")
         .into_runtime();
-    let icons = crate::asset_startup::require_icon_assets(
+    let icons = assets::carriers::startup::require_icon_assets(
         &world,
         include_str!("../../../../../assets/vanilla-source.json"),
     )
     .expect("load installed icon fixture")
     .into_runtime();
     let entities = assets::RuntimeEntityAssets::decode(
-        &std::fs::read(crate::asset_startup::entity_asset_path(&world))
+        &std::fs::read(assets::carriers::startup::entity_asset_path(&world))
             .expect("read installed entity fixture"),
     )
     .expect("decode installed entity fixture");
@@ -49,7 +50,9 @@ pub fn startup_presentation() -> Option<UiPresentationRuntime> {
         &entities,
         local(&launcher::install_layout::vanilla_pack_relative()),
     );
-    if let Some(images) = client_ui::ui_runtime::oreui_assets::load_optional_oreui_images() {
+    if let Some(images) =
+        oreui::images::load_optional_oreui_images(world.parent().unwrap_or(Path::new(".")))
+    {
         presentation.enable_oreui_originals(images).unwrap();
     }
     presentation

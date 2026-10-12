@@ -1,11 +1,13 @@
 use super::*;
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::prelude::{App, Update};
-use client_ui::ui_runtime::SequencedUiEvent;
+use client_runtime::network::NetworkHandle;
+use client_ui::ui_runtime::{SequencedUiEvent, UiRuntime};
 use protocol::{BossAction, BossColor, BossEvent, BossOverlay, BossStyle, UiEvent};
 
 #[test]
 fn boss_reply_drain_observes_the_transport_session_fence_during_credits() {
-    let mut player = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player = client_state::PlayerRuntime(player_state::PlayerState::new(1));
     let mut runtime = UiRuntime::new(1);
     runtime
         .apply(
@@ -36,14 +38,14 @@ fn boss_reply_drain_observes_the_transport_session_fence_during_credits() {
         runtime.flush_boss_responses(|_| Err(FormTransportError::Full)),
         Err(FormTransportError::Full)
     );
-    let (network, _queue_guard) = NetworkHandle::with_command_capacity(2);
+    let (network, _queue_guard) = NetworkHandle::<PackApplication>::with_command_capacity(2);
     let mut app = App::new();
     app.insert_resource(player)
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(network)
         .add_systems(Update, flush_server_form_network);
     app.update();
-    let mut runtime = app.world_mut().resource_mut::<UiRuntime>();
+    let mut runtime = app.world_mut().resource_mut::<UiRuntimeResource>();
     assert!(runtime.credits().owns_input());
     assert_eq!(
         runtime.flush_boss_responses(|_| panic!("closed session must retire its boss reply")),

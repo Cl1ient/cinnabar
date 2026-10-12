@@ -2,7 +2,8 @@ use assets::{FontPixels, FontTexturePage, GlyphMetrics, RuntimeFontCatalog, enco
 use sha2::{Digest, Sha256};
 
 use super::*;
-use crate::ui_runtime::presentation::{SessionGlyphSheets, tests::fixture_font};
+use crate::ui_runtime::presentation::SessionGlyphSheets;
+use ui_engine::test_support::fixture_font;
 
 fn private_font(marker: u8) -> Arc<RuntimeFontCatalog> {
     let side = UI_LOCAL_FONT_PAGE_SIDE;
@@ -14,7 +15,7 @@ fn private_font(marker: u8) -> Arc<RuntimeFontCatalog> {
         pixels_sha256: Sha256::digest(&rgba8).into(),
         width: side,
         height: side,
-        pixels: FontPixels::Rgba8(rgba8),
+        pixels: FontPixels::Rgba8(rgba8.into()),
     };
     let metrics = GlyphMetrics {
         codepoint: 'A',

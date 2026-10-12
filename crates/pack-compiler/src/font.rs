@@ -18,7 +18,8 @@ use thiserror::Error;
 mod outline;
 
 pub use outline::{
-    GlyphAdvances, OutlineFontConfig, compile_outline_font, compile_outline_font_with_fallback,
+    GlyphAdvances, NATIVE_SDF_EM_PIXELS, NATIVE_SDF_MIN_PIXELS, OutlineFontConfig,
+    compile_native_outline_rasters, compile_outline_font, compile_outline_font_with_fallback,
 };
 
 const FONT_DESCRIPTOR_SCHEMA: u32 = 1;
@@ -238,7 +239,7 @@ pub fn compile_fonts(root: &Path) -> Result<CompiledFontCarrier, FontCompileErro
             pixels_sha256: Sha256::digest(&rgba8).into(),
             width: dimensions.0,
             height: dimensions.1,
-            pixels: FontPixels::Rgba8(rgba8),
+            pixels: FontPixels::Rgba8(rgba8.into()),
         });
     }
     pages.sort_by(|left, right| {

@@ -36,7 +36,7 @@ fn open_personal_inventory(ledger: &mut PlayerInventoryLedger) {
 
 #[test]
 fn drop_key_admits_creative_grid_and_recipe_book_items() {
-    use crate::ui_runtime::presentation::inventory_pointer::InventoryCellHit;
+    use ui_screens::container_actions::InventoryCellHit;
     for hit in [
         InventoryCellHit::CreativeGrid(0),
         InventoryCellHit::RecipeBook(0),
@@ -55,6 +55,7 @@ fn drop_key_admits_creative_grid_and_recipe_book_items() {
                 network_id: 1,
                 component_based: false,
                 version: protocol::ItemRegistryVersion::None,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: None,
                 canonical_empty_component_data: true,
@@ -78,7 +79,7 @@ fn drop_key_admits_creative_grid_and_recipe_book_items() {
             &mut player,
             &mut runtime,
             Some(hit),
-            bevy::prelude::KeyCode::KeyQ,
+            semantic_input::KeyboardKey::KeyQ,
             false,
             None,
             true,
@@ -92,9 +93,9 @@ fn drop_key_admits_creative_grid_and_recipe_book_items() {
 
 #[test]
 fn creative_group_drop_matches_the_icons_retained_user_data() {
-    use crate::ui_runtime::presentation::inventory_pointer::InventoryCellHit;
     use inventory::inventory_ledger::CreativeDestination;
     use sha2::{Digest, Sha256};
+    use ui_screens::container_actions::InventoryCellHit;
     let mut player = player_state::PlayerState::new(1);
     player
         .facts
@@ -109,6 +110,7 @@ fn creative_group_drop_matches_the_icons_retained_user_data() {
             network_id: 1,
             component_based: false,
             version: protocol::ItemRegistryVersion::None,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -158,7 +160,7 @@ fn creative_group_drop_matches_the_icons_retained_user_data() {
         &mut player,
         &mut runtime,
         Some(InventoryCellHit::RecipeBook(0)),
-        bevy::prelude::KeyCode::KeyQ,
+        semantic_input::KeyboardKey::KeyQ,
         false,
         None,
         true,

@@ -6,30 +6,31 @@
 //! as vanilla's local destroy does; inbound block updates stay authoritative and
 //! replace the prediction. Unknown blocks keep cracking until the server breaks them.
 
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::{
     ecs::system::SystemParam,
-    prelude::{Query, Real, Res, ResMut, Resource, Time, Window, With},
+    prelude::{Query, Real, Res, ResMut, Time, Window, With},
     window::PrimaryWindow,
 };
+use client_interaction::survival_mining::SurvivalMiningRuntime;
+use client_runtime::network::NetworkHandle;
 use semantic_input::Action;
 use sim::{DestroyConditions, HeldTool, PaletteWorld};
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 use client_world::game_mode_capabilities::GameModeCapabilities;
 use {
-    crate::{
-        interaction_authority::observe_block,
+    crate::{interaction_authority::observe_block, runtime::world::ClientWorld},
+    client_interaction::{
         melee::{MeleeRuntime, SwingTracker},
-        menu::MenuRuntime,
         mining::hand_interaction_selection,
         movement::{
             LocalMovementEffectTimeline, LocalPhysicsController, MovementTicker,
             PhysicsCollisionRegistries,
         },
-        runtime::{network::NetworkHandle, world::ClientWorld},
-        semantic_controls::SemanticInputSnapshot,
     },
     client_presentation::local_player::InteractionOriginSnapshot,
+    client_state::SemanticInputSnapshot,
     gameplay::{
         interaction_authority::within_pick_range,
         melee::swing_duration,
@@ -43,42 +44,26 @@ use gameplay::survival_mining::{
     tool_break_damage, unbreaking_keeps_damage,
 };
 
-/// Bevy resource adapter for the gameplay survival_mining owner.
-#[derive(Resource, Debug, Default)]
-pub(crate) struct SurvivalMiningRuntime(gameplay::survival_mining::SurvivalMiningRuntime);
-impl std::ops::Deref for SurvivalMiningRuntime {
-    type Target = gameplay::survival_mining::SurvivalMiningRuntime;
-    /// Borrows the gameplay owner at the existing ordered system boundary.
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl std::ops::DerefMut for SurvivalMiningRuntime {
-    /// Mutates the gameplay owner without duplicating its state.
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 #[derive(SystemParam)]
 pub(crate) struct SurvivalMiningContext<'w, 's> {
     input: Res<'w, SemanticInputSnapshot>,
     origin: Res<'w, InteractionOriginSnapshot>,
-    ui: Res<'w, UiRuntime>,
-    menu: Res<'w, MenuRuntime>,
+    ui: Res<'w, UiRuntimeResource>,
+    focus: Res<'w, client_state::ScreenFocus>,
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     client_world: ResMut<'w, ClientWorld>,
     collisions: Res<'w, PhysicsCollisionRegistries>,
     effects: Res<'w, LocalMovementEffectTimeline>,
     physics: Option<Res<'w, LocalPhysicsController>>,
     melee: Res<'w, MeleeRuntime>,
-    network: Res<'w, NetworkHandle>,
+    network: Res<'w, NetworkHandle<PackApplication>>,
     time: Res<'w, Time<Real>>,
-    block_cues: bevy::prelude::MessageWriter<'w, client_presentation::audio::LocalBlockCue>,
+    block_cues: bevy::prelude::MessageWriter<'w, client_audio::audio::LocalBlockCue>,
 }
 
 /// Runs after the committed world poll and before the movement flush.
 pub(crate) fn produce_survival_mining(
-    mut player_runtime: bevy::prelude::ResMut<crate::player_runtime::PlayerRuntime>,
+    mut player_runtime: bevy::prelude::ResMut<client_state::PlayerRuntime>,
     mut context: SurvivalMiningContext,
     mut runtime: ResMut<SurvivalMiningRuntime>,
     mut swings: ResMut<SwingTracker>,
@@ -101,7 +86,7 @@ pub(crate) fn produce_survival_mining(
         .map(BlockBreakingAuthority::from_negotiation);
     let caps = player_runtime.facts.game_mode_capabilities();
     let focused =
-        !context.menu.is_visible() && context.windows.single().is_ok_and(|window| window.focused);
+        !context.focus.menu_visible && context.windows.single().is_ok_and(|window| window.focused);
     let attack = context.input.phase(Action::Attack);
     let snapshot = context.input.snapshot();
     let snapshot_present = snapshot.is_some();
@@ -201,7 +186,7 @@ pub(crate) fn produce_survival_mining(
         } = cue;
         context
             .block_cues
-            .write(client_presentation::audio::LocalBlockCue::Break {
+            .write(client_audio::audio::LocalBlockCue::Break {
                 position,
                 block_runtime_id,
             });
@@ -209,7 +194,7 @@ pub(crate) fn produce_survival_mining(
 }
 
 fn observe_destroy_target(
-    player_runtime: &crate::player_runtime::PlayerRuntime,
+    player_runtime: &client_state::PlayerRuntime,
     context: &SurvivalMiningContext,
     caps: Option<GameModeCapabilities>,
     input_mode: semantic_input::InputMode,
@@ -220,7 +205,7 @@ fn observe_destroy_target(
     // The capability gate in the producer already confirmed this mode edits;
     // here only an open UI blocks the pick.
     let caps = caps?;
-    if ui.ui_focused(player_runtime) {
+    if context.focus.ui_focused {
         return None;
     }
     let selection = hand_interaction_selection(player_runtime)?;
@@ -231,6 +216,7 @@ fn observe_destroy_target(
         &context.client_world,
         &context.collisions,
         selection,
+        player_runtime.facts.player_game_mode(),
         (
             input_mode,
             if caps.creative_reach {
@@ -247,10 +233,12 @@ fn observe_destroy_target(
     }
     let stream = context.client_world.stream.as_ref()?;
     let mode = stream.network_id_mode();
-    let block = context
-        .collisions
-        .block_identifier(mode, observed.target.runtime_id)
-        .and_then(sim::block_destroy_info);
+    let block = sim::BlockDestroyInfo::from_facts(
+        stream
+            .runtime_assets()
+            .resolve(mode, observed.target.runtime_id)
+            .destroy(),
+    );
     let item = &observed.selection.item;
     let identifier = (item.network_id() != 0)
         .then(|| {
@@ -268,6 +256,7 @@ fn observe_destroy_target(
         stream.collision_store(),
         context.collisions.registry(mode),
         stream.current_dimension(),
+        Default::default(),
     );
     let effects = context.effects.mining_effects();
     let helmet = ui.local_armor(player_runtime).helmet;
@@ -331,10 +320,3 @@ fn observe_destroy_target(
 const AQUA_AFFINITY_ENCHANTMENT_ID: i16 = 8;
 const EFFICIENCY_ENCHANTMENT_ID: i16 = 15;
 const UNBREAKING_ENCHANTMENT_ID: i16 = 17;
-
-impl SurvivalMiningRuntime {
-    /// Supplies existing audio and particle adapters with the current destroy target.
-    pub(crate) fn destroying_target(&self) -> Option<([i32; 3], u8)> {
-        self.0.destroying_target()
-    }
-}

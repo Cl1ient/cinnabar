@@ -51,6 +51,7 @@ pub struct SemanticInputRouter {
     quarantined_controllers: Vec<u32>,
     controller_activity_baselines: Vec<ControllerActivityBaseline>,
     pending_release_barrier: bool,
+    pending_authority_release: bool,
 }
 
 impl Default for SemanticInputRouter {
@@ -74,6 +75,7 @@ impl Default for SemanticInputRouter {
             quarantined_controllers: Vec::new(),
             controller_activity_baselines: Vec::new(),
             pending_release_barrier: false,
+            pending_authority_release: false,
         }
     }
 }
@@ -171,6 +173,17 @@ impl SemanticInputRouter {
         self.queue_held_releases(reason);
     }
 
+    /// Keeps one desktop control out of gameplay until its physical release.
+    /// Other held controls and pointer motion remain available in the routed frame.
+    pub fn consume_control(&mut self, control: PhysicalControl) {
+        let control = match control {
+            PhysicalControl::KeyboardUsage(code) => QuarantinedControl::KeyboardUsage(code),
+            PhysicalControl::MouseButton(code) => QuarantinedControl::MouseButton(code),
+            _ => return,
+        };
+        push_quarantine(&mut self.quarantined_controls, control);
+    }
+
     pub fn finalize(&mut self) -> Result<ActionSnapshot, RouterError> {
         let next_sequence = self
             .frame_sequence
@@ -245,6 +258,7 @@ impl SemanticInputRouter {
         self.physical_down = sample.active;
         self.pending_releases = [None; Action::COUNT];
         self.pending_release_barrier = false;
+        let authority_released = std::mem::take(&mut self.pending_authority_release);
         self.pending_context = None;
         self.frame_sequence = next_sequence;
         self.input_mode = input_mode;
@@ -288,10 +302,12 @@ impl SemanticInputRouter {
             input_mode: self.input_mode,
             phases,
             release_reasons,
+            authority_released,
         })
     }
 
     fn queue_held_releases(&mut self, reason: ReleaseReason) {
+        self.pending_authority_release = true;
         let previous_quarantine_len = self.quarantined_controls.len();
         quarantine_active_controls(
             &self.previous_frame,

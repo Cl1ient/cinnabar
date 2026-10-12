@@ -195,12 +195,6 @@ pub(super) fn font_texture_array_with_hud_and_icons(
         (layers - font_layers) as usize,
     ));
     planned.extend((0..render_model::MAX_UI_DYNAMIC_PAGES).map(|offset| {
-        if offset >= render_model::UI_FALLBACK_FONT_PAGE_OFFSET {
-            return (
-                [render_model::UI_FALLBACK_FONT_PAGE_SIDE; 2],
-                UiTextureFormat::Coverage,
-            );
-        }
         let side = if offset == render_model::UI_LOCAL_FONT_PAGE_OFFSET {
             render_model::UI_LOCAL_FONT_PAGE_SIDE
         } else {
@@ -211,6 +205,13 @@ pub(super) fn font_texture_array_with_hud_and_icons(
     planned.extend(std::iter::repeat_n(
         ([render_model::UI_ART_PAGE_SIDE; 2], UiTextureFormat::Rgba8),
         render_model::MAX_UI_ART_PAGES,
+    ));
+    planned.extend(std::iter::repeat_n(
+        (
+            [render_model::UI_DYNAMIC_PAGE_SIDE; 2],
+            UiTextureFormat::Rgba8,
+        ),
+        render_model::MAX_UI_NATIVE_SHEET_PAGES,
     ));
     let plan = UiTexturePlan::with_formats(&planned)
         .map_err(|_| UiPresentationError::InvalidFontTexture)?;
@@ -371,9 +372,6 @@ pub(super) fn font_texture_array_with_hud_and_icons(
     let blank = UiTexturePage::owned([width, height], vec![0; layer_bytes].into())
         .map_err(|_| UiPresentationError::InvalidFontTexture)?;
     pages.extend((0..render_model::MAX_UI_DYNAMIC_PAGES).map(|offset| {
-        if offset >= render_model::UI_FALLBACK_FONT_PAGE_OFFSET {
-            return super::font_fallback::blank_page();
-        }
         if offset == render_model::UI_LOCAL_FONT_PAGE_OFFSET {
             super::mod_panel_font::blank_page()
         } else {
@@ -389,6 +387,10 @@ pub(super) fn font_texture_array_with_hud_and_icons(
     pages.extend(std::iter::repeat_n(
         blank_art,
         render_model::MAX_UI_ART_PAGES,
+    ));
+    pages.extend(std::iter::repeat_n(
+        blank,
+        render_model::MAX_UI_NATIVE_SHEET_PAGES,
     ));
     let mut source = Sha256::new();
     source.update(b"ui-source-catalog-v1");

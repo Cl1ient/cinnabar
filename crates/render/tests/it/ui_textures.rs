@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use render_model::{
     MAX_UI_DYNAMIC_PAGES, MAX_UI_FIXED_TEXTURE_BYTES, MAX_UI_MODEL_ATLAS_PAGES,
-    MAX_UI_TEXTURE_BYTES, MAX_UI_TEXTURE_SIDE, UI_DYNAMIC_PAGE_SIDE, UI_FALLBACK_FONT_PAGE_OFFSET,
-    UI_FALLBACK_FONT_PAGE_SIDE, UI_LOCAL_FONT_PAGE_OFFSET, UI_LOCAL_FONT_PAGE_SIDE,
-    UI_MODEL_ATLAS_PAGE_OFFSET, UI_MODEL_ATLAS_SIDE, UI_PLAYER_SKIN_PAGE_OFFSET,
-    UI_SESSION_ICON_PAGE_OFFSET, UiRenderRejectReason, UiTextureCatalog, UiTexturePage,
-    UiTexturePlan,
+    MAX_UI_TEXTURE_BYTES, MAX_UI_TEXTURE_SIDE, UI_DYNAMIC_PAGE_SIDE, UI_LOCAL_FONT_PAGE_OFFSET,
+    UI_LOCAL_FONT_PAGE_SIDE, UI_MODEL_ATLAS_PAGE_OFFSET, UI_MODEL_ATLAS_SIDE,
+    UI_PLAYER_SKIN_PAGE_OFFSET, UI_SESSION_ICON_PAGE_OFFSET, UiRenderRejectReason,
+    UiTextureCatalog, UiTexturePage, UiTexturePlan,
 };
 
 #[test]
@@ -107,7 +106,27 @@ fn art_pages_follow_the_small_dynamic_pages_within_their_own_cap() {
     ));
     assert!(UiTextureCatalog::new(pages.clone(), 0).is_ok());
     pages.push(art);
-    assert!(UiTextureCatalog::new(pages, 0).is_err());
+    assert!(UiTextureCatalog::new(pages.clone(), 0).is_ok());
+    pages.extend(std::iter::repeat_n(
+        small.clone(),
+        render_model::MAX_UI_NATIVE_SHEET_PAGES - 1,
+    ));
+    let catalog = UiTextureCatalog::new(pages.clone(), 0).unwrap();
+    assert_eq!(
+        catalog.pages().len(),
+        render_model::UI_NATIVE_SHEET_PAGE_OFFSET + render_model::MAX_UI_NATIVE_SHEET_PAGES
+    );
+    pages.push(small.clone());
+    assert_eq!(
+        UiTextureCatalog::new(pages, 0),
+        Err(UiRenderRejectReason::InvalidTextureExtent)
+    );
+    let mut oversized_art = reserved_dynamic_pages();
+    oversized_art.push(rgba_page([MAX_UI_TEXTURE_SIDE; 2], 0));
+    assert_eq!(
+        UiTextureCatalog::new(oversized_art, 0),
+        Err(UiRenderRejectReason::InvalidTextureExtent)
+    );
     let odd = rgba_page([UI_MODEL_ATLAS_SIDE; 2], 0);
     assert!(UiTextureCatalog::new(vec![odd, small], 0).is_err());
 }
@@ -123,16 +142,9 @@ fn rgba_page(dimensions: [u32; 2], value: u8) -> UiTexturePage {
 fn reserved_dynamic_pages() -> Vec<UiTexturePage> {
     let small = rgba_page([UI_DYNAMIC_PAGE_SIDE; 2], 0);
     let font = rgba_page([UI_LOCAL_FONT_PAGE_SIDE; 2], 0);
-    let fallback = UiTexturePage::coverage(
-        [UI_FALLBACK_FONT_PAGE_SIDE; 2],
-        vec![0; (UI_FALLBACK_FONT_PAGE_SIDE * UI_FALLBACK_FONT_PAGE_SIDE) as usize].into(),
-    )
-    .unwrap();
     (0..MAX_UI_DYNAMIC_PAGES)
         .map(|offset| {
-            if offset >= UI_FALLBACK_FONT_PAGE_OFFSET {
-                fallback.clone()
-            } else if offset == UI_LOCAL_FONT_PAGE_OFFSET {
+            if offset == UI_LOCAL_FONT_PAGE_OFFSET {
                 font.clone()
             } else {
                 small.clone()
@@ -293,12 +305,6 @@ fn native_model_slots_cannot_expand_other_reservations_or_admit_malformed_extent
         (
             UI_LOCAL_FONT_PAGE_OFFSET,
             [UI_LOCAL_FONT_PAGE_SIDE, UI_LOCAL_FONT_PAGE_SIDE / 2],
-        ),
-        (UI_FALLBACK_FONT_PAGE_OFFSET, [UI_DYNAMIC_PAGE_SIDE; 2]),
-        (UI_FALLBACK_FONT_PAGE_OFFSET, [UI_LOCAL_FONT_PAGE_SIDE; 2]),
-        (
-            MAX_UI_DYNAMIC_PAGES - 1,
-            [UI_FALLBACK_FONT_PAGE_SIDE, UI_FALLBACK_FONT_PAGE_SIDE / 2],
         ),
     ] {
         let mut pages = base.pages()[base.dynamic_start()..].to_vec();

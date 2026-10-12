@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use render::{
+use render_model::{
     ACTOR_LAYER_BODY, ActorArtworkPages, ActorRenderIdentity, ActorRigRenderInput, ActorRigRoute,
     ActorRigSubmission,
 };
@@ -55,7 +55,7 @@ fn body(runtime: &mut EquipmentRuntime) -> ActorRigSubmission {
         texture_layer: 0,
         route: ActorRigRoute::Compiled,
         tint: 0,
-        uv_anim: render::IDENTITY_UV_ANIM,
+        uv_anim: render_model::IDENTITY_UV_ANIM,
         light: 0,
         overlay_rgba8: 0,
     }
@@ -92,7 +92,7 @@ fn cached_pack_custom_armor_draws_in_its_wearable_slot() {
         let Some(view) = super::super::local_pack::local_pack_view_at(&path) else {
             continue;
         };
-        let files = super::collect::collect_files(&view, refs.as_ref(), None);
+        let files = pack_runtime::entity_pack::collect::collect_files(&view, refs.as_ref(), None);
         let Ok(Some(compiled)) = pack_compiler::compile_actor_pack(files) else {
             continue;
         };
@@ -171,6 +171,8 @@ fn cached_pack_custom_armor_draws_in_its_wearable_slot() {
             runtime.set_session_items(Some(&items), None, Vec::new());
             let mut input = ActorEquipmentInput::default();
             input.armor[slot as usize] = Some(WornItem {
+                use_facts: client_world::EffectiveItemUse::default(),
+                grip: assets::item::grip::ItemGrip::Unresolved,
                 identifier: Arc::from(item.as_ref()),
                 metadata: 0,
                 damage: None,

@@ -8,6 +8,8 @@ pub use grants::ModGrants;
 #[cfg(feature = "execution")]
 mod load;
 #[cfg(feature = "execution")]
+pub mod module_observations;
+#[cfg(feature = "execution")]
 mod outputs;
 #[cfg(feature = "execution")]
 pub mod package;
@@ -31,8 +33,11 @@ pub use runtime::cinnabar::extension::gameplay::{
 };
 #[cfg(feature = "execution")]
 pub use runtime::cinnabar::extension::player_state::{
-    Effect as PlayerStateEffect, Item as PlayerStateItem, Slot as PlayerStateSlot,
-    Snapshot as PlayerStateSnapshot,
+    Actor as ActorObservation, Bounds as ActorObservationBounds,
+    ChatMessage as ObservedChatMessage, CombatEvent as CombatObservation, CombatKind,
+    Effect as PlayerStateEffect, Food as FoodObservation, Item as PlayerStateItem,
+    Motion as MotionObservation, Sidebar as SidebarSnapshot, SidebarRow, Slot as PlayerStateSlot,
+    Snapshot as PlayerStateSnapshot, Vitals as VitalsObservation, WorldObservation,
 };
 #[cfg(feature = "execution")]
 pub use runtime::cinnabar::extension::{
@@ -160,6 +165,26 @@ impl ModHost {
         Ok(())
     }
 
+    /// Supplies bounded, read-only presentation facts for the next frame callback only.
+    pub fn observe_presentation(
+        &mut self,
+        world: Option<WorldObservation>,
+        fps: Option<f32>,
+        sidebar: Option<SidebarSnapshot>,
+        chat: Vec<ObservedChatMessage>,
+    ) -> Result<()> {
+        self.instance
+            .observe_presentation(world, fps, sidebar, chat)
+    }
+
+    /// Supplies bounded, session-fenced cosmetic facts for the next callback only.
+    pub fn observe_modules(
+        &mut self,
+        observations: module_observations::ModuleObservations,
+    ) -> Result<()> {
+        self.instance.observe_modules(observations)
+    }
+
     /// The session and dimension of the last successful gameplay delay-fix request.
     pub fn item_use_delay_fix(&self) -> Option<(u64, i32)> {
         self.instance.item_use_delay_fix()
@@ -198,6 +223,11 @@ impl ModHost {
     /// Cues the next callback can poll, typically last frame's from every loaded mod.
     pub fn deliver_cues(&mut self, cues: Vec<ModCue>) {
         self.instance.deliver_cues(cues);
+    }
+
+    /// Consumes committed local-only system feedback once.
+    pub fn take_local_messages(&mut self) -> Vec<String> {
+        self.instance.take_local_messages()
     }
 
     /// Consumes the last successful frame's presentation cues once.

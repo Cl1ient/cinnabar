@@ -74,7 +74,17 @@ fn new_crates_accept_the_domain_and_presentation_dependency_direction() {
     set_dependencies(
         root,
         "launcher",
-        "[dependencies]\nui={path='../ui'}\nprotocol={path='../protocol'}",
+        "[dependencies]\nui={path='../ui'}\nbridge={path='../bridge'}",
+    );
+    set_dependencies(
+        root,
+        "launcher-host",
+        "[dependencies]\nlauncher={path='../launcher'}\nbridge={path='../bridge'}",
+    );
+    set_dependencies(
+        root,
+        "first-run",
+        "[dependencies]\nlauncher={path='../launcher'}\nlauncher-host={path='../launcher-host'}\nrender-model={path='../render-model'}\nui={path='../ui'}",
     );
     set_dependencies(
         root,
@@ -338,6 +348,45 @@ fn dependency_feature_forwarding_cannot_expose_test_support() {
             ),
         );
         assert!(diagnostics(root).iter().any(|line| line == "app: production dependency `client-ui` enables test-support feature `test-support`"));
+    }
+}
+
+#[test]
+fn registered_fixture_features_can_forward_dependency_fixtures() {
+    for request in ["host/test-support", "host?/fixtures"] {
+        let temp = fixture();
+        let root = temp.path();
+        set_dependencies(
+            root,
+            "launcher-host",
+            "[features]\nfixtures=['test-support']\ntest-support=[]",
+        );
+        set_dependencies(
+            root,
+            "client-shell",
+            &format!(
+                "[dependencies]\nhost={{package='launcher-host',path='../launcher-host'}}\n[features]\ntest-support=['{request}']"
+            ),
+        );
+        assert_eq!(diagnostics(root), Vec::<String>::new());
+    }
+}
+
+#[test]
+fn production_features_cannot_activate_registered_fixture_forwarding() {
+    for feature in ["default", "more"] {
+        let temp = fixture();
+        let root = temp.path();
+        set_dependencies(root, "launcher-host", "[features]\ntest-support=[]");
+        set_dependencies(
+            root,
+            "client-shell",
+            &format!(
+                "[dependencies]\nhost={{package='launcher-host',path='../launcher-host'}}\n[features]\n{feature}=['test-support']\ntest-support=['host/test-support']"
+            ),
+        );
+        assert!(diagnostics(root).iter().any(|line| line
+            == "client-shell: production dependency `launcher-host` enables test-support feature `test-support`"));
     }
 }
 

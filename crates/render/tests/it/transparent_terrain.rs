@@ -2,9 +2,9 @@
 //! produce the pixels of the liquid and model programs it composes, drawn in the same order
 //! through their own pipelines.
 use crate::{chunk_constants, gpu_snapshot, material_shader, shader_source, solid_terrain_raster};
-use bevy::math::{Mat4, Vec3};
+use bevy::math::Vec3;
 use gpu_snapshot::Gpu;
-use meshing::liquid::TRANSPARENT_WATER_DRAW_FLAG;
+use meshing::liquid::{TRANSPARENT_WATER_DRAW_FLAG, TRANSPARENT_WATER_RECORD_FLAG};
 use meshing::{Face, PackedLiquidQuad, PackedModelDrawRef, PackedModelRef};
 use render::PackedTransparentDrawRef;
 
@@ -31,8 +31,13 @@ impl Fixture {
     fn new(gpu: &Gpu) -> Self {
         let storage = wgpu::BufferUsages::STORAGE;
         let uniform = wgpu::BufferUsages::UNIFORM;
-        // Metadata slot 0 at the world origin; both families read it through base vertex 0.
-        let origins = gpu.words(&[0, 0, 0, 0, 0, 0, 0, 0], storage);
+        // Liquid records, then model draw refs, model refs and lighting records.
+        let draw_word = WATER_QUADS as usize * 4;
+        let ref_word = draw_word + MODEL_QUADS as usize * 2;
+        let light_word = ref_word + MODEL_QUADS as usize * 4;
+        // Metadata slot 0 at the world origin, its liquid records from record 0 and their
+        // lighting from the first lighting record.
+        let origins = gpu.words(&[0, 0, 0, 0, 0, 0, 0, light_word as u32 / 2], storage);
         // Material 0 textures water, material 1 the models; neither animates.
         let materials = gpu.words(
             &[
@@ -49,20 +54,16 @@ impl Fixture {
             .concat(),
             storage,
         );
-        // Liquid records, then model draw refs, model refs and lighting records.
-        let draw_word = WATER_QUADS as usize * 4;
-        let ref_word = draw_word + MODEL_QUADS as usize * 2;
-        let light_word = ref_word + MODEL_QUADS as usize * 4;
         let mut geometry = Vec::new();
         for quad in 0..WATER_QUADS as u8 {
-            let lighting = (light_word / 2) as u32 + u32::from(quad);
+            // The last word names the record's origin slot, as the upload stamps it.
             geometry.extend(
                 PackedLiquidQuad::try_pack(
                     [quad, 0, quad],
                     Face::PositiveY,
                     [255; 4],
                     0,
-                    lighting,
+                    0,
                     [0, 0],
                     false,
                 )
@@ -136,16 +137,18 @@ impl Fixture {
         let animations = gpu.words(&[0; 8], storage);
         let frames = gpu.words(&[0; 4], storage);
         let clock = gpu.words(&[0; 4], uniform);
-        let frame = render::AtmosphereFrame::default();
+        let frame = render_scene::AtmosphereFrame::default();
         let atmosphere = gpu.buffer(bytemuck::cast_slice(std::slice::from_ref(&frame)), uniform);
         let lightmap = gpu.buffer(
-            bytemuck::cast_slice(&render::LightmapInputs::default().build()),
+            bytemuck::cast_slice(&render_model::LightmapInputs::default().build()),
             uniform,
         );
         let eye = Vec3::new(1.0, 4.0, 1.0);
-        let world_from_view = Mat4::look_at_rh(eye, Vec3::new(1.0, 0.0, 1.0), Vec3::Z);
+        let world_from_view =
+            glam::camera::rh::view::look_at_mat4(eye, Vec3::new(1.0, 0.0, 1.0), Vec3::Z);
         let clip_from_world =
-            Mat4::perspective_infinite_reverse_rh(1.0, 1.0, 0.05) * world_from_view;
+            glam::camera::rh::proj::directx::perspective_infinite_reverse(1.0, 1.0, 0.05)
+                * world_from_view;
         let view = gpu.buffer(&gpu_snapshot::view(clip_from_world, eye), uniform);
         let atlas = solid_terrain_raster::pattern_texture(gpu);
         let sampler = gpu.device.create_sampler(&Default::default());
@@ -275,8 +278,8 @@ impl Fixture {
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[&self.layout],
-                push_constant_ranges: &[],
+                bind_group_layouts: &[Some(&self.layout)],
+                immediate_size: 0,
             });
         gpu.device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -295,8 +298,8 @@ impl Fixture {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::GreaterEqual,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }),
@@ -313,7 +316,7 @@ impl Fixture {
                             | wgpu::ColorWrites::BLUE,
                     })],
                 }),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             })
     }
@@ -381,6 +384,7 @@ impl Fixture {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             pass.set_bind_group(0, &self.group, &[]);
             pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -417,7 +421,11 @@ impl Fixture {
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
         rx.recv().unwrap().unwrap();
-        readback.slice(..).get_mapped_range().to_vec()
+        readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped")
+            .to_vec()
     }
 }
 
@@ -451,14 +459,14 @@ fn shared_transparent_pipeline_draws_water_and_models_like_their_own_pipelines()
     // Each family's own program, as its dedicated pipeline ran it before the merge.
     let liquid = lightmap(format!(
         "{}\n{LIQUID_REFERENCE}",
-        shader_source::standalone(include_str!("../../src/liquid.wgsl"), &defs)
+        shader_source::standalone(include_str!("../../src/liquid.wesl"), &defs)
     ));
     let model = lightmap(format!(
         "{}\n{MODEL_REFERENCE}",
-        shader_source::standalone(include_str!("../../src/model.wgsl"), &defs)
+        shader_source::standalone(include_str!("../../src/model.wesl"), &defs)
     ));
     let shared = lightmap(shader_source::composed(
-        include_str!("../../src/transparent_terrain.wgsl"),
+        include_str!("../../src/transparent_terrain.wesl"),
         &defs,
     ));
     let liquid = fixture.pipeline(
@@ -492,9 +500,13 @@ fn shared_transparent_pipeline_draws_water_and_models_like_their_own_pipelines()
         Quad::Water(index) => (&shared, 0, slot(index) | TRANSPARENT_WATER_DRAW_FLAG),
         Quad::Model(index) => (&shared, 0, MODEL_INSTANCE_BASE + index),
     });
-    // Direct water names its record and passes metadata index 0 plus one as base vertex 4.
+    // Direct water names its record at base vertex 0.
     let direct = fixture.render(&gpu, &order, |quad| match quad {
-        Quad::Water(index) => (&shared, 4, index | TRANSPARENT_WATER_DRAW_FLAG),
+        Quad::Water(index) => (
+            &shared,
+            0,
+            index | TRANSPARENT_WATER_DRAW_FLAG | TRANSPARENT_WATER_RECORD_FLAG,
+        ),
         Quad::Model(index) => (&shared, 0, MODEL_INSTANCE_BASE + index),
     });
     let models_only = fixture.render(&gpu, &order[..1], |_| (&model, 0, MODEL_INSTANCE_BASE));
@@ -524,7 +536,7 @@ const LIQUID_REFERENCE: &str = r#"
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
 ) -> VertexOutput {
-    return vertex_for_ref(transparent_refs[instance_index], vertex_index);
+    return vertex_for_record(transparent_refs[instance_index].liquid_record_index, vertex_index);
 }
 "#;
 

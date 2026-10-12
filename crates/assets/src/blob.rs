@@ -14,27 +14,30 @@ use crate::{
     AssetError, BlockFlags, CompiledAssets, DIAGNOSTIC_MATERIAL, MATERIAL_FLAG_ALPHA_BLEND,
     MATERIAL_FLAG_ALPHA_CUTOUT, MAX_ANIMATION_FRAMES, MAX_ANIMATIONS, MAX_MATERIALS,
     MAX_MODEL_QUADS, MAX_MODEL_TEMPLATES, MAX_TEXTURE_LAYERS, MAX_TEXTURE_PAGES, MIP_COUNT,
-    MODEL_TEMPLATE_FLAG_COMPOUND_NEXT, MODEL_TEMPLATE_FLAG_FENCE_NETHER,
-    MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE, MODEL_TEMPLATE_FLAG_GATE_AXIS_X,
-    MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP, MODEL_TEMPLATE_FLAG_LILY_PAD,
-    MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_SNOW_LAYER, MODEL_TEMPLATE_FLAG_STAIR,
-    MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, NO_ANIMATION, NO_MODEL_TEMPLATE, TILE_SIZE, TextureRef,
-    VisualKind,
+    MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN, MODEL_TEMPLATE_FLAG_COMPOUND_NEXT,
+    MODEL_TEMPLATE_FLAG_FENCE_NETHER, MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE,
+    MODEL_TEMPLATE_FLAG_GATE_AXIS_X, MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP,
+    MODEL_TEMPLATE_FLAG_LILY_PAD, MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_SNOW_LAYER,
+    MODEL_TEMPLATE_FLAG_STAIR, MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, NO_ANIMATION,
+    NO_MODEL_TEMPLATE, TILE_SIZE, TextureRef, VisualKind,
     biome::{TINT_MAP_BYTES, TINT_MAP_COUNT, TINT_MAP_SIZE, validate_biome_assets},
     compiled::{material_flags_are_valid, visual_semantics_are_valid},
     model::{ANIMATION_FLAGS_MASK, model_quad_flags_are_valid},
 };
 
-// World leaves require native atlas mips, per-face isotropy and pack-authored
-// AO exponents. Reject earlier carriers that omit those material selectors.
-pub const BLOB_VERSION: u32 = 12;
+// Replicated flipbook tiles hold their native upper-left crop; earlier carriers
+// hold whole frames that the renderer no longer scales.
+pub const BLOB_VERSION: u32 = 16;
 pub const BLOB_MAGIC: [u8; 8] = {
     let mut magic = *b"MCBEAS00";
     magic[6] += (BLOB_VERSION / 10) as u8;
     magic[7] += (BLOB_VERSION % 10) as u8;
     magic
 };
-pub(crate) const HEADER_BYTES: usize = 296;
+/// Fixed world envelope size, including the destroy source identity.
+pub const HEADER_BYTES: usize = 328;
+/// Offset of the compiled destroy source identity in the envelope.
+pub const DESTROY_SHA_OFFSET: usize = HEADER_BYTES - 32;
 /// Header offset of the embedded source-manifest SHA-256 identity.
 pub(crate) const MANIFEST_SHA_OFFSET: usize = 64;
 /// Header offsets of the embedded block/light/biome registry SHA-256
@@ -43,7 +46,8 @@ pub(crate) const REGISTRY_SHA_OFFSETS: [usize; 3] = [96, 128, 160];
 /// Header offset where the canonical section-offset table begins.
 pub(crate) const OFFSETS_OFFSET: usize = 192;
 pub(crate) const HASH_BYTES: usize = 32;
-pub(crate) const VISUAL_BYTES: usize = 44;
+/// Fixed visual and destroy record size.
+pub const VISUAL_BYTES: usize = 56;
 pub(crate) const HASH_ENTRY_BYTES: usize = 8;
 pub const MATERIAL_BYTES: usize = std::mem::size_of::<crate::Material>();
 pub(crate) const TEMPLATE_BYTES: usize = 12;
@@ -139,6 +143,9 @@ pub fn encode_blob(compiled: &CompiledAssets) -> Result<Box<[u8]>, AssetError> {
     for offset in offsets {
         push_offset(&mut bytes, offset, "section offset")?;
     }
+    bytes.extend_from_slice(&crate::compiled::block_destroy::destroy_source_sha256(
+        crate::compiled::block_destroy::DESTROY_SOURCE,
+    ));
     debug_assert_eq!(bytes.len(), HEADER_BYTES);
 
     for (visual, light) in compiled.visuals.iter().zip(&compiled.light_properties) {
@@ -154,6 +161,7 @@ pub fn encode_blob(compiled: &CompiledAssets) -> Result<Box<[u8]>, AssetError> {
         push_u32(&mut bytes, visual.model_template);
         push_u32(&mut bytes, visual.animation);
         push_u32(&mut bytes, visual.variant);
+        visual.destroy.write(&mut bytes);
     }
     for &(hash, visual) in &compiled.hashed {
         push_u32(&mut bytes, hash);
@@ -320,6 +328,7 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
     let connected_bases = compiled_connected_bases(&compiled.model_templates)?;
     let mut referenced_connected_bases = vec![false; connected_bases.len()];
     for (index, visual) in compiled.visuals.iter().enumerate() {
+        visual.destroy.validate()?;
         if !covered_grass_variant_is_valid(visual.kind, visual.variant, compiled.materials.len()) {
             return Err(invalid(format!(
                 "visual {index} has invalid covered-grass material"
@@ -359,6 +368,14 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
         {
             return Err(invalid(
                 "compound continuation cannot be directly visual-referenced",
+            ));
+        }
+        if visual.model_template != NO_MODEL_TEMPLATE
+            && compiled.model_templates[visual.model_template as usize].flags
+                == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+        {
+            return Err(invalid(
+                "pot-content template cannot be directly visual-referenced",
             ));
         }
         optional_id(
@@ -424,7 +441,8 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
                 & (MODEL_TEMPLATE_FLAG_PANE
                     | MODEL_TEMPLATE_FLAG_FENCE_WOOD
                     | MODEL_TEMPLATE_FLAG_FENCE_NETHER
-                    | MODEL_TEMPLATE_FLAG_FIRE);
+                    | MODEL_TEMPLATE_FLAG_FIRE
+                    | MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN);
             if connected_flag != 0 {
                 let Some(base_index) = connected_bases.iter().position(|&(base, flag)| {
                     base == visual.model_template as usize && flag == connected_flag
@@ -471,7 +489,17 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
         previous = Some(hash);
     }
     let mut expected_quad = 0usize;
-    for template in &compiled.model_templates {
+    for (index, template) in compiled.model_templates.iter().enumerate() {
+        if template.flags == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+            && (template.quad_count == 0
+                || compiled.model_templates.get(index + 1).is_none_or(|next| {
+                    !matches!(next.flags, 0 | crate::MODEL_TEMPLATE_FLAG_BAMBOO)
+                }))
+        {
+            return Err(invalid(
+                "pot-content template has no standalone world model",
+            ));
+        }
         if !model_template_flags_are_valid(template.flags)
             || template.quad_start as usize != expected_quad
             || template.quad_count as usize > crate::MAX_MODEL_TEMPLATE_QUADS
@@ -666,6 +694,20 @@ fn compiled_connected_bases(
             }
             bases.push((index, flag));
             index += 17;
+        } else if flag == MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN {
+            let Some(group) =
+                templates.get(index..index + crate::BUBBLE_COLUMN_TEMPLATE_COUNT as usize)
+            else {
+                return Err(invalid("bubble column template group is truncated"));
+            };
+            if group.iter().enumerate().any(|(offset, template)| {
+                template.flags != flag
+                    || template.quad_count != crate::bubble_column_quad_count(offset as u32)
+            }) {
+                return Err(invalid("bubble column template group is noncanonical"));
+            }
+            bases.push((index, flag));
+            index += crate::BUBBLE_COLUMN_TEMPLATE_COUNT as usize;
         } else if flag == MODEL_TEMPLATE_FLAG_FIRE {
             let Some(group) = templates.get(index..index + crate::FIRE_TEMPLATE_COUNT as usize)
             else {

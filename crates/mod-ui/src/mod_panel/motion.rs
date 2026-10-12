@@ -61,6 +61,17 @@ pub(super) struct PanelMotion {
 }
 
 impl PanelMotion {
+    /// Reports whether clearing motion would leave an intermediate toggle or hover highlight.
+    pub(super) fn needs_feedback_reset(&self) -> bool {
+        self.toggles
+            .values()
+            .any(|tween| tween.sample(self.now) != tween.to)
+            || self
+                .hover
+                .values()
+                .any(|tween| tween.sample(self.now) != 0.0)
+    }
+
     /// Reads the outstanding wheel destination, keeping rapid reversals lossless.
     pub(super) fn scroll_target(&self, key: &str, current: f64) -> f64 {
         self.scrolls.get(key).map_or(current, |tween| tween.to)

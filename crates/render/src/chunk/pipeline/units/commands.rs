@@ -10,7 +10,11 @@ pub(in crate::chunk) type DrawTerrainUnits<const STREAM: usize> = (
 pub(in crate::chunk) struct DrawUnits<const STREAM: usize>;
 
 impl<P: PhaseItem, const STREAM: usize> RenderCommand<P> for DrawUnits<STREAM> {
-    type Param = (SRes<ChunkGpuArena>, SRes<TerrainUnitBatches>);
+    type Param = (
+        SRes<ChunkGpuArena>,
+        SRes<TerrainUnitBatches>,
+        Option<SRes<crate::gpu_timing::GpuTimestamps>>,
+    );
     type ViewQuery = OpaqueChunkViewQuery;
     type ItemQuery = ();
 
@@ -18,7 +22,7 @@ impl<P: PhaseItem, const STREAM: usize> RenderCommand<P> for DrawUnits<STREAM> {
         _: &P,
         (entity, offset): ROQueryItem<'w, '_, Self::ViewQuery>,
         _: Option<()>,
-        (arena, batches): SystemParamItem<'w, '_, Self::Param>,
+        (arena, batches, timestamps): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let (arena, batches) = (arena.into_inner(), batches.into_inner());
@@ -36,12 +40,20 @@ impl<P: PhaseItem, const STREAM: usize> RenderCommand<P> for DrawUnits<STREAM> {
             draws = view.streams[STREAM].pages.len()
         )
         .entered();
-        pass.set_bind_group(0, group, &[offset.offset]);
-        pass.set_index_buffer(indices.slice(..), IndexFormat::Uint32);
-        for page in &view.streams[STREAM].pages {
-            pass.set_bind_group(2, &page.group, &[]);
-            pass.draw_indexed(0..super::index_count(), 0, 0..page.count);
-        }
+        // Same per-stream span the legacy commands record, so batched terrain stays attributable.
+        crate::gpu_timing::time_draw(
+            timestamps.map(|timestamps| timestamps.into_inner()),
+            super::super::opaque::STREAM_STAGES[STREAM],
+            pass,
+            move |pass| {
+                pass.set_bind_group(0, group, &[offset.offset]);
+                pass.set_index_buffer(indices.slice(..), IndexFormat::Uint32);
+                for page in &view.streams[STREAM].pages {
+                    pass.set_bind_group(2, &page.group, &[]);
+                    pass.draw_indexed(0..super::index_count(), 0, 0..page.count);
+                }
+            },
+        );
         RenderCommandResult::Success
     }
 }

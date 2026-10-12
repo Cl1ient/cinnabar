@@ -1,4 +1,5 @@
 use crate::chunk::*;
+use bevy::render::render_phase::{DrawFunctionId, DrawFunctionsInternal};
 use render_scene::RuntimeStage;
 
 pub(in crate::chunk) fn install_opaque_commands(render_app: &mut SubApp) {
@@ -9,74 +10,100 @@ pub(in crate::chunk) fn install_opaque_commands(render_app: &mut SubApp) {
         .add_render_command::<Opaque3d, DrawChunkIndirectCommands>();
 }
 
-/// Identifies terrain draw functions without depending on their registration order.
-pub(crate) fn timing_category(
-    functions: &bevy::render::render_phase::DrawFunctionsInternal<Opaque3d>,
-    draw: bevy::render::render_phase::DrawFunctionId,
-) -> RuntimeStage {
-    use crate::chunk::gpu_cull::DrawGpuCulledCommands;
-    let categories = [
-        (
-            RuntimeStage::GpuTerrainSolid,
-            [
-                functions.get_id::<super::solid::DrawSolidChunkCommands>(),
-                functions.get_id::<super::solid::DrawSolidChunkIndirectCommands>(),
-                functions.get_id::<DrawGpuCulledCommands<0, false>>(),
-                functions.get_id::<DrawGpuCulledCommands<0, true>>(),
-                functions.get_id::<super::units::commands::DrawTerrainUnits<0>>(),
-            ],
-        ),
-        (
-            RuntimeStage::GpuTerrainCutout,
-            [
-                functions.get_id::<DrawChunkCommands>(),
-                functions.get_id::<DrawChunkIndirectCommands>(),
-                functions.get_id::<DrawGpuCulledCommands<1, false>>(),
-                functions.get_id::<DrawGpuCulledCommands<1, true>>(),
-                functions.get_id::<super::units::commands::DrawTerrainUnits<1>>(),
-            ],
-        ),
-        (
-            RuntimeStage::GpuTerrainModel,
-            [
-                functions.get_id::<DrawModelCommands>(),
-                functions.get_id::<DrawModelIndirectCommands>(),
-                functions.get_id::<DrawGpuCulledCommands<2, false>>(),
-                functions.get_id::<DrawGpuCulledCommands<2, true>>(),
-                functions.get_id::<super::units::commands::DrawTerrainUnits<2>>(),
-            ],
-        ),
-        (
-            RuntimeStage::GpuTerrainDepthLiquid,
-            [
-                functions.get_id::<DrawDepthLiquidCommands>(),
-                functions.get_id::<DrawDepthLiquidIndirectCommands>(),
-                functions.get_id::<DrawGpuCulledCommands<3, false>>(),
-                functions.get_id::<DrawGpuCulledCommands<3, true>>(),
-                functions.get_id::<super::units::commands::DrawTerrainUnits<3>>(),
-            ],
-        ),
-    ];
-    categories
-        .into_iter()
-        .find_map(|(stage, draws)| draws.contains(&Some(draw)).then_some(stage))
-        .unwrap_or(RuntimeStage::GpuOpaqueOther)
+/// Timing stage of each opaque terrain stream, indexed like the stream-generic commands.
+pub(in crate::chunk) const STREAM_STAGES: [RuntimeStage; 4] = [
+    RuntimeStage::GpuTerrainSolid,
+    RuntimeStage::GpuTerrainCutout,
+    RuntimeStage::GpuTerrainModel,
+    RuntimeStage::GpuTerrainDepthLiquid,
+];
+
+/// One stream's terrain draws, split by whether they draw entirely inside the opaque node.
+struct StreamDraws {
+    stage: RuntimeStage,
+    /// Legacy direct and indirect, then retained units.
+    in_pass: [Option<DrawFunctionId>; 3],
+    /// GPU-cull early and late phases; the late phase runs outside the opaque node.
+    gpu_culled: [Option<DrawFunctionId>; 2],
 }
 
-/// The layer probe excludes GPU-cull streams whose late phase is outside the opaque node.
-pub(crate) fn supports_layer_probe(
-    functions: &bevy::render::render_phase::DrawFunctionsInternal<Opaque3d>,
-    draw: bevy::render::render_phase::DrawFunctionId,
-) -> bool {
+/// The single registry that both timing classification and layer-probe admission read.
+fn terrain_draws(functions: &DrawFunctionsInternal<Opaque3d>) -> [StreamDraws; 4] {
+    use super::units::commands::DrawTerrainUnits;
+    use crate::chunk::gpu_cull::DrawGpuCulledCommands;
     [
-        functions.get_id::<super::solid::DrawSolidChunkCommands>(),
-        functions.get_id::<super::solid::DrawSolidChunkIndirectCommands>(),
-        functions.get_id::<DrawChunkCommands>(),
-        functions.get_id::<DrawChunkIndirectCommands>(),
-        functions.get_id::<DrawModelCommands>(),
-        functions.get_id::<DrawModelIndirectCommands>(),
+        StreamDraws {
+            stage: STREAM_STAGES[0],
+            in_pass: [
+                functions.get_id::<super::solid::DrawSolidChunkCommands>(),
+                functions.get_id::<super::solid::DrawSolidChunkIndirectCommands>(),
+                functions.get_id::<DrawTerrainUnits<0>>(),
+            ],
+            gpu_culled: [
+                functions.get_id::<DrawGpuCulledCommands<0, false>>(),
+                functions.get_id::<DrawGpuCulledCommands<0, true>>(),
+            ],
+        },
+        StreamDraws {
+            stage: STREAM_STAGES[1],
+            in_pass: [
+                functions.get_id::<DrawChunkCommands>(),
+                functions.get_id::<DrawChunkIndirectCommands>(),
+                functions.get_id::<DrawTerrainUnits<1>>(),
+            ],
+            gpu_culled: [
+                functions.get_id::<DrawGpuCulledCommands<1, false>>(),
+                functions.get_id::<DrawGpuCulledCommands<1, true>>(),
+            ],
+        },
+        StreamDraws {
+            stage: STREAM_STAGES[2],
+            in_pass: [
+                functions.get_id::<DrawModelCommands>(),
+                functions.get_id::<DrawModelIndirectCommands>(),
+                functions.get_id::<DrawTerrainUnits<2>>(),
+            ],
+            gpu_culled: [
+                functions.get_id::<DrawGpuCulledCommands<2, false>>(),
+                functions.get_id::<DrawGpuCulledCommands<2, true>>(),
+            ],
+        },
+        StreamDraws {
+            stage: STREAM_STAGES[3],
+            in_pass: [
+                functions.get_id::<DrawDepthLiquidCommands>(),
+                functions.get_id::<DrawDepthLiquidIndirectCommands>(),
+                functions.get_id::<DrawTerrainUnits<3>>(),
+            ],
+            gpu_culled: [
+                functions.get_id::<DrawGpuCulledCommands<3, false>>(),
+                functions.get_id::<DrawGpuCulledCommands<3, true>>(),
+            ],
+        },
     ]
-    .contains(&Some(draw))
+}
+
+/// Identifies terrain draw functions without depending on their registration order.
+pub(crate) fn timing_category(
+    functions: &DrawFunctionsInternal<Opaque3d>,
+    draw: DrawFunctionId,
+) -> RuntimeStage {
+    terrain_draws(functions)
+        .into_iter()
+        .find(|stream| {
+            stream.in_pass.contains(&Some(draw)) || stream.gpu_culled.contains(&Some(draw))
+        })
+        .map_or(RuntimeStage::GpuOpaqueOther, |stream| stream.stage)
+}
+
+/// Admits terrain draws except GPU-cull streams, whose late phase is outside the opaque node.
+pub(crate) fn supports_layer_probe(
+    functions: &DrawFunctionsInternal<Opaque3d>,
+    draw: DrawFunctionId,
+) -> bool {
+    terrain_draws(functions)
+        .iter()
+        .any(|stream| stream.in_pass.contains(&Some(draw)))
 }
 
 #[cfg(test)]
@@ -104,7 +131,7 @@ mod timing_tests {
     }
 
     #[test]
-    fn profiling_categories_cover_direct_indirect_and_gpu_culled_commands() {
+    fn profiling_categories_and_layer_probe_admit_every_in_pass_terrain_command() {
         use crate::chunk::gpu_cull::DrawGpuCulledCommands;
         let functions = DrawFunctions::<Opaque3d>::default();
         let mut functions = functions.write();
@@ -144,9 +171,10 @@ mod timing_tests {
         ] {
             for (index, draw) in draws.into_iter().enumerate() {
                 assert_eq!(timing_category(&functions, draw), expected);
+                // Only the GPU-cull early and late phases leave the opaque node.
                 assert_eq!(
                     supports_layer_probe(&functions, draw),
-                    index < 2 && expected != RuntimeStage::GpuTerrainDepthLiquid
+                    !matches!(index, 2 | 3)
                 );
             }
         }
@@ -155,5 +183,6 @@ mod timing_tests {
             timing_category(&functions, other),
             RuntimeStage::GpuOpaqueOther
         );
+        assert!(!supports_layer_probe(&functions, other));
     }
 }

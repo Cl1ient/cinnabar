@@ -16,6 +16,8 @@ pub struct RuntimeEntityAssets {
     pub(super) symbols: Arc<[EntityAssetSymbol]>,
     pub(super) geometries: Arc<[EntityGeometry]>,
     pub(super) geometry_parents: Arc<[Option<usize>]>,
+    pub(super) locator_catalog:
+        Arc<[std::collections::BTreeMap<Box<str>, EntityGeometryLocatorBinding>]>,
     pub(super) animation_clips: Arc<[EntityAnimationClip]>,
     pub(super) animation_channels: Arc<[EntityAnimationChannel]>,
     pub(super) animation_keyframes: Arc<[EntityAnimationKeyframe]>,
@@ -157,6 +159,7 @@ impl RuntimeEntityAssets {
     /// Validates a compiled catalog and wraps it without a blob round trip.
     pub fn from_compiled(compiled: CompiledEntityAssets) -> Result<Self, AssetError> {
         let geometry_parents = validate_compiled(&compiled)?;
+        let locator_catalog = locator::compile(&compiled.geometries, &geometry_parents)?;
         Ok(Self {
             carrier_identity: None,
             item_use_profiles: Arc::from(compiled.item_use_profiles),
@@ -168,6 +171,7 @@ impl RuntimeEntityAssets {
             symbols: Arc::from(compiled.symbols),
             geometries: Arc::from(compiled.geometries),
             geometry_parents: Arc::from(geometry_parents),
+            locator_catalog: locator_catalog.into(),
             animation_clips: Arc::from(compiled.animation_clips),
             animation_channels: Arc::from(compiled.animation_channels),
             animation_keyframes: Arc::from(compiled.animation_keyframes),

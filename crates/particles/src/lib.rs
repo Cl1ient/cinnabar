@@ -21,6 +21,7 @@ pub use atlas::{ATLAS_SIDE, AtlasPatch};
 pub use dragon_egg::dragon_egg_teleport_requests;
 pub use draw::{DrawLists, ParticleInstance, ParticleView};
 pub use emitter::{ParticleSound, SpawnRequest, TileRequest};
+pub use molang::Queries;
 pub use system::{MAX_LIVE_PARTICLES, ParticleSystem};
 pub use triggers::{
     ITEM_ICON_PARTICLES, LevelParticle, TOTEM_PARTICLE_EFFECT, block_break_request,

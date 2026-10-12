@@ -59,7 +59,7 @@ pub use java::{JavaHeldItem, JavaMotion, java_mounted_body_yaw, java_walked_dist
 mod motion;
 mod particles;
 mod pose;
-pub use particles::ActorParticleController;
+pub use particles::{ActorParticleController, ActorParticleQueries};
 mod query;
 mod render;
 mod render_frame;

@@ -454,7 +454,7 @@ fn pack_runtime(
     );
     let (pages, locations) =
         pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(&catalog));
-    runtime.set_pack_layer(Some((entities, catalog, locations)));
+    runtime.set_pack_layer(Some((entities, Some(catalog), locations)));
     (runtime, pages)
 }
 

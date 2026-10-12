@@ -421,7 +421,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         fcntl_setfd(&listener, FdFlags::empty()).unwrap();
         let fd = listener.as_raw_fd();
-        let script = format!("test -e /proc/self/fd/0 && test ! -e /proc/self/fd/{fd}");
+        let script = format!("test -e /dev/fd/0 && test ! -e /dev/fd/{fd}");
         let child = Children::new()
             .spawn(
                 Command::new("sh")

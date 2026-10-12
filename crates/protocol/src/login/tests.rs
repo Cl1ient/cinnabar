@@ -876,7 +876,7 @@ fn canonical_empty_mob_equipment_is_materialized_and_normalized() {
     body.put_i8(0);
     let raw = raw_packet(PacketId::MobEquipment, &body);
 
-    let event = decode_world_raw_with(raw, 0, |raw| super::decode_test_raw(raw))
+    let event = decode_world_raw_with(raw, 0, super::decode_test_raw)
         .expect("decode empty equipment")
         .expect("empty equipment event");
 

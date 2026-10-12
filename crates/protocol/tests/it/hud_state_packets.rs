@@ -284,9 +284,11 @@ fn item_stack_damage_reads_the_root_damage_tag_and_fails_closed_on_junk() {
 
 #[test]
 fn world_bootstrap_carries_the_local_player_unique_id() {
-    let mut start_game = StartGame::default();
-    start_game.entity_id = ActorUniqueID(-3);
-    start_game.runtime_id = runtime_id(3);
+    let start_game = StartGame {
+        entity_id: ActorUniqueID(-3),
+        runtime_id: runtime_id(3),
+        ..StartGame::default()
+    };
     let bootstrap = protocol::WorldBootstrap::from_start_game(&start_game);
     assert_eq!(bootstrap.local_player_unique_id, -3);
     assert_eq!(bootstrap.local_player_runtime_id, 3);

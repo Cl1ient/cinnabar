@@ -19,6 +19,9 @@ use self::{
     },
 };
 
+// Every variant moves through the resolver queue by value; the enum is no larger than the
+// world event it must carry.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlobCacheReady {
     Packet(Packet),

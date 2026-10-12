@@ -108,9 +108,8 @@ fn truncated_inventory_equipment_and_actor_bodies_are_inner_wire_fatal() {
     ];
 
     for (id, body, label) in cases {
-        let error =
-            decode_world_raw_with(raw_packet(id, body), 0, |raw| super::decode_test_raw(raw))
-                .expect_err(label);
+        let error = decode_world_raw_with(raw_packet(id, body), 0, super::decode_test_raw)
+            .expect_err(label);
         assert!(
             matches!(
                 error,

@@ -442,7 +442,7 @@ async fn answer(
             creation_time: wire::U64LE(777_000_000),
             is_from_server: true,
         }),
-    ] = packets
+    ] = wire_packets(packets)[..]
     {
         return Some(());
     }

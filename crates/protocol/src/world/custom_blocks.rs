@@ -879,7 +879,7 @@ fn visual_components(components: Option<&Nbt>) -> CustomVisualComponents {
                                 material
                                     .field("face_dimming")
                                     .and_then(Nbt::number)
-                                    .filter(|value| matches!(&*value, 0.0 | 1.0))
+                                    .filter(|value| matches!(value, 0.0 | 1.0))
                                     .map(|value| value != 0.0)
                             }),
                     })

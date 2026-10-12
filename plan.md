@@ -7980,6 +7980,8 @@ Incomplete parity: recipe eligibility and exact pattern-choice styling remain op
   dirty, unpublished, clipped, transparent or budget-exhausted terrain always draws.
   Internal voxel faces cannot certify depth. Near-clip safety is independent of rotation.
   Actors with unbounded attachments, extra layers or no authored bounds also draw.
+  Controllers with any replacement geometry bypass base-model terrain proofs, including
+  selections between ticks; controllers that always draw the base model remain eligible.
 - Block entities use the same proof without stopping lids, rings, map requests or text
   canvases. Global beams bypass terrain proofs. Retained vertex runs are culled at draw
   submission, so camera turns do not rebuild or upload cached meshes.

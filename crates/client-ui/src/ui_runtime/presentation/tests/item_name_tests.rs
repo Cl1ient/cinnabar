@@ -228,3 +228,168 @@ fn component_tooltip_base_colours_agree_with_formatted_text() {
         assert_eq!(lines[0].color, [r, g, b, 255], "{name}");
     }
 }
+
+fn potion(identifier: &str, metadata: u32) -> NetworkItemStack {
+    NetworkItemStack {
+        network_id: protocol::vanilla_item_registry()
+            .iter()
+            .find(|item| item.identifier.as_ref() == identifier)
+            .unwrap()
+            .network_id,
+        metadata,
+        ..sword(None)
+    }
+}
+
+fn potion_lang_runtime() -> UiRuntime {
+    let mut runtime = UiRuntime::new(1);
+    let input = "item.splash_potion.name=Splash Potion\n\
+        potion.fireResistance=Fire Resistance\n\
+        potion.fireResistance.splash.name=Splash Potion of Fire Resistance\n\
+        potion.poison=Poison\n\
+        potion.poison.linger.name=Lingering Potion of Poison\n\
+        potion.moveSlowdown=Slowness\n\
+        potion.resistance=Resistance\n\
+        potion.turtleMaster.name=Potion of the Turtle Master\n\
+        potion.heal=Instant Health\n\
+        potion.heal.splash.name=Splash Potion of Healing\n\
+        potion.potency.1=II\n\
+        potion.potency.3=IV\n\
+        potion.potency.5=VI\n";
+    runtime.set_server_lang(assets::ServerLangOverlay::read(input.len(), |target| {
+        target.copy_from_slice(input.as_bytes());
+        true
+    }));
+    runtime
+}
+
+fn tooltip(runtime: &UiRuntime, identifier: &str, metadata: u32) -> Vec<(String, [u8; 4])> {
+    inventory_tooltip::tooltip_lines(
+        runtime,
+        &potion(identifier, metadata),
+        Some(identifier),
+        None,
+    )
+    .into_iter()
+    .map(|line| (line.text, line.color))
+    .collect()
+}
+
+#[test]
+fn potion_tooltips_name_the_potion_and_list_its_effects() {
+    let runtime = potion_lang_runtime();
+    let blue = [85, 85, 255, 255];
+    let red = [255, 85, 85, 255];
+    let white = [255, 255, 255, 255];
+    assert_eq!(
+        tooltip(&runtime, "minecraft:splash_potion", 13),
+        [
+            ("Splash Potion of Fire Resistance§r".to_owned(), white),
+            ("Fire Resistance (8:00)".to_owned(), blue),
+        ]
+    );
+    assert_eq!(
+        tooltip(&runtime, "minecraft:splash_potion", 22),
+        [
+            ("Splash Potion of Healing§r".to_owned(), white),
+            ("Instant Health II".to_owned(), blue),
+        ]
+    );
+    assert_eq!(
+        tooltip(&runtime, "minecraft:potion", 39),
+        [
+            ("Potion of the Turtle Master§r".to_owned(), white),
+            ("Slowness VI (0:20)".to_owned(), red),
+            ("Resistance IV (0:20)".to_owned(), blue),
+        ]
+    );
+    assert_eq!(
+        tooltip(&runtime, "minecraft:lingering_potion", 26),
+        [
+            ("Lingering Potion of Poison§r".to_owned(), white),
+            ("Poison (0:30)".to_owned(), red),
+        ]
+    );
+    // An auxiliary value outside the vanilla potion table keeps the item name.
+    assert_eq!(
+        tooltip(&runtime, "minecraft:splash_potion", 200),
+        [("Splash Potion§r".to_owned(), white)]
+    );
+}
+
+#[test]
+fn selected_item_name_names_the_held_potion() {
+    let mut player = player_state::PlayerState::new(1);
+    let mut runtime = potion_lang_runtime();
+    player
+        .facts
+        .publish_player_game_mode(PlayerGameMode::Survival);
+    publish(
+        &mut runtime,
+        &mut player,
+        vec![potion("minecraft:splash_potion", 12)],
+    );
+    let stream = stream();
+    let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
+    player.inventory.set_local_selected_slot(0);
+    capture_hud_frame(
+        &player,
+        &mut runtime,
+        &mut presentation,
+        Some(&stream),
+        semantic_input::PerspectiveMode::FirstPerson,
+        1_000,
+        Default::default(),
+    );
+    assert_eq!(
+        presentation.hud_frame().selected_item_name.as_deref(),
+        Some("Splash Potion of Fire Resistance§r")
+    );
+}
+
+#[test]
+fn potion_component_names_take_precedence_in_tooltip_and_hud() {
+    let identifier = "minecraft:splash_potion";
+    for (component_name, expected) in [
+        (None, "Splash Potion of Fire Resistance§r"),
+        (Some("Fortified Brew"), "Fortified Brew§r"),
+        (Some("potion.fireResistance"), "Fire Resistance§r"),
+        (Some(""), "§r"),
+    ] {
+        let mut player = player_state::PlayerState::new(1);
+        let mut runtime = potion_lang_runtime();
+        runtime.set_session_items(Some(Arc::new(
+            crate::ui_runtime::item_facts::SessionItemComponents::from_iter([(
+                Arc::from(identifier),
+                protocol::ItemComponents {
+                    display_name: component_name.map(Arc::from),
+                    ..Default::default()
+                },
+            )]),
+        )));
+        player
+            .facts
+            .publish_player_game_mode(PlayerGameMode::Survival);
+        let stack = potion(identifier, 12);
+        publish(&mut runtime, &mut player, vec![stack.clone()]);
+        let stream = stream();
+        let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
+        player.inventory.set_local_selected_slot(0);
+        capture_hud_frame(
+            &player,
+            &mut runtime,
+            &mut presentation,
+            Some(&stream),
+            semantic_input::PerspectiveMode::FirstPerson,
+            1_000,
+            Default::default(),
+        );
+        let lines = inventory_tooltip::tooltip_lines(&runtime, &stack, Some(identifier), None);
+        assert_eq!(lines[0].text, expected, "component: {component_name:?}");
+        assert_eq!(
+            presentation.hud_frame().selected_item_name.as_deref(),
+            Some(expected),
+            "component: {component_name:?}"
+        );
+    }
+}

@@ -184,6 +184,9 @@ pub(super) enum Command {
     ActorAssets {
         #[arg(long)]
         pack: PathBuf,
+        /// Behavior definitions used by the matching entity carrier's compiled seats.
+        #[arg(long)]
+        behavior_pack: Option<PathBuf>,
         #[arg(long)]
         source_manifest: PathBuf,
         #[arg(long)]

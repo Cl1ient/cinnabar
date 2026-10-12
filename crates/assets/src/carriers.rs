@@ -344,14 +344,21 @@ pub const AUDIO: Carrier = carrier(
     Some("audio-assets.json"),
     false,
 );
-pub const ACTOR: Carrier = carrier(
-    "actor",
-    "Compiling actor assets",
-    Recipe::Actor,
-    "vanilla-v1.mcbeact",
-    Some("actor-assets.json"),
-    false,
-);
+pub const ACTOR: Carrier = Carrier {
+    inputs: &[
+        Input::Pack,
+        Input::Manifest(VANILLA_MANIFEST),
+        Input::BehaviorPack,
+    ],
+    ..carrier(
+        "actor",
+        "Compiling actor assets",
+        Recipe::Actor,
+        "vanilla-v1.mcbeact",
+        Some("actor-assets.json"),
+        false,
+    )
+};
 pub const AUDIO_BANK: Carrier = Carrier {
     inputs: &[Input::Pack],
     ..carrier(

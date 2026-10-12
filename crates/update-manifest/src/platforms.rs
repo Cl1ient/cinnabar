@@ -7,6 +7,14 @@ struct ReleaseAssets {
     repository: String,
     assets: BTreeMap<String, BTreeMap<String, String>>,
     update_assets: BTreeMap<String, BTreeMap<String, String>>,
+    update_channels: BTreeMap<String, ChannelRelease>,
+}
+
+/// Where the release pipeline publishes one channel's signed manifest.
+#[derive(Deserialize)]
+pub struct ChannelRelease {
+    pub tag: String,
+    pub manifest: String,
 }
 
 static RELEASE: LazyLock<ReleaseAssets> = LazyLock::new(|| {
@@ -33,6 +41,16 @@ pub fn artifact_name(os: &str, arch: &str) -> Option<&'static str> {
         .and_then(|arches| arches.get(arch))
         .or_else(|| RELEASE.assets.get(os)?.get(arch))
         .map(String::as_str)
+}
+
+/// The fixed release holding `channel`'s manifest, if the pipeline publishes that channel.
+pub fn channel_release(channel: &str) -> Option<&'static ChannelRelease> {
+    RELEASE.update_channels.get(channel)
+}
+
+/// Repository that publishes the installer's channel manifests and native artifacts.
+pub fn repository() -> &'static str {
+    &RELEASE.repository
 }
 
 #[cfg(test)]
@@ -62,9 +80,19 @@ mod tests {
         assert!(platform_key("windows", "aarch64").is_none());
         assert!(platform_key("freebsd", "x86_64").is_none());
     }
-}
 
-/// Repository that publishes the installer's channel manifests and native artifacts.
-pub fn repository() -> &'static str {
-    &RELEASE.repository
+    #[test]
+    fn the_pipeline_publishes_exactly_the_selectable_channels() {
+        let published = RELEASE.update_channels.keys().map(String::as_str);
+        let mut selectable = crate::channel::Channel::ALL.map(|channel| channel.name());
+        selectable.sort_unstable();
+        assert!(published.eq(selectable));
+        for channel in crate::channel::Channel::ALL {
+            let release = channel_release(channel.name()).unwrap();
+            assert!(channel.manifest_url().ends_with(&format!(
+                "/releases/download/{}/{}",
+                release.tag, release.manifest
+            )));
+        }
+    }
 }

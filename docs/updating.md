@@ -30,7 +30,7 @@ If the install location is not writable, the launcher offers **Download update**
 verified DMG or installer for you to finish; on Linux it opens the folder containing the AppImage.
 The updater does not request elevated privileges or reboot the machine.
 
-Channel manifests live at fixed GitHub Releases URLs with tags `stable`, `beta`, and `nightly`
-and names `update-stable.json`, `update-beta.json`, and `update-nightly.json`. Publication must
-sign the correct channel and a positive build number. The release signer accepts `-build-number`;
+Each channel's manifest lives in a fixed GitHub release; `update_channels` in
+`packaging/release-assets.json` names its tag and file for both the client and the package
+workflow. Publication must sign the correct channel and a positive build number. The release signer accepts `-build-number`;
 packaged builds use `CINNABAR_BUILD_NUMBER` or the package workflow's `GITHUB_RUN_NUMBER`.

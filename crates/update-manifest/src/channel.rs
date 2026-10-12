@@ -15,7 +15,7 @@ impl Channel {
     /// Order used by the saved channel setting; stable stays last so it can be hidden initially.
     pub const ALL: [Self; 3] = [Self::Beta, Self::Nightly, Self::Stable];
 
-    /// The signed channel name and its fixed GitHub release tag.
+    /// The signed channel name.
     pub const fn name(self) -> &'static str {
         match self {
             Self::Beta => "beta",
@@ -55,13 +55,15 @@ impl Channel {
         Self::ALL.into_iter().find(|channel| channel.name() == name)
     }
 
-    /// One fixed signed manifest URL per channel, independent of the latest-release redirect.
+    /// The fixed GitHub release URL the package workflow publishes this channel's manifest to.
     pub fn manifest_url(self) -> String {
+        let release = super::platforms::channel_release(self.name())
+            .expect("release-assets.json lists every channel");
         format!(
-            "https://github.com/{}/releases/download/{}/update-{}.json",
+            "https://github.com/{}/releases/download/{}/{}",
             super::platforms::repository(),
-            self.name(),
-            self.name()
+            release.tag,
+            release.manifest
         )
     }
 }

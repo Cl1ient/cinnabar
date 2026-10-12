@@ -29,7 +29,10 @@ class ReleaseDownloadsTests(unittest.TestCase):
         self.config["repository"] = "fixture/download-contract"
         self.config["checksums"] = "fixture-" + self.config["checksums"]
         self.config["install_script"] = "fixture-" + self.config["install_script"]
-        self.config["update_manifest"] = "fixture-" + self.config["update_manifest"]
+        self.config["update_channels"] = {
+            channel: {"tag": "fixture-" + release["tag"], "manifest": "fixture-" + release["manifest"]}
+            for channel, release in self.config["update_channels"].items()
+        }
         self.config["assets"] = {
             platform: {arch: "fixture-" + name for arch, name in arches.items()}
             for platform, arches in self.config["assets"].items()
@@ -82,7 +85,7 @@ class ReleaseDownloadsTests(unittest.TestCase):
 
     def test_final_checksum_includes_metadata_and_is_deterministic_on_rerun(self):
         self.populate()
-        (self.dist / self.config["update_manifest"]).write_text('{"signed": "fixture"}\n')
+        (self.dist / "signed-fixture.json").write_text('{"signed": "fixture"}\n')
         (self.dist / "extra-artifact.fixture").write_bytes(b"extra artifact")
         (self.dist / "artifact-directory").mkdir()
         checksum = self.dist / self.config["checksums"]
@@ -125,7 +128,6 @@ class ReleaseDownloadsTests(unittest.TestCase):
     def test_workflow_environment_filenames_follow_the_manifest(self):
         common = {
             "INSTALL_SCRIPT": self.config["install_script"],
-            "UPDATE_MANIFEST": self.config["update_manifest"],
             "CHECKSUM_ASSET": self.config["checksums"],
         }
         result = self.run_helper("env")
@@ -142,6 +144,15 @@ class ReleaseDownloadsTests(unittest.TestCase):
                     self.assertEqual(
                         dict(line.split("=", 1) for line in result.stdout.splitlines()), expected,
                     )
+
+    def test_each_channel_names_its_manifest_and_release(self):
+        for channel, release in self.config["update_channels"].items():
+            with self.subTest(channel=channel):
+                result = self.run_helper("env", "--channel", channel)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                values = dict(line.split("=", 1) for line in result.stdout.splitlines())
+                self.assertEqual(values["UPDATE_MANIFEST"], release["manifest"])
+                self.assertEqual(values["UPDATE_MANIFEST_TAG"], release["tag"])
 
     def test_updater_specs_pair_download_urls_with_the_same_local_assets(self):
         base = "https://download-contract.invalid/releases/test-version"

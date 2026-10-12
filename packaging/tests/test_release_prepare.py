@@ -3,6 +3,7 @@
 Run: python3 -m unittest discover -s packaging/tests -v
 """
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -14,6 +15,7 @@ import unittest
 
 
 PACKAGING = Path(__file__).resolve().parents[1]
+UPDATE_CHANNELS = json.loads((PACKAGING / "release-assets.json").read_text())["update_channels"]
 SOURCE_VERSION = "1.2.3"
 MANIFEST = f'''[workspace]
 members = ["app", "crates/core", "tools/standalone", "vendor/thing"]
@@ -201,7 +203,10 @@ else:
         return run(sys.executable, "packaging/prepare-release.py", cwd=self.root, env=env, check=check)
 
     def outputs(self):
-        return dict(line.split("=", 1) for line in self.output.read_text().splitlines())
+        values = dict(line.split("=", 1) for line in self.output.read_text().splitlines())
+        # The publisher signs a manifest for every prepared channel, so each needs a manifest release.
+        self.assertIn(values["channel"], UPDATE_CHANNELS)
+        return values
 
     def refs(self):
         return self.git("ls-remote", "origin")
@@ -237,6 +242,18 @@ else:
             result = self.prepare(check=False, BUMP="nightly", **changes)
             self.assertNotEqual(result.returncode, 0)
             self.assert_no_outputs()
+        self.assertEqual(self.git("tag"), "")
+
+    def test_manual_beta_is_read_only_and_limited_to_the_default_branch(self):
+        before = self.refs()
+        self.prepare(BUMP="beta")
+        self.assertEqual(self.outputs(), {"channel": "beta", "tag": "beta", "version": SOURCE_VERSION,
+                                         "ref": self.initial, "commit": self.initial})
+        self.assertEqual(self.refs(), before)
+        self.assertFalse(self.log.exists())
+        result = self.prepare(check=False, BUMP="beta", TARGET_BRANCH="feature")
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_outputs()
         self.assertEqual(self.git("tag"), "")
 
     def test_current_creates_one_annotated_tag_and_no_version_commit(self):

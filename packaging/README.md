@@ -31,7 +31,8 @@ list; an asset-compiler test fails when it is stale, and `check-payload.sh` plan
 the shipped compiler against the shipped kit.
 
 CI: `.github/workflows/package.yml`. Pushes to `main` replace the `nightly` prerelease (tag moved,
-assets replaced). To publish a stable release, run **Package** in GitHub Actions and choose
+assets replaced); running **Package** with `beta` does the same for the `beta` prerelease from the
+default branch. To publish a stable release, run **Package** in GitHub Actions and choose
 `current`, `patch`, `minor`, `major`, or `custom`. The **branch** input accepts any existing branch;
 leave it blank to use the branch selected in Actions' **Use workflow from** menu. A version bump
 is committed to that branch, leaving other branches unchanged. These are Cinnabar app versions,
@@ -77,7 +78,7 @@ Signing is optional; each missing secret yields unsigned output instead of a fai
 | `MACOS_CERT_P12_BASE64`, `MACOS_CERT_PASSWORD`, `CODESIGN_IDENTITY` | Developer ID signing (else ad-hoc) |
 | `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | Notarization; required once `CODESIGN_IDENTITY` is set |
 | `WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PASSWORD` | Authenticode signing of the exes, MSI, setup engine and bundle |
-| `CINNABAR_UPDATE_SIGNING_KEY` | Signed `update-stable.json` on `v*` releases (else none is published) |
+| `CINNABAR_UPDATE_SIGNING_KEY` | Each run's signed channel manifest, published where `update_channels` in `release-assets.json` names it (else skipped with a notice) |
 | `UPDATE_TRUSTED_KEYS` (variable) | Keys the client trusts for update manifests |
 | `DISCORD_CHANGELOG_WEBHOOK` | Posts each new `v*` release's changelog to Discord, grouped by PR label (`packaging/changelog.py`) |
 

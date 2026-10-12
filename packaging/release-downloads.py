@@ -52,6 +52,7 @@ def main():
     environment = commands.add_parser("env")
     environment.add_argument("platform", nargs="?")
     environment.add_argument("arch", nargs="?")
+    environment.add_argument("--channel", help="also name this channel's signed manifest and its release")
     update = commands.add_parser("update-artifacts")
     update.add_argument("base")
     update.add_argument("directory", type=Path)
@@ -62,9 +63,12 @@ def main():
         print(manifest()["assets"][args.platform][args.arch])
     elif args.command == "env":
         config = manifest()
-        for key, field in [("INSTALL_SCRIPT", "install_script"), ("UPDATE_MANIFEST", "update_manifest"),
-                           ("CHECKSUM_ASSET", "checksums")]:
+        for key, field in [("INSTALL_SCRIPT", "install_script"), ("CHECKSUM_ASSET", "checksums")]:
             print(f"{key}={config[field]}")
+        if args.channel:
+            release = config["update_channels"][args.channel]
+            print(f'UPDATE_MANIFEST={release["manifest"]}')
+            print(f'UPDATE_MANIFEST_TAG={release["tag"]}')
         if args.platform:
             print(f'RELEASE_ASSET={config["assets"][args.platform][args.arch]}')
             if args.platform == "windows":

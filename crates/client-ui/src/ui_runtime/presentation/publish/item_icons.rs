@@ -33,6 +33,50 @@ pub(super) fn stack_icon(
     Some(icon.with_glint(runtime.item_glint(stack, item.glint)))
 }
 
+/// Borrows the authorities needed to resolve one frame's item visuals.
+pub(super) struct ItemResolver<'a> {
+    pub runtime: &'a UiRuntime,
+    pub presentation: &'a UiPresentationRuntime,
+    pub authority: Option<&'a client_world::WorldAuthority>,
+}
+
+impl ItemResolver<'_> {
+    /// Resolves a stack against the admitted item registry.
+    pub fn item(
+        &self,
+        stack: &protocol::NetworkItemStack,
+    ) -> Option<client_world::CanonicalItemStack> {
+        self.authority?.canonical_item_stack(stack)
+    }
+
+    /// Returns the stack's canonical identifier when the registry knows it.
+    pub fn identifier(&self, stack: &protocol::NetworkItemStack) -> Option<Arc<str>> {
+        self.item(stack)?.identifier
+    }
+
+    /// Resolves stack artwork with its glint and optional local animation frame.
+    pub fn icon(
+        &self,
+        stack: &protocol::NetworkItemStack,
+        animation: Option<u32>,
+    ) -> Option<IconRef> {
+        self.item(stack)
+            .and_then(|item| stack_icon(self.runtime, self.presentation, stack, item, animation))
+    }
+
+    /// Combines registry durability with the stack's latest display correction.
+    pub fn durability(
+        &self,
+        stack: &protocol::NetworkItemStack,
+        correction: Option<i32>,
+    ) -> Option<f32> {
+        let maximum = self
+            .authority
+            .and_then(|authority| authority.item_durability(stack.network_id).maximum());
+        self.runtime.stack_durability(stack, maximum, correction)
+    }
+}
+
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
     use {super::*, ui::IconRef};

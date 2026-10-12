@@ -10,6 +10,32 @@ repo_root="$(CDPATH= cd -- "${CINNABAR_SOURCE_ROOT:-$(dirname -- "${BASH_SOURCE[
 prep_kit_list="$repo_root/packaging/common/prep-kit-files.txt"
 prep_kit_hint='regenerate it with cargo run -p asset-compiler --bin assetc -- kit-files'
 
+runtime_binary_list="$repo_root/packaging/common/runtime-binaries.txt"
+
+# runtime_binaries: executable basenames shared by builders, signing and payload checks.
+runtime_binaries() {
+    awk '{print $1}' "$runtime_binary_list"
+}
+
+# runtime_binary_source <name> <override>: a configured executable or its sibling build output.
+runtime_binary_source() {
+    local name="$1" override="$2" directory
+    directory="${BINARIES:-$(dirname -- "${LOCAL_SERVER:-${CORE:-${CLIENT:-$repo_root/target/release/_}}}")}"
+    printf '%s\n' "${!override:-$directory/$name}"
+}
+
+# stage_runtime_binaries <destination>: require and install every runtime executable together.
+stage_runtime_binaries() {
+    local destination="$1" name package override source
+    require_file "$runtime_binary_list" 'restore the runtime binary table'
+    mkdir -p "$destination"
+    while read -r name package override; do
+        source="$(runtime_binary_source "$name" "$override")"
+        require_file "$source" 'build with make package-binaries'
+        install -m 0755 "$source" "$destination/$name"
+    done < <(tr -d '\r' < "$runtime_binary_list")
+}
+
 # prep_kit_files: the listed paths. Callers check the list exists first: this often runs in a subshell.
 prep_kit_files() {
     tr -d '\r' < "$prep_kit_list"

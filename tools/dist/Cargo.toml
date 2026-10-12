@@ -7,6 +7,7 @@ publish = false
 
 [package.metadata.cinnabar]
 platform-specific = ["windows"]
+reads = ["packaging/common/runtime-binaries.txt"]
 
 [dependencies]
 assets = { path = "../../crates/assets" }

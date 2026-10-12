@@ -47,3 +47,36 @@ pub(super) fn animation_view(
             entity_radius: render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS,
         })
 }
+
+impl super::ActorPresentationState<'_, '_> {
+    /// Keeps the hand's independent perspective through the world's portal projection.
+    pub(super) fn hand_camera_fov(&self) -> Option<f32> {
+        self.camera
+            .single()
+            .ok()
+            .and_then(|(_, projection, _)| crate::camera::first_person_hand_fov(projection))
+    }
+
+    /// Captures the active render camera's actor admission bounds, widened for Enhanced shadows.
+    pub(super) fn actor_views(&self) -> Option<super::culling::ActorPublicationViews> {
+        self.camera
+            .single()
+            .ok()
+            .map(super::culling::ActorPublicationViews::for_camera)
+    }
+}
+
+/// Applies admitted local swings and camera rotation without advancing actor ticks.
+pub(super) fn refresh_interpolation(
+    stream: Option<&mut chunk_pipeline::WorldStream>,
+    swing_progress: Option<actor_animation::LocalSwingProgress>,
+    rotation: bevy::math::Quat,
+) {
+    if let Some(stream) = stream {
+        if let Some(progress) = swing_progress {
+            stream.sync_local_swing(progress);
+        }
+        stream.set_actor_camera_rotation(actor_camera_rotation(rotation));
+        stream.advance_actor_interpolation_frame(0);
+    }
+}

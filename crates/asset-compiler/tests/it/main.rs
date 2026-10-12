@@ -8,3 +8,4 @@ mod fixture_input;
 mod hud;
 mod public_font_api;
 mod public_outline_font_api;
+mod registry_policy;

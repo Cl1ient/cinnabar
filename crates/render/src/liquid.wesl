@@ -176,7 +176,27 @@ fn liquid_record(instance_index: u32) -> u32 {
     return transparent_refs[instance_index].liquid_record_index;
 }
 
-// Fetches the vertex index and first instance from vertex buffer 0, as `chunk.wgsl` describes.
+// Each instance selects one CPU-visible unit; reject padding before reconstructing geometry.
+@if(TERRAIN_UNITS)
+@group(2) @binding(0) var<storage, read> terrain_units: array<vec4<u32>>;
+
+@if(TERRAIN_UNITS)
+@vertex
+fn vertex_unit(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {
+    let unit = terrain_units[instance_index];
+    let quad = vertex_index / 4u;
+    if (quad >= unit.y) {
+        var invisible: VertexOutput;
+        invisible.clip_position = vec4(2.0, 2.0, 2.0, 1.0);
+        return invisible;
+    }
+    return depth_vertex(unit.z * 4u + vertex_index % 4u, unit.x + quad);
+}
+
+// Fetches the vertex index and first instance from vertex buffer 0, as `chunk.wesl` describes.
 @vertex
 fn vertex_depth(
     @location(0) offsets: vec2<u32>,

@@ -2,7 +2,8 @@
 // or opt-in synthetic terrain and opaque-overdraw fixtures.
 // It prints "ready" once listening and reads "pause", "resume" and "stop" lines on stdin, and
 // "experience reload <id>" lines when it hosts Experiences; stdin EOF and SIGINT/SIGTERM also stop
-// it. docs/experience-runtime.md describes the Experiences of -experiences and the client parts of
+// it. Started with only -standby, it warms world generation until a "start <JSON args>" line gives
+// it a world without -experiences. docs/experience-runtime.md describes the Experiences of -experiences and the client parts of
 // the -extension flags.
 package main
 
@@ -43,6 +44,15 @@ func main() {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	standby := len(args) == 1 && args[0] == standbyFlag
+	if standby {
+		go warmGeneration()
+		started, rest, ok, err := awaitStandbyStart(stdin)
+		if err != nil || !ok {
+			return err
+		}
+		args, stdin = started, rest
+	}
 	cfg, err := parseSettings(args, stderr)
 	if err != nil {
 		return err
@@ -50,6 +60,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if cfg.terrainFixtureGenerate {
 		return generateTerrainFixture(cfg, stdout)
 	}
+	if standby && cfg.experiences != "" {
+		// Its warm-up has finalised the block registry that Experience blocks register in.
+		return errors.New("a standby server cannot host -experiences")
+	}
+	pending := cfg.startGenerators()
+	defer pending.discard()
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
 	// The offer's marker pack must be written before the resource packs load.
 	var ext *extension.Server
@@ -75,6 +91,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	} else if err := experience.CheckDisabled(filepath.Join(cfg.dir, experienceDataDir)); err != nil {
 		return err
 	}
+	pending.begin()
 	conf, err := cfg.userConfig().Config(logger)
 	if err != nil {
 		if exps != nil {
@@ -102,7 +119,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		conf.Resources = append(conf.Resources, pack)
 	}
-	generators, err := cfg.configureGenerators(&conf)
+	generators, err := pending.configure(&conf)
 	if err != nil {
 		if exps != nil {
 			err = errors.Join(err, exps.closeSupervisors())
@@ -118,6 +135,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	_, spawnErr := os.Stat(filepath.Join(cfg.dir, "db", "level.dat"))
 	firstWorld := errors.Is(spawnErr, fs.ErrNotExist)
+	generator, normal := generators[world.Overworld]
+	if firstWorld && normal {
+		// Saved before the worlds open, so the first tick finds a spawn instead of generating a
+		// column to search one.
+		settings := conf.WorldProvider.Settings()
+		settings.Spawn = generator.DefaultSpawn(world.Overworld)
+		conf.WorldProvider.SaveSettings(settings)
+	}
 	if ext != nil {
 		for i, listen := range conf.Listeners {
 			conf.Listeners[i] = ext.Listener(listen)
@@ -159,13 +184,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return errors.Join(err, conf.WorldProvider.Close(), conf.PlayerProvider.Close())
 		}
 	}
+	cfg.configureLocalPlayers(&conf)
 	srv := conf.New()
 	worlds := []*world.World{srv.World(), srv.Nether(), srv.End()}
 	cfg.applyTo(worlds...)
-	if generator, ok := generators[world.Overworld]; firstWorld && ok {
-		srv.World().SetSpawn(generator.DefaultSpawn(world.Overworld))
+	pauses := &pauseState{worlds: worlds}
+	warmup := func() {}
+	if firstWorld && normal {
+		warmup = warmSpawn(srv.World(), pauses)
 	}
-	cmds := commands{pause: func(paused bool) { setPaused(worlds, paused) }}
+	cmds := commands{pause: pauses.request}
 	var host *experience.Host
 	var running sync.WaitGroup
 	runCtx, stopRunning := context.WithCancel(context.Background())
@@ -181,7 +209,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		running.Go(func() { exps.store.RunFlusher(runCtx) })
 		cmds.pause = func(paused bool) {
 			host.Pause(paused)
-			setPaused(worlds, paused)
+			pauses.request(paused)
 		}
 		cmds.reload = func(id string) {
 			if err := host.Reload(id); err != nil {
@@ -200,6 +228,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	go func() {
 		defer close(accepting)
 		for p := range srv.Accept() {
+			warmup()
 			if host != nil {
 				p.Handle(quitHandler{host: host})
 			}

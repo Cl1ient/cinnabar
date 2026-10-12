@@ -564,6 +564,7 @@ mod tests {
         bytes.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (hash, name) in entries {
             let record = RegistryRecord {
+                beacon_tint: assets::BeaconTint::Unresolved,
                 sequential_id: 0,
                 network_hash: *hash,
                 name: (*name).into(),
@@ -590,6 +591,7 @@ mod tests {
 
     fn synthetic_record(name: &str, hash: u32) -> RegistryRecord {
         RegistryRecord {
+            beacon_tint: assets::BeaconTint::Unresolved,
             sequential_id: 7,
             network_hash: hash,
             name: name.into(),

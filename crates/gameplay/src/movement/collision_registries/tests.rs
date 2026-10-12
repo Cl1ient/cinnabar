@@ -599,3 +599,43 @@ fn held_placement_intention_uses_the_held_block_family_in_both_id_spaces() {
 
 #[path = "tests/placement.rs"]
 mod placement;
+
+/// Switching palette modes clears sequential customs before installing the hashed palette.
+#[test]
+fn bootstrap_registration_preserves_palette_mapping_and_replaces_custom_collisions() {
+    let version = active_content_registry_protocol();
+    let records = assets::read_registry_for_protocol(BREG_V2193, version).unwrap();
+    let mut registries = bind(
+        BREG_V2193,
+        &synthetic_preg(version, BREG_V2193, &records),
+        version,
+    )
+    .unwrap();
+    let custom = protocol::CustomBlocks {
+        blocks: vec![custom_block("test:session_palette", 1)].into(),
+        ..Default::default()
+    };
+    let hash = custom.blocks[0].hashed_states()[0].hash;
+    let registration = registries.begin_session_blocks(&custom, false);
+    assert!(registration.supported);
+    let ids = registration.custom_ids.unwrap();
+    assert_eq!(ids.len(), 1);
+    assert!(registries.sequential.contains_runtime_id(ids.start));
+    assert_eq!(
+        registration
+            .remap
+            .to_internal(registration.remap.to_wire(ids.start)),
+        ids.start
+    );
+
+    let registration = registries.begin_session_blocks(&custom, true);
+    assert!(registration.supported);
+    assert!(registration.custom_ids.is_none());
+    assert_eq!(registration.remap, assets::SequentialIdRemap::default());
+    assert!(!registries.sequential.contains_runtime_id(ids.start));
+    assert!(registries.hashed.contains_runtime_id(hash));
+
+    let registration = registries.begin_session_blocks(&protocol::CustomBlocks::default(), true);
+    assert!(registration.supported);
+    assert!(!registries.hashed.contains_runtime_id(hash));
+}

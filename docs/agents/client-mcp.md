@@ -1,7 +1,7 @@
 # Driving and recording the client (cinnabar-mcp)
 
 `tools/cinnabar-mcp` is a stdio MCP server that launches a client built with
-`cargo build -p bedrock-client --features developer-control` (plus `local-mods` for mods) and drives
+`cargo build -p cinnabar --features developer-control` (plus `local-mods` for mods) and drives
 it over a loopback, token-authenticated endpoint written under `.local/developer-control/`. The tool
 schemas document every argument. Agents drive the client only through this endpoint, headless
 (`headless: true`); never with OS-level input or window automation.
@@ -23,6 +23,8 @@ schemas document every argument. Agents drive the client only through this endpo
 - `test_accounts` with `enabled: true` shows a signed-in launcher whose Accounts picker lists
   placeholder accounts, so recordings never show real gamertags; it never signs in or saves, and
   needs a signed-out install (an isolated `CINNABAR_USER_ROOT`).
+- `global_packs` stages and applies global resource packs as the settings screen does; import
+  packs with `launch_client` args `["--import-pack", path]`, then poll it until `pending` clears.
 - `state.player_motion` includes the simulation tick, velocity, accepted motion sequence, jump
   eligibility and physical jump state. With `local-mods`, `state.local_mods` also reports bounded
   host status and validated panel controls, so tests can verify module toggles and settings

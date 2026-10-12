@@ -8,6 +8,7 @@ mod model;
 #[path = "../../src/chunk/gpu_cull/occlusion.rs"]
 mod occlusion;
 mod raster;
+mod units;
 
 use std::collections::BTreeSet;
 
@@ -634,6 +635,7 @@ fn cuboid(low: [u8; 3], size: [u8; 3], material: u32) -> [PackedQuad; 6] {
 
 #[derive(Default)]
 struct Terrain {
+    alpha_cutout: bool,
     quads: Vec<PackedQuad>,
     origins: Vec<u32>,
     records: Vec<CullRecord>,
@@ -786,7 +788,14 @@ impl Raster {
     ) -> Self {
         let source = format!(
             "{}\n{UNSEALED_VERTEX}",
-            shader_source::standalone(include_str!("../../src/chunk.wesl"), &[])
+            shader_source::standalone(
+                include_str!("../../src/chunk.wesl"),
+                if vertex == "vertex_unit" {
+                    &["TERRAIN_UNITS"]
+                } else {
+                    &[]
+                }
+            )
         )
         .replace("@group(1) @binding(0)", "@group(0) @binding(20)");
         let module = gpu
@@ -809,7 +818,11 @@ impl Raster {
                         module: &module,
                         entry_point: Some(vertex),
                         compilation_options: Default::default(),
-                        buffers: &offsets,
+                        buffers: if vertex == "vertex_unit" {
+                            &[]
+                        } else {
+                            &offsets
+                        },
                     },
                     primitive: wgpu::PrimitiveState {
                         cull_mode,
@@ -853,7 +866,26 @@ impl Raster {
         let origins = gpu.words(&terrain.origins, storage);
         let no_animation = u32::MAX;
         let materials = gpu.words(
-            &[0, 0, no_animation, 0, 0, 0, 1, 0, no_animation, 0, 0, 0],
+            &[
+                0,
+                0,
+                no_animation,
+                0,
+                0,
+                0,
+                1,
+                0,
+                no_animation,
+                0,
+                0,
+                0,
+                1,
+                assets::MATERIAL_FLAG_ALPHA_CUTOUT | assets::MATERIAL_FLAG_TWO_SIDED,
+                no_animation,
+                0,
+                0,
+                0,
+            ],
             storage,
         );
         let animations = gpu.words(&[0; 8], storage);
@@ -864,7 +896,10 @@ impl Raster {
             storage,
         );
         let records = gpu.buffer(&[0.0], storage);
-        let tints = gpu.buffer(&[0.0; 8 + assets::SEASONAL_FOLIAGE_COUNT * 4], storage);
+        let tints = gpu.buffer(
+            &[0.0; 8 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 4],
+            storage,
+        );
         let query_tables = gpu.words(
             &meshing::biome_lattice::query_table_words(),
             wgpu::BufferUsages::UNIFORM,
@@ -876,7 +911,11 @@ impl Raster {
         let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
         let table = render_model::LightmapInputs::default().build();
         let lightmap = gpu.buffer(bytemuck::cast_slice(&table), wgpu::BufferUsages::UNIFORM);
-        let atlas = solid_terrain_raster::pattern_texture(gpu);
+        let atlas = if terrain.alpha_cutout {
+            solid_terrain_raster::alpha_pattern_texture(gpu)
+        } else {
+            solid_terrain_raster::pattern_texture(gpu)
+        };
         let sampler = gpu.device.create_sampler(&Default::default());
         let view = gpu.buffer(
             &gpu_snapshot::view(camera.clip_from_world, camera.eye),

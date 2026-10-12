@@ -44,6 +44,7 @@ fn tools_list_names_every_tool() {
             "test_cape",
             "sign_in_fixture",
             "test_accounts",
+            "global_packs",
             "state",
             "wait_for",
             "screenshot",
@@ -215,6 +216,19 @@ fn pointer_wheel_and_cape_tools_preserve_arguments() {
     let (command, _) =
         commands::command("test_accounts", &json!({"enabled": false}), repo, repo).unwrap();
     assert_eq!(command, Command::TestAccounts { enabled: false });
+    let (command, _) = commands::command(
+        "global_packs",
+        &json!({"action": {"deactivate": {"index": 0}}}),
+        repo,
+        repo,
+    )
+    .unwrap();
+    assert_eq!(
+        command,
+        Command::GlobalPacks {
+            action: Some(developer_control::protocol::GlobalPackAction::Deactivate { index: 0 })
+        }
+    );
     assert!(
         commands::command(
             "test_cape",
@@ -305,12 +319,12 @@ fn a_timed_out_reply_does_not_desynchronise_later_calls() {
 fn default_binaries_carry_the_platform_executable_suffix() {
     let repo = Path::new("/repo");
     assert_eq!(
-        crate::tools::executable(repo, "target/debug/bedrock-client", ".exe"),
-        repo.join("target/debug/bedrock-client.exe")
+        crate::tools::executable(repo, "target/debug/cinnabar", ".exe"),
+        repo.join("target/debug/cinnabar.exe")
     );
     assert_eq!(
-        crate::tools::executable(repo, "target/debug/bedrock-client", ""),
-        repo.join("target/debug/bedrock-client")
+        crate::tools::executable(repo, "target/debug/cinnabar", ""),
+        repo.join("target/debug/cinnabar")
     );
 }
 

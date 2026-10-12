@@ -31,21 +31,12 @@ mod status_rows;
 pub(super) use status_rows::capture as capture_hud_paint;
 mod windows;
 
-pub(super) use inventory::{CraftingFrame, StorageIcons};
 pub use pinned::{BOSS_TINTS, effect_icon_role};
 use pinned::{BOTTOM_STACK_HEIGHT, HOTBAR_WIDTH, hsv_to_rgb};
 pub use sleep::SleepTimeline;
 use ui::gui_scale;
-pub(super) use windows::{Durability, TooltipLine, WindowIcons, WindowText, title_key};
-
-#[derive(Clone, Debug)]
-pub struct InventoryIcons(pub [Option<IconRef>; 36]);
-
-impl Default for InventoryIcons {
-    fn default() -> Self {
-        Self([None; 36])
-    }
-}
+use ui_screens::inventory_capture::{CraftingFrame, Durability, InventoryIcons, StorageIcons};
+pub(super) use windows::{TooltipLine, WindowIcons, WindowText, title_key};
 
 /// Frame inputs the layout cannot read from `UiRuntime` alone: camera state
 /// plus item facts resolved against the world stream's authoritative item

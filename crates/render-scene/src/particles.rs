@@ -20,6 +20,8 @@ pub struct ParticleGpuFrame {
     pub opaque: Arc<[ParticleInstance]>,
     pub blend: Arc<[ParticleInstance]>,
     pub add: Arc<[ParticleInstance]>,
+    /// Drawable particles hidden by the current cave graph this frame.
+    pub cave_hidden: usize,
 }
 
 impl ParticleGpuFrame {
@@ -30,6 +32,7 @@ impl ParticleGpuFrame {
 
     /// Publishes the current camera-sorted instance lists for extraction.
     fn set_lists(&mut self, lists: DrawLists) {
+        self.cave_hidden = lists.cave_hidden;
         self.blend = lists.blend.into();
         self.add = lists.add.into();
         self.opaque = lists.opaque.into();
@@ -57,17 +60,37 @@ pub fn particle_view(transform: &GlobalTransform, projection: &Projection) -> Pa
     }
 }
 
-/// Ticks the simulation and refreshes the extracted draw data; call once per frame.
+/// Ticks the simulation and refreshes draw data, using the caller's conservative
+/// world-box visibility test only for instance building; call once per frame.
 pub fn update_particle_frame(
     system: &mut ParticleSystem,
     frame: &mut ParticleGpuFrame,
     dt: f32,
     view: &ParticleView,
     world: &dyn ParticleWorld,
+    hides_box: impl FnMut([f32; 3], [f32; 3]) -> bool,
 ) {
     system.set_camera(view.position);
     system.tick(dt, world);
-    let lists = system.build_draw(view, world);
+    let lists = {
+        let span = bevy::log::info_span!(
+            "particle.instance_build",
+            cave_hidden = bevy::log::tracing::field::Empty,
+            submitted = bevy::log::tracing::field::Empty,
+            light_lookups = bevy::log::tracing::field::Empty,
+            light_cache_hits = bevy::log::tracing::field::Empty,
+        );
+        let _zone = span.enter();
+        let lists = system.build_draw_with_visibility(view, world, hides_box);
+        span.record("cave_hidden", lists.cave_hidden);
+        span.record("light_lookups", lists.light_lookups);
+        span.record("light_cache_hits", lists.light_cache_hits);
+        span.record(
+            "submitted",
+            lists.opaque.len() + lists.blend.len() + lists.add.len(),
+        );
+        lists
+    };
     frame.set_lists(lists);
     let base = system.atlas_base();
     if frame

@@ -297,3 +297,51 @@ fn continuously_changed_columns_do_not_starve_later_rescans() {
         "every distant column eventually appears"
     );
 }
+
+#[test]
+fn beacon_sections_share_unchanged_columns_and_refresh_after_block_or_nbt_edits() {
+    let beacon = key(1);
+    let mut store = store_with(&[(beacon, "Beacon", "initial")]);
+    let build = |chunk: &Chunk| {
+        let mut scan = ColumnScan::new(chunk, Vec::new(), Vec::new());
+        let id = chunk.shared_sub_chunks()[&SECTION.y]
+            .runtime_id(0, 0, 0, 0)
+            .unwrap();
+        let tint = if id == 1 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 0.0, 1.0]
+        };
+        scan.beacons.insert(
+            beacon,
+            render_model::BeaconModel {
+                sections: assets::beacon::beacon_sections(66, 80, |_| {
+                    assets::beacon::BeaconMedium::Tint(tint)
+                })
+                .into(),
+            },
+        );
+        scan
+    };
+    let chunk = store.chunk(beacon.chunk()).unwrap();
+    let mut scan = build(chunk);
+    let first = Arc::clone(&scan.beacons[&beacon].sections);
+    for _ in 0..3 {
+        scan = frame_scan(Some(scan), chunk, true, &mut 0, |_| build(chunk)).unwrap();
+        assert!(Arc::ptr_eq(&first, &scan.beacons[&beacon].sections));
+    }
+    store
+        .commit_sub_chunk(SECTION, uniform_sub_chunk(2))
+        .unwrap();
+    let chunk = store.chunk(beacon.chunk()).unwrap();
+    scan = frame_scan(Some(scan), chunk, true, &mut 0, |_| build(chunk)).unwrap();
+    assert!(!Arc::ptr_eq(&first, &scan.beacons[&beacon].sections));
+    assert_eq!(scan.beacons[&beacon].sections[1].tint, [0.0, 0.0, 1.0]);
+    let replacement = Arc::clone(&scan.beacons[&beacon].sections);
+    store
+        .commit_block_entity_update(beacon, entity_nbt("Beacon", beacon.position(), "changed"))
+        .unwrap();
+    let chunk = store.chunk(beacon.chunk()).unwrap();
+    scan = frame_scan(Some(scan), chunk, true, &mut 0, |_| build(chunk)).unwrap();
+    assert!(!Arc::ptr_eq(&replacement, &scan.beacons[&beacon].sections));
+}

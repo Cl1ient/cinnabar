@@ -1,0 +1,4 @@
+cinnabar cinnabar CLIENT
+bedrock-core - CORE
+bedrock-local-server - LOCAL_SERVER
+cinnabar-cxb cinnabar-cxb CXB

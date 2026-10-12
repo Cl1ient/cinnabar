@@ -1,26 +1,20 @@
 #!/usr/bin/env bash
 # Assembles an unsigned Cinnabar.app from release binaries. Usage: build-app.sh [out_dir]
-# Env: CLIENT, CORE, LOCAL_SERVER, ASSETC (default target/release/*), BUNDLE_ID, CINNABAR_UPDATE_URL.
+# Env: CLIENT, CORE, LOCAL_SERVER, CXB, BINARIES, ASSETC (default target/release/*), BUNDLE_ID, CINNABAR_UPDATE_URL.
 set -euo pipefail
 here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 # shellcheck source=../common/stage-payload.sh
 source "$here/../common/stage-payload.sh"
 
 out="${1:-$repo_root/.local/dist/macos-release}"
-client="${CLIENT:-$repo_root/target/release/bedrock-client}"
-core="${CORE:-$repo_root/target/release/bedrock-core}"
-local_server="${LOCAL_SERVER:-$repo_root/target/release/bedrock-local-server}"
 assetc="${ASSETC:-$repo_root/target/release/assetc}"
 bundle_id="${BUNDLE_ID:-app.cinnabar.client}"
-for binary in "$client" "$core" "$local_server" "$assetc"; do require_file "$binary" 'build with make package-binaries'; done
+require_file "$assetc" 'build with make package-binaries'
 
 app="$out/Cinnabar.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-install -m 0755 "$client" "$app/Contents/MacOS/bedrock-client"
-install -m 0755 "$core" "$app/Contents/MacOS/bedrock-core"
-# The core starts local worlds only when this sits beside it.
-install -m 0755 "$local_server" "$app/Contents/MacOS/bedrock-local-server"
+stage_runtime_binaries "$app/Contents/MacOS"
 stage_resources "$app/Contents/Resources" "$assetc"
 
 sed -e "s|@BUNDLE_ID@|$bundle_id|g" -e "s|@VERSION@|$(version_of)|g" "$here/Info.plist.in" > "$app/Contents/Info.plist"

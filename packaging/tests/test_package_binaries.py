@@ -17,6 +17,19 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @unittest.skipUnless(shutil.which("make"), "GNU make is required")
 class PackageBinariesTests(unittest.TestCase):
+    def test_runtime_table_has_unique_names_packages_and_overrides(self):
+        """All consumers receive complete, unambiguous runtime binary records."""
+        rows = [line.split() for line in (ROOT / "packaging/common/runtime-binaries.txt").read_text().splitlines()]
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(len(row), 3)
+        self.assertEqual(len({row[0] for row in rows}), len(rows))
+        self.assertEqual(len({row[2] for row in rows}), len(rows))
+        for name, package, override in rows:
+            self.assertRegex(name, r"^[a-z0-9-]+$")
+            self.assertRegex(package, r"^[a-z0-9-]+$")
+            self.assertRegex(override, r"^[A-Z_]+$")
+
     def test_macos_bundle_declares_game_mode(self):
         template = (ROOT / "packaging/macos/Info.plist.in").read_text()
         rendered = template.replace("@BUNDLE_ID@", "app.cinnabar.test").replace("@VERSION@", "1.0.0")
@@ -85,9 +98,22 @@ class PackageBinariesTests(unittest.TestCase):
                         for index, arg in enumerate(args) if arg == "--features"
                         for feature in args[index + 1].replace(",", " ").split()
                     }
-                    self.assertIn("bedrock-client/local-mods", features)
+                    self.assertIn("cinnabar/local-mods", features)
                     self.assertIn("--release", args)
                     self.assertIn("--no-default-features", args)
+                    runtime = [line.split() for line in (ROOT / "packaging/common/runtime-binaries.txt").read_text().splitlines()]
+                    packages = [args[index + 1] for index, arg in enumerate(args) if arg == "-p"]
+                    binaries = [args[index + 1] for index, arg in enumerate(args) if arg == "--bin"]
+                    self.assertIn("cinnabar-cxb", binaries)
+                    for name, package, _ in runtime:
+                        if package != "-":
+                            self.assertIn(package, packages)
+                            self.assertIn(name, binaries)
+                    go_outputs = {
+                        Path(args[args.index("-o") + 1]).name.removesuffix(".exe")
+                        for tool, *args in calls if tool == "go" and "-o" in args
+                    }
+                    self.assertEqual(go_outputs, {name for name, package, _ in runtime if package == "-"})
 
 
 if __name__ == "__main__":

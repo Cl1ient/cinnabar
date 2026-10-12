@@ -18,9 +18,11 @@ mod nametag;
 pub mod panorama;
 mod presentation;
 pub mod primitive_shapes;
+pub mod terrain_units;
 mod ui;
 mod ui_textures;
 mod visibility;
+pub mod visibility_bounds;
 
 pub use actor::{
     ACTOR_RIG_VERTEX_WORDS, ActorRigGeometry, ActorRigGeometryError, ActorRigSurface,
@@ -57,8 +59,9 @@ pub use frame_pacing::{
 pub use item_geometry::{extruded_sprite_vertices, held_sprite_vertices, textured_cube_vertices};
 pub use nametag::{
     MAX_NAMETAG_RECORDS, NAMETAG_ACOS_CUBIC, NAMETAG_ACOS_LINEAR, NAMETAG_ATLAS_SIDE,
-    NAMETAG_BLOCKS_PER_FONT_PIXEL, NAMETAG_HORIZONTAL_ZERO, NAMETAG_TEXT_REVERSE_Z_BIAS,
-    NametagAtlasRect, NametagRecord, NametagScene,
+    NAMETAG_BLOCKS_PER_FONT_PIXEL, NAMETAG_HORIZONTAL_ZERO, NAMETAG_LINE_PITCH_PX,
+    NAMETAG_TEXT_REVERSE_Z_BIAS, NametagAtlasRect, NametagRecord, NametagScene,
+    nametag_line_backgrounds, nametag_line_left,
 };
 pub use panorama::{MAX_PANORAMA_FACE_SIDE, PanoramaFaces, PanoramaView};
 pub use presentation::{
@@ -165,20 +168,23 @@ pub use block_entity::DragonDeathModel;
 pub use block_entity::SPAWNER_MOBS;
 pub use block_entity::ShulkerModel;
 pub use block_entity::SpawnerModel;
-pub use block_entity::{AtlasRect, BlockEntityAtlas, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef};
+pub use block_entity::{
+    AtlasRect, BlockEntityAtlas, MAP_CELL, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef,
+};
+pub use block_entity::{
+    BLOCK_ENTITY_REACH_BLOCKS, BlockEntityAtlasImage, BlockEntityFrame, BlockEntityKind,
+    BlockEntityLight, BlockEntityScene, BlockEntitySubmission, CrackInstance, SceneClock,
+};
 pub use block_entity::{
     BLOCK_ENTITY_VERTEX_WORDS, BlockEntityVertex, Facing, MAX_BLOCK_ENTITY_VERTICES,
 };
 pub use block_entity::{
     BLOCK_SELECTION_VERTICES_PER_EDGE, BlockSelectionFrame, BlockSelectionTarget,
 };
-pub use block_entity::{BannerLayer, BannerModel, BannerMount, MAX_BANNER_LAYERS, pattern_texture};
+pub use block_entity::{BannerLayer, BannerModel, BannerMount};
 pub use block_entity::{BedModel, bed_color};
 pub use block_entity::{BellAttachment, BellModel, swing_degrees};
-pub use block_entity::{
-    BlockEntityAtlasImage, BlockEntityFrame, BlockEntityKind, BlockEntityLight, BlockEntityScene,
-    BlockEntitySubmission, CrackInstance, SceneClock,
-};
+pub use block_entity::{BlockEntityArtworkPreparer, PreparedBlockEntityArtwork};
 pub use block_entity::{ChestModel, ChestPair, ChestVariant, CopperAge, lid_angle_radians};
 pub use block_entity::{CrackQuad, CrackShape, crack_shape_from_template, crack_texture_name};
 pub use block_entity::{DecoratedPotModel, sherd_pattern};

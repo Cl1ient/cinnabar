@@ -154,6 +154,7 @@ mod tests {
 
     fn leaf(name: &str, id: u32) -> RegistryRecord {
         RegistryRecord {
+            beacon_tint: assets::BeaconTint::Unresolved,
             sequential_id: id,
             network_hash: id,
             name: name.into(),

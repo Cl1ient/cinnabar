@@ -19,6 +19,7 @@ fn reads_the_go_wire_contract_without_reinterpreting_fields() {
     assert_eq!(records.len(), 2);
     let leaf = &records[0];
     assert_eq!(leaf.sequential_id, 7);
+    assert_eq!(leaf.beacon_tint, BeaconTint::Red);
     assert_eq!(leaf.network_hash, 0x1234_5678);
     assert_eq!(leaf.name.as_ref(), "fixture:leaf");
     assert_eq!(
@@ -64,6 +65,7 @@ fn reads_the_go_wire_contract_without_reinterpreting_fields() {
     );
     let resin = &records[1];
     assert_eq!(resin.sequential_id, 8);
+    assert_eq!(resin.beacon_tint, BeaconTint::NoTinting);
     assert_eq!(resin.network_hash, 0x8765_4321);
     assert_eq!(resin.name.as_ref(), "fixture:resin");
     assert_eq!(resin.canonical_state.as_ref(), "{}");
@@ -84,6 +86,7 @@ fn rejects_reserved_discriminants_bits_and_inconsistent_lengths() {
         (49, 0xff),
         (50, 0x80),
         (51, 8),
+        (92, 0xff),
     ] {
         let mut bytes = fixture();
         bytes[offset] = value;
@@ -118,4 +121,18 @@ fn accepts_compiled_enrichment_flags_without_using_source_only_mask() {
     assert!(records[0].flags.contains(BlockFlags::SEASONAL_REPLACEABLE));
     assert!(records[0].flags.contains(BlockFlags::FIRE_FLAMMABLE));
     assert!(records[0].flags.contains(BlockFlags::FIRE_TOP_SUPPORT));
+}
+
+#[test]
+fn stale_active_registry_requires_rebuilding_and_legacy_facts_stay_unresolved() {
+    let mut stale = fixture();
+    stale[..8].copy_from_slice(b"BREG1003");
+    let error = read_registry_for_protocol(&stale, 2193).unwrap_err();
+    assert!(error.to_string().contains("make assets"));
+    let legacy = read_registry(include_bytes!("../../data/block-registry-v1001.bin")).unwrap();
+    assert!(
+        legacy
+            .iter()
+            .all(|record| record.beacon_tint == BeaconTint::Unresolved)
+    );
 }

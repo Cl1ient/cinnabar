@@ -92,7 +92,7 @@ pub enum AssetError {
         source: serde_json::Error,
     },
 
-    #[error("invalid block registry magic")]
+    #[error("unsupported block registry format; rebuild with make assets")]
     InvalidRegistryMagic,
 
     #[error(

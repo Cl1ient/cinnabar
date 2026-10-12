@@ -7975,6 +7975,18 @@ has no admitted drawing frame. Complete native item/stack metadata coverage and 
 cache acceptance remain incomplete. Authored and session use cooldown fractions share the
 provisional component-precision conversion; native cooldown initialization is unverified.
 
+## Compiled beacon tint eligibility
+
+The block registry carries a tint or an explicit non-tinting disposition for each
+canonical state. Hardened stained glass and panes use the same palette colours
+as ordinary stained glass. Frame submission reads numeric descriptors, and
+unrecognised custom identities remain unresolved. Stale active registries require
+`make assets`.
+
+Incomplete: this descriptor does not establish beam sections, obstruction,
+activation, world height, custom block material overlays or end-to-end colour
+transfer. These remain separate acceptance gates.
+
 ## Active block-entity artwork
 
 The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together.

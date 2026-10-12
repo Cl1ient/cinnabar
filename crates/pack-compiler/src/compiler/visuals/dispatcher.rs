@@ -725,6 +725,7 @@ mod tests {
 
     fn synthetic_record(name: &str, state: &str, id: u32, hash: u32) -> RegistryRecord {
         RegistryRecord {
+            beacon_tint: assets::BeaconTint::Unresolved,
             sequential_id: id,
             network_hash: hash,
             name: name.into(),

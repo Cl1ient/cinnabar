@@ -260,6 +260,9 @@ fn cutout_pipeline_warmup_covers_every_sample_count() {
             for variants in [&mut pipelines.variants, &mut pipelines.model_variants] {
                 assert!(ids.contains(&variants.specialize(cache, key).unwrap()));
             }
+            for variants in &mut pipelines.unit_variants {
+                assert!(ids.contains(&variants.specialize(cache, key).unwrap()));
+            }
         }
     }
 }

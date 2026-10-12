@@ -23,6 +23,7 @@ pub(crate) fn timing_category(
                 functions.get_id::<super::solid::DrawSolidChunkIndirectCommands>(),
                 functions.get_id::<DrawGpuCulledCommands<0, false>>(),
                 functions.get_id::<DrawGpuCulledCommands<0, true>>(),
+                functions.get_id::<super::units::commands::DrawTerrainUnits<0>>(),
             ],
         ),
         (
@@ -32,6 +33,7 @@ pub(crate) fn timing_category(
                 functions.get_id::<DrawChunkIndirectCommands>(),
                 functions.get_id::<DrawGpuCulledCommands<1, false>>(),
                 functions.get_id::<DrawGpuCulledCommands<1, true>>(),
+                functions.get_id::<super::units::commands::DrawTerrainUnits<1>>(),
             ],
         ),
         (
@@ -41,6 +43,7 @@ pub(crate) fn timing_category(
                 functions.get_id::<DrawModelIndirectCommands>(),
                 functions.get_id::<DrawGpuCulledCommands<2, false>>(),
                 functions.get_id::<DrawGpuCulledCommands<2, true>>(),
+                functions.get_id::<super::units::commands::DrawTerrainUnits<2>>(),
             ],
         ),
         (
@@ -50,6 +53,7 @@ pub(crate) fn timing_category(
                 functions.get_id::<DrawDepthLiquidIndirectCommands>(),
                 functions.get_id::<DrawGpuCulledCommands<3, false>>(),
                 functions.get_id::<DrawGpuCulledCommands<3, true>>(),
+                functions.get_id::<super::units::commands::DrawTerrainUnits<3>>(),
             ],
         ),
     ];
@@ -109,24 +113,28 @@ mod timing_tests {
             register::<super::super::solid::DrawSolidChunkIndirectCommands>(&mut functions),
             register::<DrawGpuCulledCommands<0, false>>(&mut functions),
             register::<DrawGpuCulledCommands<0, true>>(&mut functions),
+            register::<super::super::units::commands::DrawTerrainUnits<0>>(&mut functions),
         ];
         let cutout = [
             register::<DrawChunkCommands>(&mut functions),
             register::<DrawChunkIndirectCommands>(&mut functions),
             register::<DrawGpuCulledCommands<1, false>>(&mut functions),
             register::<DrawGpuCulledCommands<1, true>>(&mut functions),
+            register::<super::super::units::commands::DrawTerrainUnits<1>>(&mut functions),
         ];
         let models = [
             register::<DrawModelCommands>(&mut functions),
             register::<DrawModelIndirectCommands>(&mut functions),
             register::<DrawGpuCulledCommands<2, false>>(&mut functions),
             register::<DrawGpuCulledCommands<2, true>>(&mut functions),
+            register::<super::super::units::commands::DrawTerrainUnits<2>>(&mut functions),
         ];
         let liquids = [
             register::<DrawDepthLiquidCommands>(&mut functions),
             register::<DrawDepthLiquidIndirectCommands>(&mut functions),
             register::<DrawGpuCulledCommands<3, false>>(&mut functions),
             register::<DrawGpuCulledCommands<3, true>>(&mut functions),
+            register::<super::super::units::commands::DrawTerrainUnits<3>>(&mut functions),
         ];
         for (draws, expected) in [
             (solid, RuntimeStage::GpuTerrainSolid),

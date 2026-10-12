@@ -63,7 +63,18 @@ pub(crate) fn lighting_words(count: usize) -> Vec<u32> {
         .collect()
 }
 
+/// An opaque pattern shared by terrain raster fixtures.
 pub(crate) fn pattern_texture(gpu: &Gpu) -> wgpu::TextureView {
+    texture_pattern(gpu, false)
+}
+
+/// The same pattern with checkerboard holes in the second layer for alpha-cutout fixtures.
+pub(crate) fn alpha_pattern_texture(gpu: &Gpu) -> wgpu::TextureView {
+    texture_pattern(gpu, true)
+}
+
+/// Uploads the two-layer fixture atlas, optionally making alternating texels transparent.
+fn texture_pattern(gpu: &Gpu, cutout: bool) -> wgpu::TextureView {
     let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("solid raster pattern"),
         size: wgpu::Extent3d {
@@ -86,7 +97,11 @@ pub(crate) fn pattern_texture(gpu: &Gpu) -> wgpu::TextureView {
                 (u * 16) as u8,
                 (v * 16) as u8,
                 (40 + layer * 150) as u8,
-                255,
+                if cutout && layer == 1 && (u + v) % 2 == 0 {
+                    0
+                } else {
+                    255
+                },
             ]
         })
         .collect::<Vec<_>>();

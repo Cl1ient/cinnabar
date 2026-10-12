@@ -273,6 +273,14 @@ path = "crates/test-time"
 allowed_dependencies = []
 dependency_free = true
 
+# Test-only counting allocator; std-only. Consumers leave it off their allowlists, so only
+# dev-dependencies can reach it.
+[[crates]]
+name = "test-alloc"
+path = "crates/test-alloc"
+allowed_dependencies = []
+dependency_free = true
+
 # Render data contracts and CPU geometry; presentation builds against it without the GPU renderer.
 [[crates]]
 name = "render-model"
@@ -400,7 +408,7 @@ path = "crates/ui"
 allowed_dependencies = ["json-ui", "assets", "render-api", "semantic-input"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 
-# The portable JSON-UI engine; hosts supply filesystem and network reads through its sources.
+# The portable JSON-UI engine; hosts supply reads, the clock and worker threads through its sources.
 [[crates]]
 name = "ui-engine"
 path = "crates/ui-engine"
@@ -969,6 +977,7 @@ clock_free_crates = [
     "crates/resource-pack",
     "crates/sim",
     "crates/ui",
+    "crates/ui-engine",
     "crates/world",
 ]
 sleep_exceptions = [

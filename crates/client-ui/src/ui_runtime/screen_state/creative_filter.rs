@@ -190,9 +190,8 @@ mod tests {
         let retained = state.matching_creative_entries(&ledger, 0, name);
         assert_eq!(retained.len(), 1);
         for _ in 0..3 {
-            let (repeated, allocations) = crate::allocation_count::count(|| {
-                state.matching_creative_entries(&ledger, 0, name)
-            });
+            let (repeated, allocations) =
+                test_alloc::count(|| state.matching_creative_entries(&ledger, 0, name));
             assert_eq!(allocations, 0);
             assert_eq!(repeated.len(), 1);
             assert!(Arc::ptr_eq(
@@ -300,8 +299,7 @@ mod display_name_tests {
                 .network_id,
             1
         );
-        let (_, allocations) =
-            crate::allocation_count::count(|| visible_creative_entries(&ledger, &runtime));
+        let (_, allocations) = test_alloc::count(|| visible_creative_entries(&ledger, &runtime));
         assert_eq!(allocations, 0);
         display_name(&mut runtime, "Ruby Blade");
         assert!(visible_creative_entries(&ledger, &runtime).is_empty());

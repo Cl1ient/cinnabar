@@ -52,7 +52,8 @@ mod widgets;
 mod world_settings;
 
 #[cfg(test)]
-mod allocation_count;
+#[global_allocator]
+static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;
 
 use std::sync::Arc;
 

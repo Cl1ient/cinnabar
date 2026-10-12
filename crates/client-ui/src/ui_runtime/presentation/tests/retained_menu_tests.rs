@@ -36,7 +36,7 @@ fn settled_launcher_menus_do_not_allocate_rebuild_or_republish_unchanged_input()
         let trees = presentation.tree_builds;
         let paints = presentation.oreui_paints;
         let shapes = presentation.layouts.built_layout_count();
-        let (_, allocations) = crate::allocation_count::count(|| {
+        let (_, allocations) = test_alloc::count(|| {
             for millis in 1600..1610 {
                 let after = frame(&mut presentation, millis);
                 assert_eq!(after.revision, before.revision);
@@ -142,7 +142,7 @@ fn remembering_an_owned_menu_snapshot_does_not_allocate() {
     presentation.retained_menu = None;
     presentation.menu_scrolls = Default::default();
     let frame = ([1280, 720], dpi.get(), presentation.safe_area);
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         presentation.remember_menu(&runtime, frame);
     });
     assert!(
@@ -296,7 +296,7 @@ fn publishing_equal_owned_menu_snapshots_does_not_allocate() {
     let mut presentation = UiPresentationRuntime::with_hud(fixture_font(), fixture_hud()).unwrap();
     let view = MenuView::new(true, "Published snapshot".repeat(256));
     presentation.set_menu_view(Some(view.clone()));
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         presentation.set_menu_view(Some(view));
     });
     assert_eq!(

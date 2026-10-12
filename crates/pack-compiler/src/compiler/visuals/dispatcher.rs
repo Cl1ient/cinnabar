@@ -144,6 +144,7 @@ struct VisualCompiler {
     coral_templates: BTreeMap<(u32, super::coral::Shape), u32>,
     barrel_templates: BTreeMap<([u32; 6], usize), u32>,
     brewing_stand_templates: BTreeMap<([u32; 6], [bool; 3]), u32>,
+    bubble_column_templates: BTreeMap<[u32; 9], u32>,
     candle_cake_templates: BTreeMap<[u32; 4], u32>,
     hollow_container_templates: BTreeMap<(super::hollow_containers::VesselState, Vec<u32>), u32>,
 }
@@ -171,6 +172,15 @@ impl VisualCompiler {
             return Ok(CompileRuleResult::Compiled(visual));
         }
 
+        ordered_rule!(super::bubble_column::compile_rule(
+            record,
+            inputs,
+            &mut self.bubble_column_templates,
+            &mut ModelStorage {
+                templates: &mut self.model_templates,
+                quads: &mut self.model_quads
+            },
+        ));
         ordered_rule!(super::barrel::compile_rule(
             record,
             inputs,
@@ -632,6 +642,7 @@ pub(in crate::compiler) fn compile_visuals(
     };
     compiler.flower_pot_soil = super::flower_pot::soil_material(records, &inputs);
     let mut ordered_records = records.iter().collect::<Vec<_>>();
+    let mut potted_templates = BTreeMap::new();
     ordered_records.sort_unstable_by_key(|record| record.sequential_id);
     for record in ordered_records {
         visuals[record.sequential_id as usize] =
@@ -644,6 +655,16 @@ pub(in crate::compiler) fn compile_visuals(
                     }
                     super::snowy_grass::apply(record, &mut visual, &inputs);
                     super::fire_admission::apply(record, &mut visual);
+                    super::potted_plants::apply(
+                        record,
+                        &mut visual,
+                        &inputs,
+                        &mut potted_templates,
+                        &mut ModelStorage {
+                            templates: &mut compiler.model_templates,
+                            quads: &mut compiler.model_quads,
+                        },
+                    )?;
                     visual
                 }
                 CompileRuleResult::NoMatch | CompileRuleResult::Reject => {

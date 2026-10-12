@@ -303,6 +303,7 @@ pub(super) fn prepare_ui_bind_group(
     pipeline_cache: Res<PipelineCache>,
     pipeline: Res<UiPipeline>,
     mut gpu: ResMut<UiGpu>,
+    stats: Res<render_scene::UiRenderStatsResource>,
 ) {
     if gpu.accepted_revision.is_none() || &gpu.device != render_device.wgpu_device() {
         return;
@@ -317,6 +318,15 @@ pub(super) fn prepare_ui_bind_group(
             .as_ref()
             .and_then(|resource| resource.0.as_deref()),
     );
+    if changed {
+        stats.update(|stats| {
+            stats.retained_gpu_bytes = super::resources::retained_gpu_bytes(
+                gpu.vertex_capacity,
+                gpu.index_capacity,
+                gpu.textures.bytes + gpu.item_glint.bytes,
+            );
+        });
+    }
     let glint_view = gpu.item_glint.view.clone();
     let glint_sampler = gpu.item_glint.sampler.clone();
     for bucket in &mut gpu.textures.buckets {

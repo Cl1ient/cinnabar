@@ -134,7 +134,8 @@ fn item_glint_rebinds_retained_ui_without_uploading_geometry() {
         group
     );
     world.resource_mut::<render_scene::UiItemGlintTexture>().0 = Some(Arc::new(
-        render_model::UiTexturePage::owned([1, 1], Arc::from([0, 100, 0, 255])).unwrap(),
+        render_model::UiTexturePage::owned([1, 2], Arc::from([0, 100, 0, 255, 100, 0, 0, 255]))
+            .unwrap(),
     ));
     world.run_system_once(prepare_ui_bind_group).unwrap();
     let changed = world.resource::<UiGpu>().textures.buckets[0]
@@ -143,6 +144,17 @@ fn item_glint_rebinds_retained_ui_without_uploading_geometry() {
         .unwrap()
         .id();
     assert_ne!(changed, group);
+    assert_eq!(
+        world
+            .resource::<UiRenderStatsResource>()
+            .snapshot()
+            .retained_gpu_bytes,
+        resources::retained_gpu_bytes(
+            world.resource::<UiGpu>().vertex_capacity,
+            world.resource::<UiGpu>().index_capacity,
+            world.resource::<UiGpu>().textures.bytes + 8
+        )
+    );
     world.resource_mut::<render_scene::UiItemGlintTexture>().0 = None;
     world.run_system_once(prepare_ui_bind_group).unwrap();
     assert_ne!(

@@ -48,7 +48,9 @@ pub(in super::super) fn installed_hud_presentation() -> Option<UiPresentationRun
         .textures
         .set_fallbacks(
             Default::default(),
-            root.join(launcher::install_layout::vanilla_pack_relative()),
+            std::sync::Arc::new(super::super::texture_sources::VanillaPack::new(
+                root.join(launcher::install_layout::vanilla_pack_relative()),
+            )),
         );
     Some(presentation)
 }

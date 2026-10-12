@@ -1,5 +1,6 @@
-use super::super::tests::{MemoryPack, view};
+use super::super::tests::MemoryPack;
 use super::*;
+use crate::test_support::pack_view;
 use std::{io::Cursor, sync::Arc};
 
 /// Makes an encoded image with valid dimensions and a caller-selected encoded length.
@@ -89,8 +90,8 @@ fn unreadable_large_local_extension_reveals_small_fallback_and_settles_missing_k
 fn local_and_archive_sources_share_the_large_encoded_budget() {
     let mut encoded = png(5 * 1024 * 1024);
     let key = "textures/large";
-    let view = view(&[(format!("{key}.png"), encoded.clone())]);
-    let mut atlas = ServerAtlas::new(&[], Some(view), 1);
+    let pack = pack_view(&[(format!("{key}.png"), encoded.clone())]);
+    let mut atlas = ServerAtlas::new(&[], Some(pack), 1);
     let large = source(Arc::from(encoded.clone())).unwrap();
     let pack = atlas.pack.as_ref().unwrap();
     pack.loaded

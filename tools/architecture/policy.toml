@@ -396,10 +396,11 @@ allowed_dependencies = ["json-ui", "assets", "render-api", "semantic-input"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 
 # The portable JSON-UI engine; hosts supply filesystem and network reads through its sources.
+# Protocol builds only its test-support pack fixtures.
 [[crates]]
 name = "ui-engine"
 path = "crates/ui-engine"
-allowed_dependencies = ["assets", "json-ui", "render-model", "resource-pack", "ui"]
+allowed_dependencies = ["assets", "json-ui", "protocol", "render-model", "resource-pack", "ui"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu", "client-ui", "launcher-host"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "client-ui", "launcher-host", "render", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]

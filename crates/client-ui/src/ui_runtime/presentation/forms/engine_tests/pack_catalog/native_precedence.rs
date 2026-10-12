@@ -120,7 +120,9 @@ fn large_local_fallbacks_preserve_carrier_and_icon_pixels_below_server_overrides
                 },
             )]
             .into(),
-            root.path().to_owned(),
+            Arc::new(super::super::super::texture_sources::VanillaPack::new(
+                root.path().to_owned(),
+            )),
         );
     let mut runtime = UiRuntime::new(1);
     let pack = ServerUiPack {

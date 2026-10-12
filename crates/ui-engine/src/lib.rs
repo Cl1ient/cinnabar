@@ -14,5 +14,8 @@ pub mod sources;
 pub mod text_metrics;
 pub mod textures;
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 #[cfg(test)]
 mod allocation_count;

@@ -63,7 +63,7 @@ impl ServerUiPack {
 
 #[cfg(test)]
 #[path = "server_pack/external_paths_tests.rs"]
-pub(super) mod external_paths_tests;
+mod external_paths_tests;
 
 #[cfg(test)]
 mod tests;

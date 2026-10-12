@@ -1,5 +1,6 @@
 use super::*;
-use std::{io::Write, sync::Mutex};
+use crate::test_support::{layered_pack_view, pack_view};
+use std::sync::Mutex;
 
 /// An installed vanilla pack held in memory.
 #[derive(Default)]
@@ -24,44 +25,6 @@ impl LocalPack for MemoryPack {
     }
 }
 
-/// Admits an archive containing the supplied artwork as a server pack.
-pub(super) fn view(files: &[(String, Vec<u8>)]) -> resource_pack::LayeredPackView {
-    layered_view(&[files])
-}
-
-/// Admits fixture layers in exact lowest-to-highest precedence order.
-pub(super) fn layered_view(layers: &[&[(String, Vec<u8>)]]) -> resource_pack::LayeredPackView {
-    let archives = layers
-        .iter()
-        .enumerate()
-        .map(|(index, files)| {
-            let id = format!("00000000-0000-0000-0000-{:012x}", index + 17);
-            let manifest = format!(
-                r#"{{"format_version":2,"header":{{"uuid":"{id}","version":[1,0,0]}},"modules":[{{"type":"resources"}}]}}"#
-            );
-            let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
-            for (path, bytes) in std::iter::once(("manifest.json", manifest.as_bytes())).chain(
-                files
-                    .iter()
-                    .map(|(path, bytes)| (path.as_str(), bytes.as_slice())),
-            ) {
-                zip.start_file(path, zip::write::SimpleFileOptions::default())
-                    .unwrap();
-                zip.write_all(bytes).unwrap();
-            }
-            protocol::ResourcePackArchive::unencrypted(
-                id.parse().unwrap(),
-                "1.0.0".into(),
-                String::new(),
-                zip.finish().unwrap().into_inner(),
-            )
-        })
-        .collect();
-    resource_pack::LayeredPackView::new(resource_pack::validate_handoff(
-        protocol::ResourcePackHandoff::from_archives(archives),
-    ))
-}
-
 #[test]
 fn arbitrary_pack_texture_keeps_source_dimensions_sidecar_and_pixels() {
     let mut art = Cursor::new(Vec::new());
@@ -75,7 +38,7 @@ fn arbitrary_pack_texture_keeps_source_dimensions_sidecar_and_pixels() {
             br#"{"base_size":[176,166],"nineslice_size":2}"#.to_vec(),
         ),
     ];
-    let pack = view(&files);
+    let pack = pack_view(&files);
     for mut atlas in [
         ServerAtlas::new(&files, None, 1),
         ServerAtlas::new(&[], Some(pack), 1),
@@ -312,8 +275,8 @@ fn ui_images_larger_than_the_small_texture_limit_remain_readable() {
     assert!(encoded.len() as u64 > resource_pack::MAX_PACK_TEXTURE_BYTES);
     let key = "textures/ui/original_noise";
     let expected = pixels.get_pixel(0, 0).0;
-    let view = view(&[(format!("{key}.png"), encoded)]);
-    let atlas = ServerAtlas::new(&[], Some(view.clone()), 1).with_native_sheets(true);
+    let pack = pack_view(&[(format!("{key}.png"), encoded)]);
+    let atlas = ServerAtlas::new(&[], Some(pack.clone()), 1).with_native_sheets(true);
     PACK_READS.with(|reads| reads.borrow_mut().clear());
     atlas.image_size(key);
     assert!(
@@ -335,7 +298,7 @@ fn ui_images_larger_than_the_small_texture_limit_remain_readable() {
     assert_eq!(atlas.image_size(key), Some([1536.0, 1024.0]));
     assert!(PACK_READS.with(|reads| reads.borrow().is_empty()));
 
-    let departing = ServerAtlas::new(&[], Some(view), 1).with_native_sheets(true);
+    let departing = ServerAtlas::new(&[], Some(pack), 1).with_native_sheets(true);
     departing.image_size(key);
     drop(departing);
     let replacement = [190, 40, 90, 255];
@@ -344,8 +307,8 @@ fn ui_images_larger_than_the_small_texture_limit_remain_readable() {
     pixels
         .write_to(&mut encoded, image::ImageFormat::Png)
         .unwrap();
-    let view = view(&[(format!("{key}.png"), encoded.into_inner())]);
-    let mut reloaded = ServerAtlas::new(&[], Some(view), 1).with_native_sheets(true);
+    let pack = pack_view(&[(format!("{key}.png"), encoded.into_inner())]);
+    let mut reloaded = ServerAtlas::new(&[], Some(pack), 1).with_native_sheets(true);
     test_time::eventually(
         "replacement image never publishes the departing pack's source",
         || {
@@ -368,7 +331,7 @@ fn small_winning_source_remains_readable_above_large_lower_layers_at_the_budget_
     let key = "textures/ui/winning";
     let lower = [(format!("{key}.png"), large)];
     let higher = [(format!("{key}.png"), png(2, 3))];
-    let pack = PackTextures::index(layered_view(&[&lower, &higher]));
+    let pack = PackTextures::index(layered_pack_view(&[&lower, &higher]));
     pack.loaded
         .borrow_mut()
         .extend((0..23).map(|i| (format!("resident_{i}"), Some(source.clone()))));

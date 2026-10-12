@@ -77,6 +77,78 @@ fn filled_contours_leave_holes_transparent_and_center_each_edge_band() {
     );
 }
 
+/// A shared boundary is interior even when one rectangle subdivides that edge.
+#[test]
+fn adjacent_filled_rectangles_have_no_shared_edge_seam() {
+    for shared in [
+        json!([[8, 16], [8, 0]]),
+        json!([[8, 16], [8, 11], [8, 5], [8, 0]]),
+    ] {
+        let mut right = vec![json!([8, 0]), json!([16, 0]), json!([16, 16])];
+        right.extend(shared.as_array().unwrap().iter().cloned());
+        let path = key(
+            json!([[[0, 0], [8, 0], [8, 16], [0, 16]], right]),
+            None,
+            16.0,
+            1.0,
+        );
+        let coverage = Coverage::new(&path).unwrap();
+        for y in [1.0, 5.0, 8.0, 11.0, 15.0] {
+            for x in [7.75, 8.0, 8.25] {
+                assert_eq!(coverage.at([x, y]), 1.0, "interior at ({x}, {y})");
+            }
+        }
+        assert_eq!(coverage.at([8.0, 0.0]), 0.5);
+    }
+}
+
+/// Different collinear sampling and winding cannot leave the cancelled silhouette visible.
+#[test]
+fn differently_subdivided_filled_contours_leave_no_ghost_outline() {
+    let path = key(
+        json!([
+            [[0, 0], [16, 0], [16, 16], [0, 16]],
+            [
+                [0, 0],
+                [0, 8],
+                [0, 16],
+                [8, 16],
+                [16, 16],
+                [16, 8],
+                [16, 0],
+                [8, 0]
+            ],
+        ]),
+        None,
+        16.0,
+        1.0,
+    );
+    let coverage = Coverage::new(&path).unwrap();
+    for point in [[0.0, 8.0], [8.0, 0.0], [16.0, 8.0], [8.0, 16.0], [8.0; 2]] {
+        assert_eq!(coverage.at(point), 0.0);
+    }
+    assert!(mesh(&path).is_none());
+}
+
+/// Partially shared edges cancel only along their overlap; the remaining outline still softens.
+#[test]
+fn partially_shared_filled_edges_keep_the_exposed_boundary() {
+    let path = key(
+        json!([
+            [[0, 0], [8, 0], [8, 16], [0, 16]],
+            [[8, 4], [16, 4], [16, 12], [8, 12]],
+        ]),
+        None,
+        16.0,
+        1.0,
+    );
+    let coverage = Coverage::new(&path).unwrap();
+    assert_eq!(coverage.at([8.0, 8.0]), 1.0);
+    assert_eq!(coverage.at([8.0, 2.0]), 0.5);
+    assert_eq!(coverage.at([8.25, 2.0]), 0.25);
+    assert_eq!(coverage.at([8.0, 14.0]), 0.5);
+}
+
 #[test]
 fn coverage_width_stays_one_physical_pixel_at_fractional_dpi() {
     for dpi in [1.0, 1.25, 1.5, 2.0] {
@@ -133,6 +205,55 @@ fn hot_path_meshes_remain_retained_when_cold_entries_expire() {
     }
     assert!(cache.bytes <= MAX_CACHED_BYTES);
     assert!(cache.entries.len() <= MAX_CACHED_PATHS);
+}
+
+/// Produces varying edge cells that pass raster admission but exceed the expanded-index budget.
+fn striped_key() -> Key {
+    let stripes: Vec<_> = (0..16)
+        .map(|index| {
+            let y = index as f32;
+            [[0.0, y], [16.0, y], [16.0, y + 0.5], [0.0, y + 0.5]]
+        })
+        .collect();
+    key(json!(stripes), None, 80.0, 1.0)
+}
+
+/// The next paint reuses an expanded-index rejection without allocating another raster grid.
+#[test]
+fn rejected_path_is_not_rasterized_on_the_next_paint() {
+    let mut cache = Cache::default();
+    let first = striped_key();
+    assert!(Domain::new(&Coverage::new(&first).unwrap()).is_some());
+    let next = striped_key();
+    let (rejected, cold_allocations) = test_alloc::count(|| cache.get_or_create(first));
+    assert!(rejected.is_none());
+    assert!(cold_allocations > 0);
+    let (rejected, hot_allocations) = test_alloc::count(|| cache.get_or_create(next));
+    assert!(rejected.is_none());
+    assert_eq!(hot_allocations, 0, "repainting must reuse the rejection");
+}
+
+/// Negative cache entries share bounded eviction and recently painted rejections remain hot.
+#[test]
+fn rejected_paths_share_the_bounded_cache_policy() {
+    let mut cache = Cache::default();
+    let path = json!([[[8, 0], [8, 16]]]);
+    assert!(
+        cache
+            .get_or_create(key(path.clone(), Some(0.125), 128.0, 1.0))
+            .is_none()
+    );
+    for revision in 0..=MAX_CACHED_PATHS {
+        let mut cold = key(path.clone(), Some(0.125), 128.0, 1.0);
+        cold.size[0] = (129.0 + revision as f32).to_bits();
+        assert!(cache.get_or_create(cold).is_none());
+        let hot = key(path.clone(), Some(0.125), 128.0, 1.0);
+        let (rejected, allocations) = test_alloc::count(|| cache.get_or_create(hot));
+        assert!(rejected.is_none());
+        assert_eq!(allocations, 0);
+    }
+    assert_eq!(cache.entries.len(), MAX_CACHED_PATHS);
+    assert!(cache.bytes > 0 && cache.bytes <= MAX_CACHED_BYTES);
 }
 
 /// Paths too large for half-pixel samples are refused rather than silently losing thin features.
@@ -222,13 +343,7 @@ fn raster_work_and_expanded_geometry_have_independent_limits() {
     let dense = key(square.clone(), None, 80.0, 1.0);
     assert!(Domain::new(&Coverage::new(&dense).unwrap()).is_some());
     assert!(mesh(&dense).unwrap().indices().len() <= MAX_MESH_INDICES);
-    let stripes: Vec<_> = (0..16)
-        .map(|index| {
-            let y = index as f32;
-            [[0.0, y], [16.0, y], [16.0, y + 0.5], [0.0, y + 0.5]]
-        })
-        .collect();
-    let detailed = key(json!(stripes), None, 80.0, 1.0);
+    let detailed = striped_key();
     assert!(Domain::new(&Coverage::new(&detailed).unwrap()).is_some());
     assert!(
         mesh(&detailed).is_none(),

@@ -191,12 +191,15 @@ fn append(
                 color: [red, green, blue, 255],
                 model_light,
                 overlay_color: [0.0; 4],
-                style_flags: if icon.glint { UI_STYLE_GLINT } else { 0 }
-                    | if tint.is_some() {
-                        render_model::UI_STYLE_COLOR_MASK as u8
-                    } else {
-                        0
-                    },
+                style_flags: if icon.glint {
+                    u32::from(UI_STYLE_GLINT)
+                } else {
+                    0
+                } | if tint.is_some() {
+                    render_model::UI_STYLE_COLOR_MASK
+                } else {
+                    0
+                },
                 alpha_test: false,
             });
         }

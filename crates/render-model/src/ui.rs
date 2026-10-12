@@ -70,6 +70,8 @@ pub const UI_STYLE_GLINT: u32 = 1 << 1;
 pub const UI_STYLE_ALPHA_TEST: u32 = 1 << 4;
 /// Texture alpha weights dye color; every surviving sampled texel is opaque.
 pub const UI_STYLE_COLOR_MASK: u32 = 1 << 7;
+/// Premultiply the authored tint before interpolation, then recover straight RGB for shading.
+pub const UI_STYLE_ALPHA_WEIGHTED_TINT: u32 = 1 << 8;
 
 #[cfg(test)]
 mod style_tests {

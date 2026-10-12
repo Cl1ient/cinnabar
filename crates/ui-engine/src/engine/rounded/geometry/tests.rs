@@ -27,8 +27,8 @@ fn key(width: f32, height: f32, radius: f32, border: f32, fringe: f32) -> Key {
     }
 }
 
-/// Samples the mesh's interpolated alpha at a physical raster sample without texture filtering.
-fn sample_alpha(mesh: &UiMesh, size: [f32; 2], point: [f32; 2]) -> u8 {
+/// Samples interpolated premultiplied tint using the mesh's color interpolation mode.
+fn sample_color(mesh: &UiMesh, size: [f32; 2], point: [f32; 2]) -> [f32; 4] {
     let edge = |from: [f32; 2], to: [f32; 2], point: [f32; 2]| {
         (to[0] - from[0]) * (point[1] - from[1]) - (to[1] - from[1]) * (point[0] - from[0])
     };
@@ -46,15 +46,61 @@ fn sample_alpha(mesh: &UiMesh, size: [f32; 2], point: [f32; 2]) -> u8 {
             edge(a, b, point) / area,
         ];
         if weights.iter().all(|weight| *weight >= -0.00001) {
-            return weights
-                .into_iter()
-                .zip(corners)
-                .map(|(weight, vertex)| weight * f32::from(vertex.color[3]))
-                .sum::<f32>()
-                .round() as u8;
+            let weighted = corners[0].style_flags & render_model::UI_STYLE_ALPHA_WEIGHTED_TINT != 0;
+            let mut color: [f32; 4] = std::array::from_fn(|channel| {
+                weights
+                    .into_iter()
+                    .zip(corners)
+                    .map(|(weight, vertex)| {
+                        let value = f32::from(vertex.color[channel]) / 255.0;
+                        let alpha = if weighted && channel < 3 {
+                            f32::from(vertex.color[3]) / 255.0
+                        } else {
+                            1.0
+                        };
+                        weight * value * alpha
+                    })
+                    .sum()
+            });
+            if !weighted {
+                let alpha = color[3];
+                for value in &mut color[..3] {
+                    *value *= alpha;
+                }
+            }
+            return color;
         }
     }
-    0
+    [0.0; 4]
+}
+
+/// Returns byte alpha from the same interpolated tint used by color checks.
+fn sample_alpha(mesh: &UiMesh, size: [f32; 2], point: [f32; 2]) -> u8 {
+    (sample_color(mesh, size, point)[3] * 255.0).round() as u8
+}
+
+/// Transparent blue contributes no RGB between the red inner border rings, including during fades.
+#[test]
+fn opaque_border_over_transparent_fill_never_interpolates_purple() {
+    for opacity in [1.0, 0.5] {
+        let mesh = mesh(Key {
+            color: [0, 0, 255, 0],
+            end_color: [0, 0, 255, 0],
+            border_color: [255, 0, 0, 255],
+            ..key(40.0, 20.0, 6.0, 2.125, 1.0)
+        })
+        .unwrap()
+        .with_opacity(opacity);
+        for y in [2.0, 2.25, 2.5, 2.6] {
+            let color = sample_color(&mesh, [40.0, 20.0], [20.0, y]);
+            assert!(color[3] > 0.0 && color[3] < opacity);
+            let expected = (2.625 - y) * opacity;
+            assert!((color[3] - expected).abs() <= 1.0 / 255.0, "{color:?}");
+            assert!((color[0] - color[3]).abs() < 0.00001, "{color:?}");
+            assert_eq!(color[1], 0.0);
+            assert_eq!(color[2], 0.0, "invisible fill RGB must not tint the border");
+        }
+    }
 }
 
 /// Raster samples at fractional outlines retain partial coverage on squares, curves and hairlines.

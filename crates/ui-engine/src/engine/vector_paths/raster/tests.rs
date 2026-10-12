@@ -1,6 +1,33 @@
 use super::*;
 use serde_json::{Value, json};
 
+/// Adjacent even-odd rectangles rasterize as the same uninterrupted silhouette as one rectangle.
+#[test]
+fn adjacent_rectangles_rasterize_without_a_shared_edge_seam() {
+    for (size, dpi) in [([16.0; 2], 1.0), ([24.0, 20.0], 1.25), ([32.0; 2], 2.0)] {
+        let adjacent = key(
+            json!([
+                [[0, 0], [8, 0], [8, 16], [0, 16]],
+                [[8, 0], [16, 0], [16, 16], [8, 16], [8, 8]],
+            ]),
+            None,
+            size,
+            dpi,
+        );
+        let combined = key(
+            json!([[[0, 0], [16, 0], [16, 16], [0, 16]]]),
+            None,
+            size,
+            dpi,
+        );
+        assert_eq!(
+            pixels(&mesh(&adjacent).unwrap(), &adjacent),
+            pixels(&mesh(&combined).unwrap(), &combined),
+            "shared edges must not change rasterized coverage at {size:?}, DPI {dpi}"
+        );
+    }
+}
+
 /// Uses generic caller-authored fixtures with a translucent constant tint.
 fn key(paths: Value, stroke: Option<f32>, size: [f32; 2], dpi: f32) -> Key {
     let mut data: std::collections::BTreeMap<String, Value> =

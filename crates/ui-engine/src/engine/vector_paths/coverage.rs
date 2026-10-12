@@ -60,6 +60,45 @@ impl Segment {
         (self.a[1] > point[1]) != (self.b[1] > point[1])
             && point[0] < self.a[0] + ((point[1] - self.a[1]) / self.delta[1]) * self.delta[0]
     }
+
+    /// Tests an authored point against the exact line, without merging nearby outlines.
+    fn collinear(&self, point: [f32; 2]) -> bool {
+        let delta = std::array::from_fn::<_, 2, _>(|axis| {
+            f64::from(self.b[axis]) - f64::from(self.a[axis])
+        });
+        delta[0] * (f64::from(point[1]) - f64::from(self.a[1]))
+            == delta[1] * (f64::from(point[0]) - f64::from(self.a[0]))
+    }
+}
+
+/// Keeps only odd-covered intervals on each authored line, independent of edge subdivision.
+fn cancel_fill_edges(segments: Vec<Segment>) -> Option<Vec<Segment>> {
+    let mut lines: Vec<Vec<Segment>> = Vec::new();
+    for segment in segments {
+        if segment.a == segment.b {
+            continue;
+        }
+        if let Some(line) = lines
+            .iter_mut()
+            .find(|line| line[0].collinear(segment.a) && line[0].collinear(segment.b))
+        {
+            line.push(segment);
+        } else {
+            lines.push(vec![segment]);
+        }
+    }
+    let mut retained = Vec::new();
+    for line in lines {
+        let axis = usize::from(line[0].delta[1].abs() > line[0].delta[0].abs());
+        let mut endpoints: Vec<_> = line.into_iter().flat_map(|edge| [edge.a, edge.b]).collect();
+        endpoints.sort_by(|a, b| a[axis].total_cmp(&b[axis]));
+        for pair in endpoints.chunks_exact(2) {
+            if pair[0] != pair[1] {
+                retained.push(Segment::new(pair[0], pair[1])?);
+            }
+        }
+    }
+    Some(retained)
 }
 
 pub(super) struct Coverage {
@@ -85,25 +124,11 @@ impl Coverage {
             return None;
         }
         let mut segments = Vec::with_capacity(key.path.contours.iter().map(Vec::len).sum());
-        let mut min = [f32::INFINITY; 2];
-        let mut max = [f32::NEG_INFINITY; 2];
         for contour in &key.path.contours {
             let points: Vec<_> = contour
                 .iter()
-                .map(|point| {
-                    let point = point.map(f32::from_bits);
-                    [(point[0] - x) * scale[0], (point[1] - y) * scale[1]]
-                })
+                .map(|point| point.map(f32::from_bits))
                 .collect();
-            if points.iter().flatten().any(|value| !value.is_finite()) {
-                return None;
-            }
-            for point in &points {
-                for axis in 0..2 {
-                    min[axis] = min[axis].min(point[axis]);
-                    max[axis] = max[axis].max(point[axis]);
-                }
-            }
             let count = if key.path.closed || half_stroke.is_none() {
                 points.len()
             } else {
@@ -116,6 +141,27 @@ impl Coverage {
                 )?);
             }
         }
+        if half_stroke.is_none() {
+            segments = cancel_fill_edges(segments)?;
+        }
+        let mut min = [f32::INFINITY; 2];
+        let mut max = [f32::NEG_INFINITY; 2];
+        let transform = |point: [f32; 2]| [(point[0] - x) * scale[0], (point[1] - y) * scale[1]];
+        let segments: Vec<_> = segments
+            .into_iter()
+            .map(|segment| {
+                let a = transform(segment.a);
+                let b = transform(segment.b);
+                if a.into_iter().chain(b).any(|value| !value.is_finite()) {
+                    return None;
+                }
+                for axis in 0..2 {
+                    min[axis] = min[axis].min(a[axis]).min(b[axis]);
+                    max[axis] = max[axis].max(a[axis]).max(b[axis]);
+                }
+                Segment::new(a, b)
+            })
+            .collect::<Option<_>>()?;
         let bounds = (!segments.is_empty()).then_some((min, max));
         Some(Self {
             segments,

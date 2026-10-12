@@ -33,7 +33,7 @@ struct Key {
 struct Entry {
     used: u64,
     bytes: usize,
-    mesh: Arc<UiMesh>,
+    mesh: Option<Arc<UiMesh>>,
 }
 
 #[derive(Default)]
@@ -44,24 +44,25 @@ struct Cache {
 }
 
 impl Cache {
-    /// Retains hot meshes while bounding both entry count and total authored geometry bytes.
+    /// Retains meshes and rejections while bounding entry count and authored geometry bytes.
     fn get_or_create(&mut self, key: Key) -> Option<Arc<UiMesh>> {
         self.clock = self.clock.saturating_add(1);
         if let Some(entry) = self.entries.get_mut(&key) {
             entry.used = self.clock;
-            return Some(Arc::clone(&entry.mesh));
+            return entry.mesh.clone();
         }
-        let mesh = Arc::new(mesh(&key)?);
-        let bytes = mesh.vertices().len() * size_of::<UiMeshVertex>()
-            + mesh.indices().len() * size_of::<u32>()
-            + key
-                .path
-                .contours
-                .iter()
-                .map(|path| path.len() * size_of::<[u32; 2]>())
-                .sum::<usize>();
+        let mesh = mesh(&key).map(Arc::new);
+        let bytes = mesh.as_ref().map_or(0, |mesh| {
+            mesh.vertices().len() * size_of::<UiMeshVertex>()
+                + mesh.indices().len() * size_of::<u32>()
+        }) + key
+            .path
+            .contours
+            .iter()
+            .map(|path| path.len() * size_of::<[u32; 2]>())
+            .sum::<usize>();
         if bytes > MAX_CACHED_BYTES {
-            return Some(mesh);
+            return mesh;
         }
         while self.entries.len() >= MAX_CACHED_PATHS || self.bytes + bytes > MAX_CACHED_BYTES {
             let oldest = self.entries.iter().min_by_key(|(_, entry)| entry.used)?.0;
@@ -80,10 +81,10 @@ impl Cache {
             Entry {
                 used: self.clock,
                 bytes,
-                mesh: Arc::clone(&mesh),
+                mesh: mesh.clone(),
             },
         );
-        Some(mesh)
+        mesh
     }
 }
 

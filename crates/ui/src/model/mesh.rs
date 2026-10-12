@@ -21,7 +21,7 @@ pub struct UiMeshVertex {
     pub model_light: f32,
     /// Native entity overlay RGB and its mix amount, before model lighting.
     pub overlay_color: [f32; 4],
-    pub style_flags: u8,
+    pub style_flags: u32,
     pub alpha_test: bool,
 }
 

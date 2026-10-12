@@ -196,11 +196,38 @@ fn fill(
             let uv = std::array::from_fn(|axis| {
                 wa * corners[0].uv[axis] + wb * corners[1].uv[axis] + wc * corners[2].uv[axis]
             });
+            let alpha_weighted =
+                corners[0].style_flags & render_model::UI_STYLE_ALPHA_WEIGHTED_TINT != 0;
+            let alpha = [wa, wb, wc]
+                .into_iter()
+                .zip(corners)
+                .map(|(weight, corner)| weight * f32::from(corner.color[3]))
+                .sum::<f32>();
             let color = std::array::from_fn(|channel| {
-                (wa * f32::from(corners[0].color[channel])
-                    + wb * f32::from(corners[1].color[channel])
-                    + wc * f32::from(corners[2].color[channel]))
-                .round() as u8
+                if channel == 3 {
+                    return alpha.round() as u8;
+                }
+                let contribution = [wa, wb, wc]
+                    .into_iter()
+                    .zip(corners)
+                    .map(|(weight, corner)| {
+                        let alpha = if alpha_weighted {
+                            f32::from(corner.color[3])
+                        } else {
+                            1.0
+                        };
+                        weight * f32::from(corner.color[channel]) * alpha
+                    })
+                    .sum::<f32>();
+                if alpha_weighted {
+                    if alpha > 0.0 {
+                        (contribution / alpha).round() as u8
+                    } else {
+                        0
+                    }
+                } else {
+                    contribution.round() as u8
+                }
             });
             let overlay = std::array::from_fn(|channel| {
                 wa * corners[0].overlay_color[channel]

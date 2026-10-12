@@ -364,6 +364,51 @@ fn retained_damage_replay_matches_full_ui_raster_byte_for_byte() {
     }
 }
 
+/// The production shader interpolates tint contributions before blending onto a transparent layer.
+#[test]
+fn alpha_weighted_tint_keeps_invisible_fill_rgb_out_of_the_border() {
+    let mut input = scene();
+    input.vertices = Arc::from([]);
+    input.indices = Arc::from([]);
+    input.batches = Arc::from([]);
+    quad(
+        &mut input,
+        [0.0, 0.0, SIDE as f32, SIDE as f32],
+        [255, 0, 0, 64],
+        0,
+        None,
+    );
+    for vertex in Arc::make_mut(&mut input.vertices) {
+        vertex.uv = [0.0; 2];
+        vertex.style_flags = render_model::UI_STYLE_ALPHA_WEIGHTED_TINT;
+        if vertex.position[0] > 0.0 {
+            vertex.color = [0, 0, 255, 0];
+        }
+    }
+    let Some(raster) = Raster::new(&input) else {
+        return;
+    };
+    let output = target(&raster.gpu, false);
+    raster.draw(&input, &output, None);
+    let pixels = raster.pixels(&output);
+    for x in [8, 24, 40, 56] {
+        let offset = ((32 * SIDE + x) * 4) as usize;
+        let color = &pixels[offset..offset + 4];
+        let expected = 64.0 * (1.0 - (x as f32 + 0.5) / SIDE as f32);
+        assert!(color[3] > 0);
+        assert_eq!(
+            color[0], color[3],
+            "red contribution must equal alpha: {color:?}"
+        );
+        assert_eq!(color[1], 0);
+        assert_eq!(
+            color[2], 0,
+            "transparent blue must not contribute: {color:?}"
+        );
+        assert!((f32::from(color[3]) - expected).abs() <= 1.0);
+    }
+}
+
 #[test]
 fn analytic_radial_gradient_interpolates_premultiplied_stops_and_extent() {
     let mut input = scene();

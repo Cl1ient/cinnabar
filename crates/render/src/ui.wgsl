@@ -14,6 +14,7 @@ const STYLE_FONT_SDF: u32 = FONT_STYLE_SDF;
 const STYLE_ALPHA_TEST: u32 = UI_STYLE_ALPHA_TEST;
 const STYLE_COLOR_MASK: u32 = UI_STYLE_COLOR_MASK;
 const STYLE_RADIAL_GRADIENT: u32 = UI_STYLE_RADIAL_GRADIENT;
+const STYLE_ALPHA_WEIGHTED_TINT: u32 = UI_STYLE_ALPHA_WEIGHTED_TINT;
 
 @group(0) @binding(0) var<uniform> viewport: UiViewport;
 @group(0) @binding(1) var ui_pages: texture_2d_array<f32>;
@@ -57,6 +58,9 @@ fn ui_vertex(
     // Pages, vertex colours and the UI layer all stay sRGB-encoded: vanilla UI
     // blends in gamma space, and the layer composites over the scene after.
     output.color = color;
+    if (style_flags & STYLE_ALPHA_WEIGHTED_TINT) != 0u {
+        output.color = vec4<f32>(color.rgb * color.a, color.a);
+    }
     output.texture_page = texture_page;
     output.style_flags = style_flags;
     output.alpha_cutoff = alpha_cutoff;
@@ -84,9 +88,16 @@ fn srgb_to_linear(srgb: vec3<f32>) -> vec3<f32> {
 fn shade_ui(input: UiVertexOutput, direct: bool) -> vec4<f32> {
     let uv_dx = dpdx(input.uv);
     let uv_dy = dpdy(input.uv);
+    var straight_color = input.color;
+    if (input.style_flags & STYLE_ALPHA_WEIGHTED_TINT) != 0u {
+        straight_color = vec4<f32>(0.0, 0.0, 0.0, input.color.a);
+        if input.color.a > 0.0 {
+            straight_color = vec4<f32>(input.color.rgb / input.color.a, input.color.a);
+        }
+    }
     if (input.style_flags & STYLE_RADIAL_GRADIENT) != 0u {
         let radius = clamp(length(input.uv), 0.0, 1.0);
-        let inner = vec4<f32>(input.color.rgb * input.color.a, input.color.a);
+        let inner = vec4<f32>(straight_color.rgb * straight_color.a, straight_color.a);
         let outer = vec4<f32>(input.overlay_color.rgb * input.overlay_color.a, input.overlay_color.a);
         let gradient = mix(inner, outer, radius);
         if direct && gradient.a > 0.0 {
@@ -127,7 +138,7 @@ fn shade_ui(input: UiVertexOutput, direct: bool) -> vec4<f32> {
         sample = vec4<f32>(1.0, 1.0, 1.0, smoothstep(-threshold, threshold, distance));
     }
     if native_font {
-        let exponent = 1.45 - dot(input.color.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let exponent = 1.45 - dot(straight_color.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
         sample = vec4<f32>(1.0, 1.0, 1.0, pow(sample.a, exponent));
     }
     if (input.style_flags & STYLE_GRAYSCALE) != 0u {
@@ -140,7 +151,6 @@ fn shade_ui(input: UiVertexOutput, direct: bool) -> vec4<f32> {
     } else if (input.style_flags & STYLE_ALPHA_TEST) != 0u && sample.a < 0.5 {
         discard;
     }
-    var straight_color = input.color;
     // Mix the render-controller overlay into sampled RGB before lighting.
     // Sampled and node alpha remain unchanged.
     var model_rgb = mix(sample.rgb * straight_color.rgb, input.overlay_color.rgb, input.overlay_color.a);

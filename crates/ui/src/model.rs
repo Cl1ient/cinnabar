@@ -327,7 +327,7 @@ pub struct UiVertex {
     pub model_light: f32,
     /// Native entity overlay RGB and mix amount, separate from vertex alpha.
     pub overlay_color: [f32; 4],
-    pub style_flags: u8,
+    pub style_flags: u32,
     pub alpha_test: bool,
     /// Explicit sampled-texture cutoff; negative disables this material override.
     pub alpha_cutoff: f32,

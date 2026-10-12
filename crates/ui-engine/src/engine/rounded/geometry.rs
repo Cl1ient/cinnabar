@@ -141,7 +141,7 @@ impl Shape {
     }
 }
 
-/// Converts non-overlapping premultiplied contributions to the mesh's straight-alpha tint.
+/// Encodes area contributions as straight tint; the shader premultiplies before interpolation.
 fn covered_color(fill: [u8; 4], border: [u8; 4], [fill_area, border_area]: [f32; 2]) -> [u8; 4] {
     let fill_alpha = f32::from(fill[3]) * fill_area;
     let border_alpha = f32::from(border[3]) * border_area;
@@ -204,7 +204,7 @@ pub(super) fn mesh(key: Key) -> Option<UiMesh> {
             color: covered_color(fill, border, shape.coverage_at(point, inset)),
             model_light: 1.0,
             overlay_color: [0.0; 4],
-            style_flags: 0,
+            style_flags: render_model::UI_STYLE_ALPHA_WEIGHTED_TINT,
             alpha_test: false,
         }
     };

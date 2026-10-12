@@ -740,7 +740,8 @@ fn pause_quit_uses_installed_translation_through_the_screen_route() {
     ));
 }
 
-/// The persisted animation setting reaches OreUI's timelines through the motion adapter.
+/// The persisted animation setting reaches OreUI's timelines through the motion adapter: a
+/// later route's entrance plays only while the setting allows motion.
 #[test]
 fn screen_animation_setting_drives_oreui_motion_through_the_adapter() {
     let index = SETTINGS_OPTIONS
@@ -751,11 +752,18 @@ fn screen_animation_setting_drives_oreui_motion_through_the_adapter() {
         let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
         let mut view = MenuView::new(true, "Player".into());
         Arc::make_mut(&mut view.settings_options).set(index, setting);
+        // A first frame primes the timelines; motion is on until the adapter reads the setting.
+        append(&mut presentation, &view, [1280.0, 720.0]);
+        presentation.end_animation_frame();
+        // Friends starts no icon highlight, so only its entrance can keep motion active.
+        view.screen = MenuScreen::Friends;
         presentation.set_menu_view(Some(view.clone()));
         presentation.configure_oreui_motion();
+        presentation.menu_seconds = 1.0;
         append(&mut presentation, &view, [1280.0, 720.0]);
+        // Midway through the route's entrance.
         assert_eq!(
-            presentation.screens.oreui.transitions.active(0.01),
+            presentation.screens.oreui.transitions.active(1.05),
             animates,
             "screen_animations = {setting}"
         );

@@ -1,4 +1,4 @@
-//! Skips the model and text preparation of block entities the current cave graph hides.
+//! Skips geometry preparation for block entities the current cave graph hides.
 
 use render_model::BLOCK_ENTITY_REACH_BLOCKS;
 use world::{SUB_CHUNK_SIDE, SubChunkKey};
@@ -11,7 +11,7 @@ use crate::runtime::visibility::CaveVisibilityCache;
 pub(super) struct BlockEntityWork {
     /// Described entities within the scan radius.
     pub(super) candidates: u32,
-    /// Candidates whose model and text were prepared; the rest only advanced their state.
+    /// Candidates prepared for drawing; the rest only advanced their state and canvases.
     pub(super) prepared: u32,
 }
 

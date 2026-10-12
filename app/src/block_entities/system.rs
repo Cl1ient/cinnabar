@@ -426,7 +426,7 @@ pub(crate) fn update_block_entity_scene(
                 if center.distance_squared(eye) > SCAN_RADIUS_BLOCKS * SCAN_RADIUS_BLOCKS {
                     continue;
                 }
-                // Hidden entities skip their models and text but keep lids, rings and map requests.
+                // Hidden entities skip geometry but keep lids, rings, map requests and canvases.
                 let hidden = !work.admit(culling.as_ref(), template, [x, y, z]);
                 let context = FrameContext {
                     stream,
@@ -615,7 +615,8 @@ fn map_canvas(pixels: &[u32]) -> Vec<u8> {
 }
 
 /// Applies per-frame state (lid openness, sign canvases, viewer yaw) to a template; a `hidden`
-/// one still advances its lid, ring and map request but prepares nothing.
+/// one still advances its lid, ring and map request and keeps its text and map canvases
+/// resident, but prepares no geometry.
 fn resolve(
     template: &Template,
     position: [i32; 3],
@@ -631,6 +632,7 @@ fn resolve(
             | Template::Shulker(_)
             | Template::Bell { .. }
             | Template::ItemFrame { .. }
+            | Template::Sign { .. }
     );
     if hidden && !stateful {
         return None;
@@ -706,15 +708,15 @@ fn resolve(
             {
                 runtime.missing_maps.push(id);
             }
-            if hidden {
-                return None;
-            }
             let map = map_id.and_then(|id| {
                 let image = stream.map_image(id)?;
                 scene.map_rect(map_cache_key(id, image.revision), || {
                     map_canvas(&image.pixels)
                 })
             });
+            if hidden {
+                return None;
+            }
             model.map = map;
             if let (Some(item), None) = (item, map) {
                 held.push(held_placement(
@@ -773,11 +775,13 @@ fn resolve(
             };
             let front = face(front);
             let back = face(back);
-            (front.is_some() || back.is_some()).then_some(BlockEntityKind::Sign(SignModel {
-                mount: *mount,
-                front,
-                back,
-            }))
+            (!hidden && (front.is_some() || back.is_some())).then_some(BlockEntityKind::Sign(
+                SignModel {
+                    mount: *mount,
+                    front,
+                    back,
+                },
+            ))
         }
     }
 }
@@ -815,6 +819,10 @@ fn prune_bell_rings(
         cue(position) == Some(*sequence) || now_seconds - *start < BELL_RING_RETAIN_SECONDS
     });
 }
+
+#[cfg(test)]
+#[path = "system/resolve_tests.rs"]
+mod resolve_tests;
 
 #[cfg(test)]
 mod tests {

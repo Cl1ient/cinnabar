@@ -47,6 +47,10 @@ pub const MAX_SCORE_ENTRIES_PER_PACKET: usize = 8_192;
 pub const MAX_BOSS_EVENTS: usize = 64;
 pub const MAX_FORM_JSON_BYTES: usize = 1_048_576;
 pub const MAX_OUTBOUND_CHAT_BYTES: usize = 512;
+/// The codec's bounds on an authored Text packet's player name and sender XUID, which a test pins
+/// to the generated encoder.
+const MAX_CHAT_SOURCE_NAME_BYTES: usize = 256;
+const MAX_CHAT_XUID_BYTES: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ChatPacketError {
@@ -76,12 +80,15 @@ fn validate_outbound_chat(
             max: MAX_OUTBOUND_CHAT_BYTES,
         });
     }
-    for (field, value) in [("source_name", source_name), ("xuid", xuid)] {
-        if value.len() > MAX_UI_TEXT_BYTES {
+    for (field, value, max) in [
+        ("source_name", source_name, MAX_CHAT_SOURCE_NAME_BYTES),
+        ("xuid", xuid, MAX_CHAT_XUID_BYTES),
+    ] {
+        if value.len() > max {
             return Err(ChatPacketError::IdentityTooLong {
                 field,
                 bytes: value.len(),
-                max: MAX_UI_TEXT_BYTES,
+                max,
             });
         }
     }

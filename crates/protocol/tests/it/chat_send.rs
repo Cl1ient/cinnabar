@@ -46,10 +46,35 @@ fn outbound_chat_rejects_empty_and_oversized_fields() {
         Err(ChatPacketError::MessageTooLong { .. })
     ));
     assert!(matches!(
-        chat_input_packet(&"x".repeat(16_385), "", "/transfer sm3"),
+        chat_input_packet(&"x".repeat(257), "", "/transfer sm3"),
         Err(ChatPacketError::IdentityTooLong {
             field: "source_name",
+            max: 256,
             ..
+        })
+    ));
+}
+
+/// Identity limits are the codec's own: values at the limit encode, one byte more is refused
+/// before encoding.
+#[test]
+fn outbound_chat_identity_limits_match_the_codec() {
+    let at_limit = chat_text_packet(&"n".repeat(256), &"1".repeat(64), "hi").unwrap();
+    assert!(encode(&at_limit).is_ok());
+    assert!(matches!(
+        chat_text_packet(&"n".repeat(257), "", "hi"),
+        Err(ChatPacketError::IdentityTooLong {
+            field: "source_name",
+            bytes: 257,
+            max: 256,
+        })
+    ));
+    assert!(matches!(
+        chat_text_packet("player", &"1".repeat(65), "hi"),
+        Err(ChatPacketError::IdentityTooLong {
+            field: "xuid",
+            bytes: 65,
+            max: 64,
         })
     ));
 }

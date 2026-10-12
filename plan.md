@@ -91,6 +91,15 @@ for UI authority and presentation, and maps Bevy device codes to semantic keys a
 prepared publication resource. `client-presentation` borrows UI state from those app systems.
 This move has not been compiled or executed and closes no parity gate.
 
+## Mod surface presentation
+
+`mod-ui` paints the surfaces mods and server experiences own: trusted consent chrome, the client
+part's modal, player-mod screens over containers, the personal panel and HUD editor, personal HUD
+cards and label, package templates and the cosmetic cursor. It depends on `ui-engine` and lower
+crates only. `client-ui` keeps authority, item-icon and container projection, scene order and
+publication, and adapts runtime state into paint frames and typed inputs. This move has not been
+compiled or executed and closes no parity gate.
+
 ## Extension crate ownership
 
 `client-extensions` owns local component loading and load-order merging, environment

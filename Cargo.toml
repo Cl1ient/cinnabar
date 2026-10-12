@@ -30,6 +30,7 @@ members = [
     "crates/mod-api",
     "crates/mod-host",
     "crates/mod-render",
+    "crates/mod-ui",
     "crates/particles",
     "examples/mods/hello",
     "examples/mods/time-changer",

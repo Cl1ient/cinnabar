@@ -58,7 +58,6 @@ fn draw_custom(
     let hud = HudPaint {
         crosshair: visible.then_some(FALLBACK),
         crosshair_blend: blend,
-        custom_crosshair: custom,
         ..Default::default()
     };
     let mut layouts = TextLayoutCache::new(32, 1024 * 1024);
@@ -83,10 +82,16 @@ fn draw_custom(
                 now: 0.0,
                 nodes: &mut nodes,
                 next: &mut next,
-                renderers: &mut [&mut HudRenderer {
-                    hud: &hud,
-                    hunger_update: None,
-                }],
+                renderers: &mut [
+                    &mut mod_ui::crosshair::CrosshairRenderer {
+                        spec: custom.as_ref(),
+                        visible,
+                    },
+                    &mut HudRenderer {
+                        hud: &hud,
+                        hunger_update: None,
+                    },
+                ],
             },
         )
         .unwrap()

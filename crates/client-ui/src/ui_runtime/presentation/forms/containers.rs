@@ -15,9 +15,10 @@ use ui::UiNode;
 
 use super::container_data;
 use super::container_kinds::{Cell, ContainerKind, mount_kind, storage_kind, window_kind};
-use super::{item_renderer::ItemRenderer, menu_renderers::PreviewRenderer};
+use super::menu_renderers::PreviewRenderer;
 use ui_engine::engine::{
     self,
+    item_renderer::ItemRenderer,
     screen::{CustomRenderer, PaintFrame},
 };
 use ui_engine::frame::EngineFrame;

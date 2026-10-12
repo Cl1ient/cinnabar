@@ -6,28 +6,8 @@ mod tests {
         pack_harness::{drawn_texts, engine_presentation, menu_nodes},
         test_support::draw_menu_actions,
     };
-    use launcher::menu::MenuView;
-    use launcher::menu::{MenuAction, MenuDialog, MenuScreen, auth::AuthState};
-
-    fn manager_view() -> MenuView {
-        let mut view = MenuView::new(true, "First".into());
-        view.auth_state = AuthState::Authenticated;
-        view.dialog = Some(MenuDialog::Accounts);
-        view.feeds.account_active_id = Some("first".into());
-        view.feeds.accounts = vec![
-            launcher::accounts::AccountProfile {
-                id: "first".into(),
-                gamertag: "First".into(),
-                picture_path: Some("first.png".into()),
-            },
-            launcher::accounts::AccountProfile {
-                id: "second".into(),
-                gamertag: "Second".into(),
-                picture_path: Some("second.png".into()),
-            },
-        ];
-        view
-    }
+    use launcher::menu::{MenuAction, MenuScreen, auth::AuthState};
+    use launcher::test_support::saved_accounts_view;
 
     #[test]
     fn account_picker_draws_cached_gamerpic_pixels() {
@@ -57,7 +37,7 @@ mod tests {
                 .save(&picture)
                 .unwrap();
         }
-        let mut view = manager_view();
+        let mut view = saved_accounts_view();
         let path = picture.to_string_lossy().into_owned();
         view.feeds.accounts[0].picture_path = Some(path.clone());
         presentation.sync_menu_artwork(super::super::super::menu_artwork::view_paths(&view));
@@ -95,7 +75,7 @@ mod tests {
         let actions = draw_menu_actions(
             &player_state::PlayerState::new(1),
             &mut presentation,
-            &manager_view(),
+            &saved_accounts_view(),
         );
         let texts = drawn_texts(menu_nodes(&presentation));
         assert!(texts.iter().any(|text| text.contains("First")), "{texts:?}");
@@ -130,7 +110,7 @@ mod tests {
             eprintln!("skipping pending account popup test: missing local UI carrier; make assets");
             return;
         };
-        let mut view = manager_view();
+        let mut view = saved_accounts_view();
         view.feeds.account_adding = true;
         view.auth_state = AuthState::AwaitingCode {
             uri: "https://example.invalid/link".into(),
@@ -160,7 +140,7 @@ mod tests {
             return;
         };
         let player = player_state::PlayerState::new(1);
-        let mut view = manager_view();
+        let mut view = saved_accounts_view();
         view.feeds.account_adding = true;
         view.auth_state = AuthState::AwaitingCode {
             uri: "https://example.invalid/link".into(),

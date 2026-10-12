@@ -135,29 +135,9 @@ mod tests {
         }
     }
 
-    fn manager_view() -> MenuView {
-        let mut view = MenuView::new(true, "First".into());
-        view.auth_state = crate::menu::auth::AuthState::Authenticated;
-        view.dialog = Some(crate::menu::MenuDialog::Accounts);
-        view.feeds.account_active_id = Some("first".into());
-        view.feeds.accounts = vec![
-            crate::accounts::AccountProfile {
-                id: "first".into(),
-                gamertag: "First".into(),
-                picture_path: Some("first.png".into()),
-            },
-            crate::accounts::AccountProfile {
-                id: "second".into(),
-                gamertag: "Second".into(),
-                picture_path: Some("second.png".into()),
-            },
-        ];
-        view
-    }
-
     #[test]
     fn home_portrait_uses_the_saved_xbox_picture_until_profile_arrives() {
-        let mut view = manager_view();
+        let mut view = crate::test_support::saved_accounts_view();
         assert_eq!(current_picture(&view), Some("first.png"));
         assert_eq!(current_name(&view), "First");
         view.feeds.profile.picture_path = "fresh.png".into();

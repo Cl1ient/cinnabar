@@ -2,25 +2,11 @@
 
 use super::super::super::UiPresentationRuntime;
 use launcher::menu::auth::AuthState;
-use launcher::menu::{MenuAction, MenuDialog, MenuScreen, MenuView};
+use launcher::menu::{MenuAction, MenuScreen};
+use oreui::test_support::account_manager_view;
 use ui_engine::text_metrics::TextMetrics;
 
 const SIZE: [f32; 2] = [1280.0, 720.0];
-
-fn manager_view() -> MenuView {
-    let mut view = MenuView::new(true, "First".into());
-    view.auth_state = AuthState::Authenticated;
-    view.dialog = Some(MenuDialog::Accounts);
-    view.feeds.account_active_id = Some("first".into());
-    view.feeds.accounts = ["first", "second"]
-        .map(|id| launcher::accounts::AccountProfile {
-            id: id.into(),
-            gamertag: id.into(),
-            picture_path: None,
-        })
-        .into();
-    view
-}
 
 #[test]
 fn device_prompt_captures_standalone_routes_and_their_focus() {
@@ -28,7 +14,7 @@ fn device_prompt_captures_standalone_routes_and_their_focus() {
         UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let metrics = TextMetrics::for_viewport([1280, 720], ui::DpiScale::new(1.0).unwrap(), None);
     for screen in [MenuScreen::Home, MenuScreen::Profile, MenuScreen::Store] {
-        let mut view = manager_view();
+        let mut view = account_manager_view();
         view.dialog = None;
         view.screen = screen;
         view.auth_state = AuthState::AwaitingCode {

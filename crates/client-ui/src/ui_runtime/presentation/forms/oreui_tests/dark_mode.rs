@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::super::super::UiPresentationRuntime;
 use launcher::menu::settings_options::{OREUI_DARK_MODE, SETTINGS_OPTIONS};
 use launcher::menu::{MenuAction, MenuScreen, MenuView};
-use oreui::solids;
+use oreui::test_support::solids;
 use ui::oreui_theme as theme;
 use ui::{UiNode, UiPoint, UiRect};
 use ui_engine::test_support::fixture_font;

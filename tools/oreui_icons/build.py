@@ -19,7 +19,7 @@ import sleep
 import tiles
 
 ROOT = Path(__file__).resolve().parents[2]
-KEYS_SOURCE = ROOT / "crates/client-ui/src/ui_runtime/oreui_assets.rs"
+KEYS_SOURCE = ROOT / "crates/oreui/src/images.rs"
 ART_DIR = "oreui-icons"
 MANIFEST = ROOT / "assets/oreui-icons-source.json"
 GIF_FRAME_MS = 100

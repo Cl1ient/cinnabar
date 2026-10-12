@@ -1,9 +1,9 @@
 //! Settings layout, scrolling and editing drawn without the menu adapter.
 
 use super::*;
+use crate::test_support::{centre, option_index, settings_view};
 use launcher::menu::settings_options::{SETTINGS_OPTIONS, SettingKind};
-use launcher::menu::settings_sections::SETTINGS_SECTIONS;
-use launcher::menu::{MenuAction, MenuScreen, MenuView};
+use launcher::menu::{MenuAction, MenuView};
 use std::collections::HashMap;
 use ui_engine::menu_scroll::MenuScrolls;
 use ui_engine::scroll::ScrollArea;
@@ -37,16 +37,6 @@ fn hit(hits: &[(MenuAction, UiRect)], point: UiPoint) -> Option<MenuAction> {
     hits.iter()
         .rev()
         .find_map(|(action, bounds)| bounds.contains(point).then_some(*action))
-}
-
-fn settings_view(section: &str) -> MenuView {
-    let mut view = MenuView::new(true, "Player".into());
-    view.screen = MenuScreen::Settings;
-    view.settings_section = SETTINGS_SECTIONS
-        .iter()
-        .find_map(|(name, index)| (*name == section).then_some(*index))
-        .expect("known settings section");
-    view
 }
 
 #[test]
@@ -112,11 +102,6 @@ fn native_video_settings_exposes_smaa_and_supported_msaa_stops_together() {
             );
         }
     }
-}
-
-fn centre(bounds: UiRect) -> UiPoint {
-    let (min, max) = (bounds.min(), bounds.max());
-    UiPoint::new((min.x() + max.x()) * 0.5, (min.y() + max.y()) * 0.5).unwrap()
 }
 
 #[test]
@@ -467,13 +452,6 @@ fn settings_resize_clamps_scroll_before_drawing_the_last_rows() {
     let expected = paint(&view, size, clamped);
     assert_eq!(resized.areas, expected.areas);
     assert_eq!(resized.hits, expected.hits);
-}
-
-fn option_index(name: &str) -> usize {
-    SETTINGS_OPTIONS
-        .iter()
-        .position(|option| option.name == name)
-        .expect("registered option")
 }
 
 fn centered_option(view: &MenuView, index: usize, size: [f32; 2]) -> HashMap<String, f32> {

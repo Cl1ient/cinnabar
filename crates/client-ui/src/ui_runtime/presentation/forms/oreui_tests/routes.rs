@@ -1,7 +1,10 @@
 //! OreUI routes through the menu adapter: their actions, focus, artwork and sounds.
 
+use std::sync::Arc;
+
 use super::super::super::UiPresentationRuntime;
 use launcher::menu::auth::AuthState;
+use launcher::menu::settings_options::SETTINGS_OPTIONS;
 use launcher::menu::{MenuAction, MenuField, MenuScreen, MenuView};
 use ui::{UiNode, UiRect};
 use ui_engine::test_support::fixture_font;
@@ -735,4 +738,26 @@ fn pause_quit_uses_installed_translation_through_the_screen_route() {
         |node| matches!(node.visual(), ui::UiVisual::Text { layout, .. }
         if layout.glyphs().iter().map(|glyph| glyph.codepoint).collect::<String>() == "Quitter")
     ));
+}
+
+/// The persisted animation setting reaches OreUI's timelines through the motion adapter.
+#[test]
+fn screen_animation_setting_drives_oreui_motion_through_the_adapter() {
+    let index = SETTINGS_OPTIONS
+        .iter()
+        .position(|option| option.name == "screen_animations")
+        .unwrap();
+    for (setting, animates) in [(0, false), (1, true)] {
+        let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
+        let mut view = MenuView::new(true, "Player".into());
+        Arc::make_mut(&mut view.settings_options).set(index, setting);
+        presentation.set_menu_view(Some(view.clone()));
+        presentation.configure_oreui_motion();
+        append(&mut presentation, &view, [1280.0, 720.0]);
+        assert_eq!(
+            presentation.screens.oreui.transitions.active(0.01),
+            animates,
+            "screen_animations = {setting}"
+        );
+    }
 }

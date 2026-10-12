@@ -4,33 +4,11 @@ use std::sync::Arc;
 
 use super::super::super::UiPresentationRuntime;
 use launcher::menu::settings_options::{SETTINGS_OPTIONS, SettingsGroup};
-use launcher::menu::settings_sections::SETTINGS_SECTIONS;
-use launcher::menu::{MenuAction, MenuScreen, MenuView};
-use ui::{UiPoint, UiRect};
+use launcher::menu::{MenuAction, MenuView};
+use oreui::test_support::{centre, option_index, settings_view};
+use ui::UiPoint;
 use ui_engine::test_support::fixture_font;
 use ui_engine::text_metrics::TextMetrics;
-
-fn settings_view(section: &str) -> MenuView {
-    let mut view = MenuView::new(true, "Player".into());
-    view.screen = MenuScreen::Settings;
-    view.settings_section = SETTINGS_SECTIONS
-        .iter()
-        .find_map(|(name, index)| (*name == section).then_some(*index))
-        .expect("known settings section");
-    view
-}
-
-fn centre(bounds: UiRect) -> UiPoint {
-    let (min, max) = (bounds.min(), bounds.max());
-    UiPoint::new((min.x() + max.x()) * 0.5, (min.y() + max.y()) * 0.5).unwrap()
-}
-
-fn option_index(name: &str) -> usize {
-    SETTINGS_OPTIONS
-        .iter()
-        .position(|option| option.name == name)
-        .expect("registered option")
-}
 
 #[test]
 fn native_video_settings_exposes_animation_choices_and_crosshair_preferences() {

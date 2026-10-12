@@ -219,8 +219,10 @@ mod tests {
     use super::super::theme::{
         EDGE, MENU_ITEM, MENU_SECONDARY, NEUTRAL, NEUTRAL100, OVERLAY_MODAL, PRIMARY_ROLE,
     };
-    use super::super::{review_tests::paint, test_support::solids};
-    use launcher::menu::MenuDialog;
+    use super::super::{
+        review_tests::paint,
+        test_support::{account_manager_view, solids},
+    };
     use {
         super::*,
         launcher::menu::auth::AuthState,
@@ -228,21 +230,6 @@ mod tests {
     };
 
     const SIZE: [f32; 2] = [1280.0, 720.0];
-
-    fn manager_view() -> MenuView {
-        let mut view = MenuView::new(true, "First".into());
-        view.auth_state = AuthState::Authenticated;
-        view.dialog = Some(MenuDialog::Accounts);
-        view.feeds.account_active_id = Some("first".into());
-        view.feeds.accounts = ["first", "second"]
-            .map(|id| launcher::accounts::AccountProfile {
-                id: id.into(),
-                gamertag: id.into(),
-                picture_path: None,
-            })
-            .into();
-        view
-    }
 
     type Fill = ([f32; 4], [u8; 4]);
 
@@ -263,7 +250,7 @@ mod tests {
 
     #[test]
     fn sign_in_cancel_feedback_does_not_highlight_the_close_control() {
-        let mut view = manager_view();
+        let mut view = account_manager_view();
         view.feeds.account_adding = true;
         view.auth_state = AuthState::AwaitingCode {
             uri: "https://example.invalid".into(),
@@ -317,7 +304,7 @@ mod tests {
 
     #[test]
     fn device_prompt_prioritizes_open_link_and_hides_manual_details_until_failure() {
-        let mut view = manager_view();
+        let mut view = account_manager_view();
         view.feeds.account_adding = true;
         view.auth_state = AuthState::AwaitingCode {
             uri: "https://example.invalid/link".into(),
@@ -340,7 +327,7 @@ mod tests {
 
     #[test]
     fn failed_sign_in_offers_retry_and_success_has_no_browser_action() {
-        let mut view = manager_view();
+        let mut view = account_manager_view();
         view.feeds.account_adding = true;
         view.auth_state = AuthState::Failed("Your sign-in code expired. Try again.".into());
         let prompt = modal(&view, &HashMap::new());
@@ -359,7 +346,7 @@ mod tests {
 
     #[test]
     fn picker_switches_only_to_other_accounts_and_checks_the_current_one() {
-        let (fills, actions, rem) = draw(&manager_view());
+        let (fills, actions, rem) = draw(&account_manager_view());
         for action in [
             MenuAction::SwitchAccount(1),
             MenuAction::AddAccount,
@@ -389,7 +376,7 @@ mod tests {
 
     #[test]
     fn picker_draws_the_vanilla_modal_surfaces() {
-        let (fills, _, rem) = draw(&manager_view());
+        let (fills, _, rem) = draw(&account_manager_view());
         let edge = EDGE * rem;
         assert_eq!(fills[0], ([0.0, 0.0, SIZE[0], SIZE[1]], OVERLAY_MODAL));
         let width = (47.6 * rem).min(SIZE[0]);
@@ -431,7 +418,7 @@ mod tests {
 
     #[test]
     fn pending_sign_in_shows_no_accounts_and_closing_cancels_it() {
-        let mut view = manager_view();
+        let mut view = account_manager_view();
         view.feeds.account_adding = true;
         let (fills, actions, rem) = draw(&view);
         assert!(!actions.iter().any(|action| matches!(
@@ -453,7 +440,7 @@ mod tests {
 
     #[test]
     fn overflowing_picker_cuts_its_last_visible_account_in_half() {
-        let mut view = manager_view();
+        let mut view = account_manager_view();
         view.feeds.accounts = (0..30)
             .map(|index| launcher::accounts::AccountProfile {
                 id: index.to_string(),
@@ -487,7 +474,7 @@ mod tests {
     #[test]
     fn account_rows_darken_on_hover_and_press() {
         let row_fills = |hovered, pressed| {
-            let mut view = manager_view();
+            let mut view = account_manager_view();
             view.hovered = hovered;
             view.pressed = pressed;
             let (fills, _, rem) = draw(&view);

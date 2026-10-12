@@ -6,7 +6,7 @@ use launcher::dressing_room::{
     DressingRoomCape, DressingRoomSkin, DressingRoomView, STARTER_SKIN_NAMES, SkinModel,
 };
 use launcher::menu::MenuView;
-use ui::UiNode;
+use ui::{UiNode, UiPoint, UiRect};
 
 use crate::images::{
     OreUiImages, OreUiPage, OreUiSprite, SETTINGS_ICON_HIGHLIGHT_IMAGE, SETTINGS_ICONS,
@@ -128,4 +128,45 @@ pub fn add_capes(view: &mut MenuView) {
         })
         .collect::<Vec<_>>()
         .into();
+}
+
+/// A signed-in view with the account picker open over two saved accounts, the first active.
+pub fn account_manager_view() -> MenuView {
+    let mut view = MenuView::new(true, "First".into());
+    view.auth_state = launcher::menu::auth::AuthState::Authenticated;
+    view.dialog = Some(launcher::menu::MenuDialog::Accounts);
+    view.feeds.account_active_id = Some("first".into());
+    view.feeds.accounts = ["first", "second"]
+        .map(|id| launcher::accounts::AccountProfile {
+            id: id.into(),
+            gamertag: id.into(),
+            picture_path: None,
+        })
+        .into();
+    view
+}
+
+/// The settings screen opened on `section`, a selector variable name.
+pub fn settings_view(section: &str) -> MenuView {
+    let mut view = MenuView::new(true, "Player".into());
+    view.screen = launcher::menu::MenuScreen::Settings;
+    view.settings_section = launcher::menu::settings_sections::SETTINGS_SECTIONS
+        .iter()
+        .find_map(|(name, index)| (*name == section).then_some(*index))
+        .expect("known settings section");
+    view
+}
+
+/// The centre of `bounds`.
+pub fn centre(bounds: UiRect) -> UiPoint {
+    let (min, max) = (bounds.min(), bounds.max());
+    UiPoint::new((min.x() + max.x()) * 0.5, (min.y() + max.y()) * 0.5).unwrap()
+}
+
+/// The index of the registered setting `name`.
+pub fn option_index(name: &str) -> usize {
+    launcher::menu::settings_options::SETTINGS_OPTIONS
+        .iter()
+        .position(|option| option.name == name)
+        .expect("registered option")
 }

@@ -323,8 +323,9 @@ jobs:
       run:
         shell: bash
     env:
-      # Full Linux runs check races; pull requests keep the usual test cost.
-      GO_RACE: ${{ github.event_name != 'pull_request' && matrix.os == 'ubuntu-latest' && '-race' || '' }}
+      # Full Linux tests check races; pull requests keep the usual test cost.
+      # Release builds and vet keep their normal flags.
+      GOFLAGS: ${{ github.event_name != 'pull_request' && matrix.os == 'ubuntu-latest' && '-race' || '' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -337,21 +338,26 @@ jobs:
         with:
           language: go
       - name: Build release Go core
+        env:
+          GOFLAGS: ""
         run: go build -trimpath -o "$RUNNER_TEMP/bedrock-core$(go env GOEXE)" ./core/cmd/bedrock-core
       - name: Test and vet Go core
         run: |
-          go test ${GO_RACE:+"$GO_RACE"} ./core/...
+          go test ./core/...
+          unset GOFLAGS
           go vet ./core/...
       - name: Test and vet protocol registry tools
         run: |
-          go -C tools/registrygen test ${GO_RACE:+"$GO_RACE"} ./... -count=1
+          go -C tools/registrygen test ./... -count=1
+          unset GOFLAGS
           go -C tools/registrygen vet ./...
       - name: Test and vet local server Experiences
         working-directory: tools/localserver
         env:
           GOWORK: "off"
         run: |
-          go test ${GO_RACE:+"$GO_RACE"} ./... -count=1
+          go test ./... -count=1
+          unset GOFLAGS
           go vet ./...
       - name: Test and vet pinned chunk fixture generator
         if: runner.os == 'Linux'
@@ -359,7 +365,8 @@ jobs:
         env:
           GOWORK: "off"
         run: |
-          go test ${GO_RACE:+"$GO_RACE"} ./... -count=1
+          go test ./... -count=1
+          unset GOFLAGS
           go vet ./...
       - name: Test and vet pinned bedsim movement trace generator
         if: runner.os == 'Linux'
@@ -367,7 +374,8 @@ jobs:
         env:
           GOWORK: "off"
         run: |
-          go test ${GO_RACE:+"$GO_RACE"} ./... -count=1
+          go test ./... -count=1
+          unset GOFLAGS
           go vet ./...
 
       - name: Save Go build cache

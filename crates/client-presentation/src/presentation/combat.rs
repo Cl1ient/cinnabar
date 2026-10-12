@@ -15,3 +15,6 @@ pub(crate) fn overlay(actor: &ActorSnapshot, profile: CombatVisuals) -> u32 {
     };
     pack_overlay_rgba8(color)
 }
+
+#[cfg(test)]
+pub(crate) mod tests;

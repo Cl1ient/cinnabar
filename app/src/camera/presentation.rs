@@ -50,7 +50,8 @@ pub(crate) fn collect_death_fov_inputs(
 /// Composes actor damage after this frame's counters advance and before UI publication.
 pub(crate) fn apply_actor_damage_camera_rotation(
     settings: Res<CameraSettingsAuthority>,
-    hand: Res<FirstPersonHandMotion>,
+    hand: ResMut<FirstPersonHandMotion>,
+    legacy: Option<Res<client_presentation::camera::legacy::LegacyCameraMotion>>,
     server: Res<ServerCameraView>,
     world: Option<Res<ClientWorld>>,
     partial_tick: Option<Res<client_presentation::actor_publication::ActorFramePartialTick>>,
@@ -59,6 +60,7 @@ pub(crate) fn apply_actor_damage_camera_rotation(
     client_presentation::camera::actor_effects::apply_actor_damage_camera_rotation(
         settings,
         hand,
+        legacy,
         server,
         world.as_deref().map(
             |world| client_presentation::observations::WorldObservation {
@@ -83,6 +85,7 @@ pub(crate) fn advance_presentation_state(
     sway: ResMut<HandSwayState>,
     hurt: ResMut<CameraHurtState>,
     java: ResMut<client_presentation::camera::java::JavaCameraState>,
+    legacy: ResMut<client_presentation::camera::legacy::LegacyCameraMotion>,
     hand: ResMut<FirstPersonHandMotion>,
 ) {
     client_presentation::camera::presentation::advance_presentation_state(
@@ -102,6 +105,7 @@ pub(crate) fn advance_presentation_state(
         sway,
         hurt,
         java,
+        legacy,
         hand,
     );
 }

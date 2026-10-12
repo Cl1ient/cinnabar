@@ -1,6 +1,6 @@
 //! Actor-clock damage rotation composed onto the rendered player camera.
 
-use bevy::prelude::{Mat4, Quat, Query, Res, SystemSet, Transform, With};
+use bevy::prelude::{Mat4, Quat, Query, Res, ResMut, SystemSet, Transform, With};
 
 use super::{CameraSettingsAuthority, FirstPersonHandMotion, FlyCamera, ServerCameraView};
 use crate::observations::WorldObservation;
@@ -13,12 +13,14 @@ pub struct ActorCameraEffects;
 /// Applies completed actor counters before the accepted hand bob, without changing gameplay aim.
 pub fn apply_actor_damage_camera_rotation(
     settings: Res<CameraSettingsAuthority>,
-    hand: Res<FirstPersonHandMotion>,
+    mut hand: ResMut<FirstPersonHandMotion>,
+    legacy: Option<Res<super::legacy::LegacyCameraMotion>>,
     server: Res<ServerCameraView>,
     world: Option<WorldObservation<'_>>,
     partial_tick: f32,
     mut cameras: Query<&mut Transform, With<FlyCamera>>,
 ) {
+    hand.legacy_effect = None;
     if !server.renders_first_person(settings.perspective() == PerspectiveMode::FirstPerson) {
         return;
     }
@@ -27,6 +29,29 @@ pub fn apply_actor_damage_camera_rotation(
     } else {
         0.0
     };
+    if render_api::DEFAULT_COMBAT_VISUALS == render_api::CombatVisuals::Legacy112 {
+        let actor = world
+            .and_then(|world| world.stream)
+            .and_then(|stream| stream.authority().actor(stream.local_player_runtime_id()));
+        let effect = sampled_legacy_effect(
+            actor,
+            legacy
+                .as_deref()
+                .map(|legacy| legacy.state.endpoints)
+                .unwrap_or_default(),
+            alpha,
+            settings.feel().view_bobbing,
+            settings.feel().damage_bob,
+        );
+        hand.legacy_effect = Some(effect);
+        if effect.is_finite() {
+            for mut camera in &mut cameras {
+                // Inverting the shared view effect gives Hurt × Bob × Vbase.
+                *camera = Transform::from_matrix(camera.to_matrix() * effect.inverse());
+            }
+        }
+        return;
+    }
     let damage = world
         .and_then(|world| world.stream)
         .and_then(|stream| stream.authority().actor(stream.local_player_runtime_id()))
@@ -56,6 +81,38 @@ pub fn apply_actor_damage_camera_rotation(
     for mut camera in &mut cameras {
         *camera = Transform::from_matrix(camera.to_matrix() * effect);
     }
+}
+
+/// Samples the same actor counters and render fraction for world and first-person draws.
+fn sampled_legacy_effect(
+    actor: Option<&client_world::ActorSnapshot>,
+    endpoints: render_model::legacy_combat::LegacyCameraEndpoints,
+    alpha: f32,
+    view_bobbing: bool,
+    strength: f32,
+) -> Mat4 {
+    let Some(actor) = actor else {
+        return Mat4::IDENTITY;
+    };
+    let death_ticks = (actor.status.dead
+        || actor
+            .attributes
+            .get("minecraft:health")
+            .is_some_and(|health| health.current.ceil() < 1.0))
+    .then(|| f32::from(actor.status.native_death_ticks()));
+    let hurt = render_model::legacy_combat::legacy_hurt_matrix(
+        actor.status.hurt_time,
+        actor.status.hurt_direction.unwrap_or(0.0),
+        death_ticks,
+        alpha,
+        strength,
+    );
+    let bob = if view_bobbing && matches!(actor.kind, protocol::ActorKind::Player { .. }) {
+        endpoints.bob_matrix(alpha)
+    } else {
+        Mat4::IDENTITY
+    };
+    hurt * bob
 }
 
 /// Returns native camera-local damage rotation from sampled actor state.

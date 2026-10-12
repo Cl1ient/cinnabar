@@ -4272,7 +4272,9 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       states compile through compact six-quad alpha-cutout cuboids with exact
       typed open/orientation/hinge/half selection, 3/16-block thickness,
       lower/upper door materials, conservative partial-model culling, and
-      deterministic template reuse. Legacy oak-through-iron door texture arrays
+      deterministic template reuse. Trapdoor templates also retain facing/top-half
+      artwork orientation and the top three sprite rows on thin edges, including
+      the opened north/south cap texture override. Legacy oak-through-iron door texture arrays
       and modern bamboo/cherry/mangrove/pale-oak/nether/copper/waxed aliases are
       covered. Dragonfly's rotated door-state encoding is inverted before its
       logical-facing/open-hinge transform; an independent review caught and
@@ -4286,7 +4288,9 @@ Scope: block registry + block-state → model/texture mapping (generated export 
     - [ ] Barrel and adjacent trapdoor render parity: barrel facing/open artwork,
       grain direction, material ownership and carried-item rendering have regression
       and rendered coverage. The reported texture leakage was not reproduced;
-      standalone trapdoor edge UV parity remains unverified.
+      trapdoor edge UV and state orientation have compiler regressions across
+      registered materials and 16/32 pixel textures. Rendered trapdoor acceptance
+      and broader graphics parity remain incomplete.
     - [x] Connected wall templates: all 5,184 states across 32 wall materials
       decode the exact 9-bit north/east/south/west none/short/tall selector and
       center-post bit into deterministic zero-to-30-quad packed models. Visible

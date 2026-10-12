@@ -14,6 +14,11 @@ Common farmland crops now retain four lowered rows with stage-specific artwork.
 Compiler regressions cover all eight growth states and both network-ID modes;
 full crop presentation parity and the broader phase gates remain open.
 
+Trapdoor compiler regressions cover edge sprite rows, facing/top-half artwork,
+opened cap texture ownership and malformed selectors across registered poses
+with 16/32 pixel textures. Rendered/input acceptance and broader graphics parity
+remain open.
+
 ## P2.5-NATIVE-BIOME
 
 | Field | Evidence |

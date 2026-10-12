@@ -58,14 +58,10 @@ pub struct TextPaint {
     pub options: TextOptions,
 }
 
-/// A label's text after vanilla localization; empty lines drop as the vanilla label drops them.
+/// A label's text after vanilla localization. Every newline starts a line, so `\n\n` leaves a
+/// blank line as vanilla's text component does, as in a server form body spaced with them.
 pub fn localized<'a>(text: &'a str, translate: &dyn Fn(&str) -> Option<Arc<str>>) -> Cow<'a, str> {
-    let text = json_ui::localize_text(text, translate);
-    if text.contains("\n\n") || text.starts_with('\n') || text.ends_with('\n') {
-        let lines: Vec<&str> = text.split('\n').filter(|line| !line.is_empty()).collect();
-        return Cow::Owned(lines.join("\n"));
-    }
-    text
+    json_ui::localize_text(text, translate)
 }
 
 /// `request` at `factor` times the metrics' scale; a factor the display range

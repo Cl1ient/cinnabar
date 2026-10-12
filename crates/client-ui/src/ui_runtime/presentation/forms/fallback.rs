@@ -68,15 +68,8 @@ impl UiPresentationRuntime {
         };
         let mut body = body_text.as_str();
         let mut buttons = labels.as_slice();
-        // Rows grow to the tallest multi-line label; empty lines drop, as a
-        // vanilla label discards them.
-        let label_lines = |label: &str| {
-            label
-                .split('\n')
-                .filter(|line| !line.is_empty())
-                .count()
-                .clamp(1, MAX_LABEL_LINES)
-        };
+        // Rows grow to the tallest multi-line label; every newline starts a line, blank or not.
+        let label_lines = |label: &str| label.split('\n').count().clamp(1, MAX_LABEL_LINES);
         let lines = buttons
             .iter()
             .map(|label| label_lines(label))
@@ -234,7 +227,7 @@ impl UiPresentationRuntime {
             );
             *next = next.saturating_add(1);
             let mut carry = String::new();
-            let label_lines = label.split('\n').filter(|line| !line.is_empty());
+            let label_lines = label.split('\n');
             for (row, line) in label_lines.take(MAX_LABEL_LINES).enumerate() {
                 let source = format!("{carry}{line}");
                 carry = ui_engine::engine::text_paint::active_codes(&source);

@@ -69,7 +69,12 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
             world.init_resource::<super::super::ActorFramePartialTick>();
             world.init_resource::<render_scene::HandRigScene>();
             let mut avatar = crate::local_player::LocalAvatarPresentation::default();
-            avatar.begin_session(stream.authority().actor_session_id(), 1);
+            avatar.begin_session(
+                simulation_clock::identity::SessionGeneration::new(
+                    stream.authority().actor_session_id(),
+                ),
+                1,
+            );
             world.insert_resource(avatar);
             world.init_resource::<crate::local_player::LocalAvatarVisibilityCarrier>();
             let mut settings = crate::camera::CameraSettingsAuthority::default();

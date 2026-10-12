@@ -52,10 +52,10 @@ fn pick(
     let mut carrier = LocalPlayerFrameCarrier::default();
     carrier
         .publish(LocalPlayerFrameSample {
-            session_generation: ui.session_id(),
+            session_generation: simulation_clock::identity::SessionGeneration::new(ui.session_id()),
             actor_session_id: stream.authority().actor_session_id(),
-            fifo_sequence: stream.committed_sequence(),
-            physics_tick: physics.state().unwrap().tick,
+            fifo_sequence: protocol::identity::FifoSequence::new(stream.committed_sequence()),
+            physics_tick: simulation_clock::PhysicsTick::new(physics.state().unwrap().tick),
             perspective: semantic_input::PerspectiveMode::FirstPerson,
             world_collision_identity: physics.last_world_identity().unwrap().clone(),
             pose: Transform::from_translation(view.eye_translation()),

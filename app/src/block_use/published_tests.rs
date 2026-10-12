@@ -111,7 +111,7 @@ fn fixture() -> (World, client_session::CapturedPackets) {
         .publish(client_presentation::local_player::LocalPlayerFrameSample {
             session_generation: SessionGeneration::new(7),
             actor_session_id: stream.authority().actor_session_id(),
-            fifo_sequence: stream.committed_sequence(),
+            fifo_sequence: protocol::identity::FifoSequence::new(stream.committed_sequence()),
             physics_tick: PhysicsTick::new(101),
             perspective: semantic_input::PerspectiveMode::FirstPerson,
             world_collision_identity: sample.world_identity,
@@ -262,7 +262,7 @@ fn frame_origin(world: &World, eye: Vec3, rotation: Quat) -> InteractionOriginSn
         .publish(client_presentation::local_player::LocalPlayerFrameSample {
             session_generation: SessionGeneration::new(7),
             actor_session_id: stream.authority().actor_session_id(),
-            fifo_sequence: stream.committed_sequence(),
+            fifo_sequence: protocol::identity::FifoSequence::new(stream.committed_sequence()),
             physics_tick: PhysicsTick::new(101),
             perspective: semantic_input::PerspectiveMode::FirstPerson,
             world_collision_identity: gameplay::test_support::survival_mining::completed(101)

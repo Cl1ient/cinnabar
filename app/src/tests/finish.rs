@@ -1055,8 +1055,8 @@ fn world_ingress_drain_stops_at_transfer_barrier_without_consuming_replacement_e
         .unwrap();
     sender
         .try_send(WorldIngress::FastTransferBarrier {
-            session_generation: 7,
-            sequence: 2,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(2),
             action_sequence: 11,
         })
         .unwrap();
@@ -1076,11 +1076,11 @@ fn world_ingress_drain_stops_at_transfer_barrier_without_consuming_replacement_e
             drained.as_slice(),
             [
                 WorldIngress::Event(SequencedWorldEvent {
-                    sequence,
+                    sequence: event_sequence,
                     ..
                 }),
-                WorldIngress::FastTransferBarrier { sequence, .. }
-            ] if sequence.get() == 1 && sequence.get() == 2
+                WorldIngress::FastTransferBarrier { sequence: barrier_sequence, .. }
+            ] if event_sequence.get() == 1 && barrier_sequence.get() == 2
     ));
     assert!(matches!(
             receiver.try_recv(),

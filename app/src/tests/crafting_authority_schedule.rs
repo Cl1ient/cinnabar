@@ -121,7 +121,7 @@ fn ingress(app: &mut App, sequence: u64, event: InventoryEvent) {
             runtime,
             SequencedWorldEvent {
                 session_generation: SessionGeneration::new(1),
-                sequence,
+                sequence: protocol::identity::FifoSequence::new(sequence),
                 event: WorldEvent::Inventory(event),
             },
         )
@@ -457,7 +457,7 @@ fn registry_ingress(app: &mut App, sequence: u64, registry: ItemRegistryEvent) {
             runtime,
             &SequencedWorldEvent {
                 session_generation: SessionGeneration::new(1),
-                sequence,
+                sequence: protocol::identity::FifoSequence::new(sequence),
                 event: WorldEvent::ItemActor(protocol::ItemActorEvent::Registry(registry)),
             },
         )

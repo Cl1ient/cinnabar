@@ -93,8 +93,8 @@ fn malformed_start_game_registry_nbt_is_a_typed_wire_failure() {
 fn sequence_is_fifo_and_dimension_changes_apply_to_following_packets() {
     let mut sequencer = NetworkSequencer::new(SessionGeneration::new(7), 2, 42);
     let first = sequencer.wrap(WorldEvent::ChunkRadiusUpdated(16));
-    assert_eq!(first.session_generation, 7);
-    assert_eq!(first.sequence, 1);
+    assert_eq!(first.session_generation.get(), 7);
+    assert_eq!(first.sequence.get(), 1);
     assert_eq!(sequencer.current_dimension(), 2);
 
     let change = sequencer.wrap(WorldEvent::ChangeDimension(ChangeDimensionEvent {
@@ -102,11 +102,11 @@ fn sequence_is_fifo_and_dimension_changes_apply_to_following_packets() {
         position: [0.0, 80.0, 0.0],
         ..Default::default()
     }));
-    assert_eq!(change.sequence, 2);
+    assert_eq!(change.sequence.get(), 2);
     assert_eq!(sequencer.current_dimension(), 1);
 
     let following = sequencer.wrap(WorldEvent::ChunkRadiusUpdated(8));
-    assert_eq!(following.sequence, 3);
+    assert_eq!(following.sequence.get(), 3);
 }
 
 #[test]

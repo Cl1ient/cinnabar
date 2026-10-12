@@ -56,7 +56,7 @@ pub(crate) fn update_actor_render_scene<'a>(
         ActorRenderSource {
             runtime_id: local.runtime_id(),
             unique_id: i64::try_from(local.runtime_id()).unwrap_or(i64::MAX),
-            spawn_revision: local.session_generation(),
+            spawn_revision: local.session_generation().get(),
             movement_revision: local.pose_generation().get(),
             previous_position: position.to_array(),
             previous_pitch_degrees: pitch_degrees,

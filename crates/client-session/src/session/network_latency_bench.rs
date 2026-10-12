@@ -135,7 +135,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                     panic!("skin replay must produce ordinary world ingress")
                 };
                 consumed += 1;
-                assert_eq!(event.sequence, consumed);
+                assert_eq!(event.sequence.get(), consumed);
             }
             consumed
         });
@@ -173,7 +173,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                     chat: None,
                     physics: Some(protocol::PhysicsSendIdentity {
                         session_generation: SessionGeneration::new(7),
-                        tick,
+                        tick: simulation_clock::PhysicsTick::new(tick),
                         admission_id: tick,
                         reanchor_epoch: PositionAuthorityGeneration::new(0),
                     }),

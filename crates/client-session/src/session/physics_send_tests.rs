@@ -465,7 +465,7 @@ async fn transfer_messages_survive_reanchor_and_precede_destination_movement() {
         reanchor_epoch: PositionAuthorityGeneration::new(1),
         ..stale
     };
-    let (_, movement) = traced_movement_packets(current.tick);
+    let (_, movement) = traced_movement_packets(current.tick.get());
     handle
         .send_physics_packet(current, movement.clone(), None)
         .unwrap();

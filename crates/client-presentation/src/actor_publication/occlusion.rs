@@ -3,6 +3,30 @@
 use crate::presentation::actors::ActorPresentationBatch;
 use chunk_pipeline::WorldStream;
 
+/// Work counts produced while admitting remote actor bodies.
+#[derive(Default)]
+pub(super) struct PreparationWork {
+    pub(super) candidates: u32,
+    pub(super) hidden_by_occlusion: u32,
+}
+
+impl PreparationWork {
+    /// Records the admitted bodies and returns their count before extra layers are attached.
+    pub(super) fn record_selection(
+        &self,
+        batch: &ActorPresentationBatch,
+        local_runtime_id: u64,
+    ) -> usize {
+        record_work(
+            self.candidates,
+            self.hidden_by_occlusion,
+            batch,
+            local_runtime_id,
+        );
+        batch.submissions.len()
+    }
+}
+
 /// Includes rotated body and shadow bounds. Attachments without a combined bound fail open
 /// through non-finite bounds; name tags keep their independent publication path.
 pub(super) fn body_and_shadow_bounds(

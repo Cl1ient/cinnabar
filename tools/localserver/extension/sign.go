@@ -20,7 +20,7 @@ func Sign(domain string, value Message, key ed25519.PrivateKey) (SignedDocument,
 	}
 	return SignedDocument{
 		Payload:   hex.EncodeToString(payload),
-		Signature: hex.EncodeToString(ed25519.Sign(key, append([]byte(domain), payload...))),
+		Signature: hex.EncodeToString(ed25519.Sign(key, signingBytes(domain, payload))),
 	}, nil
 }
 
@@ -43,7 +43,7 @@ func (d SignedDocument) Verify(key, domain string, limit int, into Document) (st
 	if err != nil {
 		return "", err
 	}
-	if !ed25519.Verify(public, append([]byte(domain), payload...), signature) {
+	if !ed25519.Verify(public, signingBytes(domain, payload), signature) {
 		return "", errors.New("invalid signature")
 	}
 	if err := Decode(payload, into); err != nil {

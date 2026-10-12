@@ -222,6 +222,9 @@ func writeV2193BlockProjectionOracle(legacyBREGPath, allowlistPath, outputPath, 
 		return fmt.Errorf("Education construction palette contains %d states, want %d", stats.education, v2193EducationStateCount)
 	}
 	projected := projection.records
+	if err := applyBeaconTints(projected, source); err != nil {
+		return err
+	}
 	properties, err := applySharedBlockFacts(projected)
 	if err != nil {
 		return err

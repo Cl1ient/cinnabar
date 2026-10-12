@@ -23,6 +23,8 @@ schemas document every argument. Agents drive the client only through this endpo
 - `test_accounts` with `enabled: true` shows a signed-in launcher whose Accounts picker lists
   placeholder accounts, so recordings never show real gamertags; it never signs in or saves, and
   needs a signed-out install (an isolated `CINNABAR_USER_ROOT`).
+- `global_packs` stages and applies global resource packs as the settings screen does; import
+  packs with `launch_client` args `["--import-pack", path]`, then poll it until `pending` clears.
 - `state.player_motion` includes the simulation tick, velocity, accepted motion sequence, jump
   eligibility and physical jump state. With `local-mods`, `state.local_mods` also reports bounded
   host status and validated panel controls, so tests can verify module toggles and settings

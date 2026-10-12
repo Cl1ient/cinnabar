@@ -216,9 +216,13 @@ func v2193ReducedState(state []byte) ([]byte, error) {
 
 func decodeBREGRecords(data []byte, expectedProtocol uint32) (RegistryMetadata, []Record, error) {
 	const headerBytes = registryHeaderBytes
-	const prefixBytes = recordHeaderBytes
-	if len(data) < headerBytes || string(data[:8]) != registryHeader || binary.LittleEndian.Uint32(data[8:12]) != expectedProtocol {
+	if len(data) < headerBytes || (string(data[:8]) != registryHeader && string(data[:8]) != previousRegistryHeader) || binary.LittleEndian.Uint32(data[8:12]) != expectedProtocol {
 		return RegistryMetadata{}, nil, fmt.Errorf("input is not protocol-%d BREG1003", expectedProtocol)
+	}
+	previous := string(data[:8]) == previousRegistryHeader
+	prefixBytes := recordHeaderBytes
+	if previous {
+		prefixBytes = previousRecordHeaderBytes
 	}
 	metadata := decodeRegistryMetadata(data[len(registryHeader):headerBytes])
 	if metadata.CanonicalStates > maxRecordCount {
@@ -230,7 +234,7 @@ func decodeBREGRecords(data []byte, expectedProtocol uint32) (RegistryMetadata, 
 		if len(data)-cursor < prefixBytes {
 			return RegistryMetadata{}, nil, fmt.Errorf("BREG record %d is truncated", index)
 		}
-		p := decodeRecordHeader(data[cursor : cursor+prefixBytes])
+		p := decodeRecordHeader(data[cursor:cursor+prefixBytes], previous)
 		boxCount := int(p.BoxCount)
 		nameLen, stateLen := int(p.NameLen), int(p.StateLen)
 		if boxCount > maxCollisionBoxesPerRecord || stateLen > maxStateBytes {
@@ -247,7 +251,8 @@ func decodeBREGRecords(data []byte, expectedProtocol uint32) (RegistryMetadata, 
 			ModelState: ModelState{Mask: p.ModelMask, Values: p.Values}, FaceCoverage: p.FaceCoverage,
 			CollisionSeed: CollisionSeed{Confidence: CollisionConfidence(p.Confidence), ShapeID: p.ShapeID},
 			Provenance:    p.RawProvenance, Name: string(data[payload : payload+nameLen]),
-			StateJSON: append([]byte(nil), data[payload+nameLen:end]...),
+			StateJSON:  append([]byte(nil), data[payload+nameLen:end]...),
+			BeaconTint: BeaconTint(p.BeaconTint),
 		}
 		for boxIndex := 0; boxIndex < boxCount; boxIndex++ {
 			start := cursor + prefixBytes + boxIndex*collisionBoxBytes

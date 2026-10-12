@@ -77,6 +77,7 @@ fn fixture() -> &'static Fixture {
         .enumerate()
         .map(
             |(index, (name, flags, model_family, contributor_role))| RegistryRecord {
+                beacon_tint: assets::BeaconTint::Unresolved,
                 sequential_id: index as u32,
                 network_hash: index as u32 + 101,
                 name: name.into(),

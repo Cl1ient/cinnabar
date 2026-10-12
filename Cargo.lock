@@ -5705,6 +5705,7 @@ dependencies = [
  "json-ui",
  "pack-compiler",
  "protocol",
+ "rayon",
  "resource-pack",
  "serde_json",
  "sha2",

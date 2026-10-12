@@ -1,4 +1,4 @@
-use super::*;
+use client_runtime::ingress::WorldIngressDrain;
 use client_session::{WORLD_EVENT_CAPACITY, WorldIngress};
 use protocol::{
     ActorEvent, ActorMetadata, ActorMetadataUpdateEvent, ActorMetadataValue, ActorMoveEvent,

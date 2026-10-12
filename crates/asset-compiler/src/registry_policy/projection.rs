@@ -1,7 +1,7 @@
 use super::{BlockFact, Policy, RESERVED, Result, Scalar, check, manifest::Projection};
 use assets::registry::{
-    BlockFlags, CollisionConfidence, CollisionSeed, ContributorRole, ModelFamily, ModelState,
-    ModelStateField, RegistryProvenance, RegistryRecord,
+    BeaconTint, BlockFlags, CollisionConfidence, CollisionSeed, ContributorRole, ModelFamily,
+    ModelState, ModelStateField, RegistryProvenance, RegistryRecord,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -21,7 +21,46 @@ fn identity(f: &BlockFact) -> RegistryRecord {
         face_coverage: 0,
         collision_seed: CollisionSeed::default(),
         provenance: RegistryProvenance::DRAGONFLY,
+        beacon_tint: BeaconTint::Unresolved,
     }
+}
+
+/// Expands the shared eligibility table into source block names; unlisted names do not tint.
+fn beacon_tints() -> Result<BTreeMap<String, BeaconTint>> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Color {
+        name: String,
+        tint: u8,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Table {
+        schema: u32,
+        colors: Vec<Color>,
+        variants: Vec<String>,
+    }
+    let table: Table =
+        serde_json::from_slice(include_bytes!("../../../assets/data/beacon-tints.json"))?;
+    check(
+        table.schema == 1 && !table.colors.is_empty() && !table.variants.is_empty(),
+        "beacon tint table is empty or has an unsupported version",
+    )?;
+    let mut tints = BTreeMap::new();
+    for color in &table.colors {
+        let tint = BeaconTint::read(color.tint)
+            .ok()
+            .filter(|t| t.dye_colour().is_some() && !color.name.is_empty())
+            .ok_or("beacon tint table has an invalid color")?;
+        for variant in &table.variants {
+            let name = match variant.strip_prefix("hard_") {
+                Some(rest) => format!("minecraft:hard_{}_{rest}", color.name),
+                None => format!("minecraft:{}_{variant}", color.name),
+            };
+            check(tints.insert(name, tint).is_none(), "duplicate beacon tint")?;
+        }
+    }
+    Ok(tints)
 }
 
 /// Forms the historical canonical lookup and fingerprint key.
@@ -168,6 +207,7 @@ pub(super) fn project(
             && routes.crossed_planes.windows(2).all(|p| p[0] < p[1]),
         "invalid block-family routing catalog",
     )?;
+    let tints = beacon_tints()?;
     let mut records = Vec::with_capacity(source.len());
     for f in source {
         let mut record = if let Some(record) = education(f)? {
@@ -230,6 +270,7 @@ pub(super) fn project(
         {
             record.model_family = ModelFamily::Cross;
         }
+        record.beacon_tint = tints.get(&f.name).copied().unwrap_or(BeaconTint::NoTinting);
         records.push(record);
     }
     check(

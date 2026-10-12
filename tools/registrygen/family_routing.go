@@ -20,21 +20,30 @@ var familyRouting, familyRoutingError = loadFamilyRouting()
 
 // loadFamilyRouting finds the shared asset catalog above the generator's working directory.
 func loadFamilyRouting() (familyRoutingCatalog, error) {
-	dir, err := os.Getwd()
+	data, err := readAssetData(".", "block-family-routing.json")
 	if err != nil {
 		return familyRoutingCatalog{}, err
 	}
+	return parseFamilyRouting(data)
+}
+
+// readAssetData reads crates/assets/data/name from the nearest ancestor of start that has it.
+func readAssetData(start, name string) ([]byte, error) {
+	dir, err := filepath.Abs(start)
+	if err != nil {
+		return nil, err
+	}
 	for {
-		data, err := os.ReadFile(filepath.Join(dir, "crates", "assets", "data", "block-family-routing.json"))
+		data, err := os.ReadFile(filepath.Join(dir, "crates", "assets", "data", name))
 		if err == nil {
-			return parseFamilyRouting(data)
+			return data, nil
 		}
 		if !os.IsNotExist(err) {
-			return familyRoutingCatalog{}, err
+			return nil, err
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return familyRoutingCatalog{}, fmt.Errorf("block-family routing catalog not found")
+			return nil, fmt.Errorf("shared asset data %s not found above %s", name, start)
 		}
 		dir = parent
 	}

@@ -103,6 +103,22 @@ fn pointer_wheel_and_test_cape_parse_from_wire() {
         parse(json!({"cmd": "test_accounts", "enabled": true})).unwrap(),
         Command::TestAccounts { enabled: true }
     );
+    assert_eq!(
+        parse(json!({"cmd": "global_packs"})).unwrap(),
+        Command::GlobalPacks { action: None }
+    );
+    assert_eq!(
+        parse(json!({"cmd": "global_packs", "action": {"activate": {"index": 1}}})).unwrap(),
+        Command::GlobalPacks {
+            action: Some(GlobalPackAction::Activate { index: 1 })
+        }
+    );
+    assert_eq!(
+        parse(json!({"cmd": "global_packs", "action": "apply"})).unwrap(),
+        Command::GlobalPacks {
+            action: Some(GlobalPackAction::Apply)
+        }
+    );
 }
 
 #[test]

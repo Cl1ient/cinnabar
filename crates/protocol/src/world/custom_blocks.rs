@@ -33,6 +33,8 @@ pub struct CustomBlock {
     pub collision_boxes: Option<Arc<[CustomBox]>>,
     /// `minecraft:selection_box`: what the pick ray targets and the outline traces.
     pub selection: CustomSelection,
+    /// `minecraft:friction` value; surface friction is one minus it, and `None` keeps the default.
+    pub friction: Option<f32>,
     pub visual: Arc<CustomBlockVisuals>,
     /// Resolved palette-order component sets; empty until session preparation.
     pub state_physics: Arc<[CustomBlockPhysics]>,
@@ -157,6 +159,7 @@ pub struct CustomPhysicalComponents {
     pub selection: Option<CustomSelection>,
     /// Transforms the block's geometry, collision box and selection box together.
     pub transformation: Option<CustomTransformation>,
+    pub friction: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -174,6 +177,8 @@ pub struct CustomBlockPhysics {
     pub collides: bool,
     pub collision_boxes: Option<Arc<[CustomBox]>>,
     pub selection: CustomSelection,
+    /// Effective `minecraft:friction` value, as on [`CustomBlock::friction`].
+    pub friction: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,6 +220,7 @@ impl CustomBlock {
             collides: self.collides,
             collision_boxes: self.collision_boxes.clone(),
             selection: self.selection,
+            friction: self.friction,
         }
     }
 
@@ -405,6 +411,7 @@ impl CustomBlocks {
                         collides: definition.collides,
                         collision_boxes: definition.collision_boxes,
                         selection: definition.selection,
+                        friction: definition.friction,
                         visual: Arc::new(definition.visual),
                         state_physics: Arc::default(),
                     });
@@ -457,6 +464,7 @@ struct Definition {
     collides: bool,
     collision_boxes: Option<Arc<[CustomBox]>>,
     selection: CustomSelection,
+    friction: Option<f32>,
     visual: CustomBlockVisuals,
 }
 
@@ -542,6 +550,8 @@ fn parse_definition(root: &Nbt) -> Option<Definition> {
     let (collision_boxes, collision_skips) = collision_components(collision_component);
     let selection =
         selection_component(components.and_then(|set| set.field("minecraft:selection_box")));
+    let (friction, friction_skips) =
+        friction_component(components.and_then(|set| set.field("minecraft:friction")));
     let mut permutation_skips = root
         .list("permutations")
         .len()
@@ -569,6 +579,7 @@ fn parse_definition(root: &Nbt) -> Option<Definition> {
         tags,
         skipped: tag_skips
             + collision_skips
+            + friction_skips
             + permutation_skips
             + usize::from(
                 components
@@ -579,6 +590,7 @@ fn parse_definition(root: &Nbt) -> Option<Definition> {
         collides,
         collision_boxes,
         selection,
+        friction,
         visual: CustomBlockVisuals {
             base: visual_components(components),
             permutations,
@@ -619,7 +631,9 @@ fn selection_component(component: Option<&Nbt>) -> CustomSelection {
 
 fn physical_components(components: Option<&Nbt>) -> (CustomPhysicalComponents, usize) {
     let collision = components.and_then(|set| set.field("minecraft:collision_box"));
-    let (boxes, skipped) = collision_components(collision);
+    let (boxes, collision_skips) = collision_components(collision);
+    let (friction, friction_skips) =
+        friction_component(components.and_then(|set| set.field("minecraft:friction")));
     (
         CustomPhysicalComponents {
             random_offset: components
@@ -633,14 +647,36 @@ fn physical_components(components: Option<&Nbt>) -> (CustomPhysicalComponents, u
                 .and_then(|set| set.field("minecraft:selection_box"))
                 .map(|component| selection_component(Some(component))),
             transformation: transformation_component(components),
+            friction,
         },
-        skipped
+        collision_skips
+            + friction_skips
             + usize::from(
                 components
                     .and_then(|set| set.field("minecraft:random_offset"))
                     .is_some_and(|value| random_offset_component(value).is_none()),
             ),
     )
+}
+
+/// Reads the network `value`, which defaults to zero when absent or mistyped; a value that
+/// leaves no positive friction is counted and ignored.
+fn friction_component(component: Option<&Nbt>) -> (Option<f32>, usize) {
+    match component {
+        None => (None, 0),
+        Some(compound @ Nbt::Compound(_)) => {
+            let value = match compound.field("value") {
+                Some(Nbt::Float(value)) => *value as f32,
+                _ => 0.0,
+            };
+            if value.is_finite() && value < 1.0 {
+                (Some(value), 0)
+            } else {
+                (None, 1)
+            }
+        }
+        Some(_) => (None, 1),
+    }
 }
 
 /// Decodes authored pixel ranges once, keeping absence distinct from an explicit zero component.

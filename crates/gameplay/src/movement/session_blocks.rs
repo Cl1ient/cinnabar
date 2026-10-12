@@ -20,10 +20,11 @@ impl PhysicsCollisionRegistries {
     ) -> SessionBlockRegistration {
         if hashed_ids {
             self.begin_session_custom_blocks(&protocol::CustomBlocks::default());
+            self.begin_session_hashed_custom_blocks(custom);
             SessionBlockRegistration {
                 custom_ids: None,
                 remap: assets::SequentialIdRemap::default(),
-                supported: self.begin_session_hashed_custom_blocks(custom).is_some(),
+                supported: true,
             }
         } else {
             let registered = self.begin_session_custom_blocks(custom);

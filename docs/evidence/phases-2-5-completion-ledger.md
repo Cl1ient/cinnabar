@@ -59,6 +59,10 @@ vehicle controls, queue retries and session/input boundaries. Authored seat fall
 special family placement, predictive exit placement and vehicle prediction remain
 incomplete; this work closes no movement parity or performance gate.
 
+Custom block surface friction follows each state's `minecraft:friction` component, with
+protocol, permutation and registry regressions in both identity spaces. No live witness
+exists; complete ordinary/special block classification remains open.
+
 | Field | Evidence |
 |---|---|
 | Owning plan/task | `docs/superpowers/plans/2026-07-17-phase-3-movement-controls-camera.md`, Tasks 8-14 |

@@ -262,6 +262,7 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
                 collides: true,
                 collision_boxes: None,
                 selection: Default::default(),
+                friction: None,
                 visual: Default::default(),
             }]
             .into(),
@@ -294,6 +295,7 @@ fn registry_items_named_after_custom_blocks_are_block_items() {
             collides: true,
             collision_boxes: None,
             selection: Default::default(),
+            friction: None,
             visual: Default::default(),
         }]
         .into(),

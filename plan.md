@@ -2856,10 +2856,9 @@ palettes now resolve exact current name/state identities; legacy state upgrades,
 default-state reconciliation and unknown-property handling remain incomplete. Block-entity id and
 block-actor-type checks are not emulated. StartGame custom blocks are known only
 when every custom name sorts after vanilla in sequential mode (Lifeboat's case);
-they collide as full cubes with stone's surface facts and render as diagnostic
-cubes until runtime pack application lands. Hashed-id sessions now register custom
-states by network hash (pack visuals via the runtime overlay; stone-surface collision
-provisional); sequential customs sorting among vanilla remap wire ids, custom collision
+they collide as full cubes and render as diagnostic cubes until runtime pack
+application lands. Hashed-id sessions now register custom states by network hash
+(pack visuals via the runtime overlay); sequential customs sorting among vanilla remap wire ids, custom collision
 uses `minecraft:collision_box`, and vanilla blocks retexture from a pack's terrain keys
 via the `.matkeys.json` sidecar (rebuild assets to emit it). Vanilla item icons override by
 short-name key (provisional). Custom-block selection boxes drive the pick ray. 2026-10-11 terrain
@@ -7912,8 +7911,10 @@ Movement descriptor coverage remains incomplete. The current physics carrier req
 movement disposition for every admitted state. Existing declared special rules retain their
 numerical behavior; unclassified states remain unresolved and keep the previous conservative
 numerical defaults. No ordinary movement classification is inferred from absence of a special
-rule. Complete native ordinary/special coverage, custom session movement components and
-all provisional rule values still require verification before this gate can close.
+rule. Custom blocks take surface friction from their base or last matching permutation's
+`minecraft:friction` value (one minus the value, default 0.6) with neutral speed and fluid
+facts, independent of any vanilla carrier record. Complete native ordinary/special coverage
+and all provisional rule values still require verification before this gate can close.
 Rig placement and target-rotation frames are compiled and carried with the selected
 rig. Their compatibility source preserves existing absolute-frame routes, while
 other identities remain explicitly unresolved and retain the body-yaw fallback.

@@ -217,6 +217,7 @@ fn different_custom_blocks_recompile_only_blocks_and_icons() {
                 collides: true,
                 collision_boxes: None,
                 selection: Default::default(),
+                friction: None,
                 visual: Default::default(),
             }]
             .into(),

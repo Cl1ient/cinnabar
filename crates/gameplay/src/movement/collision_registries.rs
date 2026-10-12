@@ -60,19 +60,8 @@ pub struct PhysicsCollisionRegistries {
     hashed_canonical_states: BTreeMap<u32, Arc<str>>,
     state_ids: BTreeMap<Arc<str>, BTreeMap<String, (u32, u32)>>,
     max_vanilla_sort_key: u64,
-    custom_block_physics: Option<CustomBlockPhysics>,
     /// Hashes this session added to `hashed`, dropped when the next session begins.
     session_hashes: Vec<u32>,
-}
-
-/// Provisional movement facts for server-defined blocks: stone's surface facts.
-#[derive(Debug, Clone, Copy)]
-struct CustomBlockPhysics {
-    friction: f64,
-    horizontal_speed: f64,
-    vertical_speed: f64,
-    flags: u8,
-    surface_response: u8,
 }
 
 #[derive(Debug, Error)]
@@ -167,7 +156,6 @@ impl PhysicsCollisionRegistries {
         let mut state_ids: BTreeMap<Arc<str>, BTreeMap<String, (u32, u32)>> = BTreeMap::new();
         let mut max_vanilla_sort_key = 0;
         let mut vanilla_runs: Vec<(u64, Arc<str>, u32)> = Vec::new();
-        let mut custom_block_physics = None;
         for record in records {
             let fact = physics
                 .by_sequential_id(record.sequential_id)
@@ -288,20 +276,6 @@ impl PhysicsCollisionRegistries {
                     registry.set_air_runtime_id(id);
                 }
             }
-            if shapes
-                .flags
-                .contains(assets::block_shapes::ShapeFlags::CUSTOM_SURFACE)
-            {
-                custom_block_physics.get_or_insert(CustomBlockPhysics {
-                    friction: f64::from(fact.friction_q1e8) * COLLISION_COORDINATE_SCALE,
-                    horizontal_speed: f64::from(fact.horizontal_speed_q1e8)
-                        * COLLISION_COORDINATE_SCALE,
-                    vertical_speed: f64::from(fact.vertical_speed_q1e8)
-                        * COLLISION_COORDINATE_SCALE,
-                    flags: fact.flags.bits(),
-                    surface_response: fact.surface_response as u8,
-                });
-            }
             if record.name.as_ref() != RESERVED_RECORD_NAME {
                 let key = protocol::block_name_sort_key(&record.name);
                 max_vanilla_sort_key = max_vanilla_sort_key.max(key);
@@ -334,7 +308,6 @@ impl PhysicsCollisionRegistries {
             hashed_canonical_states,
             state_ids,
             max_vanilla_sort_key,
-            custom_block_physics,
             session_hashes: Vec::new(),
         })
     }
@@ -354,7 +327,6 @@ impl PhysicsCollisionRegistries {
         if custom.blocks.is_empty() {
             return Some((first..first, vanilla_remap));
         }
-        let physics = self.custom_block_physics?;
         let mut next = first;
         let mut runs = Vec::new();
         for block in custom.blocks.iter() {
@@ -395,16 +367,7 @@ impl PhysicsCollisionRegistries {
                 );
                 let boxes = custom_block_boxes(&effective);
                 self.sequential
-                    .register_primitives(
-                        next,
-                        boxes,
-                        physics.friction,
-                        physics.horizontal_speed,
-                        physics.vertical_speed,
-                        0.0,
-                        physics.flags,
-                        physics.surface_response,
-                    )
+                    .register_with_friction(next, boxes, custom_block_friction(&effective))
                     .ok()?;
                 apply_selection(
                     &mut self.sequential,
@@ -423,19 +386,12 @@ impl PhysicsCollisionRegistries {
 
     /// Registers this session's custom block states under their network hashes
     /// and returns how many were added; a hash vanilla or an earlier state owns
-    /// is skipped. Returns `None` when the carrier lacks stone physics to borrow.
-    pub fn begin_session_hashed_custom_blocks(
-        &mut self,
-        custom: &protocol::CustomBlocks,
-    ) -> Option<usize> {
+    /// is skipped.
+    pub fn begin_session_hashed_custom_blocks(&mut self, custom: &protocol::CustomBlocks) -> usize {
         for hash in self.session_hashes.drain(..) {
             self.hashed.remove_runtime_id(hash);
             self.hashed_interaction_blocks.remove(&hash);
         }
-        if custom.blocks.is_empty() {
-            return Some(0);
-        }
-        let physics = self.custom_block_physics?;
         for block in custom.blocks.iter() {
             for (index, state) in block.hashed_states().into_iter().enumerate() {
                 if self.hashed.contains_runtime_id(state.hash) {
@@ -445,16 +401,7 @@ impl PhysicsCollisionRegistries {
                 let boxes = custom_block_boxes(&effective);
                 if self
                     .hashed
-                    .register_primitives(
-                        state.hash,
-                        boxes,
-                        physics.friction,
-                        physics.horizontal_speed,
-                        physics.vertical_speed,
-                        0.0,
-                        physics.flags,
-                        physics.surface_response,
-                    )
+                    .register_with_friction(state.hash, boxes, custom_block_friction(&effective))
                     .is_ok()
                 {
                     self.hashed_interaction_blocks.insert(
@@ -481,7 +428,7 @@ impl PhysicsCollisionRegistries {
                 }
             }
         }
-        Some(self.session_hashes.len())
+        self.session_hashes.len()
     }
 
     pub fn block_identifier(&self, mode: assets::NetworkIdMode, runtime_id: u32) -> Option<&str> {
@@ -586,6 +533,16 @@ impl PhysicsCollisionRegistries {
     pub const fn breg_sha256(&self) -> [u8; 32] {
         self.breg_sha256
     }
+}
+
+/// Surface friction of a custom state: one minus its `minecraft:friction` value, else the
+/// default block friction. Speed factors and fluid facts stay neutral.
+fn custom_block_friction(block: &protocol::CustomBlockPhysics) -> f64 {
+    block
+        .friction
+        .map_or(sim::DEFAULT_SURFACE_FRICTION, |value| {
+            f64::from(1.0 - value)
+        })
 }
 
 /// Yields every authored primitive, or the full-cube default, when collision is enabled.

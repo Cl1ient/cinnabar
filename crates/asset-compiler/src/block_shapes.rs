@@ -73,10 +73,6 @@ pub fn compile(record: &RegistryRecord, input: &BlockPhysicsRecord) -> BlockPhys
     );
     flags.set(ShapeFlags::AIR, record.name.as_ref() == "minecraft:air");
     flags.set(
-        ShapeFlags::CUSTOM_SURFACE,
-        record.name.as_ref() == "minecraft:stone",
-    );
-    flags.set(
         ShapeFlags::HIDE_OVERLAY,
         record.name.as_ref() == "minecraft:end_gateway",
     );

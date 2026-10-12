@@ -75,7 +75,7 @@ impl Layer {
 impl SpriteAtlas {
     /// Shelf-packs every valid sprite, tallest first.
     pub(super) fn pack(sprites: &[IconSprite]) -> Self {
-        let policy = assets::texture_policy::device_policy();
+        let policy = assets::texture::policy::device_policy();
         let valid = |sprite: &IconSprite| {
             sprite.width != 0
                 && sprite.height != 0
@@ -102,7 +102,7 @@ impl SpriteAtlas {
             .next_power_of_two();
         let layer_bytes = policy.page_bytes(u32::from(side), u32::from(side));
         let max_layers = layer_bytes.map_or(0, |bytes| {
-            assets::texture_policy::MAX_SUBSCRIBER_BYTES / bytes
+            assets::texture::policy::MAX_SUBSCRIBER_BYTES / bytes
         });
         let mut layers = if max_layers == 0 {
             Vec::new()

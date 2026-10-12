@@ -100,12 +100,12 @@ pub(super) fn append(
         if let Some(texture) = pack_runtime::pack_textures::decode_pack_texture_with_policy(
             view,
             override_path.map_or(stem, String::as_str),
-            assets::texture_policy::device_policy(),
+            assets::texture::policy::device_policy(),
             true,
         ) {
             let mut replacement = icon(identifier.clone(), first_frame(texture));
             if replacement.rgba8.len()
-                > assets::texture_policy::MAX_SUBSCRIBER_BYTES.saturating_sub(*retained_bytes)
+                > assets::texture::policy::MAX_SUBSCRIBER_BYTES.saturating_sub(*retained_bytes)
             {
                 continue;
             }

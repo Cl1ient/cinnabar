@@ -65,7 +65,7 @@ fn potted_block_artwork_keeps_its_resolution_and_alpha() {
                 height: 16,
                 rgba8: Arc::from([255; 16 * 16 * 4])
             })],
-            assets::texture_policy::device_policy()
+            assets::texture::policy::device_policy()
         ),
         MIN_ITEM_ATLAS_SIDE
     );
@@ -84,7 +84,7 @@ fn hd_dropped_sprites_keep_their_source_pixels_and_physical_extent() {
         rgba8: Arc::from(pixels.clone()),
     });
     assert_eq!(
-        atlas_side(&[model.clone()], assets::texture_policy::device_policy()),
+        atlas_side(&[model.clone()], assets::texture::policy::device_policy()),
         width
     );
     let mut atlas = vec![255; (width * width * 4) as usize];
@@ -101,6 +101,43 @@ fn hd_dropped_sprites_keep_their_source_pixels_and_physical_extent() {
         world.resource::<ItemGpu>()._atlas.as_ref().unwrap().width(),
         width
     );
+}
+
+#[test]
+fn unaffordable_wide_sprite_does_not_hide_unrelated_small_items() {
+    let large = render_model::DroppedItemSprite {
+        width: 3072,
+        height: 16,
+        rgba8: vec![255; 3072 * 16 * 4].into(),
+    };
+    let small = DroppedItemModel::Sprite(render_model::DroppedItemSprite {
+        width: 16,
+        height: 16,
+        rgba8: vec![73; 16 * 16 * 4].into(),
+    });
+    for oversized in [
+        DroppedItemModel::Sprite(large.clone()),
+        DroppedItemModel::NativeSprite(large),
+    ] {
+        for (oversized_index, models) in [
+            [oversized.clone(), small.clone()],
+            [small.clone(), oversized.clone()],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let small_index = 1 - oversized_index;
+            let mut world = item_world();
+            world
+                .resource_mut::<DroppedItemScene>()
+                .publish(1, Arc::from(models), &[], &[], 1.0);
+            world.run_system_once(prepare_items).unwrap();
+            let gpu = world.resource::<ItemGpu>();
+            assert_eq!(gpu._atlas.as_ref().unwrap().width(), MIN_ITEM_ATLAS_SIDE);
+            assert!(!gpu.ranges[small_index].vertices.is_empty());
+            assert!(gpu.ranges[oversized_index].vertices.is_empty());
+        }
+    }
 }
 
 #[test]

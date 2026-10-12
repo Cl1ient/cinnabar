@@ -229,7 +229,7 @@ impl ModelCache {
         );
         let pixel_bytes = pixel_cost(&model);
         if pixel_bytes
-            > assets::texture_policy::MAX_SUBSCRIBER_BYTES.saturating_sub(self.pixel_bytes)
+            > assets::texture::policy::MAX_SUBSCRIBER_BYTES.saturating_sub(self.pixel_bytes)
         {
             let reclaimable_bytes: usize = self
                 .reclaimable
@@ -242,7 +242,7 @@ impl ModelCache {
                 .map(|&slot| pixel_cost(&self.models[slot]))
                 .sum();
             if pixel_bytes
-                > assets::texture_policy::MAX_SUBSCRIBER_BYTES
+                > assets::texture::policy::MAX_SUBSCRIBER_BYTES
                     .saturating_sub(self.pixel_bytes - reclaimable_bytes)
             {
                 return None;
@@ -251,7 +251,7 @@ impl ModelCache {
         self.rejected.remove(&key);
         while self.layers + cost >= MAX_ITEM_LAYERS
             || pixel_bytes
-                > assets::texture_policy::MAX_SUBSCRIBER_BYTES.saturating_sub(self.pixel_bytes)
+                > assets::texture::policy::MAX_SUBSCRIBER_BYTES.saturating_sub(self.pixel_bytes)
         {
             let slot = self
                 .reclaimable

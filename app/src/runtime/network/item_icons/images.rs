@@ -1,6 +1,6 @@
 //! Bounded full-resolution item frame decoding and icon construction.
 
-use assets::texture_policy::device_policy;
+use assets::texture::policy::device_policy;
 use client_ui::ui_runtime::presentation::SessionIcon;
 use pack_runtime::pack_textures::{DecodedTexture, decode_pack_texture_with_policy};
 use resource_pack::LayeredPackView;

@@ -6,8 +6,6 @@ use crate::runtime::movement_evidence::{
 };
 use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
-use crate::runtime::shutdown::finish_acceptance_run;
-#[cfg(feature = "acceptance")]
 use acceptance::model_witness::poll_model_witness_request;
 use anyhow::{Context, Result, bail};
 use assets::carriers::startup::{LoadedAssetKind, select_asset_path_from_environment};
@@ -139,6 +137,7 @@ const PHYSICS_REGISTRY_GENERATION_GUIDANCE: &str =
 
 mod authority;
 mod executor;
+pub(crate) mod session_systems;
 pub(crate) use authority::{configure_client_authority_systems, configure_client_frame_schedule};
 
 /// Registers the production actor observation and publication boundaries.
@@ -304,33 +303,6 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
             .after(advance_local_physics)
             .in_set(ClientFrameSet::Physics),
     );
-}
-
-pub(crate) fn configure_acceptance_finish_system(app: &mut App) {
-    #[cfg(feature = "acceptance")]
-    app.add_systems(
-        Update,
-        finish_acceptance_run
-            .after(ClientFrameSet::NetworkSend)
-            .after(ClientFrameSet::UiPublication)
-            .after(record_metrics)
-            .after(recover_session_failure),
-    );
-    app
-        // The launcher gets first refusal on a fatal session error, so a failed
-        // join returns to the menu instead of ending the process. This has to sit
-        // after the failure is recorded (network drain) and before both systems
-        // that act on it. The transfer follower runs first so a server-directed
-        // move is classified as a replacement handoff, not a failure.
-        .add_systems(
-            Update,
-            (follow_server_transfer, recover_session_failure)
-                .chain()
-                .after(receive_network_events)
-                .after(ClientFrameSet::NetworkSend)
-                .after(ClientFrameSet::UiPublication)
-                .before(exit_on_fatal_runtime_error),
-        );
 }
 
 pub(crate) fn configure_client_runtime_frame_systems(app: &mut App) {
@@ -961,7 +933,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
             crate::shell_adapters::publish_presence_observation
                 .before(client_state::ShellFrameSet::Presence),
         );
-    configure_acceptance_finish_system(&mut app);
+    session_systems::configure_session_failure_systems(&mut app);
 
     #[cfg(feature = "enhanced-diagnostics")]
     crate::enhanced_diagnostics::install(&mut app, diagnostic_budget);

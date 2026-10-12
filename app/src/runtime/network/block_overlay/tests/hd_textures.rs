@@ -147,7 +147,7 @@ fn over_budget_route_keeps_other_terrain_at_full_quality() {
     assert_eq!(page.mips[0].size, 512);
     assert!(
         page.mips.iter().map(|mip| mip.rgba8.len()).sum::<usize>()
-            <= assets::texture_policy::MAX_SUBSCRIBER_BYTES
+            <= assets::texture::policy::MAX_SUBSCRIBER_BYTES
     );
     assert!(compiled.gaps.missing_textures > 0);
     assert_eq!(compiled.overlay.texture_source_sizes[1], [512; 2]);

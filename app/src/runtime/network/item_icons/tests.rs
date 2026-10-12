@@ -441,7 +441,7 @@ fn review_variant_decoding_respects_remaining_capacity_and_metadata_indices() {
         &paths,
         "variants",
         1,
-        assets::texture_policy::MAX_SUBSCRIBER_BYTES,
+        assets::texture::policy::MAX_SUBSCRIBER_BYTES,
     )
     .unwrap();
     assert_eq!(

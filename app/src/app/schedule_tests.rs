@@ -43,7 +43,7 @@ fn production_update_schedule_initializes_without_dependency_cycles() {
     app.add_plugins(FlyCameraPlugin::default());
     configure_client_production_frame_systems(&mut app);
     configure_client_runtime_frame_systems(&mut app);
-    configure_acceptance_finish_system(&mut app);
+    session_systems::configure_session_failure_systems(&mut app);
 
     let mut schedules = app
         .world_mut()

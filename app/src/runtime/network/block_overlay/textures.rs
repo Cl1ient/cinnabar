@@ -114,7 +114,7 @@ impl<'a> TextureCatalog<'a> {
         let mut texture = decode_pack_texture_with_policy(
             self.view,
             path,
-            assets::texture_policy::device_policy(),
+            assets::texture::policy::device_policy(),
             true,
         );
         if let Some(tint) = self.tints.get(key)

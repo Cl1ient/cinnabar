@@ -71,7 +71,7 @@ pub(super) fn prepare_particles(
             pack_runtime::pack_textures::decode_pack_texture_with_policy(
                 view,
                 path,
-                assets::texture_policy::device_policy(),
+                assets::texture::policy::device_policy(),
                 false,
             )
         },
@@ -156,16 +156,23 @@ fn prepare_textures(
             if next_bytes + effect_bytes > assets::MAX_PARTICLE_CARRIER_BYTES {
                 continue;
             }
+            let replacement = ParticleTexture {
+                path: path.into(),
+                width: texture.width,
+                height: texture.height,
+                rgba8: Arc::from(texture.rgba8),
+            };
+            if !::particles::particle_textures_fit(
+                textures
+                    .values()
+                    .filter(|texture| texture.path.as_ref() != path)
+                    .chain(std::iter::once(&replacement)),
+                assets::texture::policy::device_policy(),
+            ) {
+                continue;
+            }
             texture_bytes = next_bytes;
-            textures.insert(
-                path.into(),
-                ParticleTexture {
-                    path: path.into(),
-                    width: texture.width,
-                    height: texture.height,
-                    rgba8: Arc::from(texture.rgba8),
-                },
-            );
+            textures.insert(path.into(), replacement);
         }
     }
 }
@@ -195,12 +202,26 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        for (width, height, admitted) in [(2048, 2048, true), (2048, 4096, false)] {
+        for (width, height, admitted) in
+            [(2048, 2048, true), (2048, 4096, false), (1024, 4096, false)]
+        {
             let image = image::RgbaImage::from_pixel(width, height, image::Rgba([91, 73, 57, 255]));
             let mut png = std::io::Cursor::new(Vec::new());
             image.write_to(&mut png, image::ImageFormat::Png).unwrap();
             let view =
                 super::super::tests::view(&[("textures/particle/particles.png", png.get_ref())]);
+            if (width, height) == (1024, 4096) {
+                assert!(
+                    pack_runtime::pack_textures::decode_pack_texture_with_policy(
+                        &view,
+                        path,
+                        assets::texture::policy::device_policy(),
+                        false,
+                    )
+                    .is_some(),
+                    "the fallback case must pass source-image admission"
+                );
+            }
             let system = prepare_particles(&view, Some(&base));
             let placement = system.atlas().placement(path).unwrap();
             assert_eq!(

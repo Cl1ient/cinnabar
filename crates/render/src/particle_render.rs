@@ -157,7 +157,7 @@ fn prepare_particle_resources(
 ) {
     if let Some(base) = &frame.base
         && gpu.base.as_ref().is_none_or(|old| !Arc::ptr_eq(old, base))
-        && assets::texture_policy::TexturePolicy::for_device(
+        && assets::texture::policy::TexturePolicy::for_device(
             render_device.limits().max_texture_dimension_2d,
         )
         .page_bytes(frame.atlas_side, frame.atlas_side)

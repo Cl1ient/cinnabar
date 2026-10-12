@@ -14,7 +14,7 @@ pub(crate) use vanilla::{set_vanilla_item_paths, vanilla_item_paths_installed};
 
 use resource_pack::LayeredPackView;
 
-use assets::texture_policy::MAX_SUBSCRIBER_BYTES;
+use assets::texture::policy::MAX_SUBSCRIBER_BYTES;
 use client_ui::ui_runtime::presentation::{SessionIcon, SessionIcons};
 use render_model::equipment::blocks::overlay_sheet;
 

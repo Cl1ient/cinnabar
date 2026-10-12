@@ -23,7 +23,7 @@ pub fn extruded_sprite_vertices(
         return None;
     }
     let max_vertices = crate::MAX_ACTOR_RIG_VERTICES
-        .min(assets::texture_policy::MAX_SUBSCRIBER_BYTES / std::mem::size_of::<ActorRigVertex>());
+        .min(assets::texture::policy::MAX_SUBSCRIBER_BYTES / std::mem::size_of::<ActorRigVertex>());
     let opaque = |column: isize, row: isize| {
         column >= 0
             && row >= 0

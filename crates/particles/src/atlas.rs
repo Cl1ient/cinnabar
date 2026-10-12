@@ -91,9 +91,8 @@ impl ParticleAtlas {
     /// Packs every texture in the carrier; oversized ones that no longer fit are skipped.
     #[must_use]
     pub fn from_assets(assets: &RuntimeParticleAssets) -> Self {
-        let mut order: Vec<_> = assets.textures().iter().collect();
-        order.sort_by(|a, b| (b.height, b.width, &a.path).cmp(&(a.height, a.width, &b.path)));
-        let policy = assets::texture_policy::device_policy();
+        let order = ordered_textures(assets.textures());
+        let policy = assets::texture::policy::device_policy();
         let max_side = policy.max_side();
         let mut side = ATLAS_SIDE;
         while !static_textures_fit(&order, side) {
@@ -303,12 +302,35 @@ impl ParticleAtlas {
     }
 }
 
+/// Checks the complete static layout before optional artwork replaces retained sources.
+pub fn particle_textures_fit<'a>(
+    textures: impl IntoIterator<Item = &'a assets::ParticleTexture>,
+    policy: assets::texture::policy::TexturePolicy,
+) -> bool {
+    let Some(exponent) = policy.max_side().checked_ilog2() else {
+        return false;
+    };
+    let side = 1 << exponent;
+    side >= ATLAS_SIDE
+        && policy.page_bytes(side, side).is_some()
+        && static_textures_fit(&ordered_textures(textures), side)
+}
+
+/// Keeps planning and actual packing in the same deterministic shelf order.
+fn ordered_textures<'a>(
+    textures: impl IntoIterator<Item = &'a assets::ParticleTexture>,
+) -> Vec<&'a assets::ParticleTexture> {
+    let mut order: Vec<_> = textures.into_iter().collect();
+    order.sort_by(|a, b| (b.height, b.width, &a.path).cmp(&(a.height, a.width, &b.path)));
+    order
+}
+
 /// Checks a shelf layout without allocating a larger atlas or copying source pixels.
 fn static_textures_fit(textures: &[&assets::ParticleTexture], side: u32) -> bool {
     let (mut x, mut y, mut shelf) = (2u32, 0u32, 1u32);
     for texture in textures {
         let (width, height) = (texture.width, texture.height);
-        if width > side || height > side - DYNAMIC_ROWS {
+        if width == 0 || height == 0 || width > side || height > side - DYNAMIC_ROWS {
             return false;
         }
         if x + width + 1 > side {
@@ -328,6 +350,27 @@ fn static_textures_fit(textures: &[&assets::ParticleTexture], side: u32) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn static_admission_accounts_for_reserved_rows_and_combined_shelves() {
+        let policy = assets::texture::policy::TexturePolicy::for_device(4096);
+        let pixels: Arc<[u8]> = vec![255; 2049 * 2000 * 4].into();
+        let textures = ["textures/a", "textures/b"].map(|path| assets::ParticleTexture {
+            path: path.into(),
+            width: 2049,
+            height: 2000,
+            rgba8: Arc::clone(&pixels),
+        });
+        assert!(particle_textures_fit(&textures[..1], policy));
+        assert!(!particle_textures_fit(&textures, policy));
+        let carrier = assets::encode_particle_catalog([1; 32], &textures[..1], &[]).unwrap();
+        let assets = RuntimeParticleAssets::decode(&carrier).unwrap();
+        assert!(
+            ParticleAtlas::from_assets(&assets)
+                .placement("textures/a")
+                .is_some()
+        );
+    }
 
     #[test]
     fn tiles_are_cached_by_key_and_recycled_when_full() {
@@ -409,6 +452,6 @@ mod tests {
         }
         let tile = atlas.tile(1, 16, &[9; 16 * 16 * 4]).unwrap();
         assert!(tile.y >= placement.y + placement.height);
-        assert!(atlas.base().len() <= assets::texture_policy::MAX_SUBSCRIBER_BYTES);
+        assert!(atlas.base().len() <= assets::texture::policy::MAX_SUBSCRIBER_BYTES);
     }
 }

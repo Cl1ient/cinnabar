@@ -12,7 +12,7 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 
 #[test]
 fn large_strips_and_particle_atlases_retain_every_source_pixel() {
-    let policy = TexturePolicy::for_device(assets::texture_policy::MAX_TEXTURE_SIDE);
+    let policy = TexturePolicy::for_device(assets::texture::policy::MAX_TEXTURE_SIDE);
     for (width, height, strip) in [
         (64, 2048, true),
         (128, 4096, true),
@@ -38,7 +38,7 @@ fn large_strips_and_particle_atlases_retain_every_source_pixel() {
 
 #[test]
 fn malformed_over_budget_and_device_oversized_images_are_rejected() {
-    let policy = TexturePolicy::for_device(assets::texture_policy::MAX_TEXTURE_SIDE);
+    let policy = TexturePolicy::for_device(assets::texture::policy::MAX_TEXTURE_SIDE);
     assert!(decode_image_with_policy(b"broken", ImageFormat::Png, policy, true).is_none());
     assert!(decode_image_with_policy(&png(2048, 4096), ImageFormat::Png, policy, true).is_none());
     assert!(decode_image_with_policy(&png(64, 8385), ImageFormat::Png, policy, true).is_none());

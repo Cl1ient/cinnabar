@@ -109,7 +109,8 @@ fn block_cube(assets: &RuntimeAssets, mode: NetworkIdMode, id: u32) -> Option<Dr
             return None;
         }
         let bytes = (size * size * 4) as usize;
-        if bytes.checked_mul(BlockFace::ALL.len())? > assets::texture_policy::MAX_SUBSCRIBER_BYTES {
+        if bytes.checked_mul(BlockFace::ALL.len())? > assets::texture::policy::MAX_SUBSCRIBER_BYTES
+        {
             return None;
         }
         let start = material.texture.layer() as usize * bytes;
@@ -201,7 +202,7 @@ fn template_model(
                 }
                 let bytes = (size * size * 4) as usize;
                 pixel_bytes += bytes;
-                if pixel_bytes > assets::texture_policy::MAX_SUBSCRIBER_BYTES {
+                if pixel_bytes > assets::texture::policy::MAX_SUBSCRIBER_BYTES {
                     return None;
                 }
                 let first = material.texture.layer() as usize * bytes;
@@ -283,7 +284,7 @@ impl DroppedItemPublisher<'_, '_> {
                 let pixels = icons.item_sprite(
                     identifier,
                     metadata,
-                    assets::texture_policy::device_policy()
+                    assets::texture::policy::device_policy()
                         .max_side()
                         .min(MAX_ITEM_SPRITE_SIDE),
                 )?;

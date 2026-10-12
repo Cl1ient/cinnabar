@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use assets::texture_policy::{TexturePolicy, device_policy};
+use assets::texture::policy::{TexturePolicy, device_policy};
 use render_model::UiTexturePage;
 use ui::UiMesh;
 

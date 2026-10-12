@@ -1,6 +1,6 @@
 //! Bounded source image and texture catalog preparation for pack subscribers.
 
-use assets::texture_policy::{MAX_DECODE_BYTES, TexturePolicy};
+use assets::texture::policy::{MAX_DECODE_BYTES, TexturePolicy};
 use image::{ImageFormat, ImageReader, Limits};
 use pack_json::normalize_jsonc;
 use resource_pack::LayeredPackView;

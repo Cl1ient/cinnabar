@@ -31,7 +31,7 @@ use self::{
     geometry_inputs::geometry_catalog,
     textures::{TextureCatalog, admit_static_rectangle, flipbook_frames, source_mip_chain},
 };
-use assets::texture_policy::{MAX_SUBSCRIBER_BYTES, TexturePolicy, device_policy};
+use assets::texture::policy::{MAX_SUBSCRIBER_BYTES, TexturePolicy, device_policy};
 use pack_runtime::pack_textures::DecodedTexture;
 
 const FULL_BLOCK: &str = "minecraft:geometry.full_block";

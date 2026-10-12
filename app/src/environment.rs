@@ -79,10 +79,7 @@ pub(crate) struct WorldClock {
 
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by the upcoming Phase 2.7 atmosphere systems"
-    )
+    expect(dead_code, reason = "read by the upcoming atmosphere systems")
 )]
 impl WorldClock {
     #[must_use]
@@ -121,10 +118,7 @@ pub(crate) struct WeatherState {
 
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by the upcoming Phase 2.7 atmosphere systems"
-    )
+    expect(dead_code, reason = "read by the upcoming atmosphere systems")
 )]
 impl WeatherState {
     #[must_use]

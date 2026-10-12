@@ -34,6 +34,9 @@ pub const IMAGE_EXTENSIONS: [&str; 4] = [".png", ".tga", ".jpg", ".jpeg"];
 /// vanilla pack.
 pub const VANILLA_IN_PACKAGE: &str = "resource_packs/vanilla/";
 
+/// Client-shipped images by extensionless pack path; server packs shadow them.
+pub type BuiltinImages = &'static [(&'static str, &'static [u8])];
+
 /// Side of a dynamic UI page, which also bounds one server texture.
 const PAGE_SIDE: u32 = 256;
 const GUTTER: u32 = 1;
@@ -281,6 +284,7 @@ pub struct ServerAtlas {
     vanilla: Option<Arc<dyn LocalPack>>,
     /// Referenced encoded images retained beside the carrier's UI JSON.
     carrier: Option<Arc<assets::RuntimeUiAssets>>,
+    builtin: BuiltinImages,
     remote: Option<Arc<dyn RemoteSource>>,
     resident: BTreeMap<String, ServerTexture>,
     pages: Vec<Page>,
@@ -467,6 +471,12 @@ impl ServerAtlas {
 
     pub fn with_carrier(mut self, carrier: Option<Arc<assets::RuntimeUiAssets>>) -> Self {
         self.carrier = carrier;
+        self
+    }
+
+    /// Serves `images` below the server pack and above the carrier and local pack.
+    pub fn with_builtin_images(mut self, images: BuiltinImages) -> Self {
+        self.builtin = images;
         self
     }
 

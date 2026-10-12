@@ -1,4 +1,4 @@
-function ConvertTo-Phase3Target {
+function ConvertTo-EvidenceTarget {
     param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('Bds', 'Lunar', 'Zeqa', 'Lbsg', 'Zeno', 'Venity')]
@@ -14,7 +14,7 @@ function ConvertTo-Phase3Target {
     }
 }
 
-function ConvertTo-Phase3Scenario {
+function ConvertTo-MovementScenario {
     param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('CandidatePhysics', 'FastTransferWitness', 'FreeCameraSilence')]
@@ -27,7 +27,7 @@ function ConvertTo-Phase3Scenario {
     }
 }
 
-function Get-Phase3TargetEndpoint {
+function Get-EvidenceTargetEndpoint {
     param(
         [Parameter(Mandatory = $true)][ValidateSet('Bds', 'Lunar', 'Zeqa', 'Lbsg', 'Zeno', 'Venity')][string]$Target,
         [string]$BdsEndpoint = '127.0.0.1:19132'
@@ -42,7 +42,7 @@ function Get-Phase3TargetEndpoint {
     }
 }
 
-function Resolve-Phase3CoreExtraArguments {
+function Resolve-MovementCoreExtraArguments {
     # Validates the optional bounded bedrock-core argument passthrough before any
     # build or run. Each element must be either a lowercase long-form flag token
     # matching '^-[a-z][a-z0-9-]*$' or a value token matching
@@ -55,28 +55,28 @@ function Resolve-Phase3CoreExtraArguments {
 
     if ($null -eq $CoreExtraArgs) { return @() }
     if (@($CoreExtraArgs).Count -gt 16) {
-        throw 'Phase 3 core extra arguments exceed the 16-token bound'
+        throw 'movement core extra arguments exceed the 16-token bound'
     }
     foreach ($token in @($CoreExtraArgs)) {
         if ([string]::IsNullOrEmpty($token)) {
-            throw 'Phase 3 core extra arguments contain an empty token'
+            throw 'movement core extra arguments contain an empty token'
         }
         if ($token.Length -gt 256) {
-            throw 'Phase 3 core extra argument exceeds the 256-character bound'
+            throw 'movement core extra argument exceeds the 256-character bound'
         }
         if ($token.StartsWith('-')) {
             if ($token -cnotmatch '^-[a-z][a-z0-9-]*$') {
-                throw "Phase 3 core extra argument flag token is not allowlisted: $token"
+                throw "movement core extra argument flag token is not allowlisted: $token"
             }
         }
         elseif ($token -cnotmatch '^[A-Za-z0-9._/:=-]+$') {
-            throw "Phase 3 core extra argument value token is not allowlisted: $token"
+            throw "movement core extra argument value token is not allowlisted: $token"
         }
     }
     return [string[]]$CoreExtraArgs
 }
 
-function New-Phase3LaunchPlan {
+function New-MovementLaunchPlan {
     param(
         [Parameter(Mandatory = $true)][ValidateSet('Bds', 'Lunar', 'Zeqa', 'Lbsg', 'Zeno', 'Venity')][string]$Target,
         [Parameter(Mandatory = $true)][string]$Endpoint,
@@ -90,16 +90,16 @@ function New-Phase3LaunchPlan {
         [string]$Assets,
         [string[]]$CoreExtraArgs = @()
     )
-    $Target = ConvertTo-Phase3Target -Target $Target
-    $Scenario = ConvertTo-Phase3Scenario -Scenario $Scenario
-    if ($RunId -cnotmatch '^[0-9a-f]{32}$') { throw 'Phase 3 run ID must be exact lowercase 32-hex' }
-    if ($Endpoint -cnotmatch '^[^\s:]+:[1-9][0-9]{0,4}$') { throw 'Phase 3 endpoint is invalid' }
+    $Target = ConvertTo-EvidenceTarget -Target $Target
+    $Scenario = ConvertTo-MovementScenario -Scenario $Scenario
+    if ($RunId -cnotmatch '^[0-9a-f]{32}$') { throw 'movement run ID must be exact lowercase 32-hex' }
+    if ($Endpoint -cnotmatch '^[^\s:]+:[1-9][0-9]{0,4}$') { throw 'movement endpoint is invalid' }
     $remote = $Target -ine 'Bds'
     if ($remote -and [string]::IsNullOrWhiteSpace($AuthCache)) {
-        throw "Phase 3 $Target requires an authenticated -AuthCache path; offline remote evidence is forbidden"
+        throw "movement acceptance on $Target requires an authenticated -AuthCache path; offline remote evidence is forbidden"
     }
     if ($remote -and $DurationSeconds -lt 300) {
-        throw "Phase 3 $Target requires at least 300 seconds of live evidence"
+        throw "movement acceptance on $Target requires at least 300 seconds of live evidence"
     }
     if ($Scenario -ieq 'FastTransferWitness') {
         if ($Target -ine 'Lbsg' -or $Endpoint -cne 'play.lbsg.net:19132') {
@@ -112,7 +112,7 @@ function New-Phase3LaunchPlan {
             throw 'FastTransferWitness requires the compiled vanilla asset carrier'
         }
     }
-    $coreExtraArguments = @(Resolve-Phase3CoreExtraArguments -CoreExtraArgs $CoreExtraArgs)
+    $coreExtraArguments = @(Resolve-MovementCoreExtraArguments -CoreExtraArgs $CoreExtraArgs)
     $coreArguments = @('-socket-dir', $SocketDirectory, '-upstream', $Endpoint)
     if ($remote) { $coreArguments += @('-auth-cache', $AuthCache) }
     if ($coreExtraArguments.Count -gt 0) { $coreArguments += $coreExtraArguments }
@@ -120,9 +120,9 @@ function New-Phase3LaunchPlan {
         '--socket-dir', $SocketDirectory,
         '--acceptance-seconds', $DurationSeconds.ToString([Globalization.CultureInfo]::InvariantCulture),
         '--metrics-out', $MetricsPath,
-        '--phase3-evidence-target', $Target
+        '--movement-evidence-target', $Target
     )
-    if ($Scenario -ieq 'CandidatePhysics' -or $Scenario -ieq 'FastTransferWitness') { $appArguments += '--phase3-candidate-physics' }
+    if ($Scenario -ieq 'CandidatePhysics' -or $Scenario -ieq 'FastTransferWitness') { $appArguments += '--movement-candidate-physics' }
     elseif ($Scenario -ieq 'FreeCameraSilence') { $appArguments += '--auto-fly' }
     if (-not [string]::IsNullOrWhiteSpace($Assets)) { $appArguments += @('--assets', $Assets) }
     return [pscustomobject][ordered]@{
@@ -136,28 +136,28 @@ function New-Phase3LaunchPlan {
     }
 }
 
-function Assert-Phase3CleanTrackedSource {
+function Assert-MovementCleanTrackedSource {
     param([Parameter(Mandatory = $true)][string]$ProjectRoot)
     $lines = @(& git -C $ProjectRoot status --porcelain --untracked-files=normal)
-    if ($LASTEXITCODE -ne 0) { throw 'failed to inspect Phase 3 source provenance' }
+    if ($LASTEXITCODE -ne 0) { throw 'failed to inspect movement source provenance' }
     if ($lines.Count -ne 0) {
-        throw 'Phase 3 candidate evidence refuses a dirty source tree; commit reviewed changes first'
+        throw 'movement candidate evidence refuses a dirty source tree; commit reviewed changes first'
     }
 }
 
-function Assert-Phase3ExactCleanHead {
+function Assert-MovementExactCleanHead {
     param(
         [Parameter(Mandatory = $true)][string]$ProjectRoot,
         [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedCommit
     )
-    Assert-Phase3CleanTrackedSource -ProjectRoot $ProjectRoot
+    Assert-MovementCleanTrackedSource -ProjectRoot $ProjectRoot
     $actual = (& git -C $ProjectRoot rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or $actual -cne $ExpectedCommit) {
-        throw "Phase 3 source HEAD changed: expected=$ExpectedCommit actual=$actual"
+        throw "movement source HEAD changed: expected=$ExpectedCommit actual=$actual"
     }
 }
 
-function Resolve-Phase3ContainedPath {
+function Resolve-MovementContainedPath {
     param(
         [Parameter(Mandatory = $true)][string]$ProjectRoot,
         [Parameter(Mandatory = $true)][string]$Path,
@@ -179,7 +179,7 @@ function Resolve-Phase3ContainedPath {
     $prefix = $scopeRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) +
         [IO.Path]::DirectorySeparatorChar
     if (-not $candidate.StartsWith($prefix, $comparison)) {
-        throw "Phase 3 $Scope path escapes its contained root: $candidate"
+        throw "movement $Scope path escapes its contained root: $candidate"
     }
     $scopeCursor = [IO.Path]::GetFullPath($ProjectRoot)
     $scopePaths = [Collections.Generic.List[string]]::new()
@@ -192,7 +192,7 @@ function Resolve-Phase3ContainedPath {
         if (Test-Path -LiteralPath $existingScopePath) {
             $scopeItem = Get-Item -LiteralPath $existingScopePath -Force
             if (($scopeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "Phase 3 contained scope crosses a reparse point: $existingScopePath"
+                throw "movement contained scope crosses a reparse point: $existingScopePath"
             }
         }
     }
@@ -205,34 +205,34 @@ function Resolve-Phase3ContainedPath {
         if (Test-Path -LiteralPath $cursor) {
             $item = Get-Item -LiteralPath $cursor -Force
             if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "Phase 3 contained path crosses a reparse point: $cursor"
+                throw "movement contained path crosses a reparse point: $cursor"
             }
         }
     }
     if ($RequireLeaf) {
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-            throw "Phase 3 required contained file does not exist: $candidate"
+            throw "movement required contained file does not exist: $candidate"
         }
         $leaf = Get-Item -LiteralPath $candidate -Force
         if (($leaf.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Phase 3 required contained file is a reparse point: $candidate"
+            throw "movement required contained file is a reparse point: $candidate"
         }
     }
     return $candidate
 }
 
-function Initialize-Phase3RunDirectory {
+function Initialize-MovementRunDirectory {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     $fullPath = [IO.Path]::GetFullPath($Path)
     if (Test-Path -LiteralPath $fullPath) {
         $item = Get-Item -LiteralPath $fullPath -Force
-        if (-not $item.PSIsContainer) { throw "Phase 3 run path is not a directory: $fullPath" }
+        if (-not $item.PSIsContainer) { throw "movement run path is not a directory: $fullPath" }
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Phase 3 run directory cannot be a reparse point: $fullPath"
+            throw "movement run directory cannot be a reparse point: $fullPath"
         }
         if (@(Get-ChildItem -LiteralPath $fullPath -Force).Count -ne 0) {
-            throw "Phase 3 run directory must be create-new or empty: $fullPath"
+            throw "movement run directory must be create-new or empty: $fullPath"
         }
     }
     else {
@@ -242,12 +242,12 @@ function Initialize-Phase3RunDirectory {
 }
 
 # Rejects stale readiness evidence before launching the core for this run.
-function New-Phase3CoreReadyGuard {
+function New-MovementCoreReadyGuard {
     param([Parameter(Mandatory = $true)][string]$LogPath)
 
     $path = [IO.Path]::GetFullPath($LogPath)
     if (Test-Path -LiteralPath $path) {
-        throw "Phase 3 refuses a stale core readiness log: $path"
+        throw "movement refuses a stale core readiness log: $path"
     }
     return [pscustomobject][ordered]@{
         ReadyLogPath = $path
@@ -256,7 +256,7 @@ function New-Phase3CoreReadyGuard {
 }
 
 # Records the endpoint actually published by this core, including hashed Unix sockets.
-function Wait-Phase3BridgeEndpoint {
+function Wait-MovementBridgeEndpoint {
     param(
         [Parameter(Mandatory = $true)]$Guard,
         [Parameter(Mandatory = $true)]$CoreHandle,

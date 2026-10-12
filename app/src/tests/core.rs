@@ -147,8 +147,8 @@ fn native_window_close_arms_watchdog_in_the_close_system() {
         AcceptanceExitDecision::Complete
     );
     assert_eq!(
-        acceptance.phase3_terminal_drain_decision(Instant::now(), true, 1),
-        Phase3TerminalDrainDecision::Drained
+        acceptance.movement_terminal_drain_decision(Instant::now(), true, 1),
+        MovementTerminalDrainDecision::Drained
     );
     assert_eq!(termination.recv_timeout(Duration::from_secs(1)), Ok(0));
 }
@@ -986,30 +986,30 @@ fn fatal_error_exits_immediately_even_before_timed_deadline() {
 }
 
 #[test]
-fn phase3_terminal_ack_drain_is_bounded_by_the_existing_acceptance_grace() {
+fn movement_terminal_ack_drain_is_bounded_by_the_existing_acceptance_grace() {
     let deadline = Instant::now();
     let mut acceptance = AcceptanceRun::new(Some(60), None, false, false);
     acceptance.deadline = Some(deadline);
 
     assert_eq!(
-        acceptance.phase3_terminal_drain_decision(deadline, true, 1),
-        Phase3TerminalDrainDecision::Wait
+        acceptance.movement_terminal_drain_decision(deadline, true, 1),
+        MovementTerminalDrainDecision::Wait
     );
     assert_eq!(
-        acceptance.phase3_terminal_drain_decision(
+        acceptance.movement_terminal_drain_decision(
             deadline + TRANSPARENT_PRESENTATION_EXIT_GRACE - Duration::from_millis(1),
             true,
             0,
         ),
-        Phase3TerminalDrainDecision::Drained
+        MovementTerminalDrainDecision::Drained
     );
     assert_eq!(
-        acceptance.phase3_terminal_drain_decision(
+        acceptance.movement_terminal_drain_decision(
             deadline + TRANSPARENT_PRESENTATION_EXIT_GRACE,
             true,
             1,
         ),
-        Phase3TerminalDrainDecision::TimedOut
+        MovementTerminalDrainDecision::TimedOut
     );
 }
 

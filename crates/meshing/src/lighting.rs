@@ -5,9 +5,9 @@ use world::{MeshDependencyMask, MeshNeighbourhood, SubChunk};
 
 use crate::{BlockClassifier, ContributorResolver, Face, PackedQuadLighting};
 
-/// Temporary Phase 2.6 light inputs. Phase 2.7 replaces only these inputs.
-pub const PHASE26_BLOCK_LIGHT: u8 = 0;
-pub const PHASE26_SKY_LIGHT: u8 = 15;
+/// Light inputs for meshes baked without a light sampler.
+pub const FULL_BRIGHT_BLOCK_LIGHT: u8 = 0;
+pub const FULL_BRIGHT_SKY_LIGHT: u8 = 15;
 
 const FIXED_HALF_BLOCK: i16 = 128;
 
@@ -21,7 +21,7 @@ const FIXED_HALF_BLOCK: i16 = 128;
 pub struct MeshLightSample(u8);
 
 impl MeshLightSample {
-    pub const FULL_BRIGHT: Self = Self(PHASE26_BLOCK_LIGHT | (PHASE26_SKY_LIGHT << 4));
+    pub const FULL_BRIGHT: Self = Self(FULL_BRIGHT_BLOCK_LIGHT | (FULL_BRIGHT_SKY_LIGHT << 4));
 
     #[must_use]
     pub const fn try_new(block: u8, sky: u8) -> Option<Self> {
@@ -581,8 +581,8 @@ pub fn mesh_dependency_mask(
     mask
 }
 
-pub(crate) const fn phase26_default_lighting() -> PackedQuadLighting {
-    PackedQuadLighting::new([pack_sample(PHASE26_BLOCK_LIGHT, PHASE26_SKY_LIGHT, 0); 4])
+pub(crate) const fn full_bright_lighting() -> PackedQuadLighting {
+    PackedQuadLighting::new([pack_sample(FULL_BRIGHT_BLOCK_LIGHT, FULL_BRIGHT_SKY_LIGHT, 0); 4])
 }
 
 const fn lighting_at(sample: MeshLightSample) -> PackedQuadLighting {

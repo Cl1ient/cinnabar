@@ -9,6 +9,38 @@ use ui_screens::test_support::{FixedText, NoTextures};
 
 pub use crate::test_support::{mini_carrier, mini_engine_presentation};
 
+/// A catalog parsed on another thread draws a server form exactly as an inline parse does.
+#[test]
+fn a_catalog_prepared_on_another_thread_draws_forms_like_an_inline_parse() {
+    let mut player_runtime = player_state::PlayerState::new(1);
+    let prepared = std::thread::spawn(|| super::PreparedJsonUi::new(mini_carrier()))
+        .join()
+        .unwrap()
+        .unwrap();
+    let mut threaded = UiPresentationRuntime::new(fixture_font()).unwrap();
+    threaded.enable_prepared_json_ui(prepared).unwrap();
+    let runtime = super::pack_harness::action_form(&mut player_runtime, "Menu", &["A", "B"]);
+    let identity = runtime.server_forms().active().unwrap().identity;
+    let hits = |presentation: &mut UiPresentationRuntime| {
+        presentation
+            .build(
+                &player_runtime,
+                &runtime,
+                0,
+                [1280, 720],
+                ui::DpiScale::new(1.0).unwrap(),
+            )
+            .unwrap();
+        let frame = presentation
+            .form_engine_frame(identity)
+            .expect("engine drew it");
+        frame.hits.to_vec()
+    };
+    let threaded_hits = hits(&mut threaded);
+    assert_eq!(threaded_hits.len(), 2);
+    assert_eq!(threaded_hits, hits(&mut mini_engine_presentation()));
+}
+
 #[test]
 fn rejected_form_binds_once_without_partial_hits_and_changed_inputs_retry() {
     let mut player_runtime = player_state::PlayerState::new(1);

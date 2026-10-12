@@ -6,7 +6,7 @@ use crate::{
 #[cfg(feature = "acceptance")]
 use acceptance::{
     AcceptanceRun, committed_control::acceptance_surface_anchor,
-    phase3_evidence::Phase3EvidenceEventKind,
+    movement_evidence::MovementEvidenceEventKind,
 };
 use bevy::{
     log::{debug, info},
@@ -128,7 +128,7 @@ pub(super) fn apply(
     frame.reset(LocalPlayerFrameReset::Session);
     interaction.invalidate();
     #[cfg(feature = "acceptance")]
-    evidence.note_event(Phase3EvidenceEventKind::Session);
+    evidence.note_event(MovementEvidenceEventKind::Session);
     let mut timings = bootstrap_timing::BootstrapTimings::start();
     info!(
         runtime_id = bootstrap.local_player_runtime_id,

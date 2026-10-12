@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use world::ChunkKey;
 
-use diagnostics::markers::PHASE2_TIMING;
+use diagnostics::markers::{CHUNK_PUBLICATION, CHUNK_PUBLICATION_TIMING};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerColumnPresentationEvidence {
@@ -21,7 +21,7 @@ pub struct PlayerColumnPresentationEvidence {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CombinedPhase2Snapshot {
+pub struct CombinedPublicationSnapshot {
     pub publication: PublicationSnapshot,
     pub presentation: PresentationSnapshot,
     pub player_column_presentation: PlayerColumnPresentationEvidence,
@@ -30,32 +30,32 @@ pub struct CombinedPhase2Snapshot {
     pub client_blob_cache: BlobCacheStats,
 }
 
-pub fn phase2_publication_line_if_changed(
-    previous: &mut Option<CombinedPhase2Snapshot>,
-    current: CombinedPhase2Snapshot,
+pub fn publication_line_if_changed(
+    previous: &mut Option<CombinedPublicationSnapshot>,
+    current: CombinedPublicationSnapshot,
 ) -> Option<String> {
     if previous.as_ref() == Some(&current) {
         return None;
     }
     *previous = Some(current);
     Some(format!(
-        "PHASE2_PUBLICATION={}",
+        "{CHUNK_PUBLICATION}={}",
         combined_snapshot_json(current)
     ))
 }
 
-pub fn phase2_publication_timing_line(publication_line: &str, observed_unix_ms: u64) -> String {
+pub fn publication_timing_line(publication_line: &str, observed_unix_ms: u64) -> String {
     format!(
-        "{PHASE2_TIMING}={}",
+        "{CHUNK_PUBLICATION_TIMING}={}",
         json!({
-            "schema": "rust-mcbe-phase2-timing-v1",
+            "schema": "rust-mcbe-chunk-publication-timing-v1",
             "observed_unix_ms": observed_unix_ms,
             "publication_sha256": format!("{:x}", Sha256::digest(publication_line.as_bytes())),
         })
     )
 }
 
-fn combined_snapshot_json(snapshot: CombinedPhase2Snapshot) -> Value {
+fn combined_snapshot_json(snapshot: CombinedPublicationSnapshot) -> Value {
     let publication = snapshot.publication;
     let presentation = snapshot.presentation;
     let player_column = snapshot.player_column_presentation;

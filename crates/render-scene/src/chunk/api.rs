@@ -215,7 +215,7 @@ impl ChunkGpuRemovalQueue {
             .unwrap_or_else(|poison| poison.into_inner());
         let capacity = if priority.is_urgent() {
             self.capacity
-                .saturating_add(PublicationServiceConfig::PHASE2_GATE.urgent_zero_byte_reserve)
+                .saturating_add(PublicationServiceConfig::DEFAULT.urgent_zero_byte_reserve)
         } else {
             self.capacity
         };
@@ -239,7 +239,7 @@ impl ChunkGpuRemovalQueue {
     pub fn push(&self, removal: PendingGpuRemoval) -> Result<(), PendingGpuRemoval> {
         let capacity = if removal.priority.is_urgent() {
             self.capacity
-                .saturating_add(PublicationServiceConfig::PHASE2_GATE.urgent_zero_byte_reserve)
+                .saturating_add(PublicationServiceConfig::DEFAULT.urgent_zero_byte_reserve)
         } else {
             self.capacity
         };
@@ -250,7 +250,7 @@ impl ChunkGpuRemovalQueue {
         self.push_with_capacity(
             removal,
             self.capacity
-                .saturating_add(PublicationServiceConfig::PHASE2_GATE.urgent_zero_byte_reserve),
+                .saturating_add(PublicationServiceConfig::DEFAULT.urgent_zero_byte_reserve),
         )
     }
 

@@ -1,5 +1,6 @@
 // Cinnabar's built-in Java-look HUD sits below server UI packs.
-// Layout follows the accepted HUD styling exception; art comes from vanilla Bedrock.
+// Layout follows the accepted HUD styling exception; art comes from vanilla Bedrock except the
+// original offhand frames.
 {
   "namespace": "hud",
 
@@ -175,13 +176,26 @@
     ]
   },
 
-  // The offhand item gets a lone slot 29 GUI px left of the hotbar.
+  // A complete offhand frame includes the spacing beside the hotbar.
   "java_offhand_slot": {
     "type": "panel",
-    "size": [ 20, 22 ],
-    "anchor_from": "bottom_left",
+    "size": [ 29, 24 ],
+    "$offhand_anchor": "bottom_left",
+    "$offhand_offset": [ -29, 1 ],
+    "$offhand_texture": "textures/ui/hotbar_offhand_left",
+    "$offhand_item_offset": [ 2, 3 ],
+    "variables": [
+      {
+        "requires": "$cinnabar_main_arm_left",
+        "$offhand_anchor": "bottom_right",
+        "$offhand_offset": [ 0, 1 ],
+        "$offhand_texture": "textures/ui/hotbar_offhand_right",
+        "$offhand_item_offset": [ 9, 3 ]
+      }
+    ],
+    "anchor_from": "$offhand_anchor",
     "anchor_to": "bottom_left",
-    "offset": [ -29, 0 ],
+    "offset": "$offhand_offset",
     "collection_name": "offhand_items",
     "$hotbar_collection_name": "offhand_items",
     "$stack_count_required": true,
@@ -191,8 +205,8 @@
       {
         "slot": {
           "type": "image",
-          "texture": "textures/ui/hotbar_0",
-          "size": [ 20, 22 ],
+          "texture": "$offhand_texture",
+          "size": [ "100%", "100%" ],
           "layer": 1
         }
       },
@@ -200,6 +214,9 @@
         "item": {
           "type": "panel",
           "size": [ 18, 18 ],
+          "anchor_from": "top_left",
+          "anchor_to": "top_left",
+          "offset": "$offhand_item_offset",
           "collection_index": 0,
           "controls": [
             {

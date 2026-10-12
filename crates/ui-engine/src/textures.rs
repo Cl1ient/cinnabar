@@ -14,7 +14,7 @@ use std::{
 use assets::RuntimeUiAssets;
 use json_ui::{NineSlice, TextureMeta, TextureSource};
 
-use crate::atlas::{ServerAtlas, native_sheets::Quads};
+use crate::atlas::{BuiltinImages, ServerAtlas, native_sheets::Quads};
 use crate::sources::{ImageWork, LocalPack, RemoteSource, is_remote};
 use ui::IconRef;
 
@@ -36,6 +36,7 @@ pub struct TextureSet {
     vanilla: Option<Arc<dyn LocalPack>>,
     /// Encoded carrier images too large for its sprite atlas.
     carrier: Option<Arc<RuntimeUiAssets>>,
+    builtin: BuiltinImages,
     pub remote: Arc<dyn RemoteSource>,
     /// The host's clock and threads every installed atlas runs its image work on.
     work: ImageWork,
@@ -62,6 +63,7 @@ impl TextureSet {
             server_page: 0,
             vanilla: None,
             carrier: None,
+            builtin: &[],
             remote,
             work,
             full_res: HashMap::new(),
@@ -71,6 +73,14 @@ impl TextureSet {
 
     pub fn with_carrier(mut self, carrier: Arc<RuntimeUiAssets>) -> Self {
         self.carrier = Some(carrier);
+        let atlas = std::mem::take(self.atlas_mut());
+        self.set_atlas(atlas, self.server_page);
+        self
+    }
+
+    /// Serves the screen families' shipped `images` from every installed atlas.
+    pub fn with_builtin_images(mut self, images: BuiltinImages) -> Self {
+        self.builtin = images;
         let atlas = std::mem::take(self.atlas_mut());
         self.set_atlas(atlas, self.server_page);
         self
@@ -100,6 +110,7 @@ impl TextureSet {
         let atlas = ServerAtlas::new(files, None, pages)
             .with_fallbacks(self.vanilla.clone(), None)
             .with_carrier(self.carrier.clone())
+            .with_builtin_images(self.builtin)
             .with_image_work(self.work.clone());
         Self {
             atlas: Mutex::new(atlas),
@@ -109,6 +120,7 @@ impl TextureSet {
             server_page: page,
             vanilla: self.vanilla.clone(),
             carrier: self.carrier.clone(),
+            builtin: self.builtin,
             remote: Arc::clone(&self.remote),
             work: self.work.clone(),
             full_res: HashMap::new(),
@@ -127,6 +139,7 @@ impl TextureSet {
             .with_native_sheets(!self.confined)
             .with_fallbacks(self.vanilla.clone(), Some(self.remote.clone()))
             .with_carrier(self.carrier.clone())
+            .with_builtin_images(self.builtin)
             .with_image_work(self.work.clone());
         self.atlas = Mutex::new(atlas);
         self.server_page = server_page;

@@ -97,7 +97,7 @@ fn actor_culling_precedes_the_remote_cap_and_preserves_visible_high_id_and_local
             .map(|actor| actor.runtime_id)
             .collect::<Vec<_>>(),
         vec![999, 91],
-        "Phase 4 must cull and cap remote actors before consuming the frozen local carrier",
+        "the actor render arena must cull and cap remote actors before consuming the frozen local carrier",
     );
 }
 

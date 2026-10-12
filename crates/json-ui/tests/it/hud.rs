@@ -12,6 +12,7 @@ use json_ui::{
     hud_data_source, parse_texture_meta, render_screen,
 };
 
+mod offhand;
 mod world_text;
 
 fn pack() -> Option<PathBuf> {

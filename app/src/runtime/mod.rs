@@ -1,7 +1,7 @@
 pub(crate) mod frame_profile;
-pub(crate) mod network;
 #[cfg(feature = "acceptance")]
-pub(crate) mod phase3_evidence;
+pub(crate) mod movement_evidence;
+pub(crate) mod network;
 pub(crate) mod shutdown;
 pub(crate) mod telemetry;
 pub(crate) mod visibility;

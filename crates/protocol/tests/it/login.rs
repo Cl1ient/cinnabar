@@ -34,7 +34,7 @@ async fn login_reaches_start_game_through_bds() {
         LOGIN_TIMEOUT,
         LoginSequence::connect_session(
             socket_dir.path(),
-            "RustMCBEPhase0",
+            "RustMCBELogin",
             protocol::ClientRandomId::new(-7).unwrap(),
             None,
             None,

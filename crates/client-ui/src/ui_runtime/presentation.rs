@@ -45,7 +45,7 @@ pub mod retained_hud;
 pub mod screens;
 pub mod session_glyphs;
 pub mod session_icons;
-pub use forms::ServerUiPack;
+pub use forms::{PreparedJsonUi, ServerUiPack};
 
 pub use session_glyphs::SessionGlyphSheets;
 pub use session_icons::{MAX_SESSION_ICON_SIDE, SessionIcon, SessionIcons};

@@ -67,12 +67,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$framePrefix = 'CINNABAR_PHASE3_FRAME='
-$eventPrefix = 'CINNABAR_PHASE3_EVENT='
-$identityPrefix = 'CINNABAR_PHASE3_IDENTITY='
+$framePrefix = 'CINNABAR_MOVEMENT_FRAME='
+$eventPrefix = 'CINNABAR_MOVEMENT_EVENT='
+$identityPrefix = 'CINNABAR_MOVEMENT_IDENTITY='
 $networkPumpTerminalPrefix = 'CINNABAR_NETWORK_PUMP_TERMINAL='
-$terminalPrefix = 'CINNABAR_PHASE3_TERMINAL='
-$violationPrefix = 'CINNABAR_PHASE3_VIOLATION='
+$terminalPrefix = 'CINNABAR_MOVEMENT_TERMINAL='
+$violationPrefix = 'CINNABAR_MOVEMENT_VIOLATION='
 $identityProperties = @(
     'schema', 'build_commit', 'target', 'protocol', 'session_generation', 'preg_sha256',
     'breg_sha256', 'candidate_physics', 'source_dirty', 'run_id', 'endpoint',
@@ -221,8 +221,8 @@ function Assert-StringArray {
     }
 }
 
-function Assert-Phase3CoreArgumentTokens {
-    # Mirrors the launcher-side allowlist in Resolve-Phase3CoreExtraArguments so
+function Assert-MovementCoreArgumentTokens {
+    # Mirrors the launcher-side allowlist in Resolve-MovementCoreExtraArguments so
     # recorded core extra arguments stay exactly one verbatim allowlisted token
     # each: a lowercase long-form flag or a conservative value.
     param($Value, [string]$Label)
@@ -283,16 +283,16 @@ function Assert-ExactSequence {
 
 $scenarioJson = Get-Content -Raw -LiteralPath $ScenarioManifestPath
 if ([string]::IsNullOrWhiteSpace($scenarioJson) -or $scenarioJson.Length -gt 4096) {
-    throw 'Phase 3 scenario manifest is empty or oversized'
+    throw 'movement scenario manifest is empty or oversized'
 }
 Assert-ExactJsonKeys $scenarioJson $scenarioProperties 'scenario manifest'
 Assert-ExactJsonKeys $scenarioJson $controlledMatrixProperties 'scenario manifest.required_controlled_matrix'
 try { $scenarioManifest = $scenarioJson | ConvertFrom-Json }
-catch { throw 'Phase 3 scenario manifest JSON is malformed' }
+catch { throw 'movement scenario manifest JSON is malformed' }
 Assert-ExactProperties $scenarioManifest $scenarioProperties 'scenario manifest'
 Assert-ExactProperties $scenarioManifest.required_controlled_matrix $controlledMatrixProperties `
     'scenario manifest.required_controlled_matrix'
-if ([string]$scenarioManifest.schema -cne 'rust-mcbe-phase3-scenario-v1') {
+if ([string]$scenarioManifest.schema -cne 'rust-mcbe-movement-scenario-v1') {
     throw 'scenario manifest schema is unsupported'
 }
 if ($scenarioManifest.scenario -isnot [string] -or
@@ -307,7 +307,7 @@ if ($scenarioManifest.input_witness_deferral_reason -isnot [string] -or
     ([string]$scenarioManifest.input_witness_deferral_reason).Length -gt 256) {
     throw 'scenario manifest.input_witness_deferral_reason must be a bounded string'
 }
-Assert-Phase3CoreArgumentTokens $scenarioManifest.core_extra_arguments `
+Assert-MovementCoreArgumentTokens $scenarioManifest.core_extra_arguments `
     'scenario manifest.core_extra_arguments'
 Assert-OrderedStringArray $scenarioManifest.required_perspective_sequence `
     'scenario manifest.required_perspective_sequence' `
@@ -359,7 +359,7 @@ if ($candidateScenario) {
     if (@($scenarioManifest.deferred_input_modes).Count -ne 1 -or
         [string]$scenarioManifest.deferred_input_modes[0] -cne 'Touch' -or
         [string]$scenarioManifest.input_witness_deferral_reason -cne
-            'Owner decision: touch parity is deprioritized; it does not gate Phase 3 acceptance and remains open.') {
+            'Owner decision: touch parity is deprioritized; it does not gate movement acceptance and remains open.') {
         throw 'CandidatePhysics scenario must explicitly defer touch by owner decision'
     }
     $requiredPerspectives = @($scenarioManifest.required_perspective_sequence)
@@ -457,7 +457,7 @@ else {
 
 $log = Get-Item -LiteralPath $LogPath
 if ($log.Length -gt 67108864) {
-    throw 'Phase 3 client log exceeds the 64 MiB evidence bound'
+    throw 'movement client log exceeds the 64 MiB evidence bound'
 }
 $frameJson = [Collections.Generic.List[string]]::new()
 $eventJson = [Collections.Generic.List[string]]::new()
@@ -467,7 +467,7 @@ foreach ($line in Get-Content -LiteralPath $LogPath) {
     if ($line.StartsWith($networkPumpTerminalPrefix, [StringComparison]::Ordinal)) {
         $networkTerminalJson = $line.Substring($networkPumpTerminalPrefix.Length)
         try { $networkTerminal = $networkTerminalJson | ConvertFrom-Json }
-        catch { throw 'Phase 3 network pump terminal marker is malformed' }
+        catch { throw 'movement network pump terminal marker is malformed' }
         if ($null -ne $networkTerminal.PSObject.Properties['server_disconnect'] -and
             $null -ne $networkTerminal.server_disconnect) {
             $reason = if ($networkTerminal.server_disconnect.reason -is [string] -and
@@ -476,48 +476,48 @@ foreach ($line in Get-Content -LiteralPath $LogPath) {
             } else {
                 'Unknown'
             }
-            throw "Phase 3 evidence contains a server-initiated disconnect (reason=$reason)"
+            throw "movement evidence contains a server-initiated disconnect (reason=$reason)"
         }
         Write-Warning (
-            'Phase 3 network pump terminal diagnostic: ' +
+            'movement network pump terminal diagnostic: ' +
             $networkTerminalJson
         )
     }
     if ($line.StartsWith($violationPrefix, [StringComparison]::Ordinal)) {
-        throw 'Phase 3 client log contains a production evidence violation marker'
+        throw 'movement client log contains a production evidence violation marker'
     }
     if ($line.StartsWith($identityPrefix, [StringComparison]::Ordinal)) {
-        if ($identityJson.Count -eq 1) { throw 'Phase 3 log contains conflicting aggregate identities' }
+        if ($identityJson.Count -eq 1) { throw 'movement log contains conflicting aggregate identities' }
         $identityJson.Add($line.Substring($identityPrefix.Length))
     }
     elseif ($line.StartsWith($framePrefix, [StringComparison]::Ordinal)) {
-        if ($frameJson.Count -eq 12000) { throw 'Phase 3 frame markers exceed 12000 records' }
+        if ($frameJson.Count -eq 12000) { throw 'movement frame markers exceed 12000 records' }
         $frameJson.Add($line.Substring($framePrefix.Length))
     }
     elseif ($line.StartsWith($eventPrefix, [StringComparison]::Ordinal)) {
-        if ($eventJson.Count -eq 256) { throw 'Phase 3 event markers exceed 256 records' }
+        if ($eventJson.Count -eq 256) { throw 'movement event markers exceed 256 records' }
         $eventJson.Add($line.Substring($eventPrefix.Length))
     }
     elseif ($line.StartsWith($terminalPrefix, [StringComparison]::Ordinal)) {
-        if ($terminalJson.Count -eq 1) { throw 'Phase 3 log contains conflicting terminal records' }
+        if ($terminalJson.Count -eq 1) { throw 'movement log contains conflicting terminal records' }
         $terminalJson.Add($line.Substring($terminalPrefix.Length))
     }
 }
 if ($identityJson.Count -ne 1) {
-    throw 'Phase 3 client log must contain exactly one registered production identity'
+    throw 'movement client log must contain exactly one registered production identity'
 }
 if ($terminalJson.Count -ne 1) {
-    throw 'Phase 3 client log must contain exactly one terminal record'
+    throw 'movement client log must contain exactly one terminal record'
 }
 if ($candidateScenario -and $frameJson.Count -eq 0) {
-    throw 'Phase 3 client log contains no registered production frame markers'
+    throw 'movement client log contains no registered production frame markers'
 }
 if (-not $candidateScenario -and ($frameJson.Count -ne 0 -or $eventJson.Count -ne 0)) {
     throw 'FreeCameraSilence evidence cannot contain movement frames or events'
 }
 
 $identity = ConvertFrom-ExactMarkerJson $identityJson[0] $identityProperties 'identity'
-if ([string]$identity.schema -cne 'rust-mcbe-phase3-identity-v1') {
+if ([string]$identity.schema -cne 'rust-mcbe-movement-identity-v1') {
     throw 'identity schema is unsupported'
 }
 if ($identity.build_commit -isnot [string] -or
@@ -573,7 +573,7 @@ $frames = [Collections.Generic.List[object]]::new()
 for ($index = 0; $index -lt $frameJson.Count; $index++) {
     $label = "frame[$index]"
     $frame = ConvertFrom-ExactMarkerJson $frameJson[$index] $frameProperties $label
-    if ([string]$frame.schema -cne 'rust-mcbe-phase3-frame-v2') { throw "$label schema is unsupported" }
+    if ([string]$frame.schema -cne 'rust-mcbe-movement-frame-v2') { throw "$label schema is unsupported" }
     Assert-Integer $frame.session_generation "$label.session_generation" 1 ([decimal][uint64]::MaxValue)
     if ([uint64]$frame.session_generation -ne [uint64]$identity.session_generation) {
         throw "$label session does not match the aggregate identity"
@@ -628,25 +628,25 @@ for ($index = 0; $index -lt $frameJson.Count; $index++) {
     if ($frames.Count -gt 0) {
         $previous = $frames[$frames.Count - 1]
         if ([uint64]$frame.session_generation -ne [uint64]$previous.session_generation) {
-            throw 'Phase 3 evidence crosses a session boundary'
+            throw 'movement evidence crosses a session boundary'
         }
         $dimensionChanged = [int32]$frame.dimension -ne [int32]$previous.dimension
         if (-not $dimensionChanged -and
             [uint64]$frame.physics_tick -ne ([uint64]$previous.physics_tick + 1)) {
-            throw 'Phase 3 frame physics ticks are duplicate retrograde or gapped'
+            throw 'movement frame physics ticks are duplicate retrograde or gapped'
         }
         if ([uint64]$frame.fifo_sequence -lt [uint64]$previous.fifo_sequence) {
-            throw 'Phase 3 frame FIFO sequence is retrograde'
+            throw 'movement frame FIFO sequence is retrograde'
         }
         if ([uint64]$frame.pose_generation -lt [uint64]$previous.pose_generation) {
-            throw 'Phase 3 pose generation is retrograde'
+            throw 'movement pose generation is retrograde'
         }
     }
     $frames.Add($frame)
 }
 
 $terminal = ConvertFrom-ExactMarkerJson $terminalJson[0] $terminalProperties 'terminal'
-if ([string]$terminal.schema -cne 'rust-mcbe-phase3-terminal-v1') {
+if ([string]$terminal.schema -cne 'rust-mcbe-movement-terminal-v1') {
     throw 'terminal schema is unsupported'
 }
 Assert-Integer $terminal.session_generation 'terminal.session_generation' 1 ([decimal][uint64]::MaxValue)
@@ -696,7 +696,7 @@ for ($index = 0; $index -lt $eventJson.Count; $index++) {
         $eventProperties
     }
     $event = ConvertFrom-ExactMarkerJson $eventJson[$index] $expectedEventProperties $label
-    if ([string]$event.schema -cne 'rust-mcbe-phase3-event-v1') { throw "$label schema is unsupported" }
+    if ([string]$event.schema -cne 'rust-mcbe-movement-event-v1') { throw "$label schema is unsupported" }
     if ($event.kind -isnot [string] -or
         [string]$event.kind -cnotin @('correction', 'dimension', 'session')) {
         throw "$label.kind is unsupported"
@@ -719,7 +719,7 @@ for ($index = 0; $index -lt $eventJson.Count; $index++) {
         }
     }
     $eventIdentity = '{0}:{1}' -f $event.session_generation, $event.event_sequence
-    if (-not $eventIdentities.Add($eventIdentity)) { throw "$label duplicates a Phase 3 event identity" }
+    if (-not $eventIdentities.Add($eventIdentity)) { throw "$label duplicates a movement event identity" }
     $correlated = @($frames | Where-Object {
         [uint64]$_.session_generation -eq [uint64]$event.session_generation -and
         [uint64]$_.fifo_sequence -eq [uint64]$event.fifo_sequence -and
@@ -744,8 +744,8 @@ for ($index = 1; $index -lt $frames.Count; $index++) {
 }
 
 $logSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $LogPath).Hash.ToLowerInvariant()
-. (Join-Path $PSScriptRoot 'Phase3Aggregate.ps1')
-$aggregate = Write-Phase3FinalAggregate `
+. (Join-Path $PSScriptRoot 'MovementAggregate.ps1')
+$aggregate = Write-MovementFinalAggregate `
     -Identity $identity `
     -Frames @($frames) `
     -Events @($events) `
@@ -756,4 +756,4 @@ $aggregate = Write-Phase3FinalAggregate `
     -OutputPath $OutputPath `
     -LogSha256 $logSha256
 $aggregateSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $OutputPath).Hash.ToLowerInvariant()
-Write-Output "PHASE3_EVIDENCE_VALID target=$ExpectedTarget scenario=$($scenarioManifest.scenario) build=$ExpectedBuildCommit run=$ExpectedRunId frames=$($frames.Count) events=$($events.Count) log_sha256=$logSha256 aggregate_sha256=$aggregateSha256"
+Write-Output "MOVEMENT_EVIDENCE_VALID target=$ExpectedTarget scenario=$($scenarioManifest.scenario) build=$ExpectedBuildCommit run=$ExpectedRunId frames=$($frames.Count) events=$($events.Count) log_sha256=$logSha256 aggregate_sha256=$aggregateSha256"

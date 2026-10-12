@@ -183,8 +183,8 @@ impl UiRuntime {
 
     /// Applies every queued authoritative inventory event to the retained
     /// hotbar/offhand mirror. Runs once per frame before presentation; the
-    /// queue would otherwise grow without a consumer until the Phase 5.5
-    /// container store takes over this drain.
+    /// queue would otherwise grow without a consumer until the container store
+    /// takes over this drain.
     pub fn drain_pending_inventory(&mut self, player_runtime: &mut player_state::PlayerState) {
         self.drain_inventory_prefix(player_runtime, None);
         player_runtime.inventory.finish_drain();

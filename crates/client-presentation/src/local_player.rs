@@ -514,8 +514,8 @@ impl LocalAvatarVisibilityCarrier {
     }
 }
 
-/// Session-scoped local body identity. Phase 3 publishes only a frozen
-/// visibility/pose handoff; the Phase 4 render arena owns culling and capacity.
+/// Session-scoped local body identity. Movement publishes only a frozen
+/// visibility/pose handoff; the actor render arena owns culling and capacity.
 #[derive(Resource, Debug, Default)]
 pub struct LocalAvatarPresentation {
     session_generation: SessionGeneration,

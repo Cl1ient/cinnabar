@@ -6,11 +6,20 @@ use launcher_host::lifecycle::{crash, update};
 mod client_logs;
 
 use launcher::install_layout::InstallLayout;
+use std::{sync::OnceLock, time::Instant};
+
+static LAUNCHED_AT: OnceLock<Instant> = OnceLock::new();
+
+/// When client startup began; the first call records it.
+pub(crate) fn launched_at() -> Instant {
+    *LAUNCHED_AT.get_or_init(Instant::now)
+}
 
 /// Runs pre-window duties for a packaged install; a no-op for development checkouts.
 /// `assets_overridden` skips asset preparation when the caller supplied its own carrier path.
 /// Returns `false` when the user quit first-time setup, so the client should exit quietly.
 pub fn before_run(assets_overridden: bool) -> Result<bool> {
+    launched_at();
     let layout = InstallLayout::discover().context("resolve install layout")?;
     client_logs::capture(&layout);
     client_logs::install_panic_hook(&layout);

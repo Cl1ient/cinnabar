@@ -1,12 +1,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'Phase 3 production marker evidence validation' {
+Describe 'Movement production marker evidence validation' {
     BeforeAll {
         $script:RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-        $script:Validator = Join-Path $script:RepoRoot 'scripts\acceptance\Phase3.ps1'
-        . (Join-Path $script:RepoRoot 'scripts\acceptance\Phase3Launch.ps1')
-        $script:TempRoot = Join-Path ([IO.Path]::GetTempPath()) "rust-mcbe-phase3-$PID-$([guid]::NewGuid().ToString('N'))"
+        $script:Validator = Join-Path $script:RepoRoot 'scripts\acceptance\MovementEvidence.ps1'
+        . (Join-Path $script:RepoRoot 'scripts\acceptance\MovementLaunch.ps1')
+        $script:TempRoot = Join-Path ([IO.Path]::GetTempPath()) "rust-mcbe-movement-$PID-$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $script:TempRoot -Force | Out-Null
     }
 
@@ -26,7 +26,7 @@ Describe 'Phase 3 production marker evidence validation' {
         $script:CoreSha256 = '33' * 32
         $script:AppSha256 = '44' * 32
         $script:Identity = [ordered]@{
-            schema = 'rust-mcbe-phase3-identity-v1'; build_commit = $script:BuildCommit
+            schema = 'rust-mcbe-movement-identity-v1'; build_commit = $script:BuildCommit
             target = 'Bds'; protocol = 2193; session_generation = 7
             preg_sha256 = $script:PregSha256; breg_sha256 = $script:BregSha256
             candidate_physics = $true
@@ -36,7 +36,7 @@ Describe 'Phase 3 production marker evidence validation' {
         }
         $script:Frames = @(
             [ordered]@{
-                schema = 'rust-mcbe-phase3-frame-v2'; session_generation = 7; fifo_sequence = 40
+                schema = 'rust-mcbe-movement-frame-v2'; session_generation = 7; fifo_sequence = 40
                 physics_tick = 41; pose_generation = 101; dimension = 0; input_mode = 'KeyboardMouse'
                 perspective = 'FirstPerson'; movement = @(0.0, 1.0); look_delta = @(0.0, 0.0)
                 network_position = @(0.0, 72.62, 0.0)
@@ -47,7 +47,7 @@ Describe 'Phase 3 production marker evidence validation' {
                 jump_started = $true; jump_repeated = $false; jump_released = $false
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-frame-v2'; session_generation = 7; fifo_sequence = 41
+                schema = 'rust-mcbe-movement-frame-v2'; session_generation = 7; fifo_sequence = 41
                 physics_tick = 42; pose_generation = 102; dimension = 0; input_mode = 'GamePad'
                 perspective = 'ThirdPersonBack'; movement = @(0.0, 1.0); look_delta = @(0.5, -0.25)
                 network_position = @(0.0, 72.62, 0.25)
@@ -58,7 +58,7 @@ Describe 'Phase 3 production marker evidence validation' {
                 jump_started = $true; jump_repeated = $true; jump_released = $false
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-frame-v2'; session_generation = 7; fifo_sequence = 42
+                schema = 'rust-mcbe-movement-frame-v2'; session_generation = 7; fifo_sequence = 42
                 physics_tick = 43; pose_generation = 103; dimension = 1; input_mode = 'Touch'
                 perspective = 'ThirdPersonFront'; movement = @(-0.25, 0.75); look_delta = @(-0.5, 0.25)
                 network_position = @(64.0, 80.62, 64.0)
@@ -69,7 +69,7 @@ Describe 'Phase 3 production marker evidence validation' {
                 jump_started = $false; jump_repeated = $false; jump_released = $true
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-frame-v2'; session_generation = 7; fifo_sequence = 43
+                schema = 'rust-mcbe-movement-frame-v2'; session_generation = 7; fifo_sequence = 43
                 physics_tick = 44; pose_generation = 104; dimension = 1; input_mode = 'Touch'
                 perspective = 'FirstPerson'; movement = @(0.0, 0.5); look_delta = @(0.0, 0.0)
                 network_position = @(64.0, 80.62, 64.25)
@@ -80,7 +80,7 @@ Describe 'Phase 3 production marker evidence validation' {
                 jump_started = $false; jump_repeated = $false; jump_released = $false
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-frame-v2'; session_generation = 7; fifo_sequence = 44
+                schema = 'rust-mcbe-movement-frame-v2'; session_generation = 7; fifo_sequence = 44
                 physics_tick = 45; pose_generation = 105; dimension = 1; input_mode = 'KeyboardMouse'
                 perspective = 'FirstPerson'; movement = @(0.5, 0.5); look_delta = @(0.0, 0.0)
                 network_position = @(64.5, 80.62, 64.75)
@@ -93,35 +93,35 @@ Describe 'Phase 3 production marker evidence validation' {
         )
         $script:Events = @(
             [ordered]@{
-                schema = 'rust-mcbe-phase3-event-v1'; kind = 'correction'; event_sequence = 0
+                schema = 'rust-mcbe-movement-event-v1'; kind = 'correction'; event_sequence = 0
                 session_generation = 7; fifo_sequence = 40; physics_tick = 41; dimension = 0
                 correction_outcome = 'replayed'; corrected_tick = 40; replayed_ticks = 1
                 correction_magnitude = 3.5
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-event-v1'; kind = 'correction'; event_sequence = 1
+                schema = 'rust-mcbe-movement-event-v1'; kind = 'correction'; event_sequence = 1
                 session_generation = 7; fifo_sequence = 41; physics_tick = 42; dimension = 0
                 correction_outcome = 'snapped'; corrected_tick = 42; replayed_ticks = 0
                 correction_magnitude = 1.25
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-event-v1'; kind = 'dimension'; session_generation = 7
+                schema = 'rust-mcbe-movement-event-v1'; kind = 'dimension'; session_generation = 7
                 event_sequence = 2; fifo_sequence = 42; physics_tick = 43; dimension = 1
             }
         )
         $script:Violations = @()
         $script:Terminals = @(
             [ordered]@{
-                schema = 'rust-mcbe-phase3-terminal-v1'; session_generation = 7
+                schema = 'rust-mcbe-movement-terminal-v1'; session_generation = 7
                 source = 'Physics'; physics_packet_count = 5; free_camera_packet_count = 0
                 pending_outbox_depth = 0; outbox_reconciliation = 'Drained'
             }
         )
         $script:ScenarioManifest = [ordered]@{
-            schema = 'rust-mcbe-phase3-scenario-v1'; scenario = 'CandidatePhysics'
+            schema = 'rust-mcbe-movement-scenario-v1'; scenario = 'CandidatePhysics'
             core_extra_arguments = @()
             required_input_modes = @('KeyboardMouse', 'GamePad'); deferred_input_modes = @('Touch')
-            input_witness_deferral_reason = 'Owner decision: touch parity is deprioritized; it does not gate Phase 3 acceptance and remains open.'
+            input_witness_deferral_reason = 'Owner decision: touch parity is deprioritized; it does not gate movement acceptance and remains open.'
             required_perspective_sequence = @(
                 'FirstPerson', 'ThirdPersonBack', 'ThirdPersonFront', 'FirstPerson'
             )
@@ -143,7 +143,7 @@ Describe 'Phase 3 production marker evidence validation' {
             }
         }
         $script:RunMetadata = [ordered]@{
-            schema = 'rust-mcbe-phase3-run-v1'; run_id = $script:RunId; target = 'Bds'
+            schema = 'rust-mcbe-movement-run-v1'; run_id = $script:RunId; target = 'Bds'
             endpoint = $script:Endpoint; build_commit = $script:BuildCommit; source_dirty = $false
             bridge_endpoint = $script:BridgeEndpoint
             core_sha256 = $script:CoreSha256; app_sha256 = $script:AppSha256; assets_sha256 = $null
@@ -160,12 +160,12 @@ Describe 'Phase 3 production marker evidence validation' {
         }
     }
 
-    . (Join-Path $PSScriptRoot 'Phase3.TestHelpers.ps1')
+    . (Join-Path $PSScriptRoot 'MovementEvidence.TestHelpers.ps1')
 
     It 'accepts one bounded production-derived consecutive tick sequence' {
         $logPath = Write-MarkerLog 'valid.log'; Add-Content -LiteralPath $logPath -Encoding utf8 -Value 'CINNABAR_NETWORK_PUMP_TERMINAL={"schema":"rust-mcbe-network-pump-terminal-v1","outcome":"failed","stage":"receive_packet","message":"connection reset","decode_error_count":0}'; $result = Invoke-Validator $logPath
-        $result.ExitCode | Should Be 0; $result.Output | Should Match 'Phase 3 network pump terminal diagnostic:'; $result.Output | Should Match 'connection\s+reset'
-        $result.Output | Should Match 'PHASE3_EVIDENCE_VALID target=Bds .* frames=5 events=3'
+        $result.ExitCode | Should Be 0; $result.Output | Should Match 'movement network pump terminal diagnostic:'; $result.Output | Should Match 'connection\s+reset'
+        $result.Output | Should Match 'MOVEMENT_EVIDENCE_VALID target=Bds .* frames=5 events=3'
         $aggregate = Get-Content -Raw -LiteralPath $result.Aggregate | ConvertFrom-Json
         $aggregate.candidate.production_physics_default_enabled | Should Be $false
         $aggregate.movement.held_jump_longest_run | Should Be 2
@@ -219,7 +219,7 @@ Describe 'Phase 3 production marker evidence validation' {
         $aggregate.evidence.terminal_free_camera_packet_count | Should Be 0
     }
 
-    . (Join-Path $PSScriptRoot 'Phase3.LaunchCases.ps1')
+    . (Join-Path $PSScriptRoot 'MovementEvidence.LaunchCases.ps1')
 
     It 'surfaces nonempty core extra arguments through the scenario manifest and run metadata schemas' {
         $script:ScenarioManifest.core_extra_arguments = @('-upstream-client-cache')
@@ -238,42 +238,42 @@ Describe 'Phase 3 production marker evidence validation' {
     }
 
     It 'wires validated core extra arguments into the launcher command, manifests, and metadata' {
-        $launcher = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\Phase3Launcher.ps1')
-        $launch = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\Phase3Launch.ps1')
+        $launcher = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\MovementLauncher.ps1')
+        $launch = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\MovementLaunch.ps1')
         $launcher | Should Match '\[string\[\]\]\$CoreExtraArgs = @\(\)'
         $launcher | Should Match '-CoreExtraArgs \$CoreExtraArgs'
         $launcher | Should Match 'CORE_EXTRA_ARGUMENTS='
         ([regex]::Matches($launcher, 'core_extra_arguments = \$plan\.CoreExtraArguments')).Count | Should Be 4
         $launch | Should Match '\$coreArguments \+= \$coreExtraArguments'
-        $launch | Should Match "function Resolve-Phase3CoreExtraArguments"
+        $launch | Should Match "function Resolve-MovementCoreExtraArguments"
         $launch | Should Match "'\^-\[a-z\]\[a-z0-9-\]\*\$'"
         $launch | Should Match "'\^\[A-Za-z0-9\._/:=-\]\+\$'"
     }
 
     It 'builds a case-insensitive network-silent FreeCamera scenario without candidate physics frames' {
-        $plan = New-Phase3LaunchPlan -Target lunar -Endpoint (Get-Phase3TargetEndpoint lunar) `
+        $plan = New-MovementLaunchPlan -Target lunar -Endpoint (Get-EvidenceTargetEndpoint lunar) `
             -RunId $script:RunId -SocketDirectory socket -MetricsPath metrics.json `
             -DurationSeconds 300 -Scenario freecamerasilence -AuthCache token.json
         $plan.Target | Should Be 'Lunar'
         $plan.Scenario | Should Be 'FreeCameraSilence'
-        $targetIndex = [Array]::IndexOf($plan.AppArguments, '--phase3-evidence-target')
+        $targetIndex = [Array]::IndexOf($plan.AppArguments, '--movement-evidence-target')
         $plan.AppArguments[$targetIndex + 1] | Should Be 'Lunar'
         ($plan.AppArguments -ccontains '--auto-fly') | Should Be $true
-        ($plan.AppArguments -ccontains '--phase3-candidate-physics') | Should Be $false
+        ($plan.AppArguments -ccontains '--movement-candidate-physics') | Should Be $false
         ($plan.CoreArguments -ccontains '-auth-cache') | Should Be $true
     }
 
     It 'keeps visual movement evidence on debug while reserving release for the binding transfer witness' {
-        $launcher = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\Phase3Launcher.ps1')
+        $launcher = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\MovementLauncher.ps1')
         $launcher | Should Match 'target\\\$buildProfile\\cinnabar'
         $launcher | Should Match "FastTransferWitness'.*'release'.*'debug'"
         $launcher | Should Match "appBuildArguments \+= '--release'"
         $launcher | Should Match "'build', '--locked', '-p', 'cinnabar'"
-        $launcher | Should Match 'Resolve-Phase3ContainedPath'
+        $launcher | Should Match 'Resolve-MovementContainedPath'
         $launcher | Should Match '-AuthCache \$authCacheFull'
         $launcher | Should Match '-ScenarioManifestPath \$scenarioManifestPath'
-        $launcher | Should Match '\$Target = ConvertTo-Phase3Target -Target \$Target'
-        $launcher | Should Match '\$Scenario = ConvertTo-Phase3Scenario -Scenario \$Scenario'
+        $launcher | Should Match '\$Target = ConvertTo-EvidenceTarget -Target \$Target'
+        $launcher | Should Match '\$Scenario = ConvertTo-MovementScenario -Scenario \$Scenario'
     }
 
     It 'rejects an untracked source file when proving a clean candidate HEAD' {
@@ -281,35 +281,35 @@ Describe 'Phase 3 production marker evidence validation' {
         New-Item -ItemType Directory -Path $repository | Out-Null
         & git -C $repository init --quiet
         if ($LASTEXITCODE -ne 0) { throw 'failed to initialize test repository' }
-        & git -C $repository config user.email 'phase3-test@example.invalid'
-        & git -C $repository config user.name 'Phase 3 Test'
+        & git -C $repository config user.email 'movement-test@example.invalid'
+        & git -C $repository config user.name 'Movement Test'
         Set-Content -LiteralPath (Join-Path $repository 'tracked.txt') -Value tracked
         & git -C $repository add tracked.txt
         & git -C $repository commit --quiet -m initial
         if ($LASTEXITCODE -ne 0) { throw 'failed to commit test repository' }
 
-        { Assert-Phase3CleanTrackedSource -ProjectRoot $repository } | Should Not Throw
+        { Assert-MovementCleanTrackedSource -ProjectRoot $repository } | Should Not Throw
         Set-Content -LiteralPath (Join-Path $repository 'build.rs') -Value 'fn main() {}'
-        { Assert-Phase3CleanTrackedSource -ProjectRoot $repository } | Should Throw
+        { Assert-MovementCleanTrackedSource -ProjectRoot $repository } | Should Throw
     }
 
-    It 'creates a missing Phase 3 run directory' {
+    It 'creates a missing movement run directory' {
         $missing = Join-Path $script:TempRoot 'run-directory-missing'
-        (Initialize-Phase3RunDirectory -Path $missing) | Should Be ([IO.Path]::GetFullPath($missing))
+        (Initialize-MovementRunDirectory -Path $missing) | Should Be ([IO.Path]::GetFullPath($missing))
         (Test-Path -LiteralPath $missing -PathType Container) | Should Be $true
     }
 
-    It 'accepts an existing empty Phase 3 run directory' {
+    It 'accepts an existing empty movement run directory' {
         $empty = Join-Path $script:TempRoot 'run-directory-empty'
         New-Item -ItemType Directory -Path $empty | Out-Null
-        (Initialize-Phase3RunDirectory -Path $empty) | Should Be ([IO.Path]::GetFullPath($empty))
+        (Initialize-MovementRunDirectory -Path $empty) | Should Be ([IO.Path]::GetFullPath($empty))
     }
 
-    It 'rejects a nonempty Phase 3 run directory as the only changed condition' {
+    It 'rejects a nonempty movement run directory as the only changed condition' {
         $nonempty = Join-Path $script:TempRoot 'run-directory-nonempty'
         New-Item -ItemType Directory -Path $nonempty | Out-Null
         Set-Content -LiteralPath (Join-Path $nonempty 'stale.txt') -Value stale
-        { Initialize-Phase3RunDirectory -Path $nonempty } | Should Throw
+        { Initialize-MovementRunDirectory -Path $nonempty } | Should Throw
     }
 
     It 'accepts a tick reanchor only at an exactly correlated dimension transition' {
@@ -330,19 +330,19 @@ Describe 'Phase 3 production marker evidence validation' {
     It 'aggregates bounded replay and snap correction outcomes and magnitudes' {
         $script:Events = @(
             [ordered]@{
-                schema = 'rust-mcbe-phase3-event-v1'; kind = 'correction'; event_sequence = 0
+                schema = 'rust-mcbe-movement-event-v1'; kind = 'correction'; event_sequence = 0
                 session_generation = 7; fifo_sequence = 40; physics_tick = 41; dimension = 0
                 correction_outcome = 'replayed'; corrected_tick = 40; replayed_ticks = 1
                 correction_magnitude = 3.5
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-event-v1'; kind = 'correction'; event_sequence = 1
+                schema = 'rust-mcbe-movement-event-v1'; kind = 'correction'; event_sequence = 1
                 session_generation = 7; fifo_sequence = 41; physics_tick = 42; dimension = 0
                 correction_outcome = 'snapped'; corrected_tick = 42; replayed_ticks = 0
                 correction_magnitude = 1.25
             },
             [ordered]@{
-                schema = 'rust-mcbe-phase3-event-v1'; kind = 'dimension'; event_sequence = 2
+                schema = 'rust-mcbe-movement-event-v1'; kind = 'dimension'; event_sequence = 2
                 session_generation = 7; fifo_sequence = 42; physics_tick = 43; dimension = 1
             }
         )
@@ -430,7 +430,7 @@ Describe 'Phase 3 production marker evidence validation' {
 
     It 'rejects one production violation marker as the only changed condition' {
         $script:Violations = @([ordered]@{
-            schema = 'rust-mcbe-phase3-violation-v2'; reason = 'invalid_frame'
+            schema = 'rust-mcbe-movement-violation-v2'; reason = 'invalid_frame'
         })
         $result = Invoke-Validator (Write-MarkerLog 'violation.log')
         $result.ExitCode | Should Not Be 0
@@ -438,7 +438,7 @@ Describe 'Phase 3 production marker evidence validation' {
 
     It 'still rejects a v2-shaped non-monotonic-frame violation carrying frame identity' {
         $script:Violations = @([ordered]@{
-            schema = 'rust-mcbe-phase3-violation-v2'; reason = 'non_monotonic_frame'
+            schema = 'rust-mcbe-movement-violation-v2'; reason = 'non_monotonic_frame'
             frame_identity = [ordered]@{
                 previous_session_generation = 7; current_session_generation = 7
                 previous_physics_tick = 41; current_physics_tick = 43
@@ -652,7 +652,7 @@ Describe 'Phase 3 production marker evidence validation' {
         $script:Terminals[0].outbox_reconciliation = 'RemoteClosed'
         $result = Invoke-Validator (Write-MarkerLog 'terminal-remote-closed.log')
         $result.ExitCode | Should Be 0
-        $result.Output | Should Match 'PHASE3_EVIDENCE_VALID target=Bds'
+        $result.Output | Should Match 'MOVEMENT_EVIDENCE_VALID target=Bds'
         $aggregate = Get-Content -Raw -LiteralPath $result.Aggregate | ConvertFrom-Json
         $aggregate.evidence.terminal_outbox_reconciliation | Should Be 'RemoteClosed'
     }
@@ -746,15 +746,15 @@ Describe 'Phase 3 production marker evidence validation' {
         (Invoke-Validator (Write-MarkerLog 'post-dimension-tick-gap.log')).ExitCode | Should Not Be 0
     }
 
-    . (Join-Path $PSScriptRoot 'Phase3.EventCases.ps1')
-    . (Join-Path $PSScriptRoot 'Phase3.BoundaryCases.ps1')
+    . (Join-Path $PSScriptRoot 'MovementEvidence.EventCases.ps1')
+    . (Join-Path $PSScriptRoot 'MovementEvidence.BoundaryCases.ps1')
 }
 
 Describe 'Core endpoint readiness' {
     BeforeAll {
         $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
         . (Join-Path $repo 'scripts\acceptance\Process.ps1')
-        . (Join-Path $repo 'scripts\acceptance\Phase3Launch.ps1')
+        . (Join-Path $repo 'scripts\acceptance\MovementLaunch.ps1')
         $script:TempRoot = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:TempRoot | Out-Null
     }
@@ -765,7 +765,7 @@ Describe 'Core endpoint readiness' {
     It 'attributes the core ready signal to its actual endpoint without a publication file' {
         foreach ($endpoint in @('127.0.0.1:19133', '/tmp/cinnabar-0123456789abcdef0123456789abcdef.sock', '/tmp/socket with spaces.sock')) {
             $log = Join-Path $script:TempRoot ([guid]::NewGuid().ToString('N') + '.log')
-            $guard = New-Phase3CoreReadyGuard -LogPath $log
+            $guard = New-MovementCoreReadyGuard -LogPath $log
             $network = if ($endpoint.StartsWith('/')) { 'unix' } else { 'tcp' }
             $encoded = if ($endpoint.Contains(' ')) { '"' + $endpoint + '"' } else { $endpoint }
             Set-Content -LiteralPath $log -Value ('msg="listener ready; waiting for local Rust client" network=' + $network + ' endpoint=' + $encoded)
@@ -773,7 +773,7 @@ Describe 'Core endpoint readiness' {
                 Process = [pscustomobject]@{ Id = 41; HasExited = $false; ExitCode = 0 }
                 StderrPath = $log
             }
-            $witness = Wait-Phase3BridgeEndpoint -Guard $guard -CoreHandle $handle -TimeoutSeconds 1
+            $witness = Wait-MovementBridgeEndpoint -Guard $guard -CoreHandle $handle -TimeoutSeconds 1
             $witness.Endpoint | Should Be $endpoint
             $witness.CoreProcessId | Should Be 41
         }
@@ -782,7 +782,7 @@ Describe 'Core endpoint readiness' {
     It 'rejects stale core readiness evidence before launch' {
         $log = Join-Path $script:TempRoot 'stale-core.log'
         Set-Content -LiteralPath $log -Value 'old run'
-        { New-Phase3CoreReadyGuard -LogPath $log } | Should Throw
+        { New-MovementCoreReadyGuard -LogPath $log } | Should Throw
     }
 
 }

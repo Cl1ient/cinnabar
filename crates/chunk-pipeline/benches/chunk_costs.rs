@@ -261,15 +261,15 @@ fn validate_burst(fixture: &BurstFixture) -> WorldStreamStats {
     }
     assert_eq!(stored_sections, fixture.sections);
     assert_eq!(
-        stats.phase2_stages.decode_jobs_completed,
+        stats.publication_stages.decode_jobs_completed,
         (fixture.background_columns + fixture.columns()) as u64
     );
-    assert_eq!(stats.phase2_stages.mesh_uploads_unacknowledged, 0);
+    assert_eq!(stats.publication_stages.mesh_uploads_unacknowledged, 0);
     assert_eq!(
-        stats.phase2_stages.mesh_uploads_acknowledged,
-        stats.phase2_stages.mesh_changes_dequeued
+        stats.publication_stages.mesh_uploads_acknowledged,
+        stats.publication_stages.mesh_changes_dequeued
     );
-    assert!(stats.phase2_stages.mesh_jobs_completed >= fixture.sections as u64);
+    assert!(stats.publication_stages.mesh_jobs_completed >= fixture.sections as u64);
     stats
 }
 
@@ -297,7 +297,7 @@ fn streaming_benches(c: &mut Criterion) {
             let stats = validate_burst(&witness);
             frames.sort_unstable();
             let p99 = frames[(frames.len() - 1) * 99 / 100];
-            eprintln!("STREAM_PREFLIGHT columns={} background_columns={} stored_sections={sections} resident_slots={} drain_ms={:.3} cpu_step_p99_us={} cpu_step_max_us={} meshes={} stale_meshes={} stale_lights={}", witness.columns(), witness.background_columns, stats.resident_sub_chunks, elapsed.as_secs_f64() * 1000.0, p99.as_micros(), frames.last().unwrap().as_micros(), stats.phase2_stages.mesh_jobs_completed, stats.stale_mesh_jobs, stats.stale_light_jobs);
+            eprintln!("STREAM_PREFLIGHT columns={} background_columns={} stored_sections={sections} resident_slots={} drain_ms={:.3} cpu_step_p99_us={} cpu_step_max_us={} meshes={} stale_meshes={} stale_lights={}", witness.columns(), witness.background_columns, stats.resident_sub_chunks, elapsed.as_secs_f64() * 1000.0, p99.as_micros(), frames.last().unwrap().as_micros(), stats.publication_stages.mesh_jobs_completed, stats.stale_mesh_jobs, stats.stale_light_jobs);
             // Setup/teardown are excluded; bounded submission, worker waits, polling,
             // CPU publication and acknowledgements are included. No GPU upload occurs.
             b.iter_batched_ref(

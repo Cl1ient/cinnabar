@@ -24,4 +24,4 @@ if (-not [string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $arguments.OutputDirectory = $OutputDirectory
 }
 
-& (Join-Path $PSScriptRoot 'Phase3Launcher.ps1') @arguments
+& (Join-Path $PSScriptRoot 'MovementLauncher.ps1') @arguments

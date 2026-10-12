@@ -19,7 +19,7 @@ use protocol::{
 
 use super::integration_tests::evidence_context;
 use crate::environment::{WeatherState, WorldClock};
-use crate::runtime::phase3_evidence::Phase3EvidenceEmitter;
+use crate::runtime::movement_evidence::MovementEvidenceEmitter;
 use crate::runtime::world::{
     ClientWorld, WorldStreamFramePoll, advance_dimension_transfer,
     reconcile_world_stream_before_physics,
@@ -156,7 +156,7 @@ fn wiring_app(ticker: MovementTicker, physics: LocalPhysicsController) -> App {
         .init_resource::<LocalViewPose>()
         .init_resource::<LocalPlayerFrameCarrier>()
         .init_resource::<InteractionOriginSnapshot>()
-        .init_resource::<Phase3EvidenceEmitter>()
+        .init_resource::<MovementEvidenceEmitter>()
         .init_resource::<WorldStreamFramePoll>()
         .init_resource::<ServerCameraInstructions>()
         .add_systems(Update, reconcile_world_stream_before_physics);

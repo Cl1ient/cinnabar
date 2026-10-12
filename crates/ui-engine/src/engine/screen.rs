@@ -145,6 +145,7 @@ pub struct ScreenRegistry {
     screens: Vec<&'static str>,
     builtin_screens: Vec<&'static str>,
     tree_hooks: Vec<TreeHook>,
+    images: Vec<(&'static str, &'static [u8])>,
 }
 
 impl ScreenRegistry {
@@ -156,6 +157,7 @@ impl ScreenRegistry {
             screens: Vec::new(),
             builtin_screens: Vec::new(),
             tree_hooks: Vec::new(),
+            images: Vec::new(),
         }
     }
 
@@ -176,6 +178,15 @@ impl ScreenRegistry {
     /// Runs `hook` over every engine screen's resolved tree and factory-created control.
     pub fn tree_hook(&mut self, hook: TreeHook) {
         self.tree_hooks.push(hook);
+    }
+
+    /// Ships `bytes` as the image at extensionless pack `path`, below any server pack's.
+    pub fn builtin_image(&mut self, path: &'static str, bytes: &'static [u8]) {
+        self.images.push((path, bytes));
+    }
+
+    pub fn builtin_images(&self) -> &[(&'static str, &'static [u8])] {
+        &self.images
     }
 
     pub fn context(&self) -> &Context {

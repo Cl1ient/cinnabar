@@ -61,7 +61,7 @@ pub fn update_actor_rig_scene(
 ) -> &ActorRenderFrame {
     // The app adapter has already applied the renderer's exact culling helper
     // to remotes before enforcing capacity. Passing no second cull view keeps
-    // Phase 3's visible local reservation unconditional in both third-person
+    // the movement-owned visible local reservation unconditional in both third-person
     // modes while the render-owned builder still validates every other field.
     scene.update_rigs_with_artwork(
         partial_tick,

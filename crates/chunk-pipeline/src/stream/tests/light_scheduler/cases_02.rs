@@ -236,7 +236,7 @@ fn forced_remesh_inherits_queued_publication_urgency() {
 
 #[test]
 fn urgent_known_air_removal_uses_reserved_permit_after_ordinary_saturation() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let allowance = PublicationAllowance::new(config);
     allowance.begin_frame(
         1,
@@ -278,7 +278,7 @@ fn urgent_known_air_removal_uses_reserved_permit_after_ordinary_saturation() {
 }
 
 #[test]
-#[ignore = "release-only Phase 2 full-view lighting completion gate"]
+#[ignore = "release-only publication full-view lighting completion gate"]
 fn release_full_view_known_air_lighting_completes_within_two_seconds() {
     let mut stream = lit_stream(0);
     let radius = super::super::MAX_VIEW_RADIUS_CHUNKS;

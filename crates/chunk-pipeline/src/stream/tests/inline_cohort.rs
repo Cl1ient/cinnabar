@@ -53,7 +53,7 @@ fn inline_only_server_reaches_an_exact_required_cohort() {
 
     // The publication snapshot consumed by live evidence must leave the
     // empty-cohort constant behind.
-    let snapshot = stream.phase2_publication_snapshot(ChunkKey::new(0, 0, 0));
+    let snapshot = stream.publication_snapshot(ChunkKey::new(0, 0, 0));
     assert_eq!(snapshot.required_columns, 3);
     assert_eq!(snapshot.loaded_required_columns, 3);
     assert_ne!(

@@ -1,13 +1,13 @@
-# Get-Phase2CacheBoundaryEvidence validates historical core markers and reports
+# Get-CacheBoundaryEvidence validates historical core markers and reports
 # missing instrumentation without inventing packet counts for current builds.
-function Get-Phase2CacheBoundaryEvidence {
+function Get-CacheBoundaryEvidence {
     param([Parameter(Mandatory = $true)][string]$CoreLogPath)
 
     if (-not (Test-Path -LiteralPath $CoreLogPath -PathType Leaf)) {
-        throw 'PHASE2_CACHE_BOUNDARY core log is missing'
+        throw 'BLOB_CACHE_BOUNDARY core log is missing'
     }
     $content = Get-Content -LiteralPath $CoreLogPath -Raw
-    $markerPattern = '(?:^|\s)msg=PHASE2_CACHE_BOUNDARY(?:\s|$)'
+    $markerPattern = '(?:^|\s)msg=BLOB_CACHE_BOUNDARY(?:\s|$)'
     $markerCount = [regex]::Matches(
         [string]$content,
         $markerPattern,
@@ -21,22 +21,22 @@ function Get-Phase2CacheBoundaryEvidence {
         }
     }
     if ($markerCount -ne 1) {
-        throw 'PHASE2_CACHE_BOUNDARY requires exactly one summary marker'
+        throw 'BLOB_CACHE_BOUNDARY requires exactly one summary marker'
     }
     $lines = @(
         Get-Content -LiteralPath $CoreLogPath |
             Where-Object { $_ -match $markerPattern }
     )
     if ($lines.Count -ne 1) {
-        throw 'PHASE2_CACHE_BOUNDARY requires exactly one summary marker'
+        throw 'BLOB_CACHE_BOUNDARY requires exactly one summary marker'
     }
-    $pattern = '^(?:.*\s)?msg=PHASE2_CACHE_BOUNDARY ' +
+    $pattern = '^(?:.*\s)?msg=BLOB_CACHE_BOUNDARY ' +
         'upstream_status_seen=(true|false) upstream_status_enabled=(true|false) ' +
         'cached_level_chunks=([0-9]+) ordinary_level_chunks=([0-9]+) ' +
         'cached_sub_chunks=([0-9]+) ordinary_sub_chunks=([0-9]+)$'
     $match = [regex]::Match([string]$lines[0], $pattern, [Text.RegularExpressions.RegexOptions]::CultureInvariant)
     if (-not $match.Success) {
-        throw 'PHASE2_CACHE_BOUNDARY summary marker is malformed'
+        throw 'BLOB_CACHE_BOUNDARY summary marker is malformed'
     }
     $seen = $match.Groups[1].Value -ceq 'true'
     $enabled = $match.Groups[2].Value -ceq 'true'
@@ -49,7 +49,7 @@ function Get-Phase2CacheBoundaryEvidence {
             [Globalization.CultureInfo]::InvariantCulture,
             [ref]$value
         )) {
-            throw 'PHASE2_CACHE_BOUNDARY counter is outside its unsigned bound'
+            throw 'BLOB_CACHE_BOUNDARY counter is outside its unsigned bound'
         }
         $values.Add($value)
     }
@@ -60,7 +60,7 @@ function Get-Phase2CacheBoundaryEvidence {
     $cachedPackets = [decimal]$cachedLevel + [decimal]$cachedSub
     $ordinaryPackets = [decimal]$ordinaryLevel + [decimal]$ordinarySub
     if ((-not $seen -and $enabled) -or (-not $enabled -and $cachedPackets -ne 0)) {
-        throw 'PHASE2_CACHE_BOUNDARY status and packet routes are incoherent'
+        throw 'BLOB_CACHE_BOUNDARY status and packet routes are incoherent'
     }
     $classification = if (-not $seen -or -not $enabled) {
         'negotiation_failure'
@@ -72,7 +72,7 @@ function Get-Phase2CacheBoundaryEvidence {
         'server_ordinary_despite_cache_capability'
     }
     else {
-        throw 'PHASE2_CACHE_BOUNDARY contains no attributable world packet route'
+        throw 'BLOB_CACHE_BOUNDARY contains no attributable world packet route'
     }
     return [pscustomobject][ordered]@{
         classification = $classification
@@ -85,7 +85,7 @@ function Get-Phase2CacheBoundaryEvidence {
     }
 }
 
-function Assert-Phase2CacheBoundaryConsistency {
+function Assert-CacheBoundaryConsistency {
     param(
         [Parameter(Mandatory = $true)][ValidateSet('Lunar', 'Zeqa')][string]$Server,
         [Parameter(Mandatory = $true)][string]$ClientBlobCacheRoute,
@@ -119,7 +119,7 @@ function Assert-Phase2CacheBoundaryConsistency {
     }
 }
 
-function Assert-Phase2PublicationRecord {
+function Assert-PublicationRecord {
     param(
         [Parameter(Mandatory = $true)]$Record,
         [Parameter(Mandatory = $true)][ValidateSet('Fifo', 'Immediate')][string]$ExpectedPresentMode,
@@ -130,11 +130,11 @@ function Assert-Phase2PublicationRecord {
         [switch]$AllowResettingPublisher
     )
 
-    Assert-Phase2ExactProperties -Value $Record `
+    Assert-AcceptanceExactProperties -Value $Record `
         -Names @('client_blob_cache', 'client_blob_cache_enabled', 'presentation', 'publication') `
-        -Label 'PHASE2_PUBLICATION root'
+        -Label 'CINNABAR_CHUNK_PUBLICATION root'
     if ($Record.client_blob_cache_enabled -isnot [bool]) {
-        throw 'PHASE2_PUBLICATION client_blob_cache_enabled must be a Boolean'
+        throw 'CINNABAR_CHUNK_PUBLICATION client_blob_cache_enabled must be a Boolean'
     }
     $cache = $Record.client_blob_cache
     $requiredCacheFields = @(
@@ -142,35 +142,35 @@ function Assert-Phase2PublicationRecord {
         'pending_resets', 'pending_transactions', 'reconstructed_level_chunks',
         'reconstructed_sub_chunks', 'rejected_blobs'
     )
-    Assert-Phase2ExactProperties -Value $cache -Names $requiredCacheFields `
-        -Label 'PHASE2_PUBLICATION client_blob_cache'
+    Assert-AcceptanceExactProperties -Value $cache -Names $requiredCacheFields `
+        -Label 'CINNABAR_CHUNK_PUBLICATION client_blob_cache'
     foreach ($field in $requiredCacheFields) {
-        Assert-Phase2UnsignedInteger -Value $cache.$field -Label "client_blob_cache.$field"
+        Assert-AcceptanceUnsignedInteger -Value $cache.$field -Label "client_blob_cache.$field"
     }
     if ([decimal]$cache.hits + [decimal]$cache.misses -ne [decimal]$cache.hashes_classified) {
-        throw 'PHASE2_PUBLICATION client blob cache hit and miss totals disagree with hashes_classified'
+        throw 'CINNABAR_CHUNK_PUBLICATION client blob cache hit and miss totals disagree with hashes_classified'
     }
     if (-not [bool]$Record.client_blob_cache_enabled) {
         foreach ($field in $requiredCacheFields) {
             if ([uint64]$cache.$field -ne 0) {
-                throw 'PHASE2_PUBLICATION disabled client blob cache contains nonzero counters'
+                throw 'CINNABAR_CHUNK_PUBLICATION disabled client blob cache contains nonzero counters'
             }
         }
     }
     $presentation = $Record.presentation
     $publication = $Record.publication
-    Assert-Phase2ExactProperties -Value $presentation -Names @(
+    Assert-AcceptanceExactProperties -Value $presentation -Names @(
         'allocation', 'assets_manifest_sha256', 'build_profile', 'effective_present_mode', 'gpu_presented',
         'graphics_identity_sha256', 'present_mode_proven', 'publisher_disk', 'requested_present_mode',
         'resident', 'submitted', 'visible', 'visible_subset_of_resident', 'player_column'
-    ) -Label 'PHASE2_PUBLICATION presentation'
-    Assert-Phase2ExactProperties -Value $publication -Names @(
+    ) -Label 'CINNABAR_CHUNK_PUBLICATION presentation'
+    Assert-AcceptanceExactProperties -Value $publication -Names @(
         'inactive_level_chunks', 'loaded_required_columns', 'local_reset', 'max_queue_wait_us',
         'max_worker_time_us', 'outcomes', 'player_column', 'player_column_loaded',
         'player_column_required', 'publisher_center', 'publisher_epoch', 'publisher_radius_blocks',
         'publisher_radius_chunks', 'request_queue', 'required_cohort_hash', 'required_cohort_stable',
         'required_columns', 'session_generation', 'stages'
-    ) -Label 'PHASE2_PUBLICATION publication'
+    ) -Label 'CINNABAR_CHUNK_PUBLICATION publication'
     $mode = $ExpectedPresentMode.ToLowerInvariant()
     if ($null -eq $presentation -or $null -eq $publication -or
         [string]$presentation.build_profile -cne $ExpectedBuildProfile -or
@@ -180,24 +180,24 @@ function Assert-Phase2PublicationRecord {
         -not [bool]$presentation.present_mode_proven -or
         [string]$presentation.graphics_identity_sha256 -notmatch '^[0-9a-f]{64}$' -or
         [string]$presentation.assets_manifest_sha256 -notmatch '^[0-9a-f]{64}$') {
-        throw 'PHASE2_PUBLICATION did not prove expected build, effective present mode, graphics identity, and asset identity'
+        throw 'CINNABAR_CHUNK_PUBLICATION did not prove expected build, effective present mode, graphics identity, and asset identity'
     }
     if ($presentation.visible_subset_of_resident -isnot [bool]) {
-        throw 'PHASE2_PUBLICATION visible_subset_of_resident must be a Boolean'
+        throw 'CINNABAR_CHUNK_PUBLICATION visible_subset_of_resident must be a Boolean'
     }
     if (-not [string]::IsNullOrEmpty($ExpectedGraphicsIdentity) -and
         [string]$presentation.graphics_identity_sha256 -cne $ExpectedGraphicsIdentity) {
-        throw 'PHASE2_PUBLICATION graphics identity changed during the diagnostic sequence'
+        throw 'CINNABAR_CHUNK_PUBLICATION graphics identity changed during the diagnostic sequence'
     }
     if (-not [string]::IsNullOrEmpty($ExpectedAssetsIdentity) -and
         [string]$presentation.assets_manifest_sha256 -cne $ExpectedAssetsIdentity) {
-        throw 'PHASE2_PUBLICATION assets identity changed during the diagnostic sequence'
+        throw 'CINNABAR_CHUNK_PUBLICATION assets identity changed during the diagnostic sequence'
     }
-    Assert-Phase2UnsignedInteger -Value $publication.session_generation -Label 'publication.session_generation' -Positive
-    Assert-Phase2UnsignedInteger -Value $publication.publisher_epoch -Label 'publication.publisher_epoch'
-    Assert-Phase2UnsignedInteger -Value $publication.required_columns -Label 'publication.required_columns'
-    Assert-Phase2UnsignedInteger -Value $publication.loaded_required_columns -Label 'publication.loaded_required_columns'
-    Assert-Phase2UnsignedInteger -Value $publication.inactive_level_chunks -Label 'publication.inactive_level_chunks'
+    Assert-AcceptanceUnsignedInteger -Value $publication.session_generation -Label 'publication.session_generation' -Positive
+    Assert-AcceptanceUnsignedInteger -Value $publication.publisher_epoch -Label 'publication.publisher_epoch'
+    Assert-AcceptanceUnsignedInteger -Value $publication.required_columns -Label 'publication.required_columns'
+    Assert-AcceptanceUnsignedInteger -Value $publication.loaded_required_columns -Label 'publication.loaded_required_columns'
+    Assert-AcceptanceUnsignedInteger -Value $publication.inactive_level_chunks -Label 'publication.inactive_level_chunks'
     foreach ($field in @('player_column_required', 'player_column_loaded')) {
         if ($publication.$field -isnot [bool]) { throw "publication.$field must be a Boolean" }
     }
@@ -212,29 +212,29 @@ function Assert-Phase2PublicationRecord {
         }
     }
     else {
-        Assert-Phase2UnsignedInteger -Value $publication.publisher_radius_blocks -Label 'publication.publisher_radius_blocks' -Maximum 1024 -Positive
-        Assert-Phase2UnsignedInteger -Value $publication.publisher_radius_chunks -Label 'publication.publisher_radius_chunks' -Maximum 64 -Positive
+        Assert-AcceptanceUnsignedInteger -Value $publication.publisher_radius_blocks -Label 'publication.publisher_radius_blocks' -Maximum 1024 -Positive
+        Assert-AcceptanceUnsignedInteger -Value $publication.publisher_radius_chunks -Label 'publication.publisher_radius_chunks' -Maximum 64 -Positive
         $derivedRetentionRadius = [uint64][Math]::Ceiling([uint64]$publication.publisher_radius_blocks / 16.0)
         if ([uint64]$publication.publisher_radius_chunks -ne $derivedRetentionRadius) {
-            throw 'PHASE2_PUBLICATION raw block radius disagrees with its derived retention radius'
+            throw 'CINNABAR_CHUNK_PUBLICATION raw block radius disagrees with its derived retention radius'
         }
     }
     if ($null -eq $publication.stages -or $null -eq $publication.outcomes -or
         [string]$publication.required_cohort_hash -notmatch '^[0-9a-f]{16}$' -or
         [uint64]$publication.loaded_required_columns -gt [uint64]$publication.required_columns) {
-        throw 'PHASE2_PUBLICATION lacks a coherent publication identity and bounded cohort counts'
+        throw 'CINNABAR_CHUNK_PUBLICATION lacks a coherent publication identity and bounded cohort counts'
     }
-    Assert-Phase2ExactProperties -Value $publication.player_column -Names @('dimension', 'x', 'z') `
-        -Label 'PHASE2_PUBLICATION player_column'
+    Assert-AcceptanceExactProperties -Value $publication.player_column -Names @('dimension', 'x', 'z') `
+        -Label 'CINNABAR_CHUNK_PUBLICATION player_column'
     foreach ($field in @('dimension', 'x', 'z')) {
-        Assert-Phase2SignedInteger32 -Value $publication.player_column.$field -Label "publication.player_column.$field"
+        Assert-AcceptanceSignedInteger32 -Value $publication.player_column.$field -Label "publication.player_column.$field"
     }
     if ($null -ne $publication.publisher_center) {
         if (@($publication.publisher_center).Count -ne 3) {
             throw 'publication.publisher_center must contain exactly three coordinates'
         }
         for ($index = 0; $index -lt 3; $index++) {
-            Assert-Phase2SignedInteger32 -Value $publication.publisher_center[$index] `
+            Assert-AcceptanceSignedInteger32 -Value $publication.publisher_center[$index] `
                 -Label "publication.publisher_center[$index]"
         }
     }
@@ -242,15 +242,15 @@ function Assert-Phase2PublicationRecord {
         throw 'publication.publisher_center is missing for an initialized publisher'
     }
     $localReset = $publication.local_reset
-    Assert-Phase2ExactProperties -Value $localReset -Names @(
+    Assert-AcceptanceExactProperties -Value $localReset -Names @(
         'armed', 'armed_count', 'consumed_count', 'dispatch_classes', 'dispatch_count',
         'dispatch_total', 'dispatch_trace_overflowed'
-    ) -Label 'PHASE2_PUBLICATION publication.local_reset'
+    ) -Label 'CINNABAR_CHUNK_PUBLICATION publication.local_reset'
     if ($localReset.armed -isnot [bool] -or $localReset.dispatch_trace_overflowed -isnot [bool]) {
         throw 'publication.local_reset Boolean evidence is malformed'
     }
     foreach ($field in @('armed_count', 'consumed_count', 'dispatch_count', 'dispatch_total')) {
-        Assert-Phase2UnsignedInteger -Value $localReset.$field -Label "publication.local_reset.$field"
+        Assert-AcceptanceUnsignedInteger -Value $localReset.$field -Label "publication.local_reset.$field"
     }
     $dispatchClasses = @($localReset.dispatch_classes)
     if ($dispatchClasses.Count -ne [uint64]$localReset.dispatch_count -or
@@ -266,26 +266,26 @@ function Assert-Phase2PublicationRecord {
         if ([string]$class -cnotin $requestClasses) { throw 'publication.local_reset contains an unknown dispatch class' }
     }
     $queue = $publication.request_queue
-    Assert-Phase2ExactProperties -Value $queue -Names @(
+    Assert-AcceptanceExactProperties -Value $queue -Names @(
         'class_depths', 'next_class', 'next_is_starved', 'next_is_transport_retry',
         'ready_blocked_by_reservation', 'reservations'
-    ) -Label 'PHASE2_PUBLICATION publication.request_queue'
+    ) -Label 'CINNABAR_CHUNK_PUBLICATION publication.request_queue'
     if ($queue.next_is_starved -isnot [bool] -or $queue.next_is_transport_retry -isnot [bool]) {
         throw 'publication.request_queue selection reasons must be Boolean'
     }
     foreach ($field in @('ready_blocked_by_reservation', 'reservations')) {
-        Assert-Phase2UnsignedInteger -Value $queue.$field -Label "publication.request_queue.$field"
+        Assert-AcceptanceUnsignedInteger -Value $queue.$field -Label "publication.request_queue.$field"
     }
     $depths = @($queue.class_depths)
     if ($depths.Count -ne $requestClasses.Count) { throw 'publication.request_queue class depth count is not exact' }
     for ($index = 0; $index -lt $requestClasses.Count; $index++) {
-        Assert-Phase2ExactProperties -Value $depths[$index] -Names @('class', 'eligible', 'ready') `
+        Assert-AcceptanceExactProperties -Value $depths[$index] -Names @('class', 'eligible', 'ready') `
             -Label "publication.request_queue.class_depths[$index]"
         if ([string]$depths[$index].class -cne $requestClasses[$index]) {
             throw 'publication.request_queue priority order changed'
         }
         foreach ($field in @('eligible', 'ready')) {
-            Assert-Phase2UnsignedInteger -Value $depths[$index].$field `
+            Assert-AcceptanceUnsignedInteger -Value $depths[$index].$field `
                 -Label "publication.request_queue.class_depths[$index].$field"
         }
         if ([uint64]$depths[$index].eligible -gt [uint64]$depths[$index].ready) {
@@ -317,21 +317,21 @@ function Assert-Phase2PublicationRecord {
         }
     }
     $presentedPlayer = $presentation.player_column
-    Assert-Phase2ExactProperties -Value $presentedPlayer -Names @(
+    Assert-AcceptanceExactProperties -Value $presentedPlayer -Names @(
         'allocated_subchunks', 'dimension', 'gpu_presented_subchunks', 'resident_subchunks',
         'submitted_subchunks', 'visible_subchunks', 'x', 'z'
-    ) -Label 'PHASE2_PUBLICATION presentation.player_column'
+    ) -Label 'CINNABAR_CHUNK_PUBLICATION presentation.player_column'
     foreach ($field in @('dimension', 'x', 'z')) {
-        Assert-Phase2SignedInteger32 -Value $presentedPlayer.$field -Label "presentation.player_column.$field"
+        Assert-AcceptanceSignedInteger32 -Value $presentedPlayer.$field -Label "presentation.player_column.$field"
         if ([int32]$presentedPlayer.$field -ne [int32]$publication.player_column.$field) {
-            throw 'PHASE2_PUBLICATION publication and presentation player columns disagree'
+            throw 'CINNABAR_CHUNK_PUBLICATION publication and presentation player columns disagree'
         }
     }
-    Assert-Phase2UnsignedInteger -Value $presentedPlayer.allocated_subchunks `
+    Assert-AcceptanceUnsignedInteger -Value $presentedPlayer.allocated_subchunks `
         -Label 'presentation.player_column.allocated_subchunks'
     foreach ($field in @('resident_subchunks', 'visible_subchunks', 'submitted_subchunks', 'gpu_presented_subchunks')) {
         if ($null -ne $presentedPlayer.$field) {
-            Assert-Phase2UnsignedInteger -Value $presentedPlayer.$field -Label "presentation.player_column.$field"
+            Assert-AcceptanceUnsignedInteger -Value $presentedPlayer.$field -Label "presentation.player_column.$field"
         }
     }
     if (($null -ne $presentedPlayer.visible_subchunks -and
@@ -344,11 +344,11 @@ function Assert-Phase2PublicationRecord {
             [uint64]$presentedPlayer.gpu_presented_subchunks -gt [uint64]$presentedPlayer.submitted_subchunks)) {
         throw 'presentation.player_column stage counts violate resident/visible/submitted/GPU ordering'
     }
-    Assert-Phase2ExactProperties -Value $publication.outcomes `
+    Assert-AcceptanceExactProperties -Value $publication.outcomes `
         -Names @('all_air', 'malformed', 'stale', 'success', 'timed_out', 'unavailable') `
-        -Label 'PHASE2_PUBLICATION outcomes'
+        -Label 'CINNABAR_CHUNK_PUBLICATION outcomes'
     foreach ($field in @('all_air', 'malformed', 'stale', 'success', 'timed_out', 'unavailable')) {
-        Assert-Phase2UnsignedInteger -Value $publication.outcomes.$field -Label "publication.outcomes.$field"
+        Assert-AcceptanceUnsignedInteger -Value $publication.outcomes.$field -Label "publication.outcomes.$field"
     }
     $requiredStageFields = @(
         'requests_constructed', 'requests_ready', 'requests_transport_pending', 'requests_sent',
@@ -361,43 +361,43 @@ function Assert-Phase2PublicationRecord {
         'mesh_jobs_in_flight', 'mesh_jobs_completed', 'mesh_uploads_unacknowledged',
         'mesh_uploads_acknowledged'
     )
-    Assert-Phase2ExactProperties -Value $publication.stages -Names $requiredStageFields `
-        -Label 'PHASE2_PUBLICATION stages'
+    Assert-AcceptanceExactProperties -Value $publication.stages -Names $requiredStageFields `
+        -Label 'CINNABAR_CHUNK_PUBLICATION stages'
     foreach ($field in $requiredStageFields) {
-        Assert-Phase2UnsignedInteger -Value $publication.stages.$field -Label "publication.stages.$field"
+        Assert-AcceptanceUnsignedInteger -Value $publication.stages.$field -Label "publication.stages.$field"
     }
     foreach ($prefix in @('decode_jobs', 'light_jobs', 'mesh_jobs')) {
         $dispatched = [uint64]$publication.stages.("${prefix}_dispatched")
         $completed = [uint64]$publication.stages.("${prefix}_completed")
         $inFlight = [uint64]$publication.stages.("${prefix}_in_flight")
         if ($completed -gt $dispatched) {
-            throw "PHASE2_PUBLICATION ${prefix}_completed exceeds ${prefix}_dispatched"
+            throw "CINNABAR_CHUNK_PUBLICATION ${prefix}_completed exceeds ${prefix}_dispatched"
         }
         if ($dispatched -ne [uint64]::MaxValue -and $completed -ne [uint64]::MaxValue -and
             $inFlight -ne ($dispatched - $completed)) {
-            throw "PHASE2_PUBLICATION ${prefix}_in_flight disagrees with unsaturated dispatch counters"
+            throw "CINNABAR_CHUNK_PUBLICATION ${prefix}_in_flight disagrees with unsaturated dispatch counters"
         }
     }
     $constructed = [uint64]$publication.stages.requests_constructed
     $sent = [uint64]$publication.stages.requests_sent
     if ($sent -gt $constructed) {
-        throw 'PHASE2_PUBLICATION requests_sent exceeds requests_constructed'
+        throw 'CINNABAR_CHUNK_PUBLICATION requests_sent exceeds requests_constructed'
     }
     $ready = [uint64]$publication.stages.requests_ready
     $transportPending = [uint64]$publication.stages.requests_transport_pending
     if ($constructed -ne [uint64]::MaxValue -and $sent -ne [uint64]::MaxValue -and
         $ready -ne [uint64]::MaxValue -and $transportPending -ne [uint64]::MaxValue -and
         ([decimal]$ready + [decimal]$transportPending) -gt ([decimal]$constructed - [decimal]$sent)) {
-        throw 'PHASE2_PUBLICATION ready and transport-pending gauges exceed unsaturated request counters'
+        throw 'CINNABAR_CHUNK_PUBLICATION ready and transport-pending gauges exceed unsaturated request counters'
     }
     $changesQueued = [uint64]$publication.stages.mesh_changes_queued
     $changesDequeued = [uint64]$publication.stages.mesh_changes_dequeued
     if ($changesDequeued -gt $changesQueued) {
-        throw 'PHASE2_PUBLICATION mesh_changes_dequeued exceeds mesh_changes_queued'
+        throw 'CINNABAR_CHUNK_PUBLICATION mesh_changes_dequeued exceeds mesh_changes_queued'
     }
     if ($changesQueued -ne [uint64]::MaxValue -and $changesDequeued -ne [uint64]::MaxValue -and
         [uint64]$publication.stages.mesh_changes_pending -ne ($changesQueued - $changesDequeued)) {
-        throw 'PHASE2_PUBLICATION mesh_changes_pending disagrees with unsaturated change counters'
+        throw 'CINNABAR_CHUNK_PUBLICATION mesh_changes_pending disagrees with unsaturated change counters'
     }
     $outcomeTotal = [decimal]0
     foreach ($field in @('success', 'all_air', 'unavailable', 'malformed', 'stale', 'timed_out')) {
@@ -407,32 +407,32 @@ function Assert-Phase2PublicationRecord {
         [decimal]$publication.outcomes.all_air + [decimal]$publication.outcomes.unavailable
     if ($outcomeTotal -gt [decimal]$publication.stages.responses_admitted -or
         [decimal]$publication.stages.subchunks_committed -gt $maximumCommittableOutcomes) {
-        throw 'PHASE2_PUBLICATION response outcomes exceed admitted or committable responses'
+        throw 'CINNABAR_CHUNK_PUBLICATION response outcomes exceed admitted or committable responses'
     }
     foreach ($timingName in @('max_queue_wait_us', 'max_worker_time_us')) {
-        Assert-Phase2ExactProperties -Value $publication.$timingName -Names @('decode', 'lighting', 'meshing') `
-            -Label "PHASE2_PUBLICATION $timingName"
+        Assert-AcceptanceExactProperties -Value $publication.$timingName -Names @('decode', 'lighting', 'meshing') `
+            -Label "CINNABAR_CHUNK_PUBLICATION $timingName"
         foreach ($field in @('decode', 'lighting', 'meshing')) {
-            Assert-Phase2FiniteNonnegativeNumber -Value $publication.$timingName.$field `
+            Assert-AcceptanceFiniteNonnegativeNumber -Value $publication.$timingName.$field `
                 -Label "publication.$timingName.$field"
         }
     }
     foreach ($identityName in @('publisher_disk', 'resident', 'allocation', 'visible', 'submitted', 'gpu_presented')) {
         $identity = $presentation.$identityName
-        Assert-Phase2ExactProperties -Value $identity `
+        Assert-AcceptanceExactProperties -Value $identity `
             -Names @('entry_count', 'generation_manifest_hash', 'manifest_domain', 'publisher_epoch', 'required_cohort_count',
                 'required_cohort_hash', 'session_generation') `
-            -Label "PHASE2_PUBLICATION presentation.$identityName"
-        Assert-Phase2UnsignedInteger -Value $identity.entry_count -Label "presentation.$identityName.entry_count"
-        Assert-Phase2UnsignedInteger -Value $identity.session_generation -Label "presentation.$identityName.session_generation" -Positive
-        Assert-Phase2UnsignedInteger -Value $identity.publisher_epoch -Label "presentation.$identityName.publisher_epoch"
-        Assert-Phase2UnsignedInteger -Value $identity.required_cohort_count -Label "presentation.$identityName.required_cohort_count"
+            -Label "CINNABAR_CHUNK_PUBLICATION presentation.$identityName"
+        Assert-AcceptanceUnsignedInteger -Value $identity.entry_count -Label "presentation.$identityName.entry_count"
+        Assert-AcceptanceUnsignedInteger -Value $identity.session_generation -Label "presentation.$identityName.session_generation" -Positive
+        Assert-AcceptanceUnsignedInteger -Value $identity.publisher_epoch -Label "presentation.$identityName.publisher_epoch"
+        Assert-AcceptanceUnsignedInteger -Value $identity.required_cohort_count -Label "presentation.$identityName.required_cohort_count"
         if ([uint64]$identity.session_generation -ne [uint64]$publication.session_generation -or
             [uint64]$identity.publisher_epoch -ne [uint64]$publication.publisher_epoch -or
             [uint64]$identity.required_cohort_count -ne [uint64]$publication.required_columns -or
             [string]$identity.required_cohort_hash -cne [string]$publication.required_cohort_hash -or
             [string]$identity.generation_manifest_hash -notmatch '^[0-9a-f]{16}$') {
-            throw "PHASE2_PUBLICATION contains incoherent $identityName identity"
+            throw "CINNABAR_CHUNK_PUBLICATION contains incoherent $identityName identity"
         }
         $expectedManifestDomain = if ($identityName -in @('publisher_disk', 'allocation')) {
             'key_generation'
@@ -441,7 +441,7 @@ function Assert-Phase2PublicationRecord {
             'key'
         }
         if ([string]$identity.manifest_domain -cne $expectedManifestDomain) {
-            throw "PHASE2_PUBLICATION contains incoherent $identityName manifest domain"
+            throw "CINNABAR_CHUNK_PUBLICATION contains incoherent $identityName manifest domain"
         }
     }
     if ($publisherUninitialized) {
@@ -449,47 +449,47 @@ function Assert-Phase2PublicationRecord {
         if ([bool]$publication.required_cohort_stable -or
             [uint64]$publication.required_columns -ne 0 -or
             [uint64]$publication.loaded_required_columns -ne 0) {
-            throw 'PHASE2_PUBLICATION uninitialized publisher contains a nonempty cohort'
+            throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher contains a nonempty cohort'
         }
         if ([string]$publication.required_cohort_hash -cne $emptyManifestHash) {
-            throw 'PHASE2_PUBLICATION uninitialized publisher contains a noncanonical empty cohort identity'
+            throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher contains a noncanonical empty cohort identity'
         }
         if (-not $AllowResettingPublisher) {
             foreach ($field in $requiredStageFields) {
                 if ([uint64]$publication.stages.$field -ne 0) {
-                    throw 'PHASE2_PUBLICATION uninitialized publisher contains stage progress'
+                    throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher contains stage progress'
                 }
             }
             foreach ($field in @('success', 'all_air', 'unavailable', 'malformed', 'stale', 'timed_out')) {
                 if ([uint64]$publication.outcomes.$field -ne 0) {
-                    throw 'PHASE2_PUBLICATION uninitialized publisher contains response outcomes'
+                    throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher contains response outcomes'
                 }
             }
             foreach ($timingName in @('max_queue_wait_us', 'max_worker_time_us')) {
                 foreach ($field in @('decode', 'lighting', 'meshing')) {
                     if ([decimal]$publication.$timingName.$field -ne 0) {
-                        throw 'PHASE2_PUBLICATION uninitialized publisher contains stage timing'
+                        throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher contains stage timing'
                     }
                 }
             }
         }
         foreach ($identityName in @('publisher_disk', 'resident', 'allocation', 'visible', 'submitted', 'gpu_presented')) {
             if ([uint64]$presentation.$identityName.entry_count -ne 0) {
-                throw 'PHASE2_PUBLICATION uninitialized publisher contains presented entries'
+                throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher contains presented entries'
             }
         }
         foreach ($identityName in @('publisher_disk', 'allocation')) {
             if ([string]$presentation.$identityName.generation_manifest_hash -cne $emptyManifestHash) {
-                throw 'PHASE2_PUBLICATION uninitialized publisher contains a noncanonical empty manifest identity'
+                throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher contains a noncanonical empty manifest identity'
             }
         }
     }
     elseif ([uint64]$publication.publisher_epoch -eq 0) {
-        throw 'PHASE2_PUBLICATION initialized publisher has no publisher epoch'
+        throw 'CINNABAR_CHUNK_PUBLICATION initialized publisher has no publisher epoch'
     }
 }
 
-function Get-Phase2FirstStalledStage {
+function Get-PublicationFirstStalledStage {
     param(
         [Parameter(Mandatory = $true)]$PublicationRecord,
         [Parameter(Mandatory = $true)][bool]$WorldReadyObserved

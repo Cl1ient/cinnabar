@@ -21,20 +21,20 @@ mod exit;
 use diagnostics::bounded_file;
 
 pub mod model_witness;
+pub mod movement_evidence;
 pub mod mutation;
-pub mod phase2_evidence;
-mod phase3;
-pub mod phase3_evidence;
 pub mod proofs;
+pub mod publication_evidence;
 pub mod remesh;
 pub mod teleport;
+mod terminal_drain;
 pub mod transparent_witness;
 pub mod world_observation;
 pub mod world_ready;
 
 mod run;
 pub use exit::AcceptanceExitDecision;
-pub use phase3::Phase3TerminalDrainDecision;
+pub use terminal_drain::MovementTerminalDrainDecision;
 
 pub const TRANSPARENT_PRESENTATION_EXIT_GRACE: Duration = Duration::from_secs(2);
 

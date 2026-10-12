@@ -24,12 +24,12 @@ fn correction_during_terminal_drain_keeps_definitely_unsent_retry_pending_and_ti
     let mut acceptance = AcceptanceRun::new(Some(60), None, false, false);
     acceptance.deadline = Some(deadline);
     assert_eq!(
-        acceptance.phase3_terminal_drain_decision(
+        acceptance.movement_terminal_drain_decision(
             deadline + TRANSPARENT_PRESENTATION_EXIT_GRACE,
             true,
             ticker.pending_count(),
         ),
-        Phase3TerminalDrainDecision::TimedOut,
+        MovementTerminalDrainDecision::TimedOut,
         "stranded replay work must make terminal acceptance fail closed"
     );
 }

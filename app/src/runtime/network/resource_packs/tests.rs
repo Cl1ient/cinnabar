@@ -191,7 +191,7 @@ fn ui_custom_definition_overrides_across_layers_without_relisting() {
         )],
     );
     let view = resource_pack::LayeredPackView::new(resource_pack::validate_handoff(
-        protocol::ResourcePackHandoff::from_archives(vec![lower, upper]),
+        protocol::ResourcePackHandoff::from_archives(vec![upper, lower]),
     ));
     let pack = super::collect_server_ui(&view).unwrap();
     assert!(pack.ui_layers[1].iter().any(|(name, _)| name == path));
@@ -361,8 +361,8 @@ fn texture_sets_supply_color_layers() {
 fn language_files_merge_across_the_stack_by_precedence() {
     let _cache = overlay_cache();
     let handoff = protocol::ResourcePackHandoff::from_archives(vec![
-        lang_pack(2, b"\xef\xbb\xbfshared=bottom\nbottom.only=B"),
         lang_pack(1, b"shared=top\ntop.only=T"),
+        lang_pack(2, b"\xef\xbb\xbfshared=bottom\nbottom.only=B"),
     ]);
     let application = super::prepare_pack_application(
         handoff,

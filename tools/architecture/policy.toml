@@ -570,46 +570,52 @@ producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/Orchestration/Execute.ps1"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_EVENT"
+literal = "CINNABAR_MOVEMENT_EVENT"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "scripts/acceptance/Phase3.ps1"
+consumer = "scripts/acceptance/MovementEvidence.ps1"
 
 [[markers]]
-literal = "CINNABAR_PHASE2_TIMING"
+literal = "CINNABAR_CHUNK_PUBLICATION"
+kind = "parsed"
+producer = "crates/diagnostics/src/markers.rs"
+consumer = "scripts/acceptance/Load.ps1"
+
+[[markers]]
+literal = "CINNABAR_CHUNK_PUBLICATION_TIMING"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
 consumer = "scripts/acceptance/FastTransferWitnessValidation.ps1"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_FRAME"
+literal = "CINNABAR_MOVEMENT_FRAME"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "scripts/acceptance/Phase3.ps1"
+consumer = "scripts/acceptance/MovementEvidence.ps1"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_IDENTITY"
+literal = "CINNABAR_MOVEMENT_IDENTITY"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "scripts/acceptance/Phase3.ps1"
+consumer = "scripts/acceptance/MovementEvidence.ps1"
 
 [[markers]]
 literal = "CINNABAR_NETWORK_PUMP_TERMINAL"
 kind = "parsed"
 producer = "crates/client-session/src/session.rs"
-consumer = "scripts/acceptance/Phase3.ps1"
+consumer = "scripts/acceptance/MovementEvidence.ps1"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_TERMINAL"
+literal = "CINNABAR_MOVEMENT_TERMINAL"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "scripts/acceptance/Phase3.ps1"
+consumer = "scripts/acceptance/MovementEvidence.ps1"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_VIOLATION"
+literal = "CINNABAR_MOVEMENT_VIOLATION"
 kind = "parsed"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "scripts/acceptance/Phase3.ps1"
+consumer = "scripts/acceptance/MovementEvidence.ps1"
 
 [[markers]]
 literal = "CINNABAR_TARGET_MUTATION_ARMED"
@@ -717,43 +723,43 @@ consumer = "crates/client-interaction/src/movement.rs"
 literal = "CINNABAR_BUILD_COMMIT"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "crates/acceptance/src/phase3_evidence.rs"
+consumer = "crates/acceptance/src/movement_evidence.rs"
 
 [[markers]]
 literal = "CINNABAR_SOURCE_DIRTY"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "crates/acceptance/src/phase3_evidence.rs"
+consumer = "crates/acceptance/src/movement_evidence.rs"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_RUN_ID"
+literal = "CINNABAR_ACCEPTANCE_RUN_ID"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "crates/acceptance/src/phase3_evidence.rs"
+consumer = "crates/acceptance/src/movement_evidence.rs"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_ENDPOINT"
+literal = "CINNABAR_ACCEPTANCE_ENDPOINT"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "crates/acceptance/src/phase3_evidence.rs"
+consumer = "crates/acceptance/src/movement_evidence.rs"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_CORE_SHA256"
+literal = "CINNABAR_ACCEPTANCE_CORE_SHA256"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "crates/acceptance/src/phase3_evidence.rs"
+consumer = "crates/acceptance/src/movement_evidence.rs"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_CORE_PROCESS_ID"
+literal = "CINNABAR_ACCEPTANCE_CORE_PROCESS_ID"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "crates/acceptance/src/phase3_evidence.rs"
+consumer = "crates/acceptance/src/movement_evidence.rs"
 
 [[markers]]
-literal = "CINNABAR_PHASE3_BRIDGE_ENDPOINT"
+literal = "CINNABAR_ACCEPTANCE_BRIDGE_ENDPOINT"
 kind = "environment_variable"
 producer = "crates/diagnostics/src/markers.rs"
-consumer = "crates/acceptance/src/phase3_evidence.rs"
+consumer = "crates/acceptance/src/movement_evidence.rs"
 
 [[markers]]
 literal = "CINNABAR_ERROR_COUNTERS"

@@ -65,10 +65,11 @@ fn empty_stack_records_missing_sheets_for_later_activation() {
     }
 }
 
-// The last-applied pack replaces a sheet wholesale; sheets it lacks still come from lower packs.
+// The first server pack replaces a sheet wholesale; missing sheets use lower packs.
 #[test]
-fn the_last_applied_pack_wins_per_sheet() {
+fn the_first_server_pack_wins_per_sheet() {
     let sheets = compile_session_glyphs(&view(vec![
+        archive(2, &[("font/glyph_E0.png", sheet_png(16, 3))]),
         archive(
             1,
             &[
@@ -76,7 +77,6 @@ fn the_last_applied_pack_wins_per_sheet() {
                 ("font/glyph_E1.png", sheet_png(8, 2)),
             ],
         ),
-        archive(2, &[("font/glyph_E0.png", sheet_png(16, 3))]),
     ]))
     .expect("sheets");
     let cell = |c: char| {
@@ -86,6 +86,26 @@ fn the_last_applied_pack_wins_per_sheet() {
             .find(|cell| cell.codepoint == c)
             .unwrap()
     };
+    if std::env::var_os("CINNABAR_FORM_SNAPSHOT_DIR").is_some() {
+        let mut player = player_state::PlayerState::new(1);
+        let mut runtime = client_ui::test_support::pack_harness::action_form(
+            &mut player,
+            "",
+            &["\u{e001}", "\u{e003}", "\u{e102}"],
+        );
+        runtime.set_session_glyphs(Some(std::sync::Arc::clone(&sheets)));
+        let mut presentation = client_ui::test_support::mini_engine_presentation();
+        let input = presentation
+            .build(
+                &player,
+                &runtime,
+                0,
+                [640, 360],
+                ui::DpiScale::new(1.0).unwrap(),
+            )
+            .unwrap();
+        client_ui::test_support::write_snapshot(&input, "server-pack-glyph-priority");
+    }
     assert_eq!(sheets.cells.len(), 512);
     // E0 comes from the top pack (16 px cells, cell 3 opaque); E1 falls through to the lower one.
     assert_eq!(cell('\u{e003}').size, [16, 16]);
@@ -130,7 +150,7 @@ fn default8_maps_ascii_keeps_unicode_and_restores_the_lower_sheet() {
             ("font/glyph_00.png", sheet_png(8, u32::from('é'))),
         ],
     );
-    let applied = compile_session_glyphs(&view(vec![lower(), upper])).unwrap();
+    let applied = compile_session_glyphs(&view(vec![upper, lower()])).unwrap();
     let glyph = |codepoint| {
         applied
             .cells
@@ -181,8 +201,8 @@ fn default8_keeps_leading_padding_in_advance_and_falls_through_bad_images() {
     let mut bytes = std::io::Cursor::new(Vec::new());
     image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
     let applied = compile_session_glyphs(&view(vec![
-        archive(1, &[("font/default8.png", bytes.into_inner())]),
         archive(2, &[("font/default8.png", b"malformed png".to_vec())]),
+        archive(1, &[("font/default8.png", bytes.into_inner())]),
     ]))
     .unwrap();
     let glyph = applied

@@ -44,9 +44,12 @@ pub(super) fn read(
 }
 
 impl ServerAtlas {
-    /// Resolves carrier bytes first and defers newly large installed images to a worker without
-    /// caching a miss; a host without workers reads them here.
+    /// Resolves built-in and carrier bytes first and defers newly large installed images to a
+    /// worker without caching a miss; a host without workers reads them here.
     pub(super) fn local_source(&self, key: &str) -> (Option<Source>, bool) {
+        if let Some((_, bytes)) = self.builtin.iter().find(|(path, _)| *path == key) {
+            return (source((*bytes).into()), true);
+        }
         let relative = key.strip_prefix(super::VANILLA_IN_PACKAGE).unwrap_or(key);
         if !key.starts_with("textures/") && relative == key {
             return (None, true);

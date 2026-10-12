@@ -5,6 +5,7 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc::{self, Receiver, Sender},
     },
     time::Duration,
 };
@@ -150,9 +151,22 @@ impl Source for CancelablePcm {
 
 const MIXER_RATE: u32 = 48_000;
 
+/// The default output, opened on its own thread; dropping the release sender lets that thread
+/// drop the stream it opened.
+struct Output {
+    handle: OutputStreamHandle,
+    _release: Sender<()>,
+}
+
+/// What an output's owner thread sends back: the shared handle and mixer rate, with the sender
+/// whose drop releases the stream.
+type Opening = Receiver<Option<((OutputStreamHandle, u32), Sender<()>)>>;
+
 /// Main-thread owner. No automatic reopen, alternate device enumeration or Sink.
 pub struct AudioDevice {
-    output: Option<(OutputStream, OutputStreamHandle)>,
+    /// The default output while its owner thread is still opening it; taken on first use.
+    opening: Option<Opening>,
+    output: Option<Output>,
     sample_rate: u32,
     /// While set, new sources mix into a recording instead of the device.
     capture: Option<Arc<rodio::dynamic_mixer::DynamicMixerController<f32>>>,
@@ -162,6 +176,7 @@ pub struct AudioDevice {
 impl AudioDevice {
     pub fn disabled() -> Self {
         Self {
+            opening: None,
             output: None,
             sample_rate: MIXER_RATE,
             capture: None,
@@ -169,39 +184,42 @@ impl AudioDevice {
             test_output: None,
         }
     }
+    /// Starts opening the default output on its own thread and returns at once; the first use
+    /// waits for the open to finish.
     pub fn open_default_once() -> Self {
-        use rodio::cpal::traits::{DeviceTrait, HostTrait};
-        let Some(device) = rodio::cpal::default_host().default_output_device() else {
-            eprintln!("named audio disabled: no default output device");
-            return Self::disabled();
-        };
-        // Rodio may negotiate formats on this same device, never another device.
-        // Rodio opens the device at its default config first; match that rate.
-        let sample_rate = device
-            .default_output_config()
-            .map_or(MIXER_RATE, |config| config.sample_rate().0);
-        match OutputStream::try_from_device(&device) {
-            Ok(output) => Self {
-                output: Some(output),
-                sample_rate,
-                capture: None,
-                #[cfg(any(test, feature = "test-support"))]
-                test_output: None,
+        match open_on_owner_thread(open_default_stream) {
+            Ok((opening, _owner)) => Self {
+                opening: Some(opening),
+                ..Self::disabled()
             },
             Err(error) => {
-                eprintln!("named audio disabled: default output initialization failed: {error}");
+                eprintln!("named audio disabled: audio output thread failed to start: {error}");
                 Self::disabled()
             }
         }
     }
+    /// Takes the output once its owner thread finishes opening it; a failed open stays disabled.
+    fn resolve(&mut self) {
+        let Some(opening) = self.opening.take() else {
+            return;
+        };
+        if let Ok(Some(((handle, sample_rate), release))) = opening.recv() {
+            self.sample_rate = sample_rate;
+            self.output = Some(Output {
+                handle,
+                _release: release,
+            });
+        }
+    }
     /// Output rate that streaming sources should produce to avoid a second conversion.
-    pub fn sample_rate(&self) -> u32 {
+    pub fn sample_rate(&mut self) -> u32 {
         if self.capture.is_some() {
             return crate::audio::OUTPUT_RATE;
         }
+        self.resolve();
         self.sample_rate
     }
-    pub fn available(&self) -> bool {
+    pub fn available(&mut self) -> bool {
         if self.capture.is_some() {
             return true;
         }
@@ -209,6 +227,7 @@ impl AudioDevice {
         if self.test_output.is_some() {
             return true;
         }
+        self.resolve();
         self.output.is_some()
     }
     /// Only replaces hardware transport; admission and source ownership are real.
@@ -217,10 +236,8 @@ impl AudioDevice {
         let (controller, mixer) = rodio::dynamic_mixer::mixer::<f32>(2, MIXER_RATE);
         (
             Self {
-                output: None,
-                sample_rate: MIXER_RATE,
-                capture: None,
                 test_output: Some(controller),
+                ..Self::disabled()
             },
             mixer,
         )
@@ -248,7 +265,8 @@ impl AudioDevice {
             controller.add(source);
             return true;
         }
-        let Some((_, handle)) = &self.output else {
+        self.resolve();
+        let Some(Output { handle, .. }) = &self.output else {
             return false;
         };
         if handle
@@ -270,7 +288,8 @@ impl AudioDevice {
             controller.add(source.convert_samples::<f32>());
             return true;
         }
-        let Some((_, handle)) = &self.output else {
+        self.resolve();
+        let Some(Output { handle, .. }) = &self.output else {
             return false;
         };
         if handle
@@ -285,6 +304,53 @@ impl AudioDevice {
         }
         true
     }
+}
+
+/// Opens the default output at its default rate, or `None` with a logged reason.
+fn open_default_stream() -> Option<(OutputStream, (OutputStreamHandle, u32))> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    let Some(device) = rodio::cpal::default_host().default_output_device() else {
+        eprintln!("named audio disabled: no default output device");
+        return None;
+    };
+    // Rodio may negotiate formats on this same device, never another device.
+    // Rodio opens the device at its default config first; match that rate.
+    let sample_rate = device
+        .default_output_config()
+        .map_or(MIXER_RATE, |config| config.sample_rate().0);
+    match OutputStream::try_from_device(&device) {
+        Ok((stream, handle)) => Some((stream, (handle, sample_rate))),
+        Err(error) => {
+            eprintln!("named audio disabled: default output initialization failed: {error}");
+            None
+        }
+    }
+}
+
+/// Runs `open` on a new thread that keeps the stream it opened until the sender sent back with
+/// the shared half drops; the stream never leaves that thread. `None` reports a failed open.
+fn open_on_owner_thread<S: 'static, H: Send + 'static>(
+    open: impl FnOnce() -> Option<(S, H)> + Send + 'static,
+) -> std::io::Result<(
+    Receiver<Option<(H, Sender<()>)>>,
+    std::thread::JoinHandle<()>,
+)> {
+    let (opened, opening) = mpsc::channel();
+    let owner = std::thread::Builder::new()
+        .name("audio-output".to_owned())
+        .spawn(move || {
+            let Some((stream, shared)) = open() else {
+                let _ = opened.send(None);
+                return;
+            };
+            let (release, released) = mpsc::channel::<()>();
+            if opened.send(Some((shared, release))).is_ok() {
+                // Ends once the device drops its sender.
+                let _ = released.recv();
+            }
+            drop(stream);
+        })?;
+    Ok((opening, owner))
 }
 
 #[cfg(test)]

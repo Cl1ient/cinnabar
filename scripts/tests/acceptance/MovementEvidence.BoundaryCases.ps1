@@ -11,7 +11,7 @@ It 'rejects an unsupported input mode as the only changed condition' {
 It 'rejects an over-capacity event record array as the only changed condition' {
     $script:Events = @(0..256 | ForEach-Object {
         [ordered]@{
-            schema = 'rust-mcbe-phase3-event-v1'; kind = 'correction'; session_generation = 7
+            schema = 'rust-mcbe-movement-event-v1'; kind = 'correction'; session_generation = 7
             event_sequence = $_; fifo_sequence = 40; physics_tick = 41; dimension = 0
             correction_outcome = 'snapped'; corrected_tick = 41; replayed_ticks = 0
             correction_magnitude = 1.0
@@ -53,23 +53,23 @@ It 'keeps every candidate terminal except Drained and RemoteClosed forbidden' {
 
 It 'rejects an indeterminate Physics send violation marker' {
     $script:Events += [ordered]@{
-        schema = 'rust-mcbe-phase3-event-v1'; kind = 'authority_fault'
+        schema = 'rust-mcbe-movement-event-v1'; kind = 'authority_fault'
         session_generation = 7; next_tick = 41; pending_count = 1
         fault = 'indeterminate_physics_send'; detail = [ordered]@{ tick = 41 }
     }
     $script:Violations = @([ordered]@{
-        schema = 'rust-mcbe-phase3-violation-v2'; reason = 'authority_fault'
+        schema = 'rust-mcbe-movement-violation-v2'; reason = 'authority_fault'
     })
     (Invoke-Validator (Write-MarkerLog 'indeterminate-physics-send.log')).ExitCode |
         Should Not Be 0
 }
 
 It 'defines Zeno as an authenticated five-minute candidate target' {
-    $endpoint = Get-Phase3TargetEndpoint -Target Zeno
+    $endpoint = Get-EvidenceTargetEndpoint -Target Zeno
     $endpoint | Should Be 'zenomc.org:19197'
-    $plan = New-Phase3LaunchPlan -Target Zeno -Endpoint $endpoint `
+    $plan = New-MovementLaunchPlan -Target Zeno -Endpoint $endpoint `
         -RunId $script:RunId -SocketDirectory socket -MetricsPath metrics.json `
         -DurationSeconds 300 -Scenario CandidatePhysics -AuthCache token.json
     ($plan.CoreArguments -ccontains '-auth-cache') | Should Be $true
-    ($plan.AppArguments -ccontains '--phase3-candidate-physics') | Should Be $true
+    ($plan.AppArguments -ccontains '--movement-candidate-physics') | Should Be $true
 }

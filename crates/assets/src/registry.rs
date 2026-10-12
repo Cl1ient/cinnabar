@@ -8,8 +8,10 @@ mod schema;
 mod wire_tests;
 
 pub use schema::{
-    BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole, ModelFamily,
-    ModelState, ModelStateField, RegistryProvenance, RegistryRecord,
+    BlockFlags, CollisionBox, CollisionConfidence, CollisionSeed, ContributorRole,
+    LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState, ModelStateField, MovementSemantics,
+    PHYSICS_MOVEMENT_SEMANTICS_OFFSET, PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES,
+    PHYSICS_REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
 };
 use schema::{
     LEGACY_REGISTRY_PROTOCOL, MAX_COLLISION_BOXES, MAX_REGISTRY_RECORDS, MAX_REGISTRY_STATE_BYTES,
@@ -25,27 +27,6 @@ impl BlockFlags {
         let leaf = self.contains(Self::LEAF_MODEL);
         (!air || self.bits() == Self::AIR.bits())
             && (!leaf || (cube && !self.contains(Self::OCCLUDES_FULL_FACE)))
-    }
-}
-
-#[cfg(test)]
-mod model_family_tests {
-    use super::ModelFamily;
-
-    #[test]
-    fn reads_dedicated_chiseled_bookshelf_family_value() {
-        assert_eq!(
-            ModelFamily::read(35).expect("family value 35"),
-            ModelFamily::ChiseledBookshelf
-        );
-    }
-
-    #[test]
-    fn reads_dedicated_resin_clump_family_value() {
-        assert_eq!(
-            ModelFamily::read(36).expect("family value 36"),
-            ModelFamily::ResinClump
-        );
     }
 }
 
@@ -224,6 +205,11 @@ pub fn read_registry_for_protocol(
                 source,
             })?
             .into();
+        let model_family = crate::family_routing::resolve(
+            metadata.protocol == LEGACY_REGISTRY_PROTOCOL,
+            &name,
+            model_family,
+        )?;
         records.push(RegistryRecord {
             sequential_id,
             network_hash,
@@ -307,5 +293,26 @@ impl<'a> Reader<'a> {
         let start = self.position;
         self.position += count;
         Ok(&self.bytes[start..self.position])
+    }
+}
+
+#[cfg(test)]
+mod model_family_tests {
+    use super::ModelFamily;
+
+    #[test]
+    fn reads_dedicated_chiseled_bookshelf_family_value() {
+        assert_eq!(
+            ModelFamily::read(35).expect("family value 35"),
+            ModelFamily::ChiseledBookshelf
+        );
+    }
+
+    #[test]
+    fn reads_dedicated_resin_clump_family_value() {
+        assert_eq!(
+            ModelFamily::read(36).expect("family value 36"),
+            ModelFamily::ResinClump
+        );
     }
 }

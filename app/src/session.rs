@@ -2,30 +2,37 @@
 //! runtime directory and teardown. The menu raises intents and renders the
 //! [`SessionStatus`] published here.
 
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::{
     ecs::system::SystemParam,
     prelude::{AppExit, Commands, MessageWriter, Res, ResMut, Resource},
 };
+use bridge::CORE_START_TIMEOUT;
+use client_runtime::network::NetworkHandle;
+use client_runtime::session::{
+    begin_session, format_transfer_address, release_off_frame, transfer_handoff_address,
+};
+use launcher_host::{
+    core_process::{CoreProcessGuard, spawn_core_for_address},
+    server_trust::SessionTrust,
+    session_cleanup::SessionDirectoryGuard,
+};
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::presence_target::presence_target;
+use client_shell::ui_resources::UiRuntimeResource;
 use {
-    crate::{
-        menu::{
-            CoreProcessGuard, LauncherCoreSlot, MenuRuntime, core_process::CORE_START_TIMEOUT,
-            server_trust::SessionTrust, spawn_core_for_address,
-        },
-        movement::{LocalPhysicsController, MovementTicker},
-        player_runtime::PlayerRuntime,
-        runtime::{
-            network::{CompiledStacks, NetworkConfig, NetworkHandle, ResourcePackAdmissionState},
-            shutdown::record_fatal_error,
-            world::{ClientWorld, TransferNotice},
-        },
-        session_cleanup::SessionDirectoryGuard,
+    crate::runtime::{
+        network::{CompiledStacks, session::NetworkConfig},
+        shutdown::record_fatal_error,
+        world::{ClientWorld, TransferNotice},
     },
+    client_interaction::movement::{LocalPhysicsController, MovementTicker},
     client_presentation::local_player::{
         InteractionOriginSnapshot, LocalPlayerFrameCarrier, LocalPlayerFrameReset,
     },
+    client_runtime::pack_admission::ResourcePackAdmissionState,
+    client_shell::menu::{LauncherCoreSlot, MenuRuntime},
+    client_state::PlayerRuntime,
 };
 
 use std::{path::PathBuf, time::Instant};
@@ -38,26 +45,11 @@ mod client_id;
 /// ends in a visible menu state; a user-initiated join starts a fresh chain.
 pub(crate) const MAX_TRANSFER_CHAIN_HOPS: u32 = 8;
 
-type BlobCache = crate::app::ClientBlobCacheOwner;
+type BlobCache = client_runtime::blob_cache::ClientBlobCacheOwner;
 type JoinAttempt = client_session::connection::JoinAttempt<SessionDirectoryGuard>;
 pub(crate) type JoinStage = client_session::connection::JoinStage<SessionDirectoryGuard>;
 
-/// A join the menu asks the controller to make.
-#[derive(Debug)]
-pub(crate) struct JoinIntent {
-    pub(crate) address: String,
-    pub(crate) auth_cache: Option<PathBuf>,
-    /// Joins the launcher core's opened local world instead of `address`.
-    pub(crate) local_world: bool,
-}
-
-/// What the menu gates and renders of the session; only the controller writes it.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SessionStatus {
-    pub(crate) connecting: bool,
-    /// A session runtime directory is bound.
-    pub(crate) owns_directory: bool,
-}
+use client_state::{JoinIntent, SessionStatus};
 
 #[derive(Debug, Resource)]
 pub(crate) struct SessionController {
@@ -73,6 +65,7 @@ pub(crate) struct SessionController {
     >,
     /// Where the current session plays, for Discord presence and invites.
     presence: Option<rich_presence::Target>,
+    destination_identity: Option<String>,
     /// Automatic transfer-follow hops remaining in the current chain.
     transfer_hops_remaining: u32,
     connecting: bool,
@@ -99,6 +92,7 @@ impl SessionController {
             client_random_id: None,
             client_id_load: None,
             presence: None,
+            destination_identity: None,
             transfer_hops_remaining: MAX_TRANSFER_CHAIN_HOPS,
             connecting: false,
             trust: None,
@@ -116,11 +110,27 @@ impl SessionController {
     /// Names a direct `--address` session's destination.
     pub(crate) fn with_address(mut self, address: Option<&str>) -> Self {
         self.presence = address.map(|address| presence_target(address, false));
+        self.destination_identity =
+            address.map(|address| format!("remote:{}", address.trim().to_lowercase()));
         self
+    }
+
+    /// Stable selected destination, kept independent from invites and transient session ids.
+    #[cfg(feature = "local-mods")]
+    pub(crate) fn destination_identity(&self) -> Option<&str> {
+        self.destination_identity.as_deref()
     }
 
     pub(crate) fn presence_target(&self) -> Option<&rich_presence::Target> {
         self.presence.as_ref()
+    }
+
+    /// Endpoint directory of the live session core; unavailable during teardown.
+    #[cfg(feature = "local-mods")]
+    pub(crate) fn socket_directory(&self) -> Option<&std::path::Path> {
+        self.directory
+            .as_ref()
+            .map(SessionDirectoryGuard::directory)
     }
 
     pub(crate) fn status(&self) -> SessionStatus {
@@ -246,14 +256,6 @@ impl SessionController {
     }
 }
 
-/// Moves UI and player authority to `generation` together; repeating it is a no-op.
-pub(crate) fn begin_session(ui: &mut UiRuntime, player: &mut PlayerRuntime, generation: u64) {
-    if ui.session_id() != generation {
-        player.begin_session(generation);
-        ui.begin_session(generation);
-    }
-}
-
 /// Stops local movement authority and drops the ended session's frame and interaction samples.
 pub(crate) fn quiesce_local_player(
     movement: &mut MovementTicker,
@@ -267,69 +269,12 @@ pub(crate) fn quiesce_local_player(
     interaction.invalidate();
 }
 
-/// Renders a validated transfer host and port as a dialable address.
-///
-/// IPv6 literals are bracketed the way the Go core's dialer expects.
-pub(crate) fn format_transfer_address(host: &str, port: u16) -> String {
-    if host.starts_with('[') && host.ends_with(']') {
-        format!("{host}:{port}")
-    } else if host.contains(':') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
-
-/// The address a server-directed transfer dials, or `None` for an unusable host.
-///
-/// Well-formedness only, like the protocol boundary: vanilla servers
-/// legitimately transfer across unrelated hosts, so there is no allowlist.
-fn transfer_handoff_address(host: &str, port: u16) -> Option<String> {
-    let trimmed = host.trim();
-    (!trimmed.is_empty()).then(|| format_transfer_address(trimmed, port))
-}
-
-/// Where a join to `address` plays and the address a Discord invite joins. Servers (by endpoint
-/// with a port), experiences and friends' worlds are joinable; a friend's world still needs the
-/// joiner to see it through Xbox. Realms carry no invite, a local world's comes from its host
-/// (see `MenuRuntime::hosted_world_address`), and no identifier is ever shown on the card.
-fn presence_target(address: &str, local_world: bool) -> rich_presence::Target {
-    use protocol::launcher_control::ConnectTarget;
-    use rich_presence::{Destination, Target};
-    if local_world {
-        return Target {
-            destination: Destination::LocalWorld(address.to_owned()),
-            join: None,
-            badge: None,
-            max_players: None,
-        };
-    }
-    let address = address.trim();
-    let (destination, join) = match crate::menu::target_for(address) {
-        ConnectTarget::RakNet(endpoint) => (Destination::Server(endpoint.clone()), Some(endpoint)),
-        ConnectTarget::Gathering(_) => (Destination::Experience, Some(address.to_owned())),
-        ConnectTarget::Friend(_) => (Destination::FriendWorld, Some(address.to_owned())),
-        ConnectTarget::Realm(_) => (Destination::Realm, None),
-    };
-    Target {
-        destination,
-        join,
-        badge: None,
-        max_players: None,
-    }
-}
-
-/// Whether a received invite names a destination Cinnabar itself makes joinable.
-pub(crate) fn invite_joinable(address: &str) -> bool {
-    presence_target(address, false).join.as_deref() == Some(address)
-}
-
 #[derive(SystemParam)]
 pub(crate) struct SessionResources<'w> {
     controller: ResMut<'w, SessionController>,
-    network: ResMut<'w, NetworkHandle>,
+    network: ResMut<'w, NetworkHandle<PackApplication>>,
     resource_packs: ResMut<'w, ResourcePackAdmissionState>,
-    runtime: ResMut<'w, UiRuntime>,
+    runtime: ResMut<'w, UiRuntimeResource>,
     player_runtime: ResMut<'w, PlayerRuntime>,
     client_world: ResMut<'w, ClientWorld>,
     movement: ResMut<'w, MovementTicker>,
@@ -337,9 +282,9 @@ pub(crate) struct SessionResources<'w> {
     local_frame: ResMut<'w, LocalPlayerFrameCarrier>,
     interaction: ResMut<'w, InteractionOriginSnapshot>,
     launcher: Option<Res<'w, LauncherCoreSlot>>,
-    actor_artwork: Option<Res<'w, render::ActorArtworkPages>>,
+    actor_artwork: Option<Res<'w, render_scene::ActorArtworkResource>>,
     ui_catalog: Option<Res<'w, crate::runtime::network::PackUiCatalog>>,
-    input: Option<Res<'w, crate::semantic_controls::SemanticInputSnapshot>>,
+    input: Option<Res<'w, client_state::SemanticInputSnapshot>>,
 }
 
 impl SessionResources<'_> {
@@ -353,7 +298,7 @@ impl SessionResources<'_> {
     /// Ends the live session and fences a fresh generation. The core stops off
     /// the frame, and its directories go only once it has exited.
     fn retire(&mut self) -> u64 {
-        *self.network = NetworkHandle::disconnected();
+        *self.network = NetworkHandle::<PackApplication>::disconnected();
         let controller = &mut *self.controller;
         let directory = controller.directory.take();
         let join = controller.join.take();
@@ -362,6 +307,7 @@ impl SessionResources<'_> {
             .stop_detached(move || drop((join, directory)));
         controller.connecting = false;
         controller.presence = None;
+        controller.destination_identity = None;
         let generation = controller.next_generation();
         self.resource_packs.begin_generation(generation);
         begin_session(&mut self.runtime, &mut self.player_runtime, generation);
@@ -381,17 +327,6 @@ impl SessionResources<'_> {
             &mut self.interaction,
         );
         generation
-    }
-}
-
-/// Drops retired world and pack snapshots on a worker to avoid frame-thread destruction.
-/// Falls back to dropping here only when the worker cannot start.
-fn release_off_frame(retired: impl Send + 'static) {
-    let spawned = std::thread::Builder::new()
-        .name("session-release".to_owned())
-        .spawn(move || drop(retired));
-    if let Err(error) = spawned {
-        bevy::log::warn!("session release thread unavailable, released on the frame: {error}");
     }
 }
 
@@ -431,6 +366,15 @@ fn attempt_connect(
         presence.max_players = menu.destination_max_players(&address);
     }
     session.controller.presence = Some(presence);
+    session.controller.destination_identity = Some(format!(
+        "{}:{}",
+        if local_world { "local" } else { "remote" },
+        if local_world {
+            menu.local_world_identity().unwrap_or(&address).to_owned()
+        } else {
+            address.trim().to_lowercase()
+        }
+    ));
     let launcher = session.launcher.as_deref().and_then(|slot| {
         slot.begin_join(
             &address,
@@ -533,7 +477,7 @@ fn poll_join(
                 socket_dir,
                 login_settings,
                 client_random_id,
-                session.actor_artwork.as_deref(),
+                session.actor_artwork.as_deref().map(|artwork| &artwork.0),
                 session.ui_catalog.as_deref(),
             ) {
                 if owned_core {
@@ -555,20 +499,28 @@ fn poll_join(
 /// The language, input and GUI scale the player has as the join starts, as vanilla reports them.
 pub(crate) fn login_settings(
     menu: &MenuRuntime,
-    input: Option<&crate::semantic_controls::SemanticInputSnapshot>,
+    input: Option<&client_state::SemanticInputSnapshot>,
 ) -> protocol::LoginSettings {
     protocol::LoginSettings {
-        language_code: client_session::pack_language::active_language_code(),
+        language_code: pack_runtime::pack_language::active_language_code(),
         input_mode: input
-            .and_then(crate::semantic_controls::SemanticInputSnapshot::snapshot)
+            .and_then(|input| input.snapshot())
             .map_or(protocol::PlayerInputMode::Mouse, |snapshot| {
                 gameplay::mining::protocol_input_mode(snapshot.input_mode)
             }),
         gui_scale_offset: menu.gui_scale_offset(),
+        memory_tier: protocol::login_memory_tier(launcher_host::memory::physical_bytes()),
+        graphics_mode: u8::from(menu.settings_snapshot().0.value("graphics_mode") != 0),
+        filter_profanity: menu.settings_snapshot().0.value("filter_profanity") != 0,
+        resource_pack_cache_dir: Some(menu.layout().resource_pack_cache_dir()),
     }
 }
 
 /// Starts the network session against the core serving `socket_dir`.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "joining forwards captured session inputs and optional presentation assets"
+)]
 fn start_network(
     commands: &mut Commands,
     menu: &MenuRuntime,
@@ -577,10 +529,10 @@ fn start_network(
     socket_dir: PathBuf,
     login_settings: protocol::LoginSettings,
     client_random_id: protocol::ClientRandomId,
-    actor_artwork: Option<&render::ActorArtworkPages>,
+    actor_artwork: Option<&render_model::ActorArtworkPages>,
     ui_catalog: Option<&crate::runtime::network::PackUiCatalog>,
 ) -> Result<(), String> {
-    let replacement = crate::runtime::network::spawn_network(NetworkConfig {
+    let replacement = crate::runtime::network::session::spawn_network(NetworkConfig {
         session_generation,
         socket_dir,
         display_name: menu.display_name().to_owned(),
@@ -592,7 +544,11 @@ fn start_network(
         ui_catalog: ui_catalog.map(|base| base.0.clone()),
     })
     .map_err(|error| error.to_string())?;
-    commands.insert_resource(replacement.movement_ticker());
+    commands.insert_resource(
+        client_interaction::movement::MovementTicker::with_epoch_publisher(
+            replacement.physics_epoch_publisher(),
+        ),
+    );
     commands.insert_resource(replacement);
     Ok(())
 }
@@ -789,10 +745,38 @@ fn end_transfer_without_follow(
 mod tests {
     use super::*;
 
+    #[test]
+    fn login_profanity_preference_comes_from_saved_settings_with_a_hidden_menu() {
+        use launcher::menu::settings_options::{SETTINGS_FILE, SETTINGS_OPTIONS, SettingsOptions};
+
+        let index = SETTINGS_OPTIONS
+            .iter()
+            .position(|option| option.name == "filter_profanity")
+            .unwrap();
+        for filter_profanity in [false, true] {
+            let layout =
+                launcher::test_support::scratch(&format!("login-profanity-{filter_profanity}"));
+            let mut saved = SettingsOptions::default();
+            saved.set(index, i32::from(filter_profanity));
+            saved
+                .save(&layout.user_config_root.join(SETTINGS_FILE))
+                .unwrap();
+            let menu = MenuRuntime::new_with_layout(
+                false,
+                None,
+                "Direct".to_owned(),
+                layout,
+                client_shell::player_skin::LocalPlayerSkin::generated_default("Direct"),
+            );
+            let settings = login_settings(&menu, None);
+            assert_eq!(settings.filter_profanity, filter_profanity);
+        }
+    }
+
     // A hidden-menu direct launch must still report the player's saved GUI scale.
     #[test]
     fn login_settings_carry_the_saved_gui_scale_without_a_visible_menu() {
-        let layout = crate::install_layout::scratch("login-settings");
+        let layout = launcher::test_support::scratch("login-settings");
         std::fs::create_dir_all(&layout.user_config_root).unwrap();
         std::fs::write(
             layout.user_config_root.join("video-settings.json"),
@@ -804,113 +788,11 @@ mod tests {
             None,
             "Direct".to_owned(),
             layout,
-            crate::player_skin::LocalPlayerSkin::generated_default("Direct"),
+            client_shell::player_skin::LocalPlayerSkin::generated_default("Direct"),
         );
         let settings = login_settings(&menu, None);
         assert_eq!(settings.gui_scale_offset, -1);
         assert_eq!(settings.input_mode, protocol::PlayerInputMode::Mouse);
-    }
-
-    #[test]
-    fn joinable_destinations_and_ids_stay_off_the_card() {
-        use rich_presence::{Destination, Target};
-        let joinable = |destination, join: &str| Target {
-            destination,
-            join: Some(join.to_owned()),
-            badge: None,
-            max_players: None,
-        };
-        let server = |endpoint: &str| joinable(Destination::Server(endpoint.to_owned()), endpoint);
-        let private = |destination| Target {
-            destination,
-            join: None,
-            badge: None,
-            max_players: None,
-        };
-        assert_eq!(
-            presence_target(" play.example.net ", false),
-            server(&format!(
-                "play.example.net:{}",
-                launcher::menu::DEFAULT_PORT
-            ))
-        );
-        assert_eq!(presence_target("[::1]:19134", false), server("[::1]:19134"));
-        assert_eq!(
-            presence_target("::1", false),
-            server(&format!("[::1]:{}", launcher::menu::DEFAULT_PORT))
-        );
-        assert_eq!(
-            presence_target(" realm_id/123", false),
-            private(Destination::Realm)
-        );
-        assert_eq!(
-            presence_target("friend_xuid/2535400000000000", false),
-            joinable(Destination::FriendWorld, "friend_xuid/2535400000000000")
-        );
-        let experience = format!("{}fixture", launcher::menu::EXPERIENCE_ADDRESS_PREFIX);
-        assert_eq!(
-            presence_target(&experience, false),
-            joinable(Destination::Experience, &experience)
-        );
-        assert_eq!(
-            presence_target("My World", true),
-            private(Destination::LocalWorld("My World".into()))
-        );
-        assert!(invite_joinable("play.example.net:19132"));
-        assert!(invite_joinable(&experience));
-        assert!(invite_joinable("friend_xuid/2535400000000000"));
-        assert!(!invite_joinable("realm_id/123"));
-    }
-
-    #[test]
-    fn transfer_addresses_bracket_ipv6_and_leave_ordinary_hosts_untouched() {
-        assert_eq!(
-            format_transfer_address("game.example.net", 19133),
-            "game.example.net:19133"
-        );
-        assert_eq!(format_transfer_address("::1", 19132), "[::1]:19132");
-        assert_eq!(
-            format_transfer_address("2001:db8::10", 25565),
-            "[2001:db8::10]:25565"
-        );
-        assert_eq!(
-            format_transfer_address("[2001:db8::10]", 25565),
-            "[2001:db8::10]:25565",
-            "an already-bracketed transfer literal must not be bracketed twice",
-        );
-    }
-
-    #[test]
-    fn handoff_targets_are_well_formed_without_any_host_allowlist() {
-        assert_eq!(
-            transfer_handoff_address(" game.example.net ", 19133).as_deref(),
-            Some("game.example.net:19133"),
-            "a trimmed well-formed host is a valid target"
-        );
-        assert_eq!(
-            transfer_handoff_address("minigames.other-host.example", 19321).as_deref(),
-            Some("minigames.other-host.example:19321"),
-            "cross-host transfers are legitimate vanilla behavior"
-        );
-        assert!(transfer_handoff_address("", 19132).is_none());
-        assert!(transfer_handoff_address("   ", 19132).is_none());
-    }
-
-    /// A retired world is freed on another thread, never by the frame that leaves the server.
-    #[test]
-    fn a_retired_session_is_released_off_the_calling_thread() {
-        struct Probe(std::sync::mpsc::Sender<std::thread::ThreadId>);
-        impl Drop for Probe {
-            fn drop(&mut self) {
-                let _ = self.0.send(std::thread::current().id());
-            }
-        }
-        let (dropped, dropper) = std::sync::mpsc::channel();
-        release_off_frame((Probe(dropped), vec![0_u8; 1024]));
-        let thread = dropper
-            .recv_timeout(std::time::Duration::from_secs(10))
-            .expect("the retired session is released");
-        assert_ne!(thread, std::thread::current().id());
     }
 
     #[test]

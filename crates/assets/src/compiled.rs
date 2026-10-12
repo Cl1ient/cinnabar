@@ -1,3 +1,5 @@
+pub mod block_destroy;
+
 use crate::{
     Animation, BlockFlags, CompiledBiomeAssets, ContributorRole, LightProperties, ModelQuad,
     ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TexturePage, TextureRef, VisualKind,
@@ -47,7 +49,12 @@ impl BlockFace {
 }
 
 pub const DIAGNOSTIC_MATERIAL: u32 = 0;
-pub const MAX_TEXTURE_LAYERS: usize = 2_048;
+/// Layer capacity of a texture reference. Runtime pages also check the device limit.
+pub const MAX_TEXTURE_LAYERS: usize = 8_192;
+/// Offline page budget for carriers that must fit a 2,048-layer device.
+pub const MAX_CARRIER_TEXTURE_LAYERS: usize = 2_048;
+/// Layer bits shared by carrier references and GPU shader encoders.
+pub const TEXTURE_LAYER_MASK: u32 = MAX_TEXTURE_LAYERS as u32 - 1;
 pub const MAX_MATERIALS: usize = 65_536;
 pub const MATERIAL_FLAG_ROTATE_UV: u32 = 1 << 0;
 pub const MATERIAL_FLAG_UV_MASK: u32 = 0x0000_000f;
@@ -78,6 +85,10 @@ pub const MATERIAL_FLAG_ISOTROPIC: u32 = 1 << 16;
 pub const MATERIAL_FLAG_DISABLE_AO: u32 = 1 << 25;
 /// Omits the directional face coefficient while preserving the lightmap.
 pub const MATERIAL_FLAG_DISABLE_FACE_DIMMING: u32 = 1 << 26;
+/// Selects the fixed, non-biome colour of ordinary cauldron water.
+pub const MATERIAL_FLAG_CAULDRON_WATER: u32 = 1 << 27;
+/// Packed vertex colour used by ordinary cauldron water, including its translucency.
+pub const CAULDRON_WATER_COLOUR: [u8; 4] = [52, 81, 89, 191];
 /// Compact world-leaf AO exponent. Zero selects the native omitted default (1).
 pub const MATERIAL_LEAF_AO_EXPONENT_SHIFT: u32 = 17;
 pub const MATERIAL_LEAF_AO_EXPONENT_MAX: u32 = u8::MAX as u32;
@@ -111,10 +122,13 @@ pub const MATERIAL_FLAGS_MASK: u32 = MATERIAL_FLAG_UV_MASK
     | MATERIAL_FLAG_NATIVE_LEAF_COLOUR
     | MATERIAL_LEAF_METADATA_MASK
     | MATERIAL_FLAG_DISABLE_AO
-    | MATERIAL_FLAG_DISABLE_FACE_DIMMING;
+    | MATERIAL_FLAG_DISABLE_FACE_DIMMING
+    | MATERIAL_FLAG_CAULDRON_WATER;
 
 pub(crate) const fn material_flags_are_valid(flags: u32) -> bool {
     flags & !MATERIAL_FLAGS_MASK == 0
+        && (flags & MATERIAL_FLAG_CAULDRON_WATER == 0
+            || (flags & MATERIAL_FLAG_ALPHA_BLEND != 0 && flags & MATERIAL_FLAG_TINT_MASK == 0))
         && (flags & MATERIAL_LEAF_AO_EXPONENT_MASK == 0
             || flags & MATERIAL_FLAG_NATIVE_LEAF_COLOUR != 0)
         && (flags & MATERIAL_FLAG_TWO_SIDED == 0 || flags & MATERIAL_FLAG_ALPHA_CUTOUT != 0)
@@ -177,6 +191,7 @@ pub struct BlockVisual {
     pub model_template: u32,
     pub animation: u32,
     pub variant: u32,
+    pub destroy: block_destroy::BlockDestroyFacts,
 }
 
 impl BlockVisual {
@@ -191,6 +206,7 @@ impl BlockVisual {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 }

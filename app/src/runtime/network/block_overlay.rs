@@ -3,7 +3,8 @@
 //! diagnostic look for that block and is counted, never failing the session.
 
 mod condition;
-mod geometry;
+mod geometry_inputs;
+use pack_compiler::block_geometry as geometry;
 mod legacy;
 mod textures;
 
@@ -26,18 +27,19 @@ use resource_pack::LayeredPackView;
 
 use self::{
     condition::StateVisual,
-    geometry::{FACE_NAMES, FaceQuad, Geometry, geometry_catalog},
+    geometry::{FACE_NAMES, FaceQuad, Geometry},
+    geometry_inputs::geometry_catalog,
     textures::{
-        DecodedTexture, TextureCatalog, admit_static_rectangle, flipbook_frames, shrink_to_max,
-        source_mip_chain,
+        TextureCatalog, admit_static_rectangle, flipbook_frames, shrink_to_max, source_mip_chain,
     },
 };
+use pack_runtime::pack_textures::DecodedTexture;
 
 const FULL_BLOCK: &str = "minecraft:geometry.full_block";
 const FULL_BLOCK_V1: &str = "minecraft:geometry.full_block_v1";
 const MIN_TILE: u32 = assets::TILE_SIZE;
 const MAX_TILE: u32 = 128;
-const MAX_OVERLAY_LAYERS: usize = 2048;
+const MAX_OVERLAY_LAYERS: usize = assets::MAX_TEXTURE_LAYERS;
 const MAX_OVERLAY_TEXTURE_BYTES: usize = 64 * 1024 * 1024;
 // Held decoded sources are already shrunk to MAX_TILE; bound their total too.
 const MAX_OVERLAY_SOURCE_BYTES: usize = 64 * 1024 * 1024;
@@ -64,14 +66,18 @@ pub(crate) struct CompiledBlockOverlay {
     pub(crate) gaps: OverlayGaps,
 }
 
-/// Returns visuals for every custom block state (palette order, or
-/// `hashed_states` order for hashed ids), or `None` without custom blocks.
+/// Returns visuals for the admitted custom prefix in palette or hashed-state order.
+/// Rejected runs stay unbacked; vanilla overrides may produce an overlay without custom blocks.
 pub(super) fn compile_block_overlay(
     view: &LayeredPackView,
     blocks: &CustomBlocks,
     hashed: bool,
     vanilla_keys: Option<&MaterialKeys>,
+    max_texture_array_layers: u32,
 ) -> Option<CompiledBlockOverlay> {
+    if max_texture_array_layers == 0 {
+        return None;
+    }
     let legacy = legacy::TextureBindings::new(view);
     let wanted = blocks
         .blocks
@@ -94,6 +100,7 @@ pub(super) fn compile_block_overlay(
         overlay: BlockOverlay::default(),
         sources: Vec::new(),
         source_bytes: 0,
+        max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
         textures: HashMap::new(),
         materials: HashMap::new(),
         visuals: HashMap::new(),
@@ -109,7 +116,11 @@ pub(super) fn compile_block_overlay(
         animation: NO_ANIMATION,
         ..assets::Material::unvaried()
     });
-    for block in blocks.blocks.iter() {
+    for (block_index, block) in blocks.blocks.iter().enumerate() {
+        if block.visual.materialization_disabled {
+            builder.gaps.incomplete_state_identities += (blocks.blocks.len() - block_index) as u32;
+            break;
+        }
         let expressions = condition::BlockExpressions::new(block);
         let states = block.hashed_states();
         let identities_complete = states.len() == block.state_count as usize;
@@ -174,6 +185,7 @@ struct Builder<'a> {
     overlay: BlockOverlay,
     sources: Vec<Source>,
     source_bytes: usize,
+    max_layers: usize,
     textures: HashMap<String, Option<TextureSlot>>,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
@@ -264,7 +276,7 @@ impl Builder<'_> {
             let uv_flags = if components.geometry.as_deref() == Some(FULL_BLOCK_V1)
                 && source == assets::BlockFace::Down as usize
             {
-                render::MATERIAL_UV_ROTATE_180
+                render_scene::MATERIAL_UV_ROTATE_180
             } else {
                 0
             };
@@ -302,6 +314,7 @@ impl Builder<'_> {
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 
@@ -378,6 +391,7 @@ impl Builder<'_> {
             model_template: template,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         }
     }
 
@@ -467,7 +481,7 @@ impl Builder<'_> {
     }
 
     fn load_texture(&mut self, key: &str) -> Option<TextureSlot> {
-        let available = MAX_OVERLAY_LAYERS.saturating_sub(self.sources.len());
+        let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
             // A full array rejects every later route, so name it rather than
             // leaving those textures indistinguishable from unusable pack data.
@@ -664,7 +678,7 @@ fn rotate_face(face: usize, rotation: [i32; 3]) -> usize {
     let mut normal = FACE_NORMALS[face];
     for (axis, turns) in rotation.into_iter().enumerate() {
         for _ in 0..turns.rem_euclid(4) {
-            normal = rotate_quarter(normal, axis);
+            normal = block_transform::rotation::rotate_quarter(normal, axis);
         }
     }
     FACE_NORMALS
@@ -688,16 +702,6 @@ const FACE_NORMALS: [[i32; 3]; 6] = [
     [0, 0, 1],
 ];
 
-/// One right-handed quarter turn about `axis`; +90 degrees about Y turns north to west.
-fn rotate_quarter<T: Copy + std::ops::Neg<Output = T>>(value: [T; 3], axis: usize) -> [T; 3] {
-    let [x, y, z] = value;
-    match axis {
-        0 => [x, -z, y],
-        1 => [z, y, -x],
-        _ => [-y, x, z],
-    }
-}
-
 /// Applies the block transformation about the block centre and converts to
 /// carrier fixed point: 1/256 block positions and 1/4096 tile UVs.
 fn quantize(
@@ -712,17 +716,7 @@ fn quantize(
     for (slot, corner) in positions.iter_mut().zip(quad.positions) {
         let mut point = corner.map(|value| value - 8.0);
         if let Some(transform) = transform {
-            for (value, scale) in point.iter_mut().zip(transform.scale) {
-                *value *= scale;
-            }
-            for (axis, turns) in transform.rotation.into_iter().enumerate() {
-                for _ in 0..turns.rem_euclid(4) {
-                    point = rotate_quarter(point, axis);
-                }
-            }
-            for (value, offset) in point.iter_mut().zip(transform.translation) {
-                *value += offset * 16.0;
-            }
+            point = transform.apply(point);
         }
         for axis in 0..3 {
             let fixed = ((point[axis] + 8.0) * 16.0).round();

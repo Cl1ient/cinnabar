@@ -1,15 +1,18 @@
 //! Offline reload evidence: no transport or server is constructed by these tests.
 
 use super::{
-    pack_reload::{PackInputs, PackReload, reload_resource_packs},
+    pack_reload::{PackReload, reload_resource_packs},
     resource_packs,
 };
 use crate::runtime::world::ClientWorld;
 use bevy::prelude::{App, Update};
+use client_shell::ui_resources::UiRuntimeResource;
 use client_ui::ui_runtime::UiRuntime;
+use pack_runtime::PackInputs;
 use resource_pack::ValidatedPackStack;
+use std::io::Write;
 use std::{
-    io::{Cursor, Write},
+    io::Cursor,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -65,9 +68,11 @@ pub(super) fn app_with_assets(assets: Arc<assets::RuntimeAssets>) -> App {
     ));
     let mut app = App::new();
     app.insert_resource(world)
-        .insert_resource(UiRuntime::new(0))
-        .insert_resource(crate::player_runtime::PlayerRuntime::new(0))
-        .insert_resource(render::ChunkTextureAssets::with_revision(assets, 0))
+        .insert_resource(UiRuntimeResource(UiRuntime::new(0)))
+        .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
+            0,
+        )))
+        .insert_resource(render_scene::ChunkTextureAssets::with_revision(assets, 0))
         .init_resource::<PackReload>()
         .add_systems(Update, reload_resource_packs);
     app
@@ -147,7 +152,7 @@ fn optional_reload_replaces_ui_whose_texture_pixels_changed() {
 
 #[test]
 fn live_reload_removal_releases_old_snapshot_and_keeps_world_identity() {
-    let _sounds = client_presentation::audio::SERVER_SOUNDS_TEST_LOCK
+    let _sounds = client_audio::audio::SERVER_SOUNDS_TEST_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut app = app();
@@ -164,12 +169,22 @@ fn live_reload_removal_releases_old_snapshot_and_keeps_world_identity() {
         .resource_mut::<PackReload>()
         .request_globals(stack(&[("ui/reload.json", definition)]));
     settle(&mut app, 1);
-    let old = Arc::downgrade(app.world().resource::<UiRuntime>().server_ui().unwrap());
+    let old = Arc::downgrade(
+        app.world()
+            .resource::<UiRuntimeResource>()
+            .server_ui()
+            .unwrap(),
+    );
     app.world_mut()
         .resource_mut::<PackReload>()
         .request_globals(stack(&[]));
     settle(&mut app, 2);
-    assert!(app.world().resource::<UiRuntime>().server_ui().is_none());
+    assert!(
+        app.world()
+            .resource::<UiRuntimeResource>()
+            .server_ui()
+            .is_none()
+    );
     assert!(
         old.upgrade().is_none(),
         "old presentation snapshot must be released"
@@ -188,7 +203,7 @@ fn live_reload_removal_releases_old_snapshot_and_keeps_world_identity() {
 
 #[test]
 fn newer_reload_request_supersedes_an_in_flight_worker() {
-    let _sounds = client_presentation::audio::SERVER_SOUNDS_TEST_LOCK
+    let _sounds = client_audio::audio::SERVER_SOUNDS_TEST_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut app = app();
@@ -200,14 +215,18 @@ fn newer_reload_request_supersedes_an_in_flight_worker() {
         .resource_mut::<PackReload>()
         .request_globals(stack(&[("ui/new.json", br#"{"namespace":"new"}"#)]));
     settle(&mut app, 2);
-    let ui = app.world().resource::<UiRuntime>().server_ui().unwrap();
+    let ui = app
+        .world()
+        .resource::<UiRuntimeResource>()
+        .server_ui()
+        .unwrap();
     assert_eq!(ui.ui_layers[0][0].0, "ui/new.json");
 }
 
 #[test]
 #[ignore = "offline large-pack evidence; CINNABAR_RELOAD_PACK names an unencrypted local archive"]
 fn large_pack_reload_cpu_benchmark() {
-    let _sounds = client_presentation::audio::SERVER_SOUNDS_TEST_LOCK
+    let _sounds = client_audio::audio::SERVER_SOUNDS_TEST_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = std::env::var_os("CINNABAR_RELOAD_PACK").expect("pack fixture path");
@@ -250,7 +269,7 @@ fn large_pack_reload_cpu_benchmark() {
 /// The actual reload worker publishes pages prepared against the base it installs.
 #[test]
 fn session_reload_publishes_prepared_actor_pages() {
-    let _sounds = client_presentation::audio::SERVER_SOUNDS_TEST_LOCK
+    let _sounds = client_audio::audio::SERVER_SOUNDS_TEST_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut png = Cursor::new(Vec::new());
@@ -267,7 +286,7 @@ fn session_reload_publishes_prepared_actor_pages() {
         Arc::new(PackInputs::default()),
     );
     let mut app = app();
-    app.init_resource::<render::ActorArtworkPages>();
+    app.init_resource::<render_scene::ActorArtworkResource>();
     app.world_mut()
         .resource_mut::<PackReload>()
         .begin_session(1, &packs);
@@ -276,10 +295,11 @@ fn session_reload_publishes_prepared_actor_pages() {
     let world = app.world().resource::<ClientWorld>();
     let pack = world.pack_entities.as_ref().unwrap();
     assert!(!pack.textures.is_empty());
-    let base = app.world().resource::<render::ActorArtworkPages>();
+    let base = app.world().resource::<render_scene::ActorArtworkResource>();
     let prepared = world.prepared_actor_artwork.as_ref().unwrap();
     let pages = prepared.pages_for(base, pack).unwrap();
     let expected = base
+        .0
         .clone()
         .with_pack_artwork(&pack.textures, &pack.bindings);
     assert_eq!(pages.identity(), expected.identity());
@@ -292,7 +312,8 @@ fn session_reload_publishes_prepared_actor_pages() {
 
 #[test]
 fn aim_highlight_pack_art_is_available_at_join_and_released_at_session_end() {
-    let texture = Arc::new(render::AimAssistTexture::new([1, 1], Arc::from([255; 4])).unwrap());
+    let texture =
+        Arc::new(render_scene::AimAssistTexture::new([1, 1], Arc::from([255; 4])).unwrap());
     let packs = resource_packs::PackApplication {
         aim_assist_textures: [Some(texture.clone()), None],
         ..Default::default()

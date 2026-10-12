@@ -3,9 +3,11 @@ package proxy
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/hashimthearab/rust-mcbe/core/internal/bridgecontract"
 	"github.com/hashimthearab/rust-mcbe/core/internal/streamnet"
@@ -19,12 +21,15 @@ type sessionConn struct {
 	conn       *streamnet.FramedConn
 	frames     chan sessionRead // the reader's frames, in order
 	done       chan struct{}
+	readDone   chan struct{}
 	closeOnce  sync.Once
 	closeErr   error
 	clientPool packet.Pool
 	serverPool packet.Pool
 	shieldID   atomic.Int32  // from the ItemRegistry relayed to the client, for decoding its item stacks
 	runtimeID  atomic.Uint64 // the player's runtime ID from the upstream StartGame
+
+	terminalDelivered atomic.Bool // a complete terminal frame reached the local transport
 
 	writeMu sync.Mutex
 	pending []byte // the Batch frame being formed, kind byte included
@@ -41,6 +46,7 @@ func newSessionConn(conn *streamnet.FramedConn) *sessionConn {
 		conn:       conn,
 		frames:     make(chan sessionRead),
 		done:       make(chan struct{}),
+		readDone:   make(chan struct{}),
 		clientPool: minecraft.DefaultProtocol.Packets(true),
 		serverPool: minecraft.DefaultProtocol.Packets(false),
 	}
@@ -49,11 +55,16 @@ func newSessionConn(conn *streamnet.FramedConn) *sessionConn {
 }
 
 func (session *sessionConn) read() {
+	defer close(session.readDone)
 	for {
 		frame, err := session.conn.ReadPacket()
 		select {
 		case session.frames <- sessionRead{frame: frame, err: err}:
 		case <-session.done:
+			if err == nil && session.terminalDelivered.Load() {
+				// The session has ended; consume in-flight client bytes until its close.
+				_, _ = io.Copy(io.Discard, session.conn.Conn)
+			}
 			return
 		}
 		if err != nil {
@@ -77,7 +88,7 @@ func (session *sessionConn) watchPeer(cancel func(error)) (stop func()) {
 		case read := <-session.frames:
 			cause := read.err
 			if cause == nil {
-				cause = fmt.Errorf("%w: client message before handoff", errMalformedSessionMessage)
+				cause = fmt.Errorf("%w: client message before handoff", errMalformedSession)
 			}
 			cancel(cause)
 		case <-stopped:
@@ -101,9 +112,9 @@ func (session *sessionConn) ReadBatchRaw(decode func(uint32) bool) ([]minecraft.
 		return nil, read.err
 	}
 	if len(read.frame) == 0 || read.frame[0] != bridgecontract.SessionKindBatch {
-		return nil, fmt.Errorf("%w: expected batch", errMalformedSessionMessage)
+		return nil, fmt.Errorf("%w: expected batch", errMalformedSession)
 	}
-	packets, err := splitBatch(read.frame[1:])
+	packets, err := splitSessionBatch(read.frame[1:])
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +136,7 @@ func (session *sessionConn) WritePacketRaw(data []byte) error {
 		case packet.IDTransfer:
 			if transfer, ok := decodeSessionPacket(session.serverPool, data, 0, false).(*packet.Transfer); ok {
 				if _, err := transferAddress(transfer.Address, transfer.Port); err == nil {
-					return session.endLocked(bridgecontract.SessionKindTransfer, sessionTransferMessage{
+					return session.endLocked(bridgecontract.SessionKindTransfer, sessionTransfer{
 						Address: transfer.Address, Port: transfer.Port, ReloadWorld: transfer.ReloadWorld,
 					})
 				}
@@ -135,7 +146,7 @@ func (session *sessionConn) WritePacketRaw(data []byte) error {
 	if len(session.pending) == 0 {
 		session.pending = append(session.pending, bridgecontract.SessionKindBatch)
 	}
-	session.pending = appendBatchPacket(session.pending, data)
+	session.pending = appendSessionBatchPacket(session.pending, data)
 	return nil
 }
 
@@ -181,7 +192,7 @@ func (session *sessionConn) DisconnectPacket(value packet.Disconnect) error {
 	if session.ended {
 		return nil // a Transfer already ended the session
 	}
-	err := session.endLocked(bridgecontract.SessionKindDisconnect, sessionDisconnectMessage{
+	err := session.endLocked(bridgecontract.SessionKindDisconnect, sessionDisconnect{
 		Reason: value.Reason, Message: value.Message, FilteredMessage: value.FilteredMessage,
 		HideScreen: value.HideDisconnectionScreen,
 	})
@@ -225,6 +236,7 @@ func (session *sessionConn) endLocked(kind byte, value any) error {
 	if _, err := session.conn.Write(frame); err != nil {
 		return err
 	}
+	session.terminalDelivered.Store(true)
 	return errSessionEnded
 }
 
@@ -239,14 +251,30 @@ func (session *sessionConn) writeFrame(frame []byte) error {
 	return err
 }
 
-// Close closes the connection once; reads and writes in progress fail.
+// Close preserves a delivered terminal frame while the TCP peer finishes its pending writes.
 func (session *sessionConn) Close() error {
 	session.closeOnce.Do(func() {
 		close(session.done)
+		session.drainTerminal()
 		session.closeErr = session.conn.Close()
 	})
 	return session.closeErr
 }
 
-// Abort is Close: nothing buffered is worth delivering once the session is torn down.
+// sessionTerminalDrainTimeout bounds teardown when a TCP peer never acknowledges the close.
+const sessionTerminalDrainTimeout = time.Second
+
+// drainTerminal half-closes TCP and lets the sole reader drain late client data before closing.
+func (session *sessionConn) drainTerminal() {
+	conn, ok := session.conn.Conn.(*net.TCPConn)
+	if !ok || !session.terminalDelivered.Load() {
+		return
+	}
+	if conn.SetReadDeadline(time.Now().Add(sessionTerminalDrainTimeout)) != nil || conn.CloseWrite() != nil {
+		return
+	}
+	<-session.readDone
+}
+
+// Abort ends the session, preserving only a terminal frame that was already delivered.
 func (session *sessionConn) Abort() error { return session.Close() }

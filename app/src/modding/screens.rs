@@ -15,9 +15,10 @@ use bevy::{
 };
 use client_ui::ui_runtime::{
     UiRuntime,
-    presentation::{ModScreensInput, UiPresentationRuntime, publish::hovered_stack},
+    presentation::{UiPresentationRuntime, publish::hovered_stack},
     session_data::{SessionDataCache, session_data, session_stack},
 };
+use mod_ui::mod_screens::ModScreensInput;
 use server_experience::screen::ScreenLayout;
 use {
     experience_sdk::mod_manifest::{KeyDecl, Modifier},
@@ -108,16 +109,16 @@ pub(super) fn drive(
     player_runtime: &player_state::PlayerState,
     ui: &UiRuntime,
     presentation: &mut UiPresentationRuntime,
-    menu: Option<&crate::menu::MenuRuntime>,
+    menu: Option<&client_shell::menu::MenuRuntime>,
     cursor: Option<[f32; 2]>,
     focused: bool,
     input: &mut ScreenInput,
 ) {
-    let owner = runtime.screen_owner();
+    let owner = runtime.hosts.screen_owner();
     let mut changes = Vec::new();
-    let readers: Vec<usize> = (0..runtime.host_count())
+    let readers: Vec<usize> = (0..runtime.hosts.host_count())
         .filter(|&index| {
-            let host = runtime.host(index);
+            let host = runtime.hosts.host(index);
             let grants = host.grants();
             host.package().is_some() && host.is_active() && (grants.items || grants.recipes)
         })
@@ -125,7 +126,11 @@ pub(super) fn drive(
     if !readers.is_empty() {
         let session = session_data(&mut runtime.screens.session, player_runtime, ui);
         for index in readers {
-            if let Some(event) = runtime.host_mut(index).update_session(Arc::clone(&session)) {
+            if let Some(event) = runtime
+                .hosts
+                .host_mut(index)
+                .update_session(Arc::clone(&session))
+            {
                 changes.push((index, event));
             }
         }
@@ -134,11 +139,11 @@ pub(super) fn drive(
     for (index, event) in changes {
         if Some(index) == owner {
             runtime.screens.data_change = Some(event);
-        } else if let Err(error) = runtime.host_mut(index).dispatch(vec![event]) {
+        } else if let Err(error) = runtime.hosts.host_mut(index).dispatch(vec![event]) {
             eprintln!("Cinnabar mod data-changed failed: {error:#}");
         }
     }
-    let owner = runtime.screen_owner();
+    let owner = runtime.hosts.screen_owner();
     set_owner(runtime, owner);
     let Some(owner) = owner else {
         presentation.set_mod_screens(None);
@@ -149,7 +154,7 @@ pub(super) fn drive(
     };
     let mut state = std::mem::take(&mut runtime.screens);
     drive_owner(
-        runtime.host_mut(owner),
+        runtime.hosts.host_mut(owner),
         &mut state,
         player_runtime,
         ui,
@@ -170,7 +175,7 @@ fn set_owner(runtime: &mut ModRuntime, owner: Option<usize>) {
     if let Some(previous) = runtime.screens.owner {
         let mut events = vec![ModEvent::ScreenChanged(None)];
         events.extend(runtime.screens.data_change.take());
-        if let Err(error) = runtime.host_mut(previous).dispatch(events) {
+        if let Err(error) = runtime.hosts.host_mut(previous).dispatch(events) {
             eprintln!("Cinnabar departing mod screen closure failed: {error:#}");
         }
     }
@@ -189,7 +194,7 @@ fn drive_owner(
     player_runtime: &player_state::PlayerState,
     ui: &UiRuntime,
     presentation: &mut UiPresentationRuntime,
-    menu: Option<&crate::menu::MenuRuntime>,
+    menu: Option<&client_shell::menu::MenuRuntime>,
     cursor: Option<[f32; 2]>,
     focused: bool,
     input: &mut ScreenInput,
@@ -198,16 +203,19 @@ fn drive_owner(
         return;
     };
     let keys = package.keys.clone();
-    if !presentation.mod_screens_match(&package.id, &package.files) {
+    if !presentation
+        .mod_ui()
+        .mod_screens_match(&package.id, &package.files)
+    {
         publish(host, presentation);
     }
-    if let Some(reason) = presentation.mod_screens_failure() {
+    if let Some(reason) = presentation.mod_ui().mod_screens_failure() {
         eprintln!("Cinnabar mod screens refused, mod quarantined: {reason}");
         host.quarantine();
     }
     let mut events: Vec<ModEvent> = state.data_change.take().into_iter().collect();
     if host.is_active() {
-        let layout = presentation.mod_screen_layout().cloned();
+        let layout = presentation.mod_ui().mod_screen_layout().cloned();
         if layout != state.layout {
             state.layout.clone_from(&layout);
             events.push(ModEvent::ScreenChanged(layout));
@@ -250,7 +258,7 @@ fn pointer_events(
     input: &mut ScreenInput,
     events: &mut Vec<ModEvent>,
 ) -> bool {
-    presentation.hover_mod_screens(cursor);
+    presentation.mod_ui_mut().hover_mod_screens(cursor);
     let notches: f64 = input
         .wheel
         .read()
@@ -260,7 +268,7 @@ fn pointer_events(
         })
         .sum();
     if let Some(point) = cursor
-        && let Some([x, y]) = presentation.scroll_mod_screens(point, notches)
+        && let Some([x, y]) = presentation.mod_ui_mut().scroll_mod_screens(point, notches)
     {
         events.push(ModEvent::Scrolled {
             delta: notches,
@@ -284,15 +292,20 @@ fn pointer_events(
             _ => {}
         }
     }
-    if let Some((id, index)) = presentation.press_mod_screens(cursor, pressed, released) {
+    if let Some((id, index)) = presentation
+        .mod_ui_mut()
+        .press_mod_screens(cursor, pressed, released)
+    {
         events.push(ModEvent::Action {
             id,
             index: index.and_then(|index| u32::try_from(index).ok()),
         });
     }
-    if let Some((id, index)) =
-        presentation.secondary_press_mod_screens(cursor, secondary_pressed, secondary_released)
-    {
+    if let Some((id, index)) = presentation.mod_ui_mut().secondary_press_mod_screens(
+        cursor,
+        secondary_pressed,
+        secondary_released,
+    ) {
         events.push(ModEvent::SecondaryAction {
             id,
             index: index.and_then(|index| u32::try_from(index).ok()),
@@ -304,7 +317,7 @@ fn pointer_events(
 /// What the key events of one frame read besides the input.
 struct KeyFrame<'a> {
     keys: &'a [KeyDecl],
-    menu: Option<&'a crate::menu::MenuRuntime>,
+    menu: Option<&'a client_shell::menu::MenuRuntime>,
     cursor: Option<[f32; 2]>,
     /// The primary button went down this frame.
     pressed: bool,
@@ -326,13 +339,13 @@ fn key_events(
         cursor,
         pressed,
     } = frame;
-    let view = presentation.mod_view_shown();
+    let view = presentation.mod_ui().mod_view_shown();
     let presses: Vec<_> = input.presses.drain(..).collect();
     let typed: Vec<String> = presses
         .iter()
         .filter_map(|press| {
             client_ui::ui_runtime::forms::engine_input::typed_text(
-                press.key,
+                client_shell::physical_input::keyboard_key(press.key),
                 press.text.as_deref(),
                 press.modifiers.ctrl,
             )
@@ -343,8 +356,10 @@ fn key_events(
         .time
         .as_ref()
         .map_or(0.0, |time| time.elapsed_secs_f64());
-    let edits = presentation.edit_mod_screens(cursor, pressed, &typed, escape, now);
-    let text_focused = presentation.mod_text_focused();
+    let edits = presentation
+        .mod_ui_mut()
+        .edit_mod_screens(cursor, pressed, &typed, escape, now);
+    let text_focused = presentation.mod_ui().mod_text_focused();
     for (control, text) in edits.edits {
         events.push(ModEvent::TextChanged { control, text });
     }
@@ -367,7 +382,7 @@ fn key_events(
             .negotiated_item_registry();
         let hovered = hovered_stack(player_runtime, ui)
             .and_then(|(stack, _)| session_stack(registry, &stack));
-        let row = cursor.and_then(|point| presentation.mod_screens_row(point));
+        let row = cursor.and_then(|point| presentation.mod_ui_mut().mod_screens_row(point));
         events.push(ModEvent::Key {
             id: declared.id.clone(),
             hovered,

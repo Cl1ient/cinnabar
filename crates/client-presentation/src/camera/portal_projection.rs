@@ -170,16 +170,16 @@ mod tests {
 
     use super::*;
 
-    fn hand_frame() -> render::ActorRigRenderFrame {
-        let builder = render::ActorRigFrameBuilder::new([]).unwrap();
-        render::ActorRigRenderFrame {
+    fn hand_frame() -> render_model::ActorRigRenderFrame {
+        let builder = render_model::ActorRigFrameBuilder::new([]).unwrap();
+        render_model::ActorRigRenderFrame {
             frame_generation: 1,
             geometry_revision: 1,
-            instances: Arc::from([render::ActorGpuInstance::default()]),
+            instances: Arc::from([render_model::ActorGpuInstance::default()]),
             previous_bones: Arc::from([[[0.0; 4]; 3]]),
             current_bones: Arc::from([[[0.0; 4]; 3]]),
             geometry_vertices: builder.geometry_vertices().clone(),
-            geometry_spans: Arc::from([render::ActorRigGeometrySpan {
+            geometry_spans: Arc::from([render_model::ActorRigGeometrySpan {
                 first_vertex: 0,
                 vertex_count: 1,
             }]),
@@ -196,12 +196,12 @@ mod tests {
         });
         let original_world_projection = projection.get_clip_from_view();
         let hand_fov = crate::actor_publication::HAND_FOV_DEGREES.to_radians();
-        let skin = protocol::SkinRgba8::from(Arc::<[u8]>::from(vec![
+        let skin = render_api::SkinRgba8::from(Arc::<[u8]>::from(vec![
             255;
             render_model::STANDARD_SKIN_BYTES
         ]));
-        let mut scene = render::HandRigScene::default();
-        let light = render::HandRigLight {
+        let mut scene = render_scene::HandRigScene::default();
+        let light = render_model::HandRigLight {
             block_level: 15,
             sky_level: 0,
             daylight: 1.0,

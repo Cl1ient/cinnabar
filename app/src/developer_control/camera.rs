@@ -6,8 +6,8 @@ use developer_control::camera::CameraPath;
 use serde_json::{Value, json};
 
 use {
-    crate::{app::ClientFrameSet, runtime::telemetry::bedrock_camera_rotation},
-    client_presentation::camera::FlyCamera,
+    crate::runtime::telemetry::bedrock_camera_rotation, client_presentation::camera::FlyCamera,
+    client_state::ClientFrameSet,
 };
 
 #[derive(Resource)]
@@ -101,7 +101,7 @@ pub(super) fn release(world: &mut World) -> Result<Value, String> {
 
 /// Never saved: the override lives only in this process's settings snapshot.
 fn set_hand_hidden(world: &mut World, hidden: bool) {
-    if let Some(mut menu) = world.get_resource_mut::<crate::menu::MenuRuntime>() {
+    if let Some(mut menu) = world.get_resource_mut::<client_shell::menu::MenuRuntime>() {
         menu.set_session_option(HIDE_HAND, hidden.then_some(1));
     }
 }

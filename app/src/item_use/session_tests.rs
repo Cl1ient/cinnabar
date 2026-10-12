@@ -1,7 +1,9 @@
 //! Same-tick item admission through the real bounded session command queue.
 
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 use gameplay::{
-    item_use::{ItemUseRuntime, UseFrame, admit_on_tick, classify},
+    item_use::{ItemUseRuntime, UseFrame, admit_on_tick, fixtures::classify},
     melee::SwingTracker,
     mining::FrozenMiningSelection,
     test_support::survival_mining::{completed, evidence},
@@ -36,8 +38,10 @@ fn use_frame(tick: u64) -> UseFrame {
 
 #[test]
 fn admitted_item_transaction_precedes_the_same_tick_start_using_input() {
-    let (network, mut captured) = crate::runtime::network::NetworkHandle::stub_capturing_packets();
-    let mut ticker = network.movement_ticker();
+    let (network, mut captured) = NetworkHandle::<PackApplication>::stub_capturing_packets();
+    let mut ticker = client_interaction::movement::MovementTicker::with_epoch_publisher(
+        network.physics_epoch_publisher(),
+    );
     ticker.reset(7, 100, completed(101).position);
     ticker.set_source(gameplay::movement::MovementSource::Physics);
     ticker.enqueue_completed_physics(completed(101)).unwrap();
@@ -65,7 +69,7 @@ fn admitted_item_transaction_precedes_the_same_tick_start_using_input() {
     assert_eq!(
         packets
             .iter()
-            .map(|packet| format!("{:?}", packet.header.id))
+            .map(|packet| format!("{:?}", packet.kind()))
             .collect::<Vec<_>>(),
         ["InventoryTransactionPacket", "PlayerAuthInputPacket"],
     );
@@ -76,8 +80,10 @@ fn admitted_item_transaction_precedes_the_same_tick_start_using_input() {
 
 #[test]
 fn aim_assisted_release_follows_the_input_that_carries_its_facing() {
-    let (network, mut captured) = crate::runtime::network::NetworkHandle::stub_capturing_packets();
-    let mut ticker = network.movement_ticker();
+    let (network, mut captured) = NetworkHandle::<PackApplication>::stub_capturing_packets();
+    let mut ticker = client_interaction::movement::MovementTicker::with_epoch_publisher(
+        network.physics_epoch_publisher(),
+    );
     ticker.reset(7, 100, completed(101).position);
     ticker.set_source(gameplay::movement::MovementSource::Physics);
     ticker.enqueue_completed_physics(completed(101)).unwrap();
@@ -142,7 +148,7 @@ fn aim_assisted_release_follows_the_input_that_carries_its_facing() {
     assert_eq!(
         packets
             .iter()
-            .map(|packet| format!("{:?}", packet.header.id))
+            .map(|packet| format!("{:?}", packet.kind()))
             .collect::<Vec<_>>(),
         ["PlayerAuthInputPacket", "InventoryTransactionPacket"],
     );

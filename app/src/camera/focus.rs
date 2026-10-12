@@ -11,11 +11,12 @@ use bevy::{
         MouseButton, PostUpdate, PreUpdate, Query, Res, ResMut, Single, Touches, Vec2, Window,
         With,
     },
-    window::{CursorOptions, PrimaryWindow, WindowFocused, WindowOccluded},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowFocused, WindowOccluded},
 };
-use client_presentation::camera::CursorFocus;
+use client_shell::physical_input::release_cursor;
+use client_state::CursorFocus;
 
-use {super::DrivenInput, client_presentation::camera::AutoFly};
+use {client_presentation::camera::AutoFly, client_state::DrivenInput};
 
 #[cfg(any(windows, test))]
 mod native;
@@ -75,7 +76,7 @@ fn track_focus(
         return;
     }
     if !available {
-        client_presentation::camera::release_cursor(&mut cursor);
+        release_cursor(&mut cursor);
         keys.reset_all();
         buttons.reset_all();
         motion.delta = Vec2::ZERO;
@@ -91,44 +92,29 @@ pub(crate) fn mouse_input_active(
 ) -> bool {
     driven
         || (client_presentation::camera::input_is_active(window, cursor)
-            && focus.is_none_or(CursorFocus::capture_allowed))
+            && focus.is_none_or(|focus| focus.capture_allowed()))
 }
 
 /// Samples UI cursor authority immediately before presentation updates capture.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn update_cursor_capture(
-    player_runtime: bevy::prelude::Res<crate::player_runtime::PlayerRuntime>,
     window: Single<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     keys: ResMut<ButtonInput<KeyCode>>,
     mouse_buttons: ResMut<ButtonInput<MouseButton>>,
     mouse_motion: ResMut<AccumulatedMouseMotion>,
     auto_fly: ResMut<AutoFly>,
-    ui: Option<Res<client_ui::ui_runtime::UiRuntime>>,
-    menu: Option<Res<crate::menu::MenuRuntime>>,
-    presentation: Option<Res<client_ui::ui_runtime::presentation::UiPresentationRuntime>>,
-    consent: Option<Res<crate::server_experiences::input::ConsentInput>>,
+    screen_focus: Res<client_state::ScreenFocus>,
+    consent: Option<Res<client_state::ConsentInput>>,
     driven: Option<Res<DrivenInput>>,
-    focus: Option<ResMut<client_presentation::camera::CursorFocus>>,
+    focus: Option<ResMut<client_state::CursorFocus>>,
     #[cfg(all(windows, not(test)))] native: Res<native::NativeCaptureReady>,
 ) {
     let mut policy = client_presentation::observations::CursorPolicy {
         capture_allowed: true,
         driven: driven.is_some(),
         consent: consent.is_some_and(|consent| consent.0),
-        absorbs_input: crate::screen_policy::absorbs_input(
-            &player_runtime,
-            ui.as_deref(),
-            menu.as_deref(),
-            presentation.as_deref(),
-        ),
-        steals_mouse: ui.as_deref().map(|ui| {
-            ui.steals_mouse(
-                &player_runtime,
-                menu.as_deref().map(|menu| {
-                    menu as &dyn client_ui::ui_runtime::presentation::forms::scene_policy::MenuScene
-                }),
-            )
-        }),
+        absorbs_input: screen_focus.absorbs_input,
+        steals_mouse: screen_focus.steals_mouse,
     };
     if let Some(mut focus) = focus {
         policy.capture_allowed = focus.allow_capture(
@@ -140,14 +126,76 @@ pub(crate) fn update_cursor_capture(
     {
         policy.capture_allowed &= native.0;
     }
-    client_presentation::camera::update_cursor_capture(
-        policy,
-        window,
-        keys,
-        mouse_buttons,
-        mouse_motion,
-        auto_fly,
-    );
+    apply_cursor_policy(policy, window, keys, mouse_buttons, mouse_motion, auto_fly);
+}
+
+/// Requests the captured gameplay pointer state.
+fn capture_cursor(cursor: &mut CursorOptions) {
+    cursor.grab_mode = CursorGrabMode::Locked;
+    cursor.visible = false;
+}
+
+/// Drops held pointer and key input when gameplay capture is released.
+fn clear_controller_input(
+    keys: &mut ButtonInput<KeyCode>,
+    mouse_buttons: &mut ButtonInput<MouseButton>,
+    mouse_motion: &mut AccumulatedMouseMotion,
+) {
+    keys.reset_all();
+    mouse_buttons.reset_all();
+    mouse_motion.delta = Vec2::ZERO;
+}
+
+/// Applies the retained input policy before accepting gameplay pointer motion.
+fn apply_cursor_policy(
+    policy: client_presentation::observations::CursorPolicy,
+    window: Single<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse_buttons: ResMut<ButtonInput<MouseButton>>,
+    mut mouse_motion: ResMut<AccumulatedMouseMotion>,
+    mut auto_fly: ResMut<AutoFly>,
+) {
+    if policy.driven {
+        return;
+    }
+    let (window, mut cursor) = window.into_inner();
+
+    // Focus loss has priority over every capture request, including auto-fly.
+    // The trusted consent popup needs a pointer whatever settings the scene behind it declares.
+    if !window.focused || !policy.capture_allowed || policy.consent {
+        release_cursor(&mut cursor);
+        clear_controller_input(&mut keys, &mut mouse_buttons, &mut mouse_motion);
+        auto_fly.clear_capture_request();
+        return;
+    }
+
+    let steals = policy.steals_mouse;
+    if policy.absorbs_input || steals == Some(false) {
+        release_cursor(&mut cursor);
+        clear_controller_input(&mut keys, &mut mouse_buttons, &mut mouse_motion);
+        auto_fly.clear_capture_request();
+        return;
+    }
+
+    // Escape also wins if it arrives in the same frame as a left click.
+    if keys.just_pressed(KeyCode::Escape) {
+        release_cursor(&mut cursor);
+        clear_controller_input(&mut keys, &mut mouse_buttons, &mut mouse_motion);
+        auto_fly.clear_capture_request();
+        return;
+    }
+
+    let active = client_presentation::camera::input_is_active(window, &cursor);
+    let recapture_click = !active && mouse_buttons.just_pressed(MouseButton::Left);
+    if recapture_click || (steals == Some(true) && !active) || auto_fly.capture_pending() {
+        capture_cursor(&mut cursor);
+        if recapture_click {
+            // Recapture consumes the click; a later physical press must rearm attack.
+            mouse_buttons.release(MouseButton::Left);
+            mouse_motion.delta = Vec2::ZERO;
+        }
+        auto_fly.clear_capture_request();
+    }
 }
 
 /// Prevents any screen or developer adapter from submitting an unauthorized OS grab.
@@ -162,7 +210,7 @@ fn enforce_cursor_ownership(
     let allowed = allowed && native.0;
     if driven.is_some() || !allowed {
         for mut cursor in &mut cursors {
-            client_presentation::camera::release_cursor(&mut cursor);
+            release_cursor(&mut cursor);
         }
     }
 }

@@ -97,8 +97,9 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
         );
         return;
     };
-    let Some(images) = crate::ui_runtime::oreui_assets::load_optional_oreui_images()
-        .filter(|images| !images.loading_frames.is_empty())
+    let Some(images) =
+        oreui::images::load_optional_oreui_images(&oreui::images::checkout_compiled_dir())
+            .filter(|images| !images.loading_frames.is_empty())
     else {
         eprintln!(
             "skipping the_connecting_loader_animates_over_its_cached_layout: fixture unavailable; requires the installed OreUI loading animation"
@@ -138,21 +139,20 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
     };
     frame(&mut presentation, 0);
     let cycle_start = (1_000 / elapsed + 1) * elapsed;
-    let loader_bounds =
-        |presentation: &super::super::UiPresentationRuntime,
-         sprite: crate::ui_runtime::oreui_assets::OreUiSprite| {
-            super::pack_harness::menu_nodes(presentation)
-                .iter()
-                .find_map(|node| match node.visual() {
-                    UiVisual::Sprite {
-                        texture_page, uv, ..
-                    } if *texture_page == page + sprite.page && *uv == sprite.bounds => {
-                        Some(node.bounds())
-                    }
-                    _ => None,
-                })
-                .expect("the selected installed loader frame is painted")
-        };
+    let loader_bounds = |presentation: &super::super::UiPresentationRuntime,
+                         sprite: oreui::images::OreUiSprite| {
+        super::pack_harness::menu_nodes(presentation)
+            .iter()
+            .find_map(|node| match node.visual() {
+                UiVisual::Sprite {
+                    texture_page, uv, ..
+                } if *texture_page == page + sprite.page && *uv == sprite.bounds => {
+                    Some(node.bounds())
+                }
+                _ => None,
+            })
+            .expect("the selected installed loader frame is painted")
+    };
     let text_layouts = |presentation: &super::super::UiPresentationRuntime| {
         super::pack_harness::menu_nodes(presentation)
             .iter()
@@ -228,7 +228,7 @@ fn the_disconnect_screen_has_a_way_back() {
     presentation.set_menu_view(Some(view));
     let runtime = UiRuntime::new(1);
     let dpi = DpiScale::new(1.0).unwrap();
-    let metrics = super::super::TextMetrics::for_viewport([1280, 720], dpi, None);
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport([1280, 720], dpi, None);
     let mut nodes = Vec::new();
     let mut next = 1;
     let hits = presentation
@@ -341,11 +341,11 @@ fn the_settings_panes_take_the_wheel() {
 fn snapshot_local_worlds() {
     let player_runtime = player_state::PlayerState::new(1);
 
-    use launcher::local_worlds::{Event, Input, PromptButton, Tab, WorldsMenu};
-    use protocol::world_control::{
-        Backend, Difficulty, GameMode, Generator, Prefs, Setup, SetupState, UnavailableReason,
-        World, WorldState, WorldStatus,
+    use bridge::{Backend, GameMode, WorldState};
+    use launcher::local_worlds::world::{
+        Difficulty, Generator, Prefs, Setup, SetupState, UnavailableReason, World, WorldStatus,
     };
+    use launcher::local_worlds::{Event, Input, PromptButton, Tab, WorldsMenu};
     let dir = std::env::temp_dir().join("cinnabar-play-flow-art");
     std::fs::create_dir_all(&dir).unwrap();
     let mut base = fixture_view(&dir);

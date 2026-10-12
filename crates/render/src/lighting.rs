@@ -1,14 +1,14 @@
-use crate::lightmap::LightmapInputs;
+use bevy::prelude::IntoScheduleConfigs;
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
     ecs::{
         query::ROQueryItem,
         system::{SystemParamItem, lifetimeless::SRes},
     },
-    prelude::{App, Commands, Handle, IntoScheduleConfigs, Res, ResMut, Resource, Shader},
+    prelude::{App, Commands, Handle, Res, ResMut, Resource, Shader},
     render::{
         Render, RenderApp, RenderSystems,
-        extract_resource::{ExtractResource, ExtractResourcePlugin},
+        extract_resource::ExtractResourcePlugin,
         render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
         render_resource::{
             BindGroup, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
@@ -18,14 +18,8 @@ use bevy::{
         renderer::{RenderDevice, RenderQueue},
     },
 };
-
-/// Shared classic lightmap inputs, published with the current environment frame.
-#[derive(Resource, ExtractResource, Clone, Copy, Debug, Default, PartialEq)]
-pub struct WorldLighting(pub LightmapInputs);
-
-/// A transient personal-mod override; the ordinary environment inputs remain intact.
-#[derive(Resource, ExtractResource, Clone, Copy, Debug, Default, PartialEq)]
-pub struct WorldFullbright(pub bool);
+use render_model::LightmapInputs;
+use render_scene::{WorldFullbright, WorldLighting};
 
 #[derive(Resource)]
 pub(crate) struct LightmapGpu {
@@ -56,9 +50,9 @@ pub(crate) fn layout() -> BindGroupLayoutDescriptor {
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: BufferSize::new(
-                        std::mem::size_of::<crate::AtmosphereFrame>() as u64,
-                    ),
+                    min_binding_size: BufferSize::new(std::mem::size_of::<
+                        render_scene::AtmosphereFrame,
+                    >() as u64),
                 },
                 count: None,
             },
@@ -86,11 +80,11 @@ pub(crate) fn install(app: &mut App) {
     const MATERIAL_SHADER: Handle<Shader> = uuid_handle!("40309d5a-76a4-4e3b-aed0-d5c76aa5d52e");
 
     const SHADER: Handle<Shader> = uuid_handle!("4562a3ce-92ab-46f2-823f-af9faf2cc5c8");
-    load_internal_asset!(app, SHADER, "lighting.wgsl", |source, path| {
-        crate::shader_safety::from_wgsl(crate::material_shader::source(source), path)
+    load_internal_asset!(app, SHADER, "lighting.wesl", |source, path| {
+        crate::shader_safety::from_wesl(crate::material_shader::source(source), path)
     });
-    load_internal_asset!(app, MATERIAL_SHADER, "material.wgsl", |source, path| {
-        crate::shader_safety::from_wgsl(crate::material_shader::source(source), path)
+    load_internal_asset!(app, MATERIAL_SHADER, "material.wesl", |source, path| {
+        crate::shader_safety::from_wesl(crate::material_shader::source(source), path)
     });
     // Terrain, models, liquids and block overlays share one projection.
     const WORLD_PROJECTION_SHADER: Handle<Shader> =
@@ -98,8 +92,8 @@ pub(crate) fn install(app: &mut App) {
     load_internal_asset!(
         app,
         WORLD_PROJECTION_SHADER,
-        "world_projection.wgsl",
-        crate::shader_safety::from_wgsl
+        "world_projection.wesl",
+        crate::shader_safety::from_wesl
     );
     app.sub_app_mut(RenderApp)
         .add_systems(Render, prepare.in_set(RenderSystems::PrepareResources));
@@ -137,7 +131,7 @@ fn prepare(
     let atmosphere = atmosphere.map(|gpu| gpu.buffer.clone()).unwrap_or_else(|| {
         device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("fallback world atmosphere"),
-            contents: bytemuck::bytes_of(&crate::AtmosphereFrame::default()),
+            contents: bytemuck::bytes_of(&render_scene::AtmosphereFrame::default()),
             usage: BufferUsages::UNIFORM,
         })
     });

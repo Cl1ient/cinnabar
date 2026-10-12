@@ -161,12 +161,14 @@ fn fixture(beacon_count: usize, eye: Vec3, fill_portals: bool) -> World {
     });
     world.insert_resource(collisions);
     world.insert_resource(LocalViewPose::new(eye, Quat::IDENTITY));
-    world.insert_resource(UiRuntime::new(1));
+    world.insert_resource(UiRuntimeResource(client_ui::ui_runtime::UiRuntime::new(1)));
     world.insert_resource(BlockEntityFont(Arc::new(font)));
     world.insert_resource(BlockEntityRuntime::new());
-    world.insert_resource(block_entity_scene(Some(&beam_assets)));
-    world.init_resource::<BlockEntityFrame>();
-    world.init_resource::<StaticItemPlacements>();
+    world.insert_resource(render_scene::BlockEntitySceneResource(block_entity_scene(
+        Some(&beam_assets),
+    )));
+    world.init_resource::<render_scene::BlockEntityFrameResource>();
+    world.init_resource::<render_scene::StaticItemPlacementsResource>();
     world.init_resource::<AtmosphereFrame>();
     world.init_resource::<ActorFramePartialTick>();
     world.init_resource::<Time<Real>>();
@@ -199,7 +201,12 @@ fn beacon_cache_waits_for_distance_admission_even_after_column_edits() {
             scan.beacons.is_empty(),
             "distant beacons must not scan their beams"
         );
-        assert!(world.resource::<BlockEntityFrame>().overlay.is_empty());
+        assert!(
+            world
+                .resource::<render_scene::BlockEntityFrameResource>()
+                .overlay
+                .is_empty()
+        );
     }
     world.insert_resource(LocalViewPose::new(Vec3::new(8.0, 8.0, 8.0), Quat::IDENTITY));
     world.run_system_once(update_block_entity_scene).unwrap();

@@ -6,7 +6,7 @@ type RenderPose = Arc<[render_model::RenderBoneTransform]>;
 
 struct NativePoseInput {
     consume: Option<u32>,
-    animation: Option<client_world::AttachableAnimationInput<'static>>,
+    animation: Option<actor_animation::AttachableAnimationInput<'static>>,
     alpha: f32,
     camera: Option<([f32; 2], [f32; 3])>,
     sample_skin: bool,
@@ -27,7 +27,7 @@ struct PoseKey {
 pub(in super::super) struct NativePoseCache {
     key: Option<PoseKey>,
     pose: Option<[RenderPose; 2]>,
-    skin_layers: Option<Arc<[client_world::SkinRenderLayer]>>,
+    skin_layers: Option<Arc<[actor_animation::SkinRenderLayer]>>,
     #[cfg(test)]
     pub(super) sample_work: (u64, u64),
 }
@@ -49,7 +49,7 @@ impl NativePoseCache {
     }
 
     /// The body-only sampled persona slice; borrowed completed layers stay on the actor snapshot.
-    pub(in super::super) fn skin_layers(&self) -> Option<&[client_world::SkinRenderLayer]> {
+    pub(in super::super) fn skin_layers(&self) -> Option<&[actor_animation::SkinRenderLayer]> {
         self.skin_layers.as_deref()
     }
 
@@ -83,7 +83,7 @@ impl NativePoseCache {
         stream: &WorldStream,
         presentation: &ActorRigPresentation,
         consume: Option<u32>,
-        animation: Option<client_world::AttachableAnimationInput<'static>>,
+        animation: Option<actor_animation::AttachableAnimationInput<'static>>,
         alpha: f32,
         camera: Option<([f32; 2], [f32; 3])>,
     ) -> Option<[RenderPose; 2]> {
@@ -128,7 +128,7 @@ impl NativePoseCache {
             return self.pose.clone();
         }
         #[cfg(test)]
-        let allocated = crate::test_allocations::count();
+        let allocated = test_alloc::thread_allocations();
         let mut frame = stream.authority().actor_render_frame(alpha);
         self.skin_layers = None;
         let sampled = if sample_skin {
@@ -136,7 +136,7 @@ impl NativePoseCache {
         } else {
             frame
                 .layers(runtime_id)
-                .map(|render| client_world::ActorRenderLayers {
+                .map(|render| actor_animation::ActorRenderLayers {
                     render,
                     skin: Cow::Borrowed(&[]),
                 })
@@ -166,7 +166,7 @@ impl NativePoseCache {
         #[cfg(test)]
         {
             self.sample_work.0 += 1;
-            self.sample_work.1 += crate::test_allocations::count() - allocated;
+            self.sample_work.1 += test_alloc::thread_allocations() - allocated;
         }
         self.key = Some(key);
         self.pose = pose.clone();

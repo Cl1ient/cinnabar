@@ -1,8 +1,7 @@
 use super::*;
-use crate::{
-    gpu_snapshot::{self, Draw, Gpu},
-    shader_source,
-};
+use crate::gpu_snapshot::{self, Draw, Gpu};
+use crate::shader_source;
+use render_scene::{AtmosphereFrame, SkyKind, SkyboxSettings};
 use wgpu::util::DeviceExt;
 
 /// Uploads a synthetic or explicitly supplied fixture image with the production format.
@@ -35,7 +34,7 @@ fn numbered_faces_uvs_and_translated_face_boundaries_render_on_the_gpu() {
     let Some(gpu) = Gpu::for_fixture("pack skybox projection") else {
         return;
     };
-    let mut source = shader_source::standalone(include_str!("../atmosphere.wgsl"), &[]);
+    let mut source = shader_source::standalone(include_str!("../atmosphere.wesl"), &[]);
     source.push_str(
         r#"
 @vertex fn probe_vertex(@builtin(vertex_index) index: u32) -> VertexOutput {
@@ -178,7 +177,7 @@ fn draw_cube_view(
     rotation: bevy::math::Quat,
     foreground: bool,
 ) -> Vec<u8> {
-    let mut source = shader_source::standalone(include_str!("../atmosphere.wgsl"), &[]);
+    let mut source = shader_source::standalone(include_str!("../atmosphere.wesl"), &[]);
     source.push_str(r#"
 @vertex fn cube_probe_vertex(@builtin(vertex_index) index: u32) -> VertexOutput {
     let position = vec2(f32(index & 1u), f32((index >> 1u) & 1u)) * 4.0 - vec2(1.0);
@@ -187,8 +186,11 @@ fn draw_cube_view(
 @fragment fn background(input: VertexOutput) -> @location(0) vec4<f32> { return vec4(0.0, 0.0, 0.25, skybox.parameters.z); }
 @fragment fn foreground(input: VertexOutput) -> PackSkyboxOutput { return PackSkyboxOutput(vec4(0.0, 1.0, 0.0, skybox.parameters.z), 0.5); }
 "#);
-    let projection =
-        bevy::math::Mat4::perspective_infinite_reverse_rh(90_f32.to_radians(), 1.0, 0.1);
+    let projection = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        90_f32.to_radians(),
+        1.0,
+        0.1,
+    );
     let world_from_view = bevy::math::Mat4::from_rotation_translation(rotation, eye);
     let clip = projection * world_from_view.inverse();
     let mut view_words = Vec::new();
@@ -295,7 +297,7 @@ fn translucent_faces_blend_over_the_backdrop_without_covering_nearer_geometry() 
         );
         let centre = &pixels[(128 * 256 + 128) * 4..][..4];
         let linear = alpha as f32 / 255.0;
-        let encode = |v| (crate::celestial::rgb_to_gamma([v; 3])[0] * 255.0).round() as u8;
+        let encode = |v| (render_model::celestial::rgb_to_gamma([v; 3])[0] * 255.0).round() as u8;
         let expected = [encode(linear), 0, encode(0.25 * (1.0 - linear)), 255];
         assert!(
             centre.iter().zip(expected).all(|(a, e)| a.abs_diff(e) <= 1),

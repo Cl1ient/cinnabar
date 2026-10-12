@@ -1,26 +1,35 @@
 //! Emissive in-world quads that sample server media textures.
 
-use std::{collections::HashMap, sync::Arc};
-
-use bevy::image::BevyDefault;
+use bevy::prelude::IntoScheduleConfigs;
 #[cfg(test)]
-use bevy::prelude::{IntoSystem, System};
+use bevy::prelude::System;
+use bevy::render::render_phase::AddRenderCommand;
+use bevy::render::render_resource::ShaderType;
+use render_scene::{MAX_MEDIA_SCREENS, MediaScreen, MediaScreenScene};
+
+use std::collections::HashMap;
+
+#[cfg(test)]
+use bevy::prelude::IntoSystem;
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
     core_pipeline::core_3d::{CORE_3D_DEPTH_FORMAT, Transparent3d},
     ecs::{
         query::ROQueryItem,
-        system::{SystemParamItem, lifetimeless::Read, lifetimeless::SRes},
+        system::{
+            SystemParamItem,
+            lifetimeless::{Read, SRes},
+        },
     },
     prelude::{
-        App, BevyError, Commands, Entity, FromWorld, Handle, IntoScheduleConfigs, Msaa, Quat,
-        Query, Res, ResMut, Resource, Result, Shader, Vec3, World, default,
+        App, BevyError, Commands, Entity, FromWorld, Handle, Msaa, Query, Res, ResMut, Resource,
+        Result, Shader, Vec3, World, default,
     },
     render::{
         Render, RenderApp, RenderStartup, RenderSystems,
         render_phase::{
-            AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
-            RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
+            DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand, RenderCommandResult,
+            SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
         },
         render_resource::{
             AddressMode, BindGroup, BindGroupEntry, BindGroupLayoutDescriptor,
@@ -28,14 +37,13 @@ use bevy::{
             BufferDescriptor, BufferId, BufferSize, BufferUsages, Canonical, ColorTargetState,
             ColorWrites, CompareFunction, DepthStencilState, Extent3d, FilterMode, FragmentState,
             PipelineCache, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-            SamplerDescriptor, ShaderStages, ShaderType, Specializer, SpecializerKey,
-            TextureDataOrder, TextureDescriptor, TextureDimension, TextureFormat,
-            TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
-            TextureViewDimension, Variants, VertexState,
+            SamplerDescriptor, ShaderStages, Specializer, SpecializerKey, TextureDataOrder,
+            TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
+            TextureView, TextureViewDescriptor, TextureViewDimension, Variants, VertexState,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        view::{ExtractedView, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms},
     },
 };
 
@@ -43,60 +51,18 @@ use crate::media::MediaTexture;
 
 const MEDIA_SCREEN_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("5b8e2f4a-3c71-4d09-a6e2-91f0c7d3b852");
-/// Matches `Screen` in media_screen.wgsl: centre+flag, right axis, up axis.
+/// Matches `Screen` in media_screen.wesl: centre+flag, right axis, up axis.
 const RECORD_BYTES: u64 = 48;
-
-pub const MAX_MEDIA_SCREENS: usize = 4;
-
-/// Screens to draw this frame; at most `MAX_MEDIA_SCREENS` are used, in order.
-#[derive(Resource, bevy::render::extract_resource::ExtractResource, Clone, Default)]
-pub struct MediaScreenScene {
-    pub screens: Vec<MediaScreen>,
-    /// Texture bytes all screens together may allocate.
-    pub gpu_budget_bytes: u64,
-}
-
-#[derive(Clone)]
-pub struct MediaScreen {
-    /// Keys the retained texture across frames.
-    pub id: u64,
-    pub center: [f32; 3],
-    pub half_right: [f32; 3],
-    pub half_up: [f32; 3],
-    pub frame: Option<MediaFrame>,
-}
-
-/// sRGB RGBA8, row-major, top row first; uploaded once per `serial`.
-#[derive(Clone)]
-pub struct MediaFrame {
-    pub serial: u64,
-    pub width: u32,
-    pub height: u32,
-    pub rgba: Arc<[u8]>,
-}
-
-/// Centre and half-extent axes of a quad of `size` in its local XY plane facing local +Z, after
-/// scale, xyzw rotation and translation.
-pub fn media_screen_axes(
-    translation: [f32; 3],
-    rotation: [f32; 4],
-    scale: [f32; 3],
-    size: [f32; 2],
-) -> ([f32; 3], [f32; 3], [f32; 3]) {
-    let rotation = Quat::from_array(rotation);
-    let right = rotation * Vec3::new(scale[0] * size[0] * 0.5, 0.0, 0.0);
-    let up = rotation * Vec3::new(0.0, scale[1] * size[1] * 0.5, 0.0);
-    (translation, right.to_array(), up.to_array())
-}
 
 pub(crate) fn install_media_screen_render(app: &mut App) {
     crate::pipeline_warmup::register::<MediaScreenPipeline>(app);
     load_internal_asset!(
         app,
         MEDIA_SCREEN_SHADER_HANDLE,
-        "media_screen.wgsl",
-        crate::shader_safety::from_wgsl
+        "media_screen.wesl",
+        crate::shader_safety::from_wesl
     );
+    crate::transparent_phase::install(app.sub_app_mut(RenderApp));
     app.sub_app_mut(RenderApp)
         .init_resource::<MediaScreenPipeline>()
         .add_render_command::<Transparent3d, DrawMediaScreenCommands>()
@@ -106,7 +72,7 @@ pub(crate) fn install_media_screen_render(app: &mut App) {
             (
                 prepare_media_screens.in_set(RenderSystems::PrepareBindGroups),
                 queue_media_screens
-                    .run_if(crate::panorama::world_passes_enabled)
+                    .run_if(render_scene::panorama::world_passes_enabled)
                     .in_set(RenderSystems::Queue),
             ),
         );
@@ -399,7 +365,7 @@ impl FromWorld for MediaScreenPipeline {
                 shader: MEDIA_SCREEN_SHADER_HANDLE,
                 entry_point: Some("media_screen_fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::bevy_default(),
+                    format: render_scene::SCENE_COLOR_FORMAT,
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
@@ -407,8 +373,8 @@ impl FromWorld for MediaScreenPipeline {
             }),
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: CompareFunction::GreaterEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(CompareFunction::GreaterEqual),
                 stencil: default(),
                 bias: default(),
             }),
@@ -440,9 +406,9 @@ impl Specializer<RenderPipeline> for MediaScreenPipelineSpecializer {
             .as_mut()
             .unwrap()
             .format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         Ok(key)
     }
@@ -454,13 +420,19 @@ fn queue_media_screens(
     scene: Res<MediaScreenScene>,
     mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     draw_functions: Res<DrawFunctions<Transparent3d>>,
-    views: Query<(Entity, &MainEntity, &ExtractedView, &Msaa)>,
+    views: Query<(
+        Entity,
+        &MainEntity,
+        &ExtractedView,
+        &bevy::render::camera::ExtractedCamera,
+        &Msaa,
+    )>,
 ) {
     if scene.screens.is_empty() {
         return;
     }
     let draw_function = draw_functions.read().id::<DrawMediaScreenCommands>();
-    for (view_entity, main_entity, view, msaa) in &views {
+    for (view_entity, main_entity, view, extracted_camera, msaa) in &views {
         let Some(phase) = phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -468,23 +440,28 @@ fn queue_media_screens(
             &pipeline_cache,
             MediaScreenPipelineKey {
                 msaa: *msaa,
-                hdr: view.hdr,
+                hdr: extracted_camera.hdr,
             },
         ) else {
             continue;
         };
         for (index, screen) in scene.screens.iter().take(MAX_MEDIA_SCREENS).enumerate() {
-            phase.add(Transparent3d {
-                entity: (view_entity, *main_entity),
-                pipeline: pipeline_id,
-                draw_function,
-                distance: view
-                    .rangefinder3d()
-                    .distance(&Vec3::from_array(screen.center)),
-                batch_range: index as u32..index as u32 + 1,
-                extra_index: PhaseItemExtraIndex::None,
-                indexed: false,
-            });
+            crate::transparent_phase::add(
+                phase,
+                Transparent3d {
+                    sorting_info:
+                        bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
+                    entity: (view_entity, *main_entity),
+                    pipeline: pipeline_id,
+                    draw_function,
+                    distance: view
+                        .rangefinder3d()
+                        .distance(&Vec3::from_array(screen.center)),
+                    batch_range: index as u32..index as u32 + 1,
+                    extra_index: PhaseItemExtraIndex::None,
+                    indexed: false,
+                },
+            );
         }
     }
 }
@@ -545,6 +522,8 @@ mod tests {
     use super::*;
     use crate::queue_review_support as fixture;
     use bevy::ecs::system::RunSystemOnce;
+    use render_scene::{MediaFrame, media_screen_axes};
+    use std::sync::Arc;
 
     fn close(a: [f32; 3], b: [f32; 3]) -> bool {
         a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-5)
@@ -788,9 +767,9 @@ mod tests {
         let mut system = IntoSystem::into_system(prepare_media_screens);
         system.initialize(app.world_mut());
         system.run((), app.world_mut()).unwrap();
-        let before = crate::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         system.run((), app.world_mut()).unwrap();
-        assert_eq!(crate::alloc_count::thread_allocations() - before, 0);
+        assert_eq!(test_alloc::thread_allocations() - before, 0);
         assert_eq!(
             app.world().resource::<MediaScreenGpu>().draws,
             [Some(7), Some(8), None]
@@ -803,7 +782,7 @@ mod tests {
         let mut cache = app.world_mut().remove_resource::<PipelineCache>().unwrap();
         let mut pipeline = MediaScreenPipeline::from_world(&mut World::new());
         crate::shader_test_support::assert_binding_visibility(
-            &crate::shader_source::standalone(include_str!("media_screen.wgsl"), &[]),
+            &crate::shader_source::standalone(include_str!("media_screen.wesl"), &[]),
             0,
             &pipeline.bind_group_layout,
         );
@@ -821,12 +800,12 @@ mod tests {
         assert_eq!(descriptor.multisample.count, 4);
         assert_eq!(descriptor.primitive.cull_mode, None);
         let depth = descriptor.depth_stencil.as_ref().unwrap();
-        assert!(depth.depth_write_enabled);
-        assert_eq!(depth.depth_compare, CompareFunction::GreaterEqual);
+        assert_eq!(depth.depth_write_enabled, Some(true));
+        assert_eq!(depth.depth_compare, Some(CompareFunction::GreaterEqual));
         let colour = descriptor.fragment.as_ref().unwrap().targets[0]
             .as_ref()
             .unwrap();
         assert_eq!(colour.blend, None);
-        assert_eq!(colour.format, ViewTarget::TEXTURE_FORMAT_HDR);
+        assert_eq!(colour.format, render_scene::SCENE_HDR_FORMAT);
     }
 }

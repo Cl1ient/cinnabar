@@ -121,9 +121,9 @@ impl crate::pipeline_warmup::PrewarmPipelines for BlurPipeline {
         ids: &mut crate::pipeline_warmup::WarmupIds,
     ) -> Result<(), BevyError> {
         let format = if view.hdr {
-            bevy::render::view::ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         ids.push(self.specialize(cache, format, view.msaa.samples()));
         Ok(())

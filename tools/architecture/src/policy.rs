@@ -59,6 +59,9 @@ pub(super) struct LineBaseline {
 pub(super) struct VendoredRule {
     pub(super) path: String,
     pub(super) ownership_record: String,
+    /// The only crate that may depend on packages in this tree, by any dependency kind.
+    #[serde(default)]
+    pub(super) owner: Option<String>,
 }
 
 /// Original art exempt from `forbidden_artifacts`; its record must name the path.
@@ -79,6 +82,12 @@ pub(super) struct CrateRule {
     /// Reject every dependency, including external and development dependencies.
     #[serde(default)]
     pub(super) dependency_free: bool,
+    /// Limits all Rust source lines in a shared hub.
+    #[serde(default)]
+    pub(super) max_rust_lines: Option<usize>,
+    /// Allows only data declarations and module wiring, with no executable items.
+    #[serde(default)]
+    pub(super) contract_only: bool,
     /// Reject these packages through local dependency paths, including this crate's tests.
     #[serde(default)]
     pub(super) forbidden_transitive_dependencies: Vec<String>,

@@ -1,10 +1,13 @@
 //! Bounded CPU models and atlas slots for current item consumers.
 use std::{collections::HashMap, sync::Arc};
 
-use render::{DroppedItemModel, DroppedItemSpawnPose, MAX_ITEM_LAYERS};
+use render_model::{DroppedItemModel, DroppedItemSpawnPose, MAX_ITEM_LAYERS};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(super) enum ModelKey {
+    PottedBlock {
+        id: u32,
+    },
     Block {
         hashed: bool,
         id: u32,
@@ -35,7 +38,7 @@ impl ModelKey {
 #[derive(Default)]
 pub(crate) struct ModelCache {
     session: u64,
-    assets: Option<render::ChunkTextureAssetIdentity>,
+    assets: Option<render_scene::ChunkTextureAssetIdentity>,
     icons: u64,
     pub(super) revision: u64,
     pub(super) models: Vec<DroppedItemModel>,
@@ -84,7 +87,7 @@ impl ModelCache {
     pub(super) fn sync(
         &mut self,
         session: u64,
-        assets: Option<render::ChunkTextureAssetIdentity>,
+        assets: Option<render_scene::ChunkTextureAssetIdentity>,
         icons: u64,
     ) {
         if self.session != session || self.assets != assets || self.icons != icons {
@@ -180,7 +183,9 @@ impl ModelCache {
             Some(entry) => entry.layers,
             None => {
                 let estimate = cost();
-                if estimate.is_none() && matches!(key, ModelKey::Block { .. }) {
+                if estimate.is_none()
+                    && matches!(key, ModelKey::Block { .. } | ModelKey::PottedBlock { .. })
+                {
                     self.remember_rejection(key.clone(), None);
                 }
                 estimate
@@ -195,7 +200,7 @@ impl ModelCache {
             return None;
         }
         let Some(model) = build() else {
-            if matches!(key, ModelKey::Block { .. }) {
+            if matches!(key, ModelKey::Block { .. } | ModelKey::PottedBlock { .. }) {
                 self.remember_rejection(key, None);
             }
             return None;

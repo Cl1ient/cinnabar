@@ -1,4 +1,5 @@
 //! RenderChunk interpolates light coordinates, then samples the byte lightmap.
+
 use crate::gpu_snapshot;
 use crate::material_shader;
 use crate::shader_source;
@@ -83,7 +84,7 @@ fn terrain_fragments_sample_interpolated_levels_not_interpolated_light_rgb() {
     let mut atmosphere = [0.0; 36];
     atmosphere[20] = 100.0;
     let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
-    let mut table = render::LightmapInputs::default().build();
+    let mut table = render_model::LightmapInputs::default().build();
     let side = table.len().isqrt();
     // Deliberately nonlinear RGB distinguishes coordinate lookup from the
     // former vertex-colour shortcut even when both corner pixels agree.
@@ -102,12 +103,12 @@ fn terrain_fragments_sample_interpolated_levels_not_interpolated_light_rgb() {
     for (kind, shader, fragments) in [
         (
             "model",
-            include_str!("../../src/model.wgsl"),
+            include_str!("../../src/model.wesl"),
             &["fragment", "fragment_blend"][..],
         ),
         (
             "cube",
-            include_str!("../../src/chunk.wgsl"),
+            include_str!("../../src/chunk.wesl"),
             &["fragment"][..],
         ),
     ] {
@@ -243,8 +244,8 @@ const MODEL_VERTEX: &str = r#"
     out.native_light_levels = terrain_light_levels(witness_sample(corner));
     out.native_ao_face = 1.0;
     out.tint_gamma = vec3(1.0);
-    out.two_sided = 1u;
-    out.visible = 1u;
+    out.visibility.y = 1u;
+    out.visibility.x = 1u;
     return out;
 }
 "#;

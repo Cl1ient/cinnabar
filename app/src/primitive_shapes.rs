@@ -4,12 +4,12 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 use client_presentation::{
     actor_publication::ActorFramePartialTick, primitive_shapes::PrimitiveShapePublisher,
 };
-use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
-use render::{PrimitiveShapesRenderPlugin, PrimitiveShapesScene};
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use {
-    crate::{app::ClientFrameSet, runtime::world::ClientWorld},
-    client_presentation::local_player::LocalViewPose,
+    crate::runtime::world::ClientWorld, client_presentation::local_player::LocalViewPose,
+    client_state::ClientFrameSet,
 };
+use {render::PrimitiveShapesRenderPlugin, render_scene::PrimitiveShapesScene};
 
 pub(crate) fn configure(app: &mut App) {
     app.add_plugins(PrimitiveShapesRenderPlugin);
@@ -37,21 +37,22 @@ struct FrameClock<'w> {
 /// Shares retained state across render extraction without cloning or walking shape records.
 fn publish(
     mut world: ResMut<ClientWorld>,
-    mut scene: ResMut<PrimitiveShapesScene>,
+    scene: ResMut<PrimitiveShapesScene>,
     clock: FrameClock,
-    mut presentation: ResMut<UiPresentationRuntime>,
-    runtime: Res<UiRuntime>,
-    mut publisher: Local<PrimitiveShapePublisher>,
+    mut presentation: ResMut<UiPresentationResource>,
+    runtime: Res<UiRuntimeResource>,
+    publisher: Local<PrimitiveShapePublisher>,
 ) {
-    publisher.publish(
+    client_presentation::primitive_shapes::drive_primitive_shapes(
         world.stream.as_mut(),
-        &mut scene,
+        scene,
         clock.time.elapsed_secs(),
         clock.partial.0,
-        Some(clock.view.feet_translation().to_array()),
+        &clock.view,
+        &mut presentation,
+        &runtime,
+        publisher,
     );
-    let mut store = scene.store.lock().expect("primitive store lock poisoned");
-    presentation.prepare_primitive_text(&mut store, &runtime);
 }
 
 /// Exposes retained drawing counters only when a developer-control snapshot is requested.
@@ -75,6 +76,7 @@ pub(crate) fn snapshot(world: &World) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use chunk_pipeline::WorldStream;
+    use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
     use protocol::{
         ActorEvent, ActorKind, ActorMoveEvent, ActorPositionOrigin, ActorSpawnEvent,
         PrimitiveShapeChange, PrimitiveShapeData, PrimitiveShapeKind, PrimitiveShapeUpdate,
@@ -193,10 +195,10 @@ mod tests {
             .init_resource::<PrimitiveShapesScene>()
             .init_resource::<ActorFramePartialTick>()
             .init_resource::<LocalViewPose>()
-            .insert_resource(UiRuntime::new(1))
-            .insert_resource(
-                UiPresentationRuntime::new(client_ui::test_support::fixture_font()).unwrap(),
-            )
+            .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
+            .insert_resource(UiPresentationResource(
+                UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap(),
+            ))
             .insert_resource(ClientWorld {
                 stream: Some(stream()),
                 ..Default::default()

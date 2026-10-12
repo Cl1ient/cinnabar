@@ -10,6 +10,16 @@ pub const STARTER_SKIN_NAMES: [&str; 2] = [
 ];
 pub const MAX_SKIN_NAME_BYTES: usize = 128;
 
+/// The menu artwork key of a skin's thumbnail.
+pub fn thumbnail_key(id: &str) -> String {
+    format!("skin-thumbnail:{id}")
+}
+
+/// The menu artwork key of a cape's thumbnail.
+pub fn cape_thumbnail_key(id: &str) -> String {
+    format!("cape-thumbnail:{id}")
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SkinModel {
@@ -91,7 +101,7 @@ pub struct DressingRoomSkin {
     pub model: SkinModel,
     /// Minimum engine version carried by the selected model.
     pub engine_version: Arc<str>,
-    pub skin: protocol::StandardSkin,
+    pub skin: render_api::StandardSkin,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,7 +109,7 @@ pub struct DressingRoomCape {
     pub id: String,
     pub name: String,
     pub path: String,
-    pub cape: protocol::CapeImage,
+    pub cape: render_api::CapeImage,
     pub imported: bool,
 }
 
@@ -124,7 +134,7 @@ impl DressingRoomView {
         self.selected_cape.and_then(|index| self.capes.get(index))
     }
 
-    pub fn active_skin(&self) -> Option<protocol::StandardSkin> {
+    pub fn active_skin(&self) -> Option<render_api::StandardSkin> {
         let mut skin = self.selected_skin()?.skin.clone();
         skin.cape = self.selected_cape().map(|entry| entry.cape.clone());
         Some(skin)

@@ -3,7 +3,7 @@
 use bevy::prelude::World;
 use serde_json::{Value, json};
 
-use crate::player_skin::LocalPlayerSkin;
+use client_shell::player_skin::LocalPlayerSkin;
 
 /// Changes the synthetic local skin feed without sending cosmetic data to a server.
 pub(super) fn apply(world: &mut World, enabled: bool) -> Result<Value, String> {
@@ -15,7 +15,7 @@ pub(super) fn apply(world: &mut World, enabled: bool) -> Result<Value, String> {
 }
 
 /// Creates teal cloth with gold diagonals and a red border from original opaque pixels.
-fn test_cape() -> protocol::CapeImage {
+fn test_cape() -> render_api::CapeImage {
     let (width, height) = (64, 32);
     let mut rgba8 = Vec::with_capacity(width * height * 4);
     for y in 0..height {
@@ -30,7 +30,7 @@ fn test_cape() -> protocol::CapeImage {
             rgba8.extend_from_slice(&color);
         }
     }
-    protocol::CapeImage {
+    render_api::CapeImage {
         width: width as u32,
         height: height as u32,
         rgba8: rgba8.into(),

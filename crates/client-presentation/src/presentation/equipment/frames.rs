@@ -8,15 +8,13 @@ use bevy::math::{Mat4, Vec3, Vec4};
 use chunk_pipeline::WorldStream;
 use client_world::LocalPlayerFeed;
 use protocol::{PlayerSkin, WorldBootstrap};
-use render::ActorRigFrameBuilder;
+use render_model::ActorRigFrameBuilder;
 use render_model::{ActorRigVertex, RenderBoneTransform};
 
 use crate::presentation::actors::{actor_rig_presentation, rig_world_from_actor};
 use {
     super::display::{FirstPersonHand, FirstPersonShape, first_person_display, view_bone},
-    render_model::equipment::{
-        attach_to_bone, held_block_display, held_sprite_display, is_hand_equipped, is_rod,
-    },
+    render_model::equipment::{attach_to_bone, held_block_display, held_sprite_display},
 };
 
 const WIDTH: usize = 854;
@@ -197,11 +195,12 @@ fn feed(main_hand: &str, first_person: bool) -> LocalPlayerFeed {
         pitch: 0.0,
         main_hand: Some(Arc::from(main_hand)),
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_slot: 0,
         main_hand_stack_id: None,
-        bedrock_swing_ticks: client_world::ACTOR_SWING_TICKS,
-        java_swing_ticks: client_world::ACTOR_SWING_TICKS,
+        bedrock_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
+        java_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
         flying: false,
         gliding: false,
         fall_fly_ticks: 0,
@@ -228,7 +227,6 @@ fn fixture_path(name: &str) -> Option<PathBuf> {
 // Writes to CINNABAR_FP_FRAMES from an entity carrier (CINNABAR_FP_ENTITY) and the vanilla
 // resource pack (CINNABAR_FP_SAMPLES); CINNABAR_FP_THIRD renders third person instead.
 #[test]
-#[ignore = "writes PNG frames from local carriers"]
 fn render_first_person_held_item_frames() {
     let (Some(out), Some(samples), Some(entity_path)) = (
         fixture_path("CINNABAR_FP_FRAMES"),
@@ -299,12 +297,15 @@ fn render_first_person_held_item_frames() {
             actor_rig_presentation(&rig, world.authority().actor(1).unwrap(), None, 1.0).unwrap();
         let placement = if third {
             // Looks at the model's right side from ahead of it (it faces +Z at yaw 0).
-            Mat4::look_at_rh(Vec3::new(-3.0, 1.0, 0.0), Vec3::new(0.0, 1.0, 0.0), Vec3::Y)
-                * rows_to_mat(rig_world_from_actor(
-                    [0.0; 3],
-                    0.0,
-                    presentation.authored_scale,
-                ))
+            glam::camera::rh::view::look_at_mat4(
+                Vec3::new(-3.0, 1.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::Y,
+            ) * rows_to_mat(rig_world_from_actor(
+                [0.0; 3],
+                0.0,
+                presentation.authored_scale,
+            ))
         } else {
             rows_to_mat(rig_world_from_actor(
                 [
@@ -358,11 +359,16 @@ fn render_first_person_held_item_frames() {
                 )
                 .unwrap();
                 let display = if third {
-                    held_sprite_display(is_hand_equipped(identifier))
+                    held_sprite_display(
+                        assets::item::grip::builtin_item_grip(identifier)
+                            .upright()
+                            .unwrap_or(false),
+                    )
                 } else {
                     first_person_display(
                         FirstPersonShape::Sprite {
-                            mirrored_art: is_rod(identifier),
+                            mirrored_art: assets::item::grip::builtin_item_grip(identifier)
+                                .mirrored_art(),
                         },
                         REST,
                     )

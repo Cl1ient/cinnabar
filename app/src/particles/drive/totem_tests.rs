@@ -156,7 +156,7 @@ fn totem_emission_follows_the_actor_without_moving_already_born_particles() {
         prefer_client_skin: false,
         uuid: [0; 16],
         username: "Player".into(),
-        skin: protocol::PlayerSkin::Standard(protocol::StandardSkin {
+        skin: protocol::PlayerSkin::Standard(render_api::StandardSkin {
             geometry: None,
             cape: None,
             width: 64,
@@ -174,11 +174,12 @@ fn totem_emission_follows_the_actor_without_moving_already_born_particles() {
         pitch: 0.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_stack_id: None,
         main_hand_slot: 0,
-        bedrock_swing_ticks: client_world::ACTOR_SWING_TICKS,
-        java_swing_ticks: client_world::ACTOR_SWING_TICKS,
+        bedrock_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
+        java_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
         teleported: true,
         first_person: true,
         view_bobbing: true,

@@ -57,9 +57,9 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
             time.advance_by(std::time::Duration::from_millis(50));
             world.insert_resource(time);
             world.insert_resource(equipment);
-            world.insert_resource(artwork);
+            world.insert_resource(render_scene::ActorArtworkResource(artwork));
             world.insert_resource(
-                render::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap(),
+                render_scene::ActorRenderScene::with_runtime_entity_assets(&entities).unwrap(),
             );
             world.insert_resource(
                 super::super::HandRigBuilder::from_runtime_assets(&entities).unwrap(),
@@ -67,7 +67,7 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
             world.init_resource::<super::super::ActorFrameState>();
             world.init_resource::<super::super::PreparedActorPublication>();
             world.init_resource::<super::super::ActorFramePartialTick>();
-            world.init_resource::<render::HandRigScene>();
+            world.init_resource::<render_scene::HandRigScene>();
             let mut avatar = crate::local_player::LocalAvatarPresentation::default();
             avatar.begin_session(stream.authority().actor_session_id(), 1);
             world.insert_resource(avatar);
@@ -104,14 +104,14 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
                     renders_game: true,
                     hide_hand: false,
                     custom_emote: match case {
-                        BodyCase::Emote => Some((client_world::CustomEmote::Twerk, 0.1)),
-                        BodyCase::InvalidEmote => Some((client_world::CustomEmote::Twerk, -1.0)),
+                        BodyCase::Emote => Some((actor_animation::CustomEmote::Twerk, 0.1)),
+                        BodyCase::InvalidEmote => Some((actor_animation::CustomEmote::Twerk, -1.0)),
                         _ => None,
                     },
                 },
                 |_| {},
                 |_, _| (None, None),
-                params.get_mut(&mut world),
+                params.get_mut(&mut world).unwrap(),
             );
             world
                 .resource_mut::<super::super::ActorFrameState>()
@@ -119,7 +119,7 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
                 .as_mut()
                 .unwrap()
                 .partial_tick = actor_alpha;
-            let swing = client_world::LocalSwingProgress {
+            let swing = actor_animation::LocalSwingProgress {
                 bedrock: [1.0 / duration, 2.0 / duration],
                 java: [1.0 / duration, 2.0 / duration],
                 frame_alpha: Some(physics_alpha),
@@ -135,7 +135,8 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
                 },
                 Some(swing),
                 |_, _, _, _| false,
-                params.get_mut(&mut world),
+                None,
+                params.get_mut(&mut world).unwrap(),
             );
             let rig = stream.authority().actor_rig(1).unwrap();
             let actor = stream.authority().actor(1).unwrap();
@@ -150,13 +151,13 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
                 .submissions()
                 .unwrap()
                 .iter()
-                .find(|draw| draw.input.identity.layer == render::ACTOR_LAYER_BODY)
+                .find(|draw| draw.input.identity.layer == render_model::ACTOR_LAYER_BODY)
                 .unwrap()
                 .clone();
             if case == BodyCase::Emote {
-                let pose = client_world::sample_custom_emote(
+                let pose = actor_animation::sample_custom_emote(
                     &rig,
-                    client_world::CustomEmote::Twerk,
+                    actor_animation::CustomEmote::Twerk,
                     0.1,
                     0.1,
                 )
@@ -212,14 +213,14 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
                 let origin = Vec3::from_slice(&parent.translation_scale[..3])
                     + rotation
                         * (-Vec3::Y
-                            * client_world::MODEL_PART_ORIGIN_Y
+                            * actor_animation::MODEL_PART_ORIGIN_Y
                             * assets::gui_item::SHIELD_MODEL_UNIT);
                 let mut equipment = world
                     .resource::<super::super::PreparedActorPublication>()
                     .submissions()
                     .unwrap()
                     .iter()
-                    .filter(|draw| draw.input.identity.layer != render::ACTOR_LAYER_BODY);
+                    .filter(|draw| draw.input.identity.layer != render_model::ACTOR_LAYER_BODY);
                 let actual = equipment.next().expect("native held equipment");
                 assert!(equipment.next().is_none(), "one identity-pose held model");
                 for bones in [&actual.input.previous_bones, &actual.input.current_bones] {
@@ -282,13 +283,13 @@ fn assert_native_body_sample(equipment_parent: bool, case: BodyCase) {
                 let mut state = world.resource_mut::<super::super::ActorFrameState>();
                 let work = state.java_hand.native_pose.sample_work;
                 assert_eq!(work.0, 1, "only the native body consumer samples the frame");
-                let allocations = crate::test_allocations::count();
+                let allocations = test_alloc::thread_allocations();
                 state
                     .java_hand
                     .native_pose
                     .apply_body(&stream, &mut repeated, actor_alpha, camera);
                 assert_eq!(state.java_hand.native_pose.sample_work, work);
-                assert_eq!(crate::test_allocations::count(), allocations);
+                assert_eq!(test_alloc::thread_allocations(), allocations);
             }
             let unchanged = stream.authority().actor_rig(1).unwrap();
             assert_eq!(

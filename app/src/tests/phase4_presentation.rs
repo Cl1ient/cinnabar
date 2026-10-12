@@ -1,21 +1,22 @@
 use std::sync::Arc;
 
+use actor_animation::{ActorLifetimeId, ActorRigSnapshot, BoneTransform, EntityRigId};
 use assets::EntityRigFallback;
 use bevy::math::{Mat4, Quat, Vec3};
-use client_world::{
-    ActorLifetimeId, ActorPose, ActorRigSnapshot, ActorSnapshot, BoneTransform, EntityRigId,
-    PlayerProfile,
-};
-use protocol::{ActorKind, PlayerSkin, StandardSkin};
-use render::{
-    ActorCullView, ActorRenderIdentity, ActorRenderScene, ActorRigRenderInput, ActorRigRoute,
-    ActorRigSubmission,
-};
+use client_world::{ActorPose, ActorSnapshot, PlayerProfile};
+use protocol::{ActorKind, PlayerSkin};
+use render_api::StandardSkin;
 use render_model::{
     EntityRigId as RenderEntityRigId, MAX_RENDERED_PLAYERS, RenderBoneTransform,
     STANDARD_SKIN_BYTES,
 };
 use semantic_input::PerspectiveMode;
+use {
+    render_model::{
+        ActorCullView, ActorRenderIdentity, ActorRigRenderInput, ActorRigRoute, ActorRigSubmission,
+    },
+    render_scene::ActorRenderScene,
+};
 
 use client_presentation::actor_clock::{
     authoritative_local_actor_eye, publish_local_actor_visibility,
@@ -29,7 +30,7 @@ use client_presentation::presentation::actors::{
     local_actor_presentation_for_visibility, local_diagnostic_presentation,
     select_actor_presentations, select_actor_presentations_for_view, update_actor_rig_scene,
 };
-use {crate::movement::PhysicsAuthorityGate, gameplay::movement::MovementSource};
+use {client_interaction::movement::PhysicsAuthorityGate, gameplay::movement::MovementSource};
 
 fn model_bone(translation: [f32; 3]) -> BoneTransform {
     BoneTransform {
@@ -109,6 +110,7 @@ fn rig<'a>(
             spawn_revision: 3,
         },
         rig: EntityRigId(9),
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         previous,
         current,
         rest: previous,
@@ -116,6 +118,7 @@ fn rig<'a>(
         rest_reset_generation: 5,
         completed_tick: 11,
         reset_generation: 5,
+        pose_evaluated: true,
         fallback: EntityRigFallback::GeometryOnly,
         scale: 1.0,
         axis_scale: [1.0; 3],
@@ -127,8 +130,8 @@ fn rig<'a>(
         skin_mesh: None,
         skin_layers: &[],
         hand: Default::default(),
-        item_animation: [client_world::ItemAnimationState::default(); 2],
-        off_hand_animation: [client_world::ItemAnimationState::default(); 2],
+        item_animation: [actor_animation::ItemAnimationState::default(); 2],
+        off_hand_animation: [actor_animation::ItemAnimationState::default(); 2],
         animation_variables: Default::default(),
         java: Default::default(),
         java_equipped: None,
@@ -166,7 +169,7 @@ fn render_owned(runtime_id: u64, skin: u8) -> ActorRigPresentation {
             texture_layer: u32::MAX,
             route: ActorRigRoute::Compiled,
             tint: 0,
-            uv_anim: render::IDENTITY_UV_ANIM,
+            uv_anim: render_model::IDENTITY_UV_ANIM,
             light: 0,
             overlay_rgba8: 0,
         },
@@ -224,7 +227,7 @@ fn generic_actor_without_validated_artwork_remains_explicitly_no_draw() {
     let presentation = entity_rig_presentation(
         &rig(42, &bones, &bones),
         &actor,
-        &render::ActorArtworkPages::default(),
+        &render_model::ActorArtworkPages::default(),
         0.5,
     )
     .unwrap();
@@ -538,9 +541,11 @@ fn f5_local_avatar_uses_authoritative_subject_when_view_eye_is_boomed() {
             world_from_actor[1][3] + 1.0,
             world_from_actor[2][3],
         );
-        let clip_from_world =
-            Mat4::perspective_infinite_reverse_rh(70.0_f32.to_radians(), 16.0 / 9.0, 0.1)
-                * camera.to_matrix().inverse();
+        let clip_from_world = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+            70.0_f32.to_radians(),
+            16.0 / 9.0,
+            0.1,
+        ) * camera.to_matrix().inverse();
         let projected_center = clip_from_world * body_center.extend(1.0);
         assert!(projected_center.w > 0.0);
         assert!((projected_center.x / projected_center.w).abs() < 1.0e-5);
@@ -613,7 +618,7 @@ fn projectile_animation_rotation_is_not_multiplied_by_mob_body_yaw() {
                 let presentation = entity_rig_presentation(
                     &rig,
                     &actor,
-                    &render::ActorArtworkPages::default(),
+                    &render_model::ActorArtworkPages::default(),
                     1.0,
                 )
                 .unwrap();
@@ -683,7 +688,7 @@ fn authored_skin_bounds_reach_frustum_and_cave_admission() {
         )
     );
     let body = actor_rig_presentation(&authored, &actor, Some(&profile(42, 255)), 1.0).unwrap();
-    assert!(render::actor_rig_submission_is_visible(
+    assert!(render_model::actor_rig_submission_is_visible(
         &body.submission,
         Some(view)
     ));

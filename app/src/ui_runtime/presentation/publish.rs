@@ -1,5 +1,7 @@
 //! Per-frame HUD observation and publication.
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::prelude::Transform;
+use client_runtime::network::NetworkHandle;
 use inventory::inventory_ledger::PlayerInventorySlot;
 use {super::*, client_presentation::camera::CameraSettingsAuthority};
 
@@ -9,14 +11,18 @@ mod commit;
 mod cooldowns;
 mod loading;
 use client_ui::ui_runtime::presentation::{
-    ItemIconFrames, PendingUiPublication, PreparedUiPublication, PreviewCapture, capture_hud_frame,
-    nametags, player_preview,
+    ItemIconFrames, PendingUiPublication, PreviewCapture, capture_hud_frame, nametags,
+    player_preview,
 };
 pub(crate) use commit::publish_ui_runtime;
 
+/// The UI authority captured before input enqueue, rendered once by `publish_ui_runtime`.
+#[derive(bevy::prelude::Resource, Default)]
+pub(crate) struct PreparedUiPublication(pub(crate) Option<PendingUiPublication>);
+
 pub(crate) fn observe_mount_jump_input(
-    input: Res<crate::semantic_controls::SemanticInputSnapshot>,
-    mut runtime: ResMut<UiRuntime>,
+    input: Res<client_state::SemanticInputSnapshot>,
+    mut runtime: ResMut<UiRuntimeResource>,
     time: Res<Time<Real>>,
 ) {
     let now_millis = u64::try_from(time.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -40,32 +46,32 @@ fn hand_first_person(
 /// Resources beyond Bevy's sixteen-parameter limit.
 type PublishExtras<'w> = (
     Res<'w, WorldStreamFramePoll>,
-    Res<'w, crate::menu::MenuRuntime>,
+    Res<'w, client_shell::menu::MenuRuntime>,
     Res<'w, client_presentation::actor_publication::ActorFrameState>,
-    Option<Res<'w, crate::movement::PhysicsCollisionRegistries>>,
-    Option<Res<'w, render::RuntimeStageProfiler>>,
-    Option<Res<'w, render::ActorPipelineReadiness>>,
-    Option<Res<'w, render::PipelineWarmupReadiness>>,
+    Option<Res<'w, client_interaction::movement::PhysicsCollisionRegistries>>,
+    Option<Res<'w, render_scene::RuntimeStageProfiler>>,
+    Option<Res<'w, render_scene::ActorPipelineReadiness>>,
+    Option<Res<'w, render_scene::PipelineWarmupReadiness>>,
     Option<Res<'w, client_presentation::camera::ServerCameraView>>,
     (
         Res<'w, client_presentation::actor_publication::ActorFramePartialTick>,
         Res<'w, client_presentation::local_player::LocalPlayerFrameCarrier>,
         Res<'w, crate::environment::WorldClock>,
         Res<'w, crate::environment::WeatherState>,
-        Res<'w, crate::runtime::network::NetworkHandle>,
-        Option<ResMut<'w, render::UiGlintSettings>>,
-        Res<'w, crate::item_use::ItemUseRuntime>,
-        Res<'w, crate::movement::MovementTicker>,
-        Res<'w, crate::movement::LocalPhysicsController>,
+        Res<'w, NetworkHandle<PackApplication>>,
+        Option<ResMut<'w, render_scene::UiGlintSettings>>,
+        Res<'w, client_interaction::item_use::ItemUseRuntime>,
+        Res<'w, client_interaction::movement::MovementTicker>,
+        Res<'w, client_interaction::movement::LocalPhysicsController>,
     ),
 );
 
 /// Observes UI authority and captures inventory, including this frame's outbound predictions.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_ui_runtime(
-    player_runtime: bevy::prelude::Res<crate::player_runtime::PlayerRuntime>,
-    mut runtime: ResMut<UiRuntime>,
-    mut presentation: ResMut<UiPresentationRuntime>,
+    player_runtime: bevy::prelude::Res<client_state::PlayerRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
+    mut presentation: ResMut<UiPresentationResource>,
     mut prepared: ResMut<PreparedUiPublication>,
     visibility: Res<CaveVisibilityCache>,
     mut diagnostics_input: ResMut<VisibilityDiagnosticsInput>,
@@ -103,7 +109,7 @@ pub(crate) fn prepare_ui_runtime(
 ) {
     let _timer = profiler
         .as_deref()
-        .map(|profiler| profiler.time(render::RuntimeStage::UiPreparation));
+        .map(|profiler| profiler.time(render_scene::RuntimeStage::UiPreparation));
     prepared.0 = None;
     let now_millis = u64::try_from(time.elapsed().as_millis()).unwrap_or(u64::MAX);
     runtime.advance_item_activation(now_millis);
@@ -191,8 +197,7 @@ pub(crate) fn prepare_ui_runtime(
                 .stream
                 .as_ref()?
                 .authority()
-                .canonical_item_stack(stack)?
-                .identifier
+                .canonical_item_stack(stack)
         });
     }
     let doll_state = client_world
@@ -345,29 +350,82 @@ pub(crate) fn prepare_ui_runtime(
         .0
         .value("ingame_player_names")
         != 0;
+    let tag_style = presentation
+        .mod_ui()
+        .mod_actor_style()
+        .and_then(|style| style.nametags.as_ref());
+    let show_self_tag =
+        tag_style.is_some_and(|style| style.show_self && !style.hide_players) && !first_person;
+    let names_with_hidden_hud = tag_style.is_some_and(|style| style.show_when_hud_hidden);
     let nametags = client_world
         .stream
         .as_ref()
-        .filter(|_| overlays.nametags)
+        .filter(|_| {
+            overlays.nametags
+                || (names_with_hidden_hud
+                    && settings.value("hide_hud") != 0
+                    && !menu_runtime.is_visible())
+        })
         .zip(
             cameras
                 .single()
                 .ok()
-                .map(|(camera, transform)| (camera, GlobalTransform::from(*transform))),
+                .map(|(_, transform)| GlobalTransform::from(*transform)),
         )
-        .map(|(stream, (camera, transform))| {
-            nametags::project_nametags(
+        .map(|(stream, transform)| {
+            let mut tags = nametags::project_nametags(
                 runtime.scoreboards(),
                 stream,
-                camera,
-                &transform,
+                transform.translation(),
                 [logical_width, logical_height],
-                picked_nametag_actor(stream, &transform, collisions.as_deref()),
+                picked_nametag_actor(stream, &transform, collisions.as_deref(), &player_runtime),
                 actor_partial.0,
-                show_names,
-            )
+                show_names && !tag_style.is_some_and(|style| style.hide_players),
+            );
+            if tag_style.is_some_and(|style| style.hide_passengers) {
+                let authority = stream.authority();
+                tags.retain(|tag| {
+                    authority
+                        .actor(tag.runtime_id())
+                        .is_some_and(|actor| authority.ridden_unique_id(actor.unique_id).is_none())
+                });
+            }
+            if show_self_tag && show_names {
+                let authority = stream.authority();
+                if let Some(actor) =
+                    authority
+                        .actor(authority.local_player_runtime_id())
+                        .filter(|actor| {
+                            !tag_style.is_some_and(|style| style.hide_passengers)
+                                || authority.ridden_unique_id(actor.unique_id).is_none()
+                        })
+                {
+                    if let Some(name) = authority
+                        .actor_name_tag(actor.unique_id)
+                        .or_else(|| authority.actor_display_name(actor.unique_id))
+                    {
+                        if let Some(tag) = nametags::extract_nametag(
+                            actor,
+                            transform.translation(),
+                            None,
+                            name,
+                            runtime.scoreboards(),
+                            actor_partial.0,
+                        ) {
+                            tags.push(tag);
+                        }
+                    }
+                }
+            }
+            tags
         })
         .unwrap_or_default();
+    presentation.set_nametag_local_actor(
+        client_world
+            .stream
+            .as_ref()
+            .map(|stream| stream.authority().local_player_runtime_id()),
+    );
     presentation.set_nametag_anchors(nametags);
     presentation.set_chat_settings_snapshot(menu_runtime.settings_snapshot());
     let menu_view = menu_runtime.is_visible().then(|| {
@@ -401,8 +459,8 @@ pub(crate) fn prepare_ui_runtime(
 fn observe_paper_doll(
     stream: &chunk_pipeline::WorldStream,
     runtime: &client_ui::ui_runtime::UiRuntime,
-    player_runtime: &crate::player_runtime::PlayerRuntime,
-    physics: &crate::movement::LocalPhysicsController,
+    player_runtime: &client_state::PlayerRuntime,
+    physics: &client_interaction::movement::LocalPhysicsController,
 ) -> Option<client_ui::ui_runtime::presentation::paper_doll::State> {
     use inventory::inventory_ledger::InventoryTarget;
     let actor = stream.authority().actor(stream.local_player_runtime_id())?;
@@ -438,7 +496,7 @@ fn observe_paper_doll(
 /// Resolves the crafter block's triggered state at the existing UI capture boundary.
 fn station_triggered(
     stream: &chunk_pipeline::WorldStream,
-    collisions: &crate::movement::PhysicsCollisionRegistries,
+    collisions: &client_interaction::movement::PhysicsCollisionRegistries,
     position: [i32; 3],
 ) -> Option<bool> {
     let mode = stream.network_id_mode();
@@ -446,6 +504,7 @@ fn station_triggered(
         stream.collision_store(),
         collisions.registry(mode),
         stream.current_dimension(),
+        Default::default(),
     );
     let runtime_id = world.primary_runtime_id(position).ok()?;
     assets::pinned_block_presentation_states()
@@ -457,7 +516,8 @@ fn station_triggered(
 fn picked_nametag_actor(
     stream: &chunk_pipeline::WorldStream,
     camera_transform: &GlobalTransform,
-    collisions: Option<&crate::movement::PhysicsCollisionRegistries>,
+    collisions: Option<&client_interaction::movement::PhysicsCollisionRegistries>,
+    player: &client_state::PlayerRuntime,
 ) -> Option<u64> {
     let eye = camera_transform.translation();
     let direction = *camera_transform.forward();
@@ -476,6 +536,12 @@ fn picked_nametag_actor(
             stream.collision_store(),
             collisions.registry(stream.network_id_mode()),
             stream.current_dimension(),
+            crate::interaction_authority::pick_context(
+                stream,
+                collisions,
+                player.facts.player_game_mode(),
+                player.selected_stack().map(|item| item.block_runtime_id),
+            ),
         );
         let vector =
             |v: bevy::math::Vec3| sim::Vec3::new(f64::from(v.x), f64::from(v.y), f64::from(v.z));

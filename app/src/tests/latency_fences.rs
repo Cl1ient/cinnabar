@@ -1,9 +1,11 @@
 //! Reuses the committed-authority harness to check movement/probe ordering.
 
 use super::*;
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
+use gameplay::movement::MovementSource;
 use sim::{Aabb, CollisionQuery, CollisionWorld, MovementInput, WorldQueryError};
 use std::time::Duration;
-use {crate::runtime::network::NetworkHandle, gameplay::movement::MovementSource};
 
 struct EmptyWorld;
 
@@ -35,7 +37,7 @@ fn evidence_context() -> gameplay::movement::PhysicsTickEvidenceContext {
 /// Admits completed movement to the actual outbound command FIFO.
 fn flush_inputs(app: &mut App) {
     let mut ticker = app.world_mut().remove_resource::<MovementTicker>().unwrap();
-    let network = app.world().resource::<NetworkHandle>();
+    let network = app.world().resource::<NetworkHandle<PackApplication>>();
     gameplay::movement::flush_player_auth_inputs(
         &mut ticker,
         8,
@@ -49,7 +51,7 @@ fn flush_inputs(app: &mut App) {
 #[test]
 fn old_input_precedes_probe_reply_and_new_input_follows_it() {
     let mut app = app();
-    let (network, mut packets) = NetworkHandle::stub_capturing_packets();
+    let (network, mut packets) = NetworkHandle::<PackApplication>::stub_capturing_packets();
     app.insert_resource(network);
     let anchor = [0.0, 70.0, 0.0];
     let sample = {
@@ -135,11 +137,10 @@ fn old_input_precedes_probe_reply_and_new_input_follows_it() {
             .can_advance_physics_frame()
     );
     let echoes = packets.drain();
-    let session = protocol::BedrockSession { shield_item_id: 0 };
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        protocol::encode(&echoes[0], &session).unwrap(),
-        protocol::encode(&protocol::network_stack_latency_reply(777), &session).unwrap()
+        protocol::encode(&echoes[0]).unwrap(),
+        protocol::encode(&protocol::network_stack_latency_reply(777)).unwrap()
     );
     let sample = app
         .world_mut()
@@ -171,7 +172,7 @@ fn old_input_precedes_probe_reply_and_new_input_follows_it() {
 #[test]
 fn correction_before_fenced_probe_applies_this_frame() {
     let mut app = app();
-    let (network, mut packets) = NetworkHandle::stub_capturing_packets();
+    let (network, mut packets) = NetworkHandle::<PackApplication>::stub_capturing_packets();
     app.insert_resource(network);
     let anchor = [0.0, 70.0, 0.0];
     let mut samples = {
@@ -244,11 +245,10 @@ fn correction_before_fenced_probe_applies_this_frame() {
         .run_system_once(reconcile_world_stream_before_physics)
         .unwrap();
     sent.extend(packets.drain());
-    let session = protocol::BedrockSession { shield_item_id: 0 };
-    let reply = protocol::encode(&protocol::network_stack_latency_reply(777), &session).unwrap();
+    let reply = protocol::encode(&protocol::network_stack_latency_reply(777)).unwrap();
     let replies = sent
         .iter()
-        .filter(|packet| protocol::encode(packet, &session).unwrap() == reply)
+        .filter(|packet| protocol::encode(packet).unwrap() == reply)
         .count();
     assert_eq!(replies, 1);
 }

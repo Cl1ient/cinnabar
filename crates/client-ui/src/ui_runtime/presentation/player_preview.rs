@@ -78,18 +78,20 @@ impl UiPresentationRuntime {
         self.equipment_catalog = catalog;
     }
 
-    /// Dresses the model in the local player's armor and held item, naming each
-    /// stack's item through `identify`.
+    /// Dresses the model using each stack's admitted identity and grip facts.
     pub fn dress_player_preview(
         &mut self,
         player_runtime: &player_state::PlayerState,
         runtime: &crate::ui_runtime::UiRuntime,
-        identify: impl Fn(&protocol::NetworkItemStack) -> Option<Arc<str>>,
+        resolve: impl Fn(&protocol::NetworkItemStack) -> Option<client_world::CanonicalItemStack>,
     ) {
         use inventory::inventory_ledger::InventoryTarget;
         let ledger = runtime.inventory_ledger(player_runtime);
         let named = |stack: Option<&protocol::NetworkItemStack>| {
-            stack.and_then(|stack| Some((identify(stack)?, stack.clone())))
+            stack.and_then(|stack| {
+                let item = resolve(stack)?;
+                Some((item.identifier.clone()?, stack.clone(), item))
+            })
         };
         let armor: [_; 4] = std::array::from_fn(|slot| {
             named(ledger.target_stack(InventoryTarget::Armor(slot as u8)))
@@ -102,21 +104,19 @@ impl UiPresentationRuntime {
         self.set_player_preview_gear(
             armor.each_ref().map(|worn| {
                 worn.as_ref()
-                    .map(|(id, stack)| (&**id, runtime.stack_facts(stack, Some(id)).custom_color))
+                    .map(|(id, stack, _)| (&**id, runtime.stack_facts(stack).custom_color))
             }),
-            held.as_ref().map(|(id, stack)| (&**id, stack.metadata)),
+            held.as_ref().map(|(id, stack, _)| (&**id, stack.metadata)),
         );
         let off_hand = named(ledger.target_stack(InventoryTarget::Offhand));
         self.player_preview_gear.hands = [held, off_hand].map(|item| {
-            let (identifier, stack) = item?;
-            let facts = runtime.stack_facts(&stack, Some(&identifier));
-            let charged_projectile = (identifier.as_ref() == "minecraft:crossbow")
-                .then(|| facts.charged_projectile())
-                .flatten();
+            let (identifier, stack, item) = item?;
             Some(PreviewHandItem {
+                grip: Some(item.grip),
                 identifier,
                 metadata: stack.metadata,
-                charged_projectile,
+                use_animation: item.use_animation,
+                charged_projectile: item.charged_projectile_role,
             })
         });
     }
@@ -157,9 +157,11 @@ impl UiPresentationRuntime {
         });
         let hands = [
             held.map(|(identifier, metadata)| PreviewHandItem {
+                grip: None,
                 identifier: Arc::from(identifier),
                 metadata,
-                charged_projectile: None,
+                use_animation: assets::item_use::ItemUseAnimation::None,
+                charged_projectile: assets::item_use::ItemProjectileRole::None,
             }),
             None,
         ];
@@ -221,7 +223,7 @@ pub(super) const PLAYER_MODEL_SCALE: f32 = 0.9375;
 /// The HUD translates its shared outer actor frame while swimming.
 pub(super) const HUD_SWIM_OFFSET: f32 = 0.8;
 /// UI rendering retains vanilla's model-part origin rather than the world feet origin.
-pub const PLAYER_UI_ORIGIN: f32 = client_world::MODEL_PART_ORIGIN_Y / 16.0 * PLAYER_MODEL_SCALE;
+pub const PLAYER_UI_ORIGIN: f32 = actor_animation::MODEL_PART_ORIGIN_Y / 16.0 * PLAYER_MODEL_SCALE;
 const POINTER_DISTANCE_GUI_PIXELS: f32 = 40.0;
 const POINTER_ANGLE_FACTOR: f32 = 20.0;
 const HEAD_PIVOT: [f32; 3] = [0.0, 1.5, 0.0];
@@ -459,7 +461,7 @@ pub(super) fn render_body_with_cape(
     view: PreviewView,
     bob: f32,
     gear: &PreviewEquipment,
-    cape: Option<&protocol::CapeImage>,
+    cape: Option<&render_api::CapeImage>,
 ) -> Vec<u8> {
     let width = PREVIEW_WIDTH as usize;
     let height = PREVIEW_HEIGHT as usize;
@@ -491,7 +493,7 @@ pub(super) fn render_body_with_cape(
 
 /// A posed, viewer-facing biped.
 struct Rig {
-    parts: [Option<bevy::math::Affine3A>; 6],
+    parts: [Option<glam::Affine3A>; 6],
     body: f32,
     head_yaw: f32,
     head_pitch: f32,
@@ -533,7 +535,7 @@ impl Rig {
         let mut local = vertex.position;
         if let Some(Some(transform)) = self.parts.get(vertex.part as usize) {
             local = transform
-                .transform_point3(bevy::math::Vec3::from_array(local))
+                .transform_point3(glam::Vec3::from_array(local))
                 .to_array();
         } else {
             if self.sneaking {

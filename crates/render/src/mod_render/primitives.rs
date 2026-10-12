@@ -1,35 +1,40 @@
 //! Mod world primitives: one premultiplied, depth-tested, non-writing draw per view, after
 //! the world's own transparent geometry. Block highlights use a separate through-world draw.
 
-use super::ModRenderScene;
+use bevy::render::render_phase::AddRenderCommand;
+use bevy::render::render_resource::ShaderType;
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
     core_pipeline::core_3d::{CORE_3D_DEPTH_FORMAT, Transparent3d},
     ecs::{
         query::ROQueryItem,
-        system::{SystemParamItem, lifetimeless::Read, lifetimeless::SRes},
+        system::{
+            SystemParamItem,
+            lifetimeless::{Read, SRes},
+        },
     },
     prelude::*,
     render::{
         Render, RenderApp, RenderStartup, RenderSystems,
         render_phase::{
-            AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
-            RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
+            DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand, RenderCommandResult,
+            SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
         },
         render_resource::{
             BindGroup, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
             BindingType, BlendState, Buffer, BufferBindingType, BufferDescriptor, BufferId,
             BufferSize, BufferUsages, Canonical, ColorTargetState, ColorWrites, CompareFunction,
             DepthStencilState, FragmentState, PipelineCache, RenderPipeline,
-            RenderPipelineDescriptor, ShaderStages, ShaderType, Specializer, SpecializerKey,
-            TextureFormat, Variants, VertexState,
+            RenderPipelineDescriptor, ShaderStages, Specializer, SpecializerKey, Variants,
+            VertexState,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        view::{ExtractedView, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms},
     },
 };
 use mod_render::geometry::ModVertex;
+use render_scene::ModRenderScene;
 use std::sync::Arc;
 
 const PRIMITIVE_SHADER: Handle<Shader> = uuid_handle!("8e1f4b6c-2d7a-4c93-b5e0-7a19c3d84f26");
@@ -42,9 +47,10 @@ pub(super) fn install(app: &mut App) {
     load_internal_asset!(
         app,
         PRIMITIVE_SHADER,
-        "primitives.wgsl",
-        crate::shader_safety::from_wgsl
+        "primitives.wesl",
+        crate::shader_safety::from_wesl
     );
+    crate::transparent_phase::install(app.sub_app_mut(RenderApp));
     app.sub_app_mut(RenderApp)
         .init_resource::<PrimitivePipeline>()
         .add_render_command::<Transparent3d, DrawPrimitiveCommands>()
@@ -56,7 +62,7 @@ pub(super) fn install(app: &mut App) {
                 prepare.in_set(RenderSystems::PrepareResources),
                 prepare_bind_group.in_set(RenderSystems::PrepareBindGroups),
                 queue
-                    .run_if(crate::panorama::world_passes_enabled)
+                    .run_if(render_scene::panorama::world_passes_enabled)
                     .in_set(RenderSystems::Queue),
             ),
         );
@@ -296,7 +302,7 @@ impl FromWorld for PrimitivePipeline {
                 shader: PRIMITIVE_SHADER,
                 entry_point: Some("mod_primitive_fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::bevy_default(),
+                    format: render_scene::SCENE_COLOR_FORMAT,
                     blend: Some(BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],
@@ -304,8 +310,8 @@ impl FromWorld for PrimitivePipeline {
             }),
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: CompareFunction::GreaterEqual,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(CompareFunction::GreaterEqual),
                 stencil: default(),
                 bias: default(),
             }),
@@ -339,18 +345,18 @@ impl Specializer<RenderPipeline> for PrimitiveSpecializer {
         } else {
             "mod primitive pipeline".into()
         });
-        descriptor.depth_stencil.as_mut().unwrap().depth_compare = if key.through_world {
+        descriptor.depth_stencil.as_mut().unwrap().depth_compare = Some(if key.through_world {
             CompareFunction::Always
         } else {
             CompareFunction::GreaterEqual
-        };
+        });
         descriptor.fragment.as_mut().unwrap().targets[0]
             .as_mut()
             .unwrap()
             .format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         Ok(key)
     }
@@ -411,14 +417,20 @@ pub(crate) fn queue(
     scene: Option<Res<ModRenderScene>>,
     mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     draw_functions: Res<DrawFunctions<Transparent3d>>,
-    views: Query<(Entity, &MainEntity, &ExtractedView, &Msaa)>,
+    views: Query<(
+        Entity,
+        &MainEntity,
+        &ExtractedView,
+        &bevy::render::camera::ExtractedCamera,
+        &Msaa,
+    )>,
 ) {
     // Queue precedes upload, so this frame's scene decides; the draw reads the upload.
     let Some(scene) = scene else { return };
     let regular = scene.vertices.len() + scene.marker_vertices.len() > 0;
     let highlights = !scene.block_vertices.is_empty();
     let draw_functions = draw_functions.read();
-    for (view_entity, main_entity, view, msaa) in &views {
+    for (view_entity, main_entity, view, extracted_camera, msaa) in &views {
         let Some(phase) = phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -430,41 +442,46 @@ pub(crate) fn queue(
                 &cache,
                 PrimitiveKey {
                     msaa: *msaa,
-                    hdr: view.hdr,
+                    hdr: extracted_camera.hdr,
                     through_world,
                 },
             ) else {
                 continue;
             };
-            phase.add(Transparent3d {
-                entity: (view_entity, *main_entity),
-                pipeline: pipeline_id,
-                draw_function: if through_world {
-                    draw_functions.id::<DrawBlockHighlightCommands>()
-                } else {
-                    draw_functions.id::<DrawPrimitiveCommands>()
-                },
-                distance: PRIMITIVE_DISTANCE
-                    + if through_world {
-                        PRIMITIVE_DISTANCE * 0.1
+            crate::transparent_phase::add(
+                phase,
+                Transparent3d {
+                    sorting_info:
+                        bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
+                    entity: (view_entity, *main_entity),
+                    pipeline: pipeline_id,
+                    draw_function: if through_world {
+                        draw_functions.id::<DrawBlockHighlightCommands>()
                     } else {
-                        0.0
+                        draw_functions.id::<DrawPrimitiveCommands>()
                     },
-                batch_range: 0..1,
-                extra_index: PhaseItemExtraIndex::None,
-                indexed: false,
-            });
+                    distance: PRIMITIVE_DISTANCE
+                        + if through_world {
+                            PRIMITIVE_DISTANCE * 0.1
+                        } else {
+                            0.0
+                        },
+                    batch_range: 0..1,
+                    extra_index: PhaseItemExtraIndex::None,
+                    indexed: false,
+                },
+            );
         }
     }
 }
 
 pub(crate) type DrawPrimitiveCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuModPrimitives as usize },
+    { render_scene::RuntimeStage::GpuModPrimitives as usize },
     (SetItemPipeline, SetPrimitiveBindGroup, DrawPrimitives),
 >;
 
 pub(crate) type DrawBlockHighlightCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuModPrimitives as usize },
+    { render_scene::RuntimeStage::GpuModPrimitives as usize },
     (SetItemPipeline, SetPrimitiveBindGroup, DrawBlockHighlights),
 >;
 

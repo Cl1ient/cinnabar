@@ -16,6 +16,11 @@ pub(super) struct PlayerState {
     current_revision: Option<u64>,
     revision: u64,
     reads: u32,
+    pub observations: crate::module_observations::ModuleObservations,
+    pub world: Option<crate::WorldObservation>,
+    pub fps: Option<f32>,
+    pub sidebar: Option<crate::SidebarSnapshot>,
+    pub chat: Vec<crate::ObservedChatMessage>,
 }
 
 impl PlayerState {
@@ -48,6 +53,16 @@ impl PlayerState {
     pub fn revoke(&mut self) {
         self.begin_frame();
         self.comparison_snapshot = None;
+        self.clear_presentation();
+    }
+
+    /// Removes callback-only presentation data after successful dispatch or revocation.
+    pub fn clear_presentation(&mut self) {
+        self.observations = Default::default();
+        self.world = None;
+        self.fps = None;
+        self.sidebar = None;
+        self.chat.clear();
     }
 
     /// Advances an instance-scoped content revision without wrapping the counter.
@@ -117,6 +132,121 @@ pub(super) fn validate(snapshot: Option<&PlayerStateSnapshot>) -> Result<()> {
 }
 
 impl cinnabar::extension::player_state::Host for State {
+    fn read_motion(&mut self) -> Result<Result<Option<crate::MotionObservation>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        Ok(Ok(self.player_state.observations.motion.clone()))
+    }
+    fn read_vitals(&mut self) -> Result<Result<Option<crate::VitalsObservation>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        Ok(Ok(self.player_state.observations.vitals.clone()))
+    }
+    fn read_ping(&mut self) -> Result<Result<Option<u32>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        Ok(Ok(self.player_state.observations.ping_ms))
+    }
+    fn read_actors(&mut self) -> Result<Result<Vec<crate::ActorObservation>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.players && !self.grants.entities {
+            return Ok(Err("actor observation capability denied".into()));
+        }
+        Ok(Ok(self
+            .player_state
+            .observations
+            .actors
+            .iter()
+            .filter(|actor| {
+                if actor.player {
+                    self.grants.players
+                } else {
+                    self.grants.entities
+                }
+            })
+            .cloned()
+            .collect()))
+    }
+    fn read_combat(
+        &mut self,
+        after: u64,
+        limit: u32,
+    ) -> Result<Result<Vec<crate::CombatObservation>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        if limit == 0 || limit as usize > mod_api::MAX_COMBAT_READ_EVENTS {
+            return Ok(Err("combat import limit exceeds bounds".into()));
+        }
+        Ok(Ok(self
+            .player_state
+            .observations
+            .combat
+            .iter()
+            .filter(|event| {
+                event.sequence > after
+                    && (event.local
+                        || event.kind == crate::CombatKind::AttackAdmitted
+                        || if event.player {
+                            self.grants.players
+                        } else {
+                            self.grants.entities
+                        })
+            })
+            .take(limit as usize)
+            .cloned()
+            .collect()))
+    }
+
+    fn read_chat(
+        &mut self,
+        after: u64,
+        limit: u32,
+    ) -> Result<Result<Vec<crate::ObservedChatMessage>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        if limit == 0 || limit as usize > ui::mod_hud::MAX_CHAT_READ_MESSAGES {
+            return Ok(Err("chat import limit exceeds bounds".into()));
+        }
+        Ok(Ok(self
+            .player_state
+            .chat
+            .iter()
+            .filter(|m| m.sequence > after)
+            .take(limit as usize)
+            .cloned()
+            .collect()))
+    }
+    fn read_world(&mut self) -> Result<Result<Option<crate::WorldObservation>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        Ok(Ok(self.player_state.world.clone()))
+    }
+    fn read_fps(&mut self) -> Result<Result<Option<f32>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        Ok(Ok(self.player_state.fps))
+    }
+    fn read_sidebar(&mut self) -> Result<Result<Option<crate::SidebarSnapshot>, String>> {
+        self.player_state.read_budget()?;
+        if !self.grants.player_state {
+            return Ok(Err("player-state capability denied".into()));
+        }
+        Ok(Ok(self.player_state.sidebar.clone()))
+    }
     fn read_snapshot(&mut self) -> Result<Result<Option<PlayerStateSnapshot>, String>> {
         self.player_state.read_budget()?;
         if !self.grants.player_state {

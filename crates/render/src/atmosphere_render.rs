@@ -1,8 +1,8 @@
+use bevy::render::render_resource::ShaderType;
 use bytemuck::Zeroable;
 use std::collections::HashMap;
 
 use assets::{AtmosphereRole, AtmosphereTexture};
-use bevy::image::BevyDefault;
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
     core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT,
@@ -20,20 +20,25 @@ use bevy::{
             BufferUsages, CachedRenderPipelineId, Canonical, ColorTargetState, ColorWrites,
             CompareFunction, DepthStencilState, Extent3d, FilterMode, FragmentState, PipelineCache,
             RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-            SamplerDescriptor, ShaderStages, ShaderType, Specializer, SpecializerKey, Texture,
+            SamplerDescriptor, ShaderStages, Specializer, SpecializerKey, Texture,
             TextureDataOrder, TextureDescriptor, TextureDimension, TextureFormat,
             TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
             TextureViewDimension, Variants, VertexState,
         },
         renderer::{RenderDevice, RenderQueue},
-        view::{ExtractedView, ViewTarget, ViewUniform, ViewUniforms},
+        view::{ViewUniform, ViewUniforms},
     },
 };
 
-use crate::{
-    AtmosphereFrame, AtmosphereTextureAssets, PrecipitationScene, RainSplashQueue,
-    WeatherTextureAssets, cloud_render::install_cloud_render,
-    lightning_render::install_lightning_render, weather_render::install_weather_render,
+use {
+    crate::{
+        cloud_render::install_cloud_render, lightning_render::install_lightning_render,
+        weather_render::install_weather_render,
+    },
+    render_scene::{
+        AtmosphereFrame, AtmosphereTextureAssets, PrecipitationMixResource, PrecipitationScene,
+        RainSplashQueue, WeatherTextureAssets,
+    },
 };
 
 const ATMOSPHERE_SHADER_HANDLE: Handle<Shader> =
@@ -59,15 +64,15 @@ struct AtmosphereRenderInstalled;
 
 pub(crate) fn install_atmosphere(app: &mut App) {
     app.init_resource::<AtmosphereFrame>();
-    app.init_resource::<crate::SkyboxSettings>();
-    app.init_resource::<crate::AtmosphereViewInputs>();
+    app.init_resource::<render_scene::SkyboxSettings>();
+    app.init_resource::<render_scene::AtmosphereViewInputs>();
     app.init_resource::<AtmosphereTextureAssets>();
     app.init_resource::<PrecipitationScene>();
     app.init_resource::<WeatherTextureAssets>();
     app.init_resource::<RainSplashQueue>();
-    app.init_resource::<crate::PrecipitationMix>();
-    app.init_resource::<crate::LightningScene>();
-    app.init_resource::<crate::MediaScreenScene>();
+    app.init_resource::<PrecipitationMixResource>();
+    app.init_resource::<render_scene::LightningScene>();
+    app.init_resource::<render_scene::MediaScreenScene>();
     crate::pipeline_warmup::register::<AtmospherePipeline>(app);
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
         return;
@@ -76,25 +81,25 @@ pub(crate) fn install_atmosphere(app: &mut App) {
         .world()
         .contains_resource::<AtmosphereRenderInstalled>()
     {
-        sky_pass::install_graph(render_app.world_mut());
+        sky_pass::install(render_app.world_mut());
         return;
     }
 
     app.add_plugins((
         ExtractResourcePlugin::<AtmosphereFrame>::default(),
-        ExtractResourcePlugin::<crate::SkyboxSettings>::default(),
-        ExtractResourcePlugin::<crate::AtmosphereViewInputs>::default(),
+        ExtractResourcePlugin::<render_scene::SkyboxSettings>::default(),
+        ExtractResourcePlugin::<render_scene::AtmosphereViewInputs>::default(),
         ExtractResourcePlugin::<AtmosphereTextureAssets>::default(),
         ExtractResourcePlugin::<PrecipitationScene>::default(),
         ExtractResourcePlugin::<WeatherTextureAssets>::default(),
-        ExtractResourcePlugin::<crate::LightningScene>::default(),
-        ExtractResourcePlugin::<crate::MediaScreenScene>::default(),
+        ExtractResourcePlugin::<render_scene::LightningScene>::default(),
+        ExtractResourcePlugin::<render_scene::MediaScreenScene>::default(),
     ));
     load_internal_asset!(
         app,
         ATMOSPHERE_SHADER_HANDLE,
-        "atmosphere.wgsl",
-        crate::shader_safety::from_wgsl
+        "atmosphere.wesl",
+        crate::shader_safety::from_wesl
     );
     crate::lighting::install(app);
     install_cloud_render(app);
@@ -114,11 +119,11 @@ pub(crate) fn install_atmosphere(app: &mut App) {
                 prepare_atmosphere_textures.in_set(RenderSystems::PrepareResources),
                 prepare_atmosphere_bind_group.in_set(RenderSystems::PrepareBindGroups),
                 queue_atmosphere
-                    .run_if(crate::panorama::world_passes_enabled)
+                    .run_if(render_scene::panorama::world_passes_enabled)
                     .in_set(RenderSystems::Queue),
             ),
         );
-    sky_pass::install_graph(app.sub_app_mut(RenderApp).world_mut());
+    sky_pass::install(app.sub_app_mut(RenderApp).world_mut());
 }
 
 #[derive(Resource)]
@@ -185,7 +190,7 @@ fn init_atmosphere_gpu(mut commands: Commands, render_device: Res<RenderDevice>)
 
 fn prepare_atmosphere_uniform(
     frame: Res<AtmosphereFrame>,
-    settings: Res<crate::SkyboxSettings>,
+    settings: Res<render_scene::SkyboxSettings>,
     assets: Res<AtmosphereTextureAssets>,
     mut gpu: ResMut<AtmosphereGpu>,
     render_queue: Res<RenderQueue>,
@@ -323,7 +328,7 @@ impl FromWorld for AtmospherePipeline {
                 shader: ATMOSPHERE_SHADER_HANDLE,
                 entry_point: Some("atmosphere_fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::bevy_default(),
+                    format: render_scene::SCENE_COLOR_FORMAT,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],
@@ -331,8 +336,8 @@ impl FromWorld for AtmospherePipeline {
             }),
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: CompareFunction::GreaterEqual,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(CompareFunction::GreaterEqual),
                 stencil: default(),
                 bias: default(),
             }),
@@ -380,9 +385,9 @@ impl Specializer<RenderPipeline> for AtmospherePipelineSpecializer {
             .as_mut()
             .unwrap();
         target.format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         target.blend = if key.stars {
             Some(native_star_blend())
@@ -393,7 +398,8 @@ impl Specializer<RenderPipeline> for AtmospherePipelineSpecializer {
         };
         target.write_mask = ColorWrites::RED | ColorWrites::GREEN | ColorWrites::BLUE;
         if key.skybox {
-            descriptor.depth_stencil.as_mut().unwrap().depth_compare = CompareFunction::Greater;
+            descriptor.depth_stencil.as_mut().unwrap().depth_compare =
+                Some(CompareFunction::Greater);
         }
         descriptor.fragment.as_mut().unwrap().entry_point = Some(
             if key.skybox {
@@ -513,11 +519,11 @@ fn prepare_atmosphere_bind_group(
     gpu.bound_asset_identity = Some(asset_identity);
 }
 
-/// Prepares only the current views' sky pipelines for the ordered graph pass.
+/// Prepares only the current views' sky pipelines for the ordered sky pass.
 fn queue_atmosphere(
     pipeline_cache: Res<PipelineCache>,
     mut pipeline: ResMut<AtmospherePipeline>,
-    views: Query<(&ExtractedView, &Msaa)>,
+    views: Query<(&bevy::render::camera::ExtractedCamera, &Msaa)>,
     mut gpu: ResMut<AtmosphereGpu>,
 ) {
     gpu.pipelines.clear();

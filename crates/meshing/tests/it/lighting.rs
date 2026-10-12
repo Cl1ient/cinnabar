@@ -168,6 +168,7 @@ fn runtime_assets_with_model_geometry(
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
         BlockVisual {
             faces: [0; 6],
@@ -178,6 +179,7 @@ fn runtime_assets_with_model_geometry(
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
         BlockVisual {
             faces: [0; 6],
@@ -188,6 +190,7 @@ fn runtime_assets_with_model_geometry(
             model_template: 0,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
         BlockVisual {
             faces: [0; 6],
@@ -198,6 +201,7 @@ fn runtime_assets_with_model_geometry(
             model_template: NO_MODEL_TEMPLATE,
             animation: NO_ANIMATION,
             variant: 0,
+            destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
     ];
     let mut leaf = visuals[SOLID as usize];
@@ -446,7 +450,7 @@ fn rotate_test_face(face: Face, rotation: u32) -> Face {
 
 #[test]
 fn stair_rotation_bakes_ao_from_rotated_faces_and_positions_for_both_halves() {
-    let shader = include_str!("../../../render/src/model.wgsl");
+    let shader = include_str!("../../../render/src/model.wesl");
     for clause in [
         "case 1u: { rotated = vec3(-centered.z, centered.y, centered.x); }",
         "case 2u: { rotated = vec3(-centered.x, centered.y, -centered.z); }",

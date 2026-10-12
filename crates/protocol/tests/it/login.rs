@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use jolyne::valentine::McpePacketData;
 use protocol::LoginSequence;
+use valentine::bedrock::version::v1_26_51::McpePacketData;
 
 const EXTERNAL_HARNESS_TEST: &str = "^TestProxyExternalRustClientHarness$";
 const ENDPOINT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -59,16 +59,13 @@ async fn login_reaches_start_game_through_bds() {
         .await
         .expect("headless presentation ready");
 
-    // `runtime_entity_id` is now the `runtime_id: ActorRuntimeId` wrapper, and
-    // the version string prismarine called `engine` is gophertunnel's
-    // `ServerVersion` (`server_version` in the generated crate).
     assert_ne!(
-        game_data.start_game.runtime_id.actor_runtime_id, 0,
+        game_data.world.local_player_runtime_id, 0,
         "StartGame runtime entity ID must be non-zero"
     );
     assert!(
-        !game_data.start_game.server_version.trim().is_empty(),
-        "StartGame must expose the compatible server's version"
+        !game_data.settings.base_game_version.trim().is_empty(),
+        "StartGame must expose the world's base game version"
     );
 
     let available_commands = tokio::time::timeout(LOGIN_TIMEOUT, async {
@@ -128,6 +125,7 @@ async fn login_reaches_start_game_through_bds() {
 async fn offline_core_session_preserves_startup_behaviour() {
     for scenario in [
         "spawn",
+        "framing",
         "packs",
         "transfer",
         "transfer-batch",
@@ -200,16 +198,24 @@ async fn offline_core_session_preserves_startup_behaviour() {
                     .await
                     .expect("completion marker");
                 wait_for_startup_marker(&mut session, 400, &harness).await;
+                if scenario == "framing" {
+                    assert_core_frame_payloads(&mut session).await;
+                }
                 if scenario == "transfer-play" {
-                    let packet = tokio::time::timeout(LOGIN_TIMEOUT, session.recv())
+                    // The core ends the session with its Transfer message, retained as play's target.
+                    let ended = tokio::time::timeout(LOGIN_TIMEOUT, session.recv())
                         .await
-                        .expect("transfer timeout")
-                        .unwrap_or_else(|error| panic!("{error}\n{}", harness.output()));
-                    let McpePacketData::TransferPacket(transfer) = packet.data else {
-                        panic!("play transfer arrived as {:?}", packet.data.packet_id())
-                    };
+                        .expect("transfer timeout");
+                    assert!(
+                        matches!(ended, Err(protocol::ProtocolError::SessionBoundary)),
+                        "the play transfer must end the session\n{}",
+                        harness.output()
+                    );
+                    let transfer = session
+                        .take_server_transfer()
+                        .expect("the play transfer target is retained");
                     assert_eq!(
-                        (transfer.server_address.as_str(), transfer.server_port),
+                        (transfer.host.as_str(), transfer.port),
                         ("play.example.test", 19134)
                     );
                 }
@@ -277,11 +283,12 @@ async fn wait_for_startup_marker(
 
 /// Builds an application-owned barrier that the upstream can observe on the wire.
 fn startup_marker(timestamp: u64) -> protocol::Packet {
-    jolyne::valentine::NetworkStackLatencyPacket {
-        creation_time: timestamp,
-        is_from_server: false,
-    }
-    .into()
+    protocol::Packet::new(
+        valentine::bedrock::version::v1_26_51::NetworkStackLatencyPacket {
+            creation_time: timestamp,
+            is_from_server: false,
+        },
+    )
 }
 
 /// Waits for the external harness in a blocking context on the tests' multithreaded runtime.
@@ -289,7 +296,7 @@ fn wait_for_endpoint(harness: &mut GoHarness, socket_dir: &Path) -> Result<(), S
     #[cfg(windows)]
     let endpoint = socket_dir.join("session.addr");
     #[cfg(unix)]
-    let endpoint = protocol::bridge_endpoint_path(socket_dir);
+    let endpoint = bridge::session_endpoint_path(socket_dir);
 
     tokio::task::block_in_place(|| {
         let mut outcome = None;
@@ -679,5 +686,31 @@ impl TestSocketDir {
 impl Drop for TestSocketDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Carries binary and 1 MiB payloads both ways through the real core after its startup handshake.
+async fn assert_core_frame_payloads(session: &mut protocol::PlaySession) {
+    use valentine::bedrock::version::v1_26_51::ScriptMessagePacket;
+    for payload in [
+        vec![0, 0xfe, 0, 1, 0xff, 0],
+        (0..1024 * 1024).map(|index| (index % 251) as u8).collect(),
+    ] {
+        session
+            .send(protocol::Packet::new(ScriptMessagePacket {
+                message_id: "framing".into(),
+                message_value: payload.clone(),
+            }))
+            .await
+            .expect("send binary frame");
+        let reply = tokio::time::timeout(LOGIN_TIMEOUT, session.recv())
+            .await
+            .expect("binary reply timeout")
+            .expect("binary reply");
+        let McpePacketData::ScriptMessagePacket(reply) = reply.data else {
+            panic!("expected binary echo");
+        };
+        assert_eq!(reply.message_id, "framing");
+        assert_eq!(reply.message_value, payload);
     }
 }

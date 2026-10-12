@@ -1,5 +1,4 @@
 use super::*;
-use bevy::math::Mat4;
 use protocol::{
     ActorEvent, ActorKind, ActorMetadata, ActorMetadataValue, ActorSpawnEvent, WorldEvent,
 };
@@ -7,12 +6,13 @@ use std::sync::Arc;
 
 fn view() -> ActorCullView {
     let camera = Vec3::new(0.0, 70.0, 0.0);
-    let clip_from_view = Mat4::perspective_infinite_reverse_rh(1.2, 1.0, 0.05);
-    let view_from_world = Mat4::look_to_rh(camera, Vec3::NEG_Z, Vec3::Y);
+    let clip_from_view =
+        glam::camera::rh::proj::directx::perspective_infinite_reverse(1.2, 1.0, 0.05);
+    let view_from_world = glam::camera::rh::view::look_to_mat4(camera, Vec3::NEG_Z, Vec3::Y);
     ActorCullView {
         clip_from_world: clip_from_view * view_from_world,
         camera_position: camera,
-        max_distance: render::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
+        max_distance: render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
     }
 }
 
@@ -39,11 +39,16 @@ fn a_volume_reaching_into_view_is_kept() {
 
 #[test]
 fn entities_outside_the_candidate_cube_are_culled_but_players_are_not() {
-    let far = at(0.0, 64.0, -(render::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0));
+    let far = at(
+        0.0,
+        64.0,
+        -(render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0),
+    );
     assert!(!volume_may_be_visible(&far, false, view()));
     assert_eq!(
         volume_may_be_visible(&far, true, view()),
-        render::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0 <= render::MAX_ACTOR_RENDER_DISTANCE_BLOCKS
+        render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS + 4.0
+            <= render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS
     );
 }
 

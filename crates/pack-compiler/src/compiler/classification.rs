@@ -2,29 +2,6 @@ use {super::*, assets::BlockFace};
 
 pub(in crate::compiler) const fn is_terrestrial_cross(record: &RegistryRecord) -> bool {
     matches!(record.model_family, ModelFamily::Cross | ModelFamily::Crop)
-        || is_named_cross_plant(&record.name)
-}
-
-/// Single-texture crossed-plane plants the registry family table does not tag as `Cross`.
-const fn is_named_cross_plant(name: &str) -> bool {
-    matches!(
-        name.as_bytes(),
-        b"minecraft:red_tulip"
-            | b"minecraft:orange_tulip"
-            | b"minecraft:white_tulip"
-            | b"minecraft:pink_tulip"
-            | b"minecraft:golden_dandelion"
-            | b"minecraft:brain_coral"
-            | b"minecraft:bubble_coral"
-            | b"minecraft:fire_coral"
-            | b"minecraft:horn_coral"
-            | b"minecraft:tube_coral"
-            | b"minecraft:dead_brain_coral"
-            | b"minecraft:dead_bubble_coral"
-            | b"minecraft:dead_fire_coral"
-            | b"minecraft:dead_horn_coral"
-            | b"minecraft:dead_tube_coral"
-    )
 }
 
 pub(in crate::compiler) const fn is_torch(record: &RegistryRecord) -> bool {
@@ -64,7 +41,7 @@ pub(in crate::compiler) fn translucent_cube_material_flags(name: &str) -> u32 {
     }
 }
 
-/// Amethyst clusters, buds, and standing coral fans: single-sprite crossed planes.
+/// Amethyst clusters and buds drawn with crossed sprite planes.
 pub(in crate::compiler) fn is_crystal(record: &RegistryRecord) -> bool {
     matches!(record.contributor_role, ContributorRole::Primary)
         && record.name.strip_prefix("minecraft:").is_some_and(|name| {
@@ -74,7 +51,7 @@ pub(in crate::compiler) fn is_crystal(record: &RegistryRecord) -> bool {
                     | "small_amethyst_bud"
                     | "medium_amethyst_bud"
                     | "large_amethyst_bud"
-            ) || name.ends_with("_coral_fan")
+            )
         })
 }
 
@@ -308,7 +285,8 @@ pub(in crate::compiler) const fn is_stair(record: &RegistryRecord) -> bool {
 }
 
 pub(in crate::compiler) fn is_cutout_model_visual(record: &RegistryRecord) -> bool {
-    super::visuals::lily_pad::is_record(record)
+    super::visuals::coral::is_fan(record)
+        || super::visuals::lily_pad::is_record(record)
         || is_cross_visual(record)
         || is_kelp(record)
         || is_flowerbed(record)
@@ -324,8 +302,18 @@ pub(in crate::compiler) fn is_cutout_model_visual(record: &RegistryRecord) -> bo
 }
 
 pub(in crate::compiler) fn is_model_visual(record: &RegistryRecord) -> bool {
-    super::visuals::portal::is_record(record)
+    super::visuals::coral::is_record(record)
+        || crate::respawn_anchor::is_record(record)
+        || super::visuals::candle_cake::is_record(record)
+        || super::visuals::sea_pickle::is_record(record)
+        || super::visuals::brewing_stand::is_record(record)
+        || super::visuals::grindstone::is_record(record)
+        || super::visuals::tripwire_hook::is_record(record)
+        || super::visuals::portal::is_record(record)
+        || super::visuals::shelf::is_record(record)
         || super::visuals::end_portal_frame::is_record(record)
+        || super::visuals::end_rod::is_record(record)
+        || super::visuals::lightning_rod::is_record(record)
         || is_stained_glass_cube(record)
         || is_clear_glass_cube(record)
         || is_copper_grate(record)

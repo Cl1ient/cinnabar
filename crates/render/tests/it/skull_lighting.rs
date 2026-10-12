@@ -5,7 +5,7 @@ use crate::shader_source;
 
 use bevy::math::{Mat4, Vec3};
 use gpu_snapshot::{Draw, Gpu, SNAPSHOT_SIDE};
-use render::{
+use render_model::{
     BlockEntityKind, BlockEntityLight, BlockEntityScene, BlockEntitySubmission, LightmapInputs,
     SceneClock, SkullKind, SkullModel, SkullMount,
 };
@@ -34,13 +34,13 @@ fn assets(texel: [u8; 4]) -> assets::RuntimeBlockEntityAssets {
 }
 
 fn source() -> String {
-    let shader = shader_safety::from_block_entity_wgsl(
-        include_str!("../../src/block_entity/block_entity.wgsl"),
-        "skull.wgsl",
-        render::BLOCK_ENTITY_VERTEX_WORDS,
-        render::BLOCK_SELECTION_VERTICES_PER_EDGE,
+    let shader = shader_safety::from_block_entity_wesl(
+        include_str!("../../src/block_entity/block_entity.wesl"),
+        "skull.wesl",
+        render_model::BLOCK_ENTITY_VERTEX_WORDS,
+        render_model::BLOCK_SELECTION_VERTICES_PER_EDGE,
     );
-    let bevy::shader::Source::Wgsl(source) = shader.source else {
+    let bevy::shader::Source::Wesl(source) = shader.source else {
         unreachable!()
     };
     // Remap resources for the shared readback helper, retaining production entry points.
@@ -74,15 +74,18 @@ fn raster(
         }],
     );
     let center = Vec3::new(0.5, 0.25, 0.5);
-    let front = Mat4::from_rotation_y(render::floor_yaw_degrees(rotation).to_radians())
+    let front = Mat4::from_rotation_y(render_model::floor_yaw_degrees(rotation).to_radians())
         .transform_vector3(Vec3::NEG_Z);
     let eye = if gallery {
         center + Vec3::new(-1.2, 0.7, 2.0)
     } else {
         center + front * 2.0
     };
-    let clip = Mat4::perspective_infinite_reverse_rh(35.0_f32.to_radians(), 1.0, 0.1)
-        * Mat4::look_at_rh(eye, center, Vec3::Y);
+    let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        35.0_f32.to_radians(),
+        1.0,
+        0.1,
+    ) * glam::camera::rh::view::look_at_mat4(eye, center, Vec3::Y);
     let view = gpu.buffer(&gpu_snapshot::view(clip, eye), wgpu::BufferUsages::UNIFORM);
     let vertices: &[f32] = bytemuck::cast_slice(&frame.solid);
     let vertices = gpu.buffer(vertices, wgpu::BufferUsages::STORAGE);
@@ -213,9 +216,10 @@ fn placed_skull_pixels_match_native_day_night_torch_darkness_and_rotation() {
         };
         let light = sampled_light(inputs, block, sky);
         for rotation in [0.0, 45.0, 90.0] {
-            let normal = Mat4::from_rotation_y(render::floor_yaw_degrees(rotation).to_radians())
-                .transform_vector3(Vec3::NEG_Z)
-                .to_array();
+            let normal =
+                Mat4::from_rotation_y(render_model::floor_yaw_degrees(rotation).to_radians())
+                    .transform_vector3(Vec3::NEG_Z)
+                    .to_array();
             let shade = render_api::fancy_actor_shade(normal, 0.0);
             let pixels = raster(
                 &gpu,

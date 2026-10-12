@@ -45,7 +45,7 @@ fn gameplay_touch_targets_remain_unreachable_without_native_layout_authority() {
 
 #[test]
 fn chat_focus_clears_stale_gameplay_touch_targets() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     use crate::semantic_controls::SemanticTouchTargets;
     use crate::ui_runtime::gameplay_touch::drive_gameplay_touch_targets;
@@ -59,7 +59,7 @@ fn chat_focus_clears_stale_gameplay_touch_targets() {
     let mut app = App::new();
     let mut targets = SemanticTouchTargets::default();
     targets.set(7, semantic_input::touch::JUMP);
-    app.insert_resource(runtime)
+    app.insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
         .init_resource::<Touches>()
         .insert_resource(targets)

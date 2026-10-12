@@ -21,7 +21,9 @@ use bevy::{
 };
 use crossbeam_channel::{Receiver, Sender};
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
+
+mod offscreen;
 
 type SaveResult = Result<String, String>;
 type CaptureConsumer = Box<dyn FnOnce(&Image) + Send + Sync>;
@@ -43,21 +45,33 @@ pub(crate) struct FrameCaptureSet;
 
 pub(crate) fn configure_frame_capture(app: &mut App) {
     app.init_resource::<FrameCapture>()
+        .init_resource::<offscreen::FrameTarget>()
+        .add_systems(bevy::prelude::PreUpdate, offscreen::prepare)
         .add_systems(Last, spawn_frame_capture.in_set(FrameCaptureSet));
 }
 
-fn spawn_frame_capture(mut capture: ResMut<FrameCapture>, mut commands: Commands) {
+fn spawn_frame_capture(
+    mut capture: ResMut<FrameCapture>,
+    target: Res<offscreen::FrameTarget>,
+    mut commands: Commands,
+) {
     if capture.0.is_empty() {
         return;
     }
     let mut consumers = std::mem::take(&mut capture.0);
-    commands.spawn(Screenshot::primary_window()).observe(
-        move |captured: On<ScreenshotCaptured>| {
+    let screenshot = target
+        .0
+        .as_ref()
+        .map_or_else(Screenshot::primary_window, |image| {
+            Screenshot::image(image.clone())
+        });
+    commands
+        .spawn(screenshot)
+        .observe(move |captured: On<ScreenshotCaptured>| {
             for consumer in consumers.drain(..) {
                 consumer(&captured.image);
             }
-        },
-    );
+        });
 }
 
 #[derive(Resource)]
@@ -79,7 +93,7 @@ pub(super) fn configure(app: &mut App, dir: PathBuf) {
         Update,
         (capture_on_key, report_saved)
             .chain()
-            .before(crate::app::ClientFrameSet::UiPreparation),
+            .before(client_state::ClientFrameSet::UiPreparation),
     );
     if let Some(path) = std::env::var_os("CINNABAR_CAPTURE_PATH") {
         let frames = std::env::var("CINNABAR_CAPTURE_AFTER_FRAMES")
@@ -136,14 +150,14 @@ fn capture_from_env(
 }
 
 fn capture_on_key(
-    menu: Option<Res<crate::menu::MenuRuntime>>,
+    menu: Option<Res<client_shell::menu::MenuRuntime>>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     channel: Res<ScreenshotChannel>,
     mut frames: ResMut<FrameCapture>,
 ) {
     if menu.as_ref().is_some_and(|menu| menu.is_visible())
-        || !crate::menu::settings_options::control_bindings::binding_pressed(
+        || !client_shell::menu::settings_options::control_bindings::binding_pressed(
             menu.as_deref(),
             "key.screenshot",
             &keys,
@@ -170,7 +184,7 @@ fn capture_on_key(
 
 fn report_saved(
     channel: Res<ScreenshotChannel>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
     time: Res<Time<Real>>,
 ) {
     let now_millis = u64::try_from(time.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -250,6 +264,9 @@ fn utc_stamp(epoch_seconds: u64) -> String {
         rem % 60
     )
 }
+
+#[cfg(test)]
+mod capture_tests;
 
 #[cfg(test)]
 mod tests {

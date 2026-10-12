@@ -1,4 +1,5 @@
-use crate::player_runtime::PlayerRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
+use client_state::PlayerRuntime;
 use protocol::{
     ActorHandedness, ContainerIdentity, EquipmentEvent, InventoryContentEvent, InventoryEvent,
     InventorySlotEvent, NetworkItemStack, SlotIdentity,
@@ -11,7 +12,7 @@ use {
 fn assert_cube_scene(app: &bevy::prelude::App, expected: bool) {
     assert_eq!(
         app.world()
-            .resource::<render::ViewmodelScene>()
+            .resource::<render_scene::ViewmodelScene>()
             .is_opaque_cube(),
         expected
     );
@@ -53,7 +54,7 @@ fn route(
 
 #[test]
 fn offhand_empty_provider_preserves_unknown_present_and_actual_authority_routes() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     let mut runtime = UiRuntime::new(1);
     runtime
@@ -81,7 +82,7 @@ fn offhand_empty_provider_preserves_unknown_present_and_actual_authority_routes(
     );
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), Some(true));
     assert!(runtime.gameplay_hud().offhand_stack().is_none());
-    crate::session::begin_session(&mut runtime, &mut player_runtime, 2);
+    client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 2);
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), None);
     runtime
         .enqueue_inventory_event(
@@ -119,15 +120,15 @@ fn offhand_empty_provider_preserves_unknown_present_and_actual_authority_routes(
         .unwrap();
     runtime.drain_pending_inventory(&mut player_runtime);
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), Some(true));
-    crate::session::begin_session(&mut runtime, &mut player_runtime, 3);
+    client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 3);
     assert_eq!(runtime.gameplay_hud().offhand_is_empty(), None);
 }
 
 #[test]
 fn cpu_hand_quad_is_retained_alongside_unchanged_held_items() {
-    let player_runtime = PlayerRuntime::new(1);
+    let player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
-    use client_ui::test_support::fixture_font;
+    use ui_engine::test_support::fixture_font;
     use {
         client_ui::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame},
         ui::IconRef,
@@ -181,10 +182,11 @@ fn cpu_hand_quad_is_retained_alongside_unchanged_held_items() {
 // draw in the screen corner.
 #[test]
 fn active_hand_rig_retires_the_cpu_hand_and_item_quads() {
-    let player_runtime = PlayerRuntime::new(1);
+    let player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
-    use client_ui::test_support::{fixture_font, fixture_hud};
+    use client_ui::test_support::fixture_hud;
     use client_ui::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame};
+    use ui_engine::test_support::fixture_font;
     let mut presentation = UiPresentationRuntime::with_hud(fixture_font(), fixture_hud()).unwrap();
     presentation.set_player_preview_skin(Some(&vec![255; 64 * 64 * 4]), Default::default());
     let mut runtime = UiRuntime::new(1);
@@ -254,7 +256,7 @@ impl Drop for FixturePack {
 /// Compiles a small player rig with an arm and sleeve for hand-publication tests.
 pub(super) fn hand_fixture() -> (
     FixturePack,
-    render::ViewmodelGeometry,
+    render_model::ViewmodelGeometry,
     std::sync::Arc<assets::RuntimeEntityAssets>,
 ) {
     use assets::{RuntimeActorCatalog, RuntimeEntityAssets, encode_entity_blob};
@@ -303,15 +305,15 @@ pub(super) fn hand_fixture() -> (
     let entities = std::sync::Arc::new(RuntimeEntityAssets::decode(&bytes).unwrap());
     let actor = pack_compiler::compile_actor_assets(&pack.0, manifest).unwrap();
     let catalog = RuntimeActorCatalog::decode(&actor.bytes, &entities).unwrap();
-    let artwork = render::ActorArtworkPages::new(&catalog);
-    let geometry = render::ViewmodelGeometry::from_runtime(&entities, &artwork).unwrap();
+    let artwork = render_model::ActorArtworkPages::new(&catalog);
+    let geometry = render_model::ViewmodelGeometry::from_runtime(&entities, &artwork).unwrap();
     (pack, geometry, entities)
 }
 
 #[test]
 fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_clears_on_unknown_or_held()
  {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     use bevy::{
         camera::{Camera, ComputedCameraValues, RenderTarget, RenderTargetInfo},
@@ -320,8 +322,9 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
     };
     use protocol::{
         ActorEvent, ActorKind, ActorSpawnEvent, PlayerListEntry, PlayerListUpdateEvent, PlayerSkin,
-        StandardSkin, WorldBootstrap, WorldEvent,
+        WorldBootstrap, WorldEvent,
     };
+    use render_api::StandardSkin;
     use std::sync::Arc;
     use {
         crate::{presentation::viewmodel::ViewmodelPublish, runtime::world::ClientWorld},
@@ -414,13 +417,13 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         },
     );
     let mut app = App::new();
-    app.insert_resource(runtime)
+    app.insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
         .insert_resource(world)
-        .insert_resource(geometry)
+        .insert_resource(render_scene::ViewmodelGeometryResource(geometry))
         .init_resource::<HandAdapter>()
-        .init_resource::<render::ViewmodelScene>()
-        .init_resource::<render::ViewmodelCompletionGate>();
+        .init_resource::<render_scene::ViewmodelScene>()
+        .init_resource::<render_scene::ViewmodelCompletionGate>();
     app.world_mut().spawn((
         FlyCamera::default(),
         Camera {
@@ -438,7 +441,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
     ));
     let observe = |mut hand: ViewmodelPublish,
                    player_runtime: Res<PlayerRuntime>,
-                   runtime: Res<UiRuntime>,
+                   runtime: Res<UiRuntimeResource>,
                    world: Res<ClientWorld>| {
         assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
     };
@@ -457,24 +460,24 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
     app.world_mut().run_system_once(observe).unwrap();
     assert_eq!(
         app.world().resource::<HandAdapter>().stats.mode,
-        Some(render::ViewmodelMode::EmptyHandNeutralStaticFallback)
+        Some(render_scene::ViewmodelMode::EmptyHandNeutralStaticFallback)
     );
     assert_eq!(
         app.world().resource::<HandAdapter>().stats.skin_validations,
         1
     );
-    let mut menu = crate::menu::MenuRuntime::new(false, 2, "Tester".into());
+    let mut menu = client_shell::menu::MenuRuntime::new(false, 2, "Tester".into());
     menu.open_pause();
     app.insert_resource(menu);
     app.world_mut().run_system_once(observe).unwrap();
     assert!(app.world().resource::<HandAdapter>().stats.mode.is_some());
     app.world_mut()
-        .resource_mut::<crate::menu::MenuRuntime>()
+        .resource_mut::<client_shell::menu::MenuRuntime>()
         .activate(launcher::menu::MenuAction::PauseSettings);
     app.world_mut().run_system_once(observe).unwrap();
     assert!(app.world().resource::<HandAdapter>().stats.mode.is_some());
     app.world_mut()
-        .resource_mut::<crate::menu::MenuRuntime>()
+        .resource_mut::<client_shell::menu::MenuRuntime>()
         .activate(launcher::menu::MenuAction::Navigate(
             launcher::menu::MenuScreen::Home,
         ));
@@ -485,13 +488,13 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         Some(HandFallback::Hidden)
     );
     app.world_mut()
-        .resource_mut::<crate::menu::MenuRuntime>()
+        .resource_mut::<client_shell::menu::MenuRuntime>()
         .set_visible(false);
     app.world_mut()
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, false, false, [640, 480]));
             },
@@ -505,7 +508,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, true, [640, 480]));
             },
@@ -516,7 +519,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [800, 480]));
             },
@@ -543,7 +546,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
         Some(HandFallback::ItemsUnknownOrHeld)
     );
     crate::tests::with_ui_player(&mut app, |runtime, player_runtime| {
-        crate::session::begin_session(runtime, player_runtime, 2);
+        client_runtime::session::begin_session(runtime, player_runtime, 2);
     });
     app.world_mut().run_system_once(observe).unwrap();
     assert_eq!(app.world().resource::<HandAdapter>().stats.mode, None);
@@ -582,7 +585,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
     );
     assert_eq!(app.world().resource::<HandAdapter>().stats.mode, None);
     crate::tests::with_ui_player(&mut app, |runtime, player_runtime| {
-        crate::session::begin_session(runtime, player_runtime, 3);
+        client_runtime::session::begin_session(runtime, player_runtime, 3);
         runtime
             .publish_local_runtime_id(player_runtime, 3, 1)
             .unwrap();
@@ -607,7 +610,7 @@ fn menu_input_leak_real_producer_to_hand_adapter_keeps_cpu_until_completion_and_
     app.world_mut().run_system_once(observe).unwrap();
     assert_eq!(
         app.world().resource::<HandAdapter>().stats.mode,
-        Some(render::ViewmodelMode::EmptyHandNeutralStaticFallback)
+        Some(render_scene::ViewmodelMode::EmptyHandNeutralStaticFallback)
     );
 }
 
@@ -617,8 +620,8 @@ fn ui_only_headless_hand_adapter_keeps_the_cpu_path_without_gpu_resources() {
     use bevy::{ecs::system::RunSystemOnce, prelude::*};
     let (_pack, _geometry, entities) = hand_fixture();
     let mut app = App::new();
-    app.insert_resource(UiRuntime::new(1))
-        .insert_resource(PlayerRuntime::new(1))
+    app.insert_resource(UiRuntimeResource(UiRuntime::new(1)))
+        .insert_resource(PlayerRuntime(player_state::PlayerState::new(1)))
         .insert_resource(ClientWorld::new_with_entity_assets(
             std::sync::Arc::new(assets::RuntimeAssets::diagnostic()),
             entities,
@@ -627,7 +630,7 @@ fn ui_only_headless_hand_adapter_keeps_the_cpu_path_without_gpu_resources() {
         .run_system_once(
             |mut hand: ViewmodelPublish,
              player_runtime: Res<PlayerRuntime>,
-             runtime: Res<UiRuntime>,
+             runtime: Res<UiRuntimeResource>,
              world: Res<ClientWorld>| {
                 assert!(!hand.observe(&player_runtime, &runtime, &world, true, false, [640, 480]));
                 hand.clear();

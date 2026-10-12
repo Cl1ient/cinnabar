@@ -1,7 +1,7 @@
 //! Optional fixed-camera projectile frames through the actor scene publication path.
 use std::{path::Path, sync::Arc};
 
-use bevy::math::{Mat4, Vec3};
+use bevy::math::Vec3;
 use protocol::{ActorEvent, ActorKind, ActorSpawnEvent, WorldEvent};
 
 use super::{
@@ -32,7 +32,7 @@ fn render_projectile_states() {
         .iter()
         .map(|binding| binding.geometry_candidate)
         .collect::<Vec<_>>();
-    let pages = render::ActorArtworkPages::default()
+    let pages = render_model::ActorArtworkPages::default()
         .with_pack_artwork(catalog.textures(), catalog.bindings());
     std::fs::create_dir_all(&out).unwrap();
     for (name, identifier, pitch, yaw) in [
@@ -73,12 +73,13 @@ fn render_projectile_states() {
             )
             .unwrap();
         world.advance_actor_interpolation_ticks(1);
-        let clip = Mat4::perspective_rh(
-            45_f32.to_radians(),
-            WIDTH as f32 / HEIGHT as f32,
-            0.05,
-            20.0,
-        ) * Mat4::look_at_rh(eye, Vec3::new(0.0, 0.25, 0.0), Vec3::Y);
+        let clip =
+            glam::camera::rh::proj::directx::perspective(
+                45_f32.to_radians(),
+                WIDTH as f32 / HEIGHT as f32,
+                0.05,
+                20.0,
+            ) * glam::camera::rh::view::look_at_mat4(eye, Vec3::new(0.0, 0.25, 0.0), Vec3::Y);
         let mut frame = Frame::new(clip);
         if name == "arrow_stuck" {
             draw_stone_block(&mut frame, Path::new(&pack));

@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use render::BlockEntityKind;
+use render_model::BlockEntityKind;
 use world::{BLOCKS_PER_SUB_CHUNK, ChunkStore, RawBlockIds, SubChunkKey};
 
 use super::*;
@@ -314,7 +314,7 @@ fn beacon_sections_share_unchanged_columns_and_refresh_after_block_or_nbt_edits(
         };
         scan.beacons.insert(
             beacon,
-            render::BeaconModel {
+            render_model::BeaconModel {
                 sections: assets::beacon::beacon_sections(66, 80, |_| {
                     assets::beacon::BeaconMedium::Tint(tint)
                 })

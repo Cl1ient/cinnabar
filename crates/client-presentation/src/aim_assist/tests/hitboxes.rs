@@ -47,7 +47,7 @@ fn search(
     registry: &sim::CollisionRegistry,
     first_tick: u64,
 ) {
-    let blocks = sim::PaletteWorld::new(store, registry, 0);
+    let blocks = sim::PaletteWorld::new(store, registry, 0, Default::default());
     let mut state = ServerAimAssist::default();
     state.apply(
         1,
@@ -105,13 +105,13 @@ fn admitted_actor_keeps_all_its_boxes_past_the_candidate_threshold() {
     let mut frame = AimAssistFrame::default();
     search(&mut frame, &world, &store, &registry, 1);
     assert_eq!(frame.target.unwrap().point, Vec3::new(0.0, 0.5, 3.0));
-    let blocks = sim::PaletteWorld::new(&store, &registry, 0);
+    let blocks = sim::PaletteWorld::new(&store, &registry, 0, Default::default());
     let mut state = ServerAimAssist::default();
     state.apply(
         1,
         &CameraEvent::AimAssist(settings(CameraAimAssistTargetMode::Angle)),
     );
-    let before = crate::test_allocations::count();
+    let before = test_alloc::thread_allocations();
     for tick in 3..5 {
         frame.evaluate(
             &state,
@@ -126,5 +126,5 @@ fn admitted_actor_keeps_all_its_boxes_past_the_candidate_threshold() {
             |_| &[],
         );
     }
-    assert_eq!(crate::test_allocations::count() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
 }

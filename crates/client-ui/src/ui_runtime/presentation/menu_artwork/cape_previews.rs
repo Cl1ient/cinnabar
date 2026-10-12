@@ -1,6 +1,6 @@
 //! Cape attachments and card previews share the bounded artwork worker.
 
-use protocol::CapeImage;
+use render_api::CapeImage;
 
 #[derive(Clone)]
 pub(in super::super) struct CapeArtwork {
@@ -43,10 +43,6 @@ impl CapeArtwork {
             Some((self.cape.rgba8.to_vec(), self.cape.width, self.cape.height))
         }
     }
-}
-
-pub(crate) fn cape_thumbnail_key(id: &str) -> String {
-    format!("cape-thumbnail:{id}")
 }
 
 pub(crate) fn cape_texture_key(cape: &CapeImage) -> String {

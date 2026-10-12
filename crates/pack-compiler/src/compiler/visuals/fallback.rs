@@ -231,7 +231,19 @@ impl<'a> FallbackInventory<'a> {
 
 /// Families with a dedicated exact compile rule, which supersede their inventory envelope.
 fn has_exact_family_route(record: &RegistryRecord) -> bool {
-    super::lily_pad::is_record(record)
+    crate::respawn_anchor::is_record(record)
+        || super::bubble_column::is_record(record)
+        || super::barrel::is_record(record)
+        || super::coral::is_record(record)
+        || super::hollow_containers::is_name(&record.name)
+        || super::sea_pickle::is_record(record)
+        || super::brewing_stand::is_record(record)
+        || super::grindstone::is_record(record)
+        || super::tripwire_hook::is_record(record)
+        || super::lily_pad::is_record(record)
+        || super::end_rod::is_record(record)
+        || super::lightning_rod::is_record(record)
+        || super::shelf::is_record(record)
         || super::portal::is_record(record)
         || super::literal::is_literal_cube(record)
         || super::literal::is_default_invisible(&record.name)

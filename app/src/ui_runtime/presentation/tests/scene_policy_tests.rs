@@ -2,11 +2,11 @@
 use super::*;
 
 use client_ui::ui_runtime::presentation::forms::ServerUiPack;
-use {crate::menu::MenuRuntime, launcher::menu::MenuAction};
+use {client_shell::menu::MenuRuntime, launcher::menu::MenuAction};
 
 #[test]
 fn java_chat_keeps_the_world_and_hud_but_absorbs_gameplay() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let Some(mut presentation) = client_ui::test_support::pack_harness::engine_presentation()
     else {
@@ -20,7 +20,7 @@ fn java_chat_keeps_the_world_and_hud_but_absorbs_gameplay() {
     let menu = MenuRuntime::new(false, 2, "Tester".into());
     let chat = client_ui::test_support::screen_settings(
         &presentation,
-        client_ui::ui_runtime::presentation::forms::chat_screen::CHAT_SCREEN,
+        ui_screens::chat_screen::CHAT_SCREEN,
     );
     let hud = client_ui::test_support::screen_settings(&presentation, json_ui::HUD_SCREEN);
     assert!(chat.absorbs_input && chat.render_game_behind);
@@ -42,7 +42,7 @@ fn java_chat_keeps_the_world_and_hud_but_absorbs_gameplay() {
 
 #[test]
 fn retail_menu_defaults_and_server_visibility_override_share_the_resolved_root() {
-    let player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let Some(mut presentation) = client_ui::test_support::pack_harness::engine_presentation()
     else {

@@ -1,4 +1,5 @@
 use super::*;
+use render_scene::{AtmosphereFrame, AtmosphereTextureAssets, WeatherTextureAssets};
 
 /// Numbered sky images filter their encoded channels before the fragment transfer.
 pub(crate) const SKYBOX_TEXTURE_FORMAT: TextureFormat = TextureFormat::Rgba8Unorm;
@@ -72,7 +73,7 @@ pub(super) fn prepare_atmosphere_textures(
         address_mode_w: AddressMode::Repeat,
         mag_filter: FilterMode::Nearest,
         min_filter: FilterMode::Nearest,
-        mipmap_filter: FilterMode::Nearest,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
         ..default()
     });
     let skybox = requested.skybox(dimension);
@@ -139,7 +140,7 @@ pub(crate) fn skybox_sampler_descriptor() -> SamplerDescriptor<'static> {
         address_mode_w: AddressMode::ClampToEdge,
         mag_filter: FilterMode::Linear,
         min_filter: FilterMode::Linear,
-        mipmap_filter: FilterMode::Nearest,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
         ..default()
     }
 }

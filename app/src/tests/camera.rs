@@ -11,18 +11,10 @@ use client_presentation::local_player::{
     LocalPlayerFrameCarrier, LocalPlayerFrameReset, LocalPlayerFrameSample, LocalViewPose,
 };
 use client_ui::ui_runtime::UiRuntime;
-use render::{ActorCullView, ActorRenderScene, ActorRenderSource};
 use render_model::MAX_RENDERED_PLAYERS;
 use semantic_input::{
     Action, ControlSettings, ControllerFrame, DeviceFrame, InputContext, KeyboardMouseFrame,
     ReleaseReason, TouchContact,
-};
-use {
-    crate::movement::PhysicsAuthorityFaultRecord,
-    gameplay::movement::{
-        MovementOutboxReconciliation, MovementSource, PhysicsAuthorityFault,
-        PhysicsCorrectionOutcome, PhysicsTickEvidence, PhysicsTickEvidenceContext,
-    },
 };
 use {
     crate::runtime::phase3_evidence::Phase3EvidenceEmitter,
@@ -31,6 +23,15 @@ use {
         Phase3EvidenceEventKind, Phase3EvidenceFrame, Phase3EvidenceIdentity,
         validate_phase3_build_source,
     },
+};
+use {
+    client_interaction::movement::fault_observation::PhysicsAuthorityFaultRecord,
+    gameplay::movement::{
+        MovementOutboxReconciliation, MovementSource, PhysicsAuthorityFault,
+        PhysicsCorrectionOutcome, PhysicsTickEvidence, PhysicsTickEvidenceContext,
+    },
+    render_model::ActorCullView,
+    render_scene::{ActorRenderScene, ActorRenderSource},
 };
 
 fn frozen_collision_identity() -> sim::WorldCollisionIdentity {

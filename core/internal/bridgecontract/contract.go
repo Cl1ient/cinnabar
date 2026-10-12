@@ -3,7 +3,7 @@
 package bridgecontract
 
 const (
-	// MaxFrameLen: Largest game and session frame payload in bytes.
+	// MaxFrameLen: Largest session frame payload in bytes.
 	MaxFrameLen = 67108864
 	// MaxControlFrameLen: Largest control request or response payload in bytes.
 	MaxControlFrameLen = 65536
@@ -23,4 +23,6 @@ const (
 	SessionKindDisconnect = 6
 	// SessionPackChunkBytes: Archive bytes in one resource-pack data frame.
 	SessionPackChunkBytes = 4194304
+	// HostedWorldMaxPlayers: Vanilla's player limit for a hosted local world, the host included.
+	HostedWorldMaxPlayers = 8
 )

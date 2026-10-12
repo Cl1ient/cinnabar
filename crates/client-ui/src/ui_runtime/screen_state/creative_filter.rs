@@ -237,7 +237,6 @@ mod display_name_tests {
                     identifier: identifier.into(),
                     component_based: network_id == 1,
                     version: protocol::ItemRegistryVersion::None,
-                    components: None,
                     component_digest: [0; 32],
                     negotiated_max_stack_size: None,
                     canonical_empty_component_data: true,

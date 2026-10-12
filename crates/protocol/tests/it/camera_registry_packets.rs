@@ -33,7 +33,7 @@ where
 #[test]
 fn camera_activation_acknowledges_selected_camera_and_support_separately() {
     let packets::Packet::ClientCameraAimAssist(set) =
-        protocol::camera_aim_assist_activation_packet(&"a".repeat(70), true, false).data
+        *protocol::camera_aim_assist_activation_packet(&"a".repeat(70), true, false).data
     else {
         panic!("activation packet")
     };
@@ -41,7 +41,7 @@ fn camera_activation_acknowledges_selected_camera_and_support_separately() {
     assert_eq!(set.action, ClientCameraAimAssistAction::Setfromcamerapreset);
     assert!(set.allow_aim_assist);
     let packets::Packet::ClientCameraAimAssist(clear) =
-        protocol::camera_aim_assist_activation_packet("", false, true).data
+        *protocol::camera_aim_assist_activation_packet("", false, true).data
     else {
         panic!("activation packet")
     };

@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn every_action_round_trips_through_the_generated_codec() {
         let packet = item_stack_request_packet(-3, &every_action()).unwrap();
-        let packets::Packet::ItemStackRequest(request) = packet.data else {
+        let packets::Packet::ItemStackRequest(request) = *packet.data else {
             panic!("an item stack request");
         };
         assert_eq!(request.requests[0].actions.len(), every_action().len());

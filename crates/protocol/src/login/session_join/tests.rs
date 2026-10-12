@@ -214,7 +214,7 @@ async fn check_handed_off_packs(cached: bool) {
         assert!(
             spawn_requests
                 .iter()
-                .any(|packet| matches!(packet.data, packets::Packet::RequestChunkRadius(_))),
+                .any(|packet| matches!(&*packet.data, packets::Packet::RequestChunkRadius(_))),
             "the client runs its own spawn sequence"
         );
         core.send(batch_frame(&spawn_prerequisites())).await;
@@ -277,7 +277,7 @@ async fn check_handed_off_packs(cached: bool) {
     session.finish_loading().await.expect("presentation ready");
     let finish = core.receive_packets().await;
     assert!(finish.iter().any(|packet| matches!(
-        &packet.data,
+        &*packet.data,
         packets::Packet::SetLocalPlayerAsInitialized(initialized)
             if initialized.player_id.0 == RUNTIME_ID
     )));

@@ -33,7 +33,7 @@ pub fn experience_packet(bytes: Vec<u8>) -> Option<crate::Packet> {
 
 /// Identifies only this optional carrier before an authorized socket write.
 pub fn is_experience_packet(packet: &crate::Packet) -> bool {
-    matches!(&packet.data, packets::Packet::ScriptMessage(message)
+    matches!(&*packet.data, packets::Packet::ScriptMessage(message)
         if message.message_id == EXPERIENCE_CHANNEL)
 }
 

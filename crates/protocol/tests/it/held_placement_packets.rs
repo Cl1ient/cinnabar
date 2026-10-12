@@ -24,7 +24,7 @@ fn block_stack(count: u16) -> VerifiedNetworkItemStack {
 
 /// Encodes and decodes the packet so assertions cover the outbound wire values.
 fn round_trip(packet: protocol::Packet) -> packets::Packet {
-    decode_batch(encode(&packet).unwrap())
+    *decode_batch(encode(&packet).unwrap())
         .unwrap()
         .remove(0)
         .data

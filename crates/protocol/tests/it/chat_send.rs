@@ -11,7 +11,7 @@ use protocol::{
 #[test]
 fn outbound_chat_uses_exact_authored_text_shape() {
     let packet = chat_text_packet("RustMCBE", "1234", "hello server").unwrap();
-    let packets::Packet::Text(packet) = packet.data else {
+    let packets::Packet::Text(packet) = *packet.data else {
         panic!("expected text packet")
     };
     assert!(!packet.localize);
@@ -87,7 +87,7 @@ fn slash_input_round_trips_as_vanilla_player_command_request() {
     assert_eq!(decoded.len(), 1);
     let packet = decoded.pop().unwrap();
     assert_eq!(packet.header.id, PacketId::CommandRequest);
-    let packets::Packet::CommandRequest(packet) = packet.data else {
+    let packets::Packet::CommandRequest(packet) = *packet.data else {
         panic!("expected command request packet")
     };
     assert_eq!(packet.command, "/kill @s");
@@ -102,7 +102,7 @@ fn slash_input_round_trips_as_vanilla_player_command_request() {
 #[test]
 fn exact_fast_transfer_matches_the_gophertunnel_command_fixture() {
     let mut built = chat_input_packet("RustMCBE", "1234", "/transfer sm3").unwrap();
-    let packets::Packet::CommandRequest(packet) = &mut built.data else {
+    let packets::Packet::CommandRequest(packet) = &mut *built.data else {
         panic!("expected command request packet")
     };
     packet.origin.uuid = uuid::Uuid::parse_str("00112233-4455-6677-8899-aabbccddeeff").unwrap();
@@ -121,10 +121,10 @@ fn exact_fast_transfer_matches_the_gophertunnel_command_fixture() {
 fn command_requests_receive_fresh_origin_uuids() {
     let first = chat_input_packet("RustMCBE", "1234", "/kill @s").unwrap();
     let second = chat_input_packet("RustMCBE", "1234", "/kill @s").unwrap();
-    let packets::Packet::CommandRequest(first) = first.data else {
+    let packets::Packet::CommandRequest(first) = *first.data else {
         panic!("expected first command request packet")
     };
-    let packets::Packet::CommandRequest(second) = second.data else {
+    let packets::Packet::CommandRequest(second) = *second.data else {
         panic!("expected second command request packet")
     };
 
@@ -140,7 +140,7 @@ fn every_transfer_command_spelling_uses_vanilla_command_request() {
         "/TrAnSfEr\tsm3",
     ] {
         let packet = chat_input_packet("RustMCBE", "1234", input).unwrap();
-        let packets::Packet::CommandRequest(packet) = packet.data else {
+        let packets::Packet::CommandRequest(packet) = *packet.data else {
             panic!("{input:?} must use CommandRequest")
         };
         assert_eq!(packet.command, input);
@@ -153,7 +153,7 @@ fn every_transfer_command_spelling_uses_vanilla_command_request() {
 #[test]
 fn exact_fast_transfer_uses_vanilla_command_request() {
     let packet = chat_input_packet("RustMCBE", "1234", "/transfer sm3").unwrap();
-    let packets::Packet::CommandRequest(packet) = packet.data else {
+    let packets::Packet::CommandRequest(packet) = *packet.data else {
         panic!("exact fast transfer must use CommandRequest")
     };
     assert_eq!(packet.command, "/transfer sm3");
@@ -166,7 +166,7 @@ fn exact_fast_transfer_uses_vanilla_command_request() {
 #[test]
 fn transfer_near_miss_remains_a_vanilla_command_request() {
     let packet = chat_input_packet("RustMCBE", "1234", "/transferred sm3").unwrap();
-    let packets::Packet::CommandRequest(packet) = packet.data else {
+    let packets::Packet::CommandRequest(packet) = *packet.data else {
         panic!("near-miss command must remain CommandRequest")
     };
     assert_eq!(packet.command, "/transferred sm3");
@@ -179,7 +179,7 @@ fn ordinary_chat_input_remains_an_authored_text_packet() {
 
     assert_eq!(packet.header.id, PacketId::Text);
     assert_eq!(packet, text_packet);
-    let packets::Packet::Text(packet) = packet.data else {
+    let packets::Packet::Text(packet) = *packet.data else {
         panic!("expected text packet")
     };
     let TextData::AuthorAndMessage {

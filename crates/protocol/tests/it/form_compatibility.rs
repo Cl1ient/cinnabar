@@ -103,7 +103,7 @@ fn multiselect_response_is_an_index_array_in_the_custom_response_slot() {
             protocol::CustomFormValue::Input("draft".into()),
         ],
     );
-    let packets::Packet::ModalFormResponse(packet) = packet.data else {
+    let packets::Packet::ModalFormResponse(packet) = *packet.data else {
         panic!("response");
     };
     assert_eq!(packet.json_response, Some("[null,[2,0],\"draft\"]".into()));

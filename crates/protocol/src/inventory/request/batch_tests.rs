@@ -25,7 +25,7 @@ fn batched_requests_keep_ids_actions_and_filter_origins_separate_on_wire() {
     ])
     .unwrap()
     .unwrap();
-    let packets::Packet::ItemStackRequest(request) = packet.data else {
+    let packets::Packet::ItemStackRequest(request) = *packet.data else {
         panic!("request packet");
     };
     let bytes = request.encode_to_vec().unwrap();
@@ -64,7 +64,7 @@ fn batch_preserves_prior_sparse_ids_without_admitting_future_ids() {
     ])
     .unwrap()
     .unwrap();
-    let packets::Packet::ItemStackRequest(request) = packet.data else {
+    let packets::Packet::ItemStackRequest(request) = *packet.data else {
         panic!("request packet");
     };
     let bytes = request.encode_to_vec().unwrap();

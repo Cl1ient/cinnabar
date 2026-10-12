@@ -34,13 +34,13 @@ mod tests {
 
     #[test]
     fn request_and_completion_use_the_local_actor_with_distinct_native_states() {
-        let packets::Packet::Respawn(request) = respawn_request_packet(77).data else {
+        let packets::Packet::Respawn(request) = *respawn_request_packet(77).data else {
             panic!("respawn request");
         };
         assert_eq!(request.state, PlayerRespawnState::Clientreadytospawn);
         assert_eq!(request.position.to_array(), [0.0; 3]);
         assert_eq!(request.player_runtime_id.0, 77);
-        let packets::Packet::PlayerAction(ready) = respawn_ready_packet(77).data else {
+        let packets::Packet::PlayerAction(ready) = *respawn_ready_packet(77).data else {
             panic!("respawn completion");
         };
         assert_eq!(ready.action, PlayerActionType::Respawn);

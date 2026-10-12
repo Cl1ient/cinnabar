@@ -71,7 +71,7 @@ fn protocol_constants_are_pinned_to_1_26_50() {
 #[test]
 fn network_settings_fixture_decodes_and_round_trips_exactly() {
     let packet = decode_one(NETWORK_SETTINGS, PacketId::NetworkSettings);
-    match &packet.data {
+    match &*packet.data {
         packets::Packet::NetworkSettings(settings) => {
             assert_eq!(settings.compression_threshold.0, 512);
             // Restated, not weakened: the fixture still carries algorithm 0.
@@ -93,7 +93,7 @@ fn network_settings_fixture_decodes_and_round_trips_exactly() {
 #[test]
 fn start_game_fixture_decodes_and_round_trips_exactly() {
     let packet = decode_one(START_GAME, PacketId::StartGame);
-    match &packet.data {
+    match &*packet.data {
         packets::Packet::StartGame(start) => {
             assert_eq!(start.entity_id, ActorUniqueID(1));
             assert_eq!(start.runtime_id, ActorRuntimeID(2));
@@ -144,7 +144,7 @@ fn start_game_fixture_decodes_and_round_trips_exactly() {
 #[test]
 fn level_chunk_fixture_decodes_and_round_trips_exactly() {
     let packet = decode_one(LEVEL_CHUNK, PacketId::LevelChunk);
-    match &packet.data {
+    match &*packet.data {
         packets::Packet::LevelChunk(chunk) => {
             assert_eq!(
                 chunk.chunk_position,
@@ -186,7 +186,7 @@ fn level_chunk_fixture_decodes_and_round_trips_exactly() {
 #[test]
 fn move_player_fixture_decodes_and_round_trips_exactly() {
     let packet = decode_one(MOVE_PLAYER, PacketId::MovePlayer);
-    match &packet.data {
+    match &*packet.data {
         packets::Packet::MovePlayer(movement) => {
             assert_eq!(movement.player_runtime_id, ActorRuntimeID(42));
             assert_eq!(movement.position.to_array(), [1.25, 64.0, -2.5]);
@@ -215,7 +215,7 @@ fn move_player_fixture_decodes_and_round_trips_exactly() {
 #[test]
 fn player_auth_input_fixture_decodes_and_round_trips_exactly() {
     let fixture = decode_one(PLAYER_AUTH_INPUT, PacketId::PlayerAuthInput);
-    let packets::Packet::PlayerAuthInput(input) = &fixture.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*fixture.data else {
         panic!("unexpected fixture payload");
     };
     assert_eq!(input.client_tick, PlayerInputTick(1_234));
@@ -285,7 +285,7 @@ fn player_auth_input_builder_matches_gophertunnel_bytes_exactly() {
 #[test]
 fn add_actor_fixture_maps_to_add_entity_and_round_trips_exactly() {
     let packet = decode_one(ADD_ACTOR, PacketId::AddActor);
-    match &packet.data {
+    match &*packet.data {
         packets::Packet::AddActor(entity) => {
             assert_eq!(entity.target_actor_id, ActorUniqueID(-77));
             assert_eq!(entity.target_runtime_id, ActorRuntimeID(77));
@@ -471,7 +471,7 @@ fn player_auth_input_block_actions_fixture_decodes_and_round_trips_exactly() {
     use bedrock_protocol_1_26_51::types::PlayerBlockActionData;
 
     let fixture = decode_one(PLAYER_AUTH_INPUT_BLOCK_ACTIONS, PacketId::PlayerAuthInput);
-    let packets::Packet::PlayerAuthInput(input) = &fixture.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*fixture.data else {
         panic!("unexpected fixture payload");
     };
     // The flag list gains exactly PerformBlockActions (ordinal 35), after
@@ -535,7 +535,7 @@ fn player_auth_input_break_block_fixture_decodes_and_round_trips_exactly() {
     };
 
     let fixture = decode_one(PLAYER_AUTH_INPUT_BREAK_BLOCK, PacketId::PlayerAuthInput);
-    let packets::Packet::PlayerAuthInput(input) = &fixture.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*fixture.data else {
         panic!("unexpected fixture payload");
     };
     assert_eq!(
@@ -593,7 +593,7 @@ fn player_auth_input_builder_embeds_creative_break_byte_exactly() {
     use std::sync::Arc;
 
     let fixture = decode_one(PLAYER_AUTH_INPUT_BREAK_BLOCK, PacketId::PlayerAuthInput);
-    let packets::Packet::PlayerAuthInput(input) = &fixture.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*fixture.data else {
         panic!("unexpected fixture payload");
     };
     let item = &input
@@ -670,7 +670,7 @@ fn fixture_break_block_item() -> protocol::VerifiedNetworkItemStack {
     use std::sync::Arc;
 
     let fixture = decode_one(PLAYER_AUTH_INPUT_BREAK_BLOCK, PacketId::PlayerAuthInput);
-    let packets::Packet::PlayerAuthInput(input) = &fixture.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*fixture.data else {
         panic!("unexpected fixture payload");
     };
     let item = &input
@@ -716,7 +716,7 @@ fn player_auth_input_combined_interactions_fixture_and_builder_match_byte_exactl
         PLAYER_AUTH_INPUT_BLOCK_ACTIONS_AND_BREAK_BLOCK,
         PacketId::PlayerAuthInput,
     );
-    let packets::Packet::PlayerAuthInput(input) = &fixture.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*fixture.data else {
         panic!("unexpected fixture payload");
     };
     assert_eq!(

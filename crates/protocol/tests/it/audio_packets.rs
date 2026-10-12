@@ -28,7 +28,7 @@ fn decode_one(fixture: &'static [u8], id: PacketId) -> protocol::Packet {
 #[test]
 fn public_protocol_2168_audio_fixtures_preserve_exact_generated_fields() {
     let play = decode_one(PLAY_SOUND, PacketId::PlaySound);
-    let packets::Packet::PlaySound(play) = &play.data else {
+    let packets::Packet::PlaySound(play) = &*play.data else {
         panic!("expected PlaySound")
     };
     assert_eq!(play.name, "custom:odd.sound");
@@ -46,7 +46,7 @@ fn public_protocol_2168_audio_fixtures_preserve_exact_generated_fields() {
     );
 
     let stop = decode_one(STOP_SOUND, PacketId::StopSound);
-    let packets::Packet::StopSound(stop) = &stop.data else {
+    let packets::Packet::StopSound(stop) = &*stop.data else {
         panic!("expected StopSound")
     };
     assert!(stop.sound_name.is_empty());
@@ -54,7 +54,7 @@ fn public_protocol_2168_audio_fixtures_preserve_exact_generated_fields() {
     assert!(stop.stop_music_legacy);
 
     let level = decode_one(LEVEL_SOUND_EVENT, PacketId::LevelSoundEvent);
-    let packets::Packet::LevelSoundEvent(level) = &level.data else {
+    let packets::Packet::LevelSoundEvent(level) = &*level.data else {
         panic!("expected LevelSoundEvent")
     };
     assert_eq!(level.sound_event, "custom:unmapped.event");

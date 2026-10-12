@@ -117,7 +117,7 @@ mod session {
             panic!("a deferred packet arrives before any terminal message")
         };
         let id = raw.id;
-        let packets::Packet::SetTime(time) = raw.decode().unwrap().data else {
+        let packets::Packet::SetTime(time) = *raw.decode().unwrap().data else {
             panic!("expected SetTime, got {id:?}")
         };
         time.time.0

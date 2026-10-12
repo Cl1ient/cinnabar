@@ -51,7 +51,7 @@ mod tests {
             flying: true,
         });
         let bedrock_protocol_1_26_51::packets::Packet::ClientMovementPredictionSync(body) =
-            packet.data
+            *packet.data
         else {
             panic!("wrong packet");
         };

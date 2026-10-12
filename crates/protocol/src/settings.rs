@@ -29,13 +29,13 @@ mod tests {
         let packet = request_chunk_radius_packet(8, 16);
         let encoded = crate::encode(&packet).unwrap();
         let decoded = crate::decode_batch(encoded).unwrap();
-        let packets::Packet::RequestChunkRadius(request) = &decoded[0].data else {
+        let packets::Packet::RequestChunkRadius(request) = &*decoded[0].data else {
             panic!("wrong packet");
         };
         assert_eq!(request.chunk_radius.0, 8);
         assert_eq!(request.max_chunk_radius.0, 16);
         let packet = request_chunk_radius_packet(100, 40);
-        let packets::Packet::RequestChunkRadius(request) = packet.data else {
+        let packets::Packet::RequestChunkRadius(request) = *packet.data else {
             panic!("wrong packet");
         };
         assert_eq!(request.chunk_radius.0, 40);

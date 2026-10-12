@@ -59,7 +59,7 @@ mod tests {
         for id in [None, Some(0), Some(u32::MAX)] {
             for phase in [LoadingScreenPhase::Start, LoadingScreenPhase::End] {
                 let packets::Packet::ServerboundLoadingScreen(packet) =
-                    loading_screen_packet(phase, id).data
+                    *loading_screen_packet(phase, id).data
                 else {
                     panic!("expected loading screen packet");
                 };
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn dimension_done_has_native_actor_and_zero_action_payload() {
-        let packets::Packet::PlayerAction(packet) = dimension_change_done_packet(77).data else {
+        let packets::Packet::PlayerAction(packet) = *dimension_change_done_packet(77).data else {
             panic!("expected player action packet");
         };
         assert_eq!(packet.player_runtime_id.0, 77);

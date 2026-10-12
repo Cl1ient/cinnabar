@@ -5,10 +5,12 @@ use std::fmt;
 use bedrock_protocol_1_26_51::packets::{self, PacketId};
 
 /// One complete Bedrock 1.26.50 (protocol 2193) game packet, including its subclient header.
+///
+/// The generated payload is boxed, so queues of packets move a pointer, not the largest variant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Packet {
     pub(crate) header: GameHeader,
-    pub(crate) data: packets::Packet,
+    pub(crate) data: Box<packets::Packet>,
 }
 
 /// A batch entry's header varint: the packet ID and its two-bit sender and target subclients.
@@ -58,8 +60,11 @@ impl Packet {
         Self::from_parts(GameHeader::new(data.id()), data)
     }
 
-    pub(crate) const fn from_parts(header: GameHeader, data: packets::Packet) -> Self {
-        Self { header, data }
+    pub(crate) fn from_parts(header: GameHeader, data: packets::Packet) -> Self {
+        Self {
+            header,
+            data: Box::new(data),
+        }
     }
 
     /// Which packet this is, as its header names it.

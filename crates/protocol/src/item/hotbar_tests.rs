@@ -23,7 +23,7 @@ fn selected_stack_survives_mob_equipment_encode_decode_and_normalize() {
     let packet = select_hotbar_slot_packet(4242, 3, &expected).unwrap();
     let encoded = crate::encode(&packet).unwrap();
     let mut decoded = crate::decode_batch(encoded).unwrap();
-    let packets::Packet::MobEquipment(packet) = decoded.remove(0).data else {
+    let packets::Packet::MobEquipment(packet) = *decoded.remove(0).data else {
         panic!("hotbar selection must build a MobEquipment packet, not PlayerHotbar");
     };
     assert_eq!(packet.target_runtime_id.0, 4242);
@@ -42,7 +42,7 @@ fn hotbar_selection_omits_the_stack_network_id() {
     let mut predicted = selected_stack();
     predicted.stack_network_id = -3;
     let packets::Packet::MobEquipment(packet) =
-        select_hotbar_slot_packet(1, 0, &predicted).unwrap().data
+        *select_hotbar_slot_packet(1, 0, &predicted).unwrap().data
     else {
         panic!("hotbar selection must build a MobEquipment packet");
     };
@@ -53,7 +53,7 @@ fn hotbar_selection_omits_the_stack_network_id() {
 #[test]
 fn known_empty_hotbar_slot_encodes_the_canonical_empty_descriptor() {
     let packets::Packet::MobEquipment(packet) =
-        select_hotbar_slot_packet(1, 2, &NetworkItemStack::empty())
+        *select_hotbar_slot_packet(1, 2, &NetworkItemStack::empty())
             .unwrap()
             .data
     else {

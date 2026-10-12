@@ -41,7 +41,7 @@ pub struct PlayerAuthInputTraceSample {
 /// trace, or returns `None` for any other packet kind.
 #[must_use]
 pub fn player_auth_input_trace_sample(packet: &Packet) -> Option<PlayerAuthInputTraceSample> {
-    let packets::Packet::PlayerAuthInput(input) = &packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*packet.data else {
         return None;
     };
     let flag_items = input.input_data.as_slice();

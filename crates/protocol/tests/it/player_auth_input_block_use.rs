@@ -54,7 +54,7 @@ fn independently_authored_empty_hand_use_is_one_embedded_pai_interaction() {
         },
     )
     .unwrap();
-    let packets::Packet::PlayerAuthInput(input) = packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = *packet.data else {
         panic!("block use must not produce a standalone InventoryTransaction");
     };
     let input = *input;
@@ -139,7 +139,7 @@ fn filled_use_matches_independent_pinned_movement_fixture() {
     .expect("generate the pinned embedded filled Use fixture before verification");
     let packets = protocol::decode_batch(bytes::Bytes::from(fixture.clone())).unwrap();
     let decoded = &packets[0];
-    let packets::Packet::PlayerAuthInput(input) = &decoded.data else {
+    let packets::Packet::PlayerAuthInput(input) = &*decoded.data else {
         panic!("expected PAI");
     };
     let packed = input.item_use_transaction.as_ref().unwrap();

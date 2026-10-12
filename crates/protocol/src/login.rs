@@ -191,7 +191,7 @@ impl PlaySession {
             };
             let packet = raw.decode().map_err(|error| self.fail_session(error))?;
             if matches!(
-                &packet.data,
+                &*packet.data,
                 packets::Packet::Transfer(_) | packets::Packet::Disconnect(_)
             ) {
                 self.reset_blob_cache_pending();
@@ -266,7 +266,7 @@ impl PlaySession {
                     Some(packet) => packet,
                     None => continue,
                 };
-                let packets::Packet::LevelChunk(packet) = packet.data else {
+                let packets::Packet::LevelChunk(packet) = *packet.data else {
                     unreachable!("LevelChunk packet ID decoded to another variant")
                 };
                 match crate::world::normalize_level_chunk_payload(packet) {
@@ -486,10 +486,10 @@ impl PlaySession {
                     Some(packet) => packet,
                     None => continue,
                 };
-                if let packets::Packet::LevelChunk(view) = &packet.data
+                if let packets::Packet::LevelChunk(view) = &*packet.data
                     && !view.cache_enabled
                 {
-                    let packets::Packet::LevelChunk(view) = packet.data else {
+                    let packets::Packet::LevelChunk(view) = *packet.data else {
                         unreachable!("checked above")
                     };
                     let (event, payload) = match crate::world::normalize_level_chunk_payload(view) {
@@ -513,7 +513,7 @@ impl PlaySession {
                         .expect("enabled path owns a resolver"),
                     &packet,
                 )?;
-                if let packets::Packet::ClientCacheMissResponse(response) = packet.data {
+                if let packets::Packet::ClientCacheMissResponse(response) = *packet.data {
                     if let Err(error) = self
                         .blob_cache
                         .as_mut()
@@ -640,7 +640,7 @@ fn reset_blob_cache_for_decoded_candidate(
     packet: &Packet,
 ) -> Result<bool, crate::BlobCacheError> {
     if matches!(
-        &packet.data,
+        &*packet.data,
         packets::Packet::LevelChunk(_) | packets::Packet::SubChunk(_)
     ) {
         resolver.reset_pending_for_fast_transfer_candidate()
@@ -660,7 +660,7 @@ fn detach_cached_chunk(raw: RawPacket) -> RawPacket {
 }
 
 fn is_cached_world_packet(packet: &Packet) -> bool {
-    match &packet.data {
+    match &*packet.data {
         // 1.26.40 states cache participation with an explicit flag on both
         // packets rather than an optional hash list or an entry-type union.
         packets::Packet::LevelChunk(packet) => packet.cache_enabled,

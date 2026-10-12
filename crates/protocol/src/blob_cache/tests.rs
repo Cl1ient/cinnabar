@@ -295,7 +295,7 @@ fn late_duplicate_blob_does_not_abandon_another_column() {
     let Some(BlobCacheReady::Packet(packet)) = ready else {
         panic!("a valid current column must reconstruct without recovery: {ready:?}");
     };
-    let packets::Packet::LevelChunk(packet) = packet.data else {
+    let packets::Packet::LevelChunk(packet) = *packet.data else {
         panic!("expected the current column");
     };
     assert_eq!(packet.chunk_position.x.0, 2);

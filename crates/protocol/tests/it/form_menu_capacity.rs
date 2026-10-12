@@ -55,7 +55,7 @@ fn menus_above_256_preserve_every_button_image_and_last_wire_selection() {
             );
             let bytes = protocol::encode(&packet).unwrap();
             let decoded = decode_batch(bytes.to_vec().into()).unwrap();
-            let packets::Packet::ModalFormResponse(response) = &decoded[0].data else {
+            let packets::Packet::ModalFormResponse(response) = &*decoded[0].data else {
                 panic!("form response");
             };
             assert_eq!(response.form_id.0, event.form_id);

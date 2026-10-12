@@ -123,7 +123,7 @@ fn truncated_inventory_equipment_and_actor_bodies_are_inner_wire_fatal() {
     let mut absolute = Vec::new();
     wire::Writer::new(&mut absolute).write_var_u64(42).unwrap();
     absolute.extend_from_slice(&[0; 16]);
-    let overlong = [&absolute[..], &[0xff]].concat();
+    let overlong = [&absolute[..], &[0xff][..]].concat();
     for body in [&absolute[..15], overlong.as_slice()] {
         let error = decode_world_raw_with(raw_packet(PacketId::MoveActorAbsolute, body), 0, |_| {
             unreachable!("absolute movement uses the raw decoder")

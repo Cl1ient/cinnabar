@@ -730,7 +730,7 @@ fn valid_button_images_are_retained_by_kind_without_changing_indexes() {
     assert_eq!(menu.omitted_images, 2);
     let response =
         modal_form_submit_response(event.form_id, ModalFormResponseSelection::ButtonIndex(1));
-    let packets::Packet::ModalFormResponse(response) = response.data else {
+    let packets::Packet::ModalFormResponse(response) = *response.data else {
         panic!("response packet")
     };
     assert_eq!(response.json_response, Some("1".into()));
@@ -754,7 +754,7 @@ fn imageless_buttons_retain_a_none_slot_per_index() {
 #[test]
 fn modal_and_custom_form_responses_round_trip() {
     fn json_of(packet: &protocol::Packet) -> Option<&str> {
-        match &packet.data {
+        match &*packet.data {
             packets::Packet::ModalFormResponse(response) => response
                 .json_response
                 .as_ref()
@@ -951,7 +951,7 @@ fn modal_form_responses_encode_exact_submit_and_cancel_markers() {
     let mut packets = decode_batch(frame.freeze()).unwrap();
     assert_eq!(packets.len(), 1);
     assert!(matches!(
-        packets.pop().unwrap().data,
+        *packets.pop().unwrap().data,
         packets::Packet::ModalFormResponse(ModalFormResponse {
             form_id: wire::VarUInt(7),
             json_response: Some(response),

@@ -72,7 +72,7 @@ async fn login_reaches_start_game_through_bds() {
     let available_commands = tokio::time::timeout(LOGIN_TIMEOUT, async {
         loop {
             let packet = session.recv().await?;
-            if matches!(packet.data, packets::Packet::AvailableCommands(_)) {
+            if matches!(&*packet.data, packets::Packet::AvailableCommands(_)) {
                 return Ok::<_, protocol::ProtocolError>(packet);
             }
         }
@@ -90,7 +90,7 @@ async fn login_reaches_start_game_through_bds() {
             harness.output()
         )
     });
-    let packets::Packet::AvailableCommands(commands) = available_commands.data else {
+    let packets::Packet::AvailableCommands(commands) = *available_commands.data else {
         unreachable!("loop returns only AvailableCommands")
     };
     assert!(
@@ -273,7 +273,7 @@ async fn wait_for_startup_marker(
                 .recv()
                 .await
                 .unwrap_or_else(|error| panic!("{error}\n{}", harness.output()));
-            if matches!(packet.data, packets::Packet::SetTime(value) if value.time.0 == time) {
+            if matches!(&*packet.data, packets::Packet::SetTime(value) if value.time.0 == time) {
                 break;
             }
         }
@@ -705,7 +705,7 @@ async fn assert_core_frame_payloads(session: &mut protocol::PlaySession) {
             .await
             .expect("binary reply timeout")
             .expect("binary reply");
-        let packets::Packet::ScriptMessage(reply) = reply.data else {
+        let packets::Packet::ScriptMessage(reply) = *reply.data else {
             panic!("expected binary echo");
         };
         assert_eq!(reply.message_id, "framing");

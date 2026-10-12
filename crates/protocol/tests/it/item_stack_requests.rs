@@ -210,7 +210,7 @@ fn negative_stack_ids_name_prior_predictions_or_this_requests_created_output() {
     let mut packets = decode_batch(encode(&packet).unwrap()).unwrap();
     use bedrock_protocol_1_26_51::packets::Packet as WirePacket;
     use bedrock_protocol_1_26_51::types::StackRequestAction as Action;
-    let WirePacket::ItemStackRequest(decoded) = packets.pop().unwrap().data else {
+    let WirePacket::ItemStackRequest(decoded) = *packets.pop().unwrap().data else {
         panic!()
     };
     let [

@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn client_close_uses_native_unspecified_type() {
         let packet = container_close_packet(4).unwrap();
-        let packets::Packet::ContainerClose(close) = packet.data else {
+        let packets::Packet::ContainerClose(close) = *packet.data else {
             panic!("expected ContainerClose packet");
         };
         assert_eq!(close.container_id.0, 4);
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn personal_inventory_open_targets_self_without_a_position() {
         let packet = open_inventory_packet(42).unwrap();
-        let packets::Packet::Interact(interact) = packet.data else {
+        let packets::Packet::Interact(interact) = *packet.data else {
             panic!("expected Interact packet");
         };
         assert_eq!(interact.action, InteractAction::Openinventory);
@@ -208,7 +208,7 @@ mod tests {
             }],
         )
         .unwrap();
-        let packets::Packet::ItemStackRequest(request) = packet.data else {
+        let packets::Packet::ItemStackRequest(request) = *packet.data else {
             panic!()
         };
         let bytes = request.encode_to_vec().unwrap();

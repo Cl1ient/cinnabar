@@ -17,7 +17,7 @@ fn dismount_packet_preserves_vehicle_and_position_and_rejects_invalid_inputs() {
     use bedrock_protocol_1_26_51::enums::InteractAction;
     let position = [1.0, -2.0, 3.0];
     let packet = protocol::stop_riding_packet(u64::MAX, position).unwrap();
-    let packets::Packet::Interact(packet) = packet.data else {
+    let packets::Packet::Interact(packet) = *packet.data else {
         panic!("expected Interact");
     };
     assert_eq!(packet.action, InteractAction::Stopriding);
@@ -81,7 +81,7 @@ fn assert_block_use_constants(
     packet: &protocol::Packet,
     expected_action: ItemUseInventoryTransactionActionType,
 ) {
-    let packets::Packet::InventoryTransaction(packet) = &packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = &*packet.data else {
         panic!("expected inventory transaction");
     };
     assert_eq!(packet.legacy_request_id.0, 0);
@@ -108,7 +108,7 @@ fn assert_block_use_constants(
 }
 
 fn verified_fixture_item(packet: &protocol::Packet) -> VerifiedNetworkItemStack {
-    let packets::Packet::InventoryTransaction(packet) = &packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = &*packet.data else {
         panic!("expected inventory transaction");
     };
     let InventoryTransactionPacketData::ItemUseInventoryTransaction(transaction) =
@@ -120,7 +120,7 @@ fn verified_fixture_item(packet: &protocol::Packet) -> VerifiedNetworkItemStack 
 }
 
 fn verified_actor_fixture_item(packet: &protocol::Packet) -> VerifiedNetworkItemStack {
-    let packets::Packet::InventoryTransaction(packet) = &packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = &*packet.data else {
         panic!("expected inventory transaction");
     };
     let InventoryTransactionPacketData::ItemUseOnActorInventoryTransaction { item, .. } =
@@ -150,7 +150,7 @@ fn verified_wire_item(item: &NetworkItemStackDescriptorSerializedData) -> Verifi
 }
 
 fn assert_actor_use_constants(packet: &protocol::Packet, action: ActorUseAction) {
-    let packets::Packet::InventoryTransaction(packet) = &packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = &*packet.data else {
         panic!("expected inventory transaction");
     };
     assert_eq!(packet.legacy_request_id.0, 0);
@@ -323,7 +323,7 @@ fn actor_use_fixtures_cross_decode_and_build_byte_exactly() {
 fn container_close_fixture_cross_decodes_and_round_trips_exactly() {
     let packet = decode_one(CONTAINER_CLOSE, PacketId::ContainerClose);
     assert_eq!(
-        packet.data,
+        *packet.data,
         packets::Packet::ContainerClose(ContainerClose {
             container_id: wire::U8(5),
             container_type: wire::U8(0),
@@ -476,7 +476,7 @@ fn held_block_use_preserves_relative_hits_outside_the_current_cell() {
         let packet =
             click_block_transaction_packet(request, ItemUseTrigger::SimulationTick, true, None)
                 .unwrap();
-        let packets::Packet::InventoryTransaction(packet) = packet.data else {
+        let packets::Packet::InventoryTransaction(packet) = *packet.data else {
             panic!("transaction");
         };
         let InventoryTransactionPacketData::ItemUseInventoryTransaction(transaction) =
@@ -493,7 +493,7 @@ fn click_block_builder_preserves_exact_relative_hit_boundaries() {
     let mut request = base_request();
     request.relative_hit = [0.0, 1.0, 0.0];
     let packet = click_block_packet(request).expect("boundary request");
-    let packets::Packet::InventoryTransaction(packet) = packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = *packet.data else {
         panic!("expected inventory transaction");
     };
     let InventoryTransactionPacketData::ItemUseInventoryTransaction(transaction) =
@@ -552,7 +552,7 @@ fn actor_use_builder_rejects_zero_runtime_invalid_slot_and_non_finite_positions(
 fn actor_use_builder_preserves_finite_out_of_unit_hit_offsets() {
     let request = base_actor_request();
     let packet = use_actor_packet(request.clone()).unwrap();
-    let packets::Packet::InventoryTransaction(packet) = packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = *packet.data else {
         panic!("expected inventory transaction");
     };
     let InventoryTransactionPacketData::ItemUseOnActorInventoryTransaction { hit_position, .. } =
@@ -575,7 +575,7 @@ fn swing_arm_packet_round_trips_with_its_swing_source() {
         let packet = swing_arm_packet(0x1_0000_0001, source);
         let bytes = encode(&packet).unwrap();
         let decoded = decode_batch(bytes).unwrap().remove(0);
-        let packets::Packet::Animate(animate) = decoded.data else {
+        let packets::Packet::Animate(animate) = *decoded.data else {
             panic!("animate packet");
         };
         assert_eq!(animate.action, AnimateAction::Swing);
@@ -612,7 +612,7 @@ fn swing_arm_packet_matches_the_vanilla_wire_layout() {
 fn stop_sleeping_packet_is_a_player_action_for_the_local_runtime_id() {
     let bytes = encode(&stop_sleeping_packet(7)).unwrap();
     let decoded = decode_batch(bytes).unwrap().remove(0);
-    let packets::Packet::PlayerAction(action) = decoded.data else {
+    let packets::Packet::PlayerAction(action) = *decoded.data else {
         panic!("player action packet");
     };
     assert_eq!(action.action, PlayerActionType::Stopsleeping);
@@ -623,7 +623,7 @@ fn stop_sleeping_packet_is_a_player_action_for_the_local_runtime_id() {
 fn respawn_request_is_client_ready_with_the_local_runtime_id() {
     let bytes = encode(&respawn_request_packet(7)).unwrap();
     let decoded = decode_batch(bytes).unwrap().remove(0);
-    let packets::Packet::Respawn(respawn) = decoded.data else {
+    let packets::Packet::Respawn(respawn) = *decoded.data else {
         panic!("respawn packet");
     };
     assert_eq!(respawn.state, PlayerRespawnState::Clientreadytospawn);
@@ -634,7 +634,7 @@ fn respawn_request_is_client_ready_with_the_local_runtime_id() {
 #[test]
 fn click_block_transaction_carries_trigger_and_prediction() {
     let decoded = decode_one(CLICK_BLOCK, PacketId::InventoryTransaction);
-    let packets::Packet::InventoryTransaction(fixture) = &decoded.data else {
+    let packets::Packet::InventoryTransaction(fixture) = &*decoded.data else {
         panic!("inventory transaction");
     };
     let InventoryTransactionPacketData::ItemUseInventoryTransaction(fixture) = &fixture.transaction
@@ -676,7 +676,7 @@ fn click_block_transaction_carries_trigger_and_prediction() {
             click_block_transaction_packet(request.clone(), trigger, success, None).unwrap();
         let bytes = encode(&packet).unwrap();
         let packets::Packet::InventoryTransaction(built) =
-            decode_batch(bytes).unwrap().remove(0).data
+            *decode_batch(bytes).unwrap().remove(0).data
         else {
             panic!("inventory transaction");
         };
@@ -697,7 +697,7 @@ fn click_block_transaction_carries_trigger_and_prediction() {
 
 fn decoded_transaction(packet: protocol::Packet) -> InventoryTransactionPacketData {
     let bytes = encode(&packet).unwrap();
-    let packets::Packet::InventoryTransaction(built) = decode_batch(bytes).unwrap().remove(0).data
+    let packets::Packet::InventoryTransaction(built) = *decode_batch(bytes).unwrap().remove(0).data
     else {
         panic!("inventory transaction");
     };
@@ -786,7 +786,7 @@ fn snowballs(count: u16) -> VerifiedNetworkItemStack {
 
 fn decoded_inventory_packet(packet: protocol::Packet) -> InventoryTransaction {
     let bytes = encode(&packet).unwrap();
-    let packets::Packet::InventoryTransaction(built) = decode_batch(bytes).unwrap().remove(0).data
+    let packets::Packet::InventoryTransaction(built) = *decode_batch(bytes).unwrap().remove(0).data
     else {
         panic!("inventory transaction");
     };

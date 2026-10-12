@@ -34,7 +34,7 @@ fn vendor_neutral_snapshot_maps_to_protocol_2168_player_auth_input() {
         (0, 0)
     );
 
-    let packets::Packet::PlayerAuthInput(input) = packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = *packet.data else {
         panic!("expected PlayerAuthInput payload");
     };
     assert_eq!(input.client_tick.0, 1_234);
@@ -108,7 +108,7 @@ fn movement_hints_map_to_their_protocol_2168_list_ids() {
         | PlayerInputFlags::DOWN_RIGHT;
 
     let packet = player_auth_input(input).expect("valid movement hints");
-    let packets::Packet::PlayerAuthInput(input) = packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = *packet.data else {
         panic!("expected PlayerAuthInput payload");
     };
     assert_eq!(
@@ -133,7 +133,7 @@ fn device_class_move_carriers_survive_encoding_distinctly() {
     gamepad_style.raw_move_vector = [1.0, 0.8];
 
     let packet = player_auth_input(gamepad_style).expect("valid gamepad input");
-    let packets::Packet::PlayerAuthInput(input) = packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = *packet.data else {
         panic!("expected PlayerAuthInput payload");
     };
     assert_eq!(
@@ -161,7 +161,7 @@ fn device_class_move_carriers_survive_encoding_distinctly() {
     keyboard_style.raw_move_vector = [-1.0, 1.0];
 
     let packet = player_auth_input(keyboard_style).expect("valid keyboard input");
-    let packets::Packet::PlayerAuthInput(input) = packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = *packet.data else {
         panic!("expected PlayerAuthInput payload");
     };
     assert_eq!(
@@ -188,7 +188,7 @@ fn handled_teleport_flag_serializes_in_ascending_list_position() {
         PlayerInputFlags::UP | PlayerInputFlags::SPRINTING | PlayerInputFlags::HANDLED_TELEPORT;
 
     let packet = player_auth_input(input).expect("valid flags");
-    let packets::Packet::PlayerAuthInput(input) = packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = *packet.data else {
         panic!("expected PlayerAuthInput payload");
     };
     // Row 37 of the encoder table is HandledTeleport, so bit 37 must emit in
@@ -207,7 +207,7 @@ fn handled_teleport_flag_serializes_in_ascending_list_position() {
 fn missed_swing_flag_serializes_as_its_wire_ordinal() {
     let mut input = snapshot();
     input.flags = PlayerInputFlags::HANDLED_TELEPORT | PlayerInputFlags::MISSED_SWING;
-    let packets::Packet::PlayerAuthInput(input) = player_auth_input(input).unwrap().data else {
+    let packets::Packet::PlayerAuthInput(input) = *player_auth_input(input).unwrap().data else {
         panic!("expected PlayerAuthInput payload");
     };
     assert_eq!(
@@ -235,7 +235,7 @@ fn handled_teleport_flag_costs_exactly_one_wire_byte_and_round_trips() {
 
     let mut decoded = decode_batch(encoded).expect("decode flagged batch");
     assert_eq!(decoded.len(), 1);
-    let packets::Packet::PlayerAuthInput(input) = decoded.pop().unwrap().data else {
+    let packets::Packet::PlayerAuthInput(input) = *decoded.pop().unwrap().data else {
         panic!("expected PlayerAuthInput payload");
     };
     assert_eq!(
@@ -265,7 +265,7 @@ fn player_auth_input_rejects_non_finite_state_and_preserves_unsigned_ticks() {
     let mut maximum_tick = snapshot();
     maximum_tick.tick = u64::MAX;
     let packet = player_auth_input(maximum_tick).expect("full unsigned tick range is valid");
-    let packets::Packet::PlayerAuthInput(input) = packet.data else {
+    let packets::Packet::PlayerAuthInput(input) = *packet.data else {
         panic!("expected PlayerAuthInput payload");
     };
     assert_eq!(input.client_tick.0, u64::MAX);

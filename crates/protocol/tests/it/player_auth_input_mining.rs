@@ -103,7 +103,7 @@ fn mining_request_flags_and_independent_optional_prediction_match_pinned_fixture
             canonical_flags.push(InputData::Performblockactions);
         }
         canonical_flags.push(InputData::Performitemstackrequest);
-        let packets::Packet::PlayerAuthInput(built_input) = &built.data else {
+        let packets::Packet::PlayerAuthInput(built_input) = &*built.data else {
             panic!("expected input")
         };
         assert_eq!(&built_input.input_data, &canonical_flags);
@@ -115,7 +115,7 @@ fn mining_request_flags_and_independent_optional_prediction_match_pinned_fixture
         let decoded = decode_batch(Bytes::copy_from_slice(fixture)).unwrap();
         assert_eq!(decoded.len(), 1);
         assert_eq!(encode(&decoded[0]).unwrap().as_ref(), fixture);
-        let packets::Packet::PlayerAuthInput(input) = &decoded[0].data else {
+        let packets::Packet::PlayerAuthInput(input) = &*decoded[0].data else {
             panic!("expected input")
         };
         let flags = &input.input_data;
@@ -127,7 +127,7 @@ fn mining_request_flags_and_independent_optional_prediction_match_pinned_fixture
         }
         assert_eq!(flags, &fixture_flags);
         let mut fixture_order_built = built.clone();
-        let packets::Packet::PlayerAuthInput(fixture_order_input) = &mut fixture_order_built.data
+        let packets::Packet::PlayerAuthInput(fixture_order_input) = &mut *fixture_order_built.data
         else {
             panic!("expected input")
         };
@@ -168,7 +168,7 @@ fn absent_mining_request_preserves_existing_input_and_prediction_bytes() {
         let old = player_auth_input_with_interactions(snapshot(), &value).unwrap();
         let absent = player_auth_input_with_mining_request(snapshot(), &value, None).unwrap();
         assert_eq!(encode(&old).unwrap(), encode(&absent).unwrap());
-        let packets::Packet::PlayerAuthInput(input) = absent.data else {
+        let packets::Packet::PlayerAuthInput(input) = *absent.data else {
             panic!("expected input")
         };
         assert_eq!(input.item_stack_request, None);

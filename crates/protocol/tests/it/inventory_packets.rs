@@ -138,25 +138,25 @@ fn decode_fixture(bytes: &'static [u8]) -> protocol::Packet {
 
 #[test]
 fn pinned_gophertunnel_inventory_fixtures_normalize_without_vendor_types() {
-    let content = match decode_fixture(CONTENT_FIXTURE).data {
+    let content = match *decode_fixture(CONTENT_FIXTURE).data {
         packets::Packet::InventoryContent(packet) => normalize_content(packet).unwrap(),
         other => panic!("expected InventoryContent, got {other:?}"),
     };
     assert!(matches!(content, InventoryEvent::Content(_)));
 
-    let slot = match decode_fixture(SLOT_FIXTURE).data {
+    let slot = match *decode_fixture(SLOT_FIXTURE).data {
         packets::Packet::InventorySlot(packet) => normalize_slot(packet).unwrap(),
         other => panic!("expected InventorySlot, got {other:?}"),
     };
     assert!(matches!(slot, InventoryEvent::Slot(_)));
 
-    let hotbar = match decode_fixture(HOTBAR_FIXTURE).data {
+    let hotbar = match *decode_fixture(HOTBAR_FIXTURE).data {
         packets::Packet::PlayerHotbar(packet) => normalize_hotbar(packet).unwrap(),
         other => panic!("expected PlayerHotbar, got {other:?}"),
     };
     assert!(matches!(hotbar, InventoryEvent::SelectedSlot(_)));
 
-    let response = match decode_fixture(RESPONSE_FIXTURE).data {
+    let response = match *decode_fixture(RESPONSE_FIXTURE).data {
         packets::Packet::ItemStackResponse(packet) => normalize_response(packet).unwrap(),
         other => panic!("expected ItemStackResponse, got {other:?}"),
     };
@@ -172,7 +172,7 @@ fn pinned_gophertunnel_inventory_fixtures_normalize_without_vendor_types() {
 /// otherwise.
 #[test]
 fn pinned_inventory_slot_fixture_projects_through_the_canonical_address() {
-    let slot = match decode_fixture(SLOT_FIXTURE).data {
+    let slot = match *decode_fixture(SLOT_FIXTURE).data {
         packets::Packet::InventorySlot(packet) => normalize_slot(packet).unwrap(),
         other => panic!("expected InventorySlot, got {other:?}"),
     };
@@ -198,7 +198,7 @@ fn pinned_inventory_slot_fixture_projects_through_the_canonical_address() {
 /// A live server's arbitrary container name on window 0 still lands in the player hotbar.
 #[test]
 fn live_window_zero_slot_routes_by_window_despite_a_foreign_container_name() {
-    let InventoryEvent::Slot(slot) = (match decode_fixture(LIVE_ZEQA_SLOT_FIXTURE).data {
+    let InventoryEvent::Slot(slot) = (match *decode_fixture(LIVE_ZEQA_SLOT_FIXTURE).data {
         packets::Packet::InventorySlot(packet) => normalize_slot(packet).unwrap(),
         other => panic!("expected InventorySlot, got {other:?}"),
     }) else {
@@ -217,7 +217,7 @@ fn live_window_zero_slot_routes_by_window_despite_a_foreign_container_name() {
 /// A live server's armor content on window 120 lands in the armor cells whatever its name.
 #[test]
 fn live_window_120_content_routes_to_the_armor_cells() {
-    let InventoryEvent::Content(content) = (match decode_fixture(LIVE_ZEQA_ARMOR_FIXTURE).data {
+    let InventoryEvent::Content(content) = (match *decode_fixture(LIVE_ZEQA_ARMOR_FIXTURE).data {
         packets::Packet::InventoryContent(packet) => normalize_content(packet).unwrap(),
         other => panic!("expected InventoryContent, got {other:?}"),
     }) else {
@@ -250,7 +250,7 @@ fn inventory_packets_dispatch_through_the_public_world_event_surface() {
 #[test]
 fn item_stack_response_fixture_decodes_and_round_trips_exactly() {
     let packet = decode_fixture(RESPONSE_FIXTURE);
-    let packets::Packet::ItemStackResponse(response) = &packet.data else {
+    let packets::Packet::ItemStackResponse(response) = &*packet.data else {
         panic!("expected ItemStackResponse")
     };
     let slot = &response.responses[0].containers.as_ref().unwrap()[0].slots[0];

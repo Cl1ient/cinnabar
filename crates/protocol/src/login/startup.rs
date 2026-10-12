@@ -81,7 +81,7 @@ pub(super) async fn await_spawn(
         let raw = recv_startup(transport).await?;
         match raw.id {
             PacketId::StartGame => {
-                let packets::Packet::StartGame(start) = raw.decode()?.data else {
+                let packets::Packet::StartGame(start) = *raw.decode()?.data else {
                     unreachable!("packet ID and decoded variant must agree")
                 };
                 let runtime_id = start.runtime_id.0;
@@ -97,7 +97,7 @@ pub(super) async fn await_spawn(
                 }
             }
             PacketId::ItemRegistry => {
-                let packets::Packet::ItemRegistry(registry) = raw.decode()?.data else {
+                let packets::Packet::ItemRegistry(registry) = *raw.decode()?.data else {
                     unreachable!("packet ID and decoded variant must agree")
                 };
                 // The native registry initializes once: a later empty or custom-only table must
@@ -108,7 +108,7 @@ pub(super) async fn await_spawn(
                 item_registry = Some(registry);
             }
             PacketId::PlayStatus => {
-                let packets::Packet::PlayStatus(status) = raw.decode()?.data else {
+                let packets::Packet::PlayStatus(status) = *raw.decode()?.data else {
                     unreachable!("packet ID and decoded variant must agree")
                 };
                 if status.status == PlayStatusType::Playerspawn {
@@ -116,7 +116,8 @@ pub(super) async fn await_spawn(
                 }
             }
             PacketId::ChunkRadiusUpdated => {
-                let packets::Packet::ChunkRadiusUpdated(update) = raw.clone().decode()?.data else {
+                let packets::Packet::ChunkRadiusUpdated(update) = *raw.clone().decode()?.data
+                else {
                     unreachable!("packet ID and decoded variant must agree")
                 };
                 if update.chunk_radius.0 < 1 {
@@ -130,7 +131,7 @@ pub(super) async fn await_spawn(
                 received_chunk_radius = true;
             }
             PacketId::Disconnect => {
-                let packets::Packet::Disconnect(disconnect) = raw.decode()?.data else {
+                let packets::Packet::Disconnect(disconnect) = *raw.decode()?.data else {
                     unreachable!("packet ID and decoded variant must agree")
                 };
                 return Err(packet_disconnect(&disconnect).into());
@@ -247,11 +248,10 @@ pub(super) async fn startup_write_failure(
             )) => return error,
             Err(_) | Ok(Err(_)) => return write_error,
             Ok(Ok(raw)) if raw.id == PacketId::Disconnect => {
-                return match raw.decode() {
-                    Ok(Packet {
-                        data: packets::Packet::Disconnect(disconnect),
-                        ..
-                    }) => packet_disconnect(&disconnect).into(),
+                return match raw.decode().map(|packet| *packet.data) {
+                    Ok(packets::Packet::Disconnect(disconnect)) => {
+                        packet_disconnect(&disconnect).into()
+                    }
                     _ => write_error,
                 };
             }

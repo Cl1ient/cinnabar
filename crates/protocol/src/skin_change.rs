@@ -17,14 +17,14 @@ pub fn cape_content_id(cape: &render_api::CapeImage) -> String {
 }
 
 pub fn set_skin_packet_uuid(packet: &mut crate::Packet, uuid: [u8; 16]) {
-    if let packets::Packet::PlayerSkin(skin) = &mut packet.data {
+    if let packets::Packet::PlayerSkin(skin) = &mut *packet.data {
         skin.uuid = uuid::Uuid::from_bytes(uuid);
     }
 }
 
 /// Retains the selected model version on a client-authored appearance update.
 pub fn set_skin_packet_engine_version(packet: &mut crate::Packet, version: &str) {
-    if let packets::Packet::PlayerSkin(skin) = &mut packet.data {
+    if let packets::Packet::PlayerSkin(skin) = &mut *packet.data {
         skin.serialized_skin.geometry_data_min_engine_version = version.into();
     }
 }
@@ -120,7 +120,7 @@ mod tests {
         set_skin_packet_engine_version(&mut packet, "1.12.0");
         let encoded = crate::encode(&packet).unwrap();
         let packet = crate::decode_batch(encoded).unwrap().pop().unwrap();
-        let packets::Packet::PlayerSkin(wire) = packet.data else {
+        let packets::Packet::PlayerSkin(wire) = *packet.data else {
             panic!("skin packet")
         };
         assert_eq!(*wire.uuid.as_bytes(), [9; 16]);
@@ -172,7 +172,7 @@ mod tests {
         };
         let mut packet = player_skin_packet([1; 16], &skin, "wide", "selected", "");
         set_skin_packet_uuid(&mut packet, [3; 16]);
-        let packets::Packet::PlayerSkin(wire) = packet.data else {
+        let packets::Packet::PlayerSkin(wire) = *packet.data else {
             panic!("skin packet")
         };
         assert_eq!(wire.uuid.as_bytes(), &[3; 16]);

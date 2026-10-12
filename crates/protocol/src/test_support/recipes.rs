@@ -285,7 +285,7 @@ pub enum StackActionObservation {
 
 /// The first request's actions in an ItemStackRequest packet; `None` for any other packet.
 pub fn stack_request_actions(packet: &Packet) -> Option<Vec<StackActionObservation>> {
-    let packets::Packet::ItemStackRequest(request) = &packet.data else {
+    let packets::Packet::ItemStackRequest(request) = &*packet.data else {
         return None;
     };
     let actions = request

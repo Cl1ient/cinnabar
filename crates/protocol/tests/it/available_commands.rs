@@ -119,7 +119,7 @@ fn available_commands_encoding_no_longer_rejects_more_than_gophertunnel_slice_li
     let mut packet = raw_fixture(GOPHERTUNNEL_AVAILABLE_COMMANDS)
         .decode()
         .expect("decode fixture before mutation");
-    let packets::Packet::AvailableCommands(content) = &mut packet.data else {
+    let packets::Packet::AvailableCommands(content) = &mut *packet.data else {
         panic!("expected AvailableCommands");
     };
     content

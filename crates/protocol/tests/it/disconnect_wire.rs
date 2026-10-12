@@ -17,7 +17,7 @@ fn server_disconnect_wire_preserves_conditional_messages() {
     ] {
         let packets = decode_batch(Bytes::from_static(wire)).expect("server wire decodes");
         assert_eq!(packets.len(), 1);
-        let packets::Packet::Disconnect(disconnect) = &packets[0].data else {
+        let packets::Packet::Disconnect(disconnect) = &*packets[0].data else {
             panic!("expected Disconnect");
         };
         match &disconnect.messages {

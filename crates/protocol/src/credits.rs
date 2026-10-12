@@ -30,7 +30,7 @@ mod tests {
         use bedrock_protocol_1_26_51::packets;
         use bedrock_protocol_1_26_51::wire::{Decode, Encode};
         let packet = super::credits_finished_packet(u64::MAX);
-        let packets::Packet::ShowCredits(packet) = packet.data else {
+        let packets::Packet::ShowCredits(packet) = *packet.data else {
             panic!("wrong response packet")
         };
         let bytes = packet.encode_to_vec().unwrap();

@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn chunk_recovery(packet: &Packet) -> Option<ChunkResyncEvent> {
-    match &packet.data {
+    match &*packet.data {
         packets::Packet::LevelChunk(packet) => Some(ChunkResyncEvent {
             dimension: dimension_id(&packet.dimension_id),
             x: packet.chunk_position.x.0,
@@ -88,7 +88,7 @@ fn ready_value_recovery(value: &ResolverReady) -> Vec<ChunkResyncEvent> {
     let ResolverReady::Packet(packet) = value else {
         return Vec::new();
     };
-    match &packet.data {
+    match &*packet.data {
         packets::Packet::LevelChunk(packet) => vec![ChunkResyncEvent {
             dimension: dimension_id(&packet.dimension_id),
             x: packet.chunk_position.x.0,

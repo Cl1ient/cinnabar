@@ -54,7 +54,7 @@ pub struct CrafterSlotToggleObservation {
 /// The emote `packet` starts, or `None` for any other packet.
 #[must_use]
 pub fn emote(packet: &Packet) -> Option<EmoteObservation> {
-    let packets::Packet::Emote(emote) = &packet.data else {
+    let packets::Packet::Emote(emote) = &*packet.data else {
         return None;
     };
     Some(EmoteObservation {
@@ -68,7 +68,7 @@ pub fn emote(packet: &Packet) -> Option<EmoteObservation> {
 /// The geometry engine version a PlayerSkin `packet` declares, or `None` for any other packet.
 #[must_use]
 pub fn skin_engine_version(packet: &Packet) -> Option<&str> {
-    let packets::Packet::PlayerSkin(skin) = &packet.data else {
+    let packets::Packet::PlayerSkin(skin) = &*packet.data else {
         return None;
     };
     skin.serialized_skin
@@ -80,7 +80,7 @@ pub fn skin_engine_version(packet: &Packet) -> Option<&str> {
 /// The nine movement attributes a ClientMovementPredictionSync `packet` reports.
 #[must_use]
 pub fn prediction_sync_attributes(packet: &Packet) -> Option<[f32; 9]> {
-    let packets::Packet::ClientMovementPredictionSync(sync) = &packet.data else {
+    let packets::Packet::ClientMovementPredictionSync(sync) = &*packet.data else {
         return None;
     };
     Some(sync.movement_attributes.map(|value| value.0))
@@ -89,7 +89,7 @@ pub fn prediction_sync_attributes(packet: &Packet) -> Option<[f32; 9]> {
 /// The held-item update a MobEquipment `packet` sends, or `None` for any other packet.
 #[must_use]
 pub fn equipment(packet: &Packet) -> Option<EquipmentObservation> {
-    let packets::Packet::MobEquipment(equipment) = &packet.data else {
+    let packets::Packet::MobEquipment(equipment) = &*packet.data else {
         return None;
     };
     Some(EquipmentObservation {
@@ -106,7 +106,7 @@ pub fn equipment(packet: &Packet) -> Option<EquipmentObservation> {
 /// The window a ContainerClose `packet` closes, or `None` for any other packet.
 #[must_use]
 pub fn container_close(packet: &Packet) -> Option<ContainerCloseObservation> {
-    let packets::Packet::ContainerClose(close) = &packet.data else {
+    let packets::Packet::ContainerClose(close) = &*packet.data else {
         return None;
     };
     Some(ContainerCloseObservation {
@@ -118,7 +118,7 @@ pub fn container_close(packet: &Packet) -> Option<ContainerCloseObservation> {
 /// The crafter slot a toggle request `packet` changes, or `None` for any other packet.
 #[must_use]
 pub fn crafter_slot_toggle(packet: &Packet) -> Option<CrafterSlotToggleObservation> {
-    let packets::Packet::PlayerToggleCrafterSlotRequest(toggle) = &packet.data else {
+    let packets::Packet::PlayerToggleCrafterSlotRequest(toggle) = &*packet.data else {
         return None;
     };
     Some(CrafterSlotToggleObservation {

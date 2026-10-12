@@ -151,7 +151,7 @@ impl TransactionObservation {
 
 /// Reads an InventoryTransaction packet; `None` for any other packet.
 pub fn observe_transaction(packet: &Packet) -> Option<TransactionObservation> {
-    let packets::Packet::InventoryTransaction(packet) = &packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = &*packet.data else {
         return None;
     };
     let (actions, body) = match &packet.transaction {

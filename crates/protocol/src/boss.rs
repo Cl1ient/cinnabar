@@ -65,7 +65,7 @@ mod tests {
         ] {
             event.action = action;
             let packet = boss_registration_response(&event).unwrap();
-            let packets::Packet::BossEvent(packet) = packet.data else {
+            let packets::Packet::BossEvent(packet) = *packet.data else {
                 panic!("wrong response packet");
             };
             let bytes = packet.encode_to_vec().unwrap();

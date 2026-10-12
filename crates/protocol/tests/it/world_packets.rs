@@ -872,7 +872,7 @@ fn ignores_level_events_without_normalized_world_state() {
 #[test]
 fn builds_bounded_column_sub_chunk_requests() {
     let packet = request_sub_chunk_column(0, 12, -8, -4, 3).unwrap();
-    let packets::Packet::SubChunkRequest(request) = packet.data else {
+    let packets::Packet::SubChunkRequest(request) = *packet.data else {
         panic!("expected SubchunkRequest packet")
     };
     assert_eq!(request.dimension_type.0, 0);

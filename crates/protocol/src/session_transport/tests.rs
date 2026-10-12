@@ -114,7 +114,7 @@ pub(crate) mod unix {
                 panic!("a packet arrives before any terminal message")
             };
             frames.push(raw.inner_frame().clone());
-            let packets::Packet::SetTime(time) = raw.decode().unwrap().data else {
+            let packets::Packet::SetTime(time) = *raw.decode().unwrap().data else {
                 panic!("the packets arrive in order")
             };
             times.push(time.time.0);

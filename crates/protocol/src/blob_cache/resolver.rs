@@ -210,7 +210,7 @@ impl BlobCacheResolver {
         packet: Packet,
         raw_packet_bytes: Option<usize>,
     ) -> Result<BlobCacheStatus, BlobCacheError> {
-        let (packet, hashes, packet_retained_bytes) = match packet.data {
+        let (packet, hashes, packet_retained_bytes) = match *packet.data {
             packets::Packet::LevelChunk(packet) => {
                 // The blob hashes are no longer optional; whether the packet
                 // is cached is the explicit cache_enabled flag.
@@ -886,7 +886,7 @@ trait ReferencedBlobHashes {
 
 impl ReferencedBlobHashes for Packet {
     fn referenced_blob_hashes(&self) -> Vec<u64> {
-        match &self.data {
+        match &*self.data {
             packets::Packet::LevelChunk(packet) => packet
                 .cache_metadata
                 .iter()

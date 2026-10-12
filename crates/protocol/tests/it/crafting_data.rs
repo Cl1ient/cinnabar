@@ -107,7 +107,7 @@ fn shaped_recipe_dimensions_do_not_drive_the_ingredient_count() {
     let mut packet = raw_crafting_data()
         .decode()
         .expect("owned CraftingData decode");
-    let packets::Packet::CraftingData(content) = &mut packet.data else {
+    let packets::Packet::CraftingData(content) = &mut *packet.data else {
         panic!("expected CraftingData");
     };
     let recipe = &mut content.shaped_recipes[0];
@@ -124,7 +124,7 @@ fn shaped_recipe_dimensions_do_not_drive_the_ingredient_count() {
         .decode()
         .expect("negative dimensions must not derail the ingredient read");
 
-    let packets::Packet::CraftingData(content) = &round_tripped.data else {
+    let packets::Packet::CraftingData(content) = &*round_tripped.data else {
         panic!("expected CraftingData");
     };
     let recipe = &content.shaped_recipes[0];

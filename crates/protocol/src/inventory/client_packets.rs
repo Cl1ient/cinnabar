@@ -151,7 +151,7 @@ mod tests {
             },
         )
         .unwrap();
-        let packets::Packet::BookEdit(edit) = packet.data else {
+        let packets::Packet::BookEdit(edit) = *packet.data else {
             panic!("a book edit");
         };
         assert_eq!(edit.book_slot.0, 3);
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn block_pick_carries_the_position() {
         let packets::Packet::BlockPickRequest(pick) =
-            block_pick_request_packet([1, 2, 3], false).data
+            *block_pick_request_packet([1, 2, 3], false).data
         else {
             panic!("a block pick");
         };
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn crafter_toggle_names_the_block_and_slot() {
         let packets::Packet::PlayerToggleCrafterSlotRequest(toggle) =
-            crafter_slot_toggle_packet([4, 5, 6], 7, true).data
+            *crafter_slot_toggle_packet([4, 5, 6], 7, true).data
         else {
             panic!("a crafter toggle");
         };

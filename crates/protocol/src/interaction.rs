@@ -355,7 +355,7 @@ pub fn use_item_as_attack_packet(
         return Err(BlockUsePacketError::NonFiniteRelativeHit);
     }
     let mut packet = click_air_packet(request, None)?;
-    let packets::Packet::InventoryTransaction(transaction) = &mut packet.data else {
+    let packets::Packet::InventoryTransaction(transaction) = &mut *packet.data else {
         unreachable!("click-air builder always produces an inventory transaction");
     };
     let InventoryTransactionPacketData::ItemUseInventoryTransaction(transaction) =
@@ -376,7 +376,7 @@ pub fn use_item_as_attack_packet(
 /// Native action aim rotation runs for actor attacks and held-item releases.
 #[must_use]
 pub fn is_aim_assist_rotation_action(packet: &crate::Packet) -> bool {
-    let packets::Packet::InventoryTransaction(packet) = &packet.data else {
+    let packets::Packet::InventoryTransaction(packet) = &*packet.data else {
         return false;
     };
     match &packet.transaction {

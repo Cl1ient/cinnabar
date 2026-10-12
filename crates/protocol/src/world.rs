@@ -343,7 +343,7 @@ pub fn into_world_event(
     packet: Packet,
     current_dimension: i32,
 ) -> Result<Option<WorldEvent>, WorldPacketError> {
-    dispatch(packet.data, packet.header, current_dimension)
+    dispatch(*packet.data, packet.header, current_dimension)
 }
 
 world_packets! {

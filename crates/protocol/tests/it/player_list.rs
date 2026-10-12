@@ -133,7 +133,7 @@ fn pinned_gophertunnel_player_list_add_carries_the_trusted_skin_flag_per_entry()
     let packet = raw_player_list_fixture(GOPHERTUNNEL_PLAYER_LIST_ADD)
         .decode()
         .expect("owned Add PlayerList decode");
-    let packets::Packet::PlayerList(content) = &packet.data else {
+    let packets::Packet::PlayerList(content) = &*packet.data else {
         panic!("expected PlayerList");
     };
     assert_eq!(content.entries.len(), 1);

@@ -35,7 +35,7 @@ fn dimension_completion_packet_uses_action_fourteen_and_empty_block_coordinates(
     let packet = dimension_change_done_packet(42);
     let encoded = protocol::encode(&packet).unwrap();
     let decoded = protocol::decode_batch(encoded).unwrap();
-    let packets::Packet::PlayerAction(action) = &decoded[0].data else {
+    let packets::Packet::PlayerAction(action) = &*decoded[0].data else {
         panic!("player action packet");
     };
     assert_eq!(action.player_runtime_id.0, 42);
@@ -52,7 +52,7 @@ fn dimension_loading_pair_preserves_absent_zero_and_full_width_identifiers() {
             let packet = loading_screen_packet(phase, loading_screen_id);
             let encoded = protocol::encode(&packet).unwrap();
             let decoded = protocol::decode_batch(encoded).unwrap();
-            let packets::Packet::ServerboundLoadingScreen(loading) = &decoded[0].data else {
+            let packets::Packet::ServerboundLoadingScreen(loading) = &*decoded[0].data else {
                 panic!("loading screen packet");
             };
             assert_eq!(loading.loading_screen_id.map(|id| id.0), loading_screen_id);

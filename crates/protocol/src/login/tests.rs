@@ -169,10 +169,8 @@ fn unrelated_world_semantic_skip_does_not_recover_pending_cached_terrain() {
     assert_eq!(resolver.stats().pending_transactions, 0);
     assert!(matches!(
         resolver.pop_ready(),
-        Some(BlobCacheReady::Packet(Packet {
-            data: packets::Packet::LevelChunk(_),
-            ..
-        }))
+        Some(BlobCacheReady::Packet(packet))
+            if matches!(*packet.data, packets::Packet::LevelChunk(_))
     ));
 }
 
@@ -1007,7 +1005,7 @@ fn absolute_actor_move_rejects_truncated_and_trailing_bodies() {
 
     for (body, actual) in [
         (&valid[..valid.len() - 1], 15_usize),
-        (&[valid.as_ref(), &[0xff]].concat(), 17_usize),
+        (&[&valid[..], &[0xff][..]].concat(), 17_usize),
     ] {
         let raw = raw_packet(PacketId::MoveActorAbsolute, body);
         let error = decode_world_raw_with(raw, 0, |_| {
@@ -1149,7 +1147,7 @@ fn cached_sub_chunks_detach_from_their_batch() {
         !batch.as_ptr_range().contains(&frame.as_ptr()),
         "the entry no longer shares the batch allocation"
     );
-    let packets::Packet::SubChunk(decoded) = raw.decode().unwrap().data else {
+    let packets::Packet::SubChunk(decoded) = *raw.decode().unwrap().data else {
         panic!("a SubChunk");
     };
     let retained = decoded.sub_chunk_data[0]

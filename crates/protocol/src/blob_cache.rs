@@ -472,11 +472,11 @@ pub struct BlobCacheResolver {
 }
 
 fn ready_value_accounted_bytes(value: &ResolverReady) -> Result<usize, BlobCacheError> {
-    match value {
-        ResolverReady::Packet(Packet {
-            data: packets::Packet::LevelChunk(packet),
-            ..
-        }) => {
+    let ResolverReady::Packet(packet) = value else {
+        return Err(BlobCacheError::NotCachedPacket);
+    };
+    match &*packet.data {
+        packets::Packet::LevelChunk(packet) => {
             // 1.26.40 writes the blob hashes unconditionally rather than
             // nesting them behind an optional, so they are always accounted.
             let hash_bytes = packet
@@ -489,10 +489,7 @@ fn ready_value_accounted_bytes(value: &ResolverReady) -> Result<usize, BlobCache
                 .and_then(|bytes| bytes.checked_add(hash_bytes))
                 .ok_or(BlobCacheError::ByteCountOverflow)
         }
-        ResolverReady::Packet(Packet {
-            data: packets::Packet::SubChunk(packet),
-            ..
-        }) => {
+        packets::Packet::SubChunk(packet) => {
             // Caching is now a packet-level flag plus a per-entry optional
             // blob ID rather than two separate entry types, so an already
             // resolved reply is one whose cache flag is clear.
@@ -516,9 +513,7 @@ fn ready_value_accounted_bytes(value: &ResolverReady) -> Result<usize, BlobCache
                 })
                 .ok_or(BlobCacheError::ByteCountOverflow)
         }
-        ResolverReady::Packet(_)
-        | ResolverReady::WorldEvent(_)
-        | ResolverReady::LevelChunkBytes(_, _) => Err(BlobCacheError::NotCachedPacket),
+        _ => Err(BlobCacheError::NotCachedPacket),
     }
 }
 

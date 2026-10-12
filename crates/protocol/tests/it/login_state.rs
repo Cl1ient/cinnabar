@@ -214,6 +214,11 @@ fn negative_limit_level_chunk_body() -> Vec<u8> {
     body
 }
 
+/// The generated packets `packets` carry, for slice patterns over a sent batch.
+fn wire_packets(packets: &[Packet]) -> Vec<&packets::Packet> {
+    packets.iter().map(|packet| &*packet.data).collect()
+}
+
 /// The handoff ending at the `startup` packets, with no packs.
 fn handoff_frame(client_cache: bool, startup: &[Packet]) -> Bytes {
     let metadata = serde_json::to_vec(&serde_json::json!({
@@ -268,23 +273,16 @@ async fn run_core(
     let spawn_request = core.receive_packets().await?;
     assert!(
         matches!(
-            spawn_request.as_slice(),
+            wire_packets(&spawn_request).as_slice(),
             [
-                Packet {
-                    data: packets::Packet::RequestChunkRadius(RequestChunkRadius {
-                        chunk_radius: wire::ZigZag32(16),
-                        max_chunk_radius: wire::U8(16),
-                    }),
+                packets::Packet::RequestChunkRadius(RequestChunkRadius {
+                    chunk_radius: wire::ZigZag32(16),
+                    max_chunk_radius: wire::U8(16),
+                }),
+                packets::Packet::ServerboundLoadingScreen(ServerboundLoadingScreen {
+                    loading_screen_packet_type: ServerboundLoadingScreenType::Startloadingscreen,
                     ..
-                },
-                Packet {
-                    data: packets::Packet::ServerboundLoadingScreen(ServerboundLoadingScreen {
-                        loading_screen_packet_type:
-                            ServerboundLoadingScreenType::Startloadingscreen,
-                        ..
-                    }),
-                    ..
-                },
+                }),
             ]
         ),
         "the client requests its radius and starts loading after StartGame: {spawn_request:?}"
@@ -302,25 +300,18 @@ async fn run_core(
     core.send(batch(&prerequisites)).await?;
 
     let finish = core.receive_packets().await?;
+    let finish_packets = wire_packets(&finish);
     assert!(
         matches!(
-            finish.as_slice(),
+            finish_packets.as_slice(),
             [
-                Packet {
-                    data: packets::Packet::ServerboundLoadingScreen(ServerboundLoadingScreen {
-                        loading_screen_packet_type: ServerboundLoadingScreenType::Endloadingscreen,
-                        ..
-                    }),
+                packets::Packet::ServerboundLoadingScreen(ServerboundLoadingScreen {
+                    loading_screen_packet_type: ServerboundLoadingScreenType::Endloadingscreen,
                     ..
-                },
-                Packet {
-                    data: packets::Packet::SetLocalPlayerAsInitialized(
-                        SetLocalPlayerAsInitialized {
-                            player_id: ActorRuntimeID(RUNTIME_ID)
-                        }
-                    ),
-                    ..
-                },
+                }),
+                packets::Packet::SetLocalPlayerAsInitialized(SetLocalPlayerAsInitialized {
+                    player_id: ActorRuntimeID(RUNTIME_ID)
+                }),
             ]
         ),
         "loading ends with one initialization: {finish:?}"
@@ -447,14 +438,10 @@ async fn answer(
 ) -> Option<()> {
     // Vanilla preserves the from-server flag in its echo.
     if let [
-        Packet {
-            data:
-                packets::Packet::NetworkStackLatency(NetworkStackLatency {
-                    creation_time: wire::U64LE(777_000_000),
-                    is_from_server: true,
-                }),
-            ..
-        },
+        packets::Packet::NetworkStackLatency(NetworkStackLatency {
+            creation_time: wire::U64LE(777_000_000),
+            is_from_server: true,
+        }),
     ] = packets
     {
         return Some(());
@@ -478,14 +465,11 @@ async fn answer(
         let expected_hash = protocol::client_blob_hash(expected);
         assert!(
             matches!(
-                packets,
-                [Packet {
-                    data: packets::Packet::ClientCacheBlobStatus(ClientCacheBlobStatus {
+                wire_packets(packets).as_slice(),
+                [packets::Packet::ClientCacheBlobStatus(ClientCacheBlobStatus {
                         missing_ids,
                         found_ids
-                    }),
-                    ..
-                }] if missing_ids == &[wire::U64LE(expected_hash)] && found_ids.is_empty()
+                    })] if missing_ids == &[wire::U64LE(expected_hash)] && found_ids.is_empty()
             ),
             "the client asks for exactly the missing blob: {packets:?}"
         );
@@ -504,13 +488,10 @@ async fn answer(
     *answered = true;
     assert!(
         matches!(
-            packets,
-            [Packet {
-                data: packets::Packet::ClientCacheStatus(ClientCacheStatus {
-                    is_cache_supported: true
-                }),
-                ..
-            }]
+            wire_packets(packets).as_slice(),
+            [packets::Packet::ClientCacheStatus(ClientCacheStatus {
+                is_cache_supported: true
+            })]
         ),
         "the test's own play send arrives: {packets:?}"
     );

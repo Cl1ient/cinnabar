@@ -47,7 +47,7 @@ fn blob_cache_delta_cost() {
             let Some(BlobCacheReady::Packet(packet)) = resolver.pop_ready() else {
                 panic!("resolved packet")
             };
-            let packets::Packet::LevelChunk(packet) = packet.data else {
+            let packets::Packet::LevelChunk(packet) = *packet.data else {
                 panic!("level chunk")
             };
             assert_eq!(&packet.serialized_chunk_data[..], payload);

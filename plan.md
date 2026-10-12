@@ -3884,9 +3884,12 @@ order:
    server-authoritative acceptance before enabling outbound movement from `Physics`; keep
    `FreeCamera` network-silent. Incomplete after the rewind-timeline tranche: server flags
    only end swim/glide/crawl (never start them) and a held sneak button reasserts itself;
-   item-use slowdown assumes no `minecraft:use_modifiers` on the used item; swim stop
-   predicates, conditional vertical steering and Dolphin's Grace are unported; no
+   swim stop predicates, conditional vertical steering and Dolphin's Grace are unported; no
    client-predicted vehicles (vehicle corrections are ignored as for an unpredicted mount).
+   Item-use admission distinguishes an absent modifier component from a present component
+   without a movement value for both server and authored foods. Headless checks cover the
+   ordinary enchanted apple and a controlled custom food; the reported server apple's
+   acceptance remains incomplete.
 6. **Phase 5 UI:** implement the UI foundation, receive-only text/HUD, chat, scoreboard and
    boss bars, inventory/interaction, and forms in the numbered 5.1-5.7 order.
 7. **Deferred final Phase 2.6 authority pass:** return to leaf litter and other exact residual

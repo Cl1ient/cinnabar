@@ -54,7 +54,7 @@ pub fn compile_audio_pcm_assets(
     catalog_bytes: &[u8],
     source_manifest: &[u8],
 ) -> Result<CompiledAudioPcmCarrier, AudioPcmCompileError> {
-    let manifest = crate::entity::validate_vanilla_source_manifest(source_manifest)?;
+    let manifest = crate::entity::source_manifest::validate(source_manifest)?;
     let expected = assets::reviewed_audio_pcm_identity();
     if manifest != expected.source_manifest_sha256() {
         return Err(AudioPcmCompileError::Invalid("manifest identity"));

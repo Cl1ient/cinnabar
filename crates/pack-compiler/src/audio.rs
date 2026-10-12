@@ -1,6 +1,6 @@
 //! Deterministic compiler for the pinned vanilla sound-definition catalog.
 
-use crate::entity::validate_vanilla_source_manifest;
+use crate::entity::source_manifest::validate;
 use assets::{
     AudioAlternative, AudioDefinition, MAX_AUDIO_ALTERNATIVES,
     MAX_AUDIO_ALTERNATIVES_PER_DEFINITION, MAX_AUDIO_CATEGORY_BYTES, MAX_AUDIO_DEFINITIONS,
@@ -45,8 +45,7 @@ pub fn compile_audio_assets(
     root: &Path,
     source_manifest: &[u8],
 ) -> Result<CompiledAudioCarrier, AudioCompileError> {
-    let source_manifest_sha256 =
-        validate_vanilla_source_manifest(source_manifest).map_err(AudioCompileError::Manifest)?;
+    let source_manifest_sha256 = validate(source_manifest).map_err(AudioCompileError::Manifest)?;
     let root = root
         .canonicalize()
         .map_err(|source| AudioCompileError::Read {

@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
@@ -34,6 +33,7 @@ mod native_held_items;
 mod pack;
 mod sanitize;
 mod source;
+pub(crate) mod source_manifest;
 mod vanilla_refs;
 mod versions;
 pub use molang::{BlockMolang, BlockStateValue, compile_molang_expression};
@@ -71,7 +71,6 @@ pub struct EntityAssetCompilation {
     pub equipment_bindings: Box<[EquipmentBinding]>,
 }
 
-const MAX_SOURCE_MANIFEST_BYTES: usize = 1024 * 1024;
 const MAX_ENTITY_SOURCE_DIRECTORY_DEPTH: usize = 32;
 
 #[derive(Clone)]
@@ -110,7 +109,7 @@ pub fn compile_entity_assets_with_report(
     root: &Path,
     source_manifest: &[u8],
 ) -> Result<EntityAssetCompilation, AssetError> {
-    let source_manifest_sha256 = validate_source_manifest(source_manifest)?;
+    let source_manifest_sha256 = source_manifest::validate(source_manifest)?;
     let mut selected = Vec::new();
     collect_family(root, "entity", &["json"], &mut selected)?;
     collect_family(root, "models/entity", &["json"], &mut selected)?;
@@ -932,68 +931,6 @@ fn validate_root_fields(
         )));
     }
     Ok(())
-}
-pub(crate) fn validate_vanilla_source_manifest(source: &[u8]) -> Result<[u8; 32], AssetError> {
-    validate_source_manifest(source)
-}
-
-fn validate_source_manifest(source: &[u8]) -> Result<[u8; 32], AssetError> {
-    if source.len() > MAX_SOURCE_MANIFEST_BYTES {
-        return Err(invalid("entity source manifest exceeds bound"));
-    }
-    let canonical = canonical_manifest_line_endings(source)?;
-    let value = parse_unique_json(Path::new("assets/vanilla-source.json"), &canonical)?;
-    let object = value
-        .as_object()
-        .ok_or_else(|| invalid("entity source manifest must be an object"))?;
-    let expected_fields = [
-        "schema",
-        "tag",
-        "commit",
-        "archive",
-        "url",
-        "sha256",
-        "artifact_policy",
-        "cache_dir",
-    ];
-    if object.len() != expected_fields.len()
-        || expected_fields
-            .iter()
-            .any(|field| !object.contains_key(*field))
-    {
-        return Err(invalid(
-            "entity source manifest fields do not match the pin",
-        ));
-    }
-    let digest: [u8; 32] = Sha256::digest(&canonical).into();
-    if digest != assets::vanilla_source_manifest_sha256() {
-        return Err(invalid(
-            "manifest bytes and fields must exactly match the reviewed Mojang Bedrock Samples pin",
-        ));
-    }
-    Ok(digest)
-}
-
-fn canonical_manifest_line_endings(source: &[u8]) -> Result<Cow<'_, [u8]>, AssetError> {
-    if !source.contains(&b'\r') {
-        return Ok(Cow::Borrowed(source));
-    }
-    let mut canonical = Vec::with_capacity(source.len());
-    let mut index = 0;
-    while index < source.len() {
-        match source[index] {
-            b'\r' if source.get(index + 1) == Some(&b'\n') => {
-                canonical.push(b'\n');
-                index += 2;
-            }
-            b'\r' | b'\n' => return Err(invalid("manifest line endings are not canonical")),
-            byte => {
-                canonical.push(byte);
-                index += 1;
-            }
-        }
-    }
-    Ok(Cow::Owned(canonical))
 }
 
 fn invalid(detail: impl Into<Box<str>>) -> AssetError {

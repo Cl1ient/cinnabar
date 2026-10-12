@@ -55,7 +55,7 @@ mod server_lang;
 mod session_entities;
 mod skin_geometry;
 mod skybox;
-mod sound_bank;
+pub mod sound_bank;
 mod sound_events;
 mod stair;
 pub mod starter_skins;
@@ -282,10 +282,6 @@ pub use skin_geometry::{
 };
 pub use skybox::{DEFAULT_NATIVE_SKYBOX_OFFSET, SKYBOX_FACE_COUNT};
 pub use skybox::{PackSkybox, SkyboxDimension, SkyboxFace};
-pub use sound_bank::{
-    MAX_SOUND_BANK_FILES, MAX_SOUND_BANK_PATH_BYTES, MAX_SOUND_BANK_PREFIX_BYTES, SOUND_BANK_MAGIC,
-    SoundBankEntry, SoundBankError, SoundBankIndex, encode_sound_bank, sound_bank_prefix_len,
-};
 pub use sound_events::{FloatRange, RouteLookup, SoundEventTables, SoundRoute};
 pub use stair::StairDirection;
 pub use texture::{

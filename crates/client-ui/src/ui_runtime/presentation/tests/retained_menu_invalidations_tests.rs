@@ -115,14 +115,14 @@ fn install_ping_cells(presentation: &mut UiPresentationRuntime) {
         SERVER_PING_IMAGES[3].into(),
         OreUiSprite {
             page: 0,
-            bounds: [0, 0, 6, 1],
+            bounds: [0, 0, 7, 1],
         },
     )]);
     presentation
         .enable_oreui_originals(OreUiImages {
             pages: vec![OreUiPage {
-                dimensions: [6, 1],
-                pixels: vec![255; 24].into(),
+                dimensions: [7, 1],
+                pixels: vec![255; 28].into(),
             }],
             sprites: Arc::new(sprites),
             loading_frames: Default::default(),

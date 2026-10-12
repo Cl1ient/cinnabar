@@ -81,10 +81,11 @@ fn wheel_reaches_clipped_controls_and_content_resize_clamps_the_offset() {
     let before = frame(&mut presentation, [1280, 720]);
     snapshot::write(&before, "personal-panel-scroll-before");
     let inside = at(&presentation, [65., 45.]);
+    let outside = at(&presentation, [5., 5.]);
     assert!(
         !presentation
             .mod_ui_mut()
-            .scroll_mod_panel(at(&presentation, [5., 5.]), -20., false)
+            .scroll_mod_panel(outside, -20., false)
     );
     assert!(
         presentation
@@ -156,10 +157,11 @@ fn scrollbar_drag_applies_release_position_and_focus_loss_cancels_capture() {
     );
     frame(&mut presentation, [1280, 720]);
     assert_eq!(offset(&presentation), 150.);
+    let inside = at(&presentation, [65., 45.]);
     assert!(
         presentation
             .mod_ui_mut()
-            .scroll_mod_panel(at(&presentation, [65., 45.]), 20., false)
+            .scroll_mod_panel(inside, 20., false)
     );
     frame(&mut presentation, [1280, 720]);
     presentation

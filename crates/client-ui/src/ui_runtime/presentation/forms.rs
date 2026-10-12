@@ -20,7 +20,8 @@ mod credits_renderer;
 pub mod credits_screen;
 pub mod crosshair_settings;
 pub mod emote_screen;
-pub mod engine;
+#[cfg(test)]
+mod engine_tests;
 pub mod experience;
 pub mod experience_modal;
 pub mod fallback;
@@ -70,7 +71,6 @@ pub(crate) mod compatibility_tests;
 mod font_snapshots;
 #[cfg(any(test, feature = "test-support"))]
 pub mod pack_harness;
-pub mod pages;
 #[cfg(test)]
 mod publication_tests;
 #[cfg(test)]
@@ -111,7 +111,7 @@ mod store_tests;
 mod template_screen;
 #[cfg(test)]
 pub mod tests;
-pub mod textures;
+mod texture_sources;
 pub mod toast_screen;
 pub mod vrr_setting;
 pub mod vsync_setting;
@@ -128,13 +128,18 @@ pub use oreui::BedHit;
 pub use sign_editor::SIGN_SCREEN;
 pub use template_screen::ModalEdits;
 
-use super::{TextMetrics, UiPresentationError, UiPresentationRuntime, dynamic_textures};
+use super::{UiPresentationError, UiPresentationRuntime};
 use crate::ui_runtime::scene_stack::ScreenSettingsTable;
-use crate::ui_runtime::{LocalFormAction, ServerFormIdentity, UiRuntime, forms::EngineFrame};
+use crate::ui_runtime::{LocalFormAction, ServerFormIdentity, UiRuntime};
 use assets::RuntimeUiAssets;
 pub use containers::{container_screen_reference, engine_panel_contains, engine_screen_for};
-use engine::screen::PaintFrame;
 pub use recipe_book::{recipe_book_hover, recipe_book_icons, recipe_book_shown};
+use ui_engine::{
+    engine::{FormEngine, screen::PaintFrame},
+    frame::EngineFrame,
+    pages,
+    text_metrics::TextMetrics,
+};
 
 pub use server_pack::ServerUiPack;
 use std::sync::Arc;
@@ -246,11 +251,17 @@ impl UiPresentationRuntime {
         self.preview_dirty = true;
         self.menu_artwork_dirty = true;
         self.rebuild_dynamic_textures();
-        let mut engine =
-            engine::FormEngine::new(assets, catalog, first_page, screen_registry::registry());
+        let mut engine = FormEngine::new(
+            assets,
+            catalog,
+            first_page,
+            screen_registry::registry(),
+            texture_sources::downloads(),
+        );
         engine.textures.server_page =
-            (self.textures.dynamic_start() + dynamic_textures::SERVER_UI_PAGE) as u16;
+            (self.textures.dynamic_start() + pages::SERVER_UI_PAGE) as u16;
         self.engine = Some(Box::new(engine));
+        self.engine_pack = None;
         // A new carrier reads its own credits files and splashes.
         self.screens.credits.forget_content();
         self.screens.splash = std::sync::OnceLock::new();
@@ -265,7 +276,7 @@ impl UiPresentationRuntime {
     /// carrier's from reserved dynamic pages, so the static texture identity the
     /// renderer pins never changes. An empty pack restores vanilla.
     pub fn set_server_ui_pack(&mut self, pack: &ServerUiPack) {
-        let first = self.textures.dynamic_start() + dynamic_textures::SERVER_UI_PAGE;
+        let first = self.textures.dynamic_start() + pages::SERVER_UI_PAGE;
         let Some(engine) = self.engine.as_mut() else {
             return;
         };
@@ -277,18 +288,18 @@ impl UiPresentationRuntime {
         }
         // Palette-only reloads can leave every cached text node unchanged.
         self.last_frame = None;
-        let atlas = server_pack::ServerAtlas::new(
+        let atlas = ui_engine::atlas::ServerAtlas::new(
             &pack.textures,
             pack.view.clone(),
-            dynamic_textures::SERVER_UI_PAGES,
+            pages::SERVER_UI_PAGES,
         )
         .with_preread(
             pack.catalog
                 .as_ref()
-                .and_then(hud::prepared::take_textures)
+                .and_then(ui_engine::prepared::take_textures)
                 .as_deref(),
         );
-        bevy::log::info!(
+        tracing::info!(
             layers = pack.ui_layers.len(),
             ui_files = pack.ui_layers.iter().map(Vec::len).sum::<usize>(),
             textures = pack.textures.len(),
@@ -404,7 +415,9 @@ impl UiPresentationRuntime {
             }
         }
         if let Some(engine) = self.engine.as_mut() {
-            engine.textures.set_fallbacks(icons, vanilla);
+            engine
+                .textures
+                .set_fallbacks(icons, Arc::new(texture_sources::VanillaPack::new(vanilla)));
         }
     }
 
@@ -412,7 +425,10 @@ impl UiPresentationRuntime {
     #[cfg(test)]
     pub fn set_vanilla_texture_root(&mut self, vanilla: std::path::PathBuf) {
         if let Some(engine) = self.engine.as_mut() {
-            engine.textures.set_fallbacks(Default::default(), vanilla);
+            engine.textures.set_fallbacks(
+                Default::default(),
+                Arc::new(texture_sources::VanillaPack::new(vanilla)),
+            );
         }
     }
 
@@ -457,10 +473,16 @@ impl UiPresentationRuntime {
 
     /// Applies the runtime's server UI pack when it changes identity.
     pub(super) fn observe_server_ui(&mut self, pack: Option<&Arc<ServerUiPack>>) {
-        let Some(engine) = self.engine.as_mut() else {
+        if self.engine.is_none() {
             return;
+        }
+        let same = match (&self.engine_pack, pack) {
+            (Some(current), Some(next)) => Arc::ptr_eq(current, next),
+            (None, None) => true,
+            _ => false,
         };
-        if !engine.take_server_source(pack) {
+        self.engine_pack = pack.cloned();
+        if same {
             return;
         }
         self.screens.credits.forget_content();
@@ -729,7 +751,7 @@ fn log_path(
 ) {
     if *logged != Some(identity) {
         *logged = Some(identity);
-        bevy::log::info!(?identity, path, reason, "server form render path");
+        tracing::info!(?identity, path, reason, "server form render path");
     }
 }
 

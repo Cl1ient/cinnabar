@@ -169,7 +169,7 @@ fn form_compatibility_before_after_snapshots() {
 }
 
 /// Reveals the lower controls using the rendered scroll extents.
-fn scroll_to_end(runtime: &mut UiRuntime, frame: &crate::ui_runtime::forms::EngineFrame) {
+fn scroll_to_end(runtime: &mut UiRuntime, frame: &ui_engine::frame::EngineFrame) {
     for (key, metrics) in &frame.report.scrolls {
         runtime
             .server_forms_mut()

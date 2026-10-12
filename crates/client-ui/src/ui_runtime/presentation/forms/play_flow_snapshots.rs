@@ -228,7 +228,7 @@ fn the_disconnect_screen_has_a_way_back() {
     presentation.set_menu_view(Some(view));
     let runtime = UiRuntime::new(1);
     let dpi = DpiScale::new(1.0).unwrap();
-    let metrics = super::super::TextMetrics::for_viewport([1280, 720], dpi, None);
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport([1280, 720], dpi, None);
     let mut nodes = Vec::new();
     let mut next = 1;
     let hits = presentation

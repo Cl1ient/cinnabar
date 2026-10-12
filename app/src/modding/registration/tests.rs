@@ -1,4 +1,7 @@
+use super::status::{MAX_MESSAGE_BYTES, WRITE_ID};
 use super::*;
+use client_ui::ui_runtime::presentation::UiPresentationRuntime;
+use std::fs;
 
 struct Scratch(PathBuf);
 
@@ -152,9 +155,9 @@ fn world() -> (World, Receiver<Message>, Receiver<ModHost>) {
         fallback_retired: Mutex::new(Vec::with_capacity(2)),
         settings: Arc::new(Mutex::new(None)),
     });
-    world.insert_resource(
+    world.insert_resource(UiPresentationResource(
         UiPresentationRuntime::new(client_ui::test_support::fixture_font()).unwrap(),
-    );
+    ));
     (world, receive_messages, receive_retired)
 }
 
@@ -298,7 +301,7 @@ fn id_only_reattachment_preserves_guest_state_panel_input_and_interaction() {
         .host
         .set_panel_open(true);
     world
-        .resource_mut::<UiPresentationRuntime>()
+        .resource_mut::<UiPresentationResource>()
         .set_mod_panel_open(true);
     world.resource_mut::<ModInteraction>().attack_reach = Some(5.0);
     let identity = world
@@ -323,7 +326,7 @@ fn id_only_reattachment_preserves_guest_state_panel_input_and_interaction() {
         &runtime.hosts.host.panel().unwrap().controls[0],
         ui::mod_panel::Control::Toggle { value: true, .. }
     ));
-    assert!(world.resource::<UiPresentationRuntime>().mod_panel_open());
+    assert!(world.resource::<UiPresentationResource>().mod_panel_open());
     assert_eq!(world.resource::<ModInteraction>().attack_reach, Some(5.0));
     let Message::Acknowledge { status, .. } = messages.try_recv().unwrap() else {
         panic!("expected reuse acknowledgment")
@@ -430,7 +433,7 @@ fn replacing_a_registered_component_discards_its_pending_jump() {
     let mut physics = world.resource_mut::<client_interaction::movement::LocalPhysicsController>();
     physics.set_jump_pulse_scope(Some((1, 0)));
     let frame = physics.advance(
-        std::time::Duration::from_secs_f64(1.0 / world::TICKS_PER_SECOND as f64),
+        std::time::Duration::from_secs_f64(1.0 / simulation_clock::TICKS_PER_SECOND as f64),
         sim::MovementInput::default(),
         &Air,
     );
@@ -456,7 +459,7 @@ fn disable_and_invalid_registration_revoke_all_owned_outputs() {
         world.resource_mut::<ModInteraction>().attack_reach = Some(6.0);
         world.resource_mut::<VisualTimeOverride>().0 = Some(18_000);
         world
-            .resource_mut::<UiPresentationRuntime>()
+            .resource_mut::<UiPresentationResource>()
             .set_mod_panel_open(true);
         let mut scene = render_scene::ModRenderScene::default();
         scene.apply(&rendered_output(), 7);
@@ -483,7 +486,7 @@ fn disable_and_invalid_registration_revoke_all_owned_outputs() {
         assert!(!world.contains_resource::<ModRuntime>());
         assert!(!world.contains_resource::<ModInteraction>());
         assert!(!world.contains_resource::<VisualTimeOverride>());
-        assert!(!world.resource::<UiPresentationRuntime>().mod_panel_open());
+        assert!(!world.resource::<UiPresentationResource>().mod_panel_open());
         assert_eq!(retired.try_recv().unwrap().label(), Some("Hello"));
     }
 }
@@ -574,7 +577,7 @@ fn saturated_retirement_queue_releases_authority_before_waiting_for_disposal() {
         .host
         .set_panel_open(true);
     world
-        .resource_mut::<UiPresentationRuntime>()
+        .resource_mut::<UiPresentationResource>()
         .set_mod_panel_open(true);
     world.resource_mut::<ModInteraction>().attack_reach = Some(6.0);
     world.resource_mut::<VisualTimeOverride>().0 = Some(18_000);
@@ -605,7 +608,7 @@ fn saturated_retirement_queue_releases_authority_before_waiting_for_disposal() {
     assert!(runtime.suspended);
     assert!(!runtime.hosts.host.panel_open());
     assert!(!runtime.controls.focused);
-    assert!(!world.resource::<UiPresentationRuntime>().mod_panel_open());
+    assert!(!world.resource::<UiPresentationResource>().mod_panel_open());
     assert_eq!(world.resource::<ModInteraction>().attack_reach, None);
     assert_eq!(world.resource::<VisualTimeOverride>().0, None);
     let Message::Acknowledge { status, .. } = messages.try_recv().unwrap() else {

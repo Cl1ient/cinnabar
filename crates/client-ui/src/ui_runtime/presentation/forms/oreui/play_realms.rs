@@ -2,12 +2,12 @@
 //! or join with pending invites, then your and joined Realms) and the selected
 //! Realm's details in eight (10:3 image, name and tags, the hero Play button).
 
-use super::super::engine::screen::PaintError;
 use super::grid::{Grid, space};
 use super::paint::{Bounds, Canvas};
 use super::theme::{BODY, NEUTRAL80, NEUTRAL100, SECONDARY_BUTTON, TEXT, TEXT_DARK, TEXT_DIMMER};
 use super::widgets::{Variant, button, row, row_text, section_label, side_menu, tag};
 use launcher::menu::{MenuAction, MenuRealmCard, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 /// Owner and invited tag fill.
 const PRIMARY_TINT: [u8; 4] = [0x6c, 0xc3, 0x49, 255];

@@ -6,10 +6,8 @@ use launcher::menu::{MenuAction, MenuScreen, MenuView};
 use render_model::{UiRenderTextureArray, UiTexturePage};
 use ui::{IconRef, UiNode, UiPoint, UiRect};
 
-use super::super::menu_artwork::TITLE_KEY;
 use super::super::player_preview::MenuPreviewConfig;
-use super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime, dynamic_textures};
-use super::engine::screen::{PaintFrame, Screen};
+use super::super::{UiPresentationError, UiPresentationRuntime};
 use super::loading_screen::LoadingStage;
 use super::menu_screens::Translate;
 use super::oreui::{
@@ -19,6 +17,9 @@ use super::oreui::{
     menu_screen::{self, MenuGeometry, MenuInput},
 };
 use crate::ui_runtime::{UiRuntime, oreui_assets::OreUiImages};
+use ui_engine::engine::screen::{PaintFrame, Screen};
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::textures::TITLE_KEY;
 
 impl UiPresentationRuntime {
     /// Draws an owned OreUI route, including the owner's menu design extensions.
@@ -34,7 +35,7 @@ impl UiPresentationRuntime {
         translate: Translate<'_>,
     ) -> Result<Option<Vec<(MenuAction, UiRect)>>, UiPresentationError> {
         #[cfg(feature = "tracy")]
-        let _screen_span = bevy::log::info_span!("ui.oreui_paint").entered();
+        let _screen_span = tracing::info_span!("ui.oreui_paint").entered();
         if !menu_screen::draws_menu(view) {
             return Ok(None);
         }
@@ -410,7 +411,7 @@ impl UiPresentationRuntime {
         self.textures = Arc::new(textures);
         if let Some(engine) = self.engine.as_mut() {
             engine.textures.server_page =
-                (self.textures.dynamic_start() + dynamic_textures::SERVER_UI_PAGE) as u16;
+                (self.textures.dynamic_start() + ui_engine::pages::SERVER_UI_PAGE) as u16;
         }
         self.preview_dirty = true;
         self.menu_artwork_dirty = true;

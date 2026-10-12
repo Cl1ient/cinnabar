@@ -109,7 +109,7 @@ fn a_rejected_pearl_does_not_start_its_cooldown() {
     assert_eq!(runtime.cooldown_progress(cooldown, 100), 0.0);
     let (ready, _open) = AdmissionQueue::with_command_capacity(2);
     send_use(&mut runtime, &mut swings, &pearl(110), &ready);
-    assert_eq!(runtime.cooldowns, [("ender_pearl", 130)]);
+    assert_eq!(runtime.cooldowns, [(cooldown.category, 130)]);
     assert_eq!(ready.pending_command_count(), 2);
     assert_eq!(runtime.predicted.as_ref().unwrap().stack.count(), 15);
     assert_eq!(runtime.cooldown_progress(cooldown, 110), 1.0);

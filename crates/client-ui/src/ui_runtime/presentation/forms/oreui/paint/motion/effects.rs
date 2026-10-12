@@ -1,7 +1,7 @@
 use super::super::super::motion::{Surface, Tween};
 use super::{PaintError, transform_nodes};
-use crate::ui_runtime::presentation::forms::engine::rect;
 use ui::{UiNode, UiNodeId, UiVisual};
+use ui_engine::engine::rect;
 
 const OVERLAY_SECONDS: f64 = 0.100;
 const EXIT_SECONDS: f64 = 0.080;

@@ -1,11 +1,11 @@
 //! Cached cosmetic crosshair coverage drawn only by a visible JSON-UI cursor renderer.
 
-use super::engine::Canvas;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use ui::{
     UiBlendMode, UiLimits, UiMesh, UiMeshBatch, UiMeshVertex, UiVisual,
     mod_hud::{Crosshair, CrosshairShape},
 };
+use ui_engine::engine::Canvas;
 
 const MAX_CACHED_CROSSHAIRS: usize = 16;
 // Draw emission expands each triangle corner into one retained vertex.

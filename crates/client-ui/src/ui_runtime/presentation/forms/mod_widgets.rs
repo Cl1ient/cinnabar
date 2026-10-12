@@ -6,14 +6,7 @@ pub(super) mod template;
 pub(super) mod tests;
 mod world_labels;
 
-use super::{
-    engine::{
-        ScreenArt,
-        screen::{CustomRenderer, PaintFrame},
-    },
-    hud::CachedScreen,
-    item_renderer::ItemRenderer,
-};
+use super::item_renderer::ItemRenderer;
 use crate::ui_runtime::UiRuntime;
 use json_ui::{Catalog, Context, DataSource, Scalar, ViewState};
 use std::sync::Arc;
@@ -21,10 +14,15 @@ use ui::{
     IconRef, UiNode,
     mod_hud::{Crosshair, Hud, MAX_HUD_ROWS},
 };
-use {
-    super::super::{TextMetrics, UiPresentationRuntime},
-    ui::FONT_DESIGN_PIXEL_TEXELS,
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::{
+    cached_screen::CachedScreen,
+    engine::{
+        ScreenArt,
+        screen::{CustomRenderer, PaintFrame},
+    },
 };
+use {super::super::UiPresentationRuntime, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 pub(super) struct ModWidgets {
     content: Hud,
@@ -252,7 +250,7 @@ impl UiPresentationRuntime {
             nodes.truncate(rollback.0);
             *next = rollback.1;
             self.screens.mod_widgets = None;
-            bevy::log::warn!(%error, "personal HUD cards disabled after rendering failure");
+            tracing::warn!(%error, "personal HUD cards disabled after rendering failure");
         }
     }
 }

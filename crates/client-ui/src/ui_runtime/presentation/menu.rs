@@ -11,7 +11,8 @@ use ui::{SafeArea, TextError, TextLayout, TextLayoutCache, TextShadow, UiNode, U
 
 use launcher::menu::{MenuAction, MenuDialog, MenuScreen, MenuView};
 
-use super::{TextMetrics, UiPresentationError, bounded_visible_text, rect};
+use super::{UiPresentationError, bounded_visible_text, rect};
+use ui_engine::text_metrics::TextMetrics;
 
 mod components;
 mod screens;
@@ -191,7 +192,7 @@ fn scroll_content(
             hits.push((action, rect(left, top, right, bottom)?));
         }
     }
-    scrolls.set_areas(vec![super::menu_scroll::ScrollArea {
+    scrolls.set_areas(vec![ui_engine::scroll::ScrollArea {
         key: "fallback_content".into(),
         viewport: rect(
             viewport.min().x() + safe_area.left(),

@@ -5,10 +5,11 @@ use std::sync::Arc;
 use json_ui::{DataSource, Scalar, ViewState};
 use ui::UiNode;
 
-use super::engine::{ScreenArt, screen::PaintFrame};
 use crate::ui_runtime::UiRuntime;
+use ui_engine::engine::{ScreenArt, screen::PaintFrame};
+use ui_engine::text_metrics::TextMetrics;
 use {
-    super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime},
+    super::super::{UiPresentationError, UiPresentationRuntime},
     ui::FONT_DESIGN_PIXEL_TEXELS,
 };
 
@@ -193,7 +194,7 @@ impl UiPresentationRuntime {
     ) -> Option<(u16, [u16; 4])> {
         let engine = self.engine.as_deref()?;
         let atlas = engine.textures.lock();
-        let textures = super::textures::Textures {
+        let textures = ui_engine::textures::Textures {
             assets: engine.assets(),
             set: &engine.textures,
             atlas: &atlas,

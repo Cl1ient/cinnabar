@@ -1,6 +1,7 @@
 use super::super::review_tests::{paint, solids};
 use super::super::theme::{NEUTRAL, NEUTRAL80, PRIMARY_ROLE, SECONDARY};
-use crate::ui_runtime::presentation::{TextMetrics, UiPresentationRuntime, tests::fixture_font};
+use crate::ui_runtime::presentation::{UiPresentationRuntime, tests::fixture_font};
+use ui_engine::text_metrics::TextMetrics;
 use {
     super::*,
     launcher::local_worlds::{Screen, Tab},

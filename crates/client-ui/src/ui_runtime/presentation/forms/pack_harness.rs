@@ -12,10 +12,11 @@ use assets::{RuntimeFontCatalog, RuntimeUiAssets};
 use protocol::{FormKind, FormRequestEvent, ServerFormModel, TextMenuForm, UiEvent};
 use ui::{DpiScale, UiNode, UiVisual};
 
-use super::super::{TextMetrics, UiPresentationRuntime};
+use super::super::UiPresentationRuntime;
 use super::ServerUiPack;
 use crate::test_support::fixture_font;
 use crate::ui_runtime::{SequencedUiEvent, UiRuntime};
+use ui_engine::text_metrics::TextMetrics;
 
 const PACK_ENV: &str = "CINNABAR_FORM_PACK_DIR";
 
@@ -280,7 +281,10 @@ pub fn engine_presentation() -> Option<UiPresentationRuntime> {
     presentation.enable_json_ui(carrier).unwrap();
     let vanilla = local(&launcher::install_layout::vanilla_pack_relative());
     let engine = presentation.engine.as_mut().unwrap();
-    engine.textures.set_fallbacks(Default::default(), vanilla);
+    engine.textures.set_fallbacks(
+        Default::default(),
+        Arc::new(super::texture_sources::VanillaPack::new(vanilla)),
+    );
     Some(presentation)
 }
 
@@ -477,7 +481,7 @@ fn vanilla_form_button_images_resolve() {
     let remote = engine.textures.remote.clone();
     render(&mut presentation, &runtime, [1280, 720], 1.0);
     test_time::wait_until(std::time::Duration::from_secs(5), || {
-        remote.state(&url) != launcher_host::remote_images::RemoteState::Loading
+        remote.state(&url) != ui_engine::sources::RemoteImage::Loading
     });
     render(&mut presentation, &runtime, [1280, 720], 1.0);
     let (drawn, missing) = presentation.engine.as_ref().unwrap().drawn_sprites();

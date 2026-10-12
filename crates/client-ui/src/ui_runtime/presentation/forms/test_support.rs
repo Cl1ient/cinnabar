@@ -163,11 +163,11 @@ pub fn text_metrics(
     physical_size: [u32; 2],
     dpi: ui::DpiScale,
     preference: Option<u8>,
-) -> super::super::text_metrics::TextMetrics {
-    super::super::text_metrics::TextMetrics::for_viewport(physical_size, dpi, preference)
+) -> ui_engine::text_metrics::TextMetrics {
+    ui_engine::text_metrics::TextMetrics::for_viewport(physical_size, dpi, preference)
 }
 
 /// Reads the renderer's selected text scale without exposing mutable metrics.
-pub fn text_scale(metrics: &super::super::text_metrics::TextMetrics) -> ui::UiScale {
+pub fn text_scale(metrics: &ui_engine::text_metrics::TextMetrics) -> ui::UiScale {
     metrics.scale
 }

@@ -20,6 +20,7 @@ reads = [
 test-support = []
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 zeroize = "1"
 cap-std = "3.4.5"
 cap-fs-ext = "3.4.5"

@@ -6,12 +6,12 @@ mod library;
 #[cfg(test)]
 mod tests;
 
-use super::super::engine::screen::PaintError;
 use super::grid::{Grid, space};
 use super::paint::{Bounds, Canvas};
 use super::widgets;
 use launcher::dressing_room::Action;
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 pub(super) struct PreviewArea {
     pub(super) control: Bounds,

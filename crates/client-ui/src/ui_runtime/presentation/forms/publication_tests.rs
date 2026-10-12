@@ -163,10 +163,10 @@ fn local_server_ui_publication_profile() {
         let _ = ScreenSettingsTable::for_catalog(pack.catalog.as_ref().unwrap(), &context);
         settings.push(started.elapsed());
         let started = Instant::now();
-        let _ = server_pack::ServerAtlas::new(
+        let _ = ui_engine::atlas::ServerAtlas::new(
             &pack.textures,
             pack.view.clone(),
-            dynamic_textures::SERVER_UI_PAGES,
+            ui_engine::pages::SERVER_UI_PAGES,
         );
         indices.push(started.elapsed());
         let started = Instant::now();

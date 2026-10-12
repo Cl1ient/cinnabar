@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 
-use super::super::super::engine::screen::PaintError;
 use super::super::super::menu_screens::Translate;
 use super::super::modal::{self, Modal};
 use super::super::paint::{Bounds, Canvas};
@@ -14,6 +13,7 @@ use launcher::menu::{
     MenuAction, MenuView,
     settings_options::{SETTINGS_OPTIONS, SettingKind},
 };
+use ui_engine::engine::screen::PaintError;
 
 pub(super) const SELECT_HEIGHT: f32 = 4.6;
 

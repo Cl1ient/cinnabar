@@ -51,6 +51,7 @@ tracy = ["bevy/trace", "bevy/debug", "dep:tracing-tracy", "dep:profiling", "chun
 reports = []
 
 [dependencies]
+simulation-clock = { path = "../crates/simulation-clock" }
 render-scene = { path = "../crates/render-scene" }
 client-shell = { path = "../crates/client-shell" }
 client-interaction = { path = "../crates/client-interaction" }
@@ -112,6 +113,7 @@ thiserror.workspace = true
 url = "2"
 tokio.workspace = true
 ui = { path = "../crates/ui" }
+ui-engine = { path = "../crates/ui-engine" }
 wgpu.workspace = true
 winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
 world = { path = "../crates/world" }

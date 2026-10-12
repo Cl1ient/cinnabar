@@ -39,6 +39,17 @@ fn actor_with(
     feet: [f32; 3],
     metadata: HashMap<u32, ActorMetadataValue>,
 ) -> ActorSnapshot {
+    actor_with_base(runtime_id, identifier, Some(""), feet, metadata)
+}
+
+/// Spawns an actor after an optional advertised base has been admitted.
+fn actor_with_base(
+    runtime_id: u64,
+    identifier: &str,
+    base: Option<&str>,
+    feet: [f32; 3],
+    metadata: HashMap<u32, ActorMetadataValue>,
+) -> ActorSnapshot {
     let mut authority = WorldAuthority::new(
         protocol::WorldBootstrap {
             dimension: 0,
@@ -54,6 +65,22 @@ fn actor_with(
         feet,
         None,
     );
+    if let Some(base) = base {
+        authority
+            .apply_ordered_event(
+                protocol::WorldEvent::Actor(protocol::ActorEvent::Identifiers(
+                    protocol::ActorIdentifierRegistry {
+                        entries: Arc::from([protocol::ActorIdentifier {
+                            identifier: identifier.into(),
+                            base_identifier: base.into(),
+                        }]),
+                        skipped: 0,
+                    },
+                )),
+                Some(1),
+            )
+            .unwrap();
+    }
     let spawn = protocol::ActorSpawnEvent {
         dimension: 0,
         unique_id: runtime_id as i64 * 10,
@@ -79,7 +106,7 @@ fn actor_with(
     authority
         .apply_ordered_event(
             protocol::WorldEvent::Actor(protocol::ActorEvent::Spawn(spawn)),
-            Some(1),
+            Some(2),
         )
         .unwrap();
     let mut actor = authority
@@ -1041,4 +1068,29 @@ fn ordered_hitboxes_use_the_first_intersection_within_reach() {
     ];
     let hit = pick_actor_by([&actor].into_iter(), |_| boxes, None, EYE, NORTH, 5.0).unwrap();
     assert!((hit.distance - 2.9).abs() < 1e-6, "{}", hit.distance);
+}
+
+#[test]
+fn advertised_projectile_base_excludes_picking_and_placement_obstruction() {
+    let actor = actor_with_base(
+        80,
+        "fixture:projectile",
+        Some("minecraft:arrow"),
+        [0.0, 0.0, -2.0],
+        HashMap::from([
+            (
+                BOUNDING_BOX_WIDTH_METADATA_KEY,
+                ActorMetadataValue::Float(0.6),
+            ),
+            (
+                BOUNDING_BOX_HEIGHT_METADATA_KEY,
+                ActorMetadataValue::Float(2.0),
+            ),
+        ]),
+    );
+    assert_eq!(
+        pick_actor(std::iter::once(&actor), None, EYE, NORTH, 5.0),
+        None
+    );
+    assert!(!obstructs_placement(&actor));
 }

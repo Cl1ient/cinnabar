@@ -10,13 +10,13 @@ use ui::IconRef;
 use ui::UiRect;
 
 use super::super::super::menu_scroll::MenuScrolls;
-use super::super::engine::{
-    rect,
-    screen::{PaintError, PaintFrame},
-};
 use super::OreUiScreen;
 use super::paint::Canvas;
 use launcher::menu::{MenuAction, MenuScreen, MenuView, auth::AuthState};
+use ui_engine::engine::{
+    rect,
+    screen::{PaintError, PaintFrame},
+};
 
 /// The picker for `view`, with account pictures from `images` once decoded.
 pub(super) fn modal<'a>(view: &'a MenuView, images: &HashMap<String, IconRef>) -> Modal<'a> {
@@ -220,8 +220,9 @@ mod tests {
     use super::super::theme::{
         EDGE, MENU_ITEM, MENU_SECONDARY, NEUTRAL, NEUTRAL100, OVERLAY_MODAL, PRIMARY_ROLE,
     };
-    use crate::ui_runtime::presentation::{TextMetrics, UiPresentationRuntime};
+    use crate::ui_runtime::presentation::UiPresentationRuntime;
     use launcher::menu::MenuDialog;
+    use ui_engine::text_metrics::TextMetrics;
     use {
         super::*,
         launcher::menu::auth::AuthState,

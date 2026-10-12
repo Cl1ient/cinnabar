@@ -120,6 +120,7 @@ impl UiPresentationRuntime {
             settings_slider_drag_targets: Vec::new(),
             menu_scrolls: Default::default(),
             engine: None,
+            engine_pack: None,
             screen_settings: Arc::default(),
             screens: forms::ScreenStates::default(),
             projections: forms::FrameProjections::default(),

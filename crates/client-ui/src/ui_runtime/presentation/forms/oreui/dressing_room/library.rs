@@ -9,10 +9,8 @@ use super::super::{
 use super::{PreviewArea, command, enabled};
 use launcher::dressing_room::{Action, DressingRoomSection};
 use launcher::menu::MenuView;
-use {
-    super::super::super::super::menu_artwork, super::super::super::engine::screen::PaintError,
-    ui::IconRef,
-};
+use ui_engine::engine::screen::PaintError;
+use {super::super::super::super::menu_artwork, ui::IconRef};
 
 pub(super) fn draw(
     canvas: &mut Canvas<'_>,

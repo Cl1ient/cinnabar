@@ -10,15 +10,13 @@ use server_experience::screen::{self, GuiSize, ScreenLayout};
 use ui::UiNode;
 
 use super::{
-    engine::{ScreenArt, screen::PaintFrame},
     item_renderer::ItemRenderer,
     template_screen::{ModalEdits, TemplateArt, TemplateScreen},
 };
 use crate::ui_runtime::UiRuntime;
-use {
-    super::super::{TextMetrics, UiPresentationRuntime},
-    ui::FONT_DESIGN_PIXEL_TEXELS,
-};
+use ui_engine::engine::{ScreenArt, screen::PaintFrame};
+use ui_engine::text_metrics::TextMetrics;
+use {super::super::UiPresentationRuntime, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 mod layering;
 
@@ -89,8 +87,7 @@ impl UiPresentationRuntime {
     /// Follows the player mod's committed screens; `None` (no mod, or a quarantined one)
     /// removes them and drops their catalog and textures.
     pub fn set_mod_screens(&mut self, input: Option<ModScreensInput<'_>>) {
-        let page =
-            (self.textures.dynamic_start() + super::super::dynamic_textures::MOD_UI_PAGE) as u16;
+        let page = (self.textures.dynamic_start() + ui_engine::pages::MOD_UI_PAGE) as u16;
         let slot = &mut self.screens.mod_screens;
         let Some(input) = input else {
             *slot = None;
@@ -109,12 +106,7 @@ impl UiPresentationRuntime {
                     layout
                 });
             *slot = Some(ModScreens {
-                art: TemplateArt::new(
-                    input.id,
-                    input.files,
-                    page,
-                    super::super::dynamic_textures::MOD_UI_PAGES,
-                ),
+                art: TemplateArt::new(input.id, input.files, page, ui_engine::pages::MOD_UI_PAGES),
                 overlay: TemplateScreen::default(),
                 view: TemplateScreen::default(),
                 focus_applied: 0,

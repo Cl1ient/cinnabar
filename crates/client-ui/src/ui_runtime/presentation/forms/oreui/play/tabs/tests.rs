@@ -1,8 +1,9 @@
 use crate::ui_runtime::{
     oreui_assets::load_optional_oreui_images,
-    presentation::{TextMetrics, UiPresentationRuntime, tests::fixture_font},
+    presentation::{UiPresentationRuntime, tests::fixture_font},
 };
 use ui::UiVisual;
+use ui_engine::text_metrics::TextMetrics;
 use {
     super::*,
     launcher::menu::{MenuAction, MenuScreen, MenuView},

@@ -5,15 +5,13 @@ use std::sync::Arc;
 use json_ui::{Catalog, Context, DataSource, Scalar, ViewState};
 use ui::UiNode;
 
-use super::{
-    engine::{ScreenArt, screen::PaintFrame},
-    hud::CachedScreen,
-};
 use crate::ui_runtime::UiRuntime;
-use {
-    super::super::{TextMetrics, UiPresentationRuntime},
-    ui::FONT_DESIGN_PIXEL_TEXELS,
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::{
+    cached_screen::CachedScreen,
+    engine::{ScreenArt, screen::PaintFrame},
 };
+use {super::super::UiPresentationRuntime, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 const SCREEN: &str = "cinnabar_mod.label";
 // Vanilla hud_screen.json:3355 uses this corner anchor and inset for its label.
@@ -126,7 +124,7 @@ impl UiPresentationRuntime {
             nodes.truncate(rollback.0);
             *next = rollback.1;
             self.screens.mod_hud = None;
-            bevy::log::warn!(%error, "extension HUD disabled after rendering failure");
+            tracing::warn!(%error, "extension HUD disabled after rendering failure");
         }
     }
 }

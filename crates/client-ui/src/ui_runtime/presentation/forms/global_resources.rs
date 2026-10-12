@@ -125,7 +125,7 @@ pub(super) fn bind(snapshot: &Snapshot, data: &mut DataSource) {
 
 /// The base pack supplies the fallback artwork for packs without a usable icon.
 fn default_icon() -> String {
-    format!("{}pack_icon.png", super::server_pack::VANILLA_IN_PACKAGE)
+    format!("{}pack_icon.png", ui_engine::atlas::VANILLA_IN_PACKAGE)
 }
 
 /// Opens vanilla's content-tier panel over Settings for the selected active pack.
@@ -209,7 +209,7 @@ pub(super) fn action(view: &MenuView, region: &HitRegion) -> Option<MenuAction> 
 }
 
 /// Extends the carrier's global pack panel beneath the built-in packs.
-pub(super) fn register(registry: &mut super::engine::screen::ScreenRegistry) {
+pub(super) fn register(registry: &mut ui_engine::engine::screen::ScreenRegistry) {
     registry.catalog_mut().extend(extend_catalog);
 }
 

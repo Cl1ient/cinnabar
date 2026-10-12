@@ -28,16 +28,15 @@ use ui::{
     mod_panel::{Control, Event, Panel},
 };
 
-use super::{
-    engine::{ScreenArt, screen::PaintFrame},
-    hud::CachedScreen,
-};
-use crate::ui_runtime::{UiRuntime, forms::EngineFrame};
+use crate::ui_runtime::UiRuntime;
 use data::control_data;
-use {
-    super::super::{TextMetrics, UiPresentationRuntime},
-    ui::FONT_DESIGN_PIXEL_TEXELS,
+use ui_engine::frame::EngineFrame;
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::{
+    cached_screen::CachedScreen,
+    engine::{ScreenArt, screen::PaintFrame},
 };
+use {super::super::UiPresentationRuntime, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 const SCREEN: &str = "cinnabar_personal.panel";
 const ROW_HEIGHT: f64 = 26.0;
@@ -273,7 +272,7 @@ impl UiPresentationRuntime {
                 }
                 Err(error) => {
                     panel.open = false;
-                    bevy::log::warn!(%error, "personal extension panel rejected");
+                    tracing::warn!(%error, "personal extension panel rejected");
                     return;
                 }
             }
@@ -321,7 +320,7 @@ impl UiPresentationRuntime {
             result => {
                 out_of_render(panel, nodes, next, rollback);
                 if let Err(error) = result {
-                    bevy::log::warn!(%error, "personal extension panel disabled after rendering failure");
+                    tracing::warn!(%error, "personal extension panel disabled after rendering failure");
                 }
             }
         }

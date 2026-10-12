@@ -1,11 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use super::super::review_tests::paint;
-use crate::ui_runtime::presentation::{TextMetrics, UiPresentationRuntime, tests::fixture_font};
+use crate::ui_runtime::presentation::{UiPresentationRuntime, tests::fixture_font};
 use launcher::dressing_room::{
     DressingRoomCape, DressingRoomSection, DressingRoomSkin, DressingRoomView, STARTER_SKIN_NAMES,
     SkinEditor, SkinEditorMode, SkinEditorTarget, SkinModel,
 };
+use ui_engine::text_metrics::TextMetrics;
 use {
     super::*,
     launcher::menu::{MenuAction, MenuView},

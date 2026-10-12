@@ -24,7 +24,8 @@ fn animated_radio(
     checked: bool,
     seconds: f64,
 ) -> Vec<ui::UiNode> {
-    use crate::ui_runtime::presentation::{TextMetrics, tests::fixture_font};
+    use crate::ui_runtime::presentation::tests::fixture_font;
+    use ui_engine::text_metrics::TextMetrics;
     let (mut nodes, mut next, mut layouts) = (Vec::new(), 1, ui::TextLayoutCache::new(8, 65536));
     let font = fixture_font();
     let metrics = TextMetrics::for_viewport([1280, 720], ui::DpiScale::new(1.0).unwrap(), Some(2));

@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use json_ui::{Catalog, Context, HUD_SCREEN, HudModel, Timed, hud_data_source, render_screen};
 
-use crate::ui_runtime::presentation::forms::engine::{FormEngine, ScreenArt, screen::PaintFrame};
+use crate::ui_runtime::presentation::UiPresentationRuntime;
 use crate::ui_runtime::presentation::forms::screen_registry::registry;
-use crate::ui_runtime::presentation::{TextMetrics, UiPresentationRuntime};
+use ui_engine::engine::{FormEngine, ScreenArt, screen::PaintFrame};
+use ui_engine::text_metrics::TextMetrics;
 
 #[test]
 fn builtin_java_hud_keeps_single_and_wrapped_chat_rows_nine_pixels_high() {
@@ -60,6 +61,7 @@ fn builtin_java_hud_keeps_single_and_wrapped_chat_rows_nine_pixels_high() {
             catalog.clone(),
             0,
             registry(),
+            crate::ui_runtime::presentation::forms::texture_sources::downloads(),
         );
         let mut drawn = Vec::new();
         let mut painted = Vec::new();

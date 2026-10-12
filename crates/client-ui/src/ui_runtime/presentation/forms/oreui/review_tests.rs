@@ -1,9 +1,9 @@
 //! Small in-memory fixtures for overflow and scrolling review regressions.
 use super::paint::Canvas;
-use crate::ui_runtime::presentation::menu_scroll::ScrollArea;
 use crate::ui_runtime::presentation::tests::fixture_font;
 use launcher::menu::{InboxItem, MenuFriendCard, MenuRealmCard};
 use std::collections::HashMap;
+use ui_engine::scroll::ScrollArea;
 use {
     super::*,
     launcher::menu::{MenuAction, MenuView},

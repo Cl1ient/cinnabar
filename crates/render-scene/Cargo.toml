@@ -11,6 +11,7 @@ enhanced-diagnostics = ["render-model/enhanced-diagnostics"]
 tracy = ["dep:tracy-client"]
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 assets = { path = "../assets" }
 bevy.workspace = true
 bytemuck = { version = "1", features = ["derive"] }

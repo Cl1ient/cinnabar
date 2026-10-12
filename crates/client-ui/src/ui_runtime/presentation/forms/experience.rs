@@ -1,18 +1,16 @@
 //! Host-owned consent and status chrome, resolved from a private JSON-UI catalog.
 
-use super::{
-    engine::{ScreenArt, screen::PaintFrame},
-    hud::CachedScreen,
-};
-use crate::ui_runtime::forms::EngineFrame;
 use json_ui::{Catalog, CollectionItem, Context, DataSource, Scalar, ViewState};
 use server_experience::trust::Choice;
 use std::sync::Arc;
 use ui::UiNode;
-use {
-    super::super::{TextMetrics, UiPresentationRuntime},
-    ui::FONT_DESIGN_PIXEL_TEXELS,
+use ui_engine::frame::EngineFrame;
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::{
+    cached_screen::CachedScreen,
+    engine::{ScreenArt, screen::PaintFrame},
 };
+use {super::super::UiPresentationRuntime, ui::FONT_DESIGN_PIXEL_TEXELS};
 
 const TEMPLATE: &[u8] = include_bytes!("experience.json");
 
@@ -264,7 +262,7 @@ impl UiPresentationRuntime {
                 *next = rollback.1;
                 chrome.frame = None;
                 chrome.failed = true;
-                bevy::log::warn!(%error, "server experience chrome could not render");
+                tracing::warn!(%error, "server experience chrome could not render");
             }
         }
     }

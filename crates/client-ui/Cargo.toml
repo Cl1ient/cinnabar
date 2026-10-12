@@ -15,18 +15,19 @@ reads = [
 ]
 
 [features]
-test-support = []
+test-support = ["ui-engine/test-support"]
 tracy = []
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 launcher-host = { path = "../launcher-host" }
 bridge = { path = "../bridge" }
 anyhow.workspace = true
 arboard = { version = "3", default-features = false }
 assets = { path = "../assets" }
-bevy.workspace = true
 chunk-pipeline = { path = "../chunk-pipeline" }
 client-world = { path = "../client-world" }
+glam.workspace = true
 actor-animation = { path = "../actor-animation" }
 render-api = { path = "../render-api" }
 render-model = { path = "../render-model" }
@@ -37,6 +38,7 @@ json-ui = { path = "../json-ui" }
 protocol = { path = "../protocol" }
 semantic-input = { path = "../input" }
 ui = { path = "../ui" }
+ui-engine = { path = "../ui-engine" }
 world = { path = "../world" }
 server-experience = { path = "../server-experience" }
 image.workspace = true
@@ -44,6 +46,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 crossbeam-channel = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 url = "2"
@@ -52,10 +55,12 @@ tokio.workspace = true
 resource-pack = { path = "../resource-pack" }
 
 [dev-dependencies]
+ui-engine = { path = "../ui-engine", features = ["test-support"] }
 launcher-host = { path = "../launcher-host", features = ["test-support"] }
 test-time = { path = "../test-time" }
 tempfile = "3"
 protocol = { path = "../protocol", features = ["test-support"] }
+resource-pack = { path = "../resource-pack", features = ["test-support"] }
 mod-host = { path = "../mod-host" }
 pack-compiler = { path = "../pack-compiler" }
 zip = { version = "7", default-features = false, features = ["deflate-flate2-zlib-rs"] }

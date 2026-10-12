@@ -11,19 +11,21 @@ use ui::UiNode;
 
 use super::credits_content::Content;
 use super::credits_renderer::{CreditsRenderer, MeasuredCredits};
-use super::engine::{
+use super::server_pack::ServerUiPack;
+use crate::ui_runtime::{UiRuntime, credits::CREDITS_SCREEN};
+use ui_engine::engine::{
     FormEngine, ScreenArt, rect,
     screen::{CustomRenderer, PaintError, PaintFrame, Screen, ScreenOutput, ScreenRegistry},
 };
-use crate::ui_runtime::{UiRuntime, credits::CREDITS_SCREEN};
+use ui_engine::text_metrics::TextMetrics;
 use {
-    super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime},
+    super::super::{UiPresentationError, UiPresentationRuntime},
     ui::FONT_DESIGN_PIXEL_TEXELS,
 };
 
 #[derive(Default)]
 pub(super) struct CreditsScreen {
-    screen: super::hud::CachedScreen,
+    screen: ui_engine::cached_screen::CachedScreen,
     finished: bool,
     identity: Option<(u64, u64)>,
     layout: Mutex<Option<Arc<MeasuredCredits>>>,
@@ -34,6 +36,8 @@ pub(super) struct CreditsScreen {
 /// What one credits paint reads.
 pub(super) struct CreditsInput<'a> {
     pub(super) engine: &'a FormEngine,
+    /// The server UI pack the engine applied, whose files override the carrier's.
+    pub(super) pack: Option<&'a ServerUiPack>,
     /// The session and sequence the credits belong to.
     pub(super) identity: (u64, u64),
     pub(super) player_name: &'a str,
@@ -77,7 +81,10 @@ impl Screen for CreditsScreen {
             };
         }
         let engine = input.engine;
-        let content = Arc::clone(self.content.get_or_init(|| read_content(engine)));
+        let content = Arc::clone(
+            self.content
+                .get_or_init(|| read_content(engine, input.pack)),
+        );
         let finished = Cell::new(false);
         let mut data = DataSource::new();
         data.set_strict(true);
@@ -150,17 +157,15 @@ impl Screen for CreditsScreen {
 }
 
 /// The credits files from the applied server pack, else the carrier.
-fn read_content(engine: &FormEngine) -> Arc<Content> {
+fn read_content(engine: &FormEngine, pack: Option<&ServerUiPack>) -> Arc<Content> {
     let content = Content::read(|path| {
-        engine
-            .server_source()
-            .and_then(|pack| pack.view.as_ref())
+        pack.and_then(|pack| pack.view.as_ref())
             .and_then(|view| view.read_capped(path, assets::MAX_UI_FILE_BYTES as u64))
             .map(Vec::from)
             .or_else(|| engine.assets().ui_file(path).map(<[u8]>::to_vec))
     });
     if content.missing {
-        bevy::log::warn!(
+        tracing::warn!(
             "credits runtime files are missing from the UI carrier or pack; rebuild UI assets from a pack containing credits/end.txt, credits/credits.json and credits/quote.txt"
         );
     }
@@ -202,6 +207,7 @@ impl UiPresentationRuntime {
         let translate = |key: &str| runtime.translation(key);
         let input = CreditsInput {
             engine,
+            pack: self.engine_pack.as_deref(),
             identity: (runtime.session_id(), active.sequence),
             player_name: runtime.credits_player_name(),
             scroll_pixels: active.scroll_pixels(),

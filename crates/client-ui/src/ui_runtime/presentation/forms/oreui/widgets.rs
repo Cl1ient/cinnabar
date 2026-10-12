@@ -6,7 +6,7 @@ mod art;
 mod choice;
 pub(super) use choice::{choice, choice_focus, choice_height};
 
-use super::super::menu_caret::{TextSpot, caret_byte};
+use super::super::menu_caret::TextSpot;
 use super::icons::{self, Icon};
 use super::motion::{Kind, mix, opacity};
 use super::paint::{Bounds, Canvas};
@@ -18,7 +18,9 @@ use super::theme::{
     Role, SECONDARY, SECONDARY_BUTTON, TEXT, TEXT_DIMMER, TEXT_DIMMEST, Type,
 };
 use launcher::menu::{MenuAction, MenuView};
-use {super::super::engine::screen::PaintError, ui::IconRef};
+use ui::IconRef;
+use ui_engine::caret::caret_byte;
+use ui_engine::engine::screen::PaintError;
 
 /// How a control is being interacted with this frame.
 #[derive(Clone, Copy, Default)]

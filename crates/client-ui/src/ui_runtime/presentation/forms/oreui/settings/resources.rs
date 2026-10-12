@@ -1,6 +1,5 @@
 //! Global pack management uses OreUI cards over the staged library selection.
 
-use super::super::super::engine::screen::PaintError;
 use super::super::paint::{Bounds, Canvas};
 use super::super::theme::{self, BODY, CAPTION, EDGE, TEXT, TEXT_DIMMER};
 use super::super::transitions::resources::{Group, Resources};
@@ -11,6 +10,7 @@ use crate::ui_runtime::oreui_assets::{
 };
 use launcher::global_resources::{Action, Snapshot};
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 #[cfg(test)]
 mod tests;

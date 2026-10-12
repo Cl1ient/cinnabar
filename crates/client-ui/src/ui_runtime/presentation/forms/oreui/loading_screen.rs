@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use ui::{IconRef, UiNode};
 
-use super::super::engine::screen::{PaintError, PaintFrame};
 use super::super::loading_screen::LoadingStage;
 use super::{Look, OreUiScreen, paint::Canvas, progress, theme};
+use ui_engine::engine::screen::{PaintError, PaintFrame};
 
 /// What one loading paint reads.
 pub(in super::super) struct LoadingInput<'a> {

@@ -1,11 +1,12 @@
 //! The programmatic dialog used when the JSON-UI carrier is absent or a form's
 //! template cannot resolve: a clipped, scrollable text list on menu surfaces.
-use super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime, rect};
+use super::super::{UiPresentationError, UiPresentationRuntime, rect};
 use super::FormProjection;
 use crate::ui_runtime::{LocalFormAction, UiRuntime};
 use protocol::{MenuElement, ServerFormModel};
 use std::sync::Arc;
 use ui::{SafeArea, TextLayout, UiNode, UiNodeId, UiRect, UiVisual};
+use ui_engine::text_metrics::TextMetrics;
 
 impl UiPresentationRuntime {
     #[allow(clippy::too_many_arguments)]
@@ -236,7 +237,7 @@ impl UiPresentationRuntime {
             let label_lines = label.split('\n').filter(|line| !line.is_empty());
             for (row, line) in label_lines.take(MAX_LABEL_LINES).enumerate() {
                 let source = format!("{carry}{line}");
-                carry = super::engine::active_codes(&source);
+                carry = ui_engine::engine::text_paint::active_codes(&source);
                 let layout = fit_line(self, metrics, &source, (text_width - 24.0).max(1.0))?;
                 let top = y + 10.0 + row as f32 * line_height;
                 text(

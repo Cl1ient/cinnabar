@@ -3,8 +3,8 @@ use super::super::{
     widgets::Interaction,
 };
 use super::{Canvas, PaintError};
-use crate::ui_runtime::presentation::forms::engine::rect;
 use ui::{UiNode, UiVisual};
+use ui_engine::engine::rect;
 
 mod effects;
 pub(in super::super) use effects::Effects;

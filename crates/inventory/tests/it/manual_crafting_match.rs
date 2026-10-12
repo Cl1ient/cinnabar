@@ -13,11 +13,11 @@ fn entries() -> Arc<[ItemRegistryEntry]> {
     [(6, "minecraft:oak_log"), (7, "minecraft:oak_planks")]
         .into_iter()
         .map(|(network_id, name)| ItemRegistryEntry {
-            components: None,
             identifier: Arc::from(name),
             network_id,
             component_based: false,
             version: ItemRegistryVersion::None,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: Some(64),
             canonical_empty_component_data: true,

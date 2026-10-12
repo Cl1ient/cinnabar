@@ -67,7 +67,9 @@ pub(super) struct CharacterPreview {
 }
 
 #[cfg(test)]
-use super::super::{TextMetrics, UiPresentationRuntime};
+use super::super::UiPresentationRuntime;
+#[cfg(test)]
+use ui_engine::text_metrics::TextMetrics;
 
 /// Which look OreUI screens draw with.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

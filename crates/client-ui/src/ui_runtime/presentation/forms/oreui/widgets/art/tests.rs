@@ -1,9 +1,10 @@
 use super::*;
 use crate::ui_runtime::{
     oreui_assets::{OreUiImages, OreUiSprite},
-    presentation::{TextMetrics, forms::oreui::paint::Originals, tests::fixture_font},
+    presentation::{forms::oreui::paint::Originals, tests::fixture_font},
 };
 use std::{collections::HashMap, sync::Arc};
+use ui_engine::text_metrics::TextMetrics;
 
 #[test]
 fn native_faces_crossfade_and_depress_without_moving_their_hit_area() {

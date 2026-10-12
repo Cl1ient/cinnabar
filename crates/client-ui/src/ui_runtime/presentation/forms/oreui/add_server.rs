@@ -1,4 +1,3 @@
-use super::super::engine::screen::PaintError;
 use super::{
     modal,
     paint::{Bounds, Canvas},
@@ -6,6 +5,7 @@ use super::{
     widgets::{self, Variant},
 };
 use launcher::menu::{MenuAction, MenuView};
+use ui_engine::engine::screen::PaintError;
 
 /// A server draft keeps its fields scrollable while the actions remain visible.
 pub(super) fn draw(

@@ -5,13 +5,14 @@ use std::sync::Arc;
 use json_ui::{Catalog, CollectionItem, Context, DataSource, Scalar, ViewState};
 use ui::UiNode;
 
-use super::{
-    engine::{ScreenArt, screen::PaintFrame},
-    hud::CachedScreen,
-};
 use crate::ui_runtime::UiRuntime;
+use ui_engine::text_metrics::TextMetrics;
+use ui_engine::{
+    cached_screen::CachedScreen,
+    engine::{ScreenArt, screen::PaintFrame},
+};
 use {
-    super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime},
+    super::super::{UiPresentationError, UiPresentationRuntime},
     ui::FONT_DESIGN_PIXEL_TEXELS,
 };
 

@@ -188,6 +188,7 @@ mod tests {
         let out = PathBuf::from("/tmp/result.bin");
         let refs = entity_refs_output(&out);
         let command = Command::EntityAssets {
+            behavior_pack: None,
             pack: "/tmp/pack".into(),
             source_manifest: "/tmp/source.json".into(),
             out,

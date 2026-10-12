@@ -15,12 +15,12 @@ use server_experience::{
     screen::{self, GuiSize},
 };
 
-use super::{
+use ui_engine::frame::EngineFrame;
+use ui_engine::{
+    cached_screen::CachedScreen,
     engine::{FormEngine, ScreenArt, screen::PaintFrame},
-    hud::CachedScreen,
     textures::TextureSet,
 };
-use crate::ui_runtime::forms::EngineFrame;
 
 /// A package's screen files with the catalog and textures drawn from them, built on first draw
 /// and shared by every screen of the package.
@@ -438,7 +438,7 @@ impl TemplateScreen {
             Err(error) => {
                 frame.nodes.truncate(rollback.0);
                 *frame.next = rollback.1;
-                bevy::log::warn!(%error, %owner, "package screen could not render");
+                tracing::warn!(%error, %owner, "package screen could not render");
                 false
             }
         }

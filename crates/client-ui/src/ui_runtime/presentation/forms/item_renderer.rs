@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use ui::IconRef;
 
-use super::engine::{
+use ui_engine::engine::{
     Canvas,
     screen::{CustomDraw, CustomRenderer, PaintError},
 };
@@ -50,6 +50,7 @@ fn icon<'a>(
             Some(&id_aux.iter().find(|(id, _)| *id == key)?.1)
         }
     }
+    .filter(|icon| icon.uv[0] < icon.uv[2] && icon.uv[1] < icon.uv[3])
 }
 
 fn index(value: f64, len: usize) -> Option<usize> {

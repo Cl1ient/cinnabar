@@ -3,10 +3,11 @@ use crate::ui_runtime::{
         OreUiImages, OreUiPage, OreUiSprite, SETTINGS_ICON_HIGHLIGHT_IMAGE,
         load_optional_oreui_images,
     },
-    presentation::{TextMetrics, UiPresentationRuntime, tests::fixture_font},
+    presentation::{UiPresentationRuntime, tests::fixture_font},
 };
 use launcher::menu::MenuScreen;
 use std::{collections::HashMap, sync::Arc};
+use ui_engine::text_metrics::TextMetrics;
 use {
     super::*,
     launcher::menu::{MenuAction, MenuView},

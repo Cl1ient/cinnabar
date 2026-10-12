@@ -18,7 +18,6 @@ use ui::{
     TextLayoutCache, TextLayoutRequest, TextShadow, UiNode, UiNodeId, UiRect, UiScale, UiVisual,
 };
 
-use super::super::super::menu_scroll::ScrollArea;
 use super::super::menu_caret::TextSpot;
 use super::theme::{
     Appearance, BODY, Bundle, EDGE, LETTER_SPACING, Rgba, Role, TEXT_DIMMEST, TEXT_SHADOW, Type,
@@ -27,10 +26,11 @@ use launcher::menu::{
     MenuAction,
     view::{SettingsFocusLandmark, SettingsFocusTarget},
 };
-use {
-    super::super::super::TextMetrics,
-    super::super::engine::{rect, screen::PaintError},
-    ui::{FONT_DESIGN_PIXEL_TEXELS, IconRef},
+use ui::{FONT_DESIGN_PIXEL_TEXELS, IconRef};
+use ui_engine::scroll::ScrollArea;
+use ui_engine::{
+    engine::{rect, screen::PaintError},
+    text_metrics::TextMetrics,
 };
 
 /// `style`'s text scale over the frame metrics: the open font's default line is the
@@ -439,7 +439,7 @@ impl<'a> Canvas<'a> {
         style: Type,
     ) -> Result<std::sync::Arc<ui::TextLayout>, PaintError> {
         #[cfg(feature = "tracy")]
-        let _text_span = bevy::log::info_span!("ui.text").entered();
+        let _text_span = tracing::info_span!("ui.text").entered();
         let request = self.text_request(value, width_64, style)?;
         self.layouts.layout(request).map_err(PaintError::Text)
     }
@@ -551,7 +551,7 @@ impl<'a> Canvas<'a> {
         style: Type,
     ) -> Result<Option<Arc<ui::TextLayout>>, PaintError> {
         #[cfg(feature = "tracy")]
-        let _text_span = bevy::log::info_span!("ui.label").entered();
+        let _text_span = tracing::info_span!("ui.label").entered();
         let request = self.text_request(value, MEASUREMENT_WIDTH_64, style)?;
         let layout = self
             .layouts
@@ -583,7 +583,7 @@ impl<'a> Canvas<'a> {
         style: Type,
     ) -> Result<f32, PaintError> {
         #[cfg(feature = "tracy")]
-        let _text_span = bevy::log::info_span!("ui.text").entered();
+        let _text_span = tracing::info_span!("ui.text").entered();
         let request = self.text_request(value, (width.max(1.0) * 64.0) as u32, style)?;
         let layout = self.layouts.layout(request).map_err(PaintError::Text)?;
         Ok(layout.size_64()[1] as f32 / 64.0)

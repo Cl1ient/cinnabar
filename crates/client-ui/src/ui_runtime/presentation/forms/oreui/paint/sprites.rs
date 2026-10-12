@@ -240,11 +240,9 @@ impl Canvas<'_> {
 mod tests {
     use super::super::Originals;
     use super::*;
-    use crate::ui_runtime::{
-        oreui_assets::OreUiImages,
-        presentation::{TextMetrics, tests::fixture_font},
-    };
+    use crate::ui_runtime::{oreui_assets::OreUiImages, presentation::tests::fixture_font};
     use std::{collections::HashMap, sync::Arc};
+    use ui_engine::text_metrics::TextMetrics;
 
     #[test]
     fn native_nine_slice_preserves_corner_texels_and_mask_role_color() {

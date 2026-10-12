@@ -17,6 +17,7 @@ publication-test-support = []
 benchmark-support = []
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 render-api = { path = "../render-api" }
 assets = { path = "../assets" }
 crossbeam-channel = "0.5"

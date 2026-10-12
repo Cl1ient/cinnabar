@@ -16,6 +16,7 @@ reads = [
 ]
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 assets = { path = "../assets" }
 block-transform = { path = "../block-transform" }
 serde = { version = "1", features = ["derive"] }

@@ -13,11 +13,10 @@ use serde_json::Value;
 use ui::{IconRef, UiVisual};
 
 use super::super::player_preview::{PreviewView, controller::PreviewControl};
-use super::engine::{
-    Canvas, UNWRAPPED_LOGICAL,
+use ui_engine::engine::{
+    Canvas,
     screen::{CustomDraw, CustomRenderer, PaintError},
-    text_paint::scaled_request,
-    width_64,
+    text_paint::{UNWRAPPED_LOGICAL, scaled_request, width_64},
 };
 
 /// Title panels shaped to Cinnabar's logo (1022x282) rather than the pack's

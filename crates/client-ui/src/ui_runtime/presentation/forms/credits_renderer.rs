@@ -7,14 +7,14 @@ use std::{
 
 use json_ui::{TextAlign, TextureSource};
 
-use super::engine::{
+use ui_engine::engine::{
     Canvas,
     screen::{CustomDraw, CustomRenderer, PaintError},
     text_paint::{TextPaint, scaled_request, width_64},
 };
 
 const RENDERER: &str = "credits_renderer";
-const TITLE_TEXTURE: &str = super::super::menu_artwork::TITLE_KEY;
+const TITLE_TEXTURE: &str = ui_engine::textures::TITLE_KEY;
 
 pub(super) struct MeasuredCredits {
     content: Arc<super::credits_content::Content>,

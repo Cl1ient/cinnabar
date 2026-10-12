@@ -2349,6 +2349,13 @@ Incomplete: native frame/GPU/process-memory acceptance, full remote gates,
 TTFMSDF/precomputed MSDF rendering, contextual item icon routes, verified retail
 missing-icon fallback, and native font alias/metric comparison. Outline MSDF
 fonts currently use provisional alpha rasterization. No visual gate is closed.
+Custom item icons and components follow the admitted registry, so an empty
+duplicate cannot replace a populated item's texture key. Missing custom icons
+report their identifier and requested atlas key during pack preparation.
+Provisional, incomplete: attachables without default geometry or texture aliases
+retain equipment bindings using their first compiled controller resources;
+dynamic controller selection still determines the resources drawn. Native static
+fallback behavior and live custom-item resource-pack acceptance remain open.
 See [continuation references](docs/resource-pack-continuation-references.md) and
 [original resource-pack references](docs/resource-pack-references.md).
 

@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -11,6 +12,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 LISTED = [line for line in (ROOT / "packaging/common/prep-kit-files.txt").read_text().splitlines() if line]
 STAGE = ROOT / "packaging/common/stage-payload.sh"
+HOST = {"darwin": "macos", "linux": "linux"}.get(sys.platform)
+FOREIGN = "linux" if HOST == "macos" else "macos"
 
 
 def files_below(root):
@@ -93,6 +96,7 @@ class PrepKitTests(unittest.TestCase):
             text=True,
         )
 
+    @unittest.skipUnless(HOST, "the payload check runs shipped compilers on macOS and Linux hosts")
     def test_payload_check_plans_a_first_run_with_the_shipped_compiler(self):
         # Stands in for assetc: the plan fails unless the kit it is handed holds every listed file.
         script = (
@@ -102,25 +106,30 @@ class PrepKitTests(unittest.TestCase):
             f'done < "{ROOT}/packaging/common/prep-kit-files.txt"\n'
             'echo \'{"current":false}\'\n'
         )
-        root, kit = self.payload("linux", script)
-        result = self.check_payload("linux", root)
+        root, kit = self.payload(HOST, script)
+        result = self.check_payload(HOST, root)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("prep kit satisfies its compiler", result.stdout)
         (kit / LISTED[-1]).unlink()
-        result = self.check_payload("linux", root)
+        result = self.check_payload(HOST, root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("cannot plan from the linux prep kit", result.stderr)
+        self.assertIn(f"cannot plan from the {HOST} prep kit", result.stderr)
 
-    def test_only_a_macos_compiler_for_another_architecture_may_skip_the_plan(self):
+    @unittest.skipUnless(HOST, "the payload check runs shipped compilers on macOS and Linux hosts")
+    def test_only_foreign_artifacts_and_other_architecture_dmgs_skip_the_plan(self):
         unrunnable = "#!/bin/sh\nexit 126\n"
-        root, _ = self.payload("macos", unrunnable)
-        result = self.check_payload("macos", root)
+        root, _ = self.payload(FOREIGN, unrunnable)
+        result = self.check_payload(FOREIGN, root)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("skipping the macos prep-kit plan", result.stdout)
-        root, _ = self.payload("linux", unrunnable)
-        result = self.check_payload("linux", root)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("cannot plan from the linux prep kit", result.stderr)
+        self.assertIn(f"skipping the {FOREIGN} prep-kit plan", result.stdout)
+        root, _ = self.payload(HOST, unrunnable)
+        result = self.check_payload(HOST, root)
+        if HOST == "macos":
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("skipping the macos prep-kit plan", result.stdout)
+        else:
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("cannot plan from the linux prep kit", result.stderr)
 
 
 if __name__ == "__main__":

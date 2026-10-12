@@ -70,11 +70,17 @@ native() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else printf '
 kit="$root/${resources}prep-kit"
 assetc="$kit/bin/assetc"
 [[ "$platform" != windows ]] || assetc+=.exe
+case "$(uname -s)" in
+    Darwin) host=macos ;;
+    Linux) host=linux ;;
+    MINGW* | MSYS* | CYGWIN*) host=windows ;;
+    *) host=unknown ;;
+esac
 scratch="$(mktemp -d)"
 runs=0
-"$assetc" --help >/dev/null 2>&1 || runs=$?
-# Only a DMG for another architecture (an arm64 runner without Rosetta) may be unrunnable here.
-if [[ $runs -eq 126 && "$platform" == macos ]]; then
+[[ "$host" != "$platform" ]] || "$assetc" --help >/dev/null 2>&1 || runs=$?
+# Another OS's artifact, or a DMG for another architecture (no Rosetta), cannot run here.
+if [[ "$host" != "$platform" || ( $runs -eq 126 && "$platform" == macos ) ]]; then
     printf 'skipping the %s prep-kit plan: %s does not run on this host\n' "$platform" "$assetc"
 elif plan="$("$assetc" prepare --kit "$(native "$kit")" --workspace "$(native "$scratch/workspace")" \
     --out "$(native "$scratch/out")" --check 2>&1)"; then

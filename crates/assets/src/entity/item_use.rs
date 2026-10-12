@@ -199,11 +199,6 @@ impl RuntimeEntityAssets {
         &self.item_use_profiles
     }
 
-    /// Shares admitted definitions with cold equipment setup.
-    pub fn item_use_profiles(&self) -> &[ItemUseDescriptor] {
-        &self.item_use_profiles
-    }
-
     /// Resolves a compiled item profile during numerical registry admission only.
     pub fn item_use_profile(&self, identifier: &str) -> ItemUseProfile {
         self.item_use_profiles

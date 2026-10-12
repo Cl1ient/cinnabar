@@ -15,8 +15,9 @@ fn block_pos(position: [i32; 3]) -> BlockPos {
     }
 }
 
-/// Longest page text a book edit carries.
-pub const MAX_BOOK_PAGE_BYTES: usize = 1_024;
+/// Longest string a book edit carries: the codec's bound on every book-edit text, which a test
+/// pins to the generated encoder.
+pub const MAX_BOOK_PAGE_BYTES: usize = 768;
 
 /// Asks the server to put the block at `position` in the player's hand.
 #[must_use]
@@ -77,7 +78,7 @@ pub enum BookEdit {
 }
 
 /// Builds the edit for the book in inventory slot `book_slot`; `None` when a
-/// page index is negative or a page exceeds [`MAX_BOOK_PAGE_BYTES`].
+/// page index is negative or any text exceeds [`MAX_BOOK_PAGE_BYTES`].
 #[must_use]
 pub fn book_edit_packet(book_slot: u8, edit: &BookEdit) -> Option<crate::Packet> {
     let operation = match edit {
@@ -115,11 +116,16 @@ pub fn book_edit_packet(book_slot: u8, edit: &BookEdit) -> Option<crate::Packet>
             title,
             author,
             xuid,
-        } => BookEditAction::Finalize {
-            title: title.as_str().into(),
-            author: author.as_str().into(),
-            xuid: xuid.as_str().into(),
-        },
+        } if [title, author, xuid]
+            .iter()
+            .all(|text| text.len() <= MAX_BOOK_PAGE_BYTES) =>
+        {
+            BookEditAction::Finalize {
+                title: title.as_str().into(),
+                author: author.as_str().into(),
+                xuid: xuid.as_str().into(),
+            }
+        }
         _ => return None,
     };
     Some(crate::Packet::new(BookEditPacket {
@@ -149,6 +155,53 @@ mod tests {
             panic!("a book edit");
         };
         assert_eq!(edit.book_slot.0, 3);
+    }
+
+    /// The page limit is exactly the bound the generated encoder enforces.
+    #[test]
+    fn book_text_limit_matches_the_codec_bound() {
+        use bedrock_protocol_1_26_51::wire::Encode;
+        let page = |bytes: usize| BookEditAction::ReplacePage {
+            page_index: wire::ZigZag32(0),
+            page_text: "a".repeat(bytes).into(),
+            photo_name: wire::Str::default(),
+        };
+        assert!(page(MAX_BOOK_PAGE_BYTES).encode_to_vec().is_ok());
+        assert!(matches!(
+            page(MAX_BOOK_PAGE_BYTES + 1).encode_to_vec(),
+            Err(wire::EncodeError::SchemaConstraint(_))
+        ));
+    }
+
+    #[test]
+    fn over_limit_book_text_is_refused_before_encoding() {
+        let long = "a".repeat(MAX_BOOK_PAGE_BYTES + 1);
+        assert!(
+            book_edit_packet(
+                0,
+                &BookEdit::AddPage {
+                    page: 0,
+                    text: long.clone(),
+                },
+            )
+            .is_none()
+        );
+        assert!(
+            book_edit_packet(
+                0,
+                &BookEdit::Finalize {
+                    title: "t".into(),
+                    author: long,
+                    xuid: String::new(),
+                },
+            )
+            .is_none()
+        );
+        let at_limit = BookEdit::ReplacePage {
+            page: 0,
+            text: "a".repeat(MAX_BOOK_PAGE_BYTES),
+        };
+        assert!(crate::encode(&book_edit_packet(0, &at_limit).unwrap()).is_ok());
     }
 
     #[test]

@@ -607,13 +607,25 @@ fn general(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
             "websockets_enabled",
             "websocket_encryption",
             launcher::menu::settings_options::AUTO_UPDATE_OPTION.name,
+            launcher::menu::settings_options::INSTALL_ON_QUIT_OPTION.name,
+            launcher::menu::settings_options::UPDATE_CHANNEL_OPTION.name,
         ],
     )?;
-    if let Some(version) = &content.view.update_ready {
-        content.heading(
-            &format!("Update {version} is ready"),
-            "Quit to install the update.",
-        )?;
+    if !content.view.over_world {
+        if let Some(message) = &content.view.updates.message {
+            content.heading(message, "")?;
+        }
+        if content.view.updates.switch_available {
+            super::services::action_row(
+                content,
+                "Change channel now",
+                "Install this channel's build even when it is older.",
+                "Switch now",
+                Some(MenuAction::Update(
+                    launcher::menu::updates::Action::SwitchNow,
+                )),
+            )?;
+        }
     }
     content.heading(
         "menu.general.tab.miscellaneous.title",

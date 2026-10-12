@@ -72,14 +72,15 @@ class PrepKitTests(unittest.TestCase):
 
     def payload(self, platform, compiler_script):
         root = self.temp / platform
+        binaries = ["cinnabar", "cinnabar-updater", "bedrock-core", "bedrock-local-server"]
         if platform == "linux":
             entries = ["AppRun", "cinnabar.desktop", "cinnabar.png"]
-            entries += [f"usr/bin/{name}" for name in ["cinnabar", "bedrock-core", "bedrock-local-server"]]
+            entries += [f"usr/bin/{name}" for name in binaries]
             resources = root / "usr/share/cinnabar"
         else:
             contents = "Cinnabar.app/Contents/"
             entries = ["Applications", f"{contents}Info.plist", f"{contents}Resources/Cinnabar.icns"]
-            entries += [f"{contents}MacOS/{name}" for name in ["cinnabar", "bedrock-core", "bedrock-local-server"]]
+            entries += [f"{contents}MacOS/{name}" for name in binaries]
             resources = root / contents / "Resources"
         for entry in entries:
             (root / entry).parent.mkdir(parents=True, exist_ok=True)

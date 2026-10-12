@@ -769,12 +769,34 @@ fn native_skybox_offset_defaults_on_and_persists_both_states() {
 #[test]
 fn automatic_update_opt_out_survives_save_and_reload() {
     let mut settings = SettingsOptions::default();
-    assert!(settings.automatic_updates());
+    assert!(settings.update_preferences().checks);
     let index = SETTINGS_OPTIONS
         .iter()
         .position(|option| option.name == super::AUTO_UPDATE_OPTION.name)
         .unwrap();
     settings.set(index, 0);
     let reloaded = SettingsOptions::decode(&serde_json::to_vec(&settings).unwrap()).unwrap();
-    assert!(!reloaded.automatic_updates());
+    assert!(!reloaded.update_preferences().checks);
+}
+
+#[test]
+fn install_on_quit_requires_an_opt_in_and_channel_preferences_round_trip() {
+    use update_manifest::channel::Channel;
+    let mut settings = SettingsOptions::default();
+    assert!(!settings.update_preferences().install_on_quit);
+    assert_eq!(settings.update_preferences().channel, Channel::Beta);
+    let index = |name| {
+        SETTINGS_OPTIONS
+            .iter()
+            .position(|option| option.name == name)
+            .unwrap()
+    };
+    settings.set(index(INSTALL_ON_QUIT_OPTION.name), 1);
+    settings.set(
+        index(UPDATE_CHANNEL_OPTION.name),
+        Channel::Nightly.index() as i32,
+    );
+    let saved = SettingsOptions::decode(&serde_json::to_vec(&settings).unwrap()).unwrap();
+    assert!(saved.update_preferences().install_on_quit);
+    assert_eq!(saved.update_preferences().channel, Channel::Nightly);
 }

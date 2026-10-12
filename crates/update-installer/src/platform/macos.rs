@@ -7,7 +7,7 @@ use std::{
 };
 
 /// Keeps both the bundle's code signature and its stapled notarization ticket intact.
-pub(super) fn install(artifact: &Path, work: &Path, target: &Path, backup: &Path) -> Result<()> {
+pub(super) fn candidate(artifact: &Path, work: &Path, target: &Path) -> Result<PathBuf> {
     ensure!(
         target
             .extension()
@@ -44,7 +44,7 @@ pub(super) fn install(artifact: &Path, work: &Path, target: &Path, backup: &Path
         candidate.join("Contents/MacOS/cinnabar").is_file(),
         "bundle is missing its entry point"
     );
-    crate::apply::swap(target, &candidate, backup)
+    Ok(candidate)
 }
 
 /// Reports native tool failures without invoking a shell.

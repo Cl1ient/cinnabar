@@ -54,6 +54,7 @@ fn keygen(out: &mut impl Write) -> Result<(), String> {
 struct SignFlags {
     version: String,
     channel: String,
+    build: u64,
     key_id: String,
     notes_url: String,
     validity: Duration,
@@ -65,6 +66,7 @@ impl SignFlags {
         let mut flags = Self {
             version: String::new(),
             channel: "stable".to_owned(),
+            build: update_manifest::build_number(),
             key_id: "k1".to_owned(),
             notes_url: String::new(),
             validity: Duration::days(30),
@@ -88,6 +90,9 @@ impl SignFlags {
             match name {
                 "version" => flags.version = value,
                 "channel" => flags.channel = value,
+                "build-number" => {
+                    flags.build = value.parse().map_err(|_| "invalid build number")?
+                }
                 "key-id" => flags.key_id = value,
                 "notes-url" => flags.notes_url = value,
                 "validity" => flags.validity = parse_duration(&value)?,
@@ -126,6 +131,9 @@ fn parse_duration(raw: &str) -> Result<Duration, String> {
 
 fn sign(args: &[String], seed: Option<&str>, out: &mut impl Write) -> Result<(), String> {
     let flags = SignFlags::parse(args)?;
+    if flags.build == 0 {
+        return Err("provide a positive -build-number".to_owned());
+    }
     let seed = seed
         .and_then(|seed| STANDARD.decode(seed).ok())
         .filter(|seed| seed.len() == KEY_BYTES)
@@ -142,6 +150,7 @@ fn sign(args: &[String], seed: Option<&str>, out: &mut impl Write) -> Result<(),
         schema: SCHEMA,
         channel: flags.channel,
         version: flags.version,
+        build_number: flags.build,
         expires: OffsetDateTime::now_utc() + flags.validity,
         notes_url: flags.notes_url,
         artifacts,

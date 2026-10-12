@@ -42,6 +42,70 @@ pub fn backup(target: &Path) -> Result<PathBuf> {
     Ok(target.with_file_name(name))
 }
 
+/// Whether the helper can write this install without changing user privileges.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Access {
+    Writable,
+    Manual,
+}
+
+/// Probes the install filesystem; permission failures become the manual installer action.
+pub fn access(target: &Path) -> Result<Access> {
+    ensure!(
+        target.is_absolute() && target.exists(),
+        "installed target is missing"
+    );
+    #[cfg(windows)]
+    if !machine_install_rights() {
+        return Ok(Access::Manual);
+    }
+    let directory = if cfg!(windows) {
+        target
+    } else {
+        target.parent().context("missing install parent")?
+    };
+    Ok(access_with(|| {
+        tempfile::NamedTempFile::new_in(directory).is_ok()
+    }))
+}
+
+#[cfg(windows)]
+/// Requires existing machine-install rights for the per-machine MSI, without requesting them.
+fn machine_install_rights() -> bool {
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation},
+        System::Threading::{GetCurrentProcess, OpenProcessToken},
+    };
+    let mut token = std::ptr::null_mut();
+    let mut elevation = TOKEN_ELEVATION::default();
+    let mut length = 0;
+    // SAFETY: valid output buffers; the opened token is checked and closed exactly once.
+    unsafe {
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+        let read = GetTokenInformation(
+            token,
+            TokenElevation,
+            std::ptr::from_mut(&mut elevation).cast(),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut length,
+        );
+        CloseHandle(token);
+        read != 0 && elevation.TokenIsElevated != 0
+    }
+}
+
+/// Keeps permission decisions testable without chmod, elevation, or a platform-specific account.
+fn access_with(probe: impl FnOnce() -> bool) -> Access {
+    if probe() {
+        Access::Writable
+    } else {
+        Access::Manual
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,5 +148,10 @@ mod tests {
             .unwrap(),
             Path::new("/opt/Client.AppImage")
         );
+    }
+    #[test]
+    fn not_writable_installs_offer_the_manual_download() {
+        assert_eq!(access_with(|| false), Access::Manual);
+        assert_eq!(access_with(|| true), Access::Writable);
     }
 }

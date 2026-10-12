@@ -1,34 +1,33 @@
-//! Bounded, restartable downloads become visible only after their signed digest matches.
+//! Resumable files are published only after their signed size and digest match.
 
-use crate::OffsetDateTime;
 use anyhow::{Context, Result, ensure};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
-use update_manifest::{Artifact, TrustedKeys};
+use time::OffsetDateTime;
+use update_manifest::{Artifact, Manifest, TrustedKeys, select::Check};
 
-/// Absolute artifact bound, even when a trusted manifest accidentally advertises more.
+/// A signed size cannot allocate unbounded disk space.
 pub const MAX_ARTIFACT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const ENVELOPE_FILE: &str = "manifest.json";
 pub const ARTIFACT_FILE: &str = "artifact";
 
-/// A manifest-selected artifact. Construction always verifies its signed platform and version.
+/// The signed release and its selected native artifact.
 pub struct Selection {
-    pub version: String,
+    pub manifest: Manifest,
     pub artifact: Artifact,
     envelope: Vec<u8>,
 }
 
 impl Selection {
-    /// Rejects expired signatures, missing platforms, unchanged versions and downgrades.
+    /// Verifies expiry, channel, platform and build ordering before selecting any download.
     pub fn verify(
         envelope: &[u8],
         keys: &TrustedKeys,
-        platform: &str,
-        current: &str,
+        check: Check<'_>,
         now: OffsetDateTime,
     ) -> Result<Self> {
         ensure!(
@@ -36,26 +35,25 @@ impl Selection {
             "manifest exceeds size limit"
         );
         let manifest = update_manifest::verify(envelope, keys, now)?;
-        let verdict = update_manifest::evaluate(&manifest, crate::CHANNEL, platform, current)?;
+        let verdict = update_manifest::select::evaluate_build(&manifest, check)?;
         let artifact = verdict
             .artifact
-            .context("no newer artifact for this platform")?;
-        update_manifest::validate_artifact(&artifact)?;
+            .context("no permitted artifact for this channel and platform")?;
         ensure!(
             artifact.size as u64 <= MAX_ARTIFACT_BYTES,
             "artifact exceeds size limit"
         );
         Ok(Self {
-            version: verdict.latest,
+            manifest,
             artifact,
             envelope: envelope.to_vec(),
         })
     }
 }
 
-/// A private partial download; dropping it never publishes an incomplete artifact.
+/// A persistent partial download identified by the signed SHA-256 digest.
 pub struct Download {
-    directory: tempfile::TempDir,
+    path: PathBuf,
     file: File,
     digest: Sha256,
     written: u64,
@@ -63,23 +61,61 @@ pub struct Download {
 }
 
 impl Download {
-    /// Starts a fresh attempt. A failed or interrupted transfer is safe to restart from zero.
+    /// Reopens a bounded regular partial file and hashes its retained prefix for a range request.
     pub fn begin(root: &Path, selection: Selection) -> Result<Self> {
         fs::create_dir_all(root)?;
-        let directory = tempfile::Builder::new()
-            .prefix("download-")
-            .tempdir_in(root)?;
-        let file = File::create(directory.path().join(ARTIFACT_FILE))?;
+        let path = root.join(format!(
+            "{}.part",
+            selection.artifact.sha256.to_ascii_lowercase()
+        ));
+        if path.exists() {
+            ensure!(
+                fs::symlink_metadata(&path)?.file_type().is_file(),
+                "partial download is not a regular file"
+            );
+        }
+        let mut file = File::options()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)?;
+        let written = file.metadata()?.len();
+        if written > selection.artifact.size as u64 {
+            file.set_len(0)?;
+        }
+        let written = file.metadata()?.len();
+        let mut digest = Sha256::new();
+        let mut reader = (&mut file).take(written);
+        ensure!(
+            hash(&mut reader, &mut digest)? == written,
+            "partial file changed while reopening"
+        );
+        file.seek(SeekFrom::End(0))?;
         Ok(Self {
-            directory,
+            path,
             file,
-            digest: Sha256::new(),
-            written: 0,
+            digest,
+            written,
             selection,
         })
     }
 
-    /// Writes only bytes within the signed size, with constant memory use.
+    /// The byte offset to request, including a complete retained download awaiting verification.
+    pub fn offset(&self) -> u64 {
+        self.written
+    }
+
+    /// Safely restarts when the server does not support the requested byte range.
+    pub fn restart(&mut self) -> Result<()> {
+        self.file.set_len(0)?;
+        self.file.seek(SeekFrom::Start(0))?;
+        self.written = 0;
+        self.digest = Sha256::new();
+        Ok(())
+    }
+
+    /// Appends only bytes within the signed size; interrupted transfers retain their prefix.
     pub fn write(&mut self, bytes: &[u8]) -> Result<()> {
         ensure!(
             bytes.len() as u64 <= self.selection.artifact.size as u64 - self.written,
@@ -91,47 +127,53 @@ impl Download {
         Ok(())
     }
 
-    /// Publishes the envelope and artifact together after both signed size and hash agree.
+    /// Publishes a verified artifact and its signed envelope together; corrupt partials are discarded.
     pub fn finish(self, destination: &Path) -> Result<PathBuf> {
         ensure!(
-            self.written == self.selection.artifact.size as u64,
+            self.written == self.selection.artifact.size as u64
+                && self.file.metadata()?.len() == self.written,
             "artifact is truncated"
         );
-        ensure!(
-            format!("{:x}", self.digest.finalize())
-                .eq_ignore_ascii_case(&self.selection.artifact.sha256),
-            "artifact hash mismatch"
-        );
+        let valid = format!("{:x}", self.digest.finalize())
+            .eq_ignore_ascii_case(&self.selection.artifact.sha256);
+        if !valid {
+            drop(self.file);
+            fs::remove_file(&self.path)?;
+            anyhow::bail!("artifact hash mismatch");
+        }
         self.file.sync_all()?;
         drop(self.file);
-        let mut manifest = File::create(self.directory.path().join(ENVELOPE_FILE))?;
+        ensure!(!destination.exists(), "a staged update already exists");
+        let directory = tempfile::Builder::new()
+            .prefix("stage-")
+            .tempdir_in(destination.parent().context("missing update directory")?)?;
+        let mut manifest = File::create(directory.path().join(ENVELOPE_FILE))?;
         manifest.write_all(&self.selection.envelope)?;
         manifest.sync_all()?;
         drop(manifest);
-        ensure!(!destination.exists(), "a staged update already exists");
-        fs::rename(self.directory.path(), destination)?;
+        fs::rename(self.path, directory.path().join(ARTIFACT_FILE))?;
+        fs::rename(directory.path(), destination)?;
         Ok(destination.to_owned())
     }
 }
 
-/// Checks a staged artifact again before copying, extracting or executing any installer.
+/// Revalidates the staged envelope and payload before a native installer or package tool runs.
 pub fn verify(
     directory: &Path,
     keys: &TrustedKeys,
-    platform: &str,
-    current: &str,
+    check: Check<'_>,
     now: OffsetDateTime,
 ) -> Result<Selection> {
     let mut bytes = Vec::new();
     File::open(directory.join(ENVELOPE_FILE))?
         .take(update_manifest::MAX_ENVELOPE_BYTES as u64 + 1)
         .read_to_end(&mut bytes)?;
-    let selection = Selection::verify(&bytes, keys, platform, current, now)?;
-    verify_file(&directory.join(ARTIFACT_FILE), &selection.artifact)?;
-    Ok(selection)
+    let selected = Selection::verify(&bytes, keys, check, now)?;
+    verify_file(&directory.join(ARTIFACT_FILE), &selected.artifact)?;
+    Ok(selected)
 }
 
-/// Streams a regular file through its signed digest and rejects size changes while reading.
+/// Checks regular files with bounded memory and refuses any size change during hashing.
 pub fn verify_file(path: &Path, artifact: &Artifact) -> Result<()> {
     update_manifest::validate_artifact(artifact)?;
     ensure!(
@@ -147,24 +189,29 @@ pub fn verify_file(path: &Path, artifact: &Artifact) -> Result<()> {
         file.metadata()?.len() == artifact.size as u64,
         "artifact size mismatch"
     );
-    let mut reader = file.take(artifact.size as u64 + 1);
-    let mut hash = Sha256::new();
-    let mut buffer = [0; 64 * 1024];
-    let mut size = 0;
-    loop {
-        let count = reader.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        size += count as u64;
-        hash.update(&buffer[..count]);
-    }
-    ensure!(size == artifact.size as u64, "artifact size changed");
+    let mut digest = Sha256::new();
+    let count = hash(&mut file.take(artifact.size as u64 + 1), &mut digest)?;
+    ensure!(count == artifact.size as u64, "artifact size changed");
     ensure!(
-        format!("{:x}", hash.finalize()).eq_ignore_ascii_case(&artifact.sha256),
+        format!("{:x}", digest.finalize()).eq_ignore_ascii_case(&artifact.sha256),
         "artifact hash mismatch"
     );
     Ok(())
+}
+
+/// Hashes a caller-bounded reader using one fixed buffer.
+fn hash(reader: &mut impl Read, digest: &mut Sha256) -> Result<u64> {
+    let mut count = 0;
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        count += read as u64;
+        digest.update(&buffer[..read]);
+    }
+    Ok(count)
 }
 
 #[cfg(test)]

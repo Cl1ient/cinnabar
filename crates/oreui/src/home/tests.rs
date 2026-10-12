@@ -220,7 +220,11 @@ fn signed_out_home_has_a_direct_sign_in_action() {
 #[test]
 fn update_ready_notice_leaves_quit_and_play_reachable() {
     let mut view = view();
-    view.update_ready = Some("2.0.0".into());
+    view.updates.ready = Some(launcher::menu::updates::Ready {
+        version: "2.0.0".into(),
+        writable: true,
+        protocol_required: false,
+    });
     let (_, hits, nodes) = paint(HashMap::new(), |canvas| {
         draw(canvas, &view, [1280.0, 720.0], None, &|_| None).unwrap();
     });
@@ -246,5 +250,14 @@ fn update_ready_notice_leaves_quit_and_play_reachable() {
         })
         .collect::<String>()
         .replace(' ', "");
-    assert!(text.contains("Update2.0.0ready"));
+    assert!(text.contains("Updateready(2.0.0)"));
+    for action in [
+        launcher::menu::updates::Action::Restart,
+        launcher::menu::updates::Action::Later,
+    ] {
+        assert!(
+            hits.iter()
+                .any(|(found, _)| *found == MenuAction::Update(action))
+        );
+    }
 }

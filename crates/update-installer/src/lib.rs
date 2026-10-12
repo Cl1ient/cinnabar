@@ -1,4 +1,4 @@
-//! Verified local update storage and offline installation. This crate has no HTTP client.
+//! Verified local downloads and one offline Rust installer process.
 
 pub mod apply;
 pub mod parent;
@@ -6,22 +6,19 @@ mod platform;
 pub mod stage;
 pub mod target;
 
-pub use time::OffsetDateTime;
-
-/// Release channel consumed by installed clients and their offline helper.
-pub const CHANNEL: &str = "stable";
-/// Installed helper's basename, also used when copying it out of the install.
-pub const HELPER_NAME: &str = "cinnabar-updater";
-/// Public keys embedded into both the client and the offline helper at build time.
+/// Keys embedded into the client and helper; the existing list supports key rotation.
 pub const TRUSTED_KEYS: &str = match option_env!("UPDATE_TRUSTED_KEYS") {
     Some(keys) => keys,
     None => "",
 };
 
-/// The native helper filename for the current host.
+/// The packaged helper's filename on this host.
 pub fn helper_filename() -> String {
-    format!("{HELPER_NAME}{}", std::env::consts::EXE_SUFFIX)
+    format!("cinnabar-updater{}", std::env::consts::EXE_SUFFIX)
 }
+
+/// Environment variable used only for the helper's first-start acknowledgement.
+pub const STARTUP_ENV: &str = "CINNABAR_UPDATE_STARTUP_FILE";
 
 #[cfg(test)]
 mod fixtures;

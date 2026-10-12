@@ -4530,6 +4530,7 @@ dependencies = [
  "sha2",
  "thiserror 2.0.18",
  "ui",
+ "update-manifest",
  "zip",
 ]
 
@@ -4555,6 +4556,7 @@ dependencies = [
  "tempfile",
  "test-time",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tracing",
  "update-installer",
@@ -7731,7 +7733,6 @@ version = "0.1.12"
 dependencies = [
  "anyhow",
  "rustix 1.1.4",
- "serde",
  "serde_json",
  "sha2",
  "tempfile",
@@ -7748,6 +7749,7 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "semver",
  "thiserror 2.0.18",
  "time",
  "url",

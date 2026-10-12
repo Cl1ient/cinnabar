@@ -2,16 +2,15 @@ use super::*;
 use crate::fixtures::*;
 
 #[test]
-fn complete_app_bundle_and_appimage_are_retained_until_matching_startup() {
-    for os in ["macos", "linux"] {
+fn file_and_whole_bundle_swaps_keep_the_previous_copy_until_startup() {
+    for bundle in [false, true] {
         let root = tempfile::tempdir().unwrap();
-        let target = root.path().join(if os == "macos" {
-            "Client.app"
-        } else {
-            "Client.AppImage"
-        });
-        let candidate = root.path().join("candidate");
-        if os == "macos" {
+        let (target, candidate, backup) = (
+            root.path().join("target"),
+            root.path().join("candidate"),
+            root.path().join("previous"),
+        );
+        if bundle {
             fs::create_dir(&target).unwrap();
             fs::create_dir(&candidate).unwrap();
             fs::write(target.join("signature"), "old").unwrap();
@@ -20,180 +19,166 @@ fn complete_app_bundle_and_appimage_are_retained_until_matching_startup() {
             fs::write(&target, "old").unwrap();
             fs::write(&candidate, "new").unwrap();
         }
-        let backup = backup_path(root.path(), &target, os).unwrap();
-        write_receipt(
-            root.path(),
-            &Pending {
-                target: target.clone(),
-                version: "2.0.0".into(),
-            },
-        )
-        .unwrap();
         swap(&target, &candidate, &backup).unwrap();
         assert!(backup.exists());
-        assert!(acknowledge(root.path(), &target, CURRENT, os).is_err());
-        assert!(
-            acknowledge(
-                root.path(),
-                &root.path().join("another-install"),
-                "2.0.0",
-                os
-            )
-            .is_err()
-        );
-        assert!(backup.exists());
-        acknowledge(root.path(), &target, "2.0.0", os).unwrap();
+        if bundle {
+            assert_eq!(fs::read(backup.join("signature")).unwrap(), b"old");
+        } else {
+            assert_eq!(fs::read(&backup).unwrap(), b"old");
+        }
+        remove(&backup).unwrap();
         assert!(!backup.exists());
-        assert!(!root.path().join(RECEIPT).exists());
     }
 }
 
 #[test]
-fn failed_file_or_whole_bundle_promotion_restores_previous_version() {
+fn failed_bundle_or_appimage_start_restores_the_previous_payload() {
     for bundle in [false, true] {
         let root = tempfile::tempdir().unwrap();
-        let target = root.path().join("installed");
-        let candidate = root.path().join("candidate");
-        let backup = root.path().join("previous");
+        let (target, candidate, backup, failed) = (
+            root.path().join("target"),
+            root.path().join("candidate"),
+            root.path().join("previous"),
+            root.path().join("failed"),
+        );
         if bundle {
             fs::create_dir(&target).unwrap();
-            fs::write(target.join("old"), "signed bundle").unwrap();
+            fs::create_dir(&candidate).unwrap();
+            fs::write(target.join("signature"), "old").unwrap();
+            fs::write(candidate.join("signature"), "new").unwrap();
         } else {
-            fs::write(&target, "old AppImage").unwrap();
+            fs::write(&target, "old").unwrap();
+            fs::write(&candidate, "new").unwrap();
         }
-        let mut calls = 0;
-        assert!(
-            swap_with(&target, &candidate, &backup, |from, to| {
-                calls += 1;
-                if calls == 2 {
-                    return Err(std::io::Error::other("simulated promotion failure"));
-                }
-                fs::rename(from, to)
-            })
-            .is_err()
-        );
-        assert!(target.exists());
-        assert!(!backup.exists());
+        swap(&target, &candidate, &backup).unwrap();
+        rollback(&target, &backup, &failed).unwrap();
         if bundle {
-            assert!(target.join("old").exists());
+            assert_eq!(fs::read(target.join("signature")).unwrap(), b"old");
         } else {
-            assert_eq!(fs::read(&target).unwrap(), b"old AppImage");
+            assert_eq!(fs::read(&target).unwrap(), b"old");
         }
+        assert!(failed.exists());
     }
 }
 
 #[test]
-fn existing_backup_is_never_overwritten() {
+fn a_failed_promotion_restores_the_old_file_without_discarding_a_retained_backup() {
     let root = tempfile::tempdir().unwrap();
-    let target = root.path().join("target");
-    let candidate = root.path().join("candidate");
-    let backup = root.path().join("previous");
-    for path in [&target, &candidate, &backup] {
-        fs::write(path, "keep").unwrap();
-    }
+    let (target, candidate, backup) = (
+        root.path().join("target"),
+        root.path().join("missing"),
+        root.path().join("previous"),
+    );
+    fs::write(&target, "old").unwrap();
+    assert!(swap(&target, &candidate, &backup).is_err());
+    assert_eq!(fs::read(&target).unwrap(), b"old");
+    fs::write(&backup, "keep").unwrap();
     assert!(swap(&target, &candidate, &backup).is_err());
     assert_eq!(fs::read(&backup).unwrap(), b"keep");
 }
 
-#[cfg(target_os = "linux")]
 #[test]
-fn apply_waits_reverifies_and_replaces_appimage_with_no_network() {
+fn previous_downloaded_windows_installer_is_kept_for_manual_repair() {
     let root = tempfile::tempdir().unwrap();
-    let (stage, keys) = staged(root.path(), "linux-x86_64");
-    let target = root.path().join("client.AppImage");
-    fs::write(&target, b"old").unwrap();
-    assert!(
-        after_exit(
-            Request {
-                stage_dir: &stage,
-                target: &target,
-                keys: &keys,
-                platform_key: "linux-x86_64",
-                current: CURRENT,
-                now: now()
-            },
-            || anyhow::bail!("parent still running")
-        )
-        .is_err()
+    let artifact = root.path().join("payload");
+    fs::write(&artifact, "first MSI").unwrap();
+    remember_installer(root.path(), &artifact).unwrap();
+    fs::write(&artifact, "second MSI").unwrap();
+    remember_installer(root.path(), &artifact).unwrap();
+    assert_eq!(
+        fs::read(root.path().join("previous.msi")).unwrap(),
+        b"first MSI"
     );
-    assert_eq!(fs::read(&target).unwrap(), b"old");
-    after_exit(
-        Request {
-            stage_dir: &stage,
-            target: &target,
-            keys: &keys,
-            platform_key: "linux-x86_64",
-            current: CURRENT,
-            now: now(),
-        },
-        || Ok(()),
-    )
-    .unwrap();
-    assert_eq!(fs::read(&target).unwrap(), PAYLOAD);
-    assert_eq!(fs::read(target::backup(&target).unwrap()).unwrap(), b"old");
+    assert_eq!(
+        fs::read(root.path().join("installed.msi")).unwrap(),
+        b"second MSI"
+    );
 }
 
 #[cfg(target_os = "linux")]
 #[test]
-fn helper_refuses_every_tampered_stage_before_touching_target() {
-    for case in ["signature", "hash", "platform", "downgrade"] {
+fn apply_waits_for_parent_and_rolls_back_a_failed_new_start() {
+    let root = tempfile::tempdir().unwrap();
+    let (directory, keys) = staged(root.path(), "linux-x86_64");
+    let target = root.path().join("client.AppImage");
+    fs::write(&target, "old").unwrap();
+    let request = || Request {
+        stage_dir: &directory,
+        target: &target,
+        keys: &keys,
+        check: check("linux-x86_64"),
+        now: now(),
+    };
+    assert!(
+        after_exit(
+            request(),
+            || anyhow::bail!("parent running"),
+            |_| panic!("started before parent exit")
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read(&target).unwrap(), b"old");
+    assert!(after_exit(request(), || Ok(()), |_| anyhow::bail!("failed startup")).is_err());
+    assert_eq!(fs::read(&target).unwrap(), b"old");
+    after_exit(
+        request(),
+        || Ok(()),
+        |target| {
+            assert_eq!(fs::read(target).unwrap(), PAYLOAD);
+            assert!(crate::target::backup(target).unwrap().exists());
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert!(!crate::target::backup(&target).unwrap().exists());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn all_tampered_stages_are_refused_before_start_or_swap() {
+    for case in [
+        "signature",
+        "hash",
+        "truncated",
+        "channel",
+        "expired",
+        "downgrade",
+        "platform",
+    ] {
         let root = tempfile::tempdir().unwrap();
-        let (stage, keys) = staged(root.path(), "linux-x86_64");
+        let (directory, keys) = staged(root.path(), "linux-x86_64");
         let target = root.path().join("client.AppImage");
         fs::write(&target, "old").unwrap();
-        let mut platform = "linux-x86_64";
-        let mut current = CURRENT;
+        let mut policy = check("linux-x86_64");
+        let mut clock = now();
         match case {
-            "signature" => {
-                fs::write(stage.join(stage::ENVELOPE_FILE), b"{}").unwrap();
-            }
-            "hash" => {
-                fs::write(stage.join(stage::ARTIFACT_FILE), vec![b'x'; PAYLOAD.len()]).unwrap();
-            }
-            "platform" => {
-                platform = "linux-arm64";
-            }
-            "downgrade" => {
-                current = "3.0.0";
-            }
+            "signature" => fs::write(directory.join(stage::ENVELOPE_FILE), "{}").unwrap(),
+            "hash" => fs::write(
+                directory.join(stage::ARTIFACT_FILE),
+                vec![b'x'; PAYLOAD.len()],
+            )
+            .unwrap(),
+            "truncated" => fs::write(directory.join(stage::ARTIFACT_FILE), &PAYLOAD[..2]).unwrap(),
+            "channel" => policy.channel = "nightly",
+            "expired" => clock += time::Duration::days(2),
+            "downgrade" => policy.current = "3.0.0",
+            "platform" => policy.platform = "windows-x86_64",
             _ => unreachable!(),
         }
         assert!(
             after_exit(
                 Request {
-                    stage_dir: &stage,
+                    stage_dir: &directory,
                     target: &target,
                     keys: &keys,
-                    platform_key: platform,
-                    current,
-                    now: now()
+                    check: policy,
+                    now: clock
                 },
-                || Ok(())
+                || Ok(()),
+                |_| panic!("unverified release executed")
             )
             .is_err()
         );
         assert_eq!(fs::read(&target).unwrap(), b"old");
-        assert!(!root.path().join(RECEIPT).exists());
     }
-}
-
-#[test]
-fn failed_rollback_never_discards_the_only_previous_copy() {
-    let root = tempfile::tempdir().unwrap();
-    let target = root.path().join("target");
-    let candidate = root.path().join("candidate");
-    let backup = root.path().join("previous");
-    fs::write(&target, "old").unwrap();
-    let mut calls = 0;
-    assert!(
-        swap_with(&target, &candidate, &backup, |from, to| {
-            calls += 1;
-            if calls > 1 {
-                return Err(std::io::Error::other("filesystem failure"));
-            }
-            fs::rename(from, to)
-        })
-        .is_err()
-    );
-    assert_eq!(fs::read(&backup).unwrap(), b"old");
 }

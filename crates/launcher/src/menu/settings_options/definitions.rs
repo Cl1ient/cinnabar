@@ -117,9 +117,42 @@ pub const SMAA_OPTION: SettingDefinition = dropdown(
     ui::DEFAULT_SMAA_MODE as i32,
 );
 
-/// Downloads verified releases and installs them after a normal exit, unless disabled.
-pub const AUTO_UPDATE_OPTION: SettingDefinition =
-    toggle("auto_update_enabled", "Automatic Updates", true);
+/// Controls background checks separately from the user's installation consent.
+pub const AUTO_UPDATE_OPTION: SettingDefinition = toggle(
+    "auto_update_enabled",
+    "Check for updates",
+    super::super::updates::Preferences::DEFAULT.checks,
+);
+
+/// Applying on exit requires a separate opt-in and never overrides Later.
+pub const INSTALL_ON_QUIT_OPTION: SettingDefinition = toggle(
+    "install_updates_on_quit",
+    "Install updates when I quit",
+    super::super::updates::Preferences::DEFAULT.install_on_quit,
+);
+
+/// A channel choice reads its name and label from the signed manifest channel contract.
+const fn channel_choice(channel: update_manifest::channel::Channel) -> SettingChoice {
+    SettingChoice {
+        name: channel.binding(),
+        label: channel.label(),
+    }
+}
+
+pub const UPDATE_CHANNEL_CHOICES: &[SettingChoice] = &[
+    channel_choice(update_manifest::channel::Channel::ALL[0]),
+    channel_choice(update_manifest::channel::Channel::ALL[1]),
+    channel_choice(update_manifest::channel::Channel::ALL[2]),
+];
+const _: () = assert!(UPDATE_CHANNEL_CHOICES.len() == update_manifest::channel::Channel::ALL.len());
+
+/// Stable is offered only after its signed release exists; beta is the initial channel.
+pub const UPDATE_CHANNEL_OPTION: SettingDefinition = dropdown(
+    "update_channel",
+    "Update channel",
+    UPDATE_CHANNEL_CHOICES,
+    0,
+);
 
 /// Publishes the client's state to Discord Rich Presence.
 pub const DISCORD_PRESENCE_OPTION: SettingDefinition =
@@ -446,6 +479,8 @@ pub const SETTINGS_OPTIONS: &[SettingDefinition] = &[
     // P:ui/settings_sections/general_section.json:119; default is not yet recovered.
     toggle("websocket_encryption", "options.websocketEncryption", false),
     AUTO_UPDATE_OPTION,
+    INSTALL_ON_QUIT_OPTION,
+    UPDATE_CHANNEL_OPTION,
     // P:ui/settings_sections/general_section.json:246; default is not yet recovered.
     toggle(
         "only_trusted_skins_allowed",

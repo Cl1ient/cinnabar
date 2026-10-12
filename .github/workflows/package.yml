@@ -179,12 +179,12 @@ jobs:
         run: |
           bin="$PWD/target/$CARGO_BUILD_TARGET/release"
           make package-binaries PACKAGE_CARGO_FLAGS=--timings DIST_CORE="$bin/bedrock-core" LOCAL_SERVER_OUT="$bin/bedrock-local-server"
-          for binary in cinnabar bedrock-core bedrock-local-server assetc cinnabar-updater; do
+          for binary in cinnabar bedrock-core bedrock-local-server assetc; do
             lipo "$bin/$binary" -verify_arch "${{ matrix.arch }}"
           done
           tools="$GITHUB_WORKSPACE/release-tools/packaging/macos"
           CLIENT="$bin/cinnabar" CORE="$bin/bedrock-core" \
-            UPDATER="$bin/cinnabar-updater" LOCAL_SERVER="$bin/bedrock-local-server" ASSETC="$bin/assetc" bash "$tools/build-app.sh"
+            LOCAL_SERVER="$bin/bedrock-local-server" ASSETC="$bin/assetc" bash "$tools/build-app.sh"
           bash "$tools/sign-notarize.sh" .local/dist/macos-release/Cinnabar.app
           version="${{ needs.prepare.outputs.version }}"
           bash "$tools/make-dmg.sh" .local/dist/macos-release/Cinnabar.app ".local/dist/macos-release/Cinnabar-$version.dmg"

@@ -1,4 +1,4 @@
-//! Background signed downloads and an offline helper handoff after the client shuts down.
+//! One background signed-release check and the launcher's explicit update decisions.
 
 mod handoff;
 #[cfg(test)]
@@ -7,123 +7,227 @@ mod worker;
 
 use launcher::{
     install_layout::InstallLayout,
-    menu::settings_options::{SETTINGS_FILE, SettingsOptions},
+    menu::{
+        settings_options::{SETTINGS_FILE, SettingsOptions},
+        updates::{Action, Preferences, Ready as Notice, View},
+    },
 };
-use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
-    sync::{
-        Mutex, OnceLock,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-    },
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
-use update_manifest::Verdict;
-use update_manifest::platform_key;
+use time::OffsetDateTime;
+use update_manifest::channel::Channel;
 
-const URL_ENV: &str = "CINNABAR_UPDATE_URL";
-const DISABLE_ENV: &str = "CINNABAR_UPDATE_CHECK";
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 static LAYOUT: OnceLock<InstallLayout> = OnceLock::new();
-static ENABLED: AtomicBool = AtomicBool::new(false);
-static REVISION: AtomicU64 = AtomicU64::new(0);
-static RUNNING: AtomicBool = AtomicBool::new(false);
-static READY: Mutex<Option<Ready>> = Mutex::new(None);
+static STATE: Mutex<State> = Mutex::new(State::new());
 
 #[derive(Clone)]
 struct Ready {
+    expires: OffsetDateTime,
     stage: PathBuf,
-    version: String,
+    notice: Notice,
+    channel: Channel,
+    switch_now: bool,
 }
 
-#[derive(Deserialize, Serialize)]
-struct Stamp {
-    checked_at: u64,
-    #[serde(default)]
-    current: String,
+struct State {
+    preferences: Preferences,
+    ready: Option<Ready>,
+    dismissed: bool,
+    requested: bool,
+    switch_now: bool,
+    switch_available: bool,
+    stable_available: bool,
+    protocol_required: bool,
+    message: Option<String>,
+    generation: u64,
+    running: bool,
 }
 
-/// Configures the installed updater from persisted settings; development checkouts do nothing.
+impl State {
+    /// Holds one session's preferences and consent, without a persisted transaction state.
+    const fn new() -> Self {
+        Self {
+            preferences: Preferences::DEFAULT,
+            ready: None,
+            dismissed: false,
+            requested: false,
+            switch_now: false,
+            switch_available: false,
+            stable_available: false,
+            protocol_required: false,
+            message: None,
+            generation: 0,
+            running: false,
+        }
+    }
+
+    /// An explicit Later choice suppresses the optional quit-time install for this session too.
+    fn applies_on_exit(&self, now: OffsetDateTime) -> bool {
+        self.ready
+            .as_ref()
+            .is_some_and(|ready| ready.notice.writable && ready.expires > now)
+            && (self.requested || (self.preferences.install_on_quit && !self.dismissed))
+    }
+}
+
+/// Configures only installed clients; cached stages are checked even when network checks are off.
 pub fn check_in_background(layout: &InstallLayout) {
     if !layout.is_installed() {
         return;
     }
     let _ = LAYOUT.set(layout.clone());
-    let settings = SettingsOptions::load(&layout.user_config_root.join(SETTINGS_FILE));
-    set_enabled(settings.automatic_updates());
+    configure(
+        SettingsOptions::load(&layout.user_config_root.join(SETTINGS_FILE)).update_preferences(),
+    );
+    worker::start();
 }
 
-/// Applies the user's live preference, including cancelling an incomplete download.
-pub fn set_enabled(enabled: bool) {
-    let enabled = enabled && !std::env::var(DISABLE_ENV).is_ok_and(|value| value == "0");
-    let changed = ENABLED.swap(enabled, Ordering::SeqCst) != enabled;
-    if changed {
-        REVISION.fetch_add(1, Ordering::SeqCst);
+/// Shares live preferences with the worker; channel changes always clear earlier consent.
+pub fn configure(mut preferences: Preferences) {
+    if std::env::var("CINNABAR_UPDATE_CHECK").is_ok_and(|value| value == "0") {
+        preferences.checks = false;
     }
-    if enabled
-        && changed
-        && let Some(layout) = LAYOUT.get()
-    {
-        worker::start(layout.clone());
-    }
-}
-
-/// A ready notice comes only from the worker's verified stage, never an untrusted JSON notice.
-pub fn ready_version() -> Option<String> {
-    if !ENABLED.load(Ordering::SeqCst) {
-        return None;
-    }
-    READY
-        .lock()
-        .ok()?
-        .as_ref()
-        .map(|ready| ready.version.clone())
-}
-
-/// Starts the detached offline helper after normal client and child-process shutdown.
-pub fn apply_after_exit() {
-    if !ENABLED.load(Ordering::SeqCst) {
-        return;
-    }
-    let Some(layout) = LAYOUT.get() else {
-        return;
+    let changed = if let Ok(mut state) = STATE.lock() {
+        let changed = state.preferences != preferences;
+        if changed {
+            if state.preferences.channel != preferences.channel {
+                state.ready = None;
+                state.requested = false;
+                state.dismissed = false;
+                state.switch_now = false;
+                state.switch_available = false;
+            }
+            state.preferences = preferences;
+            state.generation += 1;
+        }
+        changed
+    } else {
+        false
     };
-    let ready = READY.lock().ok().and_then(|ready| ready.clone());
-    if let Some(ready) = ready
+    if changed {
+        worker::start();
+    }
+}
+
+/// Presents a verified ready stage and channel availability through the launcher data contract.
+pub fn view() -> View {
+    let now = OffsetDateTime::now_utc();
+    let Ok(state) = STATE.lock() else {
+        return View::default();
+    };
+    View {
+        ready: state
+            .ready
+            .as_ref()
+            .filter(|ready| !state.dismissed && ready.expires > now)
+            .map(|ready| {
+                let mut notice = ready.notice.clone();
+                notice.protocol_required = state.protocol_required;
+                notice
+            }),
+        stable_available: state.stable_available,
+        switch_available: state.switch_available,
+        message: state.message.clone(),
+    }
+}
+
+/// Raises the wording after a protocol refusal; it never changes update consent.
+pub fn protocol_required() {
+    if let Ok(mut state) = STATE.lock() {
+        state.protocol_required = true;
+    }
+}
+
+/// Returns true only when a verified, writable stage should trigger normal client shutdown.
+pub fn act(action: Action) -> bool {
+    let now = OffsetDateTime::now_utc();
+    let mut download = None;
+    let mut switch = false;
+    let quit = if let Ok(mut state) = STATE.lock() {
+        match action {
+            Action::Restart
+                if state
+                    .ready
+                    .as_ref()
+                    .is_some_and(|ready| ready.notice.writable && ready.expires > now) =>
+            {
+                state.requested = true;
+                true
+            }
+            Action::Later => {
+                state.dismissed = true;
+                state.requested = false;
+                false
+            }
+            Action::Download => {
+                download = state.ready.clone();
+                false
+            }
+            Action::SwitchNow if state.switch_available => {
+                state.switch_now = true;
+                state.switch_available = false;
+                state.message = Some("Downloading this channel's update…".into());
+                state.dismissed = false;
+                state.generation += 1;
+                switch = true;
+                false
+            }
+            _ => false,
+        }
+    } else {
+        false
+    };
+    if let Some(ready) = download {
+        handoff::open_download(ready);
+    }
+    if switch {
+        worker::start();
+    }
+    quit
+}
+
+/// Starts the offline helper only for a click or the separately saved quit-time opt-in.
+pub fn apply_after_exit() {
+    let ready = STATE.lock().ok().and_then(|state| {
+        state
+            .applies_on_exit(OffsetDateTime::now_utc())
+            .then(|| state.ready.clone())
+            .flatten()
+    });
+    if let (Some(layout), Some(ready)) = (LAYOUT.get(), ready)
         && let Err(error) = handoff::spawn(layout, &ready)
     {
         tracing::warn!("could not start updater: {error:#}");
     }
 }
 
-/// Acknowledges the first successful client frame without doing disk work on the UI thread.
+/// Signals a complete first frame to the waiting helper; no persistent receipt is written.
 pub fn acknowledge_startup() {
-    let Some(layout) = LAYOUT.get().cloned() else {
+    let Some(marker) = std::env::var_os(update_installer::STARTUP_ENV).map(PathBuf::from) else {
         return;
     };
-    std::thread::spawn(move || {
-        let result = handoff::installed_target().and_then(|target| {
-            update_installer::apply::acknowledge(
-                &layout.update_dir(),
-                &target,
-                env!("CARGO_PKG_VERSION"),
-                std::env::consts::OS,
-            )
+    let Some(layout) = LAYOUT.get() else {
+        return;
+    };
+    if marker.starts_with(layout.update_dir())
+        && marker.file_name().is_some_and(|name| name == "started")
+    {
+        std::thread::spawn(move || {
+            let _ = std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(marker);
         });
-        if let Err(error) = result {
-            tracing::debug!("update startup acknowledgement: {error:#}");
-        }
-    });
+    }
 }
 
-/// A future stamp is due too, so a corrected clock cannot suppress updates indefinitely.
-fn due(last_checked: Option<u64>, now: u64) -> bool {
-    last_checked.is_none_or(|last| now < last || now - last >= CHECK_INTERVAL.as_secs())
-}
-
-/// Refuses non-HTTPS manifest URLs before creating a request.
-fn https(url: &str) -> bool {
-    url::Url::parse(url).is_ok_and(|url| url.scheme() == "https" && url.host_str().is_some())
+/// A corrected clock cannot suppress the next daily check.
+fn due(last: Option<u64>, now: u64) -> bool {
+    last.is_none_or(|last| now < last || now - last >= CHECK_INTERVAL.as_secs())
 }

@@ -205,7 +205,7 @@ impl InstallLayout {
         self.resource_root.join("prep-kit")
     }
 
-    /// Private download staging, installer logs, and startup receipts for this install.
+    /// Download staging, installer logs, and temporary startup signals for this install.
     #[must_use]
     pub fn update_dir(&self) -> PathBuf {
         self.user_data_root.join("update")

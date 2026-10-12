@@ -5,6 +5,33 @@ use {
     launcher::menu::{MenuAction, MenuView},
 };
 
+#[test]
+fn channel_picker_offers_stable_only_after_verified_publication() {
+    use launcher::menu::settings_options::{SETTINGS_OPTIONS, UPDATE_CHANNEL_OPTION};
+    let SettingKind::Dropdown(choices) = UPDATE_CHANNEL_OPTION.kind else {
+        unreachable!()
+    };
+    let index = SETTINGS_OPTIONS
+        .iter()
+        .position(|option| option.name == UPDATE_CHANNEL_OPTION.name)
+        .unwrap() as u16;
+    for published in [false, true] {
+        let mut view = MenuView::new(true, "Player".into());
+        view.settings_dropdown = Some(index);
+        view.updates.stable_available = published;
+        let (_, hits, _) = paint(HashMap::new(), |canvas| {
+            draw(canvas, &view, [1280.0, 720.0], &|_| None).unwrap();
+        });
+        for (choice, metadata) in choices.iter().enumerate() {
+            let action = MenuAction::SettingsOption(index, choice as i32);
+            assert_eq!(
+                hits.iter().any(|(found, _)| *found == action),
+                metadata.label != "Stable" || published
+            );
+        }
+    }
+}
+
 fn same_bounds(left: Bounds, right: Bounds) -> bool {
     left.into_iter()
         .zip(right)

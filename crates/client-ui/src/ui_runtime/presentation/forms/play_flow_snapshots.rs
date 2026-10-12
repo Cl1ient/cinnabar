@@ -551,7 +551,11 @@ fn snapshot_update_ready_notice() {
     let mut view = launcher::menu::MenuView::new(true, "Player".into());
     view.screen = MenuScreen::Home;
     snapshot(&player, &view, "updater-home-before");
-    view.update_ready = Some("2.0.0".into());
+    view.updates.ready = Some(launcher::menu::updates::Ready {
+        version: "2.0.0".into(),
+        writable: true,
+        protocol_required: false,
+    });
     snapshot(&player, &view, "updater-home-ready");
     view.screen = MenuScreen::Settings;
     view.settings_section =

@@ -1,28 +1,36 @@
-# Automatic updates
+# Updates
 
-Installed clients check for a signed release once a day. A newer release downloads in the
-background. The home screen shows when it is ready; quitting normally starts installation.
-Turn off **Automatic Updates** in **Settings → General** to stop downloads and installation.
-The saved choice takes effect immediately. Interrupted downloads restart safely on the next launch.
+The launcher checks its selected release channel once a day and downloads verified updates
+in the background. An interrupted transfer resumes from its digest-named partial file, or
+restarts safely if the server does not support ranges.
 
-Updates require a release manifest signed by a key trusted by the installed client. The client
-and its separate Rust helper check the signature, version, platform, byte count, and SHA-256.
-The helper has no network client. Invalid or expired releases are never installed.
+When the download is ready, choose **Restart and update** or **Later**. Later defers installation
+for this session. In **Settings → General**, you can turn off update checks, select a channel,
+or enable **Install updates when I quit**. Installation on quit is off by default. The in-game
+pause menu only shows a small ready badge; update actions remain in the launcher.
 
-- **macOS:** the helper replaces the whole signed app bundle from the release DMG. It preserves
-  the bundle's signature and stapled notarization ticket. The app's parent folder must be writable.
-- **Windows:** Windows Installer upgrades the MSI installation after the client exits. Windows
-  asks for administrator consent. Cancelling leaves the installation unchanged. In-use files may
-  require a later restart; the updater never reboots the machine automatically.
-- **Linux:** the helper replaces the running AppImage's source file. Its parent folder must be
-  writable. Unpacked installations, including `install.sh` installations, use manual updates.
+Beta and Nightly are available initially. Stable appears after a signed stable release exists.
+Changing channels never silently downgrades: a slower channel waits for a newer app version
+and build. **Switch now** explicitly permits the selected channel's older release. Numeric
+prereleases use SemVer ordering, and successive builds use a signed monotonic build number.
 
-The previous AppImage or app bundle stays beside the installation with a `.previous` suffix.
-Windows keeps a recovery copy in the user's update directory. These copies are removed only
-when the new version completes its first client frame. A failed file or bundle swap restores
-the old version; Windows Installer performs its own transaction rollback. A later application
-crash does not automatically restore the old version.
+The client checks the manifest's Ed25519 signature, channel, expiry, app version and build,
+then the artifact's size and SHA-256. The existing trusted-key list supports key rotation.
+A separate Rust helper waits for the exact client process to exit and verifies the stage again.
 
-Downloads, the startup receipt, and `apply.log` live in the install layout's per-user `update`
-directory. If installation fails, this log records the reason. Game worlds and account data
-are outside the replaced application payload.
+- **macOS:** the helper replaces the complete signed app bundle from the DMG and preserves its
+  signature and notarization ticket. The previous bundle remains beside it until the new client
+  completes startup. A failed new start restores the previous bundle.
+- **Linux:** the same swap and startup rollback apply to AppImages. Unpacked installations use
+  the manual download action.
+- **Windows:** the helper runs the verified MSI passively with existing rights and relaunches
+  the client. The previous downloaded MSI remains in the update directory for manual repair.
+
+If the install location is not writable, the launcher offers **Download update**. It opens the
+verified DMG or installer for you to finish; on Linux it opens the folder containing the AppImage.
+The updater does not request elevated privileges or reboot the machine.
+
+Channel manifests live at fixed GitHub Releases URLs with tags `stable`, `beta`, and `nightly`
+and names `update-stable.json`, `update-beta.json`, and `update-nightly.json`. Publication must
+sign the correct channel and a positive build number. The release signer accepts `-build-number`;
+packaged builds use `CINNABAR_BUILD_NUMBER` or the package workflow's `GITHUB_RUN_NUMBER`.

@@ -1,60 +1,56 @@
-//! Offline application with a retained previous install and a startup acknowledgement.
+//! One swap, one previous copy, and rollback when the newly launched client cannot start.
 
-use crate::{OffsetDateTime, platform, stage, target};
+use crate::{platform, stage, target};
 use anyhow::{Context, Result, ensure};
-use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::Path,
 };
-use update_manifest::TrustedKeys;
+use time::OffsetDateTime;
+use update_manifest::{TrustedKeys, select::Check};
 
-const RECEIPT: &str = "pending.json";
-
-#[derive(Deserialize, Serialize)]
-struct Pending {
-    version: String,
-    target: PathBuf,
-}
-
-/// Verified update inputs supplied by the installed helper, never by the network.
+/// Local, signed inputs passed by the offline helper after the client chooses to update.
 pub struct Request<'a> {
     pub stage_dir: &'a Path,
     pub target: &'a Path,
     pub keys: &'a TrustedKeys,
-    pub platform_key: &'a str,
-    pub current: &'a str,
+    pub check: Check<'a>,
     pub now: OffsetDateTime,
 }
 
-/// Applies a staged artifact only after the caller's parent-exit barrier has succeeded.
-pub fn after_exit(request: Request<'_>, wait: impl FnOnce() -> Result<()>) -> Result<()> {
+/// Waits for the old client, verifies the payload, applies it, and restores failed new starts.
+pub fn after_exit(
+    request: Request<'_>,
+    wait: impl FnOnce() -> Result<()>,
+    start: impl FnOnce(&Path) -> Result<()>,
+) -> Result<()> {
+    wait()?;
     let Request {
         stage_dir,
         target,
         keys,
-        platform_key,
-        current,
+        check,
         now,
     } = request;
-    wait()?;
-    let root = stage_dir.parent().context("missing update root")?;
+    let root = stage_dir.parent().context("missing update directory")?;
     let lock = File::options()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(root.join("apply.lock"))?;
-    lock.try_lock().context("another updater is applying")?;
+        .open(root.join("update.lock"))?;
+    lock.try_lock()
+        .context("another updater is using this stage")?;
+    let selected = stage::verify(stage_dir, keys, check, now)?;
     ensure!(
-        !root.join(RECEIPT).exists(),
-        "previous update has not started successfully yet"
+        target::access(target)? == target::Access::Writable,
+        "install is not writable; use Download update"
     );
-    let selection = stage::verify(stage_dir, keys, platform_key, current, now)?;
     ensure!(
-        target.is_absolute() && !fs::symlink_metadata(target)?.file_type().is_symlink(),
+        !fs::symlink_metadata(target)?.file_type().is_symlink(),
         "unsafe install target"
     );
-    let os = platform_key
+    let os = check
+        .platform
         .split_once('-')
         .context("invalid platform key")?
         .0;
@@ -62,8 +58,6 @@ pub fn after_exit(request: Request<'_>, wait: impl FnOnce() -> Result<()>) -> Re
         os == std::env::consts::OS,
         "helper cannot apply another platform"
     );
-    let backup = backup_path(root, target, os)?;
-    ensure!(!backup.exists(), "previous installation must be retained");
     let parent = if os == "windows" {
         root
     } else {
@@ -74,104 +68,60 @@ pub fn after_exit(request: Request<'_>, wait: impl FnOnce() -> Result<()>) -> Re
         .tempdir_in(parent)?;
     let artifact = work.path().join("payload");
     fs::copy(stage_dir.join(stage::ARTIFACT_FILE), &artifact)?;
-    // The copy is private and on the destination filesystem. Verify exactly that copy.
-    stage::verify_file(&artifact, &selection.artifact)?;
-    let receipt = Pending {
-        version: selection.version,
-        target: target.to_owned(),
-    };
-    write_receipt(root, &receipt)?;
-    let outcome = platform::install(&artifact, work.path(), target, &backup, &selection.artifact);
-    if let Err(error) = outcome {
-        // Keep the backup even when recovery itself failed; never destroy the only old copy.
-        let _ = fs::remove_file(root.join(RECEIPT));
-        return Err(error);
+    stage::verify_file(&artifact, &selected.artifact)?;
+    if os == "windows" {
+        platform::install_windows(&artifact, work.path(), target, &selected.artifact)?;
+        remember_installer(root, &artifact)?;
+        start(target)?;
+    } else {
+        let backup = target::backup(target)?;
+        let candidate = platform::candidate(&artifact, work.path(), target)?;
+        swap(target, &candidate, &backup)?;
+        if let Err(error) = start(target) {
+            rollback(target, &backup, &work.path().join("failed"))?;
+            return Err(error).context("new version did not start; previous version restored");
+        }
+        remove(&backup)?;
     }
     fs::remove_dir_all(stage_dir)?;
     Ok(())
 }
 
-/// Atomically records the expected new version before touching the installed application.
-fn write_receipt(root: &Path, pending: &Pending) -> Result<()> {
-    use std::io::Write;
-    let mut file = tempfile::NamedTempFile::new_in(root)?;
-    file.write_all(&serde_json::to_vec(pending)?)?;
-    file.as_file().sync_all()?;
-    file.persist(root.join(RECEIPT))?;
+/// Keeps the most recently downloaded previous MSI for manual repair, without copying Program Files.
+fn remember_installer(root: &Path, artifact: &Path) -> Result<()> {
+    let current = root.join("installed.msi");
+    let previous = root.join("previous.msi");
+    if current.exists() {
+        if previous.exists() {
+            fs::remove_file(&previous)?;
+        }
+        fs::rename(&current, &previous)?;
+    }
+    fs::copy(artifact, current)?;
     Ok(())
 }
 
-/// Selects the backup location without trusting a path stored in a writable receipt.
-fn backup_path(root: &Path, target: &Path, os: &str) -> Result<PathBuf> {
-    if os == "windows" {
-        Ok(root.join("previous-install"))
-    } else {
-        target::backup(target)
-    }
-}
-
-/// Removes the previous version only when this exact installed target has started successfully.
-pub fn acknowledge(root: &Path, installed_target: &Path, current: &str, os: &str) -> Result<()> {
-    let receipt = root.join(RECEIPT);
-    if !receipt.exists() {
-        return Ok(());
-    }
-    let lock = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(root.join("apply.lock"))?;
-    lock.try_lock()?;
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    File::open(&receipt)?
-        .take(16 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(bytes.len() <= 16 * 1024, "invalid update receipt");
-    let pending: Pending = serde_json::from_slice(&bytes)?;
-    ensure!(
-        pending.version == current && pending.target == installed_target,
-        "pending update does not match this running install"
-    );
-    remove(&backup_path(root, installed_target, os)?)?;
-    fs::remove_file(receipt)?;
-    Ok(())
-}
-
-/// Replaces a file or entire bundle and restores the old one if promotion fails.
-#[cfg(any(unix, test))]
+/// Promotes a file or complete app bundle, restoring it if the promotion itself fails.
 pub(crate) fn swap(target: &Path, candidate: &Path, backup: &Path) -> Result<()> {
-    swap_with(target, candidate, backup, |from, to| fs::rename(from, to))
-}
-
-/// Shares the real replacement transaction with failure-injection tests.
-#[cfg(any(unix, test))]
-fn swap_with(
-    target: &Path,
-    candidate: &Path,
-    backup: &Path,
-    mut rename: impl FnMut(&Path, &Path) -> std::io::Result<()>,
-) -> Result<()> {
-    ensure!(
-        !backup.exists(),
-        "previous installation still awaits startup"
-    );
-    rename(target, backup).context("save previous installation")?;
-    if let Err(error) = rename(candidate, target) {
-        rename(backup, target).context("restore previous installation after failed swap")?;
-        return Err(error).context("install update (previous version restored)");
+    ensure!(!backup.exists(), "previous installation is still retained");
+    fs::rename(target, backup).context("retain previous installation")?;
+    if let Err(error) = fs::rename(candidate, target) {
+        fs::rename(backup, target).context("restore previous installation")?;
+        return Err(error).context("install update");
     }
     Ok(())
 }
 
-/// Deletes only the caller's known backup, handling both files and whole bundles.
+/// Moves a failed new install aside before restoring the previous signed payload.
+pub(crate) fn rollback(target: &Path, backup: &Path, failed: &Path) -> Result<()> {
+    fs::rename(target, failed).context("move failed new installation aside")?;
+    fs::rename(backup, target).context("restore previous installation")?;
+    Ok(())
+}
+
+/// Deletes only the known previous file or complete bundle after successful startup.
 fn remove(path: &Path) -> Result<()> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
-    if metadata.is_dir() {
+    if fs::symlink_metadata(path)?.is_dir() {
         fs::remove_dir_all(path)?;
     } else {
         fs::remove_file(path)?;

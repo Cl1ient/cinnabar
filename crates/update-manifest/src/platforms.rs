@@ -4,6 +4,7 @@ use std::{collections::BTreeMap, sync::LazyLock};
 
 #[derive(Deserialize)]
 struct ReleaseAssets {
+    repository: String,
     assets: BTreeMap<String, BTreeMap<String, String>>,
     update_assets: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -61,4 +62,9 @@ mod tests {
         assert!(platform_key("windows", "aarch64").is_none());
         assert!(platform_key("freebsd", "x86_64").is_none());
     }
+}
+
+/// Repository that publishes the installer's channel manifests and native artifacts.
+pub fn repository() -> &'static str {
+    &RELEASE.repository
 }

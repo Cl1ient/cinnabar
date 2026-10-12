@@ -120,9 +120,11 @@ A panic hook writes `crashes/*.json` (message, backtrace, core log tail) for loc
 reports are kept and nothing is uploaded.
 
 ## Update channel
-The client fetches an Ed25519-signed manifest (`crates/update-manifest`), rejects unknown keys,
-expiry, wrong channel, non-HTTPS, and bad digests, and records the verdict in
-`update/available.json` at most daily. Manifest URL: `CINNABAR_UPDATE_URL` or `resources/update-url`.
+The client checks its selected channel's fixed GitHub Releases manifest at most daily and
+streams verified downloads to the user's update directory. It rejects unknown keys, expired
+or wrong-channel manifests, non-HTTPS artifacts, corrupt payloads, and unintended downgrades.
 Trusted keys (`id:base64[,...]`) are compiled into the client from `UPDATE_TRUSTED_KEYS`,
-so rotation ships as a new key ID. CI signs with `cargo run -p release-manifest -- sign` using
-`CINNABAR_UPDATE_SIGNING_KEY`; `release-manifest keygen` makes a key pair. Installing an update is manual (download the listed artifact).
+so rotation ships as a new key ID. The release signer uses `CINNABAR_UPDATE_SIGNING_KEY` and
+a positive `-build-number` matching the packaged client's publication number;
+`release-manifest keygen` makes a key pair. Native payloads include the offline Rust helper.
+See [Updates](../docs/updating.md) for consent, channel switching, and platform behavior.

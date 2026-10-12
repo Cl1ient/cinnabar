@@ -30,10 +30,10 @@ pub use control_bindings::{
 };
 pub use definitions::{
     ANIMATION_CHOICES, ANIMATIONS_OPTION, AUTO_UPDATE_OPTION, DISCORD_PRESENCE_OPTION,
-    FRAME_RATE_UNLIMITED, INVERT_CROSSHAIR_OPTION, MAX_FIXED_FRAME_RATE, MIN_FIXED_FRAME_RATE,
-    MOTION_BLUR_CHOICES, MOTION_BLUR_OPTION, MOUSE_SENSITIVITY_OPTION, NATIVE_SKYBOX_OFFSET_OPTION,
-    SETTINGS_OPTIONS, SMAA_CHOICES, SMAA_OPTION, SettingDefinition, SettingKind,
-    THIRD_PERSON_CROSSHAIR_OPTION, VRR_CHOICES, VRR_OPTION,
+    FRAME_RATE_UNLIMITED, INSTALL_ON_QUIT_OPTION, INVERT_CROSSHAIR_OPTION, MAX_FIXED_FRAME_RATE,
+    MIN_FIXED_FRAME_RATE, MOTION_BLUR_CHOICES, MOTION_BLUR_OPTION, MOUSE_SENSITIVITY_OPTION,
+    NATIVE_SKYBOX_OFFSET_OPTION, SETTINGS_OPTIONS, SMAA_CHOICES, SMAA_OPTION, SettingDefinition,
+    SettingKind, THIRD_PERSON_CROSSHAIR_OPTION, UPDATE_CHANNEL_OPTION, VRR_CHOICES, VRR_OPTION,
 };
 pub use emotes::EMOTE_SLOT_COUNT;
 pub use keybindings::{KEY_BINDINGS, OPEN_NOTIFICATION_KEY, key_name};
@@ -79,9 +79,16 @@ impl Default for SettingsOptions {
 }
 
 impl SettingsOptions {
-    /// Whether signed releases may be downloaded and applied automatically after exit.
-    pub fn automatic_updates(&self) -> bool {
-        self.value(AUTO_UPDATE_OPTION.name) != 0
+    /// The saved check preference, quit-time opt-in and selected release channel.
+    pub fn update_preferences(&self) -> super::updates::Preferences {
+        super::updates::Preferences {
+            checks: self.value(AUTO_UPDATE_OPTION.name) != 0,
+            install_on_quit: self.value(INSTALL_ON_QUIT_OPTION.name) != 0,
+            channel: update_manifest::channel::Channel::ALL
+                .get(self.value(UPDATE_CHANNEL_OPTION.name) as usize)
+                .copied()
+                .unwrap_or_default(),
+        }
     }
 
     pub fn server_list(&self) -> &super::server_list::ServerListPreferences {

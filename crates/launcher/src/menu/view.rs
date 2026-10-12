@@ -485,8 +485,8 @@ pub struct MenuFriendCard {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuView {
-    /// Verified release ready to install after exit. Hidden when automatic updates are off.
-    pub update_ready: Option<String>,
+    /// Verified update notice and the available release-channel choices.
+    pub updates: super::updates::View,
     pub visible: bool,
     /// The menu opened over the session's world rather than the launcher's.
     pub over_world: bool,
@@ -692,6 +692,16 @@ impl From<CatalogFriend> for MenuFriendCard {
 }
 
 impl MenuView {
+    /// Hides a channel choice until the update service has verified that channel's release.
+    pub fn setting_choice_visible(
+        &self,
+        option: &super::settings_options::SettingDefinition,
+        choice: usize,
+    ) -> bool {
+        option.name != super::settings_options::UPDATE_CHANNEL_OPTION.name
+            || self.updates.channel_visible(choice)
+    }
+
     /// The join's pending trust question, which draws as a popup over the join screen.
     pub fn server_trust_prompt(&self) -> Option<&ServerTrustPrompt> {
         self.feeds.server_trust.as_ref().filter(|_| self.connecting)
@@ -734,7 +744,7 @@ impl MenuView {
     /// Creates the empty home view used before host settings and service feeds are loaded.
     pub fn new(visible: bool, display_name: String) -> Self {
         Self {
-            update_ready: None,
+            updates: super::updates::View::default(),
             visible,
             over_world: !visible,
             screen: MenuScreen::Home,

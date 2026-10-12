@@ -1,14 +1,14 @@
-## Automatic updates
+## Launcher updates
 
-`launcher-host` downloads signed releases off the main thread. `update-installer` owns bounded
-staging and a separate offline Rust helper. It replaces complete macOS bundles and Linux
-AppImages, or invokes Windows Installer for MSI upgrades. The old payload stays until the new
-client completes its first frame. Launcher General settings controls the opt-out, and the home
-screen shows a verified update-ready notice.
+The launcher owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and
+update / Later actions, and a separate default-off install-on-quit preference. Signed manifests
+carry monotonic build numbers, and digest-named partial downloads resume with HTTP ranges.
+An offline Rust helper waits for the old process, applies the verified native package, and
+restores failed macOS/Linux starts. Read-only installs offer the manual download action.
 
-Incomplete: native signed/notarized install tests on macOS, MSI elevation and in-use-file tests
-on Windows, and a packaged AppImage upgrade on Linux remain release acceptance gates. The
-launcher owner must review the notice captures. Unpacked Linux installs remain manual updates.
+Incomplete: CI must compile and run the written regression tests on all platforms. Signed
+channel publication and the owner's signing key/secret must be configured before release.
+The launcher owner must review the notice screenshots before merge.
 
 ## Actor animation ownership
 

@@ -1,7 +1,9 @@
 use bevy::prelude::DetectChanges;
 mod commit;
 mod culling;
+mod occlusion;
 mod preparation;
+mod views;
 pub use preparation::{ActorFrameState, advance_actor_frame, advance_actor_motion};
 mod emote_geometry;
 mod equipment_layers;
@@ -256,7 +258,7 @@ pub struct ActorFramePublication<'w, 's> {
 pub fn prepare_actor_render_frame(
     mut client_world: ActorWorld<'_>,
     swing_progress: Option<actor_animation::LocalSwingProgress>,
-    hides_box: impl Fn(&WorldStream, [f32; 3], [f32; 3], [f32; 3]) -> bool,
+    hides_box: impl Fn(&WorldStream, ActorCullView, [f32; 3], [f32; 3]) -> bool,
     icons: Option<&client_ui::ui_runtime::presentation::UiPresentationRuntime>,
     params: ActorFramePublication,
 ) {
@@ -315,22 +317,14 @@ pub fn prepare_actor_render_frame(
     let actor_views = camera
         .single()
         .ok()
-        .map(|(transform, projection, enhanced)| {
-            culling::ActorPublicationViews::new(
-                transform,
-                projection,
-                render_model::ENHANCED_RENDERING_ENABLED
-                    && enhanced
-                        .is_some_and(|settings| settings.shadows && !settings.reflection_capture),
-            )
-        });
+        .map(culling::ActorPublicationViews::for_camera);
     let local_shadows = first_person && actor_views.is_some_and(|views| views.casts_shadows);
     let mut java_posed = Vec::new();
     if let Some(stream) = client_world.stream.as_mut() {
         if let Some(progress) = swing_progress {
             stream.sync_local_swing(progress);
         }
-        stream.set_actor_camera_rotation(actor_camera_rotation(view.camera_rotation()));
+        stream.set_actor_camera_rotation(views::actor_camera_rotation(view.camera_rotation()));
         stream.advance_actor_interpolation_frame(0);
     }
     let authoritative_subject_eye = authoritative_local_actor_eye(
@@ -362,6 +356,8 @@ pub fn prepare_actor_render_frame(
         })
         .flatten();
     let mut native_body_sampled = false;
+    let mut occlusion_candidates = 0_u32;
+    let mut hidden_by_occlusion = 0_u32;
     let mut render_frame = client_world
         .stream
         .as_ref()
@@ -400,6 +396,8 @@ pub fn prepare_actor_render_frame(
                         rig
                     };
                     // Cull at the sampled frame scale; the local rig also drives the hand.
+                    let occluded = std::cell::Cell::new(false);
+                    occlusion_candidates += u32::from(rig.actor.runtime_id != local_runtime_id);
                     if rig.actor.runtime_id != local_runtime_id
                         && !culling::rig_may_be_published(
                             &rig,
@@ -409,11 +407,21 @@ pub fn prepare_actor_render_frame(
                             render_frame.as_mut(),
                             |low, high| {
                                 cull_view.is_some_and(|view| {
-                                    hides_box(stream, view.camera_position.to_array(), low, high)
+                                    let (low, high) = occlusion::body_and_shadow_bounds(
+                                        stream,
+                                        &rig,
+                                        step.partial_tick,
+                                        low,
+                                        high,
+                                    );
+                                    let hidden = hides_box(stream, view, low, high);
+                                    occluded.set(hidden);
+                                    hidden
                                 })
                             },
                         )
                     {
+                        hidden_by_occlusion += u32::from(occluded.get());
                         continue;
                     }
                     let profile = stream
@@ -501,6 +509,7 @@ pub fn prepare_actor_render_frame(
                 )
             })
             .unwrap_or((0, 0, 0, Vec::new(), None, 0));
+
     // First person draws the player's own rig near the camera: the visible arms with every other
     // bone hidden, and a drawable held item in its own first-person frame. Anything not covered
     // (an undrawable item) leaves the CPU viewmodel in charge.
@@ -594,18 +603,13 @@ pub fn prepare_actor_render_frame(
             });
         (visibility.visible(), local)
     });
-    let local = if local_shadows {
-        local.and_then(|local| {
-            culling::local_shadow_body(
-                local,
-                client_world.stream.as_deref(),
-                shadow_poses,
-                step.partial_tick,
-            )
-        })
-    } else {
-        local
-    };
+    let local = culling::with_local_shadow_body(
+        local,
+        local_shadows,
+        client_world.stream.as_deref(),
+        shadow_poses,
+        step.partial_tick,
+    );
     // The visibility override rebuilds the local transform, so re-apply the death tip-over.
     let local_death = client_world
         .stream
@@ -667,6 +671,12 @@ pub fn prepare_actor_render_frame(
         crate::presentation::actors::light_bodies(&mut batch, stream);
     }
     let selected_count = batch.submissions.len();
+    occlusion::record_work(
+        occlusion_candidates,
+        hidden_by_occlusion,
+        &batch,
+        local_runtime_id,
+    );
     if let (Some(stream), Some(render_frame)) =
         (client_world.stream.as_ref(), render_frame.as_mut())
     {
@@ -940,14 +950,6 @@ pub fn prepare_actor_render_frame(
         hand_light,
         step.partial_tick,
     );
-}
-
-fn actor_camera_rotation(rotation: bevy::math::Quat) -> [f32; 2] {
-    let (yaw, pitch, _) = rotation.to_euler(bevy::math::EulerRot::YXZ);
-    [
-        -pitch.to_degrees(),
-        (180.0 - yaw.to_degrees()).rem_euclid(360.0),
-    ]
 }
 
 /// Registers new skin models and item meshes in both rig catalogs with one rebuild each; if a

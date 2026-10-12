@@ -21,6 +21,7 @@ pub mod primitive_shapes;
 mod ui;
 mod ui_textures;
 mod visibility;
+pub mod visibility_bounds;
 
 pub use actor::{
     ACTOR_RIG_VERTEX_WORDS, ActorRigGeometry, ActorRigGeometryError, ActorRigSurface,

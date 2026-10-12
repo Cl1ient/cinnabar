@@ -265,7 +265,7 @@ pub fn advance_actor_frame(
         if let Some(progress) = input.swing_progress {
             stream.sync_local_swing(progress);
         }
-        stream.set_actor_camera_rotation(actor_camera_rotation(view.camera_rotation()));
+        stream.set_actor_camera_rotation(views::actor_camera_rotation(view.camera_rotation()));
         if let Ok((transform, _, _)) = camera.single() {
             stream.set_actor_camera_position(transform.translation.to_array());
         }
@@ -314,7 +314,7 @@ pub fn advance_actor_frame(
 
     let sampling_camera = camera.single().ok().map(|(transform, _, _)| {
         (
-            actor_camera_rotation(view.camera_rotation()),
+            views::actor_camera_rotation(view.camera_rotation()),
             transform.translation.to_array(),
         )
     });

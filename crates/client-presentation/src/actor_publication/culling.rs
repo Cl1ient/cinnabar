@@ -12,6 +12,19 @@ pub(super) struct ActorPublicationViews {
 }
 
 impl ActorPublicationViews {
+    /// Views for the gameplay camera; only Enhanced shadow views widen publication.
+    pub(super) fn for_camera(
+        (transform, projection, enhanced): (
+            &Transform,
+            &Projection,
+            Option<&render_scene::EnhancedRendering>,
+        ),
+    ) -> Self {
+        let casts_shadows = render_model::ENHANCED_RENDERING_ENABLED
+            && enhanced.is_some_and(|settings| settings.shadows && !settings.reflection_capture);
+        Self::new(transform, projection, casts_shadows)
+    }
+
     pub(super) fn new(transform: &Transform, projection: &Projection, casts_shadows: bool) -> Self {
         let main = ActorCullView {
             clip_from_world: projection.get_clip_from_view() * transform.to_matrix().inverse(),
@@ -61,7 +74,7 @@ pub(super) fn animation_view(
     views: Option<ActorPublicationViews>,
 ) -> Option<actor_animation::ActorAnimationView> {
     let Some(views) = views.filter(|views| views.casts_shadows) else {
-        return camera_animation_view(transform, projection);
+        return super::views::animation_view(transform, projection);
     };
     let clip = views.publication.clip_from_world;
     let [x, y, z, w] = [0, 1, 2, 3].map(|row| clip.row(row));
@@ -80,7 +93,21 @@ pub(super) fn shadow_only_local(
     local
 }
 
-pub(super) fn local_shadow_body(
+/// Replaces the local presentation with its shadow-only world body when `enabled`.
+pub(super) fn with_local_shadow_body(
+    local: Option<crate::presentation::actors::ActorRigPresentation>,
+    enabled: bool,
+    stream: Option<&chunk_pipeline::WorldStream>,
+    poses: &mut crate::presentation::actors::PoseConversions,
+    partial_tick: f32,
+) -> Option<crate::presentation::actors::ActorRigPresentation> {
+    if !enabled {
+        return local;
+    }
+    local.and_then(|local| local_shadow_body(local, stream, poses, partial_tick))
+}
+
+fn local_shadow_body(
     mut local: crate::presentation::actors::ActorRigPresentation,
     stream: Option<&chunk_pipeline::WorldStream>,
     poses: &mut crate::presentation::actors::PoseConversions,
@@ -137,44 +164,6 @@ pub(super) fn world_rig<'a>(
     } else {
         stream.authority().actor_rig(runtime_id)
     }
-}
-
-/// Rigs this far outside the view on every side still animate, so only a turn faster than this
-/// in one tick shows a rig its held pose for that tick.
-const ANIMATION_GUARD_DEGREES: f32 = 30.0;
-
-/// The camera's frustum widened by the guard band, with the render distances.
-fn camera_animation_view(
-    transform: &Transform,
-    projection: &Projection,
-) -> Option<actor_animation::ActorAnimationView> {
-    let Projection::Perspective(perspective) = projection else {
-        return None;
-    };
-    let (guard, limit) = (ANIMATION_GUARD_DEGREES.to_radians(), 85f32.to_radians());
-    let half_vertical = perspective.fov * 0.5;
-    let half_horizontal = (half_vertical.tan() * perspective.aspect_ratio).atan();
-    let (half_vertical, half_horizontal) = (
-        (half_vertical + guard).min(limit),
-        (half_horizontal + guard).min(limit),
-    );
-    let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
-        half_vertical * 2.0,
-        half_horizontal.tan() / half_vertical.tan(),
-        perspective.near,
-    ) * transform.to_matrix().inverse();
-    let [x, y, z, w] = [0, 1, 2, 3].map(|row| clip.row(row));
-    let planes = [w + x, w - x, w + y, w - y, z, w - z].map(|plane| plane.to_array());
-    planes
-        .iter()
-        .flatten()
-        .all(|value| value.is_finite())
-        .then(|| actor_animation::ActorAnimationView {
-            planes,
-            camera: transform.translation.to_array(),
-            player_distance: render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
-            entity_radius: render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS,
-        })
 }
 
 #[cfg(test)]

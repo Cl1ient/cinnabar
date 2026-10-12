@@ -3,7 +3,7 @@ use render_model::terrain_units::{QUADS_PER_UNIT, TerrainUnit};
 use super::TerrainUnitBatches;
 use crate::chunk::gpu_cull::direct::DirectOcclusion;
 use crate::chunk::*;
-use crate::upload_staging::BufferUploadStaging;
+use crate::upload_staging::TerrainUploadStaging;
 
 /// Compacts the current occlusion results in the original pass order, retaining unchanged lists.
 pub(in crate::chunk) fn prepare_units(
@@ -12,7 +12,7 @@ pub(in crate::chunk) fn prepare_units(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     cache: Res<PipelineCache>,
-    staging: Option<Res<BufferUploadStaging>>,
+    staging: Option<Res<TerrainUploadStaging>>,
 ) {
     let batches = &mut *batches;
     batches.views.retain(|_, view| view.queued);

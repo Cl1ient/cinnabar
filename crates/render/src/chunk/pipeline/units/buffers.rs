@@ -1,7 +1,7 @@
 use render_model::terrain_units::{VisibleTerrainUnit, shards};
 
 use crate::chunk::*;
-use crate::upload_staging::{BufferUploadStaging, write_batch};
+use crate::upload_staging::TerrainUploadStaging;
 
 /// One binding-sized page of a stream's ordered visible units.
 pub(super) struct UnitPage {
@@ -18,7 +18,7 @@ pub(super) fn upload(
     device: &RenderDevice,
     queue: &RenderQueue,
     cache: &PipelineCache,
-    staging: Option<&BufferUploadStaging>,
+    staging: Option<&TerrainUploadStaging>,
 ) -> u64 {
     let limits = device.limits();
     let max_bytes = limits
@@ -65,7 +65,11 @@ pub(super) fn upload(
         if page.uploaded != units {
             #[cfg(feature = "tracy")]
             let _span = bevy::log::info_span!("terrain.unit_upload", bytes = bytes.len()).entered();
-            write_batch(staging, device, queue, &[(&page.buffer, 0, bytes)]);
+            if let Some(staging) = staging {
+                staging.write_batch(device, queue, &[(&page.buffer, 0, bytes)]);
+            } else {
+                queue.write_buffer(&page.buffer, 0, bytes);
+            }
             page.uploaded.clear();
             page.uploaded.extend_from_slice(units);
             bytes_uploaded += bytes.len() as u64;

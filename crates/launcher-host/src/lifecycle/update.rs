@@ -26,6 +26,8 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 static LAYOUT: OnceLock<InstallLayout> = OnceLock::new();
 static STATE: Mutex<State> = Mutex::new(State::new());
+#[cfg(unix)]
+static STARTUP: OnceLock<update_installer::recovery::Startup> = OnceLock::new();
 
 #[derive(Clone)]
 struct Ready {
@@ -48,6 +50,15 @@ struct State {
     message: Option<String>,
     generation: u64,
     running: bool,
+    startup: StartupPhase,
+}
+
+/// Good frames authorize confirmation; update checks begin once recovery has finished.
+#[derive(Eq, PartialEq)]
+enum StartupPhase {
+    Preparing,
+    Confirming,
+    Complete,
 }
 
 impl State {
@@ -65,6 +76,7 @@ impl State {
             message: None,
             generation: 0,
             running: false,
+            startup: StartupPhase::Preparing,
         }
     }
 
@@ -75,14 +87,53 @@ impl State {
             .is_some_and(|ready| ready.notice.writable && ready.expires > now)
             && (self.requested || (self.preferences.install_on_quit && !self.dismissed))
     }
+
+    /// Freezes the offered stage and cancels background work before accepting shutdown.
+    fn request_restart(&mut self, now: OffsetDateTime) -> bool {
+        if !self
+            .ready
+            .as_ref()
+            .is_some_and(|ready| ready.notice.writable && ready.expires > now)
+        {
+            return false;
+        }
+        self.requested = true;
+        self.generation += 1;
+        true
+    }
+
+    /// Only the current worker may change stages, and accepted shutdown freezes its choice.
+    fn accepts_worker(&self, generation: u64) -> bool {
+        self.generation == generation && !self.requested
+    }
+
+    /// Hands an accepted Restart to the helper even if expiry changes during shutdown.
+    fn handoff_after_exit(&mut self, now: OffsetDateTime) -> Option<Ready> {
+        if self.requested {
+            self.ready
+                .as_ref()
+                .filter(|ready| ready.notice.writable)
+                .cloned()
+        } else if self.applies_on_exit(now) && self.request_restart(now) {
+            self.ready.clone()
+        } else {
+            None
+        }
+    }
 }
 
-/// Configures only installed clients; cached stages are checked even when network checks are off.
+/// Configures installed clients; stage and network checks begin after startup acknowledgement.
 pub fn check_in_background(layout: &InstallLayout) {
     if !layout.is_installed() {
         return;
     }
     let _ = LAYOUT.set(layout.clone());
+    #[cfg(unix)]
+    if let Ok(startup) =
+        handoff::installed_target().and_then(update_installer::recovery::Startup::observe)
+    {
+        let _ = STARTUP.set(startup);
+    }
     configure(
         SettingsOptions::load(&layout.user_config_root.join(SETTINGS_FILE)).update_preferences(),
     );
@@ -95,6 +146,9 @@ pub fn configure(mut preferences: Preferences) {
         preferences.checks = false;
     }
     let changed = if let Ok(mut state) = STATE.lock() {
+        if state.requested {
+            return;
+        }
         let changed = state.preferences != preferences;
         if changed {
             if state.preferences.channel != preferences.channel {
@@ -151,16 +205,11 @@ pub fn act(action: Action) -> bool {
     let mut download = None;
     let mut switch = false;
     let quit = if let Ok(mut state) = STATE.lock() {
+        if state.requested {
+            return true;
+        }
         match action {
-            Action::Restart
-                if state
-                    .ready
-                    .as_ref()
-                    .is_some_and(|ready| ready.notice.writable && ready.expires > now) =>
-            {
-                state.requested = true;
-                true
-            }
+            Action::Restart => state.request_restart(now),
             Action::Later => {
                 state.dismissed = true;
                 state.requested = false;
@@ -195,12 +244,10 @@ pub fn act(action: Action) -> bool {
 
 /// Starts the offline helper only for a click or the separately saved quit-time opt-in.
 pub fn apply_after_exit() {
-    let ready = STATE.lock().ok().and_then(|state| {
-        state
-            .applies_on_exit(OffsetDateTime::now_utc())
-            .then(|| state.ready.clone())
-            .flatten()
-    });
+    let ready = STATE
+        .lock()
+        .ok()
+        .and_then(|mut state| state.handoff_after_exit(OffsetDateTime::now_utc()));
     if let (Some(layout), Some(ready)) = (LAYOUT.get(), ready)
         && let Err(error) = handoff::spawn(layout, &ready)
     {
@@ -210,15 +257,52 @@ pub fn apply_after_exit() {
 
 /// Signals a complete first frame to the waiting helper.
 pub fn acknowledge_startup() {
-    let Some(marker) = LAYOUT.get().and_then(startup_marker) else {
+    let Some(layout) = LAYOUT.get() else {
         return;
     };
+    let marker = startup_marker(layout);
+    if let Ok(mut state) = STATE.lock() {
+        state.startup = StartupPhase::Confirming;
+    }
+    #[cfg(unix)]
+    let update_dir = layout.update_dir();
     std::thread::spawn(move || {
-        let _ = std::fs::File::options()
-            .write(true)
-            .create_new(true)
-            .open(marker);
+        if let Some(marker) = marker {
+            let _ = std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(marker);
+        }
+        #[cfg(unix)]
+        if let Some(startup) = STARTUP.get() {
+            if let Err(error) = startup.confirm(&update_dir) {
+                tracing::debug!("update recovery: {error:#}");
+            }
+        }
+        if let Ok(mut state) = STATE.lock() {
+            state.startup = StartupPhase::Complete;
+        }
+        worker::start();
     });
+}
+
+/// Lets a copied helper restore an orphaned replacement only after this failed client has exited.
+pub fn recover_after_failed_start() {
+    #[cfg(unix)]
+    if STATE
+        .lock()
+        .is_ok_and(|state| state.startup == StartupPhase::Preparing)
+    {
+        if let Some(layout) = LAYOUT.get() {
+            if let Ok(target) = handoff::installed_target() {
+                if update_installer::recovery::needs_rollback(&target, &layout.update_dir()) {
+                    if let Err(error) = handoff::spawn_recovery(layout, target) {
+                        tracing::warn!("could not start update recovery: {error:#}");
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Runs `prepare`, relaying each change to its `progress` report to a waiting update helper;

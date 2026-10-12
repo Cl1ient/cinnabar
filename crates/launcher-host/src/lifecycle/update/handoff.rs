@@ -2,6 +2,7 @@
 use super::*;
 use anyhow::{Context, Result, ensure};
 use std::{
+    ffi::OsString,
     fs,
     path::PathBuf,
     process::{Command, Stdio},
@@ -20,6 +21,34 @@ pub(super) fn installed_target() -> Result<PathBuf> {
 
 /// Starts the copied helper with the exact parent PID and the user's channel-switch choice.
 pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
+    spawn_with_args(
+        layout,
+        &[
+            ready.stage.as_os_str().to_owned(),
+            installed_target()?.into_os_string(),
+            std::process::id().to_string().into(),
+            ready.channel.name().into(),
+            ready.switch_now.to_string().into(),
+        ],
+    )
+}
+
+/// Starts rollback recovery with the same exact-parent exit barrier as an ordinary apply.
+#[cfg(unix)]
+pub(super) fn spawn_recovery(layout: &InstallLayout, target: PathBuf) -> Result<()> {
+    spawn_with_args(
+        layout,
+        &[
+            update_installer::recovery::RECOVER_FLAG.into(),
+            layout.update_dir().into_os_string(),
+            target.into_os_string(),
+            std::process::id().to_string().into(),
+        ],
+    )
+}
+
+/// Runs a copied helper and retains its stdin pipe until the client actually exits.
+fn spawn_with_args(layout: &InstallLayout, args: &[OsString]) -> Result<()> {
     let source = std::env::current_exe()?
         .parent()
         .context("missing installed directory")?
@@ -29,11 +58,7 @@ pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
     let directory = helper.parent().context("missing helper directory")?;
     let mut command = Command::new(&helper);
     command
-        .arg(&ready.stage)
-        .arg(installed_target()?)
-        .arg(std::process::id().to_string())
-        .arg(ready.channel.name())
-        .arg(ready.switch_now.to_string())
+        .args(args)
         .current_dir(directory)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())

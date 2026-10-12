@@ -14,6 +14,9 @@ use update_manifest::{Artifact, Manifest, TrustedKeys, select::Check};
 pub const MAX_ARTIFACT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const ENVELOPE_FILE: &str = "manifest.json";
 pub const ARTIFACT_FILE: &str = "artifact";
+const STAGE_PREFIX: &str = "stage-";
+const RETIRED_PREFIX: &str = "retired-";
+const RETIRED_STAGE: &str = "stage";
 
 /// The signed release and its selected native artifact.
 pub struct Selection {
@@ -159,7 +162,7 @@ impl Download {
         drop(self.file);
         let parent = destination.parent().context("missing update directory")?;
         let directory = tempfile::Builder::new()
-            .prefix("stage-")
+            .prefix(STAGE_PREFIX)
             .tempdir_in(parent)?;
         let mut manifest = File::create(directory.path().join(ENVELOPE_FILE))?;
         manifest.write_all(&self.selection.envelope)?;
@@ -168,9 +171,9 @@ impl Download {
         rename(&self.path, &directory.path().join(ARTIFACT_FILE))?;
         // Dropping the retired directory deletes the superseded stage.
         let retired = tempfile::Builder::new()
-            .prefix("retired-")
+            .prefix(RETIRED_PREFIX)
             .tempdir_in(parent)?;
-        let previous = retired.path().join("stage");
+        let previous = retired.path().join(RETIRED_STAGE);
         let replacing = destination.exists();
         if replacing {
             rename(destination, &previous)?;
@@ -187,6 +190,58 @@ impl Download {
         }
         Ok(destination.to_owned())
     }
+}
+
+/// Recovers the newest valid stage after an interrupted promotion, then prunes orphan workspaces.
+pub fn recover(
+    destination: &Path,
+    keys: &TrustedKeys,
+    check: Check<'_>,
+    now: OffsetDateTime,
+) -> Result<()> {
+    let parent = destination.parent().context("missing update directory")?;
+    let mut workspaces = Vec::new();
+    let mut recovered: Option<(PathBuf, Manifest)> = None;
+    for entry in fs::read_dir(parent)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let candidate = if name.starts_with(RETIRED_PREFIX) {
+            entry.path().join(RETIRED_STAGE)
+        } else if name.starts_with(STAGE_PREFIX) {
+            entry.path()
+        } else {
+            continue;
+        };
+        workspaces.push(entry.path());
+        if !destination.exists() {
+            if let Ok(selected) = verify(&candidate, keys, check, now) {
+                let newer = recovered.as_ref().is_none_or(|(_, previous)| {
+                    update_manifest::select::newer_build(
+                        &selected.manifest.version,
+                        selected.manifest.build_number,
+                        &previous.version,
+                        previous.build_number,
+                    )
+                    .unwrap_or(false)
+                });
+                if newer {
+                    recovered = Some((candidate, selected.manifest));
+                }
+            }
+        }
+    }
+    if let Some((candidate, _)) = recovered {
+        fs::rename(candidate, destination).context("recover interrupted stage promotion")?;
+    }
+    for workspace in workspaces {
+        // Leftover workspace cleanup cannot hide an otherwise usable ready stage.
+        let _ = fs::remove_dir_all(workspace);
+    }
+    Ok(())
 }
 
 /// Revalidates the staged envelope and payload before a native installer or package tool runs.

@@ -64,6 +64,11 @@ fn a_not_writable_install_cannot_launch_an_apply_helper() {
     state.preferences.install_on_quit = true;
     state.requested = true;
     assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
+    assert!(
+        state
+            .handoff_after_exit(OffsetDateTime::UNIX_EPOCH)
+            .is_none()
+    );
     assert_eq!(state.ready.unwrap().notice.action(), Action::Download);
 }
 
@@ -73,6 +78,102 @@ fn expired_ready_updates_never_authorize_exit_time_installation() {
     state.ready = Some(ready(true));
     state.requested = true;
     assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH + time::Duration::days(2)));
+}
+
+#[test]
+fn accepted_restart_freezes_the_stage_while_a_newer_download_finishes() {
+    let root = tempfile::tempdir().unwrap();
+    let stage = root.path().join("ready");
+    std::fs::create_dir(&stage).unwrap();
+    std::fs::write(
+        stage.join(update_installer::stage::ARTIFACT_FILE),
+        "accepted release",
+    )
+    .unwrap();
+    let mut state = State::new();
+    state.ready = Some(Ready {
+        stage: stage.clone(),
+        ..ready(true)
+    });
+    let downloading_generation = state.generation;
+    assert!(state.request_restart(OffsetDateTime::UNIX_EPOCH));
+    assert!(!state.preferences.install_on_quit);
+    assert!(worker::begin_promotion(&mut state, downloading_generation).is_err());
+    let frozen_generation = state.generation;
+    assert!(worker::begin_promotion(&mut state, frozen_generation).is_err());
+    assert!(state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
+    assert_eq!(state.ready.as_ref().unwrap().stage, stage);
+    assert_eq!(
+        std::fs::read(stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
+        b"accepted release"
+    );
+}
+
+#[test]
+fn expiry_during_shutdown_keeps_the_accepted_handoff_but_never_authorizes_an_expired_install() {
+    let mut state = State::new();
+    state.ready = Some(ready(true));
+    assert!(state.request_restart(OffsetDateTime::UNIX_EPOCH));
+    let expired = OffsetDateTime::UNIX_EPOCH + time::Duration::days(2);
+    assert!(!state.applies_on_exit(expired));
+    assert!(state.handoff_after_exit(expired).is_some());
+    let mut unaccepted = State::new();
+    unaccepted.ready = Some(ready(true));
+    unaccepted.preferences.install_on_quit = true;
+    assert!(unaccepted.handoff_after_exit(expired).is_none());
+}
+
+#[test]
+fn a_missing_payload_refreshes_the_channel_once_and_keeps_failures_retryable() {
+    let mut fetched = 0;
+    worker::retry_missing(
+        || {
+            fetched += 1;
+            worker::check_missing(if fetched == 1 {
+                reqwest::StatusCode::NOT_FOUND
+            } else {
+                reqwest::StatusCode::OK
+            })
+        },
+        || true,
+    )
+    .unwrap();
+    assert_eq!(fetched, 2);
+    fetched = 0;
+    assert!(
+        worker::retry_missing(
+            || {
+                fetched += 1;
+                worker::check_missing(reqwest::StatusCode::NOT_FOUND)
+            },
+            || true
+        )
+        .is_err()
+    );
+    assert_eq!(fetched, 2);
+    assert!(due(None, 0));
+}
+
+#[test]
+fn cancellation_and_other_download_failures_do_not_trigger_manifest_retry() {
+    for missing in [false, true] {
+        let mut fetched = 0;
+        assert!(
+            worker::retry_missing(
+                || {
+                    fetched += 1;
+                    if missing {
+                        Err(worker::MissingArtifact.into())
+                    } else {
+                        anyhow::bail!("connection failed")
+                    }
+                },
+                || false
+            )
+            .is_err()
+        );
+        assert_eq!(fetched, 1);
+    }
 }
 
 #[test]
@@ -95,7 +196,7 @@ fn a_failed_promotion_keeps_restart_available_only_when_the_previous_stage_survi
         stage: stage.clone(),
         ..ready(true)
     });
-    state.requested = true;
+    state.preferences.install_on_quit = true;
     let previous = state.ready.take();
     assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH));
     assert!(
@@ -124,10 +225,9 @@ fn a_failed_promotion_keeps_restart_available_only_when_the_previous_stage_survi
 }
 
 #[test]
-fn a_successful_promotion_clears_the_previous_notice_and_consent_before_publishing() {
+fn a_successful_background_promotion_withdraws_the_previous_notice_until_reverified() {
     let mut state = State::new();
     state.ready = Some(ready(true));
-    state.requested = true;
     let previous = state.ready.take();
     let stage =
         worker::finish_promotion(&mut state, previous, Ok(PathBuf::from("new-ready"))).unwrap();

@@ -35,7 +35,7 @@ pub fn resolve(os: &str, executable: &Path, appimage: Option<&Path>) -> Result<P
     }
 }
 
-/// Sibling retained until the replacement reaches its first successful startup.
+/// Sibling used by the native install transaction and retained until startup is confirmed.
 pub fn backup(target: &Path) -> Result<PathBuf> {
     let mut name = target
         .file_name()
@@ -62,11 +62,18 @@ pub fn access(target: &Path) -> Result<Access> {
     if !machine_install_rights() {
         return Ok(Access::Manual);
     }
-    access_with(target, |directory| {
+    let access = access_with(target, |directory| {
         tempfile::NamedTempFile::new_in(directory)
             .and_then(|file| file.close())
             .is_ok()
-    })
+    })?;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    if access == Access::Writable
+        && !crate::recovery::supports_exchange(target.parent().context("missing install parent")?)
+    {
+        return Ok(Access::Manual);
+    }
+    Ok(access)
 }
 
 #[cfg(windows)]

@@ -1,10 +1,10 @@
 //! One swap, one previous copy, and rollback when the newly launched client cannot start.
 
-use crate::{platform, stage, target};
+use crate::{platform, recovery, stage, target};
 use anyhow::{Context, Result, ensure};
 use std::{
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::Path,
 };
 use time::OffsetDateTime;
 use update_manifest::{TrustedKeys, select::Check};
@@ -37,7 +37,7 @@ pub fn after_exit(
         .create(true)
         .truncate(false)
         .write(true)
-        .open(root.join("update.lock"))?;
+        .open(root.join(crate::LOCK_FILE))?;
     lock.try_lock()
         .context("another updater is using this stage")?;
     let selected = stage::verify(stage_dir, keys, check, now)?;
@@ -81,8 +81,8 @@ pub fn after_exit(
             rollback(target, &backup, &work.path().join("failed"))?;
             return Err(error).context("new version did not start; previous version restored");
         }
-        confirm_start(&backup)?;
-        cleanup_confirmed_backup(target, &backup)?;
+        recovery::confirm_start(&backup)?;
+        recovery::cleanup_confirmed_backup(target, &backup)?;
     }
     fs::remove_dir_all(stage_dir)?;
     Ok(())
@@ -104,63 +104,44 @@ fn remember_installer(root: &Path, artifact: &Path) -> Result<()> {
 
 /// Promotes a file or complete app bundle, restoring it if the promotion itself fails.
 pub(crate) fn swap(target: &Path, candidate: &Path, backup: &Path) -> Result<()> {
-    cleanup_confirmed_backup(target, backup)?;
+    recovery::cleanup_confirmed_backup(target, backup)?;
     ensure!(!backup.exists(), "previous installation is still retained");
-    fs::rename(target, backup).context("retain previous installation")?;
-    if let Err(error) = fs::rename(candidate, target) {
-        fs::rename(backup, target).context("restore previous installation")?;
-        return Err(error).context("install update");
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        recovery::prepare_exchange(target, backup)?;
+        if let Err(error) = fs::rename(candidate, backup) {
+            recovery::clear_preparation(backup)?;
+            return Err(error).context("prepare replacement beside installation");
+        }
+        if let Err(error) = recovery::exchange(target, backup) {
+            fs::rename(backup, candidate).context("retain uninstalled replacement")?;
+            recovery::clear_preparation(backup)?;
+            return Err(error).context("install update");
+        }
     }
-    Ok(())
-}
-
-/// The receipt beside a backup, written only after its replacement confirms startup.
-fn confirmation(backup: &Path) -> PathBuf {
-    let mut name = backup.as_os_str().to_os_string();
-    name.push(".started");
-    PathBuf::from(name)
-}
-
-/// Persists successful startup before cleanup, so a later swap can retry failed removal.
-fn confirm_start(backup: &Path) -> Result<()> {
-    File::options()
-        .write(true)
-        .create_new(true)
-        .open(confirmation(backup))?
-        .sync_all()?;
-    Ok(())
-}
-
-/// Retries only confirmed cleanup; unconfirmed backups remain available for rollback.
-fn cleanup_confirmed_backup(target: &Path, backup: &Path) -> Result<()> {
-    let receipt = confirmation(backup);
-    if !receipt.is_file() {
-        return Ok(());
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        fs::rename(target, backup).context("retain previous installation")?;
+        if let Err(error) = fs::rename(candidate, target) {
+            fs::rename(backup, target).context("restore previous installation")?;
+            return Err(error).context("install update");
+        }
     }
-    ensure!(
-        target.exists(),
-        "confirmed replacement is missing; keep previous installation"
-    );
-    if backup.exists() {
-        remove(backup).context("remove confirmed previous installation")?;
-    }
-    fs::remove_file(receipt).context("remove startup confirmation")?;
     Ok(())
 }
 
 /// Moves a failed new install aside before restoring the previous signed payload.
 pub(crate) fn rollback(target: &Path, backup: &Path, failed: &Path) -> Result<()> {
-    fs::rename(target, failed).context("move failed new installation aside")?;
-    fs::rename(backup, target).context("restore previous installation")?;
-    Ok(())
-}
-
-/// Deletes only the known previous file or complete bundle after successful startup.
-fn remove(path: &Path) -> Result<()> {
-    if fs::symlink_metadata(path)?.is_dir() {
-        fs::remove_dir_all(path)?;
-    } else {
-        fs::remove_file(path)?;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        recovery::exchange(target, backup).context("restore previous installation")?;
+        fs::rename(backup, failed).context("move failed new installation aside")?;
+        recovery::clear_preparation(backup)?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        fs::rename(target, failed).context("move failed new installation aside")?;
+        fs::rename(backup, target).context("restore previous installation")?;
     }
     Ok(())
 }

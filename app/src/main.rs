@@ -18,6 +18,7 @@ fn main() {
                 Ok(true) => {}
                 Ok(false) => return,
                 Err(error) => {
+                    launcher_host::lifecycle::update::recover_after_failed_start();
                     let _ = writeln!(diagnostics::console::stderr(), "cinnabar failed: {error:#}");
                     diagnostics::console::flush_before_exit();
                     std::process::exit(1);
@@ -25,6 +26,7 @@ fn main() {
             }
             let result = run(*args);
             if let Err(error) = result {
+                launcher_host::lifecycle::update::recover_after_failed_start();
                 let _ = writeln!(diagnostics::console::stderr(), "cinnabar failed: {error:#}");
                 diagnostics::console::flush_before_exit();
                 std::process::exit(1);

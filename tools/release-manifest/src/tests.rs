@@ -117,3 +117,53 @@ fn keygen_prints_a_matching_key_pair() {
         public
     );
 }
+
+#[test]
+fn archived_payload_names_retain_even_expired_downloads_without_installing_them() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("manifest.json");
+    let name = format!(
+        "{}old-Cinnabar.dmg",
+        update_manifest::platforms::payload_prefix()
+    );
+    let artifact = Artifact {
+        url: format!("https://example.test/{name}"),
+        sha256: "a".repeat(64),
+        size: 1,
+    };
+    let manifest = Manifest {
+        schema: SCHEMA,
+        channel: "stable".into(),
+        version: "1.0.0".into(),
+        build_number: 1,
+        expires: OffsetDateTime::UNIX_EPOCH,
+        notes_url: String::new(),
+        artifacts: [
+            ("macos-arm64".into(), artifact.clone()),
+            ("macos-x86_64".into(), artifact),
+        ]
+        .into(),
+    };
+    std::fs::write(
+        &file,
+        update_manifest::sign(&manifest, "k1", &SEED).unwrap(),
+    )
+    .unwrap();
+    let mut out = Vec::new();
+    run(
+        &args(&["payload-names", file.to_str().unwrap()]),
+        None,
+        &mut out,
+    )
+    .unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), format!("{name}\n"));
+    std::fs::write(&file, "{}").unwrap();
+    assert!(
+        run(
+            &args(&["payload-names", file.to_str().unwrap()]),
+            None,
+            &mut Vec::new()
+        )
+        .is_err()
+    );
+}

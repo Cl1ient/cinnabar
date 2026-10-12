@@ -25,7 +25,7 @@ on:
         type: string
 
 concurrency:
-  group: ${{ ((github.event_name == 'workflow_dispatch' && inputs.bump != 'nightly') || startsWith(github.ref, 'refs/tags/v')) && 'package-release' || format('package-{0}', github.ref) }}
+  group: ${{ (github.event_name == 'schedule' || inputs.bump == 'nightly') && 'package-nightly' || inputs.bump == 'beta' && 'package-beta' || 'package-release' }}
   cancel-in-progress: ${{ github.event_name == 'schedule' }}
 
 permissions:
@@ -555,9 +555,76 @@ jobs:
             sign -version "$RELEASE_VERSION" -channel "$RELEASE_CHANNEL" -build-number "$GITHUB_RUN_NUMBER" "${args[@]}") \
             > "$RUNNER_TEMP/$UPDATE_MANIFEST.partial"
           mv "$RUNNER_TEMP/$UPDATE_MANIFEST.partial" "$RUNNER_TEMP/$UPDATE_MANIFEST"
+      - name: Add the stable manifest compatibility download
+        if: needs.prepare.outputs.channel == 'stable'
+        run: |
+          manifest="$RUNNER_TEMP/$UPDATE_MANIFEST"
+          if [[ -e "$manifest" ]]; then
+            cp "$manifest" "dist/$UPDATE_MANIFEST"
+          elif gh release view "$UPDATE_MANIFEST_TAG" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/stable-assets"; then
+            # Unsigned releases still serve the current signed manifest to existing clients.
+            if grep -Fxq "$UPDATE_MANIFEST" "$RUNNER_TEMP/stable-assets"; then
+              gh release download "$UPDATE_MANIFEST_TAG" --pattern "$UPDATE_MANIFEST" --dir dist --clobber
+            fi
+          fi
       - name: Verify all downloads and checksum the rolling prerelease
         if: needs.prepare.outputs.channel != 'stable'
         run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" checksums dist
+      - name: Verify all downloads and checksum the stable release
+        if: needs.prepare.outputs.channel == 'stable'
+        run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" checksums dist
+      - name: Publish the signed update manifest
+        # New payloads, then the manifest naming them; retain the preceding publication too.
+        # Without a new manifest, the current one and its payloads stay untouched.
+        run: |
+          manifest="$RUNNER_TEMP/$UPDATE_MANIFEST"
+          payloads="$RUNNER_TEMP/update-payloads"
+          if [[ ! -e "$manifest" ]]; then
+            echo "::notice::No signed $RELEASE_CHANNEL update manifest; the published one stays current"
+            exit 0
+          fi
+          if ! gh release view "$UPDATE_MANIFEST_TAG" > /dev/null 2>&1; then
+            # A prerelease holder can never become the repository's latest release.
+            gh release create "$UPDATE_MANIFEST_TAG" --prerelease --latest=false --target "$RELEASE_COMMIT" \
+              --title "${RELEASE_CHANNEL^} updates" --notes "Signed update manifest for the $RELEASE_CHANNEL channel."
+          fi
+          previous="$RUNNER_TEMP/previous-update"
+          mkdir -p "$previous"
+          gh release view "$UPDATE_MANIFEST_TAG" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/published-assets"
+          : > "$RUNNER_TEMP/retained-payloads"
+          prune=false
+          if grep -Fxq "$UPDATE_MANIFEST" "$RUNNER_TEMP/published-assets"; then
+            gh release download "$UPDATE_MANIFEST_TAG" --pattern "$UPDATE_MANIFEST" --dir "$previous" --clobber
+            if (cd "$GITHUB_WORKSPACE/release-tools" && cargo run --quiet --locked -p release-manifest -- \
+              payload-names "$previous/$UPDATE_MANIFEST") > "$RUNNER_TEMP/retained-payloads"; then
+              prune=true
+            else
+              echo "::notice::Cannot read the preceding manifest; retain all earlier payloads"
+            fi
+          fi
+          # Identical payload names are immutable; clobbering would briefly remove a live download.
+          : > "$RUNNER_TEMP/new-payload-names"
+          for payload in "$payloads"/*; do
+            name="${payload##*/}"
+            printf '%s\n' "$name" >> "$RUNNER_TEMP/new-payload-names"
+            if ! grep -Fxq "$name" "$RUNNER_TEMP/published-assets"; then
+              gh release upload "$UPDATE_MANIFEST_TAG" "$payload"
+            fi
+          done
+          if [[ ! -e "$previous/$UPDATE_MANIFEST" ]] || ! cmp -s "$previous/$UPDATE_MANIFEST" "$manifest"; then
+            gh release upload "$UPDATE_MANIFEST_TAG" "$manifest" --clobber
+          fi
+          # A renewed signature over the same payloads must not shorten their predecessor's grace.
+          LC_ALL=C sort -o "$RUNNER_TEMP/new-payload-names" "$RUNNER_TEMP/new-payload-names"
+          if [[ "$prune" != true ]] || cmp -s "$RUNNER_TEMP/retained-payloads" "$RUNNER_TEMP/new-payload-names"; then
+            exit 0
+          fi
+          gh release view "$UPDATE_MANIFEST_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
+            if [[ "$name" == "$UPDATE_PAYLOAD_PREFIX"* && ! -e "$payloads/$name" ]] &&
+              ! grep -Fxq "$name" "$RUNNER_TEMP/retained-payloads"; then
+              gh release delete-asset "$UPDATE_MANIFEST_TAG" "$name" --yes
+            fi
+          done
       - name: Publish the rolling prerelease
         if: needs.prepare.outputs.channel != 'stable'
         run: |
@@ -579,9 +646,6 @@ jobs:
           git push -f origin "refs/tags/$RELEASE_TAG"
           gh release edit "$RELEASE_TAG" --title "$title" --notes-file "$RUNNER_TEMP/notes.md" \
             --prerelease --latest=false --draft=false
-      - name: Verify all downloads and checksum the stable release
-        if: needs.prepare.outputs.channel == 'stable'
-        run: python3 "$GITHUB_WORKSPACE/release-tools/packaging/release-downloads.py" checksums dist
       - name: Publish the stable release
         id: publish
         if: needs.prepare.outputs.channel == 'stable'
@@ -601,27 +665,6 @@ jobs:
               --title "$RELEASE_TAG" --generate-notes --notes-file "$RUNNER_TEMP/notes.md"
             echo "created=true" >> "${GITHUB_OUTPUT:-/dev/null}"
           fi
-      - name: Publish the signed update manifest
-        # New payloads, then the manifest naming them, then payloads no manifest names any more.
-        # Without a new manifest, the current one and its payloads stay untouched.
-        run: |
-          manifest="$RUNNER_TEMP/$UPDATE_MANIFEST"
-          payloads="$RUNNER_TEMP/update-payloads"
-          if [[ ! -e "$manifest" ]]; then
-            echo "::notice::No signed $RELEASE_CHANNEL update manifest; the published one stays current"
-            exit 0
-          fi
-          if ! gh release view "$UPDATE_MANIFEST_TAG" > /dev/null 2>&1; then
-            # A prerelease holder can never become the repository's latest release.
-            gh release create "$UPDATE_MANIFEST_TAG" --prerelease --latest=false --target "$RELEASE_COMMIT" \
-              --title "${RELEASE_CHANNEL^} updates" --notes "Signed update manifest for the $RELEASE_CHANNEL channel."
-          fi
-          gh release upload "$UPDATE_MANIFEST_TAG" "$payloads"/* --clobber
-          gh release upload "$UPDATE_MANIFEST_TAG" "$manifest" --clobber
-          gh release view "$UPDATE_MANIFEST_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
-            [[ "$name" != "$UPDATE_PAYLOAD_PREFIX"* || -e "$payloads/$name" ]] ||
-              gh release delete-asset "$UPDATE_MANIFEST_TAG" "$name" --yes
-          done
       - name: Post the changelog to Discord
         if: steps.publish.outputs.created == 'true'
         continue-on-error: true

@@ -261,4 +261,48 @@ fn failed_stage_restoration_keeps_the_previous_payload_for_recovery() {
             .version,
         "2.0.0"
     );
+    recover(&ready, &keys, check(platform), now()).unwrap();
+    assert_eq!(
+        verify(&ready, &keys, check(platform), now())
+            .unwrap()
+            .manifest
+            .version,
+        "2.0.0"
+    );
+}
+
+#[test]
+fn interrupted_stage_promotion_recovers_the_newest_verified_payload_without_network() {
+    let root = tempfile::tempdir().unwrap();
+    let platform = "linux-x86_64";
+    let (ready, keys) = staged(root.path(), platform);
+    let pending = root.path().join(format!("{STAGE_PREFIX}interrupted"));
+    newer_download(root.path(), platform, &keys)
+        .finish(&pending)
+        .unwrap();
+    let retired = root.path().join(format!("{RETIRED_PREFIX}interrupted"));
+    fs::create_dir(&retired).unwrap();
+    fs::rename(&ready, retired.join(RETIRED_STAGE)).unwrap();
+    recover(&ready, &keys, check(platform), now()).unwrap();
+    assert_eq!(
+        verify(&ready, &keys, check(platform), now())
+            .unwrap()
+            .manifest
+            .version,
+        "3.0.0"
+    );
+    assert!(!pending.exists());
+    assert!(!retired.exists());
+}
+
+#[test]
+fn an_interrupted_unverified_stage_is_never_offered() {
+    let root = tempfile::tempdir().unwrap();
+    let pending = root.path().join(format!("{STAGE_PREFIX}interrupted"));
+    fs::create_dir(&pending).unwrap();
+    fs::write(pending.join(ENVELOPE_FILE), "{}").unwrap();
+    fs::write(pending.join(ARTIFACT_FILE), "unverified").unwrap();
+    let ready = root.path().join("ready");
+    recover(&ready, &TrustedKeys::new(), check("linux-x86_64"), now()).unwrap();
+    assert!(!ready.exists());
 }

@@ -8,6 +8,7 @@ struct ReleaseAssets {
     assets: BTreeMap<String, BTreeMap<String, String>>,
     update_assets: BTreeMap<String, BTreeMap<String, String>>,
     update_channels: BTreeMap<String, ChannelRelease>,
+    update_payload_prefix: String,
 }
 
 /// Where the release pipeline publishes one channel's signed manifest.
@@ -51,6 +52,11 @@ pub fn channel_release(channel: &str) -> Option<&'static ChannelRelease> {
 /// Repository that publishes the installer's channel manifests and native artifacts.
 pub fn repository() -> &'static str {
     &RELEASE.repository
+}
+
+/// Prefix reserved for immutable update payloads in a channel's release assets.
+pub fn payload_prefix() -> &'static str {
+    &RELEASE.update_payload_prefix
 }
 
 #[cfg(test)]

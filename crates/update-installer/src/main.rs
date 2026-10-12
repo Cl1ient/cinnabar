@@ -19,6 +19,22 @@ fn main() {
 fn run() -> Result<()> {
     let _copy = update_installer::helper::hold(&std::env::current_exe()?)?;
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if args
+        .first()
+        .is_some_and(|arg| arg == update_installer::recovery::RECOVER_FLAG)
+    {
+        ensure!(
+            args.len() == 4,
+            "expected --recover UPDATE_DIR TARGET PARENT_PID"
+        );
+        let (root, target) = (PathBuf::from(&args[1]), PathBuf::from(&args[2]));
+        let pid = args[3].to_str().context("invalid parent PID")?.parse()?;
+        update_installer::parent::wait(pid)?;
+        if update_installer::recovery::restore(&target, &root)? {
+            launch(&target, &root)?;
+        }
+        return Ok(());
+    }
     ensure!(
         args.len() == 5,
         "expected STAGE TARGET PARENT_PID CHANNEL SWITCH_NOW"
@@ -34,7 +50,8 @@ fn run() -> Result<()> {
     let keys = update_manifest::parse_keys(update_installer::TRUSTED_KEYS)?;
     update_installer::parent::wait(pid)?;
     let root = stage.parent().context("missing update directory")?;
-    update_installer::apply::after_exit(
+    let mut started = false;
+    let result = update_installer::apply::after_exit(
         update_installer::apply::Request {
             stage_dir: &stage,
             target: &target,
@@ -49,8 +66,20 @@ fn run() -> Result<()> {
             now: time::OffsetDateTime::now_utc(),
         },
         || Ok(()),
-        |target| launch(target, root),
-    )
+        |target| {
+            let result = launch(target, root);
+            started = result.is_ok();
+            result
+        },
+    );
+    if let Err(error) = result {
+        if !started {
+            update_installer::recovery::restore(&target, root)?;
+            launch(&target, root).context("restart the retained installation")?;
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// Confirms the new client reached a complete frame, restoring its predecessor on early failure.

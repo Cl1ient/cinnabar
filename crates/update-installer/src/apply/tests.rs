@@ -1,5 +1,6 @@
 use super::*;
 use crate::fixtures::*;
+use crate::recovery::{cleanup_confirmed_backup, confirm_start, confirmation, remove};
 
 #[test]
 fn file_and_whole_bundle_swaps_keep_the_previous_copy_until_startup() {

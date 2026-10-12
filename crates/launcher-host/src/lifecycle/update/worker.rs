@@ -20,6 +20,36 @@ struct Stamp {
     build: u64,
 }
 
+/// A signed manifest can outlive the retained download it names; fetch the channel again.
+#[derive(Debug, thiserror::Error)]
+#[error("the update download is no longer published")]
+pub(super) struct MissingArtifact;
+
+/// A missing served document or payload warrants one refresh of the signed channel manifest.
+pub(super) fn check_missing(status: reqwest::StatusCode) -> Result<()> {
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Err(MissingArtifact.into());
+    }
+    Ok(())
+}
+
+/// Refreshes a missing payload's manifest once, leaving every other failure for the next check.
+pub(super) fn retry_missing(
+    mut check: impl FnMut() -> Result<()>,
+    active: impl FnOnce() -> bool,
+) -> Result<()> {
+    let result = check();
+    if result
+        .as_ref()
+        .is_err_and(|error| error.is::<MissingArtifact>())
+        && active()
+    {
+        check()
+    } else {
+        result
+    }
+}
+
 /// Runs one worker at a time and retries when a preference changes during its request.
 pub(super) fn start() {
     let Some(layout) = LAYOUT.get().cloned() else {
@@ -29,14 +59,17 @@ pub(super) fn start() {
         let Ok(mut state) = STATE.lock() else {
             return;
         };
-        if state.running {
+        if state.running || state.requested || state.startup != StartupPhase::Complete {
             return;
         }
         state.running = true;
         (state.preferences, state.switch_now, state.generation)
     };
     std::thread::spawn(move || {
-        if let Err(error) = run(&layout, preferences, switch_now, generation) {
+        if let Err(error) = retry_missing(
+            || run(&layout, preferences, switch_now, generation),
+            || active(generation),
+        ) {
             tracing::debug!("update check: {error:#}");
             if let Ok(mut state) = STATE.lock() {
                 if state.generation == generation && switch_now {
@@ -62,7 +95,7 @@ pub(super) fn start() {
 fn active(generation: u64) -> bool {
     STATE
         .lock()
-        .is_ok_and(|state| state.generation == generation)
+        .is_ok_and(|state| state.accepts_worker(generation))
 }
 
 /// Reopens a verified ready stage, or checks the selected channel and resumes its artifact.
@@ -85,9 +118,8 @@ fn run(
         .create(true)
         .truncate(false)
         .write(true)
-        .open(root.join("update.lock"))?;
-    // A freshly updated client starts while its apply helper still holds the lease, until this
-    // start is acknowledged; waiting here on the background thread resumes checks afterwards.
+        .open(root.join(update_installer::LOCK_FILE))?;
+    // Other clients and offline helpers share this lease with stage writers.
     lease.lock().context("lock the update directory")?;
     let check = Check {
         channel: preferences.channel.name(),
@@ -113,6 +145,7 @@ fn run(
         }
     }
     let destination = root.join("ready");
+    stage::recover(&destination, &keys, check, OffsetDateTime::now_utc())?;
     // A postponed stage stays offered while daily checks continue, and a newer release replaces it.
     let mut staged = None;
     if destination.exists() {
@@ -235,6 +268,7 @@ fn run(
                 request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
             }
             let mut response = request.send().await?;
+            check_missing(response.status())?;
             if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
                 let expected = format!("bytes {offset}-{}/{}", artifact.size - 1, artifact.size);
                 ensure!(
@@ -270,8 +304,7 @@ fn run(
             let mut state = STATE
                 .lock()
                 .map_err(|_| anyhow::anyhow!("update state unavailable"))?;
-            ensure!(state.generation == generation, "update check cancelled");
-            state.ready.take()
+            begin_promotion(&mut state, generation)?
         };
         let promotion = download.finish(&destination);
         let directory = {
@@ -298,6 +331,12 @@ fn run(
         );
         record(&stamp_path, check)
     })
+}
+
+/// Withdraws the current notice only if no accepted handoff has frozen its stage.
+pub(super) fn begin_promotion(state: &mut State, generation: u64) -> Result<Option<Ready>> {
+    ensure!(state.accepts_worker(generation), "update check cancelled");
+    Ok(state.ready.take())
 }
 
 /// Restores the postponed notice only after failed promotion leaves its files ready on disk.
@@ -404,7 +443,7 @@ fn publish(
         .and_then(|target| update_installer::target::access(&target))
         .is_ok_and(|access| access == update_installer::target::Access::Writable);
     if let Ok(mut state) = STATE.lock() {
-        if state.generation == generation {
+        if state.accepts_worker(generation) {
             state.ready = Some(Ready {
                 expires,
                 stage,
@@ -427,7 +466,13 @@ fn publish(
 
 /// Bounds the signed document separately from the much larger release artifact.
 pub(super) async fn fetch(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
-    let mut response = client.get(url).timeout(FETCH_TIMEOUT).send().await?;
+    let mut response = client
+        .get(url)
+        .header(reqwest::header::CACHE_CONTROL, "no-cache")
+        .timeout(FETCH_TIMEOUT)
+        .send()
+        .await?;
+    check_missing(response.status())?;
     ensure!(
         response.status() == reqwest::StatusCode::OK,
         "manifest download failed: {}",

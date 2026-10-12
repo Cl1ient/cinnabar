@@ -27,6 +27,7 @@ pub fn before_run(assets_overridden: bool) -> Result<bool> {
     if !layout.is_installed() {
         return Ok(true);
     }
+    update::check_in_background(&layout);
 
     // An update helper waiting on this start must not mistake a long asset download for a hang.
     if !assets_overridden
@@ -39,7 +40,6 @@ pub fn before_run(assets_overridden: bool) -> Result<bool> {
     {
         return Ok(false);
     }
-    update::check_in_background(&layout);
     Ok(true)
 }
 

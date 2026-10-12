@@ -6337,6 +6337,7 @@ name = "release-manifest"
 version = "0.1.12"
 dependencies = [
  "base64",
+ "serde_json",
  "sha2",
  "tempfile",
  "time",

@@ -5,7 +5,7 @@ use assets::BlockFace;
 
 /// Whether compilation needs all face selectors for a dedicated pot-content model.
 pub(in crate::compiler) fn is_record(record: &RegistryRecord) -> bool {
-    is_terrestrial_cross(record)
+    record.model_family == ModelFamily::Cross
         || matches!(
             record.name.as_ref(),
             "minecraft:cactus"
@@ -29,9 +29,21 @@ pub(in crate::compiler) fn apply(
     let materials = if record.name.as_ref() == "minecraft:cactus" {
         visual.faces
     } else {
-        let Some(materials) = inputs.materials(record) else {
-            return Ok(());
+        let faces: &[BlockFace] = match record.name.as_ref() {
+            "minecraft:bamboo" => &[BlockFace::North, BlockFace::East],
+            "minecraft:azalea" | "minecraft:flowering_azalea" => {
+                &[BlockFace::Down, BlockFace::South, BlockFace::West]
+            }
+            "minecraft:crimson_roots" | "minecraft:warped_roots" => &[BlockFace::South],
+            _ => &[cross_texture_face(record)],
         };
+        let mut materials = [0; 6];
+        for &face in faces {
+            let Some(material) = inputs.material(record, face) else {
+                return Ok(());
+            };
+            materials[face as usize] = material;
+        }
         materials
     };
     let key = (visual.model_template, materials);

@@ -3,6 +3,11 @@ use assets::{CompiledBiomeAssets, NetworkIdMode, RuntimeAssets};
 
 /// Compiles plants against distinct original world, potted and stone artwork.
 fn compile_plants() -> (RuntimeAssets, Vec<RegistryRecord>) {
+    compile_plants_with_sparse_flower(false)
+}
+
+/// Optionally omits unused flower selectors to exercise sparse replacement packs.
+fn compile_plants_with_sparse_flower(sparse: bool) -> (RuntimeAssets, Vec<RegistryRecord>) {
     let protocol = assets::active_content_registry_protocol();
     let registry = assets::read_registry_for_protocol(
         include_bytes!("../../../../../crates/assets/data/block-registry-v2193.bin"),
@@ -59,6 +64,9 @@ fn compile_plants() -> (RuntimeAssets, Vec<RegistryRecord>) {
         serde_json::from_slice(&fs::read(directory.path().join("blocks.json")).unwrap()).unwrap();
     blocks["cactus"]["textures"] =
         serde_json::json!({"side":"cactus_side","up":"cactus_top","down":"cactus_bottom"});
+    if sparse {
+        blocks["poppy"]["textures"] = serde_json::json!({"down":"world"});
+    }
     write(
         directory.path().join("blocks.json"),
         serde_json::to_vec(&blocks).unwrap(),
@@ -92,6 +100,24 @@ fn compile_plants() -> (RuntimeAssets, Vec<RegistryRecord>) {
         RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap(),
         records,
     )
+}
+
+#[test]
+fn potted_flower_uses_its_required_selector_without_unrelated_faces() {
+    let (runtime, records) = compile_plants_with_sparse_flower(true);
+    let flower = records
+        .iter()
+        .find(|record| record.name.as_ref() == "minecraft:poppy")
+        .unwrap();
+    let quads = contents(&runtime, flower);
+    assert_eq!(quads.len(), 2);
+    assert_eq!(
+        quads[0].material,
+        runtime
+            .resolve(NetworkIdMode::Sequential, flower.sequential_id)
+            .face(assets::BlockFace::Down)
+            .material_id()
+    );
 }
 
 /// Borrows a registered plant's distinct pot-content surfaces.

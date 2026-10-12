@@ -1128,7 +1128,7 @@ these changes do not close the movement, camera, or actor parity gates.
 - Pot contents retain their block-state selectors and use separate terrain-textured models.
 - Flowers, saplings and roots use unextruded planes; cactus, bamboo and azalea retain their
   separate parts and pot-specific sprite regions. Ordinary terrain models remain unchanged.
-- Incomplete: mangrove-propagule geometry, eyeblossom emission and biome tint need separate
+- Incomplete: mangrove-propagule geometry, eyeblossom geometry/emission and biome tint need separate
   acceptance; native-server placement parity and the full pot body remain open.
 - Flower pots now add the dirt surface four pixels above the block base, below the rim.
 - Pot bodies and lantern surfaces use double-sided alpha testing instead of fallback blending and rear-face culling.

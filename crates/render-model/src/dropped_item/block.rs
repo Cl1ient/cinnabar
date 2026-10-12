@@ -1,5 +1,6 @@
 use super::{ItemMeshVertex, MAX_ITEM_LAYERS};
 use crate::DroppedItemBlock;
+use glam::Vec3;
 
 /// Expands the retained block templates into the ordinary lit item vertex format.
 pub fn block_mesh(
@@ -29,7 +30,12 @@ pub fn block_mesh(
             4 => [1.0, 0.0, 0.0],
             5 => [0.0, 0.0, -1.0],
             6 => [0.0, 0.0, 1.0],
-            _ => [0.0; 3],
+            _ => {
+                let [a, b, c, _] = quad
+                    .positions
+                    .map(|position| Vec3::from_array(position.map(f32::from)));
+                (b - a).cross(c - a).try_normalize()?.to_array()
+            }
         };
         for corner in [0, 1, 2, 0, 2, 3] {
             vertices.push(ItemMeshVertex {
@@ -47,4 +53,39 @@ pub fn block_mesh(
         }
     }
     Some(vertices)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn potted_planes_have_finite_unit_normals() {
+        let model = DroppedItemBlock {
+            materials: Arc::from([(
+                crate::DroppedItemSprite {
+                    width: 16,
+                    height: 16,
+                    rgba8: Arc::from([255; 16 * 16 * 4]),
+                },
+                crate::OPAQUE_WHITE,
+            )]),
+            quads: Arc::from([assets::ModelQuad {
+                positions: [[36, 64, 36], [220, 64, 220], [220, 256, 220], [36, 256, 36]],
+                uvs: [[0, 4096], [4096, 4096], [4096, 0], [0, 0]],
+                material: 0,
+                flags: assets::MODEL_QUAD_FLAG_TWO_SIDED,
+            }]),
+            rotation: 0,
+        };
+        let vertices = block_mesh(&model, 1, 32).unwrap();
+        assert_eq!(vertices.len(), 6);
+        for vertex in vertices {
+            assert!(vertex.normal.iter().all(|value| value.is_finite()));
+            let squared_length: f32 = vertex.normal.iter().map(|value| value * value).sum();
+            assert!((squared_length - 1.0).abs() < 1e-5);
+            assert_eq!(vertex.normal[1], 0.0);
+        }
+    }
 }

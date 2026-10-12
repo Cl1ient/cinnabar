@@ -6,10 +6,8 @@ use std::{
 use image::{DynamicImage, ImageBuffer, Rgba, RgbaImage};
 use serde_json::Value;
 
-use super::{
-    PBR_REF_COLOR, PBR_REF_NORMAL, PbrFormat, PbrPack, PbrSurface, PbrTexture, PbrTextureSource,
-    decode,
-};
+use super::{PbrFormat, PbrPack, PbrSurface, PbrTexture, PbrTextureSource, decode};
+use assets::{PBR_REF_COLOR, PBR_REF_NORMAL};
 
 mod names;
 pub(super) mod terrain;
@@ -47,6 +45,9 @@ fn safe_relative(value: &str) -> Option<PathBuf> {
     Some(path.to_owned())
 }
 
+/// Image formats an authored map may use, in lookup priority order.
+pub(super) const IMAGE_EXTENSIONS: [&str; 4] = ["tga", "png", "jpg", "jpeg"];
+
 fn candidates(pack: &PbrPack, alias: &str, suffix: &str, extension: &str) -> Vec<PathBuf> {
     names::variants(alias)
         .into_iter()
@@ -62,7 +63,7 @@ fn candidates(pack: &PbrPack, alias: &str, suffix: &str, extension: &str) -> Vec
 }
 
 fn find(pack: &PbrPack, alias: &str, suffix: &str) -> Option<PathBuf> {
-    ["tga", "png", "jpg", "jpeg"]
+    IMAGE_EXTENSIONS
         .into_iter()
         .flat_map(|extension| candidates(pack, alias, suffix, extension))
         .find(|path| path.is_file())
@@ -178,7 +179,7 @@ fn layer(
     } else {
         vec![parent.to_owned()]
     };
-    let path = ["tga", "png", "jpg", "jpeg"]
+    let path = IMAGE_EXTENSIONS
         .into_iter()
         .flat_map(|extension| {
             roots

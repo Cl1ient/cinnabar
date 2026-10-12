@@ -123,9 +123,10 @@ fn java_name(stem: &str) -> String {
 
 pub(super) fn variants(alias: &str) -> Vec<String> {
     let alias = alias.replace('\\', "/");
-    let alias = alias
-        .strip_suffix(".png")
-        .or_else(|| alias.strip_suffix(".tga"))
+    // Lookup appends each supported extension itself, so drop any the catalog already names.
+    let alias = super::IMAGE_EXTENSIONS
+        .into_iter()
+        .find_map(|extension| alias.strip_suffix(&format!(".{extension}")))
         .unwrap_or(&alias);
     let path = Path::new(alias);
     let stem = path
@@ -184,5 +185,14 @@ mod tests {
         assert!(
             variants("textures/blocks/oak_log_side").contains(&"textures/block/oak_log".to_owned())
         );
+    }
+
+    #[test]
+    fn every_supported_image_extension_is_stripped_before_lookup() {
+        for extension in super::super::IMAGE_EXTENSIONS {
+            let named = variants(&format!("textures/blocks/stone.{extension}"));
+            assert_eq!(named, variants("textures/blocks/stone"), "{extension}");
+            assert!(named.iter().all(|name| !name.contains('.')), "{named:?}");
+        }
     }
 }

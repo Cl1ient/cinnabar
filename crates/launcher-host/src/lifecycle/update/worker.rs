@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
     io::{Read, Write},
+    path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
 use time::OffsetDateTime;
 use update_installer::stage::{self, Download, Selection};
-use update_manifest::{channel::Channel, select::Check};
+use update_manifest::{TrustedKeys, channel::Channel, select::Check};
 
 #[derive(Deserialize, Serialize)]
 struct Stamp {
@@ -79,6 +80,7 @@ fn run(
         .context("unsupported platform")?;
     let root = layout.update_dir();
     fs::create_dir_all(&root)?;
+    update_installer::helper::prune(&root);
     let lease = File::options()
         .create(true)
         .truncate(false)
@@ -99,16 +101,11 @@ fn run(
         switch_now: true,
         ..check
     };
-    let stable_cache = root.join("stable-manifest.json");
-    let mut cached = Vec::new();
-    if File::open(&stable_cache)
-        .and_then(|file| {
-            file.take(update_manifest::MAX_ENVELOPE_BYTES as u64 + 1)
-                .read_to_end(&mut cached)
-        })
-        .is_ok()
-        && Selection::verify(&cached, &keys, stable, OffsetDateTime::now_utc()).is_ok()
-    {
+    let stable_cache = cache_path(&root, Channel::Stable);
+    let channel_cache = cache_path(&root, preferences.channel);
+    if read_cached(&stable_cache).is_some_and(|cached| {
+        Selection::verify(&cached, &keys, stable, OffsetDateTime::now_utc()).is_ok()
+    }) {
         if let Ok(mut state) = STATE.lock() {
             if state.generation == generation {
                 state.stable_available = true;
@@ -140,6 +137,14 @@ fn run(
         .filter(|stamp| stamp.current == check.current && stamp.build == check.current_build)
         .map(|stamp| stamp.checked_at);
     if !switch_now && !due(last, now_secs()) {
+        // The skipped check would have found the same release, so restore what it offered.
+        if cached_switch_offer(&channel_cache, &keys, check, OffsetDateTime::now_utc()) {
+            if let Ok(mut state) = STATE.lock() {
+                if state.generation == generation {
+                    offer_switch(&mut state);
+                }
+            }
+        }
         return Ok(());
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -164,26 +169,25 @@ fn run(
         let selected = Selection::verify(
             &envelope,
             &keys,
-            Check { switch_now: true, ..check },
+            Check {
+                switch_now: true,
+                ..check
+            },
             OffsetDateTime::now_utc(),
         )?;
-        if !switch_now && !update_manifest::select::newer_build(
-            &selected.manifest.version,
-            selected.manifest.build_number,
-            check.current,
-            check.current_build,
-        )? {
-            let older = update_manifest::select::newer_build(
-                check.current,
-                check.current_build,
+        let _ = fs::write(&channel_cache, &envelope);
+        if !switch_now
+            && !update_manifest::select::newer_build(
                 &selected.manifest.version,
                 selected.manifest.build_number,
-            )?;
-            if older {
+                check.current,
+                check.current_build,
+            )?
+        {
+            if older_release(&selected.manifest, check)? {
                 if let Ok(mut state) = STATE.lock() {
                     if state.generation == generation {
-                        state.switch_available = true;
-                        state.message = Some("This channel has an older version. Wait for its next release, or choose Switch now.".into());
+                        offer_switch(&mut state);
                     }
                 }
             }
@@ -219,18 +223,28 @@ fn run(
             if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
                 let expected = format!("bytes {offset}-{}/{}", artifact.size - 1, artifact.size);
                 ensure!(
-                    response.headers().get(reqwest::header::CONTENT_RANGE)
-                        .and_then(|value| value.to_str().ok()) == Some(expected.as_str()),
+                    response
+                        .headers()
+                        .get(reqwest::header::CONTENT_RANGE)
+                        .and_then(|value| value.to_str().ok())
+                        == Some(expected.as_str()),
                     "invalid resumed range"
                 );
             } else {
-                ensure!(response.status() == reqwest::StatusCode::OK, "artifact download failed: {}", response.status());
+                ensure!(
+                    response.status() == reqwest::StatusCode::OK,
+                    "artifact download failed: {}",
+                    response.status()
+                );
                 if offset != 0 {
                     download.restart()?;
                 }
             }
             if let Some(length) = response.content_length() {
-                ensure!(length == artifact.size as u64 - download.offset(), "artifact content length mismatch");
+                ensure!(
+                    length == artifact.size as u64 - download.offset(),
+                    "artifact content length mismatch"
+                );
             }
             while let Some(chunk) = response.chunk().await? {
                 ensure!(active(generation), "update check cancelled");
@@ -239,10 +253,78 @@ fn run(
         }
         ensure!(active(generation), "update check cancelled");
         let directory = download.finish(&destination)?;
-        ensure!(expires > OffsetDateTime::now_utc(), "release manifest expired during download");
-        publish(directory, version, expires, preferences.channel, switch_now, generation);
+        ensure!(
+            expires > OffsetDateTime::now_utc(),
+            "release manifest expired during download"
+        );
+        publish(
+            directory,
+            version,
+            expires,
+            preferences.channel,
+            switch_now,
+            generation,
+        );
         record(&stamp_path, check)
     })
+}
+
+/// The last verified envelope fetched for `channel`.
+fn cache_path(root: &Path, channel: Channel) -> PathBuf {
+    root.join(format!("manifest-{}.json", channel.name()))
+}
+
+/// Reads a cached envelope no larger than a fetched one may be.
+fn read_cached(path: &Path) -> Option<Vec<u8>> {
+    let mut cached = Vec::new();
+    File::open(path)
+        .and_then(|file| {
+            file.take(update_manifest::MAX_ENVELOPE_BYTES as u64 + 1)
+                .read_to_end(&mut cached)
+        })
+        .ok()?;
+    Some(cached)
+}
+
+/// True when the channel's release is strictly older than the running build.
+fn older_release(manifest: &update_manifest::Manifest, check: Check<'_>) -> Result<bool> {
+    Ok(update_manifest::select::newer_build(
+        check.current,
+        check.current_build,
+        &manifest.version,
+        manifest.build_number,
+    )?)
+}
+
+/// Whether the cached, still-valid manifest at `path` warrants the Switch now offer.
+pub(super) fn cached_switch_offer(
+    path: &Path,
+    keys: &TrustedKeys,
+    check: Check<'_>,
+    now: OffsetDateTime,
+) -> bool {
+    read_cached(path).is_some_and(|envelope| {
+        Selection::verify(
+            &envelope,
+            keys,
+            Check {
+                switch_now: true,
+                ..check
+            },
+            now,
+        )
+        .and_then(|selected| older_release(&selected.manifest, check))
+        .unwrap_or(false)
+    })
+}
+
+/// Offers an explicit switch to the selected channel's older release.
+pub(super) fn offer_switch(state: &mut State) {
+    state.switch_available = true;
+    state.message = Some(
+        "This channel has an older version. Wait for its next release, or choose Switch now."
+            .into(),
+    );
 }
 
 /// Publishes only a verified artifact and the non-elevating permission decision.

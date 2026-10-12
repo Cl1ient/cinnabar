@@ -17,6 +17,8 @@ prereleases use SemVer ordering, and successive builds use a signed monotonic bu
 The client checks the manifest's Ed25519 signature, channel, expiry, app version and build,
 then the artifact's size and SHA-256. The existing trusted-key list supports key rotation.
 A separate Rust helper waits for the exact client process to exit and verifies the stage again.
+A new version preparing game assets reports progress, so only a start that stalls for five minutes
+counts as failed; the helper then stops the client and its setup process before restoring files.
 
 - **macOS:** the helper replaces the complete signed app bundle from the DMG and preserves its
   signature and notarization ticket. The previous bundle remains beside it until the new client

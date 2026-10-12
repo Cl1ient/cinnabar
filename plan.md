@@ -6,8 +6,9 @@ carry monotonic build numbers, and digest-named partial downloads resume with HT
 An offline Rust helper waits for the old process, applies the verified native package, and
 restores failed macOS/Linux starts. Read-only installs offer the manual download action.
 
-Incomplete: CI must compile and run the written regression tests on all platforms. Signed
-channel publication and the owner's signing key/secret must be configured before release.
+Incomplete: CI must compile and run the written regression tests on all platforms. The package
+workflow publishes each channel's signed manifest, but the owner's `CINNABAR_UPDATE_SIGNING_KEY`
+secret and `UPDATE_TRUSTED_KEYS` variable must be configured before any update is offered.
 The launcher owner must review the notice screenshots before merge.
 
 ## Actor animation ownership

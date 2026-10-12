@@ -18,6 +18,7 @@ use std::{
     time::Duration,
 };
 use time::OffsetDateTime;
+use update_installer::startup;
 use update_manifest::channel::Channel;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -209,22 +210,47 @@ pub fn apply_after_exit() {
 
 /// Signals a complete first frame to the waiting helper; no persistent receipt is written.
 pub fn acknowledge_startup() {
-    let Some(marker) = std::env::var_os(update_installer::STARTUP_ENV).map(PathBuf::from) else {
+    let Some(marker) = LAYOUT.get().and_then(startup_marker) else {
         return;
     };
-    let Some(layout) = LAYOUT.get() else {
-        return;
+    std::thread::spawn(move || {
+        let _ = std::fs::File::options()
+            .write(true)
+            .create_new(true)
+            .open(marker);
+    });
+}
+
+/// Runs `prepare` while telling a waiting helper that this first start is still progressing.
+pub fn while_preparing<T>(layout: &InstallLayout, prepare: impl FnOnce() -> T) -> T {
+    let Some(marker) = startup_marker(layout) else {
+        return prepare();
     };
-    if marker.starts_with(layout.update_dir())
-        && marker.file_name().is_some_and(|name| name == "started")
-    {
-        std::thread::spawn(move || {
-            let _ = std::fs::File::options()
-                .write(true)
-                .create_new(true)
-                .open(marker);
-        });
-    }
+    let (stop, stopped) = std::sync::mpsc::channel::<()>();
+    let heartbeat = std::thread::spawn(move || {
+        for count in 1_u64.. {
+            let _ = startup::beat(&marker, count);
+            if stopped.recv_timeout(startup::HEARTBEAT)
+                != Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            {
+                break;
+            }
+        }
+    });
+    let result = prepare();
+    drop(stop);
+    let _ = heartbeat.join();
+    result
+}
+
+/// The helper's marker, accepted only inside this install's update directory.
+fn startup_marker(layout: &InstallLayout) -> Option<PathBuf> {
+    let marker = PathBuf::from(std::env::var_os(startup::STARTUP_ENV)?);
+    (marker.starts_with(layout.update_dir())
+        && marker
+            .file_name()
+            .is_some_and(|name| name == startup::STARTED))
+    .then_some(marker)
 }
 
 /// A corrected clock cannot suppress the next daily check.

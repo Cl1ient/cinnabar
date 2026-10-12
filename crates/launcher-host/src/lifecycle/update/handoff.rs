@@ -24,13 +24,10 @@ pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
         .parent()
         .context("missing installed directory")?
         .join(update_installer::helper_filename());
-    let directory = tempfile::Builder::new()
-        .prefix("helper-")
-        .tempdir_in(layout.update_dir())?
-        .keep();
-    let helper = directory.join(update_installer::helper_filename());
-    fs::copy(source, &helper)?;
-    let mut command = Command::new(helper);
+    // The lock covers the copy until its helper holds the directory itself.
+    let (helper, _spawning) = update_installer::helper::copy(&layout.update_dir(), &source)?;
+    let directory = helper.parent().context("missing helper directory")?;
+    let mut command = Command::new(&helper);
     command
         .arg(&ready.stage)
         .arg(installed_target()?)

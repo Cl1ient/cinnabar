@@ -1,4 +1,5 @@
 use super::*;
+use update_manifest::TrustedKeys;
 
 #[test]
 fn update_http_client_refuses_plaintext_before_connecting() {
@@ -72,4 +73,65 @@ fn expired_ready_updates_never_authorize_exit_time_installation() {
     state.ready = Some(ready(true));
     state.requested = true;
     assert!(!state.applies_on_exit(OffsetDateTime::UNIX_EPOCH + time::Duration::days(2)));
+}
+
+/// A signed envelope for `version` on the stable channel, as a manifest fetch would cache it.
+fn cached_release(path: &std::path::Path, version: &str, build_number: u64) -> TrustedKeys {
+    let seed = [7; update_manifest::KEY_BYTES];
+    let manifest = update_manifest::Manifest {
+        schema: update_manifest::SCHEMA,
+        channel: "stable".into(),
+        version: version.into(),
+        build_number,
+        expires: OffsetDateTime::now_utc() + time::Duration::days(1),
+        notes_url: String::new(),
+        artifacts: [(
+            "macos-arm64".to_owned(),
+            update_manifest::Artifact {
+                url: "https://example.test/c.dmg".into(),
+                sha256: "a".repeat(64),
+                size: 10,
+            },
+        )]
+        .into(),
+    };
+    std::fs::write(path, update_manifest::sign(&manifest, "k", &seed).unwrap()).unwrap();
+    TrustedKeys::from([("k".to_owned(), update_manifest::public_key(&seed).unwrap())])
+}
+
+#[test]
+fn a_skipped_daily_check_restores_the_older_channel_switch_offer() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("manifest-stable.json");
+    let check = update_manifest::select::Check {
+        channel: "stable",
+        platform: "macos-arm64",
+        current: "2.0.0-nightly",
+        current_build: 50,
+        switch_now: false,
+    };
+    assert!(!worker::cached_switch_offer(
+        &path,
+        &TrustedKeys::new(),
+        check,
+        OffsetDateTime::now_utc()
+    ));
+    let keys = cached_release(&path, "1.0.0", 40);
+    assert!(worker::cached_switch_offer(
+        &path,
+        &keys,
+        check,
+        OffsetDateTime::now_utc()
+    ));
+    let mut state = State::new();
+    worker::offer_switch(&mut state);
+    assert!(state.switch_available && state.message.is_some());
+    // A newer release is a download, not a switch.
+    let keys = cached_release(&path, "3.0.0", 60);
+    assert!(!worker::cached_switch_offer(
+        &path,
+        &keys,
+        check,
+        OffsetDateTime::now_utc()
+    ));
 }

@@ -5,6 +5,7 @@ use std::{
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
+use update_installer::startup::{self, Monitor, Progress};
 
 /// Accepts only local inputs and reports a failed apply in the installer's log.
 fn main() {
@@ -16,6 +17,7 @@ fn main() {
 
 /// Waits for the exact parent process before verifying, applying, and launching the release.
 fn run() -> Result<()> {
+    let _copy = update_installer::helper::hold(&std::env::current_exe()?)?;
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     ensure!(
         args.len() == 5,
@@ -52,9 +54,9 @@ fn run() -> Result<()> {
 }
 
 /// Confirms the new client reached a complete frame, restoring its predecessor on early failure.
+/// Asset preparation heartbeats restart the stall timeout, so a long first-run download is not a failure.
 fn launch(target: &Path, root: &Path) -> Result<()> {
     let directory = tempfile::Builder::new().prefix("start-").tempdir_in(root)?;
-    let marker = directory.path().join("started");
     #[cfg(target_os = "macos")]
     let executable = target.join("Contents/MacOS/cinnabar");
     #[cfg(windows)]
@@ -63,9 +65,10 @@ fn launch(target: &Path, root: &Path) -> Result<()> {
     let executable = target.to_owned();
     let mut command = Command::new(executable);
     command
-        .env(update_installer::STARTUP_ENV, &marker)
+        .env(startup::STARTUP_ENV, startup::marker(directory.path()))
         .stdin(Stdio::null())
         .stdout(Stdio::null());
+    startup::isolate(&mut command);
     #[cfg(target_os = "linux")]
     {
         command.arg("--appimage-extract-and-run");
@@ -74,19 +77,19 @@ fn launch(target: &Path, root: &Path) -> Result<()> {
         }
     }
     let mut child = command.spawn().context("launch updated client")?;
-    let deadline = Instant::now() + Duration::from_secs(300);
+    let mut monitor = Monitor::new(Instant::now());
     loop {
-        if marker.is_file() {
-            return Ok(());
-        }
-        if let Some(status) = child.try_wait()? {
-            anyhow::bail!("updated client exited before startup: {status}");
-        }
-        if Instant::now() >= deadline {
-            // Only this exact child was started by the updater. Wait before restoring its files.
-            child.kill()?;
-            child.wait()?;
-            anyhow::bail!("updated client did not complete startup");
+        let failure = match monitor.poll(directory.path(), Instant::now()) {
+            Progress::Started => return Ok(()),
+            Progress::Stalled => Some("updated client did not complete startup".to_owned()),
+            Progress::Waiting => child
+                .try_wait()?
+                .map(|status| format!("updated client exited before startup: {status}")),
+        };
+        if let Some(failure) = failure {
+            // Rollback restores files only after the client and its setup process have exited.
+            startup::stop(&mut child)?;
+            anyhow::bail!(failure);
         }
         std::thread::sleep(Duration::from_millis(100));
     }

@@ -4,23 +4,16 @@ use std::collections::BTreeMap;
 
 impl DroppedItemModel {
     /// Whether this model has a closed, opaque surface for alpha-tested drawing.
-    /// Open templates, two-sided planes, partial alpha and padded UVs retain two-sided rendering.
+    /// Legacy cutouts, open templates, partial alpha and padded UVs retain two-sided rendering.
     #[must_use]
     pub fn can_cull_back_faces(&self) -> bool {
         match self {
             Self::Vacant => false,
             Self::NativeSprite(sprite) => binary_alpha(sprite),
             Self::Sprite(sprite) => {
-                // The legacy rear artwork is mirrored. Its mask must enclose the same solid.
-                binary_alpha(sprite)
-                    && (0..sprite.height as usize).all(|row| {
-                        (0..sprite.width as usize).all(|column| {
-                            let offset = row * sprite.width as usize;
-                            sprite.rgba8[(offset + column) * 4 + 3]
-                                == sprite.rgba8
-                                    [(offset + sprite.width as usize - 1 - column) * 4 + 3]
-                        })
-                    })
+                // Full front and rear planes discard cutout texels independently, so even
+                // symmetric masks can expose rear shading through their sampled edges.
+                binary_alpha(sprite) && opaque(&sprite.rgba8)
             }
             Self::Cube(cube) => {
                 cube.tints.iter().all(|color| color >> 24 == 255)

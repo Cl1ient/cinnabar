@@ -1,5 +1,30 @@
-//! Wall-clock instrumentation for startup carrier I/O.
+//! Wall-clock instrumentation for startup carrier I/O and the first frame.
 use assets::carriers::startup::CarrierLoadObserver;
+use bevy::prelude::{App, Last, Local, Res, Resource};
+use std::time::Instant;
+
+/// When the event loop started.
+#[derive(Resource)]
+struct EventLoopStart(Instant);
+
+/// Logs, on the first frame, the time since launch and how much of it preceded the event loop.
+pub(crate) fn install_first_frame_log(app: &mut App) {
+    app.insert_resource(EventLoopStart(Instant::now()))
+        .add_systems(Last, log_first_frame);
+}
+
+/// Logs the first frame's launch latency once.
+fn log_first_frame(start: Res<EventLoopStart>, mut logged: Local<bool>) {
+    if std::mem::replace(&mut *logged, true) {
+        return;
+    }
+    let launched = crate::lifecycle::launched_at();
+    diagnostics::log_stderr!(
+        "first frame {:.1} ms after launch ({:.1} ms before the event loop)",
+        launched.elapsed().as_secs_f64() * 1e3,
+        start.0.duration_since(launched).as_secs_f64() * 1e3
+    );
+}
 
 /// Wall time of each startup carrier load, logged as one line.
 #[derive(Default)]

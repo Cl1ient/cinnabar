@@ -959,6 +959,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     #[cfg(feature = "enhanced-diagnostics")]
     crate::enhanced_diagnostics::install(&mut app, diagnostic_budget);
     executor::configure_frame_schedule_executors(&mut app);
+    startup::install_first_frame_log(&mut app);
     let exit = app.run();
     client_shell::discord_presence::shutdown(&mut app);
     if let Some(mut network) = app

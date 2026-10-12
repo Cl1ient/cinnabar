@@ -1,5 +1,6 @@
 //! Startup carrier loading and required registry verification.
 mod timing;
+pub(super) use timing::install_first_frame_log;
 use timing::{LoadTimes, join};
 
 use super::{PHYSICS_REGISTRY_GENERATION_GUIDANCE, PHYSICS_REGISTRY_SHA256};

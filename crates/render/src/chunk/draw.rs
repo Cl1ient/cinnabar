@@ -390,10 +390,8 @@ pub(in crate::chunk) fn queue_chunks(
             continue;
         }
 
-        let use_units = !probing
-            && enhanced.is_none()
-            && !units.disabled
-            && pipeline::units::supported(draw_mode, &render_device.limits());
+        let use_units =
+            !probing && enhanced.is_none() && !units.disabled && pipeline.unit_supported;
         if use_units {
             lists.drawable(admit);
             let sources = lists.units(&allocations);

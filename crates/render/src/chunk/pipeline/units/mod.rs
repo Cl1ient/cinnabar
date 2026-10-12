@@ -115,6 +115,7 @@ impl TerrainUnitBatches {
 pub(in crate::chunk) fn install(render_app: &mut SubApp) {
     render_app
         .init_resource::<TerrainUnitBatches>()
+        .add_systems(RenderStartup, configure_support)
         .add_render_command::<Opaque3d, DrawTerrainUnits<0>>()
         .add_render_command::<Opaque3d, DrawTerrainUnits<1>>()
         .add_render_command::<Opaque3d, DrawTerrainUnits<2>>()
@@ -126,6 +127,22 @@ pub(in crate::chunk) fn install(render_app: &mut SubApp) {
                 .in_set(RenderSystems::PrepareResources)
                 .after(gpu_cull::direct::prepare_direct_occlusion),
         );
+}
+
+/// Admits unit pipelines before warmup, so other backends never compile unused unit shaders.
+fn configure_support(
+    adapter: Res<RenderAdapter>,
+    device: Res<RenderDevice>,
+    mut pipeline: ResMut<ChunkPipeline>,
+) {
+    let info = adapter.get_info();
+    let mode = select_chunk_draw_mode(
+        adapter.get_downlevel_capabilities().flags,
+        device.features(),
+        Backends::from(info.backend),
+        apple_gpu(&info),
+    );
+    pipeline.unit_supported = supported(mode, &device.limits());
 }
 
 /// A single additional vertex storage binding, with no vertex buffer or indirect arguments.

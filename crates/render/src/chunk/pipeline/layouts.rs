@@ -32,6 +32,7 @@ pub(in crate::chunk) struct ChunkPipelineSpecializer;
 pub(in crate::chunk) struct ChunkPipeline {
     pub(in crate::chunk) variants: Variants<RenderPipeline, ChunkPipelineSpecializer>,
     pub(in crate::chunk) unit_variants: [Variants<RenderPipeline, ChunkPipelineSpecializer>; 4],
+    pub(in crate::chunk) unit_supported: bool,
     pub(in crate::chunk) solid_variants: Variants<RenderPipeline, ChunkPipelineSpecializer>,
     pub(in crate::chunk) model_variants: Variants<RenderPipeline, ChunkPipelineSpecializer>,
     /// Sorted transparent liquid and model draws, one pipeline so they never switch programs.
@@ -138,6 +139,7 @@ impl FromWorld for ChunkPipeline {
         .map(|descriptor| Variants::new(ChunkPipelineSpecializer, unit_descriptor(descriptor)));
         Self {
             unit_variants,
+            unit_supported: false,
             variants: Variants::new(ChunkPipelineSpecializer, descriptor),
             solid_variants: Variants::new(ChunkPipelineSpecializer, solid_descriptor),
             model_variants: Variants::new(ChunkPipelineSpecializer, model_descriptor),
@@ -573,7 +575,7 @@ impl crate::pipeline_warmup::PrewarmPipelines for ChunkPipeline {
         ] {
             ids.push(variants.specialize(cache, key)?);
         }
-        if !view.enhanced {
+        if self.unit_supported && !view.enhanced {
             for variants in &mut self.unit_variants {
                 ids.push(variants.specialize(cache, key)?);
             }

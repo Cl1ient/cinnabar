@@ -59,7 +59,7 @@ impl TerrainUnit {
     }
 }
 
-/// Shader-facing part of a CPU-selected unit. Each storage record has WGSL vec4 alignment.
+/// Shader-facing part of a CPU-selected unit. Each storage record matches a WGSL vec4.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct VisibleTerrainUnit {

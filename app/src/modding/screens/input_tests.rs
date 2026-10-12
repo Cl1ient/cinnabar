@@ -11,7 +11,8 @@ use bevy::{
     window::{CursorOptions, PrimaryWindow},
 };
 use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
-use client_ui::test_support::{fixture_font, inventory_session};
+use client_ui::test_support::inventory_session;
+use ui_engine::test_support::fixture_font;
 use {
     super::*,
     experience_sdk::mod_manifest::{KeyDecl, Modifier},

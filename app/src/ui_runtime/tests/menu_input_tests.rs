@@ -17,8 +17,8 @@ use std::sync::{
 };
 use {
     client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
-    client_ui::test_support::fixture_font,
     launcher::menu::{MenuAction, MenuField, MenuScreen},
+    ui_engine::test_support::fixture_font,
 };
 
 fn menu_input_app(clipboard: MenuClipboard) -> (App, Entity) {

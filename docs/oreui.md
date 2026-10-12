@@ -133,9 +133,10 @@ their native artwork. Live animation review remains open.
 - Without the carrier, drawn artwork remains a diagnostic fallback. Neither look satisfies the
   native artwork parity gate. One rem is five GUI pixels; one texel is 0.2rem.
 
-Code: `crates/client-ui/src/ui_runtime/presentation/forms/oreui/` (theme, paint, grid, icons,
-widgets, one file per screen) and `crates/client-ui/src/ui_runtime/oreui_assets.rs`
-(the runtime loader). The saved-accounts picker, which vanilla lacks, is an OreUI modal menu. Profile models, feed projections, and value formatting live in
+Code: the `oreui` crate, `crates/oreui/src/` (paint, grid, icons, widgets, one file per screen,
+`images.rs` for the runtime artwork loader and `fonts.rs` for the shipped faces). Its adapters in
+`crates/client-ui/src/ui_runtime/presentation/forms/oreui_runtime.rs` project runtime state into
+its typed inputs. The saved-accounts picker, which vanilla lacks, is an OreUI modal menu. Profile models, feed projections, and value formatting live in
 `crates/launcher/src/menu/`; app owns service polling and command dispatch.
 
 ## Screenshot checks still needed

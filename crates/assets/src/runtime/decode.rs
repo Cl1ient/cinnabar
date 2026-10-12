@@ -9,13 +9,14 @@ use crate::{
     MATERIAL_FLAG_ALPHA_BLEND, MATERIAL_FLAG_ALPHA_CUTOUT, MAX_ANIMATION_FRAMES, MAX_ANIMATIONS,
     MAX_BIOME_NAME_BYTES, MAX_BIOME_NAMES_BYTES, MAX_BIOME_RULES, MAX_MATERIALS, MAX_MODEL_QUADS,
     MAX_MODEL_TEMPLATES, MAX_TEXTURE_LAYERS, MAX_TEXTURE_PAGES, MIP_COUNT,
-    MODEL_TEMPLATE_FLAG_COMPOUND_NEXT, MODEL_TEMPLATE_FLAG_FENCE_NETHER,
-    MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE, MODEL_TEMPLATE_FLAG_GATE_AXIS_X,
-    MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP, MODEL_TEMPLATE_FLAG_LILY_PAD,
-    MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_SNOW_LAYER, MODEL_TEMPLATE_FLAG_STAIR,
-    MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, Material, ModelQuad, ModelTemplate, NO_ANIMATION,
-    NO_MODEL_TEMPLATE, TILE_SIZE, TINT_MAP_BYTES, TINT_MAP_COUNT, TINT_MAP_SIZE, TextureArray,
-    TextureMip, TexturePage, TextureRef, TintSource, VisualKind, VisualSupport,
+    MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN, MODEL_TEMPLATE_FLAG_COMPOUND_NEXT,
+    MODEL_TEMPLATE_FLAG_FENCE_NETHER, MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE,
+    MODEL_TEMPLATE_FLAG_GATE_AXIS_X, MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP,
+    MODEL_TEMPLATE_FLAG_LILY_PAD, MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_SNOW_LAYER,
+    MODEL_TEMPLATE_FLAG_STAIR, MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, Material, ModelQuad,
+    ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TILE_SIZE, TINT_MAP_BYTES, TINT_MAP_COUNT,
+    TINT_MAP_SIZE, TextureArray, TextureMip, TexturePage, TextureRef, TintSource, VisualKind,
+    VisualSupport,
     biome::{BIOME_RULE_FLAGS_MASK, validate_biome_assets},
     blob::{
         ANIMATION_BYTES, BIOME_RULE_BYTES, FRAME_BYTES, HASH_BYTES, HASH_ENTRY_BYTES, HEADER_BYTES,
@@ -353,7 +354,8 @@ fn validate_fixed(
                 & (MODEL_TEMPLATE_FLAG_PANE
                     | MODEL_TEMPLATE_FLAG_FENCE_WOOD
                     | MODEL_TEMPLATE_FLAG_FENCE_NETHER
-                    | MODEL_TEMPLATE_FLAG_FIRE);
+                    | MODEL_TEMPLATE_FLAG_FIRE
+                    | MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN);
             if connected_flag != 0 {
                 let Some(base_index) = connected_bases
                     .iter()
@@ -646,6 +648,20 @@ fn runtime_connected_bases(bytes: &[u8]) -> Result<Vec<(usize, u32)>, AssetError
             }
             bases.push((index, flag));
             index += 17;
+        } else if flag == MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN {
+            let Some(group) =
+                records.get(index..index + crate::BUBBLE_COLUMN_TEMPLATE_COUNT as usize)
+            else {
+                return Err(invalid("bubble column template group is truncated"));
+            };
+            if group.iter().enumerate().any(|(offset, record)| {
+                u32_at(record, 8) != flag
+                    || u32_at(record, 4) != crate::bubble_column_quad_count(offset as u32)
+            }) {
+                return Err(invalid("bubble column template group is noncanonical"));
+            }
+            bases.push((index, flag));
+            index += crate::BUBBLE_COLUMN_TEMPLATE_COUNT as usize;
         } else if flag == MODEL_TEMPLATE_FLAG_FIRE {
             let Some(group) = records.get(index..index + crate::FIRE_TEMPLATE_COUNT as usize)
             else {

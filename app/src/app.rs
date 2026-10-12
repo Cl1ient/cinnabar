@@ -54,7 +54,7 @@ use client_presentation::{
     local_player::{LocalPlayerFrameSet, publish_interaction_origin},
 };
 use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
-use client_ui::ui_runtime::{UiRuntime, oreui_fonts, presentation::UiPresentationRuntime};
+use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
 use diagnostics::markers::SHUTDOWN_COMPLETED;
 use diagnostics::metrics::MetricsCollector;
 use launcher::install_layout::InstallLayout;
@@ -522,7 +522,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     let font_runtime = loaded_assets.fonts.into_runtime();
     let block_entity_font = Arc::clone(&font_runtime);
     let font_dir = loaded_assets.selected_path.parent();
-    let font_runtime = oreui_fonts::install(font_runtime, font_dir.unwrap_or(Path::new(".")));
+    let font_runtime = oreui::fonts::install(font_runtime, font_dir.unwrap_or(Path::new(".")));
     let mut ui_presentation = UiPresentationRuntime::with_hud_and_icons(
         font_runtime,
         hud_assets.into_runtime(),
@@ -541,7 +541,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     );
     ui_presentation.set_form_texture_fallbacks(&entity_runtime, layout.vanilla_pack_dir());
     // OreUI artwork is decoded once for every native screen.
-    if let Some(images) = client_ui::ui_runtime::oreui_assets::load_optional_oreui_images(
+    if let Some(images) = oreui::images::load_optional_oreui_images(
         loaded_assets
             .selected_path
             .parent()

@@ -156,7 +156,7 @@ fn world() -> (World, Receiver<Message>, Receiver<ModHost>) {
         settings: Arc::new(Mutex::new(None)),
     });
     world.insert_resource(UiPresentationResource(
-        UiPresentationRuntime::new(client_ui::test_support::fixture_font()).unwrap(),
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap(),
     ));
     (world, receive_messages, receive_retired)
 }

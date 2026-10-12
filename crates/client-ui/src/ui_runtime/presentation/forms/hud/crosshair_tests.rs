@@ -1,8 +1,9 @@
-use crate::test_support::{fixture_font, mini_carrier};
+use crate::test_support::mini_carrier;
 use crate::ui_runtime::presentation::forms::screen_registry::registry;
 use json_ui::{Catalog, Context, DataSource, ViewState};
 use ui::FONT_DESIGN_PIXEL_TEXELS;
 use ui::{DpiScale, SafeArea, TextLayoutCache, UiNode, UiVisual};
+use ui_engine::test_support::fixture_font;
 use ui_engine::text_metrics::TextMetrics;
 use ui_engine::{
     atlas::ServerAtlas,
@@ -38,6 +39,7 @@ fn engine(files: &[(String, Vec<u8>)]) -> FormEngine {
         2,
         registry(),
         crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+        crate::ui_runtime::presentation::forms::texture_sources::image_work(),
     );
     engine.set_server_atlas(ServerAtlas::new(files, None, 1), 3);
     engine

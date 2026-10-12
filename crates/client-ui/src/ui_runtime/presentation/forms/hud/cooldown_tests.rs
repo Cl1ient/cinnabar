@@ -1,9 +1,11 @@
-use crate::test_support::{fixture_font, mini_carrier};
+use crate::test_support::mini_carrier;
 use crate::ui_runtime::presentation::forms::screen_registry::registry;
 use json_ui::{Catalog, Context, ViewState};
 use ui::FONT_DESIGN_PIXEL_TEXELS;
 use ui::{DpiScale, SafeArea, TextLayoutCache, UiNode, UiVisual};
 use ui_engine::engine::{FormEngine, ScreenArt, screen::PaintFrame};
+use ui_engine::test_support::fixture_font;
+use ui_engine::test_support::fixture_font;
 use ui_engine::text_metrics::TextMetrics;
 use ui_screens::hud_renderers::{HudPaint, HudRenderer};
 
@@ -37,6 +39,7 @@ fn draw(progress: f32, index: usize, opacity: f32) -> (Vec<UiNode>, f32) {
         2,
         registry(),
         crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+        crate::ui_runtime::presentation::forms::texture_sources::image_work(),
     );
     let font = fixture_font();
     let metrics = TextMetrics::for_viewport([1280, 720], DpiScale::new(1.0).unwrap(), None);

@@ -13,6 +13,7 @@ use ui_screens::container_actions::InventoryCellHit;
 
 mod furnace_fuel_tests;
 mod furnace_recipe_tests;
+mod prewarm_tests;
 
 #[test]
 fn unknown_mount_window_does_not_draw_or_hit_equipment_cells() {
@@ -679,6 +680,40 @@ fn creative_wide_layout_keeps_only_the_hotbar_under_the_catalog() {
         assert!(reached.contains(&hit), "{hit:?} unreachable");
     }
     assert!(!reached.contains(&InventoryCellHit::Player(9)));
+}
+
+// The personal inventory is prepared while it is closed, and other containers never evict it,
+// so the frame that opens it resolves no screen.
+#[test]
+fn opening_the_inventory_reuses_the_screen_prepared_while_closed() {
+    let mut player_runtime = player_state::PlayerState::new(1);
+    let Some(mut presentation) =
+        engine_presentation_with(super::super::forms::pack_harness::font())
+    else {
+        eprintln!(
+            "skipping opening_the_inventory_reuses_the_screen_prepared_while_closed: fixture unavailable; requires installed local carriers (make assets)"
+        );
+        return;
+    };
+    let mut runtime = session(&mut player_runtime);
+    let dpi = DpiScale::new(1.0).unwrap();
+    presentation
+        .build(&player_runtime, &runtime, 0, [1280, 720], dpi)
+        .unwrap();
+    let prepared = presentation.engine_container_resolves();
+    assert_eq!(prepared, 1, "the closed inventory was not prepared");
+    for now in [50, 100] {
+        runtime.toggle_inventory(&mut player_runtime);
+        presentation
+            .build(&player_runtime, &runtime, now, [1280, 720], dpi)
+            .unwrap();
+        assert!(presentation.engine_container_frame().is_some());
+        runtime.toggle_inventory(&mut player_runtime);
+        presentation
+            .build(&player_runtime, &runtime, now + 10, [1280, 720], dpi)
+            .unwrap();
+    }
+    assert_eq!(presentation.engine_container_resolves(), prepared);
 }
 
 // Moving the pointer across slots only changes which hover states show: the

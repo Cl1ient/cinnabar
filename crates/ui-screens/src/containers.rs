@@ -112,8 +112,15 @@ impl ScreenLayout {
 /// The container screens' retained layout and recipe rows, carried across builds.
 #[derive(Default)]
 pub struct ContainerScreen {
-    /// The last container screen's layout.
+    /// The last container screen's layout, other than the personal inventory.
     cache: Option<ScreenCache>,
+    /// The personal inventory's layout, kept apart so other containers never evict it and opening
+    /// it stays cheap after [`ContainerScreen::prewarm_inventory`].
+    inventory: Option<ScreenCache>,
+    /// The catalog the inventory was last prewarmed for, so each catalog prewarms once.
+    prewarmed: Option<Arc<json_ui::Catalog>>,
+    /// Screens resolved from the catalog, for cache tests.
+    resolves: usize,
     /// Immutable creative rows reused across hover and scroll frames.
     book: Option<recipe_book::BookCache>,
     furnace: Option<furnace_book::FurnaceBookCache>,
@@ -146,6 +153,31 @@ impl ContainerScreen {
         items: &ContainerFrame<'_>,
         input: ContainerInput<'_>,
         frame: &mut PaintFrame<'_>,
+    ) -> Option<EngineFrame> {
+        self.render(engine, source, items, input, frame, false)
+    }
+
+    /// Prepares layout and textures without retaining bindings or painting the closed screen.
+    pub fn prepare(
+        &mut self,
+        engine: &FormEngine,
+        source: &dyn ContainerSource,
+        items: &ContainerFrame<'_>,
+        input: ContainerInput<'_>,
+        frame: &mut PaintFrame<'_>,
+    ) {
+        let _ = self.render(engine, source, items, input, frame, true);
+    }
+
+    /// Shares container data and layout preparation between prewarming and visible painting.
+    fn render(
+        &mut self,
+        engine: &FormEngine,
+        source: &dyn ContainerSource,
+        items: &ContainerFrame<'_>,
+        input: ContainerInput<'_>,
+        frame: &mut PaintFrame<'_>,
+        prepare: bool,
     ) -> Option<EngineFrame> {
         let ContainerInput {
             layout,
@@ -229,8 +261,16 @@ impl ContainerScreen {
         let rollback = (frame.nodes.len(), *frame.next);
         let text = (frame.metrics.scale.get(), frame.language);
         let caller = std::mem::take(&mut frame.renderers);
-        let cache = &mut self.cache;
+        let cache = if matches!(layout, ScreenLayout::Personal { .. }) {
+            &mut self.inventory
+        } else {
+            &mut self.cache
+        };
         let catalog = engine.catalog();
+        let resolved = |cache: &Option<ScreenCache>| {
+            cache.as_ref().map(|cached| Arc::as_ptr(&cached.resolved))
+        };
+        let before = resolved(cache);
         // Server ui files always come with a new catalog, which rebuilds the screen's binding.
         let server_ui = engine.server_ui;
         let drawn = {
@@ -240,13 +280,28 @@ impl ContainerScreen {
                 renderers.push(&mut **renderer);
             }
             let mut paint_frame = frame.with_renderers(&mut renderers);
-            engine.draw(art, &mut paint_frame, |env, root| {
+            let draw = |env: &json_ui::LayoutEnv<'_>, root| {
                 ScreenCache::render(
                     cache, catalog, server_ui, reference, &context, &data, &view, root, env, text,
                 )
-            })
+            };
+            if prepare {
+                let _ = engine.prepare(art, &mut paint_frame, draw);
+                if let Some(cached) = cache {
+                    // Closed-screen data is incomplete. The first paint binds from fresh state,
+                    // even if its data happens to match the prepared layout's inputs.
+                    cached.binding = recipe_book::screen_binding(server_ui);
+                    cached.data = None;
+                }
+                Ok(None)
+            } else {
+                engine.draw(art, &mut paint_frame, draw)
+            }
         };
         frame.renderers = caller;
+        if resolved(cache) != before {
+            self.resolves += 1;
+        }
         match drawn {
             Ok(Some(drawn)) => Some(drawn),
             // A screen the engine cannot draw hands containers back to the Java path.
@@ -260,14 +315,41 @@ impl ContainerScreen {
 
     /// Releases texture-dependent measurements and layout while retaining the bound screen.
     pub fn invalidate_textures(&mut self) {
-        if let Some(cache) = &mut self.cache {
+        for cache in [&mut self.cache, &mut self.inventory].into_iter().flatten() {
             cache.invalidate_textures();
         }
     }
 
-    /// Layouts the current container screen has run.
+    /// Layouts the retained container screens have run.
     pub fn layouts(&self) -> usize {
-        self.cache.as_ref().map_or(0, |cache| cache.layouts)
+        [&self.cache, &self.inventory]
+            .into_iter()
+            .flatten()
+            .map(|cache| cache.layouts)
+            .sum()
+    }
+
+    /// Screens the container paints have resolved from the catalog.
+    pub fn resolves(&self) -> usize {
+        self.resolves
+    }
+
+    /// Whether the personal inventory needs preparation for this catalog. An inventory already
+    /// painted retains its live bindings and needs no prewarm when it closes.
+    pub fn prewarm_inventory(&mut self, engine: &FormEngine) -> bool {
+        let catalog = engine.catalog();
+        if self
+            .prewarmed
+            .as_ref()
+            .is_some_and(|prewarmed| Arc::ptr_eq(prewarmed, catalog))
+        {
+            return false;
+        }
+        self.prewarmed = Some(Arc::clone(catalog));
+        !self
+            .inventory
+            .as_ref()
+            .is_some_and(|cached| Arc::ptr_eq(&cached.catalog, catalog))
     }
 }
 

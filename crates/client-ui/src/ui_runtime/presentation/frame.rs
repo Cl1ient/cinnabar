@@ -127,6 +127,12 @@ impl UiPresentationRuntime {
                             now_millis,
                             false,
                         )?;
+                        self.prewarm_engine_inventory(
+                            player_runtime,
+                            runtime,
+                            metrics,
+                            [content_width, content_height],
+                        );
                     }
                     Scene::Crosshair | Scene::Hud => {
                         let crosshair = *scene == Scene::Crosshair;

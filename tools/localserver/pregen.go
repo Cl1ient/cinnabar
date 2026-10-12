@@ -119,8 +119,9 @@ func pregenColumn(db world.Provider, g world.Generator, pos world.ChunkPos, ioLo
 }
 
 // spawnWarmRadius is the chunk radius generated around a new world's spawn while its first player
-// connects: the client's spawn neighbourhood and the view rings nearest it.
-const spawnWarmRadius = 4
+// connects: the client's spawn neighbourhood and its decoration margin. Each loaded column also
+// costs the world goroutine time, which a wider warm-up would queue ahead of the player's join.
+const spawnWarmRadius = 2
 
 // warmSpawn starts generating the chunks around w's spawn on its chunk workers, so the first player
 // of a new world finds them ready. The warming loader would let the world tick before anyone joins,

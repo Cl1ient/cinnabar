@@ -71,16 +71,20 @@ fn configuration(bytes: &[u8], parent: &Path) -> Result<Vec<PbrPack>, String> {
         .collect()
 }
 
+/// Treats roots listed in one environment override as a shared companion pack group.
+fn environment_packs(value: &str) -> Vec<PbrPack> {
+    value
+        .split([';', '\n'])
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| PbrPack::new(value, None).with_group(super::ENHANCED_PBR_DIR_ENVIRONMENT))
+        .collect()
+}
+
 pub(super) fn selected_packs() -> Option<Vec<PbrPack>> {
     let packs: Vec<PbrPack> = if let Some(value) = env::var_os(super::ENHANCED_PBR_DIR_ENVIRONMENT)
     {
-        value
-            .to_string_lossy()
-            .split([';', '\n'])
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(|value| PbrPack::new(value, None))
-            .collect()
+        environment_packs(&value.to_string_lossy())
     } else {
         let path = Path::new(LOCAL_CONFIG);
         let bytes = fs::read(path).ok()?;
@@ -116,6 +120,50 @@ pub(super) fn selected_packs() -> Option<Vec<PbrPack>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn environment_roots_pair_colour_and_material_maps() {
+        let colours = tempfile::tempdir().unwrap();
+        let materials = tempfile::tempdir().unwrap();
+        for (root, name, pixel) in [
+            (colours.path(), "stone.png", [180u8, 100, 40, 255]),
+            (materials.path(), "stone_mer.png", [64, 128, 192, 255]),
+        ] {
+            let directory = root.join("textures/blocks");
+            fs::create_dir_all(&directory).unwrap();
+            image::ImageBuffer::from_pixel(2, 2, image::Rgba(pixel))
+                .save(directory.join(name))
+                .unwrap();
+        }
+        for separator in [";", "\n"] {
+            let value = format!(
+                "  {}{separator}  {}{separator}  ",
+                colours.path().display(),
+                materials.path().display()
+            );
+            let packs = environment_packs(&value);
+            assert_eq!(packs.len(), 2);
+            let frame = pack_compiler::pbr::load_pbr_texture(&packs, "textures/blocks/stone")
+                .unwrap()
+                .unwrap()
+                .frame(0, 1)
+                .unwrap();
+            assert_eq!(frame.color.get_pixel(0, 0).0, [180, 100, 40, 255]);
+            assert_eq!(frame.material.get_pixel(0, 0).0, [64, 128, 192, 0]);
+            assert_ne!(frame.flags & assets::texture::PBR_REF_MATERIAL, 0);
+        }
+        let json = serde_json::to_vec(&serde_json::json!({"packs": [
+            {"path": colours.path()}, {"path": materials.path()}
+        ]}))
+        .unwrap();
+        let packs = configuration(&json, Path::new(".")).unwrap();
+        let frame = pack_compiler::pbr::load_pbr_texture(&packs, "textures/blocks/stone")
+            .unwrap()
+            .unwrap()
+            .frame(0, 1)
+            .unwrap();
+        assert_eq!(frame.flags & assets::texture::PBR_REF_MATERIAL, 0);
+    }
 
     #[test]
     fn local_selection_retains_explicit_format_and_companion_ownership() {

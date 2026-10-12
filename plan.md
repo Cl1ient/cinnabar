@@ -6483,6 +6483,15 @@ states, but remote sessions admit them only when StartGame supplies their defini
 The namespace distinguishes vanilla definitions from server custom blocks; the presence of
 `vanilla_block_data` alone does not. A server
 block's own item (no components, no item version) stacks to `Item`'s default 64.
+Server custom block admission fits large pack stacks: the aggregate admits one
+million states with the 64 MiB identity estimate as the memory bound (an observed
+5,589-block server stack declares 136,909 states; the old 65,536-state aggregate
+cut its palette mid-list and left the tail absent from the world). Rejected runs
+still retain their names and counts without materialized states. Full-block custom
+blocks without `minecraft:material_instances` draw their textures from the pack's
+legacy `blocks.json`, matching vanilla, where only explicit material instances
+override that binding. Live-server visual and interaction acceptance for these
+stacks remains open.
 
 ---
 

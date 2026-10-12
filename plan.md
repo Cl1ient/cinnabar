@@ -1,3 +1,17 @@
+## Launcher updates
+
+One client per install owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and
+update / Later actions, and a separate default-off install-on-quit preference. Signed manifests
+carry monotonic build numbers, and digest-named partial downloads resume with HTTP ranges.
+An offline Rust helper waits for the old process, applies the verified native package, and
+restores failed macOS/Linux starts. Read-only installs offer the manual download action.
+
+Incomplete: CI must compile and run the written regression tests on all platforms. The package
+workflow publishes each channel's signed manifest. The `CINNABAR_UPDATE_SIGNING_KEY` secret in
+the protected `release` environment and the `UPDATE_TRUSTED_KEYS` repository variable are
+configured. The first signed publication remains pending.
+The launcher owner must review the notice screenshots before merge.
+
 ## Actor animation ownership
 
 `actor-animation` owns actor rigs, Molang evaluation, controllers, poses,

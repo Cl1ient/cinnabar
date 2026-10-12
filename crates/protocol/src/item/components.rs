@@ -288,8 +288,6 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
 mod tests {
     use super::parse_components;
 
-    /// Encodes an original floating-point component field in network NBT.
-
     #[test]
     fn declared_use_cooldown_matches_authored_component_precision() {
         let nbt = compound(

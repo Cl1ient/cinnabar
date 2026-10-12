@@ -4,24 +4,24 @@ use std::{
     fs::{self, File},
     io,
     path::{Path, PathBuf},
+    time::{Duration, SystemTime},
 };
 
 const PREFIX: &str = "helper-";
 /// Locked for the lifetime of the copy's helper process; an unlocked copy is finished.
 const LOCK: &str = "helper.lock";
+/// A new copy is kept unlocked this long while its helper starts and takes the lock.
+pub const HANDOFF_WINDOW: Duration = Duration::from_secs(60);
 
-/// Copies `source` into a fresh directory, returning the copy and a lock to hold until it spawns.
-pub fn copy(update_dir: &Path, source: &Path) -> io::Result<(PathBuf, File)> {
-    prune(update_dir);
+/// Copies `source` into a fresh directory and returns the copied helper.
+pub fn copy(update_dir: &Path, source: &Path) -> io::Result<PathBuf> {
     let directory = tempfile::Builder::new()
         .prefix(PREFIX)
         .tempdir_in(update_dir)?
         .keep();
-    let lock = open_lock(&directory)?;
-    lock.lock()?;
     let helper = directory.join(crate::helper_filename());
     fs::copy(source, &helper)?;
-    Ok((helper, lock))
+    Ok(helper)
 }
 
 /// Holds the running helper's own directory; the updater never runs from the install it replaces.
@@ -40,8 +40,9 @@ pub fn hold(executable: &Path) -> io::Result<File> {
     Ok(lock)
 }
 
-/// Removes completed or failed helper copies, keeping any whose helper still holds its lock.
-pub fn prune(update_dir: &Path) {
+/// Removes completed or failed helper copies as of `now`, keeping any whose helper holds its lock
+/// and any still inside the handoff window.
+pub fn prune(update_dir: &Path, now: SystemTime) {
     let Ok(entries) = fs::read_dir(update_dir) else {
         return;
     };
@@ -52,6 +53,17 @@ pub fn prune(update_dir: &Path) {
                 .to_str()
                 .is_some_and(|name| name.starts_with(PREFIX));
         if !copy {
+            continue;
+        }
+        // A clock that moved backwards leaves the copy for a later pass.
+        let handing_off = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .is_ok_and(|modified| {
+                now.duration_since(modified)
+                    .map_or(true, |age| age < HANDOFF_WINDOW)
+            });
+        if handing_off {
             continue;
         }
         let path = entry.path();

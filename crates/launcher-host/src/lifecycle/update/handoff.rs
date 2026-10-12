@@ -24,8 +24,8 @@ pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
         .parent()
         .context("missing installed directory")?
         .join(update_installer::helper_filename());
-    // The lock covers the copy until its helper holds the directory itself.
-    let (helper, _spawning) = update_installer::helper::copy(&layout.update_dir(), &source)?;
+    update_installer::helper::prune(&layout.update_dir(), std::time::SystemTime::now());
+    let helper = update_installer::helper::copy(&layout.update_dir(), &source)?;
     let directory = helper.parent().context("missing helper directory")?;
     let mut command = Command::new(&helper);
     command

@@ -80,7 +80,7 @@ fn run(
         .context("unsupported platform")?;
     let root = layout.update_dir();
     fs::create_dir_all(&root)?;
-    update_installer::helper::prune(&root);
+    update_installer::helper::prune(&root, SystemTime::now());
     let lease = File::options()
         .create(true)
         .truncate(false)

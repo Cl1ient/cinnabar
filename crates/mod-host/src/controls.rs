@@ -1,10 +1,22 @@
 //! Bounded, transactional mod controls. No import exposes arbitrary files or input injection.
 
 use super::{MAX_IMPORT_WRITES, State, cinnabar};
-use crate::{ControlFrame, InteractionOutput, empty_controls};
+use crate::{ControlFrame, InteractionOutput, ModHost, empty_controls};
 use anyhow::{Result, bail, ensure};
 use std::sync::Arc;
 use ui::mod_panel::{MAX_PANEL_BYTES, Panel, PanelBundle, PanelPatch};
+
+impl ModHost {
+    /// Prepares a bounded local UI catalog once, outside component callbacks.
+    pub fn set_panel_bundle(&mut self, json: &str) -> Result<()> {
+        ensure!(
+            self.grants.controls && self.instance.active,
+            "controls capability denied"
+        );
+        let bundle = PanelBundle::parse(json).map_err(anyhow::Error::msg)?;
+        self.instance.set_panel_bundle(Arc::new(bundle))
+    }
+}
 
 pub(super) struct ControlState {
     pub frame: ControlFrame,

@@ -274,7 +274,8 @@ fn classify_event(event: &WorldEvent, context: LaneContext) -> Footprint {
         WorldEvent::ActorEffect(event) if local(event.actor_runtime_id) => {
             Footprint::session(C::CONTROLS.with(C::UI))
         }
-        WorldEvent::ActorEffect(_) => Footprint::session(C::NONE),
+        // Remote Haste and Mining Fatigue set that actor's Java swing length.
+        WorldEvent::ActorEffect(_) => Footprint::session(C::ACTORS),
         WorldEvent::Abilities(event) if event.actor_unique_id == context.local_unique_id => {
             Footprint {
                 local_authority: true,

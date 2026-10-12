@@ -2,7 +2,7 @@
   "magic": "BREG1004",
   "previous_magic": "BREG1003",
   "legacy_protocol": 1001,
-  "physics_magic": "PREG1002",
+  "physics_magic": "PREG1003",
   "physics_legacy_magic": "PREG1001",
   "physics_header_bytes": 48,
   "physics_record_header_bytes": 28,

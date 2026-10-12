@@ -7,7 +7,7 @@ const (
 	registryHeader                 = "BREG1004"
 	previousRegistryHeader         = "BREG1003"
 	physicsRegistryHeader          = "PREG1001"
-	physicsRegistryActiveHeader    = "PREG1002"
+	physicsRegistryActiveHeader    = "PREG1003"
 	physicsRegistryHeaderBytes     = 48
 	physicsRecordHeaderBytes       = 28
 	physicsMovementSemanticsOffset = 11

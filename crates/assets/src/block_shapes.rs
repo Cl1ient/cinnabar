@@ -83,7 +83,6 @@ bitflags! {
         const BUILD_INTENTION = 1 << 1;
         const BAMBOO_OFFSET = 1 << 2;
         const AIR = 1 << 3;
-        const CUSTOM_SURFACE = 1 << 4;
         const HIDE_OVERLAY = 1 << 5;
         const CREATIVE_OVERLAY = 1 << 6;
         const LIGHT_BLOCK = 1 << 7;

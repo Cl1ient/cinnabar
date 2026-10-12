@@ -56,6 +56,7 @@ struct Policy {
     twins: BTreeMap<String, Twin>,
     unresolved_retail: Vec<String>,
     movement: Vec<Movement>,
+    movement_census: MovementCensus,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -69,6 +70,17 @@ struct Movement {
     name: String,
     behavior: String,
     states: usize,
+}
+/// Reviewed classification of the identifiers that no movement rule declares.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MovementCensus {
+    /// SHA-256 of the reviewed identifiers, sorted and each followed by a newline.
+    identifiers_sha256: String,
+    /// Identifiers with vanilla movement behaviour the carrier does not model.
+    unmodeled: Vec<String>,
+    /// Identifiers whose movement classification is not established.
+    unresolved: Vec<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

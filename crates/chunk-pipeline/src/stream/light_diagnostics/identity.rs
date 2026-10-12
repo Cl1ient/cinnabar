@@ -202,6 +202,7 @@ mod tests {
                 collides: true,
                 collision_boxes: None,
                 selection: CustomSelection::Default,
+                friction: None,
                 visual: Arc::new(CustomBlockVisuals {
                     state_axes: Box::new([CustomStateAxis {
                         name: Arc::from("test:open"),

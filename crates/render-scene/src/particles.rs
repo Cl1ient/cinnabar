@@ -20,8 +20,6 @@ pub struct ParticleGpuFrame {
     pub opaque: Arc<[ParticleInstance]>,
     pub blend: Arc<[ParticleInstance]>,
     pub add: Arc<[ParticleInstance]>,
-    pub blend_centroid: [f32; 3],
-    pub add_centroid: [f32; 3],
     /// Drawable particles hidden by the current cave graph this frame.
     pub cave_hidden: usize,
 }
@@ -32,29 +30,13 @@ impl ParticleGpuFrame {
         self.opaque.len() + self.blend.len() + self.add.len()
     }
 
-    /// Replaces draw lists and computes their sorting centers, using the camera for empty lists.
-    fn set_lists(&mut self, lists: DrawLists, camera: [f32; 3]) {
+    /// Publishes the current camera-sorted instance lists for extraction.
+    fn set_lists(&mut self, lists: DrawLists) {
         self.cave_hidden = lists.cave_hidden;
-        self.blend_centroid = draw_centroid(&lists.blend, camera);
-        self.add_centroid = draw_centroid(&lists.add, camera);
         self.blend = lists.blend.into();
         self.add = lists.add.into();
         self.opaque = lists.opaque.into();
     }
-}
-
-/// Returns a draw list's centroid, falling back to the camera for an empty list.
-fn draw_centroid(instances: &[ParticleInstance], camera: [f32; 3]) -> [f32; 3] {
-    if instances.is_empty() {
-        return camera;
-    }
-    let mut sum = [0.0; 3];
-    for instance in instances {
-        for (axis, total) in sum.iter_mut().enumerate() {
-            *total += instance.center_light[axis];
-        }
-    }
-    sum.map(|total| total / instances.len() as f32)
 }
 
 /// Camera frustum basis from a Bevy camera transform and projection.
@@ -109,7 +91,7 @@ pub fn update_particle_frame(
         );
         lists
     };
-    frame.set_lists(lists, view.position);
+    frame.set_lists(lists);
     let base = system.atlas_base();
     if frame
         .base

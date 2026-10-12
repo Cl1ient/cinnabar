@@ -5,7 +5,7 @@ use bitflags::bitflags;
 
 pub(super) const REGISTRY_MAGIC: &[u8; 8] = b"BREG1004";
 pub(super) const PREVIOUS_REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
-pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1002";
+pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1003";
 pub const LEGACY_PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1001";
 pub const PHYSICS_REGISTRY_HEADER_BYTES: usize = 48;
 pub const PHYSICS_RECORD_HEADER_BYTES: usize = 28;

@@ -292,7 +292,7 @@ impl ActorStore {
                     java_swing_ticks: if is_local {
                         local_java_swing_ticks
                     } else {
-                        actor_animation::ACTOR_SWING_TICKS
+                        actor.status.swing_effects.ticks()
                     },
                     main_hand_slot: if is_local {
                         local_main_slot

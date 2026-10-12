@@ -17,6 +17,23 @@ pub(super) struct WorldBodyState {
 }
 
 impl WorldBodyState {
+    /// Follows the actor's controller phase but runs its own initialisation in the world
+    /// context, so first-person-only query values cached at initialisation never carry over.
+    fn new(state: &ActorRigState, layout: &VariableLayout, actor: &dyn AnimatedActor) -> Self {
+        Self {
+            controllers: state.controllers.clone(),
+            clip_clocks: state.clip_clocks.clone(),
+            variables: layout.fresh(super::geometry::animation_seed(actor)),
+            initialized: false,
+            previous: Vec::new(),
+            current: Vec::new(),
+            render: Vec::new(),
+            skin_layers: Vec::new(),
+            scale: None,
+            completed_tick: None,
+        }
+    }
+
     fn swap_evaluator(&mut self, state: &mut ActorRigState) {
         std::mem::swap(&mut self.controllers, &mut state.controllers);
         std::mem::swap(&mut self.clip_clocks, &mut state.clip_clocks);
@@ -42,18 +59,10 @@ pub(super) fn evaluate(
     {
         return Ok(());
     }
-    let mut body = state.world_body.take().unwrap_or_else(|| WorldBodyState {
-        controllers: state.controllers.clone(),
-        clip_clocks: state.clip_clocks.clone(),
-        variables: state.variables.clone(),
-        initialized: state.initialized,
-        previous: Vec::new(),
-        current: Vec::new(),
-        render: Vec::new(),
-        skin_layers: Vec::new(),
-        scale: None,
-        completed_tick: None,
-    });
+    let mut body = state
+        .world_body
+        .take()
+        .unwrap_or_else(|| WorldBodyState::new(state, layout, actor));
     let context = ActorTickContext {
         is_local_first_person: false,
         is_in_ui: false,

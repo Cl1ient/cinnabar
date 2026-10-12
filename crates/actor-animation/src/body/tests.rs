@@ -120,3 +120,45 @@ fn first_person_shadow_body_matches_walking_and_crouching_world_pose_without_cha
     });
     assert!(first.world_body(1).is_none());
 }
+
+/// A body enabled after first-person initialisation runs its own initialisation script
+/// instead of inheriting values the first-person context cached there.
+#[test]
+fn a_body_enabled_after_initialisation_initialises_in_the_world_context() {
+    let assets = Arc::new(
+        RuntimeEntityAssets::from_compiled(
+            crate::test_support::initialized_pose_compiled().with_unresolved_admissions(),
+        )
+        .unwrap(),
+    );
+    let actor = crate::tests::actor_with_metadata(HashMap::new());
+    let runtime_id = 1;
+    let mut store = ActorAnimationStore::with_assets(Arc::clone(&assets));
+    store.insert(1, 0, &actor);
+    let actors = HashMap::from([(runtime_id, actor)]);
+    let first_person = |_: &TestActor| ActorTickContext {
+        is_local_first_person: true,
+        ..Default::default()
+    };
+    store.advance_tick(&actors, None, Some(runtime_id), true, false, first_person);
+    let slot = store.layout.named_slot(&assets, "variable.charge_amount");
+    let lifetime = store.runtime_to_lifetime[&runtime_id];
+    let state = store.rigs.get_mut(&lifetime).unwrap();
+    assert!(state.initialized && state.world_body.is_none());
+    // Stand in for a value the first-person context cached during initialisation.
+    state.variables.set(slot, -100.0);
+
+    assert!(store.set_local_body_enabled(true));
+    store.advance_tick(&actors, None, Some(runtime_id), true, false, first_person);
+    let state = &store.rigs[&lifetime];
+    let body = state.world_body.as_ref().expect("world body evaluated");
+    assert!(body.initialized);
+    assert!(
+        body.variables.get(slot).is_some_and(|value| value > 0.0),
+        "the body ran its own initialisation script"
+    );
+    assert!(
+        state.variables.get(slot).is_some_and(|value| value < 0.0),
+        "the first-person evaluator is not re-initialised"
+    );
+}

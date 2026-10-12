@@ -58,21 +58,21 @@ pub(super) struct ModPanel {
     edit: Option<edit::Editor>,
     motion: motion::PanelMotion,
     motion_data_dirty: bool,
-    prepared: Option<Arc<prepared::PreparedRoute>>,
-    routes: Vec<prepared::CachedRoute>,
+    prepared: Option<prepared::SelectedRoute>,
 }
 
 impl ModUi {
     /// Drops the panel's laid-out text and pointer capture after its private font changed.
     pub fn invalidate_mod_panel_font(&mut self) {
         self.cancel_mod_hud_editor();
+        for owner in self.prepared_panel_ui.values_mut() {
+            for screen in &mut owner.screens {
+                *screen = None;
+            }
+        }
         if let Some(panel) = &mut self.mod_panel {
             panel.cancel_edit();
-            panel.screen = panel
-                .prepared
-                .as_ref()
-                .map_or_else(CachedScreen::default, |route| route.screen());
-            panel.routes.clear();
+            panel.screen = CachedScreen::default();
             panel.frame = None;
             panel.drag = None;
             panel.vector_drag = None;
@@ -101,9 +101,17 @@ impl ModUi {
             .is_some_and(|current| template::same_shape(&current.panel, panel));
         let prepared = self
             .prepared_panel_ui
-            .values()
+            .iter()
             .rev()
-            .find_map(|prepared| prepared.route(panel));
+            .find_map(|(owner, prepared)| {
+                prepared
+                    .prepared
+                    .route(panel)
+                    .map(|route| prepared::SelectedRoute {
+                        owner: *owner,
+                        route,
+                    })
+            });
         if same_shape || prepared.is_some() {
             panel.validate_values()?;
         } else {
@@ -111,8 +119,8 @@ impl ModUi {
         }
         if let Some(current) = self.mod_panel.as_mut() {
             if !same_shape {
-                current.retain_prepared_route();
                 current.edit = None;
+                current.screen = CachedScreen::default();
                 current.catalog = None;
                 current.frame = None;
                 current.drag = None;
@@ -128,9 +136,9 @@ impl ModUi {
                 current.motion = motion::PanelMotion::default();
                 current.pointer = None;
                 current.prepared = prepared.clone();
-                if prepared.is_some() {
-                    current.restore_prepared_route();
-                }
+                current.catalog = prepared
+                    .as_ref()
+                    .map(|selected| Arc::clone(&selected.route.catalog));
             }
             if panel.capture_key {
                 current.cancel_edit();
@@ -141,10 +149,10 @@ impl ModUi {
             self.mod_panel = Some(ModPanel {
                 panel: panel.clone(),
                 open: false,
-                catalog: prepared.as_ref().map(|route| Arc::clone(&route.catalog)),
-                screen: prepared
+                catalog: prepared
                     .as_ref()
-                    .map_or_else(CachedScreen::default, |route| route.screen()),
+                    .map(|selected| Arc::clone(&selected.route.catalog)),
+                screen: CachedScreen::default(),
                 frame: None,
                 viewport: [0.0; 2],
                 page: 0,
@@ -162,7 +170,6 @@ impl ModUi {
                 motion: motion::PanelMotion::default(),
                 motion_data_dirty: false,
                 prepared,
-                routes: Vec::new(),
             });
         }
         Ok(())
@@ -276,8 +283,11 @@ impl ModUi {
             panel.scroll_drag = None;
             panel.pointer = None;
         }
-        if panel.catalog.is_none() && panel.prepared.is_some() && panel.edit.is_none() {
-            panel.restore_prepared_route();
+        if panel.catalog.is_none() && panel.edit.is_none() {
+            panel.catalog = panel
+                .prepared
+                .as_ref()
+                .map(|selected| Arc::clone(&selected.route.catalog));
         }
         if panel.catalog.is_none() {
             match template::catalog_prepared(
@@ -287,7 +297,10 @@ impl ModUi {
                 panel.page,
                 rows,
                 panel.edit.as_ref(),
-                panel.prepared.as_ref().map(|route| route.catalog.as_ref()),
+                panel
+                    .prepared
+                    .as_ref()
+                    .map(|selected| selected.route.catalog.as_ref()),
             ) {
                 Ok((catalog, pages)) => {
                     panel.pages = pages;
@@ -343,8 +356,18 @@ impl ModUi {
             ..Default::default()
         };
         let catalog = panel.catalog.as_ref().expect("catalog installed above");
+        let screen = panel
+            .prepared
+            .as_ref()
+            .filter(|_| panel.edit.is_none())
+            .and_then(|selected| {
+                self.prepared_panel_ui
+                    .get_mut(&selected.owner)
+                    .map(|owner| owner.screen(&selected.route))
+            })
+            .unwrap_or(&mut panel.screen);
         match renderer.draw(art, paint_frame, |env, root| {
-            panel.screen.render_shared_with(
+            screen.render_shared_with(
                 SCREEN,
                 catalog,
                 &Context::default(),
@@ -419,6 +442,16 @@ impl ModPanel {
 impl ModUi {
     pub fn mod_panel_state(&self) -> Option<crate::test_support::ModPanelState<'_>> {
         let panel = self.mod_panel.as_ref()?;
+        let screen = panel
+            .prepared
+            .as_ref()
+            .filter(|_| panel.edit.is_none())
+            .and_then(|selected| {
+                self.prepared_panel_ui
+                    .get(&selected.owner)?
+                    .cached_screen(&selected.route)
+            })
+            .unwrap_or(&panel.screen);
         Some(crate::test_support::ModPanelState {
             catalog: panel.catalog.as_ref(),
             frame: panel.frame.as_ref(),
@@ -426,9 +459,9 @@ impl ModUi {
             rows: panel.rows,
             category: panel.category,
             pages: panel.pages,
-            passes: panel.screen.passes,
+            passes: screen.passes,
             #[cfg(feature = "test-support")]
-            resolves: panel.screen.resolves,
+            resolves: screen.resolves,
         })
     }
 }

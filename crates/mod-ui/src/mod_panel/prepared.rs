@@ -24,12 +24,60 @@ impl crate::ModUi {
         owner: PanelUiOwner,
         prepared: Option<Arc<PreparedPanelUi>>,
     ) {
+        if self.prepared_panel_ui.get(&owner).is_some_and(|current| {
+            prepared
+                .as_ref()
+                .is_some_and(|prepared| Arc::ptr_eq(&current.prepared, prepared))
+        }) {
+            return;
+        }
+        if self
+            .mod_panel
+            .as_ref()
+            .and_then(|panel| panel.prepared.as_ref())
+            .is_some_and(|selected| selected.owner == owner)
+        {
+            self.cancel_mod_hud_editor();
+            self.mod_panel = None;
+        }
         if let Some(prepared) = prepared {
-            self.prepared_panel_ui.insert(owner, prepared);
+            self.prepared_panel_ui
+                .insert(owner, PreparedOwner::new(prepared));
         } else {
             self.prepared_panel_ui.remove(&owner);
         }
     }
+}
+
+/// One live owner's immutable routes and lazily rendered screens at their source indexes.
+pub(crate) struct PreparedOwner {
+    pub(super) prepared: Arc<PreparedPanelUi>,
+    pub(super) screens: Vec<Option<CachedScreen>>,
+}
+
+impl PreparedOwner {
+    /// Derives every cache slot from the owner's immutable route list.
+    fn new(prepared: Arc<PreparedPanelUi>) -> Self {
+        let screens = prepared.routes.iter().map(|_| None).collect();
+        Self { prepared, screens }
+    }
+
+    /// Returns the route's rendered cache, starting from its worker-resolved root on first use.
+    pub(super) fn screen(&mut self, route: &PreparedRoute) -> &mut CachedScreen {
+        self.screens[route.index].get_or_insert_with(|| route.screen())
+    }
+
+    /// Reads an existing route cache without allocating or resolving anything.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(super) fn cached_screen(&self, route: &PreparedRoute) -> Option<&CachedScreen> {
+        self.screens[route.index].as_ref()
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct SelectedRoute {
+    pub(super) owner: PanelUiOwner,
+    pub(super) route: Arc<PreparedRoute>,
 }
 
 /// Immutable catalogs and resolved roots prepared on the local component loading worker.
@@ -39,6 +87,8 @@ pub struct PreparedPanelUi {
 }
 
 pub(super) struct PreparedRoute {
+    /// Position in the owning generation's immutable route list.
+    index: usize,
     source: Surface,
     pub(super) catalog: Arc<Catalog>,
     tree: Arc<ResolvedControl>,
@@ -66,6 +116,7 @@ impl PreparedPanelUi {
             }
             let tree = Arc::new(resolution.control.ok_or("prepared panel root is missing")?);
             routes.push(Arc::new(PreparedRoute {
+                index: routes.len(),
                 source: source.clone(),
                 catalog,
                 tree,
@@ -102,53 +153,4 @@ impl PreparedRoute {
 /// Scalar changes never invalidate a prepared static route.
 fn same_document(a: &Surface, b: &Surface) -> bool {
     a.screen == b.screen && a.document == b.document
-}
-
-pub(super) struct CachedRoute {
-    pub(super) route: Arc<PreparedRoute>,
-    pub(super) screen: CachedScreen,
-}
-
-impl super::ModPanel {
-    /// Keeps a route's laid-out state before another route or a native editor takes over.
-    pub(super) fn retain_prepared_route(&mut self) {
-        let Some(route) = self.prepared.as_ref().cloned() else {
-            return;
-        };
-        if !self
-            .catalog
-            .as_ref()
-            .is_some_and(|catalog| Arc::ptr_eq(catalog, &route.catalog))
-        {
-            return;
-        }
-        if let Some(index) = self
-            .routes
-            .iter()
-            .position(|cached| Arc::ptr_eq(&cached.route, &route))
-        {
-            self.routes.swap_remove(index);
-        }
-        if self.routes.len() == ui::mod_panel::MAX_PANEL_SURFACES + 1 {
-            self.routes.remove(0);
-        }
-        self.routes.push(CachedRoute {
-            route,
-            screen: std::mem::take(&mut self.screen),
-        });
-    }
-
-    /// Restores the catalog and its prior layout, or starts from its worker-resolved root.
-    pub(super) fn restore_prepared_route(&mut self) {
-        let Some(route) = self.prepared.as_ref().cloned() else {
-            return;
-        };
-        self.catalog = Some(Arc::clone(&route.catalog));
-        self.screen = self
-            .routes
-            .iter()
-            .position(|cached| Arc::ptr_eq(&cached.route, &route))
-            .map(|index| self.routes.swap_remove(index).screen)
-            .unwrap_or_else(|| route.screen());
-    }
 }

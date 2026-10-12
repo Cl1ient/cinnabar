@@ -1,8 +1,8 @@
 use super::*;
 use crate::test_support::sample_panel as panel;
 
-/// Prepares one original authored route with distinct wrapper facts for each owner or revision.
-fn prepared_panel(title: &str) -> (Panel, Arc<prepared::PreparedPanelUi>) {
+/// Prepares two authored routes with distinct wrapper facts for each owner or revision.
+fn prepared_panels(title: &str) -> ([Panel; 2], Arc<prepared::PreparedPanelUi>) {
     let mut content = panel();
     content.title = title.into();
     content.surface = Some(ui::mod_panel::Surface {
@@ -14,12 +14,21 @@ fn prepared_panel(title: &str) -> (Panel, Arc<prepared::PreparedPanelUi>) {
         .to_string(),
         bindings: Default::default(),
     });
+    let mut other = content.clone();
+    other.surface.as_mut().unwrap().document = serde_json::json!({
+        "namespace": "extension",
+        "screen": {"type": "screen", "size": [80, 60], "controls": []}
+    })
+    .to_string();
     let bundle = Arc::new(ui::mod_panel::PanelBundle {
         panel: content.clone(),
-        surfaces: Default::default(),
+        surfaces: std::collections::BTreeMap::from([(
+            "other".into(),
+            other.surface.as_ref().unwrap().clone(),
+        )]),
     });
     let prepared = prepared::PreparedPanelUi::prepare(bundle).unwrap();
-    (content, prepared)
+    ([content, other], prepared)
 }
 
 /// Replacing a registration retires its old bundles and preserves an active environment route.
@@ -27,15 +36,15 @@ fn prepared_panel(title: &str) -> (Panel, Arc<prepared::PreparedPanelUi>) {
 fn registration_replacements_preserve_environment_prepared_routes() {
     use prepared::PanelUiOwner;
 
-    let (environment, prepared_environment) = prepared_panel("Environment");
+    let ([environment, _], prepared_environment) = prepared_panels("Environment");
     let environment_route = prepared_environment.route(&environment).unwrap();
     let mut ui = ModUi::default();
     ui.set_prepared_panel_ui(PanelUiOwner::Environment(0), Some(prepared_environment));
     ui.set_mod_panel(Some(&environment)).unwrap();
     let mut previous: Option<std::sync::Weak<prepared::PreparedPanelUi>> = None;
     for revision in 0..5 {
-        let (registration, prepared_registration) =
-            prepared_panel(&format!("Registration {revision}"));
+        let ([registration, _], prepared_registration) =
+            prepared_panels(&format!("Registration {revision}"));
         let current = Arc::downgrade(&prepared_registration);
         ui.set_prepared_panel_ui(PanelUiOwner::Registration, Some(prepared_registration));
         if let Some(previous) = previous {
@@ -48,7 +57,13 @@ fn registration_replacements_preserve_environment_prepared_routes() {
 
     ui.set_mod_panel(Some(&environment)).unwrap();
     assert!(Arc::ptr_eq(
-        ui.mod_panel.as_ref().unwrap().prepared.as_ref().unwrap(),
+        &ui.mod_panel
+            .as_ref()
+            .unwrap()
+            .prepared
+            .as_ref()
+            .unwrap()
+            .route,
         &environment_route,
     ));
     ui.set_prepared_panel_ui(PanelUiOwner::Registration, None);
@@ -56,9 +71,105 @@ fn registration_replacements_preserve_environment_prepared_routes() {
     ui.set_mod_panel(None).unwrap();
     ui.set_mod_panel(Some(&environment)).unwrap();
     assert!(Arc::ptr_eq(
-        ui.mod_panel.as_ref().unwrap().prepared.as_ref().unwrap(),
+        &ui.mod_panel
+            .as_ref()
+            .unwrap()
+            .prepared
+            .as_ref()
+            .unwrap()
+            .route,
         &environment_route,
     ));
+}
+
+/// Lays out the selected route in its owner's cache without a renderer or game assets.
+fn render_prepared_route(ui: &mut ModUi, content: &Panel) -> usize {
+    ui.set_mod_panel(Some(content)).unwrap();
+    let panel = ui.mod_panel.as_mut().unwrap();
+    panel.viewport = [600.0, 400.0];
+    panel.refresh_data();
+    let selected = panel.prepared.as_ref().unwrap();
+    let screen = ui
+        .prepared_panel_ui
+        .get_mut(&selected.owner)
+        .unwrap()
+        .screen(&selected.route);
+    assert!(
+        screen
+            .render(
+                SCREEN,
+                &selected.route.catalog,
+                &Context::default(),
+                Arc::clone(&panel.data),
+                (panel.viewport, 1.0, [0; 3]),
+                &json_ui::LayoutEnv {
+                    text: &InputArt,
+                    textures: &InputArt,
+                },
+            )
+            .is_some()
+    );
+    screen.passes
+}
+
+/// Retiring an owner releases all route generations while other owners keep their rendered caches.
+#[test]
+fn ten_registration_replacements_release_routes_and_preserve_environment_caches() {
+    use prepared::PanelUiOwner;
+
+    let (environment, prepared_environment) = prepared_panels("Environment");
+    let mut ui = ModUi::default();
+    ui.set_prepared_panel_ui(PanelUiOwner::Environment(0), Some(prepared_environment));
+    let passes: Vec<_> = environment
+        .iter()
+        .map(|panel| render_prepared_route(&mut ui, panel))
+        .collect();
+    let mut retired: Vec<std::sync::Weak<Catalog>> = Vec::new();
+    for revision in 0..10 {
+        let (registration, prepared_registration) =
+            prepared_panels(&format!("Registration {revision}"));
+        let catalogs: Vec<_> = registration
+            .iter()
+            .map(|panel| {
+                let route = prepared_registration.route(panel).unwrap();
+                Arc::downgrade(&route.catalog)
+            })
+            .collect();
+        ui.set_prepared_panel_ui(PanelUiOwner::Registration, Some(prepared_registration));
+        assert!(retired.iter().all(|catalog| catalog.upgrade().is_none()));
+        for panel in &registration {
+            render_prepared_route(&mut ui, panel);
+        }
+        let registered = &ui.prepared_panel_ui[&PanelUiOwner::Registration];
+        assert_eq!(registered.screens.len(), registration.len());
+        assert_eq!(
+            registered
+                .screens
+                .iter()
+                .filter(|screen| screen.is_some())
+                .count(),
+            registration.len(),
+        );
+        for (panel, passes) in environment.iter().zip(&passes) {
+            assert_eq!(render_prepared_route(&mut ui, panel), *passes);
+        }
+        assert_eq!(
+            ui.prepared_panel_ui
+                .values()
+                .map(|owner| owner.screens.len())
+                .sum::<usize>(),
+            environment.len() + registration.len(),
+        );
+        render_prepared_route(&mut ui, &registration[0]);
+        retired.extend(catalogs);
+    }
+
+    ui.set_prepared_panel_ui(PanelUiOwner::Registration, None);
+    assert!(ui.mod_panel.is_none());
+    assert!(retired.iter().all(|catalog| catalog.upgrade().is_none()));
+    for (panel, passes) in environment.iter().zip(&passes) {
+        assert_eq!(render_prepared_route(&mut ui, panel), *passes);
+    }
 }
 
 struct InputArt;

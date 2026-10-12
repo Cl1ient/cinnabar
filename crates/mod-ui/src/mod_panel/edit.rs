@@ -59,7 +59,6 @@ impl ModPanel {
     }
 
     fn refresh_editor(&mut self) {
-        self.retain_prepared_route();
         self.catalog = None;
         self.frame = None;
         self.drag = None;

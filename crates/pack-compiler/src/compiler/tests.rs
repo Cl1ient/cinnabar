@@ -9,7 +9,7 @@ use assets::{RegistryRecord, TILE_SIZE, VisualKind, VisualSupport};
 #[path = "tests/anvil.rs"]
 mod anvil;
 #[path = "tests/barrel.rs"]
-mod barrel;
+pub(crate) mod barrel;
 #[path = "tests/candle_cake.rs"]
 mod candle_cake;
 #[path = "tests/coral.rs"]

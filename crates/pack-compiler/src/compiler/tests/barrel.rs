@@ -26,14 +26,20 @@ fn material_tag(compiled: &assets::CompiledAssets, material: u32) -> u8 {
 
 /// Compiles registered barrels and trapdoors with distinct original face artwork.
 fn compile_barrels() -> (assets::CompiledAssets, Vec<RegistryRecord>) {
-    compile_barrels_with(None, false)
+    let (compiled, records, _) = compile_barrels_with(None, false, false);
+    (compiled, records)
 }
 
 /// Exercises typed admission and scalar replacement artwork through the same compiler entry point.
-fn compile_barrels_with(
+pub(crate) fn compile_barrels_with(
     state: Option<&str>,
     scalar: bool,
-) -> (assets::CompiledAssets, Vec<RegistryRecord>) {
+    isotropic: bool,
+) -> (
+    assets::CompiledAssets,
+    Vec<RegistryRecord>,
+    tempfile::TempDir,
+) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let target: serde_json::Value =
         serde_json::from_slice(include_bytes!("../../../../../assets/bedrock-target.json"))
@@ -88,6 +94,13 @@ fn compile_barrels_with(
         }"#,
         );
     }
+    if isotropic {
+        let path = directory.path().join("blocks.json");
+        let mut blocks: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        blocks["barrel"]["isotropic"] = true.into();
+        write(path, serde_json::to_vec(&blocks).unwrap());
+    }
     write(
         directory.path().join("textures/terrain_texture.json"),
         r#"{"texture_data":{
@@ -128,13 +141,7 @@ fn compile_barrels_with(
         protocol,
     )
     .unwrap();
-    if state.is_none()
-        && !scalar
-        && let Some(path) = std::env::var_os("CINNABAR_BARREL_CARRIER")
-    {
-        fs::write(path, assets::encode_blob(&compiled).unwrap()).unwrap();
-    }
-    (compiled, records)
+    (compiled, records, directory)
 }
 
 #[test]
@@ -197,7 +204,7 @@ fn barrel_quads_keep_grain_on_the_axis_and_materials_owned_by_each_block() {
 
 #[test]
 fn barrel_scalar_pack_override_keeps_open_variants_on_every_face() {
-    let (compiled, records) = compile_barrels_with(None, true);
+    let (compiled, records, _) = compile_barrels_with(None, true, false);
     let runtime = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
     for record in records
         .iter()
@@ -227,7 +234,7 @@ fn malformed_barrel_selectors_stay_diagnostic() {
         r#"{"facing_direction":{"type":"byte","value":1},"open_bit":{"type":"byte","value":0}}"#,
         r#"{"facing_direction":{"type":"int","value":1}}"#,
     ] {
-        let (compiled, records) = compile_barrels_with(Some(state), false);
+        let (compiled, records, _) = compile_barrels_with(Some(state), false, false);
         let runtime = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
         let record = records
             .iter()
@@ -239,6 +246,25 @@ fn malformed_barrel_selectors_stay_diagnostic() {
                 .support(),
             VisualSupport::Diagnostic
         );
+    }
+}
+
+#[test]
+fn barrel_faces_retain_pack_authored_isotropy() {
+    let (compiled, records, _) = compile_barrels_with(None, false, true);
+    let runtime = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
+    for record in records
+        .iter()
+        .filter(|r| r.name.as_ref() == "minecraft:barrel")
+    {
+        let visual = runtime.resolve(NetworkIdMode::Sequential, record.sequential_id);
+        for face in BlockFace::ALL {
+            assert_ne!(
+                runtime.material(visual.face(face).material_id()).flags
+                    & assets::MATERIAL_FLAG_ISOTROPIC,
+                0
+            );
+        }
     }
 }
 

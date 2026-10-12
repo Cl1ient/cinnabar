@@ -81,7 +81,8 @@ pub(in crate::compiler) fn descriptor(
     face: BlockFace,
 ) -> Option<(Descriptor, Box<str>)> {
     let (direction, open) = state(record)?;
-    let key = resolve_texture_key(&pack.blocks, record, source_face(face, direction)).key?;
+    let source_face = source_face(face, direction);
+    let key = resolve_texture_key(&pack.blocks, record, source_face).key?;
     let (path, state_variant) = pack.terrain.get_clamped_untinted_variant(&key, open)?;
     Some((
         Descriptor {
@@ -89,7 +90,7 @@ pub(in crate::compiler) fn descriptor(
             texture_key: key.clone(),
             state_variant,
             flipbook_selector: Some((state_variant, state_variant)),
-            flags: 0,
+            flags: pack.blocks.isotropic_face_flags(record)[source_face as usize],
         },
         key,
     ))

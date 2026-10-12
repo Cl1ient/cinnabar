@@ -40,7 +40,8 @@ fn registration_replacements_preserve_environment_prepared_routes() {
     let environment_route = prepared_environment.route(&environment).unwrap();
     let mut ui = ModUi::default();
     ui.set_prepared_panel_ui(PanelUiOwner::Environment(0), Some(prepared_environment));
-    ui.set_mod_panel(Some(&environment)).unwrap();
+    ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&environment))
+        .unwrap();
     let mut previous: Option<std::sync::Weak<prepared::PreparedPanelUi>> = None;
     for revision in 0..5 {
         let ([registration, _], prepared_registration) =
@@ -51,54 +52,46 @@ fn registration_replacements_preserve_environment_prepared_routes() {
             assert!(previous.upgrade().is_none(), "superseded bundle is retired");
         }
         previous = Some(current);
-        ui.set_mod_panel(Some(&registration)).unwrap();
+        ui.set_mod_panel(PanelUiOwner::Registration, Some(&registration))
+            .unwrap();
         assert!(ui.mod_panel.as_ref().unwrap().prepared.is_some());
     }
 
-    ui.set_mod_panel(Some(&environment)).unwrap();
+    ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&environment))
+        .unwrap();
     assert!(Arc::ptr_eq(
-        &ui.mod_panel
-            .as_ref()
-            .unwrap()
-            .prepared
-            .as_ref()
-            .unwrap()
-            .route,
+        ui.mod_panel.as_ref().unwrap().prepared.as_ref().unwrap(),
         &environment_route,
     ));
     ui.set_prepared_panel_ui(PanelUiOwner::Registration, None);
     assert!(previous.unwrap().upgrade().is_none());
-    ui.set_mod_panel(None).unwrap();
-    ui.set_mod_panel(Some(&environment)).unwrap();
+    ui.set_mod_panel(PanelUiOwner::Environment(0), None)
+        .unwrap();
+    ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&environment))
+        .unwrap();
     assert!(Arc::ptr_eq(
-        &ui.mod_panel
-            .as_ref()
-            .unwrap()
-            .prepared
-            .as_ref()
-            .unwrap()
-            .route,
+        ui.mod_panel.as_ref().unwrap().prepared.as_ref().unwrap(),
         &environment_route,
     ));
 }
 
 /// Lays out the selected route in its owner's cache without a renderer or game assets.
-fn render_prepared_route(ui: &mut ModUi, content: &Panel) -> usize {
-    ui.set_mod_panel(Some(content)).unwrap();
+fn render_prepared_route(ui: &mut ModUi, owner: PanelUiOwner, content: &Panel) -> usize {
+    ui.set_mod_panel(owner, Some(content)).unwrap();
     let panel = ui.mod_panel.as_mut().unwrap();
     panel.viewport = [600.0, 400.0];
     panel.refresh_data();
-    let selected = panel.prepared.as_ref().unwrap();
+    let route = panel.prepared.as_ref().unwrap();
     let screen = ui
         .prepared_panel_ui
-        .get_mut(&selected.owner)
+        .get_mut(&panel.owner)
         .unwrap()
-        .screen(&selected.route);
+        .screen(route);
     assert!(
         screen
             .render(
                 SCREEN,
-                &selected.route.catalog,
+                &route.catalog,
                 &Context::default(),
                 Arc::clone(&panel.data),
                 (panel.viewport, 1.0, [0; 3]),
@@ -122,7 +115,7 @@ fn ten_registration_replacements_release_routes_and_preserve_environment_caches(
     ui.set_prepared_panel_ui(PanelUiOwner::Environment(0), Some(prepared_environment));
     let passes: Vec<_> = environment
         .iter()
-        .map(|panel| render_prepared_route(&mut ui, panel))
+        .map(|panel| render_prepared_route(&mut ui, PanelUiOwner::Environment(0), panel))
         .collect();
     let mut retired: Vec<std::sync::Weak<Catalog>> = Vec::new();
     for revision in 0..10 {
@@ -138,7 +131,7 @@ fn ten_registration_replacements_release_routes_and_preserve_environment_caches(
         ui.set_prepared_panel_ui(PanelUiOwner::Registration, Some(prepared_registration));
         assert!(retired.iter().all(|catalog| catalog.upgrade().is_none()));
         for panel in &registration {
-            render_prepared_route(&mut ui, panel);
+            render_prepared_route(&mut ui, PanelUiOwner::Registration, panel);
         }
         let registered = &ui.prepared_panel_ui[&PanelUiOwner::Registration];
         assert_eq!(registered.screens.len(), registration.len());
@@ -151,7 +144,10 @@ fn ten_registration_replacements_release_routes_and_preserve_environment_caches(
             registration.len(),
         );
         for (panel, passes) in environment.iter().zip(&passes) {
-            assert_eq!(render_prepared_route(&mut ui, panel), *passes);
+            assert_eq!(
+                render_prepared_route(&mut ui, PanelUiOwner::Environment(0), panel),
+                *passes
+            );
         }
         assert_eq!(
             ui.prepared_panel_ui
@@ -160,7 +156,7 @@ fn ten_registration_replacements_release_routes_and_preserve_environment_caches(
                 .sum::<usize>(),
             environment.len() + registration.len(),
         );
-        render_prepared_route(&mut ui, &registration[0]);
+        render_prepared_route(&mut ui, PanelUiOwner::Registration, &registration[0]);
         retired.extend(catalogs);
     }
 
@@ -168,8 +164,63 @@ fn ten_registration_replacements_release_routes_and_preserve_environment_caches(
     assert!(ui.mod_panel.is_none());
     assert!(retired.iter().all(|catalog| catalog.upgrade().is_none()));
     for (panel, passes) in environment.iter().zip(&passes) {
-        assert_eq!(render_prepared_route(&mut ui, panel), *passes);
+        assert_eq!(
+            render_prepared_route(&mut ui, PanelUiOwner::Environment(0), panel),
+            *passes
+        );
     }
+}
+
+/// Identical documents never transfer an environment panel's ownership to a registration.
+#[test]
+fn identical_registration_replacements_preserve_environment_pointer_capture() {
+    let ([environment, _], prepared_environment) = prepared_panels("Identical");
+    let ([registration, _], prepared_registration) = prepared_panels("Identical");
+    assert_eq!(environment, registration);
+    let environment_route = prepared_environment.route(&environment).unwrap();
+    let mut ui = ModUi::default();
+    ui.set_prepared_panel_ui(PanelUiOwner::Environment(0), Some(prepared_environment));
+    ui.set_prepared_panel_ui(PanelUiOwner::Registration, Some(prepared_registration));
+    ui.set_mod_panel(PanelUiOwner::Registration, Some(&registration))
+        .unwrap();
+    ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&environment))
+        .unwrap();
+    ui.set_mod_panel_open(true);
+    {
+        let current = ui.mod_panel.as_mut().unwrap();
+        current.view.scroll.insert("list".into(), 42.0);
+        current.view.pressed = Some("slider".into());
+        current.pointer = Some([70.0, 20.0]);
+        current.held = true;
+        current.drag = Some(1);
+    }
+    let data = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
+    let (_, replacement) = prepared_panels("Identical");
+    for replacement in [Some(replacement), None] {
+        ui.set_prepared_panel_ui(PanelUiOwner::Registration, replacement);
+        ui.set_mod_panel(PanelUiOwner::Registration, None).unwrap();
+        ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&environment))
+            .unwrap();
+        let current = ui
+            .mod_panel
+            .as_ref()
+            .expect("environment publisher stays selected");
+        assert_eq!(current.owner, PanelUiOwner::Environment(0));
+        assert!(current.open);
+        assert!(Arc::ptr_eq(
+            current.prepared.as_ref().unwrap(),
+            &environment_route
+        ));
+        assert!(Arc::ptr_eq(&current.data, &data));
+        assert_eq!(current.view.scroll_offset("list"), 42.0);
+        assert_eq!(current.view.pressed.as_deref(), Some("slider"));
+        assert_eq!(current.pointer, Some([70.0, 20.0]));
+        assert!(current.held);
+        assert_eq!(current.drag, Some(1));
+    }
+    ui.set_mod_panel(PanelUiOwner::Environment(1), Some(&environment))
+        .unwrap();
+    assert!(ui.mod_panel.as_ref().unwrap().prepared.is_none());
 }
 
 struct InputArt;
@@ -231,7 +282,8 @@ fn close_button_resets_scroll_and_feedback_before_reopening() {
         let mut settings = panel();
         settings.motion = motion_enabled;
         let mut ui = ModUi::default();
-        ui.set_mod_panel(Some(&settings)).unwrap();
+        ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&settings))
+            .unwrap();
         let settled = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
         ui.set_mod_panel_open(true);
         let close_at = {
@@ -300,7 +352,8 @@ fn closed_and_settled_panels_reuse_feedback_data() {
         let mut settings = panel();
         settings.motion = motion_enabled;
         let mut ui = ModUi::default();
-        ui.set_mod_panel(Some(&settings)).unwrap();
+        ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&settings))
+            .unwrap();
         let data = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
         for _ in 0..3 {
             ui.set_mod_panel_open(false);
@@ -332,7 +385,8 @@ fn closing_panel_restores_settled_hover_bindings() {
     let mut settings = panel();
     settings.motion = true;
     let mut ui = ModUi::default();
-    ui.set_mod_panel(Some(&settings)).unwrap();
+    ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&settings))
+        .unwrap();
     let settled = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
     ui.set_mod_panel_open(true);
     {
@@ -369,7 +423,8 @@ fn reopening_panel_restores_settled_feedback_bindings() {
                 *value = !enabled;
             }
             let mut ui = ModUi::default();
-            ui.set_mod_panel(Some(&settings)).unwrap();
+            ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&settings))
+                .unwrap();
             ui.set_mod_panel_open(true);
             {
                 let current = ui.mod_panel.as_mut().unwrap();
@@ -387,7 +442,8 @@ fn reopening_panel_restores_settled_feedback_bindings() {
             if let Control::Toggle { value, .. } = &mut settings.controls[0] {
                 *value = enabled;
             }
-            ui.set_mod_panel(Some(&settings)).unwrap();
+            ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&settings))
+                .unwrap();
             let settled = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
             {
                 let current = ui.mod_panel.as_mut().unwrap();
@@ -412,7 +468,8 @@ fn reopening_panel_restores_settled_feedback_bindings() {
                 &closed_data
             ));
             ui.set_mod_panel_open(true);
-            ui.set_mod_panel(Some(&settings)).unwrap();
+            ui.set_mod_panel(PanelUiOwner::Environment(0), Some(&settings))
+                .unwrap();
 
             let reopened = ui.mod_panel.as_ref().unwrap();
             assert_eq!(reopened.viewport, [600.0, 400.0]);

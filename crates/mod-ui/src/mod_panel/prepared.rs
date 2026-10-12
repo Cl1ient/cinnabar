@@ -34,8 +34,7 @@ impl crate::ModUi {
         if self
             .mod_panel
             .as_ref()
-            .and_then(|panel| panel.prepared.as_ref())
-            .is_some_and(|selected| selected.owner == owner)
+            .is_some_and(|panel| panel.owner == owner)
         {
             self.cancel_mod_hud_editor();
             self.mod_panel = None;
@@ -72,12 +71,6 @@ impl PreparedOwner {
     pub(super) fn cached_screen(&self, route: &PreparedRoute) -> Option<&CachedScreen> {
         self.screens[route.index].as_ref()
     }
-}
-
-#[derive(Clone)]
-pub(super) struct SelectedRoute {
-    pub(super) owner: PanelUiOwner,
-    pub(super) route: Arc<PreparedRoute>,
 }
 
 /// Immutable catalogs and resolved roots prepared on the local component loading worker.

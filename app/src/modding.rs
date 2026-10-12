@@ -61,6 +61,18 @@ struct ModRuntime {
     screens: screens::ScreenState,
 }
 
+#[cfg(feature = "local-mods")]
+impl ModRuntime {
+    /// Maps a publishing host's runtime index to its stable panel catalog owner.
+    fn panel_ui_owner(&self, host: usize) -> mod_ui::PanelUiOwner {
+        if self.registration_host == Some(host) {
+            mod_ui::PanelUiOwner::Registration
+        } else {
+            mod_ui::PanelUiOwner::Environment(host)
+        }
+    }
+}
+
 /// Bounded personal-extension diagnostics, only through the developer control endpoint.
 #[cfg(all(feature = "developer-control", feature = "local-mods"))]
 pub(crate) fn developer_state(world: &World) -> Option<serde_json::Value> {
@@ -536,10 +548,10 @@ fn drive_mod(
     if let Err(error) = presentation.set_mod_panel_font(extension.panel_fonts[owner].clone()) {
         eprintln!("Cinnabar extension panel font rejected: {error}");
     }
-    if let Err(error) = presentation
-        .mod_ui_mut()
-        .set_mod_panel(extension.hosts.host(owner).panel())
-    {
+    if let Err(error) = presentation.mod_ui_mut().set_mod_panel(
+        extension.panel_ui_owner(owner),
+        extension.hosts.host(owner).panel(),
+    ) {
         eprintln!("Cinnabar extension panel rejected: {error}");
         extension.hosts.host_mut(owner).set_panel_open(false);
     }

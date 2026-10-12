@@ -34,6 +34,7 @@ pub struct Options {
     pub platform: Platform,
     pub client: PathBuf,
     pub core: PathBuf,
+    pub binaries: PathBuf,
     pub assets: PathBuf,
     pub physics: PathBuf,
     pub notices: PathBuf,
@@ -45,7 +46,7 @@ pub struct Options {
 #[derive(Debug, Error)]
 pub enum DistError {
     #[error(
-        "{0}\nusage: dist-local --platform <windows|linux|macos> --client <FILE> --core <FILE> [--assets <DIR>] --physics <FILE> --notices <FILE> --target <TRIPLE> --git-commit <40_HEX> --out <NEW_DIR>"
+        "{0}\nusage: dist-local --platform <windows|linux|macos> --client <FILE> --core <FILE> [--binaries <DIR>] [--assets <DIR>] --physics <FILE> --notices <FILE> --target <TRIPLE> --git-commit <40_HEX> --out <NEW_DIR>"
     )]
     Usage(String),
     #[error("unsafe input path `{0}`")]

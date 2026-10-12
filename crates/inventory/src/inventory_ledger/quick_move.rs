@@ -2,7 +2,7 @@
 
 use protocol::{NetworkItemStack, WindowKind};
 
-use super::cells::Cell;
+use super::cells::{Cell, Held};
 use super::equipment::equipment_admission;
 use super::gesture::{
     InventoryTarget, StackRequestActionKind, Submission, counted_merge, counted_transfer,
@@ -104,7 +104,7 @@ impl PlayerInventoryLedger {
             .ok_or(InventoryGestureError::EmptyGesture)?;
         let address = self.window_address();
         let candidates = destinations.map_or_else(
-            || self.quick_move_candidates(source, &from.stack, permits_storage),
+            || self.quick_move_candidates(source, &from, permits_storage),
             <[Cell]>::to_vec,
         );
         let furnace_route = destinations
@@ -255,9 +255,10 @@ impl PlayerInventoryLedger {
     fn quick_move_candidates(
         &self,
         source: Cell,
-        stack: &NetworkItemStack,
+        from: &Held,
         permits_storage: impl Fn(u8) -> bool,
     ) -> Vec<Cell> {
+        let stack = &from.stack;
         let id = self
             .negotiated_item_entry(stack.network_id)
             .map_or("", |entry| &*entry.identifier);
@@ -277,7 +278,7 @@ impl PlayerInventoryLedger {
         };
         let mut cells = match self.quick_move_window() {
             Some(kind) => self.window_destinations(kind, id, stack.network_id, stack.metadata),
-            None => self.equipment_destinations(stack),
+            None => self.equipment_destinations(from),
         };
         cells.retain(|cell| !matches!(cell, Cell::Storage(slot) if !permits_storage(*slot)));
         if !cells.is_empty() {
@@ -291,7 +292,8 @@ impl PlayerInventoryLedger {
     }
 
     /// The first equipment cell that admits an empty placement or a compatible merge.
-    fn equipment_destinations(&self, stack: &NetworkItemStack) -> Vec<Cell> {
+    fn equipment_destinations(&self, from: &Held) -> Vec<Cell> {
+        let stack = &from.stack;
         let admission = equipment_admission(self.negotiated_item_entry(stack.network_id));
         admission
             .armor
@@ -301,6 +303,12 @@ impl PlayerInventoryLedger {
             .find(|cell| {
                 self.confirmed.contains(*cell)
                     && self.view().get(*cell).is_none_or(|held| {
+                        if self.awaiting_identity(held)
+                            || has_meaningful_overlay(from.overlay.as_ref())
+                            || has_meaningful_overlay(held.overlay.as_ref())
+                        {
+                            return false;
+                        }
                         match self.occupied_stack_relation(stack, &held.stack) {
                             OccupiedStackRelation::Compatible { capacity } => {
                                 let capacity = slot_limit(*cell).unwrap_or(capacity).min(capacity);

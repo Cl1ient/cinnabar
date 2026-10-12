@@ -350,6 +350,59 @@ fn stock_totem_keeps_capacity_one_with_unrelated_components() {
 }
 
 #[test]
+fn named_custom_stacks_skip_offhand_merges_and_keep_inventory_fallback() {
+    for named in [Cell::Inventory(20), Cell::Offhand] {
+        let mut held = totem(101);
+        held.count = 14;
+        let mut ledger = ledger(20, held);
+        declare(
+            &mut ledger,
+            protocol::ItemComponents {
+                allow_off_hand: Some(true),
+                allow_off_hand_declared: true,
+                max_stack_size: Some(16),
+                ..Default::default()
+            },
+            true,
+        );
+        ledger.set_confirmed_overlay(
+            named,
+            StackResponseOverlay {
+                custom_name: Some(Arc::from("Named charm")),
+                ..Default::default()
+            },
+        );
+        ledger
+            .begin_quick_move(InventoryTarget::Player(20))
+            .unwrap();
+        assert_eq!(ledger.displayed_stack(0).unwrap().count, 1);
+        assert!(ledger.displayed_stack(20).is_none());
+        assert_eq!(
+            ledger.target_stack(InventoryTarget::Offhand).unwrap().count,
+            14
+        );
+        assert_eq!(count(&ledger), 15);
+        let named_destination = if named == Cell::Offhand {
+            named
+        } else {
+            Cell::Inventory(0)
+        };
+        assert_eq!(
+            ledger
+                .view()
+                .get(named_destination)
+                .unwrap()
+                .overlay
+                .as_ref()
+                .unwrap()
+                .custom_name
+                .as_deref(),
+            Some("Named charm")
+        );
+    }
+}
+
+#[test]
 fn changed_admission_retires_an_unanswered_equipment_prediction() {
     let mut ledger = ledger(20, NetworkItemStack::default());
     ledger

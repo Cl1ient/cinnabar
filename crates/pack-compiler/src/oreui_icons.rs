@@ -7,8 +7,8 @@ use std::{
 
 use ::image::{ImageFormat, ImageReader};
 use assets::{
-    MAX_OREUI_ICON_SIDE, OreUiIcon, OreUiIconFrame, canonical_source_manifest_sha256,
-    encode_oreui_icons,
+    canonical_source_manifest_sha256,
+    oreui_icons::{MAX_OREUI_ICON_SIDE, OreUiIcon, OreUiIconFrame, encode_oreui_icons},
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -133,7 +133,7 @@ pub fn compile_oreui_icons_to_file(manifest: &Path, out: &Path) -> Result<usize,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assets::decode_oreui_icons;
+    use assets::oreui_icons::decode_oreui_icons;
 
     fn png(dir: &Path, name: &str, width: u32, height: u32) -> String {
         let image = ::image::RgbaImage::from_pixel(width, height, ::image::Rgba([9, 8, 7, 255]));

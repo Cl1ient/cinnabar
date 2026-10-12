@@ -187,7 +187,8 @@ pub fn decode_oreui_icons(
         let width = u32::from(reader.u16()?);
         let height = u32::from(reader.u16()?);
         let frames = reader.u16()? as usize;
-        if !(1..=MAX_OREUI_ICON_SIDE).contains(&width) || !(1..=MAX_OREUI_ICON_SIDE).contains(&height)
+        if !(1..=MAX_OREUI_ICON_SIDE).contains(&width)
+            || !(1..=MAX_OREUI_ICON_SIDE).contains(&height)
         {
             return Err(invalid("image side exceeds bounds"));
         }

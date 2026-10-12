@@ -3,8 +3,11 @@
 use std::path::Path;
 
 use assets::{
-    MAX_OREUI_ICONS_BYTES, OREUI_ICONS_SOURCE_MANIFEST, OreUiIcon, canonical_source_manifest_sha256,
-    carriers::OREUI_ICONS, decode_oreui_icons,
+    canonical_source_manifest_sha256,
+    carriers::OREUI_ICONS,
+    oreui_icons::{
+        MAX_OREUI_ICONS_BYTES, OREUI_ICONS_SOURCE_MANIFEST, OreUiIcon, decode_oreui_icons,
+    },
 };
 
 use super::{Art, read_bounded};

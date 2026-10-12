@@ -319,29 +319,30 @@ fn only_referenced_atlas_rectangles_are_packed() {
 
 #[test]
 fn shipped_carrier_packs_masks_animations_and_loading_frames_without_game_files() {
-    let still = |key: &str, side: u32, alpha: u8| assets::OreUiIcon {
+    let still = |key: &str, side: u32, alpha: u8| assets::oreui_icons::OreUiIcon {
         key: key.into(),
         width: side,
         height: side,
-        frames: vec![assets::OreUiIconFrame {
+        frames: vec![assets::oreui_icons::OreUiIconFrame {
             millis: 0,
             rgba8: [30, 60, 90, alpha].repeat((side * side) as usize).into(),
         }],
     };
-    let animation = |key: &str| assets::OreUiIcon {
+    let animation = |key: &str| assets::oreui_icons::OreUiIcon {
         key: key.into(),
         width: 2,
         height: 2,
         frames: (0..3)
-            .map(|index| assets::OreUiIconFrame {
+            .map(|index| assets::oreui_icons::OreUiIconFrame {
                 millis: 100 + index,
                 rgba8: [index as u8; 16].into(),
             })
             .collect(),
     };
     let sleep = format!("{SLEEP_ANIMATION_PREFIX}one.gif");
-    let manifest = assets::canonical_source_manifest_sha256(assets::OREUI_ICONS_SOURCE_MANIFEST);
-    let bytes = assets::encode_oreui_icons(
+    let manifest =
+        assets::canonical_source_manifest_sha256(assets::oreui_icons::OREUI_ICONS_SOURCE_MANIFEST);
+    let bytes = assets::oreui_icons::encode_oreui_icons(
         manifest,
         &[
             still(CHEVRON_LEFT_IMAGE, 3, 77),
@@ -361,8 +362,15 @@ fn shipped_carrier_packs_masks_animations_and_loading_frames_without_game_files(
         <[u8; 4]>::try_from(&page.pixels[start..start + 4]).unwrap()
     };
     assert_eq!(texel(CHEVRON_LEFT_IMAGE), [30, 60, 90, 77]);
-    assert_eq!(texel(&format!("@mask/{CHEVRON_LEFT_IMAGE}")), [255, 255, 255, 77]);
-    assert!(!images.sprites.contains_key(&format!("@mask/{HARDCORE_ICON}")));
+    assert_eq!(
+        texel(&format!("@mask/{CHEVRON_LEFT_IMAGE}")),
+        [255, 255, 255, 77]
+    );
+    assert!(
+        !images
+            .sprites
+            .contains_key(&format!("@mask/{HARDCORE_ICON}"))
+    );
     let millis: Vec<_> = images.loading_frames.iter().map(|(_, ms)| *ms).collect();
     assert_eq!(millis, [100, 101, 102]);
     assert_eq!(texel(&images.loading_frames[2].0), [2; 4]);

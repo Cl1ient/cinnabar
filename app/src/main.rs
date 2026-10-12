@@ -4,6 +4,10 @@ use cinnabar::{
 };
 use std::io::Write;
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() {
     if std::env::args_os()
         .nth(1)

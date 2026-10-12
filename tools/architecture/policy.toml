@@ -66,6 +66,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "world"
 path = "crates/world"
+test_support_features = ["runtime-profile", "benchmark-mimalloc"]
 allowed_dependencies = []
 forbidden_dependencies = ["asset-compiler", "assets", "bevy", "wgpu"]
 
@@ -92,6 +93,7 @@ forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 [[crates]]
 name = "meshing"
 path = "crates/meshing"
+test_support_features = ["benchmark-mimalloc"]
 allowed_dependencies = ["assets", "block-transform", "world"]
 forbidden_dependencies = ["asset-compiler", "bevy", "wgpu"]
 
@@ -127,7 +129,7 @@ test_support_features = ["test-support"]
 [[crates]]
 name = "chunk-pipeline"
 path = "crates/chunk-pipeline"
-test_support_features = ["publication-test-support", "benchmark-support"]
+test_support_features = ["publication-test-support", "benchmark-support", "runtime-profile", "benchmark-mimalloc"]
 allowed_dependencies = ["simulation-clock", "actor-animation", "client-world", "meshing", "assets", "world", "render-api", "test-time"]
 # Protocol is permitted only in fixtures; production consumes client-world's admitted contracts.
 forbidden_dependencies = ["asset-compiler", "pack-compiler", "protocol", "bevy", "wgpu"]

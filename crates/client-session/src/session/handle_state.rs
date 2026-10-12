@@ -1,5 +1,4 @@
 use super::*;
-use simulation_clock::identity::PositionAuthorityGeneration;
 
 impl<P> NetworkHandle<P> {
     /// The pump queues its terminal control before dropping the command
@@ -16,7 +15,7 @@ impl<P> NetworkHandle<P> {
         let (_world_event_tx, world_events) = mpsc::channel(1);
         let (commands, _command_rx) = mpsc::channel(1);
         let (physics_reanchor, _physics_reanchor_rx) =
-            watch::channel(PositionAuthorityGeneration::default());
+            watch::channel(simulation_clock::identity::PositionAuthorityGeneration::default());
         let (shutdown, _shutdown_rx) = watch::channel(false);
         (
             Self {

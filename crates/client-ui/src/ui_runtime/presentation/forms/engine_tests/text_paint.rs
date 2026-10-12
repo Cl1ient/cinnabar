@@ -240,3 +240,10 @@ fn labels_render_the_same_device_pixels_at_every_display_scale() {
         );
     }
 }
+
+// A server form body spaced with `\n\n` keeps its blank line, as the hover text already does.
+#[test]
+fn localized_labels_keep_blank_lines() {
+    let text = ui_engine::engine::text_paint::localized("Rules\n\nBe kind\n", &|_| None);
+    assert_eq!(text, "Rules\n\nBe kind\n");
+}

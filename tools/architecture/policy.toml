@@ -33,6 +33,10 @@ ownership_record = "THIRD_PARTY_NOTICES.md"
 path = "assets/oreui-icons/"
 ownership_record = "THIRD_PARTY_NOTICES.md"
 
+[[owned_artifacts]]
+path = "assets/java-hud/textures/"
+ownership_record = "THIRD_PARTY_NOTICES.md"
+
 # The vendored contract codec (`bedrock-protocol-1-26-51`) is a dependency of `protocol` only.
 [[vendored]]
 path = "crates/protocol/vendor/"

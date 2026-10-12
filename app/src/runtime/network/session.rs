@@ -44,12 +44,13 @@ pub fn spawn_network(
             login_settings: config.login_settings,
         },
         move |handoff, game_data, cancelled| {
+            let started = std::time::Instant::now();
             let preparation =
                 pack_runtime::prepare_session_packs(handoff, game_data, physical_memory_bytes);
             if cancelled() {
                 return None;
             }
-            super::resource_packs::prepare_join(
+            let prepared = super::resource_packs::prepare_join(
                 &preparation,
                 game_data,
                 cancelled,
@@ -57,8 +58,14 @@ pub fn spawn_network(
                     actor_artwork: actor_artwork.as_ref(),
                     ui_catalog: ui_catalog.as_ref(),
                 },
-            )
-            .map(|result| {
+            );
+            if preparation.has_applied_packs() && prepared.is_some() {
+                bevy::log::info!(
+                    elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+                    "server resource packs prepared for the join"
+                );
+            }
+            prepared.map(|result| {
                 result
                     .map(|packs| client_session::PreparedSession {
                         custom_blocks: preparation.inputs.blocks.clone(),

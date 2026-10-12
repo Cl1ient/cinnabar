@@ -17,6 +17,10 @@ use pack_runtime::reload_diff::Changes;
 /// A lobby and the game it transfers to.
 const KEPT_STACKS: usize = 2;
 
+/// Archive bytes past which leaving for the menu releases the newest stack instead of keeping it
+/// for a rejoin; its compiled outputs scale with them.
+const REJOIN_KEPT_ARCHIVE_BYTES: usize = 128 * 1024 * 1024;
+
 /// Process tables a compile reads besides the stack and StartGame facts.
 #[derive(Clone, Debug)]
 pub(in crate::runtime::network) struct CompileEnvironment {
@@ -88,7 +92,7 @@ impl std::fmt::Debug for CompiledStacks {
     }
 }
 
-/// Joins and the post-join reload share these; leaving for the menu releases them.
+/// Joins and the post-join reload share these; leaving for the menu keeps only the newest.
 pub(in crate::runtime::network) static LATEST: CompiledStacks = CompiledStacks::new();
 
 impl CompiledStacks {
@@ -214,14 +218,39 @@ impl CompiledStacks {
     }
 
     /// Takes every kept stack; dropping the result releases their archives and compiled outputs.
+    #[cfg(test)]
     pub(in crate::runtime::network) fn take(&self) -> impl Send + 'static {
         std::mem::take(&mut *self.lock())
     }
 
-    /// Releases every kept stack, as leaving for the menu releases the session's, freeing them
-    /// off the calling frame.
+    /// Releases every kept stack, freeing them off the calling frame.
+    #[cfg(test)]
     pub(crate) fn release(&self) {
         let released = self.take();
+        rayon::spawn(move || drop(released));
+    }
+
+    /// Keeps only the newest stack, for a rejoin from the menu to reuse, unless its archives
+    /// exceed the rejoin budget; the rest are freed off the calling frame.
+    pub(crate) fn keep_for_rejoin(&self) {
+        self.keep_newest_within(REJOIN_KEPT_ARCHIVE_BYTES);
+    }
+
+    /// [`Self::keep_for_rejoin`] under an explicit archive budget.
+    fn keep_newest_within(&self, archive_bytes: usize) {
+        let released: Vec<Kept> = {
+            let mut kept = self.lock();
+            let keep = kept.front().is_some_and(|newest| {
+                newest
+                    .stack
+                    .packs()
+                    .iter()
+                    .map(|pack| pack.archive_bytes().len())
+                    .sum::<usize>()
+                    <= archive_bytes
+            });
+            kept.drain(usize::from(keep)..).collect()
+        };
         rayon::spawn(move || drop(released));
     }
 

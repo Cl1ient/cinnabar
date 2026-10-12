@@ -46,6 +46,9 @@ const (
 	counterPNG   = "assets/counter.png"
 )
 
+// helperPipeWaitDelay bounds pipe cleanup after a helper build exits or is canceled.
+const helperPipeWaitDelay = 5 * time.Second
+
 // TestMain builds experience-runtime and the probe guest with cargo, assembles the probe
 // artifact and builds the fake helper within the package timeout, leaving time for tests.
 func TestMain(m *testing.M) {
@@ -112,7 +115,7 @@ func buildHelpers(ctx context.Context, scratch string) error {
 		fakeHelperBinary += ".exe"
 	}
 	build := exec.CommandContext(ctx, "go", "build", "-o", fakeHelperBinary, "./testdata/fakehelper")
-	build.WaitDelay = 5 * time.Second
+	build.WaitDelay = helperPipeWaitDelay
 	if out, err := build.CombinedOutput(); err != nil {
 		return fmt.Errorf("building the fake helper: %v\n%s", err, out)
 	}
@@ -123,7 +126,7 @@ func buildHelpers(ctx context.Context, scratch string) error {
 func cargoArtifact(ctx context.Context, root, target string, args ...string) (string, error) {
 	fmt.Fprintf(os.Stderr, "experience tests: preparing %s\n", target)
 	cmd := exec.CommandContext(ctx, "cargo", append(args, "--message-format=json-render-diagnostics")...)
-	cmd.WaitDelay = 5 * time.Second
+	cmd.WaitDelay = helperPipeWaitDelay
 	cmd.Dir = root
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

@@ -42,6 +42,7 @@ mod material_keys;
 mod material_variations;
 mod model;
 mod ogg;
+mod oreui_icons;
 mod particle;
 mod physics_registry;
 mod pinned_content;
@@ -198,6 +199,12 @@ pub use hud::{
     HUD_CARRIER_MAGIC, HUD_CARRIER_VERSION, HUD_ICONS_SHEET_SIZE, HUD_SOURCE_MANIFEST_SHA256,
     HudCatalogError, HudTexture, HudTextureRole, MAX_HUD_TEXTURE_BYTES, RuntimeHudCatalog,
     encode_hud_catalog,
+};
+pub use oreui_icons::{
+    MAX_OREUI_ICON_FRAMES, MAX_OREUI_ICON_IMAGES, MAX_OREUI_ICON_KEY_BYTES,
+    MAX_OREUI_ICON_PIXEL_BYTES, MAX_OREUI_ICON_SIDE, MAX_OREUI_ICONS_BYTES, OREUI_ICONS_MAGIC,
+    OREUI_ICONS_SOURCE_MANIFEST, OREUI_ICONS_VERSION, OreUiIcon, OreUiIconFrame, OreUiIconsError,
+    decode_oreui_icons, encode_oreui_icons,
 };
 pub use icon::{
     BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE, ICON_CARRIER_MAGIC,

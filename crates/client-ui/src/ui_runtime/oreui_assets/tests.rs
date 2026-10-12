@@ -1,5 +1,11 @@
 use super::*;
 
+/// Packs every referenced key an installed bundle holds, as comparison captures do.
+fn load(dir: &Path) -> Result<OreUiImages, String> {
+    let (art, source) = read_bundle(dir, is_referenced)?;
+    pack(art, Some(source))
+}
+
 /// Makes authored GIF bytes without requiring any installed assets.
 fn synthetic_animation(count: usize) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -309,4 +315,79 @@ fn only_referenced_atlas_rectangles_are_packed() {
         );
     }
     assert!(!images.sprites.contains_key("assets/unused.png"));
+}
+
+#[test]
+fn shipped_carrier_packs_masks_animations_and_loading_frames_without_game_files() {
+    let still = |key: &str, side: u32, alpha: u8| assets::OreUiIcon {
+        key: key.into(),
+        width: side,
+        height: side,
+        frames: vec![assets::OreUiIconFrame {
+            millis: 0,
+            rgba8: [30, 60, 90, alpha].repeat((side * side) as usize).into(),
+        }],
+    };
+    let animation = |key: &str| assets::OreUiIcon {
+        key: key.into(),
+        width: 2,
+        height: 2,
+        frames: (0..3)
+            .map(|index| assets::OreUiIconFrame {
+                millis: 100 + index,
+                rgba8: [index as u8; 16].into(),
+            })
+            .collect(),
+    };
+    let sleep = format!("{SLEEP_ANIMATION_PREFIX}one.gif");
+    let manifest = assets::canonical_source_manifest_sha256(assets::OREUI_ICONS_SOURCE_MANIFEST);
+    let bytes = assets::encode_oreui_icons(
+        manifest,
+        &[
+            still(CHEVRON_LEFT_IMAGE, 3, 77),
+            still(HARDCORE_ICON, 4, 255),
+            animation(LOADING_ANIMATION),
+            animation(&sleep),
+        ],
+    )
+    .unwrap();
+    let images = pack(shipped::decode(&bytes).unwrap(), None).unwrap();
+    let texel = |key: &str| {
+        let sprite = images.sprites[key];
+        let page = &images.pages[usize::from(sprite.page)];
+        let start = (usize::from(sprite.bounds[1]) * page.dimensions[0] as usize
+            + usize::from(sprite.bounds[0]))
+            * 4;
+        <[u8; 4]>::try_from(&page.pixels[start..start + 4]).unwrap()
+    };
+    assert_eq!(texel(CHEVRON_LEFT_IMAGE), [30, 60, 90, 77]);
+    assert_eq!(texel(&format!("@mask/{CHEVRON_LEFT_IMAGE}")), [255, 255, 255, 77]);
+    assert!(!images.sprites.contains_key(&format!("@mask/{HARDCORE_ICON}")));
+    let millis: Vec<_> = images.loading_frames.iter().map(|(_, ms)| *ms).collect();
+    assert_eq!(millis, [100, 101, 102]);
+    assert_eq!(texel(&images.loading_frames[2].0), [2; 4]);
+    assert_eq!(images.animations[&sleep].len(), 3);
+    assert_eq!(texel(&sleep), texel(&format!("{sleep}#0")));
+    let mut corrupt = bytes;
+    corrupt[20] ^= 1;
+    assert!(shipped::decode(&corrupt).is_err());
+}
+
+#[test]
+fn shipped_mode_reads_only_install_only_art_from_a_bundle() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("assets")).unwrap();
+    std::fs::write(dir.path().join("atlas.json"), "[]").unwrap();
+    for key in [WORLD_PREVIEW, PROFILE_BANNERS[0], HARDCORE_ICON] {
+        image::RgbImage::from_pixel(6, 4, image::Rgb([80, 120, 160]))
+            .save(dir.path().join(key))
+            .unwrap();
+    }
+    std::fs::write(dir.path().join(LOADING_ANIMATION), synthetic_animation(2)).unwrap();
+    let (art, source) = read_bundle(dir.path(), is_install_only).unwrap();
+    let images = pack(art, Some(source)).unwrap();
+    assert!(images.sprites.contains_key(WORLD_PREVIEW));
+    assert!(images.sprites.contains_key(PROFILE_BANNERS[0]));
+    assert!(!images.sprites.contains_key(HARDCORE_ICON));
+    assert!(images.loading_frames.is_empty());
 }

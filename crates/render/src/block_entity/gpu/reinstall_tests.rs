@@ -2,8 +2,7 @@ use super::*;
 use bevy::ecs::system::RunSystemOnce;
 use render_model::{BlockEntityScene, MAP_CELL, SceneClock};
 
-#[path = "../../../tests/it/support/gpu_snapshot.rs"]
-pub(super) mod gpu_snapshot;
+use crate::gpu_snapshot;
 
 /// Makes an original map canvas with a colored background and a session marker.
 fn canvas(second: bool) -> Vec<u8> {
@@ -19,7 +18,7 @@ fn canvas(second: bool) -> Vec<u8> {
             let ink = if second {
                 x < 40 || y < 40 || (60..68).contains(&y) || y >= 88 || x >= 88
             } else {
-                x < 40 || x >= 88 || y < 40 || (60..68).contains(&y)
+                !(40..88).contains(&x) || y < 40 || (60..68).contains(&y)
             };
             if ink {
                 let offset = (y * width + x) * 4;

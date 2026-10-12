@@ -20,6 +20,9 @@ $testFailure = $null
 $tempRootCleanupFailure = $null
 
 try {
+    $fixtureEntries = @(Get-TestRegistryEntries -RegistryPath $BlockRegistry)
+    $registryStateCount = [BitConverter]::ToUInt32([IO.File]::ReadAllBytes($BlockRegistry), 16)
+    Assert-Equal $registryStateCount $fixtureEntries.Count 'fixture reader covers the registry before gallery setup'
     . (Join-Path $PSScriptRoot 'acceptance\ProtocolDependencies.Tests.ps1')
     . (Join-Path $PSScriptRoot 'acceptance\Paths.Tests.ps1')
     . (Join-Path $PSScriptRoot 'acceptance\Galleries.Tests.ps1')

@@ -378,7 +378,11 @@ fn barrel_equipment_fallback_preserves_normalized_faces_and_model_uvs() {
         let quads =
             assets::gui_item::full_cube_model_quads(&world, assets::BlockVisualId(visual)).unwrap();
         assert_eq!(vertices.len(), 36);
-        for (face, (quad, vertices)) in quads.iter().zip(vertices.chunks_exact(6)).enumerate() {
+        for (face, (quad, vertices)) in quads
+            .iter()
+            .zip(vertices.as_chunks::<6>().0.iter())
+            .enumerate()
+        {
             let rect = face_rects([0., 0., 1., 1.])[face];
             for (corner, vertex) in [0, 1, 2, 0, 2, 3].into_iter().zip(vertices) {
                 assert_eq!(

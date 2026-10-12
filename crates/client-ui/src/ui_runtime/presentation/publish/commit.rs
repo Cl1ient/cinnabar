@@ -101,6 +101,34 @@ pub fn refresh_hud_frame(
     publish_item_viewmodels(presentation, icons);
 }
 
+impl UiPresentationRuntime {
+    /// Returns the previous frame when only the revision would differ, so the
+    /// renderer keeps its accepted publication and skips re-uploading.
+    pub(in crate::ui_runtime::presentation) fn stabilize_revision(
+        &mut self,
+        mut input: UiRenderInput,
+    ) -> UiRenderInput {
+        if let Some(previous) = &self.last_input {
+            input.revision = previous.revision;
+            if *previous == input {
+                return previous.clone();
+            }
+        }
+        self.advance_revision(input)
+    }
+
+    /// Publishes `input`, known to differ from the last frame's, under the next revision.
+    pub(in crate::ui_runtime::presentation) fn advance_revision(
+        &mut self,
+        mut input: UiRenderInput,
+    ) -> UiRenderInput {
+        self.revision = self.revision.saturating_add(1);
+        input.revision = self.revision;
+        self.last_input = Some(input.clone());
+        input
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, ui::IconRef};

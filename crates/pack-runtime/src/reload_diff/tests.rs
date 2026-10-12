@@ -161,6 +161,42 @@ fn consumed_texture_changes_only_its_subscriber() {
     );
 }
 
+// Contents fingerprints hash each file on the pool, yet one changed file among many still counts.
+#[test]
+fn tracked_contents_notice_one_changed_file_among_many() {
+    let files = |changed: &[u8]| {
+        let mut files: Vec<(String, Vec<u8>)> = (0..64)
+            .map(|index| {
+                (
+                    format!("textures/blocks/b{index:02}.png"),
+                    vec![index as u8; 32],
+                )
+            })
+            .collect();
+        files[37].1 = changed.to_vec();
+        stack(
+            &files
+                .iter()
+                .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+                .collect::<Vec<_>>(),
+        )
+    };
+    let before = files(b"old");
+    let mut dependencies = Dependencies::default();
+    compile(Subscriber::Ui, &before, &mut dependencies, |view| {
+        view.track_contents("textures/");
+    });
+    let previous = Previous {
+        dependencies,
+        admission: PackAdmission::Validated(before),
+    };
+    let between = |next: &ValidatedPackStack| {
+        Changes::between(next, Some((&previous.admission, &previous.dependencies)))
+    };
+    assert!(!between(&*files(b"old")).ui, "re-admitted identical bytes");
+    assert!(between(&*files(b"new")).ui);
+}
+
 #[test]
 fn absent_fallback_read_detects_a_new_override() {
     let before = stack(&[]);

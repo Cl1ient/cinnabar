@@ -4567,6 +4567,13 @@ Scope: block registry + block-state → model/texture mapping (generated export 
         counts and zero contamination counters.
         The October 4 macOS Metal manual check confirms that farmland and the
         corrected wheat model render correctly; the user approved this fix.
+    - [x] Common farmland crop rows: wheat, carrots, potatoes and beetroot use
+      four axis-aligned, two-sided planes lowered to the farmland surface.
+      All eight growth states preserve their selected artwork and upright UVs
+      in sequential and hashed lookup; ordinary flowers retain crossed planes.
+      - [ ] Full crop presentation parity: exact native-client comparison and
+        calibrated UV rows remain open, as do torchflower, pitcher and nether
+        wart geometry and selectors.
     - [ ] Slab/stair native and packed-GPU live acceptance: capture all five
       fixed Cinnabar poses through native `%TEMP%` screenshots and require two
       consecutive exact GPU-completed model-stream witnesses. Automated gallery

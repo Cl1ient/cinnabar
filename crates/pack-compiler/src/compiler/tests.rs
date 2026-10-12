@@ -18,6 +18,8 @@ mod bubble_column;
 mod candle_cake;
 #[path = "tests/coral.rs"]
 mod coral;
+#[path = "tests/crops.rs"]
+mod crops;
 #[path = "tests/dragon_egg.rs"]
 mod dragon_egg;
 #[path = "tests/end_rod.rs"]

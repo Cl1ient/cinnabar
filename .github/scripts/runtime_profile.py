@@ -31,6 +31,13 @@ def plan(output: Path) -> None:
         stream.write(f"matrix={json.dumps(matrix)}\n")
 
 
+def save_metadata(path: Path, metadata: dict) -> None:
+    """Record benchmark progress without claiming the unfinished run has completed."""
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(metadata, indent=2) + "\n")
+    temporary.replace(path)
+
+
 def run(variant: str, root: Path) -> None:
     """Measure each requested bench sequentially, using isolated result directories."""
     settings = VARIANTS[variant]
@@ -40,6 +47,8 @@ def run(variant: str, root: Path) -> None:
         env["CARGO_PROFILE_RELEASE_LTO"] = settings["lto"]
     target = Path(env["CARGO_TARGET_DIR"]).resolve()
     target.mkdir(parents=True, exist_ok=True)
+    metadata_path = target / "runtime-profile.json"
+    metadata_path.unlink(missing_ok=True)
     profile = tomllib.loads((root / "Cargo.toml").read_text())["profile"]["release"]
     metadata = {
         "variant": variant,
@@ -53,8 +62,9 @@ def run(variant: str, root: Path) -> None:
         "allocator": "mimalloc" if settings.get("mimalloc") else "system",
         "rustc": subprocess.check_output(["rustc", "--version", "--verbose"], text=True),
         "cpu": json.loads(subprocess.check_output(["lscpu", "--json"], text=True)),
+        "completed_benches": [],
     }
-    (target / "runtime-profile.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    save_metadata(metadata_path, metadata)
     for package, benches in BENCHES.items():
         features = []
         if package != "meshing":
@@ -74,6 +84,10 @@ def run(variant: str, root: Path) -> None:
                 command += ["--features", ",".join(features)]
             command += ["--", "--sample-size", str(SAMPLE_SIZE), "--noplot"]
             subprocess.run(command, cwd=root, env=env, check=True)
+            metadata["completed_benches"].append(f"{package}/{bench}")
+            save_metadata(metadata_path, metadata)
+    metadata["completed"] = True
+    save_metadata(metadata_path, metadata)
 
 
 def read_results(directory: Path) -> dict[str, float]:
@@ -117,16 +131,29 @@ def summary(directory: Path) -> str:
     """Compare every case with baseline and retain CPU identity for interpreting runner noise."""
     results = {}
     metadata = {}
+    expected_benches = {
+        f"{package}/{bench}" for package, benches in BENCHES.items() for bench in benches
+    }
+    incomplete = []
     for variant in VARIANTS:
         artifact = directory / f"runtime-profile-{variant}"
-        data = json.loads((artifact / "runtime-profile.json").read_text())
+        path = artifact / "runtime-profile.json"
+        data = json.loads(path.read_text()) if path.is_file() else {}
+        missing = sorted(expected_benches - set(data.get("completed_benches", [])))
+        if missing or data.get("completed") is not True:
+            detail = ", ".join(missing) if missing else "run completion marker"
+            incomplete.append(f"{variant}: missing {detail}")
+        metadata[variant] = data
+    if incomplete:
+        raise ValueError("Incomplete results; " + "; ".join(incomplete))
+    for variant, data in metadata.items():
+        artifact = directory / f"runtime-profile-{variant}"
         if (
             data["variant"] != variant
             or data["sample_size"] != SAMPLE_SIZE
             or data["profile"] != "release"
         ):
             raise ValueError(f"Unexpected run metadata: {variant}")
-        metadata[variant] = data
         results[variant] = read_results(artifact)
     baseline = results["baseline"]
     for variant, cases in results.items():

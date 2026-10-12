@@ -15,24 +15,24 @@ fn preset_action_replaces_controlled_session_overrides_and_saves_the_applied_val
     menu.settings_apply = false;
     menu.set_session_option("msaa", Some(8));
     menu.set_session_option("hide_hud", Some(1));
-    menu.activate(MenuAction::SettingsVideoPreset(VideoPreset::BestLooks));
+    menu.activate(MenuAction::SettingsVideoPreset(VideoPreset::Quality));
     assert!(menu.settings_dirty);
     assert!(menu.settings_apply);
     assert_eq!(
         menu.settings_options.video_preset(),
-        Some(VideoPreset::BestLooks)
+        Some(VideoPreset::Quality)
     );
     assert_eq!(menu.settings_options.value("gamma"), 70);
     assert_eq!(menu.gui_scale_preference(), Some(2));
     menu.sync_user_settings(None);
     let loaded = SettingsOptions::load(&path);
-    assert_eq!(loaded.video_preset(), Some(VideoPreset::BestLooks));
+    assert_eq!(loaded.video_preset(), Some(VideoPreset::Quality));
     assert_eq!(loaded.value("gamma"), 70);
     assert_eq!(loaded.value("hide_hud"), 0);
     menu.set_session_option("msaa", None);
     assert_eq!(
         menu.settings_options.video_preset(),
-        Some(VideoPreset::BestLooks)
+        Some(VideoPreset::Quality)
     );
     menu.set_named_option("max_framerate", 60);
     assert_eq!(menu.settings_options.video_preset(), None);

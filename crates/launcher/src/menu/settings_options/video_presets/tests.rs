@@ -76,7 +76,7 @@ fn balanced_matches_all_defaults_and_keeps_the_device_recommendation_live() {
             defaults.set_anti_aliasing_support(ui::AntiAliasingSupport::from_counts(counts));
             assert_eq!(defaults.video_preset(), Some(VideoPreset::Balanced));
             let mut settings = defaults.clone();
-            settings.apply_video_preset(VideoPreset::BestLooks);
+            settings.apply_video_preset(VideoPreset::Quality);
             settings.apply_video_preset(VideoPreset::Balanced);
             assert_eq!(settings, defaults);
             assert_eq!(settings.user_settings(), defaults.user_settings());
@@ -91,7 +91,7 @@ fn balanced_matches_all_defaults_and_keeps_the_device_recommendation_live() {
 }
 
 #[test]
-fn performance_reduces_distance_and_best_looks_uses_supported_quality() {
+fn presets_respect_device_distance_and_antialiasing_limits() {
     for device in [
         ui::RenderDistanceDevice::default(),
         device(8, 0),
@@ -115,7 +115,7 @@ fn performance_reduces_distance_and_best_looks_uses_supported_quality() {
             render_api::FrameRateLimit::Unlimited
         );
         assert_eq!(settings.video_preset(), Some(VideoPreset::Performance));
-        settings.apply_video_preset(VideoPreset::BestLooks);
+        settings.apply_video_preset(VideoPreset::Quality);
         let distance = settings.value("render_distance");
         assert!(distance >= defaults.recommended as i32);
         assert!(distance <= defaults.native_maximum as i32);
@@ -123,7 +123,7 @@ fn performance_reduces_distance_and_best_looks_uses_supported_quality() {
         assert_eq!(settings.user_settings().video.anti_aliasing_samples, 4);
         assert_eq!(settings.user_settings().video.smaa_mode, ui::SmaaMode::Smaa);
         assert!(settings.user_settings().video.vsync);
-        assert_eq!(settings.video_preset(), Some(VideoPreset::BestLooks));
+        assert_eq!(settings.video_preset(), Some(VideoPreset::Quality));
     }
 }
 

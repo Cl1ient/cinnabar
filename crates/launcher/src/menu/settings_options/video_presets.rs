@@ -7,18 +7,18 @@ use super::{FRAME_RATE_UNLIMITED, SETTINGS_OPTIONS, SMAA_OPTION, SettingsOptions
 pub enum VideoPreset {
     Performance,
     Balanced,
-    BestLooks,
+    Quality,
 }
 
 impl VideoPreset {
-    pub const ALL: [Self; 3] = [Self::Performance, Self::Balanced, Self::BestLooks];
+    pub const ALL: [Self; 3] = [Self::Performance, Self::Balanced, Self::Quality];
 
     /// The caption shared by preset controls and their current selection.
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Performance => "Performance optimized",
-            Self::Balanced => "Default (balanced)",
-            Self::BestLooks => "Best looks",
+            Self::Performance => "Performance",
+            Self::Balanced => "Balanced",
+            Self::Quality => "Quality",
         }
     }
 
@@ -27,7 +27,7 @@ impl VideoPreset {
         match self {
             Self::Performance => 0,
             Self::Balanced => 1,
-            Self::BestLooks => 2,
+            Self::Quality => 2,
         }
     }
 
@@ -42,7 +42,7 @@ enum Value {
     Default,
     Fixed(i32),
     PerformanceDistance(u8),
-    BestDistance { minimum: u8, maximum: u8 },
+    QualityDistance { minimum: u8, maximum: u8 },
     HighestSamples,
 }
 
@@ -51,7 +51,7 @@ struct PresetOption {
     values: [Value; VideoPreset::ALL.len()],
 }
 
-use Value::{BestDistance, Default, Fixed, HighestSamples, PerformanceDistance};
+use Value::{Default, Fixed, HighestSamples, PerformanceDistance, QualityDistance};
 
 // Each row supplies every preset. Balanced reads existing defaults, including device limits.
 const PRESET_OPTIONS: &[PresetOption] = &[
@@ -60,7 +60,7 @@ const PRESET_OPTIONS: &[PresetOption] = &[
         values: [
             PerformanceDistance(12),
             Default,
-            BestDistance {
+            QualityDistance {
                 minimum: 32,
                 maximum: 64,
             },
@@ -137,7 +137,7 @@ impl PresetOption {
             PerformanceDistance(maximum) => {
                 settings.render_distance_defaults().recommended.min(maximum) as i32
             }
-            BestDistance { minimum, maximum } => {
+            QualityDistance { minimum, maximum } => {
                 let defaults = settings.render_distance_defaults();
                 defaults
                     .recommended

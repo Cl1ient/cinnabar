@@ -101,6 +101,7 @@ fn selection_caption_is_derived_and_description_stays_below_the_choices() {
         )
         .replace(' ', "");
         assert!(labels.contains(&caption));
+        assert!(labels.contains("Balancedisthedefault."));
         for preset in VideoPreset::ALL {
             assert!(labels.contains(&preset.label().replace(' ', "")));
         }
@@ -117,7 +118,7 @@ fn selection_caption_is_derived_and_description_stays_below_the_choices() {
                     .map(|glyph| glyph.codepoint)
                     .collect::<String>()
                     .replace(' ', "")
-                    .starts_with("Applygraphics"),
+                    .starts_with("Chooseagraphicspreset."),
                 _ => false,
             })
             .expect("the preset control explains Custom");

@@ -9,7 +9,7 @@ pub(super) fn view(files: &[(&str, &[u8])]) -> LayeredPackView {
 }
 
 /// Builds a precedence-ordered stack from independently admitted synthetic archives.
-fn stack(layers: &[&[(&str, &[u8])]]) -> LayeredPackView {
+pub(super) fn stack(layers: &[&[(&str, &[u8])]]) -> LayeredPackView {
     let archives = layers.iter().enumerate().rev().map(|(index, files)| {
         let id = format!("00000000-0000-0000-0000-{:012x}", index + 11).parse().unwrap();
         let manifest = format!(r#"{{"format_version":2,"header":{{"uuid":"{id}","version":[1,0,0]}},"modules":[{{"type":"resources"}}]}}"#);

@@ -6,6 +6,8 @@ use crate::runtime::movement_evidence::{
 };
 use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
+use crate::runtime::shutdown::finish_acceptance_run;
+#[cfg(feature = "acceptance")]
 use acceptance::model_witness::poll_model_witness_request;
 use anyhow::{Context, Result, bail};
 use assets::carriers::startup::{LoadedAssetKind, select_asset_path_from_environment};
@@ -42,6 +44,7 @@ use {
     },
 };
 mod logging;
+pub(crate) mod session;
 mod startup;
 use startup::bind_direct_session_directory;
 
@@ -137,7 +140,6 @@ const PHYSICS_REGISTRY_GENERATION_GUIDANCE: &str =
 
 mod authority;
 mod executor;
-pub(crate) mod session_systems;
 pub(crate) use authority::{configure_client_authority_systems, configure_client_frame_schedule};
 
 /// Registers the production actor observation and publication boundaries.
@@ -933,7 +935,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
             crate::shell_adapters::publish_presence_observation
                 .before(client_state::ShellFrameSet::Presence),
         );
-    session_systems::configure_session_failure_systems(&mut app);
+    session::configure_finish_system(&mut app);
 
     #[cfg(feature = "enhanced-diagnostics")]
     crate::enhanced_diagnostics::install(&mut app, diagnostic_budget);

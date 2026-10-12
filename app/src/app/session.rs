@@ -1,16 +1,7 @@
-//! Session recovery and acceptance completion scheduling.
+use super::*;
 
-#[cfg(feature = "acceptance")]
-use crate::runtime::{shutdown::finish_acceptance_run, telemetry::record_metrics};
-use crate::{
-    runtime::{network::receive_network_events, shutdown::exit_on_fatal_runtime_error},
-    session::{follow_server_transfer, recover_session_failure},
-};
-use bevy::prelude::{App, IntoScheduleConfigs, Update};
-use client_state::ClientFrameSet;
-
-/// Orders session recovery before fatal exits and acceptance completion after publication.
-pub(crate) fn configure_session_failure_systems(app: &mut App) {
+/// Orders transfer, failure recovery and acceptance completion after frame publication.
+pub(crate) fn configure_finish_system(app: &mut App) {
     #[cfg(feature = "acceptance")]
     app.add_systems(
         Update,

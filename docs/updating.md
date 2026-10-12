@@ -5,9 +5,10 @@ in the background. An interrupted transfer resumes from its digest-named partial
 restarts safely if the server does not support ranges.
 
 When the download is ready, choose **Restart and update** or **Later**. Later defers installation
-for this session. In **Settings → General**, you can turn off update checks, select a channel,
-or enable **Install updates when I quit**. Installation on quit is off by default. The in-game
-pause menu only shows a small ready badge; update actions remain in the launcher.
+for this session; daily checks continue, and a newer release replaces the waiting one. In
+**Settings → General**, you can turn off update checks, select a channel, or enable **Install
+updates when I quit**. Installation on quit is off by default. The in-game pause menu only shows
+a small ready badge; update actions remain in the launcher.
 
 Beta and Nightly are available initially. Stable appears after a signed stable release exists.
 Changing channels never silently downgrades: a slower channel waits for a newer app version
@@ -17,8 +18,9 @@ prereleases use SemVer ordering, and successive builds use a signed monotonic bu
 The client checks the manifest's Ed25519 signature, channel, expiry, app version and build,
 then the artifact's size and SHA-256. The existing trusted-key list supports key rotation.
 A separate Rust helper waits for the exact client process to exit and verifies the stage again.
-A new version preparing game assets reports progress, so only a start that stalls for five minutes
-counts as failed; the helper then stops the client and its setup process before restoring files.
+A new version preparing game assets relays each setup progress report, so only a start that makes
+no progress for five minutes counts as failed; the helper then stops the client, its setup process
+and the asset compiler before restoring files.
 
 - **macOS:** the helper replaces the complete signed app bundle from the DMG and preserves its
   signature and notarization ticket. The previous bundle remains beside it until the new client

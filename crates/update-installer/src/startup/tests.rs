@@ -14,6 +14,27 @@ fn a_silent_start_stalls_after_the_timeout() {
 }
 
 #[test]
+fn only_changed_setup_progress_restarts_the_deadline() {
+    let directory = tempfile::tempdir().unwrap();
+    let progress = directory.path().join("status.json");
+    fs::write(&progress, "downloading 0").unwrap();
+    let start = Instant::now();
+    let mut monitor = Monitor::new(start);
+    let mut relay = Relay::start(marker(directory.path()), progress.clone());
+    let mut now = start + STALL_TIMEOUT - Duration::from_secs(1);
+    assert_eq!(monitor.poll(directory.path(), now), Progress::Waiting);
+    // A setup that reports nothing new is hung, however often the client polls.
+    for _ in 0..3 {
+        relay.poll();
+    }
+    now += STALL_TIMEOUT;
+    assert_eq!(monitor.poll(directory.path(), now), Progress::Stalled);
+    fs::write(&progress, "downloading 1").unwrap();
+    relay.poll();
+    assert_eq!(monitor.poll(directory.path(), now), Progress::Waiting);
+}
+
+#[test]
 fn preparation_heartbeats_restart_the_deadline_until_they_stop() {
     let directory = tempfile::tempdir().unwrap();
     let marker = marker(directory.path());

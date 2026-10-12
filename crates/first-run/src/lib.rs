@@ -96,12 +96,17 @@ fn record_consent(layout: &InstallLayout) -> Result<()> {
     fs::write(&marker, consent_identity()).context("record consent")
 }
 
+/// The status file setup rewrites on every progress report, from either setup process.
+pub fn progress_file(layout: &InstallLayout) -> PathBuf {
+    layout.log_dir().join("first-run-status.json")
+}
+
 /// Mirrors each report to the status file, then hands it to `forward`.
 fn reporter<'a>(
     layout: &InstallLayout,
     mut forward: impl FnMut(&Status) + 'a,
 ) -> impl FnMut(Status) + 'a {
-    let path = layout.log_dir().join("first-run-status.json");
+    let path = progress_file(layout);
     move |status| {
         let _ = status::write(&path, &status);
         forward(&status);

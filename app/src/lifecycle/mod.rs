@@ -21,8 +21,9 @@ pub fn before_run(assets_overridden: bool) -> Result<bool> {
 
     // An update helper waiting on this start must not mistake a long asset download for a hang.
     if !assets_overridden
-        && update::while_preparing(&layout, || first_run::ensure_prepared(&layout))?
-            == first_run::Outcome::Quit
+        && update::while_preparing(&layout, &first_run::progress_file(&layout), || {
+            first_run::ensure_prepared(&layout)
+        })? == first_run::Outcome::Quit
     {
         return Ok(false);
     }

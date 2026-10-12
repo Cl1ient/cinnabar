@@ -221,26 +221,33 @@ pub fn acknowledge_startup() {
     });
 }
 
-/// Runs `prepare` while telling a waiting helper that this first start is still progressing.
-pub fn while_preparing<T>(layout: &InstallLayout, prepare: impl FnOnce() -> T) -> T {
+/// Runs `prepare`, relaying each change to its `progress` report to a waiting update helper.
+pub fn while_preparing<T>(
+    layout: &InstallLayout,
+    progress: &std::path::Path,
+    prepare: impl FnOnce() -> T,
+) -> T {
     let Some(marker) = startup_marker(layout) else {
         return prepare();
     };
+    let mut relay = startup::Relay::start(marker, progress.to_owned());
     let (stop, stopped) = std::sync::mpsc::channel::<()>();
-    let heartbeat = std::thread::spawn(move || {
-        for count in 1_u64.. {
-            let _ = startup::beat(&marker, count);
-            if stopped.recv_timeout(startup::HEARTBEAT)
-                != Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-            {
-                break;
-            }
+    let watcher = std::thread::spawn(move || {
+        while stopped.recv_timeout(startup::PROGRESS_POLL)
+            == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        {
+            relay.poll();
         }
     });
     let result = prepare();
     drop(stop);
-    let _ = heartbeat.join();
+    let _ = watcher.join();
     result
+}
+
+/// Whether this process, or the client that started it, was launched by the update helper.
+pub fn launched_by_updater() -> bool {
+    std::env::var_os(startup::STARTUP_ENV).is_some()
 }
 
 /// The helper's marker, accepted only inside this install's update directory.

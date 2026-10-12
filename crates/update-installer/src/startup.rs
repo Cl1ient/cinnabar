@@ -13,8 +13,8 @@ pub const STARTUP_ENV: &str = "CINNABAR_UPDATE_STARTUP_FILE";
 pub const STARTED: &str = "started";
 /// Longest silence, before startup or since the last preparation heartbeat, that counts as stalled.
 pub const STALL_TIMEOUT: Duration = Duration::from_secs(300);
-/// How often a client preparing assets proves it is alive; well under the stall timeout.
-pub const HEARTBEAT: Duration = Duration::from_secs(10);
+/// How often a preparing client looks for new progress; well under the stall timeout.
+pub const PROGRESS_POLL: Duration = Duration::from_secs(10);
 const PREPARING: &str = "preparing";
 /// How long a stopped client may exit cleanly before the helper kills what remains.
 #[cfg(unix)]
@@ -25,12 +25,49 @@ pub fn marker(directory: &Path) -> PathBuf {
     directory.join(STARTED)
 }
 
-/// Records preparation heartbeat `count` beside `marker`; each new count restarts the deadline.
-pub fn beat(marker: &Path, count: u64) -> io::Result<()> {
+/// Records heartbeat `count` beside `marker`; each new count restarts the helper's deadline.
+fn beat(marker: &Path, count: u64) -> io::Result<()> {
     let directory = marker
         .parent()
         .ok_or_else(|| io::Error::other("startup marker has no directory"))?;
     fs::write(directory.join(PREPARING), count.to_string())
+}
+
+/// Client side: one heartbeat per change to the setup's progress report, so a hung setup stalls.
+pub struct Relay {
+    marker: PathBuf,
+    progress: PathBuf,
+    last: Option<Vec<u8>>,
+    count: u64,
+}
+
+impl Relay {
+    /// Starts relaying `progress`; entering preparation is itself progress.
+    pub fn start(marker: PathBuf, progress: PathBuf) -> Self {
+        let last = fs::read(&progress).ok();
+        let mut relay = Self {
+            marker,
+            progress,
+            last,
+            count: 0,
+        };
+        relay.beat();
+        relay
+    }
+
+    /// Beats only when the progress report differs from the one seen last.
+    pub fn poll(&mut self) {
+        let report = fs::read(&self.progress).ok();
+        if report.is_some() && report != self.last {
+            self.last = report;
+            self.beat();
+        }
+    }
+
+    fn beat(&mut self) {
+        self.count += 1;
+        let _ = beat(&self.marker, self.count);
+    }
 }
 
 /// How far the launched client's first start has progressed.

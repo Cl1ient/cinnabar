@@ -519,11 +519,11 @@ fn pack(
     })
 }
 
+/// Decoded artwork and the catalog describing its source bundle.
+type BundleArt = (Vec<(String, Art)>, Arc<catalog::SourceCatalog>);
+
 /// Decodes the bundle's `wanted` atlas crops and standalone rasters, largest standalone first.
-fn read_bundle(
-    dir: &Path,
-    wanted: fn(&str) -> bool,
-) -> Result<(Vec<(String, Art)>, Arc<catalog::SourceCatalog>), String> {
+fn read_bundle(dir: &Path, wanted: fn(&str) -> bool) -> Result<BundleArt, String> {
     let json = read_bounded(&dir.join("atlas.json"), MAX_ATLAS_JSON_BYTES)?;
     let atlases: Vec<AtlasFile> =
         serde_json::from_slice(&json).map_err(|error| format!("atlas.json: {error}"))?;

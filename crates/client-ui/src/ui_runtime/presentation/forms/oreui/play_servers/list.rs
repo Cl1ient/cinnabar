@@ -270,6 +270,9 @@ fn header(
     Ok(motion.selected)
 }
 
+/// The translucent server menu defines no dimmer text shade, so its dimmer section labels keep full text colour.
+const HEADER_TEXT: super::super::theme::Rgba = TEXT;
+
 fn header_label(
     canvas: &mut Canvas<'_>,
     group: ServerGroup,
@@ -285,15 +288,15 @@ fn header_label(
         &format!("{} ({count})", group.label()),
         [b[0] + pad, b[1], icon[0] - canvas.r(0.8), b[3]],
         CAPTION,
-        TEXT_DIMMER,
+        HEADER_TEXT,
     )?;
     let angle = -std::f32::consts::FRAC_PI_2 * (1.0 - expanded);
-    if !canvas.rotated_masked_sprite(CHEVRON_DOWN_IMAGE, icon, TEXT_DIMMER, angle)? {
+    if !canvas.rotated_masked_sprite(CHEVRON_DOWN_IMAGE, icon, HEADER_TEXT, angle)? {
         canvas.text_centred(
             if expanded > 0.5 { "⌄" } else { "›" },
             icon,
             CAPTION,
-            TEXT_DIMMER,
+            HEADER_TEXT,
             false,
         )?;
     }

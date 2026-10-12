@@ -230,3 +230,37 @@ fn server_list_highlights_fade_for_hover_selection_and_focus_and_can_be_disabled
     view.hovered = Some(action);
     assert_eq!(alpha(&frame(&view, false, 3.0, false)), alpha(&end));
 }
+
+#[test]
+fn section_headers_use_full_text_colour_not_the_dimmer_shade() {
+    let (_, _, nodes) = paint(HashMap::new(), |canvas| {
+        draw(
+            canvas,
+            &view(),
+            &Grid::new(canvas.rem, 1280.0),
+            [20.0, 100.0, 1260.0, 700.0],
+            &HashMap::new(),
+        )
+        .unwrap();
+    });
+    let colour = |label: &str| {
+        let label = label.replace(' ', "");
+        nodes.iter().find_map(|node| match node.visual() {
+            ui::UiVisual::Text { layout, color, .. }
+                if layout
+                    .glyphs()
+                    .iter()
+                    .map(|glyph| glyph.codepoint)
+                    .collect::<String>()
+                    .replace(' ', "")
+                    .starts_with(&label) =>
+            {
+                Some(*color)
+            }
+            _ => None,
+        })
+    };
+    for group in [ServerGroup::Featured, ServerGroup::Creator] {
+        assert_eq!(colour(group.label()), Some(super::super::theme::TEXT));
+    }
+}

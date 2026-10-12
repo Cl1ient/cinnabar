@@ -109,7 +109,7 @@ use {
             flush_server_form_network,
             gameplay_touch::drive_gameplay_touch_targets,
             presentation::{
-                drive_menu_panorama, observe_mount_jump_input, prepare_ui_runtime,
+                advance_dials, drive_menu_panorama, observe_mount_jump_input, prepare_ui_runtime,
                 publish_ui_runtime,
             },
         },
@@ -269,7 +269,7 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
         )
         .add_systems(
             Update,
-            (observe_mount_jump_input, prepare_ui_runtime)
+            (observe_mount_jump_input, advance_dials, prepare_ui_runtime)
                 .chain()
                 .in_set(ClientFrameSet::UiPreparation),
         )

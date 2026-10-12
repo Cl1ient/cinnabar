@@ -242,7 +242,7 @@ pub use world::{
     MovementEffectKind, NETHER_DIMENSION_ID, OVERWORLD_CLOCK_ID, OVERWORLD_CLOCK_NAME,
     OpenSignEvent, PLAYER_NETWORK_OFFSET, PlayerGameMode, PlayerMovementCorrectionEvent,
     PublisherUpdateEvent, RespawnEvent, SEQUENTIAL_AIR_NETWORK_ID, STANDING_PLAYER_EYE_HEIGHT,
-    SetTimeEvent, SubChunkBatchEvent, SubChunkDiagnostic, SubChunkEntryEvent,
+    SetTimeEvent, SubChunkBatchEvent, SubChunkDiagnostic, SubChunkEntryEvent, WorldSpawnEvent,
     SubChunkReplyAdmissionEvent, SubChunkResult, SubChunkUnavailable, SyncedBlockUpdateEvent,
     WeatherChannel, WeatherUpdateEvent, WorldBootstrap, WorldClockDefinition, WorldClockState,
     WorldClockUpdateEvent, WorldEnvironmentBootstrap, WorldEvent, WorldPacketError, WorldWireError,

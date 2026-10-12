@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 use crate::AssetError;
 
 mod block;
+mod dial;
+pub use dial::{DIAL_STRIPS, DialKind, DialStrip, dial_strip};
 pub use block::{
     BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE, IconBlockModel,
     IconBlockSheet, MAX_ICON_BLOCK_SHEETS, compose_block_item_sheet,

@@ -376,13 +376,7 @@ impl DroppedItemPublisher<'_, '_> {
                 cache.request(&ModelKey::Block { hashed, id });
             }
             if let Some(identifier) = view.item.identifier.as_ref() {
-                let (identifier, metadata) = UiPresentationRuntime::item_icon_key(
-                    identifier,
-                    view.item.identity.metadata,
-                    view.item.use_animation,
-                    view.item.charged_projectile_role,
-                    None,
-                );
+                let (identifier, metadata) = dropped_icon_key(icons, identifier, &view.item);
                 if let Some(icon) = icons.item_icon(identifier, metadata) {
                     cache.request(&ModelKey::icon(icon, true));
                 }
@@ -428,13 +422,8 @@ impl DroppedItemPublisher<'_, '_> {
             let (model, shape) = match cube {
                 Some(model) => (model, DroppedItemShape::Cube),
                 None => {
-                    let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
-                        identifier,
-                        view.item.identity.metadata,
-                        view.item.use_animation,
-                        view.item.charged_projectile_role,
-                        None,
-                    );
+                    let (icon_identifier, variant) =
+                        dropped_icon_key(icons, identifier, &view.item);
                     let Some(model) =
                         Self::icon_model(cache, icons, icon_identifier, variant, true)
                     else {
@@ -606,6 +595,24 @@ impl DroppedItemPublisher<'_, '_> {
         );
         scene.publish_terrain_instances(stream.authority().actor_session_id(), &terrain_instances);
     }
+}
+
+/// The icon identity dropped `item` (with `identifier`) draws: a dial's current strip frame,
+/// or its ordinary icon.
+fn dropped_icon_key<'a>(
+    icons: &UiPresentationRuntime,
+    identifier: &'a str,
+    item: &client_world::CanonicalItemStack,
+) -> (&'a str, u32) {
+    icons.dial_icon_key(identifier).unwrap_or_else(|| {
+        UiPresentationRuntime::item_icon_key(
+            identifier,
+            item.identity.metadata,
+            item.use_animation,
+            item.charged_projectile_role,
+            None,
+        )
+    })
 }
 
 #[cfg(test)]

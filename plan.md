@@ -6376,8 +6376,15 @@ The crosswalk is now `crates/assets/data/legacy-icon-routes-26.30.tsv`: every
 legacy icon assignment the 26.30 client makes during item initialization, plus
 potion icons by aux. Still open: cooked foods and
 other 1.10 JSON items (icon from resource-pack data), spawn eggs (per-entity
-map), bow/crossbow draw frames, animated compass/clock frames, trimmed armor and
-broken elytra overrides, and native icon acceptance.
+map), bow/crossbow draw frames, trimmed armor and broken elytra overrides, and
+native icon acceptance.
+Compasses and clocks animate: the icon carrier bakes every frame of the native
+`compass_atlas` and `watch_atlas` strips, and the local player's needles follow
+the native sprite calculators once per tick (compass toward the world spawn,
+clock by the celestial angle, both spinning outside the Overworld, with the
+native 0.1 pull and 0.8 damping). Inventory, held and dropped dials share the
+local player's frame, where the native client reads each holder; lodestone and
+recovery compasses and item-frame headings remain open.
 Block items (provisional, incomplete): an item the retail client gives a legacy
 icon, or one placing a differently named block, keeps its sprite over its block
 route. Flat-shape blocks (cross plants, torches, rails, panes, ladders, lanterns,

@@ -21,6 +21,7 @@ pub mod forms;
 mod frame;
 pub mod gui_models;
 pub mod gui_scale_settings;
+mod dial_icons;
 pub mod hud_layout;
 pub mod inventory_pointer;
 pub mod inventory_tooltip;
@@ -119,6 +120,8 @@ pub struct UiPresentationRuntime {
     solid_texture_page: u16,
     hud_textures: Option<HudTexturePages>,
     icon_catalog: Option<Arc<RuntimeIconCatalog>>,
+    /// The strip frame each dial item shows this frame.
+    dial_frames: inventory::DialFrames,
     icon_refs: Option<Box<[IconRef]>>,
     layouts: TextLayoutCache,
     rejected_frames: u64,

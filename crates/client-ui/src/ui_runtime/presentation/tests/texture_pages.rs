@@ -541,7 +541,7 @@ fn session_glyph_sheets_extend_the_font_and_reset_with_the_session() {
     presentation.set_nametag_anchors(vec![super::super::nametags::NametagAnchor {
         runtime_id: 1,
         position: glam::Vec3::new(0.0, 2.0, 0.0),
-        lines: vec![Arc::from("\u{e005}")],
+        lines: vec![Arc::from("\u{e005}")].into(),
         depth_tested: false,
         text_alpha: 1.0,
         distance: 5.0,

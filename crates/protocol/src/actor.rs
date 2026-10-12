@@ -43,7 +43,9 @@ pub const MAX_ACTOR_PROPERTIES: usize = 256;
 /// Local normalization ceiling for the links retained from one spawn packet.
 pub const MAX_ACTOR_LINKS_PER_SPAWN: usize = 256;
 pub const MAX_ACTOR_ATTRIBUTE_MODIFIERS: usize = 64;
-pub const MAX_ACTOR_METADATA_STRING_BYTES: usize = 4_096;
+/// Longest metadata string kept; longer ones are skipped. Server name tags carry several
+/// formatted lines, so this stays well above any one line of text.
+pub const MAX_ACTOR_METADATA_STRING_BYTES: usize = 64 * 1024;
 pub const MAX_ACTOR_METADATA_NBT_BYTES: usize = 1_048_576;
 pub const MAX_PLAYER_LIST_RECORDS: usize = 4_096;
 pub const MAX_PLAYER_LIST_SKIN_BYTES: usize = 64 * 1024 * 1024;

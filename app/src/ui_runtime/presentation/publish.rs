@@ -1,6 +1,6 @@
 //! Per-frame HUD observation and publication.
 use crate::runtime::network::resource_packs::PackApplication;
-use bevy::prelude::Transform;
+use bevy::prelude::{Local, Transform};
 use client_runtime::network::NetworkHandle;
 use inventory::inventory_ledger::PlayerInventorySlot;
 use {super::*, client_presentation::camera::CameraSettingsAuthority};
@@ -53,6 +53,7 @@ type PublishExtras<'w> = (
     Option<Res<'w, render_scene::ActorPipelineReadiness>>,
     Option<Res<'w, render_scene::PipelineWarmupReadiness>>,
     Option<Res<'w, client_presentation::camera::ServerCameraView>>,
+    Local<'w, nametags::NametagTextCache>,
     (
         Res<'w, client_presentation::actor_publication::ActorFramePartialTick>,
         Res<'w, client_presentation::local_player::LocalPlayerFrameCarrier>,
@@ -93,6 +94,7 @@ pub(crate) fn prepare_ui_runtime(
         actor_pipelines,
         warmed_pipelines,
         server_camera,
+        mut nametag_cache,
         (
             actor_partial,
             local_frame,
@@ -374,10 +376,10 @@ pub(crate) fn prepare_ui_runtime(
         )
         .map(|(stream, transform)| {
             let mut tags = nametags::project_nametags(
+                &mut nametag_cache,
                 runtime.scoreboards(),
                 stream,
                 transform.translation(),
-                [logical_width, logical_height],
                 picked_nametag_actor(stream, &transform, collisions.as_deref(), &player_runtime),
                 actor_partial.0,
                 show_names && !tag_style.is_some_and(|style| style.hide_players),

@@ -3,6 +3,7 @@ use crate::{
     ActorRenderIdentity, ActorRigRenderFrame, ActorRigRenderInput, ActorRigSubmission,
     MAX_ACTOR_RENDER_INSTANCES, actor_rig_submission_is_visible,
 };
+use render_api::PoseGeneration;
 use std::{cell::Cell, collections::HashMap, sync::Arc};
 
 use super::*;
@@ -78,7 +79,7 @@ fn submission(
                 ingress_sequence: runtime_id,
                 source_tick: Some(1),
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer,
             },
             rig: EntityRigId(rig),

@@ -1,15 +1,17 @@
 //! Sequenced movement admission identities and last-moment interaction invalidation.
 
 use crate::Packet;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use tokio::sync::watch;
 
 /// Identity preserved through movement admission, acknowledgement and cancellation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhysicsSendIdentity {
-    pub session_generation: u64,
-    pub tick: u64,
+    pub session_generation: SessionGeneration,
+    pub tick: PhysicsTick,
     pub admission_id: u64,
-    pub reanchor_epoch: u64,
+    pub reanchor_epoch: PositionAuthorityGeneration,
 }
 
 /// A movement-only replacement when an admitted interaction loses its authority.

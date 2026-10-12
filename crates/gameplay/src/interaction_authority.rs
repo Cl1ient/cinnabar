@@ -3,8 +3,6 @@ use crate::mining::{
     FrozenMiningFrame, FrozenMiningRay, FrozenMiningSelection, FrozenMiningTarget,
 };
 use protocol::PlayerInputMode;
-#[cfg(test)]
-use std::num::NonZeroU64;
 
 /// Wall-clock millis a deferred press may wait for fresh evidence or a tick, whatever the frame
 /// rate, without outliving a stalled simulation.
@@ -57,13 +55,15 @@ impl FrozenBlockObservation {
         let identity = sim::CollisionQuery::synthetic(()).identity;
         Self {
             frame: FrozenMiningFrame {
-                session_generation: 7,
-                position_authority_generation: 0,
-                input_authority_generation: NonZeroU64::MIN,
-                input_frame_sequence: 1,
-                fifo_sequence: 1,
-                physics_tick: 101,
-                pose_generation: 1,
+                session_generation: simulation_clock::identity::SessionGeneration::new(7),
+                position_authority_generation:
+                    simulation_clock::identity::PositionAuthorityGeneration::new(0),
+                input_authority_generation:
+                    semantic_input::identity::InputAuthorityGeneration::INITIAL,
+                input_frame_sequence: semantic_input::identity::InputSequence::new(1),
+                fifo_sequence: protocol::identity::FifoSequence::new(1),
+                physics_tick: simulation_clock::PhysicsTick::new(101),
+                pose_generation: render_api::PoseGeneration::new(1),
             },
             ray: FrozenMiningRay {
                 origin: [0.5, 65.62, 0.5],

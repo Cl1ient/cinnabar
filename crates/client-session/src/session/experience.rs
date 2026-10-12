@@ -165,7 +165,7 @@ mod tests {
         let (_shutdown, shutdown_rx) = watch::channel(false);
         run_network_pump(
             RecordingSession(std::sync::Arc::clone(&sent)),
-            NetworkSequencer::new(1, 0, 1),
+            NetworkSequencer::new(simulation_clock::identity::SessionGeneration::new(1), 0, 1),
             receiver,
             control,
             world,

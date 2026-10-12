@@ -1,3 +1,5 @@
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::collections::VecDeque;
 
 #[cfg(test)]
@@ -148,7 +150,7 @@ pub struct MovementTicker {
     remote_closed: bool,
     pending_fault: Option<PhysicsAuthorityFaultRecord>,
     next_admission_id: u64,
-    reanchor_epoch: u64,
+    reanchor_epoch: PositionAuthorityGeneration,
     terminal_drain: bool,
     pending_control_fence: bool,
     teleport_ack_enabled: bool,
@@ -156,7 +158,7 @@ pub struct MovementTicker {
     teleport_acks_expired: u64,
     replayed_corrections_observed: u64,
     unmarked_move_players_observed: u64,
-    epoch_publisher: watch::Sender<u64>,
+    epoch_publisher: watch::Sender<PositionAuthorityGeneration>,
     mining_epoch_publisher: watch::Sender<u64>,
     held_release: Option<outbox::HeldRelease>,
     next_tick_flags: PlayerInputFlags,
@@ -167,13 +169,16 @@ pub struct MovementTicker {
 #[cfg(test)]
 impl Default for MovementTicker {
     fn default() -> Self {
-        let (epoch_publisher, _epoch_receiver) = watch::channel(0);
+        let (epoch_publisher, _epoch_receiver) =
+            watch::channel(PositionAuthorityGeneration::default());
         Self::with_epoch_publisher(epoch_publisher)
     }
 }
 
 impl MovementTicker {
-    pub fn with_epoch_publisher(epoch_publisher: watch::Sender<u64>) -> Self {
+    pub fn with_epoch_publisher(
+        epoch_publisher: watch::Sender<PositionAuthorityGeneration>,
+    ) -> Self {
         let (mining_epoch_publisher, _mining_epoch_receiver) = watch::channel(0);
         Self {
             session_active: false,
@@ -193,7 +198,7 @@ impl MovementTicker {
             remote_closed: false,
             pending_fault: None,
             next_admission_id: 0,
-            reanchor_epoch: 0,
+            reanchor_epoch: PositionAuthorityGeneration::default(),
             terminal_drain: false,
             pending_control_fence: false,
             teleport_ack_enabled: teleport_ack::enabled_from_env(),
@@ -473,8 +478,8 @@ impl MovementTicker {
 
     fn next_send_identity(&self, sample: &QueuedPhysicsSample) -> PhysicsSendIdentity {
         PhysicsSendIdentity {
-            session_generation: sample.session_generation,
-            tick: sample.snapshot.tick,
+            session_generation: SessionGeneration::new(sample.session_generation),
+            tick: PhysicsTick::new(sample.snapshot.tick),
             admission_id: self.next_admission_id,
             reanchor_epoch: self.reanchor_epoch,
         }
@@ -520,11 +525,11 @@ impl MovementTicker {
             .pop_back()
             .filter(|pending| pending.identity == identity)
             .ok_or(PhysicsAuthorityFault::PendingTickMismatch {
-                expected: identity.tick,
+                expected: identity.tick.get(),
                 actual: self
                     .pending_sends
                     .back()
-                    .map_or(0, |pending| pending.identity.tick),
+                    .map_or(0, |pending| pending.identity.tick.get()),
             })?;
         self.next_admission_id = self.next_admission_id.saturating_sub(1);
         Ok(pending.sample)
@@ -560,11 +565,11 @@ impl MovementTicker {
             .pop_front()
             .expect("matching pending socket acknowledgement was checked");
         if self.physics_is_authorized()
-            && identity.session_generation == self.session_generation
+            && identity.session_generation.get() == self.session_generation
             && identity.reanchor_epoch == self.reanchor_epoch
         {
             self.confirm_sent(&pending.sample);
-            self.confirm_held_release_facing(identity.tick);
+            self.confirm_held_release_facing(identity.tick.get());
         }
         self.sent_physics_packet_count = self.sent_physics_packet_count.saturating_add(1);
         self.tick_evidence.push_back(pending.evidence);
@@ -587,7 +592,7 @@ impl MovementTicker {
         if !definitely_unsent {
             self.pending_sends.pop_front();
             self.fail_physics_authority(&PhysicsAuthorityFault::IndeterminatePhysicsSend {
-                tick: identity.tick,
+                tick: identity.tick.get(),
             });
             return true;
         }
@@ -787,7 +792,7 @@ impl MovementTicker {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub const fn reanchor_epoch(&self) -> u64 {
+    pub const fn reanchor_epoch(&self) -> PositionAuthorityGeneration {
         self.reanchor_epoch
     }
 

@@ -20,7 +20,7 @@ pub(in crate::chunk) fn supported(mode: ChunkDrawMode, limits: &wgpu::Limits) ->
     mode == ChunkDrawMode::Direct
         && limits.max_bind_groups >= 3
         && limits.max_storage_buffers_per_shader_stage >= required_vertex_storage_buffers()
-        && limits.max_storage_buffer_binding_size as u64 >= size_of::<VisibleTerrainUnit>() as u64
+        && limits.max_storage_buffer_binding_size >= size_of::<VisibleTerrainUnit>() as u64
         && limits.max_buffer_size >= index_count() as u64 * size_of::<u32>() as u64
 }
 

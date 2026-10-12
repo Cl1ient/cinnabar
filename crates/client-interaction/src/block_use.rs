@@ -11,6 +11,7 @@ use gameplay::{
     mining::FrozenMiningSelection,
 };
 use sim::PaletteWorld;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 mod prediction_frames;
 
@@ -40,8 +41,8 @@ impl std::ops::DerefMut for BlockUseRuntime {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FramePick {
     /// Movement authority when the pick was taken; a correction or reanchor retires it.
-    authority: (u64, u64),
-    pub session_generation: u64,
+    authority: (SessionGeneration, PositionAuthorityGeneration),
+    pub session_generation: SessionGeneration,
     pub actor_session_id: u64,
     pub origin: bevy::prelude::Vec3,
     pub direction: bevy::prelude::Vec3,
@@ -49,7 +50,11 @@ pub struct FramePick {
 
 impl BlockUseRuntime {
     /// Keeps this frame's published pick for the build actions before the next tick.
-    pub fn retain_pick(&mut self, origin: &InteractionOriginSnapshot, authority: (u64, u64)) {
+    pub fn retain_pick(
+        &mut self,
+        origin: &InteractionOriginSnapshot,
+        authority: (SessionGeneration, PositionAuthorityGeneration),
+    ) {
         self.previous_pick = origin.outbound_ray().map(|ray| FramePick {
             authority,
             session_generation: ray.session_generation(),
@@ -60,7 +65,10 @@ impl BlockUseRuntime {
     }
 
     /// The retained pick, if it was taken under `authority`.
-    pub fn pick(&self, authority: (u64, u64)) -> Option<FramePick> {
+    pub fn pick(
+        &self,
+        authority: (SessionGeneration, PositionAuthorityGeneration),
+    ) -> Option<FramePick> {
         self.previous_pick
             .filter(|previous| previous.authority == authority)
     }

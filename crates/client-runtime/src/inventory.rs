@@ -39,8 +39,13 @@ pub fn route_inventory_ingress(
         unreachable!("inventory routing accepts only inventory world events")
     };
     super::item_diagnostics::inventory(&event);
-    runtime.enqueue_inventory_event(player_runtime, session_generation, sequence, event)?;
-    Ok(sequence)
+    runtime.enqueue_inventory_event(
+        player_runtime,
+        session_generation.get(),
+        sequence.get(),
+        event,
+    )?;
+    Ok(sequence.get())
 }
 
 /// Queues item registry facts at the same generation and sequence as their world event.
@@ -54,8 +59,8 @@ pub fn route_item_registry_ingress(
     };
     runtime.enqueue_item_registry_event(
         player_runtime,
-        sequenced.session_generation,
-        sequenced.sequence,
+        sequenced.session_generation.get(),
+        sequenced.sequence.get(),
         event.clone(),
     )
 }

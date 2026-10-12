@@ -1,5 +1,5 @@
 use crate::button_events::{button_edges, discard_button_edges};
-use core::num::NonZeroU64;
+use crate::identity::{InputAuthorityGeneration, InputSequence};
 
 use crate::{
     Action, ActionPhase, ActionSnapshot, AxisDirection, BindingError, ControlSettings,
@@ -35,13 +35,13 @@ pub enum RouterError {
 pub struct SemanticInputRouter {
     settings: ControlSettings,
     context: InputContext,
-    authority_generation: NonZeroU64,
-    pending_authority: Option<NonZeroU64>,
+    authority_generation: InputAuthorityGeneration,
+    pending_authority: Option<InputAuthorityGeneration>,
     pending: Option<DeviceFrame>,
     pending_context: Option<InputContext>,
     pending_releases: [Option<ReleaseReason>; Action::COUNT],
     physical_down: [bool; Action::COUNT],
-    frame_sequence: u64,
+    frame_sequence: InputSequence,
     input_mode: InputMode,
     input_activity_sequence: u64,
     touch_layout: TouchControlLayout,
@@ -59,13 +59,13 @@ impl Default for SemanticInputRouter {
         Self {
             settings: ControlSettings::default(),
             context: InputContext::Gameplay,
-            authority_generation: NonZeroU64::MIN,
+            authority_generation: InputAuthorityGeneration::INITIAL,
             pending_authority: None,
             pending: None,
             pending_context: None,
             pending_releases: [None; Action::COUNT],
             physical_down: [false; Action::COUNT],
-            frame_sequence: 0,
+            frame_sequence: InputSequence::new(0),
             input_mode: InputMode::KeyboardMouse,
             input_activity_sequence: 0,
             touch_layout: TouchControlLayout::default(),
@@ -154,7 +154,7 @@ impl SemanticInputRouter {
         }
     }
 
-    pub fn replace_authority(&mut self, generation: NonZeroU64) {
+    pub fn replace_authority(&mut self, generation: InputAuthorityGeneration) {
         let current = self.pending_authority.unwrap_or(self.authority_generation);
         if current != generation {
             self.queue_held_releases(ReleaseReason::AuthorityChanged);
@@ -187,7 +187,7 @@ impl SemanticInputRouter {
     pub fn finalize(&mut self) -> Result<ActionSnapshot, RouterError> {
         let next_sequence = self
             .frame_sequence
-            .checked_add(1)
+            .checked_next()
             .ok_or(RouterError::FrameSequenceExhausted)?;
         if self
             .pending
@@ -380,7 +380,7 @@ impl SemanticInputRouter {
                 .iter()
                 .any(|controller| controller.device_id == *device_id)
         });
-        if self.frame_sequence != 0 {
+        if self.frame_sequence.get() != 0 {
             for controller in &frame.controllers {
                 let was_observed = self
                     .previous_frame

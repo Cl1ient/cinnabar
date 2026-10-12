@@ -511,7 +511,7 @@ fn actual_stale_bootstrap_is_noop_but_current_failed_setup_retires_ability_evide
         let (handle, sender) = NetworkHandle::<PackApplication>::stub_with_control_sender();
         sender
             .try_send(NetworkControlEvent::Bootstrap {
-                session_generation: generation,
+                session_generation: simulation_clock::identity::SessionGeneration::new(generation),
                 world: WorldBootstrap {
                     dimension: 0,
                     local_player_runtime_id: 42,

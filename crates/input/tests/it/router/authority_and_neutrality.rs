@@ -14,7 +14,7 @@ fn authority_release_publishes_neutral_and_quarantines_held_movement_until_neutr
         .unwrap();
     assert_eq!(router.finalize().unwrap().movement, [0.0, 1.0]);
 
-    router.replace_authority(NonZeroU64::new(2).unwrap());
+    router.replace_authority(InputAuthorityGeneration::new(NonZeroU64::new(2).unwrap()));
     router
         .route(DeviceFrame {
             keyboard_mouse: Some(held.clone()),

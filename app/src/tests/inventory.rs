@@ -1,9 +1,11 @@
 use client_state::PlayerRuntime;
+use protocol::identity::FifoSequence;
 use protocol::{
     CONTAINER_NAME_CURSOR, ContainerIdentity, ContainerOpenEvent, EquipmentEvent,
     InventoryAuthority, InventoryContentEvent, InventoryEvent, ItemActorEvent, ItemRegistryEntry,
     ItemRegistryEvent, ItemRegistryVersion, NetworkItemStack, WorldBootstrap, WorldEvent,
 };
+use simulation_clock::identity::SessionGeneration;
 
 use pack_runtime::{BootstrapGenerationDisposition, classify_bootstrap_generation};
 use {
@@ -105,8 +107,8 @@ fn runtime_publishes_session_identity_and_routes_fifo_equipment_once() {
         &mut player_runtime,
         &mut runtime,
         SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 10,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(10),
             event: WorldEvent::Equipment(equipment(42, 1)),
         },
     )
@@ -130,8 +132,8 @@ fn runtime_publishes_session_identity_and_routes_fifo_equipment_once() {
         &mut player_runtime,
         &mut runtime,
         SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 11,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(11),
             event: WorldEvent::Equipment(equipment(99, 2)),
         },
     )
@@ -139,7 +141,7 @@ fn runtime_publishes_session_identity_and_routes_fifo_equipment_once() {
     let EquipmentIngress::ActorPresentation(remote) = remote else {
         panic!("remote equipment must route only to actor presentation")
     };
-    assert_eq!(remote.sequence, 11);
+    assert_eq!(remote.sequence.get(), 11);
     assert!(matches!(
         remote.event,
         WorldEvent::Equipment(EquipmentEvent {
@@ -160,8 +162,8 @@ fn session_replacement_clears_published_identity_and_local_selection() {
             &mut player_runtime,
             &mut runtime,
             SequencedWorldEvent {
-                session_generation: 1,
-                sequence: 1,
+                session_generation: SessionGeneration::new(1),
+                sequence: FifoSequence::new(1),
                 event: WorldEvent::Equipment(equipment(42, 0)),
             },
         )
@@ -176,8 +178,8 @@ fn session_replacement_clears_published_identity_and_local_selection() {
             &mut player_runtime,
             &mut runtime,
             SequencedWorldEvent {
-                session_generation: 2,
-                sequence: 1,
+                session_generation: SessionGeneration::new(2),
+                sequence: FifoSequence::new(1),
                 event: WorldEvent::Equipment(equipment(42, 0)),
             },
         )
@@ -196,8 +198,8 @@ fn consumed_local_equipment_commits_its_global_fifo_slot() {
         &mut player_runtime,
         &mut runtime,
         SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(1),
             event: WorldEvent::Equipment(equipment(42, 0)),
         },
     )
@@ -295,8 +297,8 @@ fn inventory_ingress_is_retained_while_global_fifo_advances() {
         &mut player_runtime,
         &mut runtime,
         SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(1),
             event: WorldEvent::Inventory(InventoryEvent::Authority(InventoryAuthority::Server)),
         },
     )
@@ -350,8 +352,8 @@ fn item_registry_and_inventory_authority_share_one_bounded_fifo() {
         }]),
     };
     let sequenced = SequencedWorldEvent {
-        session_generation: 7,
-        sequence: 2,
+        session_generation: SessionGeneration::new(7),
+        sequence: FifoSequence::new(2),
         event: WorldEvent::ItemActor(ItemActorEvent::Registry(registry.clone())),
     };
     route_item_registry_ingress(&mut player_runtime, &mut runtime, &sequenced).unwrap();
@@ -398,8 +400,8 @@ fn stale_equipment_envelope_is_rejected_instead_of_relabelled() {
         &mut player_runtime,
         &mut runtime,
         SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
+            session_generation: SessionGeneration::new(7),
+            sequence: FifoSequence::new(1),
             event: WorldEvent::Equipment(equipment(42, 0)),
         },
     )

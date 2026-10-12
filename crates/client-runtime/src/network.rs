@@ -57,7 +57,10 @@ impl<P: Send + Sync + 'static> NetworkHandle<P> {
 
     /// Provides isolated queues for app adapter tests.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn stub() -> (Self, tokio::sync::watch::Receiver<u64>) {
+    pub fn stub() -> (
+        Self,
+        tokio::sync::watch::Receiver<simulation_clock::identity::PositionAuthorityGeneration>,
+    ) {
         let (handle, epoch) = client_session::NetworkHandle::stub();
         (handle.into(), epoch)
     }

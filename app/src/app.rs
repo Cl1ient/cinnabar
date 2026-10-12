@@ -651,7 +651,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     crate::runtime::network::await_overlay_texture_device();
     let network = if connection_requested {
         match spawn_network(NetworkConfig {
-            session_generation: 1,
+            session_generation: simulation_clock::identity::SessionGeneration::new(1),
             socket_dir,
             display_name: args.display_name.clone(),
             client_random_id: client_random_id.expect("connection requested"),

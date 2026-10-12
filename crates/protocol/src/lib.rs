@@ -12,6 +12,7 @@ mod dimension;
 mod disconnect;
 mod emote;
 mod experience;
+pub mod identity;
 mod interaction;
 mod inventory;
 mod item;

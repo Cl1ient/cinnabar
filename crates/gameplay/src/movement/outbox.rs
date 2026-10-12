@@ -11,6 +11,7 @@ use protocol::{
     Packet, PlayerAuthInputError, player_auth_input_with_interactions,
     player_auth_input_with_mining_request,
 };
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Failure taxonomy of one bounded outbound movement flush.
 ///
@@ -509,8 +510,13 @@ impl MovementTicker {
         true
     }
 
-    pub const fn interaction_authority_identity(&self) -> (u64, u64) {
-        (self.session_generation, self.reanchor_epoch)
+    pub const fn interaction_authority_identity(
+        &self,
+    ) -> (SessionGeneration, PositionAuthorityGeneration) {
+        (
+            SessionGeneration::new(self.session_generation),
+            self.reanchor_epoch,
+        )
     }
 
     /// Drops every unsent block interaction and revokes admitted ones.
@@ -536,7 +542,7 @@ impl MovementTicker {
     /// change and publishes the new epoch atomically with that invalidation.
     pub(super) fn position_authority_changed(&mut self) {
         self.next_tick_flags = protocol::PlayerInputFlags::NONE;
-        self.reanchor_epoch = self.reanchor_epoch.wrapping_add(1);
+        self.reanchor_epoch = self.reanchor_epoch.next();
         self.epoch_publisher.send_if_modified(|published| {
             if *published == self.reanchor_epoch {
                 false

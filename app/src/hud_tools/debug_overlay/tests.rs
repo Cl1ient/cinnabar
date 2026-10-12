@@ -1,4 +1,7 @@
 use client_shell::ui_resources::UiRuntimeResource;
+use protocol::identity::FifoSequence;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 use {super::*, client_presentation::local_player::LocalPlayerFrameCarrier};
 
 #[test]
@@ -46,10 +49,10 @@ fn third_person_uses_player_feet_and_eye_instead_of_camera_pose() {
     let eye = feet + Vec3::Y * protocol::STANDING_PLAYER_EYE_HEIGHT;
     frame
         .publish(client_presentation::local_player::LocalPlayerFrameSample {
-            session_generation: 1,
+            session_generation: SessionGeneration::new(1),
             actor_session_id: 1,
-            fifo_sequence: 1,
-            physics_tick: 1,
+            fifo_sequence: FifoSequence::new(1),
+            physics_tick: PhysicsTick::new(1),
             perspective: semantic_input::PerspectiveMode::ThirdPersonBack,
             world_collision_identity: sim::WorldCollisionIdentity {
                 registry: sim::CollisionRegistryIdentity {

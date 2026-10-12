@@ -1,4 +1,5 @@
 use super::*;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Exercises gameplay against explicit bounded admission outcomes.
 fn send_use(
@@ -442,7 +443,14 @@ fn a_backpressured_throw_retries_after_its_tick_was_published() {
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let throw = item_frame(100, true, stack(4, SNOWBALL, 16), "minecraft:snowball");
-    swings.sync_ticks((1, 1), throw.tick, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        throw.tick,
+        &effects,
+    );
     runtime.observe_press(true);
     step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |packets| {
         assert_eq!(packets.len(), 2);
@@ -472,7 +480,14 @@ fn a_fresh_throw_waits_for_an_unpublished_tick() {
     let mut runtime = ItemUseRuntime::default();
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     swings.published_progress(100);
     runtime.observe_press(true);
     let throw = |tick| item_frame(tick, false, stack(4, SNOWBALL, 16), "minecraft:snowball");
@@ -503,7 +518,14 @@ fn another_action_cannot_authorize_a_fresh_throw_on_a_published_tick() {
     let mut runtime = ItemUseRuntime::default();
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     let mut rejected = swings.clone();
     assert!(rejected.try_swing(100, 6));
     swings.defer_unadmitted_attempt(&rejected);
@@ -527,7 +549,14 @@ fn a_new_press_cannot_reuse_a_canceled_throw_retry() {
         runtime.synchronize(1);
         let mut swings = SwingTracker::default();
         let effects = crate::movement::LocalMovementEffectTimeline::default();
-        swings.sync_ticks((1, 1), 100, &effects);
+        swings.sync_ticks(
+            (
+                SessionGeneration::new(1),
+                PositionAuthorityGeneration::new(1),
+            ),
+            100,
+            &effects,
+        );
         let throw = item_frame(100, false, stack(4, SNOWBALL, 16), "minecraft:snowball");
         runtime.observe_press(true);
         step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |_| {
@@ -555,7 +584,14 @@ fn a_published_tick_does_not_block_a_use_without_a_swing() {
     let mut runtime = ItemUseRuntime::default();
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     swings.published_progress(100);
     runtime.observe_press(true);
     assert!(step_and_send(
@@ -580,13 +616,27 @@ fn a_position_correction_revokes_an_old_throw_retry() {
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let throw = item_frame(100, false, stack(4, SNOWBALL, 16), "minecraft:snowball");
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     runtime.observe_press(true);
     step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |_| {
         Err(BatchSendError::Full)
     });
     swings.published_progress(100);
-    swings.sync_ticks((1, 2), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        100,
+        &effects,
+    );
     swings.published_progress(100);
     let mut sends = 0;
     step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |_| {

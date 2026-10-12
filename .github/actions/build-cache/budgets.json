@@ -1,7 +1,7 @@
 {
   "cache": {
     "build-v1-rust-Linux-X64-ci-": 2700000000,
-    "build-v1-rust-Windows-X64-ci-": 2300000000,
+    "build-v1-rust-Windows-X64-ci-": 2500000000,
     "build-v1-rust-macOS-ARM64-ci-": 2200000000,
     "build-v1-go-Linux-X64-ci-": 900000000,
     "build-v1-go-Windows-X64-ci-": 800000000,

@@ -5,6 +5,7 @@
 //! Extraction retains the accepted-use timing and transport rollback rules unchanged.
 use crate::{BatchSendError, melee::SwingTracker, mining::FrozenMiningSelection};
 use protocol::{HeldItemRequest, PredictedSlotChange, VerifiedNetworkItemStack};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 mod admission;
 pub mod classify;
 mod crossbow;
@@ -86,7 +87,10 @@ pub struct ItemUseRuntime {
     /// A rejected click retries only while its verified selection remains current.
     deferred_selection: Option<FrozenMiningSelection>,
     /// Only this owner's rejected batch may retry a published tick.
-    rejected_swing_tick: Option<(u64, Option<(u64, u64)>)>,
+    rejected_swing_tick: Option<(
+        u64,
+        Option<(SessionGeneration, PositionAuthorityGeneration)>,
+    )>,
     /// A rejected release still precedes the next use, even if Use is pressed again.
     release_pending: bool,
     /// Vanilla's process-wide legacy item-stack request id counter.

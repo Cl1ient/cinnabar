@@ -24,6 +24,7 @@ actor-animation = { path = "../actor-animation" }
 inventory = { path = "../inventory" }
 player-state = { path = "../player-state" }
 protocol = { path = "../protocol" }
+render-api = { path = "../render-api" }
 semantic-input = { path = "../input" }
 sim = { path = "../sim" }
 world = { path = "../world" }

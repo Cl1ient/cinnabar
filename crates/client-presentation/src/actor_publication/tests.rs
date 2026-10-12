@@ -297,8 +297,16 @@ fn local_jump_body_tracks_camera_render_sample_in_both_third_person_views() {
                 .unwrap()
                 .interpolated_position(step.partial_tick)
                 .unwrap();
-            let mut local =
-                local_diagnostic_presentation(1, 0, LOCAL_ID, 1, actor_feet, 27.0, 13.0).unwrap();
+            let mut local = local_diagnostic_presentation(
+                1,
+                0,
+                LOCAL_ID,
+                render_api::PoseGeneration::new(1),
+                actor_feet,
+                27.0,
+                13.0,
+            )
+            .unwrap();
             // Authored nonuniform scale must survive the translation correction.
             for row in &mut local.submission.world_from_actor {
                 for (value, scale) in row[..3].iter_mut().zip([0.7, 1.2, 0.9]) {
@@ -338,9 +346,16 @@ fn local_jump_body_tracks_camera_render_sample_in_both_third_person_views() {
             assert_eq!(local.authored_scale, original.authored_scale);
             assert_eq!(local.world_yaw_degrees, original.world_yaw_degrees);
             assert_eq!(local.head_over_body, original.head_over_body);
-            let remote =
-                local_diagnostic_presentation(1, 0, REMOTE_ID, 1, [6.0, 3.0, -4.0], 72.0, 0.0)
-                    .unwrap();
+            let remote = local_diagnostic_presentation(
+                1,
+                0,
+                REMOTE_ID,
+                render_api::PoseGeneration::new(1),
+                [6.0, 3.0, -4.0],
+                72.0,
+                0.0,
+            )
+            .unwrap();
             let remote_submission = remote.submission.clone();
             let batch = select_actor_presentations(LOCAL_ID, true, Some(local), [remote]);
             let selected_remote = batch
@@ -589,7 +604,16 @@ fn styling_reuses_layer_storage_and_distinguishes_damage_from_reach() {
     )
     .unwrap();
     stream.sync_local_player_pose(&feed);
-    let local = local_diagnostic_presentation(1, 0, 1, 1, [0.0; 3], 0.0, 0.0).unwrap();
+    let local = local_diagnostic_presentation(
+        1,
+        0,
+        1,
+        render_api::PoseGeneration::new(1),
+        [0.0; 3],
+        0.0,
+        0.0,
+    )
+    .unwrap();
     let mut batch = select_actor_presentations(1, true, Some(local), []);
     let mut armor = batch.submissions[0].clone();
     armor.input.identity.layer = crate::presentation::equipment::ELYTRA_LAYER;
@@ -773,7 +797,7 @@ fn player_model_from_an_attachable_free_pack_keeps_held_items() {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 0,
+                pose_generation: render_api::PoseGeneration::new(0),
                 layer: render_model::ACTOR_LAYER_BODY,
             },
             rig: render_model::pack_rig_id(binding as u32),

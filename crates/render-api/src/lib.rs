@@ -5,8 +5,10 @@
 
 mod actor_lighting;
 mod frame_rate_limit;
+mod pose_generation;
 pub mod primitive_shapes;
 mod publication;
+pub use pose_generation::PoseGeneration;
 mod skin;
 mod vrr;
 

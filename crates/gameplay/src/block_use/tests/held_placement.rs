@@ -2,6 +2,7 @@ use super::*;
 use crate::block_use::{BuildIntention, PlacementTarget};
 use crate::movement::{MovementSource, MovementTicker};
 use protocol::test_support::transactions::observe_transaction;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Advances one deterministic use tick against the known support and actor box.
 fn step(
@@ -331,7 +332,10 @@ fn a_locked_line_rejects_rays_that_end_early_or_turn_away() {
 #[test]
 fn an_authority_wait_preserves_the_line_and_resumes_with_fresh_evidence() {
     let mut runtime = BlockUseRuntime::default();
-    runtime.synchronize((7, 0));
+    runtime.synchronize((
+        SessionGeneration::new(7),
+        PositionAuthorityGeneration::new(0),
+    ));
     runtime.observe_use(true, true, false, true);
     for (tick, support, face, x) in [(1, [-1, 63, 0], 5, 0.5), (8, [0, 63, 0], 1, 1.5)] {
         assert!(
@@ -349,7 +353,10 @@ fn an_authority_wait_preserves_the_line_and_resumes_with_fresh_evidence() {
             .is_some()
         );
     }
-    runtime.synchronize((7, 1));
+    runtime.synchronize((
+        SessionGeneration::new(7),
+        PositionAuthorityGeneration::new(1),
+    ));
     runtime.observe_use(true, false, false, false);
     assert!(
         step(

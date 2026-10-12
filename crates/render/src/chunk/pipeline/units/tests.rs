@@ -152,12 +152,11 @@ fn direct_batches_collapse_section_draws_and_keep_their_exact_quad_order() {
 #[test]
 fn unit_indices_keep_the_quad_winding_and_fit_the_existing_storage_budget() {
     assert_eq!(indices().len(), index_count() as usize);
-    for (quad, indices) in indices()
-        .chunks_exact(STATIC_QUAD_INDICES.len())
-        .enumerate()
-    {
+    let (quads, rest) = indices().as_chunks::<{ STATIC_QUAD_INDICES.len() }>();
+    assert!(rest.is_empty());
+    for (quad, indices) in quads.iter().enumerate() {
         assert_eq!(
-            indices,
+            *indices,
             STATIC_QUAD_INDICES.map(|index| quad as u32 * 4 + index)
         );
     }

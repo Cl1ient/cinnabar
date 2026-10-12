@@ -7,6 +7,7 @@ mod button_events;
 mod desktop;
 mod device;
 pub mod finalized;
+pub mod identity;
 mod router;
 
 pub use action::{

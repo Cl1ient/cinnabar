@@ -4,6 +4,7 @@ use assets::NetworkIdMode;
 use chunk_pipeline::WorldStream;
 use semantic_input::{Action, ActionPhase, ActionSnapshot};
 use sim::{CollisionRegistry, PlayerState, WorldCollisionIdentity};
+use simulation_clock::identity::SessionGeneration;
 
 /// The committed stream observed by presentation without owning session transport.
 #[derive(Clone, Copy, Default)]
@@ -73,10 +74,10 @@ impl InputObservation<'_> {
 
 /// The current local session generation, sampled without retaining its owner.
 #[derive(Clone, Copy)]
-pub struct SessionObservation(pub u64);
+pub struct SessionObservation(pub SessionGeneration);
 impl SessionObservation {
     /// Returns the session generation supplied for this system invocation.
-    pub const fn session_generation(self) -> u64 {
+    pub const fn session_generation(self) -> SessionGeneration {
         self.0
     }
 }

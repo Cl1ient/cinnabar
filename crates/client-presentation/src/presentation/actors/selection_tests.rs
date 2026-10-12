@@ -4,7 +4,16 @@ use render_model::STANDARD_SKIN_BYTES;
 use render_model::{ActorArtworkPages, EquipmentRaster};
 
 fn presentation(runtime_id: u64, position: [f32; 3]) -> ActorRigPresentation {
-    local_diagnostic_presentation(7, 0, runtime_id, 5, position, 0.0, 0.0).unwrap()
+    local_diagnostic_presentation(
+        7,
+        0,
+        runtime_id,
+        render_api::PoseGeneration::new(5),
+        position,
+        0.0,
+        0.0,
+    )
+    .unwrap()
 }
 
 fn artwork() -> ActorArtworkLocation {

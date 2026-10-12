@@ -2335,6 +2335,7 @@ dependencies = [
  "semantic-input",
  "sha2",
  "sim",
+ "simulation-clock",
  "tokio",
  "ui",
  "world",
@@ -2399,6 +2400,7 @@ dependencies = [
  "render",
  "render-api",
  "render-scene",
+ "simulation-clock",
  "tokio",
 ]
 
@@ -3742,6 +3744,7 @@ dependencies = [
  "inventory 0.1.12",
  "player-state",
  "protocol",
+ "render-api",
  "semantic-input",
  "serde",
  "serde_json",

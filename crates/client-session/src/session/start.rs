@@ -1,4 +1,5 @@
 use super::*;
+use simulation_clock::identity::PositionAuthorityGeneration;
 
 /// Starts the login task and hands admitted world state to the play pump.
 pub fn spawn_network<P: Send + 'static>(
@@ -16,7 +17,8 @@ pub fn spawn_network<P: Send + 'static>(
     let (control_event_tx, control_events) = mpsc::channel(CONTROL_EVENT_CAPACITY);
     let (world_event_tx, world_events) = mpsc::channel(WORLD_EVENT_CAPACITY);
     let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
-    let (physics_reanchor, _physics_reanchor_rx) = watch::channel(0);
+    let (physics_reanchor, _physics_reanchor_rx) =
+        watch::channel(PositionAuthorityGeneration::default());
     let (shutdown, mut shutdown_rx) = watch::channel(false);
     let readiness_ingress = Arc::new(ReadinessIngressCounter::default());
     let network_readiness_ingress = Arc::clone(&readiness_ingress);
@@ -173,7 +175,7 @@ pub fn spawn_network<P: Send + 'static>(
             });
         })?;
     Ok(NetworkHandle {
-        session_generation,
+        session_generation: session_generation.get(),
         control_events,
         world_events,
         commands,
@@ -266,7 +268,7 @@ mod tests {
         let (_shutdown, shutdown_rx) = watch::channel(false);
         let mut pump = std::pin::pin!(run_network_pump(
             LoadingSession(Arc::clone(&calls)),
-            NetworkSequencer::new(1, 0, 42),
+            NetworkSequencer::new(simulation_clock::identity::SessionGeneration::new(1), 0, 42),
             command_rx,
             controls,
             world,

@@ -1,4 +1,5 @@
-use std::{num::NonZeroU64, time::Duration};
+use semantic_input::identity::{InputAuthorityGeneration, InputSequence};
+use std::time::Duration;
 
 use bevy::prelude::{App, Update};
 use client_ui::ui_runtime::UiRuntime;
@@ -33,8 +34,8 @@ fn open_notification_pressed() -> SemanticInputSnapshot {
     phases[Action::InteractWithToast as usize].pressed = true;
     SemanticInputSnapshot(semantic_input::finalized::FinalizedInput::from_finalized(
         ActionSnapshot {
-            frame_sequence: 1,
-            authority_generation: NonZeroU64::MIN,
+            frame_sequence: InputSequence::new(1),
+            authority_generation: InputAuthorityGeneration::INITIAL,
             movement: [0.0; 2],
             raw_movement: [0.0; 2],
             analogue_movement: [0.0; 2],

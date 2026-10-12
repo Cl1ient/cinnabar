@@ -2,6 +2,7 @@ use bevy::{
     ecs::system::SystemParam,
     prelude::{Entity, Res, ResMut, Single, Transform, With},
 };
+use simulation_clock::identity::SessionGeneration;
 
 use {
     crate::{environment::WorldClock, runtime::world::ClientWorld},
@@ -34,7 +35,9 @@ pub(crate) fn resolve_camera_pose(
         receipt,
     } = publication;
     let observed = client_presentation::local_player::CameraPublicationContext {
-        clock: client_presentation::observations::SessionObservation(clock.session_generation()),
+        clock: client_presentation::observations::SessionObservation(SessionGeneration::new(
+            clock.session_generation(),
+        )),
         physics: &*physics,
         receipt,
     };
@@ -66,7 +69,9 @@ pub(crate) fn publish_local_player_frame(
         receipt,
     } = publication;
     let observed = client_presentation::local_player::CameraPublicationContext {
-        clock: client_presentation::observations::SessionObservation(clock.session_generation()),
+        clock: client_presentation::observations::SessionObservation(SessionGeneration::new(
+            clock.session_generation(),
+        )),
         physics: &*physics,
         receipt,
     };

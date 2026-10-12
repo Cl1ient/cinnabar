@@ -4,6 +4,7 @@ use crate::{
     mining::FrozenMiningSelection, movement::MiningEffects,
 };
 use protocol::{ActorUseAction, ActorUseRequest, PlayerGameMode, PlayerInputMode, SwingSource};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Wall-clock time after an attack during which block use is suppressed. Needs
 /// independent measurement.
@@ -79,7 +80,7 @@ pub struct MeleeRuntime {
     admitted_attack: Option<AdmittedActorAttack>,
     actor_in_front: bool,
     last_attack_millis: Option<u64>,
-    position_authority: Option<(u64, u64)>,
+    position_authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     /// Wall-clock millis at which a latched press first waited for admission.
     deferred_since: Option<u64>,
     rejected_tick: Option<u64>,
@@ -110,7 +111,7 @@ impl MeleeRuntime {
     }
 
     /// Drops a latched press when the session or position authority changes.
-    pub fn synchronize(&mut self, authority: (u64, u64)) {
+    pub fn synchronize(&mut self, authority: (SessionGeneration, PositionAuthorityGeneration)) {
         if self
             .position_authority
             .is_some_and(|previous| previous.0 != authority.0)

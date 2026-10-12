@@ -1,6 +1,8 @@
 #[cfg(feature = "local-mods")]
 use crate::modding::interaction::{block_pick_reach, effective_reach};
 use protocol::PlayerInputMode;
+use semantic_input::identity::{InputAuthorityGeneration, InputSequence};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use {
     super::MeleeContext,
     gameplay::melee::{Crosshair, classify},
@@ -18,12 +20,12 @@ pub(super) fn resolve_crosshair(
     input_mode: PlayerInputMode,
     attack_reach: f64,
     creative_pick_reach: bool,
-    input_authority: (std::num::NonZeroU64, u64),
-    position_authority_generation: u64,
+    input_authority: (InputAuthorityGeneration, InputSequence),
+    position_authority_generation: PositionAuthorityGeneration,
 ) -> Option<Crosshair> {
     let ray = context.origin.outbound_ray()?;
     let stream = context.client_world.stream.as_ref()?;
-    if !ray_is_current(ray, context.ui.session_id(), stream) {
+    if !ray_is_current(ray, SessionGeneration::new(context.ui.session_id()), stream) {
         return None;
     }
     let reach = if creative_pick_reach {

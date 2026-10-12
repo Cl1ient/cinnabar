@@ -101,7 +101,10 @@ mod tests {
     fn position_corrections_preserve_active_holds_and_refused_stops() {
         for refused in [false, true] {
             let mut runtime = BlockUseRuntime::default();
-            runtime.synchronize((7, 0));
+            runtime.synchronize((
+                simulation_clock::identity::SessionGeneration::new(7),
+                simulation_clock::identity::PositionAuthorityGeneration::new(0),
+            ));
             runtime.intention.record(
                 false,
                 [0, 63, 1],
@@ -114,7 +117,10 @@ mod tests {
                 assert_eq!(runtime.stop_packets(42, true).len(), 1);
                 assert!(!runtime.admit_stop(false));
             }
-            runtime.synchronize((7, 1));
+            runtime.synchronize((
+                simulation_clock::identity::SessionGeneration::new(7),
+                simulation_clock::identity::PositionAuthorityGeneration::new(1),
+            ));
             assert_eq!(runtime.last_success_destination(), Some([0, 63, 1]));
             assert_eq!(runtime.stopping(), refused);
             assert_eq!(runtime.stop_packets(42, false).len(), 1);

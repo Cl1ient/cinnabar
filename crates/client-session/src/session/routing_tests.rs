@@ -1,12 +1,13 @@
 use super::*;
 use crate::session::{InboundWorldEvent, wrap_inbound_world_event};
+use simulation_clock::identity::SessionGeneration;
 
 #[test]
 fn level_chunk_private_ingress_preserves_payload_allocation_and_fifo_sequence() {
     let payload = bytes::Bytes::from(vec![0x5a; 1024 * 1024]);
     let pointer = payload.as_ptr();
     let counter = ReadinessIngressCounter::default();
-    let mut sequencer = NetworkSequencer::new(7, 0, 42);
+    let mut sequencer = NetworkSequencer::new(SessionGeneration::new(7), 0, 42);
 
     let ingress = wrap_inbound_world_event(
         &mut sequencer,
@@ -32,8 +33,8 @@ fn level_chunk_private_ingress_preserves_payload_allocation_and_fifo_sequence() 
     else {
         panic!("LevelChunk must use the private byte ingress lane")
     };
-    assert_eq!(session_generation, 7);
-    assert_eq!(sequence, 1);
+    assert_eq!(session_generation.get(), 7);
+    assert_eq!(sequence.get(), 1);
     assert_eq!(payload.as_ptr(), pointer);
     assert_eq!(counter.pending(), 1);
 }
@@ -90,10 +91,10 @@ fn malformed_start_game_registry_nbt_is_a_typed_wire_failure() {
 
 #[test]
 fn sequence_is_fifo_and_dimension_changes_apply_to_following_packets() {
-    let mut sequencer = NetworkSequencer::new(7, 2, 42);
+    let mut sequencer = NetworkSequencer::new(SessionGeneration::new(7), 2, 42);
     let first = sequencer.wrap(WorldEvent::ChunkRadiusUpdated(16));
-    assert_eq!(first.session_generation, 7);
-    assert_eq!(first.sequence, 1);
+    assert_eq!(first.session_generation.get(), 7);
+    assert_eq!(first.sequence.get(), 1);
     assert_eq!(sequencer.current_dimension(), 2);
 
     let change = sequencer.wrap(WorldEvent::ChangeDimension(ChangeDimensionEvent {
@@ -101,16 +102,16 @@ fn sequence_is_fifo_and_dimension_changes_apply_to_following_packets() {
         position: [0.0, 80.0, 0.0],
         ..Default::default()
     }));
-    assert_eq!(change.sequence, 2);
+    assert_eq!(change.sequence.get(), 2);
     assert_eq!(sequencer.current_dimension(), 1);
 
     let following = sequencer.wrap(WorldEvent::ChunkRadiusUpdated(8));
-    assert_eq!(following.sequence, 3);
+    assert_eq!(following.sequence.get(), 3);
 }
 
 #[test]
 fn foreign_player_movement_is_routed_to_the_actor_stream() {
-    let mut sequencer = NetworkSequencer::new(7, 0, 42);
+    let mut sequencer = NetworkSequencer::new(SessionGeneration::new(7), 0, 42);
     let movement = |runtime_id| {
         WorldEvent::MovePlayer(MovePlayerEvent {
             runtime_id,
@@ -153,7 +154,7 @@ fn foreign_player_movement_is_routed_to_the_actor_stream() {
 #[test]
 fn foreign_move_player_retains_network_origin_for_actor_store_normalization() {
     const SPAWN_FEET_Y: f32 = 64.0;
-    let mut sequencer = NetworkSequencer::new(7, 0, 42);
+    let mut sequencer = NetworkSequencer::new(SessionGeneration::new(7), 0, 42);
     let movement = WorldEvent::MovePlayer(MovePlayerEvent {
         runtime_id: 7,
         position: [1.0, SPAWN_FEET_Y + PLAYER_NETWORK_OFFSET, 2.0],
@@ -171,7 +172,7 @@ fn foreign_move_player_retains_network_origin_for_actor_store_normalization() {
 
 #[test]
 fn server_authoritative_correction_bypasses_foreign_player_runtime_filter() {
-    let mut sequencer = NetworkSequencer::new(7, 0, 42);
+    let mut sequencer = NetworkSequencer::new(SessionGeneration::new(7), 0, 42);
     let correction = WorldEvent::PlayerMovementCorrection(PlayerMovementCorrectionEvent {
         position: [27.5, 111.0, 91.5],
         delta: [0.0; 3],

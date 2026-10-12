@@ -9,7 +9,7 @@ pub type NetworkControlEvent = client_session::NetworkControlEvent<PackApplicati
 /// Startup snapshot supplied by application composition.
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {
-    pub session_generation: u64,
+    pub session_generation: simulation_clock::identity::SessionGeneration,
     pub socket_dir: PathBuf,
     pub display_name: String,
     /// The user storage owner's opaque persisted login identifier.

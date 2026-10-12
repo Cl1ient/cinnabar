@@ -318,7 +318,7 @@ mod tests {
                     ingress_sequence: 1,
                     source_tick: Some(1),
                     movement_revision: 1,
-                    pose_generation: 1,
+                    pose_generation: render_api::PoseGeneration::new(1),
                     layer: render_model::ACTOR_LAYER_BODY,
                 },
                 rig,

@@ -21,6 +21,7 @@ use client_state::PlayerRuntime;
 use client_world::SAFE_SERVER_HEIGHT;
 use pack_runtime::{BootstrapGenerationDisposition, classify_bootstrap_generation};
 use render_scene::{BlockEntitySceneResource, ChunkTextureAssets, ChunkUploadAcknowledgements};
+use simulation_clock::identity::SessionGeneration;
 use std::time::Duration;
 
 /// Pack and publication resources used while installing a StartGame session.
@@ -100,6 +101,7 @@ pub(super) fn apply(
     else {
         unreachable!("bootstrap routing accepts only StartGame");
     };
+    let session_generation = session_generation.get();
     match classify_bootstrap_generation(
         ui_runtime.session_id(),
         clock.session_generation(),
@@ -206,7 +208,7 @@ pub(super) fn apply(
         acceptance.set_mutation_surface_anchor(acceptance_surface_anchor(resolved.position));
     }
     reset_local_player_session(
-        session_generation,
+        SessionGeneration::new(session_generation),
         bootstrap.local_player_runtime_id,
         resolved.position,
         settings,

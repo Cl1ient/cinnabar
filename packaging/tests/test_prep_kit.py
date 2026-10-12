@@ -67,22 +67,27 @@ class PrepKitTests(unittest.TestCase):
         )
         self.assertEqual(files_below(kit), sorted(["bin/assetc.exe", *LISTED]))
 
-    def linux_payload(self, compiler_script):
-        root = self.temp / "squashfs-root"
-        for name in ["AppRun", "cinnabar.desktop", "cinnabar.png"]:
-            (root / name).parent.mkdir(parents=True, exist_ok=True)
-            (root / name).write_text("")
-        for name in ["bedrock-client", "bedrock-core", "bedrock-local-server"]:
-            (root / "usr/bin").mkdir(parents=True, exist_ok=True)
-            (root / "usr/bin" / name).write_text("")
-        resources = root / "usr/share/cinnabar"
+    def payload(self, platform, compiler_script):
+        root = self.temp / platform
+        if platform == "linux":
+            entries = ["AppRun", "cinnabar.desktop", "cinnabar.png"]
+            entries += [f"usr/bin/{name}" for name in ["bedrock-client", "bedrock-core", "bedrock-local-server"]]
+            resources = root / "usr/share/cinnabar"
+        else:
+            contents = "Cinnabar.app/Contents/"
+            entries = ["Applications", f"{contents}Info.plist", f"{contents}Resources/Cinnabar.icns"]
+            entries += [f"{contents}MacOS/{name}" for name in ["bedrock-client", "bedrock-core", "bedrock-local-server"]]
+            resources = root / contents / "Resources"
+        for entry in entries:
+            (root / entry).parent.mkdir(parents=True, exist_ok=True)
+            (root / entry).write_text("")
         result = bash('stage_resources "$1" "$2"', str(resources), str(self.compiler("assetc", compiler_script)))
         self.assertEqual(result.returncode, 0, result.stderr)
-        return root
+        return root, resources / "prep-kit"
 
-    def check_payload(self, root):
+    def check_payload(self, platform, root):
         return subprocess.run(
-            ["bash", str(ROOT / "packaging/check-payload.sh"), "linux", str(root)],
+            ["bash", str(ROOT / "packaging/check-payload.sh"), platform, str(root)],
             env={**os.environ, "CINNABAR_SOURCE_ROOT": str(ROOT), "CINNABAR_UPDATE_URL": ""},
             capture_output=True,
             text=True,
@@ -97,20 +102,25 @@ class PrepKitTests(unittest.TestCase):
             f'done < "{ROOT}/packaging/common/prep-kit-files.txt"\n'
             'echo \'{"current":false}\'\n'
         )
-        root = self.linux_payload(script)
-        result = self.check_payload(root)
+        root, kit = self.payload("linux", script)
+        result = self.check_payload("linux", root)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("prep kit satisfies its compiler", result.stdout)
-        (root / "usr/share/cinnabar/prep-kit" / LISTED[-1]).unlink()
-        result = self.check_payload(root)
+        (kit / LISTED[-1]).unlink()
+        result = self.check_payload("linux", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cannot plan from the linux prep kit", result.stderr)
 
-    def test_payload_check_skips_the_plan_when_the_compiler_cannot_run_here(self):
-        root = self.linux_payload("#!/bin/sh\nexit 126\n")
-        result = self.check_payload(root)
+    def test_only_a_macos_compiler_for_another_architecture_may_skip_the_plan(self):
+        unrunnable = "#!/bin/sh\nexit 126\n"
+        root, _ = self.payload("macos", unrunnable)
+        result = self.check_payload("macos", root)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("skipping the linux prep-kit plan", result.stdout)
+        self.assertIn("skipping the macos prep-kit plan", result.stdout)
+        root, _ = self.payload("linux", unrunnable)
+        result = self.check_payload("linux", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot plan from the linux prep kit", result.stderr)
 
 
 if __name__ == "__main__":

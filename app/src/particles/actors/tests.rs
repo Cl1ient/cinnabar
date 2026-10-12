@@ -435,13 +435,13 @@ fn controllers_without_particle_work_do_not_allocate_sampled_poses() {
     );
     let mut system = ParticleSystem::default();
     let mut queue = Vec::new();
-    let before = crate::tests::alloc_count::thread_allocations();
-    queue_actor_particles(
-        &mut ActorParticleFrame::new(&stream, 0.5),
-        &mut system,
-        &mut queue,
-    );
-    let allocations = crate::tests::alloc_count::thread_allocations() - before;
+    let ((), allocations) = test_alloc::count(|| {
+        queue_actor_particles(
+            &mut ActorParticleFrame::new(&stream, 0.5),
+            &mut system,
+            &mut queue,
+        );
+    });
     assert!(queue.is_empty());
     assert_eq!(
         allocations, 0,
@@ -454,13 +454,13 @@ fn controllers_without_particle_work_do_not_allocate_sampled_poses() {
         &mut queue,
     );
     route_actor_particles(&mut system, &mut queue);
-    let before = crate::tests::alloc_count::thread_allocations();
-    queue_actor_particles(
-        &mut ActorParticleFrame::new(&stream, 0.5),
-        &mut system,
-        &mut queue,
-    );
-    let allocations = crate::tests::alloc_count::thread_allocations() - before;
+    let ((), allocations) = test_alloc::count(|| {
+        queue_actor_particles(
+            &mut ActorParticleFrame::new(&stream, 0.5),
+            &mut system,
+            &mut queue,
+        );
+    });
     assert!(queue.is_empty());
     assert_eq!(allocations, 0, "admitted effects must skip pose sampling");
 }
@@ -487,9 +487,9 @@ fn multiple_controllers_and_attachments_reuse_one_actor_pose_sample() {
         "both controllers start their own occurrence"
     );
     route_actor_particles(&mut system, &mut queue);
-    let before = crate::tests::alloc_count::thread_allocations();
-    follow_actor_particles(&mut system, &mut frame);
-    let allocations = crate::tests::alloc_count::thread_allocations() - before;
+    let ((), allocations) = test_alloc::count(|| {
+        follow_actor_particles(&mut system, &mut frame);
+    });
     assert_eq!(
         allocations, 0,
         "following must reuse the spawning pose sample"

@@ -402,12 +402,16 @@ fn cycle_enhanced_time(
     player: Res<client_state::PlayerRuntime>,
     ui: Option<Res<client_shell::ui_resources::UiRuntimeResource>>,
     presentation: Option<Res<client_shell::ui_resources::UiPresentationResource>>,
+    support: Option<Res<render::EnhancedRenderSupport>>,
     mut debug_time: ResMut<DebugTimeOverride>,
     mut next_preset: Local<usize>,
 ) {
-    let enhanced = enhanced_rendering_enabled()
-        && settings.user_settings_update().1.video.render_mode == RenderMode::Enhanced;
-    if !enhanced {
+    // A Vanilla fallback must keep following server time.
+    let mode = effective_render_mode(
+        settings.user_settings_update().1.video.render_mode,
+        support.as_deref(),
+    );
+    if mode != RenderMode::Enhanced {
         *next_preset = 0;
         debug_time.ticks = None;
         return;
@@ -463,6 +467,7 @@ fn cycle_enhanced_shadow_debug(
     player: Res<client_state::PlayerRuntime>,
     ui: Option<Res<client_shell::ui_resources::UiRuntimeResource>>,
     presentation: Option<Res<client_shell::ui_resources::UiPresentationResource>>,
+    support: Option<Res<render::EnhancedRenderSupport>>,
     mut cameras: Query<&mut EnhancedRendering, With<FlyCamera>>,
 ) {
     let focused = windows.iter().next().is_none_or(|window| window.focused);
@@ -473,7 +478,10 @@ fn cycle_enhanced_shadow_debug(
         presentation.as_deref().map(|presentation| &presentation.0),
     );
     if !shadow_debug_input_allowed(
-        settings.user_settings_update().1.video.render_mode,
+        effective_render_mode(
+            settings.user_settings_update().1.video.render_mode,
+            support.as_deref(),
+        ),
         focused,
         absorbs_input,
     ) || !keys.just_pressed(ENHANCED_SHADOW_KEY)
@@ -586,6 +594,32 @@ mod tests {
                 .shadow_debug,
             EnhancedShadowDebug::Cascades,
         );
+    }
+
+    /// A Vanilla fallback on an unsupported device keeps server time; `]` sets no override.
+    #[test]
+    fn unsupported_adapter_ignores_the_time_shortcut_and_clears_overrides() {
+        let mut app = App::new();
+        app.init_resource::<RuntimeSettings>()
+            .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
+                0,
+            )))
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<DebugTimeOverride>()
+            .insert_resource(render::EnhancedRenderSupport(false))
+            .add_systems(Update, cycle_enhanced_time);
+        app.world_mut()
+            .spawn((Window::default(), bevy::window::PrimaryWindow));
+        set_render_mode(
+            &mut app.world_mut().resource_mut::<RuntimeSettings>(),
+            RenderMode::Enhanced,
+        );
+        app.world_mut().resource_mut::<DebugTimeOverride>().ticks = Some(6_000);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(ENHANCED_TIME_KEY);
+        app.update();
+        assert_eq!(app.world().resource::<DebugTimeOverride>().ticks, None);
     }
 
     #[test]

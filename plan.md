@@ -592,9 +592,14 @@ these changes do not close the movement, camera, or actor parity gates.
   establish native first-appearance timing, join latency, no-pop-in acceptance or release
   frame budgets; those gates remain open.
 - Recurring hand, UI viewport and particle writes share bounded retained GPU
-  staging. Allocation regressions cover real Metal owners; lifecycle and byte-order
-  tests cover asynchronous reuse and fallback. Attach-only native samples confirm
-  staging-allocation mutex contention, drawable waits and scheduler delays.
+  staging. Terrain arena writes use a separate pool sized from the publication
+  target rate: abutting records share one copy, large runs span slots, and a growth
+  slice encodes staged writes before it copies. Allocation regressions cover real
+  Metal owners; lifecycle and byte-order tests cover asynchronous reuse and fallback.
+  Attach-only native samples confirm staging-allocation mutex contention, drawable
+  waits and scheduler delays.
+- Incomplete: the terrain pool's size is derived, not measured; its streaming
+  before/after capture and fallback rate during joins remain open.
 - Incomplete: the synthetic fixed-camera fixture is not the populated-lobby/flight
   release replay; hidden frames do not establish displayed FPS. Three paired runs
   at each resolution reduce measured maxima but do not consistently improve p99.

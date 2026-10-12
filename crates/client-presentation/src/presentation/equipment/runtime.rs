@@ -369,13 +369,31 @@ impl EquipmentRuntime {
         input: &ActorEquipmentInput,
         animation: Option<EquipmentAnimation<'_>>,
     ) -> &mut [EquipmentPresentation] {
+        self.layers_for_profile(body, input, render_api::CombatVisuals::Modern, animation)
+    }
+
+    /// Selects combat visuals for worn slots without changing held items or Java poses.
+    pub fn layers_for_profile(
+        &mut self,
+        body: &ActorRigSubmission,
+        input: &ActorEquipmentInput,
+        profile: render_api::CombatVisuals,
+        animation: Option<EquipmentAnimation<'_>>,
+    ) -> &mut [EquipmentPresentation] {
         let mut layers = std::mem::take(&mut self.layers);
         layers.clear();
         self.fill_layers(body, input, animation, &mut layers);
-        if input.java.is_some() {
+        if input.java.is_some() || profile == render_api::CombatVisuals::Legacy112 {
             // The Java animation option includes worn equipment in the body's hurt flash.
             for layer in &mut layers {
-                if layer.submission.input.identity.layer >= LAYER_HELMET {
+                if layer.submission.input.identity.layer >= LAYER_HELMET
+                    && !layer
+                        .submission
+                        .material
+                        .state
+                        .is_some_and(|state| state.disable_overlay)
+                    && layer.submission.overlay_rgba8 == 0
+                {
                     layer.submission.overlay_rgba8 = body.overlay_rgba8;
                 }
             }

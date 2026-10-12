@@ -34,6 +34,7 @@ pub(super) fn prepare(
         partial_tick,
         first_person,
         java_mode,
+        combat_visuals: _,
         sampling_camera,
     } = view;
     let HandCaches {

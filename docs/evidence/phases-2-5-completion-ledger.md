@@ -311,6 +311,12 @@ actor lifetime. Particle placement samples each needed actor once per frame. The
 unsupported query grammar, skin locator, child-event placement, fallback and
 animated gallery checks in `plan.md` remain open. No completion entry advances.
 
+## Particle terrain ordering
+
+Individual depth ranges and adjacent-range batching are implemented. Renderer composition and
+current-frame regressions pass, and an offline Metal fixture measures the GPU span. Native bucket
+composition and full-frame acceptance remain incomplete.
+
 ## Cached beacon beam sections
 
 Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.

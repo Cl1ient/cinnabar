@@ -386,7 +386,8 @@ fn emit_emitter(
                 color[3],
             ],
         };
-        out.push((distance_sq, instance, def.material));
+        let depth = dot(relative, view.forward);
+        out.push((depth, instance, def.material));
     }
 }
 
@@ -520,6 +521,30 @@ mod tests {
                 .next()
                 .unwrap();
             assert_eq!(instance.axis_x[3], alpha_test);
+        }
+    }
+
+    #[test]
+    fn translucent_particles_sort_by_view_depth_when_radial_distance_disagrees() {
+        for material in ["particles_blend", "particles_add"] {
+            let mut system = ParticleSystem::default();
+            assert!(system.register_effect(EFFECT.replace("particles_alpha", material).as_bytes()));
+            for position in [[3.0, 0.0, -4.0], [0.0, 0.0, -4.5]] {
+                system.spawn(&SpawnRequest {
+                    effect: "minecraft:quad".into(),
+                    position,
+                    ..SpawnRequest::default()
+                });
+            }
+            system.tick(0.02, &EmptyWorld);
+            let lists = system.build_draw(&view(), &EmptyWorld);
+            let depths = lists
+                .blend
+                .iter()
+                .chain(&lists.add)
+                .map(|particle| particle.center_light[2])
+                .collect::<Vec<_>>();
+            assert_eq!(depths, [-4.5, -4.0], "{material}");
         }
     }
 

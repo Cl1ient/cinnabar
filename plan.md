@@ -8003,6 +8003,17 @@ grammar, skin-authored locators, bound child-event offsets under rotation, fallb
 placement without a rig, and the full animated locator gallery remain unverified.
 Frame and streaming performance acceptance remains open. No parity gate closes.
 
+### Particle depth ranges
+
+Translucent particles enter the shared terrain phase at individual camera depths from the
+current extracted frame. Adjacent contiguous instances of the same material combine after
+phase preparation, while intervening terrain preserves the range boundaries. Cutout particles
+keep their depth-writing pass. The expression of depth matches the view sorting direction.
+
+An offline fixture verifies alpha and additive depth composition through the production shader
+and measures the GPU pass cost. Exact native composition across material buckets and full-frame
+performance acceptance remain incomplete.
+
 ## Cached beacon beam sections
 
 Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer.

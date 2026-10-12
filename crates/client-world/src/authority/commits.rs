@@ -272,8 +272,7 @@ impl WorldAuthority {
                     });
                     self.push_committed_ui(CommittedUiEvent::LocalEffect { sequence, event });
                 }
-                // Remote actors' effects have no owned presentation surface yet;
-                // the event is committed and dropped rather than retained.
+                self.actors.apply_effect(&event);
             }
             WorldEvent::Abilities(event) => {
                 let sequence = sequence.expect("sequenced abilities commit through submit");

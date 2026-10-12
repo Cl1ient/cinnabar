@@ -99,9 +99,12 @@ fn startup_custom_sword_survives_empty_registry_duplicate_in_rendered_hotbar() {
     .unwrap();
     presentation.enable_json_ui(hotbar_carrier()).unwrap();
     presentation.set_gui_scale_preference(Some(4));
-    presentation
-        .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
-        .unwrap();
+    test_time::eventually("the startup sword icon to be admitted", || {
+        presentation
+            .build(&player, &runtime, 0, VIEWPORT, DpiScale::new(1.).unwrap())
+            .unwrap();
+        presentation.item_icon(IDENTIFIER, 0).is_some()
+    });
     refresh_hud_frame(
         &player,
         &mut runtime,

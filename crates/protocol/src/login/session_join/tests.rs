@@ -9,7 +9,6 @@ use valentine::bedrock::version::v1_26_51::{
 };
 
 use super::*;
-use crate::BedrockSession;
 
 const RUNTIME_ID: u64 = 7;
 
@@ -48,8 +47,7 @@ impl FakeCore {
         );
         let mut bedrock = BytesMut::from(&[0xfe][..]);
         bedrock.extend_from_slice(&frame[1..]);
-        crate::codec::decode_batch(bedrock.freeze(), &BedrockSession { shield_item_id: 0 })
-            .expect("client batch decodes")
+        crate::codec::decode_batch(bedrock.freeze()).expect("client batch decodes")
     }
 }
 
@@ -82,7 +80,7 @@ fn listen(dir: &Path) -> UnixListener {
 
 /// One packet's bytes, header included, as a batch carries it.
 fn packet_bytes(packet: &Packet) -> Bytes {
-    let batch = crate::codec::encode(packet, &BedrockSession { shield_item_id: 0 }).unwrap();
+    let batch = crate::codec::encode(packet).unwrap();
     let CoreMessage::Batch(mut packets) = crate::session_wire::decode_core_message(
         crate::session_wire::batch_frame_from_bedrock(&batch).unwrap(),
     )
@@ -95,7 +93,7 @@ fn packet_bytes(packet: &Packet) -> Bytes {
 fn batch_frame(packets: &[Packet]) -> Bytes {
     let mut frame = BytesMut::from(&[2u8][..]);
     for packet in packets {
-        let batch = crate::codec::encode(packet, &BedrockSession { shield_item_id: 0 }).unwrap();
+        let batch = crate::codec::encode(packet).unwrap();
         frame.extend_from_slice(&batch[1..]);
     }
     frame.freeze()
@@ -232,7 +230,7 @@ async fn check_handed_off_packs(cached: bool) {
     );
     let (joined, mut core) = tokio::join!(join, core);
     let (mut session, game_data) = joined.expect("join");
-    assert_eq!(game_data.start_game.runtime_id.actor_runtime_id, RUNTIME_ID);
+    assert_eq!(game_data.world.local_player_runtime_id, RUNTIME_ID);
     assert!(
         !session.blob_cache_enabled(),
         "a cache serves only an upstream login that advertised one"
@@ -320,7 +318,7 @@ async fn a_startup_longer_than_one_batch_still_joins() {
         core
     );
     let (_, game_data) = joined.expect("a long startup joins");
-    assert_eq!(game_data.start_game.runtime_id.actor_runtime_id, RUNTIME_ID);
+    assert_eq!(game_data.world.local_player_runtime_id, RUNTIME_ID);
 }
 
 /// Startup batches respect both of Jolyne's bounds and keep every packet in order.

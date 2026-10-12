@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use protocol::{
-    BedrockSession, MAX_RAW_TEXT_COMPONENTS, MAX_RAW_TEXT_DEPTH, MAX_RAW_TEXT_INPUT_BYTES,
-    MAX_RAW_TEXT_NODES, MAX_RAW_TEXT_OUTPUT_BYTES, RawTextComponent, RawTextResolution, TextKind,
-    TitleAction, UiEvent, UiPacketError, WorldEvent, decode_batch, into_world_event,
-    parse_raw_text,
+    MAX_RAW_TEXT_COMPONENTS, MAX_RAW_TEXT_DEPTH, MAX_RAW_TEXT_INPUT_BYTES, MAX_RAW_TEXT_NODES,
+    MAX_RAW_TEXT_OUTPUT_BYTES, RawTextComponent, RawTextResolution, TextKind, TitleAction, UiEvent,
+    UiPacketError, WorldEvent, decode_batch, into_world_event, parse_raw_text,
 };
 use valentine::bedrock::version::v1_26_51::{
     EnumsSetTitlePacketPayloadTitleType, EnumsTextPacketType, SetTitlePacket, TextPacket,
@@ -69,7 +68,7 @@ fn normalize_raw(message: String) -> Result<UiEvent, UiPacketError> {
 }
 
 fn decode_fixture(bytes: &'static [u8]) -> protocol::RawTextEvent {
-    let mut packets = decode_batch(bytes.into(), &BedrockSession { shield_item_id: 0 }).unwrap();
+    let mut packets = decode_batch(bytes.into()).unwrap();
     assert_eq!(packets.len(), 1);
     match into_world_event(packets.pop().unwrap(), 0).unwrap() {
         Some(WorldEvent::Ui(UiEvent::RawText(event))) => event,

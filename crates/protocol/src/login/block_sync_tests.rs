@@ -1,11 +1,10 @@
 use super::*;
 use bytes::Buf;
 use jolyne::raw::decode_packet_raw;
-use valentine::bedrock::{context::BedrockSession, version::v1_26_51::BlockPos};
+use valentine::bedrock::version::v1_26_51::BlockPos;
 
 #[test]
 fn synced_block_update_is_admitted_from_the_raw_world_lane() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = valentine::bedrock::version::v1_26_51::UpdateBlockSyncedPacket {
         block_position: BlockPos {
             x: 17,
@@ -19,11 +18,11 @@ fn synced_block_update_is_admitted_from_the_raw_world_lane() {
         actor_sync_message: 1,
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).unwrap();
+    let mut batch = crate::encode(&packet).unwrap();
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).unwrap();
     assert!(
-        decode_world_raw_with(raw, 2, |raw| raw.decode(&session))
+        decode_world_raw_with(raw, 2, super::decode_test_raw)
             .unwrap()
             .is_some()
     );

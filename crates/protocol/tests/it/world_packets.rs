@@ -11,11 +11,11 @@ mod weather_cycle;
 mod world_clocks;
 use protocol::{
     BiomeDefinitionEvent, BiomeDefinitionsEvent, DaylightCycleUpdateEvent, DimensionRange,
-    GameData, GameRulesEvent, HASHED_AIR_NETWORK_ID, HudRules, LevelChunkMode,
-    MAX_BIOME_DEFINITIONS, MAX_BIOME_NAME_BYTES, MAX_SUB_CHUNK_REQUESTS, MovePlayerEvent,
-    SEQUENTIAL_AIR_NETWORK_ID, SetTimeEvent, SubChunkResult, WeatherChannel, WeatherUpdateEvent,
-    WorldBootstrap, WorldEnvironmentBootstrap, WorldEvent, WorldPacketError, air_network_id,
-    into_world_event, request_sub_chunk_column, vanilla_dimension_range,
+    GameRulesEvent, HASHED_AIR_NETWORK_ID, HudRules, LevelChunkMode, MAX_BIOME_DEFINITIONS,
+    MAX_BIOME_NAME_BYTES, MAX_SUB_CHUNK_REQUESTS, MovePlayerEvent, SEQUENTIAL_AIR_NETWORK_ID,
+    SetTimeEvent, SubChunkResult, WeatherChannel, WeatherUpdateEvent, WorldBootstrap,
+    WorldEnvironmentBootstrap, WorldEvent, WorldPacketError, air_network_id, into_world_event,
+    request_sub_chunk_column, vanilla_dimension_range,
 };
 use valentine::bedrock::codec::{BedrockCodec, BedrockSized};
 use valentine::bedrock::version::v1_26_51::{
@@ -79,8 +79,8 @@ fn biome_packet(
 #[path = "world_packets/seasonal_biomes.rs"]
 mod seasonal_biomes;
 
-fn game_data() -> GameData {
-    GameData {
+fn game_data() -> jolyne::GameData {
+    jolyne::GameData {
         start_game: Default::default(),
         item_registry: Default::default(),
         biome_definitions: None,
@@ -261,7 +261,7 @@ fn normalizes_start_game_bootstrap_without_generated_types() {
     game_data.start_game.block_network_ids_are_hashes = true;
 
     assert_eq!(
-        WorldBootstrap::from_game_data(&game_data),
+        WorldBootstrap::from_start_game(&game_data.start_game),
         WorldBootstrap {
             dimension: 1,
             local_player_runtime_id: 0x1_0000_0001,
@@ -273,7 +273,7 @@ fn normalizes_start_game_bootstrap_without_generated_types() {
         }
     );
     assert_eq!(
-        WorldEnvironmentBootstrap::from_game_data(&game_data),
+        WorldEnvironmentBootstrap::from_start_game(&game_data.start_game),
         WorldEnvironmentBootstrap {
             initial_time: 123_456,
             day_cycle_lock_time: 18_000,
@@ -291,7 +291,7 @@ fn start_game_daylight_cycle_defaults_enabled_and_requires_a_boolean_rule() {
     game_data.start_game.level_current_time = 6_000;
     game_data.start_game.settings.day_cycle_stop_time = 0;
 
-    let bootstrap = WorldEnvironmentBootstrap::from_game_data(&game_data);
+    let bootstrap = WorldEnvironmentBootstrap::from_start_game(&game_data.start_game);
     assert_eq!(bootstrap.initial_time, 6_000);
     assert_eq!(bootstrap.day_cycle_lock_time, 0);
     assert!(
@@ -312,7 +312,7 @@ fn start_game_daylight_cycle_defaults_enabled_and_requires_a_boolean_rule() {
             rule_value: GameRuleRuleValue::Int32(0),
         });
     assert!(
-        WorldEnvironmentBootstrap::from_game_data(&game_data).daylight_cycle_enabled,
+        WorldEnvironmentBootstrap::from_start_game(&game_data.start_game).daylight_cycle_enabled,
         "a non-boolean rule with the same name is not an authoritative cycle switch"
     );
 }
@@ -322,13 +322,13 @@ fn clamps_initial_weather_levels_and_fails_non_finite_values_closed() {
     let mut game_data = game_data();
     game_data.start_game.settings.rain_level = -0.25;
     game_data.start_game.settings.lightning_level = 1.25;
-    let bootstrap = WorldEnvironmentBootstrap::from_game_data(&game_data);
+    let bootstrap = WorldEnvironmentBootstrap::from_start_game(&game_data.start_game);
     assert_eq!(bootstrap.rain_level, 0.0);
     assert_eq!(bootstrap.lightning_level, 1.0);
 
     game_data.start_game.settings.rain_level = f32::NAN;
     game_data.start_game.settings.lightning_level = f32::INFINITY;
-    let bootstrap = WorldEnvironmentBootstrap::from_game_data(&game_data);
+    let bootstrap = WorldEnvironmentBootstrap::from_start_game(&game_data.start_game);
     assert_eq!(bootstrap.rain_level, 0.0);
     assert_eq!(bootstrap.lightning_level, 0.0);
 }
@@ -1067,7 +1067,7 @@ fn normalizes_the_hud_text_rules_beside_the_daylight_cycle() {
     );
     let mut game_data = game_data();
     assert_eq!(
-        HudRules::from_game_data(&game_data),
+        HudRules::from_start_game(&game_data.start_game),
         HudRules {
             show_coordinates: Some(false),
             show_days_played: Some(false),
@@ -1081,7 +1081,7 @@ fn normalizes_the_hud_text_rules_beside_the_daylight_cycle() {
         .rules_list
         .push(bool_rule("showcoordinates", true));
     assert_eq!(
-        HudRules::from_game_data(&game_data).show_coordinates,
+        HudRules::from_start_game(&game_data.start_game).show_coordinates,
         Some(true)
     );
 }

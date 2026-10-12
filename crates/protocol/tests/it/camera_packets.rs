@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
 use protocol::{
-    BedrockSession, CameraEase, CameraEvent, CameraFadeColor, CameraFadeInstruction,
-    CameraFadeTimes, CameraFovInstruction, CameraInstructionEvent, CameraSetInstruction,
-    CameraShakeAction, CameraShakeEvent, CameraShakeType, CameraSwitchEvent,
-    CameraTargetInstruction, ProtocolError, WorldEvent, WorldPacketError, decode_batch, encode,
-    into_world_event,
+    CameraEase, CameraEvent, CameraFadeColor, CameraFadeInstruction, CameraFadeTimes,
+    CameraFovInstruction, CameraInstructionEvent, CameraSetInstruction, CameraShakeAction,
+    CameraShakeEvent, CameraShakeType, CameraSwitchEvent, CameraTargetInstruction, ProtocolError,
+    WorldEvent, WorldPacketError, decode_batch, encode, into_world_event,
 };
 use valentine::bedrock::version::v1_26_51::{
     ActorUniqueId, CameraInstruction, CameraInstructionOptionsAttachToEntityInstruction,
@@ -66,10 +65,6 @@ fn aim_assist_settings_reach_camera_presentation() {
         },
     );
     assert!(matches!(event, Some(WorldEvent::Camera(_))));
-}
-
-fn session() -> BedrockSession {
-    BedrockSession { shield_item_id: 0 }
 }
 
 fn normalized(packet: impl Into<protocol::Packet>) -> Option<WorldEvent> {
@@ -438,8 +433,8 @@ fn camera_instruction_batches_round_trip_through_the_codec() {
         },
     }
     .into();
-    let bytes = encode(&packet, &session()).expect("encode camera batch");
-    let mut decoded = decode_batch(bytes, &session()).expect("decode camera batch");
+    let bytes = encode(&packet).expect("encode camera batch");
+    let mut decoded = decode_batch(bytes).expect("decode camera batch");
     assert_eq!(decoded.len(), 1);
     let decoded = decoded.pop().expect("one packet");
     assert_eq!(decoded.header.id, McpePacketName::CameraInstructionPacket);
@@ -463,10 +458,10 @@ fn camera_instruction_batches_round_trip_through_the_codec() {
 #[test]
 fn truncated_camera_shake_wire_stays_fatal() {
     let packet: protocol::Packet = ShakePacket::default().into();
-    let bytes = encode(&packet, &session()).expect("encode shake batch");
+    let bytes = encode(&packet).expect("encode shake batch");
     let truncated = &bytes[..bytes.len() - 1];
     assert!(matches!(
-        decode_batch(bytes::Bytes::copy_from_slice(truncated), &session()),
+        decode_batch(bytes::Bytes::copy_from_slice(truncated)),
         Err(ProtocolError::TruncatedPacket { .. } | ProtocolError::Decode(_))
     ));
 }

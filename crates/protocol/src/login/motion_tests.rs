@@ -6,7 +6,7 @@
 
 use bytes::{Buf, BufMut, BytesMut};
 use jolyne::raw::decode_packet_raw;
-use valentine::bedrock::context::BedrockSession;
+
 use valentine::bedrock::version::v1_26_51::{
     ActorRuntimeId, EnumsMovementEffectType, McpePacketName, MoveActorAbsoluteData,
     MoveActorAbsolutePacket, MoveActorDeltaData, MoveActorDeltaPacket, MovementEffectPacket,
@@ -32,7 +32,6 @@ fn server_latency_probe_remains_in_the_ordered_world_event_stream() {
 /// A firework's glide boost reaches the ordered world stream with its stamp and kind.
 #[test]
 fn movement_effect_packets_normalize_through_the_world_allowlist() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = MovementEffectPacket {
         target_runtime_id: ActorRuntimeId {
             actor_runtime_id: 42,
@@ -42,10 +41,10 @@ fn movement_effect_packets_normalize_through_the_world_allowlist() {
         tick: PlayerInputTick { inputtick: 7 },
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode movement effect");
+    let mut batch = crate::encode(&packet).expect("encode movement effect");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw movement effect");
-    let event = decode_world_raw_with(raw, 0, |raw| raw.decode(&session))
+    let event = decode_world_raw_with(raw, 0, super::decode_test_raw)
         .expect("well-formed movement effect decodes")
         .expect("movement effect is allowlisted");
     assert_eq!(
@@ -71,7 +70,6 @@ fn raw_motion_packet(body: &[u8]) -> jolyne::raw::RawPacket {
 
 #[test]
 fn set_actor_motion_normalizes_impulses_skips_non_finite_and_keeps_truncation_fatal() {
-    let session = BedrockSession { shield_item_id: 0 };
     let impulse = |x: f32| SetActorMotionPacket {
         target_runtime_id: ActorRuntimeId {
             actor_runtime_id: 42,
@@ -85,10 +83,10 @@ fn set_actor_motion_normalizes_impulses_skips_non_finite_and_keeps_truncation_fa
     };
 
     let packet: Packet = impulse(1.5).into();
-    let mut batch = crate::encode(&packet, &session).expect("encode motion packet");
+    let mut batch = crate::encode(&packet).expect("encode motion packet");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw motion packet");
-    let event = decode_world_raw_with(raw, 0, |raw| raw.decode(&session))
+    let event = decode_world_raw_with(raw, 0, super::decode_test_raw)
         .expect("well-formed motion decodes")
         .expect("motion is allowlisted");
     let WorldEvent::ActorMotion(motion) = event else {
@@ -100,24 +98,23 @@ fn set_actor_motion_normalizes_impulses_skips_non_finite_and_keeps_truncation_fa
 
     for bad in [f32::NAN, f32::INFINITY] {
         let packet: Packet = impulse(bad).into();
-        let mut batch = crate::encode(&packet, &session).expect("encode non-finite motion");
+        let mut batch = crate::encode(&packet).expect("encode non-finite motion");
         batch.advance(1);
         let raw = decode_packet_raw(&mut batch).expect("raw non-finite motion");
-        let skipped = decode_world_raw_with(raw, 0, |raw| raw.decode(&session))
+        let skipped = decode_world_raw_with(raw, 0, super::decode_test_raw)
             .expect("non-finite motion is not fatal");
         assert!(skipped.is_none(), "non-finite impulse must be skipped");
     }
 
     let truncated = raw_motion_packet(&[1]);
     assert!(
-        decode_world_raw_with(truncated, 0, |raw| raw.decode(&session)).is_err(),
+        decode_world_raw_with(truncated, 0, super::decode_test_raw).is_err(),
         "truncated motion wire stays fatal"
     );
 }
 
 #[test]
 fn raw_actor_delta_keeps_server_duration_and_completion_ordering() {
-    let session = BedrockSession { shield_item_id: 0 };
     for ticks in [0, 10, u64::MAX] {
         let packet: Packet = MoveActorDeltaPacket {
             move_data: MoveActorDeltaData {
@@ -131,11 +128,11 @@ fn raw_actor_delta_keeps_server_duration_and_completion_ordering() {
             },
         }
         .into();
-        let mut batch = crate::encode(&packet, &session).unwrap();
+        let mut batch = crate::encode(&packet).unwrap();
         batch.advance(1);
         let raw = decode_packet_raw(&mut batch).unwrap();
         let Some(WorldEvent::Actor(crate::ActorEvent::Move(movement))) =
-            decode_world_raw_with(raw, 2, |raw| raw.decode(&session)).unwrap()
+            decode_world_raw_with(raw, 2, super::decode_test_raw).unwrap()
         else {
             panic!("raw actor movement must reach its owner")
         };
@@ -156,7 +153,6 @@ fn raw_actor_delta_keeps_server_duration_and_completion_ordering() {
 
 #[test]
 fn raw_absolute_completion_keeps_the_fast_path_and_default_duration() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = MoveActorAbsolutePacket {
         move_data: MoveActorAbsoluteData {
             actor_runtime_id: ActorRuntimeId {
@@ -174,7 +170,7 @@ fn raw_absolute_completion_keeps_the_fast_path_and_default_duration() {
         },
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).unwrap();
+    let mut batch = crate::encode(&packet).unwrap();
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).unwrap();
     let Some(WorldEvent::Actor(crate::ActorEvent::Move(movement))) =

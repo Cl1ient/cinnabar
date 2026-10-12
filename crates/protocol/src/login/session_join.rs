@@ -24,7 +24,7 @@ use super::{LoginSequence, MAX_DECOMPRESSED_BATCH_SIZE, PlaySession};
 use crate::session_transport::SessionTransport;
 use crate::{
     ClientBlobCache, ClientSkin, GameData, PROTOCOL_VERSION, Packet, ProtocolError,
-    ResourcePackArchive, ResourcePackHandoff, ServerTransferEvent,
+    ResourcePackArchive, ResourcePackHandoff,
 };
 
 impl LoginSequence {
@@ -68,11 +68,19 @@ impl LoginSequence {
             startup_batches(&handoff.startup),
         ));
         transport.set_max_decompressed_batch_size(Some(MAX_DECOMPRESSED_BATCH_SIZE));
-        let (stream, game_data) =
-            BedrockStream::<StartGame, Client, _>::from_session_handoff(transport, packs)
-                .await_start_game()
-                .await?;
-        Ok((PlaySession::new(stream, cache), game_data))
+        // The handoff stays with the session; the vendored spawn sequence only carries one.
+        let (stream, wire) = BedrockStream::<StartGame, Client, _>::from_session_handoff(
+            transport,
+            jolyne::stream::ResourcePackHandoff::default(),
+        )
+        .await_start_game()
+        .await?;
+        let game_data = tokio::task::spawn_blocking(move || {
+            GameData::from_wire(&wire.start_game, &wire.item_registry)
+        })
+        .await
+        .map_err(|_| unexpected("startup facts reader failed"))?;
+        Ok((PlaySession::new(stream, cache, packs), game_data))
     }
 }
 
@@ -130,7 +138,9 @@ fn join_ended(message: CoreMessage) -> ProtocolError {
             .into()
         }
         CoreMessage::Transfer(transfer) => {
-            match ServerTransferEvent::from_packet_data(&transfer_packet(&transfer).data) {
+            match jolyne::transfer::ServerTransferEvent::from_packet_data(
+                &transfer_packet(&transfer).data,
+            ) {
                 Ok(Some(target)) => {
                     JolyneError::from(jolyne::error::ProtocolError::ServerTransfer(target)).into()
                 }

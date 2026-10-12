@@ -4,9 +4,8 @@ use valentine::bedrock::version::v1_26_51::*;
 
 /// Exercises the owned wire codec before checking normalized camera data.
 fn camera(packet: impl Into<protocol::Packet>) -> CameraEvent {
-    let session = protocol::BedrockSession { shield_item_id: 0 };
-    let batch = protocol::encode(&packet.into(), &session).unwrap();
-    let packet = protocol::decode_batch(batch, &session).unwrap().remove(0);
+    let batch = protocol::encode(&packet.into()).unwrap();
+    let packet = protocol::decode_batch(batch).unwrap().remove(0);
     match into_world_event(packet, 0).unwrap().unwrap() {
         WorldEvent::Camera(event) => event,
         other => panic!("expected camera event, got {other:?}"),

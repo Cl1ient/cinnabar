@@ -8,7 +8,7 @@ use crate::WorldEvent;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use jolyne::raw::decode_packet_raw;
 use valentine::bedrock::codec::Nbt;
-use valentine::bedrock::context::BedrockSession;
+
 use valentine::bedrock::version::v1_26_51::{
     ActorRuntimeId, ActorUniqueId, AddActorPacket, AddPlayerPacket, AnimateEntityPacket,
     AnimatePacket, BiomeDefinitionData, BiomeDefinitionListPacket,
@@ -25,7 +25,6 @@ use valentine::bedrock::version::v1_26_51::{
 
 #[test]
 fn all_named_audio_packets_are_allowlisted_for_raw_world_ingress() {
-    let session = BedrockSession { shield_item_id: 0 };
     for fixture in [
         include_bytes!("../../fixtures/play_sound.bin").as_slice(),
         include_bytes!("../../fixtures/stop_sound.bin").as_slice(),
@@ -34,7 +33,7 @@ fn all_named_audio_packets_are_allowlisted_for_raw_world_ingress() {
         let mut batch = Bytes::copy_from_slice(fixture);
         batch.advance(1);
         let raw = decode_packet_raw(&mut batch).expect("raw audio fixture");
-        let event = decode_world_raw_with(raw, 0, |raw| raw.decode(&session))
+        let event = decode_world_raw_with(raw, 0, super::decode_test_raw)
             .expect("audio wire decode")
             .expect("allowlisted audio event");
         assert!(matches!(event, WorldEvent::Audio(_)));
@@ -43,7 +42,6 @@ fn all_named_audio_packets_are_allowlisted_for_raw_world_ingress() {
 
 #[test]
 fn audio_semantic_rejections_do_not_reach_the_allocating_decoder() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = PlaySoundPacket {
         name: "x".repeat(crate::MAX_AUDIO_IDENTIFIER_BYTES + 1),
         volume: 1.0,
@@ -51,7 +49,7 @@ fn audio_semantic_rejections_do_not_reach_the_allocating_decoder() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode overlong semantic packet");
+    let mut batch = crate::encode(&packet).expect("encode overlong semantic packet");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw overlong packet");
     let decoder_called = Cell::new(false);
@@ -73,11 +71,11 @@ fn audio_semantic_rejections_do_not_reach_the_allocating_decoder() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode non-finite semantic packet");
+    let mut batch = crate::encode(&packet).expect("encode non-finite semantic packet");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw non-finite packet");
     assert!(matches!(
-        decode_world_raw_with(raw, 0, |raw| raw.decode(&session)),
+        decode_world_raw_with(raw, 0, super::decode_test_raw),
         Err(ProtocolError::World(
             crate::WorldPacketError::NonFiniteAudioField { .. }
         ))
@@ -216,9 +214,8 @@ fn fast_transfer_arm_is_consumed_only_after_a_chunk_candidate_decodes() {
         .expect("old unresolved transaction");
     resolver.arm_fast_transfer_reset();
 
-    let session = BedrockSession { shield_item_id: 0 };
     let malformed = raw_packet(McpePacketName::LevelChunkPacket, &[0xff]);
-    assert!(malformed.decode(&session).is_err());
+    assert!(super::decode_test_raw(malformed).is_err());
     assert_eq!(resolver.stats().pending_transactions, 1);
 
     let ordinary: crate::Packet = SetTimePacket { time: 7 }.into();
@@ -247,10 +244,9 @@ fn fast_transfer_arm_is_consumed_only_after_a_chunk_candidate_decodes() {
 
 #[test]
 fn malformed_cached_chunk_wire_remains_a_fatal_session_error() {
-    let session = BedrockSession { shield_item_id: 0 };
     let malformed = raw_packet(McpePacketName::LevelChunkPacket, &[0xff]);
 
-    let error = decode_world_raw_with(malformed, 0, |raw| raw.decode(&session))
+    let error = decode_world_raw_with(malformed, 0, super::decode_test_raw)
         .expect_err("truncated cached LevelChunk wire must fail closed");
 
     assert!(matches!(error, ProtocolError::Session(_)));
@@ -258,11 +254,10 @@ fn malformed_cached_chunk_wire_remains_a_fatal_session_error() {
 
 #[test]
 fn malformed_cache_miss_response_wire_remains_a_fatal_decode_error() {
-    let session = BedrockSession { shield_item_id: 0 };
     let truncated = raw_packet(McpePacketName::ClientCacheMissResponsePacket, &[0x01]);
 
     assert!(
-        truncated.decode(&session).is_err(),
+        super::decode_test_raw(truncated).is_err(),
         "a declared blob without its hash and payload must fail closed in raw decode"
     );
 }
@@ -274,7 +269,7 @@ fn ignored_play_packet_is_not_materialized() {
 
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&BedrockSession { shield_item_id: 0 })
+        super::decode_test_raw(raw)
     })
     .expect("ignored packet");
 
@@ -284,7 +279,6 @@ fn ignored_play_packet_is_not_materialized() {
 
 #[test]
 fn allowlisted_ui_packet_is_validated_decoded_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = TextPacket {
         body: TextPacketBody::MessageOnly(TextPacketPayloadMessageOnly {
             message_type: EnumsTextPacketType::Raw,
@@ -293,14 +287,14 @@ fn allowlisted_ui_packet_is_validated_decoded_and_normalized() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode text");
+    let mut batch = crate::encode(&packet).expect("encode text");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw text");
     let decoder_called = Cell::new(false);
 
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("decode UI event");
 
@@ -522,7 +516,6 @@ fn live_inventory_items_check_extra_length_before_owned_decoder() {
 
 #[test]
 fn canonical_inventory_fixtures_pass_raw_gate_and_owned_normalization() {
-    let session = BedrockSession { shield_item_id: 0 };
     for (name, fixture) in [
         (
             "inventory_content",
@@ -544,7 +537,7 @@ fn canonical_inventory_fixtures_pass_raw_gate_and_owned_normalization() {
         let mut batch = Bytes::copy_from_slice(fixture);
         assert_eq!(batch.get_u8(), 0xfe);
         let raw = decode_packet_raw(&mut batch).expect("raw inventory fixture");
-        let event = decode_world_raw_with(raw, 0, |raw| raw.decode(&session))
+        let event = decode_world_raw_with(raw, 0, super::decode_test_raw)
             .unwrap_or_else(|error| panic!("canonical {name} fixture: {error}"))
             .expect("inventory world event");
         assert!(matches!(event, WorldEvent::Inventory(_)));
@@ -607,16 +600,15 @@ fn append_item_new_prefix(body: &mut BytesMut, extra_length: u32) {
 
 #[test]
 fn death_information_reaches_world_ui_from_raw_transport() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = valentine::bedrock::version::v1_26_51::DeathInfoPacket {
         death_cause_attack_name: "death.attack.mob".into(),
         death_cause_message_list: vec!["Alex".into(), "%entity.zombie.name".into()],
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).unwrap();
+    let mut batch = crate::encode(&packet).unwrap();
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).unwrap();
-    let event = decode_world_raw_with(raw, 0, |raw| raw.decode(&session)).unwrap();
+    let event = decode_world_raw_with(raw, 0, super::decode_test_raw).unwrap();
     assert_eq!(
         event,
         Some(WorldEvent::Ui(crate::UiEvent::DeathInfo(
@@ -630,7 +622,6 @@ fn death_information_reaches_world_ui_from_raw_transport() {
 
 #[test]
 fn allowlisted_world_packet_is_decoded_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = UpdateBlockPacket {
         block_position: BlockPos { x: 17, y: 2, z: -3 },
         block_runtime_id: 99,
@@ -638,11 +629,11 @@ fn allowlisted_world_packet_is_decoded_and_normalized() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode update");
+    let mut batch = crate::encode(&packet).expect("encode update");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw update");
 
-    let event = decode_world_raw_with(raw, 2, |raw| raw.decode(&session))
+    let event = decode_world_raw_with(raw, 2, super::decode_test_raw)
         .expect("decode world update")
         .expect("world event");
 
@@ -656,18 +647,17 @@ fn allowlisted_world_packet_is_decoded_and_normalized() {
 
 #[test]
 fn allowlisted_block_entity_update_preserves_dimension_position_and_exact_nbt() {
-    let session = BedrockSession { shield_item_id: 0 };
     let nbt = vec![10, 0, 0];
     let packet: Packet = BlockActorDataPacket {
         block_position: BlockPos { x: 17, y: 2, z: -3 },
         actor_data_tags: Nbt(Bytes::copy_from_slice(&nbt)),
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode block entity update");
+    let mut batch = crate::encode(&packet).expect("encode block entity update");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw block entity update");
 
-    let event = decode_world_raw_with(raw, 2, |raw| raw.decode(&session))
+    let event = decode_world_raw_with(raw, 2, super::decode_test_raw)
         .expect("decode block entity update")
         .expect("world event");
 
@@ -683,7 +673,6 @@ fn allowlisted_block_entity_update_preserves_dimension_position_and_exact_nbt() 
 
 #[test]
 fn allowlisted_weather_packet_is_decoded_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = LevelEventPacket {
         // LevelEventStartRaining; 1.26.40 carries the raw id, not an enum.
         event_id: 3001,
@@ -691,14 +680,14 @@ fn allowlisted_weather_packet_is_decoded_and_normalized() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode weather event");
+    let mut batch = crate::encode(&packet).expect("encode weather event");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw weather event");
     let decoder_called = Cell::new(false);
 
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("decode weather event");
 
@@ -714,7 +703,6 @@ fn allowlisted_weather_packet_is_decoded_and_normalized() {
 
 #[test]
 fn allowlisted_daylight_cycle_rule_is_decoded_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = GameRulesChangedPacket {
         rule_data: GameRulesChangedPacketData {
             rules_list: vec![GameRule {
@@ -725,14 +713,14 @@ fn allowlisted_daylight_cycle_rule_is_decoded_and_normalized() {
         },
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode gamerule event");
+    let mut batch = crate::encode(&packet).expect("encode gamerule event");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw gamerule event");
     let decoder_called = Cell::new(false);
 
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("decode gamerule event");
 
@@ -745,7 +733,6 @@ fn allowlisted_daylight_cycle_rule_is_decoded_and_normalized() {
 
 #[test]
 fn death_screen_rules_reach_the_raw_world_stream() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = GameRulesChangedPacket {
         rule_data: GameRulesChangedPacketData {
             rules_list: vec![GameRule {
@@ -756,10 +743,10 @@ fn death_screen_rules_reach_the_raw_world_stream() {
         },
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).unwrap();
+    let mut batch = crate::encode(&packet).unwrap();
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).unwrap();
-    let event = decode_world_raw_with(raw, 0, |raw| raw.decode(&session)).unwrap();
+    let event = decode_world_raw_with(raw, 0, super::decode_test_raw).unwrap();
     let Some(WorldEvent::GameRules(rules)) = event else {
         panic!("missing death rules: {event:?}");
     };
@@ -769,7 +756,6 @@ fn death_screen_rules_reach_the_raw_world_stream() {
 
 #[test]
 fn allowlisted_move_player_is_materialized_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = MovePlayerPacket {
         player_runtime_id: ActorRuntimeId {
             actor_runtime_id: 42,
@@ -786,14 +772,14 @@ fn allowlisted_move_player_is_materialized_and_normalized() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode move player");
+    let mut batch = crate::encode(&packet).expect("encode move player");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw move player");
     let decoder_called = Cell::new(false);
 
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("decode move player")
     .expect("move player event");
@@ -817,7 +803,6 @@ fn allowlisted_move_player_is_materialized_and_normalized() {
 
 #[test]
 fn allowlisted_respawn_is_materialized_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = RespawnPacket {
         position: Vec3 {
             x: 8.5,
@@ -830,14 +815,14 @@ fn allowlisted_respawn_is_materialized_and_normalized() {
         },
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode respawn");
+    let mut batch = crate::encode(&packet).expect("encode respawn");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw respawn");
     let decoder_called = Cell::new(false);
 
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("decode respawn")
     .expect("respawn event");
@@ -855,7 +840,6 @@ fn allowlisted_respawn_is_materialized_and_normalized() {
 
 #[test]
 fn allowlisted_actor_packet_is_materialized_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = AddActorPacket {
         target_actor_id: ActorUniqueId { actor_unique_id: 9 },
         target_runtime_id: ActorRuntimeId {
@@ -865,12 +849,11 @@ fn allowlisted_actor_packet_is_materialized_and_normalized() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode add entity");
+    let mut batch = crate::encode(&packet).expect("encode add entity");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw add entity");
 
-    let event =
-        decode_world_raw_with(raw, 2, |raw| raw.decode(&session)).expect("decode actor event");
+    let event = decode_world_raw_with(raw, 2, super::decode_test_raw).expect("decode actor event");
 
     assert!(matches!(
         event,
@@ -881,7 +864,6 @@ fn allowlisted_actor_packet_is_materialized_and_normalized() {
 
 #[test]
 fn allowlisted_item_and_action_packets_are_materialized_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packets: [Packet; 4] = [
         AddPlayerPacket {
             target_runtime_id: ActorRuntimeId {
@@ -925,10 +907,10 @@ fn allowlisted_item_and_action_packets_are_materialized_and_normalized() {
     ];
 
     for packet in packets {
-        let mut batch = crate::encode(&packet, &session).expect("encode item/action packet");
+        let mut batch = crate::encode(&packet).expect("encode item/action packet");
         batch.advance(1);
         let raw = decode_packet_raw(&mut batch).expect("raw item/action packet");
-        let event = decode_world_raw_with(raw, 0, |raw| raw.decode(&session))
+        let event = decode_world_raw_with(raw, 0, super::decode_test_raw)
             .expect("decode item/action event");
         assert!(event.is_some());
     }
@@ -949,11 +931,9 @@ fn canonical_empty_mob_equipment_is_materialized_and_normalized() {
     body.put_i8(0);
     let raw = raw_packet(McpePacketName::MobEquipmentPacket, &body);
 
-    let event = decode_world_raw_with(raw, 0, |raw| {
-        raw.decode(&BedrockSession { shield_item_id: 0 })
-    })
-    .expect("decode empty equipment")
-    .expect("empty equipment event");
+    let event = decode_world_raw_with(raw, 0, |raw| super::decode_test_raw(raw))
+        .expect("decode empty equipment")
+        .expect("empty equipment event");
 
     assert!(matches!(
         event,
@@ -984,16 +964,15 @@ fn valid_equipment_is_retained_and_invalid_items_are_rejected() {
     // only renders retained items, so faithful round-tripping is unnecessary
     // and rejected legitimate servers. Semantic validation is what guards
     // retention now.
-    let session = BedrockSession { shield_item_id: 0 };
     let valid_extra = [0; 10];
     let valid = decode_world_raw_with(raw_mob_equipment(1, &valid_extra, 0), 0, |raw| {
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("valid equipment wire");
     assert!(matches!(valid, Some(WorldEvent::Equipment(_))));
 
     let error = decode_world_raw_with(raw_mob_equipment(0, &valid_extra, 0), 0, |raw| {
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect_err("zero-count item is semantically invalid");
     assert!(
@@ -1007,7 +986,7 @@ fn valid_equipment_is_retained_and_invalid_items_are_rejected() {
     );
 
     let error = decode_world_raw_with(raw_mob_equipment(1, &valid_extra, -1), 0, |raw| {
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect_err("unknown equipment container must be rejected semantically");
     assert!(matches!(
@@ -1100,7 +1079,6 @@ fn absolute_actor_move_rejects_truncated_and_trailing_bodies() {
 
 #[test]
 fn allowlisted_movement_correction_is_materialized_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = CorrectPlayerMovePredictionPacket {
         pos: Vec3 {
             x: 27.5,
@@ -1118,13 +1096,13 @@ fn allowlisted_movement_correction_is_materialized_and_normalized() {
         ..Default::default()
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode movement correction");
+    let mut batch = crate::encode(&packet).expect("encode movement correction");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw movement correction");
     let decoder_called = Cell::new(false);
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("decode movement correction")
     .expect("movement correction event");
@@ -1146,7 +1124,6 @@ fn allowlisted_movement_correction_is_materialized_and_normalized() {
 
 #[test]
 fn allowlisted_biome_definitions_are_materialized_and_normalized() {
-    let session = BedrockSession { shield_item_id: 0 };
     let packet: Packet = BiomeDefinitionListPacket {
         mapof_biomenamestodata: vec![BiomeDefinitionListPacketMapofBiomenamestodataItem {
             // The key indexes into the string list; the id is the biome's own.
@@ -1165,14 +1142,14 @@ fn allowlisted_biome_definitions_are_materialized_and_normalized() {
         },
     }
     .into();
-    let mut batch = crate::encode(&packet, &session).expect("encode biome definitions");
+    let mut batch = crate::encode(&packet).expect("encode biome definitions");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw biome definitions");
     let decoder_called = Cell::new(false);
 
     let event = decode_world_raw_with(raw, 0, |raw| {
         decoder_called.set(true);
-        raw.decode(&session)
+        super::decode_test_raw(raw)
     })
     .expect("decode biome definitions");
 

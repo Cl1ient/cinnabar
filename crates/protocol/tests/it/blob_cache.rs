@@ -25,9 +25,8 @@
 //!   `found_ids` rather than `missing` / `have`.
 
 use protocol::{
-    BedrockSession, BlobCacheError, BlobCacheLimits, BlobCacheReady, BlobCacheResolver,
-    BlockUpdateEvent, ChunkResyncEvent, ClientBlobCache, SetTimeEvent, WorldEvent,
-    client_blob_hash,
+    BlobCacheError, BlobCacheLimits, BlobCacheReady, BlobCacheResolver, BlockUpdateEvent,
+    ChunkResyncEvent, ClientBlobCache, SetTimeEvent, WorldEvent, client_blob_hash,
 };
 use std::sync::{Arc, Barrier};
 use valentine::bedrock::version::v1_26_51::{
@@ -708,11 +707,10 @@ fn blob_status_round_trips_exact_have_and_missing_hashes_on_the_wire() {
     let status = resolver
         .accept_cached_packet(cached_level(vec![hit_hash, miss_hash, hit_hash], b""))
         .expect("classify status");
-    let session = BedrockSession { shield_item_id: 0 };
     let packets = status.into_packets();
     assert_eq!(packets.len(), 1);
-    let encoded = protocol::encode(&packets[0].clone().into(), &session).expect("encode status");
-    let decoded = protocol::decode_batch(encoded, &session).expect("decode status");
+    let encoded = protocol::encode(&packets[0].clone().into()).expect("encode status");
+    let decoded = protocol::decode_batch(encoded).expect("decode status");
     let McpePacketData::ClientCacheBlobStatusPacket(status) = &decoded[0].data else {
         panic!("expected cache blob status")
     };

@@ -117,14 +117,10 @@ mod tests {
             })),
         };
         let packet = player_skin_packet([9; 16], &skin, "slim", "imported", "Fixture");
-        let session = crate::BedrockSession { shield_item_id: 0 };
         let mut packet = packet;
         set_skin_packet_engine_version(&mut packet, "1.12.0");
-        let encoded = crate::encode(&packet, &session).unwrap();
-        let packet = crate::decode_batch(encoded, &session)
-            .unwrap()
-            .pop()
-            .unwrap();
+        let encoded = crate::encode(&packet).unwrap();
+        let packet = crate::decode_batch(encoded).unwrap().pop().unwrap();
         let valentine::bedrock::version::v1_26_51::McpePacketData::PlayerSkinPacket(wire) =
             packet.data
         else {

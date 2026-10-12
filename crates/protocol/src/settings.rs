@@ -26,9 +26,8 @@ mod tests {
     #[test]
     fn live_radius_requests_encode_both_requested_and_supported_distance() {
         let packet = request_chunk_radius_packet(8, 16);
-        let session = crate::BedrockSession { shield_item_id: 0 };
-        let encoded = crate::encode(&packet, &session).unwrap();
-        let decoded = crate::decode_batch(encoded, &session).unwrap();
+        let encoded = crate::encode(&packet).unwrap();
+        let decoded = crate::decode_batch(encoded).unwrap();
         let McpePacketData::RequestChunkRadiusPacket(request) = &decoded[0].data else {
             panic!("wrong packet");
         };

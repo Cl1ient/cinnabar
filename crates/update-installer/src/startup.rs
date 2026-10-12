@@ -1,9 +1,9 @@
-//! First-start handshake between the helper and the updated client it launched.
+//! Native launches and the first-start handshake for a client the helper installed.
 
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus},
+    process::{Child, Command, ExitStatus, Stdio},
     time::{Duration, Instant},
 };
 
@@ -22,6 +22,29 @@ const AWAITING_USER: &str = "awaiting-user";
 /// How long a stopped client may exit cleanly before the helper kills what remains.
 #[cfg(unix)]
 const STOP_GRACE: Duration = Duration::from_secs(10);
+
+/// Builds a native client launch without inheriting another helper's startup receipt.
+pub fn client_command(target: &Path) -> Command {
+    #[cfg(target_os = "macos")]
+    let executable = target.join("Contents/MacOS/cinnabar");
+    #[cfg(windows)]
+    let executable = target.join("cinnabar.exe");
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let executable = target.to_owned();
+    let mut command = Command::new(executable);
+    command
+        .env_remove(STARTUP_ENV)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null());
+    #[cfg(target_os = "linux")]
+    {
+        command.arg("--appimage-extract-and-run");
+        for name in ["APPIMAGE", "APPDIR", "OWD", "LD_LIBRARY_PATH", "LD_PRELOAD"] {
+            command.env_remove(name);
+        }
+    }
+    command
+}
 
 /// The marker path handed to the client launched from `directory`.
 pub fn marker(directory: &Path) -> PathBuf {

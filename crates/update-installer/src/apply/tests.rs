@@ -149,7 +149,7 @@ fn previous_downloaded_windows_installer_is_kept_for_manual_repair() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn apply_waits_for_parent_and_rolls_back_a_failed_new_start() {
+fn apply_keeps_the_writer_lease_and_rolls_back_a_failed_new_start() {
     let root = tempfile::tempdir().unwrap();
     let (directory, keys) = staged(root.path(), "linux-x86_64");
     let target = root.path().join("client.AppImage");
@@ -161,20 +161,22 @@ fn apply_waits_for_parent_and_rolls_back_a_failed_new_start() {
         check: check("linux-x86_64"),
         now: now(),
     };
+    let other_client = crate::lease::Lease::acquire(root.path()).unwrap();
+    assert!(crate::lease::Lease::try_acquire(root.path()).is_err());
+    drop(other_client);
+    assert_eq!(fs::read(&target).unwrap(), b"old");
     assert!(
         after_exit(
             request(),
-            || anyhow::bail!("parent running"),
-            |_| panic!("started before parent exit")
+            crate::lease::Lease::acquire(root.path()).unwrap(),
+            |_| anyhow::bail!("failed startup")
         )
         .is_err()
     );
     assert_eq!(fs::read(&target).unwrap(), b"old");
-    assert!(after_exit(request(), || Ok(()), |_| anyhow::bail!("failed startup")).is_err());
-    assert_eq!(fs::read(&target).unwrap(), b"old");
     after_exit(
         request(),
-        || Ok(()),
+        crate::lease::Lease::acquire(root.path()).unwrap(),
         |target| {
             assert_eq!(fs::read(target).unwrap(), PAYLOAD);
             assert!(crate::target::backup(target).unwrap().exists());
@@ -226,11 +228,37 @@ fn all_tampered_stages_are_refused_before_start_or_swap() {
                     check: policy,
                     now: clock
                 },
-                || Ok(()),
+                crate::lease::Lease::acquire(root.path()).unwrap(),
                 |_| panic!("unverified release executed")
             )
             .is_err()
         );
         assert_eq!(fs::read(&target).unwrap(), b"old");
     }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_refused_swap_cannot_restore_another_clients_unconfirmed_predecessor() {
+    let root = tempfile::tempdir().unwrap();
+    let (directory, keys) = staged(root.path(), "linux-x86_64");
+    let target = root.path().join("client.AppImage");
+    let backup = crate::target::backup(&target).unwrap();
+    fs::write(&target, "other client's installation").unwrap();
+    fs::write(&backup, "other client's predecessor").unwrap();
+    let error = after_exit(
+        Request {
+            stage_dir: &directory,
+            target: &target,
+            keys: &keys,
+            check: check("linux-x86_64"),
+            now: now(),
+        },
+        crate::lease::Lease::acquire(root.path()).unwrap(),
+        |_| panic!("a refused swap must not launch a replacement"),
+    )
+    .unwrap_err();
+    assert!(error.is::<Untouched>());
+    assert_eq!(fs::read(&target).unwrap(), b"other client's installation");
+    assert_eq!(fs::read(&backup).unwrap(), b"other client's predecessor");
 }

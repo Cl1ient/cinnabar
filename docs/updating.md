@@ -41,6 +41,12 @@ Manual installers are copied out of the waiting stage before opening. A newer do
 change can replace that stage while the handed-off installer remains available. Manual copies use
 the same lease and handoff retention window as copied update helpers.
 
+Each running client retains its own verified stage before offering an update. Another client's
+download or channel change can replace the shared cache without changing an accepted handoff.
+The helper waits briefly for the shared installation lease; if it remains busy, it reopens the
+retained client without changing the installation. Rollback stays inside the lease that performed
+the swap. Helper copies and stages remain retained while either side of a handoff holds them.
+
 `update_channels` in `packaging/release-assets.json` owns each published channel's track and
 manifest filename for both the client and the package workflow. Beta reads
 `releases/latest/download/update-beta.json`; the manifest and its payloads are attached to the

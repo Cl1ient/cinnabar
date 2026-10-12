@@ -36,6 +36,7 @@ fn ready(writable: bool) -> Ready {
         stage: PathBuf::from("ready"),
         channel: Channel::Beta,
         switch_now: false,
+        lease: None,
         notice: Notice {
             version: "2.0.0".into(),
             writable,
@@ -70,6 +71,22 @@ fn a_not_writable_install_cannot_launch_an_apply_helper() {
             .is_none()
     );
     assert_eq!(state.ready.unwrap().notice.action(), Action::Download);
+}
+
+#[test]
+fn failed_helper_preparation_reopens_the_retained_client_once() {
+    let mut restarted = 0;
+    let error = handoff::spawn_or_restart(
+        || anyhow::bail!("helper copy failed"),
+        || {
+            restarted += 1;
+            Ok(())
+        },
+    )
+    .unwrap_err();
+    assert_eq!(restarted, 1);
+    assert_eq!(error.to_string(), "helper copy failed");
+    handoff::spawn_or_restart(|| Ok(()), || panic!("a running helper owns the restart")).unwrap();
 }
 
 #[test]
@@ -267,7 +284,6 @@ fn a_manually_downloaded_appimage_is_executable() {
     use sha2::Digest;
     use std::os::unix::fs::PermissionsExt;
     let stage = tempfile::tempdir().unwrap();
-    let directory = tempfile::tempdir().unwrap();
     let payload = b"verified AppImage";
     std::fs::write(
         stage.path().join(update_installer::stage::ARTIFACT_FILE),
@@ -281,7 +297,6 @@ fn a_manually_downloaded_appimage_is_executable() {
     };
     let package = handoff::named_package(
         stage.path(),
-        directory.path(),
         update_manifest::platforms::artifact_name("linux", "x86_64").unwrap(),
         &artifact,
     )
@@ -291,14 +306,19 @@ fn a_manually_downloaded_appimage_is_executable() {
 }
 
 /// Publishes a signed fixture through the real stage writer without network or installer processes.
-fn manual_stage(root: &std::path::Path, version: &str, payload: &[u8]) -> (PathBuf, TrustedKeys) {
+fn manual_stage(
+    root: &std::path::Path,
+    version: &str,
+    payload: &[u8],
+    channel: Channel,
+) -> (PathBuf, TrustedKeys) {
     use sha2::Digest;
     let seed = [7; update_manifest::KEY_BYTES];
     let platform = update_manifest::platform_key("macos", "arm64").unwrap();
     let keys = TrustedKeys::from([("test".into(), update_manifest::public_key(&seed).unwrap())]);
     let manifest = update_manifest::Manifest {
         schema: update_manifest::SCHEMA,
-        channel: Channel::Beta.name().into(),
+        channel: channel.name().into(),
         version: version.into(),
         build_number: 2,
         expires: OffsetDateTime::UNIX_EPOCH + time::Duration::days(1),
@@ -318,7 +338,7 @@ fn manual_stage(root: &std::path::Path, version: &str, payload: &[u8]) -> (PathB
         &envelope,
         &keys,
         update_manifest::select::Check {
-            channel: Channel::Beta.name(),
+            channel: channel.name(),
             platform: &platform,
             current: "1.0.0",
             current_build: 1,
@@ -335,7 +355,12 @@ fn manual_stage(root: &std::path::Path, version: &str, payload: &[u8]) -> (PathB
 #[test]
 fn replacing_ready_during_manual_handoff_keeps_the_handed_off_installer() {
     let root = tempfile::tempdir().unwrap();
-    let (stage, keys) = manual_stage(root.path(), "2.0.0", b"accepted manual installer");
+    let (stage, keys) = manual_stage(
+        root.path(),
+        "2.0.0",
+        b"accepted manual installer",
+        Channel::Beta,
+    );
     let platform = update_manifest::platform_key("macos", "arm64").unwrap();
     let package = handoff::snapshot_package(
         &stage,
@@ -348,7 +373,10 @@ fn replacing_ready_during_manual_handoff_keeps_the_handed_off_installer() {
             current_build: 1,
             switch_now: false,
         },
-        OffsetDateTime::UNIX_EPOCH,
+        || {
+            assert!(update_installer::lease::Lease::try_acquire(root.path()).is_err());
+            OffsetDateTime::UNIX_EPOCH
+        },
     )
     .unwrap();
     let path = package.path.clone();
@@ -359,7 +387,12 @@ fn replacing_ready_during_manual_handoff_keeps_the_handed_off_installer() {
         .open(root.path().join(update_installer::LOCK_FILE))
         .unwrap();
     writer.try_lock().unwrap();
-    manual_stage(root.path(), "3.0.0", b"replacement installer");
+    manual_stage(
+        root.path(),
+        "3.0.0",
+        b"replacement installer",
+        Channel::Beta,
+    );
     assert_eq!(
         std::fs::read(stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
         b"replacement installer"
@@ -371,6 +404,68 @@ fn replacing_ready_during_manual_handoff_keeps_the_handed_off_installer() {
     drop(package);
     update_installer::helper::prune(root.path(), later);
     assert!(!path.exists());
+}
+
+#[test]
+fn another_clients_channel_switch_cannot_change_an_accepted_helper_handoff() {
+    let root = tempfile::tempdir().unwrap();
+    let (shared_stage, keys) =
+        manual_stage(root.path(), "2.0.0", b"accepted release", Channel::Beta);
+    let platform = update_manifest::platform_key("macos", "arm64").unwrap();
+    let check = update_manifest::select::Check {
+        channel: Channel::Beta.name(),
+        platform: &platform,
+        current: "1.0.0",
+        current_build: 1,
+        switch_now: false,
+    };
+    let writer = update_installer::lease::Lease::acquire(root.path()).unwrap();
+    let selected =
+        update_installer::stage::verify(&shared_stage, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    let (stage, lease, _) =
+        update_installer::stage::Snapshot::capture(&shared_stage, &writer, selected)
+            .unwrap()
+            .into_parts();
+    drop(writer);
+    let mut state = State::new();
+    state.ready = Some(Ready {
+        stage: stage.clone(),
+        lease: Some(std::sync::Arc::new(lease)),
+        ..ready(true)
+    });
+    assert!(state.request_restart(OffsetDateTime::UNIX_EPOCH));
+    let accepted = state
+        .handoff_after_exit(OffsetDateTime::UNIX_EPOCH)
+        .unwrap();
+    // The helper's reader can overlap the parent's reader before the parent actually exits.
+    let helper_reader = update_installer::helper::hold_snapshot(&accepted.stage).unwrap();
+    let other_client = update_installer::lease::Lease::acquire(root.path()).unwrap();
+    std::fs::remove_dir_all(&shared_stage).unwrap();
+    let _ = manual_stage(
+        root.path(),
+        "3.0.0",
+        b"another channel's download",
+        Channel::Nightly,
+    );
+    std::fs::remove_dir_all(&shared_stage).unwrap();
+    drop(other_client);
+    assert_eq!(
+        std::fs::read(accepted.stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
+        b"accepted release"
+    );
+    assert!(
+        update_installer::stage::verify(&accepted.stage, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .is_ok()
+    );
+    let later = std::time::SystemTime::now() + update_installer::helper::HANDOFF_WINDOW * 2;
+    drop(state);
+    drop(accepted);
+    update_installer::helper::prune(root.path(), later);
+    assert!(stage.exists());
+    drop(helper_reader);
+    update_installer::helper::prune(root.path(), later);
+    assert!(!stage.exists());
 }
 
 #[test]

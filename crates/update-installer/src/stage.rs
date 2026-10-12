@@ -14,6 +14,8 @@ use update_manifest::{Artifact, Manifest, TrustedKeys, select::Check};
 pub const MAX_ARTIFACT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const ENVELOPE_FILE: &str = "manifest.json";
 pub const ARTIFACT_FILE: &str = "artifact";
+mod snapshot;
+pub use snapshot::Snapshot;
 const STAGE_PREFIX: &str = "stage-";
 const RETIRED_PREFIX: &str = "retired-";
 const RETIRED_STAGE: &str = "stage";

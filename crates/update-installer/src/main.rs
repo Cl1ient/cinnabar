@@ -2,7 +2,6 @@
 use anyhow::{Context, Result, ensure};
 use std::{
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 use update_installer::startup::{self, Monitor, Progress};
@@ -48,34 +47,45 @@ fn run() -> Result<()> {
     let platform = update_manifest::platform_key(std::env::consts::OS, std::env::consts::ARCH)
         .context("unsupported platform")?;
     let keys = update_manifest::parse_keys(update_installer::TRUSTED_KEYS)?;
+    let snapshot_reader = update_installer::helper::hold_snapshot(&stage);
     update_installer::parent::wait(pid)?;
     let root = stage.parent().context("missing update directory")?;
     let mut started = false;
-    let result = update_installer::apply::after_exit(
-        update_installer::apply::Request {
-            stage_dir: &stage,
-            target: &target,
-            keys: &keys,
-            check: update_manifest::select::Check {
-                channel: channel.name(),
-                platform: &platform,
-                current: env!("CARGO_PKG_VERSION"),
-                current_build: update_manifest::build_number(),
-                switch_now,
+    let result = (|| {
+        let _snapshot_reader = snapshot_reader.map_err(|error| {
+            anyhow::Error::new(error).context(update_installer::apply::Untouched)
+        })?;
+        let waiting_since = Instant::now();
+        let lease = update_installer::lease::Lease::wait(
+            root,
+            update_installer::lease::WAIT_TIMEOUT,
+            || waiting_since.elapsed(),
+            || std::thread::sleep(update_installer::lease::POLL_INTERVAL),
+        )
+        .map_err(|error| anyhow::Error::new(error).context(update_installer::apply::Untouched))?;
+        update_installer::apply::after_exit(
+            update_installer::apply::Request {
+                stage_dir: &stage,
+                target: &target,
+                keys: &keys,
+                check: update_manifest::select::Check {
+                    channel: channel.name(),
+                    platform: &platform,
+                    current: env!("CARGO_PKG_VERSION"),
+                    current_build: update_manifest::build_number(),
+                    switch_now,
+                },
+                now: time::OffsetDateTime::now_utc(),
             },
-            now: time::OffsetDateTime::now_utc(),
-        },
-        || Ok(()),
-        |target| {
-            let result = launch(target, root);
-            started = result.is_ok();
-            result
-        },
-    );
-    finish_apply(result, started, || {
-        update_installer::recovery::restore(&target, root)?;
-        launch(&target, root).context("restart the retained installation")
-    })
+            lease,
+            |target| {
+                let result = launch(target, root);
+                started = result.is_ok();
+                result
+            },
+        )
+    })();
+    finish_apply(result, started, || relaunch_retained(&target))
 }
 
 /// Restarts after a failed apply, except when the replacement already confirmed good startup.
@@ -85,6 +95,7 @@ fn finish_apply(
     restart: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
     if result.is_err() && !started {
+        // Any required rollback ran under the apply lease; an untouched or busy stage needs none.
         restart()?;
     }
     result
@@ -94,24 +105,8 @@ fn finish_apply(
 /// Asset preparation heartbeats restart the stall timeout, so a long first-run download is not a failure.
 fn launch(target: &Path, root: &Path) -> Result<()> {
     let directory = tempfile::Builder::new().prefix("start-").tempdir_in(root)?;
-    #[cfg(target_os = "macos")]
-    let executable = target.join("Contents/MacOS/cinnabar");
-    #[cfg(windows)]
-    let executable = target.join("cinnabar.exe");
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let executable = target.to_owned();
-    let mut command = Command::new(executable);
-    command
-        .env(startup::STARTUP_ENV, startup::marker(directory.path()))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null());
-    #[cfg(target_os = "linux")]
-    {
-        command.arg("--appimage-extract-and-run");
-        for name in ["APPIMAGE", "APPDIR", "OWD", "LD_LIBRARY_PATH", "LD_PRELOAD"] {
-            command.env_remove(name);
-        }
-    }
+    let mut command = startup::client_command(target);
+    command.env(startup::STARTUP_ENV, startup::marker(directory.path()));
     let mut client = startup::Tree::spawn(&mut command).context("launch updated client")?;
     let mut monitor = Monitor::new(Instant::now());
     loop {
@@ -131,20 +126,75 @@ fn launch(target: &Path, root: &Path) -> Result<()> {
     }
 }
 
+/// Restarts a retained client without requiring a writable update directory or a rollback lease.
+fn relaunch_retained(target: &Path) -> Result<()> {
+    startup::Tree::spawn(&mut startup::client_command(target))
+        .context("restart the retained installation")
+        .map(drop)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn a_refused_update_restarts_the_retained_client_and_keeps_the_original_error() {
-        let mut restarted = false;
-        let error = finish_apply(Err(anyhow::anyhow!("manifest expired")), false, || {
-            restarted = true;
+    fn retained_relaunch_does_not_reuse_another_attempts_startup_receipt() {
+        let command = startup::client_command(Path::new("retained-client"));
+        assert!(
+            command
+                .get_envs()
+                .any(|(name, value)| name == startup::STARTUP_ENV && value.is_none())
+        );
+    }
+
+    #[test]
+    fn a_busy_stage_at_restart_still_relaunches_the_untouched_client() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("retained-client");
+        std::fs::write(&target, "retained installation").unwrap();
+        let _other_client = update_installer::lease::Lease::acquire(root.path()).unwrap();
+        let elapsed = std::cell::Cell::new(Duration::ZERO);
+        let result = update_installer::lease::Lease::wait(
+            root.path(),
+            update_installer::lease::WAIT_TIMEOUT,
+            || elapsed.get(),
+            || elapsed.set(update_installer::lease::WAIT_TIMEOUT),
+        )
+        .map(|_| ())
+        .map_err(|error| anyhow::Error::new(error).context(update_installer::apply::Untouched));
+        assert!(
+            result
+                .as_ref()
+                .unwrap_err()
+                .is::<update_installer::apply::Untouched>()
+        );
+        let mut relaunched = false;
+        let error = finish_apply(result, false, || {
+            // Relaunch needs no access to the lease still owned by the downloading client.
+            assert!(update_installer::lease::Lease::try_acquire(root.path()).is_err());
+            assert_eq!(std::fs::read(&target).unwrap(), b"retained installation");
+            relaunched = true;
             Ok(())
         })
         .unwrap_err();
+        assert!(relaunched);
+        assert!(error.is::<update_installer::apply::Untouched>());
+    }
+
+    #[test]
+    fn a_refused_update_restarts_the_retained_client_and_keeps_the_original_error() {
+        let mut restarted = false;
+        let error = finish_apply(
+            Err(anyhow::anyhow!("manifest expired").context(update_installer::apply::Untouched)),
+            false,
+            || {
+                restarted = true;
+                Ok(())
+            },
+        )
+        .unwrap_err();
         assert!(restarted);
-        assert_eq!(error.to_string(), "manifest expired");
+        assert!(format!("{error:#}").contains("manifest expired"));
     }
 
     #[test]

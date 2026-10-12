@@ -20,26 +20,20 @@ pub fn needs_rollback(target: &Path, update_dir: &Path) -> bool {
         if target.exists() && before_exchange(target, &backup)? {
             return Ok(false);
         }
-        let lease = File::options()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(update_dir.join(crate::LOCK_FILE))?;
-        Ok(lease.try_lock().is_ok())
+        Ok(crate::lease::Lease::try_acquire(update_dir).is_ok())
     };
     probe().unwrap_or(false)
 }
 
 /// Restores an orphaned backup after the failed client exits, unless startup was already confirmed.
 pub fn restore(target: &Path, update_dir: &Path) -> Result<bool> {
-    let lease = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(update_dir.join(crate::LOCK_FILE))?;
-    lease
-        .try_lock()
+    let lease = crate::lease::Lease::try_acquire(update_dir)
         .context("another updater is recovering this installation")?;
+    restore_with_lease(target, &lease)
+}
+
+/// Restores this attempt's interrupted swap before releasing the installation's writer lease.
+pub(crate) fn restore_with_lease(target: &Path, _lease: &crate::lease::Lease) -> Result<bool> {
     let backup = crate::target::backup(target)?;
     if !backup.exists() || confirmation(&backup).exists() {
         return Ok(false);
@@ -209,13 +203,8 @@ impl Startup {
     /// Confirms this installation after good frames, including starts without a live helper.
     pub fn confirm(&self, update_dir: &Path) -> Result<()> {
         fs::create_dir_all(update_dir)?;
-        let lease = File::options()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(update_dir.join(crate::LOCK_FILE))?;
-        // A live helper consumes its own first-start acknowledgement before releasing this lock.
-        lease.lock()?;
+        // A live helper consumes its own acknowledgement before releasing this lease.
+        let _lease = crate::lease::Lease::acquire(update_dir)?;
         let current = fs::symlink_metadata(&self.target)?;
         if identity(&current) != identity(&self.metadata) {
             return Ok(());

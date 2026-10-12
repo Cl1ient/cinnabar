@@ -117,13 +117,9 @@ fn run(
     let root = layout.update_dir();
     fs::create_dir_all(&root)?;
     update_installer::helper::prune(&root, SystemTime::now());
-    let lease = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(root.join(update_installer::LOCK_FILE))?;
     // Other clients and offline helpers share this lease with stage writers.
-    lease.lock().context("lock the update directory")?;
+    let lease =
+        update_installer::lease::Lease::acquire(&root).context("lock the update directory")?;
     let check = Check {
         channel: preferences.channel.name(),
         platform: &platform,
@@ -157,15 +153,17 @@ fn run(
     if destination.exists() {
         match stage::verify(&destination, &keys, check, OffsetDateTime::now_utc()) {
             Ok(selected) => {
+                staged = Some(selected.manifest.clone());
+                let (directory, reader, selected) =
+                    stage::Snapshot::capture(&destination, &lease, selected)?.into_parts();
                 publish(
-                    destination.clone(),
-                    selected.manifest.version.clone(),
-                    selected.manifest.expires,
+                    directory,
+                    reader,
+                    selected,
                     preferences.channel,
                     switch_now,
                     generation,
                 );
-                staged = Some(selected.manifest);
             }
             Err(_) => {
                 if let Ok(mut state) = STATE.lock() {
@@ -251,7 +249,6 @@ fn run(
         }
         ensure!(active(generation), "update check cancelled");
         let artifact = selected.artifact.clone();
-        let version = selected.manifest.version.clone();
         let expires = selected.manifest.expires;
         let mut download = Download::begin(&root, selected)?;
         let offset = download.offset();
@@ -329,10 +326,13 @@ fn run(
             expires > OffsetDateTime::now_utc(),
             "release manifest expired during download"
         );
+        let selected = stage::verify(&directory, &keys, check, OffsetDateTime::now_utc())?;
+        let (directory, reader, selected) =
+            stage::Snapshot::capture(&directory, &lease, selected)?.into_parts();
         publish(
             directory,
-            version,
-            expires,
+            reader,
+            selected,
             preferences.channel,
             switch_now,
             generation,
@@ -441,8 +441,8 @@ pub(super) fn offer_switch(state: &mut State) {
 /// Publishes only a verified artifact and the non-elevating permission decision.
 fn publish(
     stage: PathBuf,
-    version: String,
-    expires: OffsetDateTime,
+    reader: File,
+    selected: Selection,
     channel: Channel,
     switch_now: bool,
     generation: u64,
@@ -453,12 +453,13 @@ fn publish(
     if let Ok(mut state) = STATE.lock() {
         if state.accepts_worker(generation) {
             state.ready = Some(Ready {
-                expires,
+                expires: selected.manifest.expires,
                 stage,
                 channel,
                 switch_now,
+                lease: Some(std::sync::Arc::new(reader)),
                 notice: Notice {
-                    version,
+                    version: selected.manifest.version,
                     writable,
                     protocol_required: false,
                 },

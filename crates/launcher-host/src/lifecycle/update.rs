@@ -36,6 +36,8 @@ struct Ready {
     notice: Notice,
     channel: Channel,
     switch_now: bool,
+    /// Keeps this client's immutable offered stage alive through another client's cache changes.
+    lease: Option<std::sync::Arc<std::fs::File>>,
 }
 
 struct State {
@@ -250,7 +252,16 @@ pub fn apply_after_exit() {
         .ok()
         .and_then(|mut state| state.handoff_after_exit(OffsetDateTime::now_utc()));
     if let (Some(layout), Some(ready)) = (LAYOUT.get(), ready)
-        && let Err(error) = handoff::spawn(layout, &ready)
+        && let Err(error) = handoff::spawn_or_restart(
+            || handoff::spawn(layout, &ready),
+            || {
+                handoff::installed_target().and_then(|target| {
+                    startup::Tree::spawn(&mut startup::client_command(&target))
+                        .map(drop)
+                        .map_err(Into::into)
+                })
+            },
+        )
     {
         tracing::warn!("could not start updater: {error:#}");
     }

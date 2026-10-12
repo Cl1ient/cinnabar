@@ -20,8 +20,25 @@ pub(super) fn installed_target() -> Result<PathBuf> {
     )
 }
 
+/// Reopens the retained client if the helper cannot be copied or started, keeping the apply error.
+pub(super) fn spawn_or_restart(
+    spawn: impl FnOnce() -> Result<()>,
+    restart: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    match spawn() {
+        Ok(()) => Ok(()),
+        Err(error) => match restart() {
+            Ok(()) => Err(error),
+            Err(restart) => Err(error.context(format!("restart retained client: {restart:#}"))),
+        },
+    }
+}
+
 /// Starts the copied helper with the exact parent PID and the user's channel-switch choice.
 pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
+    if let Some(lease) = &ready.lease {
+        lease.set_modified(SystemTime::now())?;
+    }
     spawn_with_args(
         layout,
         &[
@@ -31,7 +48,12 @@ pub(super) fn spawn(layout: &InstallLayout, ready: &Ready) -> Result<()> {
             ready.channel.name().into(),
             ready.switch_now.to_string().into(),
         ],
-    )
+    )?;
+    if let Some(lease) = &ready.lease {
+        // Keep the parent reader through actual process exit, just like the helper copy reader.
+        std::mem::forget(lease.clone());
+    }
+    Ok(())
 }
 
 /// Starts rollback recovery with the same exact-parent exit barrier as an ordinary apply.
@@ -55,7 +77,7 @@ fn spawn_with_args(layout: &InstallLayout, args: &[OsString]) -> Result<()> {
         .context("missing installed directory")?
         .join(update_installer::helper_filename());
     update_installer::helper::prune(&layout.update_dir(), std::time::SystemTime::now());
-    let helper = update_installer::helper::copy(&layout.update_dir(), &source)?;
+    let (helper, copy_reader) = update_installer::helper::copy(&layout.update_dir(), &source)?;
     let directory = helper.parent().context("missing helper directory")?;
     let mut command = Command::new(&helper);
     command
@@ -63,7 +85,7 @@ fn spawn_with_args(layout: &InstallLayout, args: &[OsString]) -> Result<()> {
         .current_dir(directory)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(fs::File::create(layout.update_dir().join("apply.log"))?);
+        .stderr(fs::File::create(directory.join("apply.log"))?);
     #[cfg(target_os = "linux")]
     for name in ["APPIMAGE", "APPDIR", "OWD", "LD_LIBRARY_PATH", "LD_PRELOAD"] {
         command.env_remove(name);
@@ -77,6 +99,8 @@ fn spawn_with_args(layout: &InstallLayout, args: &[OsString]) -> Result<()> {
     if let Some(pipe) = child.stdin.take() {
         std::mem::forget(pipe);
     }
+    // The helper's shared reader overlaps this one, including a delayed process start.
+    std::mem::forget(copy_reader);
     Ok(())
 }
 
@@ -84,6 +108,10 @@ fn spawn_with_args(layout: &InstallLayout, args: &[OsString]) -> Result<()> {
 pub(super) fn open_download(ready: Ready) {
     std::thread::spawn(move || {
         let result = manual_package(&ready).and_then(|package| {
+            ensure!(
+                ready.expires > OffsetDateTime::now_utc(),
+                "release expired before manual handoff"
+            );
             let path = if cfg!(target_os = "linux") {
                 package.path.parent().context("missing package directory")?
             } else {
@@ -133,7 +161,7 @@ fn manual_package(ready: &Ready) -> Result<ManualPackage> {
             current_build: update_manifest::build_number(),
             switch_now: ready.switch_now,
         },
-        OffsetDateTime::now_utc(),
+        OffsetDateTime::now_utc,
     )
 }
 
@@ -149,32 +177,26 @@ pub(super) fn snapshot_package(
     name: &str,
     keys: &update_manifest::TrustedKeys,
     check: Check<'_>,
-    now: OffsetDateTime,
+    now: impl FnOnce() -> OffsetDateTime,
 ) -> Result<ManualPackage> {
     let root = stage.parent().context("missing update directory")?;
-    let stage_lease = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(root.join(update_installer::LOCK_FILE))?;
-    stage_lease.lock().context("lock the update directory")?;
-    let selected = update_installer::stage::verify(stage, keys, check, now)?;
-    let (directory, lease) = update_installer::helper::manual_directory(root)?;
-    let path = named_package(stage, directory.path(), name, &selected.artifact)?;
-    let _ = directory.keep();
+    let writer = update_installer::lease::Lease::acquire(root)?;
+    let selected = update_installer::stage::verify(stage, keys, check, now())?;
+    let (directory, lease, selected) =
+        update_installer::stage::Snapshot::capture(stage, &writer, selected)?.into_parts();
+    let path = named_package(&directory, name, &selected.artifact)?;
     Ok(ManualPackage { path, lease })
 }
 
-/// Copies the artifact to a separate directory and verifies it; Linux AppImages become runnable.
+/// Names a retained artifact for its desktop installer; Linux AppImages become runnable.
 pub(super) fn named_package(
-    stage: &Path,
     directory: &Path,
     name: &str,
     artifact: &update_manifest::Artifact,
 ) -> Result<PathBuf> {
     let destination = directory.join(name);
-    fs::copy(
-        stage.join(update_installer::stage::ARTIFACT_FILE),
+    fs::rename(
+        directory.join(update_installer::stage::ARTIFACT_FILE),
         &destination,
     )?;
     update_installer::stage::verify_file(&destination, artifact)?;

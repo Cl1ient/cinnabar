@@ -2,10 +2,7 @@
 
 use crate::{platform, recovery, stage, target};
 use anyhow::{Context, Result, ensure};
-use std::{
-    fs::{self, File},
-    path::Path,
-};
+use std::{fs, path::Path};
 use time::OffsetDateTime;
 use update_manifest::{TrustedKeys, select::Check};
 
@@ -18,74 +15,101 @@ pub struct Request<'a> {
     pub now: OffsetDateTime,
 }
 
-/// Waits for the old client, verifies the payload, applies it, and restores failed new starts.
+/// Verifies and applies an independently retained stage while owning the shared writer lease.
+/// The caller must first observe the original client's exit.
 pub fn after_exit(
     request: Request<'_>,
-    wait: impl FnOnce() -> Result<()>,
+    lease: crate::lease::Lease,
     start: impl FnOnce(&Path) -> Result<()>,
 ) -> Result<()> {
-    wait()?;
-    let Request {
-        stage_dir,
-        target,
-        keys,
-        check,
-        now,
-    } = request;
-    let root = stage_dir.parent().context("missing update directory")?;
-    let lock = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(root.join(crate::LOCK_FILE))?;
-    lock.try_lock()
-        .context("another updater is using this stage")?;
-    let selected = stage::verify(stage_dir, keys, check, now)?;
-    ensure!(
-        target::access(target)? == target::Access::Writable,
-        "install is not writable; use Download update"
-    );
-    ensure!(
-        !fs::symlink_metadata(target)?.file_type().is_symlink(),
-        "unsafe install target"
-    );
-    let os = check
-        .platform
-        .split_once('-')
-        .context("invalid platform key")?
-        .0;
-    ensure!(
-        os == std::env::consts::OS,
-        "helper cannot apply another platform"
-    );
-    let parent = if os == "windows" {
-        root
-    } else {
-        target.parent().context("missing install parent")?
-    };
-    let work = tempfile::Builder::new()
-        .prefix(".cinnabar-update-")
-        .tempdir_in(parent)?;
-    let artifact = work.path().join("payload");
-    fs::copy(stage_dir.join(stage::ARTIFACT_FILE), &artifact)?;
-    stage::verify_file(&artifact, &selected.artifact)?;
-    if os == "windows" {
-        platform::install_windows(&artifact, work.path(), target, &selected.artifact)?;
-        remember_installer(root, &artifact)?;
-        start(target)?;
-    } else {
-        let backup = target::backup(target)?;
-        let candidate = platform::candidate(&artifact, work.path(), target)?;
-        swap(target, &candidate, &backup)?;
-        if let Err(error) = start(target) {
-            rollback(target, &backup, &work.path().join("failed"))?;
-            return Err(error).context("new version did not start; previous version restored");
+    let target_for_recovery = request.target;
+    let mut touched = false;
+    let mut started = false;
+    let result = (|| {
+        let Request {
+            stage_dir,
+            target,
+            keys,
+            check,
+            now,
+        } = request;
+        let root = stage_dir.parent().context("missing update directory")?;
+        ensure!(
+            root == lease.root(),
+            "installation is outside the leased update directory"
+        );
+        let selected = stage::verify(stage_dir, keys, check, now)?;
+        ensure!(
+            target::access(target)? == target::Access::Writable,
+            "install is not writable; use Download update"
+        );
+        ensure!(
+            !fs::symlink_metadata(target)?.file_type().is_symlink(),
+            "unsafe install target"
+        );
+        let os = check
+            .platform
+            .split_once('-')
+            .context("invalid platform key")?
+            .0;
+        ensure!(
+            os == std::env::consts::OS,
+            "helper cannot apply another platform"
+        );
+        let parent = if os == "windows" {
+            root
+        } else {
+            target.parent().context("missing install parent")?
+        };
+        let work = tempfile::Builder::new()
+            .prefix(".cinnabar-update-")
+            .tempdir_in(parent)?;
+        let artifact = work.path().join("payload");
+        fs::copy(stage_dir.join(stage::ARTIFACT_FILE), &artifact)?;
+        stage::verify_file(&artifact, &selected.artifact)?;
+        if os == "windows" {
+            touched = true;
+            platform::install_windows(&artifact, work.path(), target, &selected.artifact)?;
+            remember_installer(root, &artifact)?;
+            start(target)?;
+            started = true;
+        } else {
+            let backup = target::backup(target)?;
+            let candidate = platform::candidate(&artifact, work.path(), target)?;
+            swap(target, &candidate, &backup)?;
+            touched = true;
+            if let Err(error) = start(target) {
+                rollback(target, &backup, &work.path().join("failed"))?;
+                return Err(error).context("new version did not start; previous version restored");
+            }
+            started = true;
+            recovery::confirm_start(&backup)?;
+            recovery::cleanup_confirmed_backup(target, &backup)?;
         }
-        recovery::confirm_start(&backup)?;
-        recovery::cleanup_confirmed_backup(target, &backup)?;
+        // The handoff's reader lease and retention scan own snapshot cleanup.
+        Ok(())
+    })();
+    match result {
+        Err(error) if !touched => Err(error.context(Untouched)),
+        Err(error) if !started => match recovery::restore_with_lease(target_for_recovery, &lease) {
+            Ok(_) => Err(error),
+            Err(recovery) => {
+                Err(error.context(format!("recover changed installation: {recovery:#}")))
+            }
+        },
+        result => result,
     }
-    fs::remove_dir_all(stage_dir)?;
-    Ok(())
+}
+
+/// A failed attempt made no changes to the installation and needs no rollback lease.
+#[derive(Debug)]
+pub struct Untouched;
+
+impl std::fmt::Display for Untouched {
+    /// Identifies pre-install failures without replacing their underlying error.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("installation was not changed")
+    }
 }
 
 /// Keeps the most recently downloaded previous MSI for manual repair, without copying Program Files.

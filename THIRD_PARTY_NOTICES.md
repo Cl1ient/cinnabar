@@ -22,6 +22,11 @@ directory. This notice is checked in and is not rewritten by the acquisition scr
 - Provenance: original pixel art drawn for Cinnabar by `tools/oreui_icons/build.py`; not Mojang
   content.
 
+## Java HUD offhand frames
+
+- Files: `assets/java-hud/textures/` (`hotbar_offhand_left.png`, `hotbar_offhand_right.png`)
+- Provenance: original pixel art drawn for Cinnabar; not Mojang content.
+
 ## Window and installer icon
 
 - Files: `packaging/icons/cinnabar.svg`, `assets/branding/icon.png`

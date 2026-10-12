@@ -9,6 +9,7 @@ publish = false
 platform-specific = ["macos"]
 reads = [
     "assets/branding/title.png",
+    "assets/java-hud",
     "assets/java-hud/textures/ui/*",
     "assets/java-hud/ui/*",
 ]

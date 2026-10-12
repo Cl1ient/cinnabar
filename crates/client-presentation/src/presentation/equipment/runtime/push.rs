@@ -40,6 +40,11 @@ impl EquipmentRuntime {
         let Some((catalog, from_pack)) = self.binding_source(&item.identifier) else {
             return false;
         };
+        let Some((catalog, from_pack, location)) =
+            self.binding_artwork(&item.identifier, (catalog, from_pack), None)
+        else {
+            return false;
+        };
         let Some(binding) = catalog.binding(&item.identifier) else {
             return false;
         };
@@ -73,9 +78,6 @@ impl EquipmentRuntime {
             _ => None,
         };
         let Some(channels) = channels else {
-            return false;
-        };
-        let Some(location) = self.texture_location(&binding.texture.identifier, from_pack) else {
             return false;
         };
         let Some(geometry) = self.armor_geometry_for(&binding.geometry.identifier, from_pack)
@@ -223,11 +225,19 @@ impl EquipmentRuntime {
         let selected = animation
             .filter(|_| from_pack)
             .and_then(|animation| self.worn_texture(item, slot, equipment, animation));
-        let Some(location) =
-            selected.or_else(|| self.texture_location(&binding.texture.identifier, from_pack))
+        let Some((catalog, from_pack, location)) =
+            self.binding_artwork(&item.identifier, (catalog, from_pack), selected)
         else {
             return;
         };
+        let Some(binding) = catalog.binding(&item.identifier) else {
+            return;
+        };
+        if self.effective_category(&item.identifier, binding.category)
+            != (EquipmentCategory::Armor { slot })
+        {
+            return;
+        }
         let Some(geometry) = self.armor_geometry_for(&binding.geometry.identifier, from_pack)
         else {
             return;

@@ -31,22 +31,21 @@ impl EquipmentRuntime {
         input: AttachableAnimationInput<'_>,
         java_hand: Option<render_model::java_animation::JavaHand>,
     ) -> Option<FirstPersonItem> {
-        let (catalog, from_pack) = self.binding_source(&item.identifier)?;
-        let assets = if from_pack {
-            Arc::clone(&self.pack.as_ref()?.assets)
-        } else {
-            Arc::clone(&self.assets)
-        };
         let (_, body_bones) = self.body_bones_for(body.input.rig)?;
-        let runtime = if from_pack {
-            &mut self.pack.as_mut()?.attachables
-        } else {
-            &mut self.attachables
-        };
-        let evaluated = runtime.evaluate(&item.identifier, owner, owner_rig, input)?;
+        let (assets, catalog, from_pack, evaluated) = pack::evaluate_artwork(
+            &mut self.pack,
+            (&self.assets, self.catalog.as_ref(), &mut self.attachables),
+            &item.identifier,
+            owner,
+            owner_rig,
+            input,
+        )?;
         // Each hand has its own item texture page. Multi-layer attachables remain
         // explicitly incomplete rather than accidentally displaying an enchantment layer.
-        let selected = evaluated.render.first()?;
+        let selected = evaluated
+            .render
+            .iter()
+            .find(|layer| layer.texture_slot == 0)?;
         let geometry_index = selected.geometry.unwrap_or(evaluated.geometry);
         let pose = if selected.pose.is_empty() {
             evaluated.pose

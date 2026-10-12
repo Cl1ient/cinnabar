@@ -27,24 +27,6 @@ impl EquipmentRuntime {
         animation: EquipmentAnimation<'_>,
         layers: &mut Vec<EquipmentPresentation>,
     ) {
-        let Some((catalog, from_pack)) = self.binding_source(&item.identifier) else {
-            return;
-        };
-        let assets = if from_pack {
-            Arc::clone(&self.pack.as_ref().unwrap().assets)
-        } else {
-            Arc::clone(&self.assets)
-        };
-        // The scene registers only each binding's catalog default model.
-        let registered = catalog
-            .binding(&item.identifier)
-            .filter(|binding| binding.geometry.resolution == EntityDependencyResolution::Catalog)
-            .and_then(|binding| find_geometry_index(&assets, &binding.geometry.identifier));
-        let runtime = if from_pack {
-            &mut self.pack.as_mut().unwrap().attachables
-        } else {
-            &mut self.attachables
-        };
         let variables = [("variable.is_enchanted", f32::from(item.enchanted))];
         let input = equipment.attachable_input(AttachableAnimationInput {
             worn: true,
@@ -54,11 +36,21 @@ impl EquipmentRuntime {
             owner_variables: &variables,
             ..Default::default()
         });
-        let Some(evaluated) =
-            runtime.evaluate(&item.identifier, animation.owner, animation.rig, input)
-        else {
+        let Some((assets, catalog, from_pack, evaluated)) = pack::evaluate_artwork(
+            &mut self.pack,
+            (&self.assets, self.catalog.as_ref(), &mut self.attachables),
+            &item.identifier,
+            animation.owner,
+            animation.rig,
+            input,
+        ) else {
             return;
         };
+        // The scene registers only each binding's catalog default model.
+        let registered = catalog
+            .binding(&item.identifier)
+            .filter(|binding| binding.geometry.resolution == EntityDependencyResolution::Catalog)
+            .and_then(|binding| find_geometry_index(&assets, &binding.geometry.identifier));
         // Each material group draws apart; later texture slots are samplers of that draw.
         let groups: Vec<_> = evaluated
             .render

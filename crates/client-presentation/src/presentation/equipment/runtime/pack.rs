@@ -1,6 +1,10 @@
 //! The session's server-pack attachable layer, consulted before the startup catalog.
 
 use super::*;
+use actor_animation::{
+    ActorRigSnapshot, AttachableAnimationInput, AttachableRigSnapshot, RenderTextureLayer,
+};
+use client_world::ActorSnapshot;
 
 /// Separates armor mappings sourced from a replaceable pack.
 pub(super) const ARMOR_CACHE_PREFIX: &str = "\u{1}pack:";
@@ -25,6 +29,64 @@ pub struct PackEquipment {
 /// geometry indices and skin rig ids.
 fn is_pack_body_key(key: u32) -> bool {
     render_model::is_pack_rig_id(EntityRigId(key))
+}
+
+/// Resolves the first primary sampler selected by a controller, independently of default aliases.
+fn primary_artwork(
+    assets: &RuntimeEntityAssets,
+    locations: &BTreeMap<Box<str>, ActorArtworkLocation>,
+    render: &[RenderTextureLayer],
+) -> Option<ActorArtworkLocation> {
+    let primary = render.iter().find(|layer| layer.texture_slot == 0)?;
+    let source = assets.sources().get(primary.source as usize)?;
+    let texture = source
+        .path
+        .strip_suffix(".png")
+        .or_else(|| source.path.strip_suffix(".tga"))?;
+    locations.get(texture).copied()
+}
+
+/// Evaluates pack artwork before startup fallback; inactive controllers with drawable default art stay hidden.
+pub(super) fn evaluate_artwork<'a>(
+    pack: &'a mut Option<PackEquipment>,
+    startup: (
+        &Arc<RuntimeEntityAssets>,
+        Option<&Arc<RuntimeEquipmentCatalog>>,
+        &'a mut actor_animation::AttachablesRuntime,
+    ),
+    identifier: &str,
+    owner: &ActorSnapshot,
+    owner_rig: &ActorRigSnapshot<'_>,
+    input: AttachableAnimationInput<'_>,
+) -> Option<(
+    Arc<RuntimeEntityAssets>,
+    Arc<RuntimeEquipmentCatalog>,
+    bool,
+    AttachableRigSnapshot<'a>,
+)> {
+    if let Some(pack) = pack.as_mut()
+        && let Some(catalog) = pack.catalog.as_ref()
+        && let Some(binding) = catalog.binding(identifier)
+        && let Some(evaluated) = pack
+            .attachables
+            .evaluate(identifier, owner, owner_rig, input)
+        && (primary_artwork(&pack.assets, &pack.texture_locations, evaluated.render).is_some()
+            || (evaluated.render.is_empty()
+                && pack
+                    .texture_locations
+                    .contains_key(&binding.texture.identifier)))
+    {
+        return Some((
+            Arc::clone(&pack.assets),
+            Arc::clone(catalog),
+            true,
+            evaluated,
+        ));
+    }
+    let (assets, catalog, runtime) = startup;
+    let catalog = catalog.filter(|catalog| catalog.binding(identifier).is_some())?;
+    let evaluated = runtime.evaluate(identifier, owner, owner_rig, input)?;
+    Some((Arc::clone(assets), Arc::clone(catalog), false, evaluated))
 }
 
 impl EquipmentRuntime {
@@ -115,20 +177,13 @@ impl EquipmentRuntime {
         });
     }
 
-    /// Prefers the pack binding, keeping startup equipment when its default artwork is absent.
+    /// Prefers pack declarations; drawing resolves controller artwork before falling back.
     pub(super) fn binding_source(
         &self,
         identifier: &str,
     ) -> Option<(Arc<RuntimeEquipmentCatalog>, bool)> {
         if let Some(catalog) = self.pack.as_ref().and_then(|pack| pack.catalog.as_ref())
-            && let Some(binding) = catalog.binding(identifier)
-            && (self
-                .texture_location(&binding.texture.identifier, true)
-                .is_some()
-                || self
-                    .catalog
-                    .as_ref()
-                    .is_none_or(|catalog| catalog.binding(identifier).is_none()))
+            && catalog.binding(identifier).is_some()
         {
             return Some((Arc::clone(catalog), true));
         }
@@ -136,6 +191,28 @@ impl EquipmentRuntime {
         catalog
             .binding(identifier)
             .map(|_| (Arc::clone(catalog), false))
+    }
+
+    /// Keeps selected or default pack artwork, otherwise resolves the complete startup binding.
+    pub(super) fn binding_artwork(
+        &self,
+        identifier: &str,
+        (catalog, from_pack): (Arc<RuntimeEquipmentCatalog>, bool),
+        selected: Option<ActorArtworkLocation>,
+    ) -> Option<(Arc<RuntimeEquipmentCatalog>, bool, ActorArtworkLocation)> {
+        let binding = catalog.binding(identifier)?;
+        if let Some(location) =
+            selected.or_else(|| self.texture_location(&binding.texture.identifier, from_pack))
+        {
+            return Some((catalog, from_pack, location));
+        }
+        if !from_pack {
+            return None;
+        }
+        let catalog = self.catalog.as_ref()?;
+        let binding = catalog.binding(identifier)?;
+        let location = self.texture_location(&binding.texture.identifier, false)?;
+        Some((Arc::clone(catalog), false, location))
     }
 
     pub(super) fn texture_location(

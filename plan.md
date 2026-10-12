@@ -2936,8 +2936,9 @@ Texture-only equipment overrides inherit base attachable documents from the enti
 sidecar, so hot reload can resolve worn armour without loose resource files. Rebuild entity
 assets to emit those documents; older sidecars retain the loose-file fallback. Compiles and
 equipment artwork continue to use the accepted pack stack's content identity.
-Inherited bindings without default artwork retain startup armour and preview rasters,
-while secondary glint overrides remain available.
+Pack controllers select primary artwork before falling back to startup equipment;
+an omitted default raster does not suppress an available alternative. Missing primary
+artwork retains startup armour and preview rasters, while glint overrides remain available.
 
 2026-10-12 protocol codec: `protocol` decodes and encodes through protocolgen's generated
 contract crate (`bedrock-protocol-1-26-51`, contract 1), vendored byte for byte and pinned by

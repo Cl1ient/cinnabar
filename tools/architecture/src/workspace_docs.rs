@@ -1,8 +1,11 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 use crate::{ArchitectureError, policy::Policy, read};
 
-/// Requires an ownership row with package, caller guidance and related owners for each crate.
+/// Requires complete ownership rows for registered crates and rejects rows for removed crates.
 pub(super) fn check_workspace_docs(
     root: &Path,
     policy: &Policy,
@@ -27,6 +30,18 @@ pub(super) fn check_workspace_docs(
             .then_some((path, package))
         })
         .collect();
+    let registered: BTreeSet<_> = policy
+        .crate_rules
+        .iter()
+        .map(|rule| rule.path.trim_end_matches('/'))
+        .collect();
+    for path in documented.keys() {
+        if !registered.contains(*path) {
+            diagnostics.push(format!(
+                "{document}: ownership row for `{path}` has no registered workspace crate",
+            ));
+        }
+    }
     for rule in &policy.crate_rules {
         let Some(package) = documented.get(rule.path.trim_end_matches('/')) else {
             diagnostics.push(format!(

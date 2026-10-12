@@ -59,7 +59,6 @@ fn configured_document_findings(gate_metadata: &str, beta_metadata: &str) -> Vec
         toml::from_str(&fs::read_to_string(&policy_path).expect("read policy"))
             .expect("parse policy");
     policy["workspace_document"] = toml::Value::String(document.to_owned());
-    policy["crates"][0]["name"] = toml::Value::String(gate.to_owned());
     fs::write(
         &policy_path,
         toml::to_string(&policy).expect("serialize policy"),
@@ -91,10 +90,9 @@ fn configured_document_keeps_the_architecture_read_declaration_current() {
 fn configured_document_requires_an_architecture_read_declaration() {
     assert_eq!(
         configured_document_findings("", ""),
-        [format!(
-            "{}: policy.workspace_document reads `configured.md` outside the crate; list it in `reads` under [package.metadata.cinnabar]",
-            env!("CARGO_PKG_NAME"),
-        )],
+        [
+            "alpha: policy.workspace_document reads `configured.md` outside the crate; list it in `reads` under [package.metadata.cinnabar]"
+        ],
     );
 }
 
@@ -155,6 +153,39 @@ fn rejects_an_ownership_row_without_caller_guidance() {
     assert_eq!(
         check_repository(root, &root.join("policy.toml")).expect("check incomplete row"),
         ["workspace.md: workspace crate `alpha` has no complete ownership row for `alpha`"],
+    );
+}
+
+#[test]
+fn rejects_an_ownership_row_after_the_crate_is_removed() {
+    let temp = tempfile::tempdir().expect("fixture root");
+    let root = temp.path();
+    fixture(
+        root,
+        Some(
+            "| `alpha` | `alpha` | Call alpha for input. | Beta owns decoding. |\n\
+            | `beta` | `beta` | Call beta for decoding. | Alpha owns input. |\n",
+        ),
+    );
+    fs::remove_dir_all(root.join("beta")).expect("remove beta crate");
+    fs::write(root.join("Cargo.toml"), "[workspace]\nmembers=['alpha']\n")
+        .expect("remove beta from the workspace");
+    let policy_path = root.join("policy.toml");
+    let mut policy: toml::Value =
+        toml::from_str(&fs::read_to_string(&policy_path).expect("read policy"))
+            .expect("parse policy");
+    policy["crates"]
+        .as_array_mut()
+        .expect("crate rules")
+        .retain(|rule| rule["path"].as_str() != Some("beta"));
+    fs::write(
+        &policy_path,
+        toml::to_string(&policy).expect("serialize policy"),
+    )
+    .expect("remove beta from the policy");
+    assert_eq!(
+        check_repository(root, &policy_path).expect("check removed crate"),
+        ["workspace.md: ownership row for `beta` has no registered workspace crate"],
     );
 }
 

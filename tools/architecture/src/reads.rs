@@ -110,17 +110,6 @@ pub(super) fn check_reads(
             }
         }
     }
-    if let Some(document) = policy
-        .workspace_document
-        .as_deref()
-        .and_then(|document| resolve("", document))
-    {
-        required
-            .entry(env!("CARGO_PKG_NAME"))
-            .or_default()
-            .entry(document)
-            .or_insert_with(|| "policy.workspace_document".to_owned());
-    }
     for (crate_root, name) in &roots {
         let manifest_path = root.join(crate_root).join("Cargo.toml");
         let manifest = toml::from_str::<toml::Value>(&read(&manifest_path)?).map_err(|source| {
@@ -132,7 +121,24 @@ pub(super) fn check_reads(
         let declared = cinnabar_list(&manifest, READS)
             .filter_map(toml::Value::as_str)
             .collect::<Vec<_>>();
-        let reads = required.remove(name).unwrap_or_default();
+        let mut reads = required.remove(name).unwrap_or_default();
+        if manifest
+            .get("package")
+            .and_then(|package| package.get("name"))
+            .and_then(toml::Value::as_str)
+            == Some(env!("CARGO_PKG_NAME"))
+            && let Some(document) = policy
+                .workspace_document
+                .as_deref()
+                .and_then(|document| resolve("", document))
+                .filter(|document| {
+                    owning_crate(&roots, document).is_none_or(|(owner, _)| owner != *crate_root)
+                })
+        {
+            reads
+                .entry(document)
+                .or_insert_with(|| "policy.workspace_document".to_owned());
+        }
         for (target, source) in &reads {
             if !declared.iter().any(|pattern| declares(pattern, target)) {
                 diagnostics.push(format!(

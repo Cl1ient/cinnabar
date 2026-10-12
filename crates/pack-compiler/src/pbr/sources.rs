@@ -198,8 +198,7 @@ fn read_json(path: &Path) -> Result<Value, String> {
         return Err("texture metadata exceeds byte limit".to_owned());
     }
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
-    serde_json::from_slice(&assets::strip_json_comments(bytes)).map_err(|error| error.to_string())
+    pack_json::parse_jsonc(&bytes).map_err(|error| error.to_string())
 }
 
 fn texture_set(pack: &PbrPack, path: &Path) -> Result<PbrTexture, String> {

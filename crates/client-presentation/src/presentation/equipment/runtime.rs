@@ -230,6 +230,10 @@ impl EquipmentRuntime {
             Some(glint) => artwork.with_actor_glint(glint),
             None => artwork,
         };
+        let artwork = match catalog.as_deref().and_then(Self::item_glint) {
+            Some(glint) => artwork.with_item_glint(glint),
+            None => artwork,
+        };
         let (artwork, locations) = artwork.with_equipment_rasters(&rasters);
         let texture_locations = textures
             .iter()
@@ -369,7 +373,7 @@ impl EquipmentRuntime {
         input: &ActorEquipmentInput,
         animation: Option<EquipmentAnimation<'_>>,
     ) -> &mut [EquipmentPresentation] {
-        self.layers_for_profile(body, input, render_api::CombatVisuals::Modern, animation)
+        self.layers_for_profile(body, input, render_api::DEFAULT_COMBAT_VISUALS, animation)
     }
 
     /// Selects combat visuals for worn slots without changing held items or Java poses.
@@ -383,16 +387,37 @@ impl EquipmentRuntime {
         let mut layers = std::mem::take(&mut self.layers);
         layers.clear();
         self.fill_layers(body, input, animation, &mut layers);
+        if profile == render_api::CombatVisuals::Legacy112 {
+            for layer in &mut layers {
+                let layer_id = layer.submission.input.identity.layer;
+                if layer_id < LAYER_HELMET {
+                    continue;
+                }
+                layer.submission.material.glint.profile = profile;
+                if let Some(slot) = layer_id.checked_sub(LAYER_HELMET)
+                    && let Some(Some(item)) = input.armor.get(usize::from(slot))
+                    && item.enchanted
+                {
+                    layer.submission.material.kind = assets::EntityRenderMaterial::Glint;
+                }
+                if let Some(animation) = animation {
+                    layer.submission.material.glint.time_seconds =
+                        (animation.rig.completed_tick as f32 + animation.frame_alpha)
+                            * simulation_clock::TICK_DURATION.as_secs_f32();
+                }
+            }
+        }
         if input.java.is_some() || profile == render_api::CombatVisuals::Legacy112 {
-            // The Java animation option includes worn equipment in the body's hurt flash.
+            // Combat overlays belong to worn slots; held items keep their controller policy.
             for layer in &mut layers {
                 if layer.submission.input.identity.layer >= LAYER_HELMET
-                    && !layer
-                        .submission
-                        .material
-                        .state
-                        .is_some_and(|state| state.disable_overlay)
-                    && layer.submission.overlay_rgba8 == 0
+                    && (profile == render_api::CombatVisuals::Modern
+                        || (!layer
+                            .submission
+                            .material
+                            .state
+                            .is_some_and(|state| state.disable_overlay)
+                            && layer.submission.overlay_rgba8 == 0))
                 {
                     layer.submission.overlay_rgba8 = body.overlay_rgba8;
                 }

@@ -845,5 +845,10 @@ impl ActorMaterial {
     /// Shader kind and independently admitted raster states in the shared instance word.
     pub fn gpu_word(self) -> u32 {
         self.kind.word(self.state)
+            | if self.glint.profile == render_api::CombatVisuals::Legacy112 {
+                super::glint::LEGACY_COMBAT_MATERIAL_FLAG
+            } else {
+                0
+            }
     }
 }

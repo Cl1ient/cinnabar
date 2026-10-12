@@ -1,3 +1,4 @@
+import render::lighting::{configured_distance_fog, tint_to_gamma, tint_to_linear};
 import render::enhanced::common::EnhancedFrame;
 
 const ATM_PI: f32 = 3.14159265359;
@@ -474,4 +475,14 @@ fn physical_aerial(
     let source = environment_sky(frame, ray) + environment_sky(frame, vec3(0.0, 1.0, 0.0)) * 0.15;
     let aerial = colour * transmittance + source * (vec3(1.0) - transmittance);
     return mix(aerial, horizon, finite_world_haze(frame, world));
+}
+
+// Physical scattering precedes configured fog for every Enhanced surface, including transparency.
+fn enhanced_distance_fog(frame: EnhancedFrame, colour: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    let ray = normalize(world - frame.camera_time.xyz + vec3(0.000001));
+    let physical = physical_aerial(frame, colour, world, environment_sky(frame, ray));
+    let gamma = tint_to_gamma(vec4(physical, 1.0)).rgb;
+    let fog_gamma = tint_to_gamma(vec4(frame.fog_colour_start.rgb, 1.0)).rgb;
+    return tint_to_linear(vec4(configured_distance_fog(gamma, world, frame.camera_time.xyz,
+        vec4(fog_gamma, frame.fog_colour_start.w), frame.atmosphere.z), 1.0)).rgb;
 }

@@ -200,6 +200,10 @@ fn sync_cameras(
             thunder: atmosphere.thunder_level(),
             zenith: Vec3::from_array(atmosphere.sky_zenith()),
             horizon: Vec3::from_array(atmosphere.sky_horizon()),
+            fog: (!atmosphere.physical_atmosphere_allowed()).then_some((
+                Vec3::from_array(atmosphere.fog_color()).extend(atmosphere.fog_start()),
+                atmosphere.fog_end(),
+            )),
         };
         if cameras
             .history

@@ -162,6 +162,9 @@ pub(crate) fn derive_profiled_atmosphere_frame(
         ),
         CameraMedium::Water => profiled.with_environment_profile(None, resolve(FogMedium::Water)),
         CameraMedium::Lava => profiled.with_environment_profile(None, resolve(FogMedium::Lava)),
+        CameraMedium::PowderSnow => {
+            profiled.with_environment_profile(None, resolve(FogMedium::PowderSnow))
+        }
     };
     (
         frame,
@@ -366,7 +369,7 @@ where
     state
 }
 
-/// Boss effects respond only in air; water and lava media own their fog
+/// Boss effects respond only in air; submerged media own their fog
 /// completely and must not be overridden by a boss flag.
 pub(crate) fn apply_boss_environment(
     frame: AtmosphereFrame,
@@ -375,7 +378,7 @@ pub(crate) fn apply_boss_environment(
 ) -> AtmosphereFrame {
     match medium {
         CameraMedium::Air => frame.with_boss_environment(state.darken_sky, state.world_fog),
-        CameraMedium::Water | CameraMedium::Lava => frame,
+        CameraMedium::Water | CameraMedium::Lava | CameraMedium::PowderSnow => frame,
     }
 }
 

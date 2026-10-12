@@ -162,6 +162,7 @@ pub(crate) fn prepare_cloud_records(
     let config = CloudRenderConfig::legacy_fancy();
     for (entity, view, enhanced) in &views {
         if render_model::ENHANCED_RENDERING_ENABLED
+            && atmosphere.physical_atmosphere_allowed()
             && enhanced.is_some_and(|s| s.volumetric_clouds || s.reflection_capture)
         {
             gpu.views.remove(&entity);
@@ -473,6 +474,7 @@ fn queue_clouds(
     let draw_function = draw_functions.read().id::<DrawCloudCommands>();
     for (view_entity, main_entity, view, extracted_camera, msaa, enhanced) in &views {
         if render_model::ENHANCED_RENDERING_ENABLED
+            && atmosphere.physical_atmosphere_allowed()
             && enhanced
                 .is_some_and(|settings| settings.volumetric_clouds || settings.reflection_capture)
         {

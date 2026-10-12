@@ -24,6 +24,8 @@ struct EnvironmentHistory {
     direct: f32,
     sky: f32,
     underwater: f32,
+    fog: Vec4,
+    fog_end: f32,
 }
 
 impl EnvironmentHistory {
@@ -36,6 +38,8 @@ impl EnvironmentHistory {
             direct: frame.light_direction.w,
             sky: frame.atmosphere.x,
             underwater: frame.atmosphere.w,
+            fog: frame.fog_colour_start,
+            fog_end: frame.atmosphere.z,
         }
     }
 
@@ -49,6 +53,7 @@ impl EnvironmentHistory {
                 <= 0.005 + self.direct.max(current.direct) * HISTORY_LIGHT_RELATIVE_CUT
             && self.sky == current.sky
             && self.underwater == current.underwater
+            && (self.sky > 0.5 || (self.fog == current.fog && self.fog_end == current.fog_end))
     }
 }
 
@@ -178,6 +183,24 @@ fn history_compatible(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restrictive_fog_rejects_brighter_submitted_history() {
+        let mut frame: EnhancedFrameGpu = bytemuck::Zeroable::zeroed();
+        frame.fog_colour_start = Vec4::new(0.1, 0.2, 0.3, 0.0);
+        frame.atmosphere.z = 10.0;
+        let old = EnvironmentHistory::from_frame(&frame);
+        assert!(old.compatible(old));
+        frame.fog_colour_start.x = 0.0;
+        assert!(!old.compatible(EnvironmentHistory::from_frame(&frame)));
+        frame.fog_colour_start.x = 0.1;
+        frame.atmosphere.z = 5.0;
+        assert!(!old.compatible(EnvironmentHistory::from_frame(&frame)));
+        frame.atmosphere.x = 1.0;
+        let air = EnvironmentHistory::from_frame(&frame);
+        frame.atmosphere.z = 4.0;
+        assert!(air.compatible(EnvironmentHistory::from_frame(&frame)));
+    }
 
     #[test]
     fn submitted_environment_rejects_weather_layer_and_light_cuts_but_retains_wind() {

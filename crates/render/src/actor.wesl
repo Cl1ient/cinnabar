@@ -3,7 +3,9 @@ import render::lighting::{actor_lighting, actor_distance_fog, actor_light_colour
 @if(ALPHA_TO_COVERAGE)
 import render::lighting::{CutoutSample, cutout_alpha_array};
 @if(ENHANCED)
-import render::enhanced::view::shade_actor_surface;
+import render::enhanced::atmosphere::enhanced_distance_fog;
+@if(ENHANCED)
+import render::enhanced::view::{shade_actor_surface, enhanced_frame};
 @if(ENHANCED_SHADOW)
 import render::enhanced::caster::caster;
 @if(ENHANCED_MOTION)
@@ -407,7 +409,7 @@ fn actor_fragment(input: VertexOutput, @builtin(front_facing) front: bool) -> @l
         lit = tint_to_linear(vec4(tint_to_gamma(vec4(lit, 1.0)).rgb + actor_glint_color(input, front), 1.0)).rgb;
     }
     @if(ENHANCED)
-    return vec4(lit, surface.coverage);
+    return vec4(enhanced_distance_fog(enhanced_frame, lit, input.world_position), surface.coverage);
     @if(!ENHANCED)
     let native_lighting = select(input.native_lighting, input.back_native_lighting, !front && input.surface != 0u);
     @if(!ENHANCED)

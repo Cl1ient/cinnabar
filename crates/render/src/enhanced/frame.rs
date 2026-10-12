@@ -73,8 +73,10 @@ pub(crate) struct EnhancedFrameGpu {
     pub(crate) previous_clip_from_world: Mat4,
     /// xyz sun direction, w vanilla moon phase.
     pub(crate) celestial: Vec4,
-    /// x Overworld sky, y delta seconds, z fog end, w underwater.
+    /// x physical atmosphere allowed, y delta seconds, z fog end, w underwater.
     pub(crate) atmosphere: Vec4,
+    /// Configured linear fog colour and start, applied after physical scattering.
+    pub(crate) fog_colour_start: Vec4,
     /// x sample index, y usable history, z delta seconds, w diagnostic mode.
     pub(crate) temporal: Vec4,
     /// xyz reflection probe origin, w capture radius (negative during capture).
@@ -416,15 +418,14 @@ pub(crate) fn build_frame(
         celestial: Vec3::from_array(atmosphere.sun_direction())
             .extend(f32::from(atmosphere.moon_phase())),
         atmosphere: Vec4::new(
-            f32::from(u8::from(
-                atmosphere.sky_kind() == render_scene::SkyKind::Overworld,
-            )),
+            f32::from(u8::from(atmosphere.physical_atmosphere_allowed())),
             0.0,
             atmosphere.fog_end(),
             f32::from(u8::from(
                 atmosphere.camera_medium() == meshing::CameraMedium::Water,
             )),
         ),
+        fog_colour_start: Vec3::from_array(atmosphere.fog_color()).extend(atmosphere.fog_start()),
         temporal: Vec4::ZERO,
         probe: view.camera.extend(32.0),
         cloud_shadow: Vec4::ZERO,
@@ -438,6 +439,71 @@ pub(crate) fn build_frame(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_fog_survives_every_medium_dimension_and_vision_effect() {
+        let inputs = ViewInputs {
+            clip_from_world: Mat4::IDENTITY,
+            world_from_clip: Mat4::IDENTITY,
+            camera: Vec3::ZERO,
+            near: 0.1,
+            viewport: [16, 16],
+            seconds: 0.0,
+        };
+        for kind in [
+            render_scene::SkyKind::Overworld,
+            render_scene::SkyKind::Nether,
+            render_scene::SkyKind::End,
+        ] {
+            for medium in [
+                meshing::CameraMedium::Air,
+                meshing::CameraMedium::Water,
+                meshing::CameraMedium::Lava,
+                meshing::CameraMedium::PowderSnow,
+            ] {
+                for (blindness, darkness) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (0.25, 0.5)] {
+                    let atmosphere = AtmosphereFrame::default()
+                        .with_sky_kind(kind)
+                        .with_camera_medium(medium)
+                        .with_environment_profile(
+                            None,
+                            Some(assets::ResolvedFog {
+                                start: 0.5,
+                                end: 12.0,
+                                rgb: [0.2, 0.4, 0.6],
+                            }),
+                        )
+                        .with_vision_effects(blindness, darkness, 0.0);
+                    let (frame, _) =
+                        build_frame(&inputs, &EnhancedRendering::default(), &atmosphere);
+                    assert_eq!(atmosphere.camera_medium(), medium);
+                    assert_eq!(
+                        frame.fog_colour_start,
+                        Vec3::from_array(atmosphere.fog_color()).extend(atmosphere.fog_start())
+                    );
+                    assert_eq!(frame.atmosphere.z, atmosphere.fog_end());
+                    assert_eq!(
+                        frame.atmosphere.x > 0.5,
+                        kind == render_scene::SkyKind::Overworld
+                            && medium == meshing::CameraMedium::Air
+                            && blindness == 0.0
+                            && darkness == 0.0
+                    );
+                    if blindness == 1.0 {
+                        assert_eq!(frame.fog_colour_start.truncate(), Vec3::ZERO);
+                    }
+                }
+            }
+        }
+        let clear = AtmosphereFrame::default();
+        let powder = clear.with_camera_medium(meshing::CameraMedium::PowderSnow);
+        assert_eq!(powder.fog_color(), clear.fog_color());
+        assert_eq!(powder.fog_start(), clear.fog_start());
+        assert_eq!(powder.fog_end(), clear.fog_end());
+        assert!(!powder.physical_atmosphere_allowed());
+        let night_vision = AtmosphereFrame::default().with_vision_effects(0.0, 0.0, 1.0);
+        assert!(night_vision.physical_atmosphere_allowed());
+    }
 
     /// Measures the grid phase of a fixed world point.
     fn texel_phase(fit: &CascadeFit, point: Vec3, resolution: u32) -> Vec3 {

@@ -1,6 +1,6 @@
 //! Bounded face scheduling; unchanged captures never create another render view.
 
-use bevy::math::Vec3;
+use bevy::math::{Vec3, Vec4};
 
 const ALL_FACES: u8 = 0b11_1111;
 
@@ -12,11 +12,13 @@ pub(super) struct ProbeLighting {
     pub thunder: f32,
     pub zenith: Vec3,
     pub horizon: Vec3,
+    pub fog: Option<(Vec4, f32)>,
 }
 
 impl ProbeLighting {
     pub fn reusable(self, next: Self) -> bool {
-        self.phase == next.phase
+        self.fog == next.fog
+            && self.phase == next.phase
             && self.sun.distance(next.sun) < 0.001
             && (self.rain - next.rain).abs() < 0.01
             && (self.thunder - next.thunder).abs() < 0.01
@@ -25,7 +27,8 @@ impl ProbeLighting {
     }
 
     pub fn discontinuity(self, next: Self) -> bool {
-        self.phase != next.phase
+        self.fog != next.fog
+            || self.phase != next.phase
             || self.sun.distance(next.sun) > 0.25
             || (self.rain - next.rain).abs() > 0.25
             || (self.thunder - next.thunder).abs() > 0.25
@@ -190,7 +193,16 @@ mod tests {
             thunder: 0.0,
             zenith: Vec3::ONE,
             horizon: Vec3::ONE,
+            fog: None,
         };
+        let mut fogged = old;
+        fogged.fog = Some((Vec4::new(0.1, 0.2, 0.3, 0.0), 10.0));
+        assert!(!old.reusable(fogged));
+        assert!(old.discontinuity(fogged));
+        let mut darker = fogged;
+        darker.fog.as_mut().unwrap().0.x = 0.0;
+        assert!(!fogged.reusable(darker));
+        assert!(fogged.discontinuity(darker));
         let mut next = old;
         next.sun.x = 0.0005;
         assert!(old.reusable(next));

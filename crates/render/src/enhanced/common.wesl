@@ -20,7 +20,8 @@ struct EnhancedFrame {
     clouds: vec4<f32>,
     previous_clip_from_world: mat4x4<f32>,
     celestial: vec4<f32>,
-    atmosphere: vec4<f32>,
+    atmosphere: vec4<f32>, // Physical atmosphere allowed, delta, configured fog end, underwater.
+    fog_colour_start: vec4<f32>,
     temporal: vec4<f32>,
     probe: vec4<f32>,
     cloud_shadow: vec4<f32>,

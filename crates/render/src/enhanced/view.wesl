@@ -79,10 +79,6 @@ fn material_class(material_id: u32) -> u32 {
 fn enhanced_light_direction()->vec3<f32>{return enhanced_frame.light_direction.xyz;}
 fn enhanced_materials_enabled()->bool{return (enhanced_frame.flags.x&FEATURE_PBR)!=0u;}
 
-fn enhanced_physical_atmosphere() -> bool {
-    return enhanced_frame.atmosphere.x > 0.5;
-}
-
 fn enhanced_cloud_visibility(world: vec3<f32>) -> f32 {
     if (enhanced_shadow_frame.cloud_shadow.w < 0.5
         || world.y >= enhanced_shadow_frame.clouds.y + enhanced_shadow_frame.clouds.z) { return 1.0; }

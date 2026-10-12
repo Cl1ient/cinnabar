@@ -374,6 +374,12 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 
 ## Enhanced photographic lighting extension
 
+- Configured distance fog is shared by Enhanced terrain, models, liquids and actors,
+  after physical scattering and before transparency blends. Medium and vision fog
+  retain the ordinary sky; Nether and End retain dimension fog. Powder snow now
+  selects its profile, but its fallback without a profile remains incomplete;
+  no default distances or colour are invented. Visual acceptance remains open.
+
 - Default builds keep Enhanced disabled; opt-in builds expose its rendering and presets.
 - The owner reports the startup white screen resolved. Latest horizon-footprint
   guard visual acceptance remains pending.

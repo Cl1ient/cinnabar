@@ -1,10 +1,10 @@
 import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 import render::enhanced::common::{EnhancedFrame, FEATURE_SHAFTS, FEATURE_SSAO, FEATURE_VOLUMETRIC_CLOUDS, FEATURE_WATER, FEATURE_WAVING, interleaved_gradient_noise,decode_geometric_normal};
-import render::enhanced::atmosphere::{atmospheric_sky_background, atmosphere_discs, atmosphere_stars, physical_aerial, finite_world_haze, finite_world_sky_uv, sky_view_ray,cloud_shadow_receiver_height};
+import render::enhanced::atmosphere::{atmospheric_sky_background, atmosphere_discs, atmosphere_stars, sky_view_ray,cloud_shadow_receiver_height};
 import render::enhanced::clouds::{integrate_clouds, cloud_shadow, cloud_history_position};
 import render::enhanced::ao::{horizon_ao, screen_contact_shadow, ao_world_position};
 import render::enhanced::shadow::sun_shadow_sample;
-import render::enhanced::water::{water_transport, water_ambient_irradiance, water_surface_offset};
+import render::enhanced::water::{water_surface_offset};
 import render::enhanced::temporal::{temporal_ycocg, temporal_rgb, temporal_depth_matches, temporal_transparency_reactivity, temporal_history_sample, temporal_clip, temporal_sharpen, temporal_display_curve};
 
 @group(0) @binding(0) var<uniform> frame:EnhancedFrame;
@@ -51,7 +51,7 @@ fn sky_uv(ray:vec3<f32>)->vec2<f32> {
 }
 
 @fragment fn light_shafts(in:FullscreenVertexOutput)->@location(0) vec4<f32> {
-    if ((frame.flags.x&FEATURE_SHAFTS)==0u || frame.flags.y==0u || frame.atmosphere.w>0.5) {return vec4(0.0);}
+    if ((frame.flags.x&FEATURE_SHAFTS)==0u || frame.flags.y==0u || frame.atmosphere.x<0.5) {return vec4(0.0);}
     let depth=max(depth_at(in.uv),0.00001);
     let world=ao_world_position(frame,in.uv,depth);
     let ray=world-frame.camera_time.xyz;
@@ -140,19 +140,8 @@ fn filtered_effects(uv:vec2<f32>,depth:f32)->vec4<f32> {
         let pixel=clamp(vec2<i32>(uv*vec2<f32>(size)),vec2(0),size-vec2(1));
         reactive=temporal_transparency_reactivity(rgb,textureLoad(opaque_texture,pixel,0).rgb);
     }
-    if(depth>0.00001){
-        let world=ao_world_position(frame,uv,depth);
-        var horizon=vec3(0.0);
-        if(finite_world_haze(frame,world)>0.0){
-            horizon=textureSampleLevel(sky_texture,linear_sampler,sky_uv(ray_at(uv)),0.0).rgb;
-        }
-        rgb=physical_aerial(frame,rgb,world,horizon);
-    }
-    if(frame.atmosphere.w>0.5){
-        var travel=64.0;
-        if(depth>0.00001){travel=min(length(ao_world_position(frame,uv,depth)-frame.camera_time.xyz),64.0);}
-        rgb=water_transport(rgb,travel,water_ambient_irradiance(frame));
-    }else{rgb+=textureSampleLevel(shaft_texture,linear_sampler,uv,0.0).rgb;}
+    // Surfaces own their fog before blending; post-depth cannot classify transparent layers.
+    if(frame.atmosphere.x>0.5){rgb+=textureSampleLevel(shaft_texture,linear_sampler,uv,0.0).rgb;}
     return vec4(min(max(rgb,vec3(0.0)),vec3(60000.0)),reactive);
 }
 

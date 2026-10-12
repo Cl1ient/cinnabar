@@ -559,3 +559,45 @@ fn variance(values: &[[f32; 4]], channel: usize) -> f32 {
         .sum::<f32>()
         / values.len() as f32
 }
+
+#[test]
+fn configured_fog_is_last_and_keeps_gamma_fades_for_depthless_surfaces() {
+    let source = r#"
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::enhanced_distance_fog;
+@group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,5>;
+@compute @workgroup_size(1) fn regression(){
+    var frame:EnhancedFrame;
+    frame.atmosphere.z=5.0;
+    results[0]=vec4(enhanced_distance_fog(frame,vec3(1.0),vec3(2.5,0.0,0.0)),1.0);
+    results[1]=vec4(enhanced_distance_fog(frame,vec3(8.0),vec3(5.0,0.0,0.0)),1.0);
+    frame.fog_colour_start=vec4(0.1,0.2,0.3,0.0);
+    results[2]=vec4(enhanced_distance_fog(frame,vec3(8.0),vec3(6.0,0.0,0.0)),1.0);
+    frame.atmosphere.x=1.0;
+    frame.camera_time.y=64.0;
+    frame.celestial=vec4(0.0,1.0,0.0,0.0);
+    results[3]=vec4(enhanced_distance_fog(frame,vec3(8.0),vec3(6.0,64.0,0.0)),1.0);
+    let front=enhanced_distance_fog(frame,vec3(1.0,0.0,0.0),vec3(6.0,64.0,0.0));
+    let behind=enhanced_distance_fog(frame,vec3(0.0,1.0,0.0),vec3(8.0,64.0,0.0));
+    results[4]=vec4(mix(behind,front,0.25),1.0);
+}
+"#;
+    let Some(values) = execute_calibrated(source, 5) else {
+        return;
+    };
+    for channel in values[0][..3].iter() {
+        assert!(
+            (*channel - 0.21404114).abs() < 0.0001,
+            "configured fog blends in gamma space: {values:?}"
+        );
+    }
+    assert_eq!(values[1][..3], [0.0; 3]);
+    for result in &values[2..] {
+        for (actual, expected) in result[..3].iter().zip([0.1, 0.2, 0.3]) {
+            assert!(
+                (*actual - expected).abs() < 0.0001,
+                "fog must hide radiance before alpha blending: {values:?}"
+            );
+        }
+    }
+}

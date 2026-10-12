@@ -6,17 +6,19 @@ import render::chunk_bindings::{
     TRANSPARENT_WATER_RECORD_FLAG,
 };
 @if(ENHANCED)
+import render::enhanced::atmosphere::enhanced_distance_fog;
+@if(ENHANCED)
 import render::chunk_bindings::{enhanced_color_page_0, enhanced_color_page_1, enhanced_sampler, enhanced_texture_refs};
 import render::material::{MaterialGpu, materials, positional_material_id, texture_layer, texture_uv_scale, texture_gradient_scale};
 import render::world_projection::{section_camera_offset, camera_offset_clip};
 import render::biome_tint::{world_animation_clock, blended_biome_tint};
-import render::lighting::{light_ao_factor, light_colour, face_shade, tint_to_gamma, tint_to_linear, terrain_light_levels, terrain_light_colour};
+import render::lighting::{configured_fog_amount, configured_distance_fog, light_ao_factor, light_colour, face_shade, tint_to_gamma, tint_to_linear, terrain_light_levels, terrain_light_colour};
 @if(ENHANCED)
 import render::enhanced::common::CLASS_WATER;
 @if(ENHANCED)
 import render::enhanced::radiance::block_illumination;
 @if(ENHANCED)
-import render::enhanced::view::{sky_illumination, material_class, shade_surface, shade_water, water_displacement, enhanced_physical_atmosphere};
+import render::enhanced::view::{sky_illumination, material_class, shade_surface, shade_water, water_displacement, enhanced_frame};
 @if(ENHANCED)
 import render::enhanced::pbr::{authored_texture_slot, authored_layer, AUTHORED_REFERENCE_BASE_WORDS, AUTHORED_REFERENCE_OVERRIDE_WORDS};
 
@@ -337,43 +339,12 @@ fn sample_texture_ref(in: VertexOutput, texture_ref: u32, uv: vec2<f32>, dx: vec
     return textureSampleGrad(terrain_gamma_page_1, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
 }
 
+// Applies fog before blending so depthless surfaces retain their own distance.
 fn apply_distance_fog(colour: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
     @if(ENHANCED)
-    if (enhanced_physical_atmosphere()) { return colour; }
-    let distance_to_camera = distance(world_position, view.world_position);
-    let fog = clamp(
-        (distance_to_camera - atmosphere.fog_color_start.w)
-            / max(atmosphere.fog_end_time.x - atmosphere.fog_color_start.w, 0.0001),
-        0.0,
-        1.0,
-    );
-    @if(ENHANCED)
-    let delta = world_position - view.world_position;
-    @if(ENHANCED)
-    let direction = delta / max(length(delta), 1.0e-4);
-    @if(ENHANCED)
-    let horizon = smoothstep(-0.3, 0.75, direction.y);
-    @if(ENHANCED)
-    let sky = mix(
-        atmosphere.sky_horizon_thunder.rgb,
-        atmosphere.sky_zenith_rain.rgb,
-        smoothstep(0.12, 0.92, horizon),
-    );
-    @if(ENHANCED)
-    let storm = atmosphere.sky_horizon_thunder.a;
-    @if(ENHANCED)
-    let dusk = atmosphere.sunrise_band.rgb * atmosphere.sunrise_band.a
-        * smoothstep(-0.15, 0.75, direction.y) * 0.32;
-    @if(ENHANCED)
-    let fog_colour = mix(
-        atmosphere.fog_color_start.rgb,
-        mix(atmosphere.fog_color_start.rgb, sky, 0.28 + 0.24 * horizon),
-        1.0 - 0.22 * storm,
-    ) + dusk;
-    @if(ENHANCED)
-    return mix(colour, fog_colour, smoothstep(0.0, 1.0, fog));
+    return enhanced_distance_fog(enhanced_frame, colour, world_position);
     @if(!ENHANCED)
-    return mix(colour, atmosphere.fog_color_start.rgb, fog);
+    return configured_distance_fog(colour, world_position, view.world_position, atmosphere.fog_color_start, atmosphere.fog_end_time.x);
 }
 
 // Native liquid vertex colours are byte-quantized tint * face shade, without AO.
@@ -388,8 +359,7 @@ in: VertexOutput) -> vec3<f32> {
     let face_tint = floor(clamp(tint_gamma * in.native_face_shade, vec3(0.0), vec3(1.0)) * 255.0 + vec3(0.0001)) / 255.0;
     let lit_gamma = sampled_gamma * face_tint * terrain_light_colour(in.native_light_levels);
     let fog_gamma = tint_to_gamma(vec4(atmosphere.fog_color_start.rgb, 1.0)).rgb;
-    let distance_to_camera = distance(in.world_position, view.world_position);
-    let fog = clamp((distance_to_camera - atmosphere.fog_color_start.w) / max(atmosphere.fog_end_time.x - atmosphere.fog_color_start.w, 0.0001), 0.0, 1.0);
+    let fog = configured_fog_amount(in.world_position, view.world_position, atmosphere.fog_color_start.w, atmosphere.fog_end_time.x);
     return mix(lit_gamma, fog_gamma, fog);
 }
 

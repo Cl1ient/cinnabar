@@ -8,11 +8,13 @@ import render::enhanced::common::encode_geometric_normal;
 import bevy_render::view::View;
 import render::world_projection::{section_camera_offset, camera_offset_clip};
 import render::biome_tint::{world_animation_clock, blended_biome_tint_gamma, uniform_biome_tint_gamma};
-import render::lighting::{light_ao_factor, light_colour, lit_colour, material_ambient_occlusion, material_face_shade, tint_to_gamma, tint_to_linear, terrain_light_levels, terrain_light_colour};
+import render::lighting::{configured_fog_amount, configured_distance_fog, light_ao_factor, light_colour, lit_colour, material_ambient_occlusion, material_face_shade, tint_to_gamma, tint_to_linear, terrain_light_levels, terrain_light_colour};
 @if(ALPHA_TO_COVERAGE)
 import render::lighting::{CutoutSample, cutout_alpha_array, cutout_mix};
 @if(ENHANCED)
-import render::enhanced::view::{sky_illumination, material_class, shade_material, foliage_displacement, enhanced_physical_atmosphere, enhanced_light_direction, enhanced_materials_enabled};
+import render::enhanced::atmosphere::enhanced_distance_fog;
+@if(ENHANCED)
+import render::enhanced::view::{sky_illumination, material_class, shade_material, foliage_displacement, enhanced_frame, enhanced_light_direction, enhanced_materials_enabled};
 @if(ENHANCED)
 import render::enhanced::radiance::block_illumination;
 @if(ENHANCED)
@@ -546,46 +548,17 @@ fn sample_enhanced_colour(in: VertexOutput, texture_ref: u32, uv: vec2<f32>, uv_
 
 // ENHANCED_PBR_SAMPLING
 
+// Reads the shared configured fade for native gamma-space shading.
 fn distance_fog_amount(world_position: vec3<f32>) -> f32 {
-    let distance_to_camera = distance(world_position, view.world_position);
-    return clamp(
-        (distance_to_camera - atmosphere.fog_color_start.w)
-            / max(atmosphere.fog_end_time.x - atmosphere.fog_color_start.w, 0.0001),
-        0.0,
-        1.0,
-    );
+    return configured_fog_amount(world_position, view.world_position, atmosphere.fog_color_start.w, atmosphere.fog_end_time.x);
 }
 
+// Applies fog before blending so depthless surfaces retain their own distance.
 fn apply_distance_fog(colour: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {
     @if(ENHANCED)
-    if (enhanced_physical_atmosphere()) { return colour; }
-    @if(ENHANCED)
-    let delta = world_position - view.world_position;
-    @if(ENHANCED)
-    let direction = delta / max(length(delta), 1.0e-4);
-    @if(ENHANCED)
-    let horizon = smoothstep(-0.3, 0.75, direction.y);
-    @if(ENHANCED)
-    let sky = mix(
-        atmosphere.sky_horizon_thunder.rgb,
-        atmosphere.sky_zenith_rain.rgb,
-        smoothstep(0.12, 0.92, horizon),
-    );
-    @if(ENHANCED)
-    let storm = atmosphere.sky_horizon_thunder.a;
-    @if(ENHANCED)
-    let dusk = atmosphere.sunrise_band.rgb * atmosphere.sunrise_band.a
-        * smoothstep(-0.15, 0.75, direction.y) * 0.32;
-    @if(ENHANCED)
-    let fog_colour = mix(
-        atmosphere.fog_color_start.rgb,
-        mix(atmosphere.fog_color_start.rgb, sky, 0.28 + 0.24 * horizon),
-        1.0 - 0.22 * storm,
-    ) + dusk;
-    @if(ENHANCED)
-    return mix(colour, fog_colour, smoothstep(0.0, 1.0, distance_fog_amount(world_position)));
+    return enhanced_distance_fog(enhanced_frame, colour, world_position);
     @if(!ENHANCED)
-    return mix(colour, atmosphere.fog_color_start.rgb, distance_fog_amount(world_position));
+    return configured_distance_fog(colour, world_position, view.world_position, atmosphere.fog_color_start, atmosphere.fog_end_time.x);
 }
 
 // Current atlas creation/upload uses RGBA8_UNORM,

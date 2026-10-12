@@ -247,7 +247,7 @@ pub struct AtmosphereFrame {
     sunrise_band: Vec4,
     /// Star alpha, celestial angle in turns, lightning flash, then `sky kind + 4 * medium`.
     sky_extra: Vec4,
-    /// Ordinary liquid alpha's distance control in x; remaining channels are reserved.
+    /// Ordinary liquid alpha's distance control in x; vision-fog strength in y.
     liquid_distance: Vec4,
 }
 
@@ -396,6 +396,7 @@ impl AtmosphereFrame {
         _night_vision: f32,
     ) -> Self {
         let (blindness, darkness) = (bounded_level(blindness), bounded_level(darkness));
+        self.liquid_distance.y = blindness.max(darkness);
         let dim = (1.0 - blindness) * (1.0 - darkness * 0.5);
         for record in [
             &mut self.sky_zenith_rain,
@@ -417,11 +418,15 @@ impl AtmosphereFrame {
     }
 
     /// Applies camera-medium distance fog while retaining the exact celestial
-    /// and weather snapshot. The fallbacks mirror the default vanilla fog profile.
+    /// and weather snapshot. Missing powder-snow profiles retain the existing distance setting.
     #[must_use]
     pub fn with_camera_medium(mut self, medium: CameraMedium) -> Self {
         let (rgb8, end, code) = match medium {
             CameraMedium::Air => return self,
+            CameraMedium::PowderSnow => {
+                self.sky_extra.w = self.sky_extra.w % 4.0 + 12.0;
+                return self;
+            }
             CameraMedium::Water => (WATER_FOG_RGB8, WATER_FOG_END, 1.0),
             CameraMedium::Lava => (LAVA_FOG_RGB8, LAVA_FOG_END, 2.0),
         };
@@ -679,11 +684,20 @@ impl AtmosphereFrame {
         ]
     }
 
+    /// Physical sky and scattering are available only without dimension, medium or vision fog.
+    #[must_use]
+    pub fn physical_atmosphere_allowed(self) -> bool {
+        self.sky_kind() == SkyKind::Overworld
+            && self.sky_extra.w < 4.0
+            && self.liquid_distance.y == 0.0
+    }
+
     #[must_use]
     pub fn camera_medium(self) -> CameraMedium {
         match (self.sky_extra.w / 4.0) as u32 {
             1 => CameraMedium::Water,
             2 => CameraMedium::Lava,
+            3 => CameraMedium::PowderSnow,
             _ => CameraMedium::Air,
         }
     }

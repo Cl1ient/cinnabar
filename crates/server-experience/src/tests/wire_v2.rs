@@ -217,7 +217,7 @@ fn list_and_record_values_are_checked_positionally_and_totally() {
 
 #[test]
 fn containers_nest_at_most_the_shared_depth() {
-    let mut field = Field::Bool;
+    let mut field = Field::Bool {};
     for level in 1..=policy::MAX_FIELD_DEPTH + 1 {
         field = if level % 2 == 0 {
             Field::Record {
@@ -258,7 +258,7 @@ fn containers_nest_at_most_the_shared_depth() {
         schema: 1,
         direction: Direction::ToClient,
         fields: vec![Field::Record {
-            fields: vec![Field::Bool; policy::MAX_CHANNEL_FIELDS + 1],
+            fields: vec![Field::Bool {}; policy::MAX_CHANNEL_FIELDS + 1],
         }],
     };
     assert!(!wide.declared());

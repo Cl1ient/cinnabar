@@ -5,6 +5,7 @@ use super::*;
 fn shared_controller_graph() -> CompiledEntityAssets {
     let mut compiled = CompiledEntityAssets {
         item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 0,
         sources: Box::new([]),
@@ -30,7 +31,8 @@ fn shared_controller_graph() -> CompiledEntityAssets {
         item_visual_aliases: Box::new([]),
         render: Default::default(),
     }
-    .with_unresolved_item_use();
+    .with_unresolved_item_use()
+    .with_unresolved_seats();
     compiled.controllers = (0..4)
         .map(|index| EntityAnimationController {
             symbol: 0,

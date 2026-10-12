@@ -23,6 +23,7 @@ use super::{
 #[serde(deny_unknown_fields)]
 struct EntityCatalogPayloadRef<'a> {
     item_use_profiles: &'a [super::super::item_use::ItemUseDescriptor],
+    seat_layouts: &'a [super::super::seats::EntitySeatDescriptor],
     block_visual_count: u32,
     sources: &'a [EntityAssetSource],
     symbols: &'a [EntityAssetSymbol],
@@ -54,6 +55,7 @@ pub(crate) fn encode_compiled(compiled: &CompiledEntityAssets) -> Result<Box<[u8
         compiled.source_manifest_sha256,
         EntityCatalogPayloadRef {
             item_use_profiles: &compiled.item_use_profiles,
+            seat_layouts: &compiled.seat_layouts,
             block_visual_count: compiled.block_visual_count,
             sources: &compiled.sources,
             symbols: &compiled.symbols,
@@ -86,6 +88,7 @@ pub(crate) fn encode_runtime(runtime: &RuntimeEntityAssets) -> Result<Box<[u8]>,
         runtime.source_manifest_sha256,
         EntityCatalogPayloadRef {
             item_use_profiles: &runtime.item_use_profiles,
+            seat_layouts: &runtime.seat_layouts,
             block_visual_count: runtime.block_visual_count,
             sources: &runtime.sources,
             symbols: &runtime.symbols,

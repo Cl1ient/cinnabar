@@ -412,3 +412,13 @@ fn physics_compiles_from_the_seed_and_is_reused_until_an_input_changes() {
         BLOCK_PHYSICS.name
     );
 }
+
+#[test]
+fn entity_only_behavior_is_available_to_both_entity_and_equipment_compilation() {
+    let root = checkout();
+    let context = context(root.path());
+    let behavior = context.pack.cache.join("behavior_pack");
+    fs::create_dir_all(behavior.join("entities")).unwrap();
+    assert_eq!(context.behavior_pack(), Some(behavior.clone()));
+    assert_eq!(context.seat_behavior_pack(), Some(behavior));
+}

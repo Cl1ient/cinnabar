@@ -48,6 +48,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
     let entities = RuntimeEntityAssets::from_compiled(
         assets::CompiledEntityAssets {
             item_use_profiles: Box::new([]),
+            seat_layouts: Box::new([]),
             source_manifest_sha256: [1; 32],
             block_visual_count: 8,
             sources: vec![assets::EntityAssetSource {
@@ -85,7 +86,8 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
             item_visual_aliases: Box::new([]),
             render: Default::default(),
         }
-        .with_unresolved_item_use(),
+        .with_unresolved_item_use()
+        .with_unresolved_seats(),
     )
     .unwrap();
     let icons =

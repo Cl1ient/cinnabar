@@ -19,6 +19,7 @@ mod attachable;
 mod collect;
 mod geometry;
 mod geometry_layers;
+mod seats;
 pub use geometry_layers::select_entity_geometry;
 mod item;
 mod item_bindings;
@@ -111,6 +112,24 @@ pub fn compile_entity_assets_with_report(
     root: &Path,
     source_manifest: &[u8],
 ) -> Result<EntityAssetCompilation, AssetError> {
+    compile_with_behavior(root, source_manifest, None)
+}
+
+/// Compiles entity seats from a bounded behavior pack alongside the resource carrier.
+pub fn compile_entity_assets_with_behavior_report(
+    root: &Path,
+    behavior: &Path,
+    source_manifest: &[u8],
+) -> Result<EntityAssetCompilation, AssetError> {
+    compile_with_behavior(root, source_manifest, Some(behavior))
+}
+
+/// Collects resource and optional behavior sources before any indexed payload is built.
+fn compile_with_behavior(
+    root: &Path,
+    source_manifest: &[u8],
+    behavior: Option<&Path>,
+) -> Result<EntityAssetCompilation, AssetError> {
     let source_manifest_sha256 = validate_source_manifest(source_manifest)?;
     let mut selected = Vec::new();
     collect_family(root, "entity", &["json"], &mut selected)?;
@@ -145,6 +164,15 @@ pub fn compile_entity_assets_with_report(
     }
     collect_optional_file(root, "textures/item_texture.json", &mut selected)?;
     collect_optional_file(root, "manifest.json", &mut selected)?;
+    if let Some(behavior) = behavior {
+        let mut definitions = Vec::new();
+        collect_family(behavior, "entities", &["json"], &mut definitions)?;
+        selected.extend(
+            definitions
+                .into_iter()
+                .map(|(relative, absolute)| (format!("behavior/{relative}").into(), absolute)),
+        );
+    }
     selected.sort_by(|left, right| left.0.cmp(&right.0));
     if selected.is_empty() || selected.len() > MAX_ENTITY_ASSET_SOURCES {
         return Err(invalid("entity asset source count exceeds bound"));
@@ -161,7 +189,12 @@ pub fn compile_entity_assets_with_report(
     let mut symbols = BTreeMap::<(EntityAssetKind, Box<str>, Box<str>), PendingSymbol>::new();
     let mut geometries = BTreeMap::<(Box<str>, Box<str>), PendingGeometry>::new();
     for (relative_path, absolute_path) in selected {
-        let bytes = read_bounded_source(root, &absolute_path)?;
+        let source_root = if relative_path.starts_with("behavior/") {
+            behavior.expect("behavior sources have a root")
+        } else {
+            root
+        };
+        let bytes = read_bounded_source(source_root, &absolute_path)?;
         total_source_bytes = total_source_bytes
             .checked_add(bytes.len())
             .ok_or_else(|| invalid("entity source-byte total overflow"))?;
@@ -175,13 +208,15 @@ pub fn compile_entity_assets_with_report(
                 .map_err(|_| invalid("entity source byte count overflow"))?,
             source_sha256: Sha256::digest(&bytes).into(),
         });
-        parse_source(
-            &relative_path,
-            &absolute_path,
-            &bytes,
-            &mut symbols,
-            &mut geometries,
-        )?;
+        if !relative_path.starts_with("behavior/") {
+            parse_source(
+                &relative_path,
+                &absolute_path,
+                &bytes,
+                &mut symbols,
+                &mut geometries,
+            )?;
+        }
         // Pinned vanilla samples occasionally omit a legacy cube bind transform that
         // the shipped native base pack retains. This is never applied to session packs.
         native_bind_pose::restore_sample_defaults(&relative_path, &bytes, &mut geometries);
@@ -215,22 +250,41 @@ pub fn compile_entity_assets_with_report(
         source_sha256: Sha256::digest(route_bytes).into(),
     });
     source_payloads.insert(route_path, route_bytes.into());
-    for (path, bytes) in [
-        (
+    let raw = |path: &str, bytes: &[u8]| -> (Box<str>, usize, [u8; 32]) {
+        (path.into(), bytes.len(), Sha256::digest(bytes).into())
+    };
+    let (use_bytes, use_hash) = assets::item_use::source_identity();
+    for (path, source_bytes, source_sha256) in [
+        raw(
             assets::item::fuel::SOURCE_PATH,
             assets::item::fuel::SOURCE_BYTES,
         ),
-        (
+        raw(
             assets::item::grip::GRIP_SOURCE_PATH,
             assets::item::grip::GRIP_SOURCE_BYTES,
         ),
-        (
+        raw(
             assets::item::retail::SOURCE_PATH,
             assets::item::retail::SOURCE_BYTES,
         ),
+        raw(
+            assets::item::armour::ITEM_ARMOUR_SOURCE_PATH,
+            assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES,
+        ),
+        raw(
+            assets::item::durability::ITEM_DURABILITY_SOURCE_PATH,
+            assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES,
+        ),
+        raw(item_bindings::SOURCE_PATH, item_bindings::SOURCE_BYTES),
+        (
+            assets::item_use::SOURCE_PATH.into(),
+            use_bytes as usize,
+            use_hash,
+        ),
+        raw(legacy_icons::SOURCE_PATH, legacy_icons::SOURCE_BYTES),
     ] {
         total_source_bytes = total_source_bytes
-            .checked_add(bytes.len())
+            .checked_add(source_bytes)
             .ok_or_else(|| invalid("entity source-byte total overflow"))?;
         if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
             || sources.len() >= MAX_ENTITY_ASSET_SOURCES
@@ -238,81 +292,11 @@ pub fn compile_entity_assets_with_report(
             return Err(invalid("entity source-byte total or count exceeds bound"));
         }
         sources.push(EntityAssetSource {
-            path: path.into(),
-            source_bytes: bytes.len() as u32,
-            source_sha256: Sha256::digest(bytes).into(),
+            path,
+            source_bytes: source_bytes as u32,
+            source_sha256,
         });
     }
-    let armour_bytes = assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(armour_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: assets::item::armour::ITEM_ARMOUR_SOURCE_PATH.into(),
-        source_bytes: armour_bytes.len() as u32,
-        source_sha256: Sha256::digest(armour_bytes).into(),
-    });
-    let durability_bytes = assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(durability_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: assets::item::durability::ITEM_DURABILITY_SOURCE_PATH.into(),
-        source_bytes: durability_bytes.len() as u32,
-        source_sha256: Sha256::digest(durability_bytes).into(),
-    });
-    let binding_bytes = item_bindings::SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(binding_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: item_bindings::SOURCE_PATH.into(),
-        source_bytes: binding_bytes.len() as u32,
-        source_sha256: Sha256::digest(binding_bytes).into(),
-    });
-    let (use_bytes, use_hash) = assets::item_use::source_identity();
-    total_source_bytes = total_source_bytes
-        .checked_add(use_bytes as usize)
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: assets::item_use::SOURCE_PATH.into(),
-        source_bytes: use_bytes,
-        source_sha256: use_hash,
-    });
-    let legacy_bytes = legacy_icons::SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(legacy_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: legacy_icons::SOURCE_PATH.into(),
-        source_bytes: legacy_bytes.len() as u32,
-        source_sha256: Sha256::digest(legacy_bytes).into(),
-    });
     versions::select_vanilla_definitions(&mut symbols, &source_payloads)?;
     assemble(
         root,
@@ -442,6 +426,7 @@ fn assemble(
         !include_items,
     )?;
     validate_reference_coverage(&symbols, &animation)?;
+    let seat_layouts = seats::compile(&symbols, &sources, source_payloads, &mut molang_compiler)?;
     let mut molang = molang_compiler.finish()?;
     let equipment_bindings =
         attachable::compile_bindings(source_payloads, &symbols, &sources, !include_items)?;
@@ -457,6 +442,7 @@ fn assemble(
     };
     let reference_outcomes = animation.outcomes;
     let assets = CompiledEntityAssets {
+        seat_layouts,
         source_manifest_sha256,
         block_visual_count: items.block_visual_count,
         sources: sources.into_boxed_slice(),

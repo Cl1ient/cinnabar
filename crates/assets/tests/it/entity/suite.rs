@@ -32,6 +32,7 @@ pub(super) fn fixture() -> CompiledEntityAssets {
     let source_bytes = br#"{"format_version":"1.10.0"}"#;
     CompiledEntityAssets {
         item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [0x11; 32],
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -82,6 +83,7 @@ pub(super) fn fixture() -> CompiledEntityAssets {
         render: Default::default(),
     }
     .with_unresolved_item_use()
+    .with_unresolved_seats()
 }
 
 #[path = "suite/geometry_fixture.rs"]
@@ -460,6 +462,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
 
     CompiledEntityAssetsV4 {
         item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [0x21; 32],
         block_visual_count: 8,
         sources,
@@ -683,6 +686,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         },
     }
     .with_unresolved_item_use()
+    .with_unresolved_seats()
 }
 
 #[test]

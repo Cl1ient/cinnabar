@@ -65,6 +65,7 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
     .into_boxed_slice();
     CompiledEntityAssets {
         item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 1,
         sources,

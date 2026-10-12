@@ -200,6 +200,7 @@ fn action_phase_contract_carries_exact_tick_progress() {
 fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
     CompiledEntityAssetsV4 {
         item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: [0x31; 32],
         block_visual_count: 1,
         sources: vec![
@@ -271,6 +272,7 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         render: Default::default(),
     }
     .with_unresolved_item_use()
+    .with_unresolved_seats()
 }
 
 const DEFAULT_BINDINGS: &[u8] = include_bytes!("../../data/default-sprite-bindings-1.26.50.json");

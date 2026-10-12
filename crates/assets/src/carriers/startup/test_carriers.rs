@@ -15,10 +15,11 @@ pub fn synthetic_entity_blob(seed: u8) -> Box<[u8]> {
     crate::encode_entity_blob(&synthetic_entity_assets(seed)).unwrap()
 }
 
-/// Builds an original collected entity without installed asset payloads.
+/// Gives original tests a checked-carrier fixture before changing its authored descriptors.
 pub fn synthetic_entity_assets(seed: u8) -> CompiledEntityAssets {
     CompiledEntityAssets {
         item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
         source_manifest_sha256: manifest(),
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -57,6 +58,7 @@ pub fn synthetic_entity_assets(seed: u8) -> CompiledEntityAssets {
         render: Default::default(),
     }
     .with_unresolved_item_use()
+    .with_unresolved_seats()
 }
 
 /// An atmosphere carrier with flat sun, moon and cloud textures.

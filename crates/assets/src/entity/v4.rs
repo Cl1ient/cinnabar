@@ -506,6 +506,7 @@ pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Resu
     super::item_use::validate(compiled)?;
     crate::item::grip::validate(&compiled.item_visuals, &compiled.sources)?;
     crate::item::fuel::validate(&compiled.item_visuals, &compiled.sources)?;
+    super::seats::validate(compiled)?;
     validate_animation_payload(compiled)?;
     validate_molang_payload(compiled)?;
     validate_controller_payload(compiled)?;

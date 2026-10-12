@@ -4,7 +4,7 @@ set -euo pipefail
 expected_bds_sha256='19c88569af2e4b7d984e999055a31cbcb0799dacf8bbbf7371eda42f5772a443'
 expected_bds_release='1.26.52.3'
 pinned_axolotl_stack_commit='c4540512dc47833bb40363da7ad1161110d64b67'
-pinned_protocolgen_commit='0c6d30a3bf2e6a35002737ef1b79acb2dad30517'
+pinned_protocolgen_commit='dec7334ac3981b0b79146fa53c82af91d70f9f62'
 pinned_jolyne_license_sha256='62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184'
 
 usage() {

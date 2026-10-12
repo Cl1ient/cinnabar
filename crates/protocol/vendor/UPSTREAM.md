@@ -4,7 +4,7 @@
 (protocol 2193), copied byte for byte with no local patches. Only `protocol` depends on it.
 
 - Generator: https://github.com/bedrock-mc/protocolgen
-- Generator commit: `0c6d30a3bf2e6a35002737ef1b79acb2dad30517` (`generated/1.26.51/rust-contract`)
+- Generator commit: `dec7334ac3981b0b79146fa53c82af91d70f9f62` (`generated/1.26.51/rust-contract`)
 
 The expected protocol, codec contract and manifest fingerprint are pinned once, in
 `assets/bedrock-target.json`; a protocol test fails until a re-vendored crate matches them. Protocol 2193 is spoken by Minecraft

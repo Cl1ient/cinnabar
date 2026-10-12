@@ -218,7 +218,7 @@ grep -Fq 'math.isfinite(metrics["p99_frame_ms"])' "$script"
 grep -Fq 'str(root / "core"), "mod", "edit", "-json"' "$script"
 grep -Fq 'resolve_pinned_gophertunnel_commit' "$script"
 grep -Fq "pinned_axolotl_stack_commit='c4540512dc47833bb40363da7ad1161110d64b67'" "$script"
-grep -Fq "pinned_protocolgen_commit='0c6d30a3bf2e6a35002737ef1b79acb2dad30517'" "$script"
+grep -Fq "pinned_protocolgen_commit='dec7334ac3981b0b79146fa53c82af91d70f9f62'" "$script"
 grep -Fq "pinned_jolyne_license_sha256='62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184'" "$script"
 grep -Fq '"protocol_dependency_resolution": "vendored-path"' "$script"
 metadata_line=$(grep -n '^write_metadata preparing$' "$script" | cut -d: -f1)

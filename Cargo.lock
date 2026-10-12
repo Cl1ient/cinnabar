@@ -679,7 +679,7 @@ dependencies = [
  "first-run",
  "fontdue",
  "gameplay",
- "glam 0.33.12",
+ "glam",
  "image",
  "inventory 0.1.12",
  "json-ui",
@@ -740,7 +740,7 @@ name = "bedrock-protocol-1-26-51"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "glam 0.30.10",
+ "glam",
  "regex",
  "uuid",
 ]
@@ -1370,7 +1370,7 @@ dependencies = [
  "approx",
  "bevy_reflect",
  "derive_more",
- "glam 0.33.12",
+ "glam",
  "libm",
  "rand",
  "serde",
@@ -1399,7 +1399,7 @@ dependencies = [
  "bytemuck",
  "derive_more",
  "encase",
- "glam 0.33.12",
+ "glam",
  "half",
  "hexasphere",
  "thiserror 2.0.18",
@@ -1529,7 +1529,7 @@ dependencies = [
  "downcast-rs 2.0.2",
  "erased-serde",
  "foldhash 0.2.0",
- "glam 0.33.12",
+ "glam",
  "indexmap",
  "inventory 0.3.24",
  "serde",
@@ -1593,7 +1593,7 @@ dependencies = [
  "derive_more",
  "downcast-rs 2.0.2",
  "encase",
- "glam 0.33.12",
+ "glam",
  "image",
  "indexmap",
  "itertools 0.14.0",
@@ -2348,7 +2348,7 @@ dependencies = [
  "chunk-pipeline",
  "client-ui",
  "client-world",
- "glam 0.33.12",
+ "glam",
  "image",
  "inventory 0.1.12",
  "launcher",
@@ -2484,7 +2484,7 @@ dependencies = [
  "chunk-pipeline",
  "client-world",
  "crossbeam-channel",
- "glam 0.33.12",
+ "glam",
  "image",
  "inventory 0.1.12",
  "json-ui",
@@ -3874,12 +3874,6 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.30.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
-
-[[package]]
-name = "glam"
 version = "0.33.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37bfe73dc8ec21f54d181e5a60554327ec3f1c600c455a75ccbfc65d2106a6c4"
@@ -4018,7 +4012,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "163385eff5a0cf606ebe2c10b3a44ab02f4306e83fbd068a64f5e1d72a3049ac"
 dependencies = [
  "constgebra",
- "glam 0.33.12",
+ "glam",
  "tinyvec",
 ]
 
@@ -4957,7 +4951,7 @@ name = "mod-ui"
 version = "0.1.12"
 dependencies = [
  "assets",
- "glam 0.33.12",
+ "glam",
  "json-ui",
  "render-model",
  "serde_json",
@@ -6339,7 +6333,7 @@ dependencies = [
  "bevy",
  "block-transform",
  "bytemuck",
- "glam 0.33.12",
+ "glam",
  "image",
  "libc",
  "meshing",
@@ -6376,7 +6370,7 @@ dependencies = [
  "block-transform",
  "bytemuck",
  "foldhash 0.2.0",
- "glam 0.33.12",
+ "glam",
  "hashbrown 0.16.1",
  "image",
  "mod-api",
@@ -6405,7 +6399,7 @@ dependencies = [
  "assets",
  "bevy",
  "bytemuck",
- "glam 0.33.12",
+ "glam",
  "meshing",
  "mod-api",
  "mod-render",

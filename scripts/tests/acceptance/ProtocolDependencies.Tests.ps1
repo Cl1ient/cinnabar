@@ -1,5 +1,5 @@
 $expectedAxolotlStackRevision = 'c4540512dc47833bb40363da7ad1161110d64b67'
-$expectedProtocolgenRevision = '0c6d30a3bf2e6a35002737ef1b79acb2dad30517'
+$expectedProtocolgenRevision = 'dec7334ac3981b0b79146fa53c82af91d70f9f62'
 $expectedLicenseSha256 = '62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184'
 
 $validationSource = Get-Content -Raw -LiteralPath `

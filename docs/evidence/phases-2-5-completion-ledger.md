@@ -66,7 +66,9 @@ incomplete; this work closes no movement parity or performance gate.
 
 Custom block surface friction follows each state's `minecraft:friction` component, with
 protocol, permutation and registry regressions in both identity spaces. No live witness
-exists; complete ordinary/special block classification remains open.
+exists. Every vanilla state now carries a reviewed ordinary, special or unresolved movement
+disposition bound to its identifier set; one-way door collision, block-actor collision and
+soul soil remain unmodeled or unresolved.
 
 | Field | Evidence |
 |---|---|
@@ -308,6 +310,12 @@ placement retries after temporary zero scale; existing attachments retain their
 actor lifetime. Particle placement samples each needed actor once per frame. The
 unsupported query grammar, skin locator, child-event placement, fallback and
 animated gallery checks in `plan.md` remain open. No completion entry advances.
+
+## Particle terrain ordering
+
+Individual depth ranges and adjacent-range batching are implemented. Renderer composition and
+current-frame regressions pass, and an offline Metal fixture measures the GPU span. Native bucket
+composition and full-frame acceptance remain incomplete.
 
 ## Cached beacon beam sections
 

@@ -27,6 +27,7 @@ protocol = { path = "../protocol" }
 render = { path = "../render" }
 render-scene = { path = "../render-scene" }
 render-api = { path = "../render-api" }
+simulation-clock = { path = "../simulation-clock" }
 tokio.workspace = true
 
 [dev-dependencies]

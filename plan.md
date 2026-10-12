@@ -8045,14 +8045,17 @@ regenerates the carrier and stale envelopes fail admission. Held-item tool and
 creative-break classification still use item names and need separate admission
 facts before the complete mining path can be considered name-free.
 
-Movement descriptor coverage remains incomplete. The current physics carrier requires a typed
-movement disposition for every admitted state. Existing declared special rules retain their
-numerical behavior; unclassified states remain unresolved and keep the previous conservative
-numerical defaults. No ordinary movement classification is inferred from absence of a special
-rule. Custom blocks take surface friction from their base or last matching permutation's
+Movement descriptor coverage remains incomplete. The physics carrier records a reviewed
+ordinary, special or unresolved disposition for every admitted state. The movement census in
+the registry policy is bound to the digest of the identifier set it reviewed, so a new
+identifier fails generation until it is classified. Doors, trapdoors and fence gates (one-way
+collision while overlapping), shulker boxes and moving blocks (block-actor collision) are
+special but unmodeled and keep ordinary numbers; soul soil stays unresolved. Climbable and
+liquid membership follows the declared rules and is not independently established. Custom
+blocks take surface friction from their base or last matching permutation's
 `minecraft:friction` value (one minus the value, default 0.6) with neutral speed and fluid
-facts, independent of any vanilla carrier record. Complete native ordinary/special coverage
-and all provisional rule values still require verification before this gate can close.
+facts, independent of any vanilla carrier record. The unmodeled and unresolved behaviour and
+all provisional rule values still require verification before this gate can close.
 Rig placement and target-rotation frames are compiled and carried with the selected
 rig. Their compatibility source preserves existing absolute-frame routes, while
 other identities remain explicitly unresolved and retain the body-yaw fallback.
@@ -8133,6 +8136,17 @@ Incomplete parity: function-style actor queries outside the particle expression
 grammar, skin-authored locators, bound child-event offsets under rotation, fallback
 placement without a rig, and the full animated locator gallery remain unverified.
 Frame and streaming performance acceptance remains open. No parity gate closes.
+
+### Particle depth ranges
+
+Translucent particles enter the shared terrain phase at individual camera depths from the
+current extracted frame. Adjacent contiguous instances of the same material combine after
+phase preparation, while intervening terrain preserves the range boundaries. Cutout particles
+keep their depth-writing pass. The expression of depth matches the view sorting direction.
+
+An offline fixture verifies alpha and additive depth composition through the production shader
+and measures the GPU pass cost. Exact native composition across material buckets and full-frame
+performance acceptance remain incomplete.
 
 ## Cached beacon beam sections
 

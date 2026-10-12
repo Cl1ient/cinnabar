@@ -129,7 +129,7 @@ pub(super) fn snapshot(world: &World) -> Value {
                 "ingress_sequence": identity.ingress_sequence,
                 "source_tick": identity.source_tick,
                 "movement_revision": identity.movement_revision,
-                "pose_generation": identity.pose_generation,
+                "pose_generation": identity.pose_generation.get(),
                 "layer": identity.layer,
                 "rig": entry.rig.0,
                 "route": format!("{:?}", entry.route),

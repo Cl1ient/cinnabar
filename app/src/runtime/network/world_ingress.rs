@@ -65,6 +65,8 @@ pub(super) fn drain(
                 payload,
             } => {
                 network.record_level_chunk_consumed();
+                let session_generation = session_generation.get();
+                let sequence = sequence.get();
                 if session_generation != ui_runtime.session_id() {
                     record_fatal_error(
                         &mut client_world.fatal_error,
@@ -113,6 +115,8 @@ pub(super) fn drain(
                 sequence,
                 action_sequence,
             } => {
+                let session_generation = session_generation.get();
+                let sequence = sequence.get();
                 if session_generation != ui_runtime.session_id() {
                     record_fatal_error(
                         &mut client_world.fatal_error,
@@ -144,13 +148,13 @@ pub(super) fn drain(
                 continue;
             }
         };
-        if sequenced.session_generation != ui_runtime.session_id() {
+        if sequenced.session_generation.get() != ui_runtime.session_id() {
             record_fatal_error(
                 &mut client_world.fatal_error,
                 format!(
                     "world ingress crossed a session boundary: expected {}, got {}",
                     ui_runtime.session_id(),
-                    sequenced.session_generation
+                    sequenced.session_generation.get()
                 ),
             );
             continue;
@@ -174,8 +178,8 @@ pub(super) fn drain(
         {
             ui_runtime.retain_totem_snapshot(
                 player_runtime,
-                sequenced.session_generation,
-                sequenced.sequence,
+                sequenced.session_generation.get(),
+                sequenced.sequence.get(),
             );
         }
         #[cfg(feature = "acceptance")]
@@ -186,7 +190,7 @@ pub(super) fn drain(
             stream,
             &sequenced,
         );
-        let submitted = stream.submit(sequenced.sequence, sequenced.event);
+        let submitted = stream.submit(sequenced.sequence.get(), sequenced.event);
         stream.dispatch_ingress_decode();
         if let Err(error) = submitted {
             client_world.fatal_error = Some(format!("world FIFO rejected data: {error}"));
@@ -253,7 +257,8 @@ fn observe_event(
     let observed_at = Instant::now();
     if model_witness_source.configured()
         && let protocol::WorldEvent::MovePlayer(movement) = &sequenced.event
-        && let Some(marker) = move_player_ingress_marker(sequenced.sequence, movement.position)
+        && let Some(marker) =
+            move_player_ingress_marker(sequenced.sequence.get(), movement.position)
     {
         let mut stdout = diagnostics::console::stdout();
         write_stdout_marker(&mut stdout, &marker);
@@ -261,7 +266,7 @@ fn observe_event(
     acceptance.observe_mutation(&sequenced.event, observed_at);
     let accepted_binding_ingress = acceptance.observe_full_view_teleport_ingress(
         &sequenced.event,
-        sequenced.sequence,
+        sequenced.sequence.get(),
         observed_at,
         stream.current_dimension(),
         metrics.0.frame_count(),
@@ -269,15 +274,15 @@ fn observe_event(
     if accepted_binding_ingress {
         if let Some(ingress_marker) = accepted_move_player_ingress_marker(
             accepted_binding_ingress,
-            sequenced.sequence,
+            sequenced.sequence.get(),
             &sequenced.event,
         ) {
             let mut stdout = diagnostics::console::stdout();
             write_move_player_ingress_before_source_capture(&mut stdout, &ingress_marker, || {
-                stream.schedule_source_capture(sequenced.sequence)
+                stream.schedule_source_capture(sequenced.sequence.get())
             });
         } else {
-            stream.schedule_source_capture(sequenced.sequence);
+            stream.schedule_source_capture(sequenced.sequence.get());
         }
     }
 }

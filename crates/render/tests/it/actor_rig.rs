@@ -1,3 +1,4 @@
+use render_api::PoseGeneration;
 use std::{mem::size_of, sync::Arc};
 
 use bevy::math::{Mat4, Vec3};
@@ -24,7 +25,7 @@ fn identity(runtime_id: u64, spawn_revision: u64) -> ActorRenderIdentity {
         ingress_sequence: runtime_id,
         source_tick: Some(runtime_id),
         movement_revision: runtime_id,
-        pose_generation: runtime_id,
+        pose_generation: PoseGeneration::new(runtime_id),
         layer: 0,
     }
 }
@@ -261,7 +262,8 @@ fn same_layer_keeps_only_the_newest_identity_per_actor() {
     let mut builder = ActorRigFrameBuilder::new([geometry()]).unwrap();
     let older = equipment_submission(4, 2);
     let mut newer = equipment_submission(4, 2);
-    newer.input.identity.pose_generation += 1;
+    newer.input.identity.pose_generation =
+        newer.input.identity.pose_generation.checked_next().unwrap();
     let body = submission(4, 1);
 
     let frame = builder.build(0.5, None, [older, newer, body]);

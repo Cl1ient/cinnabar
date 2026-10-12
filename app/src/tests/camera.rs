@@ -1,4 +1,9 @@
 use super::*;
+use protocol::identity::FifoSequence;
+use render_api::PoseGeneration;
+use semantic_input::identity::InputAuthorityGeneration;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 use std::num::NonZeroU64;
 
 use crate::semantic_controls::{
@@ -61,10 +66,10 @@ fn frozen_local_player_sample_for(
     let eye = Vec3::new(8.0, 72.62, -4.0);
     let rotation = Quat::from_euler(bevy::math::EulerRot::YXZ, 0.8, -0.25, 0.0);
     LocalPlayerFrameSample {
-        session_generation: 7,
+        session_generation: SessionGeneration::new(7),
         actor_session_id: 3,
-        fifo_sequence: 41,
-        physics_tick: 900,
+        fifo_sequence: FifoSequence::new(41),
+        physics_tick: PhysicsTick::new(900),
         perspective,
         world_collision_identity: frozen_collision_identity(),
         pose: perspective_pose(eye, rotation, perspective),

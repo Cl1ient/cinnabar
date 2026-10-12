@@ -2,6 +2,7 @@
 
 use super::*;
 use bytes::Bytes;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::sync::mpsc as blocking;
 
 struct Decoded {
@@ -117,7 +118,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
             let mut receipts = Vec::new();
             while let Some(event) = control_rx.blocking_recv() {
                 if let NetworkControlEvent::PhysicsPacketSent { identity } = event {
-                    receipts.push(identity.tick);
+                    receipts.push(identity.tick.get());
                 } else {
                     assert!(matches!(event, NetworkControlEvent::Stopped { .. }));
                 }
@@ -134,7 +135,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                     panic!("skin replay must produce ordinary world ingress")
                 };
                 consumed += 1;
-                assert_eq!(event.sequence, consumed);
+                assert_eq!(event.sequence.get(), consumed);
             }
             consumed
         });
@@ -151,7 +152,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                 .unwrap()
                 .block_on(run_network_pump(
                     session,
-                    NetworkSequencer::new(7, 0, 42),
+                    NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
                     command_rx,
                     control_tx,
                     world_tx,
@@ -171,10 +172,10 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                     sub_chunk: None,
                     chat: None,
                     physics: Some(protocol::PhysicsSendIdentity {
-                        session_generation: 7,
-                        tick,
+                        session_generation: SessionGeneration::new(7),
+                        tick: simulation_clock::PhysicsTick::new(tick),
                         admission_id: tick,
-                        reanchor_epoch: 0,
+                        reanchor_epoch: PositionAuthorityGeneration::new(0),
                     }),
                     physics_reanchor: None,
                     interaction: None,

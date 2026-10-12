@@ -207,7 +207,7 @@ fn retained_correction_cancels_admitted_future_ticks_and_requeues_replayed_posit
     assert_eq!(
         admitted
             .iter()
-            .map(|identity| identity.tick)
+            .map(|identity| identity.tick.get())
             .collect::<Vec<_>>(),
         [102, 103]
     );
@@ -343,8 +343,6 @@ fn surface_spawn_reanchor_after_replay_drops_pre_anchor_retries() {
     );
 }
 
-
-
 #[test]
 fn newest_retained_tick_correction_invalidates_its_admitted_packet_without_replaying() {
     let mut physics = LocalPhysicsController::default();
@@ -453,7 +451,7 @@ fn invalidated_retries_resolve_before_a_newer_queued_tick_can_reach_the_wire() {
     assert_eq!(
         invalidated
             .iter()
-            .map(|identity| identity.tick)
+            .map(|identity| identity.tick.get())
             .collect::<Vec<_>>(),
         [102, 103]
     );
@@ -475,7 +473,7 @@ fn invalidated_retries_resolve_before_a_newer_queued_tick_can_reach_the_wire() {
         8,
         Some(evidence_context()),
         |identity, _packet| {
-            overtaking_wire_ticks.push(identity.tick);
+            overtaking_wire_ticks.push(identity.tick.get());
             Ok::<_, &str>(())
         },
     )
@@ -497,7 +495,7 @@ fn invalidated_retries_resolve_before_a_newer_queued_tick_can_reach_the_wire() {
         8,
         Some(evidence_context()),
         |identity, _packet| {
-            ordered_wire_ticks.push(identity.tick);
+            ordered_wire_ticks.push(identity.tick.get());
             Ok::<_, &str>(())
         },
     )
@@ -583,10 +581,6 @@ fn newer_correction_drops_a_retry_that_is_now_the_corrected_tick() {
         "a later correction owns tick 102, so only the still-future tick may be retried"
     );
 }
-
-
-
-
 
 /// Drives the respawn snap flow end to end and renders the captured
 /// PlayerAuthInput through the exact `rust-mcbe-pai-trace-v1` formatter.

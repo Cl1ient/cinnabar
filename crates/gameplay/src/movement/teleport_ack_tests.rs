@@ -426,7 +426,7 @@ fn replay_rewrite_preserves_the_flag_bit_on_a_flagged_pending_sample() {
     let still_pending = &ticker.pending_sends;
     let flagged_tick = still_pending
         .iter()
-        .find(|pending| pending.identity.tick == 102)
+        .find(|pending| pending.identity.tick.get() == 102)
         .expect("tick 102 remains staged across the replay");
     assert_ne!(
         flagged_tick.sample.snapshot.flags.bits() & PlayerInputFlags::HANDLED_TELEPORT.bits(),

@@ -1,6 +1,8 @@
 use client_ui::ui_runtime::UiRuntime;
 use inventory::inventory_router::{EquipmentRoute, EquipmentRouteResult, InventoryRouterError};
 use protocol::WorldEvent;
+use protocol::identity::FifoSequence;
+use simulation_clock::identity::SessionGeneration;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EquipmentIngress {
@@ -30,11 +32,11 @@ pub(crate) fn route_equipment_ingress(
     runtime: &mut UiRuntime,
     sequenced: client_session::SequencedWorldEvent,
 ) -> Result<EquipmentIngress, InventoryRouterError> {
-    let session_id = sequenced.session_generation;
+    let session_id = sequenced.session_generation.get();
     let WorldEvent::Equipment(event) = sequenced.event else {
         unreachable!("equipment routing accepts only equipment world events")
     };
-    match runtime.route_equipment(player_runtime, session_id, sequenced.sequence, event)? {
+    match runtime.route_equipment(player_runtime, session_id, sequenced.sequence.get(), event)? {
         EquipmentRouteResult::Buffered => Ok(EquipmentIngress::Buffered),
         EquipmentRouteResult::Routed(route) => Ok(consume_equipment_route(
             player_runtime,
@@ -64,8 +66,8 @@ fn consume_equipment_route(
             fifo_sequence,
             event,
         } => EquipmentIngress::ActorPresentation(Box::new(client_session::SequencedWorldEvent {
-            session_generation,
-            sequence: fifo_sequence,
+            session_generation: SessionGeneration::new(session_generation),
+            sequence: FifoSequence::new(fifo_sequence),
             event: WorldEvent::Equipment(event),
         })),
     }
@@ -103,7 +105,7 @@ pub(super) fn publish_bootstrap_equipment(
                 client_world
                     .stream
                     .as_mut()
-                    .map(|stream| stream.submit(sequenced.sequence, sequenced.event))
+                    .map(|stream| stream.submit(sequenced.sequence.get(), sequenced.event))
             }
             EquipmentIngress::CommitOnly { fifo_sequence } => client_world
                 .stream

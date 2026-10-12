@@ -85,7 +85,6 @@ impl FinalizedInput {
 mod tests {
     use super::*;
     use crate::InputMode;
-    use core::num::NonZeroU64;
 
     /// Builds a frame with independently chosen movement observations.
     fn snapshot_with_carriers(
@@ -94,8 +93,8 @@ mod tests {
         analogue_movement: [f32; 2],
     ) -> FinalizedInput {
         FinalizedInput(Some(ActionSnapshot {
-            frame_sequence: 1,
-            authority_generation: NonZeroU64::MIN,
+            frame_sequence: crate::identity::InputSequence::new(1),
+            authority_generation: crate::identity::InputAuthorityGeneration::INITIAL,
             movement,
             raw_movement,
             analogue_movement,

@@ -1,4 +1,5 @@
 use super::{JavaMotion, LocalSwingProgress, java::body};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Resolved local motion and attack observations from one completed simulation tick.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -12,14 +13,18 @@ pub struct LocalSwingMotionSample {
 /// One local body clock retains only the latest tick's reversible heading step.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct State {
-    authority: Option<(u64, u64)>,
+    authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     last: Option<LocalSwingMotionSample>,
     before: [f32; 2],
 }
 
 impl State {
     /// Changing simulation ownership collapses the old endpoint and clears retry history.
-    pub(super) fn set_authority(&mut self, authority: Option<(u64, u64)>, motion: &mut JavaMotion) {
+    pub(super) fn set_authority(
+        &mut self,
+        authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
+        motion: &mut JavaMotion,
+    ) {
         if self.authority != authority {
             *self = Self {
                 authority,
@@ -38,7 +43,7 @@ impl State {
     /// A changed latest tick replays its heading from the retained pre-tick checkpoint.
     pub(super) fn apply(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         sample: LocalSwingMotionSample,
         motion: &mut JavaMotion,
     ) -> bool {
@@ -74,7 +79,11 @@ impl State {
 
 impl super::ActorAnimationStore {
     /// Binds Java torso ticks to the local simulation, including a rig created after binding.
-    pub fn set_local_motion_authority(&mut self, runtime_id: u64, authority: Option<(u64, u64)>) {
+    pub fn set_local_motion_authority(
+        &mut self,
+        runtime_id: u64,
+        authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
+    ) {
         if let Some((previous, _)) = self.local_motion_authority
             && previous != runtime_id
             && let Some(state) = self
@@ -104,7 +113,7 @@ impl super::ActorAnimationStore {
     pub fn sync_local_swing_motion(
         &mut self,
         runtime_id: u64,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         samples: impl IntoIterator<Item = LocalSwingMotionSample>,
     ) -> bool {
         if self.local_motion_authority != Some((runtime_id, authority)) {

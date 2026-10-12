@@ -4,6 +4,7 @@ use protocol::{
     ActorEvent, ActorMetadata, ActorMetadataUpdateEvent, ActorMetadataValue, ActorMoveEvent,
     ActorPositionOrigin, LevelChunkEvent, LevelChunkMode, WorldEvent,
 };
+use simulation_clock::identity::SessionGeneration;
 use std::{sync::Arc, time::Instant};
 use {
     chunk_pipeline::WorldStream,
@@ -30,8 +31,8 @@ fn stream() -> WorldStream {
 
 fn event(sequence: u64, event: WorldEvent) -> WorldIngress {
     WorldIngress::Event(SequencedWorldEvent {
-        session_generation: 1,
-        sequence,
+        session_generation: SessionGeneration::new(1),
+        sequence: protocol::identity::FifoSequence::new(sequence),
         event,
     })
 }
@@ -83,8 +84,8 @@ fn drain_frame(
 /// Produces one local metadata event that retains both a UI delta and a movement control.
 fn metadata(sequence: u64) -> WorldIngress {
     WorldIngress::Event(SequencedWorldEvent {
-        session_generation: 1,
-        sequence,
+        session_generation: SessionGeneration::new(1),
+        sequence: protocol::identity::FifoSequence::new(sequence),
         event: WorldEvent::Actor(ActorEvent::Metadata(ActorMetadataUpdateEvent {
             runtime_id: 1,
             dimension: 0,
@@ -104,9 +105,9 @@ fn submit(stream: &mut WorldStream, ingress: WorldIngress) -> u64 {
         panic!("expected an ordinary world event");
     };
     stream
-        .submit(event.sequence, event.event)
+        .submit(event.sequence.get(), event.event)
         .expect("backpressure must leave unadmitted events in the receiver");
-    event.sequence
+    event.sequence.get()
 }
 
 #[test]
@@ -148,7 +149,7 @@ fn world_ingress_stops_at_its_time_budget_and_preserves_fifo() {
     let mut drain = frame_drain(start);
     assert!(matches!(
         drain.next(&mut receiver, 1, start),
-        Some(WorldIngress::Event(event)) if event.sequence == 1
+        Some(WorldIngress::Event(event)) if event.sequence.get() == 1
     ));
     let spent = start + WORLD_INGRESS_DRAIN_BUDGET;
     assert!(drain.next(&mut receiver, 1, spent).is_none());
@@ -156,7 +157,7 @@ fn world_ingress_stops_at_its_time_budget_and_preserves_fifo() {
     let mut next_frame = frame_drain(spent);
     assert!(matches!(
         next_frame.next(&mut receiver, 1, spent),
-        Some(WorldIngress::Event(event)) if event.sequence == 2
+        Some(WorldIngress::Event(event)) if event.sequence.get() == 2
     ));
 }
 
@@ -208,7 +209,7 @@ fn world_ingress_cursor_leaves_zero_admission_events_queued() {
     assert_eq!(receiver.len(), 1);
     assert!(matches!(
         drain.next(&mut receiver, 1, now),
-        Some(WorldIngress::Event(event)) if event.sequence == 1
+        Some(WorldIngress::Event(event)) if event.sequence.get() == 1
     ));
 }
 
@@ -231,17 +232,17 @@ fn world_ingress_cursor_receives_without_allocating() {
     let blocked = drain.next(&mut receiver, 0, now).is_none();
     let first = matches!(
         drain.next(&mut receiver, 1, now),
-        Some(WorldIngress::Event(event)) if event.sequence == 1
+        Some(WorldIngress::Event(event)) if event.sequence.get() == 1
     );
     let second = matches!(
         drain.next(&mut receiver, 1, now),
-        Some(WorldIngress::Event(event)) if event.sequence == 2
+        Some(WorldIngress::Event(event)) if event.sequence.get() == 2
     );
     let capped = drain.next(&mut receiver, 1, spent).is_none();
     let mut next_frame = frame_drain(spent);
     let third = matches!(
         next_frame.next(&mut receiver, 1, spent),
-        Some(WorldIngress::Event(event)) if event.sequence == 3
+        Some(WorldIngress::Event(event)) if event.sequence.get() == 3
     );
     let empty = next_frame.next(&mut receiver, 1, spent).is_none();
     let allocated = thread_allocations() - before;

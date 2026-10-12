@@ -110,7 +110,11 @@ impl std::ops::DerefMut for PhysicsAuthorityGate {
 }
 impl MovementTicker {
     /// Binds prediction to the transport-owned position-authority publisher.
-    pub fn with_epoch_publisher(publisher: tokio::sync::watch::Sender<u64>) -> Self {
+    pub fn with_epoch_publisher(
+        publisher: tokio::sync::watch::Sender<
+            simulation_clock::identity::PositionAuthorityGeneration,
+        >,
+    ) -> Self {
         configure_diagnostics();
         Self(gameplay::movement::MovementTicker::with_epoch_publisher(
             publisher,
@@ -121,7 +125,12 @@ impl MovementTicker {
 impl Default for MovementTicker {
     /// Constructs an isolated publisher for app integration tests.
     fn default() -> Self {
-        Self::with_epoch_publisher(tokio::sync::watch::channel(0).0)
+        Self::with_epoch_publisher(
+            tokio::sync::watch::channel(
+                simulation_clock::identity::PositionAuthorityGeneration::default(),
+            )
+            .0,
+        )
     }
 }
 impl Default for LocalPhysicsController {

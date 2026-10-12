@@ -1,5 +1,6 @@
 use super::*;
 use protocol::ServerDisconnectEvent;
+use simulation_clock::identity::SessionGeneration;
 
 fn kicked_disconnect() -> ServerDisconnectEvent {
     ServerDisconnectEvent {
@@ -53,7 +54,7 @@ async fn receive_failure_attaches_the_retained_server_disconnect() {
             error: Some("socket read failed"),
             disconnect: Some(kicked_disconnect()),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -96,7 +97,7 @@ async fn send_failure_reports_the_local_send_origin() {
 
     run_network_pump(
         FailingSendSession,
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -129,7 +130,7 @@ async fn receive_failure_reports_the_remote_receive_origin() {
             error: Some("upstream read timed out"),
             disconnect: None,
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,

@@ -209,7 +209,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
     let mut view = client_presentation::local_player::LocalViewPose::default();
     let mut settings = client_presentation::camera::CameraSettingsAuthority::default();
     client_presentation::local_player::reset_local_player_session(
-        1,
+        simulation_clock::identity::SessionGeneration::new(1),
         1,
         [0., 64., 0.],
         &mut settings,
@@ -534,7 +534,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .resource_mut::<client_interaction::movement::MovementTicker>()
         .reset(2, 0, [0., 64., 0.]);
     let mut avatar = client_presentation::local_player::LocalAvatarPresentation::default();
-    avatar.begin_session(2, 1);
+    avatar.begin_session(simulation_clock::identity::SessionGeneration::new(2), 1);
     avatar.publish_view_visibility(
         semantic_input::PerspectiveMode::FirstPerson,
         Vec3::new(0., 64., 0.),

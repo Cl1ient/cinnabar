@@ -533,7 +533,7 @@ fn start_network(
     ui_catalog: Option<&crate::runtime::network::PackUiCatalog>,
 ) -> Result<(), String> {
     let replacement = crate::runtime::network::session::spawn_network(NetworkConfig {
-        session_generation,
+        session_generation: simulation_clock::identity::SessionGeneration::new(session_generation),
         socket_dir,
         display_name: menu.display_name().to_owned(),
         client_random_id,

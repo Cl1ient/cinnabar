@@ -1,3 +1,4 @@
+use render_api::PoseGeneration;
 use render_model::{
     ACTOR_LAYER_BODY, ActorArtworkLocation, ActorArtworkPageId, ActorArtworkPages, ActorCullView,
     ActorRenderIdentity, ActorRigFrameBuilder, ActorRigRejects, ActorRigRenderFrame,
@@ -410,7 +411,7 @@ impl ActorRenderScene {
                         ingress_sequence: source.movement_revision,
                         source_tick: None,
                         movement_revision: source.movement_revision,
-                        pose_generation: source.movement_revision,
+                        pose_generation: PoseGeneration::new(source.movement_revision),
                         layer: ACTOR_LAYER_BODY,
                     },
                     rig: EntityRigId(u32::MAX),

@@ -11,7 +11,7 @@
     "block_registry": "956914fee95e9a2019ae5ac8b961a12f737f0e1b4919754f7b3bb0f0d8820532",
     "light_registry": "c2474b7585ebad861a7f4e6a63803a03ae9de3c1611e9cb652f4bd587a3b802e",
     "biome_registry": "e3ba3d96a66fa49b3b7d94ae6b67b4cc5d8961789c91275080d3922909b25c2a",
-    "physics_registry": "7d73389366b35738465dfa4803ab8e0b682d3b6070e4e0c2402b9925c2791366",
+    "physics_registry": "2f0fcdf1435d7431b179dacfcc001b7a7157462de8174c3b03a21fa377869341",
     "fallback_inventory": "6f8af2cfe1b984c3c57b8ed7bb8d12032184ba02b469f168d86dbc18237f4a74",
     "block_item_routes": "8932a5db9c443ce7d676934c72ac5136f906409b868c7c74ac5bf9f069ee0fd6"
   },

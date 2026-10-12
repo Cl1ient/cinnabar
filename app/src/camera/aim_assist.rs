@@ -78,7 +78,7 @@ pub(crate) fn publish_assisted_interaction(
     let Some(ray) = interaction.outbound_ray() else {
         return;
     };
-    let tick = ray.physics_tick();
+    let tick = ray.physics_tick().get();
     let mode = stream.network_id_mode();
     let world = aim_world(stream, &context.collisions, &context.player);
     let item = context

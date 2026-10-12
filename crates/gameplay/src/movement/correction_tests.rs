@@ -303,7 +303,9 @@ fn socket_acknowledgements_are_current_session_unique_and_fifo() {
         "out-of-order acknowledgement must not skip the FIFO front"
     );
     let mut stale = identities[0];
-    stale.session_generation = stale.session_generation.saturating_add(1);
+    stale.session_generation = simulation_clock::identity::SessionGeneration::new(
+        stale.session_generation.get().saturating_add(1),
+    );
     assert!(
         !ticker.acknowledge_physics_send(stale),
         "stale-session acknowledgement must be ignored"

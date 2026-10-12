@@ -1,5 +1,6 @@
 //! Actor use shares the pre-physics pick and press admission with block use.
 use gameplay::melee::{Crosshair, classify, pick_actor};
+use simulation_clock::identity::SessionGeneration;
 use {
     super::*,
     gameplay::block_use::{LocalUse, RepeatClock},
@@ -26,8 +27,11 @@ pub(super) fn produce(
     let Some(ray) = context.origin.outbound_ray() else {
         return false;
     };
-    if !crate::interaction_authority::ray_is_current(ray, context.ui.session_id(), stream)
-        || pick.session_generation != ray.session_generation()
+    if !crate::interaction_authority::ray_is_current(
+        ray,
+        SessionGeneration::new(context.ui.session_id()),
+        stream,
+    ) || pick.session_generation != ray.session_generation()
         || pick.actor_session_id != ray.actor_session_id()
     {
         return false;

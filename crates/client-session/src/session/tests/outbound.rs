@@ -1,6 +1,8 @@
 //! Outbound batching, receipts, transfer barriers and the split write path.
 
 use super::*;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Yields one event, then a second only once the outbound batch has been written.
 struct GatedTransferSession {
@@ -75,7 +77,7 @@ async fn successful_fast_transfer_flushes_decoded_pending_ingress_then_enqueues_
             written: Some(written),
             rotations: Arc::clone(&rotations),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -83,28 +85,28 @@ async fn successful_fast_transfer_flushes_decoded_pending_ingress_then_enqueues_
     ));
 
     assert!(matches!(
-        tokio::time::timeout(Duration::from_millis(100), world_events.recv()).await,
-        Ok(Some(WorldIngress::Event(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 1,
-            event: WorldEvent::ChunkRadiusUpdated(16),
-        })))
+            tokio::time::timeout(Duration::from_millis(100), world_events.recv()).await,
+            Ok(Some(WorldIngress::Event(SequencedWorldEvent {
+                session_generation,
+                sequence,
+                event: WorldEvent::ChunkRadiusUpdated(16),
+            }))) if session_generation.get() == 7 && sequence.get() == 1
     ));
     assert!(matches!(
-        tokio::time::timeout(Duration::from_millis(100), world_events.recv()).await,
-        Ok(Some(WorldIngress::FastTransferBarrier {
-            session_generation: 7,
-            sequence: 2,
-            action_sequence: 11,
-        }))
+            tokio::time::timeout(Duration::from_millis(100), world_events.recv()).await,
+            Ok(Some(WorldIngress::FastTransferBarrier {
+                session_generation,
+                sequence,
+                action_sequence: 11,
+            })) if session_generation.get() == 7 && sequence.get() == 2
     ));
     assert!(matches!(
-        tokio::time::timeout(Duration::from_millis(100), world_events.recv()).await,
-        Ok(Some(WorldIngress::Event(SequencedWorldEvent {
-            session_generation: 7,
-            sequence: 3,
-            event: WorldEvent::ChunkRadiusUpdated(8),
-        })))
+            tokio::time::timeout(Duration::from_millis(100), world_events.recv()).await,
+            Ok(Some(WorldIngress::Event(SequencedWorldEvent {
+                session_generation,
+                sequence,
+                event: WorldEvent::ChunkRadiusUpdated(8),
+            }))) if session_generation.get() == 7 && sequence.get() == 3
     ));
     assert!(matches!(
         tokio::time::timeout(Duration::from_millis(100), controls.recv()).await,
@@ -142,7 +144,7 @@ async fn failed_fast_transfer_never_arms_a_reset() {
     commands.try_send(NetworkCommand::FlushFrame).unwrap();
     run_network_pump(
         FailingSendSession,
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -189,7 +191,7 @@ async fn successful_non_transfer_chat_does_not_arm_blob_rotation() {
             inbound: VecDeque::new(),
             rotations: Arc::clone(&rotations),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -231,7 +233,7 @@ async fn chat_send_failure_identifies_the_exact_outbox_item() {
     commands.try_send(NetworkCommand::FlushFrame).unwrap();
     run_network_pump(
         FailingSendSession,
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -280,7 +282,7 @@ async fn fast_transfer_trace_arms_before_send_and_cancels_after_send_failure() {
         TraceOrderingFailSession {
             calls: Arc::clone(&calls),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -338,10 +340,10 @@ async fn receipts_wait_for_a_blocked_write_and_never_follow_a_failed_one() {
 
     for outcome in [Ok(()), Err("socket write failed")] {
         let identity = protocol::PhysicsSendIdentity {
-            session_generation: 7,
-            tick: 101,
+            session_generation: SessionGeneration::new(7),
+            tick: PhysicsTick::new(101),
             admission_id: 3,
-            reanchor_epoch: 0,
+            reanchor_epoch: PositionAuthorityGeneration::new(0),
         };
         let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
         for (physics, chat, sub_chunk) in [
@@ -383,7 +385,7 @@ async fn receipts_wait_for_a_blocked_write_and_never_follow_a_failed_one() {
         let (shutdown, shutdown_rx) = watch::channel(false);
         let worker = tokio::spawn(run_network_pump(
             BlockedWriteSession(Some(write_outcome)),
-            NetworkSequencer::new(7, 0, 42),
+            NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
             command_rx,
             control_event_tx,
             world_event_tx,
@@ -487,7 +489,7 @@ async fn transfer_barrier_waits_for_its_write_to_complete() {
             inbound: VecDeque::from([WorldEvent::ChunkRadiusUpdated(8)]),
             write_gate: Some(write_gate),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -592,7 +594,7 @@ async fn each_frame_leaves_as_one_ordered_batch_and_an_empty_frame_sends_nothing
     let (shutdown, shutdown_rx) = watch::channel(false);
     let worker = tokio::spawn(run_network_pump(
         BatchSession(Arc::clone(&batches)),
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -691,7 +693,7 @@ fn command_queued_during_a_blocked_inbound_decode_is_written_before_the_decode_e
             gate: gate_rx,
             written: written_tx,
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,

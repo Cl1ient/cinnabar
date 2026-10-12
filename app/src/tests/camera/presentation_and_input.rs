@@ -2,7 +2,7 @@ use client_state::PlayerRuntime;
 #[test]
 fn local_avatar_publishes_only_frozen_visibility_without_owning_the_render_arena() {
     let mut presentation = LocalAvatarPresentation::default();
-    presentation.begin_session(7, 91);
+    presentation.begin_session(SessionGeneration::new(7), 91);
     let mut frame = LocalPlayerFrameCarrier::default();
     frame.publish(frozen_local_player_sample()).unwrap();
     let mut visibility = LocalAvatarVisibilityCarrier::default();
@@ -12,7 +12,7 @@ fn local_avatar_publishes_only_frozen_visibility_without_owning_the_render_arena
     let frozen = visibility
         .snapshot()
         .expect("third-person local avatar visibility");
-    assert_eq!(frozen.session_generation(), 7);
+    assert_eq!(frozen.session_generation().get(), 7);
     assert_eq!(frozen.runtime_id(), 91);
     assert_eq!(
         frozen.pose_generation(),
@@ -44,7 +44,7 @@ fn local_avatar_publishes_only_frozen_visibility_without_owning_the_render_arena
 #[test]
 fn actor_culling_precedes_the_remote_cap_and_preserves_visible_high_id_and_local_avatar() {
     let mut presentation = LocalAvatarPresentation::default();
-    presentation.begin_session(7, 91);
+    presentation.begin_session(SessionGeneration::new(7), 91);
     let mut local_frame = LocalPlayerFrameCarrier::default();
     let mut sample = frozen_local_player_sample();
     sample.eye = Vec3::new(0.0, 65.62, 0.0);
@@ -221,7 +221,7 @@ fn semantic_runtime_wires_context_bindings_authority_and_release_at_finalize() {
     };
     assert!(runtime.route_and_finalize(held_jump).unwrap().phases[Action::Jump as usize].held);
 
-    let generation = NonZeroU64::new(9).unwrap();
+    let generation = InputAuthorityGeneration::new(NonZeroU64::new(9).unwrap());
     runtime.set_context(InputContext::UiFocused);
     runtime
         .replace_bindings(ControlSettings::default())
@@ -285,7 +285,7 @@ fn semantic_authority_tracks_ui_settings_session_and_dimension_transitions_in_pr
         .unwrap();
     let session_release = runtime.route_and_finalize(DeviceFrame::default()).unwrap();
     assert_eq!(
-        session_release.authority_generation,
+        session_release.authority_generation.get(),
         NonZeroU64::new(2).unwrap()
     );
     assert_eq!(
@@ -346,7 +346,7 @@ fn pending_mouse_motion_cannot_cross_session_authority_in_production_order() {
 
     assert_eq!(transitioned.look_delta, [0.0, 0.0]);
     assert_eq!(
-        transitioned.authority_generation,
+        transitioned.authority_generation.get(),
         NonZeroU64::new(2).unwrap()
     );
 }

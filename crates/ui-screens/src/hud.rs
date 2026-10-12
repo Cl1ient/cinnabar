@@ -24,6 +24,8 @@ use ui_engine::{
 use crate::hud_renderers::{HudPaint, HudRenderer, HungerAnimation};
 
 mod chat;
+#[cfg(test)]
+mod image_tests;
 pub mod prepared;
 mod titles;
 #[cfg(test)]
@@ -54,8 +56,23 @@ pub const JAVA_HUD_PACK: [(&str, &str, &[u8]); 4] = [
     ),
 ];
 
+/// The built-in Java HUD pack's original images, by extensionless pack path.
+pub const JAVA_HUD_IMAGES: [(&str, &[u8]); 2] = [
+    (
+        "textures/ui/hotbar_offhand_left",
+        include_bytes!("../../../assets/java-hud/textures/ui/hotbar_offhand_left.png"),
+    ),
+    (
+        "textures/ui/hotbar_offhand_right",
+        include_bytes!("../../../assets/java-hud/textures/ui/hotbar_offhand_right.png"),
+    ),
+];
+
 /// Layers the built-in Java HUD pack and the rules server HUD layers follow over it.
 pub fn register(registry: &mut ScreenRegistry) {
+    for (path, bytes) in JAVA_HUD_IMAGES {
+        registry.builtin_image(path, bytes);
+    }
     let catalog = registry.catalog_mut();
     catalog.layer_builtin(install_java_hud);
     catalog.restore_before(CarrierRestore {

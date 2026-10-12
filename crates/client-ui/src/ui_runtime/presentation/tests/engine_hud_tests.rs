@@ -17,6 +17,7 @@ mod crosshair_options;
 mod effects;
 mod experience_spacing;
 mod geometry;
+mod offhand;
 mod pack_snapshots;
 
 pub use crate::test_support::{engine_presentation, engine_presentation_with};

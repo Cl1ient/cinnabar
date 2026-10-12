@@ -150,7 +150,9 @@ impl FormEngine {
             registry,
         } = catalog;
         Self {
-            textures: TextureSet::new(first_page, remote, work).with_carrier(Arc::clone(&assets)),
+            textures: TextureSet::new(first_page, remote, work)
+                .with_builtin_images(registry.builtin_images())
+                .with_carrier(Arc::clone(&assets)),
             assets,
             catalog: Arc::clone(&base),
             builtin_screens: Arc::clone(&base),

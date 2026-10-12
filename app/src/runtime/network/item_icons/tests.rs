@@ -84,6 +84,7 @@ fn stack(packs: &[&[(&str, Vec<u8>)]]) -> LayeredPackView {
     let archives = packs
         .iter()
         .enumerate()
+        .rev()
         .map(|(index, files)| {
             let id = format!("00000000-0000-0000-0000-{index:012}");
             let manifest = format!(

@@ -3,6 +3,33 @@ use super::*;
 use resource_pack::test_support::pack_view;
 use std::{io::Cursor, sync::Arc};
 
+/// Shipped images resolve with no carrier or local pack, and a server pack's copy shadows them.
+#[test]
+fn builtin_images_load_without_carriers_and_yield_to_server_images() {
+    let key = "textures/ui/hotbar_offhand_left";
+    let mut encoded = Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(29, 24, image::Rgba([12, 12, 12, 245]))
+        .write_to(&mut encoded, image::ImageFormat::Png)
+        .unwrap();
+    let frame: &'static [u8] = Vec::leak(encoded.into_inner());
+    let images: &'static [(&str, &[u8])] = Vec::leak(vec![(key, frame)]);
+    let mut atlas = ServerAtlas::new(&[], None, 1).with_builtin_images(images);
+    assert_eq!(atlas.fallback_size(key), Some([29.0, 24.0]));
+    test_time::eventually("built-in image becomes resident", || {
+        atlas.require([key]);
+        atlas.placement(key).is_some()
+    });
+    assert_eq!(atlas.placement(key).unwrap().rect[2..], [29, 24]);
+
+    let files = vec![(format!("{key}.png"), png(0))];
+    let mut replacement = ServerAtlas::new(&files, None, 1).with_builtin_images(images);
+    test_time::eventually("server replacement becomes resident", || {
+        replacement.require([key]);
+        replacement.placement(key).is_some()
+    });
+    assert_eq!(replacement.placement(key).unwrap().rect[2..], [2, 3]);
+}
+
 /// Makes an encoded image with valid dimensions and a caller-selected encoded length.
 fn png(bytes: usize) -> Vec<u8> {
     let mut encoded = Cursor::new(Vec::new());

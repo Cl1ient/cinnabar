@@ -5,7 +5,7 @@ use std::{
 
 use crate::{ArchitectureError, policy::Policy, read};
 
-/// Requires complete ownership rows for registered crates and rejects rows for removed crates.
+/// Requires one complete ownership row per registered crate and rejects removed crate rows.
 pub(super) fn check_workspace_docs(
     root: &Path,
     policy: &Policy,
@@ -15,21 +15,24 @@ pub(super) fn check_workspace_docs(
         return Ok(());
     };
     let source = read(&root.join(document))?;
-    let documented: BTreeMap<_, _> = source
-        .lines()
-        .filter_map(|line| {
-            let mut cells = line.trim().strip_prefix('|')?.strip_suffix('|')?.split('|');
-            let path = cells.next()?.trim().strip_prefix('`')?.strip_suffix('`')?;
-            let package = cells.next()?.trim().strip_prefix('`')?.strip_suffix('`')?;
-            let guidance = cells.next()?.trim();
-            let related = cells.next()?.trim();
-            (!package.is_empty()
-                && !guidance.is_empty()
-                && !related.is_empty()
-                && cells.next().is_none())
-            .then_some((path, package))
-        })
-        .collect();
+    let rows = source.lines().filter_map(|line| {
+        let mut cells = line.trim().strip_prefix('|')?.strip_suffix('|')?.split('|');
+        let path = cells.next()?.trim().strip_prefix('`')?.strip_suffix('`')?;
+        let package = cells.next()?.trim().strip_prefix('`')?.strip_suffix('`')?;
+        let guidance = cells.next()?.trim();
+        let related = cells.next()?.trim();
+        (!package.is_empty()
+            && !guidance.is_empty()
+            && !related.is_empty()
+            && cells.next().is_none())
+        .then_some((path, package))
+    });
+    let mut documented = BTreeMap::new();
+    for (path, package) in rows {
+        if documented.insert(path, package).is_some() {
+            diagnostics.push(format!("{document}: duplicate ownership row for `{path}`"));
+        }
+    }
     let registered: BTreeSet<_> = policy
         .crate_rules
         .iter()

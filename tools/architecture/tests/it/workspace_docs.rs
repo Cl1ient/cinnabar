@@ -123,6 +123,35 @@ fn accepts_complete_ownership_rows_in_any_order() {
 }
 
 #[test]
+fn rejects_duplicate_ownership_rows_even_when_one_package_name_is_current() {
+    for packages in [
+        ["stale-alpha", "alpha"],
+        ["alpha", "stale-alpha"],
+        ["alpha", "alpha"],
+    ] {
+        let temp = tempfile::tempdir().expect("fixture root");
+        let root = temp.path();
+        fixture(
+            root,
+            Some(&format!(
+                "| `alpha` | `{}` | Call alpha for input. | Beta owns decoding. |\n\
+                | `alpha` | `{}` | Call alpha for input. | Beta owns decoding. |\n\
+                | `beta` | `beta` | Call beta for decoding. | Alpha owns input. |\n",
+                packages[0], packages[1],
+            )),
+        );
+        let findings = check_repository(root, &root.join("policy.toml"))
+            .expect("check duplicate ownership rows");
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding == "workspace.md: duplicate ownership row for `alpha`"),
+            "duplicate packages {packages:?} must be rejected: {findings:?}",
+        );
+    }
+}
+
+#[test]
 fn rejects_a_crate_mentioned_only_outside_its_ownership_row() {
     let temp = tempfile::tempdir().expect("fixture root");
     let root = temp.path();

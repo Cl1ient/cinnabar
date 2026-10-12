@@ -323,9 +323,8 @@ jobs:
       run:
         shell: bash
     env:
-      # Full Linux tests check races; pull requests keep the usual test cost.
-      # Release builds and vet keep their normal flags.
-      GOFLAGS: ${{ github.event_name != 'pull_request' && matrix.os == 'ubuntu-latest' && '-race' || '' }}
+      # Only test steps expose race flags to Go; cache planning uses the shared configuration.
+      RACE_TEST_FLAGS: ${{ github.event_name != 'pull_request' && matrix.os == 'ubuntu-latest' && '-race' || '' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -338,15 +337,17 @@ jobs:
         with:
           language: go
       - name: Build release Go core
-        env:
-          GOFLAGS: ""
         run: go build -trimpath -o "$RUNNER_TEMP/bedrock-core$(go env GOEXE)" ./core/cmd/bedrock-core
       - name: Test and vet Go core
+        env:
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./core/...
           unset GOFLAGS
           go vet ./core/...
       - name: Test and vet protocol registry tools
+        env:
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go -C tools/registrygen test ./... -count=1
           unset GOFLAGS
@@ -355,6 +356,7 @@ jobs:
         working-directory: tools/localserver
         env:
           GOWORK: "off"
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./... -count=1
           unset GOFLAGS
@@ -364,6 +366,7 @@ jobs:
         working-directory: tools/chunkfix
         env:
           GOWORK: "off"
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./... -count=1
           unset GOFLAGS
@@ -373,6 +376,7 @@ jobs:
         working-directory: tools/bedsimtrace
         env:
           GOWORK: "off"
+          GOFLAGS: ${{ env.RACE_TEST_FLAGS }}
         run: |
           go test ./... -count=1
           unset GOFLAGS

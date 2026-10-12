@@ -3,7 +3,7 @@
 use super::*;
 
 const ITEM: &str = "fixture:chestplate";
-const TEXTURE: &str = "textures/models/fixture_armor";
+const TEXTURE: &str = "textures/items/fixture_armor";
 /// A validated startup artwork table with no inherited pack bindings.
 fn base_catalog() -> Arc<assets::RuntimeEquipmentCatalog> {
     Arc::new(
@@ -118,10 +118,12 @@ fn artwork_only_layers_do_not_create_attachable_rigs() {
         .0
         .unwrap();
     assert!(pack.assets.rig_bindings().is_empty());
+    assert!(pack.assets.symbols().is_empty());
     assert!(pack.equipment.as_ref().unwrap().bindings().is_empty());
     let encoded = pack.encode(&pack.assets.encode().unwrap()).unwrap();
     let restored = SessionEntityPack::decode(&encoded).unwrap();
     assert!(restored.assets.rig_bindings().is_empty());
+    assert!(restored.assets.symbols().is_empty());
     let artwork = restored.equipment.unwrap();
     assert!(artwork.bindings().is_empty());
     assert_eq!(

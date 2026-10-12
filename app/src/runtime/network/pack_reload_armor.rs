@@ -25,14 +25,20 @@ fn png(color: [u8; 4]) -> Vec<u8> {
 }
 
 /// Compiles the base equipment and its retained definitions from tiny synthetic documents.
-fn base() -> (assets::VanillaEntityRefs, assets::SessionEntityPack) {
+fn base(
+    texture: &str,
+) -> (
+    assets::VanillaEntityRefs,
+    assets::SessionEntityPack,
+    tempfile::TempDir,
+) {
     let files: Vec<(Box<str>, Vec<u8>)> = vec![
         (
             "attachables/fixture.json".into(),
             serde_json::json!({
                 "format_version": "1.10.0", "minecraft:attachable": {"description": {
                     "identifier": ITEM, "materials": {"default": "armor_leather"},
-                    "textures": {"default": "textures/models/fixture_armor",
+                    "textures": {"default": texture.strip_suffix(".png").unwrap(),
                         "enchanted": assets::ACTOR_GLINT_TEXTURE_IDENTIFIER},
                     "geometry": {"default": "geometry.fixture.chestplate"},
                     "animations": {"idle": "animation.fixture.idle"},
@@ -76,7 +82,7 @@ fn base() -> (assets::VanillaEntityRefs, assets::SessionEntityPack) {
             }))
             .unwrap(),
         ),
-        (TEXTURE.into(), png([10, 20, 30, 255])),
+        (texture.into(), png([10, 20, 30, 255])),
         (
             format!("{}.png", assets::ACTOR_GLINT_TEXTURE_IDENTIFIER).into(),
             png([1, 2, 3, 255]),
@@ -90,7 +96,7 @@ fn base() -> (assets::VanillaEntityRefs, assets::SessionEntityPack) {
     }
     let refs = pack_compiler::compile_vanilla_entity_refs(root.path()).unwrap();
     let pack = compiled_pack(files).unwrap();
-    (refs, pack)
+    (refs, pack, root)
 }
 
 /// Compiles an optional session layer through the same entity and equipment compiler.
@@ -239,6 +245,28 @@ fn owner_rig<'a>(owner: &ActorSnapshot, names: &'a [Box<str>], tick: u64) -> Act
     }
 }
 
+/// Equips the fixture chestplate with explicit dye and enchantment state.
+fn equipped(dye_rgb: Option<u32>, enchanted: bool) -> ActorEquipmentInput {
+    ActorEquipmentInput {
+        armor: [
+            None,
+            Some(WornItem {
+                grip: assets::item::grip::builtin_item_grip(ITEM),
+                use_facts: Default::default(),
+                identifier: ITEM.into(),
+                metadata: 0,
+                damage: None,
+                kind: HeldKind::Other,
+                dye_rgb,
+                enchanted,
+            }),
+            None,
+            None,
+        ],
+        ..Default::default()
+    }
+}
+
 /// Reads the selected armour texel without assuming an atlas page or layer number.
 fn worn_pixel(
     runtime: &mut EquipmentRuntime,
@@ -276,89 +304,77 @@ fn worn_pixel(
 
 #[test]
 fn hot_reload_replaces_armour_on_an_already_equipped_actor_and_restores_base() {
-    let (refs, base_pack) = base();
-    let icons = Arc::new(
-        assets::RuntimeIconCatalog::decode(
-            &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
-        )
-        .unwrap(),
-    );
-    let base_catalog = base_pack.equipment.clone();
-    let (mut runtime, base_pages, _) = EquipmentRuntime::build(
-        base_pack.assets,
-        base_pack.equipment,
-        icons,
-        None,
-        None,
-        ActorArtworkPages::default(),
-    );
-    let body = body(&mut runtime);
-    let equipped = ActorEquipmentInput {
-        armor: [
-            None,
-            Some(WornItem {
-                grip: assets::item::grip::builtin_item_grip(ITEM),
-                use_facts: Default::default(),
-                identifier: ITEM.into(),
-                metadata: 0,
-                damage: None,
-                kind: HeldKind::Other,
-                dye_rgb: Some(0x234567),
-                enchanted: false,
-            }),
-            None,
-            None,
-        ],
-        ..Default::default()
-    };
-    assert_eq!(
-        worn_pixel(&mut runtime, &body, &equipped, &base_pages),
-        [10, 20, 30, 255]
-    );
-    let startup_rig = runtime.layers_for(&body, &equipped, None)[0]
-        .submission
-        .input
-        .rig;
-    for color in [[40, 50, 60, 255], [70, 80, 90, 255]] {
-        let pixels = png(color);
-        let view =
-            resource_pack::LayeredPackView::new(super::super::pack_reload_tests::stack(&[(
-                TEXTURE, &pixels,
-            )]));
-        let pack = pack_runtime::entity_pack::compile(&view, Some(&refs), base_catalog.as_deref());
-        let (pages, locations) = match &pack {
-            Some(pack) => {
-                base_pages
-                    .clone()
-                    .with_equipment_rasters(&EquipmentRuntime::pack_rasters(
-                        pack.equipment.as_ref().unwrap(),
-                    ))
-            }
-            None => (base_pages.clone(), Vec::new()),
-        };
-        runtime.set_pack_layer(
-            pack.map(|pack| (Arc::clone(&pack.assets), pack.equipment.clone(), locations)),
+    for texture in [TEXTURE, "textures/items/fixture_armor.png"] {
+        let (refs, base_pack, _installed) = base(texture);
+        let icons = Arc::new(
+            assets::RuntimeIconCatalog::decode(
+                &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
+            )
+            .unwrap(),
         );
-        assert_ne!(pages.identity(), base_pages.identity());
-        assert_eq!(worn_pixel(&mut runtime, &body, &equipped, &pages), color);
+        let base_catalog = base_pack.equipment.clone();
+        let (mut runtime, base_pages, _) = EquipmentRuntime::build(
+            base_pack.assets,
+            base_pack.equipment,
+            icons,
+            None,
+            None,
+            ActorArtworkPages::default(),
+        );
+        let body = body(&mut runtime);
+        let equipped = equipped(Some(0x234567), false);
         assert_eq!(
-            runtime.layers_for(&body, &equipped, None)[0]
-                .submission
-                .input
-                .rig,
-            startup_rig
+            worn_pixel(&mut runtime, &body, &equipped, &base_pages),
+            [10, 20, 30, 255]
+        );
+        let startup_rig = runtime.layers_for(&body, &equipped, None)[0]
+            .submission
+            .input
+            .rig;
+        for color in [[40, 50, 60, 255], [70, 80, 90, 255]] {
+            let pixels = png(color);
+            let view = resource_pack::LayeredPackView::new(super::super::pack_reload_tests::stack(
+                &[(texture, &pixels)],
+            ));
+            let pack = pack_runtime::entity_pack::compile(
+                &view,
+                Some(&refs),
+                None,
+                base_catalog.as_deref(),
+            );
+            let (pages, locations) = match &pack {
+                Some(pack) => {
+                    base_pages
+                        .clone()
+                        .with_equipment_rasters(&EquipmentRuntime::pack_rasters(
+                            pack.equipment.as_ref().unwrap(),
+                        ))
+                }
+                None => (base_pages.clone(), Vec::new()),
+            };
+            runtime.set_pack_layer(
+                pack.map(|pack| (Arc::clone(&pack.assets), pack.equipment.clone(), locations)),
+            );
+            assert_ne!(pages.identity(), base_pages.identity());
+            assert_eq!(worn_pixel(&mut runtime, &body, &equipped, &pages), color);
+            assert_eq!(
+                runtime.layers_for(&body, &equipped, None)[0]
+                    .submission
+                    .input
+                    .rig,
+                startup_rig
+            );
+        }
+        runtime.set_pack_layer(None);
+        assert_eq!(
+            worn_pixel(&mut runtime, &body, &equipped, &base_pages),
+            [10, 20, 30, 255]
         );
     }
-    runtime.set_pack_layer(None);
-    assert_eq!(
-        worn_pixel(&mut runtime, &body, &equipped, &base_pages),
-        [10, 20, 30, 255]
-    );
 }
-
 #[test]
 fn a_sidecar_only_glint_override_keeps_the_base_armour_visible() {
-    let (refs, base_pack) = base();
+    let (refs, base_pack, _installed) = base(TEXTURE);
     let icons = Arc::new(
         assets::RuntimeIconCatalog::decode(
             &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
@@ -375,31 +391,15 @@ fn a_sidecar_only_glint_override_keeps_the_base_armour_visible() {
         ActorArtworkPages::default(),
     );
     let body = body(&mut runtime);
-    let equipped = ActorEquipmentInput {
-        armor: [
-            None,
-            Some(WornItem {
-                grip: assets::item::grip::builtin_item_grip(ITEM),
-                use_facts: Default::default(),
-                identifier: ITEM.into(),
-                metadata: 0,
-                damage: None,
-                kind: HeldKind::Other,
-                dye_rgb: None,
-                enchanted: true,
-            }),
-            None,
-            None,
-        ],
-        ..Default::default()
-    };
+    let equipped = equipped(None, true);
     let path = format!("{}.png", assets::ACTOR_GLINT_TEXTURE_IDENTIFIER);
     let view = resource_pack::LayeredPackView::new(super::super::pack_reload_tests::stack(&[(
         &path,
         &png([40, 50, 60, 255]),
     )]));
-    let pack = pack_runtime::entity_pack::compile(&view, Some(&refs), base_catalog.as_deref())
-        .expect("the supplied raster forms an artwork-only layer");
+    let pack =
+        pack_runtime::entity_pack::compile(&view, Some(&refs), None, base_catalog.as_deref())
+            .expect("the supplied raster forms an artwork-only layer");
     let catalog = pack.equipment.as_ref().unwrap();
     assert!(catalog.texture("textures/models/fixture_armor").is_none());
     let glint = EquipmentRuntime::actor_glint(catalog).expect("the glint override is retained");
@@ -417,4 +417,76 @@ fn a_sidecar_only_glint_override_keeps_the_base_armour_visible() {
     );
     assert_eq!(&pages.actor_glint().unwrap().rgba8[..4], &[40, 50, 60, 255]);
     assert!(catalog.binding(ITEM).is_none());
+}
+
+#[test]
+fn mixed_texture_and_geometry_reload_keeps_the_authored_equipment_model() {
+    let (refs, base_pack, installed) = base(TEXTURE);
+    let base_catalog = base_pack.equipment.clone();
+    let icons = Arc::new(
+        assets::RuntimeIconCatalog::decode(
+            &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
+        )
+        .unwrap(),
+    );
+    let (mut runtime, base_pages, _) = EquipmentRuntime::build(
+        base_pack.assets,
+        base_pack.equipment,
+        icons,
+        None,
+        None,
+        ActorArtworkPages::default(),
+    );
+    let body = body(&mut runtime);
+    let equipped = equipped(None, false);
+    let startup_rig = runtime.layers_for(&body, &equipped, None)[0]
+        .submission
+        .input
+        .rig;
+    let replacement = serde_json::to_vec(&serde_json::json!({
+        "format_version": "1.12.0", "minecraft:geometry": [{
+            "description": {"identifier": "geometry.fixture.chestplate", "texture_width": 4, "texture_height": 2},
+            "bones": [{"name": "body", "pivot": [0, 0, 0],
+                "cubes": [{"origin": [0, 0, 0], "size": [2, 3, 4], "uv": [0, 0]}]}]
+        }]
+    })).unwrap();
+    let pixels = png([40, 50, 60, 255]);
+    let view = resource_pack::LayeredPackView::new(super::super::pack_reload_tests::stack(&[
+        (TEXTURE, &pixels),
+        ("models/entity/replacement.json", &replacement),
+    ]));
+    let pack = pack_runtime::entity_pack::compile(
+        &view,
+        Some(&refs),
+        Some(installed.path()),
+        base_catalog.as_deref(),
+    )
+    .unwrap();
+    let geometry =
+        render_model::find_geometry_index(&pack.assets, "geometry.fixture.chestplate").unwrap();
+    let catalog = pack.equipment.as_ref().unwrap();
+    let (pages, locations) =
+        base_pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(catalog));
+    runtime.set_pack_layer(Some((
+        Arc::clone(&pack.assets),
+        pack.equipment.clone(),
+        locations,
+    )));
+    assert_eq!(
+        worn_pixel(&mut runtime, &body, &equipped, &pages),
+        [40, 50, 60, 255]
+    );
+    let rig = runtime.layers_for(&body, &equipped, None)[0]
+        .submission
+        .input
+        .rig;
+    assert_ne!(rig, startup_rig);
+    assert_eq!(rig, render_model::pack_equipment_rig_id(geometry));
+    assert_eq!(
+        pack.assets.geometries()[geometry as usize].bones[0].cubes[0]
+            .size
+            .map(|value| value.get()),
+        [2.0, 3.0, 4.0]
+    );
+    assert!(catalog.binding(ITEM).is_some());
 }

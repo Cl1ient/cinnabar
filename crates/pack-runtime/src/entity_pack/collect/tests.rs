@@ -265,3 +265,63 @@ fn vanilla_texture_lookup_does_not_leave_the_pack_root() {
     let view = resource_pack::LayeredPackView::new(crate::test_support::stack(&[]));
     assert!(super::texture_file(&view, Some(&base), "textures/../../outside").is_none());
 }
+
+#[test]
+fn artwork_only_is_decided_from_each_items_authored_dependencies() {
+    use super::{References, attachables::is_texture_only};
+    use std::collections::BTreeSet;
+    let document = json!({"minecraft:attachable": {"description": {
+        "identifier": "fixture:coat.player", "item": {"fixture:coat": "1"},
+        "geometry": {"default": "geometry.fixture.coat"},
+        "render_controllers": [{"controller.render.coat": "1"}],
+        "animations": {"idle": "animation.coat.idle", "controller": "controller.animation.coat"}
+    }}});
+    let authored = BTreeSet::new();
+    let unrelated = References {
+        geometry: BTreeSet::from(["geometry.other".into()]),
+        render_controllers: BTreeSet::from(["controller.render.other".into()]),
+        ..Default::default()
+    };
+    assert!(is_texture_only(&document, &authored, &unrelated, None));
+    for changes in [
+        References {
+            geometry: BTreeSet::from(["geometry.fixture.coat".into()]),
+            ..Default::default()
+        },
+        References {
+            render_controllers: BTreeSet::from(["controller.render.coat".into()]),
+            ..Default::default()
+        },
+        References {
+            animations: BTreeSet::from(["animation.coat.idle".into()]),
+            ..Default::default()
+        },
+        References {
+            animation_controllers: BTreeSet::from(["controller.animation.coat".into()]),
+            ..Default::default()
+        },
+    ] {
+        assert!(!is_texture_only(&document, &authored, &changes, None));
+    }
+    assert!(!is_texture_only(
+        &document,
+        &BTreeSet::from(["fixture:coat".into()]),
+        &References::default(),
+        None
+    ));
+    let mut vanilla = assets::VanillaEntityRefs::new();
+    vanilla.geometry_parent.insert(
+        "geometry.fixture.coat".into(),
+        "geometry.fixture.parent".into(),
+    );
+    let parent = References {
+        geometry: BTreeSet::from(["geometry.fixture.parent".into()]),
+        ..Default::default()
+    };
+    assert!(!is_texture_only(
+        &document,
+        &authored,
+        &parent,
+        Some(&vanilla)
+    ));
+}

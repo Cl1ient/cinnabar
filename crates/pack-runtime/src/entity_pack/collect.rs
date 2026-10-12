@@ -98,20 +98,33 @@ pub fn collect_files(
 ) -> Vec<(Box<str>, Vec<u8>)> {
     let mut files = Vec::new();
     let entities = unique_entities(view);
-    let attachables = attachables::collect(view);
+    let mut geometry = unshadowed_geometry(view);
+    let pack_geometry = geometry
+        .iter()
+        .flat_map(|(_, bytes)| geometry_identifiers(bytes))
+        .collect::<BTreeSet<_>>();
+    let definitions = DEFINITION_FAMILIES
+        .map(|(prefix, key, merged)| (key, merged, merged_definitions(view, prefix, key)));
+    let mut overrides = References {
+        geometry: pack_geometry.clone(),
+        ..Default::default()
+    };
+    for (key, _, definitions) in &definitions {
+        let names = definitions.keys().cloned();
+        match *key {
+            "animations" => overrides.animations.extend(names),
+            "animation_controllers" => overrides.animation_controllers.extend(names),
+            _ => overrides.render_controllers.extend(names),
+        }
+    }
+    let attachables = attachables::collect(view, vanilla_pack_dir, &overrides, vanilla);
     let mut references = References::default();
     for (_, bytes) in entities.iter().chain(&attachables) {
         if let Ok(actor) = pack_json::parse_jsonc::<Value>(bytes) {
             references.read(&actor);
         }
     }
-    let mut geometry = unshadowed_geometry(view);
-    let pack_geometry = geometry
-        .iter()
-        .flat_map(|(_, bytes)| geometry_identifiers(bytes))
-        .collect::<BTreeSet<_>>();
-    for (prefix, key, merged) in DEFINITION_FAMILIES {
-        let mut definitions = merged_definitions(view, prefix, key);
+    for (key, merged, mut definitions) in definitions {
         if let Some(vanilla) = vanilla {
             let (source, wanted) = match key {
                 "animations" => (&vanilla.animations, &references.animations),

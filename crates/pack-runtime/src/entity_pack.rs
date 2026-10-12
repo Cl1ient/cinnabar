@@ -88,18 +88,12 @@ pub fn compile_session_entities(
 pub fn compile(
     view: &LayeredPackView,
     vanilla: Option<&assets::VanillaEntityRefs>,
+    vanilla_pack_dir: Option<&std::path::Path>,
     equipment: Option<&RuntimeEquipmentCatalog>,
 ) -> Option<Arc<SessionEntityPack>> {
-    compile_encoded(
-        view,
-        vanilla,
-        vanilla_pack_dir().as_deref(),
-        equipment,
-        false,
-        &|| false,
-    )
-    .expect("an uncancellable compile completes")
-    .0
+    compile_encoded(view, vanilla, vanilla_pack_dir, equipment, false, &|| false)
+        .expect("an uncancellable compile completes")
+        .0
 }
 
 /// `encode` also returns the entity blob, which only a disk-cached compile needs. Checks

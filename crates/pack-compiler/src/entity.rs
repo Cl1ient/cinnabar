@@ -338,7 +338,7 @@ fn assemble(
         source_sha256: hash,
     });
     sources.sort_by(|left, right| left.path.cmp(&right.path));
-    if symbols.is_empty() || symbols.len() > MAX_ENTITY_ASSET_SYMBOLS {
+    if symbols.len() > MAX_ENTITY_ASSET_SYMBOLS {
         return Err(invalid("entity asset symbol count exceeds bound"));
     }
     let source_indices = sources

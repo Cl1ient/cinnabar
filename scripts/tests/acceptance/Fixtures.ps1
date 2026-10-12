@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot '../../acceptance/Galleries/Common.ps1')
+
 function New-TestCrossCropAssets {
     param(
         [Parameter(Mandatory = $true)][string]$RegistryPath,
@@ -144,8 +146,10 @@ function Get-TestRegistryEntries {
     $bytes = [IO.File]::ReadAllBytes($RegistryPath)
     $reader = [IO.BinaryReader]::new([IO.MemoryStream]::new($bytes, $false))
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    $registrySchema = Get-GalleryRegistrySchema
+    $extensionBytes = $registrySchema.extension_bytes
     try {
-        Assert-Equal 'BREG1003' $utf8.GetString($reader.ReadBytes(8)) 'test registry helper received the wrong schema'
+        Assert-Equal ([string]$registrySchema.magic) $utf8.GetString($reader.ReadBytes(8)) 'test registry helper received the wrong schema'
         Assert-Equal ([uint32](Get-BedrockTargetManifest -ProjectRoot $ProjectRoot).wire_protocol) `
             $reader.ReadUInt32() 'test registry helper received the wrong protocol'
         $null = $reader.ReadUInt32()
@@ -162,7 +166,7 @@ function Get-TestRegistryEntries {
             $null = $reader.ReadUInt16()
             $nameLength = [int]$reader.ReadUInt16()
             $stateLength = [int]$reader.ReadUInt32()
-            $null = $reader.ReadBytes(32 + 24 * $boxCount)
+            $null = $reader.ReadBytes(32 + [int]$extensionBytes + 24 * $boxCount)
             $name = $utf8.GetString($reader.ReadBytes($nameLength))
             $canonicalState = $utf8.GetString($reader.ReadBytes($stateLength))
             $entries.Add([pscustomobject][ordered]@{

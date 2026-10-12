@@ -1,77 +1,38 @@
+// Generated from crates/server-experience/schema/extension.json; do not edit.
 package extension
 
-// The protocol constants Go shares with the client. Each equals its Rust constant, which
-// TestConstantsMatchRust checks against testdata/constants.json.
 const (
-	// Carrier is the ScriptMessage identifier: protocol::EXPERIENCE_CHANNEL.
-	Carrier = "cinnabar:extensions/v1"
-	// MarkerPath is where the admitted resource pack holds the marker: MARKER_PATH.
-	MarkerPath = "cinnabar/extension-offer.json"
-	// ManifestPath is the signed manifest entry of a .cxb: bundle::MANIFEST_PATH.
-	ManifestPath = "manifest.signed.json"
-
-	// OfferDomain prefixes the signed bytes of a deployment offer: OFFER_DOMAIN.
-	OfferDomain = "Cinnabar/experience/offer/v1\x00"
-	// AcceptDomain prefixes the signed bytes of a live acceptance: ACCEPT_DOMAIN.
-	AcceptDomain = "Cinnabar/experience/accept/v1\x00"
-	// ManifestDomain prefixes the signed bytes of a bundle manifest: MANIFEST_DOMAIN.
-	ManifestDomain = "Cinnabar/experience/manifest/v1\x00"
-
-	// WireVersion is the version of offers, Hello, manifests and the original envelope form:
-	// WIRE_VERSION.
-	WireVersion = 1
-	// MaxWireVersion is the highest envelope version either side may select: MAX_WIRE_VERSION.
-	MaxWireVersion = 2
-	// APIVersion is the client component API in Hello and manifests: API_VERSION.
-	APIVersion = 1
-	// InitialBundleGeneration is the only bundle generation: INITIAL_BUNDLE_GENERATION.
+	MarkerPath              = "cinnabar/extension-offer.json"
+	WireVersion             = 1
+	MaxWireVersion          = 2
+	APIVersion              = 1
+	MaxIdentifierBytes      = 96
+	MaxURLBytes             = 2048
+	MaxOrigins              = 8
+	MaxFallbackBytes        = 512
+	MaxMarkerBytes          = 64 * 1024
+	MaxPayloadBytes         = 16 * 1024
+	MaxMessageBytes         = 48 * 1024
+	MaxMessagesPerSecond    = 64
+	MaxBytesPerSecond       = 64 * 1024
+	MaxQueueBytes           = 256 * 1024
+	MaxChannels             = 64
+	MaxChannelFields        = 64
+	MaxFieldDepth           = 4
 	InitialBundleGeneration = 1
-
-	// MaxMarkerBytes bounds the marker file: MAX_MARKER_BYTES.
-	MaxMarkerBytes = 64 << 10
-	// MaxPayloadBytes bounds an inline record, the data of one fragment and an Accept payload:
-	// MAX_PAYLOAD_BYTES.
-	MaxPayloadBytes = 16 << 10
-	// MaxMessageBytes bounds a reassembled wire v2 record: MAX_MESSAGE_BYTES.
-	MaxMessageBytes = 48 << 10
-	// MaxQueueBytes bounds the carrier bytes one direction holds for undelivered messages, an
-	// open fragmented one included: MAX_QUEUE_BYTES.
-	MaxQueueBytes = 256 << 10
-	// MaxEnvelopeBytes bounds one carrier message: protocol::MAX_EXPERIENCE_ENVELOPE_BYTES.
-	MaxEnvelopeBytes = 64 << 10
-	// MaxMessagesPerSecond is the message rate of one direction: MAX_MESSAGES_PER_SECOND.
-	MaxMessagesPerSecond = 64
-	// MaxBytesPerSecond is the byte rate of one direction: MAX_BYTES_PER_SECOND.
-	MaxBytesPerSecond = 64 << 10
-	// MaxOfferLifetimeSecs bounds how far ahead an offer may expire: MAX_OFFER_LIFETIME_SECS.
-	MaxOfferLifetimeSecs = 24 * 60 * 60
-	// NegotiationTimeoutMs is how long the client waits for Accept: NEGOTIATION_TIMEOUT_MS.
-	NegotiationTimeoutMs = 15_000
-
-	// MaxBundles bounds the packages of one offer: MAX_BUNDLES.
-	MaxBundles = 4
-	// MaxBundleBytes bounds one .cxb: MAX_BUNDLE_BYTES.
-	MaxBundleBytes = 64 << 20
-	// MaxExpandedBytes bounds the offered bundles together: MAX_EXPANDED_BYTES.
-	MaxExpandedBytes = 256 << 20
-	// MaxChannels bounds the channels of one bundle: MAX_CHANNELS.
-	MaxChannels = 64
-	// MaxChannelFields bounds the fields of one channel: MAX_CHANNEL_FIELDS.
-	MaxChannelFields = 64
-	// MaxFieldDepth bounds how deep list and record fields nest: MAX_FIELD_DEPTH.
-	MaxFieldDepth = 4
-	// MaxIdentifierBytes bounds a package, channel or action identifier: MAX_IDENTIFIER_BYTES.
-	MaxIdentifierBytes = 96
-	// MaxFallbackBytes bounds an offer's fallback text: MAX_FALLBACK_BYTES.
-	MaxFallbackBytes = 512
-	// MaxURLBytes bounds a package URL: MAX_URL_BYTES.
-	MaxURLBytes = 2048
-	// MaxOrigins bounds the origins of an offer's scope: MAX_ORIGINS.
-	MaxOrigins = 8
-	// MaxGuestMemory bounds one guest's memory: MAX_GUEST_MEMORY.
-	MaxGuestMemory = 32 << 20
-	// MaxSessionMemory bounds an offer scope's memory_bytes: MAX_SESSION_MEMORY.
-	MaxSessionMemory = 64 << 20
-	// MaxGPUBytes bounds an offer scope's gpu_bytes: MAX_GPU_BYTES.
-	MaxGPUBytes = 128 << 20
+	MaxBundles              = 4
+	MaxBundleBytes          = 64 * 1024 * 1024
+	MaxExpandedBytes        = 256 * 1024 * 1024
+	MaxGuestMemory          = 32 * 1024 * 1024
+	MaxSessionMemory        = 64 * 1024 * 1024
+	MaxGPUBytes             = 128 * 1024 * 1024
+	MaxOfferLifetimeSecs    = 24 * 60 * 60
+	NegotiationTimeoutMs    = 15_000
+	OfferDomain             = "Cinnabar/experience/offer/v1\x00"
+	AcceptDomain            = "Cinnabar/experience/accept/v1\x00"
+	ManifestDomain          = "Cinnabar/experience/manifest/v1\x00"
+	ManifestPath            = "manifest.signed.json"
+	Carrier                 = "cinnabar:extensions/v1"
+	MaxEnvelopeBytes        = 64 * 1024
+	maxDepth                = 128
 )

@@ -25,7 +25,8 @@ use crate::{
 /// literal starting with `../` or `/../`, resolved from the crate root as
 /// `env!("CARGO_MANIFEST_DIR")` paths are. Paths in no crate count only if they exist. A bare
 /// repository-relative literal such as `"plan.md"` only keeps a declaration current: tests name
-/// such paths as data.
+/// such paths as data. The architecture crate also reads the workspace document configured
+/// by policy, even when no Rust literal names that document.
 pub(super) fn check_reads(
     root: &Path,
     policy: &Policy,
@@ -120,7 +121,24 @@ pub(super) fn check_reads(
         let declared = cinnabar_list(&manifest, READS)
             .filter_map(toml::Value::as_str)
             .collect::<Vec<_>>();
-        let reads = required.remove(name).unwrap_or_default();
+        let mut reads = required.remove(name).unwrap_or_default();
+        if manifest
+            .get("package")
+            .and_then(|package| package.get("name"))
+            .and_then(toml::Value::as_str)
+            == Some(env!("CARGO_PKG_NAME"))
+            && let Some(document) = policy
+                .workspace_document
+                .as_deref()
+                .and_then(|document| resolve("", document))
+                .filter(|document| {
+                    owning_crate(&roots, document).is_none_or(|(owner, _)| owner != *crate_root)
+                })
+        {
+            reads
+                .entry(document)
+                .or_insert_with(|| "policy.workspace_document".to_owned());
+        }
         for (target, source) in &reads {
             if !declared.iter().any(|pattern| declares(pattern, target)) {
                 diagnostics.push(format!(

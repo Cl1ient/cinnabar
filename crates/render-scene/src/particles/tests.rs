@@ -25,6 +25,7 @@ fn draw_lists_keep_separate_centroids_and_use_the_camera_when_empty() {
                 center_light: [1.0, 3.0, -5.0, 0.0],
                 ..Default::default()
             }],
+            ..DrawLists::default()
         },
         camera,
     );

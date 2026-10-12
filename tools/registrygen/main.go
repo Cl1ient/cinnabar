@@ -3211,6 +3211,9 @@ func encodeWithMetadata(metadata RegistryMetadata, records []Record) ([]byte, er
 		if len(record.StateJSON) > maxStateBytes {
 			return nil, fmt.Errorf("state payload too large for sequential ID %d: %d bytes", record.SequentialID, len(record.StateJSON))
 		}
+		if record.BeaconTint > maxBeaconTint || (metadata.Protocol == registryProtocol && record.BeaconTint != BeaconTintUnresolved) {
+			return nil, fmt.Errorf("invalid beacon tint %d for protocol %d", record.BeaconTint, metadata.Protocol)
+		}
 		if record.ModelFamily > maxModelFamily {
 			return nil, fmt.Errorf("invalid model family %d for sequential ID %d", record.ModelFamily, record.SequentialID)
 		}
@@ -3264,7 +3267,7 @@ func encodeWithMetadata(metadata RegistryMetadata, records []Record) ([]byte, er
 
 	encoded := appendRegistryMetadata(nil, metadata)
 	for _, record := range sorted {
-		encoded = appendRecordHeader(encoded, record)
+		encoded = appendRecordHeader(encoded, record, metadata.Protocol == registryProtocol)
 		for _, box := range record.CollisionSeed.Boxes {
 			encoded = appendCollisionBox(encoded, box)
 		}

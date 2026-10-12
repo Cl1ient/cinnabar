@@ -605,8 +605,10 @@ mod tests {
         assert_ne!(cells.revision(), revision);
         let wide = cells.pixels();
         for (source, target) in before
-            .chunks_exact(1024 * 4)
-            .zip(wide.chunks_exact(2048 * 4))
+            .as_chunks::<{ 1024 * 4 }>()
+            .0
+            .iter()
+            .zip(wide.as_chunks::<{ 2048 * 4 }>().0.iter())
         {
             assert_eq!(&target[..source.len()], source);
             assert!(target[source.len()..].iter().all(|pixel| *pixel == 0));

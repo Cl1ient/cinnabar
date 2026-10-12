@@ -358,6 +358,7 @@ fn server_pack_install_and_removal_keep_the_renderer_accepting_frames() {
         .unwrap();
     let pack = super::ServerUiPack {
         item_glint: None,
+        splashes: Arc::default(),
         screen_settings: None,
         builtin_screen_catalog: None,
         catalog: None,

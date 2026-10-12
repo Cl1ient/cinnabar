@@ -1,3 +1,4 @@
+use mod_ui::PanelUiOwner;
 use std::sync::Arc;
 
 use mod_ui::test_support::panel_same_shape;
@@ -42,7 +43,7 @@ fn custom_geometry_routes_toggles_and_native_number_and_choice_editors() {
     let mut presentation = mini_engine_presentation();
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&authored()))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&authored()))
         .unwrap();
     presentation.mod_ui_mut().set_mod_panel_open(true);
     frame(&mut presentation, [1280, 720]);
@@ -107,7 +108,7 @@ fn changed_surface_bindings_reuse_the_catalog_and_respect_host_dimensions() {
         .insert("#surface_width".into(), SurfaceValue::Number(1.));
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&panel))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&panel))
         .unwrap();
     presentation.mod_ui_mut().set_mod_panel_open(true);
     let before = frame(&mut presentation, [1280, 720]);
@@ -125,7 +126,7 @@ fn changed_surface_bindings_reuse_the_catalog_and_respect_host_dimensions() {
     );
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&panel))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&panel))
         .unwrap();
     let after = frame(&mut presentation, [1280, 720]);
     let retained = presentation.mod_ui().mod_panel_state().unwrap();
@@ -161,7 +162,7 @@ fn prepared_panel_routes_reuse_resolution_and_layout_on_return() {
         .set_prepared_panel_ui(mod_ui::PanelUiOwner::Environment(0), Some(prepared));
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&initial))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&initial))
         .unwrap();
     presentation.mod_ui_mut().set_mod_panel_open(true);
     frame(&mut presentation, [1280, 720]);
@@ -171,13 +172,13 @@ fn prepared_panel_routes_reuse_resolution_and_layout_on_return() {
     assert_eq!(before.resolves, 0);
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&second))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&second))
         .unwrap();
     frame(&mut presentation, [1280, 720]);
     assert_eq!(presentation.mod_ui().mod_panel_state().unwrap().resolves, 0);
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&initial))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&initial))
         .unwrap();
     frame(&mut presentation, [1280, 720]);
     let returned = presentation.mod_ui().mod_panel_state().unwrap();
@@ -221,7 +222,7 @@ fn prepared_panel_falls_back_for_changed_wrapper_facts() {
         );
         presentation
             .mod_ui_mut()
-            .set_mod_panel(Some(&initial))
+            .set_mod_panel(PanelUiOwner::Environment(0), Some(&initial))
             .unwrap();
         presentation.mod_ui_mut().set_mod_panel_open(true);
         frame(&mut presentation, [1280, 720]);
@@ -235,7 +236,7 @@ fn prepared_panel_falls_back_for_changed_wrapper_facts() {
         );
         presentation
             .mod_ui_mut()
-            .set_mod_panel(Some(&changed))
+            .set_mod_panel(PanelUiOwner::Environment(0), Some(&changed))
             .unwrap();
         frame(&mut presentation, [1280, 720]);
         let state = presentation.mod_ui().mod_panel_state().unwrap();
@@ -269,7 +270,7 @@ fn reference_size_keeps_bottom_control_visible_and_clickable_in_small_viewports(
     let mut presentation = mini_engine_presentation();
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&panel))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&panel))
         .unwrap();
     presentation.mod_ui_mut().set_mod_panel_open(true);
     for size in [[854, 480], [1920, 1280]] {
@@ -341,7 +342,9 @@ fn custom_panel_buttons_render_captured_press_and_clear_feedback_on_release_and_
         bindings: Default::default(),
     });
     let mut p = mini_engine_presentation();
-    p.mod_ui_mut().set_mod_panel(Some(&panel)).unwrap();
+    p.mod_ui_mut()
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&panel))
+        .unwrap();
     p.mod_ui_mut().set_mod_panel_open(true);
     frame(&mut p, [1280, 720]);
     let at = point(&p, "mod.control:0", 0.5);
@@ -411,7 +414,7 @@ fn static_local_template_routes_native_click_with_scalar_override() {
     let mut presentation = mini_engine_presentation();
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&spec))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&spec))
         .unwrap();
     presentation.mod_ui_mut().set_mod_panel_open(true);
     frame(&mut presentation, [1280, 720]);
@@ -436,7 +439,7 @@ fn static_template_runtime_expression_tracks_bound_visibility_without_rebuilding
     let mut presentation = mini_engine_presentation();
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&spec))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&spec))
         .unwrap();
     presentation.mod_ui_mut().set_mod_panel_open(true);
     frame(&mut presentation, [1280, 720]);
@@ -460,7 +463,7 @@ fn static_template_runtime_expression_tracks_bound_visibility_without_rebuilding
         .insert("#runtime_value".into(), SurfaceValue::Text("Off".into()));
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&spec))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&spec))
         .unwrap();
     frame(&mut presentation, [1280, 720]);
     assert!(
@@ -495,7 +498,7 @@ fn two_axis_capture_clamps_and_commits_release_without_resuming() {
     let mut presentation = mini_engine_presentation();
     presentation
         .mod_ui_mut()
-        .set_mod_panel(Some(&spec))
+        .set_mod_panel(PanelUiOwner::Environment(0), Some(&spec))
         .unwrap();
     presentation.mod_ui_mut().set_mod_panel_open(true);
     frame(&mut presentation, [1280, 720]);

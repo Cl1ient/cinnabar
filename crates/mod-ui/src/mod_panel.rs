@@ -25,7 +25,7 @@ use ui::{
     mod_panel::{Control, Event, Panel},
 };
 
-use crate::ModUi;
+use crate::{ModUi, PanelUiOwner};
 use data::control_data;
 use ui_engine::frame::EngineFrame;
 use ui_engine::{
@@ -38,6 +38,7 @@ const ROW_HEIGHT: f64 = 26.0;
 const CHROME_HEIGHT: f64 = 88.0;
 
 pub(super) struct ModPanel {
+    owner: PanelUiOwner,
     panel: Panel,
     open: bool,
     catalog: Option<Arc<Catalog>>,
@@ -58,7 +59,7 @@ pub(super) struct ModPanel {
     edit: Option<edit::Editor>,
     motion: motion::PanelMotion,
     motion_data_dirty: bool,
-    prepared: Option<prepared::SelectedRoute>,
+    prepared: Option<Arc<prepared::PreparedRoute>>,
 }
 
 impl ModUi {
@@ -81,37 +82,38 @@ impl ModUi {
         }
     }
 
-    /// Replaces validated control data, retaining the open state across value updates.
-    pub fn set_mod_panel(&mut self, panel: Option<&Panel>) -> Result<(), String> {
+    /// Publishes one owner's panel, retaining its open state across value updates.
+    /// Passing no panel clears the selection only when it belongs to this owner.
+    pub fn set_mod_panel(
+        &mut self,
+        owner: PanelUiOwner,
+        panel: Option<&Panel>,
+    ) -> Result<(), String> {
         let Some(panel) = panel else {
-            self.cancel_mod_hud_editor();
-            self.mod_panel = None;
+            if self
+                .mod_panel
+                .as_ref()
+                .is_some_and(|panel| panel.owner == owner)
+            {
+                self.cancel_mod_hud_editor();
+                self.mod_panel = None;
+            }
             return Ok(());
         };
         if self
             .mod_panel
             .as_ref()
-            .is_some_and(|current| current.panel == *panel)
+            .is_some_and(|current| current.owner == owner && current.panel == *panel)
         {
             return Ok(());
         }
-        let same_shape = self
-            .mod_panel
-            .as_ref()
-            .is_some_and(|current| template::same_shape(&current.panel, panel));
+        let same_shape = self.mod_panel.as_ref().is_some_and(|current| {
+            current.owner == owner && template::same_shape(&current.panel, panel)
+        });
         let prepared = self
             .prepared_panel_ui
-            .iter()
-            .rev()
-            .find_map(|(owner, prepared)| {
-                prepared
-                    .prepared
-                    .route(panel)
-                    .map(|route| prepared::SelectedRoute {
-                        owner: *owner,
-                        route,
-                    })
-            });
+            .get(&owner)
+            .and_then(|prepared| prepared.prepared.route(panel));
         if same_shape || prepared.is_some() {
             panel.validate_values()?;
         } else {
@@ -119,6 +121,7 @@ impl ModUi {
         }
         if let Some(current) = self.mod_panel.as_mut() {
             if !same_shape {
+                current.owner = owner;
                 current.edit = None;
                 current.screen = CachedScreen::default();
                 current.catalog = None;
@@ -136,9 +139,7 @@ impl ModUi {
                 current.motion = motion::PanelMotion::default();
                 current.pointer = None;
                 current.prepared = prepared.clone();
-                current.catalog = prepared
-                    .as_ref()
-                    .map(|selected| Arc::clone(&selected.route.catalog));
+                current.catalog = prepared.as_ref().map(|route| Arc::clone(&route.catalog));
             }
             if panel.capture_key {
                 current.cancel_edit();
@@ -147,11 +148,10 @@ impl ModUi {
             current.refresh_data();
         } else {
             self.mod_panel = Some(ModPanel {
+                owner,
                 panel: panel.clone(),
                 open: false,
-                catalog: prepared
-                    .as_ref()
-                    .map(|selected| Arc::clone(&selected.route.catalog)),
+                catalog: prepared.as_ref().map(|route| Arc::clone(&route.catalog)),
                 screen: CachedScreen::default(),
                 frame: None,
                 viewport: [0.0; 2],
@@ -287,7 +287,7 @@ impl ModUi {
             panel.catalog = panel
                 .prepared
                 .as_ref()
-                .map(|selected| Arc::clone(&selected.route.catalog));
+                .map(|route| Arc::clone(&route.catalog));
         }
         if panel.catalog.is_none() {
             match template::catalog_prepared(
@@ -297,10 +297,7 @@ impl ModUi {
                 panel.page,
                 rows,
                 panel.edit.as_ref(),
-                panel
-                    .prepared
-                    .as_ref()
-                    .map(|selected| selected.route.catalog.as_ref()),
+                panel.prepared.as_ref().map(|route| route.catalog.as_ref()),
             ) {
                 Ok((catalog, pages)) => {
                     panel.pages = pages;
@@ -360,10 +357,10 @@ impl ModUi {
             .prepared
             .as_ref()
             .filter(|_| panel.edit.is_none())
-            .and_then(|selected| {
+            .and_then(|route| {
                 self.prepared_panel_ui
-                    .get_mut(&selected.owner)
-                    .map(|owner| owner.screen(&selected.route))
+                    .get_mut(&panel.owner)
+                    .map(|owner| owner.screen(route))
             })
             .unwrap_or(&mut panel.screen);
         match renderer.draw(art, paint_frame, |env, root| {
@@ -446,10 +443,10 @@ impl ModUi {
             .prepared
             .as_ref()
             .filter(|_| panel.edit.is_none())
-            .and_then(|selected| {
+            .and_then(|route| {
                 self.prepared_panel_ui
-                    .get(&selected.owner)?
-                    .cached_screen(&selected.route)
+                    .get(&panel.owner)?
+                    .cached_screen(route)
             })
             .unwrap_or(&panel.screen);
         Some(crate::test_support::ModPanelState {

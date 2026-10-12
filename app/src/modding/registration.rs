@@ -515,9 +515,6 @@ fn install(world: &mut World, update: Update) {
                         .ok_or_else(|| "extension presentation is unavailable".to_owned())
                         .and_then(|mut presentation| {
                             presentation
-                                .set_mod_panel_font(candidate.font.clone())
-                                .map_err(|error| error.to_string())?;
-                            presentation
                                 .mod_ui_mut()
                                 .set_mod_label(candidate.host.label())?;
                             presentation.set_mod_hud(candidate.host.hud())?;
@@ -528,10 +525,9 @@ fn install(world: &mut World, update: Update) {
                                 mod_ui::PanelUiOwner::Registration,
                                 candidate.panel_ui.clone(),
                             );
-                            presentation
-                                .mod_ui_mut()
-                                .set_mod_panel(candidate.host.panel())?;
-                            presentation.mod_ui_mut().set_mod_panel_open(false);
+                            if let Some(panel) = candidate.host.panel() {
+                                panel.validate_values()?;
+                            }
                             Ok(())
                         })
                 });

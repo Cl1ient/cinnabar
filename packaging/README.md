@@ -57,6 +57,8 @@ Release tooling and logos come from the exact revision of the selected workflow;
 branch is checked out separately for its source, binaries, manifests and assets. An older target
 branch therefore needs no copy of the new release or setup scripts. Select a workflow revision
 with these controls in **Use workflow from**, then enter the source branch in **branch**.
+Publication requires selecting `dev` or a `v*` tag as the workflow revision, so the Publish job
+can use the protected `release` environment. The source **branch** input remains independent.
 
 An unsuccessful build leaves its tag unpublished. Re-run the failed jobs, or select `current`
 while that tag still points at the selected branch's HEAD, to finish it. Repeating the same custom
@@ -87,7 +89,7 @@ Signing is optional; each missing secret yields unsigned output instead of a fai
 | `MACOS_CERT_P12_BASE64`, `MACOS_CERT_PASSWORD`, `CODESIGN_IDENTITY` | Developer ID signing (else ad-hoc) |
 | `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | Notarization; required once `CODESIGN_IDENTITY` is set |
 | `WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PASSWORD` | Authenticode signing of the exes, MSI, setup engine and bundle |
-| `CINNABAR_UPDATE_SIGNING_KEY` | Each run's signed channel manifest, published where `update_channels` in `release-assets.json` names it (else skipped with a notice) |
+| `CINNABAR_UPDATE_SIGNING_KEY` (`release` environment secret, limited to `dev` and `v*` tags) | Each run's signed channel manifest, published where `update_channels` in `release-assets.json` names it (else skipped with a notice) |
 | `UPDATE_TRUSTED_KEYS` (variable) | Keys the client trusts for update manifests |
 | `DISCORD_CHANGELOG_WEBHOOK` | Posts each new `v*` release's changelog to Discord, grouped by PR label (`packaging/changelog.py`) |
 
@@ -135,7 +137,8 @@ The client checks its selected channel's fixed GitHub Releases manifest at most 
 streams verified downloads to the user's update directory. It rejects unknown keys, expired
 or wrong-channel manifests, non-HTTPS artifacts, corrupt payloads, and unintended downgrades.
 Trusted keys (`id:base64[,...]`) are compiled into the client from `UPDATE_TRUSTED_KEYS`,
-so rotation ships as a new key ID. The release signer uses `CINNABAR_UPDATE_SIGNING_KEY` and
+so rotation ships as a new key ID. The Publish job uses the `release` environment's
+`CINNABAR_UPDATE_SIGNING_KEY`, available only to `dev` and `v*` tags, and
 a positive `-build-number` matching the packaged client's publication number;
 `release-manifest keygen` makes a key pair. Native payloads include the offline Rust helper.
 See [Updates](../docs/updating.md) for consent, channel switching, and platform behavior.

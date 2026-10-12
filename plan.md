@@ -7,8 +7,9 @@ An offline Rust helper waits for the old process, applies the verified native pa
 restores failed macOS/Linux starts. Read-only installs offer the manual download action.
 
 Incomplete: CI must compile and run the written regression tests on all platforms. The package
-workflow publishes each channel's signed manifest, but the owner's `CINNABAR_UPDATE_SIGNING_KEY`
-secret and `UPDATE_TRUSTED_KEYS` variable must be configured before any update is offered.
+workflow publishes each channel's signed manifest. The `CINNABAR_UPDATE_SIGNING_KEY` secret in
+the protected `release` environment and the `UPDATE_TRUSTED_KEYS` repository variable are
+configured. The first signed publication remains pending.
 The launcher owner must review the notice screenshots before merge.
 
 ## Actor animation ownership

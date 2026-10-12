@@ -58,3 +58,7 @@ There is no Stable publishing path or compatibility manifest. Publication
 must sign the correct channel and a positive build number. The release signer accepts
 `-build-number`; packaged builds use `CINNABAR_BUILD_NUMBER` or the package workflow's
 `GITHUB_RUN_NUMBER`.
+
+The Publish job declares the protected `release` environment. Its `CINNABAR_UPDATE_SIGNING_KEY`
+is an environment secret limited to `dev` and `v*` tags; `UPDATE_TRUSTED_KEYS` is a repository
+variable compiled into the clients. Both are configured; the first signed publication remains pending.

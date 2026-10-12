@@ -91,6 +91,46 @@ fn bamboo_offsets_do_not_rotate_enhanced_surface_normals() {
     }
 }
 
+/// The CPU placement the voxeliser and transparent sort use matches the production vertices.
+#[test]
+fn cpu_model_placement_matches_shader_vertices() {
+    let Some(gpu) = fixture_gpu("CPU model placement") else {
+        return;
+    };
+    let templates = template_words();
+    let geometry = geometry_words();
+    let values = read_vertices(&gpu, &["ENHANCED"], &templates, &geometry, 10);
+    let lighting = geometry
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[low, high]| {
+            meshing::PackedQuadLighting::new([
+                low as u16,
+                (low >> 16) as u16,
+                high as u16,
+                (high >> 16) as u16,
+            ])
+        })
+        .collect::<Vec<_>>();
+    for case in 0..10 {
+        let words = &geometry[20 + case * 4..24 + case * 4];
+        let reference = meshing::PackedModelRef::new(words[0], words[1], words[2], words[3]);
+        let flags = templates[3 + words[1] as usize * 3];
+        let placed = reference
+            .place_vertex(flags, 0, [0.5, 0.0, 0.5], [0; 3], &lighting)
+            .unwrap();
+        let shader = &values[case * 3 + 1][..3];
+        assert!(
+            placed
+                .iter()
+                .zip(shader)
+                .all(|(cpu, gpu)| (cpu - gpu).abs() <= 1.0e-6),
+            "case {case}: {placed:?} != {shader:?}"
+        );
+    }
+}
+
 #[test]
 fn enhanced_model_projection_retains_wave_displacement_at_distant_origins() {
     let Some(gpu) = fixture_gpu("distant Enhanced model projection") else {

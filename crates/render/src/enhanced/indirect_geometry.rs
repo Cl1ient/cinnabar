@@ -454,12 +454,11 @@ pub(super) fn rebuild(
             else {
                 continue;
             };
-            let position = base.as_vec3()
-                + Vec3::new(
-                    (transform & 15) as f32,
-                    ((transform >> 4) & 15) as f32,
-                    ((transform >> 8) & 15) as f32,
-                );
+            let block = IVec3::new(
+                (transform & 15) as i32,
+                ((transform >> 4) & 15) as i32,
+                ((transform >> 8) & 15) as i32,
+            );
             for q in 0..template.quad_count.min(32) {
                 if mask & (1 << q) == 0 {
                     continue;
@@ -471,13 +470,16 @@ pub(super) fn rebuild(
                 else {
                     continue;
                 };
-                let vertices = quad.positions.map(|p| {
-                    position
-                        + rotate(
-                            Vec3::from_array(p.map(|v| v as f32 / 256.0)),
-                            transform >> 12,
-                        )
-                });
+                let Some(vertices) = model_quad_corners(
+                    *reference,
+                    template.flags,
+                    q,
+                    quad.positions,
+                    base,
+                    &chunk.model_light,
+                ) else {
+                    continue;
+                };
                 let mut material = tinted(
                     colors
                         .get(quad.material as usize)
@@ -485,7 +487,7 @@ pub(super) fn rebuild(
                         .unwrap_or_default(),
                     chunk,
                     tints,
-                    (position - base.as_vec3()).as_ivec3(),
+                    block,
                 );
                 material.sky = sky_access(chunk.model_light.get((lighting_base + q) as usize));
                 triangle(
@@ -505,15 +507,27 @@ pub(super) fn rebuild(
     }
 }
 
-fn rotate(position: Vec3, transform: u32) -> Vec3 {
-    let p = position - Vec3::new(0.5, 0.0, 0.5);
-    let q = match transform & 3 {
-        1 => Vec3::new(-p.z, p.y, p.x),
-        2 => Vec3::new(-p.x, p.y, -p.z),
-        3 => Vec3::new(p.z, p.y, -p.x),
-        _ => p,
-    };
-    q + Vec3::new(0.5, 0.0, 0.5)
+/// A model quad's world corners, placed as the model shader places them.
+fn model_quad_corners(
+    reference: meshing::PackedModelRef,
+    template_flags: u32,
+    quad_index: u32,
+    positions: [[i16; 3]; 4],
+    base: IVec3,
+    lighting: &[meshing::PackedQuadLighting],
+) -> Option<[Vec3; 4]> {
+    let mut corners = [Vec3::ZERO; 4];
+    for (corner, position) in corners.iter_mut().zip(positions) {
+        let placed = reference.place_vertex(
+            template_flags,
+            quad_index,
+            position.map(|v| f32::from(v) / 256.0),
+            base.to_array(),
+            lighting,
+        )?;
+        *corner = base.as_vec3() + Vec3::from_array(placed);
+    }
+    Some(corners)
 }
 
 fn sky_access(light: Option<&meshing::PackedQuadLighting>) -> f32 {
@@ -656,6 +670,52 @@ mod tests {
         assert!(triangle_box(triangle, Vec3::splat(0.5)));
         assert!(!triangle_box(triangle, Vec3::new(1.5, 0.5, 0.5)));
         assert!(!triangle_box(triangle, Vec3::new(0.5, 0.5, 1.5)));
+    }
+    /// Random-offset and bamboo models occupy the cells their shader-placed vertices reach.
+    #[test]
+    fn offset_and_bamboo_models_voxelise_at_their_placed_cells() {
+        // A vertical plane at x = 0.9 that any +X displacement moves into the next cell.
+        let plane = [
+            [230, 0, 102],
+            [230, 0, 154],
+            [230, 256, 154],
+            [230, 256, 102],
+        ];
+        let opaque = Reflectance {
+            rgb: Vec3::ONE,
+            opacity: 1.0,
+            flags: 0,
+            sky: 1.0,
+        };
+        let occupied = |reference, flags, lighting: &[meshing::PackedQuadLighting]| {
+            let mut words =
+                vec![[0; 4]; HEADER_WORDS + GRID_SIZE.into_iter().product::<u32>() as usize];
+            let corners =
+                model_quad_corners(reference, flags, 0, plane, IVec3::ZERO, lighting).unwrap();
+            triangle(
+                &mut words,
+                IVec3::ZERO,
+                [corners[0], corners[1], corners[2]],
+                opaque,
+            );
+            triangle(
+                &mut words,
+                IVec3::ZERO,
+                [corners[0], corners[2], corners[3]],
+                opaque,
+            );
+            [IVec3::ZERO, IVec3::X]
+                .map(|cell| words[index(IVec3::ZERO, cell).unwrap()][0] & SURFACE_BIT != 0)
+        };
+        let shifted = meshing::PackedQuadLighting::offset_prefix([0.5, 0.0, 0.0]);
+        let offset = meshing::PackedModelRef::new(meshing::MODEL_REF_FLAG_RANDOM_OFFSET, 0, 2, 1);
+        assert_eq!(occupied(offset, 0, &shifted), [false, true]);
+        // Column offset index 15 moves the stalk a quarter block along +X without turning it.
+        let bamboo = meshing::PackedModelRef::new(15 << 12, 0, 0, 1);
+        assert_eq!(
+            occupied(bamboo, assets::MODEL_TEMPLATE_FLAG_BAMBOO, &[]),
+            [false, true]
+        );
     }
     #[test]
     fn opaque_surface_cannot_be_replaced_by_partial_coverage() {

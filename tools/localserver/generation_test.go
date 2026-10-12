@@ -9,6 +9,7 @@ import (
 	"io"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 
 	"github.com/df-mc/dragonfly/server"
 	"github.com/df-mc/dragonfly/server/world"
@@ -126,4 +127,22 @@ func abs(v int32) int32 {
 		return -v
 	}
 	return v
+}
+
+// Generators wait to be begun, so Experience blocks register before construction finalises the
+// block registry, and abandoned ones never build.
+func TestGeneratorsBuildOnlyOnceBegun(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		pending := (settings{generator: "normal", seed: -7}).startGenerators()
+		synctest.Wait()
+		select {
+		case <-pending.done:
+			t.Fatal("generators were built before blocks finished registering")
+		default:
+		}
+		pending.discard()
+		if len(pending.generators) != 0 {
+			t.Fatal("discarded generators were built")
+		}
+	})
 }

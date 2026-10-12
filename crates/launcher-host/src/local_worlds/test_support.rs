@@ -299,6 +299,9 @@ pub(crate) struct FakeInstance {
     pub lan: Option<String>,
     /// Holds a stop, as a world save would, until disconnected.
     save: Option<Receiver<()>>,
+    /// Holds a stop after the process has exited, as removing a container would.
+    cleanup: Option<Receiver<()>>,
+    cleaned: std::sync::atomic::AtomicBool,
 }
 
 impl FakeInstance {
@@ -311,6 +314,8 @@ impl FakeInstance {
             can_pause,
             lan: None,
             save: None,
+            cleanup: None,
+            cleaned: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -321,6 +326,12 @@ impl FakeInstance {
 
     pub(crate) fn stopped(&self) -> bool {
         lock(&self.exit).is_none()
+    }
+
+    /// Stopped, with any cleanup after the exit done.
+    pub(crate) fn finished(&self) -> bool {
+        self.stopped()
+            && (self.cleanup.is_none() || self.cleaned.load(std::sync::atomic::Ordering::SeqCst))
     }
 }
 
@@ -345,6 +356,11 @@ impl Instance for FakeInstance {
             let _ = save.recv();
         }
         self.exit();
+        if let Some(cleanup) = &self.cleanup {
+            let _ = cleanup.recv();
+            self.cleaned
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
         Ok(())
     }
 
@@ -370,6 +386,9 @@ pub(crate) struct FakeRunner {
     pub made: Mutex<Vec<Arc<FakeInstance>>>,
     /// Passed to each instance as its save.
     pub save: Option<Receiver<()>>,
+    /// Passed to each instance as its cleanup.
+    pub cleanup: Option<Receiver<()>>,
+    pub discarded: std::sync::atomic::AtomicUsize,
     /// Set when a start ran while an earlier instance was still alive.
     pub overlapped: std::sync::atomic::AtomicBool,
     pub prepared: std::sync::atomic::AtomicUsize,
@@ -400,6 +419,18 @@ impl FakeRunner {
         )
     }
 
+    /// A runner whose instances exit at once but finish cleaning up when the sender is dropped.
+    pub(crate) fn cleaning() -> (Self, Sender<()>) {
+        let (release, cleanup) = crossbeam_channel::bounded(0);
+        (
+            Self {
+                cleanup: Some(cleanup),
+                ..Self::default()
+            },
+            release,
+        )
+    }
+
     pub(crate) fn last(&self) -> Arc<FakeInstance> {
         Arc::clone(lock(&self.made).last().expect("a started instance"))
     }
@@ -417,12 +448,13 @@ impl Runner for FakeRunner {
             return Err(error());
         }
         let mut made = lock(&self.made);
-        if made.iter().any(|instance| !instance.stopped()) {
+        if made.iter().any(|instance| !instance.finished()) {
             self.overlapped
                 .store(true, std::sync::atomic::Ordering::SeqCst);
         }
         let instance = Arc::new(FakeInstance {
             save: self.save.clone(),
+            cleanup: self.cleanup.clone(),
             ..FakeInstance::new(self.can_pause.unwrap_or(true))
         });
         made.push(Arc::clone(&instance));
@@ -433,6 +465,11 @@ impl Runner for FakeRunner {
 
     fn prepare(&self) {
         self.prepared
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn discard_standby(&self) {
+        self.discarded
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 }

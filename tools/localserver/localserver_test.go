@@ -212,3 +212,20 @@ func TestStandbyServerWithoutAStartLine(t *testing.T) {
 		t.Fatalf("garbage line: err = %v, stdout = %q", err, stdout.String())
 	}
 }
+
+// A standby server refuses Experiences, whose blocks its warm-up would already have locked out.
+func TestStandbyServerRefusesExperiences(t *testing.T) {
+	dir := t.TempDir()
+	start, err := json.Marshal([]string{
+		"-dir", dir, "-addr", "127.0.0.1:0",
+		"-experiences", t.TempDir(), "-experience-runtime", filepath.Join(dir, "no-runtime"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	err = run([]string{standbyFlag}, strings.NewReader(standbyStart+string(start)+"\n"), &stdout, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "standby") || stdout.Len() != 0 {
+		t.Fatalf("err = %v, stdout = %q", err, stdout.String())
+	}
+}

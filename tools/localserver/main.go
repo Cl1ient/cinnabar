@@ -3,7 +3,7 @@
 // It prints "ready" once listening and reads "pause", "resume" and "stop" lines on stdin, and
 // "experience reload <id>" lines when it hosts Experiences; stdin EOF and SIGINT/SIGTERM also stop
 // it. Started with only -standby, it warms world generation until a "start <JSON args>" line gives
-// it a world. docs/experience-runtime.md describes the Experiences of -experiences and the client parts of
+// it a world without -experiences. docs/experience-runtime.md describes the Experiences of -experiences and the client parts of
 // the -extension flags.
 package main
 
@@ -44,7 +44,8 @@ func main() {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(args) == 1 && args[0] == standbyFlag {
+	standby := len(args) == 1 && args[0] == standbyFlag
+	if standby {
 		go warmGeneration()
 		started, rest, ok, err := awaitStandbyStart(stdin)
 		if err != nil || !ok {
@@ -58,6 +59,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	if cfg.terrainFixtureGenerate {
 		return generateTerrainFixture(cfg, stdout)
+	}
+	if standby && cfg.experiences != "" {
+		// Its warm-up has finalised the block registry that Experience blocks register in.
+		return errors.New("a standby server cannot host -experiences")
 	}
 	pending := cfg.startGenerators()
 	defer pending.discard()
@@ -86,6 +91,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	} else if err := experience.CheckDisabled(filepath.Join(cfg.dir, experienceDataDir)); err != nil {
 		return err
 	}
+	pending.begin()
 	conf, err := cfg.userConfig().Config(logger)
 	if err != nil {
 		if exps != nil {

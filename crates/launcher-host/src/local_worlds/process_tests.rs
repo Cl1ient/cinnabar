@@ -156,3 +156,22 @@ fn a_prepared_standby_server_takes_the_next_world() {
     assert!(logged.lines().any(|arg| arg == "-dir"), "{logged}");
     again.stop(test_time::DEFAULT_TIMEOUT).expect("stop");
 }
+
+/// Discarding ends a waiting standby server at once.
+#[cfg(unix)]
+#[test]
+fn a_discarded_standby_server_exits() {
+    let dir = scratch();
+    let runner = runner(dir.path(), FAKE_STANDBY_SERVER);
+    runner.prepare();
+    let exited = lock(&runner.standby)
+        .as_ref()
+        .expect("a standby server")
+        .process
+        .exited();
+    runner.discard_standby();
+    assert!(lock(&runner.standby).is_none());
+    test_time::eventually("the standby to exit", || {
+        matches!(exited.try_recv(), Err(TryRecvError::Disconnected))
+    });
+}

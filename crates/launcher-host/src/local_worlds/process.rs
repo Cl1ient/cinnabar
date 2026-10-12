@@ -67,6 +67,9 @@ pub(crate) trait Runner: Send + Sync {
     fn start(&self, spec: &StartSpec, cancel: &Cancel) -> Result<Arc<dyn Instance>, WorldError>;
     /// Readies a server ahead of a likely open, so the open skips the process's startup work.
     fn prepare(&self) {}
+    /// Ends a readied server at once, as the client exits; a lock held by the exiting thread
+    /// leaves it to the exit sweep.
+    fn discard_standby(&self) {}
 }
 
 /// Hosts each Dragonfly world in `bedrock-local-server`, which prints `ready` once listening and
@@ -168,6 +171,18 @@ impl Runner for ProcessRunner {
         ) {
             Ok(spawned) => *standby = Some(spawned),
             Err(error) => tracing::warn!("prepare a standby local server: {error}"),
+        }
+    }
+
+    fn discard_standby(&self) {
+        let standby = match self.standby.try_lock() {
+            Ok(mut standby) => standby.take(),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner().take(),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+        };
+        if let Some(standby) = standby {
+            // A standby holds no world, so nothing needs saving.
+            standby.process.kill();
         }
     }
 }

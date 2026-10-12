@@ -16,28 +16,43 @@ import (
 
 type worldGenerators map[world.Dimension]vanilla.Generator
 
-// pendingGenerators are normal generators being built in the background, so their construction
-// overlaps the rest of server setup.
+// pendingGenerators are normal generators built in the background once begun, so their
+// construction overlaps the rest of server setup.
 type pendingGenerators struct {
+	// build carries begin's true or discard's false, whichever comes first.
+	build      chan bool
+	signalled  sync.Once
 	done       chan struct{}
 	generators worldGenerators
 	err        error
 	taken      bool
 }
 
-// startGenerators begins building every dimension's normal generator at once; flat worlds and
-// synthetic fixtures need none.
+// startGenerators readies every dimension's normal generator to build at once when begun; flat
+// worlds and synthetic fixtures need none.
 func (s settings) startGenerators() *pendingGenerators {
-	p := &pendingGenerators{done: make(chan struct{}), generators: make(worldGenerators)}
+	p := &pendingGenerators{build: make(chan bool, 1), done: make(chan struct{}), generators: make(worldGenerators)}
 	if s.generator != "normal" || s.terrainFixture || s.opaqueOverdraw {
 		close(p.done)
 		return p
 	}
 	go func() {
 		defer close(p.done)
-		p.generators, p.err = buildGenerators(s.seed)
+		if <-p.build {
+			p.generators, p.err = buildGenerators(s.seed)
+		}
 	}()
 	return p
+}
+
+// begin starts construction. Building finalises the default block registry, so every block,
+// including Experience blocks, must be registered first.
+func (p *pendingGenerators) begin() {
+	p.signal(true)
+}
+
+func (p *pendingGenerators) signal(build bool) {
+	p.signalled.Do(func() { p.build <- build })
 }
 
 // buildGenerators constructs the three dimensions' generators concurrently; on failure none stay open.
@@ -76,6 +91,7 @@ func warmGeneration() {
 
 // configure waits for the generators and installs them in conf; the caller then closes them.
 func (p *pendingGenerators) configure(conf *server.Config) (worldGenerators, error) {
+	p.begin()
 	<-p.done
 	p.taken = true
 	if p.err != nil {
@@ -88,11 +104,13 @@ func (p *pendingGenerators) configure(conf *server.Config) (worldGenerators, err
 	return p.generators, nil
 }
 
-// discard closes generators that startup abandoned before configuring them.
+// discard closes generators that startup abandoned before configuring them; unbegun ones are
+// never built.
 func (p *pendingGenerators) discard() {
 	if p.taken {
 		return
 	}
+	p.signal(false)
 	<-p.done
 	p.taken = true
 	_ = p.generators.close()

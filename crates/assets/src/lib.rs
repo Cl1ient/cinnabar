@@ -22,7 +22,7 @@ mod effects;
 mod encoding;
 pub mod entity;
 mod environment_settings;
-mod equipment;
+pub mod equipment;
 mod error;
 mod family_routing;
 mod fire;

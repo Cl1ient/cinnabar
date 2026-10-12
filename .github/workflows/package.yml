@@ -562,8 +562,9 @@ jobs:
           title="${RELEASE_CHANNEL^} $(date -u +%Y-%m-%d) ($(git rev-parse --short HEAD))"
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/* --clobber
+            # The channel manifest stays until a newly signed one replaces it.
             gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
-              [[ -e "dist/$name" ]] || gh release delete-asset "$RELEASE_TAG" "$name" --yes
+              [[ -e "dist/$name" || "$name" == "$UPDATE_MANIFEST" ]] || gh release delete-asset "$RELEASE_TAG" "$name" --yes
             done
           else
             gh release create "$RELEASE_TAG" dist/* --prerelease --latest=false --target "$RELEASE_COMMIT" \

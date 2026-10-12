@@ -14,11 +14,16 @@ FAKE_GH = '''#!/bin/bash
 set -eu
 echo "$*" >> calls
 case "$2" in
-  view) [[ -d "releases/$3" ]] ;;
+  view) [[ -d "releases/$3" ]] && { [[ "$*" != *--json* ]] || ls "releases/$3"; } ;;
   create) mkdir -p "releases/$3" ;;
-  upload) cp "$4" "releases/$3/" ;;
+  upload) for file in "${@:4}"; do [[ "$file" == --* ]] || cp "$file" "releases/$3/"; done ;;
+  delete-asset) rm "releases/$3/$4" ;;
+  edit) ;;
   *) exit 43 ;;
 esac
+'''
+FAKE_GIT = '''#!/bin/bash
+[[ "$1" != rev-parse ]] || echo 0000000
 '''
 
 
@@ -52,6 +57,34 @@ class ManifestPublishTests(unittest.TestCase):
                 create = next(line for line in (root / "calls").read_text().splitlines()
                               if line.startswith("release create"))
                 self.assertIn("--prerelease --latest=false", create)
+
+    def test_a_rolling_rerun_keeps_the_manifest_until_a_signed_one_replaces_it(self):
+        for channel, release in CHANNELS.items():
+            if channel == "stable":
+                continue
+            with self.subTest(channel=channel), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                published = root / "releases" / release["tag"]
+                published.mkdir(parents=True)
+                for name in [release["manifest"], "obsolete-installer"]:
+                    (published / name).write_text("old")
+                (root / "dist").mkdir()
+                (root / "dist/installer").write_text("new")
+                notes = root / "release-tools/packaging/release-notes.sh"
+                notes.parent.mkdir(parents=True)
+                notes.write_text("exit 0\n")
+                for name, script in [("gh", FAKE_GH), ("git", FAKE_GIT)]:
+                    (root / name).write_text(script)
+                    (root / name).chmod(0o755)
+                env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", RUNNER_TEMP=str(root),
+                           GITHUB_WORKSPACE=str(root), RELEASE_CHANNEL=channel,
+                           RELEASE_TAG=release["tag"], RELEASE_COMMIT="0" * 40,
+                           UPDATE_MANIFEST=release["manifest"])
+                result = subprocess.run(["bash", "-eu", "-c", step("Publish the rolling prerelease")],
+                                        cwd=root, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(sorted(path.name for path in published.iterdir()),
+                                 sorted([release["manifest"], "installer"]))
 
     def test_a_missing_signing_key_skips_publication_with_a_notice(self):
         with tempfile.TemporaryDirectory() as temporary:

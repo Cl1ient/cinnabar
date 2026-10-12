@@ -26,6 +26,41 @@ const STRIDE_READ_SCALE: f32 = 0.6;
 // Vanilla fish animation consumes actor velocity in blocks/tick.
 const FISH_PHASE_SPEED_GAIN: f32 = 0.1;
 
+/// Wire amplifiers of the effects that change how long an arm swing lasts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SwingEffects {
+    pub haste: Option<i32>,
+    pub mining_fatigue: Option<i32>,
+}
+
+impl SwingEffects {
+    /// Swing length in ticks: each Haste level takes one tick off and wins over Mining Fatigue,
+    /// whose levels add two each. Negative (untrusted) amplifiers count as absent.
+    #[must_use]
+    pub fn ticks(self) -> i32 {
+        let level = |amplifier: Option<i32>| {
+            amplifier
+                .filter(|value| *value >= 0)
+                .map(|value| value.saturating_add(1))
+        };
+        let ticks = match (level(self.haste), level(self.mining_fatigue)) {
+            (Some(haste), _) => ACTOR_SWING_TICKS.saturating_sub(haste),
+            (None, Some(fatigue)) => ACTOR_SWING_TICKS.saturating_add(fatigue.saturating_mul(2)),
+            (None, None) => ACTOR_SWING_TICKS,
+        };
+        ticks.max(1)
+    }
+
+    /// Applies one MobEffect change, ignoring effects that leave swings alone.
+    pub fn apply(&mut self, effect_id: i32, amplifier: Option<i32>) {
+        match effect_id {
+            protocol::HASTE_EFFECT_ID => self.haste = amplifier,
+            protocol::MINING_FATIGUE_EFFECT_ID => self.mining_fatigue = amplifier,
+            _ => {}
+        }
+    }
+}
+
 /// One tick of actor state the motion model consumes.
 pub(super) struct MotionInput {
     pub(super) delta: [f32; 3],
@@ -330,5 +365,23 @@ mod tests {
             });
         }
         assert!((motion.body_yaw - 60.0).abs() < 1.0e-3);
+    }
+
+    /// Haste takes a tick per level and wins over Mining Fatigue's two; removal restores six.
+    #[test]
+    fn swing_effects_set_the_swing_length() {
+        let mut effects = SwingEffects::default();
+        assert_eq!(effects.ticks(), 6);
+        effects.apply(protocol::MINING_FATIGUE_EFFECT_ID, Some(0));
+        assert_eq!(effects.ticks(), 8);
+        effects.apply(protocol::HASTE_EFFECT_ID, Some(1));
+        assert_eq!(effects.ticks(), 4);
+        effects.apply(protocol::HASTE_EFFECT_ID, Some(9));
+        assert_eq!(effects.ticks(), 1);
+        effects.apply(protocol::HASTE_EFFECT_ID, None);
+        effects.apply(8, Some(3));
+        assert_eq!(effects.ticks(), 8);
+        effects.apply(protocol::MINING_FATIGUE_EFFECT_ID, Some(-1));
+        assert_eq!(effects.ticks(), 6);
     }
 }

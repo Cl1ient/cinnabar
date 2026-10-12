@@ -366,6 +366,8 @@ impl Flight {
         }
         self.stream.set_view_forward([1.0, 0.0, 0.0]);
         black_box(self.stream.poll(camera, MESH_JOBS_PER_FRAME));
+        // This headless fixture has no local physics to advance its retained grid.
+        self.stream.retain_for_server_position();
         while let Some(change) = self.stream.pop_mesh_change() {
             let (key, generation, dirty_since) = match change {
                 WorldMeshChange::Upsert {
@@ -398,7 +400,7 @@ impl Flight {
         elapsed
     }
 
-    /// Times only the server position update that retires the trailing row, then
+    /// Times the server position update and explicit retention of the new grid, then
     /// streams the leading row and settles so every crossing starts from a full view.
     fn cross_one_chunk(&mut self) -> Duration {
         self.center_x += 1;
@@ -406,6 +408,7 @@ impl Flight {
         let position = Ingress::Position(self.server_position());
         let started = Instant::now();
         self.submit(position);
+        self.stream.retain_for_server_position();
         let elapsed = started.elapsed();
         self.publish_view();
         self.enqueue_entering_columns(Some(self.center_x - 1));

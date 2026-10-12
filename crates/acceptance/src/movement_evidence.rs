@@ -4,40 +4,40 @@ use bevy::prelude::Resource;
 use semantic_input::{InputMode, PerspectiveMode};
 
 use diagnostics::markers::{
-    PHASE3_EVENT, PHASE3_FRAME, PHASE3_IDENTITY, PHASE3_TERMINAL, PHASE3_VIOLATION,
+    MOVEMENT_EVENT, MOVEMENT_FRAME, MOVEMENT_IDENTITY, MOVEMENT_TERMINAL, MOVEMENT_VIOLATION,
 };
 
-pub const MAX_PHASE3_FRAME_RECORDS: usize = 12_000;
-pub const MAX_PHASE3_EVENT_RECORDS: usize = 256;
-pub const MAX_PHASE3_FAULT_RECORDS: usize = 32;
+pub const MAX_MOVEMENT_FRAME_RECORDS: usize = 12_000;
+pub const MAX_MOVEMENT_EVENT_RECORDS: usize = 256;
+pub const MAX_MOVEMENT_FAULT_RECORDS: usize = 32;
 const MAX_EVIDENCE_LOOK_DELTA: f32 = 64.0;
 const MAX_EVIDENCE_CORRECTION_MAGNITUDE: f32 = 100_000_000.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum Phase3EvidenceIdentityError {
-    #[error("Phase 3 evidence build commit is not an exact lowercase 40-hex identity")]
+pub enum MovementEvidenceIdentityError {
+    #[error("movement evidence build commit is not an exact lowercase 40-hex identity")]
     InvalidBuildCommit,
-    #[error("Phase 3 evidence session generation is zero")]
+    #[error("movement evidence session generation is zero")]
     ZeroSessionGeneration,
-    #[error("Phase 3 evidence PREG or BREG identity is zero")]
+    #[error("movement evidence PREG or BREG identity is zero")]
     ZeroRegistryIdentity,
-    #[error("Phase 3 evidence build is missing {environment}")]
+    #[error("movement evidence build is missing {environment}")]
     MissingBuildCommit { environment: &'static str },
     #[error(
-        "Phase 3 evidence run was not launched with {environment}=false from an explicitly clean source tree"
+        "movement evidence run was not launched with {environment}=false from an explicitly clean source tree"
     )]
     DirtyOrUnattributedBuild { environment: &'static str },
-    #[error("Phase 3 evidence run is missing or has invalid {environment}")]
+    #[error("movement evidence run is missing or has invalid {environment}")]
     InvalidRunIdentity { environment: &'static str },
 }
 
 /// Supplies a stable target label without making evidence depend on app argument types.
-pub trait Phase3TargetLabel {
+pub trait EvidenceTargetLabel {
     /// Returns the existing target spelling used by the evidence schema.
     fn evidence_label(self) -> &'static str;
 }
 
-impl Phase3TargetLabel for &'static str {
+impl EvidenceTargetLabel for &'static str {
     /// Uses a label already observed by the runtime adapter.
     fn evidence_label(self) -> &'static str {
         self
@@ -45,7 +45,7 @@ impl Phase3TargetLabel for &'static str {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Phase3EvidenceIdentity {
+pub struct MovementEvidenceIdentity {
     build_commit: String,
     target: &'static str,
     session_generation: u64,
@@ -61,19 +61,19 @@ pub struct Phase3EvidenceIdentity {
     app_process_id: u32,
 }
 
-impl Phase3EvidenceIdentity {
+impl MovementEvidenceIdentity {
     pub const fn candidate_physics(&self) -> bool {
         self.candidate_physics
     }
 
     pub fn new(
         build_commit: impl Into<String>,
-        target: impl Phase3TargetLabel,
+        target: impl EvidenceTargetLabel,
         session_generation: u64,
         preg_sha256: [u8; 32],
         breg_sha256: [u8; 32],
         candidate_physics: bool,
-    ) -> Result<Self, Phase3EvidenceIdentityError> {
+    ) -> Result<Self, MovementEvidenceIdentityError> {
         let target = target.evidence_label();
         let build_commit = build_commit.into();
         if build_commit.len() != 40
@@ -81,13 +81,13 @@ impl Phase3EvidenceIdentity {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         {
-            return Err(Phase3EvidenceIdentityError::InvalidBuildCommit);
+            return Err(MovementEvidenceIdentityError::InvalidBuildCommit);
         }
         if session_generation == 0 {
-            return Err(Phase3EvidenceIdentityError::ZeroSessionGeneration);
+            return Err(MovementEvidenceIdentityError::ZeroSessionGeneration);
         }
         if preg_sha256 == [0; 32] || breg_sha256 == [0; 32] {
-            return Err(Phase3EvidenceIdentityError::ZeroRegistryIdentity);
+            return Err(MovementEvidenceIdentityError::ZeroRegistryIdentity);
         }
         Ok(Self {
             build_commit,
@@ -113,7 +113,7 @@ impl Phase3EvidenceIdentity {
         bridge_endpoint: String,
         core_sha256: String,
         core_process_id: u32,
-    ) -> Result<Self, Phase3EvidenceIdentityError> {
+    ) -> Result<Self, MovementEvidenceIdentityError> {
         validate_run_identity(
             &run_id,
             &endpoint,
@@ -132,9 +132,9 @@ impl Phase3EvidenceIdentity {
 
     fn marker(self) -> String {
         format!(
-            "{PHASE3_IDENTITY}={}",
+            "{MOVEMENT_IDENTITY}={}",
             serde_json::json!({
-                "schema": "rust-mcbe-phase3-identity-v1",
+                "schema": "rust-mcbe-movement-identity-v1",
                 "build_commit": self.build_commit,
                 "target": self.target,
                 "protocol": protocol::PROTOCOL_VERSION,
@@ -155,7 +155,7 @@ impl Phase3EvidenceIdentity {
 }
 
 #[derive(Resource, Debug, Clone)]
-pub struct Phase3EvidenceIdentitySource {
+pub struct MovementEvidenceIdentitySource {
     build_commit: String,
     target: &'static str,
     preg_sha256: [u8; 32],
@@ -168,7 +168,7 @@ pub struct Phase3EvidenceIdentitySource {
     core_process_id: u32,
 }
 
-impl Phase3EvidenceIdentitySource {
+impl MovementEvidenceIdentitySource {
     /// Reads the commit and clean-source flag from the launch environment so commits never
     /// rebuild the client; the launcher builds, hashes and starts that exact binary.
     pub fn from_build(
@@ -176,13 +176,13 @@ impl Phase3EvidenceIdentitySource {
         candidate_physics: bool,
         preg_sha256: [u8; 32],
         breg_sha256: [u8; 32],
-    ) -> Result<Self, Phase3EvidenceIdentityError> {
+    ) -> Result<Self, MovementEvidenceIdentityError> {
         let build_commit = env_compat::var(diagnostics::markers::BUILD_COMMIT).map_err(|_| {
-            Phase3EvidenceIdentityError::MissingBuildCommit {
+            MovementEvidenceIdentityError::MissingBuildCommit {
                 environment: diagnostics::markers::BUILD_COMMIT,
             }
         })?;
-        Phase3EvidenceIdentity::new(
+        MovementEvidenceIdentity::new(
             build_commit.as_str(),
             target,
             1,
@@ -190,23 +190,23 @@ impl Phase3EvidenceIdentitySource {
             breg_sha256,
             candidate_physics,
         )?;
-        validate_phase3_build_source(
+        validate_movement_build_source(
             env_compat::var(diagnostics::markers::SOURCE_DIRTY)
                 .ok()
                 .as_deref(),
         )?;
-        let run_id = required_run_environment(diagnostics::markers::PHASE3_RUN_ID)?;
-        let endpoint = required_run_environment(diagnostics::markers::PHASE3_ENDPOINT)?;
+        let run_id = required_run_environment(diagnostics::markers::ACCEPTANCE_RUN_ID)?;
+        let endpoint = required_run_environment(diagnostics::markers::ACCEPTANCE_ENDPOINT)?;
         let bridge_endpoint =
-            required_run_environment(diagnostics::markers::PHASE3_BRIDGE_ENDPOINT)?;
-        let core_sha256 = required_run_environment(diagnostics::markers::PHASE3_CORE_SHA256)?;
+            required_run_environment(diagnostics::markers::ACCEPTANCE_BRIDGE_ENDPOINT)?;
+        let core_sha256 = required_run_environment(diagnostics::markers::ACCEPTANCE_CORE_SHA256)?;
         let core_process_id =
-            required_run_environment(diagnostics::markers::PHASE3_CORE_PROCESS_ID)?
+            required_run_environment(diagnostics::markers::ACCEPTANCE_CORE_PROCESS_ID)?
                 .parse::<u32>()
                 .ok()
                 .filter(|process_id| *process_id != 0)
-                .ok_or(Phase3EvidenceIdentityError::InvalidRunIdentity {
-                    environment: diagnostics::markers::PHASE3_CORE_PROCESS_ID,
+                .ok_or(MovementEvidenceIdentityError::InvalidRunIdentity {
+                    environment: diagnostics::markers::ACCEPTANCE_CORE_PROCESS_ID,
                 })?;
         validate_run_identity(
             &run_id,
@@ -232,8 +232,8 @@ impl Phase3EvidenceIdentitySource {
     pub fn for_session(
         &self,
         session_generation: u64,
-    ) -> Result<Phase3EvidenceIdentity, Phase3EvidenceIdentityError> {
-        Phase3EvidenceIdentity::new(
+    ) -> Result<MovementEvidenceIdentity, MovementEvidenceIdentityError> {
+        MovementEvidenceIdentity::new(
             self.build_commit.clone(),
             self.target,
             session_generation,
@@ -253,13 +253,13 @@ impl Phase3EvidenceIdentitySource {
     }
 }
 
-pub fn validate_phase3_build_source(
+pub fn validate_movement_build_source(
     source_dirty: Option<&str>,
-) -> Result<(), Phase3EvidenceIdentityError> {
+) -> Result<(), MovementEvidenceIdentityError> {
     if source_dirty == Some("false") {
         Ok(())
     } else {
-        Err(Phase3EvidenceIdentityError::DirtyOrUnattributedBuild {
+        Err(MovementEvidenceIdentityError::DirtyOrUnattributedBuild {
             environment: diagnostics::markers::SOURCE_DIRTY,
         })
     }
@@ -267,11 +267,11 @@ pub fn validate_phase3_build_source(
 
 fn required_run_environment(
     environment: &'static str,
-) -> Result<String, Phase3EvidenceIdentityError> {
+) -> Result<String, MovementEvidenceIdentityError> {
     env_compat::var(environment)
         .ok()
         .filter(|value| !value.is_empty())
-        .ok_or(Phase3EvidenceIdentityError::InvalidRunIdentity { environment })
+        .ok_or(MovementEvidenceIdentityError::InvalidRunIdentity { environment })
 }
 
 fn validate_run_identity(
@@ -280,31 +280,31 @@ fn validate_run_identity(
     bridge_endpoint: &str,
     core_sha256: &str,
     core_process_id: u32,
-) -> Result<(), Phase3EvidenceIdentityError> {
+) -> Result<(), MovementEvidenceIdentityError> {
     if run_id.len() != 32
         || !run_id
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
-        return Err(Phase3EvidenceIdentityError::InvalidRunIdentity {
-            environment: diagnostics::markers::PHASE3_RUN_ID,
+        return Err(MovementEvidenceIdentityError::InvalidRunIdentity {
+            environment: diagnostics::markers::ACCEPTANCE_RUN_ID,
         });
     }
     for (value, environment) in [
-        (endpoint, diagnostics::markers::PHASE3_ENDPOINT),
+        (endpoint, diagnostics::markers::ACCEPTANCE_ENDPOINT),
         (
             bridge_endpoint,
-            diagnostics::markers::PHASE3_BRIDGE_ENDPOINT,
+            diagnostics::markers::ACCEPTANCE_BRIDGE_ENDPOINT,
         ),
     ] {
         let Some((host, port)) = value.rsplit_once(':') else {
-            return Err(Phase3EvidenceIdentityError::InvalidRunIdentity { environment });
+            return Err(MovementEvidenceIdentityError::InvalidRunIdentity { environment });
         };
         if host.is_empty()
             || host.bytes().any(|byte| byte.is_ascii_whitespace())
             || port.parse::<u16>().ok().filter(|port| *port != 0).is_none()
         {
-            return Err(Phase3EvidenceIdentityError::InvalidRunIdentity { environment });
+            return Err(MovementEvidenceIdentityError::InvalidRunIdentity { environment });
         }
     }
     if core_sha256.len() != 64
@@ -312,13 +312,13 @@ fn validate_run_identity(
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
-        return Err(Phase3EvidenceIdentityError::InvalidRunIdentity {
-            environment: diagnostics::markers::PHASE3_CORE_SHA256,
+        return Err(MovementEvidenceIdentityError::InvalidRunIdentity {
+            environment: diagnostics::markers::ACCEPTANCE_CORE_SHA256,
         });
     }
     if core_process_id == 0 {
-        return Err(Phase3EvidenceIdentityError::InvalidRunIdentity {
-            environment: diagnostics::markers::PHASE3_CORE_PROCESS_ID,
+        return Err(MovementEvidenceIdentityError::InvalidRunIdentity {
+            environment: diagnostics::markers::ACCEPTANCE_CORE_PROCESS_ID,
         });
     }
     Ok(())
@@ -337,9 +337,9 @@ impl AuthorityFaultObservation {
     /// Formats the existing fault schema after the runtime has classified the domain error.
     fn evidence_marker(self) -> String {
         format!(
-            "{PHASE3_EVENT}={}",
+            "{MOVEMENT_EVENT}={}",
             serde_json::json!({
-                "schema": "rust-mcbe-phase3-event-v1",
+                "schema": "rust-mcbe-movement-event-v1",
                 "kind": "authority_fault",
                 "session_generation": self.session_generation,
                 "next_tick": self.next_tick,
@@ -364,12 +364,12 @@ pub enum CorrectionObservation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase3EvidenceEventKind {
+pub enum MovementEvidenceEventKind {
     Dimension,
     Session,
 }
 
-impl Phase3EvidenceEventKind {
+impl MovementEvidenceEventKind {
     const ALL: [Self; 2] = [Self::Dimension, Self::Session];
 
     const fn index(self) -> usize {
@@ -388,7 +388,7 @@ impl Phase3EvidenceEventKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Phase3EvidenceFrame {
+pub struct MovementEvidenceFrame {
     pub session_generation: u64,
     pub fifo_sequence: u64,
     pub physics_tick: u64,
@@ -414,7 +414,7 @@ pub struct Phase3EvidenceFrame {
     pub jump_released: bool,
 }
 
-impl Phase3EvidenceFrame {
+impl MovementEvidenceFrame {
     fn is_valid(self, outbox_capacity: usize) -> bool {
         self.session_generation != 0
             && self.pose_generation != 0
@@ -441,9 +441,9 @@ impl Phase3EvidenceFrame {
 
     fn frame_marker(self) -> String {
         format!(
-            "{PHASE3_FRAME}={}",
+            "{MOVEMENT_FRAME}={}",
             serde_json::json!({
-                "schema": "rust-mcbe-phase3-frame-v2",
+                "schema": "rust-mcbe-movement-frame-v2",
                 "session_generation": self.session_generation,
                 "fifo_sequence": self.fifo_sequence,
                 "physics_tick": self.physics_tick,
@@ -471,11 +471,11 @@ impl Phase3EvidenceFrame {
         )
     }
 
-    fn event_marker(self, kind: Phase3EvidenceEventKind, event_sequence: u64) -> String {
+    fn event_marker(self, kind: MovementEvidenceEventKind, event_sequence: u64) -> String {
         format!(
-            "{PHASE3_EVENT}={}",
+            "{MOVEMENT_EVENT}={}",
             serde_json::json!({
-                "schema": "rust-mcbe-phase3-event-v1",
+                "schema": "rust-mcbe-movement-event-v1",
                 "kind": kind.name(),
                 "event_sequence": event_sequence,
                 "session_generation": self.session_generation,
@@ -488,7 +488,7 @@ impl Phase3EvidenceFrame {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Phase3CorrectionEvidence {
+struct MovementCorrectionEvidence {
     outcome: CorrectionObservation,
     magnitude: f32,
 }
@@ -511,8 +511,8 @@ pub struct NonMonotonicFrameIdentity {
     current_pose_generation: u64,
 }
 
-impl Phase3CorrectionEvidence {
-    fn event_marker(self, frame: Phase3EvidenceFrame, event_sequence: u64) -> String {
+impl MovementCorrectionEvidence {
+    fn event_marker(self, frame: MovementEvidenceFrame, event_sequence: u64) -> String {
         let (outcome, corrected_tick, replayed_ticks) = match self.outcome {
             CorrectionObservation::Replayed {
                 corrected_tick,
@@ -521,9 +521,9 @@ impl Phase3CorrectionEvidence {
             CorrectionObservation::Snapped { tick } => ("snapped", tick, 0),
         };
         format!(
-            "{PHASE3_EVENT}={}",
+            "{MOVEMENT_EVENT}={}",
             serde_json::json!({
-                "schema": "rust-mcbe-phase3-event-v1",
+                "schema": "rust-mcbe-movement-event-v1",
                 "kind": "correction",
                 "event_sequence": event_sequence,
                 "session_generation": frame.session_generation,
@@ -540,13 +540,13 @@ impl Phase3CorrectionEvidence {
 }
 
 #[derive(Resource, Debug, Default)]
-pub struct Phase3EvidenceEmitter {
-    identity: Option<Phase3EvidenceIdentity>,
+pub struct MovementEvidenceEmitter {
+    identity: Option<MovementEvidenceIdentity>,
     identity_conflict_emitted: bool,
     last_frame_identity: Option<(u64, u64, i32, u64, u64)>,
     non_monotonic_detail: Option<NonMonotonicFrameIdentity>,
     pending_events: [bool; 2],
-    pending_corrections: VecDeque<Phase3CorrectionEvidence>,
+    pending_corrections: VecDeque<MovementCorrectionEvidence>,
     frame_records: usize,
     event_records: usize,
     fault_records: usize,
@@ -559,8 +559,8 @@ pub struct Phase3EvidenceEmitter {
     terminal_emitted: bool,
 }
 
-impl Phase3EvidenceEmitter {
-    pub fn observe_identity(&mut self, identity: Phase3EvidenceIdentity) -> Vec<String> {
+impl MovementEvidenceEmitter {
+    pub fn observe_identity(&mut self, identity: MovementEvidenceIdentity) -> Vec<String> {
         match self.identity.as_ref() {
             None => {
                 self.identity = Some(identity.clone());
@@ -575,25 +575,25 @@ impl Phase3EvidenceEmitter {
         }
     }
 
-    pub fn note_event(&mut self, kind: Phase3EvidenceEventKind) {
+    pub fn note_event(&mut self, kind: MovementEvidenceEventKind) {
         self.pending_events[kind.index()] = true;
     }
 
     pub fn note_correction(&mut self, outcome: CorrectionObservation, magnitude: f32) {
         if !magnitude.is_finite()
             || !(0.0..=MAX_EVIDENCE_CORRECTION_MAGNITUDE).contains(&magnitude)
-            || self.pending_corrections.len() >= MAX_PHASE3_EVENT_RECORDS
+            || self.pending_corrections.len() >= MAX_MOVEMENT_EVENT_RECORDS
         {
             self.record_violation("invalid_correction");
             return;
         }
         self.pending_corrections
-            .push_back(Phase3CorrectionEvidence { outcome, magnitude });
+            .push_back(MovementCorrectionEvidence { outcome, magnitude });
     }
 
     pub fn observe_authority_fault(&mut self, fault: AuthorityFaultObservation) -> Vec<String> {
         let mut markers = Vec::with_capacity(2);
-        if self.fault_records >= MAX_PHASE3_FAULT_RECORDS {
+        if self.fault_records >= MAX_MOVEMENT_FAULT_RECORDS {
             if self.fault_overflow_emitted {
                 return self.take_violation_marker();
             }
@@ -608,7 +608,7 @@ impl Phase3EvidenceEmitter {
         markers
     }
 
-    pub fn observe(&mut self, frame: Phase3EvidenceFrame, outbox_capacity: usize) -> Vec<String> {
+    pub fn observe(&mut self, frame: MovementEvidenceFrame, outbox_capacity: usize) -> Vec<String> {
         if self.violation_reason.is_some() {
             return self.take_violation_marker();
         }
@@ -647,7 +647,7 @@ impl Phase3EvidenceEmitter {
             frame.pose_generation,
         ));
 
-        if self.frame_records >= MAX_PHASE3_FRAME_RECORDS {
+        if self.frame_records >= MAX_MOVEMENT_FRAME_RECORDS {
             if self.frame_overflow_emitted {
                 return Vec::new();
             }
@@ -660,7 +660,7 @@ impl Phase3EvidenceEmitter {
         let mut markers = Vec::with_capacity(4 + self.pending_corrections.len());
         markers.push(frame.frame_marker());
         while let Some(correction) = self.pending_corrections.pop_front() {
-            if self.event_records >= MAX_PHASE3_EVENT_RECORDS {
+            if self.event_records >= MAX_MOVEMENT_EVENT_RECORDS {
                 if !self.event_overflow_emitted {
                     self.event_overflow_emitted = true;
                     self.record_violation("event_overflow");
@@ -673,12 +673,12 @@ impl Phase3EvidenceEmitter {
             let event_sequence = self.take_event_sequence();
             markers.push(correction.event_marker(frame, event_sequence));
         }
-        for kind in Phase3EvidenceEventKind::ALL {
+        for kind in MovementEvidenceEventKind::ALL {
             if !self.pending_events[kind.index()] {
                 continue;
             }
             self.pending_events[kind.index()] = false;
-            if self.event_records >= MAX_PHASE3_EVENT_RECORDS {
+            if self.event_records >= MAX_MOVEMENT_EVENT_RECORDS {
                 if !self.event_overflow_emitted {
                     self.event_overflow_emitted = true;
                     self.record_violation("event_overflow");
@@ -718,15 +718,15 @@ impl Phase3EvidenceEmitter {
         // the two-key object.
         let detail = self.non_monotonic_detail.take();
         vec![format!(
-            "{PHASE3_VIOLATION}={}",
+            "{MOVEMENT_VIOLATION}={}",
             match detail {
                 Some(identity) if reason == "non_monotonic_frame" => serde_json::json!({
-                    "schema": "rust-mcbe-phase3-violation-v2",
+                    "schema": "rust-mcbe-movement-violation-v2",
                     "reason": reason,
                     "frame_identity": identity,
                 }),
                 _ => serde_json::json!({
-                    "schema": "rust-mcbe-phase3-violation-v2",
+                    "schema": "rust-mcbe-movement-violation-v2",
                     "reason": reason,
                 }),
             }
@@ -735,7 +735,7 @@ impl Phase3EvidenceEmitter {
 
     pub fn observe_terminal(
         &mut self,
-        identity: Phase3EvidenceIdentity,
+        identity: MovementEvidenceIdentity,
         source_name: &'static str,
         physics_packet_count: u64,
         free_camera_packet_count: u64,
@@ -770,9 +770,9 @@ impl Phase3EvidenceEmitter {
         markers.extend(self.take_violation_marker());
         self.terminal_emitted = true;
         markers.push(format!(
-            "{PHASE3_TERMINAL}={}",
+            "{MOVEMENT_TERMINAL}={}",
             serde_json::json!({
-                "schema": "rust-mcbe-phase3-terminal-v1",
+                "schema": "rust-mcbe-movement-terminal-v1",
                 "session_generation": session_generation,
                 "source": source_name,
                 "physics_packet_count": physics_packet_count,

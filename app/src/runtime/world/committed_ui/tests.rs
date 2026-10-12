@@ -31,7 +31,7 @@ use {
     crate::{
         app::{configure_client_authority_systems, configure_client_frame_schedule},
         environment::{WeatherState, bind_session_generation},
-        runtime::phase3_evidence::Phase3EvidenceEmitter,
+        runtime::movement_evidence::MovementEvidenceEmitter,
         semantic_controls::{
             PendingDeviceFrame, SemanticInputRuntime, SemanticRouteState, SemanticTouchTargets,
         },
@@ -126,7 +126,7 @@ fn fixture_app() -> (App, Entity) {
         .init_resource::<LocalViewPose>()
         .init_resource::<LocalPlayerFrameCarrier>()
         .init_resource::<InteractionOriginSnapshot>()
-        .init_resource::<Phase3EvidenceEmitter>()
+        .init_resource::<MovementEvidenceEmitter>()
         .init_resource::<ServerCameraInstructions>()
         .init_resource::<crate::session::SessionController>()
         .init_resource::<ClientBlobCacheOwner>()

@@ -315,7 +315,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .init_resource::<client_presentation::local_player::LocalViewPose>()
         .init_resource::<client_presentation::local_player::LocalPlayerFrameCarrier>()
         .init_resource::<client_presentation::local_player::InteractionOriginSnapshot>()
-        .init_resource::<crate::runtime::phase3_evidence::Phase3EvidenceEmitter>()
+        .init_resource::<crate::runtime::movement_evidence::MovementEvidenceEmitter>()
         .init_resource::<crate::runtime::world::WorldStreamFramePoll>()
         .init_resource::<client_presentation::server_camera::ServerCameraInstructions>()
         .add_message::<client_audio::audio_ingress::SequencedAudioEvent>();

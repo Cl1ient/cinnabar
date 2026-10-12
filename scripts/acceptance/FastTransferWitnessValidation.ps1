@@ -61,7 +61,7 @@ function Assert-FastTransferVector2 {
 }
 
 function Assert-FastTransferCoreArgumentTokens {
-    # Mirrors the launcher-side allowlist in Resolve-Phase3CoreExtraArguments so
+    # Mirrors the launcher-side allowlist in Resolve-MovementCoreExtraArguments so
     # recorded core extra arguments stay exactly one verbatim allowlisted token
     # each: a lowercase long-form flag or a conservative value.
     param($Value, [string]$Label)
@@ -165,7 +165,7 @@ function Assert-FastTransferWitnessEvidence {
         'duration_seconds', 'endpoint', 'run_id', 'scenario', 'schema', 'screenshot_slots', 'source_dirty',
         'target', 'timed_out', 'core_extra_arguments'
     ) 'run metadata'
-    if ([string]$metadata.schema -cne 'rust-mcbe-phase3-run-v1' -or
+    if ([string]$metadata.schema -cne 'rust-mcbe-movement-run-v1' -or
         [string]$metadata.run_id -cne $ExpectedRunId -or
         [string]$metadata.target -cne 'Lbsg' -or
         [string]$metadata.endpoint -cne 'play.lbsg.net:19132' -or
@@ -232,21 +232,21 @@ function Assert-FastTransferWitnessEvidence {
     $lastPublicationEvidence = $null
     for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
         $line = [string]$lines[$lineIndex]
-        if ($line.StartsWith('CINNABAR_PHASE3_VIOLATION=', [StringComparison]::Ordinal)) {
-            throw 'FastTransferWitness client log contains a Phase 3 violation marker'
+        if ($line.StartsWith('CINNABAR_MOVEMENT_VIOLATION=', [StringComparison]::Ordinal)) {
+            throw 'FastTransferWitness client log contains a movement violation marker'
         }
-        if ($line.StartsWith('CINNABAR_PHASE3_IDENTITY=', [StringComparison]::Ordinal)) {
-            $identityJson.Add($line.Substring('CINNABAR_PHASE3_IDENTITY='.Length))
+        if ($line.StartsWith('CINNABAR_MOVEMENT_IDENTITY=', [StringComparison]::Ordinal)) {
+            $identityJson.Add($line.Substring('CINNABAR_MOVEMENT_IDENTITY='.Length))
         }
-        elseif ($line.StartsWith('CINNABAR_PHASE3_FRAME=', [StringComparison]::Ordinal)) {
+        elseif ($line.StartsWith('CINNABAR_MOVEMENT_FRAME=', [StringComparison]::Ordinal)) {
             if ($frames.Count -eq 12000) { throw 'FastTransferWitness frame markers exceed 12000 records' }
-            $frame = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_PHASE3_FRAME='.Length) `
+            $frame = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_MOVEMENT_FRAME='.Length) `
                 "frame[$($frames.Count)]"
             $frames.Add([pscustomobject]@{ Record = $frame; LineIndex = $lineIndex })
         }
-        elseif ($line.StartsWith('CINNABAR_PHASE3_TERMINAL=', [StringComparison]::Ordinal)) {
+        elseif ($line.StartsWith('CINNABAR_MOVEMENT_TERMINAL=', [StringComparison]::Ordinal)) {
             $terminal = ConvertFrom-FastTransferJson `
-                $line.Substring('CINNABAR_PHASE3_TERMINAL='.Length) "terminal[$($terminals.Count)]"
+                $line.Substring('CINNABAR_MOVEMENT_TERMINAL='.Length) "terminal[$($terminals.Count)]"
             $terminals.Add([pscustomobject]@{ Record = $terminal; LineIndex = $lineIndex })
         }
         elseif ($line.StartsWith('CINNABAR_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)) {
@@ -254,37 +254,37 @@ function Assert-FastTransferWitnessEvidence {
                 $line.Substring('CINNABAR_FAST_TRANSFER_ACTION='.Length) "action[$($actions.Count)]"
             $actions.Add([pscustomobject]@{ Record = $action; LineIndex = $lineIndex })
         }
-        elseif ($line.StartsWith('CINNABAR_PHASE3_EVENT=', [StringComparison]::Ordinal)) {
-            $event = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_PHASE3_EVENT='.Length) `
+        elseif ($line.StartsWith('CINNABAR_MOVEMENT_EVENT=', [StringComparison]::Ordinal)) {
+            $event = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_MOVEMENT_EVENT='.Length) `
                 "event line $lineIndex"
             if ([string]$event.kind -ceq 'correction') {
                 $corrections.Add([pscustomobject]@{ Record = $event; LineIndex = $lineIndex })
             }
         }
-        elseif ($line.StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)) {
-            $publication = ConvertFrom-FastTransferJson $line.Substring('PHASE2_PUBLICATION='.Length) `
+        elseif ($line.StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)) {
+            $publication = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_CHUNK_PUBLICATION='.Length) `
                 "publication line $lineIndex"
             $lastPublicationEvidence = [pscustomobject]@{
                 Record = $publication; LineIndex = $lineIndex; RawLine = $line; ObservedUnixMs = $null
             }
             $publications.Add($lastPublicationEvidence)
         }
-        elseif ($line.StartsWith('CINNABAR_PHASE2_TIMING=', [StringComparison]::Ordinal)) {
+        elseif ($line.StartsWith('CINNABAR_CHUNK_PUBLICATION_TIMING=', [StringComparison]::Ordinal)) {
             if ($null -eq $lastPublicationEvidence -or
                 [int]$lastPublicationEvidence.LineIndex -ne ($lineIndex - 1) -or
                 $null -ne $lastPublicationEvidence.ObservedUnixMs) {
-                throw 'FastTransferWitness Phase 2 timing marker is not adjacent to one publication'
+                throw 'FastTransferWitness chunk publication timing marker is not adjacent to one publication'
             }
-            $timing = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_PHASE2_TIMING='.Length) `
-                "Phase 2 timing line $lineIndex"
+            $timing = ConvertFrom-FastTransferJson $line.Substring('CINNABAR_CHUNK_PUBLICATION_TIMING='.Length) `
+                "chunk publication timing line $lineIndex"
             Assert-FastTransferExactProperties $timing @(
                 'observed_unix_ms', 'publication_sha256', 'schema'
-            ) "Phase 2 timing line $lineIndex"
+            ) "chunk publication timing line $lineIndex"
             Assert-FastTransferInteger $timing.observed_unix_ms 'timing.observed_unix_ms' 1 ([decimal][uint64]::MaxValue)
-            if ([string]$timing.schema -cne 'rust-mcbe-phase2-timing-v1' -or
+            if ([string]$timing.schema -cne 'rust-mcbe-chunk-publication-timing-v1' -or
                 [string]$timing.publication_sha256 -cne
                     (Get-FastTransferTextSha256 $lastPublicationEvidence.RawLine)) {
-                throw 'FastTransferWitness Phase 2 timing marker does not bind its exact publication'
+                throw 'FastTransferWitness chunk publication timing marker does not bind its exact publication'
             }
             $lastPublicationEvidence.ObservedUnixMs = [uint64]$timing.observed_unix_ms
         }
@@ -294,7 +294,7 @@ function Assert-FastTransferWitnessEvidence {
         throw 'FastTransferWitness log lacks one exact identity, action, terminal, frames, or publication sequence'
     }
     if (@($publications | Where-Object { $null -eq $_.ObservedUnixMs }).Count -ne 0) {
-        throw 'FastTransferWitness lacks exact timing for one or more Phase 2 publications'
+        throw 'FastTransferWitness lacks exact timing for one or more chunk publications'
     }
 
     $identity = ConvertFrom-FastTransferJson $identityJson[0] 'identity'
@@ -303,7 +303,7 @@ function Assert-FastTransferWitnessEvidence {
         'core_process_id', 'core_sha256', 'endpoint', 'preg_sha256', 'protocol', 'run_id',
         'schema', 'session_generation', 'source_dirty', 'target'
     ) 'identity'
-    if ([string]$identity.schema -cne 'rust-mcbe-phase3-identity-v1' -or
+    if ([string]$identity.schema -cne 'rust-mcbe-movement-identity-v1' -or
         [string]$identity.build_commit -cne $ExpectedBuildCommit -or
         [string]$identity.target -cne 'Lbsg' -or [string]$identity.endpoint -cne 'play.lbsg.net:19132' -or
         [string]$identity.bridge_endpoint -cne $ExpectedBridgeEndpoint -or
@@ -337,7 +337,7 @@ function Assert-FastTransferWitnessEvidence {
     Assert-FastTransferInteger $action.action_ordinal 'action.action_ordinal' 0 ([decimal][uint64]::MaxValue)
     Assert-FastTransferInteger $action.sent_unix_ms 'action.sent_unix_ms' 1 ([decimal][uint64]::MaxValue)
     if ([uint64]$action.session_generation -ne [uint64]$identity.session_generation) {
-        throw 'FastTransferWitness action session does not match Phase 3 identity'
+        throw 'FastTransferWitness action session does not match movement identity'
     }
 
     $stablePublications = @($publications | Where-Object {
@@ -393,7 +393,7 @@ function Assert-FastTransferWitnessEvidence {
     $terminalPublication = $publications[$publications.Count - 1]
     if ([int]$terminalPublication.LineIndex -le [int]$consume.LineIndex -or
         @($stablePublications | Where-Object { [int]$_.LineIndex -eq [int]$terminalPublication.LineIndex }).Count -ne 1) {
-        throw 'FastTransferWitness terminal PHASE2 publication is not stable player-GPU evidence after consume'
+        throw 'FastTransferWitness terminal chunk publication is not stable player-GPU evidence after consume'
     }
     $preColumn = $preStable.Record.publication.player_column
     $finalColumn = $terminalPublication.Record.publication.player_column
@@ -406,7 +406,7 @@ function Assert-FastTransferWitnessEvidence {
     }
     if ([string]$preStable.Record.presentation.assets_manifest_sha256 -cne $ExpectedAssetsSha256 -or
         [string]$terminalPublication.Record.presentation.assets_manifest_sha256 -cne $ExpectedAssetsSha256) {
-        throw 'FastTransferWitness Phase 2 stable publications do not match the launched asset carrier'
+        throw 'FastTransferWitness stable chunk publications do not match the launched asset carrier'
     }
 
     $frameProperties = @(
@@ -421,7 +421,7 @@ function Assert-FastTransferWitnessEvidence {
     foreach ($frameEvidence in $frames) {
         $frame = $frameEvidence.Record
         Assert-FastTransferExactProperties $frame $frameProperties 'frame'
-        if ([string]$frame.schema -cne 'rust-mcbe-phase3-frame-v2') { throw 'FastTransferWitness frame schema is unsupported' }
+        if ([string]$frame.schema -cne 'rust-mcbe-movement-frame-v2') { throw 'FastTransferWitness frame schema is unsupported' }
         foreach ($field in @('session_generation', 'fifo_sequence', 'physics_tick', 'pose_generation')) {
             Assert-FastTransferInteger $frame.$field "frame.$field" 0 ([decimal][uint64]::MaxValue)
         }
@@ -488,7 +488,7 @@ function Assert-FastTransferWitnessEvidence {
     foreach ($field in @('session_generation', 'physics_packet_count', 'free_camera_packet_count', 'pending_outbox_depth')) {
         Assert-FastTransferInteger $terminal.$field "terminal.$field" 0 ([decimal][uint64]::MaxValue)
     }
-    if ([string]$terminal.schema -cne 'rust-mcbe-phase3-terminal-v1' -or
+    if ([string]$terminal.schema -cne 'rust-mcbe-movement-terminal-v1' -or
         [uint64]$terminal.session_generation -ne [uint64]$identity.session_generation -or
         [string]$terminal.source -cne 'Physics' -or [uint64]$terminal.physics_packet_count -eq 0 -or
         [uint64]$terminal.free_camera_packet_count -ne 0 -or [uint64]$terminal.pending_outbox_depth -ne 0 -or
@@ -513,12 +513,12 @@ function Assert-FastTransferWitnessEvidence {
         throw 'FastTransferWitness recovery-through-terminal interval contains a same-session correction'
     }
 
-    $resetEvidence = Get-Phase2LocalResetSequenceEvidence -ClientLogPath $LogPath `
+    $resetEvidence = Get-LocalResetSequenceEvidence -ClientLogPath $LogPath `
         -ExpectedPresentMode $ExpectedPresentMode -ExpectedBuildProfile release `
         -WorldReadyObserved:$true -Server Lbsg
     if ([uint64]$resetEvidence.FinalPublication.publication.session_generation -ne
         [uint64]$identity.session_generation) {
-        throw 'FastTransferWitness Phase 2 final publication session does not match Phase 3 identity'
+        throw 'FastTransferWitness final chunk publication session does not match movement identity'
     }
 
     if ([uint64]$consume.ObservedUnixMs -lt [uint64]$arm.ObservedUnixMs -or
@@ -538,8 +538,8 @@ function Assert-FastTransferWitnessEvidence {
         target = 'Lbsg'
         endpoint = 'play.lbsg.net:19132'
         duration_seconds = [int]$metadata.duration_seconds
-        phase2_snapshot_count = [int]$resetEvidence.SnapshotCount
-        phase2_first_stalled_stage = [string]$resetEvidence.FirstStalledStage
+        publication_snapshot_count = [int]$resetEvidence.SnapshotCount
+        publication_first_stalled_stage = [string]$resetEvidence.FirstStalledStage
         post_reset_frame_count = $recoveryFrames.Count
         post_reset_network_position_delta = $maximumDelta
         post_reset_physics_send_count = $recoveryFrames.Count

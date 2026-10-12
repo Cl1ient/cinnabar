@@ -12,10 +12,10 @@ use sha2::Digest;
 use sha2::Sha256;
 use world::ChunkKey;
 
-use acceptance::phase2_evidence::{
-    CombinedPhase2Snapshot, PlayerColumnPresentationEvidence, generation_manifest_identity,
-    graphics_identity_sha256, key_manifest_identity, phase2_publication_line_if_changed,
-    phase2_publication_timing_line, sha256_identity_from_hex_or_text,
+use acceptance::publication_evidence::{
+    CombinedPublicationSnapshot, PlayerColumnPresentationEvidence, generation_manifest_identity,
+    graphics_identity_sha256, key_manifest_identity, publication_line_if_changed,
+    publication_timing_line, sha256_identity_from_hex_or_text,
 };
 use render_model::VisibilityKeyDigest;
 use render_scene::VisibilityDiagnosticsInput;
@@ -38,7 +38,7 @@ fn publication_diagnostics_require_an_explicit_acceptance_or_metrics_run() {
     }
 }
 
-fn combined_snapshot() -> CombinedPhase2Snapshot {
+fn combined_snapshot() -> CombinedPublicationSnapshot {
     let cohort = CohortManifestIdentity {
         session_generation: 7,
         publisher_epoch: 9,
@@ -47,7 +47,7 @@ fn combined_snapshot() -> CombinedPhase2Snapshot {
         generation_manifest_hash: 13,
         entry_count: 17,
     };
-    CombinedPhase2Snapshot {
+    CombinedPublicationSnapshot {
         publication: PublicationSnapshot {
             session_generation: 7,
             publisher_epoch: 9,
@@ -185,14 +185,14 @@ fn combined_snapshot() -> CombinedPhase2Snapshot {
 }
 
 #[test]
-fn phase2_publication_timing_binds_exact_line_hash_and_unix_millis() {
-    let publication = "PHASE2_PUBLICATION={\"publication\":{}}";
-    let marker = phase2_publication_timing_line(publication, 1_000_123);
+fn publication_timing_binds_exact_line_hash_and_unix_millis() {
+    let publication = "CINNABAR_CHUNK_PUBLICATION={\"publication\":{}}";
+    let marker = publication_timing_line(publication, 1_000_123);
     let expected_hash = format!("{:x}", Sha256::digest(publication.as_bytes()));
     assert_eq!(
         marker,
         format!(
-            "CINNABAR_PHASE2_TIMING={{\"observed_unix_ms\":1000123,\"publication_sha256\":\"{expected_hash}\",\"schema\":\"rust-mcbe-phase2-timing-v1\"}}"
+            "CINNABAR_CHUNK_PUBLICATION_TIMING={{\"observed_unix_ms\":1000123,\"publication_sha256\":\"{expected_hash}\",\"schema\":\"rust-mcbe-chunk-publication-timing-v1\"}}"
         )
     );
 }
@@ -213,14 +213,14 @@ fn player_column_witness_uses_subject_not_third_person_camera_boom() {
 }
 
 #[test]
-fn serialized_phase2_path_reads_the_frozen_local_subject_column() {
+fn serialized_publication_path_reads_the_frozen_local_subject_column() {
     let source = include_str!("../runtime/telemetry.rs");
     let record = source
         .split("pub(crate) fn record_metrics(")
         .nth(1)
         .expect("record_metrics source")
         .split_once("\n    if client_world.stream.is_some()")
-        .expect("phase-2 evidence ends before gameplay visibility counters")
+        .expect("publication evidence ends before gameplay visibility counters")
         .0;
 
     assert!(record.contains("render_metrics.local_player.snapshot()"));
@@ -231,11 +231,11 @@ fn serialized_phase2_path_reads_the_frozen_local_subject_column() {
 }
 
 #[test]
-fn phase2_publication_emits_once_per_changed_combined_identity() {
+fn publication_emits_once_per_changed_combined_identity() {
     let snapshot = combined_snapshot();
     let mut previous = None;
-    let first = phase2_publication_line_if_changed(&mut previous, snapshot).unwrap();
-    assert!(first.starts_with("PHASE2_PUBLICATION={"));
+    let first = publication_line_if_changed(&mut previous, snapshot).unwrap();
+    assert!(first.starts_with("CINNABAR_CHUNK_PUBLICATION={"));
     assert!(first.contains("\"publisher_radius_blocks\":256"));
     assert!(first.contains("\"publisher_radius_chunks\":16"));
     assert!(first.contains("\"publisher_epoch\":9"));
@@ -258,25 +258,22 @@ fn phase2_publication_emits_once_per_changed_combined_identity() {
     assert!(first.contains("\"hashes_classified\":7"));
     assert!(first.contains("\"hits\":3"));
     assert!(first.contains("\"misses\":4"));
-    assert_eq!(
-        phase2_publication_line_if_changed(&mut previous, snapshot),
-        None
-    );
+    assert_eq!(publication_line_if_changed(&mut previous, snapshot), None);
 
     let mut changed = snapshot;
     changed.publication.stages.mesh_changes_dequeued = 1;
-    assert!(phase2_publication_line_if_changed(&mut previous, changed).is_some());
+    assert!(publication_line_if_changed(&mut previous, changed).is_some());
 }
 
 #[test]
-fn phase2_publication_exposes_every_blob_cache_pressure_counter() {
+fn publication_exposes_every_blob_cache_pressure_counter() {
     let mut previous = None;
-    let line = phase2_publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
+    let line = publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
     let json: serde_json::Value = serde_json::from_str(
-        line.strip_prefix("PHASE2_PUBLICATION=")
-            .expect("phase-2 publication prefix"),
+        line.strip_prefix("CINNABAR_CHUNK_PUBLICATION=")
+            .expect("chunk publication prefix"),
     )
-    .expect("phase-2 publication JSON");
+    .expect("chunk publication JSON");
     let cache = json
         .get("client_blob_cache")
         .and_then(serde_json::Value::as_object)
@@ -315,23 +312,23 @@ fn phase2_publication_exposes_every_blob_cache_pressure_counter() {
 }
 
 #[test]
-fn phase2_publication_line_contains_no_filesystem_or_auth_fields() {
+fn publication_line_contains_no_filesystem_or_auth_fields() {
     let mut previous = None;
-    let line = phase2_publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
+    let line = publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
     for forbidden in ["path", "token", "auth", "payload", "credential"] {
         assert!(!line.to_ascii_lowercase().contains(forbidden));
     }
 }
 
 #[test]
-fn phase2_publication_exposes_effective_present_mode_proof() {
+fn publication_exposes_effective_present_mode_proof() {
     let mut previous = None;
-    let line = phase2_publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
+    let line = publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
     assert!(line.contains("\"present_mode_proven\":true"));
 }
 
 #[test]
-fn phase2_identity_helpers_preserve_exact_hashes_and_mark_missing_digests() {
+fn identity_helpers_preserve_exact_hashes_and_mark_missing_digests() {
     assert_eq!(
         sha256_identity_from_hex_or_text(&"a5".repeat(32)),
         [0xa5; 32]
@@ -362,16 +359,16 @@ fn phase2_identity_helpers_preserve_exact_hashes_and_mark_missing_digests() {
 }
 
 #[test]
-fn phase2_publication_labels_comparable_manifest_hash_domains() {
+fn publication_labels_comparable_manifest_hash_domains() {
     let mut previous = None;
-    let line = phase2_publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
+    let line = publication_line_if_changed(&mut previous, combined_snapshot()).unwrap();
     assert!(line.contains("\"manifest_domain\":\"key_generation\""));
     assert!(line.contains("\"manifest_domain\":\"key\""));
     assert!(line.contains("\"visible_subset_of_resident\":true"));
 }
 
 #[test]
-fn phase2_key_manifest_identity_does_not_change_with_observation_frame() {
+fn key_manifest_identity_does_not_change_with_observation_frame() {
     let key = world::SubChunkKey::new(0, 1, 2, 3);
     let mut diagnostics = VisibilityDiagnosticsInput::new(true);
     diagnostics.advance([key], [key]);
@@ -389,14 +386,14 @@ fn phase2_key_manifest_identity_does_not_change_with_observation_frame() {
     snapshot.presentation.submitted = first;
     snapshot.presentation.gpu_presented = first;
     let mut previous = None;
-    assert!(phase2_publication_line_if_changed(&mut previous, snapshot).is_some());
+    assert!(publication_line_if_changed(&mut previous, snapshot).is_some());
 
     snapshot.presentation.resident = second;
     snapshot.presentation.visible = second;
     snapshot.presentation.submitted = second;
     snapshot.presentation.gpu_presented = second;
     assert_eq!(
-        phase2_publication_line_if_changed(&mut previous, snapshot),
+        publication_line_if_changed(&mut previous, snapshot),
         None,
         "an observation-only frame must not emit or flush a duplicate marker",
     );
@@ -406,13 +403,13 @@ fn phase2_key_manifest_identity_does_not_change_with_observation_frame() {
     snapshot.presentation.resident =
         key_manifest_identity(7, 9, 1_089, 11, diagnostics.resident_mesh());
     assert!(
-        phase2_publication_line_if_changed(&mut previous, snapshot).is_some(),
+        publication_line_if_changed(&mut previous, snapshot).is_some(),
         "a semantic resident-manifest change must emit one updated marker",
     );
 }
 
 #[test]
-fn phase2_frame_metrics_observe_the_real_clock() {
+fn frame_metrics_observe_the_real_clock() {
     let source = include_str!("../runtime/telemetry.rs");
     let function = source
         .split_once("pub(crate) fn record_metrics(")
@@ -428,7 +425,7 @@ fn phase2_frame_metrics_observe_the_real_clock() {
 }
 
 #[test]
-fn phase2_graphics_identity_covers_effective_present_mode() {
+fn graphics_identity_covers_effective_present_mode() {
     let mut graphics = render_model::GraphicsAdapterMetadata {
         backend: "Vulkan".to_owned(),
         adapter: "adapter".to_owned(),
@@ -444,7 +441,7 @@ fn phase2_graphics_identity_covers_effective_present_mode() {
 }
 
 #[test]
-fn phase2_generation_manifest_identity_is_order_independent() {
+fn generation_manifest_identity_is_order_independent() {
     let first = (world::SubChunkKey::new(0, 1, 2, 3), 7);
     let second = (world::SubChunkKey::new(0, -4, 5, 6), 9);
     assert_eq!(

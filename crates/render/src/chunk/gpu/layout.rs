@@ -144,7 +144,7 @@ pub(in crate::chunk) struct GpuUploadReservation {
 
 impl GpuUploadReservation {
     pub(in crate::chunk) fn try_reserve_permitted(&mut self, incremental_bytes: u64) -> bool {
-        let limits = PublicationServiceConfig::PHASE2_GATE;
+        let limits = PublicationServiceConfig::DEFAULT;
         self.try_reserve_within(
             limits.maximum_frame_items,
             limits.maximum_frame_bytes,
@@ -190,7 +190,7 @@ impl GpuUploadReservation {
 
     /// Migration copy bytes this frame may still spend under the literal frame ceiling.
     pub(in crate::chunk) fn migration_allowance(self) -> u64 {
-        let frame_room = PublicationServiceConfig::PHASE2_GATE
+        let frame_room = PublicationServiceConfig::DEFAULT
             .maximum_frame_bytes
             .saturating_sub(self.total_bytes());
         ARENA_MIGRATION_FRAME_BYTES

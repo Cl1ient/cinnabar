@@ -25,9 +25,9 @@ impl WorldStream {
 
     pub fn take_mesh_changes(&mut self) -> Vec<WorldMeshChange> {
         let changes = self.mesh_changes.drain().collect::<Vec<_>>();
-        self.stats.phase2_stages.mesh_changes_dequeued = self
+        self.stats.publication_stages.mesh_changes_dequeued = self
             .stats
-            .phase2_stages
+            .publication_stages
             .mesh_changes_dequeued
             .saturating_add(changes.len() as u64);
         changes
@@ -35,9 +35,9 @@ impl WorldStream {
     pub fn pop_mesh_change(&mut self) -> Option<WorldMeshChange> {
         let change = self.mesh_changes.pop_front();
         if change.is_some() {
-            self.stats.phase2_stages.mesh_changes_dequeued = self
+            self.stats.publication_stages.mesh_changes_dequeued = self
                 .stats
-                .phase2_stages
+                .publication_stages
                 .mesh_changes_dequeued
                 .saturating_add(1);
         }
@@ -72,7 +72,7 @@ impl WorldStream {
     }
     /// A superseded change counts as dequeued so queued minus dequeued stays the pending count.
     fn count_queued_mesh_change(&mut self, superseded: bool) {
-        let stages = &mut self.stats.phase2_stages;
+        let stages = &mut self.stats.publication_stages;
         stages.mesh_changes_queued = stages.mesh_changes_queued.saturating_add(1);
         self.count_discarded_mesh_changes(usize::from(superseded));
     }
@@ -81,7 +81,7 @@ impl WorldStream {
         self.count_discarded_mesh_changes(discarded);
     }
     fn count_discarded_mesh_changes(&mut self, discarded: usize) {
-        let stages = &mut self.stats.phase2_stages;
+        let stages = &mut self.stats.publication_stages;
         stages.mesh_changes_dequeued = stages
             .mesh_changes_dequeued
             .saturating_add(discarded as u64);
@@ -116,9 +116,9 @@ impl WorldStream {
         }
         self.revisions.clear_if_current(key, generation);
         self.acknowledge_actor_block_syncs(key, generation);
-        self.stats.phase2_stages.mesh_uploads_acknowledged = self
+        self.stats.publication_stages.mesh_uploads_acknowledged = self
             .stats
-            .phase2_stages
+            .publication_stages
             .mesh_uploads_acknowledged
             .saturating_add(1);
     }

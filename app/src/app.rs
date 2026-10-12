@@ -1,10 +1,10 @@
 #[cfg(not(feature = "acceptance"))]
 use crate::acceptance::AcceptanceRun;
-use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
-use crate::runtime::phase3_evidence::{
-    Phase3EvidenceEmitter, Phase3EvidenceIdentitySource, emit_phase3_evidence,
+use crate::runtime::movement_evidence::{
+    MovementEvidenceEmitter, MovementEvidenceIdentitySource, emit_movement_evidence,
 };
+use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
 use crate::runtime::shutdown::finish_acceptance_run;
 #[cfg(feature = "acceptance")]
@@ -176,7 +176,7 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
     #[cfg(not(feature = "acceptance"))]
     app.init_resource::<AcceptanceRun>();
     #[cfg(feature = "acceptance")]
-    app.init_resource::<Phase3EvidenceEmitter>();
+    app.init_resource::<MovementEvidenceEmitter>();
     app.init_resource::<crate::runtime::network::PackReload>();
     configure_client_authority_systems(app);
     configure_actor_render_systems(app);
@@ -283,7 +283,7 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
             (
                 flush_inventory_network,
                 #[cfg(feature = "acceptance")]
-                emit_phase3_evidence,
+                emit_movement_evidence,
                 #[cfg(not(feature = "acceptance"))]
                 crate::runtime::telemetry::discard_completed_movement_evidence,
                 produce_melee,
@@ -594,17 +594,17 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         collision_registries.available_record_count()
     );
     #[cfg(feature = "acceptance")]
-    let phase3_identity_source = args
-        .phase3_evidence_target
+    let movement_identity_source = args
+        .movement_evidence_target
         .map(|target| {
-            Phase3EvidenceIdentitySource::from_build(
+            MovementEvidenceIdentitySource::from_build(
                 target,
-                args.phase3_candidate_physics,
+                args.movement_candidate_physics,
                 &collision_registries,
             )
         })
         .transpose()
-        .context("bind Phase 3 evidence to this exact build and collision registry")?;
+        .context("bind movement evidence to this exact build and collision registry")?;
 
     let client_random_id = connection_requested
         .then(|| launcher_host::client_random_id::load(&layout.user_data_root))
@@ -799,7 +799,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     .insert_resource(movement_ticker)
     .insert_resource(if args.freecam || args.auto_fly {
         PhysicsAuthorityGate::ProductionDisabled
-    } else if args.phase3_candidate_physics {
+    } else if args.movement_candidate_physics {
         PhysicsAuthorityGate::CandidateEvidence
     } else {
         PhysicsAuthorityGate::ProductionEnabled
@@ -850,7 +850,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     .insert_resource(DiagnosticQuads::default())
     .insert_resource(render_scene::BlockEntitySceneResource(block_entity_scene))
     .insert_resource(PublicationController::new(
-        PublicationServiceConfig::PHASE2_GATE,
+        PublicationServiceConfig::DEFAULT,
     ));
     #[cfg(feature = "acceptance")]
     app.add_plugins(acceptance::AcceptancePlugin {
@@ -894,11 +894,11 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         ActorRenderPlugin,
         AtmospherePlugin,
         ChunkRenderPlugin::with_budget(
-            PublicationController::new(PublicationServiceConfig::PHASE2_GATE).budget(),
+            PublicationController::new(PublicationServiceConfig::DEFAULT).budget(),
         ),
         FlyCameraPlugin::with_startup_capture(
             args.auto_fly,
-            args.auto_fly || args.freecam || args.phase3_candidate_physics,
+            args.auto_fly || args.freecam || args.movement_candidate_physics,
         ),
         UiRenderPlugin,
         render::ViewmodelRenderPlugin,
@@ -934,7 +934,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         app.insert_resource(render_scene::ViewmodelGeometryResource(geometry));
     }
     #[cfg(feature = "acceptance")]
-    if let Some(identity) = phase3_identity_source {
+    if let Some(identity) = movement_identity_source {
         app.insert_resource(identity);
     }
     crate::global_resources::configure(&mut app, global_pack_root, args.import_packs);

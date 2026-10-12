@@ -12,7 +12,7 @@ pub fn write_stdout_marker(stdout: &mut impl std::io::Write, marker: &str) {
 }
 
 /// Requested radius used by deterministic world-publication evidence.
-pub const PHASE0_REQUESTED_RADIUS_CHUNKS: i32 = 16;
+pub const EVIDENCE_REQUESTED_RADIUS_CHUNKS: i32 = 16;
 
 /// Reports a newly presented transparent generation when its reference count is known.
 pub fn transparent_sort_committed_marker(

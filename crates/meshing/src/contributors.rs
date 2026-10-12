@@ -65,8 +65,8 @@ impl ResolvedPaletteEntry {
 /// Palette-native contributors resolved for one sub-chunk coordinate.
 ///
 /// A diagnostic is mutually exclusive with real contributors. Liquid geometry
-/// is produced in Phase 2.6 Task 12, but its exact network value is retained
-/// here so layered plants/solids do not erase it in the meantime.
+/// is meshed separately, but its exact network value is retained here so
+/// layered plants/solids do not erase it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ResolvedContributors {
     primary: Option<ResolvedPaletteEntry>,

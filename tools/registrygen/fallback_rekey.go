@@ -30,7 +30,7 @@ import (
 // inputs themselves, and two entries colliding on one emitted network hash
 // each fail closed immediately, naming the offending entries.
 // The envelope geometry, texture alpha, and provenance inputs below are
-// preserved verbatim from the reviewed v1001 tranche because this mode changes
+// preserved verbatim from the reviewed v1001 inputs because this mode changes
 // identity keying only.
 
 const (

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds or simulates one bounded Phase 3 acceptance session against a fixed target.
+    Builds or simulates one bounded movement acceptance session against a fixed target.
 .PARAMETER CoreExtraArgs
     Optional bounded passthrough of additional bedrock-core arguments, appended
     verbatim after the standard core arguments (-socket-dir, -upstream, and the
@@ -39,48 +39,48 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $PSScriptRoot 'Common.ps1')
 . (Join-Path $PSScriptRoot 'Process.ps1')
-. (Join-Path $PSScriptRoot 'Phase3Launch.ps1')
+. (Join-Path $PSScriptRoot 'MovementLaunch.ps1')
 . (Join-Path $PSScriptRoot 'Load.ps1')
 
-$Target = ConvertTo-Phase3Target -Target $Target
-$Scenario = ConvertTo-Phase3Scenario -Scenario $Scenario
+$Target = ConvertTo-EvidenceTarget -Target $Target
+$Scenario = ConvertTo-MovementScenario -Scenario $Scenario
 $bedrockTarget = Get-BedrockTargetManifest -ProjectRoot $projectRoot
 if ($Scenario -ceq 'FastTransferWitness' -and [string]::IsNullOrWhiteSpace($Assets)) {
     $Assets = [string]$bedrockTarget.artifacts.world_assets
 }
 
-Assert-Phase3CleanTrackedSource -ProjectRoot $projectRoot
+Assert-MovementCleanTrackedSource -ProjectRoot $projectRoot
 $buildCommit = (& git -C $projectRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $buildCommit -cnotmatch '^[0-9a-f]{40}$') {
-    throw 'failed to resolve exact clean Phase 3 build commit'
+    throw 'failed to resolve exact clean movement build commit'
 }
-$endpoint = Get-Phase3TargetEndpoint -Target $Target -BdsEndpoint $BdsEndpoint
+$endpoint = Get-EvidenceTargetEndpoint -Target $Target -BdsEndpoint $BdsEndpoint
 $authCacheFull = if ($Target -ceq 'Bds' -or [string]::IsNullOrWhiteSpace($AuthCache)) {
     $null
 }
 else {
-    Resolve-Phase3ContainedPath -ProjectRoot $projectRoot -Path $AuthCache -Scope Local -RequireLeaf
+    Resolve-MovementContainedPath -ProjectRoot $projectRoot -Path $AuthCache -Scope Local -RequireLeaf
 }
 $assetsFull = if ([string]::IsNullOrWhiteSpace($Assets)) {
     $null
 }
 else {
-    Resolve-Phase3ContainedPath -ProjectRoot $projectRoot -Path $Assets -Scope Local -RequireLeaf
+    Resolve-MovementContainedPath -ProjectRoot $projectRoot -Path $Assets -Scope Local -RequireLeaf
 }
 $runId = [guid]::NewGuid().ToString('N').ToLowerInvariant()
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $projectRoot ".local\acceptance\phase3-$runId"
+    $OutputDirectory = Join-Path $projectRoot ".local\acceptance\movement-$runId"
 }
-$runDirectory = Resolve-Phase3ContainedPath -ProjectRoot $projectRoot -Path $OutputDirectory -Scope Acceptance
+$runDirectory = Resolve-MovementContainedPath -ProjectRoot $projectRoot -Path $OutputDirectory -Scope Acceptance
 $socketDirectory = Join-Path $runDirectory 'socket'
 $metricsPath = Join-Path $runDirectory 'app-metrics.json'
 $logPath = Join-Path $runDirectory 'app.stdout.log'
 $metadataPath = Join-Path $runDirectory 'run-metadata.json'
-$aggregatePath = Join-Path $runDirectory 'phase3-final.json'
+$aggregatePath = Join-Path $runDirectory 'movement-final.json'
 $validationErrorPath = Join-Path $runDirectory 'validation-error.txt'
 $scenarioManifestPath = Join-Path $runDirectory 'scenario-manifest.json'
 $launcherErrorPath = Join-Path $runDirectory 'launcher-error.json'
-$plan = New-Phase3LaunchPlan -Target $Target -Endpoint $endpoint -RunId $runId `
+$plan = New-MovementLaunchPlan -Target $Target -Endpoint $endpoint -RunId $runId `
     -SocketDirectory $socketDirectory -MetricsPath $metricsPath `
     -DurationSeconds $DurationSeconds -Scenario $Scenario -AuthCache $authCacheFull -Assets $assetsFull `
     -CoreExtraArgs $CoreExtraArgs
@@ -97,21 +97,21 @@ $assetsSha256 = if ($null -eq $assetsFull) { $null } else {
 }
 
 if ($DryRun) {
-    Write-Output "PHASE3_TARGET=$Target"
-    Write-Output "PHASE3_ENDPOINT=$endpoint"
+    Write-Output "MOVEMENT_TARGET=$Target"
+    Write-Output "ACCEPTANCE_ENDPOINT=$endpoint"
     Write-Output "CORE_COMMAND=$(Format-ResolvedCommand $coreExecutable $plan.CoreArguments)"
     Write-Output "CORE_EXTRA_ARGUMENTS=$($plan.CoreExtraArguments -join ' ')"
     Write-Output "APP_COMMAND=$(Format-ResolvedCommand $appExecutable $plan.AppArguments)"
-    Write-Output "PHASE3_SCENARIO=$Scenario"
+    Write-Output "MOVEMENT_SCENARIO=$Scenario"
     Write-Output "BUILD_PROFILE=$buildProfile"
-    Write-Output "PHASE3_CANDIDATE_PHYSICS=$($Scenario -ceq 'CandidatePhysics')"
+    Write-Output "MOVEMENT_CANDIDATE_PHYSICS=$($Scenario -ceq 'CandidatePhysics')"
     Write-Output 'PRODUCTION_PHYSICS_DEFAULT_ENABLED=false'
     return
 }
 
-$runDirectory = Initialize-Phase3RunDirectory -Path $runDirectory
-$runDirectory = Resolve-Phase3ContainedPath -ProjectRoot $projectRoot -Path $runDirectory -Scope Acceptance
-$runDirectoryMarker = "PHASE3_RUN_DIRECTORY=$runDirectory"
+$runDirectory = Initialize-MovementRunDirectory -Path $runDirectory
+$runDirectory = Resolve-MovementContainedPath -ProjectRoot $projectRoot -Path $runDirectory -Scope Acceptance
+$runDirectoryMarker = "MOVEMENT_RUN_DIRECTORY=$runDirectory"
 Write-Output $runDirectoryMarker
 if ($Scenario -ceq 'FastTransferWitness') {
     Write-Output 'FAST_TRANSFER_WITNESS_ACTIONS=capture before; run /transfer sm3; capture after; move at least 0.5 blocks'
@@ -127,32 +127,32 @@ $bridgeEndpoint = $null
 $coreSha256 = $null
 $appSha256 = $null
 $failurePhase = 'scenario_manifest'
-$savedRunId = $env:CINNABAR_PHASE3_RUN_ID
-$savedEndpoint = $env:CINNABAR_PHASE3_ENDPOINT
-$savedBridgeEndpoint = $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT
-$savedCoreSha256 = $env:CINNABAR_PHASE3_CORE_SHA256
-$savedCoreProcessId = $env:CINNABAR_PHASE3_CORE_PROCESS_ID
+$savedRunId = $env:CINNABAR_ACCEPTANCE_RUN_ID
+$savedEndpoint = $env:CINNABAR_ACCEPTANCE_ENDPOINT
+$savedBridgeEndpoint = $env:CINNABAR_ACCEPTANCE_BRIDGE_ENDPOINT
+$savedCoreSha256 = $env:CINNABAR_ACCEPTANCE_CORE_SHA256
+$savedCoreProcessId = $env:CINNABAR_ACCEPTANCE_CORE_PROCESS_ID
 $savedBuildCommit = $env:CINNABAR_BUILD_COMMIT
 $savedSourceDirty = $env:CINNABAR_SOURCE_DIRTY
 try {
     $failurePhase = 'prebuild_identity'
     foreach ($required in @($pregPath, $bregPath)) {
         if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
-            throw "Phase 3 launcher requires $required"
+            throw "movement launcher requires $required"
         }
     }
     $pregSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $pregPath).Hash.ToLowerInvariant()
     $bregSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $bregPath).Hash.ToLowerInvariant()
     $failurePhase = 'endpoint_guard'
-    $endpointGuard = New-Phase3CoreReadyGuard -LogPath (Join-Path $runDirectory 'core.stderr.log')
+    $endpointGuard = New-MovementCoreReadyGuard -LogPath (Join-Path $runDirectory 'core.stderr.log')
     $failurePhase = 'scenario_manifest'
 $scenarioManifest = if ($Scenario -ceq 'CandidatePhysics') {
     [ordered]@{
-        schema = 'rust-mcbe-phase3-scenario-v1'; scenario = 'CandidatePhysics'
+        schema = 'rust-mcbe-movement-scenario-v1'; scenario = 'CandidatePhysics'
         core_extra_arguments = $plan.CoreExtraArguments
         required_input_modes = @('KeyboardMouse', 'GamePad')
         deferred_input_modes = @('Touch')
-        input_witness_deferral_reason = 'Owner decision: touch parity is deprioritized; it does not gate Phase 3 acceptance and remains open.'
+        input_witness_deferral_reason = 'Owner decision: touch parity is deprioritized; it does not gate movement acceptance and remains open.'
         required_perspective_sequence = @(
             'FirstPerson', 'ThirdPersonBack', 'ThirdPersonFront', 'FirstPerson'
         )
@@ -192,7 +192,7 @@ elseif ($Scenario -ceq 'FastTransferWitness') {
 }
 else {
     [ordered]@{
-        schema = 'rust-mcbe-phase3-scenario-v1'; scenario = 'FreeCameraSilence'
+        schema = 'rust-mcbe-movement-scenario-v1'; scenario = 'FreeCameraSilence'
         core_extra_arguments = $plan.CoreExtraArguments
         required_input_modes = @(); deferred_input_modes = @()
         input_witness_deferral_reason = ''; required_perspective_sequence = @()
@@ -218,24 +218,24 @@ else {
 )
 
 $failurePhase = 'build_app'
-Assert-Phase3ExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
+Assert-MovementExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
 $appBuildArguments = @('build', '--locked', '-p', 'cinnabar')
 if ($buildProfile -ceq 'release') { $appBuildArguments += '--release' }
 Invoke-CheckedBuild -Executable 'cargo' `
     -Arguments $appBuildArguments `
     -LogPath (Join-Path $runDirectory 'build-app.log') -WorkingDirectory $projectRoot
-Assert-Phase3ExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
+Assert-MovementExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
 $failurePhase = 'build_core'
 Invoke-CheckedBuild -Executable 'go' `
     -Arguments @('build', '-trimpath', '-o', $coreExecutable, './core/cmd/bedrock-core') `
     -LogPath (Join-Path $runDirectory 'build-core.log') -WorkingDirectory $projectRoot
-Assert-Phase3ExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
+Assert-MovementExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
 $failurePhase = 'prelaunch_identity'
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $pregPath).Hash.ToLowerInvariant() -cne $pregSha256 -or
     (Get-FileHash -Algorithm SHA256 -LiteralPath $bregPath).Hash.ToLowerInvariant() -cne $bregSha256 -or
     ($null -ne $assetsFull -and
         (Get-FileHash -Algorithm SHA256 -LiteralPath $assetsFull).Hash.ToLowerInvariant() -cne $assetsSha256)) {
-    throw 'Phase 3 registry or asset carrier identity changed before launch'
+    throw 'movement registry or asset carrier identity changed before launch'
 }
 
 $coreSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $coreExecutable).Hash.ToLowerInvariant()
@@ -253,17 +253,17 @@ try {
         -StderrPath (Join-Path $runDirectory 'core.stderr.log')
     $coreProcessId = [int]$coreHandle.Process.Id
     $failurePhase = 'wait_endpoint'
-    $endpointWitness = Wait-Phase3BridgeEndpoint -Guard $endpointGuard -CoreHandle $coreHandle `
+    $endpointWitness = Wait-MovementBridgeEndpoint -Guard $endpointGuard -CoreHandle $coreHandle `
         -TimeoutSeconds 30
     $bridgeEndpoint = [string]$endpointWitness.Endpoint
 
     try {
         $failurePhase = 'start_app'
-        $env:CINNABAR_PHASE3_RUN_ID = $runId
-        $env:CINNABAR_PHASE3_ENDPOINT = $endpoint
-        $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT = $bridgeEndpoint
-        $env:CINNABAR_PHASE3_CORE_SHA256 = $coreSha256
-        $env:CINNABAR_PHASE3_CORE_PROCESS_ID = $coreProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
+        $env:CINNABAR_ACCEPTANCE_RUN_ID = $runId
+        $env:CINNABAR_ACCEPTANCE_ENDPOINT = $endpoint
+        $env:CINNABAR_ACCEPTANCE_BRIDGE_ENDPOINT = $bridgeEndpoint
+        $env:CINNABAR_ACCEPTANCE_CORE_SHA256 = $coreSha256
+        $env:CINNABAR_ACCEPTANCE_CORE_PROCESS_ID = $coreProcessId.ToString([Globalization.CultureInfo]::InvariantCulture)
         $env:CINNABAR_BUILD_COMMIT = $buildCommit
         $env:CINNABAR_SOURCE_DIRTY = 'false'
         $appHandle = Start-LoggedProcess -Executable $appExecutable -Arguments $plan.AppArguments `
@@ -272,11 +272,11 @@ try {
         $appProcessId = [int]$appHandle.Process.Id
     }
     finally {
-        $env:CINNABAR_PHASE3_RUN_ID = $savedRunId
-        $env:CINNABAR_PHASE3_ENDPOINT = $savedEndpoint
-        $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT = $savedBridgeEndpoint
-        $env:CINNABAR_PHASE3_CORE_SHA256 = $savedCoreSha256
-        $env:CINNABAR_PHASE3_CORE_PROCESS_ID = $savedCoreProcessId
+        $env:CINNABAR_ACCEPTANCE_RUN_ID = $savedRunId
+        $env:CINNABAR_ACCEPTANCE_ENDPOINT = $savedEndpoint
+        $env:CINNABAR_ACCEPTANCE_BRIDGE_ENDPOINT = $savedBridgeEndpoint
+        $env:CINNABAR_ACCEPTANCE_CORE_SHA256 = $savedCoreSha256
+        $env:CINNABAR_ACCEPTANCE_CORE_PROCESS_ID = $savedCoreProcessId
         $env:CINNABAR_BUILD_COMMIT = $savedBuildCommit
         $env:CINNABAR_SOURCE_DIRTY = $savedSourceDirty
     }
@@ -322,7 +322,7 @@ if ($Scenario -ceq 'FastTransferWitness') {
     )
 }
 $metadata = [ordered]@{
-    schema = 'rust-mcbe-phase3-run-v1'; run_id = $runId; target = $Target; endpoint = $endpoint
+    schema = 'rust-mcbe-movement-run-v1'; run_id = $runId; target = $Target; endpoint = $endpoint
     bridge_endpoint = $bridgeEndpoint
     build_commit = $buildCommit; source_dirty = $false; core_sha256 = $coreSha256
     app_sha256 = $appSha256; assets_sha256 = $assetsSha256; core_process_id = $coreProcessId
@@ -334,12 +334,12 @@ $metadata = [ordered]@{
 [IO.File]::WriteAllText($metadataPath, ($metadata | ConvertTo-Json -Depth 6) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 
 $failurePhase = 'postrun_identity'
-Assert-Phase3ExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
+Assert-MovementExactCleanHead -ProjectRoot $projectRoot -ExpectedCommit $buildCommit
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $pregPath).Hash.ToLowerInvariant() -cne $pregSha256 -or
     (Get-FileHash -Algorithm SHA256 -LiteralPath $bregPath).Hash.ToLowerInvariant() -cne $bregSha256 -or
     ($null -ne $assetsFull -and
         (Get-FileHash -Algorithm SHA256 -LiteralPath $assetsFull).Hash.ToLowerInvariant() -cne $assetsSha256)) {
-    throw 'Phase 3 registry or asset carrier identity changed during the run'
+    throw 'movement registry or asset carrier identity changed during the run'
 }
 $failurePhase = 'validation'
 try {
@@ -355,7 +355,7 @@ try {
             -ExpectedAppProcessId $appProcessId -ExpectedPresentMode Fifo
     }
     else {
-        & (Join-Path $PSScriptRoot 'Phase3.ps1') `
+        & (Join-Path $PSScriptRoot 'MovementEvidence.ps1') `
             -LogPath $logPath -ExpectedTarget $Target -ExpectedBuildCommit $buildCommit `
             -ExpectedPregSha256 $pregSha256 -ExpectedBregSha256 $bregSha256 `
             -ExpectedProtocol ([uint32]$bedrockTarget.wire_protocol) `
@@ -364,7 +364,7 @@ try {
             -ExpectedCoreProcessId $coreProcessId -ExpectedAppProcessId $appProcessId `
             -RunMetadataPath $metadataPath -MetricsPath $metricsPath -OutputPath $aggregatePath `
             -ScenarioManifestPath $scenarioManifestPath
-        if ($LASTEXITCODE -ne 0) { throw "Phase 3 evidence validation failed with code $LASTEXITCODE" }
+        if ($LASTEXITCODE -ne 0) { throw "movement evidence validation failed with code $LASTEXITCODE" }
     }
 }
 catch {
@@ -393,7 +393,7 @@ catch {
             }
     )
     $failure = [ordered]@{
-        schema = 'rust-mcbe-phase3-launcher-error-v1'
+        schema = 'rust-mcbe-movement-launcher-error-v1'
         run_id = $runId
         phase = $failurePhase
         reason = $reason
@@ -423,11 +423,11 @@ finally {
             try { Stop-BoundedProcess -Handle $handle -Kind ([string]$entry[1]) } catch {}
         }
     }
-    $env:CINNABAR_PHASE3_RUN_ID = $savedRunId
-    $env:CINNABAR_PHASE3_ENDPOINT = $savedEndpoint
-    $env:CINNABAR_PHASE3_BRIDGE_ENDPOINT = $savedBridgeEndpoint
-    $env:CINNABAR_PHASE3_CORE_SHA256 = $savedCoreSha256
-    $env:CINNABAR_PHASE3_CORE_PROCESS_ID = $savedCoreProcessId
+    $env:CINNABAR_ACCEPTANCE_RUN_ID = $savedRunId
+    $env:CINNABAR_ACCEPTANCE_ENDPOINT = $savedEndpoint
+    $env:CINNABAR_ACCEPTANCE_BRIDGE_ENDPOINT = $savedBridgeEndpoint
+    $env:CINNABAR_ACCEPTANCE_CORE_SHA256 = $savedCoreSha256
+    $env:CINNABAR_ACCEPTANCE_CORE_PROCESS_ID = $savedCoreProcessId
     $env:CINNABAR_BUILD_COMMIT = $savedBuildCommit
     $env:CINNABAR_SOURCE_DIRTY = $savedSourceDirty
 }

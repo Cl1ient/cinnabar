@@ -486,8 +486,8 @@ impl WorldStreamNormalizationStats {
 pub struct WorldStreamStats {
     /// Monotonic lifetime fact, unaffected by diagnostic drains or timing resets.
     pub audio_nondefault_camera_observed: bool,
-    pub phase2_stages: PublicationStageCounters,
-    pub phase2_outcomes: SubChunkOutcomeCounters,
+    pub publication_stages: PublicationStageCounters,
+    pub publication_outcomes: SubChunkOutcomeCounters,
     pub decode_errors: u64,
     pub normalization_errors: u64,
     pub normalization_reasons: WorldStreamNormalizationStats,

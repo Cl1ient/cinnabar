@@ -1,7 +1,7 @@
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $ScriptPath = Join-Path $ProjectRoot 'scripts\remote-acceptance.ps1'
 
-function New-SyntheticPhase2Publication {
+function New-SyntheticPublication {
     param(
         [int]$RequiredColumns,
         [int]$LoadedColumns,
@@ -89,18 +89,18 @@ function New-SyntheticPhase2Publication {
     }
 }
 
-Describe 'Phase 2 local reset publication evidence' {
+Describe 'Local reset publication evidence' {
     BeforeEach {
         . (Join-Path $ProjectRoot 'scripts\acceptance\Load.ps1')
     }
 
     It 'accepts only an armed clear followed by a consumed newer stable epoch' {
-        $path = Join-Path ([IO.Path]::GetTempPath()) ('phase2-local-reset-' + [guid]::NewGuid().ToString('N') + '.log')
+        $path = Join-Path ([IO.Path]::GetTempPath()) ('publication-local-reset-' + [guid]::NewGuid().ToString('N') + '.log')
         try {
-            $before = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 197 `
+            $before = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 197 `
                 -RequestsConstructed 197 -RequestsSent 197 -ResponsesAdmitted 197 -SubchunksCommitted 197 `
                 -BuildProfile debug
-            $armed = New-SyntheticPhase2Publication -RequiredColumns 0 -LoadedColumns 0 `
+            $armed = New-SyntheticPublication -RequiredColumns 0 -LoadedColumns 0 `
                 -RequestsConstructed 197 -RequestsSent 197 -ResponsesAdmitted 197 -SubchunksCommitted 197 `
                 -RequiredCohortStable:$false -LocalResetsArmed 1 -LocalResetArmed:$true `
                 -BuildProfile debug
@@ -110,7 +110,7 @@ Describe 'Phase 2 local reset publication evidence' {
             $armed.publication.local_reset.dispatch_classes = @('player_initial')
             $armed.publication.local_reset.dispatch_count = 1
             $armed.publication.local_reset.dispatch_total = 1
-            $after = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 197 `
+            $after = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 197 `
                 -RequestsConstructed 197 -RequestsSent 197 -ResponsesAdmitted 197 -SubchunksCommitted 197 `
                 -PublisherEpoch 2 -LocalResetsArmed 1 -LocalResetsConsumed 1 -BuildProfile debug
             $after.publication.player_column.x = 65
@@ -120,14 +120,14 @@ Describe 'Phase 2 local reset publication evidence' {
             $after.publication.local_reset.dispatch_count = 1
             $after.publication.local_reset.dispatch_total = 1
             @($before, $armed, $after) | ForEach-Object {
-                'PHASE2_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
             } | Set-Content -LiteralPath $path
 
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$true -Server Lbsg } | Should Not Throw
 
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$false -Server Lbsg } | Should Throw
 
@@ -136,32 +136,32 @@ Describe 'Phase 2 local reset publication evidence' {
             $prefetchFirst.publication.local_reset.dispatch_count = 2
             $prefetchFirst.publication.local_reset.dispatch_total = 2
             @($before, $armed, $prefetchFirst) | ForEach-Object {
-                'PHASE2_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
             } | Set-Content -LiteralPath $path
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$true -Server Lbsg } | Should Throw
 
             $presentationStalled = $after | ConvertTo-Json -Depth 20 | ConvertFrom-Json
             $presentationStalled.presentation.gpu_presented.entry_count = 0
             @($before, $armed, $presentationStalled) | ForEach-Object {
-                'PHASE2_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
             } | Set-Content -LiteralPath $path
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$true -Server Lbsg } | Should Throw
 
             $armed.publication.local_reset.armed_count = 0
             @($before, $armed, $after) | ForEach-Object {
-                'PHASE2_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
             } | Set-Content -LiteralPath $path
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$true -Server Lbsg } | Should Throw
 
-            'PHASE2_PUBLICATION=' + ($before | ConvertTo-Json -Depth 20 -Compress) |
+            'CINNABAR_CHUNK_PUBLICATION=' + ($before | ConvertTo-Json -Depth 20 -Compress) |
                 Set-Content -LiteralPath $path
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$true -Server Lbsg } | Should Throw
 
@@ -169,9 +169,9 @@ Describe 'Phase 2 local reset publication evidence' {
             $jump.publication.local_reset.armed_count = 5
             $jump.publication.local_reset.consumed_count = 5
             @($before, $jump) | ForEach-Object {
-                'PHASE2_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
             } | Set-Content -LiteralPath $path
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$true -Server Lbsg } | Should Throw
         }
@@ -179,17 +179,17 @@ Describe 'Phase 2 local reset publication evidence' {
     }
 
     It 'fails closed when the focused successful-send trace overflows' {
-        $path = Join-Path ([IO.Path]::GetTempPath()) ('phase2-local-reset-overflow-' + [guid]::NewGuid().ToString('N') + '.log')
+        $path = Join-Path ([IO.Path]::GetTempPath()) ('publication-local-reset-overflow-' + [guid]::NewGuid().ToString('N') + '.log')
         try {
-            $record = New-SyntheticPhase2Publication -RequiredColumns 1 -LoadedColumns 1 `
+            $record = New-SyntheticPublication -RequiredColumns 1 -LoadedColumns 1 `
                 -RequestsConstructed 17 -RequestsSent 17 -ResponsesAdmitted 17 -SubchunksCommitted 17 `
                 -PublisherEpoch 2 -LocalResetsArmed 1 -LocalResetsConsumed 1 -BuildProfile debug
             $record.publication.local_reset.dispatch_classes = @(1..16 | ForEach-Object { 'player_initial' })
             $record.publication.local_reset.dispatch_count = 16
             $record.publication.local_reset.dispatch_total = 17
             $record.publication.local_reset.dispatch_trace_overflowed = $true
-            'PHASE2_PUBLICATION=' + ($record | ConvertTo-Json -Depth 20 -Compress) | Set-Content -LiteralPath $path
-            { Get-Phase2LocalResetSequenceEvidence -ClientLogPath $path `
+            'CINNABAR_CHUNK_PUBLICATION=' + ($record | ConvertTo-Json -Depth 20 -Compress) | Set-Content -LiteralPath $path
+            { Get-LocalResetSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -ExpectedBuildProfile debug `
                 -WorldReadyObserved:$true -Server Lbsg } | Should Throw
         }
@@ -197,12 +197,12 @@ Describe 'Phase 2 local reset publication evidence' {
     }
 }
 
-function New-SyntheticPhase2PublisherInitialization {
+function New-SyntheticPublisherInitialization {
     param(
         [string]$RenderGenerationManifestHash = '00000000000000e1'
     )
 
-    $record = New-SyntheticPhase2Publication -RequiredColumns 0 -LoadedColumns 0 `
+    $record = New-SyntheticPublication -RequiredColumns 0 -LoadedColumns 0 `
         -RequestsConstructed 0 -RequestsSent 0 -ResponsesAdmitted 0 -SubchunksCommitted 0 `
         -PublisherRadiusBlocks $null -PublisherRadius $null -MeshJobsCompleted 0 `
         -UploadsAcknowledged 0
@@ -232,16 +232,16 @@ function New-SyntheticPhase2PublisherInitialization {
     return $record
 }
 
-function New-SyntheticPhase2LunarManifest {
+function New-SyntheticLunarManifest {
     param([ValidateSet('Diagnostic', 'Candidate', 'Final')][string]$Mode)
-    $publication = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 197 `
+    $publication = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 197 `
         -RequestsConstructed 197 -RequestsSent 197 -ResponsesAdmitted 4096 -SubchunksCommitted 4096
     $publication.client_blob_cache.hashes_classified = 1
     $publication.client_blob_cache.hits = 1
     $findings = [Collections.Generic.List[string]]::new()
     if ($Mode -eq 'Diagnostic') { $findings.Add('world_ready_not_observed') }
     return [ordered]@{
-        schema = 'rust-mcbe-phase2-remote-v1'; server = 'Lunar'; upstream = 'pvp.lunarbedrock.com:19134'; mode = $Mode; status = 'passed'
+        schema = 'rust-mcbe-remote-acceptance-v1'; server = 'Lunar'; upstream = 'pvp.lunarbedrock.com:19134'; mode = $Mode; status = 'passed'
         join_milliseconds = if ($Mode -eq 'Diagnostic') { $null } else { 1500.0 }
         initial_radius = 16; requested_present_mode = 'Fifo'; full_view_teleport_gate = ($Mode -ne 'Diagnostic')
         diagnostic_complete = ($Mode -eq 'Diagnostic'); behavior_gate_passed = ($Mode -ne 'Diagnostic')
@@ -269,26 +269,26 @@ function New-SyntheticPhase2LunarManifest {
     }
 }
 
-function Find-SyntheticPhase2LunarPrerequisite {
+function Find-SyntheticLunarPrerequisite {
     param(
         [string]$RemoteRoot,
         [ValidateSet('Diagnostic', 'Candidate', 'Final')][string]$Mode,
         [switch]$RequireFullView
     )
-    return Find-Phase2CompletedLunarPrerequisite -RemoteRoot $RemoteRoot -Mode $Mode `
+    return Find-CompletedLunarPrerequisite -RemoteRoot $RemoteRoot -Mode $Mode `
         -ExpectedPresentMode Fifo -ExpectedInitialRadius 16 -RequireFullView:$RequireFullView
 }
 
-Describe 'Phase 2 remote acceptance runner' {
+Describe 'Remote acceptance runner' {
     BeforeEach {
         . (Join-Path $ProjectRoot 'scripts\acceptance\Load.ps1')
     }
 
     It 'enforces create-new, duration, radius, auth locality, and canonical Lunar endpoint' {
         $runId = 'pester-remote-' + [guid]::NewGuid().ToString('N')
-        $runDirectory = Join-Path $ProjectRoot ".local\phase2\remote\$runId"
-        $candidateRunDirectory = Join-Path $ProjectRoot ".local\phase2\remote\$runId-candidate"
-        $immediateRunDirectory = Join-Path $ProjectRoot ".local\phase2\remote\$runId-immediate"
+        $runDirectory = Join-Path $ProjectRoot ".local\world-acceptance\remote\$runId"
+        $candidateRunDirectory = Join-Path $ProjectRoot ".local\world-acceptance\remote\$runId-candidate"
+        $immediateRunDirectory = Join-Path $ProjectRoot ".local\world-acceptance\remote\$runId-immediate"
         try {
             & $ScriptPath -Server Lunar -Mode Diagnostic -RunId $runId -DurationSeconds 150 `
                 -AuthCache '.local/auth/microsoft-token.json' -InitialRadius 16 `
@@ -331,7 +331,7 @@ Describe 'Phase 2 remote acceptance runner' {
 
     It 'rejects incomplete release, presentation, frame, lifecycle, and resource evidence' {
         . (Join-Path $ProjectRoot 'scripts\acceptance\Load.ps1')
-        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('phase2-evidence-' + [guid]::NewGuid().ToString('N'))
+        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('publication-evidence-' + [guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $temporary | Out-Null
             $metricsPath = Join-Path $temporary 'metrics.json'
@@ -340,22 +340,22 @@ Describe 'Phase 2 remote acceptance runner' {
             @{ p95_frame_ms = 16.0; p99_frame_ms = 16.5; max_frame_ms = 49.0; teleport_settle_ms = $null; forced_full_view_remesh_ms = $null } |
                 ConvertTo-Json | Set-Content -LiteralPath $metricsPath
             $samples = @(1..120 | ForEach-Object { @{ elapsed_seconds = $_; combined_rss_bytes = 104857600; cpu_percent = 5.0 } })
-            @{ schema = 'rust-mcbe-phase2-resources-v1'; warmup_seconds = 30; duration_seconds = 120; processor_count = 8; samples = $samples; summary = @{ sample_count = 120; max_combined_rss_bytes = 104857600; mean_cpu_percent = 5.0; p95_cpu_percent = 5.0 } } |
+            @{ schema = 'rust-mcbe-publication-resources-v1'; warmup_seconds = 30; duration_seconds = 120; processor_count = 8; samples = $samples; summary = @{ sample_count = 120; max_combined_rss_bytes = 104857600; mean_cpu_percent = 5.0; p95_cpu_percent = 5.0 } } |
                 ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resourcesPath
-            $publication = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 197 `
+            $publication = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 197 `
                 -RequestsConstructed 197 -RequestsSent 197 -ResponsesAdmitted 4096 -SubchunksCommitted 4096
-            'PHASE2_PUBLICATION=' + ($publication | ConvertTo-Json -Depth 20 -Compress) |
+            'CINNABAR_CHUNK_PUBLICATION=' + ($publication | ConvertTo-Json -Depth 20 -Compress) |
                 Set-Content -LiteralPath $logPath
-            { Assert-Phase2Evidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
+            { Assert-PublicationEvidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
                 -ClientLogPath $logPath -ExpectedPresentMode Fifo -JoinMilliseconds 1500 } | Should Not Throw
             (Get-Content -Raw -LiteralPath $metricsPath).Replace('16.5', '17.0') | Set-Content -LiteralPath $metricsPath
-            { Assert-Phase2Evidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
+            { Assert-PublicationEvidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
                 -ClientLogPath $logPath -ExpectedPresentMode Fifo -JoinMilliseconds 1500 } | Should Throw
 
             foreach ($malformed in @($null, 'NaN', $true, -1.0)) {
                 @{ p95_frame_ms = $malformed; p99_frame_ms = 16.5; max_frame_ms = 49.0 } |
                     ConvertTo-Json | Set-Content -LiteralPath $metricsPath
-                { Assert-Phase2Evidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
+                { Assert-PublicationEvidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
                     -ClientLogPath $logPath -ExpectedPresentMode Fifo -JoinMilliseconds 1500 } | Should Throw
             }
 
@@ -363,7 +363,7 @@ Describe 'Phase 2 remote acceptance runner' {
                 ConvertTo-Json | Set-Content -LiteralPath $metricsPath
             (Get-Content -Raw -LiteralPath $logPath).Replace('"present_mode_proven":true', '"present_mode_proven":false') |
                 Set-Content -LiteralPath $logPath
-            { Assert-Phase2Evidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
+            { Assert-PublicationEvidence -MetricsPath $metricsPath -ResourcesPath $resourcesPath `
                 -ClientLogPath $logPath -ExpectedPresentMode Fifo -JoinMilliseconds 1500 } | Should Throw
         }
         finally {
@@ -373,23 +373,23 @@ Describe 'Phase 2 remote acceptance runner' {
 
 
     It 'completes a no-ready Diagnostic from coherent attributable publication evidence' {
-        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('phase2-no-ready-' + [guid]::NewGuid().ToString('N'))
+        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('publication-no-ready-' + [guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $temporary | Out-Null
             $logPath = Join-Path $temporary 'client.log'
-            $first = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 0 `
+            $first = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 0 `
                 -RequestsConstructed 0 -RequestsSent 0 -ResponsesAdmitted 0 -SubchunksCommitted 0
-            $last = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 177 `
+            $last = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 177 `
                 -RequestsConstructed 177 -RequestsSent 177 -ResponsesAdmitted 3894 -SubchunksCommitted 3894 `
                 -PublisherRadius 8 -MeshJobsCompleted 998 -MeshJobsQueued 4033 `
                 -UploadsAcknowledged 978 -UploadsUnacknowledged 5046
             @(
-                'PHASE2_PUBLICATION=' + ($first | ConvertTo-Json -Depth 20 -Compress)
-                'PHASE2_PUBLICATION=' + ($last | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($first | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($last | ConvertTo-Json -Depth 20 -Compress)
             ) | Set-Content -LiteralPath $logPath
             $manifest = [pscustomobject][ordered]@{ mode = 'Diagnostic'; initial_radius = 16 }
 
-            Complete-Phase2DiagnosticEvidence -Manifest $manifest -ClientLogPath $logPath `
+            Complete-PublicationDiagnosticEvidence -Manifest $manifest -ClientLogPath $logPath `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa
 
             $manifest.status | Should Be 'passed'
@@ -410,22 +410,22 @@ Describe 'Phase 2 remote acceptance runner' {
     }
 
     It 'accepts multiple coherent leading publisher initialization snapshots with evolving empty render generations' {
-        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('phase2-publisher-initialization-' + [guid]::NewGuid().ToString('N'))
+        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('publication-publisher-initialization-' + [guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $temporary | Out-Null
             $logPath = Join-Path $temporary 'client.log'
-            $initializing = New-SyntheticPhase2PublisherInitialization
-            $stillInitializing = New-SyntheticPhase2PublisherInitialization `
+            $initializing = New-SyntheticPublisherInitialization
+            $stillInitializing = New-SyntheticPublisherInitialization `
                 -RenderGenerationManifestHash '00000000000000e3'
-            $initialized = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 177 `
+            $initialized = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 177 `
                 -RequestsConstructed 177 -RequestsSent 177 -ResponsesAdmitted 3894 -SubchunksCommitted 3894
             @(
-                'PHASE2_PUBLICATION=' + ($initializing | ConvertTo-Json -Depth 20 -Compress)
-                'PHASE2_PUBLICATION=' + ($stillInitializing | ConvertTo-Json -Depth 20 -Compress)
-                'PHASE2_PUBLICATION=' + ($initialized | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($initializing | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($stillInitializing | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($initialized | ConvertTo-Json -Depth 20 -Compress)
             ) | Set-Content -LiteralPath $logPath
 
-            $evidence = Get-Phase2PublicationSequenceEvidence -ClientLogPath $logPath `
+            $evidence = Get-PublicationSequenceEvidence -ClientLogPath $logPath `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa
 
             $evidence.SnapshotCount | Should Be 3
@@ -438,35 +438,35 @@ Describe 'Phase 2 remote acceptance runner' {
     }
 
     It 'rejects unsafe publisher initialization state and attribution changes' {
-        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('phase2-publisher-initialization-rejection-' + [guid]::NewGuid().ToString('N'))
+        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('publication-publisher-initialization-rejection-' + [guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $temporary | Out-Null
-            $initialized = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 177 `
+            $initialized = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 177 `
                 -RequestsConstructed 177 -RequestsSent 177 -ResponsesAdmitted 3894 -SubchunksCommitted 3894
             $writeAndReject = {
                 param([string]$Name, [object[]]$Records)
                 $path = Join-Path $temporary ($Name + '.log')
                 @($Records | ForEach-Object {
-                    'PHASE2_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
+                    'CINNABAR_CHUNK_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
                 }) | Set-Content -LiteralPath $path
-                { Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+                { Get-PublicationSequenceEvidence -ClientLogPath $path `
                     -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa } |
                     Should Throw
             }
 
-            $blocksNull = New-SyntheticPhase2PublisherInitialization
+            $blocksNull = New-SyntheticPublisherInitialization
             $blocksNull.publication.publisher_radius_chunks = 8
             & $writeAndReject 'blocks-null-only' @($blocksNull, $initialized)
 
-            $chunksNull = New-SyntheticPhase2PublisherInitialization
+            $chunksNull = New-SyntheticPublisherInitialization
             $chunksNull.publication.publisher_radius_blocks = 128
             & $writeAndReject 'chunks-null-only' @($chunksNull, $initialized)
 
-            $nonemptyCohort = New-SyntheticPhase2PublisherInitialization
+            $nonemptyCohort = New-SyntheticPublisherInitialization
             $nonemptyCohort.publication.required_columns = 1
             & $writeAndReject 'nonempty-cohort' @($nonemptyCohort, $initialized)
 
-            $stageProgress = New-SyntheticPhase2PublisherInitialization
+            $stageProgress = New-SyntheticPublisherInitialization
             $stageProgress.publication.stages.requests_constructed = 1
             $stageProgress.publication.stages.requests_ready = 1
             $stageProgress.publication.request_queue.class_depths[5].ready = 1
@@ -474,49 +474,49 @@ Describe 'Phase 2 remote acceptance runner' {
             $stageProgress.publication.request_queue.next_class = 'prefetch_initial'
             & $writeAndReject 'stage-progress' @($stageProgress, $initialized)
 
-            $outcomeProgress = New-SyntheticPhase2PublisherInitialization
+            $outcomeProgress = New-SyntheticPublisherInitialization
             $outcomeProgress.publication.stages.responses_admitted = 1
             $outcomeProgress.publication.outcomes.malformed = 1
             & $writeAndReject 'outcome-progress' @($outcomeProgress, $initialized)
 
-            $presentedEntry = New-SyntheticPhase2PublisherInitialization
+            $presentedEntry = New-SyntheticPublisherInitialization
             $presentedEntry.presentation.visible.entry_count = 1
             & $writeAndReject 'presented-entry' @($presentedEntry, $initialized)
 
-            $timedWork = New-SyntheticPhase2PublisherInitialization
+            $timedWork = New-SyntheticPublisherInitialization
             $timedWork.publication.max_queue_wait_us.decode = 1
             & $writeAndReject 'queue-timing' @($timedWork, $initialized)
 
-            $workerTiming = New-SyntheticPhase2PublisherInitialization
+            $workerTiming = New-SyntheticPublisherInitialization
             $workerTiming.publication.max_worker_time_us.meshing = 1
             & $writeAndReject 'worker-timing' @($workerTiming, $initialized)
 
-            $noncanonicalCohort = New-SyntheticPhase2PublisherInitialization
+            $noncanonicalCohort = New-SyntheticPublisherInitialization
             $noncanonicalCohort.publication.required_cohort_hash = 'deadbeefdeadbeef'
             foreach ($name in @('publisher_disk', 'resident', 'allocation', 'visible', 'submitted', 'gpu_presented')) {
                 $noncanonicalCohort.presentation.$name.required_cohort_hash = 'deadbeefdeadbeef'
             }
             & $writeAndReject 'noncanonical-cohort' @($noncanonicalCohort, $initialized)
 
-            $noncanonicalManifest = New-SyntheticPhase2PublisherInitialization
+            $noncanonicalManifest = New-SyntheticPublisherInitialization
             $noncanonicalManifest.presentation.publisher_disk.generation_manifest_hash = 'feedfacefeedface'
             & $writeAndReject 'noncanonical-empty-manifest' @($noncanonicalManifest, $initialized)
 
-            $replacementSession = New-SyntheticPhase2PublisherInitialization
+            $replacementSession = New-SyntheticPublisherInitialization
             $replacementSession.publication.session_generation = 2
             foreach ($name in @('publisher_disk', 'resident', 'allocation', 'visible', 'submitted', 'gpu_presented')) {
                 $replacementSession.presentation.$name.session_generation = 2
             }
             & $writeAndReject 'session-replacement' @(
-                (New-SyntheticPhase2PublisherInitialization), $replacementSession, $initialized
+                (New-SyntheticPublisherInitialization), $replacementSession, $initialized
             )
 
-            $cacheDisabled = New-SyntheticPhase2PublisherInitialization
+            $cacheDisabled = New-SyntheticPublisherInitialization
             $cacheDisabled.client_blob_cache_enabled = $false
             & $writeAndReject 'cache-enablement-change' @($cacheDisabled, $initialized)
 
             foreach ($presentationChange in @('build', 'requested_mode', 'effective_mode', 'proof', 'graphics', 'assets')) {
-                $changed = New-SyntheticPhase2PublisherInitialization
+                $changed = New-SyntheticPublisherInitialization
                 switch ($presentationChange) {
                     'build' { $changed.presentation.build_profile = 'debug' }
                     'requested_mode' { $changed.presentation.requested_present_mode = 'immediate' }
@@ -526,12 +526,12 @@ Describe 'Phase 2 remote acceptance runner' {
                     'assets' { $changed.presentation.assets_manifest_sha256 = 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' }
                 }
                 & $writeAndReject ("presentation-$presentationChange") @(
-                    (New-SyntheticPhase2PublisherInitialization), $changed, $initialized
+                    (New-SyntheticPublisherInitialization), $changed, $initialized
                 )
             }
 
             & $writeAndReject 'null-after-initialized' @(
-                $initialized, (New-SyntheticPhase2PublisherInitialization)
+                $initialized, (New-SyntheticPublisherInitialization)
             )
         }
         finally {
@@ -540,13 +540,13 @@ Describe 'Phase 2 remote acceptance runner' {
     }
 
     It 'binds evolving publisher-epoch membership to every presentation identity' {
-        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('phase2-publisher-epoch-' + [guid]::NewGuid().ToString('N'))
+        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('publication-publisher-epoch-' + [guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $temporary | Out-Null
             $path = Join-Path $temporary 'client.log'
-            $first = New-SyntheticPhase2Publication -RequiredColumns 1 -LoadedColumns 1 `
+            $first = New-SyntheticPublication -RequiredColumns 1 -LoadedColumns 1 `
                 -RequestsConstructed 1 -RequestsSent 1 -ResponsesAdmitted 1 -SubchunksCommitted 1
-            $expanded = New-SyntheticPhase2Publication -RequiredColumns 2 -LoadedColumns 2 `
+            $expanded = New-SyntheticPublication -RequiredColumns 2 -LoadedColumns 2 `
                 -RequestsConstructed 2 -RequestsSent 2 -ResponsesAdmitted 2 -SubchunksCommitted 2
             $expanded.publication.required_cohort_hash = '2222222222222222'
             foreach ($name in @('publisher_disk', 'resident', 'allocation', 'visible', 'submitted', 'gpu_presented')) {
@@ -554,17 +554,17 @@ Describe 'Phase 2 remote acceptance runner' {
                 $expanded.presentation.$name.required_cohort_hash = '2222222222222222'
             }
             @($first, $expanded) | ForEach-Object {
-                'PHASE2_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
+                'CINNABAR_CHUNK_PUBLICATION=' + ($_ | ConvertTo-Json -Depth 20 -Compress)
             } | Set-Content -LiteralPath $path
 
-            { Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+            { Get-PublicationSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa } |
                 Should Not Throw
 
             $expanded.presentation.gpu_presented.publisher_epoch = 2
-            'PHASE2_PUBLICATION=' + ($expanded | ConvertTo-Json -Depth 20 -Compress) |
+            'CINNABAR_CHUNK_PUBLICATION=' + ($expanded | ConvertTo-Json -Depth 20 -Compress) |
                 Set-Content -LiteralPath $path
-            { Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+            { Get-PublicationSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa } |
                 Should Throw
         }
@@ -574,28 +574,28 @@ Describe 'Phase 2 remote acceptance runner' {
     }
 
     It 'does not report terminal readiness before the required cohort is stable' {
-        $record = New-SyntheticPhase2Publication -RequiredColumns 1 -LoadedColumns 1 `
+        $record = New-SyntheticPublication -RequiredColumns 1 -LoadedColumns 1 `
             -RequestsConstructed 1 -RequestsSent 1 -ResponsesAdmitted 1 -SubchunksCommitted 1 `
             -RequiredCohortStable:$false
-        (Get-Phase2FirstStalledStage -PublicationRecord $record -WorldReadyObserved:$true) |
+        (Get-PublicationFirstStalledStage -PublicationRecord $record -WorldReadyObserved:$true) |
             Should Be 'required_cohort_identity'
     }
 
     . (Join-Path $PSScriptRoot 'remote-acceptance\PublicationIdentityCases.ps1')
 
     It 'segments cohort monotonicity across publisher and dimension epoch resets' {
-        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('phase2-epoch-reset-' + [guid]::NewGuid().ToString('N'))
+        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('publication-epoch-reset-' + [guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $temporary | Out-Null
             $path = Join-Path $temporary 'client.log'
-            $first = New-SyntheticPhase2Publication -RequiredColumns 2 -LoadedColumns 2 `
+            $first = New-SyntheticPublication -RequiredColumns 2 -LoadedColumns 2 `
                 -RequestsConstructed 3 -RequestsSent 2 -ResponsesAdmitted 2 -SubchunksCommitted 2 `
                 -PublisherEpoch 1
             $first.publication.stages.requests_ready = 1
             $first.publication.request_queue.class_depths[5].ready = 1
             $first.publication.request_queue.class_depths[5].eligible = 1
             $first.publication.request_queue.next_class = 'prefetch_initial'
-            $moved = New-SyntheticPhase2Publication -RequiredColumns 1 -LoadedColumns 1 `
+            $moved = New-SyntheticPublication -RequiredColumns 1 -LoadedColumns 1 `
                 -RequestsConstructed 3 -RequestsSent 2 -ResponsesAdmitted 2 -SubchunksCommitted 2 `
                 -PublisherEpoch 2
 
@@ -623,18 +623,18 @@ Describe 'Phase 2 remote acceptance runner' {
                 $dimensionReset.presentation.$name.generation_manifest_hash = 'cbf29ce484222325'
             }
 
-            $newDimension = New-SyntheticPhase2Publication -RequiredColumns 1 -LoadedColumns 1 `
+            $newDimension = New-SyntheticPublication -RequiredColumns 1 -LoadedColumns 1 `
                 -RequestsConstructed 4 -RequestsSent 3 -ResponsesAdmitted 3 -SubchunksCommitted 3 `
                 -PublisherEpoch 3
             $newDimension.publication.player_column.dimension = 1
             $newDimension.presentation.player_column.dimension = 1
             @(
                 foreach ($record in @($first, $moved, $dimensionReset, $newDimension)) {
-                    'PHASE2_PUBLICATION=' + ($record | ConvertTo-Json -Depth 20 -Compress)
+                    'CINNABAR_CHUNK_PUBLICATION=' + ($record | ConvertTo-Json -Depth 20 -Compress)
                 }
             ) | Set-Content -LiteralPath $path
 
-            { Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+            { Get-PublicationSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa } |
                 Should Not Throw
         }
@@ -644,20 +644,20 @@ Describe 'Phase 2 remote acceptance runner' {
     }
 
     It 'allows the server publisher radius to differ without hiding a cached cohort identity gap' {
-        $record = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 177 `
+        $record = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 177 `
             -RequestsConstructed 177 -RequestsSent 177 -ResponsesAdmitted 3894 -SubchunksCommitted 3894 `
             -PublisherRadiusBlocks 120 -PublisherRadius 8
         $parsed = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-        { Assert-Phase2PublicationRecord -Record $parsed -ExpectedPresentMode Fifo } |
+        { Assert-PublicationRecord -Record $parsed -ExpectedPresentMode Fifo } |
             Should Not Throw
-        (Get-Phase2FirstStalledStage -PublicationRecord $parsed -WorldReadyObserved:$false) |
+        (Get-PublicationFirstStalledStage -PublicationRecord $parsed -WorldReadyObserved:$false) |
             Should Be 'required_cohort_identity'
-        (Get-Phase2FirstStalledStage -PublicationRecord $parsed -WorldReadyObserved:$true) |
+        (Get-PublicationFirstStalledStage -PublicationRecord $parsed -WorldReadyObserved:$true) |
             Should Be 'required_cohort_identity'
     }
 
     It 'accepts exact client blob cache publication fields' {
-        $record = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 177 `
+        $record = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 177 `
             -RequestsConstructed 177 -RequestsSent 177 -ResponsesAdmitted 3894 -SubchunksCommitted 3894
         $record['client_blob_cache_enabled'] = $true
         $record['client_blob_cache'] = [ordered]@{
@@ -667,44 +667,44 @@ Describe 'Phase 2 remote acceptance runner' {
         }
         $parsed = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
 
-        { Assert-Phase2PublicationRecord -Record $parsed -ExpectedPresentMode Fifo } |
+        { Assert-PublicationRecord -Record $parsed -ExpectedPresentMode Fifo } |
             Should Not Throw
 
         $missing = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $missing.PSObject.Properties.Remove('client_blob_cache_enabled')
-        { Assert-Phase2PublicationRecord -Record $missing -ExpectedPresentMode Fifo } | Should Throw
+        { Assert-PublicationRecord -Record $missing -ExpectedPresentMode Fifo } | Should Throw
 
         $unknown = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $unknown.client_blob_cache | Add-Member -NotePropertyName payload -NotePropertyValue 'forbidden'
-        { Assert-Phase2PublicationRecord -Record $unknown -ExpectedPresentMode Fifo } | Should Throw
+        { Assert-PublicationRecord -Record $unknown -ExpectedPresentMode Fifo } | Should Throw
 
         $mismatch = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $mismatch.client_blob_cache.misses = 5
-        { Assert-Phase2PublicationRecord -Record $mismatch -ExpectedPresentMode Fifo } | Should Throw
+        { Assert-PublicationRecord -Record $mismatch -ExpectedPresentMode Fifo } | Should Throw
 
         $wrongBoolean = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $wrongBoolean.client_blob_cache_enabled = 'true'
-        { Assert-Phase2PublicationRecord -Record $wrongBoolean -ExpectedPresentMode Fifo } | Should Throw
+        { Assert-PublicationRecord -Record $wrongBoolean -ExpectedPresentMode Fifo } | Should Throw
 
         $negative = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $negative.client_blob_cache.pending_bytes = -1
-        { Assert-Phase2PublicationRecord -Record $negative -ExpectedPresentMode Fifo } | Should Throw
+        { Assert-PublicationRecord -Record $negative -ExpectedPresentMode Fifo } | Should Throw
 
         $disabled = $record | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $disabled.client_blob_cache_enabled = $false
-        { Assert-Phase2PublicationRecord -Record $disabled -ExpectedPresentMode Fifo } | Should Throw
+        { Assert-PublicationRecord -Record $disabled -ExpectedPresentMode Fifo } | Should Throw
     }
 
     It 'enforces server-specific terminal client blob cache routes' {
-        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('phase2-cache-route-' + [guid]::NewGuid().ToString('N'))
+        $temporary = Join-Path ([IO.Path]::GetTempPath()) ('publication-cache-route-' + [guid]::NewGuid().ToString('N'))
         try {
             New-Item -ItemType Directory -Path $temporary | Out-Null
             $path = Join-Path $temporary 'route.log'
-            $record = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 177 `
+            $record = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 177 `
                 -RequestsConstructed 177 -RequestsSent 177 -ResponsesAdmitted 3894 -SubchunksCommitted 3894
             $write = {
                 param($value)
-                'PHASE2_PUBLICATION=' + ($value | ConvertTo-Json -Depth 20 -Compress) |
+                'CINNABAR_CHUNK_PUBLICATION=' + ($value | ConvertTo-Json -Depth 20 -Compress) |
                     Set-Content -LiteralPath $path
             }
 
@@ -713,7 +713,7 @@ Describe 'Phase 2 remote acceptance runner' {
             $record.client_blob_cache.misses = 4
             $record.client_blob_cache.admitted_blobs = 4
             & $write $record
-            $lunar = Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+            $lunar = Get-PublicationSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Lunar
             $lunar.ClientBlobCacheRoute | Should Be 'cache_backed'
 
@@ -736,19 +736,19 @@ Describe 'Phase 2 remote acceptance runner' {
                     'pending_bytes' { $invalid.client_blob_cache.pending_bytes = 1 }
                 }
                 & $write $invalid
-                { Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+                { Get-PublicationSequenceEvidence -ClientLogPath $path `
                     -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Lunar } | Should Throw
             }
 
-            $ordinary = New-SyntheticPhase2Publication -RequiredColumns 197 -LoadedColumns 177 `
+            $ordinary = New-SyntheticPublication -RequiredColumns 197 -LoadedColumns 177 `
                 -RequestsConstructed 177 -RequestsSent 177 -ResponsesAdmitted 3894 -SubchunksCommitted 3894
             & $write $ordinary
-            $zeqaOrdinary = Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+            $zeqaOrdinary = Get-PublicationSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa
             $zeqaOrdinary.ClientBlobCacheRoute | Should Be 'ordinary_payload'
 
             & $write $record
-            $zeqaCached = Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+            $zeqaCached = Get-PublicationSequenceEvidence -ClientLogPath $path `
                 -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa
             $zeqaCached.ClientBlobCacheRoute | Should Be 'cache_backed'
 
@@ -756,7 +756,7 @@ Describe 'Phase 2 remote acceptance runner' {
                 $invalid = $ordinary | ConvertTo-Json -Depth 20 | ConvertFrom-Json
                 $invalid.client_blob_cache.$field = 1
                 & $write $invalid
-                { Get-Phase2PublicationSequenceEvidence -ClientLogPath $path `
+                { Get-PublicationSequenceEvidence -ClientLogPath $path `
                     -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa } | Should Throw
             }
         }
@@ -770,18 +770,18 @@ Describe 'Phase 2 remote acceptance runner' {
 
     It 'does not allow Candidate or Final to use diagnostic no-ready completion' {
         foreach ($mode in @('Candidate', 'Final')) {
-            { Complete-Phase2DiagnosticEvidence -Manifest ([pscustomobject]@{ mode = $mode }) `
+            { Complete-PublicationDiagnosticEvidence -Manifest ([pscustomobject]@{ mode = $mode }) `
                 -ClientLogPath 'unused.log' -ExpectedPresentMode Fifo -WorldReadyObserved:$false -Server Zeqa } | Should Throw
         }
     }
 
     It 'routes only Diagnostic marker timeouts to non-binding completion and uses mode-matched Zeqa prerequisites' {
         $source = Get-Content -Raw -LiteralPath $ScriptPath
-        $source | Should Match 'Find-Phase2CompletedLunarPrerequisite\s+-RemoteRoot\s+\$remoteRoot\s+-Mode\s+\$Mode'
+        $source | Should Match 'Find-CompletedLunarPrerequisite\s+-RemoteRoot\s+\$remoteRoot\s+-Mode\s+\$Mode'
         $source | Should Match "if \(\`$Mode -cne 'Diagnostic'\) \{ throw \}"
         $source | Should Match '\$clientHandle\.Process\.HasExited\s+-or\s+\$coreHandle\.Process\.HasExited'
         $source | Should Match "if \(\`$Mode -cne 'Diagnostic' -and -not \`$FullViewTeleportGate\)"
-        $source | Should Match 'Complete-Phase2DiagnosticEvidence'
+        $source | Should Match 'Complete-PublicationDiagnosticEvidence'
         $source | Should Match "\`$manifest\.behavior_gate_passed = \(\`$Mode -cne 'Diagnostic'\)"
         $source | Should Match "\`$manifest\.world_ready_observed = \`$true"
         $source | Should Match "if \(\`$Mode -cne 'Diagnostic' -and\s+\`$publicationSequence\.FirstStalledStage -cne 'none'\)"

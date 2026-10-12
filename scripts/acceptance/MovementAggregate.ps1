@@ -1,4 +1,4 @@
-function Write-Phase3FinalAggregate {
+function Write-MovementFinalAggregate {
     param(
         [Parameter(Mandatory = $true)]$Identity,
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Frames,
@@ -19,7 +19,7 @@ function Write-Phase3FinalAggregate {
         'core_extra_arguments'
     )
     Assert-ExactProperties $metadata $metadataFields 'run metadata'
-    if ([string]$metadata.schema -cne 'rust-mcbe-phase3-run-v1') {
+    if ([string]$metadata.schema -cne 'rust-mcbe-movement-run-v1') {
         throw 'run metadata schema is unsupported'
     }
     foreach ($binding in @(
@@ -37,7 +37,7 @@ function Write-Phase3FinalAggregate {
     Assert-Boolean $metadata.core_terminated_by_launcher 'run metadata.core_terminated_by_launcher'
     Assert-Boolean $metadata.timed_out 'run metadata.timed_out'
     if ([bool]$metadata.source_dirty) { throw 'run metadata reports dirty source' }
-    if ([bool]$metadata.timed_out) { throw 'Phase 3 app timed out' }
+    if ([bool]$metadata.timed_out) { throw 'movement app timed out' }
     Assert-Integer $metadata.core_process_id 'run metadata.core_process_id' 1 ([decimal][int]::MaxValue)
     Assert-Integer $metadata.app_process_id 'run metadata.app_process_id' 1 ([decimal][int]::MaxValue)
     Assert-Integer $metadata.app_exit_code 'run metadata.app_exit_code' 0 0
@@ -47,7 +47,7 @@ function Write-Phase3FinalAggregate {
         throw 'run metadata scenario does not match the scenario manifest'
     }
     if ([string]$metadata.target -cne 'Bds' -and [int]$metadata.duration_seconds -lt 300) {
-        throw 'remote Phase 3 evidence must run for at least five minutes'
+        throw 'remote movement evidence must run for at least five minutes'
     }
     if ([int]$metadata.core_process_id -ne [int]$Identity.core_process_id -or
         [int]$metadata.app_process_id -ne [int]$Identity.app_process_id) {
@@ -63,14 +63,14 @@ function Write-Phase3FinalAggregate {
     if ($metadata.screenshot_slots -isnot [System.Array]) {
         throw 'run metadata screenshot_slots must be one JSON array'
     }
-    Assert-Phase3CoreArgumentTokens $metadata.core_extra_arguments `
+    Assert-MovementCoreArgumentTokens $metadata.core_extra_arguments `
         'run metadata.core_extra_arguments'
     if ($null -ne $metadata.core_exit_code) {
         Assert-Integer $metadata.core_exit_code 'run metadata.core_exit_code' ([int]::MinValue) ([int]::MaxValue)
-        if ([int]$metadata.core_exit_code -ne 0) { throw 'Phase 3 core exited with a nonzero code' }
+        if ([int]$metadata.core_exit_code -ne 0) { throw 'movement core exited with a nonzero code' }
     }
     elseif (-not [bool]$metadata.core_terminated_by_launcher) {
-        throw 'Phase 3 core has neither a recorded exit nor launcher termination'
+        throw 'movement core has neither a recorded exit nor launcher termination'
     }
 
     $metrics = Get-Content -Raw -LiteralPath $MetricsPath | ConvertFrom-Json
@@ -80,12 +80,12 @@ function Write-Phase3FinalAggregate {
         'decode_error_count', 'gpu_upload_bytes'
     )) {
         if ($null -eq $metrics.PSObject.Properties[$field]) {
-            throw "Phase 3 metrics are missing $field"
+            throw "movement metrics are missing $field"
         }
     }
     Assert-Number $metrics.session_seconds 'metrics.session_seconds' 0.001 ([double]::MaxValue)
     # The generic acceptance launcher allows five seconds for process startup
-    # and teardown outside the measured session. Dedicated Phase 3 evidence
+    # and teardown outside the measured session. Dedicated movement evidence
     # must meet the same bounded tolerance instead of accepting an arbitrarily
     # early RemoteClosed terminal.
     $minimumSessionSeconds = [Math]::Max(0.0, [double]$metadata.duration_seconds - 5.0)
@@ -283,7 +283,7 @@ function Write-Phase3FinalAggregate {
     $sessionSeconds = [double]$metrics.session_seconds
     $frameCount = [uint64]$metrics.frame_count
     $aggregate = [ordered]@{
-        schema = 'rust-mcbe-phase3-final-v1'
+        schema = 'rust-mcbe-movement-final-v1'
         status = 'valid'
         scenario = [string]$ScenarioManifest.scenario
         identity = [ordered]@{

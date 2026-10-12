@@ -12,7 +12,7 @@ use crate::block_use::produce_block_use;
 use crate::item_use::produce_item_use;
 use crate::melee::produce_melee;
 use crate::movement::advance_local_physics;
-use crate::runtime::phase3_evidence::emit_phase3_evidence;
+use crate::runtime::movement_evidence::emit_movement_evidence;
 use crate::runtime::shutdown::finish_acceptance_run;
 use crate::runtime::telemetry::send_player_auth_inputs;
 use crate::runtime::world::{
@@ -251,7 +251,7 @@ fn production_client_systems_are_members_of_the_behavioral_sets() {
     assert!(
         schedule_precedes(
             graph,
-            system_node(graph, emit_phase3_evidence, "emit_phase3_evidence"),
+            system_node(graph, emit_movement_evidence, "emit_movement_evidence"),
             system_node(graph, produce_melee, "produce_melee"),
         ),
         "the exact build/session/PREG/BREG identity marker must precede attack production",
@@ -302,8 +302,8 @@ fn production_client_systems_are_members_of_the_behavioral_sets() {
     }
     assert_system_in_stage(
         graph,
-        emit_phase3_evidence,
-        "emit_phase3_evidence",
+        emit_movement_evidence,
+        "emit_movement_evidence",
         ClientFrameSet::NetworkSend,
     );
 
@@ -694,7 +694,7 @@ fn production_pipeline_presents_exact_6951_manifest_with_known_air_within_sixtee
     };
 
     const COHORT_ITEMS: usize = 6_951;
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let runtime_assets = Arc::new(assets::RuntimeAssets::diagnostic());
     let stream = chunk_pipeline::WorldStream::new_with_assets(
         WorldBootstrap {
@@ -926,7 +926,7 @@ fn permitted_removal_crosses_real_extraction_and_physically_frees_an_existing_gp
         },
     };
 
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     assert_eq!(config.maximum_zero_byte_operations_per_frame, 256);
     let runtime_assets = assets::RuntimeAssets::diagnostic();
     let mesh = publication_fixture_mesh(&runtime_assets);
@@ -1171,7 +1171,7 @@ fn local_player_pipeline_orders_physics_camera_and_interaction_and_has_one_camer
 
 #[test]
 fn production_stage_capacities_can_carry_one_literal_maximum_payload_frame() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
 
     assert!(chunk_pipeline::WORK_RESULT_CAPACITY >= config.maximum_frame_items);
     assert!(chunk_pipeline::MAX_PENDING_MESH_CHANGES >= config.maximum_frame_items);
@@ -1186,5 +1186,5 @@ fn application_wires_controller_before_world_handoff_and_render_apply() {
     // the gate controller; constructing fixtures alone cannot prove that wiring.
     let source = include_str!("../app.rs");
     assert!(source.contains("PublicationController::new("));
-    assert!(source.contains("PublicationServiceConfig::PHASE2_GATE"));
+    assert!(source.contains("PublicationServiceConfig::DEFAULT"));
 }

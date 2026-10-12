@@ -31,7 +31,7 @@
     activation refuses exactly as the manual-focus path does. Default OFF
     preserves today's semantics; -DryRun ignores the switch entirely.
 
-    Validator mapping (scripts/acceptance Phase3Aggregate CandidatePhysics):
+    Validator mapping (scripts/acceptance MovementAggregate CandidatePhysics):
       FlatWalk     -> grounded flat-walk witness (one axis >= 0.25, non-jump)
       DiagonalWalk -> grounded diagonal-walk witness (both axes >= 0.25)
       TapJump      -> non-repeated single-jump witness (grounded takeoff)

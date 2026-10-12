@@ -5,7 +5,7 @@ use render_scene::{
 
 #[test]
 fn session_reset_releases_old_publication_capacity_without_acknowledging_old_removals() {
-    let config = render_api::PublicationServiceConfig::PHASE2_GATE;
+    let config = render_api::PublicationServiceConfig::DEFAULT;
     let allowance = render_api::PublicationAllowance::new(config);
     allowance.begin_frame(1, 2, 0, 2, config.maximum_frame_items);
     let mut app = App::new();

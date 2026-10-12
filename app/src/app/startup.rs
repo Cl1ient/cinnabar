@@ -397,13 +397,13 @@ mod tests {
             vec!["--transparent-witness-request", "witness.json"],
             vec!["--model-witness-request", "witness.json"],
             vec![
-                "--phase3-evidence-target",
+                "--movement-evidence-target",
                 "Bds",
                 "--acceptance-seconds",
                 "1",
                 "--metrics-out",
                 "metrics.json",
-                "--phase3-candidate-physics",
+                "--movement-candidate-physics",
             ],
         ] {
             let ParseOutcome::Run(args) =

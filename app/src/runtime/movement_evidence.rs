@@ -2,8 +2,8 @@
 #[cfg(feature = "acceptance")]
 use ::acceptance::AcceptanceRun;
 #[cfg(test)]
-use acceptance::phase3_evidence::Phase3EvidenceIdentity;
-use acceptance::phase3_evidence::{Phase3EvidenceFrame, Phase3EvidenceIdentityError};
+use acceptance::movement_evidence::MovementEvidenceIdentity;
+use acceptance::movement_evidence::{MovementEvidenceFrame, MovementEvidenceIdentityError};
 use bevy::prelude::{Res, ResMut, Resource};
 #[cfg(test)]
 use gameplay::movement::{MovementOutboxReconciliation, MovementSource};
@@ -20,28 +20,28 @@ use {
 
 /// Owns the emitter while translating gameplay's existing domain records at the boundary.
 #[derive(Resource, Default)]
-pub(crate) struct Phase3EvidenceEmitter(acceptance::phase3_evidence::Phase3EvidenceEmitter);
-impl std::ops::Deref for Phase3EvidenceEmitter {
-    type Target = acceptance::phase3_evidence::Phase3EvidenceEmitter;
+pub(crate) struct MovementEvidenceEmitter(acceptance::movement_evidence::MovementEvidenceEmitter);
+impl std::ops::Deref for MovementEvidenceEmitter {
+    type Target = acceptance::movement_evidence::MovementEvidenceEmitter;
     /// Exposes the evidence API while the app owns domain-to-observation conversion.
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl std::ops::DerefMut for Phase3EvidenceEmitter {
+impl std::ops::DerefMut for MovementEvidenceEmitter {
     /// Lets runtime observations update the evidence owner directly.
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
-impl Phase3EvidenceEmitter {
+impl MovementEvidenceEmitter {
     /// Sends one completed frame with gameplay's authoritative outbox bound.
-    pub(crate) fn observe(&mut self, frame: Phase3EvidenceFrame) -> Vec<String> {
+    pub(crate) fn observe(&mut self, frame: MovementEvidenceFrame) -> Vec<String> {
         self.0.observe(frame, OUTBOX_CAPACITY)
     }
     /// Converts the correction result without transferring gameplay ownership.
     pub(crate) fn note_correction(&mut self, outcome: PhysicsCorrectionOutcome, magnitude: f32) {
-        use acceptance::phase3_evidence::CorrectionObservation;
+        use acceptance::movement_evidence::CorrectionObservation;
         let outcome = match outcome {
             PhysicsCorrectionOutcome::Replayed {
                 corrected_tick,
@@ -66,7 +66,7 @@ impl Phase3EvidenceEmitter {
     #[cfg(test)]
     pub(crate) fn observe_terminal(
         &mut self,
-        identity: Phase3EvidenceIdentity,
+        identity: MovementEvidenceIdentity,
         source: MovementSource,
         physics_packet_count: u64,
         free_camera_packet_count: u64,
@@ -90,7 +90,7 @@ impl Phase3EvidenceEmitter {
         let mut markers = Vec::with_capacity(ticks.len());
         for tick in ticks {
             let context = tick.context;
-            markers.extend(self.observe(Phase3EvidenceFrame {
+            markers.extend(self.observe(MovementEvidenceFrame {
                 session_generation: tick.session_generation,
                 fifo_sequence: context.fifo_sequence,
                 physics_tick: tick.tick,
@@ -122,24 +122,24 @@ impl Phase3EvidenceEmitter {
 
 /// Evidence identity plus the app's collision-registry observation adapter.
 #[derive(Resource)]
-pub(crate) struct Phase3EvidenceIdentitySource(
-    acceptance::phase3_evidence::Phase3EvidenceIdentitySource,
+pub(crate) struct MovementEvidenceIdentitySource(
+    acceptance::movement_evidence::MovementEvidenceIdentitySource,
 );
-impl std::ops::Deref for Phase3EvidenceIdentitySource {
-    type Target = acceptance::phase3_evidence::Phase3EvidenceIdentitySource;
+impl std::ops::Deref for MovementEvidenceIdentitySource {
+    type Target = acceptance::movement_evidence::MovementEvidenceIdentitySource;
     /// Exposes the evidence API while the app owns domain-to-observation conversion.
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl Phase3EvidenceIdentitySource {
+impl MovementEvidenceIdentitySource {
     /// Captures the two registry identities after normal startup validation.
     pub(crate) fn from_build(
-        target: crate::args::Phase3Target,
+        target: crate::args::EvidenceTarget,
         candidate_physics: bool,
         collisions: &PhysicsCollisionRegistries,
-    ) -> Result<Self, Phase3EvidenceIdentityError> {
-        acceptance::phase3_evidence::Phase3EvidenceIdentitySource::from_build(
+    ) -> Result<Self, MovementEvidenceIdentityError> {
+        acceptance::movement_evidence::MovementEvidenceIdentitySource::from_build(
             target.as_str(),
             candidate_physics,
             collisions.preg_sha256(),
@@ -152,7 +152,7 @@ impl Phase3EvidenceIdentitySource {
 /// Converts the gameplay fault into evidence fields without extending the gameplay type.
 fn authority_fault_observation(
     record: PhysicsAuthorityFaultRecord,
-) -> acceptance::phase3_evidence::AuthorityFaultObservation {
+) -> acceptance::movement_evidence::AuthorityFaultObservation {
     let (fault, detail) = match record.fault {
         PhysicsAuthorityFault::Unauthorized => ("unauthorized", serde_json::Value::Null),
         PhysicsAuthorityFault::IncompleteCollisionRegistry => {
@@ -205,7 +205,7 @@ fn authority_fault_observation(
             serde_json::json!({"tick": tick}),
         ),
     };
-    acceptance::phase3_evidence::AuthorityFaultObservation {
+    acceptance::movement_evidence::AuthorityFaultObservation {
         session_generation: record.session_generation,
         next_tick: record.next_tick,
         pending_count: record.pending_count,
@@ -256,11 +256,11 @@ fn simulation_error_detail(error: &sim::SimulationError) -> serde_json::Value {
 }
 
 /// Drains gameplay records every frame, emitting only when evidence is enabled.
-pub(crate) fn emit_phase3_evidence(
+pub(crate) fn emit_movement_evidence(
     acceptance: Res<AcceptanceRun>,
     mut movement: ResMut<MovementTicker>,
-    identity_source: Option<Res<Phase3EvidenceIdentitySource>>,
-    mut evidence: ResMut<Phase3EvidenceEmitter>,
+    identity_source: Option<Res<MovementEvidenceIdentitySource>>,
+    mut evidence: ResMut<MovementEvidenceEmitter>,
 ) {
     // Socket acknowledgements retain one immutable tick record until this
     // system runs. Drain it in normal production too; otherwise a client

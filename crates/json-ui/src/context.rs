@@ -19,7 +19,7 @@ impl Context {
         Self::default()
     }
 
-    /// The desktop screen context used by this tranche's fixtures.
+    /// A non-touch desktop screen context.
     pub fn desktop() -> Self {
         Self::empty()
             .with_flag("desktop_screen", true)

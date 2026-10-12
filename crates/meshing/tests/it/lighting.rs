@@ -7,8 +7,8 @@ use assets::{
     encode_blob,
 };
 use meshing::{
-    BlockClassifier, Face, MeshLightSample, PHASE26_BLOCK_LIGHT, PHASE26_SKY_LIGHT, PackedQuad,
-    PackedQuadLighting, bake_quad_lighting, bake_quad_lighting_with_sampler,
+    BlockClassifier, FULL_BRIGHT_BLOCK_LIGHT, FULL_BRIGHT_SKY_LIGHT, Face, MeshLightSample,
+    PackedQuad, PackedQuadLighting, bake_quad_lighting, bake_quad_lighting_with_sampler,
     bake_template_lighting, bake_template_lighting_with_sampler, mesh_dependency_mask,
 };
 use world::{MeshNeighbourhood, RawBlockIds, SubChunk};
@@ -287,7 +287,7 @@ fn face_specific_ao_differs_at_shared_corner() {
 }
 
 #[test]
-fn phase26_light_defaults_are_explicit() {
+fn full_bright_light_defaults_are_explicit() {
     let (assets, center) = fixture();
     let lighting = bake_quad_lighting(
         &BlockClassifier::new(AIR),
@@ -299,11 +299,11 @@ fn phase26_light_defaults_are_explicit() {
         full_corner(),
     );
 
-    assert_eq!(PHASE26_BLOCK_LIGHT, 0);
-    assert_eq!(PHASE26_SKY_LIGHT, 15);
+    assert_eq!(FULL_BRIGHT_BLOCK_LIGHT, 0);
+    assert_eq!(FULL_BRIGHT_SKY_LIGHT, 15);
     for sample in lighting.samples() {
-        assert_eq!(sample & 0x000f, u16::from(PHASE26_BLOCK_LIGHT));
-        assert_eq!((sample >> 4) & 0x000f, u16::from(PHASE26_SKY_LIGHT));
+        assert_eq!(sample & 0x000f, u16::from(FULL_BRIGHT_BLOCK_LIGHT));
+        assert_eq!((sample >> 4) & 0x000f, u16::from(FULL_BRIGHT_SKY_LIGHT));
         assert_eq!(sample & 0xfc00, 0, "reserved light bits must remain zero");
     }
     assert_eq!(size_of::<PackedQuadLighting>(), 8);

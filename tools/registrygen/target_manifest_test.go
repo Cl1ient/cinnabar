@@ -269,9 +269,9 @@ func TestBedrockTargetManifestOwnsEveryProductionCarrier(t *testing.T) {
 	}
 	centralizedAcceptanceConsumers := map[string][]string{
 		"scripts/acceptance/Common.ps1":                        {"assets\\bedrock-target.json", "Get-BedrockTargetManifest", "Resolve-BedrockTargetArtifact"},
-		"scripts/acceptance/Phase3Launcher.ps1":                {"Get-BedrockTargetManifest", "wire_protocol", "artifacts.physics_registry", "Resolve-BedrockTargetArtifact"},
+		"scripts/acceptance/MovementLauncher.ps1":              {"Get-BedrockTargetManifest", "wire_protocol", "artifacts.physics_registry", "Resolve-BedrockTargetArtifact"},
 		"scripts/acceptance/Orchestration/Validate.ps1":        {"Get-BedrockTargetManifest", "Resolve-BedrockTargetArtifact"},
-		"scripts/acceptance/Phase3.ps1":                        {"ExpectedProtocol"},
+		"scripts/acceptance/MovementEvidence.ps1":              {"ExpectedProtocol"},
 		"scripts/acceptance/FastTransferWitnessValidation.ps1": {"ExpectedProtocol"},
 		"scripts/acceptance/FastTransferWitness.ps1":           {"$arguments.Assets"},
 		"scripts/acceptance/Galleries/Aquatic.ps1":             {"$registryProtocol = $reader.ReadUInt32()"},

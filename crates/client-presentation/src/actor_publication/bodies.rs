@@ -311,7 +311,7 @@ pub(super) fn place_local(
             emote_geometry::apply(
                 &pose.snapshot(rig),
                 skin_rigs,
-                equipment.as_deref_mut(),
+                equipment,
                 new_geometries,
                 &mut local.submission,
                 animated.submission,

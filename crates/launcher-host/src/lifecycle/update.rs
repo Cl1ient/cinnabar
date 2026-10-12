@@ -107,6 +107,10 @@ impl State {
             self.updater = std::fs::create_dir_all(root)
                 .and_then(|()| update_installer::lease::Updater::try_acquire(root))
                 .ok();
+            if self.updater.is_some() {
+                // Restore downloaded offers even when the next network check is not due.
+                return true;
+            }
         }
         self.updater.is_some()
             && self.preferences.checks
@@ -124,10 +128,51 @@ impl State {
             self.dismissed = false;
             self.switch_now = false;
             self.switch_available = false;
+            self.message = None;
         }
         self.preferences = preferences;
         self.generation += 1;
         Some(channel_changed)
+    }
+
+    /// Requests one manual channel switch and replaces the switch offer with download progress.
+    fn request_switch(&mut self) -> bool {
+        if !self.switch_available || self.requested {
+            return false;
+        }
+        self.switch_now = true;
+        self.switch_available = false;
+        self.message = Some("Downloading this channel's update…".into());
+        self.dismissed = false;
+        self.generation += 1;
+        true
+    }
+
+    /// Ends a worker's progress on every outcome without clearing a newer action's message.
+    fn finish_check(&mut self, generation: u64, switch_now: bool, failed: bool) -> bool {
+        self.running = false;
+        if self.generation != generation {
+            return true;
+        }
+        if switch_now {
+            self.switch_now = false;
+            self.switch_available = failed;
+            self.message =
+                failed.then(|| "Could not download this channel's update. Try again.".into());
+        }
+        false
+    }
+
+    /// Replaces an offer only for the active worker and clears its completed progress message.
+    fn offer(&mut self, ready: Ready, generation: u64) {
+        if self.accepts_worker(generation) {
+            if ready.channel == Channel::Stable {
+                self.stable_available = true;
+            }
+            self.ready = Some(ready);
+            self.switch_available = false;
+            self.message = None;
+        }
     }
 
     /// Holds one session's preferences and consent, without a persisted transaction state.
@@ -288,13 +333,8 @@ pub fn act(action: Action) -> bool {
                 download = state.ready.clone();
                 false
             }
-            Action::SwitchNow if state.switch_available => {
-                state.switch_now = true;
-                state.switch_available = false;
-                state.message = Some("Downloading this channel's update…".into());
-                state.dismissed = false;
-                state.generation += 1;
-                switch = true;
+            Action::SwitchNow => {
+                switch = state.request_switch();
                 false
             }
             _ => false,

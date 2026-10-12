@@ -334,7 +334,7 @@ fn manual_stage(
             platform: &platform,
             current: "1.0.0",
             current_build: 1,
-            switch_now: false,
+            switch_now: true,
         },
         OffsetDateTime::UNIX_EPOCH,
     )
@@ -342,6 +342,163 @@ fn manual_stage(
     let mut download = update_installer::stage::Download::begin(root, selection).unwrap();
     download.write(payload).unwrap();
     (download.finish(&root.join("ready")).unwrap(), keys)
+}
+
+#[test]
+fn a_new_owner_restores_downloaded_offers_while_the_completion_stamp_is_fresh() {
+    let root = tempfile::tempdir().unwrap();
+    let mut first = State::new();
+    let mut passive = State::new();
+    assert!(first.tick(root.path(), 100));
+    let (directory, keys) =
+        manual_stage(root.path(), "2.0.0", b"downloaded release", Channel::Beta);
+    let check = update_manifest::select::Check {
+        channel: Channel::Beta.name(),
+        platform: "macos-arm64",
+        current: env!("CARGO_PKG_VERSION"),
+        current_build: update_manifest::build_number(),
+        switch_now: false,
+    };
+    worker::record(&worker::stamp_path(root.path(), Channel::Beta), check, 100).unwrap();
+    assert!(!passive.tick(root.path(), 100));
+    assert!(passive.ready.is_none());
+    drop(first);
+    let now = 100 + CHECK_POLL_INTERVAL.as_secs();
+    assert!(!due(worker::last_check(root.path(), Channel::Beta), now));
+    assert!(
+        passive.tick(root.path(), now),
+        "ownership acquisition must start cache restoration"
+    );
+    let writer = update_installer::lease::Lease::acquire(root.path()).unwrap();
+    let selected =
+        update_installer::stage::verify(&directory, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    let (stage, reader) = update_installer::stage::retain(&directory, &writer, &selected).unwrap();
+    passive.offer(
+        Ready::new(stage, reader, selected, Channel::Beta, false, true),
+        passive.generation,
+    );
+    assert_eq!(passive.ready.as_ref().unwrap().notice.version, "2.0.0");
+    assert_eq!(worker::last_check(root.path(), Channel::Beta), Some(100));
+}
+
+#[test]
+fn an_explicit_switch_downloads_an_older_release_instead_of_retaining_a_newer_stage() {
+    let root = tempfile::tempdir().unwrap();
+    let (directory, keys) = manual_stage(
+        root.path(),
+        "0.0.1",
+        b"requested older payload",
+        Channel::Beta,
+    );
+    let check = update_manifest::select::Check {
+        channel: Channel::Beta.name(),
+        platform: "macos-arm64",
+        current: env!("CARGO_PKG_VERSION"),
+        current_build: update_manifest::build_number(),
+        switch_now: true,
+    };
+    let selected =
+        update_installer::stage::verify(&directory, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    let (directory, _) = manual_stage(
+        root.path(),
+        "0.0.2",
+        b"retained newer payload",
+        Channel::Beta,
+    );
+    let retained =
+        update_installer::stage::verify(&directory, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    assert!(!worker::supersedes(&selected.manifest, Some(&retained.manifest), false).unwrap());
+    let mut state = State::new();
+    worker::offer_switch(&mut state);
+    assert!(state.request_switch());
+    let generation = state.generation;
+    assert!(
+        worker::supersedes(
+            &selected.manifest,
+            Some(&retained.manifest),
+            state.switch_now
+        )
+        .unwrap()
+    );
+    let writer = update_installer::lease::Lease::acquire(root.path()).unwrap();
+    assert!(
+        worker::reuse_stage(&writer, &selected, [directory.as_path()])
+            .unwrap()
+            .is_none()
+    );
+    let mut download = update_installer::stage::Download::begin(root.path(), selected).unwrap();
+    download.write(b"requested older payload").unwrap();
+    let directory = download.finish(&directory).unwrap();
+    let selected =
+        update_installer::stage::verify(&directory, &keys, check, OffsetDateTime::UNIX_EPOCH)
+            .unwrap();
+    let (stage, reader) = update_installer::stage::retain(&directory, &writer, &selected).unwrap();
+    state.offer(
+        Ready::new(stage, reader, selected, Channel::Beta, true, false),
+        generation,
+    );
+    assert!(!state.finish_check(generation, true, false));
+    let offer = state.ready.as_ref().unwrap();
+    assert_eq!(offer.notice.version, "0.0.1");
+    assert_eq!(offer.notice.action(), Action::Download);
+    assert_eq!(
+        std::fs::read(offer.stage.join(update_installer::stage::ARTIFACT_FILE)).unwrap(),
+        b"requested older payload"
+    );
+    assert!(state.message.is_none());
+    assert!(!state.switch_now);
+    assert!(
+        worker::retained_manifest(
+            Some(offer),
+            &keys,
+            update_manifest::select::Check {
+                switch_now: false,
+                ..check
+            },
+            OffsetDateTime::UNIX_EPOCH
+        )
+        .is_some()
+    );
+}
+
+#[test]
+fn every_manual_switch_outcome_ends_progress_or_preserves_only_a_newer_actions_progress() {
+    for failed in [false, true] {
+        let mut state = State::new();
+        worker::offer_switch(&mut state);
+        assert!(state.request_switch());
+        state.running = true;
+        let progress = state.message.clone();
+        assert!(!state.finish_check(state.generation, true, failed));
+        assert_ne!(state.message, progress);
+        assert_eq!(state.message.is_some(), failed);
+        assert_eq!(state.switch_available, failed);
+        assert!(!state.switch_now && !state.running);
+    }
+    let mut state = State::new();
+    worker::offer_switch(&mut state);
+    assert!(state.request_switch());
+    let canceled = state.generation;
+    state.configure(Preferences {
+        channel: Channel::Nightly,
+        ..state.preferences
+    });
+    assert!(state.finish_check(canceled, true, false));
+    assert!(state.message.is_none());
+    worker::offer_switch(&mut state);
+    assert!(state.request_switch());
+    let previous = state.generation;
+    worker::offer_switch(&mut state);
+    assert!(state.request_switch());
+    let current_progress = state.message.clone();
+    assert!(state.finish_check(previous, true, false));
+    assert_eq!(state.message, current_progress);
+    assert!(state.switch_now);
+    assert!(!state.finish_check(state.generation, true, false));
+    assert!(state.message.is_none());
 }
 
 #[test]
@@ -430,7 +587,7 @@ fn renewed_envelopes_replace_expiring_stages_and_offers_without_a_download() {
     let renewed = update_manifest::sign(&manifest, "test", &TEST_SEED).unwrap();
     let now = original.manifest.expires + time::Duration::seconds(1);
     let selected = update_installer::stage::Selection::verify(&renewed, &keys, check, now).unwrap();
-    assert!(worker::supersedes(&selected.manifest, Some(&original.manifest)).unwrap());
+    assert!(worker::supersedes(&selected.manifest, Some(&original.manifest), false).unwrap());
     assert!(update_installer::stage::verify(&directory, &keys, check, now).is_err());
     let writer = update_installer::lease::Lease::acquire(root.path()).unwrap();
     let reused = worker::reuse_stage(&writer, &selected, [directory.as_path()])
@@ -623,8 +780,8 @@ fn a_postponed_stage_is_replaced_only_by_a_newer_release() {
         manifest
     };
     let staged = release("2.0.0", 10);
-    assert!(worker::supersedes(&staged, None).unwrap());
-    assert!(!worker::supersedes(&release("2.0.0", 10), Some(&staged)).unwrap());
-    assert!(worker::supersedes(&release("2.0.0", 11), Some(&staged)).unwrap());
-    assert!(worker::supersedes(&release("2.1.0", 1), Some(&staged)).unwrap());
+    assert!(worker::supersedes(&staged, None, false).unwrap());
+    assert!(!worker::supersedes(&release("2.0.0", 10), Some(&staged), false).unwrap());
+    assert!(worker::supersedes(&release("2.0.0", 11), Some(&staged), false).unwrap());
+    assert!(worker::supersedes(&release("2.1.0", 1), Some(&staged), false).unwrap());
 }

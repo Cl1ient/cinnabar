@@ -70,22 +70,15 @@ pub(super) fn start(force: bool) {
         (state.preferences, state.switch_now, state.generation)
     };
     std::thread::spawn(move || {
-        if let Err(error) = retry_missing(
+        let result = retry_missing(
             || run(&layout, preferences, switch_now, generation, force),
             || active(generation),
-        ) {
+        );
+        if let Err(error) = &result {
             tracing::debug!("update check: {error:#}");
-            if let Ok(mut state) = STATE.lock() {
-                if state.generation == generation && switch_now {
-                    state.message =
-                        Some("Could not download this channel's update. Try again.".into());
-                    state.switch_available = true;
-                }
-            }
         }
         let changed = if let Ok(mut state) = STATE.lock() {
-            state.running = false;
-            state.generation != generation
+            state.finish_check(generation, switch_now, result.is_err())
         } else {
             false
         };
@@ -166,7 +159,7 @@ fn run(
     if destination.exists() {
         match stage::verify(&destination, &keys, check, OffsetDateTime::now_utc()) {
             Ok(selected) => {
-                if supersedes(&selected.manifest, staged.as_ref())? {
+                if supersedes(&selected.manifest, staged.as_ref(), false)? {
                     staged = Some(selected.manifest.clone());
                     let (directory, reader) = stage::retain(&destination, &lease, &selected)?;
                     publish(
@@ -254,7 +247,7 @@ fn run(
             }
             return record(&stamp_path, check, now_secs());
         }
-        if !supersedes(&selected.manifest, staged.as_ref())? {
+        if !supersedes(&selected.manifest, staged.as_ref(), switch_now)? {
             return record(&stamp_path, check, now_secs());
         }
         ensure!(active(generation), "update check cancelled");
@@ -356,9 +349,18 @@ pub(super) fn retained_manifest(
     check: Check<'_>,
     now: OffsetDateTime,
 ) -> Option<update_manifest::Manifest> {
-    stage::verify(&ready?.stage, keys, check, now)
-        .ok()
-        .map(|selected| selected.manifest)
+    let ready = ready?;
+    stage::verify(
+        &ready.stage,
+        keys,
+        Check {
+            switch_now: ready.switch_now,
+            ..check
+        },
+        now,
+    )
+    .ok()
+    .map(|selected| selected.manifest)
 }
 
 /// The last verified envelope fetched for `channel`.
@@ -433,11 +435,15 @@ fn older_release(manifest: &update_manifest::Manifest, check: Check<'_>) -> Resu
     )?)
 }
 
-/// A newer release or a renewed expiry replaces the postponed envelope and offer.
+/// Explicit manual switches select their release; automatic checks need a newer build or expiry.
 pub(super) fn supersedes(
     fetched: &update_manifest::Manifest,
     staged: Option<&update_manifest::Manifest>,
+    switch_now: bool,
 ) -> Result<bool> {
+    if switch_now {
+        return Ok(true);
+    }
     let Some(staged) = staged else {
         return Ok(true);
     };
@@ -492,16 +498,10 @@ fn publish(
             .and_then(|target| update_installer::target::access(&target))
             .is_ok_and(|access| access == update_installer::target::Access::Writable);
     if let Ok(mut state) = STATE.lock() {
-        if state.accepts_worker(generation) {
-            state.ready = Some(Ready::new(
-                stage, reader, selected, channel, switch_now, writable,
-            ));
-            state.switch_available = false;
-            state.message = None;
-            if channel == Channel::Stable {
-                state.stable_available = true;
-            }
-        }
+        state.offer(
+            Ready::new(stage, reader, selected, channel, switch_now, writable),
+            generation,
+        );
     }
 }
 

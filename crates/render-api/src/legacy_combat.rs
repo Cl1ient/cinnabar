@@ -1,9 +1,8 @@
 //! Shared Bedrock 1.12 combat presentation rules.
 
-/// Scalar rules shared by settings, camera sampling and shader uploads.
+/// Scalar rules shared by camera sampling and shader uploads.
 #[derive(Clone, Copy, Debug)]
 pub struct Bedrock112Rules {
-    pub enabled_by_default: bool,
     pub hurt_overlay: [f32; 4],
     pub hurt_ticks: u8,
     pub glint_period_ms: [i32; 2],
@@ -28,9 +27,8 @@ pub struct Bedrock112Rules {
     pub sine_index_scale: f32,
 }
 
-/// Bedrock 1.12 rules. The option changes presentation only and starts disabled.
+/// Bedrock 1.12 rules. The profile changes presentation only.
 pub const BEDROCK_112: Bedrock112Rules = Bedrock112Rules {
-    enabled_by_default: false,
     hurt_overlay: [1.0, 0.0, 0.0, 0.6],
     hurt_ticks: 10,
     glint_period_ms: [1750, 3000],
@@ -59,20 +57,18 @@ pub const BEDROCK_112: Bedrock112Rules = Bedrock112Rules {
 };
 
 /// Selects the explicit combat profile independently of Java pose selection.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatVisuals {
-    #[default]
     Modern,
     Legacy112,
 }
 
-impl CombatVisuals {
-    /// Converts the persisted opt-in without changing the animation selector.
-    pub const fn from_legacy_enabled(enabled: bool) -> Self {
-        if enabled {
-            Self::Legacy112
-        } else {
-            Self::Modern
-        }
+/// One code-level choice for all consumers; Java still owns its poses and items.
+pub const DEFAULT_COMBAT_VISUALS: CombatVisuals = CombatVisuals::Legacy112;
+
+impl Default for CombatVisuals {
+    /// Follows the shared code-level profile without a saved user preference.
+    fn default() -> Self {
+        DEFAULT_COMBAT_VISUALS
     }
 }

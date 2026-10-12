@@ -33,7 +33,6 @@ pub mod inventory_capture;
 pub mod invite_screen;
 pub mod java_animations_setting;
 pub mod join_progress;
-pub mod legacy_combat_setting;
 pub mod loading_screen;
 pub mod menu_caret;
 pub mod menu_renderers;

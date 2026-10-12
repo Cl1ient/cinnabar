@@ -574,33 +574,6 @@ fn animations_default_to_bedrock_and_persist_both_choices() {
 }
 
 #[test]
-fn legacy_combat_defaults_off_round_trips_and_preserves_java_selection() {
-    let option = super::LEGACY_112_COMBAT_OPTION;
-    let mut settings = SettingsOptions::decode(br#"{"values":{"animations":0}}"#).unwrap();
-    assert_eq!(settings.value(option.name), option.default);
-    assert!(!settings.user_settings().video.legacy_112_combat_visuals);
-    assert!(settings.user_settings().video.java_animations);
-    for legacy in [true, false] {
-        settings.set(index(option.name), i32::from(legacy));
-        let loaded = SettingsOptions::decode(&serde_json::to_vec(&settings).unwrap()).unwrap();
-        assert_eq!(
-            loaded.user_settings().video.legacy_112_combat_visuals,
-            legacy
-        );
-        assert!(loaded.user_settings().video.java_animations);
-    }
-    settings.set(index(option.name), 1);
-    settings.reset_group(SettingsGroup::Accessibility);
-    assert!(settings.user_settings().video.legacy_112_combat_visuals);
-    settings.reset_group(SettingsGroup::Video);
-    assert_eq!(settings.value(option.name), option.default);
-    assert_eq!(
-        settings.user_settings().video.legacy_112_combat_visuals,
-        render_api::BEDROCK_112.enabled_by_default
-    );
-}
-
-#[test]
 fn animations_migrate_legacy_toggle_without_overriding_a_saved_selection() {
     for (toggle, choice) in [(0, 1), (1, 0)] {
         let legacy = serde_json::json!({ "values": { "java_animations": toggle } });

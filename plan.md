@@ -653,6 +653,17 @@ these changes do not close the movement, camera, or actor parity gates.
   Matching-version native comparison, physical controller/touch testing and the
   three-run hardware performance qualification remain untested.
 
+## Bedrock 1.12 combat visuals
+
+Bedrock 1.12 combat visuals are a deliberate default and accepted deviation from
+1.26.50. There is no user setting. `render_api::DEFAULT_COMBAT_VISUALS` retains the
+Modern profile as a one-line code choice. The combat profile owns body and worn
+armour hurt red, glint, and camera bob/hurt; Java 1.7 still owns its poses and items.
+
+Implementation and deterministic coverage are in progress. Compilation, GPU
+fixtures and a headless visual comparison remain unverified; this does not close
+a parity or visual acceptance gate.
+
 ## Java 1.7 animations
 
 - Owner-mandated default, selected live from Video › Animations (persisted): Java 1.7 or

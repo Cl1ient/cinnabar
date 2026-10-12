@@ -24,7 +24,6 @@ impl SettingsGroup {
                 SMAA_OPTION,
                 super::VRR_OPTION,
                 super::NATIVE_SKYBOX_OFFSET_OPTION,
-                super::LEGACY_112_COMBAT_OPTION,
             ]
             .iter()
             .any(|option| option.name == name)

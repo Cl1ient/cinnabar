@@ -212,8 +212,8 @@ pub fn advance_actor_frame(
         camera.renders_first_person(first_person)
     });
     let java_mode = settings.feel().java_animations;
-    let combat_visuals =
-        render_api::CombatVisuals::from_legacy_enabled(settings.feel().legacy_112_combat_visuals);
+    // Java selects poses and items; the shared combat profile always owns bob, hurt and glint.
+    let combat_visuals = render_api::DEFAULT_COMBAT_VISUALS;
     let mut local_feed = input.local_feed.take();
     if let Some(feed) = local_feed.as_mut() {
         feed.first_person = first_person;

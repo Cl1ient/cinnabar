@@ -1,5 +1,5 @@
-use super::reinstall_tests::gpu_snapshot;
 use super::*;
+use crate::gpu_snapshot;
 use bevy::ecs::system::RunSystemOnce;
 use render_model::{BlockEntityScene, SceneClock, TEXT_CELL};
 
@@ -25,7 +25,7 @@ fn canvas(key: usize) -> Vec<u8> {
     let mut pixels = vec![0; width * height * 4];
     for y in 8..height - 8 {
         for x in 8..width - 8 {
-            if (x / 8 + y / 8 + key) % 3 == 0 {
+            if (x / 8 + y / 8 + key).is_multiple_of(3) {
                 pixels[(y * width + x) * 4..(y * width + x + 1) * 4]
                     .copy_from_slice(&[220, 240, 255, 255]);
             }
@@ -115,7 +115,15 @@ fn live_artwork_reload_uploads_all_32_cached_sign_canvases_without_a_blank_frame
     ));
     system.run((), &mut world).unwrap();
     let before = preview(&gpu, &world, &scene);
-    assert!(before.chunks_exact(4).filter(|pixel| pixel[0] > 0).count() > 1_000);
+    assert!(
+        before
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|pixel| pixel[0] > 0)
+            .count()
+            > 1_000
+    );
     scene.reload_assets(&artwork(512, 128));
     for tick in 0..3 {
         for key in 0..SIGN_COUNT {

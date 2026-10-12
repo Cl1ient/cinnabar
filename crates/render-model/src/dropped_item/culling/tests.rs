@@ -1,8 +1,8 @@
 use super::*;
-use crate::{
-    DroppedItemCube, ItemMeshVertex, OPAQUE_WHITE, block_mesh, cube_mesh, extruded_sprite_mesh,
-    native_dropped_sprite_mesh,
+use crate::dropped_item::{
+    block_mesh, cube_mesh, extruded_sprite_mesh, native_dropped_sprite_mesh,
 };
+use crate::{DroppedItemCube, ItemMeshVertex, OPAQUE_WHITE};
 use std::sync::Arc;
 
 /// Builds a block fixture from the emitted cube faces, including their original winding.

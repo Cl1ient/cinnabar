@@ -1,6 +1,6 @@
 use super::*;
 use crate::gpu_snapshot::{self, Draw, Gpu, RasterState};
-use bevy::math::{Mat4, Vec3};
+use bevy::math::Vec3;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -66,8 +66,8 @@ fn raster(gpu: &Gpu, model: &DroppedItemModel, eye: Vec3, samples: u32, cull: bo
     } else {
         Vec3::Y
     };
-    let matrix =
-        Mat4::perspective_infinite_reverse_rh(0.65, 1.0, 0.05) * Mat4::look_at_rh(eye, center, up);
+    let matrix = glam::camera::rh::proj::directx::perspective_infinite_reverse(0.65, 1.0, 0.05)
+        * glam::camera::rh::view::look_at_mat4(eye, center, up);
     let view = gpu.buffer(
         &gpu_snapshot::view(matrix, eye),
         wgpu::BufferUsages::UNIFORM,
@@ -220,7 +220,7 @@ fn closed_item_culling_preserves_pixels_from_faces_edges_and_corners() {
                 let before = raster(&gpu, model, eye.normalize() * 2.5, samples, false);
                 let after = raster(&gpu, model, eye.normalize() * 2.5, samples, true);
                 assert!(
-                    before.chunks_exact(4).any(|p| p != &before[..4]),
+                    before.as_chunks::<4>().0.iter().any(|p| p != &before[..4]),
                     "empty fixture {index}/{angle}/{samples}"
                 );
                 let differences = before.iter().zip(&after).filter(|(a, b)| a != b).count();

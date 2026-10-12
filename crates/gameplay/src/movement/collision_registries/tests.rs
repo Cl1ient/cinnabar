@@ -11,6 +11,9 @@ mod bamboo;
 #[path = "tests/custom_shapes.rs"]
 mod custom_shapes;
 
+#[path = "tests/admission.rs"]
+mod admission;
+
 /// Reads the checkout's shared target manifest for registry fixtures.
 fn active_content_registry_protocol() -> u32 {
     serde_json::from_str::<serde_json::Value>(include_str!(
@@ -24,12 +27,54 @@ fn active_content_registry_protocol() -> u32 {
 const BREG_V1001: &[u8] = include_bytes!("../../../../assets/data/block-registry-v1001.bin");
 const BREG_V2193: &[u8] = include_bytes!("../../../../assets/data/block-registry-v2193.bin");
 
-/// Minimal byte-valid PREG stamped for one protocol and bound to one BREG
-/// digest; shape mirrors the committed movement fixtures so no new
-/// artifact is required.
+/// Encodes current compiled facts or a legacy fixture bound to the supplied identities.
 fn synthetic_preg(protocol: u32, breg: &[u8], records: &[assets::RegistryRecord]) -> Vec<u8> {
+    if protocol != active_content_registry_protocol() {
+        return legacy_synthetic_preg(protocol, breg, records);
+    }
+    let original = assets::read_registry_for_protocol(BREG_V2193, 2193).unwrap();
+    let compiled = assets::read_physics_registry_for_protocol(
+        include_bytes!("../../../../assets/data/block-physics-v2193.bin"),
+        BREG_V2193,
+        &original,
+        2193,
+    )
+    .unwrap();
+    let facts: Vec<_> = records
+        .iter()
+        .map(|record| {
+            let identity = original
+                .iter()
+                .find(|candidate| {
+                    candidate.name == record.name
+                        && candidate.canonical_state == record.canonical_state
+                })
+                .or_else(|| {
+                    original
+                        .iter()
+                        .find(|candidate| candidate.name == record.name)
+                })
+                .unwrap();
+            let mut fact = compiled
+                .by_sequential_id(identity.sequential_id)
+                .unwrap()
+                .clone();
+            fact.sequential_id = record.sequential_id;
+            fact.network_hash = record.network_hash;
+            fact
+        })
+        .collect();
+    assets::encode_physics_registry(protocol, breg, records, &facts).unwrap()
+}
+
+/// Encodes the retained legacy layout without compiled shape or movement classifications.
+fn legacy_synthetic_preg(
+    protocol: u32,
+    breg: &[u8],
+    records: &[assets::RegistryRecord],
+) -> Vec<u8> {
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(b"PREG1001");
+    bytes.extend_from_slice(assets::registry::LEGACY_PHYSICS_REGISTRY_MAGIC);
     bytes.extend_from_slice(&protocol.to_le_bytes());
     bytes.extend_from_slice(&u32::try_from(records.len()).unwrap().to_le_bytes());
     bytes.extend_from_slice(&Sha256::digest(breg));
@@ -222,10 +267,15 @@ fn noncolliding_plants_have_vanilla_pick_shapes_in_both_id_spaces() {
                     (shape.min.y + shape.max.y) * 0.5,
                     0.5,
                 );
-                let hit = sim::PaletteWorld::new(&store, registries.registry(mode), 0)
-                    .block_interaction_ray_current(origin, sim::Vec3::new(0.0, 0.0, 1.0), 3.0)
-                    .unwrap()
-                    .expect("a first punch can pick the plant");
+                let hit = sim::PaletteWorld::new(
+                    &store,
+                    registries.registry(mode),
+                    0,
+                    Default::default(),
+                )
+                .block_interaction_ray_current(origin, sim::Vec3::new(0.0, 0.0, 1.0), 3.0)
+                .unwrap()
+                .expect("a first punch can pick the plant");
                 assert_eq!((hit.block_pos, hit.runtime_id), ([0, 0, 2], id));
             }
         }
@@ -447,6 +497,24 @@ fn valid_wrong_protocol_preg_fails_with_typed_cross_carrier_mismatch() {
     assert!(message.contains("world.mcbea"), "{message}");
 }
 
+#[test]
+fn legacy_fixture_keeps_decoding_with_unresolved_movement() {
+    let records = assets::read_registry(BREG_V1001).unwrap();
+    let protocol = assets::registry_header_protocol(BREG_V1001).unwrap();
+    let preg = synthetic_preg(protocol, BREG_V1001, &records);
+    let physics = assets::read_physics_registry(&preg, BREG_V1001, &records).unwrap();
+    assert_eq!(physics.len(), records.len());
+    for record in &records {
+        let fact = physics.by_sequential_id(record.sequential_id).unwrap();
+        assert_eq!(fact.network_hash, record.network_hash);
+        assert_eq!(
+            fact.movement_semantics,
+            assets::registry::MovementSemantics::Unresolved
+        );
+        assert!(fact.shapes.is_none());
+    }
+}
+
 /// Accepted production path: both carriers carry the active protocol.
 #[test]
 fn coherent_active_protocol_pair_binds_completely() {
@@ -471,28 +539,18 @@ fn coherent_active_protocol_pair_binds_completely() {
 /// constants.
 #[test]
 fn mutating_the_authority_flips_the_binding_decision() {
-    let accepted = bind(
-        BREG_V1001,
-        &synthetic_preg(
-            1001,
-            BREG_V1001,
-            &assets::read_registry_for_protocol(BREG_V1001, 1001).expect("checked-in v1001 BREG"),
+    let protocol = active_content_registry_protocol();
+    let records = assets::read_registry_for_protocol(BREG_V2193, protocol).unwrap();
+    let preg = synthetic_preg(protocol, BREG_V2193, &records);
+    assert!(bind(BREG_V2193, &preg, protocol).is_ok());
+    assert!(matches!(
+        bind(
+            BREG_V2193,
+            &preg,
+            assets::registry_header_protocol(BREG_V1001).unwrap()
         ),
-        1001,
-    )
-    .is_ok();
-    let rejected = bind(
-        BREG_V1001,
-        &synthetic_preg(
-            1001,
-            BREG_V1001,
-            &assets::read_registry_for_protocol(BREG_V1001, 1001).expect("checked-in v1001 BREG"),
-        ),
-        2193,
-    )
-    .is_err();
-
-    assert!(accepted && rejected);
+        Err(PhysicsCollisionRegistryError::ProtocolMismatch { .. })
+    ));
 }
 
 #[test]

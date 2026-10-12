@@ -4,10 +4,10 @@ use super::*;
 pub fn spawn_network<P: Send + 'static>(
     config: NetworkConfig,
     prepare_presentation: impl FnOnce(
-        &PackPreparation,
+        protocol::ResourcePackHandoff,
         &protocol::GameData,
         &(dyn Fn() -> bool + Sync),
-    ) -> Option<Result<P, crate::RequiredPackRejected>>
+    ) -> Option<Result<PreparedSession<P>, String>>
     + Send
     + 'static,
     observation: SessionTrace,
@@ -46,6 +46,7 @@ pub fn spawn_network<P: Send + 'static>(
                     LoginSequence::connect_session(
                         &config.socket_dir,
                         &config.display_name,
+                        config.client_random_id,
                         Some(config.client_blob_cache.clone()),
                         Some(config.player_skin),
                         &config.login_settings,
@@ -64,7 +65,7 @@ pub fn spawn_network<P: Send + 'static>(
                     }
                 };
                 tracing::info!(
-                    base_game_version = %game_data.start_game.settings.base_game_version,
+                    base_game_version = %game_data.settings.base_game_version,
                     "world lighting compatibility version"
                 );
                 // The login handoff is one-shot. Take and validate it before
@@ -72,16 +73,13 @@ pub fn spawn_network<P: Send + 'static>(
                 // remains a live base-assets session, a required one ends it.
                 let handoff = session.take_resource_pack_handoff();
                 let cancelled = shutdown_rx.clone();
-                let Some((session_packs, game_data, packs)) = run_blocking_or_cancel(
+                let Some((game_data, packs)) = run_blocking_or_cancel(
                     move || {
-                        let (session_packs, packs) = prepare_session(
-                            handoff,
-                            &game_data,
-                            config.physical_memory_bytes,
-                            &cancelled,
-                            prepare_presentation,
-                        );
-                        (session_packs, game_data, packs)
+                        let packs = unless_cancelled(&cancelled, || {
+                            prepare_presentation(handoff, &game_data, &|| *cancelled.borrow())
+                        })
+                        .flatten();
+                        (game_data, packs)
                     },
                     &mut shutdown_rx,
                 )
@@ -98,20 +96,15 @@ pub fn spawn_network<P: Send + 'static>(
                         return;
                     }
                 };
-                let SessionPacks {
+                let PreparedSession {
                     custom_blocks,
-                    applied: packs_applied,
-                } = session_packs;
-                let bootstrap = WorldBootstrap::from_game_data(&game_data);
-                let server_authoritative_block_breaking =
-                    protocol::server_authoritative_block_breaking(&game_data);
-                let environment = WorldEnvironmentBootstrap::from_game_data(&game_data);
-                let hardcore = protocol::is_hardcore(&game_data);
-                let hud_rules = protocol::HudRules::from_game_data(&game_data);
-                let death_rules = protocol::DeathRules::from_game_data(&game_data);
+                    packs_applied,
+                    packs,
+                } = packs;
+                let bootstrap = game_data.world;
+                let settings = &game_data.settings;
                 let inventory = start_game_inventory_authority(&game_data);
-                let item_registry = match start_game_item_registry(&game_data, bootstrap.dimension)
-                {
+                let item_registry = match start_game_item_registry(&game_data) {
                     Ok(registry) => registry,
                     Err(error) => {
                         send_startup_failure(&control_event_tx, &mut shutdown_rx, error, None)
@@ -119,29 +112,26 @@ pub fn spawn_network<P: Send + 'static>(
                         return;
                     }
                 };
-                let player_game_mode = PlayerGameMode::from_game_data(&game_data);
-                let world_default_game_mode =
-                    PlayerGameMode::world_default_update_from_game_data(&game_data);
-                let player_game_mode_uses_world_default =
-                    PlayerGameMode::bootstrap_uses_world_default(&game_data);
                 if !send_control_event_or_cancel(
                     &control_event_tx,
                     &mut shutdown_rx,
                     NetworkControlEvent::Bootstrap {
                         session_generation,
                         world: bootstrap,
-                        environment,
+                        environment: game_data.environment,
                         custom_blocks,
                         inventory,
                         item_registry,
-                        player_game_mode,
-                        world_default_game_mode,
-                        player_game_mode_uses_world_default,
-                        server_authoritative_block_breaking,
-                        rewind_history_size: protocol::rewind_history_size(&game_data),
-                        hardcore,
-                        hud_rules,
-                        death_rules,
+                        player_game_mode: settings.player_game_mode,
+                        world_default_game_mode: settings.world_default_game_mode,
+                        player_game_mode_uses_world_default: settings
+                            .player_game_mode_uses_world_default,
+                        server_authoritative_block_breaking: settings
+                            .server_authoritative_block_breaking,
+                        rewind_history_size: settings.rewind_history_size,
+                        hardcore: settings.hardcore,
+                        hud_rules: settings.hud_rules,
+                        death_rules: settings.death_rules,
                         packs,
                         terrain_before_spawn: session.terrain_before_spawn(),
                     },
@@ -195,37 +185,6 @@ pub fn spawn_network<P: Send + 'static>(
         experience_gate,
         unflushed: AtomicBool::new(false),
     })
-}
-
-/// What a session keeps of its pack preparation once presentation is prepared.
-struct SessionPacks {
-    custom_blocks: protocol::CustomBlocks,
-    applied: bool,
-}
-
-/// Validates and prepares the login handoff unless cancelled, retaining needed session facts.
-/// Reused presentation carries the retained archives so equivalent packs have one copy.
-fn prepare_session<P>(
-    handoff: protocol::ResourcePackHandoff,
-    game_data: &protocol::GameData,
-    physical_memory_bytes: u64,
-    cancelled: &watch::Receiver<bool>,
-    prepare_presentation: impl FnOnce(
-        &PackPreparation,
-        &protocol::GameData,
-        &(dyn Fn() -> bool + Sync),
-    ) -> Option<Result<P, crate::RequiredPackRejected>>,
-) -> (SessionPacks, Option<Result<P, crate::RequiredPackRejected>>) {
-    let preparation = crate::prepare_session_packs(handoff, game_data, physical_memory_bytes);
-    let packs = unless_cancelled(cancelled, || {
-        prepare_presentation(&preparation, game_data, &|| *cancelled.borrow())
-    })
-    .flatten();
-    let session_packs = SessionPacks {
-        custom_blocks: preparation.inputs.blocks.clone(),
-        applied: preparation.has_applied_packs(),
-    };
-    (session_packs, packs)
 }
 
 /// Drives the session without waiting on a cancelled preparation that is still compiling.
@@ -381,44 +340,6 @@ mod tests {
         assert_eq!(worker.join().unwrap(), Some(true));
         notifier.join().unwrap();
         returned.expect("shutdown blocked behind the running compile");
-    }
-
-    // A presentation that reuses an earlier compile holds its own copy of the archives, so the
-    // session must not also keep the copy this login validated.
-    #[test]
-    fn preparing_a_session_releases_the_archives_it_validated() {
-        let archive = protocol::ResourcePackArchive::unencrypted(
-            "11111111-2222-3333-4444-555555555555".parse().unwrap(),
-            "1.2.3".into(),
-            String::new(),
-            vec![0; 32],
-        );
-        let game_data = protocol::GameData {
-            start_game: Default::default(),
-            item_registry: Default::default(),
-            biome_definitions: None,
-            entity_identifiers: None,
-            creative_content: None,
-        };
-        let (_shutdown, cancelled) = watch::channel(false);
-        let mut validated = None;
-        let (session_packs, packs) = prepare_session(
-            protocol::ResourcePackHandoff::from_archives(vec![archive]),
-            &game_data,
-            u64::MAX,
-            &cancelled,
-            |preparation, _, _| {
-                let resource_pack::PackAdmission::Validated(stack) = &preparation.admission else {
-                    panic!("the handoff admits a stack");
-                };
-                validated = Some(Arc::downgrade(stack));
-                Some(Ok(()))
-            },
-        );
-        assert!(matches!(packs, Some(Ok(()))));
-        assert!(!session_packs.applied, "the only pack was rejected");
-        assert!(session_packs.custom_blocks.blocks.is_empty());
-        assert!(validated.unwrap().upgrade().is_none());
     }
 
     #[tokio::test]

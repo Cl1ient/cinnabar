@@ -16,6 +16,15 @@ pub(super) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum Command {
+    /// Compile final movement, selection and interaction facts for every block state.
+    BlockPhysics {
+        #[arg(long)]
+        registry: PathBuf,
+        #[arg(long)]
+        seed: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Compile the fixed vanilla sun, moon-phase, and cloud textures.
     Atmosphere {
         /// Root of the pinned vanilla resource pack.
@@ -38,6 +47,9 @@ pub(super) enum Command {
         /// Root of the pinned vanilla resource pack.
         #[arg(long)]
         pack: PathBuf,
+        /// Behavior definitions for compiled seats; absence leaves explicit unresolved entries.
+        #[arg(long)]
+        behavior_pack: Option<PathBuf>,
         /// Tracked manifest that pins the local resource-pack source.
         #[arg(long)]
         source_manifest: PathBuf,
@@ -96,6 +108,13 @@ pub(super) enum Command {
     StarterSkinAssets {
         #[arg(long)]
         pack: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Compile the shipped original OreUI artwork named by its source manifest.
+    OreuiIconsAssets {
+        #[arg(long)]
+        source_manifest: PathBuf,
         #[arg(long)]
         out: PathBuf,
     },
@@ -172,6 +191,9 @@ pub(super) enum Command {
     ActorAssets {
         #[arg(long)]
         pack: PathBuf,
+        /// Behavior definitions used by the matching entity carrier's compiled seats.
+        #[arg(long)]
+        behavior_pack: Option<PathBuf>,
         #[arg(long)]
         source_manifest: PathBuf,
         #[arg(long)]

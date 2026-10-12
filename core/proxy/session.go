@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hashimthearab/rust-mcbe/core/internal/bridgecontract"
 	"github.com/hashimthearab/rust-mcbe/core/internal/streamnet"
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/device"
@@ -34,6 +34,7 @@ type sessionServer struct {
 	prepared     *preparedConnections
 	transfers    *TransferState
 	onDisconnect func(DisconnectInfo)
+	onNetwork    func(NetworkObservation)
 	selectTarget func(ctx context.Context, kind, value string) (string, error) // nil rejects targeted Connects
 	dialTarget   func(ctx context.Context, address string) (*resolvedUpstreamTarget, error)
 	device       *device.Profile // nil keeps the client's claimed device
@@ -156,11 +157,17 @@ func (server *sessionServer) serveConn(ctx context.Context, raw net.Conn) error 
 		}
 		return err
 	}
+	if server.onNetwork != nil && prepared.packAdmission != nil {
+		attempt := prepared.packAdmission.attemptID
+		server.onNetwork(NetworkObservation{AttemptID: attempt, LocalRuntimeID: session.runtimeID.Load(), RoundTripMillis: plan.latency})
+		defer server.onNetwork(NetworkObservation{AttemptID: attempt})
+	}
 	return handOffSession(sessionCtx, session, prepared, plan)
 }
 
 // sessionPlan is what the handoff carries, taken from a prepared upstream.
 type sessionPlan struct {
+	latency func() *uint32
 	handoff sessionHandoff
 	packs   []*resource.Pack // content of handoff.Packs, in the same order
 	startup [][]byte         // packets through StartGame
@@ -203,6 +210,7 @@ func (server *sessionServer) prepare(
 		return plan, nil, err
 	}
 	prepared.packetDelay = server.delay
+	latency := latencySampler(prepared.upstream)
 	// The dial returned at StartGame; the observing wrappers below hide the upstream's game data.
 	if game, ok := prepared.upstream.(interface{ GameData() minecraft.GameData }); ok {
 		session.runtimeID.Store(game.GameData().EntityRuntimeID)
@@ -241,7 +249,9 @@ func (server *sessionServer) prepare(
 		PacksRequired: prepared.packStack.required,
 		Packs:         selected,
 	}
+	prepared.releasePacks = referenceSessionPacks(server.prepared.resourcePackCache, selected, packs)
 	plan.packs = packs
+	plan.latency = latency
 	return plan, prepared, nil
 }
 
@@ -268,7 +278,7 @@ func writeSessionHandoff(session *sessionConn, plan sessionPlan) error {
 	if err := session.writeFrame(frame); err != nil {
 		return err
 	}
-	if err := writeSessionPacks(session, plan.packs); err != nil {
+	if err := writeSessionPacks(session.writeFrame, plan.packs); err != nil {
 		return err
 	}
 	for _, data := range plan.rest {
@@ -277,30 +287,6 @@ func writeSessionHandoff(session *sessionConn, plan sessionPlan) error {
 		}
 	}
 	return session.Flush()
-}
-
-// writeSessionPacks streams each archive in PackData frames of at most sessionPackChunkBytes.
-func writeSessionPacks(session *sessionConn, packs []*resource.Pack) error {
-	var frame []byte
-	for index, pack := range packs {
-		size := pack.Size()
-		for offset := 0; offset < size; {
-			n := min(sessionPackChunkBytes, size-offset)
-			if cap(frame) < 5+n {
-				frame = make([]byte, 5+n)
-			}
-			frame = frame[:5+n]
-			putSessionPackHeader(frame, uint32(index))
-			if read, err := pack.ReadAt(frame[5:], int64(offset)); read != n {
-				return errors.Join(io.ErrUnexpectedEOF, err)
-			}
-			if err := session.writeFrame(frame); err != nil {
-				return err
-			}
-			offset += n
-		}
-	}
-	return nil
 }
 
 // readSessionStartup reads upstream batches through StartGame, which a HandoffAtStartGame dial has
@@ -442,7 +428,7 @@ func refuseSessionConnect(raw net.Conn, framed *streamnet.FramedConn, cause erro
 	if errors.As(cause, &refused) {
 		key = refused.key
 	}
-	frame, err := encodeSessionJSON(sessionKindDisconnect, sessionDisconnectMessage{Message: key})
+	frame, err := encodeSessionJSON(bridgecontract.SessionKindDisconnect, sessionDisconnect{Message: key})
 	if err != nil {
 		return err
 	}
@@ -454,11 +440,12 @@ func refuseSessionConnect(raw net.Conn, framed *streamnet.FramedConn, cause erro
 }
 
 // newSessionDownstream accepts only the pinned protocol and valid login client data; a device
-// replaces the client's claimed device, so the claim matches the core's sign-in.
+// replaces the client's claimed device and lets the upstream dialer derive SelfSignedId.
+// Without a core device, the caller's device and identity claims remain intact.
 func newSessionDownstream(request sessionConnectRequest, claimed *device.Profile) (*sessionDownstream, error) {
 	var clientData login.ClientData
 	if err := json.Unmarshal(request.ClientData, &clientData); err != nil {
-		return nil, fmt.Errorf("%w: client data: %v", errMalformedSessionMessage, err)
+		return nil, fmt.Errorf("%w: client data: %v", errMalformedSession, err)
 	}
 	if claimed != nil {
 		claimed.Apply(&clientData)
@@ -474,7 +461,14 @@ func newSessionDownstream(request sessionConnectRequest, claimed *device.Profile
 		return nil, &sessionRefusedError{key: key, err: fmt.Errorf("unsupported session protocol %d/%s; want %d/%s", request.Protocol, clientData.GameVersion, pinned.ID(), pinned.Ver())}
 	}
 	if err := clientData.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: client data: %v", errMalformedSessionMessage, err)
+		return nil, fmt.Errorf("%w: client data: %v", errMalformedSession, err)
+	}
+	if claimed != nil {
+		if clientData.DeviceID == "" {
+			return nil, fmt.Errorf("%w: core device ID is empty", errMalformedSession)
+		}
+		clientData.SelfSignedID = ""
+		clientData.MarkClaims("SelfSignedId")
 	}
 	return &sessionDownstream{
 		identity:    login.IdentityData{DisplayName: clientData.ThirdPartyName},

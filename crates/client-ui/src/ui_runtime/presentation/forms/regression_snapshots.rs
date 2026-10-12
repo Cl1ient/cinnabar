@@ -80,7 +80,7 @@ fn spirit_bundle_snapshot() {
                     DpiScale::new(1.0).unwrap(),
                 )
                 .unwrap();
-            let engine = presentation.form_presentation.engine.as_ref().unwrap();
+            let engine = presentation.engine.as_ref().unwrap();
             engine.drawn_sprites().1.is_empty()
         },
     );
@@ -100,7 +100,7 @@ fn spirit_bundle_snapshot() {
         input.vertices.len(),
         input.batches.len()
     );
-    let engine = presentation.form_presentation.engine.as_ref().unwrap();
+    let engine = presentation.engine.as_ref().unwrap();
     let (drawn, missing) = engine.drawn_sprites();
     assert!(missing.is_empty(), "unresolved form images: {missing:?}");
     for texture in [
@@ -122,15 +122,7 @@ fn spirit_bundle_snapshot() {
             )
             .unwrap();
     }
-    assert_eq!(
-        presentation
-            .form_presentation
-            .engine
-            .as_ref()
-            .unwrap()
-            .passes,
-        passes
-    );
+    assert_eq!(presentation.engine.as_ref().unwrap().passes, passes);
     let image = super::snapshot::rasterize(&input);
     assert!(
         image
@@ -174,7 +166,7 @@ fn spirit_bundle_before_pack_has_stable_resident_pages_after_install() {
         presentation
             .build(&player_runtime, &runtime, 0, [1280, 720], dpi)
             .unwrap();
-        let engine = presentation.form_presentation.engine.as_ref().unwrap();
+        let engine = presentation.engine.as_ref().unwrap();
         let atlas = engine.textures.lock();
         [
             "textures/ui/common/dark_field",
@@ -200,12 +192,7 @@ fn spirit_bundle_before_pack_has_stable_resident_pages_after_install() {
             > 1_000,
         "bundle art did not reach the published pages"
     );
-    let passes = presentation
-        .form_presentation
-        .engine
-        .as_ref()
-        .unwrap()
-        .passes;
+    let passes = presentation.engine.as_ref().unwrap().passes;
     let pages: Vec<_> = settled
         .textures
         .pages()
@@ -216,15 +203,7 @@ fn spirit_bundle_before_pack_has_stable_resident_pages_after_install() {
         let frame = presentation
             .build(&player_runtime, &runtime, now, [1280, 720], dpi)
             .unwrap();
-        assert_eq!(
-            presentation
-                .form_presentation
-                .engine
-                .as_ref()
-                .unwrap()
-                .passes,
-            passes
-        );
+        assert_eq!(presentation.engine.as_ref().unwrap().passes, passes);
         assert_eq!(
             frame
                 .textures
@@ -266,10 +245,7 @@ fn captured_form(
         varint(&mut batch, body.len() as u64 + 1);
         batch.push(id as u8);
         batch.extend(body);
-        let session = protocol::BedrockSession { shield_item_id: 0 };
-        let packet = protocol::decode_batch(batch.into(), &session)
-            .unwrap()
-            .remove(0);
+        let packet = protocol::decode_batch(batch.into()).unwrap().remove(0);
         let Some(protocol::WorldEvent::Ui(event)) = protocol::into_world_event(packet, 0).unwrap()
         else {
             panic!("captured form did not decode as a UI event");
@@ -302,4 +278,95 @@ fn varint(out: &mut Vec<u8>, mut value: u64) {
             break;
         }
     }
+}
+
+#[test]
+fn snapshot_custom_display_name_search() {
+    use crate::ui_runtime::{
+        inventory_actions::visible_creative_entries, item_facts::SessionItemComponents,
+    };
+    use std::sync::Arc;
+    let Some(mut presentation) =
+        crate::test_support::engine_presentation_with(pack_harness::font())
+    else {
+        return;
+    };
+    let mut player = player_state::PlayerState::new(1);
+    let mut runtime = crate::test_support::creative_with(&mut player, 1);
+    runtime
+        .inventory_ledger_mut(&mut player)
+        .apply_registry(&protocol::ItemRegistryEvent {
+            entries: Arc::from([protocol::ItemRegistryEntry {
+                components: None,
+                network_id: 1,
+                identifier: "custom:blade".into(),
+                component_based: true,
+                version: protocol::ItemRegistryVersion::None,
+                component_digest: [0; 32],
+                negotiated_max_stack_size: None,
+                canonical_empty_component_data: true,
+                item_tags: Arc::from([]),
+            }]),
+        });
+    runtime.set_session_items(Some(Arc::new(SessionItemComponents::from_iter([(
+        Arc::from("custom:blade"),
+        protocol::ItemComponents {
+            display_name: Some(Arc::from("Crystal Blade")),
+            ..Default::default()
+        },
+    )]))));
+    runtime.screen_state_mut().creative_tab = ui_screens::container_actions::SEARCH_TAB;
+    runtime.screen_state_mut().search = "Crystal".into();
+    runtime.screen_state_mut().search_focused = true;
+    runtime.set_session_icons(Some(Arc::new(super::super::SessionIcons {
+        icons: vec![super::super::SessionIcon {
+            identifier: Arc::from("custom:blade"),
+            metadata: 0,
+            width: 16,
+            height: 16,
+            rgba8: [70, 225, 220, 255].repeat(16 * 16).into(),
+        }],
+        ..Default::default()
+    })));
+    // Wait for the original fixture icon's asynchronous atlas admission.
+    test_time::eventually_within(
+        std::time::Duration::from_secs(5),
+        "fixture icon is admitted",
+        || {
+            presentation
+                .build(
+                    &player,
+                    &runtime,
+                    0,
+                    [1280, 720],
+                    ui::DpiScale::new(1.0).unwrap(),
+                )
+                .unwrap();
+            presentation.item_icon("custom:blade", 0).is_some()
+        },
+    );
+    let icon = presentation.item_icon("custom:blade", 0).unwrap();
+    presentation.hud_frame_mut().window_icons.book_entries = vec![Some(icon)];
+    let first = runtime.screen_state().creative_row;
+    let matched = visible_creative_entries(runtime.inventory_ledger(&player), &runtime).len();
+    for frame in 0..24 {
+        let input = presentation
+            .build(
+                &player,
+                &runtime,
+                frame * 100,
+                [1280, 720],
+                ui::DpiScale::new(1.0).unwrap(),
+            )
+            .unwrap();
+        if frame == 23 {
+            assert!(
+                !input.vertices.is_empty(),
+                "creative inventory must be visible"
+            );
+            super::snapshot::write(&input, "custom-display-name-search");
+        }
+    }
+    assert_eq!(first, 0);
+    assert_eq!(matched, 1);
 }

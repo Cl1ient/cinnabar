@@ -253,6 +253,15 @@ pub(super) fn command(carrier: &Carrier, context: &Context) -> Result<Command, B
     let manifest = || context.manifest(carrier);
     let read = |name| context.out.join(carriers::by_name(name).unwrap().output);
     Ok(match carrier.recipe {
+        Recipe::BlockPhysics => {
+            let [registry, seed] = <[PathBuf; 2]>::try_from(context.files(carrier))
+                .map_err(|_| "the physics recipe takes a registry and its seed")?;
+            Command::BlockPhysics {
+                registry,
+                seed,
+                out,
+            }
+        }
         Recipe::World => {
             let [registry, light_registry, biome_registry] =
                 <[PathBuf; 3]>::try_from(context.files(carrier))
@@ -275,6 +284,7 @@ pub(super) fn command(carrier: &Carrier, context: &Context) -> Result<Command, B
         },
         Recipe::Entity => Command::EntityAssets {
             pack,
+            behavior_pack: context.seat_behavior_pack(),
             source_manifest: manifest(),
             out,
             report: report(),
@@ -324,6 +334,7 @@ pub(super) fn command(carrier: &Carrier, context: &Context) -> Result<Command, B
         },
         Recipe::Actor => Command::ActorAssets {
             pack,
+            behavior_pack: context.seat_behavior_pack(),
             source_manifest: manifest(),
             out,
             report: report(),
@@ -360,6 +371,10 @@ pub(super) fn command(carrier: &Carrier, context: &Context) -> Result<Command, B
         },
         Recipe::Weather => Command::WeatherAssets { pack, out },
         Recipe::HudExtras => Command::HudExtrasAssets { pack, out },
+        Recipe::OreUiIcons => Command::OreuiIconsAssets {
+            source_manifest: manifest(),
+            out,
+        },
         Recipe::StarterSkins => Command::StarterSkinAssets { pack, out },
         Recipe::AudioPcm => Command::AudioPcmAssets {
             pack,

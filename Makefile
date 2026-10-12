@@ -3,6 +3,8 @@
 CARGO ?= cargo
 # Cargo profile for `make play`; PROFILE=release keeps developer features with shipping optimizations.
 PROFILE ?= play
+# Capture reads the client executable from Cargo artifact messages.
+CLIENT_MESSAGE_FORMAT ?= human
 # Cargo names the dev profile output directory debug.
 PROFILE_DIR = $(if $(filter dev,$(PROFILE)),debug,$(PROFILE))
 EXE = $(if $(filter Windows_NT,$(OS)),.exe)
@@ -16,14 +18,14 @@ POWERSHELL ?= powershell
 NO_VSYNC ?= 0
 TRACY ?= 0
 CLIENT_FEATURES = $(if $(filter 1,$(TRACY)),--features tracy)
-# Passed to the client at launch only; it is never a compile input.
+# Identifies the client build in its session log and supplies runtime acceptance markers.
 RUST_MCBE_BUILD_COMMIT ?= $(shell git rev-parse HEAD)
 DIST_PLATFORM ?= $(if $(filter Windows_NT,$(OS)),windows,$(if $(findstring Darwin,$(shell uname -s)),macos,linux))
 DIST_CLIENT ?= target/release/$(if $(filter windows,$(DIST_PLATFORM)),bedrock-client.exe,bedrock-client)
 DIST_CORE ?= target/release/$(if $(filter windows,$(DIST_PLATFORM)),bedrock-core.exe,bedrock-core)
 DIST_OUT ?= .local/dist/$(DIST_PLATFORM)
 DIST_TARGET ?= $(shell rustc --print host-tuple)
-DIST_GIT_COMMIT ?= $(shell git rev-parse HEAD)
+DIST_GIT_COMMIT ?= $(RUST_MCBE_BUILD_COMMIT)
 DIST_NOTICES ?= THIRD_PARTY_NOTICES.md
 
 VANILLA_SOURCE_MANIFEST ?= assets/vanilla-source.json
@@ -41,14 +43,11 @@ FONT_SOURCE_MANIFEST ?= assets/cinnangles-sans-source.json
 FONT_SOURCE ?= assets/fonts/CinnanglesSans.ttf
 BEDROCK_TARGET_MANIFEST ?= assets/bedrock-target.json
 REGISTRY_FOUNDATION_MANIFEST ?= assets/registry-foundation-v2193.json
-PHYSICS_REGISTRY ?= .local/assets/block-physics-v2193.bin
-PHYSICS_REGISTRY_SOURCE ?= crates/assets/data/block-physics-v2193.bin
-PHYSICS_REGISTRY_SHA256 ?= crates/assets/data/block-physics-v2193.sha256
 HUD_SOURCE_MANIFEST ?= assets/hud-source-v2193.json
 # Development-only outputs of explicitly selected local packs; the carrier table owns the rest.
 LOCAL_ASSET_DIR ?= .local/assets/compiled
+PHYSICS_REGISTRY ?= $(LOCAL_ASSET_DIR)/block-physics-v2193.bin
 CINNABAR_CLOUDS_PNG ?=
-PHYSICS_REGISTRY_CHECK = $(GO) -C tools/registrygen run ./cmd/hashcheck -file "$(abspath $(PHYSICS_REGISTRY))" -sha256-file "$(abspath $(PHYSICS_REGISTRY_SHA256))"
 REGISTRY_FOUNDATION_CHECK = $(GO) -C tools/registrygen run ./cmd/foundationcheck -manifest "$(abspath $(REGISTRY_FOUNDATION_MANIFEST))"
 ASSETC = $(CARGO) run --profile $(PROFILE) --locked -p asset-compiler --bin assetc --
 VANILLA_ASSET_FETCH = $(ASSETC) vanilla-pack --source-manifest "$(VANILLA_SOURCE_MANIFEST)" --accept-eula
@@ -56,16 +55,6 @@ VANILLA_ASSET_FETCH = $(ASSETC) vanilla-pack --source-manifest "$(VANILLA_SOURCE
 ASSETS_PREPARE = $(ASSETC) prepare --accept-eula $(if $(strip $(CINNABAR_CLOUDS_PNG)),--clouds-override "$(CINNABAR_CLOUDS_PNG)")
 LOCAL_FONT_ASSET_COMPILE = $(ASSETC) font-assets --pack "$(FONT_PACK_DIR)" --source-manifest "$(VANILLA_SOURCE_MANIFEST)" --out "$(LOCAL_ASSET_DIR)/vanilla-v1.mcbefont" --report "$(LOCAL_ASSET_DIR)/font-assets.json"
 LOCAL_HUD_ASSET_COMPILE = $(ASSETC) hud-assets --pack "$(HUD_PACK_DIR)" --source-manifest "$(HUD_SOURCE_MANIFEST)" --out "$(LOCAL_ASSET_DIR)/vanilla-v1.mcbehud" --report "$(LOCAL_ASSET_DIR)/hud-assets.json"
-
-ifeq ($(OS),Windows_NT)
-# PowerShell single-quoted literals escape an embedded apostrophe only by
-# doubling it, so every path is quoted through this helper.
-ps_literal = '$(subst ','',$(1))'
-# Copy-Item keeps the source's write time; restamp the copy so make sees it as current.
-PHYSICS_REGISTRY_INSTALL = $(POWERSHELL) -NoProfile -Command "New-Item -ItemType Directory -Force -Path $(call ps_literal,$(dir $(abspath $(PHYSICS_REGISTRY)))) | Out-Null; Copy-Item -Force $(call ps_literal,$(abspath $(PHYSICS_REGISTRY_SOURCE))) $(call ps_literal,$(abspath $(PHYSICS_REGISTRY))); (Get-Item -LiteralPath $(call ps_literal,$(abspath $(PHYSICS_REGISTRY)))).LastWriteTime = Get-Date"
-else
-PHYSICS_REGISTRY_INSTALL = mkdir -p "$(dir $(abspath $(PHYSICS_REGISTRY)))" && cp "$(abspath $(PHYSICS_REGISTRY_SOURCE))" "$(abspath $(PHYSICS_REGISTRY))"
-endif
 
 .PHONY: help vanilla-assets assets font-assets-local hud-assets-local physics-assets local-server play dist-local
 .PHONY: registry-foundation-check jsonui-editor
@@ -77,7 +66,7 @@ help:
 	@echo make NAME-assets     - Build one carrier and what it reads, e.g. hud-assets or audio-bank-assets
 	@echo make font-assets-local - Compile a reviewed local bitmap font source via FONT_PACK_DIR
 	@echo make hud-assets-local - Compile from an explicitly selected matching pack via HUD_PACK_DIR
-	@echo make physics-assets  - Install and verify the pinned protocol-2193 physics registry
+	@echo make physics-assets  - Compile block movement and selection geometry
 	@echo make local-server    - Build the dragonfly local-world server and experience-runtime beside the core binary
 	@echo make play            - Refresh stale assets, build the core, and run the full game from the menu
 	@echo make play TRACY=1    - Run with opt-in Tracy frame attribution
@@ -113,12 +102,8 @@ font-assets-local:
 hud-assets-local:
 	$(LOCAL_HUD_ASSET_COMPILE)
 
-physics-assets: $(PHYSICS_REGISTRY)
-
-# Installed and verified only when the pinned source, its hash or the target change.
-$(PHYSICS_REGISTRY): $(PHYSICS_REGISTRY_SOURCE) $(PHYSICS_REGISTRY_SHA256) $(BEDROCK_TARGET_MANIFEST)
-	$(PHYSICS_REGISTRY_INSTALL)
-	$(PHYSICS_REGISTRY_CHECK)
+physics-assets:
+	$(ASSETS_PREPARE) --only physics
 
 $(PACK_SENTINEL): $(VANILLA_SOURCE_MANIFEST)
 	$(VANILLA_ASSET_FETCH)
@@ -134,13 +119,16 @@ local-server:
 	$(CARGO) build -p experience-runtime --release --locked
 
 # Full game from the launcher menu: refresh assets, build the core and local server beside the client, run it.
-play: assets physics-assets
+play-build: assets
 ifeq ($(CINNABAR_DEV_SERVER_EXPERIENCES),1)
 	$(CARGO) build --profile $(PROFILE) -p mod-host --bin mod-host --locked
 	$(CARGO) build --profile $(PROFILE) -p mod-host --bin cinnabar-media-helper --features media --locked
 endif
 	$(GO) build -o "$(abspath target/$(PROFILE_DIR)/bedrock-core$(EXE))" ./core/cmd/bedrock-core
 	-cd tools/localserver && GOWORK=off $(GO) build -o "$(abspath target/$(PROFILE_DIR)/bedrock-local-server$(EXE))" .
+	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build --profile $(PROFILE) -p bedrock-client --locked $(CLIENT_FEATURES) --message-format=$(CLIENT_MESSAGE_FORMAT)
+
+play: play-build
 	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) run --profile $(PROFILE) -p bedrock-client --locked $(CLIENT_FEATURES) -- $(if $(filter 1,$(NO_VSYNC)),--no-vsync)
 
 dist-local:
@@ -161,7 +149,7 @@ PKG_CORE_LDFLAGS = -s -w
 PACKAGE_CARGO_FLAGS ?=
 .PHONY: package-binaries package-macos package-windows package-linux
 package-binaries:
-	$(CARGO) build $(PACKAGE_CARGO_FLAGS) --release --locked --no-default-features -p bedrock-client -p asset-compiler --features bedrock-client/local-mods --bin bedrock-client --bin assetc
+	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build $(PACKAGE_CARGO_FLAGS) --release --locked --no-default-features -p bedrock-client -p asset-compiler --features bedrock-client/local-mods --bin bedrock-client --bin assetc
 	$(GO) build -trimpath -ldflags "$(PKG_CORE_LDFLAGS)" -o "$(DIST_CORE)" ./core/cmd/bedrock-core
 	cd tools/localserver && GOWORK=off $(GO) build -trimpath -ldflags "-s -w" -o "$(abspath $(LOCAL_SERVER_OUT))" .
 
@@ -176,3 +164,12 @@ package-windows: package-binaries $(FONT_SOURCE)
 
 package-linux: package-binaries $(FONT_SOURCE)
 	bash packaging/linux/build-appimage.sh
+
+.PHONY: diag
+diag:
+	$(CARGO) run -p devtool --locked -- diag
+
+SECONDS ?= 180
+.PHONY: capture play-build
+capture:
+	$(CARGO) run -p devtool --locked -- capture --seconds "$(SECONDS)" $(if $(BASELINE),--baseline "$(BASELINE)") $(if $(HZ),--refresh-hz "$(HZ)") $(if $(filter 1,$(NO_VSYNC)),--no-vsync)

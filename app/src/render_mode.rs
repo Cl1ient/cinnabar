@@ -10,20 +10,20 @@ use std::{
 
 use anyhow::{Context, Result};
 use bevy::{
-    camera::Camera3dDepthTextureUsage,
+    camera::{Camera3dDepthTextureUsage, Hdr},
     ecs::system::lifetimeless::{Read, Write},
     post_process::bloom::Bloom,
     prelude::*,
-    render::{render_resource::TextureUsages, view::Hdr},
+    render::render_resource::TextureUsages,
 };
-use render::{EnhancedRenderPlugin, EnhancedRendering};
 use render_model::enhanced_rendering_enabled;
 use serde::{Deserialize, Serialize};
 use ui::RenderMode;
+use {render::EnhancedRenderPlugin, render_scene::EnhancedRendering};
 
 use {
-    crate::{menu::MenuRuntime, settings_runtime::RuntimeSettings},
-    client_presentation::camera::FlyCamera,
+    client_presentation::camera::FlyCamera, client_shell::menu::MenuRuntime,
+    client_state::RuntimeSettings,
 };
 
 pub(crate) const RENDER_MODE_ENV: &str = "CINNABAR_RENDER_MODE";
@@ -55,14 +55,20 @@ pub(crate) fn save_render_mode(path: &Path, mode: RenderMode) -> Result<()> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        Context::with_context(fs::create_dir_all(parent), || {
+            format!("create {}", parent.display())
+        })?;
     }
     let bytes = serde_json::to_vec_pretty(&GraphicsFile {
         render_mode: mode.as_str().to_owned(),
     })?;
     let temp = path.with_extension("json.tmp");
-    fs::write(&temp, bytes).with_context(|| format!("write {}", temp.display()))?;
-    fs::rename(&temp, path).with_context(|| format!("replace {}", path.display()))
+    Context::with_context(fs::write(&temp, bytes), || {
+        format!("write {}", temp.display())
+    })?;
+    Context::with_context(fs::rename(&temp, path), || {
+        format!("replace {}", path.display())
+    })
 }
 
 /// CLI beats environment beats the saved file. Attributable evidence runs

@@ -237,6 +237,10 @@ pub enum CommittedUiEvent {
         sequence: u64,
         event: protocol::ActorEffectEvent,
     },
+    /// The local player's item activation, retaining its inventory FIFO position.
+    LocalTotemActivation {
+        sequence: u64,
+    },
     /// The local player's authoritative mount after a link or actor-lifetime change.
     /// `None` means the player is no longer riding anything.
     LocalMount {
@@ -252,7 +256,7 @@ pub struct CommittedAudioEvent {
     pub dimension: i32,
     pub dimension_epoch: u64,
     /// Already-committed sound released by this actor's fixed-tick synchronization.
-    pub actor_synchronization: Option<crate::ActorLifetimeId>,
+    pub actor_synchronization: Option<actor_animation::ActorLifetimeId>,
     pub event: AudioEvent,
 }
 

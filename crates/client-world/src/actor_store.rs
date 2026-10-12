@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 mod aim_assist;
+mod animated;
 mod appearance_preparation;
-pub(crate) mod color;
+mod effect_members;
 #[cfg(test)]
 pub(crate) use appearance_preparation::MAX_APPEARANCES_PUBLISHED_PER_FRAME;
 
@@ -16,11 +17,12 @@ use protocol::{
 
 use crate::{
     action::{ActorSourceTick, MAX_ACTION_EVENTS_PER_TICK, RemoteActionStore},
-    actor_animation::{ActorAnimationStore, ActorLifetimeId},
     item::ItemStateStore,
 };
+use actor_animation::{ActorAnimationStore, ActorLifetimeId, MAX_ANIMATED_ACTORS};
 
-pub(crate) const MAX_TRACKED_ACTORS: usize = 8_192;
+/// Every tracked actor keeps an animation rig.
+pub(crate) const MAX_TRACKED_ACTORS: usize = MAX_ANIMATED_ACTORS;
 pub(crate) const MAX_TRACKED_PLAYERS: usize = 4_096;
 pub(crate) const MAX_TRACKED_ACTOR_LINKS: usize = MAX_TRACKED_ACTORS;
 pub(crate) const MAX_TRACKED_PLAYER_SKIN_BYTES: usize = MAX_PLAYER_LIST_SKIN_BYTES;
@@ -52,7 +54,6 @@ pub(crate) const ACTOR_FLAG_IMMOBILE: u32 = 16;
 const ACTOR_FLAG_GLIDING: u32 = 32;
 pub(crate) const ACTOR_FLAG_CRAWLING: u32 = 114;
 pub(crate) const ACTOR_FLAG_SITTING: u32 = 24;
-pub(crate) const ACTOR_FLAG_TAMED: u32 = 28;
 const ACTOR_FLAG_HAS_GRAVITY: u32 = 49;
 const ACTOR_FLAG_USES_UNIFORM_AIR_DRAG: u32 = 128;
 
@@ -94,6 +95,8 @@ pub struct ActorSnapshot {
     pub spawn_revision: u64,
     pub movement_revision: u64,
     pub kind: ActorKind,
+    /// Resolved at packet admission; frame and ray paths read these numeric dispositions.
+    pub interaction_traits: assets::interactions::EntityInteractionTraits,
     pub position: [f32; 3],
     pub velocity: [f32; 3],
     pub pitch: f32,
@@ -151,13 +154,6 @@ impl ActorSnapshot {
         self.status.native_velocity
     }
 
-    /// These actors animate their full yaw through the target-rotation queries.
-    #[must_use]
-    pub fn target_rotation_is_absolute(&self) -> bool {
-        matches!(&self.kind, ActorKind::Entity { identifier } if matches!(identifier.as_ref(),
-            "minecraft:arrow" | "minecraft:fireworks_rocket" | "minecraft:wither_skull" | "minecraft:wither_skull_dangerous"))
-    }
-
     /// The render position `alpha` of the way from the previous tick's pose to the current one,
     /// or `None` when a component is not finite.
     #[must_use]
@@ -191,6 +187,7 @@ impl ActorSnapshot {
             runtime_id: spawn.runtime_id,
             spawn_revision,
             movement_revision: 0,
+            interaction_traits: assets::interactions::EntityInteractionTraits::Unresolved,
             kind: spawn.kind,
             position,
             velocity: spawn.velocity,
@@ -247,6 +244,7 @@ impl ActorSnapshot {
             runtime_id,
             spawn_revision: revision,
             movement_revision: revision,
+            interaction_traits: assets::interactions::EntityInteractionTraits::GENERIC_MOB,
             kind: ActorKind::Player { uuid, username },
             position: feed.position,
             velocity: feed.velocity,
@@ -291,6 +289,9 @@ impl ActorSnapshot {
             LocalItemUse::Unpredicted => {}
             LocalItemUse::Idle => self.set_flag(ACTOR_FLAG_USING_ITEM, false),
             LocalItemUse::Using => self.set_flag(ACTOR_FLAG_USING_ITEM, true),
+            LocalItemUse::Predicted { elapsed_ticks, .. } => {
+                self.set_flag(ACTOR_FLAG_USING_ITEM, elapsed_ticks.is_some());
+            }
         }
     }
 
@@ -399,6 +400,22 @@ impl ActorSnapshot {
             feet[1] += 0.66 * (max[1] - min[1]);
         }
         feet
+    }
+
+    /// Restores the native actor-state origin from stored collision feet.
+    pub fn native_position(&self) -> [f32; 3] {
+        let mut position = self.position;
+        position[1] += self.network_position_offset();
+        position
+    }
+
+    /// Native actor-state origin at supplied retained feet, preserving this class's decoded offset.
+    pub fn native_position_at(&self, mut position: [f32; 3]) -> Option<[f32; 3]> {
+        position[1] += self.network_position_offset();
+        position
+            .iter()
+            .all(|value| value.is_finite())
+            .then_some(position)
     }
 
     /// Offset from stored collision feet to the native actor-state position.
@@ -662,6 +679,8 @@ pub struct LocalPlayerFeed {
     /// Identifiers of the client-owned main-hand and off-hand items.
     pub main_hand: Option<std::sync::Arc<str>>,
     pub off_hand: Option<std::sync::Arc<str>>,
+    /// Numerical registry identities for the main hand and off hand; zero means empty.
+    pub held_network_ids: [i32; 2],
     /// The main-hand stack's data value.
     pub main_hand_metadata: u32,
     /// Positive server identity for the selected stack, if one is available.
@@ -694,6 +713,12 @@ pub enum LocalItemUse {
     Idle,
     /// A predicted item is in use.
     Using,
+    /// Gameplay's selected-stack clock, including charge-duration modifiers and loaded state.
+    Predicted {
+        elapsed_ticks: Option<u32>,
+        max_ticks: u32,
+        charged: bool,
+    },
 }
 
 /// Sparse session state, including immutable prepared appearances; GPU resources stay in presentation.
@@ -710,8 +735,11 @@ pub(crate) struct ActorStore {
     actor_identifier_skips: u64,
     player_game_mode_skips: u64,
     world_default_game_mode: Option<protocol::PlayerGameMode>,
-    aim_actor_classes: HashMap<std::sync::Arc<str>, bool>,
+    entity_assets: Option<std::sync::Arc<assets::RuntimeEntityAssets>>,
+    custom_actor_traits:
+        HashMap<std::sync::Arc<str>, assets::interactions::EntityInteractionTraits>,
     actors: HashMap<u64, ActorSnapshot>,
+    effect_members: effect_members::EffectMembers,
     unique_to_runtime: HashMap<i64, u64>,
     rider_to_ridden: HashMap<i64, i64>,
     max_actor_links: usize,
@@ -749,9 +777,11 @@ pub(crate) struct ActorStore {
     local_flying: bool,
     /// Held items of the client-fed local player, which the item store never tracks.
     local_hands: [Option<std::sync::Arc<str>>; 2],
+    local_held_network_ids: [i32; 2],
     local_main_metadata: u32,
     local_main_stack_id: Option<i32>,
     local_main_slot: u8,
+    local_item_use: LocalItemUse,
     local_bedrock_swing_ticks: i32,
     local_java_swing_ticks: i32,
     /// View `[pitch, yaw]` in degrees, sampled into each animation tick.
@@ -759,9 +789,10 @@ pub(crate) struct ActorStore {
     /// View world position, sampled into each animation tick.
     camera_position: [f32; 3],
     /// Rigs outside this view hold their pose instead of animating.
-    animation_view: Option<crate::actor_animation::ActorAnimationView>,
-    /// Seat layouts for mounts whose riders stream no seat offset.
-    seat_defaults: std::sync::Arc<SeatDefaults>,
+    animation_view: Option<actor_animation::ActorAnimationView>,
+    /// Seat descriptor per mount, for riders that stream no seat offset.
+    seat_bindings: HashMap<u64, Option<u32>>,
+    seat_bases: HashMap<std::sync::Arc<str>, Option<u32>>,
     property_registry: properties::PropertyRegistry,
     /// Latest local-player knockback `(sequence, [x, z])`, for hurt direction inference.
     local_knockback: Option<(u64, [f32; 2])>,
@@ -813,7 +844,7 @@ pub use hurt::{
 };
 pub use lightning::LightningBoltView;
 pub(crate) use placement::FLAG_BABY;
-pub use placement::{ActorFluidProbe, RideSeat, SeatDefaults, SeatRequirement};
+pub use placement::{ActorFluidProbe, RideSeat};
 pub use properties::PropertyDefault;
 pub use shadow::ActorShadowCaster;
 
@@ -848,6 +879,8 @@ fn event_dimension(event: &ActorEvent) -> Option<i32> {
     }
 }
 
+#[cfg(test)]
+mod animation_tests;
 #[cfg(test)]
 mod local_tests;
 mod player_appearance;

@@ -1,6 +1,6 @@
 //! Retained viewport bytes and the clock used only by visible item glint.
 
-use super::{glint::UiGlintSettings, shader::UiViewportUniform};
+use {super::shader::UiViewportUniform, render_scene::UiGlintSettings};
 
 /// Keeps the last uniform submitted to the renderer's existing viewport buffer.
 #[derive(Default)]
@@ -59,7 +59,7 @@ mod tests {
             || panic!("static UI sampled the animation clock"),
             |_| dispatched += 1,
         );
-        let before = crate::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         for _ in 0..10 {
             uploads.upload(
                 [1920, 1080],
@@ -69,7 +69,7 @@ mod tests {
                 |_| dispatched += 1,
             );
         }
-        let allocations = crate::alloc_count::thread_allocations() - before;
+        let allocations = test_alloc::thread_allocations() - before;
         assert_eq!(allocations, 0);
         assert_eq!(dispatched, 1, "unchanged viewport uploaded");
         assert_eq!(uploads.writes, dispatched);

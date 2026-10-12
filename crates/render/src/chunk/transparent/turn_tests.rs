@@ -1,12 +1,12 @@
 //! Turning the camera over water draws every newly visible sub-chunk in order at once.
+
 use super::transparent_strafe::{
     Drawn, Fixture, drawn_water, fixture_with, is_shore, ocean_surface,
 };
 use super::*;
-use bevy::{
-    core_pipeline::core_3d::Transparent3d, ecs::system::RunSystemOnce,
-    render::render_phase::ViewSortedRenderPhases,
-};
+use bevy::ecs::system::RunSystemOnce;
+use bevy::{core_pipeline::core_3d::Transparent3d, render::render_phase::ViewSortedRenderPhases};
+use render_scene::{ChunkBiomeTints, ChunkRenderInstance, TransparentSortMetrics};
 
 /// One in five sub-chunks has side faces, so the sorted path is exercised too.
 const SHORE_PERIOD: i32 = 5;
@@ -115,7 +115,7 @@ fn a_duplicate_visible_key_draws_its_current_upload_once() {
         .unwrap();
     let drawn = phase
         .items
-        .iter()
+        .values()
         .map(|item| item.entity.0)
         .filter(|&entity| {
             world
@@ -405,11 +405,11 @@ fn witness_counts_water_drawn_without_a_sort() {
     );
 }
 
-/// A direct water draw covers the transparent records only, flags them as water for the shared
-/// transparent pipeline, and gives the shader the metadata index through a base vertex offset
-/// by one, so it never reads the ref buffer.
+/// A direct water draw covers the transparent records only and flags them as water records for
+/// the shared transparent pipeline, at base vertex zero: the records name their own metadata
+/// slot, so the shader never reads the ref buffer or the builtin vertex index for it.
 #[test]
-fn direct_water_draw_covers_transparent_records_with_offset_metadata() {
+fn direct_water_draw_covers_transparent_records_at_base_vertex_zero() {
     let identity =
         TransparentAllocationIdentity::new(SubChunkKey::new(0, 0, 0, 0), 1, 16..48, 64..80, 6);
     let mut allocation = super::transparent::resident_transparent_allocation(
@@ -423,7 +423,12 @@ fn direct_water_draw_covers_transparent_records_with_offset_metadata() {
             command.instance_count,
             command.base_vertex
         ),
-        (4 | meshing::liquid::TRANSPARENT_WATER_DRAW_FLAG, 8, 28)
+        (
+            4 | meshing::liquid::TRANSPARENT_WATER_DRAW_FLAG
+                | meshing::liquid::TRANSPARENT_WATER_RECORD_FLAG,
+            8,
+            0
+        )
     );
     allocation.depth_liquid_range = Some(10..12);
     assert_eq!(

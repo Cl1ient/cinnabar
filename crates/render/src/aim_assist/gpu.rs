@@ -1,9 +1,12 @@
 //! One retained uniform and two texture bindings implement target highlight drawing.
 
-use super::{AimAssistHighlightScene, AimAssistTexture};
-use bevy::image::BevyDefault;
+use bevy::prelude::IntoScheduleConfigs;
 #[cfg(test)]
-use bevy::prelude::{IntoSystem, Mut, System, Vec3};
+use bevy::prelude::System;
+#[cfg(test)]
+use bevy::prelude::{IntoSystem, Mut, Vec3};
+use bevy::render::render_phase::AddRenderCommand;
+use bevy::render::render_resource::ShaderType;
 use bevy::{
     asset::{load_internal_asset, uuid_handle},
     core_pipeline::core_3d::{CORE_3D_DEPTH_FORMAT, Transparent3d},
@@ -15,15 +18,15 @@ use bevy::{
         },
     },
     prelude::{
-        App, BevyError, Commands, Entity, FromWorld, Handle, IntoScheduleConfigs, Msaa, Plugin,
-        Query, Res, ResMut, Resource, Result, Shader, World, default,
+        App, BevyError, Commands, Entity, FromWorld, Handle, Msaa, Plugin, Query, Res, ResMut,
+        Resource, Result, Shader, World, default,
     },
     render::{
         Render, RenderApp, RenderStartup, RenderSystems,
         extract_resource::ExtractResourcePlugin,
         render_phase::{
-            AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
-            RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
+            DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand, RenderCommandResult,
+            SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
         },
         render_resource::{
             AddressMode, BindGroup, BindGroupEntry, BindGroupLayoutDescriptor,
@@ -32,15 +35,16 @@ use bevy::{
             ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState,
             Extent3d, FilterMode, FragmentState, PipelineCache, RenderPipeline,
             RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
-            ShaderType, Specializer, SpecializerKey, Texture, TextureDataOrder, TextureDescriptor,
+            Specializer, SpecializerKey, Texture, TextureDataOrder, TextureDescriptor,
             TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
             TextureViewDescriptor, TextureViewDimension, Variants, VertexState,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        view::{ExtractedView, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
+        view::{ExtractedView, ViewUniform, ViewUniformOffset, ViewUniforms},
     },
 };
+use render_scene::{AimAssistHighlightScene, AimAssistTexture};
 use std::sync::Arc;
 
 const SHADER: Handle<Shader> = uuid_handle!("611dc958-9030-414c-9530-297ebf8f6846");
@@ -75,9 +79,10 @@ fn install(app: &mut App) {
     load_internal_asset!(
         app,
         SHADER,
-        "highlight.wgsl",
-        crate::shader_safety::from_wgsl
+        "highlight.wesl",
+        crate::shader_safety::from_wesl
     );
+    crate::transparent_phase::install(app.sub_app_mut(RenderApp));
     app.sub_app_mut(RenderApp)
         .insert_resource(Installed)
         .init_resource::<HighlightPipeline>()
@@ -88,7 +93,7 @@ fn install(app: &mut App) {
             (
                 prepare.in_set(RenderSystems::PrepareBindGroups),
                 queue_highlight
-                    .run_if(crate::panorama::world_passes_enabled)
+                    .run_if(render_scene::panorama::world_passes_enabled)
                     .in_set(RenderSystems::Queue),
             ),
         );
@@ -301,7 +306,7 @@ impl FromWorld for HighlightPipeline {
                 shader: SHADER,
                 entry_point: Some("highlight_fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::bevy_default(),
+                    format: render_scene::SCENE_COLOR_FORMAT,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::RED | ColorWrites::GREEN | ColorWrites::BLUE,
                 })],
@@ -309,8 +314,8 @@ impl FromWorld for HighlightPipeline {
             }),
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: CompareFunction::Greater,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(CompareFunction::Greater),
                 stencil: default(),
                 // Reverse depth preserves the native bias toward the camera.
                 bias: DepthBiasState {
@@ -343,11 +348,11 @@ impl Specializer<RenderPipeline> for PipelineSpecializer {
         descriptor: &mut RenderPipelineDescriptor,
     ) -> Result<Canonical<Self::Key>, BevyError> {
         descriptor.multisample.count = key.msaa.samples();
-        descriptor.depth_stencil.as_mut().unwrap().depth_compare = if key.occluded {
+        descriptor.depth_stencil.as_mut().unwrap().depth_compare = Some(if key.occluded {
             CompareFunction::Less
         } else {
             CompareFunction::Greater
-        };
+        });
         descriptor.fragment.as_mut().unwrap().entry_point = Some(
             if key.occluded {
                 "highlight_occluded_fragment"
@@ -360,9 +365,9 @@ impl Specializer<RenderPipeline> for PipelineSpecializer {
             .as_mut()
             .unwrap()
             .format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         Ok(key)
     }
@@ -397,7 +402,13 @@ fn queue_highlight(
     mut pipeline: ResMut<HighlightPipeline>,
     mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     draw_functions: Res<DrawFunctions<Transparent3d>>,
-    views: Query<(Entity, &MainEntity, &ExtractedView, &Msaa)>,
+    views: Query<(
+        Entity,
+        &MainEntity,
+        &ExtractedView,
+        &bevy::render::camera::ExtractedCamera,
+        &Msaa,
+    )>,
 ) {
     let Some(target) = scene.target else { return };
     if scene
@@ -408,7 +419,7 @@ fn queue_highlight(
         return;
     }
     let draw_function = draw_functions.read().id::<DrawCommands>();
-    for (view_entity, main_entity, view, msaa) in &views {
+    for (view_entity, main_entity, view, extracted_camera, msaa) in &views {
         let Some(phase) = phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -417,21 +428,26 @@ fn queue_highlight(
                 &pipeline_cache,
                 PipelineKey {
                     msaa: *msaa,
-                    hdr: view.hdr,
+                    hdr: extracted_camera.hdr,
                     occluded,
                 },
             ) else {
                 continue;
             };
-            phase.add(Transparent3d {
-                entity: (view_entity, *main_entity),
-                pipeline: pipeline_id,
-                draw_function,
-                distance: view.rangefinder3d().distance(&target.center),
-                batch_range: 0..1,
-                extra_index: PhaseItemExtraIndex::None,
-                indexed: false,
-            });
+            crate::transparent_phase::add(
+                phase,
+                Transparent3d {
+                    sorting_info:
+                        bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
+                    entity: (view_entity, *main_entity),
+                    pipeline: pipeline_id,
+                    draw_function,
+                    distance: view.rangefinder3d().distance(&target.center),
+                    batch_range: 0..1,
+                    extra_index: PhaseItemExtraIndex::None,
+                    indexed: false,
+                },
+            );
         }
     }
 }
@@ -466,8 +482,8 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for DrawHighlight<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AimAssistHighlight, queue_review_support as fixture};
     use bevy::ecs::system::RunSystemOnce;
+    use {crate::queue_review_support as fixture, render_scene::AimAssistHighlight};
 
     /// A small NOOP fixture retains a real view binding and exercises upload bookkeeping.
     fn app() -> App {
@@ -504,9 +520,9 @@ mod tests {
             (gpu.texture_uploads, gpu.uniform_uploads, gpu.bind_rebuilds),
             (1, 1, 1)
         );
-        let before = crate::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         system.run((), app.world_mut()).unwrap();
-        assert_eq!(crate::alloc_count::thread_allocations() - before, 0);
+        assert_eq!(test_alloc::thread_allocations() - before, 0);
         let gpu = app.world().resource::<HighlightGpu>();
         assert_eq!(
             (gpu.texture_uploads, gpu.uniform_uploads, gpu.bind_rebuilds),
@@ -554,7 +570,7 @@ mod tests {
             let mut cache = app.world_mut().resource_mut::<PipelineCache>();
             let descriptor = fixture::queued_descriptor(&mut cache, id);
             let depth = descriptor.depth_stencil.as_ref().unwrap();
-            assert_eq!(depth.depth_compare, expected);
+            assert_eq!(depth.depth_compare, Some(expected));
             assert_eq!(
                 depth.bias,
                 DepthBiasState {
@@ -563,7 +579,7 @@ mod tests {
                     clamp: 0.0
                 }
             );
-            assert!(!depth.depth_write_enabled);
+            assert_eq!(depth.depth_write_enabled, Some(false));
             let colour = descriptor.fragment.as_ref().unwrap().targets[0]
                 .as_ref()
                 .unwrap();
@@ -582,7 +598,7 @@ mod tests {
         app.init_resource::<HighlightPipeline>();
         let (&msaa, view) = app
             .world_mut()
-            .query::<(&Msaa, &ExtractedView)>()
+            .query::<(&Msaa, &bevy::render::camera::ExtractedCamera)>()
             .single(app.world())
             .unwrap();
         let hdr = view.hdr;
@@ -597,7 +613,7 @@ mod tests {
                     output: None,
                 };
                 pipeline.prewarm(cache, warm, &mut ids).unwrap();
-                let before = crate::alloc_count::thread_allocations();
+                let before = test_alloc::thread_allocations();
                 for occluded in [true, false] {
                     let key = PipelineKey {
                         msaa,
@@ -607,7 +623,7 @@ mod tests {
                     let drawn = pipeline.variants.specialize(cache, key).unwrap();
                     assert!(ids.contains(&drawn));
                 }
-                assert_eq!(crate::alloc_count::thread_allocations() - before, 0);
+                assert_eq!(test_alloc::thread_allocations() - before, 0);
             });
     }
 
@@ -615,7 +631,7 @@ mod tests {
     fn shader_resources_match_their_stage_visibility() {
         let pipeline = HighlightPipeline::from_world(&mut World::new());
         crate::shader_test_support::assert_binding_visibility(
-            &crate::shader_source::standalone(include_str!("highlight.wgsl"), &[]),
+            &crate::shader_source::standalone(include_str!("highlight.wesl"), &[]),
             0,
             &pipeline.bind_group_layout,
         );

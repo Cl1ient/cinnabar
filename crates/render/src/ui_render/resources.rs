@@ -1,5 +1,7 @@
 //! Shared UI GPU resource creation, publication admission and arena accounting.
 
+use render_scene::{UiGlintSettings, UiRenderSceneResource, UiRenderStatsResource};
+
 use super::*;
 
 /// Creates the shared viewport uniform and samplers for this render device.
@@ -25,7 +27,7 @@ pub(super) fn init_ui_gpu(
             address_mode_w: AddressMode::ClampToEdge,
             mag_filter: filter,
             min_filter: filter,
-            mipmap_filter: FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..default()
         })
     };

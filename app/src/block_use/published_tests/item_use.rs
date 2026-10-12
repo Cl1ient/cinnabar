@@ -14,6 +14,7 @@ pub(super) fn hold_snowball(world: &mut World) -> (u64, i32) {
                     network_id,
                     component_based: false,
                     version: protocol::ItemRegistryVersion::None,
+                    components: None,
                     component_digest: [0; 32],
                     negotiated_max_stack_size: Some(16),
                     canonical_empty_component_data: true,
@@ -27,8 +28,8 @@ pub(super) fn hold_snowball(world: &mut World) -> (u64, i32) {
             stream.authority().current_dimension(),
         )
     };
-    world.resource_scope(|world, mut ui: Mut<UiRuntime>| {
-        let mut player = world.resource_mut::<crate::player_runtime::PlayerRuntime>();
+    world.resource_scope(|world, mut ui: Mut<UiRuntimeResource>| {
+        let mut player = world.resource_mut::<client_state::PlayerRuntime>();
         let extra_data: std::sync::Arc<[u8]> = std::sync::Arc::from([]);
         ui.inventory_ledger_mut(&mut player)
             .apply(&InventoryEvent::Slot(InventorySlotEvent {
@@ -73,8 +74,9 @@ fn attack_and_throw_fixture(enabled: bool) -> (World, client_session::CapturedPa
         .unwrap();
     assert!(snapshot.phases[Action::Attack as usize].held);
     assert!(snapshot.phases[Action::Use as usize].pressed);
-    world
-        .insert_resource(crate::semantic_controls::SemanticInputSnapshot::from_finalized(snapshot));
+    world.insert_resource(client_state::SemanticInputSnapshot(
+        semantic_input::finalized::FinalizedInput::from_finalized(snapshot),
+    ));
     world.insert_resource(input);
     if enabled {
         world.insert_resource(crate::item_use::ModItemUsePolicy { scope: Some(scope) });
@@ -84,9 +86,9 @@ fn attack_and_throw_fixture(enabled: bool) -> (World, client_session::CapturedPa
         player_position: [4.5, 2.620_01, 8.5],
         input_mode: protocol::PlayerInputMode::Mouse,
         local_runtime_id: 42,
-        selection: crate::block_use::verified_use_selection(
-            world.resource::<crate::player_runtime::PlayerRuntime>(),
-            world.resource::<UiRuntime>(),
+        selection: client_interaction::block_use::verified_use_selection(
+            world.resource::<client_state::PlayerRuntime>(),
+            world.resource::<UiRuntimeResource>(),
         ),
         swing_duration: 6,
         item_attack: None,
@@ -121,7 +123,10 @@ fn delay_fix_allows_a_throw_while_attacking_without_changing_native_timing() {
         let throws = captured
             .drain()
             .into_iter()
-            .filter(|packet| format!("{:?}", packet.data).contains("ItemUseInventoryTransaction("))
+            .filter(|packet| {
+                protocol::test_support::transactions::observe_transaction(packet)
+                    .is_some_and(|transaction| transaction.item_use().is_some())
+            })
             .count();
         assert_eq!(throws, usize::from(enabled));
     }

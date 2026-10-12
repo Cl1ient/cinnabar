@@ -1,6 +1,8 @@
 use super::*;
 use crate::chunk::gpu::graphics_metadata::adapter_metadata_field;
 use crate::chunk::gpu::types::build_indexed_indirect_commands;
+use render_scene::ChunkUploadToken;
+use render_scene::PresentedFrameGate;
 
 #[test]
 fn gpu_write_does_not_complete_a_frame_probe() {
@@ -954,17 +956,17 @@ fn indexed_indirect_commands_preserve_order_and_encode_quad_and_origin_ranges() 
 #[test]
 fn origin_metadata_preserves_the_palette_record_pointer() {
     assert_eq!(
-        gpu_chunk_origin([16, -64, 32], 27, 7, 22),
+        gpu_chunk_origin([16, -64, 32], 27, 7, 22, 0, 0),
         Some(GpuChunkOrigin {
             value: [16, -64, 32, 27],
-            cube_bases: [7, 11, 0, 0],
+            stream_bases: [7, 11, 0, 0],
         })
     );
     assert_eq!(
-        gpu_chunk_origin([0, 0, 0], 0, 0, 0),
+        gpu_chunk_origin([0, 0, 0], 0, 0, 0, 0, 0),
         Some(GpuChunkOrigin {
             value: [0, 0, 0, 0],
-            cube_bases: [0, 0, 0, 0],
+            stream_bases: [0, 0, 0, 0],
         })
     );
 }

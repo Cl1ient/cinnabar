@@ -32,6 +32,7 @@ fn binding(identifier: &str, slot: ArmorSlot, texture: &str, material: &str) -> 
         geometry: reference("geometry.fixture"),
         texture: reference(texture),
         material: material.into(),
+        color_mask: assets::EquipmentColorMask::NoMask,
         render_controller: "controller.render.armor".into(),
         first_person: EquipmentTransform::NeedsMeasurement,
         third_person: EquipmentTransform::NeedsMeasurement,
@@ -93,7 +94,8 @@ fn stack_index(size: [u16; 2]) -> usize {
 
 /// Creates an enabled GUI preview with the fixture font and default player skin.
 fn presentation() -> UiPresentationRuntime {
-    let mut presentation = UiPresentationRuntime::new(crate::test_support::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     presentation.gui_models.enabled = true;
     presentation.set_player_preview_skin(None, Default::default());
     presentation

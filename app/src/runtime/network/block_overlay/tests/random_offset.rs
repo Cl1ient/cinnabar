@@ -58,10 +58,13 @@ fn random_offset_state_authority_drives_mesh_and_overlay_geometry_in_both_id_spa
                 mesh.model_lighting()[index - 1],
             ]);
             assert_eq!(offset, component.offset(position));
-            let render::CrackShape::Quads(shape) =
-                render::crack_shape_from_template(&assets, template, visual.variant(), position)
-                    .unwrap()
-            else {
+            let render_model::CrackShape::Quads(shape) = render_model::crack_shape_from_template(
+                &assets,
+                template,
+                visual.variant(),
+                position,
+            )
+            .unwrap() else {
                 panic!("model surface");
             };
             let first = assets.model_quads()
@@ -84,6 +87,7 @@ fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
         overlay: Default::default(),
         sources: Vec::new(),
         source_bytes: 0,
+        max_layers: assets::MAX_TEXTURE_LAYERS,
         textures: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
@@ -243,6 +247,7 @@ fn overlay_images(
             .map(super::super::Source::Image)
             .collect(),
         source_bytes: 0,
+        max_layers: assets::MAX_TEXTURE_LAYERS,
         textures: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
@@ -433,6 +438,7 @@ fn terrain_grid_budget_fallback_preserves_unrelated_texture_layers() {
         overlay: Default::default(),
         sources: Vec::new(),
         source_bytes: 0,
+        max_layers: assets::MAX_TEXTURE_LAYERS,
         textures: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),

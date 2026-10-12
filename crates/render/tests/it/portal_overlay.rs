@@ -1,6 +1,6 @@
 //! Exercise the production overlay shader against native cube UVs and atlas blending.
-use crate::gpu_snapshot;
 
+use crate::gpu_snapshot;
 use bevy::prelude::{Mat4, Vec3};
 use gpu_snapshot::{Draw, Gpu, RasterState};
 use wgpu::util::DeviceExt;
@@ -17,12 +17,15 @@ fn uniform(portal_from_clip: Mat4) -> Vec<f32> {
         1.0,
         1.0,
         0.75,
-        render::ScreenOverlayKind::Portal as u32 as f32,
+        render_scene::ScreenOverlayKind::Portal as u32 as f32,
         0.0,
         0.0,
         0.0,
     ]);
-    words.resize(layer_start + render::MAX_SCREEN_OVERLAY_LAYERS * 8, 0.0);
+    words.resize(
+        layer_start + render_scene::MAX_SCREEN_OVERLAY_LAYERS * 8,
+        0.0,
+    );
     words
 }
 
@@ -37,7 +40,11 @@ fn entering_portal_samples_and_blends_the_pack_texture_with_native_opacity() {
     else {
         return;
     };
-    let projection = Mat4::perspective_infinite_reverse_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.1);
+    let projection = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        std::f32::consts::FRAC_PI_2,
+        1.0,
+        0.1,
+    );
     let buffer = gpu.buffer(&uniform(projection.inverse()), wgpu::BufferUsages::UNIFORM);
     let texture = |pixels: &[u8]| {
         gpu.device
@@ -126,7 +133,11 @@ fn native_cube_uvs_follow_view_rotation_and_projection() {
     let Some(gpu) = Gpu::for_fixture("native_cube_uvs_follow_view_rotation_and_projection") else {
         return;
     };
-    let projection = Mat4::perspective_infinite_reverse_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.1);
+    let projection = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        std::f32::consts::FRAC_PI_2,
+        1.0,
+        0.1,
+    );
     let view_rotation = Mat4::from_axis_angle(Vec3::Y, std::f32::consts::FRAC_PI_2);
     let buffer = gpu.buffer(
         &uniform(view_rotation * projection.inverse()),

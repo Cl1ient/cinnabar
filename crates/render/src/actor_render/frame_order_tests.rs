@@ -1,3 +1,4 @@
+use bevy::ecs::system::RunSystemOnce;
 use std::sync::Arc;
 
 use bevy::{
@@ -5,7 +6,7 @@ use bevy::{
     asset::Assets,
     core_pipeline::core_3d::{Opaque3d, Transparent3d},
     diagnostic::FrameCount,
-    ecs::{schedule::Schedule, system::RunSystemOnce},
+    ecs::schedule::Schedule,
     prelude::*,
     render::{
         ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
@@ -22,9 +23,12 @@ use super::super::{
     ActorGpu, ActorRenderPlugin, DrawActorCommands, DrawTransparentActorCommands,
     prepare_actor_bind_group, prepare_actor_resources, submit_actor_presented_frame,
 };
-use crate::actor::{
-    ActorDrawManifestEntry, ActorRenderFrame, ActorRenderIdentity, ActorRigGeometrySpan,
-    ActorRigRoute, gpu::ActorDrawTracker,
+use {
+    crate::actor::gpu::ActorDrawTracker,
+    render_model::{
+        ActorDrawManifestEntry, ActorRenderIdentity, ActorRigGeometrySpan, ActorRigRoute,
+    },
+    render_scene::ActorRenderFrame,
 };
 
 #[derive(Resource, Default)]
@@ -37,7 +41,7 @@ fn reset_phases(
 ) {
     for view in &views {
         opaque.prepare_for_new_frame(view.retained_view_entity, GpuPreprocessingMode::None);
-        transparent.insert_or_clear(view.retained_view_entity);
+        transparent.prepare_for_new_frame(view.retained_view_entity);
     }
 }
 
@@ -61,7 +65,7 @@ fn inspect_executed_frame(world: &mut World) {
         .get(&retained)
         .unwrap()
         .items
-        .iter()
+        .values()
         .filter(|item| item.draw_function == transparent_draw)
         .map(|item| {
             let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &item.extra_index
@@ -141,11 +145,11 @@ fn render_app() -> App {
         .init_resource::<ViewBinnedRenderPhases<Opaque3d>>()
         .init_resource::<ViewUniforms>()
         .init_resource::<FrameCount>()
-        .init_resource::<crate::WorldLighting>()
-        .init_resource::<crate::WorldFullbright>()
-        .init_resource::<crate::NametagSceneResource>()
+        .init_resource::<render_scene::WorldLighting>()
+        .init_resource::<render_scene::WorldFullbright>()
+        .init_resource::<render_scene::NametagSceneResource>()
         .init_resource::<ExecutedFrames>()
-        .add_systems(Render, reset_phases.in_set(RenderSystems::ManageViews))
+        .add_systems(Render, reset_phases.in_set(RenderSystems::PrepareViews))
         .add_systems(
             Render,
             prepare_view_uniforms.in_set(RenderSystems::PrepareResources),
@@ -173,7 +177,7 @@ fn frame(blended: &[bool]) -> ActorRenderFrame {
     frame.rig.maximum_vertex_count = 3;
     frame.rig.instances = blended
         .iter()
-        .map(|&blend| crate::actor::ActorGpuInstance {
+        .map(|&blend| render_model::ActorGpuInstance {
             material: assets::EntityRenderMaterial::Default.word(Some(
                 assets::EntityRenderMaterialState {
                     blend,
@@ -216,15 +220,15 @@ fn frame(blended: &[bool]) -> ActorRenderFrame {
         .collect::<Vec<_>>()
         .into();
     frame.rig.geometry_vertices =
-        crate::actor::ActorRigVertexSegments::from_vertices([ActorRigVertex::default(); 3]);
+        render_model::ActorRigVertexSegments::from_vertices([ActorRigVertex::default(); 3]);
     frame.rig.geometry_spans = Arc::from([ActorRigGeometrySpan {
         first_vertex: 0,
         vertex_count: 3,
     }]);
-    let mut artwork = crate::actor::ActorArtworkPages::default();
+    let mut artwork = render_model::ActorArtworkPages::default();
     artwork.identity = [1; 32];
     artwork.entity_identity = [2; 32];
-    artwork.pages = Arc::from([crate::actor::ActorTexturePage {
+    artwork.pages = Arc::from([render_model::ActorTexturePage {
         width: 16,
         height: 16,
         layers: 1,
@@ -301,7 +305,7 @@ fn always_depth_dissolve_mask_queues_before_its_equal_depth_color() {
     assert_eq!(items.len(), 1, "mask and color must share one draw item");
     Transparent3d::sort(items);
     let ranges = items
-        .iter()
+        .values()
         .map(|item| {
             let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &item.extra_index
             else {
@@ -385,7 +389,7 @@ fn a_depth_writing_blend_cannot_split_a_sorted_dissolve_pair() {
             .get(&retained)
             .unwrap()
             .items
-            .iter()
+            .values()
             .map(|item| {
                 let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &item.extra_index
                 else {

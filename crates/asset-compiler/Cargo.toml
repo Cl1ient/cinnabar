@@ -5,8 +5,26 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+platform-specific = ["windows"]
+reads = [
+    ".gitattributes",
+    "Cargo.lock",
+    "assets/bedrock-target.json",
+    "assets/cinnangles-sans-source.json",
+    "assets/fonts/CinnanglesSans.ttf",
+    "assets/hud-source-v2193.json",
+    "assets/licenses/Monocraft-OFL-1.1.txt",
+    "assets/licenses/NotoSansCJK-OFL-1.1.txt",
+    "assets/ui-font-source.json",
+    "assets/vanilla-source.json",
+    "crates/assets/data/*",
+]
+
 [dependencies]
+world = { path = "../world" }
 assets = { path = "../assets" }
+block-transform = { path = "../block-transform" }
 pack-compiler = { path = "../pack-compiler" }
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 #[test]
 fn settings_storage_has_real_categories_and_confirmed_cache_delete() {
-    let player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let Some(mut presentation) = client_ui::test_support::pack_harness::engine_presentation()
     else {
@@ -14,7 +14,7 @@ fn settings_storage_has_real_categories_and_confirmed_cache_delete() {
         );
         return;
     };
-    let layout = crate::install_layout::scratch("storage-ui");
+    let layout = launcher::test_support::scratch("storage-ui");
     std::fs::create_dir_all(layout.resource_pack_cache_dir()).unwrap();
     std::fs::write(
         layout.resource_pack_cache_dir().join("fixture-pack"),
@@ -23,7 +23,7 @@ fn settings_storage_has_real_categories_and_confirmed_cache_delete() {
     .unwrap();
     let mut view = settings();
     view.settings_section = launcher::menu::settings_storage::SECTION_INDEX;
-    view.storage = Arc::new(crate::menu::settings_storage::read_storage(&layout));
+    view.storage = Arc::new(launcher_host::settings_storage::read_storage(&layout));
     assert_eq!(view.storage.cached[0].bytes, 1024);
     let actions = draw(&player_runtime, &mut presentation, &view);
     assert!(
@@ -50,11 +50,11 @@ fn settings_storage_has_real_categories_and_confirmed_cache_delete() {
 
 #[test]
 fn settings_storage() {
-    if client_ui::test_support::pack_harness::carrier().is_none() {
+    if ui_engine::test_support::carrier().is_none() {
         return;
     }
-    let player_runtime = crate::player_runtime::PlayerRuntime::new(1);
-    let mut menu = crate::menu::MenuRuntime::new(true, 2, "Steve".to_owned());
+    let player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
+    let mut menu = client_shell::menu::MenuRuntime::new(true, 2, "Steve".to_owned());
     menu.activate(MenuAction::SettingsSection(
         launcher::menu::settings_storage::SECTION_INDEX,
     ));

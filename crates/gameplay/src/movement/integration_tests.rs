@@ -10,7 +10,7 @@ use super::{
     physics_movement_input, reconcile_candidate_physics_correction, reconcile_timeline_rewind,
 };
 use crate::test_support::movement_speed_attribute as attribute;
-use assets::{BlockPhysicsFlags, NetworkIdMode, RegistryRecord, read_registry_for_protocol};
+use assets::{NetworkIdMode, RegistryRecord, read_registry_for_protocol};
 use protocol::{PlayerInputFlags, PlayerInputMode};
 use sha2::{Digest, Sha256};
 use sim::{
@@ -149,6 +149,7 @@ include!("integration_tests/simulation.rs");
 include!("integration_tests/vector_carriers.rs");
 include!("integration_tests/timeline.rs");
 include!("integration_tests/frame_speed.rs");
+include!("integration_tests/dismount.rs");
 include!("integration_tests/immobile.rs");
 include!("integration_tests/connected_shapes.rs");
 include!("integration_tests/pre_tick.rs");

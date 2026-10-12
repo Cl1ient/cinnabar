@@ -1,8 +1,11 @@
 //! Retained UI preparation regression and timing fixture.
+
 use super::resources::prepare_ui_resources;
 use super::*;
 use bevy::ecs::system::RunSystemOnce;
+
 use render_model::UiScissor;
+use render_scene::{UiGlintSettings, UiRenderSceneResource, UiRenderStatsResource};
 
 /// Builds a large immutable HUD in the no-op renderer.
 fn retained_world() -> World {
@@ -100,9 +103,9 @@ fn retained_publication_plans_no_vertex_or_index_uploads() {
         .unwrap()
         .clone();
     let mut gpu = world.resource_mut::<UiGpu>();
-    let before = crate::alloc_count::thread_allocations();
+    let before = test_alloc::thread_allocations();
     let plan = gpu.uploads.plan(&input, false, false);
-    let allocations = crate::alloc_count::thread_allocations() - before;
+    let allocations = test_alloc::thread_allocations() - before;
     assert!(plan.vertices.is_empty());
     assert!(plan.indices.is_empty());
     assert_eq!(allocations, 0);
@@ -173,6 +176,7 @@ fn first_frame_view_pipelines_use_the_current_accepted_ui() {
     world.init_resource::<UiGlintSettings>();
     let owner = world
         .spawn((
+            crate::render_test_support::camera(false),
             ExtractedView {
                 retained_view_entity: bevy::render::view::RetainedViewEntity::new(
                     Entity::PLACEHOLDER.into(),
@@ -182,7 +186,7 @@ fn first_frame_view_pipelines_use_the_current_accepted_ui() {
                 clip_from_view: Mat4::IDENTITY,
                 world_from_view: GlobalTransform::default(),
                 clip_from_world: None,
-                hdr: false,
+                target_format: render_scene::SCENE_COLOR_FORMAT,
                 viewport: bevy::math::UVec4::new(0, 0, 254, 124),
                 color_grading: Default::default(),
                 invert_culling: false,

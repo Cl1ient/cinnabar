@@ -332,6 +332,17 @@ pub enum ChatSendError {
     QueueFull,
 }
 
+/// Checks the text constraints shared by chat sends and stored commands.
+pub fn validate_chat_message(message: &str) -> Result<(), ChatSendError> {
+    if message.is_empty() {
+        return Err(ChatSendError::EmptyMessage);
+    }
+    if message.len() > MAX_CHAT_INPUT_BYTES {
+        return Err(ChatSendError::MessageTooLong);
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 pub struct ChatSendQueue {
     capacity: usize,
@@ -382,12 +393,7 @@ impl ChatSendQueue {
         message: &str,
         now_millis: u64,
     ) -> Result<ChatSendRequest, ChatSendError> {
-        if message.is_empty() {
-            return Err(ChatSendError::EmptyMessage);
-        }
-        if message.len() > MAX_CHAT_INPUT_BYTES {
-            return Err(ChatSendError::MessageTooLong);
-        }
+        validate_chat_message(message)?;
         match self.session {
             None => {
                 self.begin_session(session);
@@ -766,11 +772,25 @@ pub struct ChatStore {
     messages: VecDeque<ChatMessage>,
     retained_bytes: usize,
     last_sequence: Option<u64>,
+    last_row_sequence: u64,
 }
 
 impl ChatStore {
     pub fn messages(&self) -> &VecDeque<ChatMessage> {
         &self.messages
+    }
+
+    /// Retained rows with independent monotonic identities for incremental observations.
+    /// Network batches and local notifications may share a FIFO sequence; these ids do not.
+    /// Identities remain monotonic after eviction and clear, within this store's lifetime.
+    pub fn observed_rows(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (u64, &ChatMessage)> + ExactSizeIterator {
+        let first = self.last_row_sequence - self.messages.len() as u64;
+        self.messages
+            .iter()
+            .enumerate()
+            .map(move |(ordinal, message)| (first + ordinal as u64 + 1, message))
     }
 
     pub const fn retained_bytes(&self) -> usize {
@@ -814,6 +834,9 @@ impl ChatStore {
             return ChatApplyResult::RejectedTooLarge;
         }
 
+        let Some(next_row_sequence) = self.last_row_sequence.checked_add(1) else {
+            return ChatApplyResult::RejectedTooLarge;
+        };
         let mut evicted = 0;
         while self.messages.len() >= MAX_CHAT_MESSAGES
             || self.retained_bytes + message_bytes > MAX_CHAT_RETAINED_BYTES
@@ -825,6 +848,7 @@ impl ChatStore {
             evicted += 1;
         }
         self.retained_bytes += message_bytes;
+        self.last_row_sequence = next_row_sequence;
         self.messages.push_back(message);
         ChatApplyResult::Applied { evicted }
     }
@@ -851,6 +875,10 @@ impl ChatStore {
             return ChatApplyResult::RejectedTooLarge;
         }
 
+        let Some(next_row_sequence) = self.last_row_sequence.checked_add(messages.len() as u64)
+        else {
+            return ChatApplyResult::RejectedTooLarge;
+        };
         let mut evicted = 0;
         while self.messages.len() + messages.len() > MAX_CHAT_MESSAGES
             || self.retained_bytes + message_bytes > MAX_CHAT_RETAINED_BYTES
@@ -863,6 +891,7 @@ impl ChatStore {
         }
         self.retained_bytes += message_bytes;
         self.last_sequence = Some(sequence);
+        self.last_row_sequence = next_row_sequence;
         self.messages.extend(messages);
         ChatApplyResult::Applied { evicted }
     }

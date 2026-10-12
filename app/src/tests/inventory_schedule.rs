@@ -1,4 +1,5 @@
-use crate::player_runtime::PlayerRuntime;
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
+use client_state::PlayerRuntime;
 use std::{collections::HashSet, sync::Arc};
 
 use bevy::{
@@ -19,28 +20,25 @@ use protocol::{
 };
 use semantic_input::Action;
 
-use client_ui::ui_runtime::presentation::inventory_pointer::InventoryCellHit;
 use ui::UiPoint;
+use ui_screens::container_actions::InventoryCellHit;
 use {
     crate::{
-        app::{
-            ClientFrameSet, configure_client_frame_schedule,
-            configure_client_production_frame_systems,
-        },
-        menu::{MenuClipboard, MenuRuntime, drive_menu_input},
+        app::{configure_client_frame_schedule, configure_client_production_frame_systems},
         runtime::network::receive_network_events,
         semantic_controls::{
-            PendingDeviceFrame, SemanticInputRuntime, SemanticInputSnapshot, SemanticRouteState,
-            SemanticTouchTargets, collect_raw_input, finalize_semantic_input_after_ui_authority,
-            route_semantic_input, synchronize_semantic_input_authority,
+            PendingDeviceFrame, SemanticInputRuntime, SemanticRouteState, SemanticTouchTargets,
+            collect_raw_input, finalize_semantic_input_after_ui_authority, route_semantic_input,
+            synchronize_semantic_input_authority,
         },
-        settings_runtime::RuntimeSettings,
         ui_runtime::{
             drain_inventory_authority, drive_chat_keyboard_input, drive_inventory_ui_actions,
             flush_inventory_network,
         },
     },
-    client_ui::test_support::fixture_font,
+    client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
+    client_state::{ClientFrameSet, RuntimeSettings, SemanticInputSnapshot},
+    ui_engine::test_support::fixture_font,
 };
 use {
     client_ui::ui_runtime::{UiRuntime, flush_inventory_send, presentation::UiPresentationRuntime},
@@ -136,7 +134,7 @@ fn production_schedule_drains_content_before_click_and_admits_only_in_network_se
 
 #[test]
 fn supported_open_suppresses_gameplay_before_content_and_escape_closes_before_menu() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     let mut runtime = UiRuntime::new(1);
     runtime.publish_inventory_authority(&mut player_runtime, InventoryAuthority::Server);
@@ -152,9 +150,11 @@ fn supported_open_suppresses_gameplay_before_content_and_escape_closes_before_me
         .init_resource::<Touches>()
         .init_resource::<MenuClipboard>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(UiPresentationRuntime::new(fixture_font()).unwrap())
+        .insert_resource(UiPresentationResource(
+            UiPresentationRuntime::new(fixture_font()).unwrap(),
+        ))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .insert_resource(SameFrameIngress(Some(InventoryEvent::Open(
             ContainerOpenEvent {
@@ -196,7 +196,7 @@ fn supported_open_suppresses_gameplay_before_content_and_escape_closes_before_me
     app.update();
 
     assert!(app.world().resource::<OpenSuppressionObserved>().0);
-    assert!(!app.world().resource::<UiRuntime>().inventory_open());
+    assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
     assert!(
         app.world()
             .resource::<PlayerRuntime>()
@@ -211,7 +211,7 @@ fn supported_open_suppresses_gameplay_before_content_and_escape_closes_before_me
 
 #[test]
 fn scheduled_mouse_press_uses_same_frame_complete_and_partial_inventory_ingress() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     for complete in [true, false] {
         run_scheduled_ingress_click(&mut player_runtime, complete);
@@ -220,7 +220,7 @@ fn scheduled_mouse_press_uses_same_frame_complete_and_partial_inventory_ingress(
 
 #[test]
 fn keyboard_open_does_not_replay_its_click_and_next_fresh_click_is_inventory_owned() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     let current = stack(6, 2, 55);
     let mut runtime = UiRuntime::new(1);
@@ -266,9 +266,9 @@ fn keyboard_open_does_not_replay_its_click_and_next_fresh_click_is_inventory_own
         .init_resource::<SemanticTouchTargets>()
         .init_resource::<RuntimeSettings>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .add_systems(Update, collect_raw_input.in_set(ClientFrameSet::RawInput))
         .add_systems(
@@ -281,6 +281,7 @@ fn keyboard_open_does_not_replay_its_click_and_next_fresh_click_is_inventory_own
                 drive_chat_keyboard_input,
                 drive_menu_input,
                 drive_inventory_ui_actions,
+                client_shell::menu::screen_focus::publish_screen_focus,
                 synchronize_semantic_input_authority,
             )
                 .chain()
@@ -310,7 +311,7 @@ fn keyboard_open_does_not_replay_its_click_and_next_fresh_click_is_inventory_own
     });
 
     app.update();
-    let runtime = app.world().resource::<UiRuntime>();
+    let runtime = app.world().resource::<UiRuntimeResource>();
     assert!(runtime.inventory_open());
     assert_eq!(
         app.world()
@@ -380,7 +381,7 @@ fn keyboard_open_does_not_replay_its_click_and_next_fresh_click_is_inventory_own
     }
 
     app.update();
-    let runtime = app.world().resource::<UiRuntime>();
+    let runtime = app.world().resource::<UiRuntimeResource>();
     assert!(!runtime.inventory_open());
     assert_eq!(
         app.world()
@@ -479,7 +480,7 @@ fn keyboard_open_does_not_replay_its_click_and_next_fresh_click_is_inventory_own
 #[test]
 fn closing_inventory_with_a_click_cannot_publish_attack_after_semantic_finalization() {
     for key_code in [KeyCode::KeyE, KeyCode::Escape] {
-        let mut player_runtime = PlayerRuntime::new(1);
+        let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
         let mut runtime = UiRuntime::new(1);
         runtime.publish_inventory_authority(&mut player_runtime, InventoryAuthority::Server);
         open_personal_inventory(&mut player_runtime, &mut runtime);
@@ -499,9 +500,11 @@ fn closing_inventory_with_a_click_cannot_publish_attack_after_semantic_finalizat
             .init_resource::<SemanticTouchTargets>()
             .init_resource::<RuntimeSettings>()
             .add_message::<KeyboardInput>()
-            .insert_resource(runtime)
+            .insert_resource(UiRuntimeResource(runtime))
             .insert_resource(player_runtime.clone())
-            .insert_resource(UiPresentationRuntime::new(fixture_font()).unwrap())
+            .insert_resource(UiPresentationResource(
+                UiPresentationRuntime::new(fixture_font()).unwrap(),
+            ))
             .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
             .add_systems(Update, collect_raw_input.in_set(ClientFrameSet::RawInput))
             .add_systems(
@@ -514,6 +517,7 @@ fn closing_inventory_with_a_click_cannot_publish_attack_after_semantic_finalizat
                     drive_chat_keyboard_input,
                     drive_menu_input,
                     drive_inventory_ui_actions,
+                    client_shell::menu::screen_focus::publish_screen_focus,
                     synchronize_semantic_input_authority,
                 )
                     .chain()
@@ -557,7 +561,7 @@ fn closing_inventory_with_a_click_cannot_publish_attack_after_semantic_finalizat
 
         app.update();
 
-        assert!(!app.world().resource::<UiRuntime>().inventory_open());
+        assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
         assert_eq!(
             app.world()
                 .resource::<SemanticInputSnapshot>()
@@ -586,7 +590,7 @@ fn closing_inventory_with_a_click_cannot_publish_attack_after_semantic_finalizat
 #[test]
 fn focus_loss_preserves_inventory_without_routing_pointer_actions() {
     for (menu_visible, window_focused) in [(true, true), (false, false)] {
-        let mut player_runtime = PlayerRuntime::new(1);
+        let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
         let current = stack(6, 2, 55);
         let mut runtime = UiRuntime::new(1);
         runtime.publish_inventory_authority(&mut player_runtime, InventoryAuthority::Server);
@@ -603,9 +607,11 @@ fn focus_loss_preserves_inventory_without_routing_pointer_actions() {
             .init_resource::<Touches>()
             .init_resource::<MenuClipboard>()
             .add_message::<KeyboardInput>()
-            .insert_resource(runtime)
+            .insert_resource(UiRuntimeResource(runtime))
             .insert_resource(player_runtime.clone())
-            .insert_resource(UiPresentationRuntime::new(fixture_font()).unwrap())
+            .insert_resource(UiPresentationResource(
+                UiPresentationRuntime::new(fixture_font()).unwrap(),
+            ))
             .insert_resource(MenuRuntime::new(menu_visible, 2, "Tester".to_owned()))
             .add_systems(
                 Update,
@@ -630,7 +636,7 @@ fn focus_loss_preserves_inventory_without_routing_pointer_actions() {
 
         app.update();
 
-        let runtime = app.world().resource::<UiRuntime>();
+        let runtime = app.world().resource::<UiRuntimeResource>();
         assert_eq!(
             app.world()
                 .resource::<PlayerRuntime>()
@@ -679,13 +685,15 @@ fn focus_loss_preserves_inventory_without_routing_pointer_actions() {
 #[test]
 fn pause_opening_escape_is_not_replayed_as_back_on_the_next_frame() {
     let mut app = App::new();
-    app.insert_resource(PlayerRuntime::new(1));
+    app.insert_resource(PlayerRuntime(player_state::PlayerState::new(1)));
     app.init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<Touches>()
         .init_resource::<MenuClipboard>()
         .add_message::<KeyboardInput>()
-        .insert_resource(UiPresentationRuntime::new(fixture_font()).unwrap())
+        .insert_resource(UiPresentationResource(
+            UiPresentationRuntime::new(fixture_font()).unwrap(),
+        ))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .add_systems(Update, drive_menu_input);
     let window = app
@@ -718,7 +726,7 @@ fn pause_opening_escape_is_not_replayed_as_back_on_the_next_frame() {
 
 #[test]
 fn same_frame_storage_open_and_content_drive_real_button_input_before_network_send() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     let current = stack(6, 3, 91);
     let mut runtime = UiRuntime::new(1);
@@ -777,9 +785,9 @@ fn same_frame_storage_open_and_content_drive_real_button_input_before_network_se
         .init_resource::<Touches>()
         .init_resource::<MenuClipboard>()
         .add_message::<bevy::input::keyboard::KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .insert_resource(SameFrameStorageIngress(ingress))
         .init_resource::<AdmissionObserved>()
@@ -807,7 +815,7 @@ fn same_frame_storage_open_and_content_drive_real_button_input_before_network_se
     app.update();
 
     assert!(app.world().resource::<AdmissionObserved>().0);
-    let runtime = app.world().resource::<UiRuntime>();
+    let runtime = app.world().resource::<UiRuntimeResource>();
     assert!(runtime.inventory_open());
     let mut predicted = current.clone();
     predicted.stack_network_id = app
@@ -843,7 +851,7 @@ fn same_frame_storage_open_and_content_drive_real_button_input_before_network_se
 
 #[test]
 fn same_frame_registry_and_inventory_authority_precede_occupied_merge_input() {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
 
     let mut runtime = UiRuntime::new(1);
     runtime.publish_inventory_authority(&mut player_runtime, InventoryAuthority::Server);
@@ -873,6 +881,7 @@ fn same_frame_registry_and_inventory_authority_precede_occupied_merge_input() {
                 network_id: 6,
                 component_based: true,
                 version: ItemRegistryVersion::DataDriven,
+                components: None,
                 component_digest: [6; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: false,
@@ -891,9 +900,9 @@ fn same_frame_registry_and_inventory_authority_precede_occupied_merge_input() {
         .init_resource::<Touches>()
         .init_resource::<MenuClipboard>()
         .add_message::<bevy::input::keyboard::KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .insert_resource(ingress)
         .init_resource::<AdmissionObserved>()
@@ -929,7 +938,7 @@ fn same_frame_registry_and_inventory_authority_precede_occupied_merge_input() {
 }
 
 fn run_scheduled_ingress_click(player_runtime: &mut PlayerRuntime, complete: bool) {
-    *player_runtime = PlayerRuntime::new(1);
+    *player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
     let stale = stack(5, 1, 44);
     let current = stack(6, 2, 55);
     let mut runtime = UiRuntime::new(1);
@@ -967,9 +976,9 @@ fn run_scheduled_ingress_click(player_runtime: &mut PlayerRuntime, complete: boo
         .init_resource::<Touches>()
         .init_resource::<MenuClipboard>()
         .add_message::<bevy::input::keyboard::KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
-        .insert_resource(presentation)
+        .insert_resource(UiPresentationResource(presentation))
         .insert_resource(MenuRuntime::new(false, 2, "Tester".to_owned()))
         .insert_resource(SameFrameIngress(Some(if complete {
             content(current.clone())
@@ -1054,7 +1063,7 @@ struct OpenSuppressionObserved(bool);
 
 fn observe_open_suppression(
     player_runtime: bevy::prelude::Res<PlayerRuntime>,
-    runtime: bevy::prelude::Res<UiRuntime>,
+    runtime: bevy::prelude::Res<UiRuntimeResource>,
     mut observed: ResMut<OpenSuppressionObserved>,
 ) {
     observed.0 = runtime.inventory_open() && runtime.ui_focused(&player_runtime);
@@ -1063,7 +1072,7 @@ fn observe_open_suppression(
 fn route_same_frame_inventory_ingress(
     mut player_runtime: bevy::prelude::ResMut<PlayerRuntime>,
     mut ingress: ResMut<SameFrameIngress>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
 ) {
     if let Some(event) = ingress.0.take() {
         runtime
@@ -1075,7 +1084,7 @@ fn route_same_frame_inventory_ingress(
 fn route_same_frame_storage_ingress(
     mut player_runtime: bevy::prelude::ResMut<PlayerRuntime>,
     mut ingress: ResMut<SameFrameStorageIngress>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
 ) {
     for (index, event) in ingress.0.drain(..).enumerate() {
         runtime
@@ -1087,7 +1096,7 @@ fn route_same_frame_storage_ingress(
 fn route_same_frame_merge_ingress(
     mut player_runtime: bevy::prelude::ResMut<PlayerRuntime>,
     mut ingress: ResMut<SameFrameMergeIngress>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
 ) {
     if let Some(registry) = ingress.registry.take() {
         runtime
@@ -1103,7 +1112,7 @@ fn route_same_frame_merge_ingress(
 
 fn admit_inventory_request(
     mut player_runtime: bevy::prelude::ResMut<PlayerRuntime>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
     mut observed: ResMut<AdmissionObserved>,
 ) {
     observed.0 =

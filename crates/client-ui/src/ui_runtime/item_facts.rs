@@ -1,13 +1,4 @@
-//! Pinned vanilla item presentation facts: armor points, maximum durability,
-//! and mechanical display names.
-//!
-//! The vanilla client derives the armor bar and durability fractions from the
-//! item identity; the identity itself is authoritative (the server's own item
-//! registry maps network ids to identifiers). Values below are the vanilla
-//! Bedrock item stats cross-checked against PocketMine-MP and Dragonfly's
-//! item definitions; an identifier outside the table simply contributes
-//! nothing rather than guessing. Custom component-based items declare their
-//! own stats server-side and are intentionally not modeled here.
+//! Session item presentation facts and mechanical display names.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -15,65 +6,54 @@ use protocol::{ItemComponents, NetworkItemStack, item_stack_damage};
 
 /// The session's server item components by identifier.
 #[derive(Debug, Default)]
-pub struct SessionItemComponents(HashMap<Arc<str>, ItemComponents>);
+pub struct SessionItemComponents(HashMap<Arc<str>, SessionItem>);
+
+/// Components and the UI facts resolved once when the session admits an item.
+#[derive(Debug)]
+struct SessionItem {
+    components: ItemComponents,
+    name_color: Option<ui::BedrockColor>,
+}
 
 impl SessionItemComponents {
     /// `None` when no StartGame item declares components.
     pub fn from_game_data(game_data: &protocol::GameData) -> Option<Arc<Self>> {
-        let map = HashMap::from_iter(protocol::item_components(game_data));
-        (!map.is_empty()).then(|| Arc::new(Self(map)))
+        let items = Self::from_iter(game_data.items.components.iter().cloned());
+        (!items.0.is_empty()).then(|| Arc::new(items))
     }
 
     pub fn get(&self, identifier: &str) -> Option<&ItemComponents> {
-        self.0.get(identifier)
+        self.0.get(identifier).map(|item| &item.components)
+    }
+
+    /// The semantic name colour already resolved for this session item.
+    pub fn name_color(&self, identifier: &str) -> Option<ui::BedrockColor> {
+        self.0.get(identifier)?.name_color
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Arc<str>, &ItemComponents)> {
-        self.0.iter()
+        self.0.iter().map(|(id, item)| (id, &item.components))
     }
 }
 
 impl FromIterator<(Arc<str>, ItemComponents)> for SessionItemComponents {
     fn from_iter<I: IntoIterator<Item = (Arc<str>, ItemComponents)>>(items: I) -> Self {
-        Self(items.into_iter().collect())
+        Self(
+            items
+                .into_iter()
+                .map(|(id, components)| {
+                    let name_color = name_format(&components);
+                    (
+                        id,
+                        SessionItem {
+                            components,
+                            name_color,
+                        },
+                    )
+                })
+                .collect(),
+        )
     }
-}
-
-/// Armor points for one equipped vanilla armor identifier.
-#[must_use]
-pub fn armor_points(identifier: &str) -> u16 {
-    match identifier.strip_prefix("minecraft:").unwrap_or(identifier) {
-        "leather_helmet" | "golden_boots" | "chainmail_boots" => 1,
-        "leather_boots" => 1,
-        "leather_leggings" => 2,
-        "leather_chestplate" => 3,
-        "golden_helmet" | "chainmail_helmet" | "iron_helmet" | "iron_boots" | "turtle_helmet" => 2,
-        // The 1.26.30 copper set (base durability 11) protects between
-        // leather and chainmail: 2/4/3/1.
-        "copper_helmet" => 2,
-        "copper_chestplate" => 4,
-        "copper_leggings" | "golden_leggings" => 3,
-        "copper_boots" => 1,
-        "chainmail_leggings" => 4,
-        "golden_chestplate" | "chainmail_chestplate" => 5,
-        "iron_leggings" => 5,
-        "iron_chestplate" => 6,
-        "diamond_helmet" | "netherite_helmet" | "diamond_boots" | "netherite_boots" => 3,
-        "diamond_leggings" | "netherite_leggings" => 6,
-        "diamond_chestplate" | "netherite_chestplate" => 8,
-        _ => 0,
-    }
-}
-
-/// Total armor points across the local player's equipped armor identifiers,
-/// clamped to the reference 20-point bar.
-#[must_use]
-pub fn total_armor_points<'a>(identifiers: impl Iterator<Item = Option<&'a str>>) -> u16 {
-    identifiers
-        .flatten()
-        .map(armor_points)
-        .fold(0u16, u16::saturating_add)
-        .min(20)
 }
 
 /// Remaining durability in `0.0..=1.0` for a damageable stack, or `None` when
@@ -135,7 +115,20 @@ pub fn is_glint(
     identifier: &str,
     components: Option<&ItemComponents>,
 ) -> bool {
-    protocol::item_has_enchantment_list(&stack.extra_data)
+    glint_for_facts(
+        protocol::item_has_enchantment_list(&stack.extra_data),
+        identifier,
+        components,
+    )
+}
+
+/// Combines cached NBT glint with the current item definition's intrinsic traits.
+pub(super) fn glint_for_facts(
+    has_enchantment_list: bool,
+    identifier: &str,
+    components: Option<&ItemComponents>,
+) -> bool {
+    has_enchantment_list
         || components.is_some_and(|components| components.glint)
         || matches!(
             identifier,
@@ -147,40 +140,10 @@ pub fn is_glint(
         )
 }
 
-/// The format code and colour vanilla gives a component item's name: its
-/// `hover_text_color`, else its rarity's (uncommon yellow, rare aqua, epic light purple).
+/// Resolve a component item's semantic colour at admission: explicit hover colour
+/// first, then the supported rarity colour. Unknown names stay unresolved.
 #[must_use]
-pub fn name_format(components: &ItemComponents) -> Option<(char, [u8; 3])> {
-    const FORMATS: [(&str, char, [u8; 3]); 28] = [
-        ("black", '0', [0, 0, 0]),
-        ("dark_blue", '1', [0, 0, 170]),
-        ("dark_green", '2', [0, 170, 0]),
-        ("dark_aqua", '3', [0, 170, 170]),
-        ("dark_red", '4', [170, 0, 0]),
-        ("dark_purple", '5', [170, 0, 170]),
-        ("gold", '6', [255, 170, 0]),
-        ("gray", '7', [170, 170, 170]),
-        ("dark_gray", '8', [85, 85, 85]),
-        ("blue", '9', [85, 85, 255]),
-        ("green", 'a', [85, 255, 85]),
-        ("aqua", 'b', [85, 255, 255]),
-        ("red", 'c', [255, 85, 85]),
-        ("light_purple", 'd', [255, 85, 255]),
-        ("yellow", 'e', [255, 255, 85]),
-        ("white", 'f', [255, 255, 255]),
-        ("minecoin_gold", 'g', [221, 214, 5]),
-        ("material_quartz", 'h', [227, 212, 209]),
-        ("material_iron", 'i', [206, 202, 202]),
-        ("material_netherite", 'j', [68, 58, 59]),
-        ("material_redstone", 'm', [151, 22, 7]),
-        ("material_copper", 'n', [180, 104, 77]),
-        ("material_gold", 'p', [222, 177, 45]),
-        ("material_emerald", 'q', [71, 160, 54]),
-        ("material_diamond", 's', [44, 186, 168]),
-        ("material_lapis", 't', [33, 73, 123]),
-        ("material_amethyst", 'u', [154, 92, 198]),
-        ("material_resin", 'v', [235, 113, 20]),
-    ];
+pub fn name_format(components: &ItemComponents) -> Option<ui::BedrockColor> {
     let named = components
         .hover_text_color
         .as_deref()
@@ -190,10 +153,7 @@ pub fn name_format(components: &ItemComponents) -> Option<(char, [u8; 3])> {
             Some("epic") => Some("light_purple"),
             _ => None,
         })?;
-    FORMATS
-        .iter()
-        .find(|(name, ..)| name.eq_ignore_ascii_case(named))
-        .map(|&(_, code, rgb)| (code, rgb))
+    ui::BedrockColor::from_name(named)
 }
 
 /// Mechanical display name from a vanilla identifier: the path segment in
@@ -226,46 +186,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn armor_points_follow_the_pinned_vanilla_table() {
-        assert_eq!(armor_points("minecraft:diamond_chestplate"), 8);
-        assert_eq!(armor_points("minecraft:leather_boots"), 1);
-        assert_eq!(armor_points("minecraft:turtle_helmet"), 2);
-        assert_eq!(armor_points("minecraft:elytra"), 0);
-        assert_eq!(armor_points("custom:armor"), 0);
-        // The 1.26.30 copper set sits between leather and chainmail.
-        assert_eq!(armor_points("minecraft:copper_helmet"), 2);
-        assert_eq!(armor_points("minecraft:copper_chestplate"), 4);
-        assert_eq!(armor_points("minecraft:copper_leggings"), 3);
-        assert_eq!(armor_points("minecraft:copper_boots"), 1);
-        let total = total_armor_points(
-            [
-                Some("minecraft:iron_helmet"),
-                Some("minecraft:iron_chestplate"),
-                Some("minecraft:iron_leggings"),
-                Some("minecraft:iron_boots"),
-                None,
-            ]
-            .into_iter(),
-        );
-        assert_eq!(total, 15);
-        // A pathological modded sum clamps to the reference bar.
-        let clamped = total_armor_points(
-            [Some("minecraft:diamond_chestplate"); 4]
-                .map(Some)
-                .map(|value| value.flatten())
-                .into_iter(),
-        );
-        assert_eq!(clamped, 20);
-    }
-
-    #[test]
     fn durability_fractions_follow_the_pinned_maxima_and_hide_pristine_bars() {
         let fraction = fraction_from_damage(250, 125).unwrap();
         assert!((fraction - 0.5).abs() < 0.01);
         assert_eq!(fraction_from_damage(250, 0), None);
         assert_eq!(
             durability_fraction_for_damage(
-                client_world::vanilla_max_durability("minecraft:stick"),
+                assets::item::durability::builtin_item_durability("minecraft:stick").maximum(),
                 125
             ),
             None
@@ -276,7 +203,7 @@ mod tests {
         assert_eq!(
             durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             ),
             None
         );
@@ -315,7 +242,7 @@ mod tests {
         // A correction wins over conflicting damage carried by the local stack.
         let fraction = cell_durability_fraction(
             &stack_with_damage(125),
-            client_world::vanilla_max_durability("minecraft:iron_sword"),
+            assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
             Some(50),
         )
         .unwrap();
@@ -323,7 +250,7 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(9_999),
             ),
             Some(0.0),
@@ -333,7 +260,7 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(0)
             ),
             None
@@ -343,19 +270,19 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 Some(-3)
             ),
             durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             )
         );
         // Unknown maxima stay hidden under correction too.
         assert_eq!(
             cell_durability_fraction(
                 &NetworkItemStack::empty(),
-                client_world::vanilla_max_durability("minecraft:stick"),
+                assets::item::durability::builtin_item_durability("minecraft:stick").maximum(),
                 Some(5)
             ),
             None
@@ -364,12 +291,12 @@ mod tests {
         assert_eq!(
             cell_durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword"),
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum(),
                 None
             ),
             durability_fraction(
                 &damaged,
-                client_world::vanilla_max_durability("minecraft:iron_sword")
+                assets::item::durability::builtin_item_durability("minecraft:iron_sword").maximum()
             )
         );
         assert_eq!(
@@ -380,7 +307,7 @@ mod tests {
 
     // Component names translate as keys or show literally; custom maxima drive the bar.
     #[test]
-    fn session_components_name_and_bound_custom_items() {
+    fn session_components_name_custom_items() {
         let mut player_runtime = player_state::PlayerState::new(1);
 
         let mut runtime = crate::ui_runtime::UiRuntime::new(1);
@@ -403,12 +330,6 @@ mod tests {
         ]))));
         assert_eq!(runtime.localized_item_name("zeqa:blade"), "Zeqa Blade");
         assert_eq!(runtime.localized_item_name("zeqa:gem"), "Shiny Gem");
-        assert_eq!(runtime.item_max_durability(Some("zeqa:blade")), Some(100));
-        assert_eq!(runtime.item_max_durability(Some("zeqa:gem")), None);
-        assert_eq!(
-            runtime.item_max_durability(Some("minecraft:iron_sword")),
-            Some(250)
-        );
         player_runtime.begin_session(2);
         runtime.begin_session(2);
         assert_eq!(runtime.localized_item_name("zeqa:gem"), "Gem");
@@ -440,12 +361,46 @@ mod tests {
             rarity: Some("epic".into()),
             ..ItemComponents::default()
         };
-        assert_eq!(name_format(&components), Some(('d', [255, 85, 255])));
+        assert_eq!(
+            name_format(&components),
+            Some(ui::BedrockColor::LightPurple)
+        );
         components.hover_text_color = Some("gold".into());
-        assert_eq!(name_format(&components).map(|(code, _)| code), Some('6'));
+        assert_eq!(name_format(&components), Some(ui::BedrockColor::Gold));
         components.hover_text_color = Some("chartreuse".into());
         assert_eq!(name_format(&components), None);
         assert_eq!(name_format(&ItemComponents::default()), None);
+    }
+
+    #[test]
+    fn session_name_colours_share_text_semantics_and_refresh_on_replacement() {
+        let id: Arc<str> = "example:custom_item".into();
+        let components = |name: &str| ItemComponents {
+            hover_text_color: Some(Arc::from(name)),
+            ..Default::default()
+        };
+        for (name, expected) in [
+            ("material_emerald", ui::BedrockColor::MaterialEmerald),
+            ("material_lapis", ui::BedrockColor::MaterialLapis),
+            ("material_resin", ui::BedrockColor::MaterialResin),
+        ] {
+            let items = SessionItemComponents::from_iter([(Arc::clone(&id), components(name))]);
+            let color = items.name_color(&id).unwrap();
+            assert_eq!(color, expected);
+            let descriptor = color.descriptor().unwrap();
+            let text = format!("§{}Name", descriptor.code);
+            let spans = ui::parse_bedrock_text(&text, text.len()).unwrap();
+            assert_eq!(color.rgb(), spans[0].style.color.rgb());
+        }
+        let previous = SessionItemComponents::from_iter([(Arc::clone(&id), components("aqua"))]);
+        let replacement = SessionItemComponents::from_iter([(Arc::clone(&id), components("gold"))]);
+        assert_eq!(previous.name_color(&id), Some(ui::BedrockColor::Aqua));
+        assert_eq!(replacement.name_color(&id), Some(ui::BedrockColor::Gold));
+        assert_eq!(previous.iter().count(), 1);
+        assert_eq!(
+            previous.get(&id).unwrap().hover_text_color.as_deref(),
+            Some("aqua")
+        );
     }
 
     #[test]

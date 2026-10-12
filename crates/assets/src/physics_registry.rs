@@ -5,13 +5,18 @@ use sha2::{Digest, Sha256};
 
 use crate::{AssetError, CollisionBox, RegistryRecord, read_registry_for_protocol};
 
-const MAGIC: &[u8; 8] = b"PREG1001";
+use crate::registry::MovementSemantics;
+use crate::registry::{LEGACY_PHYSICS_REGISTRY_MAGIC, PHYSICS_REGISTRY_MAGIC};
+
+mod encode;
+mod shapes;
+pub use encode::encode_physics_registry;
 const LEGACY_PHYSICS_REGISTRY_PROTOCOL: u32 = 1001;
-const HEADER_BYTES: usize = 48;
+const HEADER_BYTES: usize = crate::registry::PHYSICS_REGISTRY_HEADER_BYTES;
 const TRAILER_BYTES: usize = 32;
 const MAX_RECORDS: usize = 65_536;
 const MAX_BOXES: usize = 32;
-const SCALE: f32 = 100_000_000.0;
+const SCALE: f32 = crate::block_shapes::COLLISION_UNITS_PER_BLOCK as f32;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -54,17 +59,20 @@ impl SurfaceResponse {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockPhysicsRecord {
     pub sequential_id: u32,
     pub network_hash: u32,
     pub boxes: Box<[CollisionBox]>,
+    /// Compiled interaction facts; absent only in legacy compiler inputs.
+    pub shapes: Option<crate::block_shapes::CompiledBlockShapes>,
     pub friction_q1e8: u32,
     pub horizontal_speed_q1e8: u32,
     pub vertical_speed_q1e8: u32,
     pub fluid_height_q1e8: i32,
     pub flags: BlockPhysicsFlags,
     pub surface_response: SurfaceResponse,
+    pub movement_semantics: MovementSemantics,
 }
 
 impl BlockPhysicsRecord {
@@ -140,7 +148,7 @@ impl PhysicsRegistry {
     }
 }
 
-/// Decodes a strict `PREG1001` artifact bound to the exact protocol-1001 BREG
+/// Decodes a physics artifact bound to the exact protocol-1001 BREG
 /// bytes and records.
 pub fn read_physics_registry(
     preg: &[u8],
@@ -150,7 +158,7 @@ pub fn read_physics_registry(
     read_physics_registry_for_protocol(preg, breg, records, LEGACY_PHYSICS_REGISTRY_PROTOCOL)
 }
 
-/// Reads the wire protocol stamped in a `PREG1001` carrier header without
+/// Reads the wire protocol stamped in a supported physics carrier header without
 /// decoding record payloads or verifying the trailer digest.
 ///
 /// Startup cross-carrier coherence checks use this cheap reader ahead of the
@@ -161,13 +169,14 @@ pub fn physics_registry_header_protocol(preg: &[u8]) -> Result<u32, AssetError> 
         return invalid("carrier is shorter than its header and digest");
     }
     let mut reader = Reader::new(&preg[..preg.len() - TRAILER_BYTES]);
-    if reader.read_exact(MAGIC.len(), "magic")? != MAGIC {
+    let magic = reader.read_exact(PHYSICS_REGISTRY_MAGIC.len(), "magic")?;
+    if magic != PHYSICS_REGISTRY_MAGIC && magic != LEGACY_PHYSICS_REGISTRY_MAGIC {
         return invalid("invalid magic");
     }
     reader.read_u32("protocol")
 }
 
-/// Decodes a strict `PREG1001` carrier for one explicit wire protocol.
+/// Decodes compiled physics for either supported protocol or retained legacy protocol-1001 data.
 ///
 /// Only the reviewed protocol-1001 and protocol-2193 projections are
 /// accepted; every other value is rejected before any structural read. All
@@ -181,8 +190,29 @@ pub fn read_physics_registry_for_protocol(
     records: &[RegistryRecord],
     expected_protocol: u32,
 ) -> Result<PhysicsRegistry, AssetError> {
+    decode_physics_registry(preg, breg, records, expected_protocol, false)
+}
+
+/// Reads a movement seed for compilation, including active seeds without compiled shapes.
+pub fn read_physics_registry_seed_for_protocol(
+    preg: &[u8],
+    breg: &[u8],
+    records: &[RegistryRecord],
+    expected_protocol: u32,
+) -> Result<PhysicsRegistry, AssetError> {
+    decode_physics_registry(preg, breg, records, expected_protocol, true)
+}
+
+/// Validates exact identities and movement facts before decoding optional compiled shapes.
+fn decode_physics_registry(
+    preg: &[u8],
+    breg: &[u8],
+    records: &[RegistryRecord],
+    expected_protocol: u32,
+    seed: bool,
+) -> Result<PhysicsRegistry, AssetError> {
     if !matches!(expected_protocol, 1001 | 2193) {
-        return invalid("unsupported PREG1001 wire protocol");
+        return invalid("unsupported physics wire protocol");
     }
     if preg.len() < HEADER_BYTES + TRAILER_BYTES {
         return invalid("carrier is shorter than its header and digest");
@@ -197,11 +227,18 @@ pub fn read_physics_registry_for_protocol(
     }
 
     let mut reader = Reader::new(&preg[..body_len]);
-    if reader.read_exact(8, "magic")? != MAGIC {
+    let magic = reader.read_exact(8, "magic")?;
+    if magic != PHYSICS_REGISTRY_MAGIC && magic != LEGACY_PHYSICS_REGISTRY_MAGIC {
         return invalid("invalid magic");
     }
     if reader.read_u32("protocol")? != expected_protocol {
         return invalid(format!("protocol is not {expected_protocol}"));
+    }
+    let compiled = magic == PHYSICS_REGISTRY_MAGIC;
+    if (seed && compiled)
+        || (!seed && expected_protocol != LEGACY_PHYSICS_REGISTRY_PROTOCOL && !compiled)
+    {
+        return invalid("stale physics format; rebuild with make assets physics-assets");
     }
     let count = usize::try_from(reader.read_u32("record count")?)
         .map_err(|_| physics_error("record count does not fit usize"))?;
@@ -240,9 +277,18 @@ pub fn read_physics_registry_for_protocol(
         let flags = BlockPhysicsFlags::from_bits(reader.read_u8("flags")?)
             .ok_or_else(|| physics_error(format!("record {index} has unknown flag bits")))?;
         let surface_response = SurfaceResponse::read(reader.read_u8("surface response")?)?;
-        if reader.read_u8("reserved byte")? != 0 {
-            return invalid(format!("record {index} has non-zero reserved byte"));
-        }
+        let support = reader.read_u8("movement semantics")?;
+        let movement_semantics =
+            if !compiled && expected_protocol == LEGACY_PHYSICS_REGISTRY_PROTOCOL {
+                if support != 0 {
+                    return invalid(format!("record {index} has non-zero reserved byte"));
+                }
+                MovementSemantics::Unresolved
+            } else {
+                MovementSemantics::read(support).map_err(|_| {
+                    physics_error(format!("record {index} has unknown movement semantics"))
+                })?
+            };
         let friction_q1e8 = reader.read_u32("friction")?;
         let horizontal_speed_q1e8 = reader.read_u32("horizontal speed")?;
         let vertical_speed_q1e8 = reader.read_u32("vertical speed")?;
@@ -287,17 +333,24 @@ pub fn read_physics_registry_for_protocol(
             vertical_speed_q1e8,
             fluid_height_q1e8,
         )?;
+        let shapes = if compiled {
+            Some(shapes::read(&mut reader)?)
+        } else {
+            None
+        };
         *sequential_slot = index;
         decoded.push(BlockPhysicsRecord {
             sequential_id,
             network_hash,
             boxes: boxes.into_boxed_slice(),
+            shapes,
             friction_q1e8,
             horizontal_speed_q1e8,
             vertical_speed_q1e8,
             fluid_height_q1e8,
             flags,
             surface_response,
+            movement_semantics,
         });
     }
     if reader.remaining() != 0 {
@@ -332,7 +385,9 @@ fn validate_semantics(
     if water && lava {
         return invalid(format!("record {index} is both water and lava"));
     }
-    if (water || lava) != (fluid_height > 0) || fluid_height > 100_000_000 {
+    if (water || lava) != (fluid_height > 0)
+        || fluid_height > crate::block_shapes::COLLISION_UNITS_PER_BLOCK as i32
+    {
         return invalid(format!("record {index} has contradictory fluid height"));
     }
     if matches!(

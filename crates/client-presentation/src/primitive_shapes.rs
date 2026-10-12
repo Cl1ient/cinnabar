@@ -1,8 +1,8 @@
 //! Publishes packet deltas and compact actor positions to the retained debug renderer.
 
 use chunk_pipeline::WorldStream;
-use render::PrimitiveShapesScene;
 use render_model::primitive_shapes::PrimitiveShapeStore;
+use render_scene::PrimitiveShapesScene;
 use std::sync::{Arc, Mutex};
 
 /// Session identity prevents a new connection from inheriting the previous server's shapes.
@@ -34,7 +34,7 @@ impl PrimitiveShapePublisher {
         };
         scene.dimension = stream.current_dimension();
         scene.render_distance =
-            render::adjusted_player_render_distance_blocks(stream.render_distance_blocks())
+            render_scene::adjusted_player_render_distance_blocks(stream.render_distance_blocks())
                 .unwrap_or(0.0);
         let mut store = scene.store.lock().expect("primitive store lock poisoned");
         while let Some(event) = stream.pop_primitive_shapes() {
@@ -56,4 +56,27 @@ impl PrimitiveShapePublisher {
                 .interpolated_position(partial_tick)
         });
     }
+}
+
+/// Publishes attached shapes and their retained text using this frame's actor clock.
+#[allow(clippy::too_many_arguments)]
+pub fn drive_primitive_shapes(
+    stream: Option<&mut WorldStream>,
+    mut scene: bevy::prelude::ResMut<PrimitiveShapesScene>,
+    now: f32,
+    partial_tick: f32,
+    view: &crate::local_player::LocalViewPose,
+    presentation: &mut client_ui::ui_runtime::presentation::UiPresentationRuntime,
+    runtime: &client_ui::ui_runtime::UiRuntime,
+    mut publisher: bevy::prelude::Local<PrimitiveShapePublisher>,
+) {
+    publisher.publish(
+        stream,
+        &mut scene,
+        now,
+        partial_tick,
+        Some(view.feet_translation().to_array()),
+    );
+    let mut store = scene.store.lock().expect("primitive store lock poisoned");
+    presentation.prepare_primitive_text(&mut store, runtime);
 }

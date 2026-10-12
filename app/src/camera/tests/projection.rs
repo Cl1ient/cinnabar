@@ -7,7 +7,9 @@ use {
 /// Builds the app camera adapter with a primary window of the requested size.
 fn camera_app(width: u32, height: u32) -> (App, Entity) {
     let mut app = App::new();
-    app.insert_resource(crate::player_runtime::PlayerRuntime::new(1));
+    app.insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
+        1,
+    )));
     app.init_resource::<Time>()
         .add_plugins(FlyCameraPlugin::default());
     let window = app
@@ -149,7 +151,7 @@ fn a_rig_committed_during_camera_input_changes_the_fov_in_the_same_frame() {
         }));
     }
     let (mut app, _) = camera_app(1280, 720);
-    app.init_resource::<render::ScreenOverlayScene>();
+    app.init_resource::<render_scene::ScreenOverlayScene>();
     let base = app
         .world()
         .resource::<CameraSettingsAuthority>()
@@ -162,7 +164,7 @@ fn a_rig_committed_during_camera_input_changes_the_fov_in_the_same_frame() {
     let expected = client_presentation::camera::projection_fov_radians(base + 10.0);
     assert!((projection(&mut app).fov - expected).abs() < 1.0e-6);
     let expected_half_height = (expected * 0.5).tan();
-    let overlay = app.world().resource::<render::ScreenOverlayScene>();
+    let overlay = app.world().resource::<render_scene::ScreenOverlayScene>();
     assert!((overlay.fire_projection()[1] - expected_half_height).abs() < 1.0e-6);
 }
 
@@ -343,7 +345,7 @@ fn world_hurt_rotation_samples_actor_ticks_and_clears_when_the_stream_retires() 
     }
 
     let (mut app, _) = camera_app(1280, 720);
-    app.init_resource::<render::ScreenOverlayScene>();
+    app.init_resource::<render_scene::ScreenOverlayScene>();
     let mut stream = WorldStream::new(WorldBootstrap {
         dimension: 0,
         local_player_runtime_id: 1,
@@ -420,7 +422,7 @@ fn world_hurt_rotation_samples_actor_ticks_and_clears_when_the_stream_retires() 
         assert!(right.z.abs() < 1e-6);
         let expected_portal =
             Mat4::from_quat(rotation) * projection(&mut app).get_clip_from_view().inverse();
-        let overlay = app.world().resource::<render::ScreenOverlayScene>();
+        let overlay = app.world().resource::<render_scene::ScreenOverlayScene>();
         assert!(
             overlay
                 .portal_from_clip()

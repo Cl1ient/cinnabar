@@ -1,7 +1,7 @@
 //! Base entity rasters can be overridden without restating vanilla entity definitions.
 
 use assets::RuntimeEntityAssets;
-use render::{ActorArtworkPages, EquipmentRaster};
+use render_model::{ActorArtworkPages, EquipmentRaster};
 use resource_pack::LayeredPackView;
 use std::sync::{Arc, OnceLock};
 
@@ -29,7 +29,7 @@ pub(super) fn prepare(view: &LayeredPackView) -> Option<Arc<ActorArtworkPages>> 
             if !source.path.starts_with("textures/") {
                 return None;
             }
-            let image = super::resource_packs::decode_pack_texture(view, &source.path)?;
+            let image = pack_runtime::pack_textures::decode_pack_texture(view, &source.path)?;
             let width = u16::try_from(image.width).ok()?;
             let height = u16::try_from(image.height).ok()?;
             if !retain_override_bytes(&mut bytes, image.rgba8.len(), assets::MAX_ACTOR_PIXEL_BYTES)

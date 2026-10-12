@@ -128,6 +128,31 @@ pub fn bind_screen(
     bind_stateful(&std::sync::Arc::new(root.clone()), data, &library, state).0
 }
 
+/// [`bind_screen`] that keeps what the bind built in `state`, so [`rebind_screen`] can rebuild
+/// only the controls a later refresh changes. A `library` handing out the same templates
+/// across binds (a [`crate::CachedLibrary`]) lets unchanged factory and grid instances stand.
+pub fn bind_screen_incremental(
+    root: &std::sync::Arc<ResolvedControl>,
+    library: &dyn crate::ControlLibrary,
+    data: &std::sync::Arc<DataSource>,
+    state: &mut BindState,
+) -> ResolvedControl {
+    crate::bind_incremental(root, data, library, state)
+}
+
+/// Applies a refresh in place onto `bound`, the tree `state`'s last incremental screen bind
+/// produced, rebuilding only changed controls and keeping `measures` for the rest.
+pub fn rebind_screen(
+    root: &std::sync::Arc<ResolvedControl>,
+    library: &dyn crate::ControlLibrary,
+    data: &std::sync::Arc<DataSource>,
+    state: &mut BindState,
+    bound: &mut ResolvedControl,
+    measures: &mut crate::MeasureCache,
+) {
+    crate::rebind(root, data, library, state, bound, measures);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,12 +188,10 @@ mod tests {
         let small = catalog(0);
         let large = catalog(1_024);
         let context = Context::empty();
-        let (small, small_allocations) = crate::allocation_count::count(|| {
-            screen_settings("settings.screen", &small, &context).unwrap()
-        });
-        let (large, large_allocations) = crate::allocation_count::count(|| {
-            screen_settings("settings.screen", &large, &context).unwrap()
-        });
+        let (small, small_allocations) =
+            test_alloc::count(|| screen_settings("settings.screen", &small, &context).unwrap());
+        let (large, large_allocations) =
+            test_alloc::count(|| screen_settings("settings.screen", &large, &context).unwrap());
         assert_eq!(small, large);
         assert!(large.absorbs_input);
         assert!(!large.should_steal_mouse);

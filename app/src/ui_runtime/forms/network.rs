@@ -1,13 +1,15 @@
 use super::{FormTransportError, flush_form_response};
-use crate::runtime::network::{NetworkHandle, PacketSendError};
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::prelude::{Res, ResMut};
-use client_ui::ui_runtime::UiRuntime;
+use client_runtime::network::NetworkHandle;
+use client_session::PacketSendError;
+use client_shell::ui_resources::UiRuntimeResource;
 
 pub(crate) fn flush_server_form_network(
-    mut runtime: ResMut<UiRuntime>,
-    player: Res<crate::player_runtime::PlayerRuntime>,
-    network: Res<NetworkHandle>,
-    menu: Option<Res<crate::menu::MenuRuntime>>,
+    mut runtime: ResMut<UiRuntimeResource>,
+    player: Res<client_state::PlayerRuntime>,
+    network: Res<NetworkHandle<PackApplication>>,
+    menu: Option<Res<client_shell::menu::MenuRuntime>>,
 ) {
     let session = runtime.session_id();
     // Terminal controls retire the session before another enqueue attempt.

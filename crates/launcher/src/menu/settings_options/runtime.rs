@@ -20,6 +20,14 @@ pub fn frame_rate_limit(value: i32) -> FrameRateLimit {
     }
 }
 
+/// The Max Framerate caption: a numeric cap or Unlimited.
+pub fn frame_rate_label(value: i32, translate: &dyn Fn(&str) -> String) -> String {
+    match frame_rate_limit(value) {
+        FrameRateLimit::Unlimited => translate("options.framerateLimit.max"),
+        FrameRateLimit::Fixed(fps) => fps.to_string(),
+    }
+}
+
 impl SettingsOptions {
     /// Builds the existing subsystem settings from the controller's saved values.
     pub fn user_settings(&self) -> ui::UserSettings {
@@ -46,6 +54,8 @@ impl SettingsOptions {
         settings.video.render_distance_chunks = self.value("render_distance") as u8;
         settings.video.view_bobbing = self.value("view_bobbing") != 0;
         settings.video.java_animations = self.value(ANIMATIONS_OPTION.name) == 0;
+        settings.video.native_skybox_offset =
+            self.value(super::NATIVE_SKYBOX_OFFSET_OPTION.name) != 0;
         settings.video.outline_selection = self.value("classic_box_selection") != 0;
         settings.video.fov_effects_scale = self.value("field_of_view_toggle") as f32;
         settings.controls.mouse_sensitivity =

@@ -7,11 +7,14 @@ mod artifacts;
 #[cfg(test)]
 mod completion_plan;
 mod conditions;
+mod contracts;
 mod dependencies;
 mod markers;
 mod modules;
 mod paths;
+mod platforms;
 mod policy;
+mod reads;
 mod reexports;
 mod sources;
 mod timing;
@@ -65,10 +68,13 @@ pub fn check_repository(root: &Path, policy_path: &Path) -> Result<Vec<String>, 
     check_artifacts(root, &policy, &files, &mut diagnostics);
     artifacts::check_binary_artifacts(root, &policy, &files, &mut diagnostics)?;
     check_sources(root, &policy, &files, &mut diagnostics)?;
+    contracts::check_contracts(root, &policy, &files, &mut diagnostics)?;
     reexports::check_reexports(root, &policy, &files, &mut diagnostics)?;
     check_dependencies(root, &policy, &mut diagnostics)?;
     modules::check_modules(root, &policy, &files, &mut diagnostics)?;
     check_markers(root, &policy, &files, &mut diagnostics)?;
+    platforms::check_platforms(root, &policy, &files, &mut diagnostics)?;
+    reads::check_reads(root, &policy, &files, &mut diagnostics)?;
     check_timing(root, &policy, &files, &mut diagnostics)?;
     diagnostics.sort();
     diagnostics.dedup();

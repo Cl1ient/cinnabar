@@ -18,6 +18,113 @@ fn array(side: u32, layers: u32) -> TextureArray {
     }
 }
 
+/// Builds a valid material/frame table spanning exactly two normal upload budgets.
+fn oversized_references() -> Arc<EnhancedTextureAssets> {
+    let word_bytes = std::mem::size_of::<u32>();
+    let words = 2 * FRAME_UPLOAD_BYTES / word_bytes;
+    let base = EnhancedTextureAssets::REFERENCE_BASE_WORDS;
+    let stride = EnhancedTextureAssets::REFERENCE_OVERRIDE_WORDS;
+    let overrides = (words - base) / stride;
+    assert_eq!(base + overrides * stride, words);
+    let mut references = Vec::with_capacity(words);
+    references.resize(base, u32::MAX);
+    for index in 0..overrides {
+        references.extend_from_slice(&[
+            (index / assets::MAX_TEXTURE_LAYERS) as u32,
+            (index % assets::MAX_TEXTURE_LAYERS) as u32,
+            0,
+        ]);
+    }
+    source(references.into_boxed_slice())
+}
+
+/// Pairs a checked reference table with minimal complete authored texture pages.
+fn source(references: Box<[u32]>) -> Arc<EnhancedTextureAssets> {
+    let [color0, color1, normal0, normal1, material0, material1] =
+        std::array::from_fn(|_| array(1, 1));
+    Arc::new(
+        EnhancedTextureAssets::new(
+            [color0, color1],
+            [normal0, normal1],
+            [material0, material1],
+            references,
+        )
+        .unwrap(),
+    )
+}
+
+/// A device-admitted table larger than one frame must finish before any bindings publish.
+#[test]
+fn reference_table_twice_the_frame_budget_completes_in_three_frames() {
+    let (device, queue) = wgpu::Device::noop(&Default::default());
+    let device = RenderDevice::from(device);
+    let queue = RenderQueue::new(queue);
+    let base = ChunkTextureAssets::default();
+    let (mut prepared, mut stats) =
+        crate::chunk::gpu::texture_upload::build_chunk_texture_assets(&base, &device, &queue)
+            .unwrap();
+    let old_references = prepared.enhanced_texture_refs.id();
+    let old_views = prepared.enhanced_views.each_ref().map(|view| view.id());
+    let source = oversized_references();
+    assert!(source.fits_device_limits(&device.limits()));
+    assert_eq!(
+        std::mem::size_of_val(source.texture_refs.as_ref()),
+        2 * FRAME_UPLOAD_BYTES
+    );
+    let texture_bytes: usize = source
+        .pages()
+        .into_iter()
+        .flat_map(|page| page.mips.iter())
+        .map(|mip| mip.rgba8.len())
+        .sum();
+    let candidate = base.with_updated_enhanced(Some(source.clone()));
+    let mut upload = AuthoredUpload::new(candidate.identity(), source.clone(), &device).unwrap();
+    for _ in 0..2 {
+        assert_eq!(upload.step(&queue, FRAME_UPLOAD_BYTES), FRAME_UPLOAD_BYTES);
+        assert!(!upload.complete());
+        assert_eq!(prepared.enhanced_texture_refs.id(), old_references);
+        assert_eq!(
+            prepared.enhanced_views.each_ref().map(|view| view.id()),
+            old_views
+        );
+        assert_eq!(prepared.identity, base.identity());
+    }
+    assert_eq!(upload.step(&queue, FRAME_UPLOAD_BYTES), texture_bytes);
+    assert!(upload.complete());
+    assert_eq!(upload.step(&queue, FRAME_UPLOAD_BYTES), 0);
+    upload.publish(&mut prepared, &mut stats);
+    assert_eq!(prepared.identity, candidate.identity());
+    assert_ne!(prepared.enhanced_texture_refs.id(), old_references);
+    assert!(Arc::ptr_eq(
+        prepared.authored_source.as_ref().unwrap(),
+        &source
+    ));
+    assert_eq!(
+        prepared.authored_upload_bytes,
+        (2 * FRAME_UPLOAD_BYTES + texture_bytes) as u64
+    );
+}
+
+/// Sub-word allowances wait, while an unaligned byte budget still uploads whole reference words.
+#[test]
+fn reference_segments_obey_word_alignment_and_make_progress_with_small_budgets() {
+    let (device, queue) = wgpu::Device::noop(&Default::default());
+    let device = RenderDevice::from(device);
+    let queue = RenderQueue::new(queue);
+    let source =
+        source(vec![u32::MAX; EnhancedTextureAssets::REFERENCE_BASE_WORDS].into_boxed_slice());
+    let identity = ChunkTextureAssets::default()
+        .with_updated_enhanced(Some(source.clone()))
+        .identity();
+    let mut upload = AuthoredUpload::new(identity, source, &device).unwrap();
+    let word = std::mem::size_of::<u32>();
+    assert_eq!(upload.step(&queue, 0), 0);
+    assert_eq!(upload.step(&queue, word - 1), 0);
+    assert_eq!(upload.step(&queue, word + 1), word);
+    assert_eq!(upload.step(&queue, word + 2), word);
+    assert!(!upload.complete());
+}
+
 #[test]
 fn bounded_stripes_visit_each_page_mip_layer_and_row_exactly_once() {
     let arrays = [

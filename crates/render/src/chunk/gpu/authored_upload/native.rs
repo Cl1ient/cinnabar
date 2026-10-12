@@ -58,6 +58,7 @@ fn native_authored_stripes_publish_complete_mips_and_preserve_carrier_resources(
     let [color0, color1, normal0, normal1, material0, material1] = arrays;
     let mut references = vec![u32::MAX; assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS];
     references[0] = assets::PBR_REF_COLOR;
+    *references.last_mut().unwrap() = assets::PBR_REF_COLOR | 1;
     let source = Arc::new(
         EnhancedTextureAssets::new(
             [color0, color1],
@@ -71,11 +72,16 @@ fn native_authored_stripes_publish_complete_mips_and_preserve_carrier_resources(
     let mut pending = AuthoredUpload::new(candidate.identity(), source, &device).unwrap();
     let reference_bytes = assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS * 4;
     assert_eq!(
-        pending.step(&device, &queue, reference_bytes + 32),
-        reference_bytes + 32
+        pending.step(&queue, reference_bytes / 2),
+        reference_bytes / 2
     );
     assert!(!pending.complete());
-    let mut frames = 1;
+    assert_eq!(
+        pending.step(&queue, reference_bytes / 2 + 32),
+        reference_bytes / 2 + 32
+    );
+    assert!(!pending.complete());
+    let mut frames = 2;
     while !pending.complete() {
         assert_eq!(prepared.enhanced_views[0].id(), old_authored_view);
         assert_eq!(prepared.identity, original_identity);
@@ -87,12 +93,12 @@ fn native_authored_stripes_publish_complete_mips_and_preserve_carrier_resources(
                 "incomplete uploads keep the published cutout shadows"
             );
         }
-        let written = pending.step(&device, &queue, 32);
+        let written = pending.step(&queue, 32);
         assert!(written > 0 && written <= 32);
         frames += 1;
     }
     assert!(frames > 2);
-    assert_eq!(pending.step(&device, &queue, FRAME_UPLOAD_BYTES), 0);
+    assert_eq!(pending.step(&queue, FRAME_UPLOAD_BYTES), 0);
     pending.publish(&mut prepared, &mut stats);
     #[cfg(feature = "enhanced")]
     {
@@ -124,7 +130,7 @@ fn native_authored_stripes_publish_complete_mips_and_preserve_carrier_resources(
 @group(0) @binding(4) var material0:texture_2d_array<f32>;
 @group(0) @binding(5) var material1:texture_2d_array<f32>;
 @group(0) @binding(6) var<storage,read> references:array<u32>;
-@group(0) @binding(7) var<storage,read_write> results:array<vec4<f32>,37>;
+@group(0) @binding(7) var<storage,read_write> results:array<vec4<f32>,38>;
 fn sample_page(page:u32,layer:i32,mip:i32)->vec4<f32>{
     let uv=vec2<i32>(0);
     if page==0u{return textureLoad(color0,uv,layer,mip);}
@@ -143,6 +149,7 @@ fn sample_page(page:u32,layer:i32,mip:i32)->vec4<f32>{
         }
     }
     results[36]=vec4(f32(references[0]),0.0,0.0,1.0);
+    results[37]=vec4(f32(references[arrayLength(&references)-1u]),0.0,0.0,1.0);
 }
 "#
                 .into(),
@@ -158,7 +165,7 @@ fn sample_page(page:u32,layer:i32,mip:i32)->vec4<f32>{
             compilation_options: Default::default(),
             cache: None,
         });
-    let bytes = 37 * 16;
+    let bytes = 38 * 16;
     let output = device.create_buffer(&BufferDescriptor {
         label: Some("authored mip fixture samples"),
         size: bytes,
@@ -243,6 +250,7 @@ fn sample_page(page:u32,layer:i32,mip:i32)->vec4<f32>{
         }
     }
     assert_eq!(values[36][0], assets::PBR_REF_COLOR as f32);
+    assert_eq!(values[37][0], (assets::PBR_REF_COLOR | 1) as f32);
     super::super::detach(&mut prepared, original_identity, &device, &mut stats);
     assert_eq!(prepared.identity, original_identity);
     assert_eq!(prepared._textures[0].id(), carrier_texture);

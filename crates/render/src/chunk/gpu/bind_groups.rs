@@ -426,11 +426,7 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
     }
     #[cfg(feature = "enhanced")]
     if let Some(pending) = gpu_assets.authored_pending.as_mut() {
-        pending.step(
-            &render_device,
-            &render_queue,
-            authored_upload::FRAME_UPLOAD_BYTES,
-        );
+        pending.step(&render_queue, authored_upload::FRAME_UPLOAD_BYTES);
         if pending.complete() {
             let completed = gpu_assets
                 .authored_pending

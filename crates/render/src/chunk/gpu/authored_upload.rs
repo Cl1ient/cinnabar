@@ -6,6 +6,10 @@ use render_scene::{ChunkTextureAssetIdentity, EnhancedTextureAssets};
 use super::bind_groups::{ChunkTextureUploadStats, PreparedChunkTextureAssets};
 
 pub(super) const FRAME_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
+const _: () = assert!(std::mem::size_of::<u32>() as u64 % wgpu::COPY_BUFFER_ALIGNMENT == 0);
+const _: () = assert!(
+    EnhancedTextureAssets::REFERENCE_BASE_WORDS * std::mem::size_of::<u32>() <= FRAME_UPLOAD_BYTES
+);
 
 pub(super) fn same_carrier(
     current: ChunkTextureAssetIdentity,
@@ -129,7 +133,8 @@ pub(super) struct AuthoredUpload {
     source: Arc<EnhancedTextureAssets>,
     textures: [Texture; 6],
     views: [TextureView; 6],
-    references: Option<Buffer>,
+    references: Buffer,
+    reference_words_written: usize,
     schedule: Schedule,
     written: u64,
     texture_bytes: u64,
@@ -153,6 +158,7 @@ impl AuthoredUpload {
         Self::new(assets.identity(), source.clone(), device)
     }
 
+    /// Allocates unpublished resources for device-admitted maps and their reference table.
     pub(super) fn new(
         identity: ChunkTextureAssetIdentity,
         source: Arc<EnhancedTextureAssets>,
@@ -198,10 +204,16 @@ impl AuthoredUpload {
         });
         Some(Self {
             identity,
-            source,
             textures,
             views,
-            references: None,
+            references: device.create_buffer(&BufferDescriptor {
+                label: Some("staged authored texture references"),
+                size: std::mem::size_of_val(source.texture_refs.as_ref()) as u64,
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            reference_words_written: 0,
+            source,
             schedule,
             written: 0,
             texture_bytes,
@@ -212,23 +224,22 @@ impl AuthoredUpload {
         self.identity == identity
     }
 
-    pub(super) fn step(
-        &mut self,
-        device: &RenderDevice,
-        queue: &RenderQueue,
-        budget: usize,
-    ) -> usize {
+    /// Streams aligned reference words and texture rows within the caller's byte budget.
+    pub(super) fn step(&mut self, queue: &RenderQueue, budget: usize) -> usize {
         let mut remaining = budget;
-        if self.references.is_none() {
-            let bytes = bytemuck::cast_slice(&self.source.texture_refs);
-            if bytes.len() > remaining {
-                return 0;
-            }
-            self.references = Some(device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some("staged authored texture references"),
-                contents: bytes,
-                usage: BufferUsages::STORAGE,
-            }));
+        let word_bytes = std::mem::size_of::<u32>();
+        let words = (self.source.texture_refs.len() - self.reference_words_written)
+            .min(remaining / word_bytes);
+        if words > 0 {
+            let end = self.reference_words_written + words;
+            let bytes =
+                bytemuck::cast_slice(&self.source.texture_refs[self.reference_words_written..end]);
+            queue.write_buffer(
+                &self.references,
+                (self.reference_words_written * word_bytes) as u64,
+                bytes,
+            );
+            self.reference_words_written = end;
             remaining -= bytes.len();
         }
         let arrays = self.source.pages();
@@ -265,7 +276,7 @@ impl AuthoredUpload {
     }
 
     pub(super) fn complete(&self) -> bool {
-        self.references.is_some() && self.schedule.complete()
+        self.reference_words_written == self.source.texture_refs.len() && self.schedule.complete()
     }
 
     pub(super) fn publish(
@@ -278,7 +289,7 @@ impl AuthoredUpload {
         prepared.authored_source = Some(self.source);
         prepared._enhanced_textures = self.textures;
         prepared.enhanced_views = self.views;
-        prepared.enhanced_texture_refs = self.references.expect("complete reference upload");
+        prepared.enhanced_texture_refs = self.references;
         prepared.identity = self.identity;
     }
 }
@@ -308,7 +319,7 @@ pub(super) fn detach(
     device: &RenderDevice,
     stats: &mut ChunkTextureUploadStats,
 ) {
-    let references = vec![u32::MAX; assets::MAX_TEXTURE_PAGES * assets::MAX_TEXTURE_LAYERS];
+    let references = vec![u32::MAX; EnhancedTextureAssets::REFERENCE_BASE_WORDS];
     let bytes = bytemuck::cast_slice(&references);
     let buffer = device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("carrier-only authored texture references"),

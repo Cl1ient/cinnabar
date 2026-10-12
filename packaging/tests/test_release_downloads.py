@@ -34,9 +34,10 @@ class ReleaseDownloadsTests(unittest.TestCase):
             platform: {arch: "fixture-" + name for arch, name in arches.items()}
             for platform, arches in self.config["assets"].items()
         }
-        self.config["additional_assets"] = [
-            "fixture-" + name for name in self.config["additional_assets"]
-        ]
+        self.config["update_assets"] = {
+            platform: {arch: "fixture-" + name for arch, name in arches.items()}
+            for platform, arches in self.config["update_assets"].items()
+        }
         (self.tools / "release-assets.json").write_text(json.dumps(self.config))
         self.dist = self.root / "dist"
         self.dist.mkdir()
@@ -50,7 +51,7 @@ class ReleaseDownloadsTests(unittest.TestCase):
     def required_assets(self):
         return [
             name for arches in self.config["assets"].values() for name in arches.values()
-        ] + self.config["additional_assets"] + [self.config["install_script"]]
+        ] + [name for arches in self.config["update_assets"].values() for name in arches.values()] + [self.config["install_script"]]
 
     def populate(self):
         for name in self.required_assets():
@@ -137,7 +138,7 @@ class ReleaseDownloadsTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     expected = dict(common, RELEASE_ASSET=name)
                     if platform == "windows":
-                        expected["AUXILIARY_ASSET"] = self.config["additional_assets"][0]
+                        expected["AUXILIARY_ASSET"] = self.config["update_assets"][platform][arch]
                     self.assertEqual(
                         dict(line.split("=", 1) for line in result.stdout.splitlines()), expected,
                     )
@@ -149,9 +150,10 @@ class ReleaseDownloadsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         specs = [line.split("=", 2) for line in result.stdout.splitlines()]
         expected = {
-            f"{platform}-{arch}": (base + "/" + name, str(directory / name))
+            f"{platform}-{arch}": (base + "/" + selected, str(directory / selected))
             for platform, arches in self.config["assets"].items()
             for arch, name in arches.items()
+            for selected in [self.config["update_assets"].get(platform, {}).get(arch, name)]
         }
         self.assertEqual(len(specs), len(expected))
         self.assertEqual({platform: (url, local) for platform, url, local in specs}, expected)

@@ -108,11 +108,17 @@ pub(super) fn draw(
         ..CAPTION
     };
     let app = format!("{} {}", launcher::PRODUCT_NAME, launcher::PRODUCT_VERSION);
-    let game = format!(
-        "Minecraft {} / Protocol {}",
-        protocol::GAME_VERSION,
-        protocol::PROTOCOL_VERSION
-    );
+    let game = view
+        .update_ready
+        .as_ref()
+        .map(|version| format!("Update {version} ready — quit to install"))
+        .unwrap_or_else(|| {
+            format!(
+                "Minecraft {} / Protocol {}",
+                protocol::GAME_VERSION,
+                protocol::PROTOCOL_VERSION
+            )
+        });
     if compact_footer {
         let middle = (version_bounds[1] + version_bounds[3]) * 0.5;
         canvas.text_centred(

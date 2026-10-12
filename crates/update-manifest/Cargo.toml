@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata.cinnabar]
+reads = ["packaging/release-assets.json"]
+
 [lib]
 doctest = false
 

@@ -765,3 +765,16 @@ fn native_skybox_offset_defaults_on_and_persists_both_states() {
         assert!(loaded.user_settings().video.native_skybox_offset);
     }
 }
+
+#[test]
+fn automatic_update_opt_out_survives_save_and_reload() {
+    let mut settings = SettingsOptions::default();
+    assert!(settings.automatic_updates());
+    let index = SETTINGS_OPTIONS
+        .iter()
+        .position(|option| option.name == super::AUTO_UPDATE_OPTION.name)
+        .unwrap();
+    settings.set(index, 0);
+    let reloaded = SettingsOptions::decode(&serde_json::to_vec(&settings).unwrap()).unwrap();
+    assert!(!reloaded.automatic_updates());
+}

@@ -1,28 +1,42 @@
-//! Update availability check: fetches the signed release manifest, verifies it against the
-//! trusted keys baked into this build, and records the verdict at most daily.
+//! Background signed downloads and an offline helper handoff after the client shuts down.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+mod handoff;
+#[cfg(test)]
+mod tests;
+mod worker;
+
+use launcher::{
+    install_layout::InstallLayout,
+    menu::settings_options::{SETTINGS_FILE, SettingsOptions},
 };
-
 use serde::{Deserialize, Serialize};
-
-use launcher::install_layout::InstallLayout;
+use std::{
+    path::PathBuf,
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    time::Duration,
+};
+use update_manifest::Verdict;
+use update_manifest::platform_key;
 
 const URL_ENV: &str = "CINNABAR_UPDATE_URL";
 const DISABLE_ENV: &str = "CINNABAR_UPDATE_CHECK";
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
-const CHANNEL: &str = "stable";
-/// `id:base64[,...]` public keys trusted for manifests, set at build time by `UPDATE_TRUSTED_KEYS`.
-const TRUSTED_KEYS: &str = match option_env!("UPDATE_TRUSTED_KEYS") {
-    Some(keys) => keys,
-    None => "",
-};
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+static LAYOUT: OnceLock<InstallLayout> = OnceLock::new();
+static ENABLED: AtomicBool = AtomicBool::new(false);
+static REVISION: AtomicU64 = AtomicU64::new(0);
+static RUNNING: AtomicBool = AtomicBool::new(false);
+static READY: Mutex<Option<Ready>> = Mutex::new(None);
 
-use update_manifest::Verdict;
+#[derive(Clone)]
+struct Ready {
+    stage: PathBuf,
+    version: String,
+}
 
 #[derive(Deserialize, Serialize)]
 struct Stamp {
@@ -31,220 +45,85 @@ struct Stamp {
     current: String,
 }
 
-/// Manifest platform key, matching the release pipeline's artifact names.
-pub fn platform_key(os: &str, arch: &str) -> Option<String> {
-    let arch = match arch {
-        "aarch64" => "arm64",
-        "x86_64" => "x86_64",
-        _ => return None,
-    };
-    matches!(os, "macos" | "windows" | "linux").then(|| format!("{os}-{arch}"))
-}
-
-/// A stamp from the future (clock moved back) counts as due rather than suppressing checks.
-fn due(last_checked: Option<u64>, now: u64) -> bool {
-    last_checked.is_none_or(|last| now < last || now - last >= CHECK_INTERVAL.as_secs())
-}
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs())
-}
-
-fn stamp_path(layout: &InstallLayout) -> PathBuf {
-    layout.user_data_root.join("update/last-check.json")
-}
-
-/// Last recorded verdict, if a newer build was found.
-pub fn available(layout: &InstallLayout) -> Option<Verdict> {
-    read_available(
-        &layout.user_data_root.join("update"),
-        env!("CARGO_PKG_VERSION"),
-    )
-}
-
-/// Reads a cached verdict only for the running client version.
-fn read_available(directory: &Path, current: &str) -> Option<Verdict> {
-    let bytes = fs::read(directory.join("available.json")).ok()?;
-    serde_json::from_slice::<Verdict>(&bytes)
-        .ok()
-        .filter(|notice| notice.available && notice.current == current)
-}
-
-fn manifest_url(layout: &InstallLayout) -> Option<String> {
-    std::env::var(URL_ENV)
-        .ok()
-        .or_else(|| fs::read_to_string(layout.resource_root.join("update-url")).ok())
-        .map(|url| url.trim().to_owned())
-        .filter(|url| !url.is_empty())
-}
-
-/// Starts a background check at most once a day; silent without a manifest URL or trusted keys.
+/// Configures the installed updater from persisted settings; development checkouts do nothing.
 pub fn check_in_background(layout: &InstallLayout) {
-    if !layout.is_installed() || std::env::var(DISABLE_ENV).is_ok_and(|value| value == "0") {
+    if !layout.is_installed() {
         return;
     }
-    let Some(keys) = update_manifest::parse_keys(TRUSTED_KEYS)
-        .ok()
-        .filter(|keys| !keys.is_empty())
-    else {
-        return;
-    };
-    let Some(url) = manifest_url(layout).filter(|url| https(url)) else {
-        return;
-    };
-    let Some(platform) = platform_key(std::env::consts::OS, std::env::consts::ARCH) else {
-        return;
-    };
-    let stamp = stamp_path(layout);
-    let last = fs::read(&stamp)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Stamp>(&bytes).ok())
-        .filter(|stamp| stamp.current == env!("CARGO_PKG_VERSION"))
-        .map(|stamp| stamp.checked_at);
-    if !due(last, now_secs()) {
+    let _ = LAYOUT.set(layout.clone());
+    let settings = SettingsOptions::load(&layout.user_config_root.join(SETTINGS_FILE));
+    set_enabled(settings.automatic_updates());
+}
+
+/// Applies the user's live preference, including cancelling an incomplete download.
+pub fn set_enabled(enabled: bool) {
+    let enabled = enabled && !std::env::var(DISABLE_ENV).is_ok_and(|value| value == "0");
+    let changed = ENABLED.swap(enabled, Ordering::SeqCst) != enabled;
+    if changed {
+        REVISION.fetch_add(1, Ordering::SeqCst);
+    }
+    if enabled
+        && changed
+        && let Some(layout) = LAYOUT.get()
+    {
+        worker::start(layout.clone());
+    }
+}
+
+/// A ready notice comes only from the worker's verified stage, never an untrusted JSON notice.
+pub fn ready_version() -> Option<String> {
+    if !ENABLED.load(Ordering::SeqCst) {
+        return None;
+    }
+    READY
+        .lock()
+        .ok()?
+        .as_ref()
+        .map(|ready| ready.version.clone())
+}
+
+/// Starts the detached offline helper after normal client and child-process shutdown.
+pub fn apply_after_exit() {
+    if !ENABLED.load(Ordering::SeqCst) {
         return;
     }
-    let directory = layout.user_data_root.join("update");
+    let Some(layout) = LAYOUT.get() else {
+        return;
+    };
+    let ready = READY.lock().ok().and_then(|ready| ready.clone());
+    if let Some(ready) = ready
+        && let Err(error) = handoff::spawn(layout, &ready)
+    {
+        tracing::warn!("could not start updater: {error:#}");
+    }
+}
+
+/// Acknowledges the first successful client frame without doing disk work on the UI thread.
+pub fn acknowledge_startup() {
+    let Some(layout) = LAYOUT.get().cloned() else {
+        return;
+    };
     std::thread::spawn(move || {
-        let verdict = fetch(&url).and_then(|body| {
-            update_manifest::check(&body, &keys, CHANNEL, &platform, env!("CARGO_PKG_VERSION")).ok()
+        let result = handoff::installed_target().and_then(|target| {
+            update_installer::apply::acknowledge(
+                &layout.update_dir(),
+                &target,
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+            )
         });
-        if let Some(notice) = verdict {
-            record(&directory, &notice);
+        if let Err(error) = result {
+            tracing::debug!("update startup acknowledgement: {error:#}");
         }
     });
 }
 
-/// Manifests are only ever fetched over HTTPS.
+/// A future stamp is due too, so a corrected clock cannot suppress updates indefinitely.
+fn due(last_checked: Option<u64>, now: u64) -> bool {
+    last_checked.is_none_or(|last| now < last || now - last >= CHECK_INTERVAL.as_secs())
+}
+
+/// Refuses non-HTTPS manifest URLs before creating a request.
 fn https(url: &str) -> bool {
     url::Url::parse(url).is_ok_and(|url| url.scheme() == "https" && url.host_str().is_some())
-}
-
-/// The served envelope, refused when it is not a 200 or exceeds the envelope bound.
-fn fetch(url: &str) -> Option<Vec<u8>> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .ok()?;
-    // Refuses plain HTTP, redirects included, so a downgrade cannot serve the manifest.
-    let client = reqwest::Client::builder()
-        .timeout(FETCH_TIMEOUT)
-        .https_only(true)
-        .build()
-        .ok()?;
-    runtime.block_on(async {
-        let mut response = client.get(url).send().await.ok()?;
-        if response.status() != reqwest::StatusCode::OK {
-            return None;
-        }
-        let mut body = Vec::new();
-        while let Some(chunk) = response.chunk().await.ok()? {
-            if body.len() + chunk.len() > update_manifest::MAX_ENVELOPE_BYTES {
-                return None;
-            }
-            body.extend_from_slice(&chunk);
-        }
-        Some(body)
-    })
-}
-
-fn record(directory: &Path, notice: &Verdict) {
-    let _ = fs::create_dir_all(directory);
-    if let Ok(bytes) = serde_json::to_vec(&Stamp {
-        checked_at: now_secs(),
-        current: notice.current.clone(),
-    }) {
-        let _ = fs::write(directory.join("last-check.json"), bytes);
-    }
-    let available = directory.join("available.json");
-    if notice.available {
-        if let Ok(bytes) = serde_json::to_vec(notice) {
-            let _ = fs::write(available, bytes);
-        }
-    } else {
-        let _ = fs::remove_file(available);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn review_upgrading_invalidates_cached_update_notices() {
-        let dir = std::env::temp_dir().join(format!("cinnabar-old-update-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(
-            dir.join("available.json"),
-            br#"{"available":true,"current":"old","latest":"new"}"#,
-        )
-        .unwrap();
-        assert!(read_available(&dir, "old").is_some());
-        let notice = read_available(&dir, "new");
-        fs::remove_dir_all(dir).unwrap();
-        assert!(notice.is_none());
-    }
-
-    #[test]
-    fn platform_keys_match_the_release_artifact_names() {
-        assert_eq!(
-            platform_key("macos", "aarch64").as_deref(),
-            Some("macos-arm64")
-        );
-        assert_eq!(
-            platform_key("windows", "x86_64").as_deref(),
-            Some("windows-x86_64")
-        );
-        assert_eq!(
-            platform_key("linux", "x86_64").as_deref(),
-            Some("linux-x86_64")
-        );
-        assert_eq!(platform_key("linux", "riscv64"), None);
-        assert_eq!(platform_key("freebsd", "x86_64"), None);
-    }
-
-    #[test]
-    fn checks_run_at_most_once_per_interval() {
-        assert!(due(None, 10));
-        assert!(!due(Some(1_000), 1_000 + 3_600));
-        assert!(due(Some(1_000), 1_000 + 24 * 3_600));
-        assert!(due(Some(5_000), 100));
-    }
-
-    #[test]
-    fn recorded_verdicts_parse_with_and_without_an_artifact() {
-        let with = br#"{"available":true,"current":"0.1.0","latest":"0.2.0","artifact":{"url":"https://x/y","sha256":"ab","size":9}}"#;
-        let notice: Verdict = serde_json::from_slice(with).unwrap();
-        assert_eq!(notice.artifact.unwrap().size, 9);
-        let without = br#"{"available":false,"current":"0.2.0","latest":"0.2.0"}"#;
-        assert!(
-            !serde_json::from_slice::<Verdict>(without)
-                .unwrap()
-                .available
-        );
-        assert!(serde_json::from_slice::<Verdict>(b"nope").is_err());
-    }
-
-    #[test]
-    fn manifests_are_fetched_only_over_https() {
-        assert!(https("https://example.test/update-stable.json"));
-        for url in ["http://example.test/m", "file:///m", "not a url", ""] {
-            assert!(!https(url), "{url} accepted");
-        }
-    }
-
-    // The default redirect policy followed an HTTPS manifest URL down to plain HTTP.
-    #[test]
-    fn fetching_never_opens_plain_http() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!(
-            "http://{}/update-stable.json",
-            listener.local_addr().unwrap()
-        );
-        assert!(fetch(&url).is_none());
-        listener.set_nonblocking(true).unwrap();
-        assert!(listener.accept().is_err(), "connected over plain HTTP");
-    }
 }

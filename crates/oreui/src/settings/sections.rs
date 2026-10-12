@@ -606,9 +606,15 @@ fn general(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
         &[
             "websockets_enabled",
             "websocket_encryption",
-            "auto_update_enabled",
+            launcher::menu::settings_options::AUTO_UPDATE_OPTION.name,
         ],
     )?;
+    if let Some(version) = &content.view.update_ready {
+        content.heading(
+            &format!("Update {version} is ready"),
+            "Quit to install the update.",
+        )?;
+    }
     content.heading(
         "menu.general.tab.miscellaneous.title",
         "menu.general.tab.miscellaneous.description",
@@ -703,7 +709,6 @@ pub(super) fn option_label(name: &str, default: &'static str) -> &'static str {
         "keyboard_mouse_autojump" | "controller_autojump" => "options.autojump.name",
         "keyboard_show_full_keyboard_options" => "options.fullKeyboardGameplay.name",
         "websockets_enabled" => "options.websocketsEnabled.name",
-        "auto_update_enabled" => "options.autoUpdateEnabled.name",
         "only_trusted_skins_allowed" => "options.onlyTrustedSkinsAllowed.name",
         "filter_profanity" => "options.filterProfanity.name",
         "ecomode_toggle" => "options.enableEcoMode.name",

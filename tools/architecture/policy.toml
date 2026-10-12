@@ -1139,7 +1139,7 @@ exports = [
 [[crates]]
 name = "launcher-host"
 path = "crates/launcher-host"
-allowed_dependencies = ["bridge", "launcher", "protocol", "server-experience", "test-time", "update-manifest"]
+allowed_dependencies = ["bridge", "launcher", "protocol", "server-experience", "test-time", "update-manifest", "update-installer"]
 forbidden_transitive_dependencies = ["app", "bedrock-client", "client-ui", "render", "bevy", "bevy_*", "wgpu*"]
 test_support_features = ["test-support"]
 
@@ -1155,3 +1155,9 @@ path = "crates/simulation-clock"
 allowed_dependencies = []
 dependency_free = true
 forbidden_dependencies = ["bevy", "wgpu"]
+
+[[crates]]
+name = "update-installer"
+path = "crates/update-installer"
+allowed_dependencies = ["update-manifest"]
+forbidden_dependencies = ["bevy", "wgpu", "reqwest", "tokio"]

@@ -11,9 +11,11 @@ use ring::{
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+pub mod platforms;
 #[cfg(test)]
 mod tests;
 mod wire;
+pub use platforms::platform_key;
 
 /// Largest served envelope accepted.
 pub const MAX_ENVELOPE_BYTES: usize = 1 << 20;

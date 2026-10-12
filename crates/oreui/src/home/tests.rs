@@ -216,3 +216,35 @@ fn signed_out_home_has_a_direct_sign_in_action() {
             .any(|(action, _)| *action == MenuAction::Navigate(MenuScreen::Play))
     );
 }
+
+#[test]
+fn update_ready_notice_leaves_quit_and_play_reachable() {
+    let mut view = view();
+    view.update_ready = Some("2.0.0".into());
+    let (_, hits, nodes) = paint(HashMap::new(), |canvas| {
+        draw(canvas, &view, [1280.0, 720.0], None, &|_| None).unwrap();
+    });
+    assert!(
+        hits.iter()
+            .any(|(action, _)| *action == MenuAction::OpenExitDialog)
+    );
+    assert!(
+        hits.iter()
+            .any(|(action, _)| *action == MenuAction::Navigate(MenuScreen::Play))
+    );
+    let text = nodes
+        .iter()
+        .filter_map(|node| match node.visual() {
+            UiVisual::Text { layout, .. } => Some(
+                layout
+                    .glyphs()
+                    .iter()
+                    .map(|glyph| glyph.codepoint)
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect::<String>()
+        .replace(' ', "");
+    assert!(text.contains("Update2.0.0ready"));
+}

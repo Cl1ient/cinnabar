@@ -117,6 +117,10 @@ pub const SMAA_OPTION: SettingDefinition = dropdown(
     ui::DEFAULT_SMAA_MODE as i32,
 );
 
+/// Downloads verified releases and installs them after a normal exit, unless disabled.
+pub const AUTO_UPDATE_OPTION: SettingDefinition =
+    toggle("auto_update_enabled", "Automatic Updates", true);
+
 /// Publishes the client's state to Discord Rich Presence.
 pub const DISCORD_PRESENCE_OPTION: SettingDefinition =
     toggle("discord_presence", "Discord Rich Presence", true);
@@ -441,8 +445,7 @@ pub const SETTINGS_OPTIONS: &[SettingDefinition] = &[
     toggle("websockets_enabled", "options.websocketsEnabled", false),
     // P:ui/settings_sections/general_section.json:119; default is not yet recovered.
     toggle("websocket_encryption", "options.websocketEncryption", false),
-    // P:ui/settings_sections/general_section.json:165; default is not yet recovered.
-    toggle("auto_update_enabled", "options.autoUpdateEnabled", false),
+    AUTO_UPDATE_OPTION,
     // P:ui/settings_sections/general_section.json:246; default is not yet recovered.
     toggle(
         "only_trusted_skins_allowed",

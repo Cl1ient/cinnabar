@@ -485,6 +485,8 @@ pub struct MenuFriendCard {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuView {
+    /// Verified release ready to install after exit. Hidden when automatic updates are off.
+    pub update_ready: Option<String>,
     pub visible: bool,
     /// The menu opened over the session's world rather than the launcher's.
     pub over_world: bool,
@@ -732,6 +734,7 @@ impl MenuView {
     /// Creates the empty home view used before host settings and service feeds are loaded.
     pub fn new(visible: bool, display_name: String) -> Self {
         Self {
+            update_ready: None,
             visible,
             over_world: !visible,
             screen: MenuScreen::Home,

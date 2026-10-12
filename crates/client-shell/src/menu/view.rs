@@ -23,6 +23,7 @@ impl MenuRuntime {
             auth_state
         };
         MenuView {
+            update_ready: launcher_host::lifecycle::update::ready_version(),
             visible: self.visible,
             over_world: self.over_world(),
             screen: self.screen,

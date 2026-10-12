@@ -16,7 +16,7 @@ case "$platform" in
         prefix=Cinnabar.app/Contents/
         resources="${prefix}Resources/"
         required=(Applications "${prefix}Info.plist" "${resources}Cinnabar.icns")
-        for name in bedrock-client bedrock-core bedrock-local-server; do required+=("${prefix}MacOS/$name"); done
+        for name in bedrock-client bedrock-core bedrock-local-server cinnabar-updater; do required+=("${prefix}MacOS/$name"); done
         # CodeResources at the top of Contents is the stapled notarization ticket.
         optional=("${prefix}_CodeSignature/CodeResources" "${prefix}CodeResources")
         ;;
@@ -24,7 +24,7 @@ case "$platform" in
         prefix=''
         resources=usr/share/cinnabar/
         required=(AppRun cinnabar.desktop cinnabar.png)
-        for name in bedrock-client bedrock-core bedrock-local-server; do required+=("usr/bin/$name"); done
+        for name in bedrock-client bedrock-core bedrock-local-server cinnabar-updater; do required+=("usr/bin/$name"); done
         optional=(.DirIcon)
         ;;
     windows)
@@ -35,7 +35,7 @@ case "$platform" in
         [[ "$prefix" != ./ ]] || prefix=''
         resources="${prefix}resources/"
         required=()
-        for name in bedrock-client bedrock-core bedrock-local-server; do required+=("$prefix$name.exe"); done
+        for name in bedrock-client bedrock-core bedrock-local-server cinnabar-updater; do required+=("$prefix$name.exe"); done
         optional=()
         # msiexec /a leaves a copy of the package beside the image.
         while IFS= read -r msi; do optional+=("$msi"); done < <(cd "$root" && find . -maxdepth 1 -type f -name '*.msi' | sed 's|^\./||')

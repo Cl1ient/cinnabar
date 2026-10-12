@@ -28,7 +28,7 @@ def render_installer():
 def checksum(directory):
     config = manifest()
     expected = [name for arches in config["assets"].values() for name in arches.values()]
-    expected.extend(config["additional_assets"])
+    expected.extend(name for arches in config["update_assets"].values() for name in arches.values())
     expected.append(config["install_script"])
     missing = [name for name in expected if not (directory / name).is_file()]
     if missing:
@@ -68,10 +68,12 @@ def main():
         if args.platform:
             print(f'RELEASE_ASSET={config["assets"][args.platform][args.arch]}')
             if args.platform == "windows":
-                print(f'AUXILIARY_ASSET={config["additional_assets"][0]}')
+                print(f'AUXILIARY_ASSET={config["update_assets"][args.platform][args.arch]}')
     elif args.command == "update-artifacts":
-        for platform, arches in manifest()["assets"].items():
+        config = manifest()
+        for platform, arches in config["assets"].items():
             for arch, filename in arches.items():
+                filename = config["update_assets"].get(platform, {}).get(arch, filename)
                 print(f"{platform}-{arch}={args.base}/{filename}={args.directory / filename}")
     elif args.command == "install-script":
         args.output.parent.mkdir(parents=True, exist_ok=True)

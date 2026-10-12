@@ -9,16 +9,18 @@ source "$here/../common/stage-payload.sh"
 
 out="${1:-$repo_root/.local/dist/linux-release}"
 client="${CLIENT:-$repo_root/target/release/bedrock-client}"
+updater="${UPDATER:-$repo_root/target/release/cinnabar-updater}"
 core="${CORE:-$repo_root/target/release/bedrock-core}"
 local_server="${LOCAL_SERVER:-$repo_root/target/release/bedrock-local-server}"
 assetc="${ASSETC:-$repo_root/target/release/assetc}"
 arch="${ARCH:-$(uname -m)}"
-for binary in "$client" "$core" "$local_server" "$assetc"; do require_file "$binary" 'build with make package-binaries'; done
+for binary in "$client" "$core" "$local_server" "$assetc" "$updater"; do require_file "$binary" 'build with make package-binaries'; done
 
 appdir="$out/Cinnabar.AppDir"
 rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/share/cinnabar"
 install -m 0755 "$client" "$appdir/usr/bin/bedrock-client"
+install -m 0755 "$updater" "$appdir/usr/bin/cinnabar-updater"
 install -m 0755 "$core" "$appdir/usr/bin/bedrock-core"
 install -m 0755 "$local_server" "$appdir/usr/bin/bedrock-local-server"
 stage_resources "$appdir/usr/share/cinnabar" "$assetc"

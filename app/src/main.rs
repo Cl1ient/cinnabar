@@ -35,6 +35,7 @@ fn main() {
                 diagnostics::console::flush_before_exit();
                 std::process::exit(1);
             }
+            launcher_host::lifecycle::update::apply_after_exit();
             diagnostics::console::flush_before_exit();
         }
         Err(error) => {

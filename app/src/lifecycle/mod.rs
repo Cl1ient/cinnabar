@@ -23,12 +23,15 @@ pub fn before_run(assets_overridden: bool) -> Result<bool> {
         return Ok(false);
     }
     update::check_in_background(&layout);
-    if let Some(notice) = update::available(&layout) {
-        diagnostics::log_stderr!(
-            "Cinnabar {} is available (running {}).",
-            notice.latest,
-            notice.current
-        );
-    }
     Ok(true)
+}
+
+/// Acknowledges startup only after an earlier frame completed and the app kept running.
+pub fn acknowledge_startup(mut frames: bevy::prelude::Local<u8>) {
+    if *frames < 2 {
+        *frames += 1;
+        if *frames == 2 {
+            update::acknowledge_startup();
+        }
+    }
 }

@@ -149,7 +149,7 @@ PKG_CORE_LDFLAGS = -s -w
 PACKAGE_CARGO_FLAGS ?=
 .PHONY: package-binaries package-macos package-windows package-linux
 package-binaries:
-	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build $(PACKAGE_CARGO_FLAGS) --release --locked --no-default-features -p bedrock-client -p asset-compiler --features bedrock-client/local-mods --bin bedrock-client --bin assetc
+	RUST_MCBE_BUILD_COMMIT="$(RUST_MCBE_BUILD_COMMIT)" $(CARGO) build $(PACKAGE_CARGO_FLAGS) --release --locked --no-default-features -p bedrock-client -p asset-compiler -p update-installer --features bedrock-client/local-mods --bin bedrock-client --bin assetc --bin cinnabar-updater
 	$(GO) build -trimpath -ldflags "$(PKG_CORE_LDFLAGS)" -o "$(DIST_CORE)" ./core/cmd/bedrock-core
 	cd tools/localserver && GOWORK=off $(GO) build -trimpath -ldflags "-s -w" -o "$(abspath $(LOCAL_SERVER_OUT))" .
 

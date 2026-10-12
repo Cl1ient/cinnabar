@@ -3,9 +3,11 @@ package experience
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -44,14 +46,28 @@ const (
 )
 
 // TestMain builds experience-runtime and the probe guest with cargo, assembles the probe
-// artifact and builds the fake helper. It fails when cargo is missing.
+// artifact and builds the fake helper within the package timeout, leaving time for tests.
 func TestMain(m *testing.M) {
+	flag.Parse()
+	budget := flag.Lookup("test.timeout").Value.(flag.Getter).Get().(time.Duration)
+	if budget == 0 {
+		budget = 10 * time.Minute
+	}
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), budget*3/4)
+	defer cancel()
 	scratch, err := os.MkdirTemp("", "experience-test-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "experience tests:", err)
 		os.Exit(1)
 	}
-	if err := buildHelpers(scratch); err != nil {
+	if err := buildHelpers(ctx, scratch); err != nil {
+		fmt.Fprintln(os.Stderr, "experience tests:", err)
+		os.RemoveAll(scratch)
+		os.Exit(1)
+	}
+	cancel()
+	if err := flag.Set("test.timeout", (budget - time.Since(started)).String()); err != nil {
 		fmt.Fprintln(os.Stderr, "experience tests:", err)
 		os.RemoveAll(scratch)
 		os.Exit(1)
@@ -63,7 +79,7 @@ func TestMain(m *testing.M) {
 
 // buildHelpers sets every variable that TestMain sets. Everything it writes goes below scratch,
 // except what cargo keeps in its target directories.
-func buildHelpers(scratch string) error {
+func buildHelpers(ctx context.Context, scratch string) error {
 	if _, err := exec.LookPath("cargo"); err != nil {
 		return fmt.Errorf("cargo is required to build experience-runtime and the probe guest: %w", err)
 	}
@@ -73,15 +89,16 @@ func buildHelpers(scratch string) error {
 		return err
 	}
 	repoRoot = root
-	runtimeBinary, err = cargoArtifact(root, "experience-runtime",
+	runtimeBinary, err = cargoArtifact(ctx, root, "experience-runtime",
 		"build", "-p", "experience-runtime", "--locked")
 	if err != nil {
 		return err
 	}
 	// Like the runtime's own tests, the guest gets a target directory of its own.
-	probeWasm, err = cargoArtifact(root, "experience_probe",
+	guestTarget := filepath.Join(root, "target", "experience-guests")
+	probeWasm, err = cargoArtifact(ctx, root, "experience_probe",
 		"build", "--locked", "--target", "wasm32-unknown-unknown", "-p", "experience-probe",
-		"--target-dir", filepath.Join(root, "target", "experience-guests"))
+		"--target-dir", guestTarget, "--config", "build.build-dir="+strconv.Quote(filepath.ToSlash(filepath.Join(guestTarget, "build"))))
 	if err != nil {
 		return err
 	}
@@ -93,17 +110,19 @@ func buildHelpers(scratch string) error {
 	if runtime.GOOS == "windows" {
 		fakeHelperBinary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", fakeHelperBinary, "./testdata/fakehelper")
+	build := exec.CommandContext(ctx, "go", "build", "-o", fakeHelperBinary, "./testdata/fakehelper")
+	build.WaitDelay = 5 * time.Second
 	if out, err := build.CombinedOutput(); err != nil {
 		return fmt.Errorf("building the fake helper: %v\n%s", err, out)
 	}
 	return nil
 }
 
-// cargoArtifact runs cargo with args in root and returns the file it built for the target
-// named target: the executable, or else the .wasm.
-func cargoArtifact(root, target string, args ...string) (string, error) {
-	cmd := exec.Command("cargo", append(args, "--message-format=json-render-diagnostics")...)
+// cargoArtifact runs cargo within ctx and returns the executable or .wasm it built for target.
+func cargoArtifact(ctx context.Context, root, target string, args ...string) (string, error) {
+	fmt.Fprintf(os.Stderr, "experience tests: preparing %s\n", target)
+	cmd := exec.CommandContext(ctx, "cargo", append(args, "--message-format=json-render-diagnostics")...)
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = root
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

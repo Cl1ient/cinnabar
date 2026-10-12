@@ -69,10 +69,16 @@ fn same<T>(left: &Option<Arc<T>>, right: &Option<Arc<T>>) -> bool {
     matches!((left, right), (Some(left), Some(right)) if Arc::ptr_eq(left, right))
 }
 
-/// Asserts that every subscriber output reading only the stack is the very same allocation in
-/// both. The fixture compiles each of them except carrier artwork, which tests do not install.
-fn assert_shares_stack_outputs(left: &PackApplication, right: &PackApplication) {
-    let unshared = [
+/// Both hold the same allocation, or neither holds one.
+fn same_or_absent<T>(left: &Option<Arc<T>>, right: &Option<Arc<T>>) -> bool {
+    left.is_none() && right.is_none() || same(left, right)
+}
+
+/// The subscriber outputs reading only the stack that `right` compiled again rather than
+/// sharing with `left`. Outputs neither compiled, such as uninstalled carrier artwork, count as
+/// shared.
+fn recompiled(left: &PackApplication, right: &PackApplication) -> Vec<&'static str> {
+    [
         ("language", same(&left.server_lang, &right.server_lang)),
         ("glyphs", same(&left.glyph_sheets, &right.glyph_sheets)),
         ("ui", same(&left.server_ui, &right.server_ui)),
@@ -80,13 +86,29 @@ fn assert_shares_stack_outputs(left: &PackApplication, right: &PackApplication) 
         ("entities", same(&left.entities, &right.entities)),
         (
             "artwork",
-            left.entity_artwork.is_none() && right.entity_artwork.is_none()
-                || same(&left.entity_artwork, &right.entity_artwork),
+            same_or_absent(&left.entity_artwork, &right.entity_artwork),
+        ),
+        (
+            "block entity art",
+            same_or_absent(&left.block_entity_art, &right.block_entity_art),
+        ),
+        (
+            "aim assist",
+            left.aim_assist_textures
+                .iter()
+                .zip(&right.aim_assist_textures)
+                .all(|(left, right)| same_or_absent(left, right)),
         ),
     ]
     .into_iter()
     .filter_map(|(output, shared)| (!shared).then_some(output))
-    .collect::<Vec<_>>();
+    .collect()
+}
+
+/// Asserts that every subscriber output reading only the stack is the very same allocation in
+/// both. The fixture compiles each of them except carrier artwork, which tests do not install.
+fn assert_shares_stack_outputs(left: &PackApplication, right: &PackApplication) {
+    let unshared = recompiled(left, right);
     assert!(unshared.is_empty(), "compiled again: {unshared:?}");
 }
 
@@ -454,7 +476,95 @@ fn kept_stacks_compare_archives_without_holding_their_lock() {
     assert_eq!(kept.len(), 1, "the same contents replace their entry");
 }
 
-// Leaving for the menu releases the kept archives and compiled outputs.
+// Rejoining the same server from the menu reuses the last compile; releasing it on leave
+// compiled every stack output again.
+#[test]
+fn a_rejoin_from_the_menu_reuses_the_last_compile() {
+    let _cache = overlay_cache();
+    let archive = every_subscriber_archive(47, b"a=b");
+    let kept = CompiledStacks::new();
+    let first = join(&kept, &archive);
+    kept.release();
+    let released = recompiled(&first, &join(&kept, &archive));
+    let kept = CompiledStacks::new();
+    let first = join(&kept, &archive);
+    kept.keep_for_rejoin();
+    let rejoined = join(&kept, &archive);
+    println!(
+        "rejoin recompiled {} outputs after a release ({released:?}), {} when kept",
+        released.len(),
+        recompiled(&first, &rejoined).len()
+    );
+    assert_eq!(released, ["language", "glyphs", "ui", "sounds"]);
+    assert_shares_stack_outputs(&first, &rejoined);
+    assert!(same_or_absent(&first.item_icons, &rejoined.item_icons));
+    assert!(Arc::ptr_eq(stack(&first), stack(&rejoined)));
+    assert_eq!(summary(&first), summary(&rejoined));
+}
+
+// The kept join holds its prepared UI catalog, so a rejoin binds it instead of resolving the
+// server UI against the carrier again.
+#[test]
+fn a_rejoin_from_the_menu_reuses_the_prepared_ui_catalog() {
+    let _cache = overlay_cache();
+    let base = Arc::new(
+        json_ui::Catalog::from_files([
+            ("ui/_global_variables.json", b"{}".as_slice()),
+            ("ui/_ui_defs.json", br#"{"ui_defs":[]}"#.as_slice()),
+        ])
+        .unwrap(),
+    );
+    let archive = every_subscriber_archive(49, b"a=b");
+    let join = |kept: &CompiledStacks| {
+        let game_data = game_data();
+        prepare_join_with(
+            kept,
+            &preparation(&archive, &game_data),
+            &game_data,
+            &|| false,
+            JoinBases {
+                ui_catalog: Some(&base),
+                ..JoinBases::default()
+            },
+        )
+        .unwrap()
+        .unwrap()
+    };
+    let kept = CompiledStacks::new();
+    let prepared = Arc::downgrade(join(&kept).server_ui.as_ref().unwrap());
+    kept.keep_for_rejoin();
+    assert!(prepared.upgrade().is_some(), "kept with the join");
+    let rejoined = join(&kept);
+    assert!(Arc::ptr_eq(
+        rejoined.server_ui.as_ref().unwrap(),
+        &prepared.upgrade().unwrap()
+    ));
+}
+
+// Leaving keeps only the newest stack, and only while its archives fit the rejoin budget.
+#[test]
+fn leaving_keeps_only_the_newest_stack_within_the_rejoin_budget() {
+    let _cache = overlay_cache();
+    let kept = CompiledStacks::new();
+    join(&kept, &every_subscriber_archive(48, b"a=lobby"));
+    let game = join(&kept, &every_subscriber_archive(48, b"a=game"));
+    assert_eq!(kept.len(), 2);
+    kept.keep_for_rejoin();
+    assert_eq!(kept.len(), 1);
+    let environment = CompileEnvironment::current();
+    assert!(kept.matching(stack(&game), &environment).is_some());
+    let archive_bytes = stack(&game)
+        .packs()
+        .iter()
+        .map(|pack| pack.archive_bytes().len())
+        .sum::<usize>();
+    kept.keep_newest_within(archive_bytes);
+    assert_eq!(kept.len(), 1, "a stack exactly at the budget stays");
+    kept.keep_newest_within(archive_bytes - 1);
+    assert_eq!(kept.len(), 0);
+}
+
+// Taking the kept stacks releases their archives and compiled outputs.
 #[test]
 fn taking_the_kept_stacks_releases_them() {
     let _cache = overlay_cache();

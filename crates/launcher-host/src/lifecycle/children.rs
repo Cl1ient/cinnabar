@@ -113,6 +113,8 @@ impl Children {
         if live.shutting_down {
             return Err(io::Error::other("client is shutting down"));
         }
+        #[cfg(unix)]
+        seal_inherited_sockets();
         let entry = Arc::new(Tracked {
             child: Mutex::new(command.spawn()?),
             grace,
@@ -187,6 +189,35 @@ pub fn spawn(command: &mut Command) -> io::Result<Spawned> {
 pub fn spawn_saving(command: &mut Command, save_budget: Duration) -> io::Result<Spawned> {
     command.env(PARENT_ENV, std::process::id().to_string());
     CHILDREN.spawn(command, save_budget)
+}
+
+/// Marks every open socket close-on-exec before a spawn, so no child holds a listener or
+/// connection a C library opened without the flag (Tracy's listener would stall every capture).
+#[cfg(unix)]
+fn seal_inherited_sockets() {
+    use rustix::{
+        fd::BorrowedFd,
+        fs::{FileType, fstat},
+        io::{FdFlags, fcntl_getfd, fcntl_setfd},
+        process::{Resource, getrlimit},
+    };
+    let limit = getrlimit(Resource::Nofile)
+        .current
+        .unwrap_or(1024)
+        .min(4096);
+    for raw in 3..limit as i32 {
+        // SAFETY: the descriptor is borrowed only for these calls; if another thread closes it
+        // meanwhile they fail, or set the flag on a reused descriptor, which is equally harmless.
+        let fd = unsafe { BorrowedFd::borrow_raw(raw) };
+        let Ok(flags) = fcntl_getfd(fd) else {
+            continue;
+        };
+        if !flags.contains(FdFlags::CLOEXEC)
+            && fstat(fd).is_ok_and(|stat| FileType::from_raw_mode(stat.st_mode).is_socket())
+        {
+            let _ = fcntl_setfd(fd, flags | FdFlags::CLOEXEC);
+        }
+    }
 }
 
 /// Ends every child this process spawned; for exit paths.
@@ -380,6 +411,29 @@ mod tests {
     fn gone(pid: u32) -> bool {
         let pid = rustix::process::Pid::from_raw(pid as i32).unwrap();
         rustix::process::test_kill_process(pid).is_err()
+    }
+
+    // A socket a C library opened without close-on-exec (Tracy's listener) must not reach a child.
+    #[test]
+    fn spawned_children_do_not_inherit_foreign_sockets() {
+        use rustix::io::{FdFlags, fcntl_setfd};
+        use std::os::fd::AsRawFd;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        fcntl_setfd(&listener, FdFlags::empty()).unwrap();
+        let fd = listener.as_raw_fd();
+        let script = format!("test -e /proc/self/fd/0 && test ! -e /proc/self/fd/{fd}");
+        let child = Children::new()
+            .spawn(
+                Command::new("sh")
+                    .args(["-c", &script])
+                    .stdin(Stdio::null()),
+                Duration::ZERO,
+            )
+            .unwrap();
+        assert!(
+            child.wait().is_some_and(|status| status.success()),
+            "child inherited descriptor {fd}"
+        );
     }
 
     // Each exit path's sweep ends every child, escalating as far as each one needs.

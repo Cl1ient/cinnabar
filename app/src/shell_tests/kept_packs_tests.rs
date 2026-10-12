@@ -1,4 +1,4 @@
-//! Leaving for the menu releases the server packs recent joins keep for a following join.
+//! Leaving for the menu keeps the newest server packs recent joins compiled, for a rejoin.
 use client_shell::menu::test_support as menu_fixture;
 use client_shell::ui_resources::UiRuntimeResource;
 
@@ -63,7 +63,7 @@ fn kept_stacks() -> &'static CompiledStacks {
     kept
 }
 
-/// Runs `system` once over a launcher menu in a world, whose session releases `kept`.
+/// Runs `system` once over a launcher menu in a world, whose session keeps or releases `kept`.
 fn run_session<M>(
     root: &Path,
     kept: &'static CompiledStacks,
@@ -101,9 +101,9 @@ fn run_session<M>(
     app.update();
 }
 
-// A transfer whose replacement join cannot start lands in the menu with nothing to reuse them.
+// A transfer whose replacement join cannot start lands in the menu, where a retry reuses them.
 #[test]
-fn a_failed_transfer_releases_the_kept_server_packs() {
+fn a_failed_transfer_keeps_the_server_packs_for_a_rejoin() {
     let root = tempfile::tempdir().unwrap();
     let kept = kept_stacks();
     let client_world = ClientWorld {
@@ -120,11 +120,11 @@ fn a_failed_transfer_releases_the_kept_server_packs() {
         |_| {},
         follow_server_transfer,
     );
-    assert_eq!(kept.len(), 0);
+    assert_eq!(kept.len(), 1);
 }
 
 #[test]
-fn an_explicit_disconnect_releases_the_kept_server_packs() {
+fn an_explicit_disconnect_keeps_the_server_packs_for_a_rejoin() {
     let root = tempfile::tempdir().unwrap();
     let kept = kept_stacks();
     run_session(
@@ -137,11 +137,11 @@ fn an_explicit_disconnect_releases_the_kept_server_packs() {
         },
         drive_session,
     );
-    assert_eq!(kept.len(), 0);
+    assert_eq!(kept.len(), 1);
 }
 
 #[test]
-fn a_session_failure_releases_the_kept_server_packs() {
+fn a_session_failure_keeps_the_server_packs_for_a_rejoin() {
     let root = tempfile::tempdir().unwrap();
     let kept = kept_stacks();
     let client_world = ClientWorld {
@@ -155,5 +155,5 @@ fn a_session_failure_releases_the_kept_server_packs() {
         |_| {},
         recover_session_failure,
     );
-    assert_eq!(kept.len(), 0);
+    assert_eq!(kept.len(), 1);
 }

@@ -104,6 +104,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         rig_controllers: Box::new([]),
         item_visuals: vec![
             ItemVisualDefinition {
+                grip: assets::item::grip::ItemGrip::Unresolved,
                 fuel: assets::item::fuel::ItemFuel::Unresolved,
                 durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,
@@ -123,6 +124,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
                 dropped: ItemDisplayTransform::identity(),
             },
             ItemVisualDefinition {
+                grip: assets::item::grip::ItemGrip::Unresolved,
                 fuel: assets::item::fuel::ItemFuel::Unresolved,
                 durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,

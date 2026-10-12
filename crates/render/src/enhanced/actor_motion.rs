@@ -243,7 +243,7 @@ mod tests {
                         ingress_sequence: 1,
                         source_tick: Some(1),
                         movement_revision: generation,
-                        pose_generation: generation,
+                        pose_generation: render_api::PoseGeneration::new(generation),
                         layer: 0,
                     },
                     rig: EntityRigId(1),

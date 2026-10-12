@@ -160,7 +160,7 @@ fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
             ingress_sequence: 1,
             source_tick: None,
             movement_revision: 0,
-            pose_generation: 1,
+            pose_generation: render_api::PoseGeneration::new(1),
             layer: 0,
         },
         rig: render_model::DIAGNOSTIC_RIG_ID,

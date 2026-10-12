@@ -266,10 +266,7 @@ fn captured_form(
         varint(&mut batch, body.len() as u64 + 1);
         batch.push(id as u8);
         batch.extend(body);
-        let session = protocol::BedrockSession { shield_item_id: 0 };
-        let packet = protocol::decode_batch(batch.into(), &session)
-            .unwrap()
-            .remove(0);
+        let packet = protocol::decode_batch(batch.into()).unwrap().remove(0);
         let Some(protocol::WorldEvent::Ui(event)) = protocol::into_world_event(packet, 0).unwrap()
         else {
             panic!("captured form did not decode as a UI event");

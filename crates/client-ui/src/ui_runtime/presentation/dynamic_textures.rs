@@ -240,14 +240,14 @@ pub(super) fn rebuild(runtime: &mut UiPresentationRuntime) {
             .cloned()
             .unwrap_or_else(|| runtime.blank_dynamic_page.clone())
     }));
-    let modal_pages = runtime.experience_modal_pages();
+    let modal_pages = runtime.screens.mod_ui.experience_modal_pages();
     dynamic.extend((0..MODAL_UI_PAGES).map(|offset| {
         modal_pages
             .get(offset)
             .cloned()
             .unwrap_or_else(|| runtime.blank_dynamic_page.clone())
     }));
-    let mod_pages = runtime.mod_screen_pages();
+    let mod_pages = runtime.screens.mod_ui.mod_screen_pages();
     dynamic.extend((0..MOD_UI_PAGES).map(|offset| {
         mod_pages
             .get(offset)

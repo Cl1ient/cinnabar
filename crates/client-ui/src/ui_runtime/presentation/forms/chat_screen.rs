@@ -123,7 +123,7 @@ impl UiPresentationRuntime {
         let Some(renderer) = self.engine.as_deref() else {
             return Ok(false);
         };
-        let annotations = self.mod_chat_actions().to_vec();
+        let annotations = self.screens.mod_ui.mod_chat_actions().to_vec();
         let chat = &mut self.screens.chat;
         let messages = runtime.chat().messages().len();
         // The view jumps to the newest message on open and on every update.

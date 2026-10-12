@@ -420,6 +420,7 @@ pub fn capture_hud_frame(
                 name.as_deref(),
             );
             if presentation
+                .mod_ui()
                 .mod_hunger_overlay()
                 .is_some_and(|style| style.tooltips)
             {

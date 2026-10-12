@@ -649,6 +649,7 @@ fn consent_approval_frame_cannot_activate_or_edit_the_underlying_menu() {
     // Approval has already replaced the prompt with its status indicator, but ownership persists.
     app.world_mut()
         .resource_mut::<UiPresentationResource>()
+        .mod_ui_mut()
         .set_experience_chrome(Some("Approved"), false)
         .unwrap();
     app.update();

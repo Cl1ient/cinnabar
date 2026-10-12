@@ -53,8 +53,8 @@ impl UiPresentationRuntime {
             && runtime.hud.toasts().is_empty()
             && !runtime.experiences.active
             && !runtime.experiences.holds_world_entry()
-            && !self.mod_panel_open()
-            && !self.experience_modal_open())
+            && !self.screens.mod_ui.mod_panel_open()
+            && !self.screens.mod_ui.experience_modal_open())
         .then_some(view)
     }
 

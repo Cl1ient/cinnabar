@@ -194,6 +194,7 @@ fn draw_view(app: &mut App) -> bool {
     assert!(
         app.world()
             .resource::<UiPresentationResource>()
+            .mod_ui()
             .mod_view_shown()
     );
     true
@@ -421,8 +422,8 @@ fn a_replacements_owner_does_not_inherit_a_previous_packages_presentation_failur
             return;
         }
         let presentation = app.world().resource::<UiPresentationResource>();
-        assert!(presentation.mod_screens_failure().is_some());
-        let layout = presentation.mod_screen_layout().cloned();
+        assert!(presentation.mod_ui().mod_screens_failure().is_some());
+        let layout = presentation.mod_ui().mod_screen_layout().cloned();
         assert!(layout.is_some());
         if replacement == "reload" {
             write_screen_package(dir.path(), MOD_ID, false);
@@ -449,6 +450,7 @@ fn a_replacements_owner_does_not_inherit_a_previous_packages_presentation_failur
             assert!(
                 app.world()
                     .resource::<UiPresentationResource>()
+                    .mod_ui()
                     .mod_screens_failure()
                     .is_none()
             );
@@ -554,6 +556,7 @@ fn a_package_reload_keeps_the_open_container_and_restored_view() {
     let layout = app
         .world()
         .resource::<UiPresentationResource>()
+        .mod_ui()
         .mod_screen_layout()
         .cloned();
     assert!(layout.is_some());
@@ -625,6 +628,7 @@ fn a_departing_screen_owner_closes_its_view_and_forgets_the_container() {
     let layout = app
         .world()
         .resource::<UiPresentationResource>()
+        .mod_ui()
         .mod_screen_layout()
         .cloned();
     previous
@@ -681,6 +685,7 @@ fn data_callbacks_observe_simultaneous_container_opening_and_closing() {
         let layout = app
             .world()
             .resource::<UiPresentationResource>()
+            .mod_ui()
             .mod_screen_layout()
             .cloned();
         assert!(layout.is_some());
@@ -756,8 +761,13 @@ fn draw_edit_box(app: &mut App) -> Option<[f32; 2]> {
         return None;
     }
     let presentation = app.world().resource::<UiPresentationResource>();
-    assert!(!presentation.mod_text_focused());
-    let scale = presentation.mod_screen_layout().unwrap().size.scale as f32;
+    assert!(!presentation.mod_ui().mod_text_focused());
+    let scale = presentation
+        .mod_ui()
+        .mod_screen_layout()
+        .unwrap()
+        .size
+        .scale as f32;
     Some([30.0 * scale, 25.0 * scale])
 }
 
@@ -788,6 +798,7 @@ fn clicking_a_mod_edit_box_routes_same_update_typing_without_a_shortcut() {
     assert!(
         app.world()
             .resource::<UiPresentationResource>()
+            .mod_ui()
             .mod_text_focused(),
         "fixture click did not select its edit box"
     );
@@ -924,6 +935,7 @@ fn production_mod_driver_delivers_declared_keys_and_view_escape() {
     let layout = app
         .world()
         .resource::<UiPresentationResource>()
+        .mod_ui()
         .mod_screen_layout()
         .cloned();
     assert!(layout.is_some());
@@ -999,6 +1011,7 @@ fn escape_closes_a_view_after_same_frame_pointer_actions() {
     let layout = app
         .world()
         .resource::<UiPresentationResource>()
+        .mod_ui()
         .mod_screen_layout()
         .cloned();
     let scale = layout.as_ref().unwrap().size.scale as f32;

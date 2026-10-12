@@ -689,6 +689,7 @@ dependencies = [
  "mod-api",
  "mod-host",
  "mod-render",
+ "mod-ui",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "oreui",
@@ -2473,6 +2474,7 @@ dependencies = [
  "launcher",
  "launcher-host",
  "mod-host",
+ "mod-ui",
  "oreui",
  "pack-compiler",
  "player-state",
@@ -4921,6 +4923,21 @@ dependencies = [
  "bytemuck",
  "mod-api",
  "naga",
+]
+
+[[package]]
+name = "mod-ui"
+version = "0.1.12"
+dependencies = [
+ "assets",
+ "glam",
+ "json-ui",
+ "render-model",
+ "serde_json",
+ "server-experience",
+ "tracing",
+ "ui",
+ "ui-engine",
 ]
 
 [[package]]

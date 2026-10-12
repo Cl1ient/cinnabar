@@ -347,9 +347,16 @@ mod tests {
 
     #[test]
     fn spectator_controller_styles_runtime_skin_and_hides_body_bones() {
-        let presentation =
-            super::super::actors::local_diagnostic_presentation(1, 0, 1, 1, [0.0; 3], 0.0, 0.0)
-                .unwrap();
+        let presentation = super::super::actors::local_diagnostic_presentation(
+            1,
+            0,
+            1,
+            render_api::PoseGeneration::new(1),
+            [0.0; 3],
+            0.0,
+            0.0,
+        )
+        .unwrap();
         let mut batch =
             super::super::actors::select_actor_presentations(1, true, Some(presentation), []);
         let original_rig = batch.submissions[0].input.rig;

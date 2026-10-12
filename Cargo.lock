@@ -2396,6 +2396,7 @@ dependencies = [
  "render",
  "render-api",
  "render-scene",
+ "simulation-clock",
  "tokio",
 ]
 

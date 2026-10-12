@@ -187,7 +187,7 @@ contract_only = true
 [[crates]]
 name = "client-runtime"
 path = "crates/client-runtime"
-allowed_dependencies = ["bridge", "chunk-pipeline", "client-session", "client-state", "client-ui", "client-world", "diagnostics", "launcher-host", "meshing", "pack-runtime", "protocol", "render", "render-api", "render-scene"]
+allowed_dependencies = ["bridge", "chunk-pipeline", "client-session", "client-state", "client-ui", "client-world", "diagnostics", "launcher-host", "meshing", "pack-runtime", "protocol", "render", "render-api", "render-scene", "simulation-clock"]
 forbidden_transitive_dependencies = ["app", "cinnabar", "client-presentation", "client-audio", "client-interaction", "client-shell", "client-extensions", "acceptance", "asset-compiler"]
 test_support_features = ["test-support"]
 

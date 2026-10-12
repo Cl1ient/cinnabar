@@ -429,7 +429,11 @@ fn local_java_torso_phase_without_motion_retains_the_same_hand_source() {
     stream.sync_local_player_pose(&feed);
     stream.prepare_actor_appearance_fixture();
     stream.advance_actor_interpolation_frame(1);
-    stream.set_local_motion_authority(Some((1, 1)));
+    let authority = (
+        simulation_clock::identity::SessionGeneration::new(1),
+        simulation_clock::identity::PositionAuthorityGeneration::new(1),
+    );
+    stream.set_local_motion_authority(Some(authority));
     let sample = |alpha| actor_animation::LocalSwingMotionSample {
         tick: 1,
         delta: [0.0; 3],
@@ -439,10 +443,10 @@ fn local_java_torso_phase_without_motion_retains_the_same_hand_source() {
             ..Default::default()
         },
     };
-    stream.sync_local_swing_motion((1, 1), [sample(0.25)]);
+    stream.sync_local_swing_motion(authority, [sample(0.25)]);
     let first = super::super::hand::source_key(&stream, None, None, 0.1);
     assert!(first.is_some());
-    stream.sync_local_swing_motion((1, 1), [sample(0.75)]);
+    stream.sync_local_swing_motion(authority, [sample(0.75)]);
     let second = super::super::hand::source_key(&stream, None, None, 0.1);
     assert!(
         first == second,

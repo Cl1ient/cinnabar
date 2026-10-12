@@ -836,13 +836,31 @@ mod death_tests {
         let old_feet = [1.0, 2.0, 3.0];
         let new_feet = [4.0, 64.0, 2.0];
         let axes = [2.0, 3.0, 4.0];
-        let mut canonical = local_diagnostic_presentation(7, 0, 7, 5, old_feet, 30.0, 0.0).unwrap();
+        let mut canonical = local_diagnostic_presentation(
+            7,
+            0,
+            7,
+            render_api::PoseGeneration::new(5),
+            old_feet,
+            30.0,
+            0.0,
+        )
+        .unwrap();
         canonical.head_over_body = 10.0;
         canonical.submission.world_from_actor = death_tilted(
             scaled_axes(canonical.submission.world_from_actor, axes),
             Some(0.4),
         );
-        let diagnostic = local_diagnostic_presentation(7, 0, 7, 5, new_feet, 90.0, 0.0).unwrap();
+        let diagnostic = local_diagnostic_presentation(
+            7,
+            0,
+            7,
+            render_api::PoseGeneration::new(5),
+            new_feet,
+            90.0,
+            0.0,
+        )
+        .unwrap();
         let local =
             local_actor_presentation_for_visibility(7, 7, Some(canonical), Some(diagnostic), 90.0)
                 .unwrap();
@@ -867,9 +885,16 @@ mod skin_dedupe_tests {
     use super::*;
 
     fn remote(runtime_id: u64, skin: SkinRgba8) -> ActorRigPresentation {
-        let mut presentation =
-            local_diagnostic_presentation(7, 0, runtime_id, 5, [0.0, 64.0, 0.0], 0.0, 0.0)
-                .expect("finite carrier converts");
+        let mut presentation = local_diagnostic_presentation(
+            7,
+            0,
+            runtime_id,
+            render_api::PoseGeneration::new(5),
+            [0.0, 64.0, 0.0],
+            0.0,
+            0.0,
+        )
+        .expect("finite carrier converts");
         presentation.skin_rgba8 = Some(skin);
         presentation
     }
@@ -913,8 +938,16 @@ mod layer_pass_tests {
             false,
             None,
             (1..=3).map(|runtime_id| {
-                local_diagnostic_presentation(7, 0, runtime_id, 5, [0.0, 64.0, 0.0], 0.0, 0.0)
-                    .expect("finite carrier converts")
+                local_diagnostic_presentation(
+                    7,
+                    0,
+                    runtime_id,
+                    render_api::PoseGeneration::new(5),
+                    [0.0, 64.0, 0.0],
+                    0.0,
+                    0.0,
+                )
+                .expect("finite carrier converts")
             }),
         );
         let mut visited = Vec::new();

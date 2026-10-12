@@ -168,7 +168,7 @@ fn actual_committed_ingress_camera_writer_publication_and_mixer_submit_admit_onc
         .resource::<client_presentation::local_player_camera_receipt::CameraPublicationAttempt>()
         .published()
         .unwrap();
-    assert_eq!(proof.owner.sequence, 1);
+    assert_eq!(proof.owner.sequence.get(), 1);
     let audio = app.world().resource::<NamedAudio>();
     assert_eq!(
         (

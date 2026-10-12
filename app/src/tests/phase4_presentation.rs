@@ -269,8 +269,16 @@ fn conversion_rejects_nonfinite_bones_and_mismatched_lifetimes() {
 
 #[test]
 fn visible_local_removes_its_remote_duplicate_without_capping_other_actors() {
-    let local = local_diagnostic_presentation(7, -1, 7, 5, [0.0, 64.0, 0.0], 0.0, 0.0)
-        .expect("finite local carrier converts");
+    let local = local_diagnostic_presentation(
+        7,
+        -1,
+        7,
+        render_api::PoseGeneration::new(5),
+        [0.0, 64.0, 0.0],
+        0.0,
+        0.0,
+    )
+    .expect("finite local carrier converts");
     assert_eq!(local.submission.input.identity.dimension, -1);
     let remotes = (1..=MAX_RENDERED_PLAYERS as u64 + 1)
         .rev()
@@ -310,9 +318,16 @@ fn visible_local_removes_its_remote_duplicate_without_capping_other_actors() {
 #[test]
 fn local_visibility_identity_gates_all_perspective_routes() {
     let canonical = render_owned(7, 31);
-    let mismatched_visibility =
-        local_diagnostic_presentation(7, 0, 8, 5, [100.0, 64.0, 0.0], 0.0, 0.0)
-            .expect("finite mismatched visibility converts");
+    let mismatched_visibility = local_diagnostic_presentation(
+        7,
+        0,
+        8,
+        render_api::PoseGeneration::new(5),
+        [100.0, 64.0, 0.0],
+        0.0,
+        0.0,
+    )
+    .expect("finite mismatched visibility converts");
     let local = local_actor_presentation_for_visibility(
         7,
         8,
@@ -323,9 +338,16 @@ fn local_visibility_identity_gates_all_perspective_routes() {
     let batch = select_actor_presentations(7, true, local, [render_owned(7, 31)]);
     assert!(batch.submissions.is_empty());
 
-    let matching_visibility =
-        local_diagnostic_presentation(7, 0, 7, 5, [100.0, 64.0, 0.0], 0.0, 0.0)
-            .expect("finite matching visibility converts");
+    let matching_visibility = local_diagnostic_presentation(
+        7,
+        0,
+        7,
+        render_api::PoseGeneration::new(5),
+        [100.0, 64.0, 0.0],
+        0.0,
+        0.0,
+    )
+    .expect("finite matching visibility converts");
     for (perspective, expected_local_draws) in [
         (PerspectiveMode::FirstPerson, 0),
         (PerspectiveMode::ThirdPersonBack, 1),
@@ -371,8 +393,16 @@ fn identical_skin_families_share_one_bounded_texture_layer() {
 
 #[test]
 fn visible_local_is_reserved_even_when_the_world_frustum_excludes_its_body() {
-    let mut local = local_diagnostic_presentation(7, 0, 7, 5, [0.0, 64.0, 0.0], 0.0, 0.0)
-        .expect("finite local carrier converts");
+    let mut local = local_diagnostic_presentation(
+        7,
+        0,
+        7,
+        render_api::PoseGeneration::new(5),
+        [0.0, 64.0, 0.0],
+        0.0,
+        0.0,
+    )
+    .expect("finite local carrier converts");
     local.submission.world_from_actor[0][3] = 500.0;
     let view = ActorCullView {
         clip_from_world: Mat4::from_scale(Vec3::splat(0.001)),
@@ -579,8 +609,16 @@ fn local_canonical_body_lags_the_view_yaw_by_the_rigs_head_offset() {
     canonical.head_over_body = 30.0;
     canonical.submission.world_from_actor =
         client_presentation::presentation::actors::rig_world_from_actor([0.0; 3], 0.0, 1.0);
-    let diagnostic = local_diagnostic_presentation(7, 0, 7, 5, [4.0, 64.0, 2.0], 90.0, 0.0)
-        .expect("finite local carrier converts");
+    let diagnostic = local_diagnostic_presentation(
+        7,
+        0,
+        7,
+        render_api::PoseGeneration::new(5),
+        [4.0, 64.0, 2.0],
+        90.0,
+        0.0,
+    )
+    .expect("finite local carrier converts");
     let local =
         local_actor_presentation_for_visibility(7, 7, Some(canonical), Some(diagnostic), 90.0)
             .expect("canonical local rig is kept");

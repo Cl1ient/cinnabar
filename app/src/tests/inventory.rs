@@ -141,7 +141,7 @@ fn runtime_publishes_session_identity_and_routes_fifo_equipment_once() {
     let EquipmentIngress::ActorPresentation(remote) = remote else {
         panic!("remote equipment must route only to actor presentation")
     };
-    assert_eq!(remote.sequence, 11);
+    assert_eq!(remote.sequence.get(), 11);
     assert!(matches!(
         remote.event,
         WorldEvent::Equipment(EquipmentEvent {

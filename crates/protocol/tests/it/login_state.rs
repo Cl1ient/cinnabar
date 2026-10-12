@@ -34,7 +34,8 @@ mod level_chunk_wire_failure;
 #[path = "login_state/modal_forms.rs"]
 mod modal_forms;
 use disconnect_reason::{
-    PlayEpilogue, boundary_epilogue, camera_instruction_epilogue_packets, truncated_epilogue_wire,
+    PlayEpilogue, boundary_epilogue, camera_instruction_epilogue_packets, skipped_epilogue_wire,
+    truncated_epilogue_wire,
 };
 
 const RUNTIME_ID: u64 = 0x1234_5678;
@@ -422,6 +423,13 @@ fn play_traffic(script: &Script) -> Vec<Bytes> {
             raw_packet_batch(PacketId::LevelChunk, &negative_limit_level_chunk_body()).to_vec();
         frame.extend_from_slice(&batch(&traffic)[1..]);
         frames.push(frame.into());
+        if let Some((name, body)) = skipped_epilogue_wire(script.epilogue) {
+            let mut frame = raw_packet_batch(name, body).to_vec();
+            frame.extend_from_slice(
+                &batch(&[set_time(disconnect_reason::EPILOGUE_SENTINEL_TIME)])[1..],
+            );
+            frames.push(frame.into());
+        }
         frames.extend(terminal);
         if let Some((name, body)) = truncated_epilogue_wire(script.epilogue) {
             frames.push(raw_packet_batch(name, body));

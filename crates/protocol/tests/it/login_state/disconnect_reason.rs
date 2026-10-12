@@ -15,6 +15,7 @@ pub(super) enum PlayEpilogue {
     Default,
     ServerDisconnect,
     TruncatedDisconnect,
+    UnknownSelectorDisconnect,
     ServerTransfer,
     OddTransferEmptyHost,
     OddTransferZeroPort,
@@ -84,6 +85,16 @@ pub(super) fn truncated_epilogue_wire(epilogue: PlayEpilogue) -> Option<(PacketI
         PlayEpilogue::TruncatedTransfer => Some((PacketId::Transfer, &[0x08, 0x00])),
         PlayEpilogue::TruncatedCameraShake => Some((PacketId::CameraShake, &[0x00])),
         PlayEpilogue::TruncatedModalFormRequest => Some((PacketId::ModalFormRequest, &[0x05])),
+        _ => None,
+    }
+}
+
+/// A well-framed raw packet the codec rejects, which play must skip before the epilogue
+/// sentinel.
+pub(super) fn skipped_epilogue_wire(epilogue: PlayEpilogue) -> Option<(PacketId, &'static [u8])> {
+    match epilogue {
+        // Reason 0, then a messages selector of 2, which names no variant.
+        PlayEpilogue::UnknownSelectorDisconnect => Some((PacketId::Disconnect, &[0x00, 0x02])),
         _ => None,
     }
 }
@@ -338,4 +349,24 @@ async fn well_formed_but_unusable_transfer_targets_are_counted_semantic_skips() 
             core.finish(session).await;
         }
     }
+}
+
+/// A Disconnect with an unknown messages selector is dropped as a counted skip, as vanilla fails
+/// its read, rather than ending the session or being retained.
+#[tokio::test]
+async fn unknown_disconnect_selector_is_a_counted_skip() {
+    let (mut session, core) = joined(epilogue_script(
+        PlayEpilogue::UnknownSelectorDisconnect,
+        false,
+        false,
+    ))
+    .await;
+
+    drain_until_transfer_sentinel(&mut session).await;
+
+    assert!(session.take_server_disconnect().is_none());
+    assert_eq!(session.decode_error_count(), 0);
+    // The batch's out-of-bounds LevelChunk and the Disconnect.
+    assert_eq!(session.world_skip_count(), 2);
+    core.finish(session).await;
 }

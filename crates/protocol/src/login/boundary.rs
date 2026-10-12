@@ -31,16 +31,16 @@ impl PlaySession {
     }
 
     /// Decodes and retains one candidate boundary, returning whether it is a
-    /// usable terminal event. Malformed wire stays fatal; unusable transfers
-    /// remain counted semantic skips and do not reset cache transactions.
+    /// usable terminal event. Malformed wire stays fatal; a body the codec rejects
+    /// with intact framing (such as an unknown Disconnect selector) and unusable
+    /// transfers are counted semantic skips that do not reset cache transactions.
     pub(super) async fn absorb_boundary_packet(
         &mut self,
         raw: RawPacket,
         name: PacketId,
     ) -> Result<bool, ProtocolError> {
-        let packet = match raw.decode() {
-            Ok(packet) => packet,
-            Err(error) => return Err(self.fail_session(error)),
+        let Some(packet) = self.decode_world_candidate(raw)? else {
+            return Ok(false);
         };
         let retained =
             self.retain_server_disconnect(&packet) || self.retain_server_transfer(&packet);

@@ -594,14 +594,18 @@ impl PlaySession {
         }
     }
 
-    /// Decodes a chunk-lane packet: a body breaking only a schema or UI bound is skipped and
-    /// counted (`None`), while malformed wire ends the session.
+    /// Decodes a chunk-lane or boundary packet: a body breaking only a schema or UI bound, or
+    /// naming an unknown selector, is logged, counted and skipped (`None`); malformed wire ends
+    /// the session.
     fn decode_world_candidate(&mut self, raw: RawPacket) -> Result<Option<Packet>, ProtocolError> {
         match raw.decode() {
             Ok(packet) => Ok(Some(packet)),
             Err(error) => match crate::codec::world_decode_error(error) {
                 ProtocolError::Session(error) => Err(self.fail_session(error)),
-                semantic => self.skip_or_fail_world(semantic).map(|()| None),
+                semantic => {
+                    tracing::debug!(%semantic, "skipping a world packet the codec rejected");
+                    self.skip_or_fail_world(semantic).map(|()| None)
+                }
             },
         }
     }

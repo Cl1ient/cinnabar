@@ -345,9 +345,14 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
         let result =
             build_chunk_texture_assets(&candidate, &device, &queue).and_then(|(atlas, stats)| {
                 let geometry = match geometry {
-                    Some(instances) => Some(PreparedResourceGeometry::build(
-                        &instances, candidate, device, queue, view,
-                    )?),
+                    Some(instances) => Some({
+                        let _zone = bevy::log::info_span!(
+                            "pack_apply.gpu_geometry",
+                            chunks = instances.len()
+                        )
+                        .entered();
+                        PreparedResourceGeometry::build(&instances, candidate, device, queue, view)?
+                    }),
                     None => None,
                 };
                 Some((atlas, stats, geometry))
@@ -362,6 +367,7 @@ fn build_chunk_texture_assets(
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
 ) -> Option<(PreparedChunkTextureAssets, ChunkTextureUploadStats)> {
+    let _zone = bevy::log::info_span!("pack_apply.gpu_atlas").entered();
     let identity = assets.identity();
     let pages = assets.assets().texture_pages();
     let Some(page_bindings) = plan_texture_page_bindings(pages.len()) else {
@@ -410,6 +416,7 @@ fn build_chunk_texture_assets(
             bevy::log::error!(?error, "chunk texture page exceeds adapter limits");
             return None;
         }
+        let mips = bevy::log::info_span!("pack_apply.gpu_atlas_mips").entered();
         let texture = match match binding {
             TexturePageBinding::Asset(index) => assets.assets().terrain_texture_page(index),
             TexturePageBinding::DiagnosticFallback => {
@@ -422,6 +429,7 @@ fn build_chunk_texture_assets(
                 return None;
             }
         };
+        drop(mips);
         let plans = match plan_queue_texture_mips(&texture) {
             Ok(plans) => plans,
             Err(error) => {

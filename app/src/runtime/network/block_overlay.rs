@@ -157,6 +157,7 @@ pub(super) fn compile_block_overlay(
         }
     }
     if let Some(keys) = vanilla_keys {
+        let _zone = bevy::log::info_span!("pack.blocks.vanilla_overrides").entered();
         builder.override_vanilla_materials(keys);
     }
     if blocks.blocks.is_empty() && builder.overlay.material_overrides.is_empty() {
@@ -164,6 +165,7 @@ pub(super) fn compile_block_overlay(
         return None;
     }
     builder.catalog.emit_diagnostics();
+    let _zone = bevy::log::info_span!("pack.blocks.finish").entered();
     builder.finish()
 }
 

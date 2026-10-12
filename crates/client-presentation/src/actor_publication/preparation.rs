@@ -1,5 +1,12 @@
 //! Advances actors and captures hand readiness before UI and outbound interactions.
+use super::hand::hand_motion_matrix;
 use super::*;
+use crate::{
+    actor_clock::{ActorFrameClock, publish_local_actor_visibility},
+    presentation::{actors::ActorRigPresentation, equipment::StagedSessionIcons},
+};
+use bevy::math::Mat4;
+use bevy::prelude::DetectChanges;
 
 /// Retained actor state shared by early simulation and final render preparation.
 #[derive(Resource, Default)]
@@ -378,7 +385,7 @@ pub fn advance_actor_frame(
     if let Some(equipment) = equipment.as_deref_mut() {
         geometries.extend(equipment.take_pending_geometries());
     }
-    register_geometries(&mut hand_builder.0, &mut scene, geometries);
+    register_geometries(&mut hand_builder.0, &mut scene, geometries, None);
     let fov = camera
         .single()
         .ok()

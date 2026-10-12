@@ -278,6 +278,7 @@ fn successive_nightlies_and_numeric_prereleases_are_ordered_correctly() {
     assert!(!newer("1.0.0+other", "1.0.0+first").unwrap());
     assert!(newer_build("1.0.0-nightly", 102, "1.0.0-nightly", 101).unwrap());
     assert!(!newer_build("1.0.0-beta", 100, "1.0.0-nightly", 101).unwrap());
+    assert!(!newer_build("1.0.0", 0, "1.0.0-nightly", 101).unwrap());
     assert!(!newer_build("0.9.0", 200, "1.0.0", 101).unwrap());
     assert!(newer_build("1.0.1", 1, "1.0.0", 101).unwrap());
 }

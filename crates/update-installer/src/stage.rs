@@ -35,6 +35,10 @@ impl Selection {
             "manifest exceeds size limit"
         );
         let manifest = update_manifest::verify(envelope, keys, now)?;
+        ensure!(
+            manifest.build_number > 0,
+            "release has no publication number"
+        );
         let verdict = update_manifest::select::evaluate_build(&manifest, check)?;
         let artifact = verdict
             .artifact

@@ -40,7 +40,7 @@ pub fn newer_build(
     if core(&candidate) != core(&current) {
         return Ok(core(&candidate) > core(&current));
     }
-    if build != 0 && installed_build != 0 {
+    if installed_build != 0 {
         return Ok(build > installed_build);
     }
     Ok(candidate.cmp_precedence(&current).is_gt())

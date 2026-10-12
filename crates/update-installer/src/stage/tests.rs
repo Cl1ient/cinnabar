@@ -144,3 +144,25 @@ fn signed_artifacts_still_obey_the_absolute_size_bound() {
     let envelope = update_manifest::sign(&manifest, "test", &SEED).unwrap();
     assert!(Selection::verify(&envelope, &keys, check("linux-x86_64"), now()).is_err());
 }
+
+#[test]
+fn an_unnumbered_signed_release_cannot_bypass_build_ordering() {
+    let (envelope, keys) = signed("linux-x86_64", "2.0.0", PAYLOAD);
+    let mut manifest = update_manifest::verify(&envelope, &keys, now()).unwrap();
+    manifest.build_number = 0;
+    let envelope = update_manifest::sign(&manifest, "test", &SEED).unwrap();
+    for switch_now in [false, true] {
+        assert!(
+            Selection::verify(
+                &envelope,
+                &keys,
+                Check {
+                    switch_now,
+                    ..check("linux-x86_64")
+                },
+                now(),
+            )
+            .is_err()
+        );
+    }
+}

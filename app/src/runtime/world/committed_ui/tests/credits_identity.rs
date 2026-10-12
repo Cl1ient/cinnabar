@@ -23,6 +23,7 @@ fn committed_ui_uses_the_current_local_players_name_for_credits() {
         pitch: 0.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_slot: 0,
         main_hand_stack_id: None,

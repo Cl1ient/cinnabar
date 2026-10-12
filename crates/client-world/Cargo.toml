@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 actor-animation = { path = "../actor-animation" }
 render-api = { path = "../render-api" }
 assets = { path = "../assets" }

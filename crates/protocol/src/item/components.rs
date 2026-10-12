@@ -10,13 +10,22 @@ pub(super) const MAX_TEXT_BYTES: usize = 256;
 
 /// Converts component seconds to the protocol's integral simulation duration.
 pub(super) fn duration_ticks(seconds: f64) -> Option<u32> {
-    (seconds.is_finite() && seconds >= 0.0)
-        .then(|| (seconds * 20.0).round().min(f64::from(u32::MAX)) as u32)
+    (seconds.is_finite() && seconds >= 0.0).then(|| {
+        (seconds * f64::from(simulation_clock::TICKS_PER_SECOND))
+            .round()
+            .min(f64::from(u32::MAX)) as u32
+    })
 }
 
 /// What the client presents from one item's components; absent facts stay `None`/`false`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ItemComponents {
+    /// Food permission retained independently from use duration.
+    pub food_can_always_eat: Option<bool>,
+    /// Finite nonnegative movement multiplier, retained by its IEEE bits.
+    pub use_movement_modifier_bits: Option<u64>,
+    /// Authored use-category timer, excluding attack cooldowns.
+    pub use_cooldown: Option<ItemUseCooldown>,
     /// Parsed fuel duration; missing or malformed declarations stay absent.
     pub fuel_duration_ticks: Option<u32>,
     /// Whether fuel was declared, including malformed component values.
@@ -58,6 +67,13 @@ pub struct ItemComponents {
     pub hover_text_color: Option<Arc<str>>,
 }
 
+/// One authored use cooldown with bounded owned category text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemUseCooldown {
+    pub category: Arc<str>,
+    pub ticks: u32,
+}
+
 impl ItemComponents {
     /// Counts the retained component allocation and its owned text for admission budgets.
     pub fn retained_bytes(&self) -> usize {
@@ -70,6 +86,9 @@ impl ItemComponents {
             self.block_placer.as_deref(),
             self.rarity.as_deref(),
             self.hover_text_color.as_deref(),
+            self.use_cooldown
+                .as_ref()
+                .map(|cooldown| &*cooldown.category),
             self.attack
                 .as_ref()
                 .and_then(|attack| attack.attack_cooldown.as_ref())
@@ -166,9 +185,30 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         component("minecraft:use_modifiers")
             .and_then(|modifiers| modifiers.field("use_duration"))
             .and_then(Nbt::number)
-            .and_then(duration_ticks)
+            .map(|seconds| seconds as f32)
+            .and_then(simulation_clock::whole_ticks_from_seconds)
     });
     Some(ItemComponents {
+        food_can_always_eat: component("minecraft:food")
+            .map(|food| flag(food.field("can_always_eat"))),
+        use_movement_modifier_bits: component("minecraft:use_modifiers")
+            .and_then(|modifiers| modifiers.field("movement_modifier"))
+            .and_then(Nbt::number)
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .map(f64::to_bits),
+        use_cooldown: component("minecraft:cooldown").and_then(|cooldown| {
+            if cooldown.field("type").and_then(Nbt::as_str) == Some("attack") {
+                return None;
+            }
+            Some(ItemUseCooldown {
+                category: text(cooldown.field("category"))?,
+                ticks: cooldown
+                    .field("duration")
+                    .and_then(Nbt::number)
+                    .map(|seconds| seconds as f32)
+                    .and_then(simulation_clock::whole_ticks_from_seconds)?,
+            })
+        }),
         fuel_duration_ticks: component("minecraft:fuel")
             .and_then(|fuel| fuel.field("duration"))
             .and_then(Nbt::number)
@@ -248,6 +288,55 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
 mod tests {
     use super::parse_components;
 
+    #[test]
+    fn declared_use_cooldown_matches_authored_component_precision() {
+        let nbt = compound(
+            "",
+            &[compound(
+                "components",
+                &[compound(
+                    "minecraft:cooldown",
+                    &[
+                        string("category", "fixture:shared"),
+                        float("duration", 0.549),
+                    ],
+                )],
+            )],
+        );
+        let cooldown = parse_components(&nbt).unwrap().use_cooldown.unwrap();
+        assert_eq!(cooldown.category.as_ref(), "fixture:shared");
+        assert_eq!(cooldown.ticks, 10);
+    }
+
+    #[test]
+    fn use_modifier_duration_discards_fractional_ticks() {
+        for (seconds, expected) in [
+            (0.049, Some(0)),
+            (1.049, Some(20)),
+            (1.6, Some(32)),
+            (f32::NAN, None),
+            (f32::INFINITY, None),
+            (-1.0, None),
+            (f32::MAX, None),
+        ] {
+            let nbt = compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound(
+                        "minecraft:use_modifiers",
+                        &[float("use_duration", seconds)],
+                    )],
+                )],
+            );
+            assert_eq!(
+                parse_components(&nbt).unwrap().use_duration_ticks,
+                expected,
+                "{seconds}"
+            );
+        }
+    }
+
     fn name(tag: u8, name: &str) -> Vec<u8> {
         let mut bytes = vec![tag, name.len() as u8];
         bytes.extend_from_slice(name.as_bytes());
@@ -282,6 +371,7 @@ mod tests {
         bytes
     }
 
+    /// Encodes one finite or malformed float component for admission tests.
     fn float(key: &str, value: f32) -> Vec<u8> {
         let mut bytes = name(5, key);
         bytes.extend(value.to_le_bytes());

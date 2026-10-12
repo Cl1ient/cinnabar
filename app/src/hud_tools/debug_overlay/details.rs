@@ -134,7 +134,7 @@ impl DebugContext<'_, '_> {
         {
             // Simulation motion is blocks per tick. Convert with the world's
             // shared tick rate instead of relabeling motion as blocks per second.
-            let velocity = state.velocity * f64::from(world::TICKS_PER_SECOND);
+            let velocity = state.velocity * f64::from(simulation_clock::TICKS_PER_SECOND);
             lines.left.push(format_args!(
                 "Velocity: {:.3} / {:.3} / {:.3} blocks/s",
                 velocity.x, velocity.y, velocity.z

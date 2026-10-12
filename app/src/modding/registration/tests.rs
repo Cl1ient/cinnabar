@@ -433,7 +433,7 @@ fn replacing_a_registered_component_discards_its_pending_jump() {
     let mut physics = world.resource_mut::<client_interaction::movement::LocalPhysicsController>();
     physics.set_jump_pulse_scope(Some((1, 0)));
     let frame = physics.advance(
-        std::time::Duration::from_secs_f64(1.0 / world::TICKS_PER_SECOND as f64),
+        std::time::Duration::from_secs_f64(1.0 / simulation_clock::TICKS_PER_SECOND as f64),
         sim::MovementInput::default(),
         &Air,
     );

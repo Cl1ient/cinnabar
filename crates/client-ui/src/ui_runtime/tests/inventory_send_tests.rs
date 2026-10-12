@@ -51,11 +51,11 @@ fn drop_key_admits_creative_grid_and_recipe_book_items() {
         open_personal_inventory(ledger);
         ledger.apply_registry(&protocol::ItemRegistryEvent {
             entries: Arc::from([protocol::ItemRegistryEntry {
-                components: None,
                 identifier: Arc::from("minecraft:apple"),
                 network_id: 1,
                 component_based: false,
                 version: protocol::ItemRegistryVersion::None,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: None,
                 canonical_empty_component_data: true,
@@ -106,11 +106,11 @@ fn creative_group_drop_matches_the_icons_retained_user_data() {
     open_personal_inventory(ledger);
     ledger.apply_registry(&protocol::ItemRegistryEvent {
         entries: Arc::from([protocol::ItemRegistryEntry {
-            components: None,
             identifier: Arc::from("minecraft:enchanted_book"),
             network_id: 1,
             component_based: false,
             version: protocol::ItemRegistryVersion::None,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,

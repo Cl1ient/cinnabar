@@ -503,6 +503,7 @@ impl RuntimeEntityAssets {
 }
 
 pub(super) fn validate_extended_payload(compiled: &CompiledEntityAssets) -> Result<(), AssetError> {
+    super::item_use::validate(compiled)?;
     crate::item::grip::validate(&compiled.item_visuals, &compiled.sources)?;
     crate::item::fuel::validate(&compiled.item_visuals, &compiled.sources)?;
     super::seats::validate(compiled)?;

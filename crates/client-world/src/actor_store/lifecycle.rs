@@ -119,6 +119,7 @@ impl ActorStore {
             local_view_bobbing: true,
             local_flying: false,
             local_hands: [None, None],
+            local_held_network_ids: [0; 2],
             local_main_metadata: 0,
             local_main_stack_id: None,
             local_main_slot: 0,
@@ -174,6 +175,7 @@ impl ActorStore {
         self.local_view_bobbing = feed.view_bobbing;
         self.local_flying = feed.flying;
         self.local_hands = [feed.main_hand.clone(), feed.off_hand.clone()];
+        self.local_held_network_ids = feed.held_network_ids;
         self.local_main_metadata = feed.main_hand_metadata;
         self.local_main_stack_id = feed.main_hand_stack_id.filter(|id| *id > 0);
         self.local_main_slot = feed.main_hand_slot;
@@ -492,7 +494,7 @@ impl ActorStore {
                 if let Some(value) = movement.on_ground {
                     actor.on_ground = Some(value);
                 }
-                let tick_seconds = world::TICK_DURATION.as_secs_f32();
+                let tick_seconds = simulation_clock::TICK_DURATION.as_secs_f32();
                 let elapsed_seconds = movement
                     .source_tick
                     .zip(actor.source_tick)
@@ -824,6 +826,16 @@ impl ActorStore {
             self.animation
                 .insert(self.session_id, self.dimension, actor);
         }
+    }
+
+    /// Installs compiled item-use overlays before numerical admission.
+    pub(crate) fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.items.set_use_overlays(overlays)
     }
 
     pub(crate) fn set_item_use_durations(

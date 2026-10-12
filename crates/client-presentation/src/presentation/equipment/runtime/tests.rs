@@ -47,6 +47,7 @@ fn unchanged_authored_pose_sampling_allocates_nothing_and_keeps_matrix_identity(
 fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
     let entities = RuntimeEntityAssets::from_compiled(
         assets::CompiledEntityAssets {
+            item_use_profiles: Box::new([]),
             seat_layouts: Box::new([]),
             interaction_traits: Box::new([]),
             source_manifest_sha256: [1; 32],
@@ -86,6 +87,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
             item_visual_aliases: Box::new([]),
             render: Default::default(),
         }
+        .with_unresolved_item_use()
         .with_unresolved_seats()
         .with_unresolved_interactions(),
     )
@@ -154,6 +156,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
         overlay_rgba8: 0,
     };
     let item = WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
         grip: assets::item::grip::builtin_item_grip("test:opaque_cube"),
         identifier: Arc::from("test:opaque_cube"),
         metadata: 0,
@@ -601,16 +604,16 @@ fn compiled_attack_facts_normalize_and_session_overrides_reset_to_the_catalog() 
     let timing = base.get("fixture:spear").unwrap();
     assert_eq!(
         timing.swing_duration_ticks,
-        Some(world::TICKS_PER_SECOND * 3 / 4)
+        Some(simulation_clock::TICKS_PER_SECOND * 3 / 4)
     );
     let cooldown = timing.attack_cooldown.as_ref().unwrap();
     assert_eq!(cooldown.category.as_ref(), "fixture:jab");
-    assert_eq!(cooldown.ticks, world::TICKS_PER_SECOND / 2);
+    assert_eq!(cooldown.ticks, simulation_clock::TICKS_PER_SECOND / 2);
     assert!(timing.piercing_weapon);
     assert!(timing.is_spear);
     assert_eq!(timing.kinetic_weapon.unwrap().damage_ticks, 90);
     let override_timing = protocol::ItemAttackTiming {
-        swing_duration_ticks: Some(world::TICKS_PER_SECOND),
+        swing_duration_ticks: Some(simulation_clock::TICKS_PER_SECOND),
         ..Default::default()
     };
     let items = crate::session_assets::SessionItems {

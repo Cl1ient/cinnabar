@@ -168,6 +168,7 @@ fn worn(enchanted: bool) -> ActorEquipmentInput {
         armor: [
             None,
             Some(WornItem {
+                use_facts: client_world::EffectiveItemUse::default(),
                 grip: assets::item::grip::builtin_item_grip("minecraft:elytra"),
                 identifier: Arc::from("minecraft:elytra"),
                 metadata: 0,
@@ -201,7 +202,7 @@ pub(super) fn layers(
                 owner,
                 rig: &rig,
                 frame_alpha: 1.0,
-                delta_seconds: world::TICK_DURATION.as_secs_f32(),
+                delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
             }),
         )
         .to_vec()

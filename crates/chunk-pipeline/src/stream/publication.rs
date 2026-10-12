@@ -265,6 +265,16 @@ impl WorldStream {
         self.authority.seed_property_defaults(types)
     }
 
+    /// Installs compiled item-use overlays before numerical admission.
+    pub fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.authority.set_item_use_overlays(overlays)
+    }
+
     pub fn set_item_use_durations(
         &mut self,
         durations: std::sync::Arc<std::collections::BTreeMap<Box<str>, u32>>,

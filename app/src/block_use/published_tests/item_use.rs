@@ -10,11 +10,11 @@ pub(super) fn hold_snowball(world: &mut World) -> (u64, i32) {
         assert!(
             stream.seed_item_registry(protocol::ItemRegistryEvent {
                 entries: [protocol::ItemRegistryEntry {
-                    components: None,
                     identifier: "minecraft:snowball".into(),
                     network_id,
                     component_based: false,
                     version: protocol::ItemRegistryVersion::None,
+                    components: None,
                     component_digest: [0; 32],
                     negotiated_max_stack_size: Some(16),
                     canonical_empty_component_data: true,

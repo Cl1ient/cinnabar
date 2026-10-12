@@ -435,11 +435,11 @@ fn named_registry(name: &str) -> ItemRegistryEvent {
         entries: [(6, name), (7, "minecraft:oak_planks")]
             .into_iter()
             .map(|(network_id, identifier)| protocol::ItemRegistryEntry {
-                components: None,
                 identifier: identifier.into(),
                 network_id,
                 component_based: false,
                 version: protocol::ItemRegistryVersion::None,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: true,
@@ -916,11 +916,11 @@ fn ordinary_transfer_bytes_and_conservation_are_identical_after_craft_only_overf
         let mut app = app();
         let registry = ItemRegistryEvent {
             entries: std::sync::Arc::from([protocol::ItemRegistryEntry {
-                components: None,
                 identifier: "minecraft:apple".into(),
                 network_id: 878,
                 component_based: true,
                 version: protocol::ItemRegistryVersion::DataDriven,
+                components: None,
                 component_digest: [8; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: false,

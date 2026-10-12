@@ -208,7 +208,7 @@ fn publish_debug_overlay(
     if !state.visible {
         return;
     }
-    let tick = time.elapsed().as_nanos() / world::TICK_DURATION.as_nanos();
+    let tick = time.elapsed().as_nanos() / simulation_clock::TICK_DURATION.as_nanos();
     if !toggled && state.diagnostic_tick == Some(tick) {
         return;
     }

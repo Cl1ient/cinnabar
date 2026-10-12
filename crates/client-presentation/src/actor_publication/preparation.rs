@@ -224,6 +224,7 @@ pub fn advance_actor_frame(
     }
     if let Some(stream) = client_world.stream.as_mut() {
         if let Some(equipment) = equipment.as_deref() {
+            stream.set_item_use_overlays(equipment.item_use_overlays());
             stream.set_item_use_durations(equipment.item_use_durations());
             stream.set_item_attack_timings(equipment.item_attack_timings());
         }

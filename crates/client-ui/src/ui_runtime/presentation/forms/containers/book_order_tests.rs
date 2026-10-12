@@ -90,6 +90,7 @@ fn moving_an_inventory_item_keeps_the_recipe_book_icons_and_layout() {
     let root = screen_root();
     let mut state = BindState::new();
     let mut caches = (None, None);
+    let mut table_len = None;
     for occupied in [false, true, false] {
         let mut slots = vec![NetworkItemStack::empty(); 36];
         if occupied {
@@ -118,7 +119,12 @@ fn moving_an_inventory_item_keeps_the_recipe_book_icons_and_layout() {
             &mut icons,
             (&mut caches.0, &mut caches.1),
         );
-        assert_eq!(icons.len(), 1 + usize::from(occupied));
+        assert_eq!(icons[0], icon);
+        assert_eq!(
+            *table_len.get_or_insert(icons.len()),
+            icons.len(),
+            "cells reserve their icon entries whether or not they hold an item"
+        );
         let (bound, notes) = bind_stateful(&root, &data, &EmptyLibrary, &mut state);
         assert!(notes.is_empty(), "{notes:?}");
         assert_eq!(

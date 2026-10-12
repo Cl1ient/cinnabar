@@ -55,6 +55,7 @@ members = [
     "crates/sim",
     "crates/ui",
     "crates/world",
+    "crates/simulation-clock",
     "crates/update-manifest",
     "tools/architecture",
     "tools/bedrock-replay",

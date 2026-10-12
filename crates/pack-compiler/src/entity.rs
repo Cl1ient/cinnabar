@@ -56,7 +56,8 @@ pub(crate) use source::{open_source_handle, read_bounded_source};
 pub use animation::{CompileReferenceOutcome, FallbackReason, RejectReason};
 pub use attachable::{
     compile_item_attack_timings, compile_item_foods,
-    compile_item_use as compile_item_use_durations, compile_textures as compile_equipment_textures,
+    compile_item_use as compile_item_use_durations, compile_item_use_profiles,
+    compile_textures as compile_equipment_textures,
     compile_textures_for_assets as compile_equipment_textures_for_assets,
     compile_textures_for_assets_with as compile_equipment_textures_for_assets_with,
     compile_textures_with as compile_equipment_textures_with,
@@ -249,22 +250,41 @@ fn compile_with_behavior(
         source_sha256: Sha256::digest(route_bytes).into(),
     });
     source_payloads.insert(route_path, route_bytes.into());
-    for (path, bytes) in [
-        (
+    let raw = |path: &str, bytes: &[u8]| -> (Box<str>, usize, [u8; 32]) {
+        (path.into(), bytes.len(), Sha256::digest(bytes).into())
+    };
+    let (use_bytes, use_hash) = assets::item_use::source_identity();
+    for (path, source_bytes, source_sha256) in [
+        raw(
             assets::item::fuel::SOURCE_PATH,
             assets::item::fuel::SOURCE_BYTES,
         ),
-        (
+        raw(
             assets::item::grip::GRIP_SOURCE_PATH,
             assets::item::grip::GRIP_SOURCE_BYTES,
         ),
-        (
+        raw(
             assets::item::retail::SOURCE_PATH,
             assets::item::retail::SOURCE_BYTES,
         ),
+        raw(
+            assets::item::armour::ITEM_ARMOUR_SOURCE_PATH,
+            assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES,
+        ),
+        raw(
+            assets::item::durability::ITEM_DURABILITY_SOURCE_PATH,
+            assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES,
+        ),
+        raw(item_bindings::SOURCE_PATH, item_bindings::SOURCE_BYTES),
+        (
+            assets::item_use::SOURCE_PATH.into(),
+            use_bytes as usize,
+            use_hash,
+        ),
+        raw(legacy_icons::SOURCE_PATH, legacy_icons::SOURCE_BYTES),
     ] {
         total_source_bytes = total_source_bytes
-            .checked_add(bytes.len())
+            .checked_add(source_bytes)
             .ok_or_else(|| invalid("entity source-byte total overflow"))?;
         if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
             || sources.len() >= MAX_ENTITY_ASSET_SOURCES
@@ -272,67 +292,11 @@ fn compile_with_behavior(
             return Err(invalid("entity source-byte total or count exceeds bound"));
         }
         sources.push(EntityAssetSource {
-            path: path.into(),
-            source_bytes: bytes.len() as u32,
-            source_sha256: Sha256::digest(bytes).into(),
+            path,
+            source_bytes: source_bytes as u32,
+            source_sha256,
         });
     }
-    let armour_bytes = assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(armour_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: assets::item::armour::ITEM_ARMOUR_SOURCE_PATH.into(),
-        source_bytes: armour_bytes.len() as u32,
-        source_sha256: Sha256::digest(armour_bytes).into(),
-    });
-    let durability_bytes = assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(durability_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: assets::item::durability::ITEM_DURABILITY_SOURCE_PATH.into(),
-        source_bytes: durability_bytes.len() as u32,
-        source_sha256: Sha256::digest(durability_bytes).into(),
-    });
-    let binding_bytes = item_bindings::SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(binding_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: item_bindings::SOURCE_PATH.into(),
-        source_bytes: binding_bytes.len() as u32,
-        source_sha256: Sha256::digest(binding_bytes).into(),
-    });
-    let legacy_bytes = legacy_icons::SOURCE_BYTES;
-    total_source_bytes = total_source_bytes
-        .checked_add(legacy_bytes.len())
-        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
-    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
-        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
-    {
-        return Err(invalid("entity source-byte total or count exceeds bound"));
-    }
-    sources.push(EntityAssetSource {
-        path: legacy_icons::SOURCE_PATH.into(),
-        source_bytes: legacy_bytes.len() as u32,
-        source_sha256: Sha256::digest(legacy_bytes).into(),
-    });
     versions::select_vanilla_definitions(&mut symbols, &source_payloads)?;
     assemble(
         root,
@@ -509,6 +473,11 @@ fn assemble(
         rig_geometries: animation.rig_geometries,
         rig_animations: animation.rig_animations,
         rig_controllers: animation.rig_controllers,
+        item_use_profiles: if include_items {
+            assets::item_use::compile(&items.visuals)
+        } else {
+            Box::default()
+        },
         item_visuals: items.visuals,
         item_visual_aliases: items.aliases,
         render: animation.render,

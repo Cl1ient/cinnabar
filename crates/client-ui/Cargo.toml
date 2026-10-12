@@ -19,6 +19,7 @@ test-support = []
 tracy = []
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 launcher-host = { path = "../launcher-host" }
 bridge = { path = "../bridge" }
 anyhow.workspace = true

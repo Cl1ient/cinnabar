@@ -5,6 +5,7 @@ use crate::item::{ItemVisualAlias, ItemVisualDefinition};
 
 mod geometry;
 pub mod interactions;
+pub mod item_use;
 mod molang_program;
 mod query_manifest;
 pub mod seats;
@@ -57,8 +58,8 @@ pub use v4::{
 };
 
 pub const ENTITY_BLOB_MAGIC: [u8; 8] = *b"MCBEENT3";
-/// Includes current item and mount facts plus required domain admissions.
-pub const ENTITY_BLOB_VERSION: u32 = 19;
+/// Includes item-use, seat and interaction admissions; stale carriers need `make assets`.
+pub const ENTITY_BLOB_VERSION: u32 = 20;
 /// Actor rig id ranges (a rig id is a `u32`):
 /// - `0..PACK_RIG_ID_BASE`: vanilla catalog rig-geometry bindings, and from `0x2000_0000`
 ///   the catalog geometries render controllers draw beside the rig (`0x2000_0000 + index`).
@@ -261,6 +262,7 @@ pub struct EntityGeometryBone {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompiledEntityAssets {
+    pub item_use_profiles: Box<[item_use::ItemUseDescriptor]>,
     pub seat_layouts: Box<[seats::EntitySeatDescriptor]>,
     pub source_manifest_sha256: [u8; 32],
     pub interaction_traits: Box<[interactions::EntityInteractionDescriptor]>,
@@ -292,6 +294,7 @@ pub struct CompiledEntityAssets {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct EntityCatalogPayload {
+    item_use_profiles: Box<[item_use::ItemUseDescriptor]>,
     seat_layouts: Box<[seats::EntitySeatDescriptor]>,
     interaction_traits: Box<[interactions::EntityInteractionDescriptor]>,
     block_visual_count: u32,

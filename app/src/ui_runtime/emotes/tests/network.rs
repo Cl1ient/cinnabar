@@ -17,7 +17,7 @@ fn each_emote_start_sends_once_on_its_selection_frame() {
     assert_eq!(packet.emote_id, emote.id());
     assert_eq!(
         f64::from(packet.length_ticks),
-        (emote.duration_seconds() / world::TICK_DURATION.as_secs_f64()).ceil()
+        (emote.duration_seconds() / simulation_clock::TICK_DURATION.as_secs_f64()).ceil()
     );
     assert_eq!(packet.flags, 0);
     h.app.update();

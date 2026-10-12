@@ -248,11 +248,11 @@ mod tests {
 
     fn entry(identifier: &str, component_based: bool, declared: Option<u8>) -> ItemRegistryEntry {
         ItemRegistryEntry {
-            components: None,
             identifier: identifier.into(),
             network_id: 900,
             component_based,
             version: ItemRegistryVersion::DataDriven,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: declared,
             canonical_empty_component_data: declared.is_none(),

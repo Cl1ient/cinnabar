@@ -64,6 +64,7 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
     .collect::<Vec<_>>()
     .into_boxed_slice();
     CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
         seat_layouts: Box::new([]),
         interaction_traits: Box::new([]),
         source_manifest_sha256: [1; 32],

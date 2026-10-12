@@ -1,7 +1,7 @@
 use assets::{MolangQuery as Q, MolangQueryHandler};
 use {
     super::{evaluation::MolangValue, *},
-    world::TICK_DURATION as ACTOR_TICK_DURATION,
+    simulation_clock::TICK_DURATION as ACTOR_TICK_DURATION,
 };
 
 mod item_use;

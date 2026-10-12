@@ -686,6 +686,8 @@ pub struct LocalPlayerFeed {
     /// Identifiers of the client-owned main-hand and off-hand items.
     pub main_hand: Option<std::sync::Arc<str>>,
     pub off_hand: Option<std::sync::Arc<str>>,
+    /// Numerical registry identities for the main hand and off hand; zero means empty.
+    pub held_network_ids: [i32; 2],
     /// The main-hand stack's data value.
     pub main_hand_metadata: u32,
     /// Positive server identity for the selected stack, if one is available.
@@ -782,6 +784,7 @@ pub(crate) struct ActorStore {
     local_flying: bool,
     /// Held items of the client-fed local player, which the item store never tracks.
     local_hands: [Option<std::sync::Arc<str>>; 2],
+    local_held_network_ids: [i32; 2],
     local_main_metadata: u32,
     local_main_stack_id: Option<i32>,
     local_main_slot: u8,

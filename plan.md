@@ -477,7 +477,7 @@ these changes do not close the movement, camera, or actor parity gates.
   120 Hz and an uncapped test bound tick flush delay and 20 Hz send jitter to 3 ms;
   manual recording clocks keep their requested steps. Live movement acceptance remains open.
 
-- Actor catch-up uses `world::MAX_TICKS_PER_FRAME`. Prediction and live per-tick actor
+- Actor catch-up uses `simulation_clock::MAX_TICKS_PER_FRAME`. Prediction and live per-tick actor
   advancement share one clock step, including server-defined interaction boxes after a stall.
   Deterministic regression coverage does not close live animation or movement acceptance.
 
@@ -7281,7 +7281,11 @@ custom-block collision admission. Collision lists retain at most 256
 primitives. Per-state collision and selection overrides now resolve once at session
 admission and register in both network-ID spaces. Captured bottom/top slab fixtures
 match their authored geometry heights and retain stationary support for 100 ticks.
-Arbitrary collision transformations remain incomplete. The definition tree
+A state's authored `minecraft:transformation` now rotates, scales and translates its
+explicit collision and selection boxes about the block centre through the same
+transform the overlay applies to geometry, so face-attached blocks collide on their
+authored face. Rotation and scale pivots are still ignored for geometry and boxes,
+so pivoted transformations remain incomplete. The definition tree
 coalesces Float and Double tags, so exact rejection of Double-only collision fields
 remains incomplete. Unbound looping effects now stop emission after their first
 active/sleep cycle and let existing particles drain; bound effects can restart
@@ -7710,6 +7714,18 @@ Composters retain inward walls and a level-dependent floor. Cauldrons retain the
 
 Incomplete parity: cauldron block-actor potion and dyed-water colours require runtime block-actor data; their state-only visual remains provisional. Enhanced lighting and performance acceptance remain open.
 
+Compiled pack and admitted server use modifiers share one simulation-clock
+duration conversion: seconds use component float precision and
+discard fractional ticks. Equipment carriers require a rebuild for this change.
+Use-kind, appetite, movement and cooldown admission is compiled against an
+independent item inventory; its complete native coverage remains incomplete. Component-version precedence and malformed or extreme-duration
+parity remain unverified.
+
+The simulation clock values and finite component-duration conversion share the
+`simulation-clock` crate. Protocol consumers no longer depend on the world model
+for timing. Complete native use-kind, appetite, movement and cooldown coverage
+remains incomplete.
+
 Mount equipment admission is incomplete. Each compiled entity symbol carries a
 typed unresolved, empty, supported or provisional equipment disposition. The
 existing eleven mount layouts are retained as provisional facts in one
@@ -7719,7 +7735,7 @@ replacements. Unknown mounts no longer inherit horse equipment cells in JSON-UI,
 fallback drawing, pointer handling and quick-move routing. Active equippable
 components, accepted items, conditional activation, advertised custom bases and
 later mount layouts remain incomplete and do not close the entity parity gate.
-Entity carrier 19 requires a `make assets` rebuild.
+Entity carrier 20 requires a `make assets` rebuild.
 
 ### Compiled furnace fuel admission (incomplete)
 
@@ -7749,6 +7765,8 @@ numerical behavior; unclassified states remain unresolved and keep the previous 
 numerical defaults. No ordinary movement classification is inferred from absence of a special
 rule. Complete native ordinary/special coverage, custom session movement components and
 all provisional rule values still require verification before this gate can close.
+Item-use descriptor admission is incomplete. The carrier records explicit unresolved items against the independently collected item-visual inventory. Gameplay, animation durations, consume audio, first-person consumption and cooldown publication read numerical admissions with session component overlays. A duration alone grants no use kind or movement penalty. The stock compatibility catalog, complete native use-kind census, authored cooldown timing, special appetite modes and conflicting component/class semantics remain provisional. Authored and session facts share whole-tick conversion. Cooldown quantization and component-version precedence remain provisional.
+
 
 ## Brewing stand models
 
@@ -7778,7 +7796,7 @@ Compiled seat descriptors are incomplete. Every independently collected entity h
 
 ## Held-item grip admission (incomplete parity)
 
-Item grip facts are compiled into entity carrier 19, checked against the separate
+Item grip facts are compiled into entity carrier 20, checked against the separate
 retail identity inventory and copied through numeric item admission into equipment
 input. Unknown names cannot borrow a tool grip. Explicit session flags, including
 false, replace the compiled upright choice. The existing built-in grip and rod-art
@@ -7786,3 +7804,10 @@ choices remain provisional compatibility data. Complete native, metadata, versio
 and custom base-item coverage is incomplete. Optional Java animation name routing
 remains a separate incomplete admission path. This does not close the complete
 equipment parity gate. `make assets` rebuilds carriers that lack these records.
+
+Item-use animation routes and charged projectile drawing roles are typed admissions.
+Local and remote equipment read numerical registry facts, including generation replacements;
+item names do not select bow or crossbow use frames. Unsupported charged projectile metadata
+has no admitted drawing frame. Complete native item/stack metadata coverage and stack-NBT
+cache acceptance remain incomplete. Authored and session use cooldown fractions share the
+provisional component-precision conversion; native cooldown initialization is unverified.

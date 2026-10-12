@@ -789,11 +789,11 @@ fn apply_apple_registry(player_runtime: &mut PlayerRuntime, runtime: &mut UiRunt
         .inventory_ledger_mut(player_runtime)
         .apply_registry(&ItemRegistryEvent {
             entries: Arc::from([ItemRegistryEntry {
-                components: None,
                 identifier: Arc::from("minecraft:apple"),
                 network_id: 6,
                 component_based: true,
                 version: ItemRegistryVersion::DataDriven,
+                components: None,
                 component_digest: [6; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: false,

@@ -99,7 +99,7 @@ pub fn load_runtime_assets_observed(
 struct LoadedWorldAssets {
     runtime: Arc<RuntimeAssets>,
     blob_sha256: String,
-    material_keys: Option<crate::MaterialKeys>,
+    material_keys: Option<crate::material_keys::MaterialKeys>,
     vanilla_entity_refs: Option<crate::VanillaEntityRefs>,
 }
 

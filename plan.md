@@ -1,9 +1,11 @@
 ## Runtime terrain bindings
 
-Optional terrain catalogs retain each material's state variant and independent weighted
-choices. Raster-only layers preserve base weighted selectors. Block texture bindings
+Optional terrain catalogs retain each material's source key, state variant, tint, and
+independent weighted choices. Raster-only layers preserve base weighted selectors. Block texture bindings
 repoint individual vanilla visuals and prepare separate carried faces for session icons
-and held-item sheets. The material sidecar retains these source facts after packing.
+and held-item sheets. Model items retain their geometry; leaf bindings repoint world
+exposure and depth groups. Carried-only texture changes also prepare item art. The material
+sidecar retains these source and shape facts after packing.
 
 Incomplete: CI must compile and run the regression fixtures. Rendered state variants,
 position-selected texture output, special model bindings, pack reload/removal, and

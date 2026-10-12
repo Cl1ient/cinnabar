@@ -1,6 +1,6 @@
 use super::*;
-use assets::material_keys::{BlockTextureSource, MaterialTextureSource};
-use assets::{Material, MaterialKeys};
+use assets::Material;
+use assets::material_keys::{BlockTextureSource, MaterialKeys, MaterialTextureSource};
 use serde_json::{Value, json};
 
 /// Packs contain only original tiny catalogs and flat color rasters.

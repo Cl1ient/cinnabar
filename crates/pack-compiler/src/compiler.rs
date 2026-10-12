@@ -1,3 +1,4 @@
+use assets::material_keys::MaterialKeys;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -14,9 +15,8 @@ use assets::{
     MODEL_TEMPLATE_FLAG_FENCE_NETHER, MODEL_TEMPLATE_FLAG_FENCE_WOOD,
     MODEL_TEMPLATE_FLAG_GATE_AXIS_X, MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP,
     MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_STAIR, MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE,
-    MODEL_TEMPLATE_FLAG_WALL, Material, MaterialKeys, ModelFamily, ModelQuad, ModelStateField,
-    ModelTemplate, NO_ANIMATION, RegistryRecord, TextureArray, TexturePage, TextureRef, VisualKind,
-    VisualSupport,
+    MODEL_TEMPLATE_FLAG_WALL, Material, ModelFamily, ModelQuad, ModelStateField, ModelTemplate,
+    NO_ANIMATION, RegistryRecord, TextureArray, TexturePage, TextureRef, VisualKind, VisualSupport,
 };
 
 use {

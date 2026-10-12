@@ -519,7 +519,7 @@ fn overlay_cache_reuses_the_previous_session_compile() {
 fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
     use std::sync::Arc;
     let _cache = overlay_cache();
-    let keys = assets::MaterialKeys::from_entries([(5, "reapply_key")]);
+    let keys = assets::material_keys::MaterialKeys::from_entries([(5, "reapply_key")]);
     let blocks = protocol::CustomBlocks::default();
     let limit = super::overlay_texture_layer_limit();
     let stack = |id| {

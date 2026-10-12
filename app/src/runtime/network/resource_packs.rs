@@ -538,11 +538,16 @@ pub(super) fn overlay_texture_layer_limit() -> u32 {
 }
 
 /// Texture keys of the vanilla carrier's materials, set once at startup when the sidecar loads.
-static BASE_MATERIAL_KEYS: std::sync::OnceLock<(assets::MaterialKeys, Arc<assets::RuntimeAssets>)> =
-    std::sync::OnceLock::new();
+static BASE_MATERIAL_KEYS: std::sync::OnceLock<(
+    assets::material_keys::MaterialKeys,
+    Arc<assets::RuntimeAssets>,
+)> = std::sync::OnceLock::new();
 
 /// Installs immutable source facts and pixels from the same world carrier.
-pub(crate) fn set_base_material_keys(keys: assets::MaterialKeys, base: Arc<assets::RuntimeAssets>) {
+pub(crate) fn set_base_material_keys(
+    keys: assets::material_keys::MaterialKeys,
+    base: Arc<assets::RuntimeAssets>,
+) {
     let _ = BASE_MATERIAL_KEYS.set((keys, base));
 }
 

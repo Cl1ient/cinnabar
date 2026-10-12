@@ -156,7 +156,7 @@ pub fn cube_face(face: BlockFace) -> ([[f32; 3]; 4], [[f32; 2]; 4]) {
 /// The cube thumbnail's side shading, chosen by the face normal's dominant axis.
 #[must_use]
 pub fn face_brightness(corners: [[f32; 3]; 4]) -> f32 {
-    let normal = face_normal(corners).map(f32::abs);
+    let normal = quad_normal(corners).map(f32::abs);
     if normal[1].abs() >= normal[0] && normal[1].abs() >= normal[2] {
         CUBE_FACES[0].3
     } else if normal[0] >= normal[2] {
@@ -168,14 +168,7 @@ pub fn face_brightness(corners: [[f32; 3]; 4]) -> f32 {
 
 /// The normalized outward normal of one accepted block-item quad.
 pub fn face_normal(corners: [[f32; 3]; 4]) -> [f32; 3] {
-    let [a, b, c] = [corners[0], corners[1], corners[2]];
-    let u = std::array::from_fn::<_, 3, _>(|axis| b[axis] - a[axis]);
-    let v = std::array::from_fn::<_, 3, _>(|axis| c[axis] - a[axis]);
-    let normal = [
-        u[1] * v[2] - u[2] * v[1],
-        u[2] * v[0] - u[0] * v[2],
-        u[0] * v[1] - u[1] * v[0],
-    ];
+    let normal = quad_normal(corners);
     let length = normal.iter().map(|value| value * value).sum::<f32>().sqrt();
     if length == 0.0 {
         [0.0; 3]
@@ -184,9 +177,21 @@ pub fn face_normal(corners: [[f32; 3]; 4]) -> [f32; 3] {
     }
 }
 
+/// Computes the unscaled cross product so dominant-axis comparisons retain their precision.
+fn quad_normal(corners: [[f32; 3]; 4]) -> [f32; 3] {
+    let [a, b, c] = [corners[0], corners[1], corners[2]];
+    let u = std::array::from_fn::<_, 3, _>(|axis| b[axis] - a[axis]);
+    let v = std::array::from_fn::<_, 3, _>(|axis| c[axis] - a[axis]);
+    [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ]
+}
+
 /// The dominant directional face, with ties resolved in the same order as face shading.
 pub fn quad_face(corners: [[f32; 3]; 4]) -> BlockFace {
-    let normal = face_normal(corners);
+    let normal = quad_normal(corners);
     let magnitude = normal.map(f32::abs);
     let axis = if magnitude[1] >= magnitude[0] && magnitude[1] >= magnitude[2] {
         1

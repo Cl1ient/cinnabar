@@ -2,7 +2,7 @@
 
 use crate::{ModelFamily, RegistryRecord, VisualKind};
 
-/// Registry families whose vanilla block shapes render as flat item icons.
+/// Block families whose existing item routes use flat carried art.
 const FLAT_FAMILIES: [ModelFamily; 11] = [
     ModelFamily::Cross,
     ModelFamily::Rail,
@@ -17,8 +17,7 @@ const FLAT_FAMILIES: [ModelFamily; 11] = [
     ModelFamily::ResinClump,
 ];
 
-/// Registry-unclassified blocks whose vanilla items show a flat icon (lanterns, candles,
-/// chains, ladders, lily pads, end rods, sea pickles, spore blossoms, bamboo).
+/// Other block identifiers whose existing item routes use flat carried art.
 fn is_reviewed_flat(name: &str) -> bool {
     let name = name.strip_prefix("minecraft:").unwrap_or(name);
     ["lantern", "candle", "chain"]

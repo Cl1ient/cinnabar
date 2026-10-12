@@ -29,7 +29,10 @@ pub(super) struct TextureCatalog<'a> {
 }
 
 impl<'a> TextureCatalog<'a> {
-    pub(super) fn new(view: &'a LayeredPackView, base: Option<&assets::MaterialKeys>) -> Self {
+    pub(super) fn new(
+        view: &'a LayeredPackView,
+        base: Option<&assets::material_keys::MaterialKeys>,
+    ) -> Self {
         let mut terrain = pack_runtime::pack_textures::base_terrain_catalog()
             .into_iter()
             .filter_map(|(key, path)| {

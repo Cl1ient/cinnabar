@@ -141,6 +141,106 @@ fn changed_surface_bindings_reuse_the_catalog_and_respect_host_dimensions() {
     );
 }
 
+/// First-use routes arrive resolved, and a return reuses unchanged catalog and layout state.
+#[test]
+fn prepared_panel_routes_reuse_resolution_and_layout_on_return() {
+    let initial = authored();
+    let mut second = initial.clone();
+    let mut document: serde_json::Value =
+        serde_json::from_str(&second.surface.as_ref().unwrap().document).unwrap();
+    document["screen"]["controls"][0]["color"]["radius"] = json!(7);
+    second.surface.as_mut().unwrap().document = document.to_string();
+    let bundle = ui::mod_panel::PanelBundle::parse(
+        &json!({"panel":initial,"surfaces":{"other":second.surface}}).to_string(),
+    )
+    .unwrap();
+    let prepared = mod_ui::PreparedPanelUi::prepare(Arc::new(bundle)).unwrap();
+    let mut presentation = mini_engine_presentation();
+    presentation.mod_ui_mut().preload_panel_bundle(prepared);
+    presentation
+        .mod_ui_mut()
+        .set_mod_panel(Some(&initial))
+        .unwrap();
+    presentation.mod_ui_mut().set_mod_panel_open(true);
+    frame(&mut presentation, [1280, 720]);
+    let before = presentation.mod_ui().mod_panel_state().unwrap();
+    let catalog = Arc::clone(before.catalog.unwrap());
+    let passes = before.passes;
+    assert_eq!(before.resolves, 0);
+    presentation
+        .mod_ui_mut()
+        .set_mod_panel(Some(&second))
+        .unwrap();
+    frame(&mut presentation, [1280, 720]);
+    assert_eq!(presentation.mod_ui().mod_panel_state().unwrap().resolves, 0);
+    presentation
+        .mod_ui_mut()
+        .set_mod_panel(Some(&initial))
+        .unwrap();
+    frame(&mut presentation, [1280, 720]);
+    let returned = presentation.mod_ui().mod_panel_state().unwrap();
+    assert!(Arc::ptr_eq(&catalog, returned.catalog.unwrap()));
+    assert_eq!(returned.passes, passes);
+    assert_eq!(returned.resolves, 0);
+}
+
+/// Legacy schema or wrapper changes use validation and cannot reuse a differently prepared route.
+#[test]
+fn prepared_panel_falls_back_for_changed_wrapper_facts() {
+    let initial = authored();
+    let bundle =
+        ui::mod_panel::PanelBundle::parse(&json!({"panel":initial,"surfaces":{}}).to_string())
+            .unwrap();
+    let prepared = mod_ui::PreparedPanelUi::prepare(Arc::new(bundle)).unwrap();
+    let mut variants = Vec::new();
+    let mut changed = initial.clone();
+    changed.dark = !changed.dark;
+    variants.push(changed);
+    let mut changed = initial.clone();
+    changed.title = "Another title".into();
+    variants.push(changed);
+    let mut changed = initial.clone();
+    changed.toggle_key = "F8".into();
+    variants.push(changed);
+    let mut changed = initial.clone();
+    changed.theme = ui::mod_panel::Theme::Monochrome;
+    variants.push(changed);
+    let mut changed = initial.clone();
+    changed.style = ui::mod_panel::Style::Compact;
+    variants.push(changed);
+    let mut changed = initial.clone();
+    changed.reference_size = Some([300.0, 200.0]);
+    variants.push(changed);
+    for changed in variants {
+        let mut presentation = mini_engine_presentation();
+        presentation
+            .mod_ui_mut()
+            .preload_panel_bundle(Arc::clone(&prepared));
+        presentation
+            .mod_ui_mut()
+            .set_mod_panel(Some(&initial))
+            .unwrap();
+        presentation.mod_ui_mut().set_mod_panel_open(true);
+        frame(&mut presentation, [1280, 720]);
+        let catalog = Arc::clone(
+            presentation
+                .mod_ui()
+                .mod_panel_state()
+                .unwrap()
+                .catalog
+                .unwrap(),
+        );
+        presentation
+            .mod_ui_mut()
+            .set_mod_panel(Some(&changed))
+            .unwrap();
+        frame(&mut presentation, [1280, 720]);
+        let state = presentation.mod_ui().mod_panel_state().unwrap();
+        assert!(!Arc::ptr_eq(&catalog, state.catalog.unwrap()));
+        assert_eq!(state.resolves, 1);
+    }
+}
+
 #[test]
 fn reference_size_keeps_bottom_control_visible_and_clickable_in_small_viewports() {
     let mut panel = panel();

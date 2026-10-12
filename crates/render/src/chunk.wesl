@@ -295,6 +295,8 @@ fn vertex_unit(
     let quad = vertex_index / 4u;
     if (quad >= unit.y) {
         var invisible: VertexOutput;
+        @if(ENHANCED || ENHANCED_SHADOW)
+        invisible.authored_refs = vec2(0xffffffffu);
         invisible.clip_position = vec4(2.0, 2.0, 2.0, 1.0);
         return invisible;
     }

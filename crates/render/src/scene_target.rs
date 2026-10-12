@@ -5,6 +5,7 @@ mod nodes;
 #[cfg(test)]
 #[path = "scene_target/tests.rs"]
 mod tests;
+#[path = "scene_target/water_coverage.rs"]
 pub(crate) mod water_coverage;
 
 use bevy::{

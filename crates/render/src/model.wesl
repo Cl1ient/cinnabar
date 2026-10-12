@@ -174,9 +174,7 @@ fn vertex_unit(
     let unit = terrain_units[instance_index];
     let quad = vertex_index / 4u;
     if (quad >= unit.y) {
-        var invisible: VertexOutput;
-        invisible.clip_position = vec4(2.0, 2.0, 2.0, 1.0);
-        return invisible;
+        return invisible_vertex();
     }
     return model_vertex(unit.z * 4u + vertex_index % 4u, unit.x + quad);
 }

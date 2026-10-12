@@ -5,16 +5,30 @@ use wgpu::util::DeviceExt as _;
 
 /// Runs production functions with the atmosphere resources they actually sample.
 pub(super) fn execute(source: &str, result_count: usize) -> Option<Vec<[f32; 4]>> {
-    execute_internal(source, result_count, false)
+    execute_internal(source, result_count, false, &[])
 }
 
 /// Runs production cloud functions with generated noise and atmosphere fixtures.
 pub(super) fn execute_with_clouds(source: &str, result_count: usize) -> Option<Vec<[f32; 4]>> {
-    execute_internal(source, result_count, true)
+    execute_internal(source, result_count, true, &[])
+}
+
+/// Runs production functions under the same shader definitions as their forward pipeline.
+pub(super) fn execute_with_definitions(
+    source: &str,
+    result_count: usize,
+    definitions: &[&str],
+) -> Option<Vec<[f32; 4]>> {
+    execute_internal(source, result_count, false, definitions)
 }
 
 /// Builds the fixture bindings for the selected regression entry point and reads its results.
-fn execute_internal(source: &str, result_count: usize, clouds: bool) -> Option<Vec<[f32; 4]>> {
+fn execute_internal(
+    source: &str,
+    result_count: usize,
+    clouds: bool,
+    definitions: &[&str],
+) -> Option<Vec<[f32; 4]>> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) =
         bevy::tasks::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
@@ -28,7 +42,7 @@ fn execute_internal(source: &str, result_count: usize, clouds: bool) -> Option<V
         ..Default::default()
     }))
     .expect("Enhanced lighting regression device");
-    let source = shader_source::composed(source, &[]);
+    let source = shader_source::composed(source, definitions);
     let bindings = shader_source::bindings_used_by_entry_points(&source, &["regression"], 0);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("production Enhanced regression functions"),
@@ -400,4 +414,32 @@ import render::enhanced::temporal::{water_coverage_depth,water_reprojection_surf
     assert_eq!(&results[0][1..], &[0.0, 0.0, 0.0]);
     assert_eq!(results[1], [1.0, 0.0, 0.0, 0.0]);
     assert_eq!(results[2], [0.0, 0.0, 0.0, 1.0]);
+}
+
+#[test]
+fn transparent_bridge_preserves_authored_frames_and_missing_reference_sentinels() {
+    let source = include_str!("../transparent_terrain.wesl").to_owned()
+        + r#"
+@group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>>;
+@compute @workgroup_size(1) fn regression() {
+    var liquid: LiquidOutput;
+    var model: ModelOutput;
+    for(var i=0u;i<3u;i+=1u){
+        let references=select(vec2(17u,0x80000003u),vec2(0xffffffffu),i==0u);
+        liquid.authored_refs=references;
+        model.authored_refs=select(references,vec2(0u,0xffffffffu),i==2u);
+        let restored_liquid=liquid_output(liquid_vertex_output(liquid));
+        let restored_model=model_output(model_vertex_output(model));
+        results[i]=vec4(
+            f32(restored_liquid.authored_refs.x==liquid.authored_refs.x),
+            f32(restored_liquid.authored_refs.y==liquid.authored_refs.y),
+            f32(restored_model.authored_refs.x==model.authored_refs.x),
+            f32(restored_model.authored_refs.y==model.authored_refs.y));
+    }
+}
+"#;
+    let Some(results) = execute_with_definitions(&source, 3, &["ENHANCED"]) else {
+        return;
+    };
+    assert_eq!(results, vec![[1.0; 4]; 3]);
 }

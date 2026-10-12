@@ -656,3 +656,79 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
     assert!(grids_overlap(origin, view.prepared.unwrap().origin));
     assert_ne!(view.epoch, epoch, "overlap cannot preserve another session");
 }
+
+#[test]
+fn colour_only_tint_replacement_rebuilds_cached_indirect_reflectance() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
+        eprintln!("missing fixture: native GPU adapter for tint-only indirect invalidation");
+        return;
+    };
+    let (device, queue) = bevy::tasks::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_limits: adapter.limits(),
+        ..Default::default()
+    }))
+    .expect("tint-only indirect fixture device");
+    let device = RenderDevice::from(device);
+    let queue = RenderQueue::new(queue);
+    let mut view = IndirectGridGpu::new(&device);
+    let geometry = IndirectGeometry::default();
+    let coverage = crate::chunk::resident_coverage::ChunkResidentCoverage::default();
+    let textures = ChunkTextureAssets::default();
+    let tints = render_scene::ChunkBiomeTints::default();
+    let mut foliage = tints.entries()[0];
+    foliage.seasonal_foliage.fill([0.8, 0.1, 0.1]);
+    let updated = render_scene::ChunkBiomeTints::with_identity(
+        std::sync::Arc::from([foliage]),
+        tints.table_identity(),
+    );
+    assert_eq!(updated.table_identity(), tints.table_identity());
+    assert_ne!(updated.resource_identity(), tints.resource_identity());
+    let world = Some(RenderedWorld {
+        session_generation: 1,
+        dimension: 0,
+    });
+    assert!(view.prepare(
+        &queue,
+        &geometry,
+        &coverage,
+        &textures,
+        &tints,
+        Vec3::ZERO,
+        world,
+        1
+    ));
+    let counts = (view.rebuilds, view.uploads);
+    assert!(!view.prepare(
+        &queue,
+        &geometry,
+        &coverage,
+        &textures,
+        &tints,
+        Vec3::ZERO,
+        world,
+        1
+    ));
+    assert_eq!((view.rebuilds, view.uploads), counts);
+    assert!(view.prepare(
+        &queue,
+        &geometry,
+        &coverage,
+        &textures,
+        &updated,
+        Vec3::ZERO,
+        world,
+        1
+    ));
+    assert_eq!((view.rebuilds, view.uploads), (counts.0 + 1, counts.1 + 1));
+    assert!(!view.prepare(
+        &queue,
+        &geometry,
+        &coverage,
+        &textures,
+        &updated,
+        Vec3::ZERO,
+        world,
+        1
+    ));
+}

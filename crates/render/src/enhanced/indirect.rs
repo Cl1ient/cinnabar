@@ -40,7 +40,7 @@ struct GridKey {
     geometry: u64,
     coverage: u64,
     assets: render_scene::ChunkTextureAssetIdentity,
-    tints: meshing::ChunkBiomeTintIdentity,
+    tints: render_scene::ChunkBiomeTintResourceIdentity,
     origin: IVec3,
     world: Option<RenderedWorld>,
 }
@@ -186,7 +186,7 @@ impl IndirectGridGpu {
             geometry: regional,
             coverage: known,
             assets: assets.identity(),
-            tints: tints.table_identity(),
+            tints: tints.resource_identity(),
             origin,
             world,
         };

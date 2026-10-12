@@ -279,6 +279,19 @@ fn placement_frame_controls_target_rotation_independently_from_display_identity(
     );
 }
 
+/// The first presented input keeps the rig's frame before any motion tick refreshes it.
+#[test]
+fn seeded_presentation_input_keeps_the_rig_placement_frame() {
+    let assets = crate::test_support::counting_random_assets();
+    let layout = VariableLayout::new(&assets);
+    let actor = actor_with_metadata(HashMap::new());
+    let mut state = resolve_binding(&assets, &layout, &actor, 0, 0).unwrap();
+    let frame = assets::placement::builtin_placement_frame("minecraft:arrow");
+    state.placement_frame = frame;
+    tick::seed_presentation_input(&mut state, &actor, &ActorTickContext::default());
+    assert_eq!(state.history.back().unwrap().placement_frame, frame);
+}
+
 #[test]
 fn shake_time_query_reads_the_signed_retained_native_countdown() {
     let mut arrow = actor_with_metadata(HashMap::new());

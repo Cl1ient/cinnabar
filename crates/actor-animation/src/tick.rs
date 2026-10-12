@@ -267,6 +267,7 @@ pub(super) fn seed_presentation_input(
         ..Default::default()
     });
     let input = ActorTickInput {
+        placement_frame: state.placement_frame,
         position: actor.position(),
         velocity: actor.velocity(),
         on_ground: actor.on_ground(),

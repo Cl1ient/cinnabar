@@ -220,6 +220,7 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         ]
         .into_boxed_slice(),
         symbols: vec![entity::EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: entity::EntityAssetKind::Entity,
             identifier: "minecraft:item_frame".into(),
             source_index: 0,

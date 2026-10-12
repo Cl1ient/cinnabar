@@ -59,12 +59,14 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         .into_boxed_slice(),
         symbols: vec![
             EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: EntityAssetKind::Entity,
                 identifier: "minecraft:item_frame".into(),
                 source_index: 1,
                 dependencies: Box::new([]),
             },
             EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: EntityAssetKind::Animation,
                 identifier: "animation.catalog_only".into(),
                 source_index: 0,

@@ -101,15 +101,30 @@ fn manual_package(ready: &Ready) -> Result<PathBuf> {
     let name =
         update_manifest::platforms::artifact_name(std::env::consts::OS, std::env::consts::ARCH)
             .context("unknown native artifact")?;
-    let destination = ready.stage.join(name);
-    fs::copy(
-        ready.stage.join(update_installer::stage::ARTIFACT_FILE),
-        &destination,
-    )?;
-    update_installer::stage::verify_file(&destination, &selected.artifact)?;
+    let destination = named_package(&ready.stage, name, &selected.artifact)?;
     if cfg!(target_os = "linux") {
         Ok(ready.stage.clone())
     } else {
         Ok(destination)
     }
+}
+
+/// Copies the staged artifact to `name` and verifies it; on Linux the AppImage is made runnable.
+pub(super) fn named_package(
+    stage: &std::path::Path,
+    name: &str,
+    artifact: &update_manifest::Artifact,
+) -> Result<PathBuf> {
+    let destination = stage.join(name);
+    fs::copy(
+        stage.join(update_installer::stage::ARTIFACT_FILE),
+        &destination,
+    )?;
+    update_installer::stage::verify_file(&destination, artifact)?;
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&destination, fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(destination)
 }

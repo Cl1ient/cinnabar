@@ -99,6 +99,29 @@ fn cached_release(path: &std::path::Path, version: &str, build_number: u64) -> T
     TrustedKeys::from([("k".to_owned(), update_manifest::public_key(&seed).unwrap())])
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn a_manually_downloaded_appimage_is_executable() {
+    use sha2::Digest;
+    use std::os::unix::fs::PermissionsExt;
+    let stage = tempfile::tempdir().unwrap();
+    let payload = b"verified AppImage";
+    std::fs::write(
+        stage.path().join(update_installer::stage::ARTIFACT_FILE),
+        payload,
+    )
+    .unwrap();
+    let artifact = update_manifest::Artifact {
+        url: "https://example.test/Cinnabar-x86_64.AppImage".into(),
+        sha256: format!("{:x}", sha2::Sha256::digest(payload)),
+        size: payload.len() as i64,
+    };
+    let package =
+        handoff::named_package(stage.path(), "Cinnabar-x86_64.AppImage", &artifact).unwrap();
+    let mode = std::fs::metadata(package).unwrap().permissions().mode();
+    assert_eq!(mode & 0o755, 0o755);
+}
+
 #[test]
 fn a_skipped_daily_check_restores_the_older_channel_switch_offer() {
     let root = tempfile::tempdir().unwrap();

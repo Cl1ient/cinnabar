@@ -1,5 +1,10 @@
 use std::sync::Arc;
 
+use actor_animation::{
+    ActorAnimationView, MAX_ACTOR_ACTION_HISTORY, MAX_CONTROLLER_TRANSITIONS_PER_TICK,
+    MAX_MOLANG_OPS_PER_ACTOR_TICK, MAX_MOLANG_OPS_PER_RENDER_FRAME, MAX_MOLANG_OPS_PER_WORLD_TICK,
+    MAX_RUNTIME_BONES_PER_RIG,
+};
 use assets::{
     CompiledEntityAssets, CompiledMolangExpression, EntityAnimationChannel, EntityAnimationClip,
     EntityAnimationController, EntityAnimationInterpolation, EntityAnimationKeyframe,
@@ -12,11 +17,6 @@ use assets::{
     RuntimeAssets, RuntimeEntityAssets, encode_entity_blob,
 };
 use chunk_pipeline::WorldStream;
-use client_world::{
-    ActorAnimationView, MAX_ACTOR_ACTION_HISTORY, MAX_CONTROLLER_TRANSITIONS_PER_TICK,
-    MAX_MOLANG_OPS_PER_ACTOR_TICK, MAX_MOLANG_OPS_PER_RENDER_FRAME, MAX_MOLANG_OPS_PER_WORLD_TICK,
-    MAX_RUNTIME_BONES_PER_RIG,
-};
 use protocol::{
     ActorEvent, ActorKind, ActorLinkEvent, ActorLinkType, ActorMetadata, ActorMetadataUpdateEvent,
     ActorMetadataValue, ActorMoveEvent, ActorPositionOrigin, ActorSpawnEvent, ChangeDimensionEvent,
@@ -46,18 +46,21 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
     .into_boxed_slice();
     let symbols = vec![
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Entity,
             identifier: "minecraft:bee".into(),
             source_index: 2,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: "geometry.base".into(),
             source_index: 3,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Geometry,
             identifier: "geometry.bee".into(),
             source_index: 3,
@@ -69,18 +72,21 @@ fn compiled_entity_assets(fallback: EntityRigFallback) -> CompiledEntityAssets {
             .into_boxed_slice(),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::Animation,
             identifier: "animation.bee.move".into(),
             source_index: 1,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::AnimationController,
             identifier: "controller.animation.bee".into(),
             source_index: 0,
             dependencies: Box::new([]),
         },
         EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: EntityAssetKind::RenderController,
             identifier: "controller.render.bee".into(),
             source_index: 4,

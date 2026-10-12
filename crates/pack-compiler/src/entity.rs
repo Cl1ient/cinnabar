@@ -28,6 +28,7 @@ mod legacy_block_geometry;
 mod legacy_icons;
 mod materials;
 mod molang;
+mod mount;
 mod native_bind_pose;
 mod native_dragon_geometry;
 mod native_held_items;
@@ -214,6 +215,58 @@ pub fn compile_entity_assets_with_report(
         source_sha256: Sha256::digest(route_bytes).into(),
     });
     source_payloads.insert(route_path, route_bytes.into());
+    for (path, bytes) in [
+        (
+            assets::item::fuel::SOURCE_PATH,
+            assets::item::fuel::SOURCE_BYTES,
+        ),
+        (
+            assets::item::retail::SOURCE_PATH,
+            assets::item::retail::SOURCE_BYTES,
+        ),
+    ] {
+        total_source_bytes = total_source_bytes
+            .checked_add(bytes.len())
+            .ok_or_else(|| invalid("entity source-byte total overflow"))?;
+        if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
+            || sources.len() >= MAX_ENTITY_ASSET_SOURCES
+        {
+            return Err(invalid("entity source-byte total or count exceeds bound"));
+        }
+        sources.push(EntityAssetSource {
+            path: path.into(),
+            source_bytes: bytes.len() as u32,
+            source_sha256: Sha256::digest(bytes).into(),
+        });
+    }
+    let armour_bytes = assets::item::armour::ITEM_ARMOUR_SOURCE_BYTES;
+    total_source_bytes = total_source_bytes
+        .checked_add(armour_bytes.len())
+        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
+    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
+        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
+    {
+        return Err(invalid("entity source-byte total or count exceeds bound"));
+    }
+    sources.push(EntityAssetSource {
+        path: assets::item::armour::ITEM_ARMOUR_SOURCE_PATH.into(),
+        source_bytes: armour_bytes.len() as u32,
+        source_sha256: Sha256::digest(armour_bytes).into(),
+    });
+    let durability_bytes = assets::item::durability::ITEM_DURABILITY_SOURCE_BYTES;
+    total_source_bytes = total_source_bytes
+        .checked_add(durability_bytes.len())
+        .ok_or_else(|| invalid("entity source-byte total overflow"))?;
+    if total_source_bytes > MAX_ENTITY_TOTAL_SOURCE_BYTES
+        || sources.len() >= MAX_ENTITY_ASSET_SOURCES
+    {
+        return Err(invalid("entity source-byte total or count exceeds bound"));
+    }
+    sources.push(EntityAssetSource {
+        path: assets::item::durability::ITEM_DURABILITY_SOURCE_PATH.into(),
+        source_bytes: durability_bytes.len() as u32,
+        source_sha256: Sha256::digest(durability_bytes).into(),
+    });
     let binding_bytes = item_bindings::SOURCE_BYTES;
     total_source_bytes = total_source_bytes
         .checked_add(binding_bytes.len())
@@ -265,6 +318,7 @@ fn assemble(
     source_manifest_sha256: [u8; 32],
     include_items: bool,
 ) -> Result<EntityAssetCompilation, AssetError> {
+    mount::admit(&mut sources, include_items);
     sources.sort_by(|left, right| left.path.cmp(&right.path));
     if symbols.is_empty() || symbols.len() > MAX_ENTITY_ASSET_SYMBOLS {
         return Err(invalid("entity asset symbol count exceeds bound"));
@@ -282,6 +336,7 @@ fn assemble(
                 .copied()
                 .ok_or_else(|| invalid("entity symbol references an absent source"))?;
             Ok(EntityAssetSymbol {
+                mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
                 kind: symbol.kind,
                 identifier: symbol.identifier,
                 source_index,
@@ -289,6 +344,7 @@ fn assemble(
             })
         })
         .collect::<Result<Vec<_>, AssetError>>()?;
+    mount::compile(&mut symbols, include_items);
     let available_symbols = symbols
         .iter()
         .map(|symbol| (symbol.kind, symbol.identifier.clone()))

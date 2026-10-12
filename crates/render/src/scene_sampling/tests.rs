@@ -99,7 +99,7 @@ fn combined_depth_stencil_keeps_its_depth_only_sampling_view() {
                 count: None,
             }],
         });
-    device
+    let _binding = device
         .wgpu_device()
         .create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("depth aspect regression"),

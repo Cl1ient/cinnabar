@@ -183,7 +183,7 @@ impl UiPresentationRuntime {
             self.engine.as_deref(),
             &mut paint,
             over_gameplay,
-            |icons| super::containers::player_rows(player_runtime, runtime, hud_frame, icons),
+            |icons| super::containers::player_rows(player_runtime, hud_frame, icons),
         );
     }
 

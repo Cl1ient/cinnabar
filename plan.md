@@ -101,6 +101,14 @@ translation, caret spots, menu scroll views and the font fixture to `ui-engine`.
 drive the presentation runtime stay in `client-ui`. This move has not been compiled or executed
 and closes no parity gate.
 
+## Vanilla screen crate
+
+`ui-screens` owns the engine-drawn container screens, the recipe and furnace books, the container
+hit vocabulary, and the HUD screen with its native renderers and catalog patches. Screens read
+typed inputs; `client-ui` keeps their runtime adapters, scene selection and the Java-styled
+fallback. Chat, signs, NPCs, credits, loading, toasts, menu templates and settings binders still
+live in `client-ui`. This move has not been compiled or executed and closes no parity gate.
+
 ## Mod surface presentation
 
 `mod-ui` paints the surfaces mods and server experiences own: trusted consent chrome, the client

@@ -4,7 +4,7 @@ use json_ui::{BindState, DataSource, EmptyLibrary, ResolvedControl, bind_statefu
 use serde_json::{Value, json};
 
 use {
-    super::{Cells, HudFrame, NetworkItemStack},
+    super::{Cells, NetworkItemStack},
     ui::IconRef,
 };
 
@@ -44,7 +44,7 @@ fn cell_control() -> Arc<ResolvedControl> {
 fn retained_inventory_cell_answers_empty_after_occupied_and_can_be_refilled() {
     let root = cell_control();
     let mut state = BindState::new();
-    let frame = HudFrame::default();
+    let names = std::collections::HashMap::new();
     let mut stack = NetworkItemStack::empty();
     stack.network_id = 1;
     stack.stack_network_id = 1;
@@ -62,7 +62,7 @@ fn retained_inventory_cell_answers_empty_after_occupied_and_can_be_refilled() {
     ] {
         let mut icons = Vec::new();
         let mut cells = Cells {
-            frame: &frame,
+            names: &names,
             icons: &mut icons,
         };
         let cell = cells.cell(occupied.then_some(&stack), occupied.then_some(icon), None);
@@ -83,7 +83,7 @@ fn retained_inventory_cell_answers_empty_after_occupied_and_can_be_refilled() {
 
 #[test]
 fn emptying_a_cell_keeps_other_cells_icon_bindings() {
-    let frame = HudFrame::default();
+    let names = std::collections::HashMap::new();
     let mut stack = NetworkItemStack::empty();
     stack.network_id = 1;
     stack.count = 1;
@@ -96,7 +96,7 @@ fn emptying_a_cell_keeps_other_cells_icon_bindings() {
     for occupied in [true, false] {
         let mut icons = Vec::new();
         let mut cells = Cells {
-            frame: &frame,
+            names: &names,
             icons: &mut icons,
         };
         cells.cell(occupied.then_some(&stack), occupied.then_some(icon), None);
@@ -115,13 +115,13 @@ fn emptying_a_cell_keeps_other_cells_icon_bindings() {
 
 #[test]
 fn occupied_cell_without_art_explicitly_clears_the_old_icon() {
-    let frame = HudFrame::default();
+    let names = std::collections::HashMap::new();
     let mut stack = NetworkItemStack::empty();
     stack.network_id = 1;
     stack.count = 1;
     let mut icons = Vec::new();
     let mut cells = Cells {
-        frame: &frame,
+        names: &names,
         icons: &mut icons,
     };
     let cell = cells.cell(Some(&stack), None, None);

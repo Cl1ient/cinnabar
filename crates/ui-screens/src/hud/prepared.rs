@@ -3,18 +3,17 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use json_ui::{CROSSHAIR_SCREEN, Catalog, HUD_SCREEN, ResolvedControl, hud_context};
+use json_ui::{CROSSHAIR_SCREEN, Catalog, Context, HUD_SCREEN, ResolvedControl};
 
-/// Resolves the HUD and crosshair screens under both chat placements on the calling thread, and
-/// returns the textures their controls name.
-pub(in crate::ui_runtime::presentation::forms) fn prepare(
+/// Resolves the HUD and crosshair screens under each of `placements`, the HUD contexts of every
+/// chat placement, on the calling thread, and returns the textures their controls name.
+pub fn prepare(
     catalog: &Arc<Catalog>,
+    placements: impl IntoIterator<Item = Context>,
 ) -> BTreeSet<String> {
-    let base = hud_context(&super::super::menu_screens::retail_context());
     let mut resolved = Vec::new();
     let mut textures = BTreeSet::new();
-    for top in [false, true] {
-        let context = super::super::chat_position::placed(base.clone(), top);
+    for context in placements {
         for reference in [HUD_SCREEN, CROSSHAIR_SCREEN] {
             let tree = json_ui::resolve(catalog, reference, &context)
                 .control

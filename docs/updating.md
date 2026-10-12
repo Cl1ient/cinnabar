@@ -23,6 +23,8 @@ A separate Rust helper waits for the exact client process to exit and verifies t
 A new version preparing game assets relays each setup progress report, so only a start that makes
 no progress for five minutes counts as failed; time on setup's consent prompt never counts. The
 helper then stops the client, its setup process and the asset compiler before restoring files.
+Startup is acknowledged only after three primary-window frames have been presented and their GPU
+work has completed. Main-world updates alone cannot confirm startup or discard the previous install.
 
 - **macOS:** the helper replaces the complete signed app bundle from the DMG and preserves its
   signature and notarization ticket. The previous bundle remains beside it until the new client

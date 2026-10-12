@@ -142,6 +142,8 @@ pub use ui_render::UiRenderPlugin;
 mod opaque_phase;
 pub(crate) use opaque_phase::install_opaque_phase_reset;
 mod stars;
+mod startup_presentation;
+pub use startup_presentation::StartupPresentationPlugin;
 
 #[cfg(test)]
 mod queue_review_support;

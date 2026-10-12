@@ -95,6 +95,22 @@ pub(crate) fn temporal_history_allowed(
         && settings.shadow_debug == super::EnhancedShadowDebug::Off
 }
 
+/// The world a history was rendered in; imagery never blends across sessions or dimensions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct HistoryWorld {
+    session_generation: u64,
+    dimension: i32,
+}
+
+impl HistoryWorld {
+    pub(crate) const fn of(view: &render_scene::AtmosphereViewInputs) -> Self {
+        Self {
+            session_generation: view.session_generation,
+            dimension: view.dimension,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct HistoryState {
     pub(crate) submitted: AtomicBool,
@@ -106,6 +122,7 @@ pub(crate) struct HistoryState {
     pub(crate) seconds: f32,
     pub(crate) index: u32,
     environment: EnvironmentHistory,
+    world: Option<HistoryWorld>,
 }
 
 impl HistoryState {
@@ -115,6 +132,7 @@ impl HistoryState {
         clip: Mat4,
         frame: &EnhancedFrameGpu,
         seconds: f32,
+        world: Option<HistoryWorld>,
     ) -> bool {
         let camera = view.world_from_view.translation();
         let forward = view.world_from_view.forward().as_vec3();
@@ -123,6 +141,7 @@ impl HistoryState {
         let light = frame.light_direction.truncate();
         let environment = EnvironmentHistory::from_frame(frame);
         let valid = self.submitted.swap(false, Ordering::Relaxed)
+            && self.world == world
             && self.environment.compatible(environment)
             && history_compatible(
                 self.camera,
@@ -141,6 +160,7 @@ impl HistoryState {
         self.size = size;
         self.light = light;
         self.environment = environment;
+        self.world = world;
         self.seconds = seconds;
         self.index = self.index.wrapping_add(1);
         valid
@@ -297,6 +317,51 @@ mod tests {
         assert!(offsets.iter().all(|v| v.abs().max_element() <= 0.5));
         assert!(offsets.iter().any(|v| v.x > 0.0 && v.y > 0.0));
         assert!(offsets.iter().any(|v| v.x < 0.0 && v.y < 0.0));
+    }
+
+    /// A dimension change or transfer that keeps the camera pose still discards old-world history.
+    #[test]
+    fn history_rejects_another_session_or_dimension_at_the_same_pose() {
+        let view = ExtractedView {
+            retained_view_entity: bevy::render::view::RetainedViewEntity::new(
+                Entity::PLACEHOLDER.into(),
+                None,
+                0,
+            ),
+            clip_from_view: Mat4::IDENTITY,
+            world_from_view: GlobalTransform::IDENTITY,
+            clip_from_world: None,
+            target_format: render_scene::SCENE_COLOR_FORMAT,
+            viewport: UVec4::new(0, 0, 1920, 1080),
+            color_grading: default(),
+            invert_culling: false,
+        };
+        let mut frame: EnhancedFrameGpu = bytemuck::Zeroable::zeroed();
+        frame.light_direction = Vec3::Y.extend(super::super::frame::SOLAR_IRRADIANCE);
+        frame.atmosphere.x = 1.0;
+        let overworld = |session_generation| {
+            HistoryWorld::of(&render_scene::AtmosphereViewInputs {
+                session_generation,
+                ..Default::default()
+            })
+        };
+        let nether = HistoryWorld::of(&render_scene::AtmosphereViewInputs {
+            dimension: 1,
+            session_generation: 1,
+            ..Default::default()
+        });
+        let mut history = HistoryState::default();
+        let mut seconds = 1.0;
+        let mut advance = |world| {
+            history.submitted.store(true, Ordering::Relaxed);
+            seconds += 1.0 / 60.0;
+            history.advance(&view, Mat4::IDENTITY, &frame, seconds, Some(world))
+        };
+        advance(overworld(1));
+        assert!(advance(overworld(1)));
+        assert!(!advance(nether));
+        assert!(advance(nether));
+        assert!(!advance(overworld(2)));
     }
 
     #[test]

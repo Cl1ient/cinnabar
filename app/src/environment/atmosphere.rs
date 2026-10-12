@@ -262,6 +262,7 @@ pub(crate) fn update_atmosphere_frame(
     let shown = display.advance_in_dimension(*weather, elapsed, context.dimension);
     *view_inputs = render_scene::AtmosphereViewInputs {
         dimension: context.dimension,
+        session_generation: clock.session_generation,
         forward: cameras
             .single()
             .map_or([0.0; 3], |transform| transform.forward().to_array()),

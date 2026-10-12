@@ -115,6 +115,10 @@ pub(crate) fn prepare_enhanced_views(
     let view_layout = pipeline_cache.get_bind_group_layout(&enhanced_view_layout());
     let caster_layout = pipeline_cache.get_bind_group_layout(&enhanced_caster_layout());
     let dimension = render_dimension(local.environment.as_deref());
+    let world = local
+        .environment
+        .as_deref()
+        .map(crate::enhanced::temporal::HistoryWorld::of);
     // Parent resources must describe this render frame before a cube view binds them.
     for reflection_capture in [false, true] {
         for (entity, view, target, depth, settings, jitter, camera) in &views {
@@ -250,7 +254,7 @@ pub(crate) fn prepare_enhanced_views(
             let previous_seconds = state.history.seconds;
             let valid = state
                 .history
-                .advance(view, inputs.clip_from_world, &frame, seconds)
+                .advance(view, inputs.clip_from_world, &frame, seconds, world)
                 && !settings_changed;
             frame.previous_clip_from_world = previous;
             frame.temporal = Vec4::new(

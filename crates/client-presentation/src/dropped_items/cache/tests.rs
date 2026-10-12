@@ -612,3 +612,67 @@ fn hd_pixel_budget_reclaims_unused_models_and_preserves_current_consumers() {
         assets::texture::policy::MAX_SUBSCRIBER_BYTES
     );
 }
+
+#[test]
+fn byte_budget_rejections_skip_builds_until_capacity_changes() {
+    let face: Arc<[u8]> = vec![255; 1024 * 1024 * 4].into();
+    let cube = || {
+        Some(DroppedItemModel::Cube(DroppedItemCube {
+            tile: 1024,
+            faces: std::array::from_fn(|_| Arc::clone(&face)),
+            tints: [render_model::OPAQUE_WHITE; 6],
+        }))
+    };
+    let mut cache = ModelCache::default();
+    frame(&mut cache, []);
+    let first = cache.model(key(0), || Some(6), cube).unwrap();
+    let second = cache.model(key(1), || Some(6), cube).unwrap();
+    cache.finish_frame();
+    let shared = Arc::clone(&cache.shared);
+    let costs = std::cell::Cell::new(0);
+    let builds = std::cell::Cell::new(0);
+    for _ in 0..3 {
+        frame(&mut cache, [0, 1, 2]);
+        for _ in 0..100 {
+            assert_eq!(
+                cache.model(
+                    key(2),
+                    || {
+                        costs.set(costs.get() + 1);
+                        Some(6)
+                    },
+                    || {
+                        builds.set(builds.get() + 1);
+                        cube()
+                    },
+                ),
+                None
+            );
+        }
+        cache.finish_frame();
+        assert!(Arc::ptr_eq(&shared, &cache.shared));
+        assert_eq!(cache.index[&key(0)], first as usize);
+        assert_eq!(cache.index[&key(1)], second as usize);
+    }
+    assert_eq!(costs.get(), 1);
+    assert_eq!(builds.get(), 1);
+    frame(&mut cache, [1, 2]);
+    cache.request(&key(0));
+    assert!(
+        cache
+            .model(
+                key(2),
+                || panic!("cached cost"),
+                || panic!("late demand protects bytes")
+            )
+            .is_none()
+    );
+    frame(&mut cache, [0, 2]);
+    assert!(
+        cache
+            .model(key(2), || panic!("cached cost"), cube)
+            .is_some()
+    );
+    assert_eq!(cache.index[&key(0)], first as usize);
+    assert!(!cache.index.contains_key(&key(1)));
+}

@@ -55,20 +55,21 @@ impl Layer {
         }
     }
 
-    /// Reserves a `width` x `height` slot on the current or next shelf, if it fits.
+    /// Reserves a slot on the current or next shelf, leaving state unchanged if it cannot fit.
     fn reserve(&mut self, width: u16, height: u16) -> Option<(u16, u16)> {
-        if self.cursor_x + width > self.side {
-            self.shelf_y += self.shelf_height;
-            self.shelf_height = 0;
-            self.cursor_x = 0;
-        }
-        if self.shelf_y + height > self.side {
+        let next_shelf = self.cursor_x + width > self.side;
+        let (x, y, shelf_height) = if next_shelf {
+            (0, self.shelf_y + self.shelf_height, 0)
+        } else {
+            (self.cursor_x, self.shelf_y, self.shelf_height)
+        };
+        if width > self.side || y + height > self.side {
             return None;
         }
-        let slot = (self.cursor_x, self.shelf_y);
-        self.cursor_x += width;
-        self.shelf_height = self.shelf_height.max(height);
-        Some(slot)
+        self.shelf_y = y;
+        self.cursor_x = x + width;
+        self.shelf_height = shelf_height.max(height);
+        Some((x, y))
     }
 }
 
@@ -164,6 +165,39 @@ impl SpriteAtlas {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_admission_keeps_every_occupied_layer() {
+        let mut sprites = (0..4)
+            .map(|index| IconSprite {
+                width: 2048,
+                height: 2047,
+                rgba8: vec![index as u8 + 1; 2048 * 2047 * 4].into(),
+            })
+            .collect::<Vec<_>>();
+        sprites.push(IconSprite {
+            width: 16,
+            height: 16,
+            rgba8: vec![255; 16 * 16 * 4].into(),
+        });
+        let atlas = SpriteAtlas::pack(&sprites);
+        assert_eq!(atlas.layers.len(), 4);
+        assert!(atlas.placements[4].is_none());
+        for (sprite, placement) in sprites.iter().zip(&atlas.placements).take(4) {
+            let placement = placement.expect("admitted sprite keeps its layer");
+            let layer = &atlas.layers[placement.layer];
+            assert_eq!(&layer.rgba8[..sprite.rgba8.len()], &*sprite.rgba8);
+        }
+    }
+
+    #[test]
+    fn rejected_shelf_advance_leaves_room_for_a_shorter_sprite() {
+        let mut layer = Layer::new(16);
+        assert_eq!(layer.reserve(12, 8), Some((0, 0)));
+        assert_eq!(layer.reserve(8, 9), None);
+        assert_eq!(layer.reserve(4, 8), Some((12, 0)));
+        assert_eq!(layer.reserve(16, 8), Some((0, 8)));
+    }
 
     #[test]
     fn hd_held_sprites_keep_pixels_and_uv_extent() {

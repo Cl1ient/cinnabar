@@ -53,6 +53,8 @@ pub(crate) struct ModelCache {
     reclaimable: Vec<usize>,
     /// Free layers plus layers belonging to consumers absent from this frame.
     available: usize,
+    /// Free source bytes plus bytes belonging to consumers absent from this frame.
+    available_pixels: usize,
     demand_ready: bool,
     frame: u64,
     dirty: bool,
@@ -70,6 +72,7 @@ struct Resident {
 struct RejectedModel {
     /// None marks a block that cannot be built from the current assets.
     layers: Option<usize>,
+    pixel_bytes: Option<usize>,
     requested: u64,
 }
 
@@ -126,6 +129,7 @@ impl ModelCache {
             .expect("model demand frame overflow");
         self.reclaimable.clear();
         self.available = MAX_ITEM_LAYERS - 1 - self.layers;
+        self.available_pixels = assets::texture::policy::MAX_SUBSCRIBER_BYTES - self.pixel_bytes;
         self.demand_ready = false;
     }
 
@@ -136,6 +140,7 @@ impl ModelCache {
             if entry.requested != self.frame {
                 if self.demand_ready {
                     self.available -= entry.layers;
+                    self.available_pixels -= pixel_cost(&self.models[slot]);
                 }
                 entry.requested = self.frame;
             }
@@ -155,6 +160,7 @@ impl ModelCache {
         });
         self.reclaimable.clear();
         self.available = MAX_ITEM_LAYERS - 1 - self.layers;
+        self.available_pixels = assets::texture::policy::MAX_SUBSCRIBER_BYTES - self.pixel_bytes;
         for (slot, entry) in self.residents.iter().enumerate().rev() {
             #[cfg(test)]
             {
@@ -163,18 +169,25 @@ impl ModelCache {
             if let Some(entry) = entry.as_ref().filter(|entry| entry.requested != self.frame) {
                 self.reclaimable.push(slot);
                 self.available += entry.layers;
+                self.available_pixels += pixel_cost(&self.models[slot]);
             }
         }
         self.demand_ready = true;
     }
 
-    /// Remembers a demanded rejection; absent layers mean a permanent block failure.
-    fn remember_rejection(&mut self, key: ModelKey, layers: Option<usize>) {
+    /// Remembers admission costs; absent layers mean a permanent block failure.
+    fn remember_rejection(
+        &mut self,
+        key: ModelKey,
+        layers: Option<usize>,
+        pixel_bytes: Option<usize>,
+    ) {
         if self.rejected.len() < MAX_ITEM_LAYERS - 1 || self.rejected.contains_key(&key) {
             self.rejected.insert(
                 key,
                 RejectedModel {
                     layers,
+                    pixel_bytes,
                     requested: self.frame,
                 },
             );
@@ -197,13 +210,21 @@ impl ModelCache {
             return None;
         }
         let estimate = match self.rejected.get(&key) {
-            Some(entry) => entry.layers,
+            Some(entry) => {
+                if entry
+                    .pixel_bytes
+                    .is_some_and(|bytes| bytes > self.available_pixels)
+                {
+                    return None;
+                }
+                entry.layers
+            }
             None => {
                 let estimate = cost();
                 if estimate.is_none()
                     && matches!(key, ModelKey::Block { .. } | ModelKey::PottedBlock { .. })
                 {
-                    self.remember_rejection(key.clone(), None);
+                    self.remember_rejection(key.clone(), None, None);
                 }
                 estimate
             }
@@ -213,12 +234,13 @@ impl ModelCache {
             return None;
         }
         if cost > self.available {
-            self.remember_rejection(key, Some(cost));
+            let pixel_bytes = self.rejected.get(&key).and_then(|entry| entry.pixel_bytes);
+            self.remember_rejection(key, Some(cost), pixel_bytes);
             return None;
         }
         let Some(model) = build() else {
             if matches!(key, ModelKey::Block { .. } | ModelKey::PottedBlock { .. }) {
-                self.remember_rejection(key, None);
+                self.remember_rejection(key, None, None);
             }
             return None;
         };
@@ -228,25 +250,9 @@ impl ModelCache {
             "model layer estimate must match its geometry"
         );
         let pixel_bytes = pixel_cost(&model);
-        if pixel_bytes
-            > assets::texture::policy::MAX_SUBSCRIBER_BYTES.saturating_sub(self.pixel_bytes)
-        {
-            let reclaimable_bytes: usize = self
-                .reclaimable
-                .iter()
-                .filter(|&&slot| {
-                    self.residents[slot]
-                        .as_ref()
-                        .is_some_and(|entry| entry.requested != self.frame)
-                })
-                .map(|&slot| pixel_cost(&self.models[slot]))
-                .sum();
-            if pixel_bytes
-                > assets::texture::policy::MAX_SUBSCRIBER_BYTES
-                    .saturating_sub(self.pixel_bytes - reclaimable_bytes)
-            {
-                return None;
-            }
+        if pixel_bytes > self.available_pixels {
+            self.remember_rejection(key, Some(cost), Some(pixel_bytes));
+            return None;
         }
         self.rejected.remove(&key);
         while self.layers + cost >= MAX_ITEM_LAYERS
@@ -289,6 +295,7 @@ impl ModelCache {
         self.layers += cost;
         self.pixel_bytes += pixel_bytes;
         self.available -= cost;
+        self.available_pixels -= pixel_bytes;
         self.dirty = true;
         Some(slot as u32)
     }

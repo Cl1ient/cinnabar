@@ -10,6 +10,11 @@ pub(super) struct MeshStorage {
 }
 
 impl MeshStorage {
+    /// Allows UV adjustment within already admitted storage without changing its length.
+    pub(super) fn vertices_mut(&mut self) -> &mut [ItemMeshVertex] {
+        &mut self.vertices
+    }
+
     /// Rounds the smaller byte budget down to complete vertices.
     pub(super) fn new(max_buffer_size: u64) -> Self {
         let bytes = max_buffer_size.min(assets::texture::policy::MAX_SUBSCRIBER_BYTES as u64);

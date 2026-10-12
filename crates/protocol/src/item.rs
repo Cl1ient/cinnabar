@@ -28,8 +28,8 @@ pub use facts::{ItemStackFacts, ItemStackFactsCache};
 mod registry_capacity;
 
 pub use attack::{ItemAttackCooldown, ItemAttackTiming, KineticWeaponTiming};
-pub use components::ItemComponents;
 pub(crate) use components::item_components;
+pub use components::{FoodProperties, ItemComponents};
 pub use display::{
     ItemBook, ItemDisplay, MAX_BOOK_PAGES, item_book, item_bundle_id, item_display,
     item_has_enchantment_list,
@@ -381,8 +381,6 @@ pub struct ItemRegistryEntry {
     pub component_based: bool,
     pub version: ItemRegistryVersion,
     pub component_digest: [u8; 32],
-    /// Parsed once from the admitted component payload, retained for session fact resolution.
-    pub components: Option<Arc<ItemComponents>>,
     /// Exact positive stack capacity retained from the negotiated component path.
     ///
     /// This is evidence only: it neither supplies a fallback nor binds a later
@@ -718,7 +716,6 @@ pub(crate) fn normalize_item_registry(
             component_based: item.is_component_based,
             version,
             component_digest: Sha256::digest(&component_bytes).into(),
-            components: components::parse_components(&component_bytes).map(Arc::new),
             negotiated_max_stack_size,
             canonical_empty_component_data,
             item_tags: if item.is_component_based {

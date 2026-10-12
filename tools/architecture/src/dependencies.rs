@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     ArchitectureError,
-    paths::{is_vendored, relative_slash, within},
+    paths::{in_tree, is_vendored, relative_slash},
     policy::Policy,
     read,
 };
@@ -130,7 +130,7 @@ fn check_vendor_owners(
             for vendored in &policy.vendored {
                 if let Some(owner) = &vendored.owner
                     && owner != &rule.name
-                    && within(&relative, &vendored.path)
+                    && in_tree(&relative, &vendored.path)
                 {
                     diagnostics.push(format!(
                         "{}: dependency `{}` is vendored for `{owner}` only",

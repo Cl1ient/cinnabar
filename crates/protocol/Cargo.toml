@@ -7,6 +7,14 @@ publish = false
 # `tests/it` compiles into the library's unit tests, which may reach crate-private packet internals.
 autotests = false
 
+[package.metadata.cinnabar]
+platform-specific = ["windows"]
+reads = [
+    "assets/block-data-sources.json",
+    "tools/localserver/experience/testdata/protocol/limits.json",
+    "tools/protocol-normalize/manifest.json",
+]
+
 [features]
 # Fixture builders and semantic observations for other crates' tests.
 test-support = []

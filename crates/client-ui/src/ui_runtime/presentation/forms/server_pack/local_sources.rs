@@ -51,8 +51,11 @@ pub(super) fn read(
 }
 
 impl ServerAtlas {
-    /// Resolves carrier bytes first and defers newly large installed images without caching a miss.
+    /// Resolves built-in and carrier bytes before bounded installed-pack reads.
     pub(super) fn local_source(&self, key: &str) -> (Option<Source>, bool) {
+        if let Some(bytes) = super::super::builtin_textures::image(key) {
+            return (source(bytes.into()), true);
+        }
         let relative = key.strip_prefix(super::VANILLA_IN_PACKAGE).unwrap_or(key);
         if !key.starts_with("textures/") && relative == key {
             return (None, true);

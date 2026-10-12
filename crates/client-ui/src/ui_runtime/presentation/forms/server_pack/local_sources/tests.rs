@@ -1,6 +1,28 @@
 use super::*;
 use std::{io::Cursor, sync::Arc};
 
+#[test]
+fn builtin_offhand_art_loads_without_carriers_and_accepts_server_replacements() {
+    for side in ["left", "right"] {
+        let key = format!("textures/ui/hotbar_offhand_{side}");
+        let mut atlas = ServerAtlas::new(&[], None, 1);
+        assert_eq!(atlas.fallback_size(&key), Some([29.0, 24.0]));
+        test_time::eventually("built-in offhand frame becomes resident", || {
+            atlas.require([key.as_str()]);
+            atlas.placement(&key).is_some()
+        });
+        assert_eq!(atlas.placement(&key).unwrap().rect[2..], [29, 24]);
+
+        let files = vec![(format!("{key}.png"), png(0))];
+        let mut replacement = ServerAtlas::new(&files, None, 1);
+        test_time::eventually("server offhand replacement becomes resident", || {
+            replacement.require([key.as_str()]);
+            replacement.placement(&key).is_some()
+        });
+        assert_eq!(replacement.placement(&key).unwrap().rect[2..], [2, 3]);
+    }
+}
+
 /// Makes an encoded image with valid dimensions and a caller-selected encoded length.
 fn png(bytes: usize) -> Vec<u8> {
     let mut encoded = Cursor::new(Vec::new());

@@ -71,6 +71,7 @@ pub mod regression_snapshots;
 
 mod accounts;
 pub mod always_sprint_setting;
+mod builtin_textures;
 pub mod enhanced_setting;
 pub mod graphics_expander;
 #[cfg(test)]

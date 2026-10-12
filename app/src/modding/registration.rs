@@ -11,7 +11,7 @@ use presentation::{clear_owned_state, clear_presentation, refresh_presentation};
 use status::{bounded_message, write_status};
 
 use std::{
-    fs::{self, File},
+    fs::File,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,

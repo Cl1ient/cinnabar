@@ -147,13 +147,15 @@ impl ModUi {
         Ok(())
     }
 
+    /// Changes visibility once per transition and restores animated feedback when closing.
     pub fn set_mod_panel_open(&mut self, open: bool) {
         if !open {
             self.cancel_mod_hud_editor();
         }
-        if let Some(panel) = self.mod_panel.as_mut() {
+        if let Some(panel) = self.mod_panel.as_mut().filter(|panel| panel.open != open) {
             panel.open = open;
             if !open {
+                let reset_feedback = panel.motion.needs_feedback_reset();
                 panel.cancel_edit();
                 panel.frame = None;
                 panel.drag = None;
@@ -162,7 +164,9 @@ impl ModUi {
                 panel.view = ViewState::default();
                 panel.motion = motion::PanelMotion::default();
                 panel.pointer = None;
-                panel.refresh_data();
+                if reset_feedback {
+                    panel.refresh_data();
+                }
             }
         }
     }

@@ -1,6 +1,68 @@
 use super::*;
 use crate::test_support::sample_panel as panel;
 
+/// Same-state calls and closing without animated feedback retain the published data source.
+#[test]
+fn closed_and_settled_panels_reuse_feedback_data() {
+    for motion_enabled in [false, true] {
+        let mut settings = panel();
+        settings.motion = motion_enabled;
+        let mut ui = ModUi::default();
+        ui.set_mod_panel(Some(&settings)).unwrap();
+        let data = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
+        for _ in 0..3 {
+            ui.set_mod_panel_open(false);
+            assert!(Arc::ptr_eq(&ui.mod_panel.as_ref().unwrap().data, &data));
+        }
+
+        ui.set_mod_panel_open(true);
+        if motion_enabled {
+            let current = ui.mod_panel.as_mut().unwrap();
+            current
+                .motion
+                .advance(&current.panel, &mut current.view, None, 1.0);
+            current.motion.scroll("list", 0.0, 30.0, 100.0);
+            current
+                .motion
+                .advance(&current.panel, &mut current.view, None, 1.03);
+            assert!(current.motion.active());
+        }
+        for _ in 0..3 {
+            ui.set_mod_panel_open(false);
+            assert!(Arc::ptr_eq(&ui.mod_panel.as_ref().unwrap().data, &data));
+        }
+    }
+}
+
+/// A completed hover tween still needs its highlight removed when the panel closes.
+#[test]
+fn closing_panel_restores_settled_hover_bindings() {
+    let mut settings = panel();
+    settings.motion = true;
+    let mut ui = ModUi::default();
+    ui.set_mod_panel(Some(&settings)).unwrap();
+    let settled = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
+    ui.set_mod_panel_open(true);
+    {
+        let current = ui.mod_panel.as_mut().unwrap();
+        current
+            .motion
+            .advance(&current.panel, &mut current.view, Some(0), 1.0);
+        current
+            .motion
+            .advance(&current.panel, &mut current.view, Some(0), 1.2);
+        current
+            .motion
+            .write(&current.panel, Arc::make_mut(&mut current.data));
+        assert!(!current.motion.active());
+        assert_ne!(current.data, settled);
+    }
+
+    ui.set_mod_panel_open(false);
+    ui.set_mod_panel_open(true);
+    assert_eq!(ui.mod_panel.as_ref().unwrap().data, settled);
+}
+
 /// Reopening unchanged content clears settled hover and restores a toggle closed mid-transition.
 #[test]
 fn reopening_panel_restores_settled_feedback_bindings() {
@@ -51,6 +113,12 @@ fn reopening_panel_restores_settled_feedback_bindings() {
             assert!(ui.mod_panel_motion_active());
 
             ui.set_mod_panel_open(false);
+            let closed_data = Arc::clone(&ui.mod_panel.as_ref().unwrap().data);
+            ui.set_mod_panel_open(false);
+            assert!(Arc::ptr_eq(
+                &ui.mod_panel.as_ref().unwrap().data,
+                &closed_data
+            ));
             ui.set_mod_panel_open(true);
             ui.set_mod_panel(Some(&settings)).unwrap();
 

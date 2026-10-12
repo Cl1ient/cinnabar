@@ -1,8 +1,9 @@
 //! Startup fixture that exercises the app's carrier-loading entry points.
 
-use client_ui::test_support::pack_harness::{carrier, font};
+use client_ui::test_support::pack_harness::font;
 use client_ui::ui_runtime::presentation::UiPresentationRuntime;
 use std::path::Path;
+use ui_engine::test_support::carrier;
 
 /// Resolves a fixture asset through this worktree's installed assets symlink.
 fn local(path: &str) -> std::path::PathBuf {

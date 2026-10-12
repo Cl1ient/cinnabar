@@ -22,7 +22,7 @@ fn files(templates: &[(&str, &str)]) -> screen::Files {
 
 /// The carrier's vanilla catalog, as the engine keeps it below every server pack.
 fn vanilla() -> Option<Catalog> {
-    let carrier = super::super::super::pack_harness::carrier()?;
+    let carrier = ui_engine::test_support::carrier()?;
     Catalog::from_files(
         carrier
             .ui_files()

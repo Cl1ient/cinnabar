@@ -103,11 +103,13 @@ and closes no parity gate.
 
 ## Vanilla screen crate
 
-`ui-screens` owns the engine-drawn container screens, the recipe and furnace books, the container
-hit vocabulary, and the HUD screen with its native renderers and catalog patches. Screens read
-typed inputs; `client-ui` keeps their runtime adapters, scene selection and the Java-styled
-fallback. Chat, signs, NPCs, credits, loading, toasts, menu templates and settings binders still
-live in `client-ui`. This move has not been compiled or executed and closes no parity gate.
+`ui-screens` owns the engine-drawn vanilla screens: containers with the recipe and furnace books
+and their hit vocabulary, the HUD with its native renderers and catalog patches, chat, signs, NPC
+dialogue, credits, loading, toasts, the roster, the emote wheel, and the menu shell's screen
+bindings, settings binders and store bindings. Screens read typed inputs; `client-ui` keeps their
+runtime adapters, scene selection, the menu composition, the server-form fallback, the menu title
+and caret state, the player preview and the Java-styled fallback. This move has not been compiled
+or executed and closes no parity gate.
 
 ## Mod surface presentation
 

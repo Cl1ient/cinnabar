@@ -44,7 +44,7 @@ impl TextureSource for NoTextures {
 }
 
 fn vanilla(test: &str) -> Option<Catalog> {
-    let Some(carrier) = crate::test_support::pack_harness::carrier() else {
+    let Some(carrier) = ui_engine::test_support::carrier() else {
         eprintln!("skipping {test}: missing installed UI carrier; make assets");
         return None;
     };

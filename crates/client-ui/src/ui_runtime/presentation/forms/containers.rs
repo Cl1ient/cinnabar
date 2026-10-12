@@ -19,7 +19,7 @@ use ui_screens::furnace_book::Entries;
 use ui_screens::recipe_book::BookEntry;
 
 use super::super::{HudFrame, UiPresentationError, UiPresentationRuntime};
-use super::menu_renderers::PreviewRenderer;
+use super::preview_renderer::PreviewRenderer;
 use crate::ui_runtime::{
     UiRuntime, inventory_actions::recipe_book_entries,
     presentation::inventory_pointer::InventoryScreen,

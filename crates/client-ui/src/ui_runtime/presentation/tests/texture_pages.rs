@@ -738,7 +738,7 @@ fn real_carriers_keep_icons_drawable_with_session_pages() {
     let (Some(hud), Some(icons), Some(carrier)) = (
         local("vanilla-v1.mcbehud"),
         local("vanilla-v1.mcbeico"),
-        pack_harness::carrier(),
+        ui_engine::test_support::carrier(),
     ) else {
         eprintln!(
             "skipping real_carriers_keep_icons_drawable_with_session_pages: fixture unavailable; requires installed local carriers (make assets)"

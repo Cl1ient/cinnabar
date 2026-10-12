@@ -143,6 +143,38 @@ fn raster_only_pack_replaces_all_base_frames_and_removal_restores_the_carrier() 
 }
 
 #[test]
+fn sixteen_static_atlas_indices_share_one_layer_at_the_device_limit() {
+    let keys = assets::MaterialKeys::from_entries((1..=16).map(|material| (material, "mushroom")))
+        .with_aliases([("mushroom", "textures/static")])
+        .with_flipbook_selectors((0..16).map(|index| (index + 1, (index, 0))))
+        .with_flipbook_destinations([("mushroom", [1; 16])]);
+    let raster = png(16, 16, |_, _| [180, 90, 30, 255]);
+    let compiled = super::super::compile_block_overlay(
+        &pack(&[("textures/static.png", &raster)]),
+        &CustomBlocks::default(),
+        false,
+        Some(&keys),
+        2,
+    )
+    .unwrap();
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+    assert_eq!(compiled.gaps.saturated_textures, 0);
+    assert!(compiled.overlay.animations.is_empty());
+    assert_eq!(compiled.overlay.material_overrides.len(), 16);
+    let texture = compiled.overlay.material_overrides[0].texture;
+    assert_eq!(pixel(&compiled.overlay, texture), [180, 90, 30, 255]);
+    for (index, replacement) in compiled.overlay.material_overrides.iter().enumerate() {
+        assert_eq!(replacement.material, index as u32 + 1);
+        assert_eq!(
+            keys.flipbook_selector(replacement.material),
+            (index as u32, 0)
+        );
+        assert_eq!(replacement.texture, texture);
+        assert_eq!(replacement.animation, assets::NO_ANIMATION);
+    }
+}
+
+#[test]
 fn independent_sources_and_full_selectors_keep_distinct_replicated_frames() {
     let keys = assets::MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
         .with_aliases([("tile", "textures/static")])

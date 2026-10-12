@@ -102,6 +102,7 @@ pub(super) fn compile_block_overlay(
         source_bytes: 0,
         max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
         textures: HashMap::new(),
+        static_textures: HashMap::new(),
         materials: HashMap::new(),
         visuals: HashMap::new(),
         gaps: OverlayGaps {
@@ -189,6 +190,7 @@ struct Builder<'a> {
     source_bytes: usize,
     max_layers: usize,
     textures: HashMap<(String, u32, u32), Option<TextureSlot>>,
+    static_textures: HashMap<String, TextureSlot>,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
     gaps: OverlayGaps,
@@ -498,6 +500,13 @@ impl Builder<'_> {
 
     /// Loads replacement frames from the selected description's independent source path.
     fn load_texture(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
+        let source = self.catalog.flipbook(key, selector);
+        // Static selectors use the same terrain raster even when the array is full.
+        if source.is_none()
+            && let Some(slot) = self.static_textures.get(key)
+        {
+            return Some(slot.clone());
+        }
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
             // A full array rejects every later route, so name it rather than
@@ -506,14 +515,19 @@ impl Builder<'_> {
             self.catalog.report_full(key);
             return None;
         }
-        let animated = self.catalog.flipbook(key, selector).and_then(|source| {
+        let animated = source.and_then(|source| {
             self.catalog
                 .decode_path(key, &source.texture_path)
                 .map(|texture| (texture, source))
         });
         let (mut texture, flipbook) = match animated {
             Some((texture, source)) => (texture, Some(source)),
-            None => (self.catalog.decode(key)?, None),
+            None => {
+                if let Some(slot) = self.static_textures.get(key) {
+                    return Some(slot.clone());
+                }
+                (self.catalog.decode(key)?, None)
+            }
         };
         let grid = self.catalog.grid(key);
         // Bound frame count before cutting copies, and shrink each to MAX_TILE.
@@ -573,10 +587,14 @@ impl Builder<'_> {
             }
             _ => NO_ANIMATION,
         };
-        Some(TextureSlot {
+        let slot = TextureSlot {
             layer: first,
             animation,
-        })
+        };
+        if flipbook.is_none() {
+            self.static_textures.insert(key.to_owned(), slot.clone());
+        }
+        Some(slot)
     }
 
     fn finish(mut self) -> Option<CompiledBlockOverlay> {

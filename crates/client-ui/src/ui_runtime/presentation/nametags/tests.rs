@@ -1,6 +1,18 @@
 use super::*;
 
 fn actor() -> ActorSnapshot {
+    let stream = actor_stream(1, None);
+    let mut actor = stream
+        .authority()
+        .actor(1)
+        .expect("spawn committed")
+        .clone();
+    actor.movement_revision = 1;
+    actor
+}
+
+/// Spawns nearby players in reverse distance order, optionally sharing synced score text.
+fn actor_stream(count: usize, score: Option<Arc<str>>) -> chunk_pipeline::WorldStream {
     let mut stream = chunk_pipeline::WorldStream::new_with_assets(
         protocol::WorldBootstrap {
             dimension: 0,
@@ -15,40 +27,47 @@ fn actor() -> ActorSnapshot {
         [0.0; 3],
         None,
     );
-    let spawn = protocol::ActorSpawnEvent {
-        dimension: 0,
-        unique_id: 1,
-        runtime_id: 1,
-        kind: ActorKind::Player {
-            uuid: [1; 16],
-            username: "p".into(),
-        },
-        position: [0.0; 3],
-        velocity: [0.0; 3],
-        pitch: 0.0,
-        yaw: 0.0,
-        head_yaw: 0.0,
-        body_yaw: 0.0,
-        held_item: Default::default(),
-        metadata: Arc::from([]),
-        attributes: Arc::from([]),
-        properties: Arc::from([]),
-        links: Arc::from([]),
-    };
-    stream
-        .submit(
-            1,
-            protocol::WorldEvent::Actor(protocol::ActorEvent::Spawn(spawn)),
-        )
-        .unwrap();
+    for index in 1..=count {
+        let runtime_id = index as u64;
+        let mut uuid = [0; 16];
+        uuid[..8].copy_from_slice(&runtime_id.to_le_bytes());
+        let spawn = protocol::ActorSpawnEvent {
+            dimension: 0,
+            unique_id: index as i64,
+            runtime_id,
+            kind: ActorKind::Player {
+                uuid,
+                username: "p".into(),
+            },
+            position: [(count - index) as f32 / count as f32 * 5.0, 0.0, 0.0],
+            velocity: [0.0; 3],
+            pitch: 0.0,
+            yaw: 0.0,
+            head_yaw: 0.0,
+            body_yaw: 0.0,
+            held_item: Default::default(),
+            metadata: score
+                .as_ref()
+                .map(|score| protocol::ActorMetadata {
+                    key: METADATA_SCORE,
+                    value: ActorMetadataValue::String(Arc::clone(score)),
+                })
+                .into_iter()
+                .collect::<Vec<_>>()
+                .into(),
+            attributes: Arc::from([]),
+            properties: Arc::from([]),
+            links: Arc::from([]),
+        };
+        stream
+            .submit(
+                runtime_id,
+                protocol::WorldEvent::Actor(protocol::ActorEvent::Spawn(spawn)),
+            )
+            .unwrap();
+    }
     stream.poll([0.0; 3], 0);
-    let mut actor = stream
-        .authority()
-        .actor(1)
-        .expect("spawn committed")
-        .clone();
-    actor.movement_revision = 1;
-    actor
+    stream
 }
 
 pub(in crate::ui_runtime::presentation) fn anchor(name: &str) -> NametagAnchor {
@@ -59,7 +78,8 @@ pub(in crate::ui_runtime::presentation) fn anchor(name: &str) -> NametagAnchor {
             .split('\n')
             .filter(|line| !line.is_empty())
             .map(Arc::from)
-            .collect(),
+            .collect::<Vec<_>>()
+            .into(),
         depth_tested: false,
         text_alpha: 1.0,
         distance: 5.0,
@@ -68,12 +88,17 @@ pub(in crate::ui_runtime::presentation) fn anchor(name: &str) -> NametagAnchor {
 
 fn scene(anchors: &[NametagAnchor]) -> NametagScene {
     let font = ui_engine::test_support::fixture_font();
+    scene_with_font(anchors, &font)
+}
+
+/// Builds a scene with a supplied font and a fresh line atlas.
+fn scene_with_font(anchors: &[NametagAnchor], font: &RuntimeFontCatalog) -> NametagScene {
     build_nametag_scene(
         anchors,
-        &font,
+        font,
         &mut TextLayoutCache::new(8, 1 << 20),
         &mut NametagAtlas::default(),
-        &|page| super::super::nametag_atlas::font_page(&font, page),
+        &|page| super::super::nametag_atlas::font_page(font, page),
     )
 }
 
@@ -137,6 +162,52 @@ fn multiline_lines_get_their_own_centred_backgrounds_before_their_glyphs() {
         glyphs
             .iter()
             .all(|record| record.text == 1 && record.color == [1.0; 4])
+    );
+}
+
+#[test]
+fn oversized_tags_render_a_prefix_within_the_scene_budget() {
+    let line_budget = MAX_NAMETAG_LINES;
+    let tag = anchor(&"A\n".repeat(line_budget + 1));
+    let scene = scene(&[tag]);
+    assert!(!scene.records.is_empty());
+    assert!(scene.records.len() <= MAX_NAMETAG_RECORDS);
+    assert_eq!(scene.records.len(), line_budget * NAMETAG_RECORDS_PER_LINE);
+    assert_eq!(
+        scene
+            .records
+            .iter()
+            .filter(|record| record.text == 1)
+            .count(),
+        line_budget
+    );
+    assert_eq!(scene.see_through, scene.records.len());
+    assert!(
+        scene
+            .records
+            .iter()
+            .all(|record| record.line_lift == EXTRA_LINE_LIFT * (line_budget - 1) as f32)
+    );
+}
+
+#[test]
+fn oversized_tags_use_the_budget_left_by_earlier_tags() {
+    let mut first = anchor("AB");
+    first.position.x = 1.0;
+    let remaining_lines = MAX_NAMETAG_LINES - 1;
+    let mut oversized = anchor(&"A\n".repeat(remaining_lines + 2));
+    oversized.position.x = 2.0;
+    oversized.depth_tested = true;
+    let scene = scene(&[oversized, first]);
+    assert_eq!(scene.records.len(), MAX_NAMETAG_RECORDS);
+    assert_eq!(scene.see_through, NAMETAG_RECORDS_PER_LINE);
+    assert_eq!(
+        scene
+            .records
+            .iter()
+            .filter(|record| record.anchor[0] == 2.0 && record.text == 1)
+            .count(),
+        remaining_lines
     );
 }
 
@@ -359,4 +430,307 @@ fn replacement_and_default_text_opacity_preserve_native_coverage() {
     style_scene(&mut scene, &style, Some(glyph.anchor));
     assert_eq!(scene.records[0].color, [1., 0., 0., 0.0625]);
     assert_eq!(scene.records[1].color, [0., 1., 0., 0.0625]);
+}
+
+#[test]
+fn long_formatted_server_tags_keep_every_line() {
+    let lines: Vec<String> = (0..40)
+        .map(|row| format!("§{}§lrow {row:02} §rof a long server tag", row % 10))
+        .collect();
+    let text = lines.join("\n");
+    assert!(text.len() > ui_screens::text::MAX_PRESENTED_TEXT_BYTES);
+    let anchor = extract_nametag(
+        &actor(),
+        Vec3::new(0.0, 1.62, 5.0),
+        None,
+        text.into(),
+        &ui::ScoreboardStore::default(),
+        0.5,
+    )
+    .unwrap();
+    let kept: Vec<&str> = anchor.lines.iter().map(|line| &**line).collect();
+    assert_eq!(kept, lines);
+}
+
+#[test]
+fn huge_tags_allocate_only_the_scene_consumable_nonempty_lines() {
+    let actor = actor();
+    let scoreboards = ui::ScoreboardStore::default();
+    let name: Arc<str> = "A\n"
+        .repeat(protocol::MAX_ACTOR_METADATA_STRING_BYTES / "A\n".len())
+        .into();
+    let (tag, allocations) = test_alloc::count(|| {
+        extract_nametag(
+            &actor,
+            Vec3::new(0.0, 1.62, 5.0),
+            None,
+            Arc::clone(&name),
+            &scoreboards,
+            0.5,
+        )
+        .unwrap()
+    });
+    assert_eq!(tag.lines.len(), MAX_NAMETAG_LINES);
+    assert!(tag.lines.iter().all(|line| line.as_ref() == "A"));
+    assert!(allocations <= MAX_NAMETAG_LINES * 2);
+    let text = format!(
+        "{}{}",
+        "\n".repeat(MAX_NAMETAG_LINES),
+        "A\n".repeat(MAX_NAMETAG_LINES)
+    );
+    assert_eq!(nametag_lines(&text).len(), MAX_NAMETAG_LINES);
+}
+
+#[test]
+fn projection_limits_extraction_to_the_nearest_tags_and_reuses_their_text() {
+    let count = MAX_PRESENTED_NAMETAGS * 3;
+    let score = "A\n"
+        .repeat(protocol::MAX_ACTOR_METADATA_STRING_BYTES / "A\n".len())
+        .into();
+    let stream = actor_stream(count, Some(score));
+    let mut cache = NametagTextCache::default();
+    let boards = ui::ScoreboardStore::default();
+    let project = |cache: &mut NametagTextCache, show_players| {
+        project_nametags(
+            cache,
+            &boards,
+            &stream,
+            Vec3::new(0.0, 1.62, 5.0),
+            None,
+            0.5,
+            show_players,
+        )
+    };
+    let (first, cold_allocations) = test_alloc::count(|| project(&mut cache, true));
+    assert_eq!(first.len(), MAX_PRESENTED_NAMETAGS);
+    assert_eq!(
+        first.iter().map(|tag| tag.runtime_id).collect::<Vec<_>>(),
+        (count - MAX_PRESENTED_NAMETAGS + 1..=count)
+            .rev()
+            .map(|id| id as u64)
+            .collect::<Vec<_>>()
+    );
+    assert!(cold_allocations <= MAX_PRESENTED_NAMETAGS * MAX_NAMETAG_LINES * 2);
+    let (second, warm_allocations) = test_alloc::count(|| project(&mut cache, true));
+    assert!(warm_allocations < MAX_PRESENTED_NAMETAGS);
+    assert!(
+        first
+            .iter()
+            .zip(&second)
+            .all(|(first, second)| Arc::ptr_eq(&first.lines, &second.lines))
+    );
+    assert!(project(&mut cache, false).is_empty());
+    assert!(cache.entries.is_empty());
+}
+
+#[test]
+fn cached_text_refreshes_pose_visibility_name_score_and_score_distance() {
+    let mut actor = actor();
+    actor
+        .metadata
+        .insert(METADATA_SCORE, ActorMetadataValue::String("7 wins".into()));
+    let boards = ui::ScoreboardStore::default();
+    let name = Arc::from("Name");
+    let eye = Vec3::new(0.0, 1.62, 5.0);
+    let mut cache = NametagTextCache::default();
+    let first = cache
+        .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+        .unwrap();
+    actor.position[0] = 1.0;
+    actor
+        .metadata
+        .insert(0, ActorMetadataValue::Flags(1 << ACTOR_FLAG_SNEAKING));
+    let (moved, allocations) = test_alloc::count(|| {
+        cache
+            .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+            .unwrap()
+    });
+    assert_eq!(allocations, 0);
+    assert!(Arc::ptr_eq(&first.lines, &moved.lines));
+    assert_ne!(first.position, moved.position);
+    assert!(moved.depth_tested);
+    assert_eq!(moved.text_alpha, SNEAK_TEXT_ALPHA);
+    actor
+        .metadata
+        .insert(0, ActorMetadataValue::Flags(1 << ACTOR_FLAG_INVISIBLE));
+    assert!(
+        cache
+            .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+            .is_none()
+    );
+    actor.metadata.remove(&0);
+    actor
+        .metadata
+        .insert(METADATA_SCORE, ActorMetadataValue::String("8 wins".into()));
+    let changed = cache
+        .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+        .unwrap();
+    assert_eq!(changed.lines[1].as_ref(), "8 wins");
+    let far = cache
+        .extract(
+            &actor,
+            Vec3::new(0.0, 1.62, 20.0),
+            None,
+            Arc::clone(&name),
+            &boards,
+            0.5,
+        )
+        .unwrap();
+    assert_eq!(far.lines.len(), 1);
+    let renamed = cache
+        .extract(&actor, eye, None, "Other".into(), &boards, 0.5)
+        .unwrap();
+    assert_eq!(renamed.lines[0].as_ref(), "Other");
+    actor
+        .metadata
+        .insert(METADATA_SCORE, ActorMetadataValue::String("".into()));
+    assert_eq!(
+        cache
+            .extract(&actor, eye, None, name, &boards, 0.5)
+            .unwrap()
+            .lines
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn cached_below_name_scores_follow_scoreboard_updates_and_clears() {
+    let actor = actor();
+    let mut boards = ui::ScoreboardStore::default();
+    boards
+        .apply(
+            1,
+            ui::ScoreboardEvent::DisplayObjective {
+                display_slot: "belowname".into(),
+                objective_name: "wins".into(),
+                display_name: "wins".into(),
+                criteria_name: "dummy".into(),
+                sort_order: 0,
+            },
+        )
+        .unwrap();
+    let mut cache = NametagTextCache::default();
+    let name = Arc::from("Name");
+    let eye = Vec3::new(0.0, 1.62, 5.0);
+    for (sequence, score) in [(2, 7), (3, 8)] {
+        boards
+            .apply(
+                sequence,
+                ui::ScoreboardEvent::Scores {
+                    entries: Arc::from([ui::ScoreEntry {
+                        action: ui::ScoreAction::Change,
+                        scoreboard_id: 1,
+                        objective_name: "wins".into(),
+                        score,
+                        owner: ui::ScoreOwner::Player(actor.unique_id),
+                    }]),
+                },
+            )
+            .unwrap();
+        let tag = cache
+            .extract(&actor, eye, None, Arc::clone(&name), &boards, 0.5)
+            .unwrap();
+        assert_eq!(tag.lines[1].as_ref(), format!("{score} wins"));
+    }
+    boards.clear();
+    assert_eq!(
+        cache
+            .extract(&actor, eye, None, name, &boards, 0.5)
+            .unwrap()
+            .lines
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn long_server_tag_lines_render_bounded_utf8_prefixes() {
+    for text in ["A".repeat(20_000), "界".repeat(20_000 / "界".len() + 1)] {
+        let tag = extract_nametag(
+            &actor(),
+            Vec3::new(0.0, 1.62, 5.0),
+            None,
+            Arc::from(text.as_str()),
+            &ui::ScoreboardStore::default(),
+            0.5,
+        )
+        .unwrap();
+        assert_eq!(tag.lines.len(), 1);
+        assert_eq!(
+            tag.lines[0].as_ref(),
+            bounded_text(&text, ui::UiLimits::MAX_TEXT_BYTES)
+        );
+        assert!(tag.lines[0].chars().count() <= ui::MAX_GLYPHS_PER_LAYOUT);
+        let scene = scene(&[tag]);
+        assert_eq!(scene.records.len(), NAMETAG_RECORDS_PER_LINE);
+        assert!(scene.atlas[0].rgba8.iter().any(|&byte| byte != 0));
+        assert!(scene.atlas[0].cell[2] <= NAMETAG_ATLAS_SIDE);
+        assert!(scene.atlas[0].cell[3] <= NAMETAG_ATLAS_SIDE);
+    }
+}
+
+#[test]
+fn long_formatted_lines_keep_the_aggregate_multiline_budget() {
+    let line = "§aA§bB".repeat(ui::MAX_TEXT_SPANS / 2 + 1);
+    let tag = extract_nametag(
+        &actor(),
+        Vec3::new(0.0, 1.62, 5.0),
+        None,
+        format!("{line}\n{line}").into(),
+        &ui::ScoreboardStore::default(),
+        0.5,
+    )
+    .unwrap();
+    assert_eq!(tag.lines.len(), 2);
+    assert!(tag.lines.iter().map(|line| line.len()).sum::<usize>() > ui::UiLimits::MAX_TEXT_BYTES);
+    for line in &tag.lines {
+        assert!(line.len() <= ui::UiLimits::MAX_TEXT_BYTES);
+        assert!(
+            ui::parse_bedrock_text(line, ui::UiLimits::MAX_TEXT_BYTES)
+                .unwrap()
+                .len()
+                <= ui::MAX_TEXT_SPANS
+        );
+    }
+    assert_eq!(scene(&[tag]).records.len(), 2 * NAMETAG_RECORDS_PER_LINE);
+}
+
+#[test]
+fn wide_advance_lines_keep_a_prefix_instead_of_exceeding_the_wrap_limit() {
+    let font = ui_engine::test_support::fixture_font();
+    let mut metrics = *font.glyph('0').unwrap();
+    metrics.advance_64 = i16::MAX;
+    let font = font.with_glyphs(
+        &[assets::SheetGlyph {
+            metrics,
+            draw_size_64: [
+                u32::from(metrics.uv[2] - metrics.uv[0]) * 64,
+                u32::from(metrics.uv[3] - metrics.uv[1]) * 64,
+            ],
+        }],
+        |_| true,
+    );
+    let glyphs_per_line = NAMETAG_ATLAS_SIDE as usize / (i16::MAX as usize / 64 + 1);
+    let text = "0".repeat(ui::MAX_WRAP_LINES * glyphs_per_line + 1);
+    assert!(text.len() <= ui::UiLimits::MAX_TEXT_BYTES);
+    let scene = scene_with_font(&[anchor(&text)], &font);
+    assert_eq!(scene.records.len(), NAMETAG_RECORDS_PER_LINE);
+    assert!(scene.atlas[0].cell[2] <= NAMETAG_ATLAS_SIDE);
+}
+
+#[test]
+fn oversized_glyph_ink_is_clipped_to_the_atlas_cell() {
+    let font = ui_engine::test_support::fixture_font();
+    let font = font.with_glyphs(
+        &[assets::SheetGlyph {
+            metrics: *font.glyph('0').unwrap(),
+            draw_size_64: [(NAMETAG_ATLAS_SIDE + 1) * 64; 2],
+        }],
+        |_| true,
+    );
+    let scene = scene_with_font(&[anchor("0")], &font);
+    assert_eq!(scene.records.len(), NAMETAG_RECORDS_PER_LINE);
+    assert_eq!(scene.atlas[0].cell[2..], [NAMETAG_ATLAS_SIDE; 2]);
+    assert!(scene.atlas[0].rgba8.iter().any(|&byte| byte != 0));
 }

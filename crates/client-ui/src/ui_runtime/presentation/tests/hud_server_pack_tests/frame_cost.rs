@@ -177,7 +177,8 @@ fn lobby_ui_publication_cost() {
             lines: vec![
                 Arc::from(format!("§a[Member] §fPlayer{index}")),
                 Arc::from(format!("§c{} ❤", 20 - index % 20)),
-            ],
+            ]
+            .into(),
             depth_tested: false,
             text_alpha: 1.0,
             distance: 4.0 + index as f32,

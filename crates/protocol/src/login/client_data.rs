@@ -406,6 +406,12 @@ mod tests {
         }
     }
 
+    /// The vendored handshake advertises its own copy until it is removed; the two must agree.
+    #[test]
+    fn game_version_matches_the_vendored_handshake() {
+        assert_eq!(GAME_VERSION, jolyne::GAME_VERSION);
+    }
+
     // Each tier boundary is exclusive: exactly 1.5, 2, 4 and 8 GiB stay in the lower tier.
     #[test]
     fn login_memory_tier_matches_vanilla_boundaries() {

@@ -130,32 +130,30 @@ pub fn crafter_slot_toggle(packet: &Packet) -> Option<CrafterSlotToggleObservati
 /// A server ModalFormRequest carrying `json` as form `form_id`.
 #[must_use]
 pub fn modal_form_request_packet(form_id: u32, json: &str) -> Packet {
-    ModalFormRequestPacket {
+    crate::Packet::new(ModalFormRequestPacket {
         form_id,
         form_uijson: json.to_owned(),
-    }
-    .into()
+    })
 }
 
 /// An empty server ItemRegistry.
 #[must_use]
 pub fn item_registry_packet() -> Packet {
-    ItemRegistryPacket::default().into()
+    crate::Packet::new(ItemRegistryPacket::default())
 }
 
 /// A server ChunkRadiusUpdated granting `chunk_radius`.
 #[must_use]
 pub fn chunk_radius_updated_packet(chunk_radius: i32) -> Packet {
-    ChunkRadiusUpdatedPacket { chunk_radius }.into()
+    crate::Packet::new(ChunkRadiusUpdatedPacket { chunk_radius })
 }
 
 /// The PlayStatus that completes a join at player spawn.
 #[must_use]
 pub fn player_spawn_packet() -> Packet {
-    PlayStatusPacket {
+    crate::Packet::new(PlayStatusPacket {
         status: EnumsPlayStatus::Playerspawn,
-    }
-    .into()
+    })
 }
 
 /// A MoveActorDelta's fields; `None` leaves a component unchanged.
@@ -200,7 +198,7 @@ pub fn move_actor_delta_event(
             ..Default::default()
         },
     });
-    into_world_event(packet.into(), 0)
+    into_world_event(crate::Packet::new(packet), 0)
 }
 
 /// Normalizes `absolute` after a wire round trip, as a dimension-0 world event.
@@ -220,7 +218,7 @@ pub fn move_actor_absolute_event(
             rotation_y_head: absolute.rotation[2],
         },
     });
-    into_world_event(packet.into(), 0)
+    into_world_event(crate::Packet::new(packet), 0)
 }
 
 /// Normalizes an AddActor spawning `identifier` with short-typed `metadata`, in dimension 0.
@@ -252,7 +250,7 @@ pub fn add_actor_event(
         },
         ..Default::default()
     };
-    into_world_event(packet.into(), 0)
+    into_world_event(crate::Packet::new(packet), 0)
 }
 
 /// Encodes and decodes one packet body so fixtures carry exactly what the wire can.

@@ -19,10 +19,9 @@ fn custom_actor_list() -> Vec<u8> {
 
 #[test]
 fn actor_identifier_registry_reaches_raw_world_ingress() {
-    let packet: crate::Packet = AvailableActorIdentifiersPacket {
+    let packet: crate::Packet = crate::Packet::new(AvailableActorIdentifiersPacket {
         identifier_list: Nbt(Bytes::from(custom_actor_list())),
-    }
-    .into();
+    });
     let mut frame = BytesMut::new();
     packet
         .data

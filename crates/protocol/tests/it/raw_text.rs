@@ -49,7 +49,7 @@ fn normalize_json(
         "test helper accepts only object text packet kinds"
     );
     let packet = message_only(message_only_body(kind, message));
-    match into_world_event(packet.into(), 0) {
+    match into_world_event(protocol::Packet::new(packet), 0) {
         Ok(Some(WorldEvent::Ui(UiEvent::RawText(event)))) => Ok(event),
         Ok(other) => panic!("expected normalized text event, got {other:?}"),
         Err(protocol::WorldPacketError::Ui(error)) => Err(error),
@@ -59,7 +59,7 @@ fn normalize_json(
 
 fn normalize_raw(message: String) -> Result<UiEvent, UiPacketError> {
     let packet = message_only(message_only_body(TextKind::Raw, message));
-    match into_world_event(packet.into(), 0) {
+    match into_world_event(protocol::Packet::new(packet), 0) {
         Ok(Some(WorldEvent::Ui(event))) => Ok(event),
         Ok(other) => panic!("expected normalized UI event, got {other:?}"),
         Err(protocol::WorldPacketError::Ui(error)) => Err(error),
@@ -85,7 +85,7 @@ fn normalize_title_object(
         title_text: message.to_owned(),
         ..Default::default()
     };
-    match into_world_event(packet.into(), 0) {
+    match into_world_event(protocol::Packet::new(packet), 0) {
         Ok(Some(WorldEvent::Ui(UiEvent::Title(event)))) => Ok(event),
         Ok(other) => panic!("expected normalized title event, got {other:?}"),
         Err(protocol::WorldPacketError::Ui(error)) => Err(error),

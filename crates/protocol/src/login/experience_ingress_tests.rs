@@ -27,13 +27,10 @@ fn experience_replies_cross_raw_ingress_with_existing_bounds_and_routes() {
         ),
     ] {
         assert!(
-            ingress(
-                ScriptMessagePacket {
-                    message_id: channel.into(),
-                    message_value: bytes,
-                }
-                .into()
-            )
+            ingress(crate::Packet::new(ScriptMessagePacket {
+                message_id: channel.into(),
+                message_value: bytes,
+            }))
             .is_none()
         );
     }

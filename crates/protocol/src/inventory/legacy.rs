@@ -57,13 +57,12 @@ pub fn normal_inventory_transaction_packet(
             })
         })
         .collect::<Result<_, InventoryPacketError>>()?;
-    Ok(InventoryTransactionPacket {
+    Ok(crate::Packet::new(InventoryTransactionPacket {
         transaction: InventoryTransactionPacketTransaction::NormalTransactionData(
             NormalTransactionData {
                 actions: InventoryTransaction { actions },
             },
         ),
         ..Default::default()
-    }
-    .into())
+    }))
 }

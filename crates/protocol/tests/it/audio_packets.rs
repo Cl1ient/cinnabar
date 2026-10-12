@@ -124,13 +124,12 @@ fn fixtures_normalize_without_interpreting_odd_or_empty_fields() {
 
 #[test]
 fn batch_decode_bounds_audio_before_allocation_and_keeps_truncation_fatal() {
-    let packet: protocol::Packet = PlaySoundPacket {
+    let packet: protocol::Packet = protocol::Packet::new(PlaySoundPacket {
         name: "x".repeat(protocol::MAX_AUDIO_IDENTIFIER_BYTES + 1),
         volume: 1.0,
         pitch: 1.0,
         ..Default::default()
-    }
-    .into();
+    });
     let overlong = encode(&packet).unwrap();
     assert!(matches!(
         decode_batch(overlong),
@@ -139,12 +138,11 @@ fn batch_decode_bounds_audio_before_allocation_and_keeps_truncation_fatal() {
         ))
     ));
 
-    let packet: protocol::Packet = PlaySoundPacket {
+    let packet: protocol::Packet = protocol::Packet::new(PlaySoundPacket {
         volume: f32::INFINITY,
         pitch: 1.0,
         ..Default::default()
-    }
-    .into();
+    });
     let non_finite = encode(&packet).unwrap();
     assert!(matches!(
         decode_batch(non_finite),

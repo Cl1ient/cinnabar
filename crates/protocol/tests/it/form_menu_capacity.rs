@@ -23,11 +23,10 @@ fn menus_above_256_preserve_every_button_image_and_last_wire_selection() {
             let mut form = serde_json::json!({"type":"form", "title":"Menu", "content":" "});
             form[representation] = serde_json::json!(buttons);
             let Some(WorldEvent::Ui(UiEvent::Form(event))) = into_world_event(
-                ModalFormRequestPacket {
+                protocol::Packet::new(ModalFormRequestPacket {
                     form_id: 7,
                     form_uijson: form.to_string(),
-                }
-                .into(),
+                }),
                 0,
             )
             .unwrap() else {

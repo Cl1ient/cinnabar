@@ -43,7 +43,7 @@ pub fn player_skin_packet(
     let geometry = skin.geometry.as_ref();
     let cape = skin.cape.as_ref().filter(|cape| cape.is_valid());
     let cape_id = cape.map_or_else(String::new, cape_content_id);
-    PlayerSkinPacket {
+    crate::Packet::new(PlayerSkinPacket {
         uuid: uuid::Uuid::from_bytes(uuid),
         serialized_skin: SerializedSkinRef {
             id: id.to_owned(),
@@ -83,8 +83,7 @@ pub fn player_skin_packet(
         },
         localized_new_skin_name: name.to_owned(),
         localized_old_skin_name: String::new(),
-    }
-    .into()
+    })
 }
 
 #[cfg(test)]

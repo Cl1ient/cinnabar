@@ -11,7 +11,7 @@ fn primitive_shapes_raw_ingress_retains_valid_changes_and_counts_odd_entries() {
         PrimitiveShapesPacket,
     };
 
-    let packet: Packet = PrimitiveShapesPacket {
+    let packet: Packet = crate::Packet::new(PrimitiveShapesPacket {
         arrayofprimitiveshapescanbeamixofnewupdatedorremoved: vec![
             PrimitiveShapeDataPayload {
                 network_id: 7,
@@ -41,8 +41,7 @@ fn primitive_shapes_raw_ingress_retains_valid_changes_and_counts_odd_entries() {
                 ..Default::default()
             },
         ],
-    }
-    .into();
+    });
     let mut encoded = crate::encode(&packet).expect("encoded shape packet");
     encoded.advance(1);
     let raw = decode_packet_raw(&mut encoded).expect("raw shape packet");

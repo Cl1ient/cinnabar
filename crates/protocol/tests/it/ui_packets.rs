@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use valentine::bedrock::version::v1_26_51::McpePacket;
 
 use bytes::{BufMut, BytesMut};
 use protocol::{
@@ -63,8 +64,11 @@ fn boss_remove_ignores_unused_invalid_presentation_fields() {
 const LEVEL_EVENT_START_BLOCK_CRACKING: i32 = 3600;
 const LEVEL_EVENT_UPDATE_BLOCK_CRACKING: i32 = 3602;
 
-fn ui(packet: impl Into<protocol::Packet>) -> Result<UiEvent, UiPacketError> {
-    match into_world_event(packet.into(), 0) {
+fn ui<P>(packet: P) -> Result<UiEvent, UiPacketError>
+where
+    McpePacket: From<P>,
+{
+    match into_world_event(protocol::Packet::new(packet), 0) {
         Ok(Some(WorldEvent::Ui(event))) => Ok(event),
         Ok(other) => panic!("expected UI event, got {other:?}"),
         Err(protocol::WorldPacketError::Ui(error)) => Err(error),
@@ -489,7 +493,9 @@ fn block_crack_events_preserve_server_progress_rate_without_inventing_stage_or_a
         },
         data: 6_553,
     };
-    let Some(WorldEvent::BlockCrack(start)) = into_world_event(start.into(), 0).unwrap() else {
+    let Some(WorldEvent::BlockCrack(start)) =
+        into_world_event(protocol::Packet::new(start), 0).unwrap()
+    else {
         panic!("expected block crack start")
     };
     assert_eq!(start.position, [1, 64, -2]);
@@ -510,7 +516,8 @@ fn block_crack_events_preserve_server_progress_rate_without_inventing_stage_or_a
         },
         data: 0,
     };
-    let Some(WorldEvent::BlockCrack(fractional)) = into_world_event(fractional.into(), 0).unwrap()
+    let Some(WorldEvent::BlockCrack(fractional)) =
+        into_world_event(protocol::Packet::new(fractional), 0).unwrap()
     else {
         panic!("expected block crack update")
     };
@@ -531,7 +538,7 @@ fn block_crack_events_preserve_server_progress_rate_without_inventing_stage_or_a
         data: 1,
     };
     assert!(matches!(
-        into_world_event(non_finite.into(), 0),
+        into_world_event(protocol::Packet::new(non_finite), 0),
         Err(protocol::WorldPacketError::Ui(
             UiPacketError::InvalidBlockCrackPosition { field: "x", .. }
         ))
@@ -547,7 +554,7 @@ fn block_crack_events_preserve_server_progress_rate_without_inventing_stage_or_a
         data: 1,
     };
     assert!(matches!(
-        into_world_event(overflowing.into(), 0),
+        into_world_event(protocol::Packet::new(overflowing), 0),
         Err(protocol::WorldPacketError::Ui(
             UiPacketError::InvalidBlockCrackPosition { field: "x", .. }
         ))
@@ -567,7 +574,8 @@ fn block_crack_events_preserve_the_full_wire_speed() {
             },
             data,
         };
-        let Some(WorldEvent::BlockCrack(event)) = into_world_event(packet.into(), 0).unwrap()
+        let Some(WorldEvent::BlockCrack(event)) =
+            into_world_event(protocol::Packet::new(packet), 0).unwrap()
         else {
             panic!("expected block crack update")
         };
@@ -914,7 +922,7 @@ fn modal_form_responses_encode_exact_submit_and_cancel_markers() {
     };
     assert_eq!(
         protocol::encode(&submit).unwrap(),
-        protocol::encode(&direct.into()).unwrap()
+        protocol::encode(&protocol::Packet::new(direct)).unwrap()
     );
 
     // Dismissing form 7: id, response absent(0), cancel present(1) UserClosed(0).
@@ -930,7 +938,7 @@ fn modal_form_responses_encode_exact_submit_and_cancel_markers() {
     };
     assert_eq!(
         protocol::encode(&cancel).unwrap(),
-        protocol::encode(&direct_cancel.into()).unwrap()
+        protocol::encode(&protocol::Packet::new(direct_cancel)).unwrap()
     );
 
     // Both directions round-trip through the pinned codec unchanged.

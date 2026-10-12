@@ -21,26 +21,33 @@ fn server_latency_probe_remains_in_the_ordered_world_event_stream() {
         creation_time: 777,
         is_from_server: true,
     };
-    assert!(into_world_event(probe.into(), 0).unwrap().is_some());
+    assert!(
+        into_world_event(crate::Packet::new(probe), 0)
+            .unwrap()
+            .is_some()
+    );
     let ignored = NetworkStackLatencyPacket {
         creation_time: 888,
         is_from_server: false,
     };
-    assert!(into_world_event(ignored.into(), 0).unwrap().is_none());
+    assert!(
+        into_world_event(crate::Packet::new(ignored), 0)
+            .unwrap()
+            .is_none()
+    );
 }
 
 /// A firework's glide boost reaches the ordered world stream with its stamp and kind.
 #[test]
 fn movement_effect_packets_normalize_through_the_world_allowlist() {
-    let packet: Packet = MovementEffectPacket {
+    let packet: Packet = crate::Packet::new(MovementEffectPacket {
         target_runtime_id: ActorRuntimeId {
             actor_runtime_id: 42,
         },
         effect_id: EnumsMovementEffectType::GlideBoost,
         effect_duration: 20,
         tick: PlayerInputTick { inputtick: 7 },
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode movement effect");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw movement effect");
@@ -82,7 +89,7 @@ fn set_actor_motion_normalizes_impulses_skips_non_finite_and_keeps_truncation_fa
         tick: PlayerInputTick { inputtick: 7 },
     };
 
-    let packet: Packet = impulse(1.5).into();
+    let packet: Packet = Packet::new(impulse(1.5));
     let mut batch = crate::encode(&packet).expect("encode motion packet");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw motion packet");
@@ -97,7 +104,7 @@ fn set_actor_motion_normalizes_impulses_skips_non_finite_and_keeps_truncation_fa
     assert_eq!(motion.tick, 7);
 
     for bad in [f32::NAN, f32::INFINITY] {
-        let packet: Packet = impulse(bad).into();
+        let packet: Packet = Packet::new(impulse(bad));
         let mut batch = crate::encode(&packet).expect("encode non-finite motion");
         batch.advance(1);
         let raw = decode_packet_raw(&mut batch).expect("raw non-finite motion");
@@ -116,7 +123,7 @@ fn set_actor_motion_normalizes_impulses_skips_non_finite_and_keeps_truncation_fa
 #[test]
 fn raw_actor_delta_keeps_server_duration_and_completion_ordering() {
     for ticks in [0, 10, u64::MAX] {
-        let packet: Packet = MoveActorDeltaPacket {
+        let packet: Packet = crate::Packet::new(MoveActorDeltaPacket {
             move_data: MoveActorDeltaData {
                 actor_runtime_id: ActorRuntimeId {
                     actor_runtime_id: 7,
@@ -126,8 +133,7 @@ fn raw_actor_delta_keeps_server_duration_and_completion_ordering() {
                 ticks,
                 ..Default::default()
             },
-        }
-        .into();
+        });
         let mut batch = crate::encode(&packet).unwrap();
         batch.advance(1);
         let raw = decode_packet_raw(&mut batch).unwrap();
@@ -153,7 +159,7 @@ fn raw_actor_delta_keeps_server_duration_and_completion_ordering() {
 
 #[test]
 fn raw_absolute_completion_keeps_the_fast_path_and_default_duration() {
-    let packet: Packet = MoveActorAbsolutePacket {
+    let packet: Packet = crate::Packet::new(MoveActorAbsolutePacket {
         move_data: MoveActorAbsoluteData {
             actor_runtime_id: ActorRuntimeId {
                 actor_runtime_id: 7,
@@ -168,8 +174,7 @@ fn raw_absolute_completion_keeps_the_fast_path_and_default_duration() {
             rotation_y: 0,
             rotation_y_head: 0,
         },
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).unwrap();
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).unwrap();

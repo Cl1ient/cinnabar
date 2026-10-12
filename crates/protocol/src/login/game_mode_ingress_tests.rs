@@ -4,12 +4,11 @@ use bytes::BytesMut;
 use valentine::bedrock::version::v1_26_51::*;
 
 fn raw_packet(mode: EnumsGameType, actor_unique_id: i64, tick: u64) -> jolyne::raw::RawPacket {
-    let packet: crate::Packet = UpdatePlayerGameTypePacket {
+    let packet: crate::Packet = crate::Packet::new(UpdatePlayerGameTypePacket {
         player_game_type: mode,
         targetplayer: ActorUniqueId { actor_unique_id },
         tick: PlayerInputTick { inputtick: tick },
-    }
-    .into();
+    });
     let mut frame = BytesMut::new();
     packet
         .data

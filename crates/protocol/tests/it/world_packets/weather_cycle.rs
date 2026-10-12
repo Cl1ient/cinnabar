@@ -18,7 +18,7 @@ fn seasonal_weather_only_rule_packet_is_retained_without_daylight_or_hud_updates
         },
     };
     assert_eq!(
-        into_world_event(packet.into(), 0).unwrap(),
+        into_world_event(protocol::Packet::new(packet), 0).unwrap(),
         Some(WorldEvent::GameRules(GameRulesEvent {
             daylight_cycle: None,
             weather_cycle: Some(false),

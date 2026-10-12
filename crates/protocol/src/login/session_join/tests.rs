@@ -127,30 +127,27 @@ fn pack_frame(index: u32, bytes: &[u8]) -> Bytes {
 }
 
 fn start_game() -> Packet {
-    StartGamePacket {
+    crate::Packet::new(StartGamePacket {
         runtime_id: ActorRuntimeId {
             actor_runtime_id: RUNTIME_ID,
         },
         ..Default::default()
-    }
-    .into()
+    })
 }
 
 fn spawn_prerequisites() -> Vec<Packet> {
     vec![
-        ItemRegistryPacket {
+        crate::Packet::new(ItemRegistryPacket {
             item_data: vec![ItemData {
                 item_name: "minecraft:shield".into(),
                 item_id: 355,
                 ..Default::default()
             }],
-        }
-        .into(),
-        ChunkRadiusUpdatedPacket { chunk_radius: 8 }.into(),
-        PlayStatusPacket {
+        }),
+        crate::Packet::new(ChunkRadiusUpdatedPacket { chunk_radius: 8 }),
+        crate::Packet::new(PlayStatusPacket {
             status: jolyne::valentine::PlayStatusPacketStatus::Playerspawn,
-        }
-        .into(),
+        }),
     ]
 }
 
@@ -291,7 +288,7 @@ async fn a_startup_longer_than_one_batch_still_joins() {
     let settings = LoginSettings::default();
     let listener = listen(dir.path());
     let mut startup: Vec<Packet> = (0..2_000)
-        .map(|time| SetTimePacket { time }.into())
+        .map(|time| crate::Packet::new(SetTimePacket { time }))
         .collect();
     startup.push(start_game());
     let core = async {

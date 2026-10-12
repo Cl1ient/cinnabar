@@ -9,14 +9,13 @@ use super::*;
 #[test]
 fn dimension_ack_ingress_keeps_session_local_ack_even_with_sentinel_actor_id() {
     for runtime_id in [0, 42] {
-        let packet: Packet = PlayerActionPacket {
+        let packet: Packet = crate::Packet::new(PlayerActionPacket {
             player_runtime_id: ActorRuntimeId {
                 actor_runtime_id: runtime_id,
             },
             action: EnumsPlayerActionType::Changedimensionack,
             ..Default::default()
-        }
-        .into();
+        });
         let mut encoded = crate::encode(&packet).unwrap();
         encoded.advance(1);
         let raw = decode_packet_raw(&mut encoded).unwrap();
@@ -32,11 +31,10 @@ fn dimension_action_ingress_skips_other_actions_and_rejects_truncation() {
         EnumsPlayerActionType::UnknownValue(i32::MIN),
         EnumsPlayerActionType::UnknownValue(i32::MAX),
     ] {
-        let packet: Packet = PlayerActionPacket {
+        let packet: Packet = crate::Packet::new(PlayerActionPacket {
             action,
             ..Default::default()
-        }
-        .into();
+        });
         let mut encoded = crate::encode(&packet).unwrap();
         encoded.advance(1);
         let raw = decode_packet_raw(&mut encoded).unwrap();

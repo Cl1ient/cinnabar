@@ -13,7 +13,7 @@ fn world_clock_registry_packet_is_allowlisted_at_raw_ingress() {
         SyncWorldClocksPacket, SyncWorldClocksPacketData,
         SyncWorldClocksPacketPayloadInitializeRegistryData, WorldClockData,
     };
-    let packet: Packet = SyncWorldClocksPacket {
+    let packet: Packet = crate::Packet::new(SyncWorldClocksPacket {
         data: SyncWorldClocksPacketData::InitializeRegistryData(
             SyncWorldClocksPacketPayloadInitializeRegistryData {
                 clock_data: vec![WorldClockData {
@@ -25,8 +25,7 @@ fn world_clock_registry_packet_is_allowlisted_at_raw_ingress() {
                 }],
             },
         ),
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode clock witness");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw clock witness");
@@ -247,7 +246,7 @@ fn semantic_world_rejections_remain_skippable_before_the_next_valid_packet() {
     }
     assert_eq!(world_skips, 2);
 
-    let packet: Packet = SetTimePacket { time: 7 }.into();
+    let packet: Packet = crate::Packet::new(SetTimePacket { time: 7 });
     let mut batch = crate::encode(&packet).expect("encode valid witness");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw valid witness");

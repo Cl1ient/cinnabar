@@ -12,12 +12,11 @@ use crate::{BlockEventEvent, MapDataEvent, OpenSignEvent, WorldEvent};
 
 #[test]
 fn block_event_packets_normalize_with_the_current_dimension() {
-    let packet: Packet = BlockEventPacket {
+    let packet: Packet = crate::Packet::new(BlockEventPacket {
         block_position: BlockPos { x: 4, y: 70, z: -9 },
         event_type: 1,
         event_value: 2,
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode block event");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw block event");
@@ -52,7 +51,7 @@ fn map_packet(width: i32, start_x: i32, pixels: Vec<u32>) -> ClientboundMapItemD
 }
 
 fn decode_map(packet: ClientboundMapItemDataPacket) -> Option<WorldEvent> {
-    let packet: Packet = packet.into();
+    let packet: Packet = crate::Packet::new(packet);
     let mut batch = crate::encode(&packet).expect("encode map data");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw map data");
@@ -79,15 +78,14 @@ fn map_pixel_updates_normalize_and_out_of_range_rectangles_are_skipped() {
 
 #[test]
 fn open_sign_packets_normalize_with_position_side_and_dimension() {
-    let packet: Packet = OpenSignPacket {
+    let packet: Packet = crate::Packet::new(OpenSignPacket {
         pos: BlockPos {
             x: -5,
             y: 64,
             z: 12,
         },
         is_front_side: false,
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode open sign");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw open sign");

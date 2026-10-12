@@ -213,7 +213,7 @@ impl<T: Transport> PlaySession<T> {
 
     /// Receives one packet, counting malformed/decompression failures.
     pub async fn recv(&mut self) -> Result<Packet, ProtocolError> {
-        match self.stream.recv_packet().await.map(Packet::from) {
+        match self.stream.recv_packet().await.map(Packet::new) {
             Ok(packet) => {
                 if matches!(
                     &packet.data,
@@ -317,7 +317,7 @@ impl<T: Transport> PlaySession<T> {
                 continue;
             }
             let decoded = decode_world_raw_with(raw, current_dimension, |raw| {
-                self.stream.decode_raw_packet(raw).map(Packet::from)
+                self.stream.decode_raw_packet(raw).map(Packet::new)
             });
             match decoded {
                 Ok(Some(event)) => return Ok(WorldIngress::Event(event)),
@@ -548,7 +548,7 @@ impl<T: Transport> PlaySession<T> {
                     }
                 }
                 let packet = match self.stream.decode_raw_packet(raw) {
-                    Ok(packet) => Packet::from(packet),
+                    Ok(packet) => Packet::new(packet),
                     Err(error) => return Err(self.fail_session(error)),
                 };
                 reset_blob_cache_for_decoded_candidate(
@@ -589,7 +589,11 @@ impl<T: Transport> PlaySession<T> {
                         events.push_back(WorldEvent::ChunkResync(recovery));
                     }
                     self.pending_blob_cache_delivery = Some(PendingBlobCacheDelivery {
-                        status_packets: status.into_packets().into_iter().map(Into::into).collect(),
+                        status_packets: status
+                            .into_packets()
+                            .into_iter()
+                            .map(Packet::new)
+                            .collect(),
                         status_send_in_flight: false,
                         events,
                     });
@@ -616,7 +620,7 @@ impl<T: Transport> PlaySession<T> {
             }
 
             let decoded = decode_world_raw_with(raw, current_dimension, |raw| {
-                self.stream.decode_raw_packet(raw).map(Packet::from)
+                self.stream.decode_raw_packet(raw).map(Packet::new)
             });
             match decoded {
                 Ok(Some(event)) => {
@@ -867,7 +871,7 @@ fn decode_world_raw_with(
 #[cfg(test)]
 fn decode_test_raw(raw: RawPacket) -> Result<Packet, JolyneError> {
     raw.decode(&valentine::bedrock::context::BedrockSession { shield_item_id: 0 })
-        .map(Packet::from)
+        .map(Packet::new)
 }
 
 /// LevelEventGeneric's event data is loose NBT tags filling the rest of the packet (as
@@ -884,7 +888,7 @@ fn level_event_generic(raw: &RawPacket) -> Option<Packet> {
         event_id,
         __ctd__: Nbt(body),
     });
-    Some(Packet::new(raw.header, data))
+    Some(Packet::from_parts(raw.header, data))
 }
 
 /// Reclassifies the raw UI pre-validator's semantic rejections as skippable

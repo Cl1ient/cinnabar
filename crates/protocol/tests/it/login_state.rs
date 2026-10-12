@@ -941,7 +941,7 @@ async fn assert_transport_success(transport: ScriptTransport) {
     // alive and counted one skip.
     assert_eq!(session.world_skip_count(), 1);
 
-    let mut invalid = Packet::from(ClientCacheStatusPacket {
+    let mut invalid = Packet::new(ClientCacheStatusPacket {
         iscachesupported: true,
     });
     invalid.header.id = McpePacketName::PlayStatusPacket;
@@ -952,7 +952,7 @@ async fn assert_transport_success(transport: ScriptTransport) {
     assert!(matches!(error, ProtocolError::HeaderIdMismatch { .. }));
 
     session
-        .send(Packet::from(ClientCacheStatusPacket {
+        .send(Packet::new(ClientCacheStatusPacket {
             iscachesupported: true,
         }))
         .await

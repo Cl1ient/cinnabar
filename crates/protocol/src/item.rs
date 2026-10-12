@@ -73,7 +73,7 @@ pub fn select_hotbar_slot_packet(
     }
     let item =
         VerifiedNetworkItemStack::try_new(untracked, stack.nbt_digest)?.into_vendor_item()?;
-    Ok(MobEquipmentPacket {
+    Ok(crate::Packet::new(MobEquipmentPacket {
         target_runtime_id: ActorRuntimeId {
             actor_runtime_id: runtime_id,
         },
@@ -83,8 +83,7 @@ pub fn select_hotbar_slot_packet(
         // The inventory container. 1.26.40 carries the raw ID rather than a
         // named WindowId enum.
         container_id: 0,
-    }
-    .into())
+    }))
 }
 
 pub const MAX_ITEM_REGISTRY_ENTRIES: usize = 16_384;

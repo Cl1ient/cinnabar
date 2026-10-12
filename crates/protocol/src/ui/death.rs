@@ -55,11 +55,10 @@ mod tests {
 
     #[test]
     fn death_information_rejects_parameter_overflow_before_owned_decode() {
-        let packet = DeathInfoPacket {
+        let packet = crate::Packet::new(DeathInfoPacket {
             death_cause_attack_name: String::new(),
             death_cause_message_list: vec![String::new(); MAX_CHAT_PARAMETERS + 1],
-        }
-        .into();
+        });
         let wire = encode(&packet).unwrap();
         assert!(matches!(
             decode_batch(wire),
@@ -71,11 +70,10 @@ mod tests {
 
     #[test]
     fn death_information_rejects_invalid_utf8_in_reason_and_parameter() {
-        let packet = DeathInfoPacket {
+        let packet = crate::Packet::new(DeathInfoPacket {
             death_cause_attack_name: "reason".into(),
             death_cause_message_list: vec!["argument".into()],
-        }
-        .into();
+        });
         let wire = encode(&packet).unwrap();
         for field in [b"reason".as_slice(), b"argument".as_slice()] {
             let mut invalid = wire.to_vec();

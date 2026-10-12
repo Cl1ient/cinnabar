@@ -42,13 +42,12 @@ fn all_named_audio_packets_are_allowlisted_for_raw_world_ingress() {
 
 #[test]
 fn audio_semantic_rejections_do_not_reach_the_allocating_decoder() {
-    let packet: Packet = PlaySoundPacket {
+    let packet: Packet = crate::Packet::new(PlaySoundPacket {
         name: "x".repeat(crate::MAX_AUDIO_IDENTIFIER_BYTES + 1),
         volume: 1.0,
         pitch: 1.0,
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode overlong semantic packet");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw overlong packet");
@@ -64,13 +63,12 @@ fn audio_semantic_rejections_do_not_reach_the_allocating_decoder() {
         ProtocolError::World(crate::WorldPacketError::AudioIdentifierTooLong { .. })
     ));
 
-    let packet: Packet = PlaySoundPacket {
+    let packet: Packet = crate::Packet::new(PlaySoundPacket {
         name: String::new(),
         volume: f32::NAN,
         pitch: 1.0,
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode non-finite semantic packet");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw non-finite packet");
@@ -124,7 +122,7 @@ fn transfer_resets_pending_cache_transactions_but_change_dimension_is_ordered() 
     let mut resolver = BlobCacheResolver::new(cache);
     let missing = crate::client_blob_hash(b"missing");
     resolver
-        .accept_cached_packet(cached_level_chunk(vec![missing]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(vec![missing])))
         .expect("pending cached column");
 
     assert!(
@@ -151,7 +149,7 @@ fn unrelated_world_semantic_skip_does_not_recover_pending_cached_terrain() {
     let missing = crate::client_blob_hash(missing_payload);
     let mut resolver = BlobCacheResolver::new(cache);
     resolver
-        .accept_cached_packet(cached_level_chunk(vec![missing]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(vec![missing])))
         .expect("pending cached column");
     assert_eq!(resolver.stats().pending_transactions, 1);
 
@@ -196,7 +194,7 @@ fn fatal_session_reset_clears_pending_without_clearing_verified_entries() {
     let missing = crate::client_blob_hash(b"missing terrain");
     let mut resolver = BlobCacheResolver::new(cache.clone());
     resolver
-        .accept_cached_packet(cached_level_chunk(vec![missing]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(vec![missing])))
         .expect("pending cached column");
 
     resolver.reset_pending();
@@ -210,7 +208,7 @@ fn fast_transfer_arm_is_consumed_only_after_a_chunk_candidate_decodes() {
     let missing = crate::client_blob_hash(b"old-backend-missing");
     let mut resolver = BlobCacheResolver::new(ClientBlobCache::default());
     resolver
-        .accept_cached_packet(cached_level_chunk(vec![missing]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(vec![missing])))
         .expect("old unresolved transaction");
     resolver.arm_fast_transfer_reset();
 
@@ -218,19 +216,18 @@ fn fast_transfer_arm_is_consumed_only_after_a_chunk_candidate_decodes() {
     assert!(super::decode_test_raw(malformed).is_err());
     assert_eq!(resolver.stats().pending_transactions, 1);
 
-    let ordinary: crate::Packet = SetTimePacket { time: 7 }.into();
+    let ordinary: crate::Packet = crate::Packet::new(SetTimePacket { time: 7 });
     assert!(
         !reset_blob_cache_for_decoded_candidate(&mut resolver, &ordinary)
             .expect("ordinary decoded packet is not a candidate")
     );
     assert_eq!(resolver.stats().pending_transactions, 1);
 
-    let candidate: crate::Packet = LevelChunkPacket {
+    let candidate: crate::Packet = crate::Packet::new(LevelChunkPacket {
         subchunks_count: 0,
         cache_enabled: false,
         ..Default::default()
-    }
-    .into();
+    });
     assert!(
         reset_blob_cache_for_decoded_candidate(&mut resolver, &candidate)
             .expect("successfully decoded candidate consumes the arm")
@@ -279,14 +276,13 @@ fn ignored_play_packet_is_not_materialized() {
 
 #[test]
 fn allowlisted_ui_packet_is_validated_decoded_and_normalized() {
-    let packet: Packet = TextPacket {
+    let packet: Packet = crate::Packet::new(TextPacket {
         body: TextPacketBody::MessageOnly(TextPacketPayloadMessageOnly {
             message_type: EnumsTextPacketType::Raw,
             message: "live UI".to_owned(),
         }),
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode text");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw text");
@@ -600,11 +596,11 @@ fn append_item_new_prefix(body: &mut BytesMut, extra_length: u32) {
 
 #[test]
 fn death_information_reaches_world_ui_from_raw_transport() {
-    let packet: Packet = valentine::bedrock::version::v1_26_51::DeathInfoPacket {
-        death_cause_attack_name: "death.attack.mob".into(),
-        death_cause_message_list: vec!["Alex".into(), "%entity.zombie.name".into()],
-    }
-    .into();
+    let packet: Packet =
+        crate::Packet::new(valentine::bedrock::version::v1_26_51::DeathInfoPacket {
+            death_cause_attack_name: "death.attack.mob".into(),
+            death_cause_message_list: vec!["Alex".into(), "%entity.zombie.name".into()],
+        });
     let mut batch = crate::encode(&packet).unwrap();
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).unwrap();
@@ -622,13 +618,12 @@ fn death_information_reaches_world_ui_from_raw_transport() {
 
 #[test]
 fn allowlisted_world_packet_is_decoded_and_normalized() {
-    let packet: Packet = UpdateBlockPacket {
+    let packet: Packet = crate::Packet::new(UpdateBlockPacket {
         block_position: BlockPos { x: 17, y: 2, z: -3 },
         block_runtime_id: 99,
         layer: 0,
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode update");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw update");
@@ -648,11 +643,10 @@ fn allowlisted_world_packet_is_decoded_and_normalized() {
 #[test]
 fn allowlisted_block_entity_update_preserves_dimension_position_and_exact_nbt() {
     let nbt = vec![10, 0, 0];
-    let packet: Packet = BlockActorDataPacket {
+    let packet: Packet = crate::Packet::new(BlockActorDataPacket {
         block_position: BlockPos { x: 17, y: 2, z: -3 },
         actor_data_tags: Nbt(Bytes::copy_from_slice(&nbt)),
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode block entity update");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw block entity update");
@@ -673,13 +667,12 @@ fn allowlisted_block_entity_update_preserves_dimension_position_and_exact_nbt() 
 
 #[test]
 fn allowlisted_weather_packet_is_decoded_and_normalized() {
-    let packet: Packet = LevelEventPacket {
+    let packet: Packet = crate::Packet::new(LevelEventPacket {
         // LevelEventStartRaining; 1.26.40 carries the raw id, not an enum.
         event_id: 3001,
         data: 48_000,
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode weather event");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw weather event");
@@ -703,7 +696,7 @@ fn allowlisted_weather_packet_is_decoded_and_normalized() {
 
 #[test]
 fn allowlisted_daylight_cycle_rule_is_decoded_and_normalized() {
-    let packet: Packet = GameRulesChangedPacket {
+    let packet: Packet = crate::Packet::new(GameRulesChangedPacket {
         rule_data: GameRulesChangedPacketData {
             rules_list: vec![GameRule {
                 rule_name: "DoDaylightCycle".to_owned(),
@@ -711,8 +704,7 @@ fn allowlisted_daylight_cycle_rule_is_decoded_and_normalized() {
                 rule_value: GameRuleRuleValue::Bool(false),
             }],
         },
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode gamerule event");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw gamerule event");
@@ -733,7 +725,7 @@ fn allowlisted_daylight_cycle_rule_is_decoded_and_normalized() {
 
 #[test]
 fn death_screen_rules_reach_the_raw_world_stream() {
-    let packet: Packet = GameRulesChangedPacket {
+    let packet: Packet = crate::Packet::new(GameRulesChangedPacket {
         rule_data: GameRulesChangedPacketData {
             rules_list: vec![GameRule {
                 rule_name: "showDeathMessages".into(),
@@ -741,8 +733,7 @@ fn death_screen_rules_reach_the_raw_world_stream() {
                 rule_value: GameRuleRuleValue::Bool(false),
             }],
         },
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).unwrap();
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).unwrap();
@@ -756,7 +747,7 @@ fn death_screen_rules_reach_the_raw_world_stream() {
 
 #[test]
 fn allowlisted_move_player_is_materialized_and_normalized() {
-    let packet: Packet = MovePlayerPacket {
+    let packet: Packet = crate::Packet::new(MovePlayerPacket {
         player_runtime_id: ActorRuntimeId {
             actor_runtime_id: 42,
         },
@@ -770,8 +761,7 @@ fn allowlisted_move_player_is_materialized_and_normalized() {
             y: -120.25,
         },
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode move player");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw move player");
@@ -803,7 +793,7 @@ fn allowlisted_move_player_is_materialized_and_normalized() {
 
 #[test]
 fn allowlisted_respawn_is_materialized_and_normalized() {
-    let packet: Packet = RespawnPacket {
+    let packet: Packet = crate::Packet::new(RespawnPacket {
         position: Vec3 {
             x: 8.5,
             y: 71.620_01,
@@ -813,8 +803,7 @@ fn allowlisted_respawn_is_materialized_and_normalized() {
         player_runtime_id: ActorRuntimeId {
             actor_runtime_id: 42,
         },
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode respawn");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw respawn");
@@ -840,15 +829,14 @@ fn allowlisted_respawn_is_materialized_and_normalized() {
 
 #[test]
 fn allowlisted_actor_packet_is_materialized_and_normalized() {
-    let packet: Packet = AddActorPacket {
+    let packet: Packet = crate::Packet::new(AddActorPacket {
         target_actor_id: ActorUniqueId { actor_unique_id: 9 },
         target_runtime_id: ActorRuntimeId {
             actor_runtime_id: 42,
         },
         actor_type: "minecraft:bee".to_owned(),
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode add entity");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw add entity");
@@ -865,14 +853,13 @@ fn allowlisted_actor_packet_is_materialized_and_normalized() {
 #[test]
 fn allowlisted_item_and_action_packets_are_materialized_and_normalized() {
     let packets: [Packet; 4] = [
-        AddPlayerPacket {
+        crate::Packet::new(AddPlayerPacket {
             target_runtime_id: ActorRuntimeId {
                 actor_runtime_id: 42,
             },
             ..Default::default()
-        }
-        .into(),
-        MobEquipmentPacket {
+        }),
+        crate::Packet::new(MobEquipmentPacket {
             target_runtime_id: ActorRuntimeId {
                 actor_runtime_id: 42,
             },
@@ -885,25 +872,22 @@ fn allowlisted_item_and_action_packets_are_materialized_and_normalized() {
             selected_slot: 0,
             // The inventory container ID.
             container_id: 0,
-        }
-        .into(),
-        AnimatePacket {
+        }),
+        crate::Packet::new(AnimatePacket {
             target_actor_runtime_id: ActorRuntimeId {
                 actor_runtime_id: 42,
             },
             action: AnimatePacketAction::Swing,
             ..Default::default()
-        }
-        .into(),
-        AnimateEntityPacket {
+        }),
+        crate::Packet::new(AnimateEntityPacket {
             m_animation: "animation.test.attack".into(),
             m_controller: "controller.animation.test".into(),
             m_runtime_ids: vec![ActorRuntimeId {
                 actor_runtime_id: 42,
             }],
             ..Default::default()
-        }
-        .into(),
+        }),
     ];
 
     for packet in packets {
@@ -1079,7 +1063,7 @@ fn absolute_actor_move_rejects_truncated_and_trailing_bodies() {
 
 #[test]
 fn allowlisted_movement_correction_is_materialized_and_normalized() {
-    let packet: Packet = CorrectPlayerMovePredictionPacket {
+    let packet: Packet = crate::Packet::new(CorrectPlayerMovePredictionPacket {
         pos: Vec3 {
             x: 27.5,
             y: 111.0,
@@ -1094,8 +1078,7 @@ fn allowlisted_movement_correction_is_materialized_and_normalized() {
         on_ground: true,
         tick: PlayerInputTick { inputtick: 55 },
         ..Default::default()
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode movement correction");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw movement correction");
@@ -1124,7 +1107,7 @@ fn allowlisted_movement_correction_is_materialized_and_normalized() {
 
 #[test]
 fn allowlisted_biome_definitions_are_materialized_and_normalized() {
-    let packet: Packet = BiomeDefinitionListPacket {
+    let packet: Packet = crate::Packet::new(BiomeDefinitionListPacket {
         mapof_biomenamestodata: vec![BiomeDefinitionListPacketMapofBiomenamestodataItem {
             // The key indexes into the string list; the id is the biome's own.
             key: 0,
@@ -1140,8 +1123,7 @@ fn allowlisted_biome_definitions_are_materialized_and_normalized() {
         stringlist: BiomeStringList {
             strings: vec!["plains".into()],
         },
-    }
-    .into();
+    });
     let mut batch = crate::encode(&packet).expect("encode biome definitions");
     batch.advance(1);
     let raw = decode_packet_raw(&mut batch).expect("raw biome definitions");

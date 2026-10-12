@@ -5,13 +5,12 @@ use jolyne::raw::{RawPacket, decode_packet_raw};
 use valentine::bedrock::version::v1_26_51::{ActorRuntimeId, ShowCreditsPacket};
 
 fn raw_credits(runtime_id: u64, credits_state: i32) -> RawPacket {
-    let packet: crate::Packet = ShowCreditsPacket {
+    let packet: crate::Packet = crate::Packet::new(ShowCreditsPacket {
         player_runtime_id: ActorRuntimeId {
             actor_runtime_id: runtime_id,
         },
         credits_state,
-    }
-    .into();
+    });
     let mut frame = BytesMut::new();
     packet
         .data

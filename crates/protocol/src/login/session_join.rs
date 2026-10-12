@@ -227,13 +227,12 @@ fn varuint32_len(value: u32) -> usize {
 
 /// The Transfer packet a core Transfer message stands for.
 pub(crate) fn transfer_packet(transfer: &SessionTransfer) -> Packet {
-    TransferPacket {
+    crate::Packet::new(TransferPacket {
         server_address: transfer.address.clone(),
         server_port: transfer.port,
         reload_world: transfer.reload_world,
         gatherings_configuration: None,
-    }
-    .into()
+    })
 }
 
 /// The Disconnect packet a core Disconnect message stands for; a reason this protocol does not
@@ -245,15 +244,14 @@ pub(crate) fn disconnect_packet(disconnect: &SessionDisconnect) -> Packet {
         .expect("a buffer accepts a varint");
     let reason = EnumsConnectionDisconnectFailReason::decode(&mut reason.freeze(), ())
         .unwrap_or(EnumsConnectionDisconnectFailReason::Unknown);
-    DisconnectPacket {
+    crate::Packet::new(DisconnectPacket {
         reason,
         hide_disconnection_screen: disconnect.hide_screen,
         messages: DisconnectPacketMessages {
             message: disconnect.message.clone(),
             filtered_message: disconnect.filtered_message.clone(),
         },
-    }
-    .into()
+    })
 }
 
 #[cfg(all(test, unix))]

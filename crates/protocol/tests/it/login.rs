@@ -278,11 +278,10 @@ async fn wait_for_startup_marker(
 
 /// Builds an application-owned barrier that the upstream can observe on the wire.
 fn startup_marker(timestamp: u64) -> protocol::Packet {
-    jolyne::valentine::NetworkStackLatencyPacket {
+    protocol::Packet::new(jolyne::valentine::NetworkStackLatencyPacket {
         creation_time: timestamp,
         is_from_server: false,
-    }
-    .into()
+    })
 }
 
 /// Waits for the external harness in a blocking context on the tests' multithreaded runtime.
@@ -691,13 +690,10 @@ async fn assert_core_frame_payloads(session: &mut protocol::PlaySession) {
         (0..1024 * 1024).map(|index| (index % 251) as u8).collect(),
     ] {
         session
-            .send(
-                ScriptMessagePacket {
-                    message_id: "framing".into(),
-                    message_value: payload.clone(),
-                }
-                .into(),
-            )
+            .send(protocol::Packet::new(ScriptMessagePacket {
+                message_id: "framing".into(),
+                message_value: payload.clone(),
+            }))
             .await
             .expect("send binary frame");
         let reply = tokio::time::timeout(LOGIN_TIMEOUT, session.recv())

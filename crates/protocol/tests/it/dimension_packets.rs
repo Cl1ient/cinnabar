@@ -22,7 +22,7 @@ fn dimension_change_retains_respawn_and_optional_loading_identifier() {
                 loading_screen_id,
             };
             let Some(WorldEvent::ChangeDimension(event)) =
-                into_world_event(packet.into(), 0).unwrap()
+                into_world_event(protocol::Packet::new(packet), 0).unwrap()
             else {
                 panic!("dimension transfer event");
             };

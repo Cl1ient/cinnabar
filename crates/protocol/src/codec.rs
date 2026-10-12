@@ -136,7 +136,7 @@ pub fn decode_batch(mut bytes: Bytes) -> Result<Vec<Packet>, ProtocolError> {
                 remaining: frame.remaining(),
             });
         }
-        packets.push(Packet::new(header, data));
+        packets.push(Packet::from_parts(header, data));
     }
     Ok(packets)
 }

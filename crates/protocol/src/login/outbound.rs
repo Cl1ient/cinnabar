@@ -22,7 +22,7 @@ impl PlaySession<SessionTransport> {
                 .stream
                 .take_finish_loading_packets()
                 .into_iter()
-                .map(Packet::from)
+                .map(Packet::new)
                 .collect(),
         })
     }

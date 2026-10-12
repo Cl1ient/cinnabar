@@ -209,6 +209,10 @@ fn template_model(
                 material_indices.insert(quad.material, index);
                 index
             };
+            let grid = assets.texture_source_grid(assets.material(quad.material).texture);
+            for uv in &mut quad.uvs {
+                *uv = uv.map(|axis| axis >> grid);
+            }
             quad.material = material_index;
             quads.push(quad);
         }

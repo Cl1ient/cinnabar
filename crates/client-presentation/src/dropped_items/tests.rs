@@ -1,6 +1,98 @@
 use super::*;
 
 #[test]
+fn potted_models_sample_the_exposed_server_texture_grid() {
+    let side = 64;
+    let pixels = image::RgbaImage::from_fn(side, side, |x, y| {
+        image::Rgba([(x * 4) as u8, (y * 4) as u8, 91, 255])
+    })
+    .into_raw();
+    let quad = assets::ModelQuad {
+        positions: [[36, 256, 36], [220, 256, 220], [220, 64, 220], [36, 64, 36]],
+        uvs: [[0, 0], [4096, 0], [4096, 4096], [0, 4096]],
+        material: 0,
+        flags: assets::MODEL_QUAD_FLAG_TWO_SIDED,
+    };
+    let cropped = assets::ModelQuad {
+        uvs: [[512, 1024], [3584, 1024], [3584, 3072], [512, 3072]],
+        ..quad
+    };
+    for grid in [0, 1, 2] {
+        let overlay = assets::BlockOverlay {
+            visuals: vec![assets::BlockVisual {
+                faces: [0; 6],
+                flags: assets::BlockFlags::empty(),
+                kind: VisualKind::Model,
+                support: assets::VisualSupport::VanillaFallback,
+                contributor_role: assets::ContributorRole::Primary,
+                model_template: 1,
+                animation: assets::NO_ANIMATION,
+                variant: 0,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
+            }],
+            light_properties: vec![assets::LightProperties::default()],
+            materials: vec![assets::Material {
+                texture: assets::TextureRef::new(1, 0).unwrap(),
+                ..assets::Material::unvaried()
+            }],
+            model_templates: vec![
+                assets::ModelTemplate {
+                    quad_start: 0,
+                    quad_count: 2,
+                    flags: assets::MODEL_TEMPLATE_FLAG_POTTED_PLANT,
+                },
+                assets::ModelTemplate {
+                    quad_start: 2,
+                    quad_count: 1,
+                    flags: 0,
+                },
+            ],
+            model_quads: vec![quad, cropped, quad],
+            texture: Some(assets::TextureArray {
+                layers: 1,
+                mips: assets::build_texture_mip_chain(pixels.clone().into(), side).unwrap(),
+            }),
+            texture_source_sizes: vec![[side as u16 >> grid; 2]],
+            texture_source_grids: vec![grid],
+            ..assets::BlockOverlay::default()
+        };
+        let runtime = RuntimeAssets::diagnostic()
+            .with_block_overlay(1, &overlay)
+            .unwrap();
+        let mut cache = ModelCache::default();
+        cache.begin_frame();
+        cache.finish_demand();
+        let handle = DroppedItemPublisher::potted_model(&mut cache, &runtime, 1).unwrap();
+        let DroppedItemModel::Block(model) = &cache.models[handle as usize] else {
+            panic!("pot contents must retain their model");
+        };
+        assert_eq!(model.materials.len(), 1);
+        assert_eq!(model.quads.len(), 2);
+        let sprite = &model.materials[0].0;
+        assert_eq!(sprite.rgba8.as_ref(), pixels);
+        for (retained, authored) in model.quads.iter().zip([quad, cropped]) {
+            assert_eq!(retained.positions, authored.positions);
+            // Sample interior points in both axes to detect flips and incorrect grid regions.
+            for (u, v) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {
+                let sample = |uv: [[u16; 2]; 4], scale: f32| {
+                    let x = (f32::from(uv[0][0]) * (1.0 - u) + f32::from(uv[1][0]) * u) * scale;
+                    let y = (f32::from(uv[0][1]) * (1.0 - v) + f32::from(uv[3][1]) * v) * scale;
+                    (x as usize, y as usize)
+                };
+                let (x, y) = sample(retained.uvs, side as f32 / 4096.0);
+                let (expected_x, expected_y) = sample(authored.uvs, (side >> grid) as f32 / 4096.0);
+                let offset = (y * side as usize + x) * 4;
+                assert_eq!(
+                    &sprite.rgba8[offset..offset + 4],
+                    &[(expected_x * 4) as u8, (expected_y * 4) as u8, 91, 255],
+                    "grid {grid}, sample ({u}, {v})"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn falling_blocks_keep_non_cube_world_geometry_and_cube_controls() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let target: serde_json::Value =

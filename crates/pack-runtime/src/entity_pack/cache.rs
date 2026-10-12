@@ -233,3 +233,7 @@ pub(super) static ENTITY_CACHE: EntityCache = EntityCache {
 #[cfg(test)]
 #[path = "cache_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "reload_tests.rs"]
+mod reload_tests;

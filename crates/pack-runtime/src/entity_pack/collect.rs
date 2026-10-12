@@ -98,7 +98,7 @@ pub fn collect_files(
 ) -> Vec<(Box<str>, Vec<u8>)> {
     let mut files = Vec::new();
     let entities = unique_entities(view);
-    let attachables = attachables::collect(view, vanilla_pack_dir);
+    let attachables = attachables::collect(view, vanilla, vanilla_pack_dir);
     let mut references = References::default();
     for (_, bytes) in entities.iter().chain(&attachables) {
         if let Ok(actor) = serde_json::from_slice::<Value>(bytes) {

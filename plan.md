@@ -2911,6 +2911,11 @@ texture, tint and sample point are unmatched), pack attachables (held/worn on pl
 (pack bindings win by item identifier; pack property defaults seed only from `entities/` in
 resource packs), rigs depending on vanilla clips are attributed as fallbacks; server pack admission converts first-entry priority into low-to-high merge layers. No vanilla acceptance gate is closed by this change.
 
+Texture-only equipment overrides inherit base attachable documents from the entity-reference
+sidecar, so hot reload can resolve worn armour without loose resource files. Rebuild entity
+assets to emit those documents; older sidecars retain the loose-file fallback. Compiles and
+equipment artwork continue to use the accepted pack stack's content identity.
+
 2026-10-12 protocol codec: `protocol` decodes and encodes through protocolgen's generated
 contract crate (`bedrock-protocol-1-26-51`, contract 1), vendored byte for byte and pinned by
 `assets/bedrock-target.json`; Valentine and its normalization tool are removed, and the

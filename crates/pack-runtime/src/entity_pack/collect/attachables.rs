@@ -2,8 +2,10 @@
 
 use super::*;
 
+/// Inherits matching base documents from the sidecar, with loose files for older sidecars.
 pub(super) fn collect(
     view: &LayeredPackView,
+    vanilla: Option<&VanillaEntityRefs>,
     vanilla_pack_dir: Option<&Path>,
 ) -> Vec<(Box<str>, Vec<u8>)> {
     let mut files = view
@@ -21,9 +23,9 @@ pub(super) fn collect(
                 .or_else(|| path.strip_suffix(".tga"))
         })
         .collect::<BTreeSet<_>>();
-    let Some(root) = vanilla_pack_dir.filter(|_| !texture_stems.is_empty()) else {
+    if texture_stems.is_empty() {
         return files;
-    };
+    }
     let authored_paths = files
         .iter()
         .map(|(path, _)| path.clone())
@@ -33,6 +35,42 @@ pub(super) fn collect(
         .filter_map(|(_, bytes)| parse_pack_json(bytes))
         .flat_map(|value| bound_items(&value))
         .collect::<BTreeSet<_>>();
+    let installed;
+    let inherited = match vanilla.filter(|refs| !refs.attachables.is_empty()) {
+        Some(refs) => &refs.attachables,
+        None => {
+            installed = installed_attachables(vanilla_pack_dir);
+            &installed
+        }
+    };
+    for (relative, value) in inherited {
+        if authored_paths.contains(relative.as_str())
+            || bound_items(value)
+                .iter()
+                .any(|item| authored_items.contains(item))
+        {
+            continue;
+        }
+        let mut referenced = BTreeSet::new();
+        collect_texture_strings(value, &mut referenced);
+        if referenced
+            .iter()
+            .any(|stem| texture_stems.contains(stem.as_str()))
+            && let Ok(bytes) = serde_json::to_vec(value)
+        {
+            files.push((relative.as_str().into(), bytes));
+        }
+    }
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files
+}
+
+/// Reads bounded base documents when an older sidecar has no retained attachables.
+fn installed_attachables(root: Option<&Path>) -> BTreeMap<String, Value> {
+    let mut files = BTreeMap::new();
+    let Some(root) = root else {
+        return files;
+    };
     let mut directories = vec![root.join("attachables")];
     while let Some(directory) = directories.pop() {
         let Ok(entries) = std::fs::read_dir(directory) else {
@@ -54,9 +92,6 @@ pub(super) fn collect(
                 continue;
             };
             let relative = relative.to_string_lossy().replace('\\', "/");
-            if authored_paths.contains(relative.as_str()) {
-                continue;
-            }
             let Ok(file) = std::fs::File::open(&path) else {
                 continue;
             };
@@ -72,28 +107,13 @@ pub(super) fn collect(
             let Some(value) = parse_pack_json(&bytes) else {
                 continue;
             };
-            if bound_items(&value)
-                .iter()
-                .any(|item| authored_items.contains(item))
-            {
-                continue;
-            }
-            let mut referenced = BTreeSet::new();
-            collect_texture_strings(&value, &mut referenced);
-            if referenced
-                .iter()
-                .any(|stem| texture_stems.contains(stem.as_str()))
-                && let Ok(bytes) = serde_json::to_vec(&value)
-            {
-                files.push((relative.into(), bytes));
-            }
+            files.insert(relative, value);
         }
     }
-    // File-system enumeration order must not decide which variant wins compilation.
-    files.sort_by(|a, b| a.0.cmp(&b.0));
     files
 }
 
+/// Item identifiers supplied by one attachable document, including owner-specific variants.
 fn bound_items(value: &Value) -> Vec<String> {
     let description = &value["minecraft:attachable"]["description"];
     if let Some(items) = description["item"].as_object() {

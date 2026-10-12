@@ -7,7 +7,7 @@ use super::*;
 
 const MAX_GEOMETRY_TEXT_BYTES: usize = 8 * 1024 * 1024;
 
-/// Reads the pack's named render controllers, animations, animation controllers and geometry.
+/// Retains the pack's render dependencies and attachable documents for later pack compiles.
 pub fn compile_vanilla_entity_refs(root: &Path) -> Result<VanillaEntityRefs, AssetError> {
     let mut refs = VanillaEntityRefs::new();
     for (family, key) in [
@@ -34,6 +34,16 @@ pub fn compile_vanilla_entity_refs(root: &Path) -> Result<VanillaEntityRefs, Ass
                 target.insert(name.clone(), definition.clone());
             }
             let _ = relative;
+        }
+    }
+    let mut files = Vec::new();
+    collect_optional_family(root, "attachables", &["json"], &mut files)?;
+    for (relative, absolute) in files {
+        let bytes = read_bounded_source(root, &absolute)?;
+        if let Ok(value) = parse_semantic_json(&absolute, &bytes)
+            && value["minecraft:attachable"]["description"].is_object()
+        {
+            refs.attachables.insert(relative.into_string(), value);
         }
     }
     let mut files = Vec::new();
@@ -89,4 +99,27 @@ pub fn compile_vanilla_entity_refs(root: &Path) -> Result<VanillaEntityRefs, Ass
         }
     }
     Ok(refs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidecars_retain_nested_attachables_without_unrelated_json() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("attachables/nested");
+        std::fs::create_dir_all(&directory).unwrap();
+        let attachable = serde_json::json!({"minecraft:attachable": {"description": {
+            "identifier": "fixture:chestplate",
+            "textures": {"default": "textures/fixture/armor"}
+        }}});
+        std::fs::write(directory.join("armor.json"), attachable.to_string()).unwrap();
+        std::fs::write(directory.join("unrelated.json"), "{}").unwrap();
+        let refs = compile_vanilla_entity_refs(root.path()).unwrap();
+        assert_eq!(
+            refs.attachables,
+            BTreeMap::from([("attachables/nested/armor.json".into(), attachable)])
+        );
+    }
 }

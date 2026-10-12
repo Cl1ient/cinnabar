@@ -74,7 +74,42 @@ fn retained_inventory_cell_answers_empty_after_occupied_and_can_be_refilled() {
             bound.children[0].properties["#item_renderer_data"],
             expected
         );
-        assert_eq!(icons.len(), usize::from(occupied));
+        assert_eq!(icons.len(), 1, "empty cells reserve their stable entry");
+        if occupied {
+            assert_eq!(icons[0], icon);
+        }
+    }
+}
+
+#[test]
+fn emptying_a_cell_keeps_other_cells_icon_bindings() {
+    let frame = HudFrame::default();
+    let mut stack = NetworkItemStack::empty();
+    stack.network_id = 1;
+    stack.count = 1;
+    let icon = IconRef {
+        page: 0,
+        uv: [0, 0, 16, 16],
+        glint: false,
+    };
+    let mut reference = None;
+    for occupied in [true, false] {
+        let mut icons = Vec::new();
+        let mut cells = Cells {
+            frame: &frame,
+            icons: &mut icons,
+        };
+        cells.cell(occupied.then_some(&stack), occupied.then_some(icon), None);
+        let other = cells.cell(Some(&stack), Some(icon), None);
+        let binding = &other.values["#item_renderer_data"];
+        if let Some(reference) = &reference {
+            assert_eq!(
+                binding, reference,
+                "moving one item must not change another cell's binding"
+            );
+        } else {
+            reference = Some(binding.clone());
+        }
     }
 }
 
@@ -94,5 +129,5 @@ fn occupied_cell_without_art_explicitly_clears_the_old_icon() {
         cell.values["#item_renderer_data"],
         json_ui::Scalar::Json(Value::Null)
     );
-    assert!(icons.is_empty());
+    assert_eq!(icons.len(), 1);
 }

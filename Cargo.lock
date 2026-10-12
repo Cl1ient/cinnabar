@@ -125,6 +125,7 @@ dependencies = [
  "render-api",
  "render-model",
  "sha2",
+ "simulation-clock",
  "tracing",
  "world",
 ]
@@ -712,6 +713,7 @@ dependencies = [
  "server-experience",
  "sha2",
  "sim",
+ "simulation-clock",
  "tempfile",
  "test-time",
  "thiserror 2.0.18",
@@ -2112,6 +2114,7 @@ dependencies = [
  "render-api",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "test-time",
  "thiserror 2.0.18",
  "tracing",
@@ -2258,6 +2261,7 @@ dependencies = [
  "server-experience",
  "sha2",
  "sim",
+ "simulation-clock",
  "test-time",
  "windows-sys 0.61.2",
  "world",
@@ -2344,6 +2348,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sim",
+ "simulation-clock",
  "thiserror 2.0.18",
  "ui",
  "world",
@@ -2383,6 +2388,7 @@ dependencies = [
  "protocol",
  "serde_json",
  "server-experience",
+ "simulation-clock",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -2476,6 +2482,7 @@ dependencies = [
  "serde_json",
  "server-experience",
  "sha2",
+ "simulation-clock",
  "tempfile",
  "test-time",
  "thiserror 2.0.18",
@@ -2499,6 +2506,7 @@ dependencies = [
  "protocol",
  "render-api",
  "sha2",
+ "simulation-clock",
  "test-time",
  "thiserror 2.0.18",
  "tracing",
@@ -3702,6 +3710,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sim",
+ "simulation-clock",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4252,6 +4261,7 @@ dependencies = [
  "assets",
  "bytes",
  "protocol",
+ "simulation-clock",
  "serde",
  "serde_json",
  "sha2",
@@ -5614,6 +5624,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
  "thiserror 2.0.18",
 ]
@@ -5927,6 +5938,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
  "test-time",
  "thiserror 2.0.18",
@@ -6298,6 +6310,7 @@ dependencies = [
  "render-api",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
  "tracing",
  "world",
@@ -6327,6 +6340,7 @@ dependencies = [
  "render-model",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
  "test-time",
  "tracy-client",
@@ -6774,6 +6788,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "thiserror 2.0.18",
  "world",
 ]
@@ -6799,6 +6814,10 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "simulation-clock"
+version = "0.1.12"
 
 [[package]]
 name = "slab"

@@ -158,7 +158,7 @@ pub use item::{
     ActorActionEvent, ActorActionKind, ActorHandedness, ArmorEquipmentEvent, EquipmentEvent,
     FoodProperties, HOTBAR_SLOT_COUNT, ItemActorEvent, ItemAttackCooldown, ItemAttackTiming,
     ItemBook, ItemComponents, ItemDisplay, ItemPacketError, ItemRegistryEntry, ItemRegistryEvent,
-    ItemRegistryVersion, ItemStackFacts, ItemStackFactsCache, KineticWeaponTiming,
+    ItemRegistryVersion, ItemStackFacts, ItemStackFactsCache, ItemUseCooldown, KineticWeaponTiming,
     MAX_ACTION_IDENTIFIER_BYTES, MAX_ANIMATE_ENTITY_IDS, MAX_ANIMATION_IDENTIFIER_BYTES,
     MAX_BOOK_PAGES, MAX_ITEM_EXTRA_BYTES, MAX_ITEM_REGISTRY_ENTRIES, NetworkItemStack, item_book,
     item_bundle_id, item_charged_projectile, item_custom_color, item_display,

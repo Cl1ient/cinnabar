@@ -14,6 +14,28 @@ fn art(page: u16) -> IconRef {
 }
 
 #[test]
+fn reserved_empty_icon_indices_never_render() {
+    let icons = [
+        IconRef {
+            uv: [0; 4],
+            ..art(0)
+        },
+        art(1),
+    ];
+    let data = [("#item_renderer_data".into(), json!(0))]
+        .into_iter()
+        .collect();
+    assert!(
+        icon(&data, &icons, &[]).is_none(),
+        "a retained index must not draw an empty cell"
+    );
+    let data = [("#item_renderer_data".into(), json!(1))]
+        .into_iter()
+        .collect();
+    assert_eq!(icon(&data, &icons, &[]), Some(&icons[1]));
+}
+
+#[test]
 fn explicit_empty_never_falls_back_to_the_alternate_item_lookup() {
     let icons = [art(0), art(1)];
     let alternate = [(42, art(2))];

@@ -262,7 +262,7 @@ fn diagnostics_sample_once_per_tick_and_skip_hidden_frames() {
     }
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
-        u64::from(world::TICKS_PER_SECOND) as usize + 1
+        u64::from(simulation_clock::TICKS_PER_SECOND) as usize + 1
     );
     assert_eq!(
         app.world().resource::<DebugOverlayState>().timing.fps,
@@ -372,14 +372,14 @@ fn warmed_diagnostic_publication_allocates_nothing_when_values_stay_equal() {
     world.resource_mut::<ButtonInput<KeyCode>>().clear();
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     world.clear_trackers();
     let before = thread_allocations();
     for _ in 0..10 {
         world
             .resource_mut::<Time<Real>>()
-            .advance_by(world::TICK_DURATION);
+            .advance_by(simulation_clock::TICK_DURATION);
         system.run((), &mut world).unwrap();
     }
     let allocations = thread_allocations() - before;
@@ -445,7 +445,7 @@ fn covering_screens_skip_expensive_diagnostic_gathers() {
         .set_menu_view(Some(menu));
     app.world_mut()
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     app.update();
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
@@ -459,7 +459,7 @@ fn covering_screens_skip_expensive_diagnostic_gathers() {
         .set_loading_stage(Some(LoadingStage::Connecting));
     app.world_mut()
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     app.update();
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
@@ -470,7 +470,7 @@ fn covering_screens_skip_expensive_diagnostic_gathers() {
         .set_loading_stage(None);
     app.world_mut()
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     app.update();
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
@@ -500,7 +500,7 @@ fn first_unchanged_diagnostic_tick_allocates_nothing() {
     world.clear_trackers();
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     let before = crate::tests::alloc_count::thread_allocations();
     system.run((), &mut world).unwrap();
     let allocations = crate::tests::alloc_count::thread_allocations() - before;
@@ -540,7 +540,7 @@ fn ui_frame_counters_wait_for_the_frame_statistics_window() {
     });
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     assert!(
         !world
@@ -550,7 +550,7 @@ fn ui_frame_counters_wait_for_the_frame_statistics_window() {
     );
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(FRAME_TIMING_WINDOW - world::TICK_DURATION);
+        .advance_by(FRAME_TIMING_WINDOW - simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     assert!(
         world
@@ -601,7 +601,7 @@ fn first_eligible_publication_samples_frame_counters() {
         .set_menu_view(None);
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     let state = world.resource::<DebugOverlayState>();
     assert_eq!(state.gathers, 1);
@@ -639,7 +639,7 @@ fn changed_diagnostic_rows_warm_both_buffers_before_the_next_unchanged_tick() {
         world.clear_trackers();
         world
             .resource_mut::<Time<Real>>()
-            .advance_by(world::TICK_DURATION);
+            .advance_by(simulation_clock::TICK_DURATION);
         system.run((), &mut world).unwrap();
         assert!(
             world
@@ -652,7 +652,7 @@ fn changed_diagnostic_rows_warm_both_buffers_before_the_next_unchanged_tick() {
         world.clear_trackers();
         world
             .resource_mut::<Time<Real>>()
-            .advance_by(world::TICK_DURATION);
+            .advance_by(simulation_clock::TICK_DURATION);
         let gathers = world.resource::<DebugOverlayState>().gathers;
         let before = thread_allocations();
         system.run((), &mut world).unwrap();

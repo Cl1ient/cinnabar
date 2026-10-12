@@ -460,6 +460,7 @@ fn local_feed(main_hand: Option<&str>) -> LocalPlayerFeed {
         pitch: 40.0,
         main_hand: main_hand.map(Arc::from),
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_slot: 0,
         main_hand_stack_id: None,

@@ -69,7 +69,7 @@ impl UiRuntime {
         );
         clock.elapsed_millis = clock
             .elapsed_millis
-            .saturating_add(delta.min(world::MAX_FRAME_ELAPSED.as_millis() as u64));
+            .saturating_add(delta.min(simulation_clock::MAX_FRAME_ELAPSED.as_millis() as u64));
         if let Some(activation) = self.item_activation.as_mut() {
             activation.elapsed_millis = clock
                 .elapsed_millis

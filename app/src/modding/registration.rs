@@ -1,18 +1,18 @@
 //! Per-user extension registration; polling, compilation and status I/O stay off the frame thread.
 
 use sha2::Digest;
-use std::io::Write;
 mod presentation;
 mod source;
+mod status;
 #[cfg(test)]
 mod tests;
 
 use presentation::{clear_owned_state, clear_presentation, refresh_presentation};
-use source::{Observation, observe, source_snapshot};
+use source::{observe, source_snapshot};
+use status::{bounded_message, write_status};
 
 use std::{
-    fs::{self, OpenOptions},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -36,8 +36,6 @@ const REGISTRATION_FILE: &str = "local-mod.json";
 const STATUS_FILE: &str = "local-mod.status.json";
 const MAX_BYTES: usize = 16 * 1024;
 const MAX_REQUEST_BYTES: usize = 64;
-const MAX_MESSAGE_BYTES: usize = 512;
-static WRITE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -870,37 +868,4 @@ fn worker(
     drop(receive_results);
     drop(loads);
     let _ = loader.join();
-}
-
-fn bounded_message(message: &str) -> String {
-    let mut output = String::new();
-    for character in message.chars().filter(|character| !character.is_control()) {
-        if output.len() + character.len_utf8() > MAX_MESSAGE_BYTES {
-            break;
-        }
-        output.push(character);
-    }
-    output
-}
-
-fn write_status(path: &Path, status: &Status) -> std::io::Result<()> {
-    let bytes = serde_json::to_vec(status)?;
-    let parent = path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("status directory unavailable"))?;
-    fs::create_dir_all(parent)?;
-    let id = WRITE_ID.fetch_add(1, Ordering::Relaxed);
-    let temporary = path.with_extension(format!("pending-{}-{id}", std::process::id()));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        file.write_all(&bytes)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&temporary, path)
-    })();
-    let _ = fs::remove_file(temporary);
-    result
 }

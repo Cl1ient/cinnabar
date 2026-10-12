@@ -317,7 +317,8 @@ impl UiPresentationRuntime {
             let (identifier, metadata) = Self::item_icon_key(
                 &hand.identifier,
                 hand.metadata,
-                hand.charged_projectile.as_deref(),
+                hand.use_animation,
+                hand.charged_projectile,
                 None,
             );
             self.gui_models

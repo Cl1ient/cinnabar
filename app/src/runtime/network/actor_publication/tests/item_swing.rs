@@ -19,11 +19,11 @@ fn select_authored_swing(world: &mut World, ticks: u32) {
             .unwrap()
             .seed_item_registry(protocol::ItemRegistryEvent {
                 entries: [protocol::ItemRegistryEntry {
-                    components: None,
                     identifier: identifier.clone(),
                     network_id,
                     component_based: true,
                     version: protocol::ItemRegistryVersion::DataDriven,
+                    components: None,
                     component_digest: [0; 32],
                     negotiated_max_stack_size: Some(1),
                     canonical_empty_component_data: true,

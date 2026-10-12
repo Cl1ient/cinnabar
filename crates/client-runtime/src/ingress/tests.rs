@@ -176,6 +176,6 @@ fn pending_event_count_includes_the_buffered_head() {
     assert_eq!(network.pending_event_count(), 0);
     *network.world_ingress_mut().1 = Some(event(1, movement()));
     assert_eq!(network.pending_event_count(), 1);
-    network.world_ingress_mut().1.take();
+    let _ = network.world_ingress_mut().1.take();
     assert_eq!(network.pending_event_count(), 0);
 }

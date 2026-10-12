@@ -5,7 +5,7 @@ use super::post_regressions::execute;
 fn authored_materials_decode_dielectric_metal_subsurface_and_bounded_relief() {
     let source = crate::material_shader::source(
         r#"
-#import cinnabar::enhanced_pbr::{material_basis,material_normal,material_response,material_relief_weight,material_relief_ray}
+import render::enhanced::pbr::{material_basis,material_normal,material_response,material_relief_weight,material_relief_ray};
 // ENHANCED_PBR_CONSTANTS
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,8>;
 @compute @workgroup_size(1) fn regression(){
@@ -54,7 +54,7 @@ fn authored_materials_decode_dielectric_metal_subsurface_and_bounded_relief() {
 #[test]
 fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces() {
     use wgpu::util::DeviceExt;
-    let instance = wgpu::Instance::new(&Default::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!("missing fixture: native GPU adapter for authored parallax");
         return;
@@ -65,7 +65,7 @@ fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces
     }))
     .unwrap();
     let declarations = format!(
-        "@group(0) @binding({}) var enhanced_normal_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_normal_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_sampler:sampler;\n@group(0) @binding({}) var<storage,read> enhanced_texture_refs:array<u32>;\n",
+        "import render::enhanced::pbr::{{MaterialBasis,material_basis,material_normal,material_specular_aa,blend_material_sample,material_relief_weight,material_relief_ray,PBR_REF_LABPBR,authored_texture_slot,authored_layer}};\n@group(0) @binding({}) var enhanced_normal_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_normal_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_0:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_mer_page_1:texture_2d_array<f32>;\n@group(0) @binding({}) var enhanced_sampler:sampler;\n@group(0) @binding({}) var<storage,read> enhanced_texture_refs:array<u32>;\n",
         crate::material_shader::ENHANCED_NORMAL_TEXTURE_BINDINGS[0],
         crate::material_shader::ENHANCED_NORMAL_TEXTURE_BINDINGS[1],
         crate::material_shader::ENHANCED_MER_TEXTURE_BINDINGS[0],
@@ -226,7 +226,10 @@ fn production_parallax_intersects_height_and_skips_unmapped_or_subpixel_surfaces
         .slice(..)
         .map_async(wgpu::MapMode::Read, |r| r.unwrap());
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("readback buffer is mapped");
     let values: &[[f32; 4]] = bytemuck::cast_slice(&bytes);
     assert!(
         (values[0][0] - (0.5 - assets::PBR_HEIGHT_SCALE * (1.0 - 128.0 / 255.0))).abs() < 0.0001

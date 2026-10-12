@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, launcher::menu::MenuScreen};
 
 /// Captures comparable CPU build work without using timing as a CI assertion.
 #[test]
@@ -62,7 +62,7 @@ fn oreui_work_probe() {
                     }
                     _ => {}
                 }
-                let (elapsed, count) = crate::allocation_count::count(|| bench.frame());
+                let (elapsed, count) = test_alloc::count(|| bench.frame());
                 samples.push(elapsed);
                 allocations += count;
             }

@@ -26,14 +26,15 @@ pub(crate) const WORLD_CLOCK_WORDS: usize = 4;
 pub(crate) const WORLD_UNIFORM_BYTES: u64 =
     ((WORLD_CLOCK_WORDS + meshing::biome_lattice::BIOME_QUERY_TABLE_WORDS) * 4) as u64;
 
-const TEXTURE_WIDTH_SHIFT: u32 = 11;
-const TEXTURE_HEIGHT_SHIFT: u32 = 21;
-const TEXTURE_DIMENSION_MASK: u32 = 1023;
-const TEXTURE_GRID_MARKER: u32 = 1 << 9;
-const TEXTURE_GRID_SHIFT: u32 = 4;
-const TEXTURE_SIZE_EXPONENT_MASK: u32 = 15;
+// Admitted source sizes are powers of two up to MAX_TILE_SIZE. Four bits store
+// log2(size) + 1; zero means the physical page size. Grid occupies five more bits.
+const TEXTURE_SIZE_BITS: u32 = 4;
+const TEXTURE_WIDTH_SHIFT: u32 = assets::TEXTURE_LAYER_MASK.count_ones();
+const TEXTURE_HEIGHT_SHIFT: u32 = TEXTURE_WIDTH_SHIFT + TEXTURE_SIZE_BITS;
+const TEXTURE_GRID_SHIFT: u32 = TEXTURE_HEIGHT_SHIFT + TEXTURE_SIZE_BITS;
+const TEXTURE_SIZE_EXPONENT_MASK: u32 = (1 << TEXTURE_SIZE_BITS) - 1;
 
-/// Encodes admitted image dimensions in GPU-only reference bits, preserving page and layer.
+/// Encodes admitted power-of-two dimensions above the shared page and layer fields.
 pub(crate) fn gpu_texture_ref(
     reference: assets::TextureRef,
     dimensions: [u32; 2],
@@ -42,25 +43,25 @@ pub(crate) fn gpu_texture_ref(
     if dimensions == [page_size; 2] {
         reference.raw()
     } else {
+        debug_assert!(
+            dimensions
+                .iter()
+                .all(|size| size.is_power_of_two() && *size <= assets::MAX_TILE_SIZE)
+        );
         reference.raw()
-            | (dimensions[0] << TEXTURE_WIDTH_SHIFT)
-            | (dimensions[1] << TEXTURE_HEIGHT_SHIFT)
+            | ((dimensions[0].ilog2() + 1) << TEXTURE_WIDTH_SHIFT)
+            | ((dimensions[1].ilog2() + 1) << TEXTURE_HEIGHT_SHIFT)
     }
 }
 
-/// Encodes the terrain entry's UV grid together with its source pixel dimensions.
+/// Adds the terrain entry's UV-grid exponent without changing dimensions, page or layer.
 pub(crate) fn gpu_grid_texture_ref(
     reference: assets::TextureRef,
     dimensions: [u32; 2],
     page_size: u32,
     grid: u8,
 ) -> u32 {
-    if grid == 0 {
-        return gpu_texture_ref(reference, dimensions, page_size);
-    }
-    let width =
-        TEXTURE_GRID_MARKER | (u32::from(grid) << TEXTURE_GRID_SHIFT) | dimensions[0].ilog2();
-    reference.raw() | (width << TEXTURE_WIDTH_SHIFT) | (dimensions[1] << TEXTURE_HEIGHT_SHIFT)
+    gpu_texture_ref(reference, dimensions, page_size) | (u32::from(grid) << TEXTURE_GRID_SHIFT)
 }
 
 /// Packs the animation clock before the immutable biome lookup tables for one shared uniform.
@@ -95,7 +96,7 @@ pub(crate) fn native_leaf_sampler_descriptor() -> wgpu::SamplerDescriptor<'stati
         address_mode_w: wgpu::AddressMode::ClampToEdge,
         min_filter: wgpu::FilterMode::Nearest,
         mag_filter: wgpu::FilterMode::Nearest,
-        mipmap_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
         lod_max_clamp: (assets::VANILLA_TERRAIN_MIP_COUNT - 1) as f32,
         ..Default::default()
     }
@@ -109,7 +110,7 @@ pub(crate) fn pbr_sampler_descriptor() -> wgpu::SamplerDescriptor<'static> {
         address_mode_w: wgpu::AddressMode::Repeat,
         min_filter: wgpu::FilterMode::Linear,
         mag_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
         anisotropy_clamp: 8,
         ..Default::default()
     }
@@ -119,15 +120,14 @@ pub(crate) fn source(source: &str) -> String {
     source
         .replace("ACTOR_LIGHT_WORLD_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_WORLD))
         .replace("ACTOR_LIGHT_DIRECTIONAL_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_DIRECTIONAL))
-        .replace("GPU_TEXTURE_GRID_MARKER", &format!("{TEXTURE_GRID_MARKER}u"))
+        .replace("TEXTURE_LAYER_MASK", &format!("{}u", assets::TEXTURE_LAYER_MASK))
         .replace("GPU_TEXTURE_GRID_SHIFT", &format!("{TEXTURE_GRID_SHIFT}u"))
         .replace("GPU_TEXTURE_SIZE_EXPONENT_MASK", &format!("{TEXTURE_SIZE_EXPONENT_MASK}u"))
         .replace("TERRAIN_QUAD_SHIFT_MASK", &format!("{}u", assets::TERRAIN_QUAD_SHIFT_MASK))
         .replace("GPU_TEXTURE_WIDTH_SHIFT", &format!("{TEXTURE_WIDTH_SHIFT}u"))
         .replace("GPU_TEXTURE_HEIGHT_SHIFT", &format!("{TEXTURE_HEIGHT_SHIFT}u"))
-        .replace("GPU_TEXTURE_DIMENSION_MASK", &format!("{TEXTURE_DIMENSION_MASK}u"))
         .replace("BLOCK_OVERLAY_FACE_OFFSET", &format!("{:?}", render_api::BLOCK_OVERLAY_FACE_OFFSET))
-        .replace("// ENHANCED_PBR_SAMPLING", include_str!("enhanced/pbr_sampling.wgsl"))
+        .replace("// ENHANCED_PBR_SAMPLING", include_str!("enhanced/pbr_sampling.wesl"))
         .replace("// ENHANCED_PBR_CONSTANTS", &format!(
             "const PBR_REF_COLOR:u32={}u;\nconst PBR_REF_NORMAL:u32={}u;\nconst PBR_REF_HEIGHT:u32={}u;\nconst PBR_REF_MATERIAL:u32={}u;\nconst PBR_REF_LABPBR:u32={}u;\nconst PBR_REF_OCCLUSION:u32={}u;\nconst PBR_REF_SUBSURFACE:u32={}u;\nconst PBR_HEIGHT_SCALE:f32={:?};",
             assets::PBR_REF_COLOR, assets::PBR_REF_NORMAL, assets::PBR_REF_HEIGHT, assets::PBR_REF_MATERIAL,
@@ -141,32 +141,36 @@ pub(crate) fn source(source: &str) -> String {
         .replace("ACTOR_MATERIAL_AUTHORED_FLAG", &format!("{}u", assets::EntityRenderMaterialState::AUTHORED))
         .replace("ACTOR_MATERIAL_ALPHA_TEST_FLAG", &format!("{}u", assets::EntityRenderMaterialState::ALPHA_TEST))
         .replace("ACTOR_MATERIAL_CULL_FLAG", &format!("{}u", assets::EntityRenderMaterialState::CULL))
+        .replace("ACTOR_MATERIAL_BLEND_FLAG", &format!("{}u", assets::EntityRenderMaterialState::BLEND))
         .replace("ACTOR_MATERIAL_EMISSIVE_FLAG", &format!("{}u", assets::EntityRenderMaterialState::EMISSIVE))
         .replace("ACTOR_MATERIAL_DISABLE_OVERLAY_FLAG", &format!("{}u", assets::EntityRenderMaterialState::DISABLE_OVERLAY))
         .replace("ACTOR_ALPHA_TEST_THRESHOLD", &format!("{:?}", assets::ENTITY_ALPHA_TEST_THRESHOLD))
         .replace("MODEL_RANDOM_OFFSET_FLAG", &format!("{}u", meshing::MODEL_REF_FLAG_RANDOM_OFFSET))
         .replace("MODEL_BAMBOO_FLAG", &format!("{}u", assets::MODEL_TEMPLATE_FLAG_BAMBOO))
-        .replace("BAMBOO_STEM_SIDE_QUAD_MASK", &format!("{}u", meshing::bamboo::STEM_SIDE_QUAD_MASK))
-        .replace("BAMBOO_POSITIVE_X_LEAF_QUAD", &format!("{}u", meshing::bamboo::POSITIVE_X_LEAF_QUAD))
-        .replace("BAMBOO_POSITIVE_Z_LEAF_QUAD", &format!("{}u", meshing::bamboo::POSITIVE_Z_LEAF_QUAD))
+        .replace("BAMBOO_STEM_SIDE_QUAD_MASK", &format!("{}u", assets::bamboo::STEM_SIDE_QUAD_MASK))
+        .replace("BAMBOO_POSITIVE_X_LEAF_QUAD", &format!("{}u", assets::bamboo::POSITIVE_X_LEAF_QUAD))
+        .replace("BAMBOO_POSITIVE_Z_LEAF_QUAD", &format!("{}u", assets::bamboo::POSITIVE_Z_LEAF_QUAD))
         .replace("// BAMBOO_CONSTANTS", &format!(
             "const BAMBOO_OFFSET_MIN: f32 = {:?};\nconst BAMBOO_OFFSET_STEP: f32 = {:?};\nconst BAMBOO_STEM_UV_STRIDE: f32 = {:?};\nconst BAMBOO_LEAF_PLANE_INSET: f32 = {:?};",
             block_transform::bamboo::OFFSET_MIN,
             block_transform::bamboo::OFFSET_STEP,
-            meshing::bamboo::STEM_UV_STRIDE,
-            meshing::bamboo::LEAF_PLANE_INSET,
+            assets::bamboo::STEM_UV_STRIDE,
+            assets::bamboo::LEAF_PLANE_INSET,
         ))
         .replace("MODEL_LILY_PAD_FLAG", &format!("{}u", assets::MODEL_TEMPLATE_FLAG_LILY_PAD))
         .replace("MATERIAL_DISABLE_AO_FLAG", &format!("{}u", assets::MATERIAL_FLAG_DISABLE_AO))
         .replace("MATERIAL_DISABLE_FACE_DIMMING_FLAG", &format!("{}u", assets::MATERIAL_FLAG_DISABLE_FACE_DIMMING))
-        .replace("// ANIMATION_GPU_LAYOUT", "struct AnimationGpu { frame_start: u32, frame_count: u32, ticks_per_frame: u32, flags: u32, uv_scale: f32 }")
+        .replace("MATERIAL_CAULDRON_WATER_FLAG", &format!("{}u", assets::MATERIAL_FLAG_CAULDRON_WATER))
+        .replace("CAULDRON_WATER_COLOUR", &format!("vec4<f32>({}) / 255.0", assets::CAULDRON_WATER_COLOUR.map(|c| format!("{c}.0")).join(", ")))
+        .replace("// ANIMATION_GPU_LAYOUT", "struct AnimationGpu { frame_start: u32, frame_count: u32, ticks_per_frame: u32, flags: u32 }")
         .replace("// LIQUID_GEOMETRY_CONSTANTS", &format!(
-            "const LIQUID_FACE_INSET: f32 = {:?};\nconst LIQUID_TOP_INSET_BIT: u32 = {}u;\nconst LIQUID_DEPTH_WRITE_BIT: u32 = {}u;\nconst LIQUID_TWO_SIDED_BIT: u32 = {}u;\nconst TRANSPARENT_WATER_DRAW_FLAG: u32 = {}u;",
+            "const LIQUID_FACE_INSET: f32 = {:?};\nconst LIQUID_TOP_INSET_BIT: u32 = {}u;\nconst LIQUID_DEPTH_WRITE_BIT: u32 = {}u;\nconst LIQUID_TWO_SIDED_BIT: u32 = {}u;\nconst TRANSPARENT_WATER_DRAW_FLAG: u32 = {}u;\nconst TRANSPARENT_WATER_RECORD_FLAG: u32 = {}u;",
             meshing::liquid::LIQUID_FACE_INSET,
             meshing::liquid::LIQUID_TOP_INSET_BIT,
             meshing::liquid::LIQUID_DEPTH_WRITE_BIT,
             meshing::liquid::LIQUID_TWO_SIDED_BIT,
             meshing::liquid::TRANSPARENT_WATER_DRAW_FLAG,
+            meshing::liquid::TRANSPARENT_WATER_RECORD_FLAG,
         ))
         .replace(
             "// ACTOR_SHADE_CONSTANTS",
@@ -267,9 +271,4 @@ pub(crate) fn source(source: &str) -> String {
             "ENHANCED_TEXTURE_REF_BINDING",
             &ENHANCED_TEXTURE_REF_BINDING.to_string(),
         )
-}
-
-/// Loads generated material contracts with the shader source.
-pub(crate) fn shader(source: impl Into<String>, path: impl Into<String>) -> bevy::shader::Shader {
-    crate::shader_safety::from_wgsl(self::source(&source.into()), path)
 }

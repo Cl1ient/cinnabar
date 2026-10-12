@@ -11,9 +11,9 @@ const DEPTH: &str = r#"
 @fragment fn fragment()->@builtin(frag_depth) f32{return 0.25;}
 "#;
 const SAMPLE: &str = r#"
-#import cinnabar::enhanced_local_lights::{local_light_visibility,local_block_residual}
-#import cinnabar::enhanced_view::local_material_lighting
-#import cinnabar::enhanced_water::water_fresnel
+import render::enhanced::local_lights::{local_light_visibility,local_block_residual};
+import render::enhanced::view::local_material_lighting;
+import render::enhanced::water::water_fresnel;
 @group(0) @binding(0) var shadow_map:texture_depth_2d_array;
 @group(0) @binding(1) var shadow_sampler:sampler_comparison;
 @group(0) @binding(31) var<storage,read_write> result:array<vec4<f32>,5>;
@@ -74,13 +74,13 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
         primitive: Default::default(),
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Always,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Always),
             stencil: Default::default(),
             bias: Default::default(),
         }),
         multisample: Default::default(),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
     let receiver = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -292,8 +292,13 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
             });
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receiver.recv().unwrap().unwrap();
-        let values =
-            bytemuck::cast_slice::<u8, [f32; 4]>(&readback.slice(..).get_mapped_range()).to_vec();
+        let values = bytemuck::cast_slice::<u8, [f32; 4]>(
+            &readback
+                .slice(..)
+                .get_mapped_range()
+                .expect("readback buffer is mapped"),
+        )
+        .to_vec();
         readback.unmap();
         values
     };
@@ -432,9 +437,7 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
     );
 
     let render_device = RenderDevice::from(device);
-    let render_queue = RenderQueue(std::sync::Arc::new(
-        bevy::render::renderer::WgpuWrapper::new(queue),
-    ));
+    let render_queue = RenderQueue::new(queue);
     let mut view = LocalLightView::new(&render_device);
     let mut source = LocalLightSources::default();
     source.chunks.insert(
@@ -445,7 +448,8 @@ fn native_point_shadow_face_and_embedded_viewport_reject_occluded_receivers() {
             dimension: 0,
         }],
     );
-    let clip = Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.05, 96.0);
+    let clip =
+        glam::camera::rh::proj::directx::perspective(std::f32::consts::FRAC_PI_2, 1.0, 0.05, 96.0);
     view.prepare(
         &render_device,
         &render_queue,

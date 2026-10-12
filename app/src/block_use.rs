@@ -5,128 +5,67 @@
 //! is also applied locally; the server's block updates stay authoritative. Air
 //! use lives in `item_use`.
 
+use client_interaction::block_use::{
+    BlockUseRuntime, FramePick, held_block_store_id, predicted_placement, predicted_toggle,
+    verified_use_selection,
+};
+
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::{
     ecs::system::SystemParam,
-    prelude::{Query, Real, Res, ResMut, Resource, Time, Window, With},
+    prelude::{Query, Real, Res, ResMut, Time, Window, With},
     window::PrimaryWindow,
 };
+use client_runtime::network::NetworkHandle;
 use protocol::{ItemUseTrigger, PlayerGameMode, PlayerInputMode};
 use semantic_input::Action;
 use sim::PaletteWorld;
 
-use crate::{
-    interaction_authority::FrozenBlockObservation,
-    local_player::{InteractionOriginSnapshot, LocalViewPose},
-    melee::{MeleeRuntime, SwingTracker, obstructs_placement},
-    menu::MenuRuntime,
-    mining::{
-        FrozenMiningSelection, creative_reach, protocol_input_mode, survival_reach,
-        verified_selection,
+use client_shell::ui_resources::UiRuntimeResource;
+use {
+    crate::runtime::world::ClientWorld,
+    client_interaction::{
+        melee::{MeleeRuntime, SwingTracker},
+        movement::{LocalMovementEffectTimeline, MovementTicker, PhysicsCollisionRegistries},
     },
-    movement::{LocalMovementEffectTimeline, MovementTicker, PhysicsCollisionRegistries},
-    runtime::{network::NetworkHandle, world::ClientWorld},
-    semantic_controls::SemanticInputSnapshot,
+    client_presentation::local_player::{InteractionOriginSnapshot, LocalViewPose},
+    client_state::SemanticInputSnapshot,
+    gameplay::{
+        interaction_authority::FrozenBlockObservation, melee::obstructs_placement,
+        mining::protocol_input_mode,
+    },
 };
-use client_ui::ui_runtime::UiRuntime;
 
 mod actor_use;
 
-pub(crate) use gameplay::block_use::{
-    LocalUse, RepeatClock, UseSurroundings, placement_cell, use_packets,
-};
+use gameplay::block_use::{LocalUse, RepeatClock, UseSurroundings, placement_cell, use_packets};
 
-mod prediction_frames;
-
-/// Bevy resource adapter for the gameplay block_use owner.
-#[derive(Resource, Debug, Default)]
-pub(crate) struct BlockUseRuntime {
-    owner: gameplay::block_use::BlockUseRuntime,
-    /// The latest published frame pick; build actions run before the next publication.
-    previous_pick: Option<FramePick>,
-    pub(crate) prediction_frames: prediction_frames::PredictionFrames,
-}
-impl std::ops::Deref for BlockUseRuntime {
-    type Target = gameplay::block_use::BlockUseRuntime;
-    /// Borrows the gameplay owner at the existing ordered system boundary.
-    fn deref(&self) -> &Self::Target {
-        &self.owner
-    }
-}
-impl std::ops::DerefMut for BlockUseRuntime {
-    /// Mutates the gameplay owner without duplicating its state.
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.owner
-    }
-}
-
-/// One frame's eye ray; vanilla builds from the picks of the frames before each tick.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct FramePick {
-    /// Movement authority when the pick was taken; a correction or reanchor retires it.
-    authority: (u64, u64),
-    session_generation: u64,
-    actor_session_id: u64,
-    origin: bevy::prelude::Vec3,
-    direction: bevy::prelude::Vec3,
-}
-
-impl BlockUseRuntime {
-    /// Keeps this frame's published pick for the build actions before the next tick.
-    pub(crate) fn retain_pick(
-        &mut self,
-        origin: &InteractionOriginSnapshot,
-        authority: (u64, u64),
-    ) {
-        self.previous_pick = origin.outbound_ray().map(|ray| FramePick {
-            authority,
-            session_generation: ray.session_generation(),
-            actor_session_id: ray.actor_session_id(),
-            origin: ray.origin(),
-            direction: ray.direction(),
-        });
-    }
-
-    /// The retained pick, if it was taken under `authority`.
-    fn pick(&self, authority: (u64, u64)) -> Option<FramePick> {
-        self.previous_pick
-            .filter(|previous| previous.authority == authority)
-    }
-}
-
-/// Retains each frame's published (and assisted) pick for the next tick's build actions.
-pub(crate) fn retain_block_use_pick(
-    origin: Res<InteractionOriginSnapshot>,
-    movement: Res<MovementTicker>,
-    mut runtime: ResMut<BlockUseRuntime>,
-) {
-    runtime.retain_pick(&origin, movement.interaction_authority_identity());
-}
 #[derive(SystemParam)]
 pub(crate) struct BlockUseContext<'w, 's> {
     input: Res<'w, SemanticInputSnapshot>,
     frame: Res<'w, bevy::diagnostic::FrameCount>,
     origin: Res<'w, InteractionOriginSnapshot>,
     view: Res<'w, LocalViewPose>,
-    ui: Res<'w, UiRuntime>,
-    menu: Res<'w, MenuRuntime>,
+    ui: Res<'w, UiRuntimeResource>,
+    focus: Res<'w, client_state::ScreenFocus>,
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     client_world: ResMut<'w, ClientWorld>,
     collisions: Res<'w, PhysicsCollisionRegistries>,
     effects: Res<'w, LocalMovementEffectTimeline>,
     melee: Res<'w, MeleeRuntime>,
-    network: Res<'w, NetworkHandle>,
+    network: Res<'w, NetworkHandle<PackApplication>>,
     time: Res<'w, Time<Real>>,
-    audio_cues: bevy::prelude::MessageWriter<'w, crate::audio::LocalBlockCue>,
+    audio_cues: bevy::prelude::MessageWriter<'w, client_audio::audio::LocalBlockCue>,
 }
 
 pub(crate) fn produce_block_use(
-    mut player_runtime: bevy::prelude::ResMut<crate::player_runtime::PlayerRuntime>,
+    mut player_runtime: bevy::prelude::ResMut<client_state::PlayerRuntime>,
     mut context: BlockUseContext,
     mut runtime: ResMut<BlockUseRuntime>,
     mut swings: ResMut<SwingTracker>,
-    mut item_use: ResMut<crate::item_use::ItemUseRuntime>,
+    mut item_use: ResMut<client_interaction::item_use::ItemUseRuntime>,
     movement: Res<MovementTicker>,
-    physics: Option<Res<crate::movement::LocalPhysicsController>>,
+    physics: Option<Res<client_interaction::movement::LocalPhysicsController>>,
 ) {
     let pick = runtime.pick(movement.interaction_authority_identity());
     if context.input.phase(Action::Use).pressed {
@@ -142,12 +81,12 @@ pub(crate) fn produce_block_use(
 
     runtime.synchronize(movement.interaction_authority_identity());
     let focused =
-        !context.menu.is_visible() && context.windows.single().is_ok_and(|window| window.focused);
+        !context.focus.menu_visible && context.windows.single().is_ok_and(|window| window.focused);
     let game_mode = player_runtime.facts.player_game_mode();
     let caps = player_runtime.facts.game_mode_capabilities();
     let Some((input, caps)) = context.input.snapshot().zip(caps).filter(|(input, caps)| {
         focused
-            && !context.ui.ui_focused(&player_runtime)
+            && !context.focus.ui_focused
             && caps.can_use_blocks()
             && input.input_mode != semantic_input::InputMode::Touch
     }) else {
@@ -220,6 +159,7 @@ pub(crate) fn produce_block_use(
         &context,
         &mut runtime,
         &selection,
+        player_runtime.facts.player_game_mode(),
         pick.expect("the current pick was checked above"),
         &state,
         input_mode,
@@ -239,6 +179,7 @@ pub(crate) fn produce_block_use(
             movement.interaction_authority_identity().1,
             &runtime,
             pick,
+            trigger,
             &state,
         ),
         context.client_world.stream.as_ref(),
@@ -391,7 +332,7 @@ pub(crate) fn produce_block_use(
         let position = destination;
         context
             .audio_cues
-            .write(crate::audio::LocalBlockCue::Place {
+            .write(client_audio::audio::LocalBlockCue::Place {
                 position,
                 block_runtime_id: stream.resolve_block_network_id(u32::from_ne_bytes(
                     observed.selection.item.block_runtime_id().to_ne_bytes(),
@@ -435,6 +376,7 @@ fn use_surroundings(
             stream.collision_store(),
             context.collisions.registry(mode),
             stream.current_dimension(),
+            Default::default(),
         );
         if world.is_air(position).ok()? {
             return Some("minecraft:air".to_owned());
@@ -509,87 +451,6 @@ fn use_surroundings(
 
 mod target;
 use target::observe_use_target;
-
-/// The selected stack, unless its own slot awaits a gesture answer or the hotbar change is unsent.
-/// Requests on other cells never hold a use back: vanilla acts on the predicted held item.
-pub(crate) fn verified_use_selection(
-    player_runtime: &crate::player_runtime::PlayerRuntime,
-    ui: &UiRuntime,
-) -> Option<FrozenMiningSelection> {
-    let ledger = ui.inventory_ledger(player_runtime);
-    let selection = verified_selection(player_runtime)?;
-    if ledger.slot_gesture_pending(selection.slot)
-        || ledger.resync_required()
-        || player_runtime
-            .inventory
-            .pending_hotbar_selection()
-            .is_some()
-    {
-        return None;
-    }
-    Some(selection)
-}
-
-#[cfg(test)]
-mod tests;
-
-/// Adapts the published world to gameplay's switch prediction.
-fn predicted_toggle(
-    collisions: &PhysicsCollisionRegistries,
-    stream: &chunk_pipeline::WorldStream,
-    clicked: u32,
-) -> Option<u32> {
-    gameplay::block_use::predicted_toggle(
-        collisions,
-        &crate::movement::GameplayWorldView(stream),
-        clicked,
-    )
-}
-/// Adapts the published world to gameplay's placement prediction.
-fn predicted_placement(
-    collisions: &PhysicsCollisionRegistries,
-    stream: &chunk_pipeline::WorldStream,
-    item_block: i32,
-    observed: &FrozenBlockObservation,
-    surroundings: &UseSurroundings,
-    view: LocalViewPose,
-) -> Option<gameplay::block_use::PredictedPlacement> {
-    let mode = stream.network_id_mode();
-    let world = PaletteWorld::new(
-        stream.collision_store(),
-        collisions.registry(mode),
-        stream.current_dimension(),
-    );
-    let range = stream
-        .authority()
-        .dimension_range(stream.current_dimension())?;
-    let (yaw, pitch, _) = view.rotation().to_euler(bevy::math::EulerRot::YXZ);
-    gameplay::block_use::predicted_placement(
-        collisions,
-        mode,
-        held_block_store_id(stream, item_block)?,
-        &world,
-        &gameplay::block_use::PlacementContext {
-            clicked: observed.target.position,
-            input: gameplay::placement_state::PlacementInput {
-                face: observed.target.face,
-                click_position: observed.target.relative_hit,
-                yaw: gameplay::movement::wire_yaw(180.0 - yaw.to_degrees()),
-                pitch: -pitch.to_degrees(),
-            },
-            surroundings,
-            build_height: range.base_sub_chunk_y * 16
-                ..(range.base_sub_chunk_y + range.sub_chunk_count as i32) * 16,
-        },
-    )
-}
-/// Resolves an item block through the production gameplay boundary.
-fn held_block_store_id(stream: &chunk_pipeline::WorldStream, item_block: i32) -> Option<u32> {
-    gameplay::block_use::held_block_store_id(
-        &crate::movement::GameplayWorldView(stream),
-        item_block,
-    )
-}
 
 /// Sends the held-use stop action before dropping its successful-placement history.
 fn stop_block_use(runtime: &mut BlockUseRuntime, context: &BlockUseContext, repress: bool) -> bool {

@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, ui::IconRef};
 
 fn catalog(color: [u8; 4]) -> Arc<assets::RuntimeEquipmentCatalog> {
     use assets::*;
@@ -17,6 +17,7 @@ fn catalog(color: [u8; 4]) -> Arc<assets::RuntimeEquipmentCatalog> {
                 geometry: reference("geometry.fixture"),
                 texture: reference("textures/models/armor/fixture"),
                 material: "armor".into(),
+                color_mask: assets::EquipmentColorMask::NoMask,
                 render_controller: "controller.render.armor".into(),
                 first_person: EquipmentTransform::NeedsMeasurement,
                 third_person: EquipmentTransform::NeedsMeasurement,
@@ -46,7 +47,8 @@ fn wear_chestplate(presentation: &mut UiPresentationRuntime) {
 
 #[test]
 fn previews_use_pack_armor_reuse_unchanged_pages_and_restore_base_on_removal() {
-    let mut presentation = UiPresentationRuntime::new(crate::test_support::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let base = catalog([22, 33, 44, 255]);
     let pack = catalog([77, 88, 99, 255]);
     presentation.set_equipment_catalog(Some(base.clone()));
@@ -93,7 +95,8 @@ fn previews_use_pack_armor_reuse_unchanged_pages_and_restore_base_on_removal() {
 
 #[test]
 fn actor_flame_reclamation_keeps_session_armor_texels_addressable() {
-    let mut presentation = UiPresentationRuntime::new(crate::test_support::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let side = render_model::UI_MODEL_ATLAS_SIDE;
     let page =
         UiTexturePage::owned([side; 2], vec![255; (side * side * 4) as usize].into()).unwrap();
@@ -135,7 +138,8 @@ fn actor_flame_reclamation_keeps_session_armor_texels_addressable() {
 
 #[test]
 fn review_session_armor_reclaims_optional_models_without_losing_flames() {
-    let mut presentation = UiPresentationRuntime::new(crate::test_support::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let side = render_model::UI_MODEL_ATLAS_SIDE;
     let page =
         UiTexturePage::owned([side; 2], vec![255; (side * side * 4) as usize].into()).unwrap();

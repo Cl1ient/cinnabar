@@ -28,6 +28,8 @@ mod depth_tests;
 #[cfg(feature = "enhanced")]
 mod exposure;
 #[cfg(feature = "enhanced")]
+use bevy::prelude::IntoScheduleConfigs;
+#[cfg(feature = "enhanced")]
 mod frame;
 #[cfg(feature = "enhanced")]
 mod gpu;
@@ -47,12 +49,9 @@ mod local_shadow_history;
 mod materials;
 #[cfg(feature = "enhanced")]
 mod multiple_scattering;
-pub(crate) mod plugin;
-mod quality;
-pub(crate) use quality::EnhancedQualityBudget;
-pub use render_api::EnhancedQuality;
 #[cfg(all(test, feature = "enhanced"))]
 mod pbr_tests;
+pub(crate) mod plugin;
 #[cfg(feature = "enhanced")]
 mod post;
 #[cfg(all(test, feature = "enhanced"))]
@@ -82,9 +81,18 @@ mod validation;
 #[cfg(all(test, feature = "enhanced"))]
 mod water_tests;
 
-use bevy::{
-    asset::uuid_handle, prelude::*, render::extract_component::ExtractComponent, shader::Shader,
+#[cfg(feature = "enhanced")]
+use render_model::enhanced_rendering_enabled;
+#[cfg(feature = "enhanced")]
+use {
+    render_api::EnhancedQuality,
+    render_scene::{
+        EnhancedRendering,
+        enhanced::{EnhancedShadowDebug, MAX_SHADOW_CASCADES},
+    },
 };
+
+use bevy::{asset::uuid_handle, prelude::*, shader::Shader};
 
 #[cfg(feature = "enhanced")]
 pub(crate) use frame::CascadeBounds;
@@ -165,94 +173,6 @@ impl EnhancedRenderSupport {
         {
             let _ = limits;
             Self(false)
-        }
-    }
-}
-
-/// Per-camera opt-in for Enhanced rendering, with resolved depth for post effects.
-#[derive(Component, ExtractComponent, Clone, Copy, Debug, PartialEq)]
-#[require(Msaa::Off, bevy::render::camera::TemporalJitter)]
-pub struct EnhancedRendering {
-    pub quality: EnhancedQuality,
-    pub shadows: bool,
-    pub shadow_resolution: u32,
-    /// Sun shadow cascades, clamped to `2..=MAX_SHADOW_CASCADES`.
-    pub shadow_cascades: u32,
-    /// Blocks from the camera covered by the last cascade.
-    pub shadow_distance: f32,
-    pub bloom: bool,
-    pub light_shafts: bool,
-    pub waving: bool,
-    pub water_reflections: bool,
-    /// Enables the Cook-Torrance material response and linear PBR atlas layers.
-    pub physically_based: bool,
-    /// Enables depth-based ambient visibility and short sun contact shadows.
-    pub ssao: bool,
-    /// Enables the procedural 3D cloud layer composited over sky pixels.
-    pub volumetric_clouds: bool,
-    /// Enables reprojection, clipping, and disocclusion rejection of world history.
-    pub temporal_aa: bool,
-    /// Internal reflection views never sample their own captures or run post effects.
-    pub reflection_capture: bool,
-    /// Local diagnostic output; never changes the server or vanilla views.
-    pub shadow_debug: EnhancedShadowDebug,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[repr(u32)]
-pub enum EnhancedShadowDebug {
-    #[default]
-    Off = 0,
-    Cascades = 1,
-    Visibility = 2,
-    DepthNear = 3,
-    DepthMiddle = 4,
-    DepthFar = 5,
-}
-
-pub const MAX_SHADOW_CASCADES: u32 = 3;
-/// Smallest shadow target admitted by frame preparation.
-#[cfg(feature = "enhanced")]
-pub(crate) const MIN_SHADOW_RESOLUTION: u32 = 256;
-
-impl Default for EnhancedRendering {
-    fn default() -> Self {
-        let quality = EnhancedQuality::default();
-        let (shadow_resolution, shadow_distance) = quality.shadow_settings();
-        Self {
-            quality,
-            shadows: true,
-            shadow_resolution,
-            shadow_cascades: MAX_SHADOW_CASCADES,
-            shadow_distance,
-            bloom: true,
-            light_shafts: true,
-            waving: true,
-            water_reflections: true,
-            physically_based: true,
-            ssao: true,
-            volumetric_clouds: true,
-            temporal_aa: true,
-            reflection_capture: false,
-            shadow_debug: EnhancedShadowDebug::Off,
-        }
-    }
-}
-
-/// Maximum shadow reach admitted for hidden development captures.
-#[cfg(feature = "enhanced-diagnostics")]
-const DIAGNOSTIC_SHADOW_DISTANCE: f32 = 24.0;
-
-#[cfg(feature = "enhanced-diagnostics")]
-impl EnhancedRendering {
-    /// Bounds the actual Enhanced passes for hidden development captures.
-    #[must_use]
-    pub fn bounded_diagnostic(self) -> Self {
-        Self {
-            shadow_resolution: MIN_SHADOW_RESOLUTION,
-            shadow_distance: DIAGNOSTIC_SHADOW_DISTANCE,
-            waving: false,
-            ..self
         }
     }
 }

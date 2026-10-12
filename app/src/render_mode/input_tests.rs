@@ -1,5 +1,6 @@
 use super::*;
-use crate::{app::ClientFrameSet, player_runtime::PlayerRuntime};
+use client_shell::ui_resources::UiRuntimeResource;
+use client_state::{ClientFrameSet, PlayerRuntime};
 use client_ui::ui_runtime::{SequencedUiEvent, UiRuntime};
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ enum KeyboardOwner {
 /// Opens a real keyboard-owning screen during the shared UI authority step.
 fn open_keyboard_owner(
     owner: Res<KeyboardOwner>,
-    mut ui: ResMut<UiRuntime>,
+    mut ui: ResMut<UiRuntimeResource>,
     mut player: ResMut<PlayerRuntime>,
 ) {
     match *owner {
@@ -54,8 +55,8 @@ fn enhanced_shortcuts_respect_chat_and_form_keyboard_ownership() {
         app.init_resource::<Assets<bevy::shader::Shader>>()
             .init_resource::<RuntimeSettings>()
             .init_resource::<ButtonInput<KeyCode>>()
-            .insert_resource(PlayerRuntime::new(1))
-            .insert_resource(UiRuntime::new(1))
+            .insert_resource(PlayerRuntime(player_state::PlayerState::new(1)))
+            .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
             .insert_resource(owner)
             .add_plugins(RenderModePlugin::new(Some(RenderMode::Enhanced), false))
             .insert_resource(render::EnhancedRenderSupport(true))

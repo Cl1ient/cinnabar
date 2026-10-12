@@ -1,6 +1,5 @@
 //! Real keyboard and production ingress regression for close-response admission.
 
-use crate::player_runtime::PlayerRuntime;
 use bevy::{
     input::{
         ButtonInput, ButtonState,
@@ -11,19 +10,21 @@ use bevy::{
     time::{Real, Time},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window},
 };
+use client_shell::ui_resources::UiRuntimeResource;
+use client_state::PlayerRuntime;
 use protocol::{
     ContainerCloseEvent, ContainerIdentity, ContainerOpenEvent, InventoryAuthority, InventoryEvent,
 };
 
 use crate::ui_runtime::{drain_inventory_authority, drive_chat_keyboard_input};
-use client_ui::ui_runtime::{
-    UiRuntime, flush_inventory_send,
-    inventory_ledger::{GENERIC_STORAGE_WINDOW_TYPE, PERSONAL_INVENTORY_WINDOW_TYPE},
+use {
+    client_ui::ui_runtime::{UiRuntime, flush_inventory_send},
+    inventory::inventory_ledger::{GENERIC_STORAGE_WINDOW_TYPE, PERSONAL_INVENTORY_WINDOW_TYPE},
 };
 
 /// Builds the keyboard fixture with one live domain owner.
 fn app(authority: InventoryAuthority) -> (App, Entity) {
-    let mut player_runtime = PlayerRuntime::new(1);
+    let mut player_runtime = PlayerRuntime(player_state::PlayerState::new(1));
     let mut runtime = UiRuntime::new(1);
     runtime.publish_inventory_authority(&mut player_runtime, authority);
     runtime
@@ -35,7 +36,7 @@ fn app(authority: InventoryAuthority) -> (App, Entity) {
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<AccumulatedMouseMotion>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
         .add_systems(
             Update,
@@ -108,7 +109,7 @@ fn e_key_reopens_after_e_or_escape_and_response_payload_does_not_identify_the_sc
                 for cycle in 0..3 {
                     key(&mut app, window, KeyCode::KeyE, ButtonState::Pressed);
                     assert!(
-                        app.world().resource::<UiRuntime>().inventory_open(),
+                        app.world().resource::<UiRuntimeResource>().inventory_open(),
                         "cycle {cycle}"
                     );
                     assert!(app.world().get::<CursorOptions>(window).unwrap().visible);
@@ -125,7 +126,7 @@ fn e_key_reopens_after_e_or_escape_and_response_payload_does_not_identify_the_sc
                     );
                     key(&mut app, window, KeyCode::KeyE, ButtonState::Released);
                     key(&mut app, window, close_key, ButtonState::Pressed);
-                    assert!(!app.world().resource::<UiRuntime>().inventory_open());
+                    assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
                     assert_eq!(
                         app.world().get::<CursorOptions>(window).unwrap().grab_mode,
                         CursorGrabMode::Locked

@@ -7,7 +7,7 @@ use std::{
 use bevy::prelude::Resource;
 use chunk_pipeline::ViewCohortStatus;
 use client_world::CommittedControlEvent;
-use render::{PresentedFrameAck, TargetRenderExpectation};
+use render_scene::{PresentedFrameAck, TargetRenderExpectation};
 use world::SubChunkKey;
 
 use self::{
@@ -16,12 +16,10 @@ use self::{
     teleport::FullViewTeleportTracker,
     world_ready::{GalleryAnchorEmitter, WorldReadySettler},
 };
-use crate::metrics::TransparentSortMetricsSnapshot;
 
 mod exit;
 use diagnostics::bounded_file;
-pub use diagnostics::markers;
-pub use diagnostics::metrics;
+
 pub mod model_witness;
 pub mod mutation;
 pub mod phase2_evidence;
@@ -38,7 +36,6 @@ mod run;
 pub use exit::AcceptanceExitDecision;
 pub use phase3::Phase3TerminalDrainDecision;
 
-pub use diagnostics::PHASE0_REQUESTED_RADIUS_CHUNKS;
 pub const TRANSPARENT_PRESENTATION_EXIT_GRACE: Duration = Duration::from_secs(2);
 
 #[derive(Resource)]

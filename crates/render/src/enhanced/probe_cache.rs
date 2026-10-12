@@ -45,7 +45,8 @@ pub(super) struct ProbeSchedule {
 
 impl Default for ProbeSchedule {
     fn default() -> Self {
-        let budget = super::super::quality::budget(super::super::EnhancedQuality::default());
+        let budget =
+            render_scene::enhanced::enhanced_quality_budget(render_api::EnhancedQuality::default());
         Self {
             dirty: ALL_FACES,
             populated: 0,

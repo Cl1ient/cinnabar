@@ -28,7 +28,6 @@ pub(in crate::compiler) fn is_cactus_record(record: &RegistryRecord) -> bool {
         && record.contributor_role == ContributorRole::Primary
         && record.flags.is_empty()
         && record.face_coverage == 0
-        && record.collision_seed.shape_id == 84
         && record.collision_seed.confidence == assets::CollisionConfidence::CollisionOnly
         && record.collision_seed.boxes.as_ref()
             == [assets::CollisionBox {
@@ -91,6 +90,7 @@ pub(in crate::compiler) fn cactus_material_descriptors(
         descriptors.push((
             Descriptor {
                 state_variant: 0,
+                flipbook_selector: None,
                 path: path.into(),
                 texture_key: key.into(),
                 flags: MATERIAL_FLAG_ALPHA_CUTOUT,

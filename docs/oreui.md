@@ -3,23 +3,24 @@
 Vanilla draws some screens with OreUI (a web UI bundle, `data/gui/dist/hbui`) instead of JSON-UI.
 Cinnabar uses the target's OreUI Settings layout, including its category sidebar and grouped
 controls. The other routes below retain their documented selection policy. OreUI is drawn in our
-own code with vanilla component geometry, states, spacing and type metrics. Installed runtime
-assets supply native images. Text uses shipped Cinnangles faces; Minecraft content is never
+own code with vanilla component geometry, states, spacing and type metrics, using shipped original
+artwork. Text uses shipped Cinnangles faces; Minecraft content is never
 bundled or committed.
 
 OreUI body text uses Cinnangles Seven and headings use Cinnangles Ten, both derived from the
 shipped Cinnangles Sans. `make font-seven-assets` and `make font-ten-assets` build optional,
 hash-checked carriers ahead of startup. Missing or invalid carriers use the default font.
-Each carrier includes every Unicode scalar mapped by its source face. The sources cover the
-Basic Multilingual Plane. Missing regular, bold, italic and monospace mathematical Latin
+Each face maps its Latin, Greek, Cyrillic and symbol ranges; the shipped Sans carrier, which
+covers the Basic Multilingual Plane, draws every other scalar. Missing regular, bold, italic and monospace mathematical Latin
 letters and digits are derived from the source Latin glyphs when building shipped carriers.
 Bold adds one source texel and italic uses a stepped lean. These original fallback glyphs
 make styled server MOTDs readable; they do not establish native fallback-font parity.
-Sans rasterizes at 18 px/em; Ten, Seven, Five and
-Five Bold rasterize at 20 px/em, so their 64-unit source grid lands on exact texels.
-The carrier table owns raster, line, semantic word-space and ASCII bearing metrics. Text keeps its semantic
-size and tracking, and final unrotated glyph edges snap to device pixels. Fractional scale
-factors can still distribute different screen-pixel widths across source texels.
+Sans rasterizes at 18 px/em. Ten, Seven, Five and Five Bold ship as face bundles of unhinted
+FreeType rasters: a filtered 52 px distance field, plus exact coverage for physical sizes 1-9 px.
+Their outlines use a 1000-unit em; the runtime loader applies generated pair spacing at each
+raster em. The carrier table owns line metrics; source glyphs supply word
+spacing and bearings. Sans pixel-grid text snaps its final unrotated
+glyph edges to device pixels; face rasters draw filtered at their semantic size.
 No game fonts are read by the client.
 
 Five and Five Bold are registered as optional OreUI roles for future screens. Build them with
@@ -33,8 +34,7 @@ python3 tools/fonts/build_faces.py --sans assets/fonts/CinnanglesSans.ttf \
 
 `--reviewed` preserves existing name metadata and timestamps and verifies every generated table.
 It does not establish a license; see [the notices](../THIRD_PARTY_NOTICES.md#cinnangles-fonts).
-Source coverage is complete, but characters absent from the source, script shaping, native
-advance and kerning differences, and per-scale text parity remain open gates.
+Source coverage is complete, but characters absent from the source, script shaping, owner visual acceptance, and live per-scale text parity remain open gates.
 
 ## Screen routes
 
@@ -119,20 +119,24 @@ their native artwork. Live animation review remains open.
 
 ## Runtime artwork
 
-- An available installed bundle supplies its atlases, standalone artwork and animations at
-  runtime. `CINNABAR_OREUI_LOCAL_ASSETS=<install root or its data/gui/dist/hbui>` selects a bundle
-  explicitly. Native button faces use the original state-specific nine-slice images. Switches,
-  sliders, segmented controls and radio diamonds use their native role fills and bevel geometry.
+- Shipped original artwork supplies every OreUI icon, control face, animation and illustration at
+  its native key and dimensions. `tools/oreui_icons` generates the PNG sources and
+  `assets/oreui-icons-source.json`; `make oreui-icons-assets` compiles the hash-checked carrier.
+  Button faces keep the native state-specific nine-slice insets. Switches, sliders, segmented
+  controls and radio diamonds use their native role fills and bevel geometry.
+- An installed bundle supplies only the profile banners and Create New World preview.
+  `CINNABAR_OREUI_LOCAL_ASSETS=<install root or its data/gui/dist/hbui>` instead loads all of its
+  artwork, for comparison captures only.
 - Cinnangles Seven supplies body text and Cinnangles Ten supplies headings. The compiled
   carriers retain each face's em and vertical metrics for semantic sizes, line heights and
   letter spacing. The default HUD and JSON-UI font remains independently selectable.
-- Without a native bundle, drawn artwork remains a diagnostic fallback.
-  The renderer uses that artwork only when a runtime bundle is unavailable. This fallback does not
-  satisfy the native artwork parity gate. One rem is five GUI pixels; one texel is 0.2rem.
+- Without the carrier, drawn artwork remains a diagnostic fallback. Neither look satisfies the
+  native artwork parity gate. One rem is five GUI pixels; one texel is 0.2rem.
 
-Code: `crates/client-ui/src/ui_runtime/presentation/forms/oreui/` (theme, paint, grid, icons,
-widgets, one file per screen) and `crates/client-ui/src/ui_runtime/oreui_assets.rs`
-(the runtime loader). The saved-accounts picker, which vanilla lacks, is an OreUI modal menu. Profile models, feed projections, and value formatting live in
+Code: the `oreui` crate, `crates/oreui/src/` (paint, grid, icons, widgets, one file per screen,
+`images.rs` for the runtime artwork loader and `fonts.rs` for the shipped faces). Its adapters in
+`crates/client-ui/src/ui_runtime/presentation/forms/oreui_runtime.rs` project runtime state into
+its typed inputs. The saved-accounts picker, which vanilla lacks, is an OreUI modal menu. Profile models, feed projections, and value formatting live in
 `crates/launcher/src/menu/`; app owns service polling and command dispatch.
 
 ## Screenshot checks still needed

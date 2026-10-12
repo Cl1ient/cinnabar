@@ -1,6 +1,7 @@
 //! Authored-only replacements preserve the carrier and publish after bounded complete uploads.
 
 use crate::chunk::*;
+use render_scene::{ChunkTextureAssetIdentity, EnhancedTextureAssets};
 
 use super::bind_groups::{ChunkTextureUploadStats, PreparedChunkTextureAssets};
 

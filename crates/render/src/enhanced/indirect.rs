@@ -1,6 +1,5 @@
 //! Bounded, cached resident-grid diffuse transport. Captured reflection cubes are not GI.
 
-use crate::ChunkTextureAssets;
 use bevy::shader::ShaderDefVal;
 use bevy::{
     prelude::*,
@@ -9,6 +8,7 @@ use bevy::{
         renderer::{RenderContext, RenderDevice, RenderQueue},
     },
 };
+use render_scene::ChunkTextureAssets;
 use std::{
     num::NonZeroU64,
     sync::atomic::{AtomicBool, Ordering},
@@ -39,7 +39,7 @@ const BUFFER_WORDS: usize = HEADER_WORDS + CELL_COUNT + PROBE_COUNT as usize * P
 struct GridKey {
     geometry: u64,
     coverage: u64,
-    assets: crate::ChunkTextureAssetIdentity,
+    assets: render_scene::ChunkTextureAssetIdentity,
     tints: meshing::ChunkBiomeTintIdentity,
     origin: IVec3,
     dimension: Option<i32>,
@@ -143,7 +143,7 @@ impl IndirectGridGpu {
         geometry: &IndirectGeometry,
         coverage: &crate::chunk::resident_coverage::ChunkResidentCoverage,
         assets: &ChunkTextureAssets,
-        tints: &crate::ChunkBiomeTints,
+        tints: &render_scene::ChunkBiomeTints,
         camera: Vec3,
         dimension: Option<i32>,
         lighting_signature: u64,
@@ -267,7 +267,7 @@ impl IndirectGridGpu {
             self.lighting = Some(lighting_signature);
         }
         self.batch = if dimension.is_some() {
-            super::quality::budget(self.quality)
+            render_scene::enhanced::enhanced_quality_budget(self.quality)
                 .irradiance_updates
                 .min(PROBE_COUNT - self.cursor)
         } else {
@@ -278,7 +278,7 @@ impl IndirectGridGpu {
                 self.cursor,
                 self.batch,
                 self.epoch,
-                super::quality::budget(self.quality).irradiance_rays,
+                render_scene::enhanced::enhanced_quality_budget(self.quality).irradiance_rays,
             ];
             if self.range != Some(range) {
                 queue.write_buffer(&self.parameters, 0, bytemuck::cast_slice(&range));

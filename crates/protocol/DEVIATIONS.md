@@ -1,7 +1,12 @@
 # Protocol deviations
 
+The protocol crate now decodes and encodes through protocolgen's generated contract crate (see
+`vendor/UPSTREAM.md`). The codec fixes recorded below as local generated-code patches are carried
+by protocolgen's reviewed manifest corrections; the entries remain as the history of each wire
+finding and its fixture.
+
 The historical entries through Phase 0.8 target Bedrock 1.26.30 / protocol
-1001. Valentine/Jolyne is
+1001. The codec and session layer used then were
 based on axolotl-stack commit
 `6f6806e821a579c183c44d786f76d9b358a2b825`; exact wire behaviour is checked
 against gophertunnel commit

@@ -1,9 +1,11 @@
 //! Narrow access to the chunk arena for Enhanced shadow drawing.
 
+use render_scene::ChunkBiomeTints;
+
 use crate::chunk::*;
 use crate::enhanced::CascadeBounds;
 use bevy::camera::primitives::{Aabb, Frustum};
-use bevy::shader::Shader;
+use bevy::{prelude::Handle, shader::Shader};
 
 mod batches;
 pub(crate) use batches::EnhancedGeometryCache;
@@ -185,7 +187,7 @@ fn draw_batch_commands<'w>(
 
 /// Uses the terrain visibility envelope for waving and overhanging models.
 fn chunk_bounds(allocation: &GpuChunkAllocation) -> (Vec3, Vec3) {
-    let origin = queue::chunk_origin(allocation.key);
+    let origin = render_scene::chunk::chunk_origin(allocation.key);
     let aabb = crate::chunk::bounds::aabb(true);
     let center = Vec3::from_array(origin.map(|value| value as f32)) + Vec3::from(aabb.center);
     (center, Vec3::from(aabb.half_extents))

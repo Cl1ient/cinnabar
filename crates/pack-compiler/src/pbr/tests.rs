@@ -347,7 +347,9 @@ fn color_filtering_is_linear_premultiplied_and_cutout_coverage_survives_mips() {
     let middle = &mip.color[1].rgba8;
     assert_eq!(
         middle
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|pixel| pixel[3] >= 128)
             .count(),
         2
@@ -411,7 +413,9 @@ fn normal_mips_are_unit_vectors_and_unresolved_detail_raises_roughness() {
     assert!(
         mip.material[0]
             .rgba8
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .all(|pixel| [229, 237].contains(&pixel[0])),
         "initial normalization must preserve encoded F0/metal identity"
     );

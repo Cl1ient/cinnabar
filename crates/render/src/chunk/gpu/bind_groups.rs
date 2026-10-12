@@ -3,8 +3,16 @@ use super::{
     authored_upload, authored_upload::AuthoredUpload, texture_upload::build_carrier_texture_assets,
 };
 use crate::chunk::*;
+use bevy::color::ColorToPacked;
 #[cfg(feature = "enhanced")]
 use bevy::render::render_resource::TextureViewId;
+
+use render_scene::{
+    BiomeTint, ChunkAnimationClock, ChunkBiomeTints, ChunkRenderInstance,
+    ChunkTextureAssetIdentity, ChunkTextureAssets, ChunkTextureReload, EnhancedTextureAssets,
+    TextureMipUploadPlan, TextureUploadPlanError, plan_texture_mip_uploads,
+    texture_asset_needs_rebuild,
+};
 
 #[cfg(test)]
 use super::texture_upload::build_chunk_texture_assets;
@@ -44,8 +52,7 @@ pub(in crate::chunk) struct MaterialGpu {
     pub(in crate::chunk) variation_weight: u32,
 }
 
-pub(in crate::chunk) const _: () =
-    assert!(std::mem::size_of::<MaterialGpu>() == assets::MATERIAL_BYTES);
+const _: () = assert!(std::mem::size_of::<MaterialGpu>() == assets::MATERIAL_BYTES);
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -54,10 +61,9 @@ pub(in crate::chunk) struct AnimationGpu {
     pub(in crate::chunk) frame_count: u32,
     pub(in crate::chunk) ticks_per_frame: u32,
     pub(in crate::chunk) flags: u32,
-    pub(in crate::chunk) uv_scale: f32,
 }
 
-pub(in crate::chunk) const _: () = assert!(std::mem::size_of::<AnimationGpu>() == 5 * 4);
+const _: () = assert!(std::mem::size_of::<AnimationGpu>() == 4 * 4);
 
 #[repr(C, align(16))]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -73,7 +79,7 @@ pub(in crate::chunk) struct BiomeTintGpu {
     pub(in crate::chunk) seasonal_foliage: [[f32; 4]; assets::SEASONAL_FOLIAGE_COUNT],
 }
 
-pub(in crate::chunk) const _: () =
+const _: () =
     assert!(std::mem::size_of::<BiomeTintGpu>() == 8 * 4 + assets::SEASONAL_FOLIAGE_COUNT * 16);
 
 pub(in crate::chunk) fn pack_linear_rgb10(rgb: [f32; 3]) -> u32 {
@@ -240,7 +246,10 @@ impl ChunkGpuTextureAssets {
     pub(crate) fn shadow_texture_key(&self) -> Option<([TextureViewId; 2], BufferId)> {
         self.prepared.as_ref().map(|prepared| {
             (
-                [prepared.enhanced_views[0].id(), prepared.enhanced_views[1].id()],
+                [
+                    prepared.enhanced_views[0].id(),
+                    prepared.enhanced_views[1].id(),
+                ],
                 prepared.enhanced_texture_refs.id(),
             )
         })
@@ -261,7 +270,10 @@ pub struct ChunkTextureUploadStats {
 pub(in crate::chunk) fn prepare_chunk_texture_assets(
     mut commands: Commands,
     instances: Query<(Entity, &ChunkRenderInstance)>,
-    views: Query<(Entity, &ExtractedView, Has<crate::EnhancedRendering>), With<ExtractedCamera>>,
+    views: Query<
+        (Entity, &ExtractedView, Has<render_scene::EnhancedRendering>),
+        With<ExtractedCamera>,
+    >,
     mut arena: ResMut<ChunkGpuArena>,
     assets: Res<ChunkTextureAssets>,
     render_device: Res<RenderDevice>,
@@ -481,10 +493,9 @@ pub(in crate::chunk) fn encode_model_template_words(assets: &RuntimeAssets) -> V
 pub(in crate::chunk) fn storage_table_fits(
     bytes: usize,
     max_buffer_size: u64,
-    max_binding_size: u32,
+    max_binding_size: u64,
 ) -> bool {
-    u64::try_from(bytes)
-        .is_ok_and(|bytes| bytes <= max_buffer_size && bytes <= u64::from(max_binding_size))
+    u64::try_from(bytes).is_ok_and(|bytes| bytes <= max_buffer_size && bytes <= max_binding_size)
 }
 
 pub(in crate::chunk) fn bind_group_needs_rebuild<K: PartialEq>(

@@ -10,7 +10,7 @@ fn shader(name: &str) -> String {
             .join(name),
     )
     .unwrap_or_else(|error| panic!("read {name}: {error}"));
-    if name == "biome_tint.wgsl" {
+    if name == "biome_tint.wesl" {
         crate::material_shader::bind_biome_tables(&meshing::biome_lattice::shader_source(&source))
     } else {
         source
@@ -19,7 +19,7 @@ fn shader(name: &str) -> String {
 
 #[test]
 fn shared_shader_uses_lattice_kernel_and_uniform_fast_path() {
-    let source = shader("biome_tint.wgsl");
+    let source = shader("biome_tint.wesl");
 
     assert!(source.contains("BIOME_DISTANCE_EPSILON"));
     assert!(source.contains("lattice_point_index(position) * BIOME_POINT_WORDS"));
@@ -29,7 +29,7 @@ fn shared_shader_uses_lattice_kernel_and_uniform_fast_path() {
 
 #[test]
 fn seasonal_shader_uses_bounded_species_cells_and_direct_biome_lookup() {
-    let source = shader("biome_tint.wgsl");
+    let source = shader("biome_tint.wesl");
     assert!(source.contains("seasonal_foliage: array<vec4<f32>, SEASONAL_FOLIAGE_COUNT>"));
     assert!(!source.contains("unpack_linear_rgb10(tint.seasonal_foliage"));
     assert!(source.contains("min(species + exposed, SEASONAL_FOLIAGE_COUNT - 1u)"));
@@ -66,7 +66,7 @@ fn seasonal_shader_uses_bounded_species_cells_and_direct_biome_lookup() {
 
 #[test]
 fn every_tinted_pipeline_calls_the_shared_blender() {
-    for name in ["chunk.wgsl", "model.wgsl", "liquid.wgsl"] {
+    for name in ["chunk.wesl", "model.wesl", "liquid.wesl"] {
         for definitions in [&[][..], &["ENHANCED"][..]] {
             let source = shader_source::standalone(&shader(name), definitions);
             let module = naga::front::wgsl::parse_str(&source).unwrap();
@@ -82,7 +82,7 @@ fn every_tinted_pipeline_calls_the_shared_blender() {
 
 #[test]
 fn foliage_variants_select_their_palette_inside_the_shared_average() {
-    let source = shader("biome_tint.wgsl");
+    let source = shader("biome_tint.wesl");
     assert!(source.contains("fn special_foliage_tint("));
     assert!(
         source.contains("case 0x200u: { return unpack_linear_rgb10(biome_tints[tint].birch); }")
@@ -104,14 +104,14 @@ fn foliage_variants_select_their_palette_inside_the_shared_average() {
 
 #[test]
 fn model_tints_use_the_block_position_for_every_vertex() {
-    let source = shader("model.wgsl");
+    let source = shader("model.wesl");
     assert!(source.contains("out.local_position = block_position;"));
     assert!(source.contains("@interpolate(flat) local_position"));
 }
 
 #[test]
 fn gpu_lattice_count_is_bounded_by_the_cpu_format_even_for_corrupt_words() {
-    let source = shader("biome_tint.wgsl");
+    let source = shader("biome_tint.wesl");
     let standalone = shader_source::standalone(&source, &[]);
     let module = naga::front::wgsl::parse_str(&standalone).unwrap();
     let (_, count) = module
@@ -172,7 +172,7 @@ fn gpu_lattice_count_is_bounded_by_the_cpu_format_even_for_corrupt_words() {
 
 #[test]
 fn biome_reads_check_spans_before_address_addition_and_reject_bad_weights() {
-    let source = shader("biome_tint.wgsl");
+    let source = shader("biome_tint.wesl");
     assert!(source.contains("if (start > length) { return false; }"));
     assert!(source.contains("return words <= length - start;"));
     assert!(
@@ -188,7 +188,7 @@ fn biome_reads_check_spans_before_address_addition_and_reject_bad_weights() {
 /// result and static copy as temps, and rejects a shader over 4096 temp registers.
 #[test]
 fn tinted_pipelines_keep_const_tables_within_the_fxc_temp_budget() {
-    for name in ["chunk.wgsl", "model.wgsl", "liquid.wgsl"] {
+    for name in ["chunk.wesl", "model.wesl", "liquid.wesl"] {
         let standalone = shader_source::standalone(&shader(name), &[]);
         let module = naga::front::wgsl::parse_str(&standalone).unwrap();
         let elements: u32 = module

@@ -9,6 +9,9 @@ pub const LIQUID_DEPTH_WRITE_BIT: u32 = 1 << 31;
 /// First-instance flag of a transparent draw whose instances are transparent liquid refs; the
 /// shared transparent terrain shader otherwise reads them as model draw refs.
 pub const TRANSPARENT_WATER_DRAW_FLAG: u32 = 1 << 31;
+/// First-instance flag of a water draw whose instances name liquid records directly, in record
+/// order, instead of sorted ref slots.
+pub const TRANSPARENT_WATER_RECORD_FLAG: u32 = 1 << 30;
 
 /// Visual medium containing the active camera eye.
 ///
@@ -826,11 +829,9 @@ fn corner_heights<S: LiquidSampler + ?Sized>(
                 }
             }
         }
-        if weight == 0 {
-            0
-        } else {
-            ((total + weight / 2) / weight) as u8
-        }
+        (total + weight / 2)
+            .checked_div(weight)
+            .map_or(0, |level| level as u8)
     })
 }
 

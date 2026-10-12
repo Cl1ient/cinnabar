@@ -1,5 +1,13 @@
-use super::*;
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
+use {
+    super::*,
+    client_presentation::actor_clock::ActorFrameClock,
+    diagnostics::markers::{acceptance_runtime_metadata_marker, visibility_digest_marker_fields},
+};
 
+mod camera_environment;
+mod compiled_seats;
 mod publication_markers;
 
 const WORLD_STREAM_COMPLETION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -107,7 +115,7 @@ fn native_window_close_arms_watchdog_in_the_close_system() {
     let watchdog = ShutdownWatchdog::new(Duration::from_millis(10), move |code| {
         terminated.send(code).unwrap();
     });
-    let (network, _reanchor) = NetworkHandle::stub();
+    let (network, _reanchor) = NetworkHandle::<PackApplication>::stub();
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .add_message::<WindowCloseRequested>()
@@ -123,7 +131,9 @@ fn native_window_close_arms_watchdog_in_the_close_system() {
 
     assert_eq!(app.should_exit(), Some(AppExit::Success));
     assert!(
-        !app.world().resource::<NetworkHandle>().shutdown_requested(),
+        !app.world()
+            .resource::<NetworkHandle<PackApplication>>()
+            .shutdown_requested(),
         "window-close handling must leave the network alive until Bevy returns"
     );
     let acceptance = app.world().resource::<AcceptanceRun>();
@@ -214,9 +224,7 @@ fn unavailable_visibility_digest_marker_fields_are_explicitly_invalid() {
 #[test]
 fn runtime_metadata_marker_records_build_presentation_and_adapter_identity() {
     let marker = acceptance_runtime_metadata_marker(
-        AcceptanceRuntimeConfig {
-            build_profile: "release",
-        },
+        "release",
         &render_model::GraphicsAdapterMetadata {
             backend: "Dx12".to_owned(),
             adapter: "Test Adapter".to_owned(),
@@ -248,7 +256,7 @@ fn visibility_capture_observes_post_deferred_upload_and_removal_generation() {
     let expected = VisibilityKeyDigest::from_keys([key]);
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
-        .insert_resource(crate::local_player::LocalPlayerFrameCarrier::default())
+        .insert_resource(client_presentation::local_player::LocalPlayerFrameCarrier::default())
         .insert_resource(crate::runtime::world::ClientWorld::default())
         .insert_resource(CaveVisibilityCache::default())
         .insert_resource(VisibilityDiagnosticsInput::new(true))
@@ -291,19 +299,17 @@ pub(super) fn overworld_biome_payload() -> Vec<u8> {
 
 pub(super) fn complete_world_stream_decodes(stream: &mut WorldStream) {
     // A wall-clock bound, not a spin count: decode workers can be starved on a loaded machine.
-    let deadline = std::time::Instant::now() + WORLD_STREAM_COMPLETION_TIMEOUT;
-    while std::time::Instant::now() < deadline {
-        stream.poll([0.0; 3], 0);
-        let stats = stream.stats();
-        if stats.queued_decode_jobs == 0
-            && stats.in_flight_decode_jobs == 0
-            && stats.completed_decode_results == 0
-        {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-    panic!("world stream decode did not complete");
+    test_time::eventually_within(
+        WORLD_STREAM_COMPLETION_TIMEOUT,
+        "world stream decode to complete",
+        || {
+            stream.poll([0.0; 3], 0);
+            let stats = stream.stats();
+            stats.queued_decode_jobs == 0
+                && stats.in_flight_decode_jobs == 0
+                && stats.completed_decode_results == 0
+        },
+    );
 }
 
 #[test]
@@ -1018,14 +1024,12 @@ fn interactive_network_failure_requests_exit_without_waiting_for_acceptance_fina
 
 /// Polls the public mesh boundary while background work catches up.
 fn wait_for_mesh_publication<T>(mut poll: impl FnMut() -> Option<T>) -> Option<T> {
-    let deadline = Instant::now() + WORLD_STREAM_COMPLETION_TIMEOUT;
-    while Instant::now() < deadline {
-        if let Some(publication) = poll() {
-            return Some(publication);
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
-    None
+    let mut publication = None;
+    test_time::wait_until(WORLD_STREAM_COMPLETION_TIMEOUT, || {
+        publication = poll();
+        publication.is_some()
+    });
+    publication
 }
 
 #[test]
@@ -1040,17 +1044,4 @@ fn review_mesh_publication_waits_beyond_a_scheduler_spin_count() {
     );
 }
 
-#[test]
-fn camera_environment_context_is_sampled_before_profiled_atmosphere_derivation() {
-    // Production schedule order is checked through the actual graph. Retain the
-    // startup and profile wiring checks until a startup fixture can run them.
-    let main_source = include_str!("../app.rs");
-    let atmosphere_source = include_str!("../environment/atmosphere.rs");
-    let world_source = include_str!("../runtime/world.rs");
-    assert!(main_source.contains("insert_resource(EnvironmentContext::default())"));
-    assert!(main_source.contains("insert_resource(EnvironmentProfileRoute::default())"));
-    assert!(world_source.contains(".camera_biome_id(camera.translation.to_array())"));
-    assert!(world_source.contains(".render_distance_blocks()"));
-    assert!(atmosphere_source.contains("assets.biome_profiles()"));
-    assert!(atmosphere_source.contains("assets.fog_profiles()"));
-}
+mod compiled_item_use;

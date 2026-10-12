@@ -1,9 +1,8 @@
 use super::{super::*, array};
-use bevy::render::renderer::WgpuWrapper;
 
 #[test]
 fn native_authored_stripes_publish_complete_mips_and_preserve_carrier_resources() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!("missing fixture: native GPU adapter for bounded authored terrain upload");
         return;
@@ -14,7 +13,7 @@ fn native_authored_stripes_publish_complete_mips_and_preserve_carrier_resources(
     }))
     .expect("authored upload fixture device");
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+    let queue = RenderQueue::new(queue);
     let base = ChunkTextureAssets::default();
     let (mut prepared, mut stats) =
         crate::chunk::gpu::texture_upload::build_chunk_texture_assets(&base, &device, &queue)
@@ -216,7 +215,10 @@ fn sample_page(page:u32,layer:i32,mip:i32)->vec4<f32>{
         .poll(wgpu::PollType::wait_indefinitely())
         .unwrap();
     receiver.recv().unwrap().unwrap();
-    let mapped = readback.slice(..).get_mapped_range();
+    let mapped = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("readback buffer is mapped");
     let values: &[[f32; 4]] = bytemuck::cast_slice(&mapped);
     for page in 0..6 {
         for mip in 0..3 {

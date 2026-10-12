@@ -1,7 +1,7 @@
 use super::*;
-use bevy::math::{Mat4, Vec3};
-use render::{ActorArtworkPages, EquipmentRaster};
+use bevy::math::Vec3;
 use render_model::STANDARD_SKIN_BYTES;
+use render_model::{ActorArtworkPages, EquipmentRaster};
 
 fn presentation(runtime_id: u64, position: [f32; 3]) -> ActorRigPresentation {
     local_diagnostic_presentation(7, 0, runtime_id, 5, position, 0.0, 0.0).unwrap()
@@ -30,11 +30,11 @@ fn view(direction: Vec3) -> ActorCullView {
     let camera = Vec3::new(0.0, 65.0, 0.0);
     ActorCullView {
         camera_position: camera,
-        clip_from_world: Mat4::perspective_infinite_reverse_rh(
+        clip_from_world: glam::camera::rh::proj::directx::perspective_infinite_reverse(
             90_f32.to_radians(),
             1.0,
             render_api::CAMERA_NEAR_PLANE_BLOCKS,
-        ) * Mat4::look_to_rh(camera, direction, Vec3::Y),
+        ) * glam::camera::rh::view::look_to_mat4(camera, direction, Vec3::Y),
         max_distance: 100.0,
     }
 }
@@ -149,10 +149,12 @@ fn offscreen_shadow_casters_cannot_evict_visible_actors_during_scene_build() {
     let main = view(Vec3::NEG_Z);
     let radius = main.max_distance;
     let shadow = ActorCullView {
-        clip_from_world: Mat4::orthographic_rh(-radius, radius, -radius, radius, -radius, radius),
+        clip_from_world: glam::camera::rh::proj::directx::orthographic(
+            -radius, radius, -radius, radius, -radius, radius,
+        ),
         ..main
     };
-    let visible_id = render::MAX_ACTOR_RENDER_INSTANCES as u64 + 1;
+    let visible_id = render_model::MAX_ACTOR_RENDER_INSTANCES as u64 + 1;
     let remotes = (1..visible_id)
         .map(|id| presentation(id, [0.0, 64.0, 5.0]))
         .chain([presentation(visible_id, [0.0, 64.0, -5.0])]);

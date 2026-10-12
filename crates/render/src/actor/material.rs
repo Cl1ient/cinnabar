@@ -1,19 +1,13 @@
 use assets::EntityRenderMaterialState;
 
-use super::ActorMaterial;
+#[cfg(test)]
+use render_model::ActorMaterial;
 
-impl ActorMaterial {
-    /// Shader kind and independently admitted raster states in the shared instance word.
-    pub fn gpu_word(self) -> u32 {
-        self.kind.word(self.state)
-    }
+/// Renderer-only routing for a color layer that must follow a sorted dissolve mask.
+pub(crate) const LATE_DISSOLVE_COLOR: u32 = 1 << 31;
 
-    pub fn blend_state(self) -> Option<bevy::render::render_resource::BlendState> {
-        self.state.and_then(blend_state)
-    }
-}
-
-pub(crate) fn blend_state(
+/// Translates admitted actor blending into the GPU pipeline state.
+pub fn blend_state(
     state: EntityRenderMaterialState,
 ) -> Option<bevy::render::render_resource::BlendState> {
     use bevy::render::render_resource::{BlendComponent, BlendFactor, BlendOperation, BlendState};
@@ -40,7 +34,7 @@ pub(crate) fn blend_state(
 }
 
 pub(crate) fn state(word: u32) -> Option<EntityRenderMaterialState> {
-    EntityRenderMaterialState::from_word(word)
+    EntityRenderMaterialState::from_word(word & !LATE_DISSOLVE_COLOR)
 }
 
 #[cfg(test)]
@@ -49,7 +43,7 @@ mod tests {
 
     #[test]
     fn authored_actor_states_roundtrip_without_changing_the_shader_kind() {
-        for bits in 0..256 {
+        for bits in 0..512 {
             let expected = EntityRenderMaterialState {
                 alpha_test: bits & 1 != 0,
                 cull: bits & 2 != 0,
@@ -59,6 +53,7 @@ mod tests {
                 additive: bits & 32 != 0,
                 additive_alpha: bits & 64 != 0,
                 disable_overlay: bits & 128 != 0,
+                depth_always: bits & 256 != 0,
             };
             let material = ActorMaterial {
                 kind: assets::EntityRenderMaterial::Default,

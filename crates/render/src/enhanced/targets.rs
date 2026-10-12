@@ -2,9 +2,9 @@
 use super::{
     EnhancedRendering,
     atmosphere_cache::{AtmosphereCache, SKY_LUT_SIZE},
-    quality::budget,
 };
 use bevy::render::{render_resource::*, renderer::RenderDevice};
+use render_scene::enhanced::enhanced_quality_budget as budget;
 pub(crate) struct PostTargets {
     pub size: [u32; 2],
     effects_size: [u32; 2],

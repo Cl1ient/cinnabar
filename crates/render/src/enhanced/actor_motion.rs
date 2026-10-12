@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::actor::{ActorDrawManifestEntry, ActorRigRenderFrame};
+use render_model::{ActorDrawManifestEntry, ActorRigRenderFrame};
 
 type BoneMatrix = [[f32; 4]; 3];
 type Lifetime = (u64, i32, u64, u64, u8);
@@ -201,8 +201,8 @@ impl ActorMotionHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actor::{ActorGpuInstance, ActorRenderIdentity, ActorRigRoute, IDENTITY_UV_ANIM};
     use render_model::EntityRigId;
+    use render_model::{ActorGpuInstance, ActorRenderIdentity, ActorRigRoute, IDENTITY_UV_ANIM};
     use std::sync::Arc;
 
     fn frame(generation: u64, runtime_ids: &[u64], x: f32, fraction: f32) -> ActorRigRenderFrame {

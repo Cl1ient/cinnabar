@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use crate::shader_source;
+use bevy::render::render_resource::ShaderType;
 
 use assets::ResolvedFog;
 
@@ -8,18 +7,20 @@ use bevy::{
     math::{Mat3, Mat4, Vec3, Vec4},
     prelude::App,
     render::{
-        render_resource::{
-            BindingResource, DynamicUniformBuffer, ShaderType, encase::UniformBuffer,
-        },
-        renderer::{RenderDevice, RenderQueue, WgpuWrapper},
+        render_resource::{BindingResource, DynamicUniformBuffer, encase::UniformBuffer},
+        renderer::{RenderDevice, RenderQueue},
         view::{ColorGradingUniform, ViewUniform},
     },
 };
-use render::{
-    AtmosphereFrame, AtmospherePlugin, AtmosphereViewInputs, CLOUD_ALPHA, ChunkRenderPlugin,
-    PROVISIONAL_BOSS_DARKEN_SKY_STRENGTH, PROVISIONAL_BOSS_WORLD_FOG_END_BLOCKS,
-    PROVISIONAL_BOSS_WORLD_FOG_START_BLOCKS, cloud_colour, cloud_distance_fade, cloud_face_shade,
-    cloud_texture_offset, cloud_weather_colour, moon_phase_tile,
+use {
+    render::{AtmospherePlugin, ChunkRenderPlugin},
+    render_scene::AtmosphereViewInputs,
+    render_scene::{
+        AtmosphereFrame, CLOUD_ALPHA, PROVISIONAL_BOSS_DARKEN_SKY_STRENGTH,
+        PROVISIONAL_BOSS_WORLD_FOG_END_BLOCKS, PROVISIONAL_BOSS_WORLD_FOG_START_BLOCKS,
+        cloud_colour, cloud_distance_fade, cloud_face_shade, cloud_texture_offset,
+        cloud_weather_colour, moon_phase_tile,
+    },
 };
 
 fn test_view_uniform() -> ViewUniform {
@@ -32,6 +33,7 @@ fn test_view_uniform() -> ViewUniform {
         clip_from_view: Mat4::IDENTITY,
         view_from_clip: Mat4::IDENTITY,
         world_position: Vec3::ZERO,
+        lod_view_world_position: Vec3::ZERO,
         exposure: 1.0,
         viewport: Vec4::ZERO,
         main_pass_viewport: Vec4::ZERO,
@@ -257,8 +259,8 @@ fn cloud_motion_uses_absolute_ticks_and_wraps_euclidean_at_one_texture_period() 
     let before_period_end = cloud_texture_offset(one_texture_period_ticks - 1.0);
     assert!((before_zero[0] - before_period_end[0]).abs() < 1.0e-5);
 
-    // 24,000 ticks drift 480 blocks toward -X.
-    let next_day = cloud_texture_offset(24_000.0);
+    // One day drifts 480 blocks toward -X.
+    let next_day = cloud_texture_offset(f64::from(world::TICKS_PER_DAY));
     assert!(
         (next_day[0] - (1.0 - 480.0 / 4096.0)).abs() < 1.0e-6,
         "{next_day:?}"
@@ -277,7 +279,7 @@ fn clouds_drift_west_two_hundredths_of_a_block_per_tick() {
     let moved = (later - start).rem_euclid(4096.0) - 4096.0;
     assert!((moved + 30.0).abs() < 1.0e-3, "{start} -> {later}");
 
-    let shader = include_str!("../../src/cloud.wgsl");
+    let shader = include_str!("../../src/cloud.wesl");
     assert!(shader.contains("atmosphere.fog_end_time.z * native_cloud.geometry.w"));
 }
 
@@ -341,7 +343,7 @@ fn native_sky_subtraction_uses_camera_glare_not_rain_level() {
     let clear = AtmosphereFrame::from_bedrock_time(6000.0, 0.0, 0.0);
     let rainy = AtmosphereFrame::from_bedrock_time(6000.0, 1.0, 0.0);
     assert_eq!(clear.sky_zenith(), rainy.sky_zenith());
-    let sunward = clear.with_camera_environment(render::AtmosphereViewInputs {
+    let sunward = clear.with_camera_environment(render_scene::AtmosphereViewInputs {
         forward: [0.0, 1.0, 0.0],
         fog_weather_level: 0.0,
         ..Default::default()
@@ -357,11 +359,11 @@ fn native_sky_subtraction_uses_camera_glare_not_rain_level() {
         assert!((gamma(clear) - 0.2 - gamma(sunward)).abs() < 1e-5);
     }
     assert_eq!(
-        clear.cloud_colour_for_view(render::AtmosphereViewInputs::default()),
+        clear.cloud_colour_for_view(render_scene::AtmosphereViewInputs::default()),
         [1.0, 1.0, 1.0, CLOUD_ALPHA]
     );
     assert_eq!(
-        clear.cloud_colour_for_view(render::AtmosphereViewInputs {
+        clear.cloud_colour_for_view(render_scene::AtmosphereViewInputs {
             forward: [0.0, 1.0, 0.0],
             fog_weather_level: 0.0,
             ..Default::default()
@@ -488,7 +490,7 @@ fn native_rain_sky_keeps_clear_views_and_other_dimensions_unchanged() {
         fog_weather_level: 1.0,
         ..Default::default()
     };
-    for kind in [render::SkyKind::Nether, render::SkyKind::End] {
+    for kind in [render_scene::SkyKind::Nether, render_scene::SkyKind::End] {
         let other = frame.with_sky_kind(kind);
         assert_eq!(other.with_camera_environment(wet_view), other);
     }
@@ -518,7 +520,7 @@ fn cloud_alpha_fades_from_nine_tenths_to_nineteen_tenths_of_the_distance() {
 
 #[test]
 fn sun_and_moon_use_native_phase_gates_without_invented_horizon_fading() {
-    let shader = include_str!("../../src/atmosphere.wgsl");
+    let shader = include_str!("../../src/atmosphere.wesl");
     assert!(shader.contains("degrees <= 105.0 || degrees >= 255.0"));
     assert!(shader.contains("celestial_visibility(0.0)"));
     assert!(shader.contains("celestial_visibility(180.0)"));
@@ -527,7 +529,7 @@ fn sun_and_moon_use_native_phase_gates_without_invented_horizon_fading() {
 
 #[test]
 fn celestial_texels_are_composited_additively_without_an_rgb_opacity_key() {
-    let shader = include_str!("../../src/atmosphere.wgsl");
+    let shader = include_str!("../../src/atmosphere.wesl");
     assert!(
         shader.contains("fn composite_celestial("),
         "sun and moon must share one additive composition helper"
@@ -547,7 +549,7 @@ fn celestial_texels_are_composited_additively_without_an_rgb_opacity_key() {
 fn dynamic_view_binding_window_keeps_a_nonzero_second_view_offset_in_bounds() {
     let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+    let queue = RenderQueue::new(queue);
     let mut uniforms = DynamicUniformBuffer::<ViewUniform>::default();
     uniforms.push(&test_view_uniform());
     let second_view_offset = u64::from(uniforms.push(&test_view_uniform()));
@@ -571,7 +573,7 @@ fn dynamic_view_binding_window_keeps_a_nonzero_second_view_offset_in_bounds() {
 
 #[test]
 fn texture_backed_sky_shader_parses_validates_and_has_no_fullscreen_cloud_plane() {
-    let shader = shader_source::standalone(include_str!("../../src/atmosphere.wgsl"), &[]);
+    let shader = shader_source::standalone(include_str!("../../src/atmosphere.wesl"), &[]);
     let module = naga::front::wgsl::parse_str(&shader).expect("parse atmosphere WGSL");
     let mut validator = naga::valid::Validator::new(
         naga::valid::ValidationFlags::all(),
@@ -581,9 +583,35 @@ fn texture_backed_sky_shader_parses_validates_and_has_no_fullscreen_cloud_plane(
         .validate(&module)
         .expect("validate atmosphere WGSL");
     assert!(shader.contains("vec4(clip_position, 0.0, 1.0)"));
-    assert!(shader.contains("@binding(2) var sun_texture: texture_2d<f32>;"));
-    assert!(shader.contains("@binding(3) var moon_phases_texture: texture_2d<f32>;"));
-    assert!(shader.contains("@binding(4) var atmosphere_sampler: sampler;"));
+    for (name, binding) in [
+        ("sun_texture", 2),
+        ("moon_phases_texture", 3),
+        ("atmosphere_sampler", 4),
+    ] {
+        let variable = module
+            .global_variables
+            .iter()
+            .find(|(_, variable)| variable.name.as_deref() == Some(name))
+            .expect("sky texture binding")
+            .1;
+        assert_eq!(
+            variable.binding,
+            Some(naga::ResourceBinding { group: 0, binding })
+        );
+        assert!(match module.types[variable.ty].inner {
+            naga::TypeInner::Image {
+                dim: naga::ImageDimension::D2,
+                arrayed: false,
+                class:
+                    naga::ImageClass::Sampled {
+                        kind: naga::ScalarKind::Float,
+                        multi: false,
+                    },
+            } => binding != 4,
+            naga::TypeInner::Sampler { comparison: false } => binding == 4,
+            _ => false,
+        });
+    }
     assert!(shader.contains("textureSampleLevel(sun_texture"));
     assert!(shader.contains("textureSampleLevel(moon_phases_texture"));
     assert!(!shader.contains("clouds_texture"));
@@ -597,15 +625,28 @@ fn texture_backed_sky_shader_parses_validates_and_has_no_fullscreen_cloud_plane(
 #[test]
 fn every_world_shader_uses_the_shared_distance_fog_uniform() {
     for (name, shader) in [
-        ("chunk", include_str!("../../src/chunk.wgsl")),
-        ("model", include_str!("../../src/model.wgsl")),
-        ("liquid", include_str!("../../src/liquid.wgsl")),
+        ("chunk", include_str!("../../src/chunk.wesl")),
+        ("model", include_str!("../../src/model.wesl")),
+        ("liquid", include_str!("../../src/liquid.wesl")),
     ] {
-        // The liquid and model modules declare the uniform through `cinnabar::chunk_bindings`.
-        assert!(
-            crate::shader_source::standalone(shader, &[])
-                .contains("@group(0) @binding(15) var<uniform> atmosphere: AtmosphereUniform;"),
-            "{name} is missing the shared atmosphere uniform"
+        let source = crate::shader_source::standalone(shader, &[]);
+        let module = naga::front::wgsl::parse_str(&source).expect("world shader parses");
+        let uniform = module
+            .global_variables
+            .iter()
+            .find(|(_, variable)| {
+                variable.binding
+                    == Some(naga::ResourceBinding {
+                        group: 0,
+                        binding: 15,
+                    })
+            })
+            .unwrap_or_else(|| panic!("{name} is missing the shared atmosphere uniform"))
+            .1;
+        assert_eq!(uniform.space, naga::AddressSpace::Uniform);
+        assert_eq!(
+            module.types[uniform.ty].name.as_deref(),
+            Some("AtmosphereUniform")
         );
         assert!(
             shader.contains("fn apply_distance_fog("),
@@ -620,7 +661,7 @@ fn every_world_shader_uses_the_shared_distance_fog_uniform() {
 
 #[test]
 fn dense_camera_medium_fog_replaces_the_infinite_sky_before_celestial_composition() {
-    let shader = include_str!("../../src/atmosphere.wgsl");
+    let shader = include_str!("../../src/atmosphere.wesl");
     let guard = "if (code / 4u != 0u)";
     let fog_return = "return vec4(atmosphere.fog_color_start.rgb, 1.0);";
     assert!(shader.contains(guard));
@@ -633,7 +674,7 @@ fn dense_camera_medium_fog_replaces_the_infinite_sky_before_celestial_compositio
 
 #[test]
 fn sky_shader_draws_native_stars_and_dimension_skies_without_a_sunrise_overlay() {
-    let shader = include_str!("../../src/atmosphere.wgsl");
+    let shader = include_str!("../../src/atmosphere.wesl");
     for needle in [
         "var<storage, read> stars: array<vec4<f32>>;",
         "if (kind == 1u)",
@@ -645,9 +686,9 @@ fn sky_shader_draws_native_stars_and_dimension_skies_without_a_sunrise_overlay()
     }
     assert!(!shader.contains("fn sunrise_glow("));
     for (name, shader) in [
-        ("chunk", include_str!("../../src/chunk.wgsl")),
-        ("model", include_str!("../../src/model.wgsl")),
-        ("liquid", include_str!("../../src/liquid.wgsl")),
+        ("chunk", include_str!("../../src/chunk.wesl")),
+        ("model", include_str!("../../src/model.wesl")),
+        ("liquid", include_str!("../../src/liquid.wesl")),
     ] {
         assert!(
             !shader.contains("smoothstep(\n        atmosphere.fog"),
@@ -663,8 +704,8 @@ fn sky_shader_draws_native_stars_and_dimension_skies_without_a_sunrise_overlay()
 #[test]
 fn transparent_world_shaders_preserve_alpha_for_single_fog_composition() {
     for (name, shader) in [
-        ("model", include_str!("../../src/model.wgsl")),
-        ("liquid", include_str!("../../src/liquid.wgsl")),
+        ("model", include_str!("../../src/model.wesl")),
+        ("liquid", include_str!("../../src/liquid.wesl")),
     ] {
         assert!(
             !shader.contains("mix(colour.a, 1.0, fog)"),

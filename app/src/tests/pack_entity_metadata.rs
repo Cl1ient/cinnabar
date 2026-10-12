@@ -1,14 +1,14 @@
 //! Independently authored server-pack entities driven by actor metadata end to end: the metadata
 //! variant selects the render controller's texture and geometry, and the metadata scale sizes
 //! the model.
-use crate::presentation::{actors, entity_layers};
 use assets::{RuntimeAssets, RuntimeEntityAssets};
 use chunk_pipeline::WorldStream;
+
 use protocol::{
     ActorEvent, ActorKind, ActorMetadata, ActorMetadataUpdateEvent, ActorMetadataValue,
     ActorSpawnEvent, WorldBootstrap, WorldEvent,
 };
-use render::ActorArtworkPages;
+use render_model::ActorArtworkPages;
 use render_model::EntityRigId;
 use std::sync::Arc;
 
@@ -295,11 +295,24 @@ struct Drawn {
 
 fn drawn(world: &WorldStream, artwork: &ActorArtworkPages) -> Drawn {
     let rig = world.authority().actor_rig(42).unwrap();
-    let body =
-        actors::entity_rig_presentation(&rig, world.authority().actor(42).unwrap(), artwork, 0.5)
-            .unwrap();
-    let mut batch = actors::select_actor_presentations(1, false, None, [body]);
-    entity_layers::apply_render_layers(&mut batch, |id| world.authority().actor_rig(id), artwork);
+    let body = client_presentation::presentation::actors::entity_rig_presentation(
+        &rig,
+        world.authority().actor(42).unwrap(),
+        artwork,
+        0.5,
+    )
+    .unwrap();
+    let mut batch = client_presentation::presentation::actors::select_actor_presentations(
+        1,
+        false,
+        None,
+        [body],
+    );
+    client_presentation::presentation::entity_layers::apply_render_layers(
+        &mut batch,
+        |id| world.authority().actor_rig(id),
+        artwork,
+    );
     let submission = &batch.submissions[0];
     let matrix = submission.world_from_actor;
     Drawn {
@@ -360,17 +373,36 @@ fn render_controller_uv_anim_steps_the_flipbook_frame() {
     assert_eq!((second[1] - first[1]).rem_euclid(1.0), 0.5);
 }
 
-fn layered(world: &WorldStream, artwork: &ActorArtworkPages) -> actors::ActorPresentationBatch {
+fn layered(
+    world: &WorldStream,
+    artwork: &ActorArtworkPages,
+) -> client_presentation::presentation::actors::ActorPresentationBatch {
     let rig = world.authority().actor_rig(42).unwrap();
-    let body =
-        actors::entity_rig_presentation(&rig, world.authority().actor(42).unwrap(), artwork, 0.5)
-            .unwrap();
-    let mut batch = actors::select_actor_presentations(1, false, None, [body]);
-    entity_layers::apply_render_layers(&mut batch, |id| world.authority().actor_rig(id), artwork);
+    let body = client_presentation::presentation::actors::entity_rig_presentation(
+        &rig,
+        world.authority().actor(42).unwrap(),
+        artwork,
+        0.5,
+    )
+    .unwrap();
+    let mut batch = client_presentation::presentation::actors::select_actor_presentations(
+        1,
+        false,
+        None,
+        [body],
+    );
+    client_presentation::presentation::entity_layers::apply_render_layers(
+        &mut batch,
+        |id| world.authority().actor_rig(id),
+        artwork,
+    );
     batch
 }
 
-fn batch(world: &WorldStream, artwork: &ActorArtworkPages) -> Vec<render::ActorRigSubmission> {
+fn batch(
+    world: &WorldStream,
+    artwork: &ActorArtworkPages,
+) -> Vec<render_model::ActorRigSubmission> {
     layered(world, artwork).submissions
 }
 
@@ -382,7 +414,7 @@ fn each_render_controller_draws_its_own_geometry() {
     let assets = Arc::clone(&pack.0);
     let world = world(pack, "test:title");
     let layered = layered(&world, &artwork);
-    let mut scene = render::ActorRenderScene::default();
+    let mut scene = render_scene::ActorRenderScene::default();
     scene.replace_pack_entities(Some(&assets)).unwrap();
     scene.configure_artwork(artwork.clone());
     let frame = scene.update_rigs_with_artwork(
@@ -457,21 +489,26 @@ fn ignore_lighting_controllers_keep_face_shading_and_multiplier_without_world_li
     let draw = |identifier: &str, block, sky| {
         let world = world(pack.clone(), identifier);
         let rig = world.authority().actor_rig(42).unwrap();
-        let mut body = actors::entity_rig_presentation(
+        let mut body = client_presentation::presentation::actors::entity_rig_presentation(
             &rig,
             world.authority().actor(42).unwrap(),
             &artwork,
             0.5,
         )
         .unwrap();
-        body.submission.light = render::pack_actor_light(block, sky);
-        let mut batch = actors::select_actor_presentations(1, false, None, [body]);
-        entity_layers::apply_render_layers(
+        body.submission.light = render_model::pack_actor_light(block, sky);
+        let mut batch = client_presentation::presentation::actors::select_actor_presentations(
+            1,
+            false,
+            None,
+            [body],
+        );
+        client_presentation::presentation::entity_layers::apply_render_layers(
             &mut batch,
             |id| world.authority().actor_rig(id),
             &artwork,
         );
-        let mut scene = render::ActorRenderScene::default();
+        let mut scene = render_scene::ActorRenderScene::default();
         scene.replace_pack_entities(Some(&pack.0)).unwrap();
         scene.configure_artwork(artwork.clone());
         let frame =
@@ -491,7 +528,7 @@ fn ignore_lighting_controllers_keep_face_shading_and_multiplier_without_world_li
         assert_eq!(ignored.light_color_multiplier, 0.5);
 
         let lit = draw("test:counter", block, sky);
-        assert_eq!(lit.light, render::pack_actor_light(block, sky));
+        assert_eq!(lit.light, render_model::pack_actor_light(block, sky));
         assert_eq!(lit.light_color_multiplier, 1.0);
     }
 }

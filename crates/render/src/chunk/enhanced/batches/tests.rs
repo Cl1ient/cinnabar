@@ -1,12 +1,8 @@
 use super::*;
-use bevy::render::renderer::WgpuWrapper;
 
 fn device() -> (RenderDevice, RenderQueue) {
     let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
-    (
-        RenderDevice::from(device),
-        RenderQueue(Arc::new(WgpuWrapper::new(queue))),
-    )
+    (RenderDevice::from(device), RenderQueue::new(queue))
 }
 
 fn allocation(x: i32, index: u32) -> ArenaAllocation {
@@ -162,8 +158,8 @@ fn shadow_volume_includes_offscreen_casters_and_excludes_distant_residents() {
     let mut scene = ResidentScene::default();
     scene.refresh(&arena, |_, _| true);
     let mut batch = GeometryBatch::default();
-    let camera = Mat4::orthographic_rh(-8.0, 8.0, -8.0, 8.0, 0.1, 128.0)
-        * Mat4::look_at_rh(
+    let camera = glam::camera::rh::proj::directx::orthographic(-8.0, 8.0, -8.0, 8.0, 0.1, 128.0)
+        * glam::camera::rh::view::look_at_mat4(
             Vec3::new(8.0, 8.0, -64.0),
             Vec3::new(8.0, 8.0, 0.0),
             Vec3::Y,

@@ -123,8 +123,12 @@ fn native_local_visibility_reprojects_camera_jitter_and_rejects_receiver_changes
     ];
     assert_eq!(axes.len(), POINT_SHADOW_FACES);
     for (direction, up) in axes {
-        let clip = Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.05, 32.0)
-            * Mat4::look_to_rh(Vec3::ZERO, direction, up);
+        let clip = glam::camera::rh::proj::directx::perspective(
+            std::f32::consts::FRAC_PI_2,
+            1.0,
+            0.05,
+            32.0,
+        ) * glam::camera::rh::view::look_to_mat4(Vec3::ZERO, direction, up);
         light_data.extend_from_slice(bytemuck::bytes_of(&clip));
     }
     let lights = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -150,8 +154,8 @@ fn native_local_visibility_reprojects_camera_jitter_and_rejects_receiver_changes
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("production local visibility fragment layout"),
-        bind_group_layouts: &[&bind_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bind_layout)],
+        immediate_size: 0,
     });
     let binding = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("local visibility fragment fixture binding"),
@@ -218,7 +222,7 @@ fn native_local_visibility_reprojects_camera_jitter_and_rejects_receiver_changes
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("production local shadow history fragment"),
         source: wgpu::ShaderSource::Wgsl(
-            crate::shader_source::composed(include_str!("local_shadow_history.wgsl"), &[]).into(),
+            crate::shader_source::composed(include_str!("local_shadow_history.wesl"), &[]).into(),
         ),
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -255,7 +259,7 @@ fn native_local_visibility_reprojects_camera_jitter_and_rejects_receiver_changes
         primitive: Default::default(),
         depth_stencil: None,
         multisample: Default::default(),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
     let sample_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -318,7 +322,11 @@ fn native_local_visibility_reprojects_camera_jitter_and_rejects_receiver_changes
     });
     let camera =
         |current_x: f32, previous_x: f32, jitter: f32, previous_jitter: f32, distance: f32| {
-            let projection = Mat4::perspective_infinite_reverse_rh(60.0_f32.to_radians(), 1.0, 0.1);
+            let projection = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+                60.0_f32.to_radians(),
+                1.0,
+                0.1,
+            );
             let clip = |x: f32, jitter: f32| {
                 Mat4::from_translation(Vec3::new(jitter * 2.0 / SIZE as f32, 0.0, 0.0))
                     * projection
@@ -556,8 +564,13 @@ fn native_local_visibility_reprojects_camera_jitter_and_rejects_receiver_changes
     device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("local shadow fragment completion");
-    let values: Vec<[f32; 4]> =
-        bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+    let values: Vec<[f32; 4]> = bytemuck::cast_slice(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     for (index, expected) in expected.into_iter().enumerate() {
         assert!(
             (values[index][0] - expected).abs() < 0.003,

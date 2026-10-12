@@ -1,6 +1,7 @@
 //! Per-view Enhanced uniforms, targets and cached local-light preparation.
 
 use super::*;
+use bevy::math::{Vec3Swizzles, Vec4Swizzles};
 
 /// Collects the camera matrices and render target dimensions.
 fn view_inputs(
@@ -46,18 +47,18 @@ pub(crate) struct LocalLightingInputs<'w> {
     sources: Res<'w, crate::enhanced::local_lights::LocalLightSources>,
     geometry: Res<'w, crate::enhanced::indirect::IndirectGeometry>,
     coverage: Res<'w, crate::chunk::resident_coverage::ChunkResidentCoverage>,
-    assets: Res<'w, crate::ChunkTextureAssets>,
+    assets: Res<'w, render_scene::ChunkTextureAssets>,
     texture_gpu: Option<Res<'w, crate::chunk::gpu::bind_groups::ChunkGpuTextureAssets>>,
-    tints: Res<'w, crate::ChunkBiomeTints>,
+    tints: Res<'w, render_scene::ChunkBiomeTints>,
     noise: Res<'w, crate::enhanced::cloud_noise::CloudNoiseVolume>,
     scattering: Res<'w, crate::enhanced::multiple_scattering::MultipleScattering>,
-    actors: Option<Res<'w, crate::ActorRenderFrame>>,
-    environment: Option<Res<'w, crate::AtmosphereViewInputs>>,
-    clouds: Option<Res<'w, crate::CloudVisibility>>,
+    actors: Option<Res<'w, render_scene::ActorRenderFrame>>,
+    environment: Option<Res<'w, render_scene::AtmosphereViewInputs>>,
+    clouds: Option<Res<'w, render_scene::CloudVisibility>>,
     pipelines: Res<'w, crate::enhanced::shadows::EnhancedShadowPipelines>,
 }
 
-fn render_dimension(environment: Option<&crate::AtmosphereViewInputs>) -> Option<i32> {
+fn render_dimension(environment: Option<&render_scene::AtmosphereViewInputs>) -> Option<i32> {
     environment.map(|environment| environment.dimension)
 }
 
@@ -100,7 +101,7 @@ pub(crate) fn prepare_enhanced_views(
         Entity,
         &ExtractedView,
         &ViewTarget,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &EnhancedRendering,
         Option<&bevy::render::camera::TemporalJitter>,
         Option<&bevy::render::camera::ExtractedCamera>,
@@ -205,7 +206,7 @@ pub(crate) fn prepare_enhanced_views(
                 state.resolved_depth = Some(crate::scene_sampling::ResolvedDepth::new(
                     &device,
                     depth,
-                    crate::RuntimeStage::GpuPost,
+                    render_scene::RuntimeStage::GpuPost,
                 ));
             }
             if state
@@ -233,7 +234,7 @@ pub(crate) fn prepare_enhanced_views(
             });
             state.camera_clip = inputs.clip_from_world;
             if !reflection_capture
-                && target.is_hdr()
+                && camera.is_some_and(|camera| camera.hdr)
                 && lighting_ready
                 && state.frame_data.projection.w < 0.5
             {
@@ -308,7 +309,9 @@ pub(crate) fn prepare_enhanced_views(
                 state.cascades.extend(fits.iter().map(|fit| fit.bounds));
             }
             frame.projection.w = f32::from(u8::from(
-                !settings.reflection_capture && target.is_hdr() && lighting_ready,
+                !settings.reflection_capture
+                    && camera.is_some_and(|camera| camera.hdr)
+                    && lighting_ready,
             ));
             queue.write_buffer(&state.frame, 0, bytemuck::bytes_of(&frame));
             state.frame_data = frame;
@@ -474,7 +477,10 @@ pub(crate) fn prepare_enhanced_views(
             let size = inputs.viewport;
             let effects = size.map(|value| {
                 value
-                    .div_ceil(crate::enhanced::quality::budget(settings.quality).effects_divisor)
+                    .div_ceil(
+                        render_scene::enhanced::enhanced_quality_budget(settings.quality)
+                            .effects_divisor,
+                    )
                     .max(1)
             });
             let shafts_changed = if frame.flags.x & crate::enhanced::frame::FEATURE_SHAFTS == 0 {
@@ -876,12 +882,13 @@ fn indirect_lighting_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::math::Vec3;
 
     #[test]
     fn local_light_dimension_needs_no_diagnostic_publication_witness() {
         assert_eq!(render_dimension(None), None);
         for dimension in [-42, 0, 700] {
-            let environment = crate::AtmosphereViewInputs {
+            let environment = render_scene::AtmosphereViewInputs {
                 dimension,
                 ..default()
             };
@@ -907,8 +914,8 @@ mod tests {
                 };
                 for visible in [
                     None,
-                    Some(crate::CloudVisibility(false)),
-                    Some(crate::CloudVisibility(true)),
+                    Some(render_scene::CloudVisibility(false)),
+                    Some(render_scene::CloudVisibility(true)),
                 ] {
                     let applied = crate::enhanced::frame::applied_cloud_settings(
                         configured,

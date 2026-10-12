@@ -1,3 +1,5 @@
+use bedrock_protocol_1_26_51::types;
+
 use super::*;
 
 #[test]
@@ -35,23 +37,19 @@ fn private_level_chunk_ready_lane_aliases_bytes_while_public_pop_returns_indepen
 ///
 /// 1.26.40 writes the blob hashes unconditionally and states cache
 /// participation with `cache_enabled`, so the protocol-1001 `blobs: Some(..)`
-/// literal has no direct equivalent. `subchunks_count` is 0 because
+/// literal has no direct equivalent. `sub_chunks_count` is 0 because
 /// gophertunnel's packet/level_chunk.go expects SubChunkCount + 1 hashes and
 /// these fixtures carry exactly one; the old -1 request-mode sentinel is gone.
-pub(super) fn cached_level_chunk(x: i32, hashes: Vec<u64>) -> LevelChunkPacket {
-    let subchunks_count = u32::try_from(hashes.len().saturating_sub(1)).expect("fixture count");
-    LevelChunkPacket {
-        chunk_position: valentine::bedrock::version::v1_26_51::ChunkPos { x, z: 0 },
-        subchunks_count,
+pub(super) fn cached_level_chunk(x: i32, hashes: Vec<u64>) -> LevelChunk {
+    let sub_chunks_count = u32::try_from(hashes.len().saturating_sub(1)).expect("fixture count");
+    LevelChunk {
+        chunk_position: types::ChunkPos {
+            x: wire::ZigZag32(x),
+            z: wire::ZigZag32(0),
+        },
+        sub_chunks_count: wire::VarUInt(sub_chunks_count),
         cache_enabled: true,
-        cache_metadata: hashes
-            .into_iter()
-            .map(|blob_id| {
-                valentine::bedrock::version::v1_26_51::LevelChunkPacketPayloadSubChunkMetadata {
-                    blob_id,
-                }
-            })
-            .collect(),
+        cache_metadata: hashes.into_iter().map(types::SubChunkMetadata).collect(),
         ..Default::default()
     }
 }
@@ -64,23 +62,22 @@ fn sub_chunk_entry(
     result: SubChunkRequestResult,
     payload: Option<Vec<u8>>,
     blob_id: Option<u64>,
-) -> SubChunkPacketPayloadSubChunkPacketData {
-    SubChunkPacketPayloadSubChunkPacketData {
-        sub_chunk_pos_offset:
-            valentine::bedrock::version::v1_26_51::SubChunkPacketPayloadSubChunkPosOffset {
-                subchunk_offset_x: dx,
-                subchunk_offset_y: dy,
-                subchunk_offset_z: dz,
-            },
+) -> SubChunkData {
+    SubChunkData {
+        sub_chunk_pos_offset: types::SubChunkPosOffset {
+            subchunk_offset_x: wire::I8(dx),
+            subchunk_offset_y: wire::I8(dy),
+            subchunk_offset_z: wire::I8(dz),
+        },
         sub_chunk_request_result: result,
-        serialized_sub_chunk: payload,
-        blob_id,
+        serialized_sub_chunk: payload.map(bytes::Bytes::from),
+        blob_id: blob_id.map(wire::U64LE),
         ..Default::default()
     }
 }
 
 #[test]
-fn ready_subchunk_accounting_uses_retained_entry_and_payload_capacities() {
+fn ready_subchunk_accounting_uses_retained_entry_capacity_and_payload_bytes() {
     let mut payload = Vec::with_capacity(4_096);
     payload.push(0x5a);
     let mut entries = Vec::with_capacity(16);
@@ -92,21 +89,18 @@ fn ready_subchunk_accounting_uses_retained_entry_and_payload_capacities() {
         Some(payload),
         None,
     ));
-    let expected = size_of::<SubChunkPacket>()
-        + entries.capacity() * size_of::<SubChunkPacketPayloadSubChunkPacketData>()
+    let expected = size_of::<SubChunk>()
+        + entries.capacity() * size_of::<SubChunkData>()
         + entries[0]
             .serialized_sub_chunk
             .as_ref()
             .expect("fixture payload")
-            .capacity();
-    let value = BlobCacheReady::Packet(
-        SubChunkPacket {
-            cache_enabled: false,
-            sub_chunk_data: entries,
-            ..Default::default()
-        }
-        .into(),
-    );
+            .len();
+    let value = BlobCacheReady::Packet(crate::Packet::new(SubChunk {
+        cache_enabled: false,
+        sub_chunk_data: entries,
+        ..Default::default()
+    }));
 
     assert_eq!(
         ready_value_accounted_bytes(&ResolverReady::from(value)),
@@ -122,7 +116,7 @@ fn pending_queue_high_water_is_exact_and_reset_releases_backing_allocations() {
         let payload = [x as u8];
         let hash = client_blob_hash(&payload);
         resolver
-            .accept_cached_packet(cached_level_chunk(x, vec![hash]).into())
+            .accept_cached_packet(crate::Packet::new(cached_level_chunk(x, vec![hash])))
             .expect("grow unresolved pending queue");
     }
     assert!(resolver.pending.capacity() >= 8);
@@ -148,15 +142,13 @@ fn pending_accounting_includes_owned_hash_capacity() {
         client_blob_hash(b"owned-1"),
         client_blob_hash(b"owned-2"),
     ];
-    let mut payload = Vec::with_capacity(17);
-    payload.extend_from_slice(b"retained-payload");
-    let packet = LevelChunkPacket {
-        serialized_chunk_data: payload,
+    let packet = LevelChunk {
+        serialized_chunk_data: bytes::Bytes::from_static(b"retained-payload"),
         ..cached_level_chunk(0, hashes.clone())
     };
     let mut resolver = BlobCacheResolver::new(ClientBlobCache::default());
     resolver
-        .accept_cached_packet(packet.into())
+        .accept_cached_packet(crate::Packet::new(packet))
         .expect("retain the unresolved transaction");
 
     let transaction = resolver
@@ -167,8 +159,8 @@ fn pending_accounting_includes_owned_hash_capacity() {
     let PendingPacket::LevelChunk(packet) = &transaction.packet else {
         panic!("expected a pending LevelChunk");
     };
-    let packet_bytes = size_of::<LevelChunkPacket>()
-        + packet.serialized_chunk_data.capacity()
+    let packet_bytes = size_of::<LevelChunk>()
+        + packet.serialized_chunk_data.len()
         + packet.cache_metadata.capacity() * size_of::<u64>();
     let expected = packet_bytes
         + transaction.hashes.capacity() * size_of::<u64>()
@@ -236,17 +228,17 @@ fn arriving_blob_visits_only_transactions_in_its_hash_index_bucket() {
     let mut resolver = BlobCacheResolver::new(ClientBlobCache::default());
     for (x, hash) in [(1, shared), (2, shared), (3, other)] {
         resolver
-            .accept_cached_packet(cached_level_chunk(x, vec![hash]).into())
+            .accept_cached_packet(crate::Packet::new(cached_level_chunk(x, vec![hash])))
             .expect("index pending transaction by its missing hash");
     }
     assert_eq!(resolver.pending_by_hash[&shared].len(), 2);
     assert_eq!(resolver.pending_by_hash[&other].len(), 1);
 
     resolver
-        .accept_miss_response(ClientCacheMissResponsePacket {
-            missing_blobs: vec![valentine::bedrock::version::v1_26_51::MissingBlobData {
-                blob_id: shared,
-                blob_data: shared_payload.to_vec(),
+        .accept_miss_response(ClientCacheMissResponse {
+            missing_blobs: vec![MissingBlobData {
+                blob_id: wire::U64LE(shared),
+                blob_data: shared_payload.to_vec().into(),
             }],
         })
         .expect("resolve only the shared index bucket");
@@ -260,21 +252,19 @@ fn arriving_blob_visits_only_transactions_in_its_hash_index_bucket() {
 /// A repeated resolved blob must not discard a different column's outstanding payload.
 #[test]
 fn late_duplicate_blob_does_not_abandon_another_column() {
-    use valentine::bedrock::version::v1_26_51::MissingBlobData;
-
     let old_payload = b"previously resolved column";
     let new_payload = b"new outstanding column";
     let old_hash = client_blob_hash(old_payload);
     let new_hash = client_blob_hash(new_payload);
     let mut resolver = BlobCacheResolver::new(ClientBlobCache::default());
     resolver
-        .accept_cached_packet(cached_level_chunk(1, vec![old_hash]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(1, vec![old_hash])))
         .unwrap();
     resolver
-        .accept_miss_response(ClientCacheMissResponsePacket {
+        .accept_miss_response(ClientCacheMissResponse {
             missing_blobs: vec![MissingBlobData {
-                blob_id: old_hash,
-                blob_data: old_payload.to_vec(),
+                blob_id: wire::U64LE(old_hash),
+                blob_data: old_payload.to_vec().into(),
             }],
         })
         .unwrap();
@@ -284,18 +274,18 @@ fn late_duplicate_blob_does_not_abandon_another_column() {
     ));
 
     resolver
-        .accept_cached_packet(cached_level_chunk(2, vec![new_hash]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(2, vec![new_hash])))
         .unwrap();
     resolver
-        .accept_miss_response(ClientCacheMissResponsePacket {
+        .accept_miss_response(ClientCacheMissResponse {
             missing_blobs: vec![
                 MissingBlobData {
-                    blob_id: old_hash,
-                    blob_data: old_payload.to_vec(),
+                    blob_id: wire::U64LE(old_hash),
+                    blob_data: old_payload.to_vec().into(),
                 },
                 MissingBlobData {
-                    blob_id: new_hash,
-                    blob_data: new_payload.to_vec(),
+                    blob_id: wire::U64LE(new_hash),
+                    blob_data: new_payload.to_vec().into(),
                 },
             ],
         })
@@ -305,11 +295,11 @@ fn late_duplicate_blob_does_not_abandon_another_column() {
     let Some(BlobCacheReady::Packet(packet)) = ready else {
         panic!("a valid current column must reconstruct without recovery: {ready:?}");
     };
-    let McpePacketData::LevelChunkPacket(packet) = packet.data else {
+    let packets::Packet::LevelChunk(packet) = *packet.data else {
         panic!("expected the current column");
     };
-    assert_eq!(packet.chunk_position.x, 2);
-    assert_eq!(packet.serialized_chunk_data, new_payload);
+    assert_eq!(packet.chunk_position.x.0, 2);
+    assert_eq!(&packet.serialized_chunk_data[..], new_payload);
     assert_eq!(resolver.stats().abandoned_cached_transactions, 0);
     assert_eq!(
         resolver.cache().get(old_hash).unwrap().as_ref(),
@@ -320,8 +310,6 @@ fn late_duplicate_blob_does_not_abandon_another_column() {
 /// An invalid repeated payload cannot admit an earlier valid entry in the same response.
 #[test]
 fn late_duplicate_response_still_validates_entire_batch() {
-    use valentine::bedrock::version::v1_26_51::MissingBlobData;
-
     let old_payload = b"previously verified column";
     let new_payload = b"new outstanding column";
     let cache = ClientBlobCache::default();
@@ -329,18 +317,18 @@ fn late_duplicate_response_still_validates_entire_batch() {
     let new_hash = client_blob_hash(new_payload);
     let mut resolver = BlobCacheResolver::new(cache);
     resolver
-        .accept_cached_packet(cached_level_chunk(2, vec![new_hash]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(2, vec![new_hash])))
         .unwrap();
     resolver
-        .accept_miss_response(ClientCacheMissResponsePacket {
+        .accept_miss_response(ClientCacheMissResponse {
             missing_blobs: vec![
                 MissingBlobData {
-                    blob_id: new_hash,
-                    blob_data: new_payload.to_vec(),
+                    blob_id: wire::U64LE(new_hash),
+                    blob_data: new_payload.to_vec().into(),
                 },
                 MissingBlobData {
-                    blob_id: old_hash,
-                    blob_data: b"changed repeated payload".to_vec(),
+                    blob_id: wire::U64LE(old_hash),
+                    blob_data: b"changed repeated payload".to_vec().into(),
                 },
             ],
         })
@@ -361,26 +349,27 @@ fn late_duplicate_response_still_validates_entire_batch() {
 /// A valid hash alone does not authorize an unknown payload or the rest of its batch.
 #[test]
 fn unsolicited_blob_still_rejects_a_mixed_response() {
-    use valentine::bedrock::version::v1_26_51::MissingBlobData;
-
     let requested_payload = b"requested column";
     let unknown_payload = b"never requested column";
     let requested_hash = client_blob_hash(requested_payload);
     let unknown_hash = client_blob_hash(unknown_payload);
     let mut resolver = BlobCacheResolver::new(ClientBlobCache::default());
     resolver
-        .accept_cached_packet(cached_level_chunk(2, vec![requested_hash]).into())
+        .accept_cached_packet(crate::Packet::new(cached_level_chunk(
+            2,
+            vec![requested_hash],
+        )))
         .unwrap();
     resolver
-        .accept_miss_response(ClientCacheMissResponsePacket {
+        .accept_miss_response(ClientCacheMissResponse {
             missing_blobs: vec![
                 MissingBlobData {
-                    blob_id: requested_hash,
-                    blob_data: requested_payload.to_vec(),
+                    blob_id: wire::U64LE(requested_hash),
+                    blob_data: requested_payload.to_vec().into(),
                 },
                 MissingBlobData {
-                    blob_id: unknown_hash,
-                    blob_data: unknown_payload.to_vec(),
+                    blob_id: wire::U64LE(unknown_hash),
+                    blob_data: unknown_payload.to_vec().into(),
                 },
             ],
         })
@@ -399,13 +388,13 @@ fn unsolicited_blob_still_rejects_a_mixed_response() {
 fn retained_cached_subchunk_emits_admission_before_reconstruction() {
     let payload = b"admitted-subchunk";
     let hash = client_blob_hash(payload);
-    let packet = SubChunkPacket {
+    let packet = crate::Packet::new(SubChunk {
         cache_enabled: true,
-        dimension_type: valentine::bedrock::version::v1_26_51::DimensionType { value: 2 },
-        center_pos: valentine::bedrock::version::v1_26_51::SubChunkPos {
-            subchunk_position_x: 4,
-            subchunk_position_y: -4,
-            subchunk_position_z: 9,
+        dimension_type: DimensionType(2),
+        center_pos: types::SubChunkPos {
+            subchunk_position_x: wire::I32LE(4),
+            subchunk_position_y: wire::I32LE(-4),
+            subchunk_position_z: wire::I32LE(9),
         },
         sub_chunk_data: vec![
             sub_chunk_entry(
@@ -418,8 +407,7 @@ fn retained_cached_subchunk_emits_admission_before_reconstruction() {
             ),
             sub_chunk_entry(1, 2, 0, SubChunkRequestResult::Successallair, None, None),
         ],
-    }
-    .into();
+    });
     let mut resolver = BlobCacheResolver::new(ClientBlobCache::default());
     let mut status = resolver
         .accept_cached_packet(packet)
@@ -445,16 +433,16 @@ fn pressure_rotated_cached_subchunk_has_recovery_without_admission() {
         let payload = format!("pressure-{x}");
         let hash = client_blob_hash(payload.as_bytes());
         resolver
-            .accept_cached_packet(
-                cached_level_chunk(i32::try_from(x).expect("test coordinate fits"), vec![hash])
-                    .into(),
-            )
+            .accept_cached_packet(crate::Packet::new(cached_level_chunk(
+                i32::try_from(x).expect("test coordinate fits"),
+                vec![hash],
+            )))
             .expect("fill the bounded cached transaction window");
     }
 
     let payload = b"pressure-subchunk";
     let hash = client_blob_hash(payload);
-    let packet = SubChunkPacket {
+    let packet = crate::Packet::new(SubChunk {
         cache_enabled: true,
         sub_chunk_data: vec![sub_chunk_entry(
             0,
@@ -465,8 +453,7 @@ fn pressure_rotated_cached_subchunk_has_recovery_without_admission() {
             Some(hash),
         )],
         ..Default::default()
-    }
-    .into();
+    });
     let mut status = resolver
         .accept_cached_packet(packet)
         .expect("pressure rotation remains non-fatal");
@@ -492,19 +479,19 @@ fn precounted_secondary_recovery_coalesces_without_double_counting() {
     for x in 0..MAX_CLIENT_BLOB_PENDING_TRANSACTIONS - 1 {
         let payload = format!("coalesced-pressure-{x}");
         resolver
-            .accept_cached_packet(
-                cached_level_chunk(
-                    i32::try_from(x).expect("test coordinate fits"),
-                    vec![client_blob_hash(payload.as_bytes())],
-                )
-                .into(),
-            )
+            .accept_cached_packet(crate::Packet::new(cached_level_chunk(
+                i32::try_from(x).expect("test coordinate fits"),
+                vec![client_blob_hash(payload.as_bytes())],
+            )))
             .expect("fill every recovery slot except the queued event");
     }
 
     let mut status = resolver
         .accept_cached_packet_with_size(
-            cached_level_chunk(999, vec![client_blob_hash(b"oversized-current")]).into(),
+            crate::Packet::new(cached_level_chunk(
+                999,
+                vec![client_blob_hash(b"oversized-current")],
+            )),
             MAX_CLIENT_BLOB_PENDING_BYTES,
         )
         .expect("pending-byte rejection after rotation remains non-fatal");

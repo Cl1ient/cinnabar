@@ -53,7 +53,9 @@ fn grid_cases(model: bool) -> Vec<GridCase> {
                 (1, 0.75, 0.0, 1.0, 0),
                 (1, 0.375, 0.0, 0.0, 0),
                 (1, 1.75, 0.0, if model { 0.0 } else { 1.0 }, 0),
-                (1, 0.5, 1.0 / 32.0, 0.5, 0),
+                // Keep the nearest sample inside the opaque texel while its footprint
+                // still crosses the contour; exact texel ties vary between GPU backends.
+                (1, 0.50001, 1.0 / 32.0, 0.5, 0),
                 (2, 1.5, 0.0, if model { 1.0 } else { 0.0 }, 0),
                 (2, 1.25, 0.0, if model { 1.0 } else { 0.0 }, 0),
                 (0, 0.25, 1.0 / 32.0, 0.5, 0),
@@ -146,9 +148,9 @@ fn grid_raster(gpu: &Gpu, model: bool, enhanced: bool, samples: u32) -> Vec<u8> 
         resource: data.as_entire_binding(),
     });
     let production = if model {
-        include_str!("../model.wgsl")
+        include_str!("../model.wesl")
     } else {
-        include_str!("../chunk.wgsl")
+        include_str!("../chunk.wesl")
     };
     let definitions: &[&str] = if enhanced {
         &[SHADER_DEF, "ENHANCED"]
@@ -158,7 +160,7 @@ fn grid_raster(gpu: &Gpu, model: bool, enhanced: bool, samples: u32) -> Vec<u8> 
     let mut source = crate::shader_source::standalone(production, definitions);
     let (sample, footprint, threshold) = if model {
         (
-            "var input: VertexOutput; input.uv = uv; input.visible = select(1u, 1u | MODEL_BOUNDED_TILE, c.w != 0u); let sampled = sample_model_ref(input, c.x, dx, dy);",
+            "var input: VertexOutput; input.uv = uv; input.visibility.x = select(1u, 1u | MODEL_BOUNDED_TILE, c.w != 0u); let sampled = sample_model_ref(input, c.x, dx, dy);",
             "model_alpha_footprint(c.x, uv, dx, dy, sampled)",
             "MODEL_ALPHA_THRESHOLD",
         )
@@ -232,6 +234,16 @@ fn assert_grid_coverage(model: bool) {
     for enhanced in [false, true] {
         let one = grid_raster(&gpu, model, enhanced, 1);
         let four = grid_raster(&gpu, model, enhanced, 4);
+        if !enhanced {
+            crate::gpu_snapshot::save(
+                if model {
+                    "gridded-model"
+                } else {
+                    "gridded-cube"
+                },
+                &one,
+            );
+        }
         let pixel = |frame: &[u8], index: usize| {
             let cell = CELL_SIDE as usize;
             let row = index / COLUMNS as usize * cell + cell / 2;

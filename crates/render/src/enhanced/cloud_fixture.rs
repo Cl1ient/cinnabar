@@ -10,7 +10,7 @@ pub(super) fn generate(
         label: Some("production cloud noise"),
         source: wgpu::ShaderSource::Wgsl(
             crate::shader_source::composed(
-                &cloud_noise::shader_source(include_str!("cloud_noise.wgsl")),
+                &cloud_noise::shader_source(include_str!("cloud_noise.wesl")),
                 &[],
             )
             .into(),

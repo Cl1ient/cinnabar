@@ -2,10 +2,12 @@
 
 use bevy::prelude::{Local, Res, Time};
 use bevy::time::Real;
-use render::{AtmosphereFrame, WorldLighting};
+use render_scene::{AtmosphereFrame, WorldLighting};
 
 use super::{EnvironmentContext, EnvironmentProfileRoute, WorldClock};
-use crate::{local_player::LocalPlayerFrameCarrier, runtime::world::ClientWorld};
+use {
+    crate::runtime::world::ClientWorld, client_presentation::local_player::LocalPlayerFrameCarrier,
+};
 
 const INTERVAL_SECONDS: f64 = 5.0;
 

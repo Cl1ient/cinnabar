@@ -3,18 +3,22 @@ use std::{collections::BTreeMap, str, sync::Arc};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod bundle;
 mod carrier;
+pub use bundle::{
+    FONT_FACE_BUNDLE_MAGIC, FONT_FACE_BUNDLE_SCHEMA, FontFaceRaster, decode_font_face_bundle,
+    encode_font_face_bundle,
+};
 pub use carrier::encode_font_catalog;
 use carrier::{
-    array_at, decode_glyphs, decode_pages, invalid_catalog, validate_envelope,
-    validate_glyph_records, validate_page_offsets,
+    array_at, decode_glyphs, decode_pages, decoded_extent, invalid_catalog, validate_envelope,
+    validate_glyph_records, validate_layout, validate_page_offsets,
 };
 mod fallback;
 #[cfg(test)]
 mod merge_tests;
 mod rendering;
 mod runtime;
-pub use fallback::FontGlyphRequests;
 pub use rendering::{FONT_STYLE_COVERAGE_GAMMA, FONT_STYLE_SDF, FontRendering};
 
 pub const FONT_CARRIER_MAGIC: [u8; 9] = *b"MCBEFONT1";
@@ -28,7 +32,6 @@ pub const MAX_FONT_PATH_BYTES: usize = 512;
 /// Default raster em for the shipped Sans face. Semantic faces own their raster em.
 pub const FONT_RASTER_EM_PIXELS: u32 = crate::carriers::FONT.font_face.unwrap().raster_em_pixels();
 pub const FONT_FALLBACK_ATLAS_SIDE: u32 = 1024;
-pub const MAX_FONT_FALLBACK_PAGES: usize = 16;
 
 const MAX_FONT_DECODED_BYTES: usize = MAX_FONT_SOURCE_BYTES as usize;
 pub const MAX_FONT_CARRIER_BYTES: usize = 128 * 1024 * 1024;
@@ -60,8 +63,8 @@ pub struct FontTexturePage {
 /// A page's texels: RGBA8, or one coverage byte per texel when every visible texel is white.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FontPixels {
-    Rgba8(Box<[u8]>),
-    Coverage(Box<[u8]>),
+    Rgba8(Arc<[u8]>),
+    Coverage(Arc<[u8]>),
 }
 
 impl FontPixels {
@@ -94,9 +97,20 @@ impl FontPixels {
     fn coverage(&self) -> Option<Self> {
         let rgba8 = self.rgba8()?;
         rgba8
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .all(|texel| texel[3] == 0 || texel[..3] == [255; 3])
-            .then(|| Self::Coverage(rgba8.chunks_exact(4).map(|texel| texel[3]).collect()))
+            .then(|| {
+                Self::Coverage(
+                    rgba8
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|texel| texel[3])
+                        .collect(),
+                )
+            })
     }
 }
 
@@ -129,7 +143,6 @@ pub struct CompiledFontCatalog {
     line_metrics: Option<FontLineMetrics>,
     kerning_64: Arc<BTreeMap<(char, char), i32>>,
     fallback: Option<Arc<Self>>,
-    requests: Option<Arc<FontGlyphRequests>>,
 }
 
 pub type RuntimeFontCatalog = CompiledFontCatalog;
@@ -145,6 +158,41 @@ impl CompiledFontCatalog {
             return Err(FontCatalogError::SourceManifestMismatch);
         }
         let envelope = validate_envelope(bytes, expected_source_manifest_sha256)?;
+        let carrier_sha256 = array_at(bytes, envelope.hash_offset)?;
+        Self::decode_sealed(
+            bytes,
+            expected_source_manifest_sha256,
+            envelope,
+            carrier_sha256,
+        )
+    }
+
+    /// Decodes a carrier whose bytes a verified enclosing digest already covers, without
+    /// rehashing them; `carrier_sha256` must be unique to those bytes.
+    fn decode_covered(
+        bytes: &[u8],
+        expected_source_manifest_sha256: [u8; 32],
+        carrier_sha256: [u8; 32],
+    ) -> Result<Self, FontCatalogError> {
+        if expected_source_manifest_sha256 == [0; 32] {
+            return Err(FontCatalogError::SourceManifestMismatch);
+        }
+        let envelope = validate_layout(bytes, expected_source_manifest_sha256)?;
+        Self::decode_sealed(
+            bytes,
+            expected_source_manifest_sha256,
+            envelope,
+            carrier_sha256,
+        )
+    }
+
+    /// Decodes an envelope whose seal the caller has verified, still checking every page hash.
+    fn decode_sealed(
+        bytes: &[u8],
+        expected_source_manifest_sha256: [u8; 32],
+        envelope: carrier::Envelope,
+        carrier_sha256: [u8; 32],
+    ) -> Result<Self, FontCatalogError> {
         validate_page_offsets(bytes, envelope)?;
         validate_glyph_records(bytes, envelope)?;
 
@@ -154,7 +202,7 @@ impl CompiledFontCatalog {
             identity: FontCatalogIdentity {
                 schema: FONT_CARRIER_SCHEMA,
                 source_manifest_sha256: expected_source_manifest_sha256,
-                carrier_sha256: array_at(bytes, envelope.hash_offset)?,
+                carrier_sha256,
             },
             glyphs: glyphs.into_boxed_slice(),
             pages: pages.into(),
@@ -166,7 +214,6 @@ impl CompiledFontCatalog {
             line_metrics: None,
             kerning_64: Arc::default(),
             fallback: None,
-            requests: None,
         })
     }
 
@@ -216,7 +263,6 @@ impl CompiledFontCatalog {
             line_metrics: self.line_metrics,
             kerning_64: Arc::clone(&self.kerning_64),
             fallback: self.fallback.clone(),
-            requests: self.requests.clone(),
         }
     }
 

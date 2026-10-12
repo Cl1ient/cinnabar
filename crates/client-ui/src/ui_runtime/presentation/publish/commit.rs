@@ -1,5 +1,5 @@
 //! Pure UI rasterization, layout and publication after input enqueue.
-use super::*;
+use {super::*, ui::IconRef};
 
 pub struct PreviewCapture {
     pub skin: Option<Arc<[u8]>>,
@@ -19,9 +19,6 @@ pub struct PendingUiPublication {
     pub physical_size: [u32; 2],
     pub dpi_scale: DpiScale,
 }
-
-#[derive(Resource, Default)]
-pub struct PreparedUiPublication(pub Option<PendingUiPublication>);
 
 /// Renders the captured UI without observing this frame's post-capture inventory changes.
 pub fn render_prepared_ui(
@@ -106,12 +103,12 @@ pub fn refresh_hud_frame(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, ui::IconRef};
 
     #[test]
     fn switching_hotbar_icons_does_not_rasterize_or_replace_textures_under_the_hand_rig() {
         let mut presentation =
-            UiPresentationRuntime::new(super::super::super::tests::fixture_font()).unwrap();
+            UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
         presentation.hud_frame.first_person = true;
         presentation.hud_frame.hand_rig_active = true;
         let textures = Arc::clone(&presentation.textures);

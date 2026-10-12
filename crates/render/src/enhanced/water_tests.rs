@@ -7,7 +7,7 @@ mod textures;
 #[test]
 fn water_scattering_requires_incident_light_and_preserves_zero_path() {
     let source = r#"
-#import cinnabar::enhanced_water::{water_transport,water_transmittance}
+import render::enhanced::water::{water_transport,water_transmittance};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,5>;
 @compute @workgroup_size(1) fn regression(){
     results[0]=vec4(water_transport(vec3(0.0),64.0,vec3(0.0)),1.0);
@@ -34,7 +34,7 @@ fn water_scattering_requires_incident_light_and_preserves_zero_path() {
 #[test]
 fn refraction_filter_rejects_sky_and_foreground_at_silhouettes() {
     let source = r#"
-#import cinnabar::enhanced_water::water_depth_weight
+import render::enhanced::water::water_depth_weight;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,1>;
 @compute @workgroup_size(1) fn regression(){
     results[0]=vec4(water_depth_weight(0.05,0.005,0.0),
@@ -61,7 +61,7 @@ fn refraction_filter_rejects_sky_and_foreground_at_silhouettes() {
 #[test]
 fn water_reflection_budget_preserves_grazing_reflections_and_total_internal_reflection() {
     let source = r#"
-#import cinnabar::enhanced_water::{water_fresnel,water_screen_reflection_weight}
+import render::enhanced::water::{water_fresnel,water_screen_reflection_weight};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,2>;
 @compute @workgroup_size(1) fn regression(){
     let normal=water_fresnel(1.0,1.0/1.333);
@@ -91,7 +91,7 @@ fn water_reflection_budget_preserves_grazing_reflections_and_total_internal_refl
 #[test]
 fn ssr_hit_confidence_fades_depth_edges_and_rejects_far_thickness() {
     let source = r#"
-#import cinnabar::enhanced_water::water_ssr_hit_confidence
+import render::enhanced::water::water_ssr_hit_confidence;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,2>;
 @compute @workgroup_size(1) fn regression(){
     let stable=water_ssr_hit_confidence(0.25,8.0,0.2,1.0,0.01,0.2);
@@ -128,7 +128,7 @@ fn ssr_hit_confidence_fades_depth_edges_and_rejects_far_thickness() {
 #[test]
 fn ripple_slopes_are_small_and_distant_footprints_filter_them() {
     let source = r#"
-#import cinnabar::enhanced_water::ripple_normal
+import render::enhanced::water::ripple_normal;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,3>;
 @compute @workgroup_size(1) fn regression(){
     results[0]=vec4(ripple_normal(vec2(1.3,7.9),3.8,0.0,true),1.0);
@@ -155,7 +155,7 @@ fn ripple_slopes_are_small_and_distant_footprints_filter_them() {
 #[test]
 fn displaced_water_normal_uses_the_derivative_of_its_actual_height() {
     let source = r#"
-#import cinnabar::enhanced_water::{water_surface_offset,water_surface_gradient}
+import render::enhanced::water::{water_surface_offset,water_surface_gradient};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,1>;
 @compute @workgroup_size(1) fn regression(){
     let world=vec3(1.3,63.0,7.9);

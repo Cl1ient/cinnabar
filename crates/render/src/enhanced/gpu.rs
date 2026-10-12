@@ -9,7 +9,7 @@ use bevy::{
         system::{SystemParam, SystemParamItem, lifetimeless::SRes},
     },
     math::{Mat4, UVec4, Vec4},
-    prelude::*,
+    prelude::{Entity, FromWorld, Has, Query, Res, ResMut, Resource, Time, With, World, default},
     render::{
         render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
         render_resource::{
@@ -22,17 +22,20 @@ use bevy::{
             TextureViewDescriptor, TextureViewDimension, TextureViewId,
         },
         renderer::{RenderDevice, RenderQueue},
-        view::{ExtractedView, ViewDepthTexture, ViewTarget},
+        view::{ExtractedView, ViewDepthStencilTexture, ViewTarget},
     },
 };
 
-use super::{
-    EnhancedRendering,
-    frame::{CascadeBounds, EnhancedFrameGpu, ViewInputs, build_frame},
-    materials::material_classes,
+use {
+    super::{
+        frame::{CascadeBounds, EnhancedFrameGpu, ViewInputs, build_frame},
+        materials::material_classes,
+    },
+    render_scene::EnhancedRendering,
 };
-use crate::{
-    AtmosphereFrame, ChunkTextureAssetIdentity, ChunkTextureAssets, scene_sampling::ResolvedDepth,
+use {
+    crate::scene_sampling::ResolvedDepth,
+    render_scene::{AtmosphereFrame, ChunkTextureAssetIdentity, ChunkTextureAssets},
 };
 
 pub(crate) const CASTER_SLOT_BYTES: u64 = 256;
@@ -40,7 +43,7 @@ const CASTER_UNIFORM_BYTES: u64 = 192;
 pub(crate) const SHADOW_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 pub(crate) const POST_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
-/// Mirrors `CasterUniform` in enhanced/caster.wgsl, padded to one dynamic slot.
+/// Mirrors `CasterUniform` in enhanced/caster.wesl, padded to one dynamic slot.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct CasterUniformGpu {
@@ -532,7 +535,7 @@ impl EnhancedViewGpu {
             casters: buffer(
                 "enhanced caster uniforms",
                 CASTER_SLOT_BYTES
-                    * (u64::from(super::MAX_SHADOW_CASCADES)
+                    * (u64::from(render_scene::MAX_SHADOW_CASCADES)
                         + (super::local_lights::MAX_SHADOWED_LIGHTS
                             * super::local_lights::POINT_SHADOW_FACES)
                             as u64),

@@ -4,13 +4,27 @@ use std::sync::Arc;
 impl CollisionRegistry {
     /// Resolves origin-sampled carrier bounds against each bamboo column.
     pub fn set_bamboo_column_offset(&mut self, runtime_id: u32) -> bool {
+        self.set_origin_sampled_offset(runtime_id, block_transform::random_offset::BAMBOO)
+    }
+
+    /// Resolves origin-sampled pointed dripstone bounds against their owner column.
+    pub fn set_dripstone_column_offset(&mut self, runtime_id: u32) -> bool {
+        self.set_origin_sampled_offset(
+            runtime_id,
+            block_transform::random_offset::POINTED_DRIPSTONE,
+        )
+    }
+
+    /// Retains movement seed coordinates while replacing their sampled column offset.
+    fn set_origin_sampled_offset(
+        &mut self,
+        runtime_id: u32,
+        component: block_transform::random_offset::RandomOffsetComponent,
+    ) -> bool {
         let Some(block) = Arc::make_mut(&mut self.blocks).get_mut(&runtime_id) else {
             return false;
         };
-        block.random_offset = Some((
-            block_transform::random_offset::BAMBOO,
-            block_transform::bamboo::ORIGIN_OFFSET,
-        ));
+        block.random_offset = Some((component, component.offset([0; 3])));
         true
     }
 
@@ -49,6 +63,7 @@ impl CollisionRegistry {
     }
 
     /// Includes every owner cell whose admitted translated shapes can intersect a query.
+    /// Both bounds are inclusive block coordinates, rounded down after adding the halo.
     pub(super) fn query_bounds(
         &self,
         query: super::Aabb,
@@ -57,7 +72,7 @@ impl CollisionRegistry {
         let max: [f64; 3] = std::array::from_fn(|axis| self.collision_halo[axis].1.max(1) as f64);
         Ok([
             super::block_floor(query.min + Vec3::new(min[0], min[1], min[2]))?,
-            super::block_ceil(query.max + Vec3::new(max[0], max[1], max[2]))?,
+            super::block_floor(query.max + Vec3::new(max[0], max[1], max[2]))?,
         ])
     }
 }

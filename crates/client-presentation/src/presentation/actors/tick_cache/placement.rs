@@ -1,6 +1,7 @@
 use super::PoseConversions;
 use crate::presentation::actors::{ActorRigPresentation, sampled_rig_placement};
-use client_world::{ActorRigSnapshot, ActorSnapshot};
+use actor_animation::ActorRigSnapshot;
+use client_world::ActorSnapshot;
 
 impl PoseConversions {
     /// Replaces the cached world-body pose and scale at the already sampled render feet.

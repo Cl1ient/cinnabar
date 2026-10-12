@@ -4,7 +4,7 @@ use wgpu::util::DeviceExt as _;
 
 #[test]
 fn roughness_broadens_environment_lobes_and_diffuse_preserves_constant_radiance() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!("missing fixture: native GPU adapter for environment convolution");
         return;
@@ -15,7 +15,7 @@ fn roughness_broadens_environment_lobes_and_diffuse_preserves_constant_radiance(
         ..Default::default()
     }))
     .expect("environment convolution device");
-    let mut source = include_str!("probe_filter.wgsl").to_owned();
+    let mut source = include_str!("probe_filter.wesl").to_owned();
     source.push_str(
         r#"
 @group(0) @binding(31) var<storage,read_write> result:array<vec4<f32>,1>;
@@ -146,7 +146,12 @@ fn roughness_broadens_environment_lobes_and_diffuse_preserves_constant_radiance(
             });
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receiver.recv().unwrap().unwrap();
-        let value = *bytemuck::from_bytes::<[f32; 4]>(&readback.slice(..).get_mapped_range());
+        let value = *bytemuck::from_bytes::<[f32; 4]>(
+            &readback
+                .slice(..)
+                .get_mapped_range()
+                .expect("readback buffer is mapped"),
+        );
         readback.unmap();
         value
     };

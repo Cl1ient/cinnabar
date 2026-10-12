@@ -8,10 +8,13 @@ use std::{
 use render_model::UiTexturePage;
 use ui::UiMesh;
 
-use super::{
-    IconRef, UiPresentationRuntime, dynamic_textures,
-    gui_models::{IconKey, icon_key, ordinary_cube_sheet, sheet_faces},
-    item_gui,
+use {
+    super::{
+        UiPresentationRuntime, dynamic_textures,
+        gui_models::{IconKey, icon_key, ordinary_cube_sheet, sheet_faces},
+        item_gui,
+    },
+    ui::IconRef,
 };
 
 /// Largest icon side kept as-is; larger sources are reduced to fit.
@@ -72,19 +75,19 @@ impl UiPresentationRuntime {
         self.session_icons.generation
     }
 
-    /// Vanilla crossbows route nonzero animation frames to the pulling
-    /// atlas. This identity is shared by inventory cells and actual dropped sprites.
+    /// Admitted crossbow drawing roles share the pulling atlas across cells and dropped sprites.
     pub fn item_icon_key<'a>(
         identifier: &'a str,
         metadata: u32,
-        charged_projectile: Option<&str>,
+        animation: assets::item_use::ItemUseAnimation,
+        charged_projectile: assets::item_use::ItemProjectileRole,
         animation_frame: Option<u32>,
     ) -> (&'a str, u32) {
-        if identifier != "minecraft:crossbow" {
+        if animation != assets::item_use::ItemUseAnimation::Crossbow {
             return (identifier, metadata);
         }
         let frame = animation_frame.unwrap_or_else(|| {
-            inventory::crossbow_animation_frame(None, 0, charged_projectile, false)
+            inventory::crossbow_animation_frame(None, 0, Some(charged_projectile), false)
         });
         if frame == 0 {
             (identifier, metadata)
@@ -128,7 +131,7 @@ impl UiPresentationRuntime {
                 None => "-".to_owned(),
             })
             .collect::<Vec<_>>();
-        bevy::log::info!(slots = ?shown, "hotbar changed");
+        tracing::info!(slots = ?shown, "hotbar changed");
         self.logged_hotbar = slots;
     }
 
@@ -154,7 +157,9 @@ impl UiPresentationRuntime {
         } else {
             "not in the vanilla icon catalog"
         };
-        bevy::log::info!(
+        // Debug level: opening the creative search can miss hundreds at once, and every line
+        // costs a synchronous console write in browsers.
+        tracing::debug!(
             identifier,
             metadata,
             custom = !identifier.starts_with("minecraft:"),
@@ -214,7 +219,7 @@ fn install(
     packed: Option<PackedIcons>,
 ) {
     let page_index =
-        (runtime.textures.dynamic_start() + dynamic_textures::SESSION_ICON_PAGE) as u16;
+        (runtime.textures.dynamic_start() + ui_engine::pages::SESSION_ICON_PAGE) as u16;
     let packed = icons
         .zip(packed)
         .map(|(icons, packed)| (icons, packed.on_page(page_index)));

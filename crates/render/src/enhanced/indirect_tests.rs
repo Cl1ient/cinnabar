@@ -4,8 +4,8 @@ use super::*;
 use wgpu::util::DeviceExt;
 
 const QUERY: &str = r#"
-#import cinnabar::enhanced_indirect::spatial_indirect
-#import cinnabar::enhanced_indirect_trace::grid_segment_visibility
+import render::enhanced::indirect::spatial_indirect;
+import render::enhanced::indirect_trace::grid_segment_visibility;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,4>;
 @compute @workgroup_size(1) fn sample_field(){
     results[0]=spatial_indirect(vec3(6.0,5.6,6.0),vec3(0.0,1.0,0.0),1.0,1.0);
@@ -80,7 +80,7 @@ fn scroll_updates_exposed_probes_first_and_retains_overlap() {
 #[test]
 fn native_probe_coordinates_and_radiance_updates_are_world_stable() {
     let source = r#"
-#import cinnabar::enhanced_indirect_trace::{probe_storage_index,probe_radiance_mix,GI_HISTORY_SECONDS}
+import render::enhanced::indirect_trace::{probe_storage_index,probe_radiance_mix,GI_HISTORY_SECONDS};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,3>;
 @compute @workgroup_size(1) fn regression(){
     let size=vec3(4u);
@@ -149,9 +149,9 @@ fn solid(data: &mut [[u32; 4]], p: [usize; 3], colour: [u8; 3]) {
 
 #[test]
 fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::VULKAN,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!("missing fixture: native Vulkan adapter for resident-grid indirect light");
@@ -166,7 +166,7 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
         label: Some("production spatial light update"),
         source: wgpu::ShaderSource::Wgsl(
             crate::shader_source::composed(
-                include_str!("indirect_compute.wgsl"),
+                include_str!("indirect_compute.wesl"),
                 &["INDIRECT_COMPUTE"],
             )
             .into(),
@@ -433,7 +433,10 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
             .map_async(wgpu::MapMode::Read, move |value| send.send(value).unwrap());
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receive.recv().unwrap().unwrap();
-        let mapped = readback.slice(..).get_mapped_range();
+        let mapped = readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped");
         measured.push(bytemuck::cast_slice::<u8, [f32; 4]>(&mapped).to_vec());
         drop(mapped);
         readback.unmap();
@@ -493,14 +496,12 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
     );
 
     let render_device = RenderDevice::from(device);
-    let render_queue = RenderQueue(std::sync::Arc::new(
-        bevy::render::renderer::WgpuWrapper::new(queue),
-    ));
+    let render_queue = RenderQueue::new(queue);
     let mut view = IndirectGridGpu::new(&render_device);
     let geometry = IndirectGeometry::default();
     let coverage = crate::chunk::resident_coverage::ChunkResidentCoverage::default();
     let textures = ChunkTextureAssets::default();
-    let tints = crate::ChunkBiomeTints::default();
+    let tints = render_scene::ChunkBiomeTints::default();
     view.prepare(
         &render_queue,
         &geometry,
@@ -511,8 +512,8 @@ fn native_spatial_light_preserves_shelter_colour_and_wall_visibility() {
         Some(0),
         1,
     );
-    for _ in
-        0..PROBE_COUNT.div_ceil(crate::enhanced::quality::budget(view.quality).irradiance_updates)
+    for _ in 0..PROBE_COUNT
+        .div_ceil(render_scene::enhanced::enhanced_quality_budget(view.quality).irradiance_updates)
     {
         view.submitted.store(true, Ordering::Relaxed);
         view.prepare(

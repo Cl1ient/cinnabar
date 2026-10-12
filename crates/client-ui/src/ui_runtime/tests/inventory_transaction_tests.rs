@@ -10,10 +10,7 @@ fn pickup() -> InventoryEvent {
             .split_whitespace()
             .map(|byte| u8::from_str_radix(byte, 16).unwrap())
             .collect();
-    let packet = decode_batch(batch.into(), &BedrockSession { shield_item_id: 0 })
-        .unwrap()
-        .pop()
-        .unwrap();
+    let packet = decode_batch(batch.into()).unwrap().pop().unwrap();
     let Some(WorldEvent::Inventory(event)) = into_world_event(packet, 0).unwrap() else {
         panic!()
     };
@@ -80,7 +77,7 @@ fn vanilla_pickup_replaces_closed_inventory_and_hud_before_the_next_drop() {
     );
     assert_eq!(
         player_runtime.selected_stack_snapshot().unwrap().state,
-        crate::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(&update.stack)
+        inventory::inventory_ledger::PlayerInventorySlot::Present(&update.stack)
     );
     let request = runtime
         .inventory_ledger_mut(&mut player_runtime)
@@ -93,3 +90,6 @@ fn vanilla_pickup_replaces_closed_inventory_and_hud_before_the_next_drop() {
     assert_eq!(predicted.count, 63);
     assert_eq!(predicted.stack_network_id, request);
 }
+
+#[path = "mount_quick_move_tests.rs"]
+mod mount_quick_move_tests;

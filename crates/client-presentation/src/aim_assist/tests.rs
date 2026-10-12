@@ -180,12 +180,12 @@ fn explicit_blocks_tags_and_exclusions_resolve_without_allocating() {
         target_liquids: false,
     };
     let tags: [Arc<str>; 1] = [Arc::from("wood")];
-    let before = crate::test_allocations::count();
+    let before = test_alloc::thread_allocations();
     assert_eq!(category.block_priority("stone", &tags), Some(20));
     assert_eq!(category.block_priority("log", &tags), Some(20));
     assert_eq!(category.block_priority("unknown", &[]), Some(3));
     assert_eq!(category.block_priority("air", &[]), None);
-    assert_eq!(crate::test_allocations::count() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn world_fixture() -> (
 #[test]
 fn full_evaluation_is_allocation_free_and_publishes_every_second_tick() {
     let (world, store, registry) = world_fixture();
-    let blocks = sim::PaletteWorld::new(&store, &registry, 0);
+    let blocks = sim::PaletteWorld::new(&store, &registry, 0, Default::default());
     let mut state = ServerAimAssist::default();
     state.apply(
         1,
@@ -446,7 +446,7 @@ fn full_evaluation_is_allocation_free_and_publishes_every_second_tick() {
     );
     assert_eq!(frame.visibility_queries, queries);
     assert_eq!(frame.skipped_queries, skips);
-    let before = crate::test_allocations::count();
+    let before = test_alloc::thread_allocations();
     for tick in 2..20 {
         frame.evaluate(
             &state,
@@ -461,7 +461,7 @@ fn full_evaluation_is_allocation_free_and_publishes_every_second_tick() {
             |_| &[],
         );
     }
-    assert_eq!(crate::test_allocations::count() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
     assert_eq!(frame.target.unwrap().kind, TargetKind::Actor(2));
     let mut clear = settings(CameraAimAssistTargetMode::Distance);
     clear.action = CameraAimAssistAction::Clear;
@@ -473,7 +473,7 @@ fn full_evaluation_is_allocation_free_and_publishes_every_second_tick() {
 #[test]
 fn interaction_direction_uses_odd_tick_eye_for_retained_target_and_action_rotation() {
     let (world, store, registry) = world_fixture();
-    let blocks = sim::PaletteWorld::new(&store, &registry, 0);
+    let blocks = sim::PaletteWorld::new(&store, &registry, 0, Default::default());
     let mut state = ServerAimAssist::default();
     state.apply(
         1,
@@ -533,7 +533,7 @@ fn interaction_direction_uses_odd_tick_eye_for_retained_target_and_action_rotati
 #[test]
 fn registry_and_priority_packets_preserve_search_cycle_and_even_tick_uses_latest_weight() {
     let (world, store, registry) = world_fixture();
-    let blocks = sim::PaletteWorld::new(&store, &registry, 0);
+    let blocks = sim::PaletteWorld::new(&store, &registry, 0, Default::default());
     let mut state = ServerAimAssist::default();
     state.apply(
         1,
@@ -601,7 +601,7 @@ fn registry_and_priority_packets_preserve_search_cycle_and_even_tick_uses_latest
 #[test]
 fn removed_actor_winner_clears_even_phase_result_before_next_candidate_capture() {
     let (mut world, store, registry) = world_fixture();
-    let blocks = sim::PaletteWorld::new(&store, &registry, 0);
+    let blocks = sim::PaletteWorld::new(&store, &registry, 0, Default::default());
     let mut state = ServerAimAssist::default();
     state.apply(
         1,

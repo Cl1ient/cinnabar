@@ -4,8 +4,8 @@ set -euo pipefail
 expected_bds_sha256='19c88569af2e4b7d984e999055a31cbcb0799dacf8bbbf7371eda42f5772a443'
 expected_bds_release='1.26.52.3'
 pinned_axolotl_stack_commit='c4540512dc47833bb40363da7ad1161110d64b67'
-pinned_protocolgen_commit='0b8f17e3b321f7cb89e21dc8563398b9981e632f'
-pinned_valentine_license_sha256='62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184'
+pinned_protocolgen_commit='dec7334ac3981b0b79146fa53c82af91d70f9f62'
+pinned_jolyne_license_sha256='62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184'
 
 usage() {
     cat >&2 <<'EOF'
@@ -150,7 +150,7 @@ assert_protocol_dependency_provenance() {
     python3 - "$root" \
         "$pinned_axolotl_stack_commit" \
         "$pinned_protocolgen_commit" \
-        "$pinned_valentine_license_sha256" <<'PY'
+        "$pinned_jolyne_license_sha256" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -220,8 +220,7 @@ if len(protocol_packages) != 1:
         f"cargo metadata must contain exactly one canonical protocol package, found {len(protocol_packages)}"
     )
 expected_dependencies = {
-    "valentine": ["bedrock_1_26_51"],
-    "jolyne": ["client", "bedrock_1_26_51"],
+    "bedrock-protocol-1-26-51": [],
 }
 for dependency_name, expected_features in expected_dependencies.items():
     matches = [
@@ -252,10 +251,10 @@ for dependency_name, expected_features in expected_dependencies.items():
         or dependency["kind"] is not None
         or dependency["target"] is not None
         or dependency["optional"] is not False
-        or dependency["uses_default_features"] is not False
+        or not isinstance(dependency["uses_default_features"], bool)
     ):
         raise SystemExit(
-            f"protocol dependency provenance drifted: {dependency_name} must be one normal non-target non-optional local dependency with default features disabled"
+            f"protocol dependency provenance drifted: {dependency_name} must be one normal non-target non-optional local dependency"
         )
     vendored_manifest = root / f"crates/protocol/vendor/{dependency_name}/Cargo.toml"
     if not vendored_manifest.is_file():
@@ -280,7 +279,7 @@ for dependency_name, expected_features in expected_dependencies.items():
 upstream = upstream_path.read_text(encoding="utf-8-sig")
 metadata_lines = [
     f"- Axolotl Stack merge revision: `{axolotl_stack_revision}`",
-    f"- Protocolgen submodule, manifest, and generated-source revision: `{protocolgen_revision}`",
+    f"- Generator commit: `{protocolgen_revision}` (`generated/1.26.51/rust-contract`)",
     f"- Retained license normalized SHA-256: `{license_sha256}`",
 ]
 for line in metadata_lines:
@@ -301,7 +300,7 @@ for block in re.split(r"(?m)^\s*\[\[package\]\]\s*$", lock)[1:]:
     if not name_match:
         continue
     name = name_match.group(1)
-    if name != "jolyne" and not name.startswith("valentine"):
+    if name != "bedrock-protocol-1-26-51":
         continue
     resolved.add(name)
     resolution_key = re.search(r"(?m)^\s*(source|checksum)\s*=", block)
@@ -309,10 +308,16 @@ for block in re.split(r"(?m)^\s*\[\[package\]\]\s*$", lock)[1:]:
         raise SystemExit(
             f"Cargo.lock local package {name} has a {resolution_key.group(1)} entry"
         )
-for dependency in ("valentine", "jolyne"):
+for dependency in ("bedrock-protocol-1-26-51",):
     if dependency not in resolved:
         raise SystemExit(f"Cargo.lock does not contain local package {dependency}")
 PY
+}
+
+# Wait for the core's own publication signal, including hashed Unix endpoints.
+wait_for_core_ready() {
+    local log=$1 pid=$2 timeout=${3:-30}
+    wait_for_marker "$log" 'msg="listener ready; waiting for local Rust client"' "$timeout" "$pid"
 }
 
 wait_for_marker() {
@@ -883,7 +888,7 @@ write_metadata() {
     export RUST_MCBE_META_GOPHERTUNNEL="$pinned_gophertunnel_commit"
     export RUST_MCBE_META_AXOLOTL_STACK="$pinned_axolotl_stack_commit"
     export RUST_MCBE_META_PROTOCOLGEN="$pinned_protocolgen_commit"
-    export RUST_MCBE_META_VALENTINE_LICENSE="$pinned_valentine_license_sha256"
+    export RUST_MCBE_META_JOLYNE_LICENSE="$pinned_jolyne_license_sha256"
     export RUST_MCBE_META_BDS_HASH="$bds_hash"
     export RUST_MCBE_META_BDS_COMMAND="$(format_command "${bds_command[@]}")"
     export RUST_MCBE_META_CORE_COMMAND="$(format_command "${core_command[@]}")"
@@ -905,7 +910,7 @@ keys = {
     "pinned_gophertunnel_commit": "RUST_MCBE_META_GOPHERTUNNEL",
     "pinned_axolotl_stack_commit": "RUST_MCBE_META_AXOLOTL_STACK",
     "pinned_protocolgen_commit": "RUST_MCBE_META_PROTOCOLGEN",
-    "pinned_valentine_license_sha256": "RUST_MCBE_META_VALENTINE_LICENSE",
+    "pinned_jolyne_license_sha256": "RUST_MCBE_META_JOLYNE_LICENSE",
     "bds_sha256": "RUST_MCBE_META_BDS_HASH",
     "bds_command": "RUST_MCBE_META_BDS_COMMAND",
     "core_command": "RUST_MCBE_META_CORE_COMMAND",
@@ -1009,13 +1014,7 @@ mkfifo -- "$core_stdin"
 core_pid=$!
 exec 8>"$core_stdin"
 core_fd_open=true
-endpoint="$socket_dir/game.sock"
-endpoint_deadline=$(( $(date +%s) + 30 ))
-while [[ ! -S $endpoint ]]; do
-    kill -0 "$core_pid" 2>/dev/null || die "core exited before endpoint publication (log: $run_dir/core.stderr.log)"
-    (( $(date +%s) < endpoint_deadline )) || die "timed out waiting for core endpoint: $endpoint"
-    sleep 0.1
-done
+wait_for_core_ready "$run_dir/core.stderr.log" "$core_pid"
 
 (cd "$project_root" && RUST_MCBE_BUILD_COMMIT="$repo_commit" exec "${app_command[@]}" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" 6>&- 8>&- 9>&-) &
 app_pid=$!

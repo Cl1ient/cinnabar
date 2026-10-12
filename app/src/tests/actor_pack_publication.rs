@@ -3,15 +3,18 @@
 use std::sync::Arc;
 
 use bevy::prelude::{Vec3, World};
-use render::{ActorArtworkPages, ActorRenderFrame, ActorRenderScene};
+use {
+    render_model::ActorArtworkPages,
+    render_scene::{ActorRenderFrame, ActorRenderScene},
+};
 
-use crate::runtime::{
-    network::{
-        HandRigBuilder,
-        entity_pack::{SessionEntityPack, SessionItems},
-        prepare_actor_render_frame, publish_actor_render_frame,
+use {
+    crate::runtime::{network::prepare_actor_render_frame, world::ClientWorld},
+    assets::SessionEntityPack,
+    client_presentation::{
+        actor_publication::{HandRigBuilder, publish_actor_render_frame},
+        session_assets::SessionItems,
     },
-    world::ClientWorld,
 };
 
 /// Publishes through the actor stages used by the native main frame.
@@ -74,8 +77,10 @@ fn item_and_artwork_refreshes_retain_pack_geometry() {
     );
     for artwork_changed in [false, true] {
         if artwork_changed {
-            let artwork = world.resource::<ActorArtworkPages>().clone();
-            *world.resource_mut::<ActorArtworkPages>() = artwork;
+            let artwork = world
+                .resource::<render_scene::ActorArtworkResource>()
+                .clone();
+            *world.resource_mut::<render_scene::ActorArtworkResource>() = artwork;
         } else {
             world.resource_mut::<ClientWorld>().session_items = Some(Arc::new(SessionItems {
                 components: Arc::default(),
@@ -178,6 +183,9 @@ fn with_equipment_geometry(
         rig_controllers: entities.rig_controllers().into(),
         item_visuals: entities.item_visuals().into(),
         item_visual_aliases: entities.item_visual_aliases().into(),
+        item_use_profiles: entities.item_use_profiles().into(),
+        seat_layouts: entities.seat_layouts().into(),
+        interaction_traits: assets::interactions::compile(entities.symbols()),
         render: entities.render_data().clone(),
     };
     for clip in &mut compiled.animation_clips {
@@ -209,6 +217,7 @@ fn fixture_equipment() -> Arc<assets::RuntimeEquipmentCatalog> {
                 geometry: reference(EQUIPMENT_GEOMETRY),
                 texture: reference("textures/entity/example"),
                 material: "entity_alphatest".into(),
+                color_mask: assets::EquipmentColorMask::NoMask,
                 render_controller: "controller.render.example".into(),
                 first_person: assets::EquipmentTransform::NeedsMeasurement,
                 third_person: assets::EquipmentTransform::NeedsMeasurement,
@@ -413,7 +422,8 @@ fn prepared_actor_artwork_is_shared_and_stale_sources_fall_back() {
 
     let replacement = textured_pack(entities.clone(), 71);
     let expected = world
-        .resource::<ActorArtworkPages>()
+        .resource::<render_scene::ActorArtworkResource>()
+        .0
         .clone()
         .with_pack_artwork(&replacement.textures, &replacement.bindings);
     world.resource_mut::<ClientWorld>().pack_entities = Some(replacement.clone());
@@ -430,14 +440,15 @@ fn prepared_actor_artwork_is_shared_and_stale_sources_fall_back() {
     ));
 
     let prepared = Arc::new(PreparedActorArtwork::new(
-        world.resource::<ActorArtworkPages>(),
+        world.resource::<render_scene::ActorArtworkResource>(),
         &replacement,
     ));
     world.resource_mut::<ClientWorld>().prepared_actor_artwork = Some(prepared);
     let (base, _) = world
-        .resource::<ActorArtworkPages>()
+        .resource::<render_scene::ActorArtworkResource>()
+        .0
         .clone()
-        .with_equipment_rasters(&[render::EquipmentRaster {
+        .with_equipment_rasters(&[render_model::EquipmentRaster {
             width: 1,
             height: 1,
             rgba8: Arc::from([43; 4]),
@@ -445,7 +456,7 @@ fn prepared_actor_artwork_is_shared_and_stale_sources_fall_back() {
     let expected = base
         .clone()
         .with_pack_artwork(&replacement.textures, &replacement.bindings);
-    *world.resource_mut::<ActorArtworkPages>() = base.clone();
+    world.resource_mut::<render_scene::ActorArtworkResource>().0 = base.clone();
     let changed_base = publish(&mut world);
     same_artwork(changed_base.artwork_pages(), &expected);
     world.resource_mut::<ClientWorld>().stream = None;

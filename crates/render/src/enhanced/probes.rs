@@ -7,7 +7,7 @@ mod probe_filter;
 #[path = "probe_history.rs"]
 mod probe_history;
 use bevy::{
-    camera::{Camera3dDepthTextureUsage, RenderTarget},
+    camera::{Camera3dDepthTextureUsage, Hdr, RenderTarget},
     core_pipeline::FullscreenShader,
     prelude::*,
     render::{
@@ -15,7 +15,6 @@ use bevy::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_resource::*,
         renderer::{RenderContext, RenderDevice},
-        view::Hdr,
     },
 };
 use probe_cache::{ProbeLighting, ProbeSchedule};
@@ -37,8 +36,10 @@ const CUBE_FACE_COUNT: u32 = 6;
 const RELOCATION_DISTANCE: f32 = 16.0;
 
 #[derive(Component, ExtractComponent, Clone, Copy)]
+#[extract_app(bevy::render::RenderApp)]
 pub(crate) struct ProbeFace(pub u32);
 #[derive(Resource, ExtractResource, Clone, Default)]
+#[extract_app(bevy::render::RenderApp)]
 pub(crate) struct ProbeOrigin {
     pub position: Vec3,
     pub epoch: u64,
@@ -66,7 +67,7 @@ impl ProbeOrigin {
     fn complete_face(&self, face: u32) {
         let _ = self
             .completed_faces
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
                 (old >> 6 == self.epoch).then_some(old | (1 << face))
             });
     }
@@ -81,7 +82,7 @@ struct Cameras {
     images: Vec<Handle<Image>>,
     schedule: ProbeSchedule,
     lighting: Option<ProbeLighting>,
-    material: Option<crate::ChunkTextureAssetIdentity>,
+    material: Option<render_scene::ChunkTextureAssetIdentity>,
     actor_signature: u64,
     settings: Option<EnhancedRendering>,
     lighting_signature: u64,
@@ -118,13 +119,13 @@ fn sync_cameras(
     mut origin: ResMut<ProbeOrigin>,
     mut images: ResMut<Assets<Image>>,
     time: Option<Res<Time>>,
-    atmosphere: Option<Res<crate::AtmosphereFrame>>,
-    environment: Option<Res<crate::AtmosphereViewInputs>>,
-    clouds: Option<Res<crate::CloudVisibility>>,
-    materials: Option<Res<crate::ChunkTextureAssets>>,
-    actors: Option<Res<crate::ActorRenderFrame>>,
-    changed_chunks: Query<(), Changed<crate::ChunkRenderInstance>>,
-    mut removed_chunks: RemovedComponents<crate::ChunkRenderInstance>,
+    atmosphere: Option<Res<render_scene::AtmosphereFrame>>,
+    environment: Option<Res<render_scene::AtmosphereViewInputs>>,
+    clouds: Option<Res<render_scene::CloudVisibility>>,
+    materials: Option<Res<render_scene::ChunkTextureAssets>>,
+    actors: Option<Res<render_scene::ActorRenderFrame>>,
+    changed_chunks: Query<(), Changed<render_scene::ChunkRenderInstance>>,
+    mut removed_chunks: RemovedComponents<render_scene::ChunkRenderInstance>,
     source: Query<(Entity, &Camera, &GlobalTransform, &EnhancedRendering), Without<ProbeFace>>,
     mut captures: Query<
         (
@@ -165,7 +166,7 @@ fn sync_cameras(
     origin.source = Some(source_entity);
     origin.dimension = dimension;
     origin.quality = settings.quality;
-    let budget = super::quality::budget(settings.quality);
+    let budget = render_scene::enhanced::enhanced_quality_budget(settings.quality);
     cameras
         .schedule
         .set_intervals(budget.reflection_refresh, budget.reflection_animation);
@@ -327,7 +328,7 @@ fn capture_settings(mut settings: EnhancedRendering) -> EnhancedRendering {
 }
 
 // Clock stamps and interpolation fractions do not invalidate an otherwise unchanged pose.
-fn actor_signature(frame: &crate::ActorRenderFrame) -> u64 {
+fn actor_signature(frame: &render_scene::ActorRenderFrame) -> u64 {
     let mut hash = DefaultHasher::new();
     frame.skin_revision.hash(&mut hash);
     frame.artwork.identity().hash(&mut hash);

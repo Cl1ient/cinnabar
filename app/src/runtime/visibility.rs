@@ -4,14 +4,14 @@ use bevy::prelude::{
     Add, Entity, On, Query, Remove, Res, ResMut, Resource, Transform, Visibility, With,
 };
 use chunk_pipeline::{CaveVisibilityWork, CaveVisibleSet, WorldStream};
-use render::{ChunkRenderInstance, RuntimeStage, RuntimeStageProfiler};
+use render_scene::{ChunkRenderInstance, RuntimeStage, RuntimeStageProfiler};
 use world::SubChunkKey;
 
-use crate::{
-    camera::FlyCamera,
-    runtime::{telemetry::camera_sub_chunk_key, world::ClientWorld},
-};
 use diagnostics::metrics::{DiagnosticQuadTracker, MetricsCollector};
+use {
+    crate::runtime::{telemetry::camera_sub_chunk_key, world::ClientWorld},
+    client_presentation::camera::FlyCamera,
+};
 
 #[cfg(feature = "developer-control")]
 mod telemetry;
@@ -93,17 +93,37 @@ impl CaveVisibilityCache {
         low: [f32; 3],
         high: [f32; 3],
     ) -> bool {
-        if !self.initialized
-            || self.camera != Some(camera)
-            || self.graph_generation != Some(generation)
-            || low.iter().chain(&high).any(|value| !value.is_finite())
-        {
+        if low.iter().chain(&high).any(|value| !value.is_finite()) {
             return false;
         }
         let section = |value: f32| (value.floor() as i32).div_euclid(16);
-        for x in section(low[0])..=section(high[0]) {
-            for y in section(low[1])..=section(high[1]) {
-                for z in section(low[2])..=section(high[2]) {
+        self.hides_sections(
+            camera,
+            generation,
+            known,
+            low.map(section),
+            high.map(section),
+        )
+    }
+
+    /// [`Self::hides_box`] over the sub-chunk coordinates `low..=high` on each axis.
+    pub(crate) fn hides_sections(
+        &self,
+        camera: SubChunkKey,
+        generation: u64,
+        known: impl Fn(SubChunkKey) -> bool,
+        low: [i32; 3],
+        high: [i32; 3],
+    ) -> bool {
+        if !self.initialized
+            || self.camera != Some(camera)
+            || self.graph_generation != Some(generation)
+        {
+            return false;
+        }
+        for x in low[0]..=high[0] {
+            for y in low[1]..=high[1] {
+                for z in low[2]..=high[2] {
                     let key = SubChunkKey::new(camera.dimension, x, y, z);
                     if !known(key) || self.visible.contains(&key) {
                         return false;
@@ -199,7 +219,7 @@ fn refresh_visible(
 }
 
 pub(crate) fn apply_added_chunk_visibility(
-    add: On<Add, ChunkRenderInstance>,
+    add: On<Add<ChunkRenderInstance>>,
     mut cache: ResMut<CaveVisibilityCache>,
     mut chunks: Query<(&ChunkRenderInstance, &mut Visibility)>,
 ) {
@@ -219,7 +239,7 @@ pub(crate) fn apply_added_chunk_visibility(
 }
 
 pub(crate) fn remove_chunk_visibility(
-    remove: On<Remove, ChunkRenderInstance>,
+    remove: On<Remove<ChunkRenderInstance>>,
     mut cache: ResMut<CaveVisibilityCache>,
     chunks: Query<&ChunkRenderInstance>,
 ) {

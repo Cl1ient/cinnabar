@@ -7,7 +7,12 @@ fn inputs() -> PreparedInputs {
         lights_revision: 0,
         dimension: Some(0),
         camera: Vec3::ZERO,
-        clip: Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.05, 96.0),
+        clip: glam::camera::rh::proj::directx::perspective(
+            std::f32::consts::FRAC_PI_2,
+            1.0,
+            0.05,
+            96.0,
+        ),
         size: [256, 256],
         first_layer: 0,
     }
@@ -134,20 +139,20 @@ fn changing_a_nonemitting_wall_invalidates_point_shadow_geometry() {
 #[test]
 fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
     use std::sync::Arc;
-    let mut frame = crate::ActorRenderFrame::default();
+    let mut frame = render_scene::ActorRenderFrame::default();
     let identity = [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
     ];
-    frame.rig.instances = Arc::from([crate::ActorGpuInstance {
+    frame.rig.instances = Arc::from([render_model::ActorGpuInstance {
         world_from_actor: identity,
         ..default()
     }]);
     frame.rig.previous_bones = Arc::from([identity]);
     frame.rig.current_bones = Arc::from([identity]);
-    frame.rig.manifest = Arc::from([crate::ActorDrawManifestEntry {
-        identity: crate::ActorRenderIdentity {
+    frame.rig.manifest = Arc::from([render_model::ActorDrawManifestEntry {
+        identity: render_model::ActorRenderIdentity {
             session_id: 1,
             dimension: 0,
             runtime_id: 1,
@@ -161,7 +166,7 @@ fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
         rig: render_model::DIAGNOSTIC_RIG_ID,
         completed_tick: 0,
         reset_generation: 0,
-        route: crate::ActorRigRoute::Diagnostic,
+        route: render_model::ActorRigRoute::Diagnostic,
         instance_index: 0,
         previous_bone_base: 0,
         current_bone_base: 0,
@@ -205,7 +210,7 @@ fn point_shadow_cache_tracks_nearby_interpolated_pose_without_clock_churn() {
 #[test]
 fn native_attenuation_is_finite_inverse_square_and_has_no_boundary_step() {
     let source = r#"
-#import cinnabar::enhanced_local_lights::{point_attenuation,point_shadow_face}
+import render::enhanced::local_lights::{point_attenuation,point_shadow_face};
 @group(0) @binding(31) var<storage,read_write> result:array<vec4<f32>,3>;
 @compute @workgroup_size(1) fn regression(){
     let radius=__RADIUS__;

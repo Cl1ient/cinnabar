@@ -52,8 +52,8 @@ fn reflection_display_blends_continuously_and_resets_without_stale_radiance() {
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("production reflection resolve layout"),
-        bind_group_layouts: &[&bind_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bind_layout)],
+        immediate_size: 0,
     });
     let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("cached reflection target fixture"),
@@ -72,7 +72,7 @@ fn reflection_display_blends_continuously_and_resets_without_stale_radiance() {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("production reflection resolve"),
         source: wgpu::ShaderSource::Wgsl(
-            crate::shader_source::composed(include_str!("probe.wgsl"), &[]).into(),
+            crate::shader_source::composed(include_str!("probe.wesl"), &[]).into(),
         ),
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -93,7 +93,7 @@ fn reflection_display_blends_continuously_and_resets_without_stale_radiance() {
         primitive: Default::default(),
         depth_stencil: None,
         multisample: Default::default(),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
     let sample_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -287,8 +287,13 @@ fn reflection_display_blends_continuously_and_resets_without_stale_radiance() {
     device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("reflection history completion");
-    let samples: Vec<[f32; 4]> =
-        bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+    let samples: Vec<[f32; 4]> = bytemuck::cast_slice(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     let mut ideals = Vec::with_capacity(expected.len());
     let mut write_bounds = Vec::with_capacity(expected.len());
     let mut ideal = 0.0_f64;

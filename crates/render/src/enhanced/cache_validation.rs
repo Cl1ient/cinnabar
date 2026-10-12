@@ -6,14 +6,11 @@ use crate::{shader_safety, shader_source};
 use bevy::{
     asset::Assets,
     prelude::Shader,
-    render::{
-        render_resource::*,
-        renderer::{RenderAdapter, RenderDevice, WgpuWrapper},
-    },
+    render::{render_resource::*, renderer::RenderDevice},
     shader::{ShaderDefVal, ShaderImport},
     tasks::{AsyncComputeTaskPool, TaskPoolBuilder, block_on},
 };
-use std::{process::Command, sync::Arc};
+use std::process::Command;
 
 #[test]
 fn enhanced_pipelines_compile_through_async_cache() {
@@ -58,7 +55,7 @@ fn enhanced_pipelines_compile_through_async_cache() {
     #[cfg(target_os = "windows")]
     super::configure_enhanced_shader_compiler(&mut settings);
     eprintln!("async shader compiler: {:?}", settings.dx12_shader_compiler);
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: settings.backends.unwrap(),
         // Debug's skipped HLSL optimization does not exercise the play-profile compiler.
         flags: wgpu::InstanceFlags::VALIDATION,
@@ -69,7 +66,7 @@ fn enhanced_pipelines_compile_through_async_cache() {
             },
             ..Default::default()
         },
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let Ok(adapter) = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
@@ -84,26 +81,16 @@ fn enhanced_pipelines_compile_through_async_cache() {
         ..Default::default()
     }))
     .unwrap();
-    let mut cache = PipelineCache::new(
-        RenderDevice::from(device),
-        RenderAdapter(Arc::new(WgpuWrapper::new(adapter))),
-        false,
-    );
+    let mut cache = PipelineCache::new(RenderDevice::from(device), false);
     let mut assets = Assets::<Shader>::default();
     for (name, source) in shader_source::composable_sources() {
-        let source = if source.contains("#define_import_path") {
-            source
-        } else {
-            format!("#define_import_path {name}\n{source}")
-        };
-        let mut shader = shader_safety::from_wgsl(source, name);
-        shader.import_path = ShaderImport::Custom(name.to_owned());
+        let shader = fixture_module(name, source);
         let handle = assets.add(shader.clone());
         cache.set_shader(handle.id(), shader);
     }
-    let fullscreen = shader_safety::from_wgsl(
+    let fullscreen = shader_safety::from_wesl(
         shader_source::fullscreen_vertex_source(),
-        "async_fullscreen.wgsl",
+        "crates/render/src/async_fullscreen.wesl",
     );
     let fullscreen_handle = assets.add(fullscreen.clone());
     cache.set_shader(fullscreen_handle.id(), fullscreen);
@@ -162,6 +149,7 @@ fn enhanced_pipelines_compile_through_async_cache() {
                 ..Default::default()
             },
             fragment: Some(FragmentState {
+                constants: Default::default(),
                 shader: handle,
                 entry_point: Some(fragment.into()),
                 shader_defs,
@@ -215,12 +203,12 @@ fn enhanced_pipelines_compile_through_async_cache() {
                 .or_else(|| {
                     shadow.then_some(DepthStencilState {
                         format: TextureFormat::Depth32Float,
-                        depth_write_enabled: true,
-                        depth_compare: if motion {
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(if motion {
                             CompareFunction::GreaterEqual
                         } else {
                             CompareFunction::LessEqual
-                        },
+                        }),
                         stencil: Default::default(),
                         bias: Default::default(),
                     })
@@ -239,8 +227,8 @@ fn enhanced_pipelines_compile_through_async_cache() {
     }
 
     let cloud_shader = super::cloud_noise::shader(
-        include_str!("cloud_noise.wgsl"),
-        "async_cloud_noise.wgsl".to_owned(),
+        include_str!("cloud_noise.wesl"),
+        "crates/render/src/enhanced/async_cloud_noise.wesl".to_owned(),
     );
     assets
         .insert(
@@ -249,9 +237,9 @@ fn enhanced_pipelines_compile_through_async_cache() {
         )
         .unwrap();
     cache.set_shader(super::cloud_noise::CLOUD_NOISE_SHADER.id(), cloud_shader);
-    let indirect_shader = shader_safety::from_wgsl(
-        include_str!("indirect_compute.wgsl"),
-        "async_indirect_compute.wgsl",
+    let indirect_shader = shader_safety::from_wesl(
+        include_str!("indirect_compute.wesl"),
+        "crates/render/src/enhanced/async_indirect_compute.wesl",
     );
     assets
         .insert(super::INDIRECT_COMPUTE_SHADER.id(), indirect_shader.clone())
@@ -286,19 +274,29 @@ fn enhanced_pipelines_compile_through_async_cache() {
             entry_point: Some(entry.into()),
             ..Default::default()
         });
-        loop {
+        // Driver compilation of the larger kernels can outlast the default bound.
+        test_time::eventually_within(std::time::Duration::from_secs(120), entry, || {
             cache.process_queue();
             match cache.get_compute_pipeline_state(id) {
-                CachedPipelineState::Queued | CachedPipelineState::Creating(_) => {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-                CachedPipelineState::Ok(Pipeline::ComputePipeline(_)) => break,
+                CachedPipelineState::Queued | CachedPipelineState::Creating(_) => false,
+                CachedPipelineState::Ok(Pipeline::ComputePipeline(_)) => true,
                 state => panic!("{entry}: {state:?}"),
             }
-        }
+        });
         assert!(
             cache.get_compute_pipeline(id).is_some(),
             "{entry} must be usable"
         );
     }
+}
+
+/// Registers a composed fixture module under its WESL import path; Bevy fixtures keep their crate.
+fn fixture_module(name: &str, source: String) -> Shader {
+    let (package, module) = name.split_once("::").expect("fixture module path");
+    let path = format!("crates/render/src/{}.wesl", module.replace("::", "/"));
+    let mut shader = shader_safety::from_wesl(source, path);
+    if package != "render" {
+        shader.import_path = ShaderImport::Custom(name.to_owned());
+    }
+    shader
 }

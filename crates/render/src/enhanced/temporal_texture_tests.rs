@@ -4,7 +4,7 @@ use wgpu::util::DeviceExt as _;
 
 #[test]
 fn cubic_history_retains_subpixel_detail_and_rejects_foreground_background_mixing() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!(
             "missing fixture: native GPU adapter for Enhanced temporal history reconstruction"
@@ -18,7 +18,7 @@ fn cubic_history_retains_subpixel_detail_and_rejects_foreground_background_mixin
     }))
     .expect("temporal history reconstruction device");
     let source = r#"
-#import cinnabar::enhanced_temporal::temporal_history_sample
+import render::enhanced::temporal::temporal_history_sample;
 @group(0) @binding(0) var history:texture_2d<f32>;
 @group(0) @binding(1) var linear:sampler;
 @group(0) @binding(2) var discontinuous:texture_2d<f32>;
@@ -145,7 +145,10 @@ fn cubic_history_retains_subpixel_detail_and_rejects_foreground_background_mixin
         });
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     receiver.recv().unwrap().unwrap();
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("readback buffer is mapped");
     let values: &[[f32; 4]] = bytemuck::cast_slice(&bytes);
     assert!(
         (values[0][0] - 0.796875).abs() < 0.0003,

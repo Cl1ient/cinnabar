@@ -1,5 +1,5 @@
 //! Repeatable actor publication against an offline packet fixture and pack.
-use super::*;
+use {super::*, client_presentation::actor_publication::publish_actor_render_frame};
 
 /// Covers all registered vertex data, including geometry not yet used by a drawn actor.
 fn geometry_digest(frame: &ActorRenderFrame) -> u64 {
@@ -72,10 +72,12 @@ fn lobby_join_setup_bench() {
         measure_setup(&mut world, trial, "initial");
         world
             .resource_mut::<crate::runtime::world::ClientWorld>()
-            .session_items = Some(Arc::new(super::super::SessionItems {
-            components: Arc::default(),
-            icons: None,
-        }));
+            .session_items = Some(Arc::new(
+            client_presentation::session_assets::SessionItems {
+                components: Arc::default(),
+                icons: None,
+            },
+        ));
         measure_setup(&mut world, trial, "items_refresh");
     }
 }
@@ -83,14 +85,16 @@ fn lobby_join_setup_bench() {
 /// Reports worker preparation separately so moving work cannot be mistaken for removing it.
 fn prepare_artwork(world: &mut World, trial: usize) {
     use client_presentation::prepared_actor_artwork::PreparedActorArtwork;
-    let base = world.resource::<render::ActorArtworkPages>().clone();
+    let base = world
+        .resource::<render_scene::ActorArtworkResource>()
+        .clone();
     let pack = world
         .resource::<crate::runtime::world::ClientWorld>()
         .pack_entities
         .clone()
         .expect("benchmark session pack");
     let prepared = std::thread::spawn(move || {
-        let allocated = crate::tests::alloc_count::thread_allocations();
+        let allocated = test_alloc::thread_allocations();
         let started = Instant::now();
         let cpu_started = thread_cpu_time();
         let prepared = PreparedActorArtwork::new(&base, &pack);
@@ -98,7 +102,7 @@ fn prepare_artwork(world: &mut World, trial: usize) {
         let cpu = thread_cpu_time()
             .zip(cpu_started)
             .map(|(after, before)| (after - before).as_secs_f64() * 1e3);
-        let allocations = crate::tests::alloc_count::thread_allocations() - allocated;
+        let allocations = test_alloc::thread_allocations() - allocated;
         eprintln!(
             "LOBBY_JOIN_ARTWORK_PREP {}",
             serde_json::json!({
@@ -119,7 +123,7 @@ fn prepare_artwork(world: &mut World, trial: usize) {
 
 /// Measures only publication; hashes outside the timed region cover every geometry and artwork page.
 fn measure_setup(world: &mut World, trial: usize, phase: &str) {
-    let allocated = crate::tests::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     let started = Instant::now();
     let cpu_started = thread_cpu_time();
     prepare_offline_actor_frame(world);
@@ -128,7 +132,7 @@ fn measure_setup(world: &mut World, trial: usize, phase: &str) {
     let cpu = thread_cpu_time()
         .zip(cpu_started)
         .map(|(after, before)| (after - before).as_secs_f64() * 1e3);
-    let allocations = crate::tests::alloc_count::thread_allocations() - allocated;
+    let allocations = test_alloc::thread_allocations() - allocated;
     let snapshot = world
         .resource::<RuntimeStageProfiler>()
         .take_snapshot_if_due(Duration::ZERO)

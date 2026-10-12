@@ -3,7 +3,11 @@ use super::*;
 use crate::chunk::transparent::liquid::{
     transparent_frame_draw_for_range, transparent_frame_draws,
 };
-use bevy::render::renderer::WgpuWrapper;
+use meshing::PackedBiomeRecord;
+use render_scene::{
+    ChunkBiomeTints, ChunkRenderInstance, ChunkTextureAssets, ChunkUploadAcknowledgements,
+};
+use render_scene::{ChunkUploadPriority, TransparentSortMetrics};
 
 /// A single transparent face exercises address preparation without external carriers.
 fn water(tint: ChunkBiomeTintIdentity) -> ChunkRenderInstance {
@@ -80,7 +84,7 @@ fn publish(
 fn publication_keeps_complete_transparent_addresses_and_biome_identity() {
     let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+    let queue = RenderQueue::new(queue);
     let mut app = App::new();
     app.insert_resource(ChunkGpuArena::new(&device));
     let old_buffer = app
@@ -152,7 +156,7 @@ fn publication_keeps_complete_transparent_addresses_and_biome_identity() {
 fn reload_seeds_the_live_sort_inputs() {
     let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+    let queue = RenderQueue::new(queue);
     let mut app = App::new();
     app.insert_resource(ChunkGpuArena::new(&device));
     let tint = ChunkBiomeTintIdentity::new(4, 7);
@@ -208,7 +212,7 @@ fn reload_sorts_flat_water_for_views_that_displace_it() {
             &[water(ChunkBiomeTintIdentity::default())],
             ChunkTextureAssets::default(),
             RenderDevice::from(device),
-            RenderQueue(Arc::new(WgpuWrapper::new(queue))),
+            RenderQueue::new(queue),
             Some(ResourceView {
                 entity: Entity::PLACEHOLDER,
                 transform: GlobalTransform::IDENTITY,
@@ -229,7 +233,7 @@ fn reload_sorts_flat_water_for_views_that_displace_it() {
 fn review_render_stale_resource_geometry_preserves_active_arena() {
     let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+    let queue = RenderQueue::new(queue);
     let mut app = App::new();
     app.insert_resource(ChunkGpuArena::new(&device));
     let old_buffer = app
@@ -281,7 +285,7 @@ fn review_render_fairness_overflow_keeps_unchanged_uploads_discoverable() {
     let mut app = App::new();
     app.insert_resource(ChunkGpuArena::new(&device))
         .insert_resource(device)
-        .insert_resource(RenderQueue(Arc::new(WgpuWrapper::new(queue))))
+        .insert_resource(RenderQueue::new(queue))
         .insert_resource(ChunkTextureAssets::default())
         .insert_resource(ChunkUploadBudget::new(0, 0))
         .init_resource::<ChunkGpuUploadStats>()
@@ -315,7 +319,7 @@ fn review_render_retained_liquid_snapshot_resolves_updated_active_generation() {
         &[shore(ChunkBiomeTintIdentity::default())],
         assets,
         RenderDevice::from(device),
-        RenderQueue(Arc::new(WgpuWrapper::new(queue))),
+        RenderQueue::new(queue),
         Some(ResourceView {
             entity: Entity::PLACEHOLDER,
             transform: GlobalTransform::IDENTITY,
@@ -342,8 +346,9 @@ fn review_render_retained_liquid_snapshot_resolves_updated_active_generation() {
 /// Builds a resident model sort with a writable stream and one matching view.
 fn model_sort_app() -> (App, Entity, TransparentModelSortKey) {
     use bevy::{
-        core_pipeline::core_3d::graph::Core3d,
-        render::{render_graph::RenderSubGraph, sync_world::MainEntity, view::RetainedViewEntity},
+        core_pipeline::Core3d,
+        ecs::schedule::ScheduleLabel,
+        render::{sync_world::MainEntity, view::RetainedViewEntity},
     };
     let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
     let device = RenderDevice::from(device);
@@ -351,7 +356,7 @@ fn model_sort_app() -> (App, Entity, TransparentModelSortKey) {
     let mut arena = ChunkGpuArena::new(&device);
     arena.geometry_stream_buffer = create_storage_buffer(&device, "test model stream", 1024);
     app.insert_resource(arena)
-        .insert_resource(RenderQueue(Arc::new(WgpuWrapper::new(queue))))
+        .insert_resource(RenderQueue::new(queue))
         .init_resource::<ChunkTextureAssets>()
         .init_resource::<TransparentSortRuntime>()
         .init_resource::<TransparentUploadBudget>()
@@ -383,9 +388,12 @@ fn model_sort_app() -> (App, Entity, TransparentModelSortKey) {
     };
     app.world_mut().entity_mut(entity).insert(allocation);
     let mut visible = RenderVisibleEntities::default();
-    visible.entities.insert(
+    visible.classes.insert(
         std::any::TypeId::of::<ChunkRenderInstance>(),
-        vec![(entity, MainEntity::from(entity))],
+        bevy::render::view::RenderVisibleEntitiesClass {
+            entities_cpu_culling: vec![(entity, MainEntity::from(entity))],
+            ..Default::default()
+        },
     );
     app.world_mut().entity_mut(view).insert((
         ExtractedView {
@@ -393,7 +401,7 @@ fn model_sort_app() -> (App, Entity, TransparentModelSortKey) {
             clip_from_view: Mat4::IDENTITY,
             world_from_view: GlobalTransform::IDENTITY,
             clip_from_world: None,
-            hdr: false,
+            target_format: render_scene::SCENE_COLOR_FORMAT,
             viewport: UVec4::new(0, 0, 1, 1),
             color_grading: default(),
             invert_culling: false,
@@ -403,7 +411,7 @@ fn model_sort_app() -> (App, Entity, TransparentModelSortKey) {
             physical_viewport_size: None,
             physical_target_size: None,
             viewport: None,
-            render_graph: Core3d.intern(),
+            schedule: Core3d.intern(),
             order: 0,
             output_mode: default(),
             msaa_writeback: default(),
@@ -690,8 +698,14 @@ fn model_groups_app(
     app.world_mut()
         .get_mut::<RenderVisibleEntities>(view)
         .unwrap()
-        .entities
-        .insert(std::any::TypeId::of::<ChunkRenderInstance>(), visible);
+        .classes
+        .insert(
+            std::any::TypeId::of::<ChunkRenderInstance>(),
+            bevy::render::view::RenderVisibleEntitiesClass {
+                entities_cpu_culling: visible,
+                ..Default::default()
+            },
+        );
     identities.sort_by_key(|identity| (identity.key, identity.draw_range.start));
     (app, view, identities)
 }

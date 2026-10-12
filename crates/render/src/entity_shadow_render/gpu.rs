@@ -1,4 +1,5 @@
 use super::*;
+use render_scene::{AtmosphereFrame, EntityShadowScene};
 
 #[derive(Resource)]
 pub(crate) struct EntityShadowGpu {
@@ -66,7 +67,7 @@ impl EntityShadowGpu {
                     ),
                     entry(
                         4,
-                        fragment,
+                        ShaderStages::VERTEX_FRAGMENT,
                         BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -124,9 +125,9 @@ impl crate::pipeline_warmup::PrewarmPipelines for EntityShadowGpu {
         ids: &mut crate::pipeline_warmup::WarmupIds,
     ) -> Result<(), bevy::prelude::BevyError> {
         let format = if view.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            render_scene::SCENE_HDR_FORMAT
         } else {
-            TextureFormat::bevy_default()
+            render_scene::SCENE_COLOR_FORMAT
         };
         ids.push(self.pipeline(cache, format.remove_srgb_suffix(), view.msaa.samples()));
         Ok(())
@@ -158,6 +159,7 @@ pub(super) fn pipeline_descriptor(
         label: Some("entity shadow pipeline".into()),
         layout: vec![layout],
         vertex: VertexState {
+            constants: Default::default(),
             shader: SHADER,
             shader_defs: shader_defs.clone(),
             entry_point: Some("shadow_vertex".into()),
@@ -172,6 +174,7 @@ pub(super) fn pipeline_descriptor(
             }],
         },
         fragment: Some(FragmentState {
+            constants: Default::default(),
             shader: SHADER,
             shader_defs,
             entry_point: Some("shadow_fragment".into()),
@@ -198,8 +201,8 @@ pub(super) fn pipeline_descriptor(
         },
         depth_stencil: Some(DepthStencilState {
             format: TextureFormat::Stencil8,
-            depth_write_enabled: false,
-            depth_compare: CompareFunction::Always,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(CompareFunction::Always),
             stencil: StencilState {
                 front: shadow_stencil(),
                 back: shadow_stencil(),
@@ -229,7 +232,7 @@ fn shadow_stencil() -> StencilFaceState {
 /// The colour multiplier for this frame's sky; Nether and End have no sunrise glow.
 pub(super) fn shadow_params(atmosphere: &AtmosphereFrame) -> EntityShadowParams {
     let sunrise = if atmosphere.sky_kind() == SkyKind::Overworld {
-        crate::celestial::raw_sunrise_band(atmosphere.celestial_angle())
+        render_model::celestial::raw_sunrise_band(atmosphere.celestial_angle())
     } else {
         [0.0; 4]
     };

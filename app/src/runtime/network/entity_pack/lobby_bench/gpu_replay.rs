@@ -1,15 +1,15 @@
 //! Native GPU replay of captured lobby actors; no socket or live server is used.
-use super::*;
 use bevy::{
     asset::AssetPlugin,
-    camera::{Camera3dDepthTextureUsage, CameraPlugin, RenderTarget},
+    camera::{Camera3dDepthTextureUsage, CameraPlugin, Hdr, RenderTarget},
     core_pipeline::{CorePipelinePlugin, tonemapping::Tonemapping},
     mesh::MeshPlugin,
     post_process::{PostProcessPlugin, bloom::Bloom},
     prelude::*,
-    render::{RenderApp, RenderPlugin, render_resource::*, renderer::RenderDevice, view::Hdr},
+    render::{RenderApp, RenderPlugin, render_resource::*, renderer::RenderDevice},
     window::WindowPlugin,
 };
+use {super::*, client_presentation::actor_publication::publish_actor_render_frame};
 
 const VIEWPORT: [u32; 2] = [640, 360];
 
@@ -72,9 +72,9 @@ fn gpu_app(camera: Transform) -> App {
         RenderTarget::Image(image.into()),
         support.msaa(ui::DEFAULT_ANTI_ALIASING_SAMPLES),
         Hdr,
-        Tonemapping::None,
+        Tonemapping::Linear,
         Bloom::default(),
-        render::EnhancedRendering::default(),
+        render_scene::EnhancedRendering::default(),
         camera,
     ));
     app
@@ -82,17 +82,17 @@ fn gpu_app(camera: Transform) -> App {
 
 /// Loads the real font, HUD and JSON-UI carriers used by offline screen snapshots.
 fn ui_presentation() -> client_ui::ui_runtime::presentation::UiPresentationRuntime {
-    use crate::ui_runtime::presentation::forms::pack_harness;
+    use client_ui::test_support::pack_harness;
     use client_ui::ui_runtime::presentation::UiPresentationRuntime;
     let world_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join(crate::asset_startup::DEFAULT_ASSET_PATH);
-    let hud = crate::asset_startup::require_hud_assets(&world_path)
+        .join(assets::carriers::startup::DEFAULT_ASSET_PATH);
+    let hud = assets::carriers::startup::require_hud_assets(&world_path)
         .unwrap()
         .into_runtime();
     let mut presentation = UiPresentationRuntime::with_hud(pack_harness::font(), hud).unwrap();
     presentation
-        .enable_json_ui(pack_harness::carrier().expect("installed JSON-UI carrier"))
+        .enable_json_ui(ui_engine::test_support::carrier().expect("installed JSON-UI carrier"))
         .unwrap();
     presentation.hud_frame_mut().first_person = true;
     presentation
@@ -100,7 +100,7 @@ fn ui_presentation() -> client_ui::ui_runtime::presentation::UiPresentationRunti
 
 /// Publishes the production menu/HUD composite into the offscreen graph.
 fn publish_ui(
-    player_runtime: &crate::player_runtime::PlayerRuntime,
+    player_runtime: &client_state::PlayerRuntime,
     app: &mut App,
     presentation: &mut client_ui::ui_runtime::presentation::UiPresentationRuntime,
     runtime: &client_ui::ui_runtime::UiRuntime,
@@ -117,10 +117,10 @@ fn publish_ui(
         .unwrap();
     let stats = app
         .world()
-        .resource::<render::UiRenderStatsResource>()
+        .resource::<render_scene::UiRenderStatsResource>()
         .clone();
     app.world_mut()
-        .resource_mut::<render::UiRenderSceneResource>()
+        .resource_mut::<render_scene::UiRenderSceneResource>()
         .publish(input, &stats)
         .unwrap();
 }
@@ -128,21 +128,21 @@ fn publish_ui(
 #[test]
 #[ignore = "requires the local captured lobby and its resource pack"]
 fn enhanced_lobby_replay_on_native_gpu() {
-    let player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let capture = std::env::var_os("CINNABAR_LOBBY_CAPTURE").expect("offline capture path");
     let pack = std::env::var_os("CINNABAR_RENDER_PACK").expect("offline pack path");
     let capture = read_capture(Path::new(&capture));
     let (mut world, rest, mut replay) = build_world(&capture, Some(Path::new(&pack)), false);
     let camera = *world
-        .query_filtered::<&Transform, With<crate::camera::FlyCamera>>()
+        .query_filtered::<&Transform, With<client_presentation::camera::FlyCamera>>()
         .single(&world)
         .unwrap();
     let mut app = gpu_app(camera);
     let mut presentation = ui_presentation();
     let runtime = client_ui::ui_runtime::UiRuntime::new(1);
     presentation.set_menu_view(Some(
-        crate::menu::MenuRuntime::new(true, 2, "Steve".into()).view(),
+        client_shell::menu::MenuRuntime::new(true, 2, "Steve".into()).view(),
     ));
     for millis in 0..3 {
         publish_ui(
@@ -155,7 +155,7 @@ fn enhanced_lobby_replay_on_native_gpu() {
         app.update();
     }
     presentation.set_menu_view(None);
-    let font = crate::ui_runtime::presentation::forms::pack_harness::font();
+    let font = client_ui::test_support::pack_harness::font();
     let mut layouts = ui::TextLayoutCache::new(256, 1 << 20);
     let mut atlas = client_ui::ui_runtime::presentation::nametag_atlas::NametagAtlas::default();
     let mut clock = Instant::now();
@@ -181,7 +181,7 @@ fn enhanced_lobby_replay_on_native_gpu() {
         app.world_mut()
             .insert_resource(world.resource::<ActorRenderFrame>().clone());
         app.world_mut()
-            .insert_resource(world.resource::<render::HandRigScene>().clone());
+            .insert_resource(world.resource::<render_scene::HandRigScene>().clone());
         publish_ui(
             &player_runtime,
             &mut app,
@@ -209,13 +209,15 @@ fn enhanced_lobby_replay_on_native_gpu() {
                 })
                 .collect();
             app.world_mut()
-                .insert_resource(render::NametagSceneResource(nametags::build_nametag_scene(
-                    &anchors,
-                    &font,
-                    &mut layouts,
-                    &mut atlas,
-                    &|page| nametag_atlas::font_page(&font, page),
-                )));
+                .insert_resource(render_scene::NametagSceneResource(
+                    nametags::build_nametag_scene(
+                        &anchors,
+                        &font,
+                        &mut layouts,
+                        &mut atlas,
+                        &|page| nametag_atlas::font_page(&font, page),
+                    ),
+                ));
         }
         app.update();
         app.sub_app(RenderApp)
@@ -232,7 +234,7 @@ fn enhanced_lobby_replay_on_native_gpu() {
     }
     assert!(
         !app.world()
-            .resource::<render::ActorPresentationGate>()
+            .resource::<render_scene::ActorPresentationGate>()
             .drain()
             .is_empty()
     );

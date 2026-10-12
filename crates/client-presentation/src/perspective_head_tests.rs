@@ -37,6 +37,7 @@ fn stream() -> WorldStream {
 
 fn feed(first_person: bool) -> LocalPlayerFeed {
     LocalPlayerFeed {
+        game_mode: None,
         prefer_client_skin: false,
         uuid: [1; 16],
         username: "test".into(),
@@ -49,11 +50,12 @@ fn feed(first_person: bool) -> LocalPlayerFeed {
         pitch: 30.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_slot: 0,
         main_hand_stack_id: None,
-        bedrock_swing_ticks: client_world::ACTOR_SWING_TICKS,
-        java_swing_ticks: client_world::ACTOR_SWING_TICKS,
+        bedrock_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
+        java_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
         flying: false,
         gliding: false,
         fall_fly_ticks: 0,

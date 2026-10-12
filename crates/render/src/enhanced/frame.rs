@@ -3,8 +3,7 @@
 
 use bevy::math::{Mat4, UVec4, Vec3, Vec4};
 
-use super::{EnhancedQualityBudget, EnhancedRendering, MAX_SHADOW_CASCADES};
-use crate::AtmosphereFrame;
+use render_scene::{AtmosphereFrame, EnhancedRendering, MAX_SHADOW_CASCADES};
 
 /// Calibrated irradiance units shared by surface, sky and cloud lighting.
 pub(crate) const SOLAR_IRRADIANCE: f32 = 3.2;
@@ -36,7 +35,7 @@ pub(crate) const FEATURE_PBR: u32 = 1 << 5;
 pub(crate) const FEATURE_SSAO: u32 = 1 << 6;
 pub(crate) const FEATURE_VOLUMETRIC_CLOUDS: u32 = 1 << 7;
 
-/// Mirrors `EnhancedFrame` in `enhanced/common.wgsl`.
+/// Mirrors `EnhancedFrame` in `enhanced/common.wesl`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct EnhancedFrameGpu {
@@ -148,7 +147,7 @@ fn light_view(light_direction: Vec3) -> Mat4 {
     } else {
         Vec3::X
     };
-    Mat4::look_to_rh(Vec3::ZERO, -light_direction, up)
+    glam::camera::rh::view::look_to_mat4(Vec3::ZERO, -light_direction, up)
 }
 
 fn receiver_radius(radius: f32) -> f32 {
@@ -211,7 +210,8 @@ pub(crate) fn fit_cascade_with_border(
         center.z + depth_radius + SHADOW_CASTER_REACH,
     );
     // View space looks down -Z, so depth distance is the negated z bound.
-    let projection = Mat4::orthographic_rh(min.x, max.x, min.y, max.y, -max.z, -min.z);
+    let projection =
+        glam::camera::rh::proj::directx::orthographic(min.x, max.x, min.y, max.y, -max.z, -min.z);
     CascadeFit {
         clip_from_world: projection * light_from_world,
         texel_world: texel,
@@ -269,7 +269,7 @@ pub(crate) fn light_state(atmosphere: &AtmosphereFrame) -> LightState {
         let strength = moon_access * LUNAR_IRRADIANCE * weather;
         (moon, strength, Vec3::ONE)
     };
-    if atmosphere.sky_kind() != crate::SkyKind::Overworld {
+    if atmosphere.sky_kind() != render_scene::SkyKind::Overworld {
         strength = 0.0;
     }
     let sky = horizon.lerp(zenith, 0.6);
@@ -294,7 +294,7 @@ pub(crate) fn light_state(atmosphere: &AtmosphereFrame) -> LightState {
 /// Applies the user's cloud preference without changing the camera's configured options.
 pub(crate) fn applied_cloud_settings(
     mut settings: EnhancedRendering,
-    visibility: Option<&crate::CloudVisibility>,
+    visibility: Option<&render_scene::CloudVisibility>,
 ) -> EnhancedRendering {
     settings.volumetric_clouds &= visibility.is_none_or(|visibility| visibility.0);
     settings
@@ -321,7 +321,7 @@ pub(crate) fn build_frame(
     let cascades = settings.shadow_cascades.clamp(2, MAX_SHADOW_CASCADES);
     let resolution = settings
         .shadow_resolution
-        .clamp(super::MIN_SHADOW_RESOLUTION, 4096);
+        .clamp(render_scene::enhanced::MIN_SHADOW_RESOLUTION, 4096);
     let shadows = light.strength > 0.0 && settings.shadows;
     let distance = if settings.shadow_distance.is_finite() {
         settings.shadow_distance.clamp(16.0, 256.0)
@@ -401,7 +401,7 @@ pub(crate) fn build_frame(
             features,
             cascades,
             resolution,
-            settings.quality.cloud_steps(),
+            render_scene::enhanced::enhanced_quality_budget(settings.quality).cloud_steps,
         ),
         projection: Vec4::new(view.near, light.solar_source, light.lunar_source, 0.0),
         clouds: Vec4::new(
@@ -416,7 +416,9 @@ pub(crate) fn build_frame(
         celestial: Vec3::from_array(atmosphere.sun_direction())
             .extend(f32::from(atmosphere.moon_phase())),
         atmosphere: Vec4::new(
-            f32::from(u8::from(atmosphere.sky_kind() == crate::SkyKind::Overworld)),
+            f32::from(u8::from(
+                atmosphere.sky_kind() == render_scene::SkyKind::Overworld,
+            )),
             0.0,
             atmosphere.fog_end(),
             f32::from(u8::from(
@@ -426,7 +428,9 @@ pub(crate) fn build_frame(
         temporal: Vec4::ZERO,
         probe: view.camera.extend(32.0),
         cloud_shadow: Vec4::ZERO,
-        quality: Vec4::from_array(settings.quality.surface_samples()),
+        quality: Vec4::from_array(
+            render_scene::enhanced::enhanced_quality_budget(settings.quality).surface_samples,
+        ),
     };
     (frame, fits)
 }
@@ -476,8 +480,11 @@ mod tests {
                 pitch.sin(),
                 -yaw.cos() * pitch.cos(),
             );
-            let clip = Mat4::perspective_infinite_reverse_rh(fov.to_radians(), 16.0 / 9.0, 0.1)
-                * Mat4::look_to_rh(camera, forward, Vec3::Y);
+            let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+                fov.to_radians(),
+                16.0 / 9.0,
+                0.1,
+            ) * glam::camera::rh::view::look_to_mat4(camera, forward, Vec3::Y);
             ViewInputs {
                 clip_from_world: clip,
                 world_from_clip: clip.inverse(),
@@ -629,7 +636,10 @@ mod tests {
         };
         let (frame, _) = build_frame(&inputs, &settings, &AtmosphereFrame::default());
         assert_eq!(frame.flags.x & (FEATURE_SHADOWS | FEATURE_SHAFTS), 0);
-        assert_eq!(frame.flags.w, settings.quality.cloud_steps());
+        assert_eq!(
+            frame.flags.w,
+            render_scene::enhanced::enhanced_quality_budget(settings.quality).cloud_steps
+        );
         assert_eq!(frame.projection.y, SOLAR_IRRADIANCE);
         assert_eq!(frame.projection.z, LUNAR_IRRADIANCE);
     }
@@ -646,7 +656,7 @@ mod tests {
 
     #[test]
     fn celestial_sources_share_weather_units_and_moon_phase_preserves_a_night_floor() {
-        let day = crate::atmosphere::BEDROCK_DAY_TICKS;
+        let day = render_model::celestial::DAY_TICKS;
         let noon = light_state(&AtmosphereFrame::from_bedrock_time(day * 0.25, 0.0, 0.0));
         let midnight = light_state(&AtmosphereFrame::from_bedrock_time(day * 0.75, 0.0, 0.0));
         let new_moon = light_state(&AtmosphereFrame::from_bedrock_time(day * 4.75, 0.0, 0.0));

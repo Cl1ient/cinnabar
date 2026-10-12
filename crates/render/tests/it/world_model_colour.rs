@@ -1,4 +1,5 @@
 //! Real world-model fragments must light bounded snow exactly like cube terrain.
+
 use crate::gpu_snapshot;
 use crate::shader_source;
 
@@ -66,7 +67,7 @@ fn snow_and_other_world_models_use_native_terrain_colour_at_day_and_night() {
     // Actual model entry points, not a reproduction of their arithmetic.
     let source = format!(
         "{}\n{VERTEX}",
-        shader_source::standalone(include_str!("../../src/model.wgsl"), &[])
+        shader_source::standalone(include_str!("../../src/model.wesl"), &[])
     )
     .replace("@group(1) @binding(0)", "@group(0) @binding(20)")
     .replace("GRID_COLUMNS", &format!("{}.0", CASE_COUNT + 1))
@@ -81,7 +82,7 @@ fn snow_and_other_world_models_use_native_terrain_colour_at_day_and_night() {
         // A constant native byte table retains the colour-order witnesses;
         // terrain_lightmap separately exercises nonlinear coordinate lookup.
         let light = light.map(|channel| (channel * 255.0_f32).floor() / 255.0);
-        let table = render::LightmapInputs::default()
+        let table = render_model::LightmapInputs::default()
             .build()
             .map(|_| [light[0], light[1], light[2], 1.0]);
         let lightmap = gpu.buffer(bytemuck::cast_slice(&table), wgpu::BufferUsages::UNIFORM);
@@ -217,8 +218,8 @@ struct ModelWitnessCase { light_texture: vec4<f32>, distance_frames: vec4<f32> }
     out.native_ao_face = witness.distance_frames.z;
     out.tint_gamma = vec3(1.0);
     out.world_position = vec3(witness.distance_frames.x, 0.0, 0.0);
-    out.two_sided = 1u;
-    out.visible = 1u;
+    out.visibility.y = 1u;
+    out.visibility.x = 1u;
     return out;
 }
 "#;

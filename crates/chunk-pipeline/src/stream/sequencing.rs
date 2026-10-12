@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, render_api::MAX_VIEW_RADIUS_CHUNKS};
 
 pub(super) fn chunk_commit_is_mutation_failure(error: &DecodeError) -> bool {
     matches!(error, DecodeError::CollisionRevision(_))
@@ -38,6 +38,14 @@ impl WorldStream {
         relight: &BTreeSet<SubChunkKey>,
     ) -> bool {
         self.diagnose_light_mutations(&prepared, relight);
+        let mut reach = BTreeMap::<SubChunkKey, (NeighbourReach, Vec<BlockPos>)>::new();
+        for mutation in &prepared {
+            let (key_reach, cells) = reach
+                .entry(mutation.key())
+                .or_insert((mutation.reach(), Vec::new()));
+            *key_reach = key_reach.union(mutation.reach());
+            cells.extend(mutation.changed_positions());
+        }
         let Ok(changed) = self.authority.commit_prepared_block_updates(prepared) else {
             return false;
         };
@@ -46,7 +54,12 @@ impl WorldStream {
             self.reconcile_block_crack_column(key.chunk());
             self.refresh_block_entity_visuals_for_sub_chunk(key);
             self.sync_resident(key);
-            self.mark_live_mutation_changed(key, now, relight.contains(&key));
+            let (key_reach, cells) = reach
+                .get(&key)
+                .map_or((NeighbourReach::ALL, &[][..]), |(reach, cells)| {
+                    (*reach, cells.as_slice())
+                });
+            self.mark_block_mutation_changed(key, now, relight.contains(&key), key_reach, cells);
         }
         true
     }
@@ -416,7 +429,7 @@ impl WorldStream {
                     self.record_normalization_error(NormalizationErrorReason::InvalidChunkRadius);
                     return;
                 }
-                self.chunk_radius = Some(radius.min(PHASE0_MAX_VIEW_RADIUS_CHUNKS));
+                self.chunk_radius = Some(radius.min(MAX_VIEW_RADIUS_CHUNKS));
                 self.reevaluate_chunk_retention();
             }
             WorldEvent::PublisherUpdate(update) => {
@@ -428,8 +441,7 @@ impl WorldStream {
                     update.center,
                     update.radius_blocks,
                 );
-                self.publisher.radius_chunks =
-                    Some(cohort.radius.min(PHASE0_MAX_VIEW_RADIUS_CHUNKS));
+                self.publisher.radius_chunks = Some(cohort.radius.min(MAX_VIEW_RADIUS_CHUNKS));
                 if self.publisher.cohort != Some(cohort) {
                     if self.publisher.provisional_rebase {
                         self.publisher.required_columns =
@@ -639,8 +651,14 @@ impl WorldStream {
                 self.mark_dirty_exact(dirty, now);
             }
         }
-        self.authority
-            .commit_chunk_block_entities(key, block_entities);
+        if self
+            .authority
+            .commit_chunk_block_entities(key, block_entities)
+            .is_err()
+        {
+            self.record_normalization_error(NormalizationErrorReason::BlockMutationFailure);
+            return;
+        }
         self.refresh_block_entity_visuals_for_chunk(key);
         self.enqueue_request(key, range.base_sub_chunk_y, count, sequence);
         if has_authoritative_upper_air {

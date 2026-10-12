@@ -77,13 +77,13 @@ fn cases() -> Vec<Case> {
             },
             Case {
                 name: "gamma dye",
-                tint: render::pack_overlay_rgba8([0.4, 0.7, 0.3, 1.0]),
+                tint: render_model::pack_overlay_rgba8([0.4, 0.7, 0.3, 1.0]),
                 ..Default::default()
             },
             Case {
                 name: "gamma dye mask",
                 texture: 1,
-                tint: render::pack_overlay_rgba8([0.4, 0.7, 0.3, 0.8]),
+                tint: render_model::pack_overlay_rgba8([0.4, 0.7, 0.3, 0.8]),
                 material: [0, 1, 0, 0],
                 ..Default::default()
             },
@@ -95,7 +95,7 @@ fn cases() -> Vec<Case> {
             },
             Case {
                 name: "overlay before light",
-                overlay: render::pack_overlay_rgba8([0.8, 0.2, 0.1, 0.6]),
+                overlay: render_model::pack_overlay_rgba8([0.8, 0.2, 0.1, 0.6]),
                 ..Default::default()
             },
             Case {
@@ -313,10 +313,10 @@ fn assert_actor_colors(cases: Vec<Case>, coverage: bool) {
         ..Default::default()
     });
     let sampler = gpu.device.create_sampler(&Default::default());
-    let actor = include_str!("../../src/actor.wgsl")
+    let actor = include_str!("../../src/actor.wesl")
         .replace(
             "ACTOR_GPU_INSTANCE_WORDS",
-            &render::ACTOR_GPU_INSTANCE_WORDS.to_string(),
+            &render_model::ACTOR_GPU_INSTANCE_WORDS.to_string(),
         )
         .replace(
             "ACTOR_RIG_VERTEX_WORDS",
@@ -324,7 +324,11 @@ fn assert_actor_colors(cases: Vec<Case>, coverage: bool) {
         );
     // Test-only resource remapping lets the shared single-group readback helper run
     // production actor_fragment unchanged, including its actual imported helpers.
-    let defs: &[&str] = if coverage { &["ALPHA_TO_COVERAGE"] } else { &[] };
+    let defs: &[&str] = if coverage {
+        &["ALPHA_TO_COVERAGE"]
+    } else {
+        &[]
+    };
     let actor = shader_source::standalone(&actor, defs)
         .replace("@group(1) @binding(0)", "@group(0) @binding(20)")
         .replace("@group(1) @binding(1)", "@group(0) @binding(21)");
@@ -340,7 +344,7 @@ fn assert_actor_colors(cases: Vec<Case>, coverage: bool) {
     let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
     // The fragment reads instance words and the glint image only for glint materials.
     let instance = gpu.buffer(
-        &[0.0; render::ACTOR_GPU_INSTANCE_WORDS],
+        &[0.0; render_model::ACTOR_GPU_INSTANCE_WORDS],
         wgpu::BufferUsages::STORAGE,
     );
     let glint = gpu.blank_texture_view();
@@ -355,7 +359,7 @@ fn assert_actor_colors(cases: Vec<Case>, coverage: bool) {
         let light = if case.unlit {
             0
         } else {
-            render::pack_actor_light(case.sample.0, case.sample.1)
+            render_model::pack_actor_light(case.sample.0, case.sample.1)
         };
         let mut words = case.normal.to_vec();
         words.push(f32::from(case.interpolate_normals));
@@ -474,8 +478,8 @@ struct ActorWitnessCase { normal: vec4<f32>, words: vec4<u32>, distance_multi: v
     var out: VertexOutput;
     out.position = vec4(corners[index], 0.5, 1.0);
     out.uv = vec2(0.5);
-    out.skin_layer = actor_witness.words.x;
-    out.valid = 1u;
+    out.skin_info.x = actor_witness.words.x;
+    out.skin_info.y = 1u;
     out.material = select(0u, ACTOR_MATERIAL_AUTHORED_FLAG | ACTOR_MATERIAL_EMISSIVE_FLAG | ACTOR_MATERIAL_ALPHA_TEST_FLAG, actor_witness.distance_multi.z != 0.0);
     let normals = array(vec3(0.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, -1.0, 0.0));
     out.world_normal = select(actor_witness.normal.xyz, normals[index], actor_witness.normal.w != 0.0);

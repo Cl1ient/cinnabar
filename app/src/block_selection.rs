@@ -1,28 +1,25 @@
 //! Publishes the current gameplay pick to the native outline/highlight overlay passes.
 use bevy::{ecs::system::SystemParam, prelude::*};
-use render::{BlockSelectionFrame, BlockSelectionTarget, CrackShape, crack_shape_from_template};
+use gameplay::melee::{Crosshair, classify, pick_actor};
+use render_model::{BlockSelectionTarget, CrackShape, crack_shape_from_template};
 use sim::PaletteWorld;
 
-use crate::{
-    app::ClientFrameSet,
-    interaction_authority::ray_is_current,
-    local_player::InteractionOriginSnapshot,
-    menu::MenuRuntime,
-    mining::{creative_reach, protocol_input_mode, survival_reach},
-    movement::PhysicsCollisionRegistries,
-    runtime::world::ClientWorld,
-    semantic_controls::SemanticInputSnapshot,
-    settings_runtime::RuntimeSettings,
+use client_shell::ui_resources::UiRuntimeResource;
+use {
+    crate::{interaction_authority::ray_is_current, runtime::world::ClientWorld},
+    client_interaction::movement::PhysicsCollisionRegistries,
+    client_presentation::local_player::InteractionOriginSnapshot,
+    client_state::{ClientFrameSet, RuntimeSettings, SemanticInputSnapshot},
+    gameplay::mining::{creative_reach, protocol_input_mode, survival_reach},
 };
-use client_ui::ui_runtime::UiRuntime;
 
 #[derive(SystemParam)]
-struct SelectionContext<'w> {
-    player: Res<'w, crate::player_runtime::PlayerRuntime>,
+pub(crate) struct SelectionContext<'w> {
+    player: Res<'w, client_state::PlayerRuntime>,
     world: Res<'w, ClientWorld>,
     collisions: Res<'w, PhysicsCollisionRegistries>,
-    ui: Res<'w, UiRuntime>,
-    menu: Res<'w, MenuRuntime>,
+    ui: Res<'w, UiRuntimeResource>,
+    focus: Res<'w, client_state::ScreenFocus>,
     origin: Res<'w, InteractionOriginSnapshot>,
     input: Res<'w, SemanticInputSnapshot>,
     settings: Res<'w, RuntimeSettings>,
@@ -30,12 +27,15 @@ struct SelectionContext<'w> {
 
 /// Updates after the completed pose and interaction authorities have been published.
 pub(crate) fn configure(app: &mut App) {
-    app.init_resource::<BlockSelectionFrame>()
+    app.init_resource::<render_scene::BlockSelectionFrameResource>()
         .add_systems(Update, publish.in_set(ClientFrameSet::WorldPublication));
 }
 
 /// A missing, stale or menu-owned ray clears last frame's target immediately.
-fn publish(context: SelectionContext, mut frame: ResMut<BlockSelectionFrame>) {
+pub(crate) fn publish(
+    context: SelectionContext,
+    mut frame: ResMut<render_scene::BlockSelectionFrameResource>,
+) {
     let target = target(&context.player, &context);
     frame.update(
         target.as_ref(),
@@ -48,17 +48,13 @@ fn publish(context: SelectionContext, mut frame: ResMut<BlockSelectionFrame>) {
     );
 }
 
-/// Resolves reviewed visual bounds from the same shapes that admitted the pick.
-/// Vanilla stairs deliberately outline a full
-/// unit box: unioning its slab/step/inner collision pieces preserves that native
-/// wire outline. Model highlighting below uses the separate actual surface.
+/// Resolves the compiled outline and its runtime context for the admitted pick.
+/// Model highlighting uses its separate surface geometry.
 fn target(
-    player_runtime: &crate::player_runtime::PlayerRuntime,
+    player_runtime: &client_state::PlayerRuntime,
     context: &SelectionContext,
 ) -> Option<BlockSelectionTarget> {
-    if context.menu.is_visible()
-        || context.ui.ui_focused(player_runtime)
-        || context.world.fatal_error.is_some()
+    if context.focus.menu_visible || context.focus.ui_focused || context.world.fatal_error.is_some()
     {
         return None;
     }
@@ -84,11 +80,37 @@ fn target(
         stream.collision_store(),
         registry,
         stream.current_dimension(),
+        crate::interaction_authority::pick_context(
+            stream,
+            &context.collisions,
+            player_runtime.facts.player_game_mode(),
+            player_runtime
+                .selected_stack()
+                .map(|item| item.block_runtime_id),
+        ),
     );
     let vector = |value: Vec3| sim::Vec3::new(value.x as f64, value.y as f64, value.z as f64);
-    let hit = world
+    let direct = world
         .block_interaction_ray_current(vector(ray.origin()), vector(ray.direction()), reach)
-        .ok()??;
+        .ok()?;
+    let hit = match direct {
+        Some(hit) => hit,
+        None => {
+            let actor = pick_actor(
+                stream.authority().remote_actors(),
+                context.ui.gameplay_hud().mount_unique_id(),
+                ray.origin().to_array(),
+                ray.direction().to_array(),
+                reach,
+            );
+            if matches!(classify(actor, None, reach), Crosshair::Actor(_)) {
+                return None;
+            }
+            world
+                .block_use_miss_support_current(vector(ray.origin()), vector(ray.direction()))
+                .ok()??
+        }
+    };
     if !context.collisions.selection_overlay_visible(
         stream.network_id_mode(),
         hit.runtime_id,
@@ -96,23 +118,7 @@ fn target(
     ) {
         return None;
     }
-    let shapes = registry.selection_shapes(hit.runtime_id)?;
-    let first = shapes.first()?;
-    let mut min = first.min;
-    let mut max = first.max;
-    for shape in &shapes[1..] {
-        min = sim::Vec3::new(
-            min.x.min(shape.min.x),
-            min.y.min(shape.min.y),
-            min.z.min(shape.min.z),
-        );
-        max = sim::Vec3::new(
-            max.x.max(shape.max.x),
-            max.y.max(shape.max.y),
-            max.z.max(shape.max.z),
-        );
-    }
-    let offset = registry.block_shape_offset(hit.runtime_id, hit.block_pos)?;
+    let outline = world.block_outline(hit.block_pos, hit.runtime_id).ok()??;
     let point = |point: sim::Vec3| [point.x as f32, point.y as f32, point.z as f32];
     let assets = stream.runtime_assets();
     let visual = assets.resolve(stream.network_id_mode(), hit.runtime_id);
@@ -124,7 +130,7 @@ fn target(
         .unwrap_or(CrackShape::Cube);
     Some(BlockSelectionTarget {
         block: hit.block_pos,
-        bounds: [point(min + offset), point(max + offset)],
+        bounds: [point(outline.min), point(outline.max)],
         shape,
     })
 }

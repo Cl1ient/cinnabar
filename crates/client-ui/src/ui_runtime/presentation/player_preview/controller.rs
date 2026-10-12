@@ -1,9 +1,11 @@
 use ui::{UiNode, UiNodeId, UiPoint, UiRect, UiVisual};
 
 use super::{PreviewView, UiPresentationRuntime, renderer_frame};
-use crate::menu::MenuScreen;
-use crate::ui_runtime::presentation::{
-    FONT_DESIGN_PIXEL_TEXELS, TextMetrics, UiPresentationError, rect,
+use launcher::menu::MenuScreen;
+use ui_engine::text_metrics::TextMetrics;
+use {
+    crate::ui_runtime::presentation::{UiPresentationError, rect},
+    ui::FONT_DESIGN_PIXEL_TEXELS,
 };
 
 const DRAG_DEGREES_PER_GUI_PIXEL: f32 = 1.0;

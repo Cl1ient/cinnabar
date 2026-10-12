@@ -5,7 +5,7 @@ use super::atmosphere_tests::execute_calibrated_with_clouds;
 #[test]
 fn volume_tiles_in_three_axes_and_filters_unresolvable_structure() {
     let source = r#"
-#import cinnabar::enhanced_clouds::cloud_volume_sample
+import render::enhanced::clouds::cloud_volume_sample;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,67>;
 @compute @workgroup_size(1) fn regression(){
     let coordinate=vec3(0.137,0.321,0.731);
@@ -51,8 +51,8 @@ fn volume_tiles_in_three_axes_and_filters_unresolvable_structure() {
 #[test]
 fn weather_changes_cloud_shapes_and_erosion_preserves_layer_bounds() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_clouds::{cloud_density,cloud_body,cloud_height_profile,cloud_shape_sample,cloud_silhouette,cloud_weather_sample,cloud_weather_coverage,CLOUD_SHAPE_FREQUENCY,CLOUD_WEATHER_FREQUENCY,CLOUD_WEATHER_DRY_SIGNAL,CLOUD_WEATHER_WET_SIGNAL}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::clouds::{cloud_density,cloud_body,cloud_height_profile,cloud_shape_sample,cloud_silhouette,cloud_weather_sample,cloud_weather_coverage,CLOUD_SHAPE_FREQUENCY,CLOUD_WEATHER_FREQUENCY,CLOUD_WEATHER_DRY_SIGNAL,CLOUD_WEATHER_WET_SIGNAL};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,72>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -163,8 +163,8 @@ fn weather_changes_cloud_shapes_and_erosion_preserves_layer_bounds() {
 #[test]
 fn volume_march_self_shadows_without_leaking_beyond_its_interval() {
     let source = r#"
-#import cinnabar::enhanced_common::{EnhancedFrame,FEATURE_VOLUMETRIC_CLOUDS}
-#import cinnabar::enhanced_clouds::{cloud_density,cloud_light_optical_depth,cloud_shadow,integrate_clouds,CLOUD_WEATHER_FREQUENCY}
+import render::enhanced::common::{EnhancedFrame,FEATURE_VOLUMETRIC_CLOUDS};
+import render::enhanced::clouds::{cloud_density,cloud_light_optical_depth,cloud_shadow,integrate_clouds,CLOUD_WEATHER_FREQUENCY};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,7>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -227,8 +227,8 @@ fn volume_march_self_shadows_without_leaking_beyond_its_interval() {
 #[test]
 fn cloud_cores_keep_resolved_detail_and_shadows_integrate_the_same_extinction() {
     let source = r#"
-#import cinnabar::enhanced_common::{EnhancedFrame,FEATURE_VOLUMETRIC_CLOUDS}
-#import cinnabar::enhanced_clouds::{cloud_structure,cloud_shadow,cloud_path_optical_depth,cloud_light_optical_depth,cloud_scattering,cloud_depth_fraction,cloud_history_position,CLOUD_MAX_RANGE,CLOUD_SHADOW_STEPS,CLOUD_LIGHT_STEPS,CLOUD_WEATHER_FREQUENCY,CLOUD_SHAPE_FREQUENCY}
+import render::enhanced::common::{EnhancedFrame,FEATURE_VOLUMETRIC_CLOUDS};
+import render::enhanced::clouds::{cloud_structure,cloud_shadow,cloud_path_optical_depth,cloud_light_optical_depth,cloud_scattering,cloud_depth_fraction,cloud_history_position,CLOUD_MAX_RANGE,CLOUD_SHADOW_STEPS,CLOUD_LIGHT_STEPS,CLOUD_WEATHER_FREQUENCY,CLOUD_SHAPE_FREQUENCY};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,69>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -320,8 +320,8 @@ fn cloud_cores_keep_resolved_detail_and_shadows_integrate_the_same_extinction() 
 #[test]
 fn cloud_radiance_uses_continuous_solar_and_lunar_irradiance_through_twilight() {
     let source = r#"
-#import cinnabar::enhanced_common::{EnhancedFrame,FEATURE_VOLUMETRIC_CLOUDS}
-#import cinnabar::enhanced_clouds::{cloud_density,integrate_clouds,CLOUD_WEATHER_FREQUENCY}
+import render::enhanced::common::{EnhancedFrame,FEATURE_VOLUMETRIC_CLOUDS};
+import render::enhanced::clouds::{cloud_density,integrate_clouds,CLOUD_WEATHER_FREQUENCY};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,5>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;

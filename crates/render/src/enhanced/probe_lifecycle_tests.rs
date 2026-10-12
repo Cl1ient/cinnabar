@@ -1,8 +1,8 @@
 use super::*;
 #[test]
 fn actor_clock_stamps_do_not_refresh_a_stationary_reflection() {
-    let mut frame = crate::ActorRenderFrame::default();
-    frame.rig.instances = Arc::from([crate::ActorGpuInstance::default()]);
+    let mut frame = render_scene::ActorRenderFrame::default();
+    frame.rig.instances = Arc::from([render_model::ActorGpuInstance::default()]);
     let unchanged = actor_signature(&frame);
     frame.rig.frame_generation += 1;
     Arc::make_mut(&mut frame.rig.instances)[0].partial_tick = 0.5;
@@ -53,7 +53,7 @@ fn dimension_changes_discard_completed_reflections_at_the_same_coordinates() {
     app.init_resource::<Cameras>()
         .init_resource::<ProbeOrigin>()
         .init_resource::<Assets<Image>>()
-        .init_resource::<crate::AtmosphereViewInputs>()
+        .init_resource::<render_scene::AtmosphereViewInputs>()
         .add_systems(Update, sync_cameras);
     let camera = app
         .world_mut()
@@ -73,7 +73,7 @@ fn dimension_changes_discard_completed_reflections_at_the_same_coordinates() {
         assert_eq!(app.world().resource::<ProbeOrigin>().epoch, previous.epoch);
         assert_eq!(previous.face_mask(), (1 << CUBE_FACE_COUNT) - 1);
         app.world_mut()
-            .resource_mut::<crate::AtmosphereViewInputs>()
+            .resource_mut::<render_scene::AtmosphereViewInputs>()
             .dimension = dimension;
         app.update();
         let current = app.world().resource::<ProbeOrigin>();
@@ -103,7 +103,7 @@ fn cloud_visibility_changes_discard_completed_reflections() {
     app.init_resource::<Cameras>()
         .init_resource::<ProbeOrigin>()
         .init_resource::<Assets<Image>>()
-        .init_resource::<crate::CloudVisibility>()
+        .init_resource::<render_scene::CloudVisibility>()
         .add_systems(Update, sync_cameras);
     let source = app
         .world_mut()
@@ -124,7 +124,9 @@ fn cloud_visibility_changes_discard_completed_reflections() {
         }
         app.update();
         assert_eq!(app.world().resource::<ProbeOrigin>().epoch, previous.epoch);
-        app.world_mut().resource_mut::<crate::CloudVisibility>().0 = visible;
+        app.world_mut()
+            .resource_mut::<render_scene::CloudVisibility>()
+            .0 = visible;
         app.update();
         let current = app.world().resource::<ProbeOrigin>();
         assert_ne!(

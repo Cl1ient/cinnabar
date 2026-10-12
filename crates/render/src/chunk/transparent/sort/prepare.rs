@@ -10,10 +10,15 @@ use super::{
 };
 use crate::chunk::transparent::face_metric::TransparentFaceMetric;
 use crate::chunk::*;
+use render_scene::{
+    ChunkBiomeTints, ChunkRenderInstance, ChunkTextureAssetIdentity, ChunkTextureAssets,
+    RuntimeStageProfiler, TransparentSortMetrics, TransparentWitnessEvidence,
+    TransparentWitnessRequest, TransparentWitnessStageRecord,
+};
 use std::cell::RefCell;
 
 /// Capture views must not replace the retained gameplay water-sort state.
-fn retains_transparent_sort(settings: Option<&crate::EnhancedRendering>) -> bool {
+fn retains_transparent_sort(settings: Option<&render_scene::EnhancedRendering>) -> bool {
     settings.is_none_or(|settings| !settings.reflection_capture)
 }
 
@@ -127,7 +132,7 @@ pub(in crate::chunk) fn prepare_transparent_sorts(
             Entity,
             &ExtractedView,
             &RenderVisibleEntities,
-            Option<&crate::EnhancedRendering>,
+            Option<&render_scene::EnhancedRendering>,
         ),
         With<ExtractedCamera>,
     >,
@@ -341,8 +346,9 @@ pub(in crate::chunk) fn prepare_transparent_sorts(
     if witness_request.enabled() {
         let visible = visible_entities
             .get::<ChunkRenderInstance>()
-            .iter()
-            .map(|&(entity, _)| entity)
+            .into_iter()
+            .flat_map(|class| class.iter_visible())
+            .map(|(entity, _)| *entity)
             .collect::<BTreeSet<_>>();
         let committed = runtime.state.committed();
         let drawn_directly = |key: SubChunkKey| {
@@ -569,14 +575,14 @@ mod view_tests {
     fn reflection_capture_cannot_take_gameplay_transparent_sort() {
         let mut world = World::new();
         let capture = world
-            .spawn(crate::EnhancedRendering {
+            .spawn(render_scene::EnhancedRendering {
                 reflection_capture: true,
                 ..Default::default()
             })
             .id();
-        let enhanced = world.spawn(crate::EnhancedRendering::default()).id();
+        let enhanced = world.spawn(render_scene::EnhancedRendering::default()).id();
         let vanilla = world.spawn_empty().id();
-        let mut query = world.query::<(Entity, Option<&crate::EnhancedRendering>)>();
+        let mut query = world.query::<(Entity, Option<&render_scene::EnhancedRendering>)>();
         let retained: Vec<_> = query
             .iter(&world)
             .filter(|(_, settings)| retains_transparent_sort(*settings))

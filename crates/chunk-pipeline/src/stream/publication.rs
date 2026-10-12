@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, render_api::PublicationAllowance};
 
 impl WorldStream {
     /// Retains StartGame's level mode for remote-player target admission.
@@ -176,13 +176,7 @@ impl WorldStream {
     pub fn take_equipment_notices(&mut self) -> Vec<client_world::EquipmentNotice> {
         self.authority.take_equipment_notices()
     }
-    /// Installs the per-mount seat layouts riders fall back to when the server streams no offset.
-    pub fn set_actor_seat_defaults(
-        &mut self,
-        defaults: std::sync::Arc<client_world::SeatDefaults>,
-    ) {
-        self.authority.set_actor_seat_defaults(defaults)
-    }
+
     /// Records the `(runtime_id, degrees)` bed orientation that backs `query.sleep_rotation`.
     pub fn set_actor_bed_rotations(&mut self, samples: &[(u64, f32)]) {
         self.authority.set_actor_bed_rotations(samples)
@@ -200,7 +194,7 @@ impl WorldStream {
         self.authority.set_actor_camera_rotation(rotation)
     }
     /// Sets the view outside which rigs hold their pose at each tick; `None` animates all.
-    pub fn set_actor_animation_view(&mut self, view: Option<client_world::ActorAnimationView>) {
+    pub fn set_actor_animation_view(&mut self, view: Option<actor_animation::ActorAnimationView>) {
         self.authority.set_actor_animation_view(view)
     }
     /// Requests the local world-context body independently of its first-person hand animation.
@@ -229,7 +223,7 @@ impl WorldStream {
         self.authority.start_local_player_swing(ticks)
     }
     /// Uses committed local swing samples without re-admitting them on the remote actor clock.
-    pub fn sync_local_swing(&mut self, progress: client_world::LocalSwingProgress) {
+    pub fn sync_local_swing(&mut self, progress: actor_animation::LocalSwingProgress) {
         self.authority.sync_local_swing(progress);
     }
     /// Selects the local motion authority before the actor clock advances unrelated animation.
@@ -240,7 +234,7 @@ impl WorldStream {
     pub fn sync_local_swing_motion(
         &mut self,
         authority: (u64, u64),
-        samples: impl IntoIterator<Item = client_world::LocalSwingMotionSample>,
+        samples: impl IntoIterator<Item = actor_animation::LocalSwingMotionSample>,
     ) {
         self.authority.sync_local_swing_motion(authority, samples);
     }
@@ -251,7 +245,7 @@ impl WorldStream {
     /// Installs the compiler receiving each packet stop expression and its declared version.
     pub fn set_server_animation_compiler(
         &mut self,
-        compiler: client_world::ServerAnimationCompiler,
+        compiler: actor_animation::ServerAnimationCompiler,
     ) {
         self.authority.set_server_animation_compiler(compiler);
     }
@@ -273,6 +267,16 @@ impl WorldStream {
         types: &[(std::sync::Arc<str>, Vec<client_world::PropertyDefault>)],
     ) {
         self.authority.seed_property_defaults(types)
+    }
+
+    /// Installs compiled item-use overlays before numerical admission.
+    pub fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.authority.set_item_use_overlays(overlays)
     }
 
     pub fn set_item_use_durations(

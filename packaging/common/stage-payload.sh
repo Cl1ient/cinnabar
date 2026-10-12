@@ -5,9 +5,6 @@ set -euo pipefail
 
 repo_root="$(CDPATH= cd -- "${CINNABAR_SOURCE_ROOT:-$(dirname -- "${BASH_SOURCE[0]}")/../..}" && pwd)"
 
-# Shared with check-payload.sh; Windows copies the same set in build-installer.ps1.
-kit_registry_stems=(block-registry block-light-registry biome-registry)
-
 # stage_prep_kit <kit_dir> <assetc_binary>
 stage_prep_kit() {
     local kit="$1" assetc="$2" name
@@ -15,10 +12,12 @@ stage_prep_kit() {
     mkdir -p "$kit/bin" "$kit/assets" "$kit/data"
     install -m 0755 "$assetc" "$kit/bin/$(basename "$assetc")"
     cp "$repo_root"/assets/*.json "$kit/assets/"
-    cp -R "$repo_root/assets/fonts" "$kit/assets/"
-    for name in "${kit_registry_stems[@]}"; do
-        cp "$repo_root/crates/assets/data/$name"-v2193.* "$kit/data/"
-    done
+    cp -R "$repo_root/assets/fonts" "$repo_root/assets/oreui-icons" "$kit/assets/"
+    # The whole data directory: carrier compilers read files from it that no list would track.
+    cp "$repo_root"/crates/assets/data/* "$kit/data/"
+    # Inputs outside the kit layout resolve at their checkout path below the kit.
+    mkdir -p "$kit/crates/protocol/data"
+    cp "$repo_root/crates/protocol/data/retail_items_1_26_50.tsv" "$kit/crates/protocol/data/"
 }
 
 # stage_resources <resource_root> <assetc_binary>: physics registry, notices, licenses, UI font, prep kit.
@@ -57,9 +56,9 @@ resource_manifest() {
     for file in "$repo_root"/assets/licenses/*; do printf 'licenses/%s\n' "${file##*/}"; done
     for file in "$repo_root"/assets/*.json; do printf 'prep-kit/assets/%s\n' "${file##*/}"; done
     for file in "$repo_root"/assets/fonts/*; do printf 'prep-kit/assets/fonts/%s\n' "${file##*/}"; done
-    for name in "${kit_registry_stems[@]}"; do
-        for file in "$repo_root/crates/assets/data/$name"-v2193.*; do printf 'prep-kit/data/%s\n' "${file##*/}"; done
-    done
+    (cd "$repo_root/assets" && find oreui-icons -type f | LC_ALL=C sort | sed 's|^|prep-kit/assets/|')
+    for file in "$repo_root"/crates/assets/data/*; do printf 'prep-kit/data/%s\n' "${file##*/}"; done
+    printf '%s\n' prep-kit/crates/protocol/data/retail_items_1_26_50.tsv
 }
 
 # require_file <path> <hint>

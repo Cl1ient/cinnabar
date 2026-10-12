@@ -35,7 +35,7 @@ pub(crate) fn actor_motion_layout() -> BindGroupLayoutDescriptor {
         "submitted actor pose motion layout",
         &[
             storage(0, size_of::<ActorMotionInstanceGpu>() as u64),
-            storage(1, crate::actor::ACTOR_BONE_MATRIX_BYTES as u64),
+            storage(1, render_model::ACTOR_BONE_MATRIX_BYTES as u64),
         ],
     )
 }
@@ -71,7 +71,7 @@ pub(super) fn prepare_actor_motion(
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     cache: Res<PipelineCache>,
-    views: Query<&crate::enhanced::EnhancedRendering>,
+    views: Query<&render_scene::EnhancedRendering>,
     mut motion: ResMut<ActorMotionGpu>,
 ) {
     let enabled = views.iter().any(|settings| !settings.reflection_capture);
@@ -131,7 +131,7 @@ pub(super) fn prepare_actor_motion(
         bones,
         "submitted interpolated actor bones",
         bytemuck::cast_slice(history.bones()),
-        crate::actor::ACTOR_BONE_MATRIX_BYTES as u64,
+        render_model::ACTOR_BONE_MATRIX_BYTES as u64,
         bones_changed,
     );
     if instance_changed || bone_changed || motion.bind_group.is_none() {

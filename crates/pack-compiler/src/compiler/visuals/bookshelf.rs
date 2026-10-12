@@ -93,6 +93,7 @@ pub(in crate::compiler) fn chiseled_bookshelf_material_descriptors(
         (
             Descriptor {
                 state_variant: 0,
+                flipbook_selector: None,
                 path: front[0].into(),
                 texture_key: "chiseled_bookshelf_front".into(),
                 flags: 0,
@@ -102,6 +103,7 @@ pub(in crate::compiler) fn chiseled_bookshelf_material_descriptors(
         (
             Descriptor {
                 state_variant: 1,
+                flipbook_selector: None,
                 path: front[1].into(),
                 texture_key: "chiseled_bookshelf_front".into(),
                 flags: 0,
@@ -111,6 +113,7 @@ pub(in crate::compiler) fn chiseled_bookshelf_material_descriptors(
         (
             Descriptor {
                 state_variant: 0,
+                flipbook_selector: None,
                 path: side.into(),
                 texture_key: "chiseled_bookshelf_side".into(),
                 flags: 0,
@@ -120,6 +123,7 @@ pub(in crate::compiler) fn chiseled_bookshelf_material_descriptors(
         (
             Descriptor {
                 state_variant: 0,
+                flipbook_selector: None,
                 path: top.into(),
                 texture_key: "chiseled_bookshelf_top".into(),
                 flags: 0,
@@ -161,7 +165,6 @@ pub(in crate::compiler) fn is_chiseled_bookshelf_record(record: &RegistryRecord)
         || record.contributor_role != ContributorRole::Primary
         || record.flags != BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE
         || record.face_coverage != 0x3f
-        || record.collision_seed.shape_id != 1
         || record.collision_seed.confidence != assets::CollisionConfidence::CollisionOnly
         || record.collision_seed.boxes.as_ref()
             != [assets::CollisionBox {

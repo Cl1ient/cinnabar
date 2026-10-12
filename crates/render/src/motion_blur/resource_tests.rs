@@ -1,21 +1,22 @@
 //! Deterministic resource and allocation contracts for the optional exposure pass.
 
 use super::{CameraMotionBlur, pipeline::BlurPipeline, prepare::BlurView};
+use bevy::ecs::schedule::ScheduleLabel;
+use bevy::ecs::system::RunSystemOnce;
+
 use bevy::{
     camera::{
         CameraMainTextureUsages, CameraOutputMode, ClearColorConfig, MsaaWriteback,
         NormalizedRenderTarget, RenderTarget,
     },
-    core_pipeline::core_3d::graph::Core3d,
-    ecs::system::RunSystemOnce,
+    core_pipeline::Core3d,
     prelude::*,
     render::{
         camera::ExtractedCamera,
-        render_graph::RenderSubGraph,
         render_resource::*,
         renderer::RenderDevice,
         texture::{CachedTexture, OutputColorAttachment, TextureCache},
-        view::{ViewDepthTexture, ViewTarget, ViewTargetAttachments, prepare_view_targets},
+        view::{ViewDepthStencilTexture, ViewTarget, ViewTargetAttachments, prepare_view_targets},
     },
 };
 
@@ -70,7 +71,7 @@ pub(super) fn fixture() -> (App, Entity) {
             physical_viewport_size: Some(UVec2::ONE),
             physical_target_size: Some(UVec2::ONE),
             viewport: None,
-            render_graph: Core3d.intern(),
+            schedule: Core3d.intern(),
             order: 0,
             output_mode: CameraOutputMode::default(),
             msaa_writeback: MsaaWriteback::default(),
@@ -79,12 +80,13 @@ pub(super) fn fixture() -> (App, Entity) {
             exposure: 1.0,
             hdr: false,
         },
-        ViewDepthTexture::new(
+        ViewDepthStencilTexture::new(
             CachedTexture {
                 texture: depth,
                 default_view: depth_view,
             },
             Some(0.0),
+            None,
         ),
     ));
     world.run_system_once(prepare_view_targets).unwrap();
@@ -99,9 +101,9 @@ fn motion_blur_off_allocates_no_view_resources_and_releases_enabled_resources() 
     let mut prepare = IntoSystem::into_system(super::prepare::prepare_views);
     prepare.initialize(world);
     prepare.run((), world).unwrap();
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     prepare.run((), world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+    assert_eq!(test_alloc::thread_allocations(), allocated);
     assert!(world.get::<BlurView>(entity).is_none());
 
     world.entity_mut(entity).insert(CameraMotionBlur {
@@ -116,7 +118,9 @@ fn motion_blur_off_allocates_no_view_resources_and_releases_enabled_resources() 
         .unwrap()
         .main_texture_view()
         .id();
-    let depth = world.get::<ViewDepthTexture>(entity).unwrap().view().id();
+    let depth =
+        crate::scene_sampling::view_depth(world.get::<ViewDepthStencilTexture>(entity).unwrap())
+            .id();
     let binding = world
         .get::<BlurView>(entity)
         .unwrap()
@@ -124,9 +128,9 @@ fn motion_blur_off_allocates_no_view_resources_and_releases_enabled_resources() 
         .unwrap()
         .id();
     prepare.run((), world).unwrap();
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     prepare.run((), world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+    assert_eq!(test_alloc::thread_allocations(), allocated);
     assert_eq!(
         world
             .get::<BlurView>(entity)
@@ -140,9 +144,9 @@ fn motion_blur_off_allocates_no_view_resources_and_releases_enabled_resources() 
     world.entity_mut(entity).remove::<CameraMotionBlur>();
     prepare.run((), world).unwrap();
     assert!(world.get::<BlurView>(entity).is_none());
-    let allocated = crate::alloc_count::thread_allocations();
+    let allocated = test_alloc::thread_allocations();
     prepare.run((), world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+    assert_eq!(test_alloc::thread_allocations(), allocated);
     assert!(!super::applies(world, entity));
 }
 
@@ -164,7 +168,9 @@ fn motion_blur_prepares_both_scene_colours_before_smaa_flips() {
         target.main_texture_view().id(),
         target.main_texture_other_view().id(),
     ];
-    let depth = world.get::<ViewDepthTexture>(entity).unwrap().view().id();
+    let depth =
+        crate::scene_sampling::view_depth(world.get::<ViewDepthStencilTexture>(entity).unwrap())
+            .id();
     let state = world.get::<BlurView>(entity).unwrap();
     for source in views {
         assert!(state.binding(source, depth).is_some());
@@ -185,14 +191,14 @@ fn motion_blur_repeated_specialization_reuses_pipelines_without_allocating() {
     world.resource_scope(|world, cache: Mut<PipelineCache>| {
         let mut pipeline = world.resource_mut::<BlurPipeline>();
         for format in [
-            TextureFormat::bevy_default(),
-            ViewTarget::TEXTURE_FORMAT_HDR,
+            render_scene::SCENE_COLOR_FORMAT,
+            render_scene::SCENE_HDR_FORMAT,
         ] {
             for samples in [1, 2, 4, 8] {
                 let original = pipeline.specialize(&cache, format, samples);
-                let allocated = crate::alloc_count::thread_allocations();
+                let allocated = test_alloc::thread_allocations();
                 let repeated = pipeline.specialize(&cache, format, samples);
-                assert_eq!(crate::alloc_count::thread_allocations(), allocated);
+                assert_eq!(test_alloc::thread_allocations(), allocated);
                 assert_eq!(repeated, original);
             }
         }
@@ -225,9 +231,9 @@ fn motion_blur_warmup_queues_the_same_formats_and_samples_used_for_drawing() {
                     .unwrap();
                 assert_eq!(warmed.len(), 1);
                 let format = if hdr {
-                    ViewTarget::TEXTURE_FORMAT_HDR
+                    render_scene::SCENE_HDR_FORMAT
                 } else {
-                    TextureFormat::bevy_default()
+                    render_scene::SCENE_COLOR_FORMAT
                 };
                 assert_eq!(
                     warmed[0],

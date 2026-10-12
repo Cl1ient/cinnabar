@@ -5,6 +5,10 @@ use super::bind_groups::{
     plan_queue_texture_mips, storage_table_fits, write_texture_mips,
 };
 use crate::chunk::*;
+use assets::TextureMip;
+use render_scene::{
+    TextureArrayLimits, TextureMipUploadPlan, diagnostic_texture_page, plan_texture_page_bindings,
+};
 /// Unused material bindings remain valid without deriving materials from carrier albedo.
 fn neutral_pbr_layers() -> (TextureArray, TextureArray) {
     let [normal, material] = [[128, 128, 255, 128], [0, 0, 255, 0]].map(|rgba| TextureArray {
@@ -206,7 +210,6 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
             frame_count: animation.frame_count,
             ticks_per_frame: animation.ticks_per_frame,
             flags: animation.flags,
-            uv_scale: 1.0 / animation.replicate as f32,
         })
         .collect::<Vec<_>>();
     let animation_frame_words = assets
@@ -253,7 +256,6 @@ pub(in crate::chunk) fn build_chunk_texture_assets(
         frame_count: 1,
         ticks_per_frame: 1,
         flags: 0,
-        uv_scale: 1.0,
     }];
     let animation_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("global chunk animations"),
@@ -578,11 +580,10 @@ fn upload_texture_page_format(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use render_scene::{EnhancedTextureAssets, plan_texture_mip_uploads};
 
     #[test]
     fn oversized_optional_maps_do_not_reject_a_server_pack_atlas() {
-        use bevy::render::renderer::WgpuWrapper;
-
         let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor {
             required_limits: wgpu::Limits {
                 max_texture_array_layers: 1,
@@ -591,7 +592,7 @@ mod tests {
             ..Default::default()
         });
         let device = RenderDevice::from(device);
-        let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+        let queue = RenderQueue::new(queue);
         let base = Arc::new(RuntimeAssets::diagnostic());
         let carrier = ChunkTextureAssets::new(base.clone());
         assert!(build_chunk_texture_assets(&carrier, &device, &queue).is_some());

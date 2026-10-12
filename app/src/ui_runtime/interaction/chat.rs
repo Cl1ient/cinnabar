@@ -1,24 +1,25 @@
 //! Mouse and gamepad input for the native chat screen and its settings popup.
 
 use super::*;
-use client_ui::ui_runtime::presentation::{BedHit, ChatHit, UiPresentationRuntime};
+use oreui::BedHit;
+use ui_screens::chat_screen::ChatHit;
 
 /// Routes chat pointer actions while a settings modal owns its underlying controls.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn drive_chat_ui_actions(
-    mut player_runtime: bevy::prelude::ResMut<crate::player_runtime::PlayerRuntime>,
+    mut player_runtime: bevy::prelude::ResMut<client_state::PlayerRuntime>,
     time: Res<Time<Real>>,
     window: Single<&Window, With<PrimaryWindow>>,
-    mut menu: Option<ResMut<crate::menu::MenuRuntime>>,
+    mut menu: Option<ResMut<client_shell::menu::MenuRuntime>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     wheel: Option<Res<AccumulatedMouseScroll>>,
     touches: Res<Touches>,
     gamepads: Query<&Gamepad>,
     coordinates: super::chat_coordinates::ChatCoordinateContext,
-    mut presentation: ResMut<UiPresentationRuntime>,
-    mut runtime: ResMut<UiRuntime>,
-    mut focus: Option<ResMut<client_presentation::camera::CursorFocus>>,
-    driven: Option<Res<crate::camera::DrivenInput>>,
+    mut presentation: ResMut<UiPresentationResource>,
+    mut runtime: ResMut<UiRuntimeResource>,
+    mut focus: Option<ResMut<client_state::CursorFocus>>,
+    driven: Option<Res<client_state::DrivenInput>>,
 ) {
     if runtime.credits().owns_input() || runtime.server_forms().owns_input() {
         return;
@@ -75,10 +76,17 @@ pub(crate) fn drive_chat_ui_actions(
     for position in presses {
         let hit = presentation.hit_test_chat(position);
         match hit {
+            Some(ChatHit::ExtensionAction(index)) => {
+                presentation.request_chat_extension_action(index);
+                runtime.close_chat();
+                if let Some(focus) = focus.as_deref_mut() {
+                    focus.authorize_screen_return();
+                }
+            }
             Some(ChatHit::Link(index)) => presentation.request_chat_link(index),
             Some(ChatHit::LinkOpen) => {
                 if let Some(url) = presentation.take_confirmed_chat_link() {
-                    crate::desktop::open_url(&url);
+                    launcher_host::desktop::open_url(&url);
                 }
             }
             Some(ChatHit::LinkCancel) => presentation.cancel_chat_link(),
@@ -165,5 +173,41 @@ pub(crate) fn drive_chat_ui_actions(
         && let Some(focus) = focus.as_deref_mut()
     {
         focus.authorize_screen_return();
+    }
+}
+
+/// The chat action a controller button raises: the d-pad navigates, the face buttons accept and
+/// cancel, and the triggers cycle suggestions.
+pub(crate) const fn gamepad_chat_action(button: GamepadButton) -> Option<UiAction> {
+    match button {
+        GamepadButton::DPadUp => Some(UiAction::Navigate([0, -1])),
+        GamepadButton::DPadDown => Some(UiAction::Navigate([0, 1])),
+        GamepadButton::South => Some(UiAction::Accept),
+        GamepadButton::East => Some(UiAction::Cancel),
+        GamepadButton::RightTrigger => Some(UiAction::TabNext),
+        GamepadButton::LeftTrigger => Some(UiAction::TabPrevious),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn controller_buttons_map_to_the_shared_ui_action_adapter() {
+        assert_eq!(
+            gamepad_chat_action(GamepadButton::DPadUp),
+            Some(UiAction::Navigate([0, -1]))
+        );
+        assert_eq!(
+            gamepad_chat_action(GamepadButton::South),
+            Some(UiAction::Accept)
+        );
+        assert_eq!(
+            gamepad_chat_action(GamepadButton::East),
+            Some(UiAction::Cancel)
+        );
+        assert_eq!(gamepad_chat_action(GamepadButton::North), None);
     }
 }

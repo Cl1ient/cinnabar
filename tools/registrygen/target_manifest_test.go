@@ -16,7 +16,7 @@ type bedrockTargetManifest struct {
 	Schema       string            `json:"schema"`
 	GameVersion  string            `json:"game_version"`
 	WireProtocol uint32            `json:"wire_protocol"`
-	CodecFeature string            `json:"codec_feature"`
+	CodecCrate   string            `json:"codec_crate"`
 	Hashes       map[string]string `json:"hashes"`
 	Artifacts    map[string]string `json:"artifacts"`
 }
@@ -151,16 +151,27 @@ func testBedrockTargetCarrierAutocrlfUpgrade(t *testing.T, attributeLineEnding s
 			t.Fatal(err)
 		}
 	}
+	// Copy every target carrier so this isolated checkout also works when a
+	// generation change updates carriers alongside the target manifest.
+	paths := []string{attributePath, carrierPath, manifestPath}
+	for name := range target.Hashes {
+		path := target.Artifacts[name]
+		if path == carrierPath {
+			continue
+		}
+		writeClone(path, readSource(path))
+		paths = append(paths, path)
+	}
 	writeClone(attributePath, baseAttributes)
 	writeClone(carrierPath, baseCarrier)
 	writeClone(manifestPath, baseManifest)
-	runGit("add", "--", attributePath, carrierPath, manifestPath)
+	runGit(append([]string{"add", "--"}, paths...)...)
 	runGit("commit", "--quiet", "-m", "synthetic pre-pin base")
 	baseCommit := runGit("rev-parse", "HEAD")
 	writeClone(attributePath, candidateAttributes)
 	writeClone(carrierPath, candidateCarrier)
 	writeClone(manifestPath, candidateManifest)
-	runGit("add", "--", attributePath, carrierPath, manifestPath)
+	runGit(append([]string{"add", "--"}, paths...)...)
 	runGit("commit", "--quiet", "-m", "synthetic candidate")
 	candidateCommit := runGit("rev-parse", "HEAD")
 
@@ -199,7 +210,7 @@ func TestBedrockTargetManifestOwnsEveryProductionCarrier(t *testing.T) {
 	if err := json.Unmarshal(payload, &target); err != nil {
 		t.Fatal(err)
 	}
-	if target.Schema != "cinnabar.bedrock-target.v1" || target.GameVersion != "1.26.50" || target.WireProtocol != 2193 || target.CodecFeature != "bedrock_1_26_51" {
+	if target.Schema != "cinnabar.bedrock-target.v1" || target.GameVersion != "1.26.50" || target.WireProtocol != 2193 || target.CodecCrate != "bedrock-protocol-1-26-51" {
 		t.Fatalf("unexpected target identity: %+v", target)
 	}
 	for name, path := range target.Artifacts {
@@ -230,16 +241,15 @@ func TestBedrockTargetManifestOwnsEveryProductionCarrier(t *testing.T) {
 		}
 	}
 	consumers := map[string][]string{
-		"Makefile":                                    {"assets/bedrock-target.json", "block-physics-v2193"},
-		"crates/assets/src/carriers.rs":               {target.Artifacts["block_registry"], target.Artifacts["light_registry"], target.Artifacts["biome_registry"], "vanilla-v2193.mcbea"},
-		"crates/assets/src/pinned_content.rs":         {"block-registry-v2193.bin", "block-light-registry-v2193.bin", "biome-registry-v2193.bin", "bedrock-target.json"},
-		"app/src/install_layout.rs":                   {"launcher::install_layout"},
-		"crates/launcher/src/install_layout.rs":       {"block-physics-v2193.bin", "carriers::WORLD"},
-		"tools/dist/src/layout.rs":                    {"block-physics-v2193.bin", "carriers::required"},
-		"crates/pack-compiler/src/entity/item.rs":     {"block-registry-v2193.bin", "block-item-routes-v2193.json"},
-		"crates/asset-compiler/src/bin/assetc/cli.rs": {"vanilla-v2193.mcbea"},
-		"crates/protocol/Cargo.toml":                  {target.CodecFeature},
-		"app/src/local_worlds/launch.rs":              {"bedrock-target.json", "server_version", "bds_container_image"},
+		"Makefile":                                     {"assets/bedrock-target.json", "physics-assets"},
+		"crates/assets/src/carriers.rs":                {target.Artifacts["block_registry"], target.Artifacts["light_registry"], target.Artifacts["biome_registry"], "vanilla-v2193.mcbea"},
+		"crates/assets/src/pinned_content.rs":          {"block-registry-v2193.bin", "block-light-registry-v2193.bin", "biome-registry-v2193.bin", "bedrock-target.json"},
+		"crates/launcher/src/install_layout.rs":        {"carriers::physics_registry_basename", "carriers::WORLD"},
+		"tools/dist/src/layout.rs":                     {"carriers::physics_registry_basename", "carriers::required"},
+		"crates/pack-compiler/src/entity/item.rs":      {"block-registry-v2193.bin", "block-item-routes-v2193.json"},
+		"crates/asset-compiler/src/bin/assetc/cli.rs":  {"vanilla-v2193.mcbea"},
+		"crates/protocol/Cargo.toml":                   {target.CodecCrate},
+		"crates/launcher-host/src/local_worlds/mod.rs": {"bedrock-target.json", "server_version", "bds_container_image"},
 	}
 	for path, required := range consumers {
 		contents, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
@@ -255,20 +265,6 @@ func TestBedrockTargetManifestOwnsEveryProductionCarrier(t *testing.T) {
 			if strings.Contains(string(contents), forbidden) {
 				t.Fatalf("production target consumer %s still selects %s", path, forbidden)
 			}
-		}
-	}
-	legacyVisualCoverage, err := os.ReadFile(filepath.Join(root, "tools", "visualcoverage", "src", "main.rs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, marker := range []string{"Legacy protocol-1001", "LegacyBaseline1001", "LegacyRatchet1001", "LegacyStrict1001", "LegacyGalleryInventory1001"} {
-		if !strings.Contains(string(legacyVisualCoverage), marker) {
-			t.Fatalf("historical visual-coverage CLI is not explicitly retired: missing %s", marker)
-		}
-	}
-	for _, activeCommand := range []string{"Command::Baseline", "Command::Ratchet", "Command::Strict", "Command::GalleryInventory"} {
-		if strings.Contains(string(legacyVisualCoverage), activeCommand) {
-			t.Fatalf("historical visual-coverage CLI still exposes active command %s", activeCommand)
 		}
 	}
 	centralizedAcceptanceConsumers := map[string][]string{

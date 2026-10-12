@@ -3,17 +3,17 @@ use std::{
     sync::Arc,
 };
 
-use bytes::{Buf, Bytes, BytesMut};
+use bedrock_protocol_1_26_51::enums::{
+    AnimateAction as AnimatePacketAction, ItemVersion as ItemDataItemVersion,
+};
+use bedrock_protocol_1_26_51::packets::{
+    Animate as AnimatePacket, AnimateEntity as AnimateEntityPacket,
+    ItemRegistry as ItemRegistryPacket, MobEquipment as MobEquipmentPacket,
+};
+use bedrock_protocol_1_26_51::types::ActorRuntimeID;
+use bedrock_protocol_1_26_51::wire;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use valentine::bedrock::{
-    codec::{BedrockCodec, BedrockSized, Nbt},
-    version::v1_26_51::{
-        ActorRuntimeId, AnimateEntityPacket, AnimatePacket,
-        EnumsAnimatePacketPayloadAction as AnimatePacketAction,
-        EnumsItemVersion as ItemDataItemVersion, ItemRegistryPacket, MobEquipmentPacket,
-    },
-};
 
 use crate::inventory::{InventoryPacketError, VerifiedNetworkItemStack};
 
@@ -22,16 +22,19 @@ mod animation_tests;
 mod attack;
 mod components;
 mod display;
+mod facts;
 mod icons;
+pub use facts::{ItemStackFacts, ItemStackFactsCache};
 mod registry_capacity;
 
 pub use attack::{ItemAttackCooldown, ItemAttackTiming, KineticWeaponTiming};
-pub use components::{ItemComponents, item_components};
+pub(crate) use components::item_components;
+pub use components::{FoodProperties, ItemComponents, ItemUseCooldown};
 pub use display::{
     ItemBook, ItemDisplay, MAX_BOOK_PAGES, item_book, item_bundle_id, item_display,
     item_has_enchantment_list,
 };
-pub use icons::item_icon_keys;
+pub(crate) use icons::item_icon_keys;
 
 /// The single item shape 1.26.40 puts on the wire.
 ///
@@ -41,7 +44,7 @@ pub use icons::item_icon_keys;
 /// descriptor whose trailing user data is an opaque length-prefixed buffer, so
 /// the shield ID is no longer needed to decode an item.
 type ItemStackDescriptor =
-    valentine::bedrock::version::v1_26_51::CerealizerNetworkItemStackDescriptorSerializedData;
+    bedrock_protocol_1_26_51::types::NetworkItemStackDescriptorSerializedData;
 
 /// Number of hotbar slots on the vanilla survival hotbar.
 pub const HOTBAR_SLOT_COUNT: u8 = 9;
@@ -69,19 +72,15 @@ pub fn select_hotbar_slot_packet(
         untracked.stack_network_id = -1;
     }
     let item =
-        VerifiedNetworkItemStack::try_new(untracked, stack.nbt_digest)?.into_vendor_item(0)?;
-    Ok(MobEquipmentPacket {
-        target_runtime_id: ActorRuntimeId {
-            actor_runtime_id: runtime_id,
-        },
+        VerifiedNetworkItemStack::try_new(untracked, stack.nbt_digest)?.into_vendor_item()?;
+    Ok(crate::Packet::new(MobEquipmentPacket {
+        target_runtime_id: ActorRuntimeID(runtime_id),
         item,
-        slot,
-        selected_slot: slot,
-        // The inventory container. 1.26.40 carries the raw ID rather than a
-        // named WindowId enum.
-        container_id: 0,
-    }
-    .into())
+        slot: wire::U8(slot),
+        selected_slot: wire::U8(slot),
+        // The inventory container: a raw ID rather than a named WindowId enum.
+        container_id: wire::U8(0),
+    }))
 }
 
 pub const MAX_ITEM_REGISTRY_ENTRIES: usize = 16_384;
@@ -148,14 +147,14 @@ pub fn item_stack_damage(stack: &NetworkItemStack) -> Option<u32> {
 /// [`item_stack_damage`] over a stack's raw extra data.
 #[must_use]
 pub fn item_extra_damage(extra_data: &[u8]) -> Option<u32> {
-    root_damage_tag(&decode_extra_nbt(extra_data)?)
+    root_damage_tag(decode_extra_nbt(extra_data)?)
 }
 
 /// Whether a stack's extra data carries a true root `Unbreakable` byte.
 #[must_use]
 pub fn item_extra_unbreakable(extra_data: &[u8]) -> bool {
     decode_extra_nbt(extra_data).is_some_and(|nbt| {
-        let mut cursor = &nbt[..];
+        let mut cursor = nbt;
         root_tag(&mut cursor, 1, b"Unbreakable")
             .is_some_and(|mut value| read_u8(&mut value).is_some_and(|byte| byte != 0))
     })
@@ -167,7 +166,7 @@ pub fn item_extra_unbreakable(extra_data: &[u8]) -> bool {
 #[must_use]
 pub fn item_enchantment_level(extra_data: &[u8], enchantment_id: i16) -> Option<u8> {
     let nbt = decode_extra_nbt(extra_data)?;
-    let mut cursor = &nbt[..];
+    let mut cursor = nbt;
     let mut list = root_tag(&mut cursor, 9, b"ench")?;
     if read_u8(&mut list)? != 10 {
         return None;
@@ -200,7 +199,7 @@ pub fn item_enchantment_level(extra_data: &[u8], enchantment_id: i16) -> Option<
 #[must_use]
 pub fn item_custom_color(extra_data: &[u8]) -> Option<u32> {
     let nbt = decode_extra_nbt(extra_data)?;
-    let mut cursor = &nbt[..];
+    let mut cursor = nbt;
     let mut payload = root_tag(&mut cursor, 3, b"customColor")?;
     Some(read_i32_le(&mut payload)? as u32 & 0x00ff_ffff)
 }
@@ -210,7 +209,7 @@ pub fn item_custom_color(extra_data: &[u8]) -> Option<u32> {
 #[must_use]
 pub fn item_charged_projectile(extra_data: &[u8]) -> Option<std::sync::Arc<str>> {
     let nbt = decode_extra_nbt(extra_data)?;
-    let mut cursor = &nbt[..];
+    let mut cursor = nbt;
     let mut payload = root_tag(&mut cursor, 10, b"chargedItem")?;
     loop {
         let entry = read_u8(&mut payload)?;
@@ -259,14 +258,14 @@ fn root_tag<'a>(cursor: &mut &'a [u8], tag: u8, wanted: &[u8]) -> Option<&'a [u8
 /// `1` follows and then the compound in *fixed* little-endian NBT. The
 /// `canPlaceOn` / `canBreak` lists and the shield blocking tick trail the
 /// compound, which is why only the root level is walked.
-fn decode_extra_nbt(extra: &[u8]) -> Option<Bytes> {
+fn decode_extra_nbt(extra: &[u8]) -> Option<&[u8]> {
     const HEADER_LEN: usize = 3;
     let header = extra.get(..HEADER_LEN)?;
     let marker = i16::from_le_bytes([header[0], header[1]]);
     if marker != -1 || header[2] != 1 {
         return None;
     }
-    Some(Bytes::copy_from_slice(&extra[HEADER_LEN..]))
+    Some(&extra[HEADER_LEN..])
 }
 
 /// Walks one fixed little-endian NBT compound root for an integer `Damage`.
@@ -371,6 +370,8 @@ pub enum ItemRegistryVersion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemRegistryEntry {
+    /// Client-facing components parsed once from the validated registry payload.
+    pub components: Option<Arc<ItemComponents>>,
     pub identifier: Arc<str>,
     pub network_id: i32,
     pub component_based: bool,
@@ -409,6 +410,7 @@ pub fn vanilla_item_registry() -> Arc<[ItemRegistryEntry]> {
             network_id,
             component_based: false,
             version: ItemRegistryVersion::Legacy,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -541,7 +543,7 @@ pub(crate) fn normalize_item(
     item: ItemStackDescriptor,
 ) -> Result<NetworkItemStack, ItemPacketError> {
     validate_item_user_data(&item.user_data_buffer)?;
-    if item.id == 0 {
+    if item.id.0 == 0 {
         return Ok(NetworkItemStack::empty());
     }
     // An absent net ID is the "no stack tracking" case, which the app models as
@@ -549,16 +551,16 @@ pub(crate) fn normalize_item(
     // distinction is preserved here rather than collapsing the two.
     let stack_network_id = match item.net_id_variant {
         None => -1,
-        Some(stack_id) if stack_id > 0 => stack_id,
+        Some(wire::ZigZag32(stack_id)) if stack_id > 0 => stack_id,
         Some(_) => return Err(ItemPacketError::ContradictoryStackId),
     };
     make_stack(
-        i32::from(item.id),
-        i32::from_ne_bytes(item.auxvalue.to_ne_bytes()),
+        i32::from(item.id.0),
+        i32::from_ne_bytes(item.aux_value.0.to_ne_bytes()),
         stack_network_id,
-        item.stacksize,
-        i32::from_ne_bytes(item.block_runtime_id.to_ne_bytes()),
-        item.user_data_buffer,
+        item.stack_size.0,
+        i32::from_ne_bytes(item.block_runtime_id.0.to_ne_bytes()),
+        &item.user_data_buffer,
     )
 }
 
@@ -568,7 +570,7 @@ fn make_stack(
     stack_network_id: i32,
     count: u16,
     block_runtime_id: i32,
-    extra: Vec<u8>,
+    extra: &[u8],
 ) -> Result<NetworkItemStack, ItemPacketError> {
     if network_id == 0 {
         return Err(ItemPacketError::InvalidItemNetworkId(network_id));
@@ -591,39 +593,33 @@ fn make_stack(
         metadata,
         stack_network_id,
         count,
-        nbt_digest: Sha256::digest(&extra).into(),
+        nbt_digest: Sha256::digest(extra).into(),
         block_runtime_id,
         extra_data: Arc::from(extra),
     })
 }
 
-fn encode_extra<T>(value: &T) -> Result<Vec<u8>, ItemPacketError>
-where
-    T: BedrockCodec<Args = ()> + BedrockSized,
-{
-    let encoded_size = value.encoded_size();
-    if encoded_size > MAX_ITEM_EXTRA_BYTES {
-        return Err(ItemPacketError::ItemExtraTooLarge {
-            bytes: encoded_size,
-            max: MAX_ITEM_EXTRA_BYTES,
-        });
+/// Encodes `value` through a writer capped at [`MAX_ITEM_EXTRA_BYTES`].
+fn encode_extra<T: wire::Encode>(value: &T) -> Result<Vec<u8>, ItemPacketError> {
+    let mut bytes = Vec::new();
+    match value.encode(&mut wire::Writer::with_limit(
+        &mut bytes,
+        MAX_ITEM_EXTRA_BYTES,
+    )) {
+        Ok(()) => Ok(bytes),
+        Err(wire::EncodeError::OutputLimitExceeded { needed, .. }) => {
+            Err(ItemPacketError::ItemExtraTooLarge {
+                bytes: needed,
+                max: MAX_ITEM_EXTRA_BYTES,
+            })
+        }
+        Err(_) => Err(ItemPacketError::ItemEncodingFailed),
     }
-    let mut bytes = BytesMut::with_capacity(encoded_size);
-    value
-        .encode(&mut bytes)
-        .map_err(|_| ItemPacketError::ItemEncodingFailed)?;
-    if bytes.len() > MAX_ITEM_EXTRA_BYTES {
-        return Err(ItemPacketError::ItemExtraTooLarge {
-            bytes: bytes.len(),
-            max: MAX_ITEM_EXTRA_BYTES,
-        });
-    }
-    Ok(bytes.to_vec())
 }
 
 /// Bounds an item's user-data buffer and checks the compound it may carry.
 ///
-/// The generated 1.26.40 decoder hands this over as opaque bytes, so the header
+/// The generated decoder hands this over as opaque bytes, so the header
 /// is interpreted here exactly as gophertunnel's `Writer.itemUserData` writes it
 /// (`minecraft/protocol/writer.go`): an `int16` of `-1` introduces a `uint8`
 /// version and a fixed little-endian compound, and `0` means no compound.
@@ -652,18 +648,21 @@ fn validate_item_user_data(extra: &[u8]) -> Result<(), ItemPacketError> {
             // Only the compound is validated. The canPlaceOn/canBreak lists and
             // the shield blocking tick follow it in the same buffer, so unlike
             // the standalone NBT checks trailing bytes here are expected.
-            let mut bytes = Bytes::copy_from_slice(&extra[3..]);
-            Nbt::decode_little_endian(&mut bytes).map_err(|_| ItemPacketError::InvalidItemNbt)?;
+            wire::Reader::new(&extra[3..])
+                .read_nbt(wire::NbtVariant::Persistent)
+                .map_err(|_| ItemPacketError::InvalidItemNbt)?;
             Ok(())
         }
         _ => Err(ItemPacketError::InvalidItemNbt),
     }
 }
 
-fn validate_registry_nbt(nbt: &Nbt) -> Result<(), ItemPacketError> {
-    let mut bytes = nbt.0.clone();
-    Nbt::decode(&mut bytes, ()).map_err(|_| ItemPacketError::InvalidItemNbt)?;
-    if bytes.has_remaining() {
+fn validate_registry_nbt(nbt: &wire::NetworkNbt) -> Result<(), ItemPacketError> {
+    let mut reader = wire::Reader::new(&nbt.0);
+    reader
+        .read_nbt(wire::NbtVariant::Network)
+        .map_err(|_| ItemPacketError::InvalidItemNbt)?;
+    if !reader.is_empty() {
         return Err(ItemPacketError::InvalidItemNbt);
     }
     Ok(())
@@ -671,7 +670,7 @@ fn validate_registry_nbt(nbt: &Nbt) -> Result<(), ItemPacketError> {
 
 pub(crate) fn normalize_item_registry(
     packet: ItemRegistryPacket,
-) -> Result<ItemActorEvent, ItemPacketError> {
+) -> Result<ItemRegistryEvent, ItemPacketError> {
     if packet.item_data.len() > MAX_ITEM_REGISTRY_ENTRIES {
         return Err(ItemPacketError::TooManyRegistryEntries {
             count: packet.item_data.len(),
@@ -687,7 +686,7 @@ pub(crate) fn normalize_item_registry(
                 max: MAX_ACTION_IDENTIFIER_BYTES,
             });
         }
-        let network_id = i32::from(item.item_id);
+        let network_id = i32::from(item.item_id.0);
         validate_registry_nbt(&item.item_component_data)?;
         let component_bytes = encode_extra(&item.item_component_data)?;
         let version = match item.item_version {
@@ -704,10 +703,11 @@ pub(crate) fn normalize_item_registry(
             registry_capacity::negotiated_max_stack_size(&component_bytes)
         };
         let entry = ItemRegistryEntry {
-            identifier: Arc::from(item.item_name),
+            identifier: Arc::from(item.item_name.to_string_lossy()),
             network_id,
             component_based: item.is_component_based,
             version,
+            components: components::parse_components(&component_bytes).map(Arc::new),
             component_digest: Sha256::digest(&component_bytes).into(),
             negotiated_max_stack_size,
             canonical_empty_component_data,
@@ -738,21 +738,21 @@ pub(crate) fn normalize_item_registry(
             entries.push(entry);
         }
     }
-    Ok(ItemActorEvent::Registry(ItemRegistryEvent {
+    Ok(ItemRegistryEvent {
         entries: Arc::from(entries),
-    }))
+    })
 }
 
 pub(crate) fn normalize_equipment(
     packet: MobEquipmentPacket,
 ) -> Result<EquipmentEvent, ItemPacketError> {
-    let actor_runtime_id = runtime_id_signed(packet.target_runtime_id.actor_runtime_id)?;
+    let actor_runtime_id = runtime_id_signed(packet.target_runtime_id.0)?;
     normalize_equipment_parts(
         actor_runtime_id,
         normalize_item(packet.item)?,
-        packet.slot,
-        packet.selected_slot,
-        packet.container_id,
+        packet.slot.0,
+        packet.selected_slot.0,
+        packet.container_id.0,
     )
 }
 
@@ -796,7 +796,7 @@ fn normalize_equipment_parts(
 }
 
 pub(crate) fn normalize_animate(packet: AnimatePacket) -> Result<ItemActorEvent, ItemPacketError> {
-    if !packet.data.is_finite() {
+    if !packet.data.0.is_finite() {
         return Err(ItemPacketError::NonFiniteActionField("data"));
     }
     if let Some(source) = &packet.swing_source {
@@ -813,12 +813,12 @@ pub(crate) fn normalize_animate(packet: AnimatePacket) -> Result<ItemActorEvent,
         AnimatePacketAction::Unknown(action_id) => ActorActionKind::Ignored { action_id },
     };
     Ok(ItemActorEvent::Action(ActorActionEvent {
-        actor_runtime_ids: Arc::from([runtime_id_signed(
-            packet.target_actor_runtime_id.actor_runtime_id,
-        )?]),
+        actor_runtime_ids: Arc::from([runtime_id_signed(packet.target_actor_runtime_id.0)?]),
         kind,
-        data: packet.data,
-        swing_source: packet.swing_source.map(Arc::from),
+        data: packet.data.0,
+        swing_source: packet
+            .swing_source
+            .map(|source| Arc::from(source.to_string_lossy())),
     }))
 }
 
@@ -851,14 +851,14 @@ pub(crate) fn normalize_animate_entity(
         &packet.m_stop_expression,
         MAX_ACTION_IDENTIFIER_BYTES,
     )?;
-    if !packet.m_blend_out_time.is_finite() {
+    if !packet.m_blend_out_time.0.is_finite() {
         return Err(ItemPacketError::NonFiniteActionField("blend_out_time"));
     }
     let mut seen = HashSet::with_capacity(packet.m_runtime_ids.len());
     let actor_runtime_ids = packet
         .m_runtime_ids
         .into_iter()
-        .map(|id| runtime_id_signed(id.actor_runtime_id))
+        .map(|id| runtime_id_signed(id.0))
         .map(|result| {
             let id = result?;
             if !seen.insert(id) {
@@ -870,13 +870,13 @@ pub(crate) fn normalize_animate_entity(
     Ok(ItemActorEvent::Action(ActorActionEvent {
         actor_runtime_ids: Arc::from(actor_runtime_ids),
         kind: ActorActionKind::Custom {
-            animation: Arc::from(packet.m_animation),
-            controller: Arc::from(packet.m_controller),
-            next_state: Arc::from(packet.m_next_state),
-            stop_expression: Arc::from(packet.m_stop_expression),
-            stop_expression_version: packet.m_stop_expression_version,
+            animation: Arc::from(packet.m_animation.to_string_lossy()),
+            controller: Arc::from(packet.m_controller.to_string_lossy()),
+            next_state: Arc::from(packet.m_next_state.to_string_lossy()),
+            stop_expression: Arc::from(packet.m_stop_expression.to_string_lossy()),
+            stop_expression_version: packet.m_stop_expression_version.0,
         },
-        data: packet.m_blend_out_time,
+        data: packet.m_blend_out_time.0,
         swing_source: None,
     }))
 }
@@ -890,7 +890,7 @@ fn runtime_id_signed(value: u64) -> Result<u64, ItemPacketError> {
     Ok(value)
 }
 
-fn validate_text(field: &'static str, text: &str, max: usize) -> Result<(), ItemPacketError> {
+fn validate_text(field: &'static str, text: &wire::Str, max: usize) -> Result<(), ItemPacketError> {
     if text.len() > max {
         return Err(ItemPacketError::ActionTextTooLong {
             field,

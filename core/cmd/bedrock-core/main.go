@@ -50,10 +50,6 @@ func main() {
 		ParentGone: lifeline.WatchParent(lifeline.ParentFromEnv(), parentPollInterval),
 		Grace:      shutdownGrace,
 	})
-	if handled, code := helperMode(ctx, args, os.Stdout, os.Stderr); handled {
-		stop()
-		os.Exit(code)
-	}
 	exitCode := execute(ctx, args, os.Stdout, os.Stderr, authcache.Source, proxy.Serve)
 	stop()
 	if exitCode != 0 {
@@ -72,12 +68,9 @@ func configureRuntime(getenv func(string) string) {
 	}
 }
 
-// bindsStdin reports whether the client pipes stdin, whose EOF then ends the core; the sign-in and
-// update helpers run with a null stdin.
+// bindsStdin reports whether the client pipes stdin, whose EOF then ends the core; the sign-in
+// helper runs with a null stdin.
 func bindsStdin(args []string) bool {
-	if len(args) > 0 && args[0] == "check-update" {
-		return false
-	}
 	for _, arg := range args {
 		if arg == "-auth-events" || strings.HasPrefix(arg, "-auth-events=") {
 			return false
@@ -90,6 +83,7 @@ type options struct {
 	socketDir                 string
 	upstream                  string
 	authCache                 string
+	deviceFile                string
 	language                  string
 	catalogFile               string
 	authEvents                bool
@@ -97,18 +91,8 @@ type options struct {
 	resourcePackCacheQuota    uint64
 	resourcePackCacheQuotaSet bool
 	controlStatus             bool
+	xboxPresence              bool
 	upstreamClientCache       bool
-	localWorldsDir            string
-	localServerBin            string
-	localBackend              string
-	bdsDir                    string
-	bdsVersion                string
-	bdsImage                  string
-	bdsMaxPlayers             int
-	bdsHostPort               int
-	bdsLANVisible             bool
-	bdsLANHostPort            int
-	docker                    string
 	serverTrustFile           string
 }
 
@@ -119,56 +103,24 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	flags.StringVar(&opts.socketDir, "socket-dir", "", "directory containing the local bridge endpoint")
 	flags.StringVar(&opts.upstream, "upstream", "", "upstream Bedrock server address (host:port)")
 	flags.StringVar(&opts.authCache, "auth-cache", "", "path to the Microsoft authentication token cache")
+	flags.StringVar(&opts.deviceFile, "device-file", "", "the install's persisted login device profile (default: device.json beside -auth-cache)")
 	flags.StringVar(&opts.language, "language", locale.Default, "active UI language (BCP 47)")
 	flags.StringVar(&opts.catalogFile, "catalog-file", "", "write the authenticated launcher catalog and exit")
 	flags.BoolVar(&opts.authEvents, "auth-events", false, "perform one-shot authentication and emit bounded JSONL events")
 	flags.StringVar(&opts.resourcePackCacheDir, "resource-pack-cache-dir", "", "enable the persistent verified resource-pack cache in this directory")
 	flags.Uint64Var(&opts.resourcePackCacheQuota, "resource-pack-cache-quota-bytes", packcache.DefaultQuota, "maximum resource-pack cache bytes (requires -resource-pack-cache-dir)")
 	flags.BoolVar(&opts.controlStatus, "control-status", false, "enable the local read-only Status v1 control endpoint")
+	flags.BoolVar(&opts.xboxPresence, "xbox-presence", false, "own Xbox title presence for the account (requires -control-status)")
 	flags.StringVar(&opts.serverTrustFile, "server-trust-file", "", "ask the control client before joining an unknown http NetherNet server, remembering trusted ones in this file (requires -control-status)")
 	flags.BoolVar(&opts.upstreamClientCache, "upstream-client-cache", false, "advertise client-cache capability upstream; enable only when the connecting client owns a verified blob cache")
-	flags.StringVar(&opts.localWorldsDir, "local-worlds-dir", "", "enable local single-player worlds stored in this directory (requires -control-status)")
-	flags.StringVar(&opts.localServerBin, "local-server-bin", "", "local world server binary (default: bedrock-local-server beside the core)")
-	flags.StringVar(&opts.localBackend, "local-backend", "auto", "default backend for new local worlds: auto (BDS where available, else dragonfly), bds or dragonfly")
-	flags.StringVar(&opts.bdsDir, "bds-dir", "", "directory for downloaded Bedrock Dedicated Server builds (default: bds beside the worlds directory)")
-	flags.StringVar(&opts.bdsVersion, "bds-version", "", "exact Bedrock Dedicated Server build to download (the client passes its target manifest's server_version)")
-	flags.StringVar(&opts.bdsImage, "bds-image", "", "digest-pinned container image that runs the Linux Bedrock Dedicated Server where no native build exists")
-	flags.IntVar(
-		&opts.bdsMaxPlayers,
-		"bds-max-players",
-		0,
-		"maximum players in a local Bedrock Dedicated Server (zero uses vanilla's hosted-world limit)",
-	)
-	flags.IntVar(&opts.bdsHostPort, "bds-host-port", 0,
-		fmt.Sprintf("local BDS loopback host port (zero selects an available port; conventional port is %d)", localworld.DefaultBDSPort))
-	flags.BoolVar(&opts.bdsLANVisible, "bds-lan-visible", false, "enable local BDS LAN discovery (container discovery remains published only on loopback)")
-	flags.IntVar(&opts.bdsLANHostPort, "bds-lan-host-port", 0, "container BDS loopback LAN discovery port (zero uses the pinned NetherNet discovery port)")
-	flags.StringVar(&opts.docker, "docker", "docker", "Docker-compatible CLI used to run the Linux Bedrock Dedicated Server where no native build exists")
 	if err := flags.Parse(args); err != nil {
 		return options{}, err
 	}
-	switch opts.localBackend {
-	case "auto", "bds", "dragonfly":
-	default:
-		return options{}, errors.New("local-backend must be auto, bds or dragonfly")
-	}
-	if opts.localWorldsDir != "" && !opts.controlStatus {
-		return options{}, errors.New("local-worlds-dir requires -control-status")
+	if opts.xboxPresence && !opts.controlStatus {
+		return options{}, errors.New("xbox-presence requires -control-status")
 	}
 	if opts.serverTrustFile != "" && !opts.controlStatus {
 		return options{}, errors.New("server-trust-file requires -control-status")
-	}
-	if opts.localServerBin != "" && opts.localWorldsDir == "" {
-		return options{}, errors.New("local-server-bin requires -local-worlds-dir")
-	}
-	if opts.bdsMaxPlayers < 0 {
-		return options{}, errors.New("bds-max-players must not be negative")
-	}
-	if opts.bdsHostPort < 0 || opts.bdsHostPort != int(uint16(opts.bdsHostPort)) {
-		return options{}, errors.New("bds-host-port must be zero or a valid TCP/UDP port")
-	}
-	if opts.bdsLANHostPort < 0 || opts.bdsLANHostPort != int(uint16(opts.bdsLANHostPort)) {
-		return options{}, errors.New("bds-lan-host-port must be zero or a valid UDP port")
 	}
 	flags.Visit(func(value *flag.Flag) {
 		if value.Name == "resource-pack-cache-quota-bytes" {
@@ -261,11 +213,12 @@ func runWithResourcePackCacheFactory(
 			return fmt.Errorf("start control endpoint: %w", err)
 		}
 		defer func() { _ = controlServer.Close() }()
-		controlServer.SetPacketDelay(packetDelay)
+		controlServer.SetPacketDelay(packetDelayControl{packetDelay})
 	}
 	authentication := "offline"
 	var tokenSource oauth2.TokenSource
 	var account *authcache.Account
+	closeCredentials := context.CancelFunc(func() {})
 	if statusStore != nil {
 		statusStore.SetAuth(control.AuthV1{State: control.AuthOffline})
 	}
@@ -276,16 +229,28 @@ func runWithResourcePackCacheFactory(
 		if statusStore != nil {
 			authConfig.Request = launcher.DeviceRequest(statusStore)
 		}
-		tokenSource, err = source(ctx, authConfig)
+		credentialCtx, cancelCredentials := context.WithCancel(context.WithoutCancel(ctx))
+		closeCredentials = cancelCredentials
+		cancelAuthentication := context.AfterFunc(ctx, closeCredentials)
+		defer func() { cancelAuthentication(); closeCredentials() }()
+		tokenSource, err = source(credentialCtx, authConfig)
 		if err != nil {
 			if statusStore != nil && statusStore.Auth().State != control.AuthFailed {
 				statusStore.SetAuth(control.AuthV1{State: control.AuthFailed, Reason: "Could not validate the saved account."})
 			}
 			return fmt.Errorf("initialize Microsoft authentication: %w", err)
 		}
-		if account = authcache.NewAccount(ctx, authcache.DerivedCachePath(opts.authCache), tokenSource, stderr); account != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if account = authcache.NewAccount(credentialCtx, authcache.DerivedCachePath(opts.authCache), tokenSource, stderr); account != nil {
 			tokenSource = account
-			defer func() { _ = account.Close() }()
+			defer func() { closeCredentials(); _ = account.Close() }()
+		}
+		// Initialization follows shutdown; afterward credentials survive title cleanup.
+		cancelAuthentication()
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if statusStore != nil {
 			statusStore.SetAuth(control.AuthV1{State: control.AuthSignedIn})
@@ -313,6 +278,7 @@ func runWithResourcePackCacheFactory(
 			keepAccountFresh(account, ctx)
 		}()
 		defer func() {
+			closeCredentials()
 			_ = account.Close()
 			<-refreshed
 		}()
@@ -331,16 +297,11 @@ func runWithResourcePackCacheFactory(
 			closeResourcePackCache = cache.Close
 		}
 	}
-	var localWorlds *localworld.Manager
+	// The launcher runs local worlds and reports the open one over local_world.v1.
+	var localWorlds *localworld.Local
 	var localTarget proxy.LocalTargetFunc
-	if opts.localWorldsDir != "" {
-		localWorlds, err = openLocalWorlds(opts, logger)
-		if err != nil {
-			if closeResourcePackCache != nil {
-				_ = closeResourcePackCache()
-			}
-			return err
-		}
+	if statusStore != nil {
+		localWorlds = localworld.NewLocal()
 		localTarget = localWorlds.ConnectionTarget
 	}
 	var resourcePackAdmissionUpdate func(proxy.ResourcePackAdmissionSnapshot)
@@ -348,31 +309,31 @@ func runWithResourcePackCacheFactory(
 	transfers := new(proxy.TransferState)
 	selector := new(proxy.UpstreamSelector)
 	var onDisconnect func(proxy.DisconnectInfo)
+	var networkObservation func(proxy.NetworkObservation)
+	var sessionTarget func(context.Context, string, string) (string, error)
 	var serverTrust minecraft.ServerTrust
 	if statusStore != nil {
-		if localWorlds != nil {
-			// Opening a local world supersedes any pending transfer or selected upstream.
-			worlds := control.WithOpenHook(localWorlds, func() {
-				transfers.Clear()
-				selector.Set("")
-				statusStore.ClearTransfer()
-			})
-			if account != nil {
-				hosting := &friendHosting{account: account, worlds: localWorlds, target: localTarget, log: logger}
-				hostingCtx, stopHosting := context.WithCancel(ctx)
-				hostingDone := make(chan struct{})
-				go func() {
-					defer close(hostingDone)
-					hosting.run(hostingCtx)
-				}()
-				defer func() {
-					stopHosting()
-					<-hostingDone
-				}()
-				worlds = control.WithInvites(worlds, hosting.Invite)
-			}
-			controlServer.SetWorlds(worlds)
+		// Opening a local world supersedes any pending transfer or selected upstream.
+		worlds := controlWorlds{local: localWorlds, onOpen: func() {
+			transfers.Clear()
+			selector.Set("")
+			statusStore.ClearTransfer()
+		}}
+		if account != nil {
+			hosting := &friendHosting{account: account, worlds: localWorlds, target: localTarget, log: logger}
+			hostingCtx, stopHosting := context.WithCancel(ctx)
+			hostingDone := make(chan struct{})
+			go func() {
+				defer close(hostingDone)
+				hosting.run(hostingCtx)
+			}()
+			defer func() {
+				stopHosting()
+				<-hostingDone
+			}()
+			worlds.invite = hosting.Invite
 		}
+		controlServer.SetWorlds(worlds)
 		artworkDir, cacheFile := filepath.Join(opts.socketDir, "artwork"), ""
 		if dir := authSibling(opts.authCache, "catalog-cache"); dir != "" {
 			artworkDir, cacheFile = filepath.Join(dir, "artwork"), filepath.Join(dir, "catalog.json")
@@ -381,22 +342,37 @@ func runWithResourcePackCacheFactory(
 			Account: account, AuthCache: opts.authCache, Language: opts.language,
 			Store: statusStore, Selector: selector, Transfers: transfers,
 			ArtworkDir: artworkDir, CacheFile: cacheFile, Logger: logger,
-			StoreImageDir: authSibling(opts.authCache, "store-images"),
 		})
+		if opts.xboxPresence {
+			presence := service.StartPresence(ctx)
+			defer presence.Close()
+			controlServer.SetPresence(presence.Set)
+		}
 		controlServer.SetLogger(logger)
-		controlServer.SetServices(service)
-		controlServer.SetMarketplace(service.Marketplace())
+		controlServer.SetServices(launcherControl{service})
+		sessionTarget = service.SessionTarget
+		controlServer.SetMarketplace(storeControl{service.Marketplace()})
 		if account != nil {
 			go service.PublishSignedIn(ctx)
 			service.Prefetch()
 		}
 		statusStore.SetLifecycle(control.LifecycleRunning)
-		resourcePackAdmissionUpdate = statusStore.Observe
-		connectProgress = statusStore.ObserveConnectProgress
-		transfers.OnTransfer = statusStore.ObserveTransfer
-		onDisconnect = statusStore.ObserveDisconnect
+		resourcePackAdmissionUpdate = func(snapshot proxy.ResourcePackAdmissionSnapshot) {
+			statusStore.Observe(wirePackAdmission(snapshot))
+		}
+		connectProgress = func(progress proxy.ConnectProgress) {
+			statusStore.ObserveConnectProgress(wireConnectProgress(progress))
+		}
+		transfers.OnTransfer = func(target proxy.TransferTarget) { statusStore.ObserveTransfer(target.Host, target.Port) }
+		onDisconnect = func(info proxy.DisconnectInfo) { statusStore.ObserveDisconnect(info.Reason, info.Message) }
+		networkObservation = func(observation proxy.NetworkObservation) {
+			statusStore.ObserveNetwork(control.NetworkObservation{AttemptID: observation.AttemptID, LocalRuntimeID: observation.LocalRuntimeID, RoundTripMillis: observation.RoundTripMillis})
+		}
+
 		if opts.serverTrustFile != "" {
-			prompts := proxy.NewServerTrustPrompts(statusStore.ObserveServerTrust)
+			prompts := proxy.NewServerTrustPrompts(func(prompt proxy.ServerTrustPrompt, pending bool) {
+				statusStore.ObserveServerTrust(control.ServerTrustPrompt(prompt), pending)
+			})
 			statusStore.SetServerTrustAnswer(prompts.Answer)
 			serverTrust = &minecraft.FirstUseTrust{
 				Store:   proxy.ServerTrustFile(opts.serverTrustFile),
@@ -404,6 +380,11 @@ func runWithResourcePackCacheFactory(
 				Log:     logger,
 			}
 		}
+	}
+	// One device per install, consistent with the platform the account signs in as.
+	deviceProfile, deviceErr := authcache.LoadDevice(opts.devicePath())
+	if deviceErr != nil {
+		logger.Warn("device profile not saved; using it for this run only")
 	}
 	serveErr := serve(ctx, proxy.Config{
 		PacketDelay:         packetDelay,
@@ -415,6 +396,7 @@ func runWithResourcePackCacheFactory(
 		Transfers:           transfers,
 		Selector:            selector,
 		OnDisconnect:        onDisconnect,
+		NetworkObservation:  networkObservation,
 		LocalTarget:         localTarget,
 		ResourcePackCache:   resourcePackCache,
 		ResourcePackAdmission: func(snapshot proxy.ResourcePackAdmissionSnapshot) {
@@ -436,12 +418,11 @@ func runWithResourcePackCacheFactory(
 		ResourcePackAdmissionUpdate: resourcePackAdmissionUpdate,
 		ConnectProgress:             connectProgress,
 		ServerTrust:                 serverTrust,
+		SessionTarget:               sessionTarget,
+		Device:                      &deviceProfile,
 	})
 	if controlServer != nil {
 		serveErr = errors.Join(serveErr, controlServer.Close())
-	}
-	if localWorlds != nil {
-		localWorlds.Shutdown()
 	}
 	if closeResourcePackCache == nil {
 		return serveErr
@@ -454,6 +435,14 @@ func runWithResourcePackCacheFactory(
 
 func newLifecycleLogger(writer io.Writer) *slog.Logger {
 	return slog.New(slog.NewTextHandler(writer, nil))
+}
+
+// devicePath is the install's device profile, independent of which account's token the core holds.
+func (opts options) devicePath() string {
+	if opts.deviceFile != "" {
+		return opts.deviceFile
+	}
+	return authSibling(opts.authCache, "device.json")
 }
 
 // authSibling is the persistent per-install directory called name beside the auth cache; empty without one.

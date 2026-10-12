@@ -1,20 +1,22 @@
-use std::{
-    mem::size_of,
-    sync::{Arc, OnceLock},
-};
+use super::gpu::arena::plan_chunk_range_update;
+use render_model::VisibilityKeyDigest;
+use render_scene::TargetRenderExpectation;
+use std::sync::{Arc, OnceLock};
 
 use assets::{
     BlockFlags, BlockVisual, CompiledAssets, CompiledBiomeAssets, Material, NO_ANIMATION,
     NO_MODEL_TEMPLATE, NetworkIdMode, TextureMip, TexturePage, TextureRef, VisualKind, encode_blob,
 };
-use bevy::{
-    prelude::*,
-    render::render_resource::{DownlevelFlags, DrawIndexedIndirectArgs, WgpuFeatures},
-};
-use render_model::VisibilityKeyDigest;
+
 use world::{RawBlockIds, SubChunk};
 
 use super::*;
+use meshing::{ChunkMesh, PackedBiomeRecord};
+use render_model::TransparentSortMetricsSnapshot;
+use render_scene::{
+    ChunkRenderQueue, ChunkTextureAssetIdentity, ChunkUploadPriority, RenderViewCohort,
+    TransparentSortMetrics, TransparentWitnessEvidence, chunk::build_presented_frame_ack,
+};
 
 fn target_expectation(
     now: Instant,
@@ -49,6 +51,7 @@ fn test_runtime_assets(invisible_emitter: bool) -> RuntimeAssets {
                 model_template: NO_MODEL_TEMPLATE,
                 animation: NO_ANIMATION,
                 variant: 0,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             },
             BlockVisual {
                 faces: [1; 6],
@@ -59,6 +62,7 @@ fn test_runtime_assets(invisible_emitter: bool) -> RuntimeAssets {
                 model_template: NO_MODEL_TEMPLATE,
                 animation: NO_ANIMATION,
                 variant: 0,
+                destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
             },
         ]
         .into_boxed_slice(),

@@ -33,8 +33,8 @@ use world::{
     LightBlockAccess, LightBlockSample, LightBounds, LightChannel,
     LightProperties as SolverLightProperties, LightReadAccess, LightSolveError, LightSolveOutput,
     LightStore, LightStoreSnapshot, LightSubChunkKind, MeshDependencyMask, MeshNeighbourhood,
-    PreparedSubChunkMutation, SectionSnapshot, SolverLimits, SubChunk, SubChunkKey, SubChunkLight,
-    chunk_in_view,
+    NeighbourReach, PreparedSubChunkMutation, SectionSnapshot, SolverLimits, SubChunk, SubChunkKey,
+    SubChunkLight, chunk_in_view,
 };
 
 #[cfg(test)]
@@ -65,6 +65,7 @@ mod dimension_transfer;
 mod dirty;
 mod helpers;
 mod light_diagnostics;
+mod light_queries;
 mod lighting;
 mod map_data;
 mod meshing;
@@ -91,7 +92,6 @@ mod transfer_priority;
 mod workers;
 pub use workers::{on_idle_world_cores, world_worker_threads};
 
-pub use client_world::ingestion::WorldStreamError;
 use client_world::ingestion::{
     BlockMutationBatch, CommitBudget, CommitStep, DecodeCommit, DecodeCompletion, DecodeIds,
     DecodeJob, Footprint, LaneContext, PreparedSubChunkResult, PreparedWorldEvent, QueuedDecodeJob,
@@ -105,23 +105,19 @@ use request_queue::RequestQueue;
 
 pub use diagnostics::{
     BuildProfileIdentity, CohortManifestIdentity, MAX_LOCAL_RESET_DISPATCH_EVIDENCE,
-    Phase2PresentationSnapshot, Phase2PublicationSnapshot, PresentModeIdentity,
-    PublicationStageCounters, RequestClass, RequestClassDepth, RequestQueueEvidence,
-    StageDurations, SubChunkOutcomeCounters,
+    PresentModeIdentity, PresentationSnapshot, PublicationSnapshot, PublicationStageCounters,
+    RequestClass, RequestClassDepth, RequestQueueEvidence, StageDurations, SubChunkOutcomeCounters,
 };
 #[cfg(feature = "publication-test-support")]
 pub use publication_test_support::{PublicationFixtureIdentity, PublicationFixtureSnapshot};
-pub use render_api::{
-    PublicationAllowance, PublicationPermit, PublicationPermitStage, PublicationServiceConfig,
-};
+use render_api::PublicationAllowance;
 
 /// Decode and mesh workers may each have at most this many completed results
 /// waiting for the main thread. A full channel applies backpressure to Rayon.
 pub const WORK_RESULT_CAPACITY: usize = 512;
-pub use client_world::ingestion::{MAX_ADMITTED_HEAVY_EVENTS, MAX_ADMITTED_WORLD_EVENTS};
+use client_world::ingestion::MAX_ADMITTED_HEAVY_EVENTS;
 pub const MAX_IN_FLIGHT_DECODE_JOBS: usize = MAX_ADMITTED_HEAVY_EVENTS;
 pub const DECODE_DISPATCH_BUDGET_PER_POLL: usize = MAX_ADMITTED_HEAVY_EVENTS;
-pub use render_api::PHASE0_MAX_VIEW_RADIUS_CHUNKS;
 pub const OUTBOUND_REQUEST_CAPACITY: usize = 64;
 pub const DEFERRED_RETRY_CAPACITY: usize = 64;
 pub const MAX_SUB_CHUNK_RETRIES: u8 = 2;
@@ -138,6 +134,9 @@ const INLINE_BLOCK_MUTATION_SUB_CHUNKS: usize = 4;
 const INLINE_BLOCK_MUTATION_UPDATES: usize = 64;
 /// Jobs one urgent pass may dispatch outside the poll.
 const URGENT_DISPATCH_BUDGET: usize = 4;
+/// Jobs a local block change may queue beyond full light or mesh workers, so streaming backlog
+/// cannot hold it back: enough for its section and a few neighbours its relight reaches.
+const URGENT_JOB_RESERVE: usize = 4;
 /// Results one urgent pass may accept outside the poll.
 const URGENT_RESULTS_PER_PASS: usize = 16;
 /// Cooperative time for one urgent pass outside the poll, so it never sweeps a backlog.
@@ -163,6 +162,8 @@ fn initial_light_job_cap() -> usize {
 }
 pub const LIGHT_DISPATCH_BUDGET_PER_POLL: usize = MAX_IN_FLIGHT_LIGHT_JOBS;
 const LIGHT_RESULT_CAPACITY: usize = MAX_IN_FLIGHT_LIGHT_JOBS * MAX_LIGHT_COLUMN_BATCH_SUB_CHUNKS;
+/// Changed cells a relight revisits on its own; more than this solve the whole sub-chunk.
+const MAX_SEEDED_LIGHT_CELLS: usize = 64;
 const LIGHT_SOLVE_LIMITS: SolverLimits = SolverLimits::new(4_096, 1_000_000);
 const LIGHT_COLUMN_SOLVE_LIMITS: SolverLimits = SolverLimits::new(
     4_096 * MAX_LIGHT_COLUMN_BATCH_SUB_CHUNKS,

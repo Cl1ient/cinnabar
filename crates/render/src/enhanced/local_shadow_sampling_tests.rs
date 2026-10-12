@@ -6,8 +6,8 @@ use bytemuck::Zeroable as _;
 use wgpu::util::DeviceExt as _;
 
 const SAMPLE: &str = r#"
-#import cinnabar::enhanced_view::smooth_local_visibility
-#import cinnabar::enhanced_local_lights::local_light_visibility
+import render::enhanced::view::smooth_local_visibility;
+import render::enhanced::local_lights::local_light_visibility;
 struct Query { world_point:vec4<f32>, pixel_index:vec4<f32>, }
 @group(0) @binding(0) var<uniform> query:Query;
 @group(0) @binding(31) var<storage,read_write> result:array<vec4<f32>,16>;
@@ -100,8 +100,12 @@ fn native_forward_local_visibility_owns_full_resolution_stationary_receivers() {
     ];
     assert_eq!(axes.len(), POINT_SHADOW_FACES);
     for (direction, up) in axes {
-        let clip = Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.05, 32.0)
-            * Mat4::look_to_rh(Vec3::ZERO, direction, up);
+        let clip = glam::camera::rh::proj::directx::perspective(
+            std::f32::consts::FRAC_PI_2,
+            1.0,
+            0.05,
+            32.0,
+        ) * glam::camera::rh::view::look_to_mat4(Vec3::ZERO, direction, up);
         light_data.extend_from_slice(bytemuck::bytes_of(&clip));
     }
     let lights = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -226,7 +230,11 @@ fn native_forward_local_visibility_owns_full_resolution_stationary_receivers() {
     }
     queue.submit([encoder.finish()]);
     let camera = |previous_x: f32, previous_jitter: f32| {
-        let projection = Mat4::perspective_infinite_reverse_rh(60.0_f32.to_radians(), 1.0, 0.1);
+        let projection = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+            60.0_f32.to_radians(),
+            1.0,
+            0.1,
+        );
         let mut frame = EnhancedFrameGpu::zeroed();
         frame.clip_from_world = projection;
         frame.world_from_clip = projection.inverse();
@@ -373,8 +381,13 @@ fn native_forward_local_visibility_owns_full_resolution_stationary_receivers() {
     device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("forward visibility completion");
-    let values: Vec<[f32; 4]> =
-        bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+    let values: Vec<[f32; 4]> = bytemuck::cast_slice(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     for index in [0, 1, 5, 10, 12] {
         assert!(
             values[index][0] > 0.99,

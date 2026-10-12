@@ -2,10 +2,11 @@
 
 use protocol::{
     ActorEvent, ActorSpawnEvent, MovePlayerEvent, MovePlayerMode, PlayerListEntry,
-    PlayerListUpdateEvent, PlayerSkin, StandardSkin,
+    PlayerListUpdateEvent, PlayerSkin,
 };
+use render_api::StandardSkin;
 
-use super::*;
+use {super::*, client_presentation::actor_publication::publish_actor_render_frame};
 
 const WARM_UP_FRAMES: u64 = 60;
 const SAMPLE_FRAMES: u64 = 600;
@@ -100,6 +101,8 @@ fn move_players(world: &mut World, mut sequence: u64, players: u64, tick: u64) -
                     on_ground: true,
                     teleported: false,
                     source_tick: tick,
+                    riding_runtime_id: 0,
+                    teleport_cause: None,
                 }),
             )
             .unwrap();
@@ -251,7 +254,7 @@ fn synthetic_player_lobby_bench() {
     let mut sequence = add_mobs(&mut world, players * 2, mobs);
     let mut camera = world.query_filtered::<
         &mut bevy::prelude::Transform,
-        bevy::prelude::With<crate::camera::FlyCamera>,
+        bevy::prelude::With<client_presentation::camera::FlyCamera>,
     >();
     *camera.single_mut(&mut world).unwrap() =
         bevy::prelude::Transform::from_translation(Vec3::new(0.0, 66.0, -12.0))

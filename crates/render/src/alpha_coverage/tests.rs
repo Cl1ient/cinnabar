@@ -36,10 +36,10 @@ fn alpha_to_coverage_is_limited_to_multisampled_cutout_color_passes() {
 
 #[test]
 fn alpha_coverage_shader_variants_validate() {
-    let actor = include_str!("../actor.wgsl")
+    let actor = include_str!("../actor.wesl")
         .replace(
             "ACTOR_GPU_INSTANCE_WORDS",
-            &crate::ACTOR_GPU_INSTANCE_WORDS.to_string(),
+            &render_model::ACTOR_GPU_INSTANCE_WORDS.to_string(),
         )
         .replace(
             "ACTOR_RIG_VERTEX_WORDS",
@@ -47,9 +47,9 @@ fn alpha_coverage_shader_variants_validate() {
         );
     let block_entity = block_entity_source();
     for (name, source) in [
-        ("chunk", include_str!("../chunk.wgsl")),
-        ("model", include_str!("../model.wgsl")),
-        ("dropped item", include_str!("../dropped_item.wgsl")),
+        ("chunk", include_str!("../chunk.wesl")),
+        ("model", include_str!("../model.wesl")),
+        ("dropped item", include_str!("../dropped_item.wesl")),
         ("actor", actor.as_str()),
         ("block entity", block_entity.as_str()),
     ] {
@@ -75,13 +75,13 @@ fn alpha_coverage_shader_variants_validate() {
 
 /// Uses the production constructor so the cutout witness shares every packed vertex constant.
 fn block_entity_source() -> String {
-    let shader = crate::shader_safety::from_block_entity_wgsl(
-        include_str!("../block_entity/block_entity.wgsl"),
-        "block_entity.wgsl",
-        crate::BLOCK_ENTITY_VERTEX_WORDS,
-        crate::BLOCK_SELECTION_VERTICES_PER_EDGE,
+    let shader = crate::shader_safety::from_block_entity_wesl(
+        include_str!("../block_entity/block_entity.wesl"),
+        "block_entity.wesl",
+        render_model::BLOCK_ENTITY_VERTEX_WORDS,
+        render_model::BLOCK_SELECTION_VERTICES_PER_EDGE,
     );
-    let bevy::shader::Source::Wgsl(source) = shader.source else {
+    let bevy::shader::Source::Wesl(source) = shader.source else {
         panic!("block entity shader is WGSL");
     };
     source.into_owned()

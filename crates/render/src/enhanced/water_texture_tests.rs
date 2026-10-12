@@ -4,7 +4,7 @@ use wgpu::util::DeviceExt as _;
 
 #[test]
 fn submerged_geometry_keeps_its_colour_beside_bright_sky_and_foreground_is_rejected() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!("missing fixture: native GPU adapter for water texture regressions");
         return;
@@ -88,18 +88,18 @@ fn submerged_geometry_keeps_its_colour_beside_bright_sky_and_foreground_is_rejec
         multisample: Default::default(),
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Always,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Always),
             stencil: Default::default(),
             bias: Default::default(),
         }),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
     let shader_source = crate::shader_source::composed(
         r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_water::{filtered_scene_colour,water_refraction}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::water::{filtered_scene_colour,water_refraction};
 @group(0) @binding(0) var colour:texture_2d<f32>;
 @group(0) @binding(1) var depth:texture_depth_2d;
 @group(0) @binding(2) var linear_sampler:sampler;
@@ -184,8 +184,8 @@ fn submerged_geometry_keeps_its_colour_beside_bright_sky_and_foreground_is_rejec
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
-        bind_group_layouts: &[&layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&layout)],
+        immediate_size: 0,
     });
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: None,
@@ -273,7 +273,10 @@ fn submerged_geometry_keeps_its_colour_beside_bright_sky_and_foreground_is_rejec
     device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("water GPU completion");
-    let mapped = readback.slice(..).get_mapped_range();
+    let mapped = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("readback buffer is mapped");
     let values: &[[f32; 4]] = bytemuck::cast_slice(&mapped);
     for (channel, expected) in [0.08, 0.2, 0.04].into_iter().enumerate() {
         assert!(

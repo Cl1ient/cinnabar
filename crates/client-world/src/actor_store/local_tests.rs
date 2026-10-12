@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use protocol::{
-    ActorEvent, ActorKind, PlayerListEntry, PlayerListUpdateEvent, PlayerSkin, StandardSkin,
-};
+use protocol::{ActorEvent, ActorKind, PlayerListEntry, PlayerListUpdateEvent, PlayerSkin};
+use render_api::StandardSkin;
 
 use super::{ActorApplyResult, ActorStore, LocalPlayerFeed, tests::player_move};
 
@@ -38,6 +37,7 @@ fn profile_skin(store: &ActorStore, runtime_id: u64) -> Option<PlayerSkin> {
 
 fn local_feed(x: f32, yaw: f32) -> LocalPlayerFeed {
     LocalPlayerFeed {
+        game_mode: None,
         prefer_client_skin: false,
         uuid: [5; 16],
         username: "local".into(),
@@ -53,11 +53,12 @@ fn local_feed(x: f32, yaw: f32) -> LocalPlayerFeed {
         pitch: 0.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_stack_id: None,
         main_hand_slot: 0,
-        bedrock_swing_ticks: crate::ACTOR_SWING_TICKS,
-        java_swing_ticks: crate::ACTOR_SWING_TICKS,
+        bedrock_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
+        java_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
         teleported: false,
         first_person: false,
         view_bobbing: true,
@@ -80,6 +81,27 @@ fn local_feed_overrides_only_the_predicted_sneak_and_sprint_flags() {
     store.sync_local_player(1, -100, &feed);
     let actor = store.get(1).unwrap();
     assert!(!actor.flag(1) && actor.flag(3));
+}
+
+#[test]
+fn local_feed_game_mode_refreshes_the_rig_on_a_frame_without_a_fixed_tick() {
+    let mut store = ActorStore::new(1, 0);
+    let mut feed = local_feed(0.0, 0.0);
+    feed.game_mode = Some(protocol::PlayerGameMode::Survival);
+    store.sync_local_player(1, -100, &feed);
+    store.local_view_dirty = false;
+    feed.game_mode = Some(protocol::PlayerGameMode::Spectator);
+    store.sync_local_player(1, -100, &feed);
+    assert!(store.local_view_dirty);
+    assert_eq!(
+        store.get(1).unwrap().player_game_mode,
+        Some(protocol::GameModeUpdate::Explicit(
+            protocol::PlayerGameMode::Spectator
+        ))
+    );
+    store.local_view_dirty = false;
+    store.sync_local_player(1, -100, &feed);
+    assert!(!store.local_view_dirty);
 }
 
 #[test]
@@ -498,7 +520,7 @@ fn cape_skin(byte: u8) -> PlayerSkin {
     let PlayerSkin::Standard(mut skin) = standard_skin(byte) else {
         unreachable!()
     };
-    skin.cape = Some(protocol::CapeImage {
+    skin.cape = Some(render_api::CapeImage {
         width: 64,
         height: 32,
         rgba8: vec![byte; 64 * 32 * 4].into(),

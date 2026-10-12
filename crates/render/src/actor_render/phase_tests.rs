@@ -25,8 +25,8 @@ fn reflection_capture_draws_offscreen_opaque_and_blended_actor_spans() {
         },
     ];
     let main = [draws::main_span(all[0], 1).unwrap()];
-    let main_settings = crate::EnhancedRendering::default();
-    let capture = crate::EnhancedRendering {
+    let main_settings = render_scene::EnhancedRendering::default();
+    let capture = render_scene::EnhancedRendering {
         reflection_capture: true,
         ..main_settings
     };
@@ -34,5 +34,5 @@ fn reflection_capture_draws_offscreen_opaque_and_blended_actor_spans() {
     assert_eq!(view_spans(&main, &all, None), main);
     let captured = view_spans(&main, &all, Some(&capture));
     assert_eq!(captured, all);
-    assert_eq!(captured.iter().filter(|s| blended(s.material)).count(), 1);
+    assert_eq!(captured.iter().filter(|s| sorted(s.material)).count(), 1);
 }

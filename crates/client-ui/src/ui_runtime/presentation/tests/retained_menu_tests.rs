@@ -1,6 +1,6 @@
 use super::*;
-use crate::menu::{MenuScreen, MenuView};
 use crate::ui_runtime::UiRuntime;
+use launcher::menu::{MenuScreen, MenuView};
 use ui::DpiScale;
 
 #[test]
@@ -36,7 +36,7 @@ fn settled_launcher_menus_do_not_allocate_rebuild_or_republish_unchanged_input()
         let trees = presentation.tree_builds;
         let paints = presentation.oreui_paints;
         let shapes = presentation.layouts.built_layout_count();
-        let (_, allocations) = crate::allocation_count::count(|| {
+        let (_, allocations) = test_alloc::count(|| {
             for millis in 1600..1610 {
                 let after = frame(&mut presentation, millis);
                 assert_eq!(after.revision, before.revision);
@@ -73,7 +73,7 @@ fn retained_launcher_frames_update_for_focus_viewport_and_open_dialogs() {
     let idle = presentation
         .build(&player, &runtime, 1500, [1280, 720], dpi)
         .unwrap();
-    view.focused_action = Some(crate::menu::MenuAction::PlayAddServer);
+    view.focused_action = Some(launcher::menu::MenuAction::PlayAddServer);
     view.navigation_focus_visible = true;
     presentation.set_menu_view(Some(view.clone()));
     let paints = presentation.oreui_paints;
@@ -92,13 +92,13 @@ fn retained_launcher_frames_update_for_focus_viewport_and_open_dialogs() {
         presentation
             .menu_hit_targets
             .iter()
-            .any(|(action, _)| *action == crate::menu::MenuAction::PlayAddServer)
+            .any(|(action, _)| *action == launcher::menu::MenuAction::PlayAddServer)
     );
     let resized = presentation
         .build(&player, &runtime, 2500, [1600, 900], dpi)
         .unwrap();
     assert!(resized.revision > focused.revision);
-    view.dialog = Some(crate::menu::MenuDialog::Exit);
+    view.dialog = Some(launcher::menu::MenuDialog::Exit);
     presentation.set_menu_view(Some(view));
     let paints = presentation.oreui_paints;
     presentation
@@ -116,7 +116,7 @@ fn retained_launcher_frames_update_for_focus_viewport_and_open_dialogs() {
         !presentation
             .menu_hit_targets
             .iter()
-            .any(|(action, _)| *action == crate::menu::MenuAction::PlayAddServer)
+            .any(|(action, _)| *action == launcher::menu::MenuAction::PlayAddServer)
     );
 }
 
@@ -142,7 +142,7 @@ fn remembering_an_owned_menu_snapshot_does_not_allocate() {
     presentation.retained_menu = None;
     presentation.menu_scrolls = Default::default();
     let frame = ([1280, 720], dpi.get(), presentation.safe_area);
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         presentation.remember_menu(&runtime, frame);
     });
     assert!(
@@ -167,7 +167,7 @@ fn owned_menu_snapshot_caret_keeps_blinking_and_restarts_after_edit() {
     let player = player_state::PlayerState::new(0);
     let mut view = MenuView::new(true, "Fixture".into());
     view.screen = MenuScreen::AddServer;
-    view.field = Some(crate::menu::MenuField::Name);
+    view.field = Some(launcher::menu::MenuField::Name);
     view.name = "Caret".into();
     presentation.set_menu_view(Some(view.clone()));
     let dpi = DpiScale::new(1.0).unwrap();
@@ -296,7 +296,7 @@ fn publishing_equal_owned_menu_snapshots_does_not_allocate() {
     let mut presentation = UiPresentationRuntime::with_hud(fixture_font(), fixture_hud()).unwrap();
     let view = MenuView::new(true, "Published snapshot".repeat(256));
     presentation.set_menu_view(Some(view.clone()));
-    let (_, allocations) = crate::allocation_count::count(|| {
+    let (_, allocations) = test_alloc::count(|| {
         presentation.set_menu_view(Some(view));
     });
     assert_eq!(
@@ -339,13 +339,11 @@ fn retained_menu_is_invalidated_by_presentation_owned_experience_modal() {
     let mut modal = server_experience::screen::Modal::default();
     modal.open(Some("ui/fixture.json".into()));
     let files = Arc::new(server_experience::screen::Files::default());
-    presentation.set_experience_modal(Some(
-        super::super::forms::experience_modal::ExperienceModal {
-            bundle: "fixture",
-            files: &files,
-            modal: &modal,
-        },
-    ));
+    presentation.set_experience_modal(Some(mod_ui::experience_modal::ExperienceModal {
+        bundle: "fixture",
+        files: &files,
+        modal: &modal,
+    }));
     let frame = ([1280, 720], dpi.get(), presentation.safe_area);
     assert!(
         presentation.retained_menu_input(&runtime, frame).is_none(),

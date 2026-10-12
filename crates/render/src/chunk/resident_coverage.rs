@@ -59,7 +59,9 @@ impl ChunkResidentCoverage {
     }
 }
 
-impl bevy::render::extract_resource::ExtractResource for ChunkResidentCoverage {
+impl bevy::render::extract_resource::ExtractResource<bevy::render::RenderApp>
+    for ChunkResidentCoverage
+{
     type Source = Self;
     fn extract_resource(source: &Self) -> Self {
         source.clone()
@@ -88,8 +90,9 @@ mod tests {
     }
     #[test]
     fn applied_empty_mesh_removal_and_session_reset_update_coverage() {
-        use crate::chunk::{ChunkRenderPlugin, ChunkRenderQueue, ChunkUploadPriority};
+        use crate::chunk::ChunkRenderPlugin;
         use bevy::prelude::*;
+        use render_scene::{ChunkRenderQueue, ChunkUploadPriority};
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(ChunkRenderPlugin::new(1));

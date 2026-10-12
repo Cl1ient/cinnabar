@@ -8,7 +8,7 @@ use crate::shader_source;
 use meshing::cloud_viewport::{CLOUD_FADE_START, shader_source as cloud_source};
 
 fn shader() -> String {
-    shader_source::standalone(&cloud_source(include_str!("../../src/cloud.wgsl")), &[])
+    shader_source::standalone(&cloud_source(include_str!("../../src/cloud.wesl")), &[])
 }
 
 fn compact(source: &str) -> String {
@@ -50,7 +50,7 @@ fn one_sorted_item_draws_exact_quad_vertices_and_one_window_instance() {
 
 #[test]
 fn cloud_colour_and_fade_are_native_vertex_work_not_reinvented_fragment_weather() {
-    let source = include_str!("../../src/cloud.wgsl");
+    let source = include_str!("../../src/cloud.wesl");
     let fragment = source.split("fn cloud_fragment").nth(1).unwrap();
     assert!(!fragment.contains("distance_fade"));
     assert!(!fragment.contains("cloud_colour"));
@@ -114,7 +114,7 @@ fn native_cloud_vertices_preserve_negative_cells_subpixel_scroll_rgba_and_fade_o
             1.0,
             1.0,
             1.0,
-            render::CLOUD_ALPHA,
+            render_scene::CLOUD_ALPHA,
             meshing::CLOUD_CELL_BLOCKS,
             meshing::CLOUD_UNDERSIDE_Y,
             meshing::CLOUD_TOP_Y,
@@ -146,7 +146,8 @@ fn native_cloud_vertices_preserve_negative_cells_subpixel_scroll_rgba_and_fade_o
             write_depth: false,
         }],
     );
-    let expected_alpha = (render::CLOUD_ALPHA * (1.0 - (1.4 - CLOUD_FADE_START)) * 255.0) as u8;
+    let expected_alpha =
+        (render_scene::CLOUD_ALPHA * (1.0 - (1.4 - CLOUD_FADE_START)) * 255.0) as u8;
     for (column, expected) in [
         [126, 128, 0, 255],
         [16, 32, 64, 90],

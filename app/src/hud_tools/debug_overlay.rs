@@ -1,6 +1,8 @@
 //! Java-style F3 diagnostics requested for Cinnabar. This is a developer tool,
 //! not a Bedrock parity screen; its visual reference is the supplied 19w05a image.
 
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 mod details;
 mod entities;
 mod lines;
@@ -18,21 +20,27 @@ use bevy::{
     time::Real,
     window::{CursorOptions, PrimaryWindow},
 };
-use render::UiRenderStatsResource;
-use render::{
+use render_scene::UiRenderStatsResource;
+use render_scene::{
     ChunkRenderQueue, GpuFrameTimes, RuntimeStage, RuntimeStageProfiler, VisibilityDiagnostics,
 };
 
-use crate::{
-    app::ClientFrameSet,
-    camera::CameraSettingsAuthority,
-    environment::{WeatherState, WorldClock},
-    local_player::{LocalPlayerFrameCarrier, LocalViewPose},
-    movement::{LocalPhysicsController, MovementTicker, PhysicsCollisionRegistries},
-    player_runtime::PlayerRuntime,
-    runtime::{network::NetworkHandle, visibility::CaveVisibilityCache, world::ClientWorld},
+use client_shell::ui_resources::UiPresentationResource;
+use client_ui::ui_runtime::presentation::DebugLines;
+use {
+    crate::{
+        environment::{WeatherState, WorldClock},
+        runtime::{visibility::CaveVisibilityCache, world::ClientWorld},
+    },
+    client_interaction::movement::{
+        LocalPhysicsController, MovementTicker, PhysicsCollisionRegistries,
+    },
+    client_presentation::{
+        camera::CameraSettingsAuthority,
+        local_player::{LocalPlayerFrameCarrier, LocalViewPose},
+    },
+    client_state::{ClientFrameSet, PlayerRuntime},
 };
-use client_ui::ui_runtime::presentation::{DebugLines, UiPresentationRuntime};
 
 /// Publish frame statistics once per second, independently of render frequency.
 const FRAME_TIMING_WINDOW: Duration = Duration::from_secs(1);
@@ -149,18 +157,18 @@ struct DebugContext<'w, 's> {
     physics: Option<Res<'w, LocalPhysicsController>>,
     movement: Option<Res<'w, MovementTicker>>,
     player: Option<Res<'w, PlayerRuntime>>,
-    ui: Option<Res<'w, client_ui::ui_runtime::UiRuntime>>,
+    ui: Option<Res<'w, client_shell::ui_resources::UiRuntimeResource>>,
     clock: Option<Res<'w, WorldClock>>,
     weather: Option<Res<'w, WeatherState>>,
-    network: Option<Res<'w, NetworkHandle>>,
+    network: Option<Res<'w, NetworkHandle<PackApplication>>>,
     visibility: Option<Res<'w, CaveVisibilityCache>>,
     graphics: Option<Res<'w, VisibilityDiagnostics>>,
     queue: Option<Res<'w, ChunkRenderQueue>>,
     ui_stats: Option<Res<'w, UiRenderStatsResource>>,
     camera_settings: Option<Res<'w, CameraSettingsAuthority>>,
     profiler: Option<Res<'w, RuntimeStageProfiler>>,
-    focus: Option<Res<'w, client_presentation::camera::CursorFocus>>,
-    driven: Option<Res<'w, crate::camera::DrivenInput>>,
+    focus: Option<Res<'w, client_state::CursorFocus>>,
+    driven: Option<Res<'w, client_state::DrivenInput>>,
     window: Query<'w, 's, (&'static Window, &'static CursorOptions), With<PrimaryWindow>>,
 }
 
@@ -169,7 +177,7 @@ fn publish_debug_overlay(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time<Real>>,
     mut state: ResMut<DebugOverlayState>,
-    mut presentation: ResMut<UiPresentationRuntime>,
+    mut presentation: ResMut<UiPresentationResource>,
     gpu_detail: Option<ResMut<render::DetailedGpuTiming>>,
     context: DebugContext,
 ) {
@@ -200,7 +208,7 @@ fn publish_debug_overlay(
     if !state.visible {
         return;
     }
-    let tick = time.elapsed().as_nanos() / world::TICK_DURATION.as_nanos();
+    let tick = time.elapsed().as_nanos() / simulation_clock::TICK_DURATION.as_nanos();
     if !toggled && state.diagnostic_tick == Some(tick) {
         return;
     }

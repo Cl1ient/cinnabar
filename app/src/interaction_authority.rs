@@ -7,15 +7,38 @@ use std::num::NonZeroU64;
 use protocol::PlayerInputMode;
 use sim::{PaletteWorld, Vec3};
 
-use crate::{
-    local_player::InteractionOriginSnapshot,
-    mining::{FrozenMiningFrame, FrozenMiningRay, FrozenMiningSelection, FrozenMiningTarget},
-    movement::PhysicsCollisionRegistries,
-    runtime::world::ClientWorld,
-};
 use client_ui::ui_runtime::UiRuntime;
+use {
+    crate::runtime::world::ClientWorld,
+    client_interaction::movement::PhysicsCollisionRegistries,
+    client_presentation::local_player::InteractionOriginSnapshot,
+    gameplay::mining::{
+        FrozenMiningFrame, FrozenMiningRay, FrozenMiningSelection, FrozenMiningTarget,
+    },
+};
 
-pub(crate) use gameplay::interaction_authority::{FrozenBlockObservation, within_pick_range};
+use gameplay::interaction_authority::FrozenBlockObservation;
+
+/// Maps current player facts or a frozen interaction selection into block-picking eligibility.
+pub(crate) fn pick_context(
+    stream: &chunk_pipeline::WorldStream,
+    collisions: &PhysicsCollisionRegistries,
+    game_mode: Option<protocol::PlayerGameMode>,
+    selected_block: Option<i32>,
+) -> assets::block_shapes::PickContext {
+    assets::block_shapes::PickContext {
+        creative: game_mode == Some(protocol::PlayerGameMode::Creative),
+        liquids: false,
+        holding_light: selected_block
+            .and_then(|id| {
+                gameplay::block_use::held_block_store_id(
+                    &client_interaction::movement::world_view::GameplayWorldView(stream),
+                    id,
+                )
+            })
+            .is_some_and(|id| collisions.is_light_block(stream.network_id_mode(), id)),
+    }
+}
 
 /// Whether a frozen ray still belongs to the live network session.
 ///
@@ -24,7 +47,7 @@ pub(crate) use gameplay::interaction_authority::{FrozenBlockObservation, within_
 /// actor-session id is a separate process-wide counter, not the network session generation;
 /// each is checked against the matching authority captured by the ray.
 pub(crate) fn ray_is_current(
-    ray: &crate::local_player::FrozenInteractionOrigin,
+    ray: &client_presentation::local_player::FrozenInteractionOrigin,
     ui_session: u64,
     stream: &chunk_pipeline::WorldStream,
 ) -> bool {
@@ -37,17 +60,27 @@ pub(crate) fn ray_is_current(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BlockRayUnavailable;
 
+/// Observes the nearest selectable block using the caller's authoritative game mode.
 pub(crate) fn observe_block(
     origin: &InteractionOriginSnapshot,
     ui: &UiRuntime,
     client_world: &ClientWorld,
     collisions: &PhysicsCollisionRegistries,
     selection: FrozenMiningSelection,
+    game_mode: Option<protocol::PlayerGameMode>,
     input: (PlayerInputMode, f64, (NonZeroU64, u64), u64),
 ) -> Option<FrozenBlockObservation> {
-    observe_block_ray(origin, ui, client_world, collisions, selection, input)
-        .ok()
-        .flatten()
+    observe_block_ray(
+        origin,
+        ui,
+        client_world,
+        collisions,
+        selection,
+        game_mode,
+        input,
+    )
+    .ok()
+    .flatten()
 }
 
 /// The nearest block on the current ray; `Ok(None)` only for a verified clear ray.
@@ -57,6 +90,7 @@ pub(crate) fn observe_block_ray(
     client_world: &ClientWorld,
     collisions: &PhysicsCollisionRegistries,
     selection: FrozenMiningSelection,
+    game_mode: Option<protocol::PlayerGameMode>,
     input: (PlayerInputMode, f64, (NonZeroU64, u64), u64),
 ) -> Result<Option<FrozenBlockObservation>, BlockRayUnavailable> {
     observe_block_ray_using(
@@ -65,6 +99,7 @@ pub(crate) fn observe_block_ray(
         client_world,
         collisions,
         selection,
+        game_mode,
         input,
         |world, origin, direction, reach| {
             world.block_interaction_ray_current(origin, direction, reach)
@@ -73,12 +108,14 @@ pub(crate) fn observe_block_ray(
 }
 
 /// Freezes a current observation after the owning interaction chooses its support target.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn observe_block_ray_using(
     origin: &InteractionOriginSnapshot,
     ui: &UiRuntime,
     client_world: &ClientWorld,
     collisions: &PhysicsCollisionRegistries,
     selection: FrozenMiningSelection,
+    game_mode: Option<protocol::PlayerGameMode>,
     input: (PlayerInputMode, f64, (NonZeroU64, u64), u64),
     choose: impl FnOnce(
         &PaletteWorld<'_>,
@@ -105,6 +142,12 @@ pub(crate) fn observe_block_ray_using(
         stream.collision_store(),
         collisions.registry(stream.network_id_mode()),
         stream.current_dimension(),
+        pick_context(
+            stream,
+            collisions,
+            game_mode,
+            Some(selection.item.block_runtime_id()),
+        ),
     );
     let Some(hit) = choose(&world, vector(ray.origin()), vector(ray.direction()), reach)
         .map_err(|_| BlockRayUnavailable)?
@@ -183,7 +226,11 @@ pub(crate) fn fixture(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        client_presentation::local_player::InteractionOriginSnapshot,
+        gameplay::interaction_authority::{FrozenBlockObservation, within_pick_range},
+    };
 
     fn stream() -> chunk_pipeline::WorldStream {
         chunk_pipeline::WorldStream::new(protocol::WorldBootstrap {
@@ -201,11 +248,11 @@ mod tests {
         session: u64,
         actor_session_id: u64,
         fifo_sequence: u64,
-    ) -> crate::local_player::FrozenInteractionOrigin {
-        let mut carrier = crate::local_player::LocalPlayerFrameCarrier::default();
+    ) -> client_presentation::local_player::FrozenInteractionOrigin {
+        let mut carrier = client_presentation::local_player::LocalPlayerFrameCarrier::default();
         let identity = sim::CollisionQuery::synthetic(()).identity;
         carrier
-            .publish(crate::local_player::LocalPlayerFrameSample {
+            .publish(client_presentation::local_player::LocalPlayerFrameSample {
                 session_generation: session,
                 actor_session_id,
                 fifo_sequence,

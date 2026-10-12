@@ -40,7 +40,6 @@ pub(in crate::compiler) fn is_mineral_cube_record(record: &RegistryRecord) -> bo
         && record.flags.is_empty()
         && record.model_state.mask() == 0
         && record.face_coverage == 0
-        && record.collision_seed.shape_id == 1
         && record.collision_seed.confidence == assets::CollisionConfidence::CollisionOnly
         && record.collision_seed.boxes.as_ref()
             == [assets::CollisionBox {
@@ -88,6 +87,7 @@ pub(in crate::compiler) fn mineral_cube_material_descriptor(
     Some((
         Descriptor {
             state_variant: 0,
+            flipbook_selector: None,
             path: path.into(),
             texture_key: key.clone(),
             flags: 0,
@@ -116,6 +116,10 @@ pub(in crate::compiler) fn mineral_cube_sources_are_exact(
             let Ok(rgba8) = decode_static_texture(&path, &key) else {
                 return false;
             };
-            rgba8.chunks_exact(4).all(|pixel| pixel[3] == u8::MAX)
+            rgba8
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == u8::MAX)
         })
 }

@@ -20,6 +20,8 @@ mod crystal;
 mod dragon;
 #[path = "actor/fish.rs"]
 mod fish;
+#[path = "actor/identity.rs"]
+mod identity;
 #[path = "actor/light_multiplier.rs"]
 mod light_multiplier;
 #[path = "actor/material_states.rs"]
@@ -30,6 +32,8 @@ mod multitexture;
 mod server_pack_budgets;
 #[path = "actor/wind_charge.rs"]
 mod wind_charge;
+#[path = "actor/wolf.rs"]
+mod wolf;
 
 fn write(root: &Path, path: &str, bytes: &[u8]) {
     let path = root.join(path);

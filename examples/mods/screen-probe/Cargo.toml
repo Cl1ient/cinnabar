@@ -7,6 +7,7 @@ publish = false
 
 [lib]
 crate-type = ["cdylib"]
+doctest = false
 
 [dependencies]
 experience-sdk = { path = "../../../crates/experience-sdk", default-features = false }
@@ -14,3 +15,6 @@ mod-api = { path = "../../../crates/mod-api" }
 
 [build-dependencies]
 experience-sdk = { path = "../../../crates/experience-sdk", default-features = false, features = ["declarations"] }
+
+[lints]
+workspace = true

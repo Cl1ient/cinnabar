@@ -1,7 +1,7 @@
 //! The HUD uses the same geometry and evaluated bones as the world player.
 
 use super::super::UiPresentationRuntime;
-use bevy::math::{Affine3A, Quat, Vec3, Vec4};
+use glam::{Affine3A, Quat, Vec3, Vec4};
 use render_model::{ActorRigGeometry, ActorVertex, EntityRigId, RenderBoneTransform};
 
 type GeometryIdentity = (u32, Option<[u8; 32]>, Option<[u8; 32]>);
@@ -35,7 +35,7 @@ impl UiPresentationRuntime {
         &mut self,
         stream: Option<&chunk_pipeline::WorldStream>,
         swimming: bool,
-        emote: Option<(client_world::CustomEmote, f64)>,
+        emote: Option<(actor_animation::CustomEmote, f64)>,
     ) {
         let fire_frames = self.gui_models.fire.frames.len();
         let live = &mut self.gui_models.live_player;
@@ -75,7 +75,7 @@ impl UiPresentationRuntime {
             return;
         };
         let emote_pose = emote.and_then(|(emote, phase)| {
-            client_world::sample_custom_emote(&rig, emote, phase, phase)
+            actor_animation::sample_custom_emote(&rig, emote, phase, phase)
         });
         let rig = emote_pose.as_ref().map_or(rig, |pose| pose.snapshot(rig));
         let Some(pose) = emote_pose
@@ -169,7 +169,7 @@ impl UiPresentationRuntime {
 }
 
 /// Converts a validated bone frame to block coordinates for equipment pose deltas.
-fn bone_matrix(bone: &client_world::BoneTransform) -> Option<Affine3A> {
+fn bone_matrix(bone: &actor_animation::BoneTransform) -> Option<Affine3A> {
     let bone = RenderBoneTransform::from_model_space_scaled(
         bone.rotation,
         bone.translation_scale,

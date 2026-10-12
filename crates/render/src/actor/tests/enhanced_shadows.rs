@@ -3,14 +3,14 @@
 use bevy::render::render_resource::{CompareFunction, TextureFormat};
 
 fn shader(definitions: &[&str]) -> String {
-    let shader = crate::shader_safety::from_actor_wgsl(
-        include_str!("../../actor.wgsl"),
-        "actor.wgsl",
-        crate::actor::ACTOR_GPU_INSTANCE_WORDS,
+    let shader = crate::shader_safety::from_actor_wesl(
+        include_str!("../../actor.wesl"),
+        "actor.wesl",
+        render_model::ACTOR_GPU_INSTANCE_WORDS,
         render_model::ACTOR_RIG_VERTEX_WORDS,
     );
-    let bevy::shader::Source::Wgsl(source) = shader.source else {
-        panic!("actor source is WGSL");
+    let bevy::shader::Source::Wesl(source) = shader.source else {
+        panic!("actor source is WESL");
     };
     crate::shader_source::composed(&source, definitions)
 }
@@ -26,8 +26,8 @@ fn actor_caster_writes_conventional_depth_without_color_or_backface_culling() {
     assert_eq!(descriptor.multisample.count, 1);
     assert!(descriptor.primitive.cull_mode.is_none());
     let depth = descriptor.depth_stencil.as_ref().unwrap();
-    assert!(depth.depth_write_enabled);
-    assert_eq!(depth.depth_compare, CompareFunction::LessEqual);
+    assert_eq!(depth.depth_write_enabled, Some(true));
+    assert_eq!(depth.depth_compare, Some(CompareFunction::LessEqual));
     assert_eq!(depth.format, TextureFormat::Depth32Float);
 
     let module = naga::front::wgsl::parse_str(&shader(&["ENHANCED_SHADOW"])).unwrap();

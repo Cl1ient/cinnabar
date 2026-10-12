@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use jolyne::GameData;
+use bedrock_protocol_1_26_51::packets::ItemRegistry as ItemRegistryPacket;
 
 use crate::nbt_tree::{Nbt, read_root};
 
@@ -10,13 +10,26 @@ pub(super) const MAX_TEXT_BYTES: usize = 256;
 
 /// Converts component seconds to the protocol's integral simulation duration.
 pub(super) fn duration_ticks(seconds: f64) -> Option<u32> {
-    (seconds.is_finite() && seconds >= 0.0)
-        .then(|| (seconds * 20.0).round().min(f64::from(u32::MAX)) as u32)
+    (seconds.is_finite() && seconds >= 0.0).then(|| {
+        (seconds * f64::from(simulation_clock::TICKS_PER_SECOND))
+            .round()
+            .min(f64::from(u32::MAX)) as u32
+    })
 }
 
 /// What the client presents from one item's components; absent facts stay `None`/`false`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ItemComponents {
+    /// Food permission retained independently from use duration.
+    pub food_can_always_eat: Option<bool>,
+    /// Finite nonnegative movement multiplier, retained by its IEEE bits.
+    pub use_movement_modifier_bits: Option<u64>,
+    /// Authored use-category timer, excluding attack cooldowns.
+    pub use_cooldown: Option<ItemUseCooldown>,
+    /// Parsed fuel duration; missing or malformed declarations stay absent.
+    pub fuel_duration_ticks: Option<u32>,
+    /// Whether fuel was declared, including malformed component values.
+    pub fuel_declared: bool,
     /// Attack and kinetic presentation facts, when this item declares them.
     pub attack: Option<super::ItemAttackTiming>,
     /// `item_texture.json` key from `minecraft:icon`.
@@ -25,16 +38,31 @@ pub struct ItemComponents {
     pub display_name: Option<Arc<str>>,
     /// `foil` / `minecraft:glint`.
     pub glint: bool,
-    pub hand_equipped: bool,
+    /// Explicit finite hand flag; absence or malformed data remains unresolved.
+    pub hand_equipped: Option<bool>,
+    /// Distinguishes a malformed declaration from an absent hand component.
+    pub hand_equipped_declared: bool,
+    /// Explicit offhand permission; absent or malformed values remain unresolved.
+    pub allow_off_hand: Option<bool>,
+    /// Distinguishes a malformed offhand declaration from an absent one.
+    pub allow_off_hand_declared: bool,
     pub max_durability: Option<u32>,
+    /// Retains declaration presence when its maximum is absent or invalid.
+    pub durability_declared: bool,
     pub max_stack_size: Option<u8>,
     /// `use_animation` by name (`eat`, `drink`, `bow`...); the legacy enum maps 1 and 2.
     pub use_animation: Option<Arc<str>>,
     pub use_duration_ticks: Option<u32>,
     /// Whether `minecraft:food` is declared.
     pub food: bool,
+    /// Present only when a food component declares finite numeric nutrition facts.
+    pub food_properties: Option<FoodProperties>,
     /// `minecraft:wearable` slot, e.g. `slot.armor.head`.
     pub wearable_slot: Option<Arc<str>>,
+    /// Whether the payload declares `minecraft:wearable`, including malformed declarations.
+    pub wearable_declared: bool,
+    /// Exact non-negative integer protection; absent or invalid values stay unresolved.
+    pub wearable_protection: Option<u32>,
     /// Block `minecraft:block_placer` places.
     pub block_placer: Option<Arc<str>>,
     /// `minecraft:rarity`: `common`, `uncommon`, `rare` or `epic`.
@@ -43,17 +71,93 @@ pub struct ItemComponents {
     pub hover_text_color: Option<Arc<str>>,
 }
 
+/// One authored use cooldown with bounded owned category text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemUseCooldown {
+    pub category: Arc<str>,
+    pub ticks: u32,
+}
+
+impl ItemComponents {
+    /// Counts the retained component allocation and its owned text for admission budgets.
+    pub fn retained_bytes(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>().saturating_add(32);
+        for text in [
+            self.icon.as_deref(),
+            self.display_name.as_deref(),
+            self.use_animation.as_deref(),
+            self.wearable_slot.as_deref(),
+            self.block_placer.as_deref(),
+            self.rarity.as_deref(),
+            self.hover_text_color.as_deref(),
+            self.use_cooldown
+                .as_ref()
+                .map(|cooldown| &*cooldown.category),
+            self.attack
+                .as_ref()
+                .and_then(|attack| attack.attack_cooldown.as_ref())
+                .map(|cooldown| &*cooldown.category),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            bytes = bytes.saturating_add(text.len()).saturating_add(32);
+        }
+        bytes
+    }
+}
+/// Retained finite component-defined food values, with no guessed vanilla catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoodProperties {
+    nutrition: u32,
+    saturation_modifier_bits: u32,
+}
+impl FoodProperties {
+    /// Constructs validated component or version-pinned carrier values.
+    pub fn new(nutrition: u32, saturation_modifier: f32) -> Option<Self> {
+        (saturation_modifier.is_finite() && saturation_modifier >= 0.0).then_some(Self {
+            nutrition,
+            saturation_modifier_bits: saturation_modifier.to_bits(),
+        })
+    }
+    /// Nutrition points granted when consuming this item.
+    pub const fn nutrition(&self) -> u32 {
+        self.nutrition
+    }
+    /// Component multiplier; saturation gained is nutrition × multiplier × 2.
+    pub fn saturation_modifier(&self) -> f32 {
+        f32::from_bits(self.saturation_modifier_bits)
+    }
+}
+/// Reads only explicit component values; absent or malformed fields remain unavailable.
+fn food_properties(component: Option<&Nbt>) -> Option<FoodProperties> {
+    let component = component?;
+    let nutrition = component.field("nutrition")?.number()?;
+    let modifier = component.field("saturation_modifier")?.number()? as f32;
+    if !nutrition.is_finite()
+        || !(0.0..=u32::MAX as f64).contains(&nutrition)
+        || nutrition.fract() != 0.0
+        || !modifier.is_finite()
+        || modifier < 0.0
+    {
+        return None;
+    }
+    Some(FoodProperties {
+        nutrition: nutrition as u32,
+        saturation_modifier_bits: modifier.to_bits(),
+    })
+}
+
 /// Components for every StartGame registry item whose component data is non-empty.
 #[must_use]
-pub fn item_components(game_data: &GameData) -> Box<[(Arc<str>, ItemComponents)]> {
-    game_data
-        .item_registry
+pub(crate) fn item_components(registry: &ItemRegistryPacket) -> Box<[(Arc<str>, ItemComponents)]> {
+    registry
         .item_data
         .iter()
         .filter_map(|item| {
             let bytes = super::encode_extra(&item.item_component_data).ok()?;
             let components = parse_components(&bytes)?;
-            Some((Arc::from(item.item_name.as_str()), components))
+            Some((Arc::from(item.item_name.to_string_lossy()), components))
         })
         .collect()
 }
@@ -62,7 +166,10 @@ pub fn item_components(game_data: &GameData) -> Box<[(Arc<str>, ItemComponents)]
 /// data carries no components compound.
 pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
     let root = read_root(bytes)?;
-    let components = root.field("components")?;
+    // A non-compound payload carries no usable facts, not confirmed absence.
+    let components = root
+        .field("components")
+        .filter(|components| matches!(components, Nbt::Compound(_)))?;
     let properties = components.field("item_properties");
     let property = |name: &str| properties.and_then(|properties| properties.field(name));
     let component = |name: &str| components.field(name);
@@ -82,17 +189,69 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         component("minecraft:use_modifiers")
             .and_then(|modifiers| modifiers.field("use_duration"))
             .and_then(Nbt::number)
-            .and_then(duration_ticks)
+            .map(|seconds| seconds as f32)
+            .and_then(simulation_clock::whole_ticks_from_seconds)
     });
     Some(ItemComponents {
+        food_can_always_eat: component("minecraft:food")
+            .map(|food| flag(food.field("can_always_eat"))),
+        use_movement_modifier_bits: component("minecraft:use_modifiers")
+            .and_then(|modifiers| modifiers.field("movement_modifier"))
+            .and_then(Nbt::number)
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .map(f64::to_bits),
+        use_cooldown: component("minecraft:cooldown").and_then(|cooldown| {
+            if cooldown.field("type").and_then(Nbt::as_str) == Some("attack") {
+                return None;
+            }
+            Some(ItemUseCooldown {
+                category: text(cooldown.field("category"))?,
+                ticks: cooldown
+                    .field("duration")
+                    .and_then(Nbt::number)
+                    .map(|seconds| seconds as f32)
+                    .and_then(simulation_clock::whole_ticks_from_seconds)?,
+            })
+        }),
+        fuel_duration_ticks: component("minecraft:fuel")
+            .and_then(|fuel| fuel.field("duration"))
+            .and_then(Nbt::number)
+            .and_then(duration_ticks),
+        fuel_declared: component("minecraft:fuel").is_some(),
         attack: super::attack::parse_attack(components),
         icon: super::icons::icon_key(bytes),
         display_name: text(
             component("minecraft:display_name").and_then(|name| name.field("value")),
         ),
         glint: flag(property("foil")) || flag(component("minecraft:glint")),
-        hand_equipped: flag(property("hand_equipped"))
-            || flag(component("minecraft:hand_equipped")),
+        hand_equipped_declared: property("hand_equipped").is_some()
+            || component("minecraft:hand_equipped").is_some(),
+        hand_equipped: {
+            let property = property("hand_equipped");
+            let component = component("minecraft:hand_equipped");
+            let declared = |value: &Nbt| {
+                value_of(value)
+                    .filter(|value| value.is_finite())
+                    .map(|value| value != 0.0)
+            };
+            match (property, component) {
+                (None, None) => None,
+                (Some(value), None) | (None, Some(value)) => declared(value),
+                (Some(property), Some(component)) => declared(property)
+                    .zip(declared(component))
+                    .map(|(property, component)| property || component),
+            }
+        },
+        durability_declared: component("minecraft:durability").is_some(),
+        allow_off_hand_declared: property("allow_off_hand").is_some()
+            || component("minecraft:allow_off_hand").is_some(),
+        allow_off_hand: component("minecraft:allow_off_hand")
+            .or(property("allow_off_hand"))
+            .and_then(|value| match value.field("value").unwrap_or(value) {
+                Nbt::Byte(value) => Some(*value != 0),
+                Nbt::Int(value) => Some(*value != 0),
+                _ => None,
+            }),
         max_durability: count(
             component("minecraft:durability")
                 .and_then(|durability| durability.field("max_durability")),
@@ -116,9 +275,17 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
         }),
         use_duration_ticks,
         food: component("minecraft:food").is_some(),
+        food_properties: food_properties(component("minecraft:food")),
         wearable_slot: text(
             component("minecraft:wearable").and_then(|wearable| wearable.field("slot")),
         ),
+        wearable_declared: component("minecraft:wearable").is_some(),
+        wearable_protection: component("minecraft:wearable")
+            .and_then(|wearable| wearable.field("protection"))
+            .and_then(|value| match value {
+                Nbt::Int(value) if (0..=i64::from(i32::MAX)).contains(value) => Some(*value as u32),
+                _ => None,
+            }),
         block_placer: component("minecraft:block_placer").and_then(|placer| {
             let block = placer.field("block")?;
             text(Some(block)).or_else(|| text(block.field("name")))
@@ -133,6 +300,55 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
 #[cfg(test)]
 mod tests {
     use super::parse_components;
+
+    #[test]
+    fn declared_use_cooldown_matches_authored_component_precision() {
+        let nbt = compound(
+            "",
+            &[compound(
+                "components",
+                &[compound(
+                    "minecraft:cooldown",
+                    &[
+                        string("category", "fixture:shared"),
+                        float("duration", 0.549),
+                    ],
+                )],
+            )],
+        );
+        let cooldown = parse_components(&nbt).unwrap().use_cooldown.unwrap();
+        assert_eq!(cooldown.category.as_ref(), "fixture:shared");
+        assert_eq!(cooldown.ticks, 10);
+    }
+
+    #[test]
+    fn use_modifier_duration_discards_fractional_ticks() {
+        for (seconds, expected) in [
+            (0.049, Some(0)),
+            (1.049, Some(20)),
+            (1.6, Some(32)),
+            (f32::NAN, None),
+            (f32::INFINITY, None),
+            (-1.0, None),
+            (f32::MAX, None),
+        ] {
+            let nbt = compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound(
+                        "minecraft:use_modifiers",
+                        &[float("use_duration", seconds)],
+                    )],
+                )],
+            );
+            assert_eq!(
+                parse_components(&nbt).unwrap().use_duration_ticks,
+                expected,
+                "{seconds}"
+            );
+        }
+    }
 
     fn name(tag: u8, name: &str) -> Vec<u8> {
         let mut bytes = vec![tag, name.len() as u8];
@@ -168,6 +384,38 @@ mod tests {
         bytes
     }
 
+    /// Encodes one finite or malformed float component for admission tests.
+    fn float(key: &str, value: f32) -> Vec<u8> {
+        let mut bytes = name(5, key);
+        bytes.extend(value.to_le_bytes());
+        bytes
+    }
+    #[test]
+    fn explicit_food_values_are_retained_without_guessing_missing_or_nonfinite_values() {
+        let food = |modifier| {
+            compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound(
+                        "minecraft:food",
+                        &[int("nutrition", 4), float("saturation_modifier", modifier)],
+                    )],
+                )],
+            )
+        };
+        let components = parse_components(&food(0.6)).unwrap();
+        let values = components.food_properties.unwrap();
+        assert_eq!(values.nutrition(), 4);
+        assert_eq!(values.saturation_modifier(), 0.6);
+        assert!(
+            parse_components(&food(f32::NAN))
+                .unwrap()
+                .food_properties
+                .is_none()
+        );
+    }
+
     fn compound(key: &str, entries: &[Vec<u8>]) -> Vec<u8> {
         let mut bytes = name(10, key);
         entries.iter().for_each(|entry| bytes.extend(entry));
@@ -175,7 +423,99 @@ mod tests {
         bytes
     }
 
+    #[test]
+    fn durability_declaration_retains_absent_invalid_and_positive_maxima() {
+        for (fields, expected) in [
+            (vec![], None),
+            (vec![int("max_durability", 0)], None),
+            (vec![int("max_durability", -1)], None),
+            (vec![int("max_durability", 50)], Some(50)),
+        ] {
+            let root = compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound("minecraft:durability", &fields)],
+                )],
+            );
+            let facts = parse_components(&root).unwrap();
+            assert!(facts.durability_declared);
+            assert_eq!(facts.max_durability, expected);
+        }
+        let root = compound("", &[compound("components", &[])]);
+        assert!(!parse_components(&root).unwrap().durability_declared);
+    }
+
+    #[test]
+    fn scalar_components_payload_is_not_admitted_as_empty_facts() {
+        let root = compound("", &[int("components", 1)]);
+        assert!(parse_components(&root).is_none());
+    }
+
     // Dragonfly's custom-item layout: properties nested under item_properties.
+    #[test]
+    fn fuel_duration_distinguishes_zero_missing_and_malformed_data() {
+        let missing = parse_components(&compound("", &[compound("components", &[])])).unwrap();
+        assert_eq!(missing.fuel_duration_ticks, None);
+        assert!(!missing.fuel_declared);
+        for (seconds, expected) in [
+            (2.0f32, Some(40)),
+            (0.0, Some(0)),
+            (-1.0, None),
+            (f32::NAN, None),
+        ] {
+            let mut duration = name(5, "duration");
+            duration.extend(seconds.to_le_bytes());
+            let components = parse_components(&compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound("minecraft:fuel", &[duration])],
+                )],
+            ))
+            .unwrap();
+            assert_eq!(components.fuel_duration_ticks, expected);
+            assert!(components.fuel_declared);
+        }
+        let malformed = parse_components(&compound(
+            "",
+            &[compound(
+                "components",
+                &[compound("minecraft:fuel", &[string("duration", "wrong")])],
+            )],
+        ))
+        .unwrap();
+        assert_eq!(malformed.fuel_duration_ticks, None);
+        assert!(malformed.fuel_declared);
+    }
+
+    #[test]
+    fn wearable_protection_retains_zero_and_rejects_invalid_or_missing_values() {
+        for (value, expected) in [
+            (Some(int("protection", 6)), Some(6)),
+            (Some(int("protection", 0)), Some(0)),
+            (Some(int("protection", -1)), None),
+            (Some(string("protection", "6")), None),
+            (None, None),
+        ] {
+            let mut fields = vec![string("slot", "slot.armor.chest")];
+            fields.extend(value);
+            let payload = compound(
+                "",
+                &[compound(
+                    "components",
+                    &[compound("minecraft:wearable", &fields)],
+                )],
+            );
+            let facts = parse_components(&payload).unwrap();
+            assert!(facts.wearable_declared);
+            assert_eq!(facts.wearable_slot.as_deref(), Some("slot.armor.chest"));
+            assert_eq!(facts.wearable_protection, expected);
+        }
+        let absent = compound("", &[compound("components", &[])]);
+        assert!(!parse_components(&absent).unwrap().wearable_declared);
+    }
+
     #[test]
     fn food_classification_uses_the_food_component() {
         let food = compound(
@@ -233,7 +573,7 @@ mod tests {
             components.display_name.as_deref(),
             Some("item.zeqa.sword.name")
         );
-        assert!(components.glint && components.hand_equipped);
+        assert!(components.glint && components.hand_equipped == Some(true));
         assert_eq!(components.max_durability, Some(250));
         assert_eq!(components.max_stack_size, Some(16));
         assert_eq!(components.use_animation.as_deref(), Some("eat"));
@@ -272,7 +612,7 @@ mod tests {
             )],
         );
         let components = parse_components(&nbt).unwrap();
-        assert!(components.glint && !components.hand_equipped);
+        assert!(components.glint && components.hand_equipped == Some(false));
         assert_eq!(components.max_stack_size, Some(1));
         assert_eq!(components.use_duration_ticks, Some(32));
         assert_eq!(components.use_animation.as_deref(), Some("drink"));
@@ -280,5 +620,64 @@ mod tests {
         assert_eq!(components.hover_text_color.as_deref(), Some("gold"));
         assert_eq!(components.block_placer.as_deref(), Some("test:ore"));
         assert!(parse_components(&compound("", &[])).is_none());
+    }
+
+    #[test]
+    fn hand_grip_flag_presence_keeps_false_distinct_from_missing_or_malformed() {
+        let payload = |flag: Option<Vec<u8>>| {
+            compound(
+                "",
+                &[compound(
+                    "components",
+                    &flag.into_iter().collect::<Vec<_>>(),
+                )],
+            )
+        };
+        let missing = parse_components(&payload(None)).unwrap();
+        assert_eq!(missing.hand_equipped, None);
+        assert!(!missing.hand_equipped_declared);
+        let flat = parse_components(&payload(Some(compound(
+            "minecraft:hand_equipped",
+            &[byte("value", 0)],
+        ))))
+        .unwrap();
+        assert_eq!(flat.hand_equipped, Some(false));
+        assert!(flat.hand_equipped_declared);
+        let malformed =
+            parse_components(&payload(Some(compound("minecraft:hand_equipped", &[])))).unwrap();
+        assert_eq!(malformed.hand_equipped, None);
+        assert!(malformed.hand_equipped_declared);
+    }
+
+    #[test]
+    fn offhand_permission_keeps_denied_missing_and_malformed_distinct() {
+        let payload = |entries: &[Vec<u8>]| compound("", &[compound("components", entries)]);
+        let absent = parse_components(&payload(&[])).unwrap();
+        assert!(!absent.allow_off_hand_declared);
+        assert_eq!(absent.allow_off_hand, None);
+        for (entry, expected) in [
+            (byte("minecraft:allow_off_hand", 1), Some(true)),
+            (
+                compound("minecraft:allow_off_hand", &[byte("value", 0)]),
+                Some(false),
+            ),
+            (
+                compound("item_properties", &[int("allow_off_hand", 1)]),
+                Some(true),
+            ),
+            (string("minecraft:allow_off_hand", "true"), None),
+            (float("minecraft:allow_off_hand", 1.0), None),
+            (compound("minecraft:allow_off_hand", &[]), None),
+        ] {
+            let components = parse_components(&payload(&[entry])).unwrap();
+            assert!(components.allow_off_hand_declared);
+            assert_eq!(components.allow_off_hand, expected);
+        }
+        let overridden = parse_components(&payload(&[
+            compound("item_properties", &[byte("allow_off_hand", 1)]),
+            compound("minecraft:allow_off_hand", &[byte("value", 0)]),
+        ]))
+        .unwrap();
+        assert_eq!(overridden.allow_off_hand, Some(false));
     }
 }

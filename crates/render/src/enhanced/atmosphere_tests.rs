@@ -4,8 +4,8 @@ use super::frame::{LUNAR_IRRADIANCE, SOLAR_IRRADIANCE, light_state};
 use super::post_regressions::{execute, execute_with_clouds};
 
 fn calibrated_source(source: &str) -> String {
-    let night = light_state(&crate::AtmosphereFrame::from_bedrock_time(
-        crate::atmosphere::BEDROCK_DAY_TICKS * 0.75,
+    let night = light_state(&render_scene::AtmosphereFrame::from_bedrock_time(
+        render_model::celestial::DAY_TICKS * 0.75,
         0.0,
         0.0,
     ));
@@ -26,8 +26,8 @@ pub(super) fn execute_calibrated_with_clouds(source: &str, count: usize) -> Opti
 #[test]
 fn enlarged_celestial_discs_keep_irradiance_and_lunar_phases() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::{ATM_PI,ATM_SUN_RADIUS,ATM_MOON_RADIUS,atmosphere_discs,atmosphere_position,atmosphere_light_transport,atmosphere_solar_source,atmosphere_lunar_source}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::{ATM_PI,ATM_SUN_RADIUS,ATM_MOON_RADIUS,atmosphere_discs,atmosphere_position,atmosphere_light_transport,atmosphere_solar_source,atmosphere_lunar_source};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,8>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -78,7 +78,7 @@ fn enlarged_celestial_discs_keep_irradiance_and_lunar_phases() {
 #[test]
 fn sky_view_coordinates_reconstruct_both_hemispheres() {
     let source = r#"
-#import cinnabar::enhanced_atmosphere::{sky_view_uv,sky_view_ray}
+import render::enhanced::atmosphere::{sky_view_uv,sky_view_ray};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,4>;
 @compute @workgroup_size(1) fn regression(){
     let directions=array<vec3<f32>,4>(vec3(0.2,0.7,0.1),vec3(-0.8,-0.2,0.4),
@@ -108,8 +108,8 @@ fn sky_view_coordinates_reconstruct_both_hemispheres() {
 #[test]
 fn finite_world_background_varies_without_changing_physical_downward_transport() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::{atmospheric_sky_background,finite_world_sky_ray,finite_world_sky_uv,atmosphere_geometric_horizon,sky_view_uv,sky_view_ray}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::{atmospheric_sky_background,finite_world_sky_ray,finite_world_sky_uv,atmosphere_geometric_horizon,sky_view_uv,sky_view_ray};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,12>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -198,8 +198,8 @@ fn finite_world_background_varies_without_changing_physical_downward_transport()
 #[test]
 fn night_sky_retains_moonlit_detail_with_bounded_radiance() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::atmospheric_sky_background
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::atmospheric_sky_background;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,3>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -225,8 +225,8 @@ fn night_sky_retains_moonlit_detail_with_bounded_radiance() {
 #[test]
 fn finite_world_haze_matches_the_background_at_the_horizontal_cutoff() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::{finite_world_haze,physical_aerial}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::{finite_world_haze,physical_aerial};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,4>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -269,8 +269,8 @@ fn finite_world_haze_matches_the_background_at_the_horizontal_cutoff() {
 #[test]
 fn cloud_projection_retains_resolvable_detail_and_jitter_needs_valid_history() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_clouds::{cloud_density,cloud_sample_jitter,cloud_pixel_footprint,cloud_previous_point,cloud_history_position}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::clouds::{cloud_density,cloud_sample_jitter,cloud_pixel_footprint,cloud_previous_point,cloud_history_position};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,38>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -328,8 +328,8 @@ fn cloud_projection_retains_resolvable_detail_and_jitter_needs_valid_history() {
 #[test]
 fn cloud_shadow_coordinates_follow_the_same_light_ray_at_receiver_heights() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::{cloud_shadow_uv,cloud_shadow_receiver_height}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::{cloud_shadow_uv,cloud_shadow_receiver_height};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,6>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -370,8 +370,8 @@ fn cloud_shadow_coordinates_follow_the_same_light_ray_at_receiver_heights() {
 #[test]
 fn nearby_clear_air_preserves_materials_until_the_streaming_boundary() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::{atmosphere_aerial_transmittance,physical_aerial,finite_world_haze}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::{atmosphere_aerial_transmittance,physical_aerial,finite_world_haze};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,8>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -418,8 +418,8 @@ fn nearby_clear_air_preserves_materials_until_the_streaming_boundary() {
 #[test]
 fn directional_light_uses_shared_sources_and_atmospheric_extinction_once() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::{atmosphere_solar_source,atmosphere_lunar_source,atmosphere_direct_irradiance,atmosphere_airglow}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::{atmosphere_solar_source,atmosphere_lunar_source,atmosphere_direct_irradiance,atmosphere_airglow};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,5>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;
@@ -462,7 +462,7 @@ fn directional_light_uses_shared_sources_and_atmospheric_extinction_once() {
 
 #[test]
 fn exposure_protects_day_texture_highlights_and_adapts_in_logical_time() {
-    let mut source = include_str!("exposure.wgsl").to_owned();
+    let mut source = include_str!("exposure.wesl").to_owned();
     source.push_str(
         r#"
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,4>;
@@ -506,8 +506,8 @@ fn exposure_protects_day_texture_highlights_and_adapts_in_logical_time() {
 #[test]
 fn surface_transport_warms_grazing_sunlight_and_occludes_below_ground() {
     let source = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_atmosphere::atmosphere_surface_transport
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::atmosphere::atmosphere_surface_transport;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,4>;
 @compute @workgroup_size(1) fn regression(){
     var frame:EnhancedFrame;

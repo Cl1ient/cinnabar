@@ -27,94 +27,96 @@ pub(crate) fn load_shader_imports(app: &mut App) {
     load_internal_asset!(
         app,
         ENHANCED_COMMON_SHADER_HANDLE,
-        "common.wgsl",
-        crate::shader_safety::from_wgsl
+        "common.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         SHADOW_SHADER,
-        "shadow.wgsl",
-        crate::shader_safety::from_wgsl
+        "shadow.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         SUN_SHADOW_TEMPORAL_SHADER,
-        "sun_shadow_temporal.wgsl",
-        crate::shader_safety::from_wgsl
+        "sun_shadow_temporal.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         RADIANCE_SHADER,
-        "radiance.wgsl",
-        crate::shader_safety::from_wgsl
+        "radiance.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         WATER_SHADER,
-        "water.wgsl",
-        crate::shader_safety::from_wgsl
+        "water.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         ENVIRONMENT_SHADER,
-        "environment.wgsl",
-        crate::shader_safety::from_wgsl
+        "environment.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         TEMPORAL_SHADER,
-        "temporal.wgsl",
-        crate::shader_safety::from_wgsl
+        "temporal.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         LOCAL_LIGHT_SHADER,
-        "local_lights.wgsl",
-        crate::shader_safety::from_wgsl
+        "local_lights.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         ACTOR_MOTION_SHADER,
-        "actor_motion.wgsl",
-        crate::shader_safety::from_wgsl
+        "actor_motion.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         ATMOSPHERE_SHADER,
-        "atmosphere.wgsl",
-        crate::shader_safety::from_wgsl
+        "atmosphere.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         CLOUDS_SHADER,
-        "clouds.wgsl",
-        crate::shader_safety::from_wgsl
+        "clouds.wesl",
+        crate::shader_safety::from_wesl
     );
-    load_internal_asset!(app, AO_SHADER, "ao.wgsl", crate::shader_safety::from_wgsl);
+    load_internal_asset!(app, AO_SHADER, "ao.wesl", crate::shader_safety::from_wesl);
     load_internal_asset!(
         app,
         INDIRECT_TRACE_SHADER,
-        "indirect_trace.wgsl",
-        crate::shader_safety::from_wgsl
+        "indirect_trace.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         INDIRECT_SHADER,
-        "indirect.wgsl",
-        crate::shader_safety::from_wgsl
+        "indirect.wesl",
+        crate::shader_safety::from_wesl
     );
-    load_internal_asset!(app, PBR_SHADER, "pbr.wgsl", crate::material_shader::shader);
+    load_internal_asset!(app, PBR_SHADER, "pbr.wesl", |source, path| {
+        crate::shader_safety::from_wesl(crate::material_shader::source(source), path)
+    });
     load_internal_asset!(
         app,
         ENHANCED_VIEW_SHADER_HANDLE,
-        "view.wgsl",
-        crate::shader_safety::from_wgsl
+        "view.wesl",
+        crate::shader_safety::from_wesl
     );
     load_internal_asset!(
         app,
         ENHANCED_CASTER_SHADER_HANDLE,
-        "caster.wgsl",
-        crate::shader_safety::from_wgsl
+        "caster.wesl",
+        crate::shader_safety::from_wesl
     );
 }
 
@@ -133,51 +135,51 @@ impl Plugin for EnhancedRenderPlugin {
         load_internal_asset!(
             app,
             LOCAL_SHADOW_HISTORY_SHADER,
-            "local_shadow_history.wgsl",
-            crate::shader_safety::from_wgsl
+            "local_shadow_history.wesl",
+            crate::shader_safety::from_wesl
         );
         load_internal_asset!(
             app,
             ENHANCED_POST_SHADER_HANDLE,
-            "post.wgsl",
-            crate::shader_safety::from_wgsl
+            "post.wesl",
+            crate::shader_safety::from_wesl
         );
         load_internal_asset!(
             app,
             EXPOSURE_SHADER,
-            "exposure.wgsl",
-            crate::shader_safety::from_wgsl
+            "exposure.wesl",
+            crate::shader_safety::from_wesl
         );
         load_internal_asset!(
             app,
             PROBE_SHADER,
-            "probe.wgsl",
-            crate::shader_safety::from_wgsl
+            "probe.wesl",
+            crate::shader_safety::from_wesl
         );
         load_internal_asset!(
             app,
             PROBE_FILTER_SHADER,
-            "probe_filter.wgsl",
-            crate::shader_safety::from_wgsl
+            "probe_filter.wesl",
+            crate::shader_safety::from_wesl
         );
         app.add_plugins(ExtractComponentPlugin::<EnhancedRendering>::default());
         load_internal_asset!(
             app,
             cloud_noise::CLOUD_NOISE_SHADER,
-            "cloud_noise.wgsl",
+            "cloud_noise.wesl",
             cloud_noise::shader
         );
         load_internal_asset!(
             app,
             multiple_scattering::MULTIPLE_SCATTER_SHADER,
-            "multiple_scattering.wgsl",
+            "multiple_scattering.wesl",
             multiple_scattering::shader
         );
         load_internal_asset!(
             app,
             INDIRECT_COMPUTE_SHADER,
-            "indirect_compute.wgsl",
-            crate::shader_safety::from_wgsl
+            "indirect_compute.wesl",
+            crate::shader_safety::from_wesl
         );
     }
 
@@ -225,7 +227,7 @@ impl Plugin for EnhancedRenderPlugin {
             );
         render_app.add_systems(
             Render,
-            temporal::prepare_jitter.in_set(RenderSystems::ManageViews),
+            temporal::prepare_jitter.in_set(RenderSystems::PrepareViews),
         );
         crate::chunk::enhanced::install_geometry_cache(render_app);
         render_app

@@ -50,7 +50,7 @@ fn capture_mesh(stream: &WorldStream, key: SubChunkKey) -> MeshSnapshot {
 #[test]
 fn unchanged_job_captures_allocate_nothing_and_share_every_section_payload() {
     let (stream, key) = fixture();
-    let before = allocation_count::thread_allocations();
+    let before = test_alloc::thread_allocations();
     for _ in 0..64 {
         black_box((
             stream.light_block_snapshot(key),
@@ -58,7 +58,7 @@ fn unchanged_job_captures_allocate_nothing_and_share_every_section_payload() {
             capture_mesh(&stream, key),
         ));
     }
-    assert_eq!(allocation_count::thread_allocations() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
 
     let blocks = stream.light_block_snapshot(key);
     let prior = stream.light_prior_snapshot(key);
@@ -461,6 +461,7 @@ fn edits_while_jobs_wait_preserve_inputs_and_requeue_stale_completions() {
         prior: stream.light_prior_snapshot(key),
         bounds,
         queued_at: Instant::now(),
+        changed: None,
     };
     let revision = stream.mark_dirty_exact(key, Instant::now());
     stream.mesh_jobs.pending.remove(&key);
@@ -569,7 +570,7 @@ fn batched_dispatch_allocations_are_bounded_by_jobs_and_queue_growth() {
     let (stream, key) = fixture();
     let pool = &*workers::WORKERS;
     let (done, completed) = crossbeam_channel::bounded(JOBS);
-    let before = allocation_count::thread_allocations();
+    let before = test_alloc::thread_allocations();
     let mut batch = pool.batch(workers::Lane::Mesh);
     for _ in 0..JOBS {
         let inputs = (
@@ -578,13 +579,13 @@ fn batched_dispatch_allocations_are_bounded_by_jobs_and_queue_growth() {
             capture_mesh(&stream, key),
         );
         let done = done.clone();
-        batch.spawn(move || {
+        batch.spawn(false, move || {
             drop(black_box(inputs));
             let _ = done.send(());
         });
     }
     drop(batch);
-    let allocations = allocation_count::thread_allocations() - before;
+    let allocations = test_alloc::thread_allocations() - before;
     assert!(
         allocations <= JOBS as u64 + 16,
         "{allocations} allocations for {JOBS} jobs"

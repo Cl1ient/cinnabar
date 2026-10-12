@@ -1,23 +1,25 @@
 use super::*;
-use bevy::{
-    ecs::system::RunSystemOnce,
-    render::renderer::{RenderAdapter, WgpuWrapper},
-};
+use bevy::ecs::system::RunSystemOnce;
+use bevy::render::renderer::RenderAdapter;
+use render_scene::AtmosphereFrame;
+use render_scene::EntityShadowScene;
+use std::future::Future;
 use std::{
-    future::Future,
     pin::pin,
-    sync::Arc,
     task::{Context, Poll, Waker},
 };
 
 fn noop_world() -> World {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::NOOP,
         backend_options: wgpu::BackendOptions {
-            noop: wgpu::NoopBackendOptions { enable: true },
+            noop: wgpu::NoopBackendOptions {
+                enable: true,
+                ..Default::default()
+            },
             ..Default::default()
         },
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let mut context = Context::from_waker(Waker::noop());
     let Poll::Ready(Ok(adapter)) =
@@ -31,13 +33,13 @@ fn noop_world() -> World {
         panic!("noop device must be immediate");
     };
     let device = RenderDevice::from(device);
-    let adapter = RenderAdapter(Arc::new(WgpuWrapper::new(adapter)));
+    let adapter = RenderAdapter::new(adapter);
     let mut world = World::new();
     world.insert_resource(EntityShadowGpu::new(&device));
-    world.insert_resource(PipelineCache::new(device.clone(), adapter.clone(), true));
+    world.insert_resource(PipelineCache::new(device.clone(), true));
     world.insert_resource(device);
     world.insert_resource(adapter);
-    world.insert_resource(RenderQueue(Arc::new(WgpuWrapper::new(queue))));
+    world.insert_resource(RenderQueue::new(queue));
     world.init_resource::<EntityShadowScene>();
     world.insert_resource(AtmosphereFrame::default());
     world
@@ -64,9 +66,9 @@ fn unchanged_frames_upload_and_allocate_nothing() {
     system.run((), &mut world).unwrap();
     let first = world.resource::<EntityShadowGpu>().uploads;
     assert_eq!(first, 2, "casters and parameters upload once");
-    let before = crate::alloc_count::thread_allocations();
+    let before = test_alloc::thread_allocations();
     system.run((), &mut world).unwrap();
-    assert_eq!(crate::alloc_count::thread_allocations() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
     assert_eq!(world.resource::<EntityShadowGpu>().uploads, first);
 
     publish(&mut world, &[caster(1.0), caster(2.0)]);
@@ -92,7 +94,7 @@ fn the_instance_buffer_grows_to_fit_and_an_empty_frame_draws_nothing() {
 #[test]
 fn pipeline_multiplies_colour_once_per_sample_and_keeps_alpha() {
     let gpu = EntityShadowGpu::new(&noop_world().resource::<RenderDevice>().clone());
-    for format in [TextureFormat::Rgba8Unorm, ViewTarget::TEXTURE_FORMAT_HDR] {
+    for format in [TextureFormat::Rgba8Unorm, render_scene::SCENE_HDR_FORMAT] {
         for samples in [1, 2, 4, 8] {
             let descriptor = pipeline_descriptor(
                 gpu.layouts[usize::from(samples > 1)].clone(),
@@ -122,7 +124,7 @@ mod coverage;
 #[test]
 fn shader_parameter_block_matches_the_rust_layout() {
     let source =
-        crate::shader_source::standalone(include_str!("../entity_shadow.wgsl"), &["MULTISAMPLED"]);
+        crate::shader_source::standalone(include_str!("../entity_shadow.wesl"), &["MULTISAMPLED"]);
     let module = naga::front::wgsl::parse_str(&source).expect("entity shadow shader parses");
     let mut layouter = naga::proc::Layouter::default();
     layouter.update(module.to_ctx()).unwrap();
@@ -142,7 +144,7 @@ fn shader_parameter_block_matches_the_rust_layout() {
 fn shadow_depth_variants_validate_without_resolving_scene_colour() {
     for definitions in [&[][..], &["MULTISAMPLED"][..]] {
         let source =
-            crate::shader_source::standalone(include_str!("../entity_shadow.wgsl"), definitions);
+            crate::shader_source::standalone(include_str!("../entity_shadow.wesl"), definitions);
         let module = naga::front::wgsl::parse_str(&source).unwrap();
         naga::valid::Validator::new(
             naga::valid::ValidationFlags::all(),

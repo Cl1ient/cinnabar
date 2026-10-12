@@ -10,16 +10,7 @@ const OUTPUT_BINDING: u32 = LIGHTMAP_BINDING + 1;
 
 /// Moves fixture resources beyond the production terrain bindings.
 fn source(definitions: &[&str]) -> String {
-    let source = shader_source::standalone(include_str!("../../src/model.wgsl"), definitions)
-        .replace("@vertex\nfn vertex(", "fn model_vertex(")
-        .replace(
-            "@builtin(vertex_index) vertex_index: u32",
-            "vertex_index: u32",
-        )
-        .replace(
-            "@builtin(instance_index) instance_index: u32",
-            "instance_index: u32",
-        )
+    let source = shader_source::standalone(include_str!("../../src/model.wesl"), definitions)
         .replace(
             "@group(1) @binding(0)",
             &format!("@group(0) @binding({LIGHTMAP_BINDING})"),
@@ -89,7 +80,7 @@ fn bamboo_offsets_do_not_rotate_enhanced_surface_normals() {
         if case < 4 {
             assert_eq!(
                 values[case * 3 + 2][0],
-                case as f32 * meshing::bamboo::STEM_UV_STRIDE
+                case as f32 * assets::bamboo::STEM_UV_STRIDE
             );
             let x = block_transform::bamboo::OFFSET_MIN
                 + case as f32 * block_transform::bamboo::OFFSET_SPAN
@@ -188,8 +179,8 @@ fn read_vertices(
     let mut source = source(definitions);
     if precision {
         source = source.replace("let vertex = model_vertex(0u, id.x);", "let vertex = model_vertex(2u, id.x);")
-            .replace("vec4(vertex.normal, f32(vertex.visible & MODEL_VISIBLE))", "vertex.clip_position")
-            .replace("vec4(vertex.world_position, f32((vertex.visible & MODEL_BOUNDED_TILE) != 0u))",
+            .replace("vec4(vertex.normal, f32(vertex.visibility.x & MODEL_VISIBLE))", "vertex.clip_position")
+            .replace("vec4(vertex.world_position, f32((vertex.visibility.x & MODEL_BOUNDED_TILE) != 0u))",
                 "vec4(foliage_displacement(vec3<f32>(chunk_origins[0].value.xyz) + vec3(0.5, 1.0, 0.6875), CLASS_PLANT, 1.0), 0.0)");
     }
     if tint_fixture {
@@ -291,7 +282,7 @@ fn read_vertices(
     }
     let frame = gpu.buffer(&frame_words, uniform);
     let lightmap = gpu.buffer(
-        bytemuck::cast_slice(&render::LightmapInputs::default().build()),
+        bytemuck::cast_slice(&render_model::LightmapInputs::default().build()),
         uniform,
     );
     let class_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -384,8 +375,13 @@ fn read_vertices(
     gpu.device
         .poll(wgpu::PollType::wait_indefinitely())
         .unwrap();
-    let values: Vec<[f32; 4]> =
-        bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+    let values: Vec<[f32; 4]> = bytemuck::cast_slice(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     if precision {
         let raster = |shader: &str, vertex: &str| {
             let used = shader_source::bindings_used_by_entry_points(
@@ -413,8 +409,10 @@ fn read_vertices(
         let expected = raster(&source, "relative_reference_vertex");
         let actual = raster(&source, "projected_vertex");
         let mismatch = actual
-            .chunks_exact(4)
-            .zip(expected.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(expected.as_chunks::<4>().0)
             .filter(|(actual, expected)| actual != expected)
             .count();
         assert_eq!(
@@ -473,7 +471,9 @@ fn motion_model_normals_follow_cross_planes_and_sloped_rails() {
     ] {
         templates.extend(
             positions
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| u32::from(pair[0] as u16) | (u32::from(pair[1] as u16) << 16)),
         );
         templates.extend([0; 4]);
@@ -532,7 +532,9 @@ fn template_words() -> Vec<u32> {
     let positions: [i16; 12] = [128, 0, 128, 128, 0, 176, 128, 256, 176, 128, 256, 128];
     words.extend(
         positions
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|p| u32::from(p[0] as u16) | u32::from(p[1] as u16) << 16),
     );
     words.extend([0; 4]);
@@ -586,8 +588,8 @@ const WITNESS: &str = r#"
 @group(0) @binding(OUTPUT_BINDING) var<storage, read_write> results: array<vec4<f32>>;
 @compute @workgroup_size(1) fn witness(@builtin(global_invocation_id) id: vec3<u32>) {
     let vertex = model_vertex(0u, id.x);
-    results[id.x * 3u] = vec4(vertex.normal, f32(vertex.visible & MODEL_VISIBLE));
-    results[id.x * 3u + 1u] = vec4(vertex.world_position, f32((vertex.visible & MODEL_BOUNDED_TILE) != 0u));
+    results[id.x * 3u] = vec4(vertex.normal, f32(vertex.visibility.x & MODEL_VISIBLE));
+    results[id.x * 3u + 1u] = vec4(vertex.world_position, f32((vertex.visibility.x & MODEL_BOUNDED_TILE) != 0u));
     results[id.x * 3u + 2u] = vec4(vertex.uv,0.0,0.0);
 }
 @vertex fn normal_vertex(@builtin(vertex_index) index: u32) -> VertexOutput {

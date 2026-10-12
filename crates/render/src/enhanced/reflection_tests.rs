@@ -8,8 +8,8 @@ use wgpu::util::DeviceExt as _;
 #[test]
 fn rough_dielectric_reflection_keeps_foliage_tinted_and_conserves_energy() {
     let source = r#"
-#import cinnabar::enhanced_environment::{environment_specular_weight, environment_diffuse_weight, environment_ray, environment_coordinate}
-#import cinnabar::enhanced_view::{foliage_light, surface_visibility_weight, distribution_ggx}
+import render::enhanced::environment::{environment_specular_weight, environment_diffuse_weight, environment_ray, environment_coordinate};
+import render::enhanced::view::{foliage_light, surface_visibility_weight, distribution_ggx};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,19>;
 @compute @workgroup_size(1) fn regression() {
     let green=vec3(0.035,0.28,0.012);
@@ -109,7 +109,7 @@ fn rough_dielectric_reflection_keeps_foliage_tinted_and_conserves_energy() {
 }
 
 const SAMPLE: &str = r#"
-#import cinnabar::enhanced_view::{reflection_sky, reflection_environment, surface_indirect}
+import render::enhanced::view::{reflection_sky, reflection_environment, surface_indirect};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,11>;
 @compute @workgroup_size(1) fn regression() {
     let directions = array<vec3<f32>,6>(
@@ -129,7 +129,7 @@ const SAMPLE: &str = r#"
 
 #[test]
 fn native_reflections_use_cached_sky_and_preserve_full_capture_confidence() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!("missing fixture: native GPU adapter for Enhanced cached reflection environment");
         return;
@@ -313,7 +313,10 @@ fn native_reflections_use_cached_sky_and_preserve_full_capture_confidence() {
             });
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receiver.recv().unwrap().unwrap();
-        let bytes = readback.slice(..).get_mapped_range();
+        let bytes = readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped");
         let values: &[[f32; 4]] = bytemuck::cast_slice(&bytes);
         close_colour(values[0], cached_sky, 1.0);
         close_colour(values[1], cached_sky, 0.25);

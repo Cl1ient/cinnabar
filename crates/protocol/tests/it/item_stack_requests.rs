@@ -1,7 +1,7 @@
 use protocol::{
-    BedrockSession, CREATED_OUTPUT_SLOT, InventoryPacketError, MAX_STACK_REQUEST_ACTIONS,
-    StackRequestAction, StackRequestContainer, StackRequestSlot, container_close_packet,
-    decode_batch, encode, item_stack_request_packet,
+    CREATED_OUTPUT_SLOT, InventoryPacketError, MAX_STACK_REQUEST_ACTIONS, StackRequestAction,
+    StackRequestContainer, StackRequestSlot, container_close_packet, decode_batch, encode,
+    item_stack_request_packet,
 };
 
 fn slot(container: StackRequestContainer, slot: u8, stack_network_id: i32) -> StackRequestSlot {
@@ -17,12 +17,9 @@ fn body(action: StackRequestAction) -> Vec<u8> {
 }
 
 fn request_body(request_id: i32, action: StackRequestAction) -> Vec<u8> {
-    encode(
-        &item_stack_request_packet(request_id, &[action]).expect("valid request"),
-        &BedrockSession { shield_item_id: 0 },
-    )
-    .expect("encode request")
-    .to_vec()
+    encode(&item_stack_request_packet(request_id, &[action]).expect("valid request"))
+        .expect("encode request")
+        .to_vec()
 }
 
 #[test]
@@ -54,7 +51,9 @@ fn personal_take_and_place_encode_empty_destinations_as_stack_id_zero() {
 fn hex(value: &str) -> Vec<u8> {
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             let text = std::str::from_utf8(pair).unwrap();
             u8::from_str_radix(text, 16).unwrap()
@@ -109,30 +108,21 @@ fn level_entity_take_and_native_client_close_encode_expected_wire() {
         hex("fe1b93010105010000030700025b0000003b0000ffffffff00ffffffff")
     );
     assert_eq!(
-        encode(
-            &container_close_packet(1).expect("valid close"),
-            &BedrockSession { shield_item_id: 0 },
-        )
-        .unwrap()
-        .to_vec(),
+        encode(&container_close_packet(1).expect("valid close"),)
+            .unwrap()
+            .to_vec(),
         hex("fe042f01f700")
     );
     assert_eq!(
-        encode(
-            &container_close_packet(-1).expect("signed raw close"),
-            &BedrockSession { shield_item_id: 0 },
-        )
-        .unwrap()
-        .to_vec(),
+        encode(&container_close_packet(-1).expect("signed raw close"),)
+            .unwrap()
+            .to_vec(),
         hex("fe042ffff700")
     );
     assert_eq!(
-        encode(
-            &container_close_packet(-128).expect("lowest signed raw close"),
-            &BedrockSession { shield_item_id: 0 },
-        )
-        .unwrap()
-        .to_vec(),
+        encode(&container_close_packet(-128).expect("lowest signed raw close"),)
+            .unwrap()
+            .to_vec(),
         hex("fe042f80f700")
     );
 }
@@ -217,32 +207,38 @@ fn negative_stack_ids_name_prior_predictions_or_this_requests_created_output() {
         },
     ];
     let packet = item_stack_request_packet(-7, &chained).unwrap();
-    let session = BedrockSession { shield_item_id: 0 };
-    let mut packets = decode_batch(encode(&packet, &session).unwrap(), &session).unwrap();
-    use valentine::bedrock::version::v1_26_51::{
-        ItemStackRequestPacketDataRequestDataActionsItem as Action, McpePacketData,
-    };
-    let McpePacketData::ItemStackRequestPacket(decoded) = packets.pop().unwrap().data else {
+    let mut packets = decode_batch(encode(&packet).unwrap()).unwrap();
+    use bedrock_protocol_1_26_51::packets::Packet as WirePacket;
+    use bedrock_protocol_1_26_51::types::StackRequestAction as Action;
+    let WirePacket::ItemStackRequest(decoded) = *packets.pop().unwrap().data else {
         panic!()
     };
     let [
-        Action::TakeActionData(previous),
-        Action::TakeActionData(created),
+        Action::TakeActionData {
+            source: previous_source,
+            destination: previous_destination,
+            ..
+        },
+        Action::TakeActionData {
+            source: created_source,
+            destination: created_destination,
+            ..
+        },
     ] = decoded.requests[0].actions.as_slice()
     else {
         panic!()
     };
     assert_eq!(
         (
-            previous.source.net_id_variant,
-            previous.destination.net_id_variant
+            previous_source.net_id_variant.0,
+            previous_destination.net_id_variant.0
         ),
         (-5, -3)
     );
     assert_eq!(
         (
-            created.source.net_id_variant,
-            created.destination.net_id_variant
+            created_source.net_id_variant.0,
+            created_destination.net_id_variant.0
         ),
         (-7, -5)
     );

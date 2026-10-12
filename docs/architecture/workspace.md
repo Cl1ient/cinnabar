@@ -15,8 +15,8 @@ and relays packets over a local stream.
 
 | Library | Used for |
 | --- | --- |
-| [protocolgen](https://github.com/bedrock-mc/protocolgen) | Generates the Bedrock packet definitions behind `crates/protocol`. |
-| [Axolotl Stack](https://github.com/axolotl-stack/axolotl-stack) | Valentine (packet codec) and Jolyne (client transport), vendored in `crates/protocol/vendor`. |
+| [protocolgen](https://github.com/bedrock-mc/protocolgen) | Generates the Bedrock packet codec vendored in `crates/protocol/vendor`. |
+| [Axolotl Stack](https://github.com/axolotl-stack/axolotl-stack) | Jolyne (client session library), whose raw packet entries and spawn sequence `crates/protocol` adapts. MIT; see `THIRD_PARTY_NOTICES.md`. |
 | [gophertunnel](https://github.com/Sandertv/gophertunnel) | Bedrock login, encryption, resource packs and the packet relay. |
 | [go-raknet](https://github.com/Sandertv/go-raknet) | RakNet transport to servers, plus server-list pings. |
 | [go-nethernet](https://github.com/df-mc/go-nethernet) | WebRTC transport for Realms and friend worlds. |
@@ -32,6 +32,7 @@ Mojang assets are never committed or embedded. `make assets` fetches Mojang's of
 | Crate | What it does |
 | --- | --- |
 | `app` | The `bedrock-client` binary: Bevy app, networking glue, gameplay, menus and HUD. |
+| `crates/actor-animation` | Actor rigs, Molang evaluation, controllers and poses, driven by actor authority. |
 | `crates/asset-compiler` | `assetc`, which compiles the vanilla pack into the runtime carriers. |
 | `crates/assets` | Readers for pack sources and compiled carriers. |
 | `crates/bridge` | The local stream between the client and the Go core. |
@@ -58,9 +59,9 @@ Mojang assets are never committed or embedded. `make assets` fetches Mojang's of
 | `tools/cxb` | Publisher tooling for server Experiences: seeds, `.cxb` bundles, cache seeding. |
 | `tools/jsonui-editor` | Browser JSON-UI editor on the client's own engine, live at <https://bedrock-mc.github.io/cinnabar/>. |
 | `tools/jsonui-mcp` | The same editor core as an MCP server: resolve, validate, lay out, render and export packs. |
-| `tools/devtool` | `verify-affected`, which tests only what a change touches. |
+| `tools/devtool` | `verify-affected`, which tests only what a change touches, and `ci-plan`, which scopes pull-request CI the same way. |
 | `tools/dist` | Stages distributable bundles. |
-| `tools/phase2-evidence`, `tools/visualcoverage` | Frozen evidence replays from earlier milestones. |
+| `tools/workspace-declarations` | The `[package.metadata.cinnabar]` keys and path matching shared by the architecture gate and `devtool`. |
 
 The [modding spike](docs/modding-spike.md) is a disabled-by-default Cinnabar extension; its
 samples are `examples/mods/hello` and `examples/mods/time-changer`, and `examples/experiences/probe`
@@ -73,6 +74,15 @@ plan is in `docs/architecture/`.
 | `proxy` | Upstream session, resource-pack download and packet relay. |
 | `authflow`, `authcache` | Microsoft device sign-in and token cache. |
 | `catalog`, `store`, `launcher`, `control` | Menu data: featured servers, Realms, friends, marketplace. |
-| `localworld` | Local worlds on BDS (a container on macOS); `proxy` hosts open ones for Xbox friends. |
+| `localworld` | The launcher's open local world as the core routes it; `proxy` hosts it for Xbox friends. |
 | `packcache` | On-disk cache of server packs. |
 | `update` | Signed update checks. |
+
+Cross-crate re-exports are forbidden: consumers import the owning crate directly.
+Named exports must also have unambiguous ownership across Rust namespaces. Use
+explicit dependency imports where external globs could supply an exported name.
+The architecture gate also rejects glob re-exports with restricted visibility and
+executable file headers regardless of extension. Files marked `binary` in Git
+need a named ownership record; executable files cannot use that exemption.
+Temporary, individually named protocol and session forwarding APIs are tracked
+in `tools/architecture/policy.toml` for removal with #532.

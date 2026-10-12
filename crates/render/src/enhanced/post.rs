@@ -1,13 +1,12 @@
 //! Enhanced post chain node: light shafts and the graded HDR
 //! composite. Runs before the hand and UI so neither is tonemapped.
 
+use bevy::render::diagnostic::RecordDiagnostics;
 use bevy::{
     core_pipeline::FullscreenShader,
-    ecs::query::QueryItem,
     prelude::*,
     render::{
-        diagnostic::RecordDiagnostics,
-        render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
+        camera::ExtractedCamera,
         render_resource::{
             BindGroup, BindGroupEntry, BindingResource, BlendState, Buffer, BufferId,
             CachedRenderPipelineId, ColorTargetState, ColorWrites, FragmentState, LoadOp,
@@ -15,23 +14,26 @@ use bevy::{
             RenderPipelineDescriptor, StoreOp, TextureView, TextureViewId,
         },
         renderer::{RenderContext, RenderDevice},
-        view::{ViewDepthTexture, ViewTarget},
+        view::{ViewDepthStencilTexture, ViewTarget},
     },
 };
 use std::{collections::HashMap, sync::Mutex};
 
-use super::{
-    ENHANCED_POST_SHADER_HANDLE, EnhancedRendering,
-    gpu::{EnhancedGpu, EnhancedViews, POST_FORMAT, enhanced_post_layout},
+use {
+    super::{
+        ENHANCED_POST_SHADER_HANDLE,
+        gpu::{EnhancedGpu, EnhancedViews, POST_FORMAT, enhanced_post_layout},
+    },
+    render_scene::EnhancedRendering,
 };
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub(crate) struct EnhancedPostLabel;
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub(crate) struct EnhancedSkyLabel;
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub(crate) struct EnhancedLightingLabel;
 
 #[derive(Resource)]
@@ -268,6 +270,7 @@ fn fullscreen_pass(
     bind_group: &BindGroup,
 ) {
     let diagnostics = context.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
     let span = diagnostics.time_span(context.command_encoder(), label);
     let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
         label: Some(label),
@@ -283,9 +286,10 @@ fn fullscreen_pass(
         depth_stencil_attachment: None,
         timestamp_writes: crate::gpu_timing::render_pass_timestamps(
             world,
-            crate::RuntimeStage::GpuPost,
+            render_scene::RuntimeStage::GpuPost,
         ),
         occlusion_query_set: None,
+        multiview_mask: None,
     });
     pass.set_render_pipeline(pipeline);
     pass.set_bind_group(0, bind_group, &[]);
@@ -294,199 +298,69 @@ fn fullscreen_pass(
     span.end(context.command_encoder());
 }
 
-#[derive(Default)]
-pub(crate) struct EnhancedPostNode;
+type EnhancedLightingQuery = (&'static ExtractedCamera, &'static EnhancedRendering);
 
-#[derive(Default)]
-pub(crate) struct EnhancedSkyNode;
-
-#[derive(Default)]
-pub(crate) struct EnhancedLightingNode;
-
-impl ViewNode for EnhancedLightingNode {
-    type ViewQuery = (&'static ViewTarget, &'static EnhancedRendering);
-
-    fn run(
-        &self,
-        graph: &mut RenderGraphContext,
-        context: &mut RenderContext,
-        (target, settings): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if settings.reflection_capture || !target.is_hdr() || !lighting_ready(world) {
-            return Ok(());
-        }
-        let (Some(pipelines), Some(gpu), Some(views), Some(cache)) = (
-            world.get_resource::<EnhancedPostPipelines>(),
-            world.get_resource::<EnhancedGpu>(),
-            world.get_resource::<EnhancedViews>(),
-            world.get_resource::<PipelineCache>(),
-        ) else {
-            return Ok(());
-        };
-        let Some(state) = views.0.get(&graph.view_entity()) else {
-            return Ok(());
-        };
-        let Some(post) = &state.post else {
-            return Ok(());
-        };
-        let Some(scene) = &state.scene else {
-            return Ok(());
-        };
-        super::probes::resolve_reflections(context, world, state.history.seconds);
-        if let Some(history) = &state.local_shadow
-            && let Some(pipeline) = cache.get_render_pipeline(
-                world
-                    .resource::<super::local_shadow_history::LocalShadowPipeline>()
-                    .0,
-            )
-        {
-            history.render(context, pipeline);
-        }
-        if !world
-            .resource::<super::depth::EnhancedDepthPipelines>()
-            .ready(cache)
-        {
-            return Ok(());
-        }
-        let (Some(sky), Some(cloud_shadow), Some(effects)) = (
-            cache.get_render_pipeline(pipelines.sky),
-            cache.get_render_pipeline(pipelines.cloud_shadow),
-            cache.get_render_pipeline(pipelines.effects),
-        ) else {
-            return Ok(());
-        };
-        let device = context.render_device().clone();
-        let black = &gpu.fallback_colour;
-        let shadow = state
-            .shadow
-            .as_ref()
-            .map_or(&gpu.fallback_shadow, |shadow| &shadow.array);
-        let bind = |effects, sky| {
-            post_bind_group(
-                &device,
-                cache,
-                gpu,
-                &post.bindings,
-                PostInputs {
-                    noise: world.resource::<super::cloud_noise::CloudNoiseVolume>(),
-                    scattering: world.resource::<super::multiple_scattering::MultipleScattering>(),
-                    frame: &state.frame,
-                    source: black,
-                    opaque: black,
-                    shafts: black,
-                    depth: &scene.depth_view,
-                    opaque_depth: &scene.depth_view,
-                    shadow,
-                    history: black,
-                    effects,
-                    sky,
-                    exposure: &state.exposure.value,
-                    motion: &scene.motion_view,
-                    receiver_normal: &scene.receiver_normal_view,
-                },
-            )
-        };
-        let clear = LoadOp::Clear(wgpu::Color::TRANSPARENT);
-        let group = bind(black, black);
-        if post.atmosphere_cache.sky_needs_update() {
-            fullscreen_pass(
-                context,
-                world,
-                "enhanced sky LUT",
-                &post.sky,
-                clear,
-                sky,
-                &group,
-            );
-            post.atmosphere_cache.mark_sky_rendered();
-        }
-        if post.atmosphere_cache.environment_needs_update()
-            && super::probes::update_environment_sky(
-                context,
-                world,
-                &state.frame,
-                &post.sky,
-                &scene.depth_view,
-            )
-        {
-            post.atmosphere_cache.mark_environment_rendered();
-        }
-        if post.atmosphere_cache.cloud_shadow_needs_update() {
-            fullscreen_pass(
-                context,
-                world,
-                "enhanced cloud shadows",
-                &post.cloud_shadow,
-                clear,
-                cloud_shadow,
-                &group,
-            );
-            post.atmosphere_cache.mark_cloud_shadow_rendered();
-        }
-        if post.atmosphere_cache.indirect_sources_ready()
-            && let Some(group) = &state.indirect_bind_group
-        {
-            world
-                .resource::<super::indirect::IndirectPipelines>()
-                .dispatch(context, world, &state.indirect, group);
-        }
-        let group = bind(black, &post.sky);
-        fullscreen_pass(
-            context,
-            world,
-            "enhanced AO and volumetric clouds",
-            &post.effects,
-            clear,
-            effects,
-            &group,
-        );
-        Ok(())
+/// Resolves screen-space visibility and lighting inputs before the main pass.
+pub(crate) fn enhanced_lighting(
+    world: &World,
+    query: bevy::render::renderer::ViewQuery<EnhancedLightingQuery>,
+    mut context: RenderContext,
+) -> bevy::ecs::error::Result {
+    let view_entity = query.entity();
+    let (camera, settings) = query.into_inner();
+    let context = &mut context;
+    if settings.reflection_capture || !camera.hdr || !lighting_ready(world) {
+        return Ok(());
     }
-}
-
-impl ViewNode for EnhancedSkyNode {
-    type ViewQuery = (
-        &'static ViewTarget,
-        &'static ViewDepthTexture,
-        &'static crate::scene_target::SceneTarget,
-        &'static EnhancedRendering,
-    );
-
-    fn run(
-        &self,
-        graph: &mut RenderGraphContext,
-        context: &mut RenderContext,
-        (target, depth, scene, settings): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if settings.reflection_capture || !target.is_hdr() || !lighting_ready(world) {
-            return Ok(());
-        }
-        let (Some(pipelines), Some(gpu), Some(views), Some(cache)) = (
-            world.get_resource::<EnhancedPostPipelines>(),
-            world.get_resource::<EnhancedGpu>(),
-            world.get_resource::<EnhancedViews>(),
-            world.get_resource::<PipelineCache>(),
-        ) else {
-            return Ok(());
-        };
-        let Some(state) = views.0.get(&graph.view_entity()) else {
-            return Ok(());
-        };
-        let Some(post) = &state.post else {
-            return Ok(());
-        };
-        let Some(background) = cache.get_render_pipeline(pipelines.background) else {
-            return Ok(());
-        };
-        let shadow = state
-            .shadow
-            .as_ref()
-            .map_or(&gpu.fallback_shadow, |shadow| &shadow.array);
-        let black = &gpu.fallback_colour;
-        let group = post_bind_group(
-            context.render_device(),
+    let (Some(pipelines), Some(gpu), Some(views), Some(cache)) = (
+        world.get_resource::<EnhancedPostPipelines>(),
+        world.get_resource::<EnhancedGpu>(),
+        world.get_resource::<EnhancedViews>(),
+        world.get_resource::<PipelineCache>(),
+    ) else {
+        return Ok(());
+    };
+    let Some(state) = views.0.get(&view_entity) else {
+        return Ok(());
+    };
+    let Some(post) = &state.post else {
+        return Ok(());
+    };
+    let Some(scene) = &state.scene else {
+        return Ok(());
+    };
+    super::probes::resolve_reflections(context, world, state.history.seconds);
+    if let Some(history) = &state.local_shadow
+        && let Some(pipeline) = cache.get_render_pipeline(
+            world
+                .resource::<super::local_shadow_history::LocalShadowPipeline>()
+                .0,
+        )
+    {
+        history.render(context, pipeline);
+    }
+    if !world
+        .resource::<super::depth::EnhancedDepthPipelines>()
+        .ready(cache)
+    {
+        return Ok(());
+    }
+    let (Some(sky), Some(cloud_shadow), Some(effects)) = (
+        cache.get_render_pipeline(pipelines.sky),
+        cache.get_render_pipeline(pipelines.cloud_shadow),
+        cache.get_render_pipeline(pipelines.effects),
+    ) else {
+        return Ok(());
+    };
+    let device = context.render_device().clone();
+    let black = &gpu.fallback_colour;
+    let shadow = state
+        .shadow
+        .as_ref()
+        .map_or(&gpu.fallback_shadow, |shadow| &shadow.array);
+    let bind = |effects, sky| {
+        post_bind_group(
+            &device,
             cache,
             gpu,
             &post.bindings,
@@ -497,15 +371,279 @@ impl ViewNode for EnhancedSkyNode {
                 source: black,
                 opaque: black,
                 shafts: black,
-                depth: depth.view(),
+                depth: &scene.depth_view,
+                opaque_depth: &scene.depth_view,
+                shadow,
+                history: black,
+                effects,
+                sky,
+                exposure: &state.exposure.value,
+                motion: &scene.motion_view,
+                receiver_normal: &scene.receiver_normal_view,
+            },
+        )
+    };
+    let clear = LoadOp::Clear(wgpu::Color::TRANSPARENT);
+    let group = bind(black, black);
+    if post.atmosphere_cache.sky_needs_update() {
+        fullscreen_pass(
+            context,
+            world,
+            "enhanced sky LUT",
+            &post.sky,
+            clear,
+            sky,
+            &group,
+        );
+        post.atmosphere_cache.mark_sky_rendered();
+    }
+    if post.atmosphere_cache.environment_needs_update()
+        && super::probes::update_environment_sky(
+            context,
+            world,
+            &state.frame,
+            &post.sky,
+            &scene.depth_view,
+        )
+    {
+        post.atmosphere_cache.mark_environment_rendered();
+    }
+    if post.atmosphere_cache.cloud_shadow_needs_update() {
+        fullscreen_pass(
+            context,
+            world,
+            "enhanced cloud shadows",
+            &post.cloud_shadow,
+            clear,
+            cloud_shadow,
+            &group,
+        );
+        post.atmosphere_cache.mark_cloud_shadow_rendered();
+    }
+    if post.atmosphere_cache.indirect_sources_ready()
+        && let Some(group) = &state.indirect_bind_group
+    {
+        world
+            .resource::<super::indirect::IndirectPipelines>()
+            .dispatch(context, world, &state.indirect, group);
+    }
+    let group = bind(black, &post.sky);
+    fullscreen_pass(
+        context,
+        world,
+        "enhanced AO and volumetric clouds",
+        &post.effects,
+        clear,
+        effects,
+        &group,
+    );
+    Ok(())
+}
+
+type EnhancedSkyQuery = (
+    &'static ViewTarget,
+    &'static ViewDepthStencilTexture,
+    &'static crate::scene_target::SceneTarget,
+    &'static EnhancedRendering,
+    &'static ExtractedCamera,
+);
+
+/// Draws the physical sky and volumetric clouds behind opaque geometry.
+pub(crate) fn enhanced_sky(
+    world: &World,
+    query: bevy::render::renderer::ViewQuery<EnhancedSkyQuery>,
+    mut context: RenderContext,
+) -> bevy::ecs::error::Result {
+    let view_entity = query.entity();
+    let (_target, depth, scene, settings, camera) = query.into_inner();
+    let context = &mut context;
+    if settings.reflection_capture || !camera.hdr || !lighting_ready(world) {
+        return Ok(());
+    }
+    let (Some(pipelines), Some(gpu), Some(views), Some(cache)) = (
+        world.get_resource::<EnhancedPostPipelines>(),
+        world.get_resource::<EnhancedGpu>(),
+        world.get_resource::<EnhancedViews>(),
+        world.get_resource::<PipelineCache>(),
+    ) else {
+        return Ok(());
+    };
+    let Some(state) = views.0.get(&view_entity) else {
+        return Ok(());
+    };
+    let Some(post) = &state.post else {
+        return Ok(());
+    };
+    let Some(background) = cache.get_render_pipeline(pipelines.background) else {
+        return Ok(());
+    };
+    let shadow = state
+        .shadow
+        .as_ref()
+        .map_or(&gpu.fallback_shadow, |shadow| &shadow.array);
+    let black = &gpu.fallback_colour;
+    let group = post_bind_group(
+        context.render_device(),
+        cache,
+        gpu,
+        &post.bindings,
+        PostInputs {
+            noise: world.resource::<super::cloud_noise::CloudNoiseVolume>(),
+            scattering: world.resource::<super::multiple_scattering::MultipleScattering>(),
+            frame: &state.frame,
+            source: black,
+            opaque: black,
+            shafts: black,
+            depth: crate::scene_sampling::view_depth(depth),
+            opaque_depth: state
+                .scene
+                .as_ref()
+                .map_or(&gpu.fallback_depth, |scene| &scene.depth_view),
+            shadow,
+            history: black,
+            effects: &post.effects,
+            sky: &post.sky,
+            exposure: &state.exposure.value,
+            motion: state
+                .scene
+                .as_ref()
+                .map_or(black, |scene| &scene.motion_view),
+            receiver_normal: state
+                .scene
+                .as_ref()
+                .map_or(black, |scene| &scene.receiver_normal_view),
+        },
+    );
+    fullscreen_pass(
+        context,
+        world,
+        "enhanced sky background",
+        scene.color_view(false),
+        LoadOp::Load,
+        background,
+        &group,
+    );
+    Ok(())
+}
+
+type EnhancedPostQuery = (
+    &'static ViewTarget,
+    &'static ViewDepthStencilTexture,
+    &'static EnhancedRendering,
+    Option<&'static super::probes::ProbeFace>,
+    &'static crate::scene_target::SceneTarget,
+    &'static ExtractedCamera,
+);
+
+/// Applies the enhanced world grade after bloom.
+pub(crate) fn enhanced_post(
+    world: &World,
+    query: bevy::render::renderer::ViewQuery<EnhancedPostQuery>,
+    mut context: RenderContext,
+) -> bevy::ecs::error::Result {
+    let view_entity = query.entity();
+    let (target, depth, settings, face, scene, camera) = query.into_inner();
+    let context = &mut context;
+    if !render_model::enhanced_rendering_enabled() {
+        return Ok(());
+    }
+    super::hand_layer::clear(context, world, scene);
+    let (Some(pipelines), Some(gpu), Some(views), Some(cache)) = (
+        world.get_resource::<EnhancedPostPipelines>(),
+        world.get_resource::<EnhancedGpu>(),
+        world.get_resource::<EnhancedViews>(),
+        world.get_resource::<PipelineCache>(),
+    ) else {
+        return Ok(());
+    };
+    let Some(state) = views.0.get(&view_entity) else {
+        return Ok(());
+    };
+    if let Some(face) = face {
+        super::probes::capture(
+            context,
+            world,
+            face.0,
+            &state.frame,
+            target.main_texture_view(),
+            crate::scene_sampling::view_depth(depth),
+        );
+        return Ok(());
+    }
+    if settings.reflection_capture {
+        return Ok(());
+    }
+    if !lighting_ready(world) {
+        return Ok(());
+    }
+    let Some(post_targets) = &state.post else {
+        return Ok(());
+    };
+    let (
+        shafts,
+        Some(composite),
+        Some(_sky),
+        Some(_cloud_shadow),
+        Some(_effects),
+        temporal,
+        Some(present),
+        Some(_background),
+    ) = (
+        cache.get_render_pipeline(pipelines.shafts),
+        cache.get_render_pipeline(pipelines.composite),
+        cache.get_render_pipeline(pipelines.sky),
+        cache.get_render_pipeline(pipelines.cloud_shadow),
+        cache.get_render_pipeline(pipelines.effects),
+        cache.get_render_pipeline(pipelines.temporal),
+        cache.get_render_pipeline(pipelines.present),
+        cache.get_render_pipeline(pipelines.background),
+    )
+    else {
+        return Ok(());
+    };
+    if (state.shafts.is_some() && shafts.is_none()) || (settings.temporal_aa && temporal.is_none())
+    {
+        return Ok(());
+    }
+    if !camera.hdr {
+        return Ok(());
+    }
+    let Some(depth) = &state.resolved_depth else {
+        return Ok(());
+    };
+    depth.draw(context, world, None);
+    let device = context.render_device().clone();
+    let shadow = state
+        .shadow
+        .as_ref()
+        .map_or(&gpu.fallback_shadow, |shadow| &shadow.array);
+    let black = &gpu.fallback_colour;
+    let bind = |source: &TextureView,
+                shafts: &TextureView,
+                history: &TextureView,
+                effects: &TextureView,
+                sky: &TextureView| {
+        post_bind_group(
+            &device,
+            cache,
+            gpu,
+            &post_targets.bindings,
+            PostInputs {
+                noise: world.resource::<super::cloud_noise::CloudNoiseVolume>(),
+                scattering: world.resource::<super::multiple_scattering::MultipleScattering>(),
+                frame: &state.frame,
+                source,
+                opaque: state.scene.as_ref().map_or(black, |scene| &scene.mips[0]),
+                shafts,
+                depth: &depth.view,
                 opaque_depth: state
                     .scene
                     .as_ref()
                     .map_or(&gpu.fallback_depth, |scene| &scene.depth_view),
                 shadow,
-                history: black,
-                effects: &post.effects,
-                sky: &post.sky,
+                history,
+                effects,
+                sky,
                 exposure: &state.exposure.value,
                 motion: state
                     .scene
@@ -516,234 +654,92 @@ impl ViewNode for EnhancedSkyNode {
                     .as_ref()
                     .map_or(black, |scene| &scene.receiver_normal_view),
             },
-        );
-        fullscreen_pass(
-            context,
-            world,
-            "enhanced sky background",
-            scene.color_view(false),
-            LoadOp::Load,
-            background,
-            &group,
-        );
-        Ok(())
-    }
-}
-
-impl ViewNode for EnhancedPostNode {
-    type ViewQuery = (
-        &'static ViewTarget,
-        &'static ViewDepthTexture,
-        &'static EnhancedRendering,
-        Option<&'static super::probes::ProbeFace>,
-        &'static crate::scene_target::SceneTarget,
-    );
-
-    fn run(
-        &self,
-        graph: &mut RenderGraphContext,
-        context: &mut RenderContext,
-        (target, depth, settings, face, scene): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if !render_model::enhanced_rendering_enabled() {
-            return Ok(());
-        }
-        super::hand_layer::clear(context, world, scene);
-        let (Some(pipelines), Some(gpu), Some(views), Some(cache)) = (
-            world.get_resource::<EnhancedPostPipelines>(),
-            world.get_resource::<EnhancedGpu>(),
-            world.get_resource::<EnhancedViews>(),
-            world.get_resource::<PipelineCache>(),
-        ) else {
-            return Ok(());
-        };
-        let Some(state) = views.0.get(&graph.view_entity()) else {
-            return Ok(());
-        };
-        if let Some(face) = face {
-            super::probes::capture(
-                context,
-                world,
-                face.0,
-                &state.frame,
-                target.main_texture_view(),
-                depth.view(),
-            );
-            return Ok(());
-        }
-        if settings.reflection_capture {
-            return Ok(());
-        }
-        if !lighting_ready(world) {
-            return Ok(());
-        }
-        let Some(post_targets) = &state.post else {
-            return Ok(());
-        };
-        let (
-            shafts,
-            Some(composite),
-            Some(_sky),
-            Some(_cloud_shadow),
-            Some(_effects),
-            temporal,
-            Some(present),
-            Some(_background),
-        ) = (
-            cache.get_render_pipeline(pipelines.shafts),
-            cache.get_render_pipeline(pipelines.composite),
-            cache.get_render_pipeline(pipelines.sky),
-            cache.get_render_pipeline(pipelines.cloud_shadow),
-            cache.get_render_pipeline(pipelines.effects),
-            cache.get_render_pipeline(pipelines.temporal),
-            cache.get_render_pipeline(pipelines.present),
-            cache.get_render_pipeline(pipelines.background),
         )
-        else {
-            return Ok(());
-        };
-        if (state.shafts.is_some() && shafts.is_none())
-            || (settings.temporal_aa && temporal.is_none())
-        {
-            return Ok(());
-        }
-        if !target.is_hdr() {
-            return Ok(());
-        }
-        let Some(depth) = &state.resolved_depth else {
-            return Ok(());
-        };
-        depth.draw(context, world, None);
-        let device = context.render_device().clone();
-        let shadow = state
-            .shadow
-            .as_ref()
-            .map_or(&gpu.fallback_shadow, |shadow| &shadow.array);
-        let black = &gpu.fallback_colour;
-        let bind = |source: &TextureView,
-                    shafts: &TextureView,
-                    history: &TextureView,
-                    effects: &TextureView,
-                    sky: &TextureView| {
-            post_bind_group(
-                &device,
-                cache,
-                gpu,
-                &post_targets.bindings,
-                PostInputs {
-                    noise: world.resource::<super::cloud_noise::CloudNoiseVolume>(),
-                    scattering: world.resource::<super::multiple_scattering::MultipleScattering>(),
-                    frame: &state.frame,
-                    source,
-                    opaque: state.scene.as_ref().map_or(black, |scene| &scene.mips[0]),
-                    shafts,
-                    depth: &depth.view,
-                    opaque_depth: state
-                        .scene
-                        .as_ref()
-                        .map_or(&gpu.fallback_depth, |scene| &scene.depth_view),
-                    shadow,
-                    history,
-                    effects,
-                    sky,
-                    exposure: &state.exposure.value,
-                    motion: state
-                        .scene
-                        .as_ref()
-                        .map_or(black, |scene| &scene.motion_view),
-                    receiver_normal: state
-                        .scene
-                        .as_ref()
-                        .map_or(black, |scene| &scene.receiver_normal_view),
-                },
-            )
-        };
-        let clear = LoadOp::Clear(wgpu::Color::TRANSPARENT);
+    };
+    let clear = LoadOp::Clear(wgpu::Color::TRANSPARENT);
 
-        let shaft_view = state.shafts.as_ref().map(|texture| &texture.view);
-        if let Some(shaft_view) = shaft_view
-            && let Some(shafts) = shafts
-        {
-            let group = bind(black, black, black, black, black);
-            fullscreen_pass(
-                context,
-                world,
-                "enhanced light shafts",
-                shaft_view,
-                clear,
-                shafts,
-                &group,
-            );
-        }
-
-        if !super::exposure::meter(
-            context,
-            world,
-            &state.frame,
-            &state.exposure,
-            target.main_texture_view(),
-            &depth.view,
-            post_targets.size,
-        ) {
-            return Ok(());
-        }
-        let group = bind(
-            target.main_texture_view(),
-            shaft_view.unwrap_or(black),
-            black,
-            &post_targets.effects,
-            &post_targets.sky,
-        );
+    let shaft_view = state.shafts.as_ref().map(|texture| &texture.view);
+    if let Some(shaft_view) = shaft_view
+        && let Some(shafts) = shafts
+    {
+        let group = bind(black, black, black, black, black);
         fullscreen_pass(
             context,
             world,
-            "enhanced composite",
-            &post_targets.composite,
+            "enhanced light shafts",
+            shaft_view,
             clear,
-            composite,
+            shafts,
             &group,
         );
-        let resolved = if settings.temporal_aa
-            && let Some(temporal) = temporal
-        {
-            let index = state.history.index as usize % 2;
-            let group = bind(
-                &post_targets.composite,
-                black,
-                &post_targets.history_views[1 - index],
-                &post_targets.effects,
-                black,
-            );
-            fullscreen_pass(
-                context,
-                world,
-                "enhanced temporal resolve",
-                &post_targets.history_views[index],
-                clear,
-                temporal,
-                &group,
-            );
-            &post_targets.history_views[index]
-        } else {
-            &post_targets.composite
-        };
-        let post = target.post_process_write();
-        let group = bind(resolved, black, black, black, black);
-        fullscreen_pass(
-            context,
-            world,
-            "enhanced filmic display",
-            post.destination,
-            clear,
-            present,
-            &group,
-        );
-        state
-            .history
-            .submitted
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        crate::actor_render::mark_actor_motion_submitted(world);
-        Ok(())
     }
+
+    if !super::exposure::meter(
+        context,
+        world,
+        &state.frame,
+        &state.exposure,
+        target.main_texture_view(),
+        &depth.view,
+        post_targets.size,
+    ) {
+        return Ok(());
+    }
+    let group = bind(
+        target.main_texture_view(),
+        shaft_view.unwrap_or(black),
+        black,
+        &post_targets.effects,
+        &post_targets.sky,
+    );
+    fullscreen_pass(
+        context,
+        world,
+        "enhanced composite",
+        &post_targets.composite,
+        clear,
+        composite,
+        &group,
+    );
+    let resolved = if settings.temporal_aa
+        && let Some(temporal) = temporal
+    {
+        let index = state.history.index as usize % 2;
+        let group = bind(
+            &post_targets.composite,
+            black,
+            &post_targets.history_views[1 - index],
+            &post_targets.effects,
+            black,
+        );
+        fullscreen_pass(
+            context,
+            world,
+            "enhanced temporal resolve",
+            &post_targets.history_views[index],
+            clear,
+            temporal,
+            &group,
+        );
+        &post_targets.history_views[index]
+    } else {
+        &post_targets.composite
+    };
+    let post = target.post_process_write();
+    let group = bind(resolved, black, black, black, black);
+    fullscreen_pass(
+        context,
+        world,
+        "enhanced filmic display",
+        post.destination,
+        clear,
+        present,
+        &group,
+    );
+    state
+        .history
+        .submitted
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    crate::actor_render::mark_actor_motion_submitted(world);
+    Ok(())
 }

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use jolyne::GameData;
+use bedrock_protocol_1_26_51::packets::ItemRegistry as ItemRegistryPacket;
 
 use crate::nbt_tree::read_root;
 
@@ -13,17 +13,17 @@ const MAX_ICON_KEY_BYTES: usize = 256;
 /// textures are keyed by for most items (a pack only overrides when it defines
 /// that key). Malformed or oversized components fall back to the short name.
 #[must_use]
-pub fn item_icon_keys(game_data: &GameData) -> Box<[(Arc<str>, Arc<str>)]> {
-    game_data
-        .item_registry
+pub(crate) fn item_icon_keys(registry: &ItemRegistryPacket) -> Box<[(Arc<str>, Arc<str>)]> {
+    registry
         .item_data
         .iter()
         .filter_map(|item| {
             let named = super::encode_extra(&item.item_component_data)
                 .ok()
                 .and_then(|bytes| icon_key(&bytes));
-            let key = named.or_else(|| short_name_key(&item.item_name))?;
-            Some((Arc::from(item.item_name.as_str()), key))
+            let identifier = item.item_name.to_string_lossy();
+            let key = named.or_else(|| short_name_key(&identifier))?;
+            Some((Arc::from(identifier), key))
         })
         .collect()
 }

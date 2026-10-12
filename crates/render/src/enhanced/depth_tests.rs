@@ -1,6 +1,6 @@
 //! Native coverage regression for the independent Enhanced visibility depth.
 
-use bevy::render::{renderer::RenderDevice, texture::CachedTexture, view::ViewDepthTexture};
+use bevy::render::{renderer::RenderDevice, texture::CachedTexture, view::ViewDepthStencilTexture};
 
 use super::{depth::camera_depth_attachment, targets::SceneTargets};
 
@@ -31,7 +31,7 @@ const READ_DEPTH: &str = r#"
 
 #[test]
 fn native_camera_visibility_depth_cannot_reject_main_alpha_coverage() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) =
         bevy::tasks::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
     else {
@@ -66,13 +66,13 @@ fn native_camera_visibility_depth_cannot_reject_main_alpha_coverage() {
             primitive: Default::default(),
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::GreaterEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
             multisample: Default::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         })
     };
@@ -115,12 +115,13 @@ fn native_camera_visibility_depth_cannot_reject_main_alpha_coverage() {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let main_depth = ViewDepthTexture::new(
+        let main_depth = ViewDepthStencilTexture::new(
             CachedTexture {
                 default_view: main_texture.create_view(&Default::default()),
                 texture: main_texture,
             },
             Some(0.0),
+            None,
         );
         let colour = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("camera depth visible pixel fixture"),
@@ -159,7 +160,9 @@ fn native_camera_visibility_depth_cannot_reject_main_alpha_coverage() {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(main_depth.view()),
+                    resource: wgpu::BindingResource::TextureView(
+                        crate::scene_sampling::view_depth(&main_depth),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -249,7 +252,10 @@ fn native_camera_visibility_depth_cannot_reject_main_alpha_coverage() {
             });
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         receiver.recv().unwrap().unwrap();
-        let bytes = readback.slice(..).get_mapped_range();
+        let bytes = readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped");
         let values: &[f32] = bytemuck::cast_slice(&bytes[256..264]);
         if isolated {
             assert_eq!(

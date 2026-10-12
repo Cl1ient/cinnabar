@@ -243,10 +243,10 @@ impl Fixture {
         atmosphere[16..19].copy_from_slice(&[0.6, 0.7, 0.9]);
         atmosphere[19] = 1.0e6;
         atmosphere[20] = 2.0e6;
-        let table = render::LightmapInputs::default().build();
+        let table = render_model::LightmapInputs::default().build();
         let source = format!(
             "{}\n{}",
-            shader_source::standalone(include_str!("../../src/chunk.wgsl"), &[]),
+            shader_source::standalone(include_str!("../../src/chunk.wesl"), &[]),
             SEAM_SHADER.replace(
                 "INDICES",
                 &chunk_constants::STATIC_QUAD_INDICES
@@ -340,7 +340,11 @@ impl Fixture {
         let pixels = self.render(streams, &sky, "seam_vertex", "fragment_solid");
         let background = pixels[..4].to_vec();
         assert!(
-            pixels.chunks_exact(4).all(|pixel| pixel == background),
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel.as_slice() == background),
             "the sky view must miss every quad"
         );
         background
@@ -368,8 +372,9 @@ impl View {
     fn toward(eye: Vec3, target: Vec3, fov_y: f32) -> Self {
         Self {
             eye,
-            clip_from_world: Mat4::perspective_infinite_reverse_rh(fov_y, 1.0, 0.05)
-                * Mat4::look_at_rh(eye, target, Vec3::Y),
+            clip_from_world: glam::camera::rh::proj::directx::perspective_infinite_reverse(
+                fov_y, 1.0, 0.05,
+            ) * glam::camera::rh::view::look_at_mat4(eye, target, Vec3::Y),
         }
     }
 }

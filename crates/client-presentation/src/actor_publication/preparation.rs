@@ -5,13 +5,11 @@ use super::*;
 #[derive(Resource, Default)]
 pub struct ActorFrameState {
     pub(super) published_session: Option<u64>,
-    /// The session the read seat layouts were last given to.
-    seated_session: Option<u64>,
-    pub(super) published_pack: Option<Arc<crate::session_assets::SessionEntityPack>>,
+    pub(super) published_pack: Option<Arc<assets::SessionEntityPack>>,
     pub(super) pack_geometry_ready: SessionGeometryReady,
     pub(super) published_items: Option<Arc<crate::session_assets::SessionItems>>,
     pub(super) actor_clock: ActorFrameClock,
-    pub(super) session_artwork: Option<render::ActorArtworkPages>,
+    pub(super) session_artwork: Option<render_model::ActorArtworkPages>,
     pub(super) cape_state: crate::presentation::cape::CapeState,
     pub(super) skin_rigs: crate::presentation::skin_rig::SkinRigCache,
     pub(super) skin_layers: crate::presentation::skin_layers::SkinLayerCache,
@@ -33,7 +31,7 @@ pub struct ActorFrameState {
     pub(super) java_mode: bool,
     pub(super) hand_use: (
         Option<u32>,
-        Option<client_world::AttachableAnimationInput<'static>>,
+        Option<actor_animation::AttachableAnimationInput<'static>>,
     ),
 }
 
@@ -75,7 +73,7 @@ pub fn advance_actor_frame(
         f32,
     ) -> (
         Option<u32>,
-        Option<client_world::AttachableAnimationInput<'static>>,
+        Option<actor_animation::AttachableAnimationInput<'static>>,
     ),
     params: ActorFramePublication,
 ) {
@@ -99,7 +97,6 @@ pub fn advance_actor_frame(
         published_items,
         actor_clock,
         motion_step,
-        seated_session,
         session_artwork,
         skin_rigs,
         skin_layers,
@@ -146,14 +143,6 @@ pub fn advance_actor_frame(
         *skin_layers = Default::default();
         *published_session = session_id;
     }
-    // Layouts are read off the frame; a session takes them in the first frame they are ready.
-    if *seated_session != session_id
-        && let Some(stream) = client_world.stream.as_mut()
-        && let Some(defaults) = crate::seat_defaults::seat_defaults()
-    {
-        stream.set_actor_seat_defaults(defaults);
-        *seated_session = session_id;
-    }
     let pack = session_id.and_then(|_| client_world.pack_entities.clone());
     let items = session_id.and_then(|_| client_world.session_items.clone());
     let same = |left: Option<*const ()>, right: Option<*const ()>| left == right;
@@ -170,7 +159,7 @@ pub fn advance_actor_frame(
     if new_session || pack_changed || items_changed || artwork.is_changed() {
         let _setup = profiler
             .as_deref()
-            .map(|profiler| profiler.time(render::RuntimeStage::ActorSessionSetup));
+            .map(|profiler| profiler.time(render_scene::RuntimeStage::ActorSessionSetup));
         *published_pack = pack.clone();
         *published_items = items.clone();
         let staged = StagedSessionIcons::stage(items.as_deref());
@@ -253,11 +242,22 @@ pub fn advance_actor_frame(
     }
     if let Some(stream) = client_world.stream.as_mut() {
         if let Some(equipment) = equipment.as_deref() {
+            stream.set_item_use_overlays(equipment.item_use_overlays());
             stream.set_item_use_durations(equipment.item_use_durations());
             stream.set_item_attack_timings(equipment.item_attack_timings());
         }
         // Feed the client-authored local pose before the tick advance and rig read so the
         // local body/hand are driven by the shared rig, not the static fallback.
+        if let Some(feed) = &mut local_feed
+            && let Some(timing) = hand_use(stream, step.partial_tick).1
+            && timing.max_use_ticks > 0
+        {
+            feed.item_use = client_world::LocalItemUse::Predicted {
+                elapsed_ticks: timing.use_elapsed_ticks,
+                max_ticks: timing.max_use_ticks,
+                charged: timing.hand_charged,
+            };
+        }
         if let Some(feed) = &local_feed {
             stream.sync_local_player_pose(feed);
         }
@@ -277,7 +277,7 @@ pub fn advance_actor_frame(
         ));
         let _animation = profiler
             .as_deref()
-            .map(|profiler| profiler.time(render::RuntimeStage::ActorAnimation));
+            .map(|profiler| profiler.time(render_scene::RuntimeStage::ActorAnimation));
         // Fluid and bed state is tick state; a frame without a tick would resample the same.
         if step.ticks > 0 {
             sample_world(stream);
@@ -360,7 +360,7 @@ pub fn advance_actor_frame(
             );
             let (consume_ticks, item_animation) = hand_use(stream, step.partial_tick);
             let item_animation =
-                item_animation.map(|input| client_world::AttachableAnimationInput {
+                item_animation.map(|input| actor_animation::AttachableAnimationInput {
                     delta_seconds: Some(time.delta_secs()),
                     ..input
                 });
@@ -413,7 +413,7 @@ pub fn advance_actor_frame(
 /// Registers the player's own model so hand readiness and final body use the same geometry.
 pub(super) fn register_player_skin(
     presentation: &mut ActorRigPresentation,
-    rig: &client_world::ActorRigSnapshot<'_>,
+    rig: &actor_animation::ActorRigSnapshot<'_>,
     cache: &mut crate::presentation::skin_rig::SkinRigCache,
     mut equipment: Option<&mut EquipmentRuntime>,
     geometries: &mut Vec<render_model::ActorRigGeometry>,
@@ -436,6 +436,6 @@ pub(super) fn register_player_skin(
     });
     match id {
         Some(id) => presentation.submission.input.rig = id,
-        None => presentation.submission.route = render::ActorRigRoute::NoDraw,
+        None => presentation.submission.route = render_model::ActorRigRoute::NoDraw,
     }
 }

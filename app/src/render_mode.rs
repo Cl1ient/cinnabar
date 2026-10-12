@@ -10,20 +10,24 @@ use std::{
 
 use anyhow::{Context, Result};
 use bevy::{
-    camera::Camera3dDepthTextureUsage,
+    camera::{Camera3dDepthTextureUsage, Hdr},
     ecs::system::lifetimeless::{Read, Write},
     post_process::bloom::{Bloom, BloomCompositeMode, BloomPrefilter},
     prelude::*,
-    render::{render_resource::TextureUsages, view::Hdr},
+    render::render_resource::TextureUsages,
 };
-use render::{EnhancedQuality, EnhancedRenderPlugin, EnhancedRendering, EnhancedShadowDebug};
 use render_model::enhanced_rendering_enabled;
 use serde::{Deserialize, Serialize};
 use ui::RenderMode;
+use {
+    render::EnhancedRenderPlugin,
+    render_api::EnhancedQuality,
+    render_scene::{EnhancedRendering, enhanced::EnhancedShadowDebug},
+};
 
-use crate::{
-    camera::FlyCamera, environment::DebugTimeOverride, menu::MenuRuntime,
-    settings_runtime::RuntimeSettings,
+use {
+    crate::environment::DebugTimeOverride, client_presentation::camera::FlyCamera,
+    client_shell::menu::MenuRuntime, client_state::RuntimeSettings,
 };
 
 mod authored_textures;
@@ -88,15 +92,21 @@ fn save_graphics_settings(path: &Path, mode: RenderMode, quality: EnhancedQualit
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
     {
-        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        Context::with_context(fs::create_dir_all(parent), || {
+            format!("create {}", parent.display())
+        })?;
     }
     let bytes = serde_json::to_vec_pretty(&GraphicsFile {
         render_mode: mode.as_str().to_owned(),
         enhanced_quality: Some(quality.as_str().to_owned()),
     })?;
     let temp = path.with_extension("json.tmp");
-    fs::write(&temp, bytes).with_context(|| format!("write {}", temp.display()))?;
-    fs::rename(&temp, path).with_context(|| format!("replace {}", path.display()))
+    Context::with_context(fs::write(&temp, bytes), || {
+        format!("write {}", temp.display())
+    })?;
+    Context::with_context(fs::rename(&temp, path), || {
+        format!("replace {}", path.display())
+    })
 }
 
 #[cfg(test)]
@@ -181,7 +191,7 @@ impl Plugin for RenderModePlugin {
                 )
                     .chain()
                     .in_set(RenderModeUpdateSet)
-                    .after(crate::app::ClientFrameSet::UiAuthority),
+                    .after(client_state::ClientFrameSet::UiAuthority),
             );
     }
 }
@@ -378,9 +388,9 @@ fn cycle_enhanced_time(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     menu: Option<Res<MenuRuntime>>,
-    player: Res<crate::player_runtime::PlayerRuntime>,
-    ui: Option<Res<client_ui::ui_runtime::UiRuntime>>,
-    presentation: Option<Res<client_ui::ui_runtime::presentation::UiPresentationRuntime>>,
+    player: Res<client_state::PlayerRuntime>,
+    ui: Option<Res<client_shell::ui_resources::UiRuntimeResource>>,
+    presentation: Option<Res<client_shell::ui_resources::UiPresentationResource>>,
     mut debug_time: ResMut<DebugTimeOverride>,
     mut next_preset: Local<usize>,
 ) {
@@ -393,11 +403,11 @@ fn cycle_enhanced_time(
     }
     let focused = windows.iter().next().is_none_or(|window| window.focused);
     if !focused
-        || crate::screen_policy::absorbs_input(
+        || client_shell::screen_policy::absorbs_input(
             &player,
-            ui.as_deref(),
+            ui.as_deref().map(|ui| &ui.0),
             menu.as_deref(),
-            presentation.as_deref(),
+            presentation.as_deref().map(|presentation| &presentation.0),
         )
     {
         return;
@@ -439,17 +449,17 @@ fn cycle_enhanced_shadow_debug(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     menu: Option<Res<MenuRuntime>>,
-    player: Res<crate::player_runtime::PlayerRuntime>,
-    ui: Option<Res<client_ui::ui_runtime::UiRuntime>>,
-    presentation: Option<Res<client_ui::ui_runtime::presentation::UiPresentationRuntime>>,
+    player: Res<client_state::PlayerRuntime>,
+    ui: Option<Res<client_shell::ui_resources::UiRuntimeResource>>,
+    presentation: Option<Res<client_shell::ui_resources::UiPresentationResource>>,
     mut cameras: Query<&mut EnhancedRendering, With<FlyCamera>>,
 ) {
     let focused = windows.iter().next().is_none_or(|window| window.focused);
-    let absorbs_input = crate::screen_policy::absorbs_input(
+    let absorbs_input = client_shell::screen_policy::absorbs_input(
         &player,
-        ui.as_deref(),
+        ui.as_deref().map(|ui| &ui.0),
         menu.as_deref(),
-        presentation.as_deref(),
+        presentation.as_deref().map(|presentation| &presentation.0),
     );
     if !shadow_debug_input_allowed(
         settings.user_settings_update().1.video.render_mode,
@@ -468,7 +478,7 @@ fn cycle_enhanced_shadow_debug(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, client_presentation::camera::FlyCamera};
 
     #[test]
     fn shadow_debug_cycles_all_views_and_returns_to_normal_lighting() {
@@ -519,7 +529,9 @@ mod tests {
     fn shadow_key_changes_only_focused_enhanced_gameplay_cameras() {
         let mut app = App::new();
         app.init_resource::<RuntimeSettings>()
-            .insert_resource(crate::player_runtime::PlayerRuntime::new(0))
+            .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
+                0,
+            )))
             .init_resource::<ButtonInput<KeyCode>>()
             .add_systems(Update, cycle_enhanced_shadow_debug);
         let camera = app

@@ -8,6 +8,7 @@ publish = false
 [features]
 default = ["handoff"]
 handoff = ["dep:protocol"]
+test-support = ["handoff"]
 
 [dependencies]
 aes = "0.8"
@@ -21,3 +22,6 @@ zeroize = "1"
 
 [dev-dependencies]
 zip = { version = "7", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[lints]
+workspace = true

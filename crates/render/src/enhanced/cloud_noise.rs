@@ -18,7 +18,7 @@ pub(crate) fn shader_source(source: &str) -> String {
 }
 
 pub(crate) fn shader(source: &str, path: impl Into<String>) -> Shader {
-    crate::shader_safety::from_wgsl(shader_source(source), path)
+    crate::shader_safety::from_wesl(shader_source(source), path)
 }
 
 pub(crate) fn texture_descriptor() -> TextureDescriptor<'static> {
@@ -46,7 +46,7 @@ pub(crate) fn sampler_descriptor() -> SamplerDescriptor<'static> {
         address_mode_w: AddressMode::Repeat,
         mag_filter: FilterMode::Linear,
         min_filter: FilterMode::Linear,
-        mipmap_filter: FilterMode::Linear,
+        mipmap_filter: bevy::render::render_resource::MipmapFilterMode::Linear,
         ..default()
     }
 }

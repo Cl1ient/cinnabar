@@ -1,8 +1,9 @@
 //! Coalesced private core control, off the frame thread and independent of UI focus.
 use super::ModRuntime;
-use crate::runtime::network::NetworkHandle;
+use crate::runtime::network::resource_packs::PackApplication;
 use bevy::prelude::*;
-use client_ui::ui_runtime::UiRuntime;
+use client_runtime::network::NetworkHandle;
+use client_shell::ui_resources::UiRuntimeResource;
 use crossbeam_channel::{Sender, bounded};
 use std::{
     path::PathBuf,
@@ -42,7 +43,7 @@ impl Shared {
     fn publish(&self, delay: u32, show: bool) -> bool {
         let config = u64::from(delay) | if show && delay != 0 { SHOW_BIT } else { 0 };
         self.request
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |old| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |old| {
                 if old & ((1 << 33) - 1) == config {
                     None
                 } else {
@@ -51,12 +52,7 @@ impl Shared {
             })
             .is_ok()
     }
-    fn accept(
-        &self,
-        request: u64,
-        lease: protocol::launcher_control::PacketDelayLease,
-        received: Instant,
-    ) {
+    fn accept(&self, request: u64, lease: bridge::PacketDelayLease, received: Instant) {
         if self.request.load(Ordering::Acquire) != request || self.stop.load(Ordering::Acquire) {
             return;
         }
@@ -85,10 +81,7 @@ impl Shared {
             .map_or_else(RealPositionSnapshot::default, |capture| capture.snapshot)
     }
 }
-fn witness(
-    request: u64,
-    lease: &protocol::launcher_control::PacketDelayLease,
-) -> RealPositionSnapshot {
+fn witness(request: u64, lease: &bridge::PacketDelayLease) -> RealPositionSnapshot {
     if request & SHOW_BIT == 0 || lease.delay_ms == 0 || lease.session_id == 0 {
         return RealPositionSnapshot::default();
     }
@@ -139,11 +132,7 @@ impl Worker {
                         let result = runtime.block_on(async {
                             tokio::time::timeout(
                                 REQUEST_TIMEOUT,
-                                protocol::launcher_control::packet_delay_with_position(
-                                    &socket_dir,
-                                    delay,
-                                    show,
-                                ),
+                                bridge::packet_delay_with_position(&socket_dir, delay, show),
                             )
                             .await
                         });
@@ -186,8 +175,8 @@ fn requested(extension: Option<&ModRuntime>) -> (u32, bool) {
     let Some(runtime) = extension.filter(|runtime| !runtime.suspended) else {
         return (0, false);
     };
-    (0..runtime.host_count())
-        .map(|index| runtime.host(index))
+    (0..runtime.hosts.host_count())
+        .map(|index| runtime.hosts.host(index))
         .filter(|host| host.is_active() && host.grants().packet_delay)
         .find(|host| host.packet_delay_ms() != 0)
         .map_or((0, false), |host| {
@@ -196,13 +185,15 @@ fn requested(extension: Option<&ModRuntime>) -> (u32, bool) {
 }
 pub(super) fn publish_packet_delay(
     extension: Option<Res<ModRuntime>>,
-    network: Option<Res<NetworkHandle>>,
-    ui: Option<Res<UiRuntime>>,
+    network: Option<Res<NetworkHandle<PackApplication>>>,
+    ui: Option<Res<UiRuntimeResource>>,
     mut snapshot: ResMut<RealPositionSnapshot>,
     mut worker: Local<Option<Worker>>,
 ) {
-    let endpoint = network.as_deref().and_then(NetworkHandle::core_socket_dir);
-    let app_session = ui.as_deref().map_or(0, UiRuntime::session_id);
+    let endpoint = network
+        .as_deref()
+        .and_then(NetworkHandle::<PackApplication>::core_socket_dir);
+    let app_session = ui.as_deref().map_or(0, |ui| ui.session_id());
     if worker.as_ref().is_some_and(|worker| {
         Some(worker.endpoint.as_path()) != endpoint || worker.app_session != app_session
     }) {
@@ -224,8 +215,8 @@ pub(super) fn publish_packet_delay(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bridge::{PacketDelayLease, RelayedPosition};
     use mod_host::ModGrants;
-    use protocol::launcher_control::{PacketDelayLease, RelayedPosition};
     /// A component whose `init` requests `delay` milliseconds of packet delay.
     fn delaying(directory: &std::path::Path, index: usize, delay: u32) -> PathBuf {
         let package = include_str!("../../../crates/mod-api/wit/extension.wit")
@@ -287,7 +278,7 @@ mod tests {
         let mut app = App::new();
         super::super::configure_set(&mut app, mods);
         let mut runtime = app.world_mut().resource_mut::<ModRuntime>();
-        assert_eq!(runtime.host_count(), 4);
+        assert_eq!(runtime.hosts.host_count(), 4);
         assert_eq!(requested(Some(&runtime)), (200, false));
         runtime.suspended = true;
         assert_eq!(requested(Some(&runtime)), (0, false));
@@ -325,7 +316,7 @@ mod tests {
         super::super::configure_set(&mut app, entries);
         let mut runtime = app.world_mut().resource_mut::<ModRuntime>();
         assert_eq!(requested(Some(&runtime)), (200, false));
-        assert!(runtime.host_mut(1).frame(false).is_err());
+        assert!(runtime.hosts.host_mut(1).frame(false).is_err());
         assert_eq!(requested(Some(&runtime)), (400, true));
         runtime.suspended = true;
         assert_eq!(requested(Some(&runtime)), (0, false));

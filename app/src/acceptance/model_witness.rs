@@ -1,11 +1,10 @@
 //! Model evidence observes only the current committed cohort.
 use crate::runtime::world::ClientWorld;
-pub(crate) use acceptance::model_witness::{
-    ModelWitnessExpectationState, ModelWitnessFileSource, ModelWitnessObservation,
-    poll_model_witness_request,
-};
+use acceptance::model_witness::{ModelWitnessExpectationState, ModelWitnessObservation};
 use bevy::prelude::*;
-use render::{ChunkRenderQueue, ModelWitnessEvidence, ModelWitnessRequest, PresentedFrameGate};
+use render_scene::{
+    ChunkRenderQueue, ModelWitnessEvidence, ModelWitnessRequest, PresentedFrameGate,
+};
 /// Captures world identity and lets the plugin drive the renderer's existing witness gate.
 pub(crate) fn drive_model_witness(
     world: Res<ClientWorld>,

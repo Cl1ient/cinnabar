@@ -60,7 +60,7 @@ fn displaced_models_preserve_opaque_texels_and_cutout_thresholds() {
             &["OPAQUE_OVERDRAW"]
         };
         let mut production =
-            shader_source::standalone(include_str!("../../src/model.wgsl"), definitions);
+            shader_source::standalone(include_str!("../../src/model.wesl"), definitions);
         if shadow {
             production = production
                 .replace("@fragment\nfn fragment_shadow(", "fn sampled_shadow(")
@@ -116,7 +116,7 @@ fn displaced_models_preserve_opaque_texels_and_cutout_thresholds() {
         }
     }
     // Isolate colour conversion while retaining production sampling, discard and output alpha.
-    let mut production = shader_source::standalone(include_str!("../../src/model.wgsl"), &[])
+    let mut production = shader_source::standalone(include_str!("../../src/model.wesl"), &[])
         .replace(
             "fn ordinary_world_model_colour(",
             "fn original_world_model_colour(",
@@ -237,8 +237,8 @@ const VERTEX: &str = r#"
     out.uv = vec2(0.5);
     out.current_texture = 0x80000000u | (cell % 4u);
     out.next_texture = out.current_texture;
-    out.visible = 1u;
-    out.two_sided = 1u;
+    out.visibility.x = 1u;
+    out.visibility.y = 1u;
     out.material_flags = select(0u, ALPHA_FLAG, cell >= 4u);
     return out;
 }
@@ -254,7 +254,7 @@ fn blended_sampling_source(raw: &str) -> String {
             .unwrap();
     let end = sample_end
         + raw[sample_end..]
-            .find("\n}\n#endif\n#ifdef ENHANCED_SHADOW")
+            .find("\n}\n\n// Alpha-tested terrain depth")
             .unwrap();
     format!("{}    return sampled;{}", &raw[..sample_end], &raw[end..])
 }
@@ -281,7 +281,7 @@ fn blended_enhanced_models_use_authored_albedo_and_animation_alpha() {
             resource.resource = wgpu::BindingResource::TextureView(&authored);
         }
     }
-    let raw = include_str!("../../src/model.wgsl");
+    let raw = include_str!("../../src/model.wesl");
     let vertex = VERTEX
         .replace("ALPHA_FLAG", "0u")
         .replace(

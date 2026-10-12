@@ -199,6 +199,9 @@ fn action_phase_contract_carries_exact_tick_progress() {
 
 fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
     CompiledEntityAssetsV4 {
+        item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [0x31; 32],
         block_visual_count: 1,
         sources: vec![
@@ -220,6 +223,7 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         ]
         .into_boxed_slice(),
         symbols: vec![entity::EntityAssetSymbol {
+            mount_equipment: assets::entity::mount::MountEquipment::Unresolved,
             kind: entity::EntityAssetKind::Entity,
             identifier: "minecraft:item_frame".into(),
             source_index: 0,
@@ -244,6 +248,10 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         rig_animations: Box::new([]),
         rig_controllers: Box::new([]),
         item_visuals: vec![ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:apple"),
             source: 1,
             route: ItemVisualDefinitionRoute::Sprite {
@@ -264,6 +272,9 @@ fn item_carrier_fixture() -> CompiledEntityAssetsV4 {
         .into_boxed_slice(),
         render: Default::default(),
     }
+    .with_unresolved_item_use()
+    .with_unresolved_seats()
+    .with_unresolved_interactions()
 }
 
 const DEFAULT_BINDINGS: &[u8] = include_bytes!("../../data/default-sprite-bindings-1.26.50.json");
@@ -431,17 +442,29 @@ fn item_carrier_round_trips_all_four_exact_routes() {
     let base = compiled.item_visuals[0].clone();
     compiled.item_visuals = vec![
         ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:air"),
             route: ItemVisualDefinitionRoute::EmptyHand,
             ..base.clone()
         },
         base.clone(),
         ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:missing"),
             route: ItemVisualDefinitionRoute::Missing,
             ..base.clone()
         },
         ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key("minecraft:stone"),
             route: ItemVisualDefinitionRoute::BlockItem {
                 block_visual: BlockVisualId(0),
@@ -459,10 +482,38 @@ fn item_carrier_round_trips_all_four_exact_routes() {
 }
 
 #[test]
+fn item_carrier_retains_armour_dispositions_and_rejects_stale_versions() {
+    for armour in [
+        assets::item::armour::ItemArmour::Unresolved,
+        assets::item::armour::ItemArmour::NotArmour,
+        assets::item::armour::ItemArmour::Wearable {
+            slot: assets::item::armour::ItemArmourSlot::Chest,
+            protection: 6,
+        },
+    ] {
+        let mut compiled = item_carrier_fixture();
+        compiled.item_visuals[0].armour = armour;
+        let blob = entity::encode_entity_blob(&compiled).unwrap();
+        let decoded = entity::RuntimeEntityAssets::decode(&blob).unwrap();
+        assert_eq!(decoded.item_visuals()[0].armour, armour);
+        let mut stale = blob.to_vec();
+        stale[8..12].copy_from_slice(&(entity::ENTITY_BLOB_VERSION - 1).to_le_bytes());
+        let error = entity::RuntimeEntityAssets::decode(&stale)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("rebuild with make assets"), "{error}");
+    }
+}
+
+#[test]
 fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     let mut compiled = item_carrier_fixture();
     compiled.item_visuals = (0..MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key(format!("minecraft:item_{index:05}").into_boxed_str()),
             ..compiled.item_visuals[0].clone()
         })
@@ -471,6 +522,10 @@ fn item_carrier_accepts_exact_limits_and_rejects_limit_plus_one() {
     assert!(compiled.validate().is_ok());
     compiled.item_visuals = (0..=MAX_ITEM_VISUALS)
         .map(|index| ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: visual_key(format!("minecraft:item_{index:05}").into_boxed_str()),
             ..compiled.item_visuals[0].clone()
         })

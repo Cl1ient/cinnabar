@@ -27,7 +27,20 @@ pub(in crate::chunk) fn solid_cull_camera(
 
 pub(in crate::chunk) struct ChunkSolidIndirectBatch {
     pub(in crate::chunk) camera: Option<[f64; 3]>,
+    /// The [`meshing::facing_cell`] of the camera `cubes`' commands were built for.
+    pub(in crate::chunk) facing: Option<[(f64, bool); 3]>,
     pub(in crate::chunk) cubes: ChunkIndirectBatch,
+}
+
+impl ChunkSolidIndirectBatch {
+    /// A batch over `cubes` whose commands the next prepare builds for its camera.
+    pub(in crate::chunk) fn new(cubes: Vec<Entity>) -> Self {
+        Self {
+            camera: None,
+            facing: None,
+            cubes: ChunkIndirectBatch::new(cubes),
+        }
+    }
 }
 
 #[derive(Resource, Default)]
@@ -63,7 +76,7 @@ pub(in crate::chunk) fn prepare_solid_indirect_batch_draws<'a>(
 }
 
 pub(in crate::chunk) type DrawSolidChunkCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainSolid as usize },
+    { render_scene::RuntimeStage::GpuTerrainSolid as usize },
     (
         crate::chunk::gpu_cull::SkipOccludedTerrain,
         SetItemPipeline,
@@ -73,7 +86,7 @@ pub(in crate::chunk) type DrawSolidChunkCommands = crate::gpu_timing::GpuDrawSpa
     ),
 >;
 pub(in crate::chunk) type DrawSolidChunkIndirectCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuTerrainSolid as usize },
+    { render_scene::RuntimeStage::GpuTerrainSolid as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -94,7 +107,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPackedSolidChunk {
         Entity,
         Read<ViewUniformOffset>,
         Read<ExtractedView>,
-        Has<crate::EnhancedRendering>,
+        Has<render_scene::EnhancedRendering>,
     );
     type ItemQuery = Read<GpuChunkAllocation>;
 
@@ -209,7 +222,7 @@ mod tests {
             clip_from_view,
             world_from_view: GlobalTransform::from(world_from_view),
             clip_from_world: None,
-            hdr: false,
+            target_format: render_scene::SCENE_COLOR_FORMAT,
             viewport: UVec4::new(0, 0, 1, 1),
             color_grading: default(),
             invert_culling: false,
@@ -217,7 +230,7 @@ mod tests {
     }
 
     fn perspective() -> Mat4 {
-        Mat4::perspective_infinite_reverse_rh(1.2, 16.0 / 9.0, 0.05)
+        glam::camera::rh::proj::directx::perspective_infinite_reverse(1.2, 16.0 / 9.0, 0.05)
     }
 
     #[test]
@@ -228,7 +241,8 @@ mod tests {
             Some([40.5, 70.25, -3.0])
         );
         assert_eq!(solid_cull_camera(&view(perspective(), pose), true), None);
-        let orthographic = Mat4::orthographic_rh(-8.0, 8.0, -8.0, 8.0, 0.1, 100.0);
+        let orthographic =
+            glam::camera::rh::proj::directx::orthographic(-8.0, 8.0, -8.0, 8.0, 0.1, 100.0);
         assert_eq!(solid_cull_camera(&view(orthographic, pose), false), None);
         let mirrored = pose.with_scale(Vec3::new(-1.0, 1.0, 1.0));
         assert_eq!(

@@ -34,6 +34,7 @@ use std::ffi::OsStr;
 use std::sync::OnceLock;
 
 use super::anchor_probe_evidence as evidence;
+use super::locomotion::{ModeIntent, ModeObservation, ModeTracker};
 use super::trace::write_trace_line;
 
 use sim::{Aabb, CollisionWorld, ProvenancedCollider, Vec3};
@@ -99,7 +100,7 @@ fn evidence_enabled_from_env() -> bool {
 /// or displacement budget reports [`AnchorResolution::Unresolvable`] instead
 /// of a partially moved anchor.
 fn probe_anchor(
-    world: &impl CollisionWorld,
+    world: &(impl CollisionWorld + ?Sized),
     feet: Vec3,
     height: f64,
 ) -> Result<AnchorResolution, sim::WorldQueryError> {
@@ -135,7 +136,7 @@ fn probe_anchor(
 }
 
 /// Per-controller spawn-anchor probe state. One epoch per fresh anchor.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(super) struct AnchorProbeState {
     pending: bool,
     evidence_enabled: bool,
@@ -160,9 +161,42 @@ impl AnchorProbeState {
         self.pending = true;
     }
 
+    /// Whether the next tick needs a pose-aware recovery probe at its new anchor.
+    pub(super) const fn pending(&self) -> bool {
+        self.pending
+    }
+
     /// Clears all probe state with movement authority itself.
     pub(super) fn reset(&mut self) {
         *self = Self::new();
+    }
+
+    /// Applies pending anchor recovery before either a live tick or a replayed tick selects its pose.
+    pub(super) fn prepare_tick(
+        &mut self,
+        world: &(impl CollisionWorld + ?Sized),
+        modes: ModeTracker,
+        intent: ModeIntent,
+        observed: &mut ModeObservation,
+        input: sim::MovementInput,
+    ) {
+        if input.immobile || !self.pending() {
+            return;
+        }
+        if input.spectator || intent.ride.is_some() {
+            self.reset();
+            return;
+        }
+        let mut preview = modes;
+        // Preview only a pose that no longer fits; the real selector advances once afterward.
+        if !sim::pose_fits(world, observed.feet, modes.mode(), modes.sneaking()).unwrap_or(true) {
+            let _ = preview.select(intent, *observed, world);
+        }
+        if let BeforeTick::Adjust(feet) =
+            self.before_tick(world, observed.feet, preview.contact_height())
+        {
+            observed.feet = feet;
+        }
     }
 
     /// Decides what must happen before the first simulated tick of a frame.
@@ -172,11 +206,11 @@ impl AnchorProbeState {
     /// query error. An unresolvable embedment proceeds — the simulator reports
     /// no inputless horizontal motion from an embedded start — after optionally
     /// rendering one diagnostic marker.
-    /// `height` is the retained pose's collision height, so a crouched anchor
-    /// under a low ceiling is not pushed as if standing.
+    /// `height` is the pose selected at the new anchor, so a fitting crouch or
+    /// crawl is not pushed out as if the player were still standing.
     pub(super) fn before_tick(
         &mut self,
-        world: &impl CollisionWorld,
+        world: &(impl CollisionWorld + ?Sized),
         feet: Vec3,
         height: f64,
     ) -> BeforeTick {

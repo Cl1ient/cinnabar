@@ -331,7 +331,7 @@ fn successful_uses_swing_before_their_always_sent_transaction() {
             101,
         )
         .iter()
-        .map(|packet| format!("{:?}", packet.header.id))
+        .map(|packet| format!("{:?}", packet.kind()))
         .collect::<Vec<_>>()
     };
     assert_eq!(
@@ -456,7 +456,7 @@ fn first_success_starts_before_swing_and_repeat_keeps_only_transaction() {
             1,
         )
         .iter()
-        .map(|packet| format!("{:?}", packet.header.id))
+        .map(|packet| format!("{:?}", packet.kind()))
         .collect::<Vec<_>>()
     };
     assert_eq!(
@@ -484,7 +484,7 @@ fn first_success_starts_before_swing_and_repeat_keeps_only_transaction() {
     );
     assert_eq!(failed.len(), 1);
     assert_eq!(
-        format!("{:?}", failed[0].header.id),
+        format!("{:?}", failed[0].kind()),
         "InventoryTransactionPacket"
     );
 }
@@ -541,4 +541,30 @@ fn adventure_held_repeats_keep_the_noncreative_floor() {
         runtime.due(true, 4, clock),
         Some((ItemUseTrigger::SimulationTick, 1_100))
     );
+}
+
+/// A use on a player without interact text must leave the press to item use.
+#[test]
+fn actor_use_on_a_player_falls_through_unless_the_server_offers_an_interaction() {
+    let player = protocol::ActorKind::Player {
+        uuid: [0; 16],
+        username: "target".into(),
+    };
+    let villager = protocol::ActorKind::Entity {
+        identifier: "minecraft:villager_v2".into(),
+    };
+    assert_eq!(LocalUse::for_actor(&player, false), LocalUse::Nothing);
+    assert_eq!(LocalUse::for_actor(&player, true), LocalUse::Interact);
+    assert_eq!(LocalUse::for_actor(&villager, false), LocalUse::Interact);
+    let mut runtime = BlockUseRuntime::default();
+    let clock = RepeatClock::for_game_mode(1_000, false, 0.0, Some(PlayerGameMode::Survival));
+    runtime.record(
+        ItemUseTrigger::PlayerInput,
+        1_000,
+        1,
+        LocalUse::for_actor(&player, false),
+        clock,
+    );
+    assert!(!runtime.press_interacted());
+    assert!(!runtime.press_pending());
 }

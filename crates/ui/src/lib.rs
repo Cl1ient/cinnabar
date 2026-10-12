@@ -8,8 +8,10 @@ mod icon;
 pub mod mod_hud;
 pub mod mod_panel;
 mod model;
+pub mod oreui_theme;
 mod scoreboard;
 mod settings;
+pub mod settings_state;
 mod text;
 
 pub use action::{PointerPhase, UiAction, UiLimits};
@@ -20,13 +22,14 @@ pub use chat::{
     ChatMessageKind, ChatPasteError, ChatRateLimit, ChatSendError, ChatSendQueue, ChatSendRequest,
     ChatStore, ChatViewNode, MAX_CHAT_AUTOCOMPLETE, MAX_CHAT_AUTOCOMPLETE_BYTES, MAX_CHAT_HISTORY,
     MAX_CHAT_INPUT_BYTES, MAX_CHAT_MESSAGES, MAX_CHAT_RETAINED_BYTES, MAX_PENDING_CHAT_SENDS,
+    validate_chat_message,
 };
 pub use geometry::{
     DesktopGuiScale, DesktopGuiScaleChoice, DpiScale, GeometryError, SafeArea, UiPoint, UiRect,
     UiScale, gui_scale,
 };
 pub use hud::{
-    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole,
+    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole, LoadingStage,
     MAX_TOAST_RETAINED_BYTES, MAX_TOASTS, ShownToast, StandingToast, TOAST_DISPLAY_MILLIS,
     TOAST_SLIDE_IN_MILLIS, TOAST_SLIDE_OUT_MILLIS, TimedText, TitleDurations, Toast, ToastPress,
 };
@@ -37,7 +40,6 @@ pub use model::{
     UiError, UiFrame, UiMesh, UiMeshBatch, UiMeshError, UiMeshVertex, UiNode, UiNodeId, UiTree,
     UiVertex, UiVisual, UiWorldProjection,
 };
-pub use render_api::EnhancedQuality;
 pub use scoreboard::{
     BossAction, BossBarDiagnostics, BossBarEvent, BossBarStore, BossBarView, BossColor,
     BossOverlay, BossStyle, DisplaySlot, MAX_BOSS_BARS, MAX_BOSS_RETAINED_TEXT_BYTES,
@@ -49,14 +51,16 @@ pub use scoreboard::{
 pub use settings::{
     ANTI_ALIASING_SAMPLE_COUNTS, AntiAliasingSupport, CURRENT_SETTINGS_SCHEMA,
     DEFAULT_ANTI_ALIASING_SAMPLES, DEFAULT_FOV_DEGREES, DEFAULT_OUTLINE_SELECTION,
-    DEFAULT_RENDER_DISTANCE_CHUNKS, DEFAULT_SMAA_MODE, GameplaySettings, MAX_FOV_DEGREES,
-    MIN_FOV_DEGREES, MOTION_BLUR_REFERENCE_FPS, MotionBlurQuality, RenderMode, SmaaMode,
-    UserSettings, VideoSettings,
+    DEFAULT_SMAA_MODE, GameplaySettings, MAX_FOV_DEGREES, MIN_FOV_DEGREES,
+    MIN_RENDER_DISTANCE_CHUNKS, MOTION_BLUR_REFERENCE_FPS, MotionBlurQuality,
+    RenderDistanceDefaults, RenderDistanceDevice, RenderMode, SmaaMode, UserSettings,
+    VideoSettings,
 };
 pub use text::{
-    BedrockColor, FONT_ASCENT_TEXELS, FONT_DESIGN_PIXEL_TEXELS, FONT_INK_TEXELS, FormattingPalette,
-    GlyphQuad, MAX_GLYPHS_PER_LAYOUT, MAX_TEXT_SPANS, MAX_WRAP_LINES, ObfuscationGlyphs,
-    TEXT_BASELINE_64, TEXT_BOLD_OFFSET_64, TEXT_LINE_HEIGHT_64, TEXT_SHADOW_OFFSET_64, TextError,
-    TextLayout, TextLayoutCache, TextLayoutKey, TextLayoutRequest, TextLineAlign, TextSpan,
-    TextSpans, TextStyle, TextWrap, WordChop, parse_bedrock_text,
+    BedrockColor, ColorDescriptor, FONT_ASCENT_TEXELS, FONT_DESIGN_PIXEL_TEXELS, FONT_INK_TEXELS,
+    FORMATTING_COLORS, FormattingPalette, GlyphQuad, MAX_GLYPHS_PER_LAYOUT, MAX_TEXT_SPANS,
+    MAX_WRAP_LINES, ObfuscationGlyphs, TEXT_BASELINE_64, TEXT_BOLD_OFFSET_64, TEXT_LINE_HEIGHT_64,
+    TEXT_SHADOW_OFFSET_64, TextError, TextLayout, TextLayoutCache, TextLayoutKey,
+    TextLayoutRequest, TextLineAlign, TextSpan, TextSpans, TextStyle, TextWrap, WordChop,
+    parse_bedrock_text,
 };

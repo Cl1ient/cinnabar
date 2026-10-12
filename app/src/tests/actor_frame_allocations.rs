@@ -11,11 +11,17 @@ use bevy::{
     time::{Real, Time},
 };
 use protocol::{ActorEvent, ActorKind, ActorSpawnEvent, WorldEvent};
-use render::{ActorArtworkPages, ActorRenderFrame, ActorRenderScene};
+use {
+    render_model::ActorArtworkPages,
+    render_scene::{ActorRenderFrame, ActorRenderScene},
+};
 
 use super::actor_rest_presentation::{compiled_fixture, stream};
-use crate::runtime::network::{
-    ActorFramePartialTick, HandRigBuilder, prepare_actor_render_frame, publish_actor_render_frame,
+use {
+    crate::runtime::network::prepare_actor_render_frame,
+    client_presentation::actor_publication::{
+        ActorFramePartialTick, HandRigBuilder, publish_actor_render_frame,
+    },
 };
 
 /// A world holding every resource the actor publication system reads, with a perspective camera
@@ -28,25 +34,27 @@ pub(crate) fn actor_frame_world(
     (eye, target): (Vec3, Vec3),
 ) -> World {
     let mut world = World::new();
-    world.insert_resource(crate::player_runtime::PlayerRuntime::new(1));
+    world.insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
+        1,
+    )));
     world.insert_resource(client_world);
     world.insert_resource(Time::<Real>::new(Instant::now()));
     world.insert_resource(scene);
     world.insert_resource(ActorRenderFrame::default());
-    world.insert_resource(crate::local_player::LocalAvatarPresentation::default());
-    world.insert_resource(crate::local_player::LocalAvatarVisibilityCarrier::default());
-    world.insert_resource(crate::camera::CameraSettingsAuthority::default());
-    world.insert_resource(crate::movement::LocalPhysicsController::default());
-    world.insert_resource(render::ActorRuntimeWitness::default());
-    world.insert_resource(artwork);
+    world.insert_resource(client_presentation::local_player::LocalAvatarPresentation::default());
+    world.insert_resource(
+        client_presentation::local_player::LocalAvatarVisibilityCarrier::default(),
+    );
+    world.insert_resource(client_presentation::camera::CameraSettingsAuthority::default());
+    world.insert_resource(client_interaction::movement::LocalPhysicsController::default());
+    world.insert_resource(render_scene::ActorRuntimeWitness::default());
+    world.insert_resource(render_scene::ActorArtworkResource(artwork));
     world.insert_resource(hand);
-    world.insert_resource(render::HandRigScene::default());
-    world.insert_resource(crate::player_skin::LocalPlayerSkin::generated_default(
-        "bench",
-    ));
+    world.insert_resource(render_scene::HandRigScene::default());
+    world.insert_resource(client_shell::player_skin::LocalPlayerSkin::generated_default("bench"));
     world.init_resource::<client_presentation::actor_publication::ActorFrameState>();
     world.insert_resource(ActorFramePartialTick::default());
-    world.init_resource::<crate::runtime::network::PreparedActorPublication>();
+    world.init_resource::<client_presentation::actor_publication::PreparedActorPublication>();
     let camera = Transform::from_translation(eye).looking_at(target, Vec3::Y);
     world.spawn((
         camera,
@@ -55,9 +63,9 @@ pub(crate) fn actor_frame_world(
             aspect_ratio: 16.0 / 9.0,
             ..Default::default()
         }),
-        crate::camera::FlyCamera::default(),
+        client_presentation::camera::FlyCamera::default(),
     ));
-    world.insert_resource(crate::local_player::LocalViewPose::new(
+    world.insert_resource(client_presentation::local_player::LocalViewPose::new(
         eye,
         camera.rotation,
     ));
@@ -133,13 +141,13 @@ fn steady_frame_allocations(actors: u64) -> u64 {
             .resource_mut::<Time<Real>>()
             .update_with_instant(clock);
         let before_tick = tick(&world);
-        let before = super::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         world
             .run_system_cached(crate::runtime::network::advance_actor_frame)
             .unwrap();
         world.run_system_cached(prepare_actor_render_frame).unwrap();
         world.run_system_cached(publish_actor_render_frame).unwrap();
-        let allocated = super::alloc_count::thread_allocations() - before;
+        let allocated = test_alloc::thread_allocations() - before;
         if frame >= 30 && tick(&world) == before_tick {
             worst = worst.max(allocated);
         }

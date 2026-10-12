@@ -113,10 +113,8 @@ pub enum CommittedControlEvent {
     LocalMovementSpeed {
         sequence: u64,
         dimension: i32,
-        /// Effective `minecraft:movement` current.
-        current: Option<f64>,
-        /// Total/current factor for the vanilla sprint modifier.
-        sprint_modifier: Option<f32>,
+        /// Effective `minecraft:movement` current and its sprint recalculation facts.
+        movement: Option<MovementSpeedAttribute>,
         underwater: Option<f64>,
         lava: Option<f64>,
         /// Finite `minecraft:air_drag_modifier` current.
@@ -239,6 +237,10 @@ pub enum CommittedUiEvent {
         sequence: u64,
         event: protocol::ActorEffectEvent,
     },
+    /// The local player's item activation, retaining its inventory FIFO position.
+    LocalTotemActivation {
+        sequence: u64,
+    },
     /// The local player's authoritative mount after a link or actor-lifetime change.
     /// `None` means the player is no longer riding anything.
     LocalMount {
@@ -254,7 +256,7 @@ pub struct CommittedAudioEvent {
     pub dimension: i32,
     pub dimension_epoch: u64,
     /// Already-committed sound released by this actor's fixed-tick synchronization.
-    pub actor_synchronization: Option<crate::ActorLifetimeId>,
+    pub actor_synchronization: Option<actor_animation::ActorLifetimeId>,
     pub event: AudioEvent,
 }
 

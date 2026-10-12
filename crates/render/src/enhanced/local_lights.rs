@@ -110,8 +110,11 @@ impl LocalLightSources {
 
 pub(crate) fn collect_sources(
     mut cache: ResMut<LocalLightSources>,
-    changed: Query<(Entity, &crate::ChunkRenderInstance), Changed<crate::ChunkRenderInstance>>,
-    mut removed: RemovedComponents<crate::ChunkRenderInstance>,
+    changed: Query<
+        (Entity, &render_scene::ChunkRenderInstance),
+        Changed<render_scene::ChunkRenderInstance>,
+    >,
+    mut removed: RemovedComponents<render_scene::ChunkRenderInstance>,
 ) {
     let mut geometry_dirty = false;
     let mut lights_dirty = false;
@@ -479,24 +482,25 @@ pub(crate) fn point_shadow_matrices(position: Vec3) -> [Mat4; POINT_SHADOW_FACES
         (Vec3::Z, -Vec3::Y),
         (-Vec3::Z, -Vec3::Y),
     ];
-    let projection = Mat4::perspective_rh(
+    let projection = glam::camera::rh::proj::directx::perspective(
         std::f32::consts::FRAC_PI_2,
         1.0,
         POINT_SHADOW_NEAR,
         LIGHT_RADIUS,
     );
-    directions
-        .map(|(direction, up)| projection * Mat4::look_at_rh(position, position + direction, up))
+    directions.map(|(direction, up)| {
+        projection * glam::camera::rh::view::look_at_mat4(position, position + direction, up)
+    })
 }
 
 /// Hashes submitted nearby caster poses rather than advancing animation clock stamps.
 pub(crate) fn near_actor_signature(
-    frame: &crate::ActorRenderFrame,
+    frame: &render_scene::ActorRenderFrame,
     shadows: &[PointShadowView],
 ) -> u64 {
     let mut hash = DefaultHasher::new();
     for entry in frame.rig.manifest.iter() {
-        if entry.route == crate::ActorRigRoute::NoDraw {
+        if entry.route == render_model::ActorRigRoute::NoDraw {
             continue;
         }
         let Some(instance) = frame.rig.instances.get(entry.instance_index as usize) else {

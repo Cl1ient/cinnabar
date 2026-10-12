@@ -42,8 +42,7 @@ pub(in crate::compiler) fn exact_bee_housing_state(record: &RegistryRecord) -> O
 }
 
 pub(in crate::compiler) fn bee_housing_collision_is_exact(record: &RegistryRecord) -> bool {
-    record.collision_seed.shape_id == 1
-        && record.collision_seed.confidence == assets::CollisionConfidence::CollisionOnly
+    record.collision_seed.confidence == assets::CollisionConfidence::CollisionOnly
         && record.collision_seed.boxes.as_ref()
             == [assets::CollisionBox {
                 max_x: 100_000_000,
@@ -164,6 +163,7 @@ pub(in crate::compiler) fn bee_housing_material_descriptors(
         descriptors.push((
             Descriptor {
                 state_variant: 0,
+                flipbook_selector: None,
                 path: path.into(),
                 texture_key: key.into(),
                 flags: 0,

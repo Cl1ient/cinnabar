@@ -3,10 +3,9 @@
 use ui::{TextLayoutRequest, TextStyle};
 
 use super::{HudFrame, HudLayout, UiPresentationError, UiRuntime};
-use crate::ui_runtime::presentation::inventory_pointer::{InventoryCellHit, InventoryScreen};
-use crate::ui_runtime::presentation::screens::{
-    self, PAGE_TEXT_ORIGIN, PAGE_TEXT_WIDTH, ReaderButton, Widget,
-};
+use crate::ui_runtime::presentation::inventory_pointer::InventoryScreen;
+use crate::ui_runtime::presentation::screens::{self, PAGE_TEXT_ORIGIN, PAGE_TEXT_WIDTH};
+use ui_screens::container_actions::{InventoryCellHit, ReaderButton, Widget};
 
 const PAGE_COLOR: [u8; 4] = [229, 213, 170, 255];
 const PAGE_EDGE: [u8; 4] = [128, 96, 56, 255];
@@ -44,8 +43,8 @@ impl HudLayout<'_> {
                 text,
                 style: TextStyle::default(),
                 width_64: (width * scale * 64.0) as u32,
-                line_height_64: super::super::TEXT_LINE_HEIGHT_64,
-                baseline_64: super::super::TEXT_BASELINE_64,
+                line_height_64: ui::TEXT_LINE_HEIGHT_64,
+                baseline_64: ui::TEXT_BASELINE_64,
                 scale: self.text_scale(9.0),
                 font: self.font,
                 wrap: self.geometry.text_wrap(),

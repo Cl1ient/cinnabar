@@ -9,7 +9,7 @@ use super::frame::{
 };
 
 const CASTER: &str = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
+import render::enhanced::common::EnhancedFrame;
 @group(0) @binding(0) var<uniform> frame: EnhancedFrame;
 @vertex fn vertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
     let vertices = array<vec3<f32>, 12>(
@@ -24,8 +24,8 @@ const CASTER: &str = r#"
 "#;
 
 const RECEIVER: &str = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_shadow::sun_shadow_sample
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::shadow::sun_shadow_sample;
 @group(0) @binding(0) var<uniform> frame: EnhancedFrame;
 @group(0) @binding(1) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler: sampler_comparison;
@@ -56,9 +56,9 @@ fn sample_fixture(
     vertex_count: u32,
     configured: Option<(EnhancedFrameGpu, [f32; 2])>,
 ) -> Option<Vec<[f32; 4]>> {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::VULKAN,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let Ok(adapter) =
         bevy::tasks::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
@@ -134,7 +134,7 @@ fn sample_fixture(
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("shadow fixture production sampling"),
             source: wgpu::ShaderSource::Wgsl(
-                crate::shader_source::composed(&format!("{TILTED_PLANE}\n{source}"), &[]).into(),
+                crate::shader_source::composed(&format!("{source}\n{TILTED_PLANE}"), &[]).into(),
             ),
         })
     };
@@ -157,13 +157,13 @@ fn sample_fixture(
         primitive: Default::default(),
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: Default::default(),
             bias: super::shadows::directional_shadow_raster_bias(),
         }),
         multisample: Default::default(),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
     let render_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -233,6 +233,7 @@ fn sample_fixture(
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         pass.set_pipeline(&render_pipeline);
         pass.set_bind_group(0, &render_group, &[]);
@@ -254,7 +255,10 @@ fn sample_fixture(
         });
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     receiver.recv().unwrap().unwrap();
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("readback buffer is mapped");
     let values: &[[f32; 4]] = bytemuck::cast_slice(&bytes);
     Some(values.to_vec())
 }
@@ -283,7 +287,7 @@ fn native_cascade_shadows_keep_thin_contacts_and_lit_neighbors() {
 }
 
 const TILTED_CASTER: &str = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
+import render::enhanced::common::EnhancedFrame;
 @group(0) @binding(0) var<uniform> frame:EnhancedFrame;
 @vertex fn vertex(@builtin(vertex_index) index:u32)->@builtin(position) vec4<f32>{
     let points=array<vec2<f32>,6>(
@@ -295,8 +299,8 @@ const TILTED_CASTER: &str = r#"
 @fragment fn fragment(){}
 "#;
 const TILTED_RECEIVER: &str = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_shadow::sun_shadow_sample
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::shadow::sun_shadow_sample;
 @group(0) @binding(0) var<uniform> frame:EnhancedFrame;
 @group(0) @binding(1) var shadow_map:texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler:sampler_comparison;
@@ -333,8 +337,8 @@ fn tilted_planar_receivers_stay_lit_across_filter_taps() {
 }
 
 const STABLE_RECEIVER: &str = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_shadow::sun_shadow_sample
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::shadow::sun_shadow_sample;
 @group(0) @binding(0) var<uniform> frame:EnhancedFrame;
 @group(0) @binding(1) var shadow_map:texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler:sampler_comparison;
@@ -363,8 +367,8 @@ fn shadow_penumbra_is_stable_when_receiver_moves_across_screen_pixels() {
 }
 
 const TRANSITION_RECEIVER: &str = r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_shadow::{sun_shadow_sample,shadow_receiver_radius}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::shadow::{sun_shadow_sample,shadow_receiver_radius};
 @group(0) @binding(0) var<uniform> frame:EnhancedFrame;
 @group(0) @binding(1) var shadow_map:texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler:sampler_comparison;

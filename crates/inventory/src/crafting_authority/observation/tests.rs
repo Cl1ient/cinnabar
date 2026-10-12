@@ -365,6 +365,7 @@ fn registry_rebinding_and_dropping_clones_keep_only_real_current_origins() {
             network_id: 6,
             component_based: false,
             version: protocol::ItemRegistryVersion::None,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: Some(64),
             canonical_empty_component_data: true,
@@ -494,9 +495,7 @@ fn observer_does_not_change_normal_open_close_bytes_or_allocate_craft_request() 
     let mut before = ledger.clone();
     assert!(ledger.request_personal_open(42));
     assert!(before.request_personal_open(42));
-    let bytes = |packet: protocol::Packet| {
-        protocol::encode(&packet, &protocol::BedrockSession { shield_item_id: 0 }).unwrap()
-    };
+    let bytes = |packet: protocol::Packet| protocol::encode(&packet).unwrap();
     let expected = bytes(before.pending_batch().unwrap().unwrap().0);
     let fixture = Fixture::new();
     let state = state();

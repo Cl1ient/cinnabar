@@ -33,7 +33,6 @@ pub(in crate::compiler) fn is_resin_clump_record(record: &RegistryRecord) -> boo
         && record.contributor_role == ContributorRole::Primary
         && record.flags.is_empty()
         && record.face_coverage == 0
-        && record.collision_seed.shape_id == 0
         && record.collision_seed.confidence == assets::CollisionConfidence::CollisionOnly
         && record.collision_seed.boxes.is_empty()
         && exact_resin_clump_state(record).is_some()
@@ -81,6 +80,7 @@ pub(in crate::compiler) fn resin_clump_material_descriptor(
     Some((
         Descriptor {
             state_variant: 0,
+            flipbook_selector: None,
             path: path.into(),
             texture_key: key.into(),
             flags: MATERIAL_FLAG_ALPHA_CUTOUT,

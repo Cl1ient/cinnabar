@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, ui::IconRef};
 
 #[test]
 fn held_block_is_the_shared_six_face_cube_not_a_gui_thumbnail() {
@@ -35,7 +35,7 @@ fn held_block_is_the_shared_six_face_cube_not_a_gui_thumbnail() {
             .iter()
             .all(|placement| matches!(placement, PreviewHeldPlacement::Block))
     );
-    for (face, vertices) in model.vertices.chunks_exact(6).enumerate() {
+    for (face, vertices) in model.vertices.as_chunks::<6>().0.iter().enumerate() {
         let icon = super::super::sheet_faces(source)[face];
         assert_eq!(
             vertices[0].uv,
@@ -63,6 +63,10 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
     compiled.block_visual_count = 2;
     compiled.item_visuals = (0..16)
         .map(|metadata| assets::ItemVisualDefinition {
+            grip: assets::item::grip::ItemGrip::Unresolved,
+            fuel: assets::item::fuel::ItemFuel::Unresolved,
+            durability: assets::item::durability::ItemDurability::Unresolved,
+            armour: assets::item::armour::ItemArmour::Unresolved,
             key: ItemVisualKey {
                 identifier: "minecraft:banner".into(),
                 metadata,
@@ -119,8 +123,9 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
 
 #[test]
 fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_hands() {
-    use crate::test_support::{fixture_font, fixture_hud};
+    use crate::test_support::fixture_hud;
     use crate::ui_runtime::presentation::UiPresentationRuntime;
+    use ui_engine::test_support::fixture_font;
     let (entities, icons) = banner_catalog();
     assert!(icons.block_sheets().is_empty());
     let presentation =
@@ -191,9 +196,10 @@ fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_
 
 #[test]
 fn installed_gui_carriers_reuse_sprite_pages_within_the_model_atlas_budget() {
-    use crate::test_support::{fixture_font, fixture_hud};
+    use crate::test_support::fixture_hud;
     use crate::ui_runtime::presentation::UiPresentationRuntime;
     use assets::carriers;
+    use ui_engine::test_support::fixture_font;
     let compiled = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(carriers::COMPILED_DIR);

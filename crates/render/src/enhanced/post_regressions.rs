@@ -15,7 +15,7 @@ pub(super) fn execute_with_clouds(source: &str, result_count: usize) -> Option<V
 
 /// Builds the fixture bindings for the selected regression entry point and reads its results.
 fn execute_internal(source: &str, result_count: usize, clouds: bool) -> Option<Vec<[f32; 4]>> {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) =
         bevy::tasks::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
     else {
@@ -108,7 +108,13 @@ fn execute_internal(source: &str, result_count: usize, clouds: bool) -> Option<V
     device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("regression GPU completion");
-    let values = bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+    let values = bytemuck::cast_slice(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     Some(values)
 }
 
@@ -122,7 +128,7 @@ fn close(actual: f32, expected: f32) {
 #[test]
 fn occlusion_does_not_dim_emission_or_skip_bright_materials() {
     let source = r#"
-#import cinnabar::enhanced_radiance::compose_surface_lighting
+import render::enhanced::radiance::compose_surface_lighting;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,4>;
 @compute @workgroup_size(1) fn regression(){
     let indirect=vec3(4.0,2.0,1.0);
@@ -155,7 +161,7 @@ fn occlusion_does_not_dim_emission_or_skip_bright_materials() {
 #[test]
 fn untextured_models_receive_light_without_becoming_emitters() {
     let source = r#"
-#import cinnabar::enhanced_radiance::{untextured_material_mer,compose_surface_lighting}
+import render::enhanced::radiance::{untextured_material_mer,compose_surface_lighting};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,3>;
 @compute @workgroup_size(1) fn regression(){
     let material=untextured_material_mer();
@@ -182,7 +188,7 @@ fn untextured_models_receive_light_without_becoming_emitters() {
 
 #[test]
 fn night_exposure_preserves_darkness_and_keeps_a_finite_gain() {
-    let mut source = include_str!("exposure.wgsl").to_owned();
+    let mut source = include_str!("exposure.wesl").to_owned();
     source.push_str(
         r#"
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,3>;
@@ -223,7 +229,7 @@ fn night_exposure_preserves_darkness_and_keeps_a_finite_gain() {
 
 #[test]
 fn diagnostic_colours_bypass_exposure_and_filmic_grading() {
-    let mut source = include_str!("post.wgsl").to_owned();
+    let mut source = include_str!("post.wesl").to_owned();
     source.push_str(
         r#"
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,3>;
@@ -247,7 +253,7 @@ fn diagnostic_colours_bypass_exposure_and_filmic_grading() {
 
 #[test]
 fn display_preserves_night_detail_and_highlight_hue_with_a_finite_shoulder() {
-    let mut source = include_str!("post.wgsl").to_owned();
+    let mut source = include_str!("post.wesl").to_owned();
     source.push_str(
         r#"
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,5>;
@@ -281,7 +287,7 @@ fn display_preserves_night_detail_and_highlight_hue_with_a_finite_shoulder() {
 #[test]
 fn temporal_sharpening_is_bounded_and_leaves_flat_regions_and_high_contrast_edges_unchanged() {
     let source = r#"
-#import cinnabar::enhanced_temporal::{temporal_sharpen,temporal_clip}
+import render::enhanced::temporal::{temporal_sharpen,temporal_clip};
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,5>;
 @compute @workgroup_size(1) fn regression(){
     results[0]=vec4(temporal_sharpen(vec3(0.4),vec3(0.4),vec3(0.4),vec3(0.4),vec3(0.4)),1.0);
@@ -313,7 +319,7 @@ fn temporal_sharpening_is_bounded_and_leaves_flat_regions_and_high_contrast_edge
 #[test]
 fn transparency_reactivity_rejects_chroma_changes_without_resetting_unchanged_opaque_surfaces() {
     let source = r#"
-#import cinnabar::enhanced_temporal::temporal_transparency_reactivity
+import render::enhanced::temporal::temporal_transparency_reactivity;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,1>;
 @compute @workgroup_size(1) fn regression(){
     let opaque=vec3(0.4,0.5,0.3);

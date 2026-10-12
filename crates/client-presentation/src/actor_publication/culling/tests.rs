@@ -26,11 +26,11 @@ fn offscreen_casters_publish_and_animate_only_for_enhanced_shadows() {
     let submission = remote(2, behind).submission;
     let vanilla = views(false);
     let enhanced = views(true);
-    assert!(!render::actor_rig_submission_is_visible(
+    assert!(!render_model::actor_rig_submission_is_visible(
         &submission,
         Some(vanilla.publication)
     ));
-    assert!(render::actor_rig_submission_is_visible(
+    assert!(render_model::actor_rig_submission_is_visible(
         &submission,
         Some(enhanced.publication)
     ));
@@ -42,7 +42,11 @@ fn offscreen_casters_publish_and_animate_only_for_enhanced_shadows() {
     assert!(!vanilla_animation.admits(behind, 1.0, true, Default::default()));
     assert!(enhanced_animation.admits(behind, 1.0, true, Default::default()));
     assert!(!enhanced_animation.admits(
-        [0.0, 0.0, render::MAX_ACTOR_RENDER_DISTANCE_BLOCKS + 8.0],
+        [
+            0.0,
+            0.0,
+            render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS + 8.0
+        ],
         1.0,
         true,
         Default::default()
@@ -108,13 +112,14 @@ fn visible_actors_precede_offscreen_casters_without_capping_publication() {
 /// Builds a minimal rig fixture without authored skin geometry.
 fn rig() -> ActorRigSnapshot<'static> {
     ActorRigSnapshot {
-        actor: client_world::ActorLifetimeId {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
+        actor: actor_animation::ActorLifetimeId {
             session_id: 1,
             dimension: 0,
             runtime_id: 1,
             spawn_revision: 1,
         },
-        rig: client_world::EntityRigId(0),
+        rig: actor_animation::EntityRigId(0),
         previous: &[],
         current: &[],
         rest: &[],
@@ -122,6 +127,7 @@ fn rig() -> ActorRigSnapshot<'static> {
         rest_reset_generation: 1,
         completed_tick: 1,
         reset_generation: 1,
+        pose_evaluated: true,
         fallback: assets::EntityRigFallback::Skip,
         scale: 1.0,
         axis_scale: [1.0; 3],
@@ -132,11 +138,11 @@ fn rig() -> ActorRigSnapshot<'static> {
         skin_geometry: None,
         skin_mesh: None,
         skin_layers: &[],
-        hand: [client_world::HandPhase::default(); 2],
-        item_animation: [client_world::ItemAnimationState::default(); 2],
-        off_hand_animation: [client_world::ItemAnimationState::default(); 2],
-        animation_variables: client_world::ActorAnimationVariables::default(),
-        java: client_world::JavaMotion::default(),
+        hand: [actor_animation::HandPhase::default(); 2],
+        item_animation: [actor_animation::ItemAnimationState::default(); 2],
+        off_hand_animation: [actor_animation::ItemAnimationState::default(); 2],
+        animation_variables: actor_animation::ActorAnimationVariables::default(),
+        java: actor_animation::JavaMotion::default(),
         java_equipped: None,
     }
 }
@@ -194,6 +200,7 @@ fn voxel_hidden_actor_can_cast_without_bypassing_vanilla_occlusion() {
         actor,
         0.0,
         Some(views(false)),
+        None,
         |_, _| true
     ));
     assert!(rig_may_be_published(
@@ -201,6 +208,7 @@ fn voxel_hidden_actor_can_cast_without_bypassing_vanilla_occlusion() {
         actor,
         0.0,
         Some(views(true)),
+        None,
         |_, _| { panic!("sun caster admission must not query main-camera voxel visibility") }
     ));
 }
@@ -223,7 +231,7 @@ fn local_shadow_body_and_equipment_stay_out_of_main_draws() {
         .find(|submission| submission.input.identity.runtime_id == 1)
         .unwrap()
         .clone();
-    equipment.route = render::ActorRigRoute::Compiled;
+    equipment.route = render_model::ActorRigRoute::Compiled;
     equipment.input.identity.layer = 1;
     batch.submissions.push(equipment);
     shadow_only_caster_layers(&mut batch);
@@ -232,7 +240,7 @@ fn local_shadow_body_and_equipment_stay_out_of_main_draws() {
             .submissions
             .iter()
             .filter(|submission| submission.input.identity.runtime_id == 1)
-            .all(|submission| submission.route == render::ActorRigRoute::ShadowOnly)
+            .all(|submission| submission.route == render_model::ActorRigRoute::ShadowOnly)
     );
     assert_eq!(
         batch
@@ -241,7 +249,7 @@ fn local_shadow_body_and_equipment_stay_out_of_main_draws() {
             .find(|submission| submission.input.identity.runtime_id == 2)
             .unwrap()
             .route,
-        render::ActorRigRoute::Diagnostic
+        render_model::ActorRigRoute::Diagnostic
     );
 }
 
@@ -257,19 +265,22 @@ fn shadow_caster_layers_keep_visible_actors_and_nondrawing_layers_unchanged() {
     };
     let mut layer = batch.submissions[0].clone();
     layer.input.identity.layer = 1;
-    layer.route = render::ActorRigRoute::Compiled;
+    layer.route = render_model::ActorRigRoute::Compiled;
     batch.submissions.push(layer.clone());
     layer.input.identity.layer = 2;
-    layer.route = render::ActorRigRoute::NoDraw;
+    layer.route = render_model::ActorRigRoute::NoDraw;
     batch.submissions.push(layer);
     shadow_only_caster_layers(&mut batch);
     assert_eq!(
         batch.submissions[1].route,
-        render::ActorRigRoute::Diagnostic
+        render_model::ActorRigRoute::Diagnostic
     );
     assert_eq!(
         batch.submissions[2].route,
-        render::ActorRigRoute::ShadowOnly
+        render_model::ActorRigRoute::ShadowOnly
     );
-    assert_eq!(batch.submissions[3].route, render::ActorRigRoute::NoDraw);
+    assert_eq!(
+        batch.submissions[3].route,
+        render_model::ActorRigRoute::NoDraw
+    );
 }

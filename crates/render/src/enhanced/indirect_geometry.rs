@@ -1,8 +1,8 @@
 //! Resident surface occupancy and authored diffuse reflectance for spatial light transport.
 
 use super::{CELL_SIZE, GRID_SIZE, HEADER_WORDS};
-use crate::{ChunkBiomeTints, ChunkRenderInstance, ChunkTextureAssets};
 use bevy::prelude::*;
+use render_scene::{ChunkBiomeTints, ChunkRenderInstance, ChunkTextureAssets};
 use std::{collections::HashMap, sync::Arc};
 
 const OCCUPIED_BIT: u32 = 1;

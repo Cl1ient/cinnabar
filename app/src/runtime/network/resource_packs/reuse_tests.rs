@@ -4,13 +4,11 @@ use protocol::{ResourcePackArchive, ResourcePackHandoff};
 use resource_pack::{PackAdmission, ValidatedPackStack};
 
 use super::{CompileEnvironment, CompiledStacks, compile_reusing};
-use crate::runtime::network::{
-    pack_reload::PackInputs,
-    resource_packs::{
-        JoinBases, PackApplication, prepare_join_with,
-        tests::{every_input, every_subscriber_archive, overlay_cache, summary},
-    },
+use crate::runtime::network::resource_packs::{
+    JoinBases, PackApplication, prepare_join_with,
+    tests::{every_input, every_subscriber_archive, overlay_cache, summary},
 };
+use pack_runtime::PackInputs;
 
 /// A copy of `archive`, as a later join receives its own bytes for the same pack.
 fn copy(archive: &ResourcePackArchive) -> ResourcePackArchive {
@@ -29,21 +27,15 @@ fn admitted(archive: &ResourcePackArchive) -> Arc<ValidatedPackStack> {
 
 /// An otherwise empty StartGame.
 fn game_data() -> protocol::GameData {
-    protocol::GameData {
-        start_game: Default::default(),
-        item_registry: Default::default(),
-        biome_definitions: None,
-        entity_identifiers: None,
-        creative_content: None,
-    }
+    protocol::GameData::default()
 }
 
 /// A join's pack facts for a copy of `archive` under `game_data`.
 fn preparation(
     archive: &ResourcePackArchive,
     game_data: &protocol::GameData,
-) -> client_session::PackPreparation {
-    client_session::prepare_session_packs(
+) -> pack_runtime::PackPreparation {
+    pack_runtime::prepare_session_packs(
         ResourcePackHandoff::from_archives(vec![copy(archive)]),
         game_data,
         u64::MAX,
@@ -271,6 +263,12 @@ fn only_an_uncancelled_join_under_unchanged_tables_is_kept() {
     };
     kept.keep_join(before_the_change, &now, &application, None, &|| false);
     assert_eq!(kept.len(), 0, "the language changed mid-compile");
+    let before_device = CompileEnvironment {
+        max_layers: now.max_layers + 1,
+        ..now.clone()
+    };
+    kept.keep_join(before_device, &now, &application, None, &|| false);
+    assert_eq!(kept.len(), 0, "device capacity changed mid-compile");
     kept.keep_join(now.clone(), &now, &application, None, &|| false);
     assert_eq!(kept.len(), 1);
 }
@@ -377,7 +375,7 @@ fn the_post_join_reload_publishes_the_join_outputs() {
     use crate::runtime::network::pack_reload::PackReload;
     use crate::runtime::network::pack_reload_tests::{app_with_assets, settle};
     let _cache = overlay_cache();
-    let _sounds = crate::audio::SERVER_SOUNDS_TEST_LOCK
+    let _sounds = client_audio::audio::SERVER_SOUNDS_TEST_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let kept: &'static CompiledStacks = Box::leak(Box::new(CompiledStacks::new()));
@@ -389,7 +387,9 @@ fn the_post_join_reload_publishes_the_join_outputs() {
         .begin_session(1, &joined);
     settle(&mut app, 1);
     assert!(app.world().resource::<PackReload>().error().is_none());
-    let ui = app.world().resource::<client_ui::ui_runtime::UiRuntime>();
+    let ui = app
+        .world()
+        .resource::<client_shell::ui_resources::UiRuntimeResource>();
     assert!(same(&ui.session_glyphs().cloned(), &joined.glyph_sheets));
     assert!(same(&ui.server_ui().cloned(), &joined.server_ui));
     let world = app.world().resource::<crate::runtime::world::ClientWorld>();

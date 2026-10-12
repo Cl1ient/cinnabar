@@ -6,10 +6,12 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+sha2.workspace = true
 hashbrown = "0.16"
 thiserror.workspace = true
 
 [dev-dependencies]
+test-alloc = { path = "../test-alloc" }
 criterion.workspace = true
 rayon.workspace = true
 serde = { version = "1", features = ["derive"] }
@@ -22,3 +24,6 @@ harness = false
 [[bench]]
 name = "light_work"
 harness = false
+
+[lints]
+workspace = true

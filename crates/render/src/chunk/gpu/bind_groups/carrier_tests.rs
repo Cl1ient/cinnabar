@@ -1,5 +1,4 @@
 use super::*;
-use bevy::render::renderer::WgpuWrapper;
 
 /// Creates complete authored arrays for carrier replacement tests.
 fn authored(side: u32, layers: u32) -> Arc<EnhancedTextureAssets> {
@@ -32,7 +31,7 @@ fn authored(side: u32, layers: u32) -> Arc<EnhancedTextureAssets> {
 fn ready(source: Arc<EnhancedTextureAssets>) -> App {
     let (device, queue) = wgpu::Device::noop(&Default::default());
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(Arc::new(WgpuWrapper::new(queue)));
+    let queue = RenderQueue::new(queue);
     let assets =
         ChunkTextureAssets::with_enhanced(Arc::new(RuntimeAssets::diagnostic()), source, 0);
     let (prepared, stats) = build_chunk_texture_assets(&assets, &device, &queue).unwrap();

@@ -7,7 +7,7 @@ use wgpu::util::DeviceExt as _;
 
 #[test]
 fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) =
         bevy::tasks::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
     else {
@@ -23,8 +23,11 @@ fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
     let size = 256u32;
     let camera = Vec3::new(2.4, 2.2, 3.4);
     let near = 0.1;
-    let clip = Mat4::perspective_infinite_reverse_rh(60.0_f32.to_radians(), 1.0, near)
-        * Mat4::look_at_rh(camera, Vec3::ZERO, Vec3::Y);
+    let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        60.0_f32.to_radians(),
+        1.0,
+        near,
+    ) * glam::camera::rh::view::look_at_mat4(camera, Vec3::ZERO, Vec3::Y);
     let mut frame = EnhancedFrameGpu::zeroed();
     frame.clip_from_world = clip;
     frame.world_from_clip = clip.inverse();
@@ -130,8 +133,8 @@ fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
     });
     let source = crate::shader_source::composed(
         r#"
-#import cinnabar::enhanced_common::EnhancedFrame
-#import cinnabar::enhanced_ao::{horizon_ao,screen_contact_shadow,ao_world_position,ao_surface_normal}
+import render::enhanced::common::EnhancedFrame;
+import render::enhanced::ao::{horizon_ao,screen_contact_shadow,ao_world_position,ao_surface_normal};
 @group(0) @binding(0) var<uniform> frame:EnhancedFrame;
 @group(0) @binding(1) var depth:texture_depth_2d;
 @group(0) @binding(2) var<storage,read> probes:array<vec4<f32>,8>;
@@ -175,7 +178,7 @@ fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
             module: &shader,
             entry_point: Some("vertex"),
             compilation_options: Default::default(),
-            buffers: &[wgpu::VertexBufferLayout {
+            buffers: &[Some(wgpu::VertexBufferLayout {
                 array_stride: 12,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &[wgpu::VertexAttribute {
@@ -183,7 +186,7 @@ fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
                     offset: 0,
                     shader_location: 0,
                 }],
-            }],
+            })],
         },
         primitive: wgpu::PrimitiveState {
             cull_mode: None,
@@ -191,14 +194,14 @@ fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::GreaterEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
             stencil: Default::default(),
             bias: Default::default(),
         }),
         multisample: Default::default(),
         fragment: None,
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
     let compute = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -254,6 +257,7 @@ fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         pass.set_pipeline(&raster);
         pass.set_bind_group(0, &raster_group, &[]);
@@ -274,8 +278,13 @@ fn camera_depth_preserves_open_floor_and_occludes_local_creases_and_contacts() {
     device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("AO fixture completion");
-    let values: Vec<[f32; 4]> =
-        bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+    let values: Vec<[f32; 4]> = bytemuck::cast_slice(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     for value in &values[..8] {
         assert!(
             value.iter().all(|v| v.is_finite()),

@@ -30,7 +30,7 @@ fn native_receiver_history_softens_repeated_occlusion_without_reusing_disocclusi
         ..Default::default()
     }))
     .unwrap();
-    let mut source = include_str!("local_shadow_history.wgsl").to_owned();
+    let mut source = include_str!("local_shadow_history.wesl").to_owned();
     source.push_str(&format!(
         "\nconst TEST_UPDATE_WEIGHT:f32={};\n",
         update_weight(1.0 / 60.0)
@@ -104,8 +104,13 @@ fn native_receiver_history_softens_repeated_occlusion_without_reusing_disocclusi
         });
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     receiver.recv().unwrap().unwrap();
-    let values =
-        bytemuck::cast_slice::<u8, [f32; 4]>(&readback.slice(..).get_mapped_range()).to_vec();
+    let values = bytemuck::cast_slice::<u8, [f32; 4]>(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     readback.unmap();
     assert!(
         values[0][0] > 0.5 && values[0][0] < 1.0,
@@ -140,9 +145,7 @@ fn native_preparation_reuses_unchanged_policy_and_rejects_source_camera_and_subm
     let (device, queue) =
         bevy::tasks::block_on(adapter.request_device(&Default::default())).unwrap();
     let device = RenderDevice::from(device);
-    let queue = RenderQueue(std::sync::Arc::new(
-        bevy::render::renderer::WgpuWrapper::new(queue),
-    ));
+    let queue = RenderQueue::new(queue);
     let mut history = LocalShadowHistory::new(&device, [8, 8]);
     let prepare = |history: &mut LocalShadowHistory, submitted, camera, source| {
         history.submitted.store(submitted, Ordering::Relaxed);

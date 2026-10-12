@@ -5,101 +5,24 @@
 //! highlight follows input without waiting for the server), and the choice is announced upstream
 //! with a `PlayerHotbar` packet.
 
-use bevy::{
-    input::mouse::AccumulatedMouseScroll,
-    prelude::{Res, ResMut},
+use crate::runtime::{
+    network::resource_packs::PackApplication, shutdown::record_fatal_error, world::ClientWorld,
 };
-use protocol::{HOTBAR_SLOT_COUNT, Packet};
-use semantic_input::Action;
+use bevy::prelude::{Res, ResMut};
+use client_runtime::network::NetworkHandle;
+use client_session::PacketSendError;
+use protocol::Packet;
 
-use crate::{
-    runtime::{
-        network::{NetworkHandle, PacketSendError},
-        shutdown::record_fatal_error,
-        world::ClientWorld,
-    },
-    semantic_controls::SemanticInputSnapshot,
-};
-use client_ui::ui_runtime::UiRuntime;
-
-pub(crate) const HOTBAR_DIGIT_ACTIONS: [Action; HOTBAR_SLOT_COUNT as usize] = [
-    Action::Hotbar1,
-    Action::Hotbar2,
-    Action::Hotbar3,
-    Action::Hotbar4,
-    Action::Hotbar5,
-    Action::Hotbar6,
-    Action::Hotbar7,
-    Action::Hotbar8,
-    Action::Hotbar9,
-];
-
-/// Applies number-key, mouse-wheel, and controller hotbar selection to the local prediction and
-/// notifies the server. Runs after semantic input is finalized and before UI publication.
+/// Flushes the queued hotbar selection after input sampling and before block use.
 #[allow(
     clippy::too_many_arguments,
     reason = "Player authority is borrowed separately from UI state."
 )]
-pub(crate) fn select_hotbar_slot(
-    mut player_runtime: bevy::prelude::ResMut<crate::player_runtime::PlayerRuntime>,
-    input: Res<SemanticInputSnapshot>,
-    scroll: Res<AccumulatedMouseScroll>,
-    menu: Option<Res<crate::menu::MenuRuntime>>,
-    presentation: Option<Res<client_ui::ui_runtime::presentation::UiPresentationRuntime>>,
-    runtime: Res<UiRuntime>,
-    network: Res<NetworkHandle>,
+pub(crate) fn flush_hotbar_selection(
+    mut player_runtime: bevy::prelude::ResMut<client_state::PlayerRuntime>,
+    network: Res<NetworkHandle<PackApplication>>,
     mut client_world: ResMut<ClientWorld>,
 ) {
-    // Direct number-key selection. The router only resolves Hotbar1..9 in the Gameplay context,
-    // so digits typed while chat is focused never reach this snapshot.
-    let mut requested: Option<u8> = None;
-    for (index, action) in HOTBAR_DIGIT_ACTIONS.iter().enumerate() {
-        if input.phase(*action).pressed {
-            requested = Some(index as u8);
-        }
-    }
-
-    // Controller actions are router-gated; raw wheel input needs the same screen ownership.
-    let mut cycle: i32 = 0;
-    if input.phase(Action::HotbarNext).pressed {
-        cycle += 1;
-    }
-    if input.phase(Action::HotbarPrevious).pressed {
-        cycle -= 1;
-    }
-    if !crate::screen_policy::absorbs_input(
-        &player_runtime,
-        Some(&runtime),
-        menu.as_deref(),
-        presentation.as_deref(),
-    ) {
-        // One slot per frame: scrolling up selects the previous slot.
-        if scroll.delta.y > 0.0 {
-            cycle -= 1;
-        } else if scroll.delta.y < 0.0 {
-            cycle += 1;
-        }
-    }
-
-    if requested.is_none() && cycle != 0 {
-        let current = i32::from(
-            player_runtime
-                .inventory
-                .selected_hotbar_slot(player_runtime.facts.player_game_mode())
-                .unwrap_or(0)
-                .min(HOTBAR_SLOT_COUNT - 1),
-        );
-        let slots = i32::from(HOTBAR_SLOT_COUNT);
-        requested = Some((((current + cycle) % slots + slots) % slots) as u8);
-    }
-
-    if let Some(target) = requested {
-        let game_mode = player_runtime.facts.player_game_mode();
-        player_runtime
-            .inventory
-            .queue_local_hotbar_selection(target, game_mode);
-    }
-
     if network.closed_command_has_pending_control() {
         return;
     }
@@ -121,7 +44,7 @@ pub(crate) fn select_hotbar_slot(
 /// Attempts the latest pending hotbar selection once and retains it when authority or transport
 /// is not ready.
 fn flush_pending_hotbar_selection(
-    player_runtime: &mut crate::player_runtime::PlayerRuntime,
+    player_runtime: &mut client_state::PlayerRuntime,
     fatal_error: &mut Option<String>,
     mut send: impl FnMut(Packet) -> Result<(), PacketSendError>,
 ) {
@@ -155,6 +78,10 @@ fn flush_pending_hotbar_selection(
 
 #[cfg(test)]
 mod tests {
+    use bevy::input::mouse::AccumulatedMouseScroll;
+    use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
+    use client_state::SemanticInputSnapshot;
+    use client_ui::ui_runtime::UiRuntime;
     use std::sync::Arc;
 
     use protocol::{
@@ -166,10 +93,11 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     use super::*;
+    use client_interaction::hotbar::queue_hotbar_selection;
 
     /// Publishes one authoritative player-inventory slot into a UI runtime.
     fn publish_slot(
-        player_runtime: &mut crate::player_runtime::PlayerRuntime,
+        player_runtime: &mut client_state::PlayerRuntime,
         runtime: &mut UiRuntime,
         slot: u8,
         stack: NetworkItemStack,
@@ -194,7 +122,7 @@ mod tests {
     }
 
     fn open_personal_inventory(
-        player_runtime: &mut crate::player_runtime::PlayerRuntime,
+        player_runtime: &mut client_state::PlayerRuntime,
         runtime: &mut UiRuntime,
     ) {
         assert!(
@@ -211,16 +139,15 @@ mod tests {
             .inventory_ledger_mut(player_runtime)
             .apply(&InventoryEvent::Open(ContainerOpenEvent {
                 container: ContainerIdentity::window(2),
-                window_type:
-                    client_ui::ui_runtime::inventory_ledger::PERSONAL_INVENTORY_WINDOW_TYPE,
+                window_type: inventory::inventory_ledger::PERSONAL_INVENTORY_WINDOW_TYPE,
                 position: [0, 64, 0],
                 runtime_entity_id: -1,
             }));
     }
 
     /// Creates a runtime with the local actor identity needed by MobEquipment.
-    fn identified_runtime(player_runtime: &mut crate::player_runtime::PlayerRuntime) -> UiRuntime {
-        *player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    fn identified_runtime(player_runtime: &mut client_state::PlayerRuntime) -> UiRuntime {
+        *player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
         let mut runtime = UiRuntime::new(1);
         runtime
             .publish_local_runtime_id(player_runtime, 1, 42)
@@ -243,27 +170,27 @@ mod tests {
 
     /// A wheel frame passes through the production hotbar system.
     fn wheel_selection(
-        player_runtime: &mut crate::player_runtime::PlayerRuntime,
-        menu: Option<crate::menu::MenuScreen>,
+        player_runtime: &mut client_state::PlayerRuntime,
+        menu: Option<launcher::menu::MenuScreen>,
     ) -> u8 {
         let runtime = UiRuntime::new(1);
-        let mut menu_runtime = crate::menu::MenuRuntime::new(false, 2, "Tester".into());
+        let mut menu_runtime = client_shell::menu::MenuRuntime::new(false, 2, "Tester".into());
         if let Some(screen) = menu {
-            menu_runtime.activate(crate::menu::MenuAction::Navigate(screen));
+            menu_runtime.activate(launcher::menu::MenuAction::Navigate(screen));
         }
         wheel_with_ui(player_runtime, runtime, menu_runtime)
     }
 
     /// Delivers the same raw wheel frame with an arbitrary focused UI screen.
     fn wheel_with_ui(
-        player_runtime: &mut crate::player_runtime::PlayerRuntime,
+        player_runtime: &mut client_state::PlayerRuntime,
         runtime: UiRuntime,
-        menu_runtime: crate::menu::MenuRuntime,
+        menu_runtime: client_shell::menu::MenuRuntime,
     ) -> u8 {
         use bevy::{ecs::system::RunSystemOnce, prelude::*};
         let mut app = App::new();
         player_runtime.inventory.set_local_selected_slot(0);
-        app.insert_resource(runtime)
+        app.insert_resource(UiRuntimeResource(runtime))
             .insert_resource(player_runtime.clone())
             .insert_resource(menu_runtime)
             .insert_resource(SemanticInputSnapshot::default())
@@ -271,42 +198,54 @@ mod tests {
                 delta: Vec2::new(0.0, -1.0),
                 ..Default::default()
             })
-            .insert_resource(NetworkHandle::disconnected())
+            .insert_resource(NetworkHandle::<PackApplication>::disconnected())
             .insert_resource(ClientWorld::default());
-        app.world_mut().run_system_once(select_hotbar_slot).unwrap();
+        app.init_resource::<client_state::ScreenFocus>();
+        app.world_mut()
+            .run_system_once(client_shell::menu::screen_focus::publish_screen_focus)
+            .unwrap();
+        app.world_mut()
+            .run_system_once(queue_hotbar_selection)
+            .unwrap();
+        app.world_mut()
+            .run_system_once(flush_hotbar_selection)
+            .unwrap();
         *player_runtime = app
             .world_mut()
-            .remove_resource::<crate::player_runtime::PlayerRuntime>()
+            .remove_resource::<client_state::PlayerRuntime>()
             .unwrap();
         player_runtime.selected_hotbar_slot().unwrap()
     }
 
     #[test]
     fn menu_input_leak_settings_wheel_never_selects_a_hotbar_slot() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         assert_eq!(
-            wheel_selection(&mut player_runtime, Some(crate::menu::MenuScreen::Settings)),
+            wheel_selection(
+                &mut player_runtime,
+                Some(launcher::menu::MenuScreen::Settings)
+            ),
             0
         );
     }
 
     #[test]
     fn menu_input_leak_hud_wheel_selects_the_next_hotbar_slot() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         assert_eq!(wheel_selection(&mut player_runtime, None), 1);
     }
 
     #[test]
     fn menu_input_leak_chat_inventory_forms_and_pause_absorb_the_wheel() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         assert_eq!(
-            wheel_selection(&mut player_runtime, Some(crate::menu::MenuScreen::Pause)),
+            wheel_selection(&mut player_runtime, Some(launcher::menu::MenuScreen::Pause)),
             0
         );
-        let hidden = || crate::menu::MenuRuntime::new(false, 2, "Tester".into());
+        let hidden = || client_shell::menu::MenuRuntime::new(false, 2, "Tester".into());
         let mut chat = UiRuntime::new(1);
         chat.open_chat(&mut player_runtime);
         assert_eq!(wheel_with_ui(&mut player_runtime, chat, hidden()), 0);
@@ -316,7 +255,7 @@ mod tests {
         inventory.toggle_inventory(&mut player_runtime);
         assert!(inventory.inventory_open());
         assert_eq!(wheel_with_ui(&mut player_runtime, inventory, hidden()), 0);
-        let form = crate::ui_runtime::presentation::forms::pack_harness::action_form(
+        let form = client_ui::test_support::pack_harness::action_form(
             &mut player_runtime,
             "Form",
             &["OK"],
@@ -327,7 +266,7 @@ mod tests {
     /// Delivers one raw wheel frame with the presentation behind the screen policy, and returns
     /// the selected slot and the presentation.
     fn wheel_with_presentation(
-        player_runtime: &mut crate::player_runtime::PlayerRuntime,
+        player_runtime: &mut client_state::PlayerRuntime,
         presentation: client_ui::ui_runtime::presentation::UiPresentationRuntime,
     ) -> (
         u8,
@@ -336,24 +275,41 @@ mod tests {
         use bevy::{ecs::system::RunSystemOnce, prelude::*};
         let mut app = App::new();
         player_runtime.inventory.set_local_selected_slot(0);
-        app.insert_resource(UiRuntime::new(1))
+        app.insert_resource(UiRuntimeResource(UiRuntime::new(1)))
             .insert_resource(player_runtime.clone())
-            .insert_resource(crate::menu::MenuRuntime::new(false, 2, "Tester".into()))
-            .insert_resource(presentation)
+            .insert_resource(client_shell::menu::MenuRuntime::new(
+                false,
+                2,
+                "Tester".into(),
+            ))
+            .insert_resource(UiPresentationResource(presentation))
             .insert_resource(SemanticInputSnapshot::default())
             .insert_resource(AccumulatedMouseScroll {
                 delta: Vec2::new(0.0, -1.0),
                 ..Default::default()
             })
-            .insert_resource(NetworkHandle::disconnected())
+            .insert_resource(NetworkHandle::<PackApplication>::disconnected())
             .insert_resource(ClientWorld::default());
-        app.world_mut().run_system_once(select_hotbar_slot).unwrap();
+        app.init_resource::<client_state::ScreenFocus>();
+        app.world_mut()
+            .run_system_once(client_shell::menu::screen_focus::publish_screen_focus)
+            .unwrap();
+        app.world_mut()
+            .run_system_once(queue_hotbar_selection)
+            .unwrap();
+        app.world_mut()
+            .run_system_once(flush_hotbar_selection)
+            .unwrap();
         *player_runtime = app
             .world_mut()
-            .remove_resource::<crate::player_runtime::PlayerRuntime>()
+            .remove_resource::<client_state::PlayerRuntime>()
             .unwrap();
         let slot = player_runtime.selected_hotbar_slot().unwrap();
-        (slot, app.world_mut().remove_resource().unwrap())
+        let presentation = app
+            .world_mut()
+            .remove_resource::<UiPresentationResource>()
+            .unwrap();
+        (slot, presentation.0)
     }
 
     /// A client part's modal screen is a screen like any other: while it is open the wheel and
@@ -361,11 +317,12 @@ mod tests {
     /// `ui.close-screen`, both of which clear its template) gives them back.
     #[test]
     fn menu_input_leak_client_part_modal_absorbs_gameplay_until_closed() {
-        use client_ui::test_support::fixture_font;
-        use client_ui::ui_runtime::presentation::{ExperienceModal, UiPresentationRuntime};
+        use client_ui::ui_runtime::presentation::UiPresentationRuntime;
+        use mod_ui::experience_modal::ExperienceModal;
         use server_experience::screen::{Files, Modal};
+        use ui_engine::test_support::fixture_font;
 
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
         let files = Arc::new(Files::default());
         let mut modal = Modal::default();
         let mut presentation = UiPresentationRuntime::new(fixture_font()).unwrap();
@@ -376,12 +333,16 @@ mod tests {
                 modal,
             }));
         };
-        let absorbs = |player_runtime: &crate::player_runtime::PlayerRuntime,
+        let absorbs = |player_runtime: &client_state::PlayerRuntime,
                        presentation: &UiPresentationRuntime| {
-            crate::screen_policy::absorbs_input(
+            client_shell::screen_policy::absorbs_input(
                 player_runtime,
                 Some(&UiRuntime::new(1)),
-                Some(&crate::menu::MenuRuntime::new(false, 2, "Tester".into())),
+                Some(&client_shell::menu::MenuRuntime::new(
+                    false,
+                    2,
+                    "Tester".into(),
+                )),
                 Some(presentation),
             )
         };
@@ -406,7 +367,7 @@ mod tests {
 
     #[test]
     fn unknown_slot_retains_pending_selection_without_sending() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         identified_runtime(&mut player_runtime);
         let game_mode = player_runtime.facts.player_game_mode();
@@ -428,7 +389,7 @@ mod tests {
 
     #[test]
     fn matching_equipment_bootstrap_sends_while_ledger_slot_is_unknown() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let mut runtime = identified_runtime(&mut player_runtime);
         let equipment_stack = present_stack();
@@ -452,7 +413,7 @@ mod tests {
         assert_eq!(snapshot.slot, 2);
         assert_eq!(
             snapshot.state,
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(&equipment_stack)
+            inventory::inventory_ledger::PlayerInventorySlot::Present(&equipment_stack)
         );
         let mut sent = None;
         let mut fatal = None;
@@ -462,11 +423,10 @@ mod tests {
             Ok(())
         });
 
-        let session = protocol::BedrockSession { shield_item_id: 0 };
         let expected = select_hotbar_slot_packet(42, 2, &equipment_stack).unwrap();
         assert_eq!(
-            protocol::encode(&sent.unwrap(), &session).unwrap(),
-            protocol::encode(&expected, &session).unwrap()
+            protocol::encode(&sent.unwrap()).unwrap(),
+            protocol::encode(&expected).unwrap()
         );
         assert_eq!(player_runtime.inventory.pending_hotbar_selection(), None);
         assert_eq!(fatal, None);
@@ -474,7 +434,7 @@ mod tests {
 
     #[test]
     fn full_retry_rebuilds_packet_from_the_current_selected_snapshot() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let mut runtime = identified_runtime(&mut player_runtime);
         let first = present_stack();
@@ -501,11 +461,10 @@ mod tests {
             Ok(())
         });
 
-        let session = protocol::BedrockSession { shield_item_id: 0 };
         let expected = select_hotbar_slot_packet(42, 2, &NetworkItemStack::empty()).unwrap();
         assert_eq!(
-            protocol::encode(&retried.unwrap(), &session).unwrap(),
-            protocol::encode(&expected, &session).unwrap()
+            protocol::encode(&retried.unwrap()).unwrap(),
+            protocol::encode(&expected).unwrap()
         );
         assert_eq!(player_runtime.inventory.pending_hotbar_selection(), None);
         assert_eq!(fatal, None);
@@ -513,7 +472,7 @@ mod tests {
 
     #[test]
     fn full_send_retries_next_frame_without_new_input() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let mut runtime = identified_runtime(&mut player_runtime);
         publish_slot(
@@ -547,7 +506,7 @@ mod tests {
 
     #[test]
     fn newer_selection_supersedes_pending_selection() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let game_mode = player_runtime.facts.player_game_mode();
         player_runtime
@@ -564,7 +523,7 @@ mod tests {
 
     #[test]
     fn same_slot_input_does_not_suppress_an_unsent_pending_selection() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let mut runtime = identified_runtime(&mut player_runtime);
         publish_slot(
@@ -598,7 +557,7 @@ mod tests {
 
     #[test]
     fn begin_session_clears_pending_hotbar_selection() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let mut runtime = UiRuntime::new(1);
         let game_mode = player_runtime.facts.player_game_mode();
@@ -606,14 +565,14 @@ mod tests {
             .inventory
             .queue_local_hotbar_selection(5, game_mode);
 
-        crate::session::begin_session(&mut runtime, &mut player_runtime, 2);
+        client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 2);
 
         assert_eq!(player_runtime.inventory.pending_hotbar_selection(), None);
     }
 
     #[test]
     fn predicted_slot_state_drives_packet_and_rollback_restores_authority() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let mut runtime = identified_runtime(&mut player_runtime);
         runtime
@@ -630,7 +589,7 @@ mod tests {
         assert_eq!(authoritative_snapshot.slot, 0);
         assert_eq!(
             authoritative_snapshot.state,
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(&authoritative)
+            inventory::inventory_ledger::PlayerInventorySlot::Present(&authoritative)
         );
         let request_id = runtime
             .inventory_ledger_mut(&mut player_runtime)
@@ -640,7 +599,7 @@ mod tests {
         assert_eq!(predicted_snapshot.slot, 0);
         assert_eq!(
             predicted_snapshot.state,
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Empty
+            inventory::inventory_ledger::PlayerInventorySlot::Empty
         );
 
         let mut predicted_packet = None;
@@ -649,13 +608,9 @@ mod tests {
             predicted_packet = Some(packet);
             Ok(())
         });
-        let session = protocol::BedrockSession { shield_item_id: 0 };
-        let predicted_bytes = protocol::encode(&predicted_packet.unwrap(), &session).unwrap();
+        let predicted_bytes = protocol::encode(&predicted_packet.unwrap()).unwrap();
         let empty_packet = select_hotbar_slot_packet(42, 0, &NetworkItemStack::empty()).unwrap();
-        assert_eq!(
-            predicted_bytes,
-            protocol::encode(&empty_packet, &session).unwrap()
-        );
+        assert_eq!(predicted_bytes, protocol::encode(&empty_packet).unwrap());
 
         runtime
             .inventory_ledger_mut(&mut player_runtime)
@@ -670,7 +625,7 @@ mod tests {
         assert_eq!(restored_snapshot.slot, 0);
         assert_eq!(
             restored_snapshot.state,
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(&authoritative)
+            inventory::inventory_ledger::PlayerInventorySlot::Present(&authoritative)
         );
 
         let game_mode = player_runtime.facts.player_game_mode();
@@ -686,11 +641,11 @@ mod tests {
             restored_packet = Some(packet);
             Ok(())
         });
-        let restored_bytes = protocol::encode(&restored_packet.unwrap(), &session).unwrap();
+        let restored_bytes = protocol::encode(&restored_packet.unwrap()).unwrap();
         let authoritative_packet = select_hotbar_slot_packet(42, 0, &authoritative).unwrap();
         assert_eq!(
             restored_bytes,
-            protocol::encode(&authoritative_packet, &session).unwrap()
+            protocol::encode(&authoritative_packet).unwrap()
         );
         assert_eq!(fatal, None);
     }
@@ -698,7 +653,7 @@ mod tests {
     /// A slot still holding a predicted stack id is announced in the frame it is selected.
     #[test]
     fn predicted_selected_slot_sends_without_waiting_for_correction() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
         let mut runtime = identified_runtime(&mut player_runtime);
         runtime
             .inventory_ledger_mut(&mut player_runtime)
@@ -770,9 +725,7 @@ mod tests {
             .begin_click(0)
             .unwrap();
         let predicted = match player_runtime.selected_stack_snapshot().unwrap().state {
-            client_ui::ui_runtime::inventory_ledger::PlayerInventorySlot::Present(stack) => {
-                stack.clone()
-            }
+            inventory::inventory_ledger::PlayerInventorySlot::Present(stack) => stack.clone(),
             state => panic!("the place predicts a present stack, got {state:?}"),
         };
         assert!(predicted.stack_network_id < -1);
@@ -784,11 +737,10 @@ mod tests {
             Ok(())
         });
         assert_eq!(sent.len(), 1);
-        let session = protocol::BedrockSession { shield_item_id: 0 };
         let expected = select_hotbar_slot_packet(42, 0, &predicted).unwrap();
         assert_eq!(
-            protocol::encode(&sent[0], &session).unwrap(),
-            protocol::encode(&expected, &session).unwrap()
+            protocol::encode(&sent[0]).unwrap(),
+            protocol::encode(&expected).unwrap()
         );
         assert_eq!(player_runtime.inventory.pending_hotbar_selection(), None);
         assert_eq!(fatal, None);
@@ -797,7 +749,7 @@ mod tests {
     /// A server stack without network tracking sends at once.
     #[test]
     fn untracked_stack_identity_does_not_defer_hotbar_selection() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
         let mut runtime = identified_runtime(&mut player_runtime);
         let mut stack = present_stack();
         stack.stack_network_id = -1;
@@ -819,7 +771,7 @@ mod tests {
 
     #[test]
     fn server_forced_selection_cancels_pending_local_packet() {
-        let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+        let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
         let mut runtime = identified_runtime(&mut player_runtime);
         publish_slot(

@@ -1,7 +1,8 @@
+use actor_animation::ActorRigSnapshot;
 use bevy::math::Mat4;
 use bevy::prelude::{Projection, Transform};
-use client_world::{ActorRigSnapshot, ActorSnapshot};
-use render::ActorCullView;
+use client_world::ActorSnapshot;
+use render_model::ActorCullView;
 
 #[derive(Clone, Copy)]
 pub(super) struct ActorPublicationViews {
@@ -15,12 +16,12 @@ impl ActorPublicationViews {
         let main = ActorCullView {
             clip_from_world: projection.get_clip_from_view() * transform.to_matrix().inverse(),
             camera_position: transform.translation,
-            max_distance: render::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
+            max_distance: render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
         };
         let publication = if casts_shadows {
             let radius = main.max_distance;
             ActorCullView {
-                clip_from_world: Mat4::orthographic_rh(
+                clip_from_world: glam::camera::rh::proj::directx::orthographic(
                     -radius, radius, -radius, radius, -radius, radius,
                 ) * Mat4::from_translation(-transform.translation),
                 ..main
@@ -41,6 +42,7 @@ pub(super) fn rig_may_be_published(
     actor: &ActorSnapshot,
     partial_tick: f32,
     views: Option<ActorPublicationViews>,
+    frame: Option<&mut actor_animation::ActorRenderFrame<'_>>,
     occluded: impl Fn([f32; 3], [f32; 3]) -> bool,
 ) -> bool {
     crate::presentation::actors::rig_may_be_visible(
@@ -48,6 +50,7 @@ pub(super) fn rig_may_be_published(
         actor,
         partial_tick,
         views.map(|views| views.publication),
+        frame,
         |low, high| !views.is_some_and(|views| views.casts_shadows) && occluded(low, high),
     )
 }
@@ -56,17 +59,17 @@ pub(super) fn animation_view(
     transform: &Transform,
     projection: &Projection,
     views: Option<ActorPublicationViews>,
-) -> Option<client_world::ActorAnimationView> {
+) -> Option<actor_animation::ActorAnimationView> {
     let Some(views) = views.filter(|views| views.casts_shadows) else {
-        return super::animation_view(transform, projection);
+        return camera_animation_view(transform, projection);
     };
     let clip = views.publication.clip_from_world;
     let [x, y, z, w] = [0, 1, 2, 3].map(|row| clip.row(row));
-    Some(client_world::ActorAnimationView {
+    Some(actor_animation::ActorAnimationView {
         planes: [w + x, w - x, w + y, w - y, z, w - z].map(|plane| plane.to_array()),
         camera: transform.translation.to_array(),
         player_distance: views.publication.max_distance,
-        entity_radius: render::ACTOR_CANDIDATE_RADIUS_BLOCKS,
+        entity_radius: render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS,
     })
 }
 
@@ -84,8 +87,8 @@ pub(super) fn local_shadow_body(
     partial_tick: f32,
 ) -> Option<crate::presentation::actors::ActorRigPresentation> {
     match local.submission.route {
-        render::ActorRigRoute::NoDraw => return None,
-        render::ActorRigRoute::Diagnostic => {}
+        render_model::ActorRigRoute::NoDraw => return None,
+        render_model::ActorRigRoute::Diagnostic => {}
         _ => {
             let rig = stream?
                 .authority()
@@ -107,8 +110,8 @@ pub(super) fn shadow_only_caster_layers(
         .submissions
         .iter()
         .filter(|submission| {
-            submission.input.identity.layer == render::ACTOR_LAYER_BODY
-                && submission.route == render::ActorRigRoute::ShadowOnly
+            submission.input.identity.layer == render_model::ACTOR_LAYER_BODY
+                && submission.route == render_model::ActorRigRoute::ShadowOnly
         })
         .map(|submission| submission.input.identity.runtime_id)
         .collect();
@@ -134,6 +137,44 @@ pub(super) fn world_rig<'a>(
     } else {
         stream.authority().actor_rig(runtime_id)
     }
+}
+
+/// Rigs this far outside the view on every side still animate, so only a turn faster than this
+/// in one tick shows a rig its held pose for that tick.
+const ANIMATION_GUARD_DEGREES: f32 = 30.0;
+
+/// The camera's frustum widened by the guard band, with the render distances.
+fn camera_animation_view(
+    transform: &Transform,
+    projection: &Projection,
+) -> Option<actor_animation::ActorAnimationView> {
+    let Projection::Perspective(perspective) = projection else {
+        return None;
+    };
+    let (guard, limit) = (ANIMATION_GUARD_DEGREES.to_radians(), 85f32.to_radians());
+    let half_vertical = perspective.fov * 0.5;
+    let half_horizontal = (half_vertical.tan() * perspective.aspect_ratio).atan();
+    let (half_vertical, half_horizontal) = (
+        (half_vertical + guard).min(limit),
+        (half_horizontal + guard).min(limit),
+    );
+    let clip = glam::camera::rh::proj::directx::perspective_infinite_reverse(
+        half_vertical * 2.0,
+        half_horizontal.tan() / half_vertical.tan(),
+        perspective.near,
+    ) * transform.to_matrix().inverse();
+    let [x, y, z, w] = [0, 1, 2, 3].map(|row| clip.row(row));
+    let planes = [w + x, w - x, w + y, w - y, z, w - z].map(|plane| plane.to_array());
+    planes
+        .iter()
+        .flatten()
+        .all(|value| value.is_finite())
+        .then(|| actor_animation::ActorAnimationView {
+            planes,
+            camera: transform.translation.to_array(),
+            player_distance: render_model::MAX_ACTOR_RENDER_DISTANCE_BLOCKS,
+            entity_radius: render_model::ACTOR_CANDIDATE_RADIUS_BLOCKS,
+        })
 }
 
 #[cfg(test)]

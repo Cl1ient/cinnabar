@@ -19,7 +19,9 @@ pub(super) enum Region {
 impl Region {
     fn volume(self) -> Volume {
         match self {
-            Self::Camera(clip) => Volume::Camera(Frustum::from_clip_from_world(&clip)),
+            Self::Camera(clip) => Volume::Camera(Frustum(
+                bevy::shape::ViewFrustum::from_clip_from_world(&clip),
+            )),
             Self::Shadow(bounds) => Volume::Shadow(bounds),
         }
     }

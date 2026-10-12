@@ -1,4 +1,15 @@
 use super::*;
+use render_scene::{ActorDrawFrame, ActorRuntimeWitness};
+
+/// Camera identity and settings used to select actor render phases.
+type ActorQueueView = (
+    Entity,
+    &'static MainEntity,
+    &'static ExtractedView,
+    &'static bevy::render::camera::ExtractedCamera,
+    &'static Msaa,
+    Option<&'static render_scene::EnhancedRendering>,
+);
 
 #[derive(SystemParam)]
 pub(super) struct QueueActorParams<'w, 's> {
@@ -8,24 +19,14 @@ pub(super) struct QueueActorParams<'w, 's> {
     draw_functions: Res<'w, DrawFunctions<Opaque3d>>,
     transparent_phases: ResMut<'w, ViewSortedRenderPhases<Transparent3d>>,
     transparent_functions: Res<'w, DrawFunctions<Transparent3d>>,
-    views: Query<
-        'w,
-        's,
-        (
-            Entity,
-            &'static MainEntity,
-            &'static ExtractedView,
-            &'static Msaa,
-            Option<&'static crate::EnhancedRendering>,
-        ),
-    >,
+    views: Query<'w, 's, ActorQueueView>,
     draw_tracker: Res<'w, ActorDrawTracker>,
     witness: Res<'w, ActorRuntimeWitness>,
 }
 
 pub(super) fn queue_actors(
     mut params: QueueActorParams<'_, '_>,
-    mut next_tick: Local<Tick>,
+
     mut next_draw_generation: Local<u64>,
 ) {
     params.draw_tracker.clear();
@@ -50,39 +51,36 @@ pub(super) fn queue_actors(
         .id::<DrawTransparentActorCommands>();
     let mut queued = false;
     let mut intended_view = None;
-    for (view_entity, main_entity, view, msaa, enhanced) in &params.views {
+    for (view_entity, main_entity, view, extracted_camera, msaa, enhanced) in &params.views {
         let Some(phase) = params.phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
         let Some(pipeline_id) = params.pipeline.draw_variant(
             *msaa,
-            view.hdr,
+            extracted_camera.hdr,
             enhanced.is_some(),
             assets::EntityRenderMaterial::Default as u32,
         ) else {
             continue;
         };
-        let this_tick = next_tick.get() + 1;
-        next_tick.set(this_tick);
+
         let mut view_queued = false;
-        let spans = view_spans(&params.gpu.main_spans, &params.gpu.spans, enhanced);
-        if spans.iter().any(|span| !blended(span.material)) {
+        let (spans, sorted_draws) = view_draws(&params.gpu, enhanced);
+        if spans.iter().any(|span| !sorted(span.material)) {
             phase.add(
                 Opaque3dBatchSetKey {
                     draw_function,
                     pipeline: pipeline_id,
                     material_bind_group_index: None,
                     lightmap_slab: None,
-                    vertex_slab: default(),
-                    index_slab: None,
+                    slabs: default(),
                 },
                 Opaque3dBinKey {
-                    asset_id: AssetId::<Shader>::invalid().untyped(),
+                    asset_id: AssetId::<Shader>::default().untyped(),
                 },
                 (view_entity, *main_entity),
                 InputUniformIndex::default(),
                 BinnedRenderPhaseType::NonMesh,
-                *next_tick,
             );
             view_queued = true;
         }
@@ -91,17 +89,14 @@ pub(super) fn queue_actors(
             .get_mut(&view.retained_view_entity)
         {
             let rangefinder = view.rangefinder3d();
-            for (index, span) in spans
-                .iter()
-                .enumerate()
-                .filter(|(_, span)| blended(span.material))
-            {
+            for (index, range) in sorted_draws.ranges.iter().enumerate() {
+                let span = &spans[sorted_draws.indices[range.start]];
                 let Some(instance) = params.gpu.instances.get(span.first as usize) else {
                     continue;
                 };
                 let Some(pipeline) = params.pipeline.draw_variant(
                     *msaa,
-                    view.hdr,
+                    extracted_camera.hdr,
                     enhanced.is_some(),
                     span.material,
                 ) else {
@@ -112,18 +107,23 @@ pub(super) fn queue_actors(
                     instance.world_from_actor[1][3],
                     instance.world_from_actor[2][3],
                 );
-                transparent.add(Transparent3d {
-                    entity: (view_entity, *main_entity),
-                    pipeline,
-                    draw_function: transparent_draw,
-                    distance: rangefinder.distance(&position),
-                    batch_range: 0..1,
-                    extra_index: PhaseItemExtraIndex::IndirectParametersIndex {
-                        range: index as u32..index as u32 + 1,
-                        batch_set_index: None,
+                crate::transparent_phase::add(
+                    transparent,
+                    Transparent3d {
+                        sorting_info:
+                            bevy::core_pipeline::core_3d::TransparentSortingInfo3d::AlwaysOnTop,
+                        entity: (view_entity, *main_entity),
+                        pipeline,
+                        draw_function: transparent_draw,
+                        distance: rangefinder.distance(&position),
+                        batch_range: 0..1,
+                        extra_index: PhaseItemExtraIndex::IndirectParametersIndex {
+                            range: index as u32..index as u32 + 1,
+                            batch_set_index: None,
+                        },
+                        indexed: false,
                     },
-                    indexed: false,
-                });
+                );
                 view_queued = true;
             }
         }
@@ -164,7 +164,7 @@ pub(super) fn queue_actors(
 }
 
 pub(super) type DrawActorCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuActors as usize },
+    { render_scene::RuntimeStage::GpuActors as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -174,7 +174,7 @@ pub(super) type DrawActorCommands = crate::gpu_timing::GpuDrawSpan<
 >;
 
 pub(crate) type DrawTransparentActorCommands = crate::gpu_timing::GpuDrawSpan<
-    { crate::RuntimeStage::GpuActors as usize },
+    { render_scene::RuntimeStage::GpuActors as usize },
     (
         SetItemPipeline,
         crate::lighting::SetWorldLightmap,
@@ -183,13 +183,15 @@ pub(crate) type DrawTransparentActorCommands = crate::gpu_timing::GpuDrawSpan<
     ),
 >;
 
-fn blended(material: u32) -> bool {
-    crate::actor::material::state(material).is_some_and(|state| state.blend)
+/// Draws blending, always-depth spans and their companion color layers after terrain.
+pub(super) fn sorted(material: u32) -> bool {
+    crate::actor::material::state(material).is_some_and(|state| state.blend || state.depth_always)
+        || material & crate::actor::material::LATE_DISSOLVE_COLOR != 0
 }
 
-pub(crate) struct DrawActors<const BLENDED: bool>;
+pub(crate) struct DrawActors<const SORTED: bool>;
 
-impl<P: PhaseItem, const BLENDED: bool> RenderCommand<P> for DrawActors<BLENDED> {
+impl<P: PhaseItem, const SORTED: bool> RenderCommand<P> for DrawActors<SORTED> {
     type Param = (
         SRes<ActorGpu>,
         SRes<ActorDrawTracker>,
@@ -202,7 +204,8 @@ impl<P: PhaseItem, const BLENDED: bool> RenderCommand<P> for DrawActors<BLENDED>
         Read<ViewUniformOffset>,
         Read<Msaa>,
         Read<ExtractedView>,
-        Option<Read<crate::EnhancedRendering>>,
+        Option<Read<render_scene::EnhancedRendering>>,
+        Read<bevy::render::camera::ExtractedCamera>,
     );
     type ItemQuery = ();
 
@@ -220,28 +223,39 @@ impl<P: PhaseItem, const BLENDED: bool> RenderCommand<P> for DrawActors<BLENDED>
         let cache = cache.into_inner();
         let mut executed_instances = 0;
         let mut bound_page = None;
-        let view_spans = view_spans(&gpu.main_spans, &gpu.spans, view.4);
-        let spans = if BLENDED {
+        let (spans, sorted_draws) = view_draws(gpu, view.4);
+        let span_indices = if SORTED {
             let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = item.extra_index()
             else {
                 return RenderCommandResult::Skip;
             };
-            let Some(spans) = view_spans.get(range.start as usize..range.end as usize) else {
+            if range.is_empty() {
+                return RenderCommandResult::Skip;
+            }
+            let (Some(first), Some(last)) = (
+                sorted_draws.ranges.get(range.start as usize),
+                sorted_draws.ranges.get(range.end as usize - 1),
+            ) else {
                 return RenderCommandResult::Skip;
             };
-            spans
+            let Some(indices) = sorted_draws.indices.get(first.start..last.end) else {
+                return RenderCommandResult::Skip;
+            };
+            Some(indices)
         } else {
-            view_spans
+            None
         };
-        for span in spans
-            .iter()
-            .filter(|span| blended(span.material) == BLENDED)
-        {
+        for ordinal in 0..span_indices.map_or(spans.len(), |indices| indices.len()) {
+            let index = span_indices.map_or(ordinal, |indices| indices[ordinal]);
+            let span = &spans[index];
+            if sorted(span.material) != SORTED {
+                continue;
+            }
             if span.page != 0 && !gpu.artwork_current {
                 continue;
             }
             let Some(id) =
-                pipeline.draw_variant(*view.2, view.3.hdr, view.4.is_some(), span.material)
+                pipeline.draw_variant(*view.2, view.5.hdr, view.4.is_some(), span.material)
             else {
                 continue;
             };
@@ -280,16 +294,33 @@ impl<P: PhaseItem, const BLENDED: bool> RenderCommand<P> for DrawActors<BLENDED>
     }
 }
 
+/// Only reflection captures draw shadow-only bodies.
+fn draws_all_spans(settings: Option<&render_scene::EnhancedRendering>) -> bool {
+    settings.is_some_and(|settings| settings.reflection_capture)
+}
+
 /// Chooses camera-visible spans while preserving the main view's shadow-only exclusion.
 fn view_spans<'a>(
     main: &'a [crate::actor::gpu::ActorDrawSpan],
     all: &'a [crate::actor::gpu::ActorDrawSpan],
-    settings: Option<&crate::EnhancedRendering>,
+    settings: Option<&render_scene::EnhancedRendering>,
 ) -> &'a [crate::actor::gpu::ActorDrawSpan] {
-    if settings.is_some_and(|settings| settings.reflection_capture) {
-        all
+    if draws_all_spans(settings) { all } else { main }
+}
+
+/// Pairs a view's spans with the sorted plan whose indices address them.
+fn view_draws<'a>(
+    gpu: &'a ActorGpu,
+    settings: Option<&render_scene::EnhancedRendering>,
+) -> (
+    &'a [crate::actor::gpu::ActorDrawSpan],
+    &'a super::dissolve::SortedDraws,
+) {
+    let spans = view_spans(&gpu.main_spans, &gpu.spans, settings);
+    if draws_all_spans(settings) {
+        (spans, &gpu.capture_sorted)
     } else {
-        main
+        (spans, &gpu.sorted)
     }
 }
 

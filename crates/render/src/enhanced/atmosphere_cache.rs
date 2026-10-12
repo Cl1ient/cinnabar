@@ -7,8 +7,8 @@ use bevy::math::{Vec2, Vec3, Vec3Swizzles, Vec4};
 use super::{
     EnhancedQuality,
     frame::{EnhancedFrameGpu, FEATURE_VOLUMETRIC_CLOUDS},
-    quality::budget,
 };
+use render_scene::enhanced::enhanced_quality_budget as budget;
 
 pub(crate) const SKY_LUT_SIZE: [u32; 2] = [192, 108];
 #[cfg(test)]

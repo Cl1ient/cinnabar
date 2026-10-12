@@ -1,16 +1,21 @@
 use std::{collections::HashMap, sync::Arc};
 
+use actor_animation::ActorRigSnapshot;
 use assets::EntityRigFallback;
-use client_world::{ActorRigSnapshot, ActorSnapshot, PlayerProfile};
-use protocol::{ActorKind, PlayerSkin, SkinRgba8};
-use render::{
-    ActorArtworkLocation, ActorArtworkPages, ActorCullView, ActorRenderFrame, ActorRenderIdentity,
-    ActorRenderScene, ActorRigRenderInput, ActorRigRoute, ActorRigSubmission,
-    actor_bounds_are_visible, actor_rig_submission_is_visible, pack_overlay_rgba8,
-};
+use client_world::{ActorSnapshot, PlayerProfile};
+use protocol::{ActorKind, PlayerSkin};
+use render_api::SkinRgba8;
 use render_model::{
     ActorSkinPixels, EntityRigId, MAX_RENDERED_PLAYERS, RenderBoneTransform,
     default_actor_skin_rgba8,
+};
+use {
+    render_model::{
+        ActorArtworkLocation, ActorArtworkPages, ActorCullView, ActorRenderIdentity,
+        ActorRigRenderInput, ActorRigRoute, ActorRigSubmission, actor_bounds_are_visible,
+        actor_rig_submission_is_visible, pack_overlay_rgba8,
+    },
+    render_scene::{ActorRenderFrame, ActorRenderScene},
 };
 
 mod admission;
@@ -64,14 +69,14 @@ pub fn update_actor_rig_scene(
     )
 }
 
-/// Whether a rig can pass this frame's culling, judged before its presentation is built: non-player
-/// actors must lie within vanilla's candidate cube, and no actor may be hidden by `occluded`
-/// (given its culling box's low and high corners).
+/// Checks distance and frustum bounds before building a rig's presentation.
+/// Always-depth layers survive terrain occlusion, using the draw frame's cached layers when available.
 pub fn rig_may_be_visible(
     rig: &ActorRigSnapshot<'_>,
     actor: &ActorSnapshot,
     partial_tick: f32,
     view: Option<ActorCullView>,
+    frame: Option<&mut actor_animation::ActorRenderFrame<'_>>,
     occluded: impl Fn([f32; 3], [f32; 3]) -> bool,
 ) -> bool {
     if !actor_within_render_distance(actor, partial_tick, view) {
@@ -95,6 +100,14 @@ pub fn rig_may_be_visible(
     }
     let (low, high) = bounds.at(feet, scale);
     !occluded(low, high)
+        || frame.map_or_else(
+            || {
+                rig.render
+                    .iter()
+                    .any(|layer| layer.material_state.is_some_and(|state| state.depth_always))
+            },
+            |frame| frame.has_always_depth_material(rig.actor.runtime_id),
+        )
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -124,12 +137,17 @@ pub fn entity_rig_presentation_cached(
         .flatten();
     let rest_mode =
         location.is_some_and(|location| location.pose_mode() == assets::ActorPoseMode::RestPose);
+    // Static artwork waits for a completed rest observation after admission or reset.
+    if rest_mode && rig.rest_completed_tick == 0 {
+        return None;
+    }
     let selected = if rest_mode {
         ActorRigSnapshot {
             previous: rig.rest,
             current: rig.rest,
             completed_tick: rig.rest_completed_tick,
             reset_generation: rig.rest_reset_generation,
+            pose_evaluated: true,
             ..*rig
         }
     } else {
@@ -231,8 +249,8 @@ fn tick_presentation(
         || rig.actor.session_id == 0
         || rig.actor.runtime_id == 0
         || rig.actor.spawn_revision == 0
-        || rig.completed_tick == 0
         || rig.reset_generation == 0
+        || (!rig.pose_evaluated && rig.fallback != assets::EntityRigFallback::GeometryOnly)
         || (!rejected_pose && (rig.previous.is_empty() || rig.previous.len() != rig.current.len()))
     {
         return None;
@@ -263,8 +281,9 @@ fn tick_presentation(
                         ingress_sequence: 0,
                         source_tick: None,
                         movement_revision: 0,
-                        pose_generation: rig.completed_tick,
-                        layer: render::ACTOR_LAYER_BODY,
+                        // Tick zero is a valid initial pose; identity generations reserve zero.
+                        pose_generation: rig.completed_tick.saturating_add(1),
+                        layer: render_model::ACTOR_LAYER_BODY,
                     },
                     rig: EntityRigId(rig.rig.0),
                     previous_bones,
@@ -276,7 +295,7 @@ fn tick_presentation(
                 texture_layer: u32::MAX,
                 route,
                 tint: 0,
-                uv_anim: render::IDENTITY_UV_ANIM,
+                uv_anim: render_model::IDENTITY_UV_ANIM,
                 light: 0,
                 overlay_rgba8: 0,
             },
@@ -338,7 +357,8 @@ pub(crate) fn sampled_rig_placement(
 ) -> Option<([[f32; 4]; 3], f32)> {
     let alpha = alpha.clamp(0.0, 1.0);
     let position = interpolated_position(actor, alpha)?;
-    let yaw = if is_billboard(actor) || actor.target_rotation_is_absolute() {
+    let yaw = if rig.placement_frame.placement() == Some(assets::placement::ActorYawFrame::Absolute)
+    {
         0.0
     } else {
         lerp_degrees(rig.previous_body_yaw, rig.body_yaw, alpha)
@@ -411,7 +431,7 @@ pub fn local_diagnostic_presentation(
                     source_tick: None,
                     movement_revision: pose_generation,
                     pose_generation,
-                    layer: render::ACTOR_LAYER_BODY,
+                    layer: render_model::ACTOR_LAYER_BODY,
                 },
                 rig: EntityRigId(u32::MAX),
                 previous_bones: Arc::from(bones),
@@ -424,7 +444,7 @@ pub fn local_diagnostic_presentation(
             texture_layer: u32::MAX,
             route: ActorRigRoute::Diagnostic,
             tint: 0,
-            uv_anim: render::IDENTITY_UV_ANIM,
+            uv_anim: render_model::IDENTITY_UV_ANIM,
             light: 0,
             overlay_rgba8: 0,
         },
@@ -629,17 +649,20 @@ pub fn attach_layers<Context>(
     }
 }
 
-/// Lights each body at the reference body-height point; a body without solved light yet
+/// Lights each body at its collision-box endpoints; a body without solved light yet
 /// keeps drawing unlit rather than black.
 pub fn light_bodies(batch: &mut ActorPresentationBatch, stream: &chunk_pipeline::WorldStream) {
     for submission in &mut batch.submissions {
         let feet = submission.world_from_actor.map(|row| row[3]);
-        let position = stream
+        let light = stream
             .authority()
             .actor(submission.input.identity.runtime_id)
-            .map_or(feet, |actor| actor.brightness_sample_position(feet));
-        if let Some((block, sky)) = stream.solved_light_at(position) {
-            submission.light = render::pack_actor_light(block, sky);
+            .map_or_else(
+                || stream.solved_light_at(feet),
+                |actor| stream.actor_light_at(actor, feet),
+            );
+        if let Some((block, sky)) = light {
+            submission.light = render_model::pack_actor_light(block, sky);
         }
     }
 }
@@ -767,15 +790,6 @@ pub(crate) fn lerp_degrees(start: f32, end: f32, alpha: f32) -> f32 {
 
 pub(crate) fn wrap_degrees(degrees: f32) -> f32 {
     (degrees + 180.0).rem_euclid(360.0) - 180.0
-}
-
-/// Projectile bones carry absolute rotation; billboard bones carry the camera's rotation.
-fn is_billboard(actor: &ActorSnapshot) -> bool {
-    matches!(&actor.kind, ActorKind::Entity { identifier } if matches!(identifier.as_ref(),
-        "minecraft:xp_bottle" | "minecraft:ender_pearl" | "minecraft:xp_orb"
-        | "minecraft:dragon_fireball" | "minecraft:fireball" | "minecraft:snowball"
-        | "minecraft:small_fireball" | "minecraft:splash_potion" | "minecraft:egg"
-        | "minecraft:eye_of_ender_signal" | "minecraft:lingering_potion"))
 }
 
 fn quaternion_from_euler_degrees(rotation: [f32; 3]) -> [f32; 4] {
@@ -949,3 +963,7 @@ mod layer_pass_tests {
 #[cfg(test)]
 #[path = "actors/native_skin_tests.rs"]
 mod native_skin_tests;
+
+#[cfg(test)]
+#[path = "actors/placement_frame_tests.rs"]
+mod placement_frame_tests;

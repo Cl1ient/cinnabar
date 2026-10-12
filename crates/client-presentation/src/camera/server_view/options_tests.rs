@@ -291,6 +291,7 @@ fn player_effects_gate_fog_and_lightmap_without_erasing_clocks_or_nausea() {
         darkness: 0.4,
         night_vision: 0.5,
         nausea: 0.6,
+        sky_hidden: true,
     };
     for (base, enabled, expected) in [
         ("minecraft:free", None, false),
@@ -316,6 +317,7 @@ fn player_effects_gate_fog_and_lightmap_without_erasing_clocks_or_nausea() {
         view.apply(2, &selection(), &context());
         let rendered = effects.for_camera(&view);
         assert_eq!(rendered.nausea, effects.nausea);
+        assert_eq!(rendered.sky_hidden, expected);
         assert_eq!(
             rendered.blindness,
             if expected { effects.blindness } else { 0.0 }
@@ -418,11 +420,11 @@ fn inactive_targets_advance_and_remove_target_only_affects_the_selected_camera()
         })),
         &context,
     );
-    let before = crate::test_allocations::count();
+    let before = test_alloc::thread_allocations();
     for _ in 0..1000 {
         view.advance_target(0.001, &context);
     }
-    assert_eq!(crate::test_allocations::count() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
     let mut select = selection();
     let CameraEvent::Instruction(instruction) = &mut select else {
         unreachable!()

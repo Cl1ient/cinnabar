@@ -2,13 +2,14 @@
 
 use ui::{SafeArea, TextLayoutCache, UiNode, UiNodeId, UiRect, UiVisual};
 
-use crate::menu::{MenuAction, MenuField, MenuView};
-use crate::ui_runtime::presentation::{IconRef, forms::menu_caret::with_caret};
+use launcher::menu::{MenuAction, MenuField, MenuView};
+use {ui::IconRef, ui_screens::menu_caret::with_caret};
 
 use super::{
     ACCENT, BUTTON, BUTTON_FOCUSED, BUTTON_HOVERED, BUTTON_PRESSED, MUTED, PANEL_ALT, TEXT,
-    TextMetrics, UiPresentationError, bounded_visible_text, rect,
+    UiPresentationError, bounded_visible_text, rect,
 };
+use ui_engine::text_metrics::TextMetrics;
 
 pub(super) fn card(
     view: &MenuView,
@@ -21,7 +22,7 @@ pub(super) fn card(
     solid_page: u16,
     action: MenuAction,
     _focus_index: usize,
-    server: &crate::menu::MenuServerCard,
+    server: &launcher::menu::MenuServerCard,
     icon: Option<IconRef>,
     position: [f32; 2],
     width: f32,

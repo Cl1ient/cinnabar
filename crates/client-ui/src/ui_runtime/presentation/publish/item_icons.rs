@@ -1,7 +1,7 @@
 //! Stack-aware icons: a crossbow's nonzero animation frame N selects
 //! crossbow_pulling variant N-1.
 
-use super::*;
+use {super::*, ui::IconRef};
 
 #[derive(Default)]
 pub struct ItemIconFrames(pub [Option<u32>; protocol::HOTBAR_SLOT_COUNT as usize]);
@@ -18,14 +18,15 @@ pub(super) fn stack_icon(
     runtime: &UiRuntime,
     presentation: &UiPresentationRuntime,
     stack: &protocol::NetworkItemStack,
-    identifier: &str,
+    item: client_world::CanonicalItemStack,
     animation_frame: Option<u32>,
 ) -> Option<IconRef> {
-    let projectile = protocol::item_charged_projectile(&stack.extra_data);
+    let identifier = item.identifier.as_deref()?;
     let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
         identifier,
         stack.metadata,
-        projectile.as_deref(),
+        item.use_animation,
+        item.charged_projectile_role,
         animation_frame,
     );
     let icon = presentation.item_icon(icon_identifier, variant)?;
@@ -34,15 +35,15 @@ pub(super) fn stack_icon(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
-    use super::*;
+    use {super::*, ui::IconRef};
     /// Resolves a stack icon for app item-use integration tests.
     pub fn stack_icon(
         runtime: &UiRuntime,
         presentation: &UiPresentationRuntime,
         stack: &protocol::NetworkItemStack,
-        identifier: &str,
+        item: client_world::CanonicalItemStack,
         animation_frame: Option<u32>,
     ) -> Option<IconRef> {
-        super::stack_icon(runtime, presentation, stack, identifier, animation_frame)
+        super::stack_icon(runtime, presentation, stack, item, animation_frame)
     }
 }

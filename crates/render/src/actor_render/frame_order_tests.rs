@@ -1,3 +1,4 @@
+use bevy::ecs::system::RunSystemOnce;
 use std::sync::Arc;
 
 use bevy::{
@@ -5,7 +6,7 @@ use bevy::{
     asset::Assets,
     core_pipeline::core_3d::{Opaque3d, Transparent3d},
     diagnostic::FrameCount,
-    ecs::{schedule::Schedule, system::RunSystemOnce},
+    ecs::schedule::Schedule,
     prelude::*,
     render::{
         ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
@@ -22,9 +23,12 @@ use super::super::{
     ActorGpu, ActorRenderPlugin, DrawActorCommands, DrawTransparentActorCommands,
     prepare_actor_bind_group, prepare_actor_resources, submit_actor_presented_frame,
 };
-use crate::actor::{
-    ActorDrawManifestEntry, ActorRenderFrame, ActorRenderIdentity, ActorRigGeometrySpan,
-    ActorRigRoute, gpu::ActorDrawTracker,
+use {
+    crate::actor::gpu::ActorDrawTracker,
+    render_model::{
+        ActorDrawManifestEntry, ActorRenderIdentity, ActorRigGeometrySpan, ActorRigRoute,
+    },
+    render_scene::ActorRenderFrame,
 };
 
 #[derive(Resource, Default)]
@@ -37,7 +41,7 @@ fn reset_phases(
 ) {
     for view in &views {
         opaque.prepare_for_new_frame(view.retained_view_entity, GpuPreprocessingMode::None);
-        transparent.insert_or_clear(view.retained_view_entity);
+        transparent.prepare_for_new_frame(view.retained_view_entity);
     }
 }
 
@@ -61,7 +65,7 @@ fn inspect_executed_frame(world: &mut World) {
         .get(&retained)
         .unwrap()
         .items
-        .iter()
+        .values()
         .filter(|item| item.draw_function == transparent_draw)
         .map(|item| {
             let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &item.extra_index
@@ -75,16 +79,14 @@ fn inspect_executed_frame(world: &mut World) {
     let gpu = world.resource::<ActorGpu>();
     let frame = world.resource::<ActorRenderFrame>();
     assert_eq!(gpu.frame_generation, frame.rig.frame_generation);
-    assert_eq!(gpu.instances.as_ref(), frame.rig.instances.as_ref());
+    for (prepared, source) in gpu.instances.iter().zip(frame.rig.instances.iter()) {
+        let mut prepared = *prepared;
+        prepared.material &= !crate::actor::material::LATE_DISSOLVE_COLOR;
+        assert_eq!(&prepared, source);
+    }
     assert!(gpu.bind_group.is_some(), "bindings are ready for execution");
-    let expected_ranges = gpu
-        .spans
-        .iter()
-        .enumerate()
-        .filter(|(_, span)| {
-            crate::actor::material::state(span.material).is_some_and(|state| state.blend)
-        })
-        .map(|(index, _)| index as u32..index as u32 + 1)
+    let expected_ranges = (0..gpu.sorted.ranges.len())
+        .map(|index| index as u32..index as u32 + 1)
         .collect::<Vec<_>>();
     assert_eq!(queued_ranges, expected_ranges);
     let has_opaque = world
@@ -98,13 +100,16 @@ fn inspect_executed_frame(world: &mut World) {
         .spans
         .iter()
         .copied()
-        .filter(|span| {
-            has_opaque
-                && !crate::actor::material::state(span.material).is_some_and(|state| state.blend)
-        })
+        .filter(|span| has_opaque && !super::super::phase::sorted(span.material))
         .collect::<Vec<_>>();
     for range in queued_ranges {
-        executed.extend_from_slice(&gpu.spans[range.start as usize..range.end as usize]);
+        for draw in &gpu.sorted.ranges[range.start as usize..range.end as usize] {
+            executed.extend(
+                gpu.sorted.indices[draw.clone()]
+                    .iter()
+                    .map(|&index| gpu.spans[index]),
+            );
+        }
     }
     let mut indices = executed
         .iter()
@@ -140,11 +145,11 @@ fn render_app() -> App {
         .init_resource::<ViewBinnedRenderPhases<Opaque3d>>()
         .init_resource::<ViewUniforms>()
         .init_resource::<FrameCount>()
-        .init_resource::<crate::WorldLighting>()
-        .init_resource::<crate::WorldFullbright>()
-        .init_resource::<crate::NametagSceneResource>()
+        .init_resource::<render_scene::WorldLighting>()
+        .init_resource::<render_scene::WorldFullbright>()
+        .init_resource::<render_scene::NametagSceneResource>()
         .init_resource::<ExecutedFrames>()
-        .add_systems(Render, reset_phases.in_set(RenderSystems::ManageViews))
+        .add_systems(Render, reset_phases.in_set(RenderSystems::PrepareViews))
         .add_systems(
             Render,
             prepare_view_uniforms.in_set(RenderSystems::PrepareResources),
@@ -172,7 +177,7 @@ fn frame(blended: &[bool]) -> ActorRenderFrame {
     frame.rig.maximum_vertex_count = 3;
     frame.rig.instances = blended
         .iter()
-        .map(|&blend| crate::actor::ActorGpuInstance {
+        .map(|&blend| render_model::ActorGpuInstance {
             material: assets::EntityRenderMaterial::Default.word(Some(
                 assets::EntityRenderMaterialState {
                     blend,
@@ -215,15 +220,15 @@ fn frame(blended: &[bool]) -> ActorRenderFrame {
         .collect::<Vec<_>>()
         .into();
     frame.rig.geometry_vertices =
-        crate::actor::ActorRigVertexSegments::from_vertices([ActorRigVertex::default(); 3]);
+        render_model::ActorRigVertexSegments::from_vertices([ActorRigVertex::default(); 3]);
     frame.rig.geometry_spans = Arc::from([ActorRigGeometrySpan {
         first_vertex: 0,
         vertex_count: 3,
     }]);
-    let mut artwork = crate::actor::ActorArtworkPages::default();
+    let mut artwork = render_model::ActorArtworkPages::default();
     artwork.identity = [1; 32];
     artwork.entity_identity = [2; 32];
-    artwork.pages = Arc::from([crate::actor::ActorTexturePage {
+    artwork.pages = Arc::from([render_model::ActorTexturePage {
         width: 16,
         height: 16,
         layers: 1,
@@ -268,4 +273,144 @@ fn actor_render_changed_spans_queue_and_present_the_current_frame() {
     world.run_schedule(Render);
     assert_eq!(world.resource::<ActorGpu>().spans.len(), 3);
     assert_eq!(world.resource::<ExecutedFrames>().0, [(2, vec![0, 1, 2])]);
+}
+
+#[test]
+fn always_depth_dissolve_mask_queues_before_its_equal_depth_color() {
+    use bevy::render::render_phase::SortedPhaseItem;
+    let mut app = render_app();
+    let world = app.sub_app_mut(RenderApp).world_mut();
+    let mut frame = frame(&[false; 2]);
+    let instances = Arc::make_mut(&mut frame.rig.instances);
+    instances[0].material =
+        assets::EntityRenderMaterial::DissolveDepth.word(Some(assets::EntityRenderMaterialState {
+            depth_always: true,
+            ..Default::default()
+        }));
+    instances[1].material = assets::EntityRenderMaterial::DissolveColor as u32;
+    let manifest = Arc::make_mut(&mut frame.rig.manifest);
+    manifest[1].identity = ActorRenderIdentity {
+        layer: u8::MAX,
+        ..manifest[0].identity
+    };
+    world.insert_resource(frame);
+    world.run_schedule(Render);
+    let retained = world
+        .query::<&ExtractedView>()
+        .single(world)
+        .unwrap()
+        .retained_view_entity;
+    let mut phases = world.resource_mut::<ViewSortedRenderPhases<Transparent3d>>();
+    let items = &mut phases.get_mut(&retained).unwrap().items;
+    assert_eq!(items.len(), 1, "mask and color must share one draw item");
+    Transparent3d::sort(items);
+    let ranges = items
+        .values()
+        .map(|item| {
+            let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &item.extra_index
+            else {
+                panic!("missing draw span");
+            };
+            range.clone()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(ranges.len(), 1, "the pair remains one item while sorting");
+    assert_eq!(ranges[0], 0..1);
+    assert_eq!(world.resource::<ActorGpu>().sorted.indices, [0, 1]);
+}
+
+#[test]
+fn an_ordinary_actors_dissolve_color_is_not_promoted_by_another_actors_mask() {
+    let mut app = render_app();
+    let world = app.sub_app_mut(RenderApp).world_mut();
+    let mut frame = frame(&[false; 4]);
+    let instances = Arc::make_mut(&mut frame.rig.instances);
+    instances[0].material =
+        assets::EntityRenderMaterial::DissolveDepth.word(Some(assets::EntityRenderMaterialState {
+            depth_always: true,
+            ..Default::default()
+        }));
+    instances[1].material = assets::EntityRenderMaterial::DissolveColor as u32;
+    instances[2].material = assets::EntityRenderMaterial::DissolveDepth as u32;
+    instances[3].material = assets::EntityRenderMaterial::DissolveColor as u32;
+    let manifest = Arc::make_mut(&mut frame.rig.manifest);
+    manifest[1].identity = ActorRenderIdentity {
+        layer: u8::MAX,
+        ..manifest[0].identity
+    };
+    manifest[3].identity = ActorRenderIdentity {
+        layer: u8::MAX,
+        ..manifest[2].identity
+    };
+    world.insert_resource(frame);
+    world.run_schedule(Render);
+    let gpu = world.resource::<ActorGpu>();
+    assert!(super::super::phase::sorted(gpu.instances[0].material));
+    assert!(super::super::phase::sorted(gpu.instances[1].material));
+    assert!(!super::super::phase::sorted(gpu.instances[2].material));
+    assert!(!super::super::phase::sorted(gpu.instances[3].material));
+}
+
+#[test]
+fn a_depth_writing_blend_cannot_split_a_sorted_dissolve_pair() {
+    let mut app = render_app();
+    let world = app.sub_app_mut(RenderApp).world_mut();
+    let mut frame = frame(&[false, true, false]);
+    let instances = Arc::make_mut(&mut frame.rig.instances);
+    instances[0].material =
+        assets::EntityRenderMaterial::DissolveDepth.word(Some(assets::EntityRenderMaterialState {
+            depth_always: true,
+            ..Default::default()
+        }));
+    instances[2].material = assets::EntityRenderMaterial::DissolveColor as u32;
+    let manifest = Arc::make_mut(&mut frame.rig.manifest);
+    manifest[2].identity = ActorRenderIdentity {
+        layer: u8::MAX,
+        ..manifest[0].identity
+    };
+    world.insert_resource(frame);
+    world.run_schedule(Render);
+    let retained = world
+        .query::<&ExtractedView>()
+        .single(world)
+        .unwrap()
+        .retained_view_entity;
+    let phases = world.resource::<ViewSortedRenderPhases<Transparent3d>>();
+    assert_eq!(
+        phases.get(&retained).unwrap().items.len(),
+        2,
+        "mask and color must be one draw item before the equal-distance blend"
+    );
+    use bevy::render::render_phase::SortedPhaseItem;
+    let order = {
+        let mut phases = world.resource_mut::<ViewSortedRenderPhases<Transparent3d>>();
+        Transparent3d::sort(&mut phases.get_mut(&retained).unwrap().items);
+        phases
+            .get(&retained)
+            .unwrap()
+            .items
+            .values()
+            .map(|item| {
+                let PhaseItemExtraIndex::IndirectParametersIndex { range, .. } = &item.extra_index
+                else {
+                    panic!("missing draw plan");
+                };
+                range.start as usize
+            })
+            .collect::<Vec<_>>()
+    };
+    let gpu = world.resource::<ActorGpu>();
+    let spans = order
+        .iter()
+        .flat_map(|&index| {
+            gpu.sorted.indices[gpu.sorted.ranges[index].clone()]
+                .iter()
+                .copied()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spans,
+        [0, 2, 1],
+        "the color finishes before the intervening blend can write depth"
+    );
 }

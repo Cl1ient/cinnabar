@@ -77,7 +77,7 @@ fn light_worker_dispatch_is_capped_and_pending_work_progresses() {
     let mut stream = lit_stream(1);
     let capacity = super::super::effective_light_job_cap();
     assert!((1..=super::super::MAX_IN_FLIGHT_LIGHT_JOBS).contains(&capacity));
-    let radius = super::super::PHASE0_MAX_VIEW_RADIUS_CHUNKS;
+    let radius = super::super::MAX_VIEW_RADIUS_CHUNKS;
     let keys = (-radius..=radius)
         .flat_map(|x| (-radius..=radius).map(move |z| (x, z)))
         .filter(|(x, z)| (x + z).rem_euclid(2) == 0)
@@ -115,4 +115,52 @@ fn light_worker_dispatch_is_capped_and_pending_work_progresses() {
     }
     assert_eq!(stream.lighting.jobs.in_flight.len(), capacity);
     assert!(stream.lighting.jobs.pending.is_empty());
+}
+
+/// With every light worker busy, urgent work takes the reserve even behind higher-ranked
+/// transfer work that cannot use it.
+#[test]
+fn urgent_light_takes_the_reserve_behind_ordinary_transfer_work() {
+    let mut stream = lit_stream(1);
+    let transfer = SubChunkKey::new(1, 0, 0, 0);
+    let urgent = SubChunkKey::new(1, 4, 0, 0);
+    for key in [transfer, urgent] {
+        install_current_light(&mut stream, key, 0, 0, false);
+    }
+    let transfer_revision = stream.mark_light_dirty_exact(transfer).unwrap();
+    let urgent_revision = stream
+        .mark_light_dirty_exact_with_priority(urgent, true)
+        .unwrap();
+    stream.lighting.jobs.scan.clear();
+    let view = SchedulerView {
+        position: [8.0; 3],
+        forward: stream.view_forward,
+        startup_center: None,
+    };
+    let mut ranked = PendingSchedulerCandidate::new(transfer, transfer_revision, view, false);
+    ranked.transfer = true;
+    let lane = &mut stream.lighting.jobs.lanes[0];
+    lane.ready.clear();
+    lane.ready.push(ranked);
+    lane.ready.push(PendingSchedulerCandidate::new(
+        urgent,
+        urgent_revision,
+        view,
+        true,
+    ));
+    stream
+        .lighting
+        .running_jobs
+        .store(effective_light_job_cap(), Ordering::Release);
+
+    assert_eq!(stream.dispatch_light_jobs_reserving([8.0; 3], 4, 1), 1);
+
+    assert!(stream.lighting.jobs.in_flight.contains_key(&urgent));
+    assert!(stream.lighting.jobs.pending.contains_key(&transfer));
+    assert!(
+        stream.lighting.jobs.lanes[0]
+            .ready
+            .iter()
+            .any(|candidate| candidate.key == transfer)
+    );
 }

@@ -1,6 +1,6 @@
 //! Worn wings use the pack's controller, movement queries and body attachment.
 
-use client_world::AttachableAnimationInput;
+use actor_animation::AttachableAnimationInput;
 
 use super::*;
 
@@ -14,6 +14,7 @@ const WING_MATERIAL_STATE: assets::EntityRenderMaterialState = assets::EntityRen
     additive: false,
     additive_alpha: false,
     disable_overlay: false,
+    depth_always: false,
 };
 
 impl EquipmentRuntime {
@@ -47,7 +48,9 @@ impl EquipmentRuntime {
         let variables = [("variable.is_enchanted", f32::from(item.enchanted))];
         let input = equipment.attachable_input(AttachableAnimationInput {
             worn: true,
+            worn_slot: ArmorSlot::Chestplate as u8,
             frame_alpha: animation.frame_alpha,
+            delta_seconds: Some(animation.delta_seconds),
             owner_variables: &variables,
             ..Default::default()
         });
@@ -105,16 +108,16 @@ impl EquipmentRuntime {
         let ids =
             std::iter::once(super::super::ELYTRA_LAYER).chain(super::super::ELYTRA_GROUP_LAYERS);
         for (layer_id, (index, pose, hidden, material, state, source)) in ids.zip(groups) {
-            let material = render::ActorMaterial {
+            let material = render_model::ActorMaterial {
                 kind: if item.enchanted {
                     assets::EntityRenderMaterial::Glint
                 } else {
                     material
                 },
                 state: Some(state.unwrap_or(WING_MATERIAL_STATE)),
-                glint: render::ActorGlint {
+                glint: render_model::ActorGlint {
                     time_seconds: (animation.rig.completed_tick as f32 + animation.frame_alpha)
-                        * client_world::ACTOR_TICK_DURATION.as_secs_f32(),
+                        * simulation_clock::TICK_DURATION.as_secs_f32(),
                     ..Default::default()
                 },
                 ..Default::default()

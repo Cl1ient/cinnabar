@@ -24,7 +24,7 @@ use kernels::{CullKernels, CullStorage, HizPyramid};
 use model::{
     ARGS_WORDS, CullCamera, CullPhase, CullRecord, CullRecordSource, CullStream, CullViewInput,
     CullViewUniform, OFFSET_CORNERS, STREAM_COUNT, args_region, count_index, frustum_slack,
-    reference_args, resolve_culled_args,
+    reference_args, region_draws, resolve_culled_args,
 };
 
 const SIDE: f32 = world::SUB_CHUNK_SIDE as f32;
@@ -48,14 +48,15 @@ fn camera(eye: Vec3, target: Vec3) -> Camera {
 fn camera_with_aspect(eye: Vec3, target: Vec3, aspect: f32) -> Camera {
     let global =
         GlobalTransform::from(Transform::from_translation(eye).looking_at(target, Vec3::Y));
-    let projection = Mat4::perspective_infinite_reverse_rh(1.2, aspect, 0.05);
+    let projection =
+        glam::camera::rh::proj::directx::perspective_infinite_reverse(1.2, aspect, 0.05);
     let clip_from_world = projection * Mat4::from(global.affine().inverse());
-    let frustum = Frustum::from_clip_from_world_custom_far(
+    let frustum = Frustum(bevy::shape::ViewFrustum::from_clip_from_world_custom_far(
         &clip_from_world,
         &global.translation(),
         &global.back().as_vec3(),
         1000.0,
-    );
+    ));
     Camera {
         eye,
         clip_from_view: projection,
@@ -212,17 +213,19 @@ impl<'a> Culler<'a> {
             self.storage.draw_offsets.size(),
         );
         let offsets = bytemuck::cast_slice::<u8, u32>(&offsets)
-            .chunks_exact(2)
-            .map(|pair| [pair[0], pair[1]])
-            .collect::<Vec<_>>();
+            .as_chunks::<2>()
+            .0
+            .to_vec();
         CullStream::ALL.map(|stream| {
             let start = args_region(self.storage.capacity, phase, stream) as usize;
             let count = counts[count_index(phase, stream) as usize] as usize;
             assert!(count as u32 <= stream.draws_per_record() * self.slots);
             words[start..start + count * ARGS_WORDS as usize]
-                .chunks_exact(ARGS_WORDS as usize)
+                .as_chunks::<{ ARGS_WORDS as usize }>()
+                .0
+                .iter()
                 .map(|chunk| {
-                    let command: [u32; ARGS_WORDS as usize] = chunk.try_into().unwrap();
+                    let command = *chunk;
                     // Builtins see neither offset on DX12 count draws, so both stay zero.
                     assert_eq!((command[2], command[4]), (0, 0));
                     let entries = &offsets[command[3] as usize..][..OFFSET_CORNERS as usize];
@@ -258,7 +261,11 @@ fn map(gpu: &Gpu, staging: &wgpu::Buffer) -> Vec<u8> {
         .poll(wgpu::PollType::wait_indefinitely())
         .unwrap();
     rx.recv().unwrap().unwrap();
-    staging.slice(..).get_mapped_range().to_vec()
+    staging
+        .slice(..)
+        .get_mapped_range()
+        .expect("readback buffer is mapped")
+        .to_vec()
 }
 
 /// Mixed records over a 9x4x9 sub-chunk grid, with dead and cave-hidden slots.
@@ -325,6 +332,66 @@ fn cull_and_pyramid_kernels_validate() {
         .validate(&module)
         .unwrap();
     }
+}
+
+/// Count draws are unvalidated: a dispatch wider than the storage still keeps every count and
+/// command inside its own stream region.
+#[test]
+fn cull_counts_and_commands_stay_inside_their_regions() {
+    let Some(gpu) = Gpu::for_fixture("gpu terrain cull region bounds") else {
+        return;
+    };
+    let records = (0..512_u32)
+        .map(|slot| {
+            CullRecord::new(&CullRecordSource {
+                origin: [0, 64, 0],
+                base_vertex: slot as i32 * 4,
+                bounds: [[0; 3], [16; 3]],
+                cube: slot * 64..slot * 64 + 12,
+                solid_ends: [2, 4, 6, 8, 10, 10],
+                model: 40_000 + slot * 16..40_004 + slot * 16,
+                liquid: 80_000 + slot * 16..80_004 + slot * 16,
+            })
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let mut culler = Culler::new(&gpu, &records, &[u32::MAX; 16]);
+    let capacity = culler.storage.capacity;
+    assert_eq!(capacity, 512);
+    culler.set_history(&vec![1; records.len()]);
+    // Slots past the storage clamp to its last record, so an unguarded kernel counts double.
+    culler.slots = capacity * 2;
+    let camera = camera(Vec3::new(8.0, 90.0, -30.0), Vec3::new(8.0, 72.0, 8.0));
+    let mut encoder = gpu.device.create_command_encoder(&Default::default());
+    culler.encode(
+        &mut encoder,
+        &view_input(&camera, 0),
+        CullPhase::Early,
+        None,
+    );
+    gpu.queue.submit([encoder.finish()]);
+
+    let counts = read_buffer(&gpu, &culler.storage.draw_counts, 32);
+    let counts = bytemuck::cast_slice::<u8, u32>(&counts);
+    let words = read_buffer(&gpu, &culler.storage.args, culler.storage.args.size());
+    let words = bytemuck::cast_slice::<u8, u32>(&words);
+    for stream in CullStream::ALL {
+        let count = counts[count_index(CullPhase::Early, stream) as usize];
+        let limit = region_draws(capacity, stream);
+        assert!(
+            count <= limit,
+            "{stream:?} counted {count} past its region of {limit}"
+        );
+        // One draw per record overfills these regions twice over, so they fill exactly.
+        if stream != CullStream::Solid {
+            assert_eq!(count, limit, "{stream:?} region must fill");
+        }
+    }
+    let late = args_region(capacity, CullPhase::Late, CullStream::Solid) as usize;
+    assert!(
+        words[late..].iter().all(|&word| word == 0),
+        "early commands spilled into the late regions"
+    );
 }
 
 /// Frustum and cave decisions match Bevy's CPU culling; compaction, facing runs and the
@@ -490,6 +557,7 @@ impl Target {
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         })
     }
 
@@ -718,7 +786,7 @@ impl Raster {
     ) -> Self {
         let source = format!(
             "{}\n{UNSEALED_VERTEX}",
-            shader_source::standalone(include_str!("../../src/chunk.wgsl"), &[])
+            shader_source::standalone(include_str!("../../src/chunk.wesl"), &[])
         )
         .replace("@group(1) @binding(0)", "@group(0) @binding(20)");
         let module = gpu
@@ -727,11 +795,11 @@ impl Raster {
                 label: None,
                 source: wgpu::ShaderSource::Wgsl(source.into()),
             });
-        let offsets = [wgpu::VertexBufferLayout {
+        let offsets = [Some(wgpu::VertexBufferLayout {
             array_stride: model::OFFSET_ENTRY_BYTES,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &wgpu::vertex_attr_array![0 => Uint32x2],
-        }];
+        })];
         let pipeline = |fragment, cull_mode| {
             gpu.device
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -749,8 +817,8 @@ impl Raster {
                     },
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEPTH_FORMAT,
-                        depth_write_enabled: write_depth,
-                        depth_compare: wgpu::CompareFunction::GreaterEqual,
+                        depth_write_enabled: Some(write_depth),
+                        depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
                         stencil: Default::default(),
                         bias: Default::default(),
                     }),
@@ -769,7 +837,7 @@ impl Raster {
                             },
                         })],
                     }),
-                    multiview: None,
+                    multiview_mask: None,
                     cache: None,
                 })
         };
@@ -807,7 +875,7 @@ impl Raster {
         atmosphere[19] = 8.0;
         atmosphere[20] = 60.0;
         let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
-        let table = render::LightmapInputs::default().build();
+        let table = render_model::LightmapInputs::default().build();
         let lightmap = gpu.buffer(bytemuck::cast_slice(&table), wgpu::BufferUsages::UNIFORM);
         let atlas = solid_terrain_raster::pattern_texture(gpu);
         let sampler = gpu.device.create_sampler(&Default::default());

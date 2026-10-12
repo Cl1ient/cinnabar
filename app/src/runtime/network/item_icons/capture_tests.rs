@@ -9,7 +9,7 @@ use client_ui::ui_runtime::{
 use protocol::{InventoryEvent, PlayerGameMode, WorldBootstrap};
 use ui::DpiScale;
 
-use protocol::{BedrockSession, ItemActorEvent, WorldEvent};
+use protocol::{ItemActorEvent, WorldEvent};
 
 /// Encodes the unsigned framing integers used by a Bedrock packet batch.
 fn varint(out: &mut Vec<u8>, mut value: u64) {
@@ -25,7 +25,7 @@ fn varint(out: &mut Vec<u8>, mut value: u64) {
 
 #[test]
 fn captured_hotbar_survives_network_registry_and_inventory_publication() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
     let Some(path) = std::env::var_os("CINNABAR_LOBBY_CAPTURE") else {
         eprintln!(
@@ -37,7 +37,6 @@ fn captured_hotbar_survives_network_registry_and_inventory_publication() {
     let view = super::super::local_pack::local_pack_view("CINNABAR_RENDER_PACK")
         .expect("captured session resource pack");
     let bytes = std::fs::read(path).unwrap();
-    let session = BedrockSession { shield_item_id: 0 };
     let mut runtime = UiRuntime::new(1);
     player_runtime
         .facts
@@ -57,7 +56,7 @@ fn captured_hotbar_survives_network_registry_and_inventory_publication() {
         varint(&mut batch, (header.len() + body.len()) as u64);
         batch.extend(header);
         batch.extend(body);
-        for packet in protocol::decode_batch(batch.into(), &session).unwrap() {
+        for packet in protocol::decode_batch(batch.into()).unwrap() {
             sequence += 1;
             match protocol::into_world_event(packet, 0).unwrap() {
                 Some(WorldEvent::Inventory(event)) => {
@@ -96,7 +95,7 @@ fn captured_hotbar_survives_network_registry_and_inventory_publication() {
         &mut runtime,
         &mut presentation,
         Some(&stream),
-        crate::camera::CameraSettingsAuthority::default().perspective(),
+        client_presentation::camera::CameraSettingsAuthority::default().perspective(),
         0,
     );
     let frame = presentation.hud_frame().clone();
@@ -114,7 +113,7 @@ fn captured_hotbar_survives_network_registry_and_inventory_publication() {
         }
     }
     assert!(frame.hotbar_stacks.iter().any(Option::is_some));
-    if let Some(pack) = crate::ui_runtime::presentation::forms::pack_harness::env_pack() {
+    if let Some(pack) = client_ui::test_support::pack_harness::env_pack() {
         presentation.set_server_ui_pack(&pack);
     }
     let input = presentation
@@ -152,11 +151,11 @@ fn harness() -> Option<(UiPresentationRuntime, chunk_pipeline::WorldStream)> {
         RuntimeEntityAssets::decode(&std::fs::read(root.join("vanilla-v1.mcbeent")).ok()?).ok()?,
     );
     let world = Arc::new(RuntimeAssets::diagnostic());
-    let fixtures = crate::ui_runtime::presentation::tests::fixture_font();
-    let hud = crate::ui_runtime::presentation::tests::fixture_hud();
+    let fixtures = ui_engine::test_support::fixture_font();
+    let hud = client_ui::test_support::fixture_hud();
     let mut presentation = UiPresentationRuntime::with_hud_and_icons(fixtures, hud, icons).ok()?;
     presentation
-        .enable_json_ui(crate::ui_runtime::presentation::forms::pack_harness::carrier()?)
+        .enable_json_ui(ui_engine::test_support::carrier()?)
         .ok()?;
     presentation.set_gui_models(&world, &entities).ok()?;
     let stream = chunk_pipeline::WorldStream::new_with_asset_sets(

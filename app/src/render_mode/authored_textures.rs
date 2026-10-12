@@ -8,11 +8,13 @@ use std::{
 use assets::{MaterialKeys, RuntimeAssets};
 use bevy::prelude::*;
 use bevy::render::renderer::RenderDevice;
-use render::{ChunkTextureAssets, ChunkTextureReload, EnhancedTextureAssets};
 use render_model::ENHANCED_RENDERING_ENABLED;
+use render_scene::{ChunkTextureAssets, ChunkTextureReload, EnhancedTextureAssets};
 use ui::RenderMode;
 
-use crate::settings_runtime::RuntimeSettings;
+use client_state::RuntimeSettings;
+
+mod enhanced_textures;
 
 type AuthoredMaps = Option<Arc<EnhancedTextureAssets>>;
 type Receiver = mpsc::Receiver<AuthoredMaps>;
@@ -113,8 +115,8 @@ fn spawn(
         .name("Enhanced terrain materials".to_owned())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            let maps = crate::asset_startup::load_optional_enhanced_textures(&base, &keys).filter(
-                |maps| {
+            let maps =
+                enhanced_textures::load_optional_enhanced_textures(&base, &keys).filter(|maps| {
                     let supported = limits
                         .as_ref()
                         .is_none_or(|limits| maps.fits_device_limits(limits));
@@ -122,8 +124,7 @@ fn spawn(
                         warn!("unsupported authored Enhanced maps; retained carrier materials");
                     }
                     supported
-                },
-            );
+                });
             let _ = sender.send(maps);
         })?;
     Ok(receiver)

@@ -7,16 +7,20 @@ use std::{
 
 use chunk_pipeline::ViewCohortStatus;
 use client_world::{CommittedControlEvent, ViewCohort};
-use render::{PresentedFrameAck, RenderViewCohort, TargetRenderExpectation};
+use render_scene::{PresentedFrameAck, RenderViewCohort, TargetRenderExpectation};
 #[cfg(any(test, feature = "test-support"))]
 use world::SubChunkKey;
 
 use super::mutation::leaf_forest_target_mutation_coordinate;
-use super::{
-    PHASE0_REQUESTED_RADIUS_CHUNKS,
-    markers::{TELEPORT_COHORT, TELEPORT_GLOBAL_STAGE_DIAGNOSTIC},
-    proofs::{horizontal_chunk, optional_duration_milliseconds, optional_milliseconds_token},
-    world_ready::{SubChunkTimeoutProgress, WorldReadyWork, authoritative_received_radius},
+use {
+    super::{
+        proofs::{horizontal_chunk, optional_duration_milliseconds, optional_milliseconds_token},
+        world_ready::{SubChunkTimeoutProgress, WorldReadyWork, authoritative_received_radius},
+    },
+    diagnostics::{
+        PHASE0_REQUESTED_RADIUS_CHUNKS,
+        markers::{TELEPORT_COHORT, TELEPORT_GLOBAL_STAGE_DIAGNOSTIC},
+    },
 };
 
 const TELEPORT_COHORT_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);

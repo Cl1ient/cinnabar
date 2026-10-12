@@ -39,7 +39,7 @@ pub(super) fn lazy(mut pack: ServerUiPack) -> ServerUiPack {
 
 /// Publishes the same runtime across menu, join, reload and cancellation frames.
 fn frame(
-    player_runtime: &crate::player_runtime::PlayerRuntime,
+    player_runtime: &client_state::PlayerRuntime,
     presentation: &mut UiPresentationRuntime,
     runtime: &UiRuntime,
 ) -> render_model::UiRenderInput {
@@ -56,17 +56,17 @@ fn frame(
 
 #[test]
 fn zeqa_lazy_pages_survive_menu_join_reload_and_cancellation() {
-    let mut player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let mut player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
-    let Some(pack) = pack_harness::env_pack() else {
+    let Some(pack) = client_ui::test_support::pack_harness::env_pack() else {
         eprintln!(
             "skipping zeqa_lazy_pages_survive_menu_join_reload_and_cancellation: fixture unavailable; requires installed local carriers (make assets)"
         );
         return;
     };
     let mut presentation = pack_harness::startup_presentation().expect("installed carriers");
-    let dir = pack_harness::scratch_dir("loading-sequence");
-    let view = super::play_flow_snapshots::fixture_view(&dir);
+    let dir = client_ui::test_support::pack_harness::scratch_dir("loading-sequence");
+    let view = client_ui::test_support::fixture_view(&dir);
     let paths = super::super::menu_artwork::view_paths(&view);
     let mut runtime = UiRuntime::new(1);
     presentation.set_menu_view(Some(view.clone()));
@@ -76,9 +76,9 @@ fn zeqa_lazy_pages_survive_menu_join_reload_and_cancellation() {
     frame(&player_runtime, &mut presentation, &runtime);
     presentation.set_menu_view(None);
     presentation.set_loading_stage(Some(LoadingStage::BuildingTerrain));
-    crate::session::begin_session(&mut runtime, &mut player_runtime, 2);
+    client_runtime::session::begin_session(&mut runtime, &mut player_runtime, 2);
     runtime.set_server_ui(Some(Arc::new(lazy(pack.clone()))));
-    let glyphs = pack_harness::env_glyphs();
+    let glyphs = client_ui::test_support::pack_harness::env_glyphs();
     runtime.set_session_glyphs(glyphs.clone());
     let mut warm = None;
     for phase in 0..4 {
@@ -97,7 +97,7 @@ fn zeqa_lazy_pages_survive_menu_join_reload_and_cancellation() {
             let dirt = image::open(
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../.local")
-                    .join(crate::install_layout::vanilla_pack_relative())
+                    .join(launcher::install_layout::vanilla_pack_relative())
                     .join("textures/blocks/dirt.png"),
             )
             .unwrap()
@@ -133,7 +133,7 @@ fn zeqa_lazy_pages_survive_menu_join_reload_and_cancellation() {
         }
         runtime.set_server_ui(None);
         frame(&player_runtime, &mut presentation, &runtime);
-        crate::session::begin_session(&mut runtime, &mut player_runtime, phase + 3);
+        client_runtime::session::begin_session(&mut runtime, &mut player_runtime, phase + 3);
         runtime.set_server_ui(Some(Arc::new(lazy(pack.clone()))));
         runtime.set_session_glyphs(glyphs.clone());
     }
@@ -142,18 +142,19 @@ fn zeqa_lazy_pages_survive_menu_join_reload_and_cancellation() {
 
 #[test]
 fn vanilla_loading_before_pack_arrival_survives_static_page_insertion() {
-    let player_runtime = crate::player_runtime::PlayerRuntime::new(1);
+    let player_runtime = client_state::PlayerRuntime(player_state::PlayerState::new(1));
 
-    let Some(mut presentation) = pack_harness::engine_presentation() else {
+    let Some(mut presentation) = client_ui::test_support::pack_harness::engine_presentation()
+    else {
         eprintln!(
             "skipping vanilla_loading_before_pack_arrival_survives_static_page_insertion: fixture unavailable; requires installed local carriers (make assets)"
         );
         return;
     };
-    let side = client_ui::ui_runtime::oreui_assets::OREUI_PAGE_SIDE as usize;
+    let side = oreui::images::OREUI_PAGE_SIDE as usize;
     presentation
-        .enable_oreui_originals(client_ui::ui_runtime::oreui_assets::OreUiImages {
-            pages: vec![client_ui::ui_runtime::oreui_assets::OreUiPage {
+        .enable_oreui_originals(oreui::images::OreUiImages {
+            pages: vec![oreui::images::OreUiPage {
                 dimensions: [side as u32; 2],
                 pixels: vec![255; side * side * 4].into(),
             }],
@@ -164,14 +165,14 @@ fn vanilla_loading_before_pack_arrival_survives_static_page_insertion() {
         })
         .unwrap();
     presentation.set_loading_stage(Some(LoadingStage::BuildingTerrain));
-    let runtime = pack_harness::menu_runtime();
+    let runtime = client_ui::test_support::pack_harness::menu_runtime();
     let input = frame(&player_runtime, &mut presentation, &runtime);
     snapshot::write(&input, "loading-before-pack");
     let pixels = snapshot::rasterize(&input);
     let dirt = image::open(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../.local")
-            .join(crate::install_layout::vanilla_pack_relative())
+            .join(launcher::install_layout::vanilla_pack_relative())
             .join("textures/blocks/dirt.png"),
     )
     .unwrap()

@@ -1,15 +1,15 @@
 //! Validate every Enhanced shader and create its pipeline on an available real adapter.
-use crate::shader_source;
 
+use crate::shader_source;
 type Variant = (&'static str, String, &'static str, &'static str, bool);
 
 /// All forward, shadow-caster and fullscreen variants used by the extension.
 pub(super) fn variants() -> Vec<Variant> {
     let mut result = Vec::new();
     for (name, source) in [
-        ("chunk", include_str!("../chunk.wgsl")),
-        ("model", include_str!("../model.wgsl")),
-        ("liquid", include_str!("../liquid.wgsl")),
+        ("chunk", include_str!("../chunk.wesl")),
+        ("model", include_str!("../model.wesl")),
+        ("liquid", include_str!("../liquid.wesl")),
     ] {
         result.push((
             name,
@@ -36,7 +36,7 @@ pub(super) fn variants() -> Vec<Variant> {
                 false,
             ));
         }
-        if source.contains("#ifdef ENHANCED_SHADOW") {
+        if source.contains("@if(ENHANCED_SHADOW)") {
             result.push((
                 name,
                 shader_source::composed(source, &["ENHANCED_SHADOW"]),
@@ -59,8 +59,8 @@ pub(super) fn variants() -> Vec<Variant> {
         }
     }
     let actor = variant_shader("actor");
-    let bevy::shader::Source::Wgsl(actor_source) = actor.source else {
-        panic!("actor shader source must remain WGSL");
+    let bevy::shader::Source::Wesl(actor_source) = actor.source else {
+        panic!("actor shader source must remain WESL");
     };
     for (definition, fragment, shadow) in [
         ("ENHANCED", "actor_fragment", false),
@@ -93,7 +93,7 @@ pub(super) fn variants() -> Vec<Variant> {
     ] {
         result.push((
             fragment,
-            shader_source::composed(include_str!("../enhanced/post.wgsl"), &[]),
+            shader_source::composed(include_str!("../enhanced/post.wesl"), &[]),
             "fullscreen",
             fragment,
             false,
@@ -107,7 +107,7 @@ pub(super) fn variants() -> Vec<Variant> {
     ] {
         result.push((
             fragment,
-            shader_source::composed(include_str!("probe.wgsl"), &[]),
+            shader_source::composed(include_str!("probe.wesl"), &[]),
             "fullscreen",
             fragment,
             false,
@@ -115,14 +115,14 @@ pub(super) fn variants() -> Vec<Variant> {
     }
     result.push((
         "resolve_local_shadows",
-        shader_source::composed(include_str!("local_shadow_history.wgsl"), &[]),
+        shader_source::composed(include_str!("local_shadow_history.wesl"), &[]),
         "fullscreen",
         "resolve_local_shadows",
         false,
     ));
     result.push((
         "prefilter_environment",
-        shader_source::composed(include_str!("probe_filter.wgsl"), &[]),
+        shader_source::composed(include_str!("probe_filter.wesl"), &[]),
         "fullscreen",
         "prefilter_environment",
         false,
@@ -132,7 +132,7 @@ pub(super) fn variants() -> Vec<Variant> {
 
 #[test]
 fn enhanced_exposure_shader_validates() {
-    let source = shader_source::composed(include_str!("exposure.wgsl"), &[]);
+    let source = shader_source::composed(include_str!("exposure.wesl"), &[]);
     let module = naga::front::wgsl::parse_str(&source)
         .unwrap_or_else(|e| panic!("{}", e.emit_to_string(&source)));
     naga::valid::Validator::new(
@@ -168,26 +168,26 @@ fn enhanced_pipelines_build_on_native_adapter() {
 
 pub(super) fn variant_shader(name: &str) -> bevy::prelude::Shader {
     let source = match name {
-        "chunk" | "chunk_motion" => include_str!("../chunk.wgsl"),
-        "model" | "model_motion" => include_str!("../model.wgsl"),
-        "liquid" => include_str!("../liquid.wgsl"),
-        "actor" | "actor_motion" => include_str!("../actor.wgsl"),
+        "chunk" | "chunk_motion" => include_str!("../chunk.wesl"),
+        "model" | "model_motion" => include_str!("../model.wesl"),
+        "liquid" => include_str!("../liquid.wesl"),
+        "actor" | "actor_motion" => include_str!("../actor.wesl"),
         "capture_probe" | "filter_mip" | "resolve_reflections" | "cloud_environment" => {
-            include_str!("probe.wgsl")
+            include_str!("probe.wesl")
         }
-        "prefilter_environment" => include_str!("probe_filter.wgsl"),
-        "resolve_local_shadows" => include_str!("local_shadow_history.wgsl"),
-        _ => include_str!("post.wgsl"),
+        "prefilter_environment" => include_str!("probe_filter.wesl"),
+        "resolve_local_shadows" => include_str!("local_shadow_history.wesl"),
+        _ => include_str!("post.wesl"),
     };
     if matches!(name, "actor" | "actor_motion") {
-        crate::shader_safety::from_actor_wgsl(
+        crate::shader_safety::from_actor_wesl(
             source,
             name,
-            crate::actor::ACTOR_GPU_INSTANCE_WORDS,
+            render_model::ACTOR_GPU_INSTANCE_WORDS,
             render_model::ACTOR_RIG_VERTEX_WORDS,
         )
     } else {
-        crate::shader_safety::from_wgsl(crate::material_shader::source(source), name)
+        crate::shader_safety::from_wesl(crate::material_shader::source(source), name)
     }
 }
 
@@ -222,7 +222,7 @@ pub(super) fn actor_descriptor(
         descriptor.fragment.as_mut().unwrap().targets[0]
             .as_mut()
             .unwrap()
-            .format = ViewTarget::TEXTURE_FORMAT_HDR;
+            .format = render_scene::SCENE_HDR_FORMAT;
         descriptor
     }
 }
@@ -234,12 +234,13 @@ pub(super) fn actor_motion_descriptor() -> bevy::render::render_resource::Render
     ))
 }
 
-fn native_module(name: &str, shadow: bool) -> naga::Module {
+/// Composes a production variant with the definitions its pipeline specializes.
+fn native_source(name: &str, shadow: bool) -> String {
     let shader = variant_shader(name);
-    let bevy::shader::Source::Wgsl(source) = shader.source else {
-        panic!("Enhanced shader source must remain WGSL");
+    let bevy::shader::Source::Wesl(source) = shader.source else {
+        panic!("Enhanced shader source must remain WESL");
     };
-    shader_source::composed_module(&source, variant_definitions(name, shadow))
+    shader_source::composed(&source, variant_definitions(name, shadow))
 }
 
 pub(super) fn native_instance() -> wgpu::Instance {
@@ -247,7 +248,7 @@ pub(super) fn native_instance() -> wgpu::Instance {
     let mut settings = bevy::render::settings::WgpuSettings::default();
     #[cfg(target_os = "windows")]
     super::configure_enhanced_shader_compiler(&mut settings);
-    wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: settings.backends.unwrap_or(wgpu::Backends::PRIMARY),
         flags: wgpu::InstanceFlags::VALIDATION,
         backend_options: wgpu::BackendOptions {
@@ -257,7 +258,7 @@ pub(super) fn native_instance() -> wgpu::Instance {
             },
             ..Default::default()
         },
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     })
 }
 
@@ -309,7 +310,7 @@ fn build_native_pipelines() {
                 },
             ]
         };
-        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let validation_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let groups: Vec<_> = descriptors
             .iter()
             .map(|descriptor| {
@@ -321,12 +322,12 @@ fn build_native_pipelines() {
             .collect();
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("production Enhanced layout"),
-            bind_group_layouts: &groups.iter().collect::<Vec<_>>(),
-            push_constant_ranges: &[],
+            bind_group_layouts: &groups.iter().map(Some).collect::<Vec<_>>(),
+            immediate_size: 0,
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(name),
-            source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(native_module(name, shadow))),
+            source: wgpu::ShaderSource::Wgsl(native_source(name, shadow).into()),
         });
         let targets = if fragment == "resolve_local_shadows" {
             vec![
@@ -395,21 +396,21 @@ fn build_native_pipelines() {
                 .or_else(|| {
                     shadow.then_some(wgpu::DepthStencilState {
                         format: wgpu::TextureFormat::Depth32Float,
-                        depth_write_enabled: true,
-                        depth_compare: if motion {
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(if motion {
                             wgpu::CompareFunction::GreaterEqual
                         } else {
                             wgpu::CompareFunction::LessEqual
-                        },
+                        }),
                         stencil: Default::default(),
                         bias: Default::default(),
                     })
                 }),
             multisample: Default::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
-        let error = bevy::tasks::block_on(device.pop_error_scope());
+        let error = bevy::tasks::block_on(validation_scope.pop());
         assert!(error.is_none(), "{name}/{fragment}: {error:?}");
     }
     let descriptor = super::exposure::layout();
@@ -419,16 +420,16 @@ fn build_native_pipelines() {
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Enhanced exposure production layout"),
-        bind_group_layouts: &[&group],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&group)],
+        immediate_size: 0,
     });
-    let source = shader_source::composed_module(include_str!("exposure.wgsl"), &[]);
+    let source = shader_source::composed(include_str!("exposure.wesl"), &[]);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Enhanced exposure"),
-        source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(source)),
+        source: wgpu::ShaderSource::Wgsl(source.into()),
     });
     for entry in ["build_histogram", "adapt_exposure"] {
-        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let validation_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let _pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some(entry),
             layout: Some(&layout),
@@ -437,7 +438,7 @@ fn build_native_pipelines() {
             compilation_options: Default::default(),
             cache: None,
         });
-        let error = bevy::tasks::block_on(device.pop_error_scope());
+        let error = bevy::tasks::block_on(validation_scope.pop());
         assert!(error.is_none(), "{entry}: {error:?}");
     }
     let descriptor = super::multiple_scattering::generation_layout();
@@ -447,17 +448,17 @@ fn build_native_pipelines() {
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Enhanced atmospheric transfer production layout"),
-        bind_group_layouts: &[&group],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&group)],
+        immediate_size: 0,
     });
-    let source = shader_source::composed_module(
-        &super::multiple_scattering::shader_source(include_str!("multiple_scattering.wgsl")),
+    let source = shader_source::composed(
+        &super::multiple_scattering::shader_source(include_str!("multiple_scattering.wesl")),
         &[],
     );
-    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let validation_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Enhanced atmospheric transfer"),
-        source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(source)),
+        source: wgpu::ShaderSource::Wgsl(source.into()),
     });
     let _pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("generate_multiple_scattering"),
@@ -467,7 +468,7 @@ fn build_native_pipelines() {
         compilation_options: Default::default(),
         cache: None,
     });
-    let error = bevy::tasks::block_on(device.pop_error_scope());
+    let error = bevy::tasks::block_on(validation_scope.pop());
     assert!(error.is_none(), "atmospheric transfer: {error:?}");
 }
 
@@ -484,8 +485,8 @@ fn full_sky_exposure_keeps_direct_light_under_a_night_lightmap() {
     let (device, queue) =
         bevy::tasks::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
     let source = shader_source::composed(
-        "#import cinnabar::enhanced_view::sky_illumination
-#import cinnabar::lighting::light_colour
+        "import render::enhanced::view::sky_illumination;
+import render::lighting::light_colour;
 @group(0) @binding(0) var<storage, read_write> results: array<f32, 3>;
 @compute @workgroup_size(1) fn main() {
     results[0] = smoothstep(0.25, 0.8, sky_illumination(240u));
@@ -552,7 +553,13 @@ fn full_sky_exposure_keeps_direct_light_under_a_night_lightmap() {
     queue.submit([encoder.finish()]);
     readback.slice(..).map_async(wgpu::MapMode::Read, |_| {});
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-    let values: Vec<f32> = bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+    let values: Vec<f32> = bytemuck::cast_slice(
+        &readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("readback buffer is mapped"),
+    )
+    .to_vec();
     assert_eq!(values[0], 1.0, "direct-light gate at full sky");
     assert_eq!(values[1], 0.0, "no sky exposure");
 }

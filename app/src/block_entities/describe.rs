@@ -5,11 +5,12 @@ use assets::{
 };
 use std::sync::Arc;
 
-use render::{
+use render_model::{
     BannerLayer, BannerModel, BannerMount, BedModel, BellAttachment, BlockEntityKind, ChestModel,
-    ChestPair, ChestVariant, CopperAge, DecoratedPotModel, Facing, ItemFrameModel,
-    MAX_BANNER_LAYERS, Oxidation, ShulkerModel, SignMount, SkullKind, SkullModel, SkullMount,
-    SpawnerModel, StatueModel, StatuePose, bed_color, pattern_texture, sherd_pattern,
+    ChestPair, ChestVariant, CopperAge, DecoratedPotModel, Facing,
+    ITEM_FRAME_ROTATION_STEP_DEGREES, ItemFrameModel, MAX_BANNER_LAYERS, Oxidation, ShulkerModel,
+    SignMount, SkullKind, SkullModel, SkullMount, SpawnerModel, StatueModel, StatuePose, bed_color,
+    pattern_texture, sherd_pattern,
 };
 use world::NbtCompound;
 
@@ -24,6 +25,40 @@ pub(super) struct HeldItem {
     pub(super) metadata: u32,
 }
 
+/// A retained plant block with all typed state selectors used to resolve its world identity.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct PlantBlock {
+    pub(super) identifier: Arc<str>,
+    pub(super) states: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Reads only usable block-state tag types; malformed plants do not become inventory icons.
+fn plant_block(plant: &NbtCompound) -> Option<PlantBlock> {
+    let name = plant
+        .string("name")
+        .filter(|name| !name.is_empty() && *name != "minecraft:air")?;
+    let mut states = serde_json::Map::new();
+    if let Some(compound) = plant.compound("states") {
+        for (key, value) in compound.iter() {
+            let typed = match value {
+                world::NbtValue::Byte(value) => serde_json::json!({"type":"byte", "value":value}),
+                world::NbtValue::Int(value) => serde_json::json!({"type":"int", "value":value}),
+                world::NbtValue::String(value) => {
+                    serde_json::json!({"type":"string", "value":value})
+                }
+                _ => return None,
+            };
+            states.insert(key.to_owned(), typed);
+        }
+    } else if plant.get("states").is_some() {
+        return None;
+    }
+    Some(PlantBlock {
+        identifier: Arc::from(name),
+        states,
+    })
+}
+
 /// A block entity's drawing plan before per-frame animation and text resolution.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Template {
@@ -31,12 +66,12 @@ pub(super) enum Template {
     ItemFrame {
         model: ItemFrameModel,
         item: Option<HeldItem>,
-        rotation_steps: u8,
+        rotation_degrees: f32,
         /// The filled map's id when the framed item is a map.
         map_id: Option<i64>,
     },
     FlowerPot {
-        plant: HeldItem,
+        plant: PlantBlock,
     },
     Campfire {
         yaw_degrees: f32,
@@ -80,6 +115,17 @@ fn ground_rotation(state: &BlockState) -> f32 {
         .unwrap_or(0)
         .rem_euclid(16) as f32
         * 22.5
+}
+
+/// Reads modern degree rotations and legacy integral turns, defaulting unusable data to zero.
+fn frame_rotation(nbt: &NbtCompound) -> f32 {
+    if let Some(turns) = nbt.integer("ItemRotation") {
+        return turns.rem_euclid(8) as f32 * ITEM_FRAME_ROTATION_STEP_DEGREES;
+    }
+    nbt.float("ItemRotation")
+        .filter(|degrees| degrees.is_finite())
+        .map(|degrees| degrees.rem_euclid(8.0 * ITEM_FRAME_ROTATION_STEP_DEGREES))
+        .unwrap_or(0.0)
 }
 
 fn held_item(stack: &NbtCompound) -> Option<HeldItem> {
@@ -279,12 +325,11 @@ pub(super) fn describe(
         }),
         "Beacon" => (nbt.integer("Levels").unwrap_or(0) > 0).then_some(Template::Beacon),
         "ItemFrame" | "GlowItemFrame" => {
-            // The state stores the face toward the wall; the frame looks the other way.
-            let toward_wall = u8::try_from(state.int("facing_direction")?).ok()?;
-            (toward_wall < 6).then(|| Template::ItemFrame {
+            let outward = u8::try_from(state.int("facing_direction")?).ok()?;
+            (outward < 6).then(|| Template::ItemFrame {
                 model: ItemFrameModel {
                     glow: id == "GlowItemFrame",
-                    outward: toward_wall ^ 1,
+                    outward,
                     map: None,
                 },
                 item: nbt.compound("Item").and_then(held_item),
@@ -292,22 +337,13 @@ pub(super) fn describe(
                     .compound("Item")
                     .and_then(|stack| stack.compound("tag"))
                     .and_then(|tag| tag.integer("map_uuid")),
-                rotation_steps: nbt
-                    .integer("ItemRotation")
-                    .and_then(|steps| u8::try_from(steps.rem_euclid(8)).ok())
-                    .unwrap_or(0),
+                rotation_degrees: frame_rotation(nbt),
             })
         }
-        "FlowerPot" => nbt
-            .compound("PlantBlock")
-            .and_then(|plant| plant.string("name"))
-            .filter(|name| !name.is_empty() && *name != "minecraft:air")
-            .map(|name| Template::FlowerPot {
-                plant: HeldItem {
-                    identifier: Arc::from(name),
-                    metadata: 0,
-                },
-            }),
+        "FlowerPot" => (block_name == "minecraft:flower_pot")
+            .then(|| nbt.compound("PlantBlock").and_then(plant_block))
+            .flatten()
+            .map(|plant| Template::FlowerPot { plant }),
         "Campfire" => Some(Template::Campfire {
             yaw_degrees: facing(state).unwrap_or(Facing::North).yaw_degrees(),
             items: std::array::from_fn(|slot| {
@@ -361,6 +397,85 @@ pub(super) fn describe(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A retained plant with typed NBT states, independent of inventory item metadata.
+    fn potted_nbt(name: &str, states: NbtCompound) -> NbtCompound {
+        let mut plant = NbtCompound::default();
+        plant.insert("name", world::NbtValue::String(name.into()));
+        plant.insert("states", world::NbtValue::Compound(states));
+        let mut root = NbtCompound::default();
+        root.insert("PlantBlock", world::NbtValue::Compound(plant));
+        root
+    }
+
+    #[test]
+    fn flower_pot_preserves_typed_plant_state_selectors() {
+        let mut states = NbtCompound::default();
+        states.insert("sapling_type", world::NbtValue::String("spruce".into()));
+        states.insert("age_bit", world::NbtValue::Byte(0));
+        states.insert("growth", world::NbtValue::Int(2));
+        let Some(Template::FlowerPot { plant }) = describe(
+            "FlowerPot",
+            "minecraft:flower_pot",
+            &BlockState::default(),
+            &potted_nbt("minecraft:sapling", states),
+            [0; 3],
+        ) else {
+            panic!("plant expected")
+        };
+        assert_eq!(plant.identifier.as_ref(), "minecraft:sapling");
+        assert_eq!(
+            plant.states["sapling_type"],
+            serde_json::json!({"type":"string", "value":"spruce"})
+        );
+        assert_eq!(
+            plant.states["age_bit"],
+            serde_json::json!({"type":"byte", "value":0})
+        );
+        assert_eq!(
+            plant.states["growth"],
+            serde_json::json!({"type":"int", "value":2})
+        );
+    }
+
+    #[test]
+    fn flower_pot_skips_empty_invalid_and_stale_contents() {
+        for name in ["", "minecraft:air"] {
+            assert!(
+                describe(
+                    "FlowerPot",
+                    "minecraft:flower_pot",
+                    &BlockState::default(),
+                    &potted_nbt(name, NbtCompound::default()),
+                    [0; 3]
+                )
+                .is_none()
+            );
+        }
+        let root = potted_nbt("minecraft:poppy", NbtCompound::default());
+        assert!(
+            describe(
+                "FlowerPot",
+                "minecraft:stone",
+                &BlockState::default(),
+                &root,
+                [0; 3]
+            )
+            .is_none()
+        );
+        let mut states = NbtCompound::default();
+        states.insert("growth", world::NbtValue::Float(2.0));
+        assert!(
+            describe(
+                "FlowerPot",
+                "minecraft:flower_pot",
+                &BlockState::default(),
+                &potted_nbt("minecraft:poppy", states),
+                [0; 3]
+            )
+            .is_none()
+        );
+    }
 
     fn nbt(build: impl FnOnce(&mut Vec<u8>)) -> NbtCompound {
         let mut bytes = vec![10, 0];
@@ -553,19 +668,101 @@ mod tests {
     }
 
     #[test]
-    fn item_frames_face_away_from_the_wall_the_state_names() {
-        // facing_direction 2 (north) is the wall side, so the frame looks south (3).
-        let template = describe(
-            "GlowItemFrame",
-            "minecraft:glow_frame",
-            &state(r#"{"facing_direction":{"type":"int","value":2}}"#),
-            &nbt(|_| {}),
-            [0; 3],
-        );
-        let Some(Template::ItemFrame { model, item, .. }) = template else {
-            panic!("frame expected");
-        };
-        assert!(model.glow && model.outward == 3 && item.is_none());
+    fn item_frames_preserve_all_six_outward_facing_states() {
+        for (id, name, glow) in [
+            ("ItemFrame", "minecraft:frame", false),
+            ("GlowItemFrame", "minecraft:glow_frame", true),
+        ] {
+            let models = (0..6)
+                .map(|outward| {
+                    let template = describe(
+                        id,
+                        name,
+                        &state(&format!(
+                            r#"{{"facing_direction":{{"type":"int","value":{outward}}}}}"#
+                        )),
+                        &nbt(|_| {}),
+                        [0; 3],
+                    );
+                    let Some(Template::ItemFrame { model, item, .. }) = template else {
+                        panic!("frame expected");
+                    };
+                    assert!(item.is_none());
+                    model
+                })
+                .collect::<Vec<_>>();
+            for (outward, model) in models.iter().enumerate() {
+                assert_eq!(usize::from(model.outward), outward);
+                assert_eq!(model.glow, glow);
+            }
+        }
+    }
+
+    #[test]
+    fn item_frame_rotation_accepts_float_degrees_and_legacy_byte_turns() {
+        for step in 0..8_u8 {
+            for floating in [false, true] {
+                let rotation = nbt(|out| {
+                    out.push(if floating { 5 } else { 1 });
+                    out.push(12);
+                    out.extend_from_slice(b"ItemRotation");
+                    if floating {
+                        out.extend_from_slice(
+                            &(f32::from(step) * ITEM_FRAME_ROTATION_STEP_DEGREES).to_le_bytes(),
+                        );
+                    } else {
+                        out.push(step);
+                    }
+                    out.extend_from_slice(&[10, 4]);
+                    out.extend_from_slice(b"Item");
+                    out.extend_from_slice(&[8, 4]);
+                    out.extend_from_slice(b"Name");
+                    out.push(15);
+                    out.extend_from_slice(b"minecraft:clock");
+                    out.push(0);
+                });
+                let Some(Template::ItemFrame {
+                    rotation_degrees,
+                    item,
+                    ..
+                }) = describe(
+                    "ItemFrame",
+                    "minecraft:frame",
+                    &state(r#"{"facing_direction":{"type":"int","value":2}}"#),
+                    &rotation,
+                    [0; 3],
+                )
+                else {
+                    panic!("frame expected");
+                };
+                assert_eq!(item.unwrap().identifier.as_ref(), "minecraft:clock");
+                assert_eq!(
+                    rotation_degrees,
+                    f32::from(step) * ITEM_FRAME_ROTATION_STEP_DEGREES,
+                    "float degrees: {floating}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn item_frame_rotation_retains_fractional_degrees_and_defaults_unusable_values() {
+        for (degrees, expected) in [
+            (22.5_f32, 22.5),
+            (-22.5, 337.5),
+            (382.5, 22.5),
+            (f32::NAN, 0.0),
+            (f32::INFINITY, 0.0),
+            (f32::NEG_INFINITY, 0.0),
+        ] {
+            let rotation = nbt(|out| {
+                out.extend_from_slice(&[5, 12]);
+                out.extend_from_slice(b"ItemRotation");
+                out.extend_from_slice(&degrees.to_le_bytes());
+            });
+            assert_eq!(frame_rotation(&rotation), expected);
+        }
+        assert_eq!(frame_rotation(&nbt(|_| {})), 0.0);
     }
 
     #[test]

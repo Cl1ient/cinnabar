@@ -12,7 +12,6 @@ use bevy::{
             WgpuFeatures,
         },
         renderer::{RenderAdapter, RenderDevice},
-        view::ViewTarget,
     },
 };
 
@@ -58,9 +57,9 @@ pub fn device_support(adapter: &RenderAdapter, device: &RenderDevice) -> CameraA
         }
     };
     let colors = [
-        TextureFormat::bevy_default(),
-        TextureFormat::bevy_default().remove_srgb_suffix(),
-        ViewTarget::TEXTURE_FORMAT_HDR,
+        render_scene::SCENE_COLOR_FORMAT,
+        render_scene::SCENE_COLOR_FORMAT.remove_srgb_suffix(),
+        render_scene::SCENE_HDR_FORMAT,
     ]
     .map(format_features);
     let depth = format_features(CORE_3D_DEPTH_FORMAT);
@@ -105,7 +104,12 @@ pub fn apply_camera_antialiasing(
     settings: Res<CameraSettingsAuthority>,
     support: Res<CameraAntiAliasingSupport>,
     mut cameras: Query<
-        (Entity, &mut Msaa, Option<&Smaa>, Has<render::EnhancedRendering>),
+        (
+            Entity,
+            &mut Msaa,
+            Option<&Smaa>,
+            Has<render_scene::EnhancedRendering>,
+        ),
         With<FlyCamera>,
     >,
 ) {
@@ -238,7 +242,7 @@ mod tests {
             .spawn((
                 FlyCamera::default(),
                 Msaa::Sample4,
-                render::EnhancedRendering::default(),
+                render_scene::EnhancedRendering::default(),
             ))
             .id();
         let vanilla = app
@@ -261,7 +265,7 @@ mod tests {
         );
         app.world_mut()
             .entity_mut(enhanced)
-            .remove::<render::EnhancedRendering>();
+            .remove::<render_scene::EnhancedRendering>();
         app.update();
         assert_eq!(app.world().get::<Msaa>(enhanced).unwrap().samples(), 4);
     }

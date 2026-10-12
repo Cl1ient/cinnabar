@@ -129,7 +129,7 @@ impl WorldAuthority {
                         .iter()
                         .rev()
                         .filter(|attribute| attribute.name.as_ref() == "minecraft:movement")
-                        .find_map(movement_attribute::effective_speed);
+                        .find_map(MovementSpeedAttribute::from_attribute);
                     let liquid = |name: &str| {
                         update
                             .attributes
@@ -150,8 +150,8 @@ impl WorldAuthority {
                         })
                         .map(|attribute| attribute.current)
                         .filter(|current| current.is_finite());
-                    if let Some((current, _)) = movement {
-                        self.local_movement_speed = Some(current);
+                    if let Some(attribute) = movement {
+                        self.local_movement_speed = Some(attribute.current);
                     }
                     // One control per update keeps admission's one-slot reservation exact.
                     if movement.is_some()
@@ -162,8 +162,7 @@ impl WorldAuthority {
                         self.push_committed_control(CommittedControlEvent::LocalMovementSpeed {
                             sequence,
                             dimension: update.dimension,
-                            current: movement.map(|(current, _)| current),
-                            sprint_modifier: movement.and_then(|(_, modifier)| modifier),
+                            movement,
                             underwater,
                             lava,
                             air_drag_modifier,
@@ -203,7 +202,32 @@ impl WorldAuthority {
                 } else {
                     None
                 };
+                if matches!(&event, ActorEvent::Status(status)
+                    if status.runtime_id == self.local_player_runtime_id
+                        && status.kind == protocol::ActorStatusKind::TotemActivate)
+                {
+                    self.push_committed_ui(CommittedUiEvent::LocalTotemActivation { sequence });
+                }
+                let combat = match &event {
+                    ActorEvent::Status(status)
+                        if status.kind == protocol::ActorStatusKind::Hurt =>
+                    {
+                        Some((status.runtime_id, super::ActorCombatKind::Hurt))
+                    }
+                    ActorEvent::Status(status)
+                        if status.kind == protocol::ActorStatusKind::Death =>
+                    {
+                        Some((status.runtime_id, super::ActorCombatKind::Death))
+                    }
+                    _ => None,
+                };
                 let result = self.actors.apply(self.actor_session_id, sequence, event);
+                if result == crate::actor_store::ActorApplyResult::Updated
+                    && let Some((runtime_id, kind)) = combat
+                {
+                    self.record_combat_evidence(sequence, runtime_id, kind);
+                }
+
                 if result == crate::actor_store::ActorApplyResult::Updated
                     && let Some(position) = pickup_position
                 {

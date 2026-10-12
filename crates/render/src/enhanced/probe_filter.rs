@@ -79,8 +79,9 @@ impl EnvironmentFilter {
             }),
             ..default()
         });
-        let samples = super::super::quality::budget(super::super::EnhancedQuality::default())
-            .reflection_samples;
+        let samples =
+            render_scene::enhanced::enhanced_quality_budget(render_api::EnhancedQuality::default())
+                .reflection_samples;
         let mut parameters = Vec::new();
         let mut group = |face: u32, roughness: f32, mode: u32| {
             let parameter = device.create_buffer_with_data(&BufferInitDescriptor {
@@ -143,7 +144,7 @@ impl EnvironmentFilter {
         queue: &bevy::render::renderer::RenderQueue,
         quality: super::super::EnhancedQuality,
     ) {
-        let samples = super::super::quality::budget(quality).reflection_samples;
+        let samples = render_scene::enhanced::enhanced_quality_budget(quality).reflection_samples;
         if self.samples != samples {
             for parameter in &self.parameters {
                 queue.write_buffer(parameter, 12, bytemuck::bytes_of(&(samples as f32)));

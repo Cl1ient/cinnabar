@@ -5,9 +5,9 @@
 use ui::{DpiScale, UiVisual};
 
 use super::pack_harness::engine_presentation;
-use crate::menu::MenuAction;
-use crate::menu::{MenuScreen, auth::AuthState};
 use crate::ui_runtime::UiRuntime;
+use launcher::menu::MenuAction;
+use launcher::menu::{MenuScreen, auth::AuthState};
 
 /// Captures the shipped menu routes without account or server fixtures.
 #[test]
@@ -20,7 +20,7 @@ fn snapshot_shipped_font_routes() {
         (MenuScreen::Profile, "fonts-profile"),
         (MenuScreen::Pause, "fonts-pause"),
     ] {
-        let mut view = crate::menu::MenuView::new(true, "Player".into());
+        let mut view = launcher::menu::MenuView::new(true, "Player".into());
         view.screen = screen;
         view.over_world = screen == MenuScreen::Pause;
         snapshot(&player, &view, name);
@@ -52,7 +52,7 @@ fn snapshot_play_flow() {
     snapshot(&player_runtime, &servers, "flow-play-servers-featured");
     servers.feeds.select_saved(0);
     snapshot(&player_runtime, &servers, "flow-play-servers-saved");
-    servers.dialog = Some(crate::menu::MenuDialog::RemoveSaved(0));
+    servers.dialog = Some(launcher::menu::MenuDialog::RemoveSaved(0));
     snapshot(&player_runtime, &servers, "flow-remove-server");
     snapshot(&player_runtime, &at(MenuScreen::Friends), "flow-friends");
     let mut add = at(MenuScreen::AddServer);
@@ -97,8 +97,9 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
         );
         return;
     };
-    let Some(images) = crate::ui_runtime::oreui_assets::load_optional_oreui_images()
-        .filter(|images| !images.loading_frames.is_empty())
+    let Some(images) =
+        oreui::images::load_optional_oreui_images(&oreui::images::checkout_compiled_dir())
+            .filter(|images| !images.loading_frames.is_empty())
     else {
         eprintln!(
             "skipping the_connecting_loader_animates_over_its_cached_layout: fixture unavailable; requires the installed OreUI loading animation"
@@ -125,7 +126,7 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
         .expect("installed loading animation has distinct frames");
     let page = presentation.textures.dynamic_start() as u16;
     presentation.enable_oreui_originals(images).unwrap();
-    let mut view = crate::menu::MenuView::new(true, "Test".into());
+    let mut view = launcher::menu::MenuView::new(true, "Test".into());
     view.connecting = true;
     view.message = Some("Connecting...".to_owned());
     let runtime = UiRuntime::new(1);
@@ -138,21 +139,20 @@ fn the_connecting_loader_animates_over_its_cached_layout() {
     };
     frame(&mut presentation, 0);
     let cycle_start = (1_000 / elapsed + 1) * elapsed;
-    let loader_bounds =
-        |presentation: &super::super::UiPresentationRuntime,
-         sprite: crate::ui_runtime::oreui_assets::OreUiSprite| {
-            super::pack_harness::menu_nodes(presentation)
-                .iter()
-                .find_map(|node| match node.visual() {
-                    UiVisual::Sprite {
-                        texture_page, uv, ..
-                    } if *texture_page == page + sprite.page && *uv == sprite.bounds => {
-                        Some(node.bounds())
-                    }
-                    _ => None,
-                })
-                .expect("the selected installed loader frame is painted")
-        };
+    let loader_bounds = |presentation: &super::super::UiPresentationRuntime,
+                         sprite: oreui::images::OreUiSprite| {
+        super::pack_harness::menu_nodes(presentation)
+            .iter()
+            .find_map(|node| match node.visual() {
+                UiVisual::Sprite {
+                    texture_page, uv, ..
+                } if *texture_page == page + sprite.page && *uv == sprite.bounds => {
+                    Some(node.bounds())
+                }
+                _ => None,
+            })
+            .expect("the selected installed loader frame is painted")
+    };
     let text_layouts = |presentation: &super::super::UiPresentationRuntime| {
         super::pack_harness::menu_nodes(presentation)
             .iter()
@@ -228,7 +228,7 @@ fn the_disconnect_screen_has_a_way_back() {
     presentation.set_menu_view(Some(view));
     let runtime = UiRuntime::new(1);
     let dpi = DpiScale::new(1.0).unwrap();
-    let metrics = super::super::TextMetrics::for_viewport([1280, 720], dpi, None);
+    let metrics = ui_engine::text_metrics::TextMetrics::for_viewport([1280, 720], dpi, None);
     let mut nodes = Vec::new();
     let mut next = 1;
     let hits = presentation
@@ -236,7 +236,7 @@ fn the_disconnect_screen_has_a_way_back() {
         .unwrap();
     assert!(
         hits.iter()
-            .any(|(action, _)| *action == crate::menu::MenuAction::DismissDialog),
+            .any(|(action, _)| *action == launcher::menu::MenuAction::DismissDialog),
         "{hits:?}"
     );
     let texts = super::pack_harness::drawn_texts(&nodes);
@@ -341,11 +341,11 @@ fn the_settings_panes_take_the_wheel() {
 fn snapshot_local_worlds() {
     let player_runtime = player_state::PlayerState::new(1);
 
-    use crate::local_worlds::{Event, Input, PromptButton, Tab, WorldsMenu};
-    use protocol::world_control::{
-        Backend, Difficulty, GameMode, Generator, Prefs, Setup, SetupState, UnavailableReason,
-        World, WorldState, WorldStatus,
+    use bridge::{Backend, GameMode, WorldState};
+    use launcher::local_worlds::world::{
+        Difficulty, Generator, Prefs, Setup, SetupState, UnavailableReason, World, WorldStatus,
     };
+    use launcher::local_worlds::{Event, Input, PromptButton, Tab, WorldsMenu};
     let dir = std::env::temp_dir().join("cinnabar-play-flow-art");
     std::fs::create_dir_all(&dir).unwrap();
     let mut base = fixture_view(&dir);
@@ -477,9 +477,11 @@ fn snapshot_shipped_font_routes_parity() {
             (MenuScreen::Play, "play"),
             (MenuScreen::Servers, "servers"),
             (MenuScreen::Settings, "settings"),
+            (MenuScreen::Pause, "pause"),
         ] {
             let mut view = base.clone();
             view.screen = screen;
+            view.over_world = screen == MenuScreen::Pause;
             if screen == MenuScreen::Servers {
                 view.feeds.selected_featured = Some(0);
             }
@@ -519,7 +521,7 @@ fn snapshot_shipped_font_motds() {
 }
 
 /// Publishes and rasterizes a fixed offline screen at its physical size and DPI.
-fn font_grid_snapshot(view: &crate::menu::MenuView, physical: [u32; 2], dpi: f32, name: &str) {
+fn font_grid_snapshot(view: &launcher::menu::MenuView, physical: [u32; 2], dpi: f32, name: &str) {
     let Some(mut presentation) = engine_presentation() else {
         return;
     };

@@ -1,12 +1,14 @@
 //! Native dimension switching and destination terrain presentation are separate waits.
 
+use crate::runtime::network::resource_packs::PackApplication;
+use client_runtime::network::NetworkHandle;
 use std::time::Duration;
 
 use client_ui::ui_runtime::presentation::startup::StartupReadinessInput;
 use render_model::VisibilityDiagnosticSnapshot;
 
 use super::*;
-use crate::runtime::network::{NetworkHandle, PacketSendError};
+use client_session::PacketSendError;
 
 pub(super) struct LoadingObservation {
     pub restart: bool,
@@ -24,7 +26,7 @@ pub(super) fn prepare_loading(
     presentation: &mut UiPresentationRuntime,
     runtime: &UiRuntime,
     diagnostics: &mut VisibilityDiagnosticsInput,
-    network: &NetworkHandle,
+    network: &NetworkHandle<PackApplication>,
     observation: LoadingObservation,
 ) {
     if observation.restart {
@@ -116,7 +118,7 @@ pub(super) fn prepare_loading(
         stream.finish_startup_priority();
     }
     if released && !presentation.startup_mut().completion_queued {
-        presentation.startup_mut().completion_queued = if client_world.dimension_transfer.active() {
+        let transfer_finished = if client_world.dimension_transfer.active() {
             match client_world.dimension_transfer.finish_presentation(network) {
                 Ok(queued) => queued,
                 Err(error) => {
@@ -125,8 +127,12 @@ pub(super) fn prepare_loading(
                 }
             }
         } else {
-            network.finish_loading()
+            true
         };
+        // An early transfer still owes the session its one-shot initialization.
+        // Keep completion pending if either readiness command needs queue capacity.
+        presentation.startup_mut().completion_queued =
+            transfer_finished && network.finish_loading();
     }
     diagnostics.set_startup_probe_enabled(presentation.startup_mut().probe_enabled(connected));
     presentation.set_loading_stage(if !connected {

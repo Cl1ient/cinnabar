@@ -1,21 +1,23 @@
 //! LevelEventGeneric ingress: its event data is loose NBT tags to the end of the packet.
 
-use bytes::{BufMut, BytesMut};
-use jolyne::raw::decode_packet_raw;
-use valentine::bedrock::context::BedrockSession;
-use valentine::bedrock::version::v1_26_51::McpePacketName;
+use crate::raw_packet::decode_packet_raw;
 
 use super::*;
 
 fn raw_generic(event_id: i32, tags: &[u8]) -> RawPacket {
-    let mut payload = BytesMut::new();
-    wire::write_var_u32(&mut payload, McpePacketName::LevelEventGenericPacket as u32);
-    wire::write_var_u32(&mut payload, ((event_id << 1) ^ (event_id >> 31)) as u32);
-    payload.put_slice(tags);
-    let mut frame = BytesMut::new();
-    wire::write_var_u32(&mut frame, payload.len() as u32);
-    frame.put_slice(&payload);
-    decode_packet_raw(&mut frame.freeze()).expect("raw packet")
+    let mut payload = Vec::new();
+    let mut writer = wire::Writer::new(&mut payload);
+    writer
+        .write_var_u32(PacketId::LevelEventGeneric as u32)
+        .unwrap();
+    writer.write_zigzag_i32(event_id).unwrap();
+    writer.write_all(tags).unwrap();
+    let mut frame = Vec::new();
+    wire::Writer::new(&mut frame)
+        .write_var_u32(payload.len() as u32)
+        .unwrap();
+    frame.extend_from_slice(&payload);
+    decode_packet_raw(&mut bytes::Bytes::from(frame)).expect("raw packet")
 }
 
 /// Two loose int tags as BDS sends them: no root compound header, no end tag.
@@ -32,15 +34,14 @@ fn loose_ints(tags: &[(&str, u8)]) -> Vec<u8> {
 /// BDS 1.26.52 sends generic events at join; their trailing tags must not end the session.
 #[test]
 fn loose_generic_event_tags_decode_and_sleep_status_gets_a_rooted_compound() {
-    let session = BedrockSession { shield_item_id: 0 };
     let other = raw_generic(2025, &loose_ints(&[("originX", 3), ("originY", 64)]));
     assert_eq!(
-        decode_world_raw_with(other, 0, |raw| raw.decode(&session)).expect("decodes"),
+        decode_world_raw_with(other, 0, super::decode_test_raw).expect("decodes"),
         None
     );
     let tags = loose_ints(&[("sleepingPlayerCount", 1), ("overworldPlayerCount", 2)]);
     let sleep = raw_generic(9801, &tags);
-    let event = decode_world_raw_with(sleep, 0, |raw| raw.decode(&session))
+    let event = decode_world_raw_with(sleep, 0, super::decode_test_raw)
         .expect("decodes")
         .expect("sleep status");
     let WorldEvent::Ui(crate::UiEvent::SleepStatus(status)) = event else {

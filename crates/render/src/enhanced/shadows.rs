@@ -1,11 +1,9 @@
 //! Own depth-only cascade pass for the vertex-pulled terrain arena.
 
+use bevy::render::diagnostic::RecordDiagnostics;
 use bevy::{
-    ecs::query::QueryItem,
     prelude::*,
     render::{
-        diagnostic::RecordDiagnostics,
-        render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
         render_resource::{
             CachedRenderPipelineId, CompareFunction, DepthBiasState, DepthStencilState,
             FragmentState, LoadOp, Operations, PipelineCache, PrimitiveState,
@@ -17,12 +15,12 @@ use bevy::{
     },
 };
 
-use super::{
-    EnhancedRendering,
-    gpu::{CASTER_SLOT_BYTES, EnhancedViews, SHADOW_FORMAT, enhanced_caster_layout},
+use {
+    super::gpu::{CASTER_SLOT_BYTES, EnhancedViews, SHADOW_FORMAT, enhanced_caster_layout},
+    render_scene::EnhancedRendering,
 };
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub(crate) struct EnhancedShadowLabel;
 
 #[derive(Resource)]
@@ -84,6 +82,7 @@ pub(super) fn terrain_shadow_pipeline_descriptor(
             shader_defs: vec!["ENHANCED_SHADOW".into()],
             entry_point: Some("fragment_shadow".into()),
             targets: vec![],
+            ..default()
         }),
         primitive: PrimitiveState {
             cull_mode: None,
@@ -91,8 +90,8 @@ pub(super) fn terrain_shadow_pipeline_descriptor(
         },
         depth_stencil: Some(DepthStencilState {
             format: SHADOW_FORMAT,
-            depth_write_enabled: true,
-            depth_compare: CompareFunction::LessEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(CompareFunction::LessEqual),
             stencil: default(),
             bias: directional_shadow_raster_bias(),
         }),
@@ -129,140 +128,80 @@ impl FromWorld for EnhancedShadowPipelines {
     }
 }
 
-pub(crate) struct EnhancedShadowNode;
+type EnhancedShadowQuery = (
+    Entity,
+    &'static EnhancedRendering,
+    &'static ViewUniformOffset,
+);
 
-impl ViewNode for EnhancedShadowNode {
-    type ViewQuery = (
-        Entity,
-        &'static EnhancedRendering,
-        &'static ViewUniformOffset,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        context: &mut RenderContext,
-        (entity, settings, view_offset): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if !render_model::enhanced_rendering_enabled()
-            || !settings.shadows
-            || settings.reflection_capture
-        {
-            return Ok(());
-        }
-        let views = world.resource::<EnhancedViews>();
-        let Some(view) = views.0.get(&entity) else {
-            return Ok(());
-        };
-        let Some(casters) = &view.caster_bind_group else {
-            return Ok(());
-        };
-        let pipelines = world.resource::<EnhancedShadowPipelines>();
-        let cache = world.resource::<PipelineCache>();
-        let cube = cache.get_render_pipeline(pipelines.cube);
-        let model = cache.get_render_pipeline(pipelines.model);
-        let actor = cache.get_render_pipeline(pipelines.actor);
-        if let Some(shadow) = &view.shadow {
-            for (index, (layer, bounds)) in shadow.layers.iter().zip(&view.cascades).enumerate() {
-                let diagnostics = context.diagnostic_recorder();
-                let label = match index {
-                    0 => "enhanced shadow cascade near",
-                    1 => "enhanced shadow cascade middle",
-                    _ => "enhanced shadow cascade far",
-                };
-                let span = diagnostics.time_span(context.command_encoder(), label);
-                let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
-                    label: Some("enhanced sun shadow cascade"),
-                    color_attachments: &[],
-                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                        view: layer,
-                        depth_ops: Some(Operations {
-                            load: LoadOp::Clear(1.0),
-                            store: StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
-                    timestamp_writes: crate::gpu_timing::render_pass_timestamps(
-                        world,
-                        crate::RuntimeStage::GpuShadows,
-                    ),
-                    occlusion_query_set: None,
-                });
-                pass.set_bind_group(2, casters, &[(index as u64 * CASTER_SLOT_BYTES) as u32]);
-                if let (Some(cube), Some(model)) = (cube, model) {
-                    crate::chunk::enhanced::draw_shadow_geometry(
-                        world,
-                        entity,
-                        index,
-                        bounds,
-                        view_offset.offset,
-                        &mut pass,
-                        cube,
-                        model,
-                    );
-                }
-                if let Some(actor) = actor {
-                    crate::actor_render::draw_shadow_actors(
-                        world,
-                        view_offset.offset,
-                        &mut pass,
-                        actor,
-                    );
-                }
-                drop(pass);
-                span.end(context.command_encoder());
-            }
-        }
-        let mut point_complete = !view.local_lights.dirty || view.local_lights.shadows.is_empty();
-        if view.local_lights.dirty
-            && let Some(shadow) = &view.point_shadow
-            && let (Some(cube), Some(model), Some(actor)) = (
-                cache.get_render_pipeline(pipelines.point_cube),
-                cache.get_render_pipeline(pipelines.point_model),
-                cache.get_render_pipeline(pipelines.point_actor),
-            )
-        {
+/// Records the prepared sun cascades and dirty lamp shadow faces.
+pub(crate) fn enhanced_shadows(
+    world: &World,
+    query: bevy::render::renderer::ViewQuery<EnhancedShadowQuery>,
+    mut context: RenderContext,
+) -> bevy::ecs::error::Result {
+    let (entity, settings, view_offset) = query.into_inner();
+    let context = &mut context;
+    if !render_model::enhanced_rendering_enabled()
+        || !settings.shadows
+        || settings.reflection_capture
+    {
+        return Ok(());
+    }
+    let views = world.resource::<EnhancedViews>();
+    let Some(view) = views.0.get(&entity) else {
+        return Ok(());
+    };
+    let Some(casters) = &view.caster_bind_group else {
+        return Ok(());
+    };
+    let pipelines = world.resource::<EnhancedShadowPipelines>();
+    let cache = world.resource::<PipelineCache>();
+    let cube = cache.get_render_pipeline(pipelines.cube);
+    let model = cache.get_render_pipeline(pipelines.model);
+    let actor = cache.get_render_pipeline(pipelines.actor);
+    if let Some(shadow) = &view.shadow {
+        for (index, (layer, bounds)) in shadow.layers.iter().zip(&view.cascades).enumerate() {
             let diagnostics = context.diagnostic_recorder();
-            let span =
-                diagnostics.time_span(context.command_encoder(), "enhanced cached lamp shadows");
-            point_complete = true;
-            for (index, light) in view.local_lights.shadows.iter().enumerate() {
-                let Some(layer) = shadow.layers.get(light.layer as usize) else {
-                    point_complete = false;
-                    continue;
-                };
-                let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
-                    label: Some("enhanced lamp shadow face"),
-                    color_attachments: &[],
-                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                        view: layer,
-                        depth_ops: Some(Operations {
-                            load: LoadOp::Clear(1.0),
-                            store: StoreOp::Store,
-                        }),
-                        stencil_ops: None,
+            let diagnostics = diagnostics.as_deref();
+            let label = match index {
+                0 => "enhanced shadow cascade near",
+                1 => "enhanced shadow cascade middle",
+                _ => "enhanced shadow cascade far",
+            };
+            let span = diagnostics.time_span(context.command_encoder(), label);
+            let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
+                label: Some("enhanced sun shadow cascade"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: layer,
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Clear(1.0),
+                        store: StoreOp::Store,
                     }),
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                let edge = view.local_lights.shadow_resolution() as f32;
-                pass.set_viewport(0.0, 0.0, edge, edge, 0.0, 1.0);
-                pass.set_bind_group(
-                    2,
-                    casters,
-                    &[((view.cascades.len() + index) as u64 * CASTER_SLOT_BYTES) as u32],
-                );
-                crate::chunk::enhanced::draw_local_light_geometry(
+                    stencil_ops: None,
+                }),
+                timestamp_writes: crate::gpu_timing::render_pass_timestamps(
+                    world,
+                    render_scene::RuntimeStage::GpuShadows,
+                ),
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(2, casters, &[(index as u64 * CASTER_SLOT_BYTES) as u32]);
+            if let (Some(cube), Some(model)) = (cube, model) {
+                crate::chunk::enhanced::draw_shadow_geometry(
                     world,
                     entity,
                     index,
-                    &light.clip,
+                    bounds,
                     view_offset.offset,
                     &mut pass,
                     cube,
                     model,
                 );
+            }
+            if let Some(actor) = actor {
                 crate::actor_render::draw_shadow_actors(
                     world,
                     view_offset.offset,
@@ -270,19 +209,74 @@ impl ViewNode for EnhancedShadowNode {
                     actor,
                 );
             }
-            if point_complete {
-                view.local_lights
-                    .submitted
-                    .store(true, std::sync::atomic::Ordering::Relaxed);
-            }
+            drop(pass);
             span.end(context.command_encoder());
         }
-        if cube.is_some() && model.is_some() && actor.is_some() && point_complete {
-            view.shadow_submitted.store(
-                u64::from(view.history.index) + 1,
-                std::sync::atomic::Ordering::Relaxed,
-            );
-        }
-        Ok(())
     }
+    let mut point_complete = !view.local_lights.dirty || view.local_lights.shadows.is_empty();
+    if view.local_lights.dirty
+        && let Some(shadow) = &view.point_shadow
+        && let (Some(cube), Some(model), Some(actor)) = (
+            cache.get_render_pipeline(pipelines.point_cube),
+            cache.get_render_pipeline(pipelines.point_model),
+            cache.get_render_pipeline(pipelines.point_actor),
+        )
+    {
+        let diagnostics = context.diagnostic_recorder();
+        let diagnostics = diagnostics.as_deref();
+        let span = diagnostics.time_span(context.command_encoder(), "enhanced cached lamp shadows");
+        point_complete = true;
+        for (index, light) in view.local_lights.shadows.iter().enumerate() {
+            let Some(layer) = shadow.layers.get(light.layer as usize) else {
+                point_complete = false;
+                continue;
+            };
+            let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
+                label: Some("enhanced lamp shadow face"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: layer,
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Clear(1.0),
+                        store: StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            let edge = view.local_lights.shadow_resolution() as f32;
+            pass.set_viewport(0.0, 0.0, edge, edge, 0.0, 1.0);
+            pass.set_bind_group(
+                2,
+                casters,
+                &[((view.cascades.len() + index) as u64 * CASTER_SLOT_BYTES) as u32],
+            );
+            crate::chunk::enhanced::draw_local_light_geometry(
+                world,
+                entity,
+                index,
+                &light.clip,
+                view_offset.offset,
+                &mut pass,
+                cube,
+                model,
+            );
+            crate::actor_render::draw_shadow_actors(world, view_offset.offset, &mut pass, actor);
+        }
+        if point_complete {
+            view.local_lights
+                .submitted
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        span.end(context.command_encoder());
+    }
+    if cube.is_some() && model.is_some() && actor.is_some() && point_complete {
+        view.shadow_submitted.store(
+            u64::from(view.history.index) + 1,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+    Ok(())
 }

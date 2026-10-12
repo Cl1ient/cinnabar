@@ -10,7 +10,11 @@ pub const MAX_FOV_DEGREES: i32 = 110;
 
 /// Desktop vanilla starts with two coverage samples per pixel.
 pub const DEFAULT_ANTI_ALIASING_SAMPLES: u32 = 2;
-pub const DEFAULT_RENDER_DISTANCE_CHUNKS: u8 = 16;
+#[path = "settings/render_distance.rs"]
+mod render_distance;
+pub use render_distance::{
+    MIN_RENDER_DISTANCE_CHUNKS, RenderDistanceDefaults, RenderDistanceDevice,
+};
 /// Sample counts represented by the rendering backend's camera settings.
 pub const ANTI_ALIASING_SAMPLE_COUNTS: [u32; 4] = [1, 2, 4, 8];
 
@@ -193,6 +197,8 @@ pub struct VideoSettings {
     pub damage_bob: f32,
     /// Java Edition 1.7 player animations instead of vanilla Bedrock's.
     pub java_animations: bool,
+    /// Preserves Bedrock skybox placement; disabling it centers the cube.
+    pub native_skybox_offset: bool,
 }
 
 impl Default for VideoSettings {
@@ -200,14 +206,14 @@ impl Default for VideoSettings {
         Self {
             horizontal_fov_degrees: DEFAULT_FOV_DEGREES as f32,
             fullscreen: false,
-            frame_rate_limit: FrameRateLimit::Automatic,
+            frame_rate_limit: FrameRateLimit::Unlimited,
             vsync: true,
             vrr: VrrPreference::Automatic,
             anti_aliasing_samples: DEFAULT_ANTI_ALIASING_SAMPLES,
             motion_blur: MotionBlurQuality::default(),
             smaa_mode: DEFAULT_SMAA_MODE,
             ui_scale: 1.0,
-            render_distance_chunks: DEFAULT_RENDER_DISTANCE_CHUNKS,
+            render_distance_chunks: MIN_RENDER_DISTANCE_CHUNKS,
             brightness: 0.5,
             render_mode: RenderMode::Vanilla,
             enhanced_quality: render_api::EnhancedQuality::default(),
@@ -219,6 +225,7 @@ impl Default for VideoSettings {
             outline_selection: DEFAULT_OUTLINE_SELECTION,
             damage_bob: 1.0,
             java_animations: false,
+            native_skybox_offset: assets::DEFAULT_NATIVE_SKYBOX_OFFSET,
         }
     }
 }

@@ -5,7 +5,7 @@ use wgpu::util::DeviceExt as _;
 
 #[test]
 fn submitted_pose_reprojection_keeps_subpixel_precision_and_resets_invalid_lifetimes() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = bevy::tasks::block_on(instance.request_adapter(&Default::default())) else {
         eprintln!("missing fixture: native GPU adapter for submitted actor motion");
         return;
@@ -17,7 +17,7 @@ fn submitted_pose_reprojection_keeps_subpixel_precision_and_resets_invalid_lifet
     }))
     .expect("submitted actor motion device");
     let source = r#"
-#import cinnabar::enhanced_actor_motion::{submitted_actor_position,submitted_surface_motion}
+import render::enhanced::actor_motion::{submitted_actor_position,submitted_surface_motion};
 @group(0) @binding(29) var quantized_input:texture_2d<f32>;
 @group(0) @binding(30) var quantized_output:texture_storage_2d<rgba16float,write>;
 @group(0) @binding(31) var<storage,read_write> results:array<vec4<f32>,6>;
@@ -191,7 +191,10 @@ fn submitted_pose_reprojection_keeps_subpixel_precision_and_resets_invalid_lifet
         });
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     receiver.recv().unwrap().unwrap();
-    let bytes = readback.slice(..).get_mapped_range();
+    let bytes = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("readback buffer is mapped");
     let values: &[[f32; 4]] = bytemuck::cast_slice(&bytes);
     assert_eq!(values[0], [16.0, 2.0, 3.0, 1.0]);
     assert_eq!(values[1][3], 0.0);

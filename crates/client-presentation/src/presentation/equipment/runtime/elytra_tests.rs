@@ -8,15 +8,15 @@ use crate::presentation::equipment::{
         WornItem,
     },
 };
-use assets::{EntityRenderMaterial, EntityRigFallback};
-use client_world::{
-    ActorAnimationVariables, ActorLifetimeId, ActorRigSnapshot, ActorSnapshot, HandPhase,
-    ItemAnimationState, WorldAuthority,
+use actor_animation::{
+    ActorAnimationVariables, ActorLifetimeId, ActorRigSnapshot, HandPhase, ItemAnimationState,
 };
+use assets::{EntityRenderMaterial, EntityRigFallback};
+use client_world::{ActorSnapshot, WorldAuthority};
 use protocol::{
     ActorEvent, ActorKind, ActorMetadataValue, ActorSpawnEvent, WorldBootstrap, WorldEvent,
 };
-use render::{ActorArtworkPages, ActorRigSubmission};
+use render_model::{ActorArtworkPages, ActorRigSubmission};
 use std::sync::Arc;
 
 /// A solid synthetic raster in the wing geometry's native UV dimensions.
@@ -77,7 +77,7 @@ fn wing_pack() -> Vec<(Box<str>, Vec<u8>)> {
 }
 
 /// Produces a real player snapshot through the public event admission path.
-fn owner() -> ActorSnapshot {
+pub(super) fn owner() -> ActorSnapshot {
     let mut world = WorldAuthority::new(
         WorldBootstrap {
             local_player_unique_id: 1,
@@ -122,21 +122,27 @@ fn owner() -> ActorSnapshot {
 }
 
 /// Supplies tick-owned actor identity and body-name bindings to the authored attachable.
-fn owner_rig<'a>(owner: &ActorSnapshot, names: &'a [Box<str>], tick: u64) -> ActorRigSnapshot<'a> {
+pub(super) fn owner_rig<'a>(
+    owner: &ActorSnapshot,
+    names: &'a [Box<str>],
+    tick: u64,
+) -> ActorRigSnapshot<'a> {
     ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         actor: ActorLifetimeId {
             session_id: 1,
             dimension: 0,
             runtime_id: owner.runtime_id,
             spawn_revision: owner.spawn_revision,
         },
-        rig: client_world::EntityRigId(0),
+        rig: actor_animation::EntityRigId(0),
         previous: &[],
         current: &[],
         rest: &[],
         rest_completed_tick: tick,
         rest_reset_generation: 0,
         completed_tick: tick,
+        pose_evaluated: true,
         reset_generation: 0,
         fallback: EntityRigFallback::Skip,
         scale: 1.0,
@@ -163,6 +169,8 @@ fn worn(enchanted: bool) -> ActorEquipmentInput {
         armor: [
             None,
             Some(WornItem {
+                use_facts: client_world::EffectiveItemUse::default(),
+                grip: assets::item::grip::builtin_item_grip("minecraft:elytra"),
                 identifier: Arc::from("minecraft:elytra"),
                 metadata: 0,
                 damage: None,
@@ -178,7 +186,7 @@ fn worn(enchanted: bool) -> ActorEquipmentInput {
 }
 
 /// Evaluates one full-alpha equipment frame for a controller's current owner state.
-fn layers(
+pub(super) fn layers(
     runtime: &mut EquipmentRuntime,
     body: &ActorRigSubmission,
     owner: &ActorSnapshot,
@@ -195,14 +203,14 @@ fn layers(
                 owner,
                 rig: &rig,
                 frame_alpha: 1.0,
-                delta_seconds: client_world::ACTOR_TICK_DURATION.as_secs_f32(),
+                delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
             }),
         )
         .to_vec()
 }
 
 /// Resolves the selected artwork texel without depending on atlas page layout.
-fn selected_pixel(
+pub(super) fn selected_pixel(
     pages: &ActorArtworkPages,
     layer: &crate::presentation::equipment::runtime::EquipmentPresentation,
 ) -> [u8; 4] {

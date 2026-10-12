@@ -1,5 +1,7 @@
 //! Real render apps on a validating NOOP device and native fallback backends.
 
+use render_scene::{ChunkRenderInstance, ChunkRenderQueue};
+
 use bevy::{
     asset::{AssetPlugin, Assets},
     camera::{CameraPlugin, RenderTarget},
@@ -8,7 +10,7 @@ use bevy::{
     mesh::MeshPlugin,
     render::{
         RenderPlugin,
-        renderer::{RenderAdapterInfo, WgpuWrapper},
+        renderer::{RenderAdapterInfo, RenderInstance},
         settings::RenderCreation,
     },
     window::WindowPlugin,
@@ -16,6 +18,7 @@ use bevy::{
 
 use super::model::CullRecord;
 use super::*;
+use render_scene::ChunkUploadPriority;
 
 /// A render plugin on the first adapter of `backends`; `None` when none is present.
 pub(super) fn render_plugin(
@@ -23,13 +26,16 @@ pub(super) fn render_plugin(
     required_features: WgpuFeatures,
 ) -> Option<RenderPlugin> {
     let noop = backends == wgpu::Backends::NOOP;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends,
         backend_options: wgpu::BackendOptions {
-            noop: wgpu::NoopBackendOptions { enable: noop },
+            noop: wgpu::NoopBackendOptions {
+                enable: noop,
+                ..Default::default()
+            },
             ..Default::default()
         },
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let adapter =
         bevy::tasks::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
@@ -55,10 +61,10 @@ pub(super) fn render_plugin(
     Some(RenderPlugin {
         render_creation: RenderCreation::manual(
             RenderDevice::from(device),
-            RenderQueue(Arc::new(WgpuWrapper::new(queue))),
-            RenderAdapterInfo(WgpuWrapper::new(adapter_info)),
-            RenderAdapter(Arc::new(WgpuWrapper::new(adapter))),
-            RenderInstance(Arc::new(WgpuWrapper::new(instance))),
+            RenderQueue::new(queue),
+            RenderAdapterInfo::new(adapter_info),
+            RenderAdapter::new(adapter),
+            RenderInstance::new(instance),
         ),
         synchronous_pipeline_compilation: true,
         ..Default::default()
@@ -81,7 +87,7 @@ pub(super) fn mesh() -> meshing::ChunkMesh {
     )
 }
 
-pub(super) fn frame(app: &mut App) {
+pub(in crate::chunk) fn frame(app: &mut App) {
     app.update();
     app.sub_app(RenderApp)
         .world()
@@ -91,7 +97,11 @@ pub(super) fn frame(app: &mut App) {
 }
 
 /// The chunk renderer on `render`'s device, with a camera at `transform` drawing to an image.
-pub(super) fn chunk_app(render: RenderPlugin, msaa: Msaa, transform: Transform) -> (App, Entity) {
+pub(in crate::chunk) fn chunk_app(
+    render: RenderPlugin,
+    msaa: Msaa,
+    transform: Transform,
+) -> (App, Entity) {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .add_plugins(WindowPlugin {
@@ -107,6 +117,7 @@ pub(super) fn chunk_app(render: RenderPlugin, msaa: Msaa, transform: Transform) 
             CorePipelinePlugin,
         ))
         .add_plugins(ChunkRenderPlugin::default());
+    crate::render_test_support::fail_on_render_error(&mut app);
     let image = app
         .world_mut()
         .resource_mut::<Assets<Image>>()
@@ -131,10 +142,10 @@ pub(super) fn chunk_app(render: RenderPlugin, msaa: Msaa, transform: Transform) 
     (app, camera)
 }
 
-pub(super) const KEYS: [SubChunkKey; 2] =
+pub(in crate::chunk) const KEYS: [SubChunkKey; 2] =
     [SubChunkKey::new(0, 0, 0, 0), SubChunkKey::new(0, 1, 0, 0)];
 
-pub(super) fn insert_meshes(app: &mut App, keys: &[SubChunkKey]) {
+pub(in crate::chunk) fn insert_meshes(app: &mut App, keys: &[SubChunkKey]) {
     for &key in keys {
         app.world_mut()
             .resource_mut::<ChunkRenderQueue>()
@@ -143,13 +154,13 @@ pub(super) fn insert_meshes(app: &mut App, keys: &[SubChunkKey]) {
     }
 }
 
-pub(super) fn camera_transform() -> Transform {
+pub(in crate::chunk) fn camera_transform() -> Transform {
     Transform::from_xyz(-6.0, 20.0, -6.0).looking_at(Vec3::new(8.0, 8.0, 8.0), Vec3::Y)
 }
 
 /// Every frame queues, prepares, culls and draws the GPU path without a validation error.
 #[test]
-fn count_capable_devices_run_the_two_phase_cull_through_the_render_graph() {
+fn count_capable_devices_run_the_two_phase_cull_through_the_render_schedule() {
     let (mut app, _) = chunk_app(
         noop_render_plugin(
             WgpuFeatures::MULTI_DRAW_INDIRECT_COUNT | WgpuFeatures::INDIRECT_FIRST_INSTANCE,
@@ -157,26 +168,6 @@ fn count_capable_devices_run_the_two_phase_cull_through_the_render_graph() {
         Msaa::Sample4,
         camera_transform(),
     );
-    // The chunk-only renderer has no shadow plugin; every queued edge must still resolve.
-    let graph = app
-        .sub_app(RenderApp)
-        .world()
-        .resource::<bevy::render::render_graph::RenderGraph>()
-        .get_sub_graph(bevy::core_pipeline::core_3d::graph::Core3d)
-        .unwrap();
-    assert!(
-        graph
-            .get_node_state(crate::entity_shadow_render::EntityShadowLabel)
-            .is_err()
-    );
-    let outputs: Vec<_> = graph
-        .iter_node_outputs(node::GpuCullLateLabel)
-        .unwrap()
-        .collect();
-    assert!(outputs.iter().any(|(_, state)| state.label
-        == bevy::render::render_graph::RenderLabel::intern(
-            &bevy::core_pipeline::core_3d::graph::Node3d::MainTransmissivePass
-        )));
     insert_meshes(&mut app, &KEYS);
     let keys = KEYS;
     for _ in 0..4 {
@@ -265,7 +256,7 @@ fn native_devices_compile_opaque_and_transparent_terrain_variants() {
         }
         assert!(
             app.world()
-                .resource::<crate::PipelineWarmupReadiness>()
+                .resource::<render_scene::PipelineWarmupReadiness>()
                 .is_ready()
         );
     }

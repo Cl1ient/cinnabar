@@ -30,7 +30,7 @@ pub(crate) fn shader_source(source: &str) -> String {
 }
 
 pub(crate) fn shader(source: &str, path: impl Into<String>) -> Shader {
-    crate::shader_safety::from_wgsl(shader_source(source), path)
+    crate::shader_safety::from_wesl(shader_source(source), path)
 }
 
 pub(crate) fn texture_descriptor() -> TextureDescriptor<'static> {
@@ -231,7 +231,7 @@ pub(super) fn fixture(
         label: Some("Enhanced atmospheric transfer fixture"),
         source: wgpu::ShaderSource::Wgsl(
             crate::shader_source::composed(
-                &shader_source(include_str!("multiple_scattering.wgsl")),
+                &shader_source(include_str!("multiple_scattering.wesl")),
                 &[],
             )
             .into(),

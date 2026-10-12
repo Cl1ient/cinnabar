@@ -1,11 +1,13 @@
+use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
-use crate::acceptance::AcceptanceRun;
+use ::acceptance::AcceptanceRun;
 #[cfg(feature = "acceptance")]
 use acceptance::phase2_evidence::{
     CombinedPhase2Snapshot, PlayerColumnPresentationEvidence, build_profile_identity,
     generation_manifest_identity, graphics_identity_sha256, key_manifest_identity,
     phase2_publication_line_if_changed, present_mode_identity, sha256_identity_from_hex_or_text,
 };
+use client_runtime::network::NetworkHandle;
 mod attribution;
 use attribution::DiagnosticAttributionLogState;
 pub(crate) use attribution::refresh_diagnostic_attribution;
@@ -27,51 +29,54 @@ use bevy::{
     time::Real,
 };
 #[cfg(feature = "acceptance")]
-use chunk_pipeline::Phase2PresentationSnapshot;
+use chunk_pipeline::PresentationSnapshot;
 #[cfg(feature = "acceptance")]
 use meshing::{BiomeBlendSample, ChunkBiomeTintIdentity, PackedBiomeRecord};
-use render::{
+use render_scene::{
     ChunkRenderInstance, ChunkRenderQueue, ModelWorkloadMetrics, RuntimeStage,
     RuntimeStageProfiler, TransparentSortMetrics, VisibilityDiagnostics,
     VisibilityDiagnosticsInput,
 };
 #[cfg(feature = "acceptance")]
-use render::{ModelWitnessEvidence, RenderViewCohort, TransparentWitnessEvidence};
+use render_scene::{ModelWitnessEvidence, RenderViewCohort, TransparentWitnessEvidence};
 use world::SubChunkKey;
 
 mod visibility_snapshot;
 
 #[cfg(feature = "acceptance")]
-use crate::camera::FlyCamera;
-use crate::{
-    acceptance::{
+use client_presentation::camera::FlyCamera;
+use diagnostics::metrics::{
+    GpuPassMeasurement, ModelWorkloadMetricsSnapshot, PipelineMetricsSnapshot,
+    TransparentSortMetricsSnapshot, pair_gpu_pass_sample,
+};
+use {
+    crate::runtime::{
+        shutdown::record_fatal_error,
+        visibility::{AppMetrics, CaveVisibilityCache, DiagnosticQuads},
+        world::{ClientWorld, WorldStreamFramePoll},
+    },
+    client_interaction::movement::MovementTicker,
+    client_presentation::{
+        camera::THIRD_PERSON_RADIUS_BLOCKS, local_player::LocalPlayerFrameCarrier,
+    },
+    client_runtime::{
+        ingress::OUTBOUND_SEND_BUDGET_PER_FRAME,
+        publication::{
+            PublicationController, PublicationFrameWork, adaptive_publication_diagnostic_line,
+        },
+    },
+    client_state::SemanticInputSnapshot,
+    diagnostics::{
         markers::{
             ERROR_COUNTERS, STAGE_PROFILE, VISIBILITY_SNAPSHOT, acceptance_runtime_metadata_marker,
             cumulative_counter_delta, visibility_delta_marker_fields,
             visibility_digest_marker_fields, world_publication_snapshot_marker,
         },
-        mutation::write_stdout_marker,
+        write_stdout_marker,
     },
-    camera::THIRD_PERSON_RADIUS_BLOCKS,
-    local_player::LocalPlayerFrameCarrier,
-    movement::{
-        MovementSendError, MovementTicker, PhysicsTickEvidenceContext,
-        flush_player_auth_inputs_guarded,
+    gameplay::movement::{
+        MovementSendError, PhysicsTickEvidenceContext, flush_player_auth_inputs_guarded,
     },
-    runtime::{
-        network::{NetworkHandle, OUTBOUND_SEND_BUDGET_PER_FRAME},
-        publication::{
-            PublicationController, PublicationFrameWork, adaptive_publication_diagnostic_line,
-        },
-        shutdown::record_fatal_error,
-        visibility::{AppMetrics, CaveVisibilityCache, DiagnosticQuads},
-        world::{ClientWorld, WorldStreamFramePoll},
-    },
-    semantic_controls::SemanticInputSnapshot,
-};
-use diagnostics::metrics::{
-    GpuPassMeasurement, ModelWorkloadMetricsSnapshot, PipelineMetricsSnapshot,
-    TransparentSortMetricsSnapshot, pair_gpu_pass_sample,
 };
 
 const VISIBILITY_DIAGNOSTIC_INTERVAL: Duration = Duration::from_secs(1);
@@ -122,7 +127,11 @@ pub(crate) struct MetricsSamplingState {
     pub(crate) last_phase2_snapshot: Option<CombinedPhase2Snapshot>,
 }
 
-pub(crate) use diagnostics::AcceptanceRuntimeConfig;
+/// Build identity recorded alongside runtime measurements.
+#[derive(bevy::prelude::Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AcceptanceRuntimeConfig {
+    pub(crate) build_profile: &'static str,
+}
 
 #[cfg(feature = "acceptance")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,7 +244,7 @@ pub(crate) fn bedrock_camera_rotation(yaw_degrees: f32, pitch_degrees: f32) -> Q
 }
 
 pub(crate) fn send_player_auth_inputs(
-    network: Res<NetworkHandle>,
+    network: Res<NetworkHandle<PackApplication>>,
     #[cfg(feature = "acceptance")] acceptance: Res<AcceptanceRun>,
     input: Res<SemanticInputSnapshot>,
     local_frame: Res<LocalPlayerFrameCarrier>,
@@ -293,9 +302,7 @@ pub(crate) fn send_player_auth_inputs(
     );
     match result {
         Ok(_) => {}
-        Err(MovementSendError::Transport(
-            crate::runtime::network::session::PacketSendError::Full(_),
-        )) => {
+        Err(MovementSendError::Transport(client_session::PacketSendError::Full(_))) => {
             metrics.0.add_outbound_budget_drops(1);
             movement.note_full_restore();
         }
@@ -306,12 +313,9 @@ pub(crate) fn send_player_auth_inputs(
                 format!("failed to encode PlayerAuthInput: {error}"),
             );
         }
-        Err(MovementSendError::Transport(
-            crate::runtime::network::session::PacketSendError::Closed(_),
-        )) if network.closed_command_has_pending_control() => {}
-        Err(MovementSendError::Transport(
-            crate::runtime::network::session::PacketSendError::Closed(_),
-        )) => {
+        Err(MovementSendError::Transport(client_session::PacketSendError::Closed(_)))
+            if network.closed_command_has_pending_control() => {}
+        Err(MovementSendError::Transport(client_session::PacketSendError::Closed(_))) => {
             movement.deactivate();
             record_fatal_error(
                 &mut client_world.fatal_error,
@@ -389,7 +393,8 @@ pub(crate) fn record_metrics(
     if !sampling.runtime_metadata_emitted
         && let Some(graphics_adapter) = visibility_diagnostics.graphics_adapter()
     {
-        let marker = acceptance_runtime_metadata_marker(*runtime_config, &graphics_adapter);
+        let marker =
+            acceptance_runtime_metadata_marker(runtime_config.build_profile, &graphics_adapter);
         let mut stdout = diagnostics::console::stdout();
         write_stdout_marker(&mut stdout, &marker);
         sampling.runtime_metadata_emitted = true;
@@ -481,7 +486,7 @@ pub(crate) fn record_metrics(
             required_cohort_hash,
             &publisher_manifest,
         );
-        let presentation = Phase2PresentationSnapshot {
+        let presentation = PresentationSnapshot {
             build_profile: build_profile_identity(runtime_config.build_profile),
             graphics_identity_sha256: graphics_identity_sha256(&graphics),
             requested_present_mode: present_mode_identity(&graphics.requested_present_mode),
@@ -674,7 +679,7 @@ pub(crate) fn record_metrics(
                 render_queue.pending_bytes(),
                 render_queue.gpu_upload_bytes(),
                 snapshot,
-                *runtime_config,
+                runtime_config.build_profile,
                 &graphics,
             );
             let mut stdout = diagnostics::console::stdout();
@@ -833,7 +838,7 @@ pub(crate) fn gpu_pass_measurement(
         .map(|measurement| GpuPassMeasurement::new(measurement.time, measurement.value))
 }
 
-pub(crate) use diagnostics::transparent_sort_committed_marker;
+use diagnostics::transparent_sort_committed_marker;
 
 /// Releases acknowledged tick records when the optional evidence consumer is absent.
 #[cfg(not(feature = "acceptance"))]

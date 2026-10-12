@@ -1,6 +1,11 @@
 //! Per-category equipment layer builders for a drawn body.
 
-use super::*;
+use {
+    super::*,
+    render_model::equipment::{
+        BoneChannels, ItemDisplay, attach_to_bone, held_block_display, held_sprite_display,
+    },
+};
 
 impl EquipmentRuntime {
     pub(super) fn push_held(
@@ -174,7 +179,7 @@ impl EquipmentRuntime {
             if block {
                 held_block_display()
             } else {
-                held_sprite_display(self.hand_equipped(&item.identifier))
+                held_sprite_display(item.grip.upright().unwrap_or(false))
             }
         });
         let (Some(previous), Some(current)) = (
@@ -201,6 +206,7 @@ impl EquipmentRuntime {
         body_geometry: u32,
         (slot, layer): (ArmorSlot, u8),
         item: &WornItem,
+        (equipment, animation): (&ActorEquipmentInput, Option<EquipmentAnimation<'_>>),
         layers: &mut Vec<EquipmentPresentation>,
     ) {
         let Some((catalog, from_pack)) = self.binding_source(&item.identifier) else {
@@ -214,7 +220,12 @@ impl EquipmentRuntime {
         if category != (EquipmentCategory::Armor { slot }) {
             return;
         }
-        let Some(location) = self.texture_location(&binding.texture.identifier, from_pack) else {
+        let selected = animation
+            .filter(|_| from_pack)
+            .and_then(|animation| self.worn_texture(item, slot, equipment, animation));
+        let Some(location) =
+            selected.or_else(|| self.texture_location(&binding.texture.identifier, from_pack))
+        else {
             return;
         };
         let Some(geometry) = self.armor_geometry_for(&binding.geometry.identifier, from_pack)
@@ -252,6 +263,57 @@ impl EquipmentRuntime {
             location,
             tint,
         ));
+    }
+
+    /// The texture a pack attachable's render controller selects for a worn piece, such as a
+    /// team colour read from its owner; `None` keeps the binding's default texture.
+    fn worn_texture(
+        &mut self,
+        item: &WornItem,
+        slot: ArmorSlot,
+        equipment: &ActorEquipmentInput,
+        animation: EquipmentAnimation<'_>,
+    ) -> Option<ActorArtworkLocation> {
+        let elapsed = animation
+            .owner
+            .is_using_item()
+            .then_some(animation.rig.hand[1].use_ticks);
+        let use_facts = equipment
+            .main
+            .as_ref()
+            .map(|main| main.use_facts)
+            .unwrap_or_default();
+        let duration = use_facts.ticks.unwrap_or_default();
+        let pack = self.pack.as_mut()?;
+        let variables = [("variable.is_enchanted", f32::from(item.enchanted))];
+        let input = equipment.attachable_input(actor_animation::AttachableAnimationInput {
+            worn: true,
+            worn_slot: slot as u8,
+            frame_alpha: animation.frame_alpha,
+            use_elapsed_ticks: elapsed,
+            delta_seconds: Some(animation.delta_seconds),
+            animation_frame: inventory::ranged_animation_frame(
+                use_facts.animation,
+                elapsed,
+                duration,
+            ),
+            max_use_ticks: duration,
+            owner_variables: &variables,
+            ..Default::default()
+        });
+        let evaluated =
+            pack.attachables
+                .evaluate(&item.identifier, animation.owner, animation.rig, input)?;
+        let layer = evaluated
+            .render
+            .iter()
+            .find(|layer| layer.texture_slot == 0)?;
+        let path = &pack.assets.sources().get(layer.source as usize)?.path;
+        let texture: Box<str> = path
+            .strip_suffix(".png")
+            .or_else(|| path.strip_suffix(".tga"))?
+            .into();
+        self.texture_location(&texture, true)
     }
 
     /// A worn head riding the body's head bone.

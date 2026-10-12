@@ -38,6 +38,7 @@ pub(super) fn head_stream() -> WorldStream {
 /// Starts the local player with a stationary, empty-handed pose.
 pub(super) fn head_feed() -> client_world::LocalPlayerFeed {
     client_world::LocalPlayerFeed {
+        game_mode: None,
         prefer_client_skin: false,
         uuid: [1; 16],
         username: Arc::from("Player"),
@@ -50,11 +51,12 @@ pub(super) fn head_feed() -> client_world::LocalPlayerFeed {
         pitch: 5.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_slot: 0,
         main_hand_stack_id: None,
-        bedrock_swing_ticks: client_world::ACTOR_SWING_TICKS,
-        java_swing_ticks: client_world::ACTOR_SWING_TICKS,
+        bedrock_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
+        java_swing_ticks: actor_animation::ACTOR_SWING_TICKS,
         flying: false,
         gliding: false,
         fall_fly_ticks: 0,
@@ -71,20 +73,20 @@ pub(super) fn head_feed() -> client_world::LocalPlayerFeed {
 pub(super) fn uploaded_skin_feed(animated: bool) -> client_world::LocalPlayerFeed {
     let mut feed = head_feed();
     let geometry = r#"{"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":"geometry.uploaded","texture_width":64,"texture_height":64},"bones":[{"name":"head","pivot":[0,24,0]},{"name":"body","pivot":[0,24,0]},{"name":"rightarm","pivot":[4,22,0]},{"name":"leftarm","pivot":[-4,22,0]},{"name":"rightleg","pivot":[1.9,12,0]},{"name":"leftleg","pivot":[-1.9,12,0]}]}]}"#;
-    let image = protocol::SkinAnimation {
-        kind: protocol::SkinAnimationKind::Face,
+    let image = render_api::SkinAnimation {
+        kind: render_api::SkinAnimationKind::Face,
         width: 64,
         height: 64,
         rgba8: vec![255; 64 * 64 * 4].into(),
         frames: 1,
         blinking: false,
     };
-    feed.skin = protocol::PlayerSkin::Standard(protocol::StandardSkin {
+    feed.skin = protocol::PlayerSkin::Standard(render_api::StandardSkin {
         width: 64,
         height: 64,
         rgba8: vec![255; 64 * 64 * 4].into(),
         cape: None,
-        geometry: Some(Arc::new(protocol::SkinGeometrySource {
+        geometry: Some(Arc::new(render_api::SkinGeometrySource {
             resource_patch: Arc::from(
                 r#"{"geometry":{"default":"geometry.uploaded","animated_face":"geometry.uploaded"}}"#,
             ),
@@ -127,7 +129,7 @@ fn third_person_keeps_authored_pack_poses_and_accepts_uploaded_skin_geometry() {
         .is_some()
     );
     let authored = ActorRigSnapshot {
-        rig: client_world::EntityRigId(assets::PACK_RIG_ID_BASE),
+        rig: actor_animation::EntityRigId(assets::PACK_RIG_ID_BASE),
         ..rig
     };
     assert!(
@@ -153,11 +155,11 @@ fn published_persona_layers_follow_the_sampled_local_emote_only() {
     assert_eq!(rig.skin_layers.len(), 1);
     let native_layer = &rig.skin_layers[0];
     let native_pose = native_layer.current.clone();
-    let emote = client_world::sample_custom_emote(
+    let emote = actor_animation::sample_custom_emote(
         &rig,
-        client_world::CustomEmote::Twerk,
+        actor_animation::CustomEmote::Twerk,
         0.0,
-        client_world::CustomEmote::Twerk.duration_seconds() / 4.0,
+        actor_animation::CustomEmote::Twerk.duration_seconds() / 4.0,
     )
     .unwrap();
     assert_ne!(emote.skin_layers[0].current, native_pose);
@@ -311,6 +313,8 @@ fn retained_item_does_not_use_the_selected_items_clock() {
 #[test]
 fn native_and_modern_items_stay_retained_until_equip_adopts_them() {
     let item = |identifier: &str| WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
+        grip: assets::item::grip::builtin_item_grip(identifier),
         identifier: identifier.into(),
         metadata: 0,
         damage: None,
@@ -338,6 +342,8 @@ fn native_and_modern_items_stay_retained_until_equip_adopts_them() {
 #[test]
 fn outgoing_main_use_is_idle_while_offhand_keeps_the_actual_owner_use() {
     let item = |identifier: &str| WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
+        grip: assets::item::grip::builtin_item_grip(identifier),
         identifier: identifier.into(),
         metadata: 0,
         damage: None,
@@ -354,7 +360,7 @@ fn outgoing_main_use_is_idle_while_offhand_keeps_the_actual_owner_use() {
         main: Some(item(BOW)),
         ..owner.clone()
     };
-    let timing = client_world::AttachableAnimationInput {
+    let timing = actor_animation::AttachableAnimationInput {
         first_person: true,
         frame_alpha: 0.75,
         animation_frame: 3,
@@ -410,6 +416,8 @@ fn mixed_native_map_swaps_publish_the_outgoing_mesh_until_adoption() {
         .unwrap(),
     );
     let item = |identifier: &str| WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
+        grip: assets::item::grip::builtin_item_grip(identifier),
         identifier: identifier.into(),
         metadata: 0,
         damage: None,
@@ -431,7 +439,7 @@ fn mixed_native_map_swaps_publish_the_outgoing_mesh_until_adoption() {
             Arc::clone(&icons),
             None,
             None,
-            render::ActorArtworkPages::default(),
+            render_model::ActorArtworkPages::default(),
         );
         let rig = stream.authority().actor_rig(1).unwrap();
         equipment.register_skin_rig(
@@ -532,6 +540,8 @@ fn partial_layers_skip_missing_parts() {
 /// Builds a sprite stack for the hand transition tests.
 fn worn(identifier: &str) -> WornItem {
     WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
+        grip: assets::item::grip::builtin_item_grip(identifier),
         identifier: Arc::from(identifier),
         metadata: 0,
         damage: None,
@@ -589,6 +599,7 @@ fn mixed_swaps_change_hands_at_the_bottom_of_the_dip() {
 fn displayed_stack_keeps_its_data_value_through_the_dip() {
     let water = worn("minecraft:potion");
     let healing = WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
         metadata: 21,
         ..worn("minecraft:potion")
     };
@@ -657,6 +668,7 @@ fn local_death_root_reapplies_java_tilt_and_preserves_native_mode() {
 fn outgoing_metadata_variant_keeps_its_own_idle_use_clock() {
     let owner = ActorEquipmentInput {
         main: Some(WornItem {
+            use_facts: client_world::EffectiveItemUse::default(),
             metadata: 21,
             ..worn("minecraft:potion")
         }),
@@ -666,7 +678,7 @@ fn outgoing_metadata_variant_keeps_its_own_idle_use_clock() {
         main: Some(worn("minecraft:potion")),
         ..owner.clone()
     };
-    let timing = client_world::AttachableAnimationInput {
+    let timing = actor_animation::AttachableAnimationInput {
         animation_frame: 3,
         use_elapsed_ticks: Some(19),
         max_use_ticks: 32,
@@ -742,7 +754,7 @@ fn retained_java_poses_match_fresh_retargeting_across_ticks() {
                     1,
                     alpha,
                     |names, rest, targets| targets_into(names, rest, &pose, &parts, true, targets),
-                    &mut client_world::JavaRetargetCache::default(),
+                    &mut actor_animation::JavaRetargetCache::default(),
                 )
                 .unwrap();
             assert_eq!(
@@ -784,9 +796,9 @@ fn java_frames_between_ticks_allocate_only_published_poses() {
             &mut scratch,
         ));
         scratch.begin_frame();
-        let before = crate::test_allocations::count();
+        let before = test_alloc::thread_allocations();
         let posed = third_person(&stream, &rig, actor, Some(&equipment), 0.5, &mut scratch);
-        let allocations = crate::test_allocations::count() - before;
+        let allocations = test_alloc::thread_allocations() - before;
         let layers = posed.unwrap().posed.skin_layers.len() as u64;
         assert_eq!(layers, u64::from(animated));
         let published = 1 + if layers > 0 { 1 + layers } else { 0 };

@@ -1,20 +1,21 @@
 //! Scene-stack regressions through the real animated hand publication system.
-use crate::player_runtime::PlayerRuntime;
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
+use client_state::PlayerRuntime;
 use std::sync::Arc;
 
-use crate::{
-    menu::{MenuAction, MenuRuntime, MenuScreen},
-    runtime::{
-        network::{HandRigBuilder, prepare_actor_render_frame},
-        world::ClientWorld,
-    },
-    ui_runtime::presentation::forms::tests::mini_engine_presentation,
-};
 use bevy::prelude::*;
 use client_ui::ui_runtime::{UiRuntime, presentation::forms::ServerUiPack};
 use protocol::{
     ActorEvent, ActorKind, ActorSpawnEvent, PlayerListEntry, PlayerListUpdateEvent, PlayerSkin,
-    StandardSkin, WorldBootstrap, WorldEvent,
+    WorldBootstrap, WorldEvent,
+};
+use render_api::StandardSkin;
+use {
+    crate::runtime::{network::prepare_actor_render_frame, world::ClientWorld},
+    client_presentation::actor_publication::HandRigBuilder,
+    client_shell::menu::MenuRuntime,
+    client_ui::test_support::mini_engine_presentation,
+    launcher::menu::{MenuAction, MenuScreen},
 };
 
 mod hud_visibility;
@@ -97,21 +98,23 @@ fn player_world(entities: Arc<assets::RuntimeEntityAssets>) -> ClientWorld {
 fn menu_input_leak_animated_hand_obeys_pack_visibility_and_restores_after_settings() {
     let (_pack, _geometry, entities) = super::viewmodel_presentation::hand_fixture();
     let scene =
-        render::ActorRenderScene::with_runtime_entity_assets_and_equipment(&entities, &[]).unwrap();
+        render_scene::ActorRenderScene::with_runtime_entity_assets_and_equipment(&entities, &[])
+            .unwrap();
     let icons = Arc::new(
         assets::RuntimeIconCatalog::decode(
             &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
         )
         .unwrap(),
     );
-    let (equipment, artwork, _) = crate::presentation::equipment::EquipmentRuntime::build(
-        entities.clone(),
-        None,
-        icons,
-        None,
-        None,
-        render::ActorArtworkPages::default(),
-    );
+    let (equipment, artwork, _) =
+        client_presentation::presentation::equipment::EquipmentRuntime::build(
+            entities.clone(),
+            None,
+            icons,
+            None,
+            None,
+            render_model::ActorArtworkPages::default(),
+        );
     let mut world = super::actor_frame_allocations::actor_frame_world(
         player_world(entities.clone()),
         scene,
@@ -120,16 +123,16 @@ fn menu_input_leak_animated_hand_obeys_pack_visibility_and_restores_after_settin
         (Vec3::new(0., 66., -2.), Vec3::new(0., 66., 0.)),
     );
     world.insert_resource(equipment);
-    world.insert_resource(PlayerRuntime::new(1));
-    world.insert_resource(UiRuntime::new(1));
-    world.insert_resource(mini_engine_presentation());
+    world.insert_resource(PlayerRuntime(player_state::PlayerState::new(1)));
+    world.insert_resource(UiRuntimeResource(UiRuntime::new(1)));
+    world.insert_resource(UiPresentationResource(mini_engine_presentation()));
     world.insert_resource(MenuRuntime::new(false, 2, "Tester".into()));
     world
         .run_system_cached(crate::runtime::network::advance_actor_frame)
         .unwrap();
     world.run_system_cached(prepare_actor_render_frame).unwrap();
     assert!(
-        world.resource::<render::HandRigScene>().is_active(),
+        world.resource::<render_scene::HandRigScene>().is_active(),
         "HUD submits the hand"
     );
     world.resource_mut::<MenuRuntime>().open_pause();
@@ -138,13 +141,13 @@ fn menu_input_leak_animated_hand_obeys_pack_visibility_and_restores_after_settin
         .unwrap();
     world.run_system_cached(prepare_actor_render_frame).unwrap();
     assert!(
-        world.resource::<render::HandRigScene>().is_active(),
+        world.resource::<render_scene::HandRigScene>().is_active(),
         "pause keeps the hand"
     );
     let opaque_pause =
         br#"{"namespace":"pause","pause_screen":{"type":"screen","render_game_behind":false}}"#;
     world
-        .resource_mut::<client_ui::ui_runtime::presentation::UiPresentationRuntime>()
+        .resource_mut::<client_shell::ui_resources::UiPresentationResource>()
         .set_server_ui_pack(&ServerUiPack {
             ui_layers: vec![vec![
                 (
@@ -160,18 +163,18 @@ fn menu_input_leak_animated_hand_obeys_pack_visibility_and_restores_after_settin
         .unwrap();
     world.run_system_cached(prepare_actor_render_frame).unwrap();
     assert!(
-        !world.resource::<render::HandRigScene>().is_active(),
+        !world.resource::<render_scene::HandRigScene>().is_active(),
         "opaque pack screen clears the hand"
     );
     world
-        .resource_mut::<client_ui::ui_runtime::presentation::UiPresentationRuntime>()
+        .resource_mut::<client_shell::ui_resources::UiPresentationResource>()
         .set_server_ui_pack(&ServerUiPack::default());
     world
         .run_system_cached(crate::runtime::network::advance_actor_frame)
         .unwrap();
     world.run_system_cached(prepare_actor_render_frame).unwrap();
     assert!(
-        world.resource::<render::HandRigScene>().is_active(),
+        world.resource::<render_scene::HandRigScene>().is_active(),
         "pause restores the hand"
     );
     world
@@ -182,7 +185,7 @@ fn menu_input_leak_animated_hand_obeys_pack_visibility_and_restores_after_settin
         .unwrap();
     world.run_system_cached(prepare_actor_render_frame).unwrap();
     assert!(
-        world.resource::<render::HandRigScene>().is_active(),
+        world.resource::<render_scene::HandRigScene>().is_active(),
         "Settings opened from pause retains the live world hand"
     );
     world.resource_mut::<MenuRuntime>().set_visible(false);
@@ -191,7 +194,7 @@ fn menu_input_leak_animated_hand_obeys_pack_visibility_and_restores_after_settin
         .unwrap();
     world.run_system_cached(prepare_actor_render_frame).unwrap();
     assert!(
-        world.resource::<render::HandRigScene>().is_active(),
+        world.resource::<render_scene::HandRigScene>().is_active(),
         "closing Settings restores it"
     );
 }

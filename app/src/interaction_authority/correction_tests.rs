@@ -2,11 +2,19 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::{Quat, Transform, Vec3 as ViewVec3};
 
-use super::*;
-use crate::local_player::{LocalPlayerFrameCarrier, LocalPlayerFrameSample, LocalViewPose};
-use crate::movement::{
-    LocalPhysicsController, MovementSource, MovementTicker, PhysicsCorrectionMode,
-    reconcile_candidate_physics_correction,
+use client_presentation::local_player::{
+    LocalPlayerFrameCarrier, LocalPlayerFrameSample, LocalViewPose,
+};
+use {
+    super::*,
+    client_presentation::local_player::InteractionOriginSnapshot,
+    gameplay::{interaction_authority::FrozenBlockObservation, mining::FrozenMiningSelection},
+};
+use {
+    client_interaction::movement::{LocalPhysicsController, MovementTicker},
+    gameplay::movement::{
+        MovementSource, PhysicsCorrectionMode, reconcile_candidate_physics_correction,
+    },
 };
 
 struct Floor;
@@ -67,6 +75,7 @@ fn pick(
         world,
         collisions,
         FrozenMiningSelection { slot: 0, item },
+        Some(protocol::PlayerGameMode::Survival),
         (PlayerInputMode::Mouse, 5.7, (NonZeroU64::MIN, 1), 0),
     )
     .unwrap()

@@ -14,6 +14,7 @@ fn registry(capacity: Option<u8>) -> RecipeRegistrySnapshot {
             network_id: 7,
             component_based: false,
             version: ItemRegistryVersion::None,
+            components: None,
             component_digest: [0; 32],
             negotiated_max_stack_size: capacity,
             canonical_empty_component_data: true,

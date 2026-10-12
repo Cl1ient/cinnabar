@@ -1,8 +1,12 @@
 use crate::chunk::*;
-use meshing::liquid::TRANSPARENT_WATER_DRAW_FLAG;
+use meshing::liquid::{TRANSPARENT_WATER_DRAW_FLAG, TRANSPARENT_WATER_RECORD_FLAG};
 
 /// Hard 16 MiB ceiling for one committed transparent indirection snapshot.
 pub const MAX_TRANSPARENT_DRAW_REFS: usize = 2_097_152;
+// Every sorted ref slot stays below the direct-record flag, which the shader tests first.
+const _: () = assert!(
+    (u8::MAX as usize + 1) * MAX_TRANSPARENT_DRAW_REFS <= TRANSPARENT_WATER_RECORD_FLAG as usize
+);
 pub const MAX_TRANSPARENT_VIEWS: usize = 1;
 /// The largest one slot of the double-buffered ref buffer grows to.
 pub const TRANSPARENT_REF_SLOT_BYTES: usize =
@@ -11,8 +15,7 @@ pub const TRANSPARENT_REF_BUFFER_BYTES: usize = TRANSPARENT_REF_SLOT_BYTES * 2;
 /// Refs per slot before the first growth; slots double up to the ceiling as snapshots need.
 pub(in crate::chunk) const INITIAL_TRANSPARENT_SLOT_REFS: usize = 16_384;
 pub const DEFAULT_TRANSPARENT_UPLOAD_REFS_PER_FRAME: usize = 131_072;
-pub const MAX_TRANSPARENT_WITNESS_KEYS: usize = 64;
-pub const MAX_MODEL_WITNESS_KEYS: usize = 64;
+
 pub(in crate::chunk) const MAX_TRANSPARENT_RETIRED_ALLOCATIONS: usize = 16_384;
 pub(in crate::chunk) const MAX_TRANSPARENT_RETIRED_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -246,7 +249,7 @@ impl PackedTransparentDrawRef {
     }
 }
 
-pub(in crate::chunk) const _: () = assert!(std::mem::size_of::<PackedTransparentDrawRef>() == 8);
+const _: () = assert!(std::mem::size_of::<PackedTransparentDrawRef>() == 8);
 
 mod groups;
 mod layout;
@@ -279,13 +282,14 @@ pub(in crate::chunk) use state::{
 #[cfg(test)]
 mod growth_tests {
     use super::*;
+    use render_scene::ChunkTextureAssetIdentity;
 
     /// The ref buffer starts small and grows only when a staged snapshot needs it.
     #[test]
     fn transparent_ref_buffer_grows_on_demand_and_keeps_resident_refs() {
         let (device, queue) = wgpu::Device::noop(&wgpu::DeviceDescriptor::default());
         let device = RenderDevice::from(device);
-        let queue = RenderQueue(Arc::new(bevy::render::renderer::WgpuWrapper::new(queue)));
+        let queue = RenderQueue::new(queue);
         let mut arena = ChunkGpuArena::new(&device);
         let initial = transparent_ref_offset(2, INITIAL_TRANSPARENT_SLOT_REFS, 0);
         assert_eq!(arena.transparent_ref_buffer.size(), initial);

@@ -1,11 +1,9 @@
 //! Camera depth precedes screen-space visibility so occlusion modulates lighting.
 
 use bevy::{
-    ecs::query::QueryItem,
     prelude::*,
     render::{
         diagnostic::RecordDiagnostics,
-        render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
         render_resource::{
             CachedRenderPipelineId, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
             LoadOp, Operations, PipelineCache, RenderPassColorAttachment,
@@ -17,12 +15,12 @@ use bevy::{
     },
 };
 
-use super::{
-    EnhancedRendering,
-    gpu::{EnhancedViews, SHADOW_FORMAT, enhanced_caster_layout},
+use {
+    super::gpu::{EnhancedViews, SHADOW_FORMAT, enhanced_caster_layout},
+    render_scene::EnhancedRendering,
 };
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub(crate) struct EnhancedDepthLabel;
 
 #[derive(Resource)]
@@ -38,7 +36,7 @@ pub(super) fn camera_depth(mut descriptor: RenderPipelineDescriptor) -> RenderPi
         .depth_stencil
         .as_mut()
         .expect("caster depth state");
-    depth.depth_compare = CompareFunction::GreaterEqual;
+    depth.depth_compare = Some(CompareFunction::GreaterEqual);
     depth.bias = DepthBiasState::default();
     if !descriptor
         .vertex
@@ -113,84 +111,83 @@ impl FromWorld for EnhancedDepthPipelines {
     }
 }
 
-pub(crate) struct EnhancedDepthNode;
+type EnhancedDepthQuery = (
+    Entity,
+    &'static EnhancedRendering,
+    &'static ViewUniformOffset,
+);
 
-impl ViewNode for EnhancedDepthNode {
-    type ViewQuery = (
-        Entity,
-        &'static EnhancedRendering,
-        &'static ViewUniformOffset,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        context: &mut RenderContext,
-        (entity, settings, offset): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if !render_model::enhanced_rendering_enabled() || settings.reflection_capture {
-            return Ok(());
-        }
-        let views = world.resource::<EnhancedViews>();
-        let Some(state) = views.0.get(&entity) else {
-            return Ok(());
-        };
-        let (Some(bind), Some(scene)) = (&state.depth_bind_group, &state.scene) else {
-            return Ok(());
-        };
-        let pipelines = world.resource::<EnhancedDepthPipelines>();
-        let cache = world.resource::<PipelineCache>();
-        let (Some(cube), Some(model), Some(actor)) = (
-            cache.get_render_pipeline(pipelines.cube),
-            cache.get_render_pipeline(pipelines.model),
-            cache.get_render_pipeline(pipelines.actor),
-        ) else {
-            return Ok(());
-        };
-        let diagnostics = context.diagnostic_recorder();
-        let span = diagnostics.time_span(context.command_encoder(), "enhanced camera depth");
-        let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
-            label: Some("enhanced camera depth"),
-            color_attachments: &[
-                Some(RenderPassColorAttachment {
-                    view: &scene.motion_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: StoreOp::Store,
-                    },
-                }),
-                Some(RenderPassColorAttachment {
-                    view: &scene.receiver_normal_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: StoreOp::Store,
-                    },
-                }),
-            ],
-            depth_stencil_attachment: Some(camera_depth_attachment(&scene.depth_view)),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        pass.set_bind_group(2, bind, &[0]);
-        crate::chunk::enhanced::draw_depth_geometry(
-            world,
-            entity,
-            &state.camera_clip,
-            offset.offset,
-            &mut pass,
-            cube,
-            model,
-        );
-        crate::actor_render::draw_depth_actors(world, offset.offset, &mut pass, actor);
-        drop(pass);
-        span.end(context.command_encoder());
-        Ok(())
+/// Records camera depth, motion and receiver normals before the main pass.
+pub(crate) fn enhanced_depth(
+    world: &World,
+    query: bevy::render::renderer::ViewQuery<EnhancedDepthQuery>,
+    mut context: RenderContext,
+) -> bevy::ecs::error::Result {
+    let (entity, settings, offset) = query.into_inner();
+    let context = &mut context;
+    if !render_model::enhanced_rendering_enabled() || settings.reflection_capture {
+        return Ok(());
     }
+    let views = world.resource::<EnhancedViews>();
+    let Some(state) = views.0.get(&entity) else {
+        return Ok(());
+    };
+    let (Some(bind), Some(scene)) = (&state.depth_bind_group, &state.scene) else {
+        return Ok(());
+    };
+    let pipelines = world.resource::<EnhancedDepthPipelines>();
+    let cache = world.resource::<PipelineCache>();
+    let (Some(cube), Some(model), Some(actor)) = (
+        cache.get_render_pipeline(pipelines.cube),
+        cache.get_render_pipeline(pipelines.model),
+        cache.get_render_pipeline(pipelines.actor),
+    ) else {
+        return Ok(());
+    };
+    let diagnostics = context.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
+    let span = diagnostics.time_span(context.command_encoder(), "enhanced camera depth");
+    let mut pass = context.begin_tracked_render_pass(RenderPassDescriptor {
+        label: Some("enhanced camera depth"),
+        color_attachments: &[
+            Some(RenderPassColorAttachment {
+                view: &scene.motion_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: StoreOp::Store,
+                },
+            }),
+            Some(RenderPassColorAttachment {
+                view: &scene.receiver_normal_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: StoreOp::Store,
+                },
+            }),
+        ],
+        depth_stencil_attachment: Some(camera_depth_attachment(&scene.depth_view)),
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    pass.set_bind_group(2, bind, &[0]);
+    crate::chunk::enhanced::draw_depth_geometry(
+        world,
+        entity,
+        &state.camera_clip,
+        offset.offset,
+        &mut pass,
+        cube,
+        model,
+    );
+    crate::actor_render::draw_depth_actors(world, offset.offset, &mut pass, actor);
+    drop(pass);
+    span.end(context.command_encoder());
+    Ok(())
 }
 
 /// Visibility coverage must never occlude the independent main color pass.
@@ -218,8 +215,8 @@ mod tests {
             SHADOW_FORMAT,
         ));
         let depth = descriptor.depth_stencil.unwrap();
-        assert_eq!(depth.depth_compare, CompareFunction::GreaterEqual);
-        assert!(depth.depth_write_enabled);
+        assert_eq!(depth.depth_compare, Some(CompareFunction::GreaterEqual));
+        assert_eq!(depth.depth_write_enabled, Some(true));
         assert_eq!(depth.bias, DepthBiasState::default());
         let fragment = descriptor.fragment.unwrap();
         assert_eq!(

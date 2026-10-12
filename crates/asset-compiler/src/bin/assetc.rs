@@ -294,11 +294,18 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::ActorAssets {
             pack,
+            behavior_pack,
             source_manifest,
             out,
             report,
         } => {
-            actor_command::compile_actor_assets_command(&pack, &source_manifest, &out, &report)?;
+            actor_command::compile_actor_assets_command(
+                &pack,
+                &source_manifest,
+                &out,
+                &report,
+                behavior_pack.as_deref(),
+            )?;
         }
         Command::BlockEntityAssets {
             pack,

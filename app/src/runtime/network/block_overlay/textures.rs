@@ -2,25 +2,16 @@
 
 use std::collections::{HashMap, HashSet};
 
+use assets::flipbook::FlipbookSource;
 use resource_pack::LayeredPackView;
-use serde_json::Value;
 
 use pack_runtime::pack_textures::DecodedTexture;
 mod diagnostics;
 mod terrain;
 mod tint;
 use diagnostics::{FailureReason, TextureDiagnostics};
-use pack_runtime::pack_textures::{
-    MAX_CATALOG_ENTRIES, decode_pack_texture, parse_pack_json, texture_key_paths,
-};
+use pack_runtime::pack_textures::{decode_pack_texture, texture_key_paths};
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(super) struct Flipbook {
-    pub(super) frames: Option<Vec<u32>>,
-    pub(super) ticks_per_frame: u32,
-    pub(super) blend: bool,
-}
 
 /// Texture keys resolved across the stack; a higher pack replaces a key.
 pub(super) struct TextureCatalog<'a> {
@@ -29,7 +20,7 @@ pub(super) struct TextureCatalog<'a> {
     grids: HashMap<String, u8>,
     tints: HashMap<String, [u8; 3]>,
     server_keys: HashSet<String>,
-    flipbooks: HashMap<String, Flipbook>,
+    flipbooks: HashMap<String, std::collections::BTreeMap<(u32, u32), FlipbookSource>>,
     diagnostics: TextureDiagnostics,
 }
 
@@ -47,38 +38,15 @@ impl<'a> TextureCatalog<'a> {
         terrain.extend(server_terrain);
         let diagnostics = TextureDiagnostics::default();
         diagnostics.catalogs(view);
-        let mut flipbooks = HashMap::new();
-        for layer in view.read_layers("textures/flipbook_textures.json") {
-            let Some(Value::Array(entries)) = parse_pack_json(&layer) else {
-                continue;
-            };
-            for entry in entries.iter().take(MAX_CATALOG_ENTRIES) {
-                let Some(tile) = entry["atlas_tile"].as_str() else {
-                    continue;
-                };
-                let frames = entry["frames"].as_array().map(|frames| {
-                    frames
-                        .iter()
-                        .filter_map(|frame| {
-                            frame.as_u64().and_then(|frame| u32::try_from(frame).ok())
-                        })
-                        .collect()
-                });
-                let ticks = entry["ticks_per_frame"]
-                    .as_u64()
-                    .unwrap_or(1)
-                    .clamp(1, 1 << 16);
-                flipbooks.insert(
-                    tile.to_owned(),
-                    Flipbook {
-                        frames,
-                        ticks_per_frame: ticks as u32,
-                        blend: entry["blend_frames"]
-                            .as_bool()
-                            .unwrap_or(pack_compiler::DEFAULT_BLEND_FRAMES),
-                    },
-                );
-            }
+        let mut flipbooks = HashMap::<String, std::collections::BTreeMap<_, _>>::new();
+        for source in pack_runtime::pack_flipbooks::flipbooks(
+            view,
+            base.map_or(&[], assets::MaterialKeys::flipbooks),
+        ) {
+            flipbooks
+                .entry(source.atlas_tile.to_string())
+                .or_default()
+                .insert((source.atlas_index, source.atlas_tile_variant), source);
         }
         Self {
             view,
@@ -95,8 +63,14 @@ impl<'a> TextureCatalog<'a> {
         self.terrain.keys().map(String::as_str)
     }
 
-    pub(super) fn flipbook(&self, key: &str) -> Option<&Flipbook> {
-        self.flipbooks.get(key)
+    /// Resolves an exact destination, then an animation covering all its UV variants.
+    pub(super) fn flipbook(&self, key: &str, selector: (u32, u32)) -> Option<&FlipbookSource> {
+        let entries = self.flipbooks.get(key)?;
+        entries.get(&selector).or_else(|| {
+            entries
+                .get(&(selector.0, 0))
+                .filter(|source| source.all_variants)
+        })
     }
 
     /// Returns the winning terrain entry's normalized UV-grid exponent.
@@ -111,6 +85,11 @@ impl<'a> TextureCatalog<'a> {
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;
         };
+        self.decode_path(key, path)
+    }
+
+    /// Decodes an independent animation source with the destination tile's atlas tint.
+    pub(super) fn decode_path(&self, key: &str, path: &str) -> Option<DecodedTexture> {
         let mut texture = decode_pack_texture(self.view, path);
         if let Some(tint) = self.tints.get(key)
             && let Some(texture) = texture.as_mut()
@@ -139,40 +118,51 @@ impl<'a> TextureCatalog<'a> {
     }
 }
 
-/// Splits a vertical strip into up to `max_frames` square frames, each shrunk to
-/// `max_side`; a non-strip image is its single shrunk frame. Frames are shrunk
-/// as they are cut so the caller never holds full-size copies.
+/// Cuts bounded square frames in timeline order, crops replication from the upper-left,
+/// and shrinks each retained frame before it enters the overlay source budget.
 pub(super) fn flipbook_frames(
     texture: &DecodedTexture,
-    flipbook: &Flipbook,
+    flipbook: &FlipbookSource,
     max_frames: usize,
     max_side: u32,
 ) -> Vec<DecodedTexture> {
     let side = texture.width;
-    if max_frames == 0 {
+    if max_frames == 0 || side == 0 || texture.height == 0 {
         return Vec::new();
     }
-    if texture.height <= side || !texture.height.is_multiple_of(side) {
-        return vec![shrink_to_max(texture, max_side)];
+    if texture.height < side || !texture.height.is_multiple_of(side) {
+        return Vec::new();
     }
     let count = texture.height / side;
-    let order = flipbook
-        .frames
-        .clone()
-        .filter(|frames| !frames.is_empty())
-        .unwrap_or_else(|| (0..count).collect());
-    let frame_bytes = (side * side * 4) as usize;
-    order
-        .into_iter()
-        .take(max_frames)
-        .map(|frame| {
-            let start = (frame.min(count - 1) as usize) * frame_bytes;
-            let frame = DecodedTexture {
-                width: side,
-                height: side,
-                rgba8: texture.rgba8[start..start + frame_bytes].into(),
+    let crop = (side / flipbook.replicate.max(1)).max(1);
+    let output = crop.min(max_side).max(1);
+    let len = if flipbook.frames.is_empty() {
+        count as usize
+    } else {
+        flipbook.frames.len()
+    };
+    (0..len.min(max_frames))
+        .map(|index| {
+            let frame = if flipbook.frames.is_empty() {
+                index as u32
+            } else {
+                flipbook.frames[index]
             };
-            shrink_to_max(&frame, max_side)
+            let y_start = frame.min(count - 1) * side;
+            let mut rgba8 = Vec::with_capacity((output * output * 4) as usize);
+            for y in 0..output {
+                let source_y = y_start + y * crop / output;
+                for x in 0..output {
+                    let source_x = x * crop / output;
+                    let start = ((source_y * texture.width + source_x) * 4) as usize;
+                    rgba8.extend_from_slice(&texture.rgba8[start..start + 4]);
+                }
+            }
+            DecodedTexture {
+                width: output,
+                height: output,
+                rgba8: rgba8.into_boxed_slice(),
+            }
         })
         .collect()
 }

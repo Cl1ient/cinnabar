@@ -28,6 +28,7 @@ fn compile_block_overlay(
 mod budget;
 mod builtins;
 mod capacity;
+mod flipbooks;
 mod legacy;
 mod lighting;
 mod random_offset;
@@ -636,18 +637,18 @@ fn bone_visibility_hides_bones_per_state() {
 // Flipbook framing is bounded before copies are cut and each frame is shrunk.
 #[test]
 fn flipbook_frames_are_capped_and_shrunk() {
-    use super::textures::{Flipbook, flipbook_frames, shrink_to_max};
+    use super::textures::{flipbook_frames, shrink_to_max};
+    use assets::flipbook::FlipbookSource;
     use pack_runtime::pack_textures::DecodedTexture;
     let strip = DecodedTexture {
         width: 64,
         height: 64 * 8,
         rgba8: vec![7; (64 * 64 * 8 * 4) as usize].into_boxed_slice(),
     };
-    let flipbook = Flipbook {
-        frames: None,
-        ticks_per_frame: 1,
-        blend: true,
-    };
+    let flipbook: FlipbookSource = serde_json::from_value(serde_json::json!({
+        "flipbook_texture": "textures/fixture", "atlas_tile": "fixture"
+    }))
+    .unwrap();
     let frames = flipbook_frames(&strip, &flipbook, 3, 32);
     assert_eq!(frames.len(), 3, "frame count capped to the budget");
     assert!(

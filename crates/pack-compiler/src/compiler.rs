@@ -39,6 +39,7 @@ mod destroy_facts;
 mod leaf_mips;
 mod lily_pad_textures;
 mod material_facts;
+mod material_keys;
 mod seasonal_leaves;
 mod variations;
 mod visuals;
@@ -483,12 +484,8 @@ fn compile_pack_inner(
         compile_materials(&descriptor_keys, &animation_plan, &alpha_paths)?;
     let (materials, material_by_descriptor) =
         variations::install(materials, material_by_descriptor, variation_groups)?;
-    let material_keys = MaterialKeys::from_entries(
-        material_by_descriptor
-            .iter()
-            .map(|(descriptor, &material)| (material, descriptor.texture_key.as_ref())),
-    )
-    .with_aliases(pack.terrain.first_paths());
+    let material_keys =
+        material_keys::build(&pack, &material_by_descriptor, &materials, &animations);
     let vanilla_fallback_material =
         visuals::fallback::neutral_material(fallback, records, &pack, &material_by_descriptor)?;
     let (visuals, hashed, model_templates, mut model_quads) = compile_visuals(
@@ -536,30 +533,12 @@ fn compile_pack_inner(
         animations,
         frames: animation_frames,
     } = leaf_mips::install(&mut materials, texture_pages, animations, animation_frames)?;
-    // World leaf selectors retain their original terrain keys even though their
-    // native mip chains are separate from carried/shared texture pixels.
-    let original_keys = material_keys
-        .keys()
-        .flat_map(|key| {
-            material_keys
-                .materials(key)
-                .iter()
-                .map(move |&id| (id, key))
-        })
-        .collect::<Vec<_>>();
-    let material_keys = MaterialKeys::from_entries(
-        original_keys
-            .iter()
-            .copied()
-            .chain(lily_pad_keys.iter().map(|(id, key)| (*id, key.as_ref())))
-            .chain(seasonal_copies.iter().flat_map(|&(copy, original)| {
-                original_keys
-                    .iter()
-                    .filter_map(move |&(id, key)| (id == original).then_some((copy, key)))
-            })),
-    )
-    .with_aliases(material_keys.aliases())
-    .with_fixed_tints(lily_pad_tints);
+    let material_keys = material_keys::extend(
+        material_keys,
+        &lily_pad_keys,
+        lily_pad_tints,
+        &seasonal_copies,
+    );
     if light_properties.len() != visuals.len() {
         return Err(AssetError::InvalidCompiledAssets {
             detail: "light-property count does not match sequential visual span".into(),

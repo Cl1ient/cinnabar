@@ -188,7 +188,7 @@ struct Builder<'a> {
     sources: Vec<Source>,
     source_bytes: usize,
     max_layers: usize,
-    textures: HashMap<String, Option<TextureSlot>>,
+    textures: HashMap<(String, u32, u32), Option<TextureSlot>>,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
     gaps: OverlayGaps,
@@ -206,11 +206,15 @@ impl Builder<'_> {
         candidates.sort_unstable();
         let mut claimed = HashSet::new();
         for key in candidates {
-            let Some(slot) = self.texture_slot(&key) else {
-                continue;
-            };
             for &material in keys.materials(&key) {
-                if material != DIAGNOSTIC_MATERIAL && claimed.insert(material) {
+                if material == DIAGNOSTIC_MATERIAL || claimed.contains(&material) {
+                    continue;
+                }
+                let Some(slot) = self.texture_slot_for(&key, keys.flipbook_selector(material))
+                else {
+                    continue;
+                };
+                if claimed.insert(material) {
                     self.overlay.material_overrides.push(MaterialOverride {
                         material,
                         texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
@@ -475,16 +479,24 @@ impl Builder<'_> {
         (material, alpha_flags, two_sided)
     }
 
+    /// Resolves an ordinary tile at the default atlas destination.
     fn texture_slot(&mut self, key: &str) -> Option<TextureSlot> {
-        if let Some(slot) = self.textures.get(key) {
+        self.texture_slot_for(key, (0, 0))
+    }
+
+    /// Caches each atlas destination independently so variants cannot replace each other.
+    fn texture_slot_for(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
+        let cache_key = (key.to_owned(), selector.0, selector.1);
+        if let Some(slot) = self.textures.get(&cache_key) {
             return slot.clone();
         }
-        let slot = self.load_texture(key);
-        self.textures.insert(key.to_owned(), slot.clone());
+        let slot = self.load_texture(key, selector);
+        self.textures.insert(cache_key, slot.clone());
         slot
     }
 
-    fn load_texture(&mut self, key: &str) -> Option<TextureSlot> {
+    /// Loads replacement frames from the selected description's independent source path.
+    fn load_texture(&mut self, key: &str, selector: (u32, u32)) -> Option<TextureSlot> {
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
             // A full array rejects every later route, so name it rather than
@@ -493,10 +505,18 @@ impl Builder<'_> {
             self.catalog.report_full(key);
             return None;
         }
-        let mut texture = self.catalog.decode(key)?;
+        let animated = self.catalog.flipbook(key, selector).and_then(|source| {
+            self.catalog
+                .decode_path(key, &source.texture_path)
+                .map(|texture| (texture, source))
+        });
+        let (mut texture, flipbook) = match animated {
+            Some((texture, source)) => (texture, Some(source)),
+            None => (self.catalog.decode(key)?, None),
+        };
         let grid = self.catalog.grid(key);
         // Bound frame count before cutting copies, and shrink each to MAX_TILE.
-        let frames = match self.catalog.flipbook(key) {
+        let frames = match flipbook {
             Some(flipbook) => flipbook_frames(&texture, flipbook, available.min(256), MAX_TILE),
             None => {
                 admit_static_rectangle(&mut texture);
@@ -511,7 +531,14 @@ impl Builder<'_> {
             return None;
         }
         let added_bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
-        if frames.is_empty() || self.source_bytes + added_bytes > MAX_OVERLAY_SOURCE_BYTES {
+        if frames.is_empty()
+            || self.source_bytes + added_bytes > MAX_OVERLAY_SOURCE_BYTES
+            || flipbook.is_some_and(|source| {
+                (frames.len() as u32)
+                    .checked_mul(source.ticks_per_frame)
+                    .is_none()
+            })
+        {
             return None;
         }
         self.source_bytes += added_bytes;
@@ -524,7 +551,7 @@ impl Builder<'_> {
                 Source::GridImage(frame, grid)
             }
         }));
-        let animation = match self.catalog.flipbook(key) {
+        let animation = match flipbook {
             Some(flipbook) if frame_count > 1 => {
                 let frame_start = self.overlay.animation_frames.len() as u32;
                 for layer in first..first + frame_count {
@@ -536,10 +563,10 @@ impl Builder<'_> {
                     frame_start,
                     frame_count,
                     ticks_per_frame: flipbook.ticks_per_frame,
-                    atlas_index: 0,
-                    atlas_tile_variant: 0,
-                    replicate: 1,
-                    flags: u32::from(flipbook.blend) * assets::ANIMATION_FLAG_BLEND,
+                    atlas_index: selector.0,
+                    atlas_tile_variant: selector.1,
+                    replicate: flipbook.replicate,
+                    flags: u32::from(flipbook.blend_frames) * assets::ANIMATION_FLAG_BLEND,
                 });
                 self.overlay.animations.len() as u32 - 1
             }

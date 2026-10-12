@@ -4,10 +4,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::flipbook::FlipbookSource;
 use serde::{Deserialize, Serialize};
 
 /// Sidecar wire version; part of the world carrier's prepared identity.
-pub const MATERIAL_KEYS_SCHEMA: u32 = 3;
+pub const MATERIAL_KEYS_SCHEMA: u32 = 4;
 /// Largest sidecar file the runtime reads.
 pub const MAX_MATERIAL_KEYS_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -19,6 +20,8 @@ struct Wire {
     keys: BTreeMap<String, Vec<u32>>,
     aliases: BTreeMap<String, String>,
     fixed_tints: BTreeMap<String, [u8; 3]>,
+    flipbooks: Vec<FlipbookSource>,
+    flipbook_selectors: BTreeMap<u32, (u32, u32)>,
 }
 
 /// Material ids by the terrain texture key they were compiled from.
@@ -28,6 +31,8 @@ pub struct MaterialKeys {
     /// Every vanilla terrain key's variant-zero image path.
     aliases: BTreeMap<Box<str>, Box<str>>,
     fixed_tints: BTreeMap<Box<str>, [u8; 3]>,
+    flipbooks: Box<[FlipbookSource]>,
+    flipbook_selectors: BTreeMap<u32, (u32, u32)>,
 }
 
 impl MaterialKeys {
@@ -52,6 +57,8 @@ impl MaterialKeys {
             keys,
             aliases: BTreeMap::new(),
             fixed_tints: BTreeMap::new(),
+            flipbooks: Box::default(),
+            flipbook_selectors: BTreeMap::new(),
         }
     }
 
@@ -86,6 +93,43 @@ impl MaterialKeys {
             .map(|(key, tint)| (key.as_ref(), *tint))
     }
 
+    /// Retains the base pack's animation descriptions beneath optional pack layers.
+    #[must_use]
+    pub fn with_flipbooks(mut self, flipbooks: &[FlipbookSource]) -> Self {
+        self.flipbooks = flipbooks.into();
+        self
+    }
+
+    /// Records each material's atlas index and UV variant for animation replacement.
+    #[must_use]
+    pub fn with_flipbook_selectors(
+        mut self,
+        selectors: impl IntoIterator<Item = (u32, (u32, u32))>,
+    ) -> Self {
+        self.flipbook_selectors = selectors.into_iter().collect();
+        self
+    }
+
+    /// Base animation descriptions with their original image routes and timelines.
+    pub fn flipbooks(&self) -> &[FlipbookSource] {
+        &self.flipbooks
+    }
+
+    /// Atlas destination for a material; ordinary unindexed tiles use `(0, 0)`.
+    pub fn flipbook_selector(&self, material: u32) -> (u32, u32) {
+        self.flipbook_selectors
+            .get(&material)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Recorded destinations, used when copying carrier materials.
+    pub fn flipbook_selectors(&self) -> impl Iterator<Item = (u32, (u32, u32))> + '_ {
+        self.flipbook_selectors
+            .iter()
+            .map(|(&material, &selector)| (material, selector))
+    }
+
     /// Serializes the sidecar for a carrier with `material_count` materials.
     #[must_use]
     pub fn to_json(&self, material_count: u32) -> Vec<u8> {
@@ -107,6 +151,8 @@ impl MaterialKeys {
                 .iter()
                 .map(|(key, tint)| (key.to_string(), *tint))
                 .collect(),
+            flipbooks: self.flipbooks.to_vec(),
+            flipbook_selectors: self.flipbook_selectors.clone(),
         };
         serde_json::to_vec(&wire).expect("material key sidecar serializes")
     }
@@ -117,6 +163,14 @@ impl MaterialKeys {
     pub fn from_json(bytes: &[u8], material_count: usize) -> Option<Self> {
         let wire: Wire = serde_json::from_slice(bytes).ok()?;
         if wire.schema != MATERIAL_KEYS_SCHEMA || wire.materials as usize != material_count {
+            return None;
+        }
+        if wire.flipbooks.iter().any(|flipbook| !flipbook.is_valid())
+            || wire
+                .flipbook_selectors
+                .keys()
+                .any(|&id| id as usize >= material_count)
+        {
             return None;
         }
         let mut keys = BTreeMap::new();
@@ -140,6 +194,8 @@ impl MaterialKeys {
             keys,
             aliases,
             fixed_tints,
+            flipbooks: wire.flipbooks.into_boxed_slice(),
+            flipbook_selectors: wire.flipbook_selectors,
         })
     }
 
@@ -202,5 +258,33 @@ mod tests {
             MaterialKeys::from_json(br#"{"schema":1,"materials":1,"keys":{"stone":[0]}}"#, 1),
             None
         );
+    }
+
+    #[test]
+    fn animation_sources_and_destinations_survive_sidecar_round_trip() {
+        let source: crate::flipbook::FlipbookSource = serde_json::from_value(serde_json::json!({
+            "flipbook_texture":"textures/strip", "atlas_tile":"tile", "frames":[2,0,1],
+            "atlas_index":3, "atlas_tile_variant":2, "ticks_per_frame":7,
+            "replicate":2, "blend_frames":false
+        }))
+        .unwrap();
+        let keys = MaterialKeys::from_entries([(1, "tile"), (2, "tile")])
+            .with_aliases([("tile", "textures/static")])
+            .with_flipbooks(std::slice::from_ref(&source))
+            .with_flipbook_selectors([(1, (3, 2)), (2, (3, 1))]);
+        let bytes = keys.to_json(3);
+        assert_eq!(MaterialKeys::from_json(&bytes, 3), Some(keys));
+        for (field, value) in [
+            ("ticks_per_frame", serde_json::json!(0)),
+            ("replicate", serde_json::json!(0)),
+            ("frames", serde_json::json!([0, 1])),
+        ] {
+            let mut wire: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            wire["flipbooks"][0][field] = value;
+            if field == "frames" {
+                wire["flipbooks"][0]["ticks_per_frame"] = serde_json::json!(u32::MAX);
+            }
+            assert!(MaterialKeys::from_json(&serde_json::to_vec(&wire).unwrap(), 3).is_none());
+        }
     }
 }

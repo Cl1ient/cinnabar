@@ -119,3 +119,34 @@ pub(crate) fn configure_client_authority_systems(app: &mut App) {
             .before(ClientFrameSet::UiAuthority),
     );
 }
+
+/// Registers the production actor observation and publication boundaries.
+pub(crate) fn configure_actor_render_systems(app: &mut App) {
+    app.init_resource::<client_presentation::actor_publication::ActorFrameState>()
+        .add_systems(
+            Update,
+            (
+                advance_actor_frame,
+                crate::runtime::network::publish_local_actor_damage,
+            )
+                .chain()
+                .in_set(ClientFrameSet::ActorPreparation),
+        )
+        // Picks in Interaction and NetworkSend read this frame's remote actor positions.
+        .add_systems(
+            Update,
+            crate::runtime::network::advance_actor_motion
+                .after(ClientFrameSet::Camera)
+                .before(ClientFrameSet::Interaction),
+        )
+        .add_systems(
+            Update,
+            prepare_actor_render_frame.in_set(ClientFrameSet::ActorFinalization),
+        )
+        .add_systems(
+            Update,
+            (publish_actor_render_frame, publish_entity_shadows)
+                .chain()
+                .in_set(ClientFrameSet::ActorPublication),
+        );
+}

@@ -3,7 +3,7 @@ use glam::Vec3;
 use std::collections::BTreeMap;
 
 impl DroppedItemModel {
-    /// Whether removing rear faces preserves this model's closed, opaque surface.
+    /// Whether this model has a closed, opaque surface for alpha-tested drawing.
     /// Open templates, two-sided planes and partial alpha retain two-sided rendering.
     #[must_use]
     pub fn can_cull_back_faces(&self) -> bool {

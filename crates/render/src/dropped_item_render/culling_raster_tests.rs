@@ -218,7 +218,8 @@ fn closed_item_culling_preserves_pixels_from_faces_edges_and_corners() {
             .enumerate()
             {
                 let before = raster(&gpu, model, eye.normalize() * 2.5, samples, false);
-                let after = raster(&gpu, model, eye.normalize() * 2.5, samples, true);
+                // Multisampled passes retain rear faces for their partial edge coverage.
+                let after = raster(&gpu, model, eye.normalize() * 2.5, samples, samples == 1);
                 assert!(
                     before.as_chunks::<4>().0.iter().any(|p| p != &before[..4]),
                     "empty fixture {index}/{angle}/{samples}"

@@ -35,7 +35,10 @@ fn dropped_item_coverage_is_prewarmed_at_each_sample_count() {
                 &mut ids,
             )
             .unwrap();
-        for cull_back in [false, true] {
+        for cull_back in [false, true]
+            .into_iter()
+            .filter(|&cull| !cull || super::closed_item_culling(msaa))
+        {
             for invert_culling in [false, true] {
                 let id = pipeline
                     .variants
@@ -69,5 +72,17 @@ fn dropped_item_coverage_is_prewarmed_at_each_sample_count() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn alpha_to_coverage_keeps_rear_surfaces_available() {
+    assert!(super::closed_item_culling(super::Msaa::Off));
+    for msaa in [
+        super::Msaa::Sample2,
+        super::Msaa::Sample4,
+        super::Msaa::Sample8,
+    ] {
+        assert!(!super::closed_item_culling(msaa));
     }
 }

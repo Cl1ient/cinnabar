@@ -779,7 +779,7 @@ fn queue_items(mut commands: Commands, mut params: QueueItemParams<'_, '_>) {
             ItemPipelineKey {
                 msaa: *msaa,
                 hdr: extracted_camera.hdr,
-                cull_back: true,
+                cull_back: closed_item_culling(*msaa),
                 invert_culling: view.invert_culling,
             },
         ) else {
@@ -865,6 +865,12 @@ impl<P: PhaseItem> RenderCommand<P> for DrawItems {
     }
 }
 
+/// Alpha-to-coverage can leave samples open to rear faces at texture edges.
+/// Retain two-sided drawing for those passes so their coverage stays unchanged.
+fn closed_item_culling(msaa: Msaa) -> bool {
+    msaa == Msaa::Off
+}
+
 impl crate::pipeline_warmup::PrewarmPipelines for ItemPipeline {
     fn prewarm(
         &mut self,
@@ -872,7 +878,10 @@ impl crate::pipeline_warmup::PrewarmPipelines for ItemPipeline {
         view: crate::pipeline_warmup::WarmView,
         ids: &mut crate::pipeline_warmup::WarmupIds,
     ) -> Result<(), BevyError> {
-        for cull_back in [false, true] {
+        for cull_back in [false, true]
+            .into_iter()
+            .filter(|&cull| !cull || closed_item_culling(view.msaa))
+        {
             for invert_culling in [false, true] {
                 ids.push(self.variants.specialize(
                     cache,

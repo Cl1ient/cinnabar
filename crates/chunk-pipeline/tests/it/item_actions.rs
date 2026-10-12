@@ -413,18 +413,17 @@ fn selected_slot_wire_encoding_distinguishes_retained_block_identity() {
     let mut blocked = plain.clone();
     blocked.block_runtime_id = 180;
 
-    let session = protocol::BedrockSession { shield_item_id: 0 };
     let plain_packet = select_hotbar_slot_packet(42, 0, &plain).unwrap();
     let blocked_packet = select_hotbar_slot_packet(42, 0, &blocked).unwrap();
-    let plain_bytes = protocol::encode(&plain_packet, &session).unwrap();
-    let blocked_bytes = protocol::encode(&blocked_packet, &session).unwrap();
+    let plain_bytes = protocol::encode(&plain_packet).unwrap();
+    let blocked_bytes = protocol::encode(&blocked_packet).unwrap();
 
     // The outbound selected-slot wire carries the exact retained block
     // identity, so the two stacks never encode to the same bytes.
     assert_ne!(plain_bytes, blocked_bytes);
 
     let rebuilt = select_hotbar_slot_packet(42, 0, &plain).unwrap();
-    assert_eq!(protocol::encode(&rebuilt, &session).unwrap(), plain_bytes);
+    assert_eq!(protocol::encode(&rebuilt).unwrap(), plain_bytes);
 }
 
 #[test]

@@ -18,7 +18,6 @@ mod accessors;
 mod construction;
 pub mod debug_overlay;
 pub mod dynamic_textures;
-mod font_fallback;
 pub mod forms;
 mod frame;
 pub mod gui_models;
@@ -98,13 +97,24 @@ impl fmt::Display for UiPresentationError {
 
 impl std::error::Error for UiPresentationError {}
 
+impl From<forms::engine::screen::PaintError> for UiPresentationError {
+    fn from(error: forms::engine::screen::PaintError) -> Self {
+        use forms::engine::screen::PaintError;
+        match error {
+            PaintError::InvalidFontTexture => Self::InvalidFontTexture,
+            PaintError::Geometry(error) => Self::Geometry(error),
+            PaintError::Text(error) => Self::Text(error),
+            PaintError::Tree(error) => Self::Tree(error),
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct UiPresentationRuntime {
     font: Arc<RuntimeFontCatalog>,
     /// The startup font without the session's glyph sheets.
     base_font: Arc<RuntimeFontCatalog>,
     mod_panel_font: Option<mod_panel_font::InstalledFont>,
-    fallback_font: Option<Arc<RuntimeFontCatalog>>,
     textures: Arc<UiRenderTextureArray>,
     texture_session: Option<u64>,
     blank_dynamic_page: render_model::UiTexturePage,
@@ -201,7 +211,14 @@ pub struct UiPresentationRuntime {
     /// Full settings slider geometry, including steps clipped from view.
     settings_slider_drag_targets: Vec<(MenuAction, UiRect)>,
     menu_scrolls: menu_scroll::MenuScrolls,
-    form_presentation: forms::FormPresentation,
+    /// The JSON-UI engine: catalogs, layout caches and animation state.
+    engine: Option<Box<forms::engine::FormEngine>>,
+    /// The live catalog's screen settings, published to the runtime.
+    screen_settings: Arc<super::scene_stack::ScreenSettingsTable>,
+    /// Each screen family's own state, carried across builds.
+    screens: forms::ScreenStates,
+    /// What the last build exposes to input; reset as each build starts.
+    projections: forms::FrameProjections,
     /// Window-space rect of the sign editor's Done button in the last build.
     loading_stage: Option<LoadingStage>,
     startup: StartupPresentationState,

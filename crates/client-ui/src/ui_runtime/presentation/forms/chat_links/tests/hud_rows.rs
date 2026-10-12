@@ -62,6 +62,7 @@ fn builtin_java_hud_keeps_single_and_wrapped_chat_rows_nine_pixels_high() {
             0,
             registry(),
             crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+            crate::ui_runtime::presentation::forms::texture_sources::image_work(),
         );
         let mut drawn = Vec::new();
         let mut painted = Vec::new();

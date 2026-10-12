@@ -230,6 +230,7 @@ impl UiPresentationRuntime {
             first_page,
             screen_registry::registry(),
             texture_sources::downloads(),
+            texture_sources::image_work(),
         );
         engine.textures.server_page =
             (self.textures.dynamic_start() + pages::SERVER_UI_PAGE) as u16;

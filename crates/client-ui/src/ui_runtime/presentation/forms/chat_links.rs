@@ -349,6 +349,7 @@ mod tests {
                     0,
                     super::super::screen_registry::registry(),
                     crate::ui_runtime::presentation::forms::texture_sources::downloads(),
+                    crate::ui_runtime::presentation::forms::texture_sources::image_work(),
                 );
                 let mut node = history_node("https://example.com", 600.0);
                 if let Draw::Text { options, .. } = &mut node.draw {

@@ -33,7 +33,7 @@ pub mod text_paint;
 mod vector_icons;
 use crate::atlas::ServerAtlas;
 use crate::frame::{EditText, EngineFrame};
-use crate::sources::RemoteSource;
+use crate::sources::{ImageWork, RemoteSource};
 use crate::textures::{TextureSet, Textures};
 use screen::{CustomDraw, CustomRenderer, PaintError, PaintFrame, ScreenRegistry};
 use text_paint::{Measure, TextPaint};
@@ -95,19 +95,20 @@ struct Art<'a> {
 
 impl FormEngine {
     /// An engine over `assets` and its `catalog` under the families `registry` records; URL
-    /// textures download through `remote`.
+    /// textures download through `remote`, and images read and decode as `work` allows.
     pub fn new(
         assets: Arc<RuntimeUiAssets>,
         mut catalog: Catalog,
         first_page: u16,
         registry: &'static ScreenRegistry,
         remote: Arc<dyn RemoteSource>,
+        work: ImageWork,
     ) -> Self {
         registry.catalog().extended(&mut catalog);
         let vanilla = Arc::new(catalog);
         let base = Arc::new(registry.catalog().builtin(&vanilla));
         Self {
-            textures: TextureSet::new(first_page, remote).with_carrier(Arc::clone(&assets)),
+            textures: TextureSet::new(first_page, remote, work).with_carrier(Arc::clone(&assets)),
             assets,
             catalog: Arc::clone(&base),
             formatting_palette: formatting_colors::from_catalog(&base),

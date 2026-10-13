@@ -236,6 +236,15 @@ impl UiPresentationRuntime {
             let mesh = if let Some(mesh) = meshes.get(&block_visual.0) {
                 Arc::clone(mesh)
             } else {
+                // World model thumbnails retain full-resolution tiles and directional UVs.
+                // Only authored carried sheets define the canonical cube shortcut.
+                if icons
+                    .block_sheets()
+                    .binary_search_by_key(&block_visual.0, |sheet| sheet.visual.0)
+                    .is_err()
+                {
+                    continue;
+                }
                 let Some(sprite) = sources.get(&block_visual.0) else {
                     continue;
                 };

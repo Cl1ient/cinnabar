@@ -5309,6 +5309,10 @@ Scope: block registry + block-state → model/texture mapping (generated export 
           bobs. Flat covers and pages draw as two-faced sheets, and entity-lit
           back faces are culled. Its entity lighting from the table's glow is
           provisional, and the lectern stand placement needs native measurement.
+          Standing and wall banner cloth share the crossbar's authoring pivot,
+          with matching mounting scale and wave direction. Full banner parity
+          remains incomplete: animation lookup quantization, pattern composition
+          and native rendered/input acceptance remain open.
     - [ ] Merge both the Axolotl protocol-fix branch and Cinnabar feature branch
       into their respective `main` branches through reviewed PRs using normal
       history-preserving merge commits (never squash or rebase the feature

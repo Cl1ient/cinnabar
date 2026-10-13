@@ -660,9 +660,7 @@ fn truncation_keeps_unexamined_woken_meshes_for_later_polls() {
         .admitted_mesh_jobs
         .store(usize::MAX, Ordering::Release);
     assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 0);
-    for key in earlier {
-        stream.mesh_jobs.pending.remove(&key);
-    }
+    stream.mesh_jobs.pending.retain(|key, _| *key == ready);
     stream.admitted_mesh_jobs.store(0, Ordering::Release);
     assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
     finish_mesh(&mut stream, ready);

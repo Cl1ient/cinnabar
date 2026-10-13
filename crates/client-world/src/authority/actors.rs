@@ -2,6 +2,12 @@ use super::*;
 use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 impl WorldAuthority {
+    /// Publishes local body placement before camera attachments and other actor pose readers run.
+    pub fn set_local_actor_presentation_position(&mut self, position: [f32; 3]) {
+        self.actors
+            .set_local_presentation_position(self.local_player_runtime_id, position);
+    }
+
     /// Admits and polls appearance work without advancing animation ticks; true while work remains.
     pub fn poll_actor_appearance_preparation(&mut self) -> bool {
         self.actors.prepare_appearances(false);

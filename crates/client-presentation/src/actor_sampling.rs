@@ -3,8 +3,7 @@ use sim::{Aabb, Vec3, sample_actor_liquids, sample_liquid_submersion};
 
 use crate::observations::CollisionLookup;
 
-/// Samples the world state actor presentation reads: body liquid contact, breathing-point
-/// submersion and the bed orientation under each sleeper.
+/// Samples body liquid contact and breathing-point submersion for actor animation ticks.
 pub fn sample_actor_world_state(stream: &mut WorldStream, collisions: &dyn CollisionLookup) {
     let mode = stream.network_id_mode();
     let world = sim::PaletteWorld::new(
@@ -32,6 +31,19 @@ pub fn sample_actor_world_state(stream: &mut WorldStream, collisions: &dyn Colli
             Some((probe.runtime_id, submerged.value))
         })
         .collect();
+    stream.set_actor_fluids(&fluids);
+    stream.set_actor_breathing_liquids(&breathing);
+}
+
+/// Samples bed headings before frame presentation, including frames without an actor tick.
+pub fn sample_actor_bed_rotations(stream: &mut WorldStream, collisions: &dyn CollisionLookup) {
+    let mode = stream.network_id_mode();
+    let world = sim::PaletteWorld::new(
+        stream.collision_store(),
+        collisions.registry(mode),
+        stream.current_dimension(),
+        Default::default(),
+    );
     let beds: Vec<_> = stream
         .authority()
         .actor_bed_sample_points()
@@ -42,8 +54,6 @@ pub fn sample_actor_world_state(stream: &mut WorldStream, collisions: &dyn Colli
             Some((runtime_id, bed_rotation_degrees(state)?))
         })
         .collect();
-    stream.set_actor_fluids(&fluids);
-    stream.set_actor_breathing_liquids(&breathing);
     stream.set_actor_bed_rotations(&beds);
 }
 

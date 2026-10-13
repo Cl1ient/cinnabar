@@ -66,6 +66,21 @@ struct Placement {
 }
 
 impl ActorStore {
+    /// Moves a retained local body and every interpolation endpoint to valid presentation feet.
+    pub(crate) fn set_local_presentation_position(&mut self, runtime_id: u64, position: [f32; 3]) {
+        if !position.iter().all(|value| value.is_finite()) {
+            return;
+        }
+        let Some(actor) = self.actors.get_mut(&runtime_id) else {
+            return;
+        };
+        actor.position = position;
+        actor.previous_pose.position = position;
+        actor.received_pose.position = position;
+        actor.interpolation_ticks_remaining = 0;
+        actor.status.movement_interpolation = Default::default();
+    }
+
     /// Streamed seat of a rider, else the mount type's default for its rider index (riders of
     /// one mount are ordered by unique id).
     fn seat_for(

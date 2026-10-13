@@ -136,8 +136,8 @@ pub(crate) fn advance_actor_frame(
     );
     let input = ActorFrameInput {
         local_feed,
-        predicted_eye: physics.render_eye_position(),
-        predicted_feet: physics.render_feet_position(),
+        predicted_eye: Some(view.eye_translation().to_array()),
+        predicted_feet: Some(view.feet_translation().to_array()),
         local_equipment,
         swing_progress: None,
         // Resolving the screen policy is UI work, attributed as such inside actor publication.

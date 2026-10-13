@@ -1,9 +1,15 @@
 //! Bounded, cached coverage meshes for caller-authored vector silhouettes and strokes.
 
-use std::{cell::RefCell, collections::BTreeMap, collections::HashMap, mem::size_of, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::BTreeMap,
+    collections::HashMap,
+    mem::{size_of, size_of_val},
+    sync::Arc,
+};
 
 use serde_json::Value;
-use ui::{UiMesh, UiMeshVertex, UiVisual};
+use ui::{UiMesh, UiVisual};
 
 use super::Canvas;
 
@@ -53,8 +59,7 @@ impl Cache {
         }
         let mesh = mesh(&key).map(Arc::new);
         let bytes = mesh.as_ref().map_or(0, |mesh| {
-            mesh.vertices().len() * size_of::<UiMeshVertex>()
-                + mesh.indices().len() * size_of::<u32>()
+            size_of_val(mesh.vertices()) + size_of_val(mesh.indices())
         }) + key
             .path
             .contours

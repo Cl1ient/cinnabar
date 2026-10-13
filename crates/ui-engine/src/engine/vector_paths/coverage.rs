@@ -89,7 +89,7 @@ fn cancel_fill_edges(segments: Vec<Segment>) -> Option<Vec<Segment>> {
         let axis = usize::from(line[0].delta[1].abs() > line[0].delta[0].abs());
         let mut endpoints: Vec<_> = line.into_iter().flat_map(|edge| [edge.a, edge.b]).collect();
         endpoints.sort_by(|a, b| a[axis].total_cmp(&b[axis]));
-        for pair in endpoints.chunks_exact(2) {
+        for pair in endpoints.as_chunks::<2>().0 {
             if pair[0] != pair[1] {
                 retained.push(Segment::new(pair[0], pair[1])?);
             }

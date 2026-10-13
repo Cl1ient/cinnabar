@@ -12,7 +12,7 @@ mod terrain;
 pub(super) use carrier::carrier_image;
 use diagnostics::{FailureReason, TextureDiagnostics};
 use pack_runtime::pack_textures::{
-    MAX_CATALOG_ENTRIES, decode_pack_texture_with_policy, parse_pack_json,
+    MAX_CATALOG_ENTRIES, parse_pack_json, resolve_pack_texture_with_policy,
 };
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
@@ -26,6 +26,7 @@ pub(super) struct Flipbook {
 /// Pixels supplied by either a pack image or the immutable carrier.
 pub(super) struct TextureImage {
     pub(super) texture: DecodedTexture,
+    pub(super) image_path: String,
     pub(super) baked_tint: Option<[u8; 3]>,
     pub(super) pack: bool,
 }
@@ -33,10 +34,25 @@ pub(super) struct TextureImage {
 /// Pixel and animation policy shared by equivalent catalog and recorded-path routes.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(super) struct TextureIdentity {
-    path: String,
+    path: TexturePath,
     tint: Option<[u8; 3]>,
     grid: u8,
     pub(super) flipbook: Option<Flipbook>,
+}
+
+/// Keeps logical aliases separate from resolved filenames that happen to share their spelling.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum TexturePath {
+    Catalog(String),
+    Image(String),
+}
+
+impl TextureIdentity {
+    /// Replaces the catalog spelling with the source that actually supplied the pixels.
+    pub(super) fn with_image(mut self, path: String) -> Self {
+        self.path = TexturePath::Image(path);
+        self
+    }
 }
 
 /// Texture keys resolved across the stack; a higher pack replaces a key.
@@ -215,7 +231,7 @@ impl<'a> TextureCatalog<'a> {
         };
         let animate = variant == 0 && index == 0;
         Some(TextureIdentity {
-            path: choice.path.clone(),
+            path: TexturePath::Catalog(choice.path.clone()),
             tint: choice.tint,
             grid: self.grid(route.key()),
             flipbook: animate
@@ -237,14 +253,15 @@ impl<'a> TextureCatalog<'a> {
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;
         };
-        let mut image = decode_pack_texture_with_policy(
+        let mut image = resolve_pack_texture_with_policy(
             self.view,
             &choice.path,
             assets::texture::policy::device_policy(),
             true,
         )
-        .map(|texture| TextureImage {
-            texture,
+        .map(|resolved| TextureImage {
+            texture: resolved.texture,
+            image_path: resolved.image_path,
             baked_tint: None,
             pack: true,
         })

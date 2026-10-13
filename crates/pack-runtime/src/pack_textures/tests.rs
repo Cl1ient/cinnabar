@@ -52,3 +52,42 @@ fn malformed_over_budget_and_device_oversized_images_are_rejected() {
         .is_none()
     );
 }
+
+#[test]
+fn resolved_images_keep_the_filename_selected_after_decode_and_texture_set_fallbacks() {
+    let mut tga = Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(16, 16, image::Rgba([20, 30, 200, 255]))
+        .write_to(&mut tga, ImageFormat::Tga)
+        .unwrap();
+    let png = png(16, 16);
+    let view = LayeredPackView::new(crate::test_support::stack(&[
+        ("textures/fallback.png", b"invalid image"),
+        ("textures/fallback.tga", tga.get_ref()),
+        ("textures/shared.png", &png),
+        (
+            "textures/alias.texture_set.json",
+            br#"{"minecraft:texture_set":{"color":"shared"}}"#,
+        ),
+        (
+            "textures/solid.texture_set.json",
+            br#"{"minecraft:texture_set":{"color":[1,2,3,255]}}"#,
+        ),
+    ]));
+    let policy = TexturePolicy::for_device(assets::texture::policy::MAX_TEXTURE_SIDE);
+    let fallback =
+        resolve_pack_texture_with_policy(&view, "textures/fallback", policy, false).unwrap();
+    assert_eq!(fallback.image_path, "textures/fallback.tga");
+    assert_eq!(&fallback.texture.rgba8[..4], &[20, 30, 200, 255]);
+    for path in [
+        "textures/shared",
+        "./textures/shared.png",
+        "textures/shared.PNG",
+        "textures/alias",
+    ] {
+        let image = resolve_pack_texture_with_policy(&view, path, policy, false).unwrap();
+        assert_eq!(image.image_path, "textures/shared.png");
+    }
+    let solid = resolve_pack_texture_with_policy(&view, "textures/solid", policy, false).unwrap();
+    assert_eq!(solid.image_path, "textures/solid.texture_set.json");
+    assert_eq!(&solid.texture.rgba8[..], &[1, 2, 3, 255]);
+}

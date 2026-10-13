@@ -811,4 +811,5 @@ fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
 }
 
 mod catalog_repeats;
+mod resolved_images;
 mod review_regressions;

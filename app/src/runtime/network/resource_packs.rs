@@ -327,28 +327,31 @@ fn compile_application(
             {
                 bevy::log::warn!(gaps = ?compiled.gaps, "server block visuals are incomplete");
             }
-            let mut block_icons = overlay
-                .as_deref()
-                .map_or_else(BlockIcons::default, |compiled| {
-                    custom_block_icons(
-                        &compiled.overlay,
-                        custom_blocks,
-                        hashed_block_ids,
-                        &inputs.block_items,
-                    )
-                });
-            if let (Some(compiled), Some((_, base))) =
-                (overlay.as_deref(), BASE_MATERIAL_KEYS.get())
-            {
-                super::item_icons::vanilla_blocks::append(base, compiled, &mut block_icons);
-            }
-            icons = compile_part(
+            icons = compile_icons(
                 &stack,
                 cancelled,
                 changes.icons || changes.blocks,
-                Subscriber::Icons,
                 previous.and_then(|old| old.item_icons.clone()),
-                |view| compile_session_icons(view, icon_keys, block_icons),
+                icon_keys,
+                || {
+                    let mut block_icons =
+                        overlay
+                            .as_deref()
+                            .map_or_else(BlockIcons::default, |compiled| {
+                                custom_block_icons(
+                                    &compiled.overlay,
+                                    custom_blocks,
+                                    hashed_block_ids,
+                                    &inputs.block_items,
+                                )
+                            });
+                    if let (Some(compiled), Some((_, base))) =
+                        (overlay.as_deref(), BASE_MATERIAL_KEYS.get())
+                    {
+                        super::item_icons::vanilla_blocks::append(base, compiled, &mut block_icons);
+                    }
+                    block_icons
+                },
             );
         });
         scope.spawn(|_| {
@@ -569,6 +572,31 @@ pub(crate) fn set_base_material_keys(
     base: Arc<assets::RuntimeAssets>,
 ) {
     let _ = BASE_MATERIAL_KEYS.set((keys, base));
+}
+
+/// Icon output and optional dependency reads returned by the subscriber gate.
+type CompiledIcons = Option<(
+    Option<Arc<SessionIcons>>,
+    Option<std::collections::BTreeSet<resource_pack::PackDependency>>,
+)>;
+
+/// Bakes block art only when the icon subscriber compiles, preserving reused icon outputs.
+fn compile_icons(
+    stack: &Arc<resource_pack::ValidatedPackStack>,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    changed: bool,
+    reuse: Option<Arc<SessionIcons>>,
+    icon_keys: &[(Arc<str>, Arc<str>)],
+    bake_blocks: impl FnOnce() -> BlockIcons,
+) -> CompiledIcons {
+    pack_runtime::reload_diff::compile_part(
+        stack,
+        cancelled,
+        changed,
+        pack_runtime::reload_diff::Subscriber::Icons,
+        reuse,
+        |view| compile_session_icons(view, icon_keys, bake_blocks()),
+    )
 }
 
 use pack_runtime::pack_language::merged_server_lang;

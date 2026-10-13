@@ -15,6 +15,8 @@ thumbnails. Retained block bindings are ordered by visual ID.
 Repeated catalog states and cube bindings keep base references when their rasters are absent;
 changed choices still use carrier fallback. Specialized material sources retain their selected
 catalog keys and variant indices.
+Raster reuse follows the resolved image filename while preserving tint, grid and flipbook
+policies. Block icon baking runs only when the icon subscriber recompiles.
 
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
 blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,

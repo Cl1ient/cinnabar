@@ -5,6 +5,41 @@ use client_runtime::pack_admission::ResourcePackAdmissionState;
 /// Serializes tests that go through the process-wide block overlay cache.
 static OVERLAY_CACHE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[test]
+fn unchanged_icon_subscribers_reuse_outputs_without_baking_block_art() {
+    let stack = resource_pack::validate_handoff(protocol::ResourcePackHandoff::default());
+    let previous =
+        std::sync::Arc::new(client_ui::ui_runtime::presentation::SessionIcons::default());
+    let baked = std::cell::Cell::new(0);
+    let bake = || {
+        baked.set(baked.get() + 1);
+        super::BlockIcons {
+            icons: vec![client_ui::ui_runtime::presentation::SessionIcon {
+                identifier: "test:cube".into(),
+                metadata: 0,
+                width: 1,
+                height: 1,
+                rgba8: vec![255; 4].into(),
+            }],
+            ..Default::default()
+        }
+    };
+    let (reused, reads) =
+        super::compile_icons(&stack, &|| false, false, Some(previous.clone()), &[], bake).unwrap();
+    assert!(std::sync::Arc::ptr_eq(reused.as_ref().unwrap(), &previous));
+    assert!(reads.is_none());
+    assert_eq!(baked.get(), 0);
+    assert!(
+        super::compile_icons(&stack, &|| true, true, Some(previous.clone()), &[], bake).is_none()
+    );
+    assert_eq!(baked.get(), 0);
+    let (fresh, reads) =
+        super::compile_icons(&stack, &|| false, true, Some(previous), &[], bake).unwrap();
+    assert_eq!(baked.get(), 1);
+    assert_eq!(fresh.unwrap().icons[0].identifier.as_ref(), "test:cube");
+    assert!(reads.is_some());
+}
+
 /// Serializes fixtures that share the retained block-overlay cache.
 pub(super) fn overlay_cache() -> std::sync::MutexGuard<'static, ()> {
     OVERLAY_CACHE_LOCK

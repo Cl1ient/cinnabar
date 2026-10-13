@@ -4,6 +4,7 @@ use super::{Builder, TextureSlot, textures::TextureIdentity};
 use std::collections::HashMap;
 
 /// One admitted slot together with its image provider.
+#[derive(Clone)]
 pub(super) struct AdmittedTexture {
     pub(super) slot: TextureSlot,
     pub(super) pack: bool,

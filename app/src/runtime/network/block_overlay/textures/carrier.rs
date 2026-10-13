@@ -13,7 +13,7 @@ pub(in super::super) fn carrier_image(
     let (id, source) = keys
         .material_sources()
         .filter(|(id, source)| {
-            source.raster.as_ref() == path
+            source.raster.eq_ignore_ascii_case(path)
                 && base.material(*id).animation == assets::NO_ANIMATION
                 && (source.baked_tint.is_none() || source.baked_tint == tint)
         })
@@ -28,6 +28,7 @@ pub(in super::super) fn carrier_image(
     let bytes = (mip.size * mip.size * 4) as usize;
     let start = reference.layer() as usize * bytes;
     Some(TextureImage {
+        image_path: path.to_ascii_lowercase(),
         texture: DecodedTexture {
             width: mip.size,
             height: mip.size,

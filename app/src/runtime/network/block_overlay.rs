@@ -548,6 +548,16 @@ impl Builder<'_> {
         carrier: Option<&MaterialKeys>,
     ) -> Option<AdmittedTexture> {
         let key = route.key();
+        let image = self.catalog.decode_route(route, |path, tint| {
+            textures::carrier_image(self.base_assets?, carrier?, path, tint)
+        })?;
+        let identity = self.catalog.identity(route)?.with_image(image.image_path);
+        if let Some(slot) = self.slots.get(&identity, carrier.is_some()) {
+            return slot.map(|slot| AdmittedTexture {
+                slot,
+                pack: image.pack,
+            });
+        }
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
             // A full array rejects every later route, so name it rather than
@@ -556,12 +566,9 @@ impl Builder<'_> {
             self.catalog.report_full(key);
             return None;
         }
-        let image = self.catalog.decode_route(route, |path, tint| {
-            textures::carrier_image(self.base_assets?, carrier?, path, tint)
-        })?;
         let mut texture = image.texture;
         let grid = self.catalog.grid(key);
-        let flipbook = self.catalog.identity(route)?.flipbook;
+        let flipbook = identity.flipbook.as_ref();
         if flipbook.is_none() {
             admit_static_rectangle(&mut texture);
         }
@@ -591,7 +598,7 @@ impl Builder<'_> {
             return None;
         }
         // Bound full-resolution frame copies before allocating them.
-        let frames = match flipbook.as_ref() {
+        let frames = match flipbook {
             Some(flipbook) => flipbook_frames(
                 &texture,
                 flipbook,
@@ -621,7 +628,7 @@ impl Builder<'_> {
                 Source::GridImage(frame, grid)
             }
         }));
-        let animation = match flipbook.as_ref() {
+        let animation = match flipbook {
             Some(flipbook) if frame_count > 1 => {
                 let frame_start = self.overlay.animation_frames.len() as u32;
                 for layer in first..first + frame_count {
@@ -643,13 +650,16 @@ impl Builder<'_> {
             }
             _ => NO_ANIMATION,
         };
-        Some(AdmittedTexture {
+        let admitted = AdmittedTexture {
             slot: TextureSlot {
                 layer: first,
                 animation,
             },
             pack: image.pack,
-        })
+        };
+        self.slots
+            .insert(identity, Some(admitted.clone()), carrier.is_some());
+        Some(admitted)
     }
 
     fn finish(mut self) -> Option<CompiledBlockOverlay> {

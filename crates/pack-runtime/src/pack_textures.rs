@@ -121,6 +121,24 @@ pub fn decode_pack_texture_with_policy(
     policy: TexturePolicy,
     vertical_strip: bool,
 ) -> Option<DecodedTexture> {
+    resolve_pack_texture_with_policy(view, path, policy, vertical_strip)
+        .map(|resolved| resolved.texture)
+}
+
+/// Decoded pixels and the canonical filename of their image or solid-color texture set.
+#[derive(Debug)]
+pub struct ResolvedPackTexture {
+    pub texture: DecodedTexture,
+    pub image_path: String,
+}
+
+/// Resolves the same image precedence as decoding while retaining the actual source identity.
+pub fn resolve_pack_texture_with_policy(
+    view: &LayeredPackView,
+    path: &str,
+    policy: TexturePolicy,
+    vertical_strip: bool,
+) -> Option<ResolvedPackTexture> {
     decode_image_file(view, path, policy, vertical_strip)
         .or_else(|| decode_texture_set(view, path, policy, vertical_strip))
 }
@@ -131,14 +149,17 @@ fn decode_image_file(
     path: &str,
     policy: TexturePolicy,
     vertical_strip: bool,
-) -> Option<DecodedTexture> {
+) -> Option<ResolvedPackTexture> {
     texture_image_paths(path).into_iter().find_map(|path| {
         let extension = path.rsplit_once('.')?.1;
         let (_, format) = IMAGE_EXTENSIONS
             .into_iter()
             .find(|(known, _)| extension.eq_ignore_ascii_case(known))?;
         let bytes = view.read_capped(&path, MAX_TEXTURE_SOURCE_BYTES as u64)?;
-        decode_image_with_policy(&bytes, format, policy, vertical_strip)
+        Some(ResolvedPackTexture {
+            texture: decode_image_with_policy(&bytes, format, policy, vertical_strip)?,
+            image_path: path.to_ascii_lowercase(),
+        })
     })
 }
 
@@ -169,8 +190,10 @@ fn decode_texture_set(
     path: &str,
     policy: TexturePolicy,
     vertical_strip: bool,
-) -> Option<DecodedTexture> {
-    let bytes = view.read_capped(&format!("{path}.texture_set.json"), MAX_TEXTURE_SET_BYTES)?;
+) -> Option<ResolvedPackTexture> {
+    let path = path.trim().trim_start_matches("./");
+    let source = format!("{path}.texture_set.json");
+    let bytes = view.read_capped(&source, MAX_TEXTURE_SET_BYTES)?;
     let root = parse_pack_json(&bytes)?;
     match root.get("minecraft:texture_set")?.get("color")? {
         Value::String(name) => {
@@ -188,10 +211,13 @@ fn decode_texture_set(
             for (slot, channel) in pixel.iter_mut().zip(channels) {
                 *slot = channel.as_f64()?.round().clamp(0.0, 255.0) as u8;
             }
-            Some(DecodedTexture {
-                width: 1,
-                height: 1,
-                rgba8: pixel.into(),
+            Some(ResolvedPackTexture {
+                texture: DecodedTexture {
+                    width: 1,
+                    height: 1,
+                    rgba8: pixel.into(),
+                },
+                image_path: source.to_ascii_lowercase(),
             })
         }
         _ => None,

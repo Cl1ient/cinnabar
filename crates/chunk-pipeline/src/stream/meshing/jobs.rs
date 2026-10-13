@@ -92,7 +92,11 @@ impl WorldStream {
             }
         }
         resident_candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
-        resident_candidates.truncate(MAX_PENDING_SCHEDULER_SCANS_PER_POLL);
+        let truncated = resident_candidates.split_off(
+            resident_candidates
+                .len()
+                .min(MAX_PENDING_SCHEDULER_SCANS_PER_POLL),
+        );
         let mut removal_candidates = Vec::new();
         for index in 0..MAX_PENDING_SCHEDULER_SCANS_PER_POLL {
             if index != 0 && worker_budget == 0 && self.poll_budget_exhausted() {
@@ -128,6 +132,15 @@ impl WorldStream {
                 *queued = true;
             } else {
                 resident_candidates.push((candidate, pending, true));
+            }
+        }
+        for (candidate, _, _) in truncated {
+            // The ready lane may have supplied the same key after its probe was truncated.
+            if !resident_candidates
+                .iter()
+                .any(|(selected, _, _)| selected.key == candidate.key)
+            {
+                self.mesh_jobs.refresh.requeue_woken(candidate.key);
             }
         }
         let removal_authority = self
@@ -204,7 +217,7 @@ impl WorldStream {
                         .push(candidate);
                 } else {
                     // Unexamined probed and woken candidates sit in no ready queue.
-                    self.mesh_jobs.refresh.wake_near(key);
+                    self.mesh_jobs.refresh.requeue_woken(key);
                 }
                 continue;
             }

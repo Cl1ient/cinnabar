@@ -55,19 +55,42 @@ impl Bounds {
 
     /// Includes round caps, joins and half a physical pixel of coverage in virtual coordinates.
     pub(crate) fn at(self, dest: crate::Rect, pixel: f64) -> crate::Rect {
+        self.geometry(dest).expanded(self.padding(dest, pixel))
+    }
+
+    /// Keeps authored bounds and allows one-pixel position and size changes from snapping.
+    pub(crate) fn subtree_at(self, dest: crate::Rect, pixel: f64) -> crate::Rect {
+        let enlarged = crate::Rect::new(dest.x, dest.y, dest.w + pixel, dest.h + pixel);
+        dest.union(self.geometry(dest))
+            .union(self.geometry(enlarged))
+            .expanded(self.padding(enlarged, pixel) + pixel)
+    }
+
+    /// Round strokes scale by the smaller destination axis, independently of contour coordinates.
+    fn padding(self, dest: crate::Rect, pixel: f64) -> f64 {
+        let [_, _, width, height] = self.view_box.map(f64::from);
+        f64::from(self.stroke) * (dest.w / width).min(dest.h / height) * 0.5 + pixel * 0.5
+    }
+
+    /// Transforms point extrema without coverage padding or changes to the authored rectangle.
+    fn geometry(self, dest: crate::Rect) -> crate::Rect {
         let [x, y, width, height] = self.view_box.map(f64::from);
         let scale = [dest.w / width, dest.h / height];
-        let padding = f64::from(self.stroke) * scale[0].min(scale[1]) * 0.5 + pixel * 0.5;
         let min = [
-            dest.x + (f64::from(self.min[0]) - x) * scale[0] - padding,
-            dest.y + (f64::from(self.min[1]) - y) * scale[1] - padding,
+            dest.x + (f64::from(self.min[0]) - x) * scale[0],
+            dest.y + (f64::from(self.min[1]) - y) * scale[1],
         ];
         let max = [
-            dest.x + (f64::from(self.max[0]) - x) * scale[0] + padding,
-            dest.y + (f64::from(self.max[1]) - y) * scale[1] + padding,
+            dest.x + (f64::from(self.max[0]) - x) * scale[0],
+            dest.y + (f64::from(self.max[1]) - y) * scale[1],
         ];
         crate::Rect::new(min[0], min[1], max[0] - min[0], max[1] - min[1])
     }
+}
+
+/// Measures current draw data directly, without a separate style or geometry-bounds cache.
+pub(crate) fn bounds(data: &BTreeMap<String, Value>) -> Option<Bounds> {
+    Bounds::new(&parse(data)?)
 }
 
 /// Rejects malformed or excessively large path data before allocating raster geometry.
@@ -233,5 +256,31 @@ mod tests {
                 crate::Rect::new(-width - 2.25, 5.75, width + 4.5, 4.5),
             );
         }
+    }
+
+    /// Subtree bounds include the authored hit cell even when its small path paints elsewhere.
+    #[test]
+    fn subtree_bounds_retain_authored_area_and_snapping_expansion() {
+        let data = serde_json::from_value(serde_json::json!({
+            "view_box": [0, 0, 16, 16], "stroke_width": 4,
+            "paths": [[[0, 2], [16, 2]]],
+        }))
+        .unwrap();
+        let bounds = bounds(&data).unwrap();
+        let authored = crate::Rect::new(0.0, -10.0, 16.0, 16.0);
+        let subtree = bounds.subtree_at(authored, 1.0);
+        assert_eq!(authored.intersect(subtree), authored);
+        assert!(bounds.at(authored, 1.0).y + bounds.at(authored, 1.0).h < 0.0);
+
+        let data = serde_json::from_value(serde_json::json!({
+            "view_box": [0, 0, 16, 16], "stroke_width": 4,
+            "paths": [[[0, 8], [16, 8]]],
+        }))
+        .unwrap();
+        let bounds = super::bounds(&data).unwrap();
+        let snapped = bounds.at(crate::Rect::new(-19.0, 0.0, 17.0, 17.0), 1.0);
+        let subtree = bounds.subtree_at(crate::Rect::new(-19.1, 0.0, 16.1, 16.1), 1.0);
+        assert!((snapped.x + snapped.w - 0.625).abs() < 0.000001);
+        assert_eq!(snapped.intersect(subtree), snapped);
     }
 }

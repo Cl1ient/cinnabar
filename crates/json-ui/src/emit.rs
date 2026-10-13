@@ -253,7 +253,15 @@ pub(crate) fn emit_own(
         }
         // A primitive wholly outside its clip (a scrolled-away cell) draws nothing;
         // a hover tooltip draws beside the pointer instead of in its rect.
-        let clipped = crate::layout::paint_bounds(node.control, dest, env).intersect(node.clip);
+        let paint = match &draw {
+            Draw::Custom { renderer, data } if renderer == crate::vector_path::RENDERER => {
+                crate::vector_path::bounds(data).map_or(dest, |bounds| {
+                    bounds.at(env.text.paint_rect(dest), env.text.physical_pixel_size())
+                })
+            }
+            _ => dest,
+        };
+        let clipped = paint.intersect(node.clip);
         let floats =
             matches!(&draw, Draw::Custom { renderer, .. } if renderer == "hover_text_renderer");
         let moves_geometry = node

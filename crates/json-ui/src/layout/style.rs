@@ -12,7 +12,6 @@ pub(super) struct Style {
     pub(super) allows: Option<bool>,
     /// Any descendant that can deliberately escape an ancestor clip.
     pub(super) unclipped_descendant: bool,
-    pub(super) path_bounds: Option<crate::vector_path::Bounds>,
     pub(super) enabled: bool,
     pub(super) alpha: f32,
     pub(super) layer: i32,
@@ -30,26 +29,11 @@ impl Style {
                 let style = super::measure::style(child);
                 style.allows == Some(false) || style.unclipped_descendant
             }),
-            path_bounds: path_bounds(control),
             enabled: widgets::enabled(control),
             alpha: alpha(control),
             layer: layer(control),
         }
     }
-}
-
-/// Measures the same merged custom data that painting receives, including property bags.
-fn path_bounds(control: &ResolvedControl) -> Option<crate::vector_path::Bounds> {
-    if control.control_type.as_deref() != Some("custom")
-        || control.properties.get("renderer").and_then(Value::as_str)
-            != Some(crate::vector_path::RENDERER)
-    {
-        return None;
-    }
-    let crate::Draw::Custom { data, .. } = crate::emit::custom_draw(control)? else {
-        return None;
-    };
-    crate::vector_path::Bounds::new(&crate::vector_path::parse(&data)?)
 }
 
 /// `clip_offset`, `[0, 0]` unless a numeric pair.

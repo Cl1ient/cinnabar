@@ -568,7 +568,7 @@ pub(super) fn placed_children<'a>(
             .map(|(child, at)| (child_index(parent, child), at))
             .collect();
     let relative = Placements::new(relative, grid::is_grid(parent), |index, rect| {
-        super::paint_bounds(&parent.children[index], rect, env)
+        super::subtree_bounds(&parent.children[index], rect, env)
     });
     let placed = relative.visible(clip, rect).iter().map(shift).collect();
     PLACED.with(|memo| memo.borrow_mut().insert(key, relative));

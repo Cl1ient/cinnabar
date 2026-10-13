@@ -63,5 +63,8 @@ windows-sys = { version = "0.61", features = [
 test-time = { path = "../test-time" }
 launcher = { path = "../launcher", features = ["test-support"] }
 
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"
+
 [lints]
 workspace = true

@@ -93,7 +93,7 @@ impl ActorStore {
             });
         }
         let descriptor = self.seat_bindings.get(&mount.runtime_id)?.as_ref()?;
-        let admission = self.seat_assets.as_ref()?.seat_descriptor(*descriptor)?;
+        let admission = self.entity_assets.as_ref()?.seat_descriptor(*descriptor)?;
         let mut riders = 0_u32;
         let mut index = 0_usize;
         let mut linked = false;
@@ -382,11 +382,11 @@ fn compiled_seat(
     let layout = layouts
         .iter()
         .find(|layout| layout.selector == SeatSelector::Base)?;
-    let usable = layout
+    let mut usable = layout
         .seats
         .iter()
         .filter(|seat| (seat.min_riders..=seat.max_riders).contains(&riders));
-    let seat = usable.clone().nth(index).or_else(|| usable.last())?;
+    let seat = usable.clone().nth(index).or_else(|| usable.next_back())?;
     let rotate_by = match seat.rotation {
         SeatRotation::Absent => None,
         SeatRotation::Literal(degrees) => Some(degrees.get()),
@@ -409,7 +409,11 @@ impl ActorStore {
                 .seat_bases
                 .get(identifier.as_ref())
                 .copied()
-                .unwrap_or_else(|| self.seat_assets.as_ref()?.seat_descriptor_index(identifier)),
+                .unwrap_or_else(|| {
+                    self.entity_assets
+                        .as_ref()?
+                        .seat_descriptor_index(identifier)
+                }),
             protocol::ActorKind::Player { .. } => None,
         };
         self.seat_bindings.insert(actor.runtime_id, descriptor);
@@ -429,7 +433,7 @@ impl ActorStore {
                 &entry.base_identifier
             };
             let descriptor = self
-                .seat_assets
+                .entity_assets
                 .as_ref()
                 .and_then(|assets| assets.seat_descriptor_index(base));
             self.seat_bases
@@ -442,7 +446,9 @@ impl ActorStore {
                     .get(identifier.as_ref())
                     .copied()
                     .unwrap_or_else(|| {
-                        self.seat_assets.as_ref()?.seat_descriptor_index(identifier)
+                        self.entity_assets
+                            .as_ref()?
+                            .seat_descriptor_index(identifier)
                     }),
                 protocol::ActorKind::Player { .. } => None,
             };

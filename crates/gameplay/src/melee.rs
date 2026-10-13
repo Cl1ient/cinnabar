@@ -4,6 +4,7 @@ use crate::{
     mining::FrozenMiningSelection, movement::MiningEffects,
 };
 use protocol::{ActorUseAction, ActorUseRequest, PlayerGameMode, PlayerInputMode, SwingSource};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Wall-clock time after an attack during which block use is suppressed. Needs
 /// independent measurement.
@@ -17,21 +18,11 @@ pub use target::{
 
 /// Bedrock swing length in ticks, with the stronger Haste or Conduit Power taking priority.
 pub fn swing_duration(effects: MiningEffects) -> i32 {
-    // Server amplifiers are untrusted; saturate instead of overflowing.
-    let level = |amplifier: Option<i32>| {
-        amplifier
-            .filter(|value| *value >= 0)
-            .map(|value| value.saturating_add(1))
-    };
-    let haste = level(effects.haste).max(level(effects.conduit_power));
-    let duration = match (haste, level(effects.mining_fatigue)) {
-        (Some(haste), _) => actor_animation::ACTOR_SWING_TICKS.saturating_sub(haste),
-        (None, Some(fatigue)) => {
-            actor_animation::ACTOR_SWING_TICKS.saturating_add(fatigue.saturating_mul(2))
-        }
-        (None, None) => actor_animation::ACTOR_SWING_TICKS,
-    };
-    duration.max(1)
+    actor_animation::SwingEffects {
+        haste: effects.haste.max(effects.conduit_power),
+        mining_fatigue: effects.mining_fatigue,
+    }
+    .ticks()
 }
 
 /// Java 1.7 swing length in ticks; Conduit Power does not modify its animation.
@@ -89,7 +80,7 @@ pub struct MeleeRuntime {
     admitted_attack: Option<AdmittedActorAttack>,
     actor_in_front: bool,
     last_attack_millis: Option<u64>,
-    position_authority: Option<(u64, u64)>,
+    position_authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     /// Wall-clock millis at which a latched press first waited for admission.
     deferred_since: Option<u64>,
     rejected_tick: Option<u64>,
@@ -120,7 +111,7 @@ impl MeleeRuntime {
     }
 
     /// Drops a latched press when the session or position authority changes.
-    pub fn synchronize(&mut self, authority: (u64, u64)) {
+    pub fn synchronize(&mut self, authority: (SessionGeneration, PositionAuthorityGeneration)) {
         if self
             .position_authority
             .is_some_and(|previous| previous.0 != authority.0)

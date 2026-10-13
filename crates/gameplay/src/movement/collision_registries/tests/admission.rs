@@ -85,7 +85,7 @@ fn budget_rejections_preserve_vanilla_ids_in_both_modes_and_admission_palettes()
                 .unwrap();
             assert_eq!(
                 registries.begin_session_hashed_custom_blocks(&definitions),
-                Some(1)
+                1
             );
             for record in records
                 .iter()
@@ -162,4 +162,46 @@ fn budget_rejections_preserve_vanilla_ids_in_both_modes_and_admission_palettes()
             }
         }
     }
+}
+
+#[test]
+fn omitted_server_definitions_remap_the_pinned_sequential_palette() {
+    let version = assets::active_content_registry_protocol();
+    let records = assets::read_registry_for_protocol(BREG_V2193, version).unwrap();
+    let mut registries = bind(
+        BREG_V2193,
+        include_bytes!("../../../../../assets/data/block-physics-v2193.bin"),
+        version,
+    )
+    .unwrap();
+    let (_, remap) = registries
+        .begin_session_custom_blocks(&protocol::CustomBlocks::default())
+        .unwrap();
+    let mut wire = 0;
+    let blocks = assets::server_defined_blocks();
+    assert!(!blocks.is_empty());
+    for record in &records {
+        let omitted = blocks.iter().any(|block| {
+            (block.first_internal_id..block.first_internal_id + block.state_count)
+                .contains(&record.sequential_id)
+        });
+        if omitted {
+            assert_eq!(remap.to_wire(record.sequential_id), u32::MAX);
+        } else {
+            assert_eq!(remap.to_internal(wire), record.sequential_id);
+            assert_eq!(remap.to_wire(record.sequential_id), wire);
+            if record.name.as_ref() != super::super::RESERVED_RECORD_NAME {
+                assert_eq!(
+                    registries.block_identifier(
+                        assets::NetworkIdMode::Sequential,
+                        remap.to_internal(wire),
+                    ),
+                    Some(record.name.as_ref()),
+                );
+            }
+            wire += 1;
+        }
+    }
+    assert!(wire < records.len() as u32);
+    assert_eq!(remap.to_internal(wire), u32::MAX);
 }

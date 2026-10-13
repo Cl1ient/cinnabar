@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot '../../acceptance/Galleries/Common.ps1')
+
 function New-TestCrossCropAssets {
     param(
         [Parameter(Mandatory = $true)][string]$RegistryPath,

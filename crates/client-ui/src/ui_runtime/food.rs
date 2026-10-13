@@ -42,14 +42,15 @@ mod tests {
             nutrition: 4,
             saturation_modifier: assets::ItemDisplayScalar::new(0.3).unwrap(),
         };
-        let bytes = assets::encode_equipment_catalog_with_food(
+        let bytes = assets::encode_equipment_catalog_with_use_profiles(
             [1; 32],
             [2; 32],
             &[],
             &[],
-            &[],
-            &[],
-            &[food],
+            assets::EquipmentItemFacts {
+                item_food: &[food],
+                ..Default::default()
+            },
         )
         .unwrap();
         let mut runtime = UiRuntime::new(1);
@@ -64,8 +65,10 @@ mod tests {
             4
         );
         assert!(runtime.food_properties("fixture:unknown").is_none());
-        let mut components = protocol::ItemComponents::default();
-        components.food_properties = protocol::FoodProperties::new(9, 0.8);
+        let components = protocol::ItemComponents {
+            food_properties: protocol::FoodProperties::new(9, 0.8),
+            ..Default::default()
+        };
         runtime.set_session_items(Some(Arc::new(
             super::super::item_facts::SessionItemComponents::from_iter([(
                 "minecraft:apple".into(),

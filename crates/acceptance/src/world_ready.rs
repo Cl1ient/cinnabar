@@ -28,7 +28,7 @@ use {
         },
     },
     diagnostics::{
-        PHASE0_REQUESTED_RADIUS_CHUNKS, markers::GALLERY_ANCHOR_READY, write_stdout_marker,
+        EVIDENCE_REQUESTED_RADIUS_CHUNKS, markers::GALLERY_ANCHOR_READY, write_stdout_marker,
     },
 };
 
@@ -76,7 +76,7 @@ impl AcceptanceRun {
 #[must_use]
 pub fn authoritative_received_radius(received_radius_chunks: Option<i32>) -> Option<i32> {
     let received = received_radius_chunks?;
-    (received > 0 && received <= PHASE0_REQUESTED_RADIUS_CHUNKS).then_some(received)
+    (received > 0 && received <= EVIDENCE_REQUESTED_RADIUS_CHUNKS).then_some(received)
 }
 
 #[must_use]

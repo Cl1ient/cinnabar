@@ -8,11 +8,11 @@ pub const DEFAULT_GUI_SCALE: u8 = 2;
 
 pub const HELP: &str = concat!(
     "\
-bedrock-client — ",
+cinnabar — ",
     launcher::product_name!(),
     ", a Minecraft: Bedrock Edition client
 
-Usage: bedrock-client [OPTIONS] [PACK.mcpack|PACK.mcaddon|PACK.zip]...
+Usage: cinnabar [OPTIONS] [PACK.mcpack|PACK.mcaddon|PACK.zip]...
 
 Options:
   --address <HOST:PORT>       Directly launch the Go core and join a server
@@ -42,15 +42,16 @@ Options:
                                Poll an ignored-local exact transparent witness request
   --model-witness-request <PATH>
                                Poll an ignored-local exact packed-model witness request
-  --phase3-evidence-target <TARGET>
-                               Bind Phase 3 evidence to Bds, Lunar, Zeqa, Lbsg, or Zeno
-  --phase3-candidate-physics  Request fail-closed candidate Physics authority for Phase 3 evidence
+  --movement-evidence-target <TARGET>
+                               Bind movement evidence to Bds, Lunar, Zeqa, Lbsg, or Zeno
+  --movement-candidate-physics
+                               Request fail-closed candidate Physics authority for movement evidence
   -h, --help                   Print this help
 "
 );
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase3Target {
+pub enum EvidenceTarget {
     Bds,
     Lunar,
     Zeqa,
@@ -59,7 +60,7 @@ pub enum Phase3Target {
     Venity,
 }
 
-impl Phase3Target {
+impl EvidenceTarget {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Bds => "Bds",
@@ -79,13 +80,13 @@ impl Phase3Target {
             "Lbsg" => Ok(Self::Lbsg),
             "Zeno" => Ok(Self::Zeno),
             "Venity" => Ok(Self::Venity),
-            _ => Err(ArgsError::InvalidPhase3Target(value)),
+            _ => Err(ArgsError::InvalidEvidenceTarget(value)),
         }
     }
 }
 
 #[cfg(feature = "acceptance")]
-impl acceptance::phase3_evidence::Phase3TargetLabel for Phase3Target {
+impl acceptance::movement_evidence::EvidenceTargetLabel for EvidenceTarget {
     /// Publishes the argument's stable label to the optional evidence consumer.
     fn evidence_label(self) -> &'static str {
         self.as_str()
@@ -127,8 +128,8 @@ pub struct ClientArgs {
     pub require_transparent_presentation: bool,
     pub transparent_witness_request: Option<PathBuf>,
     pub model_witness_request: Option<PathBuf>,
-    pub phase3_evidence_target: Option<Phase3Target>,
-    pub phase3_candidate_physics: bool,
+    pub movement_evidence_target: Option<EvidenceTarget>,
+    pub movement_candidate_physics: bool,
 }
 
 impl Default for ClientArgs {
@@ -157,8 +158,8 @@ impl Default for ClientArgs {
             require_transparent_presentation: false,
             transparent_witness_request: None,
             model_witness_request: None,
-            phase3_evidence_target: None,
-            phase3_candidate_physics: false,
+            movement_evidence_target: None,
+            movement_candidate_physics: false,
         }
     }
 }
@@ -213,17 +214,17 @@ pub enum ArgsError {
     ConflictingVsyncFlags,
 
     #[error(
-        "--phase3-evidence-target must be one of Bds, Lunar, Zeqa, Lbsg, Zeno, or Venity, got {0:?}"
+        "--movement-evidence-target must be one of Bds, Lunar, Zeqa, Lbsg, Zeno, or Venity, got {0:?}"
     )]
-    InvalidPhase3Target(String),
+    InvalidEvidenceTarget(String),
 
-    #[error("--phase3-candidate-physics requires an attributable --phase3-evidence-target run")]
-    Phase3CandidateRequiresEvidence,
+    #[error("--movement-candidate-physics requires an attributable --movement-evidence-target run")]
+    MovementCandidateRequiresEvidence,
 
     #[error(
-        "--phase3-evidence-target requires --acceptance-seconds and --metrics-out for attributable evidence"
+        "--movement-evidence-target requires --acceptance-seconds and --metrics-out for attributable evidence"
     )]
-    Phase3EvidenceRequiresAttributableRun,
+    MovementEvidenceRequiresAttributableRun,
 }
 
 impl ClientArgs {
@@ -235,8 +236,8 @@ impl ClientArgs {
             || self.require_transparent_presentation
             || self.transparent_witness_request.is_some()
             || self.model_witness_request.is_some()
-            || self.phase3_evidence_target.is_some()
-            || self.phase3_candidate_physics;
+            || self.movement_evidence_target.is_some()
+            || self.movement_candidate_physics;
         if !available && requested {
             return Err(ArgsError::AcceptanceFeatureRequired);
         }
@@ -268,7 +269,7 @@ impl ClientArgs {
                 Some("--require-transparent-presentation") => {
                     parsed.require_transparent_presentation = true;
                 }
-                Some("--phase3-candidate-physics") => parsed.phase3_candidate_physics = true,
+                Some("--movement-candidate-physics") => parsed.movement_candidate_physics = true,
                 Some("--address" | "-address") => {
                     let value = next_value(&mut arguments, "--address")?
                         .into_string()
@@ -330,13 +331,13 @@ impl ClientArgs {
                         "--model-witness-request",
                     )?));
                 }
-                Some("--phase3-evidence-target") => {
-                    let value = next_value(&mut arguments, "--phase3-evidence-target")?
+                Some("--movement-evidence-target") => {
+                    let value = next_value(&mut arguments, "--movement-evidence-target")?
                         .into_string()
                         .map_err(|_| ArgsError::InvalidUtf8 {
-                            flag: "--phase3-evidence-target",
+                            flag: "--movement-evidence-target",
                         })?;
-                    parsed.phase3_evidence_target = Some(Phase3Target::parse(value)?);
+                    parsed.movement_evidence_target = Some(EvidenceTarget::parse(value)?);
                 }
                 Some("--display-name") => {
                     let value = next_value(&mut arguments, "--display-name")?
@@ -419,16 +420,16 @@ impl ClientArgs {
                 _ => return Err(ArgsError::Unknown(argument)),
             }
         }
-        if parsed.phase3_candidate_physics && parsed.phase3_evidence_target.is_none() {
-            return Err(ArgsError::Phase3CandidateRequiresEvidence);
+        if parsed.movement_candidate_physics && parsed.movement_evidence_target.is_none() {
+            return Err(ArgsError::MovementCandidateRequiresEvidence);
         }
         if parsed.force_vsync && parsed.no_vsync {
             return Err(ArgsError::ConflictingVsyncFlags);
         }
-        if parsed.phase3_evidence_target.is_some()
+        if parsed.movement_evidence_target.is_some()
             && (parsed.acceptance_seconds.is_none() || parsed.metrics_out.is_none())
         {
-            return Err(ArgsError::Phase3EvidenceRequiresAttributableRun);
+            return Err(ArgsError::MovementEvidenceRequiresAttributableRun);
         }
         parsed.validate_acceptance_support(cfg!(feature = "acceptance"))?;
         Ok(ParseOutcome::Run(Box::new(parsed)))
@@ -494,8 +495,8 @@ mod tests {
         assert!(!args.require_transparent_presentation);
         assert_eq!(args.transparent_witness_request, None);
         assert_eq!(args.model_witness_request, None);
-        assert_eq!(args.phase3_evidence_target, None);
-        assert!(!args.phase3_candidate_physics);
+        assert_eq!(args.movement_evidence_target, None);
+        assert!(!args.movement_candidate_physics);
     }
 
     #[test]
@@ -523,9 +524,9 @@ mod tests {
             "run/transparent-witness-request.json",
             "--model-witness-request",
             "run/model-witness-request.json",
-            "--phase3-evidence-target",
+            "--movement-evidence-target",
             "Zeno",
-            "--phase3-candidate-physics",
+            "--movement-candidate-physics",
         ])
         .unwrap() else {
             panic!("expected run args")
@@ -550,8 +551,11 @@ mod tests {
             args.model_witness_request,
             Some(PathBuf::from("run/model-witness-request.json"))
         );
-        assert_eq!(args.phase3_evidence_target, Some(super::Phase3Target::Zeno));
-        assert!(args.phase3_candidate_physics);
+        assert_eq!(
+            args.movement_evidence_target,
+            Some(super::EvidenceTarget::Zeno)
+        );
+        assert!(args.movement_candidate_physics);
     }
 
     #[test]
@@ -613,8 +617,8 @@ mod tests {
             "--require-transparent-presentation",
             "--transparent-witness-request",
             "--model-witness-request",
-            "--phase3-evidence-target",
-            "--phase3-candidate-physics",
+            "--movement-evidence-target",
+            "--movement-candidate-physics",
             "--dev-debug-overlay",
         ] {
             assert!(HELP.contains(flag));
@@ -685,24 +689,24 @@ mod tests {
                 "client",
                 "--acceptance-seconds",
                 "30",
-                "--phase3-candidate-physics"
+                "--movement-candidate-physics"
             ]),
-            Err(ArgsError::Phase3CandidateRequiresEvidence)
+            Err(ArgsError::MovementCandidateRequiresEvidence)
         ));
         assert!(matches!(
             ClientArgs::parse_from([
                 "client",
                 "--acceptance-seconds",
                 "30",
-                "--phase3-evidence-target",
+                "--movement-evidence-target",
                 "Lunar",
-                "--phase3-candidate-physics"
+                "--movement-candidate-physics"
             ]),
-            Err(ArgsError::Phase3EvidenceRequiresAttributableRun)
+            Err(ArgsError::MovementEvidenceRequiresAttributableRun)
         ));
         assert!(matches!(
-            ClientArgs::parse_from(["client", "--phase3-evidence-target", "Unknown"]),
-            Err(ArgsError::InvalidPhase3Target(_))
+            ClientArgs::parse_from(["client", "--movement-evidence-target", "Unknown"]),
+            Err(ArgsError::InvalidEvidenceTarget(_))
         ));
     }
 }

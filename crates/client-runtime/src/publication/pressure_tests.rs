@@ -6,7 +6,7 @@ use {crate::publication::PublicationController, crate::publication::PublicationF
 
 #[test]
 fn draining_backlog_stops_collapsing_caps_before_the_one_operation_trap() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     controller.finish_frame(PublicationFrameWork {
         upload_queue_items: 520,
@@ -53,7 +53,7 @@ fn stuck_backlog_keeps_collapsing_toward_the_pressure_floor_instead_of_one() {
 
 #[test]
 fn fifo_jitter_accrues_wall_clock_service_without_frame_count_bias() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     let jitter = [
         Duration::from_micros(15_800),
@@ -86,7 +86,7 @@ fn fifo_jitter_accrues_wall_clock_service_without_frame_count_bias() {
 }
 #[test]
 fn slow_saturated_frame_without_gpu_backlog_preserves_service_caps() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     controller.begin_frame(Duration::from_millis(16));
     let allowance = controller.allowance();
@@ -115,7 +115,7 @@ fn slow_saturated_frame_without_gpu_backlog_preserves_service_caps() {
 
 #[test]
 fn zero_byte_saturation_without_gpu_backlog_preserves_service_caps() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     controller.begin_frame(Duration::from_millis(16));
     controller.finish_frame(PublicationFrameWork {
@@ -156,7 +156,7 @@ fn gpu_backlog_is_genuine_pressure_even_when_fifo_frame_time_is_healthy() {
 
 #[test]
 fn pressure_recovers_only_after_healthy_frames_without_self_funded_bursts() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     controller.finish_frame(PublicationFrameWork {
         upload_queue_items: chunk_pipeline::MAX_PENDING_MESH_CHANGES,
@@ -193,7 +193,7 @@ fn pressure_recovers_only_after_healthy_frames_without_self_funded_bursts() {
 }
 #[test]
 fn byte_tokens_follow_elapsed_time_and_never_cross_frame_or_burst_ceilings() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
 
     controller.begin_frame(Duration::from_millis(125));
@@ -208,7 +208,7 @@ fn byte_tokens_follow_elapsed_time_and_never_cross_frame_or_burst_ceilings() {
 }
 #[test]
 fn idle_wall_time_never_accumulates_more_than_the_one_second_burst_ceiling() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     controller.begin_frame(Duration::from_secs(10));
     assert_eq!(controller.accrued_items(), config.maximum_burst_items);
@@ -223,7 +223,7 @@ fn idle_wall_time_never_accumulates_more_than_the_one_second_burst_ceiling() {
 
 #[test]
 fn eight_hz_frames_receive_two_seconds_of_bounded_service_without_runaway_burst() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     let mut serviced = 0_usize;
 
@@ -246,7 +246,7 @@ fn eight_hz_frames_receive_two_seconds_of_bounded_service_without_runaway_burst(
 }
 #[test]
 fn paced_eight_hz_saturated_backlog_preserves_bounded_publication_service() {
-    let config = PublicationServiceConfig::PHASE2_GATE;
+    let config = PublicationServiceConfig::DEFAULT;
     let mut controller = PublicationController::default();
     let mut serviced = 0_usize;
 
@@ -324,7 +324,7 @@ fn review_pressure_floor_never_exceeds_configured_operation_caps() {
         let config = PublicationServiceConfig {
             maximum_frame_items: maximum,
             maximum_zero_byte_operations_per_frame: maximum,
-            ..PublicationServiceConfig::PHASE2_GATE
+            ..PublicationServiceConfig::DEFAULT
         };
         let mut controller = PublicationController::new(config);
         controller.finish_frame(PublicationFrameWork {

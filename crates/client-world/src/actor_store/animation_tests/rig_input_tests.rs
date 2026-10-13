@@ -167,10 +167,13 @@ fn local_flight_freezes_cape_walk_phase_but_keeps_chase_and_resumes_walking() {
     compiled.rig_bindings[0].entity_symbol = 0;
     compiled.rig_bindings[0].render_controller = 3;
     compiled.animation_clips[0].symbol = 2;
-    let assets = Arc::new(assets::RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let assets = Arc::new(
+        assets::RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap(),
+    );
     let mut store = ActorStore::new_with_entity_assets(1, 0, assets);
     store.exclude_remote_state_for(1);
     let mut feed = crate::LocalPlayerFeed {
+        held_network_ids: [0; 2],
         game_mode: None,
         prefer_client_skin: false,
         uuid: [1; 16],

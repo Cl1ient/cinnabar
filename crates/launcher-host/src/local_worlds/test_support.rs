@@ -297,6 +297,11 @@ pub(crate) struct FakeInstance {
     exited: Receiver<()>,
     pub can_pause: bool,
     pub lan: Option<String>,
+    /// Holds a stop, as a world save would, until disconnected.
+    save: Option<Receiver<()>>,
+    /// Holds a stop after the process has exited, as removing a container would.
+    cleanup: Option<Receiver<()>>,
+    cleaned: std::sync::atomic::AtomicBool,
 }
 
 impl FakeInstance {
@@ -308,6 +313,9 @@ impl FakeInstance {
             exited,
             can_pause,
             lan: None,
+            save: None,
+            cleanup: None,
+            cleaned: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -318,6 +326,12 @@ impl FakeInstance {
 
     pub(crate) fn stopped(&self) -> bool {
         lock(&self.exit).is_none()
+    }
+
+    /// Stopped, with any cleanup after the exit done.
+    pub(crate) fn finished(&self) -> bool {
+        self.stopped()
+            && (self.cleanup.is_none() || self.cleaned.load(std::sync::atomic::Ordering::SeqCst))
     }
 }
 
@@ -332,11 +346,21 @@ impl Instance for FakeInstance {
     }
 
     fn request_stop(&self) {
-        self.exit();
+        if self.save.is_none() {
+            self.exit();
+        }
     }
 
     fn stop(&self, _timeout: Duration) -> Result<(), String> {
+        if let Some(save) = &self.save {
+            let _ = save.recv();
+        }
         self.exit();
+        if let Some(cleanup) = &self.cleanup {
+            let _ = cleanup.recv();
+            self.cleaned
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
         Ok(())
     }
 
@@ -360,6 +384,14 @@ pub(crate) struct FakeRunner {
     pub error: Option<fn() -> WorldError>,
     pub can_pause: Option<bool>,
     pub made: Mutex<Vec<Arc<FakeInstance>>>,
+    /// Passed to each instance as its save.
+    pub save: Option<Receiver<()>>,
+    /// Passed to each instance as its cleanup.
+    pub cleanup: Option<Receiver<()>>,
+    pub discarded: std::sync::atomic::AtomicUsize,
+    /// Set when a start ran while an earlier instance was still alive.
+    pub overlapped: std::sync::atomic::AtomicBool,
+    pub prepared: std::sync::atomic::AtomicUsize,
 }
 
 impl FakeRunner {
@@ -369,6 +401,30 @@ impl FakeRunner {
         (
             Self {
                 gate: Some(gate),
+                ..Self::default()
+            },
+            release,
+        )
+    }
+
+    /// A runner whose instances save until the returned sender is dropped.
+    pub(crate) fn saving() -> (Self, Sender<()>) {
+        let (release, save) = crossbeam_channel::bounded(0);
+        (
+            Self {
+                save: Some(save),
+                ..Self::default()
+            },
+            release,
+        )
+    }
+
+    /// A runner whose instances exit at once but finish cleaning up when the sender is dropped.
+    pub(crate) fn cleaning() -> (Self, Sender<()>) {
+        let (release, cleanup) = crossbeam_channel::bounded(0);
+        (
+            Self {
+                cleanup: Some(cleanup),
                 ..Self::default()
             },
             release,
@@ -391,9 +447,29 @@ impl Runner for FakeRunner {
         if let Some(error) = self.error {
             return Err(error());
         }
-        let instance = Arc::new(FakeInstance::new(self.can_pause.unwrap_or(true)));
-        lock(&self.made).push(Arc::clone(&instance));
+        let mut made = lock(&self.made);
+        if made.iter().any(|instance| !instance.finished()) {
+            self.overlapped
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        let instance = Arc::new(FakeInstance {
+            save: self.save.clone(),
+            cleanup: self.cleanup.clone(),
+            ..FakeInstance::new(self.can_pause.unwrap_or(true))
+        });
+        made.push(Arc::clone(&instance));
+        drop(made);
         let instance: Arc<dyn Instance> = instance;
         Ok(instance)
+    }
+
+    fn prepare(&self) {
+        self.prepared
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn discard_standby(&self) {
+        self.discarded
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 }

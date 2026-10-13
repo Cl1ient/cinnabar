@@ -2,16 +2,18 @@
 use super::*;
 
 impl<'a> ActorAnimationVariables<'a> {
-    /// Borrows completed script values from the owner's asset catalog.
+    /// Borrows completed owner script values and retains its query clocks.
     pub(crate) fn new(
         assets: Option<&'a RuntimeEntityAssets>,
         variables: &'a MolangVariables,
         life_tick: u64,
+        anim_tick: u64,
     ) -> Self {
         Self {
             assets,
             variables: Some(variables),
             life_tick,
+            anim_tick,
             input: None,
             item_context: None,
             complete_spear: false,
@@ -79,6 +81,11 @@ impl<'a> ActorAnimationVariables<'a> {
     /// Returns elapsed fixed ticks for this owner lifetime.
     pub(crate) fn life_tick(self) -> u64 {
         self.life_tick
+    }
+
+    /// Returns completed fixed ticks since the owner's animation clock was reset.
+    pub(crate) fn anim_tick(self) -> u64 {
+        self.anim_tick
     }
 
     /// Borrows one inherited value without constructing another variable layout.

@@ -6,7 +6,7 @@ use bevy::prelude::{App, Mut, Resource, Update};
 use bevy::time::Real;
 use bevy::{
     ecs::system::SystemParam,
-    prelude::{Local, Projection, Query, Res, ResMut, Time, Transform, Vec3, With},
+    prelude::{Local, Projection, Query, Res, ResMut, Time, Transform, With},
 };
 use client_presentation::actor_publication::ActorFramePartialTick;
 use client_presentation::actor_publication::{ActorFrameInput, ActorWorld};
@@ -204,10 +204,11 @@ pub(crate) fn advance_actor_frame(
                 client_presentation::actor_sampling::sample_actor_world_state(stream, collisions);
             }
         },
-        |stream, partial_tick| {
+        |stream, _partial_tick| {
             let consume = ui.as_deref().and_then(|_| {
                 client_interaction::item_use::selection::consume_ticks(&player, stream)
             });
+            // The use is timed in local physics ticks, so its frame fraction is that clock's too.
             let animation = ui
                 .as_deref()
                 .zip(item_use.as_deref())
@@ -219,7 +220,7 @@ pub(crate) fn advance_actor_frame(
                         movement
                             .as_deref()
                             .map_or(0, |movement| movement.completed_tick()),
-                        partial_tick,
+                        physics.tick_alpha(),
                     )
                 });
             (consume, animation)
@@ -262,6 +263,10 @@ pub(crate) fn prepare_actor_render_frame(
         .as_deref()
         .and_then(|player| crate::melee::selected_attack_timing(player, &world))
         .and_then(|timing| timing.swing_duration_ticks);
+    let server_swings = world
+        .stream
+        .as_mut()
+        .map_or(0, |stream| stream.take_local_server_swings());
     let stream = world.stream.as_ref();
     let swing_progress = stream.and_then(|_| {
         let movement = movement.as_deref()?;
@@ -271,6 +276,16 @@ pub(crate) fn prepare_actor_render_frame(
                 movement.interaction_authority_identity(),
                 movement.completed_tick(),
                 effects,
+                item_swing_ticks,
+            );
+        }
+        // Admission for the next tick uses each animation's own effect-aware restart guard.
+        if server_swings > 0 {
+            swings.try_swing_before_tick_for_item(
+                movement.completed_tick().saturating_add(1),
+                effects
+                    .as_deref()
+                    .map_or_default(|effects| effects.mining_effects()),
                 item_swing_ticks,
             );
         }
@@ -308,6 +323,8 @@ pub(crate) fn prepare_actor_render_frame(
         prepared_actor_artwork,
         ..
     } = &mut *world;
+    let occlusion_budget = std::cell::RefCell::new(meshing::occlusion::OcclusionBudget::default());
+    let projection_safe = std::cell::Cell::new(None);
     client_presentation::actor_publication::prepare_actor_render_frame(
         ActorWorld {
             stream: stream.as_mut(),
@@ -320,22 +337,43 @@ pub(crate) fn prepare_actor_render_frame(
             prepared_actor_artwork,
         },
         swing_progress,
-        |stream, camera, low, high| {
+        |stream, view, low, high| {
+            let _zone = bevy::log::info_span!("actor.occlusion").entered();
+            let camera = view.camera_position.to_array();
             cave.as_deref().is_some_and(|cave| {
                 cave.hides_box(
                     crate::runtime::telemetry::camera_sub_chunk_key(
                         stream.current_dimension(),
-                        Vec3::from_array(camera),
+                        view.camera_position,
                     ),
                     stream.connectivity_generation(),
                     |key| stream.has_sub_chunk_connectivity(key),
                     low,
                     high,
-                )
+                ) || (projection_safe.get().unwrap_or_else(|| {
+                    let safe = render_model::visibility_bounds::perspective_supports_occlusion(
+                        view.clip_from_world,
+                        camera,
+                        f64::from(meshing::occlusion::OCCLUSION_EYE_GAP_BLOCKS),
+                    );
+                    projection_safe.set(Some(safe));
+                    safe
+                }) && stream.terrain_hides_box(
+                    &mut occlusion_budget.borrow_mut(),
+                    camera,
+                    low,
+                    high,
+                    |_, key| cave.is_visible(key) && cave.rendered.contains_key(&key),
+                ))
             })
         },
         icons.as_deref().map(|icons| &icons.0),
         params,
+    );
+    bevy::log::trace!(
+        probes =
+            meshing::occlusion::ENTITY_OCCLUSION_PROBES - occlusion_budget.borrow().remaining(),
+        "actor occlusion work"
     );
 }
 

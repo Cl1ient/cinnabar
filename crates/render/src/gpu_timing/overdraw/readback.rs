@@ -78,7 +78,7 @@ impl Target {
                     .expect("readback buffer is mapped");
                 let stats = summarize(&bytes, self.row_bytes as usize, &self.viewport);
                 eprintln!(
-                    "RUST_MCBE_OPAQUE_LAYERS {}",
+                    "CINNABAR_OPAQUE_LAYERS {}",
                     serde_json::json!({
                         "frame": self.frame, "viewport": self.viewport.physical_size.to_array(),
                         "phase_items": self.items, "pixels": stats.pixels,
@@ -94,7 +94,7 @@ impl Target {
                 self.state.store(IDLE, Ordering::Release);
             }
             FAILED => {
-                eprintln!("RUST_MCBE_OPAQUE_LAYERS readback_failed");
+                eprintln!("CINNABAR_OPAQUE_LAYERS readback_failed");
                 self.state.store(IDLE, Ordering::Release);
             }
             _ => {}

@@ -2,6 +2,12 @@
 
 use super::*;
 use crate::presentation::equipment::ActorEquipmentInput;
+use crate::presentation::{
+    actors::{ActorRigPresentation, rig_world_from_actor},
+    equipment::{FirstPersonArms, FirstPersonHand, FirstPersonItem},
+};
+use bevy::math::Mat4;
+use render_model::{ActorRigSubmission, HandItemAtlas, HandRigLight};
 
 #[cfg(test)]
 mod lighting_tests;
@@ -51,7 +57,7 @@ pub(super) fn publish_hand_rig(
     source: Option<HandSource>,
     fov_radians: Option<f32>,
     mut light: HandRigLight,
-    partial_tick: f32,
+    (partial_tick, glint): (f32, Option<&render_scene::UiGlintSettings>),
 ) {
     let (Some(source), Some(fov)) = (source, fov_radians) else {
         scene.clear();
@@ -61,7 +67,10 @@ pub(super) fn publish_hand_rig(
         scene.clear();
         return;
     };
-    let submissions = source.submissions();
+    let mut submissions = source.submissions();
+    for submission in submissions.iter_mut().flatten() {
+        super::equipment_layers::animate_glint(submission, partial_tick, glint);
+    }
     let mut atlases = [None, None];
     for (index, entry) in source.items.into_iter().enumerate() {
         if let Some((layer, atlas)) = entry {
@@ -73,6 +82,7 @@ pub(super) fn publish_hand_rig(
     *revision = revision.wrapping_add(1).max(1);
     if scene.publish(frame, skin, light, fov, *revision) {
         scene.set_item_atlases(atlases);
+        scene.set_item_glint(source.item_glint);
     }
 }
 
@@ -98,12 +108,32 @@ pub(super) fn hand_progress(
     }
 }
 
+/// The local eat or drink use's position for `consume_ticks`, in ticks since it began, with the
+/// use's duration: the use's elapsed ticks and frame fraction both come from the local physics
+/// clock that times it. Adding the actor clock's fraction to them instead jumps the food back
+/// and forth at tick boundaries.
+pub(super) fn local_consume(
+    item_animation: Option<&actor_animation::AttachableAnimationInput<'_>>,
+    consume_ticks: Option<u32>,
+) -> Option<(f32, f32)> {
+    let ticks = consume_ticks? as f32;
+    let input = item_animation?;
+    let alpha = if input.frame_alpha.is_finite() {
+        input.frame_alpha.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    Some(((input.use_elapsed_ticks? as f32 + alpha).min(ticks), ticks))
+}
+
 /// What the first-person pass draws: arm-masked body pose and/or a held item with its atlas page
 /// and whether its bone is in camera space.
 pub(super) struct HandSource {
     pub(super) presentation: ActorRigPresentation,
     pub(super) body: Option<ActorRigSubmission>,
     pub(super) items: [Option<(FirstPersonItem, HandItemAtlas)>; 2],
+    /// The held-item glint raster, bound whenever an item draws with the glint material.
+    pub(super) item_glint: Option<render_model::EquipmentRaster>,
     /// View-space hurt tilt, walk bob and sway applied before the rig placement.
     pub(super) motion: Mat4,
     /// Camera from the body's rig frame under Java's empty-hand stack.
@@ -240,6 +270,7 @@ pub(super) fn vanilla_hand_source(
         presentation,
         body,
         items,
+        item_glint: artwork.item_glint.clone(),
         motion,
         java_body_camera: None,
     })
@@ -297,8 +328,9 @@ pub(super) fn item_atlas(
 
 /// Vanilla's hand stack order: hurt tilt, walk bob, then sway about X and Y.
 pub(super) fn hand_motion_matrix(motion: &crate::camera::FirstPersonHandMotion) -> Mat4 {
-    motion.hurt
-        * motion.bob.matrix()
+    motion
+        .legacy_effect
+        .unwrap_or_else(|| motion.hurt * motion.bob.matrix())
         * Mat4::from_rotation_x(motion.sway_pitch_radians)
         * Mat4::from_rotation_y(motion.sway_yaw_radians)
 }
@@ -309,7 +341,11 @@ pub(super) fn java_light_matrix(
     look: bevy::math::Quat,
 ) -> Mat4 {
     let (yaw, pitch, _) = look.to_euler(bevy::math::EulerRot::YXZ);
-    let effects = motion.map_or(Mat4::IDENTITY, |motion| motion.hurt * motion.bob.matrix());
+    let effects = motion.map_or(Mat4::IDENTITY, |motion| {
+        motion
+            .legacy_effect
+            .unwrap_or_else(|| motion.hurt * motion.bob.matrix())
+    });
     effects * Mat4::from_rotation_x(-pitch) * Mat4::from_rotation_y(std::f32::consts::PI - yaw)
 }
 
@@ -343,6 +379,8 @@ pub(super) fn source(
             let mut hand = hand_progress(rig.hand, inputs.consume_ticks, inputs.alpha);
             let alpha = rig.java.local_swing_alpha.unwrap_or(inputs.alpha);
             hand.swing = hand_progress(rig.hand, None, alpha).swing;
+            hand.consume = local_consume(inputs.item_animation.as_ref(), inputs.consume_ticks)
+                .or(hand.consume);
             hand
         },
     );
@@ -359,6 +397,8 @@ pub(super) struct SourceKey {
     hand: [actor_animation::HandPhase; 2],
     java: actor_animation::JavaMotion,
     sampled_swing: [f32; 2],
+    /// The eat or drink position moves every frame, between the ticks the other fields follow.
+    sampled_consume: Option<(f32, f32)>,
     sampled_body_yaw: f32,
     equipped: Option<actor_animation::JavaHeldItem>,
     use_frame: (Option<u32>, Option<AnimationFrameKey>),
@@ -384,6 +424,7 @@ pub(super) fn source_key(
             hand_progress(rig.hand, None, swing_alpha).swing,
             rig.java.swing_progress(alpha),
         ],
+        sampled_consume: local_consume(animation.as_ref(), consume),
         lifetime: rig.actor,
         bones: [rig.previous, rig.current].map(|bones| (bones.as_ptr() as usize, bones.len())),
         hand: rig.hand,

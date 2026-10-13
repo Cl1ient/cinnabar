@@ -29,8 +29,8 @@ pub struct ViewmodelWorld<'a> {
 /// The local input authority identity; presentation never mutates the movement ticker.
 #[derive(Clone, Copy)]
 pub struct ViewmodelAuthority {
-    pub session: u64,
-    pub epoch: u64,
+    pub session: simulation_clock::identity::SessionGeneration,
+    pub epoch: simulation_clock::identity::PositionAuthorityGeneration,
     pub authorized: bool,
 }
 
@@ -806,10 +806,10 @@ impl ViewmodelPublish<'_, '_> {
                 .as_deref()
                 .and_then(|carrier| carrier.snapshot())
                 .ok_or(HandFallback::Ownership)?;
-            let (session, epoch) = (movement.session, movement.epoch);
+            let (session, epoch) = (movement.session.get(), movement.epoch.get());
             if !movement.authorized
                 || session != runtime.session_id()
-                || visibility.session_generation() != session
+                || visibility.session_generation().get() != session
                 || visibility.runtime_id() != stream.local_player_runtime_id()
                 || epoch == 0
                 || epoch == u64::MAX

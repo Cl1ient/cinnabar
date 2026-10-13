@@ -19,6 +19,7 @@ fn reads_the_go_wire_contract_without_reinterpreting_fields() {
     assert_eq!(records.len(), 2);
     let leaf = &records[0];
     assert_eq!(leaf.sequential_id, 7);
+    assert_eq!(leaf.beacon_tint, BeaconTint::Red);
     assert_eq!(leaf.network_hash, 0x1234_5678);
     assert_eq!(leaf.name.as_ref(), "fixture:leaf");
     assert_eq!(
@@ -72,6 +73,7 @@ fn reads_the_go_wire_contract_without_reinterpreting_fields() {
     );
     let resin = &records[1];
     assert_eq!(resin.sequential_id, 8);
+    assert_eq!(resin.beacon_tint, BeaconTint::NoTinting);
     assert_eq!(resin.network_hash, 0x8765_4321);
     assert_eq!(resin.name.as_ref(), "fixture:resin");
     assert_eq!(resin.canonical_state.as_ref(), "{}");
@@ -97,6 +99,7 @@ fn rejects_reserved_discriminants_bits_and_inconsistent_lengths() {
         (94, 0xff),
         (95, 0xff),
         (108, 0x80),
+        (109, 0xff),
     ] {
         let mut bytes = fixture();
         bytes[offset] = value;
@@ -148,4 +151,20 @@ fn placement_inventory_rejects_missing_identity_out_of_range_keys_and_wrong_alte
     }
     bytes[95] = BlockPlacementRule::Unresolved as u8;
     assert!(read_registry_for_protocol(&bytes, 2193).is_err());
+}
+
+#[test]
+fn stale_active_registry_requires_rebuilding_and_legacy_facts_stay_unresolved() {
+    for magic in [PREVIOUS_REGISTRY_MAGIC, PLACEMENT_REGISTRY_MAGIC] {
+        let mut stale = fixture();
+        stale[..8].copy_from_slice(magic);
+        let error = read_registry_for_protocol(&stale, 2193).unwrap_err();
+        assert!(error.to_string().contains("make assets"));
+    }
+    let legacy = read_registry(include_bytes!("../../data/block-registry-v1001.bin")).unwrap();
+    assert!(
+        legacy
+            .iter()
+            .all(|record| record.beacon_tint == BeaconTint::Unresolved)
+    );
 }

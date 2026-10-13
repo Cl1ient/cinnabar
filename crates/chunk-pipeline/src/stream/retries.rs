@@ -92,9 +92,9 @@ impl WorldStream {
             .copied()
             .unwrap_or(0);
         if admitted < available {
-            self.stats.phase2_stages.responses_admitted = self
+            self.stats.publication_stages.responses_admitted = self
                 .stats
-                .phase2_stages
+                .publication_stages
                 .responses_admitted
                 .saturating_add(1);
             if expected {
@@ -139,9 +139,9 @@ impl WorldStream {
             self.record_normalization_error(NormalizationErrorReason::RetryRequestEncodingFailure);
             return false;
         };
-        self.stats.phase2_stages.requests_constructed = self
+        self.stats.publication_stages.requests_constructed = self
             .stats
-            .phase2_stages
+            .publication_stages
             .requests_constructed
             .saturating_add(1);
         self.place_outbound_request(
@@ -226,8 +226,8 @@ impl WorldStream {
             if pending.retry_attempts >= MAX_SUB_CHUNK_RETRIES {
                 self.requests.disarm_deadline(key);
                 self.stats.sub_chunk_timeouts = self.stats.sub_chunk_timeouts.saturating_add(1);
-                self.stats.phase2_outcomes.timed_out =
-                    self.stats.phase2_outcomes.timed_out.saturating_add(1);
+                self.stats.publication_outcomes.timed_out =
+                    self.stats.publication_outcomes.timed_out.saturating_add(1);
                 self.stats.sub_chunk_retry_exhaustions =
                     self.stats.sub_chunk_retry_exhaustions.saturating_add(1);
                 self.complete_requested_sub_chunk(key, false);
@@ -244,8 +244,8 @@ impl WorldStream {
                 RetrySchedule::EncodingFailure => {
                     self.requests.disarm_deadline(key);
                     self.stats.sub_chunk_timeouts = self.stats.sub_chunk_timeouts.saturating_add(1);
-                    self.stats.phase2_outcomes.timed_out =
-                        self.stats.phase2_outcomes.timed_out.saturating_add(1);
+                    self.stats.publication_outcomes.timed_out =
+                        self.stats.publication_outcomes.timed_out.saturating_add(1);
                     self.complete_requested_sub_chunk(key, false);
                 }
             }

@@ -17,9 +17,9 @@ use bevy::{
     time::Real,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowEvent},
 };
-use client_ui::ui_runtime::presentation::forms::EmoteHit;
 use launcher::menu::settings_options::EMOTE_SLOT_COUNT;
 use ui::{UiAction, UiPoint};
+use ui_screens::emote_screen::EmoteHit;
 
 use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use client_ui::ui_runtime::UiRuntime;
@@ -320,8 +320,9 @@ pub(crate) fn drive_emote_input(mut input: EmoteInput) {
         && let Some(runtime_id) = runtime_id
         && let Some(network) = input.network.as_deref()
     {
-        let length_ticks =
-            (emote.duration_seconds() / world::TICK_DURATION.as_secs_f64()).ceil() as u32;
+        let length_ticks = (emote.duration_seconds()
+            / simulation_clock::TICK_DURATION.as_secs_f64())
+        .ceil() as u32;
         if let Err(error) = network.send_inventory_packet(protocol::emote_packet(
             runtime_id,
             emote.id(),

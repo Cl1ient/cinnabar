@@ -15,6 +15,15 @@ pub struct BlockPlacementFacts {
 }
 
 impl ModelState {
+    /// Replaces the placement program while preserving visual and survival selectors.
+    pub fn set_placement_facts(&mut self, facts: BlockPlacementFacts) {
+        self.placement_rule = facts.rule;
+        self.placement_set = facts.set;
+        self.placement_key = facts.key;
+        self.placement_alternate = facts.alternate.unwrap_or(0);
+        self.placement_flags = facts.flags.bits();
+    }
+
     /// Reads immutable placement facts without inspecting names or canonical JSON.
     pub const fn placement_facts(self) -> BlockPlacementFacts {
         BlockPlacementFacts {

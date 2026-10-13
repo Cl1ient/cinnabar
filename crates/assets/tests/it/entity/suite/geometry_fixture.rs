@@ -31,6 +31,7 @@ pub(super) fn geometry_fixture() -> CompiledEntityAssets {
     ]
     .into_boxed_slice();
     compiled.geometries = vec![EntityGeometry {
+        animation_no_head_bob: false,
         visible_bounds: None,
         identifier: "geometry.allay".into(),
         inherits: None,
@@ -38,6 +39,7 @@ pub(super) fn geometry_fixture() -> CompiledEntityAssets {
         texture_width: 32,
         texture_height: 32,
         bones: vec![EntityGeometryBone {
+            locators: Box::default(),
             name: "wing".into(),
             parent: None,
             pivot: Some([scalar(0.5), scalar(4.0), scalar(1.0)]),

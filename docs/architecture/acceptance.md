@@ -1,8 +1,8 @@
 # Optional acceptance plugin and diagnostics
 
-Step 5 moves acceptance state, world-ready and mutation gates, teleport and remesh
-proofs, witness request files, Phase 2/3 evidence, bounded audio wire observations
-and terminal evidence into `acceptance`. The app enables it through the default
+`acceptance` owns acceptance state, world-ready and mutation gates, teleport and
+remesh proofs, witness request files, chunk publication and movement evidence,
+bounded audio wire observations and terminal evidence. The app enables it through the default
 `acceptance` feature; `--no-default-features` leaves it out of the app's production
 dependency graph. Evidence-only CLI options fail before startup when that feature is absent.
 
@@ -34,10 +34,10 @@ same exact manifest and ingress fence without adding queue latency.
 
 The model witness receives only `ModelWitnessObservation::committed_cohort` and
 the renderer's existing witness resources. It cannot mutate the client's world.
-The runtime's Phase 3 adapter drains completed movement records every frame,
-including ordinary play with evidence disabled, so the bounded movement queue
+The runtime's movement evidence adapter drains completed movement records every
+frame, including ordinary play with evidence disabled, so the bounded movement queue
 cannot fill. With the feature enabled, it converts those records to independent
-`Phase3EvidenceFrame` values and correction/fault observations. Gameplay retains
+`MovementEvidenceFrame` values and correction/fault observations. Gameplay retains
 its tick queue, authority faults, collision registries and reconciliation.
 
 Terminal evidence consumes a `TerminalMovementObservation` and returns an
@@ -57,7 +57,7 @@ optional plugin installs only its owned resources and the runtime schedules its
 systems at those existing boundaries.
 
 This is a behavior-preserving extraction, not a new vanilla parity claim. Existing
-world-ready, teleport, remesh, witness, metrics, Phase 3 and composed audio tests
-remain the acceptance witnesses. No live server, remote machine or installed asset
+world-ready, teleport, remesh, witness, metrics, movement evidence and composed
+audio tests remain the acceptance witnesses. No live server, remote machine or installed asset
 write is required by the extraction. The architecture policy rejects reverse
 app/session/gameplay dependencies and source access from the extracted crates.

@@ -20,8 +20,8 @@ use protocol::{
 };
 use semantic_input::Action;
 
-use client_ui::ui_runtime::presentation::inventory_pointer::InventoryCellHit;
 use ui::UiPoint;
+use ui_screens::container_actions::InventoryCellHit;
 use {
     crate::{
         app::{configure_client_frame_schedule, configure_client_production_frame_systems},
@@ -38,7 +38,7 @@ use {
     },
     client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
     client_state::{ClientFrameSet, RuntimeSettings, SemanticInputSnapshot},
-    client_ui::test_support::fixture_font,
+    ui_engine::test_support::fixture_font,
 };
 use {
     client_ui::ui_runtime::{UiRuntime, flush_inventory_send, presentation::UiPresentationRuntime},
@@ -877,11 +877,11 @@ fn same_frame_registry_and_inventory_authority_precede_occupied_merge_input() {
     let ingress = SameFrameMergeIngress {
         registry: Some(ItemRegistryEvent {
             entries: Arc::from([ItemRegistryEntry {
-                components: None,
                 identifier: Arc::from("minecraft:apple"),
                 network_id: 6,
                 component_based: true,
                 version: ItemRegistryVersion::DataDriven,
+                components: None,
                 component_digest: [6; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: false,

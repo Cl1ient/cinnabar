@@ -14,18 +14,18 @@ use thiserror::Error;
 mod crypto;
 mod dependencies;
 mod import;
-mod jsonc;
 mod library;
 mod manifest;
 mod merge;
 mod pack;
 mod parser;
 mod subpacks;
+#[cfg(all(feature = "handoff", any(test, feature = "test-support")))]
+pub mod test_support;
 mod view;
 
 pub use dependencies::{PackDependencies, PackDependency};
 pub use import::{PACK_IMPORT_EXTENSIONS, is_pack_import_path};
-pub use jsonc::normalize_jsonc;
 pub use library::{
     ActivePack, GlobalPackLibrary, ImportReport, InstalledPack, LibraryError, Subpack,
 };
@@ -111,7 +111,7 @@ pub enum PackAdmission {
     Validated(Arc<ValidatedPackStack>),
 }
 
-/// Admits a one-shot handoff pack by pack, preserving stack order.
+/// Admits a highest-priority-first server handoff into lowest-priority-first layers.
 #[cfg(feature = "handoff")]
 #[must_use]
 pub fn validate_handoff(handoff: ResourcePackHandoff) -> Arc<ValidatedPackStack> {

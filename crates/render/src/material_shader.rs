@@ -14,6 +14,7 @@ const TEXTURE_WIDTH_SHIFT: u32 = assets::TEXTURE_LAYER_MASK.count_ones();
 const TEXTURE_HEIGHT_SHIFT: u32 = TEXTURE_WIDTH_SHIFT + TEXTURE_SIZE_BITS;
 const TEXTURE_GRID_SHIFT: u32 = TEXTURE_HEIGHT_SHIFT + TEXTURE_SIZE_BITS;
 const TEXTURE_SIZE_EXPONENT_MASK: u32 = (1 << TEXTURE_SIZE_BITS) - 1;
+const _: () = assert!(assets::MAX_TILE_SIZE.ilog2() < TEXTURE_SIZE_EXPONENT_MASK);
 
 /// Encodes admitted power-of-two dimensions above the shared page and layer fields.
 pub(crate) fn gpu_texture_ref(
@@ -74,8 +75,16 @@ pub(crate) fn native_leaf_sampler_descriptor() -> wgpu::SamplerDescriptor<'stati
     }
 }
 
+/// Formats the shared enchantment tint for the actor and UI shaders.
+pub(crate) fn glint_tint_source() -> String {
+    let [red, green, blue] = render_model::ActorGlint::TINT_RGB;
+    format!("vec3<f32>({red:?}, {green:?}, {blue:?})")
+}
+
 pub(crate) fn source(source: &str) -> String {
     source
+        .replace("ITEM_GLINT_UV_SCALE", &format!("{:?}", render_model::ITEM_GLINT_UV_SCALE))
+        .replace("GLINT_TINT_RGB", &glint_tint_source())
         .replace("ACTOR_LIGHT_WORLD_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_WORLD))
         .replace("ACTOR_LIGHT_DIRECTIONAL_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_DIRECTIONAL))
         .replace("TEXTURE_LAYER_MASK", &format!("{}u", assets::TEXTURE_LAYER_MASK))
@@ -84,7 +93,11 @@ pub(crate) fn source(source: &str) -> String {
         .replace("TERRAIN_QUAD_SHIFT_MASK", &format!("{}u", assets::TERRAIN_QUAD_SHIFT_MASK))
         .replace("GPU_TEXTURE_WIDTH_SHIFT", &format!("{TEXTURE_WIDTH_SHIFT}u"))
         .replace("GPU_TEXTURE_HEIGHT_SHIFT", &format!("{TEXTURE_HEIGHT_SHIFT}u"))
+        .replace("BLOCK_ENTITY_CULL_BACK_FACES", &format!("{}u", render_model::block_entity::mesh::BLOCK_ENTITY_CULL_BACK_FACES))
         .replace("BLOCK_OVERLAY_FACE_OFFSET", &format!("{:?}", render_api::BLOCK_OVERLAY_FACE_OFFSET))
+        .replace("ACTOR_COLOR_MASK_MATERIAL_FLAG", &format!("{}u", render_model::ACTOR_COLOR_MASK_MATERIAL_FLAG))
+        .replace("ACTOR_MATERIAL_LEGACY112_FLAG", &format!("{}u", render_model::LEGACY_COMBAT_MATERIAL_FLAG))
+        .replace("// LEGACY_GLINT_CONSTANTS", &legacy_glint_constants())
         .replace("ACTOR_MATERIAL_GLINT", &format!("{}u", assets::EntityRenderMaterial::Glint as u32))
         .replace("ACTOR_MATERIAL_DEFAULT", &format!("{}u", assets::EntityRenderMaterial::Default as u32))
         .replace("ACTOR_MATERIAL_DRAGON", &format!("{}u", assets::EntityRenderMaterial::Dragon as u32))
@@ -115,14 +128,15 @@ pub(crate) fn source(source: &str) -> String {
         .replace("MATERIAL_DISABLE_FACE_DIMMING_FLAG", &format!("{}u", assets::MATERIAL_FLAG_DISABLE_FACE_DIMMING))
         .replace("MATERIAL_CAULDRON_WATER_FLAG", &format!("{}u", assets::MATERIAL_FLAG_CAULDRON_WATER))
         .replace("CAULDRON_WATER_COLOUR", &format!("vec4<f32>({}) / 255.0", assets::CAULDRON_WATER_COLOUR.map(|c| format!("{c}.0")).join(", ")))
-        .replace("// ANIMATION_GPU_LAYOUT", "struct AnimationGpu { frame_start: u32, frame_count: u32, ticks_per_frame: u32, flags: u32, uv_scale: f32 }")
+        .replace("// ANIMATION_GPU_LAYOUT", "struct AnimationGpu { frame_start: u32, frame_count: u32, ticks_per_frame: u32, flags: u32 }")
         .replace("// LIQUID_GEOMETRY_CONSTANTS", &format!(
-            "const LIQUID_FACE_INSET: f32 = {:?};\nconst LIQUID_TOP_INSET_BIT: u32 = {}u;\nconst LIQUID_DEPTH_WRITE_BIT: u32 = {}u;\nconst LIQUID_TWO_SIDED_BIT: u32 = {}u;\nconst TRANSPARENT_WATER_DRAW_FLAG: u32 = {}u;",
+            "const LIQUID_FACE_INSET: f32 = {:?};\nconst LIQUID_TOP_INSET_BIT: u32 = {}u;\nconst LIQUID_DEPTH_WRITE_BIT: u32 = {}u;\nconst LIQUID_TWO_SIDED_BIT: u32 = {}u;\nconst TRANSPARENT_WATER_DRAW_FLAG: u32 = {}u;\nconst TRANSPARENT_WATER_RECORD_FLAG: u32 = {}u;",
             meshing::liquid::LIQUID_FACE_INSET,
             meshing::liquid::LIQUID_TOP_INSET_BIT,
             meshing::liquid::LIQUID_DEPTH_WRITE_BIT,
             meshing::liquid::LIQUID_TWO_SIDED_BIT,
             meshing::liquid::TRANSPARENT_WATER_DRAW_FLAG,
+            meshing::liquid::TRANSPARENT_WATER_RECORD_FLAG,
         ))
         .replace(
             "// ACTOR_SHADE_CONSTANTS",
@@ -177,4 +191,18 @@ pub(crate) fn source(source: &str) -> String {
             "NATIVE_LEAF_SAMPLER_BINDING",
             &NATIVE_LEAF_SAMPLER_BINDING.to_string(),
         )
+}
+
+/// Generates the legacy shader's UV rules from the shared rendering contract.
+fn legacy_glint_constants() -> String {
+    let rules = render_api::BEDROCK_112;
+    let rotation = |angle: f32| {
+        let (sin, cos) = angle.sin_cos();
+        format!("vec2<f32>({cos:?}, {sin:?})")
+    };
+    format!(
+        "const LEGACY_GLINT_ROTATION_1: vec2<f32> = {};\nconst LEGACY_GLINT_ROTATION_2: vec2<f32> = {};",
+        rotation(rules.glint_rotation_radians[0]),
+        rotation(rules.glint_rotation_radians[1]),
+    )
 }

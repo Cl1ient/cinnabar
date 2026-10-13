@@ -295,9 +295,9 @@ impl WorldStream {
         self.lighting.jobs.lanes[0].ready.extend(over_cap);
 
         let dispatched = prepared_batches.iter().map(Vec::len).sum::<usize>();
-        self.stats.phase2_stages.light_jobs_dispatched = self
+        self.stats.publication_stages.light_jobs_dispatched = self
             .stats
-            .phase2_stages
+            .publication_stages
             .light_jobs_dispatched
             .saturating_add(dispatched as u64);
         let mut dispatch = workers::WORKERS.batch(workers::Lane::Light);
@@ -395,9 +395,9 @@ impl WorldStream {
     pub(in crate::stream) fn accept_light_completion(&mut self, completion: LightCompletion) {
         #[cfg(feature = "tracy")]
         let _zone = tracing::info_span!("light.completion", key = ?completion.key).entered();
-        self.stats.phase2_stages.light_jobs_completed = self
+        self.stats.publication_stages.light_jobs_completed = self
             .stats
-            .phase2_stages
+            .publication_stages
             .light_jobs_completed
             .saturating_add(1);
         self.stats.observe_light_queue_wait(completion.queue_wait);

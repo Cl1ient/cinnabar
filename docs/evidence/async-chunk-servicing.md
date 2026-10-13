@@ -31,7 +31,7 @@ acknowledges each change two frames after handoff. Publication tokens accrue at
 2026-10-09, Windows 11 (10.0.26200), Ryzen 7 9800X3D (8 cores, 16 threads), Rust 1.93.1.
 Release profile with thin LTO, one codegen unit and line tables; span-only `tracy` zones are
 on in every build. Base is `295cb40d9`. "Off" is this change with
-`RUST_MCBE_WORLD_SERVICE=0` behaviour, polling only on the frame thread. "On" is the
+`CINNABAR_WORLD_SERVICE=0` behaviour, polling only on the frame thread. "On" is the
 production default. Each comparison alternates fresh processes, six per side unless stated,
 in ABBA order and reports the median of per-run statistics. Absolute values move between
 sessions; each comparison's sides ran interleaved.

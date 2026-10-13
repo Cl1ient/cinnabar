@@ -34,7 +34,7 @@ const FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
 /// Reads only the explicit raster-diagnostic opt-in flag.
 pub(super) fn requested() -> bool {
-    std::env::var_os("RUST_MCBE_OPAQUE_LAYERS").is_some_and(|value| value == "1")
+    env_compat::var_os("CINNABAR_OPAQUE_LAYERS").is_some_and(|value| value == "1")
 }
 
 /// Installs no resources, draws or systems until the caller has accepted the diagnostic cost.
@@ -145,7 +145,7 @@ fn prepare(
         }
         if !crate::chunk::pipeline::opaque::supports_layer_probe(&functions, batch.draw_function) {
             if !probe.unsupported_reported {
-                eprintln!("RUST_MCBE_OPAQUE_LAYERS unsupported_gpu_cull_late_phase");
+                eprintln!("CINNABAR_OPAQUE_LAYERS unsupported_gpu_cull_late_phase");
                 probe.unsupported_reported = true;
             }
             return;

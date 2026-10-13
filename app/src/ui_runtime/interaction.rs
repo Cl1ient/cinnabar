@@ -4,6 +4,7 @@ mod chat;
 mod chat_coordinates;
 pub(crate) mod chat_modifiers;
 pub(super) mod command_macros;
+mod drop_swing;
 pub(crate) mod input_capture;
 mod inventory;
 pub(crate) use chat::drive_chat_ui_actions;
@@ -35,10 +36,9 @@ use client_shell::menu::settings_options::control_bindings::{
 };
 use ui::{ChatEditor, PointerPhase, UiAction, UiPoint};
 
-use client_ui::ui_runtime::presentation::{
-    UiPresentationRuntime, inventory_pointer::InventoryCellHit,
-};
+use client_ui::ui_runtime::presentation::UiPresentationRuntime;
 use client_ui::ui_runtime::{PlatformClipboard, UiRuntime};
+use ui_screens::container_actions::InventoryCellHit;
 
 use client_shell::{
     physical_input::{keyboard_key, keyboard_usage},
@@ -48,6 +48,7 @@ use client_ui::ui_runtime::interaction::{
     ChatFlushError, PointerRouter, PressRoute, dispatch_chat_ui_action, dispatch_inventory_hotbar,
     flush_chat_sends, flush_inventory_send, is_chat_edit_shortcut, paste_chat_shortcut,
 };
+use drop_swing::DropSwing;
 use input_capture::{
     ordered_pointer_presses, restore_gameplay_input_after_chat, suppress_gameplay_input_for_chat,
     suppress_gameplay_input_for_inventory,
@@ -237,14 +238,15 @@ fn route_press(
         && button == MouseButton::Left
         && let Some(view) = presentation.as_deref_mut()
     {
-        view.focus_mod_screen_pointer(pointer.0, pointer.1);
+        view.mod_ui_mut()
+            .focus_mod_screen_pointer(pointer.0, pointer.1);
     }
     let mod_text = presentation
         .as_deref()
-        .is_some_and(UiPresentationRuntime::mod_text_focused);
+        .is_some_and(|view| view.mod_ui().mod_text_focused());
     let mod_view = presentation
         .as_deref()
-        .is_some_and(UiPresentationRuntime::mod_view_shown);
+        .is_some_and(|view| view.mod_ui().mod_view_shown());
     if !runtime.chat_focused() && (!runtime.screen_state().text_focused() || mod_view) && !mod_text
     {
         if binding_mouse_button(menu, "key.inventory", button) {
@@ -308,6 +310,7 @@ pub(crate) fn drive_world_inventory_keys(
     presentation: Option<Res<UiPresentationResource>>,
     mut runtime: ResMut<UiRuntimeResource>,
     emote_input: Option<Res<super::emotes::EmoteInputConsumed>>,
+    swing: DropSwing,
 ) {
     if emote_input.is_some_and(|consumed| consumed.0) {
         return;
@@ -337,9 +340,35 @@ pub(crate) fn drive_world_inventory_keys(
         return;
     };
     let control = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
-    let _ = runtime
+    if runtime
         .inventory_ledger_mut(&mut player_runtime)
-        .begin_world_drop(slot, (!control).then_some(1));
+        .begin_world_drop(slot, (!control).then_some(1))
+        .is_ok()
+    {
+        swing.swing(&player_runtime);
+    }
+}
+
+/// Drops keyboard input another owner handles while keeping inventory modifiers in step
+/// with the physical keys: observed edges still update them, and when input is unavailable
+/// (an unfocused window) every modifier counts as released.
+fn discard_keyboard(
+    runtime: &mut UiRuntime,
+    keyboard_messages: &mut MessageReader<KeyboardInput>,
+    input_available: bool,
+) {
+    let inventory_keys = runtime.inventory_keys_mut();
+    if input_available {
+        for input in keyboard_messages.read() {
+            inventory_keys.track_modifier(
+                keyboard_key(input.key_code),
+                input.state == ButtonState::Pressed,
+            );
+        }
+    } else {
+        keyboard_messages.clear();
+        inventory_keys.release_modifiers();
+    }
 }
 
 #[allow(
@@ -428,7 +457,7 @@ pub(crate) fn drive_chat_keyboard_input(
             focus.authorize_screen_return();
         }
         modifiers.reset_all();
-        keyboard_messages.clear();
+        discard_keyboard(&mut runtime, &mut keyboard_messages, input_available);
         keys.reset_all();
         mouse_buttons.reset_all();
         mouse_motion.delta = Vec2::ZERO;
@@ -438,7 +467,7 @@ pub(crate) fn drive_chat_keyboard_input(
     }
     if !input_available {
         modifiers.reset_all();
-        keyboard_messages.clear();
+        discard_keyboard(&mut runtime, &mut keyboard_messages, false);
         keys.reset_all();
         mouse_buttons.reset_all();
         mouse_motion.delta = Vec2::ZERO;
@@ -452,10 +481,10 @@ pub(crate) fn drive_chat_keyboard_input(
         || emote_input.is_some_and(|consumed| consumed.0)
         || presentation
             .as_ref()
-            .is_some_and(|view| view.mod_panel_open())
+            .is_some_and(|view| view.mod_ui().mod_panel_open())
     {
         modifiers.reset_all();
-        keyboard_messages.clear();
+        discard_keyboard(&mut runtime, &mut keyboard_messages, true);
         return;
     }
     if menu.as_ref().is_some_and(|menu| menu.is_visible()) {
@@ -463,7 +492,7 @@ pub(crate) fn drive_chat_keyboard_input(
         if runtime.inventory_open() {
             runtime.close_inventory(&mut player_runtime);
         }
-        keyboard_messages.clear();
+        discard_keyboard(&mut runtime, &mut keyboard_messages, true);
         // The menu system runs next and must see the original button state.
         // It consumes keyboard/pointer input after handling its own actions.
         mouse_motion.delta = Vec2::ZERO;
@@ -509,14 +538,15 @@ pub(crate) fn drive_chat_keyboard_input(
         && mouse_buttons.just_pressed(MouseButton::Left)
         && let Some(view) = presentation.as_deref_mut()
     {
-        view.focus_mod_screen_pointer(pointer.0, pointer.1);
+        view.mod_ui_mut()
+            .focus_mod_screen_pointer(pointer.0, pointer.1);
     }
     let mod_text = presentation
         .as_deref()
-        .is_some_and(|view| view.mod_text_focused());
+        .is_some_and(|view| view.mod_ui().mod_text_focused());
     let mod_view = presentation
         .as_deref()
-        .is_some_and(|view| view.mod_view_shown());
+        .is_some_and(|view| view.mod_ui().mod_view_shown());
     if !runtime.chat_focused() && (!runtime.screen_state().text_focused() || mod_view) && !mod_text
     {
         if (mouse_bindings && binding_mouse(menu.as_deref(), "key.inventory", &mouse_buttons))
@@ -608,7 +638,7 @@ pub(crate) fn drive_chat_keyboard_input(
             && presentation.chat_link_confirmation_open()
         {
             consumed_gameplay = true;
-            if input.key_code == KeyCode::Escape {
+            if input.key_code == KeyCode::Escape && !input.repeat {
                 presentation.cancel_chat_link();
             }
             continue;
@@ -617,7 +647,7 @@ pub(crate) fn drive_chat_keyboard_input(
             && presentation.chat_settings_open()
         {
             consumed_gameplay = true;
-            if input.key_code == KeyCode::Escape {
+            if input.key_code == KeyCode::Escape && !input.repeat {
                 presentation.set_chat_settings_open(false);
             }
             continue;
@@ -626,7 +656,7 @@ pub(crate) fn drive_chat_keyboard_input(
             consumed_gameplay = true;
             if presentation
                 .as_deref()
-                .is_some_and(|view| view.mod_text_focused())
+                .is_some_and(|view| view.mod_ui().mod_text_focused())
             {
                 // A player mod's edit box takes typing and Escape (`modding`).
                 continue;
@@ -634,12 +664,14 @@ pub(crate) fn drive_chat_keyboard_input(
             if runtime.screen_state().text_focused() && !mod_view {
                 // A text field owns typed text, including `e`.
                 match input.key_code {
-                    KeyCode::Escape => {
+                    KeyCode::Escape if !input.repeat => {
                         if runtime.commit_book(false) {
                             runtime.close_inventory(&mut player_runtime);
                             inventory_ownership_changed = true;
                         }
                     }
+                    // An OS repeat of a held key is not a new press, so it never closes a screen.
+                    KeyCode::Escape => {}
                     KeyCode::Backspace => runtime.screen_state_mut().backspace_text(),
                     key if runtime.book_key(&mut player_runtime, keyboard_key(key)) => {}
                     _ => {
@@ -653,6 +685,10 @@ pub(crate) fn drive_chat_keyboard_input(
                 continue;
             }
             match input.key_code {
+                // An OS repeat of a held key is not a new press, so it never toggles the screen.
+                key if input.repeat
+                    && (key == KeyCode::Escape
+                        || binding_key(menu.as_deref(), "key.inventory", key)) => {}
                 key if binding_key(menu.as_deref(), "key.inventory", key) => {
                     runtime.toggle_inventory(&mut player_runtime);
                     inventory_ownership_changed = true;
@@ -671,8 +707,9 @@ pub(crate) fn drive_chat_keyboard_input(
             continue;
         }
         if runtime.local_sleeping() && !runtime.chat_focused() {
-            // The bed screen: Escape leaves the bed, T opens chat over it.
+            // The bed screen: Escape leaves the bed, T opens chat over it. Key repeats do nothing.
             match input.key_code {
+                _ if input.repeat => {}
                 KeyCode::Escape => {
                     runtime.request_wake();
                     if let Some(focus) = focus.as_deref_mut() {
@@ -769,6 +806,8 @@ pub(crate) fn drive_chat_keyboard_input(
             continue;
         }
         match input.key_code {
+            // Repeats keep editing the draft, but only a fresh press cancels or sends it.
+            KeyCode::Escape | KeyCode::Enter | KeyCode::NumpadEnter if input.repeat => {}
             KeyCode::Escape => {
                 runtime.close_chat();
             }

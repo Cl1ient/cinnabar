@@ -1,4 +1,7 @@
 use client_shell::ui_resources::UiRuntimeResource;
+use protocol::identity::FifoSequence;
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 use {super::*, client_presentation::local_player::LocalPlayerFrameCarrier};
 
 #[test]
@@ -46,10 +49,10 @@ fn third_person_uses_player_feet_and_eye_instead_of_camera_pose() {
     let eye = feet + Vec3::Y * protocol::STANDING_PLAYER_EYE_HEIGHT;
     frame
         .publish(client_presentation::local_player::LocalPlayerFrameSample {
-            session_generation: 1,
+            session_generation: SessionGeneration::new(1),
             actor_session_id: 1,
-            fifo_sequence: 1,
-            physics_tick: 1,
+            fifo_sequence: FifoSequence::new(1),
+            physics_tick: PhysicsTick::new(1),
             perspective: semantic_input::PerspectiveMode::ThirdPersonBack,
             world_collision_identity: sim::WorldCollisionIdentity {
                 registry: sim::CollisionRegistryIdentity {
@@ -89,6 +92,143 @@ fn target_states_are_readable_and_bounded() {
     let lines = lines.finish();
     assert_eq!(lines.last().unwrap(), "... 90 more states");
     assert_eq!(lines.len(), 11);
+}
+
+#[test]
+fn configured_debug_keys_and_mouse_toggle_once_and_refresh_the_hint() {
+    use client_shell::menu::test_support::remap_control;
+    use launcher::menu::MenuAction;
+    use launcher::menu::settings_options::{DEBUG_OVERLAY_KEY, EXTRA_KEYS, KEY_BINDINGS};
+    use semantic_input::PhysicalControl;
+
+    let mut menu = client_shell::menu::MenuRuntime::new(false, 2, "Player".into());
+    let debug = KEY_BINDINGS.len()
+        + EXTRA_KEYS
+            .iter()
+            .position(|(name, _)| *name == DEBUG_OVERLAY_KEY)
+            .unwrap();
+    let screenshot = KEY_BINDINGS.len()
+        + EXTRA_KEYS
+            .iter()
+            .position(|(name, _)| *name == "key.screenshot")
+            .unwrap();
+    assert!(remap_control(
+        &mut menu,
+        debug,
+        PhysicalControl::KeyboardUsage(0x3d)
+    ));
+    assert!(remap_control(
+        &mut menu,
+        screenshot,
+        PhysicalControl::KeyboardUsage(0x3f)
+    ));
+    let mut app = App::new();
+    app.insert_resource(menu)
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<Time<Real>>()
+        .insert_resource(ClientWorld::default())
+        .insert_resource(LocalPlayerFrameCarrier::default())
+        .insert_resource(UiPresentationResource(
+            client_ui::test_support::mini_engine_presentation(),
+        ));
+    configure(&mut app);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::F3);
+    app.update();
+    assert!(!app.world().resource::<DebugOverlayState>().visible);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .reset_all();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::F4);
+    app.update();
+    assert!(app.world().resource::<DebugOverlayState>().visible);
+    assert_eq!(
+        app.world()
+            .resource::<UiPresentationResource>()
+            .debug_lines()
+            .unwrap()
+            .left
+            .last()
+            .unwrap(),
+        "F4: hide debug | F6: screenshot"
+    );
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .clear();
+    app.update();
+    assert!(app.world().resource::<DebugOverlayState>().visible);
+
+    {
+        let mut menu = app
+            .world_mut()
+            .resource_mut::<client_shell::menu::MenuRuntime>();
+        assert!(remap_control(
+            &mut menu,
+            debug,
+            PhysicalControl::MouseButton(4)
+        ));
+    }
+    app.world_mut()
+        .resource_mut::<Time<Real>>()
+        .advance_by(simulation_clock::TICK_DURATION);
+    app.update();
+    assert_eq!(
+        app.world()
+            .resource::<UiPresentationResource>()
+            .debug_lines()
+            .unwrap()
+            .left
+            .last()
+            .unwrap(),
+        "Mouse 4: hide debug | F6: screenshot"
+    );
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Back);
+    app.update();
+    assert!(!app.world().resource::<DebugOverlayState>().visible);
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .clear();
+    app.update();
+    assert!(!app.world().resource::<DebugOverlayState>().visible);
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .reset_all();
+    app.world_mut()
+        .resource_mut::<client_shell::menu::MenuRuntime>()
+        .activate(MenuAction::SettingsKey(debug as u16));
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Back);
+    app.update();
+    assert!(
+        !app.world().resource::<DebugOverlayState>().visible,
+        "binding capture must not toggle debug"
+    );
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .reset_all();
+    {
+        let mut menu = app
+            .world_mut()
+            .resource_mut::<client_shell::menu::MenuRuntime>();
+        let section = menu.view().settings_section;
+        menu.activate(MenuAction::SettingsSection(section));
+        menu.activate(MenuAction::SettingsResetKey(debug as u16));
+    }
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .reset_all();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::F3);
+    app.update();
+    assert!(app.world().resource::<DebugOverlayState>().visible);
 }
 
 #[test]
@@ -262,7 +402,7 @@ fn diagnostics_sample_once_per_tick_and_skip_hidden_frames() {
     }
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
-        u64::from(world::TICKS_PER_SECOND) as usize + 1
+        u64::from(simulation_clock::TICKS_PER_SECOND) as usize + 1
     );
     assert_eq!(
         app.world().resource::<DebugOverlayState>().timing.fps,
@@ -291,7 +431,7 @@ fn diagnostics_sample_once_per_tick_and_skip_hidden_frames() {
 
 #[test]
 fn diagnostic_formatting_and_unchanged_target_states_reuse_storage() {
-    use crate::tests::alloc_count::thread_allocations;
+    use test_alloc::thread_allocations;
     let mut states = spatial::BlockStates::default();
     let mut retained = DebugLines::default();
     let mut spare = [Vec::new(), Vec::new()];
@@ -324,7 +464,7 @@ fn diagnostic_formatting_and_unchanged_target_states_reuse_storage() {
 
 #[test]
 fn diagnostic_rows_reuse_tail_buffers_after_row_counts_change() {
-    use crate::tests::alloc_count::thread_allocations;
+    use test_alloc::thread_allocations;
     let mut retained = DebugLines::default();
     let mut spare = [Vec::new(), Vec::new()];
     for _ in 0..2 {
@@ -351,8 +491,8 @@ fn diagnostic_rows_reuse_tail_buffers_after_row_counts_change() {
 
 #[test]
 fn warmed_diagnostic_publication_allocates_nothing_when_values_stay_equal() {
-    use crate::tests::alloc_count::thread_allocations;
     use bevy::ecs::system::{IntoSystem, System};
+    use test_alloc::thread_allocations;
 
     let mut world = World::new();
     world.insert_resource(ButtonInput::<KeyCode>::default());
@@ -372,14 +512,14 @@ fn warmed_diagnostic_publication_allocates_nothing_when_values_stay_equal() {
     world.resource_mut::<ButtonInput<KeyCode>>().clear();
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     world.clear_trackers();
     let before = thread_allocations();
     for _ in 0..10 {
         world
             .resource_mut::<Time<Real>>()
-            .advance_by(world::TICK_DURATION);
+            .advance_by(simulation_clock::TICK_DURATION);
         system.run((), &mut world).unwrap();
     }
     let allocations = thread_allocations() - before;
@@ -394,7 +534,7 @@ fn warmed_diagnostic_publication_allocates_nothing_when_values_stay_equal() {
 
 #[test]
 fn gpu_diagnostics_rank_passes_without_allocating_or_discarding_zero_samples() {
-    use crate::tests::alloc_count::thread_allocations;
+    use test_alloc::thread_allocations;
     let passes = [
         (RuntimeStage::GpuFrame, Duration::from_millis(20)),
         (RuntimeStage::GpuUi, Duration::ZERO),
@@ -415,8 +555,9 @@ fn gpu_diagnostics_rank_passes_without_allocating_or_discarding_zero_samples() {
 
 #[test]
 fn covering_screens_skip_expensive_diagnostic_gathers() {
-    use client_ui::ui_runtime::{UiRuntime, presentation::LoadingStage};
+    use client_ui::ui_runtime::UiRuntime;
     use launcher::menu::{MenuScreen, MenuView};
+    use ui::LoadingStage;
     let mut app = App::new();
     app.insert_resource(ButtonInput::<KeyCode>::default())
         .insert_resource(Time::<Real>::default())
@@ -445,7 +586,7 @@ fn covering_screens_skip_expensive_diagnostic_gathers() {
         .set_menu_view(Some(menu));
     app.world_mut()
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     app.update();
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
@@ -459,7 +600,7 @@ fn covering_screens_skip_expensive_diagnostic_gathers() {
         .set_loading_stage(Some(LoadingStage::Connecting));
     app.world_mut()
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     app.update();
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
@@ -470,7 +611,7 @@ fn covering_screens_skip_expensive_diagnostic_gathers() {
         .set_loading_stage(None);
     app.world_mut()
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     app.update();
     assert_eq!(
         app.world().resource::<DebugOverlayState>().gathers,
@@ -500,10 +641,10 @@ fn first_unchanged_diagnostic_tick_allocates_nothing() {
     world.clear_trackers();
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
-    let before = crate::tests::alloc_count::thread_allocations();
+        .advance_by(simulation_clock::TICK_DURATION);
+    let before = test_alloc::thread_allocations();
     system.run((), &mut world).unwrap();
-    let allocations = crate::tests::alloc_count::thread_allocations() - before;
+    let allocations = test_alloc::thread_allocations() - before;
     assert_eq!(allocations, 0);
     assert!(
         !world
@@ -540,7 +681,7 @@ fn ui_frame_counters_wait_for_the_frame_statistics_window() {
     });
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     assert!(
         !world
@@ -550,7 +691,7 @@ fn ui_frame_counters_wait_for_the_frame_statistics_window() {
     );
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(FRAME_TIMING_WINDOW - world::TICK_DURATION);
+        .advance_by(FRAME_TIMING_WINDOW - simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     assert!(
         world
@@ -601,7 +742,7 @@ fn first_eligible_publication_samples_frame_counters() {
         .set_menu_view(None);
     world
         .resource_mut::<Time<Real>>()
-        .advance_by(world::TICK_DURATION);
+        .advance_by(simulation_clock::TICK_DURATION);
     system.run((), &mut world).unwrap();
     let state = world.resource::<DebugOverlayState>();
     assert_eq!(state.gathers, 1);
@@ -609,8 +750,8 @@ fn first_eligible_publication_samples_frame_counters() {
 }
 #[test]
 fn changed_diagnostic_rows_warm_both_buffers_before_the_next_unchanged_tick() {
-    use crate::tests::alloc_count::thread_allocations;
     use bevy::ecs::system::{IntoSystem, System};
+    use test_alloc::thread_allocations;
 
     let mut world = World::new();
     world.insert_resource(ButtonInput::<KeyCode>::default());
@@ -639,7 +780,7 @@ fn changed_diagnostic_rows_warm_both_buffers_before_the_next_unchanged_tick() {
         world.clear_trackers();
         world
             .resource_mut::<Time<Real>>()
-            .advance_by(world::TICK_DURATION);
+            .advance_by(simulation_clock::TICK_DURATION);
         system.run((), &mut world).unwrap();
         assert!(
             world
@@ -652,7 +793,7 @@ fn changed_diagnostic_rows_warm_both_buffers_before_the_next_unchanged_tick() {
         world.clear_trackers();
         world
             .resource_mut::<Time<Real>>()
-            .advance_by(world::TICK_DURATION);
+            .advance_by(simulation_clock::TICK_DURATION);
         let gathers = world.resource::<DebugOverlayState>().gathers;
         let before = thread_allocations();
         system.run((), &mut world).unwrap();

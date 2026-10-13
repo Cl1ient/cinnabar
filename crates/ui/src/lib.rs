@@ -25,11 +25,11 @@ pub use chat::{
     validate_chat_message,
 };
 pub use geometry::{
-    DesktopGuiScale, DesktopGuiScaleChoice, DpiScale, GeometryError, SafeArea, UiPoint, UiRect,
-    UiScale, gui_scale,
+    DesktopGuiScale, DesktopGuiScaleChoice, DpiScale, GeometryError, MIN_WINDOW_LOGICAL_SIZE,
+    SafeArea, UiPoint, UiRect, UiScale, gui_scale,
 };
 pub use hud::{
-    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole,
+    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole, LoadingStage,
     MAX_TOAST_RETAINED_BYTES, MAX_TOASTS, ShownToast, StandingToast, TOAST_DISPLAY_MILLIS,
     TOAST_SLIDE_IN_MILLIS, TOAST_SLIDE_OUT_MILLIS, TimedText, TitleDurations, Toast, ToastPress,
 };
@@ -64,3 +64,11 @@ pub use text::{
     TextLayoutRequest, TextLineAlign, TextSpan, TextSpans, TextStyle, TextWrap, WordChop,
     parse_bedrock_text,
 };
+
+// Ties the action limits to the model types they size; tests include `action.rs` without the model.
+const _: () = assert!(
+    UiLimits::MAX_UI_VERTICES * std::mem::size_of::<UiVertex>()
+        + UiLimits::MAX_UI_INDICES * std::mem::size_of::<u32>()
+        + UiLimits::MAX_DRAW_BATCHES * std::mem::size_of::<UiDrawBatch>()
+        <= UiLimits::MAX_DRAW_LIST_BYTES
+);

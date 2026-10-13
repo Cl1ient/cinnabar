@@ -43,6 +43,7 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
     let geometries = ["geometry.fish.a", "geometry.fish.b"]
         .into_iter()
         .map(|identifier| EntityGeometry {
+            animation_no_head_bob: false,
             visible_bounds: None,
             identifier: identifier.into(),
             inherits: None,
@@ -50,6 +51,7 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
             texture_width: 16,
             texture_height: 16,
             bones: vec![EntityGeometryBone {
+                locators: Box::default(),
                 name: "body".into(),
                 binding: None,
                 parent: None,
@@ -80,7 +82,9 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
     .collect::<Vec<_>>()
     .into_boxed_slice();
     let compiled = CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
         seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 1,
         sources,
@@ -104,6 +108,7 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
         controller_animations: Box::new([]),
         controller_transitions: Box::new([]),
         rig_bindings: vec![EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             entity_symbol: 0,
             render_controller: 3,
             first_geometry: 0,
@@ -134,6 +139,8 @@ pub(super) fn assets(identifier: &str) -> Arc<RuntimeEntityAssets> {
         item_visual_aliases: Box::new([]),
         render: EntityRenderData::default(),
     }
-    .with_unresolved_seats();
+    .with_unresolved_item_use()
+    .with_unresolved_seats()
+    .with_unresolved_interactions();
     Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap())
 }

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sim::{Aabb, Vec3};
 
 use super::{BREG_V2193, active_content_registry_protocol, bind, synthetic_preg};
@@ -47,10 +49,7 @@ fn native_collision_boxes_register_separate_primitives_in_both_identity_spaces()
         [12.0, 0.0, 0.0, 16.0, 8.0, 16.0],
     ]);
     let (range, _) = registries.begin_session_custom_blocks(&custom).unwrap();
-    assert_eq!(
-        registries.begin_session_hashed_custom_blocks(&custom),
-        Some(1)
-    );
+    assert_eq!(registries.begin_session_hashed_custom_blocks(&custom), 1);
     let hash = custom.blocks[0].hashed_states()[0].hash;
     let expected = [
         Aabb::new(Vec3::new(0.75, 0.0, 0.0), Vec3::new(1.0, 0.625, 1.0)),
@@ -105,30 +104,33 @@ fn resolved_state_collision_and_selection_reach_both_identity_spaces() {
     block.state_physics = [
         protocol::CustomBlockPhysics {
             random_offset: None,
+            transformation: None,
             collides: true,
             collision_boxes: Some([lower].into()),
             selection: protocol::CustomSelection::Default,
+            friction: None,
         },
         protocol::CustomBlockPhysics {
             random_offset: None,
+            transformation: None,
             collides: true,
             collision_boxes: Some([upper].into()),
             selection: protocol::CustomSelection::Box(upper),
+            friction: None,
         },
         protocol::CustomBlockPhysics {
             random_offset: None,
+            transformation: None,
             collides: false,
             collision_boxes: None,
             selection: protocol::CustomSelection::Disabled,
+            friction: None,
         },
     ]
     .into();
     let hashes = block.hashed_states();
     let (range, _) = registries.begin_session_custom_blocks(&custom).unwrap();
-    assert_eq!(
-        registries.begin_session_hashed_custom_blocks(&custom),
-        Some(3)
-    );
+    assert_eq!(registries.begin_session_hashed_custom_blocks(&custom), 3);
     for (index, shape) in [Some(lower), Some(upper), None].into_iter().enumerate() {
         let expected: Vec<_> = shape
             .into_iter()
@@ -193,10 +195,7 @@ fn random_offset_state_overrides_reach_selection_and_collision_in_both_id_spaces
         .into();
     let hashes = block.hashed_states();
     let (range, _) = registries.begin_session_custom_blocks(&custom).unwrap();
-    assert_eq!(
-        registries.begin_session_hashed_custom_blocks(&custom),
-        Some(2)
-    );
+    assert_eq!(registries.begin_session_hashed_custom_blocks(&custom), 2);
     for (index, component) in components.into_iter().enumerate() {
         for (registry, id) in [
             (&registries.sequential, range.start + index as u32),
@@ -284,9 +283,7 @@ fn omitted_selection_remains_pickable_without_collision() {
     block.collides = false;
     let hash = block.hashed_states()[0].hash;
     let (range, _) = registries.begin_session_custom_blocks(&custom).unwrap();
-    registries
-        .begin_session_hashed_custom_blocks(&custom)
-        .unwrap();
+    registries.begin_session_hashed_custom_blocks(&custom);
     for (registry, id) in [
         (&registries.sequential, range.start),
         (&registries.hashed, hash),
@@ -296,5 +293,160 @@ fn omitted_selection_remains_pickable_without_collision() {
             registry.selection_shapes(id).unwrap(),
             [Aabb::new(Vec3::ZERO, Vec3::ONE)]
         );
+    }
+}
+
+/// Builds a face-attached block whose per-face turn is the only per-face signal,
+/// as `owlscubed_pob:backrooms_wallpaper_slab` authors it on the wire.
+fn face_facing() -> protocol::CustomBlocks {
+    use protocol::{
+        CustomBox, CustomSelection, CustomStateAxis, CustomStateValue, CustomTransformation,
+    };
+    let base = CustomBox {
+        min: [0.0, 0.5, 0.0],
+        max: [1.0, 1.0, 1.0],
+    };
+    let turns: [([i32; 3], &str); 6] = [
+        ([2, 0, 0], "down"),
+        ([0, 0, 0], "up"),
+        ([1, 2, 0], "north"),
+        ([1, 0, 0], "south"),
+        ([2, 1, 3], "west"),
+        ([0, 1, 3], "east"),
+    ];
+    let physics = turns.map(|(rotation, _)| protocol::CustomBlockPhysics {
+        random_offset: None,
+        // `up` is the default face and carries no authored turn.
+        transformation: if rotation == [0; 3] {
+            None
+        } else {
+            Some(CustomTransformation {
+                rotation,
+                scale: [1.0; 3],
+                translation: [0.0; 3],
+            })
+        },
+        collides: true,
+        collision_boxes: Some([base].into()),
+        selection: CustomSelection::Box(base),
+        friction: None,
+    });
+    protocol::CustomBlocks {
+        blocks: Arc::from([protocol::CustomBlock {
+            name: Arc::from("test:face_facing"),
+            tags: Arc::default(),
+            state_count: 6,
+            collides: true,
+            collision_boxes: Some([base].into()),
+            selection: CustomSelection::Box(base),
+            friction: None,
+            visual: Arc::new(protocol::CustomBlockVisuals {
+                base: protocol::CustomVisualComponents::default(),
+                permutations: Box::default(),
+                state_axes: Box::new([CustomStateAxis {
+                    name: Arc::from("minecraft:block_face"),
+                    values: ["down", "up", "north", "south", "west", "east"]
+                        .map(|face| CustomStateValue::String(Arc::from(face)))
+                        .into(),
+                }]),
+                state_identity_incomplete: false,
+                materialization_disabled: false,
+            }),
+            state_physics: physics.into(),
+        }]),
+        vanilla_blocks: Arc::default(),
+        skipped: 0,
+    }
+}
+
+#[test]
+fn face_attached_block_boxes_follow_the_authored_turn_in_both_id_spaces() {
+    let version = active_content_registry_protocol();
+    let records = assets::read_registry_for_protocol(BREG_V2193, version).unwrap();
+    let mut registries = bind(
+        BREG_V2193,
+        &synthetic_preg(version, BREG_V2193, &records),
+        version,
+    )
+    .unwrap();
+    let custom = face_facing();
+    let hashes: Vec<u32> = custom.blocks[0]
+        .hashed_states()
+        .into_iter()
+        .map(|state| state.hash)
+        .collect();
+    let (range, _) = registries.begin_session_custom_blocks(&custom).unwrap();
+    assert_eq!(registries.begin_session_hashed_custom_blocks(&custom), 6);
+    // Palette order is the authored face order, so `down` is state 0.
+    let expected: [([f64; 3], [f64; 3]); 6] = [
+        ([0.0, 0.0, 0.0], [1.0, 0.5, 1.0]), // down
+        ([0.0, 0.5, 0.0], [1.0, 1.0, 1.0]), // up, the default face
+        ([0.0, 0.0, 0.0], [1.0, 1.0, 0.5]), // north
+        ([0.0, 0.0, 0.5], [1.0, 1.0, 1.0]), // south
+        ([0.0, 0.0, 0.0], [0.5, 1.0, 1.0]), // west
+        ([0.5, 0.0, 0.0], [1.0, 1.0, 1.0]), // east
+    ];
+    for (index, (min, max)) in expected.into_iter().enumerate() {
+        let shape = Aabb::new(
+            Vec3::new(min[0], min[1], min[2]),
+            Vec3::new(max[0], max[1], max[2]),
+        );
+        for (registry, id) in [
+            (&registries.sequential, range.start + index as u32),
+            (&registries.hashed, hashes[index]),
+        ] {
+            assert_eq!(
+                registry.collision_shapes(id).unwrap(),
+                [shape],
+                "collision for face index {index}"
+            );
+            assert_eq!(
+                registry.selection_shapes(id).unwrap(),
+                [shape],
+                "selection for face index {index}"
+            );
+        }
+    }
+}
+
+/// Custom surfaces take friction from their own component in both identity spaces;
+/// a block without one keeps the default and no surface or fluid response.
+#[test]
+fn custom_friction_components_set_surface_friction_in_both_identity_spaces() {
+    let version = active_content_registry_protocol();
+    let records = assets::read_registry_for_protocol(BREG_V2193, version).unwrap();
+    let mut registries = bind(
+        BREG_V2193,
+        &synthetic_preg(version, BREG_V2193, &records),
+        version,
+    )
+    .unwrap();
+    let mut custom = definitions(&[[0.0, 0.0, 0.0, 16.0, 16.0, 16.0]]);
+    let mut icy = custom.blocks[0].clone();
+    icy.friction = Some(0.02);
+    let mut plain = custom.blocks[0].clone();
+    plain.name = "test:plain_block".into();
+    custom.blocks = Arc::from([icy, plain]);
+    let (range, _) = registries.begin_session_custom_blocks(&custom).unwrap();
+    assert_eq!(registries.begin_session_hashed_custom_blocks(&custom), 2);
+    for (index, expected) in [(0, f64::from(1.0_f32 - 0.02)), (1, 0.6)] {
+        let block = &custom.blocks[index];
+        let sequential = range.start
+            + custom.blocks[..index]
+                .iter()
+                .map(|block| block.state_count)
+                .sum::<u32>();
+        for (registry, id) in [
+            (&registries.sequential, sequential),
+            (&registries.hashed, block.hashed_states()[0].hash),
+        ] {
+            let facts = registry.movement_facts(id).unwrap();
+            assert_eq!(facts.friction, expected, "{}", block.name);
+            assert_eq!(facts.horizontal_speed_factor, 1.0);
+            assert_eq!(facts.vertical_speed_factor, 1.0);
+            assert_eq!(facts.fluid_height_blocks, 0.0);
+            assert_eq!(facts.flags, sim::BlockPhysicsFlags::default());
+            assert_eq!(facts.surface_response, sim::SurfaceResponse::None);
+        }
     }
 }

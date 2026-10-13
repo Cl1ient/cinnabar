@@ -28,7 +28,7 @@ fn world_publication_snapshot_is_deterministic_and_keeps_stage_identities_separa
     };
     let visibility = VisibilityDiagnosticSnapshot {
         frame_generation: 67,
-        pose_generation: 71,
+        pose_generation: render_api::PoseGeneration::new(71),
         view_generation: 73,
         draw_mode: OpaqueDrawMode::Direct,
         ..Default::default()

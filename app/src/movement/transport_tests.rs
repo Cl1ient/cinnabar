@@ -5,16 +5,16 @@ use {
 
 #[test]
 fn socket_pending_is_runtime_emittable_but_never_a_candidate_terminal_pass() {
-    let identity = acceptance::phase3_evidence::Phase3EvidenceIdentity::new(
+    let identity = acceptance::movement_evidence::MovementEvidenceIdentity::new(
         "0123456789abcdef0123456789abcdef01234567",
-        crate::args::Phase3Target::Bds,
+        crate::args::EvidenceTarget::Bds,
         7,
         [0x11; 32],
         [0x22; 32],
         true,
     )
     .unwrap();
-    let mut emitter = crate::runtime::phase3_evidence::Phase3EvidenceEmitter::default();
+    let mut emitter = crate::runtime::movement_evidence::MovementEvidenceEmitter::default();
     let markers = emitter.observe_terminal(
         identity,
         MovementSource::Physics,
@@ -36,16 +36,16 @@ fn socket_pending_is_runtime_emittable_but_never_a_candidate_terminal_pass() {
 
 #[test]
 fn remote_closed_candidate_terminal_emits_no_outbox_violation() {
-    let identity = acceptance::phase3_evidence::Phase3EvidenceIdentity::new(
+    let identity = acceptance::movement_evidence::MovementEvidenceIdentity::new(
         "0123456789abcdef0123456789abcdef01234567",
-        crate::args::Phase3Target::Bds,
+        crate::args::EvidenceTarget::Bds,
         7,
         [0x11; 32],
         [0x22; 32],
         true,
     )
     .unwrap();
-    let mut emitter = crate::runtime::phase3_evidence::Phase3EvidenceEmitter::default();
+    let mut emitter = crate::runtime::movement_evidence::MovementEvidenceEmitter::default();
     let markers = emitter.observe_terminal(
         identity,
         MovementSource::Physics,
@@ -63,7 +63,7 @@ fn remote_closed_candidate_terminal_emits_no_outbox_violation() {
     assert!(
         !markers
             .iter()
-            .any(|marker| marker.starts_with("RUST_MCBE_PHASE3_VIOLATION="))
+            .any(|marker| marker.starts_with("CINNABAR_MOVEMENT_VIOLATION="))
     );
     assert!(
         markers
@@ -96,16 +96,16 @@ fn local_stop_with_undrained_authoritative_state_still_violates() {
         MovementOutboxReconciliation::NotAuthoritative,
         "a locally stopped candidate session must not claim a remote close"
     );
-    let identity = acceptance::phase3_evidence::Phase3EvidenceIdentity::new(
+    let identity = acceptance::movement_evidence::MovementEvidenceIdentity::new(
         "0123456789abcdef0123456789abcdef01234567",
-        crate::args::Phase3Target::Bds,
+        crate::args::EvidenceTarget::Bds,
         7,
         [0x11; 32],
         [0x22; 32],
         true,
     )
     .unwrap();
-    let mut emitter = crate::runtime::phase3_evidence::Phase3EvidenceEmitter::default();
+    let mut emitter = crate::runtime::movement_evidence::MovementEvidenceEmitter::default();
     let markers = emitter.observe_terminal(
         identity,
         MovementSource::Physics,
@@ -123,16 +123,16 @@ fn local_stop_with_undrained_authoritative_state_still_violates() {
 
 #[test]
 fn free_camera_remote_closed_reconciliation_still_fails_the_terminal_gate() {
-    let identity = acceptance::phase3_evidence::Phase3EvidenceIdentity::new(
+    let identity = acceptance::movement_evidence::MovementEvidenceIdentity::new(
         "0123456789abcdef0123456789abcdef01234567",
-        crate::args::Phase3Target::Bds,
+        crate::args::EvidenceTarget::Bds,
         7,
         [0x11; 32],
         [0x22; 32],
         false,
     )
     .unwrap();
-    let mut emitter = crate::runtime::phase3_evidence::Phase3EvidenceEmitter::default();
+    let mut emitter = crate::runtime::movement_evidence::MovementEvidenceEmitter::default();
     let markers = emitter.observe_terminal(
         identity,
         MovementSource::FreeCamera,
@@ -166,10 +166,10 @@ fn socket_ack_publishes_the_immutable_admission_evidence_context() {
     .unwrap();
     assert!(ticker.acknowledge_physics_send(identity.unwrap()));
     let published = ticker.take_tick_evidence();
-    let mut emitter = crate::runtime::phase3_evidence::Phase3EvidenceEmitter::default();
+    let mut emitter = crate::runtime::movement_evidence::MovementEvidenceEmitter::default();
     let markers = emitter.observe_completed_ticks(&published);
     let frame: serde_json::Value =
-        serde_json::from_str(markers[0].strip_prefix("RUST_MCBE_PHASE3_FRAME=").unwrap()).unwrap();
+        serde_json::from_str(markers[0].strip_prefix("CINNABAR_MOVEMENT_FRAME=").unwrap()).unwrap();
     assert_eq!(frame["fifo_sequence"], admitted.fifo_sequence);
     assert_eq!(frame["pose_generation"], admitted.pose_generation);
     assert_eq!(frame["dimension"], admitted.dimension);

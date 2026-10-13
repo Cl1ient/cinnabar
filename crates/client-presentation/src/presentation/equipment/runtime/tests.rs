@@ -1,7 +1,11 @@
 //! Isolated camera-item routing tests; no optional installed carriers or native art.
 
+#[path = "missing_artwork_tests.rs"]
+mod missing_artwork_tests;
+
 use actor_animation::ItemAnimationState;
 use bevy::math::Quat;
+use render_api::PoseGeneration;
 use render_model::ActorRenderIdentity;
 use sha2::Digest;
 use sha2::Sha256;
@@ -9,6 +13,68 @@ use {
     super::*,
     render_model::equipment::{attach_to_bone, held_block_display},
 };
+
+#[test]
+fn held_block_faces_keep_local_glint_origins_after_atlas_placement() {
+    for atlas_side in [512, 1024] {
+        for authored in [false, true] {
+            let (mut runtime, _, item) = block_fixture();
+            let [width, height] = assets::BLOCK_ITEM_SHEET_SIZE;
+            let atlas = SpriteAtlas::pack(&[
+                IconSprite {
+                    width,
+                    height,
+                    rgba8: vec![255; usize::from(width) * usize::from(height) * 4].into(),
+                },
+                IconSprite {
+                    width: atlas_side,
+                    height: 1,
+                    rgba8: vec![255; usize::from(atlas_side) * 4].into(),
+                },
+            ]);
+            let (_, locations) = ActorArtworkPages::default().with_equipment_rasters(&atlas.layers);
+            runtime.placements = atlas.placements;
+            runtime.atlas_locations = locations;
+            let placement = runtime.placements[0].as_mut().unwrap();
+            placement.x = 64;
+            placement.y = 128;
+            let rect = placement.uv_rect();
+            let HeldKind::Block(visual) = item.kind else {
+                unreachable!()
+            };
+            let reference = render_model::textured_cube_vertices(
+                render_model::equipment::blocks::face_rects([0.0, 0.0, 1.0, 1.0]),
+            );
+            if authored {
+                runtime.block_models.insert(visual, reference.clone());
+            }
+            runtime.held_mesh(&item, true).unwrap();
+            let geometry = runtime.take_pending_geometries().pop().unwrap();
+            for ((face, reference), face_rect) in geometry
+                .vertices
+                .as_chunks::<6>()
+                .0
+                .iter()
+                .zip(reference.as_chunks::<6>().0)
+                .zip(render_model::equipment::blocks::face_rects(rect))
+            {
+                for (vertex, reference) in face.iter().zip(reference) {
+                    assert_eq!(vertex.glint_origin, [face_rect[0], face_rect[1]]);
+                    for axis in 0..2 {
+                        let normalized = (vertex.uv[axis] - vertex.glint_origin[axis])
+                            / (face_rect[axis + 2] - face_rect[axis]);
+                        let expected = (reference.uv[axis] - reference.glint_origin[axis])
+                            * f32::from(assets::BLOCK_ITEM_SHEET_GRID[axis]);
+                        assert!(
+                            (normalized - expected).abs() < 1.0e-5,
+                            "atlas {atlas_side}, authored {authored}: {normalized} != {expected}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[test]
 fn unchanged_authored_pose_sampling_allocates_nothing_and_keeps_matrix_identity() {
@@ -25,14 +91,14 @@ fn unchanged_authored_pose_sampling_allocates_nothing_and_keeps_matrix_identity(
                 Some(endpoints[endpoint])
             })
             .unwrap();
-        let allocated = crate::test_allocations::count();
+        let allocated = test_alloc::thread_allocations();
         let repeated = runtime
             .poses
             .sample_pair(&body, LAYER_MAIN_HAND, 1, |endpoint, _| {
                 Some(endpoints[endpoint])
             })
             .unwrap();
-        assert_eq!(crate::test_allocations::count() - allocated, 0);
+        assert_eq!(test_alloc::thread_allocations() - allocated, 0);
         assert!(Arc::ptr_eq(&pose[0], &repeated[0]));
         assert!(Arc::ptr_eq(&pose[1], &repeated[1]));
         assert_eq!(
@@ -47,7 +113,9 @@ fn unchanged_authored_pose_sampling_allocates_nothing_and_keeps_matrix_identity(
 fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
     let entities = RuntimeEntityAssets::from_compiled(
         assets::CompiledEntityAssets {
+            item_use_profiles: Box::new([]),
             seat_layouts: Box::new([]),
+            interaction_traits: Box::new([]),
             source_manifest_sha256: [1; 32],
             block_visual_count: 8,
             sources: vec![assets::EntityAssetSource {
@@ -85,7 +153,9 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
             item_visual_aliases: Box::new([]),
             render: Default::default(),
         }
-        .with_unresolved_seats(),
+        .with_unresolved_item_use()
+        .with_unresolved_seats()
+        .with_unresolved_interactions(),
     )
     .unwrap();
     let icons =
@@ -130,7 +200,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: ACTOR_LAYER_BODY,
             },
             rig,
@@ -152,6 +222,7 @@ fn block_fixture() -> (EquipmentRuntime, ActorRigSubmission, WornItem) {
         overlay_rgba8: 0,
     };
     let item = WornItem {
+        use_facts: client_world::EffectiveItemUse::default(),
         grip: assets::item::grip::builtin_item_grip("test:opaque_cube"),
         identifier: Arc::from("test:opaque_cube"),
         metadata: 0,
@@ -271,6 +342,7 @@ fn carried_cube_alpha_mode_follows_world_materials_for_both_hands() {
     let overlay = BlockOverlay {
         visuals: (0..flags.len())
             .map(|material| BlockVisual {
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 faces: [material as u32; 6],
                 flags: BlockFlags::CUBE_GEOMETRY,
                 kind: VisualKind::Cube,
@@ -527,7 +599,7 @@ fn review_render_pack_replacement_reclaims_mesh_slots_without_reusing_vanilla_id
     let retired = item_mesh_rig_id(MAX_ITEM_MESHES as u32 - 1);
     let placement = runtime.placements[0].unwrap();
     for _ in 0..8 {
-        runtime.attachable_meshes.insert((true, 0, 0), retired);
+        runtime.attachable_meshes.insert((true, 0, (1, 0)), retired);
         runtime.set_pack_layer(None);
         assert_eq!(
             runtime.build_mesh(MeshKey::Block(7), 0, placement),
@@ -599,16 +671,16 @@ fn compiled_attack_facts_normalize_and_session_overrides_reset_to_the_catalog() 
     let timing = base.get("fixture:spear").unwrap();
     assert_eq!(
         timing.swing_duration_ticks,
-        Some(world::TICKS_PER_SECOND * 3 / 4)
+        Some(simulation_clock::TICKS_PER_SECOND * 3 / 4)
     );
     let cooldown = timing.attack_cooldown.as_ref().unwrap();
     assert_eq!(cooldown.category.as_ref(), "fixture:jab");
-    assert_eq!(cooldown.ticks, world::TICKS_PER_SECOND / 2);
+    assert_eq!(cooldown.ticks, simulation_clock::TICKS_PER_SECOND / 2);
     assert!(timing.piercing_weapon);
     assert!(timing.is_spear);
     assert_eq!(timing.kinetic_weapon.unwrap().damage_ticks, 90);
     let override_timing = protocol::ItemAttackTiming {
-        swing_duration_ticks: Some(world::TICKS_PER_SECOND),
+        swing_duration_ticks: Some(simulation_clock::TICKS_PER_SECOND),
         ..Default::default()
     };
     let items = crate::session_assets::SessionItems {

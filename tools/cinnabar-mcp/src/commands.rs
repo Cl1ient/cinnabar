@@ -8,7 +8,9 @@ use std::{
 
 use developer_control::{
     camera::CameraPath,
-    protocol::{Command, Condition, InputCommand, RecordSettings, SignInFixtureState},
+    protocol::{
+        Command, Condition, GlobalPackAction, InputCommand, RecordSettings, SignInFixtureState,
+    },
 };
 use serde_json::{Value, json};
 
@@ -104,6 +106,15 @@ pub fn command(
                 Command::TestAccounts { enabled }
             };
             (command, CALL_TIMEOUT)
+        }
+        "global_packs" => {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Packs {
+                action: Option<GlobalPackAction>,
+            }
+            let Packs { action } = parse(arguments, "global packs")?;
+            (Command::GlobalPacks { action }, CALL_TIMEOUT)
         }
         "state" => (Command::State, CALL_TIMEOUT),
         "sign_in_fixture" => {

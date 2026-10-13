@@ -15,7 +15,7 @@ cargo run -p mod-host --bin mod-host --locked -- pack \
   target/wasm32-unknown-unknown/debug/hello_mod.wasm /tmp/cinnabar-hello.wasm
 cargo run -p mod-host --bin mod-host --locked -- probe /tmp/cinnabar-hello.wasm
 cargo run -p mod-host --bin mod-host --locked -- bench /tmp/cinnabar-hello.wasm
-CINNABAR_MOD_COMPONENT=/tmp/cinnabar-hello.wasm cargo run -p bedrock-client --features local-mods --locked
+CINNABAR_MOD_COMPONENT=/tmp/cinnabar-hello.wasm cargo run -p cinnabar --features local-mods --locked
 ```
 
 Route local builds through the shared limiter as required by
@@ -30,7 +30,7 @@ window-focus check and F8 action entirely offline, run:
 
 ```sh
 CINNABAR_MOD_COMPONENT=/tmp/cinnabar-hello.wasm \
-  cargo test -p bedrock-client --features local-mods --lib configured_sample_drives_the_app_adapter_offline --locked
+  cargo test -p cinnabar --features local-mods --lib configured_sample_drives_the_app_adapter_offline --locked
 ```
 
 During gameplay, F8 changes the label. UI focus and window focus suppress the
@@ -62,7 +62,7 @@ cargo build -p time-changer-mod --target wasm32-unknown-unknown --locked
 cargo run -p mod-host --bin mod-host --locked -- pack \
   target/wasm32-unknown-unknown/debug/time_changer_mod.wasm /tmp/cinnabar-time-changer.wasm
 cargo run -p mod-host --bin mod-host --locked -- probe-environment /tmp/cinnabar-time-changer.wasm
-CINNABAR_MOD_COMPONENT=/tmp/cinnabar-time-changer.wasm cargo run -p bedrock-client --features local-mods --locked
+CINNABAR_MOD_COMPONENT=/tmp/cinnabar-time-changer.wasm cargo run -p cinnabar --features local-mods --locked
 ```
 
 Use the shared build limiter for every cargo command, as for hello. The last
@@ -131,7 +131,7 @@ default, independently of the visual time grant. Explicitly opt in at startup:
 ```sh
 CINNABAR_MOD_COMPONENT=/tmp/my-mod.wasm \
 CINNABAR_MOD_PLAYERS=1 CINNABAR_MOD_CAMERA=1 \
-  cargo run -p bedrock-client --features local-mods --locked
+  cargo run -p cinnabar --features local-mods --locked
 ```
 
 On PowerShell, set the corresponding `$env:CINNABAR_MOD_*` variables before
@@ -221,6 +221,16 @@ Sections can select a bounded `icon` (`pointer`,
 `crosshair`, `ruler`, `settings` or `none`). A `keybind` control has `id`, `label`,
 `key` and optional `capturing` fields; pressing its keycap emits a button event,
 and the guest owns key capture and reservations. Key changes retain geometry.
+Optional `motion: true` enables short native hover and toggle transitions and
+smooth discrete wheel scrolling. Pixel scrolling and scrollbar dragging remain
+immediate. Authored surfaces can bind `#row_N_hover` and
+`#row_N_toggle_progress` (numbers from 0 to 1), `#row_N_toggle_color` and
+`#row_N_knob_color` (RGBA arrays), and `#row_N_knob_offset` (logical coordinates
+from `[2, 2]` to `[12, 2]`). These values follow native input without waiting for a
+component update. `ModUi::mod_panel_motion_active` reports unsettled feedback for
+callers that suspend idle drawing. Arbitrary authored animation graphs remain
+unsupported.
+
 Choices open a host-owned option list. Slider numbers open a bounded text editor;
 Enter applies finite values within the declared range and normalizes the step.
 Escape or an outside click cancels an editor before closing the panel. Keyboard
@@ -238,7 +248,7 @@ the panel and its reservations.
 same controls grant and shared read limit. Each optional pressed/held key list
 uses `none` for all keys, an empty list for none, or up to 64 physical names for
 exact matches in native order. Names follow the existing 32-byte alphanumeric
-key rule; repeated requested names do not duplicate observations. The retained panel catalog accepts up to 128 controls, while each input batch
+key rule; repeated requested names do not duplicate observations. The retained panel catalog accepts up to 512 controls, while each input batch
 still accepts at most 64 events. The `events`
 flag selects whether panel events are included; scalar flags are unchanged.
 Selection neither consumes input nor changes reservations or native sampling.
@@ -256,6 +266,77 @@ custom nodes, scroll views and their track/box controls; factories, inheritance
 and dynamic expansion are rejected. The whole panel is capped at 128 KiB; its
 document at 96 KiB, 1,024 nodes and depth 32.
 Bindings update without rebuilding unchanged catalog geometry.
+
+For larger local menus, `CINNABAR_MOD_UI` selects a bounded JSON bundle, or a
+running-client registration can supply its absolute path in `ui`. The bundle has
+an initial ordinary `panel` and a `surfaces` object mapping route identifiers to
+`{ "screen": "namespace.name", "document": "..." }`. The loading worker checks
+every document and action against the shared control schema before
+publication. Bundles accept up to 128 surfaces and 8 MiB of source data.
+`ModHost::set_panel_bundle` prepares the same contract for host-owned integrations.
+The registration worker and direct environment startup also call
+`PreparedPanelUi::prepare(host.panel_bundle().unwrap())` and pass its result to
+`ModUi::set_prepared_panel_ui(owner, Some(prepared))` before the first frame.
+Use `PanelUiOwner::Environment(index)` for each startup component or
+`PanelUiOwner::Registration` for the independently registered component. Remove
+that owner's entry with `None` when it unloads. Standalone integrations prepare
+and install their owner entry outside rendering, then publish accepted values
+with `ModUi::set_mod_panel(owner, host.panel())` using that same owner. Passing
+`None` clears that owner's active panel without clearing another owner's panel.
+Prepared routes retain their catalogs and
+resolved roots; returning to a route reuses its binding and measurement caches.
+Route changes continue to release pointer capture and reset the scroll position.
+
+`panel.update-content(json)` then applies a bounded 32 KiB patch:
+
+```json
+{
+  "controls": [{ "id": "enabled", "value": true }],
+  "surface": "main",
+  "bindings": { "#filter": "" },
+  "capture_key": false
+}
+```
+
+All fields are optional. `controls` updates only existing identifiers: toggles
+take a Boolean `value`, sliders a finite in-range `value`, keybinds `key` and/or
+`capturing`, and choices a valid `index`. Any control can update its `label`.
+Omitted controls retain their values. `surface` selects a prepared route;
+`bindings`, when supplied, fully replaces custom scalars while the host continues
+to generate `#row_N` facts from the controls. Invalid batches change nothing, and
+valid batches commit only after a successful callback. Same-route updates retain
+the catalog, scroll offset and captured drag. The legacy `set-content` contract
+remains available without a bundle. A replacement schema must match the bundle's
+declared control identities and kinds before any prepared route can be selected.
+
+`cinnabar_rounded_rectangle` nodes take `radius` (GUI pixels, default 6) and `color`.
+Optional `color2` fades the fill linearly from `color` along `gradient_direction`
+(`vertical`, the default, or `horizontal`). Optional `border_color` draws an inside
+border `border_width` GUI pixels wide (default 1). The fill stops at the border, so
+translucent fills do not paint underneath it. Edge coverage spans one physical pixel at
+every display density, including subpixel borders and square inner corners.
+Coverage is centered on the authored outline; layout and hit bounds stay fixed.
+
+`cinnabar_vector_path` draws caller-authored geometry without registering product
+icons in the runtime. `view_box` is `[x, y, width, height]`; `paths` contains arrays
+of finite `[x, y]` points in that coordinate space. Without `stroke_width`, closed
+contours use even-odd filling, including holes; fills require `closed: true`.
+With a positive `stroke_width` in view-box units,
+paths form continuous strokes with rounded joins and caps; `closed` defaults to
+false for strokes and true for fills. For example:
+
+```json
+{"type":"custom","renderer":"cinnabar_vector_path","size":[16,16],
+ "view_box":[0,0,16,16],"paths":[[[3,3],[8,13],[13,3]]],
+ "stroke_width":1.5,"color":[1,1,1,1]}
+```
+
+The renderer accepts at most 64 contours and 2,048 points. It covers round caps
+and joins beyond the view box, keeping the edge band one physical pixel wide.
+The half-pixel mesh grid is bounded to 256 cells per axis, eight million
+sample/segment operations, and 32,768 expanded indices per path. Over-budget
+paths draw nothing; they are never silently reduced to a coarser grid. An
+eight-MiB cache retains hot geometry. Path data belongs to the caller's surface.
 
 Personal-panel surfaces support JSON-UI scroll views, including wheel input, track
 presses and scrollbar-box dragging. Wheel input stays within the view under the
@@ -330,7 +411,7 @@ cargo run -p mod-host --bin mod-host --locked -- pack \
   target/wasm32-unknown-unknown/debug/render_sample_mod.wasm /tmp/cinnabar-render.wasm
 cargo run -p mod-host --bin mod-host --locked -- probe-render /tmp/cinnabar-render.wasm
 CINNABAR_MOD_COMPONENT=/tmp/cinnabar-render.wasm CINNABAR_MOD_RENDER=1 CINNABAR_MOD_PLAYERS=1 \
-  cargo run -p bedrock-client --features local-mods --locked
+  cargo run -p cinnabar --features local-mods --locked
 ```
 
 Replacing the component reloads it as for other mods. A rejected shader shows its error as
@@ -394,6 +475,7 @@ A `local-mods` build watches `local-mod.json` in `InstallLayout.user_config_root
   "enabled": true,
   "component": "C:/Local/mod.component.wasm",
   "font": "C:/Local/panel.ttf",
+  "ui": "C:/Local/panel-ui.json",
   "grants": {
     "environment": false,
     "players": true,
@@ -410,7 +492,7 @@ A `local-mods` build watches `local-mod.json` in `InstallLayout.user_config_root
 ```
 
 The registration is bounded to 16 KiB, paths must be absolute, and grants default
-to false. Component compilation, source polling, font rasterization and status
+to false. Component compilation, source polling, font rasterization, UI preparation and status
 writes run on the worker. The current generation is installed before physical
 input sampling; deleting, disabling or invalidating the registration revokes its
 runtime and restores input ownership. A request-ID-only change preserves guest
@@ -430,8 +512,8 @@ older clients require one update and restart.
 
 ```sh
 cargo test -p mod-host --locked
-cargo test -p bedrock-client --features local-mods --lib modding --locked
-cargo test -p bedrock-client --lib mod_hud --locked
+cargo test -p cinnabar --features local-mods --lib modding --locked
+cargo test -p cinnabar --lib mod_hud --locked
 ```
 
 To capture the real compiled sample through the existing offline renderer:
@@ -440,7 +522,7 @@ To capture the real compiled sample through the existing offline renderer:
 mkdir -p /tmp/cinnabar-mod-frames
 CINNABAR_FORM_SNAPSHOT_DIR=/tmp/cinnabar-mod-frames \
 CINNABAR_MOD_SNAPSHOT_COMPONENT=/tmp/cinnabar-hello.wasm \
-  cargo test -p bedrock-client --lib mod_spike_snapshot_with_real_carrier --locked -- --nocapture
+  cargo test -p cinnabar --lib mod_spike_snapshot_with_real_carrier --locked -- --nocapture
 ```
 
 This writes before, initial-label and keybind PNGs without starting a network
@@ -450,7 +532,7 @@ Measure the real CPU UI build with zero mods and with the sample loaded:
 
 ```sh
 CINNABAR_MOD_SNAPSHOT_COMPONENT=/tmp/cinnabar-hello.wasm \
-  cargo test -p bedrock-client --lib mod_spike_offline_frame_overhead --locked -- --ignored --nocapture
+  cargo test -p cinnabar --lib mod_spike_offline_frame_overhead --locked -- --ignored --nocapture
 ```
 
 This alternates warmed baseline/sample batches at the same viewport and reports
@@ -599,8 +681,8 @@ the new instance.
 
 Verification: `cargo test -p mod-host --locked --lib` (real components for every callback,
 fuel, traps, caps, revisions, permissions and reload), `cargo test -p experience-sdk --lib`
-(the manifest) and `cargo test -p client-ui --lib mod_screens session_data` (clipping, the
-lifted held stack, hit filtering, session data). The overlay has not been checked on a
+(the manifest), `cargo test -p mod-ui --lib mod_screens` (clipping, the lifted held stack, hit
+filtering) and `cargo test -p client-ui --lib mod_surfaces session_data` (session data). The overlay has not been checked on a
 rendered frame yet; see `plan.md`.
 
 ## Loaded block highlights
@@ -716,6 +798,11 @@ Each card edge and its center can align to a guide, including placement directly
 above or below the horizontal center line. Optional `reset_anchor`, `reset_offset`,
 and `reset_scale` supply factory layout without changing the current preview.
 These fields affect only the layout editor.
+Optional `editor_style` recolors the host-owned chrome: `outline` and `selected`
+card outlines, resize `handle`, `handle_hover` and `handle_pressed` colors, the
+`handle_radius` of the five-pixel handle mark (0–4), alignment `guide`, and the
+built-in `grid`. Colors are RGBA from zero to one; omitted fields keep the
+built-in appearance.
 
 The editor captures native pointer dragging, clamps cards to the available
 viewport, supports one-pixel arrow nudges, and offers optional eight-GUI-pixel

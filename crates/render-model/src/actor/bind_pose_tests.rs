@@ -8,6 +8,7 @@ fn scalar(value: f32) -> EntityGeometryScalar {
 
 fn bone() -> EntityGeometryBone {
     EntityGeometryBone {
+        locators: Box::default(),
         name: "body".into(),
         parent: None,
         pivot: Some([-2.0, 15.0, 12.0].map(scalar)),

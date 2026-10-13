@@ -7,8 +7,8 @@ use assets::{
     encode_blob,
 };
 use meshing::{
-    BlockClassifier, Face, MeshLightSample, PHASE26_BLOCK_LIGHT, PHASE26_SKY_LIGHT, PackedQuad,
-    PackedQuadLighting, bake_quad_lighting, bake_quad_lighting_with_sampler,
+    BlockClassifier, FULL_BRIGHT_BLOCK_LIGHT, FULL_BRIGHT_SKY_LIGHT, Face, MeshLightSample,
+    PackedQuad, PackedQuadLighting, bake_quad_lighting, bake_quad_lighting_with_sampler,
     bake_template_lighting, bake_template_lighting_with_sampler, mesh_dependency_mask,
 };
 use world::{MeshNeighbourhood, RawBlockIds, SubChunk};
@@ -143,6 +143,57 @@ fn lily_pad_planes_repeat_own_cell_light_without_neighbor_ao() {
     }
 }
 
+#[test]
+fn torch_planes_take_own_cell_light_without_neighbor_ao() {
+    // An inset upright pillar side and its cap, beside solid neighbours on every side.
+    let mut side = model_quad(4);
+    side.positions = [
+        [144, 0, 112],
+        [144, 0, 144],
+        [144, 160, 144],
+        [144, 160, 112],
+    ];
+    let mut cap = model_quad(2);
+    cap.positions = [
+        [112, 160, 144],
+        [144, 160, 144],
+        [144, 160, 112],
+        [112, 160, 112],
+    ];
+    let assets = runtime_assets_with_model_geometry(
+        vec![ModelTemplate {
+            quad_start: 0,
+            quad_count: 2,
+            flags: assets::MODEL_TEMPLATE_FLAG_TORCH,
+        }],
+        vec![side, cap],
+    );
+    let block = [8, 8, 8];
+    let center = layered_uniform(&[SOLID]);
+    let sampler = |coordinate| {
+        if coordinate == block {
+            MeshLightSample::try_new(14, 2).unwrap()
+        } else {
+            MeshLightSample::FULL_BRIGHT
+        }
+    };
+    let lighting = bake_template_lighting_with_sampler(
+        &BlockClassifier::new(AIR),
+        &assets,
+        NetworkIdMode::Sequential,
+        &MeshNeighbourhood::new(&center),
+        &sampler,
+        block,
+        0,
+        0,
+    )
+    .unwrap();
+    assert_eq!(lighting.len(), 2);
+    for quad in lighting {
+        assert_eq!(quad.samples(), [14 | (2 << 4); 4]);
+    }
+}
+
 fn runtime_assets_with_model_geometry(
     model_templates: Vec<ModelTemplate>,
     model_quads: Vec<ModelQuad>,
@@ -160,6 +211,7 @@ fn runtime_assets_with_model_geometry(
     };
     let mut visuals = vec![
         BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [DIAGNOSTIC_MATERIAL; 6],
             flags: BlockFlags::AIR,
             kind: VisualKind::Invisible,
@@ -171,6 +223,7 @@ fn runtime_assets_with_model_geometry(
             destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
         BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,
@@ -182,6 +235,7 @@ fn runtime_assets_with_model_geometry(
             destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
         BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Model,
@@ -193,6 +247,7 @@ fn runtime_assets_with_model_geometry(
             destroy: assets::compiled::block_destroy::BlockDestroyFacts::Unresolved,
         },
         BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::empty(),
             kind: VisualKind::Liquid,
@@ -283,7 +338,7 @@ fn face_specific_ao_differs_at_shared_corner() {
 }
 
 #[test]
-fn phase26_light_defaults_are_explicit() {
+fn full_bright_light_defaults_are_explicit() {
     let (assets, center) = fixture();
     let lighting = bake_quad_lighting(
         &BlockClassifier::new(AIR),
@@ -295,11 +350,11 @@ fn phase26_light_defaults_are_explicit() {
         full_corner(),
     );
 
-    assert_eq!(PHASE26_BLOCK_LIGHT, 0);
-    assert_eq!(PHASE26_SKY_LIGHT, 15);
+    assert_eq!(FULL_BRIGHT_BLOCK_LIGHT, 0);
+    assert_eq!(FULL_BRIGHT_SKY_LIGHT, 15);
     for sample in lighting.samples() {
-        assert_eq!(sample & 0x000f, u16::from(PHASE26_BLOCK_LIGHT));
-        assert_eq!((sample >> 4) & 0x000f, u16::from(PHASE26_SKY_LIGHT));
+        assert_eq!(sample & 0x000f, u16::from(FULL_BRIGHT_BLOCK_LIGHT));
+        assert_eq!((sample >> 4) & 0x000f, u16::from(FULL_BRIGHT_SKY_LIGHT));
         assert_eq!(sample & 0xfc00, 0, "reserved light bits must remain zero");
     }
     assert_eq!(size_of::<PackedQuadLighting>(), 8);

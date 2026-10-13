@@ -12,6 +12,7 @@ fn cube_world_assets(
     let count = entities.block_visual_count() as usize;
     let mut visuals = vec![
         BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [1; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,
@@ -75,10 +76,11 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         ecs::system::RunSystemOnce,
         prelude::*,
     };
-    use client_ui::test_support::{fixture_font, fixture_hud};
+    use client_ui::test_support::fixture_hud;
     use client_ui::ui_runtime::presentation::{UiPresentationRuntime, refresh_hud_frame};
     use protocol::WorldBootstrap;
     use std::sync::Arc;
+    use ui_engine::test_support::fixture_font;
     use {
         crate::{presentation::viewmodel::ViewmodelPublish, runtime::world::ClientWorld},
         client_presentation::{
@@ -207,7 +209,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
     let mut view = client_presentation::local_player::LocalViewPose::default();
     let mut settings = client_presentation::camera::CameraSettingsAuthority::default();
     client_presentation::local_player::reset_local_player_session(
-        1,
+        simulation_clock::identity::SessionGeneration::new(1),
         1,
         [0., 64., 0.],
         &mut settings,
@@ -313,7 +315,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .init_resource::<client_presentation::local_player::LocalViewPose>()
         .init_resource::<client_presentation::local_player::LocalPlayerFrameCarrier>()
         .init_resource::<client_presentation::local_player::InteractionOriginSnapshot>()
-        .init_resource::<crate::runtime::phase3_evidence::Phase3EvidenceEmitter>()
+        .init_resource::<crate::runtime::movement_evidence::MovementEvidenceEmitter>()
         .init_resource::<crate::runtime::world::WorldStreamFramePoll>()
         .init_resource::<client_presentation::server_camera::ServerCameraInstructions>()
         .add_message::<client_audio::audio_ingress::SequencedAudioEvent>();
@@ -532,7 +534,7 @@ fn real_selected_block_provider_and_rotated_ui_publisher_bind_cube_and_clear_rej
         .resource_mut::<client_interaction::movement::MovementTicker>()
         .reset(2, 0, [0., 64., 0.]);
     let mut avatar = client_presentation::local_player::LocalAvatarPresentation::default();
-    avatar.begin_session(2, 1);
+    avatar.begin_session(simulation_clock::identity::SessionGeneration::new(2), 1);
     avatar.publish_view_visibility(
         semantic_input::PerspectiveMode::FirstPerson,
         Vec3::new(0., 64., 0.),

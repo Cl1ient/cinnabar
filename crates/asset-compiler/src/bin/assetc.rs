@@ -197,18 +197,8 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                 &records,
                 protocol,
             )?;
-            let compiled: Vec<_> = records
-                .iter()
-                .map(|record| {
-                    asset_compiler::block_shapes::compile(
-                        record,
-                        input
-                            .by_sequential_id(record.sequential_id)
-                            .expect("complete seed registry"),
-                    )
-                })
-                .collect();
-            let bytes = assets::encode_physics_registry(protocol, &breg, &records, &compiled)?;
+            let bytes =
+                asset_compiler::block_shapes::compile_registry(protocol, &breg, &records, &input)?;
             write_blob_atomic(&out, &bytes)?;
         }
         Command::Atmosphere {
@@ -280,6 +270,13 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             compile_hud_assets_command(&pack, &source_manifest, &out, &report)?;
         }
+        Command::OreuiIconsAssets {
+            source_manifest,
+            out,
+        } => {
+            let count = pack_compiler::compile_oreui_icons_to_file(&source_manifest, &out)?;
+            println!("compiled {count} OreUI images to {}", out.display());
+        }
         Command::HudExtrasAssets { pack, out } => {
             pack_compiler::compile_hud_extras_to_file(&pack, &out)?;
             println!("compiled HUD extras to {}", out.display());
@@ -294,11 +291,18 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::ActorAssets {
             pack,
+            behavior_pack,
             source_manifest,
             out,
             report,
         } => {
-            actor_command::compile_actor_assets_command(&pack, &source_manifest, &out, &report)?;
+            actor_command::compile_actor_assets_command(
+                &pack,
+                &source_manifest,
+                &out,
+                &report,
+                behavior_pack.as_deref(),
+            )?;
         }
         Command::BlockEntityAssets {
             pack,
@@ -495,6 +499,11 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             accept_eula,
             clouds_override,
         })?,
+        Command::KitFiles { root } => {
+            for file in prepare_plan::kit_files(&assets::carriers::Sources::Checkout(root))? {
+                println!("{file}");
+            }
+        }
         Command::VanillaPack {
             source_manifest,
             accept_eula,

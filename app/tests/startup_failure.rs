@@ -40,11 +40,11 @@ mod fixture_client {
 
 #[allow(dead_code)]
 mod entry {
-    use crate::fixture_client as bedrock_client;
-    include!("../src/main.rs");
+    use crate::fixture_client as cinnabar;
+    include!("../src/entry.rs");
     /// Invokes the production dispatch with the fixture lifecycle boundary.
     pub fn invoke() {
-        main();
+        dispatch();
     }
 }
 
@@ -69,5 +69,5 @@ fn startup_errors_reach_client_log_before_process_exit() {
     let text = fs::read_to_string(&path).unwrap();
     fs::remove_file(path).unwrap();
     assert_eq!(output.status.code(), Some(1));
-    assert!(text.contains("bedrock-client failed: first-time setup fixture failed"));
+    assert!(text.contains("cinnabar failed: first-time setup fixture failed"));
 }

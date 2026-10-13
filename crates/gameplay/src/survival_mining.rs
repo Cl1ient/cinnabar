@@ -9,6 +9,7 @@ use protocol::{
     PlayerAuthInputInteractions,
 };
 use sim::{BlockDestroyInfo, DestroyConditions, HeldTool, PaletteWorld};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Local effects emitted after a destroy was attached to its movement tick.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -264,7 +265,8 @@ impl DestroyMachine {
                 }
             }
             Some(_) if target.instant => {
-                let slow = motion.moved * world::TICKS_PER_SECOND as f32 <= CREATIVE_SLOW_SPEED;
+                let slow =
+                    motion.moved * simulation_clock::TICKS_PER_SECOND as f32 <= CREATIVE_SLOW_SPEED;
                 if !slow {
                     self.travel += motion.moved;
                 }
@@ -379,7 +381,7 @@ pub struct SurvivalMiningRuntime {
     machine: DestroyMachine,
     last_stepped_tick: Option<u64>,
     pub latched_press: bool,
-    position_authority: Option<(u64, u64)>,
+    position_authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     last_blocked_log_millis: Option<u64>,
     break_cues: Vec<BlockBreakCue>,
     /// A press that broke its block in its own frame, with the actions its tick carries.
@@ -527,7 +529,7 @@ impl SurvivalMiningRuntime {
     }
 
     /// Reanchors clear the outbox and may rewind tick numbers.
-    fn synchronize(&mut self, identity: (u64, u64)) {
+    fn synchronize(&mut self, identity: (SessionGeneration, PositionAuthorityGeneration)) {
         if let Some((session, _)) = self
             .position_authority
             .filter(|previous| *previous != identity)
@@ -559,7 +561,7 @@ impl SurvivalMiningRuntime {
         }
         self.last_blocked_log_millis = Some(now_millis);
         tracing::debug!(
-            target: "bedrock_client::survival_mining",
+            target: "cinnabar::survival_mining",
             reason,
             game_mode_known = caps.is_some(),
             can_mine = caps.is_some_and(|caps| caps.can_mine),

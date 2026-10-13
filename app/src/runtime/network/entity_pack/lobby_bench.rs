@@ -1,7 +1,7 @@
 //! Env-gated lobby frame benchmark: replays a captured server session into a world stream and
 //! times the real actor publication system per frame.
 //! Run: `CINNABAR_LOBBY_CAPTURE=<raw.bin> CINNABAR_RENDER_PACK=<uuid_version.zip> cargo test -p
-//! bedrock-client --features reports --lib lobby_frame_bench -- --ignored --nocapture`.
+//! cinnabar --features reports --lib lobby_frame_bench -- --ignored --nocapture`.
 
 use std::{
     path::{Path, PathBuf},
@@ -310,6 +310,8 @@ fn build_world(
         let pack = pack_runtime::entity_pack::compile(
             &view,
             pack_runtime::entity_pack::vanilla_refs().as_deref(),
+            pack_runtime::entity_pack::vanilla_pack_dir().as_deref(),
+            None,
         )
         .expect("the pack defines entities");
         (pack, super::pack_property_defaults(&view))
@@ -553,7 +555,7 @@ fn lobby_frame_bench() {
         world
             .resource_mut::<Time<Real>>()
             .update_with_instant(clock);
-        let before = crate::tests::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         let (timer, cpu_timer) = (Instant::now(), thread_cpu_time());
         prepare_offline_actor_frame(&mut world);
         world.run_system_cached(publish_actor_render_frame).unwrap();
@@ -561,7 +563,7 @@ fn lobby_frame_bench() {
         let cpu_elapsed = thread_cpu_time()
             .zip(cpu_timer)
             .map(|(after, before)| after - before);
-        let allocated = crate::tests::alloc_count::thread_allocations() - before;
+        let allocated = test_alloc::thread_allocations() - before;
         let snapshot = world
             .resource::<RuntimeStageProfiler>()
             .take_snapshot_if_due(Duration::ZERO)

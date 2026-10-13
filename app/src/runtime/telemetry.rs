@@ -2,10 +2,10 @@ use crate::runtime::network::resource_packs::PackApplication;
 #[cfg(feature = "acceptance")]
 use ::acceptance::AcceptanceRun;
 #[cfg(feature = "acceptance")]
-use acceptance::phase2_evidence::{
-    CombinedPhase2Snapshot, PlayerColumnPresentationEvidence, build_profile_identity,
+use acceptance::publication_evidence::{
+    CombinedPublicationSnapshot, PlayerColumnPresentationEvidence, build_profile_identity,
     generation_manifest_identity, graphics_identity_sha256, key_manifest_identity,
-    phase2_publication_line_if_changed, present_mode_identity, sha256_identity_from_hex_or_text,
+    present_mode_identity, publication_line_if_changed, sha256_identity_from_hex_or_text,
 };
 use client_runtime::network::NetworkHandle;
 mod attribution;
@@ -124,7 +124,7 @@ pub(crate) struct MetricsSamplingState {
     #[cfg(feature = "acceptance")]
     pub(crate) last_biome_blend_identity: Option<CommittedBiomeBlendIdentity>,
     #[cfg(feature = "acceptance")]
-    pub(crate) last_phase2_snapshot: Option<CombinedPhase2Snapshot>,
+    pub(crate) last_publication_snapshot: Option<CombinedPublicationSnapshot>,
 }
 
 /// Build identity recorded alongside runtime measurements.
@@ -270,8 +270,8 @@ pub(crate) fn send_player_auth_inputs(
                 && camera_distance + render_api::CAMERA_NEAR_PLANE_BLOCKS
                     < THIRD_PERSON_RADIUS_BLOCKS;
             PhysicsTickEvidenceContext {
-                fifo_sequence: frame.fifo_sequence(),
-                pose_generation: frame.pose_generation(),
+                fifo_sequence: frame.fifo_sequence().get(),
+                pose_generation: frame.pose_generation().get(),
                 dimension: stream.current_dimension(),
                 perspective: frame.perspective(),
                 camera_blocked,
@@ -333,7 +333,7 @@ pub(crate) fn send_player_auth_inputs(
             movement.deactivate();
             record_fatal_error(
                 &mut client_world.fatal_error,
-                "failed to stage immutable Phase 3 evidence for PlayerAuthInput".to_owned(),
+                "failed to stage immutable movement evidence for PlayerAuthInput".to_owned(),
             );
         }
     }
@@ -446,7 +446,7 @@ pub(crate) fn record_metrics(
     {
         let player_column = local_subject_column(stream.current_dimension(), local_frame.eye())
             .expect("finite local-player eyes have a subject column");
-        let publication = stream.phase2_publication_snapshot(player_column);
+        let publication = stream.publication_snapshot(player_column);
         let session_generation = publication.session_generation;
         let publisher_epoch = publication.publisher_epoch;
         let required_cohort_count = publication.required_columns;
@@ -551,9 +551,9 @@ pub(crate) fn record_metrics(
                 .then_some(visibility_snapshot.gpu_completed_witness_subchunks)
                 .flatten(),
         };
-        if let Some(marker) = phase2_publication_line_if_changed(
-            &mut sampling.last_phase2_snapshot,
-            CombinedPhase2Snapshot {
+        if let Some(marker) = publication_line_if_changed(
+            &mut sampling.last_publication_snapshot,
+            CombinedPublicationSnapshot {
                 publication,
                 presentation,
                 player_column_presentation,
@@ -570,7 +570,7 @@ pub(crate) fn record_metrics(
                 .unwrap_or(0);
             write_stdout_marker(
                 &mut stdout,
-                &acceptance::phase2_evidence::phase2_publication_timing_line(
+                &acceptance::publication_evidence::publication_timing_line(
                     &marker,
                     observed_unix_ms,
                 ),
@@ -638,7 +638,7 @@ pub(crate) fn record_metrics(
                 snapshot.camera.stable_id,
                 snapshot.camera.pose_hash,
                 snapshot.camera.frustum_hash,
-                snapshot.pose_generation,
+                snapshot.pose_generation.get(),
                 snapshot.view_generation,
                 snapshot.draw_mode,
                 visibility_digest_marker_fields("resident", snapshot.resident_mesh),
@@ -719,7 +719,7 @@ pub(crate) fn record_metrics(
                     false
                 }
             },
-            requested_radius_chunks: diagnostics::PHASE0_REQUESTED_RADIUS_CHUNKS,
+            requested_radius_chunks: diagnostics::EVIDENCE_REQUESTED_RADIUS_CHUNKS,
             received_radius_chunks: stats.received_radius_chunks,
             publisher_radius_chunks: stats.publisher_radius_chunks,
             mutation_coordinate: {

@@ -6,6 +6,7 @@ use ::acceptance::AcceptanceRun;
 use bevy::ecs::system::RunSystemOnce;
 use client_shell::ui_resources::UiRuntimeResource;
 use client_state::PlayerRuntime;
+use simulation_clock::identity::SessionGeneration;
 #[path = "latency_fences.rs"]
 mod latency_fences;
 
@@ -20,7 +21,7 @@ use {
     crate::{
         environment::{WeatherState, WorldClock, bind_session_generation},
         runtime::{
-            phase3_evidence::Phase3EvidenceEmitter,
+            movement_evidence::MovementEvidenceEmitter,
             world::{
                 ClientWorld, WorldStreamFramePoll, drain_committed_ui_before_authority,
                 reconcile_world_stream_before_physics,
@@ -97,7 +98,7 @@ fn app() -> App {
     .init_resource::<LocalViewPose>()
     .init_resource::<LocalPlayerFrameCarrier>()
     .init_resource::<InteractionOriginSnapshot>()
-    .init_resource::<Phase3EvidenceEmitter>()
+    .init_resource::<MovementEvidenceEmitter>()
     .init_resource::<WorldStreamFramePoll>()
     .init_resource::<ServerCameraInstructions>()
     .add_message::<SequencedAudioEvent>()
@@ -119,8 +120,8 @@ fn ingress(app: &mut App, sequence: u64, event: InventoryEvent) {
             player_runtime,
             runtime,
             SequencedWorldEvent {
-                session_generation: 1,
-                sequence,
+                session_generation: SessionGeneration::new(1),
+                sequence: protocol::identity::FifoSequence::new(sequence),
                 event: WorldEvent::Inventory(event),
             },
         )
@@ -435,11 +436,11 @@ fn named_registry(name: &str) -> ItemRegistryEvent {
         entries: [(6, name), (7, "minecraft:oak_planks")]
             .into_iter()
             .map(|(network_id, identifier)| protocol::ItemRegistryEntry {
-                components: None,
                 identifier: identifier.into(),
                 network_id,
                 component_based: false,
                 version: protocol::ItemRegistryVersion::None,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: true,
@@ -455,8 +456,8 @@ fn registry_ingress(app: &mut App, sequence: u64, registry: ItemRegistryEvent) {
             player_runtime,
             runtime,
             &SequencedWorldEvent {
-                session_generation: 1,
-                sequence,
+                session_generation: SessionGeneration::new(1),
+                sequence: protocol::identity::FifoSequence::new(sequence),
                 event: WorldEvent::ItemActor(protocol::ItemActorEvent::Registry(registry)),
             },
         )
@@ -916,11 +917,11 @@ fn ordinary_transfer_bytes_and_conservation_are_identical_after_craft_only_overf
         let mut app = app();
         let registry = ItemRegistryEvent {
             entries: std::sync::Arc::from([protocol::ItemRegistryEntry {
-                components: None,
                 identifier: "minecraft:apple".into(),
                 network_id: 878,
                 component_based: true,
                 version: protocol::ItemRegistryVersion::DataDriven,
+                components: None,
                 component_digest: [8; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: false,
@@ -1092,10 +1093,9 @@ fn ordinary_transfer_bytes_and_conservation_are_identical_after_craft_only_overf
 #[test]
 fn output_click_crafts_the_unique_recipe_through_the_ledger() {
     use {
-        client_ui::ui_runtime::{
-            dispatch_inventory_click, presentation::inventory_pointer::InventoryCellHit,
-        },
+        client_ui::ui_runtime::dispatch_inventory_click,
         inventory::inventory_ledger::{CellGesture, PERSONAL_INVENTORY_WINDOW_TYPE},
+        ui_screens::container_actions::InventoryCellHit,
     };
     let mut app = app();
     registry_ingress(&mut app, 1, named_registry("minecraft:oak_log"));

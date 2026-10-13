@@ -3,7 +3,7 @@ use client_shell::ui_resources::UiRuntimeResource;
 use std::{sync::Arc, time::Duration};
 
 use bevy::{
-    prelude::{PerspectiveProjection, World},
+    prelude::{PerspectiveProjection, Vec3, World},
     time::Real,
 };
 use client_presentation::actor_publication::PreparedActorPublication;
@@ -118,7 +118,7 @@ fn fixture_with_skin(with_skin: bool) -> World {
     let mut physics = client_interaction::movement::LocalPhysicsController::default();
     physics.reanchor_network_position(anchor, 0, true);
     let mut avatar = client_presentation::local_player::LocalAvatarPresentation::default();
-    avatar.begin_session(1, 1);
+    avatar.begin_session(simulation_clock::identity::SessionGeneration::new(1), 1);
     let icons = Arc::new(
         assets::RuntimeIconCatalog::decode(
             &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),

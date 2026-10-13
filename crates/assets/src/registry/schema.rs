@@ -3,13 +3,14 @@ use super::Reader;
 use crate::AssetError;
 use bitflags::bitflags;
 
-pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1002";
+pub const REGISTRY_MAGIC: &[u8; 8] = b"BREG1006";
+pub(super) const PREVIOUS_REGISTRY_MAGIC: &[u8; 8] = b"BREG1003";
+pub(super) const PLACEMENT_REGISTRY_MAGIC: &[u8; 8] = b"BREG1005";
+pub const PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1003";
 pub const LEGACY_PHYSICS_REGISTRY_MAGIC: &[u8; 8] = b"PREG1001";
 pub const PHYSICS_REGISTRY_HEADER_BYTES: usize = 48;
 pub const PHYSICS_RECORD_HEADER_BYTES: usize = 28;
 pub const PHYSICS_MOVEMENT_SEMANTICS_OFFSET: usize = 11;
-/// The registry format version generated from the shared schema.
-pub const REGISTRY_MAGIC: &[u8; 8] = b"BREG1005";
 pub(super) const LEGACY_REGISTRY_PROTOCOL: u32 = 1001;
 /// Provisional replacement admissions shared with the registry compiler.
 pub const COMPATIBILITY_REPLACEABLE_BLOCKS: &[&str] = &[
@@ -36,7 +37,10 @@ pub const COMPATIBILITY_REPLACEABLE_BLOCKS: &[&str] = &[
     "minecraft:hanging_roots",
 ];
 /// The fixed record prefix size generated from the shared wire schema.
-pub const RECORD_HEADER_BYTES: usize = 73;
+pub const RECORD_HEADER_BYTES: usize = 74;
+pub(super) const PREVIOUS_RECORD_HEADER_BYTES: usize = 56;
+/// The fixed prefix of the retained compiled-placement legacy format.
+pub const PLACEMENT_RECORD_HEADER_BYTES: usize = 73;
 pub(super) const MAX_REGISTRY_RECORDS: usize = 65536;
 pub(super) const MAX_REGISTRY_STATE_BYTES: usize = 1048576;
 pub(super) const MAX_COLLISION_BOXES: usize = 7;
@@ -408,6 +412,58 @@ impl BlockSupportKind {
     }
 }
 
+/// A byte-sized registry discriminator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u8)]
+pub enum BeaconTint {
+    #[default]
+    Unresolved = 0,
+    NoTinting = 1,
+    White = 2,
+    Orange = 3,
+    Magenta = 4,
+    LightBlue = 5,
+    Yellow = 6,
+    Lime = 7,
+    Pink = 8,
+    Gray = 9,
+    LightGray = 10,
+    Cyan = 11,
+    Purple = 12,
+    Blue = 13,
+    Brown = 14,
+    Green = 15,
+    Red = 16,
+    Black = 17,
+}
+
+impl BeaconTint {
+    /// Decode a known discriminator and reject reserved values.
+    pub fn read(raw: u8) -> Result<Self, AssetError> {
+        match raw {
+            0 => Ok(Self::Unresolved),
+            1 => Ok(Self::NoTinting),
+            2 => Ok(Self::White),
+            3 => Ok(Self::Orange),
+            4 => Ok(Self::Magenta),
+            5 => Ok(Self::LightBlue),
+            6 => Ok(Self::Yellow),
+            7 => Ok(Self::Lime),
+            8 => Ok(Self::Pink),
+            9 => Ok(Self::Gray),
+            10 => Ok(Self::LightGray),
+            11 => Ok(Self::Cyan),
+            12 => Ok(Self::Purple),
+            13 => Ok(Self::Blue),
+            14 => Ok(Self::Brown),
+            15 => Ok(Self::Green),
+            16 => Ok(Self::Red),
+            17 => Ok(Self::Black),
+            _ => Err(AssetError::InvalidRegistryFlags(raw)),
+        }
+    }
+}
+
 /// Presence-tagged state selectors and provisional survival facts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ModelState {
@@ -456,6 +512,7 @@ pub struct RegistryRecord {
     pub face_coverage: u8,
     pub collision_seed: CollisionSeed,
     pub provenance: RegistryProvenance,
+    pub beacon_tint: BeaconTint,
 }
 
 /// Counts and protocol in the block-registry header.
@@ -521,10 +578,15 @@ pub(super) struct RecordHeader {
     pub(super) placement_key: u32,
     pub(super) placement_alternate: u32,
     pub(super) placement_flags: u8,
+    pub(super) beacon_tint: u8,
 }
 
 /// Read the fixed header in schema order before validating its facts.
-pub(super) fn read_record_header(reader: &mut Reader<'_>) -> Result<RecordHeader, AssetError> {
+pub(super) fn read_record_header(
+    reader: &mut Reader<'_>,
+    previous: bool,
+    placement: bool,
+) -> Result<RecordHeader, AssetError> {
     Ok(RecordHeader {
         sequential_id: reader.read_u32("record sequential_id")?,
         network_hash: reader.read_u32("record network_hash")?,
@@ -546,13 +608,54 @@ pub(super) fn read_record_header(reader: &mut Reader<'_>) -> Result<RecordHeader
             }
             values
         },
-        survival: reader.read_u8("record survival")?,
-        support_policy: reader.read_u8("record support_policy")?,
-        support_kind: reader.read_u8("record support_kind")?,
-        placement_rule: reader.read_u8("record placement_rule")?,
-        placement_set: reader.read_u32("record placement_set")?,
-        placement_key: reader.read_u32("record placement_key")?,
-        placement_alternate: reader.read_u32("record placement_alternate")?,
-        placement_flags: reader.read_u8("record placement_flags")?,
+        survival: if previous {
+            0
+        } else {
+            reader.read_u8("record survival")?
+        },
+        support_policy: if previous {
+            0
+        } else {
+            reader.read_u8("record support_policy")?
+        },
+        support_kind: if previous {
+            0
+        } else {
+            reader.read_u8("record support_kind")?
+        },
+        placement_rule: if previous {
+            0
+        } else {
+            reader.read_u8("record placement_rule")?
+        },
+        placement_set: if previous {
+            0
+        } else {
+            reader.read_u32("record placement_set")?
+        },
+        placement_key: if previous {
+            0
+        } else {
+            reader.read_u32("record placement_key")?
+        },
+        placement_alternate: if previous {
+            0
+        } else {
+            reader.read_u32("record placement_alternate")?
+        },
+        placement_flags: if previous {
+            0
+        } else {
+            reader.read_u8("record placement_flags")?
+        },
+        beacon_tint: if placement {
+            0
+        } else {
+            if previous {
+                0
+            } else {
+                reader.read_u8("record beacon_tint")?
+            }
+        },
     })
 }

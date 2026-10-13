@@ -151,11 +151,11 @@ fn harness() -> Option<(UiPresentationRuntime, chunk_pipeline::WorldStream)> {
         RuntimeEntityAssets::decode(&std::fs::read(root.join("vanilla-v1.mcbeent")).ok()?).ok()?,
     );
     let world = Arc::new(RuntimeAssets::diagnostic());
-    let fixtures = client_ui::test_support::fixture_font();
+    let fixtures = ui_engine::test_support::fixture_font();
     let hud = client_ui::test_support::fixture_hud();
     let mut presentation = UiPresentationRuntime::with_hud_and_icons(fixtures, hud, icons).ok()?;
     presentation
-        .enable_json_ui(client_ui::test_support::pack_harness::carrier()?)
+        .enable_json_ui(ui_engine::test_support::carrier()?)
         .ok()?;
     presentation.set_gui_models(&world, &entities).ok()?;
     let stream = chunk_pipeline::WorldStream::new_with_asset_sets(

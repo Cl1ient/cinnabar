@@ -1,7 +1,7 @@
 use assets::{
     BLOCK_VISUAL_VARIANT_TOP_SNOW, BlockFace, BlockFlags, ContributorRole, DIAGNOSTIC_MATERIAL,
-    NO_MODEL_TEMPLATE, NetworkIdMode, RuntimeAssets, SeasonalFoliageBlock, VisualKind,
-    seasonal_foliage_cell_shelters,
+    NO_MODEL_TEMPLATE, NetworkIdMode, RuntimeAssets, VisualKind,
+    seasonal_foliage::SeasonalFoliageBlock, seasonal_foliage::seasonal_foliage_cell_shelters,
 };
 use world::{PalettedStorage, SubChunk};
 
@@ -65,8 +65,8 @@ impl ResolvedPaletteEntry {
 /// Palette-native contributors resolved for one sub-chunk coordinate.
 ///
 /// A diagnostic is mutually exclusive with real contributors. Liquid geometry
-/// is produced in Phase 2.6 Task 12, but its exact network value is retained
-/// here so layered plants/solids do not erase it in the meantime.
+/// is meshed separately, but its exact network value is retained here so
+/// layered plants/solids do not erase it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ResolvedContributors {
     primary: Option<ResolvedPaletteEntry>,
@@ -108,7 +108,28 @@ impl ResolvedContributors {
         }
     }
 
-    const fn is_empty(self) -> bool {
+    /// Certifies a full opaque cube using the same resolved contributor as terrain meshing.
+    pub fn is_opaque_cube(self, assets: &RuntimeAssets) -> bool {
+        let entry = self.geometry_entry();
+        self.diagnostic.is_none()
+            && entry
+                .flags
+                .contains(BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE)
+            && matches!(entry.kind, VisualKind::Cube)
+            && entry.faces.into_iter().all(|id| {
+                // Runtime asset validation requires all positional variants to share flags.
+                assets.materials().get(id as usize).is_some_and(|material| {
+                    material.flags
+                        & (assets::MATERIAL_FLAG_ALPHA_BLEND
+                            | assets::MATERIAL_FLAG_ALPHA_CUTOUT
+                            | assets::MATERIAL_FLAG_TWO_SIDED)
+                        == 0
+                })
+            })
+    }
+
+    /// Whether resolution retained no geometry, liquid or diagnostic contributor.
+    pub const fn is_empty(self) -> bool {
         self.primary.is_none() && self.liquid.is_none() && self.diagnostic.is_none()
     }
 
@@ -191,7 +212,21 @@ pub(crate) enum PaletteSource<'a> {
 pub(crate) struct PaletteFacts<'a> {
     pub(crate) source: PaletteSource<'a>,
     uniform_seasonal_shelter: bool,
+    /// Per-voxel answers of a mixed section, decoded once by [`PaletteFacts::decode_voxels`].
+    decoded: Option<DecodedVoxels>,
 }
+
+/// A mixed section's [`PaletteFacts::at`] and seasonal-shelter answers for all 4,096 voxels, as
+/// an index into a table holding one answer per distinct combination of layer palette indices.
+struct DecodedVoxels {
+    voxels: Box<[u16]>,
+    entries: Vec<ResolvedPaletteEntry>,
+    shelters: Vec<bool>,
+}
+
+/// Largest table of layer-index combinations a section decodes into; larger palettes keep the
+/// packed lookups.
+const MAX_DECODED_COMBINATIONS: usize = 1 << 12;
 
 impl<'a> PaletteFacts<'a> {
     pub(crate) fn new(
@@ -224,11 +259,13 @@ impl<'a> PaletteFacts<'a> {
             Self {
                 source: PaletteSource::Air,
                 uniform_seasonal_shelter,
+                decoded: None,
             }
         } else {
             Self {
                 source: PaletteSource::Uniform(contributors),
                 uniform_seasonal_shelter,
+                decoded: None,
             }
         }
     }
@@ -260,7 +297,66 @@ impl<'a> PaletteFacts<'a> {
         Self {
             source: PaletteSource::Mixed(storages),
             uniform_seasonal_shelter: true,
+            decoded: None,
         }
+    }
+
+    /// Decodes a mixed section's per-voxel answers once, for the section a mesher asks about
+    /// every voxel and its neighbours; each distinct combination of layer palette indices is
+    /// answered by the same lookups [`Self::at`] makes. Truncated storage stays undecoded.
+    pub(crate) fn decode_voxels(&mut self) {
+        let PaletteSource::Mixed(storages) = &self.source else {
+            return;
+        };
+        // A combination of layer indices is a mixed-radix number, each layer's digit below
+        // `1 << bits`, so it addresses a dense table with no hashing.
+        let mut combinations = 1_usize;
+        for storage in storages.iter() {
+            combinations = combinations.saturating_mul(1 << storage.storage.bits_per_index());
+        }
+        if combinations > MAX_DECODED_COMBINATIONS {
+            return;
+        }
+        let mut voxels = vec![0_u16; SIDE * SIDE * SIDE].into_boxed_slice();
+        let mut radix = 1_u16;
+        for storage in storages.iter() {
+            let Some(indices) = unpacked_indices(storage.storage) else {
+                return;
+            };
+            for (key, index) in voxels.iter_mut().zip(&indices) {
+                *key += index * radix;
+            }
+            radix <<= storage.storage.bits_per_index();
+        }
+        let mut answer_of = vec![u16::MAX; combinations];
+        let (mut entries, mut shelters) = (Vec::new(), Vec::new());
+        for (linear, voxel) in voxels.iter_mut().enumerate() {
+            let slot = &mut answer_of[usize::from(*voxel)];
+            if *slot == u16::MAX {
+                let (x, y, z) = (linear >> 8, linear & 15, (linear >> 4) & 15);
+                *slot = entries.len() as u16;
+                entries.push(self.at(x, y, z));
+                shelters.push(self.seasonal_shelters_at(x, y, z));
+            }
+            *voxel = *slot;
+        }
+        self.decoded = Some(DecodedVoxels {
+            voxels,
+            entries,
+            shelters,
+        });
+    }
+
+    /// The decoded table and answer slot of a voxel inside the section.
+    fn decoded_slot(&self, x: usize, y: usize, z: usize) -> Option<(&DecodedVoxels, usize)> {
+        let decoded = self.decoded.as_ref()?;
+        if x >= SIDE || y >= SIDE || z >= SIDE {
+            return None;
+        }
+        Some((
+            decoded,
+            usize::from(decoded.voxels[(x << 8) | (z << 4) | y]),
+        ))
     }
 
     pub(crate) const fn is_air(&self) -> bool {
@@ -270,6 +366,9 @@ impl<'a> PaletteFacts<'a> {
     /// Native seasonal selection uses storage zero and its extra block, not
     /// the reordered surface/covered-plant rendering contributors.
     pub(crate) fn seasonal_shelters_at(&self, x: usize, y: usize, z: usize) -> bool {
+        if let Some((decoded, slot)) = self.decoded_slot(x, y, z) {
+            return decoded.shelters[slot];
+        }
         let PaletteSource::Mixed(storages) = &self.source else {
             return self.uniform_seasonal_shelter;
         };
@@ -348,6 +447,9 @@ impl<'a> PaletteFacts<'a> {
 
     /// Resolves the surface used by cube visibility and neighbour occlusion.
     pub(crate) fn at(&self, x: usize, y: usize, z: usize) -> ResolvedPaletteEntry {
+        if let Some((decoded, slot)) = self.decoded_slot(x, y, z) {
+            return decoded.entries[slot];
+        }
         let PaletteSource::Mixed(storages) = &self.source else {
             return self.contributors_at(x, y, z).geometry_entry();
         };
@@ -510,6 +612,35 @@ pub(crate) const fn pack_model_transform(local: [u8; 3], transform: u32) -> u32 
         | ((local[1] as u32) << 4)
         | ((local[2] as u32) << 8)
         | ((transform << 12) & !crate::MODEL_REF_FLAG_RANDOM_OFFSET)
+}
+
+/// Every voxel's palette index in `storage`, in [`packed_palette_index`]'s linear order; `None`
+/// when its words do not cover the section.
+fn unpacked_indices(storage: &PalettedStorage) -> Option<Box<[u16]>> {
+    let voxels = SIDE * SIDE * SIDE;
+    let bits = usize::from(storage.bits_per_index());
+    if bits == 0 {
+        return Some(vec![0; voxels].into_boxed_slice());
+    }
+    if bits > 16 {
+        return None;
+    }
+    let values_per_word = 32 / bits;
+    let words = storage.packed_words();
+    if words.len() * values_per_word < voxels {
+        return None;
+    }
+    let mask = (1_u32 << bits) - 1;
+    let mut indices = Vec::with_capacity(voxels);
+    'words: for &word in words {
+        for slot in 0..values_per_word {
+            if indices.len() == voxels {
+                break 'words;
+            }
+            indices.push(((word >> (slot * bits)) & mask) as u16);
+        }
+    }
+    Some(indices.into_boxed_slice())
 }
 
 fn packed_palette_index(storage: &PalettedStorage, x: usize, y: usize, z: usize) -> Option<usize> {

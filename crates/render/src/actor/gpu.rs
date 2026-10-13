@@ -124,7 +124,7 @@ mod tests {
                     ingress_sequence: 4,
                     source_tick: Some(5),
                     movement_revision: 4,
-                    pose_generation: 6,
+                    pose_generation: render_api::PoseGeneration::new(6),
                     layer: 0,
                 },
                 rig: EntityRigId(0),

@@ -32,7 +32,7 @@ pub(crate) fn drain_live_named_audio(
         client_presentation::observations::WorldObservation {
             stream: world.stream.as_ref(),
         },
-        clock.session_generation(),
+        simulation_clock::identity::SessionGeneration::new(clock.session_generation()),
         &receipt,
         &frame,
         &camera_pose,

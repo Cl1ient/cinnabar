@@ -1,7 +1,9 @@
 //! Cached screens follow their text environment and resolution context.
 
 use super::*;
+use json_ui::{Context, DataSource, ViewState};
 use std::borrow::Cow;
+use ui_engine::cached_screen::CachedScreen;
 
 struct Metrics(&'static str);
 
@@ -111,7 +113,8 @@ fn prepared_server_catalogs_resolve_no_hud_on_the_frame() {
                 catalog: Some(Arc::new(
                     super::super::screen_registry::registry()
                         .catalog()
-                        .layer(&base, &[]),
+                        .layer(&base, &[])
+                        .pack,
                 )),
                 ..super::super::ServerUiPack::default()
             }

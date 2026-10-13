@@ -10,6 +10,15 @@ End-rod terrain coverage now includes the six facing states, separate shaft/base
 mapping and an original-art GPU fixture. This bounded geometry correction leaves the
 exhaustive residual-family, world-join and hardware performance gates open.
 
+Common farmland crops now retain four lowered rows with stage-specific artwork.
+Compiler regressions cover all eight growth states and both network-ID modes;
+full crop presentation parity and the broader phase gates remain open.
+
+Trapdoor compiler regressions cover edge sprite rows, facing/top-half artwork,
+opened cap texture ownership and malformed selectors across registered poses
+with 16/32 pixel textures. Rendered/input acceptance and broader graphics parity
+remain open.
+
 ## P2.5-NATIVE-BIOME
 
 | Field | Evidence |
@@ -55,10 +64,16 @@ vehicle controls, queue retries and session/input boundaries. Authored seat fall
 special family placement, predictive exit placement and vehicle prediction remain
 incomplete; this work closes no movement parity or performance gate.
 
+Custom block surface friction follows each state's `minecraft:friction` component, with
+protocol, permutation and registry regressions in both identity spaces. No live witness
+exists. Every vanilla state now carries a reviewed ordinary, special or unresolved movement
+disposition bound to its identifier set; one-way door collision, block-actor collision and
+soul soil remain unmodeled or unresolved.
+
 | Field | Evidence |
 |---|---|
 | Owning plan/task | `docs/superpowers/plans/2026-07-17-phase-3-movement-controls-camera.md`, Tasks 8-14 |
-| Deterministic tests | Current integration tranche: 282/282 `bedrock-client` library tests and strict all-target/all-feature Clippy green; bounded Phase 3 evidence validator 5/5 green. See `docs/evidence/phase-3-movement-controls-camera.md`. Render frame-clock tests also cover 20 Hz tick flush cadence at 60/120 Hz FIFO and uncapped, with manual recording clock preservation; live movement cadence remains unverified. |
+| Deterministic tests | Current integration tranche: 282/282 `cinnabar` library tests and strict all-target/all-feature Clippy green; bounded Phase 3 evidence validator 5/5 green. See `docs/evidence/phase-3-movement-controls-camera.md`. Render frame-clock tests also cover 20 Hz tick flush cadence at 60/120 Hz FIFO and uncapped, with manual recording clock preservation; live movement cadence remains unverified. |
 | Review commit | Pending independent review of the final integration commit. |
 | Live/native witness | Current tranche not run; local BDS, Lunar, Zeqa, LBSG, and matching native gates remain required. |
 | Performance/resource witness | Current tranche not run; bounded live JSON records remain required. |
@@ -287,3 +302,36 @@ Admitted live biome identifiers and climate now travel with the session tint reg
 the vendored client session crate is removed. Startup ordering, terminal transfers and
 disconnects, and the one-shot initialization keep their regression coverage through a scripted
 core; those tests have not been executed locally. No existing completion entry is advanced.
+## Controller particle attachments
+
+Typed locator and initialization contracts are implemented. Independent pinned
+controller coverage and focused emitter/placement regressions are added. Pending
+placement retries after temporary zero scale; existing attachments retain their
+actor lifetime. Particle placement samples each needed actor once per frame. The
+unsupported query grammar, skin locator, child-event placement, fallback and
+animated gallery checks in `plan.md` remain open. No completion entry advances.
+
+## Particle terrain ordering
+
+Individual depth ranges and adjacent-range batching are implemented. Renderer composition and
+current-frame regressions pass, and an offline Metal fixture measures the GPU span. Native bucket
+composition and full-frame acceptance remain incomplete.
+
+## Cached beacon beam sections
+
+Beacon columns invalidate typed color sections when blocks, NBT, dimension bounds or block assets change. Admitted beacons populate the cache lazily after distance and submission checks. Top-layer beacons extend to open sky without sampling blocks. A block-owned eligibility table recognizes glass and hardened glass; sections carry their height and mixed tint to the renderer. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Active block-entity artwork
+
+The resource-pack transaction now builds the block-entity atlas on its worker and publishes it with the accepted pack result on join and reload. Missing or invalid overrides retain the validated startup tile. Texture and UV publication advance together. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Loom banner previews
+
+JSON-UI banner controls draw ordered front-cloth layers from the active artwork. Loom pattern choices and results publish bounded pattern and dye bindings, including existing banner layers. No existing completion entry is advanced by this change; the remaining gates are recorded in `plan.md`.
+
+## Protocol codec swap
+
+`protocol` uses protocolgen's vendored contract crate as its only codec; Valentine and its
+normalization machinery are gone. Packet routing and UI budgets derive from the generated packet
+table and field sites rather than hand-maintained ID lists. The ported tests have not been
+executed locally. No existing completion entry is advanced.

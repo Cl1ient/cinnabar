@@ -1,6 +1,7 @@
 //! Assertions shared with app-owned installed-carrier integration tests.
 use super::*;
-use crate::test_support::{fixture_font, fixture_hud};
+use crate::test_support::fixture_hud;
+use ui_engine::test_support::fixture_font;
 
 /// Checks installed geometry admission and diagnostic fallback without owning asset paths.
 pub fn assert_installed_geometry(
@@ -13,6 +14,7 @@ pub fn assert_installed_geometry(
         UiPresentationRuntime::with_hud_and_icons(fixture_font(), fixture_hud(), icons).unwrap();
     presentation.set_equipment_catalog(equipment);
     presentation.set_gui_models(world, entities).unwrap();
+    let icons = presentation.icon_catalog.as_deref().unwrap();
     for identifier in ["minecraft:dirt", "minecraft:grass_block"] {
         let icon = presentation.item_icon(identifier, 0).unwrap();
         assert!(presentation.gui_models.models.contains_key(&icon_key(icon)));
@@ -23,6 +25,7 @@ pub fn assert_installed_geometry(
                 identifier: identifier.into(),
                 metadata: 0,
             })
+            .and_then(|held| held.model(icons))
             .unwrap();
         assert_eq!(model.vertices.len(), 36);
         assert!(matches!(
@@ -38,6 +41,7 @@ pub fn assert_installed_geometry(
                 identifier: "minecraft:shield".into(),
                 metadata: 0,
             })
+            .and_then(|held| held.model(icons))
             .unwrap();
         assert!(matches!(
             shield.placements[0],
@@ -51,7 +55,7 @@ pub fn assert_installed_geometry(
             presentation.item_icon("minecraft:dirt", 0).unwrap(),
             &Default::default(),
             [None; 4],
-            [Some(shield); 2],
+            [Some(&shield); 2],
             true,
         )
         .unwrap();

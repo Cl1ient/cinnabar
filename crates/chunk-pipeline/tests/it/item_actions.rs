@@ -32,7 +32,9 @@ const WIRE_ENCODING_ITEM_ID: i32 = 25_000;
 
 fn item_assets() -> Arc<RuntimeEntityAssets> {
     let compiled = CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
         seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [0x31; 32],
         block_visual_count: 1,
         sources: vec![
@@ -106,6 +108,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         item_visuals: vec![
             ItemVisualDefinition {
                 grip: assets::item::grip::ItemGrip::Unresolved,
+                glint: assets::item::glint::ItemGlint::Unresolved,
                 fuel: assets::item::fuel::ItemFuel::Unresolved,
                 durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,
@@ -126,6 +129,7 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
             },
             ItemVisualDefinition {
                 grip: assets::item::grip::ItemGrip::Unresolved,
+                glint: assets::item::glint::ItemGlint::Unresolved,
                 fuel: assets::item::fuel::ItemFuel::Unresolved,
                 durability: assets::item::durability::ItemDurability::Unresolved,
                 armour: assets::item::armour::ItemArmour::Unresolved,
@@ -153,7 +157,9 @@ fn item_assets() -> Arc<RuntimeEntityAssets> {
         .into_boxed_slice(),
         render: Default::default(),
     }
-    .with_unresolved_seats();
+    .with_unresolved_item_use()
+    .with_unresolved_seats()
+    .with_unresolved_interactions();
     let bytes = encode_entity_blob(&compiled).unwrap();
     Arc::new(RuntimeEntityAssets::decode(&bytes).unwrap())
 }
@@ -223,11 +229,11 @@ fn spawn(runtime_id: u64, unique_id: i64, held_item: NetworkItemStack) -> WorldE
 fn registry(network_id: i32, identifier: &str) -> WorldEvent {
     WorldEvent::ItemActor(ItemActorEvent::Registry(ItemRegistryEvent {
         entries: Arc::from([ItemRegistryEntry {
-            components: None,
             identifier: Arc::from(identifier),
             network_id,
             component_based: false,
             version: ItemRegistryVersion::Legacy,
+            components: None,
             component_digest: [7; 32],
             negotiated_max_stack_size: None,
             canonical_empty_component_data: true,
@@ -578,7 +584,6 @@ fn registry_record_bound_accepts_exact_limit_and_rejects_limit_plus_one_atomical
         WorldEvent::ItemActor(ItemActorEvent::Registry(ItemRegistryEvent {
             entries: (0..count)
                 .map(|index| ItemRegistryEntry {
-                    components: None,
                     identifier: if index == 0 {
                         Arc::from(first_identifier)
                     } else {
@@ -587,6 +592,7 @@ fn registry_record_bound_accepts_exact_limit_and_rejects_limit_plus_one_atomical
                     network_id: index as i32 + 1,
                     component_based: false,
                     version: ItemRegistryVersion::Legacy,
+                    components: None,
                     component_digest: [index as u8; 32],
                     negotiated_max_stack_size: None,
                     canonical_empty_component_data: true,

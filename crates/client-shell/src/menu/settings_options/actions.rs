@@ -7,6 +7,11 @@ use {
 };
 
 impl MenuRuntime {
+    /// Whether binding capture currently owns desktop input.
+    pub fn is_remapping_key(&self) -> bool {
+        self.key_remap.is_some()
+    }
+
     /// Applies settings navigation and edits without starting a game session.
     pub(in crate::menu) fn activate_settings(&mut self, action: MenuAction) {
         match action {
@@ -53,6 +58,22 @@ impl MenuRuntime {
                 }
                 self.set_option(index, value);
                 self.settings_dropdown = None;
+            }
+            MenuAction::SettingsVideoPreset(preset) => {
+                let overrides = self.session_overrides.len();
+                self.session_overrides.retain(|(index, _)| {
+                    !launcher::menu::settings_options::video_presets::VideoPreset::controls(
+                        launcher::menu::settings_options::SETTINGS_OPTIONS[*index].name,
+                    )
+                });
+                let changed = Arc::make_mut(&mut self.settings_options).apply_video_preset(preset);
+                if changed || overrides != self.session_overrides.len() {
+                    self.settings_dirty = true;
+                    self.settings_apply = true;
+                }
+                self.settings_dropdown = None;
+                self.settings_scale_picker = false;
+                self.settings_slider_selected = None;
             }
             MenuAction::SettingsLanguage(index) => self.set_language(index),
             MenuAction::SettingsDropdown(index) => {

@@ -28,6 +28,7 @@ fn compile_block_overlay(
 mod budget;
 mod builtins;
 mod capacity;
+mod hd_textures;
 mod legacy;
 mod lighting;
 mod random_offset;
@@ -163,6 +164,7 @@ fn block(name: &str, state_count: u32, visual: CustomBlockVisuals) -> CustomBloc
         collides: true,
         collision_boxes: None,
         selection: Default::default(),
+        friction: None,
         visual: Arc::new(visual),
     }
 }

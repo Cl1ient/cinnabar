@@ -216,8 +216,8 @@ fn reconstructed_subchunk_after_original_deadline_commits_without_stale_classifi
     complete_pending_decode_jobs(&mut stream);
 
     assert_eq!(stream.stats().sub_chunk_timeouts, 0);
-    assert_eq!(stream.stats().phase2_outcomes.stale, 0);
-    assert_eq!(stream.stats().phase2_outcomes.all_air, 1);
+    assert_eq!(stream.stats().publication_outcomes.stale, 0);
+    assert_eq!(stream.stats().publication_outcomes.all_air, 1);
     assert!(stream.loaded_columns.contains(&key.chunk()));
 }
 

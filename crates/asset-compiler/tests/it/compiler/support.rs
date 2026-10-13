@@ -38,6 +38,7 @@ pub(super) fn compile_pack(
 /// [`with_canonical_air`] to satisfy the same compile-time contract.
 pub(super) fn canonical_air_record(sequential_id: u32, network_hash: u32) -> RegistryRecord {
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id,
         network_hash,
         name: "minecraft:air".into(),
@@ -236,6 +237,7 @@ pub(super) fn record(
         ModelFamily::Unknown
     };
     RegistryRecord {
+        beacon_tint: assets::BeaconTint::Unresolved,
         sequential_id,
         network_hash,
         name: name.into(),
@@ -545,6 +547,7 @@ pub(super) fn registry_bytes_for_protocol(protocol: u32, records: &[RegistryReco
         bytes.extend_from_slice(&placement.key.to_le_bytes());
         bytes.extend_from_slice(&placement.alternate.unwrap_or(0).to_le_bytes());
         bytes.push(placement.flags.bits());
+        bytes.push(record.beacon_tint as u8);
         for collision_box in &record.collision_seed.boxes {
             for coordinate in [
                 collision_box.min_x,

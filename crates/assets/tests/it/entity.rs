@@ -7,6 +7,8 @@ mod animation_capacity;
 mod bind_pose;
 #[path = "entity/controller_blend.rs"]
 mod controller_blend;
+#[path = "entity/inherited_locators.rs"]
+mod inherited_locators;
 #[path = "entity/material_states.rs"]
 mod material_states;
 #[path = "entity/molang_programs.rs"]
@@ -19,3 +21,8 @@ mod review_regressions;
 mod runtime_admission;
 #[path = "entity/suite.rs"]
 mod suite;
+
+#[path = "entity/interaction_traits.rs"]
+mod interaction_traits;
+#[path = "entity/placement_frame.rs"]
+mod placement_frame;

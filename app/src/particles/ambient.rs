@@ -58,7 +58,7 @@ impl AmbientParticles {
             leaf_effect_present || fire_effect_present || portal::effects_present(system);
         let view_valid = valid_view(view);
         self.diagnostics.enabled = bevy::log::tracing::enabled!(
-            target: "bedrock_client::ambient_leaves",
+            target: "cinnabar::ambient_leaves",
             bevy::log::Level::DEBUG
         );
         if due == 0 || !effect_present || !view_valid {
@@ -79,7 +79,7 @@ impl AmbientParticles {
                     self.try_fire(block, stream, world, collisions, system);
                 }
                 if leaf_effect_present {
-                    self.try_leaf(block, stream, world, collisions, system);
+                    self.try_leaf(block, stream, world, system);
                 }
                 // Legacy block callbacks use only the nearest sample cohort.
                 if index < particles::ambient::MIN_SAMPLES {
@@ -110,7 +110,7 @@ impl AmbientParticles {
 
     fn due_ticks(&mut self, elapsed: Duration) -> usize {
         self.accumulated_nanos = self.accumulated_nanos.saturating_add(elapsed.as_nanos());
-        let tick_nanos = world::TICK_DURATION.as_nanos();
+        let tick_nanos = simulation_clock::TICK_DURATION.as_nanos();
         let elapsed_ticks = self.accumulated_nanos / tick_nanos;
         self.accumulated_nanos %= tick_nanos;
         elapsed_ticks.min(MAX_LOCAL_PHYSICS_TICKS_PER_FRAME as u128) as usize
@@ -121,7 +121,6 @@ impl AmbientParticles {
         block: [i32; 3],
         stream: &WorldStream,
         world: &StreamParticleWorld<'_>,
-        collisions: &PhysicsCollisionRegistries,
         system: &mut ParticleSystem,
     ) {
         let Some(runtime_id) = world.block_runtime_id(block) else {
@@ -151,8 +150,7 @@ impl AmbientParticles {
             return;
         };
         let below = stream.runtime_assets().resolve(mode, below_id);
-        let identifier = collisions.block_identifier(mode, below_id);
-        if !below.is_known() || !material_allows_leaf(below.flags(), identifier) {
+        if !material_allows_leaf(below.native_material()) {
             return;
         }
         if self.diagnostics.enabled {
@@ -190,22 +188,25 @@ mod tests {
     #[test]
     fn ambient_leaf_cadence_is_fixed_tick_not_render_frame_and_resets_without_a_backlog() {
         let mut ambient = AmbientParticles::default();
-        let quarter_tick = world::TICK_DURATION / 4;
+        let quarter_tick = simulation_clock::TICK_DURATION / 4;
         for _ in 0..30 {
             for _ in 0..3 {
                 assert_eq!(ambient.due_ticks(quarter_tick), 0);
             }
             assert_eq!(ambient.due_ticks(quarter_tick), 1);
         }
-        assert_eq!(ambient.due_ticks(world::TICK_DURATION * 3), 3);
+        assert_eq!(ambient.due_ticks(simulation_clock::TICK_DURATION * 3), 3);
         assert_eq!(
-            ambient.due_ticks(world::TICK_DURATION * 1000),
+            ambient.due_ticks(simulation_clock::TICK_DURATION * 1000),
             MAX_LOCAL_PHYSICS_TICKS_PER_FRAME
         );
         assert_eq!(ambient.due_ticks(Duration::ZERO), 0);
         assert_eq!(ambient.due_ticks(quarter_tick), 0);
         ambient.reset();
-        assert_eq!(ambient.due_ticks(world::TICK_DURATION - quarter_tick), 0);
+        assert_eq!(
+            ambient.due_ticks(simulation_clock::TICK_DURATION - quarter_tick),
+            0
+        );
         assert_eq!(ambient.due_ticks(quarter_tick), 1);
     }
 }

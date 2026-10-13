@@ -34,17 +34,15 @@ use {
     },
     client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
     client_state::{ClientFrameSet, RuntimeSettings, SemanticInputSnapshot},
-    client_ui::test_support::fixture_font,
+    ui_engine::test_support::fixture_font,
 };
 use {
-    client_ui::ui_runtime::{
-        UiRuntime,
-        presentation::{UiPresentationRuntime, inventory_pointer::InventoryCellHit},
-    },
+    client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime},
     inventory::inventory_ledger::{
         GENERIC_STORAGE_WINDOW_TYPE, INVENTORY_REQUEST_TIMEOUT_MILLIS, InventoryPendingState,
         SMALL_STORAGE_SLOT_COUNT,
     },
+    ui_screens::container_actions::InventoryCellHit,
 };
 
 const PHYSICAL_SIZE: [u32; 2] = [1280, 720];
@@ -789,11 +787,11 @@ fn apply_apple_registry(player_runtime: &mut PlayerRuntime, runtime: &mut UiRunt
         .inventory_ledger_mut(player_runtime)
         .apply_registry(&ItemRegistryEvent {
             entries: Arc::from([ItemRegistryEntry {
-                components: None,
                 identifier: Arc::from("minecraft:apple"),
                 network_id: 6,
                 component_based: true,
                 version: ItemRegistryVersion::DataDriven,
+                components: None,
                 component_digest: [6; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: false,

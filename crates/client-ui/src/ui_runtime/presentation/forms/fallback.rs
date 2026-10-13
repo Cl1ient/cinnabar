@@ -1,11 +1,12 @@
 //! The programmatic dialog used when the JSON-UI carrier is absent or a form's
 //! template cannot resolve: a clipped, scrollable text list on menu surfaces.
-use super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime, rect};
+use super::super::{UiPresentationError, UiPresentationRuntime, rect};
 use super::FormProjection;
 use crate::ui_runtime::{LocalFormAction, UiRuntime};
 use protocol::{MenuElement, ServerFormModel};
 use std::sync::Arc;
 use ui::{SafeArea, TextLayout, UiNode, UiNodeId, UiRect, UiVisual};
+use ui_engine::text_metrics::TextMetrics;
 
 impl UiPresentationRuntime {
     #[allow(clippy::too_many_arguments)]
@@ -67,15 +68,8 @@ impl UiPresentationRuntime {
         };
         let mut body = body_text.as_str();
         let mut buttons = labels.as_slice();
-        // Rows grow to the tallest multi-line label; empty lines drop, as a
-        // vanilla label discards them.
-        let label_lines = |label: &str| {
-            label
-                .split('\n')
-                .filter(|line| !line.is_empty())
-                .count()
-                .clamp(1, MAX_LABEL_LINES)
-        };
+        // Rows grow to the tallest multi-line label; every newline starts a line, blank or not.
+        let label_lines = |label: &str| label.split('\n').count().clamp(1, MAX_LABEL_LINES);
         let lines = buttons
             .iter()
             .map(|label| label_lines(label))
@@ -233,10 +227,10 @@ impl UiPresentationRuntime {
             );
             *next = next.saturating_add(1);
             let mut carry = String::new();
-            let label_lines = label.split('\n').filter(|line| !line.is_empty());
+            let label_lines = label.split('\n');
             for (row, line) in label_lines.take(MAX_LABEL_LINES).enumerate() {
                 let source = format!("{carry}{line}");
-                carry = super::engine::active_codes(&source);
+                carry = ui_engine::engine::text_paint::active_codes(&source);
                 let layout = fit_line(self, metrics, &source, (text_width - 24.0).max(1.0))?;
                 let top = y + 10.0 + row as f32 * line_height;
                 text(

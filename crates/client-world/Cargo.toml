@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+simulation-clock = { path = "../simulation-clock" }
 actor-animation = { path = "../actor-animation" }
 render-api = { path = "../render-api" }
 assets = { path = "../assets" }
@@ -18,6 +19,7 @@ thiserror.workspace = true
 world = { path = "../world" }
 
 [dev-dependencies]
+test-alloc = { path = "../test-alloc" }
 actor-animation = { path = "../actor-animation", features = ["test-support"] }
 assets = { path = "../assets", features = ["test-support"] }
 test-time = { path = "../test-time" }

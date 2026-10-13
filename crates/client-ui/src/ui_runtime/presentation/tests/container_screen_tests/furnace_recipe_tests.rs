@@ -1,10 +1,8 @@
-use crate::ui_runtime::{
-    inventory_actions::recipe_book_entries, inventory_drag::PointerAction,
-    presentation::screens::Widget,
-};
+use crate::ui_runtime::{inventory_actions::recipe_book_entries, inventory_drag::PointerAction};
 use ::protocol::test_support::recipes::{
     CraftingDataFixture, IngredientFixture, OutputFixture, RecipeFixture,
 };
+use ui_screens::container_actions::Widget;
 use {super::*, ui::IconRef};
 
 #[test]
@@ -22,11 +20,11 @@ fn furnace_recipe_panel_lists_outputs_and_routes_filter_tabs_and_search() {
             .into_iter()
             .enumerate()
             .map(|(index, name)| ::protocol::ItemRegistryEntry {
-                components: None,
                 identifier: name.into(),
                 network_id: index as i32 + 1,
                 component_based: false,
                 version: ::protocol::ItemRegistryVersion::None,
+                components: None,
                 component_digest: [0; 32],
                 negotiated_max_stack_size: Some(64),
                 canonical_empty_component_data: true,

@@ -19,32 +19,32 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'acceptance\Load.ps1')
 
-$ProjectRoot = Get-Phase2ProjectRoot -EntryPath $PSCommandPath
-Assert-Phase2Duration -DurationSeconds $DurationSeconds
+$ProjectRoot = Get-AcceptanceProjectRoot -EntryPath $PSCommandPath
+Assert-AcceptanceDuration -DurationSeconds $DurationSeconds
 if ($InitialRadius -ne 16) {
     throw 'InitialRadius must be exactly 16; the client uses its authoritative radius-16 contract and receives no radius CLI flag'
 }
 if ($OpenSettingsOverlay) {
-    throw 'OpenSettingsOverlay is unavailable until the Phase 5 adapter is integrated'
+    throw 'OpenSettingsOverlay is unavailable until the settings adapter is integrated'
 }
 if ($SkipClientBuild -and [string]::IsNullOrWhiteSpace($ClientExecutable)) {
     throw 'SkipClientBuild requires ClientExecutable'
 }
-$AuthCacheFull = Resolve-Phase2ContainedPath -ProjectRoot $ProjectRoot -Path $AuthCache -Scope Local
+$AuthCacheFull = Resolve-AcceptanceContainedPath -ProjectRoot $ProjectRoot -Path $AuthCache -Scope Local
 $lunarPrerequisite = $null
 if ($Server -eq 'Zeqa') {
     if ($Mode -cne 'Diagnostic' -and -not $FullViewTeleportGate) {
         throw "Zeqa $Mode requires FullViewTeleportGate and a matching Lunar prerequisite"
     }
-    $remoteRoot = Join-Path $ProjectRoot '.local\phase2\remote'
-    $lunarPrerequisite = Find-Phase2CompletedLunarPrerequisite -RemoteRoot $remoteRoot -Mode $Mode `
+    $remoteRoot = Join-Path $ProjectRoot '.local\world-acceptance\remote'
+    $lunarPrerequisite = Find-CompletedLunarPrerequisite -RemoteRoot $remoteRoot -Mode $Mode `
         -ExpectedPresentMode $PresentMode -ExpectedInitialRadius $InitialRadius `
         -RequireFullView:$FullViewTeleportGate
     if ($null -eq $lunarPrerequisite) {
         throw "Zeqa $Mode is gated on a hashable completed Lunar $Mode manifest"
     }
 }
-$RunDirectory = New-Phase2RunDirectory -ProjectRoot $ProjectRoot -Kind remote -RunId $RunId
+$RunDirectory = New-AcceptanceRunDirectory -ProjectRoot $ProjectRoot -Kind remote -RunId $RunId
 $upstream = if ($Server -eq 'Lunar') { 'pvp.lunarbedrock.com:19134' } else { 'zeqa.net:19132' }
 $clientAcceptanceSeconds = $DurationSeconds + 5
 $clientArguments = @(
@@ -58,7 +58,7 @@ $clientArguments = @(
 if ($FullViewTeleportGate) { $clientArguments += '--full-view-teleport-gate' }
 
 $manifest = [pscustomobject][ordered]@{
-    schema = 'rust-mcbe-phase2-remote-v1'
+    schema = 'rust-mcbe-remote-acceptance-v1'
     status = if ($ValidateOnly) { 'validated' } else { 'pending' }
     server = $Server
     upstream = $upstream
@@ -82,15 +82,15 @@ $manifest = [pscustomobject][ordered]@{
     auth_cache_scope = '.local'
     full_view_teleport_gate = [bool]$FullViewTeleportGate
     client_arguments = @($clientArguments)
-    performance = New-Phase2PerformanceContract
+    performance = New-AcceptancePerformanceContract
     client_shutdown_grace_seconds = 5
     lunar_prerequisite_mode = if ($null -eq $lunarPrerequisite) { $null } else { $lunarPrerequisite.Mode }
     lunar_prerequisite_manifest_sha256 = if ($null -eq $lunarPrerequisite) { $null } else { $lunarPrerequisite.Sha256 }
 }
-Write-Phase2Json -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
+Write-AcceptanceJson -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
 
 if ($ValidateOnly) {
-    Write-Output "PHASE2_RUN_DIRECTORY=$RunDirectory"
+    Write-Output "REMOTE_ACCEPTANCE_RUN_DIRECTORY=$RunDirectory"
     return
 }
 
@@ -106,11 +106,11 @@ try {
     Invoke-CheckedBuild -Executable 'go' -Arguments @('build', '-trimpath', '-o', $CoreExecutable, './core/cmd/bedrock-core') `
         -LogPath (Join-Path $RunDirectory 'build-core.log') -WorkingDirectory $ProjectRoot
     if (-not $SkipClientBuild) {
-        Invoke-CheckedBuild -Executable 'cargo' -Arguments @('build', '-p', 'bedrock-client', '--release', '--locked') `
+        Invoke-CheckedBuild -Executable 'cargo' -Arguments @('build', '-p', 'cinnabar', '--release', '--locked') `
             -LogPath (Join-Path $RunDirectory 'build-client.log') -WorkingDirectory $ProjectRoot
     }
     $ClientExecutableFull = if ([string]::IsNullOrWhiteSpace($ClientExecutable)) {
-        Join-Path $ProjectRoot 'target\release\bedrock-client.exe'
+        Join-Path $ProjectRoot 'target\release\cinnabar.exe'
     }
     elseif ([IO.Path]::IsPathRooted($ClientExecutable)) {
         [IO.Path]::GetFullPath($ClientExecutable)
@@ -134,12 +134,12 @@ try {
         -WorkingDirectory $ProjectRoot -StdoutPath (Join-Path $RunDirectory 'client.stdout.log') `
         -StderrPath (Join-Path $RunDirectory 'client.stderr.log')
     try {
-        $null = Wait-ProcessOutputMarker -Handle $clientHandle -Marker 'RUST_MCBE_WORLD_READY ' -TimeoutSeconds 180
+        $null = Wait-ProcessOutputMarker -Handle $clientHandle -Marker 'CINNABAR_WORLD_READY ' -TimeoutSeconds 180
     }
     catch {
         if ($Mode -cne 'Diagnostic') { throw }
         if ($clientHandle.Process.HasExited -or $coreHandle.Process.HasExited -or
-            -not $_.Exception.Message.StartsWith("timed out waiting for 'RUST_MCBE_WORLD_READY '", [StringComparison]::Ordinal)) {
+            -not $_.Exception.Message.StartsWith("timed out waiting for 'CINNABAR_WORLD_READY '", [StringComparison]::Ordinal)) {
             throw
         }
         $joinStopwatch.Stop()
@@ -149,20 +149,20 @@ try {
         Stop-BoundedProcess -Handle $coreHandle -Kind core
         Complete-ProcessLogs $coreHandle
         $coreLogsCompleted = $true
-        Complete-Phase2DiagnosticEvidence -Manifest $manifest `
+        Complete-PublicationDiagnosticEvidence -Manifest $manifest `
             -ClientLogPath (Join-Path $RunDirectory 'client.stdout.log') `
             -CoreLogPath (Join-Path $RunDirectory 'core.stderr.log') `
             -ExpectedPresentMode $PresentMode -WorldReadyObserved:$false -Server $Server
-        Write-Phase2Json -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
+        Write-AcceptanceJson -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
         $runSucceeded = $true
-        Write-Output "PHASE2_RUN_DIRECTORY=$RunDirectory"
+        Write-Output "REMOTE_ACCEPTANCE_RUN_DIRECTORY=$RunDirectory"
         return
     }
     $joinStopwatch.Stop()
     $joinMilliseconds = $joinStopwatch.Elapsed.TotalMilliseconds
     $manifest.world_ready_observed = $true
     $resourcesPath = Join-Path $RunDirectory 'resources.json'
-    $null = Measure-Phase2Resources -ClientHandle $clientHandle -CoreHandle $coreHandle -OutputPath $resourcesPath
+    $null = Measure-PublicationResources -ClientHandle $clientHandle -CoreHandle $coreHandle -OutputPath $resourcesPath
     if (-not $clientHandle.Process.WaitForExit(($DurationSeconds + 30) * 1000)) {
         throw 'client did not exit after its bounded acceptance session'
     }
@@ -171,13 +171,13 @@ try {
     $clientLogsCompleted = $true
     Complete-ProcessLogs $coreHandle
     $coreLogsCompleted = $true
-    $manifest.cache_boundary_evidence = Get-Phase2CacheBoundaryEvidence `
+    $manifest.cache_boundary_evidence = Get-CacheBoundaryEvidence `
         -CoreLogPath (Join-Path $RunDirectory 'core.stderr.log')
-    $evidence = Assert-Phase2Evidence -MetricsPath (Join-Path $RunDirectory 'metrics.json') `
+    $evidence = Assert-PublicationEvidence -MetricsPath (Join-Path $RunDirectory 'metrics.json') `
         -ResourcesPath $resourcesPath -ClientLogPath (Join-Path $RunDirectory 'client.stdout.log') `
         -ExpectedPresentMode $PresentMode -JoinMilliseconds $joinMilliseconds `
         -RequireFullView:$FullViewTeleportGate
-    $publicationSequence = Get-Phase2PublicationSequenceEvidence `
+    $publicationSequence = Get-PublicationSequenceEvidence `
         -ClientLogPath (Join-Path $RunDirectory 'client.stdout.log') -ExpectedPresentMode $PresentMode `
         -WorldReadyObserved:$true -Server $Server
     if ($Mode -cne 'Diagnostic' -and
@@ -186,7 +186,7 @@ try {
     }
     $boundaryUnavailable = [string]$manifest.cache_boundary_evidence.classification -ceq 'unavailable'
     if ($Mode -cne 'Diagnostic' -or -not $boundaryUnavailable) {
-        Assert-Phase2CacheBoundaryConsistency -Server $Server `
+        Assert-CacheBoundaryConsistency -Server $Server `
             -ClientBlobCacheRoute $publicationSequence.ClientBlobCacheRoute `
             -BoundaryEvidence $manifest.cache_boundary_evidence
     }
@@ -202,14 +202,14 @@ try {
     $manifest.metrics_evidence = [pscustomobject][ordered]@{ status = 'passed'; reason = $null }
     $manifest.resources_evidence = [pscustomobject][ordered]@{ status = 'passed'; reason = $null }
     $manifest | Add-Member -MemberType NoteProperty -Name final_publication -Value $evidence.publication -Force
-    Write-Phase2Json -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
+    Write-AcceptanceJson -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
     $runSucceeded = $true
-    Write-Output "PHASE2_RUN_DIRECTORY=$RunDirectory"
+    Write-Output "REMOTE_ACCEPTANCE_RUN_DIRECTORY=$RunDirectory"
 }
 finally {
     if (-not $runSucceeded) {
         $manifest.status = 'failed'
-        Write-Phase2Json -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
+        Write-AcceptanceJson -Path (Join-Path $RunDirectory 'manifest.json') -Value $manifest
     }
     if ($null -ne $clientHandle) {
         Stop-BoundedProcess -Handle $clientHandle -Kind app

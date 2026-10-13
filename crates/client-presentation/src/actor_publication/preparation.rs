@@ -1,5 +1,12 @@
 //! Advances actors and captures hand readiness before UI and outbound interactions.
+use super::hand::hand_motion_matrix;
 use super::*;
+use crate::{
+    actor_clock::{ActorFrameClock, publish_local_actor_visibility},
+    presentation::{actors::ActorRigPresentation, equipment::StagedSessionIcons},
+};
+use bevy::math::Mat4;
+use bevy::prelude::DetectChanges;
 
 /// Retained actor state shared by early simulation and final render preparation.
 #[derive(Resource, Default)]
@@ -28,6 +35,7 @@ pub struct ActorFrameState {
     pub(super) captured_sampling_camera: Option<([f32; 2], [f32; 3])>,
     pub(super) first_person: bool,
     pub(super) java_mode: bool,
+    pub(super) combat_visuals: render_api::CombatVisuals,
     pub(super) hand_use: (
         Option<u32>,
         Option<actor_animation::AttachableAnimationInput<'static>>,
@@ -112,6 +120,7 @@ pub fn advance_actor_frame(
         captured_sampling_camera,
         first_person: captured_first_person,
         java_mode: captured_java_mode,
+        combat_visuals: captured_combat_visuals,
         hand_use: captured_hand_use,
         ..
     } = &mut *state;
@@ -203,6 +212,8 @@ pub fn advance_actor_frame(
         camera.renders_first_person(first_person)
     });
     let java_mode = settings.feel().java_animations;
+    // Java selects poses and items; the shared combat profile always owns bob, hurt and glint.
+    let combat_visuals = render_api::DEFAULT_COMBAT_VISUALS;
     let mut local_feed = input.local_feed.take();
     if let Some(feed) = local_feed.as_mut() {
         feed.first_person = first_person;
@@ -224,6 +235,7 @@ pub fn advance_actor_frame(
     }
     if let Some(stream) = client_world.stream.as_mut() {
         if let Some(equipment) = equipment.as_deref() {
+            stream.set_item_use_overlays(equipment.item_use_overlays());
             stream.set_item_use_durations(equipment.item_use_durations());
             stream.set_item_attack_timings(equipment.item_attack_timings());
         }
@@ -246,7 +258,7 @@ pub fn advance_actor_frame(
         if let Some(progress) = input.swing_progress {
             stream.sync_local_swing(progress);
         }
-        stream.set_actor_camera_rotation(actor_camera_rotation(view.camera_rotation()));
+        stream.set_actor_camera_rotation(views::actor_camera_rotation(view.camera_rotation()));
         if let Ok((transform, _)) = camera.single() {
             stream.set_actor_camera_position(transform.translation.to_array());
         }
@@ -254,7 +266,7 @@ pub fn advance_actor_frame(
             camera
                 .single()
                 .ok()
-                .and_then(|(transform, projection)| animation_view(transform, projection)),
+                .and_then(|(transform, projection)| views::animation_view(transform, projection)),
         );
         let _animation = profiler
             .as_deref()
@@ -295,7 +307,7 @@ pub fn advance_actor_frame(
 
     let sampling_camera = camera.single().ok().map(|(transform, _)| {
         (
-            actor_camera_rotation(view.camera_rotation()),
+            views::actor_camera_rotation(view.camera_rotation()),
             transform.translation.to_array(),
         )
     });
@@ -316,6 +328,8 @@ pub fn advance_actor_frame(
                     step.partial_tick,
                     poses,
                 )?;
+                presentation.submission.overlay_rgba8 =
+                    crate::presentation::combat::overlay(actor, combat_visuals);
                 register_player_skin(
                     &mut presentation,
                     &rig,
@@ -377,7 +391,7 @@ pub fn advance_actor_frame(
     if let Some(equipment) = equipment.as_deref_mut() {
         geometries.extend(equipment.take_pending_geometries());
     }
-    register_geometries(&mut hand_builder.0, &mut scene, geometries);
+    register_geometries(&mut hand_builder.0, &mut scene, geometries, None);
     let fov = camera
         .single()
         .ok()
@@ -387,6 +401,7 @@ pub fn advance_actor_frame(
     *captured_sampling_camera = sampling_camera;
     *captured_first_person = first_person;
     *captured_java_mode = java_mode;
+    *captured_combat_visuals = combat_visuals;
     *captured_step = Some(step);
     *captured_input = Some(input);
 }

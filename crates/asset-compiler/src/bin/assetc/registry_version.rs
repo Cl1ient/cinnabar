@@ -2,13 +2,12 @@ use std::{error::Error, fmt, path::Path};
 
 use assets::{
     LightProperties, RegistryRecord, read_light_registry, read_light_registry_for_protocol,
-    read_registry, read_registry_for_protocol,
+    read_registry, read_registry_for_protocol, registry_header_protocol,
 };
 
 /// Decoded block records paired with their header-declared wire protocol.
 pub(super) type BlockRegistryInput = (Box<[RegistryRecord]>, u32);
 
-use assets::registry::REGISTRY_MAGIC as BLOCK_REGISTRY_MAGIC;
 const LIGHT_REGISTRY_MAGIC: &[u8; 8] = b"LREG1001";
 /// The protocol assumed only when a header is too malformed to name one; the
 /// strict readers then reject it with their canonical legacy decode error.
@@ -73,6 +72,7 @@ fn decoded_registry_protocol(magic: &[u8; 8], bytes: &[u8]) -> Option<u32> {
     }
 }
 
+/// Accepts supported wire protocols and attributes unsupported headers to their input file.
 fn supported_registry_protocol(path: &Path, protocol: u32) -> Result<u32, RegistryVersionError> {
     match protocol {
         1001 | 2193 => Ok(protocol),
@@ -90,13 +90,13 @@ pub(super) fn read_block_registry_input(
     path: &Path,
     bytes: &[u8],
 ) -> Result<BlockRegistryInput, Box<dyn Error>> {
-    match decoded_registry_protocol(BLOCK_REGISTRY_MAGIC, bytes) {
-        Some(protocol) => {
+    match registry_header_protocol(bytes) {
+        Ok(protocol) => {
             let protocol = supported_registry_protocol(path, protocol)?;
             Ok((read_registry_for_protocol(bytes, protocol)?, protocol))
         }
         // Malformed headers keep today's exact strict-reader failure.
-        None => Ok((read_registry(bytes)?, LEGACY_REGISTRY_PROTOCOL)),
+        Err(_) => Ok((read_registry(bytes)?, LEGACY_REGISTRY_PROTOCOL)),
     }
 }
 
@@ -191,6 +191,17 @@ mod tests {
         let digest = Sha256::digest(&bytes);
         bytes.extend_from_slice(&digest);
         bytes
+    }
+
+    #[test]
+    fn the_pinned_active_registry_dispatches_to_its_declared_protocol() {
+        let bytes = assets::pinned_block_registry_bytes();
+        let protocol = assets::active_content_registry_protocol();
+        let expected = assets::read_registry_for_protocol(bytes, protocol).unwrap();
+        let (records, declared) = read_block_registry_input(Path::new("block.bin"), bytes)
+            .expect("decode the pinned active registry");
+        assert_eq!(declared, protocol);
+        assert_eq!(records, expected);
     }
 
     #[test]

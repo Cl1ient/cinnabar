@@ -521,7 +521,7 @@ fn session_icons_pack_onto_the_last_dynamic_page() {
     let dynamic_start = presentation.textures.dynamic_start();
     assert_eq!(
         usize::from(icon.page),
-        dynamic_start + dynamic_textures::SESSION_ICON_PAGE
+        dynamic_start + ui_engine::pages::SESSION_ICON_PAGE
     );
     assert_eq!(icon.uv, [1, 1, 3, 2], "one-pixel gutter around the sprite");
     assert!(
@@ -541,7 +541,7 @@ fn session_glyph_sheets_extend_the_font_and_reset_with_the_session() {
     presentation.set_nametag_anchors(vec![super::super::nametags::NametagAnchor {
         runtime_id: 1,
         position: glam::Vec3::new(0.0, 2.0, 0.0),
-        lines: vec![Arc::from("\u{e005}")],
+        lines: vec![Arc::from("\u{e005}")].into(),
         depth_tested: false,
         text_alpha: 1.0,
         distance: 5.0,
@@ -738,7 +738,7 @@ fn real_carriers_keep_icons_drawable_with_session_pages() {
     let (Some(hud), Some(icons), Some(carrier)) = (
         local("vanilla-v1.mcbehud"),
         local("vanilla-v1.mcbeico"),
-        pack_harness::carrier(),
+        ui_engine::test_support::carrier(),
     ) else {
         eprintln!(
             "skipping real_carriers_keep_icons_drawable_with_session_pages: fixture unavailable; requires installed local carriers (make assets)"

@@ -15,12 +15,12 @@ const DRY_MELT: f32 = f32::from_bits(0xbb03_126e);
 
 fn advance_row(snow: f32, temperature: f32, downfall: f32, rain: [f32; 2]) -> f32 {
     let delta = if rain[1] > RAIN_THRESHOLD {
-        let rate = if temperature > assets::SEASONAL_FOLIAGE_COLD_THRESHOLD {
-            (assets::SEASONAL_FOLIAGE_COLD_THRESHOLD - temperature) * WARM_MELT
+        let rate = if temperature > assets::seasonal_foliage::SEASONAL_FOLIAGE_COLD_THRESHOLD {
+            (assets::seasonal_foliage::SEASONAL_FOLIAGE_COLD_THRESHOLD - temperature) * WARM_MELT
         } else {
             COLD_ACCUMULATION
         };
-        rate * rain[0] * downfall / world::TICKS_PER_SECOND as f32
+        rate * rain[0] * downfall / simulation_clock::TICKS_PER_SECOND as f32
     } else {
         DRY_MELT
     };
@@ -127,7 +127,9 @@ impl WorldStream {
             let (count, minimum, maximum) = definitions
                 .iter()
                 .zip(&self.seasonal_foliage.snow)
-                .filter(|(row, _)| row.temperature < assets::SEASONAL_FOLIAGE_COLD_THRESHOLD)
+                .filter(|(row, _)| {
+                    row.temperature < assets::seasonal_foliage::SEASONAL_FOLIAGE_COLD_THRESHOLD
+                })
                 .fold(
                     (0, 1.0_f32, 0.0_f32),
                     |(count, minimum, maximum), (_, &snow)| {
@@ -176,7 +178,7 @@ mod tests {
         assert!(
             advance_row(
                 0.5,
-                assets::SEASONAL_FOLIAGE_COLD_THRESHOLD,
+                assets::seasonal_foliage::SEASONAL_FOLIAGE_COLD_THRESHOLD,
                 0.8,
                 [1.0, 1.0]
             ) > 0.5

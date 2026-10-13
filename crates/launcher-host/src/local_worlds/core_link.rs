@@ -7,7 +7,7 @@ use std::{
 };
 
 use bridge::{LocalWorld, WorldState};
-use crossbeam_channel::Sender;
+use crossbeam_channel::{Receiver, Sender};
 use launcher::local_worlds::world::WorldStatus;
 
 use super::{lock, manager::Manager};
@@ -24,8 +24,21 @@ pub struct CoreLink {
 }
 
 /// The open world as the core last acknowledged it.
-#[derive(Clone, Default)]
-pub struct CoreRoute(Arc<Mutex<Option<LocalWorld>>>);
+#[derive(Clone)]
+pub struct CoreRoute {
+    acknowledged: Arc<Mutex<Option<LocalWorld>>>,
+    /// Holds one wake-up after each acknowledgement.
+    changed: (Sender<()>, Receiver<()>),
+}
+
+impl Default for CoreRoute {
+    fn default() -> Self {
+        Self {
+            acknowledged: Arc::default(),
+            changed: crossbeam_channel::bounded(1),
+        }
+    }
+}
 
 impl CoreRoute {
     /// The manager's status with a running world held at starting until the core has
@@ -41,7 +54,7 @@ impl CoreRoute {
         let routed = current.state == WorldState::Running
             && current.target.is_some()
             && current.world.as_ref().map(|world| world.id.as_str()) == status.world_id.as_deref()
-            && lock(&self.0).as_ref() == Some(current);
+            && lock(&self.acknowledged).as_ref() == Some(current);
         if status.state == WorldState::Running && !routed {
             status.state = WorldState::Starting;
         }
@@ -49,7 +62,14 @@ impl CoreRoute {
     }
 
     fn acknowledge(&self, report: LocalWorld) {
-        *lock(&self.0) = Some(report);
+        *lock(&self.acknowledged) = Some(report);
+        let _ = self.changed.0.try_send(());
+    }
+
+    /// Wakes after the core acknowledges a route; a wake-up may be left over from an earlier one.
+    #[must_use]
+    pub fn changes(&self) -> Receiver<()> {
+        self.changed.1.clone()
     }
 }
 

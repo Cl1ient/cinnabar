@@ -183,13 +183,13 @@ pub struct PresentationSnapshot {
 
 impl WorldStream {
     #[must_use]
-    pub fn phase2_publication_snapshot(&self, player_column: ChunkKey) -> PublicationSnapshot {
+    pub fn publication_snapshot(&self, player_column: ChunkKey) -> PublicationSnapshot {
         let required = self
             .publisher
             .cohort
             .filter(|cohort| cohort.dimension == player_column.dimension)
             .map_or_else(BTreeSet::new, |_| self.publisher.required_columns.clone());
-        let mut stages = self.stats.phase2_stages;
+        let mut stages = self.stats.publication_stages;
         stages.requests_ready = self.pending_request_count();
         stages.requests_transport_pending = self.requests.transport_pending;
         stages.subchunks_awaiting_response = self.requests.deadlines.len();
@@ -248,7 +248,7 @@ impl WorldStream {
             local_reset_dispatch_classes: self.publisher.local_reset.dispatch_classes,
             request_queue,
             stages,
-            outcomes: self.stats.phase2_outcomes,
+            outcomes: self.stats.publication_outcomes,
             max_queue_wait: StageDurations {
                 decode: self.stats.max_decode_queue_wait,
                 lighting: self.stats.max_light_queue_wait,

@@ -1,16 +1,17 @@
 use super::*;
+use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use std::io::Write;
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 /// Creates only synthetic pack content for environment subscriber tests.
-fn view(files: &[(&str, &[u8])]) -> LayeredPackView {
+pub(super) fn view(files: &[(&str, &[u8])]) -> LayeredPackView {
     stack(&[files])
 }
 
 /// Builds a precedence-ordered stack from independently admitted synthetic archives.
-fn stack(layers: &[&[(&str, &[u8])]]) -> LayeredPackView {
-    let archives = layers.iter().enumerate().map(|(index, files)| {
+pub(super) fn stack(layers: &[&[(&str, &[u8])]]) -> LayeredPackView {
+    let archives = layers.iter().enumerate().rev().map(|(index, files)| {
         let id = format!("00000000-0000-0000-0000-{:012x}", index + 11).parse().unwrap();
         let manifest = format!(r#"{{"format_version":2,"header":{{"uuid":"{id}","version":[1,0,0]}},"modules":[{{"type":"resources"}}]}}"#);
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));

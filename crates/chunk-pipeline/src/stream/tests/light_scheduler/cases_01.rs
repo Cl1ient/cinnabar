@@ -388,13 +388,13 @@ fn mesh_dispatch_bounds_resident_readiness_scan_and_keeps_window_progressing() {
 #[test]
 fn exhausted_removal_authority_still_reclassifies_ready_resident_work() {
     let mut stream = stream();
-    let allowance = PublicationAllowance::new(PublicationServiceConfig::PHASE2_GATE);
+    let allowance = PublicationAllowance::new(PublicationServiceConfig::DEFAULT);
     allowance.begin_frame(
         1,
         0,
         0,
         0,
-        PublicationServiceConfig::PHASE2_GATE.maximum_frame_items,
+        PublicationServiceConfig::DEFAULT.maximum_frame_items,
     );
     stream.set_publication_allowance(allowance);
 

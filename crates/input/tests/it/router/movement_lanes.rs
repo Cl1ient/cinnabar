@@ -110,7 +110,7 @@ fn finalized_tap_does_not_quarantine_the_next_authority_press() {
         .unwrap();
     let tap = router.finalize().unwrap();
     assert!(tap.phases[Action::Jump as usize].released);
-    router.replace_authority(NonZeroU64::new(2).unwrap());
+    router.replace_authority(InputAuthorityGeneration::new(NonZeroU64::new(2).unwrap()));
     router
         .route(DeviceFrame {
             keyboard_mouse: Some(KeyboardMouseFrame {
@@ -126,7 +126,7 @@ fn finalized_tap_does_not_quarantine_the_next_authority_press() {
         })
         .unwrap();
     let next = router.finalize().unwrap();
-    assert_eq!(next.authority_generation, NonZeroU64::new(2).unwrap());
+    assert_eq!(next.authority_generation.get(), NonZeroU64::new(2).unwrap());
     assert!(next.phases[Action::Jump as usize].pressed);
     assert!(next.phases[Action::Jump as usize].held);
 }
@@ -148,7 +148,7 @@ fn pending_tap_is_quarantined_when_authority_changes_before_finalize() {
             ..Default::default()
         })
         .unwrap();
-    router.replace_authority(NonZeroU64::new(2).unwrap());
+    router.replace_authority(InputAuthorityGeneration::new(NonZeroU64::new(2).unwrap()));
     let next = router.finalize().unwrap();
     assert_eq!(next.phases[Action::Jump as usize], Default::default());
 }

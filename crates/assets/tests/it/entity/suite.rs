@@ -31,7 +31,9 @@ use item::{
 pub(super) fn fixture() -> CompiledEntityAssets {
     let source_bytes = br#"{"format_version":"1.10.0"}"#;
     CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
         seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [0x11; 32],
         block_visual_count: 0,
         sources: vec![EntityAssetSource {
@@ -81,13 +83,16 @@ pub(super) fn fixture() -> CompiledEntityAssets {
         item_visual_aliases: Box::new([]),
         render: Default::default(),
     }
+    .with_unresolved_item_use()
     .with_unresolved_seats()
+    .with_unresolved_interactions()
 }
 
 #[path = "suite/geometry_fixture.rs"]
 mod geometry_fixture;
 use geometry_fixture::{geometry_fixture, scalar};
 
+/// Builds a derived geometry with a retained parent for inheritance tests.
 pub(super) fn inherited_geometry_fixture() -> CompiledEntityAssets {
     let mut compiled = geometry_fixture();
     compiled.sources = vec![
@@ -115,6 +120,7 @@ pub(super) fn inherited_geometry_fixture() -> CompiledEntityAssets {
     compiled.geometries = vec![
         compiled.geometries[0].clone(),
         EntityGeometry {
+            animation_no_head_bob: false,
             visible_bounds: None,
             identifier: "geometry.derived".into(),
             inherits: Some(EntityGeometryInheritance {
@@ -180,6 +186,7 @@ fn entity_carrier_rejects_transitive_geometry_inheritance_cycles() {
 fn entity_carrier_rejects_unresolved_inherited_bone_parents() {
     let mut compiled = inherited_geometry_fixture();
     compiled.geometries[1].bones = vec![EntityGeometryBone {
+        locators: Box::default(),
         name: "nose".into(),
         parent: Some("missing".into()),
         pivot: None,
@@ -340,6 +347,7 @@ fn carrier_rejects_dependency_resolution_that_disagrees_with_catalog() {
     ]
     .into_boxed_slice();
     compiled.geometries = vec![EntityGeometry {
+        animation_no_head_bob: false,
         visible_bounds: None,
         identifier: "geometry.allay".into(),
         inherits: None,
@@ -459,12 +467,15 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
     .into_boxed_slice();
 
     CompiledEntityAssetsV4 {
+        item_use_profiles: Box::new([]),
         seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [0x21; 32],
         block_visual_count: 8,
         sources,
         symbols,
         geometries: vec![entity::EntityGeometry {
+            animation_no_head_bob: false,
             visible_bounds: None,
             identifier: "geometry.allay".into(),
             inherits: None,
@@ -472,6 +483,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
             texture_width: 32,
             texture_height: 32,
             bones: vec![entity::EntityGeometryBone {
+                locators: Box::default(),
                 name: "root".into(),
                 parent: None,
                 pivot: None,
@@ -587,6 +599,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         }]
         .into_boxed_slice(),
         rig_bindings: vec![EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             entity_symbol: 0,
             render_controller: 4,
             first_geometry: 0,
@@ -623,6 +636,7 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
         .into_boxed_slice(),
         item_visuals: vec![ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -682,7 +696,9 @@ pub(super) fn carrier_v4_fixture() -> CompiledEntityAssetsV4 {
             geometries: Box::new([]),
         },
     }
+    .with_unresolved_item_use()
     .with_unresolved_seats()
+    .with_unresolved_interactions()
 }
 
 #[test]
@@ -949,6 +965,7 @@ fn carrier_v4_enforces_molang_and_rig_bounds_and_all_indices() {
         .collect();
     compiled.rig_bindings = (0..MAX_ENTITY_RIG_BINDINGS)
         .map(|index| EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             first_geometry: index as u32,
             geometry_count: 1,
             ..compiled.rig_bindings[0]

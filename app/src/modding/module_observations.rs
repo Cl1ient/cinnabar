@@ -5,6 +5,7 @@ use mod_host::{
     ActorObservation, ActorObservationBounds, CombatKind, CombatObservation, MotionObservation,
     VitalsObservation, WorldObservation, module_observations::ModuleObservations,
 };
+use simulation_clock::identity::SessionGeneration;
 use std::{
     collections::VecDeque,
     path::PathBuf,
@@ -50,7 +51,11 @@ pub(super) fn current_target(
     let input = context.input.as_deref()?.snapshot()?;
     let player = context.player.as_deref()?;
     if !movement.accepts_block_interactions()
-        || !crate::interaction_authority::ray_is_current(ray, ui.session_id(), stream)
+        || !crate::interaction_authority::ray_is_current(
+            ray,
+            SessionGeneration::new(ui.session_id()),
+            stream,
+        )
     {
         return None;
     }

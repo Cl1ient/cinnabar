@@ -6,7 +6,7 @@ use super::{UiRuntime, presentation};
 #[cfg(any(test, feature = "test-support"))]
 use inventory::inventory_ledger::CellGesture;
 use inventory::inventory_ledger::{DropSource, InventoryGestureError};
-use presentation::inventory_pointer::InventoryCellHit;
+use ui_screens::container_actions::InventoryCellHit;
 
 /// Admits every ready inventory packet in queue order, stopping at the first
 /// transport refusal. Returns whether anything was admitted.
@@ -108,6 +108,13 @@ impl InventoryKeys {
         self.control = self.modifier_sides[2] || self.modifier_sides[3];
     }
 
+    /// Releases every tracked modifier, for when key releases can no longer be observed.
+    pub fn release_modifiers(&mut self) {
+        self.modifier_sides = [false; 4];
+        self.shift = false;
+        self.control = false;
+    }
+
     pub fn press(&mut self, key: KeyboardKey) {
         if self.presses.len() < Self::MAX_PRESSES {
             self.presses.push(key);
@@ -156,7 +163,7 @@ pub fn dispatch_inventory_key(
     {
         runtime
             .screen_state_mut()
-            .scroll_loom(rows, super::screen_recipes::LOOM_PATTERNS.len());
+            .scroll_loom(rows, ui_screens::container_actions::LOOM_PATTERNS.len());
         return None;
     }
     if drop && runtime.screen_state().text_focused() {

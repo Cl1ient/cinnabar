@@ -424,7 +424,7 @@ fn place_behind_queued_removal(invalidate_tints: bool) -> (WorldStream, SubChunk
         matches!(change, WorldMeshChange::Upsert { key: changed, generation: g, .. }
             if *changed == key && *g == generation)
     });
-    let stages = stream.stats.phase2_stages;
+    let stages = stream.stats.publication_stages;
     assert_eq!(
         stages.mesh_changes_queued - stages.mesh_changes_dequeued,
         stream.mesh_changes.len() as u64,
@@ -764,9 +764,9 @@ fn chunk_data_offload_still_commits_a_ready_block_change() {
 #[test]
 fn a_prediction_dispatches_its_work_without_a_poll() {
     let (mut stream, _, position, key, camera_position) = settled_neighbourhood();
-    let stages = stream.stats.phase2_stages;
+    let stages = stream.stats.publication_stages;
     assert!(stream.predict_block(position, 0, 1));
-    let dispatched = stream.stats.phase2_stages;
+    let dispatched = stream.stats.publication_stages;
     assert!(
         dispatched.light_jobs_dispatched + dispatched.mesh_jobs_dispatched
             > stages.light_jobs_dispatched + stages.mesh_jobs_dispatched

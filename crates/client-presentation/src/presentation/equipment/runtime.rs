@@ -19,6 +19,7 @@ use render_model::{
 
 mod alpha;
 mod attack;
+mod combat;
 mod diagnostics;
 mod elytra;
 mod java;
@@ -115,6 +116,7 @@ pub struct EquipmentRuntime {
     /// Worn head geometry and texture location per skull kind.
     skulls: BTreeMap<u8, (EntityRigId, ActorArtworkLocation)>,
     item_use: Arc<BTreeMap<Box<str>, u32>>,
+    use_overlays: Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>>,
     /// The startup catalog's use durations, before session items join them.
     base_item_use: Arc<BTreeMap<Box<str>, u32>>,
     /// Compiled attack facts with the session's component overrides.
@@ -157,11 +159,7 @@ impl EquipmentRuntime {
         block_entities: Option<Arc<RuntimeBlockEntityAssets>>,
         artwork: ActorArtworkPages,
     ) -> (Self, ActorArtworkPages, Vec<u32>) {
-        let BlockSheets {
-            sheets,
-            by_visual,
-            models: block_models,
-        } = world.as_deref().map_or_else(
+        let mut blocks = world.as_deref().map_or_else(
             || BlockSheets {
                 sheets: Vec::new(),
                 by_visual: BTreeMap::new(),
@@ -169,6 +167,14 @@ impl EquipmentRuntime {
             },
             |world| render_model::equipment::blocks::collect(world, &assets),
         );
+        if let Some(world) = world.as_deref() {
+            blocks.prefer_carried_faces(world, &icons);
+        }
+        let BlockSheets {
+            sheets,
+            by_visual,
+            models: block_models,
+        } = blocks;
         let icon_count = icons.sprites().len();
         let mut block_sheets = by_visual
             .into_iter()
@@ -225,6 +231,10 @@ impl EquipmentRuntime {
             Some(glint) => artwork.with_actor_glint(glint),
             None => artwork,
         };
+        let artwork = match catalog.as_deref().and_then(Self::item_glint) {
+            Some(glint) => artwork.with_item_glint(glint),
+            None => artwork,
+        };
         let (artwork, locations) = artwork.with_equipment_rasters(&rasters);
         let texture_locations = textures
             .iter()
@@ -255,13 +265,27 @@ impl EquipmentRuntime {
             .collect::<Vec<_>>();
         geometries.sort_unstable();
         geometries.dedup();
-        let mut item_use = BTreeMap::from([
-            (Box::from("minecraft:bow"), inventory::LONG_WEAPON_USE_TICKS),
-            (
-                Box::from("minecraft:trident"),
-                inventory::LONG_WEAPON_USE_TICKS,
-            ),
-        ]);
+        let mut item_use: BTreeMap<Box<str>, u32> = assets
+            .item_use_profiles()
+            .iter()
+            .filter_map(|entry| {
+                let assets::item_use::ItemUseProfile::Provisional { duration, .. } = &entry.profile
+                else {
+                    return None;
+                };
+                let ticks = match duration {
+                    assets::item_use::ItemUseDurationRule::Fixed(ticks) => *ticks,
+                    assets::item_use::ItemUseDurationRule::LongWeapon => {
+                        assets::item_use::LONG_WEAPON_USE_TICKS
+                    }
+                    assets::item_use::ItemUseDurationRule::Crossbow => {
+                        assets::item_use::CROSSBOW_CHARGE_TICKS
+                    }
+                    assets::item_use::ItemUseDurationRule::Declared => return None,
+                };
+                Some((entry.identifier.clone(), ticks))
+            })
+            .collect();
         item_use.extend(
             catalog
                 .iter()
@@ -274,6 +298,13 @@ impl EquipmentRuntime {
                 .iter()
                 .flat_map(|catalog| catalog.item_attack_timings())
                 .map(|entry| (entry.identifier.clone(), attack::timing(entry)))
+                .collect(),
+        );
+        let use_overlays = Arc::new(
+            catalog
+                .iter()
+                .flat_map(|catalog| catalog.item_use_overlays())
+                .map(|overlay| (overlay.identifier.clone(), overlay.clone()))
                 .collect(),
         );
         let runtime = Self {
@@ -294,6 +325,7 @@ impl EquipmentRuntime {
             armor_geometry: BTreeMap::new(),
             armor_maps: BTreeMap::new(),
             meshes: BTreeMap::new(),
+            use_overlays,
             base_item_use: Arc::clone(&item_use),
             item_use,
             base_item_attack: Arc::clone(&item_attack),
@@ -310,6 +342,13 @@ impl EquipmentRuntime {
             layers: Vec::new(),
         };
         (runtime, artwork, geometries)
+    }
+
+    /// Shares immutable authored facts with the numerical gameplay and audio cache.
+    pub fn item_use_overlays(
+        &self,
+    ) -> Arc<BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>> {
+        Arc::clone(&self.use_overlays)
     }
 
     /// Item use durations for the animation runtime's max-duration query.
@@ -335,17 +374,21 @@ impl EquipmentRuntime {
         input: &ActorEquipmentInput,
         animation: Option<EquipmentAnimation<'_>>,
     ) -> &mut [EquipmentPresentation] {
+        self.layers_for_profile(body, input, render_api::DEFAULT_COMBAT_VISUALS, animation)
+    }
+
+    /// Selects combat visuals for worn slots without changing held items or Java poses.
+    pub fn layers_for_profile(
+        &mut self,
+        body: &ActorRigSubmission,
+        input: &ActorEquipmentInput,
+        profile: render_api::CombatVisuals,
+        animation: Option<EquipmentAnimation<'_>>,
+    ) -> &mut [EquipmentPresentation] {
         let mut layers = std::mem::take(&mut self.layers);
         layers.clear();
-        self.fill_layers(body, input, animation, &mut layers);
-        if input.java.is_some() {
-            // The Java animation option includes worn equipment in the body's hurt flash.
-            for layer in &mut layers {
-                if layer.submission.input.identity.layer >= LAYER_HELMET {
-                    layer.submission.overlay_rgba8 = body.overlay_rgba8;
-                }
-            }
-        }
+        self.fill_layers(body, input, profile, animation, &mut layers);
+        combat::apply(&mut layers, body, input, profile, animation);
         self.layers = layers;
         &mut self.layers
     }
@@ -355,6 +398,7 @@ impl EquipmentRuntime {
         &mut self,
         body: &ActorRigSubmission,
         input: &ActorEquipmentInput,
+        profile: render_api::CombatVisuals,
         animation: Option<EquipmentAnimation<'_>>,
         layers: &mut Vec<EquipmentPresentation>,
     ) {
@@ -404,12 +448,12 @@ impl EquipmentRuntime {
                         .owner
                         .is_using_item()
                         .then_some(animation.rig.hand[1].use_ticks);
-                    let duration = input
+                    let use_facts = input
                         .main
                         .as_ref()
-                        .and_then(|main| self.item_use.get(main.identifier.as_ref()))
-                        .copied()
+                        .map(|main| main.use_facts)
                         .unwrap_or_default();
+                    let duration = use_facts.ticks.unwrap_or_default();
                     self.held_attachable(
                         body,
                         item,
@@ -421,7 +465,7 @@ impl EquipmentRuntime {
                             use_elapsed_ticks: elapsed,
                             delta_seconds: Some(animation.delta_seconds),
                             animation_frame: inventory::ranged_animation_frame(
-                                input.main.as_ref().map(|main| main.identifier.as_ref()),
+                                use_facts.animation,
                                 elapsed,
                                 duration,
                             ),
@@ -489,7 +533,7 @@ impl EquipmentRuntime {
                     geometry,
                     (slot, layer),
                     item,
-                    (input, animation),
+                    (input, animation, profile),
                     layers,
                 );
                 if layers.len() == before {
@@ -555,7 +599,7 @@ impl EquipmentRuntime {
         }
         // Modern attachables are evaluated in their own first-person state before this
         // fallback. Never substitute a third-person grip for their camera-space animation.
-        let (mesh, location, block) = self.held_mesh(item, true)?;
+        let (mesh, location, block, span) = self.held_mesh(item, true)?;
         let shape = if block {
             FirstPersonShape::Block
         } else {
@@ -582,7 +626,11 @@ impl EquipmentRuntime {
             .poses
             .share(body, FIRST_PERSON_ITEM_LAYER, [&[bone], &[bone]]);
         Some(FirstPersonItem {
-            presentation: layer_presentation(body, LAYER_MAIN_HAND, mesh, poses, location, 0),
+            presentation: push::held_glint(
+                layer_presentation(body, LAYER_MAIN_HAND, mesh, poses, location, 0),
+                item,
+                span,
+            ),
             camera_space: true,
             alpha_mode: self.first_person_alpha_mode(item, block),
             java_camera: None,
@@ -596,7 +644,7 @@ impl EquipmentRuntime {
         body: &ActorRigSubmission,
         item: &WornItem,
     ) -> Option<FirstPersonItem> {
-        let (mesh, location, block) = self.held_mesh(item, true)?;
+        let (mesh, location, block, span) = self.held_mesh(item, true)?;
         let equipped = item.grip.upright().unwrap_or(false);
         let bone = if block {
             super::first_person::offhand_pose(equipped, true)
@@ -615,7 +663,11 @@ impl EquipmentRuntime {
             .poses
             .share(body, FIRST_PERSON_OFFHAND_LAYER, [&[bone], &[bone]]);
         Some(FirstPersonItem {
-            presentation: layer_presentation(body, LAYER_OFF_HAND, mesh, poses, location, 0),
+            presentation: push::held_glint(
+                layer_presentation(body, LAYER_OFF_HAND, mesh, poses, location, 0),
+                item,
+                span,
+            ),
             camera_space: true,
             alpha_mode: self.first_person_alpha_mode(item, block),
             java_camera: None,
@@ -633,6 +685,9 @@ impl EquipmentRuntime {
         if let Some(bones) = self.skin_bones.get(&rig) {
             // Skin rig ids lie far above every catalog geometry index, so they key armor maps.
             return Some((rig.0, Arc::clone(bones)));
+        }
+        if render_model::is_pack_rig_id(rig) {
+            return self.pack_body_bones(rig);
         }
         let geometry = self
             .assets
@@ -739,6 +794,10 @@ impl EquipmentRuntime {
                             for axis in 0..2 {
                                 uv[axis] = rect[axis] + uv[axis] * (rect[axis + 2] - rect[axis]);
                             }
+                        }
+                        for axis in 0..2 {
+                            vertex.glint_origin[axis] = rect[axis]
+                                + vertex.glint_origin[axis] * (rect[axis + 2] - rect[axis]);
                         }
                         vertex
                     })

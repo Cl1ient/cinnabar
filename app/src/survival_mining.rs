@@ -15,7 +15,9 @@ use bevy::{
 use client_interaction::survival_mining::SurvivalMiningRuntime;
 use client_runtime::network::NetworkHandle;
 use semantic_input::Action;
+use semantic_input::identity::{InputAuthorityGeneration, InputSequence};
 use sim::{DestroyConditions, HeldTool, PaletteWorld};
+use simulation_clock::identity::PositionAuthorityGeneration;
 
 use client_shell::ui_resources::UiRuntimeResource;
 use client_world::game_mode_capabilities::GameModeCapabilities;
@@ -198,8 +200,8 @@ fn observe_destroy_target(
     context: &SurvivalMiningContext,
     caps: Option<GameModeCapabilities>,
     input_mode: semantic_input::InputMode,
-    input_authority: (std::num::NonZeroU64, u64),
-    position_authority_generation: u64,
+    input_authority: (InputAuthorityGeneration, InputSequence),
+    position_authority_generation: PositionAuthorityGeneration,
 ) -> Option<DestroyTarget> {
     let ui = &context.ui;
     // The capability gate in the producer already confirmed this mode edits;

@@ -148,7 +148,10 @@ fn flush_identities(ticker: &mut MovementTicker, budget: usize) -> Vec<PhysicsSe
 fn held_release_fences_newer_facing_until_the_release_is_admitted() {
     let mut ticker = held_release_ticker();
     let sent = flush_identities(&mut ticker, 8);
-    assert_eq!(sent.iter().map(|id| id.tick).collect::<Vec<_>>(), [101]);
+    assert_eq!(
+        sent.iter().map(|id| id.tick.get()).collect::<Vec<_>>(),
+        [101]
+    );
     ticker.send_held_release(|_| panic!("the facing tick is not written yet"));
     assert!(ticker.acknowledge_physics_send(sent[0]));
     ticker.send_held_release(|_| Err(crate::BatchSendError::Full));
@@ -165,7 +168,10 @@ fn held_release_fences_newer_facing_until_the_release_is_admitted() {
     assert_eq!(released, 1);
     assert!(!ticker.has_held_release());
     let sent = flush_identities(&mut ticker, 8);
-    assert_eq!(sent.iter().map(|id| id.tick).collect::<Vec<_>>(), [102]);
+    assert_eq!(
+        sent.iter().map(|id| id.tick.get()).collect::<Vec<_>>(),
+        [102]
+    );
 }
 
 #[test]

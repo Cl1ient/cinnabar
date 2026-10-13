@@ -2,4 +2,4 @@
 package main
 
 // registryHeader is the format version from the shared registry schema.
-const registryHeader = "BREG1005"
+const registryHeader = "BREG1006"

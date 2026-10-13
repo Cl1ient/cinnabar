@@ -1,4 +1,4 @@
-//! Bedrock 1.26.50 (protocol 2193) packet definitions and codec.
+//! Bedrock 1.26.50 (protocol 2193) packets, coded by the generated contract crate.
 
 mod actor;
 mod audio;
@@ -12,6 +12,7 @@ mod dimension;
 mod disconnect;
 mod emote;
 mod experience;
+pub mod identity;
 mod interaction;
 mod inventory;
 mod item;
@@ -54,12 +55,13 @@ pub use actor::{
     ActorInterpolation, ActorKind, ActorLinkEvent, ActorLinkType, ActorMetadata,
     ActorMetadataUpdateEvent, ActorMetadataValue, ActorMoveEvent, ActorPacketError,
     ActorPositionOrigin, ActorProperty, ActorRemoveEvent, ActorSpawnEvent, ActorStatusEvent,
-    ActorStatusKind, ActorTakeItemEvent, ITEM_ACTOR_NETWORK_OFFSET, MAX_ACTOR_ATTRIBUTE_MODIFIERS,
-    MAX_ACTOR_ATTRIBUTES, MAX_ACTOR_IDENTIFIER_BYTES, MAX_ACTOR_IDENTIFIERS,
-    MAX_ACTOR_LINKS_PER_SPAWN, MAX_ACTOR_METADATA_ENTRIES, MAX_ACTOR_METADATA_NBT_BYTES,
-    MAX_ACTOR_METADATA_STRING_BYTES, MAX_ACTOR_NAME_BYTES, MAX_ACTOR_PROPERTIES,
-    MAX_PLAYER_LIST_RECORDS, MAX_PLAYER_LIST_SKIN_BYTES, PlayerListEntry, PlayerListUpdateEvent,
-    PlayerSkin, PlayerSkinUnavailable, normalize_classic_skin_rgba8, normalize_custom_skin_rgba8,
+    ActorStatusKind, ActorTakeItemEvent, HASTE_EFFECT_ID, ITEM_ACTOR_NETWORK_OFFSET,
+    MAX_ACTOR_ATTRIBUTE_MODIFIERS, MAX_ACTOR_ATTRIBUTES, MAX_ACTOR_IDENTIFIER_BYTES,
+    MAX_ACTOR_IDENTIFIERS, MAX_ACTOR_LINKS_PER_SPAWN, MAX_ACTOR_METADATA_ENTRIES,
+    MAX_ACTOR_METADATA_NBT_BYTES, MAX_ACTOR_METADATA_STRING_BYTES, MAX_ACTOR_NAME_BYTES,
+    MAX_ACTOR_PROPERTIES, MAX_PLAYER_LIST_RECORDS, MAX_PLAYER_LIST_SKIN_BYTES,
+    MINING_FATIGUE_EFFECT_ID, PlayerListEntry, PlayerListUpdateEvent, PlayerSkin,
+    PlayerSkinUnavailable, normalize_classic_skin_rgba8, normalize_custom_skin_rgba8,
 };
 pub use audio::{
     AudioEvent, LevelAudioEvent, LevelEventSound, MAX_AUDIO_IDENTIFIER_BYTES, PlayAudioEvent,
@@ -88,7 +90,9 @@ pub use camera::{
     CameraTargetInstruction, MAX_CAMERA_AIM_ASSIST_ENTRIES, MAX_CAMERA_EASE_IDENTIFIER_BYTES,
     MAX_CAMERA_PRESETS, MAX_CAMERA_SPLINE_POINTS, camera_aim_assist_activation_packet,
 };
-pub use codec::{PacketDecodeError, ProtocolError, SessionError, decode_batch, encode};
+pub use codec::{
+    PacketDecodeError, PacketEncodeError, ProtocolError, SessionError, decode_batch, encode,
+};
 pub use disconnect::ServerDisconnectEvent;
 pub use interaction::{
     ActorUseAction, ActorUsePacketError, ActorUseRequest, BlockUsePacketError, BlockUseRequest,
@@ -157,13 +161,14 @@ pub use inventory::{RecipeRegistryError, RecipeRegistrySnapshot};
 pub use item::{
     ActorActionEvent, ActorActionKind, ActorHandedness, ArmorEquipmentEvent, EquipmentEvent,
     FoodProperties, HOTBAR_SLOT_COUNT, ItemActorEvent, ItemAttackCooldown, ItemAttackTiming,
-    ItemBook, ItemComponents, ItemDisplay, ItemPacketError, ItemRegistryEntry, ItemRegistryEvent,
-    ItemRegistryVersion, ItemStackFacts, ItemStackFactsCache, KineticWeaponTiming,
-    MAX_ACTION_IDENTIFIER_BYTES, MAX_ANIMATE_ENTITY_IDS, MAX_ANIMATION_IDENTIFIER_BYTES,
-    MAX_BOOK_PAGES, MAX_ITEM_EXTRA_BYTES, MAX_ITEM_REGISTRY_ENTRIES, NetworkItemStack, item_book,
-    item_bundle_id, item_charged_projectile, item_custom_color, item_display,
-    item_enchantment_level, item_extra_damage, item_extra_unbreakable, item_has_enchantment_list,
-    item_stack_damage, select_hotbar_slot_packet, vanilla_item_registry,
+    ItemBannerPattern, ItemBook, ItemComponents, ItemDisplay, ItemPacketError, ItemRegistryEntry,
+    ItemRegistryEvent, ItemRegistryVersion, ItemStackFacts, ItemStackFactsCache, ItemUseCooldown,
+    KineticWeaponTiming, MAX_ACTION_IDENTIFIER_BYTES, MAX_ANIMATE_ENTITY_IDS,
+    MAX_ANIMATION_IDENTIFIER_BYTES, MAX_BOOK_PAGES, MAX_ITEM_EXTRA_BYTES,
+    MAX_ITEM_REGISTRY_ENTRIES, NetworkItemStack, item_banner_patterns, item_book, item_bundle_id,
+    item_charged_projectile, item_custom_color, item_display, item_enchantment_level,
+    item_extra_damage, item_extra_unbreakable, item_has_enchantment_list, item_stack_damage,
+    select_hotbar_slot_packet, vanilla_item_registry,
 };
 pub use item_capacity::{ITEM_DEFAULT_MAX_STACK_SIZE, vanilla_item_capacity};
 pub use respawn::{respawn_ready_packet, respawn_request_packet};
@@ -255,7 +260,8 @@ pub use fast_transfer_action::FastTransferAction;
 pub mod test_support;
 
 #[cfg(test)]
-mod test_allocations;
+#[global_allocator]
+static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;
 
 // Wire-layout tests live beside the codec so packet internals stay crate-private.
 #[cfg(test)]

@@ -4,9 +4,11 @@ package main
 import "encoding/binary"
 
 const (
-	registryHeader                 = "BREG1005"
+	registryHeader                 = "BREG1006"
+	previousRegistryHeader         = "BREG1003"
+	placementRegistryHeader        = "BREG1005"
 	physicsRegistryHeader          = "PREG1001"
-	physicsRegistryActiveHeader    = "PREG1002"
+	physicsRegistryActiveHeader    = "PREG1003"
 	physicsRegistryHeaderBytes     = 48
 	physicsRecordHeaderBytes       = 28
 	physicsMovementSemanticsOffset = 11
@@ -16,7 +18,9 @@ const (
 	maxCollisionBoxesPerRecord     = 7
 	maxNameBytes                   = 65535
 	registryHeaderBytes            = 36
-	recordHeaderBytes              = 73
+	recordHeaderBytes              = 74
+	previousRecordHeaderBytes      = 56
+	placementRecordHeaderBytes     = 73
 	collisionBoxBytes              = 24
 )
 
@@ -210,6 +214,31 @@ const (
 )
 const maxBlockSupportKind = BlockSupportKindSnow
 
+// BeaconTint is a byte-sized registry discriminator.
+type BeaconTint uint8
+
+const (
+	BeaconTintUnresolved BeaconTint = 0
+	BeaconTintNoTinting  BeaconTint = 1
+	BeaconTintWhite      BeaconTint = 2
+	BeaconTintOrange     BeaconTint = 3
+	BeaconTintMagenta    BeaconTint = 4
+	BeaconTintLightBlue  BeaconTint = 5
+	BeaconTintYellow     BeaconTint = 6
+	BeaconTintLime       BeaconTint = 7
+	BeaconTintPink       BeaconTint = 8
+	BeaconTintGray       BeaconTint = 9
+	BeaconTintLightGray  BeaconTint = 10
+	BeaconTintCyan       BeaconTint = 11
+	BeaconTintPurple     BeaconTint = 12
+	BeaconTintBlue       BeaconTint = 13
+	BeaconTintBrown      BeaconTint = 14
+	BeaconTintGreen      BeaconTint = 15
+	BeaconTintRed        BeaconTint = 16
+	BeaconTintBlack      BeaconTint = 17
+)
+const maxBeaconTint = BeaconTintBlack
+
 // ModelState is a typed block-registry value.
 type ModelState struct {
 	Mask               uint8
@@ -254,6 +283,7 @@ type Record struct {
 	FaceCoverage    uint8
 	CollisionSeed   CollisionSeed
 	Provenance      uint8
+	BeaconTint      BeaconTint
 }
 
 // RegistryMetadata is a typed block-registry value.
@@ -269,7 +299,11 @@ type RegistryMetadata struct {
 
 // appendRegistryMetadata writes RegistryMetadata in its declared little-endian order.
 func appendRegistryMetadata(encoded []byte, value RegistryMetadata) []byte {
-	encoded = append(encoded, registryHeader...)
+	if value.Protocol == registryProtocol {
+		encoded = append(encoded, previousRegistryHeader...)
+	} else {
+		encoded = append(encoded, registryHeader...)
+	}
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(value.Protocol))
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(value.CanonicalNames))
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(value.CanonicalStates))
@@ -340,40 +374,84 @@ type RecordHeader struct {
 	PlacementKey       uint32
 	PlacementAlternate uint32
 	PlacementFlags     uint8
+	BeaconTint         uint8
 }
 
 // decodeRecordHeader reads a previously length-checked record prefix.
-func decodeRecordHeader(data []byte) RecordHeader {
+func decodeRecordHeader(data []byte, previous bool, placement bool) RecordHeader {
 	var value RecordHeader
-	value.SequentialID = binary.LittleEndian.Uint32(data[0:4])
-	value.NetworkHash = binary.LittleEndian.Uint32(data[4:8])
-	value.RawFlags = data[8]
-	value.ModelFamily = data[9]
-	value.ContributorRole = data[10]
-	value.ModelMask = data[11]
-	value.FaceCoverage = data[12]
-	value.Confidence = data[13]
-	value.RawProvenance = data[14]
-	value.BoxCount = data[15]
-	value.ShapeID = binary.LittleEndian.Uint16(data[16:18])
-	value.NameLen = binary.LittleEndian.Uint16(data[18:20])
-	value.StateLen = binary.LittleEndian.Uint32(data[20:24])
+	cursor := 0
+	value.SequentialID = binary.LittleEndian.Uint32(data[cursor : cursor+4])
+	cursor += 4
+	value.NetworkHash = binary.LittleEndian.Uint32(data[cursor : cursor+4])
+	cursor += 4
+	value.RawFlags = data[cursor]
+	cursor++
+	value.ModelFamily = data[cursor]
+	cursor++
+	value.ContributorRole = data[cursor]
+	cursor++
+	value.ModelMask = data[cursor]
+	cursor++
+	value.FaceCoverage = data[cursor]
+	cursor++
+	value.Confidence = data[cursor]
+	cursor++
+	value.RawProvenance = data[cursor]
+	cursor++
+	value.BoxCount = data[cursor]
+	cursor++
+	value.ShapeID = binary.LittleEndian.Uint16(data[cursor : cursor+2])
+	cursor += 2
+	value.NameLen = binary.LittleEndian.Uint16(data[cursor : cursor+2])
+	cursor += 2
+	value.StateLen = binary.LittleEndian.Uint32(data[cursor : cursor+4])
+	cursor += 4
 	for index := range value.Values {
-		value.Values[index] = binary.LittleEndian.Uint32(data[24+index*4 : 28+index*4])
+		value.Values[index] = binary.LittleEndian.Uint32(data[cursor : cursor+4])
+		cursor += 4
 	}
-	value.Survival = data[56]
-	value.SupportPolicy = data[57]
-	value.SupportKind = data[58]
-	value.PlacementRule = data[59]
-	value.PlacementSet = binary.LittleEndian.Uint32(data[60:64])
-	value.PlacementKey = binary.LittleEndian.Uint32(data[64:68])
-	value.PlacementAlternate = binary.LittleEndian.Uint32(data[68:72])
-	value.PlacementFlags = data[72]
+	if !previous {
+		value.Survival = data[cursor]
+		cursor++
+	}
+	if !previous {
+		value.SupportPolicy = data[cursor]
+		cursor++
+	}
+	if !previous {
+		value.SupportKind = data[cursor]
+		cursor++
+	}
+	if !previous {
+		value.PlacementRule = data[cursor]
+		cursor++
+	}
+	if !previous {
+		value.PlacementSet = binary.LittleEndian.Uint32(data[cursor : cursor+4])
+		cursor += 4
+	}
+	if !previous {
+		value.PlacementKey = binary.LittleEndian.Uint32(data[cursor : cursor+4])
+		cursor += 4
+	}
+	if !previous {
+		value.PlacementAlternate = binary.LittleEndian.Uint32(data[cursor : cursor+4])
+		cursor += 4
+	}
+	if !previous {
+		value.PlacementFlags = data[cursor]
+		cursor++
+	}
+	if !previous && !placement {
+		value.BeaconTint = data[cursor]
+		cursor++
+	}
 	return value
 }
 
 // appendRecordHeader writes the already-validated fixed record header.
-func appendRecordHeader(encoded []byte, record Record) []byte {
+func appendRecordHeader(encoded []byte, record Record, previous bool) []byte {
 	encoded = binary.LittleEndian.AppendUint32(encoded, record.SequentialID)
 	encoded = binary.LittleEndian.AppendUint32(encoded, record.NetworkHash)
 	encoded = append(encoded, record.Flags)
@@ -390,13 +468,32 @@ func appendRecordHeader(encoded []byte, record Record) []byte {
 	for _, value := range record.ModelState.Values {
 		encoded = binary.LittleEndian.AppendUint32(encoded, value)
 	}
-	encoded = append(encoded, uint8(record.ModelState.Survival))
-	encoded = append(encoded, uint8(record.ModelState.SupportPolicy))
-	encoded = append(encoded, uint8(record.ModelState.SupportKind))
-	encoded = append(encoded, uint8(record.ModelState.PlacementRule))
-	encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementSet)
-	encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementKey)
-	encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementAlternate)
-	encoded = append(encoded, record.ModelState.PlacementFlags)
+	if !previous {
+		encoded = append(encoded, uint8(record.ModelState.Survival))
+	}
+	if !previous {
+		encoded = append(encoded, uint8(record.ModelState.SupportPolicy))
+	}
+	if !previous {
+		encoded = append(encoded, uint8(record.ModelState.SupportKind))
+	}
+	if !previous {
+		encoded = append(encoded, uint8(record.ModelState.PlacementRule))
+	}
+	if !previous {
+		encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementSet)
+	}
+	if !previous {
+		encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementKey)
+	}
+	if !previous {
+		encoded = binary.LittleEndian.AppendUint32(encoded, record.ModelState.PlacementAlternate)
+	}
+	if !previous {
+		encoded = append(encoded, record.ModelState.PlacementFlags)
+	}
+	if !previous {
+		encoded = append(encoded, uint8(record.BeaconTint))
+	}
 	return encoded
 }

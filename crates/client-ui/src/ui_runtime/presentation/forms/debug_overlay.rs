@@ -2,8 +2,9 @@
 
 use ui::UiNode;
 
-use super::super::{TextMetrics, UiPresentationError, UiPresentationRuntime, debug_overlay};
-use super::engine::{ScreenArt, screen::PaintFrame};
+use super::super::{UiPresentationError, UiPresentationRuntime, debug_overlay};
+use ui_engine::engine::{ScreenArt, screen::PaintFrame};
+use ui_engine::text_metrics::TextMetrics;
 
 impl UiPresentationRuntime {
     pub(in super::super) fn append_debug_overlay(

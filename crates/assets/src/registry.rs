@@ -10,16 +10,18 @@ pub use placement::BlockPlacementFacts;
 mod wire_tests;
 
 pub use schema::{
-    BlockFlags, BlockPlacementFlags, BlockPlacementRule, BlockSupportKind, BlockSupportPolicy,
-    BlockSurvivalRule, COMPATIBILITY_REPLACEABLE_BLOCKS, CollisionBox, CollisionConfidence,
-    CollisionSeed, ContributorRole, LEGACY_PHYSICS_REGISTRY_MAGIC, ModelFamily, ModelState,
-    ModelStateField, MovementSemantics, PHYSICS_MOVEMENT_SEMANTICS_OFFSET,
+    BeaconTint, BlockFlags, BlockPlacementFlags, BlockPlacementRule, BlockSupportKind,
+    BlockSupportPolicy, BlockSurvivalRule, COMPATIBILITY_REPLACEABLE_BLOCKS, CollisionBox,
+    CollisionConfidence, CollisionSeed, ContributorRole, LEGACY_PHYSICS_REGISTRY_MAGIC,
+    ModelFamily, ModelState, ModelStateField, MovementSemantics, PHYSICS_MOVEMENT_SEMANTICS_OFFSET,
     PHYSICS_RECORD_HEADER_BYTES, PHYSICS_REGISTRY_HEADER_BYTES, PHYSICS_REGISTRY_MAGIC,
-    RECORD_HEADER_BYTES, REGISTRY_MAGIC, RegistryProvenance, RegistryRecord,
+    PLACEMENT_RECORD_HEADER_BYTES, RECORD_HEADER_BYTES, REGISTRY_MAGIC, RegistryProvenance,
+    RegistryRecord,
 };
 use schema::{
     LEGACY_REGISTRY_PROTOCOL, MAX_COLLISION_BOXES, MAX_REGISTRY_RECORDS, MAX_REGISTRY_STATE_BYTES,
-    RecordHeader, read_collision_box, read_record_header, read_registry_metadata,
+    PLACEMENT_REGISTRY_MAGIC, PREVIOUS_RECORD_HEADER_BYTES, PREVIOUS_REGISTRY_MAGIC, RecordHeader,
+    read_collision_box, read_record_header, read_registry_metadata,
 };
 
 /// Provisional compiled survival and support facts read by numerical state identity.
@@ -42,6 +44,13 @@ impl BlockFlags {
 }
 
 impl ModelState {
+    /// Replaces compiled support facts while preserving visual and placement selectors.
+    pub fn set_survival_facts(&mut self, facts: BlockSurvivalFacts) {
+        self.survival = facts.rule;
+        self.support_policy = facts.policy;
+        self.support_kind = facts.support;
+    }
+
     /// Returns the compiled survival disposition without inspecting state names or JSON.
     pub const fn survival_facts(self) -> BlockSurvivalFacts {
         BlockSurvivalFacts {
@@ -49,6 +58,13 @@ impl ModelState {
             policy: self.support_policy,
             support: self.support_kind,
         }
+    }
+
+    /// Records a typed selector and marks it present in the carrier header.
+    pub fn set(&mut self, field: ModelStateField, value: u32) {
+        let index = usize::from(field as u8 - 1);
+        self.mask |= 1 << index;
+        self.values[index] = value;
     }
 
     #[must_use]
@@ -76,7 +92,11 @@ pub fn read_registry(bytes: &[u8]) -> Result<Box<[RegistryRecord]>, AssetError> 
 /// reader produces.
 pub fn registry_header_protocol(bytes: &[u8]) -> Result<u32, AssetError> {
     let mut reader = Reader::new(bytes);
-    if reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")? != REGISTRY_MAGIC {
+    let magic = reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")?;
+    if magic != REGISTRY_MAGIC
+        && magic != PREVIOUS_REGISTRY_MAGIC
+        && magic != PLACEMENT_REGISTRY_MAGIC
+    {
         return Err(AssetError::InvalidRegistryMagic);
     }
     reader.read_u32("registry protocol")
@@ -93,7 +113,12 @@ pub fn read_registry_for_protocol(
         return Err(AssetError::InvalidRegistryMagic);
     }
     let mut reader = Reader::new(bytes);
-    if reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")? != REGISTRY_MAGIC {
+    let magic = reader.read_exact(REGISTRY_MAGIC.len(), "registry magic")?;
+    let previous =
+        magic == PREVIOUS_REGISTRY_MAGIC && expected_protocol == LEGACY_REGISTRY_PROTOCOL;
+    let placement =
+        magic == PLACEMENT_REGISTRY_MAGIC && expected_protocol == LEGACY_REGISTRY_PROTOCOL;
+    if magic != REGISTRY_MAGIC && !previous && !placement {
         return Err(AssetError::InvalidRegistryMagic);
     }
     let metadata = read_registry_metadata(&mut reader)?;
@@ -118,13 +143,18 @@ pub fn read_registry_for_protocol(
     {
         return Err(AssetError::InvalidRegistryFlags(0xff));
     }
-    let minimum_bytes =
-        count
-            .checked_mul(RECORD_HEADER_BYTES)
-            .ok_or(AssetError::TooManyRegistryRecords {
-                count,
-                max: MAX_REGISTRY_RECORDS,
-            })?;
+    let minimum_bytes = count
+        .checked_mul(if previous {
+            PREVIOUS_RECORD_HEADER_BYTES
+        } else if placement {
+            PLACEMENT_RECORD_HEADER_BYTES
+        } else {
+            RECORD_HEADER_BYTES
+        })
+        .ok_or(AssetError::TooManyRegistryRecords {
+            count,
+            max: MAX_REGISTRY_RECORDS,
+        })?;
     if reader.remaining() < minimum_bytes {
         return Err(AssetError::UnexpectedEof {
             context: "registry record headers",
@@ -163,7 +193,9 @@ pub fn read_registry_for_protocol(
             placement_key,
             placement_alternate,
             placement_flags,
-        } = read_record_header(&mut reader)?;
+            beacon_tint,
+        } = read_record_header(&mut reader, previous, placement)?;
+        let beacon_tint = BeaconTint::read(beacon_tint)?;
         let placement_rule = BlockPlacementRule::read(placement_rule)?;
         BlockPlacementFlags::from_bits(placement_flags)
             .ok_or(AssetError::InvalidRegistryFlags(placement_flags))?;
@@ -271,6 +303,7 @@ pub fn read_registry_for_protocol(
                 boxes: boxes.into_boxed_slice(),
             },
             provenance,
+            beacon_tint,
         });
     }
     placement::validate(&records, name_count)?;

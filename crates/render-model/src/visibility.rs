@@ -1,4 +1,5 @@
 //! Visibility and adapter diagnostics published by the render world.
+use render_api::PoseGeneration;
 use world::{ChunkKey, SubChunkKey};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -67,7 +68,7 @@ pub enum OpaqueDrawMode {
 pub struct VisibilityDiagnosticSnapshot {
     pub frame_generation: u64,
     pub camera: ExtractedCameraIdentity,
-    pub pose_generation: u64,
+    pub pose_generation: PoseGeneration,
     pub view_generation: u64,
     pub witness_column: Option<ChunkKey>,
     pub resident_witness_subchunks: Option<u32>,

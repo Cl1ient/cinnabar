@@ -90,12 +90,14 @@ mod tests {
     fn fixture() -> BTreeMap<(Box<str>, Box<str>), PendingGeometry> {
         let geometry = PendingGeometry {
             visible_bounds: None,
+            animation_no_head_bob: None,
             identifier: POLAR_BEAR_GEOMETRY.into(),
             inherits: None,
             source_path: POLAR_BEAR_PATH.into(),
             texture_width: None,
             texture_height: None,
             bones: vec![EntityGeometryBone {
+                locators: Box::default(),
                 name: "body".into(),
                 parent: None,
                 pivot: None,

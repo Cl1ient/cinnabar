@@ -151,6 +151,7 @@ fn dispatch(world: &mut World) {
                     Err("the launcher menu is unavailable".into())
                 }
             }
+            Command::GlobalPacks { action } => global_packs(world, action),
             Command::CameraPath(path) => camera::start(world, path),
             Command::CameraRelease => camera::release(world),
             Command::State => Ok(state::snapshot(world)),
@@ -188,6 +189,41 @@ fn connect(world: &mut World, address: String) -> Result<Value, String> {
         return Err("the launcher refused the join (account change pending?)".into());
     }
     Ok(json!({ "joining": address }))
+}
+
+/// Queues `action` behind the screen's own actions; the report reflects the last published
+/// snapshot, so it shows a queued action's effect only on a later call.
+fn global_packs(
+    world: &mut World,
+    action: Option<developer_control::protocol::GlobalPackAction>,
+) -> Result<Value, String> {
+    use developer_control::protocol::GlobalPackAction;
+    use launcher::global_resources::Action;
+    let mut menu = world
+        .get_resource_mut::<client_shell::menu::MenuRuntime>()
+        .ok_or("the launcher menu is unavailable")?;
+    if let Some(action) = action {
+        menu.global_resource_actions.push(match action {
+            GlobalPackAction::Activate { index } => Action::Activate(index),
+            GlobalPackAction::Deactivate { index } => Action::Deactivate(index),
+            GlobalPackAction::Apply => Action::Apply,
+        });
+    }
+    let snapshot = &menu.global_resources;
+    let names = |packs: &[resource_pack::InstalledPack]| {
+        packs
+            .iter()
+            .map(|pack| pack.name.clone())
+            .collect::<Vec<_>>()
+    };
+    Ok(json!({
+        "available": names(&snapshot.available),
+        "active": names(&snapshot.active),
+        "busy": snapshot.busy,
+        "pending": snapshot.has_pending_changes(),
+        "applied": snapshot.applied_selection.as_ref().map(Vec::len),
+        "message": snapshot.message,
+    }))
 }
 
 fn disconnect(world: &mut World) -> Result<Value, String> {

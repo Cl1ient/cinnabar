@@ -1,13 +1,14 @@
 //! Actor tick state and frame-rate animation publication.
 
 use super::*;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 impl ActorStore {
     /// Java torso ticks follow this local simulation identity rather than the remote actor clock.
     pub(crate) fn set_local_motion_authority(
         &mut self,
         runtime_id: u64,
-        authority: Option<(u64, u64)>,
+        authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     ) {
         self.animation
             .set_local_motion_authority(runtime_id, authority);
@@ -17,7 +18,7 @@ impl ActorStore {
     pub(crate) fn sync_local_swing_motion(
         &mut self,
         runtime_id: u64,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         samples: impl IntoIterator<Item = actor_animation::LocalSwingMotionSample>,
     ) {
         self.local_view_dirty |= self
@@ -177,6 +178,7 @@ impl ActorStore {
             let local_flying = self.local_flying;
             let world_game_mode = self.world_default_game_mode;
             let local_hands = self.local_hands.clone();
+            let local_held_network_ids = self.local_held_network_ids;
             let local_item_use = self.local_item_use;
             let local_main_metadata = self.local_main_metadata;
             let local_main_slot = self.local_main_slot;
@@ -225,10 +227,12 @@ impl ActorStore {
                                 .unwrap_or(equipment.item.identity.metadata)
                         })
                 };
-                let mut main_hand_max_use_ticks = main_hand
-                    .as_deref()
-                    .and_then(|identifier| items.max_use_ticks(identifier))
-                    .unwrap_or(0);
+                let main_hand_use = items.held_use_profile(
+                    lifetime,
+                    protocol::ActorHandedness::Right,
+                    is_local.then_some(local_held_network_ids[0]),
+                );
+                let mut main_hand_max_use_ticks = main_hand_use.ticks.unwrap_or(0);
                 let local_item_use_ticks = if is_local
                     && let LocalItemUse::Predicted {
                         elapsed_ticks,
@@ -243,16 +247,20 @@ impl ActorStore {
                     None
                 };
                 let off_hand = held(protocol::ActorHandedness::Left);
-                let off_hand_max_use_ticks = off_hand
-                    .as_deref()
-                    .and_then(|identifier| items.max_use_ticks(identifier))
+                let off_hand_max_use_ticks = items
+                    .held_use_profile(
+                        lifetime,
+                        protocol::ActorHandedness::Left,
+                        is_local.then_some(local_held_network_ids[1]),
+                    )
+                    .ticks
                     .unwrap_or(0);
                 let attack = main_hand.as_deref().and_then(|id| items.attack_timing(id));
                 let main_hand_kinetic = attack.and_then(|attack| attack.kinetic_weapon);
                 let main_hand_is_spear = attack.is_some_and(|attack| attack.is_spear);
                 let main_hand_swing_seconds = attack
                     .and_then(|attack| attack.swing_duration_ticks)
-                    .map(|ticks| ticks as f32 * world::TICK_DURATION.as_secs_f32());
+                    .map(|ticks| ticks as f32 * simulation_clock::TICK_DURATION.as_secs_f32());
                 let kind_of = |unique_id: &i64| {
                     unique_to_runtime
                         .get(unique_id)
@@ -289,7 +297,7 @@ impl ActorStore {
                     java_swing_ticks: if is_local {
                         local_java_swing_ticks
                     } else {
-                        actor_animation::ACTOR_SWING_TICKS
+                        actor.status.swing_effects.ticks()
                     },
                     main_hand_slot: if is_local {
                         local_main_slot
@@ -299,6 +307,7 @@ impl ActorStore {
                             .map_or(0, |equipment| equipment.selected_slot)
                     },
                     main_hand_max_use_ticks,
+                    main_hand_consumption: main_hand_use.consumption,
                     local_item_use_ticks,
                     off_hand_max_use_ticks,
                     main_hand_kinetic,

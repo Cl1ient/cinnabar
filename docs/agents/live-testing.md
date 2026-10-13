@@ -73,10 +73,10 @@ hardware gets lower resolution or view distance, never permission to stutter.
   allocations, geometry or text rebuilds, pipeline creations and redundant upload bytes. A change
   rebuilds only its dependents, once per object per publication. Streaming queues stay bounded,
   obsolete work is cancelled, and no chunk version is processed twice.
-- **Slow-frame trigger.** `RUST_MCBE_SLOW_FRAME` fires on an interval over 1.1T (9.17 ms at
+- **Slow-frame trigger.** `CINNABAR_SLOW_FRAME` fires on an interval over 1.1T (9.17 ms at
   120 Hz, 18.33 ms at 60 Hz) or a frame over its main CPU, render CPU or GPU budget above. T comes
   from the window's current monitor, or a slower frame cap. Text is rate-limited; every event is
-  counted, marked in the frame trace and totalled as `slow_frames` in `RUST_MCBE_STAGE_PROFILE`.
+  counted, marked in the frame trace and totalled as `slow_frames` in `CINNABAR_STAGE_PROFILE`.
 
 ## Tracy frame attribution
 
@@ -135,9 +135,12 @@ the same version, state product, camera, geometry, material, and behavior questi
 Performance claims require measured release evidence against the budgets above; a debug screenshot, small test scene, or green unit suite is not
 performance acceptance.
 
-For main-thread attribution, set `RUST_MCBE_STAGE_PROFILE=1` only on an
+Diagnostic variables use the `CINNABAR_` prefix; the client still reads the old `RUST_MCBE_`
+spelling for one release and logs a deprecation warning.
+
+For main-thread attribution, set `CINNABAR_STAGE_PROFILE=1` only on an
 instrumented release acceptance run. The client emits one
-`RUST_MCBE_STAGE_PROFILE` record per second with count, cumulative milliseconds,
+`CINNABAR_STAGE_PROFILE` record per second with count, cumulative milliseconds,
 and maximum milliseconds for each runtime stage; `main_frame` is the main world's
 frame-start-to-`Last` wall time, including stream reclaim. The chunk, actor, UI,
 particle, audio and block-entity stages attribute that time. Compare runs with the same
@@ -146,7 +149,7 @@ worker and main-thread stages as attribution rather than additive wall time, and
 run the final performance gate again without the variable because profiling
 changes the measured workload.
 
-Normal play also emits `RUST_MCBE_SLOW_FRAME` without any environment setting,
+Normal play also emits `CINNABAR_SLOW_FRAME` without any environment setting,
 on the trigger in Frame budgets, at most once per second with the number of
 suppressed slow frames and the violated budgets. `main_ms` covers frame-start timing to
 `Last`; `between_updates_ms` covers the rest of the preceding start-to-start
@@ -164,14 +167,14 @@ changing gameplay. `render_frame` is render-world time excluding drawable acquis
 `input_age` runs from the update's start, where input is sampled, to the end of its render
 extraction. `input_pacing_wait` is the deliberate main-thread delay before the next input sample, until the
 later of its frame-rate cadence slot and the predicted render-thread completion;
-`frame_pacing_lateness` is how far past that deadline the wait woke. `RUST_MCBE_INPUT_PACING=0`
+`frame_pacing_lateness` is how far past that deadline the wait woke. `CINNABAR_INPUT_PACING=0`
 stops only the render-completion delay; a frame-rate cap still applies.
 `world_service` is the world-stream service thread's polling time between frames, recorded
 at reclaim; it overlaps extraction and pacing and is not main-thread time. Trace exports
 show it as a background-work counter at receipt, not a continuous execution span.
 `world_service_reclaim` is the main-thread wait to take the stream back before `First`.
 Both `main_frame` and input pacing's main-thread estimate include that wait.
-`RUST_MCBE_WORLD_SERVICE=0` keeps every world-stream poll on the main thread, a
+`CINNABAR_WORLD_SERVICE=0` keeps every world-stream poll on the main thread, a
 same-binary control for chunk-streaming comparisons.
 
 GPU timing uses timestamp queries when the adapter supports them, read back
@@ -186,26 +189,26 @@ compute marker passes do not produce usable timestamps on Apple GPUs. Pass categ
 sum elapsed latencies, including gaps and overlapping GPU work; they are not GPU
 active time and must not be added. Invalid timestamp pairs are skipped, so a
 category may cover only some of its passes. Check coverage against native traces;
-`RUST_MCBE_GPU_QUERY_HEALTH=1` logs per-stage invalid-pair and readback counters once a second.
+`CINNABAR_GPU_QUERY_HEALTH=1` logs per-stage invalid-pair and readback counters once a second.
 Node stages
 are `gpu_shadows`, `gpu_opaque`, `gpu_transparent`, `gpu_ui`, `gpu_hand`,
 `gpu_post`, `gpu_tonemapping`, `gpu_fxaa` and `gpu_blit`. With
-`RUST_MCBE_STAGE_PROFILE=1` on adapters with in-pass timestamps (not Apple GPUs),
+`CINNABAR_STAGE_PROFILE=1` on adapters with in-pass timestamps (not Apple GPUs),
 draws add `gpu_terrain_solid`, `gpu_terrain_cutout`, `gpu_terrain_model`,
 `gpu_terrain_depth_liquid` (direct and CPU-planned indirect draws; GPU-cull terrain
 commands expose no in-pass spans), `gpu_terrain_transparent`, `gpu_actors`,
 `gpu_particles`, `gpu_sky`, `gpu_panorama` and `gpu_mod_primitives`. Personal-mod post passes
 add `gpu_mod_pass_0`–`gpu_mod_pass_7` by execution slot. F3 shows the latest GPU frame.
 
-`RUST_MCBE_GPU_CATEGORIES=1` splits the main opaque phase into category passes
+`CINNABAR_GPU_CATEGORIES=1` splits the main opaque phase into category passes
 and disables in-pass spans to avoid double counting; separate late GPU-cull draws
-are not category-timed. `RUST_MCBE_OPAQUE_LAYERS=1` measures submitted alpha-surviving
+are not category-timed. `CINNABAR_OPAQUE_LAYERS=1` measures submitted alpha-surviving
 terrain coverage in a separate raster target. Both are diagnostic workloads;
 keep them out of ordinary performance captures. See the
 [opaque foliage fixture](../../tools/localserver/opaque-overdraw.md). Fast frames use fixed-size counters without formatting or
 file I/O; aggregate snapshots and full traces remain opt-in.
 
-With the `tracy` feature, `RUST_MCBE_GPU_NODES=1` times every render-graph node with
+With the `tracy` feature, `CINNABAR_GPU_NODES=1` times every render-graph node with
 encoder timestamps and plots each as `gpu node <graph>/<label> ms`, plus named sections
 inside the late GPU-cull node as `gpu section <name> ms`; it adds a timestamp pair per node, so
 take frame-time numbers from a capture without it. Tracy builds also enable wgpu's own
@@ -214,14 +217,14 @@ and barrier calls), which is where the render thread's encoding time shows: wgpu
 passes and encodes them at `finish`, and the opaque, late-cull and transparent passes
 finish on worker tasks.
 
-`RUST_MCBE_GPU_UI=1` replaces the aggregate UI timestamp category with
+`CINNABAR_GPU_UI=1` replaces the aggregate UI timestamp category with
 `gpu_ui_raster`, `gpu_ui_model`, `gpu_ui_composite` and `gpu_ui_invert` on
 owned passes. It also reports submitted pass, draw and index counts, layer reuse,
 target extent/format/sample count, and geometry, texture and viewport upload bytes
 once per second. Metal timings retain the latency and invalid-pair limitations
 above; a missing category is not a zero-cost pass. Pair this diagnostic with query
 health and repeat the ordinary capture without it before making a performance claim.
-With these diagnostics enabled, `RUST_MCBE_GPU_UI_BASELINE=1` selects the previous
+With these diagnostics enabled, `CINNABAR_GPU_UI_BASELINE=1` selects the previous
 replay policy: retain identical revisions and fully redraw newer publications.
 Both modes retain unchanged viewport uniforms. Use this same-binary control
 for matched comparisons, with equal warm-up and alternating run order. The switch
@@ -234,7 +237,7 @@ identities. Frozen startup visibility markers are no longer printed as current
 gameplay evidence. Explicit acceptance and metrics probes retain their existing
 snapshot schema.
 
-For frame-level attribution, also set `RUST_MCBE_STAGE_PROFILE_FRAMES` to a
+For frame-level attribution, also set `CINNABAR_STAGE_PROFILE_FRAMES` to a
 scratch JSON path. The profiler keeps a bounded, preallocated trace in memory
 and writes Chrome trace events on the exit frame. It includes window focus and
 OS occlusion at each main-frame boundary, executing threads, session geometry,
@@ -244,12 +247,12 @@ drops subsequent events and sets `truncated`; inspect this flag before choosing
 a measurement window. Surface preparation includes schedule overhead and is an
 upper bound on drawable acquisition, not proof that macOS caused a stall.
 
-Build with the `bedrock-client/frame-trace` feature for named Bevy schedules,
+Build with the `cinnabar/frame-trace` feature for named Bevy schedules,
 systems, graph nodes, command generation, queue submission and presentation spans.
 Chrome tracing writes through Bevy's trace writer and changes the workload; use a
 short diagnostic run, separate from the matched long captures.
 
-`RUST_MCBE_STAGE_PROFILE_EVENTS` sets the bounded event budget (default 131,072;
+`CINNABAR_STAGE_PROFILE_EVENTS` sets the bounded event budget (default 131,072;
 maximum 2,097,152). Invalid values retain the default. Exported traces include the
 capacity, exact dropped-event count, a wall-clock anchor and game-clock frame
 anchors. GPU counter events carry a readback sequence and duration in nanoseconds;

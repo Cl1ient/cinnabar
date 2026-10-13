@@ -24,7 +24,7 @@ pub(super) fn capture(layout: &InstallLayout) {
         diagnostics::console::stderr(),
         "CLIENT_SESSION_START version={} commit={} timestamp_ms={}",
         env!("CARGO_PKG_VERSION"),
-        option_env!("RUST_MCBE_BUILD_COMMIT").unwrap_or("unknown"),
+        option_env!("CINNABAR_BUILD_COMMIT").unwrap_or("unknown"),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

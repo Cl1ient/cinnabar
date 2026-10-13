@@ -85,7 +85,7 @@ pub fn select_asset_path_from_environment(
 ) -> AssetSelection {
     select_asset_path_with_default(
         command_line,
-        std::env::var_os(super::ASSET_PATH_ENVIRONMENT),
+        env_compat::var_os(super::ASSET_PATH_ENVIRONMENT),
         default_path,
     )
 }

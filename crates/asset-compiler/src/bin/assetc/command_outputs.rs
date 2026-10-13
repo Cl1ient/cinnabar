@@ -126,6 +126,10 @@ pub(super) fn validate_command_outputs(command: &Command) -> Result<(), AssetErr
             source_manifest,
             out,
             ..
+        }
+        | OreuiIconsAssets {
+            source_manifest,
+            out,
         } => {
             inputs.push(source_manifest);
             outputs.push(out);
@@ -134,7 +138,9 @@ pub(super) fn validate_command_outputs(command: &Command) -> Result<(), AssetErr
             outputs.push(out)
         }
         AudioBank { out, report, .. } => outputs.extend([out.as_path(), report.as_path()]),
-        LanguageAssets { .. } | VanillaPack { .. } | Prepare { .. } => return Ok(()),
+        LanguageAssets { .. } | VanillaPack { .. } | Prepare { .. } | KitFiles { .. } => {
+            return Ok(());
+        }
     }
     match command {
         EntityAssets { out, .. } => {
@@ -218,6 +224,7 @@ mod tests {
         assert!(error.contains("distinct files"), "{error}");
         let command = Command::ActorAssets {
             pack: "/tmp/pack".into(),
+            behavior_pack: None,
             source_manifest: "/tmp/source.json".into(),
             out: "/tmp/source.json".into(),
             report: "/tmp/report.json".into(),

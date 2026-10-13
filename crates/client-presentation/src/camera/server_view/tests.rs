@@ -813,7 +813,7 @@ fn full_camera_frame_evaluation_allocates_nothing() {
         }),
         &ctx(Transform::IDENTITY),
     );
-    let before = crate::test_allocations::count();
+    let before = test_alloc::thread_allocations();
     for _ in 0..1000 {
         view.advance(0.01);
         std::hint::black_box(view.pose_override(&ctx(Transform::IDENTITY)));
@@ -821,7 +821,7 @@ fn full_camera_frame_evaluation_allocates_nothing() {
         std::hint::black_box(view.fov_override_degrees(90.0));
         std::hint::black_box(view.shake_offset());
     }
-    assert_eq!(crate::test_allocations::count() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
 }
 
 #[test]
@@ -891,7 +891,7 @@ fn free_camera_publishes_the_local_body_and_clear_restores_first_person() {
     use crate::local_player::{LocalAvatarPresentation, LocalAvatarVisibilityCarrier};
     let mut view = free_view();
     let mut avatar = LocalAvatarPresentation::default();
-    avatar.begin_session(1, 7);
+    avatar.begin_session(simulation_clock::identity::SessionGeneration::new(1), 7);
     let mut visibility = LocalAvatarVisibilityCarrier::default();
     let context = ctx(Transform::IDENTITY);
     for (sequence, event, expected) in [

@@ -203,8 +203,11 @@ impl WorldStream {
         sent_at: Instant,
     ) {
         self.requests.transport_pending = self.requests.transport_pending.saturating_sub(1);
-        self.stats.phase2_stages.requests_sent =
-            self.stats.phase2_stages.requests_sent.saturating_add(1);
+        self.stats.publication_stages.requests_sent = self
+            .stats
+            .publication_stages
+            .requests_sent
+            .saturating_add(1);
         let deadline = sent_at
             .checked_add(SUB_CHUNK_RESPONSE_TIMEOUT)
             .unwrap_or(sent_at);
@@ -287,9 +290,9 @@ impl WorldStream {
         }
         match request_sub_chunk_column(key.dimension, key.x, key.z, base_sub_chunk_y, count) {
             Ok(packet) => {
-                self.stats.phase2_stages.requests_constructed = self
+                self.stats.publication_stages.requests_constructed = self
                     .stats
-                    .phase2_stages
+                    .publication_stages
                     .requests_constructed
                     .saturating_add(1);
                 let request = PendingSubChunkRequest {
@@ -398,9 +401,9 @@ impl WorldStream {
                 self.record_normalization_error(NormalizationErrorReason::RequestEncodingFailure);
                 continue;
             };
-            self.stats.phase2_stages.requests_constructed = self
+            self.stats.publication_stages.requests_constructed = self
                 .stats
-                .phase2_stages
+                .publication_stages
                 .requests_constructed
                 .saturating_add(1);
             requests.push((

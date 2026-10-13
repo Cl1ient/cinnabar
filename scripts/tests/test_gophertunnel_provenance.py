@@ -66,7 +66,7 @@ print(result if isinstance(result, str) else json.dumps(result))
 
     def resolve(self):
         self.state_path.write_text(json.dumps(self.state), encoding="utf-8")
-        environment = dict(os.environ, RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY="1",
+        environment = dict(os.environ, CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY="1",
                            GOPHERTUNNEL_TEST_STATE=str(self.state_path))
         environment["PATH"] = str(self.bin_dir) + os.pathsep + environment["PATH"]
         return subprocess.run(

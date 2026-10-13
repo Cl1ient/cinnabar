@@ -38,6 +38,7 @@ mod descriptors;
 mod destroy_facts;
 mod leaf_mips;
 mod lily_pad_textures;
+mod material_facts;
 mod seasonal_leaves;
 mod variations;
 mod visuals;
@@ -306,6 +307,7 @@ fn compile_pack_inner(
             || is_liquid(record)
             || record.name.as_ref() == "minecraft:enchanting_table"
             || visuals::literal::is_literal_cube(record)
+            || visuals::bubble_column::is_record(record)
             || fallback.contains(record)
     }) {
         if visuals::hollow_containers::is_name(&record.name) {
@@ -406,6 +408,14 @@ fn compile_pack_inner(
             }
             continue;
         }
+        if visuals::bubble_column::is_record(record) {
+            if let Some(descriptors) = visuals::bubble_column::material_descriptors(&pack, record) {
+                for (descriptor, key) in descriptors {
+                    descriptor_keys.insert(descriptor, key);
+                }
+            }
+            continue;
+        }
         if is_flowerbed(record) {
             if let Some(descriptors) = flowerbed_material_descriptors(&pack, record) {
                 for (descriptor, key) in descriptors {
@@ -436,17 +446,20 @@ fn compile_pack_inner(
             }
         }
         let aquatic_faces;
-        let faces: &[BlockFace] =
-            if is_kelp(record) || is_liquid(record) || visuals::fire::is_record(record) {
-                &BlockFace::ALL
-            } else if is_aquatic_cross(record) {
-                aquatic_faces = aquatic_cross_faces(record).unwrap_or([BlockFace::Up; 2]);
-                &aquatic_faces
-            } else if is_terrestrial_cross(record) {
-                &[cross_texture_face(record)]
-            } else {
-                &BlockFace::ALL
-            };
+        let faces: &[BlockFace] = if is_kelp(record)
+            || is_liquid(record)
+            || visuals::fire::is_record(record)
+            || visuals::potted_plants::is_record(record)
+        {
+            &BlockFace::ALL
+        } else if is_aquatic_cross(record) {
+            aquatic_faces = aquatic_cross_faces(record).unwrap_or([BlockFace::Up; 2]);
+            &aquatic_faces
+        } else if is_terrestrial_cross(record) {
+            &[cross_texture_face(record)]
+        } else {
+            &BlockFace::ALL
+        };
         for &face in faces {
             if let Some((descriptor, key)) = descriptor_for(fallback, &pack, record, face) {
                 descriptor_keys
@@ -497,6 +510,7 @@ fn compile_pack_inner(
     )?;
     let mut materials = materials.into_vec();
     let mut visuals = visuals.into_vec();
+    material_facts::install(records, &mut visuals, registry_protocol)?;
     destroy_facts::install(records, &mut visuals, registry_protocol)?;
     let lily_pad_textures::Installed {
         pages: texture_pages,
@@ -982,4 +996,4 @@ fn compile_materials(
 
 #[cfg(test)]
 #[path = "compiler/tests.rs"]
-mod tests;
+pub(crate) mod tests;

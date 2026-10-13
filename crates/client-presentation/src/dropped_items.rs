@@ -109,6 +109,10 @@ fn block_cube(assets: &RuntimeAssets, mode: NetworkIdMode, id: u32) -> Option<Dr
             return None;
         }
         let bytes = (size * size * 4) as usize;
+        if bytes.checked_mul(BlockFace::ALL.len())? > assets::texture::policy::MAX_SUBSCRIBER_BYTES
+        {
+            return None;
+        }
         let start = material.texture.layer() as usize * bytes;
         faces.push(Arc::from(mip.rgba8.get(start..start + bytes)?));
         tints[index] = tint_rgba(material.flags);
@@ -132,7 +136,11 @@ fn block_model_layers(assets: &RuntimeAssets, mode: NetworkIdMode, id: u32) -> O
     if !matches!(block.kind(), VisualKind::Model | VisualKind::Cross) {
         return None;
     }
-    let mut template_id = block.model_template()?;
+    template_layers(assets, block.model_template()?)
+}
+
+/// Counts materials in one model's contiguous parts without copying texture pixels.
+fn template_layers(assets: &RuntimeAssets, mut template_id: u32) -> Option<usize> {
     let mut materials = std::collections::HashSet::new();
     loop {
         let template = assets.model_templates().get(template_id as usize)?;
@@ -159,10 +167,19 @@ fn block_template(
     if !block.is_known() || !matches!(block.kind(), VisualKind::Model | VisualKind::Cross) {
         return None;
     }
-    let mut template_id = block.model_template()?;
+    template_model(assets, block.model_template()?, block.variant() & 3)
+}
+
+/// Retains the authored quads and pixels for a selected world or pot-content template.
+fn template_model(
+    assets: &RuntimeAssets,
+    mut template_id: u32,
+    rotation: u32,
+) -> Option<DroppedItemBlock> {
     let mut quads = Vec::new();
     let mut materials = Vec::new();
     let mut material_indices = HashMap::new();
+    let mut pixel_bytes = 0;
     loop {
         let template = assets.model_templates().get(template_id as usize)?;
         let first = template.quad_start as usize;
@@ -180,10 +197,14 @@ fn block_template(
                     .get(material.texture.page() as usize)?;
                 let mip = page.texture.mips.first()?;
                 let size = mip.size;
-                if size == 0 || size > MAX_ITEM_SPRITE_SIDE {
+                if size == 0 || size > assets::MAX_TILE_SIZE {
                     return None;
                 }
                 let bytes = (size * size * 4) as usize;
+                pixel_bytes += bytes;
+                if pixel_bytes > assets::texture::policy::MAX_SUBSCRIBER_BYTES {
+                    return None;
+                }
                 let first = material.texture.layer() as usize * bytes;
                 let index = materials.len() as u32;
                 materials.push((
@@ -197,6 +218,10 @@ fn block_template(
                 material_indices.insert(quad.material, index);
                 index
             };
+            let grid = assets.texture_source_grid(assets.material(quad.material).texture);
+            for uv in &mut quad.uvs {
+                *uv = uv.map(|axis| axis >> grid);
+            }
             quad.material = material_index;
             quads.push(quad);
         }
@@ -208,11 +233,20 @@ fn block_template(
     Some(DroppedItemBlock {
         materials: materials.into(),
         quads: quads.into(),
-        rotation: block.variant() & 3,
+        rotation,
     })
 }
 
 impl DroppedItemPublisher<'_, '_> {
+    /// Resolves a plant's separate potted geometry through the current terrain carrier.
+    fn potted_model(cache: &mut ModelCache, assets: &RuntimeAssets, id: u32) -> Option<u32> {
+        let template = assets.potted_model_template(NetworkIdMode::Sequential, id)?;
+        cache.model(
+            ModelKey::PottedBlock { id },
+            || template_layers(assets, template),
+            || template_model(assets, template, 0).map(DroppedItemModel::Block),
+        )
+    }
     fn block_model(
         cache: &mut ModelCache,
         assets: &RuntimeAssets,
@@ -247,7 +281,13 @@ impl DroppedItemPublisher<'_, '_> {
             || Some(1),
             || {
                 // Icons that are not ready yet are retried on the next frame.
-                let pixels = icons.item_sprite(identifier, metadata, MAX_ITEM_SPRITE_SIDE)?;
+                let pixels = icons.item_sprite(
+                    identifier,
+                    metadata,
+                    assets::texture::policy::device_policy()
+                        .max_side()
+                        .min(MAX_ITEM_SPRITE_SIDE),
+                )?;
                 let sprite = DroppedItemSprite {
                     width: pixels.width,
                     height: pixels.height,
@@ -278,13 +318,22 @@ impl DroppedItemPublisher<'_, '_> {
             || Some(BlockFace::ALL.len()),
             || {
                 let block = assets.resolve(mode, id);
-                if !block.is_known() || block.kind() != VisualKind::Cube {
+                if !block.is_known() {
                     return None;
                 }
                 let visual = match mode {
                     NetworkIdMode::Sequential => id,
                     NetworkIdMode::Hashed => assets.sequential_id_for_hash(id)?,
                 };
+                if block.kind() != VisualKind::Cube
+                    && assets::gui_item::full_cube_model_quads(
+                        assets,
+                        assets::BlockVisualId(visual),
+                    )
+                    .is_none()
+                {
+                    return None;
+                }
                 let cube =
                     icons.carried_block_cube(visual, assets.provenance().source_manifest_sha256)?;
                 Some(DroppedItemModel::Cube(cube))
@@ -299,6 +348,10 @@ impl DroppedItemPublisher<'_, '_> {
         collisions: Option<&dyn crate::observations::CollisionLookup>,
         camera: Option<([f32; 3], f32)>,
         partial_tick: f32,
+        glint: (
+            Option<render_model::EquipmentRaster>,
+            render_model::ActorGlint,
+        ),
     ) {
         let (Some(scene), Some(icons)) = (self.scene.as_mut(), icons) else {
             return;
@@ -330,7 +383,8 @@ impl DroppedItemPublisher<'_, '_> {
                 let (identifier, metadata) = UiPresentationRuntime::item_icon_key(
                     identifier,
                     view.item.identity.metadata,
-                    view.item.charged_projectile.as_deref(),
+                    view.item.use_animation,
+                    view.item.charged_projectile_role,
                     None,
                 );
                 if let Some(icon) = icons.item_icon(identifier, metadata) {
@@ -340,6 +394,10 @@ impl DroppedItemPublisher<'_, '_> {
         }
         if let Some(placements) = self.placements.as_ref() {
             for placement in &placements.0.0 {
+                if let Some(id) = placement.potted_block {
+                    cache.request(&ModelKey::PottedBlock { id });
+                    continue;
+                }
                 if let Some(icon) = icons.item_icon(&placement.identifier, placement.metadata) {
                     cache.request(&ModelKey::icon(icon, false));
                 }
@@ -377,7 +435,8 @@ impl DroppedItemPublisher<'_, '_> {
                     let (icon_identifier, variant) = UiPresentationRuntime::item_icon_key(
                         identifier,
                         view.item.identity.metadata,
-                        view.item.charged_projectile.as_deref(),
+                        view.item.use_animation,
+                        view.item.charged_projectile_role,
                         None,
                     );
                     let Some(model) =
@@ -421,6 +480,7 @@ impl DroppedItemPublisher<'_, '_> {
                     block_level: u32::from(block_level),
                     sky_level: u32::from(sky_level),
                     overlay_rgba8: 0,
+                    glint: view.item.enchanted || view.item.glint.enabled().unwrap_or(false),
                 });
             }
         }
@@ -428,13 +488,18 @@ impl DroppedItemPublisher<'_, '_> {
         // Items held by block entities (item frames, campfires) use the same sprite path.
         if let Some(placements) = self.placements.as_ref() {
             for placement in &placements.0.0 {
-                let Some(model) = Self::icon_model(
-                    cache,
-                    icons,
-                    &placement.identifier,
-                    placement.metadata,
-                    false,
-                ) else {
+                let model = if let Some(id) = placement.potted_block {
+                    assets.and_then(|assets| Self::potted_model(cache, assets, id))
+                } else {
+                    Self::icon_model(
+                        cache,
+                        icons,
+                        &placement.identifier,
+                        placement.metadata,
+                        false,
+                    )
+                };
+                let Some(model) = model else {
                     continue;
                 };
                 let rows = placement.world_from_item;
@@ -447,6 +512,7 @@ impl DroppedItemPublisher<'_, '_> {
                     block_level: u32::from(block_level),
                     sky_level: u32::from(sky_level),
                     overlay_rgba8: 0,
+                    glint: false,
                 });
             }
         }
@@ -492,6 +558,7 @@ impl DroppedItemPublisher<'_, '_> {
                     } else {
                         0
                     },
+                    glint: false,
                 };
                 if matches!(view.kind, BlockEntityKind::Falling { .. }) {
                     terrain_instances.push(TerrainItemInstance {
@@ -544,6 +611,7 @@ impl DroppedItemPublisher<'_, '_> {
             &lines,
             DAYLIGHT,
         );
+        scene.set_glint(glint.0, glint.1.scroll());
         scene.publish_terrain_instances(stream.authority().actor_session_id(), &terrain_instances);
     }
 }

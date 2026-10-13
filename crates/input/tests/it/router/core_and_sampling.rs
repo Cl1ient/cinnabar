@@ -45,11 +45,11 @@ fn route_and_finalize_enforce_exactly_one_pending_frame_transactionally() {
         Err(RouterError::PendingFrameAlreadyRouted)
     );
     let first = router.finalize().unwrap();
-    assert_eq!(first.frame_sequence, 1);
+    assert_eq!(first.frame_sequence.get(), 1);
     assert_eq!(router.finalize(), Err(RouterError::MissingPendingFrame));
 
     router.route(DeviceFrame::default()).unwrap();
-    assert_eq!(router.finalize().unwrap().frame_sequence, 2);
+    assert_eq!(router.finalize().unwrap().frame_sequence.get(), 2);
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn malformed_device_frames_are_rejected_without_consuming_the_slot() {
     );
 
     router.route(DeviceFrame::default()).unwrap();
-    assert_eq!(router.finalize().unwrap().frame_sequence, 1);
+    assert_eq!(router.finalize().unwrap().frame_sequence.get(), 1);
 }
 
 #[test]
@@ -255,7 +255,7 @@ fn release_reasons_use_the_documented_priority_and_finalize_barrier() {
 #[test]
 fn authority_and_context_changes_publish_only_at_finalize() {
     let mut router = SemanticInputRouter::default();
-    let generation = NonZeroU64::new(9).unwrap();
+    let generation = InputAuthorityGeneration::new(NonZeroU64::new(9).unwrap());
     router.replace_authority(generation);
     router.set_context(InputContext::UiFocused);
     router.route(DeviceFrame::default()).unwrap();

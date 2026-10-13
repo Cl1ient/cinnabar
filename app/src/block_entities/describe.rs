@@ -250,6 +250,27 @@ fn sign(block_name: &str, state: &BlockState, nbt: &NbtCompound) -> Option<Templ
     (front.is_some() || back.is_some()).then_some(Template::Sign { mount, front, back })
 }
 
+/// Whether the block now at a block entity's position can still carry it. Breaking or
+/// replacing the block leaves the server's record behind, which must then draw nothing.
+fn block_carries(id: &str, block_name: &str) -> bool {
+    let name = block_name.strip_prefix("minecraft:").unwrap_or(block_name);
+    match id {
+        "EnchantTable" => name == "enchanting_table",
+        "Lectern" => name == "lectern",
+        "Beacon" => name == "beacon",
+        "Bell" => name == "bell",
+        "Conduit" => name == "conduit",
+        "MobSpawner" => name == "mob_spawner" || name == "trial_spawner",
+        "Bed" => name == "bed" || name.ends_with("_bed"),
+        "DecoratedPot" => name == "decorated_pot",
+        "FlowerPot" => name == "flower_pot",
+        "ItemFrame" => name == "frame",
+        "GlowItemFrame" => name == "glow_frame",
+        "Campfire" => name.ends_with("campfire"),
+        _ => name != "air",
+    }
+}
+
 /// Plans the draw for one block entity, or `None` when nothing should be drawn.
 pub(super) fn describe(
     id: &str,
@@ -258,6 +279,9 @@ pub(super) fn describe(
     nbt: &NbtCompound,
     position: [i32; 3],
 ) -> Option<Template> {
+    if !block_carries(id, block_name) {
+        return None;
+    }
     match id {
         "Chest" => Some(Template::Chest(ChestModel {
             variant: chest_variant(block_name)?,
@@ -498,6 +522,24 @@ mod tests {
 
     fn state(json: &str) -> BlockState {
         BlockState::parse(json)
+    }
+
+    #[test]
+    fn a_broken_enchanting_table_leaves_no_floating_book() {
+        let empty = nbt(|_| {});
+        let none = state("{}");
+        assert!(matches!(
+            describe(
+                "EnchantTable",
+                "minecraft:enchanting_table",
+                &none,
+                &empty,
+                [0; 3]
+            ),
+            Some(Template::EnchantTable)
+        ));
+        assert!(describe("EnchantTable", "minecraft:air", &none, &empty, [0; 3]).is_none());
+        assert!(describe("EnchantTable", "minecraft:stone", &none, &empty, [0; 3]).is_none());
     }
 
     #[test]

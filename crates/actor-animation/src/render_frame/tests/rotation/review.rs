@@ -51,13 +51,13 @@ fn expression(compiled: &mut CompiledEntityAssets, ops: &[MolangOp], max_stack: 
     index
 }
 
-/// Extends a channel's query expression with a generated input it also consumes.
+/// Appends a scalar binary-operation tail, which needs two stack slots.
 fn extend(compiled: &mut CompiledEntityAssets, index: u32, tail: &[MolangOp]) -> u32 {
     let original = compiled.molang_expressions[index as usize];
     let first = original.first_op as usize;
     let mut ops = compiled.molang_ops[first..first + usize::from(original.op_count)].to_vec();
     ops.extend_from_slice(tail);
-    expression(compiled, &ops, 3)
+    expression(compiled, &ops, original.max_stack.max(2))
 }
 
 /// Adds a reachable camera clip with an authored constant activation weight.
@@ -280,7 +280,15 @@ fn isolated_motion_completes_spear_inputs_before_channel_and_weight_sampling() {
             let combined = extend(
                 &mut compiled,
                 original,
-                &[MolangOp::LoadVariable(slot), MolangOp::Add],
+                &[
+                    MolangOp::LoadVariable(slot),
+                    // Authored X offsets are mirrored when the pose is composed.
+                    if axis == 0 {
+                        MolangOp::Subtract
+                    } else {
+                        MolangOp::Add
+                    },
+                ],
             );
             compiled.animation_keyframes[0].expressions[axis] = Some(combined);
         }

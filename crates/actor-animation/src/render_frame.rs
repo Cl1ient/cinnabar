@@ -932,7 +932,7 @@ impl ActorAnimationStore {
             }
             _ => Ok(Cow::Borrowed(state.skin_layers.as_slice())),
         }
-        .unwrap_or_else(|_| Cow::Borrowed(state.skin_layers.as_slice()));
+        .unwrap_or(Cow::Borrowed(state.skin_layers.as_slice()));
         Some(ActorRenderLayers {
             render: Cow::Owned(layers),
             skin,

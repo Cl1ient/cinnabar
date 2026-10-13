@@ -156,6 +156,11 @@ func (relay *Relay) openControl(client netip.Addr, token string, now time.Time) 
 	session.controlCtx, session.controlCancel = context.WithCancel(relay.ctx)
 	session.generation++
 	relay.rotateLocked(session, token, now)
+	// A fresh account has no earlier capability to protect. Its first ping may replace
+	// the welcome while retaining it; a resume must first confirm its replacement welcome.
+	if token == "" {
+		session.tokenPending = false
+	}
 	var once sync.Once
 	return session, func(now time.Time) {
 		once.Do(func() {
@@ -168,15 +173,16 @@ func (relay *Relay) openControl(client netip.Addr, token string, now time.Time) 
 	}, nil
 }
 
-// welcome returns the current control capability, refreshing it on keepalive.
+// welcome refreshes acknowledged capabilities and repeats outstanding ones at their original expiry.
 func (relay *Relay) welcome(session *webSession, refresh bool, now time.Time) controlEvent {
 	relay.mu.Lock()
 	defer relay.mu.Unlock()
-	if refresh {
+	if refresh && !session.tokenPending {
 		relay.rotateLocked(session, session.token, now)
 	}
+	expires := relay.tokens[session.token].expires.Sub(now)
 	return controlEvent{Type: bridgecontract.RelayEventWelcome, Version: bridgecontract.RelayVersion,
-		Resume: session.token, Generation: session.generation, ExpiresSeconds: int(resumeTTL / time.Second)}
+		Resume: session.token, Generation: session.generation, ExpiresSeconds: max(0, int((expires+time.Second-1)/time.Second))}
 }
 
 // playSession checks a fallback bearer or the authenticated QUIC account and its generation.

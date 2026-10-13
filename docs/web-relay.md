@@ -39,9 +39,12 @@ require Hello before account or gameplay bytes. Resume bearers are sent only ins
 that protected framing, never in URLs, headers, subprotocols or logs.
 
 A successful control Hello returns a rotated, short-lived bearer and a play
-generation. Keep the replacement from each keepalive and answer with pong. The
-relay retains one previous bearer at its original expiry so a lost replacement
-does not prevent resumption. A resume retains the bearer presented by the browser.
+generation. Keep the replacement from each keepalive and answer with
+`{"op":"pong","resume":"<received bearer>"}`. The relay repeats an unanswered
+replacement with its remaining expiry and retains the acknowledged bearer at its
+original expiry. A delayed pong cannot acknowledge an unseen replacement.
+A resume retains the bearer presented by the browser until its replacement is
+acknowledged.
 Resumption can retain an account across network changes; the new peer address must
 still satisfy admission. It starts a fresh play generation. Closing control cancels
 play; resumed play waits for the cancelled handler to finish before restarting.
@@ -49,12 +52,16 @@ A refused resume requires an explicit fresh session; gameplay is never
 replayed. Sign-out erases the account after play has ended.
 
 Admission is limited to 256 retained accounts and 256 transport connections, with
-four of each per peer IP. TCP sockets count before TLS and HTTP processing;
-pending Hello connections also count. Upgraded connections retain their slot
-until the socket and handler have both ended.
+four of each per peer IP. TCP sockets count before TLS and HTTP processing, and
+QUIC connections count before their handshake. The TCP fallback accepts HTTP/1
+only. Each QUIC connection allows one WebTransport session and must complete a
+valid control Hello within the initial deadline, even when QUIC PINGs keep it active.
+Upgraded connections retain their slot until the connection and handlers have ended.
 Idle accounts expire after ten minutes. Action and upload rate limits, bounded
-control messages, and deadlines apply to both transports. Public-address checks
-apply after DNS resolution to every game connection, transfer hop, pack URL and
+control messages, and deadlines apply to both transports. Control message bursts
+are refused; only a pong confirming the current bearer extends the read deadline.
+Public-address checks apply after DNS resolution to every game connection,
+transfer hop, pack URL and
 pack redirect; environment proxies cannot bypass them.
 
 All current gameplay batches and pack chunks use reliable ordered play framing.

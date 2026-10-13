@@ -146,5 +146,67 @@ func TestKeepaliveOverlapDiscardsOlderBearers(t *testing.T) {
 		}
 		discarded = previous
 		previous = current
+		if !relay.acknowledge(session, current, now) {
+			t.Fatal("keepalive acknowledgement refused")
+		}
+	}
+}
+
+func TestKeepaliveRetainsAcknowledgedBearerUntilReplacementArrives(t *testing.T) {
+	relay := testRelay(t)
+	client := netip.MustParseAddr("192.0.2.1")
+	now := time.Now()
+	session, detach, err := relay.openControl(client, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { detach(now) }()
+	acknowledged := relay.welcome(session, true, now.Add(keepAliveInterval))
+	if !relay.acknowledge(session, acknowledged.Resume, now.Add(keepAliveInterval+time.Second)) {
+		t.Fatal("received ping was not acknowledged")
+	}
+	first := relay.welcome(session, true, now.Add(2*keepAliveInterval))
+	second := relay.welcome(session, true, now.Add(3*keepAliveInterval))
+	if first.Resume != second.Resume || second.ExpiresSeconds != int((resumeTTL-keepAliveInterval)/time.Second) {
+		t.Fatal("an unanswered ping replaced or extended the outstanding bearer")
+	}
+	// A duplicate pong for the last received ping must not acknowledge the unseen replacement.
+	if relay.acknowledge(session, acknowledged.Resume, now.Add(3*keepAliveInterval)) {
+		t.Fatal("a delayed pong acknowledged an unseen replacement")
+	}
+	detach(now.Add(3*keepAliveInterval + time.Second))
+	resumed, finish, err := relay.openControl(client, acknowledged.Resume, now.Add(3*keepAliveInterval+time.Second))
+	if err != nil || resumed != session {
+		t.Fatal("unanswered keepalives discarded the last acknowledged bearer", err)
+	}
+	defer func() { finish(now) }()
+	if len(relay.tokens) != 2 {
+		t.Fatal("recovery exceeded the two-bearer bound")
+	}
+}
+
+func TestUnacknowledgedResumeWelcomeSurvivesRepeatedPings(t *testing.T) {
+	relay := testRelay(t)
+	now := time.Now()
+	client := netip.MustParseAddr("192.0.2.1")
+	session, detach, err := relay.openControl(client, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := session.token
+	detach(now)
+	session, detach, err = relay.openControl(client, known, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { detach(now) }()
+	for i := range 3 {
+		relay.welcome(session, true, now.Add(time.Duration(i+1)*keepAliveInterval))
+		if relay.resumeLocked(known, now.Add(time.Duration(i+1)*keepAliveInterval)) != session || len(relay.tokens) != 2 {
+			t.Fatal("an unanswered resumed welcome lost the presented bearer")
+		}
+	}
+	if relay.acknowledge(session, session.token, now.Add(resumeTTL+time.Second)) {
+		t.Fatal("an expired bearer was acknowledged")
 	}
 }

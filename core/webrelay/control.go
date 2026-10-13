@@ -27,7 +27,8 @@ type hello struct {
 }
 
 type controlRequest struct {
-	Op string `json:"op"`
+	Op     string `json:"op"`
+	Resume string `json:"resume,omitempty"`
 }
 
 type controlEvent struct {
@@ -40,6 +41,11 @@ type controlEvent struct {
 	Connect        *proxy.ConnectProgress `json:"connect,omitempty"`
 	Error          string                 `json:"error,omitempty"`
 }
+
+const (
+	controlRequestsPerSecond = 1
+	controlRequestBurst      = 4
+)
 
 // readJSON admits a nonzero u32 big-endian JSON payload before allocating it.
 func readJSON(conn net.Conn, value any) error {
@@ -111,15 +117,19 @@ func (relay *Relay) runControl(ctx context.Context, conn net.Conn, client netip.
 	defer stop()
 	events := make(chan controlEvent, 4)
 	readerDone := make(chan struct{})
+	if conn.SetReadDeadline(time.Now().Add(2*keepAliveInterval)) != nil {
+		return
+	}
 	go func() {
 		defer close(readerDone)
 		defer cancel()
+		requests := rate.NewLimiter(controlRequestsPerSecond, controlRequestBurst)
 		for {
-			if conn.SetReadDeadline(time.Now().Add(2*keepAliveInterval)) != nil || ctx.Err() != nil {
+			if ctx.Err() != nil {
 				return
 			}
 			var request controlRequest
-			if readJSON(conn, &request) != nil {
+			if readJSON(conn, &request) != nil || !requests.Allow() {
 				return
 			}
 			var err error
@@ -133,6 +143,10 @@ func (relay *Relay) runControl(ctx context.Context, conn net.Conn, client netip.
 			case bridgecontract.RelayOpSignOut:
 				err = session.SignOut()
 			case bridgecontract.RelayOpPong:
+				if relay.acknowledge(session, request.Resume, time.Now()) &&
+					conn.SetReadDeadline(time.Now().Add(2*keepAliveInterval)) != nil {
+					return
+				}
 				continue
 			default:
 				err = errors.New("unknown operation")

@@ -45,9 +45,7 @@ func (relay *Relay) Serve(ctx context.Context, cfg ListenConfig) error {
 	}
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}}
 	wt := relay.transportServer(tlsConfig, cfg.UDPAddress)
-	tcp := &http.Server{Addr: cfg.TCPAddress, Handler: relay.Handler(), TLSConfig: tlsConfig,
-		ReadHeaderTimeout: helloTimeout, IdleTimeout: 2 * keepAliveInterval, MaxHeaderBytes: bridgecontract.RelayControlBytes,
-		ConnContext: relay.tcpConnContext}
+	tcp := relay.socketServer(tlsConfig, cfg.TCPAddress)
 	tcpListener, err := net.Listen("tcp", cfg.TCPAddress)
 	if err != nil {
 		return err
@@ -63,17 +61,35 @@ func (relay *Relay) Serve(ctx context.Context, cfg ListenConfig) error {
 	defer cancel()
 	errs := make(chan error, 2)
 	go func() { errs <- tcp.ServeTLS(tcpListener, "", "") }()
-	go func() { errs <- wt.Serve(udpListener) }()
+	go func() { errs <- relay.serveQUIC(ctx, udpListener, wt) }()
 	var result error
+	received := 0
 	select {
 	case result = <-errs:
+		received++
 	case <-ctx.Done():
 	case <-relay.ctx.Done():
 	}
+	cancel()
 	_ = tcp.Close()
 	_ = wt.Close()
 	relay.Close()
+	// Both listener workers finish before their state can be released by the caller.
+	for received < 2 {
+		<-errs
+		received++
+	}
 	return result
+}
+
+// socketServer limits fallback to HTTP/1, so one counted TCP socket cannot multiplex requests.
+func (relay *Relay) socketServer(tlsConfig *tls.Config, address string) *http.Server {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	return &http.Server{Addr: address, Handler: relay.Handler(), TLSConfig: tlsConfig, Protocols: protocols,
+		ReadHeaderTimeout: helloTimeout, ReadTimeout: helloTimeout, WriteTimeout: helloTimeout,
+		IdleTimeout: 2 * keepAliveInterval, MaxHeaderBytes: bridgecontract.RelayControlBytes,
+		ConnContext: relay.tcpConnContext, ConnState: relay.tcpConnState}
 }
 
 // Handler exposes only the two WebSocket fallback channels.
@@ -171,12 +187,13 @@ func (conn *socketConn) Write(data []byte) (int, error) {
 // serveTransport binds one control and at most one play stream to an authenticated QUIC session.
 func (relay *Relay) serveTransport(w http.ResponseWriter, r *http.Request, server *webtransport.Server) {
 	client := clientAddr(r)
-	release, err := relay.admit(client, time.Now())
+	admission, release, err := relay.admitTransport(r)
 	if err != nil {
 		http.Error(w, refusal(err), http.StatusTooManyRequests)
 		return
 	}
 	defer release()
+	defer admission.conn.CloseWithError(0, "")
 	transport, err := server.Upgrade(w, r)
 	if err != nil {
 		return
@@ -205,6 +222,9 @@ func (relay *Relay) serveTransport(w http.ResponseWriter, r *http.Request, serve
 		return
 	}
 	defer func() { detach(time.Now()) }()
+	if !admission.establish() {
+		return
+	}
 	var workers sync.WaitGroup
 	defer func() { cancel(); _ = transport.CloseWithError(0, ""); workers.Wait() }()
 	workers.Go(func() { relay.runControl(ctx, controlConn, client, session); cancel() })

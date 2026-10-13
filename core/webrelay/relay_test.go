@@ -196,6 +196,7 @@ func TestControlFramingAndContractConformance(t *testing.T) {
 		hello{Version: bridgecontract.RelayVersion, Channel: bridgecontract.RelayChannelPlay, Generation: 1},
 		controlEvent{Type: bridgecontract.RelayEventWelcome, Version: bridgecontract.RelayVersion, Resume: "test-token", Generation: 1, ExpiresSeconds: int(resumeTTL / time.Second)},
 		controlRequest{Op: bridgecontract.RelayOpSignIn},
+		controlRequest{Op: bridgecontract.RelayOpPong, Resume: "test-token"},
 	}
 	if len(values) != len(manifest.Relay.Fixtures) {
 		t.Fatal("missing contract fixture")
@@ -379,8 +380,9 @@ func TestWebTransportHelloAndReliablePlay(t *testing.T) {
 	defer listener.Close()
 	server := relay.transportServer(&tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}}, listener.LocalAddr().String())
 	done := make(chan error, 1)
-	go func() { done <- server.Serve(listener) }()
-	defer func() { _ = server.Close(); <-done }()
+	serveCtx, stopServe := context.WithCancel(t.Context())
+	go func() { done <- relay.serveQUIC(serveCtx, listener, server) }()
+	defer func() { stopServe(); <-done }()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	client := &webtransport.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} // Only the local test certificate is untrusted.

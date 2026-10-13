@@ -36,14 +36,15 @@
     "control_hello": {"version": 2, "channel": "control", "channels": ["control", "play"], "resume": "optional bearer"},
     "play_hello": {"version": 2, "channel": "play", "generation": 1, "resume": "required for WebSocket; omitted for authenticated WebTransport"},
     "welcome": {"type": "welcome", "version": 2, "resume": "rotated bearer", "generation": 1, "expires_seconds": 120},
-    "request": {"op": "sign_in, sign_out or pong"},
-    "event": "account carries auth.v1 under account; connect carries ConnectProgress under connect; error carries a public code under error. ping carries the same capability fields as welcome and requires pong. Unknown fields are optional extensions; unknown operations receive error. Malformed framing ends the transport.",
-    "lifecycle": "A successful control Hello rotates the bearer and increments generation. Only one controller and one play stream may be active. Closing control cancels play. Resume retains account state, never gameplay. Bearers expire and refresh on ping; rejected resume never creates a replacement account.",
+    "request": {"op": "sign_in, sign_out or pong", "resume": "pong echoes the bearer from the received ping"},
+    "event": "account carries auth.v1 under account; connect carries ConnectProgress under connect; error carries a public code under error. ping carries the same capability fields as welcome and requires pong with that resume bearer. Unanswered pings repeat the pending bearer and report its remaining expiry. Unknown fields are optional extensions; unknown operations receive error. Malformed framing ends the transport.",
+    "lifecycle": "A successful control Hello rotates the bearer and increments generation. Only one controller and one play stream may be active. Closing control cancels play. Resume retains account state, never gameplay. A ping refreshes an acknowledged bearer; pending replacements retain the prior bearer at its original expiry until acknowledged. Only pong for the current bearer extends the control read deadline. Rejected resume never creates a replacement account.",
     "fixtures": [
       {"version": 2, "channel": "control", "channels": ["control", "play"]},
       {"version": 2, "channel": "play", "generation": 1},
       {"type": "welcome", "version": 2, "resume": "test-token", "generation": 1, "expires_seconds": 120},
-      {"op": "sign_in"}
+      {"op": "sign_in"},
+      {"op": "pong", "resume": "test-token"}
     ]
   }
 }

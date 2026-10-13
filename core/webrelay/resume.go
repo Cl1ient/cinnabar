@@ -29,4 +29,17 @@ func (relay *Relay) rotateLocked(session *webSession, retain string, now time.Ti
 	session.previousToken = retain
 	session.token = newSessionID()
 	relay.tokens[session.token] = resumeBearer{session: session, expires: now.Add(resumeTTL)}
+	session.tokenPending = true
+}
+
+// acknowledge accepts only the current, unexpired bearer. Echoing it prevents a delayed pong
+// from acknowledging a later replacement that the browser has not received.
+func (relay *Relay) acknowledge(session *webSession, token string, now time.Time) bool {
+	relay.mu.Lock()
+	defer relay.mu.Unlock()
+	if token != session.token || relay.resumeLocked(token, now) != session {
+		return false
+	}
+	session.tokenPending = false
+	return true
 }

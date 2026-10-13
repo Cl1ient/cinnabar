@@ -5,9 +5,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,11 +23,36 @@ func admittedTLSServer(t *testing.T, relay *Relay) *httptest.Server {
 	t.Helper()
 	server := httptest.NewUnstartedServer(relay.Handler())
 	server.Listener = &admittedTCPListener{Listener: server.Listener, relay: relay}
-	server.Config.ConnContext = relay.tcpConnContext
-	server.Config.ReadHeaderTimeout = helloTimeout
+	server.Config = relay.socketServer(nil, "")
 	server.StartTLS()
 	t.Cleanup(server.Close)
 	return server
+}
+
+func TestFallbackDoesNotNegotiateHTTP2(t *testing.T) {
+	relay := testRelay(t)
+	fixture := httptest.NewTLSServer(http.NotFoundHandler())
+	certificate := fixture.TLS.Certificates[0]
+	fixture.Close()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := relay.socketServer(&tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}}, listener.Addr().String())
+	done := make(chan error, 1)
+	go func() { done <- server.ServeTLS(&admittedTCPListener{Listener: listener, relay: relay}, "", "") }()
+	t.Cleanup(func() { _ = server.Close(); <-done })
+	ctx, cancel := context.WithTimeout(t.Context(), helloTimeout)
+	defer cancel()
+	dialer := tls.Dialer{Config: &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h2", "http/1.1"}}} // Only the local fixture's certificate is untrusted.
+	conn, err := dialer.DialContext(ctx, "tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if conn.(*tls.Conn).ConnectionState().NegotiatedProtocol != "http/1.1" {
+		t.Fatal("fallback admitted a multiplexed HTTP/2 connection")
+	}
 }
 
 // activeConnections reads the admission count under its owning lock.
@@ -140,7 +167,7 @@ func TestTCPAdmissionWaitsForSocketAndHandler(t *testing.T) {
 	}
 	server, peer := net.Pipe()
 	defer peer.Close()
-	conn := &admittedTCPConn{Conn: server, relay: relay, release: release, refs: 1}
+	conn := &admittedTCPConn{Conn: server, relay: relay, connectionAdmission: newConnectionAdmission(release)}
 	defer conn.Close()
 	finish, err := conn.retain()
 	if err != nil {
@@ -163,4 +190,70 @@ func TestTCPAdmissionWaitsForSocketAndHandler(t *testing.T) {
 	if activeConnections(relay) != 0 {
 		t.Fatal("socket and handler teardown did not release admission once")
 	}
+}
+
+func TestTCPAdmissionWaitsForAnOrdinaryHTTPHandler(t *testing.T) {
+	relay := testRelay(t)
+	entered, handlerDone := make(chan struct{}), make(chan struct{})
+	finish := sync.OnceFunc(func() { close(handlerDone) })
+	defer finish()
+	server := httptest.NewUnstartedServer(nil)
+	server.Listener = &admittedTCPListener{Listener: server.Listener, relay: relay}
+	server.Config = relay.socketServer(nil, "")
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(entered)
+		<-handlerDone
+		w.WriteHeader(http.StatusNoContent)
+	})
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(t.Context(), helloTimeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestDone := make(chan struct{})
+	go func() {
+		defer close(requestDone)
+		response, err := server.Client().Do(request)
+		if err == nil {
+			_ = response.Body.Close()
+		}
+	}()
+	select {
+	case <-entered:
+	case <-requestDone:
+		t.Fatal("HTTP request ended before entering its handler")
+	case <-ctx.Done():
+		t.Fatal("HTTP handler did not start")
+	}
+	relay.cancel()
+	select {
+	case <-requestDone:
+	case <-ctx.Done():
+		t.Fatal("socket closure did not end the peer's request")
+	}
+	if activeConnections(relay) != 1 {
+		t.Fatal("socket closure released a running HTTP handler")
+	}
+	finish()
+	testwait.Eventually(t, testwait.DefaultTimeout, "ordinary HTTP handler teardown", func() bool { return activeConnections(relay) == 0 })
+}
+
+func TestFallbackIncompleteHTTPBodyCannotHoldAdmission(t *testing.T) {
+	relay := testRelay(t)
+	server := admittedTLSServer(t, relay)
+	ctx, cancel := context.WithTimeout(t.Context(), helloTimeout)
+	defer cancel()
+	dialer := tls.Dialer{Config: &tls.Config{InsecureSkipVerify: true}} // Only the local fixture's certificate is untrusted.
+	conn, err := dialer.DialContext(ctx, "tcp", server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.Write([]byte("POST / HTTP/1.1\r\nHost: relay.example\r\nContent-Length: 1\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	testwait.Eventually(t, helloTimeout+testwait.DefaultTimeout, "incomplete HTTP body teardown", func() bool { return activeConnections(relay) == 0 })
 }

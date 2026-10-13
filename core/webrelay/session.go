@@ -38,6 +38,7 @@ var errSessionBusy = errors.New("webrelay: session is already playing")
 type webSession struct {
 	token         string
 	previousToken string
+	tokenPending  bool
 	generation    uint64
 	controlOpen   bool
 	controlCtx    context.Context

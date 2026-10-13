@@ -36,6 +36,7 @@ fn builder<'a>(
     keys: &assets::material_keys::MaterialKeys,
 ) -> Builder<'a> {
     Builder {
+        fallback: None,
         catalog: TextureCatalog::new(view, Some(keys)),
         geometries: Default::default(),
         overlay: Default::default(),
@@ -265,5 +266,39 @@ fn resolved_animation_aliases_reuse_frames_at_capacity_with_independent_timing()
         assert_eq!(animation.atlas_index, selector);
         assert_eq!(animation.ticks_per_frame, ticks);
         assert_eq!(animation.frame_count, 2);
+    }
+}
+
+#[test]
+fn custom_fallback_answers_decode_misses_but_keeps_admission_refusals() {
+    let materials = [assets::Material::unvaried(); 2];
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/rejected")]);
+    let large = png(2048, 2048);
+    for (bytes, max_layers, expected_page) in [
+        (
+            b"invalid PNG".as_slice(),
+            assets::MAX_TEXTURE_LAYERS,
+            Some(0),
+        ),
+        (large.as_slice(), assets::MAX_TEXTURE_LAYERS, None),
+        (b"invalid PNG".as_slice(), 3, None),
+    ] {
+        let view = view(&[("textures/rejected.png", bytes)]);
+        let mut builder = builder(&view, &keys);
+        builder.fallback = Some(assets::VanillaFallback::new(&keys, &materials));
+        builder.max_layers = max_layers;
+        for _ in 0..2 {
+            assert_eq!(
+                builder.texture_slot("tile").map(|slot| slot.page),
+                expected_page
+            );
+        }
+        assert_eq!(builder.sources.len(), 3);
+        assert_eq!(
+            builder.catalog.decode_attempts.get(),
+            usize::from(max_layers > 3)
+        );
+        assert!(builder.texture_slot_for("tile", (0, 0)).is_none());
     }
 }

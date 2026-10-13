@@ -6,7 +6,7 @@ use pack_runtime::pack_textures::DecodedTexture;
 
 use super::{
     Builder, Source, TextureRoute, TextureSlot,
-    texture_admission::AdmittedTexture,
+    texture_admission::{AdmittedTexture, FrameFailure},
     textures::{FrameSequence, admit_static_rectangle, flipbook_frames},
 };
 
@@ -58,12 +58,12 @@ impl Builder<'_> {
         let storage_key = self.catalog.storage_key(route, source)?;
         let carrier_policy = carrier.is_some() && source.is_none();
         if let Some(storage) = self.slots.frames(&storage_key, false)
-            && (storage.is_some() || !carrier_policy)
+            && (storage.is_ok() || !carrier_policy)
         {
-            return storage.map(|storage| (storage, true));
+            return storage.ok().map(|storage| (storage, true));
         }
         if carrier_policy && let Some(storage) = self.slots.frames(&storage_key, true) {
-            return storage.map(|storage| (storage, false));
+            return storage.ok().map(|storage| (storage, false));
         }
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
@@ -72,43 +72,44 @@ impl Builder<'_> {
                 .reusable_image_paths(route, source, carrier_policy)
             {
                 let resolved_key = storage_key.clone().with_image(path);
-                if let Some(Some(storage)) = self.slots.frames(&resolved_key, false) {
-                    self.slots.insert_frames(storage_key, Some(storage), false);
+                if let Some(Ok(storage)) = self.slots.frames(&resolved_key, false) {
+                    self.slots.insert_frames(storage_key, Ok(storage), false);
                     return Some((storage, true));
                 }
-                if carrier_policy
-                    && let Some(Some(storage)) = self.slots.frames(&resolved_key, true)
+                if carrier_policy && let Some(Ok(storage)) = self.slots.frames(&resolved_key, true)
                 {
-                    self.slots.insert_frames(storage_key, Some(storage), true);
+                    self.slots.insert_frames(storage_key, Ok(storage), true);
                     return Some((storage, false));
                 }
             }
             if source.is_none() {
                 self.remaining_capacity(key);
             }
-            self.slots.insert_frames(storage_key, None, carrier_policy);
+            self.slots
+                .insert_frames(storage_key, Err(FrameFailure::Rejected), carrier_policy);
             return None;
         }
         let Some(image) = self.catalog.decode_source(route, source, |path, tint| {
             super::textures::carrier_image(self.base_assets?, carrier?, path, tint)
         }) else {
-            self.slots.insert_frames(storage_key, None, carrier_policy);
+            self.slots
+                .insert_frames(storage_key, Err(FrameFailure::Missing), carrier_policy);
             return None;
         };
         let resolved_key = storage_key.clone().with_image(image.image_path);
         if let Some(storage) = self.slots.frames(&resolved_key, !image.pack) {
             self.slots.insert_frames(storage_key, storage, !image.pack);
-            return storage.map(|storage| (storage, image.pack));
+            return storage.ok().map(|storage| (storage, image.pack));
         }
         let admission = self.store_frames(key, storage_key.grid, image.texture, source, available);
         let storage = match admission {
             Err(AdmissionFailure::Timing) => return None,
-            Ok(storage) => Some(storage),
-            Err(AdmissionFailure::Source) => None,
+            Ok(storage) => Ok(storage),
+            Err(AdmissionFailure::Source) => Err(FrameFailure::Rejected),
         };
         self.slots.insert_frames(resolved_key, storage, !image.pack);
         self.slots.insert_frames(storage_key, storage, !image.pack);
-        storage.map(|storage| (storage, image.pack))
+        storage.ok().map(|storage| (storage, image.pack))
     }
 
     /// Returns available layers, counting a full-array rejection after cached images are checked.
@@ -253,6 +254,7 @@ impl Builder<'_> {
             _ => NO_ANIMATION,
         };
         Some(TextureSlot {
+            page: 1,
             layer: storage.layer,
             animation,
         })

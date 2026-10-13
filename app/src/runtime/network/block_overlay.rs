@@ -77,6 +77,9 @@ pub(crate) struct CarriedBlock {
 
 /// Returns visuals for the admitted custom prefix in palette or hashed-state order.
 /// Rejected runs stay unbacked; vanilla overrides may produce an overlay without custom blocks.
+/// `base_assets` supplies the base carrier so faces naming
+/// vanilla textures the server stack does not ship can reuse the base page
+/// instead of degrading; server rasters still win whenever they decode.
 pub(super) fn compile_block_overlay(
     view: &LayeredPackView,
     blocks: &CustomBlocks,
@@ -113,6 +116,9 @@ pub(super) fn compile_block_overlay(
         terrain_materials: HashMap::new(),
         geometries: geometry_catalog(view, &wanted),
         overlay: BlockOverlay::default(),
+        fallback: vanilla_keys
+            .zip(base_assets)
+            .map(|(keys, base)| assets::VanillaFallback::new(keys, base.materials())),
         sources: Vec::new(),
         source_bytes: 0,
         tile_size: MIN_TILE,
@@ -199,6 +205,7 @@ enum Source {
 
 #[derive(Clone)]
 struct TextureSlot {
+    page: u32,
     layer: u32,
     animation: u32,
 }
@@ -234,6 +241,8 @@ struct Builder<'a> {
     terrain_materials: HashMap<(String, u32, u32), u32>,
     geometries: HashMap<String, Geometry>,
     overlay: BlockOverlay,
+    /// Base-carrier textures for vanilla keys the server stack does not ship.
+    fallback: Option<assets::VanillaFallback<'a>>,
     sources: Vec<Source>,
     source_bytes: usize,
     tile_size: u32,
@@ -501,7 +510,7 @@ impl Builder<'_> {
         };
         let material = self.overlay.materials.len() as u32;
         self.overlay.materials.push(Material {
-            texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
+            texture: TextureRef::new(slot.page, slot.layer).expect("bounded layer"),
             flags,
             animation: slot.animation,
             ..assets::Material::unvaried()
@@ -510,12 +519,31 @@ impl Builder<'_> {
         (material, alpha_flags, two_sided)
     }
 
-    /// Resolves the default state and choice for a custom block material.
+    /// Resolves a custom block's default choice, borrowing only unchanged base routes.
     fn texture_slot(&mut self, key: &str) -> Option<TextureSlot> {
-        self.route_slot(TextureRoute::Catalog {
+        let route = TextureRoute::Catalog {
             key: key.to_owned(),
             variant: 0,
             choice: 0,
+        };
+        self.route_slot(route.clone()).or_else(|| {
+            // A changed catalog can name different pixels, tint, or UV sampling.
+            if self.catalog.redefined(key, 0) {
+                return None;
+            }
+            let storage_key = self.catalog.storage_key(&route, None)?;
+            if !matches!(
+                self.slots.frames(&storage_key, false),
+                Some(Err(texture_admission::FrameFailure::Missing))
+            ) {
+                return None;
+            }
+            let reference = self.fallback.as_ref()?.texture(key, storage_key.tint)?;
+            Some(TextureSlot {
+                page: reference.page(),
+                layer: reference.layer(),
+                animation: NO_ANIMATION,
+            })
         })
     }
 

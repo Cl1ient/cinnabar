@@ -7,7 +7,7 @@ mod overlay;
 mod server_defined_blocks;
 
 pub use id_remap::SequentialIdRemap;
-pub use overlay::{BlockOverlay, MaterialOverride};
+pub use overlay::{BlockOverlay, MaterialOverride, VanillaFallback};
 pub use server_defined_blocks::{
     ServerDefinedBlock, server_defined_blocks, server_defined_blocks_for_registry,
 };

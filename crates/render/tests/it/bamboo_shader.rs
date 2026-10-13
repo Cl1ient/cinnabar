@@ -6,11 +6,11 @@ use crate::{
 
 fn source() -> String {
     let source = shader_source::standalone(include_str!("../../src/model.wesl"), &["ENHANCED"])
-        .replace("@group(1) @binding(0)", "@group(0) @binding(30)");
+        .replace("@group(1) @binding(0)", "@group(0) @binding(34)");
     let source = (0..7).fold(source, |source, binding| {
         source.replace(
             &format!("@group(2) @binding({binding})"),
-            &format!("@group(0) @binding({})", binding + 20),
+            &format!("@group(0) @binding({})", binding + 27),
         )
     });
     format!("{source}\n{WITNESS}")
@@ -90,10 +90,10 @@ fn bamboo_offsets_do_not_rotate_enhanced_surface_normals() {
         (11, clock.as_entire_binding()),
         (12, templates.as_entire_binding()),
         (13, geometry.as_entire_binding()),
-        (20, frame.as_entire_binding()),
-        (23, wgpu::BindingResource::TextureView(&classes)),
+        (27, frame.as_entire_binding()),
+        (30, wgpu::BindingResource::TextureView(&classes)),
         (31, output.as_entire_binding()),
-        (30, lightmap.as_entire_binding()),
+        (34, lightmap.as_entire_binding()),
     ]
     .map(|(binding, resource)| wgpu::BindGroupEntry { binding, resource });
     let group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {

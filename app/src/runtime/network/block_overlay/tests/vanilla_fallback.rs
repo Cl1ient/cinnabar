@@ -224,7 +224,7 @@ fn custom_fallback_uses_the_first_catalog_variant_after_sidecar_roundtrip() {
         compiled.overlay.materials[face as usize].texture,
         base.material(2).texture
     );
-    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 1);
+    assert_eq!(compiled.overlay.textures.first().unwrap().layers, 1);
     assert!(compiled.overlay.material_overrides.is_empty());
     let session = base.with_block_overlay(1, &compiled.overlay).unwrap();
     let face = session
@@ -366,7 +366,7 @@ fn custom_fallback_preserves_catalog_tint_or_stays_diagnostic() {
         };
         assert_eq!(compiled.overlay.visuals[0].kind, expected_kind);
         assert_eq!(compiled.gaps.missing_textures, u32::from(!matched));
-        assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 1);
+        assert_eq!(compiled.overlay.textures.first().unwrap().layers, 1);
         assert!(compiled.overlay.material_overrides.is_empty());
         let session = base.with_block_overlay(1, &compiled.overlay).unwrap();
         let block = session.resolve(NetworkIdMode::Sequential, 1);

@@ -36,7 +36,7 @@ fn explicit_filename_carried_aliases_reuse_the_world_raster_at_the_layer_limit()
             Some(&base),
         )
         .unwrap();
-        assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+        assert_eq!(compiled.overlay.textures.first().unwrap().layers, 2);
         assert_eq!(compiled.vanilla_carried.len(), 1);
         let faces = compiled.vanilla_carried[0].faces;
         let sheet =
@@ -73,7 +73,7 @@ fn resolved_image_aliases_keep_their_grid_and_animation_policies() {
         );
         let compiled = compile(&view, &base, &keys);
         assert_eq!(
-            compiled.overlay.texture.as_ref().unwrap().layers,
+            compiled.overlay.textures.first().unwrap().layers,
             if animated { 4 } else { 3 }
         );
         let faces = compiled.vanilla_carried[0].faces;

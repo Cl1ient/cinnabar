@@ -5,8 +5,8 @@ use std::sync::atomic::AtomicU64;
 use super::RuntimeAssets;
 use crate::{
     Animation, AssetError, BlockFlags, BlockVisual, LightProperties, MAX_MATERIALS,
-    MAX_TEXTURE_LAYERS, MAX_TILE_SIZE, Material, ModelQuad, ModelTemplate, NO_ANIMATION,
-    NO_MODEL_TEMPLATE, TextureArray, TexturePage, TextureRef, VisualKind,
+    MAX_TEXTURE_LAYERS, MAX_TEXTURE_PAGES, MAX_TILE_SIZE, Material, ModelQuad, ModelTemplate,
+    NO_ANIMATION, NO_MODEL_TEMPLATE, TextureArray, TexturePage, TextureRef, VisualKind,
     compiled::material_flags_are_valid, compiled::visual_semantics_are_valid,
     material_keys::MaterialKeys, model::model_quad_flags_are_valid,
 };
@@ -25,9 +25,9 @@ pub struct MaterialOverride {
 
 /// Server block visuals whose indices are local to the overlay: face and quad
 /// material ids index `materials`, templates index `model_templates`, and
-/// texture references use page 1 layers of `texture`, except vanilla-fallback
-/// materials, which reuse a base-carrier page 0 layer without animation.
-#[derive(Clone, Debug, Default)]
+/// texture references use overlay shards on higher pages, or static vanilla-fallback
+/// materials on the base carrier's page zero.
+#[derive(Clone, Debug)]
 pub struct BlockOverlay {
     pub visuals: Vec<BlockVisual>,
     /// Carried unit-cube faces keyed by sorted session visual ids; independent of world offsets.
@@ -40,9 +40,12 @@ pub struct BlockOverlay {
     pub model_quads: Vec<ModelQuad>,
     pub animations: Vec<Animation>,
     pub animation_frames: Vec<TextureRef>,
-    pub texture: Option<TextureArray>,
-    /// Source pixel dimensions per layer, with mips built before array expansion.
-    /// Empty means the physical page size and legacy terrain mips are rebuilt at upload.
+    /// Overlay texture shards in reference page order, page zero excluded. A
+    /// large server palette splits across these to stay inside the device's
+    /// per-array layer limit; a single shard is the usual case.
+    pub textures: Vec<TextureArray>,
+    /// Source pixel dimensions per flat layer. Empty means the physical page
+    /// size and legacy terrain mips are rebuilt at upload.
     pub texture_source_sizes: Vec<[u16; 2]>,
     /// Per-layer terrain UV-grid exponents, parallel to source pixel dimensions.
     pub texture_source_grids: Vec<u8>,
@@ -53,6 +56,35 @@ pub struct BlockOverlay {
     pub face_overrides: Vec<(u32, [Option<u32>; 6])>,
     /// Optional pack-defined tint maps and biome appearance rules.
     pub biomes: Option<crate::CompiledBiomeAssets>,
+    /// The per-array layer limit the shards were built against, so a carrier
+    /// laid out for one adapter never reaches a smaller one.
+    pub max_page_layers: u32,
+}
+
+/// A hand-built overlay with no device restriction inherits the format
+/// reference; only a compiled session overlay records a smaller device limit.
+impl Default for BlockOverlay {
+    fn default() -> Self {
+        Self {
+            visuals: Vec::new(),
+            carried_cube_faces: Vec::new(),
+            light_properties: Vec::new(),
+            materials: Vec::new(),
+            model_templates: Vec::new(),
+            model_random_offsets: Vec::new(),
+            model_quads: Vec::new(),
+            animations: Vec::new(),
+            animation_frames: Vec::new(),
+            textures: Vec::new(),
+            texture_source_sizes: Vec::new(),
+            texture_source_grids: Vec::new(),
+            hashes: Vec::new(),
+            material_overrides: Vec::new(),
+            face_overrides: Vec::new(),
+            biomes: None,
+            max_page_layers: MAX_TEXTURE_LAYERS as u32,
+        }
+    }
 }
 
 /// Resolves a vanilla terrain key to its base-carrier texture for server
@@ -120,52 +152,66 @@ impl RuntimeAssets {
         if !overlay.hashes.is_empty() && overlay.hashes.len() != overlay.visuals.len() {
             return Err(invalid("overlay hashes and visuals disagree"));
         }
-        let layers = overlay.texture.as_ref().map_or(0, |texture| texture.layers);
-        if layers as usize > MAX_TEXTURE_LAYERS {
-            return Err(invalid("overlay texture page exceeds the layer limit"));
+        let shards = overlay.textures.len();
+        if shards + 1 > MAX_TEXTURE_PAGES {
+            return Err(invalid("overlay texture shards are not bounded"));
         }
-        if let Some(texture) = &overlay.texture {
-            validate_texture(texture)?;
+        let max_page_layers = overlay.max_page_layers;
+        if max_page_layers == 0 {
+            return Err(invalid("overlay shards were built against no array limit"));
         }
-        if !overlay.texture_source_sizes.is_empty() {
-            let base = overlay
-                .texture
-                .as_ref()
-                .and_then(|texture| texture.mips.first())
-                .map_or(0, |mip| mip.size);
-            if overlay.texture_source_sizes.len() != layers as usize
+        let shard_layers = |shard: &TextureArray| -> Result<usize, AssetError> {
+            let layers = shard.layers as usize;
+            if layers == 0 || layers as u32 > max_page_layers || layers > MAX_TEXTURE_LAYERS {
+                return Err(invalid(
+                    "overlay texture shard exceeds the device or format limit",
+                ));
+            }
+            Ok(layers)
+        };
+        let mut flat_layers = 0usize;
+        for shard in &overlay.textures {
+            let layers = shard_layers(shard)?;
+            validate_texture(shard)?;
+            flat_layers += layers;
+        }
+        let layer_bases = || {
+            overlay
+                .textures
+                .iter()
+                .flat_map(|shard| std::iter::repeat_n(shard.mips[0].size, shard.layers as usize))
+        };
+        if !overlay.texture_source_sizes.is_empty()
+            && (overlay.texture_source_sizes.len() != flat_layers
                 || overlay
                     .texture_source_sizes
                     .iter()
-                    .flatten()
-                    .any(|&size| !size.is_power_of_two() || u32::from(size) > base)
-            {
-                return Err(invalid("overlay source pixel dimensions are invalid"));
-            }
+                    .zip(layer_bases())
+                    .any(|(size, base)| {
+                        size.iter()
+                            .any(|&axis| !axis.is_power_of_two() || u32::from(axis) > base)
+                    }))
+        {
+            return Err(invalid("overlay source pixel dimensions are invalid"));
         }
-        if !overlay.texture_source_grids.is_empty() {
-            let base = overlay
-                .texture
-                .as_ref()
-                .and_then(|texture| texture.mips.first())
-                .map_or(0, |mip| mip.size);
-            if overlay.texture_source_grids.len() != layers as usize
-                || overlay.texture_source_sizes.len() != layers as usize
+        if !overlay.texture_source_grids.is_empty()
+            && (overlay.texture_source_grids.len() != flat_layers
+                || overlay.texture_source_sizes.len() != flat_layers
                 || overlay
                     .texture_source_grids
                     .iter()
                     .zip(&overlay.texture_source_sizes)
-                    .any(|(&grid, size)| {
+                    .zip(layer_bases())
+                    .any(|((&grid, size), base)| {
                         u32::from(grid) > crate::TERRAIN_QUAD_SHIFT_MASK
                             || size.iter().any(|&axis| {
                                 u32::from(axis)
                                     .checked_mul(1u32 << grid)
                                     .is_none_or(|full| full > base)
                             })
-                    })
-            {
-                return Err(invalid("overlay source UV grids are invalid"));
-            }
+                    }))
+        {
+            return Err(invalid("overlay source UV grids are invalid"));
         }
         let material_base = offset(self.materials.len())?;
         let template_base = offset(self.model_templates.len())?;
@@ -180,8 +226,13 @@ impl RuntimeAssets {
             .first()
             .map_or(0, |page| page.texture.layers);
         let page_ref = |reference: TextureRef| -> Result<TextureRef, AssetError> {
-            if reference.page() != 1 || reference.layer() >= layers {
-                return Err(invalid("overlay texture reference is outside its page"));
+            let shard = reference
+                .page()
+                .checked_sub(1)
+                .filter(|shard| (*shard as usize) < shards)
+                .ok_or_else(|| invalid("overlay texture reference is outside its page"))?;
+            if reference.layer() >= overlay.textures[shard as usize].layers {
+                return Err(invalid("overlay texture reference is outside its shard"));
             }
             Ok(reference)
         };
@@ -469,8 +520,10 @@ impl RuntimeAssets {
         hashed.sort_by_key(|entry| entry.0);
         hashed.dedup_by_key(|entry| entry.0);
         let mut texture_pages = self.texture_pages.to_vec();
-        if let Some(texture) = &overlay.texture {
-            texture_pages.push(TexturePage::new(texture.clone()));
+        let mut overlay_page_layer_counts = Vec::with_capacity(shards);
+        for shard in &overlay.textures {
+            overlay_page_layer_counts.push(shard.layers as usize);
+            texture_pages.push(TexturePage::new(shard.clone()));
         }
         Ok(Self {
             visuals: visuals.into_boxed_slice(),
@@ -485,6 +538,7 @@ impl RuntimeAssets {
             texture_pages: texture_pages.into_boxed_slice(),
             overlay_texture_source_sizes: overlay.texture_source_sizes.clone().into_boxed_slice(),
             overlay_texture_source_grids: overlay.texture_source_grids.clone().into_boxed_slice(),
+            overlay_page_layer_counts: overlay_page_layer_counts.into_boxed_slice(),
             biomes: overlay
                 .biomes
                 .clone()
@@ -529,440 +583,7 @@ fn invalid(detail: impl Into<Box<str>>) -> AssetError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{BlockFlags, ContributorRole, NetworkIdMode, TextureMip, VisualSupport};
-
-    fn page(size: u32) -> TextureArray {
-        let mut mips = Vec::new();
-        let mut side = size;
-        while side > 0 {
-            mips.push(TextureMip {
-                size: side,
-                rgba8: vec![255; (side * side * 4) as usize].into(),
-            });
-            side /= 2;
-        }
-        TextureArray {
-            layers: 1,
-            mips: mips.into(),
-        }
-    }
-
-    #[test]
-    fn review_zero_sized_extra_mips_are_rejected() {
-        let mut texture = page(16);
-        let mut mips = texture.mips.to_vec();
-        mips.push(TextureMip {
-            size: 0,
-            rgba8: Box::new([]),
-        });
-        texture.mips = mips.into();
-        assert!(
-            RuntimeAssets::diagnostic()
-                .with_block_overlay(1, &cube_overlay(texture))
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn review_full_face_occlusion_requires_drawable_geometry() {
-        let mut overlay = cube_overlay(page(16));
-        overlay.visuals[0].kind = VisualKind::Model;
-        overlay.visuals[0].flags = BlockFlags::OCCLUDES_FULL_FACE;
-        overlay.visuals[0].model_template = 0;
-        overlay.model_templates = vec![ModelTemplate {
-            quad_start: 0,
-            quad_count: 0,
-            flags: 0,
-        }];
-        assert!(
-            RuntimeAssets::diagnostic()
-                .with_block_overlay(1, &overlay)
-                .is_err()
-        );
-    }
-
-    fn cube_overlay(texture: TextureArray) -> BlockOverlay {
-        BlockOverlay {
-            visuals: vec![BlockVisual {
-                native_material: crate::native_material::NativeMaterialFacts::Unresolved,
-                faces: [0; 6],
-                flags: BlockFlags::CUBE_GEOMETRY,
-                kind: VisualKind::Cube,
-                support: VisualSupport::VanillaFallback,
-                contributor_role: ContributorRole::Primary,
-                model_template: NO_MODEL_TEMPLATE,
-                animation: NO_ANIMATION,
-                variant: 0,
-                destroy: crate::compiled::block_destroy::BlockDestroyFacts::Unresolved,
-            }],
-            light_properties: vec![LightProperties::OPAQUE_DARK],
-            materials: vec![Material {
-                texture: TextureRef::new(1, 0).unwrap(),
-                flags: 0,
-                animation: NO_ANIMATION,
-                ..crate::Material::unvaried()
-            }],
-            texture: Some(texture),
-            ..BlockOverlay::default()
-        }
-    }
-
-    // Overlay hashes resolve to the overlay's ids and never shadow a base hash.
-    #[test]
-    fn overlay_hashes_extend_the_hash_table() {
-        let base = RuntimeAssets::diagnostic();
-        let mut overlay = cube_overlay(page(16));
-        overlay.hashes = vec![Some(0xdead_beef)];
-        let session = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(session.sequential_id_for_hash(0xdead_beef), Some(1));
-        overlay.hashes = vec![Some(1), Some(2)];
-        assert!(base.with_block_overlay(1, &overlay).is_err());
-    }
-
-    // A base material can be repointed at the overlay page; the diagnostic material cannot.
-    #[test]
-    fn material_overrides_repoint_base_materials() {
-        let base = RuntimeAssets::diagnostic();
-        let mut overlay = cube_overlay(page(16));
-        overlay.material_overrides = vec![MaterialOverride {
-            material: 0,
-            texture: TextureRef::new(1, 0).unwrap(),
-            animation: NO_ANIMATION,
-            variation: Some((0, 0)),
-        }];
-        assert!(base.with_block_overlay(1, &overlay).is_err());
-    }
-
-    #[test]
-    fn raster_only_leaf_replacement_preserves_the_base_weighted_selector() {
-        let mut base = RuntimeAssets::diagnostic();
-        base.materials = vec![
-            Material::unvaried(),
-            Material {
-                variation_start: 2,
-                variation_count: 2,
-                ..Material::unvaried()
-            },
-            Material {
-                variation_weight: 0.25_f32.to_bits(),
-                ..Material::unvaried()
-            },
-            Material {
-                variation_weight: 0.75_f32.to_bits(),
-                ..Material::unvaried()
-            },
-        ]
-        .into();
-        let mut overlay = cube_overlay(page(16));
-        overlay.material_overrides.push(MaterialOverride {
-            material: 3,
-            texture: TextureRef::new(1, 0).unwrap(),
-            animation: NO_ANIMATION,
-            variation: None,
-        });
-        let runtime = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(runtime.material(1), base.material(1));
-        assert_eq!(
-            runtime.material(3).variation_weight,
-            base.material(3).variation_weight
-        );
-        assert_eq!(runtime.material(3).texture.page(), 1);
-        assert_eq!(base.material(3).texture.page(), 0);
-    }
-
-    #[test]
-    fn weighted_override_ranges_are_checked_before_offsetting() {
-        let mut base = RuntimeAssets::diagnostic();
-        base.materials = vec![Material::unvaried(); 2].into();
-        let mut overlay = cube_overlay(page(16));
-        for variation in [Some((u32::MAX, 2)), Some((1, 0)), Some((1, 2))] {
-            overlay.material_overrides = vec![MaterialOverride {
-                material: 1,
-                texture: TextureRef::new(1, 0).unwrap(),
-                animation: NO_ANIMATION,
-                variation,
-            }];
-            assert!(base.with_block_overlay(1, &overlay).is_err());
-        }
-    }
-
-    #[test]
-    fn replacing_a_selector_uses_the_server_texture_without_changing_leaf_weights() {
-        let mut base = RuntimeAssets::diagnostic();
-        base.materials = vec![
-            Material::unvaried(),
-            Material {
-                variation_start: 2,
-                variation_count: 1,
-                ..Material::unvaried()
-            },
-            Material {
-                variation_weight: 1.0_f32.to_bits(),
-                ..Material::unvaried()
-            },
-        ]
-        .into();
-        let (original, _, _) = crate::gui_item::material_tile(base.materials(), 1, |page| {
-            base.texture_pages()
-                .get(page as usize)
-                .map(|page| &page.texture)
-        })
-        .unwrap();
-        let mut overlay = cube_overlay(page(16));
-        overlay.material_overrides = vec![MaterialOverride {
-            material: 1,
-            texture: TextureRef::new(1, 0).unwrap(),
-            animation: NO_ANIMATION,
-            variation: None,
-        }];
-        let session = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(session.materials[1].variation_start, 2);
-        assert_eq!(session.materials[1].variation_count, 1);
-        assert_eq!(session.materials[1].texture.page(), 1);
-        assert_eq!(session.materials[2].variation_weight, 1.0_f32.to_bits());
-        let (replacement, side, _) =
-            crate::gui_item::material_tile(session.materials(), 1, |page| {
-                session
-                    .texture_pages()
-                    .get(page as usize)
-                    .map(|page| &page.texture)
-            })
-            .unwrap();
-        assert_eq!(side, 16);
-        assert!(
-            replacement
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .all(|pixel| *pixel == [255; 4])
-        );
-        assert_ne!(replacement, original);
-        overlay.material_overrides[0].variation = Some((0, 0));
-        let cleared = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(cleared.materials[1].variation_count, 0);
-        assert_eq!(cleared.materials[2].variation_weight, 1.0_f32.to_bits());
-    }
-
-    // A 32px page is accepted; malformed mips or dangling ids are refused whole.
-    #[test]
-    fn overlay_page_and_references_are_validated() {
-        let base = RuntimeAssets::diagnostic();
-        let session = base.with_block_overlay(1, &cube_overlay(page(32))).unwrap();
-        let block = session.resolve(NetworkIdMode::Sequential, 1);
-        assert_eq!(
-            session
-                .material(block.face(crate::BlockFace::Up).material_id())
-                .texture
-                .page(),
-            1
-        );
-
-        let mut truncated = page(32);
-        truncated.mips = truncated.mips[..3].into();
-        assert!(
-            base.with_block_overlay(1, &cube_overlay(truncated))
-                .is_err()
-        );
-        let mut dangling = cube_overlay(page(16));
-        dangling.visuals[0].faces[2] = 5;
-        assert!(base.with_block_overlay(1, &dangling).is_err());
-    }
-
-    #[test]
-    fn source_pixel_dimensions_survive_overlay_admission() {
-        let base = RuntimeAssets::diagnostic();
-        let mut overlay = cube_overlay(page(64));
-        overlay.texture_source_sizes = vec![[16, 8]];
-        let session = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(
-            session.texture_source_size(TextureRef::new(1, 0).unwrap()),
-            [16, 8]
-        );
-        assert_eq!(session.texture_source_size(TextureRef::DIAGNOSTIC), [16; 2]);
-        overlay.texture_source_grids = vec![1];
-        let gridded = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(
-            gridded.texture_source_grid(TextureRef::new(1, 0).unwrap()),
-            1
-        );
-        assert_eq!(gridded.texture_source_grid(TextureRef::DIAGNOSTIC), 0);
-        for grids in [vec![1, 1], vec![3], vec![31], vec![32]] {
-            overlay.texture_source_grids = grids;
-            assert!(base.with_block_overlay(1, &overlay).is_err());
-        }
-        overlay.texture_source_grids.clear();
-        for sizes in [
-            vec![[0, 8]],
-            vec![[128, 8]],
-            vec![[15, 8]],
-            vec![[16, 8]; 2],
-        ] {
-            overlay.texture_source_sizes = sizes;
-            assert!(base.with_block_overlay(1, &overlay).is_err());
-        }
-    }
-
-    #[test]
-    fn expanded_layers_retain_their_source_mips_for_terrain_upload() {
-        let mut texture = page(64);
-        for (index, pixel) in texture.mips[0]
-            .rgba8
-            .as_chunks_mut::<4>()
-            .0
-            .iter_mut()
-            .enumerate()
-        {
-            pixel.copy_from_slice(if index % 8 < 4 {
-                &[255, 0, 0, 255]
-            } else {
-                &[0, 0, 255, 255]
-            });
-        }
-        for mip in &mut texture.mips[1..] {
-            for pixel in mip.rgba8.as_chunks_mut::<4>().0 {
-                pixel.copy_from_slice(&[127, 0, 127, 255]);
-            }
-        }
-        let mut overlay = cube_overlay(texture);
-        overlay.texture_source_sizes = vec![[16; 2]];
-        let session = RuntimeAssets::diagnostic()
-            .with_block_overlay(1, &overlay)
-            .unwrap();
-        let uploaded = session.terrain_texture_page(1).unwrap();
-        assert_eq!(&uploaded.mips[1].rgba8[..4], &[127, 0, 127, 255]);
-        assert!(session.terrain_texture_page(2).is_err());
-    }
-
-    // Fallback resolves static base textures by terrain key and skips
-    // diagnostic, animated, and unknown entries.
-    #[test]
-    fn vanilla_fallback_resolves_static_base_textures() {
-        let keys = MaterialKeys::from_entries([(1, "oak_planks"), (2, "water")]);
-        let materials = [
-            Material::unvaried(),
-            Material {
-                texture: TextureRef::new(0, 0).unwrap(),
-                ..Material::unvaried()
-            },
-            Material {
-                texture: TextureRef::new(0, 0).unwrap(),
-                animation: 0,
-                ..Material::unvaried()
-            },
-        ];
-        let fallback = VanillaFallback::new(&keys, &materials);
-        let reference = fallback.texture("oak_planks", None).expect("base oak");
-        assert_eq!((reference.page(), reference.layer()), (0, 0));
-        assert!(fallback.texture("water", None).is_none());
-        assert!(fallback.texture("missing", None).is_none());
-        let diagnostic = MaterialKeys::from_entries([(0, "oak_planks")]);
-        assert!(
-            VanillaFallback::new(&diagnostic, &materials)
-                .texture("oak_planks", None)
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn vanilla_fallback_uses_catalog_variant_zero_instead_of_material_order() {
-        let materials = [
-            Material::unvaried(),
-            Material {
-                texture: TextureRef::new(0, 1).unwrap(),
-                ..Material::unvaried()
-            },
-            Material {
-                texture: TextureRef::new(0, 2).unwrap(),
-                ..Material::unvaried()
-            },
-        ];
-        for first_destination in [(1, 0), (0, 1)] {
-            let keys = MaterialKeys::from_entries([(2, "farmland"), (1, "farmland")])
-                .with_aliases([("farmland", "textures/blocks/farmland_wet")])
-                .with_flipbook_selectors([(1, first_destination), (2, (0, 0))]);
-            let keys =
-                MaterialKeys::from_json(&keys.to_json(materials.len() as u32), materials.len())
-                    .unwrap();
-            let fallback = VanillaFallback::new(&keys, &materials);
-            assert_eq!(
-                fallback.texture("farmland", None),
-                Some(materials[2].texture)
-            );
-        }
-    }
-
-    #[test]
-    fn vanilla_fallback_does_not_substitute_another_static_variant() {
-        let keys = MaterialKeys::from_entries([(1, "farmland"), (2, "farmland")])
-            .with_flipbook_selectors([(1, (1, 0)), (2, (0, 0))]);
-        for variant_zero in [
-            Material {
-                animation: 0,
-                ..Material::unvaried()
-            },
-            Material {
-                texture: TextureRef::new(1, 0).unwrap(),
-                ..Material::unvaried()
-            },
-            Material {
-                variation_count: 1,
-                ..Material::unvaried()
-            },
-        ] {
-            let materials = [Material::unvaried(), Material::unvaried(), variant_zero];
-            assert!(
-                VanillaFallback::new(&keys, &materials)
-                    .texture("farmland", None)
-                    .is_none()
-            );
-        }
-        let keys =
-            MaterialKeys::from_entries([(1, "farmland")]).with_flipbook_selectors([(1, (1, 0))]);
-        assert!(
-            VanillaFallback::new(&keys, &[Material::unvaried(); 2])
-                .texture("farmland", None)
-                .is_none()
-        );
-    }
-
-    // Overlay materials may borrow a base page layer; out-of-range layers,
-    // borrowed animations, and page-0 overrides stay rejected.
-    #[test]
-    fn overlay_materials_may_borrow_the_base_page() {
-        let base = RuntimeAssets::diagnostic();
-        let mut overlay = cube_overlay(page(16));
-        overlay.materials[0].texture = TextureRef::new(0, 0).unwrap();
-        let session = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(session.materials[1].texture.page(), 0);
-
-        let mut out_of_range = cube_overlay(page(16));
-        out_of_range.materials[0].texture = TextureRef::new(0, 1).unwrap();
-        assert!(base.with_block_overlay(1, &out_of_range).is_err());
-
-        let mut animated = cube_overlay(page(16));
-        animated.materials[0].texture = TextureRef::new(0, 0).unwrap();
-        animated.materials[0].animation = 0;
-        assert!(base.with_block_overlay(1, &animated).is_err());
-    }
-
-    // Overrides repoint base materials at overlay art; the base page is not
-    // an overlay source.
-    #[test]
-    fn overlay_overrides_reject_the_base_page() {
-        let mut base = RuntimeAssets::diagnostic();
-        base.materials = vec![Material::unvaried(), Material::unvaried()].into();
-        let mut overlay = cube_overlay(page(16));
-        overlay.material_overrides = vec![MaterialOverride {
-            material: 1,
-            texture: TextureRef::new(0, 0).unwrap(),
-            animation: NO_ANIMATION,
-            variation: None,
-        }];
-        assert!(base.with_block_overlay(1, &overlay).is_err());
-    }
-}
+mod tests;
 
 #[cfg(test)]
 mod fallback_tests;

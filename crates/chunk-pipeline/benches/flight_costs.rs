@@ -67,7 +67,7 @@ fn terrain_assets() -> RuntimeAssets {
             visuals: (0..CUBE_IDS).map(visual).collect(),
             light_properties: vec![LightProperties::OPAQUE_DARK; CUBE_IDS as usize],
             materials: vec![material; CUBE_IDS as usize],
-            texture: Some(texture),
+            textures: vec![texture],
             ..Default::default()
         },
     )

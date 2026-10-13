@@ -184,8 +184,8 @@ pub(in crate::chunk) struct PreparedChunkTextureAssets {
     pub(in crate::chunk) animation_buffer: Buffer,
     pub(in crate::chunk) animation_frame_buffer: Buffer,
     pub(in crate::chunk) model_template_buffer: Buffer,
-    pub(in crate::chunk) _textures: [Texture; 2],
-    pub(in crate::chunk) views: [TextureView; 2],
+    pub(in crate::chunk) _textures: [Texture; assets::MAX_TEXTURE_PAGES],
+    pub(in crate::chunk) views: [TextureView; assets::MAX_TEXTURE_PAGES],
     pub(in crate::chunk) native_leaf_views: [TextureView; assets::MAX_TEXTURE_PAGES],
     pub(in crate::chunk) sampler: Sampler,
     pub(in crate::chunk) native_leaf_sampler: Sampler,
@@ -376,20 +376,19 @@ fn build_chunk_texture_assets(
     let Some(page_bindings) = plan_texture_page_bindings(pages.len()) else {
         bevy::log::error!(
             page_count = pages.len(),
-            "chunk assets require one or two texture pages"
+            "chunk assets require one or {} texture pages",
+            assets::MAX_TEXTURE_PAGES
         );
         return None;
     };
-    let diagnostic_fallback = if page_bindings.contains(&TexturePageBinding::DiagnosticFallback) {
-        match diagnostic_texture_page(&pages[0].texture) {
-            Ok(texture) => Some(texture),
-            Err(error) => {
-                bevy::log::error!(?error, "invalid diagnostic texture-page fallback");
-                return None;
-            }
+    // A session with fewer pages than the format allows binds the remaining
+    // slots to the base carrier's layer zero, which the shaders never sample.
+    let diagnostic_fallback = match diagnostic_texture_page(&pages[0].texture) {
+        Ok(texture) => Some(texture),
+        Err(error) => {
+            bevy::log::error!(?error, "invalid diagnostic texture-page fallback");
+            return None;
         }
-    } else {
-        None
     };
     let bound_pages = page_bindings.map(|binding| match binding {
         TexturePageBinding::Asset(index) => &pages[index].texture,
@@ -411,8 +410,8 @@ fn build_chunk_texture_assets(
         max_layers: device_limits.max_texture_array_layers,
         max_dimension_2d: device_limits.max_texture_dimension_2d,
     };
-    let mut upload_plans = Vec::with_capacity(2);
-    let mut terrain_pages = Vec::with_capacity(2);
+    let mut upload_plans = Vec::with_capacity(assets::MAX_TEXTURE_PAGES);
+    let mut terrain_pages = Vec::with_capacity(assets::MAX_TEXTURE_PAGES);
     for (binding, texture) in page_bindings.into_iter().zip(bound_pages) {
         let tile_size = texture.mips.first().map_or(0, |mip| mip.size);
         if let Err(error) = limits.validate(texture.layers, tile_size) {
@@ -443,7 +442,6 @@ fn build_chunk_texture_assets(
         upload_plans.push(plans);
         terrain_pages.push(texture);
     }
-    let bound_pages = [&terrain_pages[0], &terrain_pages[1]];
 
     let material_words = assets
         .assets()
@@ -538,31 +536,44 @@ fn build_chunk_texture_assets(
         contents: bytemuck::cast_slice(&model_template_words),
         usage: BufferUsages::STORAGE,
     });
-    let (texture_0, view_0, uploaded_0) = upload_texture_page(
-        render_device,
-        render_queue,
-        bound_pages[0],
-        &upload_plans[0],
-        "global chunk texture page 0",
-    );
-    let (texture_1, view_1, uploaded_1) = upload_texture_page(
-        render_device,
-        render_queue,
-        bound_pages[1],
-        &upload_plans[1],
-        "global chunk texture page 1",
-    );
+    let mut uploaded_bytes = 0u64;
+    let mut textures = Vec::with_capacity(assets::MAX_TEXTURE_PAGES);
+    let mut views = Vec::with_capacity(assets::MAX_TEXTURE_PAGES);
+    // Upload the mip-rebuilt pages the validator measured, not the raw sources.
+    for (index, (texture, plans)) in terrain_pages.iter().zip(upload_plans).enumerate() {
+        let (texture, view, uploaded) = upload_texture_page(
+            render_device,
+            render_queue,
+            texture,
+            &plans,
+            match index {
+                0 => "global chunk texture page 0",
+                1 => "global chunk texture page 1",
+                2 => "global chunk texture page 2",
+                3 => "global chunk texture page 3",
+                _ => "global chunk texture page 4",
+            },
+        );
+        uploaded_bytes = uploaded_bytes.saturating_add(uploaded);
+        textures.push(texture);
+        views.push(view);
+    }
     // Current atlas upload retains RGBA8_UNORM.
     // A view of each existing allocation preserves gamma-space filtering for
     // world leaves without duplicating texture memory or changing other art.
-    let native_leaf_views = [&texture_0, &texture_1].map(|texture| {
-        texture.create_view(&TextureViewDescriptor {
-            label: Some("native world leaf atlas view"),
-            format: Some(TextureFormat::Rgba8Unorm),
-            dimension: Some(TextureViewDimension::D2Array),
-            ..Default::default()
+    let native_leaf_views = textures
+        .iter()
+        .map(|texture| {
+            texture.create_view(&TextureViewDescriptor {
+                label: Some("native world leaf atlas view"),
+                format: Some(TextureFormat::Rgba8Unorm),
+                dimension: Some(TextureViewDimension::D2Array),
+                ..Default::default()
+            })
         })
-    });
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("every physical page uploads a view");
     let sampler = render_device.create_sampler(&chunk_sampler_descriptor());
     let native_leaf_sampler =
         render_device.create_sampler(&crate::material_shader::native_leaf_sampler_descriptor());
@@ -579,15 +590,17 @@ fn build_chunk_texture_assets(
         .flat_map(|texture| texture.mips.iter())
         .map(|mip| mip.rgba8.len() as u64)
         .sum();
-    stats.queue_upload_bytes = uploaded_0.saturating_add(uploaded_1);
+    stats.queue_upload_bytes = uploaded_bytes;
     let prepared = PreparedChunkTextureAssets {
         identity,
         material_buffer,
         animation_buffer,
         animation_frame_buffer,
         model_template_buffer,
-        _textures: [texture_0, texture_1],
-        views: [view_0, view_1],
+        _textures: textures.try_into().expect("every physical page uploads"),
+        views: views
+            .try_into()
+            .expect("every physical page uploads a view"),
         native_leaf_views,
         native_leaf_sampler,
         sampler,
@@ -771,7 +784,7 @@ pub(in crate::chunk) fn prepare_chunk_bind_group(
         arena.bind_group_buffers = None;
         return;
     };
-    let entries = [
+    let mut entries = vec![
         BindGroupEntry {
             binding: 0,
             resource: view_binding,
@@ -787,14 +800,6 @@ pub(in crate::chunk) fn prepare_chunk_bind_group(
         BindGroupEntry {
             binding: 3,
             resource: texture_assets.material_buffer.as_entire_binding(),
-        },
-        BindGroupEntry {
-            binding: 4,
-            resource: BindingResource::TextureView(&texture_assets.views[0]),
-        },
-        BindGroupEntry {
-            binding: 5,
-            resource: BindingResource::TextureView(&texture_assets.views[1]),
         },
         BindGroupEntry {
             binding: 6,
@@ -837,14 +842,6 @@ pub(in crate::chunk) fn prepare_chunk_bind_group(
             resource: atmosphere.buffer.as_entire_binding(),
         },
         BindGroupEntry {
-            binding: crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[0],
-            resource: BindingResource::TextureView(&texture_assets.native_leaf_views[0]),
-        },
-        BindGroupEntry {
-            binding: crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[1],
-            resource: BindingResource::TextureView(&texture_assets.native_leaf_views[1]),
-        },
-        BindGroupEntry {
             binding: crate::material_shader::NATIVE_LEAF_SAMPLER_BINDING,
             resource: BindingResource::Sampler(&texture_assets.native_leaf_sampler),
         },
@@ -853,6 +850,24 @@ pub(in crate::chunk) fn prepare_chunk_bind_group(
             resource: biome_tints.query_tables.as_entire_binding(),
         },
     ];
+    entries.extend(
+        crate::material_shader::SAMPLED_TEXTURE_BINDINGS
+            .into_iter()
+            .zip(texture_assets.views.iter())
+            .map(|(binding, view)| BindGroupEntry {
+                binding,
+                resource: BindingResource::TextureView(view),
+            }),
+    );
+    entries.extend(
+        crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS
+            .into_iter()
+            .zip(texture_assets.native_leaf_views.iter())
+            .map(|(binding, view)| BindGroupEntry {
+                binding,
+                resource: BindingResource::TextureView(view),
+            }),
+    );
     let transparent_bind_group = render_device.create_bind_group(
         "transparent packed chunk bind group",
         &pipeline_cache.get_bind_group_layout(&pipeline.transparent_bind_group_layout),

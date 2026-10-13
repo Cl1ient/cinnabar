@@ -13,7 +13,7 @@ mod decoding;
 mod diagnostics;
 mod frames;
 mod terrain;
-pub(super) use carrier::carrier_image;
+pub(super) use carrier::{carrier_image, carrier_image_path};
 use diagnostics::{FailureReason, TextureDiagnostics};
 #[cfg(test)]
 pub(super) use frames::shrink_to_max;

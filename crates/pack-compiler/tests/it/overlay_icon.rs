@@ -38,14 +38,14 @@ fn geometry_block(flags: u32) -> BlockOverlay {
             material: 1,
             flags: 0,
         }],
-        texture: Some(TextureArray {
+        textures: vec![TextureArray {
             layers: 1,
             mips: [TextureMip {
                 size: 16,
                 rgba8: vec![200; 16 * 16 * 4].into(),
             }]
             .into(),
-        }),
+        }],
         ..Default::default()
     }
 }
@@ -70,4 +70,26 @@ fn geometry_blocks_without_ambient_occlusion_get_thumbnails() {
             "flags {flags:#x} drew nothing"
         );
     }
+}
+
+#[test]
+fn carried_cube_icons_sample_the_referenced_overlay_shard() {
+    let mut overlay = geometry_block(0);
+    let mut second = overlay.textures[0].clone();
+    second.mips[0].rgba8 = [50, 160, 220, 255].repeat(16 * 16).into();
+    overlay.textures.push(second.clone());
+    overlay.materials[1].texture = TextureRef::new(2, 0).unwrap();
+    let actual = pack_compiler::overlay_cube_icon(&overlay, [1; 6]).unwrap();
+    overlay.textures = vec![second];
+    overlay.materials[1].texture = TextureRef::new(1, 0).unwrap();
+    let expected = pack_compiler::overlay_cube_icon(&overlay, [1; 6]).unwrap();
+    assert_eq!(actual.rgba8, expected.rgba8);
+    assert!(
+        actual
+            .rgba8
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] != 0)
+    );
 }

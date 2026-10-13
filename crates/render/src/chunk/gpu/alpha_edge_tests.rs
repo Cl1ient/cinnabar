@@ -135,8 +135,8 @@ fn render_edge(gpu: &Gpu, held: bool, samples: u32, back: bool) -> Vec<u8> {
             "HAND_FIXTURE_LAYER",
             &format!("{}u", item_flag | cutout_flag),
         )
-        .replace("@group(1) @binding(0)", "@group(0) @binding(20)")
-        .replace("@group(1) @binding(1)", "@group(0) @binding(21)");
+        .replace("@group(1) @binding(0)", "@group(0) @binding(27)")
+        .replace("@group(1) @binding(1)", "@group(0) @binding(28)");
     let source = if back {
         source.replace("edge_corner(index)", "edge_corner(5u - index)")
     } else {
@@ -195,7 +195,7 @@ fn render_edge(gpu: &Gpu, held: bool, samples: u32, back: bool) -> Vec<u8> {
             }
             .entries(),
         );
-        entries.push(buffer_entry(20, &lightmap));
+        entries.push(buffer_entry(27, &lightmap));
         entries
     } else {
         vec![
@@ -207,11 +207,14 @@ fn render_edge(gpu: &Gpu, held: bool, samples: u32, back: bool) -> Vec<u8> {
             buffer_entry(15, &atmosphere),
             texture_entry(crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[0]),
             texture_entry(crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[1]),
+            texture_entry(crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[2]),
+            texture_entry(crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[3]),
+            texture_entry(crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[4]),
             wgpu::BindGroupEntry {
                 binding: crate::material_shader::NATIVE_LEAF_SAMPLER_BINDING,
                 resource: wgpu::BindingResource::Sampler(&bounded_sampler),
             },
-            buffer_entry(20, &lightmap),
+            buffer_entry(27, &lightmap),
         ]
     };
     gpu.render_with_samples(

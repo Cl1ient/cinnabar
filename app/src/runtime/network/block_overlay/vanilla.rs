@@ -60,7 +60,7 @@ impl Builder<'_> {
                     claimed.insert(id);
                     self.overlay.material_overrides.push(MaterialOverride {
                         material: id,
-                        texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
+                        texture: TextureRef::new(slot.page, slot.layer).expect("bounded layer"),
                         animation: slot.animation,
                         variation: None,
                     });
@@ -267,7 +267,7 @@ impl Builder<'_> {
                     keys,
                 )?;
                 Some(Material {
-                    texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
+                    texture: TextureRef::new(slot.page, slot.layer).expect("bounded layer"),
                     flags,
                     animation: slot.animation,
                     variation_weight: if choices.len() == 1 {

@@ -363,7 +363,7 @@ fn carried_cube_alpha_mode_follows_world_materials_for_both_hands() {
                 ..Material::unvaried()
             })
             .collect(),
-        texture: Some(TextureArray {
+        textures: vec![TextureArray {
             layers: 1,
             mips: [16, 8, 4, 2, 1]
                 .into_iter()
@@ -372,7 +372,7 @@ fn carried_cube_alpha_mode_follows_world_materials_for_both_hands() {
                     rgba8: vec![127; (size * size * 4) as usize].into(),
                 })
                 .collect(),
-        }),
+        }],
         ..Default::default()
     };
     let world = RuntimeAssets::diagnostic()

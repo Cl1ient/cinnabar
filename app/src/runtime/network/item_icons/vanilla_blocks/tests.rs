@@ -58,7 +58,7 @@ fn block(model: bool) -> RuntimeAssets {
             vec![]
         },
         model_quads: if model { quads.into() } else { vec![] },
-        texture: Some(diagnostic.texture_array().clone()),
+        textures: vec![diagnostic.texture_array().clone()],
         ..Default::default()
     };
     diagnostic.with_block_overlay(1, &overlay).unwrap()
@@ -81,7 +81,7 @@ fn textures() -> CompiledBlockOverlay {
                     ..Material::unvaried()
                 },
             ],
-            texture: Some(texture),
+            textures: vec![texture],
             ..Default::default()
         },
         gaps: OverlayGaps::default(),
@@ -126,7 +126,7 @@ fn hd_carried_sheets_survive_session_publication_without_thumbnails() {
     let mut compiled = textures();
     let side = 256;
     let color = [80, 150, 220, 255];
-    compiled.overlay.texture.as_mut().unwrap().mips =
+    compiled.overlay.textures.first_mut().unwrap().mips =
         assets::build_legacy_terrain_mip_chain(&color.repeat((side * side) as usize), side)
             .unwrap();
     let mut output = BlockIcons::default();

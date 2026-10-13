@@ -12,8 +12,8 @@ use crate::model::{
 };
 use crate::{
     AssetError, BlockFlags, CompiledAssets, DIAGNOSTIC_MATERIAL, MATERIAL_FLAG_ALPHA_BLEND,
-    MATERIAL_FLAG_ALPHA_CUTOUT, MAX_ANIMATION_FRAMES, MAX_ANIMATIONS, MAX_MATERIALS,
-    MAX_MODEL_QUADS, MAX_MODEL_TEMPLATES, MAX_TEXTURE_LAYERS, MAX_TEXTURE_PAGES, MIP_COUNT,
+    MATERIAL_FLAG_ALPHA_CUTOUT, MAX_ANIMATION_FRAMES, MAX_ANIMATIONS, MAX_CARRIER_TEXTURE_PAGES,
+    MAX_MATERIALS, MAX_MODEL_QUADS, MAX_MODEL_TEMPLATES, MAX_TEXTURE_LAYERS, MIP_COUNT,
     MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN, MODEL_TEMPLATE_FLAG_COMPOUND_NEXT,
     MODEL_TEMPLATE_FLAG_FENCE_NETHER, MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE,
     MODEL_TEMPLATE_FLAG_GATE_AXIS_X, MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP,
@@ -26,9 +26,10 @@ use crate::{
 };
 
 // World visuals retain solid/liquid material dispositions, and replicated flipbook tiles hold
-// their native upper-left crop. Model texture arrays require explicit state selectors;
-// reject earlier carriers that omit those selectors.
-pub const BLOB_VERSION: u32 = 18;
+// their native upper-left crop. Model texture arrays require explicit state selectors, and
+// texture references carry three page bits so a session palette can shard across several
+// device-limited arrays; reject earlier carriers.
+pub const BLOB_VERSION: u32 = 19;
 pub const BLOB_MAGIC: [u8; 8] = {
     let mut magic = *b"MCBEAS00";
     magic[6] += (BLOB_VERSION / 10) as u8;
@@ -287,8 +288,11 @@ fn validate_compiled(compiled: &CompiledAssets) -> Result<(), AssetError> {
         compiled.animation_frames.len(),
         MAX_ANIMATION_FRAMES,
     )?;
-    if compiled.texture_pages.is_empty() || compiled.texture_pages.len() > MAX_TEXTURE_PAGES {
-        return Err(invalid("texture page count must be one or two"));
+    if compiled.texture_pages.is_empty() || compiled.texture_pages.len() > MAX_CARRIER_TEXTURE_PAGES
+    {
+        return Err(invalid(format!(
+            "texture page count must be between one and {MAX_CARRIER_TEXTURE_PAGES}"
+        )));
     }
     for (page_index, page) in compiled.texture_pages.iter().enumerate() {
         if page.texture.layers as usize > MAX_TEXTURE_LAYERS {

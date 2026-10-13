@@ -27,7 +27,7 @@ fn animated_replacements_use_the_resolved_default_state() {
     }
     assert_eq!(runtime.material(1).animation, runtime.material(2).animation);
     assert_eq!(runtime.material(1).texture, runtime.material(2).texture);
-    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+    assert_eq!(compiled.overlay.textures.first().unwrap().layers, 3);
     assert_eq!(compiled.overlay.materials.len(), 2);
 }
 
@@ -63,7 +63,7 @@ fn weighted_selectors_reserve_the_base_material_table_and_allow_later_static_rou
     assert_eq!(runtime.material(1), base.material(1));
     assert_eq!(material_color(&runtime, 2), [20, 30, 200, 255]);
     assert_eq!(compiled.overlay.material_overrides.len(), 1);
-    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+    assert_eq!(compiled.overlay.textures.first().unwrap().layers, 2);
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn failed_carried_faces_and_change_probes_release_unpublished_admissions() {
                 .all(|pixel| *pixel == good)
         );
         assert_eq!(
-            compiled.overlay.texture.as_ref().unwrap().layers,
+            compiled.overlay.textures.first().unwrap().layers,
             if weighted_probe { 2 } else { 3 }
         );
         assert_eq!(
@@ -257,7 +257,7 @@ fn custom_materials_share_the_combined_base_and_overlay_budget() {
         Some(&base),
     )
     .unwrap();
-    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+    assert_eq!(compiled.overlay.textures.first().unwrap().layers, 2);
     assert_eq!(
         base.materials().len() + compiled.overlay.materials.len(),
         assets::MAX_MATERIALS
@@ -343,7 +343,7 @@ fn diagnostic_custom_visuals_release_their_unpublished_face_materials() {
     .unwrap();
     assert_eq!(compiled.overlay.visuals[0].kind, VisualKind::Diagnostic);
     assert_eq!(compiled.overlay.visuals[1].kind, VisualKind::Cube);
-    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+    assert_eq!(compiled.overlay.textures.first().unwrap().layers, 2);
     assert_eq!(compiled.overlay.materials.len(), 2);
     let runtime = base.with_block_overlay(2, &compiled.overlay).unwrap();
     let material = runtime

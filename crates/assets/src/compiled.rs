@@ -53,6 +53,8 @@ pub const DIAGNOSTIC_MATERIAL: u32 = 0;
 pub const MAX_TEXTURE_LAYERS: usize = 8_192;
 /// Offline page budget for carriers that must fit a 2,048-layer device.
 pub const MAX_CARRIER_TEXTURE_LAYERS: usize = 2_048;
+/// Compiled carriers carry the base page plus at most one vanilla page.
+pub const MAX_CARRIER_TEXTURE_PAGES: usize = 2;
 /// Layer bits shared by carrier references and GPU shader encoders.
 pub const TEXTURE_LAYER_MASK: u32 = MAX_TEXTURE_LAYERS as u32 - 1;
 pub const MAX_MATERIALS: usize = 65_536;

@@ -61,40 +61,43 @@ fn displaced_models_preserve_opaque_texels_and_cutout_thresholds() {
         let source = format!(
             "{}\n{}",
             production,
-            VERTEX.replace(
-                "ALPHA_FLAG",
-                &format!("{}u", assets::MATERIAL_FLAG_ALPHA_CUTOUT)
-            )
+            VERTEX
+                .replace(
+                    "ALPHA_FLAG",
+                    &format!("{}u", assets::MATERIAL_FLAG_ALPHA_CUTOUT)
+                )
+                .replace(
+                    "PAGE_ONE_REFERENCE",
+                    &format!("{}u", assets::TextureRef::new(1, 0).unwrap().raw())
+                )
         );
         let bindings = if enhanced {
-            [4, 5]
+            material_shader::SAMPLED_TEXTURE_BINDINGS.to_vec()
         } else {
-            material_shader::NATIVE_LEAF_TEXTURE_BINDINGS
+            material_shader::NATIVE_LEAF_TEXTURE_BINDINGS.to_vec()
         };
+        let mut entries: Vec<wgpu::BindGroupEntry> = bindings
+            .iter()
+            .map(|binding| wgpu::BindGroupEntry {
+                binding: *binding,
+                resource: wgpu::BindingResource::TextureView(&view),
+            })
+            .collect();
+        entries.push(wgpu::BindGroupEntry {
+            binding: 6,
+            resource: wgpu::BindingResource::Sampler(&sampler),
+        });
+        entries.push(wgpu::BindGroupEntry {
+            binding: material_shader::NATIVE_LEAF_SAMPLER_BINDING,
+            resource: wgpu::BindingResource::Sampler(&sampler),
+        });
         let actual = gpu.render(
             &source,
             "alpha_vertex",
             &[Draw {
                 fragment: if shadow { "shadow_colour" } else { "fragment" },
                 vertices: 0..48,
-                bindings: &[
-                    wgpu::BindGroupEntry {
-                        binding: bindings[0],
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: bindings[1],
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 6,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: material_shader::NATIVE_LEAF_SAMPLER_BINDING,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                ],
+                bindings: &entries,
                 blend: None,
                 write_depth: true,
             }],
@@ -131,10 +134,15 @@ fn displaced_models_preserve_opaque_texels_and_cutout_thresholds() {
     production.push_str("\nfn ordinary_world_model_colour(in: VertexOutput, sampled: vec4<f32>) -> vec4<f32> { return sampled; }\n");
     let source = format!(
         "{production}\n{}",
-        VERTEX.replace(
-            "ALPHA_FLAG",
-            &format!("{}u", assets::MATERIAL_FLAG_ALPHA_CUTOUT)
-        )
+        VERTEX
+            .replace(
+                "ALPHA_FLAG",
+                &format!("{}u", assets::MATERIAL_FLAG_ALPHA_CUTOUT)
+            )
+            .replace(
+                "PAGE_ONE_REFERENCE",
+                &format!("{}u", assets::TextureRef::new(1, 0).unwrap().raw())
+            )
     );
     let actual = gpu.render(
         &source,
@@ -149,6 +157,18 @@ fn displaced_models_preserve_opaque_texels_and_cutout_thresholds() {
                 },
                 wgpu::BindGroupEntry {
                     binding: material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[1],
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[2],
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[3],
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[4],
                     resource: wgpu::BindingResource::TextureView(&view),
                 },
                 wgpu::BindGroupEntry {
@@ -186,7 +206,7 @@ const VERTEX: &str = r#"
     var out: VertexOutput;
     out.clip_position = vec4((vec2(f32(cell),0.0)+corner) / vec2(8.0,1.0)*vec2(2.0,-2.0)+vec2(-1.0,1.0),0.5,1.0);
     out.uv = vec2(0.5);
-    out.current_texture = 0x80000000u | (cell % 4u);
+    out.current_texture = PAGE_ONE_REFERENCE | (cell % 4u);
     out.next_texture = out.current_texture;
     out.visibility.x = 1u;
     out.visibility.y = 1u;

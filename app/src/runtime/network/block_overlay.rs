@@ -44,6 +44,8 @@ const FULL_BLOCK: &str = "minecraft:geometry.full_block";
 const FULL_BLOCK_V1: &str = "minecraft:geometry.full_block_v1";
 const MIN_TILE: u32 = assets::TILE_SIZE;
 const MAX_OVERLAY_LAYERS: usize = assets::MAX_TEXTURE_LAYERS;
+/// Base carrier page plus this many overlay shards fill [`assets::MAX_TEXTURE_PAGES`].
+const MAX_OVERLAY_SHARDS: usize = assets::MAX_TEXTURE_PAGES - 1;
 const DIAGNOSTIC_MATERIAL: u32 = 0;
 
 /// Counted reasons some server block visuals are incomplete this session.
@@ -109,21 +111,26 @@ pub(super) fn compile_block_overlay(
         .filter_map(|components| components.geometry.as_deref())
         .filter(|identifier| !identifier.starts_with("minecraft:"))
         .collect::<HashSet<_>>();
+    let max_layers = (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS);
     let mut builder = Builder {
         catalog: TextureCatalog::new(view, vanilla_keys),
         base_assets,
         vanilla_carried: Vec::new(),
         terrain_materials: HashMap::new(),
         geometries: geometry_catalog(view, &wanted),
-        overlay: BlockOverlay::default(),
+        overlay: BlockOverlay {
+            max_page_layers: max_layers as u32,
+            ..BlockOverlay::default()
+        },
         fallback: vanilla_keys
             .zip(base_assets)
             .map(|(keys, base)| assets::VanillaFallback::new(keys, base.materials())),
         sources: Vec::new(),
         source_bytes: 0,
-        tile_size: MIN_TILE,
+        tiles: Vec::new(),
+        upload_bytes: device_policy().terrain_bytes(MIN_TILE, 1)?,
         texture_policy: device_policy(),
-        max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
+        max_layers,
         slots: TextureSlots::default(),
         materials: HashMap::new(),
         visuals: HashMap::new(),
@@ -132,7 +139,7 @@ pub(super) fn compile_block_overlay(
             ..OverlayGaps::default()
         },
     };
-    builder.sources.push(Source::Diagnostic);
+    builder.sources.push((Source::Diagnostic, 0));
     builder.overlay.materials.push(Material {
         texture: TextureRef::new(1, 0).expect("layer zero"),
         flags: 0,
@@ -205,6 +212,7 @@ enum Source {
 
 #[derive(Clone)]
 struct TextureSlot {
+    /// Page zero borrows the carrier; higher pages address overlay shards.
     page: u32,
     layer: u32,
     animation: u32,
@@ -243,9 +251,14 @@ struct Builder<'a> {
     overlay: BlockOverlay,
     /// Base-carrier textures for vanilla keys the server stack does not ship.
     fallback: Option<assets::VanillaFallback<'a>>,
-    sources: Vec<Source>,
+    /// Flat sources tagged with their shard; shards group equal-scale layers
+    /// so one physical tile serves each page without inflating small art.
+    sources: Vec<(Source, usize)>,
     source_bytes: usize,
-    tile_size: u32,
+    /// Current physical tile per open shard, bounding admitted layer bytes.
+    tiles: Vec<u32>,
+    /// Estimated upload bytes across shards, kept under the shared budget.
+    upload_bytes: usize,
     texture_policy: TexturePolicy,
     max_layers: usize,
     slots: TextureSlots,
@@ -581,75 +594,127 @@ impl Builder<'_> {
         })
     }
 
+    /// Layers currently assigned to one shard.
+    fn shard_len(&self, shard: usize) -> usize {
+        self.sources
+            .iter()
+            .filter(|(_, assigned)| *assigned == shard)
+            .count()
+    }
+
     fn finish(mut self) -> Option<CompiledBlockOverlay> {
-        for source in &mut self.sources {
+        for (source, _) in &mut self.sources {
             if let Source::Image(texture) | Source::GridImage(texture, _) = source {
                 admit_static_rectangle(texture);
             }
         }
-        let largest = self
+        // Shards own contiguous runs of the tagged stream; directly pushed
+        // fixtures share shard zero. Each page takes the tile of its largest
+        // source so small art never subsidizes HD neighbours.
+        let shards = self
             .sources
             .iter()
-            .filter_map(|source| match source {
-                Source::Image(texture) | Source::GridImage(texture, _) => {
-                    Some(texture.width.max(texture.height))
-                }
-                Source::Diagnostic => None,
-            })
+            .map(|(_, shard)| *shard)
             .max()
-            .unwrap_or(MIN_TILE);
-        let tile = largest.checked_next_power_of_two()?.max(MIN_TILE);
-        self.texture_policy
-            .terrain_bytes(tile, self.sources.len())?;
-        let mut mips: Vec<Vec<u8>> = Vec::new();
-        for source in &self.sources {
-            let (dimensions, chain) = match source {
-                Source::Diagnostic => (
-                    [tile as u16; 2],
-                    assets::build_legacy_terrain_mip_chain(&diagnostic_pixels(tile), tile).ok()?,
-                ),
-                Source::Image(texture) | Source::GridImage(texture, _) => {
-                    source_mip_chain(texture, tile)?
-                }
-            };
-            let grid = if let Source::GridImage(_, grid) = source {
-                *grid
-            } else {
-                0
-            };
-            let (dimensions, chain, grid) = if dimensions.iter().any(|&size| size >> grid == 0) {
-                self.gaps.missing_textures = self.gaps.missing_textures.saturating_add(1);
-                (
-                    [tile as u16; 2],
-                    assets::build_legacy_terrain_mip_chain(&diagnostic_pixels(tile), tile).ok()?,
-                    0,
-                )
-            } else {
-                (dimensions.map(|size| size >> grid), chain, grid)
-            };
-            self.overlay.texture_source_sizes.push(dimensions);
-            self.overlay.texture_source_grids.push(grid);
-            mips.resize(chain.len(), Vec::new());
-            for (level, mip) in chain.iter().enumerate() {
-                mips[level].extend_from_slice(&mip.rgba8);
-            }
+            .map_or(0, |last| last + 1);
+        if shards > MAX_OVERLAY_SHARDS || self.sources.len() > MAX_OVERLAY_LAYERS {
+            return None;
         }
-        let mut size = tile;
-        let mips = mips
-            .into_iter()
-            .map(|rgba8| {
-                let mip = TextureMip {
-                    size,
-                    rgba8: rgba8.into_boxed_slice(),
+        let mut tiles = Vec::with_capacity(shards);
+        let mut total = 0usize;
+        for shard in 0..shards {
+            let largest = self
+                .sources
+                .iter()
+                .filter(|(_, assigned)| *assigned == shard)
+                .filter_map(|(source, _)| match source {
+                    Source::Image(texture) | Source::GridImage(texture, _) => {
+                        Some(texture.width.max(texture.height))
+                    }
+                    Source::Diagnostic => None,
+                })
+                .max()
+                .unwrap_or(MIN_TILE);
+            let tile = largest.checked_next_power_of_two()?.max(MIN_TILE);
+            let layers = self
+                .sources
+                .iter()
+                .filter(|(_, assigned)| *assigned == shard)
+                .count();
+            if layers == 0 || layers > self.max_layers {
+                return None;
+            }
+            total = total.checked_add(self.texture_policy.terrain_bytes(tile, layers)?)?;
+            if total > assets::texture::policy::MAX_SUBSCRIBER_BYTES {
+                return None;
+            }
+            tiles.push(tile);
+        }
+        let mut sizes = Vec::with_capacity(self.sources.len());
+        let mut grids = Vec::with_capacity(self.sources.len());
+        let mut textures = Vec::with_capacity(shards);
+        for (shard, tile) in tiles.iter().copied().enumerate() {
+            let mut mips: Vec<Vec<u8>> = Vec::new();
+            let mut layers = 0u32;
+            for (source, assigned) in &self.sources {
+                if *assigned != shard {
+                    continue;
+                }
+                let (dimensions, chain) = match source {
+                    Source::Diagnostic => (
+                        [tile as u16; 2],
+                        assets::build_legacy_terrain_mip_chain(&diagnostic_pixels(tile), tile)
+                            .ok()?,
+                    ),
+                    Source::Image(texture) | Source::GridImage(texture, _) => {
+                        source_mip_chain(texture, tile)?
+                    }
                 };
-                size = (size / 2).max(1);
-                mip
-            })
-            .collect();
-        self.overlay.texture = Some(TextureArray {
-            layers: self.sources.len() as u32,
-            mips,
-        });
+                let grid = if let Source::GridImage(_, grid) = source {
+                    *grid
+                } else {
+                    0
+                };
+                let (dimensions, chain, grid) = if dimensions.iter().any(|&size| {
+                    size.checked_shr(u32::from(grid))
+                        .is_none_or(|size| size == 0)
+                }) {
+                    self.gaps.missing_textures = self.gaps.missing_textures.saturating_add(1);
+                    (
+                        [tile as u16; 2],
+                        assets::build_legacy_terrain_mip_chain(&diagnostic_pixels(tile), tile)
+                            .ok()?,
+                        0,
+                    )
+                } else {
+                    (dimensions.map(|size| size >> grid), chain, grid)
+                };
+                sizes.push(dimensions);
+                grids.push(grid);
+                layers += 1;
+                mips.resize(chain.len(), Vec::new());
+                for (level, mip) in chain.iter().enumerate() {
+                    mips[level].extend_from_slice(&mip.rgba8);
+                }
+            }
+            let mut size = tile;
+            let mips = mips
+                .into_iter()
+                .map(|rgba8| {
+                    let mip = TextureMip {
+                        size,
+                        rgba8: rgba8.into_boxed_slice(),
+                    };
+                    size = (size / 2).max(1);
+                    mip
+                })
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            textures.push(TextureArray { layers, mips });
+        }
+        self.overlay.texture_source_sizes = sizes;
+        self.overlay.texture_source_grids = grids;
+        self.overlay.textures = textures;
         Some(CompiledBlockOverlay {
             overlay: self.overlay,
             gaps: self.gaps,

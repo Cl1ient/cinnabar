@@ -1,14 +1,19 @@
 //! The material carrier and WGSL consume the same flag discriminants.
 
-pub(crate) const NATIVE_LEAF_TEXTURE_BINDINGS: [u32; assets::MAX_TEXTURE_PAGES] = [16, 17];
-pub(crate) const NATIVE_LEAF_SAMPLER_BINDING: u32 = 18;
-pub(crate) const BIOME_QUERY_TABLES_BINDING: u32 = 19;
+/// Fragment bindings of each physical texture page: one filterable sRGB view
+/// and one gamma view, so `MAX_TEXTURE_PAGES` needs this many of each.
+pub(crate) const SAMPLED_TEXTURE_BINDINGS: [u32; assets::MAX_TEXTURE_PAGES] = [4, 5, 19, 20, 21];
+pub(crate) const NATIVE_LEAF_TEXTURE_BINDINGS: [u32; assets::MAX_TEXTURE_PAGES] =
+    [16, 17, 22, 23, 24];
+pub(crate) const NATIVE_LEAF_SAMPLER_BINDING: u32 = 25;
+pub(crate) const BIOME_QUERY_TABLES_BINDING: u32 = 26;
 pub(crate) const CHUNK_SAMPLER_COUNT: u32 = 2;
 pub(crate) const CHUNK_SAMPLED_TEXTURE_BINDINGS: u32 =
     (assets::MAX_TEXTURE_PAGES + NATIVE_LEAF_TEXTURE_BINDINGS.len()) as u32;
 
 // Admitted source sizes are powers of two up to MAX_TILE_SIZE. Four bits store
 // log2(size) + 1; zero means the physical page size. Grid occupies five more bits.
+// They sit below the page field, which a reference's own width separates.
 const TEXTURE_SIZE_BITS: u32 = 4;
 const TEXTURE_WIDTH_SHIFT: u32 = assets::TEXTURE_LAYER_MASK.count_ones();
 const TEXTURE_HEIGHT_SHIFT: u32 = TEXTURE_WIDTH_SHIFT + TEXTURE_SIZE_BITS;
@@ -110,6 +115,14 @@ pub(crate) fn source(source: &str) -> String {
         .replace("ACTOR_LIGHT_WORLD_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_WORLD))
         .replace("ACTOR_LIGHT_DIRECTIONAL_FLAG", &format!("{}u", render_api::ACTOR_LIGHT_DIRECTIONAL))
         .replace("TEXTURE_LAYER_MASK", &format!("{}u", assets::TEXTURE_LAYER_MASK))
+        .replace(
+            "GPU_TEXTURE_PAGE_SHIFT",
+            &format!("{}u", assets::TEXTURE_PAGE_SHIFT),
+        )
+        .replace(
+            "GPU_TEXTURE_PAGE_MASK",
+            &format!("{}u", assets::TEXTURE_PAGE_MASK),
+        )
         .replace("GPU_TEXTURE_GRID_SHIFT", &format!("{TEXTURE_GRID_SHIFT}u"))
         .replace("GPU_TEXTURE_SIZE_EXPONENT_MASK", &format!("{TEXTURE_SIZE_EXPONENT_MASK}u"))
         .replace("TERRAIN_QUAD_SHIFT_MASK", &format!("{}u", assets::TERRAIN_QUAD_SHIFT_MASK))
@@ -208,6 +221,18 @@ pub(crate) fn source(source: &str) -> String {
         .replace(
             "NATIVE_LEAF_TEXTURE_BINDING_1",
             &NATIVE_LEAF_TEXTURE_BINDINGS[1].to_string(),
+        )
+        .replace(
+            "NATIVE_LEAF_TEXTURE_BINDING_2",
+            &NATIVE_LEAF_TEXTURE_BINDINGS[2].to_string(),
+        )
+        .replace(
+            "NATIVE_LEAF_TEXTURE_BINDING_3",
+            &NATIVE_LEAF_TEXTURE_BINDINGS[3].to_string(),
+        )
+        .replace(
+            "NATIVE_LEAF_TEXTURE_BINDING_4",
+            &NATIVE_LEAF_TEXTURE_BINDINGS[4].to_string(),
         )
         .replace(
             "NATIVE_LEAF_SAMPLER_BINDING",

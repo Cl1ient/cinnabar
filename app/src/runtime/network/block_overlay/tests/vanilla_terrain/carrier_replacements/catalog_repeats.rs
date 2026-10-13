@@ -52,7 +52,7 @@ fn repeated_catalogs_and_bindings_leave_capacity_for_late_hd_replacements() {
             compiled.overlay.material_overrides[0].material,
             count as u32 + 1
         );
-        assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+        assert_eq!(compiled.overlay.textures.first().unwrap().layers, 2);
         assert!(compiled.vanilla_carried.is_empty());
         assert!(compiled.overlay.face_overrides.is_empty());
         let runtime = base.with_block_overlay(2, &compiled.overlay).unwrap();

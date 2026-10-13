@@ -414,6 +414,14 @@ fn follow_bound_emitters(system: &mut ParticleSystem, stream: &WorldStream) {
     });
 }
 
+/// Audio cues and camera authority that place local break and eating particles.
+type ParticleCues<'w, 's> = (
+    MessageReader<'w, 's, client_audio::audio::LocalBlockCue>,
+    MessageReader<'w, 's, client_audio::audio::predicted::LocalEatingCue>,
+    Option<Res<'w, client_presentation::camera::CameraSettingsAuthority>>,
+    Option<Res<'w, client_presentation::camera::ServerCameraView>>,
+);
+
 #[allow(clippy::too_many_arguments)]
 fn drive_particles(
     frame_time: (
@@ -431,12 +439,7 @@ fn drive_particles(
     mining: Option<Res<SurvivalMiningRuntime>>,
     mut session: Local<(u64, i32)>,
     mut crack_timer: Local<f32>,
-    (mut block_cues, mut eating_cues, camera_settings, server_camera): (
-        MessageReader<client_audio::audio::LocalBlockCue>,
-        MessageReader<client_audio::audio::predicted::LocalEatingCue>,
-        Option<Res<client_presentation::camera::CameraSettingsAuthority>>,
-        Option<Res<client_presentation::camera::ServerCameraView>>,
-    ),
+    (mut block_cues, mut eating_cues, camera_settings, server_camera): ParticleCues<'_, '_>,
     mut break_echoes: Local<client_audio::audio::EchoLedger>,
     mut ambient: Local<AmbientParticles>,
     (cave, profiler): (

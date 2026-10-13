@@ -56,7 +56,7 @@ fn compile_campfires() -> (RuntimeAssets, Vec<RegistryRecord>) {
         .collect();
     write(
         directory.path().join("textures/terrain_texture.json"),
-        &serde_json::json!({ "texture_data": texture_data }).to_string(),
+        serde_json::json!({ "texture_data": texture_data }).to_string(),
     );
     write(
         directory.path().join("textures/flipbook_textures.json"),
@@ -438,7 +438,7 @@ fn campfires_match_every_facing_box_face_and_uv() {
         let flame = visual.face(BlockFace::Up).material_id();
         let (boxes, planes) = quads.split_at(30);
         for (box_index, (actual, (min, max, faces))) in
-            boxes.chunks_exact(6).zip(expected).enumerate()
+            boxes.as_chunks::<6>().0.iter().zip(expected).enumerate()
         {
             for axis in 0..3 {
                 assert_eq!(

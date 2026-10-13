@@ -107,26 +107,17 @@ impl CompiledFontCatalog {
     pub fn font_named(&self, name: &str) -> &Self {
         self.named
             .get(name)
-            .or_else(|| json_ui_face(name).and_then(|face| self.named.get(face.name)))
+            .or_else(|| {
+                if name == "default" {
+                    return None;
+                }
+                crate::carriers::CARRIERS
+                    .iter()
+                    .filter_map(|carrier| carrier.font_face)
+                    .find(|face| face.json_ui_alias == Some(name))
+                    .and_then(|face| self.named.get(face.name))
+            })
             .unwrap_or(self)
-    }
-
-    /// Selects a pack label face and the scale from its raster em to its nominal design em.
-    /// Explicitly installed names and missing substitutes retain their existing geometry.
-    pub fn font_named_for_json_ui(&self, name: &str) -> (&Self, Option<f32>) {
-        if let Some(font) = self.named.get(name) {
-            return (font, None);
-        }
-        if let Some(face) = json_ui_face(name)
-            && let Some(font) = self.named.get(face.name)
-            && let Some(metrics) = font.line_metrics()
-        {
-            return (
-                font,
-                Some((face.raster_em_pixels() * 64) as f32 / metrics.em_64 as f32),
-            );
-        }
-        (self.font_named(name), None)
     }
 
     /// Selects the exact requested raster size without allocating during layout.
@@ -138,17 +129,6 @@ impl CompiledFontCatalog {
             font
         }
     }
-}
-
-/// Finds the registered substitute for a pack-authored font name.
-fn json_ui_face(name: &str) -> Option<crate::carriers::FontFace> {
-    if name == "default" {
-        return None;
-    }
-    crate::carriers::CARRIERS
-        .iter()
-        .filter_map(|carrier| carrier.font_face)
-        .find(|face| face.json_ui_alias == Some(name))
 }
 
 pub(super) fn append(

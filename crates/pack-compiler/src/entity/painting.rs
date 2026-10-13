@@ -346,4 +346,65 @@ mod tests {
         assets::RuntimeEntityAssets::from_compiled(compiled.assets)
             .expect("full authored symbol inventory remains admissible");
     }
+
+    #[test]
+    fn painting_completion_preserves_authored_files_at_generated_source_paths() {
+        for (path, identifier, authored) in [
+            (
+                "entity/_cinnabar/painting_Kebab_front.json",
+                "fixture:actor",
+                serde_json::json!({"format_version":"1.10.0", "minecraft:client_entity":{"description":{"identifier":"fixture:actor"}}}),
+            ),
+            (
+                "models/entity/_cinnabar/painting_Kebab_front.json",
+                "geometry.fixture",
+                serde_json::json!({"format_version":"1.12.0", "minecraft:geometry":[{"description":{"identifier":"geometry.fixture"},"bones":[{"name":"root"}]}]}),
+            ),
+            (
+                "render_controllers/_cinnabar/paintings.json",
+                "controller.render.fixture",
+                serde_json::json!({"format_version":"1.8.0", "render_controllers":{"controller.render.fixture":{}}}),
+            ),
+        ] {
+            let authored = serde_json::to_vec(&authored).unwrap();
+            let expected_hash: [u8; 32] = Sha256::digest(&authored).into();
+            let compiled = crate::compile_actor_pack(vec![
+                (path.into(), authored),
+                (
+                    format!("{}.png", assets::painting::PAINTING_ATLAS).into(),
+                    png(256, 256, [30, 90, 150, 255]),
+                ),
+            ])
+            .unwrap()
+            .unwrap();
+            assert_eq!(compiled.skipped, super::super::EntityPackSkips::default());
+            let source = compiled
+                .entities
+                .sources
+                .iter()
+                .position(|source| source.path.as_ref() == path)
+                .unwrap();
+            assert_eq!(
+                compiled.entities.sources[source].source_sha256,
+                expected_hash
+            );
+            assert!(
+                compiled
+                    .entities
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.identifier.as_ref() == identifier
+                        && symbol.source_index as usize == source)
+            );
+            let runtime = assets::RuntimeEntityAssets::from_compiled(compiled.entities)
+                .expect("authored files and generated parts remain admissible together");
+            let painting = assets::painting::motive("Kebab").part_identifier(false);
+            assert!(
+                runtime
+                    .symbols()
+                    .iter()
+                    .any(|symbol| symbol.identifier.as_ref() == painting)
+            );
+        }
+    }
 }

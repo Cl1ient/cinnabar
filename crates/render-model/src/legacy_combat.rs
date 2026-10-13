@@ -1,8 +1,11 @@
-//! Tick-owned Bedrock 1.12 camera effects, independent of gameplay aim and rendering cadence.
+//! Bedrock 1.12 camera and swing effects, independent of gameplay aim and rendering cadence.
 
 use glam::{Mat4, Vec3};
 use render_api::BEDROCK_112;
 use std::sync::OnceLock;
+
+mod swing;
+pub use swing::{LegacySwingPose, legacy_first_person_arm, legacy_item_swing, legacy_swing_pose};
 
 /// A completed movement tick. `movement` is collision-resolved displacement, not a request.
 #[derive(Debug, Clone, Copy)]

@@ -121,6 +121,16 @@ fn source_for_use(
     with_artwork: bool,
     use_ticks: u32,
 ) -> (HandSource, Vec<render_model::ActorRigGeometry>) {
+    source_for_use_and_swing(identifier, with_artwork, use_ticks, None)
+}
+
+/// Samples independent Bedrock and Java clocks through the Java publication path.
+fn source_for_use_and_swing(
+    identifier: Option<&str>,
+    with_artwork: bool,
+    use_ticks: u32,
+    swing: Option<actor_animation::LocalSwingProgress>,
+) -> (HandSource, Vec<render_model::ActorRigGeometry>) {
     let mut stream = super::tests::head_stream();
     let mut feed = super::tests::uploaded_skin_feed(false);
     let protocol::PlayerSkin::Standard(skin) = &mut feed.skin else {
@@ -145,6 +155,10 @@ fn source_for_use(
         stream.sync_local_player_pose(&feed);
         stream.prepare_actor_appearance_fixture();
         stream.advance_actor_interpolation_frame(use_ticks);
+    }
+    if let Some(swing) = swing {
+        stream.sync_local_swing(swing);
+        stream.advance_actor_interpolation_frame(0);
     }
     let (mut equipment, artwork) = equipment_fixture();
     let artwork = if with_artwork {
@@ -210,7 +224,7 @@ fn held_java_items_publish_only_the_resolved_item_layer() {
             source.body.is_none(),
             "{identifier} must not publish a player arm"
         );
-        assert!(source.java_body_camera.is_none());
+        assert!(source.body_camera.is_none());
         assert_eq!(source.items.iter().flatten().count(), 1, "{identifier}");
         if matches!(identifier, "minecraft:shield" | "minecraft:crossbow") {
             assert!(
@@ -265,7 +279,7 @@ fn missing_held_item_artwork_does_not_publish_an_empty_arm() {
             source.body.is_none(),
             "missing {identifier} artwork must not substitute a player arm"
         );
-        assert!(source.java_body_camera.is_none());
+        assert!(source.body_camera.is_none());
     }
 }
 
@@ -289,7 +303,7 @@ fn first_person_texture_lookup_rejects_a_layer_absent_from_its_page() {
 fn empty_hand_and_maps_keep_their_intentional_textured_arms() {
     let empty = source_for(None, true);
     assert!(empty.body.is_some());
-    assert!(empty.java_body_camera.is_some());
+    assert!(empty.body_camera.is_some());
     assert!(empty.items.iter().all(Option::is_none));
     assert_resolved_textures(&empty);
     let map = source_for(Some(FILLED_MAP), true);
@@ -319,4 +333,18 @@ fn assert_resolved_textures(source: &HandSource) {
             render_model::STANDARD_SKIN_BYTES
         );
     }
+}
+
+#[test]
+fn java_bare_arm_takes_precedence_over_the_legacy_attack_clock() {
+    let swing = actor_animation::LocalSwingProgress {
+        bedrock: [0.25, 0.5],
+        java: [0.1, 0.2],
+        frame_alpha: Some(0.75),
+    };
+    let source = source_for_use_and_swing(None, true, 0, Some(swing)).0;
+    let expected = render_model::java_animation::first_person_arm(0.175, 1.0);
+    assert!(source.body_camera.unwrap().abs_diff_eq(expected, 1e-5));
+    let legacy = render_model::legacy_combat::legacy_first_person_arm(0.4375, 1.0);
+    assert!(!expected.abs_diff_eq(legacy, 1e-3));
 }

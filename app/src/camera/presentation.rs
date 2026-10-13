@@ -2,8 +2,8 @@
 use bevy::prelude::{Projection, Query, Res, ResMut, Time, Transform, With};
 use client_presentation::camera::presentation::{FirstPersonHandMotion, ScreenEffectFacts};
 use client_presentation::camera::{
-    CameraFovInputs, CameraHurtState, CameraSettingsAuthority, FlyCamera, HandSwayState,
-    HeadMedium, PortalProgress, ScreenOverlays, ServerCameraView, VisionEffects, WalkBobState,
+    CameraFovInputs, CameraHurtState, CameraSettingsAuthority, FlyCamera, HeadMedium,
+    PortalProgress, ScreenOverlays, ServerCameraView, VisionEffects, WalkBobState,
 };
 use client_presentation::server_camera::ServerCameraInstructions;
 use client_shell::ui_resources::UiRuntimeResource;
@@ -87,7 +87,6 @@ pub(crate) fn advance_presentation_state(
     physics: Option<Res<LocalPhysicsController>>,
     ui: Option<Res<UiRuntimeResource>>,
     bob: ResMut<WalkBobState>,
-    sway: ResMut<HandSwayState>,
     hurt: ResMut<CameraHurtState>,
     java: ResMut<client_presentation::camera::java::JavaCameraState>,
     legacy: ResMut<client_presentation::camera::legacy::LegacyCameraMotion>,
@@ -107,7 +106,6 @@ pub(crate) fn advance_presentation_state(
             .map(|value| value as &dyn client_presentation::observations::PhysicsObservation),
         ui.as_deref().map(|ui| &ui.0),
         bob,
-        sway,
         hurt,
         java,
         legacy,

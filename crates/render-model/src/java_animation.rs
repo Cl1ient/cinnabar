@@ -11,6 +11,19 @@ mod tests;
 #[cfg(test)]
 mod reference_tests;
 
+/// Java first-person hand sway, shared by both combat profiles.
+#[derive(Clone, Copy, Debug)]
+pub struct JavaHandSwayRules {
+    pub tick_follow: f64,
+    pub rotation_gain: f32,
+}
+
+/// Tick smoothing precedes partial-tick interpolation and the camera-space X then Y turns.
+pub const JAVA_HAND_SWAY: JavaHandSwayRules = JavaHandSwayRules {
+    tick_follow: 0.5,
+    rotation_gain: 0.1,
+};
+
 /// Java's table sine: the angle snapped down to a 65536th of a turn.
 #[must_use]
 pub fn java_sin(radians: f32) -> f32 {

@@ -22,6 +22,54 @@ pub(super) fn frame(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_tick_batches_do_not_accumulate_negative_roundoff() {
+        let mut accumulated = 0.0;
+        let mut discard = false;
+        for _ in 0..16 {
+            let frame = frame(
+                simulation_clock::TICK_DURATION * 3,
+                &mut accumulated,
+                &mut discard,
+            );
+            assert_eq!(frame.due_ticks, 3);
+            assert_eq!(frame.dropped_ticks, 0);
+            assert_eq!(accumulated, 0.0);
+        }
+    }
+
+    #[test]
+    fn fractional_ticks_and_frame_limits_remain_intact() {
+        let mut accumulated = 0.0;
+        let mut discard = false;
+        let half_tick = simulation_clock::TICK_DURATION / 2;
+        assert_eq!(
+            frame(half_tick, &mut accumulated, &mut discard).due_ticks,
+            0
+        );
+        assert!(accumulated > 0.0);
+        assert_eq!(
+            frame(half_tick, &mut accumulated, &mut discard).due_ticks,
+            1
+        );
+        assert_eq!(accumulated, 0.0);
+
+        let ticks = simulation_clock::MAX_TICKS_PER_FRAME + 1;
+        let frame = frame(
+            simulation_clock::TICK_DURATION * ticks,
+            &mut accumulated,
+            &mut discard,
+        );
+        assert_eq!(frame.due_ticks, u64::from(ticks));
+        assert_eq!(frame.dropped_ticks, 1);
+        assert!(accumulated < LOCAL_PHYSICS_TICK_SECONDS);
+    }
+}
+
 /// Whole fixed ticks contained in accumulated seconds.
 pub(super) fn whole_ticks(accumulated_seconds: f64) -> u64 {
     ((accumulated_seconds + f64::EPSILON) / LOCAL_PHYSICS_TICK_SECONDS)

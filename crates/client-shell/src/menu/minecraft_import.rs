@@ -65,12 +65,20 @@ impl MenuRuntime {
         std::mem::take(&mut self.minecraft_import_requests)
     }
 
-    /// Reports a stopped worker without leaving the consent dialog waiting indefinitely.
-    pub fn fail_minecraft_import(&mut self, message: &str) {
+    /// Dismisses failed close requests locally and reports other requests to a stopped worker.
+    pub fn fail_minecraft_import(&mut self, action: Action, message: &str) {
         let snapshot = Arc::make_mut(&mut self.minecraft_import);
-        snapshot.phase = Phase::Result;
-        snapshot.body = message.to_owned();
-        self.dialog = Some(MenuDialog::MinecraftImport);
+        if action == Action::Close {
+            snapshot.phase = Phase::Idle;
+            snapshot.body.clear();
+            snapshot.pack_status.clear();
+            self.dialog = None;
+        } else {
+            snapshot.phase = Phase::Result;
+            snapshot.body = message.to_owned();
+            self.dialog = Some(MenuDialog::MinecraftImport);
+        }
+        self.focused = 0;
     }
 
     /// Keeps runtime pack progress and failures visible in the import result dialog.
@@ -90,6 +98,9 @@ impl MenuRuntime {
             state
                 .settings
                 .set_anti_aliasing_support(self.settings_options.anti_aliasing_support());
+            state
+                .settings
+                .set_render_distance_defaults(self.settings_options.render_distance_defaults());
             self.language_pending = state.settings.language() != self.settings_options.language();
             self.settings_options = Arc::new(state.settings);
             self.servers = state.servers;
@@ -123,3 +134,6 @@ impl MenuRuntime {
         true
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,144 @@
+use super::*;
+use launcher::menu::{MenuScreen, settings_options::SettingsOptions};
+
+/// Reports the single queued request as undeliverable, as a disconnected worker does.
+fn reject_request(menu: &mut MenuRuntime) {
+    let requests = menu.take_minecraft_import_requests();
+    assert_eq!(requests.len(), 1);
+    menu.fail_minecraft_import(requests[0].action, "Fixture worker unavailable.");
+}
+
+/// Round-trips preferences through the restore snapshot's serialization boundary.
+fn saved_state(settings: &SettingsOptions) -> UserState {
+    let state = UserState {
+        settings: settings.clone(),
+        servers: Vec::new(),
+        video: Default::default(),
+        active: Vec::new(),
+    };
+    serde_json::from_slice(&serde_json::to_vec(&state).unwrap()).unwrap()
+}
+
+#[test]
+fn unavailable_worker_errors_allow_close_escape_and_generic_dismissal() {
+    for dismissal in 0..3 {
+        let mut menu = MenuRuntime::new(true, 2, "Import fixture".into());
+        menu.activate(MenuAction::Navigate(MenuScreen::Settings));
+        menu.activate(MenuAction::MinecraftImport(Action::Begin));
+        reject_request(&mut menu);
+        assert_eq!(menu.view().dialog, Some(MenuDialog::MinecraftImport));
+        assert_eq!(menu.view().minecraft_import.phase, Phase::Result);
+        assert_eq!(
+            menu.view().minecraft_import.body,
+            "Fixture worker unavailable."
+        );
+        match dismissal {
+            0 => menu.activate(MenuAction::MinecraftImport(Action::Close)),
+            1 => menu.go_back(),
+            _ => menu.activate(MenuAction::DismissDialog),
+        }
+        reject_request(&mut menu);
+        assert_eq!(menu.view().dialog, None);
+        assert_eq!(menu.view().minecraft_import.phase, Phase::Idle);
+        assert_eq!(menu.screen(), MenuScreen::Settings);
+        assert!(menu.take_minecraft_import_requests().is_empty());
+        menu.activate(MenuAction::Navigate(MenuScreen::Home));
+        assert_eq!(menu.screen(), MenuScreen::Home);
+    }
+}
+
+#[test]
+fn an_available_worker_still_receives_close_to_release_its_preview() {
+    let mut menu = MenuRuntime::new(true, 2, "Import fixture".into());
+    menu.publish_minecraft_import(
+        launcher::minecraft_import::Snapshot {
+            phase: Phase::Preview,
+            ..Default::default()
+        },
+        None,
+    );
+    menu.activate(MenuAction::MinecraftImport(Action::Close));
+    let requests = menu.take_minecraft_import_requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].action, Action::Close);
+    menu.publish_minecraft_import(launcher::minecraft_import::Snapshot::default(), None);
+    assert_eq!(menu.view().dialog, None);
+    assert_eq!(menu.view().minecraft_import.phase, Phase::Idle);
+}
+
+#[test]
+fn restored_untouched_render_distance_uses_the_current_device_recommendation() {
+    let mut menu = MenuRuntime::new(true, 2, "Import fixture".into());
+    let old_device = ui::RenderDistanceDevice {
+        physical_memory_bytes: 8 << 30,
+        dedicated_graphics_memory_bytes: 4 << 30,
+        use_full_graphics_memory: false,
+    };
+    menu.sync_render_distance_device(old_device);
+    let backup = saved_state(&menu.settings_options);
+    assert_ne!(
+        backup.settings.render_distance_defaults(),
+        old_device.defaults()
+    );
+    let current_device = ui::RenderDistanceDevice {
+        physical_memory_bytes: 16 << 30,
+        ..old_device
+    };
+    menu.sync_render_distance_device(current_device);
+    let support = ui::AntiAliasingSupport::from_counts([1, 4]);
+    menu.sync_anti_aliasing_support(support);
+    menu.set_named_option("render_distance", i32::from(ui::MIN_RENDER_DISTANCE_CHUNKS));
+    menu.publish_minecraft_import(
+        launcher::minecraft_import::Snapshot {
+            phase: Phase::Result,
+            ..Default::default()
+        },
+        Some(backup),
+    );
+    let settings = &menu.view().settings_options;
+    assert_eq!(
+        settings.render_distance_defaults(),
+        current_device.defaults()
+    );
+    assert_eq!(
+        settings.user_settings().video.render_distance_chunks,
+        current_device.defaults().recommended
+    );
+    assert_eq!(settings.anti_aliasing_support(), support);
+    let stored = serde_json::to_value(settings.as_ref()).unwrap();
+    assert!(stored["values"].get("render_distance").is_none());
+    assert!(menu.settings_apply && menu.settings_dirty);
+}
+
+#[test]
+fn published_explicit_render_distance_keeps_its_choice_and_device_defaults() {
+    let device = ui::RenderDistanceDevice {
+        physical_memory_bytes: 16 << 30,
+        dedicated_graphics_memory_bytes: 4 << 30,
+        use_full_graphics_memory: false,
+    };
+    for distance in [
+        4,
+        i32::from(ui::MIN_RENDER_DISTANCE_CHUNKS),
+        i32::from(device.defaults().recommended),
+    ] {
+        let mut menu = MenuRuntime::new(true, 2, "Import fixture".into());
+        menu.sync_render_distance_device(device);
+        let settings = SettingsOptions::decode(
+            format!(r#"{{"values":{{"render_distance":{distance}}}}}"#).as_bytes(),
+        )
+        .unwrap();
+        menu.publish_minecraft_import(
+            launcher::minecraft_import::Snapshot {
+                phase: Phase::Result,
+                ..Default::default()
+            },
+            Some(saved_state(&settings)),
+        );
+        let published = &menu.view().settings_options;
+        assert_eq!(published.render_distance_defaults(), device.defaults());
+        assert_eq!(published.value("render_distance"), distance);
+        let stored = serde_json::to_value(published.as_ref()).unwrap();
+        assert_eq!(stored["values"]["render_distance"], distance);
+    }
+}

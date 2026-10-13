@@ -34,8 +34,9 @@ fn drive(
     mut drops: MessageReader<bevy::window::FileDragAndDrop>,
 ) {
     for request in menu.take_minecraft_import_requests() {
+        let action = request.action;
         if !worker.send_minecraft_import(request) {
-            menu.fail_minecraft_import("The resource pack worker is unavailable. Restart the client after correcting the resource pack storage error.");
+            menu.fail_minecraft_import(action, "The resource pack worker is unavailable. Restart the client after correcting the resource pack storage error.");
         }
     }
     for event in drops.read() {

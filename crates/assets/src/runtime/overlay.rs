@@ -8,7 +8,7 @@ use crate::{
     MAX_TEXTURE_LAYERS, MAX_TILE_SIZE, Material, ModelQuad, ModelTemplate, NO_ANIMATION,
     NO_MODEL_TEMPLATE, TextureArray, TexturePage, TextureRef, VisualKind,
     compiled::material_flags_are_valid, compiled::visual_semantics_are_valid,
-    model::model_quad_flags_are_valid,
+    material_keys::MaterialKeys, model::model_quad_flags_are_valid,
 };
 
 /// Repoints a base material at an overlay texture, keeping its flags and variation range.
@@ -25,7 +25,8 @@ pub struct MaterialOverride {
 
 /// Server block visuals whose indices are local to the overlay: face and quad
 /// material ids index `materials`, templates index `model_templates`, and
-/// texture references use page 1 layers of `texture`.
+/// texture references use page 1 layers of `texture`, except vanilla-fallback
+/// materials, which reuse a base-carrier page 0 layer without animation.
 #[derive(Clone, Debug, Default)]
 pub struct BlockOverlay {
     pub visuals: Vec<BlockVisual>,
@@ -52,6 +53,47 @@ pub struct BlockOverlay {
     pub face_overrides: Vec<(u32, [Option<u32>; 6])>,
     /// Optional pack-defined tint maps and biome appearance rules.
     pub biomes: Option<crate::CompiledBiomeAssets>,
+}
+
+/// Resolves a vanilla terrain key to its base-carrier texture for server
+/// blocks that name vanilla art the server stack does not ship. The texture
+/// is borrowed from the base page, so fallback admits no overlay layer and
+/// consumes no texture budget; only static textures resolve, animated base
+/// art keeps its motion on the base blocks alone.
+#[derive(Clone, Copy, Debug)]
+pub struct VanillaFallback<'a> {
+    keys: &'a MaterialKeys,
+    materials: &'a [Material],
+}
+
+impl<'a> VanillaFallback<'a> {
+    /// Borrows matching texture keys and materials from the same base carrier.
+    #[must_use]
+    pub const fn new(keys: &'a MaterialKeys, materials: &'a [Material]) -> Self {
+        Self { keys, materials }
+    }
+
+    /// Returns the static variant-zero base reference for `key`, or `None`
+    /// when no donor has the requested tint already baked into its pixels.
+    #[must_use]
+    pub fn texture(&self, key: &str, tint: Option<[u8; 3]>) -> Option<TextureRef> {
+        let &id = self.keys.materials(key).iter().find(|&&id| {
+            self.keys.flipbook_selector(id) == (0, 0)
+                && self
+                    .keys
+                    .material_source(id)
+                    .and_then(|source| source.baked_tint)
+                    == tint
+        })?;
+        if id == crate::DIAGNOSTIC_MATERIAL {
+            return None;
+        }
+        let material = self.materials.get(id as usize)?;
+        (material.texture.page() == 0
+            && material.animation == NO_ANIMATION
+            && material.variation_count == 0)
+            .then_some(material.texture)
+    }
 }
 
 impl RuntimeAssets {
@@ -133,6 +175,10 @@ impl RuntimeAssets {
         if self.materials.len() + overlay.materials.len() > MAX_MATERIALS {
             return Err(invalid("overlay materials exceed the material limit"));
         }
+        let base_layers = self
+            .texture_pages
+            .first()
+            .map_or(0, |page| page.texture.layers);
         let page_ref = |reference: TextureRef| -> Result<TextureRef, AssetError> {
             if reference.page() != 1 || reference.layer() >= layers {
                 return Err(invalid("overlay texture reference is outside its page"));
@@ -153,6 +199,25 @@ impl RuntimeAssets {
                 local(id, len, base, what)
             }
         };
+        // Vanilla-fallback materials borrow a static base-carrier layer, so
+        // they validate against the base page and carry no overlay animation.
+        let material_ref = |material: &Material| -> Result<(TextureRef, u32), AssetError> {
+            if material.texture.page() == 0 {
+                if material.texture.layer() >= base_layers || material.animation != NO_ANIMATION {
+                    return Err(invalid("overlay base texture reference is invalid"));
+                }
+                return Ok((material.texture, NO_ANIMATION));
+            }
+            Ok((
+                page_ref(material.texture)?,
+                optional(
+                    material.animation,
+                    overlay.animations.len(),
+                    animation_base,
+                    "animation",
+                )?,
+            ))
+        };
 
         let mut materials = self.materials.to_vec();
         crate::material_variations::validate(&overlay.materials)?;
@@ -160,15 +225,11 @@ impl RuntimeAssets {
             if !material_flags_are_valid(material.flags) {
                 return Err(invalid("overlay material flags are invalid"));
             }
+            let (texture, animation) = material_ref(material)?;
             materials.push(Material {
-                texture: page_ref(material.texture)?,
+                texture,
                 flags: material.flags,
-                animation: optional(
-                    material.animation,
-                    overlay.animations.len(),
-                    animation_base,
-                    "animation",
-                )?,
+                animation,
                 variation_start: if material.variation_count == 0 {
                     0
                 } else {
@@ -773,4 +834,135 @@ mod tests {
         assert_eq!(&uploaded.mips[1].rgba8[..4], &[127, 0, 127, 255]);
         assert!(session.terrain_texture_page(2).is_err());
     }
+
+    // Fallback resolves static base textures by terrain key and skips
+    // diagnostic, animated, and unknown entries.
+    #[test]
+    fn vanilla_fallback_resolves_static_base_textures() {
+        let keys = MaterialKeys::from_entries([(1, "oak_planks"), (2, "water")]);
+        let materials = [
+            Material::unvaried(),
+            Material {
+                texture: TextureRef::new(0, 0).unwrap(),
+                ..Material::unvaried()
+            },
+            Material {
+                texture: TextureRef::new(0, 0).unwrap(),
+                animation: 0,
+                ..Material::unvaried()
+            },
+        ];
+        let fallback = VanillaFallback::new(&keys, &materials);
+        let reference = fallback.texture("oak_planks", None).expect("base oak");
+        assert_eq!((reference.page(), reference.layer()), (0, 0));
+        assert!(fallback.texture("water", None).is_none());
+        assert!(fallback.texture("missing", None).is_none());
+        let diagnostic = MaterialKeys::from_entries([(0, "oak_planks")]);
+        assert!(
+            VanillaFallback::new(&diagnostic, &materials)
+                .texture("oak_planks", None)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn vanilla_fallback_uses_catalog_variant_zero_instead_of_material_order() {
+        let materials = [
+            Material::unvaried(),
+            Material {
+                texture: TextureRef::new(0, 1).unwrap(),
+                ..Material::unvaried()
+            },
+            Material {
+                texture: TextureRef::new(0, 2).unwrap(),
+                ..Material::unvaried()
+            },
+        ];
+        for first_destination in [(1, 0), (0, 1)] {
+            let keys = MaterialKeys::from_entries([(2, "farmland"), (1, "farmland")])
+                .with_aliases([("farmland", "textures/blocks/farmland_wet")])
+                .with_flipbook_selectors([(1, first_destination), (2, (0, 0))]);
+            let keys =
+                MaterialKeys::from_json(&keys.to_json(materials.len() as u32), materials.len())
+                    .unwrap();
+            let fallback = VanillaFallback::new(&keys, &materials);
+            assert_eq!(
+                fallback.texture("farmland", None),
+                Some(materials[2].texture)
+            );
+        }
+    }
+
+    #[test]
+    fn vanilla_fallback_does_not_substitute_another_static_variant() {
+        let keys = MaterialKeys::from_entries([(1, "farmland"), (2, "farmland")])
+            .with_flipbook_selectors([(1, (1, 0)), (2, (0, 0))]);
+        for variant_zero in [
+            Material {
+                animation: 0,
+                ..Material::unvaried()
+            },
+            Material {
+                texture: TextureRef::new(1, 0).unwrap(),
+                ..Material::unvaried()
+            },
+            Material {
+                variation_count: 1,
+                ..Material::unvaried()
+            },
+        ] {
+            let materials = [Material::unvaried(), Material::unvaried(), variant_zero];
+            assert!(
+                VanillaFallback::new(&keys, &materials)
+                    .texture("farmland", None)
+                    .is_none()
+            );
+        }
+        let keys =
+            MaterialKeys::from_entries([(1, "farmland")]).with_flipbook_selectors([(1, (1, 0))]);
+        assert!(
+            VanillaFallback::new(&keys, &[Material::unvaried(); 2])
+                .texture("farmland", None)
+                .is_none()
+        );
+    }
+
+    // Overlay materials may borrow a base page layer; out-of-range layers,
+    // borrowed animations, and page-0 overrides stay rejected.
+    #[test]
+    fn overlay_materials_may_borrow_the_base_page() {
+        let base = RuntimeAssets::diagnostic();
+        let mut overlay = cube_overlay(page(16));
+        overlay.materials[0].texture = TextureRef::new(0, 0).unwrap();
+        let session = base.with_block_overlay(1, &overlay).unwrap();
+        assert_eq!(session.materials[1].texture.page(), 0);
+
+        let mut out_of_range = cube_overlay(page(16));
+        out_of_range.materials[0].texture = TextureRef::new(0, 1).unwrap();
+        assert!(base.with_block_overlay(1, &out_of_range).is_err());
+
+        let mut animated = cube_overlay(page(16));
+        animated.materials[0].texture = TextureRef::new(0, 0).unwrap();
+        animated.materials[0].animation = 0;
+        assert!(base.with_block_overlay(1, &animated).is_err());
+    }
+
+    // Overrides repoint base materials at overlay art; the base page is not
+    // an overlay source.
+    #[test]
+    fn overlay_overrides_reject_the_base_page() {
+        let mut base = RuntimeAssets::diagnostic();
+        base.materials = vec![Material::unvaried(), Material::unvaried()].into();
+        let mut overlay = cube_overlay(page(16));
+        overlay.material_overrides = vec![MaterialOverride {
+            material: 1,
+            texture: TextureRef::new(0, 0).unwrap(),
+            animation: NO_ANIMATION,
+            variation: None,
+        }];
+        assert!(base.with_block_overlay(1, &overlay).is_err());
+    }
 }
+
+#[cfg(test)]
+mod fallback_tests;

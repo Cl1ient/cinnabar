@@ -127,8 +127,12 @@ fn projected_nametag_glyphs_keep_logical_page_order_without_shadow() {
         .unwrap();
     // The world glyphs now rasterize into the retained GPU line atlas, not HUD vertices.
     let scene = presentation.nametag_scene();
-    assert_eq!(scene.records.len(), 2);
-    assert_eq!(scene.records[1].color, [1.0; 4]);
+    assert_eq!(scene.records.len(), 3);
+    assert_eq!(
+        scene.records[1].color,
+        [1.0, 1.0, 1.0, super::super::nametags::DIM_TEXT_ALPHA]
+    );
+    assert_eq!(scene.records[2].color, [1.0; 4]);
     assert_eq!(scene.atlas.len(), 1);
     assert!(
         scene.atlas[0]

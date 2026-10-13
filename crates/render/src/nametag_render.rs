@@ -1,5 +1,5 @@
 //! Draws [`render_model::NametagScene`] in the transparent 3D phase with a see-through pass
-//! and a depth-tested pass, matching the `name_tag` and `name_tag_depth_tested` materials.
+//! and a depth-tested pass, using Java label depth and blending rules.
 
 use bevy::prelude::IntoScheduleConfigs;
 use bevy::render::render_phase::AddRenderCommand;
@@ -30,12 +30,12 @@ use bevy::{
         },
         render_resource::{
             AddressMode, BindGroup, BindGroupEntry, BindGroupLayoutDescriptor,
-            BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer,
+            BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent, BlendState, Buffer,
             BufferBindingType, BufferId, BufferInitDescriptor, BufferSize, BufferUsages, Canonical,
-            ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState,
-            Extent3d, FilterMode, FragmentState, PipelineCache, RenderPipeline,
-            RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
-            Specializer, SpecializerKey, TexelCopyBufferLayout, TextureAspect, TextureDescriptor,
+            ColorTargetState, ColorWrites, CompareFunction, DepthStencilState, Extent3d,
+            FilterMode, FragmentState, PipelineCache, RenderPipeline, RenderPipelineDescriptor,
+            Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, Specializer,
+            SpecializerKey, TexelCopyBufferLayout, TextureAspect, TextureDescriptor,
             TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
             TextureViewDescriptor, TextureViewDimension, Variants, VertexState,
         },
@@ -45,13 +45,14 @@ use bevy::{
     },
 };
 
-use render_model::{
-    MAX_NAMETAG_RECORDS, NAMETAG_ATLAS_SIDE, NAMETAG_TEXT_REVERSE_Z_BIAS, NametagAtlasRect,
-    NametagRecord,
-};
+use render_model::{MAX_NAMETAG_RECORDS, NAMETAG_ATLAS_SIDE, NametagAtlasRect, NametagRecord};
 
 const NAMETAG_SHADER_HANDLE: Handle<Shader> = uuid_handle!("5d1f0c8e-2a47-4b93-9e6c-1f7a3b8d4c20");
 const RECORD_BYTES: usize = std::mem::size_of::<NametagRecord>();
+const NAMETAG_BLEND: BlendState = BlendState {
+    alpha: BlendComponent::REPLACE,
+    ..BlendState::ALPHA_BLENDING
+};
 
 #[path = "nametag_render/shader.rs"]
 mod shader;
@@ -282,7 +283,7 @@ impl FromWorld for NametagPipeline {
                 entry_point: Some("nametag_fragment".into()),
                 targets: vec![Some(ColorTargetState {
                     format: render_scene::SCENE_COLOR_FORMAT,
-                    blend: Some(BlendState::ALPHA_BLENDING),
+                    blend: Some(NAMETAG_BLEND),
                     write_mask: ColorWrites::ALL,
                 })],
                 ..default()
@@ -342,19 +343,12 @@ impl Specializer<RenderPipeline> for NametagPipelineSpecializer {
             CompareFunction::Always
         });
         let depth = descriptor.depth_stencil.as_mut().unwrap();
-        depth.depth_write_enabled = Some(key.text);
-        depth.bias = DepthBiasState {
-            constant: if key.text && key.depth_tested {
-                NAMETAG_TEXT_REVERSE_Z_BIAS
-            } else {
-                0
-            },
-            ..default()
-        };
-        let fragment = descriptor.fragment.as_mut().unwrap();
-        if key.text && key.depth_tested {
-            fragment.shader_defs.push("NAMETAG_ALPHA_TEST".into());
-        }
+        depth.depth_write_enabled = Some(key.text && key.depth_tested);
+        depth.bias = default();
+        descriptor.fragment.as_mut().unwrap().targets[0]
+            .as_mut()
+            .unwrap()
+            .blend = Some(NAMETAG_BLEND);
         Ok(key)
     }
 }
@@ -566,7 +560,7 @@ mod tests {
     use super::*;
     use render_model::NAMETAG_BLOCKS_PER_FONT_PIXEL;
 
-    // Storage layout and native geometry, with no invented glyph-to-plate separation.
+    // Storage layout and shared geometry, with no glyph-to-plate separation.
     #[test]
     fn shader_mirrors_the_record_layout_scale_and_lift() {
         let source = include_str!("nametag.wesl");
@@ -574,9 +568,6 @@ mod tests {
         assert!(source.contains("BLOCKS_PER_FONT_PIXEL: f32 = NAMETAG_SCALE_VALUE;"));
         assert!(source.contains("record.line_lift"));
         assert!(!source.contains("TEXT_LIFT_BLOCKS"));
-        assert!(
-            source.find("texel.a < 0.5").unwrap() < source.find("color = color * texel").unwrap()
-        );
     }
 
     #[test]
@@ -683,7 +674,7 @@ mod tests {
                                 base
                             }
                         );
-                        assert_eq!(target.blend, Some(BlendState::ALPHA_BLENDING));
+                        assert_eq!(target.blend, Some(NAMETAG_BLEND));
                         assert_eq!(
                             fragment.shader_defs.contains(&"NAMETAG_GAMMA_BLEND".into()),
                             gamma_blend
@@ -695,7 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn four_native_material_modes_keep_depth_writes_alpha_test_and_bias() {
+    fn java_label_passes_write_depth_only_for_tested_text_without_bias() {
         for msaa in [Msaa::Off, Msaa::Sample2, Msaa::Sample4, Msaa::Sample8] {
             for depth_tested in [false, true] {
                 for text in [false, true] {
@@ -730,7 +721,7 @@ mod tests {
                         )
                         .unwrap();
                     let depth = descriptor.depth_stencil.unwrap();
-                    assert_eq!(depth.depth_write_enabled, Some(text));
+                    assert_eq!(depth.depth_write_enabled, Some(text && depth_tested));
                     assert_eq!(
                         depth.depth_compare,
                         Some(if depth_tested {
@@ -739,40 +730,31 @@ mod tests {
                             CompareFunction::Always
                         })
                     );
-                    assert_eq!(
-                        depth.bias.constant,
-                        if text && depth_tested {
-                            NAMETAG_TEXT_REVERSE_Z_BIAS
-                        } else {
-                            0
-                        }
-                    );
+                    assert_eq!(depth.bias.constant, 0);
                     assert_eq!(depth.bias.slope_scale, 0.0);
                     assert_eq!(depth.bias.clamp, 0.0);
-                    assert_eq!(
-                        descriptor
-                            .fragment
-                            .unwrap()
-                            .shader_defs
-                            .iter()
-                            .any(|def| def == &"NAMETAG_ALPHA_TEST".into()),
-                        text && depth_tested
-                    );
                 }
             }
         }
     }
 
     #[test]
-    fn billboard_keeps_world_scale_and_uses_unlifted_exact_eye_angles() {
-        use bevy::math::Vec3;
+    fn screen_alignment_keeps_world_scale_anchor_and_multiline_lift() {
+        use bevy::math::{EulerRot, Quat, Vec3};
         let record = NametagRecord {
             anchor: [1.0, 2.5, -5.0],
             rect: [0.0, 0.0, 1.0, 1.0],
             ..default()
         };
-        for eye in [[0.0; 3], [0.0, 8.0, -4.0], [20.0, -5.0, 70.0]] {
-            let corners = record.world_corners(eye).unwrap().map(Vec3::from_array);
+        for rotation in [
+            Quat::IDENTITY,
+            Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+            Quat::from_euler(EulerRot::YXZ, 0.7, -0.4, 0.3),
+        ] {
+            let corners = record
+                .world_corners(rotation)
+                .unwrap()
+                .map(Vec3::from_array);
             assert_eq!(corners[0].to_array(), record.anchor);
             assert!(
                 ((corners[1] - corners[0]).length() - NAMETAG_BLOCKS_PER_FONT_PIXEL).abs() < 1e-6
@@ -784,81 +766,75 @@ mod tests {
                 line_lift: 0.25,
                 ..record
             }
-            .world_corners(eye)
+            .world_corners(rotation)
             .unwrap()
             .map(Vec3::from_array);
             for (single, multi) in corners.into_iter().zip(lifted) {
                 assert!((multi - single - Vec3::Y * 0.25).length() < 1e-6);
             }
         }
-        let diagonal = NametagRecord {
-            anchor: [0.0; 3],
-            ..record
-        }
-        .world_corners([1.0, 0.0, 1.0])
-        .unwrap();
-        let expected_yaw = -3.0 * std::f32::consts::FRAC_PI_4;
-        assert!((diagonal[1][0] + expected_yaw.cos() * NAMETAG_BLOCKS_PER_FONT_PIXEL).abs() < 1e-7);
-        assert!((diagonal[1][2] - expected_yaw.sin() * NAMETAG_BLOCKS_PER_FONT_PIXEL).abs() < 1e-7);
-        assert!(record.world_corners(record.anchor).is_none());
-        assert!(record.world_corners([f32::MAX; 3]).is_none());
     }
 
-    /// Mirrors the shader's trigonometric basis without the CPU's quaternion rotation.
+    /// Mirrors the shader's view-uniform columns without the CPU's quaternion rotation.
     fn shader_world_corners(
         record: &NametagRecord,
-        eye: bevy::math::Vec3,
+        world_from_view: bevy::math::Mat4,
     ) -> [bevy::math::Vec3; 4] {
         use bevy::math::Vec3;
         let anchor = Vec3::from_array(record.anchor);
-        let direction = eye - anchor;
-        let horizontal = (direction.x * direction.x + direction.z * direction.z).sqrt();
-        let yaw = if horizontal == 0.0 {
-            0.0
-        } else {
-            -direction.x.atan2(-direction.z)
-        };
-        let pitch = direction.y.atan2(horizontal);
-        let right = Vec3::new(-yaw.cos(), 0.0, yaw.sin());
-        let down = Vec3::new(
-            -yaw.sin() * pitch.sin(),
-            -pitch.cos(),
-            -yaw.cos() * pitch.sin(),
-        );
+        let right = world_from_view.x_axis.truncate().normalize();
+        let up = world_from_view.y_axis.truncate().normalize();
         let [x0, y0, x1, y1] = record.rect;
         [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(|[x, y]| {
             anchor
                 + Vec3::Y * record.line_lift
-                + (right * x + down * y) * NAMETAG_BLOCKS_PER_FONT_PIXEL
+                + (right * x - up * y) * NAMETAG_BLOCKS_PER_FONT_PIXEL
         })
     }
 
     #[test]
-    fn cpu_billboard_matches_the_shader_basis_on_axes_and_in_every_octant() {
-        use bevy::math::Vec3;
+    fn cpu_screen_alignment_matches_the_shader_for_camera_rotations_and_tag_positions() {
+        use bevy::math::{EulerRot, Mat4, Quat, Vec3};
         let record = NametagRecord {
             anchor: [1.0, 2.5, -5.0],
             rect: [-21.0, -1.0, 21.0, 9.0],
             line_lift: 0.25,
             ..default()
         };
-        for x in [-2.0, 0.0, 2.0] {
-            for y in [-3.0, 0.0, 3.0] {
-                for z in [-5.0, 0.0, 5.0] {
-                    let direction = Vec3::new(x, y, z);
-                    if direction == Vec3::ZERO {
-                        continue;
-                    }
-                    let eye = Vec3::from_array(record.anchor) + direction;
-                    let cpu = record
-                        .world_corners(eye.to_array())
-                        .unwrap()
-                        .map(Vec3::from_array);
-                    for (cpu, shader) in cpu.into_iter().zip(shader_world_corners(&record, eye)) {
-                        assert!(
-                            (cpu - shader).length() < 1e-6,
-                            "direction {direction:?}: CPU {cpu:?}, shader basis {shader:?}"
-                        );
+        for rotation in [
+            Quat::IDENTITY,
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+            Quat::from_rotation_y(std::f32::consts::PI),
+            Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+            Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
+            Quat::from_euler(EulerRot::YXZ, 0.7, -0.4, 0.3),
+            Quat::from_euler(EulerRot::YXZ, -2.1, 1.2, -0.6),
+        ] {
+            for eye in [Vec3::ZERO, Vec3::new(3.0, 2.0, -1.0)] {
+                for scale in [Vec3::ONE, Vec3::new(2.0, 3.0, 4.0)] {
+                    let world_from_view =
+                        Mat4::from_scale_rotation_translation(scale, rotation, eye);
+                    for offset in [
+                        Vec3::ZERO,
+                        Vec3::new(0.0, 0.0, -5.0),
+                        Vec3::new(4.75, 0.0, -5.0),
+                        Vec3::new(-4.75, 4.75, -5.0),
+                        Vec3::new(4.75, -4.75, -5.0),
+                    ] {
+                        let tag = NametagRecord {
+                            anchor: (eye + rotation * offset).to_array(),
+                            ..record
+                        };
+                        let cpu = tag.world_corners(rotation).unwrap().map(Vec3::from_array);
+                        for (cpu, shader) in cpu
+                            .into_iter()
+                            .zip(shader_world_corners(&tag, world_from_view))
+                        {
+                            assert!(
+                                (cpu - shader).length() < 1e-6,
+                                "rotation {rotation:?}, eye {eye:?}, scale {scale:?}, offset {offset:?}: CPU {cpu:?}, shader {shader:?}"
+                            );
+                        }
                     }
                 }
             }

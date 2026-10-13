@@ -1,6 +1,6 @@
 //! Per-frame HUD observation and publication.
 use crate::runtime::network::resource_packs::PackApplication;
-use bevy::prelude::{Local, Transform};
+use bevy::prelude::{Local, Transform, Vec3};
 use client_runtime::network::NetworkHandle;
 use inventory::inventory_ledger::PlayerInventorySlot;
 use {super::*, client_presentation::camera::CameraSettingsAuthority};
@@ -375,11 +375,22 @@ pub(crate) fn prepare_ui_runtime(
                 .map(|(_, transform)| GlobalTransform::from(*transform)),
         )
         .map(|(stream, transform)| {
+            let authority = stream.authority();
+            let viewer_position = local_frame
+                .snapshot()
+                .map(|frame| frame.feet())
+                .or_else(|| {
+                    authority
+                        .actor(authority.local_player_runtime_id())
+                        .and_then(|actor| actor.interpolated_position(actor_partial.0))
+                        .map(Vec3::from_array)
+                })
+                .unwrap_or_else(|| transform.translation());
             let mut tags = nametags::project_nametags(
                 &mut nametag_cache,
                 runtime.scoreboards(),
                 stream,
-                transform.translation(),
+                viewer_position,
                 picked_nametag_actor(stream, &transform, collisions.as_deref(), &player_runtime),
                 actor_partial.0,
                 show_names && !tag_style.is_some_and(|style| style.hide_players),
@@ -406,7 +417,7 @@ pub(crate) fn prepare_ui_runtime(
                         .or_else(|| authority.actor_display_name(actor.unique_id))
                     && let Some(tag) = nametags::extract_nametag(
                         actor,
-                        transform.translation(),
+                        viewer_position,
                         None,
                         name,
                         runtime.scoreboards(),

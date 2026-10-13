@@ -415,23 +415,43 @@ mod tests {
         rustix::process::test_kill_process(pid).is_err()
     }
 
+    /// Succeeds only when standard input is usable and the selected socket descriptor is closed.
+    fn socket_probe(fd: i32) -> Command {
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", &format!("(: <&0) && ! (: <&{fd})")])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null());
+        command
+    }
+
     // A socket a C library opened without close-on-exec (Tracy's listener) must not reach a child.
     #[test]
     fn spawned_children_do_not_inherit_foreign_sockets() {
-        use rustix::io::{FdFlags, fcntl_setfd};
-        use std::os::fd::AsRawFd;
+        use rustix::io::{FdFlags, fcntl_getfd, fcntl_setfd};
+        use std::os::{
+            fd::{AsRawFd, BorrowedFd},
+            unix::process::CommandExt,
+        };
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         fcntl_setfd(&listener, FdFlags::empty()).unwrap();
         let fd = listener.as_raw_fd();
-        let script = format!("test -e /proc/self/fd/0 && test ! -e /proc/self/fd/{fd}");
+        let mut control = socket_probe(fd);
+        // SAFETY: only async-signal-safe fcntl runs after fork. The live listener owns the
+        // descriptor, and changing its child copy cannot race with parent socket sealing.
+        unsafe {
+            control.pre_exec(move || {
+                fcntl_setfd(BorrowedFd::borrow_raw(fd), FdFlags::empty()).map_err(io::Error::from)
+            });
+        }
+        assert!(
+            !control.status().unwrap().success(),
+            "the probe must detect the deliberately inherited socket"
+        );
         let child = Children::new()
-            .spawn(
-                Command::new("sh")
-                    .args(["-c", &script])
-                    .stdin(Stdio::null()),
-                Duration::ZERO,
-            )
+            .spawn(&mut socket_probe(fd), Duration::ZERO)
             .unwrap();
+        assert!(fcntl_getfd(&listener).unwrap().contains(FdFlags::CLOEXEC));
         assert!(
             child.wait().is_some_and(|status| status.success()),
             "child inherited descriptor {fd}"

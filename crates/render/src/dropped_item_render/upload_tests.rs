@@ -6,7 +6,7 @@ use std::sync::Arc;
 use {render_model::ItemMeshVertex, render_scene::DroppedItemScene};
 
 /// Initializes item resources on the CPU-only backend for deterministic preparation tests.
-fn item_world() -> World {
+pub(super) fn item_world() -> World {
     let (device, queue) = wgpu::Device::noop(&Default::default());
     let mut world = World::new();
     world.insert_resource(RenderDevice::from(device));
@@ -269,12 +269,14 @@ fn enlarging_an_admitted_atlas_keeps_earlier_uvs_glint_and_texture_layers() {
     });
     let original = PreparedModels::new(
         &models[..1],
+        &[],
         assets::texture::policy::device_policy(),
         render_model::MAX_ITEM_LAYERS as u32,
         assets::texture::policy::MAX_SUBSCRIBER_BYTES as u64,
     );
     let prepared = PreparedModels::new(
         &models,
+        &[],
         assets::texture::policy::device_policy(),
         render_model::MAX_ITEM_LAYERS as u32,
         assets::texture::policy::MAX_SUBSCRIBER_BYTES as u64,
@@ -324,6 +326,7 @@ fn buffer_rejection_cannot_enlarge_already_admitted_texture_layers() {
     });
     let prepared = PreparedModels::new(
         &models,
+        &[],
         assets::texture::policy::device_policy(),
         render_model::MAX_ITEM_LAYERS as u32,
         (4096 * ITEM_MESH_VERTEX_BYTES) as u64,

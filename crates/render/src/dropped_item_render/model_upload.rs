@@ -130,10 +130,11 @@ pub(super) struct PreparedModels {
 }
 
 impl PreparedModels {
-    /// Admits models in order without rejected models enlarging pages. The policy must fit
-    /// the minimum white layer, which the GPU caller checks before preparation.
+    /// Admits current models before cached extras, using the same order for mesh and texture
+    /// budgets. The policy must fit the minimum white layer, checked by the GPU caller.
     pub(super) fn new(
         models: &[DroppedItemModel],
+        current: &[bool],
         policy: assets::texture::policy::TexturePolicy,
         max_array_layers: u32,
         max_buffer_size: u64,
@@ -141,35 +142,61 @@ impl PreparedModels {
         let mut side = MIN_ITEM_ATLAS_SIDE;
         let mut layers = 1;
         let mut vertices = MeshStorage::new(max_buffer_size);
-        let mut entries = Vec::with_capacity(models.len());
-        for model in models {
+        let order: Vec<_> = (0..models.len())
+            .filter(|&slot| current.get(slot).copied().unwrap_or(false))
+            .chain((0..models.len()).filter(|&slot| !current.get(slot).copied().unwrap_or(false)))
+            .collect();
+        let mut entries: Vec<_> = models
+            .iter()
+            .map(|model| {
+                (
+                    ItemMeshRange {
+                        vertices: 0..0,
+                        cull_back: model.can_cull_back_faces(),
+                        bounds: None,
+                        capacity_rejected: false,
+                    },
+                    side,
+                )
+            })
+            .collect();
+        for &slot in &order {
+            let model = &models[slot];
             let start = vertices.len() as u32;
             let mut uv_side = side;
             let needed = model.texture_layers();
+            let mut capacity_rejected = false;
             if let Some(candidate) = model.atlas_side(policy).map(|extent| extent.max(side))
                 && layers + needed
                     <= atlas_layer_limit(candidate, policy, max_array_layers as usize)
                 && let Some(mesh) = build_mesh(model, candidate, layers)
                 && !mesh.is_empty()
-                && vertices.append(mesh)
             {
-                side = candidate;
-                uv_side = candidate;
-                layers += needed;
+                let fits_empty = vertices.fits_empty(mesh.len());
+                if vertices.append(mesh) {
+                    side = candidate;
+                    uv_side = candidate;
+                    layers += needed;
+                } else {
+                    capacity_rejected = fits_empty;
+                }
             }
-            entries.push((
+            entries[slot] = (
                 ItemMeshRange {
                     vertices: start..vertices.len() as u32,
                     cull_back: model.can_cull_back_faces(),
                     bounds: DroppedItemBounds::from_mesh(&vertices[start as usize..]),
+                    capacity_rejected,
                 },
                 uv_side,
-            ));
+            );
         }
         let layer_bytes = side as usize * side as usize * 4;
         let mut atlas = Vec::with_capacity(layer_bytes * layers);
         atlas.resize(layer_bytes, 255);
-        for (model, (range, uv_side)) in models.iter().zip(&entries) {
+        for slot in order {
+            let model = &models[slot];
+            let (range, uv_side) = &entries[slot];
             if range.vertices.is_empty() {
                 continue;
             }

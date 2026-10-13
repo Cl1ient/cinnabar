@@ -15,7 +15,7 @@ use render_model::spawner::{SpawnerDisplayClock, spawner_actor_transform};
 use render_model::{ActorArtworkPages, ActorCullView, matrix_rows};
 use std::{
     collections::{BTreeSet, HashMap},
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 use world::{BlockEntityKey, BlockEntityNbt, ChunkKey, SUB_CHUNK_SIDE};
 
@@ -25,8 +25,16 @@ const DEFAULT_SPAWN_DELAY: i32 = 0;
 
 type EntityIndex = std::collections::BTreeMap<BlockEntityKey, Arc<BlockEntityNbt>>;
 struct Column {
-    source: Arc<EntityIndex>,
+    source: Weak<EntityIndex>,
     displays: Vec<Request>,
+}
+impl Column {
+    /// Whether the column still owns the index used by this scan.
+    fn is_current(&self, source: &Arc<EntityIndex>) -> bool {
+        self.source
+            .upgrade()
+            .is_some_and(|previous| Arc::ptr_eq(&previous, source))
+    }
 }
 #[derive(Clone)]
 struct Request {
@@ -35,6 +43,8 @@ struct Request {
     delay: i32,
     activation_range: f32,
     nbt: Arc<BlockEntityNbt>,
+    /// A rejection remains valid while this snapshot and the active pack are unchanged.
+    rigless: bool,
 }
 struct Clock {
     source: Arc<BlockEntityNbt>,
@@ -99,10 +109,14 @@ fn column(source: Arc<EntityIndex>, previous: Option<&Column>) -> Column {
                     .integer("RequiredPlayerRange")
                     .map_or(DEFAULT_ACTIVATION_RANGE, |value| value.clamp(0, 128) as f32),
                 nbt: Arc::clone(nbt),
+                rigless: false,
             })
         })
         .collect();
-    Column { source, displays }
+    Column {
+        source: Arc::downgrade(&source),
+        displays,
+    }
 }
 
 /// Publishes client-owned display actors into this frame's normal actor draw batch.
@@ -158,6 +172,11 @@ pub(crate) fn prepare_spawner_actors(
                 )
             }));
         pool.pack = world.pack_entities.clone();
+        for column in pool.columns.values_mut() {
+            for request in &mut column.displays {
+                request.rigless = false;
+            }
+        }
         pool.poses = Default::default();
         pool.layers = Default::default();
     }
@@ -199,12 +218,12 @@ pub(crate) fn prepare_spawner_actors(
             if pool
                 .columns
                 .get(&key)
-                .is_none_or(|old| !Arc::ptr_eq(&old.source, &source))
+                .is_none_or(|old| !old.is_current(&source))
             {
                 let column = column(source, pool.columns.get(&key));
                 pool.columns.insert(key, column);
             }
-            for request in &pool.columns[&key].displays {
+            for (index, request) in pool.columns[&key].displays.iter().enumerate() {
                 let [x, y, z] = request.position;
                 let backing = chunk
                     .sub_chunk(y.div_euclid(side))
@@ -225,7 +244,7 @@ pub(crate) fn prepare_spawner_actors(
                 {
                     continue;
                 }
-                candidates.push(request.clone());
+                candidates.push((key, index));
             }
         }
     }
@@ -239,23 +258,31 @@ pub(crate) fn prepare_spawner_actors(
             max_distance: DISPLAY_SCAN_RADIUS * 2.0,
         });
     // Stable, so spawners in view keep their scan order ahead of those outside it.
-    candidates.sort_by_cached_key(|request| !block_in_view(view, request.position));
+    candidates.sort_by_cached_key(|&(key, index)| {
+        !block_in_view(view, pool.columns[&key].displays[index].position)
+    });
     // Retire every lifetime outside the wanted set first so in-view newcomers find free slots.
     let wanted = candidates
         .iter()
-        .filter(|request| !pool.actors.known_rigless(&request.identifier))
+        .map(|&(key, index)| &pool.columns[&key].displays[index])
+        .filter(|request| !request.rigless)
         .take(client_world::MAX_DISPLAY_ACTORS)
         .map(|request| request.position)
         .collect();
     pool.actors.retain(&wanted);
     let mut visible = BTreeSet::new();
     let mut displays = Vec::new();
-    for request in candidates {
+    for (key, index) in candidates {
         if displays.len() >= client_world::MAX_DISPLAY_ACTORS {
             break;
         }
+        let request = &mut pool.columns.get_mut(&key).unwrap().displays[index];
+        if request.rigless {
+            continue;
+        }
         // Only admitted displays count; rejected or unrigged entities leave the budget free.
         let Some(runtime) = pool.actors.resolve(request.position, &request.identifier) else {
+            request.rigless = true;
             continue;
         };
         visible.insert(request.position);

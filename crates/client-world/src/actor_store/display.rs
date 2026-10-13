@@ -46,11 +46,6 @@ impl DisplayActorStore {
         self.store.session_id
     }
 
-    /// Whether `identifier` is currently known to have no rig, so admission would fail.
-    pub fn known_rigless(&self, identifier: &str) -> bool {
-        self.unrigged.contains(identifier)
-    }
-
     /// Remembers a rigless identifier, evicting the oldest once the cache is full.
     fn remember_unrigged(&mut self, identifier: &str) {
         if self.unrigged_order.len() >= MAX_UNRIGGED_IDENTIFIERS
@@ -81,6 +76,7 @@ impl DisplayActorStore {
     /// Returns `None` without retaining a lifetime when the current catalogs give it no rig.
     pub fn resolve(&mut self, position: [i32; 3], identifier: &str) -> Option<u64> {
         if !Self::admits_identifier(identifier) || self.unrigged.contains(identifier) {
+            self.remove(position);
             return None;
         }
         if let Some(&runtime) = self.positions.get(&position) {

@@ -334,6 +334,20 @@ fn display_actor_rigless_identifier_cache_evicts_its_oldest_entries() {
 }
 
 #[test]
+fn display_actor_retires_a_replacement_with_a_cached_rigless_identifier() {
+    let mut displays = crate::DisplayActorStore::new(0, assets());
+    assert_eq!(displays.resolve([0; 3], "custom:missing"), None);
+    let position = [1, 64, 2];
+    let runtime = displays.resolve(position, "minecraft:test").unwrap();
+    assert_eq!(displays.resolve(position, "custom:missing"), None);
+    assert!(
+        displays.actor(runtime).is_none(),
+        "cached rigless replacements must release the previous display's slot"
+    );
+    assert!(displays.resolve(position, "minecraft:test").is_some());
+}
+
+#[test]
 fn display_actor_retires_a_reused_lifetime_whose_pack_rig_was_removed() {
     let mut custom = compiled();
     custom.symbols[0].identifier = "custom:display_actor".into();

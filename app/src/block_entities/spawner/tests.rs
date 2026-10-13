@@ -17,6 +17,15 @@ fn fixture_with_light_query(
     scripts: serde_json::Value,
     light_query: &str,
 ) -> (Pool, chunk_pipeline::WorldStream, ActorArtworkPages) {
+    fixture_with_identifier(scripts, light_query, "custom:display")
+}
+
+/// Builds an original display catalog under the supplied entity identifier.
+fn fixture_with_identifier(
+    scripts: serde_json::Value,
+    light_query: &str,
+    identifier: &str,
+) -> (Pool, chunk_pipeline::WorldStream, ActorArtworkPages) {
     let entity = br#"{"format_version":"1.10.0","minecraft:client_entity":{"description":{"identifier":"custom:display","materials":{"default":"entity"},"textures":{"default":"textures/entity/display"},"geometry":{"default":"geometry.display"},"render_controllers":["controller.render.lit","controller.render.unlit"]}}}"#;
     let geometry = br#"{"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":"geometry.display","texture_width":16,"texture_height":16},"bones":[{"name":"body","cubes":[{"origin":[-4,0,-4],"size":[8,32,8],"uv":[0,0]}]}]}]}"#;
     let controllers = br#"{"format_version":"1.8.0","render_controllers":{"controller.render.lit":{"geometry":"Geometry.default","materials":[{"*":"Material.default"}],"textures":["Texture.default"]},"controller.render.unlit":{"geometry":"Geometry.default","materials":[{"*":"Material.default"}],"textures":["Texture.default"],"ignore_lighting":true}}}"#;
@@ -29,6 +38,7 @@ fn fixture_with_light_query(
         controller["light_color_multiplier"] = serde_json::json!(light_query);
     }
     let mut entity: serde_json::Value = serde_json::from_slice(entity).unwrap();
+    entity["minecraft:client_entity"]["description"]["identifier"] = serde_json::json!(identifier);
     entity["minecraft:client_entity"]["description"]["scripts"] = scripts;
     let compiled = pack_compiler::compile_entity_pack(vec![
         (
@@ -588,6 +598,111 @@ fn regression_rejected_or_unrigged_entities_do_not_consume_the_display_limit() {
 }
 
 #[test]
+fn regression_rigless_cache_eviction_preserves_unchanged_display_lifetimes() {
+    let mut world = system_fixture(serde_json::json!({}), "1");
+    let side = SUB_CHUNK_SIDE as i32;
+    let identifiers: Vec<_> = (0..client_world::MAX_DISPLAY_ACTORS * 2)
+        .map(|index| format!("custom:missing_{index}"))
+        .collect();
+    let mut displays: Vec<_> = identifiers
+        .iter()
+        .enumerate()
+        .map(|(index, identifier)| {
+            let index = index as i32;
+            (
+                [
+                    1024 + index / (side * side),
+                    64 + index / side % side,
+                    1024 + index % side,
+                ],
+                identifier.as_str(),
+            )
+        })
+        .collect();
+    let target = [1039, 64, 1024];
+    displays.push((target, "custom:display"));
+    {
+        let mut client = world.resource_mut::<ClientWorld>();
+        admit_spawners(client.stream.as_mut().unwrap(), target, &displays, 2);
+    }
+    world.insert_resource(LocalViewPose::new(
+        Vec3::new(1039.0, 66.0, 1024.0),
+        bevy::prelude::Quat::IDENTITY,
+    ));
+    let camera = world
+        .query_filtered::<bevy::prelude::Entity, With<FlyCamera>>()
+        .single(&world)
+        .unwrap();
+    // All candidates lie behind this camera, preserving their column scan order.
+    *world.get_mut::<Transform>(camera).unwrap() = Transform {
+        translation: Vec3::new(1039.0, 66.0, 1000.0),
+        ..Default::default()
+    };
+    prepare_displays(&mut world, world::TICK_DURATION);
+    assert_eq!(published(&world), 2);
+    let runtime = world
+        .resource::<PreparedActorPublication>()
+        .submissions()
+        .unwrap()[0]
+        .input
+        .identity
+        .runtime_id;
+    let identity = world
+        .resource::<SpawnerDisplayPublisher>()
+        .0
+        .as_ref()
+        .unwrap()
+        .actors
+        .rig(runtime)
+        .unwrap()
+        .actor;
+    for _ in 0..3 {
+        prepare_displays(&mut world, world::TICK_DURATION);
+        let pool = world
+            .resource::<SpawnerDisplayPublisher>()
+            .0
+            .as_ref()
+            .unwrap();
+        assert_eq!(pool.spins.keys().copied().collect::<Vec<_>>(), vec![target]);
+        let submissions = world
+            .resource::<PreparedActorPublication>()
+            .submissions()
+            .unwrap();
+        assert_eq!(submissions.len(), 2);
+        assert_eq!(
+            pool.actors.rig(runtime).map(|rig| rig.actor),
+            Some(identity),
+            "unchanged displays must keep their lifetime after rigless cache eviction"
+        );
+    }
+}
+
+#[test]
+fn regression_pack_changes_retry_rigless_column_requests() {
+    let mut world = system_fixture(serde_json::json!({}), "1");
+    let position = [1025, 64, 1024];
+    {
+        let mut client = world.resource_mut::<ClientWorld>();
+        admit_spawners(
+            client.stream.as_mut().unwrap(),
+            position,
+            &[(position, "custom:missing")],
+            2,
+        );
+    }
+    prepare_displays(&mut world, world::TICK_DURATION);
+    assert_eq!(published(&world), 0);
+    let (replacement, _, _) = fixture_with_identifier(serde_json::json!({}), "1", "custom:missing");
+    world.resource_mut::<ClientWorld>().pack_entities = replacement.pack;
+    prepare_displays(&mut world, world::TICK_DURATION);
+    assert_eq!(
+        published(&world),
+        2,
+        "a replacement pack must admit an entity rejected by its predecessor"
+    );
+}
+
+#[test]
 fn regression_full_display_pool_admits_a_disjoint_set_in_one_frame() {
     let mut world = system_fixture(serde_json::json!({}), "1");
     world.insert_resource(LocalViewPose::new(
@@ -673,17 +788,18 @@ fn regression_column_rebuild_reuses_unchanged_spawners_and_skips_other_entities(
         BlockEntityKey::new(1, 1, 64, 0),
         decoded("Chest", [1, 64, 0]),
     );
-    let first = column(Arc::new(index.clone()), None);
+    let mut first = column(Arc::new(index.clone()), None);
     assert_eq!(
         first.displays.len(),
         1,
         "only spawners become display requests"
     );
+    first.displays[0].rigless = true;
     index.insert(
         BlockEntityKey::new(1, 1, 64, 0),
         decoded("Chest", [1, 64, 0]),
     );
-    let second = column(Arc::new(index), Some(&first));
+    let second = column(Arc::new(index.clone()), Some(&first));
     assert_eq!(second.displays.len(), 1);
     assert!(
         Arc::ptr_eq(
@@ -692,6 +808,77 @@ fn regression_column_rebuild_reuses_unchanged_spawners_and_skips_other_entities(
         ),
         "an unchanged spawner snapshot must not be parsed again"
     );
+    assert!(
+        second.displays[0].rigless,
+        "unchanged snapshots retain rig rejection"
+    );
+    let changed = BlockEntityKey::new(1, 0, 64, 0);
+    index.insert(
+        changed,
+        Arc::new(
+            BlockEntityNbt::decode_prefix(&entity_nbt(
+                "MobSpawner",
+                "custom:changed",
+                changed.position(),
+            ))
+            .unwrap()
+            .0,
+        ),
+    );
+    let third = column(Arc::new(index), Some(&second));
+    assert!(
+        !third.displays[0].rigless,
+        "changed snapshots retry rig admission"
+    );
+}
+
+#[test]
+fn regression_column_invalidation_does_not_retain_the_entity_index() {
+    for id in ["Chest", "MobSpawner"] {
+        let mut store = world::ChunkStore::default();
+        let key = BlockEntityKey::new(1, 0, 64, 0);
+        let initial =
+            BlockEntityNbt::decode_prefix(&entity_nbt(id, "custom:display", key.position()))
+                .unwrap()
+                .0;
+        store
+            .commit_block_entity_update(key, initial.clone())
+            .unwrap();
+        let source = store.chunk(key.chunk()).unwrap().shared_block_entities();
+        let index = Arc::downgrade(&source);
+        let first = column(source, None);
+        assert_eq!(
+            index.strong_count(),
+            1,
+            "cached columns must allow entity updates without copying the index"
+        );
+        assert!(first.is_current(&store.chunk(key.chunk()).unwrap().shared_block_entities()));
+        store.commit_block_entity_update(key, initial).unwrap();
+        assert!(first.is_current(&store.chunk(key.chunk()).unwrap().shared_block_entities()));
+        let other = BlockEntityKey::new(1, 1, 64, 0);
+        store
+            .commit_block_entity_update(
+                other,
+                BlockEntityNbt::decode_prefix(&entity_nbt("Sign", "", other.position()))
+                    .unwrap()
+                    .0,
+            )
+            .unwrap();
+        let source = store.chunk(key.chunk()).unwrap().shared_block_entities();
+        assert!(
+            index.upgrade().is_none(),
+            "the old index must be released on edits"
+        );
+        assert!(!first.is_current(&source));
+        let second = column(source, Some(&first));
+        assert_eq!(second.displays.len(), usize::from(id == "MobSpawner"));
+        if id == "MobSpawner" {
+            assert!(Arc::ptr_eq(
+                &first.displays[0].identifier,
+                &second.displays[0].identifier
+            ));
+        }
+    }
 }
 
 #[test]

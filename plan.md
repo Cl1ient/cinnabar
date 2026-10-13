@@ -2519,7 +2519,7 @@ events and native crack bounds/cadence. No complete particle parity gate is clos
 see [vanilla rules](docs/reference/block-break-particles.md). Local, uncommitted.
 
 2026-10-01 actor name tags: native-port correction in progress. World-plane projection,
-eye-facing cubic-angle billboard, fixed font-pixel world size, ten-pixel line pitch,
+position-facing billboard, fixed font-pixel world size, ten-pixel line pitch,
 independent line centering, full multiline 0.25-black plate, multiline world lift and
 0.125-alpha depth-tested sneaking text follow vanilla behaviour. Player tags use synced name metadata, not just their spawn username; scores share
 the same path and honor the native ten-block score gate. Provisional, labeled incomplete:
@@ -2532,6 +2532,12 @@ smoke pass at Retina scale 2; controlled near/far drift, sneak/occlusion/clippin
 version-matched native frame comparisons remain pending. Workspace tests, formatting,
 strict Clippy and the architecture gate pass locally. Changes are uncommitted. No name-tag
 visual parity gate is closed; see [vanilla rules](docs/reference/nametag-rendering.md).
+
+Actor nametag facing deliberately deviates from vanilla's cubic angle approximation:
+CPU geometry and the GPU shader use exact yaw and pitch toward the camera eye from
+the original anchor. A vertical eye direction uses zero yaw without perturbing the
+direction. World scale and multiline lift are unchanged. Rendered-frame acceptance
+remains incomplete; no name-tag visual parity gate is closed.
 
 2026-10-01 first-person item rendering: ordinary icons and opaque full-cube blocks now use
 their separate native camera-space stacks, not the third-person grip on the avatar's
@@ -7908,6 +7914,13 @@ one-chunk steps to the owner-chosen 255 maximum. See
 Incomplete parity: experimental low-memory overrides, advanced graphics presets,
 and native VRAM probes on unsupported backends are not verified. These remain
 open and do not close a parity gate.
+
+Video settings offer owner-requested Performance, Balanced (the default), and
+Quality presets. Balanced restores existing defaults, including the device
+render-distance recommendation. The selection is derived from current values;
+manual graphics edits show Custom, and personal and accessibility options are
+preserved. These presets are a custom feature and do not close a parity gate.
+CI verification and owner visual acceptance remain pending.
 
 ### Authored particle lifecycle fields
 

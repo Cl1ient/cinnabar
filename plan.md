@@ -4626,7 +4626,9 @@ Scope: block registry + block-state → model/texture mapping (generated export 
     - [ ] Paired door rendering acceptance: world meshing resolves lower
       direction/open and upper hinge within the same door class, including
       vertical subchunk neighbors; missing pairs emit no door geometry.
-      Focused regressions cover disagreed stored selectors. Source-bound
+      Selection highlights and breaking cracks use the same paired template;
+      neighbor-only pose changes update the crack cache. Focused regressions
+      cover disagreed stored selectors in both network ID modes. Source-bound
       before/after frames, native-server toggle/picking input, directional
       server artwork and final independent review remain incomplete.
     - [ ] Barrel and adjacent trapdoor render parity: barrel facing/open artwork,

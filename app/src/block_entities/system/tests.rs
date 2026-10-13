@@ -98,6 +98,7 @@ fn session_change_drops_runtime_id_keyed_caches() {
         assets::NetworkIdMode::Sequential,
         Some(7),
         [0; 3],
+        |_| None,
     );
     runtime.bell_rings.insert([0, 0, 0], (1, 0.0));
     runtime.bind_session(Some((1, 0)));

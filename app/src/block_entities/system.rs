@@ -440,6 +440,17 @@ pub(crate) fn update_block_entity_scene(
                     mode,
                     entry.layers.iter().flatten().next().copied(),
                     entry.position,
+                    |position| {
+                        let side = SUB_CHUNK_SIDE as i32;
+                        let key = SubChunkKey::new(
+                            dimension,
+                            position[0].div_euclid(side),
+                            position[1].div_euclid(side),
+                            position[2].div_euclid(side),
+                        );
+                        let [x, y, z] = position.map(|value| value.rem_euclid(side) as u8);
+                        store.sub_chunk(key)?.runtime_id(0, x, y, z)
+                    },
                 )
             })
         });

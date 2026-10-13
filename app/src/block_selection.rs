@@ -122,16 +122,44 @@ fn target(
     let outline = world.block_outline(hit.block_pos, hit.runtime_id).ok()??;
     let point = |point: sim::Vec3| [point.x as f32, point.y as f32, point.z as f32];
     let assets = stream.runtime_assets();
-    let visual = assets.resolve(stream.network_id_mode(), hit.runtime_id);
-    let shape = visual
-        .model_template()
-        .and_then(|template| {
-            crack_shape_from_template(assets, template, visual.variant(), hit.block_pos)
-        })
-        .unwrap_or(CrackShape::Cube);
+    let shape = model_shape(
+        assets,
+        stream.network_id_mode(),
+        hit.runtime_id,
+        hit.block_pos,
+        |position| {
+            let side = world::SUB_CHUNK_SIDE as i32;
+            let key = world::SubChunkKey::new(
+                stream.current_dimension(),
+                position[0].div_euclid(side),
+                position[1].div_euclid(side),
+                position[2].div_euclid(side),
+            );
+            let [x, y, z] = position.map(|value| value.rem_euclid(side) as u8);
+            stream
+                .collision_store()
+                .sub_chunk(key)?
+                .runtime_id(0, x, y, z)
+        },
+    );
     Some(BlockSelectionTarget {
         block: hit.block_pos,
         bounds: [point(outline.min), point(outline.max)],
         shape,
     })
+}
+
+/// Builds selection surfaces from the same paired door template as terrain and cracks.
+pub(crate) fn model_shape(
+    assets: &assets::RuntimeAssets,
+    mode: assets::NetworkIdMode,
+    runtime_id: u32,
+    block: [i32; 3],
+    runtime_id_at: impl FnOnce([i32; 3]) -> Option<u32>,
+) -> CrackShape {
+    let visual = assets.resolve(mode, runtime_id);
+    assets
+        .model_template_at(mode, runtime_id, block, runtime_id_at)
+        .and_then(|template| crack_shape_from_template(assets, template, visual.variant(), block))
+        .unwrap_or(CrackShape::Cube)
 }

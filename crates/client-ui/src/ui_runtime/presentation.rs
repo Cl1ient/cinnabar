@@ -16,6 +16,7 @@ use crate::ui_runtime::render_adapter::adapt_ui_draw_list;
 mod accessors;
 mod construction;
 pub mod debug_overlay;
+mod dial_icons;
 pub mod dynamic_textures;
 pub mod forms;
 mod frame;
@@ -119,6 +120,8 @@ pub struct UiPresentationRuntime {
     solid_texture_page: u16,
     hud_textures: Option<HudTexturePages>,
     icon_catalog: Option<Arc<RuntimeIconCatalog>>,
+    /// The strip frame each dial item shows this frame.
+    dial_frames: inventory::DialFrames,
     icon_refs: Option<Box<[IconRef]>>,
     layouts: TextLayoutCache,
     rejected_frames: u64,

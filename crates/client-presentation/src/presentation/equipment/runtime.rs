@@ -21,6 +21,7 @@ mod alpha;
 mod attack;
 mod combat;
 mod diagnostics;
+mod dials;
 mod elytra;
 mod java;
 mod modern;
@@ -141,6 +142,8 @@ pub struct EquipmentRuntime {
     java_rasters: BTreeMap<AttachableMeshKey, Option<JavaRasterFrame>>,
     /// Render-controller models queued beyond the scene's binding geometries.
     selected_geometries: std::collections::BTreeSet<EntityRigId>,
+    /// The strip frame each held dial (compass or clock) shows this frame.
+    dial_frames: inventory::DialFrames,
 }
 
 impl EquipmentRuntime {
@@ -312,6 +315,7 @@ impl EquipmentRuntime {
             attachable_meshes: BTreeMap::new(),
             java_rasters: BTreeMap::new(),
             selected_geometries: Default::default(),
+            dial_frames: Default::default(),
             assets,
             icons,
             placements: atlas.placements,
@@ -653,8 +657,7 @@ impl EquipmentRuntime {
                 .session_sprite(&item.identifier, item.metadata)
                 .and_then(|(index, _, _)| self.session_sprite_pixels(index))
                 .or_else(|| {
-                    self.icons
-                        .lookup_index(&item.identifier, item.metadata)
+                    self.held_icon_index(item)
                         .and_then(|index| self.icons.sprites().get(index))
                 })?;
             super::first_person::offhand_sprite_pose(equipped, [sprite.width, sprite.height])

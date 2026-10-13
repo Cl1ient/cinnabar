@@ -2,12 +2,14 @@
 
 use std::sync::Arc;
 
+mod atlas;
 mod block;
 mod bounds;
 mod culling;
 mod mesh;
 mod native;
 mod rope;
+pub use atlas::atlas_layer_limit;
 pub use block::block_mesh;
 pub use bounds::{DroppedItemBounds, DroppedItemCullView};
 

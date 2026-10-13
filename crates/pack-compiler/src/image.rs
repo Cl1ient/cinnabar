@@ -27,7 +27,7 @@ pub(crate) fn retain_first_strip_frame(image: &mut DecodedTexture) {
     if side < TILE_SIZE
         || !side.is_power_of_two()
         || !long_side.is_multiple_of(side)
-        || long_side / side > crate::MAX_FLIPBOOK_FRAMES as u32
+        || long_side / side > assets::texture::flipbook::MAX_FLIPBOOK_FRAMES as u32
         || image.width == image.height
     {
         return;

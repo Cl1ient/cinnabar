@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use assets::{AssetError, TextureMip, TextureRef};
+use assets::{AssetError, TextureMip, TextureRef, texture::flipbook::FlipbookSource};
 
 use crate::{
-    FlipbookSource, PackSources,
+    PackSources,
     image::{build_texture_mip_chain, diagnostic_pixels, normalize_texture_tile},
 };
 
@@ -464,14 +464,14 @@ fn slice_frames(image: &DecodedImage, replicate: u32) -> Result<Vec<Box<[u8]>>, 
         });
     }
     let frame_count = long_side / frame_size;
-    if frame_count as usize > crate::MAX_FLIPBOOK_FRAMES {
+    if frame_count as usize > assets::texture::flipbook::MAX_FLIPBOOK_FRAMES {
         return Err(AssetError::AnimationTextureDimensions {
             source_path: image.source_path.clone(),
             width: image.width,
             height: image.height,
             detail: format!(
                 "strip has {frame_count} frames, exceeding {}",
-                crate::MAX_FLIPBOOK_FRAMES
+                assets::texture::flipbook::MAX_FLIPBOOK_FRAMES
             )
             .into(),
         });

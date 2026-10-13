@@ -823,6 +823,9 @@ pub(crate) struct ActorStore {
     local_server_swings: u8,
     pending_local_damage: Option<local_health::PendingLocalDamage>,
     local_health_skips: u64,
+    /// The local player's last-death data held while its actor is absent (a dimension change),
+    /// since servers need not resend it.
+    pending_local_death: Vec<protocol::ActorMetadata>,
     /// Server PlayerSpawn has enabled local health-drop animations in this session.
     local_player_spawned: bool,
     /// Key of the synthetic local-player profile, present only while the player list carries no
@@ -886,6 +889,7 @@ mod entities;
 mod fire;
 mod hitbox;
 mod hurt;
+mod last_death;
 mod local_health;
 pub use local_health::DEFAULT_PLAYER_HEALTH;
 mod lifecycle;

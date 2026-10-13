@@ -1,6 +1,8 @@
 use super::*;
 
 pub(super) const NEAR_CAMERA_RADIUS: i32 = 4;
+/// Horizontal light halo around the directly prioritized mesh area.
+const NEAR_LIGHT_COLUMN_RADIUS: i32 = NEAR_CAMERA_RADIUS + 1;
 
 /// Longest wait, in startup ingress polls, before a still-blocked promoted job is rechecked.
 const MAX_RECHECK_BACKOFF_POLLS: u64 = 32;
@@ -92,6 +94,7 @@ impl Lane {
 pub(super) struct SchedulerRefresh<const L: usize> {
     previous: [Lane; L],
     view: Option<SchedulerView>,
+    near_wakeup: bool, // nearby work became ready without a new scan record
 }
 
 impl<const L: usize> Default for SchedulerRefresh<L> {
@@ -99,11 +102,17 @@ impl<const L: usize> Default for SchedulerRefresh<L> {
         Self {
             previous: std::array::from_fn(|_| Lane::default()),
             view: None,
+            near_wakeup: false,
         }
     }
 }
 
 impl<const L: usize> SchedulerRefresh<L> {
+    /// Makes the next refresh probe the camera's neighbourhood when `key` lies inside it.
+    pub(super) fn wake_near(&mut self, key: SubChunkKey) {
+        self.near_wakeup |= self.view.is_some_and(|view| mesh_is_near(view, key));
+    }
+
     /// Refreshes bounded queue work and reports whether the view still needs direct local probes.
     pub(super) fn refresh(
         &mut self,
@@ -119,7 +128,9 @@ impl<const L: usize> SchedulerRefresh<L> {
             std::mem::swap(&mut self.previous, queues);
             self.view = Some(view);
         }
-        let probe_near = moved || self.previous.iter().any(|lane| !lane.is_empty());
+        let probe_near = std::mem::take(&mut self.near_wakeup)
+            || moved
+            || self.previous.iter().any(|lane| !lane.is_empty());
         let mut refreshed = false;
         for _ in 0..MAX_PENDING_SCHEDULER_SCANS_PER_POLL {
             if refreshed && deadline.is_some_and(|deadline| Instant::now() >= deadline) {
@@ -335,6 +346,20 @@ fn compact_scheduler_scan(
     scan.retain(|&(key, revision)| is_live(key, revision) && seen.insert(key));
 }
 
+/// Whether `key` lies in the neighbourhood [`near_camera_keys`] probes.
+pub(super) fn mesh_is_near(view: SchedulerView, key: SubChunkKey) -> bool {
+    let [x, y, z, _] = view.cell();
+    let radius = NEAR_CAMERA_RADIUS.unsigned_abs();
+    key.x.abs_diff(x) <= radius && key.y.abs_diff(y) <= radius && key.z.abs_diff(z) <= radius
+}
+
+/// Whether `key`'s column lies in the halo [`near_light_columns`] probes.
+pub(super) fn light_column_is_near(view: SchedulerView, key: SubChunkKey) -> bool {
+    let [x, _, z, _] = view.cell();
+    let radius = NEAR_LIGHT_COLUMN_RADIUS.unsigned_abs();
+    key.x.abs_diff(x) <= radius && key.z.abs_diff(z) <= radius
+}
+
 /// Probes the camera's immediate sub-chunk neighbourhood without scanning pending maps.
 pub(super) fn near_camera_keys(
     view: SchedulerView,
@@ -362,7 +387,7 @@ pub(super) fn near_light_columns(
     view: SchedulerView,
     dimension: i32,
 ) -> impl Iterator<Item = SubChunkKey> {
-    let radius = NEAR_CAMERA_RADIUS + 1;
+    let radius = NEAR_LIGHT_COLUMN_RADIUS;
     let [x, y, z] = view
         .position
         .map(|value| floor_to_i32(value).div_euclid(16));

@@ -45,6 +45,7 @@ impl WorldStream {
                     .sub_chunk(key)
                     .is_none_or(|source| !classifier.is_sub_chunk_air(&source))
         };
+        let mut local_ingress = false;
         let probe_near = self
             .mesh_jobs
             .ingress(view, self.poll_deadline, |key, _, pending| {
@@ -53,6 +54,7 @@ impl WorldStream {
                 } else {
                     MESH_REMOVAL_LANE
                 };
+                local_ingress |= lane == RESIDENT_MESH_LANE && scheduler::mesh_is_near(view, key);
                 (lane, pending.urgent)
             });
 
@@ -60,7 +62,7 @@ impl WorldStream {
         let mesh_worker_cap = super::admission::mesh_worker_cap();
         let regular_budget = budget.min(mesh_worker_cap.saturating_sub(occupied));
         let worker_budget = budget.min((mesh_worker_cap + urgent_reserve).saturating_sub(occupied));
-        let mut resident_candidates = if probe_near {
+        let mut resident_candidates = if probe_near || local_ingress {
             scheduler::near_camera_keys(view, self.authority.current_dimension())
                 .filter_map(|key| {
                     let pending = self.mesh_jobs.pending.get(&key).copied()?;
@@ -179,11 +181,14 @@ impl WorldStream {
         resident_candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
         for (candidate, pending, queued) in resident_candidates {
             let key = candidate.key;
-            if self.mesh_changes.len() >= MAX_PENDING_MESH_CHANGES
+            let at_capacity = self.mesh_changes.len() >= MAX_PENDING_MESH_CHANGES
                 || dispatched >= worker_budget
-                || (dispatched >= regular_budget && !candidate.urgent)
-                || (examined && self.poll_budget_exhausted())
-            {
+                || (dispatched >= regular_budget && !candidate.urgent);
+            if at_capacity || (examined && self.poll_budget_exhausted()) {
+                // A probed candidate sits in no ready queue; probe again once capacity returns.
+                if at_capacity {
+                    self.mesh_jobs.refresh.wake_near(key);
+                }
                 if queued {
                     self.mesh_jobs.lanes[RESIDENT_MESH_LANE]
                         .ready

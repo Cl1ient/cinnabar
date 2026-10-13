@@ -16,7 +16,7 @@ use pack_runtime::pack_textures::{
 };
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub(super) struct Flipbook {
     pub(super) frames: Option<Vec<u32>>,
     pub(super) ticks_per_frame: u32,
@@ -27,7 +27,16 @@ pub(super) struct Flipbook {
 pub(super) struct TextureImage {
     pub(super) texture: DecodedTexture,
     pub(super) baked_tint: Option<[u8; 3]>,
-    pub(super) animation: Option<assets::Animation>,
+    pub(super) pack: bool,
+}
+
+/// Pixel and animation policy shared by equivalent catalog and recorded-path routes.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct TextureIdentity {
+    path: String,
+    tint: Option<[u8; 3]>,
+    grid: u8,
+    pub(super) flipbook: Option<Flipbook>,
 }
 
 /// Texture keys resolved across the stack; a higher pack replaces a key.
@@ -160,15 +169,14 @@ impl<'a> TextureCatalog<'a> {
         .map(|image| image.texture)
     }
 
-    /// Resolves one route, using normalized image filenames for both pack and carrier sources.
-    pub(super) fn decode_route(
+    /// Resolves the winning choice independently of the caller's catalog/path representation.
+    fn resolve_choice(
         &self,
         route: &super::TextureRoute,
-        mut carrier: impl FnMut(&str, Option<[u8; 3]>) -> Option<TextureImage>,
-    ) -> Option<TextureImage> {
+    ) -> Option<&pack_runtime::pack_textures::terrain::Choice> {
         use pack_runtime::pack_textures::texture_image_paths;
         let key = route.key();
-        let choice = match route {
+        match route {
             super::TextureRoute::Catalog {
                 variant, choice, ..
             } => self
@@ -182,8 +190,44 @@ impl<'a> TextureCatalog<'a> {
                         .any(|path| paths.contains(path))
                 })
             }
+        }
+    }
+
+    /// Retains every pixel or animation property that can change an admitted raster slot.
+    pub(super) fn identity(&self, route: &super::TextureRoute) -> Option<TextureIdentity> {
+        let Some(choice) = self.resolve_choice(route) else {
+            self.diagnostics
+                .failure(FailureReason::TerrainKeyMissing, route.key(), None);
+            return None;
         };
-        let Some(choice) = choice else {
+        let animate = match route {
+            super::TextureRoute::Catalog {
+                variant, choice, ..
+            } => *variant == 0 && *choice == 0,
+            super::TextureRoute::Path { .. } => self
+                .choices(route.key(), 0)
+                .and_then(|choices| choices.first())
+                .is_some_and(|first| first.path == choice.path),
+        };
+        Some(TextureIdentity {
+            path: choice.path.clone(),
+            tint: choice.tint,
+            grid: self.grid(route.key()),
+            flipbook: animate
+                .then(|| self.flipbook(route.key()).cloned())
+                .flatten(),
+        })
+    }
+
+    /// Resolves one route, using normalized image filenames for both pack and carrier sources.
+    pub(super) fn decode_route(
+        &self,
+        route: &super::TextureRoute,
+        mut carrier: impl FnMut(&str, Option<[u8; 3]>) -> Option<TextureImage>,
+    ) -> Option<TextureImage> {
+        use pack_runtime::pack_textures::texture_image_paths;
+        let key = route.key();
+        let Some(choice) = self.resolve_choice(route) else {
             self.diagnostics
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;
@@ -197,7 +241,7 @@ impl<'a> TextureCatalog<'a> {
         .map(|texture| TextureImage {
             texture,
             baked_tint: None,
-            animation: None,
+            pack: true,
         })
         .or_else(|| {
             texture_image_paths(&choice.path)

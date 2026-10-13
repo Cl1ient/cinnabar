@@ -13,6 +13,9 @@ bindings derive UV rotation from the replacement binding shape and retained pill
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
 blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,
 leaves, walls, fences, and other inventory-state models. These keep their existing routes.
+Carrier fallback for animated donors is also incomplete: their baked timelines do not
+retain physical source-frame identities. Such donors are excluded from fallback; bundled
+images still use the destination route's flipbook metadata.
 CI must compile and run the regression fixtures. Rendered state variants, position-selected
 texture output, pack reload/removal, and performance acceptance still need headless
 verification. No parity gate closes here.

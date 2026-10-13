@@ -8,7 +8,9 @@ mod condition;
 mod geometry_inputs;
 use pack_compiler::block_geometry as geometry;
 mod legacy;
+mod texture_admission;
 mod textures;
+use texture_admission::{AdmittedTexture, TextureSlots};
 mod vanilla;
 
 use std::{
@@ -32,9 +34,7 @@ use self::{
     condition::StateVisual,
     geometry::{FACE_NAMES, FaceQuad, Geometry},
     geometry_inputs::geometry_catalog,
-    textures::{
-        Flipbook, TextureCatalog, admit_static_rectangle, flipbook_frames, source_mip_chain,
-    },
+    textures::{TextureCatalog, admit_static_rectangle, flipbook_frames, source_mip_chain},
 };
 use assets::texture::policy::{MAX_SUBSCRIBER_BYTES, TexturePolicy, device_policy};
 use pack_runtime::pack_textures::DecodedTexture;
@@ -107,7 +107,6 @@ pub(super) fn compile_block_overlay(
         catalog: TextureCatalog::new(view, vanilla_keys),
         base_assets,
         vanilla_carried: Vec::new(),
-        base_textures: HashMap::new(),
         terrain_materials: HashMap::new(),
         geometries: geometry_catalog(view, &wanted),
         overlay: BlockOverlay::default(),
@@ -116,7 +115,7 @@ pub(super) fn compile_block_overlay(
         tile_size: MIN_TILE,
         texture_policy: device_policy(),
         max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
-        textures: HashMap::new(),
+        slots: TextureSlots::default(),
         materials: HashMap::new(),
         visuals: HashMap::new(),
         gaps: OverlayGaps {
@@ -228,7 +227,6 @@ struct Builder<'a> {
     catalog: TextureCatalog<'a>,
     base_assets: Option<&'a assets::RuntimeAssets>,
     vanilla_carried: Vec<CarriedBlock>,
-    base_textures: HashMap<(TextureRoute, u8), Option<TextureSlot>>,
     terrain_materials: HashMap<(String, u32, u32), u32>,
     geometries: HashMap<String, Geometry>,
     overlay: BlockOverlay,
@@ -237,7 +235,7 @@ struct Builder<'a> {
     tile_size: u32,
     texture_policy: TexturePolicy,
     max_layers: usize,
-    textures: HashMap<TextureRoute, Option<TextureSlot>>,
+    slots: TextureSlots,
     materials: HashMap<(String, u32), u32>,
     visuals: HashMap<String, BlockVisual>,
     gaps: OverlayGaps,
@@ -507,26 +505,28 @@ impl Builder<'_> {
         })
     }
 
-    /// Caches each state and positional choice independently.
+    /// Reuses raster-equivalent pack requests before admitting more pixels.
     fn route_slot(&mut self, route: TextureRoute) -> Option<TextureSlot> {
-        if let Some(slot) = self.textures.get(&route) {
-            return slot.clone();
-        }
-        let slot = self.load_texture(&route, None);
-        self.textures.insert(route, slot.clone());
-        slot
+        self.request_slot(route, None)
     }
 
-    /// Admits carrier-backed routes through the pack texture pipeline, caching the winning grid.
+    /// Allows a static carrier donor while reusing any equivalent admitted pack raster.
     fn carrier_slot(&mut self, route: TextureRoute, keys: &MaterialKeys) -> Option<TextureSlot> {
-        let grid = self.catalog.grid(route.key());
-        let cache_key = (route, grid);
-        if let Some(slot) = self.base_textures.get(&cache_key) {
-            return slot.clone();
+        self.request_slot(route, Some(keys))
+    }
+
+    /// Uses one raster identity for caching, independently of the caller's route representation.
+    fn request_slot(
+        &mut self,
+        route: TextureRoute,
+        keys: Option<&MaterialKeys>,
+    ) -> Option<TextureSlot> {
+        let identity = self.catalog.identity(&route)?;
+        if let Some(slot) = self.slots.get(&identity, keys.is_some()) {
+            return slot;
         }
-        let slot = self.load_texture(&cache_key.0, Some(keys));
-        self.base_textures.insert(cache_key, slot.clone());
-        slot
+        let loaded = self.load_texture(&route, keys);
+        self.slots.insert(identity, loaded, keys.is_some())
     }
 
     /// Admits one raster route using the existing frame and storage budgets.
@@ -534,7 +534,7 @@ impl Builder<'_> {
         &mut self,
         route: &TextureRoute,
         carrier: Option<&MaterialKeys>,
-    ) -> Option<TextureSlot> {
+    ) -> Option<AdmittedTexture> {
         let key = route.key();
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
@@ -545,29 +545,11 @@ impl Builder<'_> {
             return None;
         }
         let image = self.catalog.decode_route(route, |path, tint| {
-            textures::carrier_image(self.base_assets?, carrier?, path, tint, available.min(256))
+            textures::carrier_image(self.base_assets?, carrier?, path, tint)
         })?;
         let mut texture = image.texture;
         let grid = self.catalog.grid(key);
-        let animate = match route {
-            TextureRoute::Catalog {
-                variant, choice, ..
-            } => *variant == 0 && *choice == 0,
-            TextureRoute::Path { path, .. } => self
-                .catalog
-                .choices(key, 0)
-                .and_then(|choices| choices.first())
-                .is_some_and(|choice| choice.path == *path),
-        };
-        let inherited = image.animation;
-        let server_flipbook = animate.then(|| self.catalog.flipbook(key)).flatten();
-        let flipbook = server_flipbook.cloned().or_else(|| {
-            inherited.map(|animation| Flipbook {
-                frames: None,
-                ticks_per_frame: animation.ticks_per_frame,
-                blend: animation.flags & assets::ANIMATION_FLAG_BLEND != 0,
-            })
-        });
+        let flipbook = self.catalog.identity(route)?.flipbook;
         if flipbook.is_none() {
             admit_static_rectangle(&mut texture);
         }
@@ -635,29 +617,26 @@ impl Builder<'_> {
                         .animation_frames
                         .push(TextureRef::new(1, layer).expect("bounded layer"));
                 }
-                let mut animation =
-                    inherited
-                        .filter(|_| server_flipbook.is_none())
-                        .unwrap_or(Animation {
-                            frame_start,
-                            frame_count,
-                            ticks_per_frame: flipbook.ticks_per_frame,
-                            atlas_index: 0,
-                            atlas_tile_variant: 0,
-                            replicate: 1,
-                            flags: u32::from(flipbook.blend) * assets::ANIMATION_FLAG_BLEND,
-                        });
-                animation.frame_start = frame_start;
-                animation.frame_count = frame_count;
-                animation.ticks_per_frame = flipbook.ticks_per_frame;
+                let animation = Animation {
+                    frame_start,
+                    frame_count,
+                    ticks_per_frame: flipbook.ticks_per_frame,
+                    atlas_index: 0,
+                    atlas_tile_variant: 0,
+                    replicate: 1,
+                    flags: u32::from(flipbook.blend) * assets::ANIMATION_FLAG_BLEND,
+                };
                 self.overlay.animations.push(animation);
                 self.overlay.animations.len() as u32 - 1
             }
             _ => NO_ANIMATION,
         };
-        Some(TextureSlot {
-            layer: first,
-            animation,
+        Some(AdmittedTexture {
+            slot: TextureSlot {
+                layer: first,
+                animation,
+            },
+            pack: image.pack,
         })
     }
 

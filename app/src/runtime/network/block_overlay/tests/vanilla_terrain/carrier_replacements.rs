@@ -21,6 +21,17 @@ fn carrier_with_texture(
     faces: [u32; 6],
     flags: &[u32],
 ) -> RuntimeAssets {
+    carrier_with_animation(texture, faces, flags, None, vec![])
+}
+
+/// Installs a supplied timeline on the first donor while keeping the other materials static.
+fn carrier_with_animation(
+    texture: assets::TextureArray,
+    faces: [u32; 6],
+    flags: &[u32],
+    animation: Option<assets::Animation>,
+    frames: Vec<assets::TextureRef>,
+) -> RuntimeAssets {
     let diagnostic = RuntimeAssets::diagnostic();
     let layers = texture.layers;
     let mut cube = super::super::super::diagnostic_visual();
@@ -28,13 +39,17 @@ fn carrier_with_texture(
     cube.support = VisualSupport::Exact;
     cube.flags = assets::BlockFlags::CUBE_GEOMETRY | assets::BlockFlags::OCCLUDES_FULL_FACE;
     cube.faces = faces;
-    let materials = std::iter::once(Material::unvaried())
+    let mut materials = std::iter::once(Material::unvaried())
         .chain(flags.iter().enumerate().map(|(index, &flags)| Material {
             texture: assets::TextureRef::new(0, index as u32 % layers).unwrap(),
             flags,
             ..Material::unvaried()
         }))
         .collect::<Vec<_>>();
+    if animation.is_some() {
+        materials[1].animation = 0;
+        materials[1].texture = frames[0];
+    }
     let compiled = assets::CompiledAssets {
         visuals: vec![cube; 2].into(),
         light_properties: vec![assets::LightProperties::OPAQUE_DARK; 2].into(),
@@ -42,8 +57,8 @@ fn carrier_with_texture(
         materials: materials.into(),
         model_templates: Box::new([]),
         model_quads: Box::new([]),
-        animations: Box::new([]),
-        animation_frames: Box::new([]),
+        animations: animation.into_iter().collect::<Vec<_>>().into(),
+        animation_frames: frames.into(),
         texture_pages: vec![assets::TexturePage::new(texture)].into(),
         biomes: assets::CompiledBiomeAssets::diagnostic(),
         provenance: diagnostic.provenance(),
@@ -431,6 +446,328 @@ fn carrier_sources_resolve_explicit_png_and_relative_path_spellings() {
                 .material_id();
             assert_ne!(material, 1);
             assert_eq!(material_color(&runtime, material), pixel);
+        }
+    }
+}
+
+/// Builds original rasters and optional flipbook metadata without using an installed carrier.
+fn timeline_pack(
+    terrain: Value,
+    flipbooks: Value,
+    images: &[(&str, u32, u32, [u8; 4], [u8; 4])],
+) -> LayeredPackView {
+    let id = "00000000-0000-0000-0000-000000000001";
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let manifest = json!({"format_version":2,"header":{"uuid":id,"version":[1,0,0]},"modules":[{"type":"resources"}]}).to_string();
+    for (path, bytes) in [
+        ("manifest.json", manifest.into_bytes()),
+        (
+            "textures/terrain_texture.json",
+            terrain.to_string().into_bytes(),
+        ),
+        (
+            "textures/flipbook_textures.json",
+            flipbooks.to_string().into_bytes(),
+        ),
+    ] {
+        writer
+            .start_file(path, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(&bytes).unwrap();
+    }
+    for &(path, width, height, first, second) in images {
+        writer
+            .start_file(
+                format!("{path}.png"),
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer
+            .write_all(&png(
+                width,
+                height,
+                |_, y| if y < width { first } else { second },
+            ))
+            .unwrap();
+    }
+    let archive = protocol::ResourcePackArchive::unencrypted(
+        id.parse().unwrap(),
+        "1.0.0".into(),
+        String::new(),
+        writer.finish().unwrap().into_inner(),
+    );
+    LayeredPackView::new(resource_pack::validate_handoff(
+        protocol::ResourcePackHandoff::from_archives(vec![archive]),
+    ))
+}
+
+/// Retains a non-physical B/A/B timeline and an independently named static destination.
+fn animated_donor() -> (RuntimeAssets, MaterialKeys) {
+    let a = [200, 10, 20, 255];
+    let b = [20, 30, 200, 255];
+    let mut texture = RuntimeAssets::diagnostic().texture_array().clone();
+    texture.layers = 2;
+    for mip in &mut texture.mips {
+        mip.rgba8 = [a, b]
+            .into_iter()
+            .flat_map(|color| color.repeat((mip.size * mip.size) as usize))
+            .collect::<Vec<_>>()
+            .into();
+    }
+    let refs = [1, 0, 1].map(|layer| assets::TextureRef::new(0, layer).unwrap());
+    let animation = assets::Animation {
+        frame_start: 0,
+        frame_count: 3,
+        ticks_per_frame: 2,
+        atlas_index: 0,
+        atlas_tile_variant: 0,
+        replicate: 1,
+        flags: 0,
+    };
+    let base = carrier_with_animation(texture, [1; 6], &[0, 0], Some(animation), refs.into());
+    let keys = MaterialKeys::from_entries([(1, "anim"), (2, "static")]).with_sources(
+        [
+            ("anim".into(), json!({"textures":"textures/anim"})),
+            ("static".into(), json!({"textures":"textures/static"})),
+        ],
+        [
+            (
+                1,
+                MaterialTextureSource {
+                    key: "anim".into(),
+                    variant: 0,
+                    path: "textures/anim".into(),
+                    raster: "textures/anim.png".into(),
+                    baked_tint: None,
+                },
+            ),
+            (
+                2,
+                MaterialTextureSource {
+                    key: "static".into(),
+                    variant: 0,
+                    path: "textures/static".into(),
+                    raster: "textures/static.png".into(),
+                    baked_tint: None,
+                },
+            ),
+        ],
+        [],
+    );
+    (base, keys)
+}
+
+#[test]
+fn raster_only_world_and_carried_routes_reuse_layers_at_the_device_limit() {
+    let base = base();
+    let keys = keys();
+    let colors = [[140, 20, 30, 255], [30, 40, 180, 255]];
+    let view = stack(&[(
+        json!({}),
+        json!({}),
+        vec![
+            ("textures/base_a", colors[0]),
+            ("textures/base_b", colors[1]),
+        ],
+    )]);
+    let compiled = super::super::super::compile_block_overlay(
+        &view,
+        &CustomBlocks::default(),
+        false,
+        Some(&keys),
+        3,
+        Some(&base),
+    )
+    .unwrap();
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+    assert_eq!(compiled.vanilla_carried.len(), 2);
+    for (visual, color) in colors.into_iter().enumerate() {
+        let faces = compiled
+            .vanilla_carried
+            .iter()
+            .find(|entry| entry.visual == visual as u32)
+            .unwrap()
+            .faces;
+        let sheet =
+            render_model::equipment::blocks::overlay_face_sheet(&compiled.overlay, faces).unwrap();
+        assert!(
+            sheet
+                .rgba8
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| *pixel == color)
+        );
+        assert!(pack_compiler::overlay_cube_icon(&compiled.overlay, faces).is_some());
+    }
+}
+
+#[test]
+fn baked_carrier_timelines_are_excluded_instead_of_reapplying_physical_indices() {
+    let (base, keys) = animated_donor();
+    let terrain = json!({"texture_data":{"anim":{"textures":"textures/anim"}}});
+    let flipbooks = json!([{"atlas_tile":"anim","frames":[1,0,1],"ticks_per_frame":2}]);
+    let absent = timeline_pack(terrain.clone(), flipbooks.clone(), &[]);
+    assert!(
+        super::super::super::compile_block_overlay(
+            &absent,
+            &CustomBlocks::default(),
+            false,
+            Some(&keys),
+            assets::MAX_TEXTURE_LAYERS as u32,
+            Some(&base)
+        )
+        .is_none()
+    );
+    let present = timeline_pack(
+        terrain,
+        flipbooks,
+        &[(
+            "textures/anim",
+            16,
+            32,
+            [200, 10, 20, 255],
+            [20, 30, 200, 255],
+        )],
+    );
+    let compiled = compile(&present, &base, &keys);
+    let runtime = base.with_block_overlay(2, &compiled.overlay).unwrap();
+    let animation = runtime.animations()[runtime.material(1).animation as usize];
+    let frames = &runtime.animation_frames()[animation.frame_start as usize..]
+        [..animation.frame_count as usize];
+    let colors = frames
+        .iter()
+        .map(|reference| {
+            let mip = &runtime.texture_pages()[reference.page() as usize]
+                .texture
+                .mips[0];
+            let start = (reference.layer() * mip.size * mip.size * 4) as usize;
+            mip.rgba8[start..start + 4].try_into().unwrap()
+        })
+        .collect::<Vec<[u8; 4]>>();
+    assert_eq!(
+        colors,
+        [[20, 30, 200, 255], [200, 10, 20, 255], [20, 30, 200, 255]]
+    );
+}
+
+#[test]
+fn static_destinations_never_inherit_an_animated_donors_timeline() {
+    let (base, keys) = animated_donor();
+    let terrain = json!({"texture_data":{"static":{"textures":"textures/anim"}}});
+    let absent = timeline_pack(terrain.clone(), json!([]), &[]);
+    assert!(
+        super::super::super::compile_block_overlay(
+            &absent,
+            &CustomBlocks::default(),
+            false,
+            Some(&keys),
+            assets::MAX_TEXTURE_LAYERS as u32,
+            Some(&base)
+        )
+        .is_none()
+    );
+    let present = timeline_pack(
+        terrain,
+        json!([]),
+        &[(
+            "textures/anim",
+            16,
+            32,
+            [200, 10, 20, 255],
+            [20, 30, 200, 255],
+        )],
+    );
+    let compiled = compile(&present, &base, &keys);
+    let runtime = base.with_block_overlay(2, &compiled.overlay).unwrap();
+    assert_eq!(runtime.material(2).animation, assets::NO_ANIMATION);
+    assert_eq!(material_color(&runtime, 2), [200, 10, 20, 255]);
+}
+
+#[test]
+fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
+    for (limit, animated, include_missing) in [(2, false, true), (3, false, false), (3, true, true)]
+    {
+        for reuse_first in [false, true] {
+            let base = base();
+            let keys = MaterialKeys::from_entries([(1, "bad"), (2, "good")]).with_sources(
+                [
+                    ("bad".into(), json!({"textures":"textures/old_bad"})),
+                    ("good".into(), json!({"textures":"textures/old_good"})),
+                ],
+                [
+                    (
+                        1,
+                        MaterialTextureSource {
+                            key: "bad".into(),
+                            variant: 0,
+                            path: "textures/old_bad".into(),
+                            raster: "textures/old_bad.png".into(),
+                            baked_tint: None,
+                        },
+                    ),
+                    (
+                        2,
+                        MaterialTextureSource {
+                            key: "good".into(),
+                            variant: 0,
+                            path: "textures/old_good".into(),
+                            raster: "textures/old_good.png".into(),
+                            baked_tint: None,
+                        },
+                    ),
+                ],
+                [],
+            );
+            let first = [40, 80, 200, 255];
+            let good = [200, 30, 40, 255];
+            let terrain = json!({"texture_data":{
+                "bad":{"textures":{"variations":[{"path":"textures/first","weight":1},{"path":"textures/missing","weight":1}]}},
+                "good":{"textures":if reuse_first {"textures/first"} else {"textures/good"}}
+            }});
+            let flipbooks = if animated {
+                json!([{"atlas_tile":"bad","frames":[0,1],"ticks_per_frame":2}])
+            } else {
+                json!([])
+            };
+            let mut images = vec![
+                (
+                    "textures/first",
+                    256,
+                    if animated { 512 } else { 256 },
+                    first,
+                    first,
+                ),
+                ("textures/good", 16, 16, good, good),
+            ];
+            if include_missing {
+                images.push(("textures/missing", 16, 16, good, good));
+            }
+            let view = timeline_pack(terrain, flipbooks, &images);
+            let compiled = super::super::super::compile_block_overlay(
+                &view,
+                &CustomBlocks::default(),
+                false,
+                Some(&keys),
+                limit,
+                Some(&base),
+            )
+            .unwrap();
+            assert_eq!(compiled.overlay.material_overrides.len(), 1);
+            assert_eq!(compiled.overlay.material_overrides[0].material, 2);
+            assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
+            assert_eq!(
+                compiled.overlay.texture.as_ref().unwrap().mips[0].size,
+                if reuse_first { 256 } else { 16 }
+            );
+            assert!(compiled.overlay.animations.is_empty());
+            assert!(compiled.overlay.animation_frames.is_empty());
+            let runtime = base.with_block_overlay(2, &compiled.overlay).unwrap();
+            assert_eq!(
+                material_color(&runtime, 2),
+                if reuse_first { first } else { good }
+            );
+            assert_eq!(runtime.material(1), base.material(1));
         }
     }
 }

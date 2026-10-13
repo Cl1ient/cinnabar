@@ -249,28 +249,36 @@ impl Builder<'_> {
         if self.overlay.materials.len() + choices.len() + 1 > assets::MAX_MATERIALS {
             return None;
         }
-        let mut leaves = Vec::with_capacity(choices.len());
-        for (index, choice) in choices.iter().enumerate() {
-            let slot = self.carrier_slot(
-                TextureRoute::Catalog {
-                    key: key.to_owned(),
-                    variant,
-                    choice: index as u32,
-                },
-                keys,
-            )?;
-            leaves.push(Material {
-                texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
-                flags,
-                animation: slot.animation,
-                variation_weight: if choices.len() == 1 {
-                    0
-                } else {
-                    choice.weight.to_bits()
-                },
-                ..Material::unvaried()
-            });
-        }
+        let checkpoint = self.texture_checkpoint();
+        let leaves = choices
+            .iter()
+            .enumerate()
+            .map(|(index, choice)| {
+                let slot = self.carrier_slot(
+                    TextureRoute::Catalog {
+                        key: key.to_owned(),
+                        variant,
+                        choice: index as u32,
+                    },
+                    keys,
+                )?;
+                Some(Material {
+                    texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
+                    flags,
+                    animation: slot.animation,
+                    variation_weight: if choices.len() == 1 {
+                        0
+                    } else {
+                        choice.weight.to_bits()
+                    },
+                    ..Material::unvaried()
+                })
+            })
+            .collect::<Option<Vec<_>>>();
+        let Some(leaves) = leaves else {
+            self.rollback_textures(checkpoint);
+            return None;
+        };
         let start = self.overlay.materials.len() as u32;
         let mut selector = leaves[0];
         self.overlay.materials.extend(leaves);

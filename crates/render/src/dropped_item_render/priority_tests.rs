@@ -31,7 +31,7 @@ fn detailed_frames(count: usize, side: u32) -> Vec<DroppedItemModel> {
                             frame as u8,
                             73,
                             91,
-                            if (texel % side + texel / side) % 2 == 0 {
+                            if (texel % side + texel / side).is_multiple_of(2) {
                                 255
                             } else {
                                 0

@@ -1509,6 +1509,8 @@ frame-budget or identical-version pixel gates.
   samples loaded bed headings before Camera, including frames without actor ticks, and feeds
   camera publication, actor camera queries, body placement and particle attachments. Sleep
   transitions reanchor camera history once; stable sleeping frames retain motion-blur history.
+  Actor transitions also reanchor displacement and cape position history without restarting
+  animation; stable frames preserve that history.
   Java animations retain the sleeping eye height, and named audio keeps an eligible first-person
   camera. Gameplay look stays independent. Provisional:
   the first-person view looks level from the pillow toward the foot, and third person keeps

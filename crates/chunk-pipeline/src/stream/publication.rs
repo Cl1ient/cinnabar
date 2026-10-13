@@ -2,10 +2,10 @@ use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration}
 use {super::*, render_api::PublicationAllowance};
 
 impl WorldStream {
-    /// Publishes the resolved local body position to retained actor pose and attachment readers.
-    pub fn set_local_actor_presentation_position(&mut self, position: [f32; 3]) {
+    /// Publishes local placement and its transition to retained pose and animation readers.
+    pub fn set_local_actor_presentation_position(&mut self, position: [f32; 3], reanchor: bool) {
         self.authority
-            .set_local_actor_presentation_position(position);
+            .set_local_actor_presentation_position(position, reanchor);
     }
 
     /// Retains StartGame's level mode for remote-player target admission.

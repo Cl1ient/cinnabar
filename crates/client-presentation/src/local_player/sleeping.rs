@@ -39,7 +39,7 @@ impl LocalViewPose {
                 feet[1] -= protocol::PLAYER_NETWORK_OFFSET;
                 feet
             });
-            stream.set_local_actor_presentation_position(feet);
+            stream.set_local_actor_presentation_position(feet, self.sleeping_changed);
         }
     }
 

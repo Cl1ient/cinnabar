@@ -1,4 +1,5 @@
-//! One finger drives the mouse pointer while the inventory or a server form owns input.
+//! One finger drives the mouse pointer while a screen with no touch path of its own owns input:
+//! the inventory, a server form or the bed screen.
 //!
 //! Those screens already read the cursor and left button, so a touchscreen needs no screen
 //! changes. Menus read touches themselves and gameplay maps them to touch controls.
@@ -13,6 +14,7 @@ use bevy::{
     window::{PrimaryWindow, Window},
 };
 use client_shell::{menu::MenuRuntime, ui_resources::UiRuntimeResource};
+use client_ui::ui_runtime::UiRuntime;
 
 /// Which finger owns the emulated pointer, if any.
 #[derive(Debug, Default)]
@@ -62,6 +64,14 @@ impl TouchPointer {
     }
 }
 
+/// Whether the screen owning input reads only the mouse pointer; a server settings form stays
+/// above a visible menu, which otherwise takes touches itself.
+fn takes_touch_pointer(ui: &UiRuntime, menu_visible: bool) -> bool {
+    let bed = ui.local_sleeping() && !ui.chat_focused();
+    (ui.inventory_open() || ui.server_forms().owns_input() || bed)
+        && (!menu_visible || ui.server_forms().settings_form_active())
+}
+
 /// Runs before Bevy's input systems, so the emitted button edges reach `ButtonInput` this frame.
 pub(crate) fn emulate_ui_pointer(
     mut touch_input: MessageReader<TouchInput>,
@@ -74,11 +84,8 @@ pub(crate) fn emulate_ui_pointer(
     let Ok((entity, mut window)) = windows.single_mut() else {
         return;
     };
-    let pointer_screen = ui.is_some_and(|ui| {
-        (ui.inventory_open() || ui.server_forms().owns_input())
-            && (!menu.is_some_and(|menu| menu.is_visible())
-                || ui.server_forms().settings_form_active())
-    });
+    let pointer_screen =
+        ui.is_some_and(|ui| takes_touch_pointer(&ui, menu.is_some_and(|menu| menu.is_visible())));
     // Bypassed so the window backend is not asked to warp a cursor touchscreens lack.
     let mut apply = |window: &mut Window, edge: PointerEdge| {
         let state = match edge {
@@ -225,6 +232,16 @@ mod tests {
             pointer.step(true, 2, TouchPhase::Ended),
             Some(PointerEdge::Release)
         );
+    }
+
+    /// The bed screen's Leave Bed and Open Chat read only the pointer, so touch drives it.
+    #[test]
+    fn the_bed_screen_takes_the_touch_pointer() {
+        let mut ui = UiRuntime::new(1);
+        assert!(!takes_touch_pointer(&ui, false));
+        ui.set_local_sleeping(true);
+        assert!(takes_touch_pointer(&ui, false));
+        assert!(!takes_touch_pointer(&ui, true));
     }
 
     /// A cancelled gesture, or one whose screen closes, must not complete as a tap.

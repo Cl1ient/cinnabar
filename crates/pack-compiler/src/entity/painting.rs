@@ -182,4 +182,38 @@ mod tests {
         }
         assert_eq!(compiled.skipped.unparsable, 0);
     }
+
+    #[test]
+    fn painting_completion_preserves_an_authored_pack_at_source_capacity() {
+        let mut files: Vec<(Box<str>, Vec<u8>)> = (0..super::super::MAX_PACK_ENTITY_SOURCES - 2)
+            .map(|index| {
+                (
+                    format!("animations/empty_{index}.json").into(),
+                    br#"{"animations":{}}"#.to_vec(),
+                )
+            })
+            .collect();
+        files.push((
+            "entity/fixture.json".into(),
+            br#"{"minecraft:client_entity":{"description":{"identifier":"fixture:actor"}}}"#
+                .to_vec(),
+        ));
+        files.push((
+            format!("{}.png", assets::painting::PAINTING_ATLAS).into(),
+            png(256, 256, [30, 90, 150, 255]),
+        ));
+        let compiled = crate::compile_entity_pack(files).unwrap().unwrap();
+        assert_eq!(
+            compiled.assets.sources.len(),
+            super::super::MAX_PACK_ENTITY_SOURCES
+        );
+        assert!(
+            compiled
+                .assets
+                .symbols
+                .iter()
+                .any(|symbol| symbol.identifier.as_ref() == "fixture:actor")
+        );
+        assert_eq!(compiled.skipped, super::super::EntityPackSkips::default());
+    }
 }

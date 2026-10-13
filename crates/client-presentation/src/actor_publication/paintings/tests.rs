@@ -151,3 +151,37 @@ fn admitted_paintings_publish_both_surfaces_in_all_wall_directions() {
         }
     }
 }
+
+#[test]
+fn invisible_paintings_publish_neither_front_nor_border() {
+    let pack = pack();
+    let pages = ActorArtworkPages::default().with_pack_artwork(&pack.textures, &pack.bindings);
+    let mut routes = PaintingRoutes::default();
+    routes.refresh(None, Some(&pack), &pages);
+    let mut world = world();
+    let WorldEvent::Actor(protocol::ActorEvent::PaintingSpawn {
+        mut spawn,
+        painting,
+    }) = protocol::test_support::packets::add_painting_event(-7, 7, "Kebab", 0, [3.5, 70.5, 8.5])
+        .unwrap()
+        .unwrap()
+    else {
+        panic!("dedicated painting spawn")
+    };
+    spawn.metadata = Arc::from([protocol::ActorMetadata {
+        key: 0,
+        value: protocol::ActorMetadataValue::Flags(1 << 5),
+    }]);
+    world
+        .apply_ordered_event(
+            WorldEvent::Actor(protocol::ActorEvent::PaintingSpawn { spawn, painting }),
+            Some(1),
+        )
+        .unwrap();
+    let mut output = batch();
+    routes.append(&world, 0.5, None, &mut output);
+    assert!(
+        output.submissions.is_empty(),
+        "all surfaces of an invisible painting stay hidden"
+    );
+}

@@ -83,7 +83,13 @@ fn close_chat_and_resize(
 fn synthetic_pointer_and_chat_changes_do_not_reach_native_cursor_output() {
     let (mut app, entity) = harness();
     app.init_resource::<UiSample>()
-        .add_systems(Update, close_chat_and_resize);
+        .add_systems(Update, close_chat_and_resize)
+        .add_systems(
+            PostUpdate,
+            |mut cursors: Query<&mut CursorOptions, With<PrimaryWindow>>| {
+                client_shell::physical_input::release_cursor(&mut cursors.single_mut().unwrap());
+            },
+        );
     input::apply(
         app.world_mut(),
         &InputCommand {

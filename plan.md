@@ -2669,8 +2669,10 @@ Per-card permission toggles are derived from the host grant declaration and defa
 The original single registration migrates with its grants, font and UI intact. Each guest
 keeps its execution limits; all frame callbacks also share a deterministic fuel allowance.
 Camera, time and contested HUD slots obey Active-list precedence with counted refusals.
-Modding ships in every native build. Incomplete: component icons and descriptions,
-owner visual review and native cross-platform acceptance. See `docs/modding-spike.md`.
+Modding and its Wasmtime host ship in every native build, including builds without default
+features. The host's execution modules and tests compile unconditionally. Incomplete:
+component icons and descriptions, owner visual review and native cross-platform acceptance.
+See `docs/modding-spike.md`.
 
 2026-10-01 crouch, shield and crossbow follow-up: the local camera now consumes
 the native 0.35-block crouch offset, half-blended once per completed tick and

@@ -21,8 +21,9 @@ CINNABAR_MOD_COMPONENT=/tmp/cinnabar-hello.wasm cargo run -p cinnabar --locked
 Route local builds through the shared limiter as required by
 `docs/agents/multi-agent-workflow.md`. No Go core or server is needed for `probe`,
 `bench` or the tests. Launching the client still requires its normal pinned carriers.
-Every native build includes the mod host. No guest is loaded without an environment
-selection or an enabled local registration.
+Every native build includes the mod host and Wasmtime, including builds with
+`--no-default-features`. The host has no optional execution feature. No guest is loaded
+without an environment selection or an enabled local registration.
 
 The last command opens the launcher. Select a server only in a separately
 authorized live session. To exercise the same startup switch, scheduled adapter,

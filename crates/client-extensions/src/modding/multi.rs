@@ -138,7 +138,7 @@ impl ModHosts {
     }
 
     /// Resets the total callback allowance before input and event callbacks, and grants
-    /// exclusive camera and time output to the first active instance requesting that grant.
+    /// exclusive camera and time output to the first active instance publishing that output.
     pub fn begin_frame(&mut self) {
         self.budget.reset(mod_api::TOTAL_MOD_FRAME_FUEL);
         self.hud_claims.reset();
@@ -149,10 +149,11 @@ impl ModHosts {
 
     /// Refreshes precedence before a callback, allowing a later mod to follow an earlier trap.
     fn authorize(&mut self, index: usize) {
-        let camera = (0..index)
-            .any(|earlier| self.host(earlier).is_active() && self.host(earlier).grants().camera);
+        let camera = (0..index).any(|earlier| {
+            self.host(earlier).is_active() && self.host(earlier).has_camera_output()
+        });
         let environment = (0..index).any(|earlier| {
-            self.host(earlier).is_active() && self.host(earlier).grants().environment
+            self.host(earlier).is_active() && self.host(earlier).time_override().is_some()
         });
         let budget = self.budget.clone();
         let claims = self.hud_claims.clone();

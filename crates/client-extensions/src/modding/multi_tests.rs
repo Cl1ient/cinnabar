@@ -488,3 +488,16 @@ fn aggregate_frame_fuel_stops_later_callbacks_without_quarantining_skipped_mods(
     runtime.begin_frame();
     assert_eq!(runtime.budget.remaining(), mod_api::TOTAL_MOD_FRAME_FUEL);
 }
+
+#[test]
+fn a_higher_mod_releasing_its_outputs_allows_the_next_mod_to_publish() {
+    let idle = Probe {
+        extra: "i32.const 0 i32.const 0 i32.const 512 call $time i32.const 0 f32.const 0 f32.const 0 f32.const 0 f32.const 0 f32.const 0 i32.const 512 call $rig",
+        ..Probe::new("A", 1000, 0.5)
+    };
+    let (runtime, merged, failures) = run(&[idle, Probe::new("B", 6000, -0.5)], 1);
+    assert!(failures.is_empty());
+    assert_eq!(merged.time_override, Some(6000));
+    assert_eq!(merged.rig.unwrap().offset.x, -0.5);
+    assert_eq!(runtime.host(1).refused_outputs(), 0);
+}

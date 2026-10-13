@@ -490,8 +490,7 @@ component paths using the host's existing companion naming rule.
 Import validates a `.wasm` component without executing it and never overwrites an
 existing filename. Enable adds a card to Active; Disable and Remove target that card's
 identity. Move up/down changes precedence without restarting guests. Registered mods
-run before environment-selected mods. Higher Active entries own exclusive camera and
-time authority, and contested HUD card IDs refuse lower publications and count each
+run before environment-selected mods. Higher Active entries publishing camera or time output own that authority, and contested HUD card IDs refuse lower publications and count each
 refused import. Distinct HUD slots are merged within the shared presentation limit.
 Per-instance fuel, epoch deadlines, memory, host-copy and source limits remain in force.
 All input, event and frame callbacks also share `mod_api::TOTAL_MOD_FRAME_FUEL` per

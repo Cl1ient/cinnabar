@@ -51,7 +51,7 @@ impl ModHost {
         self.frame_with_movement(pressed, snapshot, mobs, player_state, None, controls)
     }
 
-    /// Shares this frame's aggregate fuel and exclusive-output authority with this instance.
+    /// Shares frame fuel; the booleans say whether a higher mod owns camera or time output.
     pub fn set_frame_authority(
         &mut self,
         budget: CallbackBudget,
@@ -62,6 +62,11 @@ impl ModHost {
     ) {
         self.instance
             .set_frame_authority(budget, camera, environment, owner, hud);
+    }
+
+    /// Whether this instance currently publishes exclusive camera output in this frame.
+    pub fn has_camera_output(&self) -> bool {
+        self.instance.has_camera_output()
     }
 
     /// Counts output attempts refused because a higher active mod owns that output.

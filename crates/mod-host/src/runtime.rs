@@ -563,6 +563,10 @@ impl Instance {
         if environment && !state.exclusive.environment && state.time_override.is_some() {
             state.exclusive.refuse();
         }
+        state.exclusive.camera_claimed = state.world.rig.is_some()
+            || state.camera_delta.is_some()
+            || state.camera_policy.committed
+            || state.camera_policy.committed_view_scale.is_some();
         state.exclusive.camera = camera;
         state.exclusive.environment = environment;
         state.exclusive.owner = owner;
@@ -578,6 +582,12 @@ impl Instance {
         let newly_blocked = blocked.difference(&state.exclusive.suppressed_hud).count() as u64;
         state.exclusive.refused = state.exclusive.refused.saturating_add(newly_blocked);
         state.exclusive.suppressed_hud = blocked;
+    }
+
+    /// Remembers camera output even after its one-shot delta has been consumed by the app.
+    pub(super) fn has_camera_output(&self) -> bool {
+        let state = self.store.data();
+        !state.exclusive.camera && state.exclusive.camera_claimed
     }
 
     /// Counts host import refusals across successful and failed callbacks.
@@ -833,6 +843,10 @@ fn commit(store: &mut Store<State>) {
         .flatten();
     state.item_use_policy.commit(state.snapshot.as_ref());
     state.camera_delta = state.pending_camera.take();
+    state.exclusive.camera_claimed = state.world.rig.is_some()
+        || state.camera_delta.is_some()
+        || state.camera_policy.committed
+        || state.camera_policy.committed_view_scale.is_some();
     if let Some(delay) = state.pending_packet_delay.take() {
         state.packet_delay_ms = delay;
     }
@@ -848,6 +862,14 @@ fn commit(store: &mut Store<State>) {
 fn commit_event(store: &mut Store<State>) {
     let state = store.data_mut();
     state.hud.commit();
+    if let Some(claims) = &state.exclusive.hud {
+        claims.release(state.exclusive.owner);
+        if let Some(content) = &state.hud.content {
+            for card in &content.cards {
+                claims.retain(state.exclusive.owner, std::iter::once(card.id.clone()));
+            }
+        }
+    }
     state.controls.commit();
     if let Some(enabled) = state.pending_fullbright.take() {
         state.fullbright = enabled;

@@ -45,6 +45,7 @@ impl HudClaims {
 #[derive(Clone, Default)]
 pub(crate) struct Exclusive {
     pub camera: bool,
+    pub camera_claimed: bool,
     pub environment: bool,
     pub owner: usize,
     pub hud: Option<HudClaims>,

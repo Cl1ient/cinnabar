@@ -25,6 +25,14 @@ struct PoseKey {
 /// Keeps one lifetime's sampled pose instead of resampling unchanged captured inputs.
 #[derive(Default)]
 pub(in super::super) struct NativePoseCache {
+    rest: Option<(
+        (
+            actor_animation::ActorLifetimeId,
+            actor_animation::EntityRigId,
+            u64,
+        ),
+        RenderPose,
+    )>,
     key: Option<PoseKey>,
     pose: Option<[RenderPose; 2]>,
     skin_layers: Option<Arc<[actor_animation::SkinRenderLayer]>>,
@@ -33,6 +41,22 @@ pub(in super::super) struct NativePoseCache {
 }
 
 impl NativePoseCache {
+    /// Converts immutable rest geometry once for the bare-arm camera stack.
+    pub(super) fn rest_pose(
+        &mut self,
+        rig: &actor_animation::ActorRigSnapshot<'_>,
+    ) -> Option<RenderPose> {
+        let key = (rig.actor, rig.rig, rig.rest_reset_generation);
+        if self
+            .rest
+            .as_ref()
+            .is_none_or(|(retained, _)| *retained != key)
+        {
+            self.rest = Some((key, crate::presentation::actors::convert_bones(rig.rest)?));
+        }
+        self.rest.as_ref().map(|(_, pose)| Arc::clone(pose))
+    }
+
     /// Applies the sampled parent only when a native arm or attachable consumes its bones.
     pub(in super::super) fn apply(&mut self, inputs: &mut HandInputs<'_>) {
         if let Some([previous, current]) = self.sample(

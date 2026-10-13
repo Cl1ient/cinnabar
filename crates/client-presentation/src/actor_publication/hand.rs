@@ -136,8 +136,8 @@ pub(super) struct HandSource {
     pub(super) item_glint: Option<render_model::EquipmentRaster>,
     /// View-space hurt tilt, walk bob and sway applied before the rig placement.
     pub(super) motion: Mat4,
-    /// Camera from the body's rig frame under Java's empty-hand stack.
-    pub(super) java_body_camera: Option<Mat4>,
+    /// Camera from the body's rig frame under the selected bare-arm stack.
+    pub(super) body_camera: Option<Mat4>,
 }
 
 impl HandSource {
@@ -146,7 +146,7 @@ impl HandSource {
         let placement = hand_camera_from_rig(self.presentation.authored_scale, self.motion);
         let body = self.body.clone().map(|mut body| {
             body.world_from_actor = self
-                .java_body_camera
+                .body_camera
                 .map_or(placement, |camera| camera_space_rows(self.motion * camera));
             body.texture_layer = 0;
             body
@@ -214,8 +214,21 @@ pub(super) fn vanilla_hand_source(
     equipment: &mut EquipmentRuntime,
     hand: FirstPersonHand,
     native_pose: &mut NativePoseCache,
+    java_mode: bool,
 ) -> Option<HandSource> {
-    native_pose.apply(&mut inputs);
+    let runtime_id = inputs.presentation.submission.input.identity.runtime_id;
+    let stream = inputs.stream;
+    let rig = stream.authority().actor_rig(runtime_id)?;
+    // Java body, arm and item poses win over the combat profile, including native fallbacks.
+    let legacy = !java_mode
+        && stream
+            .authority()
+            .actor(runtime_id)
+            .is_some_and(|actor| rig.animation_variables.uses_legacy_swing(actor));
+    let bare = legacy && inputs.equipment_input.main.is_none();
+    if !bare || inputs.equipment_input.off.is_some() {
+        native_pose.apply(&mut inputs);
+    }
     let HandInputs {
         stream,
         presentation,
@@ -227,8 +240,13 @@ pub(super) fn vanilla_hand_source(
         motion,
         ..
     } = inputs;
-    let runtime_id = presentation.submission.input.identity.runtime_id;
-    let rig = stream.authority().actor_rig(runtime_id)?;
+    let profile = if legacy {
+        render_api::CombatVisuals::Legacy112
+    } else {
+        render_api::CombatVisuals::Modern
+    };
+    let body_camera =
+        bare.then(|| render_model::legacy_combat::legacy_first_person_arm(hand.swing, hand.equip));
     let items = std::array::from_fn(|index| {
         let item = [equipment_input.main.as_ref(), equipment_input.off.as_ref()][index]?;
         let modern = item_animation.and_then(|mut render_input| {
@@ -246,7 +264,12 @@ pub(super) fn vanilla_hand_source(
         });
         let layer = modern.or_else(|| {
             if index == 0 {
-                equipment.first_person_item(&presentation.submission, item, hand)
+                equipment.first_person_item_for_profile(
+                    &presentation.submission,
+                    item,
+                    hand,
+                    profile,
+                )
             } else {
                 equipment.first_person_offhand(&presentation.submission, item)
             }
@@ -265,14 +288,23 @@ pub(super) fn vanilla_hand_source(
             .map(|item| item.identifier.as_ref()),
     )
     .with_undrawn_main(items[0].is_some());
-    let body = equipment.mask_first_person(&presentation.submission, arms);
+    let body = if bare {
+        // The right arm uses rest geometry; offhand items retain their sampled native parent.
+        let mut arm = presentation.submission.clone();
+        let rest = native_pose.rest_pose(&rig)?;
+        arm.input.previous_bones = Arc::clone(&rest);
+        arm.input.current_bones = rest;
+        equipment.mask_first_person(&arm, arms)
+    } else {
+        equipment.mask_first_person(&presentation.submission, arms)
+    };
     (body.is_some() || items.iter().any(Option::is_some)).then_some(HandSource {
         presentation,
         body,
         items,
         item_glint: artwork.item_glint.clone(),
         motion,
-        java_body_camera: None,
+        body_camera,
     })
 }
 
@@ -384,7 +416,7 @@ pub(super) fn source(
             hand
         },
     );
-    vanilla_hand_source(inputs, equipment, hand, &mut cache.native_pose)
+    vanilla_hand_source(inputs, equipment, hand, &mut cache.native_pose, java_mode)
 }
 
 type AnimationFrameKey = (u32, Option<u32>, u32, bool);

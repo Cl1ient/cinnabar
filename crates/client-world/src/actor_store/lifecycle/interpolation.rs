@@ -272,6 +272,7 @@ impl ActorStore {
                     .copied()
                     .unwrap_or_default();
                 actor_animation::ActorTickContext {
+                    combat_visuals: render_api::DEFAULT_COMBAT_VISUALS,
                     appearance_pending: !self.ready_appearances.admits(
                         actor, prepared, &self.players, &self.unlisted_players,
                     ),

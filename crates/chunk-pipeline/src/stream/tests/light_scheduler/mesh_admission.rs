@@ -686,10 +686,6 @@ fn capacity_retry_keeps_a_woken_mesh_after_the_camera_moves() {
         .push(PendingSchedulerCandidate::new(ready, revision, view, false));
     stream.mesh_jobs.refresh.wake_near(ready);
     let moved = stream.scheduler_view([view.position[0] + 16.0, 8.0, 8.0]);
-    stream
-        .mesh_jobs
-        .refresh
-        .refresh(moved, &mut stream.mesh_jobs.lanes, None, |_, _| true);
     assert!(!scheduler::mesh_is_near(moved, ready));
     stream
         .admitted_mesh_jobs

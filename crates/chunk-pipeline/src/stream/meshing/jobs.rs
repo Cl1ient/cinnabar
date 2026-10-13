@@ -45,6 +45,7 @@ impl WorldStream {
                     .sub_chunk(key)
                     .is_none_or(|source| !classifier.is_sub_chunk_air(&source))
         };
+        let mut woken = Vec::new();
         let probe_near = self
             .mesh_jobs
             .ingress(view, self.poll_deadline, |key, _, pending| {
@@ -53,11 +54,12 @@ impl WorldStream {
                 } else {
                     MESH_REMOVAL_LANE
                 };
-                // Fresh nearby geometry competes now instead of waiting for the ready lane to drain.
-                let near = lane == RESIDENT_MESH_LANE && scheduler::mesh_is_near(view, key);
-                (lane, pending.urgent || near)
+                if lane == RESIDENT_MESH_LANE && scheduler::mesh_is_near(view, key) {
+                    woken.push(key);
+                }
+                (lane, pending.urgent)
             });
-        let woken = self.mesh_jobs.refresh.take_woken();
+        woken.append(&mut self.mesh_jobs.refresh.take_woken());
 
         let occupied = self.admitted_mesh_jobs.load(Ordering::Acquire);
         let mesh_worker_cap = super::admission::mesh_worker_cap();
@@ -81,7 +83,8 @@ impl WorldStream {
         } else {
             Vec::new()
         };
-        // Only the woken keys rejoin, so a blocked neighbour keeps its deferral.
+        // Fresh and woken nearby keys compete beside the lanes without leaving them, so lane
+        // rotation is unchanged and a blocked neighbour keeps its deferral.
         for key in woken {
             if !resident_candidates
                 .iter()

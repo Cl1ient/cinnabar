@@ -671,14 +671,29 @@ these changes do not close the movement, camera, or actor parity gates.
   Matching-version native comparison, physical controller/touch testing and the
   three-run hardware performance qualification remain untested.
 
+## Bedrock 1.12 combat visuals
+
+Bedrock 1.12 combat visuals are a deliberate default and accepted deviation from
+1.26.50. There is no user setting. `render_api::DEFAULT_COMBAT_VISUALS` retains the
+Modern profile as a one-line code choice. The combat profile owns body and worn
+armour hurt red, glint, and camera bob/hurt; Java 1.7 still owns its poses and items.
+Movement bob uses the physics fraction; hurt and death use the actor fraction.
+Page-level body dye masks retain zero-alpha RGB and depth independently of armour cutout.
+
+Implementation and deterministic camera, overlay, equipment and shader fixtures
+are present. They have not been compiled or run. CI verification and a headless
+visual comparison remain outstanding; this does not close a parity or visual
+acceptance gate.
+
 ## Java 1.7 animations
 
-- Owner-mandated default, selected live from Video › Animations (persisted): Java 1.7 or
+- Player poses and items are selected live from Video › Animations (persisted): Java 1.7 or
   Bedrock. Saved toggle choices migrate without changing the selected mode. Rules and frame mapping:
   [Java 1.7 animations](docs/reference/java-1-7-animations.md).
 - First person: Java's item stacks (swing; equip with the old item through the dip and the
   re-equip after a placement; eat/drink; sword block with block-hitting; bow draw and pull
-  frames; rods), the empty-hand arm, view bob, sneak eye height, hurt/death roll and arm sway. Third person: Java's
+  frames; rods), the empty-hand arm, sneak eye height and arm sway. The shared combat
+  profile takes precedence for view bob, hurt/death motion and glint. Third person: Java's
   biped pose, body yaw, limb swing with the hurt flail, held-item grips, the cape's chasing
   swing and the sneak drops; armour flashes red, held items do not.
 - Every hurt event immediately resets the limb boost, including consecutive hits; movement
@@ -2377,6 +2392,13 @@ Incomplete: native frame/GPU/process-memory acceptance, full remote gates,
 TTFMSDF/precomputed MSDF rendering, contextual item icon routes, verified retail
 missing-icon fallback, and native font alias/metric comparison. Outline MSDF
 fonts currently use provisional alpha rasterization. No visual gate is closed.
+Runtime terrain, item and particle images share checked source-area, device-size
+and retained-page budgets. Tall strips are decoded before cutting square frames;
+admitted HD terrain and inventory, held and dropped item art retain source detail.
+Terrain routes that exceed full-resolution storage keep their existing fallback.
+Incomplete: native frame and process-memory acceptance for HD packs, exact GUI
+sampling at high UI scales, and pack coverage beyond the supported device and
+storage bounds. This does not close a rendered parity gate.
 Pack readers share BOM, UTF-8 and Latin-1 text decoding and JSONC normalization;
 UI documents retain their existing parser recovery. Incomplete: native display
 comparison for legacy pack labels and arbitrary malformed UTF-8, and a full

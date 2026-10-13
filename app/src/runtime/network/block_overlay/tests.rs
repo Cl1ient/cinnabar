@@ -29,6 +29,7 @@ mod budget;
 mod builtins;
 mod capacity;
 mod flipbooks;
+mod hd_textures;
 mod legacy;
 mod lighting;
 mod random_offset;

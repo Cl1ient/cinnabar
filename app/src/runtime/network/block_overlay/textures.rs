@@ -11,7 +11,8 @@ mod terrain;
 mod tint;
 use diagnostics::{FailureReason, TextureDiagnostics};
 use pack_runtime::pack_textures::{
-    decode_pack_texture, has_texture_source, normalize_texture_path, texture_key_paths,
+    MAX_CATALOG_ENTRIES, decode_pack_texture_with_policy, has_texture_source,
+    normalize_texture_path, parse_pack_json, texture_key_paths,
 };
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
 
@@ -157,7 +158,12 @@ impl<'a> TextureCatalog<'a> {
     /// Decodes an independent animation source with the destination tile's atlas tint.
     pub(super) fn decode_path(&self, key: &str, path: &str) -> Option<DecodedTexture> {
         let path = normalize_texture_path(path);
-        let mut texture = decode_pack_texture(self.view, path);
+        let mut texture = decode_pack_texture_with_policy(
+            self.view,
+            path,
+            assets::texture::policy::device_policy(),
+            true,
+        );
         if let Some(tint) = self.tints.get(key)
             && let Some(texture) = texture.as_mut()
         {
@@ -177,6 +183,12 @@ impl<'a> TextureCatalog<'a> {
     pub(super) fn report_full(&self, key: &str) {
         self.diagnostics
             .failure(FailureReason::TextureArrayFull, key, None);
+    }
+
+    /// Names a route whose full-resolution storage would exceed the page budget.
+    pub(super) fn report_budget(&self, key: &str) {
+        self.diagnostics
+            .failure(FailureReason::TextureBudgetExceeded, key, None);
     }
 
     /// Emits the counted terrain failures for this stack.
@@ -244,6 +256,7 @@ pub(super) fn flipbook_frames(
 
 /// Downscales aspect-preserving so the longest side is at most `max_side`;
 /// smaller images are returned unchanged. Nearest-neighbour keeps pixel art crisp.
+#[cfg(test)]
 pub(super) fn shrink_to_max(texture: &DecodedTexture, max_side: u32) -> DecodedTexture {
     let longest = texture.width.max(texture.height);
     if longest <= max_side {

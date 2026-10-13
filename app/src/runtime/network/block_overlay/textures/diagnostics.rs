@@ -27,6 +27,8 @@ pub(super) enum FailureReason {
     TextureArrayFull,
     /// A flipbook selects a terrain tile or atlas index that does not exist.
     AnimationDestinationMissing,
+    /// Full-resolution pixels cannot fit the retained source or upload budget.
+    TextureBudgetExceeded,
 }
 
 impl FailureReason {
@@ -40,6 +42,7 @@ impl FailureReason {
             Self::TextureSetUnresolved => "texture_set_unresolved",
             Self::TextureArrayFull => "texture_array_full",
             Self::AnimationDestinationMissing => "animation_destination_missing",
+            Self::TextureBudgetExceeded => "texture_budget_exceeded",
         }
     }
 }
@@ -167,6 +170,7 @@ mod tests {
             FailureReason::ImageDecodeFailed,
             FailureReason::TextureSetUnresolved,
             FailureReason::TextureArrayFull,
+            FailureReason::TextureBudgetExceeded,
         ]
         .map(FailureReason::key);
         let mut unique = names.to_vec();

@@ -33,16 +33,13 @@ use self::{
     storage::FrameStorage,
     textures::{TextureCatalog, TextureStorageKey, admit_static_rectangle, source_mip_chain},
 };
+use assets::texture::policy::{TexturePolicy, device_policy};
 use pack_runtime::pack_textures::DecodedTexture;
 
 const FULL_BLOCK: &str = "minecraft:geometry.full_block";
 const FULL_BLOCK_V1: &str = "minecraft:geometry.full_block_v1";
 const MIN_TILE: u32 = assets::TILE_SIZE;
-const MAX_TILE: u32 = 128;
 const MAX_OVERLAY_LAYERS: usize = assets::MAX_TEXTURE_LAYERS;
-const MAX_OVERLAY_TEXTURE_BYTES: usize = 64 * 1024 * 1024;
-// Held decoded sources are already shrunk to MAX_TILE; bound their total too.
-const MAX_OVERLAY_SOURCE_BYTES: usize = 64 * 1024 * 1024;
 const DIAGNOSTIC_MATERIAL: u32 = 0;
 
 /// Counted reasons some server block visuals are incomplete this session.
@@ -100,6 +97,8 @@ pub(super) fn compile_block_overlay(
         overlay: BlockOverlay::default(),
         sources: Vec::new(),
         source_bytes: 0,
+        tile_size: MIN_TILE,
+        texture_policy: device_policy(),
         max_layers: (max_texture_array_layers as usize).min(MAX_OVERLAY_LAYERS),
         textures: HashMap::new(),
         frame_storage: HashMap::new(),
@@ -188,6 +187,8 @@ struct Builder<'a> {
     overlay: BlockOverlay,
     sources: Vec<Source>,
     source_bytes: usize,
+    tile_size: u32,
+    texture_policy: TexturePolicy,
     max_layers: usize,
     textures: HashMap<(String, u32, u32), Option<TextureSlot>>,
     frame_storage: HashMap<TextureStorageKey, FrameStorage>,
@@ -515,12 +516,9 @@ impl Builder<'_> {
             })
             .max()
             .unwrap_or(MIN_TILE);
-        let mut tile = largest.next_power_of_two().clamp(MIN_TILE, MAX_TILE);
-        // A full mip chain costs about 4/3 of its base level.
-        let page_bytes = |tile: u32| self.sources.len() * (tile * tile) as usize * 16 / 3;
-        while tile > MIN_TILE && page_bytes(tile) > MAX_OVERLAY_TEXTURE_BYTES {
-            tile /= 2;
-        }
+        let tile = largest.checked_next_power_of_two()?.max(MIN_TILE);
+        self.texture_policy
+            .terrain_bytes(tile, self.sources.len())?;
         let mut mips: Vec<Vec<u8>> = Vec::new();
         for source in &self.sources {
             let (dimensions, chain) = match source {

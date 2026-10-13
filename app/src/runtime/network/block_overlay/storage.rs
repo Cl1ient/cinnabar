@@ -1,11 +1,12 @@
 //! Shared texture layers and destination-specific animation bindings.
 
+use assets::texture::policy::MAX_SUBSCRIBER_BYTES;
 use assets::{Animation, NO_ANIMATION, TextureRef, texture::flipbook::FlipbookSource};
 use pack_runtime::pack_textures::DecodedTexture;
 
 use super::{
-    Builder, MAX_OVERLAY_SOURCE_BYTES, MAX_TILE, Source, TextureSlot,
-    textures::{TextureStorageKey, admit_static_rectangle, flipbook_frames, shrink_to_max},
+    Builder, Source, TextureSlot,
+    textures::{TextureStorageKey, admit_static_rectangle, flipbook_frames},
 };
 
 /// A retained physical frame sequence, reusable by independently timed destinations.
@@ -31,7 +32,7 @@ impl Builder<'_> {
                 let available = self.remaining_capacity(key)?;
                 if let Some(texture) = self.catalog.decode_path(key, &source.texture_path) {
                     let storage =
-                        self.store_frames(storage_key, texture, Some(source), available)?;
+                        self.store_frames(key, storage_key, texture, Some(source), available)?;
                     return self.bind_frames(storage, Some(source), selector);
                 }
             }
@@ -42,7 +43,7 @@ impl Builder<'_> {
             None => {
                 let available = self.remaining_capacity(key)?;
                 let texture = self.catalog.decode(key)?;
-                self.store_frames(storage_key, texture, None, available)?
+                self.store_frames(key, storage_key, texture, None, available)?
             }
         };
         self.bind_frames(storage, None, selector)
@@ -62,19 +63,51 @@ impl Builder<'_> {
     /// Admits a frame sequence within the available capacity and records shared storage.
     fn store_frames(
         &mut self,
+        key: &str,
         storage_key: TextureStorageKey,
         mut texture: DecodedTexture,
         source: Option<&FlipbookSource>,
         available: usize,
     ) -> Option<FrameStorage> {
-        let frames = match source {
-            Some(source) => flipbook_frames(&texture, source, available.min(256), MAX_TILE),
+        let [width, height] = match source {
+            Some(source) => {
+                let side = (texture.width.min(texture.height) / source.replicate.max(1)).max(1);
+                [side.min(self.texture_policy.max_side()); 2]
+            }
             None => {
                 admit_static_rectangle(&mut texture);
-                vec![shrink_to_max(&texture, MAX_TILE)]
+                [texture.width, texture.height]
             }
         };
-        drop(texture);
+        let tile = width
+            .max(height)
+            .checked_next_power_of_two()?
+            .max(self.tile_size);
+        let Some(layer_bytes) = self.texture_policy.terrain_bytes(tile, 1) else {
+            self.catalog.report_budget(key);
+            return None;
+        };
+        let frame_bytes = self.texture_policy.source_bytes(width, height, false)?;
+        let available = available
+            .min((MAX_SUBSCRIBER_BYTES / layer_bytes).saturating_sub(self.sources.len()))
+            .min(MAX_SUBSCRIBER_BYTES.saturating_sub(self.source_bytes) / frame_bytes);
+        if available == 0 {
+            self.catalog.report_budget(key);
+            return None;
+        }
+        let frames = match source {
+            Some(source) => {
+                let frames = flipbook_frames(
+                    &texture,
+                    source,
+                    available.min(256),
+                    self.texture_policy.max_side(),
+                );
+                drop(texture);
+                frames
+            }
+            None => vec![texture],
+        };
         let grid = storage_key.grid;
         if frames
             .iter()
@@ -84,7 +117,7 @@ impl Builder<'_> {
         }
         let added_bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
         if frames.is_empty()
-            || self.source_bytes + added_bytes > MAX_OVERLAY_SOURCE_BYTES
+            || self.source_bytes + added_bytes > MAX_SUBSCRIBER_BYTES
             || source.is_some_and(|source| {
                 (frames.len() as u32)
                     .checked_mul(source.ticks_per_frame)
@@ -93,6 +126,7 @@ impl Builder<'_> {
         {
             return None;
         }
+        self.tile_size = tile;
         self.source_bytes += added_bytes;
         let layer = self.sources.len() as u32;
         let frame_count = frames.len() as u32;

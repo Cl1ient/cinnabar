@@ -469,8 +469,8 @@ fn relative_flipbook_paths_keep_animation_and_share_canonical_storage() {
         .with_aliases([("tile", "textures/static")])
         .with_flipbook_selectors([(1, (0, 0)), (2, (0, 1))])
         .with_flipbook_destinations([("tile", [2])]);
-    let strip = png(16, 32, |_, y| {
-        if y < 16 {
+    let strip = png(256, 512, |_, y| {
+        if y < 256 {
             [230, 10, 20, 255]
         } else {
             [20, 10, 230, 255]
@@ -489,11 +489,16 @@ fn relative_flipbook_paths_keep_animation_and_share_canonical_storage() {
         super::super::compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys), 3)
             .unwrap();
     assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+    assert_eq!(compiled.overlay.texture.as_ref().unwrap().mips[0].size, 256);
     assert_eq!(compiled.gaps.saturated_textures, 0);
     assert_eq!(compiled.overlay.material_overrides.len(), 2);
     let texture = compiled.overlay.material_overrides[0].texture;
     for replacement in &compiled.overlay.material_overrides {
         assert_eq!(replacement.texture, texture);
+        assert_eq!(
+            compiled.overlay.texture_source_sizes[texture.layer() as usize],
+            [256; 2]
+        );
         assert_ne!(replacement.animation, assets::NO_ANIMATION);
         let animation = &compiled.overlay.animations[replacement.animation as usize];
         assert_eq!(animation.frame_count, 2);

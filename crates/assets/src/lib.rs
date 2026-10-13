@@ -1,4 +1,3 @@
-//! Bounded Bedrock resource-pack source readers.
 mod actor;
 mod atmosphere;
 mod audio;

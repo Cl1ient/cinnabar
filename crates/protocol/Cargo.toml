@@ -22,8 +22,6 @@ test-support = []
 [dependencies]
 simulation-clock = { path = "../simulation-clock" }
 zeroize = "1"
-cap-std = "3.4.5"
-cap-fs-ext = "3.4.5"
 block-transform = { path = "../block-transform" }
 render-api = { path = "../render-api" }
 anyhow.workspace = true
@@ -40,6 +38,10 @@ tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 xxhash-rust = { version = "0.8.15", features = ["xxh64"] }
 bedrock-protocol-1-26-51 = { path = "vendor/bedrock-protocol-1-26-51" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cap-std = "3.4.5"
+cap-fs-ext = "3.4.5"
 
 [dev-dependencies]
 test-alloc = { path = "../test-alloc" }

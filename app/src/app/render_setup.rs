@@ -54,6 +54,11 @@ pub(super) fn render_plugin() -> RenderPlugin {
 
 /// Applies renderer limits and compiler policy to Bevy's defaults.
 fn configure_render_settings(settings: &mut WgpuSettings) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        settings.priority = bevy::render::settings::WgpuSettingsPriority::WebGPU;
+        settings.backends = Some(Backends::BROWSER_WEBGPU);
+    }
     // Shipping installs use FXC; a DLL in the launch directory must not change that.
     settings.dx12_shader_compiler = wgpu::Dx12Compiler::Fxc;
     settings.limits.max_storage_buffers_per_shader_stage = settings
@@ -74,6 +79,18 @@ fn preferred_render_backends(explicit: Option<&OsStr>) -> Option<Backends> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn browser_requests_portable_webgpu_device_settings() {
+        let mut settings = WgpuSettings::default();
+        configure_render_settings(&mut settings);
+        assert!(matches!(
+            settings.priority,
+            bevy::render::settings::WgpuSettingsPriority::WebGPU
+        ));
+        assert_eq!(settings.backends, Some(Backends::BROWSER_WEBGPU));
+    }
 
     #[test]
     fn shader_compiler_does_not_inherit_a_launch_directory_dxc() {

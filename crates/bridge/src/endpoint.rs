@@ -60,7 +60,8 @@ pub(crate) enum PlatformStream {
     Tcp(TcpStream),
 }
 
-pub(crate) enum PlatformReadHalf {
+/// Native read half used by the default framed reader.
+pub enum PlatformReadHalf {
     #[cfg(unix)]
     Unix(tokio::net::unix::OwnedReadHalf),
     #[cfg(windows)]

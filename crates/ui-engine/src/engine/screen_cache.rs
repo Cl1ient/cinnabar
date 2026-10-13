@@ -5,7 +5,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use json_ui::{Catalog, Context, DataSource, FormRender, ResolvedControl, ViewState};
+use json_ui::{
+    Catalog, Context, DataSource, FormRender, LayoutCacheKey, ResolvedControl, ViewState,
+};
 
 use super::screen::ScreenRegistry;
 
@@ -37,9 +39,7 @@ struct Entry {
     context: Context,
     data: DataSource,
     view: ViewState,
-    root: [f64; 2],
-    px: f32,
-    dpi_scale: f32,
+    layout: LayoutCacheKey,
     text: [usize; 3],
     texture_metadata: u64,
     render: Arc<FormRender>,
@@ -49,9 +49,7 @@ impl Entry {
     fn matches(&self, key: &ScreenKey<'_>) -> bool {
         self.reference == key.reference
             && Arc::ptr_eq(&self.catalog, key.catalog)
-            && self.root == key.root
-            && self.px == key.px
-            && self.dpi_scale == key.dpi_scale
+            && self.layout == LayoutCacheKey::from_dpi(key.root, key.px, key.dpi_scale)
             && self.text == key.text
             && self.texture_metadata == key.texture_metadata
             && self.view.same_layout(key.view)
@@ -128,9 +126,7 @@ impl ScreenCache {
             context: key.context.clone(),
             data: key.data.clone(),
             view: key.view.layout_part(),
-            root: key.root,
-            px: key.px,
-            dpi_scale: key.dpi_scale,
+            layout: LayoutCacheKey::from_dpi(key.root, key.px, key.dpi_scale),
             text: key.text,
             texture_metadata: key.texture_metadata,
             render: Arc::clone(&rendered),

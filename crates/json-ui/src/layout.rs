@@ -224,10 +224,11 @@ pub(crate) fn layout_reusing(
     cache: &mut MeasureCache,
 ) -> (Output, LayoutReport) {
     cache.enter(root);
-    let screen = Rect::new(0.0, 0.0, root_size[0], root_size[1]);
-    cache
-        .placements
-        .begin(state, false, screen, env.text.physical_pixel_size());
+    cache.placements.begin(
+        state,
+        false,
+        crate::LayoutCacheKey::new(root_size, 1.0, env),
+    );
     let (laid, report) = lay_out(
         root,
         root_size,

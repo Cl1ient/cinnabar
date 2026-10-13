@@ -83,8 +83,7 @@ pub struct FormCache {
 
 struct LaidForm {
     view: ViewState,
-    root: [f64; 2],
-    px: f32,
+    layout: json_ui::LayoutCacheKey,
     text: [usize; 3],
     font: assets::FontCatalogIdentity,
     texture_metadata: u64,
@@ -339,9 +338,11 @@ impl FormEngine {
         };
         let drawn = render_with(art, frame, screen_art, move |env, root| {
             let cache = cache.as_mut()?;
+            let layout = json_ui::LayoutCacheKey::new(root, px, env);
             let fresh = cache.laid.as_ref().is_some_and(|laid| {
                 laid.view.same_layout(view)
-                    && (laid.root, laid.px, laid.text) == (root, px, text)
+                    && laid.layout == layout
+                    && laid.text == text
                     && laid.font == font
                     && laid.texture_metadata == texture_metadata
             });
@@ -352,8 +353,7 @@ impl FormEngine {
                 let render = render_bound_gated(bound, root, env, view, measures);
                 cache.laid = Some(LaidForm {
                     view: view.clone(),
-                    root,
-                    px,
+                    layout,
                     text,
                     font,
                     texture_metadata,

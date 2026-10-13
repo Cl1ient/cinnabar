@@ -90,8 +90,8 @@ pub(crate) struct Reused {
 pub(super) struct Placements {
     records: Memo<usize, Record>,
     generation: u64,
-    /// The view state, culling, screen and physical pixel size the records were made under.
-    view: Option<(ViewState, bool, Rect, f64)>,
+    /// The view state, culling and geometry identity the records were made under.
+    view: Option<(ViewState, bool, crate::LayoutCacheKey)>,
     /// Controls the last layout placed rather than spliced.
     placed: usize,
     /// Draws in document order with their layers, and hit regions in order.
@@ -101,16 +101,16 @@ pub(super) struct Placements {
 
 impl Placements {
     /// Starts a layout; changes to the view, screen or coverage pixel invalidate every record.
-    pub(super) fn begin(&mut self, view: &ViewState, cull: bool, screen: Rect, pixel: f64) {
+    pub(super) fn begin(&mut self, view: &ViewState, cull: bool, layout: crate::LayoutCacheKey) {
         if self
             .view
             .as_ref()
-            .is_none_or(|(last, culled, size, last_pixel)| {
-                last != view || *culled != cull || *size != screen || *last_pixel != pixel
+            .is_none_or(|(last, culled, last_layout)| {
+                last != view || *culled != cull || *last_layout != layout
             })
         {
             *self = Self {
-                view: Some((view.clone(), cull, screen, pixel)),
+                view: Some((view.clone(), cull, layout)),
                 generation: self.generation,
                 ..Self::default()
             };

@@ -8358,3 +8358,25 @@ selectors and output ranges for the existing explicit model bindings. Unrecogniz
 model arrays stay unresolved instead of guessing from growth or selecting index zero.
 The generic terrain accessor, complete native binding inventory and custom selector
 expressions still need their own admission and coverage work.
+
+## Overlay vanilla-texture fallback
+
+Implemented: custom blocks naming vanilla textures absent from the server
+stack can borrow a static page-0 texture from the matching base carrier.
+The resolver uses the retained atlas and UV indices to select variant zero,
+independent of material ID order. Donors must have the catalog's requested
+tint already baked into their pixels; missing or different tints decline
+fallback. Server material flags remain overlay-local,
+and borrowing consumes no texture layer or byte budget. Server rasters take
+precedence when they decode; capacity and budget refusals remain refusals.
+Borrowed layers are validated against the base page, and vanilla material
+overrides continue to require overlay textures. Changed catalog routes whose
+pack pixels cannot be decoded stay diagnostic for custom blocks; they never
+borrow the original key's artwork.
+
+Regression coverage includes sidecar roundtrips with reversed variant order,
+missing or ineligible variant-zero materials, custom-block publication,
+server-raster precedence, diagnostic fallback, and admission refusals. Live
+visual verification remains pending. Block-item sheets and inventory icons
+still use placeholders for borrowed faces, and animated vanilla art remains
+limited to base blocks.

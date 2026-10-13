@@ -269,7 +269,7 @@ pub use registry::{
 };
 pub use runtime::{
     BlockOverlay, MaterialOverride, NetworkIdMode, ResolvedBlock, ResolvedFace, RuntimeAssets,
-    SequentialIdRemap, ServerDefinedBlock, server_defined_blocks,
+    SequentialIdRemap, ServerDefinedBlock, VanillaFallback, server_defined_blocks,
     server_defined_blocks_for_registry,
 };
 pub use server_lang::{MAX_SERVER_LANG_INPUT_BYTES, ServerLangOverlay};

@@ -41,7 +41,10 @@ pub(super) fn complete_bindings(
     let mut bytes_added = 0;
     let mut sources_added = 0;
     let mut controller = Some(encode_document(
-        "render_controllers/_cinnabar/paintings.json".into(),
+        unused_source_path(
+            "render_controllers/_cinnabar/paintings.json".into(),
+            payloads,
+        ),
         json!({
             "format_version":"1.8.0", "render_controllers": {CONTROLLER: {
                 "geometry":"Geometry.default", "materials":[{"*":"Material.default"}],
@@ -54,7 +57,10 @@ pub(super) fn complete_bindings(
         let part = if border { "border" } else { "front" };
         let geometry = format!("geometry.cinnabar.painting.{}.{}", motive.title, part);
         let entity = encode_document(
-            format!("entity/_cinnabar/painting_{}_{}.json", motive.title, part),
+            unused_source_path(
+                format!("entity/_cinnabar/painting_{}_{}.json", motive.title, part),
+                payloads,
+            ),
             json!({
                 "format_version":"1.10.0", "minecraft:client_entity":{"description":{
                     "identifier":identifier, "materials":{"default":"entity_alphatest"},
@@ -64,9 +70,12 @@ pub(super) fn complete_bindings(
             }),
         )?;
         let geometry = encode_document(
-            format!(
-                "models/entity/_cinnabar/painting_{}_{}.json",
-                motive.title, part
+            unused_source_path(
+                format!(
+                    "models/entity/_cinnabar/painting_{}_{}.json",
+                    motive.title, part
+                ),
+                payloads,
             ),
             geometry_document(motive, border, &geometry),
         )?;
@@ -99,6 +108,24 @@ pub(super) fn complete_bindings(
         bytes_added = next_bytes;
     }
     Ok(bytes_added)
+}
+
+/// Keeps every authored payload intact when its path matches a generated document.
+fn unused_source_path(path: String, payloads: &SourcePayloads) -> String {
+    if !payloads.contains_key(path.as_str()) {
+        return path;
+    }
+    let stem = path
+        .strip_suffix(".json")
+        .expect("generated painting documents are JSON");
+    let mut suffix = 1;
+    loop {
+        let candidate = format!("{stem}_{suffix}.json");
+        if !payloads.contains_key(candidate.as_str()) {
+            return candidate;
+        }
+        suffix += 1;
+    }
 }
 
 /// Serializes one original generated document before testing whole-part admission.

@@ -171,7 +171,8 @@ fn absent_alias_keeps_default_bitmap_label_metrics() {
         )
     };
     let mut layouts = TextLayoutCache::new(4, 1 << 20);
-    let bitmap = layouts.layout(request(&TextOptions::default())).unwrap();
+    let default_options = TextOptions::default();
+    let bitmap = layouts.layout(request(&default_options)).unwrap();
     let fallback = layouts.layout(request(&options)).unwrap();
     assert_eq!(bitmap.key(), fallback.key());
     assert_eq!(bitmap.glyphs(), fallback.glyphs());

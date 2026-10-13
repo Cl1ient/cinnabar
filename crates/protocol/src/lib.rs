@@ -245,9 +245,9 @@ pub use world::{
     SetTimeEvent, SubChunkBatchEvent, SubChunkDiagnostic, SubChunkEntryEvent,
     SubChunkReplyAdmissionEvent, SubChunkResult, SubChunkUnavailable, SyncedBlockUpdateEvent,
     WeatherChannel, WeatherUpdateEvent, WorldBootstrap, WorldClockDefinition, WorldClockState,
-    WorldClockUpdateEvent, WorldEnvironmentBootstrap, WorldEvent, WorldPacketError, WorldWireError,
-    air_network_id, block_name_sort_key, block_state_network_hash, into_world_event,
-    request_sub_chunk_column, vanilla_dimension_range,
+    WorldClockUpdateEvent, WorldEnvironmentBootstrap, WorldEvent, WorldPacketError,
+    WorldSpawnEvent, WorldWireError, air_network_id, block_name_sort_key, block_state_network_hash,
+    into_world_event, request_sub_chunk_column, vanilla_dimension_range,
 };
 
 mod movement_transport;

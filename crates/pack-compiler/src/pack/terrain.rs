@@ -246,6 +246,16 @@ impl TerrainTextureMap {
         key: &str,
         variant: usize,
     ) -> Option<(&str, Option<&str>)> {
+        self.get_clamped_carried_variant(key, variant)
+            .map(|(path, overlay, _)| (path, overlay))
+    }
+
+    /// Returns a carried path, optional overlay color, and its actual clamped terrain index.
+    pub(crate) fn get_clamped_carried_variant(
+        &self,
+        key: &str,
+        variant: usize,
+    ) -> Option<(&str, Option<&str>, u32)> {
         match self.entries.get(key)? {
             TerrainPaths::Static {
                 path,
@@ -253,7 +263,7 @@ impl TerrainTextureMap {
                 tint_color: None,
                 has_extra_metadata: false,
                 ..
-            } => Some((path, overlay_color.as_deref())),
+            } => Some((path, overlay_color.as_deref(), 0)),
             TerrainPaths::Variants {
                 paths,
                 overlay_colors,
@@ -268,6 +278,7 @@ impl TerrainTextureMap {
                 Some((
                     paths.get(selected)?,
                     overlay_colors.get(selected)?.as_deref(),
+                    selected as u32,
                 ))
             }
             TerrainPaths::Static { .. } | TerrainPaths::Variants { .. } => None,
@@ -279,6 +290,20 @@ impl TerrainTextureMap {
         self.entries
             .iter()
             .map(|(key, paths)| (key.as_ref(), paths.first()))
+    }
+
+    /// Counts every atlas index and its position-selected UV variants for flipbook binding.
+    pub(crate) fn flipbook_destinations(&self) -> impl Iterator<Item = (&str, Vec<u32>)> {
+        self.entries.iter().map(|(key, paths)| {
+            let counts = (0..paths.paths().count())
+                .map(|index| {
+                    self.position_variations
+                        .get(&(key.clone(), index as u32))
+                        .map_or(1, |variants| variants.len() as u32)
+                })
+                .collect();
+            (key.as_ref(), counts)
+        })
     }
 
     pub(crate) fn source_paths(&self) -> impl Iterator<Item = &str> {

@@ -9,11 +9,11 @@ pub use fixed_tint::{apply_atlas_tint, parse_atlas_tint};
 
 use std::path::Path;
 
-use assets::AssetError;
+use assets::{AssetError, texture::flipbook::FlipbookSource};
 
 pub use block::{BlockTextureMap, TextureKey, resolve_texture_key};
 pub(crate) use block::{resolve_carried_down_key, resolve_carried_face_key};
-pub use flipbook::{DEFAULT_BLEND_FRAMES, FlipbookSource, MAX_FLIPBOOK_FRAMES, MAX_FLIPBOOKS};
+pub use flipbook::MAX_FLIPBOOKS;
 pub use terrain::TerrainTextureMap;
 
 use block::read_blocks;

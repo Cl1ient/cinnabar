@@ -155,6 +155,16 @@ pub(in crate::compiler) fn bee_housing_material_descriptors(
             }
             path
         };
+        let state_variant = if key.ends_with("_front") {
+            let paths = if key == "bee_nest_front" {
+                nest_front
+            } else {
+                hive_front
+            };
+            paths.iter().position(|&source| source == path)? as u32
+        } else {
+            0
+        };
         if pack.flipbooks.iter().any(|flipbook| {
             flipbook.atlas_tile.as_ref() == key || flipbook.texture_path.as_ref() == path
         }) {
@@ -162,7 +172,7 @@ pub(in crate::compiler) fn bee_housing_material_descriptors(
         }
         descriptors.push((
             Descriptor {
-                state_variant: 0,
+                state_variant,
                 flipbook_selector: None,
                 path: path.into(),
                 texture_key: key.into(),

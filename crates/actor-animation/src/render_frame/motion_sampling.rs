@@ -169,7 +169,7 @@ impl MotionSampling {
     }
 
     /// Rotation consumers sample independently of swelling and camera queries.
-    pub(super) fn uses_rotation(&self) -> bool {
+    pub(crate) fn uses_rotation(&self) -> bool {
         self.uses_rotation
     }
 

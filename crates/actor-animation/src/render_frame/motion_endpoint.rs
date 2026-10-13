@@ -52,6 +52,15 @@ impl MotionEndpointState {
         if let Some(script) = evaluator.assets.rig_bindings()[state.rig_binding].pre_animation {
             evaluator.run(script as usize, &mut variables, 0.0, budget)?;
         }
+        if state.complete_spear_variables {
+            evaluator.layout.engine.spear.apply(
+                &mut variables,
+                evaluator.actor,
+                evaluator.context,
+                evaluator.input,
+                evaluator.input.attack_time,
+            );
+        }
         if publish {
             variables.capture_writes();
         }

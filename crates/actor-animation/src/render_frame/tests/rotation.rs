@@ -1,8 +1,10 @@
 use super::*;
 use assets::{CompiledMolangExpression, EntityAnimationProperty, MolangCall};
 
+mod review;
+
 /// Encodes head yaw, pitch and body yaw as translation so their exact query values are visible.
-fn fixture(limit: f32, yaw: f32) -> (ActorAnimationStore, HashMap<u64, TestActor>) {
+fn compiled_fixture(limit: f32) -> assets::CompiledEntityAssets {
     let mut compiled = crate::test_support::initialized_pose_compiled();
     compiled.symbols[0].identifier = "minecraft:player".into();
     compiled.molang_symbols[1].identifier = "query.body_y_rotation".into();
@@ -52,6 +54,20 @@ fn fixture(limit: f32, yaw: f32) -> (ActorAnimationStore, HashMap<u64, TestActor
     compiled.animation_keyframes = keys.into();
     compiled.molang_ops = ops.into();
     compiled.molang_expressions = expressions.into();
+    compiled
+}
+
+/// Starts the rotation fixture with the ordinary third-person context.
+fn fixture(limit: f32, yaw: f32) -> (ActorAnimationStore, HashMap<u64, TestActor>) {
+    fixture_with(compiled_fixture(limit), yaw, Default::default())
+}
+
+/// Seeds a player rig with the supplied authored assets and prepared appearance context.
+fn fixture_with(
+    compiled: assets::CompiledEntityAssets,
+    yaw: f32,
+    context: ActorTickContext,
+) -> (ActorAnimationStore, HashMap<u64, TestActor>) {
     let assets = Arc::new(
         RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap(),
     );
@@ -67,8 +83,20 @@ fn fixture(limit: f32, yaw: f32) -> (ActorAnimationStore, HashMap<u64, TestActor
     };
     let mut store = ActorAnimationStore::with_assets(assets);
     store.insert(1, 0, &actor);
+    if let Some(source) = &context.skin_geometry {
+        store.request_skin_preparation(source);
+        store.submit_skin_preparation();
+        store.finish_skin_fixture_batch();
+    }
     let actors = HashMap::from([(actor.runtime_id, actor)]);
-    store.advance_tick(&actors, None, None, true, true, |_| Default::default());
+    store.advance_tick(
+        &actors,
+        None,
+        context.is_local.then_some(1),
+        true,
+        true,
+        |_| context.clone(),
+    );
     (store, actors)
 }
 

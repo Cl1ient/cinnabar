@@ -1429,6 +1429,9 @@ tick before relative yaw is clamped, including shortest-path angle wrapping.
 Unrelated animation channels retain their tick endpoints, and view changes discard
 the previous perspective's rotation history. Deterministic regressions cover local
 and remote players, clamp order, body catch-up and first-person pose isolation.
+Draw-only refreshes retain reset rotation history. Dormant camera clips preserve
+walking endpoints, including persona layers, and sampled spear poses complete
+their generated inputs before selection and channel evaluation.
 CI execution and rendered acceptance remain pending; broader motion-query parity
 and interpolation mixed with active camera clips remain incomplete.
 

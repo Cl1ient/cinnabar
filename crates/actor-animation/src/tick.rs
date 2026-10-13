@@ -699,8 +699,13 @@ pub(super) fn evaluate_state(
         Err(error) if !state.initialized => return Err(error),
         Err(_) => None,
     };
-    let skin_layers =
-        super::skin_layers::evaluate(state, &evaluator, &variables, &local, render.as_deref());
+    let skin_layers = super::skin_layers::evaluate(
+        state,
+        &evaluator,
+        &variables,
+        (&local, None),
+        render.as_deref(),
+    );
     if samples_motion && let Some(frame) = render_frame.as_mut() {
         frame.motion_poses = Some(super::render_frame::MotionPoses {
             previous: Vec::new(),

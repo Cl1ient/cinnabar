@@ -320,6 +320,9 @@ pub(super) fn carry_motion_history(
     next.swelling[0] = previous.as_ref().map_or(next.swelling[1], |frame| {
         frame.swelling[usize::from(advance)]
     });
+    if !advance && let Some(previous) = previous.as_ref() {
+        next.previous_rotation = previous.previous_rotation;
+    }
     let mut previous = previous;
     if next.motion_poses.is_some() {
         next.previous_motion = previous.as_deref_mut().map(|frame| {
@@ -552,13 +555,13 @@ impl ActorAnimationStore {
                 &mut variables,
                 actor,
                 &context,
-                &frame.motion.input,
-                swing.unwrap_or(frame.motion.input.attack_time),
+                &current_input,
+                swing.unwrap_or(current_input.attack_time),
             );
         }
         tick::set_item_rotation_factor(&layout.engine, &mut variables);
         let isolated_motion = motion_changed
-            && !(state.samples_camera_poses && camera_inputs_changed)
+            && !(frame.samples_camera_poses && camera_inputs_changed)
             && !swing_changed;
         let mut endpoints: Option<(MotionEndpoint<'_>, MotionEndpoint<'_>)> = if isolated_motion {
             let amount = actor.creeper_swell_amount(partial_tick);
@@ -690,7 +693,7 @@ impl ActorAnimationStore {
                     None,
                 )
             });
-        let motion_previous = if let Some((previous, _)) = endpoints.as_mut() {
+        let sampled_previous_local = if let Some((previous, _)) = endpoints.as_mut() {
             let Some(history) = frame.motion_poses.as_ref() else {
                 return Some(completed());
             };
@@ -707,10 +710,18 @@ impl ActorAnimationStore {
             ) else {
                 return Some(completed());
             };
-            let previous = history.sample(local, &sampled_previous, sampled_motion_mask.as_deref());
-            state.compose(&previous).map(Arc::<[BoneTransform]>::from)
+            Some(history.sample(local, &sampled_previous, sampled_motion_mask.as_deref()))
         } else {
             None
+        };
+        let motion_previous = match &sampled_previous_local {
+            Some(local) => {
+                let Some(pose) = state.compose(local) else {
+                    return Some(completed());
+                };
+                Some(Arc::<[BoneTransform]>::from(pose))
+            }
+            None => None,
         };
         let pose = match &sampled_local {
             Some(local) => {
@@ -918,7 +929,7 @@ impl ActorAnimationStore {
                     state,
                     &evaluator,
                     &variables,
-                    local,
+                    (local, sampled_previous_local.as_deref()),
                     Some(&layers),
                     &mut budget,
                 ) else {

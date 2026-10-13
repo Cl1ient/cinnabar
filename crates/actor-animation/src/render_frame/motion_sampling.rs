@@ -8,8 +8,9 @@ pub(super) const SCALE: u8 = 4;
 pub(super) const ROTATION_FRAME: u8 = 8;
 
 #[derive(Debug)]
-pub(crate) struct SwellSampling {
+pub(crate) struct MotionSampling {
     uses_swell: bool,
+    uses_rotation: bool,
     expressions: BTreeSet<u32>,
     weighted_symbols: BTreeSet<u32>,
     timed_symbols: BTreeSet<u32>,
@@ -20,8 +21,8 @@ pub(crate) struct SwellSampling {
     rig_scale: bool,
 }
 
-impl SwellSampling {
-    /// Retains endpoint inputs before a server animation introduces its first swell query.
+impl MotionSampling {
+    /// Tracks sampled motion queries and their authored variable and channel dependencies.
     pub(crate) fn new(
         assets: &RuntimeEntityAssets,
         rig: usize,
@@ -35,6 +36,13 @@ impl SwellSampling {
             ops(assets, expression).iter().any(|op| match op {
                 MolangOp::LoadQuery(symbol) => is_swell(assets, *symbol),
                 MolangOp::CallQuery(call) => is_swell(assets, call.symbol),
+                _ => false,
+            })
+        });
+        let uses_rotation = expressions.iter().any(|&expression| {
+            ops(assets, expression).iter().any(|op| match op {
+                MolangOp::LoadQuery(symbol) => super::rotation::is_query(assets, *symbol),
+                MolangOp::CallQuery(call) => super::rotation::is_query(assets, call.symbol),
                 _ => false,
             })
         });
@@ -55,6 +63,7 @@ impl SwellSampling {
                     _ => None,
                 };
                 if let Some(symbol) = symbol
+                    && !super::rotation::is_query(assets, symbol)
                     && assets
                         .molang_symbols()
                         .get(symbol as usize)
@@ -143,6 +152,7 @@ impl SwellSampling {
             .is_some_and(|scales| scales.iter().any(|scale| expressions.contains(scale)));
         Arc::new(Self {
             uses_swell,
+            uses_rotation,
             render_writes,
             queries,
             properties,
@@ -156,6 +166,11 @@ impl SwellSampling {
 
     pub(super) fn uses_swell(&self) -> bool {
         self.uses_swell
+    }
+
+    /// Rotation consumers sample independently of swelling and camera queries.
+    pub(crate) fn uses_rotation(&self) -> bool {
+        self.uses_rotation
     }
 
     /// Whether a retained dependency changes the authored uniform or axis scale.
@@ -343,6 +358,7 @@ fn is_swell(assets: &RuntimeEntityAssets, symbol: u32) -> bool {
 /// Fresh presentation inputs share the authored dependency closure.
 fn is_presentation_query(assets: &RuntimeEntityAssets, symbol: u32) -> bool {
     is_swell(assets, symbol)
+        || super::rotation::is_query(assets, symbol)
         || assets
             .molang_symbols()
             .get(symbol as usize)

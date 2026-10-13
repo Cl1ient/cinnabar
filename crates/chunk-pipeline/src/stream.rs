@@ -123,6 +123,10 @@ pub const OUTBOUND_REQUEST_CAPACITY: usize = 64;
 pub const DEFERRED_RETRY_CAPACITY: usize = 64;
 pub const MAX_SUB_CHUNK_RETRIES: u8 = 2;
 pub const SUB_CHUNK_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long an abandoned sub-chunk waits before it is asked for again, doubling each time it is
+/// abandoned again up to [`MAX_SUB_CHUNK_RECOVERY_DELAY`].
+const SUB_CHUNK_RECOVERY_DELAY: Duration = Duration::from_secs(2);
+const MAX_SUB_CHUNK_RECOVERY_DELAY: Duration = Duration::from_secs(16);
 pub const MAX_PENDING_MESH_CHANGES: usize = 512;
 /// Quiet wait after local relevance or new publisher-cohort progress.
 const UNSENT_COLUMN_GRACE: Duration = Duration::from_secs(1);
@@ -299,7 +303,7 @@ impl SchedulerView {
 use model::{
     CorrelatedSubChunkAttempts, MeshChangeQueue, MeshCompletion, NormalizationErrorReason,
     PendingMesh, PendingSubChunk, PendingSubChunkColumn, RetrySchedule, RevisionTracker,
-    queue_wait, split_block_update,
+    SubChunkRecovery, queue_wait, split_block_update,
 };
 
 pub use block_cracks::{

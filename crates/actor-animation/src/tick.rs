@@ -475,28 +475,36 @@ pub(super) fn evaluate_state(
     }
     variables.clear_temporaries();
     variables.clear(engine.first_person_item_rotation_factor);
-    let samples_swell = actor.is_creeper() && state.swell_sampling.is_some();
+    let samples_motion = state
+        .motion_sampling
+        .as_ref()
+        .is_some_and(|sampling| actor.is_creeper() || sampling.uses_rotation());
     let mut render_frame = (state.samples_render_frames
-        || samples_swell
+        || samples_motion
         || (state.samples_swing_poses && state.local_swing.is_some()))
     .then(|| super::render_frame::FrameState {
+        previous_rotation: if context.is_local_first_person {
+            input
+        } else {
+            state.history.iter().rev().nth(1).copied().unwrap_or(input)
+        },
         samples_camera_poses: false,
         samples_swing_poses: false,
         selection_effects: evaluation::MolangEffects::default(),
         retained_pose_effects: evaluation::MolangEffects::default(),
-        motion: super::render_frame::swell_endpoint::SwellMotion {
+        motion: super::render_frame::motion_endpoint::MotionEndpointState {
             variables: variables.clone(),
-            sampling: state.swell_sampling.clone(),
-            queries: if samples_swell {
+            sampling: state.motion_sampling.clone(),
+            queries: if samples_motion {
                 state
-                    .swell_sampling
+                    .motion_sampling
                     .as_ref()
                     .unwrap()
                     .freeze_queries(&evaluator)
             } else {
                 Vec::new()
             },
-            actor: (samples_swell && state.swell_sampling.as_ref().unwrap().samples_properties())
+            actor: (samples_motion && state.motion_sampling.as_ref().unwrap().samples_properties())
                 .then(|| actor.to_shared()),
             context: context.clone(),
             input,
@@ -509,8 +517,8 @@ pub(super) fn evaluate_state(
             server_effects: evaluation::MolangEffects::default(),
         },
         previous_motion: None,
-        swell_poses: None,
-        swell_layers: BTreeMap::new(),
+        motion_poses: None,
+        motion_layers: BTreeMap::new(),
         swelling: [actor.creeper_swell_amount(context.frame_alpha); 2],
     });
     if let Some(script) = rig.pre_animation {
@@ -632,9 +640,9 @@ pub(super) fn evaluate_state(
         frame.motion.clips.clone_from(&weighted_clips);
         frame.motion.journal = journal;
         frame.motion.server_effects = server_effects;
-        if samples_swell
+        if samples_motion
             && state
-                .swell_sampling
+                .motion_sampling
                 .as_ref()
                 .is_some_and(|s| s.samples_clips())
         {
@@ -659,7 +667,7 @@ pub(super) fn evaluate_state(
     }
     let pose = state.compose(&local).ok_or(EvalError::Invalid)?;
     // Initial publication needs a complete selection; later ticks can retain completed layers.
-    let mut swell_layers = BTreeMap::new();
+    let mut motion_layers = BTreeMap::new();
     let render = super::render::evaluate_render(
         &evaluator,
         &mut variables,
@@ -682,7 +690,7 @@ pub(super) fn evaluate_state(
             &state.layer_skeletons,
             &weighted_clips,
             &mut layers,
-            samples_swell.then_some(&mut swell_layers),
+            samples_motion.then_some(&mut motion_layers),
             budget,
         );
         if !state.initialized {
@@ -695,30 +703,35 @@ pub(super) fn evaluate_state(
         Err(error) if !state.initialized => return Err(error),
         Err(_) => None,
     };
-    let skin_layers =
-        super::skin_layers::evaluate(state, &evaluator, &variables, &local, render.as_deref());
-    if samples_swell && let Some(frame) = render_frame.as_mut() {
-        frame.swell_poses = Some(super::render_frame::SwellPoses {
+    let skin_layers = super::skin_layers::evaluate(
+        state,
+        &evaluator,
+        &variables,
+        (&local, None),
+        render.as_deref(),
+    );
+    if samples_motion && let Some(frame) = render_frame.as_mut() {
+        frame.motion_poses = Some(super::render_frame::MotionPoses {
             previous: Vec::new(),
             previous_mask: Vec::new(),
             current: local,
-            mask: state.swell_sampling.as_ref().unwrap().mask(
+            mask: state.motion_sampling.as_ref().unwrap().mask(
                 assets,
                 &state.bone_names,
                 weighted_clips.iter().copied(),
                 None,
             ),
         });
-        frame.swell_layers = swell_layers
+        frame.motion_layers = motion_layers
             .into_iter()
             .map(|(geometry, local)| {
                 (
                     geometry,
-                    super::render_frame::SwellPoses {
+                    super::render_frame::MotionPoses {
                         previous: Vec::new(),
                         previous_mask: Vec::new(),
                         current: local,
-                        mask: state.swell_sampling.as_ref().unwrap().mask(
+                        mask: state.motion_sampling.as_ref().unwrap().mask(
                             assets,
                             &state.layer_skeletons[&geometry].as_ref().unwrap().names,
                             weighted_clips.iter().copied(),

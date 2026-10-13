@@ -1,10 +1,10 @@
 use super::*;
 
-/// Ordinary inputs stay at their motion endpoints while the swell query samples the frame.
+/// Ordinary inputs stay at their tick endpoints while selected motion queries sample the frame.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SwellMotion {
+pub(crate) struct MotionEndpointState {
     pub variables: MolangVariables,
-    pub sampling: Option<Arc<super::swell::SwellSampling>>,
+    pub sampling: Option<Arc<super::motion_sampling::MotionSampling>>,
     pub queries: Vec<(u32, MolangValue)>,
     pub actor: Option<Arc<dyn AnimatedActor>>,
     pub context: ActorTickContext,
@@ -18,14 +18,15 @@ pub(crate) struct SwellMotion {
     pub server_effects: evaluation::MolangEffects,
 }
 
-pub(super) struct SwellEndpoint<'a> {
+pub(super) struct MotionEndpoint<'a> {
     pub evaluator: evaluation::Evaluator<'a>,
     pub variables: MolangVariables,
     pub clips: Vec<tick::WeightedClip>,
     pub scale: Option<[f32; 4]>,
 }
 
-impl SwellMotion {
+impl MotionEndpointState {
+    /// Replays an endpoint on scratch state with the frame's sampled rotations and swelling.
     pub(super) fn sample<'a>(
         &'a self,
         base: evaluation::Evaluator<'a>,
@@ -33,9 +34,8 @@ impl SwellMotion {
         amount: f32,
         publish: bool,
         budget: &mut EvalBudget<'_>,
-    ) -> Result<SwellEndpoint<'a>, EvalError> {
+    ) -> Result<MotionEndpoint<'a>, EvalError> {
         let evaluator = evaluation::Evaluator {
-            input: &self.input,
             context: &self.context,
             anim_tick: self.anim_tick,
             life_tick: self.life_tick,
@@ -51,6 +51,15 @@ impl SwellMotion {
         let mut variables = self.variables.clone();
         if let Some(script) = evaluator.assets.rig_bindings()[state.rig_binding].pre_animation {
             evaluator.run(script as usize, &mut variables, 0.0, budget)?;
+        }
+        if state.complete_spear_variables {
+            evaluator.layout.engine.spear.apply(
+                &mut variables,
+                evaluator.actor,
+                evaluator.context,
+                evaluator.input,
+                evaluator.input.attack_time,
+            );
         }
         if publish {
             variables.capture_writes();
@@ -83,7 +92,7 @@ impl SwellMotion {
             self.server_effects.apply(&mut variables)?;
             self.clips.clone()
         };
-        Ok(SwellEndpoint {
+        Ok(MotionEndpoint {
             evaluator,
             variables,
             clips,

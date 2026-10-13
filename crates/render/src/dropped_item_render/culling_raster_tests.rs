@@ -76,7 +76,11 @@ fn raster(gpu: &Gpu, model: &DroppedItemModel, eye: Vec3, samples: u32, cull: bo
         wgpu::BufferUsages::UNIFORM,
     );
     let light = gpu.buffer(&[1.0; 256 * 4], wgpu::BufferUsages::UNIFORM);
-    let atmosphere = gpu.buffer(&[0.0; 32], wgpu::BufferUsages::UNIFORM);
+    // Keep the nearby witness outside the distance-fog interval so its colour proves visibility.
+    let mut atmosphere = [0.0; 32];
+    atmosphere[19] = 1000.0;
+    atmosphere[20] = 1001.0;
+    let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
     let environment = gpu.buffer(&[1.0_f32, 0.0, 0.0, 1.0], wgpu::BufferUsages::UNIFORM);
     let glint = gpu
         .device

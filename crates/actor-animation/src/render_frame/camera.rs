@@ -35,6 +35,30 @@ pub(crate) fn active_pose_inputs(
     expressions
 }
 
+/// Selected geometry endpoints stay isolated only when their active clips need no frame inputs.
+pub(super) fn layer_motion_isolated(
+    evaluator: &evaluation::Evaluator<'_>,
+    clips: &[tick::WeightedClip],
+    geometry: u32,
+    camera_changed: bool,
+    swing_changed: bool,
+    budget: &mut EvalBudget<'_>,
+) -> Result<bool, EvalError> {
+    if !camera_changed && !swing_changed {
+        return Ok(true);
+    }
+    for active in clips {
+        budget.charge_work()?;
+        if let Some(mapped) = render::clip_for_layer(evaluator.assets, *active, geometry) {
+            let reads = evaluator.layout.clip_inputs(mapped.clip);
+            if (reads.camera && camera_changed) || (reads.swing && swing_changed) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
 /// Binds rig-level presentation inputs without animation-channel scans during actor ticks.
 pub(crate) fn presentation_expressions(
     assets: &RuntimeEntityAssets,

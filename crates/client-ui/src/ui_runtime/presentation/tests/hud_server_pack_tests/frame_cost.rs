@@ -181,7 +181,8 @@ fn lobby_ui_publication_cost() {
             .into(),
             depth_tested: false,
             text_alpha: 1.0,
-            distance: 4.0 + index as f32,
+            view_depth: 4.0 + index as f32,
+            camera_forward_y: 0.0,
         })
         .collect();
     let mut scene = render_model::UiRenderScene::default();

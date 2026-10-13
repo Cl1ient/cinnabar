@@ -137,15 +137,16 @@ pub(super) fn resolve_binding(
         geometry_binding,
         &controllers,
     );
-    let swell_sampling = actor.is_creeper().then(|| {
-        super::render_frame::swell::SwellSampling::new(
-            assets,
-            rig_binding,
-            geometry_binding,
-            &controllers,
-            &[],
-        )
-    });
+    let motion_sampling = (actor.is_creeper() || matches!(actor.kind(), ActorKind::Player { .. }))
+        .then(|| {
+            super::render_frame::motion_sampling::MotionSampling::new(
+                assets,
+                rig_binding,
+                geometry_binding,
+                &controllers,
+                &[],
+            )
+        });
     Some(ActorRigState {
         placement_frame: rig.placement_frame,
         pack: false,
@@ -204,8 +205,7 @@ pub(super) fn resolve_binding(
             geometry_binding,
         ),
         samples_swing_poses,
-        creeper: actor.is_creeper(),
-        swell_sampling,
+        motion_sampling,
         render_frame: None,
         clip_clocks: BTreeMap::new(),
         initialized: false,
@@ -560,8 +560,10 @@ fn reselect_geometry_with_checkpoint(
         selected,
         &controllers,
     );
-    state.swell_sampling = actor.is_creeper().then(|| {
-        super::render_frame::swell::SwellSampling::new(
+    state.motion_sampling = (actor.is_creeper()
+        || matches!(actor.kind(), ActorKind::Player { .. }))
+    .then(|| {
+        super::render_frame::motion_sampling::MotionSampling::new(
             assets,
             state.rig_binding,
             selected,

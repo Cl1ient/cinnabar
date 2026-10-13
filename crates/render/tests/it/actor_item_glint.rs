@@ -16,7 +16,14 @@ fn item_glint_keeps_visible_low_alpha_texels_and_discards_empty_texels() {
         glint: render_model::ActorGlint::item(0.0, [1.0; 2]),
         ..plain
     };
-    let background = gpu.render(&actor_raster::source(false), "actor_vertex", &[]);
+    // A discarded draw still runs the render pass's clear, unlike an empty draw list.
+    let background = actor_raster::raster(
+        &gpu,
+        &plane,
+        assets::EntityRenderMaterial::Dragon,
+        false,
+        [[0; 4]; 2],
+    );
     for alpha in [0, 64, 255] {
         let texels = [[128, 192, 64, alpha]; 2];
         let original = actor_raster::raster_material(&gpu, &plane, plain, false, texels);

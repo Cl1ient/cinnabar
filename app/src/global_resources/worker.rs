@@ -110,18 +110,23 @@ fn run(
             snapshot.message = "Updating resource packs…".into();
             let _ = outgoing.send(Event::Snapshot(snapshot.clone()));
         }
+        let refresh_icons = |library: &GlobalPackLibrary, snapshot: &mut Snapshot| {
+            super::icons::refresh(library, snapshot, &icon_root);
+        };
         let result = match command {
             Command::Commit(selection) => {
                 let result = library.commit_selection(&selection);
                 snapshot.message.clear();
                 result
             }
-            Command::Import(path) => import(&mut library, path, &mut snapshot, &icon_root),
+            Command::Import(path) => {
+                import_files(&mut library, vec![path], &mut snapshot, refresh_icons)
+            }
             Command::Action {
                 action: Action::Import,
                 ..
             } => match super::picker::pick() {
-                Ok(paths) => import_files(&mut library, paths, &mut snapshot, &icon_root),
+                Ok(paths) => import_files(&mut library, paths, &mut snapshot, refresh_icons),
                 Err(error) => {
                     snapshot.message = error;
                     Ok(())
@@ -141,18 +146,22 @@ fn run(
     }
 }
 
-/// Imports each selection through the single-pack path and keeps every batch result visible.
-/// A single selection preserves its original status and error handling.
+/// Imports each selection and keeps every batch result visible, then refreshes icons once.
+/// A single selection preserves its original status and error handling. Cancellation and
+/// entirely failed imports leave the icons unchanged.
 fn import_files(
     library: &mut GlobalPackLibrary,
     mut paths: Vec<PathBuf>,
     snapshot: &mut Snapshot,
-    icon_root: &std::path::Path,
+    refresh_icons: impl FnOnce(&GlobalPackLibrary, &mut Snapshot),
 ) -> Result<(), LibraryError> {
     if paths.len() == 1 {
-        return import(library, paths.remove(0), snapshot, icon_root);
+        import(library, paths.remove(0), snapshot)?;
+        refresh_icons(library, snapshot);
+        return Ok(());
     }
     let mut messages = Vec::with_capacity(paths.len());
+    let mut imported = false;
     snapshot.message.clear();
     for path in paths {
         let name = path
@@ -160,12 +169,16 @@ fn import_files(
             .unwrap_or(path.as_os_str())
             .to_string_lossy()
             .into_owned();
-        if let Err(error) = import(library, path, snapshot, icon_root) {
-            snapshot.message = error.to_string();
+        match import(library, path, snapshot) {
+            Ok(()) => imported = true,
+            Err(error) => snapshot.message = error.to_string(),
         }
         messages.push(format!("{name}: {}", snapshot.message));
     }
     snapshot.message = messages.join("\n");
+    if imported {
+        refresh_icons(library, snapshot);
+    }
     Ok(())
 }
 
@@ -211,11 +224,9 @@ fn import(
     library: &mut GlobalPackLibrary,
     path: PathBuf,
     snapshot: &mut Snapshot,
-    icon_root: &std::path::Path,
 ) -> Result<(), LibraryError> {
     let report = library.import(&path)?;
     clear_indexed(snapshot);
-    super::icons::refresh(library, snapshot, icon_root);
     snapshot.message = format!(
         "Imported {} resource packs; skipped {} behavior packs. {}",
         report.imported.len(),
@@ -385,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_import_continues_after_failures_and_keeps_all_results() {
+    fn batch_import_refreshes_icons_once_after_all_files_and_keeps_all_results() {
         let fixture = tempfile::tempdir().unwrap();
         let root = fixture.path().join("installed");
         let mut library = GlobalPackLibrary::open(&root, engine_version()).unwrap();
@@ -411,9 +422,18 @@ mod tests {
             ..Default::default()
         };
 
-        import_files(&mut library, paths, &mut snapshot, &root.join("icons")).unwrap();
+        let mut refreshes = 0;
+        import_files(&mut library, paths, &mut snapshot, |library, snapshot| {
+            refreshes += 1;
+            assert_eq!(library.available().len(), 3);
+            assert!(snapshot.message.contains("missing.mcpack"));
+            assert!(snapshot.message.contains("fixture-3.mcpack"));
+            super::super::icons::refresh(library, snapshot, &root.join("icons"));
+        })
+        .unwrap();
         refresh(&library, &mut snapshot);
 
+        assert_eq!(refreshes, 1);
         assert_eq!(snapshot.available.len(), 3);
         assert!(snapshot.active.is_empty());
         assert_eq!(snapshot.selected, None);
@@ -443,25 +463,28 @@ mod tests {
             GlobalPackLibrary::open(fixture.path().join("reference"), engine_version()).unwrap();
         let path = write_fixture(fixture.path(), 1);
         let mut expected = Snapshot::default();
-        import(
-            &mut reference,
-            path.clone(),
-            &mut expected,
-            &root.join("reference-icons"),
+        import(&mut reference, path.clone(), &mut expected).unwrap();
+        let mut actual = Snapshot::default();
+        let mut refreshes = 0;
+        import_files(
+            &mut library,
+            vec![path],
+            &mut actual,
+            |library, snapshot| {
+                refreshes += 1;
+                assert_eq!(library.available().len(), 1);
+                super::super::icons::refresh(library, snapshot, &root.join("icons"));
+            },
         )
         .unwrap();
-        let mut actual = Snapshot::default();
-        import_files(&mut library, vec![path], &mut actual, &root.join("icons")).unwrap();
+        assert_eq!(refreshes, 1);
         assert_eq!(actual.message, expected.message);
 
         let missing = fixture.path().join("missing.mcpack");
         let expected_error = library.import(&missing).unwrap_err().to_string();
-        let error = import_files(
-            &mut library,
-            vec![missing],
-            &mut actual,
-            &root.join("icons"),
-        )
+        let error = import_files(&mut library, vec![missing], &mut actual, |_, _| {
+            panic!("failed single import refreshed icons")
+        })
         .unwrap_err();
         assert_eq!(error.to_string(), expected_error);
     }
@@ -476,9 +499,38 @@ mod tests {
             selected: Some((false, 0)),
             ..Default::default()
         };
-        import_files(&mut library, Vec::new(), &mut snapshot, &root.join("icons")).unwrap();
+        import_files(&mut library, Vec::new(), &mut snapshot, |_, _| {
+            panic!("cancelled import refreshed icons")
+        })
+        .unwrap();
         assert!(snapshot.message.is_empty());
         assert_eq!(snapshot.selected, Some((false, 0)));
+        assert!(library.available().is_empty());
+    }
+
+    #[test]
+    fn entirely_failed_batch_preserves_icons_and_reports_each_error() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("installed");
+        let mut library = GlobalPackLibrary::open(&root, engine_version()).unwrap();
+        let mut snapshot = Snapshot::default();
+        let icon_key = ("existing-pack".to_owned(), 1);
+        snapshot
+            .icons
+            .insert(icon_key.clone(), "existing.png".into());
+        import_files(
+            &mut library,
+            vec![
+                fixture.path().join("missing-a.mcpack"),
+                fixture.path().join("missing-b.mcpack"),
+            ],
+            &mut snapshot,
+            |_, _| panic!("entirely failed batch refreshed icons"),
+        )
+        .unwrap();
+        assert_eq!(snapshot.icons.get(&icon_key).unwrap(), "existing.png");
+        assert!(snapshot.message.contains("missing-a.mcpack"));
+        assert!(snapshot.message.contains("missing-b.mcpack"));
         assert!(library.available().is_empty());
     }
 
@@ -575,7 +627,6 @@ mod tests {
             &mut library,
             write_fixture(fixture.path(), 3),
             &mut snapshot,
-            &root.join("icons"),
         )
         .unwrap();
         assert_eq!(snapshot.selected, None);

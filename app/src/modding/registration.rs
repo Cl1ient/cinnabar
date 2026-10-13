@@ -171,7 +171,7 @@ enum Message {
         applied: bool,
     },
     AwaitRetirement {
-        request_id: String,
+        selection: selection::Receipt,
         complete: removal::Completion,
     },
     Reload {
@@ -246,7 +246,7 @@ pub(super) struct Watcher {
 impl Watcher {
     /// Gives the library worker a way to wait for host and settings retirement off-frame.
     pub(super) fn removal_client(&self) -> removal::Client {
-        removal::Client::new(self.messages.clone())
+        removal::Client::new(self.messages.clone(), Arc::clone(&self.latest))
     }
 
     pub(super) fn start(directory: PathBuf) -> Result<Self, String> {
@@ -718,6 +718,7 @@ fn worker(
     let (results, receive_results) = bounded(1);
     let (fences, receive_fences) = crossbeam_channel::unbounded();
     let generation = Arc::clone(&latest);
+    let retirement_directory = directory.clone();
     let loader = thread::Builder::new()
         .name("local-extension-loader".into())
         .spawn(move || {
@@ -746,7 +747,7 @@ fn worker(
                     }
                     recv(receive_fences) -> complete => {
                         let Ok(complete) = complete else { break };
-                        removal::finish(&receive_retired, complete);
+                        removal::finish(&receive_retired, complete, &retirement_directory, &generation);
                     }
                 }
             }
@@ -883,15 +884,10 @@ fn worker(
                 }
             }
             Ok(Message::AwaitRetirement {
-                request_id,
+                selection,
                 complete,
             }) => {
-                removal.wait(
-                    latest.load(Ordering::Acquire),
-                    request_id,
-                    complete,
-                    &fences,
-                );
+                removal.wait(latest.load(Ordering::Acquire), selection, complete, &fences);
                 next_poll = Instant::now();
             }
             Ok(Message::Reload {

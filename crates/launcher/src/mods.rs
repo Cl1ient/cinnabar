@@ -13,7 +13,7 @@ pub enum Action {
     ToggleActive,
     ToggleAvailable,
     Enable(u64),
-    Disable,
+    Disable(u64),
     Remove(u64),
     Import,
 }
@@ -96,7 +96,7 @@ impl Snapshot {
                 self.available_expanded = !self.available_expanded;
                 None
             }
-            Action::Enable(_) | Action::Disable | Action::Remove(_) | Action::Import => {
+            Action::Enable(_) | Action::Disable(_) | Action::Remove(_) | Action::Import => {
                 (self.library.supported && !self.library.busy).then_some(action)
             }
         }

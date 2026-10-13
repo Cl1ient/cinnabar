@@ -514,6 +514,9 @@ it, so one registered mod runs at a time; grants, font and UI carry over only wh
 stays the same. Removing a mod clears its retained grants, font and UI, waits for the registered
 host's pending settings writes to finish, then deletes the component and its settings companion.
 Preferences shared with a different selected component are preserved.
+Selection and companion ownership match resolved paths through directory aliases. A registration
+change during retirement cancels removal, and Disable targets the displayed mod's ID so a stale
+card cannot disable a newly selected mod.
 Ordinary disable/re-enable keeps that authorization. Imports reject existing filenames and
 names starting with a dot. Builds without `local-mods` show the tab with import disabled.
 

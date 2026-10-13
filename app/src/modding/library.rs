@@ -3,7 +3,7 @@
 
 use super::registration::{
     removal,
-    selection::{forget, registered, select},
+    selection::{Receipt, disable, forget, registered, same_path, select},
 };
 use crate::global_resources::picker::{self, Filter};
 use bevy::prelude::*;
@@ -84,7 +84,7 @@ fn run(
     incoming: &Receiver<Action>,
     outgoing: &Sender<Library>,
     mut pick: impl FnMut() -> Result<Option<PathBuf>, String>,
-    mut retire: impl FnMut(&str) -> Result<(), String>,
+    mut retire: impl FnMut(&Receipt) -> Result<removal::Permit, String>,
 ) {
     let mut requests = 0;
     let mut library = scan(mods, registration, String::new());
@@ -124,7 +124,7 @@ fn perform(
     registration: &Path,
     requests: &mut u64,
     pick: &mut impl FnMut() -> Result<Option<PathBuf>, String>,
-    retire: &mut impl FnMut(&str) -> Result<(), String>,
+    retire: &mut impl FnMut(&Receipt) -> Result<removal::Permit, String>,
 ) -> Result<String, String> {
     let installed = installed(mods);
     let path = |id: u64| {
@@ -147,22 +147,25 @@ fn perform(
         Action::Enable(id) => {
             select(registration, &path(id)?, true, request()).map(|()| String::new())
         }
-        Action::Disable => match registered(registration) {
-            Some(current) => {
-                select(registration, &current.component, false, request()).map(|()| String::new())
-            }
-            None => Ok(String::new()),
-        },
+        Action::Disable(id) => disable(registration, &path(id)?, request()).map(|()| String::new()),
         Action::Remove(id) => {
             let path = path(id)?;
             let request_id = request();
-            forget(registration, &path, request_id.clone())?;
-            retire(&request_id)?;
+            let receipt = forget(registration, &path, request_id)?;
+            let permit = retire(&receipt)?;
             let companion = settings_companion(&path);
             let shared = registered(registration).is_some_and(|current| {
-                current.component != path && settings_companion(&current.component) == companion
+                !same_path(&current.component, &path)
+                    && same_path(&settings_companion(&current.component), &companion)
             });
-            remove(&path, (!shared).then_some(companion.as_path())).map(|()| String::new())
+            remove(
+                &path,
+                (!shared).then_some(companion.as_path()),
+                registration,
+                &receipt,
+                &permit,
+            )
+            .map(|()| String::new())
         }
         Action::ReadMore(_) | Action::ToggleActive | Action::ToggleAvailable => Ok(String::new()),
     }
@@ -211,9 +214,17 @@ fn settings_companion(path: &Path) -> PathBuf {
     path.with_extension("settings.json")
 }
 
-/// Deletes a component and an exclusively owned companion after host retirement has drained.
-fn remove(path: &Path, companion: Option<&Path>) -> Result<(), String> {
+/// Rechecks the removal's selection before deleting each retired component or owned companion.
+fn remove(
+    path: &Path,
+    companion: Option<&Path>,
+    registration: &Path,
+    receipt: &Receipt,
+    permit: &removal::Permit,
+) -> Result<(), String> {
     for file in std::iter::once(path).chain(companion) {
+        receipt.confirm(registration)?;
+        permit.confirm()?;
         match fs::remove_file(file) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound && file != path => {}
@@ -265,7 +276,7 @@ fn scan(mods: &Path, registration: &Path, message: String) -> Library {
     let enabled = current.as_ref().and_then(|current| {
         installed
             .iter()
-            .find(|(_, path)| *path == current.component)
+            .find(|(_, path)| same_path(path, &current.component))
             .map(|(item, _)| item.id)
     });
     Library {
@@ -281,6 +292,232 @@ fn scan(mods: &Path, registration: &Path, message: String) -> Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Models a completed retirement whose watcher generation remains current.
+    fn retirement_permit() -> removal::Permit {
+        removal::Permit::new(1, Arc::new(std::sync::atomic::AtomicU64::new(1)))
+    }
+
+    /// Creates a directory alias, or reports the missing Windows symlink privilege fixture.
+    #[cfg(any(unix, windows))]
+    fn directory_alias(target: &Path, alias: &Path) -> bool {
+        #[cfg(unix)]
+        let result = std::os::unix::fs::symlink(target, alias);
+        #[cfg(windows)]
+        let result = std::os::windows::fs::symlink_dir(target, alias);
+        match result {
+            Ok(()) => true,
+            #[cfg(windows)]
+            Err(error) if error.raw_os_error() == Some(1314) => {
+                eprintln!("Missing fixture: Windows directory symlink privilege is unavailable");
+                false
+            }
+            Err(error) => panic!("create directory alias: {error}"),
+        }
+    }
+
+    /// A stale Disable command cannot revoke the component which replaced its displayed card.
+    #[test]
+    fn disabling_a_stale_card_preserves_the_new_selection() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&mods).unwrap();
+        let first = mods.join("first.wasm");
+        let second = mods.join("second.wasm");
+        fs::write(&first, b"first").unwrap();
+        fs::write(&second, b"second").unwrap();
+        select(&registration, &first, true, "first".into()).unwrap();
+        let shown = scan(&mods, &registration, String::new());
+        let displayed_id = shown.enabled.unwrap();
+        select(&registration, &second, true, "second".into()).unwrap();
+        let record = registration.join(super::super::registration::REGISTRATION_FILE);
+        let before = fs::read(&record).unwrap();
+        let error = perform(
+            Action::Disable(displayed_id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_| Ok(retirement_permit()),
+        )
+        .unwrap_err();
+        assert!(error.contains("no longer enabled"), "{error}");
+        assert_eq!(fs::read(&record).unwrap(), before);
+        let current = registered(&registration).unwrap();
+        assert!(current.enabled && same_path(&current.component, &second));
+        let id = scan(&mods, &registration, String::new()).enabled.unwrap();
+        perform(
+            Action::Disable(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_| Ok(retirement_permit()),
+        )
+        .unwrap();
+        assert!(!registered(&registration).unwrap().enabled);
+    }
+
+    /// Re-enabling after a successful retirement reply must still prevent file deletion.
+    #[test]
+    fn removal_rechecks_selection_after_retirement_returns() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&mods).unwrap();
+        let component = mods.join("zoom.wasm");
+        let companion = settings_companion(&component);
+        fs::write(&component, b"component").unwrap();
+        fs::write(&companion, b"preferences").unwrap();
+        let id = installed(&mods)[0].0.id;
+        let error = perform(
+            Action::Remove(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_: &Receipt| {
+                select(&registration, &component, true, "replacement".into()).unwrap();
+                Ok(retirement_permit())
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("selection changed"), "{error}");
+        assert_eq!(fs::read(component).unwrap(), b"component");
+        assert_eq!(fs::read(companion).unwrap(), b"preferences");
+        assert!(registered(&registration).unwrap().enabled);
+    }
+
+    /// A newer applied generation blocks deletion even if the registration bytes stay identical.
+    #[test]
+    fn removal_rechecks_generation_after_retirement_returns() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&mods).unwrap();
+        let component = mods.join("zoom.wasm");
+        let companion = settings_companion(&component);
+        fs::write(&component, b"component").unwrap();
+        fs::write(&companion, b"preferences").unwrap();
+        let id = installed(&mods)[0].0.id;
+        let error = perform(
+            Action::Remove(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_| {
+                Ok(removal::Permit::new(
+                    1,
+                    Arc::new(std::sync::atomic::AtomicU64::new(2)),
+                ))
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("selection changed"), "{error}");
+        assert_eq!(fs::read(component).unwrap(), b"component");
+        assert_eq!(fs::read(companion).unwrap(), b"preferences");
+    }
+
+    /// Real and linked directory spellings select, disable and remove the same component.
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn removal_resolves_the_selected_components_directory_alias() {
+        let directory = tempfile::tempdir().unwrap();
+        let real = directory.path().join("real");
+        let mods = directory.path().join("linked");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&real).unwrap();
+        if !directory_alias(&real, &mods) {
+            return;
+        }
+        let component = real.join("zoom.wasm");
+        let companion = settings_companion(&component);
+        fs::write(&component, b"component").unwrap();
+        fs::write(&companion, b"preferences").unwrap();
+        select(&registration, &component, true, "selected".into()).unwrap();
+        let record = registration.join(super::super::registration::REGISTRATION_FILE);
+        let mut granted: serde_json::Value =
+            serde_json::from_slice(&fs::read(&record).unwrap()).unwrap();
+        granted["grants"]["settings"] = true.into();
+        fs::write(&record, serde_json::to_vec(&granted).unwrap()).unwrap();
+        let id = scan(&mods, &registration, String::new()).enabled.unwrap();
+        perform(
+            Action::Disable(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_| Ok(retirement_permit()),
+        )
+        .unwrap();
+        select(
+            &registration,
+            &mods.join("zoom.wasm"),
+            true,
+            "reenabled".into(),
+        )
+        .unwrap();
+        let kept: serde_json::Value = serde_json::from_slice(&fs::read(&record).unwrap()).unwrap();
+        assert_eq!(kept["grants"], granted["grants"]);
+        perform(
+            Action::Remove(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_: &Receipt| {
+                assert!(!registered(&registration).unwrap().enabled);
+                Ok(retirement_permit())
+            },
+        )
+        .unwrap();
+        let cleared: serde_json::Value =
+            serde_json::from_slice(&fs::read(record).unwrap()).unwrap();
+        assert_eq!(
+            cleared["grants"],
+            serde_json::to_value(mod_host::ModGrants::default()).unwrap()
+        );
+        assert!(!component.exists() && !companion.exists());
+    }
+
+    /// Companion ownership also follows directory aliases, including an absent companion entry.
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn removal_preserves_shared_preferences_through_a_directory_alias() {
+        let directory = tempfile::tempdir().unwrap();
+        let real = directory.path().join("real");
+        let mods = directory.path().join("linked");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&real).unwrap();
+        if !directory_alias(&real, &mods) {
+            return;
+        }
+        let component = real.join("zoom.wasm");
+        let selected = real.join("zoom.wat");
+        let companion = settings_companion(&component);
+        fs::write(&component, b"component").unwrap();
+        fs::write(&selected, b"selected component").unwrap();
+        assert!(same_path(
+            &companion,
+            &settings_companion(&mods.join("zoom.wat"))
+        ));
+        fs::write(&companion, b"selected preferences").unwrap();
+        select(&registration, &selected, true, "selected".into()).unwrap();
+        let id = installed(&mods)[0].0.id;
+        perform(
+            Action::Remove(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_| Ok(retirement_permit()),
+        )
+        .unwrap();
+        assert_eq!(fs::read(companion).unwrap(), b"selected preferences");
+        assert!(!component.exists() && selected.exists());
+    }
 
     /// Import reads share the host's source ceiling and require regular files.
     #[test]
@@ -343,11 +580,11 @@ mod tests {
         fs::write(&companion, b"old preferences").unwrap();
         select(&registration, &path, true, "selected".into()).unwrap();
         let id = installed(&mods)[0].0.id;
-        let retire = |_: &str| {
+        let retire = |_: &Receipt| {
             assert!(!registered(&registration).unwrap().enabled);
             assert!(path.exists() && companion.exists());
             fs::write(&companion, b"final preferences").unwrap();
-            Ok(())
+            Ok(retirement_permit())
         };
         let (commands, incoming) = unbounded();
         let (outgoing, published) = unbounded();
@@ -420,7 +657,7 @@ mod tests {
             &registration,
             &mut 0,
             &mut || Ok(None),
-            &mut |_| Ok(()),
+            &mut |_| Ok(retirement_permit()),
         )
         .unwrap();
         assert!(!removed.exists());
@@ -486,7 +723,7 @@ mod tests {
             &incoming,
             &outgoing,
             || Ok(None),
-            |_| Ok(()),
+            |_| Ok(retirement_permit()),
         );
         let updates: Vec<_> = published.try_iter().collect();
         assert_eq!(
@@ -502,7 +739,7 @@ mod tests {
         for action in [
             Action::Import,
             Action::Enable(1),
-            Action::Disable,
+            Action::Disable(1),
             Action::Remove(1),
         ] {
             assert_eq!(snapshot.apply(action), Some(action));
@@ -575,7 +812,7 @@ mod tests {
             &registration,
             &mut requests,
             &mut || Ok(None),
-            &mut |_| Ok(()),
+            &mut |_| Ok(retirement_permit()),
         )
         .unwrap();
         assert_eq!(scan(&mods, &registration, String::new()).enabled, Some(id));
@@ -592,7 +829,7 @@ mod tests {
             &registration,
             &mut requests,
             &mut || Ok(None),
-            &mut |_| Ok(()),
+            &mut |_| Ok(retirement_permit()),
         )
         .unwrap();
         let after = scan(&mods, &registration, String::new());
@@ -608,7 +845,7 @@ mod tests {
             &registration,
             &mut requests,
             &mut || Ok(None),
-            &mut |_| Ok(()),
+            &mut |_| Ok(retirement_permit()),
         )
         .unwrap();
         let replacement: serde_json::Value =

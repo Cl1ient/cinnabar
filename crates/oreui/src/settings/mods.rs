@@ -187,7 +187,7 @@ fn mod_card(
             (
                 "Disable",
                 Variant::Secondary,
-                available.then_some(command(Action::Disable)),
+                available.then_some(command(Action::Disable(item.id))),
             )
         } else {
             (

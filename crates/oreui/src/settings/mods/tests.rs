@@ -74,7 +74,7 @@ fn the_enabled_mod_is_the_active_card_with_its_status_and_controls() {
         Action::Import,
         Action::ReadMore(first.id),
         Action::ReadMore(second.id),
-        Action::Disable,
+        Action::Disable(second.id),
         Action::Remove(second.id),
     ] {
         assert!(hits.contains(&command(action)), "{action:?}");

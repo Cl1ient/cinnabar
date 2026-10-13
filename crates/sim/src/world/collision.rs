@@ -239,16 +239,20 @@ mod tests {
         let (store, registry) = terrain();
         let world = PaletteWorld::for_movement(&store, &registry, 0);
         let snapshot = world.snapshot().unwrap();
-        for y in [
-            -1_000_000.0,
-            1_000_000.0,
-            f64::from(i32::MIN) + 1.0,
-            f64::from(i32::MAX) - 3.0,
-        ] {
-            let query = Aabb::new(Vec3::new(15.5, y, 7.5), Vec3::new(16.5, y + 2.0, 8.5));
+        let [min_coordinate, max_coordinate] = COLLISION_QUERY_COORDINATE_RANGE;
+        // Owner-cell scans use f32 arithmetic, so the endpoint faces must stay
+        // inside the validated range after conversion to that precision.
+        let min_y = f64::from((min_coordinate as f32).next_up());
+        let max_y = f64::from((max_coordinate as f32).next_down());
+        let height = 2.0;
+        for y in [-1_000_000.0, 1_000_000.0, min_y, max_y - height] {
+            let query = Aabb::new(Vec3::new(15.5, y, 7.5), Vec3::new(16.5, y + height, 8.5));
+            validate_collision_query(query).unwrap();
             let boxes = world.collision_boxes(query).unwrap();
             assert_eq!(boxes.value.len(), 1, "query at Y={y}");
             assert!(boxes.value[0].intersects(query), "query at Y={y}");
+            assert!(boxes.value[0].min.y <= min_coordinate);
+            assert!(boxes.value[0].max.y >= max_coordinate);
             let provenance = world.collision_boxes_with_provenance(query).unwrap();
             assert_eq!(provenance.value.len(), 1);
             assert_eq!(provenance.value[0].aabb, boxes.value[0]);
@@ -256,6 +260,20 @@ mod tests {
             assert_eq!(provenance.value[0].runtime_id, None);
             assert_eq!(provenance.identity, boxes.identity);
             assert_eq!(snapshot.collision_boxes(query).unwrap(), boxes);
+        }
+        for y in [
+            f64::from((min_y as f32).next_down()),
+            f64::from((max_y as f32).next_up()),
+        ] {
+            let query = Aabb::new(Vec3::new(15.5, y, 7.5), Vec3::new(16.5, y + height, 8.5));
+            assert_eq!(
+                world.collision_boxes(query),
+                Err(WorldQueryError::CoordinateOutOfRange)
+            );
+            assert_eq!(
+                snapshot.collision_boxes(query),
+                Err(WorldQueryError::CoordinateOutOfRange)
+            );
         }
     }
 

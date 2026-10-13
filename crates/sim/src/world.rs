@@ -33,6 +33,9 @@ use validate::{validate_facts, validate_shapes};
 pub const DEFAULT_SURFACE_FRICTION: f64 = 0.6;
 /// Maximum width, height, or depth of a collision query in blocks.
 pub const MAX_COLLISION_QUERY_EXTENT: f64 = 128.0;
+/// Inclusive coordinate bounds checked before scanning collision owner cells.
+pub(super) const COLLISION_QUERY_COORDINATE_RANGE: [f64; 2] =
+    [i32::MIN as f64 + 1.0, i32::MAX as f64 - 1.0];
 /// Maximum number of distinct columns retained by one immutable query identity.
 pub const MAX_COLLISION_IDENTITY_CHUNKS: usize = 128;
 
@@ -875,8 +878,7 @@ pub(crate) fn validate_collision_query(query: Aabb) -> Result<(), WorldQueryErro
     {
         return Err(WorldQueryError::InvalidBounds);
     }
-    let min_coordinate = f64::from(i32::MIN) + 1.0;
-    let max_coordinate = f64::from(i32::MAX) - 1.0;
+    let [min_coordinate, max_coordinate] = COLLISION_QUERY_COORDINATE_RANGE;
     if coordinates
         .into_iter()
         .any(|value| value < min_coordinate || value > max_coordinate)

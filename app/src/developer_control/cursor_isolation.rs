@@ -130,6 +130,11 @@ fn end(
     cursor.set_last_changed(Tick::new(
         cursor.this_run().get().wrapping_sub(MAX_CHANGE_AGE),
     ));
+    // Visible driven control must release capture held before isolation began. Once
+    // released, this helper leaves later synthetic cursor changes suppressed.
+    if !isolation.hidden {
+        client_shell::physical_input::release_cursor(&mut cursor);
+    }
 }
 
 #[cfg(test)]

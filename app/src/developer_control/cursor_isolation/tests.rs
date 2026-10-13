@@ -17,17 +17,19 @@ use crate::developer_control::input;
 #[derive(Resource, Default)]
 struct NativeFacing {
     cursor_updates: usize,
+    cursors: Vec<CursorOptions>,
     windows: Vec<Window>,
 }
 
 /// Observes the components and change filters consumed by Bevy's native output systems.
 fn observe_native_facing_state(
     windows: Query<&Window, Changed<Window>>,
-    cursors: Query<(), Changed<CursorOptions>>,
+    cursors: Query<&CursorOptions, Changed<CursorOptions>>,
     mut observed: ResMut<NativeFacing>,
 ) {
     observed.windows.extend(windows.iter().cloned());
     observed.cursor_updates += cursors.iter().count();
+    observed.cursors.extend(cursors.iter().cloned());
 }
 
 /// Builds only ECS and input plugins; it has no native event loop or windows.
@@ -136,6 +138,58 @@ fn request_capture(mut cursors: Query<&mut CursorOptions, With<PrimaryWindow>>) 
     let mut cursor = cursors.single_mut().unwrap();
     cursor.grab_mode = CursorGrabMode::Locked;
     cursor.visible = false;
+}
+
+#[test]
+fn driven_control_releases_existing_native_capture_once() {
+    for (grab_mode, visible) in [
+        (CursorGrabMode::Locked, false),
+        (CursorGrabMode::Confined, true),
+        (CursorGrabMode::None, false),
+    ] {
+        let (mut app, entity) = harness();
+        app.world_mut().get_mut::<Window>(entity).unwrap().focused = true;
+        *app.world_mut().get_mut::<CursorOptions>(entity).unwrap() = CursorOptions {
+            grab_mode,
+            visible,
+            hit_test: false,
+        };
+        app.update();
+        let observed = app.world().resource::<NativeFacing>();
+        assert_eq!(observed.cursor_updates, 1);
+        assert_eq!(observed.cursors[0].grab_mode, grab_mode);
+        assert_eq!(observed.cursors[0].visible, visible);
+        *app.world_mut().resource_mut::<NativeFacing>() = NativeFacing::default();
+
+        // A late UI writer must not undo the release at the native frame boundary.
+        app.add_systems(PostUpdate, request_capture);
+        input::apply(
+            app.world_mut(),
+            &InputCommand {
+                cursor: Some([123.0, 234.0]),
+                press: vec!["Escape".into()],
+                ..default()
+            },
+        )
+        .unwrap();
+        app.update();
+        let observed = app.world().resource::<NativeFacing>();
+        assert_eq!(observed.cursor_updates, 1);
+        let released = &observed.cursors[0];
+        assert_eq!(released.grab_mode, CursorGrabMode::None);
+        assert!(released.visible);
+        assert!(!released.hit_test);
+        let window = app.world().get::<Window>(entity).unwrap();
+        assert!(window.focused);
+        assert_eq!(window.cursor_position(), Some(Vec2::new(31.0, 47.0)));
+
+        app.update();
+        assert_eq!(app.world().resource::<NativeFacing>().cursor_updates, 1);
+        let cursor = app.world().get::<CursorOptions>(entity).unwrap();
+        assert_eq!(cursor.grab_mode, CursorGrabMode::None);
+        assert!(cursor.visible);
+        assert!(!cursor.hit_test);
+    }
 }
 
 #[test]

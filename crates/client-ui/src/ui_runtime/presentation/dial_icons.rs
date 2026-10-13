@@ -15,9 +15,12 @@ impl UiPresentationRuntime {
     }
 
     /// The carried strip frame dial item `identifier` shows, as an icon identity. `None` for
-    /// other items, dials without a frame, or a catalog without their frames.
+    /// session overrides, other items, dials without a frame, or a catalog without their frames.
     #[must_use]
-    pub fn dial_icon_key(&self, identifier: &str) -> Option<(&'static str, u32)> {
+    pub fn dial_icon_key(&self, identifier: &str, metadata: u32) -> Option<(&'static str, u32)> {
+        if self.session_item_icon(identifier, metadata).is_some() {
+            return None;
+        }
         self.dial_frames
             .icon_key(identifier, self.icon_catalog.as_deref()?)
     }
@@ -29,9 +32,50 @@ mod tests {
 
     use super::*;
     use crate::test_support::fixture_hud;
-    use ui_engine::test_support::fixture_font;
     use crate::ui_runtime::UiRuntime;
     use crate::ui_runtime::presentation::publish::item_icons::test_support::stack_icon;
+    use ui_engine::test_support::fixture_font;
+
+    #[test]
+    fn dial_frames_preserve_session_icons_and_restore_after_removal() {
+        use super::super::session_icons::{SessionIcon, SessionIcons, observe};
+        let mut presentation = presentation(inventory::COMPASS_FRAMES);
+        presentation.set_dial_frames(inventory::DialFrames {
+            compass: Some(7),
+            recovery_compass: Some(7),
+            clock: Some(7),
+        });
+        let original = icon(&presentation, "minecraft:compass");
+        let identifiers = [
+            "minecraft:compass",
+            "minecraft:recovery_compass",
+            "minecraft:clock",
+        ];
+        let overrides = Arc::new(SessionIcons {
+            icons: identifiers
+                .iter()
+                .map(|identifier| SessionIcon {
+                    identifier: (*identifier).into(),
+                    metadata: 0,
+                    width: 1,
+                    height: 1,
+                    rgba8: vec![255, 0, 0, 255].into(),
+                })
+                .collect(),
+            ..Default::default()
+        });
+        observe(&mut presentation, Some(&overrides));
+        for identifier in identifiers {
+            assert_eq!(presentation.dial_icon_key(identifier, 0), None);
+            assert_eq!(
+                icon(&presentation, identifier),
+                presentation.item_icon(identifier, 0)
+            );
+        }
+        assert_ne!(icon(&presentation, "minecraft:compass"), original);
+        observe(&mut presentation, None);
+        assert_eq!(icon(&presentation, "minecraft:compass"), original);
+    }
 
     /// A presentation whose catalog has a static compass and clock and `frames` compass strip
     /// frames, each its own sprite.

@@ -75,7 +75,11 @@ impl DialNeedle {
         };
         self.ease(target, instant, |error| {
             let wrapped = (error + PI) % TAU;
-            (if wrapped < 0.0 { wrapped + TAU } else { wrapped }) - PI
+            (if wrapped < 0.0 {
+                wrapped + TAU
+            } else {
+                wrapped
+            }) - PI
         });
         self.frame = wrap_frame(
             self.angle * (COMPASS_FRAMES as f32 / TAU) + COMPASS_FRAMES as f32,
@@ -132,11 +136,11 @@ pub struct DialFrames {
 impl DialFrames {
     /// The frame dials of `kind` show.
     #[must_use]
-    pub const fn frame(&self, kind: assets::DialKind) -> Option<u32> {
+    pub const fn frame(&self, kind: assets::icon::dial::DialKind) -> Option<u32> {
         match kind {
-            assets::DialKind::Compass => self.compass,
-            assets::DialKind::RecoveryCompass => self.recovery_compass,
-            assets::DialKind::Clock => self.clock,
+            assets::icon::dial::DialKind::Compass => self.compass,
+            assets::icon::dial::DialKind::RecoveryCompass => self.recovery_compass,
+            assets::icon::dial::DialKind::Clock => self.clock,
         }
     }
 
@@ -148,7 +152,7 @@ impl DialFrames {
         identifier: &str,
         catalog: &assets::RuntimeIconCatalog,
     ) -> Option<(&'static str, u32)> {
-        let strip = assets::dial_strip(identifier)?;
+        let strip = assets::icon::dial::dial_strip(identifier)?;
         let frame = self.frame(strip.kind)?;
         (frame < catalog.frame_count(strip.frames_identifier))
             .then_some((strip.frames_identifier, frame))
@@ -217,16 +221,34 @@ mod tests {
     #[test]
     fn clock_needles_ease_across_midnight_the_short_way() {
         let mut needle = DialNeedle::default();
-        needle.update_clock(ClockReading::Sky { celestial_angle: 0.95 }, true);
-        needle.update_clock(ClockReading::Sky { celestial_angle: 0.05 }, false);
-        assert!(needle.velocity > 0.0, "forward through midnight, not back through noon");
+        needle.update_clock(
+            ClockReading::Sky {
+                celestial_angle: 0.95,
+            },
+            true,
+        );
+        needle.update_clock(
+            ClockReading::Sky {
+                celestial_angle: 0.05,
+            },
+            false,
+        );
+        assert!(
+            needle.velocity > 0.0,
+            "forward through midnight, not back through noon"
+        );
         assert!((needle.velocity - 0.1 * NEEDLE_PULL * NEEDLE_DAMPING).abs() < 1e-5);
     }
 
     #[test]
     fn non_finite_readings_keep_the_needle() {
         let mut needle = DialNeedle::default();
-        needle.update_clock(ClockReading::Sky { celestial_angle: 0.25 }, true);
+        needle.update_clock(
+            ClockReading::Sky {
+                celestial_angle: 0.25,
+            },
+            true,
+        );
         let frame = needle.update_clock(
             ClockReading::Sky {
                 celestial_angle: f32::NAN,
@@ -277,7 +299,10 @@ mod tests {
             None,
             "the catalog carries no clock frames"
         );
-        assert_eq!(DialFrames::default().icon_key("minecraft:compass", &carried), None);
+        assert_eq!(
+            DialFrames::default().icon_key("minecraft:compass", &carried),
+            None
+        );
         assert_eq!(frames.icon_key("minecraft:compass", &catalog(4)), None);
     }
 }

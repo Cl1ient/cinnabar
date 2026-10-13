@@ -68,9 +68,8 @@ pub use self::events::{
     MovementEffectKind, NETHER_DIMENSION_ID, OpenSignEvent, PLAYER_NETWORK_OFFSET,
     PlayerMovementCorrectionEvent, PublisherUpdateEvent, RespawnEvent, STANDING_PLAYER_EYE_HEIGHT,
     SetTimeEvent, SubChunkBatchEvent, SubChunkEntryEvent, SubChunkReplyAdmissionEvent,
-    WorldSpawnEvent,
     SubChunkResult, SubChunkUnavailable, SyncedBlockUpdateEvent, WeatherChannel,
-    WeatherUpdateEvent, WorldEvent, air_network_id, vanilla_dimension_range,
+    WeatherUpdateEvent, WorldEvent, WorldSpawnEvent, air_network_id, vanilla_dimension_range,
 };
 pub use self::game_mode::PlayerGameMode;
 use self::game_rules::{
@@ -564,9 +563,9 @@ world_packets! {
         }
         WorldEvent::WorldSpawn(WorldSpawnEvent {
             position: [
-                packet.block_position.x.0,
-                packet.block_position.y.0,
-                packet.block_position.z.0,
+                packet.spawn_block_pos.x.0,
+                packet.spawn_block_pos.y.0,
+                packet.spawn_block_pos.z.0,
             ],
         })
     },

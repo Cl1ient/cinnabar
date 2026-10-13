@@ -33,7 +33,7 @@ mod glyph_sheet;
 pub mod gui_item;
 mod hud;
 pub mod hud_extras;
-mod icon;
+pub mod icon;
 pub mod item;
 mod lang;
 mod light_registry;
@@ -204,7 +204,7 @@ pub use icon::{
     BLOCK_ITEM_FACE_SIDE, BLOCK_ITEM_SHEET_GRID, BLOCK_ITEM_SHEET_SIZE, ICON_CARRIER_MAGIC,
     ICON_CARRIER_VERSION, IconBlockModel, IconBlockSheet, IconEntry, IconSprite,
     MAX_ICON_BLOCK_SHEETS, MAX_ICON_CARRIER_BYTES, MAX_ICON_ENTRIES, MAX_ICON_KEY_BYTES,
-    MAX_ICON_SIDE, MAX_ICON_SPRITES, RuntimeIconCatalog, compose_block_item_sheet, dial_strip, DIAL_STRIPS, DialKind, DialStrip,
+    MAX_ICON_SIDE, MAX_ICON_SPRITES, RuntimeIconCatalog, compose_block_item_sheet,
     encode_icon_catalog, encode_icon_catalog_with_block_sheets, encode_icon_catalog_with_blocks,
 };
 pub use item::{

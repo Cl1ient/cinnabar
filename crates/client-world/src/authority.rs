@@ -51,8 +51,6 @@ mod particles;
 mod pickup_tests;
 #[cfg(test)]
 mod primitive_shape_tests;
-#[cfg(test)]
-mod world_spawn_tests;
 mod queues;
 mod sign_edit;
 #[cfg(test)]
@@ -60,6 +58,8 @@ mod synchronized_audio_tests;
 mod terrain;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod world_spawn_tests;
 pub use biomes::BiomeCommitReport;
 pub use block_events::BlockEventCue;
 pub use combat::{ActorCombatEvidence, ActorCombatKind};

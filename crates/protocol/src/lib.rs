@@ -242,12 +242,12 @@ pub use world::{
     MovementEffectKind, NETHER_DIMENSION_ID, OVERWORLD_CLOCK_ID, OVERWORLD_CLOCK_NAME,
     OpenSignEvent, PLAYER_NETWORK_OFFSET, PlayerGameMode, PlayerMovementCorrectionEvent,
     PublisherUpdateEvent, RespawnEvent, SEQUENTIAL_AIR_NETWORK_ID, STANDING_PLAYER_EYE_HEIGHT,
-    SetTimeEvent, SubChunkBatchEvent, SubChunkDiagnostic, SubChunkEntryEvent, WorldSpawnEvent,
+    SetTimeEvent, SubChunkBatchEvent, SubChunkDiagnostic, SubChunkEntryEvent,
     SubChunkReplyAdmissionEvent, SubChunkResult, SubChunkUnavailable, SyncedBlockUpdateEvent,
     WeatherChannel, WeatherUpdateEvent, WorldBootstrap, WorldClockDefinition, WorldClockState,
-    WorldClockUpdateEvent, WorldEnvironmentBootstrap, WorldEvent, WorldPacketError, WorldWireError,
-    air_network_id, block_name_sort_key, block_state_network_hash, into_world_event,
-    request_sub_chunk_column, vanilla_dimension_range,
+    WorldClockUpdateEvent, WorldEnvironmentBootstrap, WorldEvent, WorldPacketError,
+    WorldSpawnEvent, WorldWireError, air_network_id, block_name_sort_key, block_state_network_hash,
+    into_world_event, request_sub_chunk_column, vanilla_dimension_range,
 };
 
 mod movement_transport;

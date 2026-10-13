@@ -604,15 +604,17 @@ fn dropped_icon_key<'a>(
     identifier: &'a str,
     item: &client_world::CanonicalItemStack,
 ) -> (&'a str, u32) {
-    icons.dial_icon_key(identifier).unwrap_or_else(|| {
-        UiPresentationRuntime::item_icon_key(
-            identifier,
-            item.identity.metadata,
-            item.use_animation,
-            item.charged_projectile_role,
-            None,
-        )
-    })
+    icons
+        .dial_icon_key(identifier, item.identity.metadata)
+        .unwrap_or_else(|| {
+            UiPresentationRuntime::item_icon_key(
+                identifier,
+                item.identity.metadata,
+                item.use_animation,
+                item.charged_projectile_role,
+                None,
+            )
+        })
 }
 
 #[cfg(test)]

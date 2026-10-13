@@ -23,7 +23,7 @@ pub(super) fn stack_icon(
 ) -> Option<IconRef> {
     let identifier = item.identifier.as_deref()?;
     let (icon_identifier, variant) = presentation
-        .dial_icon_key(identifier)
+        .dial_icon_key(identifier, stack.metadata)
         .unwrap_or_else(|| {
             UiPresentationRuntime::item_icon_key(
                 identifier,

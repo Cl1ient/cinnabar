@@ -155,7 +155,7 @@ fn compile(
         }
         visual_sprites.push(sprite);
     }
-    for strip in &assets::DIAL_STRIPS {
+    for strip in &assets::icon::dial::DIAL_STRIPS {
         for (frame, sprite) in sprites::strip_frames(root, &compiled, strip.strip_path)?
             .into_iter()
             .enumerate()

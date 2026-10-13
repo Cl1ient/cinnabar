@@ -102,7 +102,7 @@ fn dial_strips_bake_every_frame_in_order_under_their_frames_identifier() {
     let catalog =
         RuntimeIconCatalog::decode(&compile_icon_assets(pack.path(), MANIFEST).unwrap().bytes)
             .unwrap();
-    let strip = assets::dial_strip("minecraft:compass").unwrap();
+    let strip = assets::icon::dial::dial_strip("minecraft:compass").unwrap();
     assert_eq!(catalog.frame_count(strip.frames_identifier), 3);
     for frame in 0..3u8 {
         assert_eq!(
@@ -113,5 +113,9 @@ fn dial_strips_bake_every_frame_in_order_under_their_frames_identifier() {
             &[frame * 60, 10, 10, 255].repeat(16 * 16)
         );
     }
-    assert_eq!(catalog.frame_count("minecraft:watch_atlas"), 0, "absent strips bake nothing");
+    assert_eq!(
+        catalog.frame_count("minecraft:watch_atlas"),
+        0,
+        "absent strips bake nothing"
+    );
 }

@@ -299,11 +299,8 @@ fn world_spawn_positions_decode_and_player_respawn_points_are_dropped() {
     assert!(matches!(
         decode(SpawnPositionType::Worldspawn),
         Ok(Some(WorldEvent::WorldSpawn(crate::WorldSpawnEvent {
-            position: [12, 64, -30]
+            position: [1, 2, 3]
         })))
     ));
-    assert!(matches!(
-        decode(SpawnPositionType::Playerrespawn),
-        Ok(None)
-    ));
+    assert!(matches!(decode(SpawnPositionType::Playerrespawn), Ok(None)));
 }

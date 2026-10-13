@@ -19,6 +19,24 @@ pub(crate) struct DialNeedles {
 }
 
 impl DialNeedles {
+    /// Runs one update per newly completed tick, including catch-up ticks in one frame.
+    /// A new or restarted movement clock takes one initial reading.
+    fn advance_ticks(
+        &mut self,
+        tick: u64,
+        mut update: impl FnMut(&mut Self) -> DialFrames,
+    ) -> Option<DialFrames> {
+        let count = self
+            .advanced_tick
+            .map_or(1, |previous| tick.checked_sub(previous).unwrap_or(1));
+        self.advanced_tick = Some(tick);
+        let mut frames = None;
+        for _ in 0..count {
+            frames = Some(update(self));
+        }
+        frames
+    }
+
     /// A uniform draw in `0..1` from a xorshift sequence.
     fn next_random(&mut self) -> f32 {
         let mut state = self.random.max(1);
@@ -93,9 +111,9 @@ pub(crate) fn advance_dials(
     let local = client_world.stream.as_ref().and_then(|stream| {
         let authority = stream.authority();
         let actor = authority.actor(stream.local_player_runtime_id())?;
-        let last_death = actor.last_death().map(|(position, dimension)| {
-            (position.map(|axis| axis.floor() as i32), dimension)
-        });
+        let last_death = actor
+            .last_death()
+            .map(|(position, dimension)| (position.map(|axis| axis.floor() as i32), dimension));
         Some((
             authority.current_dimension(),
             authority.world_spawn(),
@@ -111,20 +129,21 @@ pub(crate) fn advance_dials(
         return;
     };
     let tick = movement.completed_tick();
-    if needles.advanced_tick != Some(tick) {
-        needles.advanced_tick = Some(tick);
-        let celestial_angle = render_model::celestial_angle(crate::environment::visual_world_time(
-            *clock,
-            time.elapsed_secs_f64(),
-        ));
-        *frames = needles.advance(
+    let celestial_angle = render_model::celestial_angle(crate::environment::visual_world_time(
+        *clock,
+        time.elapsed_secs_f64(),
+    ));
+    if let Some(next) = needles.advance_ticks(tick, |needles| {
+        needles.advance(
             dimension,
             world_spawn,
             last_death,
             position,
             yaw,
             celestial_angle,
-        );
+        )
+    }) {
+        *frames = next;
     }
     publish(&mut presentation, equipment, *frames);
 }
@@ -146,13 +165,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn catchup_ticks_match_individual_ticks_and_repeated_frames_do_not_advance() {
+        let reading = |needles: &mut DialNeedles| {
+            needles.advance(1, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25)
+        };
+        let mut catchup = DialNeedles::default();
+        let mut individual = DialNeedles::default();
+        assert_eq!(
+            catchup.advance_ticks(0, reading),
+            individual.advance_ticks(0, reading)
+        );
+        individual.advance_ticks(1, reading);
+        let expected = individual.advance_ticks(2, reading);
+        assert_eq!(catchup.advance_ticks(2, reading), expected);
+        assert_eq!(catchup.compass, individual.compass);
+        assert_eq!(catchup.recovery_compass, individual.recovery_compass);
+        assert_eq!(catchup.clock, individual.clock);
+        assert_eq!(catchup.random, individual.random);
+        assert_eq!(catchup.advance_ticks(2, reading), None);
+        assert_eq!(catchup.random, individual.random);
+        assert!(
+            catchup.advance_ticks(0, reading).is_some(),
+            "a restarted clock takes a reading"
+        );
+    }
+
+    #[test]
     fn overworld_dials_read_spawn_and_sky_while_other_dimensions_spin() {
         let mut needles = DialNeedles::default();
         let mut overworld = needles.advance(0, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25);
         for _ in 0..200 {
             overworld = needles.advance(0, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25);
         }
-        assert_eq!(overworld.compass, Some(16), "settles on the spawn straight ahead");
+        assert_eq!(
+            overworld.compass,
+            Some(16),
+            "settles on the spawn straight ahead"
+        );
         assert_eq!(overworld.clock, Some(16), "settles on the sky reading");
 
         let mut nether = DialNeedles::default();
@@ -160,7 +209,9 @@ mod tests {
             .map(|_| nether.advance(1, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25))
             .collect();
         assert!(
-            readings.windows(2).any(|pair| pair[0].compass != pair[1].compass),
+            readings
+                .windows(2)
+                .any(|pair| pair[0].compass != pair[1].compass),
             "the compass wanders without a target"
         );
     }
@@ -180,7 +231,10 @@ mod tests {
             );
         }
         assert_eq!(frames.recovery_compass, Some(8), "a death to the east");
-        assert_ne!(frames.recovery_compass, frames.compass, "spawn lies elsewhere");
+        assert_ne!(
+            frames.recovery_compass, frames.compass,
+            "spawn lies elsewhere"
+        );
 
         let mut elsewhere = DialNeedles::default();
         let readings: Vec<_> = (0..40)

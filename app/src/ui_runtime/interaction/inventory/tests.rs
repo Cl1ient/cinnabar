@@ -28,8 +28,9 @@ fn presentation(
     .into_iter()
     .chain(
         [
-            ("crafting", "inventory_screen", "button.menu_exit"),
+            // The catalog carrier requires paths in sorted order.
             ("book", "book_screen", "button.book_exit"),
+            ("crafting", "inventory_screen", "button.menu_exit"),
         ]
         .map(|(namespace, root, action)| {
             let source = serde_json::json!({

@@ -248,7 +248,7 @@ fn authored_texture_replacement_retains_carrier_identity_and_detaches_without_ne
     let textures = ChunkTextureAssets::with_revision(runtime.clone(), 7);
     let page = runtime.texture_array().clone();
     let authored = Arc::new(
-        render::EnhancedTextureAssets::new(
+        render_scene::EnhancedTextureAssets::new(
             [page.clone(), page.clone()],
             [page.clone(), page.clone()],
             [page.clone(), page],

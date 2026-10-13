@@ -1,4 +1,5 @@
 use super::*;
+use assets::texture::TextureMip;
 
 /// Creates complete authored arrays for carrier replacement tests.
 fn authored(side: u32, layers: u32) -> Arc<EnhancedTextureAssets> {

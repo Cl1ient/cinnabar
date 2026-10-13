@@ -352,7 +352,7 @@ struct OpaqueOutput { @location(0) color:vec4<f32>, @builtin(frag_depth) depth:f
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("capture fixture completion");
     let samples: Vec<[f32; 4]> =
-        bytemuck::cast_slice(&readback.slice(..).get_mapped_range()).to_vec();
+        bytemuck::cast_slice(&readback.slice(..).get_mapped_range().unwrap()).to_vec();
     let sky_rgb = [64.0 / 255.0, 128.0 / 255.0, 192.0 / 255.0];
     let actor_rgb = [0.8, 0.1, 0.05];
     for (pixel, expected) in [

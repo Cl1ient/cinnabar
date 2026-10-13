@@ -214,7 +214,6 @@ pub(super) fn variant_definitions(name: &str, shadow: bool) -> &'static [&'stati
 pub(super) fn actor_descriptor(
     shadow: bool,
 ) -> bevy::render::render_resource::RenderPipelineDescriptor {
-    use bevy::render::view::ViewTarget;
     if shadow {
         crate::actor_render::actor_shadow_pipeline_descriptor(
             super::gpu::enhanced_caster_layout(),

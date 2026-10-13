@@ -1,7 +1,7 @@
 //! Exercises visibility against rasterized reverse-Z camera depth.
 
 use super::frame::EnhancedFrameGpu;
-use bevy::math::{Mat4, Vec3, Vec4};
+use bevy::math::{Vec3, Vec4};
 use bytemuck::Zeroable as _;
 use wgpu::util::DeviceExt as _;
 

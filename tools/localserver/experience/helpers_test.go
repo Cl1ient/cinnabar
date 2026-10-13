@@ -58,19 +58,23 @@ func TestMain(m *testing.M) {
 		budget = 10 * time.Minute
 	}
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), budget*3/4)
-	defer cancel()
+	ctx, cancel := helperBuildContext(context.Background(), budget*3/4)
 	scratch, err := os.MkdirTemp("", "experience-test-")
 	if err != nil {
+		cancel()
 		fmt.Fprintln(os.Stderr, "experience tests:", err)
 		os.Exit(1)
 	}
-	if err := buildHelpers(ctx, scratch); err != nil {
+	err = buildHelpers(ctx, scratch)
+	if err == nil {
+		err = ctx.Err()
+	}
+	cancel()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "experience tests:", err)
 		os.RemoveAll(scratch)
 		os.Exit(1)
 	}
-	cancel()
 	if err := flag.Set("test.timeout", (budget - time.Since(started)).String()); err != nil {
 		fmt.Fprintln(os.Stderr, "experience tests:", err)
 		os.RemoveAll(scratch)

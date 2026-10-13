@@ -5,12 +5,25 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
+
+// helperBuildContext cancels setup on timeout or interrupt; stop it after all builds are reaped.
+func helperBuildContext(parent context.Context, budget time.Duration) (context.Context, context.CancelFunc) {
+	interrupted, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := context.WithTimeout(interrupted, budget)
+	return ctx, func() {
+		cancel()
+		stop()
+	}
+}
 
 // helperBuildJobs resolves the configured Cargo budget, including CPU-relative values.
 func helperBuildJobs(cpus int, configured string) (int, error) {

@@ -1,11 +1,7 @@
 //! Item foil keeps the base material's alpha coverage through the production shader.
 
-use crate::{gpu_snapshot, shader_source};
+use crate::{actor_sidedness::actor_raster, gpu_snapshot, shader_source};
 use gpu_snapshot::{Draw, Gpu};
-use render as render_api;
-
-#[path = "support/actor_raster.rs"]
-mod actor_raster;
 
 #[test]
 fn item_glint_keeps_visible_low_alpha_texels_and_discards_empty_texels() {
@@ -27,7 +23,9 @@ fn item_glint_keeps_visible_low_alpha_texels_and_discards_empty_texels() {
         let glinting = actor_raster::raster_material(&gpu, &plane, foil, false, texels);
         let coverage = |pixels: &[u8]| {
             pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|pixel| pixel[3])
                 .collect::<Vec<_>>()
         };

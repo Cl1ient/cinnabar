@@ -90,8 +90,15 @@ fn resolve_presentation(
     collisions: Res<TestCollisions>,
     settings: Res<CameraSettingsAuthority>,
     mut view: ResMut<LocalViewPose>,
+    physics: Res<TestPhysics>,
 ) {
-    view.resolve_presentation(Some(&mut world.0), &*collisions, settings.perspective());
+    let position = physics.state.position;
+    view.resolve_presentation(
+        Some(&mut world.0),
+        &*collisions,
+        settings.perspective(),
+        Some([position.x as f32, position.y as f32, position.z as f32]),
+    );
 }
 
 /// Runs the camera owner with completed physics and collision observations.

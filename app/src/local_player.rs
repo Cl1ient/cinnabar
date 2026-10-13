@@ -25,8 +25,14 @@ pub(crate) fn resolve_local_player_presentation(
     collisions: Res<PhysicsCollisionRegistries>,
     settings: Res<CameraSettingsAuthority>,
     mut view: ResMut<LocalViewPose>,
+    physics: Res<LocalPhysicsController>,
 ) {
-    view.resolve_presentation(world.stream.as_mut(), &*collisions, settings.perspective());
+    view.resolve_presentation(
+        world.stream.as_mut(),
+        &*collisions,
+        settings.perspective(),
+        physics.render_feet_position(),
+    );
 }
 
 /// Borrows world and completed physics facts for presentation publication.

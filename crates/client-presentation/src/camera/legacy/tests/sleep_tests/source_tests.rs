@@ -196,3 +196,130 @@ fn retained_actor_attachment_origin_snaps_to_the_bed_and_back_without_actor_tick
         }
     }
 }
+
+#[test]
+fn actor_positions_preserve_awake_predictions_and_server_fallbacks_with_an_independent_view() {
+    let mut app = pose_app();
+    let camera_feet = Vec3::new(90.0, 100.0, 110.0);
+    app.world_mut()
+        .resource_mut::<LocalViewPose>()
+        .set_subject_position(camera_feet + Vec3::Y, camera_feet);
+    let predicted_eye = Some([10.0, 21.0, 30.0]);
+    let predicted_feet = Some([10.0, 20.0, 30.0]);
+    let (bed_eye, bed_feet) = crate::local_player::sleeping_subject_position(BED);
+    let mut avatar = crate::local_player::LocalAvatarPresentation::default();
+    avatar.begin_session(SESSION, 2);
+    let mut visibility = crate::local_player::LocalAvatarVisibilityCarrier::default();
+    for (sequence, sleeping) in [(2, false), (3, true), (4, false)] {
+        sleep_state(&mut app, sequence, sleeping, Some(BED));
+        app.world_mut()
+            .run_system_cached(resolve_presentation)
+            .unwrap();
+        let view = app.world().resource::<LocalViewPose>();
+        for eye in [predicted_eye, None] {
+            for feet in [predicted_feet, None] {
+                let positions = view.actor_positions(eye, feet);
+                assert_eq!(
+                    positions,
+                    if sleeping {
+                        (Some(bed_eye.to_array()), Some(bed_feet.to_array()))
+                    } else {
+                        (eye, feet)
+                    }
+                );
+                let server_eye = app
+                    .world()
+                    .resource::<TestWorld>()
+                    .0
+                    .resolved_server_position()
+                    .position;
+                let actor_eye = crate::actor_clock::authoritative_local_actor_eye(
+                    positions.0,
+                    Some(server_eye),
+                );
+                let actor_feet = positions.1.map(Vec3::from_array).unwrap_or_else(|| {
+                    Vec3::from_array(server_eye) - Vec3::Y * protocol::PLAYER_NETWORK_OFFSET
+                });
+                crate::actor_clock::publish_local_actor_visibility(
+                    &avatar,
+                    PerspectiveMode::ThirdPersonBack,
+                    None,
+                    actor_eye,
+                    Some(actor_feet),
+                    view.rotation(),
+                    &mut visibility,
+                );
+                let body = visibility.snapshot().unwrap();
+                assert!(body.visible());
+                assert_eq!(
+                    body.eye(),
+                    if sleeping {
+                        bed_eye
+                    } else {
+                        Vec3::from_array(eye.unwrap_or(server_eye))
+                    }
+                );
+                assert_eq!(
+                    body.feet(),
+                    if sleeping {
+                        bed_feet
+                    } else {
+                        feet.map(Vec3::from_array).unwrap_or_else(|| {
+                            Vec3::from_array(server_eye) - Vec3::Y * protocol::PLAYER_NETWORK_OFFSET
+                        })
+                    }
+                );
+            }
+        }
+        if !sleeping {
+            assert_eq!(view.feet_translation(), camera_feet);
+            assert_eq!(actor_feed(&app).position, [0.0; 3]);
+        }
+    }
+}
+
+#[test]
+fn waking_attachments_restore_physics_or_server_feet_instead_of_the_free_camera() {
+    for predicted_feet in [Some([10.0, 20.0, 30.0]), None] {
+        let mut app = pose_app();
+        let camera_feet = Vec3::new(90.0, 100.0, 110.0);
+        app.world_mut()
+            .resource_mut::<LocalViewPose>()
+            .set_subject_position(camera_feet + Vec3::Y, camera_feet);
+        sleep_state(&mut app, 2, true, Some(BED));
+        app.world_mut()
+            .run_system_cached(resolve_presentation)
+            .unwrap();
+        sleep_state(&mut app, 3, false, Some(BED));
+        let TestWorld(mut stream) = app.world_mut().remove_resource::<TestWorld>().unwrap();
+        let collisions = app.world().resource::<TestCollisions>();
+        let mut view = *app.world().resource::<LocalViewPose>();
+        let expected = predicted_feet.unwrap_or_else(|| {
+            let mut feet = stream.resolved_server_position().position;
+            feet[1] -= protocol::PLAYER_NETWORK_OFFSET;
+            feet
+        });
+        view.resolve_presentation(
+            Some(&mut stream),
+            collisions,
+            PerspectiveMode::ThirdPersonBack,
+            predicted_feet,
+        );
+        let actor = stream.authority().actor(2).unwrap();
+        assert_eq!(actor.position, expected);
+        for alpha in [0.0, 0.5, 1.0] {
+            let attachment =
+                crate::presentation::actors::actor_emitter_transform(actor, None, &[], None, alpha)
+                    .unwrap();
+            assert_eq!(attachment.position, expected);
+        }
+        view.set_subject_position(Vec3::splat(200.0), Vec3::splat(199.0));
+        view.resolve_presentation(
+            Some(&mut stream),
+            collisions,
+            PerspectiveMode::ThirdPersonBack,
+            predicted_feet,
+        );
+        assert_eq!(stream.authority().actor(2).unwrap().position, expected);
+    }
+}

@@ -17,6 +17,7 @@ impl LocalViewPose {
         mut stream: Option<&mut chunk_pipeline::WorldStream>,
         collisions: &dyn crate::observations::CollisionLookup,
         perspective: PerspectiveMode,
+        predicted_feet: Option<[f32; 3]>,
     ) {
         let sleeping = stream.as_deref_mut().and_then(|stream| {
             crate::actor_sampling::sample_actor_bed_rotations(stream, collisions);
@@ -32,8 +33,26 @@ impl LocalViewPose {
         if let Some(stream) = stream
             && (self.sleeping.is_some() || self.sleeping_changed)
         {
-            stream.set_local_actor_presentation_position(self.feet_translation().to_array());
+            let (_, feet) = self.actor_positions(None, predicted_feet);
+            let feet = feet.unwrap_or_else(|| {
+                let mut feet = stream.resolved_server_position().position;
+                feet[1] -= protocol::PLAYER_NETWORK_OFFSET;
+                feet
+            });
+            stream.set_local_actor_presentation_position(feet);
         }
+    }
+
+    /// Overrides actor positions only while sleeping, preserving awake predictions and fallbacks.
+    pub fn actor_positions(
+        &self,
+        predicted_eye: Option<[f32; 3]>,
+        predicted_feet: Option<[f32; 3]>,
+    ) -> (Option<[f32; 3]>, Option<[f32; 3]>) {
+        self.sleeping
+            .map_or((predicted_eye, predicted_feet), |pose| {
+                (Some(pose.eye.to_array()), Some(pose.feet.to_array()))
+            })
     }
 
     /// Reanchors on presentation transitions and keeps stable sleeping frames on the same history.

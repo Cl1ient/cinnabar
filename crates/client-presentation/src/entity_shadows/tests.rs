@@ -2,6 +2,7 @@ use super::*;
 use protocol::{
     ActorEvent, ActorKind, ActorMetadata, ActorMetadataValue, ActorSpawnEvent, WorldEvent,
 };
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 fn view() -> ActorCullView {
@@ -237,7 +238,7 @@ fn manifest_entry(
             ingress_sequence: 1,
             source_tick: None,
             movement_revision: 1,
-            pose_generation: 1,
+            pose_generation: PoseGeneration::new(1),
         },
         rig: render_model::EntityRigId(0),
         completed_tick: 1,

@@ -48,6 +48,10 @@ impl MenuRuntime {
         let language_pending = settings_options.language().is_some();
         let language_choices = SettingsOptions::language_choices(&layout.resource_root);
         let mut initial = MenuView::new(visible, display_name);
+        let minecraft_import = launcher_host::minecraft_import::startup(&layout.user_config_root);
+        if visible && minecraft_import.phase == launcher::minecraft_import::Phase::Offered {
+            initial.dialog = Some(launcher::menu::MenuDialog::MinecraftImport);
+        }
         #[cfg(feature = "developer-control")]
         let sign_in_fixture = super::sign_in_fixture::startup();
         #[cfg(feature = "developer-control")]
@@ -156,6 +160,8 @@ impl MenuRuntime {
             store_actions: Vec::new(),
             global_resource_actions: Vec::new(),
             global_resources: initial.global_resources,
+            minecraft_import: std::sync::Arc::new(minecraft_import),
+            minecraft_import_requests: Vec::new(),
             store_snapshot: initial.store,
             settings_options: std::sync::Arc::new(settings_options),
             storage: initial.storage,

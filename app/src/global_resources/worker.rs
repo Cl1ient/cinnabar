@@ -6,11 +6,17 @@ use resource_pack::{GlobalPackLibrary, LibraryError, ValidatedPackStack};
 use std::{path::PathBuf, sync::Arc};
 
 pub(super) enum Command {
+    MinecraftImport(launcher_host::minecraft_import::Request),
     Action { action: Action, revision: u64 },
     Import(PathBuf),
     Commit(Vec<resource_pack::ActivePack>),
 }
 pub(super) enum Event {
+    MinecraftImportStatus(String),
+    MinecraftImport(
+        launcher::minecraft_import::Snapshot,
+        Option<launcher_host::minecraft_import::UserState>,
+    ),
     Snapshot(Snapshot),
     Apply(Arc<ValidatedPackStack>, Vec<resource_pack::ActivePack>),
 }
@@ -21,19 +27,21 @@ pub(super) struct Worker {
     pub events: crossbeam_channel::Receiver<Event>,
     pub snapshot: Snapshot,
     pub awaiting: Option<(u64, Vec<resource_pack::ActivePack>)>,
+    pub minecraft_import_pending: bool,
 }
 
 impl Worker {
     /// Starts one worker, shared by initial imports, file drops and settings actions.
-    pub fn new(root: PathBuf, files: Vec<PathBuf>) -> Self {
+    pub fn new(root: PathBuf, config_root: PathBuf, files: Vec<PathBuf>) -> Self {
         let (commands, incoming) = crossbeam_channel::unbounded();
         let (outgoing, events) = crossbeam_channel::unbounded();
-        std::thread::spawn(move || run(root, files, incoming, outgoing));
+        std::thread::spawn(move || run(root, config_root, files, incoming, outgoing));
         Self {
             commands,
             events,
             snapshot: Snapshot::default(),
             awaiting: None,
+            minecraft_import_pending: false,
         }
     }
 
@@ -41,15 +49,28 @@ impl Worker {
     pub fn send(&mut self, command: Command) {
         let _ = self.commands.send(command);
     }
+
+    /// Reports whether the explicit import request reached the serial worker.
+    pub fn send_minecraft_import(
+        &mut self,
+        request: launcher_host::minecraft_import::Request,
+    ) -> bool {
+        self.commands
+            .send(Command::MinecraftImport(request))
+            .is_ok()
+    }
 }
 
 /// Opens storage and processes commands until the app drops the sender.
 fn run(
     root: PathBuf,
+    config_root: PathBuf,
     files: Vec<PathBuf>,
     incoming: crossbeam_channel::Receiver<Command>,
     outgoing: crossbeam_channel::Sender<Event>,
 ) {
+    let mut minecraft_import = launcher_host::minecraft_import::Service::new(config_root);
+    let mut import_commit_pending = false;
     let mut snapshot = Snapshot::default();
     let icon_root = root.join("icons");
     let mut library = match GlobalPackLibrary::open(root, engine_version()) {
@@ -82,7 +103,8 @@ fn run(
         }
         let changes_lists = matches!(
             &command,
-            Command::Import(_)
+            Command::MinecraftImport(_)
+                | Command::Import(_)
                 | Command::Action {
                     action: Action::Activate(_)
                         | Action::Deactivate(_)
@@ -98,7 +120,8 @@ fn run(
         }
         let performs_work = matches!(
             &command,
-            Command::Import(_)
+            Command::MinecraftImport(_)
+                | Command::Import(_)
                 | Command::Commit(_)
                 | Command::Action {
                     action: Action::Import | Action::Apply,
@@ -111,8 +134,30 @@ fn run(
             let _ = outgoing.send(Event::Snapshot(snapshot.clone()));
         }
         let result = match command {
+            Command::MinecraftImport(request) => {
+                let outcome = minecraft_import.act(request, &mut library);
+                if let Some(stack) = outcome.stack {
+                    import_commit_pending = true;
+                    let _ = outgoing.send(Event::Apply(stack, library.active().to_vec()));
+                }
+                clear_indexed(&mut snapshot);
+                super::icons::refresh(&library, &mut snapshot, &icon_root);
+                let _ = outgoing.send(Event::MinecraftImport(outcome.snapshot, outcome.state));
+                snapshot.message.clear();
+                Ok(())
+            }
             Command::Commit(selection) => {
                 let result = library.commit_selection(&selection);
+                if import_commit_pending && selection == library.active() {
+                    import_commit_pending = false;
+                    let status = match &result {
+                        Ok(()) => "Resource packs applied and saved.".to_owned(),
+                        Err(error) => {
+                            format!("Resource pack preferences could not be saved: {error}")
+                        }
+                    };
+                    let _ = outgoing.send(Event::MinecraftImportStatus(status));
+                }
                 snapshot.message.clear();
                 result
             }
@@ -329,7 +374,13 @@ mod tests {
             commands.send(command).unwrap();
         }
         drop(commands);
-        run(root, Vec::new(), incoming, outgoing);
+        run(
+            root.clone(),
+            root.join("config"),
+            Vec::new(),
+            incoming,
+            outgoing,
+        );
         events.try_iter().collect()
     }
 
@@ -511,7 +562,9 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 Event::Snapshot(snapshot) => Some(snapshot),
-                Event::Apply(..) => None,
+                Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => {
+                    None
+                }
             })
             .next_back()
             .unwrap();
@@ -546,7 +599,7 @@ mod tests {
         );
         for snapshot in events.iter().filter_map(|event| match event {
             Event::Snapshot(snapshot) => Some(snapshot),
-            Event::Apply(..) => None,
+            Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => None,
         }) {
             assert!(
                 !snapshot.busy,
@@ -579,7 +632,9 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 Event::Snapshot(snapshot) => Some(snapshot),
-                Event::Apply(..) => None,
+                Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => {
+                    None
+                }
             })
             .next_back()
             .unwrap();
@@ -597,7 +652,9 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 Event::Snapshot(snapshot) => Some(snapshot),
-                Event::Apply(..) => None,
+                Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => {
+                    None
+                }
             })
             .next_back()
             .unwrap();
@@ -629,7 +686,9 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 Event::Snapshot(snapshot) => Some(snapshot),
-                Event::Apply(..) => None,
+                Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => {
+                    None
+                }
             })
             .next_back()
             .unwrap();
@@ -684,7 +743,9 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 Event::Snapshot(snapshot) => Some(snapshot),
-                Event::Apply(..) => None,
+                Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => {
+                    None
+                }
             })
             .next_back()
             .unwrap();
@@ -713,7 +774,15 @@ mod tests {
         let (commands, incoming) = crossbeam_channel::unbounded();
         let (outgoing, events) = crossbeam_channel::unbounded();
         let worker_root = root.clone();
-        let worker = std::thread::spawn(move || run(worker_root, Vec::new(), incoming, outgoing));
+        let worker = std::thread::spawn(move || {
+            run(
+                worker_root.clone(),
+                worker_root.join("config"),
+                Vec::new(),
+                incoming,
+                outgoing,
+            )
+        });
         while !matches!(
             events
                 .recv_timeout(std::time::Duration::from_secs(5))
@@ -729,7 +798,9 @@ mod tests {
             .try_iter()
             .filter_map(|event| match event {
                 Event::Snapshot(snapshot) => Some(snapshot),
-                Event::Apply(..) => None,
+                Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => {
+                    None
+                }
             })
             .last()
             .unwrap();
@@ -755,12 +826,20 @@ mod tests {
                 .unwrap();
         }
         drop(commands);
-        run(root.clone(), Vec::new(), incoming, outgoing);
+        run(
+            root.clone(),
+            root.join("config"),
+            Vec::new(),
+            incoming,
+            outgoing,
+        );
         let last = events
             .try_iter()
             .filter_map(|event| match event {
                 Event::Snapshot(snapshot) => Some(snapshot),
-                Event::Apply(..) => None,
+                Event::Apply(..) | Event::MinecraftImport(..) | Event::MinecraftImportStatus(_) => {
+                    None
+                }
             })
             .last()
             .unwrap();

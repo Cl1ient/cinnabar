@@ -9,6 +9,74 @@ use zip::{ZipWriter, write::SimpleFileOptions};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
+fn directory_preview_reuses_validation_and_installs_the_previewed_bytes() {
+    let fixture = Fixture::new();
+    let directory = fixture.0.join("user-pack");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(
+        directory.join("manifest.json"),
+        manifest(120, "resources", ""),
+    )
+    .unwrap();
+    fs::write(directory.join("marker.txt"), b"previewed payload").unwrap();
+    let prepared = crate::prepare_import(&directory).unwrap();
+    assert_eq!(prepared.report.imported.len(), 1);
+    let mut library = fixture.library();
+    assert!(library.available().is_empty());
+    fs::write(directory.join("marker.txt"), b"changed after preview").unwrap();
+    let report = library.import_prepared(prepared).unwrap();
+    library.activate(report.imported[0].id).unwrap();
+    let view = LayeredPackView::new(library.apply().unwrap());
+    assert_eq!(
+        view.read("marker.txt").unwrap().as_ref(),
+        b"previewed payload"
+    );
+    assert_eq!(
+        fs::read(directory.join("marker.txt")).unwrap(),
+        b"changed after preview"
+    );
+}
+
+#[test]
+fn directory_preview_rejects_encrypted_or_malformed_manifests() {
+    let fixture = Fixture::new();
+    let directory = fixture.0.join("user-pack");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(directory.join("manifest.json"), b"broken").unwrap();
+    let malformed = crate::prepare_import(&directory).unwrap();
+    assert!(malformed.report.imported.is_empty());
+    assert_eq!(malformed.report.rejected.len(), 1);
+    fs::write(
+        directory.join("manifest.json"),
+        manifest(121, "resources", ""),
+    )
+    .unwrap();
+    fs::write(
+        directory.join("contents.json"),
+        br#"{"content":[{"path":"textures/test.png","key":"encrypted"}]}"#,
+    )
+    .unwrap();
+    let encrypted = crate::prepare_import(&directory).unwrap();
+    assert!(encrypted.report.imported.is_empty());
+    assert_eq!(encrypted.report.rejected.len(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn directory_import_rejects_links_without_opening_the_target() {
+    let fixture = Fixture::new();
+    let directory = fixture.0.join("user-pack");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(
+        directory.join("manifest.json"),
+        manifest(122, "resources", ""),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(fixture.0.join("private-file"), directory.join("link")).unwrap();
+    assert!(crate::prepare_import(&directory).is_err());
+}
+
+#[test]
 fn imports_legacy_manifest_names_with_formatting_codes() {
     let fixture = Fixture::new();
     let mut library = fixture.library();

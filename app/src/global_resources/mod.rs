@@ -9,8 +9,8 @@ use std::{path::PathBuf, sync::Arc};
 use {crate::runtime::network::PackReload, client_shell::menu::MenuRuntime};
 
 /// Creates the import worker; no filesystem or ZIP work runs on a frame.
-pub(crate) fn configure(app: &mut App, root: PathBuf, files: Vec<PathBuf>) {
-    app.insert_resource(worker::Worker::new(root, files))
+pub(crate) fn configure(app: &mut App, root: PathBuf, config_root: PathBuf, files: Vec<PathBuf>) {
+    app.insert_resource(worker::Worker::new(root, config_root, files))
         .init_resource::<PackReload>()
         .add_systems(
             Update,
@@ -33,6 +33,11 @@ fn drive(
     mut reload: ResMut<PackReload>,
     mut drops: MessageReader<bevy::window::FileDragAndDrop>,
 ) {
+    for request in menu.take_minecraft_import_requests() {
+        if !worker.send_minecraft_import(request) {
+            menu.fail_minecraft_import("The resource pack worker is unavailable. Restart the client after correcting the resource pack storage error.");
+        }
+    }
     for event in drops.read() {
         if let bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } = event {
             worker.send(worker::Command::Import(path_buf.clone()));
@@ -44,6 +49,14 @@ fn drive(
     }
     while let Ok(event) = worker.events.try_recv() {
         match event {
+            worker::Event::MinecraftImportStatus(message) => {
+                worker.minecraft_import_pending = false;
+                menu.publish_minecraft_import_pack_status(&message);
+            }
+            worker::Event::MinecraftImport(snapshot, state) => {
+                worker.minecraft_import_pending |= state.is_some();
+                menu.publish_minecraft_import(snapshot, state)
+            }
             worker::Event::Snapshot(snapshot) => worker.snapshot = snapshot,
             worker::Event::Apply(stack, selection) => {
                 let revision = reload.request_globals(stack);
@@ -56,6 +69,15 @@ fn drive(
     }) {
         let (_, selection) = worker.awaiting.take().expect("completed selection");
         worker.send(worker::Command::Commit(selection));
+    }
+    if worker.minecraft_import_pending {
+        if let Some(error) = reload.error() {
+            menu.publish_minecraft_import_pack_status(&format!(
+                "Resource packs could not be applied: {error}"
+            ));
+        } else if let Some(progress) = reload.progress() {
+            menu.publish_minecraft_import_pack_status(progress);
+        }
     }
     let mut snapshot = worker.snapshot.clone();
     if let Some(progress) = reload.progress() {

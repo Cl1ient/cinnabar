@@ -177,6 +177,37 @@ impl UiPresentationRuntime {
         Ok(Some(hits))
     }
 
+    /// Draws the import flow with its own scroll area and modal-only targets.
+    pub(super) fn append_oreui_minecraft_import(
+        &mut self,
+        view: &MenuView,
+        nodes: &mut Vec<UiNode>,
+        next: &mut u32,
+        metrics: TextMetrics,
+        size: [f32; 2],
+    ) -> Result<Vec<(MenuAction, UiRect)>, UiPresentationError> {
+        let mut frame = PaintFrame {
+            layouts: &mut self.layouts,
+            font: &self.font,
+            metrics,
+            solid_page: self.solid_texture_page,
+            safe_area: self.safe_area,
+            content: size,
+            translate: &|_| None,
+            language: [0; 3],
+            now: self.menu_seconds,
+            nodes,
+            next,
+            renderers: &mut [],
+        };
+        let (hits, scrolls) = self
+            .screens
+            .oreui
+            .paint_minecraft_import(view, size, &mut frame)?;
+        self.menu_scrolls.set_areas(scrolls);
+        Ok(hits)
+    }
+
     /// Draws the quit confirmation; its targets alone then count.
     pub(super) fn append_oreui_exit(
         &mut self,

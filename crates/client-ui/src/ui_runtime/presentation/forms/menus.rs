@@ -465,11 +465,17 @@ impl UiPresentationRuntime {
         };
         if matches!(
             dialog,
-            Some(launcher::menu::MenuDialog::Accounts | launcher::menu::MenuDialog::Exit)
+            Some(
+                launcher::menu::MenuDialog::Accounts
+                    | launcher::menu::MenuDialog::Exit
+                    | launcher::menu::MenuDialog::MinecraftImport
+            )
         ) {
             self.screens.menu_sounds = Vec::new();
             let rollback = (nodes.len(), *next);
-            let drawn = if dialog == Some(launcher::menu::MenuDialog::Exit) {
+            let drawn = if dialog == Some(launcher::menu::MenuDialog::MinecraftImport) {
+                self.append_oreui_minecraft_import(view, nodes, next, metrics, [width, height])
+            } else if dialog == Some(launcher::menu::MenuDialog::Exit) {
                 self.append_oreui_exit(view, nodes, next, metrics, [width, height], &|key| {
                     runtime.translation(key)
                 })

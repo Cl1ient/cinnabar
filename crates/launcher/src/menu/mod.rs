@@ -63,6 +63,7 @@ pub enum MenuServerTab {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MenuDialog {
+    MinecraftImport,
     Accounts,
     Exit,
     DeathQuit,
@@ -90,6 +91,7 @@ pub enum MenuField {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MenuAction {
+    MinecraftImport(crate::minecraft_import::Action),
     Update(updates::Action),
     OpenAccounts,
     AddAccount,

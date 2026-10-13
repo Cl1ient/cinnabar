@@ -265,6 +265,12 @@ camera-listener coverage. This ownership change adds no new parity evidence.
 
 ## P5.8-SETTINGS
 
+Minecraft import adds explicit consent, per-profile preview, schema-checked option
+mapping, server merging, validated pack copying and a restore snapshot. Full option
+and control-layout coverage, live checks of every supported data location and
+Android scoped-storage import remain incomplete. This leaves the settings parity
+and acceptance gates open.
+
 | Field | Evidence |
 |---|---|
 | Owning plan/task | `launcher` settings models; `launcher-host` storage and persistence; `app` runtime adapters. Persisted **Bedrock Skybox Vertical Offset** Video option; broader settings completion remains open. |

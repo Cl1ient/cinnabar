@@ -127,6 +127,10 @@ pub struct GlobalPackLibrary {
 }
 
 impl GlobalPackLibrary {
+    /// The installed engine version used for pack compatibility checks and import previews.
+    pub fn engine_version(&self) -> [u32; 3] {
+        self.engine_version
+    }
     /// Opens install-owned pack storage without touching the base carriers.
     pub fn open(root: impl Into<PathBuf>, engine_version: [u32; 3]) -> Result<Self, LibraryError> {
         let root = root.into();
@@ -184,7 +188,20 @@ impl GlobalPackLibrary {
             return Err(LibraryError::UnsupportedExtension);
         }
         let bytes = read_bounded(path, MAX_ARCHIVE_BYTES)?;
-        let (mut report, archives) = crate::import::read_import(bytes, path)?;
+        let (report, archives) = crate::import::read_import(bytes, path)?;
+        self.import_prepared(crate::PreparedImport { report, archives })
+    }
+
+    /// Installs exactly the bytes validated during preview, using ordinary catalog limits.
+    pub fn import_prepared(
+        &mut self,
+        prepared: crate::PreparedImport,
+    ) -> Result<ImportReport, LibraryError> {
+        let crate::PreparedImport {
+            mut report,
+            archives,
+        } = prepared;
+        report.imported.clear();
         let mut candidate = self.catalog.clone();
         let mut accepted = Vec::new();
         for (mut metadata, bytes) in archives {
@@ -229,6 +246,31 @@ impl GlobalPackLibrary {
             }
         }
         Ok(report)
+    }
+
+    /// Stages an installed selection and returns its validated stack without deleting archives.
+    pub fn stage_selection(
+        &mut self,
+        selection: &[ActivePack],
+    ) -> Result<Arc<ValidatedPackStack>, LibraryError> {
+        if selection.len() > MAX_PACKS {
+            return Err(AdmissionError::TooManyPacks.into());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for active in selection {
+            if !seen.insert(active.id) {
+                return Err(AdmissionError::DuplicatePack.into());
+            }
+            self.metadata(active).ok_or(LibraryError::UnknownPack)?;
+        }
+        let old = std::mem::replace(&mut self.active, selection.to_vec());
+        match self.preview() {
+            Ok(stack) => Ok(stack),
+            Err(error) => {
+                self.active = old;
+                Err(error)
+            }
+        }
     }
 
     /// Reads one installed pack's own icon without activating it or consulting overlays.
@@ -397,7 +439,7 @@ fn encode_catalog(catalog: &Catalog) -> Result<Vec<u8>, LibraryError> {
 }
 
 /// Caps reads before allocating, including files that grow during the read.
-fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, LibraryError> {
+pub(crate) fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>, LibraryError> {
     let file = fs::File::open(path)?;
     if file.metadata()?.len() > limit as u64 {
         return Err(AdmissionError::ArchiveTooLarge.into());

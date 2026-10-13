@@ -1,0 +1,289 @@
+//! Bounded user-data reads and preparation; these run only after explicit consent.
+
+use super::{UserState, locations::Source};
+use anyhow::{Context, Result};
+use launcher::minecraft_import::{options, servers};
+use resource_pack::{GlobalPackLibrary, ParsedGlobalSelection, PreparedImport};
+use std::{
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+};
+
+const MAX_TEXT_BYTES: u64 = 64 * 1024;
+const MAX_PACK_CANDIDATES: usize = 256;
+
+/// Exact, validated payloads kept on the worker until the user confirms.
+#[derive(Debug)]
+pub(super) struct Preview {
+    pub catalog: Vec<resource_pack::InstalledPack>,
+    pub original_active: Vec<resource_pack::ActivePack>,
+    pub options: options::ParsedOptions,
+    pub servers: servers::ParsedServers,
+    pub packs: Vec<PreparedImport>,
+    pub selection: Vec<resource_pack::ActivePack>,
+    pub skipped: usize,
+    pub body: String,
+}
+
+/// Reads just the allowlisted files and user pack directory for one selected profile.
+pub(super) fn prepare(source: &Source, state: &UserState, library: &GlobalPackLibrary) -> Preview {
+    let mut skipped = 0;
+    let mut options = read_optional(&source.root, "options.txt", &mut skipped)
+        .map_or_else(options::ParsedOptions::default, |bytes| {
+            options::parse(&bytes)
+        });
+    let mut servers = read_optional(&source.root, "external_servers.txt", &mut skipped)
+        .map_or_else(servers::ParsedServers::default, |bytes| {
+            servers::parse(&bytes, crate::servers::MAX_SAVED_SERVERS)
+        });
+    let selection = read_optional(&source.root, "global_resource_packs.json", &mut skipped)
+        .map_or_else(ParsedGlobalSelection::default, |bytes| {
+            resource_pack::parse_global_selection(&bytes)
+        });
+    let mut packs = Vec::new();
+    let mut archive_bytes = 0usize;
+    let mut ids = library
+        .available()
+        .iter()
+        .map(|pack| pack.id)
+        .collect::<std::collections::HashSet<_>>();
+    for root in std::iter::once(&source.root).chain(source.shared.iter()) {
+        let paths = match pack_paths(root) {
+            Ok(paths) => paths,
+            Err(error) => {
+                tracing::warn!("Minecraft user packs skipped: {error}");
+                skipped += 1;
+                continue;
+            }
+        };
+        for path in paths {
+            match resource_pack::prepare_import(&path) {
+                Ok(pack) => {
+                    skipped += pack.report.skipped_behavior + pack.report.rejected.len();
+                    let count = pack.report.imported.len();
+                    if count == 0 {
+                        continue;
+                    }
+                    let mut candidate_ids = ids.clone();
+                    if pack
+                        .report
+                        .imported
+                        .iter()
+                        .any(|pack| !candidate_ids.insert(pack.id))
+                        || archive_bytes.saturating_add(pack.archive_bytes())
+                            > resource_pack::MAX_STACK_ARCHIVE_BYTES
+                    {
+                        skipped += count;
+                        continue;
+                    }
+                    ids.extend(pack.report.imported.iter().map(|pack| pack.id));
+                    archive_bytes += pack.archive_bytes();
+                    packs.push(pack);
+                }
+                Err(error) => {
+                    tracing::warn!("Minecraft user pack rejected: {error}");
+                    skipped += 1;
+                }
+            }
+        }
+    }
+    let (merged, duplicates) = merge_servers(&state.servers, &servers.entries);
+    skipped += options.skipped + servers.skipped + selection.skipped + duplicates;
+    let mut checked = state.settings.clone();
+    let binding_skips = options.apply(&mut checked);
+    skipped += binding_skips;
+    if binding_skips != 0 {
+        options.bindings.clear();
+    }
+    let option_names = options.names();
+    let new_servers = &merged[state.servers.len()..];
+    servers.entries = new_servers.to_vec();
+    let pack_metadata = packs
+        .iter()
+        .flat_map(|pack| &pack.report.imported)
+        .collect::<Vec<_>>();
+    let available = library
+        .available()
+        .iter()
+        .cloned()
+        .chain(pack_metadata.iter().map(|pack| (**pack).clone()))
+        .collect::<Vec<_>>();
+    let (ordered, selection_skips) = resource_pack::merge_global_selection(
+        library.active(),
+        &available,
+        &selection.entries,
+        library.engine_version(),
+    );
+    skipped += selection_skips;
+    let active_names = ordered
+        .iter()
+        .filter_map(|active| {
+            available
+                .iter()
+                .find(|pack| pack.id == active.id)
+                .map(|pack| pack.name.as_str())
+        })
+        .collect::<Vec<_>>();
+    let body = format!(
+        "{}\n\nSettings ({})\n{}\n\nNew servers ({})\n{}\n\nResource packs ({})\n{}\n\nActive packs, highest priority first ({})\n{}\n\nSkipped: {skipped}. Unsupported or malformed settings, duplicate servers, existing packs, unavailable active packs and rejected or over-limit data are kept out of the import.\n\nExisting active packs follow the imported order. A backup lets you revert settings, servers and pack order. Copied packs remain installed.",
+        source.label,
+        option_names.len(),
+        names(option_names.iter().map(String::as_str)),
+        new_servers.len(),
+        names(new_servers.iter().map(|server| server.name.as_str())),
+        pack_metadata.len(),
+        names(pack_metadata.iter().map(|pack| pack.name.as_str())),
+        active_names.len(),
+        names(active_names.into_iter())
+    );
+    Preview {
+        catalog: library.available().to_vec(),
+        original_active: library.active().to_vec(),
+        options,
+        servers,
+        packs,
+        selection: ordered,
+        skipped,
+        body,
+    }
+}
+
+/// Merges endpoints while also enforcing the saved file's serialized byte ceiling.
+pub(super) fn merge_servers(
+    existing: &[launcher::menu::SavedServer],
+    incoming: &[launcher::menu::SavedServer],
+) -> (Vec<launcher::menu::SavedServer>, usize) {
+    let mut merged = existing.to_vec();
+    let mut skipped = 0;
+    for server in incoming {
+        if servers::merge(
+            &mut merged,
+            std::slice::from_ref(server),
+            crate::servers::MAX_SAVED_SERVERS,
+        ) != 0
+        {
+            skipped += 1;
+            continue;
+        }
+        if serde_json::to_vec_pretty(&merged).map_or(true, |bytes| {
+            bytes.len() > crate::servers::MAX_SAVED_SERVER_FILE_BYTES
+        }) {
+            merged.pop();
+            skipped += 1;
+        }
+    }
+    (merged, skipped)
+}
+
+/// Limits each name and the displayed list while retaining counts for the whole preview.
+fn names<'a>(names: impl Iterator<Item = &'a str>) -> String {
+    let names = names
+        .map(|name| {
+            name.chars()
+                .filter(|c| !c.is_control())
+                .take(80)
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        return "None".to_owned();
+    }
+    let mut text = names
+        .iter()
+        .take(64)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    if names.len() > 64 {
+        text.push_str(&format!("; and {} more", names.len() - 64));
+    }
+    text
+}
+
+/// Tries only the two supported user-data locations for an allowlisted filename.
+fn read_optional(root: &Path, name: &str, skipped: &mut usize) -> Option<Vec<u8>> {
+    for relative in [PathBuf::from("minecraftpe").join(name), PathBuf::from(name)] {
+        match read(root, &relative) {
+            Ok(bytes) => return Some(bytes),
+            Err(error)
+                if error
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) => {}
+            Err(error) => {
+                tracing::warn!("Minecraft user file skipped: {name}: {error}");
+                *skipped += 1;
+                return None;
+            }
+        }
+    }
+    None
+}
+
+/// Rejects links in every component beneath the selected root before opening a file.
+fn safe_path(root: &Path, relative: &Path) -> Result<PathBuf> {
+    let mut path = root.to_owned();
+    anyhow::ensure!(
+        !fs::symlink_metadata(&path)?.file_type().is_symlink(),
+        "Linked user-data roots are unsupported"
+    );
+    for component in relative.components() {
+        anyhow::ensure!(
+            matches!(component, std::path::Component::Normal(_)),
+            "Invalid user-data path"
+        );
+        path.push(component);
+        anyhow::ensure!(
+            !fs::symlink_metadata(&path)?.file_type().is_symlink(),
+            "Linked user-data files are unsupported"
+        );
+    }
+    Ok(path)
+}
+
+/// Reads no more than the text ceiling plus one byte, rejecting non-regular files.
+fn read(root: &Path, relative: &Path) -> Result<Vec<u8>> {
+    let path = safe_path(root, relative)?;
+    anyhow::ensure!(
+        fs::metadata(&path)?.is_file(),
+        "User-data source is not a regular file"
+    );
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(MAX_TEXT_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    anyhow::ensure!(
+        bytes.len() as u64 <= MAX_TEXT_BYTES,
+        "User-data file exceeds its size limit"
+    );
+    Ok(bytes)
+}
+
+/// Lists ordinary children of resource_packs, never visiting cache or game asset roots.
+fn pack_paths(root: &Path) -> Result<Vec<PathBuf>> {
+    let directory = match safe_path(root, Path::new("resource_packs")) {
+        Ok(path) => path,
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            return Ok(Vec::new());
+        }
+        Err(error) => return Err(error),
+    };
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(directory)
+        .context("List user-installed resource packs")?
+        .take(MAX_PACK_CANDIDATES + 1)
+    {
+        let entry = entry?;
+        paths.push(entry.path());
+    }
+    anyhow::ensure!(
+        paths.len() <= MAX_PACK_CANDIDATES,
+        "User pack folder exceeds the candidate limit"
+    );
+    paths.sort();
+    Ok(paths)
+}

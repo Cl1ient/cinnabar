@@ -311,14 +311,6 @@ pub(crate) fn read_settings(path: &Path, grants: &ModGrants) -> Result<String> {
     Ok(String::from_utf8(bytes)?)
 }
 
-/// The fuel-metered component engine every local mod compiles with.
-fn engine() -> Result<Engine> {
-    let mut config = Config::new();
-    config.wasm_component_model(true).consume_fuel(true);
-    config.max_wasm_stack(256 * 1024);
-    Engine::new(&config)
-}
-
 /// Bounds file reads even if a writer grows the file between metadata and read.
 pub(crate) fn read_component(path: &Path) -> Result<Vec<u8>> {
     local_files::read(path, MAX_COMPONENT_BYTES)

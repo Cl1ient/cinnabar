@@ -14,7 +14,7 @@ use mod_host::ModHost;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -158,7 +158,11 @@ fn perform(
             let request_id = request();
             forget(registration, &path, request_id.clone())?;
             retire(&request_id)?;
-            remove(&path).map(|()| String::new())
+            let companion = settings_companion(&path);
+            let shared = registered(registration).is_some_and(|current| {
+                current.component != path && settings_companion(&current.component) == companion
+            });
+            remove(&path, (!shared).then_some(companion.as_path())).map(|()| String::new())
         }
         Action::ReadMore(_) | Action::ToggleActive | Action::ToggleAvailable => Ok(String::new()),
     }
@@ -174,12 +178,7 @@ fn import(mods: &Path, source: &Path) -> Result<String, String> {
     if name.starts_with('.') {
         return Err("Mod file names must not start with a dot.".into());
     }
-    let mut bytes = Vec::new();
-    fs::File::open(source)
-        .and_then(|file| {
-            file.take(mod_host::MAX_COMPONENT_BYTES as u64 + 1)
-                .read_to_end(&mut bytes)
-        })
+    let bytes = mod_host::local_files::read(source, mod_host::MAX_COMPONENT_BYTES)
         .map_err(|error| format!("Could not read {name}: {error}"))?;
     ModHost::validate_component(&bytes)
         .map_err(|error| format!("{name} is not a valid mod: {error:#}"))?;
@@ -207,10 +206,15 @@ fn publish_component(mods: &Path, name: &str, bytes: &[u8]) -> Result<(), String
     })
 }
 
-/// Deletes a component and its companion after the caller has drained host retirement.
-fn remove(path: &Path) -> Result<(), String> {
-    for file in [path.to_owned(), path.with_extension("settings.json")] {
-        match fs::remove_file(&file) {
+/// The companion entry used for this component's persisted settings.
+fn settings_companion(path: &Path) -> PathBuf {
+    path.with_extension("settings.json")
+}
+
+/// Deletes a component and an exclusively owned companion after host retirement has drained.
+fn remove(path: &Path, companion: Option<&Path>) -> Result<(), String> {
+    for file in std::iter::once(path).chain(companion) {
+        match fs::remove_file(file) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound && file != path => {}
             Err(error) => return Err(format!("Could not remove the mod: {error}")),
@@ -278,6 +282,41 @@ fn scan(mods: &Path, registration: &Path, message: String) -> Library {
 mod tests {
     use super::*;
 
+    /// Import reads share the host's source ceiling and require regular files.
+    #[test]
+    fn import_rejects_nonregular_and_oversized_sources() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let source = directory.path().join("large.wasm");
+        fs::File::create(&source)
+            .unwrap()
+            .set_len(mod_host::MAX_COMPONENT_BYTES as u64 + 1)
+            .unwrap();
+        assert!(import(&mods, &source).unwrap_err().contains("byte limit"));
+        fs::remove_file(&source).unwrap();
+        fs::create_dir(&source).unwrap();
+        assert!(
+            import(&mods, &source)
+                .unwrap_err()
+                .contains("Could not read")
+        );
+        assert!(!mods.exists());
+    }
+
+    /// Linked source components cannot bypass the host's admission rules through Import.
+    #[cfg(unix)]
+    #[test]
+    fn import_rejects_a_linked_source_component() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let source = directory.path().join("source.wasm");
+        let link = directory.path().join("linked.wasm");
+        fs::write(&source, component("")).unwrap();
+        std::os::unix::fs::symlink(&source, &link).unwrap();
+        assert!(import(&mods, &link).unwrap_err().contains("Could not read"));
+        assert!(!mods.exists());
+    }
+
     /// Hidden filenames are rejected before any component is installed or reported as imported.
     #[test]
     fn import_rejects_hidden_component_names() {
@@ -299,7 +338,7 @@ mod tests {
         let registration = directory.path().join("config");
         fs::create_dir_all(&mods).unwrap();
         let path = mods.join("zoom.wasm");
-        let companion = path.with_extension("settings.json");
+        let companion = settings_companion(&path);
         fs::write(&path, b"component").unwrap();
         fs::write(&companion, b"old preferences").unwrap();
         select(&registration, &path, true, "selected".into()).unwrap();
@@ -342,7 +381,7 @@ mod tests {
         let registration = directory.path().join("config");
         fs::create_dir_all(&mods).unwrap();
         let path = mods.join("zoom.wasm");
-        let companion = path.with_extension("settings.json");
+        let companion = settings_companion(&path);
         fs::write(&path, b"component").unwrap();
         fs::write(&companion, b"preferences").unwrap();
         let id = installed(&mods)[0].0.id;
@@ -358,6 +397,36 @@ mod tests {
         assert_eq!(error, "host stopped");
         assert_eq!(fs::read(&path).unwrap(), b"component");
         assert_eq!(fs::read(&companion).unwrap(), b"preferences");
+    }
+
+    /// Components sharing a settings anchor cannot delete the selected mod's preferences.
+    #[test]
+    fn removal_preserves_a_companion_shared_with_the_selected_component() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&mods).unwrap();
+        let removed = mods.join("zoom.wasm");
+        let selected = mods.join("zoom.wat");
+        let companion = settings_companion(&removed);
+        fs::write(&removed, b"removed component").unwrap();
+        fs::write(&selected, b"selected component").unwrap();
+        fs::write(&companion, b"selected preferences").unwrap();
+        select(&registration, &selected, true, "selected".into()).unwrap();
+        let id = installed(&mods)[0].0.id;
+        perform(
+            Action::Remove(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+        assert!(!removed.exists());
+        assert_eq!(fs::read(&selected).unwrap(), b"selected component");
+        assert_eq!(fs::read(&companion).unwrap(), b"selected preferences");
+        assert!(registered(&registration).unwrap().enabled);
     }
 
     /// Builds a minimal mod with a distinct frame body for import tests.

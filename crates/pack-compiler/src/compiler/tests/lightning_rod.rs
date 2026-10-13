@@ -194,7 +194,7 @@ fn lightning_rod_states_keep_complete_geometry_after_roundtrip() {
             (
                 &quads[..shaft_faces],
                 (112, 144),
-                if direction % 2 == 0 {
+                if direction.is_multiple_of(2) {
                     (64, 256)
                 } else {
                     (0, 192)
@@ -203,7 +203,7 @@ fn lightning_rod_states_keep_complete_geometry_after_roundtrip() {
             (
                 &quads[shaft_faces..],
                 (96, 160),
-                if direction % 2 == 0 {
+                if direction.is_multiple_of(2) {
                     (0, 64)
                 } else {
                     (192, 256)

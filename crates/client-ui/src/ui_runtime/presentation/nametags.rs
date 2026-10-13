@@ -146,10 +146,14 @@ fn actor_flag(actor: &ActorSnapshot, bit: u32) -> bool {
             if flags & (1_u64 << bit) != 0)
 }
 
+/// The tag's height above the feet: the box height plus the head clearance, both following the
+/// actor's size as the Scale metadata sets it. A published zero height counts, so a text host
+/// with an empty box shows its tag one clearance up, and one at near-zero scale at its feet.
+/// Java player pose offsets are applied after that translation.
 fn tag_height(actor: &ActorSnapshot) -> f32 {
     let height = match actor.metadata.get(&METADATA_HEIGHT) {
-        Some(ActorMetadataValue::Float(height)) if height.is_finite() && *height > 0.0 => *height,
-        _ => DEFAULT_HEIGHT * actor.render_scale(),
+        Some(ActorMetadataValue::Float(height)) if height.is_finite() && *height >= 0.0 => *height,
+        _ => DEFAULT_HEIGHT,
     };
     let offset = if !matches!(actor.kind, ActorKind::Player { .. }) {
         0.0
@@ -160,7 +164,7 @@ fn tag_height(actor: &ActorSnapshot) -> f32 {
     } else {
         0.0
     };
-    height + HEAD_CLEARANCE - offset
+    (height + HEAD_CLEARANCE) * actor.render_scale() - offset
 }
 
 fn tag_world_position(actor: &ActorSnapshot, partial_tick: f32) -> Option<Vec3> {

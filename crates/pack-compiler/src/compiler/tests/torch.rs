@@ -42,7 +42,7 @@ fn torches_compile_flat_lit_undimmed_templates() {
     let directory = tempfile::tempdir().unwrap();
     write(
         directory.path().join("blocks.json"),
-        &serde_json::Value::Object(blocks).to_string(),
+        serde_json::Value::Object(blocks).to_string(),
     );
     write(
         directory.path().join("textures/terrain_texture.json"),

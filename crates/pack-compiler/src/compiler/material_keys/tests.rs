@@ -1,5 +1,159 @@
 use super::*;
 
+/// Compiles original shared pixels and records the destinations from real material descriptors.
+fn compile_keys(
+    pack: &PackSources,
+    descriptors: BTreeMap<Descriptor, Box<str>>,
+) -> (MaterialKeys, BTreeMap<Descriptor, u32>) {
+    use crate::animation::{AnimationLimits, DecodedImage, compile_animation_plan};
+    let paths = descriptors
+        .keys()
+        .map(|descriptor| descriptor.path.clone())
+        .collect::<BTreeSet<_>>();
+    let images = paths
+        .into_iter()
+        .map(|source_path| DecodedImage {
+            source_path,
+            width: assets::TILE_SIZE,
+            height: assets::TILE_SIZE,
+            rgba8: [31, 47, 59, 255].repeat((assets::TILE_SIZE * assets::TILE_SIZE) as usize),
+        })
+        .collect::<Vec<_>>();
+    let plan = compile_animation_plan(
+        pack,
+        &images,
+        AnimationLimits {
+            max_layers_per_page: 32,
+            max_pages: 1,
+        },
+    )
+    .unwrap();
+    let (materials, ids) =
+        super::super::compile_materials(&descriptors, &plan, &BTreeSet::new()).unwrap();
+    let keys = build(pack, &ids, &materials, &[]);
+    assert_eq!(
+        MaterialKeys::from_json(&keys.to_json(materials.len() as u32), materials.len()),
+        Some(keys.clone())
+    );
+    (keys, ids)
+}
+
+#[test]
+fn honey_fronts_and_cake_inner_faces_keep_their_compiled_atlas_indices() {
+    use serde_json::json;
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("textures")).unwrap();
+    let blocks = json!({
+        "bee_nest":{"textures":{"west":"bee_nest_side","east":"bee_nest_side","down":"bee_nest_bottom","up":"bee_nest_top","north":"bee_nest_side","south":"bee_nest_front"}},
+        "beehive":{"textures":{"west":"beehive_side","east":"beehive_side","down":"beehive_top","up":"beehive_top","north":"beehive_side","south":"beehive_front"}},
+        "cake":{"textures":{"west":"cake_west","east":"cake_side","down":"cake_bottom","up":"cake_top","north":"cake_side","south":"cake_side"}}
+    });
+    let mut data = serde_json::Map::new();
+    for key in [
+        "bee_nest_bottom",
+        "bee_nest_side",
+        "bee_nest_top",
+        "beehive_side",
+        "beehive_top",
+    ] {
+        data.insert(
+            key.into(),
+            json!({"textures":format!("textures/blocks/{key}")}),
+        );
+    }
+    for key in ["bee_nest_front", "beehive_front"] {
+        data.insert(key.into(), json!({"textures":[format!("textures/blocks/{key}"),format!("textures/blocks/{key}_honey")]}));
+    }
+    for key in ["cake_bottom", "cake_side", "cake_top"] {
+        let path = format!("textures/blocks/{key}");
+        data.insert(key.into(), json!({"textures":[path,path]}));
+    }
+    data.insert(
+        "cake_west".into(),
+        json!({"textures":["textures/blocks/cake_side","textures/blocks/cake_inner"]}),
+    );
+    std::fs::write(root.path().join("blocks.json"), blocks.to_string()).unwrap();
+    std::fs::write(
+        root.path().join("textures/terrain_texture.json"),
+        json!({"texture_data":data}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(root.path().join("textures/flipbook_textures.json"), "[]").unwrap();
+    let pack = crate::read_pack(root.path()).unwrap();
+    let descriptors = super::super::visuals::bee_housing::bee_housing_material_descriptors(&pack)
+        .unwrap()
+        .into_iter()
+        .chain(super::super::visuals::cake::cake_material_descriptors(&pack).unwrap())
+        .collect();
+    let (keys, ids) = compile_keys(&pack, descriptors);
+    for key in ["bee_nest_front", "beehive_front"] {
+        let pair = pack.terrain.get_exact_pair_plain(key).unwrap();
+        let destinations = keys.materials(key);
+        assert_eq!(destinations.len(), pair.len());
+        for (index, path) in pair.into_iter().enumerate() {
+            let (descriptor, &id) = ids
+                .iter()
+                .find(|(descriptor, _)| {
+                    descriptor.texture_key.as_ref() == key && descriptor.path.as_ref() == path
+                })
+                .unwrap();
+            assert_eq!(descriptor.state_variant, index as u32);
+            assert_eq!(keys.flipbook_selector(id), (index as u32, 0));
+            assert!(destinations.contains(&id));
+            assert_eq!(
+                destinations
+                    .iter()
+                    .filter(|&&candidate| keys.flipbook_selector(candidate) == (index as u32, 0))
+                    .count(),
+                1
+            );
+        }
+    }
+    let cake = keys.materials("cake_west");
+    assert_eq!(cake.len(), 1);
+    assert_eq!(keys.flipbook_selector(cake[0]), (1, 0));
+}
+
+#[test]
+fn snowy_grass_keeps_the_source_catalog_key_and_clamped_index() {
+    use serde_json::json;
+    for native in [true, false] {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("textures")).unwrap();
+        let ordinary = json!({"path":"textures/grass","overlay_color":"#ffffff"});
+        let snow = assets::SNOWED_GRASS_SIDE_TEXTURE;
+        let grass = if native {
+            json!([ordinary, snow])
+        } else {
+            ordinary
+        };
+        let terrain = json!({"texture_data":{
+            "grass_side":{"textures":grass},
+            "mycelium_side":{"textures":["textures/soil",snow]}
+        }});
+        std::fs::write(root.path().join("blocks.json"), "{}").unwrap();
+        std::fs::write(
+            root.path().join("textures/terrain_texture.json"),
+            terrain.to_string(),
+        )
+        .unwrap();
+        std::fs::write(root.path().join("textures/flipbook_textures.json"), "[]").unwrap();
+        let pack = crate::read_pack(root.path()).unwrap();
+        let (descriptor, key) =
+            super::super::visuals::snowy_grass::material_descriptor(&pack).unwrap();
+        let expected_key = if native {
+            "grass_side"
+        } else {
+            "mycelium_side"
+        };
+        assert_eq!(key.as_ref(), expected_key);
+        let (keys, ids) = compile_keys(&pack, BTreeMap::from([(descriptor.clone(), key)]));
+        let id = ids[&descriptor];
+        assert_eq!(keys.materials(expected_key), [id]);
+        assert_eq!(keys.flipbook_selector(id), (1, 0));
+    }
+}
+
 /// Reads a small synthetic source pack without compiling any image pixels.
 fn pack() -> PackSources {
     let root = tempfile::tempdir().unwrap();

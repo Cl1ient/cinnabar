@@ -248,6 +248,16 @@ impl TerrainTextureMap {
         key: &str,
         variant: usize,
     ) -> Option<(&str, Option<&str>)> {
+        self.get_clamped_carried_variant(key, variant)
+            .map(|(path, overlay, _)| (path, overlay))
+    }
+
+    /// Returns a carried path, optional overlay color, and its actual clamped terrain index.
+    pub(crate) fn get_clamped_carried_variant(
+        &self,
+        key: &str,
+        variant: usize,
+    ) -> Option<(&str, Option<&str>, u32)> {
         match self.entries.get(key)? {
             TerrainPaths::Static {
                 path,
@@ -255,7 +265,7 @@ impl TerrainTextureMap {
                 tint_color: None,
                 has_extra_metadata: false,
                 ..
-            } => Some((path, overlay_color.as_deref())),
+            } => Some((path, overlay_color.as_deref(), 0)),
             TerrainPaths::Variants {
                 paths,
                 overlay_colors,
@@ -270,6 +280,7 @@ impl TerrainTextureMap {
                 Some((
                     paths.get(selected)?,
                     overlay_colors.get(selected)?.as_deref(),
+                    selected as u32,
                 ))
             }
             TerrainPaths::Static { .. } | TerrainPaths::Variants { .. } => None,

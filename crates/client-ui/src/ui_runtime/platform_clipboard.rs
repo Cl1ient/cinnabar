@@ -177,7 +177,8 @@ impl<B: ClipboardBackend> ClipboardOwner<B> {
     }
 }
 
-#[cfg(test)]
+// The fakes report arboard's errors, which Android builds lack.
+#[cfg(all(test, not(target_os = "android")))]
 mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

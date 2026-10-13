@@ -2,10 +2,12 @@ use super::*;
 
 // Collision revision allocation starts at one; zero identifies an absent column.
 const UNLOADED_BOUNDARY_REVISION: u64 = 0;
-const UNLOADED_BOUNDARY_VERTICAL_LIMIT: f64 = 100_000.0;
+// Extend beyond valid i32 coordinates so f32-rounded queries overlap at both limits.
+const UNLOADED_BOUNDARY_VERTICAL_LIMIT: f64 = -(i32::MIN as f64) * 2.0;
 
 impl<'a> PaletteWorld<'a> {
     /// Borrows movement terrain with solid unloaded-column collision barriers.
+    /// Prediction still waits for the column containing the player's feet.
     /// Partially received columns still require authoritative data for every queried section.
     #[must_use]
     pub fn for_movement(
@@ -123,6 +125,7 @@ impl<'a> PaletteWorld<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{MovementInput, MovementMode, PlayerState, SimulationError, Simulator};
 
     /// Builds an air registry and one authoritative column beside absent terrain.
     fn terrain() -> (ChunkStore, CollisionRegistry) {
@@ -152,6 +155,109 @@ mod tests {
                 .collision_boxes(query)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn absent_occupied_columns_pause_prediction_and_retained_snapshots() {
+        for position in [
+            Vec3::new(24.0, 80.0, 8.0),
+            Vec3::new(16.125, 80.0, 8.0),
+            Vec3::new(-0.125, 80.0, 8.0),
+            Vec3::new(8.0, 80.0, 16.125),
+        ] {
+            for mode in [MovementMode::Walking, MovementMode::Flying] {
+                let (mut store, registry) = terrain();
+                let world = PaletteWorld::for_movement(&store, &registry, 0);
+                let snapshot = world.snapshot().unwrap();
+                let chunk = ChunkKey::new(
+                    0,
+                    position.x.floor() as i32 >> 4,
+                    position.z.floor() as i32 >> 4,
+                );
+                let mut state = PlayerState::new(position);
+                state.velocity = Vec3::new(0.25, -0.5, 0.0);
+                let anchor = state.clone();
+                let input = MovementInput {
+                    mode,
+                    forward: 1.0,
+                    ..Default::default()
+                };
+                let simulator = Simulator::default();
+                assert!(matches!(
+                    simulator.tick(&mut state, input, &world),
+                    Err(SimulationError::World(WorldQueryError::UnloadedChunk(key))) if key == chunk
+                ));
+                assert_eq!(state, anchor);
+                assert_eq!(
+                    simulator.movement_environment(position, mode, false, &world),
+                    Err(WorldQueryError::UnloadedChunk(chunk))
+                );
+                store.mark_chunk_loaded(chunk).unwrap();
+                assert!(matches!(
+                    simulator.tick(&mut state, input, &snapshot),
+                    Err(SimulationError::World(WorldQueryError::UnloadedChunk(key))) if key == chunk
+                ));
+                assert_eq!(state, anchor);
+                simulator
+                    .tick(
+                        &mut state,
+                        input,
+                        &PaletteWorld::for_movement(&store, &registry, 0),
+                    )
+                    .unwrap();
+                assert_eq!(state.tick, anchor.tick + 1);
+            }
+        }
+    }
+
+    #[test]
+    fn unloaded_boundaries_cover_the_supported_vertical_query_range() {
+        let (store, registry) = terrain();
+        let world = PaletteWorld::for_movement(&store, &registry, 0);
+        let snapshot = world.snapshot().unwrap();
+        for y in [
+            -1_000_000.0,
+            1_000_000.0,
+            f64::from(i32::MIN) + 1.0,
+            f64::from(i32::MAX) - 3.0,
+        ] {
+            let query = Aabb::new(Vec3::new(15.5, y, 7.5), Vec3::new(16.5, y + 2.0, 8.5));
+            let boxes = world.collision_boxes(query).unwrap();
+            assert_eq!(boxes.value.len(), 1, "query at Y={y}");
+            assert!(boxes.value[0].intersects(query), "query at Y={y}");
+            let provenance = world.collision_boxes_with_provenance(query).unwrap();
+            assert_eq!(provenance.value.len(), 1);
+            assert_eq!(provenance.value[0].aabb, boxes.value[0]);
+            assert_eq!(provenance.value[0].block, None);
+            assert_eq!(provenance.value[0].runtime_id, None);
+            assert_eq!(provenance.identity, boxes.identity);
+            assert_eq!(snapshot.collision_boxes(query).unwrap(), boxes);
+        }
+    }
+
+    #[test]
+    fn movement_cannot_enter_absent_columns_at_high_or_low_altitudes() {
+        let (store, registry) = terrain();
+        let world = PaletteWorld::for_movement(&store, &registry, 0);
+        for y in [-1_000_000.0, 1_000_000.0] {
+            let mut state = PlayerState::new(Vec3::new(15.5, y, 8.0));
+            state.velocity.x = 1.0;
+            let result = Simulator::default()
+                .tick(
+                    &mut state,
+                    MovementInput {
+                        mode: MovementMode::Flying,
+                        ..Default::default()
+                    },
+                    &world,
+                )
+                .unwrap();
+            assert!(result.collisions.x, "movement at Y={y}");
+            assert!(
+                Aabb::player_at(state.position).max.x <= world::SUB_CHUNK_SIDE as f64 + 0.00001,
+                "movement at Y={y} entered absent terrain"
+            );
+        }
     }
 
     #[test]

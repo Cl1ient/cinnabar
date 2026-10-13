@@ -12,6 +12,12 @@ pub trait CollisionWorld {
         CollisionQuery::synthetic(()).identity.registry
     }
 
+    /// Requires terrain in the column containing the movement origin before prediction
+    /// or anchor recovery. Worlds without streamed terrain need no availability check.
+    fn validate_movement_origin(&self, _feet: Vec3) -> Result<(), WorldQueryError> {
+        Ok(())
+    }
+
     /// Native liquid velocity impulse for the preceding collision pose. Worlds
     /// without liquid-state authority may omit it; palette snapshots retain the
     /// same neighbor sampling and immutable identity as live prediction.

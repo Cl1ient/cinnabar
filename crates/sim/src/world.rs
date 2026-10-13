@@ -759,6 +759,17 @@ impl CollisionWorld for PaletteWorld<'_> {
         self.registry.identity()
     }
 
+    /// Keeps absent-column material fallbacks confined to neighbouring travel regions.
+    fn validate_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        validate_collision_query(Aabb::new(feet, feet))?;
+        let [x, _, z] = block_floor(feet)?;
+        let chunk = ChunkKey::new(self.dimension, x >> 4, z >> 4);
+        self.store
+            .collision_revision(chunk)
+            .ok_or(WorldQueryError::UnloadedChunk(chunk))
+            .map(|_| ())
+    }
+
     fn liquid_current(
         &self,
         previous_pose: Aabb,

@@ -58,6 +58,64 @@ fn boundary_flight() -> ModeIntent {
 }
 
 #[test]
+fn same_dimension_teleport_waits_for_the_occupied_column_before_predicting() {
+    for x in [24.0_f32, 16.125, -0.125] {
+        let mut registry = sim::CollisionRegistry::new();
+        registry.register(0, []).unwrap();
+        let mut store = world::ChunkStore::new();
+        load_air_column(&mut store, 0);
+        let mut physics = LocalPhysicsController::default();
+        physics.reanchor_network_position(
+            [8.0, 80.0 + protocol::PLAYER_NETWORK_OFFSET, 8.0],
+            100,
+            false,
+        );
+        step(
+            &mut physics,
+            MovementInput::default(),
+            ModeIntent::default(),
+            &sim::PaletteWorld::for_movement(&store, &registry, 0),
+        );
+        physics.reanchor_network_position(
+            [x, 80.0 + protocol::PLAYER_NETWORK_OFFSET, 8.0],
+            200,
+            false,
+        );
+        let anchor = physics.state().unwrap().clone();
+        let chunk = world::ChunkKey::new(0, x.floor() as i32 >> 4, 0);
+        for _ in 0..10 {
+            let frame = physics.advance_with_context(
+                TICK,
+                MovementInput {
+                    forward: 1.0,
+                    ..Default::default()
+                },
+                PhysicsSampleContext::default(),
+                &sim::PaletteWorld::for_movement(&store, &registry, 0),
+            );
+            assert_eq!(frame.completed_ticks, 0);
+            assert!(matches!(
+                frame.blocked,
+                Some(sim::SimulationError::World(WorldQueryError::UnloadedChunk(key)))
+                    if key == chunk
+            ));
+            assert_eq!(physics.state(), Some(&anchor));
+            assert!(physics.is_active());
+        }
+        store.mark_chunk_loaded(chunk).unwrap();
+        let resumed = physics.advance_with_context(
+            TICK,
+            MovementInput::default(),
+            PhysicsSampleContext::default(),
+            &sim::PaletteWorld::for_movement(&store, &registry, 0),
+        );
+        assert!(resumed.blocked.is_none(), "{:?}", resumed.blocked);
+        assert_eq!(resumed.completed_ticks, 1);
+        assert_eq!(physics.state().unwrap().tick, anchor.tick + 1);
+    }
+}
+
+#[test]
 fn flight_at_unknown_chunk_edge_resumes_after_terrain_arrival() {
     let mut registry = sim::CollisionRegistry::new();
     registry.register(0, []).unwrap();

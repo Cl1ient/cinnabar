@@ -20,6 +20,8 @@ mod campfire;
 mod candle_cake;
 #[path = "tests/coral.rs"]
 mod coral;
+#[path = "tests/crop_families.rs"]
+mod crop_families;
 #[path = "tests/crops.rs"]
 mod crops;
 #[path = "tests/dragon_egg.rs"]

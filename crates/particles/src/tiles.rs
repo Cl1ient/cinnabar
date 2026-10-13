@@ -87,9 +87,17 @@ fn terrain_material(
     )
 }
 
-/// Gamma-space biome colour for a material's tint mode; white when untinted.
+/// Gamma-space stage or biome colour for a material; white when untinted.
 #[must_use]
 pub fn material_tint(record: &LinearBiomeTints, flags: u32) -> [f32; 4] {
+    if let Some([r, g, b]) = assets::stem::material_colour(flags) {
+        return [
+            f32::from(r) / 255.0,
+            f32::from(g) / 255.0,
+            f32::from(b) / 255.0,
+            1.0,
+        ];
+    }
     let mode = flags & MATERIAL_FLAG_TINT_MASK;
     let linear = if mode == MATERIAL_FLAG_WATER_TINT {
         record.water

@@ -591,3 +591,36 @@ fn stationary_mesh_ingress_preserves_unrelated_backoff() {
     assert!(stream.mesh_jobs.pending.contains_key(&blocked));
     finish_mesh(&mut stream, near);
 }
+
+/// A woken mesh the deadline cuts off must stay offered rather than fall behind distant work.
+#[test]
+fn deadline_keeps_an_unexamined_woken_mesh_for_the_next_poll() {
+    let (mut stream, view) = stationary_stream_with_blocked_far_meshes();
+    let blocked = SubChunkKey::new(1, 0, 0, 0);
+    let ready = SubChunkKey::new(1, -3, 0, 0);
+    for key in [blocked, ready] {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        stream.resident.insert(key);
+    }
+    install_current_light(&mut stream, ready, 0, 0, false);
+    for key in [blocked, ready] {
+        let revision = stream.mark_dirty_exact(key, Instant::now());
+        stream.mesh_jobs.lanes[RESIDENT_MESH_LANE]
+            .deferred
+            .push(PendingSchedulerCandidate::new(key, revision, view, false));
+    }
+    stream.mesh_jobs.scan.clear();
+    for key in [blocked, ready] {
+        stream.mark_changed_light_mesh_dependents(key, [false; 6], Instant::now(), false);
+    }
+    assert_eq!(
+        stream.dispatch_mesh_jobs(view.position, 1),
+        0,
+        "the blocked nearest mesh spends the expired slice"
+    );
+    assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
+    finish_mesh(&mut stream, ready);
+}

@@ -193,18 +193,18 @@ impl WorldStream {
         resident_candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
         for (candidate, pending, queued) in resident_candidates {
             let key = candidate.key;
-            let at_capacity = self.mesh_changes.len() >= MAX_PENDING_MESH_CHANGES
+            if self.mesh_changes.len() >= MAX_PENDING_MESH_CHANGES
                 || dispatched >= worker_budget
-                || (dispatched >= regular_budget && !candidate.urgent);
-            if at_capacity || (examined && self.poll_budget_exhausted()) {
-                // Probed and woken candidates sit in no ready queue; offer them again later.
-                if at_capacity {
-                    self.mesh_jobs.refresh.wake_near(key);
-                }
+                || (dispatched >= regular_budget && !candidate.urgent)
+                || (examined && self.poll_budget_exhausted())
+            {
                 if queued {
                     self.mesh_jobs.lanes[RESIDENT_MESH_LANE]
                         .ready
                         .push(candidate);
+                } else {
+                    // Unexamined probed and woken candidates sit in no ready queue.
+                    self.mesh_jobs.refresh.wake_near(key);
                 }
                 continue;
             }

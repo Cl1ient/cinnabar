@@ -440,6 +440,7 @@ impl FormEngine {
     ) -> Result<Option<EngineFrame>, PaintError> {
         art.view = Some(view);
         let px = frame.metrics.scale.get() * FONT_DESIGN_PIXEL_TEXELS as f32;
+        let dpi_scale = frame.metrics.dpi_scale.get();
         let text = frame.language;
         let texture_metadata = self.textures.metadata_revision();
         render_with(self.art(), frame, art, |env, root| {
@@ -451,6 +452,7 @@ impl FormEngine {
                 view,
                 root,
                 px,
+                dpi_scale,
                 text,
                 texture_metadata,
             };

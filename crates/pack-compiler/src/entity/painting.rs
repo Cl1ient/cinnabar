@@ -153,6 +153,7 @@ fn geometry_document(motive: PaintingMotive, border: bool, identifier: &str) -> 
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
 
     /// Encodes original artwork with a distinct colour for every logical atlas region.
     fn png(width: u32, height: u32, color: [u8; 4]) -> Vec<u8> {
@@ -208,9 +209,9 @@ mod tests {
         assert_eq!(compiled.skipped.unparsable, 0);
     }
 
-    #[test]
-    fn painting_completion_preserves_an_authored_pack_at_source_capacity() {
-        let mut files: Vec<(Box<str>, Vec<u8>)> = (0..super::super::MAX_PACK_ENTITY_SOURCES - 2)
+    /// Supplies accepted authored documents and an atlas with the requested source count.
+    fn capacity_pack(source_count: usize) -> Vec<(Box<str>, Vec<u8>)> {
+        let mut files: Vec<(Box<str>, Vec<u8>)> = (0..source_count - 2)
             .map(|index| {
                 (
                     format!("animations/empty_{index}.json").into(),
@@ -227,30 +228,50 @@ mod tests {
             format!("{}.png", assets::painting::PAINTING_ATLAS).into(),
             png(256, 256, [30, 90, 150, 255]),
         ));
-        let compiled = crate::compile_entity_pack(files).unwrap().unwrap();
-        assert_eq!(
-            compiled.assets.sources.len(),
-            assets::MAX_ENTITY_ASSET_SOURCES
-        );
-        assert!(
-            compiled
-                .assets
-                .symbols
-                .iter()
-                .any(|symbol| symbol.identifier.as_ref() == "fixture:actor")
-        );
-        assert_eq!(compiled.skipped, super::super::EntityPackSkips::default());
-        assert_eq!(
-            compiled
-                .assets
-                .sources
-                .iter()
-                .filter(|source| source.path.starts_with("animations/empty_"))
-                .count(),
-            super::super::MAX_PACK_ENTITY_SOURCES - 2
-        );
-        assets::RuntimeEntityAssets::from_compiled(compiled.assets)
-            .expect("full pack catalog remains admissible");
+        files
+    }
+
+    #[test]
+    fn painting_completion_preserves_authored_sources_near_capacity() {
+        for remaining_slots in 0..=3 {
+            let source_count = super::super::MAX_PACK_ENTITY_SOURCES - remaining_slots;
+            let files = capacity_pack(source_count);
+            let authored: BTreeSet<_> = files.iter().map(|(path, _)| path.clone()).collect();
+            let compiled = crate::compile_entity_pack(files).unwrap().unwrap();
+            assert_eq!(
+                compiled
+                    .assets
+                    .sources
+                    .iter()
+                    .filter(|source| authored.contains(&source.path))
+                    .count(),
+                source_count,
+                "every authored document and raster survives completion"
+            );
+            assert!(
+                compiled
+                    .assets
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.identifier.as_ref() == "fixture:actor")
+            );
+            assert_eq!(compiled.skipped, super::super::EntityPackSkips::default());
+            let policy_count = super::super::policy_sources::records()
+                .filter(|record| {
+                    compiled.assets.sources.iter().any(|source| {
+                        source.path == record.path
+                            && source.source_bytes == record.source_bytes
+                            && source.source_sha256 == record.source_sha256
+                    })
+                })
+                .count();
+            assert_eq!(policy_count, super::super::policy_sources::SOURCE_COUNT);
+            let generated_count = compiled.assets.sources.len() - source_count - policy_count;
+            assert_eq!(generated_count, if remaining_slots == 3 { 3 } else { 0 });
+            assert!(compiled.assets.sources.len() <= assets::MAX_ENTITY_ASSET_SOURCES);
+            assets::RuntimeEntityAssets::from_compiled(compiled.assets)
+                .expect("authored content and generated paintings remain admissible");
+        }
     }
 
     #[test]

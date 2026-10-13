@@ -48,6 +48,15 @@ fn keyboard_binding_pointer_escape_and_reload_publish_unassigned() {
         menu.activate(MenuAction::SettingsSection(section));
     }
     h.app.update();
+    assert!(
+        h.app
+            .world_mut()
+            .resource_mut::<UiPresentationResource>()
+            .scroll_menu(UiPoint::new(900.0, 600.0).unwrap(), -360.0, true,)
+    );
+    for _ in 0..8 {
+        h.app.update();
+    }
     snapshot::write(
         &h.app.world().resource::<Frame>().0,
         "keyboard-binding-before",

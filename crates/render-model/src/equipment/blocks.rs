@@ -256,6 +256,11 @@ pub fn overlay_sheet(overlay: &BlockOverlay, visual: usize) -> Option<IconSprite
     if block.animation != NO_ANIMATION {
         return None;
     }
+    overlay_face_sheet(overlay, faces)
+}
+
+/// Composes carried cube faces from overlay-local materials for inventory and held rendering.
+pub fn overlay_face_sheet(overlay: &BlockOverlay, faces: [u32; 6]) -> Option<IconSprite> {
     let mut tiles = Vec::with_capacity(BlockFace::ALL.len());
     for id in faces {
         // Overlay materials address the overlay's own array as page 1.

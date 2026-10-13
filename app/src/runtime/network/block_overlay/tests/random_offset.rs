@@ -83,6 +83,9 @@ fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
     let view = view();
     let mut builder = super::super::Builder {
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: Vec::new(),
@@ -90,8 +93,7 @@ fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
         tile_size: super::super::MIN_TILE,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
-        textures: Default::default(),
-        frame_storage: Default::default(),
+        slots: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
         gaps: Default::default(),
@@ -243,6 +245,9 @@ fn overlay_images(
     let view = view();
     super::super::Builder {
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: images
@@ -253,8 +258,7 @@ fn overlay_images(
         tile_size: super::super::MIN_TILE,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
-        textures: Default::default(),
-        frame_storage: Default::default(),
+        slots: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
         gaps: Default::default(),
@@ -440,6 +444,9 @@ fn terrain_page_rejects_over_budget_sources_without_shrinking() {
     let view = view();
     let mut builder = super::super::Builder {
         catalog: super::super::textures::TextureCatalog::new(&view, None),
+        base_assets: None,
+        vanilla_carried: Vec::new(),
+        terrain_materials: Default::default(),
         geometries: Default::default(),
         overlay: Default::default(),
         sources: Vec::new(),
@@ -447,8 +454,7 @@ fn terrain_page_rejects_over_budget_sources_without_shrinking() {
         tile_size: super::super::MIN_TILE,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
-        textures: Default::default(),
-        frame_storage: Default::default(),
+        slots: Default::default(),
         materials: Default::default(),
         visuals: Default::default(),
         gaps: Default::default(),

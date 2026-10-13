@@ -10,6 +10,7 @@ mod catalog;
 mod images;
 use images::{icon, resolve_key};
 mod vanilla;
+pub(super) mod vanilla_blocks;
 pub(crate) use vanilla::{set_vanilla_item_paths, vanilla_item_paths_installed};
 
 use resource_pack::LayeredPackView;
@@ -38,6 +39,11 @@ pub(super) fn compile_session_icons(
     let block_rendered = block_icons
         .iter()
         .map(|icon| Arc::clone(&icon.identifier))
+        .chain(
+            block_sheets
+                .iter()
+                .map(|sheet| Arc::clone(&sheet.identifier)),
+        )
         .chain(
             block_misses
                 .iter()
@@ -110,7 +116,7 @@ pub(super) fn compile_session_icons(
     }
     append_block_icons(&mut icons, block_icons, &mut retained_bytes);
     vanilla::append(view, &mut icons, &mut retained_bytes);
-    (!icons.is_empty() || !misses.is_empty()).then(|| {
+    (!icons.is_empty() || !block_sheets.is_empty() || !misses.is_empty()).then(|| {
         Arc::new(SessionIcons {
             icons,
             block_sheets,

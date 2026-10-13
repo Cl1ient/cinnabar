@@ -398,6 +398,7 @@ fn weighted_replacement_updates_dropped_pixels_and_keeps_the_variation_range() {
                 material,
                 texture: assets::TextureRef::new(1, 0).unwrap(),
                 animation: assets::NO_ANIMATION,
+                variation: None,
             })
             .collect(),
         ..assets::BlockOverlay::default()

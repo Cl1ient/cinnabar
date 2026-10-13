@@ -4,7 +4,8 @@ use bevy::{
     input::{InputPlugin, mouse::AccumulatedMouseMotion},
     prelude::*,
     window::{
-        CursorGrabMode, CursorMoved, CursorOptions, PrimaryWindow, WindowFocused, WindowMode,
+        CursorGrabMode, CursorMoved, CursorOptions, MonitorSelection, PrimaryWindow, WindowFocused,
+        WindowMode,
     },
 };
 use client_presentation::local_player::LocalViewPose;
@@ -75,7 +76,7 @@ fn close_chat_and_resize(
     );
     window.title = "resized while driven".into();
     window.resolution.set(1024.0, 768.0);
-    window.mode = WindowMode::BorderlessFullscreen(default());
+    window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
 }
 
 #[test]

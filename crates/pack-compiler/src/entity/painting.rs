@@ -207,7 +207,7 @@ mod tests {
             .map(|index| {
                 (
                     format!("animations/empty_{index}.json").into(),
-                    br#"{"animations":{}}"#.to_vec(),
+                    br#"{"format_version":"1.8.0","animations":{}}"#.to_vec(),
                 )
             })
             .collect();

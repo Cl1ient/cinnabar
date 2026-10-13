@@ -43,6 +43,13 @@ impl EquipmentRuntime {
         let Some(binding) = catalog.binding(&item.identifier) else {
             return false;
         };
+        let Some((_, _, location)) = self.draw_artwork(
+            &item.identifier,
+            &binding.texture.identifier,
+            (Arc::clone(&catalog), from_pack),
+        ) else {
+            return false;
+        };
         let channels = match self.effective_category(&item.identifier, binding.category) {
             EquipmentCategory::Held => {
                 binding
@@ -73,9 +80,6 @@ impl EquipmentRuntime {
             _ => None,
         };
         let Some(channels) = channels else {
-            return false;
-        };
-        let Some(location) = self.texture_location(&binding.texture.identifier, from_pack) else {
             return false;
         };
         let Some(geometry) = self.armor_geometry_for(&binding.geometry.identifier, from_pack)
@@ -206,7 +210,11 @@ impl EquipmentRuntime {
         body_geometry: u32,
         (slot, layer): (ArmorSlot, u8),
         item: &WornItem,
-        (equipment, animation): (&ActorEquipmentInput, Option<EquipmentAnimation<'_>>),
+        (equipment, animation, profile): (
+            &ActorEquipmentInput,
+            Option<EquipmentAnimation<'_>>,
+            render_api::CombatVisuals,
+        ),
         layers: &mut Vec<EquipmentPresentation>,
     ) {
         let Some((catalog, from_pack)) = self.binding_source(&item.identifier) else {
@@ -221,10 +229,13 @@ impl EquipmentRuntime {
             return;
         }
         let selected = animation
-            .filter(|_| from_pack)
-            .and_then(|animation| self.worn_texture(item, slot, equipment, animation));
-        let Some(location) =
-            selected.or_else(|| self.texture_location(&binding.texture.identifier, from_pack))
+            .and_then(|animation| self.worn_render(item, slot, equipment, animation, from_pack));
+        let texture = selected
+            .as_ref()
+            .map(|(texture, _)| texture.as_ref())
+            .unwrap_or(&binding.texture.identifier);
+        let Some((_, _, location)) =
+            self.draw_artwork(&item.identifier, texture, (Arc::clone(&catalog), from_pack))
         else {
             return;
         };
@@ -255,25 +266,59 @@ impl EquipmentRuntime {
             remap_pose(&map, &body.input.current_bones),
         );
         let poses = self.poses.share(body, layer, [&previous, &current]);
-        layers.push(layer_presentation(
-            body,
-            layer,
-            geometry.rig,
-            poses,
-            location,
-            tint,
-        ));
+        let mut presentation = layer_presentation(body, layer, geometry.rig, poses, location, tint);
+        let color_mask = profile == render_api::CombatVisuals::Legacy112
+            && binding.color_mask == assets::EquipmentColorMask::Dye;
+        presentation.submission.material.color_mask = color_mask;
+        if profile == render_api::CombatVisuals::Legacy112 {
+            presentation.submission.material.kind = if item.enchanted {
+                assets::EntityRenderMaterial::Glint
+            } else {
+                assets::EntityRenderMaterial::Default
+            };
+            presentation.submission.material.state = Some(assets::EntityRenderMaterialState {
+                alpha_test: true,
+                cull: false,
+                ..Default::default()
+            });
+        }
+        if profile == render_api::CombatVisuals::Legacy112
+            && from_pack
+            && let Some((_, selected)) = selected
+        {
+            presentation.submission.material = render_model::ActorMaterial {
+                color_mask,
+                kind: selected.material,
+                state: selected.material_state,
+                dissolve_multiplier: selected.overlay[3],
+                light_color_multiplier: selected.light_color_multiplier,
+                glint: render_model::ActorGlint {
+                    profile,
+                    ..Default::default()
+                },
+            };
+            if selected.color != [1.0; 4] {
+                presentation.submission.tint = render_model::pack_overlay_rgba8(selected.color);
+            }
+            presentation.submission.overlay_rgba8 =
+                render_model::pack_overlay_rgba8(selected.overlay);
+            presentation.submission.uv_anim = selected.uv_anim;
+            if selected.ignore_lighting {
+                presentation.submission.light = render_model::pack_actor_light_without_lightmap();
+            }
+        }
+        layers.push(presentation);
     }
 
-    /// The texture a pack attachable's render controller selects for a worn piece, such as a
-    /// team colour read from its owner; `None` keeps the binding's default texture.
-    fn worn_texture(
+    /// Returns selected worn artwork and shading; the binding supplies missing state.
+    fn worn_render(
         &mut self,
         item: &WornItem,
         slot: ArmorSlot,
         equipment: &ActorEquipmentInput,
         animation: EquipmentAnimation<'_>,
-    ) -> Option<ActorArtworkLocation> {
+        from_pack: bool,
+    ) -> Option<(Box<str>, actor_animation::RenderTextureLayer)> {
         let elapsed = animation
             .owner
             .is_using_item()
@@ -284,7 +329,6 @@ impl EquipmentRuntime {
             .map(|main| main.use_facts)
             .unwrap_or_default();
         let duration = use_facts.ticks.unwrap_or_default();
-        let pack = self.pack.as_mut()?;
         let variables = [("variable.is_enchanted", f32::from(item.enchanted))];
         let input = equipment.attachable_input(actor_animation::AttachableAnimationInput {
             worn: true,
@@ -301,19 +345,24 @@ impl EquipmentRuntime {
             owner_variables: &variables,
             ..Default::default()
         });
+        let (assets, runtime) = if from_pack {
+            let pack = self.pack.as_mut()?;
+            (&pack.assets, &mut pack.attachables)
+        } else {
+            (&self.assets, &mut self.attachables)
+        };
         let evaluated =
-            pack.attachables
-                .evaluate(&item.identifier, animation.owner, animation.rig, input)?;
+            runtime.evaluate(&item.identifier, animation.owner, animation.rig, input)?;
         let layer = evaluated
             .render
             .iter()
             .find(|layer| layer.texture_slot == 0)?;
-        let path = &pack.assets.sources().get(layer.source as usize)?.path;
-        let texture: Box<str> = path
+        let path = &assets.sources().get(layer.source as usize)?.path;
+        let texture = path
             .strip_suffix(".png")
             .or_else(|| path.strip_suffix(".tga"))?
             .into();
-        self.texture_location(&texture, true)
+        Some((texture, layer.clone()))
     }
 
     /// A worn head riding the body's head bone.

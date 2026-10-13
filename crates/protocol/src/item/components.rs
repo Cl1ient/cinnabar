@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 
-use bedrock_protocol_1_26_51::packets::ItemRegistry as ItemRegistryPacket;
-
 use crate::nbt_tree::{Nbt, read_root};
 
 pub(super) const MAX_TEXT_BYTES: usize = 256;
@@ -22,6 +20,8 @@ pub(super) fn duration_ticks(seconds: f64) -> Option<u32> {
 pub struct ItemComponents {
     /// Food permission retained independently from use duration.
     pub food_can_always_eat: Option<bool>,
+    /// Whether a valid `minecraft:use_modifiers` compound was declared.
+    pub use_modifiers_present: bool,
     /// Finite nonnegative movement multiplier, retained by its IEEE bits.
     pub use_movement_modifier_bits: Option<u64>,
     /// Authored use-category timer, excluding attack cooldowns.
@@ -150,20 +150,6 @@ fn food_properties(component: Option<&Nbt>) -> Option<FoodProperties> {
     })
 }
 
-/// Components for every StartGame registry item whose component data is non-empty.
-#[must_use]
-pub(crate) fn item_components(registry: &ItemRegistryPacket) -> Box<[(Arc<str>, ItemComponents)]> {
-    registry
-        .item_data
-        .iter()
-        .filter_map(|item| {
-            let bytes = super::encode_extra(&item.item_component_data).ok()?;
-            let components = parse_components(&bytes)?;
-            Some((Arc::from(item.item_name.to_string_lossy()), components))
-        })
-        .collect()
-}
-
 /// Keeps absent, malformed and finite flags distinct while retaining the current OR combination.
 fn declared_flag(property: Option<&Nbt>, component: Option<&Nbt>) -> (bool, Option<bool>) {
     let read = |value: &Nbt| {
@@ -195,6 +181,8 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
     let properties = components.field("item_properties");
     let property = |name: &str| properties.and_then(|properties| properties.field(name));
     let component = |name: &str| components.field(name);
+    let use_modifiers = component("minecraft:use_modifiers")
+        .filter(|modifiers| matches!(modifiers, Nbt::Compound(_)));
     let value_of = |nbt: &Nbt| nbt.field("value").or(Some(nbt)).and_then(Nbt::number);
     let text = |nbt: Option<&Nbt>| {
         nbt.and_then(Nbt::as_str)
@@ -208,7 +196,7 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
             .map(|value| value.min(f64::from(u32::MAX)) as u32)
     };
     let use_duration_ticks = count(property("use_duration")).or_else(|| {
-        component("minecraft:use_modifiers")
+        use_modifiers
             .and_then(|modifiers| modifiers.field("use_duration"))
             .and_then(Nbt::number)
             .map(|seconds| seconds as f32)
@@ -222,7 +210,8 @@ pub(super) fn parse_components(bytes: &[u8]) -> Option<ItemComponents> {
     Some(ItemComponents {
         food_can_always_eat: component("minecraft:food")
             .map(|food| flag(food.field("can_always_eat"))),
-        use_movement_modifier_bits: component("minecraft:use_modifiers")
+        use_modifiers_present: use_modifiers.is_some(),
+        use_movement_modifier_bits: use_modifiers
             .and_then(|modifiers| modifiers.field("movement_modifier"))
             .and_then(Nbt::number)
             .filter(|value| value.is_finite() && *value >= 0.0)
@@ -359,6 +348,74 @@ mod tests {
                 expected,
                 "{seconds}"
             );
+        }
+    }
+
+    #[test]
+    fn use_modifiers_presence_preserves_absent_and_invalid_movement_values() {
+        for (declaration, present, movement) in [
+            (None, false, None),
+            (Some(compound("minecraft:use_modifiers", &[])), true, None),
+            (
+                Some(compound(
+                    "minecraft:use_modifiers",
+                    &[float("use_duration", 1.6)],
+                )),
+                true,
+                None,
+            ),
+            (
+                Some(compound(
+                    "minecraft:use_modifiers",
+                    &[float("movement_modifier", 0.0)],
+                )),
+                true,
+                Some(0.0_f64),
+            ),
+            (
+                Some(compound(
+                    "minecraft:use_modifiers",
+                    &[float("movement_modifier", 0.75)],
+                )),
+                true,
+                Some(0.75_f64),
+            ),
+            (
+                Some(string("minecraft:use_modifiers", "invalid")),
+                false,
+                None,
+            ),
+            (Some(int("minecraft:use_modifiers", 1)), false, None),
+            (
+                Some(compound(
+                    "minecraft:use_modifiers",
+                    &[string("movement_modifier", "0.75")],
+                )),
+                true,
+                None,
+            ),
+            (
+                Some(compound(
+                    "minecraft:use_modifiers",
+                    &[float("movement_modifier", -1.0)],
+                )),
+                true,
+                None,
+            ),
+            (
+                Some(compound(
+                    "minecraft:use_modifiers",
+                    &[float("movement_modifier", f32::NAN)],
+                )),
+                true,
+                None,
+            ),
+        ] {
+            let declarations: Vec<_> = declaration.into_iter().collect();
+            let nbt = compound("", &[compound("components", &declarations)]);
+            let facts = parse_components(&nbt).unwrap();
+            assert_eq!(facts.use_modifiers_present, present);
+            assert_eq!(facts.use_movement_modifier_bits, movement.map(f64::to_bits));
         }
     }
 

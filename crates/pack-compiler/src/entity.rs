@@ -55,12 +55,12 @@ pub(crate) use source::{open_source_handle, read_bounded_source};
 #[allow(unused_imports)] // Integration publishes this private leaf after review.
 pub use animation::{CompileReferenceOutcome, FallbackReason, RejectReason};
 pub use attachable::{
-    compile_item_attack_timings, compile_item_foods,
+    EquipmentBindingDependencies, compile_item_attack_timings, compile_item_foods,
     compile_item_use as compile_item_use_durations, compile_item_use_profiles,
     compile_textures as compile_equipment_textures,
     compile_textures_for_assets as compile_equipment_textures_for_assets,
     compile_textures_for_assets_with as compile_equipment_textures_for_assets_with,
-    compile_textures_with as compile_equipment_textures_with,
+    compile_textures_with as compile_equipment_textures_with, decode_equipment_raster,
 };
 
 /// Deterministic carrier plus the attributed resolution decision for every rig.
@@ -92,6 +92,7 @@ struct PendingGeometry {
     texture_width: Option<u16>,
     texture_height: Option<u16>,
     visible_bounds: Option<assets::EntityGeometryBounds>,
+    animation_no_head_bob: Option<bool>,
     bones: Box<[EntityGeometryBone]>,
 }
 
@@ -158,9 +159,14 @@ fn compile_with_behavior(
         &["json", "png", "tga"],
         &mut selected,
     )?;
-    for extension in ["png", "tga"] {
-        let path = format!("{}.{extension}", assets::ACTOR_GLINT_TEXTURE_IDENTIFIER);
-        collect_optional_file(root, &path, &mut selected)?;
+    for identifier in [
+        assets::ACTOR_GLINT_TEXTURE_IDENTIFIER,
+        assets::entity::ITEM_GLINT_TEXTURE_IDENTIFIER,
+    ] {
+        for extension in ["png", "tga"] {
+            let path = format!("{identifier}.{extension}");
+            collect_optional_file(root, &path, &mut selected)?;
+        }
     }
     collect_optional_file(root, "textures/item_texture.json", &mut selected)?;
     collect_optional_file(root, "manifest.json", &mut selected)?;
@@ -338,7 +344,7 @@ fn assemble(
         source_sha256: hash,
     });
     sources.sort_by(|left, right| left.path.cmp(&right.path));
-    if symbols.is_empty() || symbols.len() > MAX_ENTITY_ASSET_SYMBOLS {
+    if symbols.len() > MAX_ENTITY_ASSET_SYMBOLS {
         return Err(invalid("entity asset symbol count exceeds bound"));
     }
     let source_indices = sources
@@ -383,6 +389,10 @@ fn assemble(
         return Err(invalid("entity geometry count exceeds bound"));
     }
     let pending_geometries = geometries.into_values().collect::<Vec<_>>();
+    let local_bob_flags = pending_geometries
+        .iter()
+        .map(|geometry| geometry.animation_no_head_bob)
+        .collect::<Vec<_>>();
     let local_dimensions = pending_geometries
         .iter()
         .map(|geometry| (geometry.texture_width, geometry.texture_height))
@@ -413,22 +423,29 @@ fn assemble(
                 texture_height: geometry.texture_height.unwrap_or(64),
                 bones: geometry.bones,
                 visible_bounds: geometry.visible_bounds,
+                animation_no_head_bob: geometry.animation_no_head_bob.unwrap_or(false),
             })
         })
         .collect::<Result<Vec<_>, AssetError>>()?;
     let selected_parents = validate_entity_geometry_inheritance(&geometries)?;
     for (index, geometry) in geometries.iter_mut().enumerate() {
-        geometry.texture_width = resolve_geometry_dimension(
+        geometry.texture_width = geometry::inherited_value(
             index,
-            &local_dimensions,
             &selected_parents,
-            |dimensions| dimensions.0,
+            |index| local_dimensions[index].0,
+            64,
         )?;
-        geometry.texture_height = resolve_geometry_dimension(
+        geometry.texture_height = geometry::inherited_value(
             index,
-            &local_dimensions,
             &selected_parents,
-            |dimensions| dimensions.1,
+            |index| local_dimensions[index].1,
+            64,
+        )?;
+        geometry.animation_no_head_bob = geometry::inherited_value(
+            index,
+            &selected_parents,
+            |index| local_bob_flags[index],
+            false,
         )?;
     }
     let mut molang_compiler = molang::MolangCompiler::default();
@@ -444,8 +461,15 @@ fn assemble(
     validate_reference_coverage(&symbols, &animation)?;
     let seat_layouts = seats::compile(&symbols, &sources, source_payloads, &mut molang_compiler)?;
     let mut molang = molang_compiler.finish()?;
-    let equipment_bindings =
-        attachable::compile_bindings(source_payloads, &symbols, &sources, !include_items)?;
+    let controller_resources =
+        attachable::controller_resources(&animation, &symbols, &sources, &geometries);
+    let equipment_bindings = attachable::compile_bindings(
+        source_payloads,
+        &symbols,
+        &sources,
+        &controller_resources,
+        !include_items,
+    )?;
     let items = if include_items {
         let item_transforms = attachable::transform_lookup(&equipment_bindings);
         item::compile(root, source_payloads, &sources, &item_transforms)?
@@ -551,25 +575,6 @@ fn validate_reference_coverage(
         }
     }
     Ok(())
-}
-
-fn resolve_geometry_dimension(
-    start: usize,
-    local_dimensions: &[(Option<u16>, Option<u16>)],
-    selected_parents: &[Option<usize>],
-    select: impl Fn((Option<u16>, Option<u16>)) -> Option<u16>,
-) -> Result<u16, AssetError> {
-    let mut current = start;
-    for _ in 0..=selected_parents.len() {
-        if let Some(dimension) = select(local_dimensions[current]) {
-            return Ok(dimension);
-        }
-        let Some(parent) = selected_parents[current] else {
-            return Ok(64);
-        };
-        current = parent;
-    }
-    Err(invalid("entity geometry dimension inheritance is cyclic"))
 }
 
 fn parse_source(

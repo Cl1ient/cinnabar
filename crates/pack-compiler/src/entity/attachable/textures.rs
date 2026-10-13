@@ -17,6 +17,7 @@ pub(super) fn compile_texture_identifiers_with(
     read: &mut dyn FnMut(&EntityAssetSource) -> Result<Vec<u8>, AssetError>,
 ) -> Result<Vec<EquipmentTexture>, AssetError> {
     identifiers.push(assets::ACTOR_GLINT_TEXTURE_IDENTIFIER);
+    identifiers.push(assets::entity::ITEM_GLINT_TEXTURE_IDENTIFIER);
     identifiers.sort_unstable();
     identifiers.dedup();
     let mut textures = Vec::new();
@@ -57,7 +58,8 @@ pub(super) fn compile_texture_identifiers_with(
     Ok(textures)
 }
 
-fn decode_raster(
+/// Decodes one equipment raster within the per-image and remaining pixel budgets.
+pub fn decode_raster(
     bytes: &[u8],
     format: ImageFormat,
     remaining: usize,

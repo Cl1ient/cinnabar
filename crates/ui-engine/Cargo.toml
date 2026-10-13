@@ -9,11 +9,13 @@ publish = false
 test-support = ["resource-pack/test-support"]
 
 [dependencies]
+pack-json = { path = "../pack-json" }
 assets = { path = "../assets" }
 crossbeam-channel = "0.5"
 image.workspace = true
 json-ui = { path = "../json-ui" }
 rayon.workspace = true
+render-api = { path = "../render-api" }
 render-model = { path = "../render-model" }
 resource-pack = { path = "../resource-pack", default-features = false }
 serde_json = "1"

@@ -16,6 +16,7 @@ pub mod settings_sections;
 pub mod settings_storage;
 pub mod settings_support;
 pub mod sign_in;
+pub mod updates;
 pub mod view;
 pub mod worlds_tab;
 
@@ -89,6 +90,7 @@ pub enum MenuField {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MenuAction {
+    Update(updates::Action),
     OpenAccounts,
     AddAccount,
     SwitchAccount(usize),
@@ -131,6 +133,8 @@ pub enum MenuAction {
     SettingsStorage(settings_storage::StorageAction),
     SettingsSupport(settings_support::SupportAction),
     SettingsOption(u16, i32),
+    /// Applies one graphics preset without changing personal video preferences.
+    SettingsVideoPreset(settings_options::video_presets::VideoPreset),
     SettingsDropdown(u16),
     SettingsLanguage(u16),
     SettingsKey(u16),

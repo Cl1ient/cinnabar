@@ -1,3 +1,17 @@
+## Launcher updates
+
+One client per install owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and
+update / Later actions, and a separate default-off install-on-quit preference. Signed manifests
+carry monotonic build numbers, and digest-named partial downloads resume with HTTP ranges.
+An offline Rust helper waits for the old process, applies the verified native package, and
+restores failed macOS/Linux starts. Read-only installs offer the manual download action.
+
+Incomplete: CI must compile and run the written regression tests on all platforms. The package
+workflow publishes each channel's signed manifest. The `CINNABAR_UPDATE_SIGNING_KEY` secret in
+the protected `release` environment and the `UPDATE_TRUSTED_KEYS` repository variable are
+configured. The first signed publication remains pending.
+The launcher owner must review the notice screenshots before merge.
+
 ## Actor animation ownership
 
 `actor-animation` owns actor rigs, Molang evaluation, controllers, poses,
@@ -552,6 +566,10 @@ these changes do not close the movement, camera, or actor parity gates.
 - Apple pipelined rendering keeps surface creation on the UI thread while render
   submission stays on the render thread. Main and extraction schedules retain
   single-thread execution; runtime startup checks do not close frame-budget gates.
+- Focused synchronized macOS windows request their reported display refresh through
+  a window-bound display link, bounded by FPS limits. Background and fixed-clock
+  runs release this request. ProMotion presentation cadence and live smoothness
+  remain unverified; this does not close the 120 Hz display gate.
 - Idle native metadata publication no longer dispatches through the main thread.
   macOS frame workers use interactive scheduling; bounded-load diagnostics show
   more render-work headroom. Unloaded tail results remain adverse and unexplained:
@@ -655,14 +673,29 @@ these changes do not close the movement, camera, or actor parity gates.
   Matching-version native comparison, physical controller/touch testing and the
   three-run hardware performance qualification remain untested.
 
+## Bedrock 1.12 combat visuals
+
+Bedrock 1.12 combat visuals are a deliberate default and accepted deviation from
+1.26.50. There is no user setting. `render_api::DEFAULT_COMBAT_VISUALS` retains the
+Modern profile as a one-line code choice. The combat profile owns body and worn
+armour hurt red, glint, and camera bob/hurt; Java 1.7 still owns its poses and items.
+Movement bob uses the physics fraction; hurt and death use the actor fraction.
+Page-level body dye masks retain zero-alpha RGB and depth independently of armour cutout.
+
+Implementation and deterministic camera, overlay, equipment and shader fixtures
+are present. They have not been compiled or run. CI verification and a headless
+visual comparison remain outstanding; this does not close a parity or visual
+acceptance gate.
+
 ## Java 1.7 animations
 
-- Owner-mandated default, selected live from Video › Animations (persisted): Java 1.7 or
+- Player poses and items are selected live from Video › Animations (persisted): Java 1.7 or
   Bedrock. Saved toggle choices migrate without changing the selected mode. Rules and frame mapping:
   [Java 1.7 animations](docs/reference/java-1-7-animations.md).
 - First person: Java's item stacks (swing; equip with the old item through the dip and the
   re-equip after a placement; eat/drink; sword block with block-hitting; bow draw and pull
-  frames; rods), the empty-hand arm, view bob, sneak eye height, hurt/death roll and arm sway. Third person: Java's
+  frames; rods), the empty-hand arm, sneak eye height and arm sway. The shared combat
+  profile takes precedence for view bob, hurt/death motion and glint. Third person: Java's
   biped pose, body yaw, limb swing with the hurt flail, held-item grips, the cape's chasing
   swing and the sneak drops; armour flashes red, held items do not.
 - Every hurt event immediately resets the limb boost, including consecutive hits; movement
@@ -940,10 +973,11 @@ these changes do not close the movement, camera, or actor parity gates.
   opaque, unlit, depth-writing pass. Unchanged targets retain their geometry and
   upload revision across camera movement.
 - The live outline was too faint. A Metal rendering diagnostic confirms FXAA
-  dilutes thin black lines more strongly on diagonals. GPU expansion now supplies
-  consistent two-physical-pixel coverage. This is provisional compensation for
-  Cinnabar's FXAA; matching vanilla sample anti-aliasing and stroke coverage
-  remains incomplete.
+  dilutes thin black lines more strongly on diagonals. GPU expansion once supplied
+  two-physical-pixel coverage as provisional compensation. The native outline is a
+  twelve-edge line list, which rasterizes one pixel wide (a thicker outline is
+  built only by the deferred renderer below 100% upscaling), so the stroke is now
+  one physical pixel. Matching vanilla's anti-aliasing of it remains incomplete.
 - Fence and wall selection use visual bounds independently of taller movement
   collision. Wall selection retains its state-dependent visual height and insets.
 - Incomplete parity: the matching-version material depth offset, scaled deferred
@@ -1182,6 +1216,8 @@ these changes do not close the movement, camera, or actor parity gates.
 ## Menu frame passes and retained memory
 
 - The HUD composites after FXAA, inside the output pass; FXAA is off with no world drawn.
+- HUD sprites use the shared nearest sampler across pack changes. Centered crosshairs snap
+  to physical pixels after positioning; larger pack textures keep their source texels.
 - The panorama draws opaque in the main pass; a static menu frame is two fullscreen passes.
 - Font pages are coverage bytes on CPU and GPU; the transparent ref buffer grows on demand;
   JSON-UI caches evict least recently used entries.
@@ -1248,9 +1284,14 @@ these changes do not close the movement, camera, or actor parity gates.
 
 ## Java-style Tab player list
 
-- User-requested HUD extension: hold Tab for the authoritative online roster.
+Keyboard & Mouse settings exposes Player List, with Tab as its default. Keyboard
+and mouse remaps persist and reset with the existing mappings; menu Tab navigation
+keeps its own binding.
+
+- User-requested HUD extension: hold the Player List binding for the authoritative
+  online roster.
 - Compact centered columns, bounded to 80 players with an explicit overflow count.
-- Roster changes refresh cached JSON-UI; Tab release, focus loss and menus hide it.
+- Roster changes refresh cached JSON-UI; binding release, focus loss and menus hide it.
 - Input, rendered collection, focus/release, roster refresh and cache tests passed.
 - Incomplete live Windows acceptance: installed-client Tab capture pending.
 
@@ -1427,6 +1468,8 @@ and compilation pass; that meshing regression is outside this change.
 2026-10-04 F3 diagnostics (user-accepted developer feature): the supplied Java
 19w05a screenshot is the requested styling reference. F3 is available by default,
 hidden at startup, and the window title contains only the shared product name.
+Keyboard & Mouse settings exposes Debug Overlay with keyboard and mouse remaps,
+saved mappings and resets. The overlay's help row shows the configured shortcuts.
 JSON-UI draws player/world/movement/render/queue diagnostics and target-state
 rows during gameplay; other screens hide the overlay without resetting F3.
 Coordinates use player feet, including third person. A fixed row budget keeps
@@ -2351,6 +2394,29 @@ Incomplete: native frame/GPU/process-memory acceptance, full remote gates,
 TTFMSDF/precomputed MSDF rendering, contextual item icon routes, verified retail
 missing-icon fallback, and native font alias/metric comparison. Outline MSDF
 fonts currently use provisional alpha rasterization. No visual gate is closed.
+Runtime terrain, item and particle images share checked source-area, device-size
+and retained-page budgets. Tall strips are decoded before cutting square frames;
+admitted HD terrain and inventory, held and dropped item art retain source detail.
+Terrain routes that exceed full-resolution storage keep their existing fallback.
+Incomplete: native frame and process-memory acceptance for HD packs, exact GUI
+sampling at high UI scales, and pack coverage beyond the supported device and
+storage bounds. This does not close a rendered parity gate.
+Pack readers share BOM, UTF-8 and Latin-1 text decoding and JSONC normalization;
+UI documents retain their existing parser recovery. Incomplete: native display
+comparison for legacy pack labels and arbitrary malformed UTF-8, and a full
+comparison of syntax tolerances across document families.
+Custom item icons and components follow the admitted registry, so an empty
+duplicate cannot replace a populated item's texture key. Missing custom icons
+report their identifier and requested atlas key during pack preparation.
+An offline regression follows the admitted registry and selected inventory stack
+through the first-person equipment path, its extruded sprite mesh and artwork
+atlas. Original synthetic art runs in CI; an explicitly supplied local pack can
+export the same native hand pose for comparison. Live server item payloads and
+native GPU output remain unverified.
+Provisional, incomplete: attachables without default geometry or texture aliases
+retain equipment bindings using their first compiled controller resources;
+dynamic controller selection still determines the resources drawn. Native static
+fallback behavior and live custom-item resource-pack acceptance remain open.
 See [continuation references](docs/resource-pack-continuation-references.md) and
 [original resource-pack references](docs/resource-pack-references.md).
 
@@ -2450,7 +2516,7 @@ events and native crack bounds/cadence. No complete particle parity gate is clos
 see [vanilla rules](docs/reference/block-break-particles.md). Local, uncommitted.
 
 2026-10-01 actor name tags: native-port correction in progress. World-plane projection,
-eye-facing cubic-angle billboard, fixed font-pixel world size, ten-pixel line pitch,
+position-facing billboard, fixed font-pixel world size, ten-pixel line pitch,
 independent line centering, full multiline 0.25-black plate, multiline world lift and
 0.125-alpha depth-tested sneaking text follow vanilla behaviour. Player tags use synced name metadata, not just their spawn username; scores share
 the same path and honor the native ten-block score gate. Provisional, labeled incomplete:
@@ -2463,6 +2529,12 @@ smoke pass at Retina scale 2; controlled near/far drift, sneak/occlusion/clippin
 version-matched native frame comparisons remain pending. Workspace tests, formatting,
 strict Clippy and the architecture gate pass locally. Changes are uncommitted. No name-tag
 visual parity gate is closed; see [vanilla rules](docs/reference/nametag-rendering.md).
+
+Actor nametag facing deliberately deviates from vanilla's cubic angle approximation:
+CPU geometry and the GPU shader use exact yaw and pitch toward the camera eye from
+the original anchor. A vertical eye direction uses zero yaw without perturbing the
+direction. World scale and multiline lift are unchanged. Rendered-frame acceptance
+remains incomplete; no name-tag visual parity gate is closed.
 
 2026-10-01 first-person item rendering: ordinary icons and opaque full-cube blocks now use
 their separate native camera-space stacks, not the third-person grip on the avatar's
@@ -2898,6 +2970,23 @@ light at their feet through the shared light curve with daylight fixed at 1 (the
 texture, tint and sample point are unmatched), pack attachables (held/worn on player bodies) layer over the equipment runtime per session
 (pack bindings win by item identifier; pack property defaults seed only from `entities/` in
 resource packs), rigs depending on vanilla clips are attributed as fallbacks; server pack admission converts first-entry priority into low-to-high merge layers. No vanilla acceptance gate is closed by this change.
+
+Texture-only equipment overrides replace artwork at validated startup texture paths;
+startup bindings, controllers and geometry remain active without loose resource files.
+Artwork-only layers support item textures with no entity symbols, create no pack attachable
+bindings and need no sidecar rebuild. Each item's authored dependencies decide whether it
+uses this path. Mixed texture and geometry, controller or material overrides retain the
+installed attachable binding against the replacement definitions. Classification uses
+the binding compiler's description inputs and material parser, including inherited
+material defines and skinning variants. The decision combines all variants of each bound
+item; recompiling one keeps its preferred player variant available to the binding compiler.
+Compiles and artwork use the accepted stack's content identity and loaded startup texture-path
+digest, so rebuilding carriers under the same source pin refreshes changed artwork paths.
+Mixed packs reuse the compiler's decoded equipment rasters; startup-path artwork is decoded
+separately only when that compiler table lacks it, within the remaining pixel and count budgets.
+Authored pack attachables remain separate. Held pixel meshes and Java raster frames include
+the resolved artwork page and layer in their cache keys. Controller glint samplers do not
+replace startup primary artwork. Rendered acceptance remains incomplete.
 
 2026-10-12 protocol codec: `protocol` decodes and encodes through protocolgen's generated
 contract crate (`bedrock-protocol-1-26-51`, contract 1), vendored byte for byte and pinned by
@@ -3886,9 +3975,12 @@ order:
    server-authoritative acceptance before enabling outbound movement from `Physics`; keep
    `FreeCamera` network-silent. Incomplete after the rewind-timeline tranche: server flags
    only end swim/glide/crawl (never start them) and a held sneak button reasserts itself;
-   item-use slowdown assumes no `minecraft:use_modifiers` on the used item; swim stop
-   predicates, conditional vertical steering and Dolphin's Grace are unported; no
+   swim stop predicates, conditional vertical steering and Dolphin's Grace are unported; no
    client-predicted vehicles (vehicle corrections are ignored as for an unpredicted mount).
+   Item-use admission distinguishes an absent modifier component from a present component
+   without a movement value for both server and authored foods. Headless checks cover the
+   ordinary enchanted apple and a controlled custom food; the reported server apple's
+   acceptance remains incomplete.
 6. **Phase 5 UI:** implement the UI foundation, receive-only text/HUD, chat, scoreboard and
    boss bars, inventory/interaction, and forms in the numbered 5.1-5.7 order.
 7. **Deferred final Phase 2.6 authority pass:** return to leaf litter and other exact residual
@@ -6302,10 +6394,13 @@ Shape classification, stair orientation and GUI shading are unverified against
 the retail GUI tessellator.
 Server item components (StartGame registry) drive display names, rarity and
 hover colours, durability maxima, stack-merge capacity, held grip, wearable
-slots and use durations. Item glint (provisional): stacks vanilla
-marks as glinting (an `ench` list, the glint component, always-glinting vanilla items)
-draw a procedural scrolling purple overlay in HUD and JSON-UI item cells, not
-the retail glint texture; held items and the item viewmodel do not glint.
+slots and use durations. Item glint: stacks marked as glinting (an `ench` list,
+the glint component, always-glinting items) sample the active pack's item glint
+raster in HUD and JSON-UI item cells. Removing the pack restores the startup
+UI carrier's image. Startup rejects stale carriers and missing or invalid base
+glint artwork with the carrier path and `make assets` rebuild guidance.
+UV scale, blend and scrolling periods remain provisional
+pending rendered acceptance; held items and the item viewmodel do not glint.
 `minecraft:render_offsets` is not applied.
 Initial negotiated item-registry binding for world item visuals is also separate
 from the inventory-ledger bootstrap fix. The visual resolver still starts from
@@ -6485,6 +6580,15 @@ states, but remote sessions admit them only when StartGame supplies their defini
 The namespace distinguishes vanilla definitions from server custom blocks; the presence of
 `vanilla_block_data` alone does not. A server
 block's own item (no components, no item version) stacks to `Item`'s default 64.
+Server custom block admission fits large pack stacks: the aggregate admits one
+million states with the 64 MiB identity estimate as the memory bound (an observed
+5,589-block server stack declares 136,909 states; the old 65,536-state aggregate
+cut its palette mid-list and left the tail absent from the world). Rejected runs
+still retain their names and counts without materialized states. Full-block custom
+blocks without `minecraft:material_instances` draw their textures from the pack's
+legacy `blocks.json`, matching vanilla, where only explicit material instances
+override that binding. Live-server visual and interaction acceptance for these
+stacks remains open.
 
 ---
 
@@ -6677,10 +6781,10 @@ Safe Zone, glint defaults, world Experiments and several unsupported subsystem
 controls remain open. JSON-UI engine changes remain on the separate branch.
 
 Glint accessibility factors now reach the existing UI item renderer: strength scales
-its additive RGB, and speed scales elapsed time before the procedural phases.
-The procedural glint appearance
-and phase periods remain provisional; this adapter does not establish texture,
-world-item, or entity-glint parity. Current vanilla option defaults/ranges remain open.
+its additive RGB, and speed scales elapsed time before the texture scrolling phases.
+The sampled glint appearance and phase periods remain provisional; rendered
+item, world-item, and entity-glint parity remain incomplete. Current option
+defaults/ranges remain open.
 
 ## Terrain particle texture repair (2026-10-01)
 
@@ -7088,6 +7192,15 @@ the rebuilt ordinary-mode Mac client (Apple M3 Pro/Metal, Retina display,
 defect. The installed native app is a near-version witness, not an exact-version
 capture; broad rendering, persona and live HUD pack-refresh parity remain open.
 World fire is tracked separately below.
+
+### Pack masks, End sky and title text (acceptance incomplete)
+
+Active packs now prepare pumpkin and spyglass masks, End-sky pixels and layered
+title splash lists during resource reload. Removing the optional resources
+restores startup data. End-sky overrides retain their decoded dimensions; masks
+use the existing 256-pixel scene layers. Synthetic regression tests cover
+priority, removal, alpha, cache invalidation and stale-generation publication.
+Compilation, regression execution and rendered parity acceptance remain open.
 
 ### World fire (accepted geometry and smoke; parity incomplete)
 
@@ -7714,9 +7827,13 @@ Ordinary first-person world damage rotation samples the actor's completed hurt
 and death counters independently of hand animation. Scripted captures retain
 their requested pose after those effects run.
 Portal and fire overlays sample the final rendered camera pose and projection.
+While the local player is dead, first person presents third-person-back with a
+level heading fixed at the body's yaw, ignoring look and perspective input until
+respawn (the native client activates its death camera component on death); the
+Java 1.7 animation mode keeps first person.
 
 Incomplete parity: exact target-version animation constants,
-respawn retries, death camera/FOV, hurt and HUD flash timing, hardcore and secondary
+respawn retries, death camera framing/FOV, hurt and HUD flash timing, hardcore and secondary
 client variants, and matched native frames remain open. The modern implementation
 and its focused regressions do not close the full death-screen parity gate.
 
@@ -7794,6 +7911,13 @@ one-chunk steps to the owner-chosen 255 maximum. See
 Incomplete parity: experimental low-memory overrides, advanced graphics presets,
 and native VRAM probes on unsupported backends are not verified. These remain
 open and do not close a parity gate.
+
+Video settings offer owner-requested Performance, Balanced (the default), and
+Quality presets. Balanced restores existing defaults, including the device
+render-distance recommendation. The selection is derived from current values;
+manual graphics edits show Custom, and personal and accessibility options are
+preserved. These presets are a custom feature and do not close a parity gate.
+CI verification and owner visual acceptance remain pending.
 
 ### Authored particle lifecycle fields
 

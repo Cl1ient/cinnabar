@@ -10,7 +10,7 @@ use crate::runtime::shutdown::finish_acceptance_run;
 #[cfg(feature = "acceptance")]
 use acceptance::model_witness::poll_model_witness_request;
 use anyhow::{Context, Result, bail};
-use assets::carriers::startup::{LoadedAssetKind, select_asset_path_from_environment};
+use assets::carriers::startup::select_asset_path_from_environment;
 use bevy::{
     anti_alias::AntiAliasPlugin,
     app::TerminalCtrlCHandlerPlugin,
@@ -44,6 +44,7 @@ use {
     },
 };
 mod logging;
+pub(crate) mod session;
 mod startup;
 use startup::bind_direct_session_directory;
 
@@ -54,7 +55,7 @@ use client_presentation::{
     local_player::{LocalPlayerFrameSet, publish_interaction_origin},
 };
 use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
-use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
+use client_ui::ui_runtime::{PlatformClipboard, UiRuntime, presentation::UiPresentationRuntime};
 use diagnostics::markers::SHUTDOWN_COMPLETED;
 use diagnostics::metrics::MetricsCollector;
 use launcher::install_layout::InstallLayout;
@@ -306,33 +307,6 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
     );
 }
 
-pub(crate) fn configure_acceptance_finish_system(app: &mut App) {
-    #[cfg(feature = "acceptance")]
-    app.add_systems(
-        Update,
-        finish_acceptance_run
-            .after(ClientFrameSet::NetworkSend)
-            .after(ClientFrameSet::UiPublication)
-            .after(record_metrics)
-            .after(recover_session_failure),
-    );
-    app
-        // The launcher gets first refusal on a fatal session error, so a failed
-        // join returns to the menu instead of ending the process. This has to sit
-        // after the failure is recorded (network drain) and before both systems
-        // that act on it. The transfer follower runs first so a server-directed
-        // move is classified as a replacement handoff, not a failure.
-        .add_systems(
-            Update,
-            (follow_server_transfer, recover_session_failure)
-                .chain()
-                .after(receive_network_events)
-                .after(ClientFrameSet::NetworkSend)
-                .after(ClientFrameSet::UiPublication)
-                .before(exit_on_fatal_runtime_error),
-        );
-}
-
 pub(crate) fn configure_client_runtime_frame_systems(app: &mut App) {
     app.add_plugins(client_runtime::ClientRuntimePlugin::<PackApplication>::default());
     crate::runtime::world::configure_world_service(app);
@@ -395,7 +369,10 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         args.address.is_some() || args.socket_dir_explicit,
     )?;
     crate::thread_budget::ThreadBudget::configure_global_rayon();
-    // Declared first so it drops last: every spawned child is gone before `run` returns or unwinds.
+    // Keep the clipboard hook registered until the child guard runs on return or unwind.
+    let _clipboard_exit =
+        launcher_host::lifecycle::children::on_exit(PlatformClipboard::shutdown_if_idle);
+    // Drop after all process owners so every spawned child is stopped before `run` ends.
     let _children = launcher_host::lifecycle::children::StopOnDrop;
     launcher_host::lifecycle::children::install_exit_hooks(|| {
         diagnostics::console::flush_before_exit();
@@ -434,29 +411,7 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         actor: actor_catalog,
         equipment: equipment_catalog,
     } = carriers.core.context("load startup block assets")?;
-    if let Some(notice) = &loaded_assets.notice {
-        diagnostics::log_stderr!("{notice}");
-    } else if loaded_assets.kind == LoadedAssetKind::CompiledBlob {
-        diagnostics::log_stderr!(
-            "loaded compiled block assets from {} (sha256 {})",
-            loaded_assets.selected_path.display(),
-            loaded_assets.metrics.blob_sha256
-        );
-    }
-    diagnostics::log_stderr!(
-        "loaded required atmosphere assets from {}",
-        loaded_assets.atmosphere.selected_path().display()
-    );
-    diagnostics::log_stderr!(
-        "{}",
-        crate::asset_bindings::AtmosphereEvidence::startup_summary(&loaded_assets.atmosphere)
-    );
-    diagnostics::log_stderr!(
-        "loaded required entity assets from {}",
-        loaded_assets.entities.selected_path().display()
-    );
-    diagnostics::log_stderr!("{}", loaded_assets.entities.startup_summary());
-    diagnostics::log_stderr!("{}", loaded_assets.fonts.startup_summary());
+    logging::loaded_assets(&loaded_assets);
     let entity_runtime = Arc::clone(loaded_assets.entities.runtime());
     crate::runtime::network::set_vanilla_item_paths(&entity_runtime);
     let actor_catalog = actor_catalog.context("load exact entity-linked neutral actor artwork")?;
@@ -735,6 +690,8 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
         .add_systems(Last, crate::frame_pacing::update_frame_pacing);
     #[cfg(target_os = "macos")]
     crate::thread_budget::ThreadBudget::configure_render_thread(&mut app);
+    #[cfg(target_os = "macos")]
+    crate::frame_pacing::macos_display_link::install(&mut app);
     app.add_systems(Update, crate::window_icon::apply);
     app.add_plugins(crate::hud_tools::HudToolsPlugin {
         screenshots_dir,
@@ -821,11 +778,12 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
     .insert_resource(equipment_runtime)
     .insert_resource(hand_rig_builder)
     .insert_resource(AtmosphereFrame::default())
-    .insert_resource(weather_textures)
+    .insert_resource(weather_textures.clone())
     .insert_resource(
         crate::runtime::network::reload_environment::EnvironmentBase::new(
             atmosphere_assets.clone(),
             particle_assets.clone(),
+            weather_textures,
         ),
     )
     .insert_resource(atmosphere_assets)
@@ -955,13 +913,16 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
             crate::shell_adapters::publish_presence_observation
                 .before(client_state::ShellFrameSet::Presence),
         );
-    configure_acceptance_finish_system(&mut app);
+    session::configure_finish_system(&mut app);
 
     #[cfg(feature = "enhanced-diagnostics")]
     crate::enhanced_diagnostics::install(&mut app, diagnostic_budget);
     executor::configure_frame_schedule_executors(&mut app);
+    app.add_plugins(render::startup_presentation::StartupPresentationPlugin)
+        .add_systems(First, crate::lifecycle::acknowledge_startup);
     startup::install_first_frame_log(&mut app);
     let exit = app.run();
+    PlatformClipboard::shutdown();
     client_shell::discord_presence::shutdown(&mut app);
     if let Some(mut network) = app
         .world_mut()

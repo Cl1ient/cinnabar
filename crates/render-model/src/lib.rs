@@ -14,6 +14,7 @@ pub use font_atlas::{
 };
 mod item_geometry;
 pub mod java_animation;
+pub mod legacy_combat;
 mod nametag;
 pub mod panorama;
 mod presentation;
@@ -58,8 +59,7 @@ pub use frame_pacing::{
 };
 pub use item_geometry::{extruded_sprite_vertices, held_sprite_vertices, textured_cube_vertices};
 pub use nametag::{
-    MAX_NAMETAG_RECORDS, NAMETAG_ACOS_CUBIC, NAMETAG_ACOS_LINEAR, NAMETAG_ATLAS_SIDE,
-    NAMETAG_BLOCKS_PER_FONT_PIXEL, NAMETAG_HORIZONTAL_ZERO, NAMETAG_LINE_PITCH_PX,
+    MAX_NAMETAG_RECORDS, NAMETAG_ATLAS_SIDE, NAMETAG_BLOCKS_PER_FONT_PIXEL, NAMETAG_LINE_PITCH_PX,
     NAMETAG_TEXT_REVERSE_Z_BIAS, NametagAtlasRect, NametagRecord, NametagScene,
     nametag_line_backgrounds, nametag_line_left,
 };
@@ -145,7 +145,6 @@ pub mod lightmap;
 pub mod native_trig;
 pub mod viewmodel;
 pub mod weather;
-pub use actor::ActorGlint;
 pub use actor::ActorRigVertexSegments;
 pub use actor::{
     ACTOR_BONE_MATRIX_BYTES, ACTOR_GPU_INSTANCE_WORDS, ACTOR_LAYER_BODY, ActorDrawManifestEntry,
@@ -156,6 +155,9 @@ pub use actor::{
     pack_actor_light_without_lightmap, pack_overlay_rgba8,
 };
 pub use actor::{ACTOR_CANDIDATE_RADIUS_BLOCKS, ActorCullView, MAX_ACTOR_RENDER_DISTANCE_BLOCKS};
+pub use actor::{
+    ACTOR_COLOR_MASK_MATERIAL_FLAG, ActorGlint, LEGACY_COMBAT_MATERIAL_FLAG, legacy_glint_uv,
+};
 pub use actor::{
     ActorArtworkLocation, ActorArtworkPageId, ActorArtworkPages, ActorTexturePage, EquipmentRaster,
     MAX_ACTOR_GPU_PIXEL_BYTES, MAX_ACTOR_TEXTURE_PAGES,
@@ -203,8 +205,8 @@ pub use celestial::{
 pub use dropped_item::ItemMeshVertex;
 pub use dropped_item::{
     DroppedItemInstance, DroppedItemModel, MAX_DROPPED_ITEM_INSTANCES, MAX_DYNAMIC_ITEM_VERTICES,
-    MAX_ITEM_LAYERS, MAX_ITEM_SPRITE_SIDE, TerrainItemInstance, TerrainItemTransition, WHITE_LAYER,
-    dropped_item_transform,
+    MAX_ITEM_LAYERS, MAX_ITEM_SPRITE_SIDE, MIN_ITEM_ATLAS_SIDE, TerrainItemInstance,
+    TerrainItemTransition, WHITE_LAYER, dropped_item_transform,
 };
 pub use dropped_item::{DroppedItemShape, DroppedItemSpawnPose, native_dropped_item_transform};
 pub use dropped_item::{rope_color, rope_point, rope_ribbon};

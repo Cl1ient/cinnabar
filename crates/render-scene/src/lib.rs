@@ -30,6 +30,7 @@ pub mod screen_fire;
 pub mod screen_overlay;
 pub mod screen_overlay_portal;
 pub mod skybox;
+pub mod startup_presentation;
 pub mod ui;
 pub mod ui_glint;
 pub mod viewmodel;
@@ -126,7 +127,7 @@ pub use screen_overlay::{
 };
 pub use skybox::SkyboxSettings;
 pub use ui::{UiRenderSceneResource, UiRenderStatsResource};
-pub use ui_glint::UiGlintSettings;
+pub use ui_glint::{UiGlintSettings, UiItemGlintTexture};
 pub use viewmodel::{
     MAX_VIEWMODEL_DEPTH_BYTES, ViewmodelCompletionGate, ViewmodelMode, ViewmodelScene,
     ViewmodelToken, viewmodel_depth_bytes,

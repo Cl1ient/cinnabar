@@ -25,6 +25,7 @@ pub mod hud_layout;
 pub mod inventory_pointer;
 pub mod inventory_tooltip;
 mod item_activation;
+pub(super) mod item_glint;
 pub mod item_gui;
 pub mod item_sprite;
 pub mod item_viewmodel;
@@ -48,7 +49,7 @@ pub mod session_icons;
 pub use forms::{PreparedJsonUi, ServerUiPack};
 
 pub use session_glyphs::SessionGlyphSheets;
-pub use session_icons::{MAX_SESSION_ICON_SIDE, SessionIcon, SessionIcons};
+pub use session_icons::{SessionIcon, SessionIcons};
 pub mod startup;
 pub mod texture_atlas;
 
@@ -113,6 +114,7 @@ pub struct UiPresentationRuntime {
     mod_panel_font: Option<mod_panel_font::InstalledFont>,
     textures: Arc<UiRenderTextureArray>,
     texture_session: Option<u64>,
+    item_glint: item_glint::ItemGlintTextures,
     blank_dynamic_page: render_model::UiTexturePage,
     solid_texture_page: u16,
     hud_textures: Option<HudTexturePages>,

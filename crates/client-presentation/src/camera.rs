@@ -22,6 +22,8 @@ pub mod actor_effects;
 pub mod antialiasing;
 mod bob;
 mod controls;
+#[cfg(test)]
+mod death_view_tests;
 mod easing;
 pub mod facts;
 pub mod fov;
@@ -29,6 +31,7 @@ pub mod fov;
 mod freelook_tests;
 mod hurt;
 pub mod java;
+pub mod legacy;
 pub mod look;
 pub mod motion_blur;
 mod overlay;
@@ -45,8 +48,8 @@ mod spawn_tests;
 
 pub use bob::{HandSwayState, ViewEffect, WalkBobState, walk_bob_effect};
 pub use controls::{
-    AutoFly, auto_fly_offset, input_is_active, look_angles, look_at_target, update_look,
-    update_movement, update_perspective,
+    AutoFly, LocalPlayerDeath, auto_fly_offset, input_is_active, look_angles, look_at_target,
+    update_look, update_movement, update_perspective,
 };
 pub use fov::{CameraFovInputs, CameraFovState, SPYGLASS_FOV_MODIFIER};
 pub use hurt::{CameraHurtState, LocalHurtEvent};
@@ -176,6 +179,7 @@ impl Plugin for CameraPresentationPlugin {
             .init_resource::<WalkBobState>()
             .init_resource::<HandSwayState>()
             .init_resource::<java::JavaCameraState>()
+            .init_resource::<legacy::LegacyCameraMotion>()
             .init_resource::<CameraHurtState>()
             .init_resource::<ServerCameraView>()
             .init_resource::<PortalProgress>()

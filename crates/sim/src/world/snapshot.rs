@@ -11,6 +11,7 @@ struct SnapshotData {
     store: Arc<ChunkStore>,
     registry: CollisionRegistry,
     dimension: i32,
+    unloaded_collision_barriers: bool,
 }
 
 impl PartialEq for CollisionSnapshot {
@@ -26,21 +27,29 @@ impl CollisionSnapshot {
             store: world.store.collision_snapshot(),
             registry: world.registry.clone(),
             dimension: world.dimension,
+            unloaded_collision_barriers: world.unloaded_collision_barriers,
         }))
     }
 
     /// Borrows the ordinary palette adapter so replay uses the live query implementation.
     fn world(&self) -> PaletteWorld<'_> {
-        PaletteWorld::new(
+        let mut world = PaletteWorld::new(
             &self.0.store,
             &self.0.registry,
             self.0.dimension,
             Default::default(),
-        )
+        );
+        world.unloaded_collision_barriers = self.0.unloaded_collision_barriers;
+        world
     }
 }
 
 impl CollisionWorld for CollisionSnapshot {
+    /// Checks the origin against the terrain retained by the prediction frame.
+    fn ensure_movement_origin(&self, feet: Vec3) -> Result<(), WorldQueryError> {
+        self.world().ensure_movement_origin(feet)
+    }
+
     fn registry_identity(&self) -> CollisionRegistryIdentity {
         self.0.registry.identity()
     }

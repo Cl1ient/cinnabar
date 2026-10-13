@@ -80,7 +80,7 @@ impl Canvas {
             let quad = &indices[at..at + 6];
             let corners = [quad[0], quad[1], quad[2], quad[5]].map(|i| &list.vertices[i as usize]);
             let is_quad = quad[3] == quad[0] && quad[4] == quad[2];
-            if is_quad && axis_aligned(&corners) {
+            if is_quad && axis_aligned(&corners) && flat_texture(&corners) {
                 self.rect(&corners, clip, texture, batch.blend);
             } else if is_quad {
                 self.polygon(
@@ -107,6 +107,9 @@ impl Canvas {
                 );
             }
             at += 6;
+        }
+        if let [a, b, c] = indices[at..] {
+            self.polygon(&[[a, b, c]], list, clip, texture, batch.blend);
         }
     }
 
@@ -165,9 +168,45 @@ impl Canvas {
                 };
                 let u = (0..3).map(|k| w[k] * v[k].uv[0]).sum();
                 let t = (0..3).map(|k| w[k] * v[k].uv[1]).sum();
-                let texel = texture.sample(u, t);
+                let color = std::array::from_fn(|channel| {
+                    (0..3)
+                        .map(|k| w[k] * f32::from(v[k].color[channel]))
+                        .sum::<f32>()
+                        .round() as u8
+                });
+                let flags = v[0].style_flags;
+                let (texel, tint) = if flags & render_api::UI_STYLE_COVERAGE_PAINT != 0 {
+                    let overlay = std::array::from_fn(|channel| {
+                        (0..3).map(|k| w[k] * v[k].overlay_color[channel]).sum()
+                    });
+                    let border = (0..3).map(|k| w[k] * v[k].model_light).sum();
+                    let paint = render_api::UiCoveragePaint::from_vertex_colors(color, overlay);
+                    (straight(paint.sample(u, [t, border])), [255; 4])
+                } else if u32::from(flags) & render_model::UI_STYLE_RADIAL_GRADIENT != 0 {
+                    let radius = u.hypot(t).clamp(0.0, 1.0);
+                    let outer: [f32; 4] = std::array::from_fn(|channel| {
+                        (0..3).map(|k| w[k] * v[k].overlay_color[channel]).sum()
+                    });
+                    let alpha = f32::from(color[3]) / 255.0;
+                    let mixed = std::array::from_fn(|channel| {
+                        let inner = if channel == 3 {
+                            alpha
+                        } else {
+                            f32::from(color[channel]) / 255.0 * alpha
+                        };
+                        let outside = if channel == 3 {
+                            outer[3]
+                        } else {
+                            outer[channel] * outer[3]
+                        };
+                        inner * (1.0 - radius) + outside * radius
+                    });
+                    (straight(mixed), [255; 4])
+                } else {
+                    (texture.sample(u, t), color)
+                };
                 let at = y as usize * self.width as usize + x as usize;
-                blend_into(&mut self.pixels[at], texel, v[0].color, blend);
+                blend_into(&mut self.pixels[at], texel, tint, blend);
             }
         }
     }
@@ -188,9 +227,33 @@ impl Canvas {
     }
 }
 
+/// Whether four corners form a window-aligned rectangle.
 fn axis_aligned(v: &[&UiVertex; 4]) -> bool {
     let p = v.map(|vertex| vertex.position);
     p[0][1] == p[1][1] && p[1][0] == p[2][0] && p[2][1] == p[3][1] && p[3][0] == p[0][0]
+}
+
+/// The span fast path only handles uniformly tinted ordinary texture quads.
+fn flat_texture(v: &[&UiVertex; 4]) -> bool {
+    v[0].style_flags & render_api::UI_STYLE_COVERAGE_PAINT == 0
+        && u32::from(v[0].style_flags) & render_model::UI_STYLE_RADIAL_GRADIENT == 0
+        && v.iter().all(|vertex| vertex.color == v[0].color)
+}
+
+/// Converts a premultiplied coverage mixture to the rasterizer's straight-alpha input.
+fn straight(color: [f32; 4]) -> [u8; 4] {
+    let alpha = color[3];
+    if alpha <= 0.0 {
+        return [0; 4];
+    }
+    std::array::from_fn(|channel| {
+        (if channel == 3 {
+            alpha
+        } else {
+            color[channel] / alpha
+        } * 255.0)
+            .round() as u8
+    })
 }
 
 /// The pixel columns (or rows) whose centres fall in `[low, high)` within the clip.
@@ -275,5 +338,75 @@ mod tests {
         assert_eq!(pixel(1, 1), [255, 0, 0, 128]);
         assert_eq!(pixel(2, 2), [255, 0, 0, 128]);
         assert_eq!(pixel(3, 3), [0, 0, 0, 0]);
+    }
+
+    /// Creates one production quad so tests can exercise vertex shading independently.
+    fn quad() -> UiDrawList {
+        UiTree::new(vec![
+            UiNode::new(UiNodeId::new(1), None, rect(0., 0., 4., 4.)).with_visual(
+                UiVisual::Solid {
+                    texture_page: 0,
+                    color: [255; 4],
+                },
+            ),
+        ])
+        .unwrap()
+        .build_draw_list()
+        .unwrap()
+    }
+
+    #[test]
+    fn gradients_interpolate_colors_instead_of_taking_the_first_corner() {
+        let mut list = quad();
+        for vertex in &mut list.vertices {
+            vertex.color = if vertex.position[1] == 0. {
+                [255, 0, 0, 255]
+            } else {
+                [0, 0, 255, 255]
+            };
+        }
+        let white = Page::white();
+        let mut canvas = Canvas::new(4, 4);
+        canvas.draw(&list, |_| Some(&white));
+        let rgba = canvas.into_rgba();
+        assert_eq!(&rgba[..4], &[223, 0, 32, 255]);
+        assert_eq!(&rgba[48..52], &[32, 0, 223, 255]);
+    }
+
+    #[test]
+    fn coverage_geometry_mixes_fill_and_border_without_sampling_a_texture() {
+        let mut list = quad();
+        let (color, overlay) = render_api::UiCoveragePaint {
+            fill: [[255, 0, 0, 255]; 2],
+            border: [0, 0, 255, 255],
+        }
+        .vertex_colors();
+        for vertex in &mut list.vertices {
+            vertex.style_flags = render_api::UI_STYLE_COVERAGE_PAINT;
+            vertex.color = color;
+            vertex.overlay_color = overlay;
+            vertex.uv = [0., 0.25];
+            vertex.model_light = 0.75;
+        }
+        let white = Page::white();
+        let mut canvas = Canvas::new(4, 4);
+        canvas.draw(&list, |_| Some(&white));
+        assert_eq!(&canvas.into_rgba()[..4], &[64, 0, 191, 255]);
+    }
+
+    #[test]
+    fn a_single_triangle_is_not_dropped() {
+        let mut list = quad();
+        list.indices.truncate(3);
+        list.batches[0].index_range = 0..3;
+        let white = Page::white();
+        let mut canvas = Canvas::new(4, 4);
+        canvas.draw(&list, |_| Some(&white));
+        assert!(
+            canvas
+                .into_rgba()
+                .chunks_exact(4)
+                .any(|pixel| pixel[3] != 0)
+        );
     }
 }

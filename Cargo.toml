@@ -72,6 +72,7 @@ members = [
     "tools/dist",
     "tools/jsonui-editor",
     "tools/jsonui-mcp",
+    "tools/ui-snapshot",
     "tools/mcp-stdio",
     "tools/cinnabar-mcp",
     "tools/cxb",

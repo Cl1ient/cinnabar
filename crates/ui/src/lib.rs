@@ -64,3 +64,11 @@ pub use text::{
     TextLayoutRequest, TextLineAlign, TextSpan, TextSpans, TextStyle, TextWrap, WordChop,
     parse_bedrock_text,
 };
+
+// Ties the action limits to the model types they size; tests include `action.rs` without the model.
+const _: () = assert!(
+    UiLimits::MAX_UI_VERTICES * std::mem::size_of::<UiVertex>()
+        + UiLimits::MAX_UI_INDICES * std::mem::size_of::<u32>()
+        + UiLimits::MAX_DRAW_BATCHES * std::mem::size_of::<UiDrawBatch>()
+        <= UiLimits::MAX_DRAW_LIST_BYTES
+);

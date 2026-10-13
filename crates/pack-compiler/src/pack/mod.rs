@@ -1,6 +1,7 @@
 mod block;
 mod fixed_tint;
 mod flipbook;
+mod model_selectors;
 mod parse;
 mod terrain;
 mod variations;
@@ -63,3 +64,6 @@ fn validate_block_keys(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod terrain_selector_tests;

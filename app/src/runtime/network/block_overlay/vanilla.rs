@@ -155,7 +155,11 @@ impl Builder<'_> {
                     .material_source(material)
                     .map_or(0, |source| source.variant);
                 key.and_then(|key| self.catalog.choices(key, variant))
-                    .is_some_and(|choices| choices.iter().any(|choice| choice.tint.is_some()))
+                    .is_some_and(|choices| {
+                        choices
+                            .iter()
+                            .any(|choice| choice.tint.is_some() || choice.overlay_color)
+                    })
             }) {
                 continue;
             }
@@ -247,23 +251,14 @@ impl Builder<'_> {
         }
         let mut leaves = Vec::with_capacity(choices.len());
         for (index, choice) in choices.iter().enumerate() {
-            let slot = self
-                .route_slot(TextureRoute::Catalog {
+            let slot = self.carrier_slot(
+                TextureRoute::Catalog {
                     key: key.to_owned(),
                     variant,
                     choice: index as u32,
-                })
-                .or_else(|| {
-                    let (id, source) = keys
-                        .material_sources()
-                        .filter(|(_, source)| {
-                            source.path.as_ref() == choice.path
-                                && (source.baked_tint.is_none() || source.baked_tint == choice.tint)
-                        })
-                        .min_by_key(|(_, source)| source.baked_tint != choice.tint)?;
-                    let tint = source.baked_tint.is_none().then_some(choice.tint).flatten();
-                    self.copy_base_texture(id, tint)
-                })?;
+                },
+                keys,
+            )?;
             leaves.push(Material {
                 texture: TextureRef::new(1, slot.layer).expect("bounded layer"),
                 flags,
@@ -291,73 +286,5 @@ impl Builder<'_> {
         };
         self.terrain_materials.insert(cache_key, id);
         Some(id)
-    }
-
-    /// Copies carrier frames and applies a multiplier only when it is not already baked in.
-    fn copy_base_texture(&mut self, id: u32, tint: Option<[u8; 3]>) -> Option<TextureSlot> {
-        let cache_key = (id, tint);
-        if let Some(slot) = self.base_textures.get(&cache_key) {
-            return Some(slot.clone());
-        }
-        let base = self.base_assets?;
-        let material = base.material(id);
-        let animation = base.animations().get(material.animation as usize).copied();
-        let references = if let Some(animation) = animation {
-            base.animation_frames()
-                .get(
-                    animation.frame_start as usize
-                        ..animation.frame_start as usize + animation.frame_count as usize,
-                )?
-                .to_vec()
-        } else {
-            vec![material.texture]
-        };
-        if self.sources.len() + references.len() > self.max_layers {
-            return None;
-        }
-        let mut frames = Vec::with_capacity(references.len());
-        for reference in references {
-            let page = base.texture_pages().get(reference.page() as usize)?;
-            let mip = page.texture.mips.first()?;
-            let bytes = (mip.size * mip.size * 4) as usize;
-            let start = reference.layer() as usize * bytes;
-            let mut frame = DecodedTexture {
-                width: mip.size,
-                height: mip.size,
-                rgba8: mip.rgba8.get(start..start + bytes)?.into(),
-            };
-            if let Some(tint) = tint {
-                pack_compiler::apply_atlas_tint(&mut frame.rgba8, tint);
-            }
-            frames.push(shrink_to_max(&frame, MAX_TILE));
-        }
-        let bytes: usize = frames.iter().map(|frame| frame.rgba8.len()).sum();
-        if self.source_bytes + bytes > MAX_OVERLAY_SOURCE_BYTES {
-            return None;
-        }
-        self.source_bytes += bytes;
-        let first = self.sources.len() as u32;
-        let animation = if let Some(animation) = animation {
-            let frame_start = self.overlay.animation_frames.len() as u32;
-            self.overlay.animation_frames.extend(
-                (0..frames.len() as u32)
-                    .map(|index| TextureRef::new(1, first + index).expect("bounded layer")),
-            );
-            let id = self.overlay.animations.len() as u32;
-            self.overlay.animations.push(Animation {
-                frame_start,
-                ..animation
-            });
-            id
-        } else {
-            NO_ANIMATION
-        };
-        self.sources.extend(frames.into_iter().map(Source::Image));
-        let slot = TextureSlot {
-            layer: first,
-            animation,
-        };
-        self.base_textures.insert(cache_key, slot.clone());
-        Some(slot)
     }
 }

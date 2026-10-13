@@ -6,8 +6,10 @@ use resource_pack::LayeredPackView;
 use serde_json::Value;
 
 use pack_runtime::pack_textures::DecodedTexture;
+mod carrier;
 mod diagnostics;
 mod terrain;
+pub(super) use carrier::carrier_image;
 use diagnostics::{FailureReason, TextureDiagnostics};
 use pack_runtime::pack_textures::{MAX_CATALOG_ENTRIES, decode_pack_texture, parse_pack_json};
 pub(super) use terrain::{admit_static_rectangle, source_mip_chain};
@@ -17,6 +19,13 @@ pub(super) struct Flipbook {
     pub(super) frames: Option<Vec<u32>>,
     pub(super) ticks_per_frame: u32,
     pub(super) blend: bool,
+}
+
+/// Pixels supplied by either a pack image or the immutable carrier.
+pub(super) struct TextureImage {
+    pub(super) texture: DecodedTexture,
+    pub(super) baked_tint: Option<[u8; 3]>,
+    pub(super) animation: Option<assets::Animation>,
 }
 
 /// Texture keys resolved across the stack; a higher pack replaces a key.
@@ -130,59 +139,77 @@ impl<'a> TextureCatalog<'a> {
         Some(self.terrain.get(key)?.variant(variant))
     }
 
-    /// Decodes a state and positional choice, retaining the entry's literal tint.
+    /// Decodes a state choice through the shared raster, tint, and image-source resolution.
+    #[cfg(test)]
     pub(super) fn decode_choice(
         &self,
         key: &str,
         variant: u32,
         choice: u32,
     ) -> Option<DecodedTexture> {
-        let Some(choice) = self
-            .choices(key, variant)
-            .and_then(|choices| choices.get(choice as usize))
-        else {
+        self.decode_route(
+            &super::TextureRoute::Catalog {
+                key: key.to_owned(),
+                variant,
+                choice,
+            },
+            |_, _| None,
+        )
+        .map(|image| image.texture)
+    }
+
+    /// Resolves one route, using normalized image filenames for both pack and carrier sources.
+    pub(super) fn decode_route(
+        &self,
+        route: &super::TextureRoute,
+        mut carrier: impl FnMut(&str, Option<[u8; 3]>) -> Option<TextureImage>,
+    ) -> Option<TextureImage> {
+        use pack_runtime::pack_textures::texture_image_paths;
+        let key = route.key();
+        let choice = match route {
+            super::TextureRoute::Catalog {
+                variant, choice, ..
+            } => self
+                .choices(key, *variant)
+                .and_then(|choices| choices.get(*choice as usize)),
+            super::TextureRoute::Path { variant, path, .. } => {
+                let paths = texture_image_paths(path);
+                self.choices(key, *variant)?.iter().find(|choice| {
+                    texture_image_paths(&choice.path)
+                        .iter()
+                        .any(|path| paths.contains(path))
+                })
+            }
+        };
+        let Some(choice) = choice else {
             self.diagnostics
                 .failure(FailureReason::TerrainKeyMissing, key, None);
             return None;
         };
-        self.decode_path(key, &choice.path, choice.tint)
-    }
-
-    /// Resolves a recorded raster's own variant tint; an untinted choice stays untinted.
-    pub(super) fn decode_source(
-        &self,
-        key: &str,
-        variant: u32,
-        path: &str,
-    ) -> Option<DecodedTexture> {
-        let tint = self
-            .choices(key, variant)?
-            .iter()
-            .find(|choice| choice.path == path)?
-            .tint;
-        self.decode_path(key, path, tint)
-    }
-
-    /// Reads a recorded source path for raster-only replacements of weighted leaves.
-    pub(super) fn decode_path(
-        &self,
-        key: &str,
-        path: &str,
-        tint: Option<[u8; 3]>,
-    ) -> Option<DecodedTexture> {
-        let mut texture = decode_pack_texture(self.view, path);
-        if let Some(tint) = tint
-            && let Some(texture) = texture.as_mut()
+        let mut image = decode_pack_texture(self.view, &choice.path)
+            .map(|texture| TextureImage {
+                texture,
+                baked_tint: None,
+                animation: None,
+            })
+            .or_else(|| {
+                texture_image_paths(&choice.path)
+                    .into_iter()
+                    .find_map(|path| carrier(&path, choice.tint))
+            });
+        if let Some(image) = image.as_mut()
+            && image.baked_tint.is_none()
+            && let Some(tint) = choice.tint
         {
-            pack_compiler::apply_atlas_tint(&mut texture.rgba8, tint);
+            pack_compiler::apply_atlas_tint(&mut image.texture.rgba8, tint);
         }
-        if texture.is_none() {
-            let reason = diagnostics::failure_reason(self.view, path);
+        if image.is_none() {
+            let reason = diagnostics::failure_reason(self.view, &choice.path);
             if self.server_keys.contains(key) || reason != FailureReason::TextureFileMissing {
-                self.diagnostics.failure(reason, key, Some(path));
+                self.diagnostics.failure(reason, key, Some(&choice.path));
             }
         }
-        texture
+        image
     }
 
     /// Records a route the overlay could not admit because its texture array is full.

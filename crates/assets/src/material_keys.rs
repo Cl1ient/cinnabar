@@ -12,7 +12,7 @@ pub use sources::{
 };
 
 /// Sidecar wire version; part of the world carrier's prepared identity.
-pub const MATERIAL_KEYS_SCHEMA: u32 = 7;
+pub const MATERIAL_KEYS_SCHEMA: u32 = 8;
 /// Largest sidecar file the runtime reads.
 pub const MAX_MATERIAL_KEYS_BYTES: u64 = 16 * 1024 * 1024;
 

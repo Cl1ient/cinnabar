@@ -111,6 +111,19 @@ pub fn decode_pack_texture(view: &LayeredPackView, path: &str) -> Option<Decoded
 
 /// Tries the literal image path, then the supported file extensions in precedence order.
 fn decode_image_file(view: &LayeredPackView, path: &str) -> Option<DecodedTexture> {
+    texture_image_paths(path).into_iter().find_map(|path| {
+        let extension = path.rsplit_once('.')?.1;
+        let (_, format) = IMAGE_EXTENSIONS
+            .into_iter()
+            .find(|(known, _)| extension.eq_ignore_ascii_case(known))?;
+        let bytes = view.read_capped(&path, MAX_TEXTURE_SOURCE_BYTES as u64)?;
+        decode_image(&bytes, format)
+    })
+}
+
+/// Returns normalized image filenames in the same order used by the pack decoder.
+pub fn texture_image_paths(path: &str) -> Vec<String> {
+    let path = path.trim().trim_start_matches("./");
     // Vanilla's loader also tries the literal path, so a pack path that already
     // names its image (`textures/items/gem.png`) resolves.
     let named = path.rsplit_once('.').and_then(|(_, extension)| {
@@ -118,22 +131,15 @@ fn decode_image_file(view: &LayeredPackView, path: &str) -> Option<DecodedTextur
             .into_iter()
             .find(|(known, _)| extension.eq_ignore_ascii_case(known))
     });
-    if let Some((_, format)) = named
-        && let Some(texture) = view
-            .read_capped(path, MAX_TEXTURE_SOURCE_BYTES as u64)
-            .and_then(|bytes| decode_image(&bytes, format))
-    {
-        return Some(texture);
-    }
-    IMAGE_EXTENSIONS
+    named
         .into_iter()
-        .find_map(|(extension, format)| {
-            let bytes = view.read_capped(
-                &format!("{path}.{extension}"),
-                MAX_TEXTURE_SOURCE_BYTES as u64,
-            )?;
-            decode_image(&bytes, format)
-        })
+        .map(|_| path.to_owned())
+        .chain(
+            IMAGE_EXTENSIONS
+                .into_iter()
+                .map(|(extension, _)| format!("{path}.{extension}")),
+        )
+        .collect()
 }
 
 /// A texture set's `color` is a sibling image name or a solid `[r, g, b(, a)]`.

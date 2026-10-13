@@ -545,13 +545,13 @@ fn compile_pack_inner(
         .with_fixed_tints(lily_pad_tints);
     let material_keys = pack_bindings::retain(
         material_keys,
-        &pack,
+        (&pack, root),
         &material_by_descriptor,
         &materials,
         (records, &visuals),
         &lily_pad_keys,
         &seasonal_copies,
-    );
+    )?;
     if light_properties.len() != visuals.len() {
         return Err(AssetError::InvalidCompiledAssets {
             detail: "light-property count does not match sequential visual span".into(),

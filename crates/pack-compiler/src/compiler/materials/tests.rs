@@ -56,8 +56,16 @@ fn identical_pixels_keep_distinct_state_source_identities() {
         materials[ids_by_state[&1] as usize].texture
     );
     let keys = MaterialKeys::from_entries(ids.values().map(|&id| (id, "fixture")));
-    let keys =
-        super::super::pack_bindings::retain(keys, &pack, &ids, &materials, (&[], &[]), &[], &[]);
+    let keys = super::super::pack_bindings::retain(
+        keys,
+        (&pack, root.path()),
+        &ids,
+        &materials,
+        (&[], &[]),
+        &[],
+        &[],
+    )
+    .unwrap();
     for variant in 0..2 {
         assert_eq!(
             keys.material_source(ids_by_state[&variant])

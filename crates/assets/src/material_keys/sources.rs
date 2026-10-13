@@ -9,6 +9,8 @@ pub struct MaterialTextureSource {
     pub key: Box<str>,
     pub variant: u32,
     pub path: Box<str>,
+    /// Resolved image filename relative to the source pack, including its extension.
+    pub raster: Box<str>,
     /// Atlas multiplier already applied to this material's carrier pixels.
     pub baked_tint: Option<[u8; 3]>,
 }

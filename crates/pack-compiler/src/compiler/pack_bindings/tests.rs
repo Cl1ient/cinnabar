@@ -53,13 +53,14 @@ fn retained_eligibility(
 ) -> bool {
     let keys = retain(
         MaterialKeys::default(),
-        pack,
+        (pack, Path::new("")),
         &BTreeMap::new(),
         materials,
         (&[record], &[visual]),
         &[],
         &[],
-    );
+    )
+    .unwrap();
     let restored =
         MaterialKeys::from_json(&keys.to_json(materials.len() as u32), materials.len()).unwrap();
     restored.block_sources()[0].cube_binding_eligible
@@ -198,13 +199,14 @@ fn pillar_mapping_retains_uv_rotation_independently_of_the_original_scalar_bindi
             .into();
         let keys = retain(
             MaterialKeys::default(),
-            &pack,
+            (&pack, Path::new("")),
             &BTreeMap::new(),
             &materials,
             (&[record.clone()], &[visual]),
             &[],
             &[],
-        );
+        )
+        .unwrap();
         let source = &keys.block_sources()[0];
         for face in BlockFace::ALL {
             assert!(!crate::pack::resolve_texture_key(&pack.blocks, &record, face).rotate_uv);
@@ -237,15 +239,40 @@ fn fixed_atlas_tint_is_retained_only_on_the_baked_material_copy() {
     let keys = retain(
         MaterialKeys::from_entries([(1, "world"), (2, "world")])
             .with_fixed_tints([("world", tint)]),
-        &pack,
+        (&pack, Path::new("")),
         &descriptors,
         &vec![Material::unvaried(); 4],
         (&[], &[]),
         &[(2, "world".into())],
         &[(3, 2)],
-    );
+    )
+    .unwrap();
     let keys = MaterialKeys::from_json(&keys.to_json(4), 4).unwrap();
     assert_eq!(keys.material_source(1).unwrap().baked_tint, None);
     assert_eq!(keys.material_source(2).unwrap().baked_tint, Some(tint));
     assert_eq!(keys.material_source(3).unwrap().baked_tint, Some(tint));
+}
+
+#[test]
+fn carrier_source_identity_retains_the_filename_selected_by_the_image_loader() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("textures")).unwrap();
+    std::fs::write(root.path().join("textures/fixture.tga"), []).unwrap();
+    assert_eq!(
+        raster_identity(root.path(), "textures/fixture")
+            .unwrap()
+            .as_ref(),
+        "textures/fixture.tga"
+    );
+    std::fs::write(root.path().join("textures/fixture.png"), []).unwrap();
+    for path in [
+        "textures/fixture",
+        "textures/fixture.png",
+        "./textures/fixture.png",
+    ] {
+        assert_eq!(
+            raster_identity(root.path(), path).unwrap().as_ref(),
+            "textures/fixture.png"
+        );
+    }
 }

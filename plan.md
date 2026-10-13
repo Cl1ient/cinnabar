@@ -6,11 +6,12 @@ repoint only plain full-cube world faces with one-to-one source mappings and pre
 separate carried cube icons and held-item sheets. Carried-only texture changes also
 prepare art for eligible cubes. The material sidecar retains source facts and cube
 rebinding eligibility after packing. Carrier fallback resolves raster paths across keys,
-retains baked atlas tint, and applies a new multiplier only to untinted sources. Cube
+retains baked atlas tint, and applies a new multiplier only to untinted sources. Pack
+and carrier images share filename resolution, tint, UV grids, and frame admission. Cube
 bindings derive UV rotation from the replacement binding shape and retained pillar mapping.
 
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
-blocks without a pillar axis, model and container blocks, tinted carried textures,
+blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,
 leaves, walls, fences, and other inventory-state models. These keep their existing routes.
 CI must compile and run the regression fixtures. Rendered state variants, position-selected
 texture output, pack reload/removal, and performance acceptance still need headless

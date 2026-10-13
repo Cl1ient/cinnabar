@@ -33,7 +33,8 @@ use self::{
     geometry::{FACE_NAMES, FaceQuad, Geometry},
     geometry_inputs::geometry_catalog,
     textures::{
-        TextureCatalog, admit_static_rectangle, flipbook_frames, shrink_to_max, source_mip_chain,
+        Flipbook, TextureCatalog, admit_static_rectangle, flipbook_frames, shrink_to_max,
+        source_mip_chain,
     },
 };
 use pack_runtime::pack_textures::DecodedTexture;
@@ -229,7 +230,7 @@ struct Builder<'a> {
     catalog: TextureCatalog<'a>,
     base_assets: Option<&'a assets::RuntimeAssets>,
     vanilla_carried: Vec<CarriedBlock>,
-    base_textures: HashMap<(u32, Option<[u8; 3]>), TextureSlot>,
+    base_textures: HashMap<(TextureRoute, u8), Option<TextureSlot>>,
     terrain_materials: HashMap<(String, u32, u32), u32>,
     geometries: HashMap<String, Geometry>,
     overlay: BlockOverlay,
@@ -511,13 +512,29 @@ impl Builder<'_> {
         if let Some(slot) = self.textures.get(&route) {
             return slot.clone();
         }
-        let slot = self.load_texture(&route);
+        let slot = self.load_texture(&route, None);
         self.textures.insert(route, slot.clone());
         slot
     }
 
+    /// Admits carrier-backed routes through the pack texture pipeline, caching the winning grid.
+    fn carrier_slot(&mut self, route: TextureRoute, keys: &MaterialKeys) -> Option<TextureSlot> {
+        let grid = self.catalog.grid(route.key());
+        let cache_key = (route, grid);
+        if let Some(slot) = self.base_textures.get(&cache_key) {
+            return slot.clone();
+        }
+        let slot = self.load_texture(&cache_key.0, Some(keys));
+        self.base_textures.insert(cache_key, slot.clone());
+        slot
+    }
+
     /// Admits one raster route using the existing frame and storage budgets.
-    fn load_texture(&mut self, route: &TextureRoute) -> Option<TextureSlot> {
+    fn load_texture(
+        &mut self,
+        route: &TextureRoute,
+        carrier: Option<&MaterialKeys>,
+    ) -> Option<TextureSlot> {
         let key = route.key();
         let available = self.max_layers.saturating_sub(self.sources.len());
         if available == 0 {
@@ -527,14 +544,10 @@ impl Builder<'_> {
             self.catalog.report_full(key);
             return None;
         }
-        let mut texture = match route {
-            TextureRoute::Catalog {
-                variant, choice, ..
-            } => self.catalog.decode_choice(key, *variant, *choice),
-            TextureRoute::Path { variant, path, .. } => {
-                self.catalog.decode_source(key, *variant, path)
-            }
-        }?;
+        let image = self.catalog.decode_route(route, |path, tint| {
+            textures::carrier_image(self.base_assets?, carrier?, path, tint, available.min(256))
+        })?;
+        let mut texture = image.texture;
         let grid = self.catalog.grid(key);
         let animate = match route {
             TextureRoute::Catalog {
@@ -546,9 +559,17 @@ impl Builder<'_> {
                 .and_then(|choices| choices.first())
                 .is_some_and(|choice| choice.path == *path),
         };
-        let flipbook = animate.then(|| self.catalog.flipbook(key)).flatten();
+        let inherited = image.animation;
+        let server_flipbook = animate.then(|| self.catalog.flipbook(key)).flatten();
+        let flipbook = server_flipbook.cloned().or_else(|| {
+            inherited.map(|animation| Flipbook {
+                frames: None,
+                ticks_per_frame: animation.ticks_per_frame,
+                blend: animation.flags & assets::ANIMATION_FLAG_BLEND != 0,
+            })
+        });
         // Bound frame count before cutting copies, and shrink each to MAX_TILE.
-        let frames = match flipbook {
+        let frames = match flipbook.as_ref() {
             Some(flipbook) => flipbook_frames(&texture, flipbook, available.min(256), MAX_TILE),
             None => {
                 admit_static_rectangle(&mut texture);
@@ -576,7 +597,7 @@ impl Builder<'_> {
                 Source::GridImage(frame, grid)
             }
         }));
-        let animation = match flipbook {
+        let animation = match flipbook.as_ref() {
             Some(flipbook) if frame_count > 1 => {
                 let frame_start = self.overlay.animation_frames.len() as u32;
                 for layer in first..first + frame_count {
@@ -584,15 +605,22 @@ impl Builder<'_> {
                         .animation_frames
                         .push(TextureRef::new(1, layer).expect("bounded layer"));
                 }
-                self.overlay.animations.push(Animation {
-                    frame_start,
-                    frame_count,
-                    ticks_per_frame: flipbook.ticks_per_frame,
-                    atlas_index: 0,
-                    atlas_tile_variant: 0,
-                    replicate: 1,
-                    flags: u32::from(flipbook.blend) * assets::ANIMATION_FLAG_BLEND,
-                });
+                let mut animation =
+                    inherited
+                        .filter(|_| server_flipbook.is_none())
+                        .unwrap_or(Animation {
+                            frame_start,
+                            frame_count,
+                            ticks_per_frame: flipbook.ticks_per_frame,
+                            atlas_index: 0,
+                            atlas_tile_variant: 0,
+                            replicate: 1,
+                            flags: u32::from(flipbook.blend) * assets::ANIMATION_FLAG_BLEND,
+                        });
+                animation.frame_start = frame_start;
+                animation.frame_count = frame_count;
+                animation.ticks_per_frame = flipbook.ticks_per_frame;
+                self.overlay.animations.push(animation);
                 self.overlay.animations.len() as u32 - 1
             }
             _ => NO_ANIMATION,

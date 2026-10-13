@@ -81,3 +81,50 @@ fn malformed_over_budget_and_device_oversized_images_are_rejected() {
         .is_none()
     );
 }
+
+#[test]
+fn first_strip_frame_keeps_rows_and_columns_on_both_axes() {
+    let policy = TexturePolicy::for_device(64);
+    for (width, height) in [(8192, 64), (64, 8192), (64, 64), (96, 64)] {
+        let mut texture = decode_image_with_policy(
+            &png(width, height),
+            ImageFormat::Png,
+            TexturePolicy::for_device(128),
+            true,
+        )
+        .unwrap();
+        let original = texture.clone();
+        texture.retain_first_strip_frame();
+        if (width, height) == (96, 64) {
+            assert_eq!(texture, original);
+            continue;
+        }
+        assert_eq!([texture.width, texture.height], [64; 2]);
+        assert_eq!(
+            policy.source_bytes(texture.width, texture.height, false),
+            Some(texture.rgba8.len())
+        );
+        for y in 0..64usize {
+            for x in 0..64usize {
+                assert_eq!(
+                    &texture.rgba8[(y * 64 + x) * 4..][..4],
+                    &[x as u8, y as u8, 0, 255]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn first_strip_frame_leaves_malformed_buffers_unchanged() {
+    for (width, height) in [(0, 16), (16, 0), (16, 32), (32, 16), (u32::MAX, 1)] {
+        let mut texture = DecodedTexture {
+            width,
+            height,
+            rgba8: vec![7; 4].into(),
+        };
+        let original = texture.clone();
+        texture.retain_first_strip_frame();
+        assert_eq!(texture, original);
+    }
+}

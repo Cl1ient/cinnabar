@@ -8,7 +8,7 @@ use std::{
 
 mod catalog;
 mod images;
-use images::{first_frame, icon, resolve_key};
+use images::{icon, resolve_key};
 mod vanilla;
 pub(crate) use vanilla::{set_vanilla_item_paths, vanilla_item_paths_installed};
 

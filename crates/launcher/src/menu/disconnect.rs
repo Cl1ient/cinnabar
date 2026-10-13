@@ -110,6 +110,15 @@ fn server_reason(reason: &str) -> DisconnectBody {
     DisconnectBody::Key(key)
 }
 
+/// Recognizes the existing outdated-client reason without treating arbitrary server text as consent.
+pub fn requires_client_update(error: &str) -> bool {
+    const KEY: &str = "disconnectionScreen.outdatedClient";
+    match describe(error).body {
+        DisconnectBody::Key(key) => key == KEY,
+        DisconnectBody::Server(text) => text == KEY,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,14 +183,5 @@ mod tests {
         assert_eq!(unreachable.body, key("disconnectionScreen.cantConnect"));
         assert_eq!(body("something odd"), key("disconnectionScreen.noReason"));
         assert_eq!(describe("closed").title, DISCONNECTED);
-    }
-}
-
-/// Recognizes the existing outdated-client reason without treating arbitrary server text as consent.
-pub fn requires_client_update(error: &str) -> bool {
-    const KEY: &str = "disconnectionScreen.outdatedClient";
-    match describe(error).body {
-        DisconnectBody::Key(key) => key == KEY,
-        DisconnectBody::Server(text) => text == KEY,
     }
 }

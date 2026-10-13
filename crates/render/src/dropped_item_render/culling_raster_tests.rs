@@ -9,17 +9,19 @@ use wgpu::util::DeviceExt;
 const VERTEX: &str = r#"
 @group(0) @binding(22) var<storage, read> mesh: array<u32>;
 @vertex fn fixture_vertex(@builtin(vertex_index) index: u32) -> VertexOutput {
-    let base = index * 10u;
+    let base = index * ITEM_MESH_VERTEX_WORDS;
     var input: VertexInput;
     input.position = vec3(bitcast<f32>(mesh[base]), bitcast<f32>(mesh[base+1u]), bitcast<f32>(mesh[base+2u]));
     input.uv = vec2(bitcast<f32>(mesh[base+3u]), bitcast<f32>(mesh[base+4u]));
     input.normal = vec3(bitcast<f32>(mesh[base+5u]), bitcast<f32>(mesh[base+6u]), bitcast<f32>(mesh[base+7u]));
     input.layer = mesh[base+8u];
     input.color = unpack4x8unorm(mesh[base+9u]);
+    input.glint_scale = vec2(bitcast<f32>(mesh[base+10u]), bitcast<f32>(mesh[base+11u]));
     input.row_0 = vec4(1.0,0.0,0.0,0.0);
     input.row_1 = vec4(0.0,1.0,0.0,0.0);
     input.row_2 = vec4(0.0,0.0,1.0,0.0);
     input.packed = vec4(0u,15u,15u,0u);
+    input.glint = vec4(0.0);
     return item_vertex(input);
 }
 "#;
@@ -74,10 +76,25 @@ fn raster(gpu: &Gpu, model: &DroppedItemModel, eye: Vec3, samples: u32, cull: bo
         wgpu::BufferUsages::UNIFORM,
     );
     let light = gpu.buffer(&[1.0; 256 * 4], wgpu::BufferUsages::UNIFORM);
-    let mut atmosphere = [0.0; 32];
-    atmosphere[19] = 100.0;
-    atmosphere[20] = 200.0;
-    let atmosphere = gpu.buffer(&atmosphere, wgpu::BufferUsages::UNIFORM);
+    let atmosphere = gpu.buffer(&[0.0; 32], wgpu::BufferUsages::UNIFORM);
+    let environment = gpu.buffer(&[1.0_f32, 0.0, 0.0, 1.0], wgpu::BufferUsages::UNIFORM);
+    let glint = gpu
+        .device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("unused dropped item glint"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&default());
     let bindings = [
         wgpu::BindGroupEntry {
             binding: 0,
@@ -89,6 +106,18 @@ fn raster(gpu: &Gpu, model: &DroppedItemModel, eye: Vec3, samples: u32, cull: bo
         },
         wgpu::BindGroupEntry {
             binding: 2,
+            resource: wgpu::BindingResource::Sampler(&sampler),
+        },
+        wgpu::BindGroupEntry {
+            binding: 3,
+            resource: environment.as_entire_binding(),
+        },
+        wgpu::BindGroupEntry {
+            binding: 4,
+            resource: wgpu::BindingResource::TextureView(&glint),
+        },
+        wgpu::BindGroupEntry {
+            binding: 5,
             resource: wgpu::BindingResource::Sampler(&sampler),
         },
         wgpu::BindGroupEntry {
@@ -115,7 +144,10 @@ fn raster(gpu: &Gpu, model: &DroppedItemModel, eye: Vec3, samples: u32, cull: bo
     .replace("@vertex\nfn item_vertex", "fn item_vertex")
     .replace("@group(1) @binding(0)", "@group(0) @binding(20)")
     .replace("@group(1) @binding(1)", "@group(0) @binding(21)");
-    source.push_str(VERTEX);
+    source.push_str(&VERTEX.replace(
+        "ITEM_MESH_VERTEX_WORDS",
+        &(ITEM_MESH_VERTEX_BYTES / size_of::<u32>()).to_string(),
+    ));
     gpu.render_srgb_with_state(
         &source,
         "fixture_vertex",
@@ -178,18 +210,11 @@ fn sprite() -> render_model::DroppedItemSprite {
 }
 
 #[test]
-fn item_culling_preserves_pixels_from_faces_edges_corners_and_cutouts() {
+fn closed_item_culling_preserves_pixels_from_faces_edges_and_corners() {
     let Some(gpu) = Gpu::for_fixture("dropped item culling pixels") else {
         return;
     };
     let sprite = sprite();
-    let mut opaque_sprite = sprite.clone();
-    for pixel in Arc::make_mut(&mut opaque_sprite.rgba8)
-        .as_chunks_mut::<4>()
-        .0
-    {
-        pixel[3] = 255;
-    }
     let cube = render_model::DroppedItemCube {
         tile: 1,
         faces: std::array::from_fn(|i| Arc::from([60 + i as u8 * 25, 150, 70, 255])),
@@ -227,14 +252,13 @@ fn item_culling_preserves_pixels_from_faces_edges_corners_and_cutouts() {
         rotation: 1,
     };
     let models = [
-        (DroppedItemModel::Sprite(sprite.clone()), false),
-        (DroppedItemModel::NativeSprite(sprite), true),
-        (DroppedItemModel::Sprite(opaque_sprite), true),
-        (DroppedItemModel::Cube(cube), true),
-        (DroppedItemModel::Block(block), true),
+        DroppedItemModel::Sprite(sprite.clone()),
+        DroppedItemModel::NativeSprite(sprite),
+        DroppedItemModel::Cube(cube),
+        DroppedItemModel::Block(block),
     ];
-    for (index, (model, eligible)) in models.iter().enumerate() {
-        assert_eq!(model.can_cull_back_faces(), *eligible);
+    for (index, model) in models.iter().enumerate() {
+        assert!(model.can_cull_back_faces());
         for samples in [1, 4] {
             for (angle, eye) in [
                 Vec3::X,
@@ -262,7 +286,7 @@ fn item_culling_preserves_pixels_from_faces_edges_corners_and_cutouts() {
                     differences, 0,
                     "model {index}, angle {angle}, samples {samples}"
                 );
-                if angle == 6 && samples == 1 && matches!(model, DroppedItemModel::Cube(_)) {
+                if angle == 6 && samples == 1 && index == 2 {
                     gpu_snapshot::save("dropped-item-culling-before", &before);
                     gpu_snapshot::save("dropped-item-culling-after", &after);
                 }

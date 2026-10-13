@@ -4,11 +4,12 @@ use super::*;
 
 pub(super) mod camera;
 mod clips;
+pub(super) mod motion_endpoint;
+pub(super) mod motion_sampling;
+mod rotation;
 pub(super) mod sampling;
-pub(super) mod swell;
-pub(super) mod swell_endpoint;
 
-use swell_endpoint::{SwellEndpoint, SwellMotion};
+use motion_endpoint::{MotionEndpoint, MotionEndpointState};
 
 /// Completed slices stay borrowed; sampled layers own only their frame's changed pose data.
 pub struct ActorRenderLayers<'a> {
@@ -217,23 +218,25 @@ impl<'a> ActorRenderFrame<'a> {
 
 #[derive(Debug)]
 pub(super) struct FrameState {
-    pub motion: SwellMotion,
+    pub motion: MotionEndpointState,
+    /// Previous simulation tick, even when that tick did not evaluate a visual pose.
+    pub previous_rotation: ActorTickInput,
     pub samples_camera_poses: bool,
     pub samples_swing_poses: bool,
     /// Completed selection and clock writes feed independently sampled layer channels.
     pub selection_effects: evaluation::MolangEffects,
     /// Completed channel writes survive frames that retain ordinary pose endpoints.
     pub retained_pose_effects: evaluation::MolangEffects,
-    pub previous_motion: Option<SwellMotion>,
-    pub swell_poses: Option<SwellPoses>,
-    pub swell_layers: BTreeMap<u32, SwellPoses>,
+    pub previous_motion: Option<MotionEndpointState>,
+    pub motion_poses: Option<MotionPoses>,
+    pub motion_layers: BTreeMap<u32, MotionPoses>,
     /// Swell samples used by the retained motion endpoints.
     pub swelling: [f32; 2],
 }
 
 impl FrameState {
     fn samples_rig_scale(&self, actor: &dyn AnimatedActor) -> bool {
-        self.needs_swell_sampling(actor)
+        (self.needs_swell_sampling(actor) || self.needs_rotation_sampling())
             && self
                 .motion
                 .sampling
@@ -242,7 +245,7 @@ impl FrameState {
     }
 
     fn needs_swell_sampling(&self, actor: &dyn AnimatedActor) -> bool {
-        self.swell_poses.is_some()
+        self.motion_poses.is_some()
             && std::iter::once(&self.motion)
                 .chain(self.previous_motion.iter())
                 .any(|motion| motion.sampling.as_ref().is_some_and(|s| s.uses_swell()))
@@ -251,15 +254,25 @@ impl FrameState {
                 || actor.creeper_swell_amount(self.motion.context.frame_alpha) != self.swelling[1])
     }
 
+    /// A changing tick pair requires angle sampling even at partial tick zero.
+    fn needs_rotation_sampling(&self) -> bool {
+        self.motion
+            .sampling
+            .as_ref()
+            .is_some_and(|sampling| sampling.uses_rotation())
+            && self.previous_rotation.rotation_changed(self.motion.input)
+    }
+
     pub(super) fn hold_motion(&mut self) {
+        self.previous_rotation = self.motion.input;
         self.swelling[0] = self.swelling[1];
         if let Some(previous) = self.previous_motion.as_mut() {
             previous.clone_from(&self.motion);
         }
         for poses in self
-            .swell_poses
+            .motion_poses
             .iter_mut()
-            .chain(self.swell_layers.values_mut())
+            .chain(self.motion_layers.values_mut())
         {
             poses.previous.clone_from(&poses.current);
             poses.previous_mask.clone_from(&poses.mask);
@@ -268,19 +281,21 @@ impl FrameState {
 }
 
 #[derive(Debug)]
-pub(super) struct SwellPoses {
+pub(super) struct MotionPoses {
     pub previous: Vec<pose::LocalDelta>,
     pub current: Vec<pose::LocalDelta>,
     pub mask: Vec<[u8; 3]>,
     pub previous_mask: Vec<[u8; 3]>,
 }
 
-pub(super) fn carry_swell_history(
+/// Carries sampled channel endpoints across ticks and retains them during draw-only refreshes.
+pub(super) fn carry_motion_history(
     previous: Option<&mut FrameState>,
     next: &mut FrameState,
     advance: bool,
 ) {
-    fn carry(previous: Option<&mut SwellPoses>, next: &mut SwellPoses, advance: bool) {
+    /// Moves matching pose history or seeds a newly admitted skeleton from its current pose.
+    fn carry(previous: Option<&mut MotionPoses>, next: &mut MotionPoses, advance: bool) {
         if let Some(previous) =
             previous.filter(|previous| previous.current.len() == next.current.len())
         {
@@ -306,7 +321,7 @@ pub(super) fn carry_swell_history(
         frame.swelling[usize::from(advance)]
     });
     let mut previous = previous;
-    if next.swell_poses.is_some() {
+    if next.motion_poses.is_some() {
         next.previous_motion = previous.as_deref_mut().map(|frame| {
             if advance {
                 std::mem::take(&mut frame.motion)
@@ -318,27 +333,27 @@ pub(super) fn carry_swell_history(
             }
         });
     }
-    if let Some(body) = next.swell_poses.as_mut() {
+    if let Some(body) = next.motion_poses.as_mut() {
         carry(
             previous
                 .as_deref_mut()
-                .and_then(|frame| frame.swell_poses.as_mut()),
+                .and_then(|frame| frame.motion_poses.as_mut()),
             body,
             advance,
         );
     }
-    for (geometry, poses) in &mut next.swell_layers {
+    for (geometry, poses) in &mut next.motion_layers {
         carry(
             previous
                 .as_deref_mut()
-                .and_then(|frame| frame.swell_layers.get_mut(geometry)),
+                .and_then(|frame| frame.motion_layers.get_mut(geometry)),
             poses,
             advance,
         );
     }
 }
 
-impl SwellPoses {
+impl MotionPoses {
     fn sample(
         &self,
         current: &mut [pose::LocalDelta],
@@ -360,17 +375,17 @@ impl SwellPoses {
         {
             for (axis, bits) in sampled_mask.iter().enumerate() {
                 let bits = bits | current_mask[axis] | previous_mask[axis];
-                if bits & swell::TRANSLATION != 0 {
+                if bits & motion_sampling::TRANSLATION != 0 {
                     previous.translation[axis] = sampled_previous.translation[axis];
                 } else {
                     sample.translation[axis] = completed.translation[axis];
                 }
-                if bits & swell::ROTATION != 0 {
+                if bits & motion_sampling::ROTATION != 0 {
                     previous.rotation[axis] = sampled_previous.rotation[axis];
                 } else {
                     sample.rotation[axis] = completed.rotation[axis];
                 }
-                if bits & swell::SCALE != 0 {
+                if bits & motion_sampling::SCALE != 0 {
                     previous.scale[axis] = sampled_previous.scale[axis];
                 } else {
                     sample.scale[axis] = completed.scale[axis];
@@ -381,7 +396,7 @@ impl SwellPoses {
                 .zip(current_mask)
                 .zip(previous_mask)
                 .any(|((sampled, current), previous)| {
-                    (sampled | current | previous) & swell::ROTATION_FRAME != 0
+                    (sampled | current | previous) & motion_sampling::ROTATION_FRAME != 0
                 })
             {
                 previous.rotation_relative_to_entity = sampled_previous.rotation_relative_to_entity;
@@ -435,7 +450,8 @@ impl ActorAnimationStore {
             (partial_tick > 0.0
                 || state.samples_camera_poses
                 || state.samples_swing_poses
-                || frame.needs_swell_sampling(actor))
+                || frame.needs_swell_sampling(actor)
+                || frame.needs_rotation_sampling())
                 && *remaining_ops > 0
                 && (!state.culled || state.samples_camera_poses || frame.samples_rig_scale(actor))
                 && !state.reset_pending
@@ -455,7 +471,9 @@ impl ActorAnimationStore {
             && swing.is_some_and(|value| value != frame.motion.input.attack_time);
         let body_swing_changed = frame.samples_swing_poses && swing_changed;
         let swell_changed = frame.needs_swell_sampling(actor);
-        if !state.samples_render_frames && !swing_changed && !swell_changed {
+        let rotation_changed = frame.needs_rotation_sampling();
+        let motion_changed = swell_changed || rotation_changed;
+        if !state.samples_render_frames && !swing_changed && !motion_changed {
             return Some(completed());
         }
         let camera_inputs_changed = std::iter::once(&frame.motion)
@@ -464,8 +482,28 @@ impl ActorAnimationStore {
                 camera_rotation != motion.context.camera_rotation
                     || camera_position != motion.context.camera_position
             });
-        let pose_inputs_changed =
-            camera_inputs_changed || partial_tick != frame.motion.context.frame_alpha;
+        let pose_inputs_changed = camera_inputs_changed
+            || rotation_changed
+            || partial_tick != frame.motion.context.frame_alpha;
+        let previous_motion = frame.previous_motion.as_ref().unwrap_or(&frame.motion);
+        let current_input = if rotation_changed {
+            frame.motion.input.sample_rotation(
+                frame.previous_rotation,
+                frame.motion.input,
+                partial_tick,
+            )
+        } else {
+            frame.motion.input
+        };
+        let previous_input = if rotation_changed {
+            previous_motion.input.sample_rotation(
+                frame.previous_rotation,
+                frame.motion.input,
+                partial_tick,
+            )
+        } else {
+            previous_motion.input
+        };
         let mut context = frame.motion.context.clone();
         context.frame_alpha = partial_tick;
         context.camera_rotation = camera_rotation;
@@ -475,7 +513,7 @@ impl ActorAnimationStore {
             layout,
             program: None,
             actor,
-            input: &frame.motion.input,
+            input: &current_input,
             context: &context,
             anim_tick: frame.motion.anim_tick,
             anim_time: None,
@@ -519,13 +557,21 @@ impl ActorAnimationStore {
             );
         }
         tick::set_item_rotation_factor(&layout.engine, &mut variables);
-        let isolated_swell = swell_changed
+        let isolated_motion = motion_changed
             && !(state.samples_camera_poses && camera_inputs_changed)
             && !swing_changed;
-        let mut endpoints: Option<(SwellEndpoint<'_>, SwellEndpoint<'_>)> = if isolated_swell {
+        let mut endpoints: Option<(MotionEndpoint<'_>, MotionEndpoint<'_>)> = if isolated_motion {
             let amount = actor.creeper_swell_amount(partial_tick);
-            let previous = frame.previous_motion.as_ref().unwrap_or(&frame.motion);
-            let Ok(previous) = previous.sample(evaluator, state, amount, false, &mut budget) else {
+            let Ok(previous) = previous_motion.sample(
+                evaluation::Evaluator {
+                    input: &previous_input,
+                    ..evaluator
+                },
+                state,
+                amount,
+                false,
+                &mut budget,
+            ) else {
                 return Some(completed());
             };
             let Ok(current) = frame
@@ -540,7 +586,7 @@ impl ActorAnimationStore {
         };
         let scale = if let Some((_, current)) = &endpoints {
             current.scale
-        } else if swell_changed {
+        } else if motion_changed {
             let Ok(scale) = tick::evaluate_scale(&evaluator, rig, &mut variables, &mut budget)
             else {
                 return Some(completed());
@@ -553,14 +599,14 @@ impl ActorAnimationStore {
             .motion
             .sampling
             .as_ref()
-            .filter(|_| swell_changed)
+            .filter(|_| motion_changed)
             .and_then(|sampling| sampling.sampled_scale(rig, scale, state.scale));
-        let sampled_clips = if !isolated_swell
+        let sampled_clips = if !isolated_motion
             && (swing_changed
                 || (frame.samples_camera_poses && pose_inputs_changed)
-                || (swell_changed
+                || (motion_changed
                     && state
-                        .swell_sampling
+                        .motion_sampling
                         .as_ref()
                         .is_some_and(|sampling| sampling.samples_clips())))
         {
@@ -575,8 +621,8 @@ impl ActorAnimationStore {
                     journal: &frame.motion.journal,
                     server_effects: &frame.motion.server_effects,
                 },
-                state.swell_sampling.as_deref().filter(|_| swell_changed),
-                !swell_changed,
+                state.motion_sampling.as_deref().filter(|_| motion_changed),
+                !motion_changed,
                 &mut budget,
             ) else {
                 return Some(completed());
@@ -605,7 +651,7 @@ impl ActorAnimationStore {
             Some(local)
         } else if (frame.samples_camera_poses && pose_inputs_changed)
             || body_swing_changed
-            || swell_changed
+            || motion_changed
         {
             let Ok(local) = pose::sample_clips(
                 &evaluator,
@@ -626,8 +672,8 @@ impl ActorAnimationStore {
             .map(|(_, current)| current.clips.as_slice())
             .or(sampled_clips.as_deref())
             .unwrap_or(&frame.motion.clips);
-        let sampled_swell_mask = (sampled_clips.is_some() || endpoints.is_some())
-            .then_some(state.swell_sampling.as_ref())
+        let sampled_motion_mask = (sampled_clips.is_some() || endpoints.is_some())
+            .then_some(state.motion_sampling.as_ref())
             .flatten()
             .map(|sampling| {
                 sampling.mask(
@@ -644,8 +690,8 @@ impl ActorAnimationStore {
                     None,
                 )
             });
-        let swell_previous = if let Some((previous, _)) = endpoints.as_mut() {
-            let Some(history) = frame.swell_poses.as_ref() else {
+        let motion_previous = if let Some((previous, _)) = endpoints.as_mut() {
+            let Some(history) = frame.motion_poses.as_ref() else {
                 return Some(completed());
             };
             let Some(local) = sampled_local.as_mut() else {
@@ -661,7 +707,7 @@ impl ActorAnimationStore {
             ) else {
                 return Some(completed());
             };
-            let previous = history.sample(local, &sampled_previous, sampled_swell_mask.as_deref());
+            let previous = history.sample(local, &sampled_previous, sampled_motion_mask.as_deref());
             state.compose(&previous).map(Arc::<[BoneTransform]>::from)
         } else {
             None
@@ -697,7 +743,7 @@ impl ActorAnimationStore {
             return Some(completed());
         };
         if state
-            .swell_sampling
+            .motion_sampling
             .as_ref()
             .is_some_and(|sampling| sampling.samples_render_writes())
             && let Some((previous, current)) = endpoints.as_mut()
@@ -782,7 +828,7 @@ impl ActorAnimationStore {
                             return Some(completed());
                         };
                         let sampled_mask = (sampled_clips.is_some() || endpoints.is_some())
-                            .then_some(state.swell_sampling.as_ref())
+                            .then_some(state.motion_sampling.as_ref())
                             .flatten()
                             .map(|sampling| {
                                 sampling.mask(
@@ -810,7 +856,7 @@ impl ActorAnimationStore {
                             ) else {
                                 return Some(completed());
                             };
-                            Some(match frame.swell_layers.get(&geometry) {
+                            Some(match frame.motion_layers.get(&geometry) {
                                 Some(history) => history.sample(
                                     &mut local,
                                     &sampled_previous,
@@ -846,7 +892,7 @@ impl ActorAnimationStore {
             };
             if let Some(pose) = sampled {
                 layer.previous_pose = match layer.geometry {
-                    None => swell_previous
+                    None => motion_previous
                         .as_ref()
                         .map_or_else(|| Arc::clone(&pose), Arc::clone),
                     Some(geometry) => sampled_geometries

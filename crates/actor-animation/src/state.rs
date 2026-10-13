@@ -60,9 +60,8 @@ pub(super) struct ActorRigState {
     pub(super) samples_camera_poses: bool,
     pub(super) presentation_expressions: evaluation::PresentationReads,
     pub(super) samples_swing_poses: bool,
-    /// Actor kind admits swelling independently of its initially bound clips.
-    pub(super) creeper: bool,
-    pub(super) swell_sampling: Option<Arc<render_frame::swell::SwellSampling>>,
+    /// Cached dependencies of render-time head/body rotations and swelling.
+    pub(super) motion_sampling: Option<Arc<render_frame::motion_sampling::MotionSampling>>,
     pub(super) render_frame: Option<render_frame::FrameState>,
     pub(super) initialized: bool,
     /// Outside the animation view at its last tick, holding its pose.

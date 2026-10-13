@@ -525,6 +525,40 @@ mod tests {
     }
 
     #[test]
+    fn backing_block_filter_accepts_every_inventory_entry() {
+        let inventory: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../crates/assets/data/block-entities-v1001.json"
+        ))
+        .expect("block entity inventory must be valid JSON");
+        for entry in inventory["entries"].as_array().expect("inventory entries") {
+            let id = entry["nbt_id"]
+                .as_str()
+                .unwrap_or_else(|| entry["source_key"].as_str().expect("inventory source key"));
+            let aliases = entry["nbt_aliases"].as_array().expect("inventory aliases");
+            for id in std::iter::once(id).chain(
+                aliases
+                    .iter()
+                    .map(|alias| alias.as_str().expect("inventory alias")),
+            ) {
+                for block in entry["backing_blocks"]
+                    .as_array()
+                    .expect("inventory backing blocks")
+                {
+                    let name = block["name"].as_str().expect("inventory block name");
+                    assert!(
+                        block_carries(id, name),
+                        "{id} must accept inventoried backing block {name}"
+                    );
+                }
+                assert!(
+                    !block_carries(id, "minecraft:air"),
+                    "{id} must stop drawing when its backing block is gone"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_broken_enchanting_table_leaves_no_floating_book() {
         let empty = nbt(|_| {});
         let none = state("{}");

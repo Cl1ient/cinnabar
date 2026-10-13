@@ -9,8 +9,11 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/sandertv/gophertunnel/minecraft"
+	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 	"github.com/sandertv/gophertunnel/minecraft/resource"
 )
 
@@ -28,13 +31,73 @@ func TestSessionHandlerJoinsAndHopsThroughItsDialer(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, address := range []string{"entry.example:19132", "hop.example:19132"} {
-		network, ok := handler.server.prepared.hopNetwork(target, address).(minecraft.RakNet)
+		network, ok := handler.server.prepared.hopNetwork(target, address).(sessionRakNet)
 		if !ok || network.UpstreamDialer != dialer {
 			t.Fatalf("%s joins through %#v, want RakNet over the handler's dialer", address, network)
 		}
 	}
 	if _, err := NewSessionHandler(SessionHandlerConfig{}); err == nil {
 		t.Fatal("a handler without a dialer was created")
+	}
+}
+
+// silentUpstreamDialer opens an in-memory socket that never receives a server reply.
+type silentUpstreamDialer struct{}
+
+// DialContext lets the real RakNet handshake run without contacting a server.
+func (silentUpstreamDialer) DialContext(context.Context, string, string) (net.Conn, error) {
+	conn, peer := net.Pipe()
+	return silentUpstreamConn{Conn: conn, peer: peer}, nil
+}
+
+// silentUpstreamConn preserves socket deadlines while discarding outgoing datagrams.
+type silentUpstreamConn struct {
+	net.Conn
+	peer net.Conn
+}
+
+// Write accepts each datagram without sending a reply to the socket's reader.
+func (silentUpstreamConn) Write(data []byte) (int, error) { return len(data), nil }
+
+// Close releases both ends of the in-memory socket.
+func (conn silentUpstreamConn) Close() error {
+	return errors.Join(conn.Conn.Close(), conn.peer.Close())
+}
+
+// Signed-out joins and transfer hops must time out on the RakNet budget before their caller expires.
+func TestSessionHandlerSignedOutRakNetKeepsConnectBudget(t *testing.T) {
+	for _, address := range []string{"entry.example:19132", "hop.example:19132"} {
+		t.Run(address, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*rakNetConnectBudget)
+				defer cancel()
+				handler, err := NewSessionHandler(SessionHandlerConfig{
+					Dialer: silentUpstreamDialer{},
+					Logger: slog.New(slog.DiscardHandler),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer handler.Close()
+				target, err := handler.server.dialTarget(ctx, "entry.example:19132")
+				if err != nil {
+					t.Fatal(err)
+				}
+				network := handler.server.prepared.hopNetwork(target, address)
+				dialer := minecraft.Dialer{
+					IdentityData: login.IdentityData{DisplayName: "fixture"},
+					ErrorLog:     slog.New(slog.DiscardHandler),
+				}
+				conn, err := dialer.DialContextNetwork(ctx, network, address)
+				if conn != nil {
+					_ = conn.Close()
+					t.Fatal("joined a server that sends no replies")
+				}
+				if ctx.Err() != nil || !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("dial err = %v, caller err = %v", err, ctx.Err())
+				}
+			})
+		})
 	}
 }
 

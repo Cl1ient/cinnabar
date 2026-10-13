@@ -43,7 +43,7 @@ func NewSessionHandler(cfg SessionHandlerConfig) (*SessionHandler, error) {
 	if cfg.Dialer == nil {
 		return nil, errors.New("proxy: session handler dialer is required")
 	}
-	network := minecraft.RakNet{MaxMTU: remoteMaxMTU, UpstreamDialer: cfg.Dialer}
+	network := sessionRakNet{minecraft.RakNet{MaxMTU: remoteMaxMTU, UpstreamDialer: cfg.Dialer}}
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -79,6 +79,15 @@ func NewSessionHandler(cfg SessionHandlerConfig) (*SessionHandler, error) {
 		device:       cfg.Device,
 		logger:       logger,
 	}}, nil
+}
+
+// sessionRakNet keeps the connection budget on every relay join, including signed-out joins and
+// fresh dials after an expired prepared connection.
+type sessionRakNet struct{ minecraft.RakNet }
+
+// DialContext bounds the RakNet handshake while retaining the caller's upstream dialer.
+func (network sessionRakNet) DialContext(ctx context.Context, address string) (net.Conn, error) {
+	return dialTransport(ctx, network.RakNet, address)
 }
 
 // dialerHTTPClient returns a client whose every connection, redirect hops included, is opened by

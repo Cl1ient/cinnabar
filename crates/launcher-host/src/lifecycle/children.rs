@@ -418,20 +418,23 @@ mod tests {
     // A socket a C library opened without close-on-exec (Tracy's listener) must not reach a child.
     #[test]
     fn spawned_children_do_not_inherit_foreign_sockets() {
-        use rustix::io::{FdFlags, fcntl_setfd};
+        use rustix::io::{FdFlags, fcntl_getfd, fcntl_setfd};
         use std::os::fd::AsRawFd;
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         fcntl_setfd(&listener, FdFlags::empty()).unwrap();
         let fd = listener.as_raw_fd();
-        let script = format!("test -e /proc/self/fd/0 && test ! -e /proc/self/fd/{fd}");
-        let child = Children::new()
-            .spawn(
-                Command::new("sh")
-                    .args(["-c", &script])
-                    .stdin(Stdio::null()),
-                Duration::ZERO,
-            )
-            .unwrap();
+        let script = format!("(: <&0) && ! (: <&{fd})");
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", &script])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null());
+        assert!(
+            !command.status().unwrap().success(),
+            "the probe must detect the deliberately inherited socket"
+        );
+        let child = Children::new().spawn(&mut command, Duration::ZERO).unwrap();
+        assert!(fcntl_getfd(&listener).unwrap().contains(FdFlags::CLOEXEC));
         assert!(
             child.wait().is_some_and(|status| status.success()),
             "child inherited descriptor {fd}"

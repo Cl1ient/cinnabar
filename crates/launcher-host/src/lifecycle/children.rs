@@ -415,90 +415,81 @@ mod tests {
         rustix::process::test_kill_process(pid).is_err()
     }
 
-    const SOCKET_PROBE_ENV: &str = "CINNABAR_TEST_SOCKET_PROBE";
+    const SOCKET_PROBE_FD: &str = "CINNABAR_SOCKET_PROBE_FD";
+    // Distinct nonzero codes also reject a helper filter that accidentally runs no tests.
+    const SOCKET_PROBE_CLOSED: i32 = 42;
+    const SOCKET_PROBE_OPEN: i32 = 43;
 
-    /// Duplicates an untrusted post-exec descriptor, returning no handle when it is closed.
-    fn duplicate_probe_fd(raw: i32) -> Option<std::os::fd::OwnedFd> {
-        use std::{
-            ffi::c_int,
-            os::fd::{FromRawFd, OwnedFd},
+    /// Reports descriptor validity in an executed child, without opening or redirecting it.
+    #[test]
+    fn socket_descriptor_probe() {
+        let Some(fd) = std::env::var_os(SOCKET_PROBE_FD) else {
+            return;
         };
-        unsafe extern "C" {
-            fn dup(fd: c_int) -> c_int;
-        }
-        // SAFETY: dup accepts any descriptor number and reports EBADF for a closed one.
-        let duplicated = unsafe { dup(raw) };
-        (duplicated >= 0).then(|| {
-            // SAFETY: a successful dup returns a new descriptor exclusively owned by this call.
-            unsafe { OwnedFd::from_raw_fd(duplicated) }
-        })
+        let fd: i32 = fd.to_str().unwrap().parse().unwrap();
+        // SAFETY: F_GETFD takes a raw descriptor and permits invalid descriptors, returning
+        // EBADF instead of requiring a valid Rust descriptor borrow.
+        let flags = unsafe {
+            assert!(libc::fcntl(libc::STDIN_FILENO, libc::F_GETFD) >= 0);
+            libc::fcntl(fd, libc::F_GETFD)
+        };
+        let code = if flags >= 0 {
+            SOCKET_PROBE_OPEN
+        } else {
+            assert_eq!(io::Error::last_os_error().raw_os_error(), Some(libc::EBADF));
+            SOCKET_PROBE_CLOSED
+        };
+        std::process::exit(code);
     }
 
-    /// Runs this fixture after exec, checking the selected descriptor's socket identity.
-    fn socket_probe(fd: i32, identity: &str) -> Command {
+    /// Runs the descriptor helper with usable standard input and explicit open/closed results.
+    fn socket_probe(fd: i32) -> Command {
         let mut command = Command::new(std::env::current_exe().unwrap());
         command
             .args([
                 "--exact",
-                &format!(
-                    "{}::spawned_children_do_not_inherit_foreign_sockets",
-                    module_path!().split_once("::").unwrap().1
-                ),
+                "lifecycle::children::tests::socket_descriptor_probe",
+                "--test-threads=1",
             ])
-            .env(SOCKET_PROBE_ENV, format!("{fd}:{identity}"))
+            .env(SOCKET_PROBE_FD, fd.to_string())
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::null());
         command
     }
 
     // A socket a C library opened without close-on-exec (Tracy's listener) must not reach a child.
     #[test]
     fn spawned_children_do_not_inherit_foreign_sockets() {
-        use rustix::{
-            fs::{FileType, fstat},
-            io::{FdFlags, fcntl_dupfd_cloexec, fcntl_getfd, fcntl_setfd},
-        };
+        use rustix::io::{FdFlags, fcntl_dupfd_cloexec, fcntl_getfd, fcntl_setfd};
         use std::os::{
             fd::{AsRawFd, BorrowedFd},
             unix::process::CommandExt,
         };
-        if let Ok(request) = std::env::var(SOCKET_PROBE_ENV) {
-            let (fd, identity) = request.split_once(':').unwrap();
-            let raw = fd.parse().unwrap();
-            let inherited = duplicate_probe_fd(raw).is_some_and(|fd| {
-                fstat(&fd).is_ok_and(|stat| FileType::from_raw_mode(stat.st_mode).is_socket())
-                    && std::net::TcpListener::from(fd)
-                        .local_addr()
-                        .is_ok_and(|address| address.to_string() == identity)
-            });
-            assert!(!inherited, "socket descriptor {raw} survived exec");
-            return;
-        }
-        let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let listener = fcntl_dupfd_cloexec(&socket, 10).unwrap();
-        fcntl_setfd(&listener, FdFlags::empty()).unwrap();
-        let fd = listener.as_raw_fd();
-        assert!(fd >= 10);
-        let identity = socket.local_addr().unwrap().to_string();
-        let mut control = socket_probe(fd, &identity);
-        // SAFETY: only async-signal-safe fcntl runs after fork. The live listener owns the
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        // Exercise a descriptor above 9 even when this test runs alone.
+        let socket = fcntl_dupfd_cloexec(&listener, 10).unwrap();
+        fcntl_setfd(&socket, FdFlags::empty()).unwrap();
+        let fd = socket.as_raw_fd();
+        let mut control = socket_probe(fd);
+        // SAFETY: only async-signal-safe fcntl runs after fork. The live socket owns the
         // descriptor, and changing its child copy cannot race with parent socket sealing.
         unsafe {
             control.pre_exec(move || {
                 fcntl_setfd(BorrowedFd::borrow_raw(fd), FdFlags::empty()).map_err(io::Error::from)
             });
         }
-        assert!(
-            !control.status().unwrap().success(),
+        assert_eq!(
+            control.status().unwrap().code(),
+            Some(SOCKET_PROBE_OPEN),
             "the probe must detect the deliberately inherited socket"
         );
         let child = Children::new()
-            .spawn(&mut socket_probe(fd, &identity), Duration::ZERO)
+            .spawn(&mut socket_probe(fd), Duration::ZERO)
             .unwrap();
-        assert!(fcntl_getfd(&listener).unwrap().contains(FdFlags::CLOEXEC));
-        assert!(
-            child.wait().is_some_and(|status| status.success()),
+        assert!(fcntl_getfd(&socket).unwrap().contains(FdFlags::CLOEXEC));
+        assert_eq!(
+            child.wait().and_then(|status| status.code()),
+            Some(SOCKET_PROBE_CLOSED),
             "child inherited descriptor {fd}"
         );
     }

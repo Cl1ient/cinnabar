@@ -120,7 +120,7 @@ pub fn pot_sides() -> [[[f32; 3]; 4]; 4] {
     [faces[4], faces[5], faces[1], faces[0]]
 }
 pub const LECTERN_BASE: [[f32; 3]; 2] = [[-8.0, 0.0, -8.0], [8.0, 2.0, 8.0]];
-pub const LECTERN_POST: [[f32; 3]; 2] = [[-4.0, 2.0, -4.0], [4.0, 14.0, 4.0]];
+pub const LECTERN_POST: [[f32; 3]; 2] = [[-4.0, 2.0, -4.0], [4.0, 15.0, 4.0]];
 pub const LECTERN_BOARD: [[f32; 3]; 2] = [[-7.9, 11.0, -6.0], [7.9, 15.0, 7.0]];
 pub const LECTERN_BOARD_PIVOT: [f32; 3] = [0.0, 7.0, -1.0];
 pub const LECTERN_BOARD_OFFSET: [f32; 3] = [0.0, 1.05, 1.0];
@@ -188,6 +188,32 @@ pub fn lectern_board_point([x, y, z]: [f32; 3]) -> [f32; 3] {
         cos * (y - py) - sin * (z - pz) + py + ty,
         sin * (y - py) + cos * (z - pz) + pz + tz,
     ]
+}
+
+#[cfg(test)]
+mod lectern_tests {
+    use super::*;
+
+    #[test]
+    fn lectern_post_preserves_the_full_height_of_its_side_artwork() {
+        let faces = lectern_faces();
+        for index in [6, 7, 10, 11] {
+            let (_, (corners, texels)) = faces[index];
+            let bottom = corners
+                .iter()
+                .map(|point| point[1])
+                .reduce(f32::min)
+                .unwrap();
+            let top = corners
+                .iter()
+                .map(|point| point[1])
+                .reduce(f32::max)
+                .unwrap();
+            let artwork_height = texels[2].abs().max(texels[3].abs());
+            assert_eq!(bottom, LECTERN_BASE[1][1], "post starts on the base");
+            assert_eq!(top - bottom, artwork_height, "post face {index}");
+        }
+    }
 }
 
 /// Model-part box UV layout; texel rectangles preserve the bottom face's reversed V.

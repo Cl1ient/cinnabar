@@ -45,7 +45,7 @@ impl WorldStream {
                     .sub_chunk(key)
                     .is_none_or(|source| !classifier.is_sub_chunk_air(&source))
         };
-        let mut local_ingress = false;
+        let mut local_ingress = Vec::new();
         let probe_near = self
             .mesh_jobs
             .ingress(view, self.poll_deadline, |key, _, pending| {
@@ -54,7 +54,9 @@ impl WorldStream {
                 } else {
                     MESH_REMOVAL_LANE
                 };
-                local_ingress |= lane == RESIDENT_MESH_LANE && scheduler::mesh_is_near(view, key);
+                if lane == RESIDENT_MESH_LANE && scheduler::mesh_is_near(view, key) {
+                    local_ingress.push(key);
+                }
                 (lane, pending.urgent)
             });
 
@@ -62,23 +64,29 @@ impl WorldStream {
         let mesh_worker_cap = super::admission::mesh_worker_cap();
         let regular_budget = budget.min(mesh_worker_cap.saturating_sub(occupied));
         let worker_budget = budget.min((mesh_worker_cap + urgent_reserve).saturating_sub(occupied));
-        let mut resident_candidates = if probe_near || local_ingress {
-            scheduler::near_camera_keys(view, self.authority.current_dimension())
-                .filter_map(|key| {
-                    let pending = self.mesh_jobs.pending.get(&key).copied()?;
-                    (requires_geometry(key)
-                        && !self.mesh_jobs.in_flight.contains_key(&key)
-                        && self.revisions.is_current(key, pending.revision))
-                    .then_some((
-                        PendingSchedulerCandidate::new(key, pending.revision, view, pending.urgent),
-                        pending,
-                        false,
-                    ))
-                })
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
+        let dimension = self.authority.current_dimension();
+        local_ingress.extend(self.mesh_jobs.refresh.take_near_wakeups());
+        if probe_near {
+            local_ingress.extend(scheduler::near_camera_keys(view, dimension));
+        }
+        local_ingress.sort_unstable();
+        local_ingress.dedup();
+        let mut resident_candidates = local_ingress
+            .into_iter()
+            .filter_map(|key| {
+                let pending = self.mesh_jobs.pending.get(&key).copied()?;
+                (key.dimension == dimension
+                    && scheduler::mesh_is_near(view, key)
+                    && requires_geometry(key)
+                    && !self.mesh_jobs.in_flight.contains_key(&key)
+                    && self.revisions.is_current(key, pending.revision))
+                .then_some((
+                    PendingSchedulerCandidate::new(key, pending.revision, view, pending.urgent),
+                    pending,
+                    false,
+                ))
+            })
+            .collect::<Vec<_>>();
         resident_candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
         resident_candidates.truncate(MAX_PENDING_SCHEDULER_SCANS_PER_POLL);
         let mut removal_candidates = Vec::new();

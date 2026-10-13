@@ -458,3 +458,96 @@ fn stationary_spawn_mesh_wakes_after_unchanged_light_completion() {
     assert_eq!(stream.dispatch_mesh_jobs(view.position, 1), 1);
     finish_mesh(&mut stream, near);
 }
+
+/// A settled startup camera with a blocked spawn mesh ahead of ready distant geometry.
+fn stationary_stream_with_blocked_spawn_mesh() -> (WorldStream, SchedulerView, SubChunkKey) {
+    let mut stream = lit_stream(1);
+    stream.set_startup_priority(true);
+    let view = stream.scheduler_view([8.0, 80.0, 8.0]);
+    stream
+        .mesh_jobs
+        .refresh
+        .refresh(view, &mut stream.mesh_jobs.lanes, None, |_, _| true);
+    let blocked = SubChunkKey::new(1, 0, 5, 0);
+    let distant = SubChunkKey::new(1, scheduler::NEAR_CAMERA_RADIUS * 2, 5, 0);
+    for (key, ready) in [(blocked, false), (distant, true)] {
+        stream
+            .authority
+            .commit_sub_chunk(key, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, key, 0, 0, false);
+        let revision = stream.mark_dirty_exact(key, Instant::now());
+        let candidate = PendingSchedulerCandidate::new(key, revision, view, false);
+        let lane = &mut stream.mesh_jobs.lanes[RESIDENT_MESH_LANE];
+        if ready {
+            lane.ready.push(candidate);
+        } else {
+            lane.deferred.push(candidate);
+        }
+    }
+    stream.mark_light_dirty_exact(blocked).unwrap();
+    stream.mesh_jobs.scan.clear();
+    stream.mesh_jobs.startup_scan.clear();
+    stream.poll_deadline = Some(Instant::now() - Duration::from_secs(1));
+    (stream, view, blocked)
+}
+
+/// Repeated light wakeups cannot make an unrelated blocked mesh bypass its startup backoff.
+#[test]
+fn stationary_mesh_light_wakeups_preserve_unrelated_backoff() {
+    for changed in [false, true] {
+        let (mut stream, view, blocked) = stationary_stream_with_blocked_spawn_mesh();
+        let near = SubChunkKey::new(1, scheduler::NEAR_CAMERA_RADIUS, 5, 0);
+        stream
+            .authority
+            .commit_sub_chunk(near, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, near, 0, 0, false);
+        let revision = stream.mark_dirty_exact(near, Instant::now());
+        stream.mesh_jobs.scan.clear();
+        stream.mesh_jobs.lanes[RESIDENT_MESH_LANE]
+            .deferred
+            .push(PendingSchedulerCandidate::new(near, revision, view, false));
+        let mut dispatched = false;
+        for _ in 0..4 {
+            if changed {
+                stream.mark_changed_light_mesh_dependents(near, [false; 6], Instant::now(), false);
+            } else {
+                let direct = stream.lighting.direct_sky[&near].clone();
+                stream.finish_accepted_light_completion(near, 0, &direct, [false; 6], false);
+            }
+            assert_eq!(stream.mesh_jobs.pending[&near].revision, revision);
+            if stream.dispatch_mesh_jobs(view.position, 1) == 1 {
+                dispatched = true;
+                break;
+            }
+        }
+        assert!(dispatched && stream.mesh_jobs.in_flight.contains_key(&near));
+        assert!(stream.mesh_jobs.pending.contains_key(&blocked));
+        finish_mesh(&mut stream, near);
+    }
+}
+
+/// Fresh nearby ingress cannot repeatedly probe an unrelated mesh that is cooling down.
+#[test]
+fn stationary_mesh_ingress_preserves_unrelated_backoff() {
+    let (mut stream, view, blocked) = stationary_stream_with_blocked_spawn_mesh();
+    let mut dispatched = None;
+    for z in 0..4 {
+        let near = SubChunkKey::new(1, scheduler::NEAR_CAMERA_RADIUS, 5, z);
+        stream
+            .authority
+            .commit_sub_chunk(near, super::uniform_sub_chunk(2))
+            .unwrap();
+        install_current_light(&mut stream, near, 0, 0, false);
+        stream.mark_dirty_exact(near, Instant::now());
+        if stream.dispatch_mesh_jobs(view.position, 1) == 1 {
+            assert!(stream.mesh_jobs.in_flight.contains_key(&near));
+            dispatched = Some(near);
+            break;
+        }
+    }
+    let near = dispatched.expect("nearby ingress must dispatch while the blocked mesh backs off");
+    assert!(stream.mesh_jobs.pending.contains_key(&blocked));
+    finish_mesh(&mut stream, near);
+}

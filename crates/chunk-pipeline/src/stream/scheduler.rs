@@ -94,7 +94,7 @@ impl Lane {
 pub(super) struct SchedulerRefresh<const L: usize> {
     previous: [Lane; L],
     view: Option<SchedulerView>,
-    near_wakeup: bool, // nearby work became ready without a new scan record
+    near_wakeups: HashSet<SubChunkKey>, // nearby work became ready without a new scan record
 }
 
 impl<const L: usize> Default for SchedulerRefresh<L> {
@@ -102,15 +102,22 @@ impl<const L: usize> Default for SchedulerRefresh<L> {
         Self {
             previous: std::array::from_fn(|_| Lane::default()),
             view: None,
-            near_wakeup: false,
+            near_wakeups: HashSet::new(),
         }
     }
 }
 
 impl<const L: usize> SchedulerRefresh<L> {
-    /// Makes the next refresh probe the camera's neighbourhood when `key` lies inside it.
+    /// Requests a readiness probe for this key when it lies near the camera.
     pub(super) fn wake_near(&mut self, key: SubChunkKey) {
-        self.near_wakeup |= self.view.is_some_and(|view| mesh_is_near(view, key));
+        if self.view.is_some_and(|view| mesh_is_near(view, key)) {
+            self.near_wakeups.insert(key);
+        }
+    }
+
+    /// Consumes the nearby keys whose readiness changed since the last dispatch.
+    pub(super) fn take_near_wakeups(&mut self) -> impl Iterator<Item = SubChunkKey> {
+        self.near_wakeups.drain()
     }
 
     /// Refreshes bounded queue work and reports whether the view still needs direct local probes.
@@ -128,9 +135,7 @@ impl<const L: usize> SchedulerRefresh<L> {
             std::mem::swap(&mut self.previous, queues);
             self.view = Some(view);
         }
-        let probe_near = std::mem::take(&mut self.near_wakeup)
-            || moved
-            || self.previous.iter().any(|lane| !lane.is_empty());
+        let probe_near = moved || self.previous.iter().any(|lane| !lane.is_empty());
         let mut refreshed = false;
         for _ in 0..MAX_PENDING_SCHEDULER_SCANS_PER_POLL {
             if refreshed && deadline.is_some_and(|deadline| Instant::now() >= deadline) {

@@ -86,29 +86,64 @@ pub fn prune(update_dir: &Path, now: SystemTime) {
         if !claimed && handing_off {
             continue;
         }
-        let lease = match open_lock(&path) {
-            Ok(lock) if lock.try_lock().is_ok() => lock,
-            Ok(_) => continue,
-            Err(_) => continue,
-        };
-        if let Ok(retired) = tempfile::Builder::new()
-            .prefix(&format!("{PREFIX}discard-"))
-            .tempdir_in(update_dir)
+        retire_idle_copy(&path, now);
+    }
+}
+
+/// Rechecks the handoff time under the exclusive lease, then retires the idle copy.
+fn retire_idle_copy(path: &Path, now: SystemTime) {
+    let directory_modified = fs::metadata(path).and_then(|metadata| metadata.modified());
+    let (lease, created) = match File::options()
+        .write(true)
+        .create_new(true)
+        .open(path.join(LOCK))
+    {
+        Ok(lease) => (lease, true),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => match open_lock(path) {
+            Ok(lease) => (lease, false),
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+    if lease.try_lock().is_err() {
+        return;
+    }
+    let Ok(metadata) = lease.metadata() else {
+        return;
+    };
+    let modified = if created {
+        directory_modified
+    } else {
+        metadata.modified()
+    };
+    if metadata.len() == 0
+        && modified.is_ok_and(|modified| {
+            now.duration_since(modified)
+                .map_or(true, |age| age < HANDOFF_WINDOW)
+        })
+    {
+        return;
+    }
+    let Some(update_dir) = path.parent() else {
+        return;
+    };
+    if let Ok(retired) = tempfile::Builder::new()
+        .prefix(&format!("{PREFIX}discard-"))
+        .tempdir_in(update_dir)
+    {
+        #[cfg(windows)]
         {
-            #[cfg(windows)]
-            {
-                // A nonempty lease fences future readers before its handle closes. Windows
-                // cannot rename a directory containing an open file, including this lease.
-                if lease.set_len(1).is_err() {
-                    continue;
-                }
-                drop(lease);
+            // A nonempty lease fences future readers before its handle closes. Windows
+            // cannot rename a directory containing an open file, including this lease.
+            if lease.set_len(1).is_err() {
+                return;
             }
-            let _ = fs::rename(&path, retired.path().join("copy"));
-            // Unix can rename with the exclusive lease held, then close it before removal.
-            #[cfg(not(windows))]
             drop(lease);
         }
+        let _ = fs::rename(path, retired.path().join("copy"));
+        // Unix can rename with the exclusive lease held, then close it before removal.
+        #[cfg(not(windows))]
+        drop(lease);
     }
 }
 

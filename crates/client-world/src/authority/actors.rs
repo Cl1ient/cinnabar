@@ -1,4 +1,5 @@
 use super::*;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 impl WorldAuthority {
     /// Admits and polls appearance work without advancing animation ticks; true while work remains.
@@ -60,6 +61,10 @@ impl WorldAuthority {
         stack: &protocol::NetworkItemStack,
     ) -> Option<crate::item::CanonicalItemStack> {
         self.actors.canonical_item_stack(stack)
+    }
+    /// Reads intrinsic shine admitted for the current numeric item identity.
+    pub fn item_glint(&self, network_id: i32) -> assets::item::glint::ItemGlint {
+        self.actors.item_glint(network_id)
     }
     /// The item identifier registered for a network id.
     pub fn item_identifier(&self, network_id: i32) -> Option<std::sync::Arc<str>> {
@@ -127,10 +132,7 @@ impl WorldAuthority {
     pub fn actor_fluid_probes(&self) -> Vec<crate::ActorFluidProbe> {
         self.actors.fluid_probes()
     }
-    /// Installs the per-mount seat layouts riders fall back to when the server streams no offset.
-    pub fn set_actor_seat_defaults(&mut self, defaults: std::sync::Arc<crate::SeatDefaults>) {
-        self.actors.set_seat_defaults(defaults);
-    }
+
     /// Bed block under every sleeping actor, for [`Self::set_actor_bed_rotations`] sampling.
     #[must_use]
     pub fn actor_bed_sample_points(&self) -> Vec<(u64, [i32; 3])> {
@@ -155,6 +157,16 @@ impl WorldAuthority {
     ) -> impl Iterator<Item = crate::ActorShadowCaster> + '_ {
         self.actors.shadow_casters(partial_tick)
     }
+    /// Samples one actor's shadow volume source at the render frame's interpolation fraction.
+    pub fn actor_shadow_caster(
+        &self,
+        runtime_id: u64,
+        partial_tick: f32,
+    ) -> Option<crate::ActorShadowCaster> {
+        self.actors
+            .shadow_caster(self.actors.get(runtime_id)?, partial_tick)
+    }
+
     /// Sets the view `[pitch, yaw]` (degrees) that camera-facing billboard rigs sample per tick.
     pub fn set_actor_camera_rotation(&mut self, rotation: [f32; 2]) {
         self.actors.set_camera_rotation(rotation);
@@ -189,20 +201,28 @@ impl WorldAuthority {
         let uuid = *uuid;
         self.actors.apply_skin_update(uuid, skin) == crate::actor_store::ActorApplyResult::Updated
     }
-    /// Starts the local player's arm swing, which the server never echoes back to its owner.
+    /// Arm swings the server sent for the local player since the last call. Vanilla servers
+    /// do not echo the owner's swing, but some (Dragonfly) send one when they accept a
+    /// placement the client did not predict, and the native client plays it.
+    pub fn take_local_server_swings(&mut self) -> u8 {
+        self.actors.take_local_server_swings()
+    }
     /// Starts the local arm swing lasting `ticks`, the duration its packet guard used.
     pub fn start_local_player_swing(&mut self, ticks: i32) {
         self.actors.start_swing(self.local_player_runtime_id, ticks);
     }
     /// Binds the local Java torso to the current simulation; `None` restores actor-clock motion.
-    pub fn set_local_motion_authority(&mut self, authority: Option<(u64, u64)>) {
+    pub fn set_local_motion_authority(
+        &mut self,
+        authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
+    ) {
         self.actors
             .set_local_motion_authority(self.local_player_runtime_id, authority);
     }
     /// Applies completed local torso samples without advancing other actor motion or clocks.
     pub fn sync_local_swing_motion(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         samples: impl IntoIterator<Item = actor_animation::LocalSwingMotionSample>,
     ) {
         self.actors
@@ -361,7 +381,6 @@ impl WorldAuthority {
         self.actors.set_server_animation_compiler(compiler);
     }
 
-    /// Item use durations (ticks by identifier) that drive `query.main_hand_item_max_duration`.
     /// Layers the session's server-pack entity catalog over the vanilla one; its entities
     /// win by identifier for actors spawned afterwards.
     pub fn set_pack_entities(
@@ -380,6 +399,16 @@ impl WorldAuthority {
         self.actors.seed_property_defaults(types);
     }
 
+    /// Installs compiled item-use overlays before numerical admission.
+    pub fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.actors.set_item_use_overlays(overlays)
+    }
+
     /// Installs resource-defined item use durations for actor animation.
     pub fn set_item_use_durations(
         &mut self,
@@ -387,9 +416,9 @@ impl WorldAuthority {
     ) {
         self.actors.set_item_use_durations(durations);
     }
-    /// Ticks the pack lets `identifier` be used for before its use completes.
-    pub fn item_max_use_ticks(&self, identifier: &str) -> Option<u32> {
-        self.actors.item_max_use_ticks(identifier)
+    /// Returns numerical use admission without resolving names or component data.
+    pub fn item_use_profile(&self, network_id: i32) -> crate::EffectiveItemUse {
+        self.actors.item_use_profile(network_id)
     }
     /// Installs effective item-directed attack and kinetic presentation facts.
     pub fn set_item_attack_timings(

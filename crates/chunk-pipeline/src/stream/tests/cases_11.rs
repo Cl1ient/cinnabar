@@ -168,9 +168,9 @@ fn request_and_subchunk_completion_use_confirmed_player_grid_interest() {
     complete_pending_decode_jobs(&mut stream);
     stream.poll(PLAYER_POSITION, 0);
 
-    assert_eq!(stream.stats().phase2_stages.responses_admitted, 1);
-    assert_eq!(stream.stats().phase2_outcomes.stale, 0);
-    assert_eq!(stream.stats().phase2_outcomes.all_air, 1);
+    assert_eq!(stream.stats().publication_stages.responses_admitted, 1);
+    assert_eq!(stream.stats().publication_outcomes.stale, 0);
+    assert_eq!(stream.stats().publication_outcomes.all_air, 1);
     assert!(stream.loaded_columns.contains(&key));
     assert!(stream.resident.contains(&sub_chunk));
 

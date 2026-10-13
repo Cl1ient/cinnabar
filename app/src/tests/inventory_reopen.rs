@@ -10,6 +10,7 @@ use bevy::{
     time::{Real, Time},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window},
 };
+use client_shell::ui_resources::UiRuntimeResource;
 use client_state::PlayerRuntime;
 use protocol::{
     ContainerCloseEvent, ContainerIdentity, ContainerOpenEvent, InventoryAuthority, InventoryEvent,
@@ -35,7 +36,7 @@ fn app(authority: InventoryAuthority) -> (App, Entity) {
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<AccumulatedMouseMotion>()
         .add_message::<KeyboardInput>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player_runtime.clone())
         .add_systems(
             Update,
@@ -56,6 +57,12 @@ fn app(authority: InventoryAuthority) -> (App, Entity) {
 }
 
 fn key(app: &mut App, window: Entity, key_code: KeyCode, state: ButtonState) {
+    key_event(app, window, key_code, state, false);
+}
+
+/// Delivers one keyboard event as Bevy's keyboard system does: an OS repeat re-presses the key, so
+/// a key an owner reset last frame reads as just pressed again.
+fn key_event(app: &mut App, window: Entity, key_code: KeyCode, state: ButtonState, repeat: bool) {
     let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
     match state {
         ButtonState::Pressed => keys.press(key_code),
@@ -70,7 +77,7 @@ fn key(app: &mut App, window: Entity, key_code: KeyCode, state: ButtonState) {
         },
         state,
         text: None,
-        repeat: false,
+        repeat,
         window,
     });
     app.update();
@@ -108,7 +115,7 @@ fn e_key_reopens_after_e_or_escape_and_response_payload_does_not_identify_the_sc
                 for cycle in 0..3 {
                     key(&mut app, window, KeyCode::KeyE, ButtonState::Pressed);
                     assert!(
-                        app.world().resource::<UiRuntime>().inventory_open(),
+                        app.world().resource::<UiRuntimeResource>().inventory_open(),
                         "cycle {cycle}"
                     );
                     assert!(app.world().get::<CursorOptions>(window).unwrap().visible);
@@ -125,7 +132,7 @@ fn e_key_reopens_after_e_or_escape_and_response_payload_does_not_identify_the_sc
                     );
                     key(&mut app, window, KeyCode::KeyE, ButtonState::Released);
                     key(&mut app, window, close_key, ButtonState::Pressed);
-                    assert!(!app.world().resource::<UiRuntime>().inventory_open());
+                    assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
                     assert_eq!(
                         app.world().get::<CursorOptions>(window).unwrap().grab_mode,
                         CursorGrabMode::Locked
@@ -153,5 +160,67 @@ fn e_key_reopens_after_e_or_escape_and_response_payload_does_not_identify_the_sc
                 }
             }
         }
+    }
+}
+
+#[test]
+fn held_inventory_and_chat_keys_toggle_once_and_ignore_their_repeats() {
+    for authority in [InventoryAuthority::Server, InventoryAuthority::Client] {
+        let (mut app, window) = app(authority);
+        key(&mut app, window, KeyCode::KeyE, ButtonState::Pressed);
+        flush(&mut app, 10);
+        receive(
+            &mut app,
+            1,
+            InventoryEvent::Open(ContainerOpenEvent {
+                container: ContainerIdentity::window(0),
+                window_type: PERSONAL_INVENTORY_WINDOW_TYPE,
+                position: [0; 3],
+                runtime_entity_id: -1,
+            }),
+        );
+        for repeat in 0..4 {
+            key_event(&mut app, window, KeyCode::KeyE, ButtonState::Pressed, true);
+            assert!(
+                app.world().resource::<UiRuntimeResource>().inventory_open(),
+                "{authority:?} repeat {repeat}"
+            );
+        }
+        key(&mut app, window, KeyCode::KeyE, ButtonState::Released);
+
+        key(&mut app, window, KeyCode::Escape, ButtonState::Pressed);
+        assert!(!app.world().resource::<UiRuntimeResource>().inventory_open());
+        flush(&mut app, 20);
+        receive(
+            &mut app,
+            2,
+            InventoryEvent::Close(ContainerCloseEvent {
+                container: ContainerIdentity::window(0),
+                window_type: PERSONAL_INVENTORY_WINDOW_TYPE,
+                server_initiated: false,
+            }),
+        );
+        key(&mut app, window, KeyCode::Escape, ButtonState::Released);
+
+        // Once the screen is closed and settled, a held E's repeats do not reopen it.
+        key_event(&mut app, window, KeyCode::KeyE, ButtonState::Pressed, true);
+        assert!(
+            !app.world().resource::<UiRuntimeResource>().inventory_open(),
+            "{authority:?}"
+        );
+
+        key(&mut app, window, KeyCode::KeyT, ButtonState::Pressed);
+        assert!(app.world().resource::<UiRuntimeResource>().chat_focused());
+        key_event(
+            &mut app,
+            window,
+            KeyCode::Escape,
+            ButtonState::Pressed,
+            true,
+        );
+        assert!(
+            app.world().resource::<UiRuntimeResource>().chat_focused(),
+            "{authority:?}"
+        );
     }
 }

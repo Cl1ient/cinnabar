@@ -138,6 +138,40 @@ fn files_pack(files: &[(&str, &[u8])]) -> resource_pack::LayeredPackView {
 }
 
 #[test]
+fn ui_glint_uses_the_winning_raster_and_restores_the_lower_pack_on_removal() {
+    use std::io::Cursor;
+    let encode = |width, height, color| {
+        let mut encoded = Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(width, height, image::Rgba(color))
+            .write_to(&mut encoded, image::ImageFormat::Png)
+            .unwrap();
+        encoded.into_inner()
+    };
+    let path = format!("{}.png", assets::entity::ITEM_GLINT_TEXTURE_IDENTIFIER);
+    let low = encode(3, 2, [200, 0, 0, 255]);
+    let high = encode(640, 617, [0, 200, 0, 255]);
+    // Each one-shot handoff owns a fresh archive of the same lower-priority pixels.
+    let lower = || archive(1, &[(&path, &low)]);
+    let upper = archive(2, &[(&path, &high)]);
+    let read = |archives| {
+        let view = resource_pack::LayeredPackView::new(resource_pack::validate_handoff(
+            protocol::ResourcePackHandoff::from_archives(archives),
+        ));
+        super::collect_server_ui(&view).and_then(|pack| pack.item_glint.clone())
+    };
+    let base = read(vec![lower()]).unwrap();
+    let winner = read(vec![lower(), upper]).unwrap();
+    assert_eq!(winner.dimensions(), [640, 617]);
+    assert_eq!(&winner.pixels()[..4], &[0, 200, 0, 255]);
+    assert_ne!(winner.identity(), base.identity());
+    let restored = read(vec![lower()]).unwrap();
+    assert_eq!(restored, base);
+    assert!(read(Vec::new()).is_none());
+    let malformed = read(vec![archive(3, &[(&path, b"invalid image")])]);
+    assert!(malformed.is_none());
+}
+
+#[test]
 fn ui_index_loads_custom_paths_and_extensions() {
     let path = "custom/inventory.uidx";
     let view = files_pack(&[
@@ -168,6 +202,40 @@ fn ui_index_loads_custom_paths_and_extensions() {
 }
 
 #[test]
+fn root_splashes_load_without_ui_definitions_and_track_removal() {
+    use assets::SPLASH_RESOURCE_PATH;
+    use ui_screens::menu_renderers::splashes::select_splash;
+    let lower = archive(1, &[(SPLASH_RESOURCE_PATH, br#"{"splashes":["lower"]}"#)]);
+    let upper = archive(
+        2,
+        &[(
+            SPLASH_RESOURCE_PATH,
+            br#"{"canMerge":true,"splashes":["upper"]}"#,
+        )],
+    );
+    let stack =
+        resource_pack::validate_handoff(protocol::ResourcePackHandoff::from_archives(vec![
+            upper, lower,
+        ]));
+    let view = resource_pack::LayeredPackView::tracked(stack);
+    let pack = super::collect_server_ui(&view).unwrap();
+    assert_eq!(select_splash(pack.splashes.iter(), 0), Some("lower"));
+    assert_eq!(select_splash(pack.splashes.iter(), 1), Some("upper"));
+    assert!(!pack.is_empty());
+    let dependencies = [(
+        pack_runtime::reload_diff::Subscriber::Ui,
+        view.dependencies().unwrap().snapshot(),
+    )]
+    .into();
+    let removed = resource_pack::validate_handoff(protocol::ResourcePackHandoff::default());
+    let admission = resource_pack::PackAdmission::Validated(view.shared_stack());
+    assert!(
+        pack_runtime::reload_diff::Changes::between(&removed, Some((&admission, &dependencies))).ui
+    );
+    assert!(super::collect_server_ui(&resource_pack::LayeredPackView::new(removed)).is_none());
+}
+
+#[test]
 fn ui_custom_definition_overrides_across_layers_without_relisting() {
     let path = "custom/inventory.uidx";
     let lower = archive(
@@ -191,7 +259,7 @@ fn ui_custom_definition_overrides_across_layers_without_relisting() {
         )],
     );
     let view = resource_pack::LayeredPackView::new(resource_pack::validate_handoff(
-        protocol::ResourcePackHandoff::from_archives(vec![lower, upper]),
+        protocol::ResourcePackHandoff::from_archives(vec![upper, lower]),
     ));
     let pack = super::collect_server_ui(&view).unwrap();
     assert!(pack.ui_layers[1].iter().any(|(name, _)| name == path));
@@ -361,8 +429,8 @@ fn texture_sets_supply_color_layers() {
 fn language_files_merge_across_the_stack_by_precedence() {
     let _cache = overlay_cache();
     let handoff = protocol::ResourcePackHandoff::from_archives(vec![
-        lang_pack(2, b"\xef\xbb\xbfshared=bottom\nbottom.only=B"),
         lang_pack(1, b"shared=top\ntop.only=T"),
+        lang_pack(2, b"\xef\xbb\xbfshared=bottom\nbottom.only=B"),
     ]);
     let application = super::prepare_pack_application(
         handoff,
@@ -390,6 +458,7 @@ fn overlay_cache_reuses_the_previous_session_compile() {
             collides: true,
             collision_boxes: None,
             selection: Default::default(),
+            friction: None,
             visual: Default::default(),
         }]
         .into(),
@@ -443,6 +512,60 @@ fn overlay_cache_reuses_the_previous_session_compile() {
     assert_eq!(
         compiles, 3,
         "a different device capacity cannot reuse the old overlay"
+    );
+}
+
+// Re-applying a pack after another reuses its compiled blocks, identical to a fresh compile.
+#[test]
+fn reapplied_stack_reuses_blocks_identical_to_a_fresh_compile() {
+    use std::sync::Arc;
+    let _cache = overlay_cache();
+    let keys = assets::MaterialKeys::from_entries([(5, "reapply_key")]);
+    let blocks = protocol::CustomBlocks::default();
+    let limit = super::overlay_texture_layer_limit();
+    let stack = |id| {
+        resource_pack::validate_handoff(protocol::ResourcePackHandoff::from_archives(vec![
+            archive(
+                id,
+                &[
+                    (
+                        "textures/terrain_texture.json",
+                        br#"{"texture_data":{"reapply_key":{"textures":"textures/blocks/reapply"}}}"#,
+                    ),
+                    ("textures/blocks/reapply.png", &png(16, 16)),
+                ],
+            ),
+        ]))
+    };
+    let fresh = |stack: &Arc<resource_pack::ValidatedPackStack>| {
+        let view = resource_pack::LayeredPackView::tracked(stack.clone());
+        super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+    };
+    let mut compiles = 0;
+    let mut cached = |stack: &Arc<resource_pack::ValidatedPackStack>| {
+        let view = resource_pack::LayeredPackView::tracked(stack.clone());
+        super::cached_block_overlay(
+            &super::stack_fingerprint(stack),
+            &view,
+            &blocks,
+            false,
+            limit,
+            || {
+                compiles += 1;
+                super::compile_block_overlay(&view, &blocks, false, Some(&keys), limit)
+                    .map(Arc::new)
+            },
+        )
+    };
+    let (first, second) = (stack(41), stack(42));
+    let applied = cached(&first).expect("the pack overrides a vanilla key");
+    cached(&second);
+    let reapplied = cached(&first).expect("the pack overrides a vanilla key");
+    assert_eq!(compiles, 2, "switching back does not compile again");
+    assert!(Arc::ptr_eq(&applied, &reapplied));
+    assert_eq!(
+        format!("{:?}", reapplied),
+        format!("{:?}", fresh(&first).expect("uncached compile")),
     );
 }
 
@@ -629,4 +752,44 @@ fn the_same_blocks_share_the_extended_carrier_and_its_texture_identity() {
         released.upgrade().is_none(),
         "the carrier pins no extension"
     );
+}
+
+#[test]
+fn block_entity_art_reads_texture_sets_and_tracks_missing_overrides() {
+    let name = "textures/entity/chest/normal";
+    let placement = assets::BlockEntityPlacement {
+        name: name.into(),
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+    };
+    let bytes =
+        assets::encode_block_entity_catalog(b"{}", 1, 1, &[10, 20, 30, 255], &[placement]).unwrap();
+    let base = assets::RuntimeBlockEntityAssets::decode(&bytes).unwrap();
+    let view = files_pack(&[(
+        "textures/entity/chest/normal.texture_set.json",
+        br#"{"minecraft:texture_set":{"color":[200,100,50]}}"#,
+    )]);
+    let view = resource_pack::LayeredPackView::tracked(view.shared_stack());
+    let changed = super::super::block_entity_art::prepare_over(
+        &view,
+        &base,
+        &render_model::BlockEntityArtworkPreparer::default(),
+    )
+    .unwrap();
+    assert_eq!(changed.atlas().texel(name, 0, 0), Some([200, 100, 50, 255]));
+    let inputs = view.dependencies().unwrap().snapshot();
+    assert!(inputs.iter().any(|input| matches!(input,
+        resource_pack::PackDependency::File { path, .. }
+            if path == "textures/entity/chest/normal.png"
+    )));
+    let empty = files_pack(&[]);
+    let restored = super::super::block_entity_art::prepare_over(
+        &empty,
+        &base,
+        &render_model::BlockEntityArtworkPreparer::default(),
+    )
+    .unwrap();
+    assert_eq!(restored.atlas().texel(name, 0, 0), Some([10, 20, 30, 255]));
 }

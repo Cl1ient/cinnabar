@@ -8,8 +8,10 @@ publish = false
 [features]
 default = ["handoff"]
 handoff = ["dep:protocol"]
+test-support = ["handoff"]
 
 [dependencies]
+pack-json = { path = "../pack-json" }
 aes = "0.8"
 protocol = { path = "../protocol", optional = true }
 serde = { version = "1", features = ["derive"] }

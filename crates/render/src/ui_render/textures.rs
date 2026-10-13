@@ -298,9 +298,15 @@ impl UiGpuTextures {
 /// Bind each page bucket with the viewport and both samplers once the frame is accepted.
 pub(super) fn prepare_ui_bind_group(
     render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
+    (item_glint, profile): (
+        Option<Res<render_scene::UiItemGlintTexture>>,
+        Option<Res<super::profile::UiProfile>>,
+    ),
     pipeline_cache: Res<PipelineCache>,
     pipeline: Res<UiPipeline>,
     mut gpu: ResMut<UiGpu>,
+    stats: Res<render_scene::UiRenderStatsResource>,
 ) {
     if gpu.accepted_revision.is_none() || &gpu.device != render_device.wgpu_device() {
         return;
@@ -308,8 +314,27 @@ pub(super) fn prepare_ui_bind_group(
     let viewport = gpu.viewport_buffer.clone();
     let sampler = gpu.sampler.clone();
     let linear_sampler = gpu.linear_sampler.clone();
+    let changed = gpu.item_glint.prepare(
+        &render_device,
+        &render_queue,
+        item_glint
+            .as_ref()
+            .and_then(|resource| resource.0.as_deref()),
+        profile.as_deref(),
+    );
+    if changed {
+        stats.update(|stats| {
+            stats.retained_gpu_bytes = super::resources::retained_gpu_bytes(
+                gpu.vertex_capacity,
+                gpu.index_capacity,
+                gpu.textures.bytes + gpu.item_glint.bytes,
+            );
+        });
+    }
+    let glint_view = gpu.item_glint.view.clone();
+    let glint_sampler = gpu.item_glint.sampler.clone();
     for bucket in &mut gpu.textures.buckets {
-        if bucket.bind_group.is_some() {
+        if bucket.bind_group.is_some() && !changed {
             continue;
         }
         bucket.bind_group = Some(render_device.create_bind_group(
@@ -335,6 +360,14 @@ pub(super) fn prepare_ui_bind_group(
                 BindGroupEntry {
                     binding: 4,
                     resource: bucket.format_uniform.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 5,
+                    resource: BindingResource::TextureView(&glint_view),
+                },
+                BindGroupEntry {
+                    binding: 6,
+                    resource: BindingResource::Sampler(&glint_sampler),
                 },
             ],
         ));
@@ -403,8 +436,8 @@ mod tests {
     #[test]
     fn local_font_replacement_writes_one_reserved_page_without_static_reallocation() {
         use render_model::{
-            MAX_UI_DYNAMIC_PAGES, UI_DYNAMIC_PAGE_SIDE, UI_FALLBACK_FONT_PAGE_OFFSET,
-            UI_FALLBACK_FONT_PAGE_SIDE, UI_LOCAL_FONT_PAGE_OFFSET, UI_LOCAL_FONT_PAGE_SIDE,
+            MAX_UI_DYNAMIC_PAGES, UI_DYNAMIC_PAGE_SIDE, UI_LOCAL_FONT_PAGE_OFFSET,
+            UI_LOCAL_FONT_PAGE_SIDE,
         };
 
         let page = |side, value| {
@@ -414,16 +447,8 @@ mod tests {
             )
             .unwrap()
         };
-        let fallback = UiTexturePage::coverage(
-            [UI_FALLBACK_FONT_PAGE_SIDE; 2],
-            vec![0; (UI_FALLBACK_FONT_PAGE_SIDE * UI_FALLBACK_FONT_PAGE_SIDE) as usize].into(),
-        )
-        .unwrap();
         let mut pages = vec![page(1, 255)];
         pages.extend((0..MAX_UI_DYNAMIC_PAGES).map(|offset| {
-            if offset >= UI_FALLBACK_FONT_PAGE_OFFSET {
-                return fallback.clone();
-            }
             page(
                 if offset == UI_LOCAL_FONT_PAGE_OFFSET {
                     UI_LOCAL_FONT_PAGE_SIDE
@@ -439,40 +464,24 @@ mod tests {
         state
             .execute(&base, &dirty, |_, _, _| Ok::<_, ()>(()))
             .unwrap();
-        let mut current = base.clone();
-        for offset in [
-            UI_LOCAL_FONT_PAGE_OFFSET,
-            UI_FALLBACK_FONT_PAGE_OFFSET,
-            MAX_UI_DYNAMIC_PAGES - 1,
-        ] {
-            let mut replacement = current.pages()[current.dynamic_start()..].to_vec();
-            replacement[offset] = if offset == UI_LOCAL_FONT_PAGE_OFFSET {
-                page(UI_LOCAL_FONT_PAGE_SIDE, 41)
-            } else {
-                UiTexturePage::coverage(
-                    [UI_FALLBACK_FONT_PAGE_SIDE; 2],
-                    vec![41; (UI_FALLBACK_FONT_PAGE_SIDE * UI_FALLBACK_FONT_PAGE_SIDE) as usize]
-                        .into(),
-                )
-                .unwrap()
-            };
-            current = current.replace_dynamic(replacement).unwrap();
-            assert_eq!(current.static_identity(), base.static_identity());
-            assert_eq!(current.plan(), base.plan());
-            let target = base.dynamic_start() + offset;
-            assert_eq!(state.dirty(&current).unwrap(), [target]);
-            let mut written = Vec::new();
-            state
-                .execute(&current, &[target], |index, page, _| {
-                    written.push(index);
-                    assert_eq!(page.format(), base.pages()[target].format());
-                    assert_eq!(page.pixels().len(), base.pages()[target].pixels().len());
-                    Ok::<_, ()>(())
-                })
-                .unwrap();
-            assert_eq!(written, [target]);
-            assert!(state.dirty(&current).unwrap().is_empty());
-        }
+        let mut replacement = base.pages()[base.dynamic_start()..].to_vec();
+        replacement[UI_LOCAL_FONT_PAGE_OFFSET] = page(UI_LOCAL_FONT_PAGE_SIDE, 41);
+        let current = base.replace_dynamic(replacement).unwrap();
+        assert_eq!(current.static_identity(), base.static_identity());
+        assert_eq!(current.plan(), base.plan());
+        let target = base.dynamic_start() + UI_LOCAL_FONT_PAGE_OFFSET;
+        assert_eq!(state.dirty(&current).unwrap(), [target]);
+        let mut written = Vec::new();
+        state
+            .execute(&current, &[target], |index, page, _| {
+                written.push(index);
+                assert_eq!(page.format(), base.pages()[target].format());
+                assert_eq!(page.pixels().len(), base.pages()[target].pixels().len());
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+        assert_eq!(written, [target]);
+        assert!(state.dirty(&current).unwrap().is_empty());
         let mut wrong = base.pages()[base.dynamic_start()..].to_vec();
         wrong[UI_LOCAL_FONT_PAGE_OFFSET] = page(UI_DYNAMIC_PAGE_SIDE, 0);
         assert!(base.replace_dynamic(wrong).is_err());

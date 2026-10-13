@@ -1,5 +1,6 @@
 //! Env-gated check over locally cached server packs: custom armor attachables draw on a body.
 
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 use render_model::{
@@ -38,7 +39,7 @@ fn body(runtime: &mut EquipmentRuntime) -> ActorRigSubmission {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 0,
+                pose_generation: PoseGeneration::new(0),
                 layer: ACTOR_LAYER_BODY,
             },
             rig,
@@ -145,7 +146,7 @@ fn cached_pack_custom_armor_draws_in_its_wearable_slot() {
         );
         let (_, locations) =
             pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(&catalog));
-        runtime.set_pack_layer(Some((pack_assets, catalog, locations)));
+        runtime.set_pack_layer(Some((pack_assets, Some(catalog), locations)));
         let body = body(&mut runtime);
         for (item, slot) in custom_armor {
             let slot_name = match slot {
@@ -171,6 +172,7 @@ fn cached_pack_custom_armor_draws_in_its_wearable_slot() {
             runtime.set_session_items(Some(&items), None, Vec::new());
             let mut input = ActorEquipmentInput::default();
             input.armor[slot as usize] = Some(WornItem {
+                use_facts: client_world::EffectiveItemUse::default(),
                 grip: assets::item::grip::ItemGrip::Unresolved,
                 identifier: Arc::from(item.as_ref()),
                 metadata: 0,

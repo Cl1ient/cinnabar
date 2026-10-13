@@ -64,6 +64,7 @@ impl ActorStore {
                 &entity_assets,
             )),
         );
+        store.entity_assets = Some(std::sync::Arc::clone(&entity_assets));
         store.items =
             crate::item::ItemStateStore::with_assets(std::sync::Arc::clone(&entity_assets));
         store.actions = crate::action::RemoteActionStore::with_assets(entity_assets);
@@ -89,7 +90,8 @@ impl ActorStore {
             actor_identifier_skips: 0,
             player_game_mode_skips: 0,
             world_default_game_mode: None,
-            aim_actor_classes: HashMap::new(),
+            entity_assets: None,
+            custom_actor_traits: HashMap::new(),
             actors: HashMap::new(),
             effect_members: Default::default(),
             unique_to_runtime: HashMap::new(),
@@ -103,6 +105,7 @@ impl ActorStore {
             actions: crate::action::RemoteActionStore::diagnostic(),
             remote_state_excluded_runtime_id: None,
             pending_local_health: None,
+            local_server_swings: 0,
             pending_local_damage: None,
             local_health_skips: 0,
             local_player_spawned: false,
@@ -117,6 +120,7 @@ impl ActorStore {
             local_view_bobbing: true,
             local_flying: false,
             local_hands: [None, None],
+            local_held_network_ids: [0; 2],
             local_main_metadata: 0,
             local_main_stack_id: None,
             local_main_slot: 0,
@@ -126,7 +130,8 @@ impl ActorStore {
             camera_rotation: [0.0; 2],
             camera_position: [0.0; 3],
             animation_view: None,
-            seat_defaults: Default::default(),
+            seat_bindings: HashMap::new(),
+            seat_bases: HashMap::new(),
             property_registry: Default::default(),
             local_knockback: None,
             status_notices: Vec::new(),
@@ -134,6 +139,11 @@ impl ActorStore {
             particle_effects: Default::default(),
             synchronized_audio: Default::default(),
         }
+    }
+
+    /// Arm swings the server sent for the local player since the last call.
+    pub(crate) fn take_local_server_swings(&mut self) -> u8 {
+        std::mem::take(&mut self.local_server_swings)
     }
 
     pub(crate) fn exclude_remote_state_for(&mut self, runtime_id: u64) {
@@ -147,7 +157,28 @@ impl ActorStore {
 
     /// Starts an actor's arm swing from a local cause rather than a server action.
     pub(crate) fn start_swing(&mut self, runtime_id: u64, ticks: i32) {
-        self.animation.start_swing(runtime_id, ticks);
+        self.animation.start_swing(runtime_id, ticks, ticks);
+    }
+
+    /// Retains a remote actor's swing-length effects until the server removes them; the local
+    /// player's come from its own feed.
+    pub(crate) fn apply_effect(&mut self, event: &protocol::ActorEffectEvent) {
+        if event.dimension != self.dimension
+            || self.remote_state_excluded_runtime_id == Some(event.actor_runtime_id)
+        {
+            return;
+        }
+        let Some(actor) = self.actors.get_mut(&event.actor_runtime_id) else {
+            return;
+        };
+        let amplifier = match event.action {
+            protocol::ActorEffectAction::Add | protocol::ActorEffectAction::Update => {
+                Some(event.amplifier)
+            }
+            protocol::ActorEffectAction::Remove => None,
+            protocol::ActorEffectAction::Unknown(_) => return,
+        };
+        actor.status.swing_effects.apply(event.effect_id, amplifier);
     }
 
     pub(crate) fn reset_java_equip(&mut self, runtime_id: u64) {
@@ -171,6 +202,7 @@ impl ActorStore {
         self.local_view_bobbing = feed.view_bobbing;
         self.local_flying = feed.flying;
         self.local_hands = [feed.main_hand.clone(), feed.off_hand.clone()];
+        self.local_held_network_ids = feed.held_network_ids;
         self.local_main_metadata = feed.main_hand_metadata;
         self.local_main_stack_id = feed.main_hand_stack_id.filter(|id| *id > 0);
         self.local_main_slot = feed.main_hand_slot;
@@ -227,6 +259,7 @@ impl ActorStore {
         actor.player_game_mode = feed.game_mode.map(protocol::GameModeUpdate::Explicit);
         self.unique_to_runtime.insert(unique_id, runtime_id);
         self.effect_members.update(&actor);
+        self.bind_actor_seat(&actor);
         self.actors.insert(runtime_id, actor);
         self.apply_pending_local_health(runtime_id);
         if let Some(actor) = self.actors.get(&runtime_id) {
@@ -310,11 +343,13 @@ impl ActorStore {
         self.picks_ahead = false;
         self.dimension = dimension;
         self.latest_sequence = 0;
-        self.aim_actor_classes.clear();
+        self.custom_actor_traits.clear();
         self.actor_identifier_skips = 0;
         self.player_game_mode_skips = 0;
         self.world_default_game_mode = None;
         self.actors.clear();
+        self.seat_bindings.clear();
+        self.seat_bases.clear();
         self.effect_members = Default::default();
         self.unique_to_runtime.clear();
         self.rider_to_ridden.clear();
@@ -328,6 +363,7 @@ impl ActorStore {
         self.ready_appearances = Default::default();
         self.items.clear();
         self.actions.clear();
+        self.local_server_swings = 0;
         self.status_notices.clear();
         self.pickup_visuals.clear();
         self.particle_effects.clear();
@@ -344,6 +380,7 @@ impl ActorStore {
             return guard;
         }
         self.dimension = dimension;
+        self.local_server_swings = 0;
         self.local_flying = false;
         self.pending_local_health = self
             .remote_state_excluded_runtime_id
@@ -360,6 +397,7 @@ impl ActorStore {
             })
             .or_else(|| self.pending_local_damage.take());
         self.actors.clear();
+        self.seat_bindings.clear();
         self.effect_members = Default::default();
         self.unique_to_runtime.clear();
         self.rider_to_ridden.clear();
@@ -395,7 +433,10 @@ impl ActorStore {
             return ActorApplyResult::StaleDimension;
         }
         match event {
-            ActorEvent::Identifiers(registry) => self.apply_aim_actor_classes(registry),
+            ActorEvent::Identifiers(registry) => {
+                self.apply_seat_bases(&registry);
+                self.apply_actor_interactions(registry)
+            }
             ActorEvent::Spawn(spawn) => self.apply_spawn(sequence, spawn),
             ActorEvent::PlayerSpawn { spawn, game_mode } => {
                 let unique_id = spawn.unique_id;
@@ -482,7 +523,7 @@ impl ActorStore {
                 if let Some(value) = movement.on_ground {
                     actor.on_ground = Some(value);
                 }
-                let tick_seconds = world::TICK_DURATION.as_secs_f32();
+                let tick_seconds = simulation_clock::TICK_DURATION.as_secs_f32();
                 let elapsed_seconds = movement
                     .source_tick
                     .zip(actor.source_tick)
@@ -674,6 +715,7 @@ impl ActorStore {
         let links = std::sync::Arc::clone(&spawn.links);
         let mut replaced = false;
         if let Some(previous) = self.actors.remove(&spawn.runtime_id) {
+            self.seat_bindings.remove(&previous.runtime_id);
             self.effect_members.remove(previous.runtime_id);
             self.synchronized_audio.remove_runtime(previous.runtime_id);
             let lifetime = self.lifetime_for(&previous);
@@ -685,6 +727,7 @@ impl ActorStore {
             replaced = true;
         }
         if let Some(previous_runtime) = self.unique_to_runtime.remove(&spawn.unique_id) {
+            self.seat_bindings.remove(&previous_runtime);
             if let Some(previous) = self.actors.remove(&previous_runtime) {
                 self.effect_members.remove(previous.runtime_id);
                 self.synchronized_audio.remove_runtime(previous.runtime_id);
@@ -699,8 +742,15 @@ impl ActorStore {
         let runtime_id = spawn.runtime_id;
         let unique_id = spawn.unique_id;
         let held_item = spawn.held_item.clone();
-        self.actors
-            .insert(runtime_id, ActorSnapshot::from_spawn(spawn, sequence));
+        let interaction_traits = Self::resolve_actor_interactions(
+            &spawn.kind,
+            self.entity_assets.as_deref(),
+            &self.custom_actor_traits,
+        );
+        let mut actor = ActorSnapshot::from_spawn(spawn, sequence);
+        actor.interaction_traits = interaction_traits;
+        self.bind_actor_seat(&actor);
+        self.actors.insert(runtime_id, actor);
         self.effect_members.update(&self.actors[&runtime_id]);
         if self.remote_state_excluded_runtime_id == Some(runtime_id) {
             if self.actors[&runtime_id]
@@ -740,6 +790,7 @@ impl ActorStore {
             self.remove_links_for(unique_id);
             return ActorApplyResult::MissingActor;
         };
+        self.seat_bindings.remove(&runtime_id);
         if let Some(actor) = self.actors.remove(&runtime_id) {
             self.effect_members.remove(runtime_id);
             self.synchronized_audio.remove_runtime(runtime_id);
@@ -806,6 +857,16 @@ impl ActorStore {
         }
     }
 
+    /// Installs compiled item-use overlays before numerical admission.
+    pub(crate) fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.items.set_use_overlays(overlays)
+    }
+
     pub(crate) fn set_item_use_durations(
         &mut self,
         durations: std::sync::Arc<std::collections::BTreeMap<Box<str>, u32>>,
@@ -849,6 +910,13 @@ impl ActorStore {
                 let mut seen = HashSet::with_capacity(action.actor_runtime_ids.len());
                 let mut targets = Vec::with_capacity(action.actor_runtime_ids.len());
                 for runtime_id in action.actor_runtime_ids.iter().copied() {
+                    // The native handler swings whichever mob the packet names, the local player
+                    // included; its swing plays through the local swing tracker.
+                    if self.remote_state_excluded_runtime_id == Some(runtime_id)
+                        && matches!(action.kind, protocol::ActorActionKind::SwingArm)
+                    {
+                        self.local_server_swings = self.local_server_swings.saturating_add(1);
+                    }
                     if (self.remote_state_excluded_runtime_id == Some(runtime_id)
                         && !matches!(action.kind, protocol::ActorActionKind::Custom { .. }))
                         || !seen.insert(runtime_id)
@@ -875,8 +943,17 @@ impl ActorStore {
                         .actions
                         .apply(lifetime, rig, sequence, source_tick, &action);
                     if applied && matches!(action.kind, protocol::ActorActionKind::SwingArm) {
-                        self.animation
-                            .start_swing(lifetime.runtime_id, actor_animation::ACTOR_SWING_TICKS);
+                        let java_ticks = self
+                            .actors
+                            .get(&lifetime.runtime_id)
+                            .map_or(actor_animation::ACTOR_SWING_TICKS, |actor| {
+                                actor.status.swing_effects.ticks()
+                            });
+                        self.animation.start_swing(
+                            lifetime.runtime_id,
+                            actor_animation::ACTOR_SWING_TICKS,
+                            java_ticks,
+                        );
                     }
                     if applied && let Some(request) = prepared.as_ref() {
                         self.animation.start_server_animation(

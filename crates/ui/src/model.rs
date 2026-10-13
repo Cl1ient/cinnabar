@@ -13,6 +13,9 @@ mod mesh;
 mod projection;
 mod retained;
 
+#[cfg(test)]
+mod budget_tests;
+
 use draw::{emit_visual, is_empty};
 pub use mesh::{UiMesh, UiMeshBatch, UiMeshError, UiMeshVertex};
 pub use projection::UiWorldProjection;
@@ -314,6 +317,7 @@ pub const UI_STYLE_GRAYSCALE: u8 = 1 << 2;
 /// Vertex style bit for JSON-UI `bilinear` sprites.
 pub const UI_STYLE_BILINEAR: u8 = 1 << 3;
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiVertex {
     /// Logical screen XY multiplied by clip W; ordinary HUD coordinates have W=1.
@@ -323,11 +327,11 @@ pub struct UiVertex {
     pub clip_w: f32,
     pub uv: [f32; 2],
     pub color: [u8; 4],
-    /// Interpolated linear model lighting, kept separate from authored sRGB tint.
+    /// Interpolated linear lighting, or border area for coverage paint.
     pub model_light: f32,
-    /// Native entity overlay RGB and mix amount, separate from vertex alpha.
+    /// Entity overlay RGB and mix amount, or the coverage paint's packed constant colors.
     pub overlay_color: [f32; 4],
-    pub style_flags: u8,
+    pub style_flags: u16,
     pub alpha_test: bool,
     /// Explicit sampled-texture cutoff; negative disables this material override.
     pub alpha_cutoff: f32,
@@ -345,6 +349,13 @@ pub struct UiDrawBatch {
     pub isolated_depth_scope: Option<u32>,
     pub index_range: Range<u32>,
 }
+
+const _: () = assert!(
+    UiLimits::MAX_UI_VERTICES * std::mem::size_of::<UiVertex>()
+        + UiLimits::MAX_UI_INDICES * std::mem::size_of::<u32>()
+        + UiLimits::MAX_DRAW_BATCHES * std::mem::size_of::<UiDrawBatch>()
+        <= UiLimits::MAX_DRAW_LIST_BYTES
+);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiDrawList {

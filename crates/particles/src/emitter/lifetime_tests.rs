@@ -248,3 +248,36 @@ fn persistent_actor_emitter_stays_bounded_and_finishes_on_actor_removal() {
     assert_eq!(system.live_particles(), 0);
     assert_eq!(system.emitter_count(), 0);
 }
+
+#[test]
+fn controller_initialization_uses_emitter_values_and_runs_once_before_particles() {
+    let bytes = effect("minecraft:emitter_lifetime_once", json!({"active_time":4}));
+    let mut source: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    source["particle_effect"]["components"]["minecraft:emitter_initialization"] =
+        json!({"creation_expression":"v.size=2;"});
+    source["particle_effect"]["components"]["minecraft:particle_appearance_billboard"]["size"] =
+        json!(["v.size", "v.size"]);
+    let def = Arc::new(parse_effect(&serde_json::to_vec(&source).unwrap()).unwrap());
+    let slot = def.interner.get("size").unwrap() as usize;
+    let initialization = crate::actor::ActorInitialization::compile(
+        "v.size = v.size + v.emitter_lifetime + query.variant;",
+    )
+    .unwrap();
+    let request = SpawnRequest {
+        initialization: Some(Arc::new(initialization)),
+        queries: crate::Queries {
+            actor: Some(Arc::new(std::collections::BTreeMap::from([(
+                "variant".into(),
+                3.0,
+            )]))),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut emitter = Emitter::new(1, def, ParticleAtlas::default().fallback(), &request, 3);
+    assert_eq!(emitter.vars[slot], 9.0);
+    assert!(emitter.particles.is_empty());
+    emitter.advance(0.25, &mut Outputs::default(), 30);
+    assert_eq!(emitter.vars[slot], 9.0);
+    assert!(!emitter.particles.is_empty());
+}

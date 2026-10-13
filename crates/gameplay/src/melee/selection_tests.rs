@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_support::survival_mining::ticker_with_ticks;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Attempts a block press against the production sample selector and a full queue.
 fn reject_block_press(
@@ -127,9 +128,17 @@ fn a_block_retry_revokes_selection_after_cancel_authority_change_or_expiry() {
         reject_block_press(&mut runtime, &mut swings, &movement, 1);
         match reset {
             0 => runtime.cancel(),
-            1 => runtime.synchronize((7, 1)),
+            1 => runtime.synchronize((
+                SessionGeneration::new(7),
+                PositionAuthorityGeneration::new(1),
+            )),
             2 => runtime.defer(2 + MAX_PENDING_INTERACTION_MILLIS),
-            _ => runtime.position_authority = Some((7, 1)),
+            _ => {
+                runtime.position_authority = Some((
+                    SessionGeneration::new(7),
+                    PositionAuthorityGeneration::new(1),
+                ))
+            }
         }
         assert!(
             runtime

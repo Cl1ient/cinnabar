@@ -27,7 +27,7 @@ pub fn checkout() -> InstallLayout {
     InstallLayout::resolve(
         host_platform(),
         &InstallEnvironment {
-            executable: root.join("target/debug/bedrock-client"),
+            executable: root.join("target/debug/cinnabar"),
             user_root: None,
             home: None,
             local_app_data: None,
@@ -53,9 +53,9 @@ fn host_platform() -> Platform {
 /// Resolves a test installation under an explicit root for platform coverage.
 pub fn scratch_at(platform: Platform, base: &std::path::Path) -> InstallLayout {
     let executable = match platform {
-        Platform::Windows => "bin/bedrock-client.exe",
-        Platform::Linux => "bin/bedrock-client",
-        Platform::MacOs => "Cinnabar.app/Contents/MacOS/bedrock-client",
+        Platform::Windows => "bin/cinnabar.exe",
+        Platform::Linux => "bin/cinnabar",
+        Platform::MacOs => "Cinnabar.app/Contents/MacOS/cinnabar",
     };
     InstallLayout::resolve(
         platform,
@@ -70,4 +70,26 @@ pub fn scratch_at(platform: Platform, base: &std::path::Path) -> InstallLayout {
         },
     )
     .expect("absolute test roots form a supported installation")
+}
+
+/// A signed-in view with the account picker open over two saved accounts with pictures,
+/// the first active.
+pub fn saved_accounts_view() -> crate::menu::MenuView {
+    let mut view = crate::menu::MenuView::new(true, "First".into());
+    view.auth_state = crate::menu::auth::AuthState::Authenticated;
+    view.dialog = Some(crate::menu::MenuDialog::Accounts);
+    view.feeds.account_active_id = Some("first".into());
+    view.feeds.accounts = vec![
+        crate::accounts::AccountProfile {
+            id: "first".into(),
+            gamertag: "First".into(),
+            picture_path: Some("first.png".into()),
+        },
+        crate::accounts::AccountProfile {
+            id: "second".into(),
+            gamertag: "Second".into(),
+            picture_path: Some("second.png".into()),
+        },
+    ];
+    view
 }

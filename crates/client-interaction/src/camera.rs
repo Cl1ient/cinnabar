@@ -1,16 +1,13 @@
 //! Camera input adapters over the shared semantic frame and movement resources.
-use crate::movement::{LocalMovementSpeedAuthority, LocalPhysicsController};
 use bevy::{prelude::*, window::PrimaryWindow};
-use client_presentation::camera::CameraFovInputs;
 use client_presentation::{
     camera::{
-        AutoFly, CameraSettingsAuthority, FlyCamera, FlyCameraUpdateSet, ServerCameraView, fov,
-        look,
+        AutoFly, CameraSettingsAuthority, FlyCamera, FlyCameraUpdateSet, LocalPlayerDeath,
+        ServerCameraView, fov, look,
     },
     local_player::LocalViewPose,
 };
 use client_state::{ClientFrameSet, ModCameraInputSet, RuntimeSettings, SemanticInputSnapshot};
-use client_ui::ui_runtime::UiRuntime;
 
 pub mod aim_assist;
 
@@ -23,8 +20,7 @@ impl Plugin for CameraInputPlugin {
         app.add_systems(
             Update,
             (
-                (apply_runtime_camera_settings, collect_fov_inputs)
-                    .chain()
+                apply_runtime_camera_settings
                     .after(ClientFrameSet::SemanticFinalize)
                     .before(FlyCameraUpdateSet),
                 (update_perspective, update_look, update_movement)
@@ -56,10 +52,14 @@ pub fn apply_runtime_camera_settings(
 #[allow(clippy::too_many_arguments)]
 pub fn update_perspective(
     input: Res<SemanticInputSnapshot>,
+    death: Option<Res<LocalPlayerDeath>>,
+    view: Res<LocalViewPose>,
     settings: ResMut<CameraSettingsAuthority>,
 ) {
     client_presentation::camera::update_perspective(
         client_presentation::observations::InputObservation(input.snapshot()),
+        death.is_some_and(|death| death.0),
+        view.rotation(),
         settings,
     );
 }
@@ -127,28 +127,6 @@ pub fn update_movement(
         view,
     );
 }
-/// Borrows current owner facts and forwards them at the existing system boundary.
-#[allow(clippy::too_many_arguments)]
-pub fn collect_fov_inputs(
-    input: Res<SemanticInputSnapshot>,
-    settings: Res<CameraSettingsAuthority>,
-    ui: Option<Res<UiRuntime>>,
-    physics: Option<Res<LocalPhysicsController>>,
-    movement_speed: Option<Res<LocalMovementSpeedAuthority>>,
-    inputs: ResMut<CameraFovInputs>,
-) {
-    client_presentation::camera::presentation::collect_fov_inputs(
-        client_presentation::observations::InputObservation(input.snapshot()),
-        settings,
-        ui.as_deref(),
-        physics
-            .as_deref()
-            .map(|value| value as &dyn client_presentation::observations::PhysicsObservation),
-        movement_speed.and_then(|speed| speed.current()),
-        inputs,
-    );
-}
-
 #[cfg(test)]
 mod antialiasing_settings_tests {
     use bevy::anti_alias::smaa::Smaa;

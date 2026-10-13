@@ -208,7 +208,26 @@ impl WorldAuthority {
                 {
                     self.push_committed_ui(CommittedUiEvent::LocalTotemActivation { sequence });
                 }
+                let combat = match &event {
+                    ActorEvent::Status(status)
+                        if status.kind == protocol::ActorStatusKind::Hurt =>
+                    {
+                        Some((status.runtime_id, super::ActorCombatKind::Hurt))
+                    }
+                    ActorEvent::Status(status)
+                        if status.kind == protocol::ActorStatusKind::Death =>
+                    {
+                        Some((status.runtime_id, super::ActorCombatKind::Death))
+                    }
+                    _ => None,
+                };
                 let result = self.actors.apply(self.actor_session_id, sequence, event);
+                if result == crate::actor_store::ActorApplyResult::Updated
+                    && let Some((runtime_id, kind)) = combat
+                {
+                    self.record_combat_evidence(sequence, runtime_id, kind);
+                }
+
                 if result == crate::actor_store::ActorApplyResult::Updated
                     && let Some(position) = pickup_position
                 {
@@ -253,8 +272,7 @@ impl WorldAuthority {
                     });
                     self.push_committed_ui(CommittedUiEvent::LocalEffect { sequence, event });
                 }
-                // Remote actors' effects have no owned presentation surface yet;
-                // the event is committed and dropped rather than retained.
+                self.actors.apply_effect(&event);
             }
             WorldEvent::Abilities(event) => {
                 let sequence = sequence.expect("sequenced abilities commit through submit");

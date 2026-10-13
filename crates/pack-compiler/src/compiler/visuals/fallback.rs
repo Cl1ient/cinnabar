@@ -232,10 +232,15 @@ impl<'a> FallbackInventory<'a> {
 /// Families with a dedicated exact compile rule, which supersede their inventory envelope.
 fn has_exact_family_route(record: &RegistryRecord) -> bool {
     crate::respawn_anchor::is_record(record)
+        || super::bubble_column::is_record(record)
+        || super::barrel::is_record(record)
         || super::coral::is_record(record)
         || super::hollow_containers::is_name(&record.name)
         || super::sea_pickle::is_record(record)
+        || super::brewing_stand::is_record(record)
+        || super::campfire::is_record(record)
         || super::grindstone::is_record(record)
+        || super::tripwire_hook::is_record(record)
         || super::lily_pad::is_record(record)
         || super::end_rod::is_record(record)
         || super::lightning_rod::is_record(record)
@@ -560,6 +565,7 @@ mod tests {
         bytes.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (hash, name) in entries {
             let record = RegistryRecord {
+                beacon_tint: assets::BeaconTint::Unresolved,
                 sequential_id: 0,
                 network_hash: *hash,
                 name: (*name).into(),
@@ -586,6 +592,7 @@ mod tests {
 
     fn synthetic_record(name: &str, hash: u32) -> RegistryRecord {
         RegistryRecord {
+            beacon_tint: assets::BeaconTint::Unresolved,
             sequential_id: 7,
             network_hash: hash,
             name: name.into(),

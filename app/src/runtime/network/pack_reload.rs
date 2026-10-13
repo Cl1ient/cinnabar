@@ -1,12 +1,13 @@
 //! Cinnabar extension: optional resource packs can change without leaving a world.
 
 use super::reload_environment::{
-    EnvironmentBase, PreparedEnvironment, apply_biome_overlay, prepare_environment,
+    EnvironmentBase, EnvironmentPublication, PreparedEnvironment, apply_biome_overlay,
+    prepare_environment,
 };
 use super::resource_packs::{self, PackApplication};
 use crate::runtime::world::ClientWorld;
 use bevy::prelude::{Query, Res, ResMut, Resource};
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use resource_pack::{PackAdmission, ValidatedPackStack};
 use std::{
     sync::{Arc, Mutex, mpsc},
@@ -28,6 +29,9 @@ struct Pending {
     revision: u64,
     generation: u64,
     result: Mutex<mpsc::Receiver<Result<Prepared, String>>>,
+    /// The block carrier, sent before artwork and UI finish so meshing can start against it.
+    carrier: Mutex<mpsc::Receiver<Arc<assets::RuntimeAssets>>>,
+    early: Option<Arc<assets::RuntimeAssets>>,
 }
 
 /// A bounded worker transaction; only the newest requested stack may be published.
@@ -44,6 +48,8 @@ pub(crate) struct PackReload {
     pending: Option<Pending>,
     ready: Option<Prepared>,
     last_duration: Option<Duration>,
+    /// When the newest global stack was requested; the publication log reports latency from it.
+    requested_at: Option<Instant>,
     error: Option<String>,
     previous: Option<PackApplication>,
     aim_assist_textures: [Option<Arc<render_scene::AimAssistTexture>>; 2],
@@ -67,6 +73,7 @@ impl Default for PackReload {
             pending: None,
             ready: None,
             last_duration: None,
+            requested_at: None,
             error: None,
             previous: None,
             aim_assist_textures: Default::default(),
@@ -94,6 +101,7 @@ impl PackReload {
     /// Queues a global stack; importing or reordering never touches the network connection.
     pub(crate) fn request_globals(&mut self, stack: Arc<ValidatedPackStack>) -> u64 {
         self.globals = stack;
+        self.requested_at = Some(Instant::now());
         self.revision += 1;
         self.error = None;
         self.revision
@@ -164,35 +172,56 @@ impl PackReload {
         let revision = self.revision;
         let generation = self.generation;
         let (tx, rx) = mpsc::sync_channel(1);
+        let (carrier_tx, carrier_rx) = mpsc::sync_channel(1);
         self.pending = Some(Pending {
             revision,
             generation,
             result: Mutex::new(rx),
+            carrier: Mutex::new(carrier_rx),
+            early: None,
         });
         std::thread::spawn(move || {
             let start = Instant::now();
+            let _zone = bevy::log::info_span!("pack_apply.prepare").entered();
             let result = ValidatedPackStack::compose(&globals, &server)
                 .map_err(|error| error.to_string())
                 .map(|stack| {
-                    let changes = pack_runtime::reload_diff::Changes::between(
-                        &stack,
-                        previous
-                            .as_ref()
-                            .map(|old| (&old.admission, &old.dependencies)),
-                    );
+                    let changes = {
+                        let _zone = bevy::log::info_span!("pack_apply.diff").entered();
+                        pack_runtime::reload_diff::Changes::between(
+                            &stack,
+                            previous
+                                .as_ref()
+                                .map(|old| (&old.admission, &old.dependencies)),
+                        )
+                    };
                     let stack = Arc::new(stack);
                     let view = resource_pack::LayeredPackView::new(stack.clone());
-                    let environment = environment_base
-                        .as_ref()
-                        .filter(|_| changes.atmosphere || changes.particles)
-                        .map(|base| {
-                            prepare_environment(&view, base, changes.atmosphere, changes.particles)
-                        });
-                    let mut application = resource_packs::prepare_changed_application(
-                        kept,
-                        stack,
-                        inputs,
-                        previous.as_ref(),
+                    // Environment layers and the other subscribers read the stack independently.
+                    let (environment, mut application) = rayon::join(
+                        || {
+                            let _zone = bevy::log::info_span!("pack_apply.environment").entered();
+                            environment_base
+                                .as_ref()
+                                .filter(|_| changes.atmosphere || changes.particles)
+                                .map(|base| {
+                                    prepare_environment(
+                                        &view,
+                                        base,
+                                        changes.atmosphere,
+                                        changes.particles,
+                                    )
+                                })
+                        },
+                        || {
+                            let _zone = bevy::log::info_span!("pack_apply.compile").entered();
+                            resource_packs::prepare_diffed_application(
+                                kept,
+                                stack.clone(),
+                                inputs,
+                                previous.as_ref().map(|old| (old, changes)),
+                            )
+                        },
                     );
                     if let Some(environment) = &environment {
                         application
@@ -200,16 +229,8 @@ impl PackReload {
                             .extend(environment.dependencies.clone());
                     }
                     application.item_components = items;
-                    let artwork = current_artwork.as_ref().map(|current| {
-                        application
-                            .entity_artwork
-                            .as_deref()
-                            .filter(|next| next.identity() != current.identity())
-                            .unwrap_or(current)
-                            .clone()
-                    });
-                    application.prepare_actor_artwork(artwork.as_ref().filter(|_| generation != 0));
                     if changes.blocks {
+                        let _zone = bevy::log::info_span!("pack_apply.biome_overlay").entered();
                         let mut biome_overlay = assets::BlockOverlay::default();
                         let biome_view =
                             resource_pack::LayeredPackView::tracked(view.shared_stack());
@@ -229,17 +250,6 @@ impl PackReload {
                             Arc::make_mut(overlay).overlay.biomes = biome_overlay.biomes;
                         }
                     }
-                    if let (Some(pack), Some(catalog)) =
-                        (application.server_ui.as_ref(), catalog.as_ref())
-                    {
-                        let unchanged = previous.as_ref().is_some_and(|old| {
-                            same_optional(&old.server_ui, &application.server_ui)
-                        });
-                        if !unchanged {
-                            application.server_ui =
-                                Some(resource_packs::ui_catalog::prepare(pack, catalog));
-                        }
-                    }
                     let ids = application.block_overlay.as_ref().map(|overlay| {
                         let start = base.visual_count() as u32;
                         start..start + overlay.overlay.visuals.len() as u32
@@ -248,19 +258,55 @@ impl PackReload {
                         same_optional(&old.block_overlay, &application.block_overlay)
                     });
                     let assets = previous_assets.filter(|_| unchanged).unwrap_or_else(|| {
+                        let _zone = bevy::log::info_span!("pack_apply.carrier").entered();
                         resource_packs::session_runtime_assets(
                             &base,
                             ids.as_ref(),
                             application.block_overlay.as_ref(),
                         )
                     });
+                    // The frame meshes against the carrier while artwork and UI finish here.
+                    let _ = carrier_tx.send(assets.clone());
+                    {
+                        let _zone = bevy::log::info_span!("pack_apply.actor_artwork").entered();
+                        let artwork = current_artwork.as_ref().map(|current| {
+                            application
+                                .entity_artwork
+                                .as_deref()
+                                .filter(|next| next.identity() != current.identity())
+                                .unwrap_or(current)
+                                .clone()
+                        });
+                        application
+                            .prepare_actor_artwork(artwork.as_ref().filter(|_| generation != 0));
+                    }
+                    if let (Some(pack), Some(catalog)) =
+                        (application.server_ui.as_ref(), catalog.as_ref())
+                    {
+                        let unchanged = previous.as_ref().is_some_and(|old| {
+                            same_optional(&old.server_ui, &application.server_ui)
+                        });
+                        if !unchanged {
+                            let _zone = bevy::log::info_span!("pack_apply.ui_catalog").entered();
+                            application.server_ui =
+                                Some(resource_packs::ui_catalog::prepare(pack, catalog));
+                        }
+                    }
+                    let elapsed = start.elapsed();
+                    bevy::log::debug!(
+                        prepare_ms = elapsed.as_millis() as u64,
+                        blocks = changes.blocks,
+                        entities = changes.entities,
+                        ui = changes.ui,
+                        "resource pack preparation finished"
+                    );
                     Prepared {
                         revision,
                         generation,
                         application,
                         assets,
                         environment,
-                        elapsed: start.elapsed(),
+                        elapsed,
                     }
                 });
             let _ = tx.send(result);
@@ -273,12 +319,11 @@ impl PackReload {
 pub(crate) fn reload_resource_packs(
     mut reload: ResMut<PackReload>,
     mut world: ResMut<ClientWorld>,
-    mut ui: ResMut<UiRuntime>,
+    mut ui: ResMut<UiRuntimeResource>,
     mut textures: Option<ResMut<render_scene::ChunkTextureAssets>>,
-    presentation: Option<Res<client_ui::ui_runtime::presentation::UiPresentationRuntime>>,
-    environment_base: Option<Res<EnvironmentBase>>,
-    mut atmosphere: Option<ResMut<render_scene::AtmosphereTextureAssets>>,
-    mut particles: Option<ResMut<render_scene::ParticleSimulation>>,
+    presentation: Option<Res<UiPresentationResource>>,
+    mut environment: EnvironmentPublication,
+    mut block_entity_scene: Option<ResMut<render_scene::BlockEntitySceneResource>>,
     mut entity_artwork: Option<ResMut<render_scene::ActorArtworkResource>>,
     gpu_reload: Option<Res<render_scene::ChunkTextureReload>>,
     mut chunks: Query<&mut render_scene::ChunkRenderInstance>,
@@ -289,6 +334,9 @@ pub(crate) fn reload_resource_packs(
     let _timer = profiler
         .as_deref()
         .map(|profiler| profiler.time(render_scene::RuntimeStage::PackReload));
+    if let (Some(gpu), Some(current)) = (gpu_reload.as_ref(), textures.as_ref()) {
+        start_early_geometry(&mut reload, world.stream.as_ref(), current, &chunks, gpu);
+    }
     let result = reload
         .ready
         .take()
@@ -385,23 +433,25 @@ pub(crate) fn reload_resource_packs(
                             &prepared.application.item_components,
                         )
                 });
+                let art_changed = reload.previous.as_ref().is_none_or(|old| {
+                    !same_optional(
+                        &old.block_entity_art,
+                        &prepared.application.block_entity_art,
+                    )
+                });
                 reload.aim_assist_textures = prepared.application.aim_assist_textures.clone();
                 reload.previous = Some(prepared.application.clone());
                 reload.previous_assets = Some(prepared.assets.clone());
-                if let Some(environment) = prepared.environment {
-                    if let (Some(atmosphere), Some(next)) =
-                        (atmosphere.as_mut(), environment.atmosphere)
-                        && atmosphere.identity() != next.identity()
-                    {
-                        **atmosphere = next;
-                    }
-                    if let (Some(particles), Some(next)) =
-                        (particles.as_mut(), environment.particles)
-                    {
-                        particles.0 = next;
-                    }
+                if let Some(prepared) = prepared.environment {
+                    environment.publish(prepared);
                 }
                 let packs = prepared.application;
+                if art_changed
+                    && let (Some(scene), Some(art)) =
+                        (block_entity_scene.as_mut(), packs.block_entity_art.as_ref())
+                {
+                    scene.reload_prepared_assets(art);
+                }
                 if let (Some(current), Some(next)) =
                     (entity_artwork.as_mut(), packs.entity_artwork.as_ref())
                     && current.identity() != next.identity()
@@ -448,6 +498,14 @@ pub(crate) fn reload_resource_packs(
                 if sounds_changed {
                     client_audio::audio::publish_server_sounds(packs.server_sounds);
                 }
+                bevy::log::info!(
+                    prepare_ms = prepared.elapsed.as_millis() as u64,
+                    since_request_ms = ?reload
+                        .requested_at
+                        .take()
+                        .map(|requested| requested.elapsed().as_millis() as u64),
+                    "resource packs published"
+                );
                 reload.applied = prepared.revision;
                 reload.last_duration = Some(prepared.elapsed);
                 reload.error = None;
@@ -468,9 +526,42 @@ pub(crate) fn reload_resource_packs(
             presentation
                 .as_deref()
                 .and_then(|presentation| presentation.pack_catalog_base()),
-            environment_base.as_deref().cloned(),
+            environment.base(),
             entity_artwork.as_deref().map(|artwork| artwork.0.clone()),
         );
+    }
+}
+
+/// Meshes the current request's carrier once the worker sends it, ahead of its artwork and UI.
+/// Publication repeats the request for the same identity, which also surfaces its errors.
+fn start_early_geometry(
+    reload: &mut PackReload,
+    stream: Option<&chunk_pipeline::WorldStream>,
+    current: &render_scene::ChunkTextureAssets,
+    chunks: &Query<&mut render_scene::ChunkRenderInstance>,
+    gpu: &render_scene::ChunkTextureReload,
+) {
+    let Some(pending) = reload.pending.as_mut() else {
+        return;
+    };
+    if pending.revision != reload.revision || pending.generation != reload.generation {
+        return;
+    }
+    if pending.early.is_none() {
+        pending.early = pending
+            .carrier
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .try_recv()
+            .ok();
+    }
+    if let Some(assets) = pending.early.clone()
+        && !Arc::ptr_eq(current.assets(), &assets)
+    {
+        let candidate = render_scene::ChunkTextureAssets::with_revision(assets, pending.revision);
+        let _ = reload
+            .geometry
+            .request(&candidate, current, stream, chunks, gpu);
     }
 }
 
@@ -486,3 +577,7 @@ fn same_optional<T>(left: &Option<Arc<T>>, right: &Option<Arc<T>>) -> bool {
 #[cfg(test)]
 #[path = "pack_reload_failures.rs"]
 mod failures;
+
+#[cfg(test)]
+#[path = "pack_reload_armor.rs"]
+mod armor_tests;

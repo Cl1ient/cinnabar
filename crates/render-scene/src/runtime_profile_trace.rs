@@ -15,7 +15,7 @@ use std::{
 
 const TRACE_CAPACITY: usize = 131_072;
 const MAX_TRACE_CAPACITY: usize = 2_097_152;
-const TRACE_CAPACITY_ENV: &str = "RUST_MCBE_STAGE_PROFILE_EVENTS";
+const TRACE_CAPACITY_ENV: &str = "CINNABAR_STAGE_PROFILE_EVENTS";
 
 /// Invalid or excessive requests retain the default bounded recording budget.
 fn trace_capacity(value: Option<&str>) -> usize {
@@ -66,7 +66,7 @@ pub struct FrameTrace {
 impl FrameTrace {
     /// Preallocates a fixed recording budget; full traces drop subsequent spans.
     pub fn new(path: PathBuf, epoch: Instant) -> Self {
-        let capacity = trace_capacity(std::env::var(TRACE_CAPACITY_ENV).ok().as_deref());
+        let capacity = trace_capacity(env_compat::var(TRACE_CAPACITY_ENV).ok().as_deref());
         Self::with_capacity(path, epoch, capacity)
     }
 

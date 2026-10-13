@@ -7,9 +7,11 @@ function Get-CrossCropCoverageEvidence {
     $registryBytes = [IO.File]::ReadAllBytes($RegistryPath)
     $reader = [IO.BinaryReader]::new([IO.MemoryStream]::new($registryBytes, $false))
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    $registrySchema = Get-GalleryRegistrySchema
+    $extensionBytes = $registrySchema.extension_bytes
     try {
-        if ($utf8.GetString($reader.ReadBytes(8)) -cne 'BREG1003') {
-            throw 'cross/crop coverage requires a BREG1003 registry'
+        if ($utf8.GetString($reader.ReadBytes(8)) -cne [string]$registrySchema.magic) {
+            throw 'cross/crop coverage requires the active registry schema'
         }
         $registryProtocol = $reader.ReadUInt32()
         $null = $reader.ReadUInt32()
@@ -30,7 +32,7 @@ function Get-CrossCropCoverageEvidence {
             $null = $reader.ReadUInt16()
             $nameLength = [int]$reader.ReadUInt16()
             $stateLength = [int]$reader.ReadUInt32()
-            $null = $reader.ReadBytes(32)
+            $null = $reader.ReadBytes(32 + [int]$extensionBytes)
             $null = $reader.ReadBytes(24 * $boxCount)
             $name = $utf8.GetString($reader.ReadBytes($nameLength))
             $canonicalState = $utf8.GetString($reader.ReadBytes($stateLength))
@@ -44,7 +46,7 @@ function Get-CrossCropCoverageEvidence {
             }
         }
         if ($reader.BaseStream.Position -ne $reader.BaseStream.Length) {
-            throw 'BREG1003 registry has trailing bytes'
+            throw 'block registry has trailing bytes'
         }
     }
     finally {

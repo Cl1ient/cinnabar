@@ -224,7 +224,7 @@ pub fn drain_live_named_audio(
     {
         state.cancel_all();
     }
-    let available = device.as_ref().is_some_and(|value| value.available());
+    let available = device.as_mut().is_some_and(|value| value.available());
     for event in messages.read() {
         state.event(event, camera, available);
     }

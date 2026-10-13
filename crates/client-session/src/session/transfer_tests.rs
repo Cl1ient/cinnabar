@@ -3,6 +3,7 @@
 //! trailing failure or stop record.
 
 use super::*;
+use simulation_clock::identity::SessionGeneration;
 use std::collections::VecDeque;
 
 fn transfer_target() -> SessionTransferTarget {
@@ -85,7 +86,7 @@ async fn retained_transfer_ends_the_pump_after_prior_world_ingress_without_a_sto
             transfer_after: 0,
             transfer: Some(transferred(transfer_target())),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -97,7 +98,7 @@ async fn retained_transfer_ends_the_pump_after_prior_world_ingress_without_a_sto
     assert!(matches!(
         world_events.recv().await,
         Some(WorldIngress::Event(sequenced))
-            if sequenced.sequence == 1
+            if sequenced.sequence.get() == 1
                 && matches!(sequenced.event, WorldEvent::ChunkRadiusUpdated(16))
     ));
     let Some(NetworkControlEvent::Transferred {
@@ -129,7 +130,7 @@ async fn a_retained_transfer_takes_precedence_over_a_later_receive_failure() {
             transfer_after: 0,
             transfer: Some(transferred(transfer_target())),
         },
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_event_tx,
         world_event_tx,
@@ -151,7 +152,7 @@ fn transferred_terminal_marker_names_the_exact_target() {
     let line = String::from_utf8(output).expect("marker is UTF-8");
     let payload = line
         .trim()
-        .strip_prefix("RUST_MCBE_NETWORK_PUMP_TERMINAL=")
+        .strip_prefix("CINNABAR_NETWORK_PUMP_TERMINAL=")
         .expect("durable marker prefix");
     let marker: serde_json::Value = serde_json::from_str(payload).expect("marker JSON");
 
@@ -177,7 +178,7 @@ async fn review_transfer_after_reserving_the_last_world_slot_does_not_deadlock()
     };
     let task = tokio::spawn(run_network_pump(
         session,
-        NetworkSequencer::new(7, 0, 42),
+        NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
         command_rx,
         control_tx,
         world_tx,

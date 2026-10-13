@@ -5,6 +5,7 @@ use crate::presentation::{actors::ActorPresentationBatch, equipment::ELYTRA_LAYE
 use assets::EntityRenderMaterial;
 use client_world::PlayerProfile;
 use protocol::PlayerSkin;
+use render_api::PoseGeneration;
 use render_api::{CapeImage, StandardSkin};
 use render_model::{
     ACTOR_LAYER_BODY, ActorArtworkPages, ActorGlint, ActorMaterial, ActorRenderIdentity,
@@ -32,7 +33,7 @@ fn batch() -> ActorPresentationBatch {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: ACTOR_LAYER_BODY,
             },
             rig: EntityRigId(1),

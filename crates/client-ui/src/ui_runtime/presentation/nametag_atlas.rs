@@ -6,7 +6,7 @@ use assets::RuntimeFontCatalog;
 use render_model::{NAMETAG_ATLAS_SIDE, NametagAtlasRect};
 use ui::{
     FONT_DESIGN_PIXEL_TEXELS, TEXT_BASELINE_64, TEXT_BOLD_OFFSET_64, TEXT_LINE_HEIGHT_64,
-    TextLayoutCache, TextLayoutRequest, TextStyle, UiScale,
+    TextLayoutCache, TextLayoutRequest, TextStyle, TextWrap, UiScale,
 };
 
 /// Widest line laid out before it would wrap, in font texels.
@@ -156,8 +156,8 @@ impl NametagAtlas {
 /// Lines kept before the atlas is rebuilt, far above any frame's visible tags.
 const MAX_ATLAS_LINES: usize = 4096;
 
-/// `text` as one unwrapped line of font texels: `(width, height, RGBA8)`. Glyph texels keep
-/// their own colour (image glyphs) times the `§` colour, white when unset.
+/// Rasterizes one width-bounded line, clipping oversized ink to the atlas cell.
+/// Glyph texels keep their own colour times the `§` colour, white when unset.
 fn rasterize<'p>(
     text: &str,
     font: &RuntimeFontCatalog,
@@ -174,10 +174,14 @@ fn rasterize<'p>(
             baseline_64: TEXT_BASELINE_64,
             scale: UiScale::default(),
             font,
-            wrap: Default::default(),
+            wrap: TextWrap {
+                max_lines: Some(1),
+                allow_visual_overflow: true,
+                ..Default::default()
+            },
         })
         .ok()?;
-    let advance = layout.size_64()[0].div_ceil(64).max(1);
+    let advance = layout.size_64()[0].div_ceil(64).clamp(1, MAX_LINE_TEXELS);
     let glyphs = || layout.glyphs().iter().filter(|glyph| glyph.line == 0);
     let top = glyphs()
         .map(|glyph| glyph.bounds_64[1].div_euclid(64))
@@ -204,7 +208,11 @@ fn rasterize<'p>(
         .max()
         .unwrap_or(0)
         .max(advance as i32);
-    let (width, height) = (right as u32, (bottom - top) as u32);
+    // Clip oversized ink to one atlas cell before allocating its pixels.
+    let (width, height) = (
+        (right as u32).min(MAX_LINE_TEXELS),
+        ((bottom - top) as u32).min(NAMETAG_ATLAS_SIDE),
+    );
     let mut canvas = vec![0u8; (width * height * 4) as usize];
     for glyph in glyphs() {
         let Some(page) = pages(usize::from(glyph.page)) else {
@@ -452,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn bold_multiline_nametag_grows_the_plate_and_retains_reset_line_centering() {
+    fn bold_multiline_nametag_grows_only_its_lines_plate_and_retains_reset_line_centering() {
         let font = stem_font();
         let build = |name: &str| {
             super::super::nametags::build_nametag_scene(
@@ -465,17 +473,18 @@ mod tests {
         };
         let plain = build("AB\nA");
         let bold = build("§lAB\n§rA");
-        assert_eq!(plain.records.len(), 3);
-        assert_eq!(bold.records.len(), 3);
+        assert_eq!(plain.records.len(), 4);
+        assert_eq!(bold.records.len(), 4);
         assert_eq!(bold.records[0].rect[0], plain.records[0].rect[0] - 1.0);
         assert_eq!(bold.records[0].rect[2], plain.records[0].rect[2] + 1.0);
         assert_eq!(bold.records[0].color, plain.records[0].color);
-        assert_eq!(bold.records[2].rect, plain.records[2].rect);
+        assert_eq!(bold.records[1].rect, plain.records[1].rect);
+        assert_eq!(bold.records[3].rect, plain.records[3].rect);
     }
 
     /// Builds the labels used by the original full-atlas timing fixture.
     fn sample_atlas() -> (NametagAtlas, std::time::Duration) {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(256, 1 << 20);
         let mut atlas = NametagAtlas::default();
         let started = std::time::Instant::now();
@@ -549,7 +558,7 @@ mod tests {
 
     #[test]
     fn palette_change_rerasterizes_retained_name_lines() {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(8, 1 << 20);
         let mut atlas = NametagAtlas::default();
         let text = Arc::from("§2Player");
@@ -580,7 +589,7 @@ mod tests {
 
     #[test]
     fn rectangles_preserve_skipped_publications_reset_and_old_readers() {
-        let font = super::super::tests::fixture_font();
+        let font = ui_engine::test_support::fixture_font();
         let mut layouts = TextLayoutCache::new(8, 1 << 20);
         let mut atlas = NametagAtlas::default();
         assert!(atlas.publish().0.is_empty());

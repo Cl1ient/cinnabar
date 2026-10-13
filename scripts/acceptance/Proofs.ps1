@@ -5,10 +5,10 @@ function ConvertFrom-FullViewSettleMarker {
     )
 
     $prefix = if ($Kind -ceq 'Teleport') {
-        'RUST_MCBE_TELEPORT_SETTLED'
+        'CINNABAR_TELEPORT_SETTLED'
     }
     else {
-        'RUST_MCBE_FORCED_FULL_VIEW_REMESH_SETTLED'
+        'CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED'
     }
     if (-not $Line.StartsWith($prefix + ' ', [StringComparison]::Ordinal)) {
         throw "invalid $Kind settle marker prefix: $Line"
@@ -77,7 +77,7 @@ function ConvertFrom-FullViewSettleMarker {
 function ConvertFrom-TargetMutationArmedMarker {
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Line)
 
-    if ($Line -notmatch '^RUST_MCBE_TARGET_MUTATION_ARMED source=(-?\d+),(-?\d+),(-?\d+) target=(-?\d+),(-?\d+),(-?\d+) view_generation=(\d+)$') {
+    if ($Line -notmatch '^CINNABAR_TARGET_MUTATION_ARMED source=(-?\d+),(-?\d+),(-?\d+) target=(-?\d+),(-?\d+),(-?\d+) view_generation=(\d+)$') {
         throw "invalid target mutation armed marker: $Line"
     }
     $generation = [uint64]0
@@ -100,7 +100,7 @@ function ConvertFrom-MovePlayerIngressMarker {
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Line)
 
     $number = '[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?'
-    if ($Line -notmatch "^RUST_MCBE_MOVE_PLAYER_INGRESS sequence=(\d+) position=($number),($number),($number)$") {
+    if ($Line -notmatch "^CINNABAR_MOVE_PLAYER_INGRESS sequence=(\d+) position=($number),($number),($number)$") {
         throw "invalid MovePlayer ingress marker: $Line"
     }
     $sequence = [uint64]0

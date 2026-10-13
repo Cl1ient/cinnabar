@@ -55,7 +55,9 @@ pub fn evidence() -> PhysicsTickEvidenceContext {
 
 /// A physics-authorized ticker holding `ticks` unsent samples from tick 101.
 pub fn ticker_with_ticks(ticks: u64) -> MovementTicker {
-    let (epoch, _) = tokio::sync::watch::channel(0);
+    let (epoch, _) = tokio::sync::watch::channel(
+        simulation_clock::identity::PositionAuthorityGeneration::default(),
+    );
     let mut ticker = MovementTicker::with_epoch_publisher(epoch);
     ticker.reset(7, 100, [0.5, 2.620_01, 0.5]);
     ticker.set_source(MovementSource::Physics);

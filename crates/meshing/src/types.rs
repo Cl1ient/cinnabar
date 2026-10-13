@@ -748,7 +748,7 @@ impl ChunkMesh {
         liquid_lighting: Vec<PackedQuadLighting>,
         connectivity: FaceConnectivity,
     ) -> Self {
-        let cube_lighting = vec![crate::lighting::phase26_default_lighting(); cube_quads.len()];
+        let cube_lighting = vec![crate::lighting::full_bright_lighting(); cube_quads.len()];
         Self::try_from_streams_with_cube_lighting(
             cube_quads,
             cube_lighting,

@@ -78,7 +78,7 @@ impl UiPresentationRuntime {
         self.equipment_catalog = catalog;
     }
 
-    /// Dresses the model using each stack's admitted identity and grip facts.
+    /// Dresses the model using each stack's admitted identity, grip and intrinsic shine.
     pub fn dress_player_preview(
         &mut self,
         player_runtime: &player_state::PlayerState,
@@ -90,7 +90,7 @@ impl UiPresentationRuntime {
         let named = |stack: Option<&protocol::NetworkItemStack>| {
             stack.and_then(|stack| {
                 let item = resolve(stack)?;
-                Some((item.identifier?, stack.clone(), item.grip))
+                Some((item.identifier.clone()?, stack.clone(), item))
             })
         };
         let armor: [_; 4] = std::array::from_fn(|slot| {
@@ -103,24 +103,25 @@ impl UiPresentationRuntime {
         );
         self.set_player_preview_gear(
             armor.each_ref().map(|worn| {
-                worn.as_ref().map(|(id, stack, _)| {
-                    (&**id, runtime.stack_facts(stack, Some(id)).custom_color)
-                })
+                worn.as_ref()
+                    .map(|(id, stack, _)| (&**id, runtime.stack_facts(stack).custom_color))
             }),
             held.as_ref().map(|(id, stack, _)| (&**id, stack.metadata)),
         );
+        self.player_preview_gear.armor_glint = armor.each_ref().map(|worn| {
+            worn.as_ref()
+                .is_some_and(|(_, stack, item)| runtime.item_glint(stack, item.glint))
+        });
         let off_hand = named(ledger.target_stack(InventoryTarget::Offhand));
         self.player_preview_gear.hands = [held, off_hand].map(|item| {
-            let (identifier, stack, grip) = item?;
-            let facts = runtime.stack_facts(&stack, Some(&identifier));
-            let charged_projectile = (identifier.as_ref() == "minecraft:crossbow")
-                .then(|| facts.charged_projectile())
-                .flatten();
+            let (identifier, stack, item) = item?;
             Some(PreviewHandItem {
-                grip: Some(grip),
+                grip: Some(item.grip),
+                glint: Some(runtime.item_glint(&stack, item.glint)),
                 identifier,
                 metadata: stack.metadata,
-                charged_projectile,
+                use_animation: item.use_animation,
+                charged_projectile: item.charged_projectile_role,
             })
         });
     }
@@ -142,29 +143,40 @@ impl UiPresentationRuntime {
         });
         let resolved: [_; 4] = std::array::from_fn(|slot| {
             let catalog = if from_pack[slot] { &pack } else { &base };
-            worn_armor(catalog.as_deref(), armor[slot])
+            worn_armor(
+                catalog.as_deref(),
+                pack.as_deref(),
+                base.as_deref(),
+                armor[slot],
+            )
         });
         self.wear_pack_armor(std::array::from_fn(|slot| {
-            let (_, texture) = resolved[slot].as_ref().filter(|_| from_pack[slot])?;
+            let (_, texture) = resolved[slot].as_ref()?;
+            pack.as_deref()?.texture(texture)?;
             Some(*texture)
         }));
         let armor = std::array::from_fn(|slot| {
-            // Pack art the GUI atlas could not hold falls back to the item's base art.
-            if from_pack[slot]
-                && self.gui_models.enabled
-                && resolved[slot].is_some()
+            // A supplied image that could not fit the GUI atlas retains base artwork.
+            if self.gui_models.enabled
+                && resolved[slot].as_ref().is_some_and(|(_, texture)| {
+                    pack.as_deref()
+                        .is_some_and(|pack| pack.texture(texture).is_some())
+                })
                 && self.gui_models.pack_equipment.region(slot).is_none()
             {
-                return worn_armor(base.as_deref(), armor[slot]).map(|(preview, _)| preview);
+                return worn_armor(base.as_deref(), None, base.as_deref(), armor[slot])
+                    .map(|(preview, _)| preview);
             }
             resolved[slot].as_ref().map(|(preview, _)| preview.clone())
         });
         let hands = [
             held.map(|(identifier, metadata)| PreviewHandItem {
                 grip: None,
+                glint: None,
                 identifier: Arc::from(identifier),
                 metadata,
-                charged_projectile: None,
+                use_animation: assets::item_use::ItemUseAnimation::None,
+                charged_projectile: assets::item_use::ItemProjectileRole::None,
             }),
             None,
         ];
@@ -177,7 +189,12 @@ impl UiPresentationRuntime {
                 tint: None,
             })
         });
-        self.player_preview_gear = PreviewEquipment { armor, held, hands };
+        self.player_preview_gear = PreviewEquipment {
+            armor,
+            armor_glint: [false; 4],
+            held,
+            hands,
+        };
     }
 
     /// The current model raster's RGBA pixels, empty before the first.
@@ -193,12 +210,17 @@ impl UiPresentationRuntime {
 /// material is a color mask, and that texture's identifier.
 fn worn_armor<'a>(
     catalog: Option<&'a RuntimeEquipmentCatalog>,
+    artwork: Option<&'a RuntimeEquipmentCatalog>,
+    base: Option<&'a RuntimeEquipmentCatalog>,
     worn: Option<(&str, Option<u32>)>,
 ) -> Option<(PreviewTexture, &'a str)> {
     let (identifier, dye) = worn?;
     let catalog = catalog?;
     let binding = catalog.binding(identifier)?;
-    let texture = catalog.texture(&binding.texture.identifier)?;
+    let texture = artwork
+        .and_then(|artwork| artwork.texture(&binding.texture.identifier))
+        .or_else(|| catalog.texture(&binding.texture.identifier))
+        .or_else(|| base?.texture(&binding.texture.identifier))?;
     let tint = binding
         .color_mask_rgb(dye)
         .map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8]);
@@ -496,7 +518,7 @@ pub(super) fn render_body_with_cape(
 
 /// A posed, viewer-facing biped.
 struct Rig {
-    parts: [Option<bevy::math::Affine3A>; 6],
+    parts: [Option<glam::Affine3A>; 6],
     body: f32,
     head_yaw: f32,
     head_pitch: f32,
@@ -538,7 +560,7 @@ impl Rig {
         let mut local = vertex.position;
         if let Some(Some(transform)) = self.parts.get(vertex.part as usize) {
             local = transform
-                .transform_point3(bevy::math::Vec3::from_array(local))
+                .transform_point3(glam::Vec3::from_array(local))
                 .to_array();
         } else {
             if self.sneaking {

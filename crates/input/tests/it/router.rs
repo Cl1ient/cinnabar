@@ -1,4 +1,5 @@
 use core::num::NonZeroU64;
+use semantic_input::identity::InputAuthorityGeneration;
 
 use semantic_input::{
     Action, ActionBinding, AxisDirection, BindingError, ControlSettings, ControllerFrame,
@@ -52,7 +53,7 @@ fn assert_global_activity_contract(seed: DeviceFrame, source: fn(u64) -> DeviceF
         );
     }
     router.route(source(11)).unwrap();
-    assert_eq!(router.finalize().unwrap().frame_sequence, 3);
+    assert_eq!(router.finalize().unwrap().frame_sequence.get(), 3);
 }
 
 include!("router/core_and_sampling.rs");

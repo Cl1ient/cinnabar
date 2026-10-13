@@ -99,7 +99,7 @@ pub struct PublicationController {
 
 impl Default for PublicationController {
     fn default() -> Self {
-        Self::new(PublicationServiceConfig::PHASE2_GATE)
+        Self::new(PublicationServiceConfig::DEFAULT)
     }
 }
 

@@ -142,18 +142,27 @@ mod tests {
     fn position_correction_preserves_admitted_inventory_until_slot_write_or_new_session() {
         let server = selected(3);
         let mut runtime = crate::block_use::BlockUseRuntime::default();
-        runtime.synchronize((7, 0));
+        runtime.synchronize((
+            simulation_clock::identity::SessionGeneration::new(7),
+            simulation_clock::identity::PositionAuthorityGeneration::new(0),
+        ));
         let change = runtime.inventory.prepare_change(&server, -4);
         let expected = change.to.clone();
         runtime.inventory.commit(server.clone(), 1, change);
-        runtime.synchronize((7, 1));
+        runtime.synchronize((
+            simulation_clock::identity::SessionGeneration::new(7),
+            simulation_clock::identity::PositionAuthorityGeneration::new(1),
+        ));
         let corrected = runtime.inventory.selection(&server, 1);
         let next = runtime.inventory.prepare_change(&corrected, -6);
         assert_eq!(next.from, expected);
         assert_eq!(next.to.count(), 1);
         assert_eq!(runtime.inventory.selection(&server, 2).item, server.item);
         runtime.inventory.commit(server.clone(), 2, next);
-        runtime.synchronize((8, 0));
+        runtime.synchronize((
+            simulation_clock::identity::SessionGeneration::new(8),
+            simulation_clock::identity::PositionAuthorityGeneration::new(0),
+        ));
         assert_eq!(runtime.inventory.selection(&server, 2).item, server.item);
     }
 
@@ -194,18 +203,12 @@ mod tests {
         air.observe_press(true);
         let outcome = air.step(&frame);
         assert_eq!(outcome.packets.len(), 1);
-        let protocol::wire::valentine::bedrock::version::v1_26_51::McpePacketData::InventoryTransactionPacket(
-            packet,
-        ) = &outcome.packets[0].data
-        else {
-            panic!("air fallback");
-        };
-        assert_eq!(packet.legacy_request_id.id, 0);
-        let protocol::wire::valentine::bedrock::version::v1_26_51::InventoryTransactionPacketTransaction::ItemUseInventoryTransaction(transaction) = &packet.transaction else {
-            panic!("item use");
-        };
-        assert_eq!(transaction.item.stacksize, 2);
-        assert!(transaction.actions.actions.is_empty());
+        let packet = protocol::test_support::transactions::observe_transaction(&outcome.packets[0])
+            .expect("air fallback");
+        assert_eq!(packet.legacy_request_id, 0);
+        let transaction = packet.item_use().expect("item use");
+        assert_eq!(transaction.item.count, 2);
+        assert!(packet.actions.is_empty());
         for tick in 2..=20 {
             frame.tick = tick;
             frame.now_millis += 50;

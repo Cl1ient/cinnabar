@@ -3,8 +3,9 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 use gameplay::melee::{Crosshair, classify, pick_actor};
 use render_model::{BlockSelectionTarget, CrackShape, crack_shape_from_template};
 use sim::PaletteWorld;
+use simulation_clock::identity::SessionGeneration;
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 use {
     crate::{interaction_authority::ray_is_current, runtime::world::ClientWorld},
     client_interaction::movement::PhysicsCollisionRegistries,
@@ -18,7 +19,7 @@ pub(crate) struct SelectionContext<'w> {
     player: Res<'w, client_state::PlayerRuntime>,
     world: Res<'w, ClientWorld>,
     collisions: Res<'w, PhysicsCollisionRegistries>,
-    ui: Res<'w, UiRuntime>,
+    ui: Res<'w, UiRuntimeResource>,
     focus: Res<'w, client_state::ScreenFocus>,
     origin: Res<'w, InteractionOriginSnapshot>,
     input: Res<'w, SemanticInputSnapshot>,
@@ -60,7 +61,7 @@ fn target(
     }
     let stream = context.world.stream.as_ref()?;
     let ray = context.origin.outbound_ray()?;
-    if !ray_is_current(ray, context.ui.session_id(), stream)
+    if !ray_is_current(ray, SessionGeneration::new(context.ui.session_id()), stream)
         || player_runtime.facts.player_game_mode() == Some(protocol::PlayerGameMode::Spectator)
     {
         return None;

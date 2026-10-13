@@ -28,6 +28,27 @@ mod tests;
 
 const UNIT: ShapeBox = ShapeBox::new([0.0; 3], [1.0; 3]);
 
+/// Compiles the final physics carrier from a complete movement seed and its bound identities.
+pub fn compile_registry(
+    protocol: u32,
+    breg: &[u8],
+    records: &[RegistryRecord],
+    input: &assets::PhysicsRegistry,
+) -> Result<Vec<u8>, assets::AssetError> {
+    let compiled: Vec<_> = records
+        .iter()
+        .map(|record| {
+            compile(
+                record,
+                input
+                    .by_sequential_id(record.sequential_id)
+                    .expect("complete seed registry"),
+            )
+        })
+        .collect();
+    assets::encode_physics_registry(protocol, breg, records, &compiled)
+}
+
 /// Compiles final geometry while retaining the input's independent movement scalars.
 pub fn compile(record: &RegistryRecord, input: &BlockPhysicsRecord) -> BlockPhysicsRecord {
     let mut output = input.clone();
@@ -51,10 +72,6 @@ pub fn compile(record: &RegistryRecord, input: &BlockPhysicsRecord) -> BlockPhys
         assets::bamboo::BambooState::from_record(record).is_some(),
     );
     flags.set(ShapeFlags::AIR, record.name.as_ref() == "minecraft:air");
-    flags.set(
-        ShapeFlags::CUSTOM_SURFACE,
-        record.name.as_ref() == "minecraft:stone",
-    );
     flags.set(
         ShapeFlags::HIDE_OVERLAY,
         record.name.as_ref() == "minecraft:end_gateway",

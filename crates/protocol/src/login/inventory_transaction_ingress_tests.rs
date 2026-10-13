@@ -1,9 +1,18 @@
 //! Exact local vanilla BDS pickup body, captured 2026-10-02. No assets or tokens.
 
-use bytes::{Buf, Bytes, BytesMut};
-use valentine::bedrock::{context::BedrockSession, version::v1_26_51::*};
+use bedrock_protocol_1_26_51::packets::PacketId;
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::{InventoryEvent, WorldEvent};
+
+/// Appends `value` as an unsigned LEB128 varint.
+fn write_var_u32(out: &mut BytesMut, mut value: u32) {
+    while value >= 0x80 {
+        out.put_u8(value as u8 | 0x80);
+        value >>= 7;
+    }
+    out.put_u8(value as u8);
+}
 
 fn pickup_body() -> Vec<u8> {
     let batch: Vec<u8> = include_str!("../../fixtures/inventory_transaction_pickup.hex")
@@ -12,29 +21,25 @@ fn pickup_body() -> Vec<u8> {
         .collect();
     let mut frame = Bytes::from(batch);
     frame.advance(1); // Strip the uncompressed fixture's batch marker.
-    jolyne::raw::decode_packet_raw(&mut frame)
+    crate::raw_packet::decode_packet_raw(&mut frame)
         .unwrap()
         .body()
         .to_vec()
 }
 
-fn raw(body: &[u8]) -> jolyne::raw::RawPacket {
+fn raw(body: &[u8]) -> crate::raw_packet::RawPacket {
     let mut payload = BytesMut::new();
-    valentine::protocol::wire::write_var_u32(
-        &mut payload,
-        McpePacketName::InventoryTransactionPacket as u32,
-    );
+    write_var_u32(&mut payload, PacketId::InventoryTransaction as u32);
     payload.extend_from_slice(body);
     let mut frame = BytesMut::new();
-    valentine::protocol::wire::write_var_u32(&mut frame, payload.len() as u32);
+    write_var_u32(&mut frame, payload.len() as u32);
     frame.extend_from_slice(&payload);
-    jolyne::raw::decode_packet_raw(&mut frame.freeze()).unwrap()
+    crate::raw_packet::decode_packet_raw(&mut frame.freeze()).unwrap()
 }
 
 #[test]
 fn vanilla_bds_pickup_enters_raw_ingress_with_absolute_count_id_and_extra() {
-    let session = BedrockSession { shield_item_id: 0 };
-    let event = super::decode_world_raw_with(raw(&pickup_body()), 0, |raw| raw.decode(&session))
+    let event = super::decode_world_raw_with(raw(&pickup_body()), 0, super::decode_test_raw)
         .unwrap()
         .expect("normal transaction is admitted");
     let WorldEvent::Inventory(InventoryEvent::Transaction(transaction)) = event else {
@@ -61,12 +66,10 @@ fn vanilla_bds_pickup_enters_raw_ingress_with_absolute_count_id_and_extra() {
 
 #[test]
 fn truncated_pickup_is_a_fatal_wire_fault() {
-    let session = BedrockSession { shield_item_id: 0 };
     let body = pickup_body();
     for length in 0..body.len() {
-        let error =
-            super::decode_world_raw_with(raw(&body[..length]), 0, |raw| raw.decode(&session))
-                .expect_err("truncation cannot become semantic skip");
+        let error = super::decode_world_raw_with(raw(&body[..length]), 0, super::decode_test_raw)
+            .expect_err("truncation cannot become semantic skip");
         let mut skipped = 0;
         assert!(
             super::skip_semantic_world_error(error, &mut skipped).is_err(),
@@ -78,10 +81,8 @@ fn truncated_pickup_is_a_fatal_wire_fault() {
 
 #[test]
 fn trailing_pickup_bytes_are_a_fatal_wire_fault() {
-    let session = BedrockSession { shield_item_id: 0 };
     let mut body = pickup_body();
     body.push(0);
-    let error =
-        super::decode_world_raw_with(raw(&body), 0, |raw| raw.decode(&session)).unwrap_err();
+    let error = super::decode_world_raw_with(raw(&body), 0, super::decode_test_raw).unwrap_err();
     assert!(super::skip_semantic_world_error(error, &mut 0).is_err());
 }

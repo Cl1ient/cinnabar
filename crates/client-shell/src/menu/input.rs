@@ -28,6 +28,7 @@ use bevy::{
 };
 use ui::{ChatClipboard, ChatEditor, ToastPress, UiPoint};
 
+use crate::ui_resources::{UiPresentationResource, UiRuntimeResource};
 use client_ui::ui_runtime::{PlatformClipboard, presentation::UiPresentationRuntime};
 use launcher::menu::view::MenuCaret;
 use {super::MenuRuntime, launcher::menu::MenuField};
@@ -365,10 +366,10 @@ pub fn drive_menu_input(
     mut mouse_buttons: ResMut<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
     gamepads: Query<&Gamepad>,
-    mut presentation: ResMut<UiPresentationRuntime>,
+    mut presentation: ResMut<UiPresentationResource>,
     mut clipboard: ResMut<MenuClipboard>,
     mut menu: ResMut<MenuRuntime>,
-    runtime: Option<Res<client_ui::ui_runtime::UiRuntime>>,
+    runtime: Option<Res<UiRuntimeResource>>,
     mut modifiers: Local<MenuModifiers>,
     consent: Option<Res<client_state::ConsentInput>>,
     mouse_messages: Option<Res<Messages<MouseButtonInput>>>,
@@ -433,7 +434,7 @@ pub fn drive_menu_input(
         })
         .unwrap_or_default();
     if gui_scale_drag.observe_death(
-        runtime.as_deref(),
+        runtime.as_deref().map(|runtime| &runtime.0),
         &mut menu,
         &mut presentation,
         &mut keyboard_messages,
@@ -441,7 +442,7 @@ pub fn drive_menu_input(
         *modifiers = MenuModifiers::default();
         keys.reset_all();
         mouse_buttons.reset_all();
-        client_ui::physical_input::release_cursor(&mut cursor);
+        crate::physical_input::release_cursor(&mut cursor);
         return;
     }
     if runtime.as_ref().is_some_and(|runtime| {
@@ -480,13 +481,13 @@ pub fn drive_menu_input(
             && menu.settings_options.value("pause_menu_on_focus_lost") != 0
             && !crate::screen_policy::absorbs_input(
                 &player_runtime,
-                runtime.as_deref(),
+                runtime.as_deref().map(|runtime| &runtime.0),
                 Some(&menu),
                 Some(&presentation),
             )
         {
             menu.open_pause();
-            client_ui::physical_input::release_cursor(&mut cursor);
+            crate::physical_input::release_cursor(&mut cursor);
         }
         *modifiers = MenuModifiers::default();
         keyboard_messages.clear();
@@ -523,13 +524,20 @@ pub fn drive_menu_input(
         // Gameplay/chat handled these messages already. In particular, do not
         // replay the Escape that opens pause as "back" on the following frame.
         *modifiers = MenuModifiers::default();
-        keyboard_messages.clear();
+        // An Escape held since a screen closed reaches `keys` as a fresh press on each OS repeat.
+        let (mut escape_pressed, mut escape_fresh) = (false, false);
+        for input in keyboard_messages.read() {
+            if input.key_code == KeyCode::Escape && input.state == ButtonState::Pressed {
+                escape_pressed = true;
+                escape_fresh |= !input.repeat;
+            }
+        }
         menu.hovered = None;
         menu.pointer_down = false;
-        if keys.just_pressed(KeyCode::Escape) {
+        if keys.just_pressed(KeyCode::Escape) && (escape_fresh || !escape_pressed) {
             modifiers.capture_pressed(&keys);
             menu.open_pause();
-            client_ui::physical_input::release_cursor(&mut cursor);
+            crate::physical_input::release_cursor(&mut cursor);
             keys.reset_all();
         } else if cursor.grab_mode == CursorGrabMode::None
             && mouse_buttons.just_pressed(MouseButton::Left)
@@ -562,7 +570,7 @@ pub fn drive_menu_input(
     let gameplay_pending = menu.gameplay_return_pending();
     let respawn_pending = menu.death_loading;
     modifiers.capture_pressed(&keys);
-    client_ui::physical_input::release_cursor(&mut cursor);
+    crate::physical_input::release_cursor(&mut cursor);
     // The join request popup takes the keyboard from any box focused beneath it.
     if menu.join_request_prompted() {
         menu.field = None;
@@ -917,6 +925,10 @@ pub fn drive_menu_input(
             continue;
         }
         match input.key_code {
+            // A held key's repeats keep moving focus and typing but never go back or activate.
+            KeyCode::Escape | KeyCode::Backspace | KeyCode::Enter | KeyCode::NumpadEnter
+                if input.repeat => {}
+            KeyCode::Space if input.repeat && !menu.has_focused_field() => {}
             KeyCode::Escape => menu.go_back_from_input(),
             KeyCode::Backspace if native_settings => menu.go_back_from_input(),
             KeyCode::ArrowUp => {

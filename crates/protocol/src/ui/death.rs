@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use valentine::bedrock::version::v1_26_51::DeathInfoPacket;
+use bedrock_protocol_1_26_51::packets::DeathInfo;
 
 use super::{MAX_CHAT_PARAMETERS, UiEvent, UiPacketError, bounded_text};
 
@@ -30,7 +30,7 @@ pub struct DeathInfoEvent {
 }
 
 /// Bounds the translation key and ordered parameters before retaining them.
-pub(crate) fn normalize_death_info(packet: DeathInfoPacket) -> Result<UiEvent, UiPacketError> {
+pub(crate) fn normalize_death_info(packet: DeathInfo) -> Result<UiEvent, UiPacketError> {
     if packet.death_cause_message_list.len() > MAX_CHAT_PARAMETERS {
         return Err(UiPacketError::TooManyChatParameters {
             count: packet.death_cause_message_list.len(),
@@ -51,19 +51,17 @@ pub(crate) fn normalize_death_info(packet: DeathInfoPacket) -> Result<UiEvent, U
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BedrockSession, ProtocolError, decode_batch, encode};
+    use crate::{ProtocolError, decode_batch, encode};
 
     #[test]
-    fn death_information_rejects_parameter_overflow_before_owned_decode() {
-        let session = BedrockSession { shield_item_id: 0 };
-        let packet = DeathInfoPacket {
-            death_cause_attack_name: String::new(),
-            death_cause_message_list: vec![String::new(); MAX_CHAT_PARAMETERS + 1],
-        }
-        .into();
-        let wire = encode(&packet, &session).unwrap();
+    fn death_information_rejects_parameter_overflow_while_decoding() {
+        let packet = crate::Packet::new(DeathInfo {
+            death_cause_attack_name: Default::default(),
+            death_cause_message_list: vec![Default::default(); MAX_CHAT_PARAMETERS + 1],
+        });
+        let wire = encode(&packet).unwrap();
         assert!(matches!(
-            decode_batch(wire, &session),
+            decode_batch(wire),
             Err(ProtocolError::Ui(
                 UiPacketError::TooManyChatParameters { .. }
             ))
@@ -72,13 +70,11 @@ mod tests {
 
     #[test]
     fn death_information_rejects_invalid_utf8_in_reason_and_parameter() {
-        let session = BedrockSession { shield_item_id: 0 };
-        let packet = DeathInfoPacket {
+        let packet = crate::Packet::new(DeathInfo {
             death_cause_attack_name: "reason".into(),
             death_cause_message_list: vec!["argument".into()],
-        }
-        .into();
-        let wire = encode(&packet, &session).unwrap();
+        });
+        let wire = encode(&packet).unwrap();
         for field in [b"reason".as_slice(), b"argument".as_slice()] {
             let mut invalid = wire.to_vec();
             let start = invalid
@@ -87,7 +83,7 @@ mod tests {
                 .unwrap();
             invalid[start] = 0xff;
             assert!(matches!(
-                decode_batch(invalid.into(), &session),
+                decode_batch(invalid.into()),
                 Err(ProtocolError::Ui(UiPacketError::InvalidUtf8 { .. }))
             ));
         }

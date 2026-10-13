@@ -4,9 +4,9 @@ $ErrorActionPreference = 'Stop'
 Describe 'FastTransferWitness focused LBSG acceptance' {
     BeforeAll {
         $script:RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-        . (Join-Path $script:RepoRoot 'scripts\acceptance\Phase3Launch.ps1')
+        . (Join-Path $script:RepoRoot 'scripts\acceptance\MovementLaunch.ps1')
         . (Join-Path $script:RepoRoot 'scripts\acceptance\FastTransferWitnessValidation.ps1')
-        $script:RealPhase2ResetHelper = (Get-Command Get-Phase2LocalResetSequenceEvidence).ScriptBlock
+        $script:RealLocalResetHelper = (Get-Command Get-LocalResetSequenceEvidence).ScriptBlock
         $script:TempRoot = Join-Path ([IO.Path]::GetTempPath()) "fast-transfer-witness-$PID-$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $script:TempRoot | Out-Null
     }
@@ -25,7 +25,7 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $script:RunId = '0123456789abcdef0123456789abcdef'
         $script:BridgeEndpoint = '127.0.0.1:19133'
         $script:Identity = [ordered]@{
-            schema = 'rust-mcbe-phase3-identity-v1'; build_commit = $script:BuildCommit
+            schema = 'rust-mcbe-movement-identity-v1'; build_commit = $script:BuildCommit
             target = 'Lbsg'; protocol = 2193; session_generation = 7
             preg_sha256 = $script:PregSha256; breg_sha256 = $script:BregSha256
             candidate_physics = $true; source_dirty = $false; run_id = $script:RunId
@@ -33,12 +33,12 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
             core_sha256 = $script:CoreSha256; core_process_id = 41; app_process_id = 42
         }
         $script:Terminal = [ordered]@{
-            schema = 'rust-mcbe-phase3-terminal-v1'; session_generation = 7; source = 'Physics'
+            schema = 'rust-mcbe-movement-terminal-v1'; session_generation = 7; source = 'Physics'
             physics_packet_count = 9; free_camera_packet_count = 0; pending_outbox_depth = 0
             outbox_reconciliation = 'Drained'
         }
         $script:Metadata = [ordered]@{
-            schema = 'rust-mcbe-phase3-run-v1'; run_id = $script:RunId; target = 'Lbsg'
+            schema = 'rust-mcbe-movement-run-v1'; run_id = $script:RunId; target = 'Lbsg'
             endpoint = 'play.lbsg.net:19132'; bridge_endpoint = $script:BridgeEndpoint
             build_commit = $script:BuildCommit; source_dirty = $false
             core_sha256 = $script:CoreSha256; app_sha256 = $script:AppSha256
@@ -71,7 +71,7 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
             [double[]]@(64.0, 80.62, 64.0),
             [double[]]@(64.6, 80.62, 64.0)
         )
-        Mock Get-Phase2LocalResetSequenceEvidence {
+        Mock Get-LocalResetSequenceEvidence {
             [pscustomobject]@{
                 SnapshotCount = 4; FirstStalledStage = 'none'
                 FinalPublication = $script:FocusedTerminalPublication
@@ -114,7 +114,7 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         }
     }
 
-    function New-CompletePhase2Publication {
+    function New-CompletePublication {
         param(
             [uint64]$Epoch, [int]$X, [int]$Z, [uint64]$Armed, [uint64]$Consumed,
             [bool]$IsArmed, [uint64]$Required, [uint64]$Loaded, [bool]$Stable,
@@ -196,32 +196,32 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         }
     }
 
-    function Convert-WitnessToCompletePhase2 {
+    function Convert-WitnessToCompletePublication {
         param($Artifacts)
         $records = @(
-            (New-CompletePhase2Publication 1 1 2 0 0 $false 197 197 $true),
-            (New-CompletePhase2Publication 1 1 2 1 0 $true 0 0 $false),
-            (New-CompletePhase2Publication 2 4 4 1 1 $false 197 0 $false),
-            (New-CompletePhase2Publication 2 4 4 1 1 $false 197 197 $true $true)
+            (New-CompletePublication 1 1 2 0 0 $false 197 197 $true),
+            (New-CompletePublication 1 1 2 1 0 $true 0 0 $false),
+            (New-CompletePublication 2 4 4 1 1 $false 197 0 $false),
+            (New-CompletePublication 2 4 4 1 1 $false 197 197 $true $true)
         )
         $lines = @(Get-Content -LiteralPath $Artifacts.LogPath)
         $publicationIndexes = @(0..($lines.Count - 1) | Where-Object {
-            $lines[$_].StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)
+            $lines[$_].StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)
         })
         for ($index = 0; $index -lt $publicationIndexes.Count; $index++) {
-            $lines[$publicationIndexes[$index]] = 'PHASE2_PUBLICATION=' +
+            $lines[$publicationIndexes[$index]] = 'CINNABAR_CHUNK_PUBLICATION=' +
                 ($records[$index] | ConvertTo-Json -Depth 20 -Compress)
-            $lines[$publicationIndexes[$index] + 1] = New-TestPhase2TimingLine `
+            $lines[$publicationIndexes[$index] + 1] = New-TestPublicationTimingLine `
                 $lines[$publicationIndexes[$index]] (999000 + ($index * 1000))
         }
         Set-Content -LiteralPath $Artifacts.LogPath -Value $lines -Encoding utf8
         return $records
     }
 
-    function New-TestPhase2TimingLine {
+    function New-TestPublicationTimingLine {
         param([string]$PublicationLine, [uint64]$ObservedUnixMs)
-        return 'RUST_MCBE_PHASE2_TIMING=' + ([ordered]@{
-            schema = 'rust-mcbe-phase2-timing-v1'; observed_unix_ms = $ObservedUnixMs
+        return 'CINNABAR_CHUNK_PUBLICATION_TIMING=' + ([ordered]@{
+            schema = 'rust-mcbe-chunk-publication-timing-v1'; observed_unix_ms = $ObservedUnixMs
             publication_sha256 = Get-FastTransferTextSha256 $PublicationLine
         } | ConvertTo-Json -Compress)
     }
@@ -229,7 +229,7 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
     function New-WitnessFrame {
         param([uint64]$Tick, [double[]]$Position, [double[]]$Movement = @(0.0, 1.0))
         return [ordered]@{
-            schema = 'rust-mcbe-phase3-frame-v2'; session_generation = 7; fifo_sequence = $Tick
+            schema = 'rust-mcbe-movement-frame-v2'; session_generation = 7; fifo_sequence = $Tick
             physics_tick = $Tick; pose_generation = $Tick; dimension = 0
             network_position = $Position; input_mode = 'KeyboardMouse'; perspective = 'FirstPerson'
             camera_blocked = $false; camera_fallback = $false; local_avatar_visible = $false
@@ -249,33 +249,33 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $arm = New-FocusedPublication 1 1 2 1 0 $true 0 0 $false
         $consume = New-FocusedPublication 2 4 4 1 1 $false 197 0 $false
         $script:FocusedTerminalPublication = New-FocusedPublication 2 4 4 1 1 $false 197 197 $true
-        $preLine = 'PHASE2_PUBLICATION=' + ($pre | ConvertTo-Json -Depth 8 -Compress)
-        $armLine = 'PHASE2_PUBLICATION=' + ($arm | ConvertTo-Json -Depth 8 -Compress)
-        $consumeLine = 'PHASE2_PUBLICATION=' + ($consume | ConvertTo-Json -Depth 8 -Compress)
-        $recoveryLine = 'PHASE2_PUBLICATION=' +
+        $preLine = 'CINNABAR_CHUNK_PUBLICATION=' + ($pre | ConvertTo-Json -Depth 8 -Compress)
+        $armLine = 'CINNABAR_CHUNK_PUBLICATION=' + ($arm | ConvertTo-Json -Depth 8 -Compress)
+        $consumeLine = 'CINNABAR_CHUNK_PUBLICATION=' + ($consume | ConvertTo-Json -Depth 8 -Compress)
+        $recoveryLine = 'CINNABAR_CHUNK_PUBLICATION=' +
             ($script:FocusedTerminalPublication | ConvertTo-Json -Depth 8 -Compress)
         $lines = @(
-            ('RUST_MCBE_PHASE3_IDENTITY=' + ($script:Identity | ConvertTo-Json -Depth 8 -Compress)),
-            ('RUST_MCBE_PHASE3_FRAME=' + ((New-WitnessFrame 40 $script:Positions[0]) | ConvertTo-Json -Depth 8 -Compress)),
+            ('CINNABAR_MOVEMENT_IDENTITY=' + ($script:Identity | ConvertTo-Json -Depth 8 -Compress)),
+            ('CINNABAR_MOVEMENT_FRAME=' + ((New-WitnessFrame 40 $script:Positions[0]) | ConvertTo-Json -Depth 8 -Compress)),
             $preLine,
-            (New-TestPhase2TimingLine $preLine 999000),
-            'RUST_MCBE_FAST_TRANSFER_ACTION={"action_ordinal":0,"command":"/transfer sm3","kind":"command_sent","schema":"rust-mcbe-fast-transfer-action-v1","sent_unix_ms":1000000,"session_generation":7}',
+            (New-TestPublicationTimingLine $preLine 999000),
+            'CINNABAR_FAST_TRANSFER_ACTION={"action_ordinal":0,"command":"/transfer sm3","kind":"command_sent","schema":"rust-mcbe-fast-transfer-action-v1","sent_unix_ms":1000000,"session_generation":7}',
             $armLine,
-            (New-TestPhase2TimingLine $armLine 1001000),
+            (New-TestPublicationTimingLine $armLine 1001000),
             $consumeLine,
-            (New-TestPhase2TimingLine $consumeLine 1002000),
+            (New-TestPublicationTimingLine $consumeLine 1002000),
             $recoveryLine,
-            (New-TestPhase2TimingLine $recoveryLine 1003000),
-            ('RUST_MCBE_PHASE3_FRAME=' + ((New-WitnessFrame 41 $script:Positions[1]) | ConvertTo-Json -Depth 8 -Compress)),
-            ('RUST_MCBE_PHASE3_FRAME=' + ((New-WitnessFrame 42 $script:Positions[2]) | ConvertTo-Json -Depth 8 -Compress)),
-            ('RUST_MCBE_PHASE3_FRAME=' + ((New-WitnessFrame 43 $script:Positions[2] @(0.0, 0.0)) | ConvertTo-Json -Depth 8 -Compress)),
-            ('RUST_MCBE_PHASE3_TERMINAL=' + ($script:Terminal | ConvertTo-Json -Depth 8 -Compress))
+            (New-TestPublicationTimingLine $recoveryLine 1003000),
+            ('CINNABAR_MOVEMENT_FRAME=' + ((New-WitnessFrame 41 $script:Positions[1]) | ConvertTo-Json -Depth 8 -Compress)),
+            ('CINNABAR_MOVEMENT_FRAME=' + ((New-WitnessFrame 42 $script:Positions[2]) | ConvertTo-Json -Depth 8 -Compress)),
+            ('CINNABAR_MOVEMENT_FRAME=' + ((New-WitnessFrame 43 $script:Positions[2] @(0.0, 0.0)) | ConvertTo-Json -Depth 8 -Compress)),
+            ('CINNABAR_MOVEMENT_TERMINAL=' + ($script:Terminal | ConvertTo-Json -Depth 8 -Compress))
         )
         Set-Content -LiteralPath $logPath -Value $lines -Encoding utf8
         $metadataPath = Join-Path $directory 'run-metadata.json'
         $metricsPath = Join-Path $directory 'app-metrics.json'
         $scenarioPath = Join-Path $directory 'scenario-manifest.json'
-        $outputPath = Join-Path $directory 'phase3-final.json'
+        $outputPath = Join-Path $directory 'movement-final.json'
         $script:Metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding utf8
         $script:Metrics | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metricsPath -Encoding utf8
         $script:Scenario | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $scenarioPath -Encoding utf8
@@ -303,7 +303,7 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $result.status | Should Be 'passed'
         $result.post_reset_network_position_delta | Should BeGreaterThan 0.5
         $result.terminal_physics_packet_count | Should Be 9
-        Assert-MockCalled Get-Phase2LocalResetSequenceEvidence 1 -ParameterFilter {
+        Assert-MockCalled Get-LocalResetSequenceEvidence 1 -ParameterFilter {
             $ExpectedPresentMode -ceq 'Fifo' -and $ExpectedBuildProfile -ceq 'release' -and
             $WorldReadyObserved -and $Server -ceq 'Lbsg'
         }
@@ -335,11 +335,11 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $artifacts = Write-WitnessArtifacts 'free-camera'
         $lines = Get-Content -LiteralPath $artifacts.LogPath
         $frameLineIndex = 0..($lines.Count - 1) | Where-Object {
-            $_ -gt 0 -and $lines[$_].StartsWith('RUST_MCBE_PHASE3_FRAME=', [StringComparison]::Ordinal)
+            $_ -gt 0 -and $lines[$_].StartsWith('CINNABAR_MOVEMENT_FRAME=', [StringComparison]::Ordinal)
         } | Select-Object -First 1
-        $frame = $lines[$frameLineIndex].Substring('RUST_MCBE_PHASE3_FRAME='.Length) | ConvertFrom-Json
+        $frame = $lines[$frameLineIndex].Substring('CINNABAR_MOVEMENT_FRAME='.Length) | ConvertFrom-Json
         $frame.free_camera_packet_count = 1
-        $lines[$frameLineIndex] = 'RUST_MCBE_PHASE3_FRAME=' + ($frame | ConvertTo-Json -Depth 8 -Compress)
+        $lines[$frameLineIndex] = 'CINNABAR_MOVEMENT_FRAME=' + ($frame | ConvertTo-Json -Depth 8 -Compress)
         Set-Content -LiteralPath $artifacts.LogPath -Value $lines -Encoding utf8
         { Invoke-WitnessValidation $artifacts } | Should Throw
 
@@ -368,14 +368,14 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
     It 'rejects missing duplicated misordered or cross-session command attribution' {
         $missing = Write-WitnessArtifacts 'missing-action'
         @(Get-Content $missing.LogPath | Where-Object {
-            -not $_.StartsWith('RUST_MCBE_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
+            -not $_.StartsWith('CINNABAR_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
         }) | Set-Content $missing.LogPath -Encoding utf8
         { Invoke-WitnessValidation $missing } | Should Throw
 
         $duplicate = Write-WitnessArtifacts 'duplicate-action'
         $duplicateLines = @(Get-Content $duplicate.LogPath)
         $actionLine = @($duplicateLines | Where-Object {
-            $_.StartsWith('RUST_MCBE_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
+            $_.StartsWith('CINNABAR_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
         })[0]
         @($duplicateLines + $actionLine) | Set-Content $duplicate.LogPath -Encoding utf8
         { Invoke-WitnessValidation $duplicate } | Should Throw
@@ -389,10 +389,10 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $misorderedLines = [Collections.Generic.List[string]]::new()
         foreach ($line in @(Get-Content $misordered.LogPath)) { $misorderedLines.Add($line) }
         $actionIndex = 0..($misorderedLines.Count - 1) | Where-Object {
-            $misorderedLines[$_].StartsWith('RUST_MCBE_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
+            $misorderedLines[$_].StartsWith('CINNABAR_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
         } | Select-Object -First 1
         $armIndex = @(0..($misorderedLines.Count - 1) | Where-Object {
-            $misorderedLines[$_].StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)
+            $misorderedLines[$_].StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)
         })[1]
         $actionValue = $misorderedLines[$actionIndex]
         $misorderedLines.RemoveAt($actionIndex)
@@ -402,23 +402,23 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
     }
 
     It 'rejects unbound delayed or non-first reset-arm timing' {
-        $unbound = Write-WitnessArtifacts 'unbound-phase2-time'
+        $unbound = Write-WitnessArtifacts 'unbound-publication-time'
         $unboundLines = @(Get-Content $unbound.LogPath)
         $timingIndex = 0..($unboundLines.Count - 1) | Where-Object {
-            $unboundLines[$_].StartsWith('RUST_MCBE_PHASE2_TIMING=', [StringComparison]::Ordinal)
+            $unboundLines[$_].StartsWith('CINNABAR_CHUNK_PUBLICATION_TIMING=', [StringComparison]::Ordinal)
         } | Select-Object -First 1
-        $timing = $unboundLines[$timingIndex].Substring('RUST_MCBE_PHASE2_TIMING='.Length) | ConvertFrom-Json
+        $timing = $unboundLines[$timingIndex].Substring('CINNABAR_CHUNK_PUBLICATION_TIMING='.Length) | ConvertFrom-Json
         $timing.publication_sha256 = '00' * 32
-        $unboundLines[$timingIndex] = 'RUST_MCBE_PHASE2_TIMING=' + ($timing | ConvertTo-Json -Compress)
+        $unboundLines[$timingIndex] = 'CINNABAR_CHUNK_PUBLICATION_TIMING=' + ($timing | ConvertTo-Json -Compress)
         $unboundLines | Set-Content $unbound.LogPath -Encoding utf8
         { Invoke-WitnessValidation $unbound } | Should Throw
 
         $delayed = Write-WitnessArtifacts 'delayed-arm'
         $delayedLines = @(Get-Content $delayed.LogPath)
         $publicationIndexes = @(0..($delayedLines.Count - 1) | Where-Object {
-            $delayedLines[$_].StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)
+            $delayedLines[$_].StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)
         })
-        $delayedLines[$publicationIndexes[1] + 1] = New-TestPhase2TimingLine `
+        $delayedLines[$publicationIndexes[1] + 1] = New-TestPublicationTimingLine `
             $delayedLines[$publicationIndexes[1]] 1030001
         $delayedLines | Set-Content $delayed.LogPath -Encoding utf8
         { Invoke-WitnessValidation $delayed } | Should Throw
@@ -427,12 +427,12 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $wrongFirstLines = [Collections.Generic.List[string]]::new()
         foreach ($line in @(Get-Content $wrongFirst.LogPath)) { $wrongFirstLines.Add($line) }
         $actionIndex = 0..($wrongFirstLines.Count - 1) | Where-Object {
-            $wrongFirstLines[$_].StartsWith('RUST_MCBE_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
+            $wrongFirstLines[$_].StartsWith('CINNABAR_FAST_TRANSFER_ACTION=', [StringComparison]::Ordinal)
         } | Select-Object -First 1
         $unexpected = New-FocusedPublication 1 1 2 2 0 $true 0 0 $false
-        $unexpectedLine = 'PHASE2_PUBLICATION=' + ($unexpected | ConvertTo-Json -Depth 8 -Compress)
+        $unexpectedLine = 'CINNABAR_CHUNK_PUBLICATION=' + ($unexpected | ConvertTo-Json -Depth 8 -Compress)
         $wrongFirstLines.Insert($actionIndex + 1, $unexpectedLine)
-        $wrongFirstLines.Insert($actionIndex + 2, (New-TestPhase2TimingLine $unexpectedLine 1000500))
+        $wrongFirstLines.Insert($actionIndex + 2, (New-TestPublicationTimingLine $unexpectedLine 1000500))
         $wrongFirstLines | Set-Content $wrongFirst.LogPath -Encoding utf8
         { Invoke-WitnessValidation $wrongFirst } | Should Throw
     }
@@ -445,10 +445,10 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $zeroInput = Write-WitnessArtifacts 'zero-input'
         $zeroLines = @(Get-Content $zeroInput.LogPath)
         for ($index = 0; $index -lt $zeroLines.Count; $index++) {
-            if ($zeroLines[$index].StartsWith('RUST_MCBE_PHASE3_FRAME=', [StringComparison]::Ordinal)) {
-                $frame = $zeroLines[$index].Substring('RUST_MCBE_PHASE3_FRAME='.Length) | ConvertFrom-Json
+            if ($zeroLines[$index].StartsWith('CINNABAR_MOVEMENT_FRAME=', [StringComparison]::Ordinal)) {
+                $frame = $zeroLines[$index].Substring('CINNABAR_MOVEMENT_FRAME='.Length) | ConvertFrom-Json
                 $frame.movement = @(0.0, 0.0)
-                $zeroLines[$index] = 'RUST_MCBE_PHASE3_FRAME=' + ($frame | ConvertTo-Json -Depth 8 -Compress)
+                $zeroLines[$index] = 'CINNABAR_MOVEMENT_FRAME=' + ($frame | ConvertTo-Json -Depth 8 -Compress)
             }
         }
         $zeroLines | Set-Content $zeroInput.LogPath -Encoding utf8
@@ -458,22 +458,22 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $correctionLines = [Collections.Generic.List[string]]::new()
         foreach ($line in @(Get-Content $correction.LogPath)) { $correctionLines.Add($line) }
         $terminalIndex = 0..($correctionLines.Count - 1) | Where-Object {
-            $correctionLines[$_].StartsWith('RUST_MCBE_PHASE3_TERMINAL=', [StringComparison]::Ordinal)
+            $correctionLines[$_].StartsWith('CINNABAR_MOVEMENT_TERMINAL=', [StringComparison]::Ordinal)
         } | Select-Object -First 1
         $correctionLines.Insert($terminalIndex,
-            'RUST_MCBE_PHASE3_EVENT={"kind":"correction","schema":"rust-mcbe-phase3-event-v1","session_generation":7}')
+            'CINNABAR_MOVEMENT_EVENT={"kind":"correction","schema":"rust-mcbe-movement-event-v1","session_generation":7}')
         $correctionLines | Set-Content $correction.LogPath -Encoding utf8
         { Invoke-WitnessValidation $correction } | Should Throw
 
         $unsettled = Write-WitnessArtifacts 'unsettled-final-frame'
         $unsettledLines = @(Get-Content $unsettled.LogPath)
         $lastFrameIndex = @(0..($unsettledLines.Count - 1) | Where-Object {
-            $unsettledLines[$_].StartsWith('RUST_MCBE_PHASE3_FRAME=', [StringComparison]::Ordinal)
+            $unsettledLines[$_].StartsWith('CINNABAR_MOVEMENT_FRAME=', [StringComparison]::Ordinal)
         } | Select-Object -Last 1)[0]
-        $lastFrame = $unsettledLines[$lastFrameIndex].Substring('RUST_MCBE_PHASE3_FRAME='.Length) |
+        $lastFrame = $unsettledLines[$lastFrameIndex].Substring('CINNABAR_MOVEMENT_FRAME='.Length) |
             ConvertFrom-Json
         $lastFrame.movement = @(0.0, 1.0)
-        $unsettledLines[$lastFrameIndex] = 'RUST_MCBE_PHASE3_FRAME=' +
+        $unsettledLines[$lastFrameIndex] = 'CINNABAR_MOVEMENT_FRAME=' +
             ($lastFrame | ConvertTo-Json -Depth 8 -Compress)
         $unsettledLines | Set-Content $unsettled.LogPath -Encoding utf8
         { Invoke-WitnessValidation $unsettled } | Should Throw
@@ -490,11 +490,11 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         $lines = [Collections.Generic.List[string]]::new()
         foreach ($line in @(Get-Content $pending.LogPath)) { $lines.Add($line) }
         $terminalIndex = 0..($lines.Count - 1) | Where-Object {
-            $lines[$_].StartsWith('RUST_MCBE_PHASE3_TERMINAL=', [StringComparison]::Ordinal)
+            $lines[$_].StartsWith('CINNABAR_MOVEMENT_TERMINAL=', [StringComparison]::Ordinal)
         } | Select-Object -First 1
         $lines.Insert(
             $terminalIndex,
-            'RUST_MCBE_PHASE3_VIOLATION={"reason":"terminal_pending_correction","schema":"rust-mcbe-phase3-violation-v2"}'
+            'CINNABAR_MOVEMENT_VIOLATION={"reason":"terminal_pending_correction","schema":"rust-mcbe-movement-violation-v2"}'
         )
         $lines | Set-Content $pending.LogPath -Encoding utf8
 
@@ -502,41 +502,41 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
     }
 
     It 'builds the fixed authenticated LBSG transfer plan with candidate physics' {
-        $plan = New-Phase3LaunchPlan -Target Lbsg -Endpoint 'play.lbsg.net:19132' `
+        $plan = New-MovementLaunchPlan -Target Lbsg -Endpoint 'play.lbsg.net:19132' `
             -RunId $script:RunId -SocketDirectory socket -MetricsPath metrics.json `
             -DurationSeconds 600 -Scenario FastTransferWitness -AuthCache token.json `
             -Assets vanilla.mcbea
-        ($plan.AppArguments -ccontains '--phase3-candidate-physics') | Should Be $true
+        ($plan.AppArguments -ccontains '--movement-candidate-physics') | Should Be $true
         ($plan.AppArguments -ccontains '--auto-fly') | Should Be $false
         ($plan.CoreArguments -ccontains '-auth-cache') | Should Be $true
-        { New-Phase3LaunchPlan -Target Lbsg -Endpoint 'play.lbsg.net:19132' `
+        { New-MovementLaunchPlan -Target Lbsg -Endpoint 'play.lbsg.net:19132' `
                 -RunId $script:RunId -SocketDirectory socket -MetricsPath metrics.json `
                 -DurationSeconds 599 -Scenario FastTransferWitness -AuthCache token.json `
                 -Assets vanilla.mcbea } | Should Throw
-        { New-Phase3LaunchPlan -Target Zeqa -Endpoint 'zeqa.net:19132' `
+        { New-MovementLaunchPlan -Target Zeqa -Endpoint 'zeqa.net:19132' `
                 -RunId $script:RunId -SocketDirectory socket -MetricsPath metrics.json `
                 -DurationSeconds 600 -Scenario FastTransferWitness -AuthCache token.json `
                 -Assets vanilla.mcbea } | Should Throw
     }
 
-    It 'runs the combined Phase 2 reset helper end to end and rejects a broken dispatch witness' {
+    It 'runs the combined local reset helper end to end and rejects a broken dispatch witness' {
         $artifacts = Write-WitnessArtifacts 'combined-real-success'
-        $records = Convert-WitnessToCompletePhase2 $artifacts
-        Set-Item -Path Function:\Get-Phase2LocalResetSequenceEvidence -Value $script:RealPhase2ResetHelper
+        $records = Convert-WitnessToCompletePublication $artifacts
+        Set-Item -Path Function:\Get-LocalResetSequenceEvidence -Value $script:RealLocalResetHelper
         (Invoke-WitnessValidation $artifacts).status | Should Be 'passed'
 
         $broken = Write-WitnessArtifacts 'combined-real-failure'
-        $brokenRecords = Convert-WitnessToCompletePhase2 $broken
+        $brokenRecords = Convert-WitnessToCompletePublication $broken
         $brokenRecords[3].publication.local_reset.dispatch_total = 0
         $brokenRecords[3].publication.local_reset.dispatch_count = 0
         $brokenRecords[3].publication.local_reset.dispatch_classes = @()
         $lines = @(Get-Content -LiteralPath $broken.LogPath)
         $publicationIndexes = @(0..($lines.Count - 1) | Where-Object {
-            $lines[$_].StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)
+            $lines[$_].StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)
         })
-        $lines[$publicationIndexes[3]] = 'PHASE2_PUBLICATION=' +
+        $lines[$publicationIndexes[3]] = 'CINNABAR_CHUNK_PUBLICATION=' +
             ($brokenRecords[3] | ConvertTo-Json -Depth 20 -Compress)
-        $lines[$publicationIndexes[3] + 1] = New-TestPhase2TimingLine `
+        $lines[$publicationIndexes[3] + 1] = New-TestPublicationTimingLine `
             $lines[$publicationIndexes[3]] 1002000
         Set-Content -LiteralPath $broken.LogPath -Value $lines -Encoding utf8
         { Invoke-WitnessValidation $broken } | Should Throw
@@ -544,19 +544,19 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
 
     It 'wires the public entrypoint to stable launcher paths and preserves failed artifacts' {
         $entrypoint = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\FastTransferWitness.ps1')
-        $launcher = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\Phase3Launcher.ps1')
+        $launcher = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'scripts\acceptance\MovementLauncher.ps1')
         $entrypoint | Should Match "Target = 'Lbsg'"
         $entrypoint | Should Match "Scenario = 'FastTransferWitness'"
         $entrypoint | Should Match 'DurationSeconds = 900'
         $entrypoint | Should Match 'microsoft-token.json'
         $entrypoint | Should Not Match 'vanilla-v[0-9]+\.mcbea'
         $launcher | Should Match 'Get-BedrockTargetManifest'
-        $launcher | Should Match 'target\\\$buildProfile\\bedrock-client'
+        $launcher | Should Match 'target\\\$buildProfile\\cinnabar'
         $launcher | Should Match "FastTransferWitness'.*'release'.*'debug'"
         $launcher | Should Match "appBuildArguments \+= '--release'"
         $launcher | Should Match 'FastTransferWitnessValidate.ps1'
         $launcher | Should Match 'validation-error.txt'
-        $launcher | Should Match 'rust-mcbe-phase3-launcher-error-v1'
+        $launcher | Should Match 'rust-mcbe-movement-launcher-error-v1'
         $launcher.IndexOf('Stop-BoundedProcess -Handle $appHandle -Kind app') | Should BeLessThan `
             $launcher.IndexOf('Stop-BoundedProcess -Handle $coreHandle -Kind core')
         $launcher | Should Not Match 'Remove-Item.*runDirectory'
@@ -567,9 +567,9 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         New-Item -ItemType Directory -Path (Join-Path $pathRoot '.local\acceptance') -Force | Out-Null
         $inside = Join-Path $pathRoot '.local\asset.bin'
         Set-Content -LiteralPath $inside -Value 'asset'
-        (Resolve-Phase3ContainedPath -ProjectRoot $pathRoot -Path $inside -Scope Local -RequireLeaf) |
+        (Resolve-MovementContainedPath -ProjectRoot $pathRoot -Path $inside -Scope Local -RequireLeaf) |
             Should Be ([IO.Path]::GetFullPath($inside))
-        { Resolve-Phase3ContainedPath -ProjectRoot $pathRoot `
+        { Resolve-MovementContainedPath -ProjectRoot $pathRoot `
                 -Path (Join-Path $script:TempRoot 'outside.bin') -Scope Local } | Should Throw
         if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
             $outsideDirectory = Join-Path $script:TempRoot 'outside-dir'
@@ -577,7 +577,7 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
             Set-Content -LiteralPath (Join-Path $outsideDirectory 'asset.bin') -Value 'asset'
             $junction = Join-Path $pathRoot '.local\linked'
             New-Item -ItemType Junction -Path $junction -Target $outsideDirectory | Out-Null
-            { Resolve-Phase3ContainedPath -ProjectRoot $pathRoot `
+            { Resolve-MovementContainedPath -ProjectRoot $pathRoot `
                     -Path (Join-Path $junction 'asset.bin') -Scope Local -RequireLeaf } | Should Throw
         }
 
@@ -591,6 +591,6 @@ Describe 'FastTransferWitness focused LBSG acceptance' {
         Set-Content -LiteralPath (Join-Path $gitRoot 'tracked.txt') -Value 'two'
         & git -C $gitRoot add tracked.txt
         & git -C $gitRoot -c user.name=Test -c user.email=test@example.invalid commit --quiet -m two
-        { Assert-Phase3ExactCleanHead -ProjectRoot $gitRoot -ExpectedCommit $firstCommit } | Should Throw
+        { Assert-MovementExactCleanHead -ProjectRoot $gitRoot -ExpectedCommit $firstCommit } | Should Throw
     }
 }

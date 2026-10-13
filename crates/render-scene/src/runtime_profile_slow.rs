@@ -298,7 +298,7 @@ impl FrameWindow {
             let window = delta(totals, self.baseline);
             let suppressed = std::mem::take(&mut self.suppressed);
             (event, Some(format!(
-                "RUST_MCBE_SLOW_FRAME frame={} refresh_hz={:.2} threshold_ms={:.2} frame_ms={:.3} main_ms={:.3} between_updates_ms={:.3} violations={} focused={} occluded={} suppressed={} slow_frames={} hitches={} hard_hitches={} main_stages={} window_stages={} scope=overlapping",
+                "CINNABAR_SLOW_FRAME frame={} refresh_hz={:.2} threshold_ms={:.2} frame_ms={:.3} main_ms={:.3} between_updates_ms={:.3} violations={} focused={} occluded={} suppressed={} slow_frames={} hitches={} hard_hitches={} main_stages={} window_stages={} scope=overlapping",
                 self.sequence, 1.0 / budgets.interval.as_secs_f64(), budgets.slow.as_secs_f64() * 1e3,
                 interval.as_secs_f64() * 1e3, main.as_secs_f64() * 1e3,
                 interval.saturating_sub(main).as_secs_f64() * 1e3, reason_list(reasons),

@@ -19,7 +19,7 @@ use launcher_host::{
 };
 
 use client_shell::presence_target::presence_target;
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 use {
     crate::runtime::{
         network::{CompiledStacks, session::NetworkConfig},
@@ -125,6 +125,14 @@ impl SessionController {
         self.presence.as_ref()
     }
 
+    /// Endpoint directory of the live session core; unavailable during teardown.
+    #[cfg(feature = "local-mods")]
+    pub(crate) fn socket_directory(&self) -> Option<&std::path::Path> {
+        self.directory
+            .as_ref()
+            .map(SessionDirectoryGuard::directory)
+    }
+
     pub(crate) fn status(&self) -> SessionStatus {
         SessionStatus {
             connecting: self.connecting,
@@ -159,11 +167,11 @@ impl SessionController {
         true
     }
 
-    /// Returns a failed join to the menu, where no join follows to reuse the kept packs.
+    /// Returns a failed join to the menu, keeping only the newest compiled packs for a retry.
     fn fail_join(&mut self, menu: &mut MenuRuntime, message: String) {
         menu.show_join_failure(message);
         self.connecting = false;
-        self.kept_packs.release();
+        self.kept_packs.keep_for_rejoin();
     }
 
     /// Spawns a per-session core that dials `address` directly.
@@ -266,7 +274,7 @@ pub(crate) struct SessionResources<'w> {
     controller: ResMut<'w, SessionController>,
     network: ResMut<'w, NetworkHandle<PackApplication>>,
     resource_packs: ResMut<'w, ResourcePackAdmissionState>,
-    runtime: ResMut<'w, UiRuntime>,
+    runtime: ResMut<'w, UiRuntimeResource>,
     player_runtime: ResMut<'w, PlayerRuntime>,
     client_world: ResMut<'w, ClientWorld>,
     movement: ResMut<'w, MovementTicker>,
@@ -280,11 +288,11 @@ pub(crate) struct SessionResources<'w> {
 }
 
 impl SessionResources<'_> {
-    /// Retires the live session with no join to follow, also releasing the
-    /// recently compiled server packs a following join would have reused.
+    /// Retires the live session with no join to follow, keeping only the newest
+    /// compiled server packs for a rejoin from the menu.
     fn leave(&mut self) {
         self.retire();
-        self.controller.kept_packs.release();
+        self.controller.kept_packs.keep_for_rejoin();
     }
 
     /// Ends the live session and fences a fresh generation. The core stops off
@@ -525,7 +533,7 @@ fn start_network(
     ui_catalog: Option<&crate::runtime::network::PackUiCatalog>,
 ) -> Result<(), String> {
     let replacement = crate::runtime::network::session::spawn_network(NetworkConfig {
-        session_generation,
+        session_generation: simulation_clock::identity::SessionGeneration::new(session_generation),
         socket_dir,
         display_name: menu.display_name().to_owned(),
         client_random_id,

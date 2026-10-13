@@ -3,7 +3,7 @@ use protocol::{ActorStatusEvent, ActorStatusKind, ActorTakeItemEvent};
 use super::{ActorApplyResult, ActorSnapshot, ActorStore};
 
 /// Completed actor ticks the hurt tint and damage animations stay active.
-pub const HURT_DURATION_TICKS: u8 = 10;
+pub const HURT_DURATION_TICKS: u8 = render_api::BEDROCK_112.hurt_ticks;
 /// Alpha of the red damage overlay while hurt or dying; needs independent measurement.
 pub const HURT_OVERLAY_ALPHA: f32 = 0.4;
 /// Ticks a dying actor takes to tip fully over; needs independent measurement.
@@ -107,6 +107,8 @@ pub struct ActorStatus {
     pub breathing_submerged: Option<bool>,
     /// Bed orientation in degrees under a sleeping actor, sampled from the world.
     pub sleep_rotation: Option<f32>,
+    /// Haste and Mining Fatigue the server last reported, which set the Java swing length.
+    pub(crate) swing_effects: actor_animation::SwingEffects,
 }
 
 impl ActorStatus {
@@ -186,7 +188,8 @@ impl ActorStatus {
 }
 
 impl ActorSnapshot {
-    fn eating_position(&self) -> [f32; 3] {
+    /// Where this actor's eating crumbs scatter from: a player's mouth, else its position.
+    pub fn eating_position(&self) -> [f32; 3] {
         let mut position = self.position;
         position[1] += self.network_position_offset();
         if matches!(self.kind, protocol::ActorKind::Player { .. }) {

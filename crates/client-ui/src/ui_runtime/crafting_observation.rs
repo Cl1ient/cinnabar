@@ -4,7 +4,7 @@ use super::UiRuntime;
 impl UiRuntime {
     /// Passes the app-owned opt-in marker to the domain observation probe.
     pub fn configure_crafting_observation(address: Option<&str>) {
-        let marker = std::env::var(crate::diagnostic_markers::CRAFT_OBSERVATION).ok();
+        let marker = env_compat::var(crate::diagnostic_markers::CRAFT_OBSERVATION).ok();
         inventory::InventorySession::configure_crafting_observation(address, marker.as_deref());
     }
 

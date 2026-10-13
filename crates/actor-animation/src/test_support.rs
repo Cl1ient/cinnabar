@@ -3,7 +3,8 @@ use super::*;
 use assets::*;
 use render_api::SkinGeometrySource;
 
-fn scalar(value: f32) -> EntityGeometryScalar {
+/// Build a bounded scalar for synthetic animation fixtures.
+pub(crate) fn scalar(value: f32) -> EntityGeometryScalar {
     EntityGeometryScalar::new(value).unwrap()
 }
 
@@ -63,11 +64,15 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
     .collect::<Vec<_>>()
     .into_boxed_slice();
     CompiledEntityAssets {
+        item_use_profiles: Box::new([]),
+        seat_layouts: Box::new([]),
+        interaction_traits: Box::new([]),
         source_manifest_sha256: [1; 32],
         block_visual_count: 1,
         sources,
         symbols,
         geometries: vec![EntityGeometry {
+            animation_no_head_bob: false,
             visible_bounds: None,
             identifier: "geometry.item".into(),
             inherits: None,
@@ -75,6 +80,7 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
             texture_width: 16,
             texture_height: 16,
             bones: vec![EntityGeometryBone {
+                locators: Box::default(),
                 name: "rightitem".into(),
                 binding: None,
                 parent: None,
@@ -154,6 +160,7 @@ pub fn compiled_fixture() -> CompiledEntityAssets {
         controller_animations: Box::new([]),
         controller_transitions: Box::new([]),
         rig_bindings: vec![EntityRigBinding {
+            placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
             entity_symbol: 4,
             render_controller: 2,
             first_geometry: 0,
@@ -227,7 +234,12 @@ pub fn counting_random_assets() -> Arc<RuntimeEntityAssets> {
 
 /// Gives actor fixtures the same deterministic rig under their actual entity identifier.
 pub fn counting_random_assets_for(identifier: &str) -> Arc<RuntimeEntityAssets> {
-    Arc::new(RuntimeEntityAssets::from_compiled(counting_random_compiled(identifier)).unwrap())
+    Arc::new(
+        RuntimeEntityAssets::from_compiled(
+            counting_random_compiled(identifier).with_unresolved_admissions(),
+        )
+        .unwrap(),
+    )
 }
 
 /// Builds a mutable counting rig for tests that add render-controller branches.

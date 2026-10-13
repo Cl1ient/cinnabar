@@ -60,6 +60,7 @@ pub(super) fn resolve_binding(
     };
     let mut candidate_offset = 0;
     let input = ActorTickInput {
+        placement_frame: rig.placement_frame,
         position: actor.position(),
         velocity: actor.velocity(),
         on_ground: actor.on_ground(),
@@ -146,6 +147,7 @@ pub(super) fn resolve_binding(
         )
     });
     Some(ActorRigState {
+        placement_frame: rig.placement_frame,
         pack: false,
         // The renderer needs the resolved geometry candidate, not only the
         // entity-level binding that may contain several candidates.
@@ -336,6 +338,7 @@ pub(super) fn skeleton(merged: &[EntityGeometryBone]) -> Option<(Vec<RuntimeBone
 // following an inheritance chain; mesh resolution has its own cumulative cube budget.
 fn bone_metadata(bone: &EntityGeometryBone) -> EntityGeometryBone {
     EntityGeometryBone {
+        locators: bone.locators.clone(),
         name: bone.name.clone(),
         parent: bone.parent.clone(),
         pivot: bone.pivot,

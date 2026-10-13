@@ -29,7 +29,7 @@ fn fixture() -> Option<(
 )> {
     let target: serde_json::Value =
         serde_json::from_slice(include_bytes!("../../../../assets/bedrock-target.json")).unwrap();
-    let path = std::env::var_os("RUST_MCBE_ASSETS")
+    let path = env_compat::var_os(assets::carriers::startup::ASSET_PATH_ENVIRONMENT)
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -215,6 +215,7 @@ fn overridden_assets(
         });
         overlay.model_random_offsets.push((index as u32, component));
         overlay.visuals.push(assets::BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces,
             flags: visual.flags(),
             kind: visual.kind(),

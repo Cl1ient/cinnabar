@@ -1,13 +1,11 @@
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::{collections::HashMap, sync::Arc};
 
 use client_world::{
     ActorSnapshot, BOUNDING_BOX_HEIGHT_METADATA_KEY, BOUNDING_BOX_WIDTH_METADATA_KEY,
     SCALE_METADATA_KEY, WorldAuthority,
 };
-use protocol::wire::valentine::bedrock::version::v1_26_51::{
-    EnumsItemUseOnActorInventoryTransactionActionType, InventoryTransactionPacketTransaction,
-    McpePacketData,
-};
+use protocol::test_support::transactions::observe_transaction;
 use protocol::{ActorKind, ActorMetadataValue};
 
 use super::*;
@@ -42,6 +40,17 @@ fn actor_with(
     feet: [f32; 3],
     metadata: HashMap<u32, ActorMetadataValue>,
 ) -> ActorSnapshot {
+    actor_with_base(runtime_id, identifier, Some(""), feet, metadata)
+}
+
+/// Spawns an actor after an optional advertised base has been admitted.
+fn actor_with_base(
+    runtime_id: u64,
+    identifier: &str,
+    base: Option<&str>,
+    feet: [f32; 3],
+    metadata: HashMap<u32, ActorMetadataValue>,
+) -> ActorSnapshot {
     let mut authority = WorldAuthority::new(
         protocol::WorldBootstrap {
             dimension: 0,
@@ -57,6 +66,22 @@ fn actor_with(
         feet,
         None,
     );
+    if let Some(base) = base {
+        authority
+            .apply_ordered_event(
+                protocol::WorldEvent::Actor(protocol::ActorEvent::Identifiers(
+                    protocol::ActorIdentifierRegistry {
+                        entries: Arc::from([protocol::ActorIdentifier {
+                            identifier: identifier.into(),
+                            base_identifier: base.into(),
+                        }]),
+                        skipped: 0,
+                    },
+                )),
+                Some(1),
+            )
+            .unwrap();
+    }
     let spawn = protocol::ActorSpawnEvent {
         dimension: 0,
         unique_id: runtime_id as i64 * 10,
@@ -82,7 +107,7 @@ fn actor_with(
     authority
         .apply_ordered_event(
             protocol::WorldEvent::Actor(protocol::ActorEvent::Spawn(spawn)),
-            Some(1),
+            Some(2),
         )
         .unwrap();
     let mut actor = authority
@@ -95,177 +120,6 @@ fn actor_with(
 
 const EYE: [f32; 3] = [0.0, 1.62, 0.0];
 const NORTH: [f32; 3] = [0.0, 0.0, -1.0];
-
-#[test]
-fn nearest_pickable_actor_wins_and_reports_the_inflated_entry_point() {
-    let near = actor(1, "minecraft:zombie", [0.0, 0.0, -2.0], Some((0.6, 1.95)));
-    let far = actor(2, "minecraft:zombie", [0.0, 0.0, -4.0], Some((0.6, 1.95)));
-    let drop = actor(3, "minecraft:item", [0.0, 0.0, -1.0], Some((0.25, 0.25)));
-    let invalid = actor(4, "minecraft:cow", [0.0, 0.0, -1.5], Some((f32::NAN, 1.95)));
-    let actors = [far, drop, invalid, near];
-    let hit = pick_actor(actors.iter(), None, EYE, NORTH, 5.7).unwrap();
-    assert_eq!(hit.runtime_id, 1);
-    // Front face at z = -2 + 0.3, grown by the pick radius.
-    assert!((hit.distance - 1.6).abs() < 1e-6, "{}", hit.distance);
-    assert!((hit.point[2] + 1.6).abs() < 1e-6);
-    // The ridden vehicle is never picked.
-    let hit = pick_actor(actors.iter(), Some(10), EYE, NORTH, 5.7).unwrap();
-    assert_eq!(hit.runtime_id, 2);
-    assert_eq!(pick_actor(actors[..1].iter(), None, EYE, NORTH, 3.0), None);
-}
-
-/// A zombie whose only hitbox is a 1×1×1 cube centred 3 blocks above its feet.
-fn zombie_with_raised_hitbox(feet: [f32; 3]) -> ActorSnapshot {
-    let mut entry = world::NbtCompound::default();
-    for (name, value) in [
-        ("MinX", -0.5),
-        ("MinY", 0.0),
-        ("MinZ", -0.5),
-        ("MaxX", 0.5),
-        ("MaxY", 1.0),
-        ("MaxZ", 0.5),
-        ("PivotX", 0.0),
-        ("PivotY", 3.0),
-        ("PivotZ", 0.0),
-    ] {
-        entry.insert(name, world::NbtValue::Float(value));
-    }
-    let mut root = world::NbtCompound::default();
-    root.insert(
-        "Hitboxes",
-        world::NbtValue::List(vec![world::NbtValue::Compound(entry)]),
-    );
-    let bytes = root.encode_root().unwrap();
-    actor_with(
-        5,
-        "minecraft:zombie",
-        feet,
-        HashMap::from([(
-            client_world::HITBOX_METADATA_KEY,
-            ActorMetadataValue::Compound(Arc::from(bytes)),
-        )]),
-    )
-}
-
-#[test]
-fn custom_hitbox_replaces_the_collision_box_for_picks() {
-    let zombie = zombie_with_raised_hitbox([0.0, 0.0, -2.0]);
-    // Eye-level ray passes through the collision box but under the raised hitbox.
-    assert_eq!(
-        pick_actor([&zombie].into_iter(), None, EYE, NORTH, 3.0),
-        None
-    );
-    let raised = [0.0, 3.0, 0.0];
-    let hit = pick_actor([&zombie].into_iter(), None, raised, NORTH, 3.0)
-        .expect("the ray enters the raised hitbox");
-    assert_eq!(hit.runtime_id, 5);
-    // Front face at z = -2 + 0.5, grown by the pick radius.
-    assert!((hit.distance - 1.4).abs() < 1e-6, "{}", hit.distance);
-}
-
-#[test]
-fn custom_npc_without_size_metadata_sends_attack_for_picked_world_point() {
-    let npc = actor(70, "example:game_selection_npc", [10.0, 20.0, 28.0], None);
-    let origin = [10.0, 21.0, 30.0];
-    let hit = pick_actor([npc].iter(), None, origin, NORTH, 3.0)
-        .expect("a custom NPC retains its default collision box before size metadata arrives");
-    assert_eq!(hit.runtime_id, 70);
-    assert_eq!([hit.point[0], hit.point[1]], [origin[0], origin[1]]);
-    assert!(hit.point[2] > 28.0 && hit.point[2] < origin[2]);
-
-    let mut runtime = MeleeRuntime::default();
-    runtime.observe_input(true, false);
-    let mut press = press(PlayerInputMode::Mouse);
-    press.player_position = origin;
-    let outcome = runtime.resolve(
-        classify(Some(hit), None, 3.0),
-        &press,
-        &mut SwingTracker::default(),
-    );
-    assert_eq!(
-        kinds(&outcome.packets),
-        ["AnimatePacket", "InventoryTransactionPacket"]
-    );
-    assert!(!outcome.missed_swing);
-    let McpePacketData::InventoryTransactionPacket(packet) = &outcome.packets[1].data else {
-        panic!("the picked NPC receives an attack transaction");
-    };
-    let InventoryTransactionPacketTransaction::ItemUseOnActorInventoryTransaction(transaction) =
-        &packet.transaction
-    else {
-        panic!("the transaction targets an actor");
-    };
-    assert_eq!(
-        transaction.action_type,
-        EnumsItemUseOnActorInventoryTransactionActionType::Attack
-    );
-    assert_eq!(transaction.runtime_id.actor_runtime_id, hit.runtime_id);
-    assert_eq!(
-        [
-            transaction.hit_position.x,
-            transaction.hit_position.y,
-            transaction.hit_position.z,
-        ],
-        hit.point
-    );
-    assert_eq!(
-        [
-            transaction.from_position.x,
-            transaction.from_position.y,
-            transaction.from_position.z,
-        ],
-        press.player_position
-    );
-}
-
-#[test]
-fn a_positive_actor_scale_expands_the_pick_box() {
-    let mut npc = actor(
-        71,
-        "example:game_selection_npc",
-        [0.0, 0.0, -2.0],
-        Some((0.6, 1.0)),
-    );
-    assert_eq!(pick_actor([&npc].into_iter(), None, EYE, NORTH, 3.0), None);
-    npc.metadata
-        .insert(SCALE_METADATA_KEY, ActorMetadataValue::Float(2.0));
-    let hit = pick_actor([npc].iter(), None, EYE, NORTH, 3.0)
-        .expect("the ray intersects the scaled actor above its unscaled height");
-    assert_eq!(hit.runtime_id, 71);
-    assert_eq!(hit.point[1], EYE[1]);
-}
-
-#[test]
-fn an_eye_inside_the_box_hits_at_zero_distance() {
-    let around = actor(5, "minecraft:slime", [0.0, 0.0, 0.0], Some((2.0, 2.0)));
-    let hit = pick_actor([around].iter(), None, EYE, [1.0, 0.0, 0.0], 3.0).unwrap();
-    assert_eq!(hit.distance, 0.0);
-    assert_eq!(pick_actor([].iter(), None, EYE, [0.0; 3], 3.0), None);
-}
-
-#[test]
-fn survival_reach_and_block_occlusion_decide_the_press() {
-    let hit = |distance| ActorHit {
-        runtime_id: 7,
-        distance,
-        point: [0.0; 3],
-    };
-    assert_eq!(
-        classify(Some(hit(2.0)), Some(4.0), 3.0),
-        Crosshair::Actor(hit(2.0))
-    );
-    // In front of the block but beyond melee reach: nothing is targeted.
-    assert_eq!(classify(Some(hit(3.5)), Some(5.0), 3.0), Crosshair::Miss);
-    assert_eq!(classify(Some(hit(3.5)), None, 3.0), Crosshair::Miss);
-    // The actor must beat the block by the pick radius.
-    assert_eq!(classify(Some(hit(1.95)), Some(2.0), 3.0), Crosshair::Block);
-    assert_eq!(classify(None, Some(2.0), 3.0), Crosshair::Block);
-    assert_eq!(classify(None, None, 3.0), Crosshair::Miss);
-    assert_eq!(
-        classify(Some(hit(5.0)), None, 7.0),
-        Crosshair::Actor(hit(5.0))
-    );
-}
 
 #[test]
 fn a_new_swing_waits_for_half_the_current_one() {
@@ -333,7 +187,7 @@ fn press(input_mode: PlayerInputMode) -> PressContext {
 fn kinds(packets: &[protocol::Packet]) -> Vec<String> {
     packets
         .iter()
-        .map(|packet| format!("{:?}", packet.header.id))
+        .map(|packet| format!("{:?}", packet.kind()))
         .collect()
 }
 
@@ -389,9 +243,15 @@ fn misses_flag_the_tick_and_only_non_touch_misses_swing() {
 #[test]
 fn a_position_authority_change_drops_a_latched_press() {
     let mut runtime = MeleeRuntime::default();
-    runtime.synchronize((7, 0));
+    runtime.synchronize((
+        SessionGeneration::new(7),
+        PositionAuthorityGeneration::new(0),
+    ));
     runtime.observe_input(true, false);
-    runtime.synchronize((8, 0));
+    runtime.synchronize((
+        SessionGeneration::new(8),
+        PositionAuthorityGeneration::new(0),
+    ));
     let outcome = runtime.resolve(
         ZOMBIE,
         &press(PlayerInputMode::Mouse),
@@ -575,13 +435,34 @@ fn a_completed_short_swing_admits_after_effect_expiry() {
 fn movement_authority_change_resets_local_swing_samples() {
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 10, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        10,
+        &effects,
+    );
     assert!(swings.try_swing(10, 6));
     swings.published_progress(12);
-    swings.sync_ticks((1, 2), 2, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        2,
+        &effects,
+    );
     assert!(swings.try_swing(2, 6));
     assert_eq!(swings.published_progress(2).java, [0.0; 2]);
-    swings.sync_ticks((1, 3), 20, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(3),
+        ),
+        20,
+        &effects,
+    );
     assert!(swings.try_swing(20, 6));
     assert_eq!(swings.published_progress(20).bedrock, [0.0; 2]);
 }
@@ -668,7 +549,14 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
     let mut press = press(PlayerInputMode::Mouse);
     press.swing_duration = duration;
     runtime.observe_input(true, true);
-    swings.sync_ticks((1, 1), press.tick, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        press.tick,
+        &effects,
+    );
     let mut initial_packets = Vec::new();
     assert!(!resolve_and_send(
         &mut runtime,
@@ -682,8 +570,20 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
         },
     ));
     assert_eq!(swings.take_started(), None);
+    assert_eq!(
+        runtime.admitted_attack(),
+        None,
+        "a refused FIFO admits no combat evidence"
+    );
     assert_eq!(swings.published_progress(press.tick).bedrock, [0.0; 2]);
-    swings.sync_ticks((1, 1), press.tick, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        press.tick,
+        &effects,
+    );
     let mut admitted_packets = Vec::new();
     let missed = resolve_and_send(&mut runtime, &mut swings, crosshair, &press, 2, |packets| {
         admitted_packets = kinds(&packets);
@@ -692,24 +592,13 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
             "a recovered send retains its original packet order"
         );
         if let Crosshair::Actor(hit) = crosshair {
-            let McpePacketData::InventoryTransactionPacket(packet) = &packets[1].data else {
-                panic!("the swing precedes the original actor transaction");
-            };
-            let InventoryTransactionPacketTransaction::ItemUseOnActorInventoryTransaction(
-                transaction,
-            ) = &packet.transaction
-            else {
-                panic!("the original actor attack survives backpressure");
-            };
-            assert_eq!(transaction.runtime_id.actor_runtime_id, hit.runtime_id);
-            assert_eq!(
-                [
-                    transaction.from_position.x,
-                    transaction.from_position.y,
-                    transaction.from_position.z
-                ],
-                press.player_position
-            );
+            let observed = observe_transaction(&packets[1])
+                .expect("the swing precedes the original actor transaction");
+            let transaction = observed
+                .actor_use()
+                .expect("the original actor attack survives backpressure");
+            assert_eq!(transaction.runtime_id, hit.runtime_id);
+            assert_eq!(transaction.from_position, press.player_position);
         }
         Ok(())
     });
@@ -717,6 +606,14 @@ fn assert_published_press_retry(crosshair: Crosshair, duration: i32) {
         admitted_packets, initial_packets,
         "the retry keeps its admitted swing and packet order"
     );
+    if let Crosshair::Actor(hit) = crosshair {
+        assert_eq!(
+            runtime.admitted_attack().map(|attack| attack.hit),
+            Some(hit)
+        );
+    } else {
+        assert_eq!(runtime.admitted_attack(), None);
+    }
     assert_eq!(missed, crosshair == Crosshair::Miss);
     assert_eq!(swings.take_started(), Some(press.swing_duration));
     assert!(
@@ -776,7 +673,14 @@ fn a_backpressured_restart_keeps_the_published_tick_and_previous_sample() {
 fn only_the_current_unadmitted_tick_can_replay() {
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     let mut candidate = swings.clone();
     assert!(candidate.try_swing(100, 6));
     swings.defer_unadmitted_attempt(&candidate);
@@ -801,7 +705,14 @@ fn only_the_current_unadmitted_tick_can_replay() {
     );
 
     let mut other = SwingTracker::default();
-    other.sync_ticks((1, 2), 103, &effects);
+    other.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        103,
+        &effects,
+    );
     assert!(other.try_swing(103, 6));
     swings.defer_unadmitted_attempt(&other);
     swings.published_progress(103);
@@ -809,7 +720,14 @@ fn only_the_current_unadmitted_tick_can_replay() {
         !swings.try_swing(103, 6),
         "a different authority cannot reopen a tick"
     );
-    swings.sync_ticks((1, 2), 103, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        103,
+        &effects,
+    );
     assert!(
         swings.try_swing(103, 6),
         "new authority resets both counters and permission"
@@ -868,7 +786,14 @@ fn committed_swing_samples_are_bounded_across_large_tick_jumps_and_authority_res
     let mut effects = crate::movement::LocalMovementEffectTimeline::default();
     effects.begin_session(1);
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 1, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        1,
+        &effects,
+    );
     assert!(swings.try_swing(1, 6));
     swings.published_progress(1);
     swings.published_progress(u64::MAX);
@@ -883,7 +808,14 @@ fn committed_swing_samples_are_bounded_across_large_tick_jumps_and_authority_res
     swings.published_progress(u64::MAX);
     assert_eq!(swings.committed_samples().collect::<Vec<_>>(), samples);
     effects.begin_session(1);
-    swings.sync_ticks((1, 2), 2, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        2,
+        &effects,
+    );
     assert_eq!(swings.committed_samples().count(), 0);
     swings.published_progress(2);
     assert_eq!(
@@ -990,7 +922,10 @@ fn fresh_published_presses_expire_without_sending() {
 fn melee_retry_permission_clears_on_cancel_authority_change_and_expiry() {
     for reset in 0..3 {
         let mut runtime = MeleeRuntime::default();
-        runtime.synchronize((1, 1));
+        runtime.synchronize((
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ));
         let mut swings = SwingTracker::default();
         let press = press(PlayerInputMode::Mouse);
         runtime.observe_input(true, false);
@@ -1005,7 +940,10 @@ fn melee_retry_permission_clears_on_cancel_authority_change_and_expiry() {
         swings.published_progress(press.tick);
         match reset {
             0 => runtime.cancel(),
-            1 => runtime.synchronize((1, 2)),
+            1 => runtime.synchronize((
+                SessionGeneration::new(1),
+                PositionAuthorityGeneration::new(2),
+            )),
             _ => runtime.defer(2 + MAX_PENDING_INTERACTION_MILLIS),
         }
         runtime.observe_input(true, false);
@@ -1051,15 +989,4 @@ fn a_fresh_unpublished_press_still_obeys_the_half_duration_guard() {
     }
 }
 
-#[test]
-fn ordered_hitboxes_use_the_first_intersection_within_reach() {
-    let actor = actor(9, "minecraft:pig", [0.0; 3], None);
-    let boxes = [
-        ([5.0, 0.0, -2.0], [6.0, 3.0, -1.0]),
-        ([-0.5, 0.0, -9.0], [0.5, 3.0, -8.0]),
-        ([-0.5, 0.0, -4.0], [0.5, 3.0, -3.0]),
-        ([-0.5, 0.0, -2.0], [0.5, 3.0, -1.0]),
-    ];
-    let hit = pick_actor_by([&actor].into_iter(), |_| boxes, None, EYE, NORTH, 5.0).unwrap();
-    assert!((hit.distance - 2.9).abs() < 1e-6, "{}", hit.distance);
-}
+mod picking;

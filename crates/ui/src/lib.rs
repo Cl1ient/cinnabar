@@ -25,11 +25,11 @@ pub use chat::{
     validate_chat_message,
 };
 pub use geometry::{
-    DesktopGuiScale, DesktopGuiScaleChoice, DpiScale, GeometryError, SafeArea, UiPoint, UiRect,
-    UiScale, gui_scale,
+    DesktopGuiScale, DesktopGuiScaleChoice, DpiScale, GeometryError, MIN_WINDOW_LOGICAL_SIZE,
+    SafeArea, UiPoint, UiRect, UiScale, gui_scale,
 };
 pub use hud::{
-    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole,
+    BoundedStat, HudExperience, HudPlayerStatus, HudStore, HudViewNode, HudViewRole, LoadingStage,
     MAX_TOAST_RETAINED_BYTES, MAX_TOASTS, ShownToast, StandingToast, TOAST_DISPLAY_MILLIS,
     TOAST_SLIDE_IN_MILLIS, TOAST_SLIDE_OUT_MILLIS, TimedText, TitleDurations, Toast, ToastPress,
 };

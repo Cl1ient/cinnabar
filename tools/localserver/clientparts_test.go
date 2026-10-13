@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"hash/crc32"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/resource"
 
 	"github.com/hashimthearab/rust-mcbe/tools/localserver/extension"
+	"github.com/hashimthearab/rust-mcbe/tools/localserver/internal/cxbtest"
 )
 
 // extensionTestdata holds the goldens that `cinnabar-cxb write-fixtures` writes.
@@ -32,6 +34,7 @@ var extensionTestdata = filepath.Join("extension", "testdata")
 // holding one .cxb with the golden signed manifest.
 func clientPartFlags(t *testing.T, audience string) []string {
 	t.Helper()
+	t.Setenv("CINNABAR_CXB_BIN", cxbtest.Binary(t))
 	var seeds struct {
 		Server struct {
 			Seed string `json:"seed"`
@@ -55,9 +58,17 @@ func clientPartFlags(t *testing.T, audience string) []string {
 	}
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)
-	f, err := w.CreateHeader(&zip.FileHeader{Name: extension.ManifestPath, Method: zip.Store})
-	if err == nil {
-		_, err = f.Write(manifest)
+	for _, entry := range []struct {
+		name string
+		data []byte
+	}{{extension.ManifestPath, manifest}, {"component.wasm", []byte("\x00asm\x0d\x00\x01\x00")}, {"ui/terminal.json", []byte(`{"namespace":"benergistics","terminal":{"type":"panel"}}`)}} {
+		f, writeErr := w.CreateRaw(&zip.FileHeader{Name: entry.name, Method: zip.Store, CRC32: crc32.ChecksumIEEE(entry.data), CompressedSize64: uint64(len(entry.data)), UncompressedSize64: uint64(len(entry.data))})
+		if writeErr != nil {
+			t.Fatal(writeErr)
+		}
+		if _, writeErr = f.Write(entry.data); writeErr != nil {
+			t.Fatal(writeErr)
+		}
 	}
 	if err == nil {
 		err = w.Close()

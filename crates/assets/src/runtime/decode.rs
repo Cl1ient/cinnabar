@@ -9,13 +9,14 @@ use crate::{
     MATERIAL_FLAG_ALPHA_BLEND, MATERIAL_FLAG_ALPHA_CUTOUT, MAX_ANIMATION_FRAMES, MAX_ANIMATIONS,
     MAX_BIOME_NAME_BYTES, MAX_BIOME_NAMES_BYTES, MAX_BIOME_RULES, MAX_MATERIALS, MAX_MODEL_QUADS,
     MAX_MODEL_TEMPLATES, MAX_TEXTURE_LAYERS, MAX_TEXTURE_PAGES, MIP_COUNT,
-    MODEL_TEMPLATE_FLAG_COMPOUND_NEXT, MODEL_TEMPLATE_FLAG_FENCE_NETHER,
-    MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE, MODEL_TEMPLATE_FLAG_GATE_AXIS_X,
-    MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP, MODEL_TEMPLATE_FLAG_LILY_PAD,
-    MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_SNOW_LAYER, MODEL_TEMPLATE_FLAG_STAIR,
-    MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, Material, ModelQuad, ModelTemplate, NO_ANIMATION,
-    NO_MODEL_TEMPLATE, TILE_SIZE, TINT_MAP_BYTES, TINT_MAP_COUNT, TINT_MAP_SIZE, TextureArray,
-    TextureMip, TexturePage, TextureRef, TintSource, VisualKind, VisualSupport,
+    MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN, MODEL_TEMPLATE_FLAG_COMPOUND_NEXT,
+    MODEL_TEMPLATE_FLAG_FENCE_NETHER, MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE,
+    MODEL_TEMPLATE_FLAG_GATE_AXIS_X, MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP,
+    MODEL_TEMPLATE_FLAG_LILY_PAD, MODEL_TEMPLATE_FLAG_PANE, MODEL_TEMPLATE_FLAG_SNOW_LAYER,
+    MODEL_TEMPLATE_FLAG_STAIR, MODEL_TEMPLATE_FLAG_TRANSPARENT_CUBE, Material, ModelQuad,
+    ModelTemplate, NO_ANIMATION, NO_MODEL_TEMPLATE, TILE_SIZE, TINT_MAP_BYTES, TINT_MAP_COUNT,
+    TINT_MAP_SIZE, TextureArray, TextureMip, TexturePage, TextureRef, TintSource, VisualKind,
+    VisualSupport,
     biome::{BIOME_RULE_FLAGS_MASK, validate_biome_assets},
     blob::{
         ANIMATION_BYTES, BIOME_RULE_BYTES, FRAME_BYTES, HASH_BYTES, HASH_ENTRY_BYTES, HEADER_BYTES,
@@ -297,7 +298,8 @@ fn validate_fixed(
         }
         let contributor_role = ContributorRole::read(record[26])?;
         let support = VisualSupport::from_raw(record[28])?;
-        if record[29..32] != [0; 3] {
+        crate::native_material::NativeMaterialFacts::from_raw(record[29])?;
+        if record[30..32] != [0; 2] {
             return Err(invalid("visual reserved bytes are non-zero"));
         }
         if !visual_semantics_are_valid(kind, support, flags, contributor_role) {
@@ -311,6 +313,14 @@ fn validate_fixed(
         if template != NO_MODEL_TEMPLATE && compound_tails[template as usize] {
             return Err(invalid(
                 "compound continuation cannot be directly visual-referenced",
+            ));
+        }
+        if template != NO_MODEL_TEMPLATE
+            && u32_at(&sections[3][template as usize * TEMPLATE_BYTES..], 8)
+                == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+        {
+            return Err(invalid(
+                "pot-content template cannot be directly visual-referenced",
             ));
         }
         valid_optional(animation, header.counts[5], "visual animation")?;
@@ -353,7 +363,8 @@ fn validate_fixed(
                 & (MODEL_TEMPLATE_FLAG_PANE
                     | MODEL_TEMPLATE_FLAG_FENCE_WOOD
                     | MODEL_TEMPLATE_FLAG_FENCE_NETHER
-                    | MODEL_TEMPLATE_FLAG_FIRE);
+                    | MODEL_TEMPLATE_FLAG_FIRE
+                    | MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN);
             if connected_flag != 0 {
                 let Some(base_index) = connected_bases
                     .iter()
@@ -425,7 +436,26 @@ fn validate_fixed(
         }
     }
     let mut quad = 0usize;
-    for record in sections[3].as_chunks::<TEMPLATE_BYTES>().0 {
+    for (index, record) in sections[3]
+        .as_chunks::<TEMPLATE_BYTES>()
+        .0
+        .iter()
+        .enumerate()
+    {
+        if u32_at(record, 8) == crate::MODEL_TEMPLATE_FLAG_POTTED_PLANT
+            && (u32_at(record, 4) == 0
+                || sections[3]
+                    .as_chunks::<TEMPLATE_BYTES>()
+                    .0
+                    .get(index + 1)
+                    .is_none_or(|next| {
+                        !matches!(u32_at(next, 8), 0 | crate::MODEL_TEMPLATE_FLAG_BAMBOO)
+                    }))
+        {
+            return Err(invalid(
+                "pot-content template has no standalone world model",
+            ));
+        }
         if u32_at(record, 0) as usize != quad
             || u32_at(record, 4) as usize > crate::MAX_MODEL_TEMPLATE_QUADS
             || !model_template_flags_are_valid(u32_at(record, 8))
@@ -646,19 +676,33 @@ fn runtime_connected_bases(bytes: &[u8]) -> Result<Vec<(usize, u32)>, AssetError
             }
             bases.push((index, flag));
             index += 17;
+        } else if flag == MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN {
+            let Some(group) =
+                records.get(index..index + crate::BUBBLE_COLUMN_TEMPLATE_COUNT as usize)
+            else {
+                return Err(invalid("bubble column template group is truncated"));
+            };
+            if group.iter().enumerate().any(|(offset, record)| {
+                u32_at(record, 8) != flag
+                    || u32_at(record, 4) != crate::bubble_column_quad_count(offset as u32)
+            }) {
+                return Err(invalid("bubble column template group is noncanonical"));
+            }
+            bases.push((index, flag));
+            index += crate::BUBBLE_COLUMN_TEMPLATE_COUNT as usize;
         } else if flag == MODEL_TEMPLATE_FLAG_FIRE {
-            let Some(group) = records.get(index..index + crate::FIRE_TEMPLATE_COUNT as usize)
+            let Some(group) = records.get(index..index + crate::fire::FIRE_TEMPLATE_COUNT as usize)
             else {
                 return Err(invalid("fire template group is truncated"));
             };
             if group.iter().enumerate().any(|(offset, record)| {
                 u32_at(record, 8) != flag
-                    || u32_at(record, 4) != crate::fire_template_quad_count(offset as u32)
+                    || u32_at(record, 4) != crate::fire::fire_template_quad_count(offset as u32)
             }) {
                 return Err(invalid("fire template group is noncanonical"));
             }
             bases.push((index, flag));
-            index += crate::FIRE_TEMPLATE_COUNT as usize;
+            index += crate::fire::FIRE_TEMPLATE_COUNT as usize;
         } else {
             index += 1;
         }
@@ -691,6 +735,7 @@ fn decode_visuals(bytes: &[u8]) -> Result<Box<[BlockVisual]>, AssetError> {
                 *v = u32_at(r, i * 4);
             }
             Ok(BlockVisual {
+                native_material: crate::native_material::NativeMaterialFacts::from_raw(r[29])?,
                 faces,
                 flags: BlockFlags::from_bits(r[24]).expect("validated"),
                 kind: VisualKind::from_raw(r[25])?,

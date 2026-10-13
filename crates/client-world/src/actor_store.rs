@@ -31,6 +31,8 @@ pub(crate) const MAX_TRACKED_PLAYER_SKIN_BYTES: usize = MAX_PLAYER_LIST_SKIN_BYT
 const PLAYER_FLAGS_METADATA_KEY: u32 = 26;
 /// Raw server actor scale, applied independently of the visual definition's scale.
 pub const SCALE_METADATA_KEY: u32 = 38;
+/// Packed RGB color supplied by the server for casting particles.
+pub const SPELL_COLOR_METADATA_KEY: u32 = 77;
 const NAMETAG_METADATA_KEY: u32 = 4;
 pub(crate) const VARIANT_METADATA_KEY: u32 = 2;
 /// Unscaled actor collision width supplied by the server.
@@ -58,7 +60,9 @@ const ACTOR_FLAG_HAS_GRAVITY: u32 = 49;
 const ACTOR_FLAG_USES_UNIFORM_AIR_DRAG: u32 = 128;
 
 const SLEEPING_PLAYER_NETWORK_OFFSET: f32 = 0.2;
+/// A vanilla falling block's network offset, for its vanilla box height.
 const FALLING_BLOCK_NETWORK_OFFSET: f32 = 0.5;
+const FALLING_BLOCK_HEIGHT: f32 = 0.98;
 const MINECART_NETWORK_OFFSET: f32 = 0.5;
 const BOAT_NETWORK_OFFSET: f32 = 0.375;
 const DEFAULT_PRIMED_TNT_NETWORK_OFFSET: f32 = 0.49;
@@ -95,6 +99,8 @@ pub struct ActorSnapshot {
     pub spawn_revision: u64,
     pub movement_revision: u64,
     pub kind: ActorKind,
+    /// Resolved at packet admission; frame and ray paths read these numeric dispositions.
+    pub interaction_traits: assets::interactions::EntityInteractionTraits,
     pub position: [f32; 3],
     pub velocity: [f32; 3],
     pub pitch: f32,
@@ -120,6 +126,21 @@ pub struct ActorSnapshot {
 }
 
 impl ActorSnapshot {
+    /// Reads the server's packed spell RGB color as an opaque particle tint.
+    #[must_use]
+    pub fn spell_color(&self) -> [f32; 4] {
+        let rgb = match self.metadata.get(&SPELL_COLOR_METADATA_KEY) {
+            Some(ActorMetadataValue::Int(value)) => *value as u32,
+            _ => 0,
+        };
+        [
+            ((rgb >> 16) & 0xff) as f32 / 255.0,
+            ((rgb >> 8) & 0xff) as f32 / 255.0,
+            (rgb & 0xff) as f32 / 255.0,
+            1.0,
+        ]
+    }
+
     /// Whether damage or ordinary mob death applies the red actor overlay.
     #[must_use]
     pub fn hurt_overlay_active(&self) -> bool {
@@ -152,13 +173,6 @@ impl ActorSnapshot {
         self.status.native_velocity
     }
 
-    /// These actors animate their full yaw through the target-rotation queries.
-    #[must_use]
-    pub fn target_rotation_is_absolute(&self) -> bool {
-        matches!(&self.kind, ActorKind::Entity { identifier } if matches!(identifier.as_ref(),
-            "minecraft:arrow" | "minecraft:fireworks_rocket" | "minecraft:wither_skull" | "minecraft:wither_skull_dangerous"))
-    }
-
     /// The render position `alpha` of the way from the previous tick's pose to the current one,
     /// or `None` when a component is not finite.
     #[must_use]
@@ -176,11 +190,7 @@ impl ActorSnapshot {
     fn from_spawn(spawn: ActorSpawnEvent, spawn_revision: u64) -> Self {
         let terrain_interlock =
             terrain_interlock::TerrainInterlock::attached(&spawn.kind, std::time::Instant::now());
-        let mut position = spawn.position;
-        if matches!(&spawn.kind, ActorKind::Entity { identifier } if identifier.as_ref() == "minecraft:falling_block")
-        {
-            position[1] -= FALLING_BLOCK_NETWORK_OFFSET;
-        }
+        let position = spawn.position;
         let pose = ActorPose {
             position,
             pitch: spawn.pitch,
@@ -192,6 +202,7 @@ impl ActorSnapshot {
             runtime_id: spawn.runtime_id,
             spawn_revision,
             movement_revision: 0,
+            interaction_traits: assets::interactions::EntityInteractionTraits::Unresolved,
             kind: spawn.kind,
             position,
             velocity: spawn.velocity,
@@ -219,6 +230,11 @@ impl ActorSnapshot {
             dragon_animation: None,
             hitboxes: None,
         };
+        // A falling block's spawn position carries its network offset, which its box sets; the
+        // vanilla offset comes off here and `apply_metadata` rebases onto the spawn's box.
+        if snapshot.is_falling_block() {
+            snapshot.shift_poses_y(-snapshot.falling_block_network_offset());
+        }
         snapshot.apply_metadata(&spawn.metadata);
         snapshot.apply_attributes(&spawn.attributes);
         snapshot.sync_status_from_health();
@@ -248,6 +264,7 @@ impl ActorSnapshot {
             runtime_id,
             spawn_revision: revision,
             movement_revision: revision,
+            interaction_traits: assets::interactions::EntityInteractionTraits::GENERIC_MOB,
             kind: ActorKind::Player { uuid, username },
             position: feed.position,
             velocity: feed.velocity,
@@ -412,6 +429,15 @@ impl ActorSnapshot {
         position
     }
 
+    /// Native actor-state origin at supplied retained feet, preserving this class's decoded offset.
+    pub fn native_position_at(&self, mut position: [f32; 3]) -> Option<[f32; 3]> {
+        position[1] += self.network_position_offset();
+        position
+            .iter()
+            .all(|value| value.is_finite())
+            .then_some(position)
+    }
+
     /// Offset from stored collision feet to the native actor-state position.
     pub(crate) fn network_position_offset(&self) -> f32 {
         match &self.kind {
@@ -428,7 +454,7 @@ impl ActorSnapshot {
                 };
                 match path {
                     "item" => ITEM_ACTOR_NETWORK_OFFSET,
-                    "falling_block" => FALLING_BLOCK_NETWORK_OFFSET,
+                    "falling_block" => self.falling_block_network_offset(),
                     "tnt" => self.primed_tnt_network_offset(),
                     "minecart"
                     | "hopper_minecart"
@@ -501,6 +527,25 @@ impl ActorSnapshot {
         }
     }
 
+    /// A falling block's network offset follows its box as the Scale metadata sizes it: half a
+    /// block for the vanilla box, none for an empty box or a near-zero scale, so a text host
+    /// built on a falling block stays at the position its server sends.
+    fn falling_block_network_offset(&self) -> f32 {
+        let height = match self.metadata.get(&BOUNDING_BOX_HEIGHT_METADATA_KEY) {
+            Some(ActorMetadataValue::Float(height)) if height.is_finite() && *height >= 0.0 => {
+                *height
+            }
+            _ => FALLING_BLOCK_HEIGHT,
+        };
+        let offset =
+            FALLING_BLOCK_NETWORK_OFFSET * height * self.render_scale() / FALLING_BLOCK_HEIGHT;
+        if offset.is_finite() {
+            offset
+        } else {
+            FALLING_BLOCK_NETWORK_OFFSET
+        }
+    }
+
     fn primed_tnt_network_offset(&self) -> f32 {
         self.metadata
             .get(&BOUNDING_BOX_HEIGHT_METADATA_KEY)
@@ -513,7 +558,26 @@ impl ActorSnapshot {
             .unwrap_or(DEFAULT_PRIMED_TNT_NETWORK_OFFSET)
     }
 
+    fn is_falling_block(&self) -> bool {
+        matches!(&self.kind, ActorKind::Entity { identifier } if identifier.as_ref() == "minecraft:falling_block")
+    }
+
+    /// Moves every retained pose and interpolation target by `delta` blocks vertically.
+    fn shift_poses_y(&mut self, delta: f32) {
+        for position in [
+            &mut self.position,
+            &mut self.previous_pose.position,
+            &mut self.received_pose.position,
+        ] {
+            position[1] += delta;
+        }
+        self.shift_interpolation_targets_y(delta);
+    }
+
     fn apply_metadata(&mut self, metadata: &[protocol::ActorMetadata]) -> bool {
+        let falling_block_offset = self
+            .is_falling_block()
+            .then(|| self.falling_block_network_offset());
         let mut rejected = false;
         for metadata in metadata {
             if self.metadata.len() >= MAX_ACTOR_METADATA_ENTRIES
@@ -530,6 +594,14 @@ impl ActorSnapshot {
                     .apply(&metadata.value);
             }
             self.metadata.insert(metadata.key, metadata.value.clone());
+        }
+        // Stored feet stay under the unchanged network position when Scale or box height moves
+        // the offset.
+        if let Some(previous) = falling_block_offset {
+            let offset = self.falling_block_network_offset();
+            if offset != previous {
+                self.shift_poses_y(previous - offset);
+            }
         }
         let burning = self.is_on_fire();
         self.status.fire.observe(burning, self.status.age_ticks);
@@ -673,6 +745,8 @@ pub struct LocalPlayerFeed {
     /// Identifiers of the client-owned main-hand and off-hand items.
     pub main_hand: Option<std::sync::Arc<str>>,
     pub off_hand: Option<std::sync::Arc<str>>,
+    /// Numerical registry identities for the main hand and off hand; zero means empty.
+    pub held_network_ids: [i32; 2],
     /// The main-hand stack's data value.
     pub main_hand_metadata: u32,
     /// Positive server identity for the selected stack, if one is available.
@@ -727,7 +801,9 @@ pub(crate) struct ActorStore {
     actor_identifier_skips: u64,
     player_game_mode_skips: u64,
     world_default_game_mode: Option<protocol::PlayerGameMode>,
-    aim_actor_classes: HashMap<std::sync::Arc<str>, bool>,
+    entity_assets: Option<std::sync::Arc<assets::RuntimeEntityAssets>>,
+    custom_actor_traits:
+        HashMap<std::sync::Arc<str>, assets::interactions::EntityInteractionTraits>,
     actors: HashMap<u64, ActorSnapshot>,
     effect_members: effect_members::EffectMembers,
     unique_to_runtime: HashMap<i64, u64>,
@@ -743,6 +819,8 @@ pub(crate) struct ActorStore {
     remote_state_excluded_runtime_id: Option<u64>,
     /// Health admitted before the client-fed local actor is created.
     pending_local_health: Option<ActorAttribute>,
+    /// Arm swings the server sent for the local player, waiting for its swing tracker.
+    local_server_swings: u8,
     pending_local_damage: Option<local_health::PendingLocalDamage>,
     local_health_skips: u64,
     /// Server PlayerSpawn has enabled local health-drop animations in this session.
@@ -767,6 +845,7 @@ pub(crate) struct ActorStore {
     local_flying: bool,
     /// Held items of the client-fed local player, which the item store never tracks.
     local_hands: [Option<std::sync::Arc<str>>; 2],
+    local_held_network_ids: [i32; 2],
     local_main_metadata: u32,
     local_main_stack_id: Option<i32>,
     local_main_slot: u8,
@@ -779,8 +858,9 @@ pub(crate) struct ActorStore {
     camera_position: [f32; 3],
     /// Rigs outside this view hold their pose instead of animating.
     animation_view: Option<actor_animation::ActorAnimationView>,
-    /// Seat layouts for mounts whose riders stream no seat offset.
-    seat_defaults: std::sync::Arc<SeatDefaults>,
+    /// Seat descriptor per mount, for riders that stream no seat offset.
+    seat_bindings: HashMap<u64, Option<u32>>,
+    seat_bases: HashMap<std::sync::Arc<str>, Option<u32>>,
     property_registry: properties::PropertyRegistry,
     /// Latest local-player knockback `(sequence, [x, z])`, for hurt direction inference.
     local_knockback: Option<(u64, [f32; 2])>,
@@ -832,7 +912,7 @@ pub use hurt::{
 };
 pub use lightning::LightningBoltView;
 pub(crate) use placement::FLAG_BABY;
-pub use placement::{ActorFluidProbe, RideSeat, SeatDefaults, SeatRequirement};
+pub use placement::{ActorFluidProbe, RideSeat};
 pub use properties::PropertyDefault;
 pub use shadow::ActorShadowCaster;
 

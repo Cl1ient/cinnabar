@@ -1,4 +1,5 @@
 use super::*;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Exercises gameplay against explicit bounded admission outcomes.
 fn send_use(
@@ -65,19 +66,10 @@ fn a_throw_never_queues_its_swing_without_its_transaction() {
     );
     assert_eq!(ready.pending_command_count(), 2);
     assert_eq!(swings.take_started(), Some(6));
-    assert!(sent[0].contains("AnimatePacket"));
+    assert_eq!(format!("{:?}", sent[0].kind()), "AnimatePacket");
     assert_eq!(
-        summary(&sent[1]),
-        (
-            "-4".to_owned(),
-            1,
-            vec!["16".to_owned(), "15".to_owned(), "16".to_owned()],
-            vec![
-                "Some(41)".to_owned(),
-                "Some(-4)".to_owned(),
-                "Some(41)".to_owned()
-            ],
-        )
+        summary(&transaction(&sent[1])),
+        (-4, 1, vec![16, 15, 16], vec![Some(41), Some(-4), Some(41)])
     );
     assert!(
         !runtime.has_work(false),
@@ -96,9 +88,9 @@ fn a_throw_never_queues_its_swing_without_its_transaction() {
         7,
         6,
         |packets| {
-            let (id, _, sizes, ids) = summary(&wire(packets.last().unwrap()));
-            assert_eq!(id, "-6");
-            assert_eq!((sizes[0].as_str(), ids[0].as_str()), ("15", "Some(-4)"));
+            let (id, _, sizes, ids) = summary(&transaction(packets.last().unwrap()));
+            assert_eq!(id, -6);
+            assert_eq!((sizes[0], ids[0]), (15, Some(-4)));
             ready.send_inventory_packets(packets)
         },
     );
@@ -118,7 +110,7 @@ fn a_rejected_pearl_does_not_start_its_cooldown() {
     assert_eq!(runtime.cooldown_progress(cooldown, 100), 0.0);
     let (ready, _open) = AdmissionQueue::with_command_capacity(2);
     send_use(&mut runtime, &mut swings, &pearl(110), &ready);
-    assert_eq!(runtime.cooldowns, [("ender_pearl", 130)]);
+    assert_eq!(runtime.cooldowns, [(cooldown.category, 130)]);
     assert_eq!(ready.pending_command_count(), 2);
     assert_eq!(runtime.predicted.as_ref().unwrap().stack.count(), 15);
     assert_eq!(runtime.cooldown_progress(cooldown, 110), 1.0);
@@ -203,8 +195,8 @@ fn a_rejected_release_still_precedes_a_subsequent_press() {
         }
     ));
     assert_eq!(sent.len(), 2);
-    assert!(sent[0].contains("action_type: Release"));
-    assert!(sent[1].contains("ItemUseInventoryTransaction("));
+    assert_eq!(use_kind(&sent[0]), "release");
+    assert_eq!(use_kind(&sent[1]), "use");
     assert_eq!(runtime.active.as_ref().unwrap().started_tick, 111);
     assert!(!runtime.release_pending);
     let (ready, _open) = AdmissionQueue::with_command_capacity(1);
@@ -250,7 +242,7 @@ fn a_release_can_be_admitted_while_its_deferred_restart_waits_for_verification()
         6,
         |packets| {
             assert_eq!(packets.len(), 1);
-            assert!(wire(&packets[0]).contains("action_type: Release"));
+            assert_eq!(use_kind(&wire(&packets[0])), "release");
             release_queue.send_inventory_packets(packets)
         }
     ));
@@ -451,7 +443,14 @@ fn a_backpressured_throw_retries_after_its_tick_was_published() {
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let throw = item_frame(100, true, stack(4, SNOWBALL, 16), "minecraft:snowball");
-    swings.sync_ticks((1, 1), throw.tick, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        throw.tick,
+        &effects,
+    );
     runtime.observe_press(true);
     step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |packets| {
         assert_eq!(packets.len(), 2);
@@ -461,9 +460,9 @@ fn a_backpressured_throw_retries_after_its_tick_was_published() {
     assert_eq!(swings.published_progress(throw.tick).java, [0.0; 2]);
     step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |packets| {
         assert_eq!(packets.len(), 2, "the throw retry retains its swing");
-        assert_eq!(format!("{:?}", packets[0].header.id), "AnimatePacket");
+        assert_eq!(format!("{:?}", packets[0].kind()), "AnimatePacket");
         assert_eq!(
-            format!("{:?}", packets[1].header.id),
+            format!("{:?}", packets[1].kind()),
             "InventoryTransactionPacket"
         );
         Ok(())
@@ -481,7 +480,14 @@ fn a_fresh_throw_waits_for_an_unpublished_tick() {
     let mut runtime = ItemUseRuntime::default();
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     swings.published_progress(100);
     runtime.observe_press(true);
     let throw = |tick| item_frame(tick, false, stack(4, SNOWBALL, 16), "minecraft:snowball");
@@ -512,7 +518,14 @@ fn another_action_cannot_authorize_a_fresh_throw_on_a_published_tick() {
     let mut runtime = ItemUseRuntime::default();
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     let mut rejected = swings.clone();
     assert!(rejected.try_swing(100, 6));
     swings.defer_unadmitted_attempt(&rejected);
@@ -536,7 +549,14 @@ fn a_new_press_cannot_reuse_a_canceled_throw_retry() {
         runtime.synchronize(1);
         let mut swings = SwingTracker::default();
         let effects = crate::movement::LocalMovementEffectTimeline::default();
-        swings.sync_ticks((1, 1), 100, &effects);
+        swings.sync_ticks(
+            (
+                SessionGeneration::new(1),
+                PositionAuthorityGeneration::new(1),
+            ),
+            100,
+            &effects,
+        );
         let throw = item_frame(100, false, stack(4, SNOWBALL, 16), "minecraft:snowball");
         runtime.observe_press(true);
         step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |_| {
@@ -564,7 +584,14 @@ fn a_published_tick_does_not_block_a_use_without_a_swing() {
     let mut runtime = ItemUseRuntime::default();
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     swings.published_progress(100);
     runtime.observe_press(true);
     assert!(step_and_send(
@@ -589,13 +616,27 @@ fn a_position_correction_revokes_an_old_throw_retry() {
     let mut swings = SwingTracker::default();
     let effects = crate::movement::LocalMovementEffectTimeline::default();
     let throw = item_frame(100, false, stack(4, SNOWBALL, 16), "minecraft:snowball");
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     runtime.observe_press(true);
     step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |_| {
         Err(BatchSendError::Full)
     });
     swings.published_progress(100);
-    swings.sync_ticks((1, 2), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(2),
+        ),
+        100,
+        &effects,
+    );
     swings.published_progress(100);
     let mut sends = 0;
     step_and_send(&mut runtime, &mut swings, &throw, 7, 6, |_| {
@@ -682,7 +723,7 @@ fn a_use_and_release_between_ticks_send_without_waiting_for_a_tick() {
     let mut admit = |runtime: &mut ItemUseRuntime,
                      movement: &mut crate::movement::MovementTicker,
                      held,
-                     sent: &mut Vec<String>| {
+                     sent: &mut Vec<protocol::Packet>| {
         let use_frame = UseFrame {
             position: sample.position,
             ..frame(sample.tick, held)
@@ -713,7 +754,13 @@ fn a_use_and_release_between_ticks_send_without_waiting_for_a_tick() {
     assert_eq!(release.tick, sample.tick);
     admit(&mut runtime, &mut movement, false, &mut sent);
     assert_eq!(sent.len(), 2);
-    assert!(sent[1].contains("Release"), "{}", sent[1]);
+    assert!(
+        observe_transaction(&sent[1])
+            .and_then(|sent| sent.release().cloned())
+            .is_some(),
+        "{:?}",
+        sent[1]
+    );
     assert_eq!(movement.completed_tick(), completed_tick, "no tick ran");
     movement
         .enqueue_completed_physics(completed(sample.tick))

@@ -1,5 +1,10 @@
 //! Complete manifest/content verification before any component is compiled.
 
+// BEGIN GENERATED EXTENSION CONTRACT
+// Generated from crates/server-experience/schema/extension.json; do not edit.
+pub const MANIFEST_PATH: &str = "manifest.signed.json";
+// END GENERATED EXTENSION CONTRACT
+
 use crate::{
     crypto::{self, SignedDocument},
     manifest::{Manifest, PackageOffer, Scope},
@@ -12,8 +17,7 @@ use std::{
 };
 
 mod directory;
-
-pub const MANIFEST_PATH: &str = "manifest.signed.json";
+pub mod offline;
 
 #[derive(Debug)]
 pub struct VerifiedBundle {

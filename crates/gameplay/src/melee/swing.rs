@@ -1,11 +1,12 @@
 use super::{java_swing_duration, swing_duration};
 use crate::movement::{LocalMovementEffectTimeline, MAX_LOCAL_PHYSICS_TICKS_PER_FRAME};
 use actor_animation::LocalSwingProgress;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Packet admission and both animation counters on the committed local simulation clock.
 #[derive(Debug, Default, Clone)]
 pub struct SwingTracker {
-    authority: Option<(u64, u64)>,
+    authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     completed_tick: Option<u64>,
     attempted_tick: Option<u64>,
     deferred_attempt: Option<(u64, [i32; 2])>,
@@ -80,7 +81,7 @@ impl SwingTracker {
     /// Supplies each committed tick's post-expiry denominators and resets on a new movement authority.
     pub fn sync_ticks(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         completed_tick: u64,
         effects: &LocalMovementEffectTimeline,
     ) {
@@ -90,7 +91,7 @@ impl SwingTracker {
     /// Keeps an authored item swing denominator across publication and queue retry history.
     pub fn sync_ticks_for_item(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         completed_tick: u64,
         effects: &LocalMovementEffectTimeline,
         item_duration: Option<u32>,
@@ -120,7 +121,7 @@ impl SwingTracker {
     }
 
     /// Identifies the movement authority owning the current counters and retry history.
-    pub fn authority_identity(&self) -> Option<(u64, u64)> {
+    pub fn authority_identity(&self) -> Option<(SessionGeneration, PositionAuthorityGeneration)> {
         self.authority
     }
 
@@ -147,9 +148,22 @@ impl SwingTracker {
         tick: u64,
         effects: crate::movement::MiningEffects,
     ) -> bool {
+        self.try_swing_before_tick_for_item(tick, effects, None)
+    }
+
+    /// Uses the selected item's Bedrock duration while keeping the effect-based Java guard.
+    pub fn try_swing_before_tick_for_item(
+        &mut self,
+        tick: u64,
+        effects: crate::movement::MiningEffects,
+        item_duration: Option<u32>,
+    ) -> bool {
         self.try_swing_guarded(
             tick,
-            swing_duration(effects),
+            item_duration.map_or_else(
+                || swing_duration(effects),
+                |ticks| i32::try_from(ticks).unwrap_or(i32::MAX).max(1),
+            ),
             Some(java_swing_duration(effects)),
         )
     }
@@ -399,6 +413,34 @@ mod tests {
                 bedrock.published_progress(tick).bedrock,
                 "tick {tick}"
             );
+        }
+    }
+    #[test]
+    fn authored_pre_tick_swings_keep_each_effect_aware_counter_independent() {
+        for effects in [
+            MiningEffects::default(),
+            MiningEffects {
+                haste: Some(1),
+                ..Default::default()
+            },
+            MiningEffects {
+                conduit_power: Some(1),
+                ..Default::default()
+            },
+        ] {
+            let mut authored = SwingTracker::default();
+            let mut bedrock = SwingTracker::default();
+            let mut java = SwingTracker::default();
+            for tick in 1..20 {
+                assert_eq!(
+                    authored.try_swing_before_tick_for_item(tick, effects, Some(19)),
+                    bedrock.try_swing(tick, 19)
+                );
+                java.try_swing(tick, super::super::java_swing_duration(effects));
+                let progress = authored.published_progress(tick);
+                assert_eq!(progress.bedrock, bedrock.published_progress(tick).bedrock);
+                assert_eq!(progress.java, java.published_progress(tick).java);
+            }
         }
     }
 }

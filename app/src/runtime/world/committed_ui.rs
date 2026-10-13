@@ -5,6 +5,7 @@ use bevy::{
     time::Real,
 };
 use chunk_pipeline::WorldStream;
+use client_shell::ui_resources::UiRuntimeResource;
 use client_ui::block_cracks::consume_committed_block_crack;
 use client_ui::ui_runtime::{SequencedLocalAttributes, SequencedUiEvent, UiRuntime};
 use client_world::{CommittedControlEvent, CommittedUiEvent};
@@ -13,7 +14,7 @@ pub(crate) fn drain_committed_ui_before_authority(
     mut player_runtime: bevy::prelude::ResMut<client_state::PlayerRuntime>,
     mut client_world: ResMut<ClientWorld>,
     clock: Res<WorldClock>,
-    mut ui_runtime: ResMut<UiRuntime>,
+    mut ui_runtime: ResMut<UiRuntimeResource>,
     time: Res<Time<Real>>,
 ) {
     let session = clock.session_generation();
@@ -154,7 +155,7 @@ pub(crate) fn drain_committed_ui_before_authority(
                     ))
                 ) {
                     bevy::log::debug!(
-                        target: "bedrock_client::runtime::world::dimension",
+                        target: "cinnabar::runtime::world::dimension",
                         sequence,
                         transfer_active = client_world.dimension_transfer.active(),
                         "player spawn readiness received"

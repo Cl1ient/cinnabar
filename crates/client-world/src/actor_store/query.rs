@@ -146,6 +146,10 @@ impl ActorStore {
         self.items.canonicalize(stack)
     }
 
+    /// Reads the current numeric registry's intrinsic shine disposition.
+    pub(crate) fn item_glint(&self, network_id: i32) -> assets::item::glint::ItemGlint {
+        self.items.item_glint(network_id)
+    }
     pub(crate) fn item_identifier(&self, network_id: i32) -> Option<std::sync::Arc<str>> {
         self.items.identifier_for_network_id(network_id)
     }
@@ -170,8 +174,9 @@ impl ActorStore {
     pub(crate) fn get(&self, runtime_id: u64) -> Option<&ActorSnapshot> {
         self.actors.get(&runtime_id)
     }
-    pub(crate) fn item_max_use_ticks(&self, identifier: &str) -> Option<u32> {
-        self.items.max_use_ticks(identifier)
+    /// Returns numerical use admission shared by gameplay, presentation and audio.
+    pub(crate) fn item_use_profile(&self, network_id: i32) -> crate::EffectiveItemUse {
+        self.items.item_use_profile(network_id)
     }
     /// Retrieves the item's effective attack facts without guessing from its name.
     pub(crate) fn item_attack_timing(

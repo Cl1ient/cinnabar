@@ -4,16 +4,16 @@ use diagnostics::metrics::{MetricsCollector, TransparentSortMetricsSnapshot};
 use std::time::Instant;
 use {
     crate::{
-        AcceptanceExitDecision, AcceptanceRun, Phase3TerminalDrainDecision,
+        AcceptanceExitDecision, AcceptanceRun, MovementTerminalDrainDecision,
         TRANSPARENT_PRESENTATION_EXIT_GRACE,
-        phase3_evidence::{Phase3EvidenceEmitter, Phase3EvidenceIdentity},
+        movement_evidence::{MovementEvidenceEmitter, MovementEvidenceIdentity},
     },
     diagnostics::write_stdout_marker,
 };
 
 /// Immutable movement facts observed at the terminal evidence boundary.
 pub struct TerminalMovementObservation {
-    pub identity: Option<Phase3EvidenceIdentity>,
+    pub identity: Option<MovementEvidenceIdentity>,
     pub source: &'static str,
     pub physics_packet_count: u64,
     pub free_camera_packet_count: u64,
@@ -28,7 +28,7 @@ pub fn finish_acceptance_run(
     metrics: &mut MetricsCollector,
     transparent_snapshot: TransparentSortMetricsSnapshot,
     observe_terminal: impl FnOnce() -> TerminalMovementObservation,
-    evidence: &mut Phase3EvidenceEmitter,
+    evidence: &mut MovementEvidenceEmitter,
 ) -> Option<AppExit> {
     if acceptance.finished {
         return None;
@@ -46,33 +46,33 @@ pub fn finish_acceptance_run(
         return None;
     }
 
-    let phase3 = observe_terminal();
+    let terminal = observe_terminal();
     let drain_decision = if fatal {
-        Phase3TerminalDrainDecision::Drained
+        MovementTerminalDrainDecision::Drained
     } else {
-        acceptance.phase3_terminal_drain_decision(
+        acceptance.movement_terminal_drain_decision(
             now,
-            phase3
+            terminal
                 .identity
                 .as_ref()
                 .is_some_and(|identity| identity.candidate_physics()),
-            phase3.pending_count,
+            terminal.pending_count,
         )
     };
-    if drain_decision == Phase3TerminalDrainDecision::Wait {
+    if drain_decision == MovementTerminalDrainDecision::Wait {
         return None;
     }
-    let phase3_drain_timed_out = drain_decision == Phase3TerminalDrainDecision::TimedOut;
+    let movement_drain_timed_out = drain_decision == MovementTerminalDrainDecision::TimedOut;
 
     acceptance.finished = true;
-    if let Some(identity) = phase3.identity {
+    if let Some(identity) = terminal.identity {
         let markers = evidence.observe_terminal(
             identity,
-            phase3.source,
-            phase3.physics_packet_count,
-            phase3.free_camera_packet_count,
-            phase3.pending_count,
-            phase3.outbox_reconciliation,
+            terminal.source,
+            terminal.physics_packet_count,
+            terminal.free_camera_packet_count,
+            terminal.pending_count,
+            terminal.outbox_reconciliation,
         );
         let mut stdout = diagnostics::console::stdout();
         for marker in markers {
@@ -103,16 +103,16 @@ pub fn finish_acceptance_run(
             transparent_snapshot.ref_count,
         );
     }
-    if phase3_drain_timed_out {
+    if movement_drain_timed_out {
         error!(
-            "Phase 3 terminal movement acknowledgement drain timed out after {:.3}s: pending={} reconciliation={}",
+            "terminal movement acknowledgement drain timed out after {:.3}s: pending={} reconciliation={}",
             TRANSPARENT_PRESENTATION_EXIT_GRACE.as_secs_f64(),
-            phase3.pending_count,
-            phase3.outbox_reconciliation,
+            terminal.pending_count,
+            terminal.outbox_reconciliation,
         );
     }
     Some(
-        if decision.is_error() || output_failed || phase3_drain_timed_out {
+        if decision.is_error() || output_failed || movement_drain_timed_out {
             AppExit::error()
         } else {
             AppExit::Success
@@ -128,7 +128,7 @@ mod tests {
     fn terminal_observation_is_lazy_and_stop_is_requested_once() {
         let mut run = AcceptanceRun::new(None, None, false, false);
         let mut metrics = MetricsCollector::new();
-        let mut evidence = Phase3EvidenceEmitter::default();
+        let mut evidence = MovementEvidenceEmitter::default();
         assert!(
             finish_acceptance_run(
                 &mut run,

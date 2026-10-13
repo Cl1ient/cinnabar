@@ -1,4 +1,5 @@
 use crate::shader_source;
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 use bevy::{
@@ -205,7 +206,7 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
             ingress_sequence: 4,
             source_tick: None,
             movement_revision: 0,
-            pose_generation: 1,
+            pose_generation: PoseGeneration::new(1),
             layer: 0,
         },
         rig: EntityRigId(0),
@@ -225,6 +226,7 @@ fn first_generic_only_frame_prepares_after_an_empty_skin_revision() {
             back_uv: [0.0; 2],
             bone_index: 0,
             surface: Default::default(),
+            glint_origin: [0.0; 2],
         }; 3],
     );
     frame.rig.geometry_spans = Arc::from([render_model::ActorRigGeometrySpan {
@@ -435,7 +437,6 @@ fn rig_vertex_shader_stride_includes_both_uvs_without_changing_player_alpha() {
 
 #[test]
 fn native_color_mask_alpha_controls_dye_not_opacity() {
-    assert!(ACTOR_SHADER_SOURCE.contains("let color_mask_material = material_class.y != 0u;"));
     assert!(ACTOR_SHADER_SOURCE.contains("!color_mask_material && !multitexture_material &&"));
     assert!(ACTOR_SHADER_SOURCE.contains("mix(color.rgb, color.rgb * dye, color.a)"));
     assert!(ACTOR_SHADER_SOURCE.contains("color.a * change_color.a"));
@@ -487,7 +488,7 @@ fn diagnostic_body(runtime_id: u64, texture_layer: u32) -> render_model::ActorRi
                 ingress_sequence: 1,
                 source_tick: Some(1),
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: 0,
             },
             rig: render_model::EntityRigId(u32::MAX),

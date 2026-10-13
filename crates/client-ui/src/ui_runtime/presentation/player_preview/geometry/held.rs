@@ -1,6 +1,6 @@
 //! Real held-item meshes in native hand-bone frames, projected with their owner.
 
-use bevy::math::{Quat, Vec3, Vec4};
+use glam::{Quat, Vec3, Vec4};
 use render_model::{ActorVertex, RenderBoneTransform};
 use ui::{UI_STYLE_GLINT, UiBlendMode, UiMeshBatch, UiMeshVertex};
 
@@ -85,7 +85,7 @@ pub(super) fn append(
             model_light,
             overlay_color: [0.0; 4],
             style_flags: if model.source.glint {
-                UI_STYLE_GLINT
+                u16::from(UI_STYLE_GLINT)
             } else {
                 0
             },

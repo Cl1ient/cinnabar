@@ -279,7 +279,7 @@ impl VisibilityFrameProbe {
         VisibilityDiagnosticSnapshot {
             frame_generation: self.input.frame_generation,
             camera: self.camera,
-            pose_generation: self.generations.pose,
+            pose_generation: render_api::PoseGeneration::new(self.generations.pose),
             view_generation: self.generations.view,
             witness_column,
             resident_witness_subchunks: self.input.resident_mesh.column_count(witness_column),
@@ -593,10 +593,10 @@ mod tests {
             })
         );
         let shared = diagnostics.clone();
-        let before = crate::alloc_count::thread_allocations();
+        let before = test_alloc::thread_allocations();
         let first = diagnostics.graphics_adapter_ref().unwrap();
         let second = shared.graphics_adapter_ref().unwrap();
-        let allocations = crate::alloc_count::thread_allocations() - before;
+        let allocations = test_alloc::thread_allocations() - before;
         assert!(std::ptr::eq(first, second));
         assert_eq!(allocations, 0);
         assert_eq!(diagnostics.graphics_adapter(), Some(metadata));

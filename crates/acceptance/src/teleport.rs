@@ -18,13 +18,13 @@ use {
         world_ready::{SubChunkTimeoutProgress, WorldReadyWork, authoritative_received_radius},
     },
     diagnostics::{
-        PHASE0_REQUESTED_RADIUS_CHUNKS,
+        EVIDENCE_REQUESTED_RADIUS_CHUNKS,
         markers::{TELEPORT_COHORT, TELEPORT_GLOBAL_STAGE_DIAGNOSTIC},
     },
 };
 
 const TELEPORT_COHORT_PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
-const FULL_VIEW_TELEPORT_MIN_CHUNK_DELTA: u64 = (PHASE0_REQUESTED_RADIUS_CHUNKS as u64) * 2 + 1;
+const FULL_VIEW_TELEPORT_MIN_CHUNK_DELTA: u64 = (EVIDENCE_REQUESTED_RADIUS_CHUNKS as u64) * 2 + 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TeleportReadySnapshot {
@@ -314,7 +314,7 @@ impl FullViewTeleportTracker {
             && dimension == target_dimension
             && (0..2).all(|axis| {
                 i64::from(column[axis]).abs_diff(i64::from(center[axis]))
-                    <= PHASE0_REQUESTED_RADIUS_CHUNKS as u64 + 1
+                    <= EVIDENCE_REQUESTED_RADIUS_CHUNKS as u64 + 1
             })
         {
             let entry = self
@@ -378,9 +378,9 @@ impl FullViewTeleportTracker {
         if !far_enough {
             return false;
         }
-        let Some(source) = source_cohort
-            .filter(|source| source.radius > 0 && source.radius <= PHASE0_REQUESTED_RADIUS_CHUNKS)
-        else {
+        let Some(source) = source_cohort.filter(|source| {
+            source.radius > 0 && source.radius <= EVIDENCE_REQUESTED_RADIUS_CHUNKS
+        }) else {
             return false;
         };
         let target = source.publisher_geometry.map_or(
@@ -460,7 +460,7 @@ impl FullViewTeleportTracker {
                     0,
                     center[1].saturating_mul(16),
                 ],
-                (PHASE0_REQUESTED_RADIUS_CHUNKS as u32).saturating_mul(16),
+                (EVIDENCE_REQUESTED_RADIUS_CHUNKS as u32).saturating_mul(16),
             )
         });
         let capture = self.observe_ingress(

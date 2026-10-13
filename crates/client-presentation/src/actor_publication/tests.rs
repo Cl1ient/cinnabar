@@ -12,7 +12,7 @@ fn the_animation_view_admits_everything_the_render_cull_draws() {
         aspect_ratio: 16.0 / 9.0,
         ..Default::default()
     });
-    let view = super::animation_view(&camera, &projection).unwrap();
+    let view = super::views::animation_view(&camera, &projection).unwrap();
     let cull = render_model::ActorCullView {
         clip_from_world: projection.get_clip_from_view() * camera.to_matrix().inverse(),
         camera_position: camera.translation,
@@ -54,21 +54,45 @@ fn hand_progress_interpolates_the_swing_forward_and_counts_the_use() {
         arm_height,
         use_ticks,
     };
-    let hand = super::hand_progress([phase(5.0 / 6.0, 0.6, 0), phase(0.0, 1.0, 0)], None, 0.5);
+    let hand =
+        super::hand::hand_progress([phase(5.0 / 6.0, 0.6, 0), phase(0.0, 1.0, 0)], None, 0.5);
     assert!((hand.swing - 11.0 / 12.0).abs() < 1e-6);
     assert!((hand.equip - 0.8).abs() < 1e-6);
     assert_eq!(hand.consume, None);
-    let eating = super::hand_progress([phase(0.0, 1.0, 3), phase(0.0, 1.0, 4)], Some(32), 0.25);
+    let eating =
+        super::hand::hand_progress([phase(0.0, 1.0, 3), phase(0.0, 1.0, 4)], Some(32), 0.25);
     assert_eq!(eating.consume, Some((3.25, 32.0)));
-    let idle = super::hand_progress([phase(0.0, 1.0, 0), phase(0.0, 1.0, 0)], Some(32), 0.25);
+    let idle = super::hand::hand_progress([phase(0.0, 1.0, 0), phase(0.0, 1.0, 0)], Some(32), 0.25);
     assert_eq!(idle.consume, None);
+}
+
+#[test]
+fn the_first_person_eat_position_moves_forward_every_frame_across_its_ticks() {
+    let at = |elapsed, frame_alpha| actor_animation::AttachableAnimationInput {
+        use_elapsed_ticks: Some(elapsed),
+        frame_alpha,
+        ..Default::default()
+    };
+    let samples = [at(4, 0.25), at(4, 0.9), at(5, 0.1), at(5, 0.6)].map(|input| {
+        super::hand::local_consume(Some(&input), Some(32))
+            .unwrap()
+            .0
+    });
+    assert!(
+        samples.windows(2).all(|pair| pair[0] < pair[1]),
+        "{samples:?}"
+    );
+    assert_eq!(
+        super::hand::local_consume(Some(&at(40, 0.5)), Some(32)),
+        Some((32.0, 32.0))
+    );
 }
 
 // The pack's first-person arm offset sits behind the model's left side; vanilla's facing puts
 // that ahead of the view and to its right.
 #[test]
 fn first_person_arm_offset_lands_ahead_and_right_of_the_camera() {
-    let rows = super::hand_camera_from_rig(0.9375, bevy::math::Mat4::IDENTITY);
+    let rows = super::hand::hand_camera_from_rig(0.9375, bevy::math::Mat4::IDENTITY);
     let arm = [-8.5 / 16.0, 12.0 / 16.0, 12.0 / 16.0];
     let camera: [f32; 3] = std::array::from_fn(|row| {
         (0..3).map(|axis| rows[row][axis] * arm[axis]).sum::<f32>() + rows[row][3]
@@ -295,8 +319,16 @@ fn local_jump_body_tracks_camera_render_sample_in_both_third_person_views() {
                 .unwrap()
                 .interpolated_position(step.partial_tick)
                 .unwrap();
-            let mut local =
-                local_diagnostic_presentation(1, 0, LOCAL_ID, 1, actor_feet, 27.0, 13.0).unwrap();
+            let mut local = local_diagnostic_presentation(
+                1,
+                0,
+                LOCAL_ID,
+                render_api::PoseGeneration::new(1),
+                actor_feet,
+                27.0,
+                13.0,
+            )
+            .unwrap();
             // Authored nonuniform scale must survive the translation correction.
             for row in &mut local.submission.world_from_actor {
                 for (value, scale) in row[..3].iter_mut().zip([0.7, 1.2, 0.9]) {
@@ -314,7 +346,7 @@ fn local_jump_body_tracks_camera_render_sample_in_both_third_person_views() {
             raw_origin_drifted |= !view_from_world
                 .transform_point3(Vec3::from_array(actor_feet))
                 .abs_diff_eq(reference, 1e-3);
-            super::place_local_actor_at_render_feet(&mut local, feet);
+            super::bodies::place_local_actor_at_render_feet(&mut local, feet);
             let corrected_feet =
                 Vec3::from_array(local.submission.world_from_actor.map(|row| row[3]));
             assert!(
@@ -336,9 +368,16 @@ fn local_jump_body_tracks_camera_render_sample_in_both_third_person_views() {
             assert_eq!(local.authored_scale, original.authored_scale);
             assert_eq!(local.world_yaw_degrees, original.world_yaw_degrees);
             assert_eq!(local.head_over_body, original.head_over_body);
-            let remote =
-                local_diagnostic_presentation(1, 0, REMOTE_ID, 1, [6.0, 3.0, -4.0], 72.0, 0.0)
-                    .unwrap();
+            let remote = local_diagnostic_presentation(
+                1,
+                0,
+                REMOTE_ID,
+                render_api::PoseGeneration::new(1),
+                [6.0, 3.0, -4.0],
+                72.0,
+                0.0,
+            )
+            .unwrap();
             let remote_submission = remote.submission.clone();
             let batch = select_actor_presentations(LOCAL_ID, true, Some(local), [remote]);
             let selected_remote = batch
@@ -528,4 +567,295 @@ fn session_pack_glint_replaces_the_startup_glint_until_disconnect() {
     );
     assert!(restored.is_none());
     assert_eq!(glint(scene.frame().artwork_pages()), [1, 2, 3, 255]);
+}
+
+/// An active HitColor module cannot overwrite the Reach overlay on an undamaged target.
+#[test]
+fn reach_and_hurt_colors_follow_actual_damage_independently() {
+    let style = super::ActorPresentationStyle {
+        hurt_color: Some([1., 0., 0., 0.4]),
+        hurt_armor_color: Some([0.5, 0., 0., 0.4]),
+        attackable_color: Some([0., 1., 0., 0.3]),
+        attackable_actor: Some(7),
+    };
+    assert_eq!(
+        super::layers::cosmetic_overlay(&style, false, false, true, true),
+        style.attackable_color
+    );
+    assert_eq!(
+        super::layers::cosmetic_overlay(&style, true, false, true, true),
+        style.hurt_color
+    );
+    assert_eq!(
+        super::layers::cosmetic_overlay(&style, true, true, true, true),
+        style.hurt_armor_color
+    );
+    assert_eq!(
+        super::layers::cosmetic_overlay(&style, false, false, true, false),
+        None
+    );
+}
+
+/// Final styling preserves submission order and pose storage without allocating.
+#[test]
+fn styling_reuses_layer_storage_and_distinguishes_damage_from_reach() {
+    use crate::presentation::actors::{local_diagnostic_presentation, select_actor_presentations};
+    use protocol::{ActorEvent, ActorStatusEvent, ActorStatusKind, WorldEvent};
+
+    let mut stream = chunk_pipeline::WorldStream::new(protocol::WorldBootstrap {
+        dimension: 0,
+        local_player_runtime_id: 1,
+        local_player_unique_id: 1,
+        player_position: [0.0; 3],
+        world_spawn_position: [0; 3],
+        air_network_id: 0,
+        block_network_ids_are_hashes: false,
+    });
+    let physics = JumpPhysics(
+        sim::PlayerState::new(sim::Vec3::ZERO),
+        sim::MovementMode::Walking,
+    );
+    let feed = crate::actor_feed::build_local_player_feed(
+        &physics,
+        bevy::math::Quat::IDENTITY,
+        false,
+        true,
+        [1; 16],
+        || protocol::PlayerSkin::Unavailable(protocol::PlayerSkinUnavailable::InvalidDimensions),
+        client_world::LocalItemUse::Unpredicted,
+    )
+    .unwrap();
+    stream.sync_local_player_pose(&feed);
+    let local = local_diagnostic_presentation(
+        1,
+        0,
+        1,
+        render_api::PoseGeneration::new(1),
+        [0.0; 3],
+        0.0,
+        0.0,
+    )
+    .unwrap();
+    let mut batch = select_actor_presentations(1, true, Some(local), []);
+    let mut armor = batch.submissions[0].clone();
+    armor.input.identity.layer = crate::presentation::equipment::ELYTRA_LAYER;
+    let mut cape = batch.submissions[0].clone();
+    cape.input.identity.layer = crate::presentation::cape::ACTOR_LAYER_CAPE;
+    batch.submissions.extend([armor, cape]);
+    let style = super::ActorPresentationStyle {
+        hurt_color: Some([1.0, 0.0, 0.0, 0.5]),
+        hurt_armor_color: Some([0.0, 0.0, 1.0, 0.5]),
+        attackable_actor: Some(1),
+        attackable_color: Some([0.0, 1.0, 0.0, 0.5]),
+    };
+    let original = batch.submissions.clone();
+    let (storage, capacity) = (batch.submissions.as_ptr(), batch.submissions.capacity());
+    for hurt in [false, true] {
+        batch.submissions.clone_from(&original);
+        if hurt {
+            stream
+                .submit(
+                    1,
+                    WorldEvent::Actor(ActorEvent::Status(ActorStatusEvent {
+                        runtime_id: 1,
+                        kind: ActorStatusKind::Hurt,
+                        data: 0,
+                    })),
+                )
+                .unwrap();
+            assert!(stream.authority().actor(1).unwrap().hurt_overlay_active());
+            batch.submissions[0].overlay_rgba8 =
+                render_model::pack_overlay_rgba8([1.0, 0.0, 0.0, 0.5]);
+        }
+        let (_, allocations) = test_alloc::count(|| {
+            super::layers::apply_style_and_visibility(&mut batch, Some(&stream), Some(&style))
+        });
+        assert_eq!(allocations, 0);
+        assert_eq!(
+            (batch.submissions.as_ptr(), batch.submissions.capacity()),
+            (storage, capacity)
+        );
+        for (index, submission) in batch.submissions.iter().enumerate() {
+            let color = if hurt {
+                [style.hurt_color, style.hurt_armor_color, None][index]
+            } else {
+                style.attackable_color
+            };
+            let mut expected = original[index].clone();
+            expected.overlay_rgba8 = color.map_or(0, render_model::pack_overlay_rgba8);
+            assert_eq!(submission, &expected);
+            assert!(Arc::ptr_eq(
+                &submission.input.current_bones,
+                &original[index].input.current_bones
+            ));
+            assert!(Arc::ptr_eq(
+                &submission.input.previous_bones,
+                &original[index].input.previous_bones
+            ));
+        }
+    }
+}
+
+/// A server pack that replaces only the player model still carries held items and armour.
+#[test]
+fn player_model_from_an_attachable_free_pack_keeps_held_items() {
+    let png = {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(64, 64, image::Rgba([90, 120, 200, 255]))
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        bytes.into_inner()
+    };
+    let entity = |identifier: &str, geometry: &str, item_bone: bool| -> Vec<(Box<str>, Vec<u8>)> {
+        let item_bone = if item_bone {
+            r#",{"name":"rightItem","parent":"rightArm","pivot":[-6,15,1]}"#
+        } else {
+            ""
+        };
+        vec![
+            (
+                format!("entity/{geometry}.json").into(),
+                format!(
+                    r#"{{"format_version":"1.10.0","minecraft:client_entity":{{"description":{{"identifier":"{identifier}","materials":{{"default":"entity"}},"textures":{{"default":"textures/entity/{geometry}"}},"geometry":{{"default":"geometry.{geometry}"}},"render_controllers":["controller.render.{geometry}"]}}}}}}"#
+                )
+                .into_bytes(),
+            ),
+            (
+                format!("models/entity/{geometry}.geo.json").into(),
+                format!(
+                    r#"{{"format_version":"1.12.0","minecraft:geometry":[{{"description":{{"identifier":"geometry.{geometry}","texture_width":64,"texture_height":64}},"bones":[{{"name":"body","pivot":[0,24,0],"cubes":[{{"origin":[-4,12,-2],"size":[8,12,4],"uv":[16,16]}}]}},{{"name":"rightArm","parent":"body","pivot":[-5,22,0],"cubes":[{{"origin":[-8,12,-2],"size":[4,12,4],"uv":[40,16]}}]}}{item_bone}]}}]}}"#
+                )
+                .into_bytes(),
+            ),
+            (
+                format!("render_controllers/{geometry}.json").into(),
+                format!(
+                    r#"{{"format_version":"1.8.0","render_controllers":{{"controller.render.{geometry}":{{"geometry":"Geometry.default","materials":[{{"*":"Material.default"}}],"textures":["Texture.default"]}}}}}}"#
+                )
+                .into_bytes(),
+            ),
+            (format!("textures/entity/{geometry}.png").into(), png.clone()),
+        ]
+    };
+    let compile = |files| {
+        pack_compiler::compile_actor_pack(files)
+            .unwrap()
+            .expect("pack compiles")
+    };
+    // Startup entities without the pack's bones, so only the pack's model can carry the item.
+    let startup = Arc::new(
+        assets::RuntimeEntityAssets::from_compiled(
+            compile(entity("test:startup", "startup", false)).entities,
+        )
+        .unwrap(),
+    );
+    let compiled = compile(entity("minecraft:player", "pack_player", true));
+    assert!(compiled.equipment_bindings.is_empty());
+    let pack = Arc::new(assets::SessionEntityPack {
+        assets: Arc::new(assets::RuntimeEntityAssets::from_compiled(compiled.entities).unwrap()),
+        textures: compiled.textures.into(),
+        bindings: compiled.bindings.into(),
+        equipment: None,
+    });
+    let sprite = assets::IconSprite {
+        width: 16,
+        height: 16,
+        rgba8: vec![255; 16 * 16 * 4].into(),
+    };
+    let icons = assets::RuntimeIconCatalog::decode(
+        &assets::encode_icon_catalog(
+            [1; 32],
+            &[sprite],
+            &[assets::IconEntry {
+                identifier: "minecraft:apple".into(),
+                metadata: 0,
+                sprite: 0,
+            }],
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let (mut equipment, startup_pages, _) = EquipmentRuntime::build(
+        startup,
+        None,
+        Arc::new(icons),
+        None,
+        None,
+        render_model::ActorArtworkPages::default(),
+    );
+    let resources =
+        crate::prepared_actor_artwork::session_resources(&startup_pages, Some(&pack), None);
+    let mut scene = render_scene::ActorRenderScene::default();
+    let mut ready = super::SessionGeometryReady::default();
+    super::apply_session_pack(
+        &mut scene,
+        &resources,
+        Some(&pack),
+        None,
+        &mut ready,
+        Some(&mut equipment),
+        None,
+    );
+    let binding = 0;
+    let geometry = pack.assets.rig_geometries()[binding].geometry;
+    let bones = render_model::geometry_bone_names(&pack.assets, geometry as usize).unwrap();
+    let pose: Arc<[render_model::RenderBoneTransform]> = bones
+        .iter()
+        .map(|_| render_model::RenderBoneTransform {
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            translation_scale: [0.0, 0.0, 0.0, 1.0],
+            axis_scale: render_model::UNIT_AXIS_SCALE,
+        })
+        .collect();
+    let body = render_model::ActorRigSubmission {
+        material: Default::default(),
+        culling_bounds: Default::default(),
+        input: render_model::ActorRigRenderInput {
+            identity: render_model::ActorRenderIdentity {
+                session_id: 1,
+                dimension: 0,
+                runtime_id: 42,
+                spawn_revision: 1,
+                ingress_sequence: 1,
+                source_tick: None,
+                movement_revision: 0,
+                pose_generation: render_api::PoseGeneration::new(0),
+                layer: render_model::ACTOR_LAYER_BODY,
+            },
+            rig: render_model::pack_rig_id(binding as u32),
+            previous_bones: Arc::clone(&pose),
+            current_bones: pose,
+            completed_tick: 0,
+            reset_generation: 0,
+        },
+        world_from_actor: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ],
+        texture_layer: 0,
+        route: render_model::ActorRigRoute::Compiled,
+        tint: 0,
+        uv_anim: render_model::IDENTITY_UV_ANIM,
+        light: 0,
+        overlay_rgba8: 0,
+    };
+    let input = crate::presentation::equipment::ActorEquipmentInput {
+        main: Some(crate::presentation::equipment::WornItem {
+            use_facts: client_world::EffectiveItemUse::default(),
+            grip: assets::item::grip::builtin_item_grip("minecraft:apple"),
+            identifier: Arc::from("minecraft:apple"),
+            metadata: 0,
+            damage: None,
+            kind: crate::presentation::equipment::HeldKind::Sprite,
+            dye_rgb: None,
+            enchanted: false,
+        }),
+        ..Default::default()
+    };
+    assert_eq!(
+        equipment.layers_for(&body, &input, None).len(),
+        1,
+        "the pack's player model must carry the held item"
+    );
 }

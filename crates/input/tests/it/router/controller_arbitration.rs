@@ -126,7 +126,7 @@ fn quarantined_controller_axis_requires_deadzone_neutrality_across_sign_change()
         .unwrap();
     assert_eq!(router.finalize().unwrap().movement, [1.0, 0.0]);
 
-    router.replace_authority(NonZeroU64::new(2).unwrap());
+    router.replace_authority(InputAuthorityGeneration::new(NonZeroU64::new(2).unwrap()));
     router
         .route(DeviceFrame {
             controllers: vec![positive],
@@ -389,7 +389,7 @@ fn authority_quarantine_uses_merged_multi_controller_radial_deadzone() {
     assert!(held.movement[0] > 0.0);
     assert!(held.movement[1] > 0.0);
 
-    router.replace_authority(NonZeroU64::new(2).unwrap());
+    router.replace_authority(InputAuthorityGeneration::new(NonZeroU64::new(2).unwrap()));
     router
         .route(DeviceFrame {
             controllers: controllers.clone(),

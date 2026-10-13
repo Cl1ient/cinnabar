@@ -314,7 +314,7 @@ app/src/
 
 Runtime modules own Bevy system wiring and normal client behavior. Acceptance modules own every
 acceptance-only tracker, deterministic proof constructor, completion decision, and
-`RUST_MCBE_*` marker string. The existing `metrics.rs` and `network.rs` split along these owners
+`CINNABAR_*` marker string. The existing `metrics.rs` and `network.rs` split along these owners
 rather than becoming generic `helpers` modules.
 
 Rust `acceptance::markers` and PowerShell `Markers.ps1` form one cross-language protocol. A
@@ -354,7 +354,7 @@ scripts/acceptance/
 ```
 
 The fixed order is explicit and tested. Libraries do not execute main-flow behavior when loaded.
-The existing `RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY` seam remains functional.
+The existing `CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY` seam remains functional.
 
 Before splitting the monolith, add `Get-AcceptanceCompositeSource`, which returns entry-script and
 library text in canonical load order. Raw source-order tests migrate to that helper while the

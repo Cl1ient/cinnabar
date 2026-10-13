@@ -129,7 +129,7 @@ use {
         orient_acceptance_camera, orient_mutation_camera,
     },
     acceptance::{
-        AcceptanceExitDecision, Phase3TerminalDrainDecision, TRANSPARENT_PRESENTATION_EXIT_GRACE,
+        AcceptanceExitDecision, MovementTerminalDrainDecision, TRANSPARENT_PRESENTATION_EXIT_GRACE,
     },
 };
 
@@ -306,7 +306,6 @@ fn binding_teleport_completion(
 pub(crate) mod actor_frame_allocations;
 mod actor_pack_publication;
 pub(crate) mod actor_rest_presentation;
-pub(crate) mod alloc_count;
 mod audio;
 mod audio_camera;
 mod camera;
@@ -314,6 +313,7 @@ mod camera_controls;
 mod cohort_epoch;
 mod core;
 
+mod actor_presentation;
 mod crafting_authority_schedule;
 mod finish;
 #[cfg(feature = "reports")]
@@ -328,10 +328,9 @@ mod inventory_schedule;
 mod inventory_secondary_input;
 mod menu_scene;
 mod pack_entity_metadata;
-mod phase2_evidence;
-mod phase4_presentation;
 mod player_animation;
 mod publication;
+mod publication_evidence;
 mod runtime_metrics;
 
 mod teleport;
@@ -347,7 +346,7 @@ pub(crate) fn with_ui_player<T>(
     app.world_mut()
         .resource_scope(|world, mut player: bevy::prelude::Mut<PlayerRuntime>| {
             command(
-                &mut world.resource_mut::<client_ui::ui_runtime::UiRuntime>(),
+                &mut world.resource_mut::<client_shell::ui_resources::UiRuntimeResource>(),
                 &mut player,
             )
         })

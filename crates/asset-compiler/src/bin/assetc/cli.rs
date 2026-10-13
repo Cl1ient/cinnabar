@@ -47,6 +47,9 @@ pub(super) enum Command {
         /// Root of the pinned vanilla resource pack.
         #[arg(long)]
         pack: PathBuf,
+        /// Behavior definitions for compiled seats; absence leaves explicit unresolved entries.
+        #[arg(long)]
+        behavior_pack: Option<PathBuf>,
         /// Tracked manifest that pins the local resource-pack source.
         #[arg(long)]
         source_manifest: PathBuf,
@@ -105,6 +108,13 @@ pub(super) enum Command {
     StarterSkinAssets {
         #[arg(long)]
         pack: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Compile the shipped original OreUI artwork named by its source manifest.
+    OreuiIconsAssets {
+        #[arg(long)]
+        source_manifest: PathBuf,
         #[arg(long)]
         out: PathBuf,
     },
@@ -181,6 +191,9 @@ pub(super) enum Command {
     ActorAssets {
         #[arg(long)]
         pack: PathBuf,
+        /// Behavior definitions used by the matching entity carrier's compiled seats.
+        #[arg(long)]
+        behavior_pack: Option<PathBuf>,
         #[arg(long)]
         source_manifest: PathBuf,
         #[arg(long)]
@@ -279,10 +292,10 @@ pub(super) enum Command {
         /// Tracked manifest that pins the local resource-pack source.
         #[arg(long)]
         source_manifest: PathBuf,
-        /// BREG1003 registry exported by tools/registrygen.
+        /// Block registry exported by tools/registrygen.
         #[arg(long)]
         registry: PathBuf,
-        /// LREG1001 state light metadata bound to the exact BREG1003 input.
+        /// LREG1001 state light metadata bound to the exact block registry input.
         #[arg(long)]
         light_registry: PathBuf,
         /// BIOREG01 registry exported by tools/registrygen.
@@ -338,6 +351,12 @@ pub(super) enum Command {
         accept_eula: bool,
         #[arg(long)]
         clouds_override: Option<PathBuf>,
+    },
+    /// Print every checkout-relative file `prepare --kit` reads; installers stage exactly these.
+    KitFiles {
+        /// Checkout the tracked inputs resolve against.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
     },
     /// Download (when missing), verify and unpack the pinned sample pack below `.local/assets`.
     VanillaPack {

@@ -42,7 +42,8 @@ fn metadata_variants_get_distinct_uvs_and_large_catalogs_grow_the_page() {
 #[test]
 fn block_sheet_items_draw_the_gui_cube_over_their_thumbnail() {
     use ui::{UiNode, UiNodeId, UiPoint, UiRect, UiVisual};
-    let mut presentation = UiPresentationRuntime::new(super::super::tests::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     presentation.gui_models.enabled = true;
     let thumbnail = |identifier: &str| SessionIcon {
         identifier: Arc::from(identifier),
@@ -143,7 +144,7 @@ fn large_session_icons_install_without_blocking_later_server_ui_textures() {
         vec![Some(protocol::FormButtonImage::Path(path.into()))],
     );
     let nodes = pack_harness::render(&mut presentation, &runtime, [1280, 720], 1.0);
-    let server_page = presentation.textures.dynamic_start() + dynamic_textures::SERVER_UI_PAGE;
+    let server_page = presentation.textures.dynamic_start() + ui_engine::pages::SERVER_UI_PAGE;
     let uv = nodes
         .iter()
         .find_map(|node| match node.visual() {
@@ -164,35 +165,50 @@ fn large_session_icons_install_without_blocking_later_server_ui_textures() {
 }
 
 #[test]
-fn stack_icon_identity_retains_loaded_projectile_and_local_frame_override() {
-    for projectile in ["minecraft:arrow", "minecraft:firework_rocket"] {
+fn stack_icon_identity_retains_admitted_roles_and_local_frame_override() {
+    use assets::item_use::{ItemProjectileRole as Projectile, ItemUseAnimation as Animation};
+    for projectile in [Projectile::Arrow, Projectile::Firework] {
         let frame = inventory::crossbow_animation_frame(None, 0, Some(projectile), false);
         assert_eq!(
-            UiPresentationRuntime::item_icon_key("minecraft:crossbow", 73, Some(projectile), None),
+            UiPresentationRuntime::item_icon_key(
+                "fixture:display",
+                73,
+                Animation::Crossbow,
+                projectile,
+                None
+            ),
             ("minecraft:crossbow_pulling", frame - 1),
         );
         assert_eq!(
             UiPresentationRuntime::item_icon_key(
-                "minecraft:crossbow",
+                "fixture:display",
                 73,
-                Some(projectile),
+                Animation::Crossbow,
+                projectile,
                 Some(0)
             ),
-            ("minecraft:crossbow", 73),
+            ("fixture:display", 73),
         );
     }
     assert_eq!(
-        UiPresentationRuntime::item_icon_key("minecraft:crossbow", 73, None, None),
+        UiPresentationRuntime::item_icon_key(
+            "minecraft:crossbow",
+            73,
+            Animation::Crossbow,
+            Projectile::None,
+            None
+        ),
         ("minecraft:crossbow", 73),
     );
     assert_eq!(
         UiPresentationRuntime::item_icon_key(
-            "minecraft:stone",
+            "minecraft:crossbow",
             2,
-            Some("minecraft:arrow"),
+            Animation::None,
+            Projectile::Arrow,
             Some(1)
         ),
-        ("minecraft:stone", 2),
+        ("minecraft:crossbow", 2),
     );
 }
 
@@ -200,7 +216,8 @@ fn stack_icon_identity_retains_loaded_projectile_and_local_frame_override() {
 // the same placements an inline pack makes once the page lands.
 #[test]
 fn a_large_icon_set_packs_off_the_frame() {
-    let mut presentation = UiPresentationRuntime::new(super::super::tests::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let small = Arc::new(SessionIcons {
         icons: vec![sprite(0)],
         ..Default::default()
@@ -229,10 +246,110 @@ fn a_large_icon_set_packs_off_the_frame() {
         &large
     ));
     assert_eq!(PACKS.with(std::cell::Cell::get), packs);
-    let page = (presentation.textures.dynamic_start() + dynamic_textures::SESSION_ICON_PAGE) as u16;
+    let page = (presentation.textures.dynamic_start() + ui_engine::pages::SESSION_ICON_PAGE) as u16;
     let expected = pack(&large, page).unwrap();
     assert_eq!(presentation.session_icons.refs, expected.refs);
     assert_eq!(presentation.session_icons.page, Some(expected.page));
+}
+
+#[test]
+fn a_wide_short_hd_icon_packs_on_the_worker() {
+    let width = 2048;
+    let height = 16;
+    let icons = Arc::new(SessionIcons {
+        icons: vec![SessionIcon {
+            identifier: Arc::from("test:wide_hd"),
+            metadata: 0,
+            width,
+            height,
+            rgba8: vec![73; (width * height * 4) as usize].into(),
+        }],
+        ..Default::default()
+    });
+    assert!(packed_texels(&icons) < MAX_INLINE_PACK_TEXELS);
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    let packs = PACKS.with(std::cell::Cell::get);
+    observe(&mut presentation, Some(&icons));
+    assert_eq!(
+        PACKS.with(std::cell::Cell::get),
+        packs,
+        "no page is packed on the frame"
+    );
+    install_landed(&mut presentation, &icons);
+    assert_eq!(PACKS.with(std::cell::Cell::get), packs);
+    let icon = presentation.item_icon("test:wide_hd", 0).unwrap();
+    let page = &presentation.textures.pages()[usize::from(icon.page)];
+    let side = (width + GUTTER * 2).next_power_of_two();
+    assert_eq!(page.dimensions(), [side; 2]);
+    assert_eq!(
+        [
+            u32::from(icon.uv[2] - icon.uv[0]),
+            u32::from(icon.uv[3] - icon.uv[1])
+        ],
+        [width, height]
+    );
+    let pixel = ((u32::from(icon.uv[1]) * side + u32::from(icon.uv[0])) * 4) as usize;
+    assert_eq!(&page.pixels()[pixel..pixel + 4], &[73; 4]);
+    let generation = presentation.session_icon_generation();
+    let textures = Arc::clone(&presentation.textures);
+    observe(&mut presentation, Some(&icons));
+    assert_eq!(presentation.session_icon_generation(), generation);
+    assert!(Arc::ptr_eq(&presentation.textures, &textures));
+    assert_eq!(PACKS.with(std::cell::Cell::get), packs);
+}
+
+#[test]
+fn shelf_growth_beyond_the_inline_page_packs_on_the_worker() {
+    let icons = Arc::new(SessionIcons {
+        icons: (0..200).map(sprite).collect(),
+        ..Default::default()
+    });
+    assert!(packed_texels(&icons) <= MAX_INLINE_PACK_TEXELS);
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    let packs = PACKS.with(std::cell::Cell::get);
+    install_landed(&mut presentation, &icons);
+    assert_eq!(
+        PACKS.with(std::cell::Cell::get),
+        packs,
+        "page growth runs off the frame"
+    );
+    assert_eq!(
+        presentation
+            .session_icons
+            .page
+            .as_ref()
+            .unwrap()
+            .dimensions(),
+        [MIN_PAGE_SIDE * 2; 2]
+    );
+    assert_eq!(
+        presentation.session_icons.refs["test:variant"].len(),
+        icons.icons.len()
+    );
+}
+
+#[test]
+fn a_small_icon_still_packs_inline_within_the_allocated_page_limit() {
+    let icons = Arc::new(SessionIcons {
+        icons: vec![sprite(0)],
+        ..Default::default()
+    });
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    let packs = PACKS.with(std::cell::Cell::get);
+    observe(&mut presentation, Some(&icons));
+    assert_eq!(PACKS.with(std::cell::Cell::get), packs + 1);
+    assert_eq!(
+        presentation
+            .session_icons
+            .page
+            .as_ref()
+            .unwrap()
+            .dimensions(),
+        [MIN_PAGE_SIDE; 2]
+    );
 }
 
 #[test]
@@ -265,4 +382,67 @@ fn review_oversized_icons_are_rejected_before_gutter_arithmetic() {
     let refs = pack(&icons, 7).unwrap().refs;
     assert!(refs["test:variant"].contains_key(&0));
     assert!(!refs["test:variant"].contains_key(&1));
+}
+
+#[test]
+fn hd_icon_pixels_reach_inventory_and_world_sprite_consumers() {
+    let width = 512;
+    let height = 128;
+    let pixels = (0..width * height)
+        .flat_map(|index| {
+            [
+                if index % 2 == 0 { 255 } else { 0 },
+                (index / width) as u8,
+                91,
+                255,
+            ]
+        })
+        .collect::<Vec<_>>();
+    let icons = Arc::new(SessionIcons {
+        icons: vec![SessionIcon {
+            identifier: Arc::from("test:hd"),
+            metadata: 7,
+            width,
+            height,
+            rgba8: pixels.clone().into(),
+        }],
+        ..Default::default()
+    });
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
+    install_landed(&mut presentation, &icons);
+    let icon = presentation.item_icon("test:hd", 7).unwrap();
+    assert_eq!(
+        [
+            u32::from(icon.uv[2] - icon.uv[0]),
+            u32::from(icon.uv[3] - icon.uv[1])
+        ],
+        [width, height]
+    );
+    let sprite = presentation
+        .item_sprite("test:hd", 7, device_policy().max_side())
+        .unwrap();
+    assert_eq!([sprite.width, sprite.height], [width, height]);
+    assert_eq!(sprite.rgba8, pixels);
+}
+
+#[test]
+fn wide_short_hd_icons_grow_the_page_for_their_width() {
+    let icon = SessionIcon {
+        identifier: Arc::from("test:wide"),
+        metadata: 0,
+        width: 512,
+        height: 8,
+        rgba8: vec![255; 512 * 8 * 4].into(),
+    };
+    let packed = pack(
+        &SessionIcons {
+            icons: vec![icon],
+            ..Default::default()
+        },
+        0,
+    )
+    .unwrap();
+    assert!(packed.page.dimensions()[0] >= 512 + GUTTER * 2);
+    assert!(packed.refs.contains_key("test:wide"));
 }

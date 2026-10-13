@@ -158,7 +158,7 @@ fn reanchor_into_solid_probes_before_first_sample() {
         8,
         Some(evidence_context()),
         |identity, _packet| {
-            sent.push(identity.tick);
+            sent.push(identity.tick.get());
             Ok::<_, ()>(())
         },
     )
@@ -203,7 +203,7 @@ fn unresolvable_embedment_streams_driftless_instead_of_freezing() {
         16,
         Some(evidence_context()),
         |identity, _packet| {
-            sent.push(identity.tick);
+            sent.push(identity.tick.get());
             Ok::<_, ()>(())
         },
     )
@@ -424,7 +424,7 @@ fn transient_collision_unavailability_keeps_todays_blocked_behavior() {
 }
 
 // ---------------------------------------------------------------------------
-// Failure-evidence markers (RUST_MCBE_ANCHOR_PROBE family).
+// Failure-evidence markers (CINNABAR_ANCHOR_PROBE family).
 //
 // Live third-party evidence (2026-08-25) could not answer WHICH blocks seal
 // an unescapable spawn pocket after two embedded-anchor holds failed open.

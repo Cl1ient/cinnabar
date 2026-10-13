@@ -250,20 +250,46 @@ fn head_target_yaw_is_relative_to_the_body_and_wrapped() {
 }
 
 #[test]
-fn arrow_target_rotation_is_absolute_and_does_not_follow_a_mob_body() {
+fn placement_frame_controls_target_rotation_independently_from_display_identity() {
     let mut arrow = actor_with_metadata(HashMap::new());
     arrow.kind = ActorKind::Entity {
         identifier: "minecraft:arrow".into(),
     };
     let input = ActorTickInput {
+        placement_frame: assets::placement::builtin_placement_frame("minecraft:arrow"),
         yaw: 150.0,
-        head_yaw: -20.0,
+        head_yaw: 10.0,
         body_yaw: 70.0,
         pitch: -35.0,
         ..ActorTickInput::default()
     };
     assert_eq!(read(&arrow, &input, 0, "query.target_y_rotation"), 150.0);
     assert_eq!(read(&arrow, &input, 0, "query.target_x_rotation"), -35.0);
+    arrow.kind = ActorKind::Entity {
+        identifier: "fixture:display".into(),
+    };
+    assert_eq!(read(&arrow, &input, 0, "query.target_y_rotation"), 150.0);
+    let unresolved = ActorTickInput {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
+        ..input
+    };
+    assert_eq!(
+        read(&arrow, &unresolved, 0, "query.target_y_rotation"),
+        -60.0
+    );
+}
+
+/// The first presented input keeps the rig's frame before any motion tick refreshes it.
+#[test]
+fn seeded_presentation_input_keeps_the_rig_placement_frame() {
+    let assets = crate::test_support::counting_random_assets();
+    let layout = VariableLayout::new(&assets);
+    let actor = actor_with_metadata(HashMap::new());
+    let mut state = resolve_binding(&assets, &layout, &actor, 0, 0).unwrap();
+    let frame = assets::placement::builtin_placement_frame("minecraft:arrow");
+    state.placement_frame = frame;
+    tick::seed_presentation_input(&mut state, &actor, &ActorTickContext::default());
+    assert_eq!(state.history.back().unwrap().placement_frame, frame);
 }
 
 #[test]
@@ -421,6 +447,68 @@ fn is_first_person_variable_tracks_the_local_camera_context() {
         &motion,
     );
     assert_eq!(variables.number_at(0), Some(0.0));
+}
+
+#[test]
+fn eating_raises_the_arm_then_bobs_and_other_held_items_stay_lowered() {
+    use assets::item_use::ItemConsumption;
+
+    let engine = EngineSlots {
+        use_item_startup_progress: Some(0),
+        use_item_interval_progress: Some(1),
+        ..EngineSlots::default()
+    };
+    let actor = actor_with_metadata(HashMap::new());
+    let motion = MotionState::default();
+    let holding = |identifier: &str, consumption| ActorTickContext {
+        main_hand: Some(identifier.into()),
+        main_hand_consumption: consumption,
+        ..ActorTickContext::default()
+    };
+    let progress = |context: &ActorTickContext, item_use_ticks: u32| {
+        let mut variables = MolangVariables::slots(2);
+        let input = ActorTickInput {
+            item_use_ticks,
+            ..ActorTickInput::default()
+        };
+        tick::apply_engine_variables(&engine, &mut variables, &actor, context, &input, &motion);
+        [
+            variables.number_at(0).unwrap(),
+            variables.number_at(1).unwrap(),
+        ]
+    };
+    let apple = holding("minecraft:golden_apple", ItemConsumption::Eat);
+    assert_eq!(progress(&apple, 0), [0.0, 0.0]);
+    assert!(progress(&apple, 2)[0] > 0.0 && progress(&apple, 2)[0] < 1.0);
+    let raised: Vec<_> = (4..=12).map(|ticks| progress(&apple, ticks)).collect();
+    assert!(raised.iter().all(|[startup, _]| *startup == 1.0));
+    assert!(raised.iter().any(|[_, interval]| *interval > 0.5));
+    assert!(raised.iter().any(|[_, interval]| *interval == 0.0));
+    assert_eq!(
+        progress(&holding("minecraft:bow", ItemConsumption::None), 8),
+        [0.0, 0.0]
+    );
+    assert_eq!(
+        progress(&holding("minecraft:golden_apple", ItemConsumption::None), 8),
+        [0.0, 0.0]
+    );
+    assert_eq!(
+        progress(
+            &holding("minecraft:golden_apple", ItemConsumption::Unresolved),
+            8
+        ),
+        [0.0, 0.0]
+    );
+    for consumption in [
+        ItemConsumption::Eat,
+        ItemConsumption::Drink,
+        ItemConsumption::Honey,
+    ] {
+        assert_eq!(
+            progress(&holding("fixture:custom_consumable", consumption), 8),
+            progress(&apple, 8)
+        );
+    }
 }
 
 #[test]
@@ -889,6 +977,7 @@ fn arrow_target_yaw_uses_interpolated_absolute_rotation_not_the_latest_packet() 
     };
     actor.yaw = 135.0;
     let mut input = ActorTickInput {
+        placement_frame: assets::placement::builtin_placement_frame("minecraft:arrow"),
         yaw: 135.0,
         body_yaw: 25.0,
         head_yaw: -40.0,

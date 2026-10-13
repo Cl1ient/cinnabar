@@ -169,7 +169,7 @@ fn nonempty_production_handoff_preserves_selected_metadata() {
 fn required_plaintext_stack_with_advertised_keys_applies_every_layer() {
     let top = Uuid::from_u128(2);
     let archives =
-        [(PACK_ID, b"lower".as_slice()), (top, b"upper".as_slice())].map(|(id, text)| {
+        [(top, b"upper".as_slice()), (PACK_ID, b"lower".as_slice())].map(|(id, text)| {
             ResourcePackArchive::with_content_key(
                 id,
                 "1.2.3".into(),
@@ -223,8 +223,8 @@ fn plaintext_key_advertisement_still_rejects_invalid_key_lengths() {
 fn required_stack_with_undeclared_subpack_labels_keeps_root_layers() {
     let upper = Uuid::from_u128(2);
     let archives = [
-        (PACK_ID, "Common assets", b"lower".as_slice()),
         (upper, "Server UI", b"upper".as_slice()),
+        (PACK_ID, "Common assets", b"lower".as_slice()),
     ]
     .map(|(id, selected, text)| {
         ResourcePackArchive::unencrypted(
@@ -290,11 +290,12 @@ fn stack_bounds_drop_only_the_packs_beyond_them() {
     );
 }
 
-// The last stack entry wins an overlapping path; merges see it last.
+// The first server entry wins an overlapping path; merges apply it last.
 #[test]
-fn last_stack_entry_has_the_highest_precedence() {
+fn first_server_stack_entry_has_the_highest_precedence() {
     let (top, bottom) = (Uuid::from_u128(3), Uuid::from_u128(4));
     let stack = validate_handoff(handoff(vec![
+        archive(top, pack_zip(top, &[("texts/en_US.lang", b"k=top")])),
         archive(
             bottom,
             pack_zip(
@@ -302,7 +303,6 @@ fn last_stack_entry_has_the_highest_precedence() {
                 &[("texts/en_US.lang", b"k=bottom"), ("only.txt", b"x")],
             ),
         ),
-        archive(top, pack_zip(top, &[("texts/en_US.lang", b"k=top")])),
     ]));
     let view = LayeredPackView::new(stack);
     assert_eq!(
@@ -320,4 +320,36 @@ fn last_stack_entry_has_the_highest_precedence() {
     );
     assert_eq!(view.read("only.txt").as_deref(), Some(b"x".as_slice()));
     assert_eq!(view.list("texts/"), ["texts/en_US.lang"]);
+}
+
+/// Rejected entries keep their wire indexes when admitted layers are reordered.
+#[test]
+fn rejection_indexes_and_first_pack_priority_survive_normalization() {
+    let high = Uuid::from_u128(5);
+    let low = Uuid::from_u128(6);
+    let rejected = Uuid::from_u128(7);
+    let stack = validate_handoff(handoff(vec![
+        archive(high, pack_zip(high, &[("shared.txt", b"high")])),
+        archive(rejected, Vec::new()),
+        archive(
+            low,
+            pack_zip(
+                low,
+                &[("shared.txt", b"low"), ("fallback.txt", b"fallback")],
+            ),
+        ),
+    ]));
+    assert_eq!(
+        stack.rejections(),
+        [PackRejection {
+            stack_index: 1,
+            reason: AdmissionError::InvalidZipFooter,
+        }]
+    );
+    let view = LayeredPackView::new(stack);
+    assert_eq!(view.read("shared.txt").as_deref(), Some(b"high".as_slice()));
+    assert_eq!(
+        view.read("fallback.txt").as_deref(),
+        Some(b"fallback".as_slice())
+    );
 }

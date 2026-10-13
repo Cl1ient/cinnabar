@@ -25,7 +25,8 @@ use crate::{
 /// literal starting with `../` or `/../`, resolved from the crate root as
 /// `env!("CARGO_MANIFEST_DIR")` paths are. Paths in no crate count only if they exist. A bare
 /// repository-relative literal such as `"plan.md"` only keeps a declaration current: tests name
-/// such paths as data.
+/// such paths as data. The architecture crate also reads the workspace document configured
+/// by policy, even when no Rust literal names that document.
 pub(super) fn check_reads(
     root: &Path,
     policy: &Policy,
@@ -120,7 +121,24 @@ pub(super) fn check_reads(
         let declared = cinnabar_list(&manifest, READS)
             .filter_map(toml::Value::as_str)
             .collect::<Vec<_>>();
-        let reads = required.remove(name).unwrap_or_default();
+        let mut reads = required.remove(name).unwrap_or_default();
+        if manifest
+            .get("package")
+            .and_then(|package| package.get("name"))
+            .and_then(toml::Value::as_str)
+            == Some(env!("CARGO_PKG_NAME"))
+            && let Some(document) = policy
+                .workspace_document
+                .as_deref()
+                .and_then(|document| resolve("", document))
+                .filter(|document| {
+                    owning_crate(&roots, document).is_none_or(|(owner, _)| owner != *crate_root)
+                })
+        {
+            reads
+                .entry(document)
+                .or_insert_with(|| "policy.workspace_document".to_owned());
+        }
         for (target, source) in &reads {
             if !declared.iter().any(|pattern| declares(pattern, target)) {
                 diagnostics.push(format!(
@@ -182,11 +200,21 @@ struct Literals {
 }
 
 impl Literals {
-    /// Macro bodies are not parsed, so their string literals are read from the tokens.
+    /// Macro bodies are not parsed, so their string literals and nested `include_str!`/
+    /// `include_bytes!` paths are read from the tokens.
     fn tokens(&mut self, tokens: TokenStream) {
-        for tree in tokens {
+        let trees = tokens.into_iter().collect::<Vec<_>>();
+        for (index, tree) in trees.iter().enumerate() {
             match tree {
-                TokenTree::Group(group) => self.tokens(group.stream()),
+                TokenTree::Group(group) => {
+                    if index >= 2
+                        && opens_include(&trees[index - 2], &trees[index - 1])
+                        && let Ok(path) = syn::parse2::<LitStr>(group.stream())
+                    {
+                        self.included.push(path.value());
+                    }
+                    self.tokens(group.stream());
+                }
                 TokenTree::Literal(literal) => {
                     if let Ok(literal) = syn::parse_str::<LitStr>(&literal.to_string()) {
                         self.literals.push(literal.value());
@@ -196,6 +224,12 @@ impl Literals {
             }
         }
     }
+}
+
+/// Whether `name` and `bang` begin an `include_str!` or `include_bytes!` call.
+fn opens_include(name: &TokenTree, bang: &TokenTree) -> bool {
+    matches!(name, TokenTree::Ident(ident) if ident == "include_str" || ident == "include_bytes")
+        && matches!(bang, TokenTree::Punct(punct) if punct.as_char() == '!')
 }
 
 impl<'ast> Visit<'ast> for Literals {

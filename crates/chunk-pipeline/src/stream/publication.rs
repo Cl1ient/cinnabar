@@ -1,3 +1,4 @@
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use {super::*, render_api::PublicationAllowance};
 
 impl WorldStream {
@@ -25,9 +26,9 @@ impl WorldStream {
 
     pub fn take_mesh_changes(&mut self) -> Vec<WorldMeshChange> {
         let changes = self.mesh_changes.drain().collect::<Vec<_>>();
-        self.stats.phase2_stages.mesh_changes_dequeued = self
+        self.stats.publication_stages.mesh_changes_dequeued = self
             .stats
-            .phase2_stages
+            .publication_stages
             .mesh_changes_dequeued
             .saturating_add(changes.len() as u64);
         changes
@@ -35,9 +36,9 @@ impl WorldStream {
     pub fn pop_mesh_change(&mut self) -> Option<WorldMeshChange> {
         let change = self.mesh_changes.pop_front();
         if change.is_some() {
-            self.stats.phase2_stages.mesh_changes_dequeued = self
+            self.stats.publication_stages.mesh_changes_dequeued = self
                 .stats
-                .phase2_stages
+                .publication_stages
                 .mesh_changes_dequeued
                 .saturating_add(1);
         }
@@ -72,7 +73,7 @@ impl WorldStream {
     }
     /// A superseded change counts as dequeued so queued minus dequeued stays the pending count.
     fn count_queued_mesh_change(&mut self, superseded: bool) {
-        let stages = &mut self.stats.phase2_stages;
+        let stages = &mut self.stats.publication_stages;
         stages.mesh_changes_queued = stages.mesh_changes_queued.saturating_add(1);
         self.count_discarded_mesh_changes(usize::from(superseded));
     }
@@ -81,7 +82,7 @@ impl WorldStream {
         self.count_discarded_mesh_changes(discarded);
     }
     fn count_discarded_mesh_changes(&mut self, discarded: usize) {
-        let stages = &mut self.stats.phase2_stages;
+        let stages = &mut self.stats.publication_stages;
         stages.mesh_changes_dequeued = stages
             .mesh_changes_dequeued
             .saturating_add(discarded as u64);
@@ -116,9 +117,9 @@ impl WorldStream {
         }
         self.revisions.clear_if_current(key, generation);
         self.acknowledge_actor_block_syncs(key, generation);
-        self.stats.phase2_stages.mesh_uploads_acknowledged = self
+        self.stats.publication_stages.mesh_uploads_acknowledged = self
             .stats
-            .phase2_stages
+            .publication_stages
             .mesh_uploads_acknowledged
             .saturating_add(1);
     }
@@ -176,13 +177,7 @@ impl WorldStream {
     pub fn take_equipment_notices(&mut self) -> Vec<client_world::EquipmentNotice> {
         self.authority.take_equipment_notices()
     }
-    /// Installs the per-mount seat layouts riders fall back to when the server streams no offset.
-    pub fn set_actor_seat_defaults(
-        &mut self,
-        defaults: std::sync::Arc<client_world::SeatDefaults>,
-    ) {
-        self.authority.set_actor_seat_defaults(defaults)
-    }
+
     /// Records the `(runtime_id, degrees)` bed orientation that backs `query.sleep_rotation`.
     pub fn set_actor_bed_rotations(&mut self, samples: &[(u64, f32)]) {
         self.authority.set_actor_bed_rotations(samples)
@@ -219,7 +214,10 @@ impl WorldStream {
         self.authority
             .update_local_player_skin(profile.skin.clone())
     }
-    /// Starts the local player's arm swing, which the server never echoes back to its owner.
+    /// Arm swings the server sent for the local player since the last call.
+    pub fn take_local_server_swings(&mut self) -> u8 {
+        self.authority.take_local_server_swings()
+    }
     /// Starts the local arm swing lasting `ticks`, the duration its packet guard used.
     pub fn start_local_player_swing(&mut self, ticks: i32) {
         self.authority.start_local_player_swing(ticks)
@@ -229,13 +227,16 @@ impl WorldStream {
         self.authority.sync_local_swing(progress);
     }
     /// Selects the local motion authority before the actor clock advances unrelated animation.
-    pub fn set_local_motion_authority(&mut self, authority: Option<(u64, u64)>) {
+    pub fn set_local_motion_authority(
+        &mut self,
+        authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
+    ) {
         self.authority.set_local_motion_authority(authority);
     }
     /// Advances local torso motion with each admitted physical tick's matching swing samples.
     pub fn sync_local_swing_motion(
         &mut self,
-        authority: (u64, u64),
+        authority: (SessionGeneration, PositionAuthorityGeneration),
         samples: impl IntoIterator<Item = actor_animation::LocalSwingMotionSample>,
     ) {
         self.authority.sync_local_swing_motion(authority, samples);
@@ -269,6 +270,16 @@ impl WorldStream {
         types: &[(std::sync::Arc<str>, Vec<client_world::PropertyDefault>)],
     ) {
         self.authority.seed_property_defaults(types)
+    }
+
+    /// Installs compiled item-use overlays before numerical admission.
+    pub fn set_item_use_overlays(
+        &mut self,
+        overlays: std::sync::Arc<
+            std::collections::BTreeMap<Box<str>, assets::equipment::CompiledItemUseOverlay>,
+        >,
+    ) {
+        self.authority.set_item_use_overlays(overlays)
     }
 
     pub fn set_item_use_durations(

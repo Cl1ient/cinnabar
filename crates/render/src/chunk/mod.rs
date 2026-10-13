@@ -149,24 +149,26 @@ use gpu::bind_groups::{
 use gpu::layout::{
     ARENA_MIGRATION_FRAME_BYTES, ArenaGrowthError, ArenaGrowthPlan, ArenaMigration,
     ArenaRequiredLengths, ArenaStream, GeometryStreamCounts, GeometryStreamLayout,
-    GpuUploadReservation, SHARED_GEOMETRY_ALIGNMENT_WORDS, account_chunk_gpu_uploads,
-    advance_arena_migration, arena_capacities, begin_arena_migration, buffer_byte_len,
-    checked_align_up, first_arena_growth, plan_arena_growth, write_geometry_stream_words,
+    GpuUploadReservation, SHARED_GEOMETRY_ALIGNMENT_WORDS, TerrainUploadQueue, TerrainUploads,
+    account_chunk_gpu_uploads, advance_arena_migration, arena_capacities, begin_arena_migration,
+    buffer_byte_len, checked_align_up, first_arena_growth, plan_arena_growth,
+    write_geometry_stream_words,
 };
 #[allow(unused_imports)]
 use gpu::types::{
     ArenaAllocation, ChunkDepthLiquidIndirectBatches, ChunkDrawMode, ChunkIndirectBatch,
     ChunkIndirectBatches, ChunkModelIndirectBatches, GpuChunkAllocation, GpuChunkOrigin,
     LEGACY_FIXED_MODEL_QUADS_PER_REF, MODEL_INDEX_COUNT, QueueFrameProbeParams,
-    RetiredArenaAllocation, StreamAddresses, absolutize_liquid_lighting_indices, apple_gpu,
-    apple_gpu_identity, cube_draw_base, cube_lighting_record_address, cube_stream_addresses_valid,
-    cube_stream_drawable, cutout_indirect_command, depth_liquid_direct_draw_command,
-    depth_liquid_draw_command, depth_liquid_mdi_draw_command, diagnostic_draw_mode,
-    direct_stream_addresses, extracted_camera_identity, gpu_chunk_origin, mdi_stream_addresses,
-    metadata_base_vertex, model_direct_draw_command, model_draw_command, model_mdi_draw_command,
+    RetiredArenaAllocation, StreamAddresses, apple_gpu, apple_gpu_identity, cube_draw_base,
+    cube_lighting_record_address, cube_stream_addresses_valid, cube_stream_drawable,
+    cutout_indirect_command, depth_liquid_direct_draw_command, depth_liquid_draw_command,
+    depth_liquid_mdi_draw_command, diagnostic_draw_mode, direct_stream_addresses,
+    extracted_camera_identity, gpu_chunk_origin, mdi_stream_addresses, metadata_base_vertex,
+    model_direct_draw_command, model_draw_command, model_mdi_draw_command,
     model_ref_count_for_witness, opaque_allocation_is_drawable, select_chunk_draw_mode,
-    shared_stream_ranges_disjoint, solid_indirect_commands, summarize_model_workload,
-    transparent_liquid_direct_draw_command, transparent_model_direct_draw_command,
+    shared_stream_ranges_disjoint, solid_indirect_commands, stamp_liquid_metadata_index,
+    summarize_model_workload, transparent_liquid_direct_draw_command,
+    transparent_model_direct_draw_command,
 };
 #[allow(unused_imports)]
 use gpu::upload::{
@@ -185,10 +187,10 @@ use pipeline::commands::{
     DrawTransparentLiquidDirectCommands, DrawTransparentLiquidIndirect,
     DrawTransparentLiquidIndirectCommands, DrawTransparentModelCommands, OpaqueChunkViewQuery,
     drawable_allocation_identity, front_to_back_cube_entities, indirect_batch_draw_args,
-    prepare_chunk_indirect_batches, prepare_depth_liquid_indirect_batch_draws,
-    prepare_indirect_batch_draws, prepare_model_indirect_batch_draws,
-    record_visibility_direct_submission, record_visibility_mdi_submissions,
-    sorted_visible_entities, upload_indirect_commands_if_changed,
+    prepare_depth_liquid_indirect_batch_draws, prepare_indirect_batch_draws,
+    prepare_model_indirect_batch_draws, record_visibility_direct_submission,
+    record_visibility_mdi_submissions, sorted_visible_entities,
+    upload_indirect_commands_if_changed,
 };
 #[allow(unused_imports)]
 use pipeline::layouts::{ChunkPipeline, ChunkPipelineKey, ChunkPipelineSpecializer};

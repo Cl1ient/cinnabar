@@ -9,7 +9,7 @@ fn development_and_packaging_builds_receive_the_selected_revision() {
     let received = temp.path().join("commit");
     fs::write(
         &cargo,
-        "#!/bin/sh\nprintf '%s' \"${RUST_MCBE_BUILD_COMMIT-unset}\" > \"$FIXTURE_BUILD_COMMIT\"\n",
+        "#!/bin/sh\nprintf '%s' \"${CINNABAR_BUILD_COMMIT-unset}\" > \"$FIXTURE_BUILD_COMMIT\"\n",
     )
     .unwrap();
     fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
@@ -20,7 +20,12 @@ fn development_and_packaging_builds_receive_the_selected_revision() {
     )
     .unwrap();
     fs::set_permissions(&git, fs::Permissions::from_mode(0o755)).unwrap();
-    for revision in ["fixture-revision", "selected-revision"] {
+    // The pre-rename variable still selects the revision for one release.
+    for (variable, revision) in [
+        (None, "fixture-revision"),
+        (Some("CINNABAR_BUILD_COMMIT"), "selected-revision"),
+        (Some("RUST_MCBE_BUILD_COMMIT"), "legacy-revision"),
+    ] {
         for goal in ["play", "package-binaries"] {
             let mut make = Command::new("make");
             make.current_dir(&root)
@@ -42,10 +47,11 @@ fn development_and_packaging_builds_receive_the_selected_revision() {
                         std::env::var("PATH").unwrap()
                     ),
                 )
+                .env_remove("CINNABAR_BUILD_COMMIT")
                 .env_remove("RUST_MCBE_BUILD_COMMIT")
                 .env("FIXTURE_BUILD_COMMIT", &received);
-            if revision != "fixture-revision" {
-                make.arg(format!("RUST_MCBE_BUILD_COMMIT={revision}"));
+            if let Some(variable) = variable {
+                make.arg(format!("{variable}={revision}"));
             }
             let result = make.output().unwrap();
             assert!(

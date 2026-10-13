@@ -96,14 +96,14 @@ fn first_frame_uploads_only_requested_texels_and_warm_frames_allocate_and_upload
         .prepare(&input, |_, _, _, _| panic!("warm glyph uploaded twice"))
         .unwrap();
     fonts.commit_vertices();
-    let before = crate::alloc_count::thread_allocations();
+    let before = test_alloc::thread_allocations();
     for _ in 0..10 {
         fonts
             .prepare(&input, |_, _, _, _| panic!("warm glyph uploaded twice"))
             .unwrap();
         fonts.commit_vertices();
     }
-    assert_eq!(crate::alloc_count::thread_allocations() - before, 0);
+    assert_eq!(test_alloc::thread_allocations() - before, 0);
     fonts.clear();
     let mut replacement_writes = 0;
     fonts
@@ -246,6 +246,12 @@ fn raster(
         min_filter: FilterMode::Linear,
         ..Default::default()
     });
+    let glint_view = texture.create_view(&TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::D2),
+        base_array_layer: 0,
+        array_layer_count: Some(1),
+        ..Default::default()
+    });
     let bindings = [
         BindGroupEntry {
             binding: 0,
@@ -266,6 +272,14 @@ fn raster(
         BindGroupEntry {
             binding: 4,
             resource: format.as_entire_binding(),
+        },
+        BindGroupEntry {
+            binding: 5,
+            resource: BindingResource::TextureView(&glint_view),
+        },
+        BindGroupEntry {
+            binding: 6,
+            resource: BindingResource::Sampler(&linear),
         },
     ];
     let values = |position: bool| {

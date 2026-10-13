@@ -1,4 +1,4 @@
-//! Clean-room parser, resolver, and layout engine for vanilla Bedrock JSON-UI.
+//! Parser, resolver, and layout engine for Bedrock JSON-UI.
 //!
 //! The pipeline reads the on-disk `ui/*.json` (tolerant JSON5), applies `@base`
 //! inheritance, substitutes `$var`/global references, evaluates `ignored` and
@@ -27,6 +27,7 @@ mod input;
 mod json5;
 mod label;
 mod layout;
+mod layout_cache_key;
 mod localize;
 mod lru;
 mod merge;
@@ -39,10 +40,12 @@ mod sidecar;
 mod sprite;
 mod state;
 mod tree;
+pub mod vector_path;
 mod widgets;
 
 #[cfg(test)]
-mod allocation_count;
+#[global_allocator]
+static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;
 
 pub use anim::{
     AnimEvent, AnimGraph, AnimKind, AnimNode, Animated, Animator, ControlAnims, Easing, FlipWrite,
@@ -91,6 +94,7 @@ pub use label::{LabelShape, TextOptions};
 pub use layout::{
     LaidOut, LayoutEnv, MeasureCache, Rect, TextMeasure, TextureSource, layout, layout_with,
 };
+pub use layout_cache_key::LayoutCacheKey;
 pub use localize::{localize_text, localize_text_prefix};
 pub use predicate::{Bindings, Scalar};
 pub use resolve::Resolver;
@@ -118,6 +122,24 @@ pub struct Resolution {
 /// Resolve a `namespace.name` reference against `catalog` in `context`.
 pub fn resolve(catalog: &Catalog, reference: &str, context: &Context) -> Resolution {
     resolve_in(catalog, reference, &context.root_env(catalog))
+}
+
+/// Resolves with a bounded caller-owned tree budget, retaining ordinary catalog semantics.
+pub fn resolve_with_limits(
+    catalog: &Catalog,
+    reference: &str,
+    context: &Context,
+    depth: usize,
+    nodes: usize,
+) -> Resolution {
+    let mut resolver = Resolver::new(catalog).with_limits(depth, nodes);
+    let control = reference.split_once('.').and_then(|(namespace, name)| {
+        resolver.resolve(namespace, name, &context.root_env(catalog))
+    });
+    Resolution {
+        control,
+        diagnostics: resolver.into_diagnostics(),
+    }
 }
 
 /// [`resolve`] in a root scope already built from a catalog and context.

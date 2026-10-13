@@ -16,9 +16,14 @@ const MAX_WALK_DEPTH: usize = 16;
 #[derive(Debug, thiserror::Error)]
 pub enum AudioBankCompileError {
     #[error(transparent)]
-    Bank(#[from] assets::SoundBankError),
+    Bank(#[from] assets::sound_bank::SoundBankError),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error("{path}: {source}")]
+    JsonFile {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
     #[error("{path}: {source}")]
     Io {
         path: PathBuf,
@@ -52,6 +57,7 @@ fn io_error(path: &Path) -> impl FnOnce(std::io::Error) -> AudioBankCompileError
     }
 }
 
+/// Reads a bounded sound document and validates it without changing its stored bytes.
 fn read_json(path: &Path, required: bool) -> Result<Vec<u8>, AudioBankCompileError> {
     let meta = match fs::symlink_metadata(path) {
         Ok(meta) => meta,
@@ -65,12 +71,19 @@ fn read_json(path: &Path, required: bool) -> Result<Vec<u8>, AudioBankCompileErr
             "JSON source is not a bounded file",
         ));
     }
-    fs::read(path).map_err(io_error(path))
+    let bytes = fs::read(path).map_err(io_error(path))?;
+    pack_json::parse_jsonc::<serde::de::IgnoredAny>(&bytes).map_err(|source| {
+        AudioBankCompileError::JsonFile {
+            path: path.to_path_buf(),
+            source,
+        }
+    })?;
+    Ok(bytes)
 }
 
 /// Maps each `blocks.json` block to its sound material, dropping everything else.
 fn block_materials(blocks: &[u8]) -> Result<Vec<u8>, AudioBankCompileError> {
-    let root: Value = serde_json::from_slice(blocks)?;
+    let root: Value = pack_json::parse_jsonc(blocks)?;
     let mut map = Map::new();
     for (name, value) in root.as_object().into_iter().flatten() {
         if let Some(material) = value.get("sound").and_then(Value::as_str) {
@@ -126,8 +139,6 @@ pub fn compile_audio_bank(pack: &Path) -> Result<CompiledAudioBank, AudioBankCom
     let sounds = read_json(&root.join("sounds.json"), true)?;
     let blocks = read_json(&root.join("blocks.json"), false)?;
     let music = read_json(&root.join("sounds/music_definitions.json"), false)?;
-    serde_json::from_slice::<Value>(&sounds)?;
-    serde_json::from_slice::<Value>(&music)?;
     let materials = block_materials(&blocks)?;
     let mut files = Vec::new();
     let mut skipped = 0;
@@ -135,9 +146,9 @@ pub fn compile_audio_bank(pack: &Path) -> Result<CompiledAudioBank, AudioBankCom
     if sounds_dir.is_dir() {
         collect(&root, &sounds_dir, 0, &mut files, &mut skipped)?;
     }
-    let bytes = assets::encode_sound_bank(&sounds, &materials, &music, &files)?;
-    let prefix_len = assets::sound_bank_prefix_len(&bytes)?;
-    let index = assets::SoundBankIndex::decode_prefix(&bytes[..prefix_len])?;
+    let bytes = assets::sound_bank::encode_sound_bank(&sounds, &materials, &music, &files)?;
+    let prefix_len = assets::sound_bank::sound_bank_prefix_len(&bytes)?;
+    let index = assets::sound_bank::SoundBankIndex::decode_prefix(&bytes[..prefix_len])?;
     let hex = |hash: [u8; 32]| -> Box<str> {
         hash.iter()
             .map(|byte| format!("{byte:02x}"))
@@ -175,8 +186,9 @@ mod tests {
         fs::write(root.join("sounds/random/note.txt"), "x").unwrap();
         let compiled = compile_audio_bank(root).expect("compile");
         assert_eq!(compiled.report.files, 1);
-        let prefix = assets::sound_bank_prefix_len(&compiled.bytes).unwrap();
-        let index = assets::SoundBankIndex::decode_prefix(&compiled.bytes[..prefix]).unwrap();
+        let prefix = assets::sound_bank::sound_bank_prefix_len(&compiled.bytes).unwrap();
+        let index =
+            assets::sound_bank::SoundBankIndex::decode_prefix(&compiled.bytes[..prefix]).unwrap();
         assert!(index.entry("sounds/random/click").is_some());
         let materials: Value = serde_json::from_slice(index.materials_json()).unwrap();
         assert_eq!(materials["stone"], "stone");
@@ -191,8 +203,9 @@ mod tests {
         fs::write(root.join("sounds.json"), "{}").unwrap();
         fs::write(root.join("sounds/music/track.OGG"), b"OggSencoded").unwrap();
         let compiled = compile_audio_bank(root).expect("compile");
-        let prefix = assets::sound_bank_prefix_len(&compiled.bytes).unwrap();
-        let index = assets::SoundBankIndex::decode_prefix(&compiled.bytes[..prefix]).unwrap();
+        let prefix = assets::sound_bank::sound_bank_prefix_len(&compiled.bytes).unwrap();
+        let index =
+            assets::sound_bank::SoundBankIndex::decode_prefix(&compiled.bytes[..prefix]).unwrap();
         let entry = index.entry("sounds/music/track").expect("pack music file");
         assert_eq!(
             &compiled.bytes[entry.offset as usize..entry.offset as usize + entry.len as usize],

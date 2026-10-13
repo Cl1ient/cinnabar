@@ -9,8 +9,12 @@ use bevy::{
 };
 use client_runtime::network::NetworkHandle;
 use client_shell::menu::test_support as menu_fixture;
+use client_shell::ui_resources::UiRuntimeResource;
+use protocol::identity::FifoSequence;
 use protocol::{BlobCacheStats, PlayerInputMode, ServerDisconnectEvent};
 use sim::{CollisionIdSpace, CollisionRegistryIdentity, WorldCollisionIdentity};
+use simulation_clock::PhysicsTick;
+use simulation_clock::identity::SessionGeneration;
 
 use client_ui::ui_runtime::UiRuntime;
 use diagnostics::metrics::MetricsCollector;
@@ -155,10 +159,10 @@ fn pause_disconnect_retires_pending_movement_before_network_send() {
     let mut local_frame = LocalPlayerFrameCarrier::default();
     local_frame
         .publish(LocalPlayerFrameSample {
-            session_generation: 1,
+            session_generation: SessionGeneration::new(1),
             actor_session_id: 1,
-            fifo_sequence: 4,
-            physics_tick: 10,
+            fifo_sequence: FifoSequence::new(4),
+            physics_tick: PhysicsTick::new(10),
             perspective: semantic_input::PerspectiveMode::FirstPerson,
             world_collision_identity: world_identity,
             pose: Transform::default(),
@@ -189,7 +193,7 @@ fn pause_disconnect_retires_pending_movement_before_network_send() {
         .insert_resource(NetworkHandle::<PackApplication>::disconnected())
         .insert_resource(ClientBlobCacheOwner::default())
         .insert_resource(ResourcePackAdmissionState::default())
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
             1,
         )))
@@ -219,7 +223,7 @@ fn pause_disconnect_retires_pending_movement_before_network_send() {
     assert!(app.world().resource::<ClientWorld>().fatal_error.is_none());
     assert_eq!(
         app.world()
-            .resource::<UiRuntime>()
+            .resource::<UiRuntimeResource>()
             .localized_item_name("minecraft:stone"),
         "Stone"
     );
@@ -258,10 +262,10 @@ fn terminal_queued_after_receive_wins_over_closed_physics_send_and_recovers_laun
     let mut local_frame = LocalPlayerFrameCarrier::default();
     local_frame
         .publish(LocalPlayerFrameSample {
-            session_generation: 1,
+            session_generation: SessionGeneration::new(1),
             actor_session_id: 1,
-            fifo_sequence: 4,
-            physics_tick: 10,
+            fifo_sequence: FifoSequence::new(4),
+            physics_tick: PhysicsTick::new(10),
             perspective: semantic_input::PerspectiveMode::FirstPerson,
             world_collision_identity: world_identity,
             pose: Transform::default(),
@@ -281,7 +285,7 @@ fn terminal_queued_after_receive_wins_over_closed_physics_send_and_recovers_laun
         .insert_resource(DelayedTerminal(Some(terminal_sender)))
         .insert_resource(ClientBlobCacheOwner::default())
         .insert_resource(ResourcePackAdmissionState::default())
-        .insert_resource(UiRuntime::new(1))
+        .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
         .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
             1,
         )))
@@ -364,7 +368,7 @@ fn drive_once(
         .insert_resource(network)
         .insert_resource(ClientBlobCacheOwner::default())
         .insert_resource(ResourcePackAdmissionState::default())
-        .insert_resource(UiRuntime::new(1))
+        .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
         .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
             1,
         )))

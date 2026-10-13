@@ -23,7 +23,7 @@ fn system() -> ParticleSystem {
 }
 
 /// Gives the routing boundary a player with an explicit native-position offset.
-fn stream() -> WorldStream {
+pub(super) fn stream() -> WorldStream {
     let mut stream = WorldStream::new(protocol::WorldBootstrap {
         dimension: 0,
         local_player_runtime_id: 1,
@@ -174,6 +174,7 @@ fn totem_emission_follows_the_actor_without_moving_already_born_particles() {
         pitch: 0.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_stack_id: None,
         main_hand_slot: 0,

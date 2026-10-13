@@ -61,7 +61,7 @@ impl ChatCoordinateContext<'_> {
                 mode,
                 reach,
                 (snapshot.authority_generation, snapshot.frame_sequence),
-                0,
+                simulation_clock::identity::PositionAuthorityGeneration::new(0),
             ),
         )
         .map(|observed| observed.target.position)

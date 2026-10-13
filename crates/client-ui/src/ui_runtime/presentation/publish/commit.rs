@@ -20,9 +20,6 @@ pub struct PendingUiPublication {
     pub dpi_scale: DpiScale,
 }
 
-#[derive(Resource, Default)]
-pub struct PreparedUiPublication(pub Option<PendingUiPublication>);
-
 /// Renders the captured UI without observing this frame's post-capture inventory changes.
 pub fn render_prepared_ui(
     player_runtime: &player_state::PlayerState,
@@ -104,6 +101,34 @@ pub fn refresh_hud_frame(
     publish_item_viewmodels(presentation, icons);
 }
 
+impl UiPresentationRuntime {
+    /// Returns the previous frame when only the revision would differ, so the
+    /// renderer keeps its accepted publication and skips re-uploading.
+    pub(in crate::ui_runtime::presentation) fn stabilize_revision(
+        &mut self,
+        mut input: UiRenderInput,
+    ) -> UiRenderInput {
+        if let Some(previous) = &self.last_input {
+            input.revision = previous.revision;
+            if *previous == input {
+                return previous.clone();
+            }
+        }
+        self.advance_revision(input)
+    }
+
+    /// Publishes `input`, known to differ from the last frame's, under the next revision.
+    pub(in crate::ui_runtime::presentation) fn advance_revision(
+        &mut self,
+        mut input: UiRenderInput,
+    ) -> UiRenderInput {
+        self.revision = self.revision.saturating_add(1);
+        input.revision = self.revision;
+        self.last_input = Some(input.clone());
+        input
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, ui::IconRef};
@@ -111,7 +136,7 @@ mod tests {
     #[test]
     fn switching_hotbar_icons_does_not_rasterize_or_replace_textures_under_the_hand_rig() {
         let mut presentation =
-            UiPresentationRuntime::new(super::super::super::tests::fixture_font()).unwrap();
+            UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
         presentation.hud_frame.first_person = true;
         presentation.hud_frame.hand_rig_active = true;
         let textures = Arc::clone(&presentation.textures);

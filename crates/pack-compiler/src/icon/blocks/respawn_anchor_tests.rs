@@ -256,7 +256,7 @@ fn respawn_anchor_malformed_charge_states_do_not_gain_exact_cube_admission() {
     let directory = fixture();
     let index = records
         .iter()
-        .position(|r| crate::respawn_anchor::is_record(r))
+        .position(crate::respawn_anchor::is_record)
         .unwrap();
     for state in [
         json!({}),

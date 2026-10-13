@@ -22,6 +22,7 @@ fn snow_grass_fixture() -> &'static SnowGrassFixture {
         let mut add = |name: &str, state: String, flags: BlockFlags, family: ModelFamily| {
             let id = records.len() as u32;
             records.push(RegistryRecord {
+                beacon_tint: assets::BeaconTint::Unresolved,
                 sequential_id: id,
                 network_hash: snow_grass_wire_id(NetworkIdMode::Hashed, id),
                 name: name.into(), canonical_state: state.into(), flags, model_family: family,

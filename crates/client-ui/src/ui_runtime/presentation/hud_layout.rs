@@ -1,6 +1,6 @@
 //! Java-reference gameplay HUD layout.
 //!
-//! Geometry, ordering, and visibility follow the approved clean-room Java
+//! Geometry, ordering, and visibility follow the approved Java
 //! Edition 26.2 default-resource presentation, expressed in GUI pixels and
 //! scaled by the Java GUI-scale rule. Every value is observable behavior
 //! (positions, sizes, timings) recorded from a legally obtained client;
@@ -27,26 +27,16 @@ mod player;
 mod reader;
 mod recipe_book;
 mod sleep;
-mod status_motion;
 mod status_rows;
-pub(super) use status_rows::{HeartPaint, HungerPaint, capture as capture_hud_paint};
+pub(super) use status_rows::capture as capture_hud_paint;
 mod windows;
 
-pub(super) use inventory::{CraftingFrame, StorageIcons};
 pub use pinned::{BOSS_TINTS, effect_icon_role};
 use pinned::{BOTTOM_STACK_HEIGHT, HOTBAR_WIDTH, hsv_to_rgb};
 pub use sleep::SleepTimeline;
 use ui::gui_scale;
-pub(super) use windows::{Durability, TooltipLine, WindowIcons, WindowText, title_key};
-
-#[derive(Clone, Debug)]
-pub struct InventoryIcons(pub [Option<IconRef>; 36]);
-
-impl Default for InventoryIcons {
-    fn default() -> Self {
-        Self([None; 36])
-    }
-}
+use ui_screens::inventory_capture::{CraftingFrame, Durability, InventoryIcons, StorageIcons};
+pub(super) use windows::{TooltipLine, WindowIcons, WindowText, title_key};
 
 /// Frame inputs the layout cannot read from `UiRuntime` alone: camera state
 /// plus item facts resolved against the world stream's authoritative item
@@ -75,6 +65,7 @@ pub struct HudFrame {
     pub window_text: WindowText,
     pub cursor_icon: Option<IconRef>,
     pub armor_icons: [Option<IconRef>; 4],
+    pub armor_durability: [Option<f32>; 4],
     pub offhand_icon: Option<IconRef>,
     /// Geometry-rendered offhand carrier; the original icon remains reserved
     /// for the compact hotbar slot.
@@ -100,6 +91,8 @@ pub struct HudFrame {
     pub viewmodel_pitch_degrees: f32,
     /// Presented name of the selected stack, resolved this frame.
     pub selected_item_name: Option<std::sync::Arc<str>>,
+    /// Exact declared food component of the currently selected authoritative stack.
+    pub selected_food: Option<protocol::FoodProperties>,
     /// Jump charge in `0.0..=1.0` while riding a jump-capable mount: the
     /// mount jump bar replaces the experience bar for the ride's duration.
     pub mount_jump: Option<f32>,
@@ -116,6 +109,8 @@ pub struct HudFrame {
     pub holding_filled_map: bool,
     /// Lightning is falling: the bed screen talks of a thunderstorm.
     pub thunderstorm: bool,
+    /// The death screen is up: the gameplay HUD and crosshair stay hidden behind it.
+    pub death_screen: bool,
     /// The stream's current dimension, which picks the loading backdrop.
     pub dimension: i32,
     pub sleep: SleepTimeline,

@@ -3,6 +3,7 @@ use crate::{
     ActorRenderIdentity, ActorRigRenderFrame, ActorRigRenderInput, ActorRigSubmission,
     MAX_ACTOR_RENDER_INSTANCES, actor_rig_submission_is_visible,
 };
+use render_api::PoseGeneration;
 use std::{cell::Cell, collections::HashMap, sync::Arc};
 
 use super::*;
@@ -78,7 +79,7 @@ fn submission(
                 ingress_sequence: runtime_id,
                 source_tick: Some(1),
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer,
             },
             rig: EntityRigId(rig),
@@ -433,9 +434,9 @@ fn steady_frames_of_fresh_poses_allocate_independently_of_actor_count() {
                     submission(runtime_id, 0, 4, [Arc::clone(&bones), bones])
                 })
                 .collect();
-            let before = crate::alloc_count::thread_allocations();
+            let before = test_alloc::thread_allocations();
             let built = builder.build(0.5, None, submissions);
-            let allocated = crate::alloc_count::thread_allocations() - before;
+            let allocated = test_alloc::thread_allocations() - before;
             assert_eq!(built.instances.len() as u64, actors);
             if frame >= 32 {
                 worst = worst.max(allocated);

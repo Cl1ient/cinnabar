@@ -4,9 +4,12 @@ use serde_json::Value;
 use crate::{AssetError, SkinGeometryBounds};
 
 use super::{
-    EntityDependencyResolution, EntityGeometryBone, EntityGeometryScalar, RuntimeEntityAssets,
-    invalid, validate_scalars,
+    EntityDependencyResolution, EntityGeometryBone, EntityGeometryScalar, EntityGeometryUv,
+    RuntimeEntityAssets, invalid, validate_scalars,
 };
+
+/// JSON field that suppresses movement view bob for authored geometry.
+pub const GEOMETRY_NO_HEAD_BOB_FIELD: &str = "animationNoHeadBob";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -17,6 +20,9 @@ pub struct EntityGeometry {
     pub texture_width: u16,
     pub texture_height: u16,
     pub bones: Box<[EntityGeometryBone]>,
+    /// Authored skin geometry can suppress movement view bob without suppressing hurt.
+    #[serde(default, skip_serializing_if = "bob_enabled")]
+    pub animation_no_head_bob: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible_bounds: Option<EntityGeometryBounds>,
 }
@@ -83,4 +89,36 @@ impl RuntimeEntityAssets {
         }
         None
     }
+}
+
+/// Rejects empty face mappings and noncanonical UV scalar values.
+pub(super) fn validate_uv(uv: &EntityGeometryUv) -> Result<(), AssetError> {
+    match uv {
+        EntityGeometryUv::Box(uv) => validate_scalars(uv),
+        EntityGeometryUv::Faces(faces) => {
+            let faces = [
+                &faces.north,
+                &faces.south,
+                &faces.east,
+                &faces.west,
+                &faces.up,
+                &faces.down,
+            ];
+            if faces.iter().all(|face| face.is_none()) {
+                return Err(invalid("entity geometry per-face UV map is empty"));
+            }
+            for face in faces.into_iter().flatten() {
+                validate_scalars(&face.uv)?;
+                if let Some(uv_size) = &face.uv_size {
+                    validate_scalars(uv_size)?;
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Omits the default enabled-bob policy from older-compatible geometry payloads.
+fn bob_enabled(no_head_bob: &bool) -> bool {
+    !*no_head_bob
 }

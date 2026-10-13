@@ -394,27 +394,25 @@ fn active_physics_retains_explicit_support_for_every_independent_registry_state(
     let states = read_registry_for_protocol(BREG_V2193, protocol).unwrap();
     let physics =
         read_physics_registry_for_protocol(PREG_V2193, BREG_V2193, &states, protocol).unwrap();
-    let mut unresolved = 0;
-    let mut special = 0;
+    use assets::registry::MovementSemantics;
+    let mut counts = [0; 3];
     for state in &states {
         let record = physics.by_network_hash(state.network_hash).unwrap();
         assert_eq!(physics.by_sequential_id(state.sequential_id), Some(record));
-        match record.movement_semantics {
-            assets::registry::MovementSemantics::Unresolved => unresolved += 1,
-            assets::registry::MovementSemantics::Special => special += 1,
-            assets::registry::MovementSemantics::Ordinary => {
-                panic!("unreviewed ordinary movement: {}", state.name)
+        counts[record.movement_semantics as usize] += 1;
+        let expected = match state.name.as_ref() {
+            "cinnabar:reserved" | "minecraft:soul_soil" => Some(MovementSemantics::Unresolved),
+            "minecraft:cobblestone" | "minecraft:oak_fence" => Some(MovementSemantics::Ordinary),
+            "minecraft:slime" | "minecraft:acacia_door" | "minecraft:moving_block" => {
+                Some(MovementSemantics::Special)
             }
-        }
-        if state.name.as_ref() == "minecraft:cobblestone" {
-            assert_eq!(
-                record.movement_semantics,
-                assets::registry::MovementSemantics::Unresolved
-            );
+            _ => None,
+        };
+        if let Some(expected) = expected {
+            assert_eq!(record.movement_semantics, expected, "{}", state.name);
         }
     }
-    assert!(unresolved > 0 && special > 0);
-    assert_eq!(unresolved + special, states.len());
+    assert!(counts.iter().all(|count| *count > 0), "{counts:?}");
 }
 
 #[test]

@@ -110,7 +110,10 @@ exit 0
     $checker = ConvertTo-BashPath (Join-Path $repo "packaging/check-payload.sh")
     $resources = @(& bash -c 'source "$1"; resource_manifest windows' -- $manifest)
     if ($LASTEXITCODE -ne 0) { throw "Could not load actual Windows resource manifest" }
-    $paths = @("bedrock-client.exe", "bedrock-core.exe", "bedrock-local-server.exe") + @($resources | ForEach-Object { "resources/$_" })
+    $runtimeNames = @(Get-Content -LiteralPath (Join-Path $repo "packaging/common/runtime-binaries.txt") | ForEach-Object {
+        ($_ -split '\s+')[0] + ".exe"
+    })
+    $paths = $runtimeNames + @($resources | ForEach-Object { "resources/$_" })
     $payload = @()
     for ($i = 0; $i -lt $paths.Count; $i++) {
         $payload += @{ Id = "file$i"; Path = $paths[$i]; Content = "payload $i" }
@@ -124,6 +127,11 @@ exit 0
         throw "Strict checker did not reject retained unexpected installed file: $checkerOutput"
     }
     Write-Host "PASS strict payload rejection after extraction"
+    $missingVerifier = Invoke-Fixture "missing-verifier" @($payload | Where-Object { $_.Path -ne "cinnabar-cxb.exe" })
+    $checkerOutput = @(& bash $checker windows (ConvertTo-BashPath $missingVerifier) 2>&1)
+    if ($LASTEXITCODE -eq 0 -or ($checkerOutput -join "`n") -notlike "*missing file*cinnabar-cxb.exe*") {
+        throw "Strict checker accepted a payload without the verifier: $checkerOutput"
+    }
     $longNames = @(
         @{ Id = "long1"; Path = "folder with spaces/long file name.txt"; Content = "first" },
         @{ Id = "long2"; Path = "nested/long file name.txt"; Content = "second" }

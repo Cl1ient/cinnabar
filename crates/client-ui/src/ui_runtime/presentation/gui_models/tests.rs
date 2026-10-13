@@ -68,14 +68,15 @@ fn mesh_modulation_preserves_geometry_and_adds_glint_without_baking() {
     for (original, result) in mesh.vertices().iter().zip(faded.vertices()) {
         assert_eq!(original.position, result.position);
         assert_eq!(result.color[3], 127);
-        assert_ne!(result.style_flags & ui::UI_STYLE_GLINT, 0);
+        assert_ne!(result.style_flags & u16::from(ui::UI_STYLE_GLINT), 0);
     }
 }
 
 #[test]
 fn geometry_replacement_preserves_json_control_state_and_flat_sprites() {
     use ui::{UiNodeId, UiPoint, UiRect};
-    let mut presentation = UiPresentationRuntime::new(super::super::tests::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let icon = IconRef {
         page: 1,
         uv: [0, 0, 16, 16],
@@ -183,7 +184,8 @@ fn the_player_preview_mesh_is_built_only_for_a_shown_preview() {
 
 #[test]
 fn live_pose_changes_only_geometry_and_original_skin_keeps_its_density() {
-    let mut presentation = UiPresentationRuntime::new(super::super::tests::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     presentation.gui_models.enabled = true;
     let mut skin = vec![255; 128 * 128 * 4];
     skin[4..8].copy_from_slice(&[12, 34, 56, 255]);
@@ -224,7 +226,8 @@ fn live_pose_changes_only_geometry_and_original_skin_keeps_its_density() {
 fn review_faded_block_models_keep_single_layer_thumbnail_opacity() {
     use assets::gui_item::{GuiBlockQuad, cube_face};
     use ui::{UiNodeId, UiPoint, UiRect};
-    let mut presentation = UiPresentationRuntime::new(super::super::tests::fixture_font()).unwrap();
+    let mut presentation =
+        UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
     let icon = IconRef {
         page: 1,
         uv: [0, 0, 16, 16],

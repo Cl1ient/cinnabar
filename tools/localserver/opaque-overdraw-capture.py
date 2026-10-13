@@ -100,7 +100,7 @@ def query_counter(value):
 
 def query_health_record(line):
     """Extract only bounded numeric query diagnostics, excluding logger prefixes and extra fields."""
-    payload = line.partition("RUST_MCBE_GPU_QUERY_HEALTH ")[2].lstrip()
+    payload = line.partition("CINNABAR_GPU_QUERY_HEALTH ")[2].lstrip()
     if not payload.startswith("{") or len(payload) > 65536:
         return None
     try:
@@ -137,9 +137,9 @@ def parse_metrics(lines, overdraw=False, query_health=False):
     for line in lines:
         if query_health and (record := query_health_record(line)) is not None:
             health.append(record)
-        if line.startswith("RUST_MCBE_OPAQUE_LAYERS {"):
+        if line.startswith("CINNABAR_OPAQUE_LAYERS {"):
             layers.append(json.loads(line.split(" ", 1)[1]))
-        elif not overdraw and line.startswith("RUST_MCBE_STAGE_PROFILE "):
+        elif not overdraw and line.startswith("CINNABAR_STAGE_PROFILE "):
             record = {}
             for field in line.split()[1:]:
                 label, value = field.split("=", 1)
@@ -177,13 +177,13 @@ def main(argv=None):
     control = Control(repo)
     results = {}
     try:
-        settings = {"RUST_MCBE_STAGE_PROFILE": "1"}
+        settings = {"CINNABAR_STAGE_PROFILE": "1"}
         if args.categories:
-            settings["RUST_MCBE_GPU_CATEGORIES"] = "1"
+            settings["CINNABAR_GPU_CATEGORIES"] = "1"
         if args.overdraw:
-            settings["RUST_MCBE_OPAQUE_LAYERS"] = "1"
+            settings["CINNABAR_OPAQUE_LAYERS"] = "1"
         if args.query_health:
-            settings["RUST_MCBE_GPU_QUERY_HEALTH"] = "1"
+            settings["CINNABAR_GPU_QUERY_HEALTH"] = "1"
         client_args = ["--no-vsync", "--render-mode", "vanilla"]
         if args.assets:
             client_args.extend(["--assets", str(args.assets.resolve())])

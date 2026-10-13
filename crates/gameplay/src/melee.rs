@@ -3,9 +3,8 @@ use crate::{
     BatchSendError, interaction_authority::MAX_PENDING_INTERACTION_MILLIS,
     mining::FrozenMiningSelection, movement::MiningEffects,
 };
-use protocol::{
-    ActorUseAction, ActorUseRequest, BedrockSession, PlayerGameMode, PlayerInputMode, SwingSource,
-};
+use protocol::{ActorUseAction, ActorUseRequest, PlayerGameMode, PlayerInputMode, SwingSource};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 /// Wall-clock time after an attack during which block use is suppressed. Needs
 /// independent measurement.
@@ -13,26 +12,17 @@ const ATTACK_BUILD_BLOCK_MILLIS: u64 = 200;
 
 mod target;
 pub use target::{
-    ActorHit, Crosshair, classify, obstructs_placement, pick_actor, pick_actor_by, ray_box_entry,
+    ActorHit, Crosshair, actor_is_pickable, classify, obstructs_placement, pick_actor,
+    pick_actor_by, ray_box_entry,
 };
 
 /// Bedrock swing length in ticks, with the stronger Haste or Conduit Power taking priority.
 pub fn swing_duration(effects: MiningEffects) -> i32 {
-    // Server amplifiers are untrusted; saturate instead of overflowing.
-    let level = |amplifier: Option<i32>| {
-        amplifier
-            .filter(|value| *value >= 0)
-            .map(|value| value.saturating_add(1))
-    };
-    let haste = level(effects.haste).max(level(effects.conduit_power));
-    let duration = match (haste, level(effects.mining_fatigue)) {
-        (Some(haste), _) => actor_animation::ACTOR_SWING_TICKS.saturating_sub(haste),
-        (None, Some(fatigue)) => {
-            actor_animation::ACTOR_SWING_TICKS.saturating_add(fatigue.saturating_mul(2))
-        }
-        (None, None) => actor_animation::ACTOR_SWING_TICKS,
-    };
-    duration.max(1)
+    actor_animation::SwingEffects {
+        haste: effects.haste.max(effects.conduit_power),
+        mining_fatigue: effects.mining_fatigue,
+    }
+    .ticks()
 }
 
 /// Java 1.7 swing length in ticks; Conduit Power does not modify its animation.
@@ -74,13 +64,23 @@ pub struct MeleeOutcome {
     pub missed_swing: bool,
 }
 
+/// A local actor attack whose packet batch entered the outbound FIFO, not a damage confirmation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AdmittedActorAttack {
+    pub sequence: u64,
+    pub tick: u64,
+    pub hit: ActorHit,
+}
+
 /// Attack-press state; `actor_in_front` vetoes mining behind a targeted actor.
 #[derive(Debug, Default, Clone)]
 pub struct MeleeRuntime {
     latched_press: bool,
+    attack_revision: u64,
+    admitted_attack: Option<AdmittedActorAttack>,
     actor_in_front: bool,
     last_attack_millis: Option<u64>,
-    position_authority: Option<(u64, u64)>,
+    position_authority: Option<(SessionGeneration, PositionAuthorityGeneration)>,
     /// Wall-clock millis at which a latched press first waited for admission.
     deferred_since: Option<u64>,
     rejected_tick: Option<u64>,
@@ -88,6 +88,11 @@ pub struct MeleeRuntime {
 }
 
 impl MeleeRuntime {
+    /// Latest successfully queued local actor attack in the current position authority.
+    pub const fn admitted_attack(&self) -> Option<AdmittedActorAttack> {
+        self.admitted_attack
+    }
+
     pub const fn actor_in_front(&self) -> bool {
         self.actor_in_front
     }
@@ -106,7 +111,7 @@ impl MeleeRuntime {
     }
 
     /// Drops a latched press when the session or position authority changes.
-    pub fn synchronize(&mut self, authority: (u64, u64)) {
+    pub fn synchronize(&mut self, authority: (SessionGeneration, PositionAuthorityGeneration)) {
         if self
             .position_authority
             .is_some_and(|previous| previous.0 != authority.0)
@@ -118,6 +123,7 @@ impl MeleeRuntime {
             .is_some_and(|previous| previous != authority)
         {
             self.latched_press = false;
+            self.admitted_attack = None;
             self.last_attack_millis = None;
             self.deferred_since = None;
             self.rejected_tick = None;
@@ -276,19 +282,14 @@ impl MeleeRuntime {
                 let Some(selection) = press.selection.clone() else {
                     return outcome;
                 };
-                // The item descriptor no longer reads session state.
-                let session = BedrockSession { shield_item_id: 0 };
-                if let Ok(packet) = protocol::use_actor_packet(
-                    ActorUseRequest {
-                        actor_runtime_id: hit.runtime_id,
-                        action: ActorUseAction::Attack,
-                        selected_slot: selection.slot,
-                        selected_item: selection.item,
-                        player_position: press.player_position,
-                        hit_position: hit.point,
-                    },
-                    &session,
-                ) {
+                if let Ok(packet) = protocol::use_actor_packet(ActorUseRequest {
+                    actor_runtime_id: hit.runtime_id,
+                    action: ActorUseAction::Attack,
+                    selected_slot: selection.slot,
+                    selected_item: selection.item,
+                    player_position: press.player_position,
+                    hit_position: hit.point,
+                }) {
                     outcome.packets.push(packet);
                 }
             }
@@ -328,8 +329,32 @@ pub fn resolve_and_send(
     }
     let (saved_runtime, saved_swings) = (runtime.clone(), swings.clone());
     let outcome = runtime.resolve(crosshair, press, swings);
+    let admitted = match crosshair {
+        Crosshair::Actor(hit)
+            if outcome
+                .packets
+                .iter()
+                .any(protocol::is_aim_assist_rotation_action) =>
+        {
+            Some(hit)
+        }
+        _ => None,
+    };
     match send(outcome.packets) {
-        Ok(()) | Err(BatchSendError::Closed) => outcome.missed_swing,
+        Ok(()) => {
+            if let Some(hit) = admitted
+                && let Some(sequence) = runtime.attack_revision.checked_add(1)
+            {
+                runtime.attack_revision = sequence;
+                runtime.admitted_attack = Some(AdmittedActorAttack {
+                    sequence,
+                    tick: press.tick,
+                    hit,
+                });
+            }
+            outcome.missed_swing
+        }
+        Err(BatchSendError::Closed) => outcome.missed_swing,
         Err(BatchSendError::Full) => {
             *runtime = saved_runtime;
             if runtime.latched_press {

@@ -407,6 +407,9 @@ impl MenuRuntime {
 
     /// Shows local join errors in the world menu and remote errors on the disconnect screen.
     pub fn show_join_failure(&mut self, message: String) {
+        if launcher::menu::disconnect::requires_client_update(&message) {
+            launcher_host::lifecycle::update::protocol_required();
+        }
         if self.feeds.join.kind == JoinKind::Local || !self.launcher {
             self.message = Some(message);
         } else {
@@ -550,6 +553,11 @@ impl MenuRuntime {
             MenuAction::OpenExitDialog => {
                 self.dialog = Some(MenuDialog::Exit);
                 self.focused = 0;
+            }
+            MenuAction::Update(action) => {
+                if !self.over_world() && launcher_host::lifecycle::update::act(action) {
+                    self.intents.exit = true;
+                }
             }
             MenuAction::ConfirmExit => {
                 self.dialog = None;
@@ -743,6 +751,7 @@ impl MenuRuntime {
             | MenuAction::SettingsFullscreen(_)
             | MenuAction::SettingsSection(_)
             | MenuAction::SettingsOption(..)
+            | MenuAction::SettingsVideoPreset(_)
             | MenuAction::SettingsLanguage(_)
             | MenuAction::SettingsDropdown(_)
             | MenuAction::SettingsResetBindings(_)
@@ -822,24 +831,29 @@ impl MenuRuntime {
             favorite: false,
             last_joined_unix: 0,
         };
-        if let Some(existing) = self.editing.and_then(|index| self.servers.get_mut(index)) {
+        let saved = if let Some(index) = self.editing.filter(|&index| index < self.servers.len()) {
+            let existing = &mut self.servers[index];
             existing.name = server.name;
             existing.address = server.address;
-        } else if let Some(existing) = self
+            index
+        } else if let Some(index) = self
             .servers
-            .iter_mut()
-            .find(|existing| existing.address.eq_ignore_ascii_case(&server.address))
+            .iter()
+            .position(|existing| existing.address.eq_ignore_ascii_case(&server.address))
         {
-            let favorite = existing.favorite;
-            let last_joined_unix = existing.last_joined_unix;
+            let existing = &mut self.servers[index];
             *existing = SavedServer {
-                favorite,
-                last_joined_unix,
+                favorite: existing.favorite,
+                last_joined_unix: existing.last_joined_unix,
                 ..server
             };
+            index
         } else {
             self.servers.push(server);
-        }
+            self.servers.len() - 1
+        };
+        // The server just saved replaces whichever one was selected before.
+        self.feeds.select_saved(saved);
         if let Err(error) = self.saves.save(&self.servers) {
             self.message = Some(format!("Could not save server: {error}"));
             return false;

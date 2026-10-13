@@ -8,6 +8,8 @@ pub use grants::ModGrants;
 #[cfg(feature = "execution")]
 mod load;
 #[cfg(feature = "execution")]
+pub mod module_observations;
+#[cfg(feature = "execution")]
 mod outputs;
 #[cfg(feature = "execution")]
 pub mod package;
@@ -31,9 +33,11 @@ pub use runtime::cinnabar::extension::gameplay::{
 };
 #[cfg(feature = "execution")]
 pub use runtime::cinnabar::extension::player_state::{
-    ChatMessage as ObservedChatMessage, Effect as PlayerStateEffect, Item as PlayerStateItem,
-    Sidebar as SidebarSnapshot, SidebarRow, Slot as PlayerStateSlot,
-    Snapshot as PlayerStateSnapshot, WorldObservation,
+    Actor as ActorObservation, Bounds as ActorObservationBounds,
+    ChatMessage as ObservedChatMessage, CombatEvent as CombatObservation, CombatKind,
+    Effect as PlayerStateEffect, Food as FoodObservation, Item as PlayerStateItem,
+    Motion as MotionObservation, Sidebar as SidebarSnapshot, SidebarRow, Slot as PlayerStateSlot,
+    Snapshot as PlayerStateSnapshot, Vitals as VitalsObservation, WorldObservation,
 };
 #[cfg(feature = "execution")]
 pub use runtime::cinnabar::extension::{
@@ -173,6 +177,14 @@ impl ModHost {
             .observe_presentation(world, fps, sidebar, chat)
     }
 
+    /// Supplies bounded, session-fenced cosmetic facts for the next callback only.
+    pub fn observe_modules(
+        &mut self,
+        observations: module_observations::ModuleObservations,
+    ) -> Result<()> {
+        self.instance.observe_modules(observations)
+    }
+
     /// The session and dimension of the last successful gameplay delay-fix request.
     pub fn item_use_delay_fix(&self) -> Option<(u64, i32)> {
         self.instance.item_use_delay_fix()
@@ -213,6 +225,11 @@ impl ModHost {
         self.instance.deliver_cues(cues);
     }
 
+    /// Consumes committed local-only system feedback once.
+    pub fn take_local_messages(&mut self) -> Vec<String> {
+        self.instance.take_local_messages()
+    }
+
     /// Consumes the last successful frame's presentation cues once.
     pub fn take_cues(&mut self) -> Vec<ModCue> {
         self.instance.take_cues()
@@ -233,22 +250,6 @@ impl ModHost {
         self.settings_writer
             .as_ref()
             .and_then(settings::SettingsWriter::take_error)
-    }
-
-    pub fn panel(&self) -> Option<&ui::mod_panel::Panel> {
-        self.instance.panel()
-    }
-    pub fn panel_open(&self) -> bool {
-        self.instance.panel_open()
-    }
-    pub fn set_panel_open(&mut self, open: bool) {
-        self.instance.set_panel_open(open);
-    }
-    pub fn reserved_keys(&self) -> &[String] {
-        self.instance.reserved_keys()
-    }
-    pub fn take_interaction(&mut self) -> InteractionOutput {
-        self.instance.take_interaction()
     }
 
     /// Retained request from a successful callback, independent of UI focus.

@@ -77,7 +77,7 @@ fn migration_copy_bytes_count_against_the_literal_frame_byte_cap() {
 
 #[test]
 fn migration_allowance_never_exceeds_the_frame_ceiling_or_slice() {
-    let frame = PublicationServiceConfig::PHASE2_GATE.maximum_frame_bytes;
+    let frame = PublicationServiceConfig::DEFAULT.maximum_frame_bytes;
     assert_eq!(
         GpuUploadReservation::default().migration_allowance(),
         ARENA_MIGRATION_FRAME_BYTES
@@ -527,7 +527,7 @@ fn one_upload_budget_still_applies_later_zero_byte_changes() {
 fn zero_byte_applications_never_exceed_the_retained_queue_hard_cap() {
     let total = DEFAULT_RENDER_QUEUE_ITEMS + 44;
     let maximum_zero_byte_operations =
-        PublicationServiceConfig::PHASE2_GATE.maximum_zero_byte_operations_per_frame;
+        PublicationServiceConfig::DEFAULT.maximum_zero_byte_operations_per_frame;
     let now = Instant::now();
     let acknowledgements = ChunkUploadAcknowledgements::default();
     let mut app = App::new();

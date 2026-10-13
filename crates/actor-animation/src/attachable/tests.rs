@@ -1,5 +1,6 @@
 use super::*;
 use crate::pose::quat_from_euler;
+use crate::test_support::scalar;
 use assets::*;
 
 fn fixture() -> Arc<RuntimeEntityAssets> {
@@ -8,6 +9,7 @@ fn fixture() -> Arc<RuntimeEntityAssets> {
 
 pub(super) fn owner_rig() -> ActorRigSnapshot<'static> {
     ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         actor: ActorLifetimeId {
             session_id: 1,
             dimension: 0,
@@ -405,7 +407,7 @@ fn owner_variables_copy_by_name_between_catalogs_with_different_slots() {
         owner_layout.named_slot(&owner, "variable.charge_amount"),
         0.75,
     );
-    let inherited = ActorAnimationVariables::new(Some(&owner), &values, 77);
+    let inherited = ActorAnimationVariables::new(Some(&owner), &values, 77, 0);
     let mut copied = target_layout.fresh(1);
     inherited.copy_to(&target, &target_layout, &mut copied);
     assert_eq!(

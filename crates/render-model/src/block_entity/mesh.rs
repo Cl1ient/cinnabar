@@ -1,6 +1,7 @@
 //! CPU vertex emission for block-entity models: boxes with the entity-geometry UV
 //! unwrap, free quads, and separate draw layers.
 
+use assets::block_entity_geometry::BoxSpec;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
@@ -37,40 +38,6 @@ pub enum Layer {
     Crack,
     /// Native portal normal/depth encoding, composited in coplanar layer order.
     Portal,
-}
-
-/// A box in entity-geometry authoring space: pixels, front toward -Z, +Y up.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BoxSpec {
-    pub origin: [f32; 3],
-    pub size: [f32; 3],
-    /// Box-UV origin in texels of the logical texture.
-    pub uv: [f32; 2],
-    pub inflate: f32,
-}
-
-impl BoxSpec {
-    #[must_use]
-    pub const fn new(origin: [f32; 3], size: [f32; 3], uv: [f32; 2]) -> Self {
-        Self {
-            origin,
-            size,
-            uv,
-            inflate: 0.0,
-        }
-    }
-
-    #[must_use]
-    pub const fn inflated(mut self, inflate: f32) -> Self {
-        self.inflate = inflate;
-        self
-    }
-}
-
-impl From<assets::block_entity_geometry::ModelBox> for BoxSpec {
-    fn from((origin, size, uv): assets::block_entity_geometry::ModelBox) -> Self {
-        Self::new(origin, size, uv)
-    }
 }
 
 // Directional face shade; needs native measurement against Bedrock entity lighting.
@@ -126,9 +93,8 @@ impl MeshBuilder {
         spec: BoxSpec,
         tint: [f32; 4],
     ) {
-        let faces =
-            assets::block_entity_geometry::box_faces(spec.origin, spec.size, spec.uv, spec.inflate);
-        for ((corners, texels), shade) in faces
+        for ((corners, texels), shade) in spec
+            .faces()
             .into_iter()
             .zip([SHADE_Z, SHADE_Z, SHADE_X, SHADE_X, SHADE_UP, SHADE_DOWN])
         {
@@ -217,6 +183,27 @@ impl MeshBuilder {
         };
         let [first, second, third, fourth] = [vertex(0), vertex(1), vertex(2), vertex(3)];
         target.extend_from_slice(&[second, third, first, first, third, fourth]);
+    }
+
+    /// Repeats the beam tile in the shader, with a fixed six vertices for any height.
+    pub(super) fn repeating_beam_quad(
+        &mut self,
+        corners: [[f32; 3]; 4],
+        rect: AtlasRect,
+        color: [f32; 4],
+        scroll: f32,
+    ) {
+        let start = self.overlay.len();
+        self.textured_quad(Layer::Overlay, corners, rect, color);
+        for vertex in &mut self.overlay[start..] {
+            vertex.uv[1] = -vertex.position[1] + scroll;
+            vertex.normal = [
+                rect.y / self.atlas_size[1],
+                rect.height / self.atlas_size[1],
+                0.0,
+            ];
+            vertex.actor_light = u32::MAX;
+        }
     }
 
     /// A box whose faces each show one whole atlas rect, in `[west, east, down, up, north,

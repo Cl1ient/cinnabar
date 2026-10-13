@@ -15,9 +15,13 @@ name = "json_ui"
 path = "src/lib.rs"
 
 [dependencies]
+pack-json = { path = "../pack-json" }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 thiserror.workspace = true
+
+[dev-dependencies]
+test-alloc = { path = "../test-alloc" }
 
 [lints]
 workspace = true

@@ -14,7 +14,7 @@ $script:AcceptanceExecutionPhase = {
             bds_source = $BdsDir
             bds_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $BdsSourceExecutable).Hash.ToLowerInvariant()
             duration_seconds = $DurationSeconds
-            build_app_command = if ($SkipClientBuild) { $null } else { 'cargo build --release -p bedrock-client --locked' }
+            build_app_command = if ($SkipClientBuild) { $null } else { 'cargo build --release -p cinnabar --locked' }
             build_profile = 'release'
             client_executable = $AppExecutable
             skip_client_build = [bool]$SkipClientBuild
@@ -259,7 +259,7 @@ $script:AcceptanceExecutionPhase = {
         $metadata['app_command'] = $AppCommand
         $metadata | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $RunDirectory 'metadata.json') -Encoding UTF8
         if (-not $SkipClientBuild) {
-            Invoke-CheckedBuild -Executable 'cargo' -Arguments @('build', '--release', '-p', 'bedrock-client', '--locked') -LogPath (Join-Path $RunDirectory 'build-app.log') -WorkingDirectory $ProjectRoot
+            Invoke-CheckedBuild -Executable 'cargo' -Arguments @('build', '--release', '-p', 'cinnabar', '--locked') -LogPath (Join-Path $RunDirectory 'build-app.log') -WorkingDirectory $ProjectRoot
         }
         if (-not (Test-Path -LiteralPath $AppExecutable -PathType Leaf)) {
             throw "client executable was not available after build selection: $AppExecutable"
@@ -294,12 +294,12 @@ $script:AcceptanceExecutionPhase = {
             -ReadinessProbe $bdsReadinessProbe
         $coreHandle = Start-LoggedProcess -Executable $CoreExecutable -Arguments $CoreArguments -WorkingDirectory $ProjectRoot -StdoutPath (Join-Path $RunDirectory 'core.stdout.log') -StderrPath (Join-Path $RunDirectory 'core.stderr.log')
         $null = Wait-CoreReady -Handle $coreHandle -TimeoutSeconds 30
-        $savedBuildCommit = $env:RUST_MCBE_BUILD_COMMIT; if (-not $SkipClientBuild) { $env:RUST_MCBE_BUILD_COMMIT = $repoCommit }; try { $appHandle = Start-LoggedProcess -Executable $AppExecutable -Arguments $AppArguments -WorkingDirectory $ProjectRoot -StdoutPath (Join-Path $RunDirectory 'app.stdout.log') -StderrPath (Join-Path $RunDirectory 'app.stderr.log') } finally { $env:RUST_MCBE_BUILD_COMMIT = $savedBuildCommit }
+        $savedBuildCommit = $env:CINNABAR_BUILD_COMMIT; if (-not $SkipClientBuild) { $env:CINNABAR_BUILD_COMMIT = $repoCommit }; try { $appHandle = Start-LoggedProcess -Executable $AppExecutable -Arguments $AppArguments -WorkingDirectory $ProjectRoot -StdoutPath (Join-Path $RunDirectory 'app.stdout.log') -StderrPath (Join-Path $RunDirectory 'app.stderr.log') } finally { $env:CINNABAR_BUILD_COMMIT = $savedBuildCommit }
         $worldReadyMarkerLine = $null
         if ($isModelWitnessGallery) {
             $galleryAnchorMarkerEvidence = Wait-ProcessOutputMarker `
                 -Handle $appHandle `
-                -Marker 'RUST_MCBE_GALLERY_ANCHOR_READY ' `
+                -Marker 'CINNABAR_GALLERY_ANCHOR_READY ' `
                 -TimeoutSeconds 180 `
                 -PassThruEvidence
             $galleryAnchor = ConvertFrom-GalleryAnchorReadyMarker -Line ([string]$galleryAnchorMarkerEvidence.Line)
@@ -311,9 +311,9 @@ $script:AcceptanceExecutionPhase = {
             })
         }
         else {
-            $coordinateMarker = Wait-ProcessOutputMarker -Handle $appHandle -Marker 'RUST_MCBE_MUTATION_COORDINATE=' -TimeoutSeconds 180
-            $worldReadyMarkerLine = Wait-ProcessOutputMarker -Handle $appHandle -Marker 'RUST_MCBE_WORLD_READY ' -TimeoutSeconds 180
-            if ($coordinateMarker -notmatch '^RUST_MCBE_MUTATION_COORDINATE=(-?\d+),(-?\d+),(-?\d+)$') {
+            $coordinateMarker = Wait-ProcessOutputMarker -Handle $appHandle -Marker 'CINNABAR_MUTATION_COORDINATE=' -TimeoutSeconds 180
+            $worldReadyMarkerLine = Wait-ProcessOutputMarker -Handle $appHandle -Marker 'CINNABAR_WORLD_READY ' -TimeoutSeconds 180
+            if ($coordinateMarker -notmatch '^CINNABAR_MUTATION_COORDINATE=(-?\d+),(-?\d+),(-?\d+)$') {
                 throw "invalid mutation marker: $coordinateMarker"
             }
             $coordinate = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
@@ -381,7 +381,7 @@ $script:AcceptanceExecutionPhase = {
             if ($LeafForestFullView) {
                 $movePlayerIngressMarkerEvidence = Wait-ProcessOutputMarker `
                     -Handle $appHandle `
-                    -Marker 'RUST_MCBE_MOVE_PLAYER_INGRESS ' `
+                    -Marker 'CINNABAR_MOVE_PLAYER_INGRESS ' `
                     -TimeoutSeconds 180 `
                     -PassThruEvidence
                 $movePlayerIngressEvidence = ConvertFrom-MovePlayerIngressMarker -Line $movePlayerIngressMarkerEvidence.Line
@@ -404,7 +404,7 @@ $script:AcceptanceExecutionPhase = {
             }
             $teleportMarkerOutputEvidence = Wait-ProcessOutputMarker `
                 -Handle $appHandle `
-                -Marker 'RUST_MCBE_TELEPORT_SETTLED ' `
+                -Marker 'CINNABAR_TELEPORT_SETTLED ' `
                 -TimeoutSeconds 180 `
                 -PassThruEvidence
             $teleportMarkerLine = $teleportMarkerOutputEvidence.Line
@@ -425,7 +425,7 @@ $script:AcceptanceExecutionPhase = {
             }
             $forcedRemeshMarkerOutputEvidence = Wait-ProcessOutputMarker `
                 -Handle $appHandle `
-                -Marker 'RUST_MCBE_FORCED_FULL_VIEW_REMESH_SETTLED ' `
+                -Marker 'CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED ' `
                 -TimeoutSeconds 30 `
                 -PassThruEvidence
             if ([uint64]$forcedRemeshMarkerOutputEvidence.LineNumber -le [uint64]$teleportMarkerOutputEvidence.LineNumber) {
@@ -444,7 +444,7 @@ $script:AcceptanceExecutionPhase = {
                 })
                 $targetMutationMarkerOutputEvidence = Wait-ProcessOutputMarker `
                     -Handle $appHandle `
-                    -Marker 'RUST_MCBE_TARGET_MUTATION_ARMED ' `
+                    -Marker 'CINNABAR_TARGET_MUTATION_ARMED ' `
                     -TimeoutSeconds 30 `
                     -PassThruEvidence
                 if ([uint64]$targetMutationMarkerOutputEvidence.LineNumber -le [uint64]$forcedRemeshMarkerOutputEvidence.LineNumber) {

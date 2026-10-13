@@ -151,6 +151,7 @@ fn dispatch(world: &mut World) {
                     Err("the launcher menu is unavailable".into())
                 }
             }
+            Command::GlobalPacks { action } => global_packs(world, action),
             Command::CameraPath(path) => camera::start(world, path),
             Command::CameraRelease => camera::release(world),
             Command::State => Ok(state::snapshot(world)),
@@ -190,6 +191,41 @@ fn connect(world: &mut World, address: String) -> Result<Value, String> {
     Ok(json!({ "joining": address }))
 }
 
+/// Queues `action` behind the screen's own actions; the report reflects the last published
+/// snapshot, so it shows a queued action's effect only on a later call.
+fn global_packs(
+    world: &mut World,
+    action: Option<developer_control::protocol::GlobalPackAction>,
+) -> Result<Value, String> {
+    use developer_control::protocol::GlobalPackAction;
+    use launcher::global_resources::Action;
+    let mut menu = world
+        .get_resource_mut::<client_shell::menu::MenuRuntime>()
+        .ok_or("the launcher menu is unavailable")?;
+    if let Some(action) = action {
+        menu.global_resource_actions.push(match action {
+            GlobalPackAction::Activate { index } => Action::Activate(index),
+            GlobalPackAction::Deactivate { index } => Action::Deactivate(index),
+            GlobalPackAction::Apply => Action::Apply,
+        });
+    }
+    let snapshot = &menu.global_resources;
+    let names = |packs: &[resource_pack::InstalledPack]| {
+        packs
+            .iter()
+            .map(|pack| pack.name.clone())
+            .collect::<Vec<_>>()
+    };
+    Ok(json!({
+        "available": names(&snapshot.available),
+        "active": names(&snapshot.active),
+        "busy": snapshot.busy,
+        "pending": snapshot.has_pending_changes(),
+        "applied": snapshot.applied_selection.as_ref().map(Vec::len),
+        "message": snapshot.message,
+    }))
+}
+
 fn disconnect(world: &mut World) -> Result<Value, String> {
     let mut menu = world
         .get_resource_mut::<client_shell::menu::MenuRuntime>()
@@ -207,7 +243,7 @@ fn chat(world: &mut World, text: &str) -> Result<Value, String> {
         .try_into()
         .unwrap_or(u64::MAX);
     world
-        .resource_mut::<client_ui::ui_runtime::UiRuntime>()
+        .resource_mut::<client_shell::ui_resources::UiRuntimeResource>()
         .queue_chat_message(text, now_millis)
         .map_err(|error| format!("{error:?}"))?;
     Ok(json!({ "sent": text }))
@@ -216,6 +252,7 @@ fn chat(world: &mut World, text: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use bevy::{prelude::*, time::TimePlugin};
+    use client_shell::ui_resources::UiRuntimeResource;
     use client_ui::ui_runtime::UiRuntime;
 
     #[test]
@@ -242,15 +279,15 @@ mod tests {
     fn chat_sends_exactly_the_text_and_leaves_the_draft_alone() {
         let mut app = App::new();
         app.add_plugins(TimePlugin)
-            .insert_resource(UiRuntime::new(1));
+            .insert_resource(UiRuntimeResource(UiRuntime::new(1)));
         app.update();
         let world = app.world_mut();
         world
-            .resource_mut::<UiRuntime>()
+            .resource_mut::<UiRuntimeResource>()
             .insert_chat_text("half-typed ")
             .unwrap();
         super::chat(world, "/showcase souls").unwrap();
-        let ui = world.resource::<UiRuntime>();
+        let ui = world.resource::<UiRuntimeResource>();
         let sent: Vec<&str> = ui
             .pending_chat_sends()
             .iter()
@@ -260,7 +297,7 @@ mod tests {
         assert_eq!(ui.chat_editor().as_str(), "half-typed ");
         assert!(super::chat(world, "").is_err());
         assert_eq!(
-            world.resource::<UiRuntime>().chat_editor().as_str(),
+            world.resource::<UiRuntimeResource>().chat_editor().as_str(),
             "half-typed ",
             "a refused send leaves no editor changes behind"
         );

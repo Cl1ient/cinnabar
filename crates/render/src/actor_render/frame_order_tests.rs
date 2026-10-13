@@ -1,4 +1,5 @@
 use bevy::ecs::system::RunSystemOnce;
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 use bevy::{
@@ -205,7 +206,7 @@ fn frame(blended: &[bool]) -> ActorRenderFrame {
                 ingress_sequence: 1,
                 source_tick: None,
                 movement_revision: 0,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: 0,
             },
             rig: EntityRigId(0),
@@ -267,7 +268,7 @@ fn actor_render_changed_spans_queue_and_present_the_current_frame() {
     Arc::make_mut(&mut frame.rig.instances)[0].material = blended_material;
     for entry in Arc::make_mut(&mut frame.rig.manifest) {
         entry.completed_tick = 2;
-        entry.identity.pose_generation = 2;
+        entry.identity.pose_generation = PoseGeneration::new(2);
     }
     world.insert_resource(frame);
     world.run_schedule(Render);

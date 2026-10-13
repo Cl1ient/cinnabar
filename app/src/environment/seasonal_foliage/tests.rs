@@ -42,13 +42,13 @@ fn seasonal_scheduled_palette_update_reaches_render_resource_with_same_mesh_iden
     app.insert_resource(client)
         .insert_resource(active)
         .insert_resource(WeatherTickFrame {
-            rain: vec![[1.0, 1.0]; world::TICKS_PER_SECOND as usize],
+            rain: vec![[1.0, 1.0]; simulation_clock::TICKS_PER_SECOND as usize],
             dimension: 0,
             weather_cycle_enabled: true,
         })
         .add_systems(Update, update_seasonal_foliage);
     // Bounded fixture frames; stop when the native palette refresh publishes.
-    for _ in 0..world::TICKS_PER_SECOND {
+    for _ in 0..simulation_clock::TICKS_PER_SECOND {
         app.update();
         let snapshot = app
             .world()
@@ -74,7 +74,7 @@ fn seasonal_scheduled_palette_update_reaches_render_resource_with_same_mesh_iden
     assert_eq!(stream.biome_tint_identity(), table);
     assert_eq!(after.raw_id_to_dense, before.raw_id_to_dense);
     let dense = after.dense_index(7) as usize;
-    let exposed = assets::SEASONAL_FOLIAGE_EXPOSED_OFFSET;
+    let exposed = assets::seasonal_foliage::SEASONAL_FOLIAGE_EXPOSED_OFFSET;
     let colour = after.records[dense].seasonal_foliage[exposed];
     assert_eq!(
         active.entries()[dense].seasonal_foliage[exposed],

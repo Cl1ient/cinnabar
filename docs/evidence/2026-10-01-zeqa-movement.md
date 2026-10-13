@@ -55,9 +55,9 @@ without clearing physical input. Live teleport handling resets spatial and fall 
 
 ## Required live retest
 
-Run a release client with `RUST_MCBE_MOVEMENT_TRACE=1`. It now records both outbound
+Run a release client with `CINNABAR_MOVEMENT_TRACE=1`. It now records both outbound
 PAI and `rust-mcbe-movement-control-v1` incoming movement records without the old
-250 ms limiter. Leave `RUST_MCBE_TELEPORT_ACK` unset for the default verified
+250 ms limiter. Leave `CINNABAR_TELEPORT_ACK` unset for the default verified
 MovePlayer route; setting it to 1 also enables provisional extra routes.
 
 Repeat stationary hits, falling hits, held jump through a duel teleport, and the

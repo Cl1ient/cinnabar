@@ -2,14 +2,10 @@
 //! `temp.*`, `query.*`, `return` and assignments. Variables are interned per effect so a
 //! particle's state is a dense `Vec<f32>`; a NaN slot is "unassigned" and reads as 0.
 
-use std::collections::HashMap;
-
-/// Interned variable names; the builtin slots below are fixed for every effect.
-#[derive(Clone, Debug, Default)]
-pub struct Interner {
-    names: Vec<Box<str>>,
-    index: HashMap<Box<str>, u16>,
-}
+use std::{collections::BTreeMap, sync::Arc};
+mod interner;
+mod query_support;
+pub use interner::Interner;
 
 pub const V_PARTICLE_AGE: u16 = 0;
 pub const V_PARTICLE_LIFETIME: u16 = 1;
@@ -32,45 +28,6 @@ const BUILTINS: [&str; 12] = [
     "emitter_random_3",
     "emitter_random_4",
 ];
-
-/// Bound on interned names so a hostile definition cannot grow per-particle state.
-pub const MAX_VARIABLES: usize = 256;
-
-impl Interner {
-    #[must_use]
-    pub fn with_builtins() -> Self {
-        let mut interner = Self::default();
-        for name in BUILTINS {
-            interner.intern(name);
-        }
-        interner
-    }
-
-    /// Slot for a variable name (without the `variable.` prefix), or `None` once full.
-    pub fn intern(&mut self, name: &str) -> Option<u16> {
-        if let Some(&slot) = self.index.get(name) {
-            return Some(slot);
-        }
-        if self.names.len() >= MAX_VARIABLES {
-            return None;
-        }
-        let slot = self.names.len() as u16;
-        let boxed: Box<str> = name.into();
-        self.names.push(boxed.clone());
-        self.index.insert(boxed, slot);
-        Some(slot)
-    }
-
-    #[must_use]
-    pub fn get(&self, name: &str) -> Option<u16> {
-        self.index.get(name).copied()
-    }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.names.len()
-    }
-}
 
 /// Strips `variable.`/`v.` and lowercases; `None` when `name` is not a variable reference.
 #[must_use]
@@ -116,7 +73,7 @@ impl Rng {
 }
 
 /// Query values the host supplies; unknown queries read 0.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Queries {
     pub is_in_water: f32,
     pub is_in_water_or_rain: f32,
@@ -125,9 +82,11 @@ pub struct Queries {
     pub frame_alpha: f32,
     /// Potion swirl colour, linear 0..1 RGBA.
     pub spell_color: [f32; 4],
+    /// Named actor queries supplied by the host for a bound controller emitter.
+    pub actor: Option<Arc<BTreeMap<Box<str>, f32>>>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 enum Query {
     IsInWater,
     IsInWaterOrRain,
@@ -135,7 +94,7 @@ enum Query {
     GroundSpeed,
     FrameAlpha,
     SpellColor(usize),
-    Zero,
+    Named(Box<str>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -325,7 +284,13 @@ impl Env<'_> {
                 Query::GroundSpeed => self.queries.ground_speed,
                 Query::FrameAlpha => self.queries.frame_alpha,
                 Query::SpellColor(component) => self.queries.spell_color[*component],
-                Query::Zero => 0.0,
+                Query::Named(name) => self
+                    .queries
+                    .actor
+                    .as_ref()
+                    .and_then(|values| values.get(name.as_ref()))
+                    .copied()
+                    .unwrap_or(0.0),
             },
             Expr::Neg(inner) => -self.exec(inner),
             Expr::Not(inner) => f32::from(self.exec(inner) == 0.0),
@@ -863,6 +828,7 @@ impl Parser<'_> {
     }
 }
 
+/// Resolves built-in queries and retains other numeric actor query names.
 fn query(name: &str) -> Query {
     match name {
         "is_in_water" => Query::IsInWater,
@@ -874,7 +840,7 @@ fn query(name: &str) -> Query {
         "spellcolor.g" | "spellcolor.green" => Query::SpellColor(1),
         "spellcolor.b" | "spellcolor.blue" => Query::SpellColor(2),
         "spellcolor.a" | "spellcolor.alpha" => Query::SpellColor(3),
-        _ => Query::Zero,
+        _ => Query::Named(name.into()),
     }
 }
 

@@ -12,6 +12,8 @@ pub fn effect_registry_version() -> &'static str {
 pub struct EffectDescriptor {
     pub id: i32,
     pub identifier: &'static str,
+    /// The language key of the effect's display name.
+    pub name_key: &'static str,
     pub icon: Option<HudTextureRole>,
     pub icon_path: Option<&'static str>,
     pub harmful: bool,
@@ -21,6 +23,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 1,
         identifier: "minecraft:speed",
+        name_key: "potion.moveSpeed",
         icon: Some(HudTextureRole::EffectIconSpeed),
         icon_path: Some("textures/ui/speed_effect.png"),
         harmful: false,
@@ -28,6 +31,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 2,
         identifier: "minecraft:slowness",
+        name_key: "potion.moveSlowdown",
         icon: Some(HudTextureRole::EffectIconSlowness),
         icon_path: Some("textures/ui/slowness_effect.png"),
         harmful: true,
@@ -35,6 +39,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 3,
         identifier: "minecraft:haste",
+        name_key: "potion.digSpeed",
         icon: Some(HudTextureRole::EffectIconHaste),
         icon_path: Some("textures/ui/haste_effect.png"),
         harmful: false,
@@ -42,6 +47,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 4,
         identifier: "minecraft:mining_fatigue",
+        name_key: "potion.digSlowDown",
         icon: Some(HudTextureRole::EffectIconMiningFatigue),
         icon_path: Some("textures/ui/mining_fatigue_effect.png"),
         harmful: true,
@@ -49,6 +55,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 5,
         identifier: "minecraft:strength",
+        name_key: "potion.damageBoost",
         icon: Some(HudTextureRole::EffectIconStrength),
         icon_path: Some("textures/ui/strength_effect.png"),
         harmful: false,
@@ -56,6 +63,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 6,
         identifier: "minecraft:instant_health",
+        name_key: "potion.heal",
         icon: None,
         icon_path: None,
         harmful: false,
@@ -63,6 +71,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 7,
         identifier: "minecraft:instant_damage",
+        name_key: "potion.harm",
         icon: None,
         icon_path: None,
         harmful: true,
@@ -70,6 +79,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 8,
         identifier: "minecraft:jump_boost",
+        name_key: "potion.jump",
         icon: Some(HudTextureRole::EffectIconJumpBoost),
         icon_path: Some("textures/ui/jump_boost_effect.png"),
         harmful: false,
@@ -77,6 +87,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 9,
         identifier: "minecraft:nausea",
+        name_key: "potion.confusion",
         icon: Some(HudTextureRole::EffectIconNausea),
         icon_path: Some("textures/ui/nausea_effect.png"),
         harmful: true,
@@ -84,6 +95,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 10,
         identifier: "minecraft:regeneration",
+        name_key: "potion.regeneration",
         icon: Some(HudTextureRole::EffectIconRegeneration),
         icon_path: Some("textures/ui/regeneration_effect.png"),
         harmful: false,
@@ -91,6 +103,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 11,
         identifier: "minecraft:resistance",
+        name_key: "potion.resistance",
         icon: Some(HudTextureRole::EffectIconResistance),
         icon_path: Some("textures/ui/resistance_effect.png"),
         harmful: false,
@@ -98,6 +111,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 12,
         identifier: "minecraft:fire_resistance",
+        name_key: "potion.fireResistance",
         icon: Some(HudTextureRole::EffectIconFireResistance),
         icon_path: Some("textures/ui/fire_resistance_effect.png"),
         harmful: false,
@@ -105,6 +119,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 13,
         identifier: "minecraft:water_breathing",
+        name_key: "potion.waterBreathing",
         icon: Some(HudTextureRole::EffectIconWaterBreathing),
         icon_path: Some("textures/ui/water_breathing_effect.png"),
         harmful: false,
@@ -112,6 +127,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 14,
         identifier: "minecraft:invisibility",
+        name_key: "potion.invisibility",
         icon: Some(HudTextureRole::EffectIconInvisibility),
         icon_path: Some("textures/ui/invisibility_effect.png"),
         harmful: false,
@@ -119,6 +135,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 15,
         identifier: "minecraft:blindness",
+        name_key: "potion.blindness",
         icon: Some(HudTextureRole::EffectIconBlindness),
         icon_path: Some("textures/ui/blindness_effect.png"),
         harmful: true,
@@ -126,6 +143,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 16,
         identifier: "minecraft:night_vision",
+        name_key: "potion.nightVision",
         icon: Some(HudTextureRole::EffectIconNightVision),
         icon_path: Some("textures/ui/night_vision_effect.png"),
         harmful: false,
@@ -133,6 +151,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 17,
         identifier: "minecraft:hunger",
+        name_key: "potion.hunger",
         icon: Some(HudTextureRole::EffectIconHunger),
         icon_path: Some("textures/ui/hunger_effect.png"),
         harmful: true,
@@ -140,6 +159,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 18,
         identifier: "minecraft:weakness",
+        name_key: "potion.weakness",
         icon: Some(HudTextureRole::EffectIconWeakness),
         icon_path: Some("textures/ui/weakness_effect.png"),
         harmful: true,
@@ -147,6 +167,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 19,
         identifier: "minecraft:poison",
+        name_key: "potion.poison",
         icon: Some(HudTextureRole::EffectIconPoison),
         icon_path: Some("textures/ui/poison_effect.png"),
         harmful: true,
@@ -154,6 +175,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 20,
         identifier: "minecraft:wither",
+        name_key: "potion.wither",
         icon: Some(HudTextureRole::EffectIconWither),
         icon_path: Some("textures/ui/wither_effect.png"),
         harmful: true,
@@ -161,6 +183,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 21,
         identifier: "minecraft:health_boost",
+        name_key: "potion.healthBoost",
         icon: Some(HudTextureRole::EffectIconHealthBoost),
         icon_path: Some("textures/ui/health_boost_effect.png"),
         harmful: false,
@@ -168,6 +191,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 22,
         identifier: "minecraft:absorption",
+        name_key: "potion.absorption",
         icon: Some(HudTextureRole::EffectIconAbsorption),
         icon_path: Some("textures/ui/absorption_effect.png"),
         harmful: false,
@@ -175,6 +199,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 23,
         identifier: "minecraft:saturation",
+        name_key: "potion.saturation",
         icon: None,
         icon_path: None,
         harmful: false,
@@ -182,6 +207,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 24,
         identifier: "minecraft:levitation",
+        name_key: "potion.levitation",
         icon: Some(HudTextureRole::EffectIconLevitation),
         icon_path: Some("textures/ui/levitation_effect.png"),
         harmful: true,
@@ -189,6 +215,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 25,
         identifier: "minecraft:fatal_poison",
+        name_key: "potion.poison",
         icon: Some(HudTextureRole::EffectIconPoison),
         icon_path: Some("textures/ui/poison_effect.png"),
         harmful: true,
@@ -196,6 +223,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 26,
         identifier: "minecraft:conduit_power",
+        name_key: "potion.conduitPower",
         icon: Some(HudTextureRole::EffectIconConduitPower),
         icon_path: Some("textures/ui/conduit_power_effect.png"),
         harmful: false,
@@ -203,6 +231,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 27,
         identifier: "minecraft:slow_falling",
+        name_key: "potion.slowFalling",
         icon: Some(HudTextureRole::EffectIconSlowFalling),
         icon_path: Some("textures/ui/slow_falling_effect.png"),
         harmful: false,
@@ -210,6 +239,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 28,
         identifier: "minecraft:bad_omen",
+        name_key: "effect.badOmen",
         icon: Some(HudTextureRole::EffectIconBadOmen),
         icon_path: Some("textures/ui/bad_omen_effect.png"),
         harmful: false,
@@ -217,6 +247,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 29,
         identifier: "minecraft:village_hero",
+        name_key: "effect.villageHero",
         icon: Some(HudTextureRole::EffectIconVillageHero),
         icon_path: Some("textures/ui/village_hero_effect.png"),
         harmful: false,
@@ -224,6 +255,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 30,
         identifier: "minecraft:darkness",
+        name_key: "effect.darkness",
         icon: Some(HudTextureRole::EffectIconDarkness),
         icon_path: Some("textures/ui/darkness_effect.png"),
         harmful: false,
@@ -231,6 +263,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 31,
         identifier: "minecraft:trial_omen",
+        name_key: "effect.trial_omen",
         icon: Some(HudTextureRole::EffectIconTrialOmen),
         icon_path: Some("textures/ui/trial_omen_effect.png"),
         harmful: false,
@@ -238,6 +271,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 32,
         identifier: "minecraft:wind_charged",
+        name_key: "potion.windCharged",
         icon: Some(HudTextureRole::EffectIconWindCharged),
         icon_path: Some("textures/ui/wind_charged_effect.png"),
         harmful: true,
@@ -245,6 +279,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 33,
         identifier: "minecraft:weaving",
+        name_key: "potion.weaving",
         icon: Some(HudTextureRole::EffectIconWeaving),
         icon_path: Some("textures/ui/weaving_effect.png"),
         harmful: true,
@@ -252,6 +287,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 34,
         identifier: "minecraft:oozing",
+        name_key: "potion.oozing",
         icon: Some(HudTextureRole::EffectIconOozing),
         icon_path: Some("textures/ui/oozing_effect.png"),
         harmful: true,
@@ -259,6 +295,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 35,
         identifier: "minecraft:infested",
+        name_key: "potion.infested",
         icon: Some(HudTextureRole::EffectIconInfested),
         icon_path: Some("textures/ui/infested_effect.png"),
         harmful: true,
@@ -266,6 +303,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 36,
         identifier: "minecraft:raid_omen",
+        name_key: "effect.raid_omen",
         icon: Some(HudTextureRole::EffectIconRaidOmen),
         icon_path: Some("textures/ui/raid_omen_effect.png"),
         harmful: false,
@@ -273,6 +311,7 @@ pub const EFFECT_DESCRIPTORS: [EffectDescriptor; 37] = [
     EffectDescriptor {
         id: 37,
         identifier: "minecraft:breath_of_the_nautilus",
+        name_key: "effect.customNautilus",
         icon: Some(HudTextureRole::EffectIconBreathOfTheNautilus),
         icon_path: Some("textures/ui/breath_of_the_nautilus_effect.png"),
         harmful: false,
@@ -286,6 +325,13 @@ pub const fn effect_descriptor(id: i32) -> Option<&'static EffectDescriptor> {
     } else {
         Some(&EFFECT_DESCRIPTORS[id as usize - 1])
     }
+}
+
+/// Returns the pinned facts for an effect registry identifier.
+pub fn effect_descriptor_by_identifier(identifier: &str) -> Option<&'static EffectDescriptor> {
+    EFFECT_DESCRIPTORS
+        .iter()
+        .find(|descriptor| descriptor.identifier == identifier)
 }
 
 /// Resolves an effect icon role to its sole source path.

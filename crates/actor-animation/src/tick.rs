@@ -30,12 +30,14 @@ pub struct ActorTickContext {
     pub main_hand_slot: u8,
     /// Current local Bedrock duration; zero retains the duration of a remote swing.
     pub bedrock_swing_ticks: i32,
-    /// Current local Java swing length after haste and fatigue; remote swings use the default.
+    /// Current Java swing length after haste and fatigue.
     pub java_swing_ticks: i32,
     /// A held crossbow is loaded.
     pub hand_charged: bool,
     /// Ticks the main-hand item can be used for, or 0 when unknown.
     pub main_hand_max_use_ticks: u32,
+    /// Main-hand consumption after server components and pack overrides are admitted.
+    pub main_hand_consumption: assets::item_use::ItemConsumption,
     /// Selected-stack gameplay clock for the local rig; remote actors retain their own ticks.
     pub local_item_use_ticks: Option<u32>,
     /// Maximum duration of the owner's offhand stack for explicitly selected-slot queries.
@@ -223,6 +225,7 @@ pub(super) fn advance_motion(
         state.history.pop_front();
     }
     let input = ActorTickInput {
+        placement_frame: state.placement_frame,
         position: actor.position(),
         position_delta,
         velocity: actor.velocity(),
@@ -266,6 +269,7 @@ pub(super) fn seed_presentation_input(
         ..Default::default()
     });
     let input = ActorTickInput {
+        placement_frame: state.placement_frame,
         position: actor.position(),
         velocity: actor.velocity(),
         on_ground: actor.on_ground(),
@@ -773,6 +777,13 @@ pub(super) fn apply_engine_variables(
         engine.damage_nearby_mobs,
         flag(query::FLAG_DAMAGE_NEARBY_MOBS),
     );
+    let (startup, interval) = context
+        .main_hand
+        .as_ref()
+        .and_then(|_| crate::consumables::consume_animation(context.main_hand_consumption))
+        .map_or((0.0, 0.0), |_| use_item_progress(input.item_use_ticks));
+    variables.set(engine.use_item_startup_progress, startup);
+    variables.set(engine.use_item_interval_progress, interval);
     variables.set(engine.swim_amount, input.swim_amount);
     variables.set(engine.left_arm_swim_amount, input.swim_amount);
     variables.set(engine.right_arm_swim_amount, input.swim_amount);
@@ -814,6 +825,29 @@ pub(super) fn apply_engine_variables(
             variables.set(Some(slot), frame[axis]);
         }
     }
+}
+
+/// Ticks the arm takes to rise to the mouth once eating or drinking starts. Provisional: the
+/// engine sets this variable natively and no version-matched witness is recorded yet.
+const USE_ITEM_STARTUP_TICKS: f32 = 4.0;
+/// Ticks of one eating or drinking bob, matching the four-tick cadence of the eat events servers
+/// send; provisional like [`USE_ITEM_STARTUP_TICKS`].
+const USE_ITEM_INTERVAL_TICKS: f32 = 4.0;
+
+/// The `variable.use_item_startup_progress` and `variable.use_item_interval_progress` an
+/// eat or drink use of `use_ticks` consecutive ticks publishes: the arm rises over the startup,
+/// then bobs once per interval. Both are zero while nothing is in use.
+pub(super) fn use_item_progress(use_ticks: u32) -> (f32, f32) {
+    if use_ticks == 0 {
+        return (0.0, 0.0);
+    }
+    let ticks = use_ticks as f32;
+    let startup = (ticks / USE_ITEM_STARTUP_TICKS).min(1.0);
+    let bobbing = (ticks - USE_ITEM_STARTUP_TICKS).max(0.0);
+    let interval = (std::f32::consts::PI * (bobbing % USE_ITEM_INTERVAL_TICKS)
+        / USE_ITEM_INTERVAL_TICKS)
+        .sin();
+    (startup, interval)
 }
 
 /// Uses the authored rotation factor when the pack leaves its item-specific factor unassigned.

@@ -1,7 +1,8 @@
 {
-  "magic": "BREG1003",
+  "magic": "BREG1004",
+  "previous_magic": "BREG1003",
   "legacy_protocol": 1001,
-  "physics_magic": "PREG1002",
+  "physics_magic": "PREG1003",
   "physics_legacy_magic": "PREG1001",
   "physics_header_bytes": 48,
   "physics_record_header_bytes": 28,
@@ -117,6 +118,34 @@
       ],
       "read": true,
       "read_visibility": "pub(super)"
+    },
+    {
+      "name": "BeaconTint",
+      "default": "Unresolved",
+      "go_prefix": "BeaconTint",
+      "go_max": "maxBeaconTint",
+      "values": [
+        {"name": "Unresolved", "value": 0},
+        {"name": "NoTinting", "value": 1},
+        {"name": "White", "value": 2},
+        {"name": "Orange", "value": 3},
+        {"name": "Magenta", "value": 4},
+        {"name": "LightBlue", "value": 5},
+        {"name": "Yellow", "value": 6},
+        {"name": "Lime", "value": 7},
+        {"name": "Pink", "value": 8},
+        {"name": "Gray", "value": 9},
+        {"name": "LightGray", "value": 10},
+        {"name": "Cyan", "value": 11},
+        {"name": "Purple", "value": 12},
+        {"name": "Blue", "value": 13},
+        {"name": "Brown", "value": 14},
+        {"name": "Green", "value": 15},
+        {"name": "Red", "value": 16},
+        {"name": "Black", "value": 17}
+      ],
+      "read": true,
+      "read_visibility": "pub"
     }
   ],
   "flags": [
@@ -197,7 +226,8 @@
         {"rust_name": "model_state", "go_name": "ModelState", "rust_type": "ModelState", "go_type": "ModelState", "public": true},
         {"rust_name": "face_coverage", "go_name": "FaceCoverage", "rust_type": "u8", "go_type": "uint8", "public": true},
         {"rust_name": "collision_seed", "go_name": "CollisionSeed", "rust_type": "CollisionSeed", "go_type": "CollisionSeed", "public": true},
-        {"rust_name": "provenance", "go_name": "Provenance", "rust_type": "RegistryProvenance", "go_type": "uint8", "public": true}
+        {"rust_name": "provenance", "go_name": "Provenance", "rust_type": "RegistryProvenance", "go_type": "uint8", "public": true},
+        {"rust_name": "beacon_tint", "go_name": "BeaconTint", "rust_type": "BeaconTint", "go_type": "BeaconTint", "public": true}
       ],
       "doc": "One canonical state from the deterministic block registry."
     },
@@ -218,19 +248,20 @@
     }
   ],
   "record_header": [
-    {"name": "sequential_id", "type": "u32", "go_value": "record.SequentialID"},
-    {"name": "network_hash", "type": "u32", "go_value": "record.NetworkHash"},
-    {"name": "raw_flags", "type": "u8", "go_value": "record.Flags"},
-    {"name": "model_family", "type": "u8", "go_value": "uint8(record.ModelFamily)"},
-    {"name": "contributor_role", "type": "u8", "go_value": "uint8(record.ContributorRole)"},
-    {"name": "model_mask", "type": "u8", "go_value": "record.ModelState.Mask"},
-    {"name": "face_coverage", "type": "u8", "go_value": "record.FaceCoverage"},
-    {"name": "confidence", "type": "u8", "go_value": "uint8(record.CollisionSeed.Confidence)"},
-    {"name": "raw_provenance", "type": "u8", "go_value": "record.Provenance"},
-    {"name": "box_count", "type": "u8", "go_value": "uint8(len(record.CollisionSeed.Boxes))"},
-    {"name": "shape_id", "type": "u16", "go_value": "record.CollisionSeed.ShapeID"},
-    {"name": "name_len", "type": "u16", "go_value": "uint16(len(record.Name))"},
-    {"name": "state_len", "type": "u32", "go_value": "uint32(len(record.StateJSON))"},
-    {"name": "values", "type": "u32[8]", "go_value": "record.ModelState.Values"}
+    {"name": "sequential_id", "type": "u32", "go_value": "record.SequentialID", "rust_value": "record.sequential_id"},
+    {"name": "network_hash", "type": "u32", "go_value": "record.NetworkHash", "rust_value": "record.network_hash"},
+    {"name": "raw_flags", "type": "u8", "go_value": "record.Flags", "rust_value": "record.flags.bits()"},
+    {"name": "model_family", "type": "u8", "go_value": "uint8(record.ModelFamily)", "rust_value": "record.model_family as u8"},
+    {"name": "contributor_role", "type": "u8", "go_value": "uint8(record.ContributorRole)", "rust_value": "record.contributor_role as u8"},
+    {"name": "model_mask", "type": "u8", "go_value": "record.ModelState.Mask", "rust_value": "record.model_state.mask()"},
+    {"name": "face_coverage", "type": "u8", "go_value": "record.FaceCoverage", "rust_value": "record.face_coverage"},
+    {"name": "confidence", "type": "u8", "go_value": "uint8(record.CollisionSeed.Confidence)", "rust_value": "record.collision_seed.confidence as u8"},
+    {"name": "raw_provenance", "type": "u8", "go_value": "record.Provenance", "rust_value": "record.provenance.bits()"},
+    {"name": "box_count", "type": "u8", "go_value": "uint8(len(record.CollisionSeed.Boxes))", "rust_value": "record.collision_seed.boxes.len() as u8"},
+    {"name": "shape_id", "type": "u16", "go_value": "record.CollisionSeed.ShapeID", "rust_value": "record.collision_seed.shape_id"},
+    {"name": "name_len", "type": "u16", "go_value": "uint16(len(record.Name))", "rust_value": "record.name.len() as u16"},
+    {"name": "state_len", "type": "u32", "go_value": "uint32(len(record.StateJSON))", "rust_value": "record.canonical_state.len() as u32"},
+    {"name": "values", "type": "u32[8]", "go_value": "record.ModelState.Values", "rust_value": "record.model_state"},
+    {"name": "beacon_tint", "type": "u8", "go_value": "uint8(record.BeaconTint)", "rust_value": "record.beacon_tint as u8", "previous_default": 0}
   ]
 }

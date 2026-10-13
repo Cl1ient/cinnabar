@@ -159,6 +159,9 @@ impl State {
 }
 
 impl cinnabar::extension::hud::Host for State {
+    fn local_message(&mut self, text: String) -> Result<Result<(), String>> {
+        hud::local_message(self, text)
+    }
     fn open_editor(&mut self, json: String) -> Result<Result<(), String>> {
         hud::open_editor(self, json)
     }
@@ -338,6 +341,16 @@ impl Instance {
         state.player_state.fps = fps;
         state.player_state.sidebar = sidebar;
         state.player_state.chat = chat;
+        Ok(())
+    }
+
+    /// Validates native cosmetic facts before exposing any current callback data.
+    pub(super) fn observe_modules(
+        &mut self,
+        observations: crate::module_observations::ModuleObservations,
+    ) -> Result<()> {
+        super::module_observations::validate(&observations)?;
+        self.store.data_mut().player_state.observations = observations;
         Ok(())
     }
 
@@ -556,6 +569,11 @@ impl Instance {
         self.store.data().hud.content.as_ref()
     }
 
+    /// Consumes committed local-only system feedback once.
+    pub(super) fn take_local_messages(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.store.data_mut().hud.local_messages)
+    }
+
     /// Moves a committed preview into the native editor without a guest call.
     pub(super) fn take_hud_editor_request(&mut self) -> Option<ui::mod_hud::Hud> {
         self.store.data_mut().hud.editor_request.take()
@@ -572,6 +590,24 @@ impl Instance {
 
     pub(super) fn panel(&self) -> Option<&ui::mod_panel::Panel> {
         self.store.data().controls.panel.as_ref()
+    }
+    /// Installs a validated local catalog outside guest callbacks.
+    pub(super) fn set_panel_bundle(
+        &mut self,
+        bundle: Arc<ui::mod_panel::PanelBundle>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            self.active && self.store.data().grants.controls,
+            "controls capability denied"
+        );
+        let controls = &mut self.store.data_mut().controls;
+        controls.panel = Some(bundle.panel.clone());
+        controls.bundle = Some(bundle);
+        Ok(())
+    }
+    /// Keeps the local catalog available when a component reload creates a fresh instance.
+    pub(super) fn panel_bundle(&self) -> Option<Arc<ui::mod_panel::PanelBundle>> {
+        self.store.data().controls.bundle.clone()
     }
     pub(super) fn panel_open(&self) -> bool {
         self.store.data().controls.open

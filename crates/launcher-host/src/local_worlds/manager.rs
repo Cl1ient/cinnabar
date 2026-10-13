@@ -5,7 +5,7 @@ use std::{
 };
 
 use bridge::{Backend, LocalTarget, LocalWorld, LocalWorldInfo, Transport, WorldState};
-use crossbeam_channel::{Receiver, Sender, TrySendError};
+use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError};
 use launcher::local_worlds::world::{
     NewWorld, Prefs, PrefsUpdate, SetupState, World, WorldStatus, WorldUpdate,
 };
@@ -113,6 +113,27 @@ struct Life {
     failure: Option<String>,
     /// Cancels the start in progress when dropped.
     cancel_start: Option<CancelHandle>,
+    /// Disconnects once the start in progress has finished, including stopping a cancelled server.
+    start_done: Option<Receiver<()>>,
+    /// Servers still saving or cleaning up after a close; an open waits for all of them, so no
+    /// world's files or backend resources are shared with a new server.
+    retiring: Vec<Retiring>,
+    /// Counts opens, so a stop that finishes late never idles a newer open.
+    generation: u64,
+}
+
+/// A closed world whose server has not finished stopping.
+#[derive(Clone)]
+struct Retiring {
+    world_id: String,
+    /// Disconnects once the server has exited and its backend cleanup has finished.
+    done: Receiver<()>,
+}
+
+impl Retiring {
+    fn done(&self) -> bool {
+        matches!(self.done.try_recv(), Err(TryRecvError::Disconnected))
+    }
 }
 
 impl Manager {
@@ -213,7 +234,11 @@ impl Manager {
     pub fn delete(&self, id: &str) -> Result<(), WorldError> {
         let life = lock(&self.inner.life);
         let open = !matches!(life.state, WorldState::Idle | WorldState::Failed);
-        if open && life.world.as_ref().is_some_and(|world| world.id == id) {
+        let saving = life
+            .retiring
+            .iter()
+            .any(|retiring| retiring.world_id == id && !retiring.done());
+        if saving || (open && life.world.as_ref().is_some_and(|world| world.id == id)) {
             return Err(WorldError::InUse);
         }
         self.inner.store.delete(id)
@@ -272,8 +297,16 @@ impl Manager {
         status
     }
 
+    /// Readies a Dragonfly server ahead of an open, while the worlds are on screen.
+    pub fn prepare(&self) {
+        if let Some(runner) = &self.inner.runners.dragonfly {
+            runner.prepare();
+        }
+    }
+
     /// Begins starting a world and returns at once; poll [`Self::status`] for readiness.
-    /// Reopening the world that is already starting or running does nothing.
+    /// Reopening the world that is already starting or running does nothing, and an open while
+    /// the last world still saves starts its server once that one has exited.
     pub fn open(&self, id: &str, view_distance: Option<u32>) -> Result<(), WorldError> {
         let mut life = lock(&self.inner.life);
         match life.state {
@@ -284,8 +317,7 @@ impl Manager {
                     Err(WorldError::Busy)
                 };
             }
-            WorldState::Stopping => return Err(WorldError::Busy),
-            WorldState::Idle | WorldState::Failed => {}
+            WorldState::Idle | WorldState::Stopping | WorldState::Failed => {}
         }
         let world = self.inner.store.get(id)?;
         let dir = self.inner.store.dir(id)?;
@@ -305,33 +337,61 @@ impl Manager {
             }
         }
         let (handle, cancel) = cancel_pair();
+        let (start_running, start_done) = crossbeam_channel::bounded::<()>(0);
+        life.retiring.retain(|retiring| !retiring.done());
+        let after: Vec<Receiver<()>> = life
+            .retiring
+            .iter()
+            .map(|retiring| retiring.done.clone())
+            .collect();
+        life.generation += 1;
+        let generation = life.generation;
         life.world = Some(world.clone());
         life.instance = None;
         life.failure = None;
         life.paused = false;
         life.cancel_start = Some(handle);
+        life.start_done = Some(start_done);
         self.set_state(&mut life, WorldState::Starting);
         let spec = StartSpec {
             world,
             dir,
             view_distance,
         };
-        if !self.background(move |manager| manager.start(&spec, &cancel)) {
+        let started = self.background(move |manager| {
+            manager.start(&spec, &cancel, generation, after);
+            drop(start_running);
+        });
+        if !started {
             life.failure = Some(WorldError::Cancelled.status_text());
             self.set_state(&mut life, WorldState::Failed);
         }
         Ok(())
     }
 
-    fn start(&self, spec: &StartSpec, cancel: &Cancel) {
-        let started = self.inner.runners.start(spec, cancel);
+    /// Starts `spec`'s server once every server in `after` has finished stopping.
+    fn start(&self, spec: &StartSpec, cancel: &Cancel, generation: u64, after: Vec<Receiver<()>>) {
+        for retiring in after {
+            let cancelled = crossbeam_channel::select! {
+                recv(retiring) -> _ => false,
+                recv(cancel.receiver()) -> _ => true,
+            };
+            if cancelled {
+                break;
+            }
+        }
+        let started = if cancel.is_cancelled() {
+            Err(WorldError::Cancelled)
+        } else {
+            self.inner.runners.start(spec, cancel)
+        };
         let mut life = lock(&self.inner.life);
         if cancel.is_cancelled() {
             drop(life);
             if let Ok(instance) = started {
                 self.stop_instance(instance.as_ref());
             }
-            self.idle(&mut lock(&self.inner.life));
+            self.idle_if_current(generation);
             return;
         }
         let instance = match started {
@@ -394,6 +454,14 @@ impl Manager {
             WorldState::Failed => self.idle(&mut life),
             WorldState::Starting => {
                 life.cancel_start = None;
+                let start_done = life.start_done.take();
+                if let Some((world, done)) = life.world.as_ref().zip(start_done) {
+                    let retiring = Retiring {
+                        world_id: world.id.clone(),
+                        done,
+                    };
+                    life.retiring.push(retiring);
+                }
                 self.set_state(&mut life, WorldState::Stopping);
             }
             WorldState::Running => {
@@ -402,11 +470,23 @@ impl Manager {
                     return;
                 };
                 instance.request_stop();
+                // Done only after the stop's cleanup, which may remove a container or a world link
+                // by name after the process has exited.
+                let (stopping_done, done) = crossbeam_channel::bounded::<()>(0);
+                if let Some(world) = &life.world {
+                    let retiring = Retiring {
+                        world_id: world.id.clone(),
+                        done,
+                    };
+                    life.retiring.push(retiring);
+                }
                 self.set_state(&mut life, WorldState::Stopping);
                 let stopping = Arc::clone(&instance);
+                let generation = life.generation;
                 let spawned = self.background(move |manager| {
                     manager.stop_instance(stopping.as_ref());
-                    manager.idle(&mut lock(&manager.inner.life));
+                    drop(stopping_done);
+                    manager.idle_if_current(generation);
                 });
                 if !spawned {
                     self.idle(&mut life);
@@ -416,10 +496,13 @@ impl Manager {
         }
     }
 
-    /// Cancels a start in progress and asks the running server to save and stop without waiting;
-    /// the exit sweep then waits out its save budget. A lifecycle lock held by the exiting thread
-    /// skips the request.
+    /// Ends any standby server, cancels a start in progress and asks the running server to save
+    /// and stop without waiting; the exit sweep then waits out its save budget. A lifecycle lock
+    /// held by the exiting thread skips the request.
     pub(crate) fn request_exit_stop(&self) {
+        if let Some(runner) = &self.inner.runners.dragonfly {
+            runner.discard_standby();
+        }
         let mut life = match self.inner.life.try_lock() {
             Ok(life) => life,
             Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
@@ -498,7 +581,7 @@ impl Manager {
     }
 
     /// A receiver that wakes after each lifecycle change.
-    pub(crate) fn subscribe(&self) -> Receiver<()> {
+    pub fn subscribe(&self) -> Receiver<()> {
         let (sender, receiver) = crossbeam_channel::bounded(1);
         lock(&self.inner.subscribers).push(sender);
         receiver
@@ -511,9 +594,24 @@ impl Manager {
         });
     }
 
+    /// Clears the lifecycle, keeping the servers that are still stopping.
     fn idle(&self, life: &mut Life) {
-        *life = Life::default();
+        let mut retiring = std::mem::take(&mut life.retiring);
+        retiring.retain(|retiring| !retiring.done());
+        *life = Life {
+            generation: life.generation,
+            retiring,
+            ..Life::default()
+        };
         self.set_state(life, WorldState::Idle);
+    }
+
+    /// Idles the lifecycle unless a later open has taken it over.
+    fn idle_if_current(&self, generation: u64) {
+        let mut life = lock(&self.inner.life);
+        if life.generation == generation {
+            self.idle(&mut life);
+        }
     }
 
     /// Runs `task` on its own thread, counted for [`Self::shutdown`]; false when no thread started.

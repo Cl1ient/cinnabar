@@ -149,12 +149,9 @@ impl ActorStore {
                     kind: BlockEntityKind::Falling {
                         block_runtime_id: *block,
                     },
-                    center: [
-                        feet[0],
-                        feet[1] + super::FALLING_BLOCK_NETWORK_OFFSET,
-                        feet[2],
-                    ],
-                    scale: 1.0,
+                    // The block's centre is its network position, half its scaled size up.
+                    center: [feet[0], feet[1] + actor.network_position_offset(), feet[2]],
+                    scale: actor.render_scale(),
                     flash: false,
                 })
             }
@@ -249,9 +246,6 @@ mod tests {
 }
 
 #[cfg(test)]
-mod allocation_count;
-
-#[cfg(test)]
 mod allocation_tests {
     use super::*;
 
@@ -265,7 +259,7 @@ mod allocation_tests {
                 super::super::tests::spawn(runtime, runtime as i64),
             );
         }
-        let (ropes, allocations) = super::allocation_count::measure(|| store.ropes(0.5));
+        let (ropes, allocations) = test_alloc::count(|| store.ropes(0.5));
         assert!(ropes.is_empty());
         assert_eq!(allocations, 0);
         println!("512 unrelated actors: rope-view allocations={allocations}");

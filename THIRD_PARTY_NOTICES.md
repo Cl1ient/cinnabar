@@ -16,6 +16,17 @@ directory. This notice is checked in and is not rewritten by the acquisition scr
 - Files: `assets/branding/` (`title.png`)
 - Provenance: original, generated for Cinnabar; not Mojang content.
 
+## OreUI artwork
+
+- Files: `assets/oreui-icons/`
+- Provenance: original pixel art drawn for Cinnabar by `tools/oreui_icons/build.py`; not Mojang
+  content.
+
+## Java HUD offhand frames
+
+- Files: `assets/java-hud/textures/` (`hotbar_offhand_left.png`, `hotbar_offhand_right.png`)
+- Provenance: original pixel art drawn for Cinnabar; not Mojang content.
+
 ## Window and installer icon
 
 - Files: `packaging/icons/cinnabar.svg`, `assets/branding/icon.png`
@@ -275,6 +286,11 @@ SOFTWARE.
 - Copyright: Copyright (c) 2025 Jeremy Ianne
 - Upstream license SHA-256:
   `62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184`
+- Components: Jolyne (client session library), whose raw packet entries and spawn
+  sequence are adapted in `crates/protocol/src/raw_packet.rs` and
+  `crates/protocol/src/login/startup.rs`. Current revision:
+  `c4540512dc47833bb40363da7ad1161110d64b67`, as recorded in
+  `crates/protocol/vendor/UPSTREAM.md`.
 
 <!-- BEGIN AXOLOTL-STACK-MIT -->
 MIT License

@@ -8,6 +8,7 @@ use bevy::{
     time::Real,
     window::{CursorOptions, PrimaryWindow},
 };
+use client_shell::ui_resources::{UiPresentationResource, UiRuntimeResource};
 
 use client_ui::ui_runtime::{UiRuntime, presentation::UiPresentationRuntime};
 use std::sync::{
@@ -16,8 +17,8 @@ use std::sync::{
 };
 use {
     client_shell::menu::{MenuClipboard, MenuRuntime, drive_menu_input},
-    client_ui::test_support::fixture_font,
     launcher::menu::{MenuAction, MenuField, MenuScreen},
+    ui_engine::test_support::fixture_font,
 };
 
 fn menu_input_app(clipboard: MenuClipboard) -> (App, Entity) {
@@ -40,7 +41,7 @@ pub(crate) fn menu_input_app_with(
     .init_resource::<ButtonInput<KeyCode>>()
     .init_resource::<ButtonInput<MouseButton>>()
     .init_resource::<Touches>()
-    .insert_resource(presentation)
+    .insert_resource(UiPresentationResource(presentation))
     .insert_resource(MenuRuntime::new(true, 2, "test".into()))
     .insert_resource(clipboard)
     .add_systems(Update, drive_menu_input);
@@ -80,6 +81,23 @@ fn release_key(app: &mut App, window: Entity, key_code: KeyCode) {
         state: ButtonState::Released,
         text: None,
         repeat: false,
+        window,
+    });
+    app.update();
+}
+
+/// Delivers one OS auto-repeat of a held key the way Bevy's keyboard system leaves it, including
+/// re-marking a key the previous frame's owner reset as just pressed.
+fn repeat_key(app: &mut App, window: Entity, key_code: KeyCode) {
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key_code);
+    app.world_mut().write_message(KeyboardInput {
+        key_code,
+        logical_key: Key::Unidentified(bevy::input::keyboard::NativeKey::Unidentified),
+        state: ButtonState::Pressed,
+        text: None,
+        repeat: true,
         window,
     });
     app.update();
@@ -340,6 +358,27 @@ fn arrows_move_focus_when_no_text_box_is_focused() {
 }
 
 #[test]
+fn held_escape_opens_pause_once_and_its_repeats_neither_close_nor_reopen_it() {
+    let (mut app, window) = menu_input_app(MenuClipboard::default());
+    app.world_mut().resource_mut::<MenuRuntime>().show_world();
+    press_key(&mut app, window, KeyCode::Escape, None);
+    assert!(app.world().resource::<MenuRuntime>().is_visible());
+    for repeat in 0..4 {
+        repeat_key(&mut app, window, KeyCode::Escape);
+        let menu = app.world().resource::<MenuRuntime>();
+        assert!(menu.is_visible(), "repeat {repeat}");
+        assert_eq!(menu.screen(), MenuScreen::Pause, "repeat {repeat}");
+    }
+    release_key(&mut app, window, KeyCode::Escape);
+    press_key(&mut app, window, KeyCode::Escape, None);
+    assert!(!app.world().resource::<MenuRuntime>().is_visible());
+
+    // An Escape still held after a screen closed does not open pause on its repeats.
+    repeat_key(&mut app, window, KeyCode::Escape);
+    assert!(!app.world().resource::<MenuRuntime>().is_visible());
+}
+
+#[test]
 fn escape_from_pause_settings_returns_to_pause_and_teardown_clears_context() {
     let (mut app, window) = menu_input_app(MenuClipboard::default());
     app.world_mut()
@@ -419,9 +458,11 @@ fn chat_focus_loss_preserves_draft_and_does_not_open_pause() {
         .init_resource::<AccumulatedMouseMotion>()
         .init_resource::<Touches>()
         .init_resource::<MenuClipboard>()
-        .insert_resource(runtime)
+        .insert_resource(UiRuntimeResource(runtime))
         .insert_resource(player)
-        .insert_resource(UiPresentationRuntime::new(fixture_font()).unwrap())
+        .insert_resource(UiPresentationResource(
+            UiPresentationRuntime::new(fixture_font()).unwrap(),
+        ))
         .insert_resource(menu)
         .add_systems(
             Update,
@@ -445,17 +486,23 @@ fn chat_focus_loss_preserves_draft_and_does_not_open_pause() {
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Left);
     app.update();
-    assert!(app.world().resource::<UiRuntime>().chat_focused());
+    assert!(app.world().resource::<UiRuntimeResource>().chat_focused());
     assert_eq!(
-        app.world().resource::<UiRuntime>().chat_editor().as_str(),
+        app.world()
+            .resource::<UiRuntimeResource>()
+            .chat_editor()
+            .as_str(),
         "unsent draft"
     );
     assert!(!app.world().resource::<MenuRuntime>().is_visible());
     app.world_mut().get_mut::<Window>(window).unwrap().focused = true;
     app.update();
-    assert!(app.world().resource::<UiRuntime>().chat_focused());
+    assert!(app.world().resource::<UiRuntimeResource>().chat_focused());
     assert_eq!(
-        app.world().resource::<UiRuntime>().chat_editor().as_str(),
+        app.world()
+            .resource::<UiRuntimeResource>()
+            .chat_editor()
+            .as_str(),
         "unsent draft"
     );
 }
@@ -468,7 +515,7 @@ fn chat_input_preserves_buttons_for_the_visible_menu() {
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<AccumulatedMouseMotion>()
-        .insert_resource(UiRuntime::new(1))
+        .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
         .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
             1,
         )))
@@ -495,7 +542,7 @@ fn chat_input_preserves_buttons_for_the_visible_menu() {
             .resource::<ButtonInput<MouseButton>>()
             .pressed(MouseButton::Left)
     );
-    assert!(!app.world().resource::<UiRuntime>().chat_focused());
+    assert!(!app.world().resource::<UiRuntimeResource>().chat_focused());
 }
 
 #[test]
@@ -506,7 +553,7 @@ fn chat_typing_consumes_movement_keys_and_mouse_input() {
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<AccumulatedMouseMotion>()
-        .insert_resource(UiRuntime::new(1))
+        .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
         .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
             1,
         )))
@@ -524,9 +571,12 @@ fn chat_typing_consumes_movement_keys_and_mouse_input() {
         .id();
     press_key(&mut app, window, KeyCode::KeyT, Some("t"));
     app.update();
-    assert!(app.world().resource::<UiRuntime>().chat_focused());
+    assert!(app.world().resource::<UiRuntimeResource>().chat_focused());
     assert_eq!(
-        app.world().resource::<UiRuntime>().chat_editor().as_str(),
+        app.world()
+            .resource::<UiRuntimeResource>()
+            .chat_editor()
+            .as_str(),
         ""
     );
     app.world_mut()
@@ -538,7 +588,10 @@ fn chat_typing_consumes_movement_keys_and_mouse_input() {
     press_key(&mut app, window, KeyCode::KeyW, Some("w"));
     app.update();
     assert_eq!(
-        app.world().resource::<UiRuntime>().chat_editor().as_str(),
+        app.world()
+            .resource::<UiRuntimeResource>()
+            .chat_editor()
+            .as_str(),
         "w"
     );
     assert!(
@@ -557,7 +610,7 @@ fn chat_typing_consumes_movement_keys_and_mouse_input() {
     );
     press_key(&mut app, window, KeyCode::Escape, None);
     app.update();
-    assert!(!app.world().resource::<UiRuntime>().chat_focused());
+    assert!(!app.world().resource::<UiRuntimeResource>().chat_focused());
     assert!(
         !app.world()
             .resource::<ButtonInput<KeyCode>>()
@@ -589,7 +642,7 @@ fn consent_approval_frame_cannot_activate_or_edit_the_underlying_menu() {
         .activate(MenuAction::PlayAddServer);
     let view = app.world().resource::<MenuRuntime>().view();
     let point = {
-        let mut presentation = app.world_mut().resource_mut::<UiPresentationRuntime>();
+        let mut presentation = app.world_mut().resource_mut::<UiPresentationResource>();
         presentation.set_menu_view(Some(view));
         presentation
             .build(
@@ -633,7 +686,8 @@ fn consent_approval_frame_cannot_activate_or_edit_the_underlying_menu() {
     });
     // Approval has already replaced the prompt with its status indicator, but ownership persists.
     app.world_mut()
-        .resource_mut::<UiPresentationRuntime>()
+        .resource_mut::<UiPresentationResource>()
+        .mod_ui_mut()
         .set_experience_chrome(Some("Approved"), false)
         .unwrap();
     app.update();

@@ -19,22 +19,18 @@ pub(crate) struct DialNeedles {
 }
 
 impl DialNeedles {
-    /// Runs one update per newly completed tick, including catch-up ticks in one frame.
-    /// A new or restarted movement clock takes one initial reading.
-    fn advance_ticks(
+    /// Takes one reading for an observed completed tick, regardless of its numeric distance
+    /// from the previous observation. Server reanchors do not represent simulated ticks.
+    fn advance_tick(
         &mut self,
         tick: u64,
-        mut update: impl FnMut(&mut Self) -> DialFrames,
+        update: impl FnOnce(&mut Self) -> DialFrames,
     ) -> Option<DialFrames> {
-        let count = self
-            .advanced_tick
-            .map_or(1, |previous| tick.checked_sub(previous).unwrap_or(1));
-        self.advanced_tick = Some(tick);
-        let mut frames = None;
-        for _ in 0..count {
-            frames = Some(update(self));
+        if self.advanced_tick == Some(tick) {
+            return None;
         }
-        frames
+        self.advanced_tick = Some(tick);
+        Some(update(self))
     }
 
     /// A uniform draw in `0..1` from a xorshift sequence.
@@ -100,7 +96,7 @@ impl DialNeedles {
 /// UI icons and held items; without a local player, dials keep their static icons.
 pub(crate) fn advance_dials(
     client_world: Res<ClientWorld>,
-    movement: Res<client_interaction::movement::MovementTicker>,
+    physics: Res<client_interaction::movement::LocalPhysicsController>,
     clock: Res<crate::environment::WorldClock>,
     time: Res<Time<Real>>,
     mut presentation: ResMut<UiPresentationResource>,
@@ -118,33 +114,41 @@ pub(crate) fn advance_dials(
             authority.current_dimension(),
             authority.world_spawn(),
             last_death,
-            actor.position,
             actor.yaw,
         ))
     });
-    let Some((dimension, world_spawn, last_death, position, yaw)) = local else {
+    let Some((dimension, world_spawn, last_death, yaw)) = local else {
         *needles = DialNeedles::default();
         *frames = DialFrames::default();
         publish(&mut presentation, equipment, *frames);
         return;
     };
-    let tick = movement.completed_tick();
+    if physics
+        .state()
+        .zip(needles.advanced_tick)
+        .is_some_and(|(state, after)| state.tick < after)
+    {
+        needles.advanced_tick = None;
+    }
     let celestial_angle = render_model::celestial_angle(crate::environment::visual_world_time(
         *clock,
         time.elapsed_secs_f64(),
     ));
-    if let Some(next) = needles.advance_ticks(tick, |needles| {
-        needles.advance(
-            dimension,
-            world_spawn,
-            last_death,
-            position,
-            yaw,
-            celestial_angle,
-        )
-    }) {
-        *frames = next;
-    }
+    let after = needles.advanced_tick;
+    physics.visit_completed_ticks(after, &mut |sample, _, _| {
+        if let Some(next) = needles.advance_tick(sample.tick, |needles| {
+            needles.advance(
+                dimension,
+                world_spawn,
+                last_death,
+                sample.position,
+                yaw,
+                celestial_angle,
+            )
+        }) {
+            *frames = next;
+        }
+    });
     publish(&mut presentation, equipment, *frames);
 }
 
@@ -165,27 +169,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catchup_ticks_match_individual_ticks_and_repeated_frames_do_not_advance() {
+    fn reanchor_tick_indices_do_not_synthesize_needle_updates() {
         let reading = |needles: &mut DialNeedles| {
             needles.advance(1, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25)
         };
-        let mut catchup = DialNeedles::default();
-        let mut individual = DialNeedles::default();
+        let mut reanchored = DialNeedles::default();
+        let mut consecutive = DialNeedles::default();
         assert_eq!(
-            catchup.advance_ticks(0, reading),
-            individual.advance_ticks(0, reading)
+            reanchored.advance_tick(0, reading),
+            consecutive.advance_tick(0, reading)
         );
-        individual.advance_ticks(1, reading);
-        let expected = individual.advance_ticks(2, reading);
-        assert_eq!(catchup.advance_ticks(2, reading), expected);
-        assert_eq!(catchup.compass, individual.compass);
-        assert_eq!(catchup.recovery_compass, individual.recovery_compass);
-        assert_eq!(catchup.clock, individual.clock);
-        assert_eq!(catchup.random, individual.random);
-        assert_eq!(catchup.advance_ticks(2, reading), None);
-        assert_eq!(catchup.random, individual.random);
+        assert_eq!(
+            reanchored.advance_tick(u64::MAX, reading),
+            consecutive.advance_tick(1, reading)
+        );
+        assert_eq!(reanchored.compass, consecutive.compass);
+        assert_eq!(reanchored.recovery_compass, consecutive.recovery_compass);
+        assert_eq!(reanchored.clock, consecutive.clock);
+        assert_eq!(reanchored.random, consecutive.random);
+        assert_eq!(reanchored.advance_tick(u64::MAX, reading), None);
+        assert_eq!(reanchored.random, consecutive.random);
         assert!(
-            catchup.advance_ticks(0, reading).is_some(),
+            reanchored.advance_tick(0, reading).is_some(),
             "a restarted clock takes a reading"
         );
     }

@@ -286,7 +286,7 @@ fn hidden_new_window_does_not_enter_the_native_cursor_change_filter() {
 
 #[test]
 fn physical_cursor_precision_and_other_internal_requests_survive_virtual_input() {
-    use bevy::{math::DVec2, window::CompassOctant};
+    use bevy::math::{CompassOctant, DVec2};
     let (mut app, entity) = harness();
     let internal = {
         let mut window = app.world_mut().get_mut::<Window>(entity).unwrap();

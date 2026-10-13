@@ -185,6 +185,12 @@ fn stems_grow_from_the_soil_and_keep_their_upright_sprite_when_attached() {
             30
         };
         for mode in [NetworkIdMode::Sequential, NetworkIdMode::Hashed] {
+            let id = if mode == NetworkIdMode::Sequential {
+                record.sequential_id
+            } else {
+                record.network_hash
+            };
+            assert_eq!(runtime.resolve(mode, id).kind(), VisualKind::Cross);
             let model = quads(&runtime, record, mode);
             assert_eq!(
                 model.len(),

@@ -97,6 +97,8 @@ pub(in crate::compiler) fn compile_rule(
     };
     let mut visual = diagnostic_visual(record);
     set_model_visual(&mut visual, [body; 6], template);
+    // Keep crossed-plant admission when snow occupies another storage layer.
+    visual.kind = VisualKind::Cross;
     Ok(CompileRuleResult::Compiled(visual))
 }
 

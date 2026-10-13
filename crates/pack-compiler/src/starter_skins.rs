@@ -220,7 +220,7 @@ fn overlay_skin_model(base: &mut Value, mut child: Value) -> Result<(), String> 
 fn resolve_cube_defaults(bone: &mut Value) {
     let mirror = bone["mirror"].as_bool().unwrap_or(false);
     let inflate = bone["inflate"].as_f64().unwrap_or(0.0);
-    if let Some(cubes) = bone["cubes"].as_array_mut() {
+    if let Some(cubes) = bone.get_mut("cubes").and_then(Value::as_array_mut) {
         for cube in cubes {
             if let Some(cube) = cube.as_object_mut() {
                 cube.entry("mirror").or_insert_with(|| mirror.into());
@@ -530,6 +530,34 @@ mod tests {
                 assert_eq!(before.bones[0].cubes.len(), if reset { 1 } else { 2 });
                 assert_eq!(after.bones, before.bones, "{identifier}, reset={reset}");
             }
+        }
+    }
+
+    #[test]
+    fn legacy_bones_without_cubes_remain_valid_after_normalization() {
+        let mut model = cube_model();
+        model["bones"].as_array_mut().unwrap().insert(
+            0,
+            serde_json::json!({
+                "name":"root", "pivot":[0,0,0],
+            }),
+        );
+        model["bones"][1]["parent"] = "root".into();
+        let models = serde_json::json!({
+            "format_version":"1.8.0",
+            CLASSIC_SKIN_GEOMETRY:model,
+            SLIM_SKIN_GEOMETRY:model,
+        });
+        let normalized = skin_geometry(models.as_object().unwrap()).unwrap();
+        assert_modern_skin_schema(&normalized);
+        for identifier in [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY] {
+            let patch = serde_json::json!({"geometry":{"default":identifier}}).to_string();
+            let before = parse_skin_geometry(&patch, &models.to_string())
+                .unwrap()
+                .unwrap();
+            let after = parse_skin_geometry(&patch, &normalized).unwrap().unwrap();
+            assert!(after.bones[0].cubes.is_empty());
+            assert_eq!(after.bones, before.bones);
         }
     }
 

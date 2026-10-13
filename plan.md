@@ -2963,6 +2963,23 @@ texture, tint and sample point are unmatched), pack attachables (held/worn on pl
 (pack bindings win by item identifier; pack property defaults seed only from `entities/` in
 resource packs), rigs depending on vanilla clips are attributed as fallbacks; server pack admission converts first-entry priority into low-to-high merge layers. No vanilla acceptance gate is closed by this change.
 
+Texture-only equipment overrides replace artwork at validated startup texture paths;
+startup bindings, controllers and geometry remain active without loose resource files.
+Artwork-only layers support item textures with no entity symbols, create no pack attachable
+bindings and need no sidecar rebuild. Each item's authored dependencies decide whether it
+uses this path. Mixed texture and geometry, controller or material overrides retain the
+installed attachable binding against the replacement definitions. Classification uses
+the binding compiler's description inputs and material parser, including inherited
+material defines and skinning variants. The decision combines all variants of each bound
+item; recompiling one keeps its preferred player variant available to the binding compiler.
+Compiles and artwork use the accepted stack's content identity and loaded startup texture-path
+digest, so rebuilding carriers under the same source pin refreshes changed artwork paths.
+Mixed packs reuse the compiler's decoded equipment rasters; startup-path artwork is decoded
+separately only when that compiler table lacks it, within the remaining pixel and count budgets.
+Authored pack attachables remain separate. Held pixel meshes and Java raster frames include
+the resolved artwork page and layer in their cache keys. Controller glint samplers do not
+replace startup primary artwork. Rendered acceptance remains incomplete.
+
 2026-10-12 protocol codec: `protocol` decodes and encodes through protocolgen's generated
 contract crate (`bedrock-protocol-1-26-51`, contract 1), vendored byte for byte and pinned by
 `assets/bedrock-target.json`; Valentine and its normalization tool are removed, and the

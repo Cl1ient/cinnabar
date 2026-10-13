@@ -1,6 +1,6 @@
 //! Terrain texture keys and flipbooks resolved across the stack.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use resource_pack::LayeredPackView;
 use serde_json::Value;
@@ -43,7 +43,7 @@ pub(super) struct TextureIdentity {
 pub(super) struct TextureCatalog<'a> {
     view: &'a LayeredPackView,
     terrain: HashMap<String, pack_runtime::pack_textures::terrain::Entry>,
-    server_keys: HashSet<String>,
+    base_terrain: HashMap<String, pack_runtime::pack_textures::terrain::Entry>,
     flipbooks: HashMap<String, Flipbook>,
     diagnostics: TextureDiagnostics,
 }
@@ -81,8 +81,6 @@ impl<'a> TextureCatalog<'a> {
             }
         }
         let server_terrain = pack_runtime::pack_textures::terrain::entries(view);
-        let server_keys = server_terrain.keys().cloned().collect();
-        terrain.extend(server_terrain);
         let diagnostics = TextureDiagnostics::default();
         diagnostics.catalogs(view);
         let mut flipbooks = HashMap::new();
@@ -120,8 +118,8 @@ impl<'a> TextureCatalog<'a> {
         }
         Self {
             view,
-            terrain,
-            server_keys,
+            terrain: server_terrain,
+            base_terrain: terrain,
             flipbooks,
             diagnostics,
         }
@@ -133,12 +131,21 @@ impl<'a> TextureCatalog<'a> {
 
     /// Returns the winning terrain entry's normalized UV-grid exponent.
     pub(super) fn grid(&self, key: &str) -> u8 {
-        self.terrain.get(key).map_or(0, |entry| entry.grid)
+        self.entry(key).map_or(0, |entry| entry.grid)
     }
 
-    /// Whether an optional layer supplied a complete catalog entry for this key.
-    pub(super) fn redefined(&self, key: &str) -> bool {
-        self.server_keys.contains(key)
+    /// Whether the winning state choices or UV grid differ from the immutable base catalog.
+    pub(super) fn redefined(&self, key: &str, variant: u32) -> bool {
+        self.terrain.get(key).is_some_and(|entry| {
+            self.base_terrain.get(key).is_none_or(|base| {
+                entry.grid != base.grid || entry.variant(variant) != base.variant(variant)
+            })
+        })
+    }
+
+    /// Resolves a complete entry from the optional stack before falling back to the base.
+    fn entry(&self, key: &str) -> Option<&pack_runtime::pack_textures::terrain::Entry> {
+        self.terrain.get(key).or_else(|| self.base_terrain.get(key))
     }
 
     /// Choices for one state variant, independent of the other variants.
@@ -147,12 +154,12 @@ impl<'a> TextureCatalog<'a> {
         key: &str,
         variant: u32,
     ) -> Option<&[pack_runtime::pack_textures::terrain::Choice]> {
-        Some(self.terrain.get(key)?.variant(variant))
+        Some(self.entry(key)?.variant(variant))
     }
 
     /// Resolves the state index used for selector caching and animation eligibility.
     pub(super) fn resolved_variant(&self, key: &str, variant: u32) -> Option<u32> {
-        Some(self.terrain.get(key)?.resolved_variant(variant))
+        Some(self.entry(key)?.resolved_variant(variant))
     }
 
     /// Decodes a state choice through the shared raster, tint, and image-source resolution.
@@ -180,7 +187,7 @@ impl<'a> TextureCatalog<'a> {
         route: &super::TextureRoute,
     ) -> Option<(u32, usize, &pack_runtime::pack_textures::terrain::Choice)> {
         use pack_runtime::pack_textures::texture_image_paths;
-        let entry = self.terrain.get(route.key())?;
+        let entry = self.entry(route.key())?;
         let (variant, choice) = match route {
             super::TextureRoute::Catalog {
                 variant, choice, ..
@@ -254,7 +261,7 @@ impl<'a> TextureCatalog<'a> {
         }
         if image.is_none() {
             let reason = diagnostics::failure_reason(self.view, &choice.path);
-            if self.server_keys.contains(key) || reason != FailureReason::TextureFileMissing {
+            if self.terrain.contains_key(key) || reason != FailureReason::TextureFileMissing {
                 self.diagnostics.failure(reason, key, Some(&choice.path));
             }
         }

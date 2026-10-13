@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// One path and its normalized positional weight inside a state variant.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Choice {
     pub path: String,
     pub weight: f32,
@@ -16,7 +16,7 @@ pub struct Choice {
 }
 
 /// A terrain entry's outer state array and independent weighted choice lists.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
     variants: Vec<Vec<Choice>>,
     pub grid: u8,

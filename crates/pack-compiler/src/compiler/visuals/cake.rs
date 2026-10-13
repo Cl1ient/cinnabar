@@ -127,9 +127,17 @@ pub(in crate::compiler) fn cake_material_descriptors(
             ("cake_west", "textures/blocks/cake_inner"),
         ]
         .map(|(key, path)| {
+            let variants = pack
+                .terrain
+                .get_exact_pair_no_tint(key)
+                .expect("validated pair");
+            let state_variant = variants
+                .iter()
+                .position(|&variant| variant == path)
+                .expect("validated cake source") as u32;
             (
                 Descriptor {
-                    state_variant: 0,
+                    state_variant,
                     flipbook_selector: None,
                     path: path.into(),
                     texture_key: key.into(),
@@ -140,6 +148,10 @@ pub(in crate::compiler) fn cake_material_descriptors(
         }),
     )
 }
+
+#[cfg(test)]
+#[path = "cake/tests.rs"]
+mod source_tests;
 
 pub(in crate::compiler) fn cake_source_alpha_is_exact(root: &Path, pack: &PackSources) -> bool {
     if cake_material_descriptors(pack).is_none() {

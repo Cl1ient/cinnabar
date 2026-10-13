@@ -299,8 +299,8 @@ fn bindings_can_reference_carrier_textures_without_replacing_rasters() {
     let base = base();
     let keys = keys();
     let view = stack(&[(
-        json!({}),
-        json!({"fixture":{"textures":"state","carried_textures":"state"}}),
+        json!({"texture_data":{"alias":{"textures":"textures/base_a"}}}),
+        json!({"fixture":{"textures":"alias","carried_textures":"alias"}}),
         vec![],
     )]);
     let overlay = compile(&view, &base, &keys);

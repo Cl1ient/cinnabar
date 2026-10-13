@@ -12,6 +12,9 @@ bindings derive UV rotation from the replacement binding shape and retained pill
 Animation and selector caches use resolved state indices. Material admission reserves the
 base table, failed routes release unpublished allocations, and held sheets survive without
 thumbnails. Retained block bindings are ordered by visual ID.
+Repeated catalog states and cube bindings keep base references when their rasters are absent;
+changed choices still use carrier fallback. Specialized material sources retain their selected
+catalog keys and variant indices.
 
 Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
 blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,

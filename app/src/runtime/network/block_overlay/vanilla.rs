@@ -26,7 +26,7 @@ impl Builder<'_> {
                 .base_assets
                 .and_then(|base| base.materials().get(id as usize))
                 .copied();
-            if self.catalog.redefined(key) {
+            if self.catalog.redefined(key, variant) {
                 // Weighted leaves become unused when their selector is replaced.
                 if base.is_some_and(|material| material.variation_weight != 0) {
                     continue;
@@ -102,40 +102,28 @@ impl Builder<'_> {
             {
                 continue;
             }
-            let affected = assets::BlockFace::ALL.into_iter().any(|face| {
+            let world_bindings = assets::BlockFace::ALL.map(|face| {
                 let index = face as usize;
-                let material = base.material(block.face(face).material_id());
-                overridden.contains(&block.face(face).material_id())
-                    || (material.variation_start
-                        ..material.variation_start + material.variation_count)
-                        .any(|id| overridden.contains(&id))
-                    || bindings
-                        .texture(
-                            &source.name,
-                            &source.binding_name,
-                            source.source_faces[index] as usize,
-                            false,
-                        )
-                        .is_some()
-                    || bindings
-                        .texture(&source.name, &source.binding_name, index, true)
-                        .is_some()
+                let id = block.face(face).material_id();
+                let material = base.material(id);
+                let binding = bindings.binding(
+                    &source.name,
+                    &source.binding_name,
+                    source.source_faces[index] as usize,
+                    false,
+                )?;
+                let rotation = if binding.per_face && source.source_rotations[index] {
+                    assets::MATERIAL_FLAG_ROTATE_UV
+                } else {
+                    0
+                };
+                let flags = (material.flags & !assets::MATERIAL_FLAG_ROTATE_UV) | rotation;
+                (flags != material.flags
+                    || keys
+                        .material_source(id)
+                        .is_none_or(|original| original.key.as_ref() != binding.key))
+                .then_some((binding.key, flags))
             });
-            let carried_changed = !affected
-                && assets::BlockFace::ALL.into_iter().any(|face| {
-                    let index = face as usize;
-                    let variant = keys
-                        .material_source(block.face(face).material_id())
-                        .map_or(0, |source| source.variant);
-                    source.carried_keys[index]
-                        .as_deref()
-                        .into_iter()
-                        .chain(source.carried_fallback_keys[index].as_deref())
-                        .any(|key| self.carried_changed(key, variant))
-                });
-            if !affected && !carried_changed {
-                continue;
-            }
             let carried_keys = assets::BlockFace::ALL.map(|face| {
                 let index = face as usize;
                 let material = block.face(face).material_id();
@@ -149,6 +137,34 @@ impl Builder<'_> {
                             .map(|source| source.key.as_ref())
                     })
             });
+            let affected = assets::BlockFace::ALL.into_iter().any(|face| {
+                let index = face as usize;
+                let id = block.face(face).material_id();
+                let material = base.material(id);
+                let base_carried = source.carried_keys[index]
+                    .as_deref()
+                    .or(source.carried_fallback_keys[index].as_deref())
+                    .or_else(|| keys.material_source(id).map(|source| source.key.as_ref()));
+                overridden.contains(&block.face(face).material_id())
+                    || (material.variation_start
+                        ..material.variation_start + material.variation_count)
+                        .any(|id| overridden.contains(&id))
+                    || world_bindings[index].is_some()
+                    || carried_keys[index] != base_carried
+            });
+            let carried_changed = !affected
+                && assets::BlockFace::ALL.into_iter().any(|face| {
+                    let index = face as usize;
+                    let variant = keys
+                        .material_source(block.face(face).material_id())
+                        .map_or(0, |source| source.variant);
+                    carried_keys[index]
+                        .into_iter()
+                        .any(|key| self.carried_changed(key, variant))
+                });
+            if !affected && !carried_changed {
+                continue;
+            }
             if carried_keys.iter().enumerate().any(|(index, key)| {
                 let material = block.face(assets::BlockFace::ALL[index]).material_id();
                 let variant = keys
@@ -171,25 +187,8 @@ impl Builder<'_> {
                 let variant = keys
                     .material_source(material)
                     .map_or(0, |source| source.variant);
-                let flags = base.material(material).flags;
-                let world_binding = bindings.binding(
-                    &source.name,
-                    &source.binding_name,
-                    source.source_faces[index] as usize,
-                    false,
-                );
-                if let Some(binding) = world_binding {
-                    let rotation = if binding.per_face && source.source_rotations[index] {
-                        assets::MATERIAL_FLAG_ROTATE_UV
-                    } else {
-                        0
-                    };
-                    faces[index] = self.terrain_material(
-                        keys,
-                        binding.key,
-                        variant,
-                        (flags & !assets::MATERIAL_FLAG_ROTATE_UV) | rotation,
-                    );
+                if let Some((key, flags)) = world_bindings[index] {
+                    faces[index] = self.terrain_material(keys, key, variant, flags);
                 }
             }
             if faces.iter().any(Option::is_some) {
@@ -218,7 +217,7 @@ impl Builder<'_> {
 
     /// Tests optional carried routes without copying unrelated carrier pixels into the overlay.
     fn carried_changed(&mut self, key: &str, variant: u32) -> bool {
-        if self.catalog.redefined(key) {
+        if self.catalog.redefined(key, variant) {
             return true;
         }
         let count = self

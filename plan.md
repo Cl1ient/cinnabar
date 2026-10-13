@@ -2556,26 +2556,27 @@ overrides, special block/UV variant branches, seasonal colors, legacy Terrain
 events and native crack bounds/cadence. No complete particle parity gate is closed;
 see [vanilla rules](docs/reference/block-break-particles.md). Local, uncommitted.
 
-2026-10-01 actor name tags: native-port correction in progress. World-plane projection,
-position-facing billboard, fixed font-pixel world size, ten-pixel line pitch,
-independent line centering, full multiline 0.25-black plate, multiline world lift and
-0.125-alpha depth-tested sneaking text follow vanilla behaviour. Player tags use synced name metadata, not just their spawn username; scores share
-the same path and honor the native ten-block score gate. Provisional, labeled incomplete:
-exact matched shader-pack/sampler/alpha-target state, explicit orientation/backface/custom color
-branches, filtered names, mounted/riding anchor offsets and missing-data height/range
-defaults need native witnesses. Crosshair picking still inherits the existing provisional
-selection-shape/reach implementation. Name-tag rendering uses plate no-depth-write,
-text depth-write, glyph alpha testing and the runtime environmental-text bias override. The final debug build has a live Zeqa/Metal rendering
-smoke pass at Retina scale 2; controlled near/far drift, sneak/occlusion/clipping and
-version-matched native frame comparisons remain pending. Workspace tests, formatting,
-strict Clippy and the architecture gate pass locally. Changes are uncommitted. No name-tag
-visual parity gate is closed; see [vanilla rules](docs/reference/nametag-rendering.md).
+Actor nametags use Java Edition rendering as an accepted deviation from Bedrock.
+CPU geometry and the GPU shader share the camera rotation, including front-view pitch,
+so tags stay screen-aligned throughout the view. Labels use a fixed `1.6 / 60` blocks per
+font pixel and an anchor at the published height plus `0.5` blocks, both following
+the actor's Scale metadata. Sneaking players lower that
+anchor by `0.125` blocks and lower the quad by `0.25` blocks along camera-down;
+sleeping players lower their anchor by `1.5` blocks.
+Each centered line has a black background at alpha `0.25`, with one pixel of side
+padding and vertical bounds `-1 .. 8`. Multiline spacing and world lift remain unchanged.
 
-Actor nametag facing deliberately deviates from vanilla's cubic angle approximation:
-CPU geometry and the GPU shader use exact yaw and pitch toward the camera eye from
-the original anchor. A vertical eye direction uses zero yaw without perturbing the
-direction. World scale and multiline lift are unchanged. Rendered-frame acceptance
-remains incomplete; no name-tag visual parity gate is closed.
+Ordinary tags draw their background and dim text at alpha `32 / 255` through walls, followed
+by full-opacity depth-tested text before the next label starts. Complete labels draw back
+to front by camera depth, independently of viewer-distance limits and score range,
+with depth selection on each quad. Sneaking tags draw only their depth-tested background
+and dim text. Only tested text writes depth; labels use no depth bias and test final
+alpha against `0.1`. Visibility uses strict viewer-distance limits of 64 blocks, or
+32 when sneaking, shortened by server limits. Invisible actors, mounts carrying riders
+and explicit server hides suppress tags; the local player's tag stays hidden by default.
+The open font, server text and formatting, score lines, debug text and explicit debug
+quaternions retain their existing paths. Rendered-frame acceptance remains incomplete;
+no name-tag visual parity gate is closed. See [rendering rules](docs/reference/nametag-rendering.md).
 
 2026-10-01 first-person item rendering: ordinary icons and opaque full-cube blocks now use
 their separate native camera-space stacks, not the third-person grip on the avatar's

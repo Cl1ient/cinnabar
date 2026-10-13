@@ -809,3 +809,38 @@ fn local_glide_prediction_sets_the_gliding_flag_and_its_ticks() {
     assert!(!actor.is_gliding());
     assert_eq!(actor.status.fall_fly_ticks, 0);
 }
+
+#[test]
+fn synthetic_show_name_default_survives_prediction_but_not_server_hides() {
+    let mut store = ActorStore::new(1, 0);
+    let mut feed = local_feed(0.0, 0.0);
+    store.exclude_remote_state_for(1);
+    store.sync_local_player(1, -100, &feed);
+    assert!(store.get(1).unwrap().flag(super::ACTOR_FLAG_SHOW_NAME));
+    feed.sneaking = true;
+    store.sync_local_player(1, -100, &feed);
+    assert!(store.get(1).unwrap().flag(super::ACTOR_FLAG_SHOW_NAME));
+    assert_eq!(
+        store.apply(
+            1,
+            1,
+            ActorEvent::Metadata(protocol::ActorMetadataUpdateEvent {
+                dimension: 0,
+                runtime_id: 1,
+                metadata: Arc::from([protocol::ActorMetadata {
+                    key: 0,
+                    value: protocol::ActorMetadataValue::Flags(0),
+                }]),
+                properties: Arc::from([]),
+                tick: 0,
+            }),
+        ),
+        ActorApplyResult::Updated
+    );
+    feed.sprinting = true;
+    store.sync_local_player(1, -100, &feed);
+    let actor = store.get(1).unwrap();
+    assert!(!actor.flag(super::ACTOR_FLAG_SHOW_NAME));
+    assert!(actor.flag(super::ACTOR_FLAG_SNEAKING));
+    assert!(actor.flag(super::ACTOR_FLAG_SPRINTING));
+}

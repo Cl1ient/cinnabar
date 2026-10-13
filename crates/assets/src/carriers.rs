@@ -632,7 +632,7 @@ mod tests {
 
     #[test]
     fn shipped_oreui_icons_are_optional_and_independent_of_the_game_pack() {
-        assert!(!OREUI_ICONS.required && OREUI_ICONS.installed);
+        const { assert!(!OREUI_ICONS.required && OREUI_ICONS.installed) };
         assert_eq!(OREUI_ICONS.inputs, &[Input::Manifest(OREUI_ICONS_MANIFEST)]);
     }
 

@@ -110,6 +110,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn resource_pack_revision_requires_a_painting_catalog_audit() {
+        use sha2::{Digest, Sha256};
+        let audited_manifest = [
+            0xa3, 0xe0, 0xb4, 0xad, 0xac, 0x67, 0xc8, 0x53, 0x68, 0x18, 0xb1, 0x1b, 0xcc, 0xa6,
+            0xf3, 0xa8, 0x24, 0xcf, 0xd3, 0x84, 0xd7, 0x41, 0x51, 0x9b, 0x62, 0xa7, 0xb0, 0x33,
+            0xef, 0xe3, 0xa3, 0x85,
+        ];
+        let manifest: serde_json::Value =
+            serde_json::from_str(crate::VANILLA_SOURCE_MANIFEST).unwrap();
+        let identity =
+            serde_json::to_vec(&[&manifest["tag"], &manifest["commit"], &manifest["sha256"]])
+                .unwrap();
+        assert_eq!(
+            <[u8; 32]>::from(Sha256::digest(&identity)),
+            audited_manifest,
+            "update painting identities, dimensions and atlas regions when the resource source changes"
+        );
+    }
+
+    #[test]
     fn motive_regions_fit_their_declared_atlas() {
         let mut titles = std::collections::BTreeSet::new();
         for motive in PAINTING_MOTIVES {

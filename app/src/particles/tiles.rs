@@ -43,6 +43,33 @@ mod tests {
     use particles::tiles::terrain_tile;
 
     #[test]
+    fn stem_colour_survives_particle_routing_without_a_loaded_biome() {
+        let stream = chunk_pipeline::WorldStream::new(protocol::WorldBootstrap {
+            dimension: 0,
+            local_player_runtime_id: 1,
+            local_player_unique_id: 1,
+            player_position: [0.0; 3],
+            world_spawn_position: [0; 3],
+            air_network_id: protocol::SEQUENTIAL_AIR_NETWORK_ID,
+            block_network_ids_are_hashes: false,
+        });
+        for growth in [0, 7] {
+            let flags = assets::stem::material_flags(growth).unwrap();
+            let rgb = assets::stem::colour(growth).unwrap();
+            assert_eq!(
+                super::biome_tint(&stream, flags, [0; 3]),
+                [
+                    rgb[0] as f32 / 255.0,
+                    rgb[1] as f32 / 255.0,
+                    rgb[2] as f32 / 255.0,
+                    1.0
+                ]
+            );
+        }
+        assert_eq!(super::biome_tint(&stream, 0, [0; 3]), [1.0; 4]);
+    }
+
+    #[test]
     #[ignore = "requires the local compiled vanilla world carrier"]
     fn real_carrier_terrain_tiles_resolve_stone_deepslate_and_grass() {
         let bytes = std::fs::read(assets::carriers::startup::DEFAULT_ASSET_PATH).unwrap();

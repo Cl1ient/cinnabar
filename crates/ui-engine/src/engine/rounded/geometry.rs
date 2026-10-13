@@ -75,16 +75,15 @@ impl Shape {
         ];
         if radius == 0.0 {
             // Keep a corner sample and edge samples outside its two-axis coverage footprint.
-            let band = self
-                .fringe
-                .min((self.width.min(self.height) * 0.5 - inset).max(0.0));
-            let before = (1.0 - 2.0 * progress).max(0.0) * band;
-            let after = (2.0 * progress - 1.0).max(0.0) * band;
+            let band = [self.width, self.height]
+                .map(|extent| self.fringe.min((extent * 0.5 - inset).max(0.0)));
+            let before = (1.0 - 2.0 * progress).max(0.0);
+            let after = (2.0 * progress - 1.0).max(0.0);
             let offset = match corner {
-                0 => [after, before],
-                1 => [-before, after],
-                2 => [-after, -before],
-                _ => [before, -after],
+                0 => [after * band[0], before * band[1]],
+                1 => [-before * band[0], after * band[1]],
+                2 => [-after * band[0], -before * band[1]],
+                _ => [before * band[0], -after * band[1]],
             };
             return [center[0] + offset[0], center[1] + offset[1]];
         }

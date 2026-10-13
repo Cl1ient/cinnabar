@@ -234,6 +234,45 @@ fn square_edges_and_tiny_rectangles_have_visible_coverage_rings() {
     }));
 }
 
+/// A subpixel strip retains its exact pixel area throughout the interior of either long axis.
+#[test]
+fn thin_square_strips_keep_full_pixel_area_along_each_axis() {
+    for dpi in [1.0, 1.5, 2.0, 3.0] {
+        for width in [0.0625, 0.125, 0.25, 0.5] {
+            for horizontal in [false, true] {
+                let physical_size = if horizontal {
+                    [10.0, width]
+                } else {
+                    [width, 10.0]
+                };
+                let size = physical_size.map(|extent| extent / dpi);
+                let mesh = mesh(Key {
+                    color: [255; 4],
+                    end_color: [255; 4],
+                    ..key(size[0], size[1], 0.0, 0.0, coverage_width(dpi))
+                })
+                .unwrap();
+                for along in [1.5, 3.0, 5.0, 7.0, 8.5] {
+                    for fraction in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                        let point = if horizontal {
+                            [along, width * fraction]
+                        } else {
+                            [width * fraction, along]
+                        };
+                        let color = sample_color(&mesh, size, point.map(|value| value / dpi));
+                        for actual in color {
+                            assert!(
+                                (actual - width).abs() < 0.00001,
+                                "at {point:?}, DPI {dpi}, horizontal {horizontal}, width {width}: {color:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Subpixel borders distribute their authored width across the full coverage band.
 #[test]
 fn a_hairline_has_independent_outer_and_inner_antialiasing() {

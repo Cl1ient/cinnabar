@@ -395,3 +395,39 @@ fn synthetic_pointer_click_activates_the_production_menu_hit() {
         Some(Vec2::new(31.0, 47.0))
     );
 }
+
+#[test]
+fn virtual_pointer_outside_the_viewport_survives_a_later_resize() {
+    let (mut app, entity) = harness();
+    app.init_resource::<UiSample>().add_systems(
+        Update,
+        |mut windows: Query<&mut Window, With<PrimaryWindow>>, mut sampled: ResMut<UiSample>| {
+            let mut window = windows.single_mut().unwrap();
+            if !sampled.0.is_empty() {
+                window.resolution.set(1600.0, 900.0);
+            }
+            sampled.0.push(window.cursor_position());
+        },
+    );
+    input::apply(
+        app.world_mut(),
+        &InputCommand {
+            cursor: Some([1400.0, 100.0]),
+            ..default()
+        },
+    )
+    .unwrap();
+    app.update();
+    assert_eq!(app.world().resource::<UiSample>().0, [None]);
+    app.update();
+    assert_eq!(
+        app.world().resource::<UiSample>().0[1],
+        Some(Vec2::new(1400.0, 100.0)),
+        "resizing must expose the retained virtual pointer to UI hit testing"
+    );
+    assert_eq!(
+        app.world().get::<Window>(entity).unwrap().cursor_position(),
+        Some(Vec2::new(31.0, 47.0))
+    );
+    assert_eq!(app.world().resource::<NativeFacing>().cursor_updates, 0);
+}

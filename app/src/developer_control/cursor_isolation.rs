@@ -41,6 +41,11 @@ impl Isolation {
             virtual_position: None,
         }
     }
+
+    /// Retains logical synthetic coordinates even while Window hit testing clips them.
+    pub(super) fn set_pointer(&mut self, position: Vec2) {
+        self.virtual_position = Some(position);
+    }
 }
 
 /// Installs the virtual cursor's application-frame boundary.
@@ -62,6 +67,9 @@ fn begin(
     mut windows: Query<(Entity, &mut Window, &CursorOptions), With<PrimaryWindow>>,
 ) {
     isolation.physical = None;
+    if driven.is_none() {
+        isolation.virtual_position = None;
+    }
     let Ok((entity, mut window, cursor)) = windows.single_mut() else {
         return;
     };
@@ -95,11 +103,9 @@ fn end(
     if entity != physical.entity || !(physical.isolated || driven.is_some()) {
         return;
     }
-    isolation.virtual_position = if driven.is_some() {
-        window.cursor_position()
-    } else {
-        None
-    };
+    if driven.is_none() {
+        isolation.virtual_position = None;
+    }
     let window = window.bypass_change_detection();
     // Copy the opaque cursor state exactly, including subpixel positions and positions
     // outside the window. Preserve this frame's non-cursor backend requests as well.

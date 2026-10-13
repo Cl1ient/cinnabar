@@ -415,12 +415,39 @@ mod tests {
         rustix::process::test_kill_process(pid).is_err()
     }
 
-    /// Succeeds only when standard input is usable and the selected socket descriptor is closed.
-    fn socket_probe(fd: i32) -> Command {
-        let mut command = Command::new("sh");
+    const SOCKET_PROBE_ENV: &str = "CINNABAR_TEST_SOCKET_PROBE";
+
+    /// Duplicates an untrusted post-exec descriptor, returning no handle when it is closed.
+    fn duplicate_probe_fd(raw: i32) -> Option<std::os::fd::OwnedFd> {
+        use std::{
+            ffi::c_int,
+            os::fd::{FromRawFd, OwnedFd},
+        };
+        unsafe extern "C" {
+            fn dup(fd: c_int) -> c_int;
+        }
+        // SAFETY: dup accepts any descriptor number and reports EBADF for a closed one.
+        let duplicated = unsafe { dup(raw) };
+        (duplicated >= 0).then(|| {
+            // SAFETY: a successful dup returns a new descriptor exclusively owned by this call.
+            unsafe { OwnedFd::from_raw_fd(duplicated) }
+        })
+    }
+
+    /// Runs this fixture after exec, checking the selected descriptor's socket identity.
+    fn socket_probe(fd: i32, identity: &str) -> Command {
+        let mut command = Command::new(std::env::current_exe().unwrap());
         command
-            .args(["-c", &format!("(: <&0) && ! (: <&{fd})")])
+            .args([
+                "--exact",
+                &format!(
+                    "{}::spawned_children_do_not_inherit_foreign_sockets",
+                    module_path!().split_once("::").unwrap().1
+                ),
+            ])
+            .env(SOCKET_PROBE_ENV, format!("{fd}:{identity}"))
             .stdin(Stdio::null())
+            .stdout(Stdio::null())
             .stderr(Stdio::null());
         command
     }
@@ -428,15 +455,33 @@ mod tests {
     // A socket a C library opened without close-on-exec (Tracy's listener) must not reach a child.
     #[test]
     fn spawned_children_do_not_inherit_foreign_sockets() {
-        use rustix::io::{FdFlags, fcntl_getfd, fcntl_setfd};
+        use rustix::{
+            fs::{FileType, fstat},
+            io::{FdFlags, fcntl_dupfd_cloexec, fcntl_getfd, fcntl_setfd},
+        };
         use std::os::{
             fd::{AsRawFd, BorrowedFd},
             unix::process::CommandExt,
         };
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        if let Ok(request) = std::env::var(SOCKET_PROBE_ENV) {
+            let (fd, identity) = request.split_once(':').unwrap();
+            let raw = fd.parse().unwrap();
+            let inherited = duplicate_probe_fd(raw).is_some_and(|fd| {
+                fstat(&fd).is_ok_and(|stat| FileType::from_raw_mode(stat.st_mode).is_socket())
+                    && std::net::TcpListener::from(fd)
+                        .local_addr()
+                        .is_ok_and(|address| address.to_string() == identity)
+            });
+            assert!(!inherited, "socket descriptor {raw} survived exec");
+            return;
+        }
+        let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let listener = fcntl_dupfd_cloexec(&socket, 10).unwrap();
         fcntl_setfd(&listener, FdFlags::empty()).unwrap();
         let fd = listener.as_raw_fd();
-        let mut control = socket_probe(fd);
+        assert!(fd >= 10);
+        let identity = socket.local_addr().unwrap().to_string();
+        let mut control = socket_probe(fd, &identity);
         // SAFETY: only async-signal-safe fcntl runs after fork. The live listener owns the
         // descriptor, and changing its child copy cannot race with parent socket sealing.
         unsafe {
@@ -449,7 +494,7 @@ mod tests {
             "the probe must detect the deliberately inherited socket"
         );
         let child = Children::new()
-            .spawn(&mut socket_probe(fd), Duration::ZERO)
+            .spawn(&mut socket_probe(fd, &identity), Duration::ZERO)
             .unwrap();
         assert!(fcntl_getfd(&listener).unwrap().contains(FdFlags::CLOEXEC));
         assert!(

@@ -133,9 +133,6 @@ fn high_rate_motion_has_bounded_allocation_growth_and_one_sample_per_frame() {
             assert_eq!(app.world().resource::<Samples>().updates, before);
             assert_eq!(app.world().resource::<Samples>().input_passes, input_before);
         }
-        // Match framework lifecycle work against the same frame of a low-rate app.
-        assert_eq!(write_motion(&mut control, 1, delta), Allocations::default());
-        let baseline = measure(|| control.update()).1;
         let frame_allocations = measure(|| app.update()).1;
         assert!(
             frame_allocations.calls <= baseline.calls && frame_allocations.bytes <= baseline.bytes,

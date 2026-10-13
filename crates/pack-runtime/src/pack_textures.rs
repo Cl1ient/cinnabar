@@ -12,7 +12,7 @@ const LEGACY_TEXTURE_SIDE: u32 = 1024;
 pub const MAX_CATALOG_ENTRIES: usize = 16_384;
 
 /// Straight-alpha RGBA8 pixels decoded from a pack image.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DecodedTexture {
     pub width: u32,
     pub height: u32,

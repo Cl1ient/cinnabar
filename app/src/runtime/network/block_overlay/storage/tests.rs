@@ -134,3 +134,96 @@ fn failed_grid_admission_does_not_poison_another_grid_of_the_same_image() {
     assert!(builder.texture_slot_for("valid", (0, 0)).is_some());
     assert_eq!(builder.catalog.decode_attempts.get(), 2);
 }
+
+#[test]
+fn animation_source_failures_decode_once_across_wildcard_variants() {
+    let large = png(2048, 2048);
+    let malformed_strip = png(48, 32);
+    let fallback = png(16, 16);
+    for rejected in [
+        large.as_slice(),
+        malformed_strip.as_slice(),
+        b"invalid PNG".as_slice(),
+        b"".as_slice(),
+    ] {
+        let view = view(&[
+            ("textures/rejected.png", rejected),
+            ("textures/fallback.png", &fallback),
+            (
+                "textures/flipbook_textures.json",
+                br#"[{"atlas_tile":"tile","flipbook_texture":"textures/rejected"}]"#,
+            ),
+        ]);
+        let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+            .with_aliases([("tile", "textures/fallback")])
+            .with_flipbook_destinations([("tile", vec![16])]);
+        let mut builder = builder(&view, &keys);
+        let first = builder.texture_slot_for("tile", (0, 0)).unwrap();
+        for variant in 1..16 {
+            let slot = builder.texture_slot_for("tile", (0, variant)).unwrap();
+            assert_eq!(slot.layer, first.layer);
+            assert_eq!(slot.animation, NO_ANIMATION);
+        }
+        assert_eq!(builder.catalog.decode_attempts.get(), 2);
+        assert_eq!(builder.sources.len(), 4);
+    }
+}
+
+#[test]
+fn destination_timing_failure_does_not_poison_shared_animation_storage() {
+    let strip = png(16, 32);
+    let fallback = png(16, 16);
+    let description = serde_json::to_vec(&(0..3).map(|variant| serde_json::json!({
+        "atlas_tile":"tile", "atlas_tile_variant":variant,
+        "flipbook_texture":"textures/strip", "ticks_per_frame":if variant == 1 { 2 } else { u32::MAX }
+    })).collect::<Vec<_>>()).unwrap();
+    let view = view(&[
+        ("textures/strip.png", &strip),
+        ("textures/fallback.png", &fallback),
+        ("textures/flipbook_textures.json", &description),
+    ]);
+    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/fallback")])
+        .with_flipbook_destinations([("tile", vec![3])]);
+    let mut builder = builder(&view, &keys);
+    let first = builder.texture_slot_for("tile", (0, 0)).unwrap();
+    assert_eq!(first.animation, NO_ANIMATION);
+    let animated = builder.texture_slot_for("tile", (0, 1)).unwrap();
+    assert_ne!(animated.animation, NO_ANIMATION);
+    assert_eq!(
+        builder.overlay.animations[animated.animation as usize].frame_count,
+        2
+    );
+    let last = builder.texture_slot_for("tile", (0, 2)).unwrap();
+    assert_eq!(last.layer, first.layer);
+    assert_eq!(last.animation, NO_ANIMATION);
+    assert_eq!(builder.catalog.decode_attempts.get(), 3);
+}
+
+#[test]
+fn identical_pixels_at_distinct_source_frames_share_a_physical_layer() {
+    let raster = png(16, 32);
+    let view = view(&[
+        ("textures/strip.png", &raster),
+        (
+            "textures/flipbook_textures.json",
+            br#"[{"atlas_tile":"tile","flipbook_texture":"textures/strip","frames":[1,0,1]}]"#,
+        ),
+    ]);
+    let keys = assets::MaterialKeys::from_entries([(1, "tile")])
+        .with_aliases([("tile", "textures/strip")]);
+    let mut builder = builder(&view, &keys);
+    builder.sources.truncate(1);
+    builder.max_layers = 2;
+    let slot = builder.texture_slot_for("tile", (0, 0)).unwrap();
+    assert_eq!(builder.sources.len(), 2);
+    let animation = &builder.overlay.animations[slot.animation as usize];
+    assert_eq!(animation.frame_count, 3);
+    assert!(
+        builder
+            .overlay
+            .animation_frames
+            .iter()
+            .all(|&frame| frame.layer() == slot.layer)
+    );
+}

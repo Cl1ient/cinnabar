@@ -320,9 +320,9 @@ fn explicit_frames_clamp_to_the_last_physical_frame_before_replication() {
             .collect(),
     };
     let frames = super::super::textures::flipbook_frames(&strip, &source, 2, 16);
-    assert_eq!((frames[0].width, frames[0].height), (2, 2));
-    assert_eq!(&frames[0].rgba8[..4], &[0, 4, 9, 255]);
-    assert_eq!(&frames[1].rgba8[..4], &[0, 0, 9, 255]);
+    assert_eq!((frames.frames[0].width, frames.frames[0].height), (2, 2));
+    assert_eq!(&frames.frames[0].rgba8[..4], &[0, 4, 9, 255]);
+    assert_eq!(&frames.frames[1].rgba8[..4], &[0, 0, 9, 255]);
 }
 
 #[test]
@@ -847,4 +847,62 @@ fn horizontal_strip_replacement_retains_both_frames_in_timeline_order() {
         compiled.overlay.material_overrides[0].animation,
         assets::NO_ANIMATION
     );
+}
+
+#[test]
+fn repeated_square_frames_leave_capacity_for_another_texture() {
+    for frames in [
+        vec![0, 0],
+        vec![0; assets::texture::flipbook::MAX_FLIPBOOK_FRAMES],
+    ] {
+        let keys = assets::MaterialKeys::from_entries([(1, "a_square"), (2, "b_other")])
+            .with_aliases([
+                ("a_square", "textures/square"),
+                ("b_other", "textures/other"),
+            ]);
+        let square = png(16, 16, |_, _| [200, 10, 20, 255]);
+        let other = png(16, 16, |_, _| [10, 200, 20, 255]);
+        let description = serde_json::to_vec(&serde_json::json!([{
+            "atlas_tile":"a_square","flipbook_texture":"textures/square","frames":frames,"ticks_per_frame":3
+        }])).unwrap();
+        let view = pack(&[
+            ("textures/square.png", &square),
+            ("textures/other.png", &other),
+            ("textures/flipbook_textures.json", &description),
+        ]);
+        let compiled = super::super::compile_block_overlay(
+            &view,
+            &CustomBlocks::default(),
+            false,
+            Some(&keys),
+            3,
+        )
+        .unwrap();
+        assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+        assert_eq!(compiled.overlay.material_overrides.len(), 2);
+        let square = compiled
+            .overlay
+            .material_overrides
+            .iter()
+            .find(|replacement| replacement.material == 1)
+            .unwrap();
+        let other = compiled
+            .overlay
+            .material_overrides
+            .iter()
+            .find(|replacement| replacement.material == 2)
+            .unwrap();
+        assert_eq!(pixel(&compiled.overlay, square.texture), [200, 10, 20, 255]);
+        assert_eq!(pixel(&compiled.overlay, other.texture), [10, 200, 20, 255]);
+        let animation = &compiled.overlay.animations[square.animation as usize];
+        assert_eq!(animation.frame_count as usize, frames.len());
+        assert_eq!(animation.ticks_per_frame, 3);
+        assert!(
+            compiled
+                .overlay
+                .animation_frames
+                .iter()
+                .all(|&frame| frame == square.texture)
+        );
+    }
 }

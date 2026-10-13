@@ -203,21 +203,28 @@ fn normalize_variant(variant: u32, count: u32) -> u32 {
     if variant < count { variant } else { 0 }
 }
 
-/// Cuts row or column strips into bounded square frames in timeline order.
-/// Crops replication from the upper-left and shrinks frames before source-budget accounting.
+/// Unique physical pixels and the ordered frame indices that play them.
+#[derive(Default)]
+pub(super) struct FrameSequence {
+    pub(super) frames: Vec<DecodedTexture>,
+    pub(super) timeline: Vec<u32>,
+}
+
+/// Cuts bounded square frames, reusing identical pixels throughout the authored timeline.
+/// Crops replication and shrinks before charging unique frames against source capacity.
 pub(super) fn flipbook_frames(
     texture: &DecodedTexture,
     flipbook: &FlipbookSource,
     max_frames: usize,
     max_side: u32,
-) -> Vec<DecodedTexture> {
+) -> FrameSequence {
     let side = texture.width.min(texture.height);
     if max_frames == 0 || side == 0 {
-        return Vec::new();
+        return FrameSequence::default();
     }
     let long_side = texture.width.max(texture.height);
     if !long_side.is_multiple_of(side) {
-        return Vec::new();
+        return FrameSequence::default();
     }
     let count = long_side / side;
     let horizontal = texture.width > texture.height;
@@ -228,31 +235,56 @@ pub(super) fn flipbook_frames(
     } else {
         flipbook.frames.len()
     };
-    (0..len.min(max_frames))
-        .map(|index| {
-            let frame = if flipbook.frames.is_empty() {
-                index as u32
-            } else {
-                flipbook.frames[index]
-            };
-            let start = frame.min(count - 1) * side;
-            let (x_start, y_start) = if horizontal { (start, 0) } else { (0, start) };
-            let mut rgba8 = Vec::with_capacity((output * output * 4) as usize);
-            for y in 0..output {
-                let source_y = y_start + y * crop / output;
-                for x in 0..output {
-                    let source_x = x_start + x * crop / output;
-                    let start = ((source_y * texture.width + source_x) * 4) as usize;
-                    rgba8.extend_from_slice(&texture.rgba8[start..start + 4]);
+    let mut physical = HashMap::<DecodedTexture, u32>::new();
+    let mut by_source_frame = HashMap::new();
+    let mut timeline = Vec::new();
+    for index in 0..len.min(assets::texture::flipbook::MAX_FLIPBOOK_FRAMES) {
+        let frame = if flipbook.frames.is_empty() {
+            index as u32
+        } else {
+            flipbook.frames[index]
+        };
+        let frame = frame.min(count - 1);
+        if let Some(&physical_frame) = by_source_frame.get(&frame) {
+            timeline.push(physical_frame);
+            continue;
+        }
+        let start = frame * side;
+        let (x_start, y_start) = if horizontal { (start, 0) } else { (0, start) };
+        let mut rgba8 = Vec::with_capacity((output * output * 4) as usize);
+        for y in 0..output {
+            let source_y = y_start + y * crop / output;
+            for x in 0..output {
+                let source_x = x_start + x * crop / output;
+                let start = ((source_y * texture.width + source_x) * 4) as usize;
+                rgba8.extend_from_slice(&texture.rgba8[start..start + 4]);
+            }
+        }
+        let pixels = DecodedTexture {
+            width: output,
+            height: output,
+            rgba8: rgba8.into_boxed_slice(),
+        };
+        let next = physical.len() as u32;
+        let physical_frame = match physical.entry(pixels) {
+            std::collections::hash_map::Entry::Occupied(existing) => *existing.get(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                if next as usize >= max_frames {
+                    break;
                 }
+                entry.insert(next);
+                next
             }
-            DecodedTexture {
-                width: output,
-                height: output,
-                rgba8: rgba8.into_boxed_slice(),
-            }
-        })
-        .collect()
+        };
+        by_source_frame.insert(frame, physical_frame);
+        timeline.push(physical_frame);
+    }
+    let mut frames = physical.into_iter().collect::<Vec<_>>();
+    frames.sort_unstable_by_key(|(_, index)| *index);
+    FrameSequence {
+        frames: frames.into_iter().map(|(pixels, _)| pixels).collect(),
+        timeline,
+    }
 }
 
 /// Downscales aspect-preserving so the longest side is at most `max_side`;

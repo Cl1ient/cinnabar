@@ -32,6 +32,16 @@ impl ModHost {
         Ok(host)
     }
 
+    /// Rejects bytes that exceed the component limit, fail to compile or import outside the host
+    /// world; no guest code runs.
+    pub fn validate_component(bytes: &[u8]) -> Result<()> {
+        ensure!(
+            bytes.len() <= MAX_COMPONENT_BYTES,
+            "component exceeds byte limit"
+        );
+        Instance::check(&engine()?, bytes)
+    }
+
     /// Loads the package at `dir` with what its manifest asks for granted, plus `extra`: the
     /// developer profile of a package selected on its own.
     pub fn load_package(dir: &Path, extra: ModGrants) -> Result<Self> {
@@ -107,10 +117,7 @@ impl ModHost {
         );
         grants.validate()?;
         let path = &source.settings_anchor();
-        let mut config = Config::new();
-        config.wasm_component_model(true).consume_fuel(true);
-        config.max_wasm_stack(256 * 1024);
-        let engine = Engine::new(&config)?;
+        let engine = engine()?;
         let settings_writer = if grants.settings {
             Some(settings::SettingsWriter::prepare(path).context("start mod settings writer")?)
         } else {
@@ -308,6 +315,14 @@ pub(crate) fn read_settings(path: &Path, grants: &ModGrants) -> Result<String> {
         "mod settings exceed byte limit"
     );
     Ok(String::from_utf8(bytes)?)
+}
+
+/// The fuel-metered component engine every local mod compiles with.
+fn engine() -> Result<Engine> {
+    let mut config = Config::new();
+    config.wasm_component_model(true).consume_fuel(true);
+    config.max_wasm_stack(256 * 1024);
+    Engine::new(&config)
 }
 
 /// Bounds file reads even if a writer grows the file between metadata and read.

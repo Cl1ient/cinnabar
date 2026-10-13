@@ -141,6 +141,27 @@ fn unknown_authority_and_oversized_packages_fail_admission() {
     assert!(ModHost::load(&path).is_err());
 }
 
+/// Import validation accepts a host-world component and rejects anything else without running it.
+#[test]
+fn component_validation_rejects_bad_packages_without_running_guest_code() {
+    let trapping_init = fixture("", "Hello").replacen(
+        "(func (export \"init\")",
+        "(func (export \"init\") unreachable",
+        1,
+    );
+    ModHost::validate_component(trapping_init.as_bytes()).unwrap();
+    let foreign =
+        fixture("", "Hello").replacen("(component", "(component (import \"network\" (func))", 1);
+    for bad in [
+        b"not a component".to_vec(),
+        b"(module)".to_vec(),
+        foreign.into_bytes(),
+        vec![0; MAX_COMPONENT_BYTES + 1],
+    ] {
+        assert!(ModHost::validate_component(&bad).is_err());
+    }
+}
+
 #[test]
 fn oversized_initial_label_is_ignored() {
     let text = "x".repeat(MAX_LABEL_BYTES + 1);

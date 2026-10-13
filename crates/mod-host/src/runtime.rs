@@ -259,6 +259,16 @@ pub(super) struct Instance {
 }
 
 impl Instance {
+    /// Compiles a component and type-checks its imports against the host world without running
+    /// any guest code.
+    pub(super) fn check(engine: &Engine, bytes: &[u8]) -> Result<()> {
+        let component = Component::new(engine, bytes)?;
+        let mut linker = Linker::new(engine);
+        PlayerMod::add_to_linker::<_, HasSelf<_>>(&mut linker, |state: &mut State| state)?;
+        linker.instantiate_pre(&component)?;
+        Ok(())
+    }
+
     /// Initializes a candidate store without changing the published instance. An `extension`
     /// component's instantiation and `init` share `FRAME_FUEL`; a `player-mod` component's
     /// `init`, which may read the whole session, gets `LOAD_FUEL`.

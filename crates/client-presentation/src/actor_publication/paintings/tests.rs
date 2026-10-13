@@ -185,3 +185,50 @@ fn invisible_paintings_publish_neither_front_nor_border() {
         "all surfaces of an invisible painting stay hidden"
     );
 }
+
+#[test]
+fn painting_edges_remain_visible_until_the_rendered_surface_leaves_the_viewport() {
+    use bevy::math::{Mat4, Vec3, Vec4};
+    let pack = pack();
+    let pages = ActorArtworkPages::default().with_pack_artwork(&pack.textures, &pack.bindings);
+    let mut routes = PaintingRoutes::default();
+    routes.refresh(None, Some(&pack), &pages);
+    for direction in 0..4 {
+        let across_z = direction % 2 == 1;
+        let clip_from_world = if across_z {
+            Mat4::from_cols(Vec4::Z, Vec4::Y, Vec4::X, Vec4::W)
+        } else {
+            Mat4::IDENTITY
+        };
+        let view = ActorCullView {
+            clip_from_world,
+            camera_position: Vec3::ZERO,
+            max_distance: 64.0,
+        };
+        for (edge, expected) in [(1.484375, 2), (1.515625, 0)] {
+            let position = if across_z {
+                [0.5, 0.0, edge]
+            } else {
+                [edge, 0.0, 0.5]
+            };
+            let mut world = world();
+            world
+                .apply_ordered_event(
+                    protocol::test_support::packets::add_painting_event(
+                        -7, 7, "Kebab", direction, position,
+                    )
+                    .unwrap()
+                    .unwrap(),
+                    Some(1),
+                )
+                .unwrap();
+            let mut output = batch();
+            routes.append(&world, 0.5, Some(view), &mut output);
+            assert_eq!(
+                output.submissions.len(),
+                expected,
+                "direction {direction}, edge {edge}"
+            );
+        }
+    }
+}

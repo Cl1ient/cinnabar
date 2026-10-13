@@ -162,6 +162,126 @@ fn component_validation_rejects_bad_packages_without_running_guest_code() {
     }
 }
 
+/// Builds a valid component around the supplied core functions and lifted callbacks.
+fn validation_component(core: &str, exports: &str) -> String {
+    format!(
+        r#"(component
+            (core module $m {core})
+            (core instance $i (instantiate $m))
+            {exports})"#
+    )
+}
+
+/// Both required callbacks must be present before an import is accepted.
+#[test]
+fn component_validation_rejects_missing_required_callbacks() {
+    let core = r#"(func (export "init")) (func (export "frame"))"#;
+    for exports in [
+        "",
+        r#"(func (export "init") (canon lift (core func $i "init")))"#,
+        r#"(func (export "frame") (canon lift (core func $i "frame")))"#,
+    ] {
+        let source = validation_component(core, exports);
+        let error = ModHost::validate_component(source.as_bytes()).unwrap_err();
+        assert!(format!("{error:#}").contains("component lacks"));
+    }
+    assert!(ModHost::validate_component(b"(component)").is_err());
+}
+
+/// Required callbacks take no parameters and return no results.
+#[test]
+fn component_validation_rejects_incompatible_required_signatures() {
+    for name in ["init", "frame"] {
+        let other = if name == "init" { "frame" } else { "init" };
+        for (core_signature, signature) in [
+            ("(param i32)", r#"(param "value" u32)"#),
+            ("(result i32) i32.const 0", "(result u32)"),
+        ] {
+            let source = validation_component(
+                &format!(r#"(func (export "bad") {core_signature}) (func (export "good"))"#),
+                &format!(
+                    r#"(func (export "{name}") {signature} (canon lift (core func $i "bad")))
+                       (func (export "{other}") (canon lift (core func $i "good")))"#
+                ),
+            );
+            let error = ModHost::validate_component(source.as_bytes()).unwrap_err();
+            assert!(
+                format!("{error:#}").contains(&format!("export {name} has another signature")),
+                "{error:#}"
+            );
+        }
+    }
+}
+
+/// Every declared event rejects incompatible output even though the event may be absent.
+#[test]
+fn component_validation_rejects_incompatible_optional_callbacks() {
+    let wit = include_str!("../../mod-api/wit/extension.wit");
+    let (_, world) = wit.split_once("world player-mod {").unwrap();
+    for name in world.lines().filter_map(|line| {
+        line.trim()
+            .strip_prefix("export ")?
+            .split_once(':')
+            .map(|(name, _)| name)
+    }) {
+        let source = validation_component(
+            r#"(func (export "init")) (func (export "frame"))
+               (func (export "event") (result i32) i32.const 0)"#,
+            &format!(
+                r#"(func (export "init") (canon lift (core func $i "init")))
+                   (func (export "frame") (canon lift (core func $i "frame")))
+                   (func (export "{name}") (result u32) (canon lift (core func $i "event")))"#
+            ),
+        );
+        let error = ModHost::validate_component(source.as_bytes()).unwrap_err();
+        assert!(
+            format!("{error:#}").contains(&format!("export {name} has another signature")),
+            "{error:#}"
+        );
+    }
+}
+
+/// Callback names cannot be satisfied by exporting a core module instead of a function.
+#[test]
+fn component_validation_rejects_non_function_callbacks() {
+    for name in ["init", "view-closed"] {
+        let init = if name == "init" {
+            ""
+        } else {
+            r#"(func (export "init") (canon lift (core func $i "init")))"#
+        };
+        let source = validation_component(
+            r#"(func (export "init")) (func (export "frame"))"#,
+            &format!(
+                r#"{init}
+                   (func (export "frame") (canon lift (core func $i "frame")))
+                   (export "{name}" (core module $m))"#
+            ),
+        );
+        let error = ModHost::validate_component(source.as_bytes()).unwrap_err();
+        assert!(
+            format!("{error:#}").contains(&format!("export {name} is not a callback")),
+            "{error:#}"
+        );
+    }
+}
+
+/// Admission must not execute the component's core start function or its init callback.
+#[test]
+fn component_validation_does_not_run_core_start() {
+    let source = validation_component(
+        r#"(func $start unreachable) (start $start)
+           (func (export "init")) (func (export "frame"))"#,
+        r#"(func (export "init") (canon lift (core func $i "init")))
+           (func (export "frame") (canon lift (core func $i "frame")))"#,
+    );
+    ModHost::validate_component(source.as_bytes()).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("start.wat");
+    std::fs::write(&path, source).unwrap();
+    assert!(ModHost::load(&path).is_err());
+}
+
 #[test]
 fn oversized_initial_label_is_ignored() {
     let text = "x".repeat(MAX_LABEL_BYTES + 1);

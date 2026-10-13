@@ -11,7 +11,7 @@ use mod_host::ModHost;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -35,7 +35,11 @@ pub(super) fn configure(app: &mut App, mods: PathBuf, registration: PathBuf) {
     let (outgoing, published) = unbounded();
     let spawned = std::thread::Builder::new()
         .name("mod-library".into())
-        .spawn(move || run(&mods, &registration, &incoming, &outgoing));
+        .spawn(move || {
+            run(&mods, &registration, &incoming, &outgoing, || {
+                picker::pick(&FILTER)
+            })
+        });
     if let Err(error) = spawned {
         eprintln!("Mod library unavailable: {error}");
         return;
@@ -61,7 +65,13 @@ fn drive(library: Res<ModLibrary>, menu: Option<ResMut<MenuRuntime>>) {
 }
 
 /// Serves commands in order and republishes when the directory or recorded status changes.
-fn run(mods: &Path, registration: &Path, incoming: &Receiver<Action>, outgoing: &Sender<Library>) {
+fn run(
+    mods: &Path,
+    registration: &Path,
+    incoming: &Receiver<Action>,
+    outgoing: &Sender<Library>,
+    mut pick: impl FnMut() -> Result<Option<PathBuf>, String>,
+) {
     let mut requests = 0;
     let mut library = scan(mods, registration, String::new());
     let _ = outgoing.send(library.clone());
@@ -69,12 +79,11 @@ fn run(mods: &Path, registration: &Path, incoming: &Receiver<Action>, outgoing: 
         let message = match incoming.recv_timeout(super::RELOAD_INTERVAL) {
             Ok(action) => {
                 if action == Action::Import {
-                    let _ = outgoing.send(Library {
-                        busy: true,
-                        ..library.clone()
-                    });
+                    library.busy = true;
+                    let _ = outgoing.send(library.clone());
                 }
-                perform(action, mods, registration, &mut requests).unwrap_or_else(|error| error)
+                perform(action, mods, registration, &mut requests, &mut pick)
+                    .unwrap_or_else(|error| error)
             }
             Err(RecvTimeoutError::Timeout) => library.message.clone(),
             Err(RecvTimeoutError::Disconnected) => return,
@@ -93,6 +102,7 @@ fn perform(
     mods: &Path,
     registration: &Path,
     requests: &mut u64,
+    pick: &mut impl FnMut() -> Result<Option<PathBuf>, String>,
 ) -> Result<String, String> {
     let installed = installed(mods);
     let path = |id: u64| {
@@ -107,7 +117,7 @@ fn perform(
         format!("settings-{}-{}", std::process::id(), *requests)
     };
     match action {
-        Action::Import => match picker::pick(&FILTER) {
+        Action::Import => match pick() {
             Ok(Some(source)) => import(mods, &source).map(|name| format!("Imported {name}.")),
             Ok(None) => Ok(String::new()),
             Err(error) => Err(format!("{error}The mods folder is {}.", mods.display())),
@@ -150,15 +160,28 @@ fn import(mods: &Path, source: &Path) -> Result<String, String> {
         .map_err(|error| format!("Could not read {name}: {error}"))?;
     ModHost::validate_component(&bytes)
         .map_err(|error| format!("{name} is not a valid mod: {error:#}"))?;
-    let staging = mods.join(format!(".{name}.importing"));
-    fs::create_dir_all(mods)
-        .and_then(|()| fs::write(&staging, &bytes))
-        .and_then(|()| fs::rename(&staging, mods.join(name)))
-        .map_err(|error| {
-            let _ = fs::remove_file(&staging);
-            format!("Could not install {name}: {error}")
-        })?;
+    publish_component(mods, name, &bytes)?;
     Ok(name.to_owned())
+}
+
+/// Publishes complete bytes under a new name without overwriting any existing file or link.
+fn publish_component(mods: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
+    fs::create_dir_all(mods).map_err(|error| format!("Could not install {name}: {error}"))?;
+    let staging = mods.join(format!(".{name}.{}.importing", std::process::id()));
+    let mut file = fs::File::create_new(&staging)
+        .map_err(|error| format!("Could not stage {name}: {error}"))?;
+    let result = file
+        .write_all(bytes)
+        .and_then(|()| fs::hard_link(&staging, mods.join(name)));
+    drop(file);
+    let _ = fs::remove_file(&staging);
+    result.map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            format!("A mod named {name} is already installed. Choose a different file name.")
+        } else {
+            format!("Could not install {name}: {error}")
+        }
+    })
 }
 
 /// Deletes a component and the settings file the host keeps beside it.
@@ -173,6 +196,7 @@ fn remove(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Recognizes the component extension accepted by the Mods tab.
 fn is_component(path: &Path) -> bool {
     path.extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case(COMPONENT_EXTENSION))
@@ -231,6 +255,111 @@ fn scan(mods: &Path, registration: &Path, message: String) -> Library {
 mod tests {
     use super::*;
 
+    /// Builds a minimal mod with a distinct frame body for import tests.
+    fn component(frame: &str) -> String {
+        format!(
+            r#"(component
+                (core module $m
+                    (func (export "init"))
+                    (func (export "frame") {frame}))
+                (core instance $i (instantiate $m))
+                (func (export "init") (canon lift (core func $i "init")))
+                (func (export "frame") (canon lift (core func $i "frame"))))"#
+        )
+    }
+
+    /// A filename collision leaves the enabled component, grants and registration untouched.
+    #[test]
+    fn importing_the_same_name_never_replaces_the_enabled_mod() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&registration).unwrap();
+        let source = directory.path().join("zoom.wasm");
+        let original = component("");
+        fs::write(&source, &original).unwrap();
+        assert_eq!(import(&mods, &source).unwrap(), "zoom.wasm");
+        let installed = mods.join("zoom.wasm");
+        select(&registration, &installed, true, "enabled".into()).unwrap();
+        let record = registration.join(super::super::registration::REGISTRATION_FILE);
+        let mut granted: serde_json::Value =
+            serde_json::from_slice(&fs::read(&record).unwrap()).unwrap();
+        granted["grants"]["hud"] = true.into();
+        fs::write(&record, serde_json::to_vec(&granted).unwrap()).unwrap();
+        let previous = fs::read(&record).unwrap();
+
+        fs::write(&source, component("unreachable")).unwrap();
+        let error = import(&mods, &source).unwrap_err();
+        assert!(error.contains("already installed"), "{error}");
+        assert_eq!(fs::read(&installed).unwrap(), original.as_bytes());
+        assert_eq!(fs::read(&record).unwrap(), previous);
+        assert!(registered(&registration).unwrap().enabled);
+        assert_eq!(fs::read_dir(&mods).unwrap().count(), 1);
+    }
+
+    /// Cancelled imports always finish even when the idle library and message are unchanged.
+    #[test]
+    fn cancelling_import_publishes_idle_and_allows_more_commands() {
+        let directory = tempfile::tempdir().unwrap();
+        let (commands, incoming) = unbounded();
+        let (outgoing, published) = unbounded();
+        commands.send(Action::Import).unwrap();
+        commands.send(Action::Import).unwrap();
+        drop(commands);
+        run(
+            &directory.path().join("mods"),
+            &directory.path().join("config"),
+            &incoming,
+            &outgoing,
+            || Ok(None),
+        );
+        let updates: Vec<_> = published.try_iter().collect();
+        assert_eq!(
+            updates
+                .iter()
+                .map(|library| library.busy)
+                .collect::<Vec<_>>(),
+            [false, true, false, true, false]
+        );
+        let mut snapshot = launcher::mods::Snapshot::default();
+        snapshot.publish(updates[4].clone());
+        assert_eq!(snapshot.library, updates[0]);
+        for action in [
+            Action::Import,
+            Action::Enable(1),
+            Action::Disable,
+            Action::Remove(1),
+        ] {
+            assert_eq!(snapshot.apply(action), Some(action));
+        }
+    }
+
+    /// Existing links cannot redirect staging writes or be replaced at publication.
+    #[cfg(unix)]
+    #[test]
+    fn publishing_never_overwrites_destination_or_staging_links() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        let target = directory.path().join("outside.wasm");
+        let destination = mods.join("zoom.wasm");
+        symlink(&target, &destination).unwrap();
+        assert!(publish_component(&mods, "zoom.wasm", b"replacement").is_err());
+        assert_eq!(fs::read_link(&destination).unwrap(), target);
+        assert!(!target.exists());
+
+        fs::remove_file(&destination).unwrap();
+        fs::write(&target, b"original").unwrap();
+        let staging = mods.join(format!(".zoom.wasm.{}.importing", std::process::id()));
+        symlink(&target, &staging).unwrap();
+        assert!(publish_component(&mods, "zoom.wasm", b"replacement").is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(fs::read_link(&staging).unwrap(), target);
+        assert!(!destination.exists());
+    }
+
     /// A bad package is rejected before anything lands in the mods directory.
     #[test]
     fn import_rejects_a_bad_package_and_installs_nothing() {
@@ -240,6 +369,9 @@ mod tests {
         fs::write(&source, b"not a component").unwrap();
         let error = import(&mods, &source).unwrap_err();
         assert!(error.contains("broken.wasm is not a valid mod"), "{error}");
+        fs::write(&source, b"(component)").unwrap();
+        let error = import(&mods, &source).unwrap_err();
+        assert!(error.contains("component lacks"), "{error}");
         let text = directory.path().join("notes.txt");
         fs::write(&text, b"(component)").unwrap();
         assert!(import(&mods, &text).is_err());
@@ -262,9 +394,23 @@ mod tests {
         let library = scan(&mods, &registration, String::new());
         let id = library.installed[0].id;
         let mut requests = 0;
-        perform(Action::Enable(id), &mods, &registration, &mut requests).unwrap();
+        perform(
+            Action::Enable(id),
+            &mods,
+            &registration,
+            &mut requests,
+            &mut || Ok(None),
+        )
+        .unwrap();
         assert_eq!(scan(&mods, &registration, String::new()).enabled, Some(id));
-        perform(Action::Remove(id), &mods, &registration, &mut requests).unwrap();
+        perform(
+            Action::Remove(id),
+            &mods,
+            &registration,
+            &mut requests,
+            &mut || Ok(None),
+        )
+        .unwrap();
         let after = scan(&mods, &registration, String::new());
         assert!(after.installed.is_empty() && after.enabled.is_none());
         assert!(!registered(&registration).unwrap().enabled);

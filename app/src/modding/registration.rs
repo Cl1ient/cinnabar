@@ -33,7 +33,7 @@ use sha2::Sha256;
 use super::{ModRuntime, RELOAD_INTERVAL, VisualTimeOverride, interaction::ModInteraction};
 use client_shell::ui_resources::UiPresentationResource;
 
-const REGISTRATION_FILE: &str = "local-mod.json";
+pub(super) const REGISTRATION_FILE: &str = "local-mod.json";
 const STATUS_FILE: &str = "local-mod.status.json";
 const MAX_BYTES: usize = 16 * 1024;
 const MAX_REQUEST_BYTES: usize = 64;

@@ -774,11 +774,12 @@ fn environment_host(world: &mut World, directory: &Scratch) {
             result: Ok(Action::Replace(candidate(directory, true, "Environment"))),
         },
     );
-    let mut runtime = world.resource_mut::<ModRuntime>();
-    runtime.registration_host = None;
-    runtime.registration_identity = None;
-    runtime.registration_request = None;
-    drop(runtime);
+    {
+        let mut runtime = world.resource_mut::<ModRuntime>();
+        runtime.registration_host = None;
+        runtime.registration_identity = None;
+        runtime.registration_request = None;
+    }
     refresh_presentation(world);
 }
 

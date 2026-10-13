@@ -259,14 +259,12 @@ pub(super) struct Instance {
 }
 
 impl Instance {
-    /// Compiles a component and type-checks its imports against the host world without running
-    /// any guest code.
+    /// Compiles a component and checks its imports and callbacks without running guest code.
     pub(super) fn check(engine: &Engine, bytes: &[u8]) -> Result<()> {
         let component = Component::new(engine, bytes)?;
         let mut linker = Linker::new(engine);
         PlayerMod::add_to_linker::<_, HasSelf<_>>(&mut linker, |state: &mut State| state)?;
-        linker.instantiate_pre(&component)?;
-        Ok(())
+        exports::Exports::check(&linker.instantiate_pre(&component)?)
     }
 
     /// Initializes a candidate store without changing the published instance. An `extension`
@@ -283,10 +281,12 @@ impl Instance {
         let mut linker = Linker::new(engine);
         PlayerMod::add_to_linker::<_, HasSelf<_>>(&mut linker, |state: &mut State| state)?;
         let state = State::new(grants, settings, declared);
+        let pre = linker.instantiate_pre(&component)?;
+        exports::Exports::check(&pre)?;
         let mut store = Store::new(engine, state);
         store.limiter(|state| &mut state.limits);
         store.set_fuel(FRAME_FUEL)?;
-        let instance = linker.instantiate(&mut store, &component)?;
+        let instance = pre.instantiate(&mut store)?;
         let (init, exports) = exports::Exports::find(&mut store, &instance)?;
         let budget = if exports.loads_session() {
             store.set_fuel(LOAD_FUEL)?;

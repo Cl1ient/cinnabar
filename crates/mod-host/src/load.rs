@@ -32,8 +32,8 @@ impl ModHost {
         Ok(host)
     }
 
-    /// Rejects bytes that exceed the component limit, fail to compile or import outside the host
-    /// world; no guest code runs.
+    /// Rejects oversized bytes, invalid imports and incompatible callbacks without running
+    /// guest code.
     pub fn validate_component(bytes: &[u8]) -> Result<()> {
         ensure!(
             bytes.len() <= MAX_COMPONENT_BYTES,

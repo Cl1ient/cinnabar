@@ -24,7 +24,7 @@ mod environment_settings;
 pub mod equipment;
 mod error;
 mod family_routing;
-mod fire;
+pub mod fire;
 mod fog_layers;
 mod fog_transition;
 mod font;
@@ -179,8 +179,6 @@ pub use equipment::{
     encode_equipment_catalog_with_textures, encode_equipment_catalog_with_use_profiles,
 };
 pub use error::AssetError;
-pub use fire::{FIRE_ATTACHMENT_MASK_COUNT, FIRE_SUPPORTED_QUAD_COUNT, FIRE_TEMPLATE_COUNT};
-pub use fire::{fire_attachment_template_offset, fire_template_quad_count};
 pub use fog_layers::resolve_fog_layers;
 pub use fog_transition::FogTransition;
 pub use font::{
@@ -291,10 +289,9 @@ pub use texture::{
     downsample_linear_premultiplied, legacy_terrain_mip, rebuild_legacy_terrain_mips,
 };
 pub use ui::{
-    ITEM_GLINT_TEXTURE_PATH, MAX_UI_ATLAS_PAGES, MAX_UI_ATLAS_SIDE, MAX_UI_CARRIER_BYTES,
-    MAX_UI_FILE_BYTES, MAX_UI_FILES, MAX_UI_KEY_BYTES, MAX_UI_SIDECARS, MAX_UI_TEXTURES,
-    RuntimeUiAssets, SPLASH_RESOURCE_PATH, UI_CARRIER_MAGIC, UI_CARRIER_VERSION, UI_CREDITS_FILES,
-    UiAtlasPage, UiFile, UiNineSlice, UiSidecar, UiSidecarEntry, UiTexturePlacement, UiTextureUv,
-    encode_ui_catalog,
+    MAX_UI_ATLAS_PAGES, MAX_UI_ATLAS_SIDE, MAX_UI_CARRIER_BYTES, MAX_UI_FILE_BYTES, MAX_UI_FILES,
+    MAX_UI_KEY_BYTES, MAX_UI_SIDECARS, MAX_UI_TEXTURES, RuntimeUiAssets, SPLASH_RESOURCE_PATH,
+    UI_CARRIER_MAGIC, UI_CARRIER_VERSION, UI_CREDITS_FILES, UiAtlasPage, UiFile, UiNineSlice,
+    UiSidecar, UiSidecarEntry, UiTexturePlacement, UiTextureUv, encode_ui_catalog,
 };
 pub use vanilla_refs::{MAX_VANILLA_REFS_BYTES, VanillaEntityRefs, VanillaGeometryFile};

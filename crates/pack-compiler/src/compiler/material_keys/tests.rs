@@ -60,7 +60,7 @@ fn honey_fronts_and_cake_inner_faces_keep_their_compiled_atlas_indices() {
     ] {
         data.insert(
             key.into(),
-            json!({"textures":format!("textures/blocks/{key}")}),
+            json!({"textures":[format!("textures/blocks/{key}")]}),
         );
     }
     for key in ["bee_nest_front", "beehive_front"] {

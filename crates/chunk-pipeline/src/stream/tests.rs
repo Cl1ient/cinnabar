@@ -992,6 +992,7 @@ mod prediction;
 mod render_distance;
 mod service;
 mod streaming_harness;
+mod sub_chunk_recovery;
 
 mod actor_block_sync;
 #[path = "tests/ordered_commits.rs"]

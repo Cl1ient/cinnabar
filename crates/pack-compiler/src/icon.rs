@@ -275,3 +275,11 @@ pub fn overlay_block_icon(overlay: &assets::BlockOverlay, visual: usize) -> Opti
         .ok()
         .map(|model| model.raster())
 }
+
+/// Draws a carried cube from six overlay-local materials without changing its world binding.
+#[must_use]
+pub fn overlay_cube_icon(overlay: &assets::BlockOverlay, faces: [u32; 6]) -> Option<IconSprite> {
+    model::Model::overlay_cube(overlay, faces)
+        .ok()
+        .map(|model| model.raster())
+}

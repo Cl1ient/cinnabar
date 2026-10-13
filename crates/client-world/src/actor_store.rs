@@ -49,6 +49,8 @@ const PLAYER_FLAGS_SLEEPING: u8 = 1 << 1;
 pub(crate) const ACTOR_FLAG_SLEEPING: u32 = 76;
 const ACTOR_FLAG_SNEAKING: u32 = 1;
 const ACTOR_FLAG_INVISIBLE: u32 = 5;
+/// Primary actor flag that permits name-tag presentation.
+pub const ACTOR_FLAG_SHOW_NAME: u32 = 14;
 const ACTOR_FLAG_SWIMMING: u32 = 57;
 const ACTOR_FLAG_USING_ITEM: u32 = 4;
 const ACTOR_FLAG_SPRINTING: u32 = 3;
@@ -292,6 +294,8 @@ impl ActorSnapshot {
             dragon_animation: None,
             hitboxes: None,
         };
+        // Predicted flags must retain the visible-name default until the server replaces them.
+        snapshot.set_flag(ACTOR_FLAG_SHOW_NAME, true);
         snapshot.apply_local_flags(feed);
         snapshot
     }

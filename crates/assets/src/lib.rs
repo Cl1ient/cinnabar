@@ -37,7 +37,7 @@ pub mod icon;
 pub mod item;
 mod lang;
 mod light_registry;
-mod material_keys;
+pub mod material_keys;
 mod material_variations;
 mod model;
 pub mod native_material;
@@ -59,6 +59,7 @@ pub mod sound_bank;
 mod sound_events;
 mod stair;
 pub mod starter_skins;
+pub mod stem;
 pub mod texture;
 pub mod ui;
 pub mod vanilla_pack;
@@ -217,7 +218,6 @@ pub use lang::{
     VANILLA_EN_US_LANG_SHA256, encode_lang_catalog, is_language_code,
 };
 pub use light_registry::{LightProperties, read_light_registry, read_light_registry_for_protocol};
-pub use material_keys::{MATERIAL_KEYS_SCHEMA, MAX_MATERIAL_KEYS_BYTES, MaterialKeys};
 pub use model::{
     ANIMATION_FLAG_BLEND, Animation, BLOCK_VISUAL_VARIANT_COVERED_GRASS,
     BLOCK_VISUAL_VARIANT_MATERIAL_MASK, BLOCK_VISUAL_VARIANT_NONSEASONAL_LEAF,
@@ -269,7 +269,7 @@ pub use registry::{
 };
 pub use runtime::{
     BlockOverlay, MaterialOverride, NetworkIdMode, ResolvedBlock, ResolvedFace, RuntimeAssets,
-    SequentialIdRemap, ServerDefinedBlock, server_defined_blocks,
+    SequentialIdRemap, ServerDefinedBlock, VanillaFallback, server_defined_blocks,
     server_defined_blocks_for_registry,
 };
 pub use server_lang::{MAX_SERVER_LANG_INPUT_BYTES, ServerLangOverlay};

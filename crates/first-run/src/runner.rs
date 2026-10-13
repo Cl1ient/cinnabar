@@ -404,13 +404,13 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn under_the_updater_the_compiler_stays_where_a_rollback_can_stop_it() {
-        let dir = Dir::new("compiler-group");
         let cancel = AtomicBool::new(false);
         let ours = rustix::process::getpgrp()
             .as_raw_nonzero()
             .get()
             .to_string();
         for own_group in [true, false] {
+            let dir = Dir::new("compiler-group");
             let mut compiler = shell_compiler(dir.path(), &cancel);
             compiler.own_group = own_group;
             let mut groups = Vec::new();

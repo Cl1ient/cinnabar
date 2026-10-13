@@ -18,7 +18,7 @@ pub(in crate::compiler) fn material_descriptor(
         .terrain
         .get_clamped_carried_variant(GRASS_SIDE_KEY, usize::MAX)
         .filter(|(path, overlay, _)| *path == SNOWED_GRASS_SIDE_TEXTURE && overlay.is_none())
-        .map(|(path, _, index)| (path, GRASS_SIDE_KEY, index));
+        .map(|(path, _, variant)| (path, GRASS_SIDE_KEY, variant));
     let (path, key, state_variant) = native_side.or_else(|| {
         pack.terrain
             .get_exact_pair_no_tint("mycelium_side")

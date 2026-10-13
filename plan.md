@@ -1,3 +1,37 @@
+## Runtime terrain bindings
+
+Optional terrain catalogs retain each material's source key, state variant, tint, and
+independent weighted choices. Raster-only layers refresh selector representatives while
+preserving base variation ranges and leaf weights. Retained choice indices distinguish
+repeated raster paths for flipbook updates. Block texture bindings
+repoint only plain full-cube world faces with one-to-one source mappings and prepare
+separate carried cube icons and held-item sheets. Carried-only texture changes also
+prepare art for eligible cubes. The material sidecar retains source facts and cube
+rebinding eligibility after packing. Carrier fallback resolves raster paths across keys,
+retains baked atlas tint, and applies a new multiplier only to untinted sources. Pack
+and carrier images share filename resolution, tint, UV grids, and frame admission. Cube
+bindings derive UV rotation from the replacement binding shape and retained pillar mapping.
+Animation and selector caches use resolved state indices. Material admission reserves the
+base table, failed routes release unpublished allocations, and held sheets survive without
+thumbnails. Retained block bindings are ordered by visual ID.
+Repeated catalog states and cube bindings keep base references when their rasters are absent;
+changed choices still use carrier fallback. Specialized material sources retain their selected
+catalog keys and variant indices.
+Raster reuse follows the resolved image filename while preserving tint, grid and flipbook
+policies. Full arrays check indexed aliases for reuse before reading any new image payload.
+Block icon baking runs only when the icon subscriber recompiles. Mesh reuse also requires
+each material to retain its positional-versus-static variation mode.
+
+Incomplete: Block texture rebinding excludes pottable plants, directional or rotated
+blocks without a pillar axis, model and container blocks, tinted or overlay-color carried textures,
+leaves, walls, fences, and other inventory-state models. These keep their existing routes.
+Carrier fallback for animated donors is also incomplete: their baked timelines do not
+retain physical source-frame identities. Such donors are excluded from fallback; bundled
+images still use the destination route's flipbook metadata.
+CI must compile and run the regression fixtures. Rendered state variants, position-selected
+texture output, pack reload/removal, and performance acceptance still need headless
+verification. No parity gate closes here.
+
 ## Launcher updates
 
 One client per install owns update checks, Beta/Nightly/Stable channel selection, explicit Restart and
@@ -513,6 +547,10 @@ these changes do not close the movement, camera, or actor parity gates.
   replay so a relocation cannot invent a ladder climb. If replay cannot query
   terrain, its fallback preserves later retained server positions and motion.
   Unstamped or expired reset corrections keep their incoming destination.
+- Actor crouch updates preserve held ability-flight descent during live input
+  and correction replay; older walking-pose updates stop at the flight transition.
+  Focused regressions reproduce the upward rewind caused by a server sneak clear.
+  Native-server candidate input and rendered acceptance remain incomplete.
 - Validation: 267 simulator tests, 69 semantic-input tests, 345 movement tests
   and 16 focused client tests pass. The touched-crate compile check includes
   tests and the client app. The architecture check passes. Regression tests
@@ -678,11 +716,16 @@ these changes do not close the movement, camera, or actor parity gates.
 Bedrock 1.12 combat visuals are a deliberate default and accepted deviation from
 1.26.50. There is no user setting. `render_api::DEFAULT_COMBAT_VISUALS` retains the
 Modern profile as a one-line code choice. The combat profile owns body and worn
-armour hurt red, glint, and camera bob/hurt; Java 1.7 still owns its poses and items.
+armour hurt red, glint, camera bob/hurt, and ordinary Bedrock player attacks.
+The legacy attack uses lookup trig for third-person joints, the bare first-person
+arm and fallback main-hand items. Item use and special movement retain their
+authored poses. Java 1.7 takes precedence for body, arm and item poses.
+First-person hand sway deliberately uses Java tick smoothing in both combat
+profiles, independently of the Java animation option.
 Movement bob uses the physics fraction; hurt and death use the actor fraction.
 Page-level body dye masks retain zero-alpha RGB and depth independently of armour cutout.
 
-Implementation and deterministic camera, overlay, equipment and shader fixtures
+Implementation and deterministic swing, sway, camera, overlay, equipment and shader fixtures
 are present. They have not been compiled or run. CI verification and a headless
 visual comparison remain outstanding; this does not close a parity or visual
 acceptance gate.
@@ -1459,6 +1502,17 @@ Third-person locomotion retains both tick poses when camera-sensitive clips are
 inactive, allowing walking and jumping to interpolate between ticks. Active camera
 clips still sample presentation input. Full native motion-query sampling and
 interpolation of ordinary channels mixed with active camera clips remain incomplete.
+
+Third-person player head yaw, pitch and body rotation now sample the same partial
+tick before relative yaw is clamped, including shortest-path angle wrapping.
+Unrelated animation channels retain their tick endpoints, and view changes discard
+the previous perspective's rotation history. Deterministic regressions cover local
+and remote players, clamp order, body catch-up and first-person pose isolation.
+Draw-only refreshes retain reset rotation history. Dormant camera clips preserve
+walking endpoints, including persona layers, and sampled spear poses complete
+their generated inputs before selection and channel evaluation.
+CI execution and rendered acceptance remain pending; broader motion-query parity
+and interpolation mixed with active camera clips remain incomplete.
 
 2026-10-04 user-requested custom emotes — **Incomplete native/Lunar parity**:
 the native four-slot JSON-UI wheel and remappable emote control select an original,
@@ -2551,26 +2605,27 @@ overrides, special block/UV variant branches, seasonal colors, legacy Terrain
 events and native crack bounds/cadence. No complete particle parity gate is closed;
 see [vanilla rules](docs/reference/block-break-particles.md). Local, uncommitted.
 
-2026-10-01 actor name tags: native-port correction in progress. World-plane projection,
-position-facing billboard, fixed font-pixel world size, ten-pixel line pitch,
-independent line centering, full multiline 0.25-black plate, multiline world lift and
-0.125-alpha depth-tested sneaking text follow vanilla behaviour. Player tags use synced name metadata, not just their spawn username; scores share
-the same path and honor the native ten-block score gate. Provisional, labeled incomplete:
-exact matched shader-pack/sampler/alpha-target state, explicit orientation/backface/custom color
-branches, filtered names, mounted/riding anchor offsets and missing-data height/range
-defaults need native witnesses. Crosshair picking still inherits the existing provisional
-selection-shape/reach implementation. Name-tag rendering uses plate no-depth-write,
-text depth-write, glyph alpha testing and the runtime environmental-text bias override. The final debug build has a live Zeqa/Metal rendering
-smoke pass at Retina scale 2; controlled near/far drift, sneak/occlusion/clipping and
-version-matched native frame comparisons remain pending. Workspace tests, formatting,
-strict Clippy and the architecture gate pass locally. Changes are uncommitted. No name-tag
-visual parity gate is closed; see [vanilla rules](docs/reference/nametag-rendering.md).
+Actor nametags use Java Edition rendering as an accepted deviation from Bedrock.
+CPU geometry and the GPU shader share the camera rotation, including front-view pitch,
+so tags stay screen-aligned throughout the view. Labels use a fixed `1.6 / 60` blocks per
+font pixel and an anchor at the published height plus `0.5` blocks, both following
+the actor's Scale metadata. Sneaking players lower that
+anchor by `0.125` blocks and lower the quad by `0.25` blocks along camera-down;
+sleeping players lower their anchor by `1.5` blocks.
+Each centered line has a black background at alpha `0.25`, with one pixel of side
+padding and vertical bounds `-1 .. 8`. Multiline spacing and world lift remain unchanged.
 
-Actor nametag facing deliberately deviates from vanilla's cubic angle approximation:
-CPU geometry and the GPU shader use exact yaw and pitch toward the camera eye from
-the original anchor. A vertical eye direction uses zero yaw without perturbing the
-direction. World scale and multiline lift are unchanged. Rendered-frame acceptance
-remains incomplete; no name-tag visual parity gate is closed.
+Ordinary tags draw their background and dim text at alpha `32 / 255` through walls, followed
+by full-opacity depth-tested text before the next label starts. Complete labels draw back
+to front by camera depth, independently of viewer-distance limits and score range,
+with depth selection on each quad. Sneaking tags draw only their depth-tested background
+and dim text. Only tested text writes depth; labels use no depth bias and test final
+alpha against `0.1`. Visibility uses strict viewer-distance limits of 64 blocks, or
+32 when sneaking, shortened by server limits. Invisible actors, mounts carrying riders
+and explicit server hides suppress tags; the local player's tag stays hidden by default.
+The open font, server text and formatting, score lines, debug text and explicit debug
+quaternions retain their existing paths. Rendered-frame acceptance remains incomplete;
+no name-tag visual parity gate is closed. See [rendering rules](docs/reference/nametag-rendering.md).
 
 2026-10-01 first-person item rendering: ordinary icons and opaque full-cube blocks now use
 their separate native camera-space stacks, not the third-person grip on the avatar's
@@ -4779,9 +4834,18 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       four axis-aligned, two-sided planes lowered to the farmland surface.
       All eight growth states preserve their selected artwork and upright UVs
       in sequential and hashed lookup; ordinary flowers retain crossed planes.
-      - [ ] Full crop presentation parity: exact native-client comparison and
-        calibrated UV rows remain open, as do torchflower, pitcher and nether
-        wart geometry and selectors.
+    - [x] Remaining farmland crop templates: fruit stems retain
+      growth height, stage colour and a facing-oriented connector. Torchflowers
+      preserve their two crop sprites and flower sprite at the plant width.
+      Pitcher crops retain buried pods, distinct lower/upper flower stages and
+      invisible early upper halves. Both block-ID modes cover every admitted state.
+      Sweet berry bushes select each growth stage's face artwork, preserve the
+      mature sprite and use the narrower plant geometry.
+      - [ ] Full crop presentation parity: exact native-client comparison,
+        sub-unit sprite geometry, atlas-edge UV calibration and torchflower
+        positional variation remain open.
+    - [ ] Nether wart geometry and selectors remain incomplete independently
+      of the farmland crop families.
     - [ ] Slab/stair native and packed-GPU live acceptance: capture all five
       fixed Cinnabar poses through native `%TEMP%` screenshots and require two
       consecutive exact GPU-completed model-stream witnesses. Automated gallery
@@ -7915,6 +7979,15 @@ sends them in login and skin updates. Custom models keep their authored shape;
 rename and delete remain available. Preview preparation runs on a worker, while
 local world presentation uses the shared actor preparation cache in both perspectives.
 
+Starter skin compilation selects standalone model definitions above legacy definitions
+at the geometry identifier boundary. This keeps classic skin previews from combining
+an obsolete inherited body with the current model. The carrier emits classic and slim
+models in one modern geometry schema, resolving legacy inheritance before encoding.
+Authored coincident cubes and generic entity inheritance retain their existing
+behavior. Reports involving other
+custom entity models still need a reproducible model and pack stack; that parity
+acceptance remains incomplete.
+
 Imported raster dimensions follow the native 64×32, 64×64 and 128×128 contract.
 Archive, geometry and library ceilings are Cinnabar resource limits. Pack minimum
 engine versions remain separate from geometry schema versions. Full native skin-pack
@@ -8296,3 +8369,25 @@ selectors and output ranges for the existing explicit model bindings. Unrecogniz
 model arrays stay unresolved instead of guessing from growth or selecting index zero.
 The generic terrain accessor, complete native binding inventory and custom selector
 expressions still need their own admission and coverage work.
+
+## Overlay vanilla-texture fallback
+
+Implemented: custom blocks naming vanilla textures absent from the server
+stack can borrow a static page-0 texture from the matching base carrier.
+The resolver uses the retained atlas and UV indices to select variant zero,
+independent of material ID order. Donors must have the catalog's requested
+tint already baked into their pixels; missing or different tints decline
+fallback. Server material flags remain overlay-local,
+and borrowing consumes no texture layer or byte budget. Server rasters take
+precedence when they decode; capacity and budget refusals remain refusals.
+Borrowed layers are validated against the base page, and vanilla material
+overrides continue to require overlay textures. Changed catalog routes whose
+pack pixels cannot be decoded stay diagnostic for custom blocks; they never
+borrow the original key's artwork.
+
+Regression coverage includes sidecar roundtrips with reversed variant order,
+missing or ineligible variant-zero materials, custom-block publication,
+server-raster precedence, diagnostic fallback, and admission refusals. Live
+visual verification remains pending. Block-item sheets and inventory icons
+still use placeholders for borrowed faces, and animated vanilla art remains
+limited to base blocks.

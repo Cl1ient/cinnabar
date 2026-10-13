@@ -144,6 +144,7 @@ fn worlds_tab(canvas: &mut Canvas<'_>, view: &MenuView, body: Bounds) -> Result<
             meta: [friend.members.clone(), String::new()],
             action: MenuAction::PlayFriend(index),
             edit: None,
+            thumbnail: None,
         })
         .chain(
             view.local_worlds
@@ -157,6 +158,7 @@ fn worlds_tab(canvas: &mut Canvas<'_>, view: &MenuView, body: Bounds) -> Result<
                     meta: [world.size.clone(), world.date.clone()],
                     action: MenuAction::PlayLocalWorld(index),
                     edit: Some(MenuAction::LocalWorld(LocalWorldAction::Edit(index))),
+                    thumbnail: world.thumbnail.as_ref().map(|image| image.key.clone()),
                 }),
         );
     for entry in entries {
@@ -181,6 +183,8 @@ struct WorldEntry {
     action: MenuAction,
     /// The trailing pencil-and-"Edit" action of an owned world.
     edit: Option<MenuAction>,
+    /// The artwork key of the world's last captured view.
+    thumbnail: Option<String>,
 }
 
 fn game_mode_tag(mode: &str) -> &'static str {
@@ -208,6 +212,13 @@ fn world_row(
         b[1] + pad + thumb_width * 9.0 / 16.0,
     ];
     canvas.fill(thumb, NEUTRAL100)?;
+    if let Some(icon) = entry
+        .thumbnail
+        .as_ref()
+        .and_then(|key| canvas.artwork?.get(key).copied())
+    {
+        canvas.icon_ref_cover(icon, thumb)?;
+    }
     canvas.frame(thumb, 0.2, [0x1e, 0x1e, 0x1f, 255])?;
     let text_left = thumb[2] + canvas.r(0.8);
     let edit_width = if entry.edit.is_some() {

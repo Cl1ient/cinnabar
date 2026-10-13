@@ -64,6 +64,14 @@ impl Default for LocalWorldsUi {
 }
 
 impl MenuRuntime {
+    /// The local world the player is in, by id; `None` outside one.
+    #[must_use]
+    pub fn playing_local_world(&self) -> Option<&str> {
+        self.local_world_active
+            .then_some(self.local_ui.world_id.as_deref())
+            .flatten()
+    }
+
     /// The core's stable local-world identifier, independent of a rename or invite.
     pub fn local_world_identity(&self) -> Option<&str> {
         self.local_ui.world_id.as_deref()
@@ -112,7 +120,15 @@ impl MenuRuntime {
         if view.screen != before {
             self.load_local_text(&view);
         }
-        let cards = worlds.menu().worlds().iter().map(world_card).collect();
+        let cards = worlds
+            .menu()
+            .worlds()
+            .iter()
+            .map(|world| launcher::menu::LocalWorldCard {
+                thumbnail: worlds.thumbnail(&world.id),
+                ..world_card(world)
+            })
+            .collect();
         self.set_local_worlds(cards);
         if let Some(index) = self.take_local_world_request() {
             worlds.input(Input::Select(index));

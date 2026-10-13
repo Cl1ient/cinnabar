@@ -123,10 +123,22 @@ pub const MATERIAL_FLAGS_MASK: u32 = MATERIAL_FLAG_UV_MASK
     | MATERIAL_LEAF_METADATA_MASK
     | MATERIAL_FLAG_DISABLE_AO
     | MATERIAL_FLAG_DISABLE_FACE_DIMMING
-    | MATERIAL_FLAG_CAULDRON_WATER;
+    | MATERIAL_FLAG_CAULDRON_WATER
+    | crate::stem::MATERIAL_FLAG
+    | crate::stem::GROWTH_MASK;
+
+// Every flag bit is assigned, so validity depends only on the combination rules below.
+const _: () = assert!(MATERIAL_FLAGS_MASK == u32::MAX);
 
 pub(crate) const fn material_flags_are_valid(flags: u32) -> bool {
-    flags & !MATERIAL_FLAGS_MASK == 0
+    (flags & crate::stem::GROWTH_MASK == 0 || flags & crate::stem::MATERIAL_FLAG != 0)
+        && (flags & crate::stem::MATERIAL_FLAG == 0
+            || flags
+                & (MATERIAL_FLAG_TINT_MASK
+                    | MATERIAL_LEAF_METADATA_MASK
+                    | MATERIAL_FLAG_NATIVE_LEAF_COLOUR
+                    | MATERIAL_FLAG_CAULDRON_WATER)
+                == 0)
         && (flags & MATERIAL_FLAG_CAULDRON_WATER == 0
             || (flags & MATERIAL_FLAG_ALPHA_BLEND != 0 && flags & MATERIAL_FLAG_TINT_MASK == 0))
         && (flags & MATERIAL_LEAF_AO_EXPONENT_MASK == 0

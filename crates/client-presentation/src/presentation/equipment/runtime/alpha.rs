@@ -37,6 +37,7 @@ pub(super) fn block_alpha_modes(
 }
 
 impl EquipmentRuntime {
+    /// Uses the admitted session cube's alpha mode before the startup block's material.
     pub(super) fn first_person_alpha_mode(
         &self,
         item: &WornItem,
@@ -45,11 +46,11 @@ impl EquipmentRuntime {
         if !block {
             return HandItemAlphaMode::Cutout;
         }
-        match item.kind {
-            HeldKind::Block(visual) => self.block_alpha.get(&visual).copied().unwrap_or_default(),
-            _ => self
-                .session_block_alpha(&item.identifier)
-                .unwrap_or_default(),
-        }
+        self.session_block_alpha(&item.identifier)
+            .or_else(|| match item.kind {
+                HeldKind::Block(visual) => self.block_alpha.get(&visual).copied(),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 }

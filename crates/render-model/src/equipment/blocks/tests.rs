@@ -481,6 +481,7 @@ fn weighted_replacement_updates_held_pixels_and_keeps_the_variation_range() {
                 material,
                 texture: TextureRef::new(1, 1).unwrap(),
                 animation: NO_ANIMATION,
+                variation: None,
             })
             .collect(),
         ..BlockOverlay::default()

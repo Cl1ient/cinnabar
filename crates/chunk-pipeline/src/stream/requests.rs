@@ -13,6 +13,9 @@ pub(super) struct SubChunkRequests {
     pub(super) deferred_retries: VecDeque<SubChunkKey>,
     pub(super) deferred_retry_set: HashSet<SubChunkKey>,
     pub(super) deferred_recovery: VecDeque<PendingSubChunkRequest>,
+    pub(super) recoveries: BTreeMap<ChunkKey, BTreeMap<i32, SubChunkRecovery>>,
+    /// The last recovery column visited, so spent polls resume past it.
+    pub(super) recovery_cursor: Option<ChunkKey>,
     pub(super) transport_pending: usize,
     pub(super) last_player_chunk: Option<ChunkKey>,
 }
@@ -104,6 +107,9 @@ impl SubChunkRequests {
             .retain(|key, _| !chunks.contains(&key.chunk()));
         self.admitted_replies
             .retain(|key, _| !chunks.contains(&key.chunk()));
+        for chunk in chunks {
+            self.recoveries.remove(chunk);
+        }
     }
     pub(super) fn queued_retry_count(&self) -> usize {
         let outbound = self
@@ -276,10 +282,15 @@ impl WorldStream {
         count: usize,
         sequence: Option<u64>,
     ) {
-        self.requests.collision_failures.remove(&key);
+        if !self.requests.recoveries.contains_key(&key) {
+            self.requests.collision_failures.remove(&key);
+        }
         if count == 0 {
             if let Some(sequence) = sequence {
                 self.cancel_request_reservation(sequence);
+            }
+            if self.requests.collision_failures.contains(&key) {
+                return;
             }
             self.loaded_columns.insert(key);
             if self.authority.mark_chunk_loaded(key).is_err() {
@@ -341,7 +352,9 @@ impl WorldStream {
         ys: &[i32],
         sequence: Option<u64>,
     ) {
-        self.requests.collision_failures.remove(&key);
+        if !self.requests.recoveries.contains_key(&key) {
+            self.requests.collision_failures.remove(&key);
+        }
         let range_end = range
             .base_sub_chunk_y
             .saturating_add(i32::try_from(range.sub_chunk_count).unwrap_or(i32::MAX));

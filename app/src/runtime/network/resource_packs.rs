@@ -312,8 +312,9 @@ fn compile_application(
                                 view,
                                 custom_blocks,
                                 hashed_block_ids,
-                                BASE_MATERIAL_KEYS.get(),
+                                BASE_MATERIAL_KEYS.get().map(|(keys, _)| keys),
                                 max_layers,
+                                base_world_assets(),
                             )
                             .map(Arc::new)
                         },
@@ -326,23 +327,31 @@ fn compile_application(
             {
                 bevy::log::warn!(gaps = ?compiled.gaps, "server block visuals are incomplete");
             }
-            let block_icons = overlay
-                .as_deref()
-                .map_or_else(BlockIcons::default, |compiled| {
-                    custom_block_icons(
-                        &compiled.overlay,
-                        custom_blocks,
-                        hashed_block_ids,
-                        &inputs.block_items,
-                    )
-                });
-            icons = compile_part(
+            icons = compile_icons(
                 &stack,
                 cancelled,
                 changes.icons || changes.blocks,
-                Subscriber::Icons,
                 previous.and_then(|old| old.item_icons.clone()),
-                |view| compile_session_icons(view, icon_keys, block_icons),
+                icon_keys,
+                || {
+                    let mut block_icons =
+                        overlay
+                            .as_deref()
+                            .map_or_else(BlockIcons::default, |compiled| {
+                                custom_block_icons(
+                                    &compiled.overlay,
+                                    custom_blocks,
+                                    hashed_block_ids,
+                                    &inputs.block_items,
+                                )
+                            });
+                    if let (Some(compiled), Some((_, base))) =
+                        (overlay.as_deref(), BASE_MATERIAL_KEYS.get())
+                    {
+                        super::item_icons::vanilla_blocks::append(base, compiled, &mut block_icons);
+                    }
+                    block_icons
+                },
             );
         });
         scope.spawn(|_| {
@@ -536,10 +545,58 @@ pub(super) fn overlay_texture_layer_limit() -> u32 {
 }
 
 /// Texture keys of the vanilla carrier's materials, set once at startup when the sidecar loads.
-static BASE_MATERIAL_KEYS: std::sync::OnceLock<assets::MaterialKeys> = std::sync::OnceLock::new();
+static BASE_MATERIAL_KEYS: std::sync::OnceLock<(
+    assets::material_keys::MaterialKeys,
+    Arc<assets::RuntimeAssets>,
+)> = std::sync::OnceLock::new();
 
-pub(crate) fn set_base_material_keys(keys: assets::MaterialKeys) {
-    let _ = BASE_MATERIAL_KEYS.set(keys);
+static BASE_WORLD_ASSETS: std::sync::OnceLock<Arc<assets::RuntimeAssets>> =
+    std::sync::OnceLock::new();
+
+/// Keeps material admission bounded by the world table even when its optional sidecar is absent.
+pub(crate) fn set_base_world_assets(base: Arc<assets::RuntimeAssets>) {
+    let _ = BASE_WORLD_ASSETS.set(base);
+}
+
+/// Uses the sidecar's matching world, or the startup world when no sidecar was available.
+fn base_world_assets() -> Option<&'static assets::RuntimeAssets> {
+    BASE_MATERIAL_KEYS
+        .get()
+        .map(|(_, base)| base.as_ref())
+        .or_else(|| BASE_WORLD_ASSETS.get().map(AsRef::as_ref))
+}
+
+/// Installs immutable source facts and pixels from the same world carrier.
+pub(crate) fn set_base_material_keys(
+    keys: assets::material_keys::MaterialKeys,
+    base: Arc<assets::RuntimeAssets>,
+) {
+    let _ = BASE_MATERIAL_KEYS.set((keys, base));
+}
+
+/// Icon output and optional dependency reads returned by the subscriber gate.
+type CompiledIcons = Option<(
+    Option<Arc<SessionIcons>>,
+    Option<std::collections::BTreeSet<resource_pack::PackDependency>>,
+)>;
+
+/// Bakes block art only when the icon subscriber compiles, preserving reused icon outputs.
+fn compile_icons(
+    stack: &Arc<resource_pack::ValidatedPackStack>,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    changed: bool,
+    reuse: Option<Arc<SessionIcons>>,
+    icon_keys: &[(Arc<str>, Arc<str>)],
+    bake_blocks: impl FnOnce() -> BlockIcons,
+) -> CompiledIcons {
+    pack_runtime::reload_diff::compile_part(
+        stack,
+        cancelled,
+        changed,
+        pack_runtime::reload_diff::Subscriber::Icons,
+        reuse,
+        |view| compile_session_icons(view, icon_keys, bake_blocks()),
+    )
 }
 
 use pack_runtime::pack_language::merged_server_lang;

@@ -864,6 +864,7 @@ fn world_types_carry_the_owner_labels_everywhere_they_show() {
             world_type: launcher::local_worlds::world_type_label(flat.generator).to_owned(),
             date: String::new(),
             size: String::new(),
+            thumbnail: None,
         }];
         view
     };

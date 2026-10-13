@@ -285,6 +285,52 @@ pub fn resolve_texture_key(
     }
 }
 
+/// Retains the same block alias and axis mapping used by world texture compilation.
+pub(crate) fn runtime_binding_identity(
+    blocks: &BlockTextureMap,
+    record: &RegistryRecord,
+) -> (Box<str>, [u8; 6], [bool; 6]) {
+    let name = record
+        .name
+        .strip_prefix("minecraft:")
+        .unwrap_or(&record.name);
+    let binding_name = if blocks.entries.contains_key(name) {
+        name
+    } else {
+        legacy_resource_pack_block_alias(name).unwrap_or(name)
+    };
+    let axis = match state_axis(&record.canonical_state) {
+        AxisState::Exact(axis) => axis,
+        AxisState::Absent | AxisState::Invalid => Axis::Y,
+    };
+    (
+        binding_name.into(),
+        BlockFace::ALL.map(|face| orient_face(face, axis).0 as u8),
+        BlockFace::ALL.map(|face| orient_face(face, axis).1),
+    )
+}
+
+/// Admits the axis mapping shared by ordinary cube compilation, rejecting other rotations.
+pub(crate) fn has_runtime_cube_face_mapping(record: &RegistryRecord) -> bool {
+    let Ok(properties) = serde_json::from_str::<Map<String, Value>>(&record.canonical_state) else {
+        return false;
+    };
+    if properties
+        .keys()
+        .any(|key| key.contains("direction") || key.contains("rotation"))
+    {
+        return false;
+    }
+    match state_axis(&record.canonical_state) {
+        AxisState::Exact(_) => true,
+        AxisState::Absent => record
+            .model_state
+            .get(assets::ModelStateField::Orientation)
+            .is_none(),
+        AxisState::Invalid => false,
+    }
+}
+
 /// The texture key a vanilla block item's icon reads: `carried_textures`, else `textures`,
 /// down face.
 pub(crate) fn resolve_carried_down_key<'a>(
@@ -301,6 +347,15 @@ pub(crate) fn resolve_carried_face_key(
     face: BlockFace,
 ) -> Option<String> {
     carried_or_world_key(blocks, record, face, false).map(std::borrow::Cow::into_owned)
+}
+
+/// Retains the unrotated carried fallback used when a block has no carried override.
+pub(crate) fn resolve_carried_fallback_key(
+    blocks: &BlockTextureMap,
+    record: &RegistryRecord,
+    face: BlockFace,
+) -> Option<Box<str>> {
+    carried_or_world_key(blocks, record, face, true).map(|key| key.into_owned().into_boxed_str())
 }
 
 fn carried_or_world_key<'a>(
@@ -385,6 +440,7 @@ pub(super) fn read_blocks(path: &Path) -> Result<BlockTextureMap, AssetError> {
     Ok(BlockTextureMap { entries })
 }
 
+#[derive(Clone, Copy)]
 enum Axis {
     X,
     Y,

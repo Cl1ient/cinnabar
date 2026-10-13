@@ -688,8 +688,11 @@ impl Ledger<'_> {
         let initial = !state.initialized;
         let restart = initial || state.reset_pending || resumed || view_changed;
         if let Some(next) = evaluated.render_frame.as_mut() {
+            if restart {
+                next.previous_rotation = next.motion.input;
+            }
             let previous = state.render_frame.as_mut().filter(|_| !restart);
-            super::render_frame::carry_swell_history(previous, next, self.advance_history);
+            super::render_frame::carry_motion_history(previous, next, self.advance_history);
         }
         state.render_frame = evaluated.render_frame;
         skin_layers::carry(

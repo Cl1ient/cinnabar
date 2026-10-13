@@ -14,15 +14,15 @@ pub use action::{
     RemoteActionFallback, RemoteActionSnapshot, RemoteActionStats,
 };
 pub use actor_store::{
-    ActorDamageState, ActorFluidProbe, ActorHitBoxes, ActorPickup, ActorPose, ActorShadowCaster,
-    ActorSnapshot, ActorStatus, ActorStatusNotice, BOUNDING_BOX_HEIGHT_METADATA_KEY,
-    BOUNDING_BOX_WIDTH_METADATA_KEY, BlockEntityCandidate, BlockEntityKind, BlockEntityView,
-    CrystalBeamView, DEATH_DURATION_TICKS, DEFAULT_PLAYER_HEALTH, DragonDeathView, DroppedItemView,
-    FIRE_FADE_TICKS, HITBOX_METADATA_KEY, HURT_DURATION_TICKS, HURT_OVERLAY_ALPHA,
-    LightningBoltView, LocalItemUse, LocalPlayerFeed, MAX_DROPPED_ITEM_COPIES, MAX_STATUS_NOTICES,
-    MovementFlagUpdate, PICKUP_DURATION_TICKS, PlayerProfile, PropertyDefault, RideSeat, RopeKind,
-    RopeView, SCALE_METADATA_KEY, SPELL_COLOR_METADATA_KEY, dropped_item_copy_count,
-    tnt_presentation,
+    ACTOR_FLAG_SHOW_NAME, ActorDamageState, ActorFluidProbe, ActorHitBoxes, ActorPickup, ActorPose,
+    ActorShadowCaster, ActorSnapshot, ActorStatus, ActorStatusNotice,
+    BOUNDING_BOX_HEIGHT_METADATA_KEY, BOUNDING_BOX_WIDTH_METADATA_KEY, BlockEntityCandidate,
+    BlockEntityKind, BlockEntityView, CrystalBeamView, DEATH_DURATION_TICKS, DEFAULT_PLAYER_HEALTH,
+    DragonDeathView, DroppedItemView, FIRE_FADE_TICKS, HITBOX_METADATA_KEY, HURT_DURATION_TICKS,
+    HURT_OVERLAY_ALPHA, LightningBoltView, LocalItemUse, LocalPlayerFeed, MAX_DROPPED_ITEM_COPIES,
+    MAX_STATUS_NOTICES, MovementFlagUpdate, PICKUP_DURATION_TICKS, PlayerProfile, PropertyDefault,
+    RideSeat, RopeKind, RopeView, SCALE_METADATA_KEY, SPELL_COLOR_METADATA_KEY,
+    dropped_item_copy_count, tnt_presentation,
 };
 pub use block_entity_visuals::{
     BackingBlockIdentity, BlockEntityVisualDiagnostics, BlockEntityVisualRoute,

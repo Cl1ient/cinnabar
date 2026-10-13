@@ -36,11 +36,22 @@ pub(in super::super) struct TouchControls {
     enabled: bool,
     catalog: Option<Arc<Catalog>>,
     screen: CachedScreen,
-    /// The overlay and the HUD as last painted, which touches resolve against.
+    /// The overlay and the HUD as the last build painted them, which touches resolve against;
+    /// a build that paints neither leaves none.
     frame: Option<EngineFrame>,
     pub(super) hud: Option<EngineFrame>,
+    /// The stick knob's drag key and size from the last overlay paint.
+    knob: Option<(String, [f64; 2])>,
     /// Held contacts, which press their controls and move the stick's knob.
     contacts: Vec<TouchContact>,
+}
+
+impl TouchControls {
+    /// Retires the last build's geometry, so hidden controls cannot take touches.
+    pub(super) fn begin_frame(&mut self) {
+        self.frame = None;
+        self.hud = None;
+    }
 }
 
 impl UiPresentationRuntime {
@@ -116,18 +127,17 @@ impl UiPresentationRuntime {
             }
         };
         let mut view = ViewState::default();
-        if let Some(previous) = &state.frame
+        if let Some((key, size)) = &state.knob
             && let Some(stick) = state
                 .contacts
                 .iter()
                 .find(|contact| contact.hit_id == Some(touch::JOYSTICK))
-            && let Some(knob) = previous.hits.iter().find(|hit| hit.name == "knob")
         {
             view.drags.insert(
-                knob.key.clone(),
+                key.clone(),
                 [
-                    f64::from(stick.delta[0]) * knob.rect.w,
-                    -f64::from(stick.delta[1]) * knob.rect.h,
+                    f64::from(stick.delta[0]) * size[0],
+                    -f64::from(stick.delta[1]) * size[1],
                 ],
             );
         }
@@ -172,6 +182,10 @@ impl UiPresentationRuntime {
                 &view,
             )
         })?;
+        state.knob = state.frame.as_ref().and_then(|frame| {
+            let knob = frame.hits.iter().find(|hit| hit.name == "knob")?;
+            Some((knob.key.clone(), [knob.rect.w, knob.rect.h]))
+        });
         Ok(())
     }
 }
@@ -237,5 +251,28 @@ mod tests {
             );
         }
         layout_catalog().unwrap();
+    }
+
+    /// Hotbar cells and overlay controls from an earlier build cannot take touches once a build
+    /// stops painting them, as when the HUD is hidden.
+    #[test]
+    fn a_build_that_paints_nothing_leaves_no_touch_regions() {
+        let painted = || EngineFrame {
+            hits: Arc::from([]),
+            report: json_ui::LayoutReport::default(),
+            cancel_target: None,
+            origin: [0.0; 2],
+            scale: 1.0,
+            panel: None,
+            edit_texts: Vec::new(),
+            top: Vec::new(),
+        };
+        let mut controls = TouchControls {
+            frame: Some(painted()),
+            hud: Some(painted()),
+            ..TouchControls::default()
+        };
+        controls.begin_frame();
+        assert!(controls.frame.is_none() && controls.hud.is_none());
     }
 }

@@ -83,3 +83,39 @@ fn absent_shield_model_does_not_fall_back_to_a_flat_model_texture() {
             .is_none()
     );
 }
+
+#[test]
+fn dial_strips_bake_every_frame_in_order_under_their_frames_identifier() {
+    let pack = pack();
+    // Three 16-pixel frames, each one flat colour.
+    let strip: Vec<u8> = (0..3u8)
+        .flat_map(|frame| [frame * 60, 10, 10, 255].repeat(16 * 16))
+        .collect();
+    image::save_buffer(
+        pack.path().join("textures/items/compass_atlas.png"),
+        &strip,
+        16,
+        48,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    let catalog =
+        RuntimeIconCatalog::decode(&compile_icon_assets(pack.path(), MANIFEST).unwrap().bytes)
+            .unwrap();
+    let strip = assets::icon::dial::dial_strip("minecraft:compass").unwrap();
+    assert_eq!(catalog.frame_count(strip.frames_identifier), 3);
+    for frame in 0..3u8 {
+        assert_eq!(
+            &*catalog
+                .lookup(strip.frames_identifier, u32::from(frame))
+                .unwrap()
+                .rgba8,
+            &[frame * 60, 10, 10, 255].repeat(16 * 16)
+        );
+    }
+    assert_eq!(
+        catalog.frame_count("minecraft:watch_atlas"),
+        0,
+        "absent strips bake nothing"
+    );
+}

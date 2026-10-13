@@ -54,6 +54,7 @@ impl UiPresentationRuntime {
             solid_texture_page,
             hud_textures,
             icon_catalog: icons,
+            dial_frames: inventory::DialFrames::default(),
             icon_refs,
             layouts: TextLayoutCache::new(TEXT_CACHE_ENTRIES, TEXT_CACHE_BYTES),
             rejected_frames: 0,

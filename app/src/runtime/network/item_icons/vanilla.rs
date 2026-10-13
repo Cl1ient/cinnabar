@@ -1,5 +1,5 @@
 //! Optional raster replacements follow source paths recorded by the pinned item carrier.
-use super::{MAX_SESSION_ICONS, first_frame, icon};
+use super::{MAX_SESSION_ICONS, icon};
 use assets::{ItemVisualDefinitionRoute, RuntimeEntityAssets};
 use client_ui::ui_runtime::presentation::SessionIcon;
 use resource_pack::LayeredPackView;
@@ -97,13 +97,14 @@ pub(super) fn append(
         let override_path = aliases
             .iter()
             .find_map(|key| catalog.get(key)?.get(*variant as usize));
-        if let Some(texture) = pack_runtime::pack_textures::decode_pack_texture_with_policy(
+        if let Some(mut texture) = pack_runtime::pack_textures::decode_pack_texture_with_policy(
             view,
             override_path.map_or(stem, String::as_str),
             assets::texture::policy::device_policy(),
             true,
         ) {
-            let mut replacement = icon(identifier.clone(), first_frame(texture));
+            texture.retain_first_strip_frame();
+            let mut replacement = icon(identifier.clone(), texture);
             if replacement.rgba8.len()
                 > assets::texture::policy::MAX_SUBSCRIBER_BYTES.saturating_sub(*retained_bytes)
             {

@@ -58,6 +58,8 @@ mod synchronized_audio_tests;
 mod terrain;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod world_spawn_tests;
 pub use biomes::BiomeCommitReport;
 pub use block_events::BlockEventCue;
 pub use combat::{ActorCombatEvidence, ActorCombatKind};
@@ -103,6 +105,8 @@ pub struct WorldAuthority {
     biome_tint_stream_id: u64,
     biome_tint_revision: u64,
     current_dimension: i32,
+    /// The level's default spawn, which compasses point at.
+    world_spawn: [i32; 3],
     dimension_ranges: std::collections::BTreeMap<i32, (Arc<str>, DimensionRange)>,
     frozen_dimension_ranges: BTreeSet<i32>,
     dimension_range_skips: u64,
@@ -185,6 +189,7 @@ impl WorldAuthority {
             biome_tint_stream_id,
             biome_tint_revision: 0,
             current_dimension: bootstrap.dimension,
+            world_spawn: bootstrap.world_spawn_position,
             dimension_ranges: std::collections::BTreeMap::new(),
             frozen_dimension_ranges: BTreeSet::new(),
             dimension_range_skips: 0,

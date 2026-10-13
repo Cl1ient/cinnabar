@@ -2387,6 +2387,7 @@ dependencies = [
  "simulation-clock",
  "tempfile",
  "test-alloc",
+ "test-time",
  "thiserror 2.0.18",
  "ui",
  "ui-engine",

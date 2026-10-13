@@ -231,15 +231,30 @@ fn pitched_camera_sorts_lifted_multiline_planes_and_keeps_label_passes_together(
                     .iter()
                     .all(|record| record.anchor == near_anchor)
             );
+            let first_glyph = scene
+                .records
+                .iter()
+                .find(|record| record.anchor == near_anchor && record.text != 0)
+                .unwrap();
+            let sample = [
+                (first_glyph.rect[0] + first_glyph.rect[2]) * 0.5,
+                first_glyph.rect[1] + scale * 0.5,
+            ];
             let mut pixel = 0.0;
             let mut depth = f32::INFINITY;
-            // Sample near ink over a blank far glyph, with both plates covering the pixel.
+            let mut near_text_samples = 0;
+            // Sample ink in the near label's first line over a blank far glyph.
+            // Other near lines do not cover this pixel, including after sneak drop and scaling.
             for record in &scene.records {
-                let alpha = if record.text != 0 && record.anchor == far_anchor {
-                    0.0
+                let covered = if record.anchor == near_anchor {
+                    sample[0] >= record.rect[0]
+                        && sample[0] < record.rect[2]
+                        && sample[1] >= record.rect[1]
+                        && sample[1] < record.rect[3]
                 } else {
-                    record.color[3]
+                    record.text == 0
                 };
+                let alpha = if covered { record.color[3] } else { 0.0 };
                 let plane = Vec3::from_array(record.anchor) + Vec3::Y * record.line_lift;
                 let at = forward.dot(plane);
                 if alpha <= render_model::NAMETAG_ALPHA_CUTOFF
@@ -248,12 +263,19 @@ fn pitched_camera_sorts_lifted_multiline_planes_and_keeps_label_passes_together(
                     continue;
                 }
                 pixel = record.color[0] * alpha + pixel * (1.0 - alpha);
+                if record.anchor == near_anchor && record.text != 0 {
+                    near_text_samples += 1;
+                }
                 if record.depth_tested != 0 && record.text != 0 {
                     depth = at;
                 }
             }
+            assert_eq!(near_text_samples, if sneaking { 1 } else { 2 });
             let near_ink = if sneaking { DIM_TEXT_ALPHA } else { 1.0 };
-            assert!((pixel - near_ink).abs() < 1e-6);
+            assert!(
+                (pixel - near_ink).abs() < 1e-6,
+                "scale {scale}, sneak {sneaking}: pixel {pixel}, expected {near_ink}"
+            );
         }
     }
 }

@@ -148,6 +148,9 @@ pub struct RuntimeAssets {
     texture_pages: Box<[TexturePage]>,
     overlay_texture_source_sizes: Box<[[u16; 2]]>,
     overlay_texture_source_grids: Box<[u8]>,
+    /// Flat layer counts of each shard, so a shard-local layer maps to the
+    /// per-layer source arrays without a stored start table.
+    overlay_page_layer_counts: Box<[usize]>,
     biomes: CompiledBiomeAssets,
     provenance: BlobProvenance,
     missing: AtomicU64,
@@ -196,6 +199,7 @@ impl RuntimeAssets {
                 .into_boxed_slice(),
             overlay_texture_source_sizes: Box::new([]),
             overlay_texture_source_grids: Box::new([]),
+            overlay_page_layer_counts: Box::new([]),
             biomes: CompiledBiomeAssets::diagnostic(),
             provenance: BlobProvenance::ZEROED,
             missing: AtomicU64::new(0),
@@ -240,13 +244,14 @@ impl RuntimeAssets {
                 })
     }
 
-    /// Exposed source rectangle pixels, independently of the physical texture-array size.
+    /// Source pixel dimensions of the shard a reference names, or the base
+    /// carrier's physical page size for page zero.
     #[must_use]
     pub fn texture_source_size(&self, reference: TextureRef) -> [u32; 2] {
-        if reference.page() == 1
+        if reference.page() != 0
             && let Some(size) = self
-                .overlay_texture_source_sizes
-                .get(reference.layer() as usize)
+                .flat_overlay_layer(reference)
+                .and_then(|flat| self.overlay_texture_source_sizes.get(flat))
         {
             return size.map(u32::from);
         }
@@ -261,14 +266,27 @@ impl RuntimeAssets {
     /// Terrain UV-grid exponent for a session layer; carrier layers use their full rectangle.
     #[must_use]
     pub fn texture_source_grid(&self, reference: TextureRef) -> u8 {
-        if reference.page() == 1 {
-            self.overlay_texture_source_grids
-                .get(reference.layer() as usize)
+        if reference.page() != 0 {
+            self.flat_overlay_layer(reference)
+                .and_then(|flat| self.overlay_texture_source_grids.get(flat))
                 .copied()
                 .unwrap_or(0)
         } else {
             0
         }
+    }
+
+    /// Index of a shard reference's layer inside the flat per-layer arrays.
+    fn flat_overlay_layer(&self, reference: TextureRef) -> Option<usize> {
+        let shard = reference.page().checked_sub(1)? as usize;
+        let layers = self.overlay_page_layer_counts.get(shard).copied()?;
+        let layer = reference.layer() as usize;
+        (layer < layers).then(|| {
+            self.overlay_page_layer_counts[..shard]
+                .iter()
+                .sum::<usize>()
+                + layer
+        })
     }
 
     /// Returns terrain mips in admitted source pixels, rebuilding legacy carrier art as needed.
@@ -283,7 +301,7 @@ impl RuntimeAssets {
                 detail: "terrain texture page is out of range".into(),
             })?
             .texture;
-        if page == 1 && !self.overlay_texture_source_sizes.is_empty() {
+        if page != 0 && !self.overlay_texture_source_sizes.is_empty() {
             return Ok(std::borrow::Cow::Borrowed(texture));
         }
         crate::rebuild_legacy_terrain_mips(texture).map(std::borrow::Cow::Owned)
@@ -420,6 +438,17 @@ impl RuntimeAssets {
     #[must_use]
     pub const fn texture_pages(&self) -> &[TexturePage] {
         &self.texture_pages
+    }
+    /// Overlay texture shards appended after the base carrier's page, in
+    /// reference page order (page 1 first). Vanilla carriers decode none.
+    pub fn texture_shards(&self) -> impl ExactSizeIterator<Item = &TextureArray> {
+        let first = self.texture_pages.len() - self.overlay_page_layer_counts.len();
+        self.texture_pages[first..].iter().map(|page| &page.texture)
+    }
+    /// Layer count of each overlay shard, parallel to the shards.
+    #[must_use]
+    pub fn overlay_page_layer_counts(&self) -> &[usize] {
+        &self.overlay_page_layer_counts
     }
     #[must_use]
     pub const fn texture_array(&self) -> &TextureArray {

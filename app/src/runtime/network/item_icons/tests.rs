@@ -266,7 +266,7 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
                     ..Material::unvaried()
                 },
             ],
-            texture: Some(TextureArray {
+            textures: vec![TextureArray {
                 layers: 1,
                 mips: [16, 8, 4, 2, 1]
                     .into_iter()
@@ -275,7 +275,7 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
                         rgba8: vec![127; (size * size * 4) as usize].into(),
                     })
                     .collect(),
-            }),
+            }],
             ..Default::default()
         };
         let blocks = protocol::CustomBlocks {

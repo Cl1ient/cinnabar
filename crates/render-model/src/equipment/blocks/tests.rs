@@ -39,11 +39,58 @@ fn overlay(flags: BlockFlags, material_flags: u32, size: u32) -> BlockOverlay {
                 ..Material::unvaried()
             },
         ],
-        texture: Some(TextureArray {
+        textures: vec![TextureArray {
             layers: 2,
             mips: mips.into(),
-        }),
+        }],
         ..Default::default()
+    }
+}
+
+#[test]
+fn carried_face_sheets_sample_every_overlay_shard() {
+    let mut source = overlay(BlockFlags::CUBE_GEOMETRY, 0, 16);
+    for page in 2..assets::MAX_TEXTURE_PAGES as u32 {
+        let color = [40, page as u8, 120, 128];
+        let mut shard = overlay(BlockFlags::CUBE_GEOMETRY, 0, 32)
+            .textures
+            .into_iter()
+            .next()
+            .unwrap();
+        for mip in &mut shard.mips {
+            for pixel in mip.rgba8.as_chunks_mut::<4>().0 {
+                pixel.copy_from_slice(&color);
+            }
+        }
+        source.textures.push(shard);
+        source.materials[1].texture = TextureRef::new(page, 1).unwrap();
+        let faces = overlay_face_sheet(&source, [1; 6])
+            .expect("a carried face may reference any available overlay shard");
+        let visual = overlay_sheet(&source, 0).unwrap();
+        assert_eq!(faces.rgba8, visual.rgba8);
+        assert_eq!([faces.width, faces.height], assets::BLOCK_ITEM_SHEET_SIZE);
+        assert!(
+            faces
+                .rgba8
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| *pixel == color)
+        );
+    }
+}
+
+#[test]
+fn carried_face_sheets_reject_diagnostic_and_unavailable_overlay_references() {
+    let mut source = overlay(BlockFlags::CUBE_GEOMETRY, 0, 16);
+    assert!(overlay_face_sheet(&source, [DIAGNOSTIC_MATERIAL; 6]).is_none());
+    for reference in [
+        TextureRef::new(0, 1).unwrap(),
+        TextureRef::new(2, 1).unwrap(),
+        TextureRef::new(1, source.textures[0].layers).unwrap(),
+    ] {
+        source.materials[1].texture = reference;
+        assert!(overlay_face_sheet(&source, [1; 6]).is_none());
     }
 }
 
@@ -92,7 +139,7 @@ fn world_isotropy_preserves_carried_cube_face_pixels() {
             flags,
             BLOCK_ITEM_FACE_SIDE.into(),
         );
-        source.texture.as_mut().unwrap().mips[0].rgba8[TILE * TILE * 4] = 91;
+        source.textures.first_mut().unwrap().mips[0].rgba8[TILE * TILE * 4] = 91;
         let expected = overlay_sheet(&source, 0).unwrap();
         source.materials[1].flags |= assets::MATERIAL_FLAG_ISOTROPIC;
         let actual = overlay_sheet(&source, 0)
@@ -248,7 +295,7 @@ fn pinned_portal_frame_keeps_its_short_block_mesh_and_distinct_faces() {
 fn overlay_sheet_preserves_source_resolution_when_physical_page_is_larger() {
     let mut source = overlay(BlockFlags::CUBE_GEOMETRY, 0, 64);
     source.texture_source_sizes = vec![[16; 2]; 2];
-    let texture = source.texture.as_mut().unwrap();
+    let texture = source.textures.first_mut().unwrap();
     for mip in &mut texture.mips {
         for layer in 0..2usize {
             let side = mip.size as usize;
@@ -475,7 +522,7 @@ fn weighted_replacement_updates_held_pixels_and_keeps_the_variation_range() {
     let world = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
     let original = compose_sheet(&world, &[selector; 6]).unwrap();
     let replacement = BlockOverlay {
-        texture: overlay(BlockFlags::CUBE_GEOMETRY, 0, 16).texture,
+        textures: overlay(BlockFlags::CUBE_GEOMETRY, 0, 16).textures,
         material_overrides: (selector..selector + 3)
             .map(|material| assets::MaterialOverride {
                 material,

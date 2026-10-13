@@ -13,16 +13,20 @@ use super::{
 /// A retained physical frame sequence, reusable by independently timed destinations.
 #[derive(Clone, Copy)]
 pub(super) struct FrameStorage {
+    page: u32,
     layer: u32,
     frame_start: u32,
     frame_count: u32,
 }
 
 /// Physical failures are shared; timing failures belong only to the requested destination.
+#[derive(Debug)]
 enum AdmissionFailure {
     Source,
     Timing,
 }
+
+mod placement;
 
 #[cfg(test)]
 mod tests;
@@ -65,23 +69,21 @@ impl Builder<'_> {
         if carrier_policy && let Some(storage) = self.slots.frames(&storage_key, true) {
             return storage.ok().map(|storage| (storage, false));
         }
-        let available = self.max_layers.saturating_sub(self.sources.len());
-        if available == 0 {
-            for path in self
-                .catalog
-                .reusable_image_paths(route, source, carrier_policy)
-            {
-                let resolved_key = storage_key.clone().with_image(path);
-                if let Some(Ok(storage)) = self.slots.frames(&resolved_key, false) {
-                    self.slots.insert_frames(storage_key, Ok(storage), false);
-                    return Some((storage, true));
-                }
-                if carrier_policy && let Some(Ok(storage)) = self.slots.frames(&resolved_key, true)
-                {
-                    self.slots.insert_frames(storage_key, Ok(storage), true);
-                    return Some((storage, false));
-                }
+        if let Some((path, pack)) = self
+            .catalog
+            .reusable_image_path(route, source, |path, tint| {
+                super::textures::carrier_image_path(self.base_assets?, carrier?, path, tint)
+            })
+        {
+            let resolved_key = storage_key.clone().with_image(path);
+            // An indexed pack filename is reusable only from a successful pack decode.
+            // A failed pack may fall back to a different carrier filename during decoding.
+            if let Some(Ok(storage)) = self.slots.frames(&resolved_key, !pack) {
+                self.slots.insert_frames(storage_key, Ok(storage), !pack);
+                return Some((storage, pack));
             }
+        }
+        if self.remaining_layers() == 0 {
             if source.is_none() {
                 self.remaining_capacity(key);
             }
@@ -101,7 +103,7 @@ impl Builder<'_> {
             self.slots.insert_frames(storage_key, storage, !image.pack);
             return storage.ok().map(|storage| (storage, image.pack));
         }
-        let admission = self.store_frames(key, storage_key.grid, image.texture, source, available);
+        let admission = self.store_frames(key, storage_key.grid, image.texture, source);
         let storage = match admission {
             Err(AdmissionFailure::Timing) => return None,
             Ok(storage) => Ok(storage),
@@ -114,7 +116,7 @@ impl Builder<'_> {
 
     /// Returns available layers, counting a full-array rejection after cached images are checked.
     fn remaining_capacity(&mut self, key: &str) -> Option<usize> {
-        let available = self.max_layers.saturating_sub(self.sources.len());
+        let available = self.remaining_layers();
         if available == 0 {
             self.gaps.saturated_textures += 1;
             self.catalog.report_full(key);
@@ -130,7 +132,6 @@ impl Builder<'_> {
         grid: u8,
         mut texture: DecodedTexture,
         source: Option<&FlipbookSource>,
-        available: usize,
     ) -> Result<FrameStorage, AdmissionFailure> {
         let [width, height] = match source {
             Some(source) => {
@@ -142,12 +143,12 @@ impl Builder<'_> {
                 [texture.width, texture.height]
             }
         };
-        let tile = width
+        let own = width
             .max(height)
             .checked_next_power_of_two()
             .ok_or(AdmissionFailure::Source)?
-            .max(self.tile_size);
-        let Some(layer_bytes) = self.texture_policy.terrain_bytes(tile, 1) else {
+            .max(super::MIN_TILE);
+        let Some(layer_bytes) = self.texture_policy.terrain_bytes(own, 1) else {
             self.catalog.report_budget(key);
             return Err(AdmissionFailure::Source);
         };
@@ -155,21 +156,19 @@ impl Builder<'_> {
             .texture_policy
             .source_bytes(width, height, false)
             .ok_or(AdmissionFailure::Source)?;
-        let available = available
-            .min((MAX_SUBSCRIBER_BYTES / layer_bytes).saturating_sub(self.sources.len()))
+        // Extract against global bounds before deciding which shards hold the unique frames.
+        let available = self
+            .remaining_layers()
+            .min(MAX_SUBSCRIBER_BYTES.saturating_sub(self.upload_bytes) / layer_bytes)
             .min(MAX_SUBSCRIBER_BYTES.saturating_sub(self.source_bytes) / frame_bytes);
         if available == 0 {
             self.catalog.report_budget(key);
             return Err(AdmissionFailure::Source);
         }
-        let frames = match source {
+        let mut frames = match source {
             Some(source) => {
-                let frames = flipbook_frames(
-                    &texture,
-                    source,
-                    available.min(256),
-                    self.texture_policy.max_side(),
-                );
+                let frames =
+                    flipbook_frames(&texture, source, available, self.texture_policy.max_side());
                 drop(texture);
                 frames
             }
@@ -178,11 +177,31 @@ impl Builder<'_> {
                 timeline: vec![0],
             },
         };
-        if frames
-            .frames
+        if frames.frames.is_empty() {
+            return Err(AdmissionFailure::Source);
+        }
+        let placements = self.place_frames(own, frames.frames.len());
+        let admitted = placements
             .iter()
-            .any(|frame| frame.width >> grid == 0 || frame.height >> grid == 0)
-        {
+            .map(|placement| placement.count)
+            .sum::<usize>();
+        if admitted == 0 {
+            self.catalog.report_budget(key);
+            return Err(AdmissionFailure::Source);
+        }
+        frames.frames.truncate(admitted);
+        let timeline_len = frames
+            .timeline
+            .iter()
+            .position(|&index| index as usize >= admitted)
+            .unwrap_or(frames.timeline.len());
+        frames.timeline.truncate(timeline_len);
+        if frames.frames.iter().any(|frame| {
+            [frame.width, frame.height].into_iter().any(|axis| {
+                axis.checked_shr(u32::from(grid))
+                    .is_none_or(|size| size == 0)
+            })
+        }) {
             return Err(AdmissionFailure::Source);
         }
         let added_bytes: usize = frames.frames.iter().map(|frame| frame.rgba8.len()).sum();
@@ -204,27 +223,42 @@ impl Builder<'_> {
         if source.is_some_and(|source| frame_count.checked_mul(source.ticks_per_frame).is_none()) {
             return Err(AdmissionFailure::Timing);
         }
-        self.tile_size = tile;
         self.source_bytes += added_bytes;
-        let layer = self.sources.len() as u32;
-        self.sources.extend(frames.frames.into_iter().map(|frame| {
-            if grid == 0 {
-                Source::Image(frame)
-            } else {
-                Source::GridImage(frame, grid)
+        let mut references = Vec::with_capacity(admitted);
+        let mut physical_frames = frames.frames.into_iter();
+        for placement in placements {
+            self.tiles
+                .resize(self.tiles.len().max(placement.shard + 1), super::MIN_TILE);
+            self.tiles[placement.shard] = placement.tile;
+            self.upload_bytes += placement.upload_bytes;
+            for (offset, frame) in physical_frames.by_ref().take(placement.count).enumerate() {
+                references.push(
+                    TextureRef::new(placement.shard as u32 + 1, placement.layer + offset as u32)
+                        .expect("bounded shard layer"),
+                );
+                self.sources.push((
+                    if grid == 0 {
+                        Source::Image(frame)
+                    } else {
+                        Source::GridImage(frame, grid)
+                    },
+                    placement.shard,
+                ));
             }
-        }));
+        }
+        let first = references[0];
         let frame_start = self.overlay.animation_frames.len() as u32;
         if frame_count > 1 {
             self.overlay.animation_frames.extend(
                 frames
                     .timeline
                     .into_iter()
-                    .map(|index| TextureRef::new(1, layer + index).expect("bounded layer")),
+                    .map(|index| references[index as usize]),
             );
         }
         Ok(FrameStorage {
-            layer,
+            page: first.page(),
+            layer: first.layer(),
             frame_start,
             frame_count,
         })
@@ -254,7 +288,7 @@ impl Builder<'_> {
             _ => NO_ANIMATION,
         };
         Some(TextureSlot {
-            page: 1,
+            page: storage.page,
             layer: storage.layer,
             animation,
         })

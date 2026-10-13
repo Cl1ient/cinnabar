@@ -142,7 +142,7 @@ fn raster_only_replacement_retains_the_base_lily_tint() {
         compile_block_overlay(&view, &CustomBlocks::default(), false, Some(&keys)).unwrap();
     assert_eq!(compiled.overlay.material_overrides.len(), 1);
     let texture = compiled.overlay.material_overrides[0].texture;
-    let page = compiled.overlay.texture.as_ref().unwrap();
+    let page = compiled.overlay.textures.first().unwrap();
     let mip = &page.mips[0];
     let start = texture.layer() as usize * (mip.size * mip.size * 4) as usize;
     assert_eq!(&mip.rgba8[start..start + 4], &[0, 100, 0, 255]);
@@ -266,11 +266,13 @@ fn full_block_is_a_page_one_cube_and_missing_texture_is_diagnostic() {
         },
         "rotated cubes are rendered, not skipped"
     );
-    let texture = overlay.texture.as_ref().expect("page");
-    assert_eq!(
-        texture.mips[0].size, 32,
-        "largest source keeps its resolution"
-    );
+    let tile = overlay
+        .textures
+        .iter()
+        .map(|shard| shard.mips[0].size)
+        .max()
+        .expect("page");
+    assert_eq!(tile, 32, "largest source keeps its resolution");
 }
 
 // Flipbook frames become layers in the listed order behind one animation.
@@ -282,10 +284,13 @@ fn flipbook_texture_animates_listed_frames() {
     let material = overlay.materials[generator.faces[0] as usize];
     let animation = overlay.animations[material.animation as usize];
     assert_eq!((animation.frame_count, animation.ticks_per_frame), (2, 15));
-    let texture = overlay.texture.as_ref().unwrap();
+    let first_frame = overlay.animation_frames[animation.frame_start as usize];
+    let texture = overlay
+        .textures
+        .get(first_frame.page() as usize - 1)
+        .expect("frame page");
     let layer_bytes = 32 * 32 * 4;
-    let first_frame = overlay.animation_frames[animation.frame_start as usize].layer() as usize;
-    let pixel = &texture.mips[0].rgba8[first_frame * layer_bytes..][..4];
+    let pixel = &texture.mips[0].rgba8[first_frame.layer() as usize * layer_bytes..][..4];
     assert_eq!(
         pixel,
         [0, 0, 255, 255],
@@ -347,7 +352,10 @@ fn overlay_extends_runtime_assets_after_base_ids() {
     let session = base
         .with_block_overlay(1, &compiled.overlay)
         .expect("overlay applies");
-    assert_eq!(session.texture_pages().len(), 2);
+    assert_eq!(
+        session.texture_pages().len(),
+        1 + compiled.overlay.textures.len()
+    );
     let lucky = session.resolve(NetworkIdMode::Sequential, 1);
     assert!(lucky.is_known());
     assert_eq!(lucky.kind(), VisualKind::Cube);
@@ -865,8 +873,11 @@ fn full_cube_block_items_carry_a_sixteen_texel_face_sheet() {
     let compiled = compiled();
     assert_eq!(compiled.overlay.visuals[0].support, VisualSupport::Exact);
     assert!(
-        compiled.overlay.texture.as_ref().unwrap().mips[0].size
-            > u32::from(assets::BLOCK_ITEM_FACE_SIDE),
+        compiled
+            .overlay
+            .textures
+            .iter()
+            .any(|shard| shard.mips[0].size > u32::from(assets::BLOCK_ITEM_FACE_SIDE)),
         "exercise a shared atlas tile larger than the block-item face"
     );
     let blocks = CustomBlocks {

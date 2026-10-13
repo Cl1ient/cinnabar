@@ -49,10 +49,10 @@ fn potted_models_sample_the_exposed_server_texture_grid() {
                 },
             ],
             model_quads: vec![quad, cropped, quad],
-            texture: Some(assets::TextureArray {
+            textures: vec![assets::TextureArray {
                 layers: 1,
                 mips: assets::build_texture_mip_chain(pixels.clone().into(), side).unwrap(),
-            }),
+            }],
             texture_source_sizes: vec![[side as u16 >> grid; 2]],
             texture_source_grids: vec![grid],
             ..assets::BlockOverlay::default()
@@ -383,7 +383,7 @@ fn weighted_replacement_updates_dropped_pixels_and_keeps_the_variation_range() {
     let base = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
     let color = [91, 40, 80, 255];
     let replacement = assets::BlockOverlay {
-        texture: Some(assets::TextureArray {
+        textures: vec![assets::TextureArray {
             layers: 1,
             mips: assets::build_texture_mip_chain(
                 color
@@ -392,7 +392,7 @@ fn weighted_replacement_updates_dropped_pixels_and_keeps_the_variation_range() {
                 assets::TILE_SIZE,
             )
             .unwrap(),
-        }),
+        }],
         material_overrides: (selector..selector + 3)
             .map(|material| assets::MaterialOverride {
                 material,

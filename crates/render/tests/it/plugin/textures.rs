@@ -176,20 +176,39 @@ fn animation_selects_current_next_cross_page_wrap_and_non_blended_frames() {
 }
 
 #[test]
-fn one_and_two_page_assets_have_one_stable_shared_binding_shape() {
+fn page_assets_have_one_stable_shared_binding_shape() {
     assert_eq!(
         plan_texture_page_bindings(1),
         Some([
             TexturePageBinding::Asset(0),
             TexturePageBinding::DiagnosticFallback,
+            TexturePageBinding::DiagnosticFallback,
+            TexturePageBinding::DiagnosticFallback,
+            TexturePageBinding::DiagnosticFallback,
         ])
     );
     assert_eq!(
         plan_texture_page_bindings(2),
-        Some([TexturePageBinding::Asset(0), TexturePageBinding::Asset(1)])
+        Some([
+            TexturePageBinding::Asset(0),
+            TexturePageBinding::Asset(1),
+            TexturePageBinding::DiagnosticFallback,
+            TexturePageBinding::DiagnosticFallback,
+            TexturePageBinding::DiagnosticFallback,
+        ])
+    );
+    assert_eq!(
+        plan_texture_page_bindings(5),
+        Some([
+            TexturePageBinding::Asset(0),
+            TexturePageBinding::Asset(1),
+            TexturePageBinding::Asset(2),
+            TexturePageBinding::Asset(3),
+            TexturePageBinding::Asset(4),
+        ])
     );
     assert_eq!(plan_texture_page_bindings(0), None);
-    assert_eq!(plan_texture_page_bindings(3), None);
+    assert_eq!(plan_texture_page_bindings(6), None);
 }
 
 #[test]
@@ -239,15 +258,15 @@ fn asset_revision_replacement_is_atomic_and_retains_the_previous_prepared_set_on
         !prepare.contains("gpu_assets.prepared = None"),
         "a rejected new revision must retain the previous complete GPU asset set"
     );
-    let second_page = prepare
-        .find("let (texture_1, view_1, uploaded_1) = upload_texture_page(")
-        .expect("second page is prepared before publication");
+    let uploads = prepare
+        .find("for (index, (texture, plans)) in terrain_pages.iter().zip(upload_plans)")
+        .expect("every page uploads before publication");
     let publish = prepare
-        .find("_textures: [texture_0, texture_1]")
+        .find("_textures: textures.try_into()")
         .expect("complete revision publication");
-    assert!(second_page < publish);
+    assert!(uploads < publish);
     assert!(prepare.contains(".animations()"));
     assert!(prepare.contains(".animation_frames()"));
-    assert!(prepare.contains("_textures: [texture_0, texture_1]"));
-    assert!(prepare.contains("views: [view_0, view_1]"));
+    assert!(prepare.contains("views: views"));
+    assert!(prepare.contains(".try_into().expect(\"every physical page uploads\")"));
 }

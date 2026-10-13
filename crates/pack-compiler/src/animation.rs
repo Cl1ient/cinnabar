@@ -16,7 +16,7 @@ const TEXTURE_PAGE_BIT: u32 = 1 << 31;
 const TEXTURE_LAYER_MASK: u32 = 0x1fff;
 /// Physical layer budget used by offline carrier pages.
 pub(crate) const MAX_LAYERS_PER_PAGE: u32 = assets::MAX_CARRIER_TEXTURE_LAYERS as u32;
-const MAX_TEXTURE_PAGES: u32 = 2;
+const MAX_TEXTURE_PAGES: u32 = assets::MAX_CARRIER_TEXTURE_PAGES as u32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct AnimationLimits {
@@ -881,7 +881,7 @@ mod tests {
             (first_second_page.page(), first_second_page.layer()),
             (1, 0)
         );
-        assert_eq!(first_second_page.raw(), 1_u32 << 31);
+        assert_eq!(first_second_page.raw(), 1_u32 << assets::TEXTURE_PAGE_SHIFT);
         assert!(texture_ref_from_linear_index(4_096, limits).is_err());
     }
 

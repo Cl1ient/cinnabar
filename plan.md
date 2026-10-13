@@ -550,7 +550,12 @@ these changes do not close the movement, camera, or actor parity gates.
 - Actor crouch updates preserve held ability-flight descent during live input
   and correction replay; older walking-pose updates stop at the flight transition.
   Focused regressions reproduce the upward rewind caused by a server sneak clear.
-  Native-server candidate input and rendered acceptance remain incomplete.
+  Scoped native-server descent, release, landing and flight-toggle acceptance passed.
+- Provisional streaming-boundary handling keeps ability-flight ticks advancing
+  beside entirely absent columns, using solid collision barriers with retained
+  absence identities and replay snapshots. Missing sections in partially received
+  columns still wait for authoritative data. Streaming-boundary server, input and
+  rendered acceptance remain incomplete; this does not close creative-flight parity.
 - Validation: 267 simulator tests, 69 semantic-input tests, 345 movement tests
   and 16 focused client tests pass. The touched-crate compile check includes
   tests and the client app. The architecture check passes. Regression tests
@@ -8369,6 +8374,29 @@ selectors and output ranges for the existing explicit model bindings. Unrecogniz
 model arrays stay unresolved instead of guessing from growth or selecting index zero.
 The generic terrain accessor, complete native binding inventory and custom selector
 expressions still need their own admission and coverage work.
+## Overlay texture sharding across device-limited arrays
+
+The block overlay uses up to four texture-array pages after the base carrier.
+Each page respects the device layer limit, and the total retains the format's
+8,192-layer cap. Each shard uses the tile size of its largest source. Source
+pixels and uploaded mip chains keep their separate shared byte budgets.
+Admission includes the diagnostic layer and any increase in retained layers'
+cost before adding a new frame run. Rejected routes retain diagnostic visuals
+without discarding the admitted overlay.
+
+Texture references use a three-bit page field. World carrier version 19
+separates this encoding from version 18. Chunk, model and liquid shaders bind
+all supported pages, with diagnostic textures for unused slots. Shared frame
+caches and transactional terrain bindings retain each run's page and restore
+shard costs when a route is rolled back. Runtime pages own each shard once.
+Complete frame runs stay together when they fit; otherwise frames span shards
+in timeline order before truncating at layer or byte limits. Placement compares
+actual growth costs, and each layer's source dimensions and UV grid validate
+against its owning shard.
+
+Incomplete: CI compilation, regression tests, and rendered-frame validation.
+This does not close a parity gate.
+
 
 ## Overlay vanilla-texture fallback
 

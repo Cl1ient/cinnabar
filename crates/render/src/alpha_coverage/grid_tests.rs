@@ -1,9 +1,10 @@
 use super::*;
 
-const COLUMNS: u32 = 4;
+/// Five pages of eight cases fill forty cells; eight columns keep the grid square-ish.
+const COLUMNS: u32 = 8;
 const CELL_SIDE: u32 = SNAPSHOT_SIDE / COLUMNS;
 // Past every production group-0 binding, which the composed shader also declares.
-const GRID_CASES_BINDING: u32 = 23;
+const GRID_CASES_BINDING: u32 = 27;
 
 struct GridCase {
     reference: u32,
@@ -109,7 +110,7 @@ fn grid_raster(gpu: &Gpu, model: bool, enhanced: bool, samples: u32) -> Vec<u8> 
     for (page, view) in views.iter().enumerate() {
         bindings.push(wgpu::BindGroupEntry {
             binding: if enhanced {
-                4 + page as u32
+                crate::material_shader::SAMPLED_TEXTURE_BINDINGS[page]
             } else {
                 crate::material_shader::NATIVE_LEAF_TEXTURE_BINDINGS[page]
             },

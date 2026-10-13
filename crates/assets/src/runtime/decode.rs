@@ -7,8 +7,8 @@ use crate::{
     ANIMATION_FLAG_BLEND, Animation, AssetError, BLOB_MAGIC, BLOB_VERSION, BiomeRule, BlockFlags,
     BlockVisual, CompiledBiomeAssets, ContributorRole, DIAGNOSTIC_MATERIAL, LightProperties,
     MATERIAL_FLAG_ALPHA_BLEND, MATERIAL_FLAG_ALPHA_CUTOUT, MAX_ANIMATION_FRAMES, MAX_ANIMATIONS,
-    MAX_BIOME_NAME_BYTES, MAX_BIOME_NAMES_BYTES, MAX_BIOME_RULES, MAX_MATERIALS, MAX_MODEL_QUADS,
-    MAX_MODEL_TEMPLATES, MAX_TEXTURE_LAYERS, MAX_TEXTURE_PAGES, MIP_COUNT,
+    MAX_BIOME_NAME_BYTES, MAX_BIOME_NAMES_BYTES, MAX_BIOME_RULES, MAX_CARRIER_TEXTURE_PAGES,
+    MAX_MATERIALS, MAX_MODEL_QUADS, MAX_MODEL_TEMPLATES, MAX_TEXTURE_LAYERS, MIP_COUNT,
     MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN, MODEL_TEMPLATE_FLAG_COMPOUND_NEXT,
     MODEL_TEMPLATE_FLAG_FENCE_NETHER, MODEL_TEMPLATE_FLAG_FENCE_WOOD, MODEL_TEMPLATE_FLAG_FIRE,
     MODEL_TEMPLATE_FLAG_GATE_AXIS_X, MODEL_TEMPLATE_FLAG_GATE_AXIS_Z, MODEL_TEMPLATE_FLAG_KELP,
@@ -67,6 +67,7 @@ impl RuntimeAssets {
             texture_pages: decode_pages(sections[8], &page_meta)?,
             overlay_texture_source_sizes: Box::new([]),
             overlay_texture_source_grids: Box::new([]),
+            overlay_page_layer_counts: Box::new([]),
             biomes,
             provenance,
             missing: AtomicU64::new(0),
@@ -148,7 +149,7 @@ impl Header {
             ("quad", self.counts[4], MAX_MODEL_QUADS),
             ("animation", self.counts[5], MAX_ANIMATIONS),
             ("frame", self.counts[6], MAX_ANIMATION_FRAMES),
-            ("page", self.page_count, MAX_TEXTURE_PAGES),
+            ("page", self.page_count, MAX_CARRIER_TEXTURE_PAGES),
             ("biome", self.biome_count, MAX_BIOME_RULES),
         ] {
             if value > max {

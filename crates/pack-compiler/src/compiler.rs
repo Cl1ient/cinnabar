@@ -789,7 +789,7 @@ fn compile_runtime_animation_plan(
         &decoded_images,
         AnimationLimits {
             max_layers_per_page: MAX_CARRIER_TEXTURE_LAYERS as u32,
-            max_pages: assets::MAX_TEXTURE_PAGES as u32,
+            max_pages: assets::MAX_CARRIER_TEXTURE_PAGES as u32,
         },
         Some(&selected_atlas_tiles),
         &overlay_mask_paths,

@@ -4,26 +4,24 @@ use super::*;
 use pack_runtime::pack_textures::resolve_pack_texture_with_policy;
 
 impl TextureCatalog<'_> {
-    /// Resolves indexed pack aliases or possible carrier filenames without reading image pixels.
-    pub(in super::super) fn reusable_image_paths(
+    /// Resolves the winning pack or carrier filename before looking up reusable frames.
+    pub(in super::super) fn reusable_image_path(
         &self,
         route: &super::super::TextureRoute,
         source: Option<&FlipbookSource>,
-        carrier: bool,
-    ) -> Vec<String> {
-        let Some((_, _, choice)) = self.resolve_choice(route) else {
-            return Vec::new();
-        };
+        mut carrier: impl FnMut(&str, Option<[u8; 3]>) -> Option<String>,
+    ) -> Option<(String, bool)> {
+        let (_, _, choice) = self.resolve_choice(route)?;
         let path = source.map_or(choice.path.as_str(), |source| source.texture_path.as_ref());
         if let Some(path) = pack_runtime::pack_textures::indexed_image_candidate(self.view, path) {
-            vec![path]
-        } else if carrier {
+            Some((path, true))
+        } else if source.is_none() {
             pack_runtime::pack_textures::texture_image_paths(path)
                 .into_iter()
-                .map(|path| path.to_ascii_lowercase())
-                .collect()
+                .find_map(|path| carrier(&path, choice.tint))
+                .map(|path| (path, false))
         } else {
-            Vec::new()
+            None
         }
     }
 

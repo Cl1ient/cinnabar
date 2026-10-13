@@ -113,6 +113,11 @@ impl<'a, W: CollisionWorld> ScaffoldingView<'a, W> {
 }
 
 impl<W: CollisionWorld> CollisionWorld for ScaffoldingView<'_, W> {
+    /// Preserves the underlying terrain availability requirement for movement origins.
+    fn ensure_movement_origin(&self, feet: crate::Vec3) -> Result<(), WorldQueryError> {
+        self.inner.ensure_movement_origin(feet)
+    }
+
     fn collision_boxes(&self, query: Aabb) -> Result<CollisionQuery<Vec<Aabb>>, WorldQueryError> {
         let colliders = self.collision_boxes_with_provenance(query)?;
         Ok(CollisionQuery {

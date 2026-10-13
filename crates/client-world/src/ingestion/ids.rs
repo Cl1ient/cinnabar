@@ -256,7 +256,7 @@ mod tests {
                 animation: NO_ANIMATION,
                 ..Material::unvaried()
             }],
-            texture: Some(base.texture_pages()[0].texture.clone()),
+            textures: vec![base.texture_pages()[0].texture.clone()],
             hashes: vec![Some(hash)],
             ..BlockOverlay::default()
         };

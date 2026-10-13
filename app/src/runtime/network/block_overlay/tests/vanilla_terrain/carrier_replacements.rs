@@ -648,7 +648,7 @@ fn raster_only_world_and_carried_routes_reuse_layers_at_the_device_limit() {
         Some(&base),
     )
     .unwrap();
-    assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 3);
+    assert_eq!(compiled.overlay.textures.first().unwrap().layers, 3);
     assert_eq!(compiled.vanilla_carried.len(), 2);
     for (visual, color) in colors.into_iter().enumerate() {
         let faces = compiled
@@ -755,7 +755,7 @@ fn static_destinations_never_inherit_an_animated_donors_timeline() {
 
 #[test]
 fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
-    for (limit, animated, include_missing) in [(2, false, true), (3, false, false), (3, true, true)]
+    for (limit, animated, exhaust_layers) in [(2, false, true), (3, false, false), (3, true, true)]
     {
         for reuse_first in [false, true] {
             let base = base();
@@ -790,8 +790,22 @@ fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
             );
             let first = [40, 80, 200, 255];
             let good = [200, 30, 40, 255];
+            let extra_paths = (0..limit as usize * super::super::super::MAX_OVERLAY_SHARDS)
+                .map(|index| format!("textures/extra_{index}"))
+                .collect::<Vec<_>>();
+            let mut variations = vec![json!({"path":"textures/first","weight":1})];
+            if exhaust_layers {
+                // Distinct leaves exhaust all shards after the first source has been cached.
+                variations.extend(
+                    extra_paths
+                        .iter()
+                        .map(|path| json!({"path":path,"weight":1})),
+                );
+            } else {
+                variations.push(json!({"path":"textures/missing","weight":1}));
+            }
             let terrain = json!({"texture_data":{
-                "bad":{"textures":{"variations":[{"path":"textures/first","weight":1},{"path":"textures/missing","weight":1}]}},
+                "bad":{"textures":{"variations":variations}},
                 "good":{"textures":if reuse_first {"textures/first"} else {"textures/good"}}
             }});
             let flipbooks = if animated {
@@ -809,8 +823,12 @@ fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
                 ),
                 ("textures/good", 16, 16, good, good),
             ];
-            if include_missing {
-                images.push(("textures/missing", 16, 16, good, good));
+            if exhaust_layers {
+                images.extend(
+                    extra_paths
+                        .iter()
+                        .map(|path| (path.as_str(), 16, 16, good, good)),
+                );
             }
             let view = timeline_pack(terrain, flipbooks, &images);
             let compiled = super::super::super::compile_block_overlay(
@@ -824,11 +842,19 @@ fn failed_weighted_selectors_release_pixels_frames_and_cached_slots() {
             .unwrap();
             assert_eq!(compiled.overlay.material_overrides.len(), 1);
             assert_eq!(compiled.overlay.material_overrides[0].material, 2);
-            assert_eq!(compiled.overlay.texture.as_ref().unwrap().layers, 2);
             assert_eq!(
-                compiled.overlay.texture.as_ref().unwrap().mips[0].size,
-                if reuse_first { 256 } else { 16 }
+                compiled
+                    .overlay
+                    .textures
+                    .iter()
+                    .map(|shard| shard.layers)
+                    .sum::<u32>(),
+                2
             );
+            let replacement = compiled.overlay.material_overrides[0].texture;
+            let shard = &compiled.overlay.textures[replacement.page() as usize - 1];
+            assert!(replacement.layer() < shard.layers);
+            assert_eq!(shard.mips[0].size, if reuse_first { 256 } else { 16 });
             assert!(compiled.overlay.animations.is_empty());
             assert!(compiled.overlay.animation_frames.is_empty());
             let runtime = base.with_block_overlay(2, &compiled.overlay).unwrap();
@@ -846,3 +872,5 @@ mod resolved_images;
 mod review_regressions;
 
 mod weighted_replacements;
+
+mod filename_precedence;

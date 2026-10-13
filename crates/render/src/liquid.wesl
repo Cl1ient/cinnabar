@@ -1,11 +1,13 @@
 import render::chunk_bindings::{
-    view, chunk_origins, block_textures_page_0, block_textures_page_1, block_sampler,
-    terrain_gamma_page_0, terrain_gamma_page_1, animations, animation_frames, clock,
+    view, chunk_origins, block_textures_page_0, block_textures_page_1, block_textures_page_2,
+    block_textures_page_3, block_textures_page_4, block_sampler, terrain_gamma_page_0,
+    terrain_gamma_page_1, terrain_gamma_page_2, terrain_gamma_page_3, terrain_gamma_page_4,
+    animations, animation_frames, clock,
     geometry_streams, atmosphere, transparent_refs,
     LIQUID_FACE_INSET, LIQUID_TOP_INSET_BIT, LIQUID_DEPTH_WRITE_BIT, LIQUID_TWO_SIDED_BIT,
     TRANSPARENT_WATER_RECORD_FLAG,
 };
-import render::material::{MaterialGpu, materials, positional_material, texture_layer, texture_uv_scale, texture_gradient_scale};
+import render::material::{MaterialGpu, materials, positional_material, texture_layer, texture_page, texture_uv_scale, texture_gradient_scale};
 import render::world_projection::{section_camera_offset, camera_offset_clip};
 import render::biome_tint::blended_biome_tint;
 import render::lighting::{light_ao_factor, light_colour, face_shade, tint_to_gamma, tint_to_linear, terrain_light_levels, terrain_light_colour};
@@ -289,24 +291,55 @@ fn vertex_for_record(record_index: u32, vertex_index: u32) -> VertexOutput {
 
 fn sample_texture_ref(texture_ref: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
     let layer = texture_layer(texture_ref);
+    let page = texture_page(texture_ref);
     @if(ENHANCED)
-    if ((texture_ref >> 31u) == 0u) {
+    if (page == 0u) {
         let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_0, 0));
         return textureSampleGrad(block_textures_page_0, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
     }
     @if(ENHANCED)
-    let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_1, 0));
+    if (page == 1u) {
+        let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_1, 0));
+        return textureSampleGrad(block_textures_page_1, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    }
     @if(ENHANCED)
-    return textureSampleGrad(block_textures_page_1, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    if (page == 2u) {
+        let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_2, 0));
+        return textureSampleGrad(block_textures_page_2, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    }
+    @if(ENHANCED)
+    if (page == 3u) {
+        let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_3, 0));
+        return textureSampleGrad(block_textures_page_3, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    }
+    @if(ENHANCED)
+    let scale = texture_gradient_scale(texture_ref, textureDimensions(block_textures_page_4, 0));
+    @if(ENHANCED)
+    return textureSampleGrad(block_textures_page_4, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
     @if(!ENHANCED)
-    if ((texture_ref >> 31u) == 0u) {
+    if (page == 0u) {
         let scale = texture_gradient_scale(texture_ref, textureDimensions(terrain_gamma_page_0, 0));
         return textureSampleGrad(terrain_gamma_page_0, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
     }
     @if(!ENHANCED)
-    let scale = texture_gradient_scale(texture_ref, textureDimensions(terrain_gamma_page_1, 0));
+    if (page == 1u) {
+        let scale = texture_gradient_scale(texture_ref, textureDimensions(terrain_gamma_page_1, 0));
+        return textureSampleGrad(terrain_gamma_page_1, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    }
     @if(!ENHANCED)
-    return textureSampleGrad(terrain_gamma_page_1, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    if (page == 2u) {
+        let scale = texture_gradient_scale(texture_ref, textureDimensions(terrain_gamma_page_2, 0));
+        return textureSampleGrad(terrain_gamma_page_2, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    }
+    @if(!ENHANCED)
+    if (page == 3u) {
+        let scale = texture_gradient_scale(texture_ref, textureDimensions(terrain_gamma_page_3, 0));
+        return textureSampleGrad(terrain_gamma_page_3, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
+    }
+    @if(!ENHANCED)
+    let scale = texture_gradient_scale(texture_ref, textureDimensions(terrain_gamma_page_4, 0));
+    @if(!ENHANCED)
+    return textureSampleGrad(terrain_gamma_page_4, block_sampler, uv * texture_uv_scale(texture_ref), layer, dx * scale, dy * scale);
 }
 
 fn apply_distance_fog(colour: vec3<f32>, world_position: vec3<f32>) -> vec3<f32> {

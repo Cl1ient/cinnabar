@@ -263,11 +263,10 @@ pub fn overlay_sheet(overlay: &BlockOverlay, visual: usize) -> Option<IconSprite
 pub fn overlay_face_sheet(overlay: &BlockOverlay, faces: [u32; 6]) -> Option<IconSprite> {
     let mut tiles = Vec::with_capacity(BlockFace::ALL.len());
     for id in faces {
-        // Overlay materials address the overlay's own array as page 1.
         let material = overlay
             .materials
             .get(id as usize)
-            .filter(|material| id != DIAGNOSTIC_MATERIAL && material.texture.page() == 1)?;
+            .filter(|_| id != DIAGNOSTIC_MATERIAL)?;
         tiles.push(overlay_face_tile(overlay, material)?);
     }
     compose_block_item_sheet(&tiles.try_into().ok()?)
@@ -278,18 +277,20 @@ fn overlay_face_tile(overlay: &BlockOverlay, material: &Material) -> Option<Icon
     if !face_material_is_admitted(material) {
         return None;
     }
-    let texture = overlay.texture.as_ref()?;
+    let shard = material.texture.page().checked_sub(1)? as usize;
+    let texture = overlay.textures.get(shard)?;
     let layer = material.texture.layer() as usize;
     if layer >= texture.layers as usize {
         return None;
     }
+    let flat = overlay.textures[..shard]
+        .iter()
+        .map(|shard| shard.layers as usize)
+        .sum::<usize>()
+        + layer;
     let base = texture.mips.first()?;
-    let grid = overlay
-        .texture_source_grids
-        .get(layer)
-        .copied()
-        .unwrap_or(0);
-    let source_side = match overlay.texture_source_sizes.get(layer) {
+    let grid = overlay.texture_source_grids.get(flat).copied().unwrap_or(0);
+    let source_side = match overlay.texture_source_sizes.get(flat) {
         Some(size) => u32::from(*size.iter().max()?),
         None => base.size.checked_shr(u32::from(grid))?,
     };

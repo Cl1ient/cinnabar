@@ -60,7 +60,7 @@ fn world_carrier_rejects_undefined_material_dispositions() {
 #[test]
 fn world_carrier_exact_bytes() {
     let texture = assets::TextureRef::new(1, 17).expect("bounded texture ref");
-    assert_eq!(texture.raw(), 0x8000_0011);
+    assert_eq!(texture.raw(), (1 << assets::TEXTURE_PAGE_SHIFT) | 17);
 
     let mut fixture = valid_assets();
     fixture.visuals = vec![
@@ -148,8 +148,13 @@ fn world_carrier_exact_bytes() {
     let bytes = encode_blob(&fixture).expect("encode every world carrier table");
     assert_eq!(bytes.len(), 1_576_352);
     assert_eq!(
+        &bytes[..8],
+        &BLOB_MAGIC,
+        "the page-bit carrier schema bumped the blob version"
+    );
+    assert_eq!(
         format!("{:x}", Sha256::digest(&bytes)),
-        "953376201ef131c55f2f0659c9265572ea94408421440940d0ee3ed39ade7f96",
+        "f0dbfc832cb8e76276844eba23c8d8c2a5c9e039c40d4a3fb7854aab907bf487",
         "the complete every-table fixture is the byte-exact world carrier golden"
     );
     assert_eq!(read_u32(&bytes, 20), 2);
@@ -175,7 +180,7 @@ fn world_carrier_exact_bytes() {
     );
     assert_eq!(
         read_u32(&bytes, materials + assets::MATERIAL_BYTES),
-        0x8000_0000
+        1 << assets::TEXTURE_PAGE_SHIFT
     );
     assert_eq!(read_u32(&bytes, templates + 4), 1);
     assert_eq!(read_u32(&bytes, quads + 40), 1);
@@ -187,7 +192,10 @@ fn world_carrier_exact_bytes() {
         read_u32(&bytes, animations + 24),
         assets::ANIMATION_FLAG_BLEND
     );
-    assert_eq!(read_u32(&bytes, frames + 4), 0x8000_0000);
+    assert_eq!(
+        read_u32(&bytes, frames + 4),
+        1 << assets::TEXTURE_PAGE_SHIFT
+    );
     let runtime = assets::RuntimeAssets::decode(&bytes).expect("decode exact fixture");
     assert_eq!(runtime.model_quads(), fixture.model_quads.as_ref());
     assert_eq!(runtime.animations(), fixture.animations.as_ref());
@@ -286,7 +294,13 @@ fn mcbeas04_rejects_overlapping_pages() {
 #[test]
 fn mcbeas04_rejects_bad_texture_ref() {
     assert!(assets::TextureRef::from_raw(0x0010_0000).is_err());
-    assert!(assets::TextureRef::new(2, 0).is_err());
+    assert!(assets::TextureRef::new(assets::MAX_TEXTURE_PAGES as u32, 0).is_err());
+    assert!(
+        assets::TextureRef::from_raw(
+            (assets::MAX_TEXTURE_PAGES as u32) << assets::TEXTURE_PAGE_SHIFT
+        )
+        .is_err()
+    );
     let last = assets::MAX_TEXTURE_LAYERS as u32 - 1;
     for page in 0..assets::MAX_TEXTURE_PAGES as u32 {
         let reference = assets::TextureRef::new(page, last).unwrap();
@@ -839,6 +853,26 @@ fn read_u32(bytes: &[u8], offset: usize) -> u32 {
 
 fn read_u64(bytes: &[u8], offset: usize) -> u64 {
     u64::from_le_bytes(bytes[offset..offset + 8].try_into().expect("u64 bytes"))
+}
+
+#[test]
+fn world_carrier_rejects_the_previous_page_encoding_at_the_header() {
+    let previous_version = BLOB_VERSION - 1;
+    let previous_magic = format!("MCBEAS{previous_version:02}");
+    for (magic, expected_detail) in [
+        (previous_magic.as_bytes(), "invalid world asset magic"),
+        (BLOB_MAGIC.as_slice(), "unsupported world asset header"),
+    ] {
+        let mut bytes = encode_blob(&valid_assets()).unwrap().into_vec();
+        // An older carrier must fail before reference validation, even with current magic.
+        bytes[..8].copy_from_slice(magic);
+        bytes[8..12].copy_from_slice(&previous_version.to_le_bytes());
+        let payload_length = bytes.len() - 32;
+        let digest = Sha256::digest(&bytes[..payload_length]);
+        bytes[payload_length..].copy_from_slice(&digest);
+        assert!(matches!(assets::RuntimeAssets::decode(&bytes),
+            Err(AssetError::InvalidCompiledAssets { detail }) if detail.as_ref() == expected_detail));
+    }
 }
 
 #[test]

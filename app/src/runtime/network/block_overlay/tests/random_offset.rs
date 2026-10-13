@@ -91,7 +91,8 @@ fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
         overlay: Default::default(),
         sources: Vec::new(),
         source_bytes: 0,
-        tile_size: super::super::MIN_TILE,
+        tiles: Vec::new(),
+        upload_bytes: 0,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
         slots: Default::default(),
@@ -109,15 +110,16 @@ fn terrain_override_mips_average_unassociated_leaf_alpha_and_colours() {
             });
         }
     }
-    builder
-        .sources
-        .push(super::super::Source::Image(super::super::DecodedTexture {
+    builder.sources.push((
+        super::super::Source::Image(super::super::DecodedTexture {
             width: 16,
             height: 16,
             rgba8: pixels.into_boxed_slice(),
-        }));
+        }),
+        0,
+    ));
     let compiled = builder.finish().unwrap();
-    let page = compiled.overlay.texture.unwrap();
+    let page = compiled.overlay.textures.first().unwrap().clone();
     assert_eq!(&page.mips[1].rgba8[..4], &[50, 25, 10, 63]);
     assert_eq!(&page.mips[3].rgba8[..4], &[50, 25, 10, 63]);
 }
@@ -254,10 +256,11 @@ fn overlay_images(
         fallback: None,
         sources: images
             .into_iter()
-            .map(super::super::Source::Image)
+            .map(|image| (super::super::Source::Image(image), 0))
             .collect(),
         source_bytes: 0,
-        tile_size: super::super::MIN_TILE,
+        tiles: Vec::new(),
+        upload_bytes: 0,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
         slots: Default::default(),
@@ -291,7 +294,7 @@ fn terrain_override_small_images_keep_their_source_mips_beside_hd_images() {
         rgba8: vec![255; 64 * 64 * 4].into(),
     };
     let overlay = overlay_images([small, large]);
-    let page = overlay.texture.unwrap();
+    let page = overlay.textures.first().unwrap().clone();
     assert_eq!(page.mips[0].size, 64);
     assert_eq!(&page.mips[1].rgba8[..4], &[127, 0, 127, 255]);
     assert_eq!(&page.mips[3].rgba8[..4], &[127, 0, 127, 255]);
@@ -313,7 +316,7 @@ fn terrain_override_static_vertical_strip_admits_its_first_square() {
             .collect(),
     };
     let overlay = overlay_images([strip]);
-    let page = overlay.texture.unwrap();
+    let page = overlay.textures.first().unwrap().clone();
     assert!(
         page.mips[0]
             .rgba8
@@ -454,7 +457,8 @@ fn terrain_page_rejects_over_budget_sources_without_shrinking() {
         overlay: Default::default(),
         sources: Vec::new(),
         source_bytes: 0,
-        tile_size: super::super::MIN_TILE,
+        tiles: Vec::new(),
+        upload_bytes: 0,
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
         slots: Default::default(),
@@ -462,24 +466,28 @@ fn terrain_page_rejects_over_budget_sources_without_shrinking() {
         visuals: Default::default(),
         gaps: Default::default(),
     };
-    builder.sources.push(super::super::Source::GridImage(
-        super::super::DecodedTexture {
-            width: 128,
-            height: 128,
-            rgba8: vec![255; 128 * 128 * 4].into(),
-        },
-        7,
+    builder.sources.push((
+        super::super::Source::GridImage(
+            super::super::DecodedTexture {
+                width: 128,
+                height: 128,
+                rgba8: vec![255; 128 * 128 * 4].into(),
+            },
+            7,
+        ),
+        0,
     ));
-    builder
-        .sources
-        .push(super::super::Source::Image(super::super::DecodedTexture {
+    builder.sources.push((
+        super::super::Source::Image(super::super::DecodedTexture {
             width: 16,
             height: 16,
             rgba8: [23, 57, 91, 255].repeat(16 * 16).into(),
-        }));
+        }),
+        0,
+    ));
     builder
         .sources
-        .extend((0..768).map(|_| super::super::Source::Diagnostic));
+        .extend((0..768).map(|_| (super::super::Source::Diagnostic, 0)));
     assert!(
         builder.finish().is_none(),
         "unadmitted sources cannot force the page to reduce its resolution"

@@ -1,6 +1,6 @@
 use crate::{AssetError, TEXTURE_LAYER_MASK, TextureArray};
 
-pub const MAX_TEXTURE_PAGES: usize = 2;
+pub const MAX_TEXTURE_PAGES: usize = 5;
 pub const MAX_MODEL_TEMPLATES: usize = 65_536;
 pub const MAX_MODEL_TEMPLATE_QUADS: usize = u32::BITS as usize;
 pub const MAX_MODEL_QUADS: usize = MAX_MODEL_TEMPLATES * MAX_MODEL_TEMPLATE_QUADS;
@@ -169,10 +169,18 @@ pub(crate) const fn model_template_flags_are_valid(flags: u32) -> bool {
         || flags == MODEL_TEMPLATE_FLAG_COMPOUND_NEXT | MODEL_TEMPLATE_FLAG_GATE_AXIS_Z
 }
 
-const TEXTURE_PAGE_BIT: u32 = 1 << 31;
-const TEXTURE_RESERVED_MASK: u32 = !(TEXTURE_PAGE_BIT | TEXTURE_LAYER_MASK);
+/// Page field of a texture reference: three bits above the GPU metadata word,
+/// addressing the base carrier page plus up to four overlay shards. Layer
+/// addressing is unchanged, so each shard stays within the device per-array
+/// limit while the overlay totals four shards.
+pub const TEXTURE_PAGE_SHIFT: u32 = 28;
+pub const TEXTURE_PAGE_MASK: u32 = (1 << 3) - 1;
+const TEXTURE_RESERVED_MASK: u32 =
+    !((TEXTURE_PAGE_MASK << TEXTURE_PAGE_SHIFT) | TEXTURE_LAYER_MASK);
 
-/// Canonical reference to a layer in one of at most two texture-array pages.
+/// Canonical reference to a layer in one of at most [`MAX_TEXTURE_PAGES`]
+/// texture-array pages: page zero is the base carrier, higher pages are
+/// overlay shards in order.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextureRef(u32);
@@ -186,13 +194,18 @@ impl TextureRef {
                 "texture reference page {page}, layer {layer} is out of range"
             )));
         }
-        Ok(Self((page << 31) | layer))
+        Ok(Self((page << TEXTURE_PAGE_SHIFT) | layer))
     }
 
     pub fn from_raw(raw: u32) -> Result<Self, AssetError> {
         if raw & TEXTURE_RESERVED_MASK != 0 {
             return Err(invalid(format!(
                 "texture reference {raw:#010x} has non-zero reserved bits"
+            )));
+        }
+        if (raw >> TEXTURE_PAGE_SHIFT) & TEXTURE_PAGE_MASK >= MAX_TEXTURE_PAGES as u32 {
+            return Err(invalid(format!(
+                "texture reference {raw:#010x} names no allocated page"
             )));
         }
         Ok(Self(raw))
@@ -205,7 +218,7 @@ impl TextureRef {
 
     #[must_use]
     pub const fn page(self) -> u32 {
-        self.0 >> 31
+        (self.0 >> TEXTURE_PAGE_SHIFT) & TEXTURE_PAGE_MASK
     }
 
     #[must_use]

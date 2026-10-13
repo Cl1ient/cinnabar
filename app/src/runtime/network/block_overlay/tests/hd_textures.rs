@@ -86,18 +86,39 @@ fn mixed_terrain_keeps_hd_dimensions_and_adjacent_detail_pixels() {
     let (view, blocks) = fixture(&images);
     let compiled = compile_block_overlay(&view, &blocks, false, None).unwrap();
     assert_eq!(compiled.gaps.missing_textures, 0);
-    let page = compiled.overlay.texture.as_ref().unwrap();
-    assert_eq!(page.mips[0].size, 512);
+    // Best fit segregates scales: each texture keeps its own tile instead of
+    // subsidizing the shared page up to the largest neighbour.
+    let mut tiles: Vec<u32> = compiled
+        .overlay
+        .textures
+        .iter()
+        .map(|shard| shard.mips[0].size)
+        .collect();
+    tiles.sort_unstable();
+    assert_eq!(tiles, vec![16, 256, 512]);
+    let mut starts = Vec::with_capacity(compiled.overlay.textures.len());
+    let mut flat = 0;
+    for shard in &compiled.overlay.textures {
+        starts.push(flat);
+        flat += shard.layers as usize;
+    }
     for (visual, (_, width, height)) in compiled.overlay.visuals.iter().zip(images) {
-        let layer = compiled.overlay.materials[visual.faces[0] as usize]
-            .texture
-            .layer() as usize;
+        let reference = compiled.overlay.materials[visual.faces[0] as usize].texture;
+        let shard = reference.page() as usize - 1;
+        let layer = reference.layer() as usize;
         assert_eq!(
-            compiled.overlay.texture_source_sizes[layer],
+            compiled.overlay.textures[shard].mips[0].size,
+            width.max(height),
+            "each scale keeps its own tile"
+        );
+        assert_eq!(
+            compiled.overlay.texture_source_sizes[starts[shard] + layer],
             [width as u16, height as u16]
         );
-        let pixels = &page.mips[0].rgba8[layer * 512 * 512 * 4..];
-        let next = (512 / width * 4) as usize;
+        let tile = compiled.overlay.textures[shard].mips[0].size;
+        let pixels =
+            &compiled.overlay.textures[shard].mips[0].rgba8[layer * (tile * tile * 4) as usize..];
+        let next = (tile / width * 4) as usize;
         assert_eq!(&pixels[..4], &[255, 255, 0, 255]);
         assert_eq!(&pixels[next..next + 4], &[0, 255, 0, 255]);
     }
@@ -115,7 +136,7 @@ fn tall_strips_retain_first_and_last_full_resolution_frames() {
         let animation = &compiled.overlay.animations[0];
         assert_eq!(animation.frame_count, height / width);
         assert_eq!(animation.ticks_per_frame, 2);
-        let page = compiled.overlay.texture.as_ref().unwrap();
+        let page = compiled.overlay.textures.first().unwrap();
         let layer_bytes = (width * width * 4) as usize;
         for frame in [0, animation.frame_count - 1] {
             let layer = compiled.overlay.animation_frames[frame as usize].layer() as usize;
@@ -143,7 +164,7 @@ fn over_budget_route_keeps_other_terrain_at_full_quality() {
         .collect::<Vec<_>>();
     let (view, blocks) = fixture(&borrowed);
     let compiled = compile_block_overlay(&view, &blocks, false, None).unwrap();
-    let page = compiled.overlay.texture.as_ref().unwrap();
+    let page = compiled.overlay.textures.first().unwrap();
     assert_eq!(page.mips[0].size, 512);
     assert!(
         page.mips.iter().map(|mip| mip.rgba8.len()).sum::<usize>()
@@ -171,11 +192,85 @@ fn oversized_horizontal_terrain_without_animation_keeps_the_first_frame() {
         compiled.overlay.texture_source_sizes[material.texture.layer() as usize],
         [64; 2]
     );
-    let mip = &compiled.overlay.texture.as_ref().unwrap().mips[0];
+    let mip = &compiled.overlay.textures.first().unwrap().mips[0];
     assert_eq!(mip.size, 64);
     let offset = material.texture.layer() as usize * 64 * 64 * 4;
     assert_eq!(
         &mip.rgba8[offset + (63 * 64 + 63) * 4..][..4],
         &[0, 0, 0, 255]
     );
+}
+
+#[test]
+fn diagnostic_layer_is_budgeted_before_refusing_only_the_excess_texture() {
+    let mut images = (0..4)
+        .map(|index| (format!("medium{index}"), 256, 256))
+        .collect::<Vec<_>>();
+    images.extend((0..47).map(|index| (format!("large{index}"), 512, 512)));
+    let borrowed = images
+        .iter()
+        .map(|(key, width, height)| (key.as_str(), *width, *height))
+        .collect::<Vec<_>>();
+    let (view, blocks) = fixture(&borrowed);
+    let compiled = super::super::compile_block_overlay(&view, &blocks, false, None, 2048, None)
+        .expect("an excess route must not discard the admitted overlay");
+    assert_eq!(compiled.gaps.missing_textures, 1);
+    assert_eq!(
+        compiled.overlay.visuals.last().unwrap().kind,
+        VisualKind::Diagnostic
+    );
+    assert!(
+        compiled.overlay.visuals[..50]
+            .iter()
+            .all(|visual| visual.kind == VisualKind::Cube)
+    );
+    let bytes = compiled
+        .overlay
+        .textures
+        .iter()
+        .flat_map(|shard| &shard.mips)
+        .map(|mip| mip.rgba8.len())
+        .sum::<usize>();
+    assert!(bytes <= assets::texture::policy::MAX_SUBSCRIBER_BYTES);
+    RuntimeAssets::diagnostic()
+        .with_block_overlay(1, &compiled.overlay)
+        .unwrap();
+}
+
+#[test]
+fn growing_the_fourth_open_shard_charges_only_existing_and_incoming_layers() {
+    let (view, blocks) = fixture(&[
+        ("small", 16, 16),
+        ("medium", 32, 32),
+        ("larger", 64, 64),
+        ("hd", 128, 128),
+        ("largest", 256, 256),
+    ]);
+    let compiled =
+        super::super::compile_block_overlay(&view, &blocks, false, None, 2048, None).unwrap();
+    assert_eq!(compiled.gaps.missing_textures, 0);
+    assert_eq!(
+        compiled.overlay.textures.len(),
+        super::super::MAX_OVERLAY_SHARDS
+    );
+    assert!(
+        compiled
+            .overlay
+            .visuals
+            .iter()
+            .all(|visual| visual.kind == VisualKind::Cube)
+    );
+    assert!(
+        compiled
+            .overlay
+            .textures
+            .iter()
+            .flat_map(|shard| &shard.mips)
+            .map(|mip| mip.rgba8.len())
+            .sum::<usize>()
+            <= 1_163_256
+    );
+    RuntimeAssets::diagnostic()
+        .with_block_overlay(1, &compiled.overlay)
+        .unwrap();
 }

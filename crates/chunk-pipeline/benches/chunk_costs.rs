@@ -72,7 +72,7 @@ fn terrain_assets() -> RuntimeAssets {
                 flags: 0,
                 ..Material::unvaried()
             }],
-            texture: Some(texture),
+            textures: vec![texture],
             ..Default::default()
         },
     )

@@ -2,6 +2,9 @@
 
 include!("flight_replay_tests.rs");
 
+#[path = "flight_boundary_tests.rs"]
+mod flight_boundary_tests;
+
 use std::time::Duration;
 
 use protocol::PlayerInputFlags;

@@ -30,7 +30,7 @@ fn view(files: &[(&str, &[u8])]) -> LayeredPackView {
     ))
 }
 
-/// Starts with enough occupied layers to reject a 2048px page while small images still fit.
+/// Occupies every shard so growing any one to 2048px exceeds the upload budget.
 fn builder<'a>(
     view: &'a LayeredPackView,
     keys: &assets::material_keys::MaterialKeys,
@@ -40,9 +40,14 @@ fn builder<'a>(
         catalog: TextureCatalog::new(view, Some(keys)),
         geometries: Default::default(),
         overlay: Default::default(),
-        sources: (0..3).map(|_| Source::Diagnostic).collect(),
+        sources: (0..super::super::MAX_OVERLAY_SHARDS)
+            .flat_map(|shard| (0..3).map(move |_| (Source::Diagnostic, shard)))
+            .collect(),
         source_bytes: 0,
-        tile_size: MIN_TILE,
+        tiles: vec![MIN_TILE; super::super::MAX_OVERLAY_SHARDS],
+        upload_bytes: assets::texture::policy::device_policy()
+            .terrain_bytes(MIN_TILE, 3 * super::super::MAX_OVERLAY_SHARDS)
+            .unwrap(),
         texture_policy: assets::texture::policy::device_policy(),
         max_layers: assets::MAX_TEXTURE_LAYERS,
         slots: Default::default(),
@@ -89,10 +94,13 @@ fn static_decode_and_budget_failures_are_shared_across_selectors_and_aliases() {
             assert!(builder.texture_slot_for("alias", (index, 0)).is_none());
         }
         assert_eq!(builder.catalog.decode_attempts.get(), 1);
-        assert_eq!(builder.sources.len(), 3);
+        assert_eq!(builder.sources.len(), 3 * super::super::MAX_OVERLAY_SHARDS);
         assert!(builder.texture_slot_for("small", (0, 0)).is_some());
         assert_eq!(builder.catalog.decode_attempts.get(), 2);
-        assert_eq!(builder.sources.len(), 4);
+        assert_eq!(
+            builder.sources.len(),
+            3 * super::super::MAX_OVERLAY_SHARDS + 1
+        );
     }
 }
 
@@ -175,7 +183,10 @@ fn animation_source_failures_decode_once_across_wildcard_variants() {
             assert_eq!(slot.animation, NO_ANIMATION);
         }
         assert_eq!(builder.catalog.decode_attempts.get(), 2);
-        assert_eq!(builder.sources.len(), 4);
+        assert_eq!(
+            builder.sources.len(),
+            3 * super::super::MAX_OVERLAY_SHARDS + 1
+        );
     }
 }
 
@@ -224,6 +235,8 @@ fn identical_pixels_at_distinct_source_frames_share_a_physical_layer() {
         .with_aliases([("tile", "textures/strip")]);
     let mut builder = builder(&view, &keys);
     builder.sources.truncate(1);
+    builder.tiles.clear();
+    builder.upload_bytes = builder.texture_policy.terrain_bytes(MIN_TILE, 1).unwrap();
     builder.max_layers = 2;
     let slot = builder.texture_slot_for("tile", (0, 0)).unwrap();
     assert_eq!(builder.sources.len(), 2);
@@ -253,6 +266,8 @@ fn resolved_animation_aliases_reuse_frames_at_capacity_with_independent_timing()
         .with_flipbook_destinations([("tile", [1, 1])]);
     let mut builder = builder(&view, &keys);
     builder.sources.truncate(1);
+    builder.tiles.clear();
+    builder.upload_bytes = builder.texture_policy.terrain_bytes(MIN_TILE, 1).unwrap();
     builder.max_layers = 2;
     let first = builder.texture_slot_for("tile", (0, 0)).unwrap();
     let second = builder.texture_slot_for("tile", (1, 0)).unwrap();
@@ -267,6 +282,59 @@ fn resolved_animation_aliases_reuse_frames_at_capacity_with_independent_timing()
         assert_eq!(animation.ticks_per_frame, ticks);
         assert_eq!(animation.frame_count, 2);
     }
+}
+
+#[test]
+fn rollback_restores_shard_cost_and_cached_animation_page_bindings() {
+    let small = png(16, 16);
+    let strip = png(32, 64);
+    let view = view(&[
+        ("textures/small.png", &small), ("textures/strip.png", &strip),
+        ("textures/flipbook_textures.json", br#"[
+            {"atlas_tile":"tile","flipbook_texture":"textures/strip","ticks_per_frame":3},
+            {"atlas_tile":"tile","atlas_tile_variant":1,"flipbook_texture":"textures/strip","ticks_per_frame":7}
+        ]"#),
+    ]);
+    let keys = assets::material_keys::MaterialKeys::from_entries([(1, "small"), (2, "tile")])
+        .with_aliases([("small", "textures/small"), ("tile", "textures/strip")])
+        .with_flipbook_destinations([("tile", [2])]);
+    let mut builder = builder(&view, &keys);
+    builder.sources.truncate(1);
+    builder.tiles.clear();
+    builder.upload_bytes = builder.texture_policy.terrain_bytes(MIN_TILE, 1).unwrap();
+    builder.max_layers = 2;
+    builder.texture_slot_for("small", (0, 0)).unwrap();
+    let checkpoint = builder.texture_checkpoint();
+    let bytes = builder.upload_bytes;
+    let first = builder.texture_slot_for("tile", (0, 0)).unwrap();
+    let second = builder.texture_slot_for("tile", (0, 1)).unwrap();
+    assert_eq!(first.page, 2);
+    assert_eq!((second.page, second.layer), (first.page, first.layer));
+    assert_ne!(first.animation, second.animation);
+    assert!(
+        builder
+            .overlay
+            .animation_frames
+            .iter()
+            .all(|frame| frame.page() == 2)
+    );
+    builder.rollback_textures(checkpoint);
+    assert_eq!(builder.upload_bytes, bytes);
+    assert_eq!(builder.tiles, [MIN_TILE]);
+    assert!(builder.overlay.animation_frames.is_empty());
+    assert_eq!(builder.texture_slot_for("tile", (0, 0)).unwrap().page, 2);
+    let admitted_bytes = builder.upload_bytes;
+    let compiled = builder.finish().unwrap();
+    assert_eq!(
+        admitted_bytes,
+        compiled
+            .overlay
+            .textures
+            .iter()
+            .flat_map(|page| &page.mips)
+            .map(|mip| mip.rgba8.len())
+            .sum::<usize>()
+    );
 }
 
 #[test]
@@ -294,11 +362,219 @@ fn custom_fallback_answers_decode_misses_but_keeps_admission_refusals() {
                 expected_page
             );
         }
-        assert_eq!(builder.sources.len(), 3);
+        assert_eq!(builder.sources.len(), 3 * super::super::MAX_OVERLAY_SHARDS);
         assert_eq!(
             builder.catalog.decode_attempts.get(),
             usize::from(max_layers > 3)
         );
         assert!(builder.texture_slot_for("tile", (0, 0)).is_none());
     }
+}
+
+/// Builds retained pages with matching tile, source, and upload accounting.
+fn occupied_builder<'a>(
+    view: &'a LayeredPackView,
+    layers: usize,
+    tiles: &[u32],
+    counts: &[usize],
+) -> Builder<'a> {
+    let keys = assets::material_keys::MaterialKeys::default();
+    let mut result = builder(view, &keys);
+    result.sources.clear();
+    result.source_bytes = 0;
+    result.tiles = tiles.to_vec();
+    result.upload_bytes = 0;
+    result.max_layers = layers;
+    result.overlay.max_page_layers = layers as u32;
+    for (shard, (&tile, &count)) in tiles.iter().zip(counts).enumerate() {
+        result.upload_bytes += result.texture_policy.terrain_bytes(tile, count).unwrap();
+        for layer in 0..count {
+            let source = if tile > MIN_TILE && layer == 0 {
+                let rgba8 = vec![255; (tile * tile * 4) as usize].into_boxed_slice();
+                result.source_bytes += rgba8.len();
+                Source::Image(DecodedTexture {
+                    width: tile,
+                    height: tile,
+                    rgba8,
+                })
+            } else {
+                Source::Diagnostic
+            };
+            result.sources.push((source, shard));
+        }
+    }
+    result
+}
+
+/// Creates distinct original square frames whose texels identify their timeline index.
+fn strip(frames: u32) -> DecodedTexture {
+    DecodedTexture {
+        width: MIN_TILE,
+        height: MIN_TILE * frames,
+        rgba8: (0..MIN_TILE * frames)
+            .flat_map(|y| {
+                let index = y / MIN_TILE;
+                [index as u8, (index >> 8) as u8, 77, 255].repeat(MIN_TILE as usize)
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+    }
+}
+
+/// Supplies an ordinary authored animation that plays every physical frame in order.
+fn animation_source() -> FlipbookSource {
+    serde_json::from_value(serde_json::json!({"flipbook_texture":"textures/strip", "atlas_tile":"tile", "ticks_per_frame":3})).unwrap()
+}
+
+/// Checks timeline texels, page bounds, and exact upload accounting after placement.
+fn assert_animation(builder: Builder<'_>, slot: TextureSlot, expected: usize) {
+    let upload_bytes = builder.upload_bytes;
+    let compiled = builder.finish().unwrap();
+    let animation = &compiled.overlay.animations[slot.animation as usize];
+    assert_eq!(animation.frame_count as usize, expected);
+    assert_eq!(animation.ticks_per_frame, 3);
+    let frames = &compiled.overlay.animation_frames[animation.frame_start as usize..][..expected];
+    for (index, reference) in frames.iter().enumerate() {
+        let page = &compiled.overlay.textures[reference.page() as usize - 1];
+        assert!(reference.layer() < page.layers);
+        assert!(page.layers <= compiled.overlay.max_page_layers);
+        let mip = &page.mips[0];
+        let offset = reference.layer() as usize * (mip.size * mip.size * 4) as usize;
+        assert_eq!(
+            &mip.rgba8[offset..offset + 4],
+            &[index as u8, (index >> 8) as u8, 77, 255]
+        );
+    }
+    assert_eq!(
+        upload_bytes,
+        compiled
+            .overlay
+            .textures
+            .iter()
+            .flat_map(|page| &page.mips)
+            .map(|mip| mip.rgba8.len())
+            .sum::<usize>()
+    );
+    assert!(upload_bytes <= MAX_SUBSCRIBER_BYTES);
+}
+
+#[test]
+fn complete_flipbooks_skip_a_nearly_full_shard() {
+    let view = view(&[]);
+    let mut builder = occupied_builder(&view, 2048, &[MIN_TILE], &[2047]);
+    let source = animation_source();
+    let storage = builder
+        .store_frames("tile", 0, strip(32), Some(&source))
+        .unwrap();
+    let slot = builder.bind_frames(storage, Some(&source), (0, 0)).unwrap();
+    assert_eq!(slot.page, 2);
+    assert_eq!(builder.shard_len(0), 2047);
+    assert_eq!(builder.shard_len(1), 32);
+    assert_animation(builder, slot, 32);
+}
+
+#[test]
+fn flipbooks_cross_shards_without_losing_or_reordering_frames() {
+    let view = view(&[]);
+    let mut builder = occupied_builder(&view, 4, &[MIN_TILE], &[3]);
+    let source = animation_source();
+    let storage = builder
+        .store_frames("tile", 0, strip(8), Some(&source))
+        .unwrap();
+    let slot = builder.bind_frames(storage, Some(&source), (0, 0)).unwrap();
+    assert!(
+        builder
+            .overlay
+            .animation_frames
+            .iter()
+            .any(|frame| frame.page() != slot.page)
+    );
+    assert_animation(builder, slot, 8);
+}
+
+#[test]
+fn flipbooks_truncate_only_after_all_shard_capacity_is_exhausted() {
+    let view = view(&[]);
+    let mut builder = occupied_builder(&view, 2, &[MIN_TILE; 4], &[1, 2, 2, 1]);
+    let source = animation_source();
+    let storage = builder
+        .store_frames("tile", 0, strip(5), Some(&source))
+        .unwrap();
+    let slot = builder.bind_frames(storage, Some(&source), (0, 0)).unwrap();
+    assert_eq!(builder.remaining_layers(), 0);
+    assert_animation(builder, slot, 2);
+}
+
+#[test]
+fn complete_flipbooks_retain_more_than_256_distinct_frames_when_they_fit() {
+    let view = view(&[]);
+    let mut builder = occupied_builder(&view, 2048, &[MIN_TILE], &[1]);
+    let source = animation_source();
+    let storage = builder
+        .store_frames("tile", 0, strip(300), Some(&source))
+        .unwrap();
+    let slot = builder.bind_frames(storage, Some(&source), (0, 0)).unwrap();
+    assert_animation(builder, slot, 300);
+}
+
+#[test]
+fn texture_growth_uses_the_cheapest_fitting_shard_instead_of_the_smallest_tile() {
+    let view = view(&[]);
+    let mut builder = occupied_builder(&view, 2048, &[16, 32, 64, 128], &[1001, 1, 1, 1]);
+    let texture = DecodedTexture {
+        width: 256,
+        height: 256,
+        rgba8: vec![255; 256 * 256 * 4].into(),
+    };
+    let storage = builder.store_frames("large", 0, texture, None).unwrap();
+    assert_eq!(storage.page, 4);
+    assert_eq!(builder.shard_len(0), 1001);
+    let upload_bytes = builder.upload_bytes;
+    let compiled = builder.finish().unwrap();
+    assert!(upload_bytes < 3 * 1024 * 1024);
+    assert_eq!(
+        upload_bytes,
+        compiled
+            .overlay
+            .textures
+            .iter()
+            .flat_map(|page| &page.mips)
+            .map(|mip| mip.rgba8.len())
+            .sum::<usize>()
+    );
+}
+
+#[test]
+fn finish_rejects_sources_that_exceed_per_shard_or_total_layer_capacity() {
+    let view = view(&[]);
+    assert!(
+        occupied_builder(&view, 2, &[MIN_TILE], &[3])
+            .finish()
+            .is_none()
+    );
+    let per_shard = super::super::MAX_OVERLAY_LAYERS / super::super::MAX_OVERLAY_SHARDS + 1;
+    assert!(
+        occupied_builder(
+            &view,
+            per_shard,
+            &[MIN_TILE; super::super::MAX_OVERLAY_SHARDS],
+            &[per_shard; super::super::MAX_OVERLAY_SHARDS]
+        )
+        .finish()
+        .is_none()
+    );
+}
+
+#[test]
+fn invalid_grid_shifts_reject_admission_without_changing_retained_pages() {
+    let view = view(&[]);
+    let mut builder = occupied_builder(&view, 2048, &[MIN_TILE], &[1]);
+    let upload_bytes = builder.upload_bytes;
+    assert!(
+        builder
+            .store_frames("invalid", u32::BITS as u8, strip(1), None)
+            .is_err()
+    );
+    assert_eq!(builder.upload_bytes, upload_bytes);
+    assert_eq!(builder.sources.len(), 1);
 }

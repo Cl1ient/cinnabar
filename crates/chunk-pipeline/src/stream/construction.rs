@@ -150,6 +150,7 @@ impl WorldStream {
                 ..Default::default()
             },
             chunk_radius: None,
+            requested_radius: None,
             last_retention_center: None,
             last_retention_radius: None,
             local_player_chunk: None,

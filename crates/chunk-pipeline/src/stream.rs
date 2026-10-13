@@ -392,6 +392,8 @@ pub struct WorldStream {
     mesh_changes: MeshChangeQueue,
     publisher: cohort::PublisherScope,
     chunk_radius: Option<i32>,
+    /// The view radius the player asked the server for; it sets the render distance.
+    requested_radius: Option<i32>,
     last_retention_center: Option<ChunkKey>,
     last_retention_radius: Option<i32>,
     local_player_chunk: Option<ChunkKey>,

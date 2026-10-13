@@ -25,6 +25,8 @@ public final class BootstrapActivity extends Activity {
 
     /** Numbers setup attempts across activity instances, so a cancellation names its own. */
     private static final AtomicLong ATTEMPTS = new AtomicLong();
+    /** One attempt at a time unpacks and prepares, across activity instances. */
+    private static final Object SETUP = new Object();
 
     /** Null when the game can start, empty when the user quit, otherwise the failure. */
     private native String prepare(String filesDir, String nativeLibraryDir, long attempt);
@@ -48,11 +50,18 @@ public final class BootstrapActivity extends Activity {
 
     private void setup(long current) {
         String result;
-        try {
-            unpackResources();
-            result = prepare(getFilesDir().getAbsolutePath(), getApplicationInfo().nativeLibraryDir, current);
-        } catch (Exception error) {
-            result = error.toString();
+        synchronized (SETUP) {
+            try {
+                if (isFinishing() || isDestroyed()) {
+                    result = "";
+                } else {
+                    unpackResources();
+                    result = prepare(getFilesDir().getAbsolutePath(),
+                            getApplicationInfo().nativeLibraryDir, current);
+                }
+            } catch (Exception error) {
+                result = error.toString();
+            }
         }
         String outcome = result;
         runOnUiThread(() -> finishSetup(outcome));

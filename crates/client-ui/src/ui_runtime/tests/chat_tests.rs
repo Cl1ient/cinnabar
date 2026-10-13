@@ -632,3 +632,73 @@ fn tab_cycles_whitespace_suggestions_as_complete_replacements() {
     assert!(runtime.handle_chat_ui_action(UiAction::TabNext));
     assert_eq!(runtime.chat_editor().as_str(), "/tell Alice Two");
 }
+
+#[test]
+fn mention_tab_cycles_quoted_roster_names_and_here_in_both_directions() {
+    let mut player_runtime = player_state::PlayerState::new(2);
+    let mut runtime = UiRuntime::new(2);
+    runtime.refresh_raw_text_identities(
+        |_| None,
+        vec![Arc::from("Alice Two"), Arc::from("Alice One")],
+    );
+    runtime.open_chat(&mut player_runtime);
+    runtime.insert_chat_text("hello @").unwrap();
+    assert!(runtime.service_pending_chat_autocomplete(&player_runtime));
+
+    assert!(runtime.handle_chat_ui_action(UiAction::TabNext));
+    assert_eq!(runtime.chat_editor().as_str(), "hello @\"Alice One\"");
+    assert!(runtime.handle_chat_ui_action(UiAction::TabNext));
+    assert_eq!(runtime.chat_editor().as_str(), "hello @\"Alice Two\"");
+    assert!(runtime.handle_chat_ui_action(UiAction::TabNext));
+    assert_eq!(runtime.chat_editor().as_str(), "hello @here");
+    assert!(runtime.handle_chat_ui_action(UiAction::TabNext));
+    assert_eq!(runtime.chat_editor().as_str(), "hello @\"Alice One\"");
+    assert!(runtime.handle_chat_ui_action(UiAction::TabPrevious));
+    assert_eq!(runtime.chat_editor().as_str(), "hello @here");
+    assert!(runtime.handle_chat_ui_action(UiAction::TabPrevious));
+    assert_eq!(runtime.chat_editor().as_str(), "hello @\"Alice Two\"");
+}
+
+#[test]
+fn mention_acceptance_preserves_the_prefix_tail_and_outbound_text() {
+    let mut player_runtime = player_state::PlayerState::new(2);
+    let mut runtime = UiRuntime::new(2);
+    runtime.set_chat_identity(Arc::from("Reader"), Arc::from(""));
+    runtime.refresh_raw_text_identities(|_| None, vec![Arc::from("Alice One")]);
+    runtime.open_chat(&mut player_runtime);
+    runtime.insert_chat_text("hello @Alice O!").unwrap();
+    runtime.move_chat_cursor_left();
+    assert!(runtime.service_pending_chat_autocomplete(&player_runtime));
+    assert!(runtime.handle_chat_ui_action(UiAction::Accept));
+    assert_eq!(runtime.chat_editor().as_str(), "hello @\"Alice One\"!");
+    assert_eq!(
+        runtime.chat_editor().cursor_byte(),
+        "hello @\"Alice One\"".len()
+    );
+
+    let request = runtime.queue_chat_send(0).unwrap();
+    assert_eq!(request.message.as_ref(), "hello @\"Alice One\"!");
+    let (_, packet) = runtime.next_chat_packet().unwrap().unwrap();
+    assert_eq!(
+        packet,
+        chat_text_packet("Reader", "", &request.message).unwrap()
+    );
+}
+
+#[test]
+fn command_target_completion_replaces_an_unfinished_quoted_name() {
+    let mut player_runtime = player_state::PlayerState::new(2);
+    let mut runtime = UiRuntime::new(2);
+    runtime.refresh_raw_text_identities(|_| None, vec![Arc::from("Alice One")]);
+    runtime.open_chat(&mut player_runtime);
+    runtime
+        .apply(
+            &mut player_runtime,
+            envelope(2, 1, UiEvent::AvailableCommands(warp_tree())),
+        )
+        .unwrap();
+    runtime.insert_chat_text("/warp fast \"Alice O").unwrap();
+    assert!(runtime.service_pending_chat_autocomplete(&player_runtime));
+    assert!(runtime.handle_chat_ui_action(UiAction::Accept));
+    assert_eq!(runtime.chat_editor().as_str(), "/warp fast \"Alice One\"");
+}

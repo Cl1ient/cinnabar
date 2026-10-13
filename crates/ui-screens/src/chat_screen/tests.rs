@@ -65,3 +65,29 @@ fn pending_target_survives_frame_replacement_and_cancel_blocks_background_scroll
     chat.request_link(99);
     assert!(!chat.link_confirmation_open());
 }
+
+#[test]
+fn mention_rows_show_the_name_and_highlight_the_typed_match() {
+    assert_eq!(
+        suggestion_row_text("hello @Al", "@\"Alice One\"", &|_| None),
+        "§7\"§fAl§7ice One\"§r"
+    );
+    assert_eq!(suggestion_row_text("@", "@Alex", &|_| None), "§7Alex§r");
+}
+
+#[test]
+fn here_and_selector_rows_use_their_translated_descriptions() {
+    let translate = |key: &str| match key {
+        "chat.mentions.autocomplete.allPlayers" => Some(Arc::from("All players")),
+        "commands.autocomplete.n" => Some(Arc::from("Nearest entity")),
+        _ => None,
+    };
+    assert_eq!(
+        suggestion_row_text("@h", "@here", &translate),
+        "§7§f@h§7ere§7 - §fAll players§r"
+    );
+    assert_eq!(
+        suggestion_row_text("/give @", "@n", &translate),
+        "§7§f@§7n§7 - §fNearest entity§r"
+    );
+}

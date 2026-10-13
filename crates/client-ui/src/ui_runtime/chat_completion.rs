@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use protocol::CompletionContext;
+use protocol::{ChatAutocompleteCatalog, CompletionContext};
 use ui::{
     ChatAutocompleteAction, ChatAutocompleteApply, ChatAutocompleteDelta, ChatAutocompleteRequest,
     ChatAutocompleteResponse, MAX_CHAT_INPUT_BYTES, PointerPhase, UiAction,
@@ -135,12 +135,10 @@ impl UiRuntime {
             return start;
         }
         let head = &self.chat_editor.as_str()[..self.chat_editor.cursor_byte()];
-        head.rfind(char::is_whitespace).map_or(0, |at| {
-            at + head[at..].chars().next().map_or(1, char::len_utf8)
-        })
+        ChatAutocompleteCatalog::replacement_start(head)
     }
 
-    /// Replaces the whitespace-delimited token ending at the cursor.
+    /// Replaces the active mention or quoted command token ending at the cursor.
     fn replace_chat_token(&mut self, value: &str) {
         let text = self.chat_editor.as_str();
         let cursor = self.chat_editor.cursor_byte();

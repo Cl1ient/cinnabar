@@ -450,3 +450,59 @@ fn barrel_equipment_prefers_matching_authored_carried_faces() {
         assert_eq!(sheets.models.len(), if matches { 11 } else { 12 });
     }
 }
+
+#[test]
+fn weighted_replacement_updates_held_pixels_and_keeps_the_variation_range() {
+    let (mut compiled, records) = crate::viewmodel::cube::tests::barrels();
+    let visual = records
+        .iter()
+        .find(|record| record.name.as_ref() == "minecraft:barrel")
+        .unwrap()
+        .sequential_id as usize;
+    let representative = compiled.materials[compiled.visuals[visual].faces[0] as usize];
+    let mut materials = compiled.materials.into_vec();
+    let selector = materials.len() as u32;
+    materials.push(Material {
+        variation_start: selector + 1,
+        variation_count: 2,
+        ..representative
+    });
+    materials.extend([0.25_f32, 0.75_f32].map(|weight| Material {
+        variation_weight: weight.to_bits(),
+        ..representative
+    }));
+    compiled.materials = materials.into();
+    let world = RuntimeAssets::decode(&assets::encode_blob(&compiled).unwrap()).unwrap();
+    let original = compose_sheet(&world, &[selector; 6]).unwrap();
+    let replacement = BlockOverlay {
+        texture: overlay(BlockFlags::CUBE_GEOMETRY, 0, 16).texture,
+        material_overrides: (selector..selector + 3)
+            .map(|material| assets::MaterialOverride {
+                material,
+                texture: TextureRef::new(1, 1).unwrap(),
+                animation: NO_ANIMATION,
+            })
+            .collect(),
+        ..BlockOverlay::default()
+    };
+    let session = world
+        .with_block_overlay(world.visual_count() as u32, &replacement)
+        .unwrap();
+    let held = compose_sheet(&session, &[selector; 6]).unwrap();
+    assert!(
+        held.rgba8
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| *pixel == [40, 80, 120, 128])
+    );
+    assert_ne!(held.rgba8, original.rgba8);
+    let group = session.material(selector);
+    assert_eq!(group.variation_start, selector + 1);
+    assert_eq!(group.variation_count, 2);
+    for (leaf, weight) in [0.25_f32, 0.75_f32].into_iter().enumerate() {
+        let material = session.material(selector + 1 + leaf as u32);
+        assert_eq!(material.texture, group.texture);
+        assert_eq!(material.variation_weight, weight.to_bits());
+    }
+}

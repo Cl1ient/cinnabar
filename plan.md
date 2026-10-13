@@ -4296,6 +4296,10 @@ Scope: block registry + block-state → model/texture mapping (generated export 
     changing the v3 runtime schema. Commits `143c68d` and `e6e49e1` cover 83
     animations, 1,209 physical frames, 1,323 timeline references, and 1,901
     deduplicated layers on one 2,048-layer page.
+    Active pack overlays retain base flipbook source descriptions and material
+    destinations in the world sidecar, including frame order, timing, blending,
+    and replication. Raster-only replacement and removal have synthetic regression
+    coverage; rendered acceptance remains incomplete.
   - [x] Export and strictly decode `BREG1003` typed model/contributor/selectors,
     face coverage, collision seeds, and per-state provenance at `e58d083`.
     PMMP/Dragonfly/Prismarine form a full 16,913-state/1,356-name bijection;
@@ -6425,8 +6429,17 @@ The crosswalk is now `crates/assets/data/legacy-icon-routes-26.30.tsv`: every
 legacy icon assignment the 26.30 client makes during item initialization, plus
 potion icons by aux. Still open: cooked foods and
 other 1.10 JSON items (icon from resource-pack data), spawn eggs (per-entity
-map), bow/crossbow draw frames, animated compass/clock frames, trimmed armor and
-broken elytra overrides, and native icon acceptance.
+map), bow/crossbow draw frames, trimmed armor and broken elytra overrides, and
+native icon acceptance.
+Compasses and clocks animate: the icon carrier bakes every frame of the native
+`compass_atlas`, `recovery_compass_atlas` and `watch_atlas` strips, and the local player's needles follow
+the native sprite calculators once per tick (compass toward the world spawn,
+clock by the celestial angle, both spinning outside the Overworld, with the
+native 0.1 pull and 0.8 damping). Inventory, held and dropped dials share the
+local player's frame, where the native client reads each holder. Recovery
+compasses aim at the player's last death (actor data 127 to 129, kept across
+dimension changes) in its own dimension and spin elsewhere. Lodestone compasses
+and item-frame headings remain open.
 Block items (provisional, incomplete): an item the retail client gives a legacy
 icon, or one placing a differently named block, keeps its sprite over its block
 route. Flat-shape blocks (cross plants, torches, rails, panes, ladders, lanterns,

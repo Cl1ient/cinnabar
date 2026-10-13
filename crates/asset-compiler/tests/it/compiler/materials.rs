@@ -417,10 +417,20 @@ fn compiler_deduplicates_pixels_without_conflating_uv_flags() {
     );
     assert_eq!(
         compiled.materials.len(),
-        4,
-        "diagnostic + three descriptors"
+        5,
+        "diagnostic + four material destinations and flag combinations"
     );
-    assert_eq!(compiled.visuals[0].faces, compiled.visuals[1].faces);
+    for face in BlockFace::ALL {
+        assert_ne!(
+            compiled.visuals[0].faces[face as usize], compiled.visuals[1].faces[face as usize],
+            "distinct terrain keys retain separate material destinations"
+        );
+        assert_eq!(
+            material_for_face(&compiled, 0, face).texture,
+            material_for_face(&compiled, 1, face).texture,
+            "identical pixels share texture storage"
+        );
+    }
 
     let red_plain = material_for_face(&compiled, 0, BlockFace::Up);
     let red_rotated = material_for_face(&compiled, 2, BlockFace::North);

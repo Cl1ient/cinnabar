@@ -24,6 +24,11 @@ impl MeshStorage {
         }
     }
 
+    /// Whether this mesh could fit if all other admitted geometry were removed.
+    pub(super) fn fits_empty(&self, vertices: usize) -> bool {
+        vertices <= self.max_vertices
+    }
+
     /// Appends an entire mesh if it fits, leaving storage unchanged on rejection.
     pub(super) fn append(&mut self, mesh: Vec<ItemMeshVertex>) -> bool {
         if mesh.len() > self.max_vertices.saturating_sub(self.vertices.len()) {

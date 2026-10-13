@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::AssetError;
 
+pub mod flipbook;
 mod legacy_terrain;
 pub mod policy;
 pub use legacy_terrain::{

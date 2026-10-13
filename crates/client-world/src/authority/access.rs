@@ -33,6 +33,10 @@ impl WorldAuthority {
     pub const fn current_dimension(&self) -> i32 {
         self.current_dimension
     }
+    /// Reads the level's default spawn, which compasses point at.
+    pub const fn world_spawn(&self) -> [i32; 3] {
+        self.world_spawn
+    }
     /// Reads the committed form dimension epoch.
     pub const fn form_dimension_epoch(&self) -> u64 {
         self.form_dimension_epoch

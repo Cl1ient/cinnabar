@@ -11,7 +11,7 @@ use crate::{
     model::model_quad_flags_are_valid,
 };
 
-/// Repoints a base material at an overlay texture, keeping its flags (tint, alpha).
+/// Repoints a base material at an overlay texture, keeping its flags and variation range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MaterialOverride {
     /// Index into the base carrier's material table; never the diagnostic material.
@@ -182,8 +182,6 @@ impl RuntimeAssets {
             }
             materials[replacement.material as usize] = Material {
                 texture: page_ref(replacement.texture)?,
-                variation_start: 0,
-                variation_count: 0,
                 animation: optional(
                     replacement.animation,
                     overlay.animations.len(),
@@ -546,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn replacing_a_selector_uses_the_server_texture_without_changing_leaf_weights() {
+    fn weighted_replacement_updates_inventory_pixels_and_keeps_the_variation_range() {
         let mut base = RuntimeAssets::diagnostic();
         base.materials = vec![
             Material::unvaried(),
@@ -561,6 +559,12 @@ mod tests {
             },
         ]
         .into();
+        let (original, _, _) = crate::gui_item::material_tile(base.materials(), 1, |page| {
+            base.texture_pages()
+                .get(page as usize)
+                .map(|page| &page.texture)
+        })
+        .unwrap();
         let mut overlay = cube_overlay(page(16));
         overlay.material_overrides = vec![MaterialOverride {
             material: 1,
@@ -568,9 +572,27 @@ mod tests {
             animation: NO_ANIMATION,
         }];
         let session = base.with_block_overlay(1, &overlay).unwrap();
-        assert_eq!(session.materials[1].variation_count, 0);
+        assert_eq!(session.materials[1].variation_start, 2);
+        assert_eq!(session.materials[1].variation_count, 1);
         assert_eq!(session.materials[1].texture.page(), 1);
         assert_eq!(session.materials[2].variation_weight, 1.0_f32.to_bits());
+        let (replacement, side, _) =
+            crate::gui_item::material_tile(session.materials(), 1, |page| {
+                session
+                    .texture_pages()
+                    .get(page as usize)
+                    .map(|page| &page.texture)
+            })
+            .unwrap();
+        assert_eq!(side, 16);
+        assert!(
+            replacement
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| *pixel == [255; 4])
+        );
+        assert_ne!(replacement, original);
     }
 
     // A 32px page is accepted; malformed mips or dangling ids are refused whole.

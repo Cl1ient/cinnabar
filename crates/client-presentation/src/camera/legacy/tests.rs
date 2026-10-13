@@ -13,6 +13,8 @@ use crate::presentation::combat::tests::{event, player_stream};
 use bevy::prelude::*;
 use protocol::ActorStatusKind;
 
+const WALK_BLOCKS_PER_TICK: f32 = 0.2;
+
 #[derive(Resource)]
 struct TestWorld(chunk_pipeline::WorldStream);
 #[derive(Resource)]
@@ -142,16 +144,22 @@ fn camera_app() -> App {
     app
 }
 
-/// Adds one completed physics tick, with collision-resolved motion.
+/// Adds resolved motion and keeps the completed feet position aligned with its network position.
 fn tick(app: &mut App, index: u64) {
     let mut physics = app.world_mut().resource_mut::<TestPhysics>();
+    let position = [index as f32 * WALK_BLOCKS_PER_TICK, 64.0, 0.0];
     physics.state.tick = index;
+    physics.state.position = sim::Vec3::new(
+        f64::from(position[0]),
+        f64::from(position[1] - protocol::PLAYER_NETWORK_OFFSET),
+        f64::from(position[2]),
+    );
     physics.state.on_ground = true;
     physics.ticks.push(CameraMovementTick {
         tick: index,
-        position: [index as f32 * 0.2, 64.0, 0.0],
-        movement: [0.2, 0.0, 0.0],
-        velocity: [0.2, -0.0784, 0.0],
+        position,
+        movement: [WALK_BLOCKS_PER_TICK, 0.0, 0.0],
+        velocity: [WALK_BLOCKS_PER_TICK, -0.0784, 0.0],
         on_ground: true,
         riding: false,
         walks: true,
@@ -377,10 +385,21 @@ fn reanchored_bob_does_not_rewind_when_the_actor_fraction_wraps() {
         .reanchor_camera();
     app.world_mut().resource_mut::<TestPhysics>().alpha = 0.0;
     app.world_mut().run_system_cached(sample).unwrap();
+    assert_eq!(
+        app.world().resource::<LegacyCameraMotion>().state.endpoints,
+        render_model::legacy_combat::LegacyCameraEndpoints::default()
+    );
     tick(&mut app, 4);
     app.world_mut().run_system_cached(sample).unwrap();
     app.world_mut().resource_mut::<TestPhysics>().alpha = 0.75;
     let endpoints = app.world().resource::<LegacyCameraMotion>().state.endpoints;
+    let rules = render_api::BEDROCK_112;
+    assert_eq!(
+        endpoints.walked,
+        [0.0, rules.walk_gain * WALK_BLOCKS_PER_TICK]
+    );
+    assert_eq!(endpoints.bob, [0.0, rules.bob_follow * rules.bob_cap]);
+    assert_eq!(endpoints.fall_degrees, [0.0; 2]);
     let expected = endpoints.bob_matrix(0.75);
     assert_ne!(expected, Mat4::IDENTITY);
     assert!(!expected.abs_diff_eq(endpoints.bob_matrix(0.0), 1e-5));

@@ -6,7 +6,7 @@ use assets::MaterialKeys;
 use resource_pack::LayeredPackView;
 use serde_json::Value;
 
-use super::{MAX_CATALOG_ENTRIES, parse_pack_json};
+use pack_runtime::pack_textures::{MAX_CATALOG_ENTRIES, parse_pack_json};
 
 pub(super) fn catalog_tints(
     view: &LayeredPackView,

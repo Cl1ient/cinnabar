@@ -430,7 +430,8 @@ fn material_keys_carry_every_vanilla_terrain_alias() {
     );
     write(
         directory.path().join("textures/flipbook_textures.json"),
-        "[]",
+        r#"[{"flipbook_texture":"textures/blocks/animated", "atlas_tile":"stone",
+            "frames":[1,0], "ticks_per_frame":7, "replicate":2, "blend_frames":false}]"#,
     );
     let (_, keys) = super::compile_pack_inner(
         directory.path(),
@@ -447,4 +448,23 @@ fn material_keys_carry_every_vanilla_terrain_alias() {
             ("variants", "textures/blocks/first")
         ]
     );
+    let source = &keys.flipbooks()[0];
+    assert_eq!(
+        keys.flipbook_destinations()
+            .map(|(key, counts)| (key, counts.to_vec()))
+            .collect::<Vec<_>>(),
+        [("stone", vec![1]), ("variants", vec![1, 1])]
+    );
+    assert_eq!(source.texture_path.as_ref(), "textures/blocks/animated");
+    assert_eq!(source.frames.as_ref(), [1, 0]);
+    assert_eq!(
+        (
+            source.ticks_per_frame,
+            source.replicate,
+            source.blend_frames
+        ),
+        (7, 2, false)
+    );
+    let round_trip = assets::MaterialKeys::from_json(&keys.to_json(1), 1).unwrap();
+    assert_eq!(round_trip.flipbooks(), keys.flipbooks());
 }

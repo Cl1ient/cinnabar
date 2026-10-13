@@ -72,7 +72,7 @@ pub(super) fn prepare_particles(
                 view,
                 path,
                 assets::texture::policy::device_policy(),
-                false,
+                true,
             )
         },
     );
@@ -149,7 +149,13 @@ fn prepare_textures(
         if !attempted.insert(path.to_owned()) {
             continue;
         }
-        if let Some(texture) = decode(path) {
+        if let Some(mut texture) = decode(path) {
+            // Keep authored atlas rectangles; oversized strips upload as their first frame.
+            if texture.width.max(texture.height)
+                > assets::texture::policy::device_policy().max_side()
+            {
+                texture.retain_first_strip_frame();
+            }
             let next_bytes = texture_bytes
                 - textures.get(path).map_or(0, |texture| texture.rgba8.len())
                 + texture.rgba8.len();
@@ -182,6 +188,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn oversized_particle_strips_keep_the_first_square_on_both_axes() {
+        let effect = br#"{"particle_effect":{"description":{"identifier":"test:strip","basic_render_parameters":{"texture":"textures/particle/strip"}}}}"#;
+        for (width, height) in [(8192, 64), (64, 8192)] {
+            let image = image::RgbaImage::from_fn(width, height, |x, y| {
+                image::Rgba([x as u8, y as u8, 7, 255])
+            });
+            let mut png = std::io::Cursor::new(Vec::new());
+            image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+            let view = super::super::tests::view(&[
+                ("particles/strip.json", effect),
+                ("textures/particle/strip.png", png.get_ref()),
+            ]);
+            let system = prepare_particles(&view, None);
+            let atlas = system.atlas();
+            let placement = atlas.placement("textures/particle/strip").unwrap();
+            assert_eq!([placement.width, placement.height], [64; 2]);
+            for y in 0..64 {
+                for x in 0..64 {
+                    let offset =
+                        (((placement.y + y) * atlas.side() + placement.x + x) * 4) as usize;
+                    assert_eq!(
+                        &atlas.pixels()[offset..offset + 4],
+                        &[x as u8, y as u8, 7, 255]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn hd_particle_override_retains_pixels_and_bad_override_keeps_the_base() {
         let path = "textures/particle/particles";
         let bytes: Arc<[u8]> = Arc::from(br#"{"particle_effect":{"description":{"identifier":"test:particle","basic_render_parameters":{"texture":"textures/particle/particles"}}}}"#.as_slice());
@@ -202,9 +238,13 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        for (width, height, admitted) in
-            [(2048, 2048, true), (2048, 4096, false), (1024, 4096, false)]
-        {
+        for (width, height, admitted) in [
+            (2048, 2048, true),
+            (128, 64, true),
+            (64, 128, true),
+            (2048, 4096, false),
+            (1024, 4096, false),
+        ] {
             let image = image::RgbaImage::from_pixel(width, height, image::Rgba([91, 73, 57, 255]));
             let mut png = std::io::Cursor::new(Vec::new());
             image.write_to(&mut png, image::ImageFormat::Png).unwrap();

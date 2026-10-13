@@ -51,6 +51,8 @@ fn compiler<'a>(
         workspace: layout.prepare_workspace(),
         log,
         cancel,
+        #[cfg(unix)]
+        own_group: !launcher_host::lifecycle::update::launched_by_updater(),
     })
 }
 

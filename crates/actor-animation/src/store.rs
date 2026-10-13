@@ -1,5 +1,6 @@
 //! The per-session rig store actor authority drives through spawns, ticks and frames.
 use super::*;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 
 #[derive(Debug)]
 pub struct ActorAnimationStore {
@@ -14,7 +15,8 @@ pub struct ActorAnimationStore {
     pub(super) mount_equipment: HashMap<u64, assets::entity::mount::MountEquipment>,
     /// First actor the world budget skipped last tick, where the next tick starts.
     pub(super) first_starved: Option<ActorLifetimeId>,
-    pub(super) local_motion_authority: Option<(u64, (u64, u64))>,
+    pub(super) local_motion_authority:
+        Option<(u64, (SessionGeneration, PositionAuthorityGeneration))>,
     pub(super) completed_tick: u64,
     pub(super) next_reset_generation: u64,
     pub(super) next_rest_reset_generation: u64,
@@ -185,8 +187,9 @@ impl ActorAnimationStore {
         }
     }
 
-    /// Restarts the arm swing whose progress feeds `variable.attack_time`.
-    pub fn start_swing(&mut self, runtime_id: u64, ticks: i32) {
+    /// Restarts the Bedrock swing behind `variable.attack_time` and the Java swing, each
+    /// unless still in the first half of its own current length.
+    pub fn start_swing(&mut self, runtime_id: u64, bedrock_ticks: i32, java_ticks: i32) {
         let Some(lifetime) = self.runtime_to_lifetime.get(&runtime_id) else {
             return;
         };
@@ -194,8 +197,8 @@ impl ActorAnimationStore {
             state.local_swing = None;
             state.java.motion.local_swing_alpha = None;
             state.motion.set_local_swing(None);
-            state.motion.start_swing(ticks);
-            state.java.start_swing(ticks);
+            state.motion.start_swing(bedrock_ticks);
+            state.java.start_swing(java_ticks);
         }
     }
 
@@ -321,6 +324,7 @@ impl ActorAnimationStore {
             return None;
         }
         Some(ActorRigSnapshot {
+            placement_frame: state.placement_frame,
             actor,
             rig: state.rig,
             previous: &state.previous,
@@ -373,6 +377,7 @@ impl ActorAnimationStore {
                 },
                 &state.variables,
                 state.completed_tick.saturating_sub(state.lifetime_epoch),
+                state.completed_tick.saturating_sub(state.animation_epoch),
             )
             .with_input(state.history.back().copied())
             .with_item_context(Some(&state.query_context), state.complete_spear_variables),

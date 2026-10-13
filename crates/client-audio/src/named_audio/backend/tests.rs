@@ -114,3 +114,48 @@ fn actual_mixer_repeated_retirement_reuses_capacity_without_old_control_cancelli
         previous = Some(control);
     }
 }
+
+#[test]
+fn an_output_opens_on_its_own_thread_and_drops_there_once_released() {
+    struct Stream(std::thread::ThreadId, Arc<AtomicBool>);
+    impl Drop for Stream {
+        fn drop(&mut self) {
+            assert_eq!(std::thread::current().id(), self.0, "stream left its owner");
+            self.1.store(true, Ordering::SeqCst);
+        }
+    }
+    let (go, wait) = std::sync::mpsc::channel::<()>();
+    let dropped = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&dropped);
+    let (opening, owner) = open_on_owner_thread(move || {
+        wait.recv().unwrap();
+        let owner = std::thread::current().id();
+        Some((Stream(owner, flag), owner))
+    })
+    .unwrap();
+    // The caller returned while the open is still blocked.
+    assert!(matches!(
+        opening.try_recv(),
+        Err(std::sync::mpsc::TryRecvError::Empty)
+    ));
+    go.send(()).unwrap();
+    let (opener, release) = opening.recv().unwrap().unwrap();
+    assert_ne!(opener, std::thread::current().id());
+    assert!(!dropped.load(Ordering::SeqCst));
+    drop(release);
+    owner.join().unwrap();
+    assert!(dropped.load(Ordering::SeqCst));
+}
+
+#[test]
+fn a_failed_background_open_leaves_the_device_disabled() {
+    let (opening, owner) =
+        open_on_owner_thread(|| None::<((), (OutputStreamHandle, u32))>).unwrap();
+    let mut device = AudioDevice {
+        opening: Some(opening),
+        ..AudioDevice::disabled()
+    };
+    assert!(!device.available());
+    assert_eq!(device.sample_rate(), MIXER_RATE);
+    owner.join().unwrap();
+}

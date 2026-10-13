@@ -6,6 +6,9 @@ pub(super) struct Policy {
     pub(super) module_root_max: usize,
     pub(super) powershell_max: usize,
     pub(super) test_max: usize,
+    /// Ownership table that must describe every crate registered by this policy.
+    #[serde(default)]
+    pub(super) workspace_document: Option<String>,
     #[serde(default)]
     pub(super) vendored: Vec<VendoredRule>,
     #[serde(default)]
@@ -59,6 +62,9 @@ pub(super) struct LineBaseline {
 pub(super) struct VendoredRule {
     pub(super) path: String,
     pub(super) ownership_record: String,
+    /// The only crate that may depend on packages in this tree, by any dependency kind.
+    #[serde(default)]
+    pub(super) owner: Option<String>,
 }
 
 /// Original art exempt from `forbidden_artifacts`; its record must name the path.

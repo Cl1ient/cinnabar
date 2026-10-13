@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bevy::prelude::{Local, Message, MessageReader, Res, ResMut, Time};
+use bevy::prelude::{Local, Message, MessageReader, MessageWriter, Res, ResMut, Time};
 use client_world::ActorStatusNotice;
 use protocol::{ActorKind, ActorStatusKind};
 use sim::PaletteWorld;
@@ -21,54 +21,15 @@ const HEAD_HEIGHT_FRACTION: f32 = 0.9;
 const HIT_INTERVAL: f32 = 0.2;
 /// Seconds between eating/drinking sounds while an item is in use; needs native measurement.
 const CONSUME_INTERVAL: f32 = 0.25;
-const SECONDS_PER_TICK: f32 = world::TICK_DURATION.as_secs_f32();
+const SECONDS_PER_TICK: f32 = simulation_clock::TICK_DURATION.as_secs_f32();
 
-const DRINKS: [&str; 3] = [
-    "minecraft:potion",
-    "minecraft:milk_bucket",
-    "minecraft:ominous_bottle",
-];
-const FOODS: &[&str] = &[
-    "minecraft:apple",
-    "minecraft:golden_apple",
-    "minecraft:enchanted_golden_apple",
-    "minecraft:baked_potato",
-    "minecraft:potato",
-    "minecraft:poisonous_potato",
-    "minecraft:carrot",
-    "minecraft:golden_carrot",
-    "minecraft:beetroot",
-    "minecraft:beetroot_soup",
-    "minecraft:bread",
-    "minecraft:cookie",
-    "minecraft:melon_slice",
-    "minecraft:pumpkin_pie",
-    "minecraft:mushroom_stew",
-    "minecraft:rabbit_stew",
-    "minecraft:suspicious_stew",
-    "minecraft:beef",
-    "minecraft:cooked_beef",
-    "minecraft:porkchop",
-    "minecraft:cooked_porkchop",
-    "minecraft:chicken",
-    "minecraft:cooked_chicken",
-    "minecraft:mutton",
-    "minecraft:cooked_mutton",
-    "minecraft:rabbit",
-    "minecraft:cooked_rabbit",
-    "minecraft:cod",
-    "minecraft:cooked_cod",
-    "minecraft:salmon",
-    "minecraft:cooked_salmon",
-    "minecraft:tropical_fish",
-    "minecraft:pufferfish",
-    "minecraft:rotten_flesh",
-    "minecraft:spider_eye",
-    "minecraft:dried_kelp",
-    "minecraft:sweet_berries",
-    "minecraft:glow_berries",
-    "minecraft:chorus_fruit",
-];
+/// One bite of the local player's food, in step with its eating sound; particles scatter the
+/// item's crumbs from it.
+#[derive(Debug, Clone, PartialEq, Eq, Message)]
+pub struct LocalEatingCue {
+    pub identifier: Arc<str>,
+    pub metadata: u32,
+}
 
 /// A local block interaction the audio runtime should voice before the server confirms it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Message)]
@@ -95,17 +56,24 @@ fn center(cell: [i32; 3]) -> [f32; 3] {
     cell.map(|axis| axis as f32 + 0.5)
 }
 
-/// The player sound event voiced while `identifier` is being consumed.
-pub fn is_consumable(identifier: &str) -> Option<&'static str> {
-    if identifier == "minecraft:honey_bottle" {
-        Some("drink.honey")
-    } else if DRINKS.contains(&identifier) {
-        Some("drink")
-    } else if FOODS.contains(&identifier) {
-        Some("eat")
-    } else {
-        None
+/// Selects the sound event from the same admitted consumption fact as first-person animation.
+pub fn consume_event(consumption: assets::item_use::ItemConsumption) -> Option<&'static str> {
+    match consumption {
+        assets::item_use::ItemConsumption::Eat => Some("eat"),
+        assets::item_use::ItemConsumption::Drink => Some("drink"),
+        assets::item_use::ItemConsumption::Honey => Some("drink.honey"),
+        assets::item_use::ItemConsumption::Unresolved | assets::item_use::ItemConsumption::None => {
+            None
+        }
     }
+}
+
+/// Whether the admitted use scatters food crumbs through local eating cues.
+pub fn predicts_bites(consumption: assets::item_use::ItemConsumption) -> bool {
+    matches!(
+        actor_animation::consumables::consume_animation(consumption),
+        Some(actor_animation::consumables::ConsumeAnimation::Eat)
+    )
 }
 
 /// Voices local block placement, mining hits and the predicted break of the mined block.
@@ -211,6 +179,22 @@ enum ConsumeCue {
 }
 
 impl ConsumeAudio {
+    /// Emits crumbs only for an admitted food use with an eating step in this frame.
+    fn eating_cue(
+        &self,
+        consumption: assets::item_use::ItemConsumption,
+        metadata: u32,
+        cues: &[ConsumeCue],
+    ) -> Option<LocalEatingCue> {
+        if !predicts_bites(consumption) || !cues.contains(&ConsumeCue::Step("eat")) {
+            return None;
+        }
+        Some(LocalEatingCue {
+            identifier: Arc::clone(self.item.as_ref()?),
+            metadata,
+        })
+    }
+
     /// Advances by `dt` while `item` (identifier, sound event) is in admitted use, completing
     /// every `duration` seconds of continuous use.
     fn advance(
@@ -250,7 +234,9 @@ impl ConsumeAudio {
 }
 
 /// Voices eating and drinking while the server admits the held consumable in use, finishing
-/// food with a burp once its pack use duration elapses.
+/// food with a burp once its pack use duration elapses; each bite of food is also an
+/// `eating` cue.
+#[allow(clippy::too_many_arguments)]
 pub fn drive_consume_audio(
     player_runtime: &player_state::PlayerState,
     time: Res<Time>,
@@ -259,27 +245,42 @@ pub fn drive_consume_audio(
     eye: bevy::prelude::Vec3,
     mut engine: ResMut<AudioEngine>,
     mut state: Local<ConsumeAudio>,
+    mut eating: MessageWriter<LocalEatingCue>,
 ) {
     let stream = world.stream.as_ref();
     let using = stream
         .and_then(|stream| stream.authority().actor(stream.local_player_runtime_id()))
         .is_some_and(|actor| actor.is_using_item());
-    let item = stream.zip(ui).filter(|_| using).and_then(|(stream, _)| {
-        let identifier = stream
-            .authority()
-            .canonical_item_stack(player_runtime.selected_stack()?)?
-            .identifier?;
-        let event = is_consumable(&identifier)?;
-        Some((identifier, event))
+    let admitted = stream.zip(ui).filter(|_| using).and_then(|(stream, _)| {
+        let stack = player_runtime.selected_stack()?;
+        let profile = stream.authority().item_use_profile(stack.network_id);
+        let identifier = stream.authority().canonical_item_stack(stack)?.identifier?;
+        Some((
+            identifier,
+            consume_event(profile.consumption)?,
+            profile.ticks?,
+            profile.consumption,
+        ))
     });
-    let duration = stream
-        .zip(item.as_ref())
-        .and_then(|(stream, (identifier, _))| {
-            Some(stream.authority().item_max_use_ticks(identifier)? as f32 * SECONDS_PER_TICK)
-        });
+    let duration = admitted
+        .as_ref()
+        .map(|(_, _, ticks, _)| *ticks as f32 * SECONDS_PER_TICK);
+    let consumption = admitted
+        .as_ref()
+        .map_or_else(Default::default, |(_, _, _, consumption)| *consumption);
+    let item = admitted.map(|(identifier, event, _, _)| (identifier, event));
     let cues = state.advance(item, duration, time.delta_secs());
     if cues.is_empty() {
         return;
+    }
+    if let Some(cue) = state.eating_cue(
+        consumption,
+        player_runtime
+            .selected_stack()
+            .map_or(0, |stack| stack.metadata),
+        &cues,
+    ) {
+        eating.write(cue);
     }
     let requests: Vec<SoundRequest> = {
         let Some(bank) = engine.bank() else { return };
@@ -371,13 +372,111 @@ pub fn drive_actor_audio(
 mod tests {
     use super::*;
 
+    /// Resolves an original compatibility fixture before checking its consumption sound.
+    fn fixture_consume_event(identifier: &str) -> Option<&'static str> {
+        let profile = assets::item_use::diagnostic_profile(identifier);
+        consume_event(client_world::resolve_item_use(&profile, Some(32), None).consumption)
+    }
+
     #[test]
     fn consumables_are_classified() {
-        assert_eq!(is_consumable("minecraft:bread"), Some("eat"));
-        assert_eq!(is_consumable("minecraft:potion"), Some("drink"));
-        assert_eq!(is_consumable("minecraft:honey_bottle"), Some("drink.honey"));
-        assert_eq!(is_consumable("minecraft:experience_bottle"), None, "thrown");
-        assert_eq!(is_consumable("minecraft:stone"), None);
+        assert_eq!(fixture_consume_event("minecraft:bread"), Some("eat"));
+        assert_eq!(fixture_consume_event("minecraft:potion"), Some("drink"));
+        assert_eq!(
+            fixture_consume_event("minecraft:honey_bottle"),
+            Some("drink.honey")
+        );
+        assert_eq!(
+            fixture_consume_event("minecraft:experience_bottle"),
+            None,
+            "thrown"
+        );
+        assert_eq!(fixture_consume_event("minecraft:stone"), None);
+    }
+
+    #[test]
+    fn only_admitted_eating_uses_predict_local_bites() {
+        use assets::item_use::ItemConsumption;
+        assert!(predicts_bites(ItemConsumption::Eat));
+        for consumption in [
+            ItemConsumption::Drink,
+            ItemConsumption::Honey,
+            ItemConsumption::None,
+            ItemConsumption::Unresolved,
+        ] {
+            assert!(!predicts_bites(consumption));
+        }
+    }
+
+    #[test]
+    fn vanilla_food_overridden_to_drink_emits_no_crumbs() {
+        use assets::item_use::ItemConsumption;
+        use chunk_pipeline::WorldStream;
+
+        for server_override in [false, true] {
+            let mut stream = WorldStream::new(protocol::WorldBootstrap {
+                dimension: 0,
+                local_player_runtime_id: 1,
+                local_player_unique_id: 1,
+                player_position: [0.0; 3],
+                world_spawn_position: [0; 3],
+                air_network_id: protocol::SEQUENTIAL_AIR_NETWORK_ID,
+                block_network_ids_are_hashes: false,
+            });
+            let identifier: Arc<str> = "minecraft:bread".into();
+            let network_id = 15000;
+            assert!(stream.seed_item_registry(protocol::ItemRegistryEvent {
+                entries: Arc::from([protocol::ItemRegistryEntry {
+                    identifier: Arc::clone(&identifier),
+                    network_id,
+                    component_based: true,
+                    version: protocol::ItemRegistryVersion::DataDriven,
+                    component_digest: [0; 32],
+                    components: Some(Arc::new(protocol::ItemComponents {
+                        use_duration_ticks: Some(32),
+                        use_animation: server_override.then(|| "drink".into()),
+                        ..Default::default()
+                    })),
+                    negotiated_max_stack_size: None,
+                    canonical_empty_component_data: false,
+                    item_tags: Arc::from([]),
+                }]),
+            }));
+            let mut state = ConsumeAudio::default();
+            if !server_override {
+                let base = stream.authority().item_use_profile(network_id);
+                assert_eq!(base.consumption, ItemConsumption::Eat);
+                let cues = state.advance(
+                    Some((
+                        Arc::clone(&identifier),
+                        consume_event(base.consumption).unwrap(),
+                    )),
+                    Some(base.ticks.unwrap() as f32 * SECONDS_PER_TICK),
+                    0.05,
+                );
+                assert!(state.eating_cue(base.consumption, 0, &cues).is_some());
+                stream.set_item_use_overlays(Arc::new(std::collections::BTreeMap::from([(
+                    identifier.as_ref().into(),
+                    assets::equipment::CompiledItemUseOverlay {
+                        identifier: identifier.as_ref().into(),
+                        consumption: Some(ItemConsumption::Drink),
+                        ..Default::default()
+                    },
+                )])));
+            }
+            let effective = stream.authority().item_use_profile(network_id);
+            assert_eq!(effective.consumption, ItemConsumption::Drink);
+            let cues = state.advance(
+                Some((
+                    Arc::clone(&identifier),
+                    consume_event(effective.consumption).unwrap(),
+                )),
+                Some(effective.ticks.unwrap() as f32 * SECONDS_PER_TICK),
+                CONSUME_INTERVAL,
+            );
+            assert!(cues.contains(&ConsumeCue::Step("drink")));
+            assert!(state.eating_cue(effective.consumption, 0, &cues).is_none());
+        }
     }
 
     // Food only burped after releasing Use past a fixed 1.6 s, whatever the item's duration.

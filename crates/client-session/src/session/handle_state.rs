@@ -14,7 +14,8 @@ impl<P> NetworkHandle<P> {
         let (control_event_tx, control_events) = mpsc::channel(CONTROL_EVENT_CAPACITY);
         let (_world_event_tx, world_events) = mpsc::channel(1);
         let (commands, _command_rx) = mpsc::channel(1);
-        let (physics_reanchor, _physics_reanchor_rx) = watch::channel(0);
+        let (physics_reanchor, _physics_reanchor_rx) =
+            watch::channel(simulation_clock::identity::PositionAuthorityGeneration::default());
         let (shutdown, _shutdown_rx) = watch::channel(false);
         (
             Self {

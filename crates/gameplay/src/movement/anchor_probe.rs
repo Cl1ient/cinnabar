@@ -22,7 +22,7 @@
 //! transient-blocked behavior exactly: a probe that cannot see collision
 //! data stays pending and the ordinary tick path reproduces the error.
 //!
-//! Failure-evidence markers (`RUST_MCBE_ANCHOR_PROBE` family): each failed
+//! Failure-evidence markers (`CINNABAR_ANCHOR_PROBE` family): each failed
 //! probe attempt may render ONE bounded single-line stdout marker naming the
 //! sealing colliders. Emission is opt-in via the registered environment
 //! literal the configured anchor-probe marker with value exactly

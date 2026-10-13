@@ -183,9 +183,9 @@ Expected: every guard passes only in the clean fresh Phase 2 lane. `full-client-
 Run:
 
 ```powershell
-cargo test -p world -p meshing -p client-world -p render -p bedrock-client --locked
+cargo test -p world -p meshing -p client-world -p render -p cinnabar --locked
 cargo test -p client-world --release --locked release_full_view_known_air_lighting_completes_within_two_seconds -- --ignored --nocapture
-cargo clippy -p world -p meshing -p client-world -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p world -p meshing -p client-world -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 cargo run -p devtool --locked -- verify-affected --base d8e4699 --dry-run
 ```
@@ -384,11 +384,11 @@ Expected: the diagnostics test passes. The two new assets files are syntax-check
 The integration owner verifies and merges `completion-phase2-interface`, exports the assets carrier, removes render's duplicate `CloudQuality` definition in favor of consuming/re-exporting `assets::environment_settings::CloudQuality`, applies only the other handoff files listed above, and makes every runner reject an existing `RunId`, a path outside `.local/phase2`, a duration below 150 seconds for a performance-bearing run, a non-release build, an unproved effective present mode, or an auth path outside ignored `.local`. No Bevy or wgpu dependency may be added to `assets`. The remote runner maps `-InitialRadius 16` to the existing authoritative radius-16 client contract and rejects every other value; it does not pass an unsupported client CLI flag. Run in the integration worktree:
 
 ```powershell
-cargo test -p client-world -p assets -p render -p bedrock-client --locked phase2 -- --nocapture
+cargo test -p client-world -p assets -p render -p cinnabar --locked phase2 -- --nocapture
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/remote-acceptance.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/phase2-gallery.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/phase2-motion-ab.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
-cargo clippy -p client-world -p assets -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p client-world -p assets -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 ```
@@ -406,7 +406,7 @@ Expected: the immutable branch still points at the reviewed carrier commit, `HEA
 - [ ] **Step 6: Capture canonical Lunar diagnostic completeness first**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Diagnostic -RunId checkpoint0-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Diagnostic -RunId checkpoint0-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: `.local/phase2/remote/checkpoint0-lunar-attempt-01/manifest.json` proves release/FIFO identity and contains a complete `PHASE2_PUBLICATION` stage sequence. This diagnostic gate requires attributable counters and coherent identities, including the raw publisher radius in blocks as well as its derived retention radius; it records holes/stalls as findings and does not require them to be fixed.
@@ -414,7 +414,7 @@ Expected: `.local/phase2/remote/checkpoint0-lunar-attempt-01/manifest.json` prov
 - [ ] **Step 7: Capture canonical Zeqa only after Lunar diagnostics are complete**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Diagnostic -RunId checkpoint0-zeqa-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Diagnostic -RunId checkpoint0-zeqa-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: the runner rejects this command unless the Lunar diagnostic-completeness manifest exists and hashes successfully. Zeqa records the same stage/outcome surface without requiring Lunar’s publication behavior to have passed.
@@ -447,7 +447,7 @@ git commit -m "docs: record canonical phase 2 server diagnostics"
 - [ ] **Step 1: Run the exact release/FIFO matching-view gallery**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId biome-kernel-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId biome-kernel-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo
 ```
 
 Expected: the create-new run directory contains straight, corner, island, and alternating manifests; matching native/Cinnabar crops; linear-colour reports; a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms; two exact presented witnesses; and no unexplained diagnostic. Conflicting patterns block implementation and require `biome-kernel-attempt-02`, never a guessed kernel.
@@ -580,12 +580,12 @@ No wire/core commit is permitted when the fixture tests pass before a change.
 - [ ] **Step 4: Verify, rerun Lunar, review, and commit the selected owner**
 
 ```powershell
-cargo test -p client-world -p bedrock-client --locked request -- --nocapture
-cargo test -p client-world -p bedrock-client --locked retry -- --nocapture
+cargo test -p client-world -p cinnabar --locked request -- --nocapture
+cargo test -p client-world -p cinnabar --locked retry -- --nocapture
 cargo test -p render --locked publication -- --nocapture
-cargo clippy -p client-world -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p client-world -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId measured-fix-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId measured-fix-lunar-attempt-01 -DurationSeconds 180 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -Assets $env:CINNABAR_ASSETS
 git add crates/client-world crates/render docs/phase-2-completion-report.md
 git commit -m "fix: correct measured chunk publication stall"
 ```
@@ -633,9 +633,9 @@ Do not make `into_world_event` stateful. Resolve cache packets inside `PlaySessi
 Use the pinned Dragonfly/gophertunnel xxHash64 blob construction only as a fixture generator, not a runtime dependency. Cross-check at least one inline chunk and one request-mode subchunk fixture in Rust and Go, including a cache hit, a cache miss, a repeated hash, block-entity tail bytes, and an invalid hash.
 
 ```powershell
-cargo test -p protocol -p client-world -p bedrock-client --locked blob_cache -- --nocapture
+cargo test -p protocol -p client-world -p cinnabar --locked blob_cache -- --nocapture
 Push-Location core; try { go test ./... -run ClientBlobCache -count=1; if ($LASTEXITCODE -ne 0) { throw 'core blob-cache fixture failed' }; go vet ./...; if ($LASTEXITCODE -ne 0) { throw 'core go vet failed' } } finally { Pop-Location }
-cargo clippy -p protocol -p client-world -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p protocol -p client-world -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 ```
@@ -679,7 +679,7 @@ fn eight_hz_frames_receive_two_seconds_of_bounded_service_without_runaway_burst(
 
 Add tests for FIFO jitter, one 80 ms pressure frame, recovery without positive feedback, byte tokens, zero-byte removal cap 256, whole-arena copy reservation, and no service accumulation above the one-second burst ceiling.
 
-Run: `cargo test -p bedrock-client --locked eight_hz_frames_receive_two_seconds -- --nocapture`
+Run: `cargo test -p cinnabar --locked eight_hz_frames_receive_two_seconds -- --nocapture`
 
 Expected: FAIL because current service is capped primarily per frame.
 
@@ -707,10 +707,10 @@ git commit -m "perf: account elapsed-time chunk publication service"
 The integration owner merges the render commit, applies the exact app/controller/acceptance files listed above, registers `PublicationController::new(PublicationServiceConfig::PHASE2_GATE)`, and adds a Phase 5-facing pressure test contract that later opens the settings overlay during a forced full-view remesh. Run:
 
 ```powershell
-cargo test -p render -p bedrock-client --locked publication -- --nocapture
-cargo test -p bedrock-client --locked eight_hz_frames_receive_two_seconds -- --nocapture
+cargo test -p render -p cinnabar --locked publication -- --nocapture
+cargo test -p cinnabar --locked eight_hz_frames_receive_two_seconds -- --nocapture
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/ui-publication-pressure.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
-cargo clippy -p client-world -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p client-world -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 ```
@@ -730,7 +730,7 @@ Expected: deterministic publication tests pass; the Pester contract is green usi
 - [ ] **Step 1: Run the non-final Lunar publication candidate**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId publication-candidate-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Candidate -RunId publication-candidate-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: current-position spawn region complete without holes/stalls; the initial publisher epoch's actually announced cohort publishes without a visible stall; publisher-epoch, required-cohort, resident, allocation, visible, submitted, and GPU-presented identities agree; no unexplained outcome/error counter; join, teleport settle, and forced full-view remesh each ≤2,000 ms; after the 30-second warmup, the uninterrupted 120-second steady sample has p95 and p99 frame time each ≤`16.6666666667` ms and maximum frame time ≤`50` ms; two adjacent exact presented witnesses; exactly 120 one-second steady resource samples with maximum RSS ≤650 MB and mean/p95 CPU ≤15%; clean shutdown.
@@ -738,7 +738,7 @@ Expected: current-position spawn region complete without holes/stalls; the initi
 - [ ] **Step 2: Run Zeqa only after Lunar passes**
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Candidate -RunId publication-candidate-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:RUST_MCBE_ASSETS
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Candidate -RunId publication-candidate-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -Assets $env:CINNABAR_ASSETS
 ```
 
 Expected: authenticated transfer completes, the same publication/presentation/resource gates pass, and the transfer session does not retain stale Lunar cohort or retry state.
@@ -779,7 +779,7 @@ The integration owner implements the exact script files listed above, reruns the
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId lighting-atmosphere-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId lighting-atmosphere-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo
 ```
 
 Expected: the wrapper executes separate complete `cargo run -p phase2-evidence --locked -- compare` commands for `lighting`, `fog-air`, `fog-water`, and `fog-lava`. Every stratum has a report SHA-256, a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, two exact presented witnesses, and no unexplained diagnostic; no aggregate pass hides a failed medium.
@@ -811,10 +811,10 @@ Preserve independent block/sky/AO/daylight channels, face/directional material r
 - [ ] **Step 5: Verify, review, and commit**
 
 ```powershell
-cargo test -p render -p bedrock-client --locked atmosphere -- --nocapture
+cargo test -p render -p cinnabar --locked atmosphere -- --nocapture
 cargo test -p meshing -p client-world -p render --locked lighting -- --nocapture
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/acceptance/Galleries.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
-cargo clippy -p meshing -p client-world -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p meshing -p client-world -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 git add crates/render crates/client-world docs/phase-2-completion-report.md
 git commit -m "render: calibrate native lighting and fog"
@@ -877,9 +877,9 @@ Expected: formatting/diff checks pass; the reviewed producer commit contains no 
 The integration owner merges the reviewed module commit, applies only the listed exports/startup/root handoff, and runs:
 
 ```powershell
-cargo test -p assets -p asset-compiler -p render -p bedrock-client --locked precipitation -- --nocapture
-cargo test -p bedrock-client --test assets --locked precipitation -- --nocapture
-cargo clippy -p assets -p asset-compiler -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo test -p assets -p asset-compiler -p render -p cinnabar --locked precipitation -- --nocapture
+cargo test -p cinnabar --test assets --locked precipitation -- --nocapture
+cargo clippy -p assets -p asset-compiler -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 ```
@@ -888,7 +888,7 @@ Expected: all isolated-carrier, renderer, startup, bounds, and no-churn tests pa
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId precipitation-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId precipitation-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo
 ```
 
 Expected: rain and snow pass intensity 0/partial/full, above/below cover, biome/dimension suppression, wind/motion, fog, day/night, and clear/rain/thunder views. Metrics prove one steady draw, zero steady uploads, bounded instances, a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, exactly 120 one-second resource samples within 650 MB/15 percent, and two exact presented witnesses. Record the hashes under `P2-PRECIPITATION` → `P2.7-ATMOSPHERE` in a follow-up evidence-only lane commit.
@@ -919,7 +919,7 @@ After the integration owner applies the reviewed gallery handoff and the Pester 
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId celestial-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId celestial-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo
 ```
 
 Expected: for every manifested view, the wrapper substitutes that view's concrete create-new run paths into a complete `cargo run -p phase2-evidence --locked -- compare` invocation with `--kind celestial`, `--manifest`, `--native`, `--cinnabar`, and `--out`. All 18 views and their center/border/outside/horizon/minified crops pass in release/FIFO after a 30-second warmup and 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms, maximum frame time ≤`50` ms, and two exact frames. If a crop fails, add a red shader/sampler test for the proven blend, UV, sampler, mip, or composition-order discrepancy only.
@@ -927,9 +927,9 @@ Expected: for every manifested view, the wrapper substitutes that view's concret
 - [ ] **Step 3: Verify and commit evidence**
 
 ```powershell
-cargo test -p render -p bedrock-client --locked atmosphere -- --nocapture
+cargo test -p render -p cinnabar --locked atmosphere -- --nocapture
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/acceptance/Galleries.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
-cargo clippy -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 git add crates/render docs/phase-2-completion-report.md
 git commit -m "test: close native celestial edge parity"
@@ -985,8 +985,8 @@ Replace provisional origins/period/height only with calibrated values. Preserve 
 - [ ] **Step 4: Verify and run the live gallery**
 
 ```powershell
-cargo test -p meshing -p render -p bedrock-client --locked cloud -- --nocapture
-cargo clippy -p meshing -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo test -p meshing -p render -p cinnabar --locked cloud -- --nocapture
+cargo clippy -p meshing -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 ```
 
@@ -994,7 +994,7 @@ After the integration owner applies the reviewed Cloud gallery handoff and Peste
 
 ```powershell
 git merge --ff-only completion-integration
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId cloud-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId cloud-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo
 ```
 
 Expected: Low/Medium/High/Ultra each pass above/below/within/grazing, positive/negative period crossing, and fog-edge views across clear/rain/thunder/day/night. Metrics prove no edge pop, accepted thickness/density/silhouette/face shading/motion/fog/seams, one steady draw, zero steady uploads, a 30-second warmup followed by a 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, exactly 120 one-second resource samples within 650 MB/15 percent, and two exact frames.
@@ -1036,7 +1036,7 @@ Expected: FAIL because the paired runner is absent.
 Run the exact create-new paired capture:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId motion-ab-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId motion-ab-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180
 ```
 
 Expected: the script runs FIFO first and Immediate second on one release binary and identical scene/camera/build/adapter/driver/assets/duration/resolution, proves each effective present mode, records the exact artifact frame, and compares resident, cave-visible, frustum-visible, submitted, and GPU-completed sets for that coherent frame. Each leg contains a 30-second warmup followed by an uninterrupted 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms. It rejects an existing `.local/phase2/motion/motion-ab-attempt-01/` directory.
@@ -1056,10 +1056,10 @@ No other subsystem changes in this task.
 - [ ] **Step 4: Verify, rerun, review, and commit**
 
 ```powershell
-cargo test -p render -p bedrock-client --locked visibility -- --nocapture
-cargo test -p render -p bedrock-client --locked presentation -- --nocapture
+cargo test -p render -p cinnabar --locked visibility -- --nocapture
+cargo test -p render -p cinnabar --locked presentation -- --nocapture
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/phase2-motion-ab.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
-cargo clippy -p render -p bedrock-client --all-targets --locked -- -D warnings
+cargo clippy -p render -p cinnabar --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 git add crates/render docs/phase-2-completion-report.md
 git commit -m "fix: eliminate coherent-frame motion artifact"
@@ -1102,13 +1102,13 @@ Expected: zero failures, warnings, formatting differences, policy failures, or d
 
 ```powershell
 cargo build --workspace --release --locked
-$client = (Resolve-Path target/release/bedrock-client.exe).Path
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId final-biome-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId final-lighting-atmosphere-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId final-precipitation-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId final-celestial-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId final-cloud-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId final-motion-ab-attempt-01 -BdsDir $env:RUST_MCBE_BDS_DIR -Assets $env:RUST_MCBE_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180 -ClientExecutable $client -SkipClientBuild
+$client = (Resolve-Path target/release/cinnabar.exe).Path
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Biome -RunId final-biome-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/biome-boundary-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery LightingAtmosphere -RunId final-lighting-atmosphere-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/lighting-atmosphere-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Precipitation -RunId final-precipitation-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/precipitation-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Celestial -RunId final-celestial-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/celestial-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-gallery.ps1 -Gallery Cloud -RunId final-cloud-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/cloud-v1 -PresentMode Fifo -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase2-motion-ab.ps1 -RunId final-motion-ab-attempt-01 -BdsDir $env:CINNABAR_BDS_DIR -Assets $env:CINNABAR_ASSETS -NativeRoot .local/phase2/native/motion-v1 -DurationSeconds 180 -ClientExecutable $client -SkipClientBuild
 ```
 
 Expected: every create-new directory proves the same client SHA-256, release profile, FIFO for binding captures, accepted native reports, two exact frames, the required 30-second warmup plus uninterrupted 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms and maximum frame time ≤`50` ms, no diagnostic texture, and no unexplained decode/normalization/stale/capacity/retry/fallback failure.
@@ -1118,9 +1118,9 @@ Expected: every create-new directory proves the same client SHA-256, release pro
 After Phase 5 settings is integrated with `EnvironmentQualitySettings`, the integration owner uses the same release binary and runs Lunar first:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Final -RunId final-integrated-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:RUST_MCBE_ASSETS -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Lunar -Mode Final -RunId final-integrated-lunar-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:CINNABAR_ASSETS -ClientExecutable $client -SkipClientBuild
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$r = Invoke-Pester -Script "scripts/tests/ui-publication-pressure.Tests.ps1" -PassThru; if ($r.FailedCount -ne 0) { exit 1 }'
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Final -RunId final-integrated-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:RUST_MCBE_ASSETS -ClientExecutable $client -SkipClientBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remote-acceptance.ps1 -Server Zeqa -Mode Final -RunId final-integrated-zeqa-attempt-01 -DurationSeconds 300 -AuthCache .local/auth/microsoft-token.json -InitialRadius 16 -PresentMode Fifo -FullViewTeleportGate -OpenSettingsOverlay -Assets $env:CINNABAR_ASSETS -ClientExecutable $client -SkipClientBuild
 ```
 
 Expected: Zeqa is rejected unless the final Lunar manifest passes. Both prove zero persistent holes/stalls, radius-16 publisher coherence, join, teleport settle, and forced full-view remesh each ≤2,000 ms, two exact frames, and—after a 30-second warmup—one uninterrupted 120-second steady sample with p95 and p99 each ≤`16.6666666667` ms, maximum frame time ≤`50` ms, and exactly 120 one-second resource samples whose maximum RSS is ≤650 MB and mean/p95 CPU are ≤15 percent. `P2-UI-PUBLICATION-PRESSURE` additionally proves the settings overlay remains open throughout the forced remesh, the minimum service rates are maintained, the overlay remains responsive, and no UI code mutates client-world queue ownership.

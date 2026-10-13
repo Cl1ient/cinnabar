@@ -73,6 +73,47 @@ fn light_events_commit_with_zero_polls_while_heavy_admission_is_full() {
 }
 
 #[test]
+fn admission_checks_the_event_lane_when_all_terrain_slots_are_full() {
+    let mut stream = block_entity_visual_stream();
+    let terrain_count =
+        MAX_ADMITTED_HEAVY_EVENTS + client_world::ingestion::MAX_DEFERRED_WORLD_EVENTS;
+    for sequence in 1..=terrain_count as u64 {
+        let terrain = inline_air_event(sequence as i32);
+        assert!(stream.can_admit(&terrain));
+        stream.submit(sequence, terrain).unwrap();
+    }
+    assert_eq!(stream.remaining_admission_capacity(), 0);
+    assert!(!stream.can_admit(&inline_air_event(1000)));
+    let sequence = terrain_count as u64 + 1;
+    let movement = remote_move(9);
+    assert!(stream.can_admit(&movement));
+    stream.submit(sequence, movement).unwrap();
+    assert!(stream.order.is_finished(sequence));
+    assert!(!stream.can_admit(&inline_air_event(1000)));
+}
+
+#[test]
+fn full_light_consumers_do_not_use_terrain_admission() {
+    let mut stream = block_entity_visual_stream();
+    for sequence in 1..=MAX_ADMITTED_WORLD_EVENTS as u64 {
+        let event = WorldEvent::NetworkStackLatency(sequence);
+        assert!(stream.can_admit(&event));
+        stream.submit(sequence, event).unwrap();
+    }
+    assert!(!stream.can_admit(&remote_move(9)));
+    let terrain = inline_air_event(0);
+    assert!(stream.can_admit(&terrain));
+    stream
+        .submit(MAX_ADMITTED_WORLD_EVENTS as u64 + 1, terrain)
+        .unwrap();
+    assert_eq!(
+        stream.take_committed_controls().len(),
+        MAX_ADMITTED_WORLD_EVENTS
+    );
+    assert!(stream.can_admit(&remote_move(9)));
+}
+
+#[test]
 fn actor_move_after_a_block_decode_on_another_column_commits_without_waiting() {
     let mut stream = block_entity_visual_stream();
     stream.submit(1, inline_air_event(0)).unwrap();
@@ -268,7 +309,7 @@ fn crack_after_a_delayed_dimension_change_waits_for_its_new_column() {
         |job| matches!(job, super::DecodeJob::InlineLevelChunk { event, .. } if event.dimension == 0),
     );
     complete_decode_job(&mut stream, old_dimension);
-    stream.apply_ready();
+    settle_ready_commits(&mut stream);
     assert!(
         stream.order.is_finished(2),
         "the dimension change committed"

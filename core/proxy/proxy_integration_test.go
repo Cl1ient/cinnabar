@@ -53,7 +53,7 @@ func TestProxyJoin(t *testing.T) {
 }
 
 func TestProxyHelperProcess(t *testing.T) {
-	if os.Getenv("RUST_MCBE_PROXY_HELPER") != "1" {
+	if os.Getenv("CINNABAR_PROXY_HELPER") != "1" {
 		t.Skip("proxy subprocess helper")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -65,8 +65,8 @@ func TestProxyHelperProcess(t *testing.T) {
 	// The client claims no device; production cores claim the install's.
 	claimed := device.New(protocol.DeviceAndroid)
 	if err := Serve(ctx, Config{
-		SocketDir: os.Getenv("RUST_MCBE_PROXY_SOCKET_DIR"),
-		Upstream:  os.Getenv("RUST_MCBE_PROXY_UPSTREAM"),
+		SocketDir: os.Getenv("CINNABAR_PROXY_SOCKET_DIR"),
+		Upstream:  os.Getenv("CINNABAR_PROXY_UPSTREAM"),
 		Device:    &claimed,
 	}); err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestProxyHelperProcess(t *testing.T) {
 func TestExternalRustClientSocketDirectory(t *testing.T) {
 	t.Run("accepts absolute directory", func(t *testing.T) {
 		want := t.TempDir()
-		t.Setenv("RUST_MCBE_PROXY_SOCKET_DIR", want)
+		t.Setenv("CINNABAR_PROXY_SOCKET_DIR", want)
 
 		got, err := externalRustClientSocketDir()
 		if err != nil {
@@ -88,7 +88,7 @@ func TestExternalRustClientSocketDirectory(t *testing.T) {
 	})
 
 	t.Run("rejects missing directory", func(t *testing.T) {
-		t.Setenv("RUST_MCBE_PROXY_SOCKET_DIR", "")
+		t.Setenv("CINNABAR_PROXY_SOCKET_DIR", "")
 
 		if _, err := externalRustClientSocketDir(); err == nil {
 			t.Fatal("externalRustClientSocketDir() accepted an empty directory")
@@ -96,7 +96,7 @@ func TestExternalRustClientSocketDirectory(t *testing.T) {
 	})
 
 	t.Run("rejects relative directory", func(t *testing.T) {
-		t.Setenv("RUST_MCBE_PROXY_SOCKET_DIR", filepath.Join("relative", "socket"))
+		t.Setenv("CINNABAR_PROXY_SOCKET_DIR", filepath.Join("relative", "socket"))
 
 		if _, err := externalRustClientSocketDir(); err == nil {
 			t.Fatal("externalRustClientSocketDir() accepted a relative directory")
@@ -105,7 +105,7 @@ func TestExternalRustClientSocketDirectory(t *testing.T) {
 }
 
 func TestProxyExternalRustClientHarness(t *testing.T) {
-	if os.Getenv("RUST_MCBE_EXTERNAL_RUST_CLIENT") != "1" {
+	if os.Getenv("CINNABAR_EXTERNAL_RUST_CLIENT") != "1" {
 		t.Skip("external Rust client harness")
 	}
 	socketDir, err := externalRustClientSocketDir()
@@ -114,7 +114,7 @@ func TestProxyExternalRustClientHarness(t *testing.T) {
 	}
 
 	harness := startLiveProxyHarness(t, socketDir)
-	fmt.Printf("RUST_MCBE_EXTERNAL_READY=%s\n", socketDir)
+	fmt.Printf("CINNABAR_EXTERNAL_READY=%s\n", socketDir)
 	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
 		t.Fatalf("wait for external Rust client EOF: %v", err)
 	}
@@ -122,12 +122,12 @@ func TestProxyExternalRustClientHarness(t *testing.T) {
 }
 
 func externalRustClientSocketDir() (string, error) {
-	directory := os.Getenv("RUST_MCBE_PROXY_SOCKET_DIR")
+	directory := os.Getenv("CINNABAR_PROXY_SOCKET_DIR")
 	if directory == "" {
-		return "", errors.New("RUST_MCBE_PROXY_SOCKET_DIR is required")
+		return "", errors.New("CINNABAR_PROXY_SOCKET_DIR is required")
 	}
 	if !filepath.IsAbs(directory) {
-		return "", fmt.Errorf("RUST_MCBE_PROXY_SOCKET_DIR must be absolute: %s", directory)
+		return "", fmt.Errorf("CINNABAR_PROXY_SOCKET_DIR must be absolute: %s", directory)
 	}
 	return filepath.Clean(directory), nil
 }
@@ -247,9 +247,9 @@ func startTestCore(t *testing.T, socketDir, upstream string) *testCore {
 	core := &testCore{done: make(chan struct{})}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestProxyHelperProcess$", "-test.v")
 	cmd.Env = append(os.Environ(),
-		"RUST_MCBE_PROXY_HELPER=1",
-		"RUST_MCBE_PROXY_SOCKET_DIR="+socketDir,
-		"RUST_MCBE_PROXY_UPSTREAM="+upstream,
+		"CINNABAR_PROXY_HELPER=1",
+		"CINNABAR_PROXY_SOCKET_DIR="+socketDir,
+		"CINNABAR_PROXY_UPSTREAM="+upstream,
 	)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

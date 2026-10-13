@@ -40,7 +40,7 @@ fn ready_mesh_backlog_drains() {
         stream.poll([0.0; 3], 64);
         acknowledge_mesh_changes(&mut stream);
         // A stall is no completed job for a long stretch, not a slow total drain on a busy runner.
-        let now_completed = stream.stats.phase2_stages.mesh_jobs_completed;
+        let now_completed = stream.stats.publication_stages.mesh_jobs_completed;
         if now_completed != completed {
             completed = now_completed;
             progressed_at = Instant::now();
@@ -56,7 +56,10 @@ fn ready_mesh_backlog_drains() {
         started.elapsed().as_millis(),
         stream.stats.max_mesh_queue_wait.as_millis()
     );
-    assert_eq!(stream.stats.phase2_stages.mesh_jobs_completed, count as u64);
+    assert_eq!(
+        stream.stats.publication_stages.mesh_jobs_completed,
+        count as u64
+    );
     assert_eq!(stream.stats.stale_mesh_jobs, 0);
 }
 
@@ -194,7 +197,7 @@ fn large_lighting_backlog_drains() {
                 stream.stats.stale_mesh_jobs
             );
         }
-        let stages = &stream.stats.phase2_stages;
+        let stages = &stream.stats.publication_stages;
         assert!(
             stages.light_jobs_dispatched + stages.mesh_jobs_dispatched <= work_budget as u64,
             "backlog exceeded its work budget: {:?}",

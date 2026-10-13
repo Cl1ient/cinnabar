@@ -2,11 +2,14 @@
 
 use std::sync::Arc;
 
+use assets::block_entity_geometry::heads::HeadModel;
+
 #[path = "scene/cache.rs"]
 mod cache;
 use cache::{CachedSubmission, PreviousFragments};
 
 use super::{
+    artwork::{BlockEntityArtworkPreparer, PreparedBlockEntityArtwork},
     atlas::{AtlasRect, BlockEntityAtlas, DynamicCells},
     banner::BannerModel,
     beam::BeaconModel,
@@ -18,7 +21,7 @@ use super::{
     crystal_beam::CrystalBeamModel,
     dragon_death::DragonDeathModel,
     frame::ItemFrameModel,
-    heads::{HeadModel, HeadModels},
+    heads::HeadModels,
     mesh::{BlockEntityVertex, MeshBuilder},
     pot::DecoratedPotModel,
     shulker::ShulkerModel,
@@ -37,7 +40,7 @@ pub enum BlockEntityKind {
     Bed(BedModel),
     Sign(SignModel),
     EnchantTable {
-        facing_yaw_degrees: f32,
+        book: super::book::BookPose,
     },
     Lectern {
         facing_yaw_degrees: f32,
@@ -55,7 +58,43 @@ pub enum BlockEntityKind {
     EndGateway,
 }
 
+/// Blocks past its own block, on every side, that a block-anchored model may draw into.
+pub const BLOCK_ENTITY_REACH_BLOCKS: i32 = 2;
+
 impl BlockEntityKind {
+    /// Whether it is a beam that may draw beyond [`BLOCK_ENTITY_REACH_BLOCKS`] of its block.
+    #[must_use]
+    pub const fn renders_globally(&self) -> bool {
+        matches!(
+            self,
+            Self::Beacon(_) | Self::CrystalBeam(_) | Self::DragonDeath(_)
+        )
+    }
+
+    /// Whether the authored model has a fixed block reach independent of installed geometry.
+    pub const fn has_fixed_cull_reach(&self) -> bool {
+        match self {
+            Self::Skull(_)
+            | Self::Bed(_)
+            | Self::Statue(_)
+            | Self::Beacon(_)
+            | Self::CrystalBeam(_)
+            | Self::DragonDeath(_) => false,
+            Self::Chest(_)
+            | Self::Shulker(_)
+            | Self::Banner(_)
+            | Self::Sign(_)
+            | Self::EnchantTable { .. }
+            | Self::Lectern { .. }
+            | Self::Bell(_)
+            | Self::ItemFrame(_)
+            | Self::Conduit(_)
+            | Self::DecoratedPot(_)
+            | Self::EndPortal
+            | Self::EndGateway => true,
+        }
+    }
+
     /// Whether its mesh animates with [`SceneClock`] rather than only with its model.
     const fn is_clock_driven(&self) -> bool {
         matches!(
@@ -167,12 +206,57 @@ pub struct BlockEntityScene {
 }
 
 impl BlockEntityScene {
+    /// Returns the artwork preparer for a join or reload worker.
+    pub fn artwork_preparer(&self) -> BlockEntityArtworkPreparer {
+        BlockEntityArtworkPreparer::new(&[])
+    }
+
+    /// Shares the installed static artwork as the startup fallback for pack workers.
+    pub fn prepared_artwork(&self) -> Option<PreparedBlockEntityArtwork> {
+        self.atlas
+            .as_deref()
+            .cloned()
+            .map(|atlas| PreparedBlockEntityArtwork { atlas })
+    }
+
+    /// Prepares and installs startup artwork; runtime workers use [`Self::install_prepared_assets`].
     pub fn install_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
-        let atlas = BlockEntityAtlas::from_assets(assets);
+        if let Some(prepared) = self.artwork_preparer().prepare(assets) {
+            self.install_prepared_assets(&prepared);
+        }
+    }
+
+    /// Installs worker-built artwork for a new session, clearing cached sign and map canvases.
+    pub fn install_prepared_assets(&mut self, artwork: &PreparedBlockEntityArtwork) {
+        if let Some(text) = self.text.as_mut() {
+            text.reset(artwork.atlas.size()[0]);
+        }
+        self.reload_prepared_assets(artwork);
+    }
+
+    /// Prepares artwork on the caller; runtime reloads use [`Self::reload_prepared_assets`].
+    pub fn reload_assets(&mut self, assets: &assets::RuntimeBlockEntityAssets) {
+        if let Some(prepared) = self.artwork_preparer().prepare(assets) {
+            self.reload_prepared_assets(&prepared);
+        }
+    }
+
+    /// Publishes shared static pixels and invalidates meshes while retaining dynamic canvases.
+    pub fn reload_prepared_assets(&mut self, artwork: &PreparedBlockEntityArtwork) {
+        let mut atlas = artwork.atlas.clone();
+        let text = self
+            .text
+            .get_or_insert_with(|| DynamicCells::new(atlas.size()[0]));
+        text.resize_width(atlas.size()[0]);
+        atlas.set_text_pages(text.text_pages());
         self.image = Some(Arc::new(BlockEntityAtlasImage::of(&atlas)));
-        self.text = Some(DynamicCells::new(atlas.size()[0]));
         self.atlas = Some(Arc::new(atlas));
-        self.frame = BlockEntityFrame::default();
+        self.frame = BlockEntityFrame {
+            revision: self.frame.revision,
+            dynamic_revision: self.frame.dynamic_revision,
+            dynamic_rgba8: Arc::clone(&self.frame.dynamic_rgba8),
+            ..Default::default()
+        };
         self.reusable = None;
         self.cached_submissions.clear();
     }
@@ -239,7 +323,8 @@ impl BlockEntityScene {
         let (Some(atlas), Some(text)) = (self.atlas.as_ref(), self.text.as_ref()) else {
             return self.update_untextured(submissions);
         };
-        self.frame.portal_time_seconds = (clock.ticks / f64::from(world::TICKS_PER_SECOND)) as f32;
+        self.frame.portal_time_seconds =
+            (clock.ticks / f64::from(simulation_clock::TICKS_PER_SECOND)) as f32;
         self.frame.portal_star_rect = super::portal::star_rect(atlas);
         // Rebuilding would emit the same vertices; keeping the revision spares the GPU upload.
         if self.frame.dynamic_revision == text.revision()
@@ -352,6 +437,10 @@ mod cache_tests;
 #[path = "scene/skull_tests.rs"]
 mod skull_tests;
 
+#[cfg(test)]
+#[path = "scene/reach_tests.rs"]
+mod reach_tests;
+
 fn emit_submission(
     builder: &mut MeshBuilder,
     atlas: &BlockEntityAtlas,
@@ -367,8 +456,8 @@ fn emit_submission(
         BlockEntityKind::Banner(model) => super::banner::emit(builder, atlas, block, model, clock),
         BlockEntityKind::Bed(model) => super::bed::emit(builder, atlas, block, model, bed),
         BlockEntityKind::Sign(model) => super::sign::emit(builder, block, model),
-        BlockEntityKind::EnchantTable { facing_yaw_degrees } => {
-            super::book::emit_enchant_table(builder, atlas, block, *facing_yaw_degrees, clock);
+        BlockEntityKind::EnchantTable { book } => {
+            super::book::emit_enchant_table(builder, atlas, block, *book);
         }
         BlockEntityKind::Lectern {
             facing_yaw_degrees,
@@ -497,7 +586,7 @@ mod tests {
         );
         assert_eq!(
             scene.frame.portal_time_seconds,
-            1.0 / world::TICKS_PER_SECOND as f32
+            1.0 / simulation_clock::TICKS_PER_SECOND as f32
         );
     }
 

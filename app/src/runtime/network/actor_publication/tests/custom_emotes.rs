@@ -1,8 +1,9 @@
 //! Original geometry through the production frame preparation system, without GPU/assets.
+use client_shell::ui_resources::UiRuntimeResource;
 use std::{sync::Arc, time::Duration};
 
 use bevy::{
-    prelude::{PerspectiveProjection, World},
+    prelude::{PerspectiveProjection, Vec3, World},
     time::Real,
 };
 use client_presentation::actor_publication::PreparedActorPublication;
@@ -118,7 +119,7 @@ fn fixture_with_skin(with_skin: bool) -> World {
     let mut physics = client_interaction::movement::LocalPhysicsController::default();
     physics.reanchor_network_position(anchor, 0, true);
     let mut avatar = client_presentation::local_player::LocalAvatarPresentation::default();
-    avatar.begin_session(1, 1);
+    avatar.begin_session(simulation_clock::identity::SessionGeneration::new(1), 1);
     let icons = Arc::new(
         assets::RuntimeIconCatalog::decode(
             &assets::encode_icon_catalog([0; 32], &[], &[]).unwrap(),
@@ -170,7 +171,7 @@ fn fixture_with_skin(with_skin: bool) -> World {
     );
     world.init_resource::<client_presentation::actor_publication::ActorFrameState>();
     world.init_resource::<ActorFramePartialTick>();
-    world.insert_resource(UiRuntime::new(1));
+    world.insert_resource(UiRuntimeResource(UiRuntime::new(1)));
     let camera =
         Transform::from_xyz(0.0, 66.0, -8.0).looking_at(Vec3::new(0.0, 65.0, 0.0), Vec3::Y);
     world.spawn((
@@ -246,7 +247,7 @@ fn custom_emote_knees_use_matching_mesh_and_retire_with_playback() {
     let native = native_pose(&world);
     let ordinary = body(&world, 1);
     {
-        let mut ui = world.resource_mut::<UiRuntime>();
+        let mut ui = world.resource_mut::<UiRuntimeResource>();
         ui.emotes_mut().open();
         ui.emotes_mut().activate_slot(0, 100);
     }
@@ -260,7 +261,10 @@ fn custom_emote_knees_use_matching_mesh_and_retire_with_playback() {
     );
     assert_eq!(native_pose(&world), native);
     assert_unaffected(&world, &plain, 2);
-    world.resource_mut::<UiRuntime>().emotes_mut().stop();
+    world
+        .resource_mut::<UiRuntimeResource>()
+        .emotes_mut()
+        .stop();
     prepare(&mut world, 0);
     prepare(&mut plain, 0);
     assert_eq!(body(&world, 1).input.rig, ordinary.input.rig);
@@ -278,7 +282,7 @@ fn custom_emote_publication_advances_between_ticks_without_changing_native_hand_
     let native = native_pose(&world);
     let rest = body(&world, 1);
     {
-        let mut ui = world.resource_mut::<UiRuntime>();
+        let mut ui = world.resource_mut::<UiRuntimeResource>();
         ui.emotes_mut().open();
         assert_eq!(
             ui.emotes_mut().activate_slot(0, 100),
@@ -324,7 +328,10 @@ fn custom_emote_publication_advances_between_ticks_without_changing_native_hand_
             .all(|body| body.input.identity.runtime_id != 1),
         "first person does not publish the custom body"
     );
-    world.resource_mut::<UiRuntime>().emotes_mut().stop();
+    world
+        .resource_mut::<UiRuntimeResource>()
+        .emotes_mut()
+        .stop();
     prepare(&mut world, 0);
     prepare(&mut plain, 0);
     assert!(world.resource::<render_scene::HandRigScene>().is_active());
@@ -346,9 +353,12 @@ fn emotes_keep_vanilla_bones_with_java_enabled() {
                 .replace(1, &settings)
                 .unwrap();
             if custom {
-                world.resource_mut::<UiRuntime>().emotes_mut().open();
                 world
-                    .resource_mut::<UiRuntime>()
+                    .resource_mut::<UiRuntimeResource>()
+                    .emotes_mut()
+                    .open();
+                world
+                    .resource_mut::<UiRuntimeResource>()
                     .emotes_mut()
                     .activate_slot(0, 0);
             } else {

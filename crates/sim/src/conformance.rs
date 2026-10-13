@@ -443,7 +443,7 @@ pub fn audit_scenario_trace_jsonl(
 }
 
 /// Requires every script to be backed by pinned bedsim observations. This is
-/// deliberately stricter than the audit and currently rejects the Phase 3
+/// deliberately stricter than the audit and currently rejects the movement
 /// ledger while unsupported environmental strata remain.
 pub fn verify_scenario_trace_jsonl(
     jsonl: &str,

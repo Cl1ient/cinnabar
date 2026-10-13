@@ -2,9 +2,8 @@
 
 use super::*;
 use bytes::Bytes;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::sync::mpsc as blocking;
-
-const CODEC_SESSION: protocol::BedrockSession = protocol::BedrockSession { shield_item_id: 0 };
 
 struct Decoded {
     elapsed: Duration,
@@ -26,7 +25,7 @@ struct ReplaySession {
 
 /// Decode and normalize one captured packet through the production owned codec.
 fn decode_event(wire: Bytes, dimension: i32) -> WorldEvent {
-    let mut packets = protocol::decode_batch(wire, &CODEC_SESSION).unwrap();
+    let mut packets = protocol::decode_batch(wire).unwrap();
     assert_eq!(packets.len(), 1);
     protocol::into_world_event(packets.pop().unwrap(), dimension)
         .unwrap()
@@ -42,11 +41,10 @@ impl NetworkSession for ReplaySession {
         let sent = self.sent.clone();
         Ok(PacketOutbound::new(move |packet| {
             let selected = Instant::now();
-            let allocations = crate::session::tests::alloc_count::thread_allocations();
-            let wire = protocol::encode(&packet, &CODEC_SESSION).unwrap();
+            let allocations = test_alloc::thread_allocations();
+            let wire = protocol::encode(&packet).unwrap();
             let completed = Instant::now();
-            let allocations =
-                crate::session::tests::alloc_count::thread_allocations() - allocations;
+            let allocations = test_alloc::thread_allocations() - allocations;
             sent.send(Sent {
                 selected,
                 completed,
@@ -63,11 +61,11 @@ impl NetworkSession for ReplaySession {
         let Some(wire) = self.wire.as_ref() else {
             return future::pending().await;
         };
-        let allocations = crate::session::tests::alloc_count::thread_allocations();
+        let allocations = test_alloc::thread_allocations();
         let started = Instant::now();
         let event = decode_event(wire.clone(), dimension);
         let elapsed = started.elapsed();
-        let allocations = crate::session::tests::alloc_count::thread_allocations() - allocations;
+        let allocations = test_alloc::thread_allocations() - allocations;
         self.decoded.lock().unwrap().push(Decoded {
             elapsed,
             allocations,
@@ -102,7 +100,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
         .map(|value| value.parse().unwrap())
         .unwrap_or(128);
     assert!((2..=2048).contains(&ticks));
-    let interval = Duration::from_secs_f64(1.0 / world::TICKS_PER_SECOND as f64);
+    let interval = Duration::from_secs_f64(1.0 / simulation_clock::TICKS_PER_SECOND as f64);
     let decoded = Arc::new(Mutex::new(Vec::new()));
     let (sent_tx, sent_rx) = blocking::channel();
     let mut queued = Vec::new();
@@ -120,7 +118,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
             let mut receipts = Vec::new();
             while let Some(event) = control_rx.blocking_recv() {
                 if let NetworkControlEvent::PhysicsPacketSent { identity } = event {
-                    receipts.push(identity.tick);
+                    receipts.push(identity.tick.get());
                 } else {
                     assert!(matches!(event, NetworkControlEvent::Stopped { .. }));
                 }
@@ -137,7 +135,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                     panic!("skin replay must produce ordinary world ingress")
                 };
                 consumed += 1;
-                assert_eq!(event.sequence, consumed);
+                assert_eq!(event.sequence.get(), consumed);
             }
             consumed
         });
@@ -154,7 +152,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                 .unwrap()
                 .block_on(run_network_pump(
                     session,
-                    NetworkSequencer::new(7, 0, 42),
+                    NetworkSequencer::new(SessionGeneration::new(7), 0, 42),
                     command_rx,
                     control_tx,
                     world_tx,
@@ -164,7 +162,7 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
         let epoch = Instant::now();
         for tick in 1..=ticks {
             let packet = traced_movement_packets(tick).1;
-            let expected = protocol::encode(&packet, &CODEC_SESSION).unwrap();
+            let expected = protocol::encode(&packet).unwrap();
             let deadline = epoch + interval * (tick - 1) as u32;
             thread::sleep(deadline.saturating_duration_since(Instant::now()));
             let started = Instant::now();
@@ -174,10 +172,10 @@ fn run_case(name: &str, wire: Option<Bytes>, hold_world: bool) {
                     sub_chunk: None,
                     chat: None,
                     physics: Some(protocol::PhysicsSendIdentity {
-                        session_generation: 7,
-                        tick,
+                        session_generation: SessionGeneration::new(7),
+                        tick: simulation_clock::PhysicsTick::new(tick),
                         admission_id: tick,
-                        reanchor_epoch: 0,
+                        reanchor_epoch: PositionAuthorityGeneration::new(0),
                     }),
                     physics_reanchor: None,
                     interaction: None,

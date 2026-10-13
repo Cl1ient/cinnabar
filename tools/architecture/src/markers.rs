@@ -16,18 +16,20 @@ pub(super) fn check_markers(
     files: &[PathBuf],
     diagnostics: &mut Vec<String>,
 ) -> Result<(), ArchitectureError> {
-    // A marker moves with its owning crate. Scan that crate's whole source tree so
-    // undeclared identifiers remain visible after extraction from the app.
-    let producer_roots = policy
+    // The marker prefix is shared with ordinary environment variables, so undeclared literals
+    // are reported only from the declared producers and the acceptance scripts.
+    let producers = policy
         .markers
         .iter()
-        .filter_map(|rule| {
-            rule.producer
-                .split_once("/src/")
-                .map(|(owner, _)| format!("{owner}/src/"))
-        })
+        .map(|rule| rule.producer.as_str())
+        .collect::<BTreeSet<_>>();
+    let consumers = policy
+        .markers
+        .iter()
+        .filter_map(|rule| rule.consumer.as_deref())
         .collect::<BTreeSet<_>>();
     let mut occurrences = BTreeMap::<String, Vec<String>>::new();
+    let mut registered = BTreeSet::<String>::new();
     for path in files {
         if !matches!(
             path.extension().and_then(|value| value.to_str()),
@@ -36,16 +38,16 @@ pub(super) fn check_markers(
             continue;
         }
         let relative = relative_slash(root, path);
-        if !relative.starts_with("app/src/")
-            && !producer_roots
-                .iter()
-                .any(|prefix| relative.starts_with(prefix))
-            && relative != "scripts/acceptance.ps1"
-            && !relative.starts_with("scripts/acceptance/")
-        {
+        let registry = producers.contains(relative.as_str())
+            || relative == "scripts/acceptance.ps1"
+            || relative.starts_with("scripts/acceptance/");
+        if !registry && !consumers.contains(relative.as_str()) {
             continue;
         }
         for marker in marker_literals(&read(path)?) {
+            if registry {
+                registered.insert(marker.clone());
+            }
             occurrences
                 .entry(marker)
                 .or_default()
@@ -57,7 +59,7 @@ pub(super) fn check_markers(
         .iter()
         .map(|rule| rule.literal.as_str())
         .collect::<BTreeSet<_>>();
-    for marker in occurrences.keys() {
+    for marker in &registered {
         if !declared.contains(marker.as_str()) {
             diagnostics.push(format!("marker `{marker}` has no declared expectation"));
         }

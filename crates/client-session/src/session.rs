@@ -1,3 +1,5 @@
+use protocol::identity::FifoSequence;
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::{
     io::Write,
     path::PathBuf,
@@ -26,11 +28,11 @@ pub const WORLD_EVENT_CAPACITY: usize = 256;
 const CONTROL_EVENT_CAPACITY: usize = 64;
 const COMMAND_CAPACITY: usize = 64;
 const FINAL_CONTROL_FLUSH_TIMEOUT: Duration = Duration::from_millis(250);
-const NETWORK_PUMP_TERMINAL_MARKER: &str = "RUST_MCBE_NETWORK_PUMP_TERMINAL";
+const NETWORK_PUMP_TERMINAL_MARKER: &str = "CINNABAR_NETWORK_PUMP_TERMINAL";
 
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {
-    pub session_generation: u64,
+    pub session_generation: SessionGeneration,
     pub socket_dir: PathBuf,
     pub display_name: String,
     /// The user storage owner's opaque persisted login identifier.
@@ -77,7 +79,7 @@ pub struct SessionTransferTarget {
 #[derive(Debug)]
 pub enum NetworkControlEvent<P = ()> {
     Bootstrap {
-        session_generation: u64,
+        session_generation: SessionGeneration,
         world: WorldBootstrap,
         environment: WorldEnvironmentBootstrap,
         custom_blocks: CustomBlocks,
@@ -145,8 +147,8 @@ pub enum NetworkControlEvent<P = ()> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SequencedWorldEvent {
-    pub session_generation: u64,
-    pub sequence: u64,
+    pub session_generation: SessionGeneration,
+    pub sequence: FifoSequence,
     pub event: WorldEvent,
 }
 
@@ -167,14 +169,14 @@ enum InboundWorldEvent {
 pub enum WorldIngress {
     Event(SequencedWorldEvent),
     LevelChunk {
-        session_generation: u64,
-        sequence: u64,
+        session_generation: SessionGeneration,
+        sequence: FifoSequence,
         event: protocol::LevelChunkEvent,
         payload: Bytes,
     },
     FastTransferBarrier {
-        session_generation: u64,
-        sequence: u64,
+        session_generation: SessionGeneration,
+        sequence: FifoSequence,
         action_sequence: u64,
     },
 }
@@ -276,7 +278,7 @@ enum NetworkCommand {
         sub_chunk: Option<SubChunkRequestSend>,
         chat: Option<ChatPacketSend>,
         physics: Option<PhysicsSendIdentity>,
-        physics_reanchor: Option<watch::Receiver<u64>>,
+        physics_reanchor: Option<watch::Receiver<PositionAuthorityGeneration>>,
         interaction: Option<InteractionPacketGuard>,
     },
 }
@@ -334,7 +336,7 @@ pub struct NetworkHandle<P = ()> {
     world_events: mpsc::Receiver<WorldIngress>,
     commands: mpsc::Sender<NetworkCommand>,
     pending_latency_reply: Mutex<Option<Packet>>,
-    physics_reanchor: watch::Sender<u64>,
+    physics_reanchor: watch::Sender<PositionAuthorityGeneration>,
     shutdown: watch::Sender<bool>,
     thread: Option<JoinHandle<()>>,
     readiness_ingress: Arc<ReadinessIngressCounter>,
@@ -380,7 +382,7 @@ impl<P> NetworkHandle<P> {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn stub() -> (Self, watch::Receiver<u64>) {
+    pub fn stub() -> (Self, watch::Receiver<PositionAuthorityGeneration>) {
         empty_network_channels()
     }
     /// A handle whose command queue holds `capacity` commands; the guard keeps it open.
@@ -397,7 +399,7 @@ impl<P> NetworkHandle<P> {
     }
 
     /// Shares the transport cancellation epoch with the gameplay prediction owner.
-    pub fn physics_epoch_publisher(&self) -> watch::Sender<u64> {
+    pub fn physics_epoch_publisher(&self) -> watch::Sender<PositionAuthorityGeneration> {
         self.physics_reanchor.clone()
     }
 
@@ -560,7 +562,7 @@ impl<P> NetworkHandle<P> {
         sub_chunk: Option<SubChunkRequestSend>,
         chat: Option<ChatPacketSend>,
         physics: Option<PhysicsSendIdentity>,
-        physics_reanchor: Option<watch::Receiver<u64>>,
+        physics_reanchor: Option<watch::Receiver<PositionAuthorityGeneration>>,
         interaction: Option<InteractionPacketGuard>,
     ) -> Result<(), PacketSendError> {
         if let Err(error) = self.flush_latency_reply() {
@@ -623,11 +625,15 @@ impl<P> NetworkHandle<P> {
     }
 }
 
-fn empty_network_channels<P>() -> (NetworkHandle<P>, watch::Receiver<u64>) {
+fn empty_network_channels<P>() -> (
+    NetworkHandle<P>,
+    watch::Receiver<PositionAuthorityGeneration>,
+) {
     let (_control_event_tx, control_events) = mpsc::channel(1);
     let (_world_event_tx, world_events) = mpsc::channel(1);
     let (commands, _command_rx) = mpsc::channel(1);
-    let (physics_reanchor, physics_reanchor_rx) = watch::channel(0);
+    let (physics_reanchor, physics_reanchor_rx) =
+        watch::channel(PositionAuthorityGeneration::default());
     let (shutdown, _shutdown_rx) = watch::channel(false);
     (
         NetworkHandle {

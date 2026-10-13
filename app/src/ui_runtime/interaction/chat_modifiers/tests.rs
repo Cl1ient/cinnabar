@@ -5,6 +5,8 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
+mod focus;
+
 struct Harness {
     app: App,
     window: Entity,
@@ -24,7 +26,7 @@ impl Harness {
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ButtonInput<MouseButton>>()
             .init_resource::<AccumulatedMouseMotion>()
-            .insert_resource(UiRuntime::new(1))
+            .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
             .insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
                 1,
             )))
@@ -80,10 +82,30 @@ impl Harness {
         self.key(key, ButtonState::Released, None);
     }
 
+    /// This frame's inventory Shift and Control state, as gameplay reads it.
+    fn inventory_modifiers(&mut self) -> (bool, bool) {
+        let (_, shift, control) = self
+            .app
+            .world_mut()
+            .resource_mut::<UiRuntimeResource>()
+            .inventory_keys_mut()
+            .take_frame();
+        (shift, control)
+    }
+
+    /// Sets whether the window has keyboard focus.
+    fn set_focused(&mut self, focused: bool) {
+        self.app
+            .world_mut()
+            .get_mut::<Window>(self.window)
+            .unwrap()
+            .focused = focused;
+    }
+
     fn text(&self) -> &str {
         self.app
             .world()
-            .resource::<UiRuntime>()
+            .resource::<UiRuntimeResource>()
             .chat_editor()
             .as_str()
     }
@@ -115,7 +137,7 @@ fn held_control_or_command_pastes_across_suppressed_frames_even_before_chat_open
         assert!(
             h.app
                 .world()
-                .resource::<UiRuntime>()
+                .resource::<UiRuntimeResource>()
                 .pending_chat_sends()
                 .is_empty()
         );
@@ -130,7 +152,7 @@ fn modifier_sides_release_independently_and_alt_excludes_paste() {
     h.press(KeyCode::ControlRight, None);
     h.release(KeyCode::ControlLeft);
     h.press(KeyCode::AltRight, None);
-    h.press(KeyCode::KeyV, Some("v"));
+    h.press(KeyCode::KeyV, None);
     assert_eq!(h.text(), "");
     assert_eq!(h.reads.load(Ordering::Relaxed), 0);
     h.release(KeyCode::AltRight);
@@ -174,7 +196,7 @@ fn focus_loss_drops_held_modifiers_and_discards_unfocused_events() {
         .unwrap()
         .focused = false;
     h.release(KeyCode::ControlLeft);
-    assert!(h.app.world().resource::<UiRuntime>().chat_focused());
+    assert!(h.app.world().resource::<UiRuntimeResource>().chat_focused());
     h.app
         .world_mut()
         .get_mut::<Window>(h.window)
@@ -204,7 +226,11 @@ fn menu_and_server_form_ownership_drop_chat_modifiers() {
             // An open chat correctly makes incoming forms busy. Close it through
             // the real keyboard path before admitting the new screen's authority.
             h.press(KeyCode::Escape, None);
-            let mut runtime = h.app.world_mut().remove_resource::<UiRuntime>().unwrap();
+            let mut runtime = h
+                .app
+                .world_mut()
+                .remove_resource::<UiRuntimeResource>()
+                .unwrap();
             runtime
                 .apply(
                     &mut h
@@ -240,7 +266,7 @@ fn menu_and_server_form_ownership_drop_chat_modifiers() {
         h.app
             .world_mut()
             .remove_resource::<client_shell::menu::MenuRuntime>();
-        h.app.insert_resource(UiRuntime::new(1));
+        h.app.insert_resource(UiRuntimeResource(UiRuntime::new(1)));
         h.press(KeyCode::KeyT, Some("t"));
         h.press(KeyCode::KeyV, Some("v"));
         assert_eq!(h.text(), "v");
@@ -265,7 +291,7 @@ fn held_control_or_command_selects_all_then_copies_without_typing_or_sending() {
         assert_eq!(
             h.app
                 .world()
-                .resource::<UiRuntime>()
+                .resource::<UiRuntimeResource>()
                 .chat_editor()
                 .selection(),
             Some(0..h.text().len())
@@ -277,7 +303,7 @@ fn held_control_or_command_selects_all_then_copies_without_typing_or_sending() {
         assert!(
             h.app
                 .world()
-                .resource::<UiRuntime>()
+                .resource::<UiRuntimeResource>()
                 .pending_chat_sends()
                 .is_empty()
         );
@@ -312,7 +338,7 @@ fn copy_uses_only_unicode_selection_and_no_selection_leaves_clipboard_unchanged(
     assert!(
         h.app
             .world()
-            .resource::<UiRuntime>()
+            .resource::<UiRuntimeResource>()
             .pending_chat_sends()
             .is_empty()
     );
@@ -325,16 +351,41 @@ fn alt_excludes_select_all_and_copy_shortcuts() {
     h.press(KeyCode::KeyX, Some("draft"));
     h.press(KeyCode::ControlLeft, None);
     h.press(KeyCode::AltLeft, None);
-    h.press(KeyCode::KeyA, Some("a"));
-    h.press(KeyCode::KeyC, Some("c"));
+    h.press(KeyCode::KeyA, None);
+    h.press(KeyCode::KeyC, None);
     assert!(
         h.app
             .world()
-            .resource::<UiRuntime>()
+            .resource::<UiRuntimeResource>()
             .chat_editor()
             .selection()
             .is_none()
     );
     assert_eq!(*h.clipboard.lock().unwrap(), "pasted 🦀");
     assert_eq!(h.text(), "draft");
+}
+
+#[test]
+fn altgr_and_option_characters_type_but_control_and_command_text_does_not() {
+    let mut h = Harness::new();
+    h.press(KeyCode::KeyT, Some("t"));
+    h.press(KeyCode::AltRight, None);
+    h.press(KeyCode::KeyQ, Some("@"));
+    h.press(KeyCode::KeyA, Some("ą"));
+    h.release(KeyCode::AltRight);
+    h.press(KeyCode::AltLeft, None);
+    h.press(KeyCode::KeyL, Some("@"));
+    h.release(KeyCode::AltLeft);
+    // Windows reports AltGr as Ctrl+Alt.
+    h.press(KeyCode::ControlLeft, None);
+    h.press(KeyCode::AltRight, None);
+    h.press(KeyCode::Digit7, Some("{"));
+    h.release(KeyCode::AltRight);
+    h.press(KeyCode::KeyX, Some("x"));
+    h.release(KeyCode::ControlLeft);
+    h.press(KeyCode::SuperLeft, None);
+    h.press(KeyCode::KeyX, Some("x"));
+    h.release(KeyCode::SuperLeft);
+    assert_eq!(h.text(), "@ą@{");
+    assert_eq!(h.reads.load(Ordering::Relaxed), 0);
 }

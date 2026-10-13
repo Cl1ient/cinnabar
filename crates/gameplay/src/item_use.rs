@@ -5,11 +5,14 @@
 //! Extraction retains the accepted-use timing and transport rollback rules unchanged.
 use crate::{BatchSendError, melee::SwingTracker, mining::FrozenMiningSelection};
 use protocol::{HeldItemRequest, PredictedSlotChange, VerifiedNetworkItemStack};
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 mod admission;
 pub mod classify;
 mod crossbow;
 pub use admission::step_and_send;
-pub use classify::{AirUse, Cooldown, Needs, classify};
+use assets::item_use::ItemUseRequirement as Needs;
+pub use classify::{AirUse, classify};
+use client_world::ResolvedUseCooldown as Cooldown;
 
 pub const QUICK_CHARGE_ENCHANTMENT_ID: i16 = 35;
 /// Vanilla re-arms the next build action this long after an air use.
@@ -47,7 +50,7 @@ pub struct UseFrame {
     pub creative: bool,
     /// Authoritative writes, including identical rejected-charge corrections.
     pub inventory_revision: Option<u64>,
-    pub charge_projectile: Option<&'static str>,
+    pub charge_projectile: Option<assets::item_use::ItemProjectileRole>,
     /// A block interaction or recent attack consumed this press.
     pub press_consumed: bool,
 }
@@ -75,7 +78,7 @@ pub struct ItemUseRuntime {
     session: Option<u64>,
     rearm_millis: Option<u64>,
     /// Cooldown category and the tick it ends.
-    cooldowns: Vec<(&'static str, u64)>,
+    cooldowns: Vec<(client_world::UseCooldownCategory, u64)>,
     predicted: Option<PredictedStack>,
     /// A throw's emptied slot and the authoritative revision it consumed, until the ledger takes it.
     emptied_slot: Option<(u8, u64)>,
@@ -84,7 +87,10 @@ pub struct ItemUseRuntime {
     /// A rejected click retries only while its verified selection remains current.
     deferred_selection: Option<FrozenMiningSelection>,
     /// Only this owner's rejected batch may retry a published tick.
-    rejected_swing_tick: Option<(u64, Option<(u64, u64)>)>,
+    rejected_swing_tick: Option<(
+        u64,
+        Option<(SessionGeneration, PositionAuthorityGeneration)>,
+    )>,
     /// A rejected release still precedes the next use, even if Use is pressed again.
     release_pending: bool,
     /// Vanilla's process-wide legacy item-stack request id counter.
@@ -137,7 +143,7 @@ impl ItemUseRuntime {
         slot: u8,
         revision: u64,
         stack: &protocol::NetworkItemStack,
-    ) -> Option<Option<&'static str>> {
+    ) -> Option<Option<assets::item_use::ItemProjectileRole>> {
         self.crossbows.projectile_for_stack(slot, revision, stack)
     }
 
@@ -393,7 +399,7 @@ impl ItemUseRuntime {
             if emptied_slot.is_some() {
                 self.emptied_slot = emptied_slot;
             }
-            if air_use == Some(AirUse::Instant) {
+            if matches!(air_use, Some(AirUse::Instant { .. })) {
                 self.crossbows
                     .predict(&selection, frame.inventory_revision, None);
             }
@@ -433,7 +439,7 @@ impl ItemUseRuntime {
         (!selection.item.is_empty()).then_some(selection)
     }
 
-    fn on_cooldown(&self, category: &str) -> bool {
+    fn on_cooldown(&self, category: client_world::UseCooldownCategory) -> bool {
         self.cooldowns.iter().any(|(active, _)| *active == category)
     }
 
@@ -480,5 +486,7 @@ pub fn admit_on_tick(
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixtures;
 #[cfg(test)]
 mod tests;

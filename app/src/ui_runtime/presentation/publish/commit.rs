@@ -1,19 +1,21 @@
 //! Pure UI rasterization, layout and publication after input enqueue.
 use super::*;
+use std::sync::Arc;
 
 /// Publishes the UI captured during preparation.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn publish_ui_runtime(
     player_runtime: Res<client_state::PlayerRuntime>,
-    mut runtime: ResMut<UiRuntime>,
+    mut runtime: ResMut<UiRuntimeResource>,
     mut prepared: ResMut<PreparedUiPublication>,
-    mut presentation: ResMut<UiPresentationRuntime>,
+    mut presentation: ResMut<UiPresentationResource>,
     mut scene: ResMut<render_scene::UiRenderSceneResource>,
     stats: Res<render_scene::UiRenderStatsResource>,
     hand_rig: Res<render_scene::HandRigScene>,
     nametag_scene: Option<ResMut<render_scene::NametagSceneResource>>,
     mut hand: crate::presentation::viewmodel::ViewmodelPublish,
     profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
+    mut item_glint: Option<ResMut<render_scene::UiItemGlintTexture>>,
 ) {
     let Some(prepared) = prepared.0.take() else {
         return;
@@ -47,6 +49,16 @@ pub(crate) fn publish_ui_runtime(
     if let Err(error) = scene.publish(input, &stats) {
         hand.clear();
         presentation.record_frame_failure(&UiPresentationError::Render(error));
+    } else if let Some(item_glint) = item_glint.as_mut() {
+        let next = presentation.item_glint_texture();
+        let same = match (item_glint.0.as_ref(), next) {
+            (Some(current), Some(next)) => Arc::ptr_eq(current, next),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            item_glint.0 = next.cloned();
+        }
     }
 }
 
@@ -62,11 +74,11 @@ mod tests {
         world.insert_resource(client_state::PlayerRuntime(player_state::PlayerState::new(
             1,
         )));
-        world.insert_resource(UiRuntime::new(1));
+        world.insert_resource(UiRuntimeResource(UiRuntime::new(1)));
         let mut presentation =
-            UiPresentationRuntime::new(client_ui::test_support::fixture_font()).unwrap();
+            UiPresentationRuntime::new(ui_engine::test_support::fixture_font()).unwrap();
         presentation.set_menu_view(Some(launcher::menu::MenuView::new(true, "Fixture".into())));
-        world.insert_resource(presentation);
+        world.insert_resource(UiPresentationResource(presentation));
         world.init_resource::<PreparedUiPublication>();
         world.init_resource::<render_scene::UiRenderSceneResource>();
         world.init_resource::<render_scene::UiRenderStatsResource>();
@@ -78,7 +90,7 @@ mod tests {
     /// Publishes a captured frame through the same system that drives a connected session.
     fn publish(world: &mut World, size: [u32; 2]) {
         let inventory = world
-            .resource::<UiRuntime>()
+            .resource::<UiRuntimeResource>()
             .capture_presentation_inventory(world.resource::<client_state::PlayerRuntime>());
         world.resource_mut::<PreparedUiPublication>().0 = Some(PendingUiPublication {
             inventory,
@@ -123,7 +135,7 @@ mod tests {
         let mut view = launcher::menu::MenuView::new(true, "Fixture".into());
         view.screen = launcher::menu::MenuScreen::Settings;
         world
-            .resource_mut::<UiPresentationRuntime>()
+            .resource_mut::<UiPresentationResource>()
             .set_menu_view(Some(view));
         publish(&mut world, [254, 124]);
         assert!(
@@ -157,7 +169,7 @@ mod tests {
             );
             assert_eq!(
                 world
-                    .resource::<UiPresentationRuntime>()
+                    .resource::<UiPresentationResource>()
                     .rejected_frame_count(),
                 1
             );

@@ -17,6 +17,10 @@ use pack_runtime::reload_diff::Changes;
 /// A lobby and the game it transfers to.
 const KEPT_STACKS: usize = 2;
 
+/// Archive bytes past which leaving for the menu releases the newest stack instead of keeping it
+/// for a rejoin; its compiled outputs scale with them.
+const REJOIN_KEPT_ARCHIVE_BYTES: usize = 128 * 1024 * 1024;
+
 /// Process tables a compile reads besides the stack and StartGame facts.
 #[derive(Clone, Debug)]
 pub(in crate::runtime::network) struct CompileEnvironment {
@@ -26,7 +30,7 @@ pub(in crate::runtime::network) struct CompileEnvironment {
     max_layers: u32,
     /// Material keys, terrain aliases, item routes and actor artwork: each is installed once at
     /// startup and never changes afterwards.
-    carrier_tables: [bool; 4],
+    carrier_tables: [bool; 5],
     /// Entity compiles resolve against these vanilla definitions and rasters.
     vanilla_refs: Option<Arc<assets::VanillaEntityRefs>>,
     vanilla_pack_dir: Option<PathBuf>,
@@ -41,6 +45,7 @@ impl CompileEnvironment {
             max_layers: super::overlay_texture_layer_limit(),
             carrier_tables: [
                 super::BASE_MATERIAL_KEYS.get().is_some(),
+                crate::runtime::network::block_entity_art::base().is_some(),
                 pack_runtime::pack_textures::base_terrain_catalog_installed(),
                 item_icons::vanilla_item_paths_installed(),
                 entity_texture_reload::base_actor_artwork_installed(),
@@ -87,7 +92,7 @@ impl std::fmt::Debug for CompiledStacks {
     }
 }
 
-/// Joins and the post-join reload share these; leaving for the menu releases them.
+/// Joins and the post-join reload share these; leaving for the menu keeps only the newest.
 pub(in crate::runtime::network) static LATEST: CompiledStacks = CompiledStacks::new();
 
 impl CompiledStacks {
@@ -213,14 +218,39 @@ impl CompiledStacks {
     }
 
     /// Takes every kept stack; dropping the result releases their archives and compiled outputs.
+    #[cfg(test)]
     pub(in crate::runtime::network) fn take(&self) -> impl Send + 'static {
         std::mem::take(&mut *self.lock())
     }
 
-    /// Releases every kept stack, as leaving for the menu releases the session's, freeing them
-    /// off the calling frame.
+    /// Releases every kept stack, freeing them off the calling frame.
+    #[cfg(test)]
     pub(crate) fn release(&self) {
         let released = self.take();
+        rayon::spawn(move || drop(released));
+    }
+
+    /// Keeps only the newest stack, for a rejoin from the menu to reuse, unless its archives
+    /// exceed the rejoin budget; the rest are freed off the calling frame.
+    pub(crate) fn keep_for_rejoin(&self) {
+        self.keep_newest_within(REJOIN_KEPT_ARCHIVE_BYTES);
+    }
+
+    /// [`Self::keep_for_rejoin`] under an explicit archive budget.
+    fn keep_newest_within(&self, archive_bytes: usize) {
+        let released: Vec<Kept> = {
+            let mut kept = self.lock();
+            let keep = kept.front().is_some_and(|newest| {
+                newest
+                    .stack
+                    .packs()
+                    .iter()
+                    .map(|pack| pack.archive_bytes().len())
+                    .sum::<usize>()
+                    <= archive_bytes
+            });
+            kept.drain(usize::from(keep)..).collect()
+        };
         rayon::spawn(move || drop(released));
     }
 

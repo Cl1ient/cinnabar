@@ -1,4 +1,4 @@
-//! Binary selection and interaction records for PREG1002.
+//! Binary selection and interaction records for the compiled physics carrier.
 
 use super::{Reader, invalid, physics_error};
 use crate::AssetError;

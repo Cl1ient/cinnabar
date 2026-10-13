@@ -12,6 +12,7 @@ use sim::{
 };
 use thiserror::Error;
 
+mod multipart;
 mod selection;
 mod session_palette;
 mod tags;
@@ -33,6 +34,8 @@ struct InteractionBlock {
         bool,
         Option<u32>,
     )>,
+    /// Offset to the other block of a two-block structure such as a door or bed.
+    second_part: Option<[i32; 3]>,
 }
 
 type InteractionBlocks = BTreeMap<u32, InteractionBlock>;
@@ -60,19 +63,8 @@ pub struct PhysicsCollisionRegistries {
     hashed_canonical_states: BTreeMap<u32, Arc<str>>,
     state_ids: BTreeMap<Arc<str>, BTreeMap<String, (u32, u32)>>,
     max_vanilla_sort_key: u64,
-    custom_block_physics: Option<CustomBlockPhysics>,
     /// Hashes this session added to `hashed`, dropped when the next session begins.
     session_hashes: Vec<u32>,
-}
-
-/// Provisional movement facts for server-defined blocks: stone's surface facts.
-#[derive(Debug, Clone, Copy)]
-struct CustomBlockPhysics {
-    friction: f64,
-    horizontal_speed: f64,
-    vertical_speed: f64,
-    flags: u8,
-    surface_response: u8,
 }
 
 #[derive(Debug, Error)]
@@ -167,7 +159,6 @@ impl PhysicsCollisionRegistries {
         let mut state_ids: BTreeMap<Arc<str>, BTreeMap<String, (u32, u32)>> = BTreeMap::new();
         let mut max_vanilla_sort_key = 0;
         let mut vanilla_runs: Vec<(u64, Arc<str>, u32)> = Vec::new();
-        let mut custom_block_physics = None;
         for record in records {
             let fact = physics
                 .by_sequential_id(record.sequential_id)
@@ -187,6 +178,10 @@ impl PhysicsCollisionRegistries {
             let full_cube = shapes
                 .flags
                 .contains(assets::block_shapes::ShapeFlags::FULL_CUBE);
+            let states = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+                &record.canonical_state,
+            )
+            .ok();
             let binding = InteractionBlock {
                 identifier: Arc::from(record.name.as_ref()),
                 full_cube,
@@ -207,15 +202,16 @@ impl PhysicsCollisionRegistries {
                         .contains(assets::BlockFlags::OCCLUDES_FULL_FACE),
                     record.model_state.get(assets::ModelStateField::Orientation),
                 )),
+                second_part: states
+                    .as_ref()
+                    .and_then(|states| multipart::second_part_offset(&record.name, states)),
             };
             interaction_blocks.insert(record.sequential_id, binding.clone());
             hashed_interaction_blocks.insert(record.network_hash, binding);
             let state: Arc<str> = Arc::from(record.canonical_state.as_ref());
             canonical_states.insert(record.sequential_id, Arc::clone(&state));
             hashed_canonical_states.insert(record.network_hash, state);
-            if let Ok(states) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
-                &record.canonical_state,
-            ) {
+            if let Some(states) = states {
                 state_ids
                     .entry(Arc::from(record.name.as_ref()))
                     .or_default()
@@ -288,20 +284,6 @@ impl PhysicsCollisionRegistries {
                     registry.set_air_runtime_id(id);
                 }
             }
-            if shapes
-                .flags
-                .contains(assets::block_shapes::ShapeFlags::CUSTOM_SURFACE)
-            {
-                custom_block_physics.get_or_insert(CustomBlockPhysics {
-                    friction: f64::from(fact.friction_q1e8) * COLLISION_COORDINATE_SCALE,
-                    horizontal_speed: f64::from(fact.horizontal_speed_q1e8)
-                        * COLLISION_COORDINATE_SCALE,
-                    vertical_speed: f64::from(fact.vertical_speed_q1e8)
-                        * COLLISION_COORDINATE_SCALE,
-                    flags: fact.flags.bits(),
-                    surface_response: fact.surface_response as u8,
-                });
-            }
             if record.name.as_ref() != RESERVED_RECORD_NAME {
                 let key = protocol::block_name_sort_key(&record.name);
                 max_vanilla_sort_key = max_vanilla_sort_key.max(key);
@@ -334,7 +316,6 @@ impl PhysicsCollisionRegistries {
             hashed_canonical_states,
             state_ids,
             max_vanilla_sort_key,
-            custom_block_physics,
             session_hashes: Vec::new(),
         })
     }
@@ -354,7 +335,6 @@ impl PhysicsCollisionRegistries {
         if custom.blocks.is_empty() {
             return Some((first..first, vanilla_remap));
         }
-        let physics = self.custom_block_physics?;
         let mut next = first;
         let mut runs = Vec::new();
         for block in custom.blocks.iter() {
@@ -391,22 +371,19 @@ impl PhysicsCollisionRegistries {
                         shape_flags: assets::block_shapes::ShapeFlags::empty(),
                         tags: Arc::clone(&block.tags),
                         connections: None,
+                        second_part: None,
                     },
                 );
                 let boxes = custom_block_boxes(&effective);
                 self.sequential
-                    .register_primitives(
-                        next,
-                        boxes,
-                        physics.friction,
-                        physics.horizontal_speed,
-                        physics.vertical_speed,
-                        0.0,
-                        physics.flags,
-                        physics.surface_response,
-                    )
+                    .register_with_friction(next, boxes, custom_block_friction(&effective))
                     .ok()?;
-                apply_selection(&mut self.sequential, next, effective.selection);
+                apply_selection(
+                    &mut self.sequential,
+                    next,
+                    effective.selection,
+                    effective.transformation,
+                );
                 if let Some(offset) = effective.random_offset {
                     self.sequential.set_random_offset(next, offset);
                 }
@@ -418,19 +395,12 @@ impl PhysicsCollisionRegistries {
 
     /// Registers this session's custom block states under their network hashes
     /// and returns how many were added; a hash vanilla or an earlier state owns
-    /// is skipped. Returns `None` when the carrier lacks stone physics to borrow.
-    pub fn begin_session_hashed_custom_blocks(
-        &mut self,
-        custom: &protocol::CustomBlocks,
-    ) -> Option<usize> {
+    /// is skipped.
+    pub fn begin_session_hashed_custom_blocks(&mut self, custom: &protocol::CustomBlocks) -> usize {
         for hash in self.session_hashes.drain(..) {
             self.hashed.remove_runtime_id(hash);
             self.hashed_interaction_blocks.remove(&hash);
         }
-        if custom.blocks.is_empty() {
-            return Some(0);
-        }
-        let physics = self.custom_block_physics?;
         for block in custom.blocks.iter() {
             for (index, state) in block.hashed_states().into_iter().enumerate() {
                 if self.hashed.contains_runtime_id(state.hash) {
@@ -440,16 +410,7 @@ impl PhysicsCollisionRegistries {
                 let boxes = custom_block_boxes(&effective);
                 if self
                     .hashed
-                    .register_primitives(
-                        state.hash,
-                        boxes,
-                        physics.friction,
-                        physics.horizontal_speed,
-                        physics.vertical_speed,
-                        0.0,
-                        physics.flags,
-                        physics.surface_response,
-                    )
+                    .register_with_friction(state.hash, boxes, custom_block_friction(&effective))
                     .is_ok()
                 {
                     self.hashed_interaction_blocks.insert(
@@ -461,9 +422,15 @@ impl PhysicsCollisionRegistries {
                             shape_flags: assets::block_shapes::ShapeFlags::empty(),
                             tags: Arc::clone(&block.tags),
                             connections: None,
+                            second_part: None,
                         },
                     );
-                    apply_selection(&mut self.hashed, state.hash, effective.selection);
+                    apply_selection(
+                        &mut self.hashed,
+                        state.hash,
+                        effective.selection,
+                        effective.transformation,
+                    );
                     if let Some(offset) = effective.random_offset {
                         self.hashed.set_random_offset(state.hash, offset);
                     }
@@ -471,7 +438,7 @@ impl PhysicsCollisionRegistries {
                 }
             }
         }
-        Some(self.session_hashes.len())
+        self.session_hashes.len()
     }
 
     pub fn block_identifier(&self, mode: assets::NetworkIdMode, runtime_id: u32) -> Option<&str> {
@@ -480,6 +447,20 @@ impl PhysicsCollisionRegistries {
             assets::NetworkIdMode::Hashed => &self.hashed_interaction_blocks,
         };
         map.get(&runtime_id).map(|block| block.identifier.as_ref())
+    }
+
+    /// The offset from `runtime_id`'s block to the other block of its two-block structure
+    /// (door halves, double plants, pitcher crops, bed ends), if it is part of one.
+    pub fn second_part_offset(
+        &self,
+        mode: assets::NetworkIdMode,
+        runtime_id: u32,
+    ) -> Option<[i32; 3]> {
+        let map = match mode {
+            assets::NetworkIdMode::Sequential => &self.interaction_blocks,
+            assets::NetworkIdMode::Hashed => &self.hashed_interaction_blocks,
+        };
+        map.get(&runtime_id)?.second_part
     }
 
     /// The runtime id of `identifier` in exactly `states`, compared as parsed JSON.
@@ -578,24 +559,62 @@ impl PhysicsCollisionRegistries {
     }
 }
 
+/// Surface friction of a custom state: one minus its `minecraft:friction` value, else the
+/// default block friction. Speed factors and fluid facts stay neutral.
+fn custom_block_friction(block: &protocol::CustomBlockPhysics) -> f64 {
+    block
+        .friction
+        .map_or(sim::DEFAULT_SURFACE_FRICTION, |value| {
+            f64::from(1.0 - value)
+        })
+}
+
 /// Yields every authored primitive, or the full-cube default, when collision is enabled.
 fn custom_block_boxes(block: &protocol::CustomBlockPhysics) -> impl Iterator<Item = Aabb> + '_ {
     let defaults = block
         .collision_boxes
         .is_none()
         .then(|| Aabb::new(Vec3::ZERO, Vec3::ONE));
+    let boxes = block
+        .collision_boxes
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .map(|shape| transformed_box(*shape, block.transformation));
     defaults
         .into_iter()
-        .chain(
-            block
-                .collision_boxes
-                .as_deref()
-                .unwrap_or_default()
-                .iter()
-                .copied()
-                .map(box_to_aabb),
-        )
+        .chain(boxes.map(box_to_aabb))
         .filter(move |_| block.collides)
+}
+
+/// The bounds of one authored box under a state's transformation, so collision and
+/// selection follow the same face as the geometry.
+fn transformed_box(
+    shape: protocol::CustomBox,
+    transform: Option<protocol::CustomTransformation>,
+) -> protocol::CustomBox {
+    let Some(transform) = transform else {
+        return shape;
+    };
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for bits in 0..8_u32 {
+        let corner = [0, 1, 2].map(|axis| {
+            if bits >> axis & 1 != 0 {
+                shape.max[axis]
+            } else {
+                shape.min[axis]
+            }
+        });
+        let point = transform
+            .apply(corner.map(|coordinate| coordinate * 16.0 - 8.0))
+            .map(|coordinate| (coordinate + 8.0) / 16.0);
+        for axis in 0..3 {
+            min[axis] = min[axis].min(point[axis]);
+            max[axis] = max[axis].max(point[axis]);
+        }
+    }
+    protocol::CustomBox { min, max }
 }
 
 /// Applies the block's selection box to a registered state's pick ray.
@@ -603,11 +622,14 @@ fn apply_selection(
     registry: &mut CollisionRegistry,
     id: u32,
     selection: protocol::CustomSelection,
+    transform: Option<protocol::CustomTransformation>,
 ) {
     let shapes = match selection {
         protocol::CustomSelection::Default => vec![Aabb::new(Vec3::ZERO, Vec3::ONE)],
         protocol::CustomSelection::Disabled => Vec::new(),
-        protocol::CustomSelection::Box(shape) => vec![box_to_aabb(shape)],
+        protocol::CustomSelection::Box(shape) => {
+            vec![box_to_aabb(transformed_box(shape, transform))]
+        }
     };
     registry.set_pick_shapes(id, shapes);
 }

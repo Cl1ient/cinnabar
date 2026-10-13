@@ -12,6 +12,9 @@ use render_scene::{
 #[cfg(test)]
 mod water_tint_tests;
 
+#[cfg(test)]
+mod clock_tests;
+
 #[derive(Clone, PartialEq, Eq)]
 pub(in crate::chunk) struct ChunkBindGroupBuffers {
     pub(in crate::chunk) view: BufferId,
@@ -51,10 +54,9 @@ pub(in crate::chunk) struct AnimationGpu {
     pub(in crate::chunk) frame_count: u32,
     pub(in crate::chunk) ticks_per_frame: u32,
     pub(in crate::chunk) flags: u32,
-    pub(in crate::chunk) uv_scale: f32,
 }
 
-const _: () = assert!(std::mem::size_of::<AnimationGpu>() == 5 * 4);
+const _: () = assert!(std::mem::size_of::<AnimationGpu>() == 4 * 4);
 
 #[repr(C, align(16))]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -67,11 +69,14 @@ pub(in crate::chunk) struct BiomeTintGpu {
     pub(in crate::chunk) water: u32,
     pub(in crate::chunk) flags: u32,
     pub(in crate::chunk) water_opacity: f32,
-    pub(in crate::chunk) seasonal_foliage: [[f32; 4]; assets::SEASONAL_FOLIAGE_COUNT],
+    pub(in crate::chunk) seasonal_foliage:
+        [[f32; 4]; assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT],
 }
 
-const _: () =
-    assert!(std::mem::size_of::<BiomeTintGpu>() == 8 * 4 + assets::SEASONAL_FOLIAGE_COUNT * 16);
+const _: () = assert!(
+    std::mem::size_of::<BiomeTintGpu>()
+        == 8 * 4 + assets::seasonal_foliage::SEASONAL_FOLIAGE_COUNT * 16
+);
 
 pub(in crate::chunk) fn pack_linear_rgb10(rgb: [f32; 3]) -> u32 {
     let component = |value: f32| {
@@ -343,9 +348,14 @@ pub(in crate::chunk) fn prepare_chunk_texture_assets(
         let result =
             build_chunk_texture_assets(&candidate, &device, &queue).and_then(|(atlas, stats)| {
                 let geometry = match geometry {
-                    Some(instances) => Some(PreparedResourceGeometry::build(
-                        &instances, candidate, device, queue, view,
-                    )?),
+                    Some(instances) => Some({
+                        let _zone = bevy::log::info_span!(
+                            "pack_apply.gpu_geometry",
+                            chunks = instances.len()
+                        )
+                        .entered();
+                        PreparedResourceGeometry::build(&instances, candidate, device, queue, view)?
+                    }),
                     None => None,
                 };
                 Some((atlas, stats, geometry))
@@ -360,6 +370,7 @@ fn build_chunk_texture_assets(
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
 ) -> Option<(PreparedChunkTextureAssets, ChunkTextureUploadStats)> {
+    let _zone = bevy::log::info_span!("pack_apply.gpu_atlas").entered();
     let identity = assets.identity();
     let pages = assets.assets().texture_pages();
     let Some(page_bindings) = plan_texture_page_bindings(pages.len()) else {
@@ -408,6 +419,7 @@ fn build_chunk_texture_assets(
             bevy::log::error!(?error, "chunk texture page exceeds adapter limits");
             return None;
         }
+        let mips = bevy::log::info_span!("pack_apply.gpu_atlas_mips").entered();
         let texture = match match binding {
             TexturePageBinding::Asset(index) => assets.assets().terrain_texture_page(index),
             TexturePageBinding::DiagnosticFallback => {
@@ -420,6 +432,7 @@ fn build_chunk_texture_assets(
                 return None;
             }
         };
+        drop(mips);
         let plans = match plan_queue_texture_mips(&texture) {
             Ok(plans) => plans,
             Err(error) => {
@@ -454,7 +467,6 @@ fn build_chunk_texture_assets(
             frame_count: animation.frame_count,
             ticks_per_frame: animation.ticks_per_frame,
             flags: animation.flags,
-            uv_scale: 1.0 / animation.replicate as f32,
         })
         .collect::<Vec<_>>();
     let animation_frame_words = assets
@@ -501,7 +513,6 @@ fn build_chunk_texture_assets(
         frame_count: 1,
         ticks_per_frame: 1,
         flags: 0,
-        uv_scale: 1.0,
     }];
     let animation_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("global chunk animations"),

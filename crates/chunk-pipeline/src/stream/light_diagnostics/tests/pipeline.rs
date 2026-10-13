@@ -104,7 +104,7 @@ fn request_errors_and_late_replies_do_not_replace_inline_resident_provenance() {
     let record = &stream.light_diagnostics.columns[&key].sections[&base];
     assert_eq!(record.source, Some("inline-chunk"));
     assert_eq!(record.reply.as_deref(), Some("YIndexOutOfBounds"));
-    assert_eq!(stream.stats.phase2_outcomes.stale, 1);
+    assert_eq!(stream.stats.publication_outcomes.stale, 1);
 }
 
 #[test]
@@ -183,5 +183,5 @@ fn all_air_response_retains_heightmaps_and_limited_header_replaces_upper_evidenc
     assert_eq!(record.source, Some("limited-request-upper-air"));
     assert_eq!(record.reply, None);
     assert_eq!(record.metadata, None);
-    assert_eq!(stream.stats.phase2_outcomes.stale, 1);
+    assert_eq!(stream.stats.publication_outcomes.stale, 1);
 }

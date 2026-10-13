@@ -1,7 +1,10 @@
-use std::{num::NonZeroU64, time::Duration};
+use semantic_input::identity::{InputAuthorityGeneration, InputSequence};
+use std::time::Duration;
 
 use bevy::prelude::{App, Update};
 use client_ui::ui_runtime::UiRuntime;
+
+use crate::ui_resources::UiRuntimeResource;
 use launcher::menu::join_requests::{LIFETIME, respond_hint, title};
 use semantic_input::{Action, ActionPhase, ActionSnapshot, InputMode};
 
@@ -31,8 +34,8 @@ fn open_notification_pressed() -> SemanticInputSnapshot {
     phases[Action::InteractWithToast as usize].pressed = true;
     SemanticInputSnapshot(semantic_input::finalized::FinalizedInput::from_finalized(
         ActionSnapshot {
-            frame_sequence: 1,
-            authority_generation: NonZeroU64::MIN,
+            frame_sequence: InputSequence::new(1),
+            authority_generation: InputAuthorityGeneration::INITIAL,
             movement: [0.0; 2],
             raw_movement: [0.0; 2],
             analogue_movement: [0.0; 2],
@@ -91,7 +94,7 @@ fn the_open_notification_key_opens_the_pause_popup_only_while_a_request_waits() 
 #[test]
 fn the_join_toast_stands_while_its_request_is_open_and_leaves_with_it() {
     let mut menu = playing();
-    let mut runtime = UiRuntime::new(1);
+    let mut runtime = UiRuntimeResource(UiRuntime::new(1));
     let showing = |runtime: &UiRuntime, at: u64| runtime.hud().showing_toast(at).is_some();
     menu.push_join_request(1, "Alex".into(), Duration::ZERO);
     menu.sync_join_toast(&mut &mut runtime, Duration::ZERO);

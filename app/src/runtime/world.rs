@@ -6,8 +6,8 @@ use ::acceptance::AcceptanceRun;
 use client_runtime::network::NetworkHandle;
 #[cfg(feature = "acceptance")]
 use {
-    crate::runtime::phase3_evidence::Phase3EvidenceEmitter,
-    acceptance::phase3_evidence::Phase3EvidenceEventKind,
+    crate::runtime::movement_evidence::MovementEvidenceEmitter,
+    acceptance::movement_evidence::MovementEvidenceEventKind,
 };
 #[cfg(feature = "acceptance")]
 use {
@@ -60,7 +60,7 @@ use render_scene::{
     VisibilityDiagnosticsInput,
 };
 
-use client_ui::ui_runtime::UiRuntime;
+use client_shell::ui_resources::UiRuntimeResource;
 use {
     crate::{
         environment::{self, WeatherState, WorldClock, apply_environment_control},
@@ -189,7 +189,7 @@ pub(crate) struct AppWorldState<'w> {
     pub(crate) movement_effects: ResMut<'w, LocalMovementEffectTimeline>,
     pub(crate) movement_speed: ResMut<'w, LocalMovementSpeedAuthority>,
     pub(crate) collisions: ResMut<'w, PhysicsCollisionRegistries>,
-    pub(crate) ui_runtime: ResMut<'w, UiRuntime>,
+    pub(crate) ui_runtime: ResMut<'w, UiRuntimeResource>,
     pub(crate) time: Res<'w, Time<Real>>,
 }
 
@@ -300,6 +300,15 @@ pub(crate) fn mesh_change_has_publication_permit(change: &WorldMeshChange) -> bo
     }
 }
 
+/// Diagnostics, player authority and per-system correction history used while polling the world.
+type WorldPollInputs<'w, 's> = (
+    Option<Res<'w, VisibilityDiagnosticsInput>>,
+    Option<Res<'w, RuntimeStageProfiler>>,
+    ResMut<'w, client_state::PlayerRuntime>,
+    Option<Res<'w, client_presentation::camera::ServerCameraView>>,
+    Local<'s, gameplay::movement::CorrectionContextLog>,
+);
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn reconcile_world_stream_before_physics(
     state: AppWorldState,
@@ -311,17 +320,19 @@ pub(crate) fn reconcile_world_stream_before_physics(
     mut view: ResMut<LocalViewPose>,
     mut local_frame: ResMut<LocalPlayerFrameCarrier>,
     mut interaction: ResMut<InteractionOriginSnapshot>,
-    #[cfg(feature = "acceptance")] mut phase3_evidence: ResMut<Phase3EvidenceEmitter>,
+    #[cfg(feature = "acceptance")] mut movement_evidence: ResMut<MovementEvidenceEmitter>,
     mut frame_poll: ResMut<WorldStreamFramePoll>,
     mut audio: MessageWriter<SequencedAudioEvent>,
     mut server_camera: ResMut<ServerCameraInstructions>,
     mut camera_hurt: Option<ResMut<client_presentation::camera::CameraHurtState>>,
     mut particle_inbox: Option<ResMut<crate::particles::ParticleInbox>>,
-    (visibility_diagnostics, profiler, mut player_runtime): (
-        Option<Res<VisibilityDiagnosticsInput>>,
-        Option<Res<RuntimeStageProfiler>>,
-        ResMut<client_state::PlayerRuntime>,
-    ),
+    (
+        visibility_diagnostics,
+        profiler,
+        mut player_runtime,
+        server_camera_view,
+        mut correction_log,
+    ): WorldPollInputs<'_, '_>,
 ) {
     let _timer = profiler
         .as_deref()
@@ -433,6 +444,20 @@ pub(crate) fn reconcile_world_stream_before_physics(
             continue;
         }
         gameplay::movement::trace_server_control(&movement, &local_physics, &control);
+        if let Some(packet) = gameplay::movement::CorrectionPacket::from_control(&control) {
+            let camera = server_camera_view.as_deref();
+            correction_log.note(
+                movement.session_generation(),
+                std::time::Instant::now(),
+                packet,
+                gameplay::movement::CorrectionContext::read(
+                    &player_runtime.facts,
+                    movement.physics_is_authorized(),
+                    camera.and_then(|camera| camera.active_preset_name()),
+                    camera.is_some_and(|camera| camera.has_pose_override()),
+                ),
+            );
+        }
         if let CommittedControlEvent::LocalMovementFlags { tick, flags, .. } = control {
             let previous = player_runtime.facts.is_immobile();
             player_runtime
@@ -521,11 +546,12 @@ pub(crate) fn reconcile_world_stream_before_physics(
                     previous,
                     position,
                 } => {
-                    phase3_evidence.note_correction(outcome, position_distance(previous, position));
+                    movement_evidence
+                        .note_correction(outcome, position_distance(previous, position));
                 }
                 #[cfg(feature = "acceptance")]
                 ControlObservation::Dimension => {
-                    phase3_evidence.note_event(Phase3EvidenceEventKind::Dimension);
+                    movement_evidence.note_event(MovementEvidenceEventKind::Dimension);
                 }
                 #[cfg(not(feature = "acceptance"))]
                 ControlObservation::BeforeSpatial(_)

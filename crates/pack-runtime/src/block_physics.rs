@@ -21,6 +21,8 @@ fn conditions(block: &CustomBlock) -> (Vec<Condition<'_>>, usize) {
             if physical.collision.is_none()
                 && physical.selection.is_none()
                 && physical.random_offset.is_none()
+                && physical.transformation.is_none()
+                && physical.friction.is_none()
             {
                 return None;
             }
@@ -69,8 +71,14 @@ fn evaluate(
         if let Some(offset) = physical.random_offset {
             physics.random_offset = Some(offset);
         }
+        if let Some(transform) = physical.transformation {
+            physics.transformation = Some(transform);
+        }
         if let Some(selection) = physical.selection {
             physics.selection = selection;
+        }
+        if let Some(friction) = physical.friction {
+            physics.friction = Some(friction);
         }
     }
     Some(physics)

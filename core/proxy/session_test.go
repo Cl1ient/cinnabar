@@ -152,7 +152,7 @@ func TestSessionDownstreamClaimsTheCoreDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	delete(claims, "DeviceOS")
-	claims["DeviceModel"] = "JolyneClient"
+	claims["DeviceModel"] = "FixtureClient"
 	claims["CurrentInputMode"] = packet.InputModeMouse
 	request.ClientData, _ = json.Marshal(claims)
 	if _, err := newSessionDownstream(request, nil); err == nil {
@@ -977,9 +977,12 @@ func TestBashAcceptanceObservesHashedSessionReadiness(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			command := exec.CommandContext(t.Context(), bash, "-c", `export RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY=1; source "$1"; wait_for_core_ready "$2" $$ 1`, "acceptance", script, logPath)
-			if output, err := command.CombinedOutput(); err != nil {
-				t.Fatalf("readiness wait: %v: %s", err, output)
+			// The marker is already published, so readiness does not need any waiting budget.
+			for _, timeout := range []string{"0", "1"} {
+				command := exec.CommandContext(t.Context(), bash, "-c", `export CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY=1; source "$1"; wait_for_core_ready "$2" $$ "$3"`, "acceptance", script, logPath, timeout)
+				if output, err := command.CombinedOutput(); err != nil {
+					t.Fatalf("readiness wait with timeout %s: %v: %s", timeout, err, output)
+				}
 			}
 		}()
 	}

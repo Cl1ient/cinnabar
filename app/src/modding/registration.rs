@@ -1,17 +1,18 @@
 //! Per-user extension registration; polling, compilation and status I/O stay off the frame thread.
 
 use sha2::Digest;
-use std::io::Read;
-use std::io::Write;
 mod presentation;
+mod source;
+mod status;
 #[cfg(test)]
 mod tests;
 
 use presentation::{clear_owned_state, clear_presentation, refresh_presentation};
+use source::{observe, source_snapshot};
+use status::{bounded_message, write_status};
 
 use std::{
-    fs::{self, File, OpenOptions},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -29,14 +30,12 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use super::{ModRuntime, RELOAD_INTERVAL, VisualTimeOverride, interaction::ModInteraction};
-use client_ui::ui_runtime::presentation::UiPresentationRuntime;
+use client_shell::ui_resources::UiPresentationResource;
 
 const REGISTRATION_FILE: &str = "local-mod.json";
 const STATUS_FILE: &str = "local-mod.status.json";
 const MAX_BYTES: usize = 16 * 1024;
 const MAX_REQUEST_BYTES: usize = 64;
-const MAX_MESSAGE_BYTES: usize = 512;
-static WRITE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +47,8 @@ struct Registration {
     component: PathBuf,
     #[serde(default)]
     font: Option<PathBuf>,
+    #[serde(default)]
+    ui: Option<PathBuf>,
     #[serde(default)]
     grants: ModGrants,
 }
@@ -65,8 +66,9 @@ impl Registration {
         }
         if !self.component.is_absolute()
             || self.font.as_ref().is_some_and(|font| !font.is_absolute())
+            || self.ui.as_ref().is_some_and(|ui| !ui.is_absolute())
         {
-            return Err("registration component and font paths must be absolute".into());
+            return Err("registration component, font and UI paths must be absolute".into());
         }
         Ok(())
     }
@@ -75,6 +77,7 @@ impl Registration {
 struct Candidate {
     host: ModHost,
     font: Option<Arc<RuntimeFontCatalog>>,
+    panel_ui: Option<Arc<mod_ui::PreparedPanelUi>>,
     identity: [u8; 32],
     registration: Registration,
 }
@@ -93,6 +96,7 @@ fn build_candidate_with_settings(
         identity,
         component,
         font: font_bytes,
+        ui,
     } = snapshot;
     let grants = registration.grants.clone();
     let font = if grants.controls {
@@ -104,16 +108,26 @@ fn build_candidate_with_settings(
     } else {
         None
     };
-    let host = ModHost::prepare_snapshot_with_grants(
+    let mut host = ModHost::prepare_snapshot_with_grants(
         &registration.component,
         &component,
         grants,
         settings.map(|settings| (settings.path.as_path(), settings.json.as_str())),
     )
     .map_err(|error| format!("{error:#}"))?;
+    if let Some(ui) = ui {
+        let json = std::str::from_utf8(&ui).map_err(|error| error.to_string())?;
+        host.set_panel_bundle(json)
+            .map_err(|error| format!("{error:#}"))?;
+    }
+    let panel_ui = host
+        .panel_bundle()
+        .map(mod_ui::PreparedPanelUi::prepare)
+        .transpose()?;
     Ok(Candidate {
         host,
         font,
+        panel_ui,
         identity,
         registration,
     })
@@ -144,6 +158,7 @@ struct SourceSnapshot {
     identity: [u8; 32],
     component: Vec<u8>,
     font: Option<Vec<u8>>,
+    ui: Option<Vec<u8>>,
 }
 
 enum Message {
@@ -496,17 +511,23 @@ fn install(world: &mut World, update: Update) {
                 .ok_or_else(|| "local extension limit reached".to_owned())
                 .and_then(|()| {
                     world
-                        .get_resource_mut::<UiPresentationRuntime>()
+                        .get_resource_mut::<UiPresentationResource>()
                         .ok_or_else(|| "extension presentation is unavailable".to_owned())
                         .and_then(|mut presentation| {
                             presentation
-                                .set_mod_panel_font(candidate.font.clone())
-                                .map_err(|error| error.to_string())?;
-                            presentation.set_mod_label(candidate.host.label())?;
+                                .mod_ui_mut()
+                                .set_mod_label(candidate.host.label())?;
                             presentation.set_mod_hud(candidate.host.hud())?;
-                            presentation.set_mod_crosshair(candidate.host.crosshair())?;
-                            presentation.set_mod_panel(candidate.host.panel())?;
-                            presentation.set_mod_panel_open(false);
+                            presentation
+                                .mod_ui_mut()
+                                .set_mod_crosshair(candidate.host.crosshair())?;
+                            presentation.mod_ui_mut().set_prepared_panel_ui(
+                                mod_ui::PanelUiOwner::Registration,
+                                candidate.panel_ui.clone(),
+                            );
+                            if let Some(panel) = candidate.host.panel() {
+                                panel.validate_values()?;
+                            }
                             Ok(())
                         })
                 });
@@ -652,103 +673,6 @@ fn sync_authority(world: &mut World) {
     {
         watcher.acknowledge(generation, status, None);
     }
-}
-
-struct Observation {
-    fingerprint: [u8; 32],
-    request_id: Option<String>,
-    result: Result<Option<Registration>, String>,
-}
-
-fn observe(path: &Path) -> Observation {
-    let bytes = (|| {
-        let file = match File::open(path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(error.to_string()),
-        };
-        let mut bytes = Vec::new();
-        file.take((MAX_BYTES + 1) as u64)
-            .read_to_end(&mut bytes)
-            .map_err(|error| error.to_string())?;
-        Ok(Some(bytes))
-    })();
-    match bytes {
-        Ok(None) => Observation {
-            fingerprint: [0; 32],
-            request_id: None,
-            result: Ok(None),
-        },
-        Err(error) => Observation {
-            fingerprint: Sha256::digest(error.as_bytes()).into(),
-            request_id: None,
-            result: Err(format!("registration could not be read: {error}")),
-        },
-        Ok(Some(bytes)) => {
-            let request_id = serde_json::from_slice::<serde_json::Value>(&bytes)
-                .ok()
-                .and_then(|value| {
-                    value
-                        .get("request_id")
-                        .and_then(|id| id.as_str())
-                        .map(str::to_owned)
-                })
-                .filter(|id| id.len() <= MAX_REQUEST_BYTES && !id.chars().any(char::is_control));
-            let result = if bytes.len() > MAX_BYTES {
-                Err("local extension registration exceeds byte limit".into())
-            } else {
-                serde_json::from_slice::<Registration>(&bytes)
-                    .map_err(|error| format!("invalid local extension registration: {error}"))
-                    .and_then(|registration| registration.validate().map(|()| Some(registration)))
-            };
-            Observation {
-                fingerprint: Sha256::digest(&bytes).into(),
-                request_id,
-                result,
-            }
-        }
-    }
-}
-
-fn source_snapshot(registration: Registration) -> Result<SourceSnapshot, String> {
-    let mut digest = Sha256::new();
-    digest.update(serde_json::to_vec(&registration).map_err(|error| error.to_string())?);
-    let component = read_bounded_source(&registration.component, mod_host::MAX_COMPONENT_BYTES)?;
-    digest.update(Sha256::digest(&component));
-    let font = if registration.grants.controls {
-        registration
-            .font
-            .as_deref()
-            .map(|path| read_bounded_source(path, font::MAX_SOURCE_BYTES))
-            .transpose()?
-    } else {
-        None
-    };
-    if let Some(font) = &font {
-        digest.update(Sha256::digest(font));
-    }
-    Ok(SourceSnapshot {
-        registration,
-        identity: digest.finalize().into(),
-        component,
-        font,
-    })
-}
-
-fn read_bounded_source(path: &Path, max: usize) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    File::open(path)
-        .and_then(|file| file.take((max + 1) as u64).read_to_end(&mut bytes))
-        .map_err(|error| {
-            format!(
-                "extension source {} could not be read: {error}",
-                path.display()
-            )
-        })?;
-    if bytes.len() > max {
-        return Err("extension source exceeds byte limit".into());
-    }
-    Ok(bytes)
 }
 
 fn after_retirement<T, R>(retired: &Receiver<T>, build: impl FnOnce() -> R) -> R {
@@ -966,37 +890,4 @@ fn worker(
     drop(receive_results);
     drop(loads);
     let _ = loader.join();
-}
-
-fn bounded_message(message: &str) -> String {
-    let mut output = String::new();
-    for character in message.chars().filter(|character| !character.is_control()) {
-        if output.len() + character.len_utf8() > MAX_MESSAGE_BYTES {
-            break;
-        }
-        output.push(character);
-    }
-    output
-}
-
-fn write_status(path: &Path, status: &Status) -> std::io::Result<()> {
-    let bytes = serde_json::to_vec(status)?;
-    let parent = path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("status directory unavailable"))?;
-    fs::create_dir_all(parent)?;
-    let id = WRITE_ID.fetch_add(1, Ordering::Relaxed);
-    let temporary = path.with_extension(format!("pending-{}-{id}", std::process::id()));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        file.write_all(&bytes)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&temporary, path)
-    })();
-    let _ = fs::remove_file(temporary);
-    result
 }

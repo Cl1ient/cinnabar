@@ -42,6 +42,19 @@ pub fn classify_precipitation(temperature: f32, downfall: f32, surface_y: i32) -
 mod tests {
     use super::*;
     #[test]
+    fn precipitation_eligibility_uses_finite_climate_downfall_at_epsilon() {
+        for (downfall, expected) in [
+            (0.0, false),
+            (f32::EPSILON * 0.5, false),
+            (f32::EPSILON, true),
+            (f32::NAN, false),
+            (f32::INFINITY, false),
+        ] {
+            assert_eq!(precipitation_eligible(downfall), expected);
+        }
+    }
+
+    #[test]
     fn dry_biomes_never_precipitate_and_cold_ones_snow() {
         assert_eq!(classify_precipitation(2.0, 0.0, 64), Precipitation::None);
         assert_eq!(classify_precipitation(0.8, 0.4, 64), Precipitation::Rain);

@@ -96,7 +96,7 @@ bound throughput, and the scheduler's ranking (distance, quadrupled behind the v
 orders the larger committed backlog. A view-wide join therefore meshes the faced
 surface sooner and the deep or behind sub-chunks of adjacent columns later.
 
-Without the service resource (tests, `RUST_MCBE_WORLD_SERVICE=0`) the stream never
+Without the service resource (tests, `CINNABAR_WORLD_SERVICE=0`) the stream never
 leaves the frame thread and both policies stay off. The vanilla rule that rebuild setup
 and completion run on the main thread is met in observable order, not thread identity:
 the stream's single owner performs them in the same sequence.

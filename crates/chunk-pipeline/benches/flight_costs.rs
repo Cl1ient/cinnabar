@@ -41,6 +41,7 @@ fn terrain_assets() -> RuntimeAssets {
     let mut texture = base.texture_array().clone();
     texture.layers = 1;
     let visual = |material| BlockVisual {
+        native_material: assets::native_material::NativeMaterialFacts::Unresolved,
         faces: [material; 6],
         flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
         kind: VisualKind::Cube,
@@ -439,7 +440,7 @@ fn flight_benches(c: &mut Criterion) {
                 let acknowledged_before = flight
                     .stream
                     .stats()
-                    .phase2_stages
+                    .publication_stages
                     .mesh_uploads_acknowledged;
                 // Two seconds of flight: per-frame distribution and work witnesses.
                 let mut frames: Vec<_> = (0..480).map(|_| flight.frame()).collect();
@@ -452,7 +453,7 @@ fn flight_benches(c: &mut Criterion) {
                     flight.stream.loaded_column_count() <= grid * grid,
                     "retention bounds residency"
                 );
-                let published = stats.phase2_stages.mesh_uploads_acknowledged - acknowledged_before;
+                let published = stats.publication_stages.mesh_uploads_acknowledged - acknowledged_before;
                 if blocks_per_second > 0.0 {
                     assert!(published > 0, "flight published no meshes");
                 }

@@ -201,6 +201,13 @@ pub(in crate::chunk) struct DirectOcclusion {
 }
 
 impl DirectOcclusion {
+    /// Current early-pass solid order, after applying this frame's occlusion verdicts.
+    pub(in crate::chunk) fn solid_order(&self, view: Entity) -> Option<&[(Entity, MainEntity)]> {
+        self.plan
+            .as_ref()
+            .filter(|plan| plan.view == view)
+            .map(|plan| plan.solid.as_slice())
+    }
     fn new(device: &RenderDevice) -> Self {
         Self {
             kernels: CullKernels::new(device.wgpu_device()),
@@ -373,7 +380,7 @@ type ChangedAllocations<'w, 's> = Query<
 >;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn prepare_direct_occlusion(
+pub(in crate::chunk) fn prepare_direct_occlusion(
     mut occlusion: ResMut<DirectOcclusion>,
     mut hidden: ResMut<ChunkHiddenEntities>,
     frame: Res<DirectOcclusionFrame>,
@@ -638,7 +645,13 @@ pub(crate) fn terrain_pass(
         let mut draw_functions = draw_functions.write();
         draw_functions.prepare(world);
         if let Some(draw) = draw_functions.get_mut(plan.solid_draw) {
-            for &(entity, main) in &plan.solid {
+            let batched = world
+                .get_resource::<pipeline::units::TerrainUnitBatches>()
+                .is_some_and(|batches| batches.contains(view_entity));
+            for (index, &(entity, main)) in plan.solid.iter().enumerate() {
+                if batched && index != 0 {
+                    break;
+                }
                 let item = <Opaque3d as bevy::render::render_phase::BinnedPhaseItem>::new(
                     Opaque3dBatchSetKey {
                         draw_function: plan.solid_draw,

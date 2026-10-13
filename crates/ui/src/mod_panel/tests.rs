@@ -19,12 +19,114 @@ fn panel() -> Panel {
         }],
         sections: Vec::new(),
         capture_key: false,
+        motion: false,
     }
 }
 
 #[test]
 fn finite_slider_and_physical_key_are_accepted() {
     assert!(panel().validate().is_ok());
+}
+
+/// Route and scalar changes preserve the schema, and invalid batches leave it untouched.
+#[test]
+fn sparse_panel_updates_validate_every_change_before_replacement() {
+    let mut original = panel();
+    original.controls.extend([
+        Control::Toggle {
+            id: "enabled".into(),
+            label: "Enabled".into(),
+            value: false,
+        },
+        Control::Keybind {
+            id: "key".into(),
+            label: "Key".into(),
+            key: "KeyA".into(),
+            capturing: false,
+        },
+        Control::Choice {
+            id: "choice".into(),
+            label: "Choice".into(),
+            index: 0,
+            options: vec!["A".into(), "B".into()],
+        },
+    ]);
+    let patch = PanelPatch::parse(r#"{"controls":[{"id":"enabled","value":true},{"id":"key","key":"KeyC","capturing":true},{"id":"choice","index":1}],"capture_key":true}"#).unwrap();
+    let changed = patch.apply(&original, &Default::default()).unwrap();
+    assert_eq!(changed.controls[0], original.controls[0]);
+    assert!(matches!(
+        changed.controls[1],
+        Control::Toggle { value: true, .. }
+    ));
+    assert!(
+        matches!(&changed.controls[2], Control::Keybind { key, capturing: true, .. } if key == "KeyC")
+    );
+    assert!(matches!(
+        changed.controls[3],
+        Control::Choice { index: 1, .. }
+    ));
+    assert!(changed.capture_key);
+    for invalid in [
+        r#"{"controls":[{"id":"enabled","value":true},{"id":"missing","value":1}]}"#,
+        r#"{"controls":[{"id":"enabled","value":1}]}"#,
+        r#"{"controls":[{"id":"distance","value":8}]}"#,
+        r#"{"controls":[{"id":"distance","key":"KeyB"}]}"#,
+        r#"{"controls":[{"id":"choice","index":9}]}"#,
+        r#"{"controls":[{"id":"enabled","value":true},{"id":"enabled","value":false}]}"#,
+        r#"{"surface":"missing"}"#,
+    ] {
+        assert!(
+            PanelPatch::parse(invalid)
+                .unwrap()
+                .apply(&original, &Default::default())
+                .is_err()
+        );
+    }
+    assert!(matches!(
+        original.controls[1],
+        Control::Toggle { value: false, .. }
+    ));
+}
+
+/// Prepared routes admit only actions from their shared declared schema.
+#[test]
+fn local_panel_bundle_checks_routes_and_replaces_custom_bindings() {
+    let document = |action: &str| {
+        serde_json::json!({"namespace":"local","panel":{"type":"screen","controls":[{"button":{"type":"button","button_mappings":[{"from_button_id":"button.menu_select","mapping_type":"pressed","to_button_id":action}]}}]}}).to_string()
+    };
+    let bundle = |action: &str| {
+        serde_json::json!({"panel":panel(),"surfaces":{"main":{"screen":"local.panel","document":document(action)}}}).to_string()
+    };
+    assert!(PanelBundle::parse(&bundle("mod.control:9")).is_err());
+    let bundle = PanelBundle::parse(&bundle("mod.control:0")).unwrap();
+    assert!(bundle.matches_schema(&bundle.panel));
+    let mut relabeled = bundle.panel.clone();
+    if let Control::Slider { label, .. } = &mut relabeled.controls[0] {
+        *label = "Updated distance".into();
+    }
+    assert!(bundle.matches_schema(&relabeled));
+    relabeled.controls.clear();
+    assert!(!bundle.matches_schema(&relabeled));
+    let patch = PanelPatch::parse(r##"{"surface":"main","bindings":{"#custom":true}}"##).unwrap();
+    let changed = patch.apply(&bundle.panel, &bundle.surfaces).unwrap();
+    assert_eq!(
+        changed.surface.as_ref().unwrap().bindings["#custom"],
+        SurfaceValue::Bool(true)
+    );
+    let unchanged = PanelPatch::parse(r#"{"surface":"main"}"#)
+        .unwrap()
+        .apply(&changed, &bundle.surfaces)
+        .unwrap();
+    assert_eq!(
+        unchanged.surface.as_ref().unwrap().bindings["#custom"],
+        SurfaceValue::Bool(true)
+    );
+    assert!(
+        PanelPatch::parse(r##"{"surface":"main","bindings":{"bad":true}}"##)
+            .unwrap()
+            .apply(&bundle.panel, &bundle.surfaces)
+            .is_err()
+    );
 }
 
 #[test]
@@ -234,7 +336,7 @@ fn authored_surfaces_bound_values_expansion_and_structure() {
 }
 
 #[test]
-fn authored_surfaces_reject_recursive_depth_and_hidden_extra_definitions() {
+fn authored_surfaces_reject_recursive_depth_and_dynamic_unused_definitions() {
     let mut authored = surface("mod.close");
     let mut nested = serde_json::json!({"type":"panel"});
     for _ in 0..34 {
@@ -243,6 +345,8 @@ fn authored_surfaces_reject_recursive_depth_and_hidden_extra_definitions() {
     authored.document = serde_json::json!({"namespace":"extension","screen":nested}).to_string();
     assert!(authored.validate().is_err());
     authored.document = serde_json::json!({"namespace":"extension","screen":{"type":"screen"},"hidden":{"type":"panel"}}).to_string();
+    assert!(authored.validate().is_ok());
+    authored.document = serde_json::json!({"namespace":"extension","screen":{"type":"screen"},"hidden":{"type":"panel","factory":{}}}).to_string();
     assert!(authored.validate().is_err());
     authored.document = "{".into();
     assert!(authored.validate().is_err());
@@ -316,4 +420,31 @@ fn scrollbar_track_actions_are_native_only_on_track_controls() {
     authored.document = document.to_string();
     panel.surface = Some(authored);
     assert!(panel.validate().is_err());
+}
+
+#[test]
+fn bounded_large_external_catalog_rejects_one_excess_control() {
+    let mut panel = panel();
+    panel.controls = (0..MAX_PANEL_CONTROLS)
+        .map(|index| Control::Button {
+            id: format!("action_{index}"),
+            label: format!("Action {index}"),
+        })
+        .collect();
+    assert!(panel.validate().is_ok());
+    panel.controls.push(Control::Button {
+        id: "excess".into(),
+        label: "Excess".into(),
+    });
+    assert!(panel.validate().is_err());
+}
+
+#[test]
+fn resolved_template_routes_still_require_declared_panel_controls() {
+    let mut spec = panel();
+    spec.surface=Some(Surface {screen:"extension.screen".into(),bindings:Default::default(),document:serde_json::json!({"namespace":"extension","button":{"type":"button","$action|default":"mod.control:0","button_mappings":[{"from_button_id":"button.menu_select","mapping_type":"pressed","to_button_id":"$action"}]},"screen":{"type":"panel","controls":[{"chosen@extension.button":{"$action":"mod.control:7"}}]}}).to_string()});
+    assert!(spec.validate().is_err());
+    let surface = spec.surface.as_mut().unwrap();
+    surface.document = surface.document.replace("mod.control:7", "mod.control:0");
+    assert!(spec.validate().is_ok());
 }

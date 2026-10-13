@@ -72,7 +72,7 @@ pub fn configure(address: Option<&str>) {
     if CONFIGURED.load(Ordering::Acquire) {
         return;
     }
-    let marker = std::env::var("RUST_MCBE_CRAFT_OBSERVATION").ok();
+    let marker = env_compat::var("CINNABAR_CRAFT_OBSERVATION").ok();
     configure_once(&CONFIGURED, &RETIRED, &OWNER, address, marker.as_deref());
 }
 fn configure_once(
@@ -113,7 +113,7 @@ pub fn record(stage: usize, reason: u8, values: [i128; 32]) {
     };
     if writeln!(
         row,
-        "RUST_MCBE_HAND_WITNESS stage={stage} reason={reason} values={values:?}"
+        "CINNABAR_HAND_WITNESS stage={stage} reason={reason} values={values:?}"
     )
     .is_err()
     {

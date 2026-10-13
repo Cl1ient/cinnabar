@@ -6,6 +6,9 @@ pub(super) fn descriptor_for(
     record: &RegistryRecord,
     face: BlockFace,
 ) -> Option<(Descriptor, Box<str>)> {
+    if visuals::barrel::is_record(record) {
+        return visuals::barrel::descriptor(pack, record, face);
+    }
     let TextureKey { key, rotate_uv } = resolve_texture_key(&pack.blocks, record, face);
     let key = key?;
     let (path, state_variant) = if is_model_visual(record) {
@@ -34,14 +37,21 @@ pub(super) fn descriptor_for(
     if crate::respawn_anchor::is_record(record)
         || visuals::shelf::is_record(record)
         || visuals::sea_pickle::is_record(record)
+        || visuals::brewing_stand::is_record(record)
+        || visuals::campfire::is_record(record)
         || visuals::grindstone::is_record(record)
+        || visuals::tripwire_hook::is_record(record)
         || visuals::end_portal_frame::is_record(record)
         || visuals::end_rod::is_record(record)
         || visuals::lightning_rod::is_record(record)
         || visuals::bamboo::is_record(record)
         || matches!(
             record.name.as_ref(),
-            "minecraft:flower_pot" | "minecraft:lantern" | "minecraft:soul_lantern"
+            "minecraft:flower_pot"
+                | "minecraft:lantern"
+                | "minecraft:soul_lantern"
+                | "minecraft:azalea"
+                | "minecraft:flowering_azalea"
         )
     {
         flags |= MATERIAL_FLAG_ALPHA_CUTOUT;
@@ -70,6 +80,10 @@ pub(super) fn descriptor_for(
     } else if record.flags.contains(BlockFlags::LEAF_MODEL) {
         flags |= MATERIAL_FLAG_ALPHA_CUTOUT;
         flags |= leaf_tint_flags(&record.name);
+    }
+    if is_torch(record) {
+        // Native torch tessellation lights the whole torch from its own cell in plain white.
+        flags |= assets::MATERIAL_FLAG_DISABLE_AO | assets::MATERIAL_FLAG_DISABLE_FACE_DIMMING;
     }
     if record.name.as_ref() == "minecraft:glass" {
         flags |= MATERIAL_FLAG_ALPHA_CUTOUT;

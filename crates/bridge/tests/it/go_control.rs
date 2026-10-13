@@ -201,8 +201,8 @@ impl ChildGuard {
         let mut command = Command::new(executable);
         command
             .arg("-test.run=^TestBridgeCompatibilityStatusHelper$")
-            .env("RUST_MCBE_BRIDGE_STATUS_HELPER", "1")
-            .env("RUST_MCBE_BRIDGE_STATUS_SOCKET_DIR", socket_dir);
+            .env("CINNABAR_BRIDGE_STATUS_HELPER", "1")
+            .env("CINNABAR_BRIDGE_STATUS_SOCKET_DIR", socket_dir);
         Self::spawn_command(command, "spawn Go status compatibility helper")
     }
 

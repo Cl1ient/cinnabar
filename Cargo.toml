@@ -17,6 +17,7 @@ members = [
     "crates/gameplay",
     "crates/client-session",
     "crates/chunk-pipeline",
+    "crates/pack-json",
     "crates/pack-compiler",
     "crates/pack-runtime",
     "crates/experience-sdk",
@@ -26,10 +27,12 @@ members = [
     "crates/input",
     "crates/developer-control",
     "crates/json-ui",
+    "crates/oreui",
     "crates/meshing",
     "crates/mod-api",
     "crates/mod-host",
     "crates/mod-render",
+    "crates/mod-ui",
     "crates/particles",
     "examples/mods/hello",
     "examples/mods/time-changer",
@@ -40,6 +43,7 @@ members = [
     "crates/server-experience",
     "crates/render",
     "crates/render-api",
+    "crates/test-alloc",
     "crates/test-time",
     "crates/render-model",
     "crates/render-scene",
@@ -54,8 +58,13 @@ members = [
     "crates/player-state",
     "crates/sim",
     "crates/ui",
+    "crates/ui-engine",
+    "crates/ui-screens",
     "crates/world",
+    "crates/simulation-clock",
+    "crates/env-compat",
     "crates/update-manifest",
+    "crates/update-installer",
     "tools/architecture",
     "tools/bedrock-replay",
     "tools/devtool",
@@ -68,10 +77,12 @@ members = [
     "tools/cxb",
     "tools/release-manifest",
 ]
+# The vendored codec is generated and linted upstream; only `protocol` builds it.
+exclude = ["crates/protocol/vendor/bedrock-protocol-1-26-51"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.12"
+version = "0.1.17"
 edition = "2024"
 rust-version = "1.99.0"
 
@@ -117,7 +128,8 @@ tracing = "0.1"
 rayon = "1.11"
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 sha2 = "=0.10.9"
-uuid = { version = "1", features = ["v4"] }
+# Crates that generate random UUIDs add `v4`; wasm32-unknown-unknown has no source for it.
+uuid = "1"
 wasmtime = { version = "=36.0.16", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
 wit-bindgen = "=0.57.1"
 wit-component = "=0.247.0"
@@ -135,6 +147,8 @@ wgpu-naga-bridge = { git = "https://github.com/bedrock-mc/wgpu", rev = "9686723e
 
 [profile.dev]
 opt-level = 1
+# Line tables keep backtraces and panics readable; full debuginfo made local builds 20-45% slower.
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3

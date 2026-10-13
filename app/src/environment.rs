@@ -79,10 +79,7 @@ pub(crate) struct WorldClock {
 
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by the upcoming Phase 2.7 atmosphere systems"
-    )
+    expect(dead_code, reason = "read by the upcoming atmosphere systems")
 )]
 impl WorldClock {
     #[must_use]
@@ -121,10 +118,7 @@ pub(crate) struct WeatherState {
 
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by the upcoming Phase 2.7 atmosphere systems"
-    )
+    expect(dead_code, reason = "read by the upcoming atmosphere systems")
 )]
 impl WeatherState {
     #[must_use]
@@ -271,7 +265,8 @@ pub(crate) fn visual_world_time(clock: WorldClock, elapsed_seconds: f64) -> f64 
     };
     let elapsed_seconds = finite_nonnegative(elapsed_seconds);
     if clock.daylight_cycle_enabled && !clock.paused {
-        server_time + (elapsed_seconds - anchor).max(0.0) * f64::from(world::TICKS_PER_SECOND)
+        server_time
+            + (elapsed_seconds - anchor).max(0.0) * f64::from(simulation_clock::TICKS_PER_SECOND)
     } else {
         server_time
     }

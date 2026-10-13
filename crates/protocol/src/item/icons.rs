@@ -2,28 +2,26 @@
 
 use std::sync::Arc;
 
-use jolyne::GameData;
-
 use crate::nbt_tree::read_root;
 
 const MAX_ICON_KEY_BYTES: usize = 256;
 
-/// Returns `(identifier, item_texture key)` for StartGame items: the icon the
+/// Returns `(identifier, item_texture key)` for admitted StartGame items: the icon the
 /// components name, else the identifier's short name, which vanilla item
 /// textures are keyed by for most items (a pack only overrides when it defines
 /// that key). Malformed or oversized components fall back to the short name.
 #[must_use]
-pub fn item_icon_keys(game_data: &GameData) -> Box<[(Arc<str>, Arc<str>)]> {
-    game_data
-        .item_registry
-        .item_data
+pub(crate) fn item_icon_keys(registry: &super::ItemRegistryEvent) -> Box<[(Arc<str>, Arc<str>)]> {
+    registry
+        .entries
         .iter()
         .filter_map(|item| {
-            let named = super::encode_extra(&item.item_component_data)
-                .ok()
-                .and_then(|bytes| icon_key(&bytes));
-            let key = named.or_else(|| short_name_key(&item.item_name))?;
-            Some((Arc::from(item.item_name.as_str()), key))
+            let named = item
+                .components
+                .as_ref()
+                .and_then(|facts| facts.icon.clone());
+            let key = named.or_else(|| short_name_key(&item.identifier))?;
+            Some((Arc::clone(&item.identifier), key))
         })
         .collect()
 }

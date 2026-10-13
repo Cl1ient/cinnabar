@@ -38,7 +38,7 @@ fn start_game_and_dimension_change_reset_perspective_to_first_person() {
     let mut avatar = LocalAvatarPresentation::default();
 
     reset_local_player_session(
-        4,
+        simulation_clock::identity::SessionGeneration::new(4),
         91,
         [8.0, 70.62, -2.0],
         &mut settings,

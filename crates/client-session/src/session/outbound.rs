@@ -4,6 +4,7 @@
 //! Every packet a client sends is compressible, so only the end-of-frame flush applies.
 
 use super::*;
+use simulation_clock::identity::PositionAuthorityGeneration;
 use tokio::sync::oneshot;
 
 /// The write half of a play session, owned by the outbound task.
@@ -27,7 +28,7 @@ impl OutboundSession for protocol::PlayOutbound {
     type Error = protocol::ProtocolError;
 
     async fn send_batch(&mut self, packets: Vec<Packet>) -> Result<(), Self::Error> {
-        protocol::PlayOutbound::send_batch(self, &packets).await
+        protocol::PlayOutbound::send_batch(self, packets).await
     }
 
     fn take_finish_loading(&mut self) -> Vec<Packet> {
@@ -78,7 +79,7 @@ struct QueuedPacket {
     sub_chunk: Option<SubChunkRequestSend>,
     chat: Option<ChatPacketSend>,
     physics: Option<PhysicsSendIdentity>,
-    physics_reanchor: Option<watch::Receiver<u64>>,
+    physics_reanchor: Option<watch::Receiver<PositionAuthorityGeneration>>,
     interaction: Option<InteractionPacketGuard>,
 }
 
@@ -248,7 +249,7 @@ where
         // Traces are formatted from the final packet and published only after the write.
         let line = queued
             .physics
-            .and_then(|identity| trace_line(identity.session_generation, &packet));
+            .and_then(|identity| trace_line(identity.session_generation.get(), &packet));
         packets.push(packet);
         receipts.push(Receipt {
             sub_chunk: queued.sub_chunk,

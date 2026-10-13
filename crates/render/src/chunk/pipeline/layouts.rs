@@ -31,6 +31,8 @@ pub(in crate::chunk) struct ChunkPipelineSpecializer;
 #[derive(Resource)]
 pub(in crate::chunk) struct ChunkPipeline {
     pub(in crate::chunk) variants: Variants<RenderPipeline, ChunkPipelineSpecializer>,
+    pub(in crate::chunk) unit_variants: [Variants<RenderPipeline, ChunkPipelineSpecializer>; 4],
+    pub(in crate::chunk) unit_supported: bool,
     pub(in crate::chunk) solid_variants: Variants<RenderPipeline, ChunkPipelineSpecializer>,
     pub(in crate::chunk) model_variants: Variants<RenderPipeline, ChunkPipelineSpecializer>,
     /// Sorted transparent liquid and model draws, one pipeline so they never switch programs.
@@ -128,7 +130,16 @@ impl FromWorld for ChunkPipeline {
         depth_fragment.entry_point = Some("fragment_depth".into());
         depth_liquid_descriptor.primitive.cull_mode = None;
         depth_liquid_descriptor.primitive.front_face = LIQUID_FRONT_FACE;
+        let unit_variants = [
+            &solid_descriptor,
+            &descriptor,
+            &model_descriptor,
+            &depth_liquid_descriptor,
+        ]
+        .map(|descriptor| Variants::new(ChunkPipelineSpecializer, unit_descriptor(descriptor)));
         Self {
+            unit_variants,
+            unit_supported: false,
             variants: Variants::new(ChunkPipelineSpecializer, descriptor),
             solid_variants: Variants::new(ChunkPipelineSpecializer, solid_descriptor),
             model_variants: Variants::new(ChunkPipelineSpecializer, model_descriptor),
@@ -138,6 +149,22 @@ impl FromWorld for ChunkPipeline {
             transparent_bind_group_layout,
         }
     }
+}
+
+/// Reuses all raster state and reconstruction, changing only how the vertex addresses arrive.
+fn unit_descriptor(source: &RenderPipelineDescriptor) -> RenderPipelineDescriptor {
+    let mut descriptor = source.clone();
+    descriptor.vertex.buffers.clear();
+    descriptor.vertex.entry_point = Some("vertex_unit".into());
+    descriptor.vertex.shader_defs.push("TERRAIN_UNITS".into());
+    descriptor
+        .fragment
+        .as_mut()
+        .expect("terrain fragment")
+        .shader_defs
+        .push("TERRAIN_UNITS".into());
+    descriptor.layout.push(super::units::bind_group_layout());
+    descriptor
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, SpecializerKey)]
@@ -547,6 +574,11 @@ impl crate::pipeline_warmup::PrewarmPipelines for ChunkPipeline {
             &mut self.depth_liquid_variants,
         ] {
             ids.push(variants.specialize(cache, key)?);
+        }
+        if self.unit_supported && !view.enhanced {
+            for variants in &mut self.unit_variants {
+                ids.push(variants.specialize(cache, key)?);
+            }
         }
         Ok(())
     }

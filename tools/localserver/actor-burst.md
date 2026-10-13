@@ -18,3 +18,9 @@ during a connection. An artwork command cannot exceed the count offered at start
 
 `/actorburst 128 complex` adds many articulated detail bones and small cubes per player. Models and pixels vary independently across the crowd; use this case to
 measure cold source parsing and mesh building, then clear the crowd normally.
+
+`/actorburst N swing` stands N identical sword-holding players three blocks ahead, facing back,
+with the standard player bone hierarchy. They swing on the client's input ticks: twice ten ticks
+apart, then every other tick, repeating every 40 ticks. `/actorburst N strafe` sways them 1.5 blocks
+sideways while facing the player and swinging every other tick, as PvP spam-clicking does. Use them
+to capture remote attack animations.

@@ -309,14 +309,12 @@ fn render_backpressure_retry_preserves_change_order_for_eventual_delivery() {
         urgent: false,
         permit: None,
     });
-    stream.stats.phase2_stages.mesh_changes_queued = 2;
+    stream.stats.publication_stages.mesh_changes_queued = 2;
 
     let blocked = stream.pop_mesh_change().unwrap();
     stream.retry_mesh_change_front(blocked).unwrap();
 
-    let stages = stream
-        .phase2_publication_snapshot(ChunkKey::new(0, 0, 0))
-        .stages;
+    let stages = stream.publication_snapshot(ChunkKey::new(0, 0, 0)).stages;
     assert_eq!(stages.mesh_changes_queued, 3);
     assert_eq!(stages.mesh_changes_dequeued, 1);
     assert_eq!(stages.mesh_changes_pending, 2);
@@ -879,7 +877,7 @@ fn starved_publication_tokens_still_dispatch_when_nothing_is_in_flight() {
 
     // Exhaust the frame publication window entirely: without the starved
     // dispatch floor this poll could never start meshing again.
-    let config = render_api::PublicationServiceConfig::PHASE2_GATE;
+    let config = render_api::PublicationServiceConfig::DEFAULT;
     let allowance = render_api::PublicationAllowance::new(config);
     allowance.begin_frame(
         1,
@@ -928,7 +926,7 @@ fn starved_mesh_dispatch_floor_admits_exactly_the_floor_through_poll() {
     // Exhaust the frame publication window exactly like the single-job
     // witness above: the starved floor is the only remaining admission
     // route through the real poll path.
-    let config = render_api::PublicationServiceConfig::PHASE2_GATE;
+    let config = render_api::PublicationServiceConfig::DEFAULT;
     let allowance = render_api::PublicationAllowance::new(config);
     allowance.begin_frame(
         1,
@@ -974,7 +972,7 @@ fn starved_mesh_dispatch_floor_never_exceeds_the_callers_budget() {
     for key in &keys {
         stream.mark_dirty_exact(*key, Instant::now());
     }
-    let config = render_api::PublicationServiceConfig::PHASE2_GATE;
+    let config = render_api::PublicationServiceConfig::DEFAULT;
     let allowance = render_api::PublicationAllowance::new(config);
     allowance.begin_frame(
         1,
@@ -1001,7 +999,7 @@ fn starved_mesh_dispatch_floor_never_invents_work_with_an_empty_pending_queue() 
     });
     // Same exhausted publication window as the floor witness, but with no
     // pending mesh work anywhere: starvation must not fabricate dispatches.
-    let config = render_api::PublicationServiceConfig::PHASE2_GATE;
+    let config = render_api::PublicationServiceConfig::DEFAULT;
     let allowance = render_api::PublicationAllowance::new(config);
     allowance.begin_frame(
         1,

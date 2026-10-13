@@ -1,9 +1,6 @@
-use protocol::wire::valentine::bedrock::version::v1_26_51::{
-    ChunkRadiusUpdatedPacket, EnumsPlayStatus, ItemRegistryPacket, PlayStatusPacket,
-};
-use protocol::{
-    BedrockSession,
-    session_wire::{CoreMessage, batch_frame_from_bedrock, decode_core_message},
+use protocol::session_wire::{CoreMessage, batch_frame_from_bedrock, decode_core_message};
+use protocol::test_support::packets::{
+    chunk_radius_updated_packet, item_registry_packet, player_spawn_packet,
 };
 use sha2::{Digest, Sha256};
 use std::{fs::OpenOptions, io::Write, path::Path};
@@ -65,18 +62,13 @@ fn committed(name: &str) -> Vec<u8> {
 /// Combines pinned packet fixtures with the minimal original spawn-completion packets.
 pub(super) fn capture() -> Vec<u8> {
     let mut result = committed("start_game.bin");
-    let packets: [protocol::Packet; 3] = [
-        ItemRegistryPacket::default().into(),
-        ChunkRadiusUpdatedPacket { chunk_radius: 1 }.into(),
-        PlayStatusPacket {
-            status: EnumsPlayStatus::Playerspawn,
-        }
-        .into(),
+    let packets = [
+        item_registry_packet(),
+        chunk_radius_updated_packet(1),
+        player_spawn_packet(),
     ];
     for packet in packets {
-        result.extend(unframe(
-            &protocol::encode(&packet, &BedrockSession { shield_item_id: 0 }).unwrap(),
-        ));
+        result.extend(unframe(&protocol::encode(&packet).unwrap()));
     }
     result.extend(committed("add_actor.bin"));
     result.extend(committed("text.bin"));
@@ -86,20 +78,51 @@ pub(super) fn capture() -> Vec<u8> {
 /// Builds an original resource pack; a wrapper exercises the existing one-level ZIP behavior.
 pub(super) fn pack(nested: bool) -> Vec<u8> {
     let manifest = br#"{"format_version":2,"header":{"name":"Replay test","description":"Synthetic fixture","uuid":"87ad314d-1b7e-4a06-8a7d-882798c777cf","version":[1,0,0]},"modules":[{"type":"resources","uuid":"86fad15a-f775-4d45-bd27-bd2e420a3325","version":[1,0,0]}]}"#;
-    let bytes = archive("manifest.json", manifest);
+    let bytes = archive(&[("manifest.json", manifest)]);
     if nested {
-        archive("inner.zip", &bytes)
+        archive(&[("inner.zip", &bytes)])
     } else {
         bytes
     }
 }
 
-/// Builds a ZIP without changing the supplied file bytes.
-fn archive(name: &str, data: &[u8]) -> Vec<u8> {
+pub(super) const ENCRYPTED_PACK_KEY: &str = "0123456789abcdefghijklmnopqrstuv";
+
+/// Builds an original pack whose text file is AES-CFB8 encrypted with the fixture key.
+pub(super) fn encrypted_pack() -> Vec<u8> {
+    let manifest = serde_json::to_vec(&serde_json::json!({
+        "format_version": 2,
+        "header": {
+            "name": "Encrypted replay test", "description": "Synthetic fixture",
+            "uuid": uuid::Uuid::from_u128(1).to_string(), "version": [1, 0, 0]
+        },
+        "modules": [{
+            "type": "resources", "uuid": uuid::Uuid::from_u128(2).to_string(),
+            "version": [1, 0, 0]
+        }]
+    }))
+    .unwrap();
+    let contents = serde_json::to_vec(&serde_json::json!({
+        "content": [{"path": "texts/en_US.lang", "key": ENCRYPTED_PACK_KEY}]
+    }))
+    .unwrap();
+    // Original "replay test\n" text, encrypted with the key's first 16 bytes as the IV.
+    let encrypted = [133, 211, 72, 129, 76, 47, 25, 131, 192, 251, 74, 195];
+    archive(&[
+        ("manifest.json", &manifest),
+        ("contents.json", &contents),
+        ("texts/en_US.lang", &encrypted),
+    ])
+}
+
+/// Builds a ZIP without changing the supplied entries' bytes.
+fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    zip.start_file(name, zip::write::SimpleFileOptions::default())
-        .unwrap();
-    zip.write_all(data).unwrap();
+    for (name, data) in entries {
+        zip.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(data).unwrap();
+    }
     zip.finish().unwrap().into_inner()
 }
 

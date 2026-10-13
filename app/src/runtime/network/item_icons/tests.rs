@@ -12,7 +12,7 @@ fn png(width: u32, height: u32) -> Vec<u8> {
     bytes.into_inner()
 }
 
-fn view() -> LayeredPackView {
+pub(super) fn view() -> LayeredPackView {
     let id = "00000000-0000-0000-0000-000000000002";
     let manifest = format!(
         r#"{{"format_version":2,"header":{{"uuid":"{id}","version":[1,0,0]}},"modules":[{{"type":"resources"}}]}}"#
@@ -44,7 +44,7 @@ fn view() -> LayeredPackView {
     ))
 }
 
-// Keys resolve through item_texture.json; strips keep frame one and big icons shrink.
+// Keys resolve through item_texture.json; strips keep frame one and HD icons keep their pixels.
 #[test]
 fn icon_keys_resolve_to_bounded_sprites() {
     let key = |identifier: &str, key: &str| (Arc::<str>::from(identifier), Arc::<str>::from(key));
@@ -68,7 +68,7 @@ fn icon_keys_resolve_to_bounded_sprites() {
         sizes,
         [
             ("lifeboat:gem", 16, 16),
-            ("lifeboat:huge", 64, 32),
+            ("lifeboat:huge", 128, 64),
             ("lifeboat:strip", 16, 16)
         ]
     );
@@ -78,12 +78,37 @@ fn icon_keys_resolve_to_bounded_sprites() {
         .find(|icon| icon.identifier.as_ref() == "lifeboat:strip")
         .unwrap();
     assert_eq!(strip.rgba8[(15 * 16) * 4], 15, "first frame rows only");
+    let hd = icons
+        .icons
+        .iter()
+        .find(|icon| icon.identifier.as_ref() == "lifeboat:huge")
+        .unwrap();
+    assert_eq!(hd.rgba8[(63 * 128 + 127) * 4], 63);
+}
+
+#[test]
+fn hd_icon_variants_respect_the_remaining_retained_pixel_budget() {
+    let paths = std::collections::HashMap::from([(
+        "hd".to_owned(),
+        vec!["textures/items/huge".to_owned(); 3],
+    )]);
+    let bytes = 128 * 64 * 4;
+    let textures = super::resolve_key(&view(), &paths, "hd", 3, bytes * 2).unwrap();
+    assert_eq!(textures.len(), 2);
+    assert_eq!(
+        textures
+            .iter()
+            .map(|(metadata, texture)| (*metadata, texture.width, texture.height))
+            .collect::<Vec<_>>(),
+        [(0, 128, 64), (1, 128, 64)]
+    );
 }
 
 fn stack(packs: &[&[(&str, Vec<u8>)]]) -> LayeredPackView {
     let archives = packs
         .iter()
         .enumerate()
+        .rev()
         .map(|(index, files)| {
             let id = format!("00000000-0000-0000-0000-{index:012}");
             let manifest = format!(
@@ -222,6 +247,7 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
     ] {
         let overlay = BlockOverlay {
             visuals: vec![BlockVisual {
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 faces: [1; 6],
                 flags: BlockFlags::CUBE_GEOMETRY,
                 kind: VisualKind::Cube,
@@ -261,6 +287,7 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
                 collides: true,
                 collision_boxes: None,
                 selection: Default::default(),
+                friction: None,
                 visual: Default::default(),
             }]
             .into(),
@@ -282,22 +309,8 @@ fn custom_block_sheet_material_flags_survive_session_icon_compilation() {
 // A registry item named after a custom block is that block's item; others are not.
 #[test]
 fn registry_items_named_after_custom_blocks_are_block_items() {
-    let mut game_data = protocol::GameData {
-        start_game: Default::default(),
-        item_registry: Default::default(),
-        biome_definitions: None,
-        entity_identifiers: None,
-        creative_content: None,
-    };
-    for name in ["t:crate", "t:sword"] {
-        game_data.item_registry.item_data.push(Default::default());
-        game_data
-            .item_registry
-            .item_data
-            .last_mut()
-            .unwrap()
-            .item_name = name.into();
-    }
+    let mut items = protocol::GameData::default().items;
+    items.identifiers = ["t:crate", "t:sword"].map(Arc::<str>::from).into();
     let blocks = protocol::CustomBlocks {
         blocks: vec![protocol::CustomBlock {
             state_physics: Default::default(),
@@ -307,13 +320,14 @@ fn registry_items_named_after_custom_blocks_are_block_items() {
             collides: true,
             collision_boxes: None,
             selection: Default::default(),
+            friction: None,
             visual: Default::default(),
         }]
         .into(),
         vanilla_blocks: Default::default(),
         skipped: 0,
     };
-    let pairs = custom_block_items(&game_data, &blocks);
+    let pairs = custom_block_items(&items, &blocks);
     assert_eq!(pairs.len(), 1);
     assert_eq!(
         (pairs[0].0.as_ref(), pairs[0].1.as_ref()),
@@ -422,7 +436,14 @@ fn review_variant_decoding_respects_remaining_capacity_and_metadata_indices() {
             "textures/items/gem".to_owned(),
         ],
     )]);
-    let resolved = super::resolve_key(&view(), &paths, "variants", 1).unwrap();
+    let resolved = super::resolve_key(
+        &view(),
+        &paths,
+        "variants",
+        1,
+        assets::texture::policy::MAX_SUBSCRIBER_BYTES,
+    )
+    .unwrap();
     assert_eq!(
         resolved
             .iter()

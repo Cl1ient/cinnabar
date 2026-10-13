@@ -20,7 +20,7 @@ checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 
 [[package]]
 name = "acceptance"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "bevy",
@@ -29,6 +29,7 @@ dependencies = [
  "client-presentation",
  "client-world",
  "diagnostics",
+ "env-compat",
  "protocol",
  "render-model",
  "render-scene",
@@ -117,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "actor-animation"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "protocol",
@@ -125,6 +126,7 @@ dependencies = [
  "render-api",
  "render-model",
  "sha2",
+ "simulation-clock",
  "tracing",
  "world",
 ]
@@ -145,16 +147,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "aead"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d122413f284cf2d62fb1b7db97e02edb8cda96d769b16e443a4f6195e35662b0"
-dependencies = [
- "crypto-common",
- "generic-array",
-]
-
-[[package]]
 name = "aes"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -163,20 +155,6 @@ dependencies = [
  "cfg-if",
  "cipher",
  "cpufeatures 0.2.17",
-]
-
-[[package]]
-name = "aes-gcm"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "831010a0f742e1209b3bcea8fab6a8e149051ba6099432c8cb2cc117dec3ead1"
-dependencies = [
- "aead",
- "aes",
- "cipher",
- "ctr",
- "ghash",
- "subtle",
 ]
 
 [[package]]
@@ -392,7 +370,7 @@ dependencies = [
 
 [[package]]
 name = "architecture"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "cfg-expr",
  "clap",
@@ -445,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "asset-compiler"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "block-transform",
@@ -464,11 +442,13 @@ dependencies = [
 
 [[package]]
 name = "assets"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "bitflags 2.13.0",
  "block-transform",
+ "env-compat",
  "flate2",
+ "glam",
  "lewton",
  "rayon",
  "rustix 1.1.4",
@@ -476,6 +456,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "test-alloc",
  "thiserror 2.0.18",
  "tracing",
  "windows-sys 0.61.2",
@@ -666,26 +647,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "base16ct"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
-
-[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "base64ct"
-version = "1.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
-
-[[package]]
-name = "bedrock-client"
-version = "0.1.12"
+name = "cinnabar"
+version = "0.1.17"
 dependencies = [
  "acceptance",
  "actor-animation",
@@ -709,13 +678,14 @@ dependencies = [
  "crossbeam-channel",
  "developer-control",
  "diagnostics",
+ "env-compat",
  "experience-sdk",
  "first-run",
  "fontdue",
  "gameplay",
  "glam",
  "image",
- "inventory 0.1.12",
+ "inventory 0.1.17",
  "json-ui",
  "launcher",
  "launcher-host",
@@ -724,9 +694,14 @@ dependencies = [
  "mod-api",
  "mod-host",
  "mod-render",
+ "mod-ui",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "oreui",
  "pack-compiler",
+ "pack-json",
  "pack-runtime",
  "particles",
  "player-state",
@@ -748,12 +723,17 @@ dependencies = [
  "server-experience",
  "sha2",
  "sim",
+ "simulation-clock",
  "tempfile",
+ "test-alloc",
  "test-time",
  "thiserror 2.0.18",
  "tokio",
  "tracing-tracy",
  "ui",
+ "ui-engine",
+ "ui-screens",
+ "update-manifest",
  "url",
  "wgpu",
  "windows-sys 0.61.2",
@@ -764,13 +744,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bedrock-protocol-1-26-51"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "glam",
+ "regex",
+ "uuid",
+]
+
+[[package]]
 name = "bedrock-replay"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "bridge",
  "bytes",
  "futures",
+ "pack-json",
  "protocol",
  "resource-pack",
  "serde",
@@ -1069,7 +1060,7 @@ dependencies = [
  "indexmap",
  "log",
  "nonmax",
- "rand 0.10.2",
+ "rand",
  "serde",
  "slotmap",
  "smallvec",
@@ -1390,7 +1381,7 @@ dependencies = [
  "derive_more",
  "glam",
  "libm",
- "rand 0.10.2",
+ "rand",
  "serde",
  "thiserror 2.0.18",
  "variadics_please",
@@ -1672,7 +1663,7 @@ dependencies = [
  "bevy_math",
  "bevy_reflect",
  "derive_more",
- "rand 0.10.2",
+ "rand",
  "rand_distr",
  "serde",
  "thiserror 2.0.18",
@@ -1890,7 +1881,7 @@ dependencies = [
 
 [[package]]
 name = "block-transform"
-version = "0.1.12"
+version = "0.1.17"
 
 [[package]]
 name = "block2"
@@ -1925,7 +1916,7 @@ dependencies = [
 
 [[package]]
 name = "bridge"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2126,12 +2117,12 @@ checksum = "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.0",
- "rand_core 0.10.1",
+ "rand_core",
 ]
 
 [[package]]
 name = "chunk-pipeline"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "actor-animation",
  "assets",
@@ -2147,6 +2138,8 @@ dependencies = [
  "render-api",
  "serde_json",
  "sha2",
+ "simulation-clock",
+ "test-alloc",
  "test-time",
  "thiserror 2.0.18",
  "tracing",
@@ -2183,7 +2176,7 @@ dependencies = [
 
 [[package]]
 name = "cinnabar-cxb"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "protocol",
@@ -2200,7 +2193,7 @@ dependencies = [
 
 [[package]]
 name = "cinnabar-mcp"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "developer-control",
  "image",
@@ -2273,7 +2266,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "client-audio"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "actor-animation",
  "anyhow",
@@ -2283,7 +2276,8 @@ dependencies = [
  "client-ui",
  "client-world",
  "crossbeam-queue",
- "inventory 0.1.12",
+ "inventory 0.1.17",
+ "pack-json",
  "particles",
  "player-state",
  "protocol",
@@ -2293,6 +2287,8 @@ dependencies = [
  "server-experience",
  "sha2",
  "sim",
+ "simulation-clock",
+ "test-alloc",
  "test-time",
  "windows-sys 0.61.2",
  "world",
@@ -2301,7 +2297,7 @@ dependencies = [
 
 [[package]]
 name = "client-extensions"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "assets",
@@ -2310,7 +2306,7 @@ dependencies = [
  "client-ui",
  "client-world",
  "fontdue",
- "inventory 0.1.12",
+ "inventory 0.1.17",
  "mod-api",
  "mod-host",
  "mod-render",
@@ -2327,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "client-interaction"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "actor-animation",
  "assets",
@@ -2340,12 +2336,13 @@ dependencies = [
  "client-world",
  "diagnostics",
  "gameplay",
- "inventory 0.1.12",
+ "inventory 0.1.17",
  "player-state",
  "protocol",
  "semantic-input",
  "sha2",
  "sim",
+ "simulation-clock",
  "tokio",
  "ui",
  "world",
@@ -2353,7 +2350,7 @@ dependencies = [
 
 [[package]]
 name = "client-presentation"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "actor-animation",
  "anyhow",
@@ -2364,7 +2361,7 @@ dependencies = [
  "client-world",
  "glam",
  "image",
- "inventory 0.1.12",
+ "inventory 0.1.17",
  "launcher",
  "meshing",
  "pack-compiler",
@@ -2379,15 +2376,19 @@ dependencies = [
  "serde_json",
  "sha2",
  "sim",
+ "simulation-clock",
+ "tempfile",
+ "test-alloc",
  "thiserror 2.0.18",
  "ui",
+ "ui-engine",
  "world",
  "zip",
 ]
 
 [[package]]
 name = "client-runtime"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2398,6 +2399,7 @@ dependencies = [
  "client-ui",
  "client-world",
  "diagnostics",
+ "env-compat",
  "launcher-host",
  "meshing",
  "pack-runtime",
@@ -2405,12 +2407,13 @@ dependencies = [
  "render",
  "render-api",
  "render-scene",
+ "simulation-clock",
  "tokio",
 ]
 
 [[package]]
 name = "client-session"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "bridge",
  "bytes",
@@ -2418,6 +2421,8 @@ dependencies = [
  "protocol",
  "serde_json",
  "server-experience",
+ "simulation-clock",
+ "test-alloc",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -2428,7 +2433,7 @@ dependencies = [
 
 [[package]]
 name = "client-shell"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "ash",
  "assets",
@@ -2464,13 +2469,14 @@ dependencies = [
  "test-time",
  "tokio",
  "ui",
+ "ui-engine",
  "wgpu",
  "zip",
 ]
 
 [[package]]
 name = "client-state"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "bevy",
  "player-state",
@@ -2481,24 +2487,28 @@ dependencies = [
 
 [[package]]
 name = "client-ui"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "actor-animation",
  "anyhow",
  "arboard",
  "assets",
- "bevy",
  "bridge",
  "chunk-pipeline",
  "client-world",
  "crossbeam-channel",
+ "env-compat",
+ "glam",
  "image",
- "inventory 0.1.12",
+ "inventory 0.1.17",
  "json-ui",
  "launcher",
  "launcher-host",
  "mod-host",
+ "mod-ui",
+ "oreui",
  "pack-compiler",
+ "pack-json",
  "player-state",
  "protocol",
  "rayon",
@@ -2511,11 +2521,16 @@ dependencies = [
  "serde_json",
  "server-experience",
  "sha2",
+ "simulation-clock",
  "tempfile",
+ "test-alloc",
  "test-time",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "ui",
+ "ui-engine",
+ "ui-screens",
  "url",
  "world",
  "zip",
@@ -2523,7 +2538,7 @@ dependencies = [
 
 [[package]]
 name = "client-world"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "actor-animation",
  "assets",
@@ -2532,6 +2547,8 @@ dependencies = [
  "protocol",
  "render-api",
  "sha2",
+ "simulation-clock",
+ "test-alloc",
  "test-time",
  "thiserror 2.0.18",
  "tracing",
@@ -2621,12 +2638,6 @@ name = "const-fnv1a-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32b13ea120a812beba79e34316b3942a857c86ec1593cb34f27bb28272ce2cca"
-
-[[package]]
-name = "const-oid"
-version = "0.9.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "const_panic"
@@ -3010,25 +3021,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "crypto-bigint"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dc92fb57ca44df6db8059111ab3af99a63d5d0f8375d9972e319a379c6bab76"
-dependencies = [
- "generic-array",
- "rand_core 0.6.4",
- "subtle",
- "zeroize",
-]
-
-[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
- "rand_core 0.6.4",
  "typenum",
 ]
 
@@ -3051,15 +3049,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
 dependencies = [
  "memchr",
-]
-
-[[package]]
-name = "ctr"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0369ee1ad671834580515889b80f2ea915f23b8be8d0daa4bbaf2ac5c7590835"
-dependencies = [
- "cipher",
 ]
 
 [[package]]
@@ -3108,17 +3097,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "der"
-version = "0.7.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
-dependencies = [
- "const-oid",
- "pem-rfc7468",
- "zeroize",
-]
-
-[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3149,7 +3127,7 @@ dependencies = [
 
 [[package]]
 name = "developer-control"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "crossbeam-channel",
  "serde",
@@ -3160,7 +3138,7 @@ dependencies = [
 
 [[package]]
 name = "devtool"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "csv",
  "ctrlc",
@@ -3177,7 +3155,7 @@ dependencies = [
 
 [[package]]
 name = "diagnostics"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "chunk-pipeline",
@@ -3199,9 +3177,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
- "const-oid",
  "crypto-common",
- "subtle",
 ]
 
 [[package]]
@@ -3264,7 +3240,7 @@ checksum = "c9c272297e804878a2a4b707cfcfc6d2328b5bb936944613b4fdf2b9269afdfd"
 
 [[package]]
 name = "dist-local"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "same-file",
@@ -3311,45 +3287,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
-name = "ecdsa"
-version = "0.16.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee27f32b5c5292967d2d4a9d7f1e0b0aed2c15daded5a60300e4abb9d8020bca"
-dependencies = [
- "der",
- "digest",
- "elliptic-curve",
- "rfc6979",
- "signature",
- "spki",
-]
-
-[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
-
-[[package]]
-name = "elliptic-curve"
-version = "0.13.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5e6043086bf7973472e0c7dff2142ea0b680d30e18d9cc40f267efbf222bd47"
-dependencies = [
- "base16ct",
- "crypto-bigint",
- "digest",
- "ff",
- "generic-array",
- "group",
- "hkdf",
- "pem-rfc7468",
- "pkcs8",
- "rand_core 0.6.4",
- "sec1",
- "subtle",
- "zeroize",
-]
 
 [[package]]
 name = "embedded-io"
@@ -3436,6 +3377,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "env-compat"
+version = "0.1.17"
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3500,14 +3445,14 @@ dependencies = [
 
 [[package]]
 name = "experience-probe"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "experience-sdk",
 ]
 
 [[package]]
 name = "experience-runtime"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "serde",
@@ -3523,7 +3468,7 @@ dependencies = [
 
 [[package]]
 name = "experience-sdk"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "serde",
  "serde_json",
@@ -3533,7 +3478,7 @@ dependencies = [
 
 [[package]]
 name = "experience-terminal-client"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "experience-sdk",
  "serde_json",
@@ -3561,16 +3506,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ff"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
-dependencies = [
- "rand_core 0.6.4",
- "subtle",
-]
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3578,7 +3513,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
 name = "first-run"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "assets",
@@ -3807,20 +3742,23 @@ dependencies = [
 
 [[package]]
 name = "gameplay"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "actor-animation",
  "assets",
  "block-transform",
  "client-world",
- "inventory 0.1.12",
+ "env-compat",
+ "inventory 0.1.17",
  "player-state",
  "protocol",
+ "render-api",
  "semantic-input",
  "serde",
  "serde_json",
  "sha2",
  "sim",
+ "simulation-clock",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -3849,7 +3787,6 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
- "zeroize",
 ]
 
 [[package]]
@@ -3897,18 +3834,8 @@ dependencies = [
  "js-sys",
  "libc",
  "r-efi 6.0.0",
- "rand_core 0.10.1",
+ "rand_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "ghash"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0d8a4362ccb29cb0b265253fb0a2728f592895ee6854fd9bc13f2ffda266ff1"
-dependencies = [
- "opaque-debug",
- "polyval",
 ]
 
 [[package]]
@@ -3976,7 +3903,7 @@ dependencies = [
  "bytemuck",
  "encase",
  "libm",
- "rand 0.10.2",
+ "rand",
  "serde_core",
 ]
 
@@ -3998,17 +3925,6 @@ dependencies = [
  "presser",
  "thiserror 2.0.18",
  "windows 0.62.2",
-]
-
-[[package]]
-name = "group"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
-dependencies = [
- "ff",
- "rand_core 0.6.4",
- "subtle",
 ]
 
 [[package]]
@@ -4093,7 +4009,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hello-mod"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "mod-api",
 ]
@@ -4119,24 +4035,6 @@ dependencies = [
  "constgebra",
  "glam",
  "tinyvec",
-]
-
-[[package]]
-name = "hkdf"
-version = "0.12.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
-dependencies = [
- "hmac",
-]
-
-[[package]]
-name = "hmac"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
-dependencies = [
- "digest",
 ]
 
 [[package]]
@@ -4406,7 +4304,7 @@ dependencies = [
 
 [[package]]
 name = "inventory"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "bytes",
@@ -4414,6 +4312,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -4573,34 +4472,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jolyne"
-version = "0.1.0"
-dependencies = [
- "aes",
- "aes-gcm",
- "base64",
- "bytes",
- "ctr",
- "flate2",
- "futures",
- "jsonwebtoken",
- "once_cell",
- "p384",
- "rand 0.8.6",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "snap",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "uuid",
- "valentine",
- "zeroize",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4613,16 +4484,18 @@ dependencies = [
 
 [[package]]
 name = "json-ui"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
+ "pack-json",
  "serde",
  "serde_json",
+ "test-alloc",
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "jsonui-editor"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "image",
@@ -4630,13 +4503,14 @@ dependencies = [
  "serde",
  "serde_json",
  "ui",
+ "ui-engine",
  "wasm-bindgen",
  "zip",
 ]
 
 [[package]]
 name = "jsonui-mcp"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "image",
  "json-ui",
@@ -4644,21 +4518,6 @@ dependencies = [
  "mcp-stdio",
  "serde_json",
  "uuid",
-]
-
-[[package]]
-name = "jsonwebtoken"
-version = "9.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a87cc7a48537badeae96744432de36f4be2b4a34a05a5ef32e9dd8a1c169dde"
-dependencies = [
- "base64",
- "js-sys",
- "pem",
- "ring",
- "serde",
- "serde_json",
- "simple_asn1",
 ]
 
 [[package]]
@@ -4681,7 +4540,7 @@ dependencies = [
 
 [[package]]
 name = "launcher"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "bridge",
@@ -4693,12 +4552,13 @@ dependencies = [
  "sha2",
  "thiserror 2.0.18",
  "ui",
+ "update-manifest",
  "zip",
 ]
 
 [[package]]
 name = "launcher-host"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "async-io",
@@ -4718,8 +4578,10 @@ dependencies = [
  "tempfile",
  "test-time",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tracing",
+ "update-installer",
  "update-manifest",
  "url",
  "windows-sys 0.61.2",
@@ -4993,7 +4855,7 @@ checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
 
 [[package]]
 name = "mcp-stdio"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "serde_json",
 ]
@@ -5033,7 +4895,7 @@ dependencies = [
 
 [[package]]
 name = "meshing"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "block-transform",
@@ -5075,14 +4937,14 @@ dependencies = [
 
 [[package]]
 name = "mod-api"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "wit-bindgen",
 ]
 
 [[package]]
 name = "mod-host"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "experience-sdk",
@@ -5097,16 +4959,32 @@ dependencies = [
  "ui",
  "wasmtime",
  "wat",
+ "windows-sys 0.61.2",
  "wit-component",
 ]
 
 [[package]]
 name = "mod-render"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "bytemuck",
  "mod-api",
  "naga",
+]
+
+[[package]]
+name = "mod-ui"
+version = "0.1.17"
+dependencies = [
+ "assets",
+ "glam",
+ "json-ui",
+ "render-model",
+ "serde_json",
+ "server-experience",
+ "tracing",
+ "ui",
+ "ui-engine",
 ]
 
 [[package]]
@@ -5409,6 +5287,7 @@ dependencies = [
  "objc2 0.6.4",
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
 ]
 
 [[package]]
@@ -5738,12 +5617,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
-name = "opaque-debug"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
-
-[[package]]
 name = "opus"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5791,6 +5664,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "oreui"
+version = "0.1.17"
+dependencies = [
+ "assets",
+ "bridge",
+ "image",
+ "launcher",
+ "protocol",
+ "render-api",
+ "render-model",
+ "resource-pack",
+ "semantic-input",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "test-alloc",
+ "tracing",
+ "ui",
+ "ui-engine",
+]
+
+[[package]]
 name = "os_pipe"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5810,20 +5705,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "p384"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe42f1670a52a47d448f14b6a5c61dd78fce51856e68edaa38f7ae3a46b8d6b6"
-dependencies = [
- "ecdsa",
- "elliptic-curve",
- "primeorder",
- "sha2",
-]
-
-[[package]]
 name = "pack-compiler"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "cap-fs-ext",
@@ -5831,23 +5714,35 @@ dependencies = [
  "fontdue",
  "freetype-sys",
  "image",
+ "pack-json",
  "serde",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
  "thiserror 2.0.18",
 ]
 
 [[package]]
+name = "pack-json"
+version = "0.1.17"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pack-runtime"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "block-transform",
  "image",
  "json-ui",
  "pack-compiler",
+ "pack-json",
  "protocol",
+ "rayon",
  "resource-pack",
  "serde_json",
  "sha2",
@@ -5899,10 +5794,12 @@ dependencies = [
 
 [[package]]
 name = "particles"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "bytemuck",
+ "pack-json",
+ "render-model",
  "serde_json",
 ]
 
@@ -5911,25 +5808,6 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
-name = "pem"
-version = "3.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
-dependencies = [
- "base64",
- "serde_core",
-]
-
-[[package]]
-name = "pem-rfc7468"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
-dependencies = [
- "base64ct",
-]
 
 [[package]]
 name = "percent-encoding"
@@ -5986,16 +5864,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pkcs8"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
-dependencies = [
- "der",
- "spki",
-]
-
-[[package]]
 name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6009,10 +5877,10 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "player-state"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "client-world",
- "inventory 0.1.12",
+ "inventory 0.1.17",
 ]
 
 [[package]]
@@ -6040,18 +5908,6 @@ dependencies = [
  "pin-project-lite",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "polyval"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d1fe60d06143b2430aa532c94cfe9e29783047f06c0d7fd359a9a51b729fa25"
-dependencies = [
- "cfg-if",
- "cpufeatures 0.2.17",
- "opaque-debug",
- "universal-hash",
 ]
 
 [[package]]
@@ -6097,15 +5953,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
-name = "ppv-lite86"
-version = "0.2.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
-dependencies = [
- "zerocopy",
-]
-
-[[package]]
 name = "presser"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6119,15 +5966,6 @@ checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
  "syn 2.0.118",
-]
-
-[[package]]
-name = "primeorder"
-version = "0.13.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "353e1ca18966c16d9deb1c69278edbc5f194139612772bd9537af60ac231e1e6"
-dependencies = [
- "elliptic-curve",
 ]
 
 [[package]]
@@ -6192,33 +6030,29 @@ dependencies = [
 
 [[package]]
 name = "protocol"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
- "aes",
  "anyhow",
  "base64",
+ "bedrock-protocol-1-26-51",
  "block-transform",
  "bridge",
  "bytes",
  "cap-fs-ext",
  "cap-std",
- "ctr",
- "flate2",
  "futures",
- "jolyne",
- "jsonwebtoken",
- "p384",
  "render-api",
  "serde",
  "serde_json",
  "sha2",
- "snap",
+ "simulation-clock",
  "tempfile",
+ "test-alloc",
  "test-time",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "uuid",
- "valentine",
  "xxhash-rust",
  "zeroize",
 ]
@@ -6290,7 +6124,7 @@ dependencies = [
  "bytes",
  "getrandom 0.4.3",
  "lru-slab",
- "rand 0.10.2",
+ "rand",
  "rand_pcg",
  "ring",
  "rustc-hash 2.1.3",
@@ -6366,43 +6200,13 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
-dependencies = [
- "libc",
- "rand_chacha",
- "rand_core 0.6.4",
-]
-
-[[package]]
-name = "rand"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
 dependencies = [
  "chacha20",
  "getrandom 0.4.3",
- "rand_core 0.10.1",
-]
-
-[[package]]
-name = "rand_chacha"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
-dependencies = [
- "ppv-lite86",
- "rand_core 0.6.4",
-]
-
-[[package]]
-name = "rand_core"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
-dependencies = [
- "getrandom 0.2.17",
+ "rand_core",
 ]
 
 [[package]]
@@ -6418,7 +6222,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d431c2703ccf129de4d45253c03f49ebb22b97d6ad79ee3ecfc7e3f4862c1d8"
 dependencies = [
  "num-traits",
- "rand 0.10.2",
+ "rand",
 ]
 
 [[package]]
@@ -6427,7 +6231,7 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a"
 dependencies = [
- "rand_core 0.10.1",
+ "rand_core",
 ]
 
 [[package]]
@@ -6552,9 +6356,10 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "release-manifest"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "base64",
+ "serde_json",
  "sha2",
  "tempfile",
  "time",
@@ -6563,12 +6368,13 @@ dependencies = [
 
 [[package]]
 name = "render"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "bevy",
  "block-transform",
  "bytemuck",
+ "env-compat",
  "glam",
  "image",
  "libc",
@@ -6585,6 +6391,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "test-alloc",
  "test-time",
  "tracy-client",
  "wesl",
@@ -6595,11 +6402,11 @@ dependencies = [
 
 [[package]]
 name = "render-api"
-version = "0.1.12"
+version = "0.1.17"
 
 [[package]]
 name = "render-model"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "block-transform",
@@ -6613,25 +6420,28 @@ dependencies = [
  "render-api",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
+ "test-alloc",
  "tracing",
  "world",
 ]
 
 [[package]]
 name = "render-sample-mod"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "mod-api",
 ]
 
 [[package]]
 name = "render-scene"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "bevy",
  "bytemuck",
+ "env-compat",
  "glam",
  "meshing",
  "mod-api",
@@ -6642,7 +6452,9 @@ dependencies = [
  "render-model",
  "serde_json",
  "sha2",
+ "simulation-clock",
  "tempfile",
+ "test-alloc",
  "test-time",
  "tracy-client",
  "world",
@@ -6694,9 +6506,10 @@ dependencies = [
 
 [[package]]
 name = "resource-pack"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "aes",
+ "pack-json",
  "protocol",
  "serde",
  "serde_json",
@@ -6707,18 +6520,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "rfc6979"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8dd2a808d456c4a54e300a23e9f5a67e122c3024119acbfd73e3bf664491cb2"
-dependencies = [
- "hmac",
- "subtle",
-]
-
-[[package]]
 name = "rich-presence"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "crossbeam-channel",
  "discord-presence",
@@ -6902,7 +6705,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "screen-probe-mod"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "experience-sdk",
  "mod-api",
@@ -6922,22 +6725,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "sec1"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3e97a565f76233a6003f9f5c54be1d9c5bdfa3eccfb189469f11ec4901c47dc"
-dependencies = [
- "base16ct",
- "der",
- "generic-array",
- "pkcs8",
- "subtle",
- "zeroize",
-]
-
-[[package]]
 name = "semantic-input"
-version = "0.1.12"
+version = "0.1.17"
 
 [[package]]
 name = "semver"
@@ -7032,7 +6821,7 @@ dependencies = [
 
 [[package]]
 name = "server-experience"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "dav1d",
@@ -7105,24 +6894,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "signature"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
-dependencies = [
- "digest",
- "rand_core 0.6.4",
-]
-
-[[package]]
 name = "sim"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
  "block-transform",
  "serde",
  "serde_json",
  "sha2",
+ "simulation-clock",
+ "test-alloc",
  "thiserror 2.0.18",
  "world",
 ]
@@ -7150,16 +6931,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
-name = "simple_asn1"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
-dependencies = [
- "num-bigint",
- "num-traits",
- "thiserror 2.0.18",
- "time",
-]
+name = "simulation-clock"
+version = "0.1.17"
 
 [[package]]
 name = "slab"
@@ -7220,12 +6993,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "snap"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
-
-[[package]]
 name = "socket2"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7251,16 +7018,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.13.0",
-]
-
-[[package]]
-name = "spki"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
-dependencies = [
- "base64ct",
- "der",
 ]
 
 [[package]]
@@ -7386,8 +7143,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-alloc"
+version = "0.1.17"
+
+[[package]]
 name = "test-time"
-version = "0.1.12"
+version = "0.1.17"
 
 [[package]]
 name = "thiserror"
@@ -7454,7 +7215,7 @@ dependencies = [
 
 [[package]]
 name = "time-changer-mod"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "mod-api",
 ]
@@ -7914,14 +7675,58 @@ dependencies = [
 
 [[package]]
 name = "ui"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "assets",
+ "json-ui",
  "render-api",
  "semantic-input",
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ui-engine"
+version = "0.1.17"
+dependencies = [
+ "assets",
+ "crossbeam-channel",
+ "image",
+ "json-ui",
+ "pack-json",
+ "rayon",
+ "render-api",
+ "render-model",
+ "resource-pack",
+ "serde_json",
+ "sha2",
+ "test-alloc",
+ "test-time",
+ "tracing",
+ "ui",
+]
+
+[[package]]
+name = "ui-screens"
+version = "0.1.17"
+dependencies = [
+ "actor-animation",
+ "assets",
+ "bridge",
+ "image",
+ "inventory 0.1.17",
+ "json-ui",
+ "launcher",
+ "player-state",
+ "protocol",
+ "render-model",
+ "resource-pack",
+ "serde_json",
+ "tracing",
+ "ui",
+ "ui-engine",
+ "url",
 ]
 
 [[package]]
@@ -7949,16 +7754,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
-name = "universal-hash"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea"
-dependencies = [
- "crypto-common",
- "subtle",
-]
-
-[[package]]
 name = "unsynn"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7976,13 +7771,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "update-installer"
+version = "0.1.17"
+dependencies = [
+ "anyhow",
+ "rustix 1.1.4",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "time",
+ "update-manifest",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "update-manifest"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "base64",
  "ring",
  "serde",
  "serde_json",
+ "semver",
  "thiserror 2.0.18",
  "time",
  "url",
@@ -8022,37 +7832,6 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "valentine"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.0",
- "bytes",
- "serde",
- "uuid",
- "valentine_bedrock_1_26_51",
- "valentine_bedrock_core",
-]
-
-[[package]]
-name = "valentine_bedrock_1_26_51"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.0",
- "bytes",
- "uuid",
- "valentine_bedrock_core",
-]
-
-[[package]]
-name = "valentine_bedrock_core"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "thiserror 1.0.69",
- "uuid",
 ]
 
 [[package]]
@@ -9624,11 +9403,11 @@ dependencies = [
 
 [[package]]
 name = "workspace-declarations"
-version = "0.1.12"
+version = "0.1.17"
 
 [[package]]
 name = "world"
-version = "0.1.12"
+version = "0.1.17"
 dependencies = [
  "criterion",
  "hashbrown 0.16.1",
@@ -9636,6 +9415,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "test-alloc",
  "thiserror 2.0.18",
 ]
 

@@ -214,7 +214,7 @@ fn compile_selected(
         // Geometry is normalised to the accepted schema; a file that leaves nothing is skipped.
         let normalised;
         let bytes = if path.starts_with("models/entity/") {
-            let Some(text) = serde_json::from_slice::<serde_json::Value>(bytes)
+            let Some(text) = pack_json::parse_jsonc::<serde_json::Value>(bytes)
                 .ok()
                 .filter(|_| true)
                 .and_then(|mut value| {
@@ -263,11 +263,15 @@ fn compile_selected(
         });
         payloads.insert(path, bytes.into());
     }
-    // Attachables alone (custom armor and held models) still make a pack worth compiling.
+    // Authored attachables and texture-only artwork each make a pack worth retaining.
     let has_attachables = sources
         .iter()
         .any(|source| source.path.starts_with("attachables/"));
+    let has_artwork = sources
+        .iter()
+        .any(|source| source.path.ends_with(".png") || source.path.ends_with(".tga"));
     if !has_attachables
+        && !has_artwork
         && !symbols
             .keys()
             .any(|(kind, ..)| *kind == EntityAssetKind::Entity)

@@ -91,7 +91,7 @@ fn recorded_sends(ticker: &mut MovementTicker, budget: usize) -> Vec<u64> {
         budget,
         Some(evidence_context()),
         |identity, _packet| {
-            sent_ticks.push(identity.tick);
+            sent_ticks.push(identity.tick.get());
             Ok::<_, ()>(())
         },
     )
@@ -108,7 +108,7 @@ fn acknowledged_sends(ticker: &mut MovementTicker, budget: usize) -> Vec<u64> {
         budget,
         Some(evidence_context()),
         |identity, _packet| {
-            sent_ticks.push(identity.tick);
+            sent_ticks.push(identity.tick.get());
             identities.push(identity);
             Ok::<_, ()>(())
         },

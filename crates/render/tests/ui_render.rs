@@ -6,8 +6,8 @@ use bevy::ecs::system::RunSystemOnce;
 )]
 mod render_test_support;
 
-#[path = "../src/alloc_count.rs"]
-mod alloc_count;
+#[global_allocator]
+static ALLOCATOR: test_alloc::CountingAllocator = test_alloc::CountingAllocator;
 
 #[path = "../src/device_poll.rs"]
 #[allow(
@@ -42,6 +42,7 @@ mod shader_safety;
 )]
 pub mod ui_render;
 #[path = "../src/upload_staging.rs"]
+#[allow(dead_code, reason = "the UI fixture installs only the frame pool")]
 mod upload_staging;
 
 // This standalone UI fixture installs no camera-effect scene. Production's
@@ -201,8 +202,8 @@ fn composite_shader_blends_in_gamma_space() {
 #[test]
 fn pipeline_is_one_depth_neutral_premultiplied_overlay_family() {
     let layout = ui_bind_group_layout();
-    // Viewport, pages, the nearest and `bilinear` samplers, and the page format.
-    assert_eq!(layout.entries.len(), 5);
+    // Viewport, pages, UI samplers, page format, and the independent item glint pair.
+    assert_eq!(layout.entries.len(), 7);
     let descriptor = ui_pipeline_descriptor(layout);
     assert!(
         descriptor.depth_stencil.is_none(),

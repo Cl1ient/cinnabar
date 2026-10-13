@@ -10,7 +10,7 @@ fn frozen_local_player_frame_samples_pose_and_interaction_identity_atomically() 
     assert_eq!(frozen.session_generation(), expected.session_generation);
     assert_eq!(frozen.fifo_sequence(), expected.fifo_sequence);
     assert_eq!(frozen.physics_tick(), expected.physics_tick);
-    assert_eq!(frozen.pose_generation(), 1);
+    assert_eq!(frozen.pose_generation().get(), 1);
     assert_eq!(frozen.perspective(), expected.perspective);
     assert_eq!(
         frozen.world_collision_identity(),
@@ -42,9 +42,12 @@ fn correction_session_and_dimension_resets_invalidate_the_frozen_frame_generatio
 
         assert!(carrier.snapshot().is_none());
         let mut replacement = sample;
-        replacement.session_generation += u64::from(reset == LocalPlayerFrameReset::Session);
-        replacement.fifo_sequence += 1;
-        replacement.physics_tick += 1;
+        replacement.session_generation = SessionGeneration::new(
+            replacement.session_generation.get()
+                + u64::from(reset == LocalPlayerFrameReset::Session),
+        );
+        replacement.fifo_sequence = FifoSequence::new(replacement.fifo_sequence.get() + 1);
+        replacement.physics_tick = PhysicsTick::new(replacement.physics_tick.get() + 1);
         carrier.publish(replacement).unwrap();
         assert!(carrier.snapshot().unwrap().pose_generation() > stale_generation);
     }
@@ -203,7 +206,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
         assert!(
             interaction
                 .outbound_ray_for_authority(
-                    frozen.session_generation() + 1,
+                    SessionGeneration::new(frozen.session_generation().get() + 1),
                     frozen.fifo_sequence(),
                     frozen.physics_tick(),
                     frozen.pose_generation(),
@@ -215,7 +218,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
             interaction
                 .outbound_ray_for_authority(
                     frozen.session_generation(),
-                    frozen.fifo_sequence() + 1,
+                    FifoSequence::new(frozen.fifo_sequence().get() + 1),
                     frozen.physics_tick(),
                     frozen.pose_generation(),
                     frozen.world_collision_identity(),
@@ -227,7 +230,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
                 .outbound_ray_for_authority(
                     frozen.session_generation(),
                     frozen.fifo_sequence(),
-                    frozen.physics_tick() + 1,
+                    PhysicsTick::new(frozen.physics_tick().get() + 1),
                     frozen.pose_generation(),
                     frozen.world_collision_identity(),
                 )
@@ -239,7 +242,7 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
                     frozen.session_generation(),
                     frozen.fifo_sequence(),
                     frozen.physics_tick(),
-                    frozen.pose_generation() + 1,
+                    PoseGeneration::new(frozen.pose_generation().get() + 1),
                     frozen.world_collision_identity(),
                 )
                 .is_none()
@@ -289,8 +292,8 @@ fn interaction_origin_consumes_and_invalidates_with_the_atomic_local_player_fram
 }
 
 #[test]
-fn phase3_evidence_is_production_shaped_exact_bounded_and_dimension_correlated() {
-    let frame = |physics_tick, pose_generation, dimension| Phase3EvidenceFrame {
+fn movement_evidence_is_production_shaped_exact_bounded_and_dimension_correlated() {
+    let frame = |physics_tick, pose_generation, dimension| MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: if dimension == 0 {
             41 + physics_tick
@@ -319,11 +322,11 @@ fn phase3_evidence_is_production_shaped_exact_bounded_and_dimension_correlated()
         jump_repeated: false,
         jump_released: false,
     };
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
 
-    let identity = Phase3EvidenceIdentity::new(
+    let identity = MovementEvidenceIdentity::new(
         "0123456789abcdef0123456789abcdef01234567",
-        crate::args::Phase3Target::Zeqa,
+        crate::args::EvidenceTarget::Zeqa,
         7,
         [0x11; 32],
         [0x22; 32],
@@ -334,12 +337,12 @@ fn phase3_evidence_is_production_shaped_exact_bounded_and_dimension_correlated()
     assert_eq!(identity_markers.len(), 1);
     let identity_json: serde_json::Value = serde_json::from_str(
         identity_markers[0]
-            .strip_prefix("RUST_MCBE_PHASE3_IDENTITY=")
+            .strip_prefix("CINNABAR_MOVEMENT_IDENTITY=")
             .unwrap(),
     )
     .unwrap();
     assert_eq!(identity_json.as_object().unwrap().len(), 15);
-    assert_eq!(identity_json["schema"], "rust-mcbe-phase3-identity-v1");
+    assert_eq!(identity_json["schema"], "rust-mcbe-movement-identity-v1");
     assert_eq!(identity_json["target"], "Zeqa");
     assert_eq!(identity_json["protocol"], 2193);
     assert_eq!(identity_json["session_generation"], 7);
@@ -357,11 +360,11 @@ fn phase3_evidence_is_production_shaped_exact_bounded_and_dimension_correlated()
 
     let first = evidence.observe(frame(41, 101, 0));
     assert_eq!(first.len(), 1);
-    assert!(first[0].starts_with("RUST_MCBE_PHASE3_FRAME="));
+    assert!(first[0].starts_with("CINNABAR_MOVEMENT_FRAME="));
     let json: serde_json::Value =
-        serde_json::from_str(first[0].strip_prefix("RUST_MCBE_PHASE3_FRAME=").unwrap()).unwrap();
+        serde_json::from_str(first[0].strip_prefix("CINNABAR_MOVEMENT_FRAME=").unwrap()).unwrap();
     assert_eq!(json.as_object().unwrap().len(), 24);
-    assert_eq!(json["schema"], "rust-mcbe-phase3-frame-v2");
+    assert_eq!(json["schema"], "rust-mcbe-movement-frame-v2");
     assert_eq!(json["physics_tick"], 41);
     assert_eq!(json["dimension"], 0);
     assert_eq!(
@@ -371,18 +374,18 @@ fn phase3_evidence_is_production_shaped_exact_bounded_and_dimension_correlated()
 
     let duplicate = evidence.observe(frame(41, 102, 0));
     assert_eq!(duplicate.len(), 1);
-    assert!(duplicate[0].starts_with("RUST_MCBE_PHASE3_VIOLATION="));
+    assert!(duplicate[0].starts_with("CINNABAR_MOVEMENT_VIOLATION="));
 
-    let mut transition_evidence = Phase3EvidenceEmitter::default();
+    let mut transition_evidence = MovementEvidenceEmitter::default();
     assert_eq!(transition_evidence.observe(frame(41, 101, 0)).len(), 1);
-    transition_evidence.note_event(Phase3EvidenceEventKind::Dimension);
+    transition_evidence.note_event(MovementEvidenceEventKind::Dimension);
     let transitioned = transition_evidence.observe(frame(0, 103, 1));
     assert_eq!(transitioned.len(), 2);
-    assert!(transitioned[0].starts_with("RUST_MCBE_PHASE3_FRAME="));
-    assert!(transitioned[1].starts_with("RUST_MCBE_PHASE3_EVENT="));
+    assert!(transitioned[0].starts_with("CINNABAR_MOVEMENT_FRAME="));
+    assert!(transitioned[1].starts_with("CINNABAR_MOVEMENT_EVENT="));
     let event: serde_json::Value = serde_json::from_str(
         transitioned[1]
-            .strip_prefix("RUST_MCBE_PHASE3_EVENT=")
+            .strip_prefix("CINNABAR_MOVEMENT_EVENT=")
             .unwrap(),
     )
     .unwrap();
@@ -394,19 +397,19 @@ fn phase3_evidence_is_production_shaped_exact_bounded_and_dimension_correlated()
     assert!(
         !transitioned
             .iter()
-            .any(|marker| marker.starts_with("RUST_MCBE_PHASE3_VIOLATION="))
+            .any(|marker| marker.starts_with("CINNABAR_MOVEMENT_VIOLATION="))
     );
     assert!(transition_evidence.take_violation_marker().is_empty());
     // No violation or captured identity may persist across an accepted
     // dimension transition: the next contiguous frame is ordinary evidence.
     let following = transition_evidence.observe(frame(1, 104, 1));
     assert_eq!(following.len(), 1);
-    assert!(following[0].starts_with("RUST_MCBE_PHASE3_FRAME="));
+    assert!(following[0].starts_with("CINNABAR_MOVEMENT_FRAME="));
 }
 
 #[test]
-fn phase3_evidence_emits_one_frame_for_every_completed_catch_up_tick() {
-    let base = Phase3EvidenceFrame {
+fn movement_evidence_emits_one_frame_for_every_completed_catch_up_tick() {
+    let base = MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: 88,
         physics_tick: 0,
@@ -458,7 +461,7 @@ fn phase3_evidence_emits_one_frame_for_every_completed_catch_up_tick() {
             free_camera_packet_count: base.free_camera_packet_count,
         },
     });
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
 
     let markers = evidence.observe_completed_ticks(&ticks);
 
@@ -468,7 +471,7 @@ fn phase3_evidence_emits_one_frame_for_every_completed_catch_up_tick() {
             .iter()
             .map(|marker| {
                 let json: serde_json::Value =
-                    serde_json::from_str(marker.strip_prefix("RUST_MCBE_PHASE3_FRAME=").unwrap())
+                    serde_json::from_str(marker.strip_prefix("CINNABAR_MOVEMENT_FRAME=").unwrap())
                         .unwrap();
                 json["physics_tick"].as_u64().unwrap()
             })
@@ -478,8 +481,8 @@ fn phase3_evidence_emits_one_frame_for_every_completed_catch_up_tick() {
 }
 
 #[test]
-fn phase3_correction_evidence_records_only_bounded_successful_replay_and_snap_outcomes() {
-    let mut evidence = Phase3EvidenceEmitter::default();
+fn movement_correction_evidence_records_only_bounded_successful_replay_and_snap_outcomes() {
+    let mut evidence = MovementEvidenceEmitter::default();
     evidence.note_correction(
         PhysicsCorrectionOutcome::Replayed {
             corrected_tick: 40,
@@ -489,7 +492,7 @@ fn phase3_correction_evidence_records_only_bounded_successful_replay_and_snap_ou
     );
     evidence.note_correction(PhysicsCorrectionOutcome::Snapped { tick: 43 }, 1.25);
 
-    let markers = evidence.observe(Phase3EvidenceFrame {
+    let markers = evidence.observe(MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: 88,
         physics_tick: 44,
@@ -516,7 +519,7 @@ fn phase3_correction_evidence_records_only_bounded_successful_replay_and_snap_ou
     });
     let corrections = markers
         .iter()
-        .filter_map(|marker| marker.strip_prefix("RUST_MCBE_PHASE3_EVENT="))
+        .filter_map(|marker| marker.strip_prefix("CINNABAR_MOVEMENT_EVENT="))
         .map(|json| serde_json::from_str::<serde_json::Value>(json).unwrap())
         .collect::<Vec<_>>();
 
@@ -532,27 +535,27 @@ fn phase3_correction_evidence_records_only_bounded_successful_replay_and_snap_ou
 }
 
 #[test]
-fn phase3_evidence_identity_rejects_unattributable_builds_and_hashes() {
+fn movement_evidence_identity_rejects_unattributable_builds_and_hashes() {
     for invalid in [
-        Phase3EvidenceIdentity::new(
+        MovementEvidenceIdentity::new(
             "not-a-commit",
-            crate::args::Phase3Target::Bds,
+            crate::args::EvidenceTarget::Bds,
             7,
             [0x11; 32],
             [0x22; 32],
             true,
         ),
-        Phase3EvidenceIdentity::new(
+        MovementEvidenceIdentity::new(
             "0123456789abcdef0123456789abcdef01234567",
-            crate::args::Phase3Target::Bds,
+            crate::args::EvidenceTarget::Bds,
             0,
             [0x11; 32],
             [0x22; 32],
             true,
         ),
-        Phase3EvidenceIdentity::new(
+        MovementEvidenceIdentity::new(
             "0123456789abcdef0123456789abcdef01234567",
-            crate::args::Phase3Target::Bds,
+            crate::args::EvidenceTarget::Bds,
             7,
             [0; 32],
             [0x22; 32],
@@ -564,16 +567,16 @@ fn phase3_evidence_identity_rejects_unattributable_builds_and_hashes() {
 }
 
 #[test]
-fn phase3_candidate_identity_rejects_dirty_or_unattributed_builds() {
-    assert!(validate_phase3_build_source(Some("false")).is_ok());
+fn movement_candidate_identity_rejects_dirty_or_unattributed_builds() {
+    assert!(validate_movement_build_source(Some("false")).is_ok());
     for dirty in [None, Some("true"), Some("False"), Some("")] {
-        assert!(validate_phase3_build_source(dirty).is_err());
+        assert!(validate_movement_build_source(dirty).is_err());
     }
 }
 
 #[test]
-fn phase3_evidence_fails_closed_on_invalid_or_unauthorized_frames() {
-    let invalid = Phase3EvidenceFrame {
+fn movement_evidence_fails_closed_on_invalid_or_unauthorized_frames() {
+    let invalid = MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: 41,
         physics_tick: 1,
@@ -598,43 +601,43 @@ fn phase3_evidence_fails_closed_on_invalid_or_unauthorized_frames() {
         jump_repeated: false,
         jump_released: false,
     };
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
     let violation = evidence.observe(invalid);
     assert_eq!(violation.len(), 1);
-    assert!(violation[0].starts_with("RUST_MCBE_PHASE3_VIOLATION="));
+    assert!(violation[0].starts_with("CINNABAR_MOVEMENT_VIOLATION="));
 
     for frame in [
-        Phase3EvidenceFrame {
+        MovementEvidenceFrame {
             movement: [0.0; 2],
             network_position: [f32::NAN, 72.62, -4.0],
             ..invalid
         },
-        Phase3EvidenceFrame {
+        MovementEvidenceFrame {
             movement: [0.0; 2],
             outbound_authorized: false,
             ..invalid
         },
-        Phase3EvidenceFrame {
+        MovementEvidenceFrame {
             movement: [0.0; 2],
             free_camera_packet_count: 1,
             ..invalid
         },
-        Phase3EvidenceFrame {
+        MovementEvidenceFrame {
             movement: [0.0; 2],
             camera_blocked: true,
             camera_fallback: true,
             ..invalid
         },
     ] {
-        let markers = Phase3EvidenceEmitter::default().observe(frame);
+        let markers = MovementEvidenceEmitter::default().observe(frame);
         assert_eq!(markers.len(), 1);
-        assert!(markers[0].starts_with("RUST_MCBE_PHASE3_VIOLATION="));
+        assert!(markers[0].starts_with("CINNABAR_MOVEMENT_VIOLATION="));
     }
 }
 
 #[test]
-fn phase3_invalid_correction_and_non_monotonic_tick_emit_durable_violations() {
-    let frame = |tick| Phase3EvidenceFrame {
+fn movement_invalid_correction_and_non_monotonic_tick_emit_durable_violations() {
+    let frame = |tick| MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: tick,
         physics_tick: tick,
@@ -659,24 +662,24 @@ fn phase3_invalid_correction_and_non_monotonic_tick_emit_durable_violations() {
         jump_repeated: false,
         jump_released: false,
     };
-    let mut invalid_correction = Phase3EvidenceEmitter::default();
+    let mut invalid_correction = MovementEvidenceEmitter::default();
     invalid_correction.note_correction(PhysicsCorrectionOutcome::Snapped { tick: 1 }, f32::NAN);
     let markers = invalid_correction.observe(frame(1));
     assert_eq!(markers.len(), 1);
     assert!(markers[0].contains("invalid_correction"));
 
-    let mut non_monotonic = Phase3EvidenceEmitter::default();
+    let mut non_monotonic = MovementEvidenceEmitter::default();
     assert_eq!(non_monotonic.observe(frame(1)).len(), 1);
     let markers = non_monotonic.observe(frame(1));
     assert_eq!(markers.len(), 1);
     let json: serde_json::Value = serde_json::from_str(
         markers[0]
-            .strip_prefix("RUST_MCBE_PHASE3_VIOLATION=")
+            .strip_prefix("CINNABAR_MOVEMENT_VIOLATION=")
             .unwrap(),
     )
     .unwrap();
     assert_eq!(json.as_object().unwrap().len(), 3);
-    assert_eq!(json["schema"], "rust-mcbe-phase3-violation-v2");
+    assert_eq!(json["schema"], "rust-mcbe-movement-violation-v2");
     assert_eq!(json["reason"], "non_monotonic_frame");
     assert_eq!(json["frame_identity"]["previous_physics_tick"], 1);
     assert_eq!(json["frame_identity"]["current_physics_tick"], 1);
@@ -689,8 +692,8 @@ fn phase3_invalid_correction_and_non_monotonic_tick_emit_durable_violations() {
 }
 
 #[test]
-fn phase3_non_monotonic_violation_carries_previous_and_current_identities_v2() {
-    let frame = |physics_tick| Phase3EvidenceFrame {
+fn movement_non_monotonic_violation_carries_previous_and_current_identities_v2() {
+    let frame = |physics_tick| MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: physics_tick,
         physics_tick,
@@ -715,19 +718,19 @@ fn phase3_non_monotonic_violation_carries_previous_and_current_identities_v2() {
         jump_repeated: false,
         jump_released: false,
     };
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
     assert_eq!(evidence.observe(frame(100)).len(), 1);
     let markers = evidence.observe(frame(102));
     assert_eq!(markers.len(), 1);
-    assert!(markers[0].starts_with("RUST_MCBE_PHASE3_VIOLATION="));
+    assert!(markers[0].starts_with("CINNABAR_MOVEMENT_VIOLATION="));
     let json: serde_json::Value = serde_json::from_str(
         markers[0]
-            .strip_prefix("RUST_MCBE_PHASE3_VIOLATION=")
+            .strip_prefix("CINNABAR_MOVEMENT_VIOLATION=")
             .unwrap(),
     )
     .unwrap();
     assert_eq!(json.as_object().unwrap().len(), 3);
-    assert_eq!(json["schema"], "rust-mcbe-phase3-violation-v2");
+    assert_eq!(json["schema"], "rust-mcbe-movement-violation-v2");
     assert_eq!(json["reason"], "non_monotonic_frame");
     let identity = json["frame_identity"].as_object().unwrap();
     assert_eq!(identity.len(), 10);
@@ -744,9 +747,9 @@ fn phase3_non_monotonic_violation_carries_previous_and_current_identities_v2() {
 }
 
 #[test]
-fn phase3_non_monotonic_identity_isolates_each_detection_subcondition_v2() {
+fn movement_non_monotonic_identity_isolates_each_detection_subcondition_v2() {
     let frame =
-        |session: u64, tick: u64, dimension: i32, fifo: u64, pose: u64| Phase3EvidenceFrame {
+        |session: u64, tick: u64, dimension: i32, fifo: u64, pose: u64| MovementEvidenceFrame {
             session_generation: session,
             fifo_sequence: fifo,
             physics_tick: tick,
@@ -783,7 +786,7 @@ fn phase3_non_monotonic_identity_isolates_each_detection_subcondition_v2() {
         ("fifo_regression", (7, 20, 0, 20, 21), (7, 21, 0, 19, 22)),
         ("pose_regression", (7, 30, 0, 30, 31), (7, 31, 0, 31, 30)),
     ] {
-        let mut evidence = Phase3EvidenceEmitter::default();
+        let mut evidence = MovementEvidenceEmitter::default();
         assert_eq!(
             evidence
                 .observe(frame(
@@ -798,11 +801,11 @@ fn phase3_non_monotonic_identity_isolates_each_detection_subcondition_v2() {
         assert_eq!(markers.len(), 1, "{name}");
         let json: serde_json::Value = serde_json::from_str(
             markers[0]
-                .strip_prefix("RUST_MCBE_PHASE3_VIOLATION=")
+                .strip_prefix("CINNABAR_MOVEMENT_VIOLATION=")
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(json["schema"], "rust-mcbe-phase3-violation-v2", "{name}");
+        assert_eq!(json["schema"], "rust-mcbe-movement-violation-v2", "{name}");
         assert_eq!(json["reason"], "non_monotonic_frame", "{name}");
         assert_eq!(
             json["frame_identity"],
@@ -824,8 +827,8 @@ fn phase3_non_monotonic_identity_isolates_each_detection_subcondition_v2() {
 }
 
 #[test]
-fn phase3_other_violation_reasons_remain_exact_two_key_v2_objects() {
-    let base = Phase3EvidenceFrame {
+fn movement_other_violation_reasons_remain_exact_two_key_v2_objects() {
+    let base = MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: 41,
         physics_tick: 1,
@@ -850,24 +853,24 @@ fn phase3_other_violation_reasons_remain_exact_two_key_v2_objects() {
         jump_repeated: false,
         jump_released: false,
     };
-    let invalid_markers = Phase3EvidenceEmitter::default().observe(Phase3EvidenceFrame {
+    let invalid_markers = MovementEvidenceEmitter::default().observe(MovementEvidenceFrame {
         movement: [f32::NAN, 0.0],
         ..base
     });
     assert_eq!(invalid_markers.len(), 1);
     let json: serde_json::Value = serde_json::from_str(
         invalid_markers[0]
-            .strip_prefix("RUST_MCBE_PHASE3_VIOLATION=")
+            .strip_prefix("CINNABAR_MOVEMENT_VIOLATION=")
             .unwrap(),
     )
     .unwrap();
     assert_eq!(json.as_object().unwrap().len(), 2);
-    assert_eq!(json["schema"], "rust-mcbe-phase3-violation-v2");
+    assert_eq!(json["schema"], "rust-mcbe-movement-violation-v2");
     assert_eq!(json["reason"], "invalid_frame");
     assert!(json.get("frame_identity").is_none());
 
     let fault_markers =
-        Phase3EvidenceEmitter::default().observe_authority_fault(PhysicsAuthorityFaultRecord {
+        MovementEvidenceEmitter::default().observe_authority_fault(PhysicsAuthorityFaultRecord {
             session_generation: 7,
             fault: PhysicsAuthorityFault::OutboxOverflow,
             next_tick: 42,
@@ -876,22 +879,22 @@ fn phase3_other_violation_reasons_remain_exact_two_key_v2_objects() {
     assert_eq!(fault_markers.len(), 2);
     let json: serde_json::Value = serde_json::from_str(
         fault_markers[1]
-            .strip_prefix("RUST_MCBE_PHASE3_VIOLATION=")
+            .strip_prefix("CINNABAR_MOVEMENT_VIOLATION=")
             .unwrap(),
     )
     .unwrap();
     assert_eq!(json.as_object().unwrap().len(), 2);
-    assert_eq!(json["schema"], "rust-mcbe-phase3-violation-v2");
+    assert_eq!(json["schema"], "rust-mcbe-movement-violation-v2");
     assert_eq!(json["reason"], "authority_fault");
     assert!(json.get("frame_identity").is_none());
 }
 
 #[test]
-fn phase3_terminal_binds_candidate_and_free_camera_packet_silence() {
+fn movement_terminal_binds_candidate_and_free_camera_packet_silence() {
     let identity = |candidate| {
-        Phase3EvidenceIdentity::new(
+        MovementEvidenceIdentity::new(
             "0123456789abcdef0123456789abcdef01234567",
-            crate::args::Phase3Target::Bds,
+            crate::args::EvidenceTarget::Bds,
             7,
             [0x11; 32],
             [0x22; 32],
@@ -899,7 +902,7 @@ fn phase3_terminal_binds_candidate_and_free_camera_packet_silence() {
         )
         .unwrap()
     };
-    let mut candidate = Phase3EvidenceEmitter::default();
+    let mut candidate = MovementEvidenceEmitter::default();
     let markers = candidate.observe_terminal(
         identity(true),
         MovementSource::Physics,
@@ -909,8 +912,8 @@ fn phase3_terminal_binds_candidate_and_free_camera_packet_silence() {
         MovementOutboxReconciliation::Drained,
     );
     assert_eq!(markers.len(), 2);
-    assert!(markers[0].starts_with("RUST_MCBE_PHASE3_IDENTITY="));
-    assert!(markers[1].starts_with("RUST_MCBE_PHASE3_TERMINAL="));
+    assert!(markers[0].starts_with("CINNABAR_MOVEMENT_IDENTITY="));
+    assert!(markers[1].starts_with("CINNABAR_MOVEMENT_TERMINAL="));
     assert!(
         candidate
             .observe_terminal(
@@ -924,7 +927,7 @@ fn phase3_terminal_binds_candidate_and_free_camera_packet_silence() {
             .is_empty()
     );
 
-    let mut free = Phase3EvidenceEmitter::default();
+    let mut free = MovementEvidenceEmitter::default();
     let markers = free.observe_terminal(
         identity(false),
         MovementSource::FreeCamera,
@@ -938,7 +941,7 @@ fn phase3_terminal_binds_candidate_and_free_camera_packet_silence() {
     assert!(markers[1].contains("\"pending_outbox_depth\":0"));
     assert!(markers[1].contains("\"outbox_reconciliation\":\"NotAuthoritative\""));
 
-    let mut leaked = Phase3EvidenceEmitter::default();
+    let mut leaked = MovementEvidenceEmitter::default();
     let markers = leaked.observe_terminal(
         identity(false),
         MovementSource::FreeCamera,
@@ -950,10 +953,10 @@ fn phase3_terminal_binds_candidate_and_free_camera_packet_silence() {
     assert!(
         markers
             .iter()
-            .any(|marker| marker.starts_with("RUST_MCBE_PHASE3_VIOLATION="))
+            .any(|marker| marker.starts_with("CINNABAR_MOVEMENT_VIOLATION="))
     );
 
-    let mut full = Phase3EvidenceEmitter::default();
+    let mut full = MovementEvidenceEmitter::default();
     let markers = full.observe_terminal(
         identity(true),
         MovementSource::Physics,
@@ -974,17 +977,17 @@ fn phase3_terminal_binds_candidate_and_free_camera_packet_silence() {
 }
 
 #[test]
-fn phase3_terminal_fails_closed_when_a_correction_has_no_following_frame() {
-    let identity = Phase3EvidenceIdentity::new(
+fn movement_terminal_fails_closed_when_a_correction_has_no_following_frame() {
+    let identity = MovementEvidenceIdentity::new(
         "0123456789abcdef0123456789abcdef01234567",
-        crate::args::Phase3Target::Bds,
+        crate::args::EvidenceTarget::Bds,
         7,
         [0x11; 32],
         [0x22; 32],
         true,
     )
     .unwrap();
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
     evidence.note_correction(PhysicsCorrectionOutcome::Snapped { tick: 44 }, 1.25);
 
     let markers = evidence.observe_terminal(
@@ -997,51 +1000,51 @@ fn phase3_terminal_fails_closed_when_a_correction_has_no_following_frame() {
     );
 
     assert!(markers.iter().any(|marker| {
-        marker.starts_with("RUST_MCBE_PHASE3_VIOLATION=")
+        marker.starts_with("CINNABAR_MOVEMENT_VIOLATION=")
             && marker.contains("terminal_pending_correction")
     }));
     assert!(
         markers
             .iter()
-            .all(|marker| !marker.starts_with("RUST_MCBE_PHASE3_EVENT="))
+            .all(|marker| !marker.starts_with("CINNABAR_MOVEMENT_EVENT="))
     );
     assert!(
         markers
             .last()
             .unwrap()
-            .starts_with("RUST_MCBE_PHASE3_TERMINAL=")
+            .starts_with("CINNABAR_MOVEMENT_TERMINAL=")
     );
 }
 
 #[test]
-fn phase3_authority_fault_evidence_survives_deauthorization_and_is_bounded() {
+fn movement_authority_fault_evidence_survives_deauthorization_and_is_bounded() {
     let fault = |next_tick| PhysicsAuthorityFaultRecord {
         session_generation: 7,
         fault: PhysicsAuthorityFault::OutboxOverflow,
         next_tick,
         pending_count: gameplay::movement::OUTBOX_CAPACITY,
     };
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
     let marker = evidence.observe_authority_fault(fault(41));
     assert_eq!(marker.len(), 2);
     let json: serde_json::Value =
-        serde_json::from_str(marker[0].strip_prefix("RUST_MCBE_PHASE3_EVENT=").unwrap()).unwrap();
+        serde_json::from_str(marker[0].strip_prefix("CINNABAR_MOVEMENT_EVENT=").unwrap()).unwrap();
     assert_eq!(json["kind"], "authority_fault");
     assert_eq!(json["session_generation"], 7);
     assert_eq!(json["fault"], "outbox_overflow");
     assert_eq!(json["next_tick"], 41);
     assert_eq!(json["pending_count"], gameplay::movement::OUTBOX_CAPACITY);
-    assert!(marker[1].starts_with("RUST_MCBE_PHASE3_VIOLATION="));
+    assert!(marker[1].starts_with("CINNABAR_MOVEMENT_VIOLATION="));
 
     let mut emitted = marker.len();
-    for tick in 42..42 + u64::try_from(MAX_PHASE3_FAULT_RECORDS + 4).unwrap() {
+    for tick in 42..42 + u64::try_from(MAX_MOVEMENT_FAULT_RECORDS + 4).unwrap() {
         emitted += evidence.observe_authority_fault(fault(tick)).len();
     }
-    assert_eq!(emitted, MAX_PHASE3_FAULT_RECORDS + 1);
+    assert_eq!(emitted, MAX_MOVEMENT_FAULT_RECORDS + 1);
 }
 
 #[test]
-fn phase3_simulation_fault_evidence_preserves_frame_and_error_context() {
+fn movement_simulation_fault_evidence_preserves_frame_and_error_context() {
     let fault = PhysicsAuthorityFaultRecord {
         session_generation: 7,
         fault: PhysicsAuthorityFault::PhysicsSimulationError {
@@ -1052,11 +1055,11 @@ fn phase3_simulation_fault_evidence_preserves_frame_and_error_context() {
         next_tick: 41,
         pending_count: 3,
     };
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
 
     let markers = evidence.observe_authority_fault(fault);
     let json: serde_json::Value =
-        serde_json::from_str(markers[0].strip_prefix("RUST_MCBE_PHASE3_EVENT=").unwrap()).unwrap();
+        serde_json::from_str(markers[0].strip_prefix("CINNABAR_MOVEMENT_EVENT=").unwrap()).unwrap();
     assert_eq!(json["fault"], "physics_simulation_error");
     assert_eq!(json["detail"]["due"], 5);
     assert_eq!(json["detail"]["tick_index"], 2);
@@ -1072,8 +1075,8 @@ fn phase3_simulation_fault_evidence_preserves_frame_and_error_context() {
 }
 
 #[test]
-fn phase3_evidence_producer_stays_bounded_after_record_limits() {
-    let frame = |physics_tick| Phase3EvidenceFrame {
+fn movement_evidence_producer_stays_bounded_after_record_limits() {
+    let frame = |physics_tick| MovementEvidenceFrame {
         session_generation: 7,
         fifo_sequence: physics_tick,
         physics_tick,
@@ -1098,24 +1101,24 @@ fn phase3_evidence_producer_stays_bounded_after_record_limits() {
         jump_repeated: false,
         jump_released: false,
     };
-    let mut frame_evidence = Phase3EvidenceEmitter::default();
+    let mut frame_evidence = MovementEvidenceEmitter::default();
     let mut emitted_frames = 0;
-    for tick in 0..u64::try_from(MAX_PHASE3_FRAME_RECORDS + 4).unwrap() {
+    for tick in 0..u64::try_from(MAX_MOVEMENT_FRAME_RECORDS + 4).unwrap() {
         emitted_frames += frame_evidence.observe(frame(tick)).len();
     }
-    assert_eq!(emitted_frames, MAX_PHASE3_FRAME_RECORDS + 1);
+    assert_eq!(emitted_frames, MAX_MOVEMENT_FRAME_RECORDS + 1);
 
-    let mut event_evidence = Phase3EvidenceEmitter::default();
+    let mut event_evidence = MovementEvidenceEmitter::default();
     let mut emitted_events = 0;
-    for tick in 0..u64::try_from(MAX_PHASE3_EVENT_RECORDS + 4).unwrap() {
-        event_evidence.note_event(Phase3EvidenceEventKind::Session);
+    for tick in 0..u64::try_from(MAX_MOVEMENT_EVENT_RECORDS + 4).unwrap() {
+        event_evidence.note_event(MovementEvidenceEventKind::Session);
         emitted_events += event_evidence
             .observe(frame(tick))
             .into_iter()
-            .filter(|marker| marker.starts_with("RUST_MCBE_PHASE3_EVENT="))
+            .filter(|marker| marker.starts_with("CINNABAR_MOVEMENT_EVENT="))
             .count();
     }
-    assert_eq!(emitted_events, MAX_PHASE3_EVENT_RECORDS);
+    assert_eq!(emitted_events, MAX_MOVEMENT_EVENT_RECORDS);
 }
 
 include!("zeqa_corrections.rs");

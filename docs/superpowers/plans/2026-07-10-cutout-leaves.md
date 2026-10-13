@@ -232,7 +232,7 @@
   go -C tools/registrygen test ./... -count=1
   cargo test -p assets --test pack --test compiler --test blob --test runtime --locked -- --nocapture
   cargo test -p render --test mesh --test plugin --locked -- --nocapture
-  cargo test -p bedrock-client --test assets --locked -- --nocapture
+  cargo test -p cinnabar --test assets --locked -- --nocapture
   go -C tools/registrygen run . -out ../../crates/assets/data/block-registry-v1001.bin
   go -C tools/registrygen run . -out ../../.local/assets/block-registry-v1001-second.bin
   $first = (Get-FileHash -Algorithm SHA256 crates/assets/data/block-registry-v1001.bin).Hash.ToLowerInvariant()
@@ -442,7 +442,7 @@
 
   ```text
   cargo test -p render --test mesh --locked -- --nocapture
-  cargo test -p bedrock-client world_stream --locked -- --nocapture
+  cargo test -p cinnabar world_stream --locked -- --nocapture
   ```
 
   Expected: FAIL because every current non-air neighbor occludes and every non-air voxel blocks
@@ -498,8 +498,8 @@
   ```powershell
   cargo test -p render --test mesh --locked -- --nocapture
   cargo test -p render --locked -- --nocapture
-  cargo test -p bedrock-client --locked -- --nocapture
-  cargo clippy -p render -p bedrock-client --all-targets --locked -- -D warnings
+  cargo test -p cinnabar --locked -- --nocapture
+  cargo clippy -p render -p cinnabar --all-targets --locked -- -D warnings
   $flat = & rg -n "\[(u32|BlockFlags|ResolvedPaletteEntry); 4096\]" crates/render app 2>&1
   $rgExit = $LASTEXITCODE
   if ($rgExit -eq 0) { $flat; throw 'forbidden flat 4096-element array found' }
@@ -583,8 +583,8 @@
   ```text
   cargo test -p render --test plugin --locked -- --nocapture
   cargo test -p render --locked -- --nocapture
-  cargo test -p bedrock-client --locked -- --nocapture
-  cargo clippy -p render -p bedrock-client --all-targets --locked -- -D warnings
+  cargo test -p cinnabar --locked -- --nocapture
+  cargo clippy -p render -p cinnabar --all-targets --locked -- -D warnings
   ```
 
   Expected: shader parses/validates; exactly one sample/discard path exists; one bind group and
@@ -693,7 +693,7 @@
 
   ```text
   cargo test -p render --test plugin --locked -- --nocapture
-  cargo test -p bedrock-client --locked -- --nocapture
+  cargo test -p cinnabar --locked -- --nocapture
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/acceptance.Tests.ps1
   ```
 
@@ -792,8 +792,8 @@
   call `WorldStream::remesh_all_resident(started)` and return its exact sorted key/new-generation
   manifest as the independently expected remesh set. Apply the same equality and presented/GPU
   fence; `forced_full_view_remesh_ms` is
-  `gpu_completed_at - started`. Emit distinct `RUST_MCBE_TELEPORT_SETTLED` and
-  `RUST_MCBE_FORCED_FULL_VIEW_REMESH_SETTLED` markers only after these proofs. Their metrics
+  `gpu_completed_at - started`. Emit distinct `CINNABAR_TELEPORT_SETTLED` and
+  `CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED` markers only after these proofs. Their metrics
   records carry the exact `CohortStatus`, expected and presented manifest hashes and lengths, view
   generation, present-return timestamp, GPU-completion timestamp, and
   missing/unexpected/source/foreign/stale-generation/orphan counts; the harness validates those
@@ -811,7 +811,7 @@
   Resolve an explicit baseline client only when both prebuilt options are supplied and hash it
   before launch. Route exactly one trigger per run:
 
-  - `WorldReady`: pinned opaque baseline, armed by its compatible `RUST_MCBE_WORLD_READY` marker;
+  - `WorldReady`: pinned opaque baseline, armed by its compatible `CINNABAR_WORLD_READY` marker;
   - `VisualFixtureReady`: near GalleryFront/Back, armed after the observable
     `VISUAL_FIXTURE_READY=<path>` sequence and never passed `--full-view-teleport-gate`;
   - `FullViewPresented`: far forest, armed only after both binding teleport and forced-remesh
@@ -849,7 +849,7 @@
 
   ```text
   cargo test -p render --test plugin --locked -- --nocapture
-  cargo test -p bedrock-client --locked -- --nocapture
+  cargo test -p cinnabar --locked -- --nocapture
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/acceptance.Tests.ps1
   ```
 
@@ -908,7 +908,7 @@
 
   ```powershell
   git worktree add --detach .local/comparison/opaque-base 5933209fe053aff0f2164262f129635b947a636b
-  cargo build --release -p bedrock-client --locked `
+  cargo build --release -p cinnabar --locked `
     --manifest-path .local/comparison/opaque-base/Cargo.toml `
     --target-dir .local/comparison/opaque-target
   cargo run --manifest-path .local/comparison/opaque-base/Cargo.toml -p asset-compiler --bin assetc -- `
@@ -932,7 +932,7 @@
     -Assets .local/comparison/opaque-base.mcbea `
     -LeafForestBaseline `
     -SteadyResourceTrigger WorldReady `
-    -ClientExecutable .local/comparison/opaque-target/release/bedrock-client.exe `
+    -ClientExecutable .local/comparison/opaque-target/release/cinnabar.exe `
     -SkipClientBuild `
     -UseVsync
   ```

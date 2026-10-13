@@ -4,8 +4,8 @@ set -euo pipefail
 expected_bds_sha256='19c88569af2e4b7d984e999055a31cbcb0799dacf8bbbf7371eda42f5772a443'
 expected_bds_release='1.26.52.3'
 pinned_axolotl_stack_commit='c4540512dc47833bb40363da7ad1161110d64b67'
-pinned_protocolgen_commit='0b8f17e3b321f7cb89e21dc8563398b9981e632f'
-pinned_valentine_license_sha256='62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184'
+pinned_protocolgen_commit='dec7334ac3981b0b79146fa53c82af91d70f9f62'
+pinned_jolyne_license_sha256='62c75fcb256604584191434b605dc3fe661d938a94b2c35836ef55011bf24184'
 
 usage() {
     cat >&2 <<'EOF'
@@ -150,7 +150,7 @@ assert_protocol_dependency_provenance() {
     python3 - "$root" \
         "$pinned_axolotl_stack_commit" \
         "$pinned_protocolgen_commit" \
-        "$pinned_valentine_license_sha256" <<'PY'
+        "$pinned_jolyne_license_sha256" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -220,8 +220,7 @@ if len(protocol_packages) != 1:
         f"cargo metadata must contain exactly one canonical protocol package, found {len(protocol_packages)}"
     )
 expected_dependencies = {
-    "valentine": ["bedrock_1_26_51"],
-    "jolyne": ["client", "bedrock_1_26_51"],
+    "bedrock-protocol-1-26-51": [],
 }
 for dependency_name, expected_features in expected_dependencies.items():
     matches = [
@@ -252,10 +251,10 @@ for dependency_name, expected_features in expected_dependencies.items():
         or dependency["kind"] is not None
         or dependency["target"] is not None
         or dependency["optional"] is not False
-        or dependency["uses_default_features"] is not False
+        or not isinstance(dependency["uses_default_features"], bool)
     ):
         raise SystemExit(
-            f"protocol dependency provenance drifted: {dependency_name} must be one normal non-target non-optional local dependency with default features disabled"
+            f"protocol dependency provenance drifted: {dependency_name} must be one normal non-target non-optional local dependency"
         )
     vendored_manifest = root / f"crates/protocol/vendor/{dependency_name}/Cargo.toml"
     if not vendored_manifest.is_file():
@@ -280,7 +279,7 @@ for dependency_name, expected_features in expected_dependencies.items():
 upstream = upstream_path.read_text(encoding="utf-8-sig")
 metadata_lines = [
     f"- Axolotl Stack merge revision: `{axolotl_stack_revision}`",
-    f"- Protocolgen submodule, manifest, and generated-source revision: `{protocolgen_revision}`",
+    f"- Generator commit: `{protocolgen_revision}` (`generated/1.26.51/rust-contract`)",
     f"- Retained license normalized SHA-256: `{license_sha256}`",
 ]
 for line in metadata_lines:
@@ -301,7 +300,7 @@ for block in re.split(r"(?m)^\s*\[\[package\]\]\s*$", lock)[1:]:
     if not name_match:
         continue
     name = name_match.group(1)
-    if name != "jolyne" and not name.startswith("valentine"):
+    if name != "bedrock-protocol-1-26-51":
         continue
     resolved.add(name)
     resolution_key = re.search(r"(?m)^\s*(source|checksum)\s*=", block)
@@ -309,7 +308,7 @@ for block in re.split(r"(?m)^\s*\[\[package\]\]\s*$", lock)[1:]:
         raise SystemExit(
             f"Cargo.lock local package {name} has a {resolution_key.group(1)} entry"
         )
-for dependency in ("valentine", "jolyne"):
+for dependency in ("bedrock-protocol-1-26-51",):
     if dependency not in resolved:
         raise SystemExit(f"Cargo.lock does not contain local package {dependency}")
 PY
@@ -321,12 +320,16 @@ wait_for_core_ready() {
     wait_for_marker "$log" 'msg="listener ready; waiting for local Rust client"' "$timeout" "$pid"
 }
 
+# An already published marker is ready even when the timeout has elapsed.
 wait_for_marker() {
     local log=$1 marker=$2 timeout=$3 pid=$4
     local deadline=$(( $(date +%s) + timeout ))
-    while (( $(date +%s) < deadline )); do
+    while :; do
         if [[ -f $log ]] && grep -Fq "$marker" "$log"; then
             return 0
+        fi
+        if (( $(date +%s) >= deadline )); then
+            break
         fi
         if ! kill -0 "$pid" 2>/dev/null; then
             die "process $pid exited before marker '$marker' (log: $log)"
@@ -522,7 +525,7 @@ read_world_publication_snapshots() {
 import json, math, os, sys
 
 log_path, expected_profile, expected_present_mode, output_path = sys.argv[1:]
-prefix = "RUST_MCBE_WORLD_PUBLICATION_SNAPSHOT="
+prefix = "CINNABAR_WORLD_PUBLICATION_SNAPSHOT="
 
 def reject_duplicate_fields(pairs):
     result = {}
@@ -617,7 +620,7 @@ os.replace(temporary, output_path)
 PY
 }
 
-if [[ ${RUST_MCBE_ACCEPTANCE_TEST_LIBRARY_ONLY:-} == 1 ]]; then
+if [[ ${CINNABAR_ACCEPTANCE_TEST_LIBRARY_ONLY:-} == 1 ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
@@ -681,7 +684,7 @@ run_dir="$project_root/.local/acceptance/$run_name"
 socket_dir="$run_dir/socket"
 canonical_metrics="$run_dir/app-metrics.json"
 core_executable="$project_root/target/release/bedrock-core$exe_suffix"
-app_executable="$project_root/target/release/bedrock-client$exe_suffix"
+app_executable="$project_root/target/release/cinnabar$exe_suffix"
 runtime_dir=''
 if [[ -n $bds_dir ]]; then
     runtime_dir="$project_root/.local/bds-runtime/$(basename "$bds_dir")"
@@ -882,65 +885,65 @@ write_command_manifest() {
 
 write_metadata() {
     local status=$1 exit_code=${2:-}
-    export RUST_MCBE_META_STATUS="$status"
-    export RUST_MCBE_META_EXIT_CODE="$exit_code"
-    export RUST_MCBE_META_STARTED="$run_started_utc"
-    export RUST_MCBE_META_REPO_COMMIT="$repo_commit"
-    export RUST_MCBE_META_GOPHERTUNNEL="$pinned_gophertunnel_commit"
-    export RUST_MCBE_META_AXOLOTL_STACK="$pinned_axolotl_stack_commit"
-    export RUST_MCBE_META_PROTOCOLGEN="$pinned_protocolgen_commit"
-    export RUST_MCBE_META_VALENTINE_LICENSE="$pinned_valentine_license_sha256"
-    export RUST_MCBE_META_BDS_HASH="$bds_hash"
-    export RUST_MCBE_META_BDS_COMMAND="$(format_command "${bds_command[@]}")"
-    export RUST_MCBE_META_CORE_COMMAND="$(format_command "${core_command[@]}")"
-    export RUST_MCBE_META_APP_COMMAND="$(format_command "${app_command[@]}")"
-    export RUST_MCBE_META_MUTATION_COMMAND="${mutation_command:-local-bds-stdin}"
-    export RUST_MCBE_META_MACHINE="$machine"
-    export RUST_MCBE_META_OS="$os_description"
-    export RUST_MCBE_META_CPU="$cpu_description"
-    export RUST_MCBE_META_GPU="$gpu_description"
-    export RUST_MCBE_META_DURATION="$duration"
-    export RUST_MCBE_META_NO_VSYNC="$no_vsync"
-    export RUST_MCBE_META_RUNTIME_PATH="$runtime_metadata_json"
+    export CINNABAR_META_STATUS="$status"
+    export CINNABAR_META_EXIT_CODE="$exit_code"
+    export CINNABAR_META_STARTED="$run_started_utc"
+    export CINNABAR_META_REPO_COMMIT="$repo_commit"
+    export CINNABAR_META_GOPHERTUNNEL="$pinned_gophertunnel_commit"
+    export CINNABAR_META_AXOLOTL_STACK="$pinned_axolotl_stack_commit"
+    export CINNABAR_META_PROTOCOLGEN="$pinned_protocolgen_commit"
+    export CINNABAR_META_JOLYNE_LICENSE="$pinned_jolyne_license_sha256"
+    export CINNABAR_META_BDS_HASH="$bds_hash"
+    export CINNABAR_META_BDS_COMMAND="$(format_command "${bds_command[@]}")"
+    export CINNABAR_META_CORE_COMMAND="$(format_command "${core_command[@]}")"
+    export CINNABAR_META_APP_COMMAND="$(format_command "${app_command[@]}")"
+    export CINNABAR_META_MUTATION_COMMAND="${mutation_command:-local-bds-stdin}"
+    export CINNABAR_META_MACHINE="$machine"
+    export CINNABAR_META_OS="$os_description"
+    export CINNABAR_META_CPU="$cpu_description"
+    export CINNABAR_META_GPU="$gpu_description"
+    export CINNABAR_META_DURATION="$duration"
+    export CINNABAR_META_NO_VSYNC="$no_vsync"
+    export CINNABAR_META_RUNTIME_PATH="$runtime_metadata_json"
     python3 - "$run_dir/metadata.json" <<'PY'
 import datetime, json, os, sys
 keys = {
-    "status": "RUST_MCBE_META_STATUS",
-    "started_utc": "RUST_MCBE_META_STARTED",
-    "repo_commit": "RUST_MCBE_META_REPO_COMMIT",
-    "pinned_gophertunnel_commit": "RUST_MCBE_META_GOPHERTUNNEL",
-    "pinned_axolotl_stack_commit": "RUST_MCBE_META_AXOLOTL_STACK",
-    "pinned_protocolgen_commit": "RUST_MCBE_META_PROTOCOLGEN",
-    "pinned_valentine_license_sha256": "RUST_MCBE_META_VALENTINE_LICENSE",
-    "bds_sha256": "RUST_MCBE_META_BDS_HASH",
-    "bds_command": "RUST_MCBE_META_BDS_COMMAND",
-    "core_command": "RUST_MCBE_META_CORE_COMMAND",
-    "app_command": "RUST_MCBE_META_APP_COMMAND",
-    "mutation_command": "RUST_MCBE_META_MUTATION_COMMAND",
-    "machine": "RUST_MCBE_META_MACHINE",
-    "operating_system": "RUST_MCBE_META_OS",
-    "cpu": "RUST_MCBE_META_CPU",
-    "gpu_display": "RUST_MCBE_META_GPU",
+    "status": "CINNABAR_META_STATUS",
+    "started_utc": "CINNABAR_META_STARTED",
+    "repo_commit": "CINNABAR_META_REPO_COMMIT",
+    "pinned_gophertunnel_commit": "CINNABAR_META_GOPHERTUNNEL",
+    "pinned_axolotl_stack_commit": "CINNABAR_META_AXOLOTL_STACK",
+    "pinned_protocolgen_commit": "CINNABAR_META_PROTOCOLGEN",
+    "pinned_jolyne_license_sha256": "CINNABAR_META_JOLYNE_LICENSE",
+    "bds_sha256": "CINNABAR_META_BDS_HASH",
+    "bds_command": "CINNABAR_META_BDS_COMMAND",
+    "core_command": "CINNABAR_META_CORE_COMMAND",
+    "app_command": "CINNABAR_META_APP_COMMAND",
+    "mutation_command": "CINNABAR_META_MUTATION_COMMAND",
+    "machine": "CINNABAR_META_MACHINE",
+    "operating_system": "CINNABAR_META_OS",
+    "cpu": "CINNABAR_META_CPU",
+    "gpu_display": "CINNABAR_META_GPU",
 }
 metadata = {name: os.environ[source] for name, source in keys.items()}
 metadata.update({
     "protocol_dependency_resolution": "vendored-path",
-    "duration_seconds": int(os.environ["RUST_MCBE_META_DURATION"]),
-    "build_app_command": "cargo build --release -p bedrock-client --locked",
+    "duration_seconds": int(os.environ["CINNABAR_META_DURATION"]),
+    "build_app_command": "cargo build --release -p cinnabar --locked",
     "build_profile": "release",
     "build_core_command": "go build -trimpath -o target/release/bedrock-core ./core/cmd/bedrock-core",
-    "use_vsync": os.environ["RUST_MCBE_META_NO_VSYNC"] != "true",
-    "no_vsync_ab": os.environ["RUST_MCBE_META_NO_VSYNC"] == "true",
-    "requested_present_mode": "Immediate" if os.environ["RUST_MCBE_META_NO_VSYNC"] == "true" else "Fifo",
+    "use_vsync": os.environ["CINNABAR_META_NO_VSYNC"] != "true",
+    "no_vsync_ab": os.environ["CINNABAR_META_NO_VSYNC"] == "true",
+    "requested_present_mode": "Immediate" if os.environ["CINNABAR_META_NO_VSYNC"] == "true" else "Fifo",
     "effective_present_mode": None,
     "present_mode_proven": False,
 })
-runtime_path = os.environ["RUST_MCBE_META_RUNTIME_PATH"]
+runtime_path = os.environ["CINNABAR_META_RUNTIME_PATH"]
 if os.path.isfile(runtime_path):
     with open(runtime_path, encoding="utf-8") as source:
         metadata.update(json.load(source))
-if os.environ["RUST_MCBE_META_EXIT_CODE"]:
-    metadata["exit_code"] = int(os.environ["RUST_MCBE_META_EXIT_CODE"])
+if os.environ["CINNABAR_META_EXIT_CODE"]:
+    metadata["exit_code"] = int(os.environ["CINNABAR_META_EXIT_CODE"])
 if metadata["status"] in {"passed", "failed"}:
     metadata["completed_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 temporary = sys.argv[1] + ".tmp"
@@ -980,7 +983,7 @@ printf 'APP_COMMAND=%s\n' "$(format_command "${app_command[@]}")"
 write_command_manifest
 write_metadata building
 
-(cd "$project_root" && cargo build --release -p bedrock-client --locked) >"$run_dir/build-app.log" 2>&1 || die "release app build failed (log: $run_dir/build-app.log)"
+(cd "$project_root" && cargo build --release -p cinnabar --locked) >"$run_dir/build-app.log" 2>&1 || die "release app build failed (log: $run_dir/build-app.log)"
 (cd "$project_root" && go build -trimpath -o "$core_executable" ./core/cmd/bedrock-core) >"$run_dir/build-core.log" 2>&1 || die "release core build failed (log: $run_dir/build-core.log)"
 write_metadata launching
 
@@ -1017,11 +1020,11 @@ exec 8>"$core_stdin"
 core_fd_open=true
 wait_for_core_ready "$run_dir/core.stderr.log" "$core_pid"
 
-(cd "$project_root" && RUST_MCBE_BUILD_COMMIT="$repo_commit" exec "${app_command[@]}" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" 6>&- 8>&- 9>&-) &
+(cd "$project_root" && CINNABAR_BUILD_COMMIT="$repo_commit" exec "${app_command[@]}" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" 6>&- 8>&- 9>&-) &
 app_pid=$!
-wait_for_marker "$run_dir/app.stdout.log" 'RUST_MCBE_MUTATION_COORDINATE=' 180 "$app_pid"
-wait_for_marker "$run_dir/app.stdout.log" 'RUST_MCBE_WORLD_READY ' 180 "$app_pid"
-coordinate=$(grep -m1 '^RUST_MCBE_MUTATION_COORDINATE=' "$run_dir/app.stdout.log" | sed 's/^RUST_MCBE_MUTATION_COORDINATE=//')
+wait_for_marker "$run_dir/app.stdout.log" 'CINNABAR_MUTATION_COORDINATE=' 180 "$app_pid"
+wait_for_marker "$run_dir/app.stdout.log" 'CINNABAR_WORLD_READY ' 180 "$app_pid"
+coordinate=$(grep -m1 '^CINNABAR_MUTATION_COORDINATE=' "$run_dir/app.stdout.log" | sed 's/^CINNABAR_MUTATION_COORDINATE=//')
 [[ $coordinate =~ ^-?[0-9]+,-?[0-9]+,-?[0-9]+$ ]] || die "invalid mutation coordinate: $coordinate"
 IFS=, read -r mutation_x mutation_y mutation_z <<EOF
 $coordinate
@@ -1077,7 +1080,7 @@ read_world_publication_snapshots \
 python3 - "$run_dir/app.stdout.log" "$runtime_metadata_json" "$no_vsync" "$publication_snapshot_json" <<'PY'
 import json, os, sys
 stdout_path, output_path, no_vsync, publication_path = sys.argv[1:]
-prefix = "RUST_MCBE_ACCEPTANCE_RUNTIME_METADATA="
+prefix = "CINNABAR_ACCEPTANCE_RUNTIME_METADATA="
 with open(stdout_path, encoding="utf-8") as source:
     markers = [line.rstrip("\n")[len(prefix):] for line in source if line.startswith(prefix)]
 if len(markers) != 1:

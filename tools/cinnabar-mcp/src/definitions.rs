@@ -27,9 +27,9 @@ pub fn definitions() -> Value {
     json!([
         {
             "name": "launch_client",
-            "description": "Start a client built with `cargo build -p bedrock-client --features developer-control` (add `local-mods` to load mods via env CINNABAR_MOD_COMPONENT) and attach to its control endpoint. headless hides the window; size is physical pixels at scale 1.",
+            "description": "Start a client built with `cargo build -p cinnabar --features developer-control` (add `local-mods` to load mods via env CINNABAR_MOD_COMPONENT) and attach to its control endpoint. headless hides the window; size is physical pixels at scale 1.",
             "inputSchema": { "type": "object", "properties": {
-                "binary": { "type": "string", "description": "Client binary (default target/debug/bedrock-client under the checkout)" },
+                "binary": { "type": "string", "description": "Client binary (default target/debug/cinnabar under the checkout)" },
                 "size": { "type": "array", "items": { "type": "integer" }, "description": "[width, height], default [1920, 1080]" },
                 "headless": { "type": "boolean", "description": "Create the window hidden (default false)" },
                 "args": strings,
@@ -109,6 +109,17 @@ pub fn definitions() -> Value {
             "name": "test_accounts",
             "description": "Present a signed-in launcher whose Accounts picker lists placeholder accounts, so recordings never show real gamertags. Sign-in, sign-out and saved accounts stay untouched; switching changes only the in-memory selection. Refused unless the install is signed out (use CINNABAR_USER_ROOT for an isolated one).",
             "inputSchema": { "type": "object", "properties": { "enabled": { "type": "boolean" } }, "required": ["enabled"], "additionalProperties": false }
+        },
+        {
+            "name": "global_packs",
+            "description": "Stage or apply global resource packs as the Global Resources screen does (import them with launch_client args [\"--import-pack\", path]), then report the available and active lists and worker status. Omit action to only report; poll until busy is false and pending is false.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "oneOf": [
+                    { "enum": ["apply"] },
+                    { "type": "object", "properties": { "activate": { "type": "object", "properties": { "index": { "type": "integer", "minimum": 0 } }, "required": ["index"], "additionalProperties": false } }, "required": ["activate"], "additionalProperties": false },
+                    { "type": "object", "properties": { "deactivate": { "type": "object", "properties": { "index": { "type": "integer", "minimum": 0 } }, "required": ["index"], "additionalProperties": false } }, "required": ["deactivate"], "additionalProperties": false }
+                ], "description": "Indices follow the last reported available (activate) or active (deactivate) list." }
+            }, "additionalProperties": false }
         },
         {
             "name": "state",

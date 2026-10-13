@@ -123,8 +123,8 @@ fn assert_parallel_matches_serial(
                     parallel.mark_reset(id);
                 }
                 _ => {
-                    serial.start_swing(id, 6);
-                    parallel.start_swing(id, 6);
+                    serial.start_swing(id, 6, 6);
+                    parallel.start_swing(id, 6, 6);
                 }
             }
         }

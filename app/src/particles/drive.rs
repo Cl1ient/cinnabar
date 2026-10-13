@@ -20,7 +20,10 @@ use render_scene::{
     ParticleGpuFrame, ParticleSimulation, RainSplashQueue, particle_view, update_particle_frame,
 };
 
-use super::actors::{ActorParticleCommand, queue_actor_particles, route_actor_particles};
+use super::actors::{
+    ActorParticleCommand, ActorParticleFrame, follow_actor_particles, queue_actor_particles,
+    route_actor_particles,
+};
 use super::{ambient::AmbientParticles, tiles::block_tile, world_adapter::StreamParticleWorld};
 use {
     crate::runtime::world::ClientWorld,
@@ -30,6 +33,9 @@ use {
     client_presentation::camera::FlyCamera,
 };
 
+#[cfg(test)]
+#[path = "drive/bite_tests.rs"]
+mod bite_tests;
 #[cfg(test)]
 #[path = "drive/snowball_tests.rs"]
 mod snowball_tests;
@@ -307,10 +313,18 @@ fn route_notice(system: &mut ParticleSystem, routing: &Routing<'_>, notice: &Act
             }
         }
         ActorStatusKind::Feed => {
-            if let Some(identifier) = routing
+            let consumption = routing
                 .stream
                 .authority()
-                .item_identifier(notice.data >> 16)
+                .item_use_profile(notice.data >> 16)
+                .consumption;
+            // Local admitted food uses scatter from their predicted eating cues.
+            if client_audio::audio::predicted::predicts_bites(consumption)
+                && notice.runtime_id != routing.stream.local_player_runtime_id()
+                && let Some(identifier) = routing
+                    .stream
+                    .authority()
+                    .item_identifier(notice.data >> 16)
                 && let Some(icons) = routing.icons
                 && let Some(tile) = item_tile(icons, &identifier, (notice.data & 0xffff) as u32)
             {
@@ -319,6 +333,48 @@ fn route_notice(system: &mut ParticleSystem, routing: &Routing<'_>, notice: &Act
         }
         _ => {}
     }
+}
+
+/// How far ahead of and below the first-person camera the local player's crumbs scatter, so
+/// they show around the raised food as they do in vanilla's first person. Provisional: no
+/// version-matched witness of the native first-person spawn point is recorded yet.
+const FIRST_PERSON_BITE_AHEAD: f32 = 0.45;
+const FIRST_PERSON_BITE_BELOW: f32 = 0.15;
+
+/// Scatters crumbs of the local player's food for one bite.
+fn spawn_local_bite(
+    system: &mut ParticleSystem,
+    routing: &Routing<'_>,
+    camera: &Transform,
+    first_person: bool,
+    cue: &client_audio::audio::predicted::LocalEatingCue,
+) {
+    let Some(tile) = routing
+        .icons
+        .and_then(|icons| item_tile(icons, &cue.identifier, cue.metadata))
+    else {
+        return;
+    };
+    if let Some(position) = local_bite_position(routing.stream, camera, first_person) {
+        system.spawn(&eating_item_request(position.to_array(), tile));
+    }
+}
+
+/// In view of the camera when it resolves to first person, else the local player's mouth as
+/// other players see it; `None` without a local actor in third person.
+fn local_bite_position(
+    stream: &WorldStream,
+    camera: &Transform,
+    first_person: bool,
+) -> Option<bevy::math::Vec3> {
+    if first_person {
+        return Some(
+            camera.translation + camera.forward() * FIRST_PERSON_BITE_AHEAD
+                - camera.up() * FIRST_PERSON_BITE_BELOW,
+        );
+    }
+    let actor = stream.authority().actor(stream.local_player_runtime_id())?;
+    Some(bevy::math::Vec3::from_array(actor.eating_position()))
 }
 
 /// Hit pieces on the local player's target and on the nearest server-reported cracks.
@@ -358,9 +414,20 @@ fn follow_bound_emitters(system: &mut ParticleSystem, stream: &WorldStream) {
     });
 }
 
+/// Audio cues and camera authority that place local break and eating particles.
+type ParticleCues<'w, 's> = (
+    MessageReader<'w, 's, client_audio::audio::LocalBlockCue>,
+    MessageReader<'w, 's, client_audio::audio::predicted::LocalEatingCue>,
+    Option<Res<'w, client_presentation::camera::CameraSettingsAuthority>>,
+    Option<Res<'w, client_presentation::camera::ServerCameraView>>,
+);
+
 #[allow(clippy::too_many_arguments)]
 fn drive_particles(
-    time: Res<Time>,
+    frame_time: (
+        Res<Time>,
+        Option<Res<client_presentation::actor_publication::ActorFramePartialTick>>,
+    ),
     mut inbox: ResMut<ParticleInbox>,
     mut system: ResMut<ParticleSimulation>,
     mut frame: ResMut<ParticleGpuFrame>,
@@ -372,11 +439,15 @@ fn drive_particles(
     mining: Option<Res<SurvivalMiningRuntime>>,
     mut session: Local<(u64, i32)>,
     mut crack_timer: Local<f32>,
-    mut block_cues: MessageReader<client_audio::audio::LocalBlockCue>,
+    (mut block_cues, mut eating_cues, camera_settings, server_camera): ParticleCues<'_, '_>,
     mut break_echoes: Local<client_audio::audio::EchoLedger>,
     mut ambient: Local<AmbientParticles>,
-    profiler: Option<Res<render_scene::RuntimeStageProfiler>>,
+    (cave, profiler): (
+        Res<crate::runtime::visibility::CaveVisibilityCache>,
+        Option<Res<render_scene::RuntimeStageProfiler>>,
+    ),
 ) {
+    let (time, actor_alpha) = frame_time;
     // Timed inside the system: a span around it would also count systems ordered in between.
     let _timer = profiler
         .as_deref()
@@ -389,6 +460,7 @@ fn drive_particles(
         inbox.notices.clear();
         inbox.actor_commands.clear();
         block_cues.clear();
+        eating_cues.clear();
         ambient.reset();
         return;
     };
@@ -417,6 +489,12 @@ fn drive_particles(
         icons: icons.as_ref().map(|icons| &*icons.0),
     };
     let view = particle_view(&(*transform).into(), projection);
+    let first_person = crate::ui_runtime::presentation::publish::hand_first_person(
+        camera_settings.map_or(semantic_input::PerspectiveMode::FirstPerson, |settings| {
+            settings.perspective()
+        }),
+        server_camera.as_deref(),
+    );
     system.set_camera(view.position);
     ambient.drive(
         time.delta(),
@@ -488,6 +566,9 @@ fn drive_particles(
     for notice in inbox.notices.drain(..) {
         route_notice(&mut system, &routing, &notice);
     }
+    for cue in eating_cues.read() {
+        spawn_local_bite(&mut system, &routing, transform, first_person, cue);
+    }
     if let Some(mut splashes) = splashes {
         for position in splashes
             .positions
@@ -503,10 +584,33 @@ fn drive_particles(
             .and_then(|mining| mining.destroying_target());
         spawn_mining_cracks(&mut system, &routing, local_target, view.position);
     }
-    queue_actor_particles(stream, &mut system, &mut inbox.actor_commands);
+    let mut actor_frame =
+        ActorParticleFrame::new(stream, actor_alpha.as_ref().map_or(0.0, |alpha| alpha.0));
+    queue_actor_particles(&mut actor_frame, &mut system, &mut inbox.actor_commands);
     route_actor_particles(&mut system, &mut inbox.actor_commands);
     follow_bound_emitters(&mut system, stream);
-    update_particle_frame(&mut system, &mut frame, time.delta_secs(), &view, &world);
+    follow_actor_particles(&mut system, &mut actor_frame);
+    let camera = crate::runtime::telemetry::camera_sub_chunk_key(
+        stream.current_dimension(),
+        bevy::math::Vec3::from_array(view.position),
+    );
+    let generation = stream.connectivity_generation();
+    update_particle_frame(
+        &mut system,
+        &mut frame,
+        time.delta_secs(),
+        &view,
+        &world,
+        |low, high| {
+            cave.hides_box(
+                camera,
+                generation,
+                |key| stream.has_sub_chunk_connectivity(key),
+                low,
+                high,
+            )
+        },
+    );
 }
 
 fn route_critical(

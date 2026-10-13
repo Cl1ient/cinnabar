@@ -13,6 +13,7 @@ fn compiled_display(bone_count: usize) -> assets::CompiledEntityAssets {
     let template = compiled.geometries[0].bones[0].clone();
     compiled.geometries[0].bones = (0..bone_count)
         .map(|index| EntityGeometryBone {
+            locators: Box::default(),
             name: format!("part{index}").into(),
             parent: (index != 0).then(|| "part0".into()),
             pivot: Some(
@@ -36,8 +37,12 @@ fn composite_display_rigs_keep_every_admitted_bone_and_animate_the_last_part() {
         190,
         assets::MAX_ENTITY_GEOMETRY_BONES,
     ] {
-        let assets =
-            Arc::new(RuntimeEntityAssets::from_compiled(compiled_display(bone_count)).unwrap());
+        let assets = Arc::new(
+            RuntimeEntityAssets::from_compiled(
+                compiled_display(bone_count).with_unresolved_admissions(),
+            )
+            .unwrap(),
+        );
         let actor = super::super::tests::actor_with_metadata(HashMap::new());
         let mut store = ActorAnimationStore::with_assets(Arc::clone(&assets));
         store.set_pack(Some((assets, vec![0])));
@@ -85,7 +90,9 @@ fn authored_entity_bounds_keep_edge_display_visible_and_animated() {
         half_extents: [8.5, 3.75, 8.5].map(scalar),
     };
     compiled.geometries[0].visible_bounds = Some(bounds);
-    let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let assets = Arc::new(
+        RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap(),
+    );
     // Animation culls by authored visible bounds; actor collision boxes never reach it.
     let mut actor = super::super::tests::actor_with_metadata(HashMap::new());
     actor.position = [11.0, 0.0, 0.0];

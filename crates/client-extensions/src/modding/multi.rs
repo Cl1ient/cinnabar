@@ -300,6 +300,7 @@ pub struct FrameInput<'a> {
     /// Captured once from the current local session, delivered only to granted components.
     pub player_state: Option<&'a PlayerStateSnapshot>,
     pub world_observation: Option<&'a mod_host::WorldObservation>,
+    pub modules: Option<&'a mod_host::module_observations::ModuleObservations>,
     pub fps: Option<f32>,
     pub sidebar: Option<&'a mod_host::SidebarSnapshot>,
     pub chat: &'a [mod_host::ObservedChatMessage],
@@ -372,11 +373,7 @@ pub fn run_frame(
         } else {
             Vec::new()
         };
-        let movement = if grants.movement {
-            movement.clone()
-        } else {
-            None
-        };
+        let movement = if grants.movement { movement } else { None };
         let mut controls = claim_controls(input.controls, &claimed, index == owner);
         controls.panel_open = input.controls.panel_open && index == owner;
         controls.gameplay = snapshot.is_some() || movement.is_some();
@@ -394,6 +391,8 @@ pub fn run_frame(
             input.sidebar.cloned(),
             input.chat.to_vec(),
         );
+        let observed = observed
+            .and_then(|()| host.observe_modules(input.modules.cloned().unwrap_or_default()));
         if let Err(error) = observed {
             failed(index, format!("{error:#}"));
             continue;

@@ -1,12 +1,8 @@
-//! Camera input routing, cursor capture and deterministic acceptance movement.
+//! Camera input routing and deterministic acceptance movement.
 
 use bevy::{
-    input::mouse::AccumulatedMouseMotion,
-    prelude::{
-        ButtonInput, EulerRot, KeyCode, MouseButton, Quat, Res, ResMut, Resource, Single, Time,
-        Transform, Vec2, Vec3, With,
-    },
-    window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window},
+    prelude::{EulerRot, Quat, Res, ResMut, Resource, Single, Time, Transform, Vec2, Vec3},
+    window::{CursorGrabMode, CursorOptions, Window},
 };
 use semantic_input::Action;
 use std::f32::consts::TAU;
@@ -89,6 +85,16 @@ impl AutoFly {
             self.presentation_paused = false;
         }
     }
+
+    /// Whether a startup or acceptance pointer capture is still requested.
+    pub const fn capture_pending(&self) -> bool {
+        self.capture_pending
+    }
+
+    /// Retires the pending capture request once capture is granted or refused.
+    pub fn clear_capture_request(&mut self) {
+        self.capture_pending = false;
+    }
 }
 
 #[must_use]
@@ -114,12 +120,27 @@ pub fn look_at_target(position: Vec3, target: Vec3) -> Quat {
         .rotation
 }
 
-/// Cycles perspective when the routed action is pressed outside freelook.
+/// Whether the local player is dead, as the world's actor store last reported.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Resource)]
+pub struct LocalPlayerDeath(pub bool);
+
+/// Shows the local death in third person, except in the Java 1.7 animation mode, which keeps
+/// Java's first-person death roll. Then cycles perspective when the routed action is pressed
+/// outside freelook and the death view.
 pub fn update_perspective(
     input: crate::observations::InputObservation<'_>,
+    local_player_dead: bool,
+    body_rotation: Quat,
     mut settings: ResMut<CameraSettingsAuthority>,
 ) {
-    if !input.phase(Action::CyclePerspective).pressed || input.phase(Action::Freelook).held {
+    let death_view = local_player_dead && !settings.feel().java_animations;
+    if settings.death_view() != death_view {
+        settings.set_death_view(death_view.then_some(body_rotation));
+    }
+    if !input.phase(Action::CyclePerspective).pressed
+        || input.phase(Action::Freelook).held
+        || settings.death_view()
+    {
         return;
     }
     settings.cycle_perspective();
@@ -137,78 +158,6 @@ pub fn input_is_active(window: &Window, cursor: &CursorOptions) -> bool {
     window.focused && cursor.grab_mode == CursorGrabMode::Locked && !cursor.visible
 }
 
-/// Requests the captured gameplay pointer state.
-fn capture_cursor(cursor: &mut CursorOptions) {
-    cursor.grab_mode = CursorGrabMode::Locked;
-    cursor.visible = false;
-}
-
-use client_ui::physical_input::release_cursor;
-
-/// Drops held pointer and key input when gameplay capture is released.
-fn clear_controller_input(
-    keys: &mut ButtonInput<KeyCode>,
-    mouse_buttons: &mut ButtonInput<MouseButton>,
-    mouse_motion: &mut AccumulatedMouseMotion,
-) {
-    keys.reset_all();
-    mouse_buttons.reset_all();
-    mouse_motion.delta = Vec2::ZERO;
-}
-
-#[allow(clippy::too_many_arguments)]
-/// Applies the retained input policy before accepting gameplay pointer motion.
-pub fn update_cursor_capture(
-    policy: crate::observations::CursorPolicy,
-    window: Single<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
-    mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut mouse_buttons: ResMut<ButtonInput<MouseButton>>,
-    mut mouse_motion: ResMut<AccumulatedMouseMotion>,
-    mut auto_fly: ResMut<AutoFly>,
-) {
-    if policy.driven {
-        return;
-    }
-    let (window, mut cursor) = window.into_inner();
-
-    // Focus loss has priority over every capture request, including auto-fly.
-    // The trusted consent popup needs a pointer whatever settings the scene behind it declares.
-    if !window.focused || !policy.capture_allowed || policy.consent {
-        release_cursor(&mut cursor);
-        clear_controller_input(&mut keys, &mut mouse_buttons, &mut mouse_motion);
-        auto_fly.capture_pending = false;
-        return;
-    }
-
-    let steals = policy.steals_mouse;
-    if policy.absorbs_input || steals == Some(false) {
-        release_cursor(&mut cursor);
-        clear_controller_input(&mut keys, &mut mouse_buttons, &mut mouse_motion);
-        auto_fly.capture_pending = false;
-        return;
-    }
-
-    // Escape also wins if it arrives in the same frame as a left click.
-    if keys.just_pressed(KeyCode::Escape) {
-        release_cursor(&mut cursor);
-        clear_controller_input(&mut keys, &mut mouse_buttons, &mut mouse_motion);
-        auto_fly.capture_pending = false;
-        return;
-    }
-
-    let active = input_is_active(window, &cursor);
-    let recapture_click = !active && mouse_buttons.just_pressed(MouseButton::Left);
-    if recapture_click || (steals == Some(true) && !active) || auto_fly.capture_pending {
-        capture_cursor(&mut cursor);
-        if recapture_click {
-            // Recapture consumes the click; a later physical press must rearm attack.
-            mouse_buttons.release(MouseButton::Left);
-            mouse_motion.delta = Vec2::ZERO;
-        }
-        auto_fly.capture_pending = false;
-    }
-}
-
 /// Routes device-scaled look input through freelook and the selected server rig.
 ///
 /// `window_width` is the primary window's width in physical pixels, which scales mouse look.
@@ -224,12 +173,17 @@ pub fn update_look(
     mut view: ResMut<LocalViewPose>,
     mut server: Option<ResMut<ServerCameraView>>,
 ) {
-    let held = input.phase(Action::Freelook).held && !auto_fly.presentation_paused();
+    let death_view = settings.death_view();
+    let held = input.phase(Action::Freelook).held && !auto_fly.presentation_paused() && !death_view;
     if settings.freelook != held {
         smoother.reset();
     }
     settings.freelook = held;
     view.set_freelook(held);
+    if death_view {
+        smoother.reset();
+        return;
+    }
     if auto_fly.presentation_paused() {
         return;
     }

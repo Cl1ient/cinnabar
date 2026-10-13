@@ -23,9 +23,10 @@ pub struct WorldServiceSlot {
 }
 
 impl WorldServiceSlot {
-    /// Starts the service unless `RUST_MCBE_WORLD_SERVICE=0` keeps polling on the frame thread.
+    /// Starts the service unless `CINNABAR_WORLD_SERVICE=0` keeps polling on the frame thread.
     pub fn from_environment() -> std::io::Result<Option<Self>> {
-        if std::env::var_os(diagnostics::markers::WORLD_SERVICE).is_some_and(|value| value == "0") {
+        if env_compat::var_os(diagnostics::markers::WORLD_SERVICE).is_some_and(|value| value == "0")
+        {
             return Ok(None);
         }
         Ok(Some(Self {

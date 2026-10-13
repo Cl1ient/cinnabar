@@ -97,6 +97,140 @@ fn open_runs_the_world_and_close_stops_its_server() {
     assert_eq!(manager.core_report(), LocalWorld::default());
 }
 
+/// Reopening a world that still saves starts its server only once the old one has exited.
+#[test]
+fn reopening_while_the_last_server_saves_waits_for_it() {
+    let (runner, save) = FakeRunner::saving();
+    let runner = Arc::new(runner);
+    let fixture = with_runner(&runner);
+    let manager = &fixture.manager;
+    let world = manager.create(&flat("w")).expect("create");
+    manager.open(&world.id, None).expect("open");
+    wait_for(manager, WorldState::Running);
+    let old = runner.last();
+    manager.close();
+    assert_eq!(manager.status().state, WorldState::Stopping);
+    assert!(matches!(manager.delete(&world.id), Err(WorldError::InUse)));
+    manager
+        .open(&world.id, None)
+        .expect("an open during the save is accepted");
+    assert_eq!(manager.status().state, WorldState::Starting);
+    drop(save);
+    let status = wait_for(manager, WorldState::Running);
+    assert_eq!(status.world_id.as_deref(), Some(world.id.as_str()));
+    assert!(old.stopped());
+    assert_eq!(lock(&runner.made).len(), 2);
+    assert!(
+        !runner.overlapped.load(std::sync::atomic::Ordering::SeqCst),
+        "the new server started before the old one exited"
+    );
+}
+
+/// A start cancelled by a close lets a following open wait for its server, not fail as busy.
+#[test]
+fn an_open_after_a_cancelled_start_runs_the_world() {
+    let (runner, release) = FakeRunner::gated();
+    let fixture = with_runner(&Arc::new(runner));
+    let manager = &fixture.manager;
+    let world = manager.create(&flat("w")).expect("create");
+    manager.open(&world.id, None).expect("open");
+    manager.close();
+    manager.open(&world.id, None).expect("reopen");
+    drop(release);
+    wait_for(manager, WorldState::Running);
+}
+
+/// Cancelling an open that waits on a saving world keeps that save's protection.
+#[test]
+fn cancelling_a_queued_open_keeps_the_earlier_save_pending() {
+    let (runner, save) = FakeRunner::saving();
+    let runner = Arc::new(runner);
+    let fixture = with_runner(&runner);
+    let manager = &fixture.manager;
+    let saving = manager.create(&flat("a")).expect("create");
+    let other = manager.create(&flat("b")).expect("create");
+    manager.open(&saving.id, None).expect("open");
+    wait_for(manager, WorldState::Running);
+    let old = runner.last();
+    manager.close();
+    manager
+        .open(&other.id, None)
+        .expect("an open queued behind the save");
+    manager.close();
+    wait_for(manager, WorldState::Idle);
+    assert!(
+        matches!(manager.delete(&saving.id), Err(WorldError::InUse)),
+        "a world was deletable while its server still saved"
+    );
+    manager.open(&saving.id, None).expect("reopen");
+    drop(save);
+    wait_for(manager, WorldState::Running);
+    assert!(old.stopped());
+    assert!(
+        !runner.overlapped.load(std::sync::atomic::Ordering::SeqCst),
+        "a server started before the saving one exited"
+    );
+}
+
+/// A reopen waits for a closed server's cleanup, which can outlast its process.
+#[test]
+fn a_reopen_waits_for_cleanup_after_the_old_server_exits() {
+    let (runner, cleanup) = FakeRunner::cleaning();
+    let runner = Arc::new(runner);
+    let fixture = with_runner(&runner);
+    let manager = &fixture.manager;
+    let world = manager.create(&flat("w")).expect("create");
+    manager.open(&world.id, None).expect("open");
+    wait_for(manager, WorldState::Running);
+    let old = runner.last();
+    manager.close();
+    test_time::eventually("the old server to exit", || old.stopped());
+    assert!(
+        lock(&manager.inner.life)
+            .retiring
+            .iter()
+            .any(|retiring| retiring.world_id == world.id && !retiring.done()),
+        "the exit released the world before its cleanup finished"
+    );
+    manager.open(&world.id, None).expect("reopen");
+    drop(cleanup);
+    wait_for(manager, WorldState::Running);
+    assert!(
+        !runner.overlapped.load(std::sync::atomic::Ordering::SeqCst),
+        "the new server started during the old one's cleanup"
+    );
+}
+
+/// The exit hook ends an unused standby server instead of leaving it to the save grace.
+#[test]
+fn the_exit_sweep_discards_the_standby_server() {
+    let runner = Arc::new(FakeRunner::default());
+    let fixture = with_runner(&runner);
+    fixture.manager.request_exit_stop();
+    assert_eq!(
+        runner.discarded.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+}
+
+#[test]
+fn preparing_readies_only_the_dragonfly_runner() {
+    let dragonfly = Arc::new(FakeRunner::default());
+    let bds = Arc::new(FakeRunner::default());
+    let (dragonfly_runner, bds_runner): (Arc<dyn Runner>, Arc<dyn Runner>) =
+        (dragonfly.clone(), bds.clone());
+    let fixture = fixture(|parts, _| {
+        parts.runners.dragonfly = Some(dragonfly_runner);
+        parts.runners.bds = Some(bds_runner);
+    });
+    fixture.manager.prepare();
+    assert_eq!(
+        dragonfly.prepared.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(bds.prepared.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
 #[test]
 fn another_world_is_busy_while_one_runs() {
     let runner = Arc::new(FakeRunner::default());

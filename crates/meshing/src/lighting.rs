@@ -5,9 +5,9 @@ use world::{MeshDependencyMask, MeshNeighbourhood, SubChunk};
 
 use crate::{BlockClassifier, ContributorResolver, Face, PackedQuadLighting};
 
-/// Temporary Phase 2.6 light inputs. Phase 2.7 replaces only these inputs.
-pub const PHASE26_BLOCK_LIGHT: u8 = 0;
-pub const PHASE26_SKY_LIGHT: u8 = 15;
+/// Light inputs for meshes baked without a light sampler.
+pub const FULL_BRIGHT_BLOCK_LIGHT: u8 = 0;
+pub const FULL_BRIGHT_SKY_LIGHT: u8 = 15;
 
 const FIXED_HALF_BLOCK: i16 = 128;
 
@@ -21,7 +21,7 @@ const FIXED_HALF_BLOCK: i16 = 128;
 pub struct MeshLightSample(u8);
 
 impl MeshLightSample {
-    pub const FULL_BRIGHT: Self = Self(PHASE26_BLOCK_LIGHT | (PHASE26_SKY_LIGHT << 4));
+    pub const FULL_BRIGHT: Self = Self(FULL_BRIGHT_BLOCK_LIGHT | (FULL_BRIGHT_SKY_LIGHT << 4));
 
     #[must_use]
     pub const fn try_new(block: u8, sky: u8) -> Option<Self> {
@@ -125,8 +125,9 @@ pub fn bake_quad_lighting_with_sampler<S: MeshLightSampler + ?Sized>(
 pub(crate) trait LightingInputs {
     /// Native cached solid-render bit, independent of geometric face coverage.
     fn occludes(&self, coordinate: [i32; 3]) -> bool;
-    /// Native shade brightness is 0.2 for leaves, emitting blocks and solid
-    /// render blocks; only the last group also blocks diagonal light sampling.
+    /// Native shade brightness is 0.2 for leaves and solid render blocks; only
+    /// the latter also block diagonal light sampling. Light emission does not
+    /// count, so torches and lanterns leave neighbouring faces unshaded.
     fn shade_darkened(&self, coordinate: [i32; 3]) -> bool {
         self.occludes(coordinate)
     }
@@ -185,10 +186,8 @@ impl<S: MeshLightSampler + ?Sized> LightingInputs for DirectInputs<'_, '_, S> {
             .filter(|&id| !self.classifier.is_air(id))
             .is_some_and(|id| {
                 let visual = self.assets.resolve(self.network_id_mode, id);
-                // Vanilla shade brightness: leaf models and light emitters count,
-                // whatever their solidity.
+                // Vanilla shade brightness also counts leaves, whatever their solidity.
                 visual.flags().contains(assets::BlockFlags::LEAF_MODEL)
-                    || visual.light_properties().emission() > 0
             })
     }
 
@@ -474,9 +473,14 @@ pub(crate) fn bake_template<I: LightingInputs + ?Sized>(
     let start = template.quad_start as usize;
     let end = start.checked_add(template.quad_count as usize)?;
     let quads = assets.model_quads().get(start..end)?;
-    // Current lily tessellator reads light at the pad's own cell.
+    // Lily pads, bubble columns and torches read light at their own cell.
     // Neither neighbor AO nor terrain's underside face coefficient is applied.
-    if template.flags & assets::MODEL_TEMPLATE_FLAG_LILY_PAD != 0 {
+    if template.flags
+        & (assets::MODEL_TEMPLATE_FLAG_LILY_PAD
+            | assets::MODEL_TEMPLATE_FLAG_BUBBLE_COLUMN
+            | assets::MODEL_TEMPLATE_FLAG_TORCH)
+        != 0
+    {
         return Some(vec![lighting_at(inputs.sample(block)); quads.len()]);
     }
     Some(
@@ -578,8 +582,8 @@ pub fn mesh_dependency_mask(
     mask
 }
 
-pub(crate) const fn phase26_default_lighting() -> PackedQuadLighting {
-    PackedQuadLighting::new([pack_sample(PHASE26_BLOCK_LIGHT, PHASE26_SKY_LIGHT, 0); 4])
+pub(crate) const fn full_bright_lighting() -> PackedQuadLighting {
+    PackedQuadLighting::new([pack_sample(FULL_BRIGHT_BLOCK_LIGHT, FULL_BRIGHT_SKY_LIGHT, 0); 4])
 }
 
 const fn lighting_at(sample: MeshLightSample) -> PackedQuadLighting {

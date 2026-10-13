@@ -140,3 +140,24 @@ func TestActorBurstComplexGeometryAddsBoundedOriginalDetails(t *testing.T) {
 		t.Fatal("complex source command was rejected")
 	}
 }
+
+// Sword fixtures hold a sword and swing only on their schedule; strafers also move every tick.
+func TestActorBurstSwordFixturesHoldASwordAndFollowTheirSchedule(t *testing.T) {
+	for mode, perPeriod := range map[string]int{"swing": len(actorBurstSwingTicks), "strafe": actorBurstSwingPeriod / 2} {
+		packets := actorBurstPackets(2, mode, mgl32.Vec3{})
+		if equipment, ok := packets[len(packets)-1].(*packet.MobEquipment); !ok || equipment.NewItem.Stack.NetworkID == 0 {
+			t.Fatalf("%s fixture holds no sword", mode)
+		}
+		swung := 0
+		for tick := range actorBurstSwingPeriod {
+			for _, fixture := range actorBurstSwingTick(mode, 2, tick, mgl32.Vec3{}) {
+				if swing, ok := fixture.(*packet.Animate); ok && swing.EntityRuntimeID == actorBurstFirstID+1 {
+					swung++
+				}
+			}
+		}
+		if swung != perPeriod {
+			t.Fatalf("%s swung %d times a period, want %d", mode, swung, perPeriod)
+		}
+	}
+}

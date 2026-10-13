@@ -12,6 +12,8 @@ platform-specific = ["windows"]
 test-support = ["dep:test-time"]
 
 [dependencies]
+pack-json = { path = "../pack-json" }
+simulation-clock = { path = "../simulation-clock" }
 anyhow.workspace = true
 assets = { path = "../assets" }
 bevy.workspace = true
@@ -37,6 +39,7 @@ world = { path = "../world" }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [dev-dependencies]
+test-alloc = { path = "../test-alloc" }
 test-time = { path = "../test-time" }
 zip = { version = "7", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 

@@ -1,5 +1,6 @@
 use crate::runtime::network::resource_packs::PackApplication;
 use client_runtime::network::NetworkHandle;
+use client_shell::ui_resources::UiRuntimeResource;
 use client_state::PlayerRuntime;
 use std::sync::Arc;
 
@@ -17,8 +18,8 @@ use client_ui::ui_runtime::UiRuntime;
 use {
     crate::{
         app::{
-            configure_acceptance_finish_system, configure_client_frame_schedule,
-            configure_client_production_frame_systems,
+            configure_client_frame_schedule, configure_client_production_frame_systems,
+            session::configure_finish_system,
         },
         runtime::world::{ClientWorld, TransferNotice, reconcile_world_stream_before_physics},
         session::{drive_session, follow_server_transfer, recover_session_failure},
@@ -363,7 +364,7 @@ fn add_audio_teardown_resources(app: &mut App, client_world: ClientWorld, menu: 
         .insert_resource(crate::session::SessionController::default())
         .insert_resource(NetworkHandle::<PackApplication>::disconnected())
         .insert_resource(ResourcePackAdmissionState::default())
-        .insert_resource(UiRuntime::new(1))
+        .insert_resource(UiRuntimeResource(UiRuntime::new(1)))
         .insert_resource(PlayerRuntime(player_state::PlayerState::new(1)))
         .insert_resource(client_interaction::movement::MovementTicker::default())
         .insert_resource(client_interaction::movement::LocalPhysicsController::default())
@@ -453,7 +454,7 @@ fn production_schedule_reads_session_audio_after_the_world_stream_writer() {
     let mut app = App::new();
     configure_client_frame_schedule(&mut app);
     configure_client_production_frame_systems(&mut app);
-    configure_acceptance_finish_system(&mut app);
+    configure_finish_system(&mut app);
     let schedules = app.world().resource::<bevy::ecs::schedule::Schedules>();
     let graph = schedules
         .get(Update)

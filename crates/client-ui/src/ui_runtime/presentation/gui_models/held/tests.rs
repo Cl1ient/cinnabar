@@ -64,6 +64,7 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
     compiled.item_visuals = (0..16)
         .map(|metadata| assets::ItemVisualDefinition {
             grip: assets::item::grip::ItemGrip::Unresolved,
+            glint: assets::item::glint::ItemGlint::Unresolved,
             fuel: assets::item::fuel::ItemFuel::Unresolved,
             durability: assets::item::durability::ItemDurability::Unresolved,
             armour: assets::item::armour::ItemArmour::Unresolved,
@@ -80,7 +81,7 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
             dropped: assets::ItemDisplayTransform::identity(),
         })
         .collect();
-    let entities = RuntimeEntityAssets::from_compiled(compiled).unwrap();
+    let entities = RuntimeEntityAssets::from_compiled(compiled.with_unresolved_item_use()).unwrap();
     let sprites = (0..16)
         .map(|metadata| {
             let color = assets::banner::color_rgb(metadata);
@@ -123,8 +124,9 @@ fn banner_catalog() -> (RuntimeEntityAssets, RuntimeIconCatalog) {
 
 #[test]
 fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_hands() {
-    use crate::test_support::{fixture_font, fixture_hud};
+    use crate::test_support::fixture_hud;
     use crate::ui_runtime::presentation::UiPresentationRuntime;
+    use ui_engine::test_support::fixture_font;
     let (entities, icons) = banner_catalog();
     assert!(icons.block_sheets().is_empty());
     let presentation =
@@ -148,7 +150,7 @@ fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_
         uv: [0, 0, 64, 64],
         glint: false,
     };
-    let draw = |hands| {
+    let draw = |hands: [Option<&PreviewHeldModel>; 2]| {
         player_preview::geometry::mesh(
             Default::default(),
             Default::default(),
@@ -169,6 +171,7 @@ fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_
         ));
         let model = models
             .get(&definition.key)
+            .and_then(|held| held.model(icons))
             .expect("noncube block item retains its held model");
         assert!(
             model
@@ -182,10 +185,13 @@ fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_
                 .item_icon(&definition.key.identifier, definition.key.metadata)
                 .unwrap()
         );
-        let right = draw([Some(model), None]).vertices().len();
-        let left = draw([None, Some(model)]).vertices().len();
+        let right = draw([Some(&model), None]).vertices().len();
+        let left = draw([None, Some(&model)]).vertices().len();
         assert!(right > bare && left > bare);
-        assert_eq!(draw([Some(model); 2]).vertices().len(), right + left - bare);
+        assert_eq!(
+            draw([Some(&model); 2]).vertices().len(),
+            right + left - bare
+        );
     }
     assert!(
         atlas.finish().unwrap().0.is_empty(),
@@ -195,9 +201,10 @@ fn held_banner_block_route_without_cube_sheet_remains_available_in_both_preview_
 
 #[test]
 fn installed_gui_carriers_reuse_sprite_pages_within_the_model_atlas_budget() {
-    use crate::test_support::{fixture_font, fixture_hud};
+    use crate::test_support::fixture_hud;
     use crate::ui_runtime::presentation::UiPresentationRuntime;
     use assets::carriers;
+    use ui_engine::test_support::fixture_font;
     let compiled = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(carriers::COMPILED_DIR);
@@ -232,7 +239,11 @@ fn installed_gui_carriers_reuse_sprite_pages_within_the_model_atlas_budget() {
     presentation.set_equipment_catalog(Some(equipment));
     presentation.set_gui_models(&world, &entities).unwrap();
     let mut sprites = 0;
-    for (key, model) in &presentation.gui_models.held {
+    let icons = presentation.icon_catalog.as_deref().unwrap();
+    for (key, held) in &presentation.gui_models.held {
+        let Some(model) = held.model(icons) else {
+            continue;
+        };
         if matches!(model.placements[0], PreviewHeldPlacement::Sprite { .. }) {
             assert_eq!(
                 model.source,

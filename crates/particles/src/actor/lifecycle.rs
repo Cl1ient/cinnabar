@@ -18,6 +18,7 @@ pub struct ActorEffectKey {
 struct ActiveEmitter {
     id: Option<u64>,
     seen: bool,
+    pending: bool,
 }
 
 /// Retains an emitter once per state entry, including effects that already completed naturally.
@@ -37,11 +38,11 @@ impl ActorEffectTracker {
         }
     }
 
-    /// Returns true only for a new state-entry effect; unchanged input starts no emitter.
+    /// Returns true until a state-entry effect starts; unavailable placement may retry.
     pub fn admit(&mut self, key: ActorEffectKey) -> bool {
         if let Some(emitter) = self.active.get_mut(&key) {
             emitter.seen = true;
-            return false;
+            return emitter.pending;
         }
         if self.active.len() >= crate::system::MAX_EMITTERS {
             return false;
@@ -51,14 +52,17 @@ impl ActorEffectTracker {
             ActiveEmitter {
                 id: None,
                 seen: true,
+                pending: true,
             },
         );
         true
     }
 
+    /// Records a spawn attempt, including a rejected spawn, so it is never repeated.
     pub fn started(&mut self, key: ActorEffectKey, id: Option<u64>) {
         if let Some(emitter) = self.active.get_mut(&key) {
             emitter.id = id;
+            emitter.pending = false;
         }
     }
 
@@ -80,6 +84,7 @@ impl ActorEffectTracker {
 mod tests {
     use super::*;
 
+    /// Returns a state-entry occurrence for the lifecycle tests.
     fn key() -> ActorEffectKey {
         ActorEffectKey {
             session_id: 1,
@@ -118,6 +123,31 @@ mod tests {
         tracker.begin_frame();
         tracker.finish_frame(|id| stopped.push(id));
         assert_eq!(stopped, [10, 11]);
+    }
+
+    #[test]
+    fn unavailable_placement_retries_until_started_and_pending_exit_is_silent() {
+        let mut tracker = ActorEffectTracker::default();
+        assert!(tracker.admit(key()));
+        tracker.begin_frame();
+        assert!(
+            tracker.admit(key()),
+            "placement failure must remain retryable"
+        );
+        tracker.finish_frame(|_| panic!("pending placement has no emitter"));
+        tracker.started(key(), Some(10));
+        tracker.begin_frame();
+        assert!(!tracker.admit(key()));
+        tracker.finish_frame(|_| panic!("the started occurrence remains active"));
+        let pending = ActorEffectKey {
+            effect_index: 1,
+            ..key()
+        };
+        assert!(tracker.admit(pending));
+        tracker.begin_frame();
+        assert!(!tracker.admit(key()));
+        tracker.finish_frame(|_| panic!("pending exit has no emitter"));
+        assert!(tracker.admit(pending), "a later entry is independent");
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //! sign text share the same vertex path. Geometry the pinned pack does not define is
 //! marked provisional in its module and needs native measurement.
 
+mod artwork;
 mod atlas;
 mod banner;
 mod beam;
@@ -15,6 +16,7 @@ mod conduit;
 mod crack;
 mod crystal_beam;
 mod dragon_death;
+pub mod draw_ranges;
 mod frame;
 
 mod heads;
@@ -29,11 +31,13 @@ mod sign;
 mod skull;
 mod statue;
 
-pub use atlas::{AtlasRect, BlockEntityAtlas, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef};
-pub use banner::{BannerLayer, BannerModel, BannerMount, MAX_BANNER_LAYERS, pattern_texture};
+pub use artwork::{BlockEntityArtworkPreparer, PreparedBlockEntityArtwork};
+pub use atlas::{AtlasRect, BlockEntityAtlas, MAP_CELL, TEXT_CELL, TEXT_SLOT_COUNT, TextureRef};
+pub use banner::{BannerLayer, BannerModel, BannerMount};
 pub use beam::BeaconModel;
 pub use bed::{BedModel, bed_color};
 pub use bell::{BellAttachment, BellModel, swing_degrees};
+pub use book::{BookPose, EnchantingBook};
 pub use chest::{ChestModel, ChestPair, ChestVariant, CopperAge, lid_angle_radians};
 pub use conduit::ConduitModel;
 pub use crack::{CrackQuad, CrackShape, crack_shape_from_template, crack_texture_name};
@@ -51,8 +55,8 @@ pub use mesh::{
 };
 pub use pot::{DecoratedPotModel, sherd_pattern};
 pub use scene::{
-    BlockEntityAtlasImage, BlockEntityFrame, BlockEntityKind, BlockEntityLight, BlockEntityScene,
-    BlockEntitySubmission, CrackInstance, SceneClock,
+    BLOCK_ENTITY_REACH_BLOCKS, BlockEntityAtlasImage, BlockEntityFrame, BlockEntityKind,
+    BlockEntityLight, BlockEntityScene, BlockEntitySubmission, CrackInstance, SceneClock,
 };
 pub use selection::{BLOCK_SELECTION_VERTICES_PER_EDGE, BlockSelectionFrame, BlockSelectionTarget};
 pub use shulker::ShulkerModel;

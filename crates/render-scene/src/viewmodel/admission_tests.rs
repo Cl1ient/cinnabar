@@ -12,6 +12,7 @@ fn cube_carrier() -> assets::CompiledAssets {
         visuals: vec![
             BlockVisual::diagnostic(BlockFlags::empty(), ContributorRole::Primary),
             BlockVisual {
+                native_material: assets::native_material::NativeMaterialFacts::Unresolved,
                 faces: [1, 2, 3, 4, 5, 6],
                 flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
                 kind: VisualKind::Cube,
@@ -351,6 +352,7 @@ fn profile() -> assets::EntityGeometry {
             Vec::new()
         };
         EntityGeometryBone {
+            locators: Box::default(),
             name: name.into(),
             binding: None,
             texture_meshes: Box::new([]),
@@ -368,6 +370,7 @@ fn profile() -> assets::EntityGeometry {
     .collect::<Vec<_>>()
     .into();
     EntityGeometry {
+        animation_no_head_bob: false,
         visible_bounds: None,
         identifier: "geometry.humanoid.custom".into(),
         inherits: None,
@@ -717,6 +720,7 @@ fn opaque_cube_refuses_server_block_overlay_ids() {
     };
     let overlay = BlockOverlay {
         visuals: vec![BlockVisual {
+            native_material: assets::native_material::NativeMaterialFacts::Unresolved,
             faces: [0; 6],
             flags: BlockFlags::CUBE_GEOMETRY | BlockFlags::OCCLUDES_FULL_FACE,
             kind: VisualKind::Cube,

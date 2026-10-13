@@ -1,8 +1,8 @@
 //! Precedence-ordered reads over an admitted stack.
 //!
-//! The last `ResourcePackStack` entry wins: the client builds its stack in list
-//! order (a pack's dependencies first) and resolves a resource from the highest
-//! index down. Confirm this vanilla behavior with a live two-pack capture.
+//! Layers are stored lowest priority first. Winning reads visit them backward;
+//! merge consumers visit them forward so higher-priority definitions apply last.
+//! Server handoff admission converts the wire order into this representation.
 
 use std::{collections::BTreeSet, sync::Arc};
 

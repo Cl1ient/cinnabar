@@ -1,4 +1,7 @@
-use super::{local_carrier, pack_runtime, player_body};
+use super::{
+    elytra_tests::selected_pixel, local_carrier, pack_catalog, pack_runtime, player_body,
+    startup_runtime,
+};
 use crate::presentation::equipment::runtime::*;
 use actor_animation::{ActorLifetimeId, ActorRigSnapshot};
 use bevy::math::{Quat, Vec3};
@@ -56,6 +59,7 @@ fn owner_rig<'a>(
     names: &'a [Box<str>],
 ) -> ActorRigSnapshot<'a> {
     ActorRigSnapshot {
+        placement_frame: assets::placement::EntityPlacementFrame::Unresolved,
         actor: ActorLifetimeId {
             session_id: 1,
             dimension: 0,
@@ -94,6 +98,11 @@ fn owner_rig<'a>(
 fn held(identifier: &str) -> ActorEquipmentInput {
     ActorEquipmentInput {
         main: Some(WornItem {
+            use_facts: client_world::resolve_item_use(
+                &assets::item_use::diagnostic_profile(identifier),
+                None,
+                None,
+            ),
             grip: assets::item::grip::builtin_item_grip(identifier),
             identifier: Arc::from(identifier),
             metadata: 0,
@@ -146,6 +155,201 @@ fn held_pack() -> Vec<(Box<str>, Vec<u8>)> {
         ),
         ("textures/items/held.png".into(), bytes.into_inner()),
     ]
+}
+
+#[test]
+fn held_attachable_uses_selected_artwork_and_falls_back_per_draw() {
+    let (mut runtime, base_pages) = startup_runtime(held_pack());
+    let body = player_body(&mut runtime);
+    let owner = owner();
+    let names = [Box::from("rightItem")];
+    let rig = owner_rig(&owner, &names);
+    let input = held("test:held");
+    let mut files = held_pack();
+    let (_, bytes) = files
+        .iter_mut()
+        .find(|(path, _)| path.as_ref() == "attachables/held.json")
+        .unwrap();
+    let mut definition: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    definition["minecraft:attachable"]["description"]["textures"]["alternative"] =
+        serde_json::json!("textures/items/alternative");
+    *bytes = serde_json::to_vec(&definition).unwrap();
+    let (_, controller) = files
+        .iter_mut()
+        .find(|(path, _)| path.as_ref() == "render_controllers/held.json")
+        .unwrap();
+    let mut definition: serde_json::Value = serde_json::from_slice(controller).unwrap();
+    definition["render_controllers"]["controller.render.held"]["textures"] =
+        serde_json::json!(["Texture.alternative"]);
+    *controller = serde_json::to_vec(&definition).unwrap();
+    files.retain(|(path, _)| path.as_ref() != "textures/items/held.png");
+    let mut pixels = std::io::Cursor::new(Vec::new());
+    let color = [0, 255, 0, 255];
+    image::RgbaImage::from_pixel(16, 16, image::Rgba(color))
+        .write_to(&mut pixels, image::ImageFormat::Png)
+        .unwrap();
+    files.push(("textures/items/alternative.png".into(), pixels.into_inner()));
+    let (entities, catalog) = pack_catalog(files);
+    let binding = catalog.binding("test:held").unwrap();
+    assert!(catalog.texture(&binding.texture.identifier).is_none());
+    let (pages, locations) =
+        base_pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(&catalog));
+    runtime.set_pack_layer(Some((entities, Some(catalog), locations)));
+    let selected = runtime
+        .first_person_attachable(
+            &body,
+            input.main.as_ref().unwrap(),
+            &owner,
+            &rig,
+            actor_animation::AttachableAnimationInput {
+                first_person: true,
+                ..Default::default()
+            },
+            None,
+        )
+        .expect("the available alternative must draw");
+    assert_eq!(selected_pixel(&pages, &selected.presentation), color);
+
+    let mut files = held_pack();
+    let (_, animation) = files
+        .iter_mut()
+        .find(|(path, _)| path.as_ref() == "animations/held.json")
+        .unwrap();
+    let mut document: serde_json::Value = serde_json::from_slice(animation).unwrap();
+    document["animations"]["animation.held"]["bones"]["rightitem"]["position"] =
+        serde_json::json!([100, 3, 4]);
+    *animation = serde_json::to_vec(&document).unwrap();
+    let mut pixels = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(16, 16, image::Rgba(color))
+        .write_to(&mut pixels, image::ImageFormat::Png)
+        .unwrap();
+    files.push((
+        format!("{}.png", assets::ACTOR_GLINT_TEXTURE_IDENTIFIER).into(),
+        pixels.into_inner(),
+    ));
+    let raster = files.last().unwrap().1.clone();
+    let (_, primary) = files
+        .iter_mut()
+        .find(|(path, _)| path.as_ref() == "textures/items/held.png")
+        .unwrap();
+    *primary = raster;
+    let (entities, catalog) = pack_catalog(files);
+    let (pages, mut locations) =
+        pages.with_equipment_rasters(&EquipmentRuntime::pack_rasters(&catalog));
+    let primary = catalog
+        .textures()
+        .iter()
+        .position(|texture| texture.identifier.as_ref() == "textures/items/held")
+        .unwrap();
+    runtime.set_pack_layer(Some((
+        Arc::clone(&entities),
+        Some(Arc::clone(&catalog)),
+        locations.clone(),
+    )));
+    let available = runtime
+        .first_person_attachable(
+            &body,
+            input.main.as_ref().unwrap(),
+            &owner,
+            &rig,
+            actor_animation::AttachableAnimationInput {
+                first_person: true,
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(selected_pixel(&pages, &available.presentation), color);
+    locations[primary] = None;
+    runtime.set_pack_layer(Some((entities, Some(catalog), locations)));
+    let selected = runtime
+        .first_person_attachable(
+            &body,
+            input.main.as_ref().unwrap(),
+            &owner,
+            &rig,
+            actor_animation::AttachableAnimationInput {
+                first_person: true,
+                ..Default::default()
+            },
+            None,
+        )
+        .expect("unavailable group artwork must use startup artwork");
+    assert_eq!(
+        selected_pixel(&pages, &selected.presentation),
+        [255, 0, 0, 255]
+    );
+    assert_eq!(
+        selected.presentation.submission.input.current_bones,
+        available.presentation.submission.input.current_bones,
+        "missing artwork must not replace the pack's evaluated pose"
+    );
+}
+
+#[test]
+fn an_inactive_pack_controller_does_not_draw_the_startup_model() {
+    let (mut runtime, base_pages) = startup_runtime(held_pack());
+    let body = player_body(&mut runtime);
+    let owner = owner();
+    let names = [Box::from("rightItem")];
+    let rig = owner_rig(&owner, &names);
+    let input = held("test:held");
+    for omit_default in [false, true] {
+        let mut files = held_pack();
+        let (_, bytes) = files
+            .iter_mut()
+            .find(|(path, _)| path.as_ref() == "attachables/held.json")
+            .unwrap();
+        let mut document: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        let description = &mut document["minecraft:attachable"]["description"];
+        description["render_controllers"] = serde_json::json!([{"controller.render.held": "0"}]);
+        description["textures"]["alternative"] = serde_json::json!("textures/items/alternative");
+        *bytes = serde_json::to_vec(&document).unwrap();
+        let (_, bytes) = files
+            .iter_mut()
+            .find(|(path, _)| path.as_ref() == "render_controllers/held.json")
+            .unwrap();
+        let mut document: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        document["render_controllers"]["controller.render.held"]["textures"] =
+            serde_json::json!(["Texture.alternative"]);
+        *bytes = serde_json::to_vec(&document).unwrap();
+        let raster = files
+            .iter()
+            .find(|(path, _)| path.as_ref() == "textures/items/held.png")
+            .unwrap()
+            .1
+            .clone();
+        files.push(("textures/items/alternative.png".into(), raster));
+        if omit_default {
+            files.retain(|(path, _)| path.as_ref() != "textures/items/held.png");
+        }
+        let (entities, catalog) = pack_catalog(files);
+        assert!(catalog.texture("textures/items/alternative").is_some());
+        assert_eq!(
+            catalog.texture("textures/items/held").is_none(),
+            omit_default
+        );
+        let (_, locations) = base_pages
+            .clone()
+            .with_equipment_rasters(&EquipmentRuntime::pack_rasters(&catalog));
+        runtime.set_pack_layer(Some((entities, Some(catalog), locations)));
+        assert!(
+            runtime
+                .first_person_attachable(
+                    &body,
+                    input.main.as_ref().unwrap(),
+                    &owner,
+                    &rig,
+                    actor_animation::AttachableAnimationInput {
+                        first_person: true,
+                        ..Default::default()
+                    },
+                    None,
+                )
+                .is_none(),
+            "inactive controllers must remain hidden with omit_default={omit_default}"
+        );
+    }
 }
 
 /// Uses a controller-owned constant pose, as ordinary third-person held models do.
@@ -206,7 +410,7 @@ fn warm_static_held_publication_retains_pose_without_evaluation_allocations() {
         });
         assert_eq!(batch.submissions.len(), 2);
     }
-    let allocations = crate::test_allocations::count();
+    let allocations = test_alloc::thread_allocations();
     for tick in 3..13 {
         rig.completed_tick = tick;
         runtime.begin_frame();
@@ -228,7 +432,7 @@ fn warm_static_held_publication_retains_pose_without_evaluation_allocations() {
         assert_eq!(batch.artwork.len(), 1);
     }
     assert_eq!(
-        crate::test_allocations::count() - allocations,
+        test_alloc::thread_allocations() - allocations,
         0,
         "unchanged held publication must reuse evaluation, placement, and output storage"
     );
@@ -389,8 +593,9 @@ fn third_person_bow_publication_tracks_use_frames_duration_and_release() {
         "leftItem",
     ]
     .map(Box::from);
-    let input = held("minecraft:bow");
+    let mut input = held("minecraft:bow");
     let duration = 40;
+    input.main.as_mut().unwrap().use_facts.ticks = Some(duration);
     let items = crate::session_assets::SessionItems {
         components: Arc::new(
             [(
@@ -449,11 +654,7 @@ fn third_person_bow_publication_tracks_use_frames_duration_and_release() {
     }
     let mut offhand = input.clone();
     offhand.off = offhand.main.take();
-    offhand.main = Some(crate::presentation::equipment::WornItem {
-        grip: assets::item::grip::builtin_item_grip("minecraft:trident"),
-        identifier: "minecraft:trident".into(),
-        ..offhand.off.as_ref().unwrap().clone()
-    });
+    offhand.main = held("minecraft:trident").main;
     owner
         .metadata
         .insert(0, protocol::ActorMetadataValue::Flags(1 << 4));
@@ -476,7 +677,8 @@ fn third_person_bow_publication_tracks_use_frames_duration_and_release() {
         "an offhand bow must stay on frame zero while the main hand is using another item"
     );
     assert!(
-        (off_bone.translation_scale[1] - (inventory::LONG_WEAPON_USE_TICKS - 15) as f32 / 16.0)
+        (off_bone.translation_scale[1]
+            - (assets::item_use::LONG_WEAPON_USE_TICKS - 15) as f32 / 16.0)
             .abs()
             < 1e-3,
         "offhand models retain the owner's shared remaining-use query"
@@ -536,7 +738,7 @@ fn third_person_held_attachable_runs_authored_perspective_and_owner_bone_channel
             owner: &owner,
             rig: &rig,
             frame_alpha: 1.0,
-            delta_seconds: world::TICK_DURATION.as_secs_f32(),
+            delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
         }),
     );
     assert_eq!(
@@ -563,7 +765,7 @@ fn third_person_held_attachable_runs_authored_perspective_and_owner_bone_channel
             owner: &owner,
             rig: &rig,
             frame_alpha: 1.0,
-            delta_seconds: world::TICK_DURATION.as_secs_f32(),
+            delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
         }),
     );
     assert_eq!(repeated[0].submission.input.rig, initial_rig);
@@ -638,7 +840,7 @@ fn worn_attachable_categories_do_not_become_held_models() {
                 owner: &owner,
                 rig: &rig,
                 frame_alpha: 1.0,
-                delta_seconds: world::TICK_DURATION.as_secs_f32(),
+                delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
             }),
         );
         assert!(
@@ -690,7 +892,7 @@ fn installed_shield_and_trident_warm_draws_reuse_output_storage() {
                 1
             );
         }
-        let allocations = crate::test_allocations::count();
+        let allocations = test_alloc::thread_allocations();
         for tick in 2..12 {
             rig.completed_tick = tick;
             runtime.begin_frame();
@@ -711,7 +913,7 @@ fn installed_shield_and_trident_warm_draws_reuse_output_storage() {
             );
         }
         assert_eq!(
-            crate::test_allocations::count() - allocations,
+            test_alloc::thread_allocations() - allocations,
             0,
             "unchanged {identifier} publication must retain evaluation and output storage"
         );
@@ -751,7 +953,7 @@ fn installed_bow_third_person_uses_authored_texture_mesh_and_wield_pose() {
     ]
     .map(Box::from);
     let mut rig = owner_rig(&owner, &names);
-    let input = held("minecraft:bow");
+    let mut input = held("minecraft:bow");
     let expected = runtime
         .first_person_attachable(
             &body,
@@ -772,7 +974,7 @@ fn installed_bow_third_person_uses_authored_texture_mesh_and_wield_pose() {
             owner: &owner,
             rig: &rig,
             frame_alpha: 1.0,
-            delta_seconds: world::TICK_DURATION.as_secs_f32(),
+            delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
         }),
     );
     assert_eq!(layers.len(), 1);
@@ -791,6 +993,7 @@ fn installed_bow_third_person_uses_authored_texture_mesh_and_wield_pose() {
         .get("minecraft:bow")
         .expect("the installed bow must retain its authored use duration");
     assert!(duration > 15);
+    input.main.as_mut().unwrap().use_facts.ticks = Some(duration);
     let mut stages = Vec::new();
     for (elapsed, pulling) in [(0, true), (9, true), (15, true), (duration, false)] {
         owner
@@ -850,7 +1053,7 @@ fn custom_wearable_model_draws_only_in_its_effective_armor_slot() {
         owner: &owner,
         rig: &rig,
         frame_alpha: 0.5,
-        delta_seconds: world::TICK_DURATION.as_secs_f32(),
+        delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
     };
     let mut input = held("test:held");
     assert!(
@@ -913,7 +1116,7 @@ fn third_person_authored_offset_tracks_the_drawn_rotating_parent() {
                 owner: &owner,
                 rig: &rig,
                 frame_alpha: alpha,
-                delta_seconds: world::TICK_DURATION.as_secs_f32(),
+                delta_seconds: simulation_clock::TICK_DURATION.as_secs_f32(),
             }),
         );
         assert_eq!(layers.len(), 1);
@@ -971,3 +1174,6 @@ fn animated_held_attachables_skip_the_hurt_overlay_in_both_views() {
     }
     assert_eq!(body.overlay_rgba8, 0x6600_00ff);
 }
+
+#[path = "held_artwork_tests.rs"]
+mod artwork;

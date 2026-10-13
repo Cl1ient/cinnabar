@@ -1,23 +1,20 @@
-use bytes::BytesMut;
-use valentine::bedrock::version::v1_26_51::{
-    SerializedAbilitiesData, SerializedAbilitiesDataSerializedLayer, UpdateAbilitiesPacket,
+use bedrock_protocol_1_26_51::packets::UpdateAbilities;
+use bedrock_protocol_1_26_51::types::{
+    SerializedAbilitiesData, SerializedAbilitiesDataSerializedLayer,
 };
+use bedrock_protocol_1_26_51::wire;
 
-fn raw(count: usize) -> jolyne::raw::RawPacket {
-    let packet: crate::Packet = UpdateAbilitiesPacket {
+fn raw(count: usize) -> crate::raw_packet::RawPacket {
+    let packet: crate::Packet = crate::Packet::new(UpdateAbilities {
         data: SerializedAbilitiesData {
-            target_player_raw_id: 42,
+            target_player_raw_id: wire::I64LE(42),
             layers: vec![SerializedAbilitiesDataSerializedLayer::default(); count],
             ..Default::default()
         },
-    }
-    .into();
-    let mut frame = BytesMut::new();
-    packet
-        .data
-        .encode_inner_bytes_mut(&mut frame, 0, 0)
-        .unwrap();
-    jolyne::raw::decode_packet_raw(&mut frame.freeze()).unwrap()
+    });
+    let mut frame = Vec::new();
+    crate::codec::encode_entry(&packet, &mut frame).unwrap();
+    crate::raw_packet::decode_packet_raw(&mut bytes::Bytes::from(frame)).unwrap()
 }
 
 #[test]
@@ -51,5 +48,5 @@ fn malformed_raw_ability_frame_is_not_a_skippable_semantic_packet() {
     let mut skipped = 0;
     assert!(super::skip_semantic_world_error(error, &mut skipped).is_err());
     assert_eq!(skipped, 0);
-    assert!(jolyne::raw::decode_packet_raw(&mut bytes::Bytes::from(frame)).is_err());
+    assert!(crate::raw_packet::decode_packet_raw(&mut bytes::Bytes::from(frame)).is_err());
 }

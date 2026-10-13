@@ -93,7 +93,7 @@ pub(super) struct GuiModels {
     optional_models: BTreeSet<IconKey>,
     required_pages: usize,
     textures: BTreeMap<atlas::TextureKey, IconRef>,
-    held: BTreeMap<assets::ItemVisualKey, player_preview::PreviewHeldModel>,
+    held: BTreeMap<assets::ItemVisualKey, held::HeldModel>,
     fire: fire::FireAtlas,
 }
 
@@ -234,7 +234,7 @@ impl UiPresentationRuntime {
                     .or_insert(*icon);
             }
         }
-        bevy::log::info!(
+        tracing::info!(
             models = models.len(),
             source_pages = pages.len(),
             "native GUI item geometry prepared"
@@ -307,32 +307,37 @@ impl UiPresentationRuntime {
         };
         let armor = std::array::from_fn(|slot| {
             let texture = self.player_preview_gear.armor[slot].as_ref()?;
-            self.gui_models.pack_equipment.region(slot).or_else(|| {
-                let key = atlas::key([texture.width, texture.height], &texture.rgba);
-                self.gui_models.textures.get(&key).copied()
-            })
+            self.gui_models
+                .pack_equipment
+                .region(slot)
+                .or_else(|| {
+                    let key = atlas::key([texture.width, texture.height], &texture.rgba);
+                    self.gui_models.textures.get(&key).copied()
+                })
+                .map(|icon| icon.with_glint(self.player_preview_gear.armor_glint[slot]))
         });
         let held = self.player_preview_gear.hands.each_ref().map(|hand| {
             let hand = hand.as_ref()?;
             let (identifier, metadata) = Self::item_icon_key(
                 &hand.identifier,
                 hand.metadata,
-                hand.charged_projectile.as_deref(),
+                hand.use_animation,
+                hand.charged_projectile,
                 None,
             );
-            self.gui_models
-                .held
-                .get(&assets::ItemVisualKey {
-                    identifier: identifier.into(),
-                    metadata,
-                })
-                .or_else(|| {
-                    self.gui_models.held.get(&assets::ItemVisualKey {
+            let icons = self.icon_catalog.as_deref()?;
+            let held = |metadata| {
+                self.gui_models
+                    .held
+                    .get(&assets::ItemVisualKey {
                         identifier: identifier.into(),
-                        metadata: 0,
-                    })
-                })
-                .map(|model| model.with_grip(hand.grip))
+                        metadata,
+                    })?
+                    .model(icons)
+            };
+            held(metadata)
+                .or_else(|| held(0))
+                .map(|model| model.with_grip(hand.grip).with_glint(hand.glint))
         });
         let unposed = [None; 6];
         let body = if self.player_preview_view == player_preview::PreviewView::Hud {

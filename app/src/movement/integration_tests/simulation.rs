@@ -33,16 +33,12 @@ fn unavailable_collision_does_not_overflow_after_a_long_block() {
     let mut ticker = MovementTicker::default();
     ticker.reset(1, 7, [4.0, 65.620_01, 6.0]);
     ticker.set_source(MovementSource::Physics);
-    let mut evidence = Phase3EvidenceEmitter::default();
+    let mut evidence = MovementEvidenceEmitter::default();
     let before = physics.state().unwrap().clone();
     let before_eye = physics.render_eye_position();
     let mut violation_markers = Vec::new();
 
-    let frame = physics.advance(
-        Duration::from_millis(600),
-        forward_physics_input(),
-        &world,
-    );
+    let frame = physics.advance(Duration::from_millis(600), forward_physics_input(), &world);
     assert_eq!(frame.due_ticks, 12);
     assert_eq!(frame.completed_ticks, 0);
     assert_eq!(frame.dropped_ticks, 0);

@@ -2,7 +2,8 @@
 use pack_compiler::block_geometry::{
     BlockGeometryCatalog, Geometry, MAX_GEOMETRY_FILE_BYTES, MAX_GEOMETRY_FILES,
 };
-use resource_pack::{LayeredPackView, normalize_jsonc};
+use pack_json::normalize_jsonc;
+use resource_pack::LayeredPackView;
 use std::collections::{HashMap, HashSet};
 
 /// Admits winning models and parent definitions before compiling requested block models.
@@ -58,7 +59,7 @@ mod tests {
 
     /// Admits authored model documents as a low-to-high stack of resource packs.
     fn model_stack(layers: &[&[(&str, &[u8])]]) -> LayeredPackView {
-        let archives = layers.iter().enumerate().map(|(index, files)| {
+        let archives = layers.iter().enumerate().rev().map(|(index, files)| {
             let id = format!("00000000-0000-0000-0000-{:012}", index + 1);
             let manifest = format!(r#"{{"format_version":2,"header":{{"uuid":"{id}","version":[1,0,0]}},"modules":[{{"type":"resources"}}]}}"#);
             let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));

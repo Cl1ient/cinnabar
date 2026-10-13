@@ -5,8 +5,8 @@ use std::sync::Arc;
 use render_model::EntityRigId;
 use render_model::{ActorArtworkLocation, ActorRigSubmission};
 
-/// Source catalog, geometry, and selected image identify one attachable raster.
-pub(super) type AttachableMeshKey = (bool, u32, u32);
+/// Geometry namespace and resolved artwork page/layer identify each texture-derived mesh.
+pub(super) type AttachableMeshKey = (bool, u32, (u16, u32));
 
 /// The immutable image frame and pose used by Java's independently placed raster draw.
 #[derive(Clone)]
@@ -21,6 +21,8 @@ pub(super) struct JavaRasterFrame {
 pub struct WornItem {
     /// Grip admitted by the numeric item registry, copied from the canonical stack.
     pub grip: assets::item::grip::ItemGrip,
+    /// Use and animation facts from the numerical registry admission.
+    pub use_facts: client_world::EffectiveItemUse,
     pub identifier: Arc<str>,
     pub metadata: u32,
     /// Durability damage, when the stack carries it separately from its visual data value.

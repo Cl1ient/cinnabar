@@ -1,92 +1,49 @@
 use std::collections::VecDeque;
 
+use bedrock_protocol_1_26_51::packets::{self, PacketId};
+use bedrock_protocol_1_26_51::wire;
 use bytes::Bytes;
-use jolyne::error::JolyneError;
-use jolyne::raw::RawPacket;
-use jolyne::stream::client::ClientHandshakeConfig;
-use jolyne::stream::transport::{BedrockTransport, Transport};
-use jolyne::stream::{BedrockStream, Client, Handshake, Play};
-use valentine::bedrock::version::v1_26_51::{McpePacketData, McpePacketName};
-#[cfg(test)]
-use valentine::protocol::wire;
 
 use crate::blob_cache::ResolverReady;
-use crate::session_transport::SessionTransport;
+use crate::raw_packet::RawPacket;
+use crate::session_transport::{Inbound, SessionTransport};
 use crate::{
-    BlobCacheResolver, BlobCacheStats, ClientBlobCache, GameData, LevelChunkEvent, Packet,
-    ProtocolError, ResourcePackHandoff, ServerDisconnectEvent, ServerTransferEvent, WorldEvent,
-    into_world_event,
+    BlobCacheResolver, BlobCacheStats, ClientBlobCache, LevelChunkEvent, Packet, ProtocolError,
+    ServerDisconnectEvent, ServerTransferEvent, SessionError, WorldEvent, into_world_event,
 };
 
 mod boundary;
 mod client_data;
+mod game_data;
 mod latency_probe;
 mod outbound;
+mod pack_handoff;
 mod packet_trace;
 mod raw_equipment;
 pub(crate) mod session_join;
+mod startup;
 use boundary::boundary_wakeup;
-pub use client_data::{ClientRandomId, LoginSettings, login_memory_tier};
+pub use client_data::{
+    ClientCape, ClientRandomId, ClientSkin, ClientSkinGeometry, GAME_VERSION, LoginSettings,
+    PROTOCOL_VERSION, login_memory_tier,
+};
+pub use game_data::{GameData, StartupItems, StartupSettings};
 pub use latency_probe::network_stack_latency_reply;
 pub use outbound::PlayOutbound;
+pub use pack_handoff::{ResourcePackArchive, ResourcePackContentKey, ResourcePackHandoff};
 pub use packet_trace::PacketIdTraceSnapshot;
 use packet_trace::PacketIdTraceState;
 #[cfg(test)]
 use packet_trace::{MAX_PACKET_ID_TRACE_ENTRIES, PACKET_ID_TRACE_DURATION};
 
-/// A server may batch a whole pack transfer, or a large item registry, into one batch,
-/// so the local leg accepts batches far larger than a typical client's 16 MiB default.
-/// The core already bounds pack transfers before they reach this hop.
-const MAX_DECOMPRESSED_BATCH_SIZE: usize = 256 * 1024 * 1024;
-
 /// Entry point for joining through the core.
 pub struct LoginSequence;
 
-impl LoginSequence {
-    /// Headless test seam that treats the received spawn prerequisites as presentation readiness.
-    #[doc(hidden)]
-    pub async fn connect_transport<T: Transport>(
-        transport: T,
-        display_name: &str,
-    ) -> Result<(PlaySession<T>, GameData), ProtocolError> {
-        let (mut session, data) =
-            Self::connect_transport_inner(transport, display_name, None).await?;
-        session.finish_loading().await?;
-        Ok((session, data))
-    }
-
-    /// Headless cache test seam that completes loading immediately after negotiation.
-    #[doc(hidden)]
-    pub async fn connect_transport_with_blob_cache<T: Transport>(
-        transport: T,
-        display_name: &str,
-        cache: ClientBlobCache,
-    ) -> Result<(PlaySession<T>, GameData), ProtocolError> {
-        let (mut session, data) =
-            Self::connect_transport_inner(transport, display_name, Some(cache)).await?;
-        session.finish_loading().await?;
-        Ok((session, data))
-    }
-
-    async fn connect_transport_inner<T: Transport>(
-        transport: T,
-        display_name: &str,
-        cache: Option<ClientBlobCache>,
-    ) -> Result<(PlaySession<T>, GameData), ProtocolError> {
-        let peer_addr = transport.peer_addr();
-        let mut transport = BedrockTransport::new(transport);
-        transport.set_max_decompressed_batch_size(Some(MAX_DECOMPRESSED_BATCH_SIZE));
-        let stream: BedrockStream<Handshake, Client, T> = BedrockStream::from_transport(transport);
-        let config = ClientHandshakeConfig::random(peer_addr, display_name)
-            .with_client_cache_enabled(cache.is_some());
-        let (stream, game_data) = stream.join(config).await?;
-        Ok((PlaySession::new(stream, cache), game_data))
-    }
-}
-
 /// An authenticated, spawned Bedrock session.
-pub struct PlaySession<T: Transport = SessionTransport> {
-    stream: BedrockStream<Play, Client, T>,
+pub struct PlaySession {
+    transport: SessionTransport,
+    pending_initialization: Option<u64>, // the runtime ID until loading completes
+    terrain_before_spawn: bool,
     decode_errors: u64,
     world_skips: u64,
     transfer_skips: u64,
@@ -95,6 +52,7 @@ pub struct PlaySession<T: Transport = SessionTransport> {
     pending_blob_cache_delivery: Option<PendingBlobCacheDelivery>,
     server_disconnect: Option<ServerDisconnectEvent>,
     server_transfer: Option<ServerTransferEvent>,
+    resource_packs: ResourcePackHandoff,
 }
 
 struct PendingBlobCacheDelivery {
@@ -122,18 +80,33 @@ impl WorldIngress {
     }
 }
 
-impl<T: Transport> PlaySession<T> {
-    /// Sends loading-end and initialization once the client can present the world.
+impl PlaySession {
+    /// Sends loading-end and initialization once the client can present the world; later
+    /// calls send nothing.
     pub async fn finish_loading(&mut self) -> Result<(), ProtocolError> {
-        self.stream
-            .finish_loading()
-            .await
-            .map_err(ProtocolError::from)
+        let packets = self.take_finish_loading_packets();
+        self.transport.send(&packets).await
     }
 
-    fn new(stream: BedrockStream<Play, Client, T>, cache: Option<ClientBlobCache>) -> Self {
+    /// Takes the one-shot loading-end and initialization packets for a caller that batches them.
+    fn take_finish_loading_packets(&mut self) -> Vec<Packet> {
+        self.pending_initialization
+            .take()
+            .map(startup::loading_finished)
+            .unwrap_or_default()
+    }
+
+    fn new(
+        transport: SessionTransport,
+        cache: Option<ClientBlobCache>,
+        resource_packs: ResourcePackHandoff,
+        runtime_id: u64,
+        terrain_before_spawn: bool,
+    ) -> Self {
         Self {
-            stream,
+            transport,
+            pending_initialization: Some(runtime_id),
+            terrain_before_spawn,
             decode_errors: 0,
             world_skips: 0,
             transfer_skips: 0,
@@ -142,6 +115,7 @@ impl<T: Transport> PlaySession<T> {
             pending_blob_cache_delivery: None,
             server_disconnect: None,
             server_transfer: None,
+            resource_packs,
         }
     }
 
@@ -169,14 +143,14 @@ impl<T: Transport> PlaySession<T> {
     /// Takes the validated ordered resource-pack archives captured during login.
     /// No archive is parsed or applied, and a second call returns an empty handoff.
     pub fn take_resource_pack_handoff(&mut self) -> ResourcePackHandoff {
-        self.stream.take_resource_pack_handoff()
+        std::mem::take(&mut self.resource_packs)
     }
 
     /// Whether the server sent terrain before login completed at PlayerSpawn.
     /// Servers such as Dragonfly stream none until the client reports initialized.
     #[must_use]
     pub fn terrain_before_spawn(&self) -> bool {
-        self.stream.terrain_before_spawn()
+        self.terrain_before_spawn
     }
 
     /// Skips a well-formed but semantically unusable world packet instead of
@@ -197,25 +171,32 @@ impl<T: Transport> PlaySession<T> {
         self.world_skips
     }
 
-    /// Receives one packet, counting malformed/decompression failures.
+    /// Receives one packet, counting malformed failures. The core's terminal transfer or
+    /// disconnect is retained, as world ingress retains it, and ends the session.
     pub async fn recv(&mut self) -> Result<Packet, ProtocolError> {
-        match self.stream.recv_packet().await {
-            Ok(packet) => {
-                if matches!(
-                    &packet.data,
-                    McpePacketData::TransferPacket(_) | McpePacketData::DisconnectPacket(_)
-                ) {
+        loop {
+            let inbound = match self.transport.recv().await {
+                Ok(inbound) => inbound,
+                Err(error) => return Err(self.fail_session(error)),
+            };
+            let raw = match inbound {
+                Inbound::Packet(raw) => raw,
+                Inbound::Terminal(terminal) => {
                     self.reset_blob_cache_pending();
+                    if self.absorb_terminal(terminal)? {
+                        return boundary_wakeup();
+                    }
+                    continue;
                 }
-                Ok(packet)
-            }
-            Err(error) => {
-                if is_decode_error(&error) {
-                    self.decode_errors = self.decode_errors.saturating_add(1);
-                }
+            };
+            let packet = raw.decode().map_err(|error| self.fail_session(error))?;
+            if matches!(
+                &*packet.data,
+                packets::Packet::Transfer(_) | packets::Packet::Disconnect(_)
+            ) {
                 self.reset_blob_cache_pending();
-                Err(error.into())
             }
+            return Ok(packet);
         }
     }
 
@@ -263,28 +244,32 @@ impl<T: Transport> PlaySession<T> {
                 .await;
         }
         loop {
-            let raw = match self.stream.recv_packet_raw().await {
-                Ok(raw) => raw,
+            let raw = match self.transport.recv().await {
+                Ok(Inbound::Packet(raw)) => raw,
+                Ok(Inbound::Terminal(terminal)) => {
+                    if self.absorb_terminal(terminal)? {
+                        return boundary_wakeup();
+                    }
+                    continue;
+                }
                 Err(error) => {
-                    if is_decode_error(&error) {
+                    if error.0.is_decode() {
                         self.decode_errors = self.decode_errors.saturating_add(1);
                     }
                     return Err(error.into());
                 }
             };
             self.packet_id_trace.observe(raw.id);
-            if raw.id == McpePacketName::LevelChunkPacket {
+            if raw.id == PacketId::LevelChunk {
                 let raw = raw.into_retention_bounded();
-                let borrowed = raw
-                    .decode_borrowed()
-                    .map_err(|error| self.fail_session(error))?;
-                let valentine::bedrock::version::v1_26_51::BorrowedMcpePacketData::LevelChunkPacket(
-                    packet,
-                ) = borrowed.data
-                else {
-                    unreachable!("LevelChunk packet ID decoded to another borrowed variant")
+                let packet = match self.decode_world_candidate(raw)? {
+                    Some(packet) => packet,
+                    None => continue,
                 };
-                match crate::world::normalize_borrowed_level_chunk(packet) {
+                let packets::Packet::LevelChunk(packet) = *packet.data else {
+                    unreachable!("LevelChunk packet ID decoded to another variant")
+                };
+                match crate::world::normalize_level_chunk_payload(packet) {
                     Ok((event, payload)) => return Ok(WorldIngress::LevelChunk(event, payload)),
                     Err(error) => {
                         self.skip_or_fail_world(error.into())?;
@@ -292,24 +277,19 @@ impl<T: Transport> PlaySession<T> {
                     }
                 }
             }
-            if matches!(
-                raw.id,
-                McpePacketName::TransferPacket | McpePacketName::DisconnectPacket
-            ) {
+            if matches!(raw.id, PacketId::Transfer | PacketId::Disconnect) {
                 let name = raw.id;
                 if self.absorb_boundary_packet(raw, name).await? {
                     return boundary_wakeup();
                 }
                 continue;
             }
-            let decoded = decode_world_raw_with(raw, current_dimension, |raw| {
-                self.stream.decode_raw_packet(raw)
-            });
+            let decoded = decode_world_raw_with(raw, current_dimension, RawPacket::decode);
             match decoded {
                 Ok(Some(event)) => return Ok(WorldIngress::Event(event)),
                 Ok(None) => {}
                 Err(ProtocolError::Session(error)) => {
-                    if is_decode_error(&error) {
+                    if error.0.is_decode() {
                         self.decode_errors = self.decode_errors.saturating_add(1);
                     }
                     return Err(ProtocolError::Session(error));
@@ -319,11 +299,10 @@ impl<T: Transport> PlaySession<T> {
         }
     }
 
-    /// Sends one packet through the encrypted play session.
+    /// Sends one packet as its own batch behind every send accepted before it.
     pub async fn send(&mut self, packet: Packet) -> Result<(), ProtocolError> {
         crate::codec::validate_packet(&packet)?;
-        self.stream.send_packet(packet).await?;
-        Ok(())
+        self.transport.send(&[packet]).await
     }
 
     /// Starts a bounded, secret-safe packet-ID trace for native acceptance.
@@ -386,9 +365,9 @@ impl<T: Transport> PlaySession<T> {
                 .as_ref()
                 .is_some_and(|delivery| delivery.status_send_in_flight)
             {
-                if let Err(error) = self.stream.drain_send().await {
+                if let Err(error) = self.transport.drain_send().await {
                     self.reset_blob_cache_pending();
-                    return Err(error.into());
+                    return Err(error);
                 }
                 self.pending_blob_cache_delivery
                     .as_mut()
@@ -477,23 +456,22 @@ impl<T: Transport> PlaySession<T> {
                 continue;
             }
 
-            let raw = match self.stream.recv_packet_raw().await {
-                Ok(raw) => raw,
+            let raw = match self.transport.recv().await {
+                Ok(Inbound::Packet(raw)) => raw,
+                Ok(Inbound::Terminal(terminal)) => {
+                    if self.absorb_terminal(terminal)? {
+                        return boundary_wakeup();
+                    }
+                    continue;
+                }
                 Err(error) => return Err(self.fail_session(error)),
             };
             self.packet_id_trace.observe(raw.id);
             let packet_bytes = raw.inner_frame().len();
             let packet_name = raw.id;
-            let raw = if packet_name == McpePacketName::LevelChunkPacket {
-                raw.into_retention_bounded()
-            } else {
-                raw
-            };
+            let raw = detach_cached_chunk(raw);
 
-            if matches!(
-                packet_name,
-                McpePacketName::TransferPacket | McpePacketName::DisconnectPacket
-            ) {
+            if matches!(packet_name, PacketId::Transfer | PacketId::Disconnect) {
                 if self.absorb_boundary_packet(raw, packet_name).await? {
                     return boundary_wakeup();
                 }
@@ -502,48 +480,40 @@ impl<T: Transport> PlaySession<T> {
 
             if matches!(
                 packet_name,
-                McpePacketName::LevelChunkPacket
-                    | McpePacketName::SubChunkPacket
-                    | McpePacketName::ClientCacheMissResponsePacket
+                PacketId::LevelChunk | PacketId::SubChunk | PacketId::ClientCacheMissResponse
             ) {
-                if packet_name == McpePacketName::LevelChunkPacket {
-                    let borrowed_raw = raw.clone();
-                    let borrowed = match borrowed_raw.decode_borrowed() {
-                        Ok(packet) => packet,
-                        Err(error) => return Err(self.fail_session(error)),
-                    };
-                    let valentine::bedrock::version::v1_26_51::BorrowedMcpePacketData::LevelChunkPacket(view) = borrowed.data else {
-                        unreachable!("LevelChunk packet ID decoded to another borrowed variant")
-                    };
-                    if !view.cache_enabled {
-                        let (event, payload) =
-                            match crate::world::normalize_borrowed_level_chunk(view) {
-                                Ok(value) => value,
-                                Err(error) => {
-                                    self.skip_or_fail_world(error.into())?;
-                                    continue;
-                                }
-                            };
-                        let resolver = self
-                            .blob_cache
-                            .as_mut()
-                            .expect("enabled path owns a resolver");
-                        resolver.reset_pending_for_fast_transfer_candidate()?;
-                        resolver.accept_level_chunk_bytes(event, payload, packet_bytes)?;
-                        continue;
-                    }
-                }
-                let packet = match self.stream.decode_raw_packet(raw) {
-                    Ok(packet) => packet,
-                    Err(error) => return Err(self.fail_session(error)),
+                let packet = match self.decode_world_candidate(raw)? {
+                    Some(packet) => packet,
+                    None => continue,
                 };
+                if let packets::Packet::LevelChunk(view) = &*packet.data
+                    && !view.cache_enabled
+                {
+                    let packets::Packet::LevelChunk(view) = *packet.data else {
+                        unreachable!("checked above")
+                    };
+                    let (event, payload) = match crate::world::normalize_level_chunk_payload(view) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            self.skip_or_fail_world(error.into())?;
+                            continue;
+                        }
+                    };
+                    let resolver = self
+                        .blob_cache
+                        .as_mut()
+                        .expect("enabled path owns a resolver");
+                    resolver.reset_pending_for_fast_transfer_candidate()?;
+                    resolver.accept_level_chunk_bytes(event, payload, packet_bytes)?;
+                    continue;
+                }
                 reset_blob_cache_for_decoded_candidate(
                     self.blob_cache
                         .as_mut()
                         .expect("enabled path owns a resolver"),
                     &packet,
                 )?;
-                if let McpePacketData::ClientCacheMissResponsePacket(response) = packet.data {
+                if let packets::Packet::ClientCacheMissResponse(response) = *packet.data {
                     if let Err(error) = self
                         .blob_cache
                         .as_mut()
@@ -575,7 +545,11 @@ impl<T: Transport> PlaySession<T> {
                         events.push_back(WorldEvent::ChunkResync(recovery));
                     }
                     self.pending_blob_cache_delivery = Some(PendingBlobCacheDelivery {
-                        status_packets: status.into_packets().into_iter().map(Into::into).collect(),
+                        status_packets: status
+                            .into_packets()
+                            .into_iter()
+                            .map(Packet::new)
+                            .collect(),
                         status_send_in_flight: false,
                         events,
                     });
@@ -601,9 +575,7 @@ impl<T: Transport> PlaySession<T> {
                 continue;
             }
 
-            let decoded = decode_world_raw_with(raw, current_dimension, |raw| {
-                self.stream.decode_raw_packet(raw)
-            });
+            let decoded = decode_world_raw_with(raw, current_dimension, RawPacket::decode);
             match decoded {
                 Ok(Some(event)) => {
                     if let Err(error) = self
@@ -622,12 +594,28 @@ impl<T: Transport> PlaySession<T> {
         }
     }
 
-    fn fail_session(&mut self, error: JolyneError) -> ProtocolError {
-        if is_decode_error(&error) {
+    /// Decodes a chunk-lane or boundary packet: a body breaking only a schema or UI bound, or
+    /// naming an unknown selector, is logged, counted and skipped (`None`); malformed wire ends
+    /// the session.
+    fn decode_world_candidate(&mut self, raw: RawPacket) -> Result<Option<Packet>, ProtocolError> {
+        match raw.decode() {
+            Ok(packet) => Ok(Some(packet)),
+            Err(error) => match crate::codec::world_decode_error(error) {
+                ProtocolError::Session(error) => Err(self.fail_session(error)),
+                semantic => {
+                    tracing::debug!(%semantic, "skipping a world packet the codec rejected");
+                    self.skip_or_fail_world(semantic).map(|()| None)
+                }
+            },
+        }
+    }
+
+    fn fail_session(&mut self, error: SessionError) -> ProtocolError {
+        if error.0.is_decode() {
             self.decode_errors = self.decode_errors.saturating_add(1);
         }
         self.reset_blob_cache_pending();
-        ProtocolError::Session(error)
+        ProtocolError::from(error)
     }
 }
 
@@ -652,8 +640,8 @@ fn reset_blob_cache_for_decoded_candidate(
     packet: &Packet,
 ) -> Result<bool, crate::BlobCacheError> {
     if matches!(
-        &packet.data,
-        McpePacketData::LevelChunkPacket(_) | McpePacketData::SubChunkPacket(_)
+        &*packet.data,
+        packets::Packet::LevelChunk(_) | packets::Packet::SubChunk(_)
     ) {
         resolver.reset_pending_for_fast_transfer_candidate()
     } else {
@@ -661,26 +649,36 @@ fn reset_blob_cache_for_decoded_candidate(
     }
 }
 
+/// Copies a LevelChunk or SubChunk entry out of its batch, so the payload slices the blob cache
+/// retains, and charges by length, keep only that entry alive.
+fn detach_cached_chunk(raw: RawPacket) -> RawPacket {
+    if matches!(raw.id, PacketId::LevelChunk | PacketId::SubChunk) {
+        raw.into_retention_bounded()
+    } else {
+        raw
+    }
+}
+
 fn is_cached_world_packet(packet: &Packet) -> bool {
-    match &packet.data {
+    match &*packet.data {
         // 1.26.40 states cache participation with an explicit flag on both
         // packets rather than an optional hash list or an entry-type union.
-        McpePacketData::LevelChunkPacket(packet) => packet.cache_enabled,
-        McpePacketData::SubChunkPacket(packet) => packet.cache_enabled,
+        packets::Packet::LevelChunk(packet) => packet.cache_enabled,
+        packets::Packet::SubChunk(packet) => packet.cache_enabled,
         _ => false,
     }
 }
 
 fn reset_cache_for_immediate_boundary(
     resolver: &mut BlobCacheResolver,
-    packet: McpePacketName,
+    packet: PacketId,
 ) -> Result<bool, crate::BlobCacheError> {
     match packet {
-        McpePacketName::TransferPacket => {
+        PacketId::Transfer => {
             resolver.recover_pending()?;
             Ok(true)
         }
-        McpePacketName::DisconnectPacket => {
+        PacketId::Disconnect => {
             resolver.reset_pending();
             Ok(true)
         }
@@ -688,138 +686,36 @@ fn reset_cache_for_immediate_boundary(
     }
 }
 
-fn is_decode_error(error: &JolyneError) -> bool {
-    matches!(
-        error,
-        JolyneError::Decode(_)
-            | JolyneError::PacketDecode { .. }
-            | JolyneError::PacketTrailingBytes { .. }
-            | JolyneError::Io(_)
-            | JolyneError::Protocol(_)
-    )
-}
-
 fn decode_world_raw_with(
     raw: RawPacket,
     current_dimension: i32,
-    decode: impl FnOnce(RawPacket) -> Result<Packet, JolyneError>,
+    decode: impl FnOnce(RawPacket) -> Result<Packet, SessionError>,
 ) -> Result<Option<WorldEvent>, ProtocolError> {
-    if raw.id == McpePacketName::ItemRegistryPacket {
+    if raw.id == PacketId::ItemRegistry {
         // Login has already initialized this session's registry. Vanilla 1.26.50
         // ignores a repeated item registry once initialized, including an
         // empty/custom-only repeat. Decode the wire first so malformed repeats remain fatal;
         // neither the inventory ledger nor actor item store may be rebound here.
-        decode(raw)?;
+        decode(raw).map_err(crate::codec::world_decode_error)?;
         return Ok(None);
     }
-    if raw.id == McpePacketName::UpdateAbilitiesPacket {
+    if raw.id == PacketId::UpdateAbilities {
         return crate::decode_abilities_update(raw.body())
             .map(WorldEvent::Abilities)
             .map(Some);
     }
-    if raw.id == McpePacketName::CraftingDataPacket {
+    if raw.id == PacketId::CraftingData {
         let update = crate::decode_recipe_update(raw.body())
             .map_err(crate::world::WorldPacketError::from)?;
         return Ok(Some(WorldEvent::Inventory(crate::InventoryEvent::Recipes(
             update,
         ))));
     }
-    if !matches!(
-        raw.id,
-        McpePacketName::TextPacket
-            | McpePacketName::DeathInfoPacket
-            | McpePacketName::CommandOutputPacket
-            | McpePacketName::PlayStatusPacket
-            | McpePacketName::SetHealthPacket
-            | McpePacketName::BossEventPacket
-            | McpePacketName::SetTitlePacket
-            | McpePacketName::ModalFormRequestPacket
-            | McpePacketName::ServerSettingsResponsePacket
-            | McpePacketName::NpcDialoguePacket
-            | McpePacketName::RemoveObjectivePacket
-            | McpePacketName::SetDisplayObjectivePacket
-            | McpePacketName::SetScorePacket
-            | McpePacketName::ToastRequestPacket
-            | McpePacketName::UpdateSoftEnumPacket
-            | McpePacketName::AvailableCommandsPacket
-            | McpePacketName::BiomeDefinitionListPacket
-            | McpePacketName::AddPlayerPacket
-            | McpePacketName::AddActorPacket
-            | McpePacketName::RemoveActorPacket
-            | McpePacketName::MoveActorAbsolutePacket
-            | McpePacketName::MoveActorDeltaPacket
-            | McpePacketName::SetActorDataPacket
-            | McpePacketName::UpdateAttributesPacket
-            | McpePacketName::ActorEventPacket
-            | McpePacketName::AddItemActorPacket
-            | McpePacketName::AvailableActorIdentifiersPacket
-            | McpePacketName::TakeItemActorPacket
-            | McpePacketName::PlayerListPacket
-            | McpePacketName::PlayerSkinPacket
-            | McpePacketName::MobEquipmentPacket
-            | McpePacketName::MobArmorEquipmentPacket
-            | McpePacketName::MobEffectPacket
-            | McpePacketName::SetActorLinkPacket
-            | McpePacketName::SyncActorPropertyPacket
-            | McpePacketName::SetPlayerGameTypePacket
-            | McpePacketName::UpdatePlayerGameTypePacket
-            | McpePacketName::SetDefaultGameTypePacket
-            | McpePacketName::InventoryContentPacket
-            | McpePacketName::CreativeContentPacket
-            | McpePacketName::InventorySlotPacket
-            | McpePacketName::InventoryTransactionPacket
-            | McpePacketName::PlayerHotbarPacket
-            | McpePacketName::ItemStackResponsePacket
-            | McpePacketName::ContainerOpenPacket
-            | McpePacketName::ContainerClosePacket
-            | McpePacketName::ContainerSetDataPacket
-            | McpePacketName::PlayerEnchantOptionsPacket
-            | McpePacketName::AnimatePacket
-            | McpePacketName::AnimateEntityPacket
-            | McpePacketName::LevelChunkPacket
-            | McpePacketName::SubChunkPacket
-            | McpePacketName::DimensionDataPacket
-            | McpePacketName::UpdateBlockPacket
-            | McpePacketName::UpdateBlockSyncedPacket
-            | McpePacketName::UpdateSubChunkBlocksPacket
-            | McpePacketName::BlockActorDataPacket
-            | McpePacketName::BlockEventPacket
-            | McpePacketName::ClientboundMapItemDataPacket
-            | McpePacketName::OpenSignPacket
-            | McpePacketName::ChunkRadiusUpdatedPacket
-            | McpePacketName::NetworkChunkPublisherUpdatePacket
-            | McpePacketName::ChangeDimensionPacket
-            | McpePacketName::ShowCreditsPacket
-            | McpePacketName::PlayerActionPacket
-            | McpePacketName::RespawnPacket
-            | McpePacketName::MovePlayerPacket
-            | McpePacketName::CorrectPlayerMovePredictionPacket
-            | McpePacketName::SetActorMotionPacket
-            | McpePacketName::MovementEffectPacket
-            | McpePacketName::NetworkStackLatencyPacket
-            | McpePacketName::SetTimePacket
-            | McpePacketName::SyncWorldClocksPacket
-            | McpePacketName::GameRulesChangedPacket
-            | McpePacketName::LevelEventPacket
-            | McpePacketName::LevelEventGenericPacket
-            | McpePacketName::SpawnParticleEffectPacket
-            | McpePacketName::PlaySoundPacket
-            | McpePacketName::StopSoundPacket
-            | McpePacketName::LevelSoundEventPacket
-            | McpePacketName::CameraPacket
-            | McpePacketName::CameraShakePacket
-            | McpePacketName::CameraInstructionPacket
-            | McpePacketName::CameraPresetsPacket
-            | McpePacketName::CameraSplinePacket
-            | McpePacketName::CameraAimAssistPacket
-            | McpePacketName::CameraAimAssistPresetsPacket
-            | McpePacketName::CameraAimAssistActorPriorityPacket
-            | McpePacketName::ScriptMessagePacket
-            | McpePacketName::PrimitiveShapesPacket
-    ) {
+    // Play decodes only the packets world normalization consumes; the rest stay undecoded.
+    if !crate::world::routes_world_packet(raw.id) {
         return Ok(None);
     }
-    if raw.id == McpePacketName::MoveActorAbsolutePacket {
+    if raw.id == PacketId::MoveActorAbsolute {
         return Ok(Some(WorldEvent::Actor(
             crate::actor::normalize_move_entity_body(raw.body(), current_dimension)
                 .map_err(crate::world::WorldPacketError::from)?,
@@ -827,17 +723,7 @@ fn decode_world_raw_with(
     }
     crate::inventory::validate_raw_inventory_packet(&raw)
         .map_err(crate::world::WorldPacketError::from)?;
-    crate::codec::validate_raw_ui_frame(raw.inner_frame()).map_err(demote_ui_semantic_rejection)?;
-    if matches!(
-        raw.id,
-        McpePacketName::PlaySoundPacket
-            | McpePacketName::StopSoundPacket
-            | McpePacketName::LevelSoundEventPacket
-    ) {
-        let borrowed = raw.clone().decode_borrowed()?;
-        crate::audio::validate_borrowed_audio_packet(&borrowed.data)?;
-    }
-    if raw.id == McpePacketName::MobEquipmentPacket
+    if raw.id == PacketId::MobEquipment
         && let Some(equipment) = raw_equipment::decode_empty_mob_equipment(&raw)?
     {
         return Ok(Some(WorldEvent::Equipment(equipment)));
@@ -845,33 +731,35 @@ fn decode_world_raw_with(
     if let Some(packet) = level_event_generic(&raw) {
         return Ok(into_world_event(packet, current_dimension)?);
     }
-    let packet = decode(raw)?;
+    let packet = decode(raw).map_err(crate::codec::world_decode_error)?;
+    crate::codec::validate_decoded(&packet.data).map_err(demote_ui_semantic_rejection)?;
     Ok(into_world_event(packet, current_dimension)?)
+}
+
+/// Decodes a raw test packet as the play stream does.
+#[cfg(test)]
+fn decode_test_raw(raw: RawPacket) -> Result<Packet, SessionError> {
+    raw.decode()
 }
 
 /// LevelEventGeneric's event data is loose NBT tags filling the rest of the packet (as
 /// gophertunnel documents); the generated decoder reads one rooted value and rejects the rest.
 fn level_event_generic(raw: &RawPacket) -> Option<Packet> {
-    use valentine::bedrock::codec::{BedrockCodec, Nbt, ZigZag32};
-    use valentine::bedrock::version::v1_26_51::LevelEventGenericPacket;
-    if raw.id != McpePacketName::LevelEventGenericPacket {
+    if raw.id != PacketId::LevelEventGeneric {
         return None;
     }
-    let mut body = raw.body().clone();
-    let event_id = ZigZag32::decode(&mut body, ()).ok()?.0;
-    let data = McpePacketData::LevelEventGenericPacket(LevelEventGenericPacket {
-        event_id,
-        __ctd__: Nbt(body),
-    });
-    Some(Packet::new(raw.header, data))
+    let mut reader = wire::Reader::new(raw.body());
+    let event_id = reader.read_zigzag_i32().ok()?;
+    let data = packets::LevelEventGeneric {
+        event_id: wire::ZigZag32(event_id),
+        ctd: wire::NetworkNbt(raw.body().slice(reader.position()..)),
+    };
+    Some(Packet::from_parts(raw.header, data.into()))
 }
 
-/// Reclassifies the raw UI pre-validator's semantic rejections as skippable
-/// world packets so a well-formed-but-odd UI packet (unknown text/score/soft-enum
-/// discriminant, over-budget text/score/autocomplete counts) is skipped and
-/// counted rather than tearing down the session. Genuine wire failures the same
-/// validator can raise -- truncated varints, negative lengths, trailing bytes --
-/// stay fatal, matching the sibling inventory pre-validator above.
+/// Reclassifies the decoded-packet UI and audio checks' semantic rejections as skippable world
+/// packets, so a well-formed but odd UI packet is skipped and counted rather than ending the
+/// session.
 fn demote_ui_semantic_rejection(error: ProtocolError) -> ProtocolError {
     match error {
         ProtocolError::Ui(ui) => ProtocolError::World(crate::world::WorldPacketError::Ui(ui)),

@@ -7,7 +7,7 @@ use {
         CollisionWorld, MovementInput, PlayerState, PredictionHistory, SimulationError, Simulator,
         Vec3, WorldCollisionIdentity,
     },
-    world::TICKS_PER_SECOND,
+    simulation_clock::TICKS_PER_SECOND,
 };
 
 mod aim_pose;
@@ -37,7 +37,7 @@ const LOCAL_PHYSICS_HISTORY_CAPACITY: usize = 32;
 const MAX_REWIND_HISTORY_SIZE: u16 = 1000;
 
 /// Vanilla's per-frame tick cap; excess whole ticks are discarded.
-pub const MAX_LOCAL_PHYSICS_TICKS_PER_FRAME: usize = world::MAX_TICKS_PER_FRAME as usize;
+pub const MAX_LOCAL_PHYSICS_TICKS_PER_FRAME: usize = simulation_clock::MAX_TICKS_PER_FRAME as usize;
 
 pub trait MovementEffectSource {
     fn snapshot(&self) -> sim::MovementEffects;
@@ -641,7 +641,7 @@ impl LocalPhysicsController {
                 state.velocity = overlay.velocity;
             }
             let before = state.position;
-            // Native attach 7 uses the prior tick's pose-adjusted eye anchor.
+            // The liquid probe uses the prior tick's pose-adjusted eye anchor.
             // Retain the height with this input so correction replay samples
             // the same material cell instead of the rendered interpolation.
             input.liquid_attach_height = Some(f64::from(self.eye_offset.height(1.0)));

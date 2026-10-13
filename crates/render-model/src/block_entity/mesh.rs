@@ -1,6 +1,7 @@
 //! CPU vertex emission for block-entity models: boxes with the entity-geometry UV
 //! unwrap, free quads, and separate draw layers.
 
+use assets::block_entity_geometry::BoxSpec;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
@@ -12,6 +13,14 @@ pub const MAX_BLOCK_ENTITY_VERTICES: usize = 393_216;
 pub const BLOCK_ENTITY_VERTEX_WORDS: usize =
     std::mem::size_of::<BlockEntityVertex>() / std::mem::size_of::<u32>();
 
+/// Marks vertices whose lighting normal is also their geometric outward face normal.
+pub const BLOCK_ENTITY_CULL_BACK_FACES: u32 = 1 << 29;
+const _: () = assert!(
+    BLOCK_ENTITY_CULL_BACK_FACES
+        & (render_api::ACTOR_LIGHT_WORLD | render_api::ACTOR_LIGHT_DIRECTIONAL | u8::MAX as u32)
+        == 0
+);
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct BlockEntityVertex {
@@ -22,7 +31,7 @@ pub struct BlockEntityVertex {
     pub color: [f32; 4],
     /// Outward world normal for entity lighting or view-facing separation in scalar overlay passes.
     pub normal: [f32; 3],
-    /// Packed actor light; zero retains the scalar-lit block-entity path.
+    /// Packed actor light and geometric-face flags; zero retains the scalar-lit path.
     pub actor_light: u32,
 }
 
@@ -37,40 +46,6 @@ pub enum Layer {
     Crack,
     /// Native portal normal/depth encoding, composited in coplanar layer order.
     Portal,
-}
-
-/// A box in entity-geometry authoring space: pixels, front toward -Z, +Y up.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BoxSpec {
-    pub origin: [f32; 3],
-    pub size: [f32; 3],
-    /// Box-UV origin in texels of the logical texture.
-    pub uv: [f32; 2],
-    pub inflate: f32,
-}
-
-impl BoxSpec {
-    #[must_use]
-    pub const fn new(origin: [f32; 3], size: [f32; 3], uv: [f32; 2]) -> Self {
-        Self {
-            origin,
-            size,
-            uv,
-            inflate: 0.0,
-        }
-    }
-
-    #[must_use]
-    pub const fn inflated(mut self, inflate: f32) -> Self {
-        self.inflate = inflate;
-        self
-    }
-}
-
-impl From<assets::block_entity_geometry::ModelBox> for BoxSpec {
-    fn from((origin, size, uv): assets::block_entity_geometry::ModelBox) -> Self {
-        Self::new(origin, size, uv)
-    }
 }
 
 // Directional face shade; needs native measurement against Bedrock entity lighting.
@@ -126,8 +101,40 @@ impl MeshBuilder {
         spec: BoxSpec,
         tint: [f32; 4],
     ) {
-        let faces =
-            assets::block_entity_geometry::box_faces(spec.origin, spec.size, spec.uv, spec.inflate);
+        self.box_faces(layer, texture, model, spec.faces(), tint);
+    }
+
+    /// Emits a box with no depth, such as a book cover, as its front and back faces moved
+    /// `gap` pixels apart. Without culling the two faces would otherwise fight, and giving the
+    /// box real depth would add edge faces that sample texels outside its art.
+    pub fn sheet(
+        &mut self,
+        layer: Layer,
+        texture: &TextureRef,
+        model: Mat4,
+        spec: BoxSpec,
+        gap: f32,
+        tint: [f32; 4],
+    ) {
+        let [sx, sy, _] = spec.size;
+        let mut faces = BoxSpec::new(spec.origin, [sx, sy, 0.0], spec.uv).faces();
+        for (face, shift) in faces.iter_mut().zip([-gap / 2.0, gap / 2.0]) {
+            for corner in &mut face.0 {
+                corner[2] += shift;
+            }
+        }
+        self.box_faces(layer, texture, model, faces, tint);
+    }
+
+    /// Emits the six faces of a box with their face shades.
+    fn box_faces(
+        &mut self,
+        layer: Layer,
+        texture: &TextureRef,
+        model: Mat4,
+        faces: [assets::block_entity_geometry::ModelFace; 6],
+        tint: [f32; 4],
+    ) {
         for ((corners, texels), shade) in faces
             .into_iter()
             .zip([SHADE_Z, SHADE_Z, SHADE_X, SHADE_X, SHADE_UP, SHADE_DOWN])
@@ -213,10 +220,35 @@ impl MeshBuilder {
                 colors[corner][3],
             ],
             normal,
-            actor_light: self.actor_light,
+            actor_light: if self.actor_light == 0 {
+                0
+            } else {
+                self.actor_light | BLOCK_ENTITY_CULL_BACK_FACES
+            },
         };
         let [first, second, third, fourth] = [vertex(0), vertex(1), vertex(2), vertex(3)];
         target.extend_from_slice(&[second, third, first, first, third, fourth]);
+    }
+
+    /// Repeats the beam tile in the shader, with a fixed six vertices for any height.
+    pub(super) fn repeating_beam_quad(
+        &mut self,
+        corners: [[f32; 3]; 4],
+        rect: AtlasRect,
+        color: [f32; 4],
+        scroll: f32,
+    ) {
+        let start = self.overlay.len();
+        self.textured_quad(Layer::Overlay, corners, rect, color);
+        for vertex in &mut self.overlay[start..] {
+            vertex.uv[1] = -vertex.position[1] + scroll;
+            vertex.normal = [
+                rect.y / self.atlas_size[1],
+                rect.height / self.atlas_size[1],
+                0.0,
+            ];
+            vertex.actor_light = u32::MAX;
+        }
     }
 
     /// A box whose faces each show one whole atlas rect, in `[west, east, down, up, north,
@@ -351,6 +383,32 @@ mod tests {
             (8.0 / 64.0..=16.0 / 64.0).contains(&vertex.uv[0])
                 && (8.0 / 64.0..=16.0 / 64.0).contains(&vertex.uv[1])
         }));
+    }
+
+    #[test]
+    fn a_sheet_draws_only_its_two_faces_inside_its_art() {
+        let mut builder = MeshBuilder::new([64, 64]);
+        builder.sheet(
+            Layer::Solid,
+            &texture(),
+            Mat4::IDENTITY,
+            BoxSpec::new([0.0, 0.0, 0.0], [6.0, 10.0, 0.0], [16.0, 0.0]),
+            0.01,
+            WHITE,
+        );
+        assert_eq!(builder.solid.len(), 12, "no edge faces");
+        assert!(builder.solid.iter().all(|vertex| {
+            let u = vertex.uv[0] * 64.0;
+            let v = vertex.uv[1] * 64.0;
+            ((16.0..=22.0).contains(&u) || (22.0..=28.0).contains(&u)) && (0.0..=10.0).contains(&v)
+        }));
+        let depths: Vec<f32> = builder
+            .solid
+            .iter()
+            .map(|vertex| vertex.position[2])
+            .collect();
+        assert!(depths[..6].iter().all(|z| (*z + 0.005).abs() < 1.0e-6));
+        assert!(depths[6..].iter().all(|z| (*z - 0.005).abs() < 1.0e-6));
     }
 
     #[test]

@@ -212,6 +212,8 @@ impl Harness {
                 on_ground: true,
                 teleported: true,
                 source_tick: 0,
+                riding_runtime_id: 0,
+                teleport_cause: None,
             }));
         }
         self.wire.push_back(WorldEvent::ChunkRadiusUpdated(RADIUS));
@@ -501,7 +503,7 @@ impl Harness {
                 self.frame,
                 self.stream.lighting.running_jobs.load(Ordering::Acquire),
                 self.stream.lighting.rx.len(),
-                self.stream.stats.phase2_stages.light_jobs_dispatched,
+                self.stream.stats.publication_stages.light_jobs_dispatched,
                 self.stream.stats.accepted_light_jobs,
                 self.stream.stats.stale_light_jobs,
             );

@@ -211,6 +211,7 @@ fn fixture_with_binding(
     stream.advance_actor_interpolation_frame(6);
     let input = ActorEquipmentInput {
         main: main.map(|identifier| crate::presentation::equipment::WornItem {
+            use_facts: client_world::EffectiveItemUse::default(),
             grip: assets::item::grip::builtin_item_grip(identifier),
             identifier: identifier.into(),
             metadata: 0,
@@ -349,6 +350,7 @@ fn native_hand_unbound_attachables_keep_actor_frame_during_owner_swing() {
             );
             if off_hand {
                 input.off = Some(crate::presentation::equipment::WornItem {
+                    use_facts: client_world::EffectiveItemUse::default(),
                     grip: assets::item::grip::builtin_item_grip("minecraft:shield"),
                     identifier: "minecraft:shield".into(),
                     metadata: 0,
@@ -433,7 +435,7 @@ fn native_hand_unchanged_sampling_reuses_the_owned_pose_without_work() {
         ..Default::default()
     });
     let stats = stream.authority().actor_animation_stats();
-    let allocated = crate::test_allocations::count();
+    let allocated = test_alloc::thread_allocations();
     let [previous, current] = cache
         .native_pose
         .sample(
@@ -446,7 +448,7 @@ fn native_hand_unchanged_sampling_reuses_the_owned_pose_without_work() {
         )
         .expect("retained sampled native pose");
     assert_eq!(
-        crate::test_allocations::count() - allocated,
+        test_alloc::thread_allocations() - allocated,
         0,
         "unchanged sampling must reuse its conversion"
     );
@@ -508,6 +510,7 @@ fn assert_java_native_parent(main: Option<&str>, off: bool, degrees: f32) {
     let (mut stream, mut equipment, artwork, mut input) = fixture(main);
     if off {
         input.off = Some(crate::presentation::equipment::WornItem {
+            use_facts: client_world::EffectiveItemUse::default(),
             grip: assets::item::grip::builtin_item_grip("minecraft:shield"),
             identifier: "minecraft:shield".into(),
             metadata: 0,
@@ -591,7 +594,10 @@ fn assert_attachable_readiness_clock(changed: bool) {
     world.init_resource::<super::super::ActorFramePartialTick>();
     world.init_resource::<render_scene::HandRigScene>();
     let mut avatar = crate::local_player::LocalAvatarPresentation::default();
-    avatar.begin_session(stream.authority().actor_session_id(), 1);
+    avatar.begin_session(
+        simulation_clock::identity::SessionGeneration::new(stream.authority().actor_session_id()),
+        1,
+    );
     world.insert_resource(avatar);
     world.init_resource::<crate::local_player::LocalAvatarVisibilityCarrier>();
     let mut settings = crate::camera::CameraSettingsAuthority::default();
@@ -672,6 +678,7 @@ fn assert_attachable_readiness_clock(changed: bool) {
         },
         swing,
         |_, _, _, _| false,
+        None,
         params.get_mut(&mut world).unwrap(),
     );
     let scene = world.resource::<render_scene::HandRigScene>();
@@ -739,6 +746,7 @@ pub(super) fn player_feed() -> client_world::LocalPlayerFeed {
         pitch: 5.0,
         main_hand: None,
         off_hand: None,
+        held_network_ids: [0; 2],
         main_hand_metadata: 0,
         main_hand_slot: 0,
         main_hand_stack_id: None,

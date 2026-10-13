@@ -12,7 +12,7 @@ use ui::BoundedStat;
 use super::{GameplayHudState, SequencedLocalAttributes, UiRuntime, UiRuntimeError, hud_adapter};
 
 /// Bedrock's fixed wire cadence: 20 server ticks per second.
-pub(super) const MILLIS_PER_SERVER_TICK: u64 = world::TICK_DURATION.as_millis() as u64;
+pub(super) const MILLIS_PER_SERVER_TICK: u64 = simulation_clock::TICK_DURATION.as_millis() as u64;
 
 /// The reference charges the mount jump bar from empty to full over half a
 /// second of held jump input; pinned in milliseconds as a bounded recorded
@@ -183,8 +183,8 @@ impl UiRuntime {
 
     /// Applies every queued authoritative inventory event to the retained
     /// hotbar/offhand mirror. Runs once per frame before presentation; the
-    /// queue would otherwise grow without a consumer until the Phase 5.5
-    /// container store takes over this drain.
+    /// queue would otherwise grow without a consumer until the container store
+    /// takes over this drain.
     pub fn drain_pending_inventory(&mut self, player_runtime: &mut player_state::PlayerState) {
         self.drain_inventory_prefix(player_runtime, None);
         player_runtime.inventory.finish_drain();
@@ -508,23 +508,18 @@ impl UiRuntime {
         self.session_items.as_ref()?.name_color(identifier)
     }
 
-    pub fn item_glint(&self, stack: &protocol::NetworkItemStack, identifier: &str) -> bool {
-        super::item_facts::glint_for_facts(
-            self.stack_facts(stack, Some(identifier))
-                .has_enchantment_list,
-            identifier,
-            self.item_components(identifier),
-        )
+    /// Combines cached enchantments with the current numeric registry's shine fact.
+    pub fn item_glint(
+        &self,
+        stack: &protocol::NetworkItemStack,
+        intrinsic: assets::item::glint::ItemGlint,
+    ) -> bool {
+        super::item_facts::glint_for_facts(self.stack_facts(stack).has_enchantment_list, intrinsic)
     }
 
     /// Returns shared immutable NBT facts; descriptor and language generations are resolved separately.
-    pub fn stack_facts(
-        &self,
-        stack: &protocol::NetworkItemStack,
-        identifier: Option<&str>,
-    ) -> Arc<protocol::ItemStackFacts> {
-        self.stack_facts
-            .get(&stack.extra_data, identifier == Some("minecraft:crossbow"))
+    pub fn stack_facts(&self, stack: &protocol::NetworkItemStack) -> Arc<protocol::ItemStackFacts> {
+        self.stack_facts.get(&stack.extra_data, true)
     }
 
     /// Resolves a cell's bar from cached damage and the latest authority correction.
@@ -536,7 +531,7 @@ impl UiRuntime {
     ) -> Option<f32> {
         let damage = correction
             .and_then(|damage| u32::try_from(damage).ok())
-            .or_else(|| self.stack_facts(stack, None).damage)?;
+            .or_else(|| self.stack_facts(stack).damage)?;
         super::item_facts::durability_fraction_for_damage(maximum, damage)
     }
 

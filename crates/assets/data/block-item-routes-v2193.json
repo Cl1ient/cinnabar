@@ -5,7 +5,7 @@
   "dragonfly_module": "github.com/df-mc/dragonfly",
   "dragonfly_version": "v0.11.5",
   "dragonfly_module_sum": "h1:amqepXVBRBi/e5j1K2H8GjNFgpMs6FP1RQgNH0Myfn0=",
-  "breg_sha256": "f94b480b472317a79652010605fea589cfd7031c4b1d72a38c1b6fa11bd14af4",
+  "breg_sha256": "956914fee95e9a2019ae5ac8b961a12f737f0e1b4919754f7b3bb0f0d8820532",
   "routes": [
     {
       "identifier": "minecraft:acacia_door",

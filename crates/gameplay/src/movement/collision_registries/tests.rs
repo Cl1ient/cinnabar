@@ -14,6 +14,9 @@ mod custom_shapes;
 #[path = "tests/admission.rs"]
 mod admission;
 
+#[path = "tests/multipart.rs"]
+mod multipart;
+
 /// Reads the checkout's shared target manifest for registry fixtures.
 fn active_content_registry_protocol() -> u32 {
     serde_json::from_str::<serde_json::Value>(include_str!(
@@ -133,6 +136,7 @@ fn custom_block(name: &str, state_count: u32) -> protocol::CustomBlock {
         collides: true,
         collision_boxes: None,
         selection: Default::default(),
+        friction: None,
         visual: Default::default(),
     }
 }
@@ -157,9 +161,7 @@ fn camera_block_tags_follow_both_identity_spaces_and_session_reset() {
     let (range, _) = registries
         .begin_session_custom_blocks(&definitions)
         .unwrap();
-    registries
-        .begin_session_hashed_custom_blocks(&definitions)
-        .unwrap();
+    registries.begin_session_hashed_custom_blocks(&definitions);
     for (mode, id) in [
         (assets::NetworkIdMode::Sequential, range.start),
         (assets::NetworkIdMode::Hashed, hash),
@@ -172,9 +174,7 @@ fn camera_block_tags_follow_both_identity_spaces_and_session_reset() {
     registries
         .begin_session_custom_blocks(&Default::default())
         .unwrap();
-    registries
-        .begin_session_hashed_custom_blocks(&Default::default())
-        .unwrap();
+    registries.begin_session_hashed_custom_blocks(&Default::default());
     assert!(
         registries
             .block_tags(assets::NetworkIdMode::Sequential, range.start)
@@ -444,14 +444,11 @@ fn session_hashed_custom_blocks_register_and_reset() {
         skipped: 0,
     };
     let hash = custom.blocks[0].hashed_states()[0].hash;
-    assert_eq!(
-        registries.begin_session_hashed_custom_blocks(&custom),
-        Some(1)
-    );
+    assert_eq!(registries.begin_session_hashed_custom_blocks(&custom), 1);
     assert!(registries.hashed.contains_runtime_id(hash));
     assert_eq!(
         registries.begin_session_hashed_custom_blocks(&protocol::CustomBlocks::default()),
-        Some(0)
+        0
     );
     assert!(!registries.hashed.contains_runtime_id(hash));
 }
@@ -599,3 +596,43 @@ fn held_placement_intention_uses_the_held_block_family_in_both_id_spaces() {
 
 #[path = "tests/placement.rs"]
 mod placement;
+
+/// Switching palette modes clears sequential customs before installing the hashed palette.
+#[test]
+fn bootstrap_registration_preserves_palette_mapping_and_replaces_custom_collisions() {
+    let version = active_content_registry_protocol();
+    let records = assets::read_registry_for_protocol(BREG_V2193, version).unwrap();
+    let mut registries = bind(
+        BREG_V2193,
+        &synthetic_preg(version, BREG_V2193, &records),
+        version,
+    )
+    .unwrap();
+    let custom = protocol::CustomBlocks {
+        blocks: vec![custom_block("test:session_palette", 1)].into(),
+        ..Default::default()
+    };
+    let hash = custom.blocks[0].hashed_states()[0].hash;
+    let registration = registries.begin_session_blocks(&custom, false);
+    assert!(registration.supported);
+    let ids = registration.custom_ids.unwrap();
+    assert_eq!(ids.len(), 1);
+    assert!(registries.sequential.contains_runtime_id(ids.start));
+    assert_eq!(
+        registration
+            .remap
+            .to_internal(registration.remap.to_wire(ids.start)),
+        ids.start
+    );
+
+    let registration = registries.begin_session_blocks(&custom, true);
+    assert!(registration.supported);
+    assert!(registration.custom_ids.is_none());
+    assert_eq!(registration.remap, assets::SequentialIdRemap::default());
+    assert!(!registries.sequential.contains_runtime_id(ids.start));
+    assert!(registries.hashed.contains_runtime_id(hash));
+
+    let registration = registries.begin_session_blocks(&protocol::CustomBlocks::default(), true);
+    assert!(registration.supported);
+    assert!(!registries.hashed.contains_runtime_id(hash));
+}

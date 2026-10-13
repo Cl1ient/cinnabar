@@ -36,8 +36,8 @@ function New-SteadyResourceTriggerEvidence {
     switch ($Kind) {
         'WorldReady' {
             if ([string]::IsNullOrWhiteSpace($WorldReadyMarker) -or
-                -not $WorldReadyMarker.StartsWith('RUST_MCBE_WORLD_READY ', [StringComparison]::Ordinal)) {
-                throw 'WorldReady trigger requires the exact RUST_MCBE_WORLD_READY marker'
+                -not $WorldReadyMarker.StartsWith('CINNABAR_WORLD_READY ', [StringComparison]::Ordinal)) {
+                throw 'WorldReady trigger requires the exact CINNABAR_WORLD_READY marker'
             }
             return [pscustomobject][ordered]@{
                 kind = 'WorldReady'

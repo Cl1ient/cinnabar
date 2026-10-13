@@ -1,7 +1,7 @@
 //! Publishes the captured actor batch after authoritative input has been sent.
 use super::*;
 use crate::presentation::actors::{ActorPresentationBatch, update_actor_rig_scene};
-use render_scene::{ActorRenderFrame, ActorRuntimeWitness};
+use render_scene::{ActorMainWitness, ActorRenderFrame, ActorRuntimeWitness};
 
 #[derive(Resource, Default)]
 pub struct PreparedActorPublication(pub(super) Option<PendingActorPublication>);
@@ -31,6 +31,39 @@ pub(super) struct PendingActorPublication {
     pub(super) session_id: Option<u64>,
     pub(super) partial_tick: f32,
     pub(super) witness: ActorMainWitness,
+}
+
+impl PendingActorPublication {
+    /// Records the pre-layer body count and captured visibility for final publication.
+    pub(super) fn new(
+        batch: ActorPresentationBatch,
+        partial_tick: f32,
+        visibility: Option<crate::local_player::FrozenLocalAvatarVisibility>,
+        local_visible: bool,
+        local_actor: (Option<u64>, u64),
+        selected_count: usize,
+        unrigged_actors: usize,
+    ) -> Self {
+        let (session_id, local_runtime_id) = local_actor;
+        Self {
+            batch,
+            session_id,
+            partial_tick,
+            witness: ActorMainWitness {
+                local_snapshot: visibility.is_some(),
+                local_visible,
+                expected_runtime_id: local_runtime_id,
+                visibility_runtime_id: visibility.map_or(0, |snapshot| snapshot.runtime_id()),
+                selected_count,
+                local_route: None,
+                frame_instances: 0,
+                frame_manifest: 0,
+                skin_bytes: 0,
+                rejects: Default::default(),
+                unrigged_actors,
+            },
+        }
+    }
 }
 
 /// Builds GPU payloads from the same captured inputs that preceded the network send.

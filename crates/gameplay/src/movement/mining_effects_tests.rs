@@ -1,3 +1,4 @@
+use simulation_clock::identity::{PositionAuthorityGeneration, SessionGeneration};
 use std::time::Duration;
 
 use sim::{Aabb, CollisionQuery, CollisionWorld, MovementInput, WorldQueryError};
@@ -422,7 +423,14 @@ fn batched_swing_progress_preserves_pre_and_post_expiry_effects() {
         effects.commit_successful_tick();
     }
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 8, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        8,
+        &effects,
+    );
     assert!(swings.try_swing(1, 4));
     assert_eq!(swings.published_progress(8).java, [0.0; 2]);
     assert!(
@@ -460,7 +468,14 @@ fn conduit_swing_attempts_keep_java_and_bedrock_counters_independent() {
         effects.commit_successful_tick();
     }
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 8, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        8,
+        &effects,
+    );
     let accepted = (1..=8)
         .filter(|tick| swings.try_swing(*tick, 4))
         .collect::<Vec<_>>();
@@ -500,7 +515,14 @@ fn a_backpressured_expiry_tick_retains_its_post_expiry_denominator() {
     let after_duration = swing_duration(after);
     assert_eq!((before_duration, after_duration), (4, 8));
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     let mut candidate = swings.clone();
     assert!(candidate.try_swing(100, before_duration));
     swings.defer_unadmitted_attempt(&candidate);
@@ -511,7 +533,14 @@ fn a_backpressured_expiry_tick_retains_its_post_expiry_denominator() {
     swings.defer_unadmitted_attempt(&rejected_again);
     assert_eq!(swings.published_progress(100), idle);
     effects.begin_frame();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     assert!(swings.try_swing(100, before_duration));
     assert_eq!(swings.take_started(), Some(before_duration));
     let admitted = swings.published_progress(100);
@@ -546,14 +575,28 @@ fn a_backpressured_conduit_restart_preserves_each_modes_admission() {
     effects.begin_frame();
     effects.commit_successful_tick();
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), 100, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        100,
+        &effects,
+    );
     assert!(swings.try_swing(100, 4));
     swings.published_progress(100);
     effects.begin_frame();
     for _ in 101..=103 {
         effects.commit_successful_tick();
     }
-    swings.sync_ticks((1, 1), 103, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        103,
+        &effects,
+    );
     swings.published_progress(102);
     let mut candidate = swings.clone();
     assert!(candidate.try_swing(103, 4));
@@ -563,7 +606,14 @@ fn a_backpressured_conduit_restart_preserves_each_modes_admission() {
     assert!(rejected_again.try_swing(103, 4));
     swings.defer_unadmitted_attempt(&rejected_again);
     effects.begin_frame();
-    swings.sync_ticks((1, 1), 103, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        103,
+        &effects,
+    );
     assert!(swings.try_swing(103, 4));
     assert_eq!(swings.take_started(), Some(4));
     let recovered = swings.published_progress(103);
@@ -591,7 +641,14 @@ fn committed_swing_samples_preserve_initial_idle_catchup_after_authority_reset()
         for _ in 0..3 {
             effects.commit_successful_tick();
         }
-        swings.sync_ticks((1, authority), first + 2, &effects);
+        swings.sync_ticks(
+            (
+                SessionGeneration::new(1),
+                PositionAuthorityGeneration::new(authority),
+            ),
+            first + 2,
+            &effects,
+        );
         swings.published_progress(first + 2);
         let samples = swings.committed_samples().collect::<Vec<_>>();
         assert_eq!(
@@ -615,7 +672,14 @@ fn committed_swing_samples_advance_the_maximum_tick_once() {
     effects.begin_frame();
     effects.commit_successful_tick();
     let mut swings = SwingTracker::default();
-    swings.sync_ticks((1, 1), u64::MAX, &effects);
+    swings.sync_ticks(
+        (
+            SessionGeneration::new(1),
+            PositionAuthorityGeneration::new(1),
+        ),
+        u64::MAX,
+        &effects,
+    );
     assert!(swings.try_swing(u64::MAX, 6));
     let progress = swings.published_progress(u64::MAX);
     assert_eq!(progress.bedrock, [0.0; 2]);

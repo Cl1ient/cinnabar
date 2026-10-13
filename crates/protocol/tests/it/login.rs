@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use jolyne::valentine::McpePacketData;
+use bedrock_protocol_1_26_51::packets;
+use bedrock_protocol_1_26_51::wire;
 use protocol::LoginSequence;
 
 const EXTERNAL_HARNESS_TEST: &str = "^TestProxyExternalRustClientHarness$";
@@ -33,7 +34,7 @@ async fn login_reaches_start_game_through_bds() {
         LOGIN_TIMEOUT,
         LoginSequence::connect_session(
             socket_dir.path(),
-            "RustMCBEPhase0",
+            "RustMCBELogin",
             protocol::ClientRandomId::new(-7).unwrap(),
             None,
             None,
@@ -59,22 +60,19 @@ async fn login_reaches_start_game_through_bds() {
         .await
         .expect("headless presentation ready");
 
-    // `runtime_entity_id` is now the `runtime_id: ActorRuntimeId` wrapper, and
-    // the version string prismarine called `engine` is gophertunnel's
-    // `ServerVersion` (`server_version` in the generated crate).
     assert_ne!(
-        game_data.start_game.runtime_id.actor_runtime_id, 0,
+        game_data.world.local_player_runtime_id, 0,
         "StartGame runtime entity ID must be non-zero"
     );
     assert!(
-        !game_data.start_game.server_version.trim().is_empty(),
-        "StartGame must expose the compatible server's version"
+        !game_data.settings.base_game_version.trim().is_empty(),
+        "StartGame must expose the world's base game version"
     );
 
     let available_commands = tokio::time::timeout(LOGIN_TIMEOUT, async {
         loop {
             let packet = session.recv().await?;
-            if matches!(packet.data, McpePacketData::AvailableCommandsPacket(_)) {
+            if matches!(&*packet.data, packets::Packet::AvailableCommands(_)) {
                 return Ok::<_, protocol::ProtocolError>(packet);
             }
         }
@@ -92,7 +90,7 @@ async fn login_reaches_start_game_through_bds() {
             harness.output()
         )
     });
-    let McpePacketData::AvailableCommandsPacket(commands) = available_commands.data else {
+    let packets::Packet::AvailableCommands(commands) = *available_commands.data else {
         unreachable!("loop returns only AvailableCommands")
     };
     assert!(
@@ -205,15 +203,20 @@ async fn offline_core_session_preserves_startup_behaviour() {
                     assert_core_frame_payloads(&mut session).await;
                 }
                 if scenario == "transfer-play" {
-                    let packet = tokio::time::timeout(LOGIN_TIMEOUT, session.recv())
+                    // The core ends the session with its Transfer message, retained as play's target.
+                    let ended = tokio::time::timeout(LOGIN_TIMEOUT, session.recv())
                         .await
-                        .expect("transfer timeout")
-                        .unwrap_or_else(|error| panic!("{error}\n{}", harness.output()));
-                    let McpePacketData::TransferPacket(transfer) = packet.data else {
-                        panic!("play transfer arrived as {:?}", packet.data.packet_id())
-                    };
+                        .expect("transfer timeout");
+                    assert!(
+                        matches!(ended, Err(protocol::ProtocolError::SessionBoundary)),
+                        "the play transfer must end the session\n{}",
+                        harness.output()
+                    );
+                    let transfer = session
+                        .take_server_transfer()
+                        .expect("the play transfer target is retained");
                     assert_eq!(
-                        (transfer.server_address.as_str(), transfer.server_port),
+                        (transfer.host.as_str(), transfer.port),
                         ("play.example.test", 19134)
                     );
                 }
@@ -270,7 +273,7 @@ async fn wait_for_startup_marker(
                 .recv()
                 .await
                 .unwrap_or_else(|error| panic!("{error}\n{}", harness.output()));
-            if matches!(packet.data, McpePacketData::SetTimePacket(value) if value.time == time) {
+            if matches!(&*packet.data, packets::Packet::SetTime(value) if value.time.0 == time) {
                 break;
             }
         }
@@ -281,11 +284,10 @@ async fn wait_for_startup_marker(
 
 /// Builds an application-owned barrier that the upstream can observe on the wire.
 fn startup_marker(timestamp: u64) -> protocol::Packet {
-    jolyne::valentine::NetworkStackLatencyPacket {
-        creation_time: timestamp,
+    protocol::Packet::new(packets::NetworkStackLatency {
+        creation_time: wire::U64LE(timestamp),
         is_from_server: false,
-    }
-    .into()
+    })
 }
 
 /// Waits for the external harness in a blocking context on the tests' multithreaded runtime.
@@ -411,8 +413,8 @@ impl GoHarness {
                 OsStr::new("-test.count=1"),
                 OsStr::new("-test.v"),
             ])
-            .env("RUST_MCBE_EXTERNAL_RUST_CLIENT", "1")
-            .env("RUST_MCBE_PROXY_SOCKET_DIR", socket_dir)
+            .env("CINNABAR_EXTERNAL_RUST_CLIENT", "1")
+            .env("CINNABAR_PROXY_SOCKET_DIR", socket_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -688,29 +690,25 @@ impl Drop for TestSocketDir {
 
 /// Carries binary and 1 MiB payloads both ways through the real core after its startup handshake.
 async fn assert_core_frame_payloads(session: &mut protocol::PlaySession) {
-    use jolyne::valentine::ScriptMessagePacket;
     for payload in [
         vec![0, 0xfe, 0, 1, 0xff, 0],
         (0..1024 * 1024).map(|index| (index % 251) as u8).collect(),
     ] {
         session
-            .send(
-                ScriptMessagePacket {
-                    message_id: "framing".into(),
-                    message_value: payload.clone(),
-                }
-                .into(),
-            )
+            .send(protocol::Packet::new(packets::ScriptMessage {
+                message_id: "framing".into(),
+                message_value: payload.clone().into(),
+            }))
             .await
             .expect("send binary frame");
         let reply = tokio::time::timeout(LOGIN_TIMEOUT, session.recv())
             .await
             .expect("binary reply timeout")
             .expect("binary reply");
-        let McpePacketData::ScriptMessagePacket(reply) = reply.data else {
+        let packets::Packet::ScriptMessage(reply) = *reply.data else {
             panic!("expected binary echo");
         };
         assert_eq!(reply.message_id, "framing");
-        assert_eq!(reply.message_value, payload);
+        assert_eq!(reply.message_value.as_ref(), payload.as_slice());
     }
 }

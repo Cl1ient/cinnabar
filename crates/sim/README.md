@@ -1,6 +1,6 @@
 # Bedrock movement simulation foundation
 
-This crate is the deterministic, protocol-independent base for Phase 3 movement. The app now
+This crate is the deterministic, protocol-independent base for local-player movement. The app now
 samples manual input into this fixed-tick simulation, collides against the packed world, and
 interpolates the local camera. This crate still does not emit `PlayerAuthInput`, read the render
 camera, or make free-camera movement authoritative. Network authority remains gated until the
@@ -52,7 +52,7 @@ Regenerate it from `tools/bedsimtrace-v0.1.5` with `GOWORK=off go run .`. The re
 `1e-6` tolerance because the v0.1.5 evidence is float32 output; this does not weaken the
 v0.1.3 `1e-12` gates.
 
-## Remaining Phase 3 work
+## Remaining movement work
 
 - Generate and verify the authoritative runtime-ID collision registry for every supported block
   state, including compound shapes and friction/surface semantics.

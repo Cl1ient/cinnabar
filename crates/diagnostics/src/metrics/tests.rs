@@ -329,7 +329,7 @@ fn report_uses_sorted_nearest_rank_metrics() {
 }
 
 #[test]
-fn phase2_warmup_frames_are_excluded_from_the_report_histogram() {
+fn warmup_frames_are_excluded_from_the_report_histogram() {
     let mut metrics = MetricsCollector::with_asset_metrics_window(
         AssetMetrics::default(),
         Duration::from_secs(30),

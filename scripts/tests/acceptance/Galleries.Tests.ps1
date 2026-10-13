@@ -600,7 +600,7 @@
     Assert-Equal 'runtime-biome-index-water-tint-lookup' $waterPlan.Manifest.relative_layout.biome_tint_evidence.kind 'water gallery did not bind tint witnesses to runtime biome lookup'
     Assert-True (-not [bool]$waterPlan.Manifest.relative_layout.biome_tint_evidence.distinct_biome_colours_claimed) 'water gallery claimed nearby witnesses prove distinct biome colours'
     Assert-Equal 1 ([uint64]$waterPlan.Manifest.relative_layout.biome_tint_evidence.minimum_rendered_distinct_tint_count) 'water gallery did not state its honest single-biome live tint requirement'
-    Assert-Equal 'bedrock-client::tests::compiled_and_live_biome_tables_preserve_raw_id_water_colour_parity' ([string]$waterPlan.Manifest.relative_layout.biome_tint_evidence.multi_biome_lookup_parity_test) 'water gallery did not retain the separate multi-biome lookup parity proof'
+    Assert-Equal 'cinnabar::tests::compiled_and_live_biome_tables_preserve_raw_id_water_colour_parity' ([string]$waterPlan.Manifest.relative_layout.biome_tint_evidence.multi_biome_lookup_parity_test) 'water gallery did not retain the separate multi-biome lookup parity proof'
     Assert-True ([Math]::Abs([double]$waterPlan.Manifest.performance.maximum_p99_frame_ms - (1000.0 / 60.0)) -lt 0.0000001) 'water gallery did not manifest the exact 60fps p99 threshold'
     Assert-True ($null -ne $waterPlan.Manifest.relative_layout.still_pool) 'water gallery did not manifest its still pool'
     Assert-True ($null -ne $waterPlan.Manifest.relative_layout.downhill_flow_edge) 'water gallery did not manifest its downhill flow edge'
@@ -645,22 +645,22 @@
         New-ModelGalleryWitnessRequest -Plan $wrongKind -Revision 1
     } '*model witness request requires a recognized exact model gallery*' 'generic model witness request accepted noncanonical fixture-kind casing'
 
-    $galleryAnchor = ConvertFrom-GalleryAnchorReadyMarker -Line 'RUST_MCBE_GALLERY_ANCHOR_READY coordinate=14,71,-6 rendered=true visible=false clean=true'
+    $galleryAnchor = ConvertFrom-GalleryAnchorReadyMarker -Line 'CINNABAR_GALLERY_ANCHOR_READY coordinate=14,71,-6 rendered=true visible=false clean=true'
     Assert-Equal '14,71,-6' (@($galleryAnchor.coordinate) -join ',') 'gallery anchor parser lost its exact mutation coordinate'
     Assert-Equal $false ([bool]$galleryAnchor.visible) 'gallery anchor parser lost the observed cave-visibility state'
     Assert-ThrowsLike {
-        ConvertFrom-GalleryAnchorReadyMarker -Line 'RUST_MCBE_GALLERY_ANCHOR_READY coordinate=14,71,-6 rendered=true visible=true clean=false'
+        ConvertFrom-GalleryAnchorReadyMarker -Line 'CINNABAR_GALLERY_ANCHOR_READY coordinate=14,71,-6 rendered=true visible=true clean=false'
     } '*invalid gallery anchor ready marker*' 'gallery anchor parser accepted an unclean target'
     Assert-ThrowsLike {
-        ConvertFrom-GalleryAnchorReadyMarker -Line 'RUST_MCBE_GALLERY_ANCHOR_READY coordinate=14,71,-6 rendered=true visible=true clean=true extra=true'
+        ConvertFrom-GalleryAnchorReadyMarker -Line 'CINNABAR_GALLERY_ANCHOR_READY coordinate=14,71,-6 rendered=true visible=true clean=true extra=true'
     } '*invalid gallery anchor ready marker*' 'gallery anchor parser accepted an unknown field'
-    $cameraCommitted = ConvertFrom-CameraCommittedMarker -Line 'RUST_MCBE_CAMERA_COMMITTED sequence=19 position=27.00000,87.62000,43.00000 yaw=-45.00000 pitch=12.50000'
+    $cameraCommitted = ConvertFrom-CameraCommittedMarker -Line 'CINNABAR_CAMERA_COMMITTED sequence=19 position=27.00000,87.62000,43.00000 yaw=-45.00000 pitch=12.50000'
     Assert-Equal 19 ([uint64]$cameraCommitted.sequence) 'camera-commit parser lost sequence'
     Assert-Equal '27,87.62,43' (@($cameraCommitted.position) -join ',') 'camera-commit parser lost position'
     Assert-ThrowsLike {
-        ConvertFrom-CameraCommittedMarker -Line 'RUST_MCBE_CAMERA_COMMITTED sequence=0 position=27,87.62,43 yaw=-45 pitch=12.5'
+        ConvertFrom-CameraCommittedMarker -Line 'CINNABAR_CAMERA_COMMITTED sequence=0 position=27,87.62,43 yaw=-45 pitch=12.5'
     } '*invalid camera committed marker*' 'camera-commit parser accepted sequence zero'
-    $centeredCamera = ConvertFrom-CameraCommittedMarker -Line 'RUST_MCBE_CAMERA_COMMITTED sequence=19 position=27.50000,87.62001,43.50000 yaw=-45.00000 pitch=12.50000'
+    $centeredCamera = ConvertFrom-CameraCommittedMarker -Line 'CINNABAR_CAMERA_COMMITTED sequence=19 position=27.50000,87.62001,43.50000 yaw=-45.00000 pitch=12.50000'
     $expectedCenteredCamera = Assert-ModelGalleryCommittedCamera -Committed $centeredCamera -Target ([pscustomobject]@{ x = 27; y = 86; z = 43 })
     Assert-Equal '27.5,87.62001,43.5' (@($expectedCenteredCamera.x, $expectedCenteredCamera.y, $expectedCenteredCamera.z) -join ',') 'camera assertion lost Bedrock horizontal centering'
     Assert-ThrowsLike {
@@ -668,9 +668,9 @@
     } '*did not match the model gallery target*' 'camera assertion accepted uncentered horizontal coordinates'
     $appLaunchIndex = $source.IndexOf('$appHandle = Start-LoggedProcess -Executable $AppExecutable', [StringComparison]::Ordinal)
     $galleryAnchorBranchIndex = $source.IndexOf('if ($isModelWitnessGallery) {', $appLaunchIndex, [StringComparison]::Ordinal)
-    $galleryAnchorWaitIndex = $source.IndexOf("-Marker 'RUST_MCBE_GALLERY_ANCHOR_READY '", $galleryAnchorBranchIndex, [StringComparison]::Ordinal)
+    $galleryAnchorWaitIndex = $source.IndexOf("-Marker 'CINNABAR_GALLERY_ANCHOR_READY '", $galleryAnchorBranchIndex, [StringComparison]::Ordinal)
     $normalStartupCoordinateIndex = $source.IndexOf('$coordinateMarker = Wait-ProcessOutputMarker', $galleryAnchorWaitIndex, [StringComparison]::Ordinal)
-    $worldReadyWaitIndex = $source.IndexOf("-Marker 'RUST_MCBE_WORLD_READY '", $normalStartupCoordinateIndex, [StringComparison]::Ordinal)
+    $worldReadyWaitIndex = $source.IndexOf("-Marker 'CINNABAR_WORLD_READY '", $normalStartupCoordinateIndex, [StringComparison]::Ordinal)
     Assert-True ($appLaunchIndex -ge 0 -and $galleryAnchorBranchIndex -gt $appLaunchIndex -and $galleryAnchorWaitIndex -gt $galleryAnchorBranchIndex) 'generic model-gallery startup does not wait for its gallery-only early anchor'
     Assert-True ($normalStartupCoordinateIndex -gt $galleryAnchorWaitIndex -and $worldReadyWaitIndex -gt $normalStartupCoordinateIndex) 'normal/perf startup no longer retains its strict WorldReady wait'
 
@@ -679,7 +679,7 @@
     Assert-True ($source.IndexOf("@('SlabStairGallery', 'VineGallery') -ccontains", $modelGalleryClassificationIndex, [StringComparison]::Ordinal) -gt $modelGalleryClassificationIndex) 'model-witness routing is not generic, exact, and case-sensitive for slab/stair plus vine'
     $modelGalleryPreTeleportBranchIndex = $source.IndexOf('if ($isV2 -and $isModelWitnessGallery) {', $modelGalleryClassificationIndex, [StringComparison]::Ordinal)
     $modelGalleryPreTeleportIndex = $source.IndexOf('Write-BdsConsoleCommand -Handle $Handle -Command $Plan.TeleportCommand', $modelGalleryPreTeleportBranchIndex, [StringComparison]::Ordinal)
-    $modelGalleryCameraCommitIndex = $source.IndexOf("-Marker 'RUST_MCBE_CAMERA_COMMITTED '", $modelGalleryPreTeleportIndex, [StringComparison]::Ordinal)
+    $modelGalleryCameraCommitIndex = $source.IndexOf("-Marker 'CINNABAR_CAMERA_COMMITTED '", $modelGalleryPreTeleportIndex, [StringComparison]::Ordinal)
     Assert-True ($source.IndexOf('control_sequence = [uint64]$modelCameraCommit.sequence', $modelGalleryCameraCommitIndex, [StringComparison]::Ordinal) -gt $modelGalleryCameraCommitIndex) 'camera commit overwrites acceptance event sequence'
     $modelGalleryFixtureCompletionIndex = $source.IndexOf('$null = Complete-BdsFixtureCommandBatch', $modelGalleryPreTeleportBranchIndex, [StringComparison]::Ordinal)
     Assert-True `
@@ -691,7 +691,7 @@
         'model gallery camera commit is not fenced ahead of the fixture update flood'
     Assert-True ($source.IndexOf('New-ModelGalleryWitnessRequest -Plan $Plan -Revision 1', $modelGalleryClassificationIndex, [StringComparison]::Ordinal) -gt $modelGalleryClassificationIndex) 'model gallery publication still routes through a slab/stair-only witness builder'
 
-    $modelMarker = ConvertFrom-ModelWitnessCompleteMarker -Line "RUST_MCBE_MODEL_WITNESS_COMPLETE revision=1 request_sha256=$($modelWitnessRequest.request_sha256) sequence=40 view_generation=3 key_count=$(@($modelWitnessRequest.sub_chunks).Count) model_ref_count=43 manifest_count=$(@($modelWitnessRequest.sub_chunks).Count) manifest_sha256=$('a' * 64) missing=0 stale=0 wrong_stream=0 zero_ref=0 draw_mismatch=0 consecutive=1"
+    $modelMarker = ConvertFrom-ModelWitnessCompleteMarker -Line "CINNABAR_MODEL_WITNESS_COMPLETE revision=1 request_sha256=$($modelWitnessRequest.request_sha256) sequence=40 view_generation=3 key_count=$(@($modelWitnessRequest.sub_chunks).Count) model_ref_count=43 manifest_count=$(@($modelWitnessRequest.sub_chunks).Count) manifest_sha256=$('a' * 64) missing=0 stale=0 wrong_stream=0 zero_ref=0 draw_mismatch=0 consecutive=1"
     Assert-Equal 1 ([int]$modelMarker.consecutive) 'model marker parser lost consecutive count'
     $modelMarker2 = $modelMarker.PSObject.Copy()
     $modelMarker2.sequence = [uint64]41
@@ -701,7 +701,7 @@
         $bad = $modelMarker2.PSObject.Copy(); $bad.sequence = [uint64]42
         Assert-StableModelWitnessEvidence -Request $modelWitnessRequest -First $modelMarker -Second $bad
     } '*model witness*adjacent*' 'non-adjacent model witness evidence was accepted'
-    $vineModelMarker = ConvertFrom-ModelWitnessCompleteMarker -Line "RUST_MCBE_MODEL_WITNESS_COMPLETE revision=1 request_sha256=$($vineModelWitnessRequest.request_sha256) sequence=487 view_generation=4 key_count=$(@($vineModelWitnessRequest.sub_chunks).Count) model_ref_count=93 manifest_count=$(@($vineModelWitnessRequest.sub_chunks).Count) manifest_sha256=$('b' * 64) missing=0 stale=0 wrong_stream=0 zero_ref=0 draw_mismatch=0 consecutive=1"
+    $vineModelMarker = ConvertFrom-ModelWitnessCompleteMarker -Line "CINNABAR_MODEL_WITNESS_COMPLETE revision=1 request_sha256=$($vineModelWitnessRequest.request_sha256) sequence=487 view_generation=4 key_count=$(@($vineModelWitnessRequest.sub_chunks).Count) model_ref_count=93 manifest_count=$(@($vineModelWitnessRequest.sub_chunks).Count) manifest_sha256=$('b' * 64) missing=0 stale=0 wrong_stream=0 zero_ref=0 draw_mismatch=0 consecutive=1"
     $vineModelMarker2 = $vineModelMarker.PSObject.Copy()
     $vineModelMarker2.sequence = [uint64]488
     $vineModelMarker2.consecutive = 2
@@ -773,5 +773,5 @@
     $prebuiltGuardHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $PrebuiltClient).Hash.ToLowerInvariant()
     Assert-FileHashUnchanged -Path $PrebuiltClient -ExpectedSha256 $prebuiltGuardHash -Label 'test prebuilt client'
 
-    $teleportMarkerLine = 'RUST_MCBE_TELEPORT_SETTLED target=0:65:65:16 committed=0:65:65:16 ms=1500.0000 view_generation=7 transparent_sort_generation=11 render_ready_ms=1200.0000 publisher_ms=100.0000 first_level_ms=200.0000 last_level_ms=600.0000 level_events=1089 first_sub_ms=250.0000 last_sub_ms=900.0000 sub_events=1089 first_frame_sequence=41 stable_frame_sequence=42 first_present_ms=1300.0000 first_gpu_ms=1350.0000 stable_present_ms=1400.0000 stable_gpu_ms=1500.0000 expected_manifest_count=4 expected_manifest_hash=1111222233334444 first_presented_manifest_count=4 first_presented_manifest_hash=1111222233334444 stable_presented_manifest_count=4 stable_presented_manifest_hash=1111222233334444 expected=1089 loaded_target=1089 missing_target=0 foreign_loaded=0 foreign_requested=0 foreign_resident=0 source_leftover=0 resident_count=3 resident_hash=aaaabbbbccccdddd known_air_count=1 known_air_hash=eeeeffff00001111 missing_target_instances=0 unexpected_target_instances=0 source_instances=0 foreign_instances=0 stale_generation_instances=0 orphan_allocations=0 frame_count=90'
-    $forcedMarkerLine = 'RUST_MCBE_FORCED_FULL_VIEW_REMESH_SETTLED target=0:65:65:16 committed=0:65:65:16 ms=1500.0000 view_generation=8 transparent_sort_generation=12 render_ready_ms=0.0000 first_frame_sequence=43 stable_frame_sequence=44 first_present_ms=1200.0000 first_gpu_ms=1300.0000 stable_present_ms=1400.0000 stable_gpu_ms=1500.0000 expected_manifest_count=4 expected_manifest_hash=5555666677778888 first_presented_manifest_count=4 first_presented_manifest_hash=5555666677778888 stable_presented_manifest_count=4 stable_presented_manifest_hash=5555666677778888 expected=1089 loaded_target=1089 missing_target=0 foreign_loaded=0 foreign_requested=0 foreign_resident=0 source_leftover=0 resident_count=3 resident_hash=aaaabbbbccccdddd known_air_count=1 known_air_hash=eeeeffff00001111 missing_target_instances=0 unexpected_target_instances=0 source_instances=0 foreign_instances=0 stale_generation_instances=0 orphan_allocations=0 frame_count=90'
+    $teleportMarkerLine = 'CINNABAR_TELEPORT_SETTLED target=0:65:65:16 committed=0:65:65:16 ms=1500.0000 view_generation=7 transparent_sort_generation=11 render_ready_ms=1200.0000 publisher_ms=100.0000 first_level_ms=200.0000 last_level_ms=600.0000 level_events=1089 first_sub_ms=250.0000 last_sub_ms=900.0000 sub_events=1089 first_frame_sequence=41 stable_frame_sequence=42 first_present_ms=1300.0000 first_gpu_ms=1350.0000 stable_present_ms=1400.0000 stable_gpu_ms=1500.0000 expected_manifest_count=4 expected_manifest_hash=1111222233334444 first_presented_manifest_count=4 first_presented_manifest_hash=1111222233334444 stable_presented_manifest_count=4 stable_presented_manifest_hash=1111222233334444 expected=1089 loaded_target=1089 missing_target=0 foreign_loaded=0 foreign_requested=0 foreign_resident=0 source_leftover=0 resident_count=3 resident_hash=aaaabbbbccccdddd known_air_count=1 known_air_hash=eeeeffff00001111 missing_target_instances=0 unexpected_target_instances=0 source_instances=0 foreign_instances=0 stale_generation_instances=0 orphan_allocations=0 frame_count=90'
+    $forcedMarkerLine = 'CINNABAR_FORCED_FULL_VIEW_REMESH_SETTLED target=0:65:65:16 committed=0:65:65:16 ms=1500.0000 view_generation=8 transparent_sort_generation=12 render_ready_ms=0.0000 first_frame_sequence=43 stable_frame_sequence=44 first_present_ms=1200.0000 first_gpu_ms=1300.0000 stable_present_ms=1400.0000 stable_gpu_ms=1500.0000 expected_manifest_count=4 expected_manifest_hash=5555666677778888 first_presented_manifest_count=4 first_presented_manifest_hash=5555666677778888 stable_presented_manifest_count=4 stable_presented_manifest_hash=5555666677778888 expected=1089 loaded_target=1089 missing_target=0 foreign_loaded=0 foreign_requested=0 foreign_resident=0 source_leftover=0 resident_count=3 resident_hash=aaaabbbbccccdddd known_air_count=1 known_air_hash=eeeeffff00001111 missing_target_instances=0 unexpected_target_instances=0 source_instances=0 foreign_instances=0 stale_generation_instances=0 orphan_allocations=0 frame_count=90'

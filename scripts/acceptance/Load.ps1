@@ -37,22 +37,22 @@ function Get-AcceptanceCompositeSource {
     return $parts -join "`n"
 }
 
-function Get-Phase2ProjectRoot {
+function Get-AcceptanceProjectRoot {
     param([Parameter(Mandatory = $true)][string]$EntryPath)
 
     return [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $EntryPath) '..'))
 }
 
-function Assert-Phase2RunId {
+function Assert-AcceptanceRunId {
     param([Parameter(Mandatory = $true)][string]$RunId)
 
     if ($RunId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$' -or
         $RunId -eq '.' -or $RunId -eq '..') {
-        throw "invalid Phase 2 RunId: $RunId"
+        throw "invalid acceptance RunId: $RunId"
     }
 }
 
-function Assert-Phase2Duration {
+function Assert-AcceptanceDuration {
     param([Parameter(Mandatory = $true)][int]$DurationSeconds)
 
     if ($DurationSeconds -lt 150) {
@@ -60,15 +60,15 @@ function Assert-Phase2Duration {
     }
 }
 
-function Resolve-Phase2ContainedPath {
+function Resolve-AcceptanceContainedPath {
     param(
         [Parameter(Mandatory = $true)][string]$ProjectRoot,
         [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][ValidateSet('Local', 'Phase2')][string]$Scope
+        [Parameter(Mandatory = $true)][ValidateSet('Local', 'WorldAcceptance')][string]$Scope
     )
 
-    $root = if ($Scope -eq 'Phase2') {
-        [IO.Path]::GetFullPath((Join-Path $ProjectRoot '.local\phase2'))
+    $root = if ($Scope -eq 'WorldAcceptance') {
+        [IO.Path]::GetFullPath((Join-Path $ProjectRoot '.local\world-acceptance'))
     }
     else {
         [IO.Path]::GetFullPath((Join-Path $ProjectRoot '.local'))
@@ -86,25 +86,25 @@ function Resolve-Phase2ContainedPath {
     return $candidate
 }
 
-function New-Phase2RunDirectory {
+function New-AcceptanceRunDirectory {
     param(
         [Parameter(Mandatory = $true)][string]$ProjectRoot,
         [Parameter(Mandatory = $true)][ValidateSet('remote', 'galleries', 'motion')][string]$Kind,
         [Parameter(Mandatory = $true)][string]$RunId
     )
 
-    Assert-Phase2RunId -RunId $RunId
-    $root = Resolve-Phase2ContainedPath -ProjectRoot $ProjectRoot -Path ".local\phase2\$Kind\placeholder" -Scope Phase2
+    Assert-AcceptanceRunId -RunId $RunId
+    $root = Resolve-AcceptanceContainedPath -ProjectRoot $ProjectRoot -Path ".local\world-acceptance\$Kind\placeholder" -Scope WorldAcceptance
     $root = Split-Path -Parent $root
     $runDirectory = Join-Path $root $RunId
     if (Test-Path -LiteralPath $runDirectory) {
-        throw "Phase 2 RunId already exists: $RunId"
+        throw "acceptance RunId already exists: $RunId"
     }
     New-Item -ItemType Directory -Path $runDirectory -ErrorAction Stop | Out-Null
     return $runDirectory
 }
 
-function New-Phase2PerformanceContract {
+function New-AcceptancePerformanceContract {
     return [pscustomobject][ordered]@{
         warmup_seconds = 30
         steady_seconds = 120
@@ -119,7 +119,7 @@ function New-Phase2PerformanceContract {
     }
 }
 
-function Write-Phase2Json {
+function Write-AcceptanceJson {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)]$Value
@@ -129,7 +129,7 @@ function Write-Phase2Json {
     [IO.File]::WriteAllText($Path, $encoded + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 }
 
-function Assert-Phase2ExactProperties {
+function Assert-AcceptanceExactProperties {
     param(
         [Parameter(Mandatory = $true)]$Value,
         [Parameter(Mandatory = $true)][string[]]$Names,
@@ -144,7 +144,7 @@ function Assert-Phase2ExactProperties {
     }
 }
 
-function Assert-Phase2UnsignedInteger {
+function Assert-AcceptanceUnsignedInteger {
     param(
         $Value,
         [Parameter(Mandatory = $true)][string]$Label,
@@ -159,7 +159,7 @@ function Assert-Phase2UnsignedInteger {
     if ($Positive -and [uint64]$Value -eq 0) { throw "$Label must be positive" }
 }
 
-function Assert-Phase2SignedInteger32 {
+function Assert-AcceptanceSignedInteger32 {
     param($Value, [Parameter(Mandatory = $true)][string]$Label)
     $integral = $Value -is [byte] -or $Value -is [uint16] -or $Value -is [uint32] -or
         $Value -is [sbyte] -or $Value -is [int16] -or $Value -is [int32] -or $Value -is [int64]
@@ -169,7 +169,7 @@ function Assert-Phase2SignedInteger32 {
     }
 }
 
-function Assert-Phase2FiniteNonnegativeNumber {
+function Assert-AcceptanceFiniteNonnegativeNumber {
     param($Value, [Parameter(Mandatory = $true)][string]$Label)
     if ($null -eq $Value -or $Value -is [bool] -or $Value -is [string]) {
         throw "$Label must be numeric"
@@ -180,9 +180,9 @@ function Assert-Phase2FiniteNonnegativeNumber {
     }
 }
 
-. (Join-Path $PSScriptRoot 'Phase2Publication.ps1')
+. (Join-Path $PSScriptRoot 'PublicationRecords.ps1')
 
-function Get-Phase2PublicationSequenceEvidence {
+function Get-PublicationSequenceEvidence {
     param(
         [Parameter(Mandatory = $true)][string]$ClientLogPath,
         [Parameter(Mandatory = $true)][ValidateSet('Fifo', 'Immediate')][string]$ExpectedPresentMode,
@@ -193,10 +193,10 @@ function Get-Phase2PublicationSequenceEvidence {
     )
 
     $lines = @(Get-Content -LiteralPath $ClientLogPath | Where-Object {
-        $_.StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)
+        $_.StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)
     })
     if ($lines.Count -eq 0) {
-        throw 'client log contains no PHASE2_PUBLICATION evidence'
+        throw 'client log contains no CINNABAR_CHUNK_PUBLICATION evidence'
     }
     $records = [Collections.Generic.List[object]]::new()
     $graphicsIdentity = $null
@@ -214,25 +214,25 @@ function Get-Phase2PublicationSequenceEvidence {
         $lower = $line.ToLowerInvariant()
         foreach ($forbidden in @('"path"', '"token"', '"auth"', '"payload"', '"credential"')) {
             if ($lower.Contains($forbidden)) {
-                throw "PHASE2_PUBLICATION leaked forbidden field $forbidden"
+                throw "CINNABAR_CHUNK_PUBLICATION leaked forbidden field $forbidden"
             }
         }
         try {
-            $record = $line.Substring('PHASE2_PUBLICATION='.Length) | ConvertFrom-Json
+            $record = $line.Substring('CINNABAR_CHUNK_PUBLICATION='.Length) | ConvertFrom-Json
         }
         catch {
-            throw 'client log contains malformed PHASE2_PUBLICATION JSON'
+            throw 'client log contains malformed CINNABAR_CHUNK_PUBLICATION JSON'
         }
         $publisherUninitialized = $null -eq $record.publication.publisher_radius_blocks -and
             $null -eq $record.publication.publisher_radius_chunks
         $publisherResetting = $publisherUninitialized -and $publisherInitialized
-        Assert-Phase2PublicationRecord -Record $record -ExpectedPresentMode $ExpectedPresentMode `
+        Assert-PublicationRecord -Record $record -ExpectedPresentMode $ExpectedPresentMode `
             -ExpectedBuildProfile $ExpectedBuildProfile `
             -ExpectedGraphicsIdentity $graphicsIdentity -ExpectedAssetsIdentity $assetsIdentity `
             -AllowUninitializedPublisher:$publisherUninitialized -AllowResettingPublisher:$publisherResetting
         if ($RequireCompleteLocalResetDispatchTrace -and
             [bool]$record.publication.local_reset.dispatch_trace_overflowed) {
-            throw 'PHASE2_PUBLICATION focused local reset dispatch trace overflowed its exact bound'
+            throw 'CINNABAR_CHUNK_PUBLICATION focused local reset dispatch trace overflowed its exact bound'
         }
         if ($null -eq $graphicsIdentity) {
             $graphicsIdentity = [string]$record.presentation.graphics_identity_sha256
@@ -252,19 +252,19 @@ function Get-Phase2PublicationSequenceEvidence {
             $stableSequenceIdentity = $currentStableSequenceIdentity
         }
         elseif ($currentStableSequenceIdentity -cne $stableSequenceIdentity) {
-            throw 'PHASE2_PUBLICATION stable sequence attribution changed during the diagnostic capture'
+            throw 'CINNABAR_CHUNK_PUBLICATION stable sequence attribution changed during the diagnostic capture'
         }
         if ($publisherUninitialized) {
             if (-not $publisherInitialized) {
                 if ([uint64]$record.publication.publisher_epoch -ne 0) {
-                    throw 'PHASE2_PUBLICATION initial uninitialized publisher has a nonzero epoch'
+                    throw 'CINNABAR_CHUNK_PUBLICATION initial uninitialized publisher has a nonzero epoch'
                 }
             }
             else {
                 if ([uint64]$record.publication.publisher_epoch -ne $lastPublisherEpoch -or
                     [int32]$record.publication.player_column.dimension -eq
                         [int32]$lastInitializedRecord.publication.player_column.dimension) {
-                    throw 'PHASE2_PUBLICATION uninitialized publisher is not attributable to a dimension reset'
+                    throw 'CINNABAR_CHUNK_PUBLICATION uninitialized publisher is not attributable to a dimension reset'
                 }
                 $pendingDimensionReset = $true
                 $sequenceIdentity = $null
@@ -293,7 +293,7 @@ function Get-Phase2PublicationSequenceEvidence {
             }
             elseif ($currentEpoch -lt $lastPublisherEpoch -or $pendingDimensionReset -or
                 $currentSequenceIdentity -cne $sequenceIdentity) {
-                throw 'PHASE2_PUBLICATION sequence identity changed during the diagnostic capture'
+                throw 'CINNABAR_CHUNK_PUBLICATION sequence identity changed during the diagnostic capture'
             }
             $publisherInitialized = $true
             $lastInitializedRecord = $record
@@ -315,7 +315,7 @@ function Get-Phase2PublicationSequenceEvidence {
                     [uint64]$record.publication.local_reset.consumed_count -eq
                         [uint64]$previousRecord.publication.local_reset.consumed_count
                 if ($currentRequired -lt $previousRequired -and -not $provenLocalResetArm) {
-                    throw 'PHASE2_PUBLICATION publisher-epoch cohort membership regressed without a proven local reset arm'
+                    throw 'CINNABAR_CHUNK_PUBLICATION publisher-epoch cohort membership regressed without a proven local reset arm'
                 }
                 if ($provenLocalResetArm) {
                     $pendingLocalResetArmedCount = [uint64]$record.publication.local_reset.armed_count
@@ -325,7 +325,7 @@ function Get-Phase2PublicationSequenceEvidence {
                     ($currentRequired -eq $previousRequired -and
                         [string]$record.publication.required_cohort_hash -cne
                             [string]$previousRecord.publication.required_cohort_hash)) {
-                    throw 'PHASE2_PUBLICATION publisher-epoch cohort membership regressed or changed without growth'
+                    throw 'CINNABAR_CHUNK_PUBLICATION publisher-epoch cohort membership regressed or changed without growth'
                 }
             }
             $sameDimension = [int32]$record.publication.player_column.dimension -eq
@@ -334,7 +334,7 @@ function Get-Phase2PublicationSequenceEvidence {
                 foreach ($field in @('armed_count', 'consumed_count')) {
                     if ([uint64]$record.publication.local_reset.$field -lt
                         [uint64]$previousRecord.publication.local_reset.$field) {
-                        throw "PHASE2_PUBLICATION cumulative local reset counter regressed: $field"
+                        throw "CINNABAR_CHUNK_PUBLICATION cumulative local reset counter regressed: $field"
                     }
                 }
             }
@@ -346,7 +346,7 @@ function Get-Phase2PublicationSequenceEvidence {
                         [uint64]$pendingLocalResetArmedCount -or
                     [uint64]$record.publication.local_reset.consumed_count -ne
                         [uint64]$pendingLocalResetArmedCount) {
-                    throw 'PHASE2_PUBLICATION armed local reset was not consumed by the next publisher epoch'
+                    throw 'CINNABAR_CHUNK_PUBLICATION armed local reset was not consumed by the next publisher epoch'
                 }
                 $pendingLocalResetArmedCount = $null
             }
@@ -360,7 +360,7 @@ function Get-Phase2PublicationSequenceEvidence {
                     [uint64]$record.publication.local_reset.consumed_count -ne
                         ([uint64]$previousRecord.publication.local_reset.consumed_count + 1) -or
                     [bool]$record.publication.local_reset.armed) {
-                    throw 'PHASE2_PUBLICATION unobserved local reset arm lacks a persistent consumed counter proof'
+                    throw 'CINNABAR_CHUNK_PUBLICATION unobserved local reset arm lacks a persistent consumed counter proof'
                 }
                 $resetCyclesObserved++
             }
@@ -370,19 +370,19 @@ function Get-Phase2PublicationSequenceEvidence {
                 'mesh_changes_dequeued', 'mesh_jobs_dispatched', 'mesh_jobs_completed',
                 'mesh_uploads_acknowledged')) {
                 if ([uint64]$record.publication.stages.$field -lt [uint64]$previousRecord.publication.stages.$field) {
-                    throw "PHASE2_PUBLICATION cumulative stage counter regressed: $field"
+                    throw "CINNABAR_CHUNK_PUBLICATION cumulative stage counter regressed: $field"
                 }
             }
             foreach ($field in @('success', 'all_air', 'unavailable', 'malformed', 'stale', 'timed_out')) {
                 if ([uint64]$record.publication.outcomes.$field -lt [uint64]$previousRecord.publication.outcomes.$field) {
-                    throw "PHASE2_PUBLICATION cumulative outcome counter regressed: $field"
+                    throw "CINNABAR_CHUNK_PUBLICATION cumulative outcome counter regressed: $field"
                 }
             }
             foreach ($field in @('hashes_classified', 'hits', 'misses', 'admitted_blobs',
                 'rejected_blobs', 'evictions', 'pending_resets', 'reconstructed_level_chunks',
                 'reconstructed_sub_chunks')) {
                 if ([uint64]$record.client_blob_cache.$field -lt [uint64]$previousRecord.client_blob_cache.$field) {
-                    throw "PHASE2_PUBLICATION cumulative client blob cache counter regressed: $field"
+                    throw "CINNABAR_CHUNK_PUBLICATION cumulative client blob cache counter regressed: $field"
                 }
             }
         }
@@ -393,17 +393,17 @@ function Get-Phase2PublicationSequenceEvidence {
     if ($null -ne $pendingLocalResetArmedCount -or
         [bool]$final.publication.local_reset.armed -or
         ($resetCyclesObserved -gt 0 -and -not [bool]$final.publication.required_cohort_stable)) {
-        throw 'PHASE2_PUBLICATION local reset sequence did not reach a consumed stable publisher epoch'
+        throw 'CINNABAR_CHUNK_PUBLICATION local reset sequence did not reach a consumed stable publisher epoch'
     }
     $cache = $final.client_blob_cache
     if ([uint64]$cache.rejected_blobs -ne 0 -or
         [uint64]$cache.pending_transactions -ne 0 -or
         [uint64]$cache.pending_bytes -ne 0) {
-        throw "PHASE2_PUBLICATION $Server terminal client blob cache state is rejected or pending"
+        throw "CINNABAR_CHUNK_PUBLICATION $Server terminal client blob cache state is rejected or pending"
     }
     if ($Server -ceq 'Lunar' -and
         (-not [bool]$final.client_blob_cache_enabled -or [uint64]$cache.hashes_classified -eq 0)) {
-        throw 'PHASE2_PUBLICATION Lunar did not prove an enabled cache-backed route with attributable hashes'
+        throw 'CINNABAR_CHUNK_PUBLICATION Lunar did not prove an enabled cache-backed route with attributable hashes'
     }
     $clientBlobCacheRoute = if ([bool]$final.client_blob_cache_enabled -and
         [uint64]$cache.hashes_classified -gt 0) { 'cache_backed' } else { 'ordinary_payload' }
@@ -413,9 +413,9 @@ function Get-Phase2PublicationSequenceEvidence {
         [uint64]$stages.light_jobs_completed + [uint64]$stages.mesh_jobs_completed +
         [uint64]$stages.mesh_uploads_acknowledged
     if ($attributable -eq 0) {
-        throw 'PHASE2_PUBLICATION sequence contains no attributable stage progress'
+        throw 'CINNABAR_CHUNK_PUBLICATION sequence contains no attributable stage progress'
     }
-    $firstStalledStage = Get-Phase2FirstStalledStage -PublicationRecord $final `
+    $firstStalledStage = Get-PublicationFirstStalledStage -PublicationRecord $final `
         -WorldReadyObserved:$WorldReadyObserved
     $findings = [Collections.Generic.List[string]]::new()
     if ([uint64]$final.publication.loaded_required_columns -lt [uint64]$final.publication.required_columns) {
@@ -431,7 +431,7 @@ function Get-Phase2PublicationSequenceEvidence {
     }
 }
 
-function Get-Phase2LocalResetSequenceEvidence {
+function Get-LocalResetSequenceEvidence {
     param(
         [Parameter(Mandatory = $true)][string]$ClientLogPath,
         [Parameter(Mandatory = $true)][ValidateSet('Fifo', 'Immediate')][string]$ExpectedPresentMode,
@@ -440,19 +440,19 @@ function Get-Phase2LocalResetSequenceEvidence {
         [Parameter(Mandatory = $true)][ValidateSet('Lbsg', 'Lunar', 'Zeqa')][string]$Server
     )
     if (-not $WorldReadyObserved) {
-        throw 'PHASE2_PUBLICATION focused Lifeboat witness requires world-ready observation'
+        throw 'CINNABAR_CHUNK_PUBLICATION focused Lifeboat witness requires world-ready observation'
     }
-    $evidence = Get-Phase2PublicationSequenceEvidence -ClientLogPath $ClientLogPath `
+    $evidence = Get-PublicationSequenceEvidence -ClientLogPath $ClientLogPath `
         -ExpectedPresentMode $ExpectedPresentMode -ExpectedBuildProfile $ExpectedBuildProfile `
         -WorldReadyObserved:$WorldReadyObserved -Server $Server `
         -RequireCompleteLocalResetDispatchTrace
     if ([string]$evidence.FirstStalledStage -cne 'none') {
-        throw "PHASE2_PUBLICATION focused Lifeboat terminal stage is stalled: $($evidence.FirstStalledStage)"
+        throw "CINNABAR_CHUNK_PUBLICATION focused Lifeboat terminal stage is stalled: $($evidence.FirstStalledStage)"
     }
     $records = @(Get-Content -LiteralPath $ClientLogPath | Where-Object {
-        $_.StartsWith('PHASE2_PUBLICATION=', [StringComparison]::Ordinal)
+        $_.StartsWith('CINNABAR_CHUNK_PUBLICATION=', [StringComparison]::Ordinal)
     } | ForEach-Object {
-        $_.Substring('PHASE2_PUBLICATION='.Length) | ConvertFrom-Json
+        $_.Substring('CINNABAR_CHUNK_PUBLICATION='.Length) | ConvertFrom-Json
     })
     $first = $records[0]
     $final = $records[$records.Count - 1]
@@ -460,7 +460,7 @@ function Get-Phase2LocalResetSequenceEvidence {
             ([uint64]$first.publication.local_reset.armed_count + 1) -or
         [uint64]$final.publication.local_reset.consumed_count -ne
             ([uint64]$first.publication.local_reset.consumed_count + 1)) {
-        throw 'PHASE2_PUBLICATION focused Lifeboat witness requires exactly one reset arm and consume cycle'
+        throw 'CINNABAR_CHUNK_PUBLICATION focused Lifeboat witness requires exactly one reset arm and consume cycle'
     }
     $firstColumn = $first.publication.player_column
     $finalColumn = $final.publication.player_column
@@ -470,18 +470,18 @@ function Get-Phase2LocalResetSequenceEvidence {
     $centerChanged = (@($first.publication.publisher_center) -join ',') -cne
         (@($final.publication.publisher_center) -join ',')
     if (-not $columnChanged -or -not $centerChanged) {
-        throw 'PHASE2_PUBLICATION focused Lifeboat witness did not change player column and publisher center'
+        throw 'CINNABAR_CHUNK_PUBLICATION focused Lifeboat witness did not change player column and publisher center'
     }
     if (-not [bool]$final.publication.player_column_required -or
         -not [bool]$final.publication.player_column_loaded -or
         [uint64]$final.publication.inactive_level_chunks -ne [uint64]$first.publication.inactive_level_chunks -or
         [uint64]$final.publication.outcomes.timed_out -ne [uint64]$first.publication.outcomes.timed_out) {
-        throw 'PHASE2_PUBLICATION focused Lifeboat terminal player residency or zero-error deltas failed'
+        throw 'CINNABAR_CHUNK_PUBLICATION focused Lifeboat terminal player residency or zero-error deltas failed'
     }
     $player = $final.presentation.player_column
     foreach ($field in @('resident_subchunks', 'allocated_subchunks', 'submitted_subchunks', 'gpu_presented_subchunks')) {
         if ($null -eq $player.$field -or [uint64]$player.$field -eq 0) {
-            throw "PHASE2_PUBLICATION focused Lifeboat terminal player $field is not positive"
+            throw "CINNABAR_CHUNK_PUBLICATION focused Lifeboat terminal player $field is not positive"
         }
     }
     $dispatches = @($final.publication.local_reset.dispatch_classes)
@@ -489,12 +489,12 @@ function Get-Phase2LocalResetSequenceEvidence {
         [bool]$final.publication.local_reset.dispatch_trace_overflowed -or
         $dispatches.Count -eq 0 -or
         [string]$dispatches[0] -cnotin @('player_initial', 'player_retry')) {
-        throw 'PHASE2_PUBLICATION focused Lifeboat first successful dispatch is not player-class'
+        throw 'CINNABAR_CHUNK_PUBLICATION focused Lifeboat first successful dispatch is not player-class'
     }
     return $evidence
 }
 
-function Complete-Phase2DiagnosticEvidence {
+function Complete-PublicationDiagnosticEvidence {
     param(
         [Parameter(Mandatory = $true)]$Manifest,
         [Parameter(Mandatory = $true)][string]$ClientLogPath,
@@ -511,10 +511,10 @@ function Complete-Phase2DiagnosticEvidence {
     $cacheBoundary = if ([string]::IsNullOrWhiteSpace($CoreLogPath)) {
         [pscustomobject][ordered]@{ classification = 'unavailable'; reason = 'core_log_not_supplied' }
     }
-    else { Get-Phase2CacheBoundaryEvidence -CoreLogPath $CoreLogPath }
+    else { Get-CacheBoundaryEvidence -CoreLogPath $CoreLogPath }
     $Manifest | Add-Member -MemberType NoteProperty -Name cache_boundary_evidence `
         -Value $cacheBoundary -Force
-    $evidence = Get-Phase2PublicationSequenceEvidence -ClientLogPath $ClientLogPath `
+    $evidence = Get-PublicationSequenceEvidence -ClientLogPath $ClientLogPath `
         -ExpectedPresentMode $ExpectedPresentMode -WorldReadyObserved:$WorldReadyObserved -Server $Server
     $findings = [Collections.Generic.List[string]]::new()
     foreach ($finding in @($evidence.Findings)) { $findings.Add($finding) }
@@ -522,7 +522,7 @@ function Complete-Phase2DiagnosticEvidence {
         $findings.Add('cache_boundary_evidence_unavailable')
     }
     else {
-        Assert-Phase2CacheBoundaryConsistency -Server $Server `
+        Assert-CacheBoundaryConsistency -Server $Server `
             -ClientBlobCacheRoute $evidence.ClientBlobCacheRoute -BoundaryEvidence $cacheBoundary
     }
     if (-not $WorldReadyObserved) { $findings.Insert(0, 'world_ready_not_observed') }
@@ -541,7 +541,7 @@ function Complete-Phase2DiagnosticEvidence {
     $Manifest | Add-Member -MemberType NoteProperty -Name resources_evidence -Value ([pscustomobject][ordered]@{ status = 'unavailable'; reason = $unavailableReason }) -Force
 }
 
-function Find-Phase2CompletedLunarPrerequisite {
+function Find-CompletedLunarPrerequisite {
     param(
         [Parameter(Mandatory = $true)][string]$RemoteRoot,
         [Parameter(Mandatory = $true)][ValidateSet('Diagnostic', 'Candidate', 'Final')][string]$Mode,
@@ -569,62 +569,62 @@ function Find-Phase2CompletedLunarPrerequisite {
     foreach ($file in @(Get-ChildItem -LiteralPath $RemoteRoot -Filter manifest.json -File -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName)) {
         try {
             $candidate = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
-            Assert-Phase2ExactProperties -Value $candidate -Names $manifestProperties -Label 'Phase 2 remote manifest'
-            Assert-Phase2ExactProperties -Value $candidate.metrics_evidence -Names @('reason', 'status') `
-                -Label 'Phase 2 remote manifest metrics_evidence'
-            Assert-Phase2ExactProperties -Value $candidate.resources_evidence -Names @('reason', 'status') `
-                -Label 'Phase 2 remote manifest resources_evidence'
+            Assert-AcceptanceExactProperties -Value $candidate -Names $manifestProperties -Label 'remote acceptance manifest'
+            Assert-AcceptanceExactProperties -Value $candidate.metrics_evidence -Names @('reason', 'status') `
+                -Label 'remote acceptance manifest metrics_evidence'
+            Assert-AcceptanceExactProperties -Value $candidate.resources_evidence -Names @('reason', 'status') `
+                -Label 'remote acceptance manifest resources_evidence'
             if ([string]$candidate.cache_boundary_evidence.classification -ceq 'unavailable') { continue }
-            Assert-Phase2ExactProperties -Value $candidate.cache_boundary_evidence -Names @(
+            Assert-AcceptanceExactProperties -Value $candidate.cache_boundary_evidence -Names @(
                 'cached_level_chunks', 'cached_sub_chunks', 'classification', 'ordinary_level_chunks',
                 'ordinary_sub_chunks', 'upstream_status_enabled', 'upstream_status_seen'
-            ) -Label 'Phase 2 remote manifest cache_boundary_evidence'
-            Assert-Phase2ExactProperties -Value $candidate.performance -Names $performanceProperties `
-                -Label 'Phase 2 remote manifest performance'
-            Assert-Phase2UnsignedInteger -Value $candidate.initial_radius -Label 'manifest.initial_radius' -Maximum 64 -Positive
-            Assert-Phase2UnsignedInteger -Value $candidate.publication_snapshot_count `
+            ) -Label 'remote acceptance manifest cache_boundary_evidence'
+            Assert-AcceptanceExactProperties -Value $candidate.performance -Names $performanceProperties `
+                -Label 'remote acceptance manifest performance'
+            Assert-AcceptanceUnsignedInteger -Value $candidate.initial_radius -Label 'manifest.initial_radius' -Maximum 64 -Positive
+            Assert-AcceptanceUnsignedInteger -Value $candidate.publication_snapshot_count `
                 -Label 'manifest.publication_snapshot_count' -Maximum ([uint32]::MaxValue) -Positive
-            Assert-Phase2UnsignedInteger -Value $candidate.duration_seconds -Label 'manifest.duration_seconds' `
+            Assert-AcceptanceUnsignedInteger -Value $candidate.duration_seconds -Label 'manifest.duration_seconds' `
                 -Maximum ([uint32]::MaxValue) -Positive
-            Assert-Phase2UnsignedInteger -Value $candidate.client_shutdown_grace_seconds `
+            Assert-AcceptanceUnsignedInteger -Value $candidate.client_shutdown_grace_seconds `
                 -Label 'manifest.client_shutdown_grace_seconds' -Maximum ([uint32]::MaxValue)
             foreach ($field in @('cached_level_chunks', 'ordinary_level_chunks', 'cached_sub_chunks', 'ordinary_sub_chunks')) {
-                Assert-Phase2UnsignedInteger -Value $candidate.cache_boundary_evidence.$field `
+                Assert-AcceptanceUnsignedInteger -Value $candidate.cache_boundary_evidence.$field `
                     -Label "manifest.cache_boundary_evidence.$field"
             }
             foreach ($field in @('warmup_seconds', 'steady_seconds', 'resource_sample_count', 'max_combined_rss_bytes')) {
-                Assert-Phase2UnsignedInteger -Value $candidate.performance.$field `
+                Assert-AcceptanceUnsignedInteger -Value $candidate.performance.$field `
                     -Label "manifest.performance.$field" -Positive
             }
             foreach ($field in @('p95_frame_ms_max', 'p99_frame_ms_max', 'max_frame_ms_max', 'lifecycle_ms_max',
                 'mean_cpu_percent_max', 'p95_cpu_percent_max')) {
-                Assert-Phase2FiniteNonnegativeNumber -Value $candidate.performance.$field `
+                Assert-AcceptanceFiniteNonnegativeNumber -Value $candidate.performance.$field `
                     -Label "manifest.performance.$field"
             }
-            $contract = New-Phase2PerformanceContract
+            $contract = New-AcceptancePerformanceContract
             foreach ($field in $performanceProperties) {
                 if ([decimal]$candidate.performance.$field -ne [decimal]$contract.$field) {
-                    throw "Phase 2 remote manifest performance contract changed at $field"
+                    throw "remote acceptance manifest performance contract changed at $field"
                 }
             }
             if ([uint64]$candidate.duration_seconds -lt 150 -or
                 [uint64]$candidate.client_shutdown_grace_seconds -ne 5) {
-                throw 'Phase 2 remote manifest duration or shutdown grace is invalid'
+                throw 'remote acceptance manifest duration or shutdown grace is invalid'
             }
             if ($candidate.client_arguments -isnot [System.Array] -or $candidate.findings -isnot [System.Array]) {
-                throw 'Phase 2 remote manifest arguments and findings must be JSON arrays'
+                throw 'remote acceptance manifest arguments and findings must be JSON arrays'
             }
             foreach ($argument in @($candidate.client_arguments)) {
                 if ($argument -isnot [string] -or [string]::IsNullOrWhiteSpace($argument)) {
-                    throw 'Phase 2 remote manifest contains an invalid client argument'
+                    throw 'remote acceptance manifest contains an invalid client argument'
                 }
             }
             foreach ($finding in @($candidate.findings)) {
                 if ($finding -isnot [string] -or [string]::IsNullOrWhiteSpace($finding)) {
-                    throw 'Phase 2 remote manifest contains an invalid finding'
+                    throw 'remote acceptance manifest contains an invalid finding'
                 }
             }
-            if ([string]$candidate.schema -cne 'rust-mcbe-phase2-remote-v1' -or
+            if ([string]$candidate.schema -cne 'rust-mcbe-remote-acceptance-v1' -or
                 [string]$candidate.server -cne 'Lunar' -or
                 [string]$candidate.upstream -cne 'pvp.lunarbedrock.com:19134' -or
                 [string]$candidate.mode -cne $Mode -or
@@ -655,7 +655,7 @@ function Find-Phase2CompletedLunarPrerequisite {
                 continue
             }
             if ([bool]$candidate.world_ready_observed) {
-                Assert-Phase2FiniteNonnegativeNumber -Value $candidate.join_milliseconds -Label 'manifest.join_milliseconds'
+                Assert-AcceptanceFiniteNonnegativeNumber -Value $candidate.join_milliseconds -Label 'manifest.join_milliseconds'
                 if ([double]$candidate.join_milliseconds -gt 2000.0) { continue }
             }
             elseif ($null -ne $candidate.join_milliseconds) { continue }
@@ -671,7 +671,7 @@ function Find-Phase2CompletedLunarPrerequisite {
                 }
                 else { throw "manifest.$evidenceName has an invalid status" }
             }
-            Assert-Phase2PublicationRecord -Record $candidate.final_publication `
+            Assert-PublicationRecord -Record $candidate.final_publication `
                 -ExpectedPresentMode Fifo
             $terminalCache = $candidate.final_publication.client_blob_cache
             if (-not [bool]$candidate.final_publication.client_blob_cache_enabled -or
@@ -681,7 +681,7 @@ function Find-Phase2CompletedLunarPrerequisite {
                 [uint64]$terminalCache.pending_bytes -ne 0) {
                 continue
             }
-            $computedStage = Get-Phase2FirstStalledStage -PublicationRecord $candidate.final_publication `
+            $computedStage = Get-PublicationFirstStalledStage -PublicationRecord $candidate.final_publication `
                 -WorldReadyObserved:([bool]$candidate.world_ready_observed)
             if ([string]$candidate.first_stalled_stage -cne $computedStage -or
                 ($Mode -cne 'Diagnostic' -and $computedStage -cne 'none')) {
@@ -710,10 +710,10 @@ function Find-Phase2CompletedLunarPrerequisite {
     return $null
 }
 
-function Find-Phase2CompletedLunarDiagnostic {
+function Find-CompletedLunarDiagnostic {
     param([Parameter(Mandatory = $true)][string]$RemoteRoot)
-    return Find-Phase2CompletedLunarPrerequisite -RemoteRoot $RemoteRoot -Mode Diagnostic `
+    return Find-CompletedLunarPrerequisite -RemoteRoot $RemoteRoot -Mode Diagnostic `
         -ExpectedPresentMode Fifo -ExpectedInitialRadius 16 -RequireFullView:$false
 }
 
-. (Join-Path $PSScriptRoot 'Phase2Evidence.ps1')
+. (Join-Path $PSScriptRoot 'PublicationEvidence.ps1')

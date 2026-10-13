@@ -1,5 +1,6 @@
 //! Startup carrier loading and required registry verification.
 mod timing;
+pub(super) use timing::install_first_frame_log;
 use timing::{LoadTimes, join};
 
 use super::{PHYSICS_REGISTRY_GENERATION_GUIDANCE, PHYSICS_REGISTRY_SHA256};
@@ -11,9 +12,11 @@ use assets::carriers::startup::{
 };
 use assets::{
     RuntimeActorCatalog, RuntimeAudioCatalog, RuntimeAudioPcm, RuntimeBlockEntityAssets,
-    RuntimeEquipmentCatalog, RuntimeParticleAssets, RuntimeUiAssets,
+    RuntimeEquipmentCatalog, RuntimeParticleAssets,
 };
 use client_interaction::movement::PhysicsCollisionRegistries;
+use client_ui::ui_runtime::json_ui_assets::LoadedUiAssets;
+use client_ui::ui_runtime::presentation::PreparedJsonUi;
 use launcher_host::session_cleanup::ScopedSessionDirectory;
 use sha2::Digest;
 use sha2::Sha256;
@@ -29,9 +32,30 @@ pub(super) struct StartupCarriers {
     pub(super) audio: Result<AudioCarriers>,
     pub(super) block_entities: Option<Arc<RuntimeBlockEntityAssets>>,
     pub(super) particles: Option<Arc<RuntimeParticleAssets>>,
-    pub(super) ui: Result<Arc<RuntimeUiAssets>>,
+    pub(super) ui: Result<PreparingJsonUi>,
     pub(super) weather: render_scene::WeatherTextureAssets,
     pub(super) collision: Result<PhysicsCollisionRegistries>,
+}
+
+/// The validated UI carrier's catalog, parsing on its own thread while startup continues.
+pub(super) struct PreparingJsonUi(std::thread::JoinHandle<Result<PreparedJsonUi, String>>);
+
+impl PreparingJsonUi {
+    /// Parses the validated carrier on a worker, reusing its decoded item glint.
+    fn start(assets: LoadedUiAssets) -> Result<Self> {
+        std::thread::Builder::new()
+            .name("json-ui-catalog".to_owned())
+            .spawn(move || PreparedJsonUi::from_loaded(assets))
+            .map(Self)
+            .context("start the JSON-UI catalog thread")
+    }
+
+    /// Waits for the parsed catalog, re-raising a panic from its thread.
+    pub(super) fn join(self) -> Result<PreparedJsonUi, String> {
+        self.0
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    }
 }
 
 /// The carriers bound to the decoded entity catalog.
@@ -91,9 +115,11 @@ fn load_with(
             })
         });
         let ui = scope.spawn(|| {
-            times.time("ui", || {
-                client_ui::ui_runtime::json_ui_assets::require_ui_assets(world)
-            })
+            times
+                .time("ui", || {
+                    client_ui::ui_runtime::json_ui_assets::require_ui_assets(world)
+                })
+                .and_then(PreparingJsonUi::start)
         });
         let weather = scope.spawn(|| {
             times.time("weather", || {
@@ -140,6 +166,9 @@ fn load_core(
         });
         (actor, join(equipment))
     });
+    if let Some(catalog) = &equipment {
+        pack_runtime::entity_pack::set_base_equipment_catalog(Arc::clone(catalog));
+    }
     Ok(CoreCarriers {
         assets,
         actor,
@@ -212,7 +241,7 @@ fn load_collision_registries(
     // and this physics binding derive their protocol from it, so a partially flipped carrier set
     // fails closed instead of aliasing live block identities.
     let expected_protocol = assets::active_content_registry_protocol();
-    assets::pinned_block_presentation_states();
+    assets::block_presentation_state::pinned_block_presentation_states();
     let preg = read_verified_physics_registry(
         physics_registry,
         PHYSICS_REGISTRY_SHA256,
@@ -397,17 +426,17 @@ mod tests {
             vec!["--transparent-witness-request", "witness.json"],
             vec!["--model-witness-request", "witness.json"],
             vec![
-                "--phase3-evidence-target",
+                "--movement-evidence-target",
                 "Bds",
                 "--acceptance-seconds",
                 "1",
                 "--metrics-out",
                 "metrics.json",
-                "--phase3-candidate-physics",
+                "--movement-candidate-physics",
             ],
         ] {
             let ParseOutcome::Run(args) =
-                ClientArgs::parse_from(std::iter::once("bedrock-client").chain(flags)).unwrap()
+                ClientArgs::parse_from(std::iter::once("cinnabar").chain(flags)).unwrap()
             else {
                 panic!("expected runtime arguments")
             };

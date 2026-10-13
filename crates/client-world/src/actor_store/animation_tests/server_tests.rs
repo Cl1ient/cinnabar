@@ -26,7 +26,7 @@ fn compiled() -> assets::CompiledEntityAssets {
 }
 
 fn assets() -> Arc<RuntimeEntityAssets> {
-    Arc::new(RuntimeEntityAssets::from_compiled(compiled()).unwrap())
+    Arc::new(RuntimeEntityAssets::from_compiled(compiled().with_unresolved_admissions()).unwrap())
 }
 
 fn unposed_store() -> ActorStore {
@@ -221,7 +221,9 @@ fn generic_packet_channels_bind_by_bone_name_and_skip_names_absent_from_the_mode
     compiled.animation_channels =
         vec![compiled.animation_channels[0].clone(), missing].into_boxed_slice();
     compiled.animation_clips[0].channel_count = 2;
-    let assets = Arc::new(RuntimeEntityAssets::from_compiled(compiled).unwrap());
+    let assets = Arc::new(
+        RuntimeEntityAssets::from_compiled(compiled.with_unresolved_admissions()).unwrap(),
+    );
     let actor = super::actor_with_metadata(HashMap::new());
     let mut store = ActorAnimationStore::with_assets(Arc::clone(&assets));
     store.insert(1, 0, &actor);
@@ -369,4 +371,169 @@ fn display_actor_rebinds_the_same_lifetime_to_replaced_pack_geometry() {
     let restored = displays.rig(runtime).unwrap();
     assert_eq!(restored.actor, identity);
     assert!(restored.rig.0 < assets::PACK_RIG_ID_BASE);
+}
+
+/// Java 1.7's swing as a remote viewer runs it: a request restarts only an idle swing, one not
+/// yet started or one past its first half; each tick steps it, and frames wrap forward to 1.
+#[derive(Default)]
+struct JavaSwing {
+    counter: Option<i32>,
+    progress: [f32; 2],
+}
+
+impl JavaSwing {
+    fn request(&mut self, length: i32) {
+        if self.counter.is_none_or(|c| c < 0 || c >= length / 2) {
+            self.counter = Some(-1);
+        }
+    }
+
+    fn tick(&mut self, length: i32) {
+        self.counter = self.counter.map(|c| c + 1).filter(|c| *c < length);
+        let current = self.counter.map_or(0.0, |c| c as f32 / length as f32);
+        self.progress = [self.progress[1], current];
+    }
+
+    fn at(&self, alpha: f32) -> f32 {
+        let [previous, current] = self.progress;
+        let step = current - previous;
+        previous + if step < 0.0 { step + 1.0 } else { step } * alpha
+    }
+}
+
+const FRAME_FRACTIONS: [f32; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
+
+fn swing_arm(store: &mut ActorStore, sequence: u64) {
+    let swing = ItemActorEvent::Action(ActorActionEvent {
+        actor_runtime_ids: Arc::from([1]),
+        kind: ActorActionKind::SwingArm,
+        data: 0.0,
+        swing_source: None,
+    });
+    assert_eq!(
+        store.apply_item_actor(1, sequence, swing),
+        ActorApplyResult::Updated
+    );
+}
+
+fn swing_effect(store: &mut ActorStore, action: protocol::ActorEffectAction, amplifier: i32) {
+    store.apply_effect(&protocol::ActorEffectEvent {
+        dimension: 0,
+        actor_runtime_id: 1,
+        action,
+        effect_id: protocol::HASTE_EFFECT_ID,
+        amplifier,
+        particles: true,
+        ambient: false,
+        duration_ticks: 600,
+        tick: 0,
+    });
+}
+
+/// Steps the remote rig and Java's swing through `requests` and returns every frame's progress
+/// after asserting the two agree at each frame fraction.
+fn remote_swing_frames(
+    store: &mut ActorStore,
+    requests: &[u32],
+    ticks: u32,
+    length: i32,
+) -> Vec<f32> {
+    let mut java = JavaSwing::default();
+    let mut frames = Vec::new();
+    let first_sequence = store.latest_sequence + 1;
+    for tick in 0..ticks {
+        if requests.contains(&tick) {
+            swing_arm(store, first_sequence + u64::from(tick));
+            java.request(length);
+        }
+        store.advance_interpolation_ticks(1);
+        java.tick(length);
+        let motion = store.actor_rigs().next().unwrap().java;
+        for alpha in FRAME_FRACTIONS {
+            let progress = motion.swing_progress(alpha);
+            assert!(
+                (progress - java.at(alpha)).abs() < 1e-6,
+                "tick {tick} frame {alpha}: {progress}, Java {}",
+                java.at(alpha)
+            );
+            frames.push(progress);
+        }
+    }
+    frames
+}
+
+/// Remote swings only move forward: within a tick and across restarts, progress never runs
+/// backward except from the finished 1 to the next tick's rest at 0.
+fn assert_forward(frames: &[f32]) {
+    for pair in frames.windows(2) {
+        assert!(
+            pair[1] >= pair[0] || (pair[0] > 1.0 - 1e-6 && pair[1] == 0.0),
+            "progress ran backward from {} to {}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+fn assert_tick(frames: &[f32], tick: usize, expected: [f32; 5]) {
+    let actual = &frames[tick * FRAME_FRACTIONS.len()..][..FRAME_FRACTIONS.len()];
+    for (actual, expected) in actual.iter().zip(expected) {
+        assert!(
+            (actual - expected).abs() < 1e-6,
+            "tick {tick}: {actual:?}, want {expected:?}"
+        );
+    }
+}
+
+#[test]
+fn remote_java_swing_ignores_early_reswings_and_wraps_restarts_forward() {
+    let mut store = store();
+    // A re-swing one tick in is ignored; one three ticks into a later swing restarts it.
+    let frames = remote_swing_frames(&mut store, &[0, 2, 10, 14], 24, 6);
+    assert_forward(&frames);
+    let sixth = 1.0 / 6.0;
+    assert_tick(
+        &frames,
+        2,
+        [sixth, 1.25 * sixth, 1.5 * sixth, 1.75 * sixth, 2.0 * sixth],
+    );
+    // The restart tick sweeps the rest of the old swing, then the new one starts at rest.
+    assert_tick(&frames, 14, [0.5, 0.625, 0.75, 0.875, 1.0]);
+    assert_tick(
+        &frames,
+        15,
+        [0.0, 0.25 * sixth, 0.5 * sixth, 0.75 * sixth, sixth],
+    );
+    // The last step wraps forward to 1 rather than sweeping back to 0.
+    assert_tick(
+        &frames,
+        20,
+        [5.0 * sixth, 0.875, 0.75 + sixth, 0.875 + 0.5 * sixth, 1.0],
+    );
+}
+
+#[test]
+fn remote_java_swing_follows_spam_clicks_one_restart_per_half_swing() {
+    let mut store = store();
+    let clicks = (0..40).step_by(2).collect::<Vec<_>>();
+    let frames = remote_swing_frames(&mut store, &clicks, 40, 6);
+    assert_forward(&frames);
+    let restarts = frames
+        .chunks(FRAME_FRACTIONS.len())
+        .filter(|tick| tick[0] == 0.5 && tick[4] == 1.0)
+        .count();
+    assert_eq!(restarts, 9, "every other click restarts the swing");
+}
+
+#[test]
+fn remote_haste_shortens_the_java_swing_and_its_restart_guard_until_removed() {
+    let mut store = store();
+    swing_effect(&mut store, protocol::ActorEffectAction::Add, 1);
+    // Haste II: four ticks, and a re-swing two ticks in is already past half.
+    let frames = remote_swing_frames(&mut store, &[0, 3], 8, 4);
+    assert_forward(&frames);
+    assert_eq!(frames[FRAME_FRACTIONS.len() * 2], 0.25);
+    assert_eq!(frames[FRAME_FRACTIONS.len() * 3], 0.5);
+    swing_effect(&mut store, protocol::ActorEffectAction::Remove, 0);
+    remote_swing_frames(&mut store, &[0, 3], 8, 6);
 }

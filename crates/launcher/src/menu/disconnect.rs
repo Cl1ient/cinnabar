@@ -110,9 +110,36 @@ fn server_reason(reason: &str) -> DisconnectBody {
     DisconnectBody::Key(key)
 }
 
+/// Recognizes the existing outdated-client reason without treating arbitrary server text as consent.
+pub fn requires_client_update(error: &str) -> bool {
+    const KEY: &str = "disconnectionScreen.outdatedClient";
+    match describe(error).body {
+        DisconnectBody::Key(key) => key == KEY,
+        DisconnectBody::Server(text) => text == KEY,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_outdated_client_reason_requires_a_client_update() {
+        for error in [
+            "server rejected the handshake: outdated client".to_owned(),
+            from_server("OutdatedClient"),
+            from_server("disconnectionScreen.outdatedClient"),
+        ] {
+            assert!(requires_client_update(&error));
+        }
+        for error in [
+            "server rejected the handshake: outdated server".to_owned(),
+            from_server("Please update your resource packs"),
+            "read timed out".to_owned(),
+        ] {
+            assert!(!requires_client_update(&error));
+        }
+    }
 
     // Every failure kind reads as vanilla words it; a kick keeps the server's text.
     #[test]

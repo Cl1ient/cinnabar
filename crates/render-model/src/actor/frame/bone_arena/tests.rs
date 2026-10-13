@@ -5,6 +5,7 @@ use crate::actor::frame::{
     ActorRigGeometry, ActorRigRejects, ActorRigRenderFrame, ActorRigRenderInput, ActorRigRoute,
     ActorRigSubmission, EntityRigId,
 };
+use render_api::PoseGeneration;
 use std::sync::Arc;
 
 /// Creates a finite pose with rotation, translation and nonuniform scale.
@@ -44,7 +45,7 @@ fn submission(runtime_id: u64, bones: usize) -> ActorRigSubmission {
                 ingress_sequence: runtime_id,
                 source_tick: Some(1),
                 movement_revision: 1,
-                pose_generation: 1,
+                pose_generation: PoseGeneration::new(1),
                 layer: 0,
             },
             rig: EntityRigId(3),
@@ -221,7 +222,7 @@ fn complete_frames_match_reference_matrices_and_invalid_actors_leave_no_arena_ho
             light: input.light,
             overlay_rgba8: input.overlay_rgba8,
             multitexture_layers: [u32::MAX; 2],
-            material: input.material.kind as u32,
+            material: input.material.gpu_word(),
             dissolve_multiplier: input.material.dissolve_multiplier,
             light_color_multiplier: input.material.light_color_multiplier,
         });
@@ -427,9 +428,9 @@ fn draw_readiness_shares_rejections_without_changing_frame_or_cache_state() {
                 bad.input.current_bones = Arc::from([bone]);
             }
         }
-        let allocated = crate::alloc_count::thread_allocations();
+        let allocated = test_alloc::thread_allocations();
         assert!(!builder.can_draw_submission(&bad));
-        assert_eq!(crate::alloc_count::thread_allocations() - allocated, 0);
+        assert_eq!(test_alloc::thread_allocations() - allocated, 0);
         assert_eq!(builder.frame_generation, generation);
         assert_eq!(builder.matrices.entries.len(), cached);
         assert!(builder.build(0.0, None, [bad]).instances.is_empty());

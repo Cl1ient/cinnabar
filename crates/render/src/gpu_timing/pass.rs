@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 /// Reads the shared UI diagnostic flag once; ordinary rendering never formats a report.
 pub(crate) fn ui_profiling_requested() -> bool {
     static REQUESTED: LazyLock<bool> =
-        LazyLock::new(|| std::env::var("RUST_MCBE_GPU_UI").as_deref() == Ok("1"));
+        LazyLock::new(|| env_compat::var("CINNABAR_GPU_UI").as_deref() == Ok("1"));
     *REQUESTED
 }
 

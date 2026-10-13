@@ -4,8 +4,10 @@ mod action;
 mod axes;
 mod binding;
 mod button_events;
+mod desktop;
 mod device;
 pub mod finalized;
+pub mod identity;
 mod router;
 
 pub use action::{
@@ -16,6 +18,7 @@ pub use binding::{
     ActionBinding, AxisDirection, BindingError, ControlSettings, DEFAULT_MOUSE_SENSITIVITY,
     InputChord, MAX_BINDINGS, ModifierChord, MouseAxis, PhysicalControl,
 };
+pub use desktop::{KEYBOARD_USAGES, KeyboardKey, ScrollUnit};
 pub use device::{
     ButtonEdges, ControllerFrame, DeviceFrame, FrameError, KeyboardMouseFrame,
     MAX_CONTROLLER_BUTTONS, MAX_CONTROLLERS, MAX_DISCONNECTED_CONTROLLERS, MAX_KEYBOARD_KEYS,

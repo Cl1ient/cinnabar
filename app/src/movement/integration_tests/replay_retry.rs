@@ -24,12 +24,12 @@ fn correction_during_terminal_drain_keeps_definitely_unsent_retry_pending_and_ti
     let mut acceptance = AcceptanceRun::new(Some(60), None, false, false);
     acceptance.deadline = Some(deadline);
     assert_eq!(
-        acceptance.phase3_terminal_drain_decision(
+        acceptance.movement_terminal_drain_decision(
             deadline + TRANSPARENT_PRESENTATION_EXIT_GRACE,
             true,
             ticker.pending_count(),
         ),
-        Phase3TerminalDrainDecision::TimedOut,
+        MovementTerminalDrainDecision::TimedOut,
         "stranded replay work must make terminal acceptance fail closed"
     );
 }
@@ -79,7 +79,7 @@ fn production_replay_reconciliation_notifies_the_network_invalidation_channel() 
         ticker.reanchor_epoch(),
         "production reconciliation must publish its new epoch to the network worker"
     );
-    assert_ne!(*reanchor.borrow(), 0);
+    assert_ne!(reanchor.borrow().get(), 0);
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn app_respawn_snap_publishes_its_epoch_from_the_authority_event() {
         ticker.reanchor_epoch(),
         "the respawn snap event must publish its new epoch without an outer call site"
     );
-    assert_ne!(*reanchor.borrow(), 0);
+    assert_ne!(reanchor.borrow().get(), 0);
 }
 
 #[test]

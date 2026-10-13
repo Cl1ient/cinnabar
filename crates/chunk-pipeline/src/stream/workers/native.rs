@@ -20,7 +20,7 @@ pub(super) fn start(shared: &Arc<Shared>, size: PoolSize) {
         ("world-bg", size.background, true),
     ] {
         for index in 0..count {
-            let shared = Arc::clone(&shared);
+            let shared = Arc::clone(shared);
             std::thread::Builder::new()
                 .name(format!("{name}-{index}"))
                 .spawn(move || work(&shared, name, background))

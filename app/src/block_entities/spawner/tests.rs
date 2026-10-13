@@ -1,5 +1,7 @@
 use super::*;
 
+mod rescan;
+
 /// Builds an authored display with two controller layers and an explicit pack texture.
 fn fixture() -> (Pool, chunk_pipeline::WorldStream, ActorArtworkPages) {
     fixture_with_scripts(serde_json::json!({}))
@@ -98,6 +100,7 @@ fn fixture_with_identifier(
         pack: Some(pack),
         actors,
         columns: Default::default(),
+        rescans: Default::default(),
         spins: Default::default(),
         poses: Default::default(),
         layers: Default::default(),

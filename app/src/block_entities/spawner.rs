@@ -19,7 +19,7 @@ use std::{
 };
 use world::{BlockEntityKey, BlockEntityNbt, ChunkKey, SUB_CHUNK_SIDE};
 
-use super::system::SCAN_RADIUS_BLOCKS as DISPLAY_SCAN_RADIUS;
+use super::system::{SCAN_RADIUS_BLOCKS as DISPLAY_SCAN_RADIUS, columns};
 const DEFAULT_ACTIVATION_RANGE: f32 = 16.0;
 const DEFAULT_SPAWN_DELAY: i32 = 0;
 
@@ -56,6 +56,7 @@ struct Pool {
     pack: Option<Arc<assets::SessionEntityPack>>,
     actors: DisplayActorStore,
     columns: HashMap<ChunkKey, Column>,
+    rescans: columns::RescanOrder,
     spins: HashMap<[i32; 3], Clock>,
     poses: PoseConversions,
     layers: LayerPoseCache,
@@ -64,6 +65,7 @@ struct Pool {
 #[derive(Resource, Default)]
 pub(crate) struct SpawnerDisplayPublisher(Option<Pool>);
 
+#[cfg(feature = "developer-control")]
 impl SpawnerDisplayPublisher {
     /// Returns the display actor published under this lifetime, or `None` for another namespace.
     pub(crate) fn actor(
@@ -124,8 +126,10 @@ pub(crate) fn prepare_spawner_actors(
     world: Res<ClientWorld>,
     view: Res<LocalViewPose>,
     collisions: Res<client_interaction::movement::PhysicsCollisionRegistries>,
-    artwork: Res<render_scene::ActorArtworkResource>,
-    state: Res<ActorFrameState>,
+    (artwork, state): (
+        Res<render_scene::ActorArtworkResource>,
+        Res<ActorFrameState>,
+    ),
     mut pending: ResMut<PreparedActorPublication>,
     mut publisher: ResMut<SpawnerDisplayPublisher>,
     camera: Query<(&Transform, &Projection), With<FlyCamera>>,
@@ -149,6 +153,7 @@ pub(crate) fn prepare_spawner_actors(
             pack: None,
             actors: DisplayActorStore::new(session.1, Arc::clone(assets)),
             columns: Default::default(),
+            rescans: Default::default(),
             spins: Default::default(),
             poses: Default::default(),
             layers: Default::default(),
@@ -205,24 +210,49 @@ pub(crate) fn prepare_spawner_actors(
             ..=((center + DISPLAY_SCAN_RADIUS) / SUB_CHUNK_SIDE as f32).floor() as i32
     };
     let side = SUB_CHUNK_SIDE as i32;
+    let eye_column = [eye.x, eye.z].map(|axis| (axis / SUB_CHUNK_SIDE as f32).floor() as i32);
+    let store = stream.collision_store();
+    let scans = &pool.columns;
+    let selected = pool.rescans.select(
+        range(eye.x)
+            .flat_map(|x| range(eye.z).map(move |z| ChunkKey::new(session.1, x, z)))
+            .filter(|key| {
+                !columns::is_near_column(eye_column, key.x, key.z)
+                    && store.chunk(*key).is_some_and(|chunk| {
+                        scans
+                            .get(key)
+                            .is_none_or(|scan| !scan.is_current(&chunk.shared_block_entities()))
+                    })
+            }),
+    );
+    let mut rescans_left = columns::MAX_COLUMN_RESCANS_PER_FRAME;
     let mut columns = BTreeSet::new();
     let mut candidates = Vec::new();
     for x in range(eye.x) {
         for z in range(eye.z) {
             let key = ChunkKey::new(session.1, x, z);
-            let Some(chunk) = stream.collision_store().chunk(key) else {
+            let Some(chunk) = store.chunk(key) else {
                 continue;
             };
             columns.insert(key);
-            let source = chunk.shared_block_entities();
-            if pool
-                .columns
-                .get(&key)
-                .is_none_or(|old| !old.is_current(&source))
-            {
-                let column = column(source, pool.columns.get(&key));
-                pool.columns.insert(key, column);
-            }
+            let near = columns::is_near_column(eye_column, x, z);
+            let mut deferred = 0;
+            let budget = if near || selected.contains(&Some(key)) {
+                &mut rescans_left
+            } else {
+                &mut deferred
+            };
+            let Some(scan) = columns::frame_scan(
+                pool.columns.remove(&key),
+                chunk,
+                near,
+                budget,
+                |scan, chunk| scan.is_current(&chunk.shared_block_entities()),
+                |previous| column(chunk.shared_block_entities(), previous.as_ref()),
+            ) else {
+                continue;
+            };
+            pool.columns.insert(key, scan);
             for (index, request) in pool.columns[&key].displays.iter().enumerate() {
                 let [x, y, z] = request.position;
                 let backing = chunk

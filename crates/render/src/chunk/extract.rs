@@ -42,7 +42,7 @@ fn extract_chunk_render_instances(
     let mut values = Vec::with_capacity(*previous_len);
     for (render_entity, instance) in &query {
         #[cfg(feature = "enhanced")]
-        if !extract_enhanced_chunk(&mut commands, render_entity.id(), instance) {
+        if !extract_enhanced_chunk(&mut commands, render_entity, instance) {
             continue;
         }
         values.push((render_entity, instance.clone()));

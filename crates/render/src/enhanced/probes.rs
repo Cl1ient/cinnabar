@@ -24,8 +24,8 @@ use bevy::{
 use probe_cache::{ProbeLighting, ProbeSchedule};
 use render_scene::enhanced::RenderedWorld;
 use std::{
-    collections::{HashMap, hash_map::DefaultHasher},
-    hash::{Hash, Hasher},
+    collections::HashMap,
+    hash::Hash,
     num::NonZeroU64,
     sync::{
         Arc, Mutex,

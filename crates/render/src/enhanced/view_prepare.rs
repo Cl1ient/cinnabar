@@ -596,7 +596,7 @@ pub(crate) fn prepare_enhanced_views(
                         local
                             .actors
                             .as_deref()
-                            .map_or(0, super::actor_signature::frame_signature),
+                            .map_or(0, crate::enhanced::actor_signature::frame_signature),
                     ),
                     gpu.materials.id(),
                     time.delta_secs(),

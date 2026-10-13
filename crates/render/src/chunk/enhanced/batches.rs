@@ -297,7 +297,7 @@ pub(super) fn prepare_enhanced_geometry(
                 }
         })
     });
-    for (&entity, view) in &views.0 {
+    for (&entity, view) in views.0.iter() {
         if view.settings.reflection_capture {
             continue;
         }

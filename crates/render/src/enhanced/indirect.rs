@@ -40,7 +40,7 @@ struct GridKey {
     geometry: u64,
     coverage: u64,
     assets: render_scene::ChunkTextureAssetIdentity,
-    tints: render_scene::ChunkBiomeTintResourceIdentity,
+    tints: render_scene::chunk::biome_tints::ChunkBiomeTintResourceIdentity,
     origin: IVec3,
     world: Option<RenderedWorld>,
 }

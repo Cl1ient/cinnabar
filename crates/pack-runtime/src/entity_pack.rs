@@ -107,7 +107,7 @@ fn compile_encoded(
     cancelled: &dyn Fn() -> bool,
 ) -> Option<Compiled> {
     let mut files = collect_files(view, vanilla, vanilla_pack_dir);
-    let overrides = equipment_artwork::collect(view, base_equipment, &mut files);
+    let artwork_sources = equipment_artwork::collect(view, base_equipment, &mut files);
     if cancelled() {
         return None;
     }
@@ -133,7 +133,18 @@ fn compile_encoded(
             "server pack entities are incomplete"
         );
     }
-    equipment_artwork::merge(&mut compiled.equipment_textures, overrides);
+    equipment_artwork::merge(view, &mut compiled.equipment_textures, artwork_sources);
+    if compiled.equipment_textures.is_empty()
+        && !compiled.entities.symbols.iter().any(|symbol| {
+            matches!(
+                symbol.kind,
+                assets::EntityAssetKind::Entity | assets::EntityAssetKind::Attachable
+            )
+        })
+    {
+        // Invalid artwork-only sources do not publish an empty layer.
+        return Some((None, None));
+    }
     let equipment =
         if compiled.equipment_bindings.is_empty() && compiled.equipment_textures.is_empty() {
             None

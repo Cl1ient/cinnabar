@@ -2974,6 +2974,8 @@ material defines and skinning variants. The decision combines all variants of ea
 item; recompiling one keeps its preferred player variant available to the binding compiler.
 Compiles and artwork use the accepted stack's content identity and loaded startup texture-path
 digest, so rebuilding carriers under the same source pin refreshes changed artwork paths.
+Mixed packs reuse the compiler's decoded equipment rasters; startup-path artwork is decoded
+separately only when that compiler table lacks it, within the remaining pixel and count budgets.
 Authored pack attachables remain separate. Held pixel meshes and Java raster frames include
 the resolved artwork page and layer in their cache keys. Controller glint samplers do not
 replace startup primary artwork. Rendered acceptance remains incomplete.

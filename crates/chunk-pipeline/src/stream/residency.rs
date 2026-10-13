@@ -203,13 +203,37 @@ impl WorldStream {
         columns.extend(self.known_air.columns());
         columns
     }
+    /// Records the view radius the player asked the server for, in chunks. The render distance
+    /// follows it whatever radius the server grants, and retention keeps at least that radius.
+    pub fn set_requested_radius(&mut self, chunks: i32) {
+        let chunks = chunks.clamp(0, MAX_VIEW_RADIUS_CHUNKS);
+        if self.requested_radius != Some(chunks) {
+            self.requested_radius = Some(chunks);
+            self.request_chunk_retention();
+        }
+    }
+
+    /// The view radius the player last asked for, in chunks.
+    #[must_use]
+    pub const fn requested_radius(&self) -> Option<i32> {
+        self.requested_radius
+    }
+
+    /// The radius retention keeps once the server confirms one: the wider of the server's and the
+    /// player's. A server granting less never shrinks the player's view of what it does send, and
+    /// one granting more keeps every column it still considers sent, so none goes missing.
+    pub(super) fn retained_radius(&self) -> Option<i32> {
+        self.chunk_radius
+            .map(|server| self.requested_radius.map_or(server, |player| server.max(player)))
+    }
+
     /// Re-evaluates chunk-grid retention against the local player's current
-    /// chunk and the server-confirmed radius, evicting every tracked column and
+    /// chunk and the retained radius, evicting every tracked column and
     /// pruning every announced requirement the grid no longer keeps. Cheap to
     /// call on every player move: it only rescans when the player's chunk or
-    /// the confirmed radius changes.
+    /// the retained radius changes.
     pub(super) fn reevaluate_chunk_retention(&mut self) -> bool {
-        let Some(radius) = self.chunk_radius else {
+        let Some(radius) = self.retained_radius() else {
             return false;
         };
         let center = self.player_chunk();
@@ -279,7 +303,7 @@ impl WorldStream {
         if !self.between_frames_service {
             return self.reevaluate_chunk_retention();
         }
-        let Some(radius) = self.chunk_radius else {
+        let Some(radius) = self.retained_radius() else {
             return false;
         };
         let center = self.player_chunk();
@@ -363,7 +387,7 @@ impl WorldStream {
             return false;
         }
         self.column_is_active(key)
-            || self.chunk_radius.is_some_and(|radius| {
+            || self.retained_radius().is_some_and(|radius| {
                 let player = self.player_chunk();
                 chunk_in_view(
                     radius.clamp(0, MAX_VIEW_RADIUS_CHUNKS),

@@ -686,6 +686,90 @@ fn mention_acceptance_preserves_the_prefix_tail_and_outbound_text() {
 }
 
 #[test]
+fn completed_mentions_can_be_sent_after_completion_is_serviced() {
+    for (input, expected) in [
+        ("hello @here", "hello @here"),
+        ("hello @Alex", "hello @Alex"),
+        ("hello @\"Alice One\"", "hello @\"Alice One\""),
+        ("hello @h", "hello @here"),
+        ("hello @Al", "hello @Alex"),
+        ("hello @Alice O", "hello @\"Alice One\""),
+    ] {
+        let mut player_runtime = player_state::PlayerState::new(2);
+        let mut runtime = UiRuntime::new(2);
+        runtime
+            .refresh_raw_text_identities(|_| None, vec![Arc::from("Alex"), Arc::from("Alice One")]);
+        runtime.open_chat(&mut player_runtime);
+        runtime.insert_chat_text(input).unwrap();
+        assert!(runtime.service_pending_chat_autocomplete(&player_runtime));
+        if input != expected {
+            assert!(dispatch_chat_ui_action(
+                &mut runtime,
+                UiAction::Accept,
+                None,
+                0
+            ));
+            assert_eq!(runtime.chat_editor().as_str(), expected);
+            assert!(runtime.pending_chat_sends().is_empty());
+            assert!(runtime.service_pending_chat_autocomplete(&player_runtime));
+        }
+        assert!(runtime.chat_suggestions().is_empty());
+        assert!(dispatch_chat_ui_action(
+            &mut runtime,
+            UiAction::Accept,
+            None,
+            0
+        ));
+        assert!(!runtime.chat_focused());
+        assert_eq!(runtime.pending_chat_sends().len(), 1);
+        assert_eq!(runtime.pending_chat_sends()[0].message.as_ref(), expected);
+    }
+}
+
+#[test]
+fn accepting_an_unchanged_tab_completion_ends_the_cycle_and_allows_send() {
+    for (input, expected) in [
+        ("hello @h", "hello @here"),
+        ("hello @Alex", "hello @AlexTwo"),
+        ("hello @Alice O", "hello @\"Alice One\""),
+    ] {
+        for action in [
+            UiAction::Accept,
+            UiAction::PointerPrimary {
+                position: UiPoint::new(20.0, 533.0).unwrap(),
+                phase: PointerPhase::Pressed,
+            },
+        ] {
+            let mut player_runtime = player_state::PlayerState::new(2);
+            let mut runtime = UiRuntime::new(2);
+            runtime.refresh_raw_text_identities(
+                |_| None,
+                vec![Arc::from("AlexTwo"), Arc::from("Alice One")],
+            );
+            runtime.open_chat(&mut player_runtime);
+            runtime.insert_chat_text(input).unwrap();
+            assert!(runtime.service_pending_chat_autocomplete(&player_runtime));
+            assert!(runtime.handle_chat_ui_action(UiAction::TabNext));
+            assert!(runtime.handle_chat_ui_action(UiAction::TabNext));
+            assert_eq!(runtime.chat_editor().as_str(), expected);
+            assert_eq!(runtime.chat_suggestions().len(), 1);
+            assert!(dispatch_chat_ui_action(&mut runtime, action, Some(0), 0));
+            assert_eq!(runtime.chat_editor().as_str(), expected);
+            assert!(runtime.chat_suggestions().is_empty());
+            assert!(runtime.pending_chat_sends().is_empty());
+            assert!(!runtime.service_pending_chat_autocomplete(&player_runtime));
+            assert!(dispatch_chat_ui_action(
+                &mut runtime,
+                UiAction::Accept,
+                None,
+                0
+            ));
+            assert_eq!(runtime.pending_chat_sends()[0].message.as_ref(), expected);
+        }
+    }
+}
+
+#[test]
 fn command_target_completion_replaces_an_unfinished_quoted_name() {
     let mut player_runtime = player_state::PlayerState::new(2);
     let mut runtime = UiRuntime::new(2);

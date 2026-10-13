@@ -76,6 +76,21 @@ fn mention_rows_show_the_name_and_highlight_the_typed_match() {
 }
 
 #[test]
+fn command_rows_highlight_the_name_match_after_the_slash() {
+    for input in ["/iv", "/IV"] {
+        assert_eq!(
+            suggestion_row_text(input, "/give", &|_| None),
+            "§7/g§fiv§7e§r"
+        );
+    }
+    assert_eq!(
+        suggestion_row_text("/g", "/give", &|_| None),
+        "§7/§fg§7ive§r"
+    );
+    assert_eq!(suggestion_row_text("/", "/give", &|_| None), "§7/give§r");
+}
+
+#[test]
 fn here_and_selector_rows_use_their_translated_descriptions() {
     let translate = |key: &str| match key {
         "chat.mentions.autocomplete.allPlayers" => Some(Arc::from("All players")),

@@ -383,11 +383,7 @@ impl ChatAutocompleteCatalog {
             });
             suggestions.dedup();
         }
-        finish(
-            &mut suggestions,
-            if mention { "" } else { token },
-            tree && !players,
-        );
+        finish(&mut suggestions, token, tree && !players);
         Ok(ChatAutocompleteCompletion {
             catalog_revision: self.revision,
             suggestions: Arc::from(suggestions),
@@ -431,9 +427,12 @@ impl ChatAutocompleteCatalog {
 
     /// Finds the typed substring in the displayed suggestion using ASCII case rules.
     pub fn suggestion_match(before: &str, suggestion: &str) -> Option<std::ops::Range<usize>> {
-        let mut partial = &before[Self::replacement_start(before)..];
+        let token_start = Self::replacement_start(before);
+        let mut partial = &before[token_start..];
         if is_mention(before) && suggestion != ALL_PLAYERS_MENTION {
             partial = &partial[1..];
+        } else if token_start == 0 {
+            partial = partial.strip_prefix('/').unwrap_or(partial);
         }
         if partial.is_empty() {
             return None;

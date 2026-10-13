@@ -118,6 +118,38 @@ fn command_names_match_substrings_case_insensitively() {
     );
 }
 
+#[test]
+fn command_name_highlights_use_offsets_in_the_displayed_suggestion() {
+    let catalog = catalog();
+    for (input, suggestion, range) in [
+        ("/iv", "/give", 2..4),
+        ("/IV", "/give", 2..4),
+        ("/MODE", "/gamemode", 5..9),
+        ("/g", "/give", 1..2),
+        ("/m", "/gm", 2..3),
+    ] {
+        let completion = catalog.complete(input, input.len()).unwrap();
+        assert!(
+            completion
+                .suggestions
+                .iter()
+                .any(|value| &**value == suggestion)
+        );
+        assert_eq!(
+            ChatAutocompleteCatalog::suggestion_match(input, suggestion),
+            Some(range)
+        );
+    }
+    assert_eq!(
+        ChatAutocompleteCatalog::suggestion_match("/", "/give"),
+        None
+    );
+    assert_eq!(
+        ChatAutocompleteCatalog::suggestion_match("/warp /s", "/spawn"),
+        Some(0..2)
+    );
+}
+
 fn suggest(catalog: &ChatAutocompleteCatalog, input: &str) -> Vec<String> {
     complete(catalog, input, CompletionContext::default()).0
 }
@@ -288,6 +320,29 @@ fn plain_chat_mentions_offer_here_and_roster_names_without_commands() {
         assert!(complete(&catalog, "@everyone", context).0.is_empty());
         assert!(complete(&catalog, "@a[", context).0.is_empty());
         assert!(complete(&catalog, "hello", context).0.is_empty());
+    }
+}
+
+#[test]
+fn completed_mentions_are_removed_without_hiding_longer_matches() {
+    let players = [
+        Arc::from("Alex"),
+        Arc::from("AlexTwo"),
+        Arc::from("Alice One"),
+        Arc::from("hereafter"),
+    ];
+    let context = CompletionContext {
+        players: &players,
+        command_permission: None,
+    };
+    for catalog in [ChatAutocompleteCatalog::default(), catalog()] {
+        assert_eq!(complete(&catalog, "hello @here", context).0, ["@hereafter"]);
+        assert_eq!(complete(&catalog, "hello @Alex", context).0, ["@AlexTwo"]);
+        assert!(
+            complete(&catalog, "hello @\"Alice One\"", context)
+                .0
+                .is_empty()
+        );
     }
 }
 

@@ -60,7 +60,7 @@ impl UiRuntime {
         let Some(suggestion) = self.chat_autocomplete.handle_action(action) else {
             return false;
         };
-        self.replace_chat_token(&suggestion);
+        self.accept_chat_suggestion(&suggestion);
         true
     }
 
@@ -83,10 +83,24 @@ impl UiRuntime {
             let Some(suggestion) = self.chat_autocomplete.selected_suggestion() else {
                 return false;
             };
-            self.replace_chat_token(&suggestion);
+            self.accept_chat_suggestion(&suggestion);
             return true;
         }
         self.handle_chat_ui_action(action)
+    }
+
+    /// Accepts a suggestion, ending completion when it already matches the active token.
+    fn accept_chat_suggestion(&mut self, value: &str) {
+        let cursor = self.chat_editor.cursor_byte();
+        let start = self.chat_token_start();
+        if &self.chat_editor.as_str()[start..cursor] == value {
+            self.chat_autocomplete.clear();
+            self.pending_chat_autocomplete_request = None;
+            self.chat_tab_cycling = false;
+            self.chat_tab_start = None;
+        } else {
+            self.replace_chat_token(value);
+        }
     }
 
     /// Tab inserts the selected suggestion; repeated Tab steps through the same list.

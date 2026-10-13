@@ -241,7 +241,7 @@ fn fixed_atlas_tint_is_retained_only_on_the_baked_material_copy() {
             .with_fixed_tints([("world", tint)]),
         (&pack, Path::new("")),
         &descriptors,
-        &vec![Material::unvaried(); 4],
+        &[Material::unvaried(); 4],
         (&[], &[]),
         &[(2, "world".into())],
         &[(3, 2)],

@@ -17,6 +17,10 @@ use super::{
 
 const META_FILE: &str = "world.json";
 const PREFS_FILE: &str = "prefs.json";
+/// A world's menu thumbnail, beside its metadata, named as vanilla names its world icon.
+const THUMBNAIL_FILE: &str = "world_icon.jpeg";
+/// Largest thumbnail read back; one is a few tens of kilobytes.
+const MAX_THUMBNAIL_BYTES: u64 = 1024 * 1024;
 
 /// One directory per world under a per-user root: `world.json` beside the server's data folders.
 pub(crate) struct Store {
@@ -119,6 +123,32 @@ impl Store {
             return Err(WorldError::NotFound);
         }
         Ok(self.root.join(id))
+    }
+
+    /// World `id`'s saved thumbnail, if one was captured.
+    pub(crate) fn thumbnail(&self, id: &str) -> Option<Vec<u8>> {
+        let path = self.dir(id).ok()?.join(THUMBNAIL_FILE);
+        let file = fs::File::open(path).ok()?;
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(
+            &mut std::io::Read::take(file, MAX_THUMBNAIL_BYTES + 1),
+            &mut bytes,
+        )
+        .ok()?;
+        (bytes.len() as u64 <= MAX_THUMBNAIL_BYTES).then_some(bytes)
+    }
+
+    /// Replaces world `id`'s thumbnail with `image`, whole or not at all.
+    pub(crate) fn save_thumbnail(&self, id: &str, image: &[u8]) -> Result<(), WorldError> {
+        let _state = self.lock();
+        let dir = self.dir(id)?;
+        if fs::metadata(dir.join(META_FILE)).is_err() {
+            return Err(WorldError::NotFound);
+        }
+        let partial = dir.join(format!("{THUMBNAIL_FILE}.partial"));
+        fs::write(&partial, image)
+            .and_then(|()| fs::rename(&partial, dir.join(THUMBNAIL_FILE)))
+            .map_err(|error| failed(format!("save world thumbnail: {error}")))
     }
 
     fn read(&self, id: &str) -> Result<World, WorldError> {

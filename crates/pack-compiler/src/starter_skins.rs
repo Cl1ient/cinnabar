@@ -124,6 +124,11 @@ fn modern_skin_model(models: &Map<String, Value>, model: &str) -> Result<Value, 
             crate::geometry_key::legacy_key(key).and_then(|(_, parent)| parent.map(str::to_owned));
     }
     let mut resolved = chain.pop().expect("the selected model has a definition");
+    if legacy {
+        let mut base = serde_json::json!({"description":{}, "bones":[]});
+        overlay_skin_model(&mut base, resolved)?;
+        resolved = base;
+    }
     while let Some(child) = chain.pop() {
         overlay_skin_model(&mut resolved, child)?;
     }
@@ -398,7 +403,6 @@ mod tests {
                 .unwrap();
         let entries = assert_modern_skin_schema(&carrier.geometry);
         assert_eq!(entries[0], modern["minecraft:geometry"][0]);
-        assert_eq!(entries[1]["bones"], cube_model()["bones"]);
         assert_eq!(
             entries[1]["description"]["texture_width"],
             STARTER_SKIN_SIDE
@@ -422,10 +426,15 @@ mod tests {
             assets::EntityGeometryUv::Box([assets::EntityGeometryScalar::new(32.0).unwrap(); 2])
         );
         let patch = serde_json::json!({"geometry":{"default":SLIM_SKIN_GEOMETRY}}).to_string();
-        assert!(
+        assert_eq!(
             parse_skin_geometry(&patch, &carrier.geometry)
                 .unwrap()
-                .is_some()
+                .unwrap()
+                .bones,
+            parse_skin_geometry(&patch, &legacy.to_string())
+                .unwrap()
+                .unwrap()
+                .bones,
         );
     }
 
@@ -490,6 +499,37 @@ mod tests {
             assert_eq!(after.texture_width, before.texture_width);
             assert_eq!(after.texture_height, before.texture_height);
             assert_eq!(after.visible_bounds, before.visible_bounds);
+        }
+    }
+
+    #[test]
+    fn repeated_legacy_bones_preserve_reset_before_normalization() {
+        for reset in [false, true] {
+            let mut first = cube_model()["bones"][0].clone();
+            first["mirror"] = true.into();
+            first["inflate"] = 0.5.into();
+            let mut repeated = cube_model()["bones"][0].clone();
+            repeated["name"] = "BODY".into();
+            repeated["reset"] = reset.into();
+            repeated["cubes"][0]["uv"] = serde_json::json!([32, 32]);
+            let mut classic = cube_model();
+            classic["bones"] = serde_json::json!([first, repeated]);
+            let models = serde_json::json!({
+                "format_version":"1.8.0",
+                CLASSIC_SKIN_GEOMETRY:classic,
+                "geometry.humanoid.customSlim:geometry.humanoid.custom":{"bones":[]},
+            });
+            let normalized = skin_geometry(models.as_object().unwrap()).unwrap();
+            assert_modern_skin_schema(&normalized);
+            for identifier in [CLASSIC_SKIN_GEOMETRY, SLIM_SKIN_GEOMETRY] {
+                let patch = serde_json::json!({"geometry":{"default":identifier}}).to_string();
+                let before = parse_skin_geometry(&patch, &models.to_string())
+                    .unwrap()
+                    .unwrap();
+                let after = parse_skin_geometry(&patch, &normalized).unwrap().unwrap();
+                assert_eq!(before.bones[0].cubes.len(), if reset { 1 } else { 2 });
+                assert_eq!(after.bones, before.bones, "{identifier}, reset={reset}");
+            }
         }
     }
 

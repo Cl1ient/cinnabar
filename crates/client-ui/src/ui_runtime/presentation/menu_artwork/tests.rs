@@ -370,3 +370,31 @@ fn repeated_artwork_paths_do_not_exclude_later_unique_sources() {
     };
     assert_eq!(sources(&set).len(), 2);
 }
+
+/// The worlds tab packs each world's captured view under the key its row draws.
+#[test]
+fn world_thumbnails_are_packed_from_memory_on_the_worlds_tab() {
+    use launcher::local_worlds::world::{WorldThumbnail, thumbnail_key};
+    use launcher::menu::{LocalWorldCard, MenuScreen};
+    let mut view = launcher::menu::MenuView::new(true, "Fixture".into());
+    view.screen = MenuScreen::Play;
+    view.local_worlds = vec![LocalWorldCard {
+        thumbnail: Some(WorldThumbnail::new(
+            "0123456789abcdef",
+            Arc::from(&b"jpeg"[..]),
+        )),
+        ..Default::default()
+    }];
+    let set = ArtworkSet {
+        images: view_images(&view, &[]),
+        ..Default::default()
+    };
+    let keys: Vec<_> = sources(&set).iter().map(|source| source.key().0).collect();
+    assert_eq!(keys, [thumbnail_key("0123456789abcdef")]);
+
+    view.screen = MenuScreen::Home;
+    assert!(
+        view_images(&view, &[]).is_empty(),
+        "other screens leave atlas room to theirs"
+    );
+}

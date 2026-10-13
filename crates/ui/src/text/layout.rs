@@ -196,9 +196,13 @@ impl Lines<'_> {
         } else {
             0
         };
+        let bold_offset_64 = self
+            .metrics
+            .units
+            .effect_texels(bold_offset_64, self.request.wrap.effect_scale_1024)?;
         let advance_64 = units.texels(i64::from(metrics.advance_64))?;
         let advance_64 = if advance_64 > 0 {
-            advance_64 + self.metrics.units.texels(bold_offset_64)?
+            advance_64 + bold_offset_64
         } else {
             advance_64
         };
@@ -214,7 +218,7 @@ impl Lines<'_> {
             advance_64: advance_64
                 .checked_add(letter_spacing_64)
                 .ok_or(TextError::FixedPointOverflow)?,
-            bold_offset_64: self.metrics.units.texels(bold_offset_64)?,
+            bold_offset_64,
             units,
             linear_sampling: source.linear_sampling(),
             rendering: source.rendering(),

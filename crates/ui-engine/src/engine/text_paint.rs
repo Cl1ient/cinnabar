@@ -128,6 +128,7 @@ impl<'a> LabelMetrics<'a> {
     ) -> TextLayoutRequest<'a> {
         let mut request = self.metrics.request(text, width_64(width), self.font);
         request.wrap = TextWrap {
+            effect_scale_1024: self.effect_scale_1024(),
             line_padding_64: (shape.line_padding * f64::from(px) * 64.0).round() as i32,
             chop: if shape.hide_hyphen {
                 WordChop::Bare
@@ -142,6 +143,15 @@ impl<'a> LabelMetrics<'a> {
     /// Exports the effective factor for callers measuring against the frame's base scale.
     pub(super) fn factor(self) -> f32 {
         self.metrics.scale.get() / self.frame_scale.get()
+    }
+
+    /// Keeps bitmap-unit styling in display units after normalizing a native glyph raster.
+    pub(super) fn effect_scale_1024(self) -> u32 {
+        if self.shadow_factor == 1.0 {
+            return 0;
+        }
+        (self.metrics.scale.get() * self.shadow_factor * UiScale::SCALE_DENOMINATOR as f32).round()
+            as u32
     }
 
     /// Converts bitmap-unit effects to the selected face's units without resizing them.

@@ -511,7 +511,10 @@ older clients require one update and restart.
 Settings › Mods drives this registration. **Import mod…** validates a `.wasm` component without
 running it and copies it into `InstallLayout::mods_dir`. Enabling a mod points the registration at
 it, so one registered mod runs at a time; grants, font and UI carry over only while the component
-stays the same. Builds without `local-mods` show the tab with import disabled.
+stays the same. Removing a mod clears its retained grants, font and UI, waits for the host's
+pending settings writes to finish, then deletes the component and its settings companion.
+Ordinary disable/re-enable keeps that authorization. Imports reject existing filenames and
+names starting with a dot. Builds without `local-mods` show the tab with import disabled.
 
 ## Verification and limits
 

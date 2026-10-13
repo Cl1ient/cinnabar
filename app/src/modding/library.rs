@@ -1,7 +1,10 @@
 //! The Settings Mods tab's library. Imports, removal and selection run on one worker, which
 //! publishes the per-user mods directory with the host's recorded status.
 
-use super::registration::selection::{registered, select};
+use super::registration::{
+    removal,
+    selection::{forget, registered, select},
+};
 use crate::global_resources::picker::{self, Filter};
 use bevy::prelude::*;
 use client_shell::menu::MenuRuntime;
@@ -30,15 +33,25 @@ pub(super) struct ModLibrary {
 }
 
 /// Starts the library worker and the system that connects it to the Mods tab.
-pub(super) fn configure(app: &mut App, mods: PathBuf, registration: PathBuf) {
+pub(super) fn configure(
+    app: &mut App,
+    mods: PathBuf,
+    registration: PathBuf,
+    removal: removal::Client,
+) {
     let (commands, incoming) = unbounded();
     let (outgoing, published) = unbounded();
     let spawned = std::thread::Builder::new()
         .name("mod-library".into())
         .spawn(move || {
-            run(&mods, &registration, &incoming, &outgoing, || {
-                picker::pick(&FILTER)
-            })
+            run(
+                &mods,
+                &registration,
+                &incoming,
+                &outgoing,
+                || picker::pick(&FILTER),
+                |request| removal.wait(request),
+            )
         });
     if let Err(error) = spawned {
         eprintln!("Mod library unavailable: {error}");
@@ -71,6 +84,7 @@ fn run(
     incoming: &Receiver<Action>,
     outgoing: &Sender<Library>,
     mut pick: impl FnMut() -> Result<Option<PathBuf>, String>,
+    mut retire: impl FnMut(&str) -> Result<(), String>,
 ) {
     let mut requests = 0;
     let mut library = scan(mods, registration, String::new());
@@ -78,12 +92,19 @@ fn run(
     loop {
         let message = match incoming.recv_timeout(super::RELOAD_INTERVAL) {
             Ok(action) => {
-                if action == Action::Import {
+                if matches!(action, Action::Import | Action::Remove(_)) {
                     library.busy = true;
                     let _ = outgoing.send(library.clone());
                 }
-                perform(action, mods, registration, &mut requests, &mut pick)
-                    .unwrap_or_else(|error| error)
+                perform(
+                    action,
+                    mods,
+                    registration,
+                    &mut requests,
+                    &mut pick,
+                    &mut retire,
+                )
+                .unwrap_or_else(|error| error)
             }
             Err(RecvTimeoutError::Timeout) => library.message.clone(),
             Err(RecvTimeoutError::Disconnected) => return,
@@ -103,6 +124,7 @@ fn perform(
     registration: &Path,
     requests: &mut u64,
     pick: &mut impl FnMut() -> Result<Option<PathBuf>, String>,
+    retire: &mut impl FnMut(&str) -> Result<(), String>,
 ) -> Result<String, String> {
     let installed = installed(mods);
     let path = |id: u64| {
@@ -133,11 +155,9 @@ fn perform(
         },
         Action::Remove(id) => {
             let path = path(id)?;
-            if registered(registration)
-                .is_some_and(|current| current.enabled && current.component == path)
-            {
-                select(registration, &path, false, request())?;
-            }
+            let request_id = request();
+            forget(registration, &path, request_id.clone())?;
+            retire(&request_id)?;
             remove(&path).map(|()| String::new())
         }
         Action::ReadMore(_) | Action::ToggleActive | Action::ToggleAvailable => Ok(String::new()),
@@ -151,6 +171,9 @@ fn import(mods: &Path, source: &Path) -> Result<String, String> {
         .and_then(|name| name.to_str())
         .filter(|_| is_component(source))
         .ok_or_else(|| format!("Choose a .{COMPONENT_EXTENSION} mod component."))?;
+    if name.starts_with('.') {
+        return Err("Mod file names must not start with a dot.".into());
+    }
     let mut bytes = Vec::new();
     fs::File::open(source)
         .and_then(|file| {
@@ -184,7 +207,7 @@ fn publish_component(mods: &Path, name: &str, bytes: &[u8]) -> Result<(), String
     })
 }
 
-/// Deletes a component and the settings file the host keeps beside it.
+/// Deletes a component and its companion after the caller has drained host retirement.
 fn remove(path: &Path) -> Result<(), String> {
     for file in [path.to_owned(), path.with_extension("settings.json")] {
         match fs::remove_file(&file) {
@@ -202,7 +225,7 @@ fn is_component(path: &Path) -> bool {
         .is_some_and(|extension| extension.eq_ignore_ascii_case(COMPONENT_EXTENSION))
 }
 
-/// Components in the mods directory by file name, skipping hidden in-progress imports.
+/// Lists visible components by file name; staging files have a different extension.
 fn installed(mods: &Path) -> Vec<(InstalledMod, PathBuf)> {
     let Ok(entries) = fs::read_dir(mods) else {
         return Vec::new();
@@ -254,6 +277,88 @@ fn scan(mods: &Path, registration: &Path, message: String) -> Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Hidden filenames are rejected before any component is installed or reported as imported.
+    #[test]
+    fn import_rejects_hidden_component_names() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let source = directory.path().join(".zoom.wasm");
+        fs::write(&source, component("")).unwrap();
+        let error = import(&mods, &source).unwrap_err();
+        assert!(error.contains("must not start with a dot"), "{error}");
+        assert!(!mods.exists());
+        assert!(installed(&mods).is_empty());
+    }
+
+    /// A final retirement save happens before deletion, so it cannot recreate the companion.
+    #[test]
+    fn removal_waits_for_pending_settings_before_deleting_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&mods).unwrap();
+        let path = mods.join("zoom.wasm");
+        let companion = path.with_extension("settings.json");
+        fs::write(&path, b"component").unwrap();
+        fs::write(&companion, b"old preferences").unwrap();
+        select(&registration, &path, true, "selected".into()).unwrap();
+        let id = installed(&mods)[0].0.id;
+        let retire = |_: &str| {
+            assert!(!registered(&registration).unwrap().enabled);
+            assert!(path.exists() && companion.exists());
+            fs::write(&companion, b"final preferences").unwrap();
+            Ok(())
+        };
+        let (commands, incoming) = unbounded();
+        let (outgoing, published) = unbounded();
+        commands.send(Action::Remove(id)).unwrap();
+        drop(commands);
+        run(
+            &mods,
+            &registration,
+            &incoming,
+            &outgoing,
+            || Ok(None),
+            retire,
+        );
+        let updates: Vec<_> = published.try_iter().collect();
+        assert_eq!(
+            updates
+                .iter()
+                .map(|library| library.busy)
+                .collect::<Vec<_>>(),
+            [false, true, false]
+        );
+        assert!(updates[2].message.is_empty() && updates[2].installed.is_empty());
+        assert!(!path.exists() && !companion.exists());
+    }
+
+    /// Failed retirement keeps both files available for a later removal attempt.
+    #[test]
+    fn removal_keeps_files_when_retirement_cannot_complete() {
+        let directory = tempfile::tempdir().unwrap();
+        let mods = directory.path().join("mods");
+        let registration = directory.path().join("config");
+        fs::create_dir_all(&mods).unwrap();
+        let path = mods.join("zoom.wasm");
+        let companion = path.with_extension("settings.json");
+        fs::write(&path, b"component").unwrap();
+        fs::write(&companion, b"preferences").unwrap();
+        let id = installed(&mods)[0].0.id;
+        let error = perform(
+            Action::Remove(id),
+            &mods,
+            &registration,
+            &mut 0,
+            &mut || Ok(None),
+            &mut |_| Err("host stopped".into()),
+        )
+        .unwrap_err();
+        assert_eq!(error, "host stopped");
+        assert_eq!(fs::read(&path).unwrap(), b"component");
+        assert_eq!(fs::read(&companion).unwrap(), b"preferences");
+    }
 
     /// Builds a minimal mod with a distinct frame body for import tests.
     fn component(frame: &str) -> String {
@@ -312,6 +417,7 @@ mod tests {
             &incoming,
             &outgoing,
             || Ok(None),
+            |_| Ok(()),
         );
         let updates: Vec<_> = published.try_iter().collect();
         assert_eq!(
@@ -400,20 +506,48 @@ mod tests {
             &registration,
             &mut requests,
             &mut || Ok(None),
+            &mut |_| Ok(()),
         )
         .unwrap();
         assert_eq!(scan(&mods, &registration, String::new()).enabled, Some(id));
+        let record = registration.join(super::super::registration::REGISTRATION_FILE);
+        let mut granted: serde_json::Value =
+            serde_json::from_slice(&fs::read(&record).unwrap()).unwrap();
+        granted["grants"]["settings"] = true.into();
+        granted["font"] = serde_json::to_value(directory.path().join("font.ttf")).unwrap();
+        granted["ui"] = serde_json::to_value(directory.path().join("ui.json")).unwrap();
+        fs::write(&record, serde_json::to_vec(&granted).unwrap()).unwrap();
         perform(
             Action::Remove(id),
             &mods,
             &registration,
             &mut requests,
             &mut || Ok(None),
+            &mut |_| Ok(()),
         )
         .unwrap();
         let after = scan(&mods, &registration, String::new());
         assert!(after.installed.is_empty() && after.enabled.is_none());
         assert!(!registered(&registration).unwrap().enabled);
         assert!(!mods.join("zoom.settings.json").exists());
+        let source = directory.path().join("zoom.wasm");
+        fs::write(&source, component("unreachable")).unwrap();
+        import(&mods, &source).unwrap();
+        perform(
+            Action::Enable(id),
+            &mods,
+            &registration,
+            &mut requests,
+            &mut || Ok(None),
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+        let replacement: serde_json::Value =
+            serde_json::from_slice(&fs::read(record).unwrap()).unwrap();
+        assert_eq!(
+            replacement["grants"],
+            serde_json::to_value(mod_host::ModGrants::default()).unwrap()
+        );
+        assert!(replacement["font"].is_null() && replacement["ui"].is_null());
     }
 }

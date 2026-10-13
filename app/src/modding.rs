@@ -119,11 +119,17 @@ pub(crate) fn configure_from_environment(app: &mut App) {
         let configured = app.world().contains_resource::<ModRuntime>();
         let layout =
             launcher::install_layout::InstallLayout::discover().map_err(|error| error.to_string());
-        if let Ok(layout) = &layout {
-            library::configure(app, layout.mods_dir(), layout.user_config_root.clone());
-        }
-        match layout.and_then(|layout| registration::Watcher::start(layout.user_config_root)) {
-            Ok(watcher) => {
+        match layout.and_then(|layout| {
+            registration::Watcher::start(layout.user_config_root.clone())
+                .map(|watcher| (layout, watcher))
+        }) {
+            Ok((layout, watcher)) => {
+                library::configure(
+                    app,
+                    layout.mods_dir(),
+                    layout.user_config_root,
+                    watcher.removal_client(),
+                );
                 app.insert_resource(watcher);
                 if configured {
                     configure_registration_systems(app);

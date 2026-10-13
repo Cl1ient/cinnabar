@@ -2,6 +2,7 @@
 
 use sha2::Digest;
 mod presentation;
+pub(super) mod removal;
 pub(super) mod selection;
 mod source;
 mod status;
@@ -167,6 +168,11 @@ enum Message {
         generation: u64,
         status: Status,
         identity: Option<[u8; 32]>,
+        applied: bool,
+    },
+    AwaitRetirement {
+        request_id: String,
+        complete: removal::Completion,
     },
     Reload {
         generation: u64,
@@ -238,6 +244,11 @@ pub(super) struct Watcher {
 }
 
 impl Watcher {
+    /// Gives the library worker a way to wait for host and settings retirement off-frame.
+    pub(super) fn removal_client(&self) -> removal::Client {
+        removal::Client::new(self.messages.clone())
+    }
+
     pub(super) fn start(directory: PathBuf) -> Result<Self, String> {
         let (send_updates, updates) = bounded(1);
         let (messages, receive_messages) = bounded(8);
@@ -310,12 +321,19 @@ impl Watcher {
         }
     }
 
-    fn acknowledge(&self, generation: u64, status: Status, identity: Option<[u8; 32]>) {
+    fn acknowledge(
+        &self,
+        generation: u64,
+        status: Status,
+        identity: Option<[u8; 32]>,
+        applied: bool,
+    ) {
         self.last_ack.store(generation, Ordering::Release);
         self.send(Message::Acknowledge {
             generation,
             status,
             identity,
+            applied,
         });
     }
 
@@ -335,6 +353,7 @@ impl Watcher {
             generation,
             Status::new(request_id, "error", Some(error)),
             None,
+            false,
         );
     }
 
@@ -447,6 +466,7 @@ fn install(world: &mut World, update: Update) {
                     update.generation,
                     Status::new(update.request_id, "loaded", None),
                     Some(identity),
+                    true,
                 );
             } else {
                 watcher.send(Message::Reload {
@@ -597,6 +617,7 @@ fn install(world: &mut World, update: Update) {
             update.generation,
             Status::new(update.request_id, state, message),
             identity,
+            true,
         );
     }
 }
@@ -672,10 +693,11 @@ fn sync_authority(world: &mut World) {
     if let Some((generation, status)) = acknowledgment
         && let Some(watcher) = world.get_resource::<Watcher>()
     {
-        watcher.acknowledge(generation, status, None);
+        watcher.acknowledge(generation, status, None, false);
     }
 }
 
+/// Drops queued hosts and drains their settings lanes before the next disk-dependent operation.
 fn after_retirement<T, R>(retired: &Receiver<T>, build: impl FnOnce() -> R) -> R {
     for old in retired.try_iter() {
         drop(old);
@@ -694,6 +716,7 @@ fn worker(
 ) {
     let (loads, receive_loads) = bounded::<LoadRequest>(1);
     let (results, receive_results) = bounded(1);
+    let (fences, receive_fences) = crossbeam_channel::unbounded();
     let generation = Arc::clone(&latest);
     let loader = thread::Builder::new()
         .name("local-extension-loader".into())
@@ -721,6 +744,10 @@ fn worker(
                         let Ok(host) = host else { break };
                         drop(host);
                     }
+                    recv(receive_fences) -> complete => {
+                        let Ok(complete) = complete else { break };
+                        removal::finish(&receive_retired, complete);
+                    }
                 }
             }
         });
@@ -733,10 +760,12 @@ fn worker(
     let mut pending_load = None;
     let mut pending_update = None;
     let mut next_poll = Instant::now();
+    let mut removal = removal::Pending::default();
     loop {
         if Instant::now() >= next_poll {
             next_poll = Instant::now() + RELOAD_INTERVAL;
             let mut observed = observe(&directory.join(REGISTRATION_FILE));
+            removal.observe(observed.request_id.as_deref());
             let mut snapshot = match &observed.result {
                 Ok(Some(registration)) if registration.enabled => {
                     match source_snapshot(registration.clone()) {
@@ -841,13 +870,29 @@ fn worker(
                 generation,
                 status,
                 identity,
+                applied,
             }) => {
                 if generation == latest.load(Ordering::Acquire) {
+                    if applied {
+                        removal.applied(generation, status.request_id.clone(), &fences);
+                    }
                     installed_identity = identity;
                     if let Err(error) = write_json(&directory.join(STATUS_FILE), &status) {
                         eprintln!("Local extension status could not be saved: {error}");
                     }
                 }
+            }
+            Ok(Message::AwaitRetirement {
+                request_id,
+                complete,
+            }) => {
+                removal.wait(
+                    latest.load(Ordering::Acquire),
+                    request_id,
+                    complete,
+                    &fences,
+                );
+                next_poll = Instant::now();
             }
             Ok(Message::Reload {
                 generation,
@@ -890,5 +935,6 @@ fn worker(
     latest.fetch_add(1, Ordering::AcqRel);
     drop(receive_results);
     drop(loads);
+    drop(fences);
     let _ = loader.join();
 }

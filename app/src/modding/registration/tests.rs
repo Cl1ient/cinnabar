@@ -264,11 +264,13 @@ fn actual_install_acknowledges_only_after_host_and_panel_are_published() {
         generation,
         status,
         identity,
+        applied,
     } = messages.try_recv().unwrap()
     else {
         panic!("expected installation acknowledgment")
     };
     assert_eq!(generation, 1);
+    assert!(applied);
     assert_eq!(status.state, "loaded");
     assert_eq!(status.request_id, "first");
     assert_eq!(
@@ -630,10 +632,14 @@ fn saturated_retirement_queue_releases_authority_before_waiting_for_disposal() {
     );
     assert_eq!(world.resource::<ModInteraction>().attack_reach, None);
     assert_eq!(world.resource::<VisualTimeOverride>().0, None);
-    let Message::Acknowledge { status, .. } = messages.try_recv().unwrap() else {
+    let Message::Acknowledge {
+        status, applied, ..
+    } = messages.try_recv().unwrap()
+    else {
         panic!("expected revocation acknowledgment")
     };
     assert_eq!(status.state, "disabled");
+    assert!(!applied, "authority revocation has not retired the host");
     assert!(
         world
             .resource::<Watcher>()
@@ -642,6 +648,23 @@ fn saturated_retirement_queue_releases_authority_before_waiting_for_disposal() {
             .unwrap()
             .is_some()
     );
+    for host in retired.try_iter() {
+        drop(host);
+    }
+    let pending = world
+        .resource::<Watcher>()
+        .pending
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap();
+    install(&mut world, pending);
+    assert!(!world.contains_resource::<ModRuntime>());
+    let Message::Acknowledge { applied, .. } = messages.try_recv().unwrap() else {
+        panic!("expected completed detachment acknowledgment")
+    };
+    assert!(applied);
+    assert_eq!(retired.len(), 1);
 }
 
 #[test]

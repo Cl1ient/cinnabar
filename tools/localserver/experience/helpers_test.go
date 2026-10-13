@@ -126,11 +126,7 @@ func buildHelpers(ctx context.Context, scratch string) error {
 		host <- buildArtifact("experience-runtime", "build", "-p", "experience-runtime", "--locked",
 			"--jobs", strconv.Itoa(max(jobs-1, 1)))
 	}()
-	guestTarget := filepath.Join(root, "target", "experience-guests")
-	guest := buildArtifact("experience_probe",
-		"build", "--locked", "--target", "wasm32-unknown-unknown", "-p", "experience-probe",
-		"--jobs", "1", "--target-dir", guestTarget,
-		"--config", "build.build-dir="+strconv.Quote(filepath.ToSlash(filepath.Join(guestTarget, "build"))))
+	guest := buildArtifact("experience_probe", helperGuestBuildArgs(root)...)
 	runtimeArtifact := <-host
 	if runtimeArtifact.err != nil || guest.err != nil {
 		return <-faults

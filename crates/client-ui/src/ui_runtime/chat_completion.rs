@@ -152,18 +152,25 @@ impl UiRuntime {
         ChatAutocompleteCatalog::replacement_start(head)
     }
 
-    /// Replaces the active mention or quoted command token ending at the cursor.
+    /// Replaces the active token, including any text up to its existing closing quote.
     fn replace_chat_token(&mut self, value: &str) {
         let text = self.chat_editor.as_str();
         let cursor = self.chat_editor.cursor_byte();
         let head = &text[..cursor];
         let start = self.chat_token_start();
         let tail = &text[cursor..];
+        let inside_quotes = head[start..].bytes().filter(|&byte| byte == b'"').count() % 2 != 0;
+        let tail = if inside_quotes && let Some(end) = tail.find('"') {
+            &tail[end + 1..]
+        } else {
+            tail
+        };
         if start + value.len() + tail.len() > MAX_CHAT_INPUT_BYTES {
             return;
         }
         let next = format!("{}{value}{tail}", &head[..start]);
         if next == text {
+            self.mutate_chat_editor(|editor| editor.place_cursor(start + value.len()));
             return;
         }
         let tail_chars = tail.chars().count();

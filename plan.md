@@ -2964,7 +2964,8 @@ uses this path. Mixed texture and geometry, controller or material overrides ret
 installed attachable binding against the replacement definitions. Classification uses
 the binding compiler's description inputs and material parser, including inherited
 material defines and skinning variants.
-Compiles and artwork use the accepted stack's content identity and startup carrier identity.
+Compiles and artwork use the accepted stack's content identity and loaded startup texture-path
+digest, so rebuilding carriers under the same source pin refreshes changed artwork paths.
 Authored pack attachables remain separate. Held pixel meshes and Java raster frames include
 the resolved artwork page and layer in their cache keys. Controller glint samplers do not
 replace startup primary artwork. Rendered acceptance remains incomplete.

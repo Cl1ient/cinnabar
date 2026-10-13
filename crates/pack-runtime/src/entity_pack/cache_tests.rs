@@ -276,22 +276,94 @@ fn a_cancelled_compile_stops_between_steps_and_keeps_nothing() {
     assert_eq!(compiles.get(), 1);
 }
 
+/// Loads independent artwork tables built under the same source and entity pins.
+fn equipment_with_texture_path(path: &str) -> std::sync::Arc<assets::RuntimeEquipmentCatalog> {
+    let texture = assets::EquipmentTexture {
+        identifier: path.into(),
+        width: 1,
+        height: 1,
+        rgba8: std::sync::Arc::from([10, 20, 30, 255]),
+    };
+    let bytes =
+        assets::encode_equipment_catalog_with_textures([1; 32], [2; 32], &[], &[texture]).unwrap();
+    std::sync::Arc::new(assets::RuntimeEquipmentCatalog::decode(&bytes).unwrap())
+}
+
 #[test]
 fn changing_startup_artwork_paths_recompiles_the_same_stack() {
     let (view, cache) = (empty_view(), super::EntityCache::default());
     let compiles = std::cell::Cell::new(0);
-    for identity in [None, None, Some([1; 32]), Some([1; 32]), Some([2; 32])] {
+    let first = equipment_with_texture_path("textures/items/first");
+    let same_paths = equipment_with_texture_path("textures/items/first");
+    let second = equipment_with_texture_path("textures/items/second");
+    assert_eq!(
+        first.source_manifest_sha256(),
+        second.source_manifest_sha256()
+    );
+    for equipment in [None, None, Some(first), Some(same_paths), Some(second)] {
         let mut input = inputs(None);
-        input.equipment = identity.map(|identity| {
-            std::sync::Arc::new(
-                assets::RuntimeEquipmentCatalog::from_parts(identity, Vec::new(), Vec::new())
-                    .unwrap(),
-            )
-        });
+        input.equipment = equipment;
         cache.get_or_compile(input, &view, None, &|| false, |_, _, _, _, _, _| {
             compiles.set(compiles.get() + 1);
             Some((None, None))
         });
     }
     assert_eq!(compiles.get(), 3);
+}
+
+#[test]
+fn different_loaded_texture_paths_under_one_pin_do_not_share_disk_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let disk = crate::compile_cache::CompileCache::new(dir.path().into(), 1 << 30);
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(1, 1, image::Rgba([37, 59, 83, 255]))
+        .write_to(&mut png, image::ImageFormat::Png)
+        .unwrap();
+    let paths = ["textures/items/first", "textures/items/second"];
+    let stack = crate::test_support::stack(&[
+        (&format!("{}.png", paths[0]), png.get_ref()),
+        (&format!("{}.png", paths[1]), png.get_ref()),
+    ]);
+    let first = equipment_with_texture_path(paths[0]);
+    let second = equipment_with_texture_path(paths[1]);
+    assert_eq!(
+        first.source_manifest_sha256(),
+        second.source_manifest_sha256()
+    );
+    let compiles = std::cell::Cell::new(0);
+    for catalog in [first.clone(), first, second.clone(), second] {
+        let mut input = inputs(None);
+        input.stack = crate::stack_fingerprint(&stack);
+        input.equipment = Some(catalog.clone());
+        let pack = super::EntityCache::default()
+            .get_or_compile(
+                input,
+                &resource_pack::LayeredPackView::tracked(stack.clone()),
+                Some(&disk),
+                &|| false,
+                |view, vanilla, vanilla_pack_dir, equipment, encode, cancelled| {
+                    compiles.set(compiles.get() + 1);
+                    super::super::compile_encoded(
+                        view,
+                        vanilla,
+                        vanilla_pack_dir,
+                        equipment,
+                        encode,
+                        cancelled,
+                    )
+                },
+            )
+            .flatten()
+            .expect("each loaded path supplies an artwork layer");
+        let artwork = pack.equipment.as_ref().unwrap();
+        let expected = catalog.textures()[0].identifier.as_ref();
+        assert_eq!(artwork.textures().len(), 1);
+        assert_eq!(artwork.textures()[0].identifier.as_ref(), expected);
+        assert_eq!(&artwork.textures()[0].rgba8[..4], &[37, 59, 83, 255]);
+    }
+    assert_eq!(
+        compiles.get(),
+        2,
+        "each path compiles once, then reuses its disk entry"
+    );
 }

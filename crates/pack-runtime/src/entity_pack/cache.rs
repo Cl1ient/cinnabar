@@ -13,7 +13,7 @@ pub(super) struct EntityInputs {
 }
 
 impl PartialEq for EntityInputs {
-    /// Immutable carrier identities keep artwork-path changes out of stale cache entries.
+    /// Loaded texture-path identities keep rebuilt artwork tables out of stale cache entries.
     fn eq(&self, other: &Self) -> bool {
         let Self {
             stack,
@@ -26,11 +26,11 @@ impl PartialEq for EntityInputs {
             && vanilla_pack_dir == &other.vanilla_pack_dir
             && equipment
                 .as_ref()
-                .map(|catalog| catalog.source_manifest_sha256())
+                .map(|catalog| catalog.texture_paths_sha256())
                 == other
                     .equipment
                     .as_ref()
-                    .map(|catalog| catalog.source_manifest_sha256())
+                    .map(|catalog| catalog.texture_paths_sha256())
     }
 }
 
@@ -168,7 +168,7 @@ impl EntityCache {
     }
 }
 
-/// Names the stack, the vanilla refs it resolves against, and the build.
+/// Names the stack, reference definitions, loaded equipment texture paths, and the build.
 fn disk_key(inputs: &EntityInputs) -> [u8; 32] {
     use crate::compile_cache::{cache_key, part};
     use sha2::Digest;
@@ -190,7 +190,7 @@ fn disk_key(inputs: &EntityInputs) -> [u8; 32] {
         &inputs
             .equipment
             .as_ref()
-            .map(|catalog| catalog.source_manifest_sha256())
+            .map(|catalog| catalog.texture_paths_sha256())
             .unwrap_or_default(),
     );
     if let Some(path) = &inputs.vanilla_pack_dir {

@@ -213,7 +213,7 @@ mod tests {
             .collect();
         files.push((
             "entity/fixture.json".into(),
-            br#"{"minecraft:client_entity":{"description":{"identifier":"fixture:actor"}}}"#
+            br#"{"format_version":"1.10.0","minecraft:client_entity":{"description":{"identifier":"fixture:actor"}}}"#
                 .to_vec(),
         ));
         files.push((
@@ -223,7 +223,7 @@ mod tests {
         let compiled = crate::compile_entity_pack(files).unwrap().unwrap();
         assert_eq!(
             compiled.assets.sources.len(),
-            super::super::MAX_PACK_ENTITY_SOURCES
+            assets::MAX_ENTITY_ASSET_SOURCES
         );
         assert!(
             compiled
@@ -233,5 +233,16 @@ mod tests {
                 .any(|symbol| symbol.identifier.as_ref() == "fixture:actor")
         );
         assert_eq!(compiled.skipped, super::super::EntityPackSkips::default());
+        assert_eq!(
+            compiled
+                .assets
+                .sources
+                .iter()
+                .filter(|source| source.path.starts_with("animations/empty_"))
+                .count(),
+            super::super::MAX_PACK_ENTITY_SOURCES - 2
+        );
+        assets::RuntimeEntityAssets::from_compiled(compiled.assets)
+            .expect("full pack catalog remains admissible");
     }
 }

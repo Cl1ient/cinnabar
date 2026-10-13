@@ -34,6 +34,7 @@ mod native_dragon_geometry;
 mod native_held_items;
 mod pack;
 mod painting;
+mod policy_sources;
 mod sanitize;
 mod source;
 mod vanilla_refs;
@@ -354,19 +355,8 @@ fn assemble(
     source_manifest_sha256: [u8; 32],
     include_items: bool,
 ) -> Result<EntityAssetCompilation, AssetError> {
-    sources.push(EntityAssetSource {
-        path: assets::placement::SOURCE_PATH.into(),
-        source_bytes: assets::placement::SOURCE_BYTES.len() as u32,
-        source_sha256: Sha256::digest(assets::placement::SOURCE_BYTES).into(),
-    });
+    sources.extend(policy_sources::records());
     mount::admit(&mut sources, include_items);
-    sources.sort_by(|left, right| left.path.cmp(&right.path));
-    let (length, hash) = assets::interactions::source_identity();
-    sources.push(EntityAssetSource {
-        path: assets::interactions::SOURCE_PATH.into(),
-        source_bytes: length,
-        source_sha256: hash,
-    });
     sources.sort_by(|left, right| left.path.cmp(&right.path));
     if symbols.len() > MAX_ENTITY_ASSET_SYMBOLS {
         return Err(invalid("entity asset symbol count exceeds bound"));

@@ -2,6 +2,16 @@
 use super::*;
 
 impl<'a> ActorAnimationVariables<'a> {
+    /// Selects the ordinary legacy attack path using the owner's retained posture and equipment.
+    pub fn uses_legacy_swing(self, actor: &dyn AnimatedActor) -> bool {
+        self.item_context.is_some_and(|context| {
+            super::super::legacy_swing::ordinary(
+                actor,
+                context,
+                self.input.map_or(0.0, |input| input.swim_amount),
+            )
+        })
+    }
     /// Borrows completed owner script values and retains its query clocks.
     pub(crate) fn new(
         assets: Option<&'a RuntimeEntityAssets>,

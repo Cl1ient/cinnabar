@@ -52,6 +52,7 @@ mod geometry;
 mod horse;
 mod hud;
 mod java;
+mod legacy_swing;
 mod mount;
 mod spear;
 pub use java::retarget::JavaRetargetCache;

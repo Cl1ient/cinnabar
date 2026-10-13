@@ -316,10 +316,37 @@ fn assert_sampled(held: bool) {
             )
         };
         assert!(
-            Quat::from_array(actual.rotation).abs_diff_eq(expected, 1e-5),
+            Quat::from_array(actual.rotation).abs_diff_eq(
+                if held {
+                    expected
+                } else {
+                    Quat::from_array(
+                        rig.rest[rig
+                            .bone_names
+                            .iter()
+                            .position(|name| name.as_ref() == "rightarm")
+                            .unwrap()]
+                        .rotation,
+                    )
+                },
+                1e-5
+            ),
             "{label} must sample physics alpha {physics_alpha}, not actor alpha {actor_alpha}: {:?}",
             actual.rotation
         );
+        if !held {
+            assert_eq!(
+                cache.native_pose.sample_work,
+                (0, 0),
+                "the rest arm does not sample unused modern attack poses"
+            );
+            let hand = hand_progress(rig.hand, None, actor_alpha);
+            let camera = render_model::legacy_combat::legacy_first_person_arm(
+                0.25 + 0.25 * physics_alpha,
+                hand.equip,
+            );
+            assert!(result.body_camera.unwrap().abs_diff_eq(camera, 1e-5));
+        }
         let unchanged = stream.authority().actor_rig(1).unwrap();
         assert_eq!(unchanged.completed_tick, tick);
         assert_eq!(unchanged.previous, previous);

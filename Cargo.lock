@@ -4974,6 +4974,7 @@ dependencies = [
  "experience-sdk",
  "mod-api",
  "mod-render",
+ "rustix 1.1.4",
  "serde",
  "serde_json",
  "server-experience",

@@ -166,6 +166,7 @@ impl PlayerInventoryLedger {
                 let mut held = predicted.get(cell).cloned();
                 if server_authoritative && let Some(held) = &mut held {
                     // Stamp each changed prediction with the request that owns it.
+                    held.source_stack_id.get_or_insert(request.request_id);
                     held.stack.stack_network_id = request.request_id;
                 }
                 CellPrediction {
@@ -352,6 +353,7 @@ impl PlayerInventoryLedger {
             Some(held) => {
                 held.stack.count = u16::from(correction.count);
                 held.stack.stack_network_id = correction.item_stack_id;
+                held.acknowledged_request_id = Some(request.request_id);
                 merge_response_overlay(&mut held.overlay, correction);
             }
             // Screen cells restate through slot updates that follow the response.

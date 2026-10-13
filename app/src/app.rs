@@ -269,7 +269,13 @@ pub(crate) fn configure_client_production_frame_systems(app: &mut App) {
         )
         .add_systems(
             Update,
-            (observe_mount_jump_input, advance_dials, prepare_ui_runtime)
+            advance_dials
+                .after(ClientFrameSet::Camera)
+                .before(ClientFrameSet::ActorPreparation),
+        )
+        .add_systems(
+            Update,
+            (observe_mount_jump_input, prepare_ui_runtime)
                 .chain()
                 .in_set(ClientFrameSet::UiPreparation),
         )

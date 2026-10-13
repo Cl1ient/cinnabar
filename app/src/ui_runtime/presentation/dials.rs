@@ -1,7 +1,7 @@
 //! Advances the local player's compass and clock needles once per tick and publishes the
 //! strip frames every dial icon shows.
 
-use bevy::prelude::*;
+use bevy::{ecs::system::SystemParam, prelude::*};
 use client_shell::ui_resources::UiPresentationResource;
 use inventory::{ClockReading, CompassReading, DialFrames, DialNeedle};
 
@@ -92,18 +92,34 @@ impl DialNeedles {
     }
 }
 
-/// Advances the dial needles on each new movement tick and publishes their frames to the
-/// UI icons and held items; without a local player, dials keep their static icons.
+/// Borrows the current local holder and the UI and equipment destinations for its readings.
+#[derive(SystemParam)]
+pub(crate) struct DialResources<'w> {
+    client_world: Res<'w, ClientWorld>,
+    physics: Res<'w, client_interaction::movement::LocalPhysicsController>,
+    view: Res<'w, client_presentation::local_player::LocalViewPose>,
+    clock: Res<'w, crate::environment::WorldClock>,
+    time: Res<'w, Time<Real>>,
+    presentation: ResMut<'w, UiPresentationResource>,
+    equipment: Option<ResMut<'w, client_presentation::presentation::equipment::EquipmentRuntime>>,
+}
+
+/// Advances needles for completed physics observations before hands are prepared.
+/// Without a local player, dials keep their static icons.
 pub(crate) fn advance_dials(
-    client_world: Res<ClientWorld>,
-    physics: Res<client_interaction::movement::LocalPhysicsController>,
-    clock: Res<crate::environment::WorldClock>,
-    time: Res<Time<Real>>,
-    mut presentation: ResMut<UiPresentationResource>,
-    equipment: Option<ResMut<client_presentation::presentation::equipment::EquipmentRuntime>>,
+    resources: DialResources,
     mut needles: Local<DialNeedles>,
     mut frames: Local<DialFrames>,
 ) {
+    let DialResources {
+        client_world,
+        physics,
+        view,
+        clock,
+        time,
+        mut presentation,
+        equipment,
+    } = resources;
     let local = client_world.stream.as_ref().and_then(|stream| {
         let authority = stream.authority();
         let actor = authority.actor(stream.local_player_runtime_id())?;
@@ -114,10 +130,9 @@ pub(crate) fn advance_dials(
             authority.current_dimension(),
             authority.world_spawn(),
             last_death,
-            actor.yaw,
         ))
     });
-    let Some((dimension, world_spawn, last_death, yaw)) = local else {
+    let Some((dimension, world_spawn, last_death)) = local else {
         *needles = DialNeedles::default();
         *frames = DialFrames::default();
         publish(&mut presentation, equipment, *frames);
@@ -134,6 +149,8 @@ pub(crate) fn advance_dials(
         *clock,
         time.elapsed_secs_f64(),
     ));
+    let (yaw, _, _) = view.rotation().to_euler(EulerRot::YXZ);
+    let yaw = (180.0 - yaw.to_degrees()).rem_euclid(360.0);
     let after = needles.advanced_tick;
     physics.visit_completed_ticks(after, &mut |sample, _, _| {
         if let Some(next) = needles.advance_tick(sample.tick, |needles| {
@@ -165,100 +182,4 @@ fn publish(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reanchor_tick_indices_do_not_synthesize_needle_updates() {
-        let reading = |needles: &mut DialNeedles| {
-            needles.advance(1, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25)
-        };
-        let mut reanchored = DialNeedles::default();
-        let mut consecutive = DialNeedles::default();
-        assert_eq!(
-            reanchored.advance_tick(0, reading),
-            consecutive.advance_tick(0, reading)
-        );
-        assert_eq!(
-            reanchored.advance_tick(u64::MAX, reading),
-            consecutive.advance_tick(1, reading)
-        );
-        assert_eq!(reanchored.compass, consecutive.compass);
-        assert_eq!(reanchored.recovery_compass, consecutive.recovery_compass);
-        assert_eq!(reanchored.clock, consecutive.clock);
-        assert_eq!(reanchored.random, consecutive.random);
-        assert_eq!(reanchored.advance_tick(u64::MAX, reading), None);
-        assert_eq!(reanchored.random, consecutive.random);
-        assert!(
-            reanchored.advance_tick(0, reading).is_some(),
-            "a restarted clock takes a reading"
-        );
-    }
-
-    #[test]
-    fn overworld_dials_read_spawn_and_sky_while_other_dimensions_spin() {
-        let mut needles = DialNeedles::default();
-        let mut overworld = needles.advance(0, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25);
-        for _ in 0..200 {
-            overworld = needles.advance(0, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25);
-        }
-        assert_eq!(
-            overworld.compass,
-            Some(16),
-            "settles on the spawn straight ahead"
-        );
-        assert_eq!(overworld.clock, Some(16), "settles on the sky reading");
-
-        let mut nether = DialNeedles::default();
-        let readings: Vec<_> = (0..40)
-            .map(|_| nether.advance(1, [0, 64, 10], None, [0.0, 64.0, 0.0], 0.0, 0.25))
-            .collect();
-        assert!(
-            readings
-                .windows(2)
-                .any(|pair| pair[0].compass != pair[1].compass),
-            "the compass wanders without a target"
-        );
-    }
-
-    #[test]
-    fn recovery_compasses_aim_at_a_death_in_this_dimension_and_spin_otherwise() {
-        let mut needles = DialNeedles::default();
-        let mut frames = DialFrames::default();
-        for _ in 0..200 {
-            frames = needles.advance(
-                0,
-                [0, 64, -10],
-                Some(([10, 64, 0], 0)),
-                [0.0, 64.0, 0.0],
-                0.0,
-                0.25,
-            );
-        }
-        assert_eq!(frames.recovery_compass, Some(8), "a death to the east");
-        assert_ne!(
-            frames.recovery_compass, frames.compass,
-            "spawn lies elsewhere"
-        );
-
-        let mut elsewhere = DialNeedles::default();
-        let readings: Vec<_> = (0..40)
-            .map(|_| {
-                elsewhere.advance(
-                    0,
-                    [0, 64, -10],
-                    Some(([10, 64, 0], 1)),
-                    [0.0, 64.0, 0.0],
-                    0.0,
-                    0.25,
-                )
-            })
-            .collect();
-        assert!(
-            readings
-                .windows(2)
-                .any(|pair| pair[0].recovery_compass != pair[1].recovery_compass),
-            "a death in another dimension leaves the needle wandering"
-        );
-    }
-}
+mod tests;

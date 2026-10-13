@@ -343,6 +343,7 @@ fn enclosed_meshing(c: &mut Criterion) {
     for offset in OFFSETS {
         assert!(neighbourhood.insert(offset, &mixed));
     }
+    // Mixed neighbours occlude most boundary faces, but not every one.
     let output = mesh_sub_chunk_in_neighbourhood_with_lighting(
         &classifier,
         &assets,
@@ -350,7 +351,7 @@ fn enclosed_meshing(c: &mut Criterion) {
         &neighbourhood,
         &sampler,
     );
-    assert!(meshing::mesh_output_byte_len(&output) > 0);
+    assert!(!output.connectivity().is_empty());
     c.bench_function("meshing/terrain_enclosed/sampled_light/mixed", |b| {
         b.iter(|| {
             black_box(mesh_sub_chunk_in_neighbourhood_with_lighting(

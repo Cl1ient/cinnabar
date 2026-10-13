@@ -451,6 +451,8 @@ fn compile_pack_inner(
         }
         let aquatic_faces;
         let faces: &[BlockFace] = if is_kelp(record)
+            || visuals::stem::is_record(record)
+            || visuals::pitcher_crop::is_record(record)
             || is_liquid(record)
             || visuals::fire::is_record(record)
             || visuals::potted_plants::is_record(record)

@@ -21,9 +21,9 @@ fn retained_honey_fronts_resolve_the_second_catalog_variant() {
             family.into(),
             json!({"textures":{
                 "west":format!("{family}_side"), "east":format!("{family}_side"),
-                "north":format!("{family}_side"), "south":front,
-                "up":format!("{family}_top"),
+                "north":format!("{family}_side"), "up":format!("{family}_top"),
                 "down":format!("{family}_{}", if family == "beehive" { "top" } else { "bottom" }),
+                "south":front,
             }}),
         );
     }

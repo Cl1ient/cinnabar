@@ -6,6 +6,13 @@ use super::{
 };
 use std::collections::HashMap;
 
+/// A decode miss permits base-page fallback; an admission refusal does not.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum FrameFailure {
+    Missing,
+    Rejected,
+}
+
 /// One admitted slot together with its image provider.
 #[derive(Clone)]
 pub(super) struct AdmittedTexture {
@@ -20,7 +27,7 @@ struct CachedTexture {
 
 /// Retained physical frames, their source policy, and rollback order.
 struct CachedFrames {
-    storage: Option<super::storage::FrameStorage>,
+    storage: Result<super::storage::FrameStorage, FrameFailure>,
     serial: u64,
 }
 
@@ -39,9 +46,9 @@ impl TextureSlots {
         &self,
         key: &TextureStorageKey,
         carrier: bool,
-    ) -> Option<Option<super::storage::FrameStorage>> {
+    ) -> Option<Result<super::storage::FrameStorage, FrameFailure>> {
         let pack = self.frames.get(&(key.clone(), false));
-        if pack.is_some_and(|entry| entry.storage.is_some()) || !carrier {
+        if pack.is_some_and(|entry| entry.storage.is_ok()) || !carrier {
             return pack.map(|entry| entry.storage);
         }
         self.frames
@@ -53,7 +60,7 @@ impl TextureSlots {
     pub(super) fn insert_frames(
         &mut self,
         key: TextureStorageKey,
-        storage: Option<super::storage::FrameStorage>,
+        storage: Result<super::storage::FrameStorage, FrameFailure>,
         carrier: bool,
     ) {
         self.serial += 1;

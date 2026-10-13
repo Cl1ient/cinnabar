@@ -6,6 +6,12 @@ pub(super) fn descriptor_for(
     record: &RegistryRecord,
     face: BlockFace,
 ) -> Option<(Descriptor, Box<str>)> {
+    if visuals::stem::is_record(record) {
+        return visuals::stem::descriptor(pack, record, face);
+    }
+    if visuals::pitcher_crop::is_record(record) {
+        return visuals::pitcher_crop::descriptor(pack, record, face);
+    }
     if visuals::barrel::is_record(record) {
         return visuals::barrel::descriptor(pack, record, face);
     }

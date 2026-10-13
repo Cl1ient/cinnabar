@@ -4834,9 +4834,18 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       four axis-aligned, two-sided planes lowered to the farmland surface.
       All eight growth states preserve their selected artwork and upright UVs
       in sequential and hashed lookup; ordinary flowers retain crossed planes.
-      - [ ] Full crop presentation parity: exact native-client comparison and
-        calibrated UV rows remain open, as do torchflower, pitcher and nether
-        wart geometry and selectors.
+    - [x] Remaining farmland crop templates: fruit stems retain
+      growth height, stage colour and a facing-oriented connector. Torchflowers
+      preserve their two crop sprites and flower sprite at the plant width.
+      Pitcher crops retain buried pods, distinct lower/upper flower stages and
+      invisible early upper halves. Both block-ID modes cover every admitted state.
+      Sweet berry bushes select each growth stage's face artwork, preserve the
+      mature sprite and use the narrower plant geometry.
+      - [ ] Full crop presentation parity: exact native-client comparison,
+        sub-unit sprite geometry, atlas-edge UV calibration and torchflower
+        positional variation remain open.
+    - [ ] Nether wart geometry and selectors remain incomplete independently
+      of the farmland crop families.
     - [ ] Slab/stair native and packed-GPU live acceptance: capture all five
       fixed Cinnabar poses through native `%TEMP%` screenshots and require two
       consecutive exact GPU-completed model-stream witnesses. Automated gallery
@@ -8349,3 +8358,25 @@ selectors and output ranges for the existing explicit model bindings. Unrecogniz
 model arrays stay unresolved instead of guessing from growth or selecting index zero.
 The generic terrain accessor, complete native binding inventory and custom selector
 expressions still need their own admission and coverage work.
+
+## Overlay vanilla-texture fallback
+
+Implemented: custom blocks naming vanilla textures absent from the server
+stack can borrow a static page-0 texture from the matching base carrier.
+The resolver uses the retained atlas and UV indices to select variant zero,
+independent of material ID order. Donors must have the catalog's requested
+tint already baked into their pixels; missing or different tints decline
+fallback. Server material flags remain overlay-local,
+and borrowing consumes no texture layer or byte budget. Server rasters take
+precedence when they decode; capacity and budget refusals remain refusals.
+Borrowed layers are validated against the base page, and vanilla material
+overrides continue to require overlay textures. Changed catalog routes whose
+pack pixels cannot be decoded stay diagnostic for custom blocks; they never
+borrow the original key's artwork.
+
+Regression coverage includes sidecar roundtrips with reversed variant order,
+missing or ineligible variant-zero materials, custom-block publication,
+server-raster precedence, diagnostic fallback, and admission refusals. Live
+visual verification remains pending. Block-item sheets and inventory icons
+still use placeholders for borrowed faces, and animated vanilla art remains
+limited to base blocks.

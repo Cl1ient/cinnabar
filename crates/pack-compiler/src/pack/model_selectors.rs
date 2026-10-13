@@ -175,7 +175,7 @@ impl ModelTextureSelector {
                 canonical_u32(&record.canonical_state, property)? as usize
             }
             Self::Stem => {
-                usize::from(canonical_u32(&record.canonical_state, "facing_direction")? >= 2)
+                usize::from(canonical_u32(&record.canonical_state, "facing_direction")? != 0)
             }
             Self::CropStages => {
                 const STAGES: [usize; 8] = [0, 0, 1, 1, 2, 2, 2, 3];

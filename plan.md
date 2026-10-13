@@ -513,6 +513,10 @@ these changes do not close the movement, camera, or actor parity gates.
   replay so a relocation cannot invent a ladder climb. If replay cannot query
   terrain, its fallback preserves later retained server positions and motion.
   Unstamped or expired reset corrections keep their incoming destination.
+- Actor crouch updates preserve held ability-flight descent during live input
+  and correction replay; older walking-pose updates stop at the flight transition.
+  Focused regressions reproduce the upward rewind caused by a server sneak clear.
+  Native-server candidate input and rendered acceptance remain incomplete.
 - Validation: 267 simulator tests, 69 semantic-input tests, 345 movement tests
   and 16 focused client tests pass. The touched-crate compile check includes
   tests and the client app. The architecture check passes. Regression tests

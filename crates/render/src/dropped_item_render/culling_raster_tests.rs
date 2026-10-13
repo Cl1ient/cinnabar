@@ -214,7 +214,7 @@ fn sprite() -> render_model::DroppedItemSprite {
 }
 
 #[test]
-fn closed_item_culling_preserves_pixels_from_faces_edges_and_corners() {
+fn item_culling_preserves_pixels_from_faces_edges_and_corners() {
     let Some(gpu) = Gpu::for_fixture("dropped item culling pixels") else {
         return;
     };
@@ -255,14 +255,22 @@ fn closed_item_culling_preserves_pixels_from_faces_edges_and_corners() {
         quads: quads.into(),
         rotation: 1,
     };
+    let mut opaque_sprite = sprite.clone();
+    for pixel in Arc::make_mut(&mut opaque_sprite.rgba8)
+        .as_chunks_mut::<4>()
+        .0
+    {
+        pixel[3] = 255;
+    }
     let models = [
-        DroppedItemModel::Sprite(sprite.clone()),
-        DroppedItemModel::NativeSprite(sprite),
-        DroppedItemModel::Cube(cube),
-        DroppedItemModel::Block(block),
+        (DroppedItemModel::Sprite(sprite.clone()), false),
+        (DroppedItemModel::Sprite(opaque_sprite), true),
+        (DroppedItemModel::NativeSprite(sprite), true),
+        (DroppedItemModel::Cube(cube), true),
+        (DroppedItemModel::Block(block), true),
     ];
-    for (index, model) in models.iter().enumerate() {
-        assert!(model.can_cull_back_faces());
+    for (index, (model, can_cull)) in models.iter().enumerate() {
+        assert_eq!(model.can_cull_back_faces(), *can_cull);
         for samples in [1, 4] {
             for (angle, eye) in [
                 Vec3::X,
@@ -290,7 +298,7 @@ fn closed_item_culling_preserves_pixels_from_faces_edges_and_corners() {
                     differences, 0,
                     "model {index}, angle {angle}, samples {samples}"
                 );
-                if angle == 6 && samples == 1 && index == 2 {
+                if angle == 6 && samples == 1 && matches!(model, DroppedItemModel::Cube(_)) {
                     gpu_snapshot::save("dropped-item-culling-before", &before);
                     gpu_snapshot::save("dropped-item-culling-after", &after);
                 }

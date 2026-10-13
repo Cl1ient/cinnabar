@@ -606,14 +606,6 @@ impl RetiredArenaAllocation {
         }
     }
 
-    /// [`Self::full`] except the biome range, which the next generation keeps.
-    pub(in crate::chunk) fn keeping_biome(entity: Entity, allocation: ArenaAllocation) -> Self {
-        Self {
-            biome: None,
-            ..Self::full(entity, allocation)
-        }
-    }
-
     pub(in crate::chunk) fn owned_bytes(&self) -> u64 {
         let quad = self
             .quad

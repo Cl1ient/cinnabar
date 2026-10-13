@@ -260,13 +260,9 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
         // fresh complete allocation and keep the old one resident until the
         // queue-completion fence proves that no submitted frame can refer to
         // it anymore.
-        let retirement = old.as_ref().map(|old| {
-            if kept_biome.is_some() {
-                RetiredArenaAllocation::keeping_biome(entity, old.clone())
-            } else {
-                RetiredArenaAllocation::full(entity, old.clone())
-            }
-        });
+        let retirement = old
+            .as_ref()
+            .map(|old| RetiredArenaAllocation::full(entity, old.clone()));
         if let Some(retirement) = retirement.as_ref()
             && !arena
                 .retirement_budget
@@ -372,6 +368,9 @@ pub(in crate::chunk) fn prepare_gpu_chunks(
         }
         let metadata_index = allocate_origin(&mut arena)
             .expect("origin capacity was checked before quad allocation");
+        if let Some((range, _)) = &kept_biome {
+            arena.shared_biome_ranges.share(range.start);
+        }
         let (biome_range, biome_capacity) = kept_biome.unwrap_or((
             plan.biome_start..plan.biome_start + biome_required,
             plan.biome_capacity,

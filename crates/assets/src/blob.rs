@@ -26,8 +26,9 @@ use crate::{
 };
 
 // World visuals retain solid/liquid material dispositions, and replicated flipbook tiles hold
-// their native upper-left crop; reject earlier carriers.
-pub const BLOB_VERSION: u32 = 17;
+// their native upper-left crop. Model texture arrays require explicit state selectors;
+// reject earlier carriers that omit those selectors.
+pub const BLOB_VERSION: u32 = 18;
 pub const BLOB_MAGIC: [u8; 8] = {
     let mut magic = *b"MCBEAS00";
     magic[6] += (BLOB_VERSION / 10) as u8;

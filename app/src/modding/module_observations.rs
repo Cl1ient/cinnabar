@@ -161,10 +161,13 @@ fn look_origin(
     }))
 }
 
+/// A status response retains the session that requested its optional connection.
+type PingResponse = (u64, Option<bridge::NetworkConnection>);
+
 /// One request in flight prevents an unavailable core from spawning unbounded workers.
 #[derive(Default)]
 struct PingPoll {
-    pending: Option<Mutex<mpsc::Receiver<(u64, Option<bridge::NetworkConnection>)>>>,
+    pending: Option<Mutex<mpsc::Receiver<PingResponse>>>,
     next_poll: Option<Instant>,
     session: u64,
     attempt: u64,

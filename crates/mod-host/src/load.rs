@@ -1,7 +1,7 @@
 //! Bounded component and package admission and deferred settings activation.
 
 use crate::{
-    DataSource, MAX_COMPONENT_BYTES, ModEvent, ModGrants, ModHost, Source,
+    DataSource, MAX_COMPONENT_BYTES, ModEvent, ModGrants, ModHost, Source, execution, local_files,
     package::{self, Package},
     runtime::{Declared, Instance},
     screens::{declared, loaded},
@@ -10,8 +10,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use experience_sdk::mod_manifest::{ModManifest, ModPermission};
 use sha2::{Digest, Sha256};
-use std::{fs::File, io::Read, path::Path, sync::Arc};
-use wasmtime::{Config, Engine};
+use std::{path::Path, sync::Arc};
 
 impl ModHost {
     /// Loads a local component with HUD and demo input, denying optional capabilities.
@@ -39,7 +38,8 @@ impl ModHost {
             bytes.len() <= MAX_COMPONENT_BYTES,
             "component exceeds byte limit"
         );
-        Instance::check(&engine()?, bytes)
+        let (engine, _ticker) = execution::engine()?;
+        Instance::check(&engine, bytes)
     }
 
     /// Loads the package at `dir` with what its manifest asks for granted, plus `extra`: the
@@ -117,7 +117,7 @@ impl ModHost {
         );
         grants.validate()?;
         let path = &source.settings_anchor();
-        let engine = engine()?;
+        let (engine, ticker) = execution::engine()?;
         let settings_writer = if grants.settings {
             Some(settings::SettingsWriter::prepare(path).context("start mod settings writer")?)
         } else {
@@ -141,6 +141,7 @@ impl ModHost {
         let instance = Instance::new(&engine, bytes, grants.clone(), seed, declared)?;
         Ok(Self {
             engine,
+            _ticker: ticker,
             instance,
             source,
             attempted: digest,
@@ -300,20 +301,13 @@ pub(crate) fn read_settings(path: &Path, grants: &ModGrants) -> Result<String> {
         return Ok(String::new());
     }
     let path = path.with_extension("settings.json");
-    let file = match File::open(&path) {
-        Ok(file) => file,
+    let bytes = match local_files::read(&path, mod_api::MAX_SETTINGS_BYTES) {
+        Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
         Err(error) => {
             return Err(error).with_context(|| format!("read mod settings {}", path.display()));
         }
     };
-    let mut bytes = Vec::new();
-    file.take((mod_api::MAX_SETTINGS_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)?;
-    ensure!(
-        bytes.len() <= mod_api::MAX_SETTINGS_BYTES,
-        "mod settings exceed byte limit"
-    );
     Ok(String::from_utf8(bytes)?)
 }
 
@@ -327,14 +321,6 @@ fn engine() -> Result<Engine> {
 
 /// Bounds file reads even if a writer grows the file between metadata and read.
 pub(crate) fn read_component(path: &Path) -> Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    File::open(path)
-        .with_context(|| format!("open mod {}", path.display()))?
-        .take((MAX_COMPONENT_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)?;
-    ensure!(
-        bytes.len() <= MAX_COMPONENT_BYTES,
-        "component exceeds byte limit"
-    );
-    Ok(bytes)
+    local_files::read(path, MAX_COMPONENT_BYTES)
+        .with_context(|| format!("read mod {}", path.display()))
 }

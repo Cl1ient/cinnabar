@@ -73,7 +73,9 @@ pub struct NametagRecord {
     pub color: [f32; 4],
     /// Multiline world-Y translation, independent of the camera rotation.
     pub line_lift: f32,
-    pub padding: [u32; 3],
+    /// Nonzero when this quad tests world depth; tested glyphs also write depth.
+    pub depth_tested: u32,
+    pub padding: [u32; 2],
 }
 
 impl NametagRecord {
@@ -130,12 +132,10 @@ impl NametagAtlasRect {
     }
 }
 
-/// This frame's tags for the render world. Records before `see_through` draw over everything;
-/// the rest are depth tested.
+/// This frame's complete labels in draw order, with depth selection on each record.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NametagScene {
     pub records: Vec<NametagRecord>,
-    pub see_through: usize,
     /// All live cells, sharing unchanged pixels across publications.
     pub atlas: Arc<[NametagAtlasRect]>,
     pub atlas_revision: u64,

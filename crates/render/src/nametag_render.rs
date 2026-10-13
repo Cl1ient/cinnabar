@@ -64,10 +64,11 @@ struct NametagBatch {
     text: bool,
 }
 
-fn record_batches(records: &[NametagRecord], see_through: usize) -> Vec<NametagBatch> {
+/// Batches adjacent material modes without moving records across label boundaries.
+fn record_batches(records: &[NametagRecord]) -> Vec<NametagBatch> {
     let mut batches: Vec<NametagBatch> = Vec::new();
     for (index, record) in records.iter().enumerate() {
-        let depth_tested = index >= see_through;
+        let depth_tested = record.depth_tested != 0;
         let text = record.text != 0;
         if let Some(last) = batches
             .last_mut()
@@ -182,7 +183,7 @@ fn prepare_nametags(
 ) {
     let total = scene.records.len().min(MAX_NAMETAG_RECORDS);
     gpu.total = total as u32;
-    gpu.batches = record_batches(&scene.records[..total], scene.see_through.min(total));
+    gpu.batches = record_batches(&scene.records[..total]);
     if total > 0 {
         render_queue.write_buffer(
             &gpu.record_buffer,
@@ -419,7 +420,7 @@ fn queue_nametags(
         return;
     }
     let functions = draw_functions.read();
-    // Preserve record order (plate then glyphs, ordinary then sneaking) after world alpha.
+    // Preserve complete back-to-front labels and their individual passes after world alpha.
     // At this magnitude one float ULP is 64; 128 avoids losing the batch ordering.
     for (view_entity, main_entity, view, extracted_camera, msaa, enhanced) in &views {
         let Some(phase) = phases.get_mut(&view.retained_view_entity) else {
@@ -574,7 +575,15 @@ mod tests {
     fn records_batch_only_adjacent_identical_native_material_modes() {
         let plate = NametagRecord::default();
         let glyph = NametagRecord { text: 1, ..plate };
-        let batches = record_batches(&[plate, glyph, glyph, plate, glyph], 3);
+        let tested_plate = NametagRecord {
+            depth_tested: 1,
+            ..plate
+        };
+        let tested_glyph = NametagRecord {
+            depth_tested: 1,
+            ..glyph
+        };
+        let batches = record_batches(&[plate, glyph, glyph, tested_plate, tested_glyph]);
         assert_eq!(
             batches,
             [
@@ -603,13 +612,48 @@ mod tests {
     }
 
     #[test]
+    fn complete_labels_keep_their_interleaved_depth_passes_in_draw_order() {
+        let plate = NametagRecord::default();
+        let dim = NametagRecord { text: 1, ..plate };
+        let full = NametagRecord {
+            depth_tested: 1,
+            ..dim
+        };
+        let batches = record_batches(&[plate, dim, full, plate, dim, full]);
+        assert_eq!(
+            batches
+                .iter()
+                .map(|batch| (batch.depth_tested, batch.text))
+                .collect::<Vec<_>>(),
+            [
+                (false, false),
+                (false, true),
+                (true, true),
+                (false, false),
+                (false, true),
+                (true, true)
+            ]
+        );
+        assert_eq!(
+            batches
+                .into_iter()
+                .flat_map(|batch| batch.records)
+                .collect::<Vec<_>>(),
+            [0, 1, 2, 3, 4, 5]
+        );
+    }
+
+    #[test]
     fn multiline_material_batches_visit_every_record_once_in_the_sorted_phase() {
         let plate = NametagRecord::default();
         let glyph = NametagRecord { text: 1, ..plate };
-        let records = [
+        let mut records = [
             plate, glyph, glyph, plate, glyph, plate, glyph, glyph, glyph,
         ];
-        let batches = record_batches(&records, 5);
+        for record in &mut records[5..] {
+            record.depth_tested = 1;
+        }
+        let batches = record_batches(&records);
         let mut phase_index = 0;
         let mut visited = Vec::new();
         while phase_index < batches.len() {

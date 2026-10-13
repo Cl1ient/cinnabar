@@ -139,7 +139,12 @@ fn java_head_clearance_and_sneaking_offsets_keep_the_label_world_scale() {
     )
     .unwrap();
     let rendered = scene(&[tag]);
-    assert_eq!(rendered.see_through, 0);
+    assert!(
+        rendered
+            .records
+            .iter()
+            .all(|record| record.depth_tested != 0)
+    );
     assert_eq!(rendered.records.len(), 2);
     assert_eq!(rendered.records[0].color, [0.0, 0.0, 0.0, 0.25]);
     assert_eq!(rendered.records[1].color, [1.0, 1.0, 1.0, 32.0 / 255.0]);
@@ -259,8 +264,7 @@ fn multiline_lines_get_their_own_centred_backgrounds_before_their_glyphs() {
     let anchor = anchor("AB\nA");
     let scene = scene(std::slice::from_ref(&anchor));
     assert_eq!(scene.records.len(), 6);
-    assert_eq!(scene.see_through, 4);
-    let (plates, glyphs) = scene.records[..scene.see_through].split_at(2);
+    let (plates, glyphs) = scene.records[..4].split_at(2);
     for (index, (plate, glyph)) in plates.iter().zip(glyphs).enumerate() {
         assert_eq!(plate.color, PLATE_COLOR);
         assert_eq!(plate.text, 0);
@@ -291,7 +295,9 @@ fn multiline_lines_get_their_own_centred_backgrounds_before_their_glyphs() {
             .iter()
             .all(|record| record.text == 1 && record.color == [1.0, 1.0, 1.0, DIM_TEXT_ALPHA])
     );
-    for (dim, full) in glyphs.iter().zip(&scene.records[scene.see_through..]) {
+    for (dim, full) in glyphs.iter().zip(&scene.records[4..]) {
+        assert_eq!(dim.depth_tested, 0);
+        assert_eq!(full.depth_tested, 1);
         assert_eq!(full.color, [1.0; 4]);
         assert_eq!(full.rect, dim.rect);
         assert_eq!(full.uv, dim.uv);
@@ -316,7 +322,14 @@ fn oversized_tags_render_a_prefix_within_the_scene_budget() {
             .count(),
         line_budget * 2
     );
-    assert_eq!(scene.see_through, line_budget * NAMETAG_RECORDS_PER_LINE);
+    assert_eq!(
+        scene
+            .records
+            .iter()
+            .filter(|record| record.depth_tested == 0)
+            .count(),
+        line_budget * NAMETAG_RECORDS_PER_LINE
+    );
     assert!(
         scene
             .records
@@ -329,6 +342,7 @@ fn oversized_tags_render_a_prefix_within_the_scene_budget() {
 fn oversized_tags_use_the_budget_left_by_earlier_tags() {
     let mut first = anchor("AB");
     first.position.x = 1.0;
+    first.distance = 8.0;
     let first_records = NAMETAG_RECORDS_PER_LINE + 1;
     let remaining_lines = (MAX_NAMETAG_RECORDS - first_records) / NAMETAG_RECORDS_PER_LINE;
     let mut oversized = anchor(&"A\n".repeat(remaining_lines + 2));
@@ -339,7 +353,14 @@ fn oversized_tags_use_the_budget_left_by_earlier_tags() {
         scene.records.len(),
         first_records + remaining_lines * NAMETAG_RECORDS_PER_LINE
     );
-    assert_eq!(scene.see_through, NAMETAG_RECORDS_PER_LINE);
+    assert_eq!(
+        scene
+            .records
+            .iter()
+            .filter(|record| record.depth_tested == 0)
+            .count(),
+        NAMETAG_RECORDS_PER_LINE
+    );
     assert_eq!(
         scene
             .records
@@ -357,7 +378,7 @@ fn sneaking_preserves_plate_opacity_and_selects_tested_glyphs() {
     anchor.depth_tested = true;
     anchor.text_alpha = DIM_TEXT_ALPHA;
     let scene = scene(&[anchor]);
-    assert_eq!(scene.see_through, 0);
+    assert!(scene.records.iter().all(|record| record.depth_tested != 0));
     assert_eq!(scene.records[0].color, PLATE_COLOR);
     assert_eq!(scene.records.len(), NAMETAG_RECORDS_PER_LINE);
     assert_eq!(scene.records[1].color, [1.0, 1.0, 1.0, DIM_TEXT_ALPHA]);
@@ -369,7 +390,7 @@ fn sneaking_preserves_plate_opacity_and_selects_tested_glyphs() {
 }
 
 #[test]
-fn ordinary_then_sneaking_tags_keep_farthest_first_record_order() {
+fn ordinary_and_sneaking_labels_draw_together_back_to_front() {
     let mut far = anchor("far");
     far.runtime_id = 2;
     far.distance = 8.0;
@@ -382,15 +403,67 @@ fn ordinary_then_sneaking_tags_keep_farthest_first_record_order() {
     near.distance = 2.0;
     near.position.x = 2.0;
     let scene = scene(&[near, sneak, far]);
-    assert_eq!(scene.see_through, 4);
     assert_eq!(
         scene
             .records
             .iter()
             .map(|record| record.anchor[0])
             .collect::<Vec<_>>(),
-        [8.0, 8.0, 2.0, 2.0, 8.0, 2.0, 9.0, 9.0]
+        [9.0, 9.0, 8.0, 8.0, 8.0, 2.0, 2.0, 2.0]
     );
+    assert_eq!(
+        scene
+            .records
+            .iter()
+            .map(|record| record.depth_tested)
+            .collect::<Vec<_>>(),
+        [1, 1, 0, 0, 1, 0, 0, 1]
+    );
+}
+
+#[test]
+fn nearer_plates_attenuate_farther_text_in_every_sneak_combination() {
+    for far_sneaking in [false, true] {
+        for near_sneaking in [false, true] {
+            let mut far = anchor("AB");
+            far.runtime_id = 2;
+            far.position.z = -8.0;
+            far.distance = 8.0;
+            far.depth_tested = far_sneaking;
+            far.text_alpha = if far_sneaking { DIM_TEXT_ALPHA } else { 1.0 };
+            let mut near = anchor("AB");
+            near.position.z = -4.0;
+            near.distance = 4.0;
+            near.depth_tested = near_sneaking;
+            near.text_alpha = if near_sneaking { DIM_TEXT_ALPHA } else { 1.0 };
+            let scene = scene(&[near, far]);
+            let mut pixel = 0.0;
+            let mut depth = f32::INFINITY;
+            // Both plates cover this pixel; the far glyph has ink and the near glyph is blank.
+            for record in &scene.records {
+                let coverage = if record.text != 0 && record.anchor[2] == -4.0 {
+                    0.0
+                } else {
+                    1.0
+                };
+                let alpha = record.color[3] * coverage;
+                let tested = record.depth_tested != 0;
+                let at = -record.anchor[2];
+                if alpha <= render_model::NAMETAG_ALPHA_CUTOFF || (tested && at > depth) {
+                    continue;
+                }
+                pixel = record.color[0] * alpha + pixel * (1.0 - alpha);
+                if tested && record.text != 0 {
+                    depth = at;
+                }
+            }
+            let far_ink = if far_sneaking { DIM_TEXT_ALPHA } else { 1.0 };
+            assert!(
+                (pixel - far_ink * 0.75).abs() < 1e-6,
+                "far sneak {far_sneaking}, near sneak {near_sneaking}: {pixel}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -492,7 +565,7 @@ fn a_viewer_at_the_anchor_keeps_the_screen_aligned_tag() {
 }
 
 #[test]
-fn cosmetic_shadow_and_border_preserve_native_depth_partition_and_record_bound() {
+fn cosmetic_shadow_and_border_preserve_each_records_depth_selection_and_record_bound() {
     let plate = NametagRecord {
         uv: [0., 0., -1., -1.],
         rect: [-2., -1., 2., 9.],
@@ -506,8 +579,18 @@ fn cosmetic_shadow_and_border_preserve_native_depth_partition_and_record_bound()
         ..Default::default()
     };
     let mut scene = NametagScene {
-        records: vec![plate, text, plate, text],
-        see_through: 2,
+        records: vec![
+            plate,
+            text,
+            NametagRecord {
+                depth_tested: 1,
+                ..plate
+            },
+            NametagRecord {
+                depth_tested: 1,
+                ..text
+            },
+        ],
         ..Default::default()
     };
     let style: ui::mod_hud::NametagStyle = serde_json::from_value(
@@ -515,7 +598,16 @@ fn cosmetic_shadow_and_border_preserve_native_depth_partition_and_record_bound()
     )
     .unwrap();
     style_scene(&mut scene, &style, None);
-    assert_eq!(scene.see_through, 7);
+    assert!(
+        scene.records[..7]
+            .iter()
+            .all(|record| record.depth_tested == 0)
+    );
+    assert!(
+        scene.records[7..]
+            .iter()
+            .all(|record| record.depth_tested != 0)
+    );
     assert_eq!(scene.records.len(), 14);
     assert_eq!(
         scene.records[6].color[3], 0.125,
@@ -525,7 +617,6 @@ fn cosmetic_shadow_and_border_preserve_native_depth_partition_and_record_bound()
     hidden.hide = true;
     style_scene(&mut scene, &hidden, None);
     assert!(scene.records.is_empty());
-    assert_eq!(scene.see_through, 0);
 }
 
 #[test]

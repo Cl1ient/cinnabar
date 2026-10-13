@@ -382,7 +382,7 @@ pub fn project_nametags(
         .collect()
 }
 
-/// Builds dim through-wall labels followed by depth-tested text, with no through-wall sneak pass.
+/// Draws complete labels back to front, keeping each plate and its text passes together.
 pub fn build_nametag_scene<'p>(
     anchors: &[NametagAnchor],
     font: &RuntimeFontCatalog,
@@ -392,9 +392,8 @@ pub fn build_nametag_scene<'p>(
 ) -> NametagScene {
     let mut ordered: Vec<&NametagAnchor> = anchors.iter().collect();
     ordered.sort_by(|a, b| {
-        a.depth_tested
-            .cmp(&b.depth_tested)
-            .then(b.distance.total_cmp(&a.distance))
+        b.distance
+            .total_cmp(&a.distance)
             .then(a.runtime_id.cmp(&b.runtime_id))
     });
     let requested_lines = ordered
@@ -408,11 +407,9 @@ pub fn build_nametag_scene<'p>(
     let side = NAMETAG_ATLAS_SIDE as f32;
     let texels = FONT_DESIGN_PIXEL_TEXELS as f32;
     let mut records = Vec::new();
-    let mut depth_records = Vec::new();
     for anchor in ordered {
         let records_per_line = NAMETAG_RECORDS_PER_LINE + usize::from(!anchor.depth_tested);
-        let remaining_lines =
-            (MAX_NAMETAG_RECORDS - records.len() - depth_records.len()) / records_per_line;
+        let remaining_lines = (MAX_NAMETAG_RECORDS - records.len()) / records_per_line;
         let placed: Vec<_> = anchor
             .lines
             .iter()
@@ -425,6 +422,7 @@ pub fn build_nametag_scene<'p>(
         let common = NametagRecord {
             anchor: anchor.position.to_array(),
             line_lift: EXTRA_LINE_LIFT * placed.len().saturating_sub(1) as f32,
+            depth_tested: u32::from(anchor.depth_tested),
             ..NametagRecord::default()
         };
         let first = records.len();
@@ -438,6 +436,7 @@ pub fn build_nametag_scene<'p>(
                 }
             }),
         );
+        let first_glyph = records.len();
         for (index, line) in placed.iter().enumerate() {
             let left = nametag_line_left(line.width_px);
             let [x, y, width, height] = line.cell.map(|value| value as f32);
@@ -456,33 +455,27 @@ pub fn build_nametag_scene<'p>(
                 record.rect[1] += drop;
                 record.rect[3] += drop;
             }
-            depth_records.extend(records.drain(first..));
         } else {
-            depth_records.extend(
-                records[first..]
-                    .iter()
-                    .filter(|record| record.text != 0)
-                    .copied(),
-            );
-            for record in &mut records[first..] {
-                if record.text != 0 {
-                    record.color[3] *= DIM_TEXT_ALPHA;
-                }
+            let glyph_end = records.len();
+            for index in first_glyph..glyph_end {
+                let full = NametagRecord {
+                    depth_tested: 1,
+                    ..records[index]
+                };
+                records[index].color[3] *= DIM_TEXT_ALPHA;
+                records.push(full);
             }
         }
     }
-    let see_through = records.len();
-    records.extend(depth_records);
     let (atlas, atlas_revision) = atlas.publish();
     NametagScene {
         records,
-        see_through,
         atlas,
         atlas_revision,
     }
 }
 
-/// Applies bounded cosmetic overrides while preserving native depth pass membership.
+/// Applies bounded cosmetic overrides without changing record order or depth selection.
 pub(super) fn style_scene(
     scene: &mut NametagScene,
     style: &ui::mod_hud::NametagStyle,
@@ -490,13 +483,10 @@ pub(super) fn style_scene(
 ) {
     if style.hide {
         scene.records.clear();
-        scene.see_through = 0;
         return;
     }
     let original = std::mem::take(&mut scene.records);
-    let old_boundary = scene.see_through;
-    let mut boundary = 0;
-    for (index, mut record) in original.into_iter().enumerate() {
+    for mut record in original {
         for coordinate in &mut record.rect {
             *coordinate *= style.scale;
         }
@@ -559,9 +549,5 @@ pub(super) fn style_scene(
             scene.records.extend(extra);
             scene.records.push(record);
         }
-        if index + 1 == old_boundary {
-            boundary = scene.records.len();
-        }
     }
-    scene.see_through = boundary;
 }

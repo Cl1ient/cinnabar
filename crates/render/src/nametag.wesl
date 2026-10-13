@@ -8,7 +8,7 @@ struct Record {
     uv: vec4<f32>,
     color: vec4<f32>,
     line_lift: f32,
-    padding0: u32,
+    depth_tested: u32,
     padding1: u32,
     padding2: u32,
 }

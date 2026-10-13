@@ -2527,7 +2527,8 @@ Each centered line has a black background at alpha `0.25`, with one pixel of sid
 padding and vertical bounds `-1 .. 8`. Multiline spacing and world lift remain unchanged.
 
 Ordinary tags draw their background and dim text at alpha `32 / 255` through walls, followed
-by full-opacity depth-tested text. Sneaking tags draw only their depth-tested background
+by full-opacity depth-tested text before the next label starts. Complete labels draw back
+to front, with depth selection on each quad. Sneaking tags draw only their depth-tested background
 and dim text. Only tested text writes depth; labels use no depth bias and test final
 alpha against `0.1`. Visibility uses strict viewer-distance limits of 64 blocks, or
 32 when sneaking, shortened by server limits. Invisible actors, mounts carrying riders

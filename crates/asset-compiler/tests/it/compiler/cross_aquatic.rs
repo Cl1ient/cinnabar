@@ -137,12 +137,7 @@ fn compiler_compiles_exact_terrestrial_cross_alias_tint_and_crop_variants() {
     let fixture_air = fixture_air_id(&records) as usize;
     assert!(compiled.visuals.iter().enumerate().all(|(index, visual)| {
         index == fixture_air
-            || (visual.kind
-                == if records[index].name.as_ref() == "minecraft:melon_stem" {
-                    VisualKind::Model
-                } else {
-                    VisualKind::Cross
-                }
+            || (visual.kind == VisualKind::Cross
                 && visual.model_template != assets::NO_MODEL_TEMPLATE)
     }));
     assert_eq!(

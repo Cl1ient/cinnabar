@@ -139,6 +139,18 @@ pub struct TextLayoutKey {
     pub wrap: TextWrap,
 }
 
+impl TextLayoutKey {
+    /// Returns the display scale for bitmap-unit bold and italic effects.
+    pub fn effect_scale(&self) -> f32 {
+        let fixed = if self.wrap.effect_scale_1024 == 0 {
+            u32::from(self.scale_1024)
+        } else {
+            self.wrap.effect_scale_1024
+        };
+        fixed as f32 / UiScale::SCALE_DENOMINATOR as f32
+    }
+}
+
 /// Where each wrapped line sits within the wrap width.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub enum TextLineAlign {
@@ -166,6 +178,9 @@ pub struct TextWrap {
     pub align: TextLineAlign,
     /// Additional pen advance after each character, in output 1/64 pixels.
     pub letter_spacing_64: i32,
+    /// Scale of bitmap-unit bold and italic effects in 1/1024 units; zero uses glyph scale.
+    /// Native faces can normalize their raster independently of these display effects.
+    pub effect_scale_1024: u32,
     /// Extra pitch between lines in output 1/64 pixels (not scaled again).
     pub line_padding_64: i32,
     pub chop: WordChop,

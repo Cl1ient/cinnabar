@@ -684,6 +684,7 @@ fn field(
             bounds,
             left,
             factor,
+            effect_scale_1024: 0,
             font: Some(BODY.face.name().into()),
             letter_spacing_64,
             metrics,

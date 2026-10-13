@@ -36,6 +36,8 @@ pub struct EditText {
     pub left: f32,
     /// The painted scale relative to the frame's base text scale, including face normalization.
     pub scale: f32,
+    /// Bitmap-unit styling scale, in 1/1024 units; zero follows the glyph scale.
+    pub effect_scale_1024: u32,
     /// The label's named font, or the default when absent.
     pub font: Option<String>,
 }

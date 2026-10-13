@@ -468,6 +468,7 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 ## Shipped OreUI fonts
 
 - Pack labels requesting `MinecraftTen` select Cinnangles Ten while retaining the authored text.
+  Outline label sizing keeps bold and italic effects in display units, including caret advances.
   Server-form item controls resolve ordinary numeric item keys through the negotiated registry
   and existing icon sources. Capped collection factories retain a final Back button's response
   index. Target-platform shop artwork, title, controls and server-response acceptance remain

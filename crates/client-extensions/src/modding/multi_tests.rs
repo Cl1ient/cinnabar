@@ -246,6 +246,7 @@ fn run(probes: &[Probe], frames: usize) -> (ModHosts, Merged, Vec<usize>) {
     let mut merged = Merged::default();
     let mut captures = 0;
     for _ in 0..frames {
+        runtime.begin_frame();
         merged = run_frame(
             &mut runtime,
             FrameInput {
@@ -279,6 +280,8 @@ fn load_order_decides_single_valued_outputs_and_keeps_every_command() {
     );
     assert!(failures.is_empty());
     assert_eq!(merged.time_override, Some(1000));
+    assert_eq!(runtime.host(0).refused_outputs(), 0);
+    assert!(runtime.host(1).refused_outputs() >= 2);
     assert_eq!(merged.rig.unwrap().offset.x, 0.5);
     assert_eq!(runtime.merged_label(), Some("A | B"));
     assert_eq!(merged.commands, ["/ability flash", "/ability flash"]);
@@ -337,6 +340,7 @@ fn grants_stay_per_mod() {
         ),
     ]);
     let controls = mod_host::empty_controls();
+    runtime.begin_frame();
     let merged = run_frame(
         &mut runtime,
         FrameInput {
@@ -440,4 +444,47 @@ fn load_set(mods: Vec<(PathBuf, ModGrants)>) -> ModHosts {
         hosts.next().unwrap(),
         hosts.map(|host| Companion { host }).collect(),
     )
+}
+
+#[test]
+fn aggregate_frame_fuel_stops_later_callbacks_without_quarantining_skipped_mods() {
+    let directory = tempfile::tempdir().unwrap();
+    let paths: Vec<_> = (0..3)
+        .map(|index| {
+            let path = directory.path().join(format!("spin-{index}.wat"));
+            let source = EMPTY_COMPONENT.replace(
+                "(func (export \"frame\"))",
+                "(func (export \"frame\") (loop $spin br $spin))",
+            );
+            std::fs::write(&path, source).unwrap();
+            (path, ModGrants::default())
+        })
+        .collect();
+    let mut runtime = load_set(paths);
+    runtime.begin_frame();
+    let controls = mod_host::empty_controls();
+    let mut failures = Vec::new();
+    run_frame(
+        &mut runtime,
+        FrameInput {
+            pressed: false,
+            controls: &controls,
+            previous_cues: &[],
+            player_state: None,
+            world_observation: None,
+            modules: None,
+            fps: None,
+            sidebar: None,
+            chat: &[],
+        },
+        |_| (None, Vec::new(), None),
+        |index, _| failures.push(index),
+    );
+    assert_eq!(failures, [0, 1]);
+    assert!(!runtime.host(0).is_active() && !runtime.host(1).is_active());
+    assert!(runtime.host(2).is_active());
+    assert_eq!(runtime.budget.remaining(), 0);
+    assert_eq!(runtime.host(2).last_fuel_used(), 0);
+    runtime.begin_frame();
+    assert_eq!(runtime.budget.remaining(), mod_api::TOTAL_MOD_FRAME_FUEL);
 }

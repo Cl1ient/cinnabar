@@ -188,6 +188,9 @@ impl ModHost {
         if self.attempted == digest {
             return Ok(false);
         }
+        if !self.instance.can_reload() {
+            return Ok(false);
+        }
         self.attempted = digest;
         let (bytes, declared) = match &package {
             Some(package) => (&package.component, declared(package)),
@@ -197,14 +200,16 @@ impl ModHost {
             || self.grants.clone(),
             |package| self.authorized_grants.with_manifest(&package.manifest),
         );
-        let mut candidate = Instance::new(
-            &self.engine,
-            bytes,
-            grants.clone(),
-            self.instance.settings().to_owned(),
-            declared,
-        )
-        .context("reload rejected; previous mod retained")?;
+        let mut candidate = self
+            .instance
+            .replacement(
+                &self.engine,
+                bytes,
+                grants.clone(),
+                self.instance.settings().to_owned(),
+                declared,
+            )
+            .context("reload rejected; previous mod retained")?;
         if let Some(bundle) = self.instance.panel_bundle() {
             candidate.set_panel_bundle(bundle)?;
         }
@@ -300,7 +305,7 @@ pub(crate) fn read_settings(path: &Path, grants: &ModGrants) -> Result<String> {
     if !grants.settings {
         return Ok(String::new());
     }
-    let path = path.with_extension("settings.json");
+    let path = crate::settings_companion(path);
     let bytes = match local_files::read(&path, mod_api::MAX_SETTINGS_BYTES) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),

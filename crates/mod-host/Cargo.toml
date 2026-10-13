@@ -27,6 +27,7 @@ execution = [
     "dep:wasmtime",
     "dep:wit-component",
     "dep:rustix",
+    "dep:wasmparser",
 ]
 # Links the native AV1/Opus decoders into the memory-limited media helper.
 media = ["server-experience/developer-media"]
@@ -52,6 +53,7 @@ serde_json = "=1.0.150"
 server-experience = { path = "../server-experience" }
 wasmtime = { workspace = true, optional = true }
 wit-component = { workspace = true, optional = true }
+wasmparser = { version = "=0.247.0", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Threading", "Win32_Storage_FileSystem"] }

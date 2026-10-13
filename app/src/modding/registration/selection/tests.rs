@@ -1,145 +1,119 @@
-use super::super::Status as Written;
 use super::*;
 
-/// A receipt binds deletion to all registration fields, including edits that retain the request ID.
-#[test]
-fn removal_receipts_reject_changes_reusing_the_request_id() {
-    let directory = tempfile::tempdir().unwrap();
-    let component = directory.path().join("zoom.wasm");
-    let receipt = forget(directory.path(), &component, "remove".into()).unwrap();
-    receipt.confirm(directory.path()).unwrap();
-    select(directory.path(), &component, true, "remove".into()).unwrap();
-    assert!(receipt.confirm(directory.path()).is_err());
+/// Reads the exact canonical list consumed by the watcher.
+fn read(directory: &Path) -> Registration {
+    observe(&directory.join(REGISTRATION_FILE))
+        .result
+        .unwrap()
+        .unwrap()
 }
 
-/// Authorization survives disable/re-enable but never survives removal at the same path.
 #[test]
-fn removing_enabled_or_disabled_mods_forgets_all_retained_authorization() {
-    for enabled in [true, false] {
-        let directory = tempfile::tempdir().unwrap();
-        let root = directory.path();
-        let component = root.join("zoom.wasm");
-        select(root, &component, true, "selected".into()).unwrap();
-        let mut granted = observe(&root.join(REGISTRATION_FILE))
-            .result
-            .unwrap()
-            .unwrap();
-        granted.grants.controls = true;
-        granted.grants.settings = true;
-        granted.font = Some(root.join("font.ttf"));
-        granted.ui = Some(root.join("ui.json"));
-        write_selection(&root.join(REGISTRATION_FILE), granted.clone()).unwrap();
-        for enabled in [false, true, enabled] {
-            select(root, &component, enabled, "toggle".into()).unwrap();
-            let kept = observe(&root.join(REGISTRATION_FILE))
-                .result
-                .unwrap()
-                .unwrap();
-            assert_eq!(kept.grants, granted.grants);
-            assert_eq!(kept.font, granted.font);
-            assert_eq!(kept.ui, granted.ui);
-        }
-        forget(root, &component, "removed".into()).unwrap();
-        let removed = observe(&root.join(REGISTRATION_FILE))
-            .result
-            .unwrap()
-            .unwrap();
-        assert!(!removed.enabled);
-        assert_eq!(removed.grants, ModGrants::default());
-        assert!(removed.font.is_none() && removed.ui.is_none());
-        select(root, &component, true, "replacement".into()).unwrap();
-        let replacement = observe(&root.join(REGISTRATION_FILE))
-            .result
-            .unwrap()
-            .unwrap();
-        assert_eq!(replacement.grants, ModGrants::default());
-        assert!(replacement.font.is_none() && replacement.ui.is_none());
+fn single_selection_migrates_without_losing_grants_or_panel_sources() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let old = serde_json::json!({"version":1,"request_id":"legacy","enabled":true,"component":root.join("a.wasm"),"font":root.join("font.ttf"),"ui":root.join("ui.json"),"grants":{"camera":true,"settings":true,"commands":["ability"]}});
+    write_json(&root.join(REGISTRATION_FILE), &old).unwrap();
+    let migrated = read(root);
+    assert_eq!(migrated.version, super::super::VERSION);
+    assert!(migrated.mods[0].grants.camera && migrated.mods[0].grants.settings);
+    assert_eq!(migrated.mods[0].grants.commands, ["ability"]);
+    select(root, &root.join("b.wasm"), true, "enable-b".into()).unwrap();
+    let kept = read(root);
+    assert_eq!(kept.mods.len(), 2);
+    assert_eq!(kept.mods[0], migrated.mods[0]);
+    assert_eq!(kept.mods[1].grants, ModGrants::default());
+}
+
+#[test]
+fn per_mod_permissions_survive_toggle_and_reorder_but_not_removal() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let (a, b) = (root.join("a.wasm"), root.join("b.wasm"));
+    std::fs::write(&a, b"text fixture").unwrap();
+    std::fs::write(&b, b"text fixture").unwrap();
+    select(root, &a, true, "a".into()).unwrap();
+    select(root, &b, true, "b".into()).unwrap();
+    let camera = ModGrants::CAPABILITIES
+        .iter()
+        .position(|capability| capability.name == "camera")
+        .unwrap();
+    permission(root, &a, camera, true, "grant".into()).unwrap();
+    let prior = read(root).mods[0].clone();
+    disable(root, &a, "disable".into()).unwrap();
+    select(root, &a, true, "enable".into()).unwrap();
+    move_entry(root, &a, false, "down".into()).unwrap();
+    let reordered = read(root);
+    assert_eq!(reordered.mods[1], prior);
+    assert!(!reordered.mods[0].grants.camera);
+    forget(root, &a, "remove".into()).unwrap();
+    select(root, &a, true, "replacement".into()).unwrap();
+    assert_eq!(read(root).mods[1].grants, ModGrants::default());
+}
+
+#[test]
+fn stale_card_commands_preserve_the_other_active_mod() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let a = root.join("a.wasm");
+    let b = root.join("b.wasm");
+    select(root, &a, true, "a".into()).unwrap();
+    select(root, &b, true, "b".into()).unwrap();
+    disable(root, &a, "off".into()).unwrap();
+    let before = std::fs::read(root.join(REGISTRATION_FILE)).unwrap();
+    for result in [
+        disable(root, &a, "stale".into()),
+        reload(root, &a, "stale".into()),
+        move_entry(root, &a, true, "stale".into()),
+    ] {
+        assert!(result.is_err());
     }
+    assert_eq!(std::fs::read(root.join(REGISTRATION_FILE)).unwrap(), before);
+    assert!(read(root).mods[1].enabled);
 }
 
-/// Removing an unrelated library file keeps the selected mod's state and authorization.
 #[test]
-fn forgetting_another_mod_preserves_the_current_selection() {
+fn reload_requests_are_scoped_and_removal_receipts_cover_all_fields() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
-    let selected = root.join("selected.wasm");
-    select(root, &selected, true, "selected".into()).unwrap();
-    let mut granted = observe(&root.join(REGISTRATION_FILE))
-        .result
-        .unwrap()
-        .unwrap();
-    granted.grants.settings = true;
-    granted.font = Some(root.join("font.ttf"));
-    granted.ui = Some(root.join("ui.json"));
-    write_selection(&root.join(REGISTRATION_FILE), granted.clone()).unwrap();
-    forget(root, &root.join("other.wasm"), "remove-other".into()).unwrap();
-    let kept = observe(&root.join(REGISTRATION_FILE))
-        .result
-        .unwrap()
-        .unwrap();
-    assert!(kept.enabled);
-    assert_eq!(kept.component, selected);
-    assert_eq!(kept.grants, granted.grants);
-    assert_eq!(kept.font, granted.font);
-    assert_eq!(kept.ui, granted.ui);
-    assert_eq!(kept.request_id, "remove-other");
+    let a = root.join("a.wasm");
+    let b = root.join("b.wasm");
+    select(root, &a, true, "a".into()).unwrap();
+    select(root, &b, true, "b".into()).unwrap();
+    reload(root, &a, "reload-a".into()).unwrap();
+    let selected = read(root);
+    assert_eq!(selected.mods[0].reload, 1);
+    assert_eq!(selected.mods[1].reload, 0);
+    reload_all(root, "all".into()).unwrap();
+    let selected = read(root);
+    assert_eq!(selected.mods[0].reload, 2);
+    assert_eq!(selected.mods[1].reload, 1);
+    let receipt = forget(root, &a, "remove".into()).unwrap();
+    receipt.confirm(root).unwrap();
+    select(root, &a, true, "remove".into()).unwrap();
+    assert!(receipt.confirm(root).is_err());
 }
 
-/// A Settings write reads back through the watcher's own reader, with its recorded status.
 #[test]
-fn selection_round_trips_through_the_watcher_reader() {
+fn registration_rejects_duplicate_identity_and_excess_entries() {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
-    let zoom = root.join("zoom.wasm");
-    select(root, &zoom, true, "settings-1".into()).unwrap();
-    let read = observe(&root.join(REGISTRATION_FILE))
-        .result
-        .unwrap()
-        .unwrap();
-    assert_eq!(read.component, zoom);
-    assert!(read.enabled);
-    assert_eq!(read.request_id, "settings-1");
-    assert_eq!(read.grants, ModGrants::default());
-    assert_eq!(registered(root).unwrap().status, Status::Starting);
-    let status = root.join(STATUS_FILE);
-    write_json(&status, &Written::new("settings-1".into(), "loaded", None)).unwrap();
-    assert_eq!(registered(root).unwrap().status, Status::Running);
-    write_json(
-        &status,
-        &Written::new("settings-1".into(), "error", Some("trap".into())),
-    )
-    .unwrap();
-    assert_eq!(
-        registered(root).unwrap().status,
-        Status::Failed("trap".into())
-    );
-
-    let mut granted = serde_json::from_slice::<serde_json::Value>(
-        &std::fs::read(root.join(REGISTRATION_FILE)).unwrap(),
-    )
-    .unwrap();
-    granted["grants"]["hud"] = true.into();
-    std::fs::write(
-        root.join(REGISTRATION_FILE),
-        serde_json::to_vec(&granted).unwrap(),
-    )
-    .unwrap();
-    select(root, &zoom, false, "settings-2".into()).unwrap();
-    let disabled = registered(root).unwrap();
-    assert!(!disabled.enabled && disabled.component == zoom);
-    assert_eq!(disabled.status, Status::Starting);
-    let kept = observe(&root.join(REGISTRATION_FILE))
-        .result
-        .unwrap()
-        .unwrap();
-    assert!(kept.grants.hud);
-
-    let minimap = root.join("minimap.wasm");
-    select(root, &minimap, true, "settings-3".into()).unwrap();
-    let switched = observe(&root.join(REGISTRATION_FILE))
-        .result
-        .unwrap()
-        .unwrap();
-    assert_eq!(switched.component, minimap);
-    assert_eq!(switched.grants, ModGrants::default());
+    let mut selected = Registration::empty();
+    selected.mods = vec![
+        Entry {
+            component: root.join("a.wasm"),
+            enabled: true,
+            ..Default::default()
+        };
+        2
+    ];
+    assert!(selected.validate().is_err());
+    selected.mods = (0..=mod_api::MAX_LOADED_MODS)
+        .map(|index| Entry {
+            component: root.join(format!("{index}.wasm")),
+            enabled: true,
+            ..Default::default()
+        })
+        .collect();
+    assert!(selected.validate().is_err());
 }

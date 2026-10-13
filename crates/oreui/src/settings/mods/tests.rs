@@ -2,19 +2,27 @@ use {
     super::*,
     crate::review_tests::paint,
     launcher::menu::MenuView,
-    launcher::mods::Library,
+    launcher::mods::{ActiveMod, Library, Permission},
     std::{collections::HashMap, sync::Arc},
 };
 
+/// Supplies one card with a declared camera permission for interaction assertions.
 fn installed(id: u64, name: &str) -> InstalledMod {
     InstalledMod {
         id,
         name: name.into(),
         file: format!("{name}.wasm"),
         bytes: 2048,
+        permissions: vec![Permission {
+            name: "camera".into(),
+            description: "Allows camera output.".into(),
+            enabled: false,
+            requested: Some(true),
+        }],
     }
 }
 
+/// Paints the page and exposes its visible text and identity-scoped hit actions.
 fn render(snapshot: Snapshot) -> (Vec<MenuAction>, Vec<String>) {
     let mut view = MenuView::new(true, "Player".into());
     view.mods = Arc::new(snapshot);
@@ -46,13 +54,12 @@ fn render(snapshot: Snapshot) -> (Vec<MenuAction>, Vec<String>) {
     (hits.into_iter().map(|(action, _)| action).collect(), labels)
 }
 
-/// Without mod support the tab still renders, explains why and offers no import.
+/// Every native build exposes mod import without a feature availability branch.
 #[test]
-fn a_build_without_mods_explains_itself_and_disables_import() {
+fn empty_library_offers_import() {
     let (hits, labels) = render(Snapshot::default());
-    assert!(labels.iter().any(|label| label == UNSUPPORTED));
     assert!(labels.iter().any(|label| label == "No mods installed"));
-    assert!(!hits.contains(&command(Action::Import)));
+    assert!(hits.contains(&command(Action::Import)));
 }
 
 #[test]
@@ -60,10 +67,11 @@ fn the_enabled_mod_is_the_active_card_with_its_status_and_controls() {
     let (first, second) = (installed(1, "zoom"), installed(2, "minimap"));
     let snapshot = Snapshot {
         library: Library {
-            supported: true,
             installed: vec![first.clone(), second.clone()],
-            enabled: Some(second.id),
-            status: Some(Status::Running),
+            active: vec![ActiveMod {
+                id: second.id,
+                status: Status::Running,
+            }],
             ..Library::default()
         },
         details_expanded: Some(second.id),
@@ -75,6 +83,9 @@ fn the_enabled_mod_is_the_active_card_with_its_status_and_controls() {
         Action::ReadMore(first.id),
         Action::ReadMore(second.id),
         Action::Disable(second.id),
+        Action::Reload(second.id),
+        Action::ReloadAll,
+        Action::Permission(second.id, 0, true),
         Action::Remove(second.id),
     ] {
         assert!(hits.contains(&command(action)), "{action:?}");
@@ -89,5 +100,50 @@ fn the_enabled_mod_is_the_active_card_with_its_status_and_controls() {
     ] {
         assert!(labels.iter().any(|found| found == label), "{label}");
     }
-    assert!(!labels.iter().any(|label| label == UNSUPPORTED));
+}
+
+#[test]
+fn each_active_card_exposes_its_own_reload_permissions_and_reorder_direction() {
+    for (id, move_action, missing_action) in [
+        (1, Action::MoveDown(1), Action::MoveUp(1)),
+        (2, Action::MoveUp(2), Action::MoveDown(2)),
+    ] {
+        let snapshot = Snapshot {
+            library: Library {
+                installed: vec![installed(1, "first"), installed(2, "second")],
+                active: vec![
+                    ActiveMod {
+                        id: 1,
+                        status: Status::Running,
+                    },
+                    ActiveMod {
+                        id: 2,
+                        status: Status::ReloadFailed("invalid component".into()),
+                    },
+                ],
+                ..Default::default()
+            },
+            details_expanded: Some(id),
+            ..Default::default()
+        };
+        let (hits, labels) = render(snapshot);
+        for action in [
+            Action::Disable(id),
+            Action::Reload(id),
+            Action::Permission(id, 0, true),
+            move_action,
+        ] {
+            assert!(hits.contains(&command(action)));
+        }
+        assert!(!hits.contains(&command(missing_action)));
+        assert!(labels.iter().any(|label| label == "Active mods (2)"));
+        if id == 2 {
+            assert!(
+                labels
+                    .iter()
+                    .any(|label| label == "Reload failed · previous instance running")
+            );
+            assert!(labels.iter().any(|label| label == "invalid component"));
+        }
+    }
 }

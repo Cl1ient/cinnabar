@@ -12,12 +12,12 @@ use ui_engine::engine::screen::PaintError;
 #[cfg(test)]
 mod tests;
 
-const UNSUPPORTED: &str = "Mods aren't available in this build.";
-
+/// Wraps a card action for the shared Settings input router.
 fn command(action: Action) -> MenuAction {
     MenuAction::Mods(action)
 }
 
+/// Draws the ordered Active and available mod groups with retained card motion.
 pub(super) fn draw(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
     let mut motion = content
         .canvas
@@ -56,6 +56,7 @@ pub(super) fn draw(content: &mut Content<'_, '_>) -> Result<(), PaintError> {
     result
 }
 
+/// Draws page actions and both groups from one immutable library snapshot.
 fn draw_sections(
     content: &mut Content<'_, '_>,
     snapshot: &Snapshot,
@@ -65,24 +66,24 @@ fn draw_sections(
     content.heading("Mods", "Add features to your game with WebAssembly mods.")?;
     actions(
         content,
-        &[(
-            "Import mod…",
-            Variant::Secondary,
-            (library.supported && !library.busy).then_some(command(Action::Import)),
-        )],
+        &[
+            (
+                "Import mod…",
+                Variant::Secondary,
+                (!library.busy).then_some(command(Action::Import)),
+            ),
+            (
+                "Reload all",
+                Variant::Secondary,
+                (!library.busy && !library.active.is_empty()).then_some(command(Action::ReloadAll)),
+            ),
+        ],
     )?;
     content.y += content.canvas.r(1.2);
-    if !library.supported {
-        note(content, UNSUPPORTED, theme::NEUTRAL80.fill)?;
-    }
     if !library.message.is_empty() {
         note(content, &library.message, theme::NEUTRAL80.fill)?;
     }
-    let enabled = library
-        .installed
-        .iter()
-        .filter(|item| Some(item.id) == library.enabled)
-        .count();
+    let enabled = library.active.len();
     accordion(
         content,
         &format!("Active mods ({enabled})"),
@@ -104,7 +105,10 @@ fn draw_sections(
                     card.present,
                 )
             })?;
-            caption(content, "One mod runs at a time.")
+            caption(
+                content,
+                "Higher mods take priority. Reorder Active mods to choose which wins.",
+            )
         },
     )?;
     content.y += content.canvas.r(1.2);
@@ -146,6 +150,7 @@ fn draw_sections(
     Ok(())
 }
 
+/// Draws identity-scoped controls, reload outcomes and generated permission toggles.
 fn mod_card(
     content: &mut Content<'_, '_>,
     snapshot: &Snapshot,
@@ -155,14 +160,20 @@ fn mod_card(
     interactive: bool,
 ) -> Result<(), PaintError> {
     let library = &snapshot.library;
-    let failure = library.status.as_ref().and_then(|status| match status {
-        Status::Failed(message) if active => Some(message.as_str()),
+    let status = library
+        .active
+        .iter()
+        .find(|entry| entry.id == item.id)
+        .map(|entry| &entry.status);
+    let failure = status.and_then(|status| match status {
+        Status::Failed(message) | Status::ReloadFailed(message) => Some(message.as_str()),
         _ => None,
     });
-    let subtitle = match (active, &library.status) {
+    let subtitle = match (active, status) {
         (false, _) => "Ready to enable",
         (true, Some(Status::Running)) => "Running",
-        (true, Some(Status::Failed(_))) => "Failed to load",
+        (true, Some(Status::ReloadFailed(_))) => "Reload failed · previous instance running",
+        (true, Some(Status::Failed(_))) => "Failed",
         (true, Some(Status::Starting) | None) => "Starting…",
     };
     let face = Face {
@@ -182,7 +193,7 @@ fn mod_card(
         if let Some(message) = failure {
             caption(content, message)?;
         }
-        let available = interactive && library.supported && !library.busy;
+        let available = interactive && !library.busy;
         let toggle = if active {
             (
                 "Disable",
@@ -196,16 +207,72 @@ fn mod_card(
                 available.then_some(command(Action::Enable(item.id))),
             )
         };
-        actions(
-            content,
-            &[
-                toggle,
-                (
-                    "Remove",
-                    Variant::Destructive,
-                    available.then_some(command(Action::Remove(item.id))),
-                ),
-            ],
-        )
+        let mut buttons = vec![toggle];
+        if active {
+            buttons.push((
+                "Reload",
+                Variant::Secondary,
+                available.then_some(command(Action::Reload(item.id))),
+            ));
+            let position = library.active.iter().position(|entry| entry.id == item.id);
+            if position.is_some_and(|position| position > 0) {
+                buttons.push((
+                    "Move up",
+                    Variant::Neutral,
+                    available.then_some(command(Action::MoveUp(item.id))),
+                ));
+            }
+            if position.is_some_and(|position| position + 1 < library.active.len()) {
+                buttons.push((
+                    "Move down",
+                    Variant::Neutral,
+                    available.then_some(command(Action::MoveDown(item.id))),
+                ));
+            }
+        }
+        buttons.push((
+            "Remove",
+            Variant::Destructive,
+            available.then_some(command(Action::Remove(item.id))),
+        ));
+        actions(content, &buttons)?;
+        caption(content, "Permissions")?;
+        for (index, permission) in item.permissions.iter().enumerate() {
+            let [left, right] = content.inset();
+            let y = content.y;
+            let action = command(Action::Permission(item.id, index, !permission.enabled));
+            super::controls::toggle_control(
+                content.canvas,
+                content.view,
+                [left, y],
+                permission.enabled,
+                action,
+                available,
+            )?;
+            let request = match permission.requested {
+                Some(true) => " · requested",
+                Some(false) => " · not requested",
+                None => "",
+            };
+            content.canvas.text_line_vertically_centred(
+                &format!("{}{request}", permission.name),
+                [
+                    left + content.canvas.r(8.0),
+                    y,
+                    right,
+                    y + content.canvas.r(3.6),
+                ],
+                theme::BODY,
+                theme::TEXT,
+            )?;
+            if available {
+                content
+                    .canvas
+                    .hit(action, [left, y, right, y + content.canvas.r(3.6)])?;
+            }
+            content.y += content.canvas.r(4.4);
+            caption(content, &permission.description)?;
+        }
+        Ok(())
     })
 }

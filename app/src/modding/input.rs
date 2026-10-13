@@ -268,7 +268,7 @@ pub(super) fn prepare_mod_input(
         if extension.hosts.select_panel(&toggles) {
             presentation.mod_ui_mut().cancel_mod_panel_edit();
             let owner = extension.hosts.panel_owner();
-            let _ = presentation.set_mod_panel_font(extension.panel_fonts[owner].clone());
+            let _ = presentation.set_mod_panel_font(extension.metadata[owner].font.clone());
             if let Err(error) = presentation.mod_ui_mut().set_mod_panel(
                 extension.panel_ui_owner(owner),
                 extension.hosts.host(owner).panel(),

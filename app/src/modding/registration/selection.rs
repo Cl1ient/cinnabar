@@ -1,9 +1,8 @@
 //! Settings-driven registration writes, and the registration and status the Mods tab shows.
 
 use super::{
-    REGISTRATION_FILE, Registration, STATUS_FILE,
-    source::observe,
-    status::{read_status, write_json},
+    Entry, REGISTRATION_FILE, Registration, STATUS_FILE, StatusList, source::observe,
+    status::write_json,
 };
 use launcher::mods::Status;
 use mod_host::ModGrants;
@@ -40,122 +39,252 @@ pub(in crate::modding) fn same_path(left: &Path, right: &Path) -> bool {
 }
 
 /// Resolves directory aliases without requiring a not-yet-created settings entry to exist.
-fn resolved_path(path: &Path) -> Option<PathBuf> {
+pub(super) fn resolved_path(path: &Path) -> Option<PathBuf> {
     path.canonicalize()
         .ok()
         .or_else(|| Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?)))
 }
 
-/// A valid registration and the host's status for its current request.
+/// Resolves only directory aliases; a selected leaf link must still fail source admission.
+pub(super) fn resolved_component(path: &Path) -> PathBuf {
+    path.parent()
+        .and_then(|parent| parent.canonicalize().ok())
+        .zip(path.file_name())
+        .map(|(parent, name)| parent.join(name))
+        .unwrap_or_else(|| path.into())
+}
+
+/// Uses a resolved component path for stable per-owner panel identity.
+pub(super) fn component_id(component: &Path) -> u64 {
+    let digest = Sha256::digest(component.to_string_lossy().as_bytes());
+    u64::from_le_bytes(digest[..8].try_into().expect("eight digest bytes"))
+}
+
+/// A valid entry and the status for its list's current request.
 pub(in crate::modding) struct Registered {
-    pub(in crate::modding) component: PathBuf,
-    pub(in crate::modding) enabled: bool,
+    pub(in crate::modding) entry: Entry,
     pub(in crate::modding) status: Status,
 }
 
-/// Reads the registration as the watcher would, with the status recorded for its request.
-pub(in crate::modding) fn registered(directory: &Path) -> Option<Registered> {
+/// Reads the same bounded, migrated registration the watcher consumes.
+pub(in crate::modding) fn registered(directory: &Path) -> Vec<Registered> {
     let Ok(Some(registration)) = observe(&directory.join(REGISTRATION_FILE)).result else {
-        return None;
+        return Vec::new();
     };
-    let status = match read_status(&directory.join(STATUS_FILE)) {
-        Some(recorded) if recorded.request_id == registration.request_id => {
-            match recorded.state.as_str() {
-                "loaded" => Status::Running,
-                "error" => Status::Failed(recorded.message.unwrap_or_default()),
+    let statuses = mod_host::local_files::read(&directory.join(STATUS_FILE), super::MAX_BYTES)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<StatusList>(&bytes).ok())
+        .filter(|status| {
+            status.version == super::VERSION && status.request_id == registration.request_id
+        });
+    registration
+        .mods
+        .into_iter()
+        .map(|entry| {
+            let recorded = statuses.as_ref().and_then(|statuses| {
+                statuses
+                    .mods
+                    .iter()
+                    .find(|status| same_path(&status.component, &entry.component))
+            });
+            let status = match recorded {
+                Some(recorded) if recorded.state == "loaded" => Status::Running,
+                Some(recorded) if recorded.state == "reload-error" => {
+                    Status::ReloadFailed(recorded.message.clone().unwrap_or_default())
+                }
+                Some(recorded) if recorded.state == "error" => {
+                    Status::Failed(recorded.message.clone().unwrap_or_default())
+                }
                 _ => Status::Starting,
-            }
-        }
-        _ => Status::Starting,
-    };
-    Some(Registered {
-        component: registration.component,
-        enabled: registration.enabled,
-        status,
-    })
+            };
+            Registered { entry, status }
+        })
+        .collect()
 }
 
-/// Points the registration at `component`; grants, font and UI survive only while the
-/// component stays the same, so another mod starts with no optional capabilities.
+/// Mutates one list on the library worker, preserving unrelated entries and their grants.
+fn edit(
+    directory: &Path,
+    request_id: String,
+    change: impl FnOnce(&mut Registration) -> Result<(), String>,
+) -> Result<Receipt, String> {
+    let path = directory.join(REGISTRATION_FILE);
+    let mut registration = observe(&path).result?.unwrap_or_else(Registration::empty);
+    change(&mut registration)?;
+    registration.request_id = request_id;
+    write_selection(&path, registration)
+}
+
+/// Adds a component to Active without replacing another; re-enable retains its authority.
 pub(in crate::modding) fn select(
     directory: &Path,
     component: &Path,
     enabled: bool,
     request_id: String,
 ) -> Result<(), String> {
-    let path = directory.join(REGISTRATION_FILE);
-    let registration = match observe(&path).result {
-        Ok(Some(previous)) if same_path(&previous.component, component) => Registration {
-            request_id,
-            enabled,
-            ..previous
-        },
-        _ => fresh_selection(component, enabled, request_id),
-    };
-    write_selection(&path, registration).map(|_| ())
+    edit(directory, request_id, |registration| {
+        if let Some(entry) = registration
+            .mods
+            .iter_mut()
+            .find(|entry| same_path(&entry.component, component))
+        {
+            entry.enabled = enabled;
+        } else {
+            registration.mods.push(Entry {
+                component: resolved_component(component),
+                enabled,
+                ..Default::default()
+            });
+        }
+        Ok(())
+    })
+    .map(|_| ())
 }
 
-/// Disables only the selected component whose resolved entry matches the activated card.
+/// Disables exactly the currently active card, rejecting an obsolete selection.
 pub(in crate::modding) fn disable(
     directory: &Path,
     component: &Path,
     request_id: String,
 ) -> Result<(), String> {
-    let path = directory.join(REGISTRATION_FILE);
-    let previous = observe(&path)
-        .result?
-        .filter(|previous| previous.enabled && same_path(&previous.component, component))
-        .ok_or_else(|| "That mod is no longer enabled.".to_owned())?;
-    write_selection(
-        &path,
-        Registration {
-            request_id,
-            enabled: false,
-            ..previous
-        },
-    )
+    update_entry(directory, component, request_id, |entry| {
+        entry.enabled = false;
+        Ok(())
+    })
+}
+
+/// Applies an active-card command to its own component only.
+fn update_entry(
+    directory: &Path,
+    component: &Path,
+    request_id: String,
+    change: impl FnOnce(&mut Entry) -> Result<(), String>,
+) -> Result<(), String> {
+    edit(directory, request_id, |registration| {
+        let entry = registration
+            .mods
+            .iter_mut()
+            .find(|entry| entry.enabled && same_path(&entry.component, component))
+            .ok_or_else(|| "That mod is no longer enabled.".to_owned())?;
+        change(entry)
+    })
     .map(|_| ())
 }
 
-/// Clears a removed mod's retained authorization and advances the watcher's request.
-/// A different selected mod keeps its authorization and enabled state.
+/// Requests a fresh instance even when the component bytes have not changed.
+pub(in crate::modding) fn reload(
+    directory: &Path,
+    component: &Path,
+    request_id: String,
+) -> Result<(), String> {
+    update_entry(directory, component, request_id, |entry| {
+        entry.reload = entry
+            .reload
+            .checked_add(1)
+            .ok_or("Reload counter exhausted.")?;
+        Ok(())
+    })
+}
+
+/// Requests fresh instances for all enabled entries using the same admission path.
+pub(in crate::modding) fn reload_all(directory: &Path, request_id: String) -> Result<(), String> {
+    edit(directory, request_id, |registration| {
+        for entry in registration.mods.iter_mut().filter(|entry| entry.enabled) {
+            entry.reload = entry
+                .reload
+                .checked_add(1)
+                .ok_or("Reload counter exhausted.")?;
+        }
+        Ok(())
+    })
+    .map(|_| ())
+}
+
+/// Moves a card among the enabled entries without altering any entry's runtime identity.
+pub(in crate::modding) fn move_entry(
+    directory: &Path,
+    component: &Path,
+    up: bool,
+    request_id: String,
+) -> Result<(), String> {
+    edit(directory, request_id, |registration| {
+        let active: Vec<_> = registration
+            .mods
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.enabled)
+            .map(|(index, _)| index)
+            .collect();
+        let position = active
+            .iter()
+            .position(|index| same_path(&registration.mods[*index].component, component))
+            .ok_or("That mod is no longer enabled.")?;
+        let neighbor = if up {
+            position.checked_sub(1)
+        } else {
+            (position + 1 < active.len()).then_some(position + 1)
+        }
+        .ok_or("That mod cannot move further.")?;
+        registration.mods.swap(active[position], active[neighbor]);
+        Ok(())
+    })
+    .map(|_| ())
+}
+
+/// Updates one capability generated from the grant declaration, preserving every other mod.
+pub(in crate::modding) fn permission(
+    directory: &Path,
+    component: &Path,
+    capability: usize,
+    enabled: bool,
+    request_id: String,
+) -> Result<(), String> {
+    edit(directory, request_id, |registration| {
+        let position = registration
+            .mods
+            .iter()
+            .position(|entry| same_path(&entry.component, component));
+        let position = position.unwrap_or_else(|| {
+            registration.mods.push(Entry {
+                component: resolved_component(component),
+                ..Default::default()
+            });
+            registration.mods.len() - 1
+        });
+        let entry = &mut registration.mods[position];
+        let descriptor = ModGrants::CAPABILITIES
+            .get(capability)
+            .ok_or("Unknown capability.")?;
+        let requested = mod_host::requested_grants(component).map_err(|error| error.to_string())?;
+        (descriptor.set)(&mut entry.grants, enabled, requested.as_ref());
+        if enabled && !(descriptor.enabled)(&entry.grants) {
+            return Err("This component does not declare requested command names.".into());
+        }
+        Ok(())
+    })
+    .map(|_| ())
+}
+
+/// Removes all retained grants and metadata for this identity before its deletion fence.
 pub(in crate::modding) fn forget(
     directory: &Path,
     component: &Path,
     request_id: String,
 ) -> Result<Receipt, String> {
-    let path = directory.join(REGISTRATION_FILE);
-    let registration = match observe(&path).result {
-        Ok(Some(previous)) if !same_path(&previous.component, component) => Registration {
-            request_id,
-            ..previous
-        },
-        _ => fresh_selection(component, false, request_id),
-    };
-    write_selection(&path, registration)
+    edit(directory, request_id, |registration| {
+        registration
+            .mods
+            .retain(|entry| !same_path(&entry.component, component));
+        Ok(())
+    })
 }
 
-/// Creates a selection without retained optional capabilities, font or panel metadata.
-fn fresh_selection(component: &Path, enabled: bool, request_id: String) -> Registration {
-    Registration {
-        version: 1,
-        request_id,
-        enabled,
-        component: component.to_owned(),
-        font: None,
-        ui: None,
-        grants: ModGrants::default(),
-    }
-}
-
-/// Publishes a validated selection and returns a receipt of its exact registration bytes.
+/// Publishes the canonical validated format and a receipt of its exact bytes.
 fn write_selection(path: &Path, registration: Registration) -> Result<Receipt, String> {
     registration.validate()?;
-    let mut json = serde_json::to_value(&registration).map_err(|error| error.to_string())?;
-    json["request_id"] = serde_json::Value::String(registration.request_id.clone());
-    let fingerprint =
-        Sha256::digest(serde_json::to_vec(&json).map_err(|error| error.to_string())?).into();
-    write_json(path, &json)
+    let bytes = serde_json::to_vec(&registration).map_err(|error| error.to_string())?;
+    let fingerprint = Sha256::digest(&bytes).into();
+    write_json(path, &registration)
         .map_err(|error| format!("Could not save the mod selection: {error}"))?;
     Ok(Receipt {
         request_id: registration.request_id,

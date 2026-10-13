@@ -39,6 +39,29 @@ pub(super) struct ScreenState {
     data_change: Option<ModEvent>,
 }
 
+impl ScreenState {
+    /// Keeps cached layout and pending notifications attached to their reordered instance.
+    pub(super) fn swap_hosts(&mut self, left: usize, right: usize) {
+        if self.owner == Some(left) {
+            self.owner = Some(right);
+        } else if self.owner == Some(right) {
+            self.owner = Some(left);
+        }
+    }
+    /// Releases a departing owner without dispatching its events to the shifted successor.
+    pub(super) fn remove_host(&mut self, index: usize) {
+        if self.owner == Some(index) {
+            self.owner = None;
+            self.layout = None;
+            self.data_change = None;
+        } else if let Some(owner) = self.owner.as_mut()
+            && *owner > index
+        {
+            *owner -= 1;
+        }
+    }
+}
+
 #[derive(SystemParam)]
 pub(super) struct ScreenInput<'w, 's> {
     keyboard: MessageReader<'w, 's, KeyboardInput>,

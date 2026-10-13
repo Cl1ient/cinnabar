@@ -4981,6 +4981,7 @@ dependencies = [
  "tempfile",
  "test-time",
  "ui",
+ "wasmparser 0.247.0",
  "wasmtime",
  "wat",
  "windows-sys 0.61.2",

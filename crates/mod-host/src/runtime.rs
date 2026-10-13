@@ -56,6 +56,7 @@ pub(crate) struct Declared {
 }
 
 struct State {
+    exclusive: crate::exclusive::Exclusive,
     limits: StoreLimits,
     pressed: bool,
     label: Option<String>,
@@ -115,6 +116,7 @@ impl State {
                 .build(),
             pressed: false,
             label: None,
+            exclusive: Default::default(),
             hud: hud::HudState::default(),
             pending: None,
             writes: 0,
@@ -217,6 +219,9 @@ impl cinnabar::extension::environment::Host for State {
         if self.environment_writes > MAX_IMPORT_WRITES {
             bail!("environment import budget exhausted");
         }
+        if self.exclusive.environment {
+            return Ok(Err(self.exclusive.refuse()));
+        }
         if !self.grants.environment {
             return Ok(Err("environment capability denied".into()));
         }
@@ -256,6 +261,7 @@ pub(super) struct Instance {
     pub(super) active: bool,
     /// Fuel the last `init` or callback consumed.
     last_fuel: u64,
+    callback_budget: Option<crate::CallbackBudget>,
 }
 
 impl Instance {
@@ -277,6 +283,39 @@ impl Instance {
         settings: String,
         declared: Declared,
     ) -> Result<Self> {
+        Self::new_with_limit(engine, bytes, grants, settings, declared, None)
+    }
+
+    /// Initializes a replacement within the frame's remaining allowance when called on-frame.
+    pub(super) fn replacement(
+        &self,
+        engine: &Engine,
+        bytes: &[u8],
+        grants: ModGrants,
+        settings: String,
+        declared: Declared,
+    ) -> Result<Self> {
+        let budget = self.callback_budget.clone();
+        let allowance = budget.as_ref().map(|budget| budget.reserve(LOAD_FUEL));
+        let mut candidate =
+            Self::new_with_limit(engine, bytes, grants, settings, declared, allowance)?;
+        if let Some(budget) = &budget {
+            budget.refund(allowance.unwrap_or(0).saturating_sub(candidate.last_fuel));
+        }
+        candidate.callback_budget = budget;
+        candidate.store.data_mut().exclusive = self.store.data().exclusive.clone();
+        Ok(candidate)
+    }
+
+    /// Keeps construction and initialization within one supplied fuel limit, including starts.
+    fn new_with_limit(
+        engine: &Engine,
+        bytes: &[u8],
+        grants: ModGrants,
+        settings: String,
+        declared: Declared,
+        limit: Option<u64>,
+    ) -> Result<Self> {
         let component = Component::new(engine, bytes)?;
         let mut linker = Linker::new(engine);
         PlayerMod::add_to_linker::<_, HasSelf<_>>(&mut linker, |state: &mut State| state)?;
@@ -285,25 +324,41 @@ impl Instance {
         exports::Exports::check(&pre)?;
         let mut store = Store::new(engine, state);
         store.limiter(|state| &mut state.limits);
-        crate::execution::arm(&mut store, FRAME_FUEL, true)?;
+        let initial = limit.map_or(FRAME_FUEL, |limit| limit.min(FRAME_FUEL));
+        crate::execution::arm(&mut store, initial, true)?;
         let instance = pre.instantiate(&mut store)?;
         let (init, exports) = exports::Exports::find(&mut store, &instance)?;
-        let budget = if exports.loads_session() {
-            crate::execution::arm(&mut store, LOAD_FUEL, true)?;
-            LOAD_FUEL
-        } else {
-            FRAME_FUEL
-        };
+        let instantiated = initial - store.get_fuel().unwrap_or(0).min(initial);
+        let mut armed = initial;
+        if exports.loads_session() {
+            armed = limit.map_or(LOAD_FUEL, |limit| {
+                LOAD_FUEL.min(limit.saturating_sub(instantiated))
+            });
+            crate::execution::arm(&mut store, armed, true)?;
+        }
         init.call(&mut store, ())?;
         init.post_return(&mut store)?;
         commit(&mut store);
-        let last_fuel = budget - store.get_fuel().unwrap_or(0).min(budget);
+        let last_fuel = armed - store.get_fuel().unwrap_or(0).min(armed)
+            + if exports.loads_session() {
+                instantiated
+            } else {
+                0
+            };
         Ok(Self {
             store,
             exports,
             active: true,
             last_fuel,
+            callback_budget: None,
         })
+    }
+
+    /// Defers an on-frame hot reload when earlier callbacks have consumed the allowance.
+    pub(super) fn can_reload(&self) -> bool {
+        self.callback_budget
+            .as_ref()
+            .is_none_or(|budget| budget.remaining() > 0)
     }
 
     /// Validates presentation observations before they enter the callback sandbox.
@@ -452,6 +507,14 @@ impl Instance {
         publish: fn(&mut Store<State>),
         call: impl FnOnce(&exports::Exports, &mut Store<State>) -> Result<()>,
     ) -> Result<()> {
+        let allowance = self
+            .callback_budget
+            .as_ref()
+            .map_or(fuel, |budget| budget.reserve(fuel));
+        if allowance == 0 {
+            self.last_fuel = 0;
+            return Ok(());
+        }
         let state = self.store.data_mut();
         state.writes = 0;
         state.environment_writes = 0;
@@ -463,9 +526,12 @@ impl Instance {
         state.calls = 0;
         state.output = 0;
         state.pending_screens = None;
-        crate::execution::arm(&mut self.store, fuel, fuel == LOAD_FUEL)?;
+        crate::execution::arm(&mut self.store, allowance, fuel == LOAD_FUEL)?;
         let called = call(&self.exports, &mut self.store);
-        self.last_fuel = fuel - self.store.get_fuel().unwrap_or(0).min(fuel);
+        self.last_fuel = allowance - self.store.get_fuel().unwrap_or(0).min(allowance);
+        if let Some(budget) = &self.callback_budget {
+            budget.refund(allowance - self.last_fuel);
+        }
         if let Err(error) = called {
             self.quarantine();
             bail!("mod quarantined after a guest trap: {error:#}");
@@ -474,10 +540,58 @@ impl Instance {
         Ok(())
     }
 
+    /// Attaches aggregate fuel and precedence for all callbacks until the next frame.
+    pub(super) fn set_frame_authority(
+        &mut self,
+        budget: crate::CallbackBudget,
+        camera: bool,
+        environment: bool,
+        owner: usize,
+        hud: crate::HudClaims,
+    ) {
+        self.callback_budget = Some(budget);
+        let state = self.store.data_mut();
+        if camera
+            && !state.exclusive.camera
+            && (state.world.rig.is_some()
+                || state.camera_delta.is_some()
+                || state.camera_policy.committed
+                || state.camera_policy.committed_view_scale.is_some())
+        {
+            state.exclusive.refuse();
+        }
+        if environment && !state.exclusive.environment && state.time_override.is_some() {
+            state.exclusive.refuse();
+        }
+        state.exclusive.camera = camera;
+        state.exclusive.environment = environment;
+        state.exclusive.owner = owner;
+        state.exclusive.hud = Some(hud.clone());
+        let mut blocked = std::collections::BTreeSet::new();
+        if let Some(content) = &state.hud.content {
+            for card in &content.cards {
+                if !hud.claim(owner, std::iter::once(card.id.clone())) {
+                    blocked.insert(card.id.clone());
+                }
+            }
+        }
+        let newly_blocked = blocked.difference(&state.exclusive.suppressed_hud).count() as u64;
+        state.exclusive.refused = state.exclusive.refused.saturating_add(newly_blocked);
+        state.exclusive.suppressed_hud = blocked;
+    }
+
+    /// Counts host import refusals across successful and failed callbacks.
+    pub(super) fn refused_outputs(&self) -> u64 {
+        self.store.data().exclusive.refused
+    }
+
     /// Disables callbacks and drops everything the guest presented or staged.
     pub(super) fn quarantine(&mut self) {
         self.active = false;
         let state = self.store.data_mut();
+        if let Some(claims) = &state.exclusive.hud {
+            claims.release(state.exclusive.owner);
+        }
         state.pending = None;
         state.label = None;
         state.hud = hud::HudState::default();
@@ -513,12 +627,14 @@ impl Instance {
     }
 
     pub(super) fn preserves_teleport_rotation(&self) -> bool {
-        self.store.data().camera_policy.committed
+        !self.store.data().exclusive.camera && self.store.data().camera_policy.committed
     }
 
     /// Only a successful, focused gameplay callback publishes a view multiplier.
     pub(super) fn camera_view_scale(&self) -> Option<[f32; 2]> {
-        self.store.data().camera_policy.committed_view_scale
+        (!self.store.data().exclusive.camera)
+            .then_some(self.store.data().camera_policy.committed_view_scale)
+            .flatten()
     }
 
     /// Consumes the committed cancellation once.
@@ -532,7 +648,9 @@ impl Instance {
     }
 
     pub(super) fn camera_rig(&self) -> Option<GameplayCameraRig> {
-        self.store.data().world.rig
+        (!self.store.data().exclusive.camera)
+            .then_some(self.store.data().world.rig)
+            .flatten()
     }
 
     pub(super) fn take_commands(&mut self) -> Vec<String> {
@@ -549,7 +667,12 @@ impl Instance {
     }
 
     pub(super) fn take_camera_delta(&mut self) -> Option<CameraDelta> {
-        self.store.data_mut().camera_delta.take()
+        let blocked = self.store.data().exclusive.camera;
+        self.store
+            .data_mut()
+            .camera_delta
+            .take()
+            .filter(|_| !blocked)
     }
 
     pub(super) fn packet_delay_ms(&self) -> u32 {
@@ -567,7 +690,9 @@ impl Instance {
 
     /// Reads the committed presentation clock without entering the component.
     pub(super) fn time_override(&self) -> Option<u32> {
-        self.store.data().time_override
+        (!self.store.data().exclusive.environment)
+            .then_some(self.store.data().time_override)
+            .flatten()
     }
 
     /// Reads retained UI without entering the component.

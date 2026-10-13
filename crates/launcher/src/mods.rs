@@ -1,12 +1,11 @@
-//! Mod-management commands and immutable launcher snapshots for the Settings Mods tab.
+//! Mod-management commands and immutable Settings snapshots, independent of guest execution.
 
 /// The Mods tab's settings selector variable.
 pub const SECTION: &str = "cinnabar_mods_index";
-/// File extension of an importable mod component, as `mod-host pack` writes it.
+/// File extension of an importable mod component.
 pub const COMPONENT_EXTENSION: &str = "wasm";
 
-/// Commands the settings host can submit without owning mod storage; mods are named by
-/// [`InstalledMod::id`], so a list change cannot retarget a press.
+/// Commands name the card's own identity so list changes cannot retarget a press.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     ReadMore(u64),
@@ -16,50 +15,77 @@ pub enum Action {
     Disable(u64),
     Remove(u64),
     Import,
+    Reload(u64),
+    ReloadAll,
+    MoveUp(u64),
+    MoveDown(u64),
+    Permission(u64, usize, bool),
+}
+
+/// One permission supplied by the host's grant declaration, rather than a UI capability list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Permission {
+    pub name: String,
+    pub description: String,
+    pub enabled: bool,
+    pub requested: Option<bool>,
 }
 
 /// One component in the per-user mods directory.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstalledMod {
-    /// Stable per-file identity.
+    /// Identifies this installed file revision, so a replacement rejects old card actions.
     pub id: u64,
     pub name: String,
     pub file: String,
     pub bytes: u64,
+    pub permissions: Vec<Permission>,
 }
 
-/// What the mod host last recorded for the registered component.
+/// The host's recorded outcome, including a reload which kept a running instance.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Status {
     Starting,
     Running,
     Failed(String),
+    ReloadFailed(String),
 }
 
-/// Installed mods and the host's record of them, published by the mod runtime.
+/// An active entry, in precedence order, and its own host status.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActiveMod {
+    pub id: u64,
+    pub status: Status,
+}
+
+/// Directory contents and the ordered Active list, published off-frame by the app.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Library {
-    /// False when this build cannot run mods.
-    pub supported: bool,
     pub installed: Vec<InstalledMod>,
-    /// The enabled mod's id; the host runs at most one registered component.
-    pub enabled: Option<u64>,
-    pub status: Option<Status>,
+    pub active: Vec<ActiveMod>,
     pub busy: bool,
     pub message: String,
 }
-
 impl Library {
-    /// Splits the installed mods into the enabled one and the rest, in directory order.
+    /// Preserves Active-list precedence and directory order for available components.
     pub fn groups(&self) -> (Vec<InstalledMod>, Vec<InstalledMod>) {
-        self.installed
+        let active = self
+            .active
             .iter()
+            .filter_map(|entry| self.installed.iter().find(|item| item.id == entry.id))
             .cloned()
-            .partition(|installed| Some(installed.id) == self.enabled)
+            .collect();
+        let available = self
+            .installed
+            .iter()
+            .filter(|item| !self.active.iter().any(|entry| entry.id == item.id))
+            .cloned()
+            .collect();
+        (active, available)
     }
 }
 
-/// The Mods page: the published library and its disclosure state.
+/// The published library and local disclosure state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Snapshot {
     pub library: Library,
@@ -67,7 +93,6 @@ pub struct Snapshot {
     pub active_expanded: bool,
     pub available_expanded: bool,
 }
-
 impl Default for Snapshot {
     fn default() -> Self {
         Self {
@@ -78,10 +103,8 @@ impl Default for Snapshot {
         }
     }
 }
-
 impl Snapshot {
-    /// Applies a disclosure toggle in place; returns the commands the mod runtime must run,
-    /// which a build without mod support drops.
+    /// Keeps disclosure changes local and forwards work only while the library is idle.
     pub fn apply(&mut self, action: Action) -> Option<Action> {
         match action {
             Action::ReadMore(id) => {
@@ -96,68 +119,57 @@ impl Snapshot {
                 self.available_expanded = !self.available_expanded;
                 None
             }
-            Action::Enable(_) | Action::Disable(_) | Action::Remove(_) | Action::Import => {
-                (self.library.supported && !self.library.busy).then_some(action)
-            }
+            _ => (!self.library.busy).then_some(action),
         }
     }
-
-    /// Replaces the library and closes details of a mod that left it.
+    /// Closes details when their component leaves the library.
     pub fn publish(&mut self, library: Library) {
         if self
             .details_expanded
-            .is_some_and(|id| !library.installed.iter().any(|installed| installed.id == id))
+            .is_some_and(|id| !library.installed.iter().any(|item| item.id == id))
         {
             self.details_expanded = None;
         }
         self.library = library;
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    /// Creates a directory entry with no requested or granted permissions.
     fn installed(id: u64) -> InstalledMod {
         InstalledMod {
             id,
             name: format!("mod-{id}"),
             file: format!("mod-{id}.wasm"),
             bytes: 1,
+            permissions: Vec::new(),
         }
     }
-
     #[test]
-    fn disclosure_stays_local_and_work_needs_a_supporting_idle_runtime() {
+    fn active_groups_keep_precedence_and_disclosures_stay_local() {
         let mut snapshot = Snapshot::default();
-        assert_eq!(snapshot.apply(Action::ReadMore(7)), None);
-        assert_eq!(snapshot.details_expanded, Some(7));
-        assert_eq!(snapshot.apply(Action::ToggleAvailable), None);
-        assert!(!snapshot.available_expanded);
-        assert_eq!(snapshot.apply(Action::Import), None);
-        snapshot.library.supported = true;
-        assert_eq!(snapshot.apply(Action::Enable(7)), Some(Action::Enable(7)));
-        snapshot.library.busy = true;
-        assert_eq!(snapshot.apply(Action::Remove(7)), None);
-    }
-
-    #[test]
-    fn publishing_closes_details_of_a_removed_mod_and_splits_the_enabled_one() {
-        let mut snapshot = Snapshot::default();
-        snapshot.apply(Action::ReadMore(2));
+        assert_eq!(snapshot.apply(Action::ReadMore(2)), None);
         snapshot.publish(Library {
-            installed: vec![installed(1), installed(2)],
-            enabled: Some(2),
-            ..Library::default()
+            installed: vec![installed(1), installed(2), installed(3)],
+            active: vec![
+                ActiveMod {
+                    id: 2,
+                    status: Status::Running,
+                },
+                ActiveMod {
+                    id: 1,
+                    status: Status::Running,
+                },
+            ],
+            ..Default::default()
         });
-        assert_eq!(snapshot.details_expanded, Some(2));
         let (active, available) = snapshot.library.groups();
-        assert_eq!(active, [installed(2)]);
-        assert_eq!(available, [installed(1)]);
-        snapshot.publish(Library {
-            installed: vec![installed(1)],
-            ..Library::default()
-        });
+        assert_eq!(active, [installed(2), installed(1)]);
+        assert_eq!(available, [installed(3)]);
+        snapshot.library.busy = true;
+        assert_eq!(snapshot.apply(Action::ReloadAll), None);
+        snapshot.publish(Library::default());
         assert_eq!(snapshot.details_expanded, None);
     }
 }

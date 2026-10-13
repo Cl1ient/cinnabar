@@ -2661,13 +2661,16 @@ gaps: no smelting at 1.26.x, brewing skipped, recipes with Molang/complex/deferr
 ingredients dropped. Incomplete as for the spike: process isolation, signing,
 consent, per-mod overlays, rebinding UI. See `docs/modding-spike.md`.
 
-2026-10-13 modding Settings tab: Cinnabar extension, not vanilla behavior; it closes no
-parity gate. Settings › Mods, below Resource packs, imports `.wasm` components (validated
-without running guest code) into the per-user mods directory and drives the one local
-registration, so at most one mod is enabled; a newly selected component starts with
-default-denied grants. Release packages build with `local-mods`. Incomplete: icons and
-descriptions (bare components carry no manifest), grant UI and multi-mod registration. See
-`docs/modding-spike.md`.
+2026-10-13 Settings Mods tab: the resource-pack page's toolbar, card disclosures,
+Active/My mods groups and animations now manage an ordered native mod list. Enable,
+Disable and Remove affect each card's identity independently. Active cards can reorder,
+reload individually or reload all; failed reloads preserve the running instance.
+Per-card permission toggles are derived from the host grant declaration and default off.
+The original single registration migrates with its grants, font and UI intact. Each guest
+keeps its execution limits; all frame callbacks also share a deterministic fuel allowance.
+Camera, time and contested HUD slots obey Active-list precedence with counted refusals.
+Modding ships in every native build. Incomplete: component icons and descriptions,
+owner visual review and native cross-platform acceptance. See `docs/modding-spike.md`.
 
 2026-10-01 crouch, shield and crossbow follow-up: the local camera now consumes
 the native 0.35-block crouch offset, half-blended once per completed tick and

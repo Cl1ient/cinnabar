@@ -116,7 +116,6 @@ impl SessionController {
     }
 
     /// Stable selected destination, kept independent from invites and transient session ids.
-    #[cfg(feature = "local-mods")]
     pub(crate) fn destination_identity(&self) -> Option<&str> {
         self.destination_identity.as_deref()
     }
@@ -126,7 +125,6 @@ impl SessionController {
     }
 
     /// Endpoint directory of the live session core; unavailable during teardown.
-    #[cfg(feature = "local-mods")]
     pub(crate) fn socket_directory(&self) -> Option<&std::path::Path> {
         self.directory
             .as_ref()

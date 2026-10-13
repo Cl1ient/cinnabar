@@ -60,7 +60,7 @@ mod sound_events;
 mod stair;
 pub mod starter_skins;
 pub mod texture;
-mod ui;
+pub mod ui;
 pub mod vanilla_pack;
 mod vanilla_refs;
 pub mod weather_textures;

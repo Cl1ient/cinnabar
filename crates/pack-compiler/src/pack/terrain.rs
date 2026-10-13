@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{
-    block::model_variant_index,
+    model_selectors::{ModelTextureSelector, mushroom_variant_index},
     parse::{
         BoundedMapIssue, BoundedUniqueMap, MAX_TEXTURE_KEYS, MAX_TEXTURE_VARIANTS, read_json,
         validate_texture_path,
@@ -193,12 +193,10 @@ impl TerrainTextureMap {
         let paths = self.entries.get(key)?;
         match paths {
             TerrainPaths::Static { path, .. } => Some((path, 0)),
-            TerrainPaths::Variants { paths, .. } => {
-                let selected = if is_mushroom_face_key(key, &record.name) {
-                    mushroom_variant_index(record).filter(|_| paths.len() == 16)?
-                } else {
-                    model_variant_index(key, record, paths.len())?
-                };
+            TerrainPaths::Variants {
+                paths, selector, ..
+            } => {
+                let selected = selector.bind_record(record, paths.len()).select(record)?;
                 paths
                     .get(selected)
                     .map(|path| (path.as_ref(), selected as u32))
@@ -248,6 +246,16 @@ impl TerrainTextureMap {
         key: &str,
         variant: usize,
     ) -> Option<(&str, Option<&str>)> {
+        self.get_clamped_carried_variant(key, variant)
+            .map(|(path, overlay, _)| (path, overlay))
+    }
+
+    /// Returns a carried path, optional overlay color, and its actual clamped terrain index.
+    pub(crate) fn get_clamped_carried_variant(
+        &self,
+        key: &str,
+        variant: usize,
+    ) -> Option<(&str, Option<&str>, u32)> {
         match self.entries.get(key)? {
             TerrainPaths::Static {
                 path,
@@ -255,7 +263,7 @@ impl TerrainTextureMap {
                 tint_color: None,
                 has_extra_metadata: false,
                 ..
-            } => Some((path, overlay_color.as_deref())),
+            } => Some((path, overlay_color.as_deref(), 0)),
             TerrainPaths::Variants {
                 paths,
                 overlay_colors,
@@ -270,6 +278,7 @@ impl TerrainTextureMap {
                 Some((
                     paths.get(selected)?,
                     overlay_colors.get(selected)?.as_deref(),
+                    selected as u32,
                 ))
             }
             TerrainPaths::Static { .. } | TerrainPaths::Variants { .. } => None,
@@ -281,6 +290,20 @@ impl TerrainTextureMap {
         self.entries
             .iter()
             .map(|(key, paths)| (key.as_ref(), paths.first()))
+    }
+
+    /// Counts every atlas index and its position-selected UV variants for flipbook binding.
+    pub(crate) fn flipbook_destinations(&self) -> impl Iterator<Item = (&str, Vec<u32>)> {
+        self.entries.iter().map(|(key, paths)| {
+            let counts = (0..paths.paths().count())
+                .map(|index| {
+                    self.position_variations
+                        .get(&(key.clone(), index as u32))
+                        .map_or(1, |variants| variants.len() as u32)
+                })
+                .collect();
+            (key.as_ref(), counts)
+        })
     }
 
     pub(crate) fn source_paths(&self) -> impl Iterator<Item = &str> {
@@ -302,6 +325,7 @@ pub(super) enum TerrainPaths {
         has_extra_metadata: bool,
     },
     Variants {
+        selector: ModelTextureSelector,
         paths: Box<[Box<str>]>,
         overlay_colors: Box<[Option<Box<str>>]>,
         tint_colors: Box<[Option<Value>]>,
@@ -497,6 +521,7 @@ fn collect_terrain_paths(
                 return Err(AssetError::EmptyTextureVariants(key.into()));
             }
             Ok(TerrainPaths::Variants {
+                selector: ModelTextureSelector::admit(key, paths.len()),
                 paths: paths.into_boxed_slice(),
                 overlay_colors: overlay_colors.into_boxed_slice(),
                 tint_colors: tint_colors.into_boxed_slice(),
@@ -507,36 +532,9 @@ fn collect_terrain_paths(
     }
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HugeMushroomState {
-    huge_mushroom_bits: HugeMushroomSelector,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HugeMushroomSelector {
-    #[serde(rename = "type")]
-    kind: Box<str>,
-    value: u8,
-}
-
-fn mushroom_variant_index(record: &RegistryRecord) -> Option<usize> {
-    let state = serde_json::from_str::<HugeMushroomState>(&record.canonical_state).ok()?;
-    (state.huge_mushroom_bits.kind.as_ref() == "int")
-        .then_some(usize::from(state.huge_mushroom_bits.value))
-        .filter(|&bits| bits <= 15)
-}
-
+/// Restricts the generic terrain mushroom route to its admitted block identity.
 fn is_mushroom_face_key(key: &str, block_name: &str) -> bool {
-    let prefix = match block_name {
-        "minecraft:brown_mushroom_block" => "mushroom_brown_",
-        "minecraft:red_mushroom_block" => "mushroom_red_",
-        "minecraft:mushroom_stem" => "mushroom_stem_",
-        _ => return false,
-    };
-    key.strip_prefix(prefix)
-        .is_some_and(|face| matches!(face, "west" | "east" | "bottom" | "top" | "north" | "south"))
+    ModelTextureSelector::mushroom_block(key) == Some(block_name)
 }
 
 #[cfg(test)]

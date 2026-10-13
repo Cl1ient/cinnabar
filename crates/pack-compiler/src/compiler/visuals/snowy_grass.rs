@@ -16,25 +16,26 @@ pub(in crate::compiler) fn material_descriptor(
 ) -> Option<(Descriptor, Box<str>)> {
     let native_side = pack
         .terrain
-        .get_clamped_carried(GRASS_SIDE_KEY, usize::MAX)
-        .filter(|(path, overlay)| *path == SNOWED_GRASS_SIDE_TEXTURE && overlay.is_none())
-        .map(|(path, _)| path);
-    let path = native_side.or_else(|| {
+        .get_clamped_carried_variant(GRASS_SIDE_KEY, usize::MAX)
+        .filter(|(path, overlay, _)| *path == SNOWED_GRASS_SIDE_TEXTURE && overlay.is_none())
+        .map(|(path, _, index)| (path, GRASS_SIDE_KEY, index));
+    let (path, key, state_variant) = native_side.or_else(|| {
         pack.terrain
             .get_exact_pair_no_tint("mycelium_side")
             .map(|paths| paths[1])
             .filter(|path| *path == SNOWED_GRASS_SIDE_TEXTURE)
+            .map(|path| (path, "mycelium_side", 1))
     })?;
     Some((
         Descriptor {
             path: path.into(),
-            texture_key: GRASS_SIDE_KEY.into(),
+            texture_key: key.into(),
             // Snow is precolored; never apply the grass alpha-overlay tint.
             flags: 0,
-            state_variant: 0,
+            state_variant,
             flipbook_selector: None,
         },
-        GRASS_SIDE_KEY.into(),
+        key.into(),
     ))
 }
 

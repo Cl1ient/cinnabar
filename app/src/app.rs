@@ -952,7 +952,6 @@ pub fn run(args: args::ClientArgs) -> Result<()> {
 
 #[cfg(test)]
 mod direct_session_directory_tests;
-
 #[cfg(test)]
 mod preg_startup_tests;
 #[cfg(test)]

@@ -4296,6 +4296,10 @@ Scope: block registry + block-state → model/texture mapping (generated export 
     changing the v3 runtime schema. Commits `143c68d` and `e6e49e1` cover 83
     animations, 1,209 physical frames, 1,323 timeline references, and 1,901
     deduplicated layers on one 2,048-layer page.
+    Active pack overlays retain base flipbook source descriptions and material
+    destinations in the world sidecar, including frame order, timing, blending,
+    and replication. Raster-only replacement and removal have synthetic regression
+    coverage; rendered acceptance remains incomplete.
   - [x] Export and strictly decode `BREG1003` typed model/contributor/selectors,
     face coverage, collision seeds, and per-state provenance at `e58d083`.
     PMMP/Dragonfly/Prismarine form a full 16,913-state/1,356-name bijection;
@@ -8273,3 +8277,11 @@ Regression coverage checks overlapping files and glyph sheets, missing-file fall
 and original rejection indexes. Version-matched vanilla captures remain incomplete;
 this change does not close a parity gate. Locale font fallback and built-in named
 font alias behavior remain unchanged and need independent verification.
+
+### Model texture-array selector coverage
+
+Model texture-array selector coverage is incomplete. Compilation retains typed
+selectors and output ranges for the existing explicit model bindings. Unrecognized
+model arrays stay unresolved instead of guessing from growth or selecting index zero.
+The generic terrain accessor, complete native binding inventory and custom selector
+expressions still need their own admission and coverage work.

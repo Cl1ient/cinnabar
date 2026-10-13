@@ -25,6 +25,8 @@ pub(super) enum FailureReason {
     TextureSetUnresolved,
     /// The overlay's texture array has no free layer left.
     TextureArrayFull,
+    /// A flipbook selects a terrain tile or atlas index that does not exist.
+    AnimationDestinationMissing,
     /// Full-resolution pixels cannot fit the retained source or upload budget.
     TextureBudgetExceeded,
 }
@@ -39,6 +41,7 @@ impl FailureReason {
             Self::ImageDecodeFailed => "image_decode_failed",
             Self::TextureSetUnresolved => "texture_set_unresolved",
             Self::TextureArrayFull => "texture_array_full",
+            Self::AnimationDestinationMissing => "animation_destination_missing",
             Self::TextureBudgetExceeded => "texture_budget_exceeded",
         }
     }

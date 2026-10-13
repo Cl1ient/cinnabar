@@ -85,6 +85,12 @@ fn admitted_paintings_publish_both_surfaces_in_all_wall_directions() {
             routes.append(&world, 0.5, None, &mut output);
             assert_eq!(output.submissions.len(), 2, "{} {direction}", motive.title);
             assert_eq!(output.artwork.len(), 2);
+            assert!(
+                output
+                    .submissions
+                    .iter()
+                    .all(|part| part.input.identity.is_exact())
+            );
             let frame = builder.build_located(
                 0.5,
                 None,
@@ -94,12 +100,12 @@ fn admitted_paintings_publish_both_surfaces_in_all_wall_directions() {
                 }),
                 |_, location| location.unwrap().page,
             );
+            assert_eq!(frame.rejects, render_model::ActorRigRejects::default());
             assert_eq!(
                 frame.instances.len(),
                 2,
                 "both painting parts reach the actual draw builder"
             );
-            assert_eq!(frame.rejects, render_model::ActorRigRejects::default());
             assert!(output.skin_layers.is_empty());
             let front = &output.submissions[0];
             let rows = front.world_from_actor;

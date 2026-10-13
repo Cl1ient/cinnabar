@@ -93,7 +93,7 @@ pub fn crack_shape_for_block(
     primary_at: impl FnMut([i32; 3]) -> Option<u32>,
 ) -> Option<CrackShape> {
     let visual = assets.resolve(mode, runtime_id);
-    let template = assets.world_model_template(mode, runtime_id, block, primary_at);
+    let template = assets.model_template_at(mode, runtime_id, block, primary_at);
     resolved_shape(
         assets,
         template,

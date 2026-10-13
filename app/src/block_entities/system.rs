@@ -436,7 +436,7 @@ pub(crate) fn update_block_entity_scene(
             crack_instances(&entries, |entry| {
                 let runtime_id = entry.layers.iter().flatten().next().copied();
                 let template = runtime_id.and_then(|id| {
-                    assets.world_model_template(mode, id, entry.position, |position| {
+                    assets.model_template_at(mode, id, entry.position, |position| {
                         let side = SUB_CHUNK_SIDE as i32;
                         let key = SubChunkKey::new(
                             dimension,

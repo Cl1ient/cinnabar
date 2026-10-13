@@ -1,5 +1,7 @@
 //! Door pose selectors retained independently of each half's artwork.
 
+use crate::{MODEL_TEMPLATE_FLAG_DOOR, NetworkIdMode, RuntimeAssets};
+
 /// Every facing/open/hinge pose for both texture halves in one class-owned group.
 pub const TEMPLATE_COUNT: u32 = 32;
 /// Door selectors occupy bits above the two GPU quarter-turn bits.
@@ -14,55 +16,6 @@ pub struct DoorPose {
     pub open: bool,
     pub hinge_right: bool,
     pub upper: bool,
-}
-
-/// Selects a paired pose within the same admitted door template group.
-pub fn paired_template(
-    templates: &[crate::ModelTemplate],
-    template: u32,
-    variant: u32,
-    neighbor: u32,
-    neighbor_variant: u32,
-) -> Option<u32> {
-    for index in [template, neighbor] {
-        if templates.get(index as usize)?.flags != crate::MODEL_TEMPLATE_FLAG_DOOR {
-            return None;
-        }
-    }
-    let pose = DoorPose::from_variant(variant)?;
-    let other = DoorPose::from_variant(neighbor_variant)?;
-    let base = template.checked_sub(pose.offset())?;
-    if neighbor.checked_sub(other.offset())? != base {
-        return None;
-    }
-    Some(base + pose.with_neighbor(other).offset())
-}
-
-impl crate::RuntimeAssets {
-    /// Resolves world model surfaces, querying primary neighbors only for paired doors.
-    pub fn world_model_template(
-        &self,
-        mode: crate::NetworkIdMode,
-        runtime_id: u32,
-        mut block: [i32; 3],
-        mut primary_at: impl FnMut([i32; 3]) -> Option<u32>,
-    ) -> Option<u32> {
-        let visual = self.resolve(mode, runtime_id);
-        let template = visual.model_template()?;
-        if self.model_templates().get(template as usize)?.flags != crate::MODEL_TEMPLATE_FLAG_DOOR {
-            return Some(template);
-        }
-        let pose = DoorPose::from_variant(visual.variant())?;
-        block[1] = block[1].checked_add(if pose.upper { -1 } else { 1 })?;
-        let neighbor = self.resolve(mode, primary_at(block)?);
-        paired_template(
-            self.model_templates(),
-            template,
-            visual.variant(),
-            neighbor.model_template()?,
-            neighbor.variant(),
-        )
-    }
 }
 
 impl DoorPose {
@@ -117,5 +70,51 @@ impl DoorPose {
             hinge_right: upper.hinge_right,
             upper: self.upper,
         }
+    }
+}
+
+/// Selects a door's paired pose within its own template group. Other models keep their template.
+/// `neighbor` reads below an upper half or above a lower half only when this is a door.
+pub fn resolve_template(
+    assets: &RuntimeAssets,
+    template: u32,
+    variant: u32,
+    neighbor: impl FnOnce(bool) -> Option<(u32, u32)>,
+) -> Option<u32> {
+    if assets.model_templates().get(template as usize)?.flags & MODEL_TEMPLATE_FLAG_DOOR == 0 {
+        return Some(template);
+    }
+    let pose = DoorPose::from_variant(variant)?;
+    let base = template.checked_sub(pose.offset())?;
+    let (other_template, other_variant) = neighbor(pose.upper)?;
+    if assets.model_templates().get(other_template as usize)?.flags != MODEL_TEMPLATE_FLAG_DOOR {
+        return None;
+    }
+    let other = DoorPose::from_variant(other_variant)?;
+    if other_template.checked_sub(other.offset())? != base {
+        return None;
+    }
+    Some(base + pose.with_neighbor(other).offset())
+}
+
+impl RuntimeAssets {
+    /// Resolves a block's model template against its current vertical neighbor.
+    /// Missing or different-class door partners have no model; other models need no lookup.
+    pub fn model_template_at(
+        &self,
+        mode: NetworkIdMode,
+        runtime_id: u32,
+        block: [i32; 3],
+        runtime_id_at: impl FnOnce([i32; 3]) -> Option<u32>,
+    ) -> Option<u32> {
+        let visual = self.resolve(mode, runtime_id);
+        resolve_template(self, visual.model_template()?, visual.variant(), |upper| {
+            let y = block[1].checked_add(if upper { -1 } else { 1 })?;
+            let other = self.resolve(mode, runtime_id_at([block[0], y, block[2]])?);
+            if other.kind() != crate::VisualKind::Model {
+                return None;
+            }
+            Some((other.model_template()?, other.variant()))
+        })
     }
 }

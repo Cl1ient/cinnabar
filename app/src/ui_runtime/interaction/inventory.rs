@@ -93,6 +93,7 @@ pub(super) fn apply_inventory_pointer(
     let screen = InventoryScreen::of_runtime(player_runtime, runtime);
     runtime.observe_inventory_search_focus(player_runtime);
     let Some(position) = window.cursor_position() else {
+        // A cancelled touch withdraws the pointer, so its release closes nothing.
         runtime.set_inventory_pointer_gui(None);
         runtime.screen_state_mut().hover = None;
         runtime.screen_state_mut().container_close_armed = false;
@@ -115,6 +116,7 @@ pub(super) fn apply_inventory_pointer(
         runtime.screen_state_mut().container_close_armed = false;
     }
     // The screen's close button closes it on a release over the button it was pressed on.
+    // A mod's view hides the container, so the hidden close button must not arm.
     let on_close = gui
         .filter(|_| !mod_owned)
         .and_then(|gui| presentation.engine_container_hit(gui))

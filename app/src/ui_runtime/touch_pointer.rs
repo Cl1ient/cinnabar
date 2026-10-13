@@ -20,18 +20,32 @@ pub(crate) struct TouchPointer {
     owner: Option<u64>,
 }
 
+/// What one touch event does to the emulated pointer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PointerEdge {
+    Press,
+    /// A completed tap: the button lifts where the finger did.
+    Release,
+    /// An aborted gesture: the pointer leaves the screen before the button lifts, so nothing
+    /// that fires on release sees it over a control.
+    Cancel,
+}
+
 impl TouchPointer {
-    /// The button edge one touch event produces; only a finger that lands while a pointer
-    /// screen owns input presses, and losing that screen releases it.
-    fn step(&mut self, pointer_screen: bool, id: u64, phase: TouchPhase) -> Option<ButtonState> {
+    /// Only a finger that lands while a pointer screen owns input presses.
+    fn step(&mut self, pointer_screen: bool, id: u64, phase: TouchPhase) -> Option<PointerEdge> {
         match phase {
             TouchPhase::Started if pointer_screen && self.owner.is_none() => {
                 self.owner = Some(id);
-                Some(ButtonState::Pressed)
+                Some(PointerEdge::Press)
             }
-            TouchPhase::Ended | TouchPhase::Canceled if self.owner == Some(id) => {
+            TouchPhase::Ended if self.owner == Some(id) => {
                 self.owner = None;
-                Some(ButtonState::Released)
+                Some(PointerEdge::Release)
+            }
+            TouchPhase::Canceled if self.owner == Some(id) => {
+                self.owner = None;
+                Some(PointerEdge::Cancel)
             }
             _ => None,
         }
@@ -42,9 +56,9 @@ impl TouchPointer {
         self.owner == Some(id)
     }
 
-    /// Releases a held pointer once its screen no longer owns input.
-    fn lose_screen(&mut self) -> Option<ButtonState> {
-        self.owner.take().map(|_| ButtonState::Released)
+    /// Cancels a held pointer once its screen no longer owns input.
+    fn lose_screen(&mut self) -> Option<PointerEdge> {
+        self.owner.take().map(|_| PointerEdge::Cancel)
     }
 }
 
@@ -65,7 +79,16 @@ pub(crate) fn emulate_ui_pointer(
             && (!menu.is_some_and(|menu| menu.is_visible())
                 || ui.server_forms().settings_form_active())
     });
-    let mut edge = |state| {
+    // Bypassed so the window backend is not asked to warp a cursor touchscreens lack.
+    let mut apply = |window: &mut Window, edge: PointerEdge| {
+        let state = match edge {
+            PointerEdge::Press => ButtonState::Pressed,
+            PointerEdge::Release => ButtonState::Released,
+            PointerEdge::Cancel => {
+                window.set_cursor_position(None);
+                ButtonState::Released
+            }
+        };
         buttons.write(MouseButtonInput {
             button: MouseButton::Left,
             state,
@@ -73,19 +96,17 @@ pub(crate) fn emulate_ui_pointer(
         });
     };
     for input in touch_input.read() {
-        let state = pointer.step(pointer_screen, input.id, input.phase);
-        if pointer.owns(input.id) || state.is_some() {
-            // Bypassed so the window backend is not asked to warp a cursor touchscreens lack.
-            window
-                .bypass_change_detection()
-                .set_cursor_position(Some(input.position));
+        let edge = pointer.step(pointer_screen, input.id, input.phase);
+        let window = window.bypass_change_detection();
+        if pointer.owns(input.id) || matches!(edge, Some(PointerEdge::Release)) {
+            window.set_cursor_position(Some(input.position));
         }
-        if let Some(state) = state {
-            edge(state);
+        if let Some(edge) = edge {
+            apply(window, edge);
         }
     }
-    if !pointer_screen && let Some(state) = pointer.lose_screen() {
-        edge(state);
+    if !pointer_screen && let Some(edge) = pointer.lose_screen() {
+        apply(window.bypass_change_detection(), edge);
     }
 }
 
@@ -196,19 +217,28 @@ mod tests {
         assert_eq!(pointer.step(true, 1, TouchPhase::Ended), None);
         assert_eq!(
             pointer.step(true, 2, TouchPhase::Started),
-            Some(ButtonState::Pressed)
+            Some(PointerEdge::Press)
         );
         assert_eq!(pointer.step(true, 3, TouchPhase::Started), None);
         assert_eq!(pointer.step(true, 3, TouchPhase::Ended), None);
         assert_eq!(
             pointer.step(true, 2, TouchPhase::Ended),
-            Some(ButtonState::Released)
+            Some(PointerEdge::Release)
         );
+    }
+
+    /// A cancelled gesture, or one whose screen closes, must not complete as a tap.
+    #[test]
+    fn cancelled_gestures_cancel_instead_of_releasing() {
+        let mut pointer = TouchPointer::default();
+        pointer.step(true, 1, TouchPhase::Started);
         assert_eq!(
-            pointer.step(true, 4, TouchPhase::Started),
-            Some(ButtonState::Pressed)
+            pointer.step(true, 1, TouchPhase::Canceled),
+            Some(PointerEdge::Cancel)
         );
-        assert_eq!(pointer.lose_screen(), Some(ButtonState::Released));
-        assert_eq!(pointer.step(true, 4, TouchPhase::Canceled), None);
+        pointer.step(true, 2, TouchPhase::Started);
+        assert_eq!(pointer.lose_screen(), Some(PointerEdge::Cancel));
+        assert_eq!(pointer.step(true, 2, TouchPhase::Ended), None);
+        assert_eq!(pointer.lose_screen(), None);
     }
 }

@@ -1,7 +1,8 @@
 //! Natives for the setup activity, which prepares carriers before the game activity starts.
 //!
 //! `prepare` runs on the activity's worker thread and returns null when the game can start,
-//! an empty string when the user quit, or the failure to show.
+//! an empty string when the user quit, or the failure to show. Each call carries its attempt
+//! number, which `cancel` names.
 
 use std::{
     cell::RefCell,
@@ -9,10 +10,7 @@ use std::{
     fs,
     os::unix::fs::symlink,
     path::PathBuf,
-    sync::{
-        Mutex, PoisonError,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Mutex, PoisonError},
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -20,10 +18,12 @@ use first_run::Outcome;
 use jni::{
     JNIEnv, JavaVM, NativeMethod,
     objects::{JObject, JString, JValue},
-    sys::{JNI_ERR, JNI_VERSION_1_6, jint, jstring},
+    sys::{JNI_ERR, JNI_VERSION_1_6, jint, jlong, jstring},
 };
 
-static CANCEL: AtomicBool = AtomicBool::new(false);
+use crate::cancellation::Cancellation;
+
+static CANCELLATION: Cancellation = Cancellation::new();
 /// A relaunched activity waits for an abandoned attempt to observe its cancellation.
 static SETUP: Mutex<()> = Mutex::new(());
 
@@ -43,12 +43,12 @@ pub unsafe extern "system" fn JNI_OnLoad(vm: *mut jni::sys::JavaVM, _: *mut c_vo
             &[
                 NativeMethod {
                     name: "prepare".into(),
-                    sig: "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;".into(),
+                    sig: "(Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;".into(),
                     fn_ptr: prepare as *mut c_void,
                 },
                 NativeMethod {
                     name: "cancel".into(),
-                    sig: "()V".into(),
+                    sig: "(J)V".into(),
                     fn_ptr: cancel as *mut c_void,
                 },
             ],
@@ -68,13 +68,17 @@ extern "system" fn prepare<'local>(
     activity: JObject<'local>,
     files_dir: JString<'local>,
     native_library_dir: JString<'local>,
+    attempt: jlong,
 ) -> jstring {
     let _serial = SETUP.lock().unwrap_or_else(PoisonError::into_inner);
-    CANCEL.store(false, Ordering::Relaxed);
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        setup(&mut env, &activity, &files_dir, &native_library_dir)
-    }))
-    .unwrap_or_else(|_| Err(anyhow!("setup panicked")));
+    let outcome = if CANCELLATION.begin(attempt as u64) {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            setup(&mut env, &activity, &files_dir, &native_library_dir)
+        }))
+        .unwrap_or_else(|_| Err(anyhow!("setup panicked")))
+    } else {
+        Ok(Outcome::Quit)
+    };
     clear_exception(&mut env);
     let reply = match outcome {
         Ok(Outcome::Quit) => String::new(),
@@ -85,8 +89,8 @@ extern "system" fn prepare<'local>(
         .map_or(std::ptr::null_mut(), JString::into_raw)
 }
 
-extern "system" fn cancel(_env: JNIEnv<'_>, _activity: JObject<'_>) {
-    CANCEL.store(true, Ordering::Relaxed);
+extern "system" fn cancel(_env: JNIEnv<'_>, _activity: JObject<'_>, attempt: jlong) {
+    CANCELLATION.cancel(attempt as u64);
 }
 
 fn setup(
@@ -115,7 +119,7 @@ fn setup(
     let env = RefCell::new(env);
     first_run::prepare_headless(
         &layout.with_prepared_assets(),
-        &CANCEL,
+        CANCELLATION.flag(),
         |title, body| {
             call_activity(
                 &mut env.borrow_mut(),

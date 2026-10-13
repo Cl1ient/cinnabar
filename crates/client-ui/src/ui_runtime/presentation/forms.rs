@@ -600,6 +600,7 @@ impl UiPresentationRuntime {
             ..FrameProjections::default()
         };
         self.screens.mod_ui.begin_mod_screens_frame();
+        self.screens.touch.begin_frame();
     }
 
     /// Draws the open container's engine screen.

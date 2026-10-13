@@ -5,7 +5,8 @@ core and `assetc` as native libraries and the prep kit as assets. A setup activi
 consent and runs headless first-run preparation; the NativeActivity then runs the client with
 the install layout under the app's private files. Gameplay touch controls are a built-in JSON-UI
 screen whose painted rectangles capture fingers; inventory and server forms take one finger as
-the pointer. CI builds the APK.
+the pointer. The Android workflow builds the APK for Android packaging changes, on a schedule
+and on demand.
 
 Incomplete: the touch layout, its sizes, the look gain and the stick behaviour are provisional,
 not matched to the native touch schemes, safe areas or settings. There is no keyboard or IME,

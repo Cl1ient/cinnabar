@@ -18,8 +18,9 @@ adb install target/android/Cinnabar-*-arm64-v8a.apk
 ```
 
 Without `CINNABAR_ANDROID_KEYSTORE` the script signs with a test key in `target/android`. The
-Android CI workflow builds the same APK and attaches it to the run. Each run uses its own key,
-so uninstall an earlier build (which clears its data) before installing a newer one.
+Android workflow builds the same APK for pull requests that change `packaging/android/`, every
+six hours and on manual runs, and attaches it to the run. Each run uses its own key, so
+uninstall an earlier build (which clears its data) before installing a newer one.
 
 ## Controls
 

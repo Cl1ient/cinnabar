@@ -465,6 +465,7 @@ mod tests {
         let build = |name: &str| {
             super::super::nametags::build_nametag_scene(
                 &[super::super::nametags::tests::anchor(name)],
+                1.0,
                 &font,
                 &mut TextLayoutCache::new(4, 1 << 20),
                 &mut NametagAtlas::default(),

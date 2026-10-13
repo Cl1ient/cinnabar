@@ -14,8 +14,9 @@ and vertical bounds `-1 .. 8`. The existing ten-pixel multiline spacing and
 
 Ordinary labels draw a plate and dim text through walls, then full-opacity text
 with depth testing. Each complete label is drawn back to front by camera depth
-before starting the next label. Viewer distance still controls visibility and score
-range. Sneaking labels draw only a depth-tested plate and dim text.
+of the final lifted plane, including cosmetic scale, before starting the next label.
+Only lines that fit the scene and atlas contribute to the lift. Viewer distance still
+controls visibility and score range. Sneaking labels draw only a depth-tested plate and dim text.
 Dim text alpha is `32 / 255`; only tested text writes depth. Labels have no depth
 bias, and final fragment alpha must exceed `0.1`. Distance from the viewer's feet
 must be below 64 blocks, or 32 while sneaking; server limits can shorten this.

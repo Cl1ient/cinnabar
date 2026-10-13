@@ -67,6 +67,8 @@ pub struct NametagAnchor {
     pub(super) text_alpha: f32,
     /// Signed camera-space depth of the head anchor, independent of viewer distance.
     pub(super) view_depth: f32,
+    /// Camera depth gained by one block of world-Y lift.
+    pub(super) camera_forward_y: f32,
 }
 
 impl NametagAnchor {
@@ -293,6 +295,7 @@ fn nametag_with_lines(
         depth_tested: sneaking,
         text_alpha: if sneaking { DIM_TEXT_ALPHA } else { 1.0 },
         view_depth,
+        camera_forward_y: view.camera_forward.y,
     })
 }
 
@@ -389,13 +392,16 @@ pub fn project_nametags(
 }
 
 /// Draws complete labels back to front, keeping each plate and its text passes together.
+/// `lift_scale` is the cosmetic scale applied to line lift after building the scene.
 pub fn build_nametag_scene<'p>(
     anchors: &[NametagAnchor],
+    lift_scale: f32,
     font: &RuntimeFontCatalog,
     layouts: &mut TextLayoutCache,
     atlas: &mut NametagAtlas,
     pages: &impl Fn(usize) -> Option<GlyphPage<'p>>,
 ) -> NametagScene {
+    // Retain budget and atlas allocation order; final draw order follows placed geometry.
     let mut ordered: Vec<&NametagAnchor> = anchors.iter().collect();
     ordered.sort_by(|a, b| {
         b.view_depth
@@ -413,6 +419,7 @@ pub fn build_nametag_scene<'p>(
     let side = NAMETAG_ATLAS_SIDE as f32;
     let texels = FONT_DESIGN_PIXEL_TEXELS as f32;
     let mut records = Vec::new();
+    let mut labels = Vec::with_capacity(ordered.len());
     for anchor in ordered {
         let records_per_line = NAMETAG_RECORDS_PER_LINE + usize::from(!anchor.depth_tested);
         let remaining_lines = (MAX_NAMETAG_RECORDS - records.len()) / records_per_line;
@@ -472,7 +479,15 @@ pub fn build_nametag_scene<'p>(
                 records.push(full);
             }
         }
+        let plane_depth =
+            anchor.view_depth + anchor.camera_forward_y * (common.line_lift * lift_scale);
+        labels.push((plane_depth, anchor.runtime_id, first..records.len()));
     }
+    labels.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+    let records = labels
+        .into_iter()
+        .flat_map(|(_, _, range)| records[range].iter().copied())
+        .collect();
     let (atlas, atlas_revision) = atlas.publish();
     NametagScene {
         records,

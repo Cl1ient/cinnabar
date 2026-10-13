@@ -100,6 +100,7 @@ pub(in crate::ui_runtime::presentation) fn anchor(name: &str) -> NametagAnchor {
         depth_tested: false,
         text_alpha: 1.0,
         view_depth: 5.0,
+        camera_forward_y: 0.0,
     }
 }
 
@@ -113,6 +114,7 @@ fn scene(anchors: &[NametagAnchor]) -> NametagScene {
 fn scene_with_font(anchors: &[NametagAnchor], font: &RuntimeFontCatalog) -> NametagScene {
     build_nametag_scene(
         anchors,
+        1.0,
         font,
         &mut TextLayoutCache::new(8, 1 << 20),
         &mut NametagAtlas::default(),
@@ -312,7 +314,7 @@ fn tag_anchor_follows_the_same_interpolated_feet_as_the_rig() {
     for partial in [0.25, 0.5, 0.75] {
         let anchor = tag_world_position(&actor, partial).unwrap();
         let feet = Vec3::from_array(actor.interpolated_position(partial).unwrap());
-        assert_eq!(anchor - Vec3::Y * (DEFAULT_HEIGHT + HEAD_CLEARANCE), feet);
+        assert_eq!(anchor, feet + Vec3::Y * (DEFAULT_HEIGHT + HEAD_CLEARANCE));
     }
 }
 

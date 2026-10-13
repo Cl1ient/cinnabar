@@ -113,6 +113,21 @@ fn camera_changes_refresh_cached_depth_without_changing_viewer_score_range() {
         .unwrap();
     assert_eq!(next.view_depth, 4.0);
     assert!(Arc::ptr_eq(&first.lines, &next.lines));
+    let pitched = cache
+        .extract(
+            &actor,
+            NametagView {
+                camera_forward: Vec3::new(0.0, -1.0, -1.0).normalize(),
+                ..turned
+            },
+            None,
+            Arc::clone(&name),
+            &boards,
+            1.0,
+        )
+        .unwrap();
+    assert!(pitched.camera_forward_y < 0.0);
+    assert!(Arc::ptr_eq(&next.lines, &pitched.lines));
     let viewer_out_of_range = NametagView {
         viewer_position: Vec3::NEG_Z * 64.0,
         ..turned
@@ -166,5 +181,113 @@ fn nearer_plates_attenuate_farther_text_in_every_sneak_combination() {
                 "far sneak {far_sneaking}, near sneak {near_sneaking}: {pixel}"
             );
         }
+    }
+}
+
+/// Builds and styles a scene with the same lift scale used for sorting its planes.
+fn scaled_scene(anchors: &[NametagAnchor], scale: f32) -> NametagScene {
+    let font = ui_engine::test_support::fixture_font();
+    let mut scene = build_nametag_scene(
+        anchors,
+        scale,
+        &font,
+        &mut TextLayoutCache::new(8, 1 << 20),
+        &mut NametagAtlas::default(),
+        &|page| super::super::super::nametag_atlas::font_page(&font, page),
+    );
+    let style = serde_json::from_value(serde_json::json!({"scale": scale})).unwrap();
+    style_scene(&mut scene, &style, None);
+    scene
+}
+
+#[test]
+fn pitched_camera_sorts_lifted_multiline_planes_and_keeps_label_passes_together() {
+    let forward = Vec3::new(0.0, -1.0, -1.0).normalize();
+    for scale in [1.0, 2.0] {
+        for sneaking in [false, true] {
+            let mut multiline = anchor("A\nA\nA\nA\nA");
+            multiline.position = forward * 5.0;
+            multiline.view_depth = 5.0;
+            multiline.camera_forward_y = forward.y;
+            multiline.depth_tested = sneaking;
+            multiline.text_alpha = if sneaking { DIM_TEXT_ALPHA } else { 1.0 };
+            let mut single = anchor("A");
+            single.runtime_id = 2;
+            // At scale two the unscaled lift would leave the multiline label farther away.
+            let single_depth = if scale == 1.0 { 4.8 } else { 4.5 };
+            single.position = forward * single_depth;
+            single.view_depth = single_depth;
+            single.camera_forward_y = forward.y;
+            let near_anchor = multiline.position.to_array();
+            let far_anchor = single.position.to_array();
+            let scene = scaled_scene(&[multiline, single], scale);
+            assert!(
+                scene.records[..3]
+                    .iter()
+                    .all(|record| record.anchor == far_anchor)
+            );
+            assert!(
+                scene.records[3..]
+                    .iter()
+                    .all(|record| record.anchor == near_anchor)
+            );
+            let mut pixel = 0.0;
+            let mut depth = f32::INFINITY;
+            // Sample near ink over a blank far glyph, with both plates covering the pixel.
+            for record in &scene.records {
+                let alpha = if record.text != 0 && record.anchor == far_anchor {
+                    0.0
+                } else {
+                    record.color[3]
+                };
+                let plane = Vec3::from_array(record.anchor) + Vec3::Y * record.line_lift;
+                let at = forward.dot(plane);
+                if alpha <= render_model::NAMETAG_ALPHA_CUTOFF
+                    || (record.depth_tested != 0 && at > depth)
+                {
+                    continue;
+                }
+                pixel = record.color[0] * alpha + pixel * (1.0 - alpha);
+                if record.depth_tested != 0 && record.text != 0 {
+                    depth = at;
+                }
+            }
+            let near_ink = if sneaking { DIM_TEXT_ALPHA } else { 1.0 };
+            assert!((pixel - near_ink).abs() < 1e-6);
+        }
+    }
+}
+
+#[test]
+fn lifted_sorting_uses_the_line_count_that_fits_the_record_budget() {
+    let forward = Vec3::new(0.0, 1.0, -1.0).normalize();
+    let mut single = anchor("A");
+    single.position = forward * 40.0;
+    single.view_depth = 40.0;
+    single.camera_forward_y = forward.y;
+    let mut multiline = anchor(&vec!["A"; MAX_NAMETAG_LINES].join("\n"));
+    multiline.runtime_id = 2;
+    multiline.position = forward * 5.0;
+    multiline.view_depth = 5.0;
+    multiline.camera_forward_y = forward.y;
+    let far_anchor = single.position.to_array();
+    let near_anchor = multiline.position.to_array();
+    let scene = scene(&[multiline, single]);
+    // The requested lift would put the multiline label beyond the single-line plane.
+    // Its budget-truncated lift leaves it nearer, so the single label still draws first.
+    assert!(
+        scene.records[..3]
+            .iter()
+            .all(|record| record.anchor == far_anchor)
+    );
+    let placed_lines = (MAX_NAMETAG_RECORDS - 3) / 3;
+    assert_eq!(scene.records.len(), 3 + placed_lines * 3);
+    for record in &scene.records[3..] {
+        assert_eq!(record.anchor, near_anchor);
+        assert_eq!(
+            record.line_lift,
+            EXTRA_LINE_LIFT * (placed_lines - 1) as f32
+        );
+        assert!(forward.dot(Vec3::from_array(record.anchor) + Vec3::Y * record.line_lift) < 40.0);
     }
 }

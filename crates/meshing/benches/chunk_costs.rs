@@ -332,5 +332,37 @@ fn biome_records(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, meshing, biome_records);
+/// A mixed section whose six face neighbours are mixed too, so face culling reads neighbour cells.
+fn enclosed_meshing(c: &mut Criterion) {
+    let assets = terrain_assets();
+    let classifier = BlockClassifier::new(AIR);
+    let mixed = mixed_chunk();
+    let light = MeshLightSample::try_new(11, 3).unwrap();
+    let sampler = move |_coordinate: [i32; 3]| light;
+    let mut neighbourhood = MeshNeighbourhood::new(&mixed);
+    for offset in OFFSETS {
+        assert!(neighbourhood.insert(offset, &mixed));
+    }
+    let output = mesh_sub_chunk_in_neighbourhood_with_lighting(
+        &classifier,
+        &assets,
+        MODE,
+        &neighbourhood,
+        &sampler,
+    );
+    assert!(meshing::mesh_output_byte_len(&output) > 0);
+    c.bench_function("meshing/terrain_enclosed/sampled_light/mixed", |b| {
+        b.iter(|| {
+            black_box(mesh_sub_chunk_in_neighbourhood_with_lighting(
+                black_box(&classifier),
+                black_box(&assets),
+                black_box(MODE),
+                black_box(&neighbourhood),
+                black_box(&sampler),
+            ))
+        });
+    });
+}
+
+criterion_group!(benches, meshing, enclosed_meshing, biome_records);
 criterion_main!(benches);

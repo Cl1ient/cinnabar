@@ -21,7 +21,9 @@ pub use molang_program::MolangProgram;
 #[path = "entity/inherited_cubes.rs"]
 mod inherited_cubes;
 mod locator;
-pub use geometry::{EntityGeometry, EntityGeometryBounds, EntityGeometryInheritance};
+pub use geometry::{
+    EntityGeometry, EntityGeometryBounds, EntityGeometryInheritance, GEOMETRY_NO_HEAD_BOB_FIELD,
+};
 pub use locator::{EntityGeometryLocator, EntityGeometryLocatorBinding, MAX_GEOMETRY_LOCATORS};
 mod source_paths;
 #[path = "entity/texture_mesh.rs"]
@@ -30,7 +32,7 @@ mod texture_mesh;
 mod v4;
 pub use source_paths::{
     ACTOR_GLINT_TEXTURE_IDENTIFIER, BED_GEOMETRY_IDENTIFIER, CAPE_GEOMETRY_IDENTIFIER,
-    ELYTRA_GEOMETRY_IDENTIFIER, LEGACY_ENTITY_GEOMETRY_PATH,
+    ELYTRA_GEOMETRY_IDENTIFIER, ITEM_GLINT_TEXTURE_IDENTIFIER, LEGACY_ENTITY_GEOMETRY_PATH,
 };
 use source_paths::{validate_relative_path, validate_symbol_source};
 pub use texture_mesh::{EntityGeometryTextureMesh, MAX_ENTITY_GEOMETRY_TEXTURE_MESHES};

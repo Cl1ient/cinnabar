@@ -260,6 +260,11 @@ func TestUploadWaitStopsOnSessionCancellation(t *testing.T) {
 		if err := <-done; !errors.Is(err, context.Canceled) {
 			t.Fatal("upload wait ignored session cancellation", err)
 		}
+		// The transport may already be blocked before its deadline callback runs.
+		conn.Conn = &bufferConn{}
+		if n, err := conn.Read(make([]byte, 1)); n != 0 || !errors.Is(err, context.Canceled) {
+			t.Fatal("cancelled session attempted another transport read", err)
+		}
 	})
 }
 

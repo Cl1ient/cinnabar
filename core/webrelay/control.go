@@ -115,7 +115,7 @@ func (relay *Relay) runControl(ctx context.Context, conn net.Conn, client netip.
 		defer close(readerDone)
 		defer cancel()
 		for {
-			if conn.SetReadDeadline(time.Now().Add(2*keepAliveInterval)) != nil {
+			if conn.SetReadDeadline(time.Now().Add(2*keepAliveInterval)) != nil || ctx.Err() != nil {
 				return
 			}
 			var request controlRequest
@@ -228,6 +228,9 @@ type uploadLimitedConn struct {
 
 // Read never returns throttled bytes when cancellation wins the pacing wait.
 func (conn *uploadLimitedConn) Read(p []byte) (int, error) {
+	if err := conn.ctx.Err(); err != nil {
+		return 0, err
+	}
 	p = p[:min(len(p), conn.limiter.Burst())]
 	n, err := conn.Conn.Read(p)
 	if n > 0 {

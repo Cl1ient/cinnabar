@@ -310,7 +310,7 @@ fn model_vertex(vertex_index: u32, instance_index: u32) -> VertexOutput {
     out.world_position = world;
     out.world_origin = vec3<f32>(origin.value.xyz);
     @if(!ENHANCED)
-    out.tint_gamma = vec3(1.0);
+    out.tint_gamma = stem_colour(material.flags);
     // Every corner belongs to the same block; keep its exact tint flat across the model.
     @if(!ENHANCED && !ENHANCED_SHADOW && !OPAQUE_OVERDRAW)
     let tint_kind = material.flags & 0x30u;
@@ -363,7 +363,12 @@ transform: u32) -> vec3<f32> {
     return normalize(face);
 }
 
+// STEM_COLOURS
+
 fn tinted(sampled: vec4<f32>, flags: u32, record: u32, position: vec3<f32>, world_origin: vec3<f32>) -> vec4<f32> {
+    if ((flags & MATERIAL_STEM_FLAG) != 0u) {
+        return vec4(sampled.rgb * tint_to_linear(vec4(stem_colour(flags), 1.0)).rgb, sampled.a);
+    }
     let tint_kind = flags & 0x30u;
     if (tint_kind == 0u) { return vec4(sampled.rgb, sampled.a); }
     return vec4(sampled.rgb * blended_biome_tint(tint_kind, flags, record, position, world_origin).rgb, sampled.a);

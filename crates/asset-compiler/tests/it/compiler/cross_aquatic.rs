@@ -145,19 +145,16 @@ fn compiler_compiles_exact_terrestrial_cross_alias_tint_and_crop_variants() {
             .iter()
             .map(|visual| visual.variant)
             .collect::<Vec<_>>(),
-        [0, 0, 0, 0, 0, 7, 2, 0, 1, 0]
+        [0, 0, 0, 0, 0, 7, 2, 0, 0, 0]
     );
     for (index, visual) in compiled.visuals[..records.len()].iter().enumerate() {
         let template = compiled.model_templates[visual.model_template as usize];
         assert_eq!(
             template.quad_count,
-            if matches!(
-                records[index].name.as_ref(),
-                "minecraft:wheat" | "minecraft:carrots"
-            ) {
-                4
-            } else {
-                2
+            match records[index].name.as_ref() {
+                "minecraft:wheat" | "minecraft:carrots" => 4,
+                "minecraft:melon_stem" if index == 8 => 3,
+                _ => 2,
             },
             "visual {index} has the wrong plant geometry"
         );

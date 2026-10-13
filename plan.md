@@ -4834,9 +4834,18 @@ Scope: block registry + block-state → model/texture mapping (generated export 
       four axis-aligned, two-sided planes lowered to the farmland surface.
       All eight growth states preserve their selected artwork and upright UVs
       in sequential and hashed lookup; ordinary flowers retain crossed planes.
-      - [ ] Full crop presentation parity: exact native-client comparison and
-        calibrated UV rows remain open, as do torchflower, pitcher and nether
-        wart geometry and selectors.
+    - [x] Remaining farmland crop templates: fruit stems retain
+      growth height, stage colour and a facing-oriented connector. Torchflowers
+      preserve their two crop sprites and flower sprite at the plant width.
+      Pitcher crops retain buried pods, distinct lower/upper flower stages and
+      invisible early upper halves. Both block-ID modes cover every admitted state.
+      Sweet berry bushes select each growth stage's face artwork, preserve the
+      mature sprite and use the narrower plant geometry.
+      - [ ] Full crop presentation parity: exact native-client comparison,
+        sub-unit sprite geometry, atlas-edge UV calibration and torchflower
+        positional variation remain open.
+    - [ ] Nether wart geometry and selectors remain incomplete independently
+      of the farmland crop families.
     - [ ] Slab/stair native and packed-GPU live acceptance: capture all five
       fixed Cinnabar poses through native `%TEMP%` screenshots and require two
       consecutive exact GPU-completed model-stream witnesses. Automated gallery

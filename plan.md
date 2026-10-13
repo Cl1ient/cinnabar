@@ -391,6 +391,8 @@ Values are unchanged; compilation and test execution remain unverified until CI.
 - Home, Pause, Play, Inbox, world creation, Accounts and confirmation dialogs use shared OreUI
   panels and controls. Home keeps the shipped title above Play and character cards, with compact
   utility actions and versions from their canonical sources. Commerce actions remain quiet.
+  Home fits short windows without scrolling; Pause scales its controls when needed. Geometry
+  regressions are written; CI and owner visual acceptance of the sizing change remain pending.
 - Persistent Dark Mode defaults off, updates immediately and strengthens backdrop dimming.
   Optional Screen animations controls quick hover/press feedback, selection, glimmers, text edits,
   screen changes, modal exits, pack accordions, scrolling and interpolated loading progress. Selected
@@ -1911,7 +1913,9 @@ open, independently of this regression check.
 
 The user's latest matched spruce views also identified missing shading, face
 orientation and sampler contracts. Vanilla shade brightness
-assigns primary leaves/emitting blocks .2 independently of cached solid occlusion.
+assigns primary leaves .2 independently of cached solid occlusion; light emission
+does not count, so non-solid emitters such as torches leave neighbouring faces
+unshaded.
 Vanilla ambient occlusion averages outward/side/diagonal shade and raises
 average*face-coefficient to the authored exponent before vertex interpolation;
 solid side tests alone decide the diagonal fallback. Direct/cached lighting
@@ -6397,8 +6401,13 @@ the glint component, always-glinting items) sample the active pack's item glint
 raster in HUD and JSON-UI item cells. Removing the pack restores the startup
 UI carrier's image. Startup rejects stale carriers and missing or invalid base
 glint artwork with the carrier path and `make assets` rebuild guidance.
-UV scale, blend and scrolling periods remain provisional
-pending rendered acceptance; held items and the item viewmodel do not glint.
+UI UV scale, blend and scrolling periods remain provisional pending rendered
+acceptance. Held items in both views draw vanilla's item glint:
+the `enchanted_item_glint` raster, colour (0.38, 0.19, 0.608) scaled by strength,
+1375/3750 ms scrolls, -20/80 degree layers, and a 0.5 UV scale across each atlas
+sprite with the scroll divided by that scale, as the native item-in-hand renderer
+sets them. Attachables take the item raster at unit scale. Exact pixel comparison
+remains open.
 `minecraft:render_offsets` is not applied.
 Initial negotiated item-registry binding for world item visuals is also separate
 from the inventory-ledger bootstrap fix. The visual resolver still starts from
@@ -7909,6 +7918,13 @@ one-chunk steps to the owner-chosen 255 maximum. See
 Incomplete parity: experimental low-memory overrides, advanced graphics presets,
 and native VRAM probes on unsupported backends are not verified. These remain
 open and do not close a parity gate.
+
+Video settings offer owner-requested Performance, Balanced (the default), and
+Quality presets. Balanced restores existing defaults, including the device
+render-distance recommendation. The selection is derived from current values;
+manual graphics edits show Custom, and personal and accessibility options are
+preserved. These presets are a custom feature and do not close a parity gate.
+CI verification and owner visual acceptance remain pending.
 
 ### Authored particle lifecycle fields
 
